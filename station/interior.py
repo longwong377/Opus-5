@@ -211,6 +211,12 @@ def ring_arc(schema, profile, sector, ring_index, degrees=30.0,
     }
 
 
+# The Green rosette draws three spokes at 120 degrees. Everything radial in
+# the drum keys off this: the spokes themselves, and the guideway trusses, which
+# are 2.6 km long and can only be held up where they cross one.
+SPOKE_COUNT = 3
+
+
 def spoke(schema, profile, sector, from_ring, to_ring, angle_deg=0.0, z=None):
     """A radial transport tube between two rings.
 
@@ -258,6 +264,25 @@ def spoke(schema, profile, sector, from_ring, to_ring, angle_deg=0.0, z=None):
         "gravity_to_g": round(gravity_at(schema, r0), 3),
         "triangles": len(tris),
     }
+
+
+def drum_spokes(schema, profile, sector, from_ring, to_ring, z=None):
+    """Every radial spoke in a sector, at the canon 120 degree spacing.
+
+    Placement used to live in whichever script happened to be rendering, which
+    meant the count had no single source of truth and the trusses could silently
+    stop matching the structure that carries them.
+    """
+    verts, tris, groups = [], [], []
+    for i in range(SPOKE_COUNT):
+        v, t, _m = spoke(schema, profile, sector, from_ring, to_ring,
+                         360.0 * i / SPOKE_COUNT, z)
+        o = len(verts)
+        verts.extend(v)
+        tris.extend((a + o, b + o, c + o) for a, b, c in t)
+        groups.extend(["spoke"] * len(t))
+    return verts, tris, {"count": SPOKE_COUNT, "triangles": len(tris),
+                         "groups": groups}
 
 
 def _box(verts, tris, corners):
@@ -633,6 +658,158 @@ def drum_end_cap(schema, profile, sector, end="fore"):
 
 
 # --------------------------------------------------------------------------
+# Guideway truss
+# --------------------------------------------------------------------------
+
+# What the footage settles (authority 1, Babylon_5_2-22_33a/34b/35a):
+#   - a Warren truss -- parallel top and bottom chords, alternating diagonal
+#     web members, no verticals -- running longitudinally down the drum;
+#   - tram cars slung BENEATH its bottom chord;
+#   - a bright cylindrical light run alongside, and a row of rectangular
+#     fixtures on the underside. This is what lights the habitat;
+#   - a heavy collar where it lands on the end cap hub.
+#
+# What is extrapolated, and logged as INV-012: bay length, truss depth, chord
+# section, how far off the ground it flies, and how many there are.
+TRUSS_COUNT = SPOKE_COUNT     # one per spoke plane -- see INV-012
+TRUSS_RADIUS_FRAC = 0.85      # chord radius as a fraction of the drum floor
+TRUSS_BAY_M = 24.0            # one Warren panel, node to node
+TRUSS_DEPTH_M = 16.0          # top chord to bottom chord
+TRUSS_CHORD_M = 2.2           # square section of a chord
+TRUSS_WEB_M = 1.3             # square section of a diagonal
+TRUSS_LAMP_R_M = 1.5          # radius of the light run alongside
+
+
+def _beam(verts, tris, p0, p1, w, h=None):
+    """A box section running from p0 to p1. Used for chords and web members.
+
+    Needed because the web diagonals are not axis-aligned; building them from
+    axis-aligned boxes was what made the first pass read as a ladder rather
+    than as a truss.
+    """
+    h = w if h is None else h
+    ax = [p1[i] - p0[i] for i in range(3)]
+    L = math.sqrt(sum(c * c for c in ax)) or 1.0
+    ax = [c / L for c in ax]
+    # Any perpendicular will do; pick the one that is numerically safest.
+    ref = (0.0, 0.0, 1.0) if abs(ax[2]) < 0.9 else (1.0, 0.0, 0.0)
+    u = [ax[1] * ref[2] - ax[2] * ref[1],
+         ax[2] * ref[0] - ax[0] * ref[2],
+         ax[0] * ref[1] - ax[1] * ref[0]]
+    ul = math.sqrt(sum(c * c for c in u)) or 1.0
+    u = [c / ul * w / 2 for c in u]
+    v = [ax[1] * u[2] - ax[2] * u[1],
+         ax[2] * u[0] - ax[0] * u[2],
+         ax[0] * u[1] - ax[1] * u[0]]
+    vl = math.sqrt(sum(c * c for c in v)) or 1.0
+    v = [c / vl * h / 2 for c in v]
+    corners = []
+    for base in (p0, p1):
+        for su, sv in ((-1, -1), (1, -1), (1, 1), (-1, 1)):
+            corners.append(tuple(base[i] + su * u[i] + sv * v[i]
+                                 for i in range(3)))
+    _box(verts, tris, corners)
+
+
+def guideway_truss(schema, profile, sector, angle_deg, z_span=None):
+    """One longitudinal guideway truss, with its light run.
+
+    Placed in a spoke plane. That is not an aesthetic choice: the truss is
+    2.6 km long in the Green sector and nothing spans that unsupported, and the
+    radial spokes are the only structure that could carry it. Putting the
+    trusses at the spoke angles means each one is held every time it crosses
+    one, which is the only arrangement that stands up.
+    """
+    r0 = sector_radius(schema, profile, sector)
+    ex = schema["sectors"]["extents_m"][sector]
+    z0, z1 = z_span if z_span else (ex["z0"], ex["z1"])
+
+    a = math.radians(angle_deg)
+    ca, sa = math.cos(a), math.sin(a)
+    # "Down" is radially outward, toward the floor: that is where weight goes.
+    r_bot = r0 * TRUSS_RADIUS_FRAC
+    r_top = r_bot - TRUSS_DEPTH_M
+    # Lateral offset is tangential, so the light run sits beside the truss
+    # rather than inside it.
+    def at(r, lateral, z):
+        return (r * ca - lateral * sa, r * sa + lateral * ca, z)
+
+    verts, tris, groups = [], [], []
+
+    def emit(fn, group):
+        before = len(tris)
+        fn()
+        groups.extend([group] * (len(tris) - before))
+
+    # Chords run the full length as single beams. Segmenting them per bay would
+    # double the triangle count for joins that are inside the solid anyway.
+    for r in (r_bot, r_top):
+        for lat in (-TRUSS_CHORD_M, TRUSS_CHORD_M):
+            emit(lambda r=r, lat=lat: _beam(verts, tris, at(r, lat, z0),
+                                            at(r, lat, z1), TRUSS_CHORD_M),
+                 "truss_chord")
+
+    # Warren web: diagonals alternating up and down between the chords, no
+    # verticals. That is what the footage shows -- a run of triangles pointing
+    # alternately at the ground and at the axis.
+    n_bay = max(1, int((z1 - z0) / TRUSS_BAY_M))
+    for i in range(n_bay):
+        za = z0 + (z1 - z0) * i / n_bay
+        zb = z0 + (z1 - z0) * (i + 1) / n_bay
+        ra, rb = (r_bot, r_top) if i % 2 == 0 else (r_top, r_bot)
+        for lat in (-TRUSS_CHORD_M, TRUSS_CHORD_M):
+            emit(lambda ra=ra, rb=rb, za=za, zb=zb, lat=lat:
+                 _beam(verts, tris, at(ra, lat, za), at(rb, lat, zb),
+                       TRUSS_WEB_M), "truss_web")
+        # Transverse tie at each node, holding the two web planes apart.
+        emit(lambda ra=ra, za=za: _beam(
+            verts, tris, at(ra, -TRUSS_CHORD_M, za), at(ra, TRUSS_CHORD_M, za),
+            TRUSS_WEB_M), "truss_tie")
+
+    # The light run. This is the habitat's illumination, so it is emissive
+    # geometry rather than a fitting: it has to spill onto the ground below.
+    n_side = 8
+    for lat in (-(TRUSS_CHORD_M + 3.0), TRUSS_CHORD_M + 3.0):
+        b = len(verts)
+        for iz in (z0, z1):
+            for k in range(n_side):
+                th = 2 * math.pi * k / n_side
+                dr = TRUSS_LAMP_R_M * math.cos(th)
+                dl = TRUSS_LAMP_R_M * math.sin(th)
+                verts.append(at(r_bot + dr, lat + dl, iz))
+        for k in range(n_side):
+            k2 = (k + 1) % n_side
+            tris.append((b + k, b + k2, b + n_side + k2))
+            tris.append((b + k, b + n_side + k2, b + n_side + k))
+            groups.extend(["truss_lamp"] * 2)
+
+    return verts, tris, {
+        "sector": sector,
+        "angle_deg": angle_deg,
+        "z_span_m": round(z1 - z0, 1),
+        "bays": n_bay,
+        "chord_radius_m": round(r_bot, 1),
+        "height_above_floor_m": round(r0 - r_bot, 1),
+        "triangles": len(tris),
+        "groups": groups,
+    }
+
+
+def drum_guideways(schema, profile, sector, z_span=None):
+    """All the drum's guideway trusses, one per spoke."""
+    verts, tris, groups = [], [], []
+    for i in range(TRUSS_COUNT):
+        v, t, m = guideway_truss(schema, profile, sector,
+                                 360.0 * i / TRUSS_COUNT, z_span)
+        o = len(verts)
+        verts.extend(v)
+        tris.extend((a + o, b + o, c + o) for a, b, c in t)
+        groups.extend(m["groups"])
+    return verts, tris, {"trusses": TRUSS_COUNT, "triangles": len(tris),
+                         "groups": groups}
+
+
+# --------------------------------------------------------------------------
 # Self-test. There is no GPU and no reviewer, so the properties a render would
 # reveal have to be asserted numerically as well as looked at.
 # --------------------------------------------------------------------------
@@ -763,6 +940,39 @@ def _selftest():
         depth = (uo - ui) * r_drum
         check(f"cap course {ci} plates are near-square",
               0.4 < width / depth < 2.5, f"{width:.1f} x {depth:.1f} m")
+
+    # --- guideway trusses -------------------------------------------------
+    tv, tt, tm = guideway_truss(schema, profile, "green", 0.0)
+    check("truss flies above the drum floor",
+          0 < tm["height_above_floor_m"] < r_drum * 0.5,
+          f"{tm['height_above_floor_m']} m")
+    # The truss carries the trams and the lighting; if it dips below the tallest
+    # land-use relief it is buried in a settlement terrace.
+    tallest = max(rel for _f, _n, rel in LAND_USE)
+    check("truss clears the tallest land-use relief",
+          tm["height_above_floor_m"] > tallest * 2,
+          f"{tm['height_above_floor_m']} m over {tallest} m")
+    check("truss spans the whole sector",
+          abs(tm["z_span_m"] - 2586) < 1.0, f"{tm['z_span_m']} m")
+    check("truss is a Warren web with alternating diagonals",
+          tm["bays"] > 1 and abs(TRUSS_BAY_M / TRUSS_DEPTH_M - 1.5) < 0.6,
+          f"bay {TRUSS_BAY_M} / depth {TRUSS_DEPTH_M}")
+    check("truss carries a light run", "truss_lamp" in set(tm["groups"]))
+
+    # One truss per spoke. The trusses are 2.6 km long and the spokes are the
+    # only radial structure that could hold them up, so the counts must match
+    # or the arrangement does not stand.
+    sv, st, sm = drum_spokes(schema, profile, "green", 0, 3)
+    check("one guideway truss per spoke plane",
+          TRUSS_COUNT == sm["count"] == SPOKE_COUNT,
+          f"{TRUSS_COUNT} trusses vs {sm['count']} spokes")
+    check("spokes sit at the canon 120 degree spacing", SPOKE_COUNT == 3)
+
+    gv, gt, gm = drum_guideways(schema, profile, "green")
+    check("all trusses build", gm["trusses"] == TRUSS_COUNT)
+    # Every beam is a closed box, so the vertex count must be a clean multiple.
+    check("truss geometry is watertight boxes",
+          all(0 <= i < len(gv) for tri in gt for i in tri))
 
     # LAND_USE must tile the circumference exactly. A table summing to 0.94
     # would leave a 6% seam of untagged ground -- the same class of bug that

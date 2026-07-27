@@ -520,3 +520,51 @@ an authority-3 print diagram, sits at r/R = 0.18. Two unrelated sources landing 
 corroboration, so the cap is built down to the schema's core radius rather than to a new number.
 `interior.py`'s self-test asserts the two stay within 0.03 of each other, so a future edit to
 either has to confront the other.
+
+---
+
+## INV-012 — Guideway truss: scale, height and count
+
+**Invented:** The dimensions and placement of the drum's longitudinal guideway trusses in
+`station/interior.py` — bay length 24 m, depth 16 m, chord section 2.2 m, web section 1.3 m,
+chord radius at 0.85 of the drum floor radius (**41.7 m above the ground**), and **three of
+them**, one per spoke plane.
+
+**Why necessary:** The truss is the drum's most prominent interior structure and, as of the
+`33a`/`34b`/`35a` reading, its **light source** — so nothing about the habitat's appearance can
+be settled without it. The footage establishes what it *is* in considerable detail and gives no
+absolute scale at all: there is nothing of known size in frame with it.
+
+**What is sourced, and is not invention:**
+
+- It is a **Warren truss** — parallel top and bottom chords, diagonal web members alternating
+  up and down, no verticals. `Babylon_5_2-22_34b` shows the web unmistakably.
+- Tram cars are **slung beneath the bottom chord** (`33a`, `34b`).
+- A bright cylindrical **light run travels alongside**, with rectangular fixtures on the
+  underside (`33a`, `34b`). This is what lights the habitat.
+- It runs **longitudinally** and lands in a heavy collar on the **end cap hub** (`34b`).
+- The web's proportions: measured off `34b`, the triangles are wider than tall, bay to depth
+  roughly 1.2–1.5. The built value is 1.5, at the edge of the measured band.
+
+**Constrained by:**
+
+- **The count is a structural argument, not a preference.** The Green truss is 2,586 m long.
+  Nothing spans that unsupported, and the radial spokes are the only structure in the drum that
+  could carry it. Placing the trusses in the spoke planes means each is held wherever it crosses
+  one. The Green rosette draws **three spokes at 120°**, so there are three trusses.
+  `SPOKE_COUNT` is now the single source of truth and `TRUSS_COUNT` derives from it; the
+  self-test asserts they stay equal.
+- **The height has a floor and a ceiling.** Below, it must clear the tallest land-use relief —
+  the 7 m settlement terraces — with room for a tram, and it must not be so low that its light
+  run illuminates a stripe rather than the ground. Above, a truss near the axis is in free fall
+  and cannot be a guideway. 0.85 R sits between those, and the self-test asserts the lower bound.
+- Bay and section sizes are set so a bay is a walkable span and the chords are structure a
+  person could stand on, since the trams stop along it.
+
+**Overturned by:** any frame putting something of known size against the truss — a person on it,
+a docked tram whose door height can be read, or the drum wall behind it at a measurable radius.
+Bay, depth and radius are single constants; changing them re-derives every truss.
+
+**Consequence worth flagging:** the trusses now determine where the habitat's light comes from,
+so their radius sets the drum's entire lighting geometry. If this number moves, every interior
+lighting judgement made before the move has to be re-looked at rather than merely re-rendered.

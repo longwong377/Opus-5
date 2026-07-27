@@ -1,17 +1,24 @@
 # Project State
 
-**Last updated:** 2026-07-27 · **Session 2q** (+ adversarial verification)
+**Last updated:** 2026-07-27 · **Session 2u** — the habitat drum, built
 
 ## Where we are
 
-**Exterior structure complete; the two hardest physics problems are solved and unit-tested.**
+**Exterior structure complete. The habitat drum is now built, inside and out, from the same
+schema.** The volume where you look up and see ground overhead exists: banded ground, both end
+caps, three guideway trusses carrying the habitat's lighting, and the three radial spokes —
+42,696 triangles, all generated. See *Session 2u*.
 
 **The station's core hull exists and is canon-verified.** 253,184 triangles, 8,046.9 m long
 against canon's 8,047, generated entirely from `station/schema/station.yaml` and gated by 17
 passing canon assertions. It renders and it is recognisably Babylon 5.
 
-What remains on the exterior is every non-axisymmetric structure — fins, solar arrays, comms
-pylons, cobra bays, cargo modules, domes. Interiors stay blocked on C-003 and C-004.
+What remains on the exterior is refinement of the crude components — cobra bays, docking
+ports, observation domes, rotundas are still box primitives.
+
+**Interiors are not blocked.** C-003 and C-004 decide which *name* attaches to a volume, not
+what shape it is; geometry is generated against `(sector, ring_index)` and labelled afterwards
+by `bind_labels()`. When the conflicts close, the mapping changes and the geometry does not.
 
 ## Session 1 — foundation
 
@@ -634,6 +641,64 @@ midpoint 536 against the reported 537, every other within 1 px), the colour-stri
 Also flagged, not changed: the drum-is-Green reading is **better supported than the standoff
 implied** — the drum is hollow in authority-1 footage and only the Green rosette is drawn
 hollow — but a cartoon's fill is not a label, so C-003 correctly stays open.
+
+## Session 2u — the habitat drum, built
+
+The drum is the payoff of the structure phase: the volume where you look up and see ground
+overhead. It is also the only surface in the project seen from its **concave** side, so every
+convention built on the hull inverts there, and both times that mattered it failed silently
+rather than loudly.
+
+**Built** (`station/interior.py`, all of it generated, none hand-authored):
+
+| Piece | What it is | Triangles |
+|---|---|---|
+| `drum_interior()` | inner shell as longitudinal land-use bands | 23,040 |
+| `drum_end_cap()` | concentric ribbed dished bulkhead, both ends | 3,768 each |
+| `guideway_truss()` / `drum_guideways()` | 3 Warren trusses with light runs | 11,796 |
+| `drum_spokes()` | the 3 radial spokes at 120° | 324 |
+| | **complete drum** | **42,696** |
+
+**The "two end caps" open item was a misreading and is closed.** `Babylon_5_2-22_35a` is shot
+forward through a drum tram's windscreen; the red-orange triangulated lattice converges to a
+vanishing point with regular transverse ribs. It is the **tram guideway truss**, not a bulkhead.
+There is one end cap, already measured in 2r, and it is now built. Full note in `CONFLICTS.md`.
+
+**Newly sourced, and it settles a question that had no answer at all:** the habitat is lit from
+**longitudinal light runs on the guideway trusses** — not an axial sun-strip, not the end caps.
+`34b` shows the tubes alongside the truss, `33a` the rectangular fixtures on its underside.
+Authority 1.
+
+**Corroboration worth keeping.** The measured hub cone fills the inner ~20% of the cap. The
+schema's core ring, read off an unrelated authority-3 print diagram, sits at r/R = 0.18. Two
+independent sources 2% apart, so the cap is built to the schema's radius rather than a new
+number, and the self-test asserts they stay within 0.03.
+
+**Two silent failures caught, both from the concave side:**
+
+1. The drum's faces were wound outward while the comment above them claimed inward. 95% were
+   backface-culled and the render came out black — which reads as a badly placed camera, not as
+   a bug. `_inward_fraction()` now measures it and the builder refuses to return geometry that
+   would vanish.
+2. The first viewpoint was hand-placed at the nominal 278.3 m floor while the band underneath
+   was a 7 m settlement terrace at 271.3 m — five metres **inside the ground**. `stand_point()`
+   now derives eye position from the land-use table.
+
+**`tools/preview_render.py` gained what interiors need**: near-plane clipping (straddling
+triangles were dropped whole, so everything nearer than one tessellation step vanished — a
+black band that looked like missing geometry), `--pointlight` on the spin axis, `--headlamp`,
+`--fog`, and `--tint` for judging composition by group.
+
+**`SPOKE_COUNT` is now the single source of truth** for the drum's 3-fold radial structure.
+Placement used to live in whichever script was rendering, so the trusses could silently stop
+matching the spokes that carry them. `TRUSS_COUNT` derives from it and the self-test asserts it.
+
+New inventions: **INV-011** (end-cap dish depth, rib sizes, per-course plate segmentation) and
+**INV-012** (truss scale, height, count). `station/interior.py` self-tests at **62 assertions**
+and runs in CI.
+
+Renders: `docs/render-drum-interior.png`, `render-drum-endcap.png`,
+`render-drum-endcap-detail.png`, `render-drum-standing.png`.
 
 ## Next session — start here
 
