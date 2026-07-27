@@ -423,7 +423,10 @@ def _place(out, surface, z, theta, rng, kind, scale, stats, min_radius):
     stats[kind] = stats.get(kind, 0) + 1
 
 
-def _assembly(out, surface, z, theta, rng, tier, stats, min_radius):
+SATELLITE_CUTOFF = 0.9                        # detail below which satellites go
+
+
+def _assembly(out, surface, z, theta, rng, tier, stats, min_radius, detail):
     """One installation: a full-size primary fitting with satellite hardware.
 
     Machinery clusters. A vent bank has access panels beside it and a marker
@@ -434,10 +437,19 @@ def _assembly(out, surface, z, theta, rng, tier, stats, min_radius):
     Satellites get their own surface frame rather than being offset in the
     primary's tangent plane, so a cluster straddling a curved section still
     sits flush all the way across.
+
+    The keep-test is drawn first and unconditionally, so a lower detail level
+    yields a strict subset of the same instances rather than a reshuffle. That
+    is what stops greebles swapping places when an LOD switches.
     """
+    if rng.unit() > detail:
+        return
     spec = TIERS[tier]
     _place(out, surface, z, theta, rng, rng.pick(spec["primary"]), 1.0, stats,
            min_radius)
+    stats["assembly"] = stats.get("assembly", 0) + 1
+    if detail < SATELLITE_CUTOFF:
+        return
     spread = spec["spread_m"]
     r = max(surface.radius(z), 1.0)
     for _ in range(rng.count(*spec["satellites"])):
@@ -569,7 +581,7 @@ def _clearance(prad):
 # ---------------------------------------------------------------------------
 # Passes
 # ---------------------------------------------------------------------------
-def _scatter(out, surface, zone, cfg, stats):
+def _scatter(out, surface, zone, cfg, stats, detail):
     """Lay greebles on a jittered lattice over (z, theta) within one zone.
 
     A lattice rather than free scatter for two reasons: coverage is even without
@@ -606,11 +618,14 @@ def _scatter(out, surface, zone, cfg, stats):
             # Fractional expectation, so a rate finer than one per cell still
             # produces the right average instead of silently rounding to zero.
             n = int(expected) + (1 if rng.unit() < expected - int(expected) else 0)
-            for _ in range(n):
+            for k in range(n):
                 z = zc + rng.span(-0.38, 0.38) * (z1 - z0) / nz
                 theta = 2.0 * math.pi * (it + 0.5 + rng.span(-0.38, 0.38)) / ncirc
-                _assembly(out, surface, z, theta, rng, tier, stats, min_r)
-                stats["assembly"] = stats.get("assembly", 0) + 1
+                # Each assembly gets its own stream so that culling one at a
+                # lower detail level cannot shift the contents of its neighbours.
+                _assembly(out, surface, z, theta,
+                          Seeded(cfg["seed"], zone_id, iz, it, k),
+                          tier, stats, min_r, detail)
 
 
 def _beacon_ring(out, surface, z, cfg, stats, key):
@@ -645,10 +660,18 @@ def zone_extents(features):
     return ext
 
 
-def build_all(cfg, features, profile):
-    """Return ({group: (verts, tris)}, stats) for the whole greeble pass."""
+def build_all(cfg, features, profile, detail=1.0):
+    """Return ({group: (verts, tris)}, stats) for the whole greeble pass.
+
+    ``detail`` is the fraction of instances to keep, for the LOD chain. Surface
+    detail is the first thing distance takes away -- a 20 m fitting subtends
+    1.3 px at 24 km -- and it does not decimate the way the lathe does, so
+    without this it becomes a fixed triangle floor that dominates every distant
+    level. Culling is by stable per-instance keep-test, so each level is a
+    subset of the one above it and nothing pops sideways at a switch.
+    """
     stats = {}
-    if not cfg or not cfg.get("enabled"):
+    if not cfg or not cfg.get("enabled") or detail <= 0.0:
         return {}, stats
 
     surface = HullSurface(profile)
@@ -663,11 +686,17 @@ def build_all(cfg, features, profile):
         zone = {"id": fid, "z0": z0, "z1": z1, "tier": entry["tier"]}
         if entry["tier"] not in TIERS:
             raise ValueError(f"greeble zone {fid} names unknown tier: {entry['tier']}")
-        _scatter(out, surface, zone, cfg, stats)
+        _scatter(out, surface, zone, cfg, stats, detail)
 
+        # Conduits survive further out than scattered fittings -- a 900 m line is
+        # legible long after a 20 m box is not -- so they thin more slowly. The
+        # kept runs are a spread subset of the full set and each keeps the
+        # meridian it had at full detail, so thinning never rotates a pipe.
         runs = entry.get("conduit_runs", 0)
+        keep = int(math.ceil(runs * min(1.0, detail * 1.6)))
         pad = min(cfg["conduit_end_pad_m"], (z1 - z0) * 0.15)
-        for run in range(runs):
+        for i in range(keep):
+            run = i * runs // keep
             rng = Seeded(cfg["seed"], fid, "conduit", run)
             # Evenly spaced meridians with a small deterministic offset, so runs
             # on adjacent sections do not all line up on the same longitude.
@@ -676,7 +705,9 @@ def build_all(cfg, features, profile):
                          cfg["min_radius_m"])
             stats["conduit_run"] = stats.get("conduit_run", 0) + 1
 
-    if cfg.get("beacon_ring_count"):
+    # Marker lights are metres across. Past the first LOD switch they are well
+    # under a pixel and only cost bandwidth.
+    if cfg.get("beacon_ring_count") and detail >= SATELLITE_CUTOFF:
         for i, f in enumerate(features[:-1]):
             _beacon_ring(out, surface, f["z1"], cfg, stats, i)
 

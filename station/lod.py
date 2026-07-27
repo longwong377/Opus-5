@@ -20,7 +20,15 @@ import sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
-# (name, radial_segments, z_stride, switch distance in metres)
+# (name, radial_segments, z_stride, switch distance in metres, greeble detail)
+#
+# The lathe decimates; scattered surface detail does not. Left alone the greeble
+# pass is a fixed ~71,000-triangle floor at every level, which at lod3 would be
+# 91% of the mesh -- the whole chain would stop working. Greeble detail is
+# therefore culled per level against what a fitting actually subtends: a 20 m
+# access panel is 5.1 px at the lod1 switch, 1.3 px at lod2 and 0.3 px at lod3.
+# Instance culling is a stable subset (see station/greeble.py), so a switch
+# removes fittings rather than rearranging them.
 #
 # Switch distances are derived from SILHOUETTE DEVIATION, not facet width.
 # What causes a visible LOD pop on a body of revolution is the sagitta -- how
@@ -41,10 +49,10 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 # lod0 therefore carries all normal viewing, which the budget affords: 256k
 # triangles is 64% of the exterior allowance with 144k spare.
 LEVELS = [
-    ("lod0", 64, 1, 0),
-    ("lod1", 32, 2, 6_000),
-    ("lod2", 16, 4, 24_000),
-    ("lod3", 8, 8, 95_000),
+    ("lod0", 64, 1, 0, 1.0),
+    ("lod1", 32, 2, 6_000, 0.45),
+    ("lod2", 16, 4, 24_000, 0.12),
+    ("lod3", 8, 8, 95_000, 0.0),
 ]
 FOV_DEG = 50.0
 SCREEN_H = 1440
@@ -52,13 +60,22 @@ PIXEL_BUDGET = 1.5
 
 
 def main():
+    # generate_hull.py writes its manifest next to its --out path, so running
+    # it here for lod1..3 would leave hull_manifest.json describing a decimated
+    # level. validate.py reads that manifest and duly failed with "hull length
+    # 8042.9 m vs canon 8047" -- a real failure against a file that was simply
+    # stale. Each level's manifest is kept beside its own mesh and the lod0
+    # manifest is restored at the end.
+    main_manifest = os.path.join(ROOT, "station/generated/hull_manifest.json")
+    saved = open(main_manifest).read() if os.path.exists(main_manifest) else None
+
     out = []
-    for name, segs, stride, dist in LEVELS:
+    for name, segs, stride, dist, detail in LEVELS:
         path = os.path.join(ROOT, f"station/generated/hull_{name}.obj")
         subprocess.run(
             [sys.executable, "generate_hull.py",
              "--radial-segments", str(segs), "--z-stride", str(stride),
-             "--out", path],
+             "--greeble-detail", str(detail), "--out", path],
             cwd=os.path.join(ROOT, "station"),
             check=True, capture_output=True)
         man = json.load(open(os.path.join(ROOT, "station/generated/hull_manifest.json")))
@@ -66,8 +83,10 @@ def main():
             "name": name,
             "radial_segments": segs,
             "z_stride": stride,
+            "greeble_detail": detail,
             "switch_distance_m": dist,
             "triangles": man["triangles"],
+            "greeble_triangles": man.get("greeble_triangles", 0),
             "max_radius_m": man["bounds"]["max_radius_m"],
             "length_m": man["bounds"]["length_m"],
         })
@@ -88,6 +107,16 @@ def main():
     path = os.path.join(ROOT, "station/generated/lod_manifest.json")
     with open(path, "w") as f:
         json.dump({"levels": out}, f, indent=1)
+
+    # Restore lod0's manifest so validate.py and budget.py describe the mesh
+    # the engine actually consumes.
+    if saved is not None:
+        with open(main_manifest, "w") as f:
+            f.write(saved)
+    else:
+        subprocess.run([sys.executable, "generate_hull.py"],
+                       cwd=os.path.join(ROOT, "station"),
+                       check=True, capture_output=True)
 
     print(f"{'level':6} {'segs':>5} {'stride':>7} {'triangles':>11} {'reduce':>8} "
           f"{'deviation':>10} {'switch':>10} {'dev px':>7} {'honest':>9}")

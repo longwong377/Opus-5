@@ -90,6 +90,14 @@ def main():
         check("hull mesh generated", False, "run station/generate_hull.py first")
     else:
         man = json.load(open(MANIFEST))
+        # A manifest left behind by station/lod.py describes a decimated level,
+        # not the mesh the engine consumes, and every assertion below would then
+        # be measuring the wrong thing. Catch it explicitly rather than letting
+        # it surface as a confusing canon violation.
+        check("manifest describes lod0, not a decimated level",
+              man.get("radial_segments") == 64 and man.get("z_stride") == 1,
+              f"segs={man.get('radial_segments')} stride={man.get('z_stride')} "
+              f"-- rerun station/generate_hull.py")
         check("hull length matches canon",
               abs(man["bounds"]["length_m"] - canon_len) < 1.0,
               f"{man['bounds']['length_m']} m vs canon {canon_len} m")

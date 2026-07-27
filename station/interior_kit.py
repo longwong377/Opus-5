@@ -136,8 +136,8 @@ PROVISIONAL = {
     "wall_rail_frac": 0.075,
     "wall_plate_courses": 3,
     "wall_plate_l_m": 1.15,
-    "wall_seam_m": 0.055,
-    "wall_plate_proud_m": 0.035,
+    "wall_seam_m": 0.038,
+    "wall_plate_proud_m": 0.045,
     "wall_rail_proud_m": 0.10,
     "wall_reveal_m": 0.06,
 
@@ -303,11 +303,14 @@ def _clip_polygon(poly, nx, ny, c):
     return dedup
 
 
-def _ensure_ccw(poly):
+def _signed_area(poly):
     n = len(poly)
-    twice_area = sum(poly[i][0] * poly[(i + 1) % n][1] -
+    return 0.5 * sum(poly[i][0] * poly[(i + 1) % n][1] -
                      poly[(i + 1) % n][0] * poly[i][1] for i in range(n))
-    return poly if twice_area >= 0.0 else poly[::-1]
+
+
+def _ensure_ccw(poly):
+    return poly if _signed_area(poly) >= 0.0 else poly[::-1]
 
 
 def _polygon_difference(outer, hole):
@@ -333,7 +336,11 @@ def _polygon_difference(outer, hole):
         nx, ny = ey / ln, -ex / ln          # outward normal of a CCW loop
         c = nx * x0 + ny * y0
         outside = _clip_polygon(rest, -nx, -ny, -c)
-        if len(outside) >= 3:
+        # Peeling produces slivers wherever an aperture edge runs close to the
+        # outline. They are invisible but they are long, thin and at almost the
+        # same depth as the frame in front of them, which is exactly what a
+        # painter's-algorithm sort gets wrong -- they tore the door corners.
+        if len(outside) >= 3 and abs(_signed_area(outside)) > 4e-3:
             pieces.append(outside)
         rest = _clip_polygon(rest, nx, ny, c)
         if len(rest) < 3:
@@ -830,12 +837,15 @@ def corridor_section(length, p=None, doors=()):
         i = min(range(n_bays), key=lambda k: abs(bay_centre[k] - dz))
         span = bay - 2 * inner
         rect = [(-span / 2, 0.0), (span / 2, 0.0), (span / 2, wall_h), (-span / 2, wall_h)]
-        # Set back so the frame stands a little proud of the wall face rather
-        # than half of it hanging in the corridor, and the closure fills the
-        # thickness the wall courses would have occupied.
-        v, t = door_assembly(p, section=rect, depth=(-0.06, th + 0.10))
+        # Setback puts the frame's front face a little proud of the wall face
+        # rather than half of it hanging in the corridor, and makes the closure
+        # occupy exactly the wall thickness it stands in for. Getting this wrong
+        # leaves two big faces a few centimetres apart, which the preview's
+        # depth sort renders as torn corners.
+        setback = fd * 0.5 - 0.06
+        v, t = door_assembly(p, section=rect, depth=(-setback, th - setback))
         _merge(verts, tris, v, t, _rot_y(90.0 * side),
-               (side * (w / 2.0 + 0.16), 0.0, bay_centre[i]))
+               (side * (w / 2.0 + setback), 0.0, bay_centre[i]))
 
     # Bullnose pilasters flanking each portal, carrying the vertical light
     # strips. They are what the wall runs die into, so the plate courses never

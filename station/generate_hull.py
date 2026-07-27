@@ -162,6 +162,10 @@ def main():
                     help="core hull only, for isolating lathe issues")
     ap.add_argument("--no-greebles", action="store_true",
                     help="skip surface detail, for isolating silhouette issues")
+    ap.add_argument("--greeble-detail", type=float, default=1.0,
+                    help="fraction of greeble instances to keep; the LOD chain "
+                         "uses this because surface detail does not decimate "
+                         "the way the lathe does")
     a = ap.parse_args()
 
     verts, groups, rings, degenerate, caps = build(a.radial_segments, a.z_stride)
@@ -191,7 +195,7 @@ def main():
     if not a.no_greebles:
         parts, greeble_stats = greeble_mod.build_all(
             schema.get("greebles", {}), schema["longitudinal"]["features"],
-            profile["profile"])
+            profile["profile"], a.greeble_detail)
         merge(parts, greeble_counts)
 
     write_obj(a.out, verts, groups)
@@ -210,6 +214,7 @@ def main():
         "hull_triangles": hull_tris,
         "component_triangles": sum(comp_counts.values()),
         "component_instances": sum(c["count"] for c in schema.get("components", [])) if not a.no_components else 0,
+        "greeble_detail": a.greeble_detail,
         "greeble_triangles": sum(greeble_counts.values()),
         # Assemblies and conduit runs are containers, not fittings -- counting
         # them alongside their own contents would inflate the instance figure the
