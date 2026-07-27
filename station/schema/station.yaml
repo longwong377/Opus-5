@@ -458,3 +458,60 @@ components:
     thickness_m: 8
     auth: 3
     src: "Exterior map.jpg 'Space Traffic Proximity Arrays'; Contract 5 count of 4"
+
+# ---------------------------------------------------------------------------
+# Procedural surface greebling.
+#
+# Detail scattered by rule over the hull skin -- vents, hatches, conduit runs,
+# antenna stubs, blisters, cleats and marker lights. See station/greeble.py and
+# docs/adr/0002-geometry-representation.md.
+#
+# What lives here is the part that is a claim about the station: which stretch
+# of hull is finished passenger skin and which is exposed plant. The shapes and
+# the mixture of kinds per tier live in the generator, because they are craft
+# rather than canon. Every zone is auth 5 -- see INVENTIONS.md INV-004.
+# ---------------------------------------------------------------------------
+greebles:
+  enabled: true
+  seed: "b5-greeble-v1"        # changing this reshuffles every instance
+  cell_m: 44                   # lattice cell; ~2/3 of a 65 m hull plate
+  min_radius_m: 30             # thin spine tips and the nose stay bare
+  max_slope: 0.9               # skip section-transition walls: |dr/dz| above this
+  edge_pad_m: 30               # keep scattered detail inside its own section
+  conduit_end_pad_m: 60        # runs stop short of a section joint
+  beacon_ring_count: 6         # marker lights per structural boundary ring
+
+  # Instances per km^2 of hull surface. The spread between clean and industrial
+  # is deliberately wide -- roughly 5x -- because on the orthographic sheet the
+  # difference between the bare drum skin and the reactor section is the single
+  # clearest thing about the model's surface treatment.
+  tiers:
+    minimal:    {per_km2: 45}
+    clean:      {per_km2: 105}
+    standard:   {per_km2: 200}
+    cluttered:  {per_km2: 400}
+    industrial: {per_km2: 470}
+
+  zones:
+    - {feature: aft_terminus,              tier: minimal,    conduit_runs: 0}
+    - {feature: primary_fusion_reactor,    tier: industrial, conduit_runs: 6}
+    - {feature: reactor_spine,             tier: industrial, conduit_runs: 8}
+    - {feature: generator_torus_housing,   tier: industrial, conduit_runs: 5}
+    - {feature: main_truss_spine,          tier: industrial, conduit_runs: 6}
+    - {feature: explosive_disconnect_neck, tier: industrial, conduit_runs: 3}
+    - {feature: hull_flare_aft,            tier: industrial, conduit_runs: 2}
+    - {feature: aft_hull_block,            tier: cluttered,  conduit_runs: 5}
+    - {feature: bearing_neck,              tier: standard,   conduit_runs: 3}
+    - {feature: habitat_cylinder,          tier: clean,      conduit_runs: 4}
+    - {feature: red_section,               tier: clean,      conduit_runs: 2}
+    - {feature: forward_taper,             tier: standard,   conduit_runs: 2}
+    - {feature: forward_waist,             tier: standard,   conduit_runs: 2}
+    - {feature: docking_sphere,            tier: standard,   conduit_runs: 2}
+    - {feature: forward_deflector_spike,   tier: minimal,    conduit_runs: 0}
+  zones_src: >
+    Tier assignment from reference/01-station-exterior/exterior more.jpg
+    (orthographic production sheet, auth 2), which shows exposed plant, grille
+    banks and rails across the reactor and spine sections and a comparatively
+    finished skin over the habitat drum. Aft-hull-block is tiered `cluttered`
+    per INVENTIONS.md INV-004; it is provisional and does not constrain
+    anything downstream. Rates per km^2 are auth 5 throughout.

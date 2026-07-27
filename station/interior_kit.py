@@ -117,6 +117,58 @@ PROVISIONAL = {
     "wall_panel_w_m": 1.3,
     "deck_panel_w_m": 2.6,
     "deck_panel_l_m": 1.5,
+
+    # --- corridor cross-section -------------------------------------------
+    # Both authority-1 corridor frames show a chamfered box, not a bore: flat
+    # deck, upright walls, a chamfer into a flat soffit. The chamfer size is a
+    # proportion read off footage; the absolute height it scales against is the
+    # part blocked on C-004.
+    "wall_chamfer_m": 0.50,
+    "wall_thickness_m": 0.22,
+    "ceiling_slab_m": 0.18,
+
+    # --- wall build-up, as fractions of wall height ------------------------
+    # Measured off `grey level 1.webp`, the only frame showing a corridor wall
+    # square-on. Fractions rather than metres because the proportions are what
+    # the footage establishes; the height they multiply is not.
+    "wall_skirt_frac": 0.05,
+    "wall_dado_frac": 0.34,
+    "wall_rail_frac": 0.075,
+    "wall_plate_courses": 2,
+    "wall_plate_l_m": 1.15,
+    "wall_seam_m": 0.045,
+    "wall_plate_proud_m": 0.028,
+    "wall_rail_proud_m": 0.10,
+    "wall_reveal_m": 0.06,
+
+    # --- portal frames (the structural ribs a corridor is punctuated by) ----
+    # `ring_frame_spacing_m` stays for the circular ribs of the tall volumes in
+    # `central corridor.webp`. Corridor portals sit closer together than that.
+    "portal_spacing_m": 3.6,
+    "portal_depth_m": 0.42,
+    "portal_jamb_m": 0.30,
+    "portal_light_w_m": 0.09,
+
+    # --- pilasters (bullnose columns carrying the vertical light strips) ----
+    "pilaster_w_m": 0.34,
+    "pilaster_proj_m": 0.17,
+    "pilaster_strip_w_m": 0.075,
+    "pilaster_strip_lo_frac": 0.50,
+    "pilaster_strip_hi_frac": 0.86,
+
+    # --- pressure doors ----------------------------------------------------
+    # Aperture shape is sourced; the leaf mechanism is not. See INV-005.
+    "door_width_m": 1.55,
+    "door_height_m": 2.30,
+    "door_chamfer_m": 0.40,
+    "door_sill_m": 0.10,
+    "door_frame_m": 0.34,
+    "door_frame_depth_m": 0.52,
+    "door_leaf_t_m": 0.10,
+    "door_mechanism": "bi_parting",
+
+    # --- junctions ---------------------------------------------------------
+    "junction_span_m": 3.6,
 }
 
 

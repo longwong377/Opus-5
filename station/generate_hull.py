@@ -18,6 +18,7 @@ import os
 import yaml
 
 import components as components_mod
+import greeble as greeble_mod
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SCHEMA = os.path.join(ROOT, "station/schema/station.yaml")
@@ -159,6 +160,8 @@ def main():
     ap.add_argument("--out", default=os.path.join(OUTDIR, "hull.obj"))
     ap.add_argument("--no-components", action="store_true",
                     help="core hull only, for isolating lathe issues")
+    ap.add_argument("--no-greebles", action="store_true",
+                    help="skip surface detail, for isolating silhouette issues")
     a = ap.parse_args()
 
     verts, groups, rings, degenerate, caps = build(a.radial_segments, a.z_stride)
@@ -167,14 +170,29 @@ def main():
     # they stay welded to the hull automatically when the profile changes.
     schema, profile = load()
     hull_tris = sum(len(t) for t in groups.values())
+
+    def merge(parts, into):
+        """Rebase a builder's local vertex indices onto the shared vertex list."""
+        for gid, (gv, gt) in parts.items():
+            base = len(verts)
+            verts.extend(gv)
+            groups[gid] = [(x + base, y + base, z + base) for x, y, z in gt]
+            into[gid] = len(gt)
+
     comp_counts = {}
     if not a.no_components:
-        for cid, (cv, ct) in components_mod.build_all(
-                schema.get("components", []), profile["profile"]).items():
-            base = len(verts)
-            verts.extend(cv)
-            groups[cid] = [(x + base, y + base, z + base) for x, y, z in ct]
-            comp_counts[cid] = len(ct)
+        merge(components_mod.build_all(schema.get("components", []),
+                                       profile["profile"]), comp_counts)
+
+    # Surface detail last, so it inherits the finished profile rather than a
+    # provisional one. Greebles carry no canon dimensions of their own -- they
+    # read the same radius profile the lathe does. See station/greeble.py.
+    greeble_counts, greeble_stats = {}, {}
+    if not a.no_greebles:
+        parts, greeble_stats = greeble_mod.build_all(
+            schema.get("greebles", {}), schema["longitudinal"]["features"],
+            profile["profile"])
+        merge(parts, greeble_counts)
 
     write_obj(a.out, verts, groups)
 
@@ -192,6 +210,9 @@ def main():
         "hull_triangles": hull_tris,
         "component_triangles": sum(comp_counts.values()),
         "component_instances": sum(c["count"] for c in schema.get("components", [])) if not a.no_components else 0,
+        "greeble_triangles": sum(greeble_counts.values()),
+        "greeble_instances": sum(greeble_stats.values()),
+        "greeble_instances_by_kind": dict(sorted(greeble_stats.items())),
         "degenerate_quads_skipped": degenerate,
         "cap_triangles": caps,
         "bounds": {

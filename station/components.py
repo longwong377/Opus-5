@@ -232,7 +232,7 @@ def dorsal_line(spec, profile):
     return verts, tris
 
 
-def _dome_mesh(verts, tris, cx, cy, cz, out, radius, height, rings=6, segs=14):
+def dome_mesh(verts, tris, cx, cy, cz, out, radius, height, rings=6, segs=14):
     """Half-ellipsoid bulging along an arbitrary outward direction."""
     ox, oy, oz = out
     # Build an orthonormal frame with `out` as the pole.
@@ -288,8 +288,8 @@ def domes(spec, profile):
         for i in range(per_row):
             a = 2 * math.pi * i / per_row + math.radians(spec.get("phase_deg", 0.0))
             ca, sa = math.cos(a), math.sin(a)
-            _dome_mesh(verts, tris, ca * r0 * 0.97, sa * r0 * 0.97, zc,
-                       (ca, sa, 0.0), rad, hgt)
+            dome_mesh(verts, tris, ca * r0 * 0.97, sa * r0 * 0.97, zc,
+                      (ca, sa, 0.0), rad, hgt)
     return verts, tris
 
 
