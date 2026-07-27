@@ -145,11 +145,23 @@ sensor and deflector arrays.
   parallelism capped. This is hours of background work and blocks nothing, since
   `tools/preview_render.py` covers the visual loop for the structure-first phase.
 
+## Session 2d — component set completed
+
+- **Observation domes (2)** placed on the forward docking structure. Dome 1 is Command &
+  Control — a place the player will stand, so its position has to survive into the interior
+  layout rather than being treated as hull decoration.
+- **Observation rotundas (4)**, **docking ports (2)** — primary north and service south per the
+  Contract 5 cross-section — **forward swept arrays (4)** and **space traffic proximity
+  arrays (4)** placed.
+- New component kinds: `domes` (half-ellipsoid blisters on an arbitrary outward normal, with a
+  properly constructed orthonormal frame so they sit flush at any hull angle) and `swept_fins`.
+- **255,800 triangles**, 2,616 of them components. 19/19 assertions still passing.
+
 ## Next session — start here
 
-1. **Remaining components.** Heat-exchange collectors are still a crude radial pinwheel where
-   the top view shows a swept form. The fore swept structures, observation domes (2), rotundas
-   (4), docking ports and sensor arrays are all still unplaced.
+1. **Component refinement.** Placed but crude: the forward swept arrays read as flat planks
+   rather than swept blades, and the heat-exchange collectors are still a radial pinwheel where
+   the top view shows a swept form. Both need shaping, not repositioning.
 2. **Surface articulation.** No greebling, panel lines or hull plating anywhere yet. This is
    where the procedural-detail approach from ADR 0002 starts earning its keep.
 3. **Finish the Godot build** and publish the double-precision binary as a Release asset.

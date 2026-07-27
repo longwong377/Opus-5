@@ -370,3 +370,65 @@ components:
     auth: 2
     src: "Miller callout U 'Cargo Module, Typical' on the habitat cylinder;
           count 28 rotating + 14 support structure from the specification table"
+
+  # --- structures added after the orthographic sheet read ---------------------
+  - id: observation_dome
+    count: 2
+    kind: domes
+    rows: 2
+    z0: 7000
+    z1: 7240
+    radius_m: 46
+    height_m: 34
+    phase_deg: 90
+    auth: 3
+    src: "Contract 5 'OB. DOME 1 (COMMAND & CONTROL)' and 'OB. DOME 2', on the
+          forward docking structure. Dome 1 is C&C -- a place the player stands,
+          so its position must survive into the interior layout."
+
+  - id: observation_rotunda
+    count: 4
+    kind: domes
+    rows: 1
+    z0: 6180
+    z1: 6360
+    radius_m: 62
+    height_m: 40
+    auth: 3
+    src: "Contract 5 'OBSERVATION ROTUNDA (4)'"
+
+  - id: docking_port
+    count: 2
+    kind: domes
+    rows: 1
+    z0: 5150
+    z1: 5330
+    radius_m: 88
+    height_m: 52
+    phase_deg: 90     # +Y = North (primary) and -Y = South (service)
+    auth: 3
+    src: "Contract 5 cross-section: Primary Docking Port north, Service Docking Port south"
+
+  - id: forward_swept_array
+    count: 4
+    kind: swept_fins
+    z0: 6620
+    z1: 6900
+    span_m: 300
+    sweep_m: 620
+    thickness_m: 11
+    phase_deg: 45
+    auth: 2
+    src: "reference/01-station-exterior/exterior more.jpg top view -- long swept
+          structures on the forward section, edge-on in side view"
+
+  - id: space_traffic_prox_array
+    count: 4
+    kind: swept_fins
+    z0: 7320
+    z1: 7420
+    span_m: 190
+    sweep_m: 300
+    thickness_m: 8
+    auth: 3
+    src: "Exterior map.jpg 'Space Traffic Proximity Arrays'; Contract 5 count of 4"

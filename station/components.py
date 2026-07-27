@@ -232,8 +232,94 @@ def dorsal_line(spec, profile):
     return verts, tris
 
 
+def _dome_mesh(verts, tris, cx, cy, cz, out, radius, height, rings=6, segs=14):
+    """Half-ellipsoid bulging along an arbitrary outward direction."""
+    ox, oy, oz = out
+    # Build an orthonormal frame with `out` as the pole.
+    if abs(oz) < 0.9:
+        ux, uy, uz = 0.0, 0.0, 1.0
+    else:
+        ux, uy, uz = 1.0, 0.0, 0.0
+    ax = uy * oz - uz * oy
+    ay = uz * ox - ux * oz
+    az = ux * oy - uy * ox
+    al = math.sqrt(ax * ax + ay * ay + az * az) or 1.0
+    ax, ay, az = ax / al, ay / al, az / al
+    bx = oy * az - oz * ay
+    by = oz * ax - ox * az
+    bz = ox * ay - oy * ax
+
+    base = len(verts)
+    for r in range(rings + 1):
+        phi = (math.pi / 2) * r / rings
+        rr, hh = radius * math.cos(phi), height * math.sin(phi)
+        for sgm in range(segs):
+            th = 2 * math.pi * sgm / segs
+            c, sn = math.cos(th) * rr, math.sin(th) * rr
+            verts.append((cx + ax * c + bx * sn + ox * hh,
+                          cy + ay * c + by * sn + oy * hh,
+                          cz + az * c + bz * sn + oz * hh))
+    for r in range(rings):
+        for sgm in range(segs):
+            a = base + r * segs + sgm
+            b = base + r * segs + (sgm + 1) % segs
+            c = base + (r + 1) * segs + (sgm + 1) % segs
+            d = base + (r + 1) * segs + sgm
+            tris.append((a, b, c))
+            tris.append((a, c, d))
+
+
+def domes(spec, profile):
+    """Hemispherical blisters on the hull -- observation domes and rotundas.
+
+    Observation Dome 1 is Command & Control, so these are not decoration: they
+    are the places the player stands and looks out of, and their positions have
+    to survive into the interior layout.
+    """
+    verts, tris = [], []
+    z0, z1 = spec["z0"], spec["z1"]
+    n = spec["count"]
+    rad, hgt = spec["radius_m"], spec["height_m"]
+    rows = spec.get("rows", 1)
+    per_row = max(1, n // rows)
+    for row in range(rows):
+        zc = z0 + (z1 - z0) * (row + 0.5) / rows if rows > 1 else (z0 + z1) / 2.0
+        r0 = radius_at(profile, zc)
+        for i in range(per_row):
+            a = 2 * math.pi * i / per_row + math.radians(spec.get("phase_deg", 0.0))
+            ca, sa = math.cos(a), math.sin(a)
+            _dome_mesh(verts, tris, ca * r0 * 0.97, sa * r0 * 0.97, zc,
+                       (ca, sa, 0.0), rad, hgt)
+    return verts, tris
+
+
+def swept_fins(spec, profile):
+    """Long swept-back blades, as the top view shows on the forward section."""
+    verts, tris = [], []
+    z0, z1 = spec["z0"], spec["z1"]
+    span, th = spec["span_m"], spec["thickness_m"] / 2.0
+    sweep = spec.get("sweep_m", 400.0)
+    for i in range(spec["count"]):
+        a = 2 * math.pi * i / spec["count"] + math.radians(spec.get("phase_deg", 0.0))
+        ca, sa = math.cos(a), math.sin(a)
+        tx, ty = -sa, ca
+        r0 = radius_at(profile, z0)
+        # Root at z0, tip swept aft-to-fore by `sweep` and narrowing.
+        quad = [
+            (ca * r0 * 0.95 - tx * th, sa * r0 * 0.95 - ty * th, z0),
+            (ca * r0 * 0.95 - tx * th, sa * r0 * 0.95 - ty * th, z1),
+            (ca * (r0 + span) - tx * th, sa * (r0 + span) - ty * th, z1 + sweep),
+            (ca * (r0 + span) - tx * th, sa * (r0 + span) - ty * th, z1 + sweep * 0.62),
+        ]
+        quad += [(x + 2 * tx * th, y + 2 * ty * th, z) for x, y, z in quad]
+        _box(verts, tris, quad)
+    return verts, tris
+
+
 BUILDERS = {
     "planar_blades": planar_blades,
+    "domes": domes,
+    "swept_fins": swept_fins,
     "dorsal_line": dorsal_line,
     "radial_array": radial_array,
     "pylon_pair": pylon_pair,
