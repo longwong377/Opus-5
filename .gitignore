@@ -3,3 +3,4 @@
 station/generated/*.obj
 station/generated/*.glb
 station/generated/*.glb
+station/generated/hull_lod*.obj

@@ -1,0 +1,54 @@
+{
+ "levels": [
+  {
+   "name": "lod0",
+   "radial_segments": 64,
+   "z_stride": 1,
+   "switch_distance_m": 0,
+   "triangles": 256232,
+   "max_radius_m": 1210.88,
+   "length_m": 8046.9,
+   "reduction": 0.0,
+   "silhouette_deviation_m": 1.46
+  },
+  {
+   "name": "lod1",
+   "radial_segments": 32,
+   "z_stride": 2,
+   "switch_distance_m": 6000,
+   "triangles": 66344,
+   "max_radius_m": 1210.88,
+   "length_m": 8042.9,
+   "reduction": 0.741,
+   "silhouette_deviation_m": 5.83,
+   "deviation_px_at_switch": 1.5,
+   "honest_from_m": 6002
+  },
+  {
+   "name": "lod2",
+   "radial_segments": 16,
+   "z_stride": 4,
+   "switch_distance_m": 24000,
+   "triangles": 18888,
+   "max_radius_m": 1210.88,
+   "length_m": 8042.9,
+   "reduction": 0.926,
+   "silhouette_deviation_m": 23.27,
+   "deviation_px_at_switch": 1.5,
+   "honest_from_m": 23950
+  },
+  {
+   "name": "lod3",
+   "radial_segments": 8,
+   "z_stride": 8,
+   "switch_distance_m": 95000,
+   "triangles": 7016,
+   "max_radius_m": 1210.88,
+   "length_m": 8042.9,
+   "reduction": 0.973,
+   "silhouette_deviation_m": 92.17,
+   "deviation_px_at_switch": 1.5,
+   "honest_from_m": 94879
+  }
+ ]
+}
