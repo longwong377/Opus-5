@@ -98,3 +98,22 @@ Status: empty.
   - Lighting is low-key and practical-driven, with light coming from panels and signage
     rather than from any ambient fill.
 - Feeds: interior kit spec, `CONFLICTS.md` C-004
+
+### 04-sector-red/zocalo.webp
+- Source authority: **1** (on-screen footage)
+- **Era caveat:** the EarthForce uniforms in frame are the Season 1 grey/tan pattern with the
+  gold sunburst, not the S2–3 dark pattern. The *set* is unchanged across seasons, so this is
+  valid architectural reference and invalid costume reference. Recording the distinction
+  because it generalises: a frame can be canon for one subject and out-of-era for another.
+- Extracted, Zócalo commercial language:
+  - **Neon signage in alien script** — cyan, curvilinear, mounted high above stalls. Signage is
+    a primary light source, not decoration.
+  - **Market stalls** with fabric awnings, string lighting and hanging goods, built as
+    lightweight structures inside a hard architectural shell.
+  - **Vertical structural columns** with panelled detail; **red-orange handrails** on the
+    stairs and ramps, a strong recurring accent against otherwise desaturated grey.
+  - **Crowd density is high and species-mixed** — this is the busiest public space on the
+    station and its NPC density target should reflect that.
+  - Lighting: warm practicals at stall level, cyan neon accents above, low ambient fill. The
+    space reads dim overall with bright local pools.
+- Feeds: interior kit spec, `16-signage-typography-ui`, NPC density targets for Red Sector
