@@ -26,6 +26,26 @@ jobs:
           cd station
           python3 generate_hull.py
 
+      - name: Export glTF and verify it is well-formed
+        run: |
+          python3 station/export_gltf.py
+          python3 - <<'PY'
+          import json, struct
+          d = open("station/generated/station.glb","rb").read()
+          magic, ver, total = struct.unpack("<III", d[:12])
+          assert magic == 0x46546C67 and ver == 2 and total == len(d)
+          jlen, jtype = struct.unpack("<II", d[12:20])
+          g = json.loads(d[20:20+jlen])
+          blen, btype = struct.unpack("<II", d[20+jlen:28+jlen])
+          assert g["buffers"][0]["byteLength"] == blen
+          for a in g["accessors"]:
+              bv = g["bufferViews"][a["bufferView"]]
+              stride = {"VEC3": 12, "SCALAR": 4}[a["type"]]
+              assert a["count"] * stride <= bv["byteLength"]
+              assert bv["byteOffset"] + bv["byteLength"] <= blen
+          print(f"glb valid: {len(g['meshes'])} meshes")
+          PY
+
       - name: Canon assertions
         run: python3 station/validate.py
 

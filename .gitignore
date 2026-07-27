@@ -2,3 +2,4 @@
 # station/generate_hull.py rather than committing multi-megabyte meshes.
 station/generated/*.obj
 station/generated/*.glb
+station/generated/*.glb
