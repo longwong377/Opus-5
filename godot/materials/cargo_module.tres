@@ -1,0 +1,8 @@
+[gd_resource type="StandardMaterial3D" format=3]
+
+[resource]
+resource_name = "Cargo Module — red-brown container skin"
+albedo_color = Color(0.34, 0.222, 0.205, 1)
+metallic = 0.15
+metallic_specular = 0.4
+roughness = 0.68

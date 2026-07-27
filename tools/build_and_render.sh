@@ -31,4 +31,4 @@ timeout 900 "$GODOT" --headless --path "$ROOT/godot" --import >/dev/null 2>&1 ||
 echo "--- render ---"
 timeout 1800 xvfb-run -a --server-args="-screen 0 1600x900x24" \
   "$GODOT" --path "$ROOT/godot" --rendering-driver vulkan \
-  --resolution 1600x900 --quit-after 150 2>&1 | grep -E 'captured|Vulkan'
+  --resolution 1600x900 --quit-after 150 2>&1 | grep -E 'captured|Vulkan|materials:|ERROR|SCRIPT'

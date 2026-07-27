@@ -1,6 +1,6 @@
 # Project State
 
-**Last updated:** 2026-07-27 · **Session 2**
+**Last updated:** 2026-07-27 · **Session 2q** (+ adversarial verification)
 
 ## Where we are
 
@@ -461,15 +461,15 @@ than taste**: an iris sweeps a disc and leaves the four chamfered corners unswep
 remaining two readings are both built and selected by one entry in `PROVISIONAL`, so
 overturning the guess is a one-word edit. `INV-008`.
 
-**Found while building: `_box` produces inside-out solids.** Given corners in the obvious
-order, `components._box` emits every face wound inward -- verified numerically, 12 of 12
-triangles facing the wrong way on a unit cube. Outdoors that only changes the shading, which is
-why it survived four sessions of exterior work. Indoors it is fatal: the camera is inside the
-geometry, so an inside-out wall is one you see straight through. The interior kit uses its own
-`_slab` and a `_selftest` gate asserts the primitives face outward.
-**The exterior components are still built on the inward convention and their normals are
-flipped.** Not fixed here -- it would flip every component at once and needs its own
-before/after render pass.
+**Found while building: `_box` was producing inside-out solids.** Given corners in the obvious
+order it emitted every face wound inward -- verified numerically, 12 of 12 triangles facing the
+wrong way on a unit cube. Outdoors that only changes the shading, which is why it survived
+several sessions of exterior work: a closed solid keeps its silhouette either way, so
+proportions judged from those renders were still right and the lighting was not. Indoors it is
+not subtle -- the camera is inside the geometry, so an inside-out wall is one you see straight
+through. Fixed in `components.py` in the same window; the interior kit's `_selftest` asserts
+its primitives face outward so it cannot come back unnoticed. (It did come back unnoticed, in
+two functions the gate did not reach — see the verification note below.)
 
 **Two more bugs, both found by looking:**
 - The old `corridor_section` laid its deck with a negative-determinant remap and no winding
@@ -483,6 +483,118 @@ Verified by rendering from a 1.65 m eye height and reading the PNGs: a 21.6 m co
 wall door and a bulkhead door, a four-arm crossing, and a tee. **7,656 triangles for 21.6 m**
 (354/m); a crossing with four 7.2 m stubs is 10,644. Canon assertions 23/23, budget gates 4/4.
 
+### Adversarial verification of 2p — three defects the render pass missed
+
+**The corridor was open to space down both sides, its full length.** `wall_assembly` built its
+chamfer leaning *outboard*, away from the corridor, so it roofed nothing and left a 0.5 m slot
+between the soffit and each wall head in every bay. **7.9% of rays cast from head height
+escaped straight out through the ceiling; none escaped sideways or down.**
+
+It survived a seven-iteration render pass because **the preview background is black and so is
+an unlit ceiling** — a hole and a shadow are the same pixels. The session read the symptom
+correctly ("the ceiling was rendering as a void") and treated it as lighting, adding soffit
+ribs to give the eye something to land on. Re-rendered against a magenta background it is
+unmissable. *Lesson: render interiors against a colour that cannot occur in the model. A black
+void is the one background that hides the failure interiors are most prone to.*
+
+**`ring_frame` and `wall_panel` were both inside-out** — signed volume negative, every face of
+every segment wound inward — at the same time as the note above claiming `_selftest` had made
+that class of bug un-repeatable. The gate only covered `_slab` and `_prism`. Both functions are
+unused today, which is why nothing rendered wrong; `ring_frame` is the piece explicitly kept
+for the two-storey volumes in `central corridor.webp`, so the next session to build one would
+have inherited it.
+
+**Nothing in the kit ran in CI.** `.github/workflows/validate.yml` never invoked
+`interior_kit.py`, so neither gate protected anything between sessions.
+
+All three fixed: the chamfer leans inboard, both primitives are rewound, `_selftest` now gates
+**every** primitive on signed volume plus a coverage test that a corridor is closed overhead
+(each assertion was confirmed to fail on the reintroduced bug), and CI runs the module.
+
+Still open, and reported rather than fixed:
+
+- **A door bay has no wall build-up.** `corridor_section` passes `courses=False` for the bay a
+  wall door takes over, so the skirt, dado, rail band and plate courses stop dead at the door
+  and resume after it, leaving the door set in a blank plate. `grey level 1.webp` shows the
+  build-up running continuously past portals. Needs the courses cut round the aperture.
+- **INV-007's chamfered section is inferred, not observed.** `corridor in alien sector.webp`
+  shows a chamfered *aperture*; nothing establishes the passage behind it has that profile, and
+  `grey level 1.webp` shows a rectangular portal header. INV-007 and the spec now say so.
+- The junction's cross-corridor deck tile pitch is 0.57 m against the arms' 0.605 m, because
+  `deck_grid` divides a different width into a whole number of tiles. Along the run they align.
+
+## Session 2q — reference mining: the two sheets that had never been opened
+
+**No code changed. Documentation and reference filing only** — `reference/00-INDEX.md`,
+`canon/00-MASTER.md`, `canon/CONFLICTS.md`, `docs/interior-kit-spec.md`, and nine files moved
+into a new quarantine folder.
+
+- **Two authority-3 files in `02-station-cutaways-and-plans/` had never been read.** Both bear
+  directly on the blocking conflicts:
+  - `b5-schematics-from-the-security-manual-v0-u8879zcrf36h1.webp` — a **"Sectional Schematic"**
+    carrying a **sector bracket that divides the station into six longitudinal bands**, five of
+    them named. Band boundaries were measured from breaks and ticks on the bracket line and
+    converted at 7.53 m/px.
+  - `other map.png` — a **colour sector plate** carrying a colour-coded longitudinal strip and
+    **six radial cross-section rosettes**, one per sector.
+- **C-003 UPDATE 2.** `C-003 UPDATE`'s geometric refutation was aimed at the wrong target: it
+  kills `other map 2.jpg`'s *ordering*, not longitudinal slicing. Under the authority-3
+  ordering the aft structural half is **Yellow** (engineering), which is what belongs there.
+  **Longitudinal slicing is back**; INV-003's overturn is itself overturned.
+- **C-004's axis is settled: a level is a concentric radial deck.** Three independent lines —
+  the rosettes, the sectional schematic's longitudinal decking (its own callout reads
+  "CONCENTRIC PERSONNEL TRANSFER SYSTEMS"), and authority-1 footage
+  (`03-sector-blue/Babylon_5_2-22_34b.jpg`, filed as an exterior shot and actually the drum
+  interior along its axis). The Brown rosette also marks **"DOWNBELOW" on an outer ring by
+  name**, which answers C-004's own standing objection from the source rather than by argument.
+- **New authority-1 canon from signage** — station runs on **Earth Mean Time**, **six
+  atmospheres** are available, humans are **atmosphere 02**, the identicard record schema, and
+  **docking bays (24)**, which is a different system from the cobra bays of C-002.
+- **Nine AI-generated character turnarounds quarantined** to
+  `reference/22-QUARANTINE-ai-generated/`. Same lesson as folder 21 in a new costume: the
+  largest "uniform reference" in the tree is a 2528×1696 PNG with its own generation prompt
+  burned in. **Resolution is not authority.**
+
+**Both conflicts stay OPEN and BLOCKING.** C-003 on the Green/Brown transposition — the two
+authority-3 sheets disagree about which band is the 2,000 m habitat drum. C-004 on the
+numbering convention — nothing numbers a ring, and getting the direction backwards inverts
+every address on the station.
+
+### Adversarial verification of 2q
+
+Measurements re-derived independently and confirmed: the bracket boundaries (531/541 gap
+midpoint 536 against the reported 537, every other within 1 px), the colour-strip hue bands
+(Green 335–400, Red 401–538 — exact), all five duplicate claims, the file counts (100 / 83 live
+/ 17 quarantined), and every cited reference path. The hull is untouched: 23/23 assertions,
+4/4 budgets, 106+ physics tests, and the render is unchanged. Four corrections applied:
+
+- `00-MASTER.md` carried a **stale "17–95 m"** for the boundary agreement that the measured
+  table in `CONFLICTS.md` gives as 2, 74 and 96 m.
+- **"Every band's contents match that sector's on-screen function" was not true**, and the
+  exception matters. Band 4 — the one inferred to be Brown — also carries the **zen garden**
+  and the **ambassadorial suites**, which are Green on screen. The table had listed only the
+  three callouts that fit Brown. Corrected, and the omitted evidence is now weighed in C-003.
+- **The missing sixth-band label is not a cropping artefact.** The sheet is cropped, but the
+  sector-label row is intact (five labels in one band at y 271–285, no ink between x 521 and
+  814). An uncropped scan will give the detail row; it may well not give the label. Chasing a
+  better scan is therefore a weaker lead than it looked.
+- The **Zocalo neon is `ZoCaLo`, six Latin glyphs** — the zigzag at the head is the Z, which the
+  spec had described as a flourish beside the word.
+- **The boundary agreement was oversold, and it is the load-bearing claim.** It was written up
+  as "a stronger cross-check than anything else in the reference set". Tested against a null:
+  mean miss 110 m over the six scored boundaries where random positions against the same 16
+  candidate boundaries average 212 m — **p ≈ 0.06**. Real, weak, not proof. The headline "2 m"
+  is a 4%-by-chance event and "three of six inside 100 m" is a 31%-by-chance event. Both
+  `CONFLICTS.md` and the index now say so. *Lesson: "nearest boundary in our own schema" over a
+  framework with sixteen boundaries is a generous test, and it needs a null before it counts.*
+- Three live files — the **Contract 5 sheet**, `Exterior map.jpg` and `Interior map.jpg` — were
+  neither index entries nor on the *Still uncatalogued* list, so the index's claim to list the
+  whole remainder was false. Now listed.
+
+Also flagged, not changed: the drum-is-Green reading is **better supported than the standoff
+implied** — the drum is hollow in authority-1 footage and only the Green rosette is drawn
+hollow — but a cartoon's fill is not a label, so C-003 correctly stays open.
+
 ## Next session — start here
 
 1. **Refine the remaining crude components.** The radiators are now measured off the
@@ -495,25 +607,22 @@ wall door and a bulkhead door, a four-arm crossing, and a tee. **7,656 triangles
 3. **Starfury geometry** — `station/starfury_geometry.py` was assigned to a workflow agent;
    check whether it landed, otherwise build it. Physics already exists and the mesh must match
    `aurora_thrusters()` exactly.
-4. **Fix the `_box` winding convention** in `components.py`. Given corners in the obvious
-   order it emits every face wound inward, so **all exterior component normals are currently
-   flipped** (session 2p, verified numerically). Cheap to change, but it changes all exterior
-   shading at once and so needs a before/after render pass of its own.
-5. **An interior triangle budget.** `budget.py` gates the exterior only. A corridor runs ~354
+4. **An interior triangle budget.** `budget.py` gates the exterior only. A corridor runs ~354
    triangles per metre and a crossing is 10,644; a sector of these needs a gate before the
    counts get away.
-6. **Publish the Godot binary** as a Release asset — container-local, 61 minutes to rebuild.
+5. **Publish the Godot binary** as a Release asset — container-local, 61 minutes to rebuild.
    See `docs/godot-binary.md`.
-7. **C-003 / C-004** still block all interior *layout*. Radial numbering is the leading
-   hypothesis with three supporting arguments; needs a lift display or deck plan to confirm.
+6. **C-003 / C-004** still block all interior *layout*, on narrower questions than before
+   (session 2q). Radial decks are established; **which ring is level 1** is not.
 
 ## Blocked
 
 | Item | Blocked by | Needs |
 |---|---|---|
-| All interior level geometry | C-004 — level numbering unresolved | Lift display, deck plan, or dialogue tying a level number to a location placeable radially |
-| Interior sector layout | C-003 — sector topology unresolved | Wayfinding signage or transit display showing sector adjacency |
-| Grey / Brown / Yellow interiors | Zero reference coverage | Any material at all for these sectors |
+| All interior level geometry | C-004 — **numbering convention** unresolved. The axis is settled: levels are concentric radial decks | A lift-car display, a numbered deck plan, or dialogue tying a level number to a gravity. Nothing else will do — the deck plans themselves have now been found and they number nothing |
+| Interior sector layout | C-003 — **Green/Brown transposition**. Sectors are longitudinal bands; the two authority-3 sheets disagree on which band is the habitat drum | Any source placing the Garden or Downbelow in a *named* sector at a longitudinal position |
+| Deck spacing, ring radii, corridor width, ceiling height | Unavailable from any held source | The one sheet that draws decks has its vertical scale exaggerated ~2× (C-004 UPDATE item 3, same ruling as C-005) |
+| Grey / Brown / Yellow interiors | Near-zero reference coverage | Grey has one frame; Brown has one misfiled frame; Yellow has none |
 | Starfury cockpit | Zero reference coverage | Cockpit interior stills |
 
 ## Reference gaps worth filling
@@ -521,8 +630,21 @@ wall door and a bulkhead door, a four-arm crossing, and a tee. **7,656 triangles
 Ranked by how much they unblock. Nothing here stops progress on the hull, but all of it
 becomes blocking once interiors start:
 
-1. **Deck plans or lift displays** — would resolve both blocking conflicts at once.
-2. **Brown Sector / Downbelow** — zero files.
-3. **Yellow Sector** — zero files.
-4. **Starfury cockpit interior** — zero files; needed for Act III.
-5. **Grey Sector** — one file.
+1. **A lift-car display, or any numbered deck plan** — the single highest-value gap in the set.
+   It is the only thing that closes C-004. *Deck plans as such are no longer the gap: session 2q
+   found six radial cross-sections. They name facilities and number nothing.*
+2. **An uncropped scan of the Security Manual sectional schematic** — would supply the cut-off
+   detail row. Note it is **not** likely to supply the missing sixth-band label, which is absent
+   from an intact label row; this lead is weaker than it first looked.
+3. **Brown Sector / Downbelow** — one misfiled frame
+   (`01-station-exterior/sleeping-in-light-05.jpg`, S5, station derelict).
+4. **Yellow Sector** — zero files.
+5. **Starfury cockpit interior** — zero files; needed for Act III.
+6. **Grey Sector** — one file, and it is the most useful interior frame in the set.
+
+## Uncatalogued reference, and misfiled reference
+
+`reference/00-INDEX.md` ends with two lists a future session should read before re-deriving
+them: **Still uncatalogued** (~25 files, mostly single-character portraits and race-makeup
+shots) and **Misfiled — recommended moves** (nine files whose folder is wrong, deliberately
+*not* moved because the schema and specs cite some by path).

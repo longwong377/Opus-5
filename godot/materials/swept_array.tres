@@ -1,0 +1,8 @@
+[gd_resource type="StandardMaterial3D" format=3]
+
+[resource]
+resource_name = "Swept Array — collector and sensor panel faces"
+albedo_color = Color(0.36, 0.365, 0.375, 1)
+metallic = 0.25
+metallic_specular = 0.35
+roughness = 0.66

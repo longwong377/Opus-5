@@ -1,0 +1,43 @@
+[gd_resource type="StandardMaterial3D" load_steps=6 format=3]
+
+[sub_resource type="FastNoiseLite" id="NoiseAlbedo"]
+seed = 5041
+frequency = 0.024
+fractal_octaves = 4
+fractal_lacunarity = 2.3
+fractal_gain = 0.42
+
+[sub_resource type="Gradient" id="RampAlbedo"]
+offsets = PackedFloat32Array(0, 1)
+colors = PackedColorArray(0.74, 0.735, 0.725, 1, 1, 1, 1, 1)
+
+[sub_resource type="NoiseTexture2D" id="TexAlbedo"]
+width = 256
+height = 256
+seamless = true
+color_ramp = SubResource("RampAlbedo")
+noise = SubResource("NoiseAlbedo")
+
+[sub_resource type="FastNoiseLite" id="NoiseRough"]
+seed = 811
+frequency = 0.075
+fractal_octaves = 3
+fractal_gain = 0.55
+
+[sub_resource type="NoiseTexture2D" id="TexRough"]
+width = 256
+height = 256
+seamless = true
+noise = SubResource("NoiseRough")
+
+[resource]
+resource_name = "Hull Exterior — plated warm-neutral grey, weathered"
+albedo_color = Color(0.6, 0.582, 0.564, 1)
+albedo_texture = SubResource("TexAlbedo")
+metallic = 0.34
+metallic_specular = 0.45
+roughness = 0.72
+roughness_texture = SubResource("TexRough")
+uv1_scale = Vector3(0.0055, 0.0055, 0.0055)
+uv1_triplanar = true
+texture_filter = 3

@@ -564,10 +564,16 @@ def _emit_pipe(verts, tris, frames, prad):
             d = base + (k + 1) * CONDUIT_SIDES + i
             tris.append((a, d, c))
             tris.append((a, c, b))
-    for k, flip in ((0, True), (rings - 1, False)):
+    # The ring is wound counter-clockwise in the (U, N) plane, and U x N = -V,
+    # so the unreversed fan faces aft. That is right for the run's aft end and
+    # backwards for its fore end -- reverse only the latter. Getting this the
+    # wrong way round leaves both caps backface-culled and every run open at
+    # both ends, which is invisible in a solid-shaded thumbnail and obvious the
+    # moment a Starfury flies past one.
+    for k, reverse in ((0, False), (rings - 1, True)):
         o = base + k * CONDUIT_SIDES
         for i in range(1, CONDUIT_SIDES - 1):
-            tris.append((o, o + i + 1, o + i) if flip else (o, o + i, o + i + 1))
+            tris.append((o, o + i + 1, o + i) if reverse else (o, o + i, o + i + 1))
 
 
 def _clearance(prad):

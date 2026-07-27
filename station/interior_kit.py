@@ -17,7 +17,7 @@ hundred hard-coded numbers.
 """
 import math
 
-from components import _box
+from components import _box, signed_volume
 
 
 def ring_frame(radius, depth, thickness, segments=48, arc=math.tau, start=0.0):
@@ -36,7 +36,9 @@ def ring_frame(radius, depth, thickness, segments=48, arc=math.tau, start=0.0):
         quad = [(ri * c, ri * s, -hd), (ro * c, ro * s, -hd),
                 (ro * c, ro * s, hd), (ri * c, ri * s, hd)]
         if prev is not None:
-            _box(verts, tris, prev + quad)
+            # Trailing quad first: sweeping a ring the other way round makes the
+            # segment a mirror of itself and every rib comes out inside-out.
+            _box(verts, tris, quad + prev)
         prev = quad
     return verts, tris
 
@@ -99,9 +101,12 @@ def wall_panel(width, height, depth=0.09, seam=0.035):
     """
     verts, tris = [], []
     hw, hh = width / 2 - seam, height / 2 - seam
-    _box(verts, tris, [(-hw, 0, -hh), (hw, 0, -hh), (hw, 0, hh), (-hw, 0, hh),
-                       (-hw, depth, -hh), (hw, depth, -hh),
-                       (hw, depth, hh), (-hw, depth, hh)])
+    # Wound the other way round from `_slab`: this plate extrudes along +y with
+    # its face in (x, z), and that permutation is left-handed, so the face order
+    # has to reverse or the plate comes out inside-out.
+    _box(verts, tris, [(-hw, 0, hh), (hw, 0, hh), (hw, 0, -hh), (-hw, 0, -hh),
+                       (-hw, depth, hh), (hw, depth, hh),
+                       (hw, depth, -hh), (-hw, depth, -hh)])
     return verts, tris
 
 
@@ -191,15 +196,17 @@ PROVISIONAL = {
 
 
 def _slab(verts, tris, x0, x1, y0, y1, z0, z1):
-    """Axis-aligned box with outward-facing normals.
+    """Axis-aligned box from two corner extents, outward-facing.
 
-    `_box` treats its first quad as wound the other way, so a box given corners
-    in the obvious order comes out inside-out. That is invisible on an exterior
-    silhouette and fatal indoors: the surface the camera needs is the one facing
-    back at it, and an inside-out wall is a wall you can see straight through.
+    A named wrapper rather than an inline `_box` call because the corner order
+    is the one thing in this file that has silently been wrong before: `_box`
+    wound its faces inward for several sessions and nothing caught it, since a
+    closed solid keeps its silhouette either way. Indoors that failure is not
+    subtle -- the camera is inside the geometry, so an inside-out wall is one
+    you see straight through -- and `_selftest` now asserts against it.
     """
-    _box(verts, tris, [(x0, y1, z0), (x1, y1, z0), (x1, y0, z0), (x0, y0, z0),
-                       (x0, y1, z1), (x1, y1, z1), (x1, y0, z1), (x0, y0, z1)])
+    _box(verts, tris, [(x0, y0, z0), (x1, y0, z0), (x1, y1, z0), (x0, y1, z0),
+                       (x0, y0, z1), (x1, y0, z1), (x1, y1, z1), (x0, y1, z1)])
 
 
 def _merge(verts, tris, v, t, remap=None, offset=(0.0, 0.0, 0.0), flip=False):
@@ -531,9 +538,15 @@ def wall_assembly(length, height, p=None, plaque_at=None, downlights=True,
     # The chamfer runs the whole length whether or not the wall below it does:
     # a bay given over to a door still has a soffit to meet. Emitting it here
     # rather than at the call site keeps one definition of the section.
+    #
+    # It leans *inboard*, toward +x: the wall's body is at -x, so a chamfer at
+    # -chamf slopes away from the corridor and roofs nothing. Built that way it
+    # left a 0.5 m slot open to space down both sides of every bay -- which read
+    # as a dark ceiling rather than as a hole, because the preview background is
+    # black, and was patched with soffit ribs instead of being closed.
     _prism(verts, tris,
            [(0.0, wall_h), (0.0, wall_h - 0.02), (-th, wall_h - 0.02),
-            (-th, height), (-chamf, height)], 0.0, length)
+            (-th, height), (chamf, height)], 0.0, length)
     if not courses:
         return verts, tris
 
@@ -743,7 +756,7 @@ def junction(arms=(0, 1, 2, 3), p=None):
     verts, tris = [], []
     span = p["junction_span_m"]
     w, h = p["corridor_width_m"], p["ceiling_height_m"]
-    chamf, th = p["wall_chamfer_m"], p["wall_thickness_m"]
+    th = p["wall_thickness_m"]
     half = span / 2.0
 
     # Deck across the square, laid in the same panel module as a corridor run so
@@ -776,6 +789,8 @@ def junction(arms=(0, 1, 2, 3), p=None):
                    (nx * half - dx * half, 0.0, nz * half - dz * half))
 
     # Corner columns, each turned to present its round face to the crossing.
+    # Full height here, unlike the ones flanking a corridor portal: at a corner
+    # two chamfers meet and there is nothing for a short column to die into.
     for sx in (-1.0, 1.0):
         for sz in (-1.0, 1.0):
             v, t = pilaster(h, p)
@@ -936,11 +951,12 @@ def write_obj(path, verts, tris):
 def _selftest():
     """Assert the primitives face outward.
 
-    Worth a gate of its own: `_box` in components.py takes its corners wound the
-    other way, so the natural corner order produces solids that are inside-out.
-    Outdoors that only changes the shading. Indoors the camera is inside the
-    geometry, and an inside-out wall is one you see straight through -- which is
-    a failure that looks like a modelling mistake, not a winding mistake.
+    Worth a gate of its own. `_box` wound its faces inward for several sessions
+    of exterior work and nothing caught it, because outdoors that only changes
+    the shading. Indoors the camera is inside the geometry, and an inside-out
+    wall is one you see straight through -- a failure that looks like a
+    modelling mistake rather than a winding mistake, and so gets fixed in the
+    wrong place. This asserts the property instead of trusting it.
     """
     import itertools
 
@@ -967,6 +983,25 @@ def _selftest():
         v, t = [], []
         _prism(v, t, poly[::-1], -0.2, 0.2)
         assert outward(v, t) == 0, "_prism does not normalise winding"
+
+    # The centroid test above only judges a single convex solid. Every other
+    # piece here is a union of solids, so they are gated on signed volume
+    # instead -- the sum stays positive only while every part is outward.
+    # Checking two primitives and trusting the rest is how `ring_frame` and
+    # `wall_panel` sat inside-out through the session that added the gate: both
+    # are unused today, so nothing rendered wrong, and nothing would have until
+    # the first tall volume got built on a rib that was inside-out.
+    for name, piece in (
+            ("ring_frame", ring_frame(3.0, 0.35, 0.28, segments=16)),
+            ("deck_panel", deck_panel(2.6, 1.5)),
+            ("handrail", handrail(4.0)),
+            ("wall_panel", wall_panel(1.3, 2.0)),
+            ("pilaster", pilaster(2.5)),
+            ("portal_frame", portal_frame(2.6, 3.0)),
+            ("door_leaf", door_leaf(open_fraction=0.35)),
+            ("wall_assembly", wall_assembly(3.05, 3.0)),
+            ("deck_grid", deck_grid(3.6, 2.6))):
+        assert signed_volume(*piece) > 0.0, f"{name} is inside-out"
     for mech in ("bi_parting", "horizontal_split"):
         for f in (0.0, 0.5, 1.0):
             v, t = door_leaf(open_fraction=f, mechanism=mech)
@@ -975,7 +1010,37 @@ def _selftest():
             itertools.combinations((0, 1, 2, 3), k) for k in (1, 2, 3, 4)):
         v, t = junction(arms)
         assert len(t) > 0, f"junction {arms} produced nothing"
+
+    # A corridor must be closed overhead across its full width. The chamfer was
+    # authored leaning outboard, which roofed nothing and left a 0.5 m slot open
+    # to space down both sides of every bay. Nothing caught it: the preview
+    # background is black, so a hole in the ceiling and a ceiling in shadow are
+    # the same pixels. Asserted here as coverage rather than judged by eye.
+    v, t = corridor_section(10.8)
+    w = PROVISIONAL["corridor_width_m"]
+    open_at = []
+    for zi in range(1, 24):
+        z = 10.8 * zi / 24.0
+        for xi in range(-10, 11):
+            x = w / 2.0 * xi / 11.0
+            if not _covered_above(v, t, x, z):
+                open_at.append((round(x, 2), round(z, 2)))
+    assert not open_at, f"corridor is open to space overhead at {open_at[:6]}"
     print("selftest OK")
+
+
+def _covered_above(verts, tris, x, z):
+    """Is any triangle overhead of (x, z)? A vertical ray cast by projection."""
+    for a, b, c in tris:
+        (ax, ay, az), (bx, by, bz), (cx, cy, cz) = verts[a], verts[b], verts[c]
+        d0 = (bx - ax) * (z - az) - (bz - az) * (x - ax)
+        d1 = (cx - bx) * (z - bz) - (cz - bz) * (x - bx)
+        d2 = (ax - cx) * (z - cz) - (az - cz) * (x - cx)
+        if (d0 >= 0.0 and d1 >= 0.0 and d2 >= 0.0) or \
+           (d0 <= 0.0 and d1 <= 0.0 and d2 <= 0.0):
+            if max(ay, by, cy) > 1.65:
+                return True
+    return False
 
 
 if __name__ == "__main__":

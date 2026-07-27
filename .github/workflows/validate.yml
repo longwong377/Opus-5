@@ -52,6 +52,15 @@ jobs:
       - name: Canon assertions
         run: python3 station/validate.py
 
+      # The kit's gates assert two things a render cannot be trusted to show:
+      # that primitives face outward, and that a corridor is closed overhead.
+      # Both have already been wrong in committed geometry, and both looked
+      # like shading against a black background rather than like holes.
+      - name: Interior kit self-test
+        run: |
+          cd station
+          python3 interior_kit.py
+
       - name: Rotating-frame physics
         run: python3 station/physics/test_rotating_frame.py
 
@@ -60,6 +69,14 @@ jobs:
 
       - name: Starfury flight model
         run: python3 station/physics/test_starfury.py
+
+      # The mesh and the flight model hold separate copies of the thruster
+      # layout so that editing one and not the other fails loudly. That gate is
+      # worthless unless it runs, and it only runs here.
+      - name: Starfury airframe, and that it still agrees with the flight model
+        run: |
+          python3 station/starfury_geometry.py
+          python3 station/test_starfury_geometry.py
 
       - name: Docking
         run: python3 station/physics/test_docking.py

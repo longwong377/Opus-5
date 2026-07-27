@@ -1,0 +1,8 @@
+[gd_resource type="StandardMaterial3D" format=3]
+
+[resource]
+resource_name = "Radiator — deep blue high-emissivity blade coating"
+albedo_color = Color(0.126, 0.188, 0.32, 1)
+metallic = 0.05
+metallic_specular = 0.3
+roughness = 0.78

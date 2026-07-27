@@ -13,7 +13,7 @@ Sources: `reference/09-garden-core-and-transit/central corridor.webp`,
 | Element | Observation | Source |
 |---|---|---|
 | **Ring frames** | The hull's circular structural ribs are **exposed, not clad**. They arch overhead and frame views down corridors. The single most identifiable interior motif. | central corridor |
-| **Corridor section** | A **chamfered box** — flat deck, upright walls, ~45° chamfers into a flat soffit. Circular ribs belong to tall volumes; a corridor built on them reads as a pipe. | grey level 1, corridor in alien sector |
+| **Corridor section** | A **chamfered box** — flat deck, upright walls, ~45° chamfers into a flat soffit. Circular ribs belong to tall volumes; a corridor built on them reads as a pipe. **The chamfer is inferred from the door aperture, not observed as a section** — see INV-007. | grey level 1 (not a bore), corridor in alien sector (aperture only) |
 | **Portals** | The section's ribs resolve as **heavy portal frames** at close spacing, with a **long linear light fitting in the soffit** and **bullnose pilasters** at the jambs carrying **segmented vertical light strips**. | grey level 1 |
 | **Wall build-up** | Bottom to top: projecting skirt · set-back dado · **heavy rail band at hip height throwing a deep shadow reveal** · courses of large plates with recessed seams. | grey level 1 |
 | **Door apertures** | A **chamfered polygon** — vertical jambs, ~45° corners, flat head, **raised threshold**. Set in a heavy frame with a pronounced reveal. Not a rectangle, not a circle. | corridor in alien sector |
@@ -44,9 +44,28 @@ solution that starts by raising ambient will read as wrong immediately.
 
 ## 5. Commercial fit-out (Red Sector / Zócalo)
 
-Lightweight structures inside a hard shell: fabric awnings, string lights, hanging goods,
-temporary-looking stalls against permanent architecture. **Alien-script neon** mounted high.
-Crowd density high and species-mixed.
+Lightweight structures inside a hard shell: fabric awnings on radiating spars, string lights,
+hanging goods, temporary-looking stalls against permanent architecture. Crowd density high and
+species-mixed.
+
+**Neon mounted high**, in two distinct registers — do not conflate them (corrected session 2q,
+see `reference/00-INDEX.md` under `04-sector-red/zocalo.webp`):
+
+- **The Zocalo wordmark itself is Latin**, not alien: `ZoCaLo` in a rounded single-stroke tube
+  face, mixed case, with a dotted counter in the first 'o' and a superscript ring for the last.
+  The angular zigzag at the head of the word is the **Z**, not a flourish — build six glyphs,
+  not five plus decoration. Attested **cyan**
+  (`11-props-and-technology/Zocalo neon signage in background.jpg`) and **orange-red**
+  (`04-sector-red/more zocalo.png`).
+- **Alien-script neon is separate signage** on other frontages. Three letterform families are
+  attested in `11-props-and-technology/Vorlon, Narn,and  Centauri script examples.jpg`:
+  lunate (crescents and discs), rectilinear (right-angle strokes), and curvilinear (bowls and
+  hooks). The curvilinear family is the one that matches Zocalo-area neon.
+
+**The Zocalo is two-storey** — an upper gallery with a railing overlooking a lower cafe floor,
+under large curved ribs. The **Babylon 5 "5" roundel is applied as furniture branding** on
+chair backs and table pedestals; it is the same glyph as the station shield patch and the
+floor inlay in `05-sector-green/conference aerea.webp`, so build it once as a decal.
 
 ## 6. Deliberately not specified yet
 

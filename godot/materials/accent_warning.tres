@@ -1,0 +1,8 @@
+[gd_resource type="StandardMaterial3D" format=3]
+
+[resource]
+resource_name = "Accent Warning — red-orange hazard paint"
+albedo_color = Color(0.7, 0.321, 0.225, 1)
+metallic = 0.0
+metallic_specular = 0.5
+roughness = 0.42

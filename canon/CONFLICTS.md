@@ -39,6 +39,24 @@ squadron is conventionally 12 craft → 24 fighters. That reading reconciles bot
 **Provisional: 28 bays, 24 fighters.** Needs a frame count from exterior footage to confirm.
 Non-blocking — bay count affects hull detail, not layout.
 
+### Session 2q note — a possible origin for the 24, and a caution
+
+The Security Manual sectional schematic
+(`reference/02-station-cutaways-and-plans/b5-schematics-from-the-security-manual-v0-u8879zcrf36h1.webp`,
+authority 3) carries the callout **"DOCKING BAYS (24)"** in the Blue Sector, alongside
+**"BAY ELEVATORS (2)"** and "LOW-G DOCKING BAYS".
+
+**These are the large docking bays of the forward docking structure, not cobra bays**, and
+this does *not* resolve C-002. It is recorded for two reasons:
+
+1. It is a new sourced count for a system `00-MASTER.md` did not have one for, and it
+   cross-checks against authority-1 footage: `03-sector-blue/Minbari Flyer 969 in docking
+   bay 17.webp` requires at least 17 bays, and 24 accommodates it.
+2. It raises the possibility that Miller's "Cobra-Bay Fighter Storage … 24" in
+   `other map 4.jpg` is a **transcription of the docking-bay figure onto the wrong system**.
+   If so, the Contract 5 figure of 28 cobra bays stands unopposed. That is a hypothesis with
+   one coincidence behind it, not a ruling — **C-002 stays OPEN.**
+
 ---
 
 ## C-003 — Sector arrangement · **OPEN, BLOCKING**
@@ -62,6 +80,10 @@ and only the longitudinal model constrains it. Revisit before any interior layou
 
 **Resolution needs:** on-screen wayfinding signage, or a lift/transit display showing sector
 adjacency, or dialogue establishing travel time between sectors.
+
+> **Superseded in part. Read `C-003 UPDATE` and then `C-003 UPDATE 2` at the foot of this file
+> before acting on anything above.** UPDATE 2 introduces two authority-3 sources that were not
+> available when this entry or UPDATE 1 was written, and it partially reverses UPDATE 1.
 
 ---
 
@@ -108,6 +130,11 @@ dialogue tying a level number to a gravity or a location we can place radially.
 with two supporting arguments is still not a sourced fact, and building 8 km of interior on it
 would be exactly the kind of guesswork this project forbids. What would close it: a lift-car
 display, a deck plan, or dialogue tying a level number to a gravity or a placeable location.
+
+> **Substantially advanced. See `C-004 UPDATE` at the foot of this file.** Session 2q found the
+> deck plans this entry was asking for, plus the authority-1 footage that validates them. The
+> *axis* question is now answered; the *numbering convention* is not, and C-004 stays BLOCKING
+> on narrower grounds than before.
 
 ---
 
@@ -220,3 +247,322 @@ eliminated on geometric grounds rather than by preference, which is real progres
 **Consequence for C-004:** if sectors nest inside the rotating assembly, then level numbering
 is far more likely radial (decks at decreasing radius, decreasing gravity) than longitudinal.
 That does not close C-004, but it makes the radial reading the leading hypothesis.
+
+---
+---
+
+# Session 2q — two Security Manual sheets change the picture
+
+Two files in `reference/02-station-cutaways-and-plans/` had never been catalogued. Both are
+authority 3 (licensed print — the *Babylon 5 Security Manual*, per the filename of the first
+and confirmed by shared terminology). Both bear directly on the two blocking conflicts, and one
+of them partially reverses `C-003 UPDATE`.
+
+- `b5-schematics-from-the-security-manual-v0-u8879zcrf36h1.webp` — the **"Sectional
+  Schematic"**: a full-length longitudinal cutaway with a **sector bracket dividing the station
+  into six named longitudinal bands.**
+- `other map.png` — a **colour sector plate**: a colour-coded longitudinal strip plus **six
+  radial cross-section rosettes**, one per sector.
+
+Full extraction, including measured band positions, is in `reference/00-INDEX.md`.
+
+---
+
+## C-003 UPDATE 2 — the longitudinal model is not dead; `other map 2.jpg`'s *ordering* is
+
+`C-003 UPDATE` rejected the longitudinal sector model on geometric grounds. The argument was:
+
+> Grey (industrial and manufacturing) and Brown (residential, Downbelow) have nowhere to go —
+> there is no pressurised volume aft of the rotating assembly to put them in.
+
+**That argument was correct, and it was aimed at the wrong target.** It refutes the *ordering*
+in `other map 2.jpg` (authority 4), which places Grey aftmost. It does not refute longitudinal
+slicing as such. Two authority-3 sources give a different ordering, and under theirs the
+geometric objection disappears.
+
+### What the Security Manual sectional schematic actually says
+
+Sector bracket, aft → fore. Boundaries measured from tick centres against the drawn station
+extent (px 6→1075 of an 1080-px-wide image). **Scale 7.53 m/px; tick centres are readable to
+about ±3 px, so every figure below carries ±23 m** and nothing finer than that is claimed.
+
+| Band boundary | px | → m | nearest boundary in `station.yaml` | Δ |
+|---|---|---|---|---|
+| bracket start | 9 | 23 | aft terminus **0** | 23 m |
+| **Yellow \| Grey** | 431.5 | 3203 | `hull_flare_aft` ends **3107** | 96 m |
+| **Grey \| Green** | 486 | 3613 | — (inside `aft_hull_block`) | — |
+| **Green \| [Brown]** | 537 | 3997 | `aft_hull_block` ends **4207** | 210 m |
+| **[Brown] \| Red** | 808 | 6037 | `green_section` ends **6035** | **2 m** |
+| **Red \| Blue** | 855 | 6391 | `red_section` ends **6465** | 74 m |
+| bracket end | 1009 | 7550 | `docking_sphere` ends **7286** | 264 m |
+
+Read this correctly: **the Brown/Red and Red/Blue boundaries are indistinguishable from ours at
+the resolution of the measurement.** The nominal 2 m on Brown/Red is not a claim of two-metre
+precision — it is a coincidence inside a ±23 m window — but the *agreement* is real and it is
+the point. Those two derivations share nothing: ours came from Miller's top view rescaled by
+k = 2.5891; this one is a different draughtsman's side cutaway in a different book.
+
+The Yellow/Grey boundary is 96 m out, four times the reading uncertainty but inside our own
+declared ±75 m framework uncertainty when the two are combined. The Green/Brown boundary is
+210 m out and the fore bracket end 264 m — the bracket end is expected to disagree, since the
+sectors stop before the deflector spike, which is structure.
+
+That agreement is the reason this sheet is being trusted at all — **but it is weak evidence,
+and an earlier draft of this entry oversold it.** Tested against the null hypothesis that the
+bracket is unrelated to our framework, the six scored boundaries have a mean miss of **110 m**
+where random positions against the same 16 candidate boundaries in `station.yaml` average
+**212 m**. Only **6%** of random alignments do as well, so the agreement is real; it is a
+p ≈ 0.06 result, not proof. Two specific framings carry less weight than they look:
+
+- the headline **2 m** on Brown/Red is a coincidence *inside* the ±23 m reading window, and
+  some boundary landing within 2 m happens by chance **4%** of the time across six draws;
+- "three of six inside 100 m" happens by chance **31%** of the time and means almost nothing.
+
+The sheet is worth using. It is not "a stronger cross-check than anything else in the reference
+set", and no later work should lean on it as though it were.
+
+The sixth band carries **no label in this reproduction**. **Brown** is the only sector name
+absent and the band contains the callout "WASTE MANAGEMENT SYSTEMS ('DOWN-BELOW')". That is an
+inference by elimination, and it is recorded as one.
+
+**Do not expect an uncropped scan to supply the missing label.** The sheet *is* cropped — three
+expansion leaders descend from the Grey, Green and sixth bands to a second row of detail
+brackets that is cut off at y = 334 of 339, and two more rise off the top edge. But the sector
+**label row is intact**: measured, the five labels sit in a single text band at y 271–285
+(x 16–89, 436–461, 496–520, 815–834, 863–926) and there is no ink at all between x 521 and 814,
+where the sixth band's label would go. The band is unlabelled *within a complete row*, not
+labelled in a row we have lost.
+
+### Why this ordering survives the geometric objection that killed the other one
+
+| Band | What the sheet puts there | Our hull there | Coherent? |
+|---|---|---|---|
+| Yellow | fusion cores, coolant, aux power, fuel | reactor + spine + truss — **the entire structural half** | yes: Yellow is engineering / zero-G storage |
+| Grey | fabrication furnaces, zero-G maintenance, alpha power substation, variable-gravity research torus | aft hull block, at the rotating/non-rotating interface | yes: Grey is industrial |
+| Green | multi-environ 'alien' sector | aft hull block | yes: Green is the alien / diplomatic sector |
+| [Brown] | waste management ("Down-Below") ×2, water recreation, hydroponics, core transfer shuttle, **zen garden**, **ambassadorial suites**, **station commander's administration complex** | bearing neck + habitat drum | **partly** — see below |
+| Red | 'Zocalo' and commercial sector | `red_section` | yes: Red is the Zocalo |
+| Blue | docking bays, customs, bay elevators, ob. dome | forward taper + docking sphere | yes: Blue is docking and C&C |
+
+**Four of six bands match their sector's on-screen function cleanly, and the sixth band does
+not.** The 50%-structural / 50%-pressurised split that killed the old ordering is *satisfied* by
+this one, because the sector that lands on the bare truss spine is **Yellow — zero-G storage and
+engineering**, which is precisely what belongs there. That part of the argument holds.
+
+**The band-4 mismatch is evidence against the elimination, and it is recorded here rather than
+left out.** Callout dots were located in the drawing: the **zen garden** terminates at px 742
+and the **ambassadorial suites** at px 744, both inside band 4 (541–807), and both are **Green
+Sector** on screen. The **station commander's administration complex** is also in band 4 and is
+Blue on screen. So band 4 carries Brown, Green *and* Blue facilities, which means either the
+sheet's band assignment is loose at this granularity or band 4 is not Brown. It is the second
+independent pointer toward `other map.png`'s ordering — see the note under the residual
+disagreement below. Neither pointer is a reading of a label, so neither closes C-003.
+
+### The residual disagreement, stated plainly
+
+The two authority-3 sources **do not agree with each other** on the middle two bands.
+
+| Source | aft → fore |
+|---|---|
+| Security Manual sectional schematic | Yellow, Grey, **Green, Brown**, Red, Blue |
+| `other map.png` colour strip | Yellow, Grey, **Brown, Green**, Red, Blue |
+| `other map 2.jpg` (auth 4) | Grey, Brown, Green, **Yellow**, Red, Blue |
+
+Green and Brown are transposed between the two authority-3 sources. Caveats on the second:
+its "Grey" band is *uncoloured* structure, which may be the rotating/non-rotating interface
+rather than a sector at all; and its band fractions do not match the sectional schematic's, so
+the two are different artwork rather than one being a colourisation of the other.
+
+**The two readings are not evenly supported, and it would be dishonest to present them as a
+symmetric standoff.** Two independent pointers favour `other map.png` — drum = Green:
+
+1. **The drum is hollow, and only the Green rosette is drawn hollow.** `other map.png` draws
+   Green as a thick habitable outer annulus around a large empty volume crossed by **three**
+   radial spokes, and draws Brown as concentric rings filled to the axis.
+   `03-sector-blue/Babylon_5_2-22_34b.jpg` — **authority 1** — shows the habitat drum hollow,
+   with three-spoke radial transport and the core shuttle on the axis. The footage matches the
+   Green rosette and does not match the Brown one.
+2. **The sectional schematic's own band 4 carries the zen garden and the ambassadorial suites**,
+   both Green Sector on screen (measured above).
+
+Against that: the sectional schematic's narrow band 3 *is* labelled Green and *does* carry the
+multi-environ 'alien' sector (callout dot at px 503, inside 489–531), which is equally Green on
+screen. So the sheet spreads Green-sector facilities across two bands, and one of them is the
+one it labels Green.
+
+**This is why C-003 is not being closed on the strength of it.** A hollow-versus-filled cartoon
+and a callout dot are inferences about a draughtsman's intent; the label is the only reading.
+The honest statement is: `other map.png`'s ordering is the better-supported hypothesis, and it
+is still a hypothesis. Do not build the Garden or Downbelow on it.
+
+Note also that `00-MASTER.md` §3.1 records `other map 2.jpg`'s order as
+"Grey, Brown, Green, Red, Yellow, Blue". Read off the label positions in the render itself,
+**Yellow sits between Green and Red**, not after Red. `00-MASTER.md` should be corrected either
+way, since that ordering is now outranked twice over.
+
+### Ruling
+
+**Partial. This does not close C-003 and C-003 stays OPEN and BLOCKING.**
+
+What it *does* settle, at authority 3 and consistent with our own geometry:
+
+1. **Sectors are longitudinal bands spanning the full diameter**, not nested radial layers.
+   `C-003 UPDATE`'s conclusion that "the longitudinal model is rejected for interiors" is
+   **overturned**; what is rejected is `other map 2.jpg`'s *ordering*.
+2. **Yellow is the aft structural half; Blue is the forward docking structure; Red is
+   `red_section`.** Three of six bands now have sourced longitudinal extents that agree with
+   the hull we have already built.
+3. `Interior map.jpg`'s nested-radial reading is better understood as **the per-sector radial
+   deck structure** (see C-004 UPDATE) rather than as a competing sector topology. The two
+   models were never actually in competition: sectors run along the axis, levels run across it.
+
+What is still open, and why it still blocks:
+
+- **Green and Brown are transposed between two equal-authority sources.** Building the Garden
+  and Downbelow requires knowing which of the two is the habitat drum. Guessing would put a
+  2,000 m error into the largest pressurised volume on the station.
+- The Yellow/Grey and Grey/Green boundaries are read off a drawing whose vertical scale is
+  demonstrably exaggerated ~2×; the longitudinal fractions cross-check but the internal
+  boundaries within the aft hull block do not have an independent check.
+
+**Resolution needs, narrowed:** any source placing the Garden or Downbelow in a *named* sector
+with a longitudinal position — an uncropped scan of the Security Manual sheet (the missing
+Brown label and the cut-off detail row would likely settle it outright), a deck plan, or
+on-screen dialogue tying the Garden to a sector name.
+
+---
+
+## C-004 UPDATE — the deck plans this entry asked for, and the footage that validates them
+
+C-004 asked for "a lift display, a deck plan, or dialogue tying a level number to a gravity or
+a location we can place radially". **The deck plans exist and were sitting uncatalogued.**
+
+### 1. The rosettes (`other map.png`, authority 3)
+
+Six radial cross-sections, one per sector. **All five habitable sectors are drawn as concentric
+annular rings about a central core**, with named facilities assigned to specific rings and
+**radial "transport tubes" as spokes** connecting the outer rings to the axis. The sixth,
+Yellow, is machinery and is drawn differently. There is no longitudinal subdivision drawn
+anywhere in any of them.
+
+- **Red**: outermost ring carries Zocalo, Earharts, Central Corridor, Waste Management. Inner
+  rings carry Casino, Dark Star, Law Courts, Security Central, Business District, Water
+  Storage. Power Core / Core Shuttle on the axis.
+- **Green**: a thick habitable outer annulus and a **large hollow interior**, crossed by only
+  **three radial spokes**. Alien Sector, Council Chamber, Fresh Air Restaurant, Earthforce
+  Office, Zen Garden, Hydroponics in the outer ring.
+- **Brown**: concentric rings, and **"DOWNBELOW" is marked with a double-headed arrow spanning
+  an OUTER annular band**, with Happy Daze beside it.
+- **Blue**: concentric rings around a **central docking hub** on the axis.
+- **Grey**: concentric rings — atmosphere monitoring, research labs, fabrication furnaces,
+  maintenance, primary breaker.
+- **Yellow**: not concentric — a cog of 12 radial cooling fins around a power transfer core.
+  It is machinery, not habitation, which is itself consistent with Yellow being the structural
+  half.
+
+### 2. The same sheet's longitudinal section agrees
+
+In a longitudinal cutaway, a cylindrical deck at radius r appears as a pair of horizontal lines
+at ±r. The Security Manual sectional schematic shows exactly that: **long horizontal lines
+running the length of each pressurised section, symmetric above and below the centreline**,
+crossed by sparser vertical frames. The core transfer shuttle runs on the axis. One of its own
+callouts is **"CONCENTRIC PERSONNEL TRANSFER SYSTEMS"** — the draughtsman's word, not ours.
+
+### 3. Authority-1 footage independently confirms the cross-section
+
+This is the part that matters, because a print diagram alone would be authority 3 asserting
+something the show never showed.
+
+`reference/03-sector-blue/Babylon_5_2-22_34b.jpg` (S2E22, on-screen, also duplicated as
+`01-station-exterior/view.jpg`) shows the habitat drum interior along its axis:
+
+- the **end cap is a disc of concentric annular bands** — decks seen end-on;
+- a **lattice truss runs the length of the axis** carrying illuminator tubes, with a **serrated
+  rack** on its lower edge;
+- **core shuttle cars hang beneath it**;
+- a **radial transport tube** runs from the axis out to the drum wall;
+- the drum's inner surface is landscape, and the interior is **hollow**.
+
+That is the **Green rosette, in live action** — thick habitable outer annulus, hollow interior,
+radial spokes, core shuttle on the axis. `09-garden-core-and-transit/The Gardens.webp` and
+`garden.png` show the same structure from the ground.
+
+A print diagram and a broadcast frame, produced independently, agree on the cross-section of
+the largest volume on the station. That licenses reading the other five rosettes as topology.
+
+### What this settles
+
+**The axis question is answered. A "level" is a concentric radial deck, not a longitudinal
+slice.** Three independent lines now say so and none says otherwise:
+
+- authority 3 print, twice (rosettes; longitudinal section showing radial decking);
+- authority 1 footage (drum end cap, hollow drum, radial spokes, axial shuttle);
+- the structural argument from C-003 UPDATE 2 — if **sectors** already index the longitudinal
+  axis, a longitudinal reading of **level** would make the address `<Colour> <number>` index
+  the same axis twice, which is not an address scheme.
+
+It also **removes the standing objection recorded in this entry.** C-004 worried that radial
+numbering "would place Downbelow against the outer hull — an odd home for disused interior
+space". The Brown rosette says Downbelow **is** the outer ring, explicitly and by name. The
+objection is answered by the source rather than argued away.
+
+### What this does **not** settle — and why C-004 stays BLOCKING
+
+1. **Direction and origin of numbering.** Nothing labels a ring with a number. Whether level 1
+   is the outermost (full gravity) or the innermost is still unsourced. Getting this backwards
+   inverts every address on the station and puts Downbelow at the axis in zero gravity.
+2. **How many levels per sector.** The rosettes are a stylised graphic at 660×414 with JPEG
+   artefacts; counting rings off them is not sound, and no source states a count. "Grey 17"
+   implies at least 17 of *something* in Grey Sector, which the rosettes cannot confirm.
+3. **Radial spacing.** Explicitly unavailable. The sectional schematic's vertical scale is
+   exaggerated roughly 2× (the drum reads L/D 1.46 where our framework gives ~3.1), so **no
+   deck spacing, ring radius or ceiling height may be measured from it.** This is the same
+   ruling as C-005 and for the same reason.
+4. `09-garden-core-and-transit/central corridor.webp` still shows **two occupied levels inside
+   one volume**. Mezzanines exist, so level count and deck count still need not be equal.
+
+**C-004 remains OPEN and BLOCKING**, but on a much narrower question than before: not *what
+axis*, but *which end is 1, and how many*. That is now the single highest-value gap in the
+whole reference set — one lift-car display would close it.
+
+### Consequences that can be acted on before C-004 closes
+
+These follow from the axis alone and do not depend on the numbering convention:
+
+- **Radial transport spokes are canon, not invention.** `station/physics/core_shuttle.py`
+  already models rim-to-axis transit; the rosettes and the footage both show the spokes it
+  assumes. The 133-second minimum comfortable transit is a property of a structure the sources
+  actually depict.
+- **The core shuttle runs on the axis** through the rotating assembly, driven along a **racked
+  lattice truss**, with cars **suspended below** it.
+- **Green's cross-section is hollow; Red's, Brown's, Blue's and Grey's are filled with
+  concentric decks.** Whichever of Green/Brown turns out to be the drum, one large sector is a
+  hollow landscaped volume and the others are decked.
+- `docs/interior-kit-spec.md` §6 can stay as it is. It withholds corridor width, ceiling height
+  and deck spacing pending C-004, and item 3 above confirms those numbers are still not
+  available from any source we hold.
+
+---
+
+## C-007 — additional evidence, ruling unchanged
+
+The **Yellow Sector rosette** in `other map.png` (authority 3) is an end-on view of the reactor
+section labelled **"COOLING FINS (12)"**, and it draws them as **12 fins radially arrayed**
+around a power transfer core, cog-fashion.
+
+This is a third source and it appears to contradict C-007's ruling of **6 coplanar blades**.
+**The ruling stands**, for two reasons:
+
+1. C-007 rests on `reference/01-station-exterior/exterior more.jpg`, an **authority-2
+   orthographic production sheet** showing the radiators edge-on in top view and full-face in
+   side view. Authority 2 outranks authority 3, and an orthographic sheet outranks a
+   diagrammatic rosette.
+2. They may not be the same system. The rosette's fins are **small and numerous, immediately
+   around the reactor core**, alongside "coolant transfer tubes and holding tanks"; the
+   Contract 5 / production-sheet radiators are **large blades standing off the spine on a
+   rail**. `00-MASTER.md` §1.3 already lists *Reactor cooling fins (12)* and *Coolant manifolds
+   (8)* as separate items.
+
+Recorded because it explains where the radial-array reading came from, and because a future
+session that finds this rosette should not reopen a settled conflict. **C-007's lesson holds:
+a bare count in a labelled diagram does not imply an arrangement.**

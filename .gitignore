@@ -9,3 +9,6 @@ godot/.godot/
 renders/
 station/generated/corridor.obj
 station/__pycache__/
+station/generated/interior_*.obj
+station/generated/starfury.obj
+godot/scripts/*.uid

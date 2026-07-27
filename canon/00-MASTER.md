@@ -138,6 +138,30 @@ coordinates near the viewer reduces positional error by **over two orders of mag
 | Ionization vane support rings | 3 | 4 | `other map 4.jpg` |
 | Fusion reactor ionization vanes | 6 | 4 | `other map 4.jpg` |
 | Cobra launch bay support arms | 4 | 4 | `other map 4.jpg` |
+| **Docking bays (Blue Sector)** | **24** | 3 | Security Manual sectional schematic. Cross-checks against on-screen "docking bay 17" (`Minbari Flyer 969 in docking bay 17.webp`, auth 1). **Distinct from cobra bays** — see `CONFLICTS.md` C-002 |
+| **Bay elevators** | **2** | 3 | Security Manual sectional schematic |
+
+### 1.4 Station operating facts — authority 1, from on-screen signage
+
+Added session 2q from `reference/01-station-exterior/welcome to babylon 5.webp` (customs hall
+information boards) and `reference/11-props-and-technology/identicard readout.webp`.
+
+| Fact | Value | Source |
+|---|---|---|
+| **Station time** | **Earth Mean Time (EMT)** | "TIME ON B-5 IS EARTH MEAN TIME (EMT)" |
+| **Standing atmospheres available** | **Six**, numbered; others by prior arrangement | "SIX DIFFERENT ATMOSPHERES ARE CURRENTLY AVAILABLE ON B-5" |
+| **Human atmosphere designation** | **02** | Identicard field `DES/ATMOS: HUMAN/02` |
+| Uncommon atmospheres | Synthesised for encounter suits | Customs board |
+| Currency exchange | Through the **Business Center** | Customs board; matches "Business District" in the Red Sector cross-section |
+| Customs area label | **"Customs Sector"** — used alongside, not instead of, the six colour sectors | Customs boards |
+
+EMT is the clock `station/npc/schedule.py` was already implicitly using; it is now sourced
+rather than assumed. The numbered-atmosphere system is what the multi-environ alien sector and
+every NPC record are built on.
+
+**Identicard record schema** (authority 1, `identicard readout.webp`) — the canonical NPC
+record: `NAME` (SURNAME, FORENAME) · `ORIGIN` · `DES/ATMOS` · `SEX` · `DOB` · `PHYS CHR` ·
+`MEDICAL` · `LICENSED PSI` (flag) · `VISAS`.
 
 ---
 
@@ -185,16 +209,32 @@ On-screen location references take the form `<Colour> <number>` — Grey 17, Red
 Brown 2, Green 2 — i.e. **sector + level**. Level numbering is therefore a first-class part
 of the address space, which directly serves the multi-level requirement.
 
-### 3.1 Longitudinal order — **exterior labelling only**
+### 3.1 Longitudinal order — **contested; do not build from this table**
 
-**The longitudinal sector model has been rejected for interiors** — see `CONFLICTS.md`
-§C-003 UPDATE. With the longitudinal framework complete, the station is 50% pressurised and
-50% structural, the habitable volume is four separated regions, and the Green section alone
-holds 73% of it. Six sectors cannot be longitudinal slices across that: Grey and Brown would
-land on bare truss spine.
+> **Session 2q: partially reversed. Read `CONFLICTS.md` C-003 UPDATE 2 before using anything
+> in this section.**
+>
+> `C-003 UPDATE` rejected the longitudinal model outright because the station is 50%
+> structural and Grey and Brown would land on bare truss spine. **That argument refutes the
+> *ordering* in the table below, not longitudinal slicing itself.** Two authority-3 sheets —
+> the *Security Manual* sectional schematic, and a colour sector plate assigned to the same
+> publication family by shared terminology rather than by a masthead — give a different
+> ordering in which the aft structural half is **Yellow** (engineering / zero-G storage),
+> which is exactly what belongs there. Under that ordering the geometric objection disappears,
+> and three of six band boundaries agree with our independently-derived hull framework to
+> within **2, 74 and 96 m** (`CONFLICTS.md` C-003 UPDATE 2 carries the measured table; the
+> remaining three are out by 23 m, 210 m and 264 m).
+>
+> Best current reading, aft → fore: **Yellow · Grey · {Green, Brown in an order the two
+> authority-3 sources disagree on} · Red · Blue.** Yellow spans the reactor, spine and truss
+> to ~3,200 m; Red is `red_section`; Blue is the forward docking structure.
+>
+> **C-003 stays OPEN and BLOCKING** on the Green/Brown transposition alone.
 
-The ordering below is retained only as the mapping of sector names to visible hull positions,
-which is all `other map 2.jpg` ever actually demonstrated:
+The ordering below is `other map 2.jpg` (authority 4), now outranked twice over. Note also
+that read off the label positions in that render, **Yellow sits between Green and Red**, not
+after Red as transcribed here. Retained for the record and for the function column, which is
+uncontested:
 
 | Order (aft → fore) | Sector | Function |
 |---|---|---|
@@ -213,13 +253,40 @@ is the model that constrains hull geometry.
 
 ### 3.2 Level structure
 
-**Open question, blocking.** Whether a "level" is a concentric radial deck (level 1 outermost
-at full gravity, numbering inward toward the axis) or a longitudinal slice is not yet
-established from reference. In a spin-gravity cylinder "down" is outward, which argues for
-radial decks. But *Downbelow* being described as the lower levels of Brown Sector would then
-place it at the outer hull, which sits oddly with its depiction as disused interior space.
+**Still blocking, but the axis is now settled.** See `CONFLICTS.md` C-004 UPDATE for the full
+evidence and the caveats.
 
-Do not build level geometry until this is resolved. See `CONFLICTS.md` §C-004.
+**A level is a concentric radial deck.** Three independent lines agree and none dissents:
+
+1. The six radial cross-sections in `reference/02-station-cutaways-and-plans/other map.png`
+   (authority 3) draw every pressurised sector as **concentric annular rings about a central
+   core**, with named facilities in specific rings and **radial transport tubes as spokes** to
+   the axis. **Downbelow is marked, by name, on an OUTER ring** — which answers the standing
+   objection above rather than arguing around it.
+2. The Security Manual sectional schematic (authority 3) shows the same thing in longitudinal
+   section — long horizontal lines the length of each section, symmetric about the centreline —
+   and one of its own callouts is "CONCENTRIC PERSONNEL TRANSFER SYSTEMS".
+3. **Authority-1 footage confirms it.** `reference/03-sector-blue/Babylon_5_2-22_34b.jpg` shows
+   the habitat drum's end cap as a disc of concentric annular bands, a hollow drum with a racked
+   axial truss carrying the core shuttle, and a radial transport spoke. That is the Green
+   cross-section of the print sheet, in live action.
+
+Since **sectors** index the longitudinal axis (§3.1), a longitudinal reading of **level** would
+index the same axis twice — not an address scheme. `<Colour> <number>` is therefore
+**longitudinal sector + radial deck**.
+
+**What is still unknown, and why this still blocks:**
+
+- **Which end is level 1** — outermost at full gravity, or innermost. No source numbers a ring.
+  Getting it backwards inverts every address and puts Downbelow at the axis in zero gravity.
+- **How many levels per sector.** "Grey 17" implies at least 17; no source states a count and
+  the rosettes are too coarse to count rings from.
+- **Radial spacing.** Unavailable. The sectional schematic's vertical scale is exaggerated ~2×
+  (drum L/D reads 1.46 against our 3.1), so **no deck spacing, ring radius or ceiling height may
+  be measured from it** — the same ruling as C-005, for the same reason.
+
+Do not build level geometry until the numbering convention is sourced. **One lift-car display
+would close it, and that is now the single highest-value gap in the reference set.**
 
 ---
 
@@ -232,12 +299,20 @@ Do not build level geometry until this is resolved. See `CONFLICTS.md` §C-004.
 | Red Sector (Zócalo, commercial) | 10 | Partial — strong interior shots, no plans |
 | Green Sector (council, diplomatic) | 4 | Thin — council chambers and rotunda only |
 | Grey Sector | 1 | **Insufficient** |
-| Brown Sector / Downbelow | 0 | **None** |
+| Brown Sector / Downbelow | 0 filed, **1 misfiled** | **Still insufficient.** `01-station-exterior/sleeping-in-light-05.jpg` is a wide Downbelow-class corridor — the only one in the set. S5, station derelict: set architecture in era, dressing not |
 | Yellow Sector | 0 | **None** |
-| Garden / core / transit | 5 | Partial — good garden views, one lift interior |
-| Starfury | 4 | Partial — exteriors only, **no cockpit reference** |
-| Characters / uniforms | 17 | **Yes** |
-| Races / makeup | 16 | **Yes** — Vorlon, Narn, pak'ma'ra well covered |
-| Props / signage / typography | 17 | **Yes** |
+| Garden / core / transit | 5 filed, **+4 misfiled in `03-sector-blue/`** | **Upgraded to good.** `Babylon_5_2-22_33a/34b/35a` and `29a` give the drum interior along its axis, the axial truss and core shuttle, a **core shuttle car interior**, and a garden terrace |
+| Starfury | 4 | Partial — exteriors plus **signed Steve Burg '93 concept art** (auth 2, *preliminary*); still **no cockpit reference**. `starfury even more detailed.jpeg` is a fan 3D model, auth 4 — do not measure from it |
+| Characters / uniforms | 17 → **12** | **Marginal.** Five were AI-generated turnarounds and are quarantined (`reference/22-QUARANTINE-ai-generated/`). What remains is screencaps plus one authority-4 fan orthographic sheet whose colours are the **S1** pattern |
+| Races / makeup | 16 → **12** | **Yes** — Vorlon, Narn, pak'ma'ra covered. Four AI turnarounds quarantined |
+| Props / signage / typography | 17 | **Yes** — and now includes the identicard record schema and the customs-board canon in §1.4 |
+| Station cutaways and plans | 8 | **The two Security Manual sheets are the most valuable files in the set.** They carry the sector bands and the per-sector radial cross-sections |
 
 Gaps are recorded, not filled by guesswork. Anything built into a gap goes in `INVENTIONS.md`.
+
+**Two quarantine folders. Neither may be modelled from.**
+`reference/21-QUARANTINE-animated-film/` (8 files, 2023 animated feature) and
+`reference/22-QUARANTINE-ai-generated/` (9 files, AI character turnarounds). Both were the
+*highest-resolution* material in their categories — the 22- folder includes a 2528×1696 PNG
+that is the largest "uniform reference" in the tree and is worth nothing.
+**Resolution is not authority.**
