@@ -35,6 +35,9 @@ jobs:
       - name: Precision and floating origin
         run: python3 station/physics/test_floating_origin.py
 
+      - name: Starfury flight model
+        run: python3 station/physics/test_starfury.py
+
       - name: Confirm the schema still parses and is fully sourced
         run: |
           python3 - <<'PY'
