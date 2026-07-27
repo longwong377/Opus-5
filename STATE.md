@@ -329,13 +329,19 @@ then framing. Materials live in the engine, not the export.
 - Same frame: the hull's **circular structural ribs are exposed rather than clad** — a primary
   motif for the interior kit regardless of how C-004 resolves.
 
+- **Interior kit spec written** (`docs/interior-kit-spec.md`) from authority-1 footage only.
+  Deliberately takes no position on level topology, so it is **buildable now** despite C-003
+  and C-004. Corridor width, ceiling height, door size and deck spacing are left unspecified
+  precisely because they follow from level topology — putting a guess there would seed a
+  number later work silently builds on.
+
 ## Next session — start here
 
-1. **Component refinement.** Placed but crude: the forward swept arrays read as flat planks
-   rather than swept blades, and the heat-exchange collectors are still a radial pinwheel where
-   the top view shows a swept form. Both need shaping, not repositioning.
-2. **Surface articulation.** No greebling, panel lines or hull plating anywhere yet. This is
-   where the procedural-detail approach from ADR 0002 starts earning its keep.
+1. **Build the interior kit** from `docs/interior-kit-spec.md` — exposed ring frames,
+   panelled walls, illuminated floor panels, red-orange handrails. Geometry only; placement
+   stays blocked. This is the largest chunk of unblocked work available.
+2. **Greebling pass** on the exterior. Plating exists; surface clutter, vents, conduits and
+   panel lines do not. ADR 0002's procedural-detail approach starts earning its keep here.
 3. **Publish the Godot binary as a GitHub Release asset** — it is container-local and will be
    lost when this container is reclaimed. Rebuilding costs 61 minutes.
 4. **Core shuttle** — axial transit through the gravity gradient, rim to weightless axis.
