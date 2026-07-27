@@ -97,13 +97,22 @@ pylons, cobra bays, cargo modules, domes. Interiors stay blocked on C-003 and C-
 The pipeline is correct; **the geometry is crude.** Components are box primitives placed by
 rule. Specifically still wrong:
 
-- **Cooling fins read as a shuttlecock** clustered at one z, where reference shows fins in
-  distinct grouped assemblies distributed along the spine.
-- **The communications grid renders as a thin I-beam.** The panel is 893 m along z but only
-  90 m radially, so it reads as a crossbar rather than an array structure.
-- **Solar arrays visually merge with the cooling fins** rather than reading as a separate
-  system.
-- No greebling, no panel lines, no surface articulation anywhere yet.
+**Fixed after inspection:**
+
+- Cooling fins clustered into a shuttlecock at one z. Contract 5 shows the radiators as a
+  small number of discrete assemblies along the spine, and with a total of 12 that reconciles
+  to **3 assemblies of 4** -- which is also why 12 appears in the Exterior map as one figure
+  covering the whole system. `radial_array` now takes a `rings` parameter and clocks
+  successive assemblies so they do not line up down the spine.
+- The communications grid rendered as a thin I-beam because the panel had 893 m of length but
+  only 90 m of radial depth. Now 300 m deep, so it reads as an array.
+
+**Still wrong:**
+
+- Components are box primitives throughout. No taper, no truss structure, no articulation.
+- Solar arrays and cooling fins still read as the same kind of object.
+- No greebling, no panel lines, no surface detail anywhere.
+- Observation domes, rotundas, docking ports, sensor and deflector arrays not yet placed.
 
 These need reference-driven refinement against `01-station-exterior/` before they are
 believable. The value delivered so far is the *pipeline*, not the shapes.

@@ -47,13 +47,22 @@ def radial_array(spec, profile):
     """
     verts, tris = [], []
     z0, z1 = spec["z0"], spec["z1"]
-    zc = (z0 + z1) / 2.0
-    r0 = radius_at(profile, zc)
     span, chord, th = spec["span_m"], spec["chord_m"], spec["thickness_m"] / 2.0
-    za, zb = zc - chord / 2.0, zc + chord / 2.0
+    # The Contract 5 profile shows the radiators as a small number of discrete
+    # assemblies along the spine, not one crowded ring. With a total count of 12
+    # that reconciles to 3 assemblies of 4 -- which is also why 12 appears in the
+    # Exterior map as a single figure covering the whole system.
+    n_rings = spec.get("rings", 1)
+    per_ring = max(1, spec["count"] // n_rings)
 
-    for i in range(spec["count"]):
-        a = 2.0 * math.pi * i / spec["count"]
+    for idx in range(spec["count"]):
+        ring = idx // per_ring
+        i = idx % per_ring
+        zc = (z0 + (z1 - z0) * (ring + 0.5) / n_rings) if n_rings > 1 else (z0 + z1) / 2.0
+        r0 = radius_at(profile, zc)
+        za, zb = zc - chord / 2.0, zc + chord / 2.0
+        # Clock successive assemblies so they do not line up down the spine.
+        a = 2.0 * math.pi * i / per_ring + ring * math.pi / per_ring
         ca, sa = math.cos(a), math.sin(a)
         # Radial direction (outward) and tangential direction (plate thickness).
         rx, ry = ca, sa
@@ -102,7 +111,7 @@ def pylon_pair(spec, profile):
         rt = r0 + span
         pw = gw / 2.0
         c = []
-        for rr in (rt - 90, rt):
+        for rr in (rt - spec.get("panel_depth_m", 90), rt):
             for zz in (zc - pw, zc + pw):
                 c.append((ca * rr - tx * 9, sa * rr - ty * 9, zz))
         c = [c[0], c[1], c[3], c[2]]

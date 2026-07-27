@@ -305,8 +305,9 @@ components:
   - id: reactor_cooling_fin
     count: 12
     kind: radial_array
-    z0: 533
-    z1: 860
+    rings: 3             # Contract 5 shows 3 discrete assemblies; 12 total = 4 per assembly
+    z0: 470
+    z1: 1000
     span_m: 340          # radial extent beyond attach radius
     chord_m: 165         # extent along z -- reference shows elongated plates, not squares
     thickness_m: 12
@@ -316,8 +317,9 @@ components:
   - id: heat_exchange_solar_array
     count: 12
     kind: radial_array
+    rings: 3
     z0: 1099
-    z1: 1510
+    z1: 1620
     span_m: 400
     chord_m: 210
     thickness_m: 10
@@ -332,6 +334,7 @@ components:
     z1: 2988
     span_m: 1060.25      # half of communications_grid.span_m = 2120.5
     grid_width_m: 893.2  # communications_grid.width_m
+    panel_depth_m: 300   # radial depth, so the array reads as a grid not a crossbar
     thickness_m: 18
     auth: 3
     src: "Contract 5 'Deep Space Communications Grid (2)'; Miller callout B
