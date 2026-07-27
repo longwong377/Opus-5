@@ -1,0 +1,183 @@
+[gd_scene load_steps=32 format=3]
+
+; Standing inside the habitat drum.
+;
+; Geometry arrives at runtime from tools/export_scene.py; materials come from
+; godot/materials/*.tres, which station/materials.py generates. What this file
+; holds is the join between them -- which material each generated group is
+; bound to -- plus the environment and the tonemapper.
+;
+; The materials were briefly duplicated here as scene sub-resources, because
+; godot/materials/ was being rebuilt at the same time as this scene. They are
+; now bound by reference. Two copies of a colour table is precisely the drift
+; this project keeps being bitten by, and the moment the generated set existed
+; the copy had to go.
+;
+; THE LIGHTING PREMISE. The habitat is lit by the longitudinal light runs on
+; the guideway trusses. That is authority 1 -- `Babylon_5_2-22_34b.jpg` shows
+; the tubes running alongside the truss and `33a` the rectangular fixtures on
+; its underside -- and it is not an axial sun strip and not the end caps. So
+; the light in this scene is not in this file at all: `render_shot.gd` builds
+; an OmniLight3D array from positions `export_scene.light_runs()` derives from
+; the truss geometry itself. Move the truss and the light moves with it.
+;
+; AMBIENT IS NOT A CHEAT HERE. Outdoors a raised ambient is a way of hiding
+; that there is no bounce. Inside the drum there genuinely is bounce: it is a
+; closed cavity of 4.5 million m^2 with mid-albedo ground on every side, and
+; every surface can see most of the others. A high ambient term is the cheap
+; stand-in for interreflection that a closed cavity actually has, and turning
+; it off would be the wrong answer, not the honest one.
+;
+; WHERE THE COLOURS CAME FROM, since the measurements were made here and the
+; generated .tres files carry only the results:
+;
+;   sampled off Babylon_5_2-22_34b.jpg     R      G      B
+;   light run tube (clipped core)          1.000  1.000  0.94-0.97
+;   guideway truss lattice                 0.204  0.200  0.181
+;   arable field green                     0.510  0.518  0.367
+;   end cap course grey                    0.430  0.441  0.458
+;   end cap outer grey (ribs)              0.321  0.327  0.350
+;   core tube barrel                       0.322  0.329  0.315
+;
+; `33a` shows the same volume under a strong warm grade -- its nominally grey
+; spoke node reads 0.286/0.254/0.285 -- so it is used for RELATIONSHIPS only:
+; collars lighter and warmer than the barrel, tram banded red on white, core
+; collar rings red-orange. Never for absolutes.
+
+[ext_resource type="Script" path="res://scripts/render_shot.gd" id="1"]
+
+[ext_resource type="Material" path="res://materials/ground_arable.tres" id="m_field"]
+[ext_resource type="Material" path="res://materials/ground_arable_0.tres" id="m_field0"]
+[ext_resource type="Material" path="res://materials/ground_arable_1.tres" id="m_field1"]
+[ext_resource type="Material" path="res://materials/ground_arable_2.tres" id="m_field2"]
+[ext_resource type="Material" path="res://materials/ground_arable_3.tres" id="m_field3"]
+[ext_resource type="Material" path="res://materials/ground_hedge.tres" id="m_hedge"]
+[ext_resource type="Material" path="res://materials/ground_parkland.tres" id="m_park"]
+[ext_resource type="Material" path="res://materials/ground_settlement.tres" id="m_settlement"]
+[ext_resource type="Material" path="res://materials/ground_shore.tres" id="m_shore"]
+[ext_resource type="Material" path="res://materials/ground_water.tres" id="m_water"]
+[ext_resource type="Material" path="res://materials/ground_road.tres" id="m_road"]
+[ext_resource type="Material" path="res://materials/drum_structure.tres" id="m_struct"]
+[ext_resource type="Material" path="res://materials/endcap_plate.tres" id="m_endcap"]
+[ext_resource type="Material" path="res://materials/endcap_checker.tres" id="m_endcap_checker"]
+[ext_resource type="Material" path="res://materials/endcap_course_wall.tres" id="m_endcap_dark"]
+[ext_resource type="Material" path="res://materials/endcap_rib.tres" id="m_endcap_rib"]
+[ext_resource type="Material" path="res://materials/endcap_rimlight.tres" id="m_rimlight"]
+[ext_resource type="Material" path="res://materials/truss_steel.tres" id="m_truss"]
+[ext_resource type="Material" path="res://materials/truss_lamp.tres" id="m_lamp"]
+[ext_resource type="Material" path="res://materials/core_tube.tres" id="m_core"]
+[ext_resource type="Material" path="res://materials/core_collar.tres" id="m_core_collar"]
+[ext_resource type="Material" path="res://materials/core_band.tres" id="m_core_band"]
+[ext_resource type="Material" path="res://materials/core_band_warm.tres" id="m_core_band_warm"]
+[ext_resource type="Material" path="res://materials/core_structure.tres" id="m_core_dark"]
+[ext_resource type="Material" path="res://materials/core_hub_lamp.tres" id="m_lamp_small"]
+[ext_resource type="Material" path="res://materials/tram_body.tres" id="m_tram_body"]
+[ext_resource type="Material" path="res://materials/tram_band.tres" id="m_tram_band"]
+[ext_resource type="Material" path="res://materials/tram_glass.tres" id="m_glass"]
+[ext_resource type="Material" path="res://materials/tram_headlight.tres" id="m_headlight"]
+[ext_resource type="Material" path="res://materials/unbound.tres" id="m_unbound"]
+
+[sub_resource type="Environment" id="Env"]
+; Flat colour, not a sky: from inside the drum there is nothing beyond the
+; geometry, so anything the background shows is a hole. Near-black rather than
+; pure black on purpose -- pure black is what let two structural holes survive
+; four sessions of renders, because a hole and an unlit surface were the same
+; pixels. A faint blue-grey means an actual hole reads as slightly wrong
+; instead of as shadow.
+background_mode = 1
+background_color = Color(0.012, 0.016, 0.024, 1)
+ambient_light_source = 2
+ambient_light_color = Color(0.55, 0.56, 0.52, 1)
+ambient_light_energy = 0.15
+reflected_light_source = 1
+tonemap_mode = 4
+tonemap_exposure = 1.0
+tonemap_white = 8.0
+ssao_enabled = true
+; 2.5 m: human scale. The exterior scene uses 14 m because its subject is
+; 8 km long; the same number here would smear contact shadows across a field.
+ssao_radius = 2.5
+ssao_intensity = 1.8
+ssao_power = 1.5
+ssao_light_affect = 0.2
+ssao_detail = 0.6
+; Retuned by looking, and by rendering once with the light runs switched off
+; to see which term was responsible. At 0.00035 the fog alone -- with every
+; light in the drum dark -- still washed the far half of the volume to a pale
+; grey. Half the pixel at the far end cap was fog colour, so material,
+; contrast and the end cap's own modelling were all being painted over by
+; atmosphere. 0.00012 leaves ~80% transmission at the 1.9 km end cap, which
+; still separates near from far without becoming the subject.
+fog_enabled = true
+fog_mode = 0
+fog_light_color = Color(0.42, 0.45, 0.47, 1)
+fog_light_energy = 0.8
+fog_density = 0.00012
+fog_aerial_perspective = 0.0
+fog_sky_affect = 0.0
+glow_enabled = true
+glow_normalized = true
+glow_intensity = 0.7
+glow_strength = 1.05
+glow_bloom = 0.06
+glow_blend_mode = 1
+glow_hdr_threshold = 0.95
+
+[node name="DrumShot" type="Node3D"]
+script = ExtResource("1")
+; Inside the drum nothing should reach the fallback -- export_scene.py's
+; self-test asserts every emitted group has a rule -- so the fallback exists
+; only to make a failure of that assertion unmissable in the frame. It is
+; magenta: this project has twice lost a session to a defect that was
+; invisible because the wrong thing and the background were the same pixels.
+fallback_material = ExtResource("m_unbound")
+warmup_frames = 8
+light_gain = 1.0
+material_rules = {
+"core_hub_": ExtResource("m_core_dark"),
+"core_hub_lamp": ExtResource("m_lamp_small"),
+"core_node_": ExtResource("m_core_dark"),
+"core_tube_band": ExtResource("m_core_band"),
+"core_tube_band_warm": ExtResource("m_core_band_warm"),
+"core_tube_barrel": ExtResource("m_core"),
+"core_tube_cage": ExtResource("m_core_dark"),
+"core_tube_collar": ExtResource("m_core_collar"),
+"core_tube_end": ExtResource("m_core_dark"),
+"endcap_course_wall": ExtResource("m_endcap_dark"),
+"endcap_plate": ExtResource("m_endcap"),
+"endcap_plate_c2_checker": ExtResource("m_endcap_checker"),
+"endcap_plate_c5_checker": ExtResource("m_endcap_checker"),
+"endcap_rib": ExtResource("m_endcap_rib"),
+"endcap_rimlight": ExtResource("m_rimlight"),
+"ground_arable": ExtResource("m_field"),
+"ground_arable_0": ExtResource("m_field0"),
+"ground_arable_1": ExtResource("m_field1"),
+"ground_arable_2": ExtResource("m_field2"),
+"ground_arable_3": ExtResource("m_field3"),
+"ground_avenue": ExtResource("m_road"),
+"ground_hedge": ExtResource("m_hedge"),
+"ground_parkland": ExtResource("m_park"),
+"ground_rim": ExtResource("m_struct"),
+"ground_road": ExtResource("m_road"),
+"ground_settlement": ExtResource("m_settlement"),
+"ground_shore": ExtResource("m_shore"),
+"ground_water": ExtResource("m_water"),
+"spoke": ExtResource("m_struct"),
+"tram_": ExtResource("m_struct"),
+"tram_band": ExtResource("m_tram_band"),
+"tram_body": ExtResource("m_tram_body"),
+"tram_glass": ExtResource("m_glass"),
+"tram_headlight": ExtResource("m_headlight"),
+"truss_chord": ExtResource("m_truss"),
+"truss_lamp": ExtResource("m_lamp"),
+"truss_tie": ExtResource("m_truss"),
+"truss_web": ExtResource("m_truss")
+}
+
+[node name="Camera3D" type="Camera3D" parent="."]
+fov = 55.0
+near = 0.15
+far = 12000.0
+
+[node name="WorldEnvironment" type="WorldEnvironment" parent="."]
+environment = SubResource("Env")

@@ -1,58 +1,107 @@
 # Station materials
 
-Godot `StandardMaterial3D` resources in text form, one file each, so they diff and so a
-future session can change a colour without an editor GUI. The glTF export carries **POSITION
-and NORMAL only** — no UVs, no vertex colours, no material bindings — so everything about how
-a surface looks lives here, and anything textured has to be triplanar.
-
-Bound to geometry by `material_rules` in `scenes/station_view.tscn`: a table of mesh-name
-fragment → material, longest match wins. Matching is by substring rather than prefix because
-the glTF importer decorates names (`cargo_module` comes back as `BabylonStation_cargo_module`).
-
-Check them without rendering. This asserts more than "it parsed": every key in each
-`[resource]` block has to be a real property of the class, because Godot **silently drops keys
-it does not recognise** and hands back a material sitting at its defaults — which reads as a
-plausible surface rather than as an error.
+**Everything in this directory except this file is generated.** The source of
+truth is `station/materials.py`; the `.tres` files and `textures/` are its
+output, and each one says so in its own header.
 
 ```bash
+python3 station/materials.py                 # self-test, 523 assertions
+python3 station/materials.py --export        # rewrite this directory
+godot --headless --path godot --import
 godot --headless --path godot --script res://scripts/verify_materials.gd
 ```
 
-## Bound in the exterior scene
+Editing a `.tres` by hand changes what renders until the next export overwrites
+it, and the change is then lost with no diff to show for it.
 
-| Mesh-name fragment | Material | Reads as |
+## Why a generator and not a folder
+
+This directory had twelve hand-written materials. `godot/scenes/drum.tscn` had
+twenty-eight more, as `StandardMaterial3D` sub-resources inside the scene, with
+no mechanical relationship to these. Two descriptions of the same surfaces is
+the failure mode the whole project is built to avoid — CLAUDE.md's fourth hard
+rule is *"inside and outside come from the same schema… consistency is by
+construction, not by discipline"* — and materials were quietly becoming the
+exception. They are now declared once, in Python, and exported.
+
+The scene's own header invited this: *"Promoting one to a .tres is a two-line
+change."* Its measured values were carried over verbatim rather than
+re-derived, because two independent samples of one frame that disagree are
+worse than one.
+
+## What is here
+
+| | count | |
 |---|---|---|
-| *(fallback)* | `hull_exterior` | plated warm-neutral grey, mottled |
-| `main_truss_spine`, `reactor_spine`, `explosive_disconnect_neck`, `comms_grid_pylon` | `structural_truss` | dark unpainted framework |
-| `reactor_cooling_fin` | `radiator` | deep blue matte blades |
-| `cargo_module` | `cargo_module` | red-brown containers |
-| `cobra_bay` | `hull_banding_red` | red structural banding |
-| `heat_exchange_solar_array`, `forward_swept_array`, `space_traffic_prox_array` | `swept_array` | mid-grey collector panels |
-| `greeble_nav_light` | `marker_light_white` | warm-white beacon |
-| `greeble_hazard_light` | `marker_light_red` | red hazard beacon |
+| `*.tres` | 59 | one `StandardMaterial3D` each |
+| `textures/*.png` | 21 | 7 procedural trim sheets × albedo / normal / ORM |
+| `material_rules.gen.txt` | 1 | the `material_rules` tables, to paste into a scene |
 
-## Not bound yet — interior set
+Coverage: hull exterior and its greebling, the interior corridor kit, drum
+ground land-use bands, end-cap courses, the guideway truss and its light runs,
+tram livery and saloon, the core tube, signage, hazard marking, and a magenta
+`unbound` fallback.
 
-`hull_interior`, `accent_warning`, `emissive_floor` and `emissive_signage` are the palette of
-`docs/interior-kit-spec.md`. `station/interior_kit.py` builds the geometry they belong on but
-does not export glTF yet, so nothing in the engine references them and **they have been
-verified as loading, not as looking right.** Whoever exports the interior kit should render a
-corridor and judge them the same way the exterior set was judged.
+## Textures
 
-The two `emissive_*` materials are built exactly like the marker lights, which *are* bound and
-*do* read correctly in `renders/engine_view.png` — same `emission_enabled` + energy
-construction, higher energy. That is evidence the mechanism works, not that the values are right.
+Original work, generated from `hashlib.blake2b` — no show asset is
+redistributed and no external asset is used. They are trim sheets in ADR 0002's
+sense: **tileable and projected triplanar**, because the glTF export carries
+POSITION and NORMAL only and there are no UVs to place a decal against.
 
-**An emissive material is not a light.** In Forward+ an emissive surface glows but illuminates
-nothing around it unless global illumination is on, and the spec is explicit that the deck
-channels are *"a light source, not a texture"* and that raising ambient will read as wrong
-immediately. So `emissive_floor` and `emissive_signage` each need a real `OmniLight3D` or
-`SpotLight3D` alongside them when the interior kit is placed. The material is the visible
-fitting; the light is a separate object. Getting a corridor that is lit only by its own floor
-channels is an interior-lighting job, and it is not done here.
+`signage_panel` is the one exception and is *not* triplanar: a sign has a
+reading direction, and projecting it three ways mirrors the lettering on half
+the faces. Any mesh carrying that group has to ship UVs.
 
-## Provenance
+ORM packing is AO in red, roughness in green, metallic in blue, which is what
+`ao_texture_channel = 0`, `roughness_texture_channel = 1` and
+`metallic_texture_channel = 2` in each `.tres` read.
 
-Every colour is measured off reference, not chosen. The measurements, the two accents that
-turned out to be different registers, and the one property that is extrapolated are recorded
-in `canon/INVENTIONS.md` under **INV-010**.
+An albedo map multiplies `albedo_color`, so the maps are centred on
+`TEX_MEAN = 0.72` and each material's emitted tint is its measured albedo
+divided by that. `Material.albedo` in the Python library stays in measured
+units; only the file Godot reads carries the compensation.
+
+## Texture memory
+
+Measured, not modelled — run the importer and weigh the output:
+
+```bash
+ls -l godot/.godot/imported/*.s3tc.ctex | awk '{s+=$5} END {print s/1048576" MB"}'
+```
+
+| | |
+|---|---|
+| 21 maps, BC1 + BC5, mipmapped | **38.67 MB** |
+| same maps at Godot's default import (`compress/mode=0`) | 174.0 MB |
+| share of the 12 GB VRAM target | **0.31%** |
+
+`station/materials.py --export` patches each `.import` to
+`compress/mode=2` and `mipmaps/generate=true`, because Godot's PNG defaults are
+uncompressed and un-mipped. Mips are not optional here: the hull sheet repeats
+every 48 m on a body 8 km long, and without them the far end of the station
+boils.
+
+## Colour
+
+Every albedo traces to a named frame and a named pixel region, recorded in
+`station/materials.py`'s `PROVENANCE`, and the method is recorded with it: each
+frame is grey-world balanced first (they all carry a cast, and not the same one
+twice), only ratios within one frame are trusted, and one declared constant —
+`ALBEDO_ANCHOR` — sets the absolute level for everything derived from
+`grey level 1.webp`.
+
+The finding that shapes the whole library: **balanced and clustered, every
+large surface in every station interior frame in the reference set sits at
+saturation 0.02–0.16.** The station is near-neutral; the colour is in the
+lighting and in a small accent set. `NEGATIVE_RESULTS` records the ochre dado
+that was nearly encoded before the same wall was checked under a different
+light in the same frame.
+
+## An emissive is not a light
+
+Unchanged from before and still the thing to remember: in Forward+ an emissive
+surface glows but illuminates nothing unless global illumination is on. Every
+`light_*`, `*_lamp`, `marker_light_*` and `*_rimlight` material needs a real
+`OmniLight3D` or `SpotLight3D` placed alongside it. The material is the visible
+fitting; the light is a separate object, and it belongs to the scene.

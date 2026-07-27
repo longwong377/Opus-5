@@ -817,6 +817,105 @@ def truss_clearance(verts):
 
 
 # ---------------------------------------------------------------------------
+# Clearance against the radial spokes
+# ---------------------------------------------------------------------------
+
+# The bar for the spoke is the bar for the truss. Anything tighter than the
+# suspension gap would mean the fixed structure, not the running gear, is what
+# decides how close the car can be built -- and the spoke is the one piece of
+# structure a car cannot steer around.
+SPOKE_CLEARANCE_M = TRUSS_CLEARANCE_M
+
+
+def spoke_section(schema, profile, sector):
+    """The spoke's footprint in the plane the car sweeps, taken FROM the spoke.
+
+    `truss_envelope` above rebuilds the truss from interior's constants, which
+    is defensible for four beams laid on a grid. A spoke with a portal cut
+    through it is seventeen rectangles, and re-deriving those here would
+    guarantee that one day the test and the geometry describe different spokes.
+    `interior.spoke()` reports its own section instead.
+    """
+    fr, to = it.drum_spoke_rings(schema, profile, sector)
+    return it.spoke(schema, profile, sector, fr, to, 0.0)[2]["section_rects"]
+
+
+def spoke_clearance(schema, profile, sector, verts):
+    """Smallest distance from any car vertex to spoke structure, over the whole
+    run rather than at one point on it. Negative means interpenetration.
+
+    z is dropped, and dropping it is the point. A spoke sits at one fixed z; a
+    car's z is a function of the guideway phase, which `guideway_cars` takes as
+    an argument and sweeps. Measuring in the (lateral, radius) plane therefore
+    answers the question for EVERY phase at once -- it is a swept-volume test,
+    not a sample of one. A test that fixed z would have to be believed for all
+    the other z it did not look at, and the defect this replaces was a car
+    sitting exactly in a spoke plane at the module's own default phase.
+
+    The car's local frame maps straight onto the spoke's: x is the same lateral
+    axis, and y is measured inboard from the bottom chord's centreline, so
+    radius is the chord radius minus y.
+    """
+    r_bot = it.sector_radius(schema, profile, sector) * it.TRUSS_RADIUS_FRAC
+    rects = spoke_section(schema, profile, sector)
+    worst = float("inf")
+    for x, y, _z in verts:
+        lat, r = x, r_bot - y
+        for l0, l1, r0, r1 in rects:
+            dl = max(l0 - lat, 0.0, lat - l1)
+            dr = max(r0 - r, 0.0, r - r1)
+            if dl == 0.0 and dr == 0.0:
+                d = -min(min(lat - l0, l1 - lat), min(r - r0, r1 - r))
+            else:
+                d = math.hypot(dl, dr)
+            worst = min(worst, d)
+    return worst
+
+
+def spoke_sweep_report(schema, profile, sector, phases=24, per_guideway=2):
+    """Place real cars at `phases` positions on every guideway and measure them
+    against the real spokes, in world coordinates.
+
+    The planar measurement above is exact and already covers every phase. This
+    is the cross-check that the two subsystems agree about WHERE they are: a car
+    whose guideway angle did not match its spoke's angle, or whose radius came
+    off a different chord, would clear the section rectangles perfectly in the
+    car's own frame and still hit the structure in the drum.
+
+    `vertices_in_spoke_z` is reported so the caller can assert the sweep
+    actually drove cars through the spokes. A sweep that never reaches one
+    passes for the wrong reason.
+    """
+    sm = it.drum_spokes(schema, profile, sector)[2]
+    worst = float("inf")
+    inside = crossings = 0
+    for i in range(phases):
+        wv = drum_trams(schema, profile, sector, per_guideway=per_guideway,
+                        phase=i / float(phases), interior=False)[0]
+        for s in sm["solids"]:
+            a = math.radians(s["angle_deg"])
+            ca, sa = math.cos(a), math.sin(a)
+            z0, z1 = s["z_span"]
+            for x, y, z in wv:
+                if not z0 <= z <= z1:
+                    continue
+                crossings += 1
+                r = x * ca + y * sa
+                lat = -x * sa + y * ca
+                for l0, l1, r0, r1 in s["section_rects"]:
+                    dl = max(l0 - lat, 0.0, lat - l1)
+                    dr = max(r0 - r, 0.0, r - r1)
+                    if dl == 0.0 and dr == 0.0:
+                        inside += 1
+                        d = -min(min(lat - l0, l1 - lat), min(r - r0, r1 - r))
+                    else:
+                        d = math.hypot(dl, dr)
+                    worst = min(worst, d)
+    return {"phases": phases, "vertices_in_spoke_z": crossings,
+            "inside": inside, "min_clearance_m": worst}
+
+
+# ---------------------------------------------------------------------------
 # Placement on a guideway
 # ---------------------------------------------------------------------------
 
@@ -993,22 +1092,6 @@ def _selftest():
     schema, profile = it.load()
     sector = it.drum_sector(schema, profile)
 
-    # --- what was measured, and that it stays measured ----------------------
-    L = car_length()
-    check("car length is the measured 3.9 bays, built at 4",
-          abs(CAR_BAYS - 3.9) <= 0.25 and abs(L - CAR_BAYS * it.TRUSS_BAY_M) < 1e-9,
-          f"{L:.1f} m = {CAR_BAYS} x {it.TRUSS_BAY_M} m")
-    depth = level_y("roof") - level_y("under")
-    total = it.TRUSS_CHORD_M / 2.0 + CAR_DEPTH_FRAC * it.TRUSS_DEPTH_M
-    check("car depth is the measured 0.65 of the truss depth",
-          abs((total - it.TRUSS_CHORD_M / 2.0) / it.TRUSS_DEPTH_M
-              - CAR_DEPTH_FRAC) < 1e-9,
-          f"{depth:.2f} m body over a {it.TRUSS_DEPTH_M} m truss")
-    # The whole point of expressing the car in truss units: rescaling the truss
-    # must rescale the car, not break it.
-    check("car dimensions derive from the truss, not from constants",
-          abs(L / it.TRUSS_BAY_M - CAR_BAYS) < 1e-9)
-
     lv, lt, lm = tram_car(interior=True)
     ev, et, em = tram_car(interior=False)
     sv, st_, sg = car_shell()
@@ -1019,6 +1102,54 @@ def _selftest():
                        "tram_in_floor")]
 
     check("the car builds", len(lt) > 500, f"{len(lt)} triangles")
+
+    # --- what was measured, and that the MESH still measures it -------------
+    # These three replace assertions that could not fail. They compared
+    # `L / TRUSS_BAY_M` against `CAR_BAYS` where L was defined as
+    # `CAR_BAYS * TRUSS_BAY_M`, and `(total - c/2) / d` against CAR_DEPTH_FRAC
+    # where total was defined as `c/2 + CAR_DEPTH_FRAC * d`. Both are algebraic
+    # identities: they hold for CAR_BAYS = -3.0 and CAR_DEPTH_FRAC = 99.0, and
+    # they never touched a triangle. What has to be true is that the BUILT hull
+    # measures what was read off the reference, so that is what is measured --
+    # off the loft's own vertices, against the numbers from 34b rather than
+    # against the constants those numbers were written into.
+    L = car_length()
+    hull_g = ("tram_body", "tram_valance", "tram_roof", "tram_recess")
+    hull_v = sorted({i for t, g in zip(st_, sg) if g in hull_g for i in t})
+    hz = [sv[i][2] for i in hull_v]
+    hy = [sv[i][1] for i in hull_v]
+    bays_built = (max(hz) - min(hz)) / it.TRUSS_BAY_M
+    check("the built hull is the 3.9 bays rectified off 34b",
+          abs(bays_built - 3.9) <= 0.25,
+          f"{max(hz) - min(hz):.1f} m = {bays_built:.2f} bays")
+    # 34b measures the car's depth below the chord as a fraction of the local
+    # chord separation, so that is the form the mesh is checked in.
+    frac_built = (-min(hy) - it.TRUSS_CHORD_M / 2.0) / it.TRUSS_DEPTH_M
+    check("the built hull hangs the measured 0.65 of the truss depth",
+          abs(frac_built - 0.65) <= 0.05,
+          f"{-min(hy) - it.TRUSS_CHORD_M / 2.0:.2f} m below the chord "
+          f"underside = {frac_built:.3f} of {it.TRUSS_DEPTH_M} m")
+    # The module docstring claims the car is expressed in truss units, so that
+    # rescaling the truss rescales the car rather than breaking it. That is a
+    # property of the code, and the only honest way to test it is to move the
+    # truss and rebuild.
+    bay0, dep0 = it.TRUSS_BAY_M, it.TRUSS_DEPTH_M
+    try:
+        it.TRUSS_BAY_M, it.TRUSS_DEPTH_M = bay0 * 1.5, dep0 * 1.5
+        rv, rt_, rg = car_shell()
+        rvi = sorted({i for t, g in zip(rt_, rg) if g in hull_g for i in t})
+        rz = max(rv[i][2] for i in rvi) - min(rv[i][2] for i in rvi)
+        ry = -min(rv[i][1] for i in rvi) - it.TRUSS_CHORD_M / 2.0
+    finally:
+        it.TRUSS_BAY_M, it.TRUSS_DEPTH_M = bay0, dep0
+    # Depth is measured below the chord UNDERSIDE, so only that part scales --
+    # the chord's own half section is a separate constant and does not.
+    hang = -min(hy) - it.TRUSS_CHORD_M / 2.0
+    check("rescaling the truss rescales the car with it",
+          abs(rz - 1.5 * (max(hz) - min(hz))) < 1e-6
+          and abs(ry - 1.5 * hang) < 1e-6,
+          f"{rz:.1f} m long and {ry:.2f} m below the chord on a truss 1.5x "
+          "bigger")
     check("interior LOD is a strict addition to the exterior",
           len(et) < len(lt) and len(et) == len(st_),
           f"{len(et)} exterior vs {len(lt)} with saloon")
@@ -1046,6 +1177,59 @@ def _selftest():
     lifted = [(x, y + 1.0, z) for x, y, z in lv]
     check("the clearance test detects interpenetration",
           truss_clearance(lifted) < 0, f"{truss_clearance(lifted):.3f} m")
+
+    # --- and against the radial spokes --------------------------------------
+    # The guideways are in the spoke planes because nothing else could carry a
+    # 2,586 m truss (INV-012), so a car HAS to cross a spoke. It used to cross
+    # it the way a bullet crosses a wall: 168 of 3,144 vertices inside solid
+    # structure, 6.43 m deep, at this module's own default phase, with no test
+    # of any kind looking. `interior.spoke()` now cuts a framed portal for the
+    # guideway's structure gauge. These keep it cut.
+    g = it.guideway_gauge(schema, profile, sector)
+    rr_l = [g["chord_r_m"] - y for _x, y, _z in lv]
+    check("the car fits inside the guideway's structure gauge",
+          min(rr_l) >= g["r_inner"] + SPOKE_CLEARANCE_M
+          and max(rr_l) <= g["r_outer"] - SPOKE_CLEARANCE_M
+          and max(abs(x) for x, _y, _z in lv)
+          <= g["half_width_m"] - SPOKE_CLEARANCE_M,
+          f"car r {min(rr_l):.2f}-{max(rr_l):.2f} m, half width "
+          f"{max(abs(x) for x, _y, _z in lv):.2f} m against a gauge of "
+          f"{g['r_inner']:.2f}-{g['r_outer']:.2f} m by {g['half_width_m']} m")
+
+    sc = spoke_clearance(schema, profile, sector, lv)
+    check("the car clears the spoke at every phase, not just the default",
+          sc >= SPOKE_CLEARANCE_M,
+          f"{sc:.3f} m, need {SPOKE_CLEARANCE_M} m")
+    # The spoke must never be what limits the car. If it becomes tighter than
+    # the truss, the portal has stopped being sized off the gauge and started
+    # being sized off whatever fitted.
+    check("the spoke is never tighter than the guideway itself",
+          sc >= clear - 1e-9, f"spoke {sc:.3f} m vs truss {clear:.3f} m")
+
+    # Both directions of failure, because the portal is bounded in both and a
+    # test that only catches one is half a test.
+    wide = [(x * 3.0, y, z) for x, y, z in lv]
+    deep = [(x, y - 3.0, z) for x, y, z in lv]
+    check("the spoke clearance test detects a car too wide for the portal",
+          spoke_clearance(schema, profile, sector, wide) < 0,
+          f"{spoke_clearance(schema, profile, sector, wide):.3f} m")
+    check("the spoke clearance test detects a car hanging below the portal",
+          spoke_clearance(schema, profile, sector, deep) < 0,
+          f"{spoke_clearance(schema, profile, sector, deep):.3f} m")
+
+    # World-space cross-check: real cars at 24 phases on all three guideways,
+    # measured against the real spokes. The planar test above already covers
+    # every phase; this one covers the possibility that the car and the spoke
+    # disagree about where they are.
+    swp = spoke_sweep_report(schema, profile, sector, phases=24)
+    check("the sweep actually drives cars through the spokes",
+          swp["vertices_in_spoke_z"] > 0,
+          f"{swp['vertices_in_spoke_z']} car vertices inside a spoke's z span")
+    check("no car vertex is inside a spoke at any sampled phase",
+          swp["inside"] == 0, f"{swp['inside']} inside")
+    check("the swept world clearance agrees with the planar one",
+          abs(swp["min_clearance_m"] - sc) < 0.05,
+          f"world {swp['min_clearance_m']:.3f} m vs planar {sc:.3f} m")
 
     # The car must never reach under a light run, or it shadows the habitat.
     lamp_in = it.TRUSS_CHORD_M + 3.0 - it.TRUSS_LAMP_R_M

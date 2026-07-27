@@ -12,3 +12,9 @@ station/__pycache__/
 station/generated/interior_*.obj
 station/generated/starfury.obj
 godot/scripts/*.uid
+
+# Per-shot scene assembly (tools/export_scene.py). Same argument as above --
+# 44 MB of .glb regenerated from the schema on demand. Needs its own line
+# because a gitignore "*" does not cross a directory separator, so the
+# station/generated/*.glb rule above does not reach this subdirectory.
+station/generated/scene/

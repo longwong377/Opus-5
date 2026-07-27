@@ -319,13 +319,197 @@ def ring_arc(schema, profile, sector, ring_index, degrees=30.0,
 SPOKE_COUNT = 3
 
 
-def spoke(schema, profile, sector, from_ring, to_ring, angle_deg=0.0, z=None):
-    """A radial transport tube between two rings.
+# --------------------------------------------------------------------------
+# The guideway structure gauge
+# --------------------------------------------------------------------------
+# The guideway trusses run in the spoke planes because nothing else could carry
+# them: 2,586 m of truss does not span unsupported and the spokes are the only
+# radial structure there is (INV-012). The consequence went unnoticed for two
+# sessions -- a tram car has to CROSS a spoke, and it did, straight through
+# 6.43 m of solid structure, 168 of its 3,144 vertices inside the solid.
+#
+# Moving the cars is not a fix. `tram.guideway_cars` advertises a `phase`
+# parameter that walks the whole train along the run, so whatever static offset
+# is chosen, every car reaches its own spoke eventually. The structure has to
+# open.
+#
+# How big the opening is, is a property of the INFRASTRUCTURE, not of whichever
+# vehicle happens to be running. This is a structure gauge: a volume along the
+# guideway that no structure may enter. `spoke()` cuts it out; `tram.py` asserts
+# the car fits inside it. Declaring it once, here, is what stops the two being
+# separately guessed -- and it is the only direction the dependency can run,
+# since tram.py imports interior and not the other way about.
+#
+# Sized off the TRUSS, not off the car. The widest thing on the guideway is the
+# light run at lateral 6.7 m, nearly twice the car's half width; the depth is
+# the car's 11.5 m below the chord centreline (tram.py, read off 33a/34b as
+# 0.65 of the truss depth) plus a metre of slack.
+GUIDEWAY_GAUGE_DEPTH_M = 12.5     # radially outward from the chord centreline
+GUIDEWAY_GAUGE_HALF_W_M = 7.4     # lateral half width
+# The soffit sits just inboard of the bottom chord's running face, so the chord
+# and its light runs stand proud of it and a car meets the same surfaces inside
+# the portal that it meets everywhere else on the run. Flush would be
+# structurally identical and would leave two coplanar faces in one plane, which
+# z-fights across the whole opening.
+GUIDEWAY_SOFFIT_RELIEF_M = 0.15
+
+# The portal frame. A hole is not a portal: this project has already shipped a
+# door interpenetrating a portal frame, and an unframed cut is where a real
+# structure tears. The frame is a ring of heavier section standing proud of both
+# faces of the spoke, and it is what lines the opening the car passes through.
+SPOKE_PORTAL_FRAME_M = 1.6        # section of that ring, radially and laterally
+SPOKE_PORTAL_PROUD_M = 1.2        # how far it stands proud of each spoke face
+SPOKE_PORTAL_COLLAR_M = 4.0       # header and sill depth beyond the frame
+
+
+def guideway_gauge(schema, profile, sector):
+    """The volume kept clear of structure along a guideway, in spoke-local axes.
+
+    Returned as radii and a lateral half width because that is the plane the
+    problem lives in: the car's position along z is a function of phase, so
+    anything true in the (lateral, radius) plane is true for every phase at once.
+    """
+    r_bot = sector_radius(schema, profile, sector) * TRUSS_RADIUS_FRAC
+    return {
+        "chord_r_m": r_bot,
+        "r_inner": r_bot + TRUSS_CHORD_M / 2.0 - GUIDEWAY_SOFFIT_RELIEF_M,
+        "r_outer": r_bot + GUIDEWAY_GAUGE_DEPTH_M,
+        "half_width_m": GUIDEWAY_GAUGE_HALF_W_M,
+    }
+
+
+def spoke_portal(schema, profile, sector):
+    """Where and how big the aperture through a spoke is, or None if there is
+    no guideway in this sector.
+
+    Only the drum has guideway trusses, so only the drum's spokes are pierced.
+    Cutting the hole everywhere would weaken structure for a vehicle that does
+    not run there.
+    """
+    if sector != drum_sector(schema, profile):
+        return None
+    g = guideway_gauge(schema, profile, sector)
+    f = SPOKE_PORTAL_FRAME_M
+    c = SPOKE_PORTAL_COLLAR_M
+    return {
+        # The opening itself is exactly the gauge. Anything more would be
+        # structure thrown away; anything less would foul the vehicle.
+        "r0": g["r_inner"], "r1": g["r_outer"],
+        "half_w": g["half_width_m"],
+        # The frame ring around it.
+        "r_frame0": g["r_inner"] - f, "r_frame1": g["r_outer"] + f,
+        "half_w_frame": g["half_width_m"] + f,
+        # The band of the spoke that is rebuilt as a pierced section.
+        "r_band0": g["r_inner"] - f - c, "r_band1": g["r_outer"] + f + c,
+    }
+
+
+def _ring_slab(verts, tris, at, outer, inner, z0, z1):
+    """A closed rectangular ring: a slab with a rectangular hole through it in z.
+
+    `outer` and `inner` are (r_lo, r_hi, lat_lo, lat_hi) in the spoke's own
+    frame; `at(r, lat, z)` places a point in world space. The hole runs right
+    through the slab along z, which is the direction a tram travels.
+
+    The four face quads are MITRED -- outer corner to inner corner -- rather
+    than butted as four strips. Butted strips put a T-junction at every corner,
+    where one quad's edge is half of another's, and a T-junction is a boundary
+    edge whether or not the surface looks closed. That is one of the three
+    causes of the end cap's 4,064 open edges in session 2y, in miniature, and it
+    is the specific way a portal cut badly opens the spoke.
+    """
+    ro0, ro1, lo0, lo1 = outer
+    ri0, ri1, li0, li1 = inner
+    o = [(ro0, lo0), (ro1, lo0), (ro1, lo1), (ro0, lo1)]
+    i = [(ri0, li0), (ri1, li0), (ri1, li1), (ri0, li1)]
+
+    def q(p0, p1, p2, p3):
+        b = len(verts)
+        verts.extend([p0, p1, p2, p3])
+        tris.append((b, b + 1, b + 2))
+        tris.append((b, b + 2, b + 3))
+
+    for k in range(4):
+        k2 = (k + 1) % 4
+        # The two faces of the slab, wound away from the material.
+        q(at(*o[k], z1), at(*o[k2], z1), at(*i[k2], z1), at(*i[k], z1))
+        q(at(*i[k], z0), at(*i[k2], z0), at(*o[k2], z0), at(*o[k], z0))
+        # Outer skin.
+        q(at(*o[k], z0), at(*o[k2], z0), at(*o[k2], z1), at(*o[k], z1))
+        # The lining of the opening, facing into it -- this is what a passenger
+        # sees going through, and what makes the hole a tunnel rather than a
+        # gap in a surface.
+        q(at(*i[k], z0), at(*i[k], z1), at(*i[k2], z1), at(*i[k2], z0))
+
+
+def _spoke_profile(r0, r1, bore, nseg=9):
+    """(r_start, r_end, half_width) for each nominal segment of a spoke.
+
+    Split out so the pierced band can ask what the spoke's section WOULD have
+    been where it is cut. Sizing the piers against the section they replace is
+    the whole structural argument, and it needs that number.
+    """
+    out = []
+    for k in range(nseg):
+        f0, f1 = k / nseg, (k + 1) / nseg
+        ra, rb = r0 + (r1 - r0) * f0, r0 + (r1 - r0) * f1
+        # Barrel sections separated by collar groups, with an open lattice
+        # through the middle third of the run -- the core shuttle reference
+        # shows the tube is not a plain extrusion.
+        lattice = 0.34 < f0 < 0.66
+        collar = (k % 3 == 0)
+        ww = bore * (0.62 if lattice else 1.0) * (1.18 if collar else 1.0)
+        out.append((ra, rb, ww))
+    return out
+
+
+def spoke(schema, profile, sector, from_ring, to_ring, angle_deg=0.0, z=None,
+          portal=True):
+    """A radial transport tube between two rings, pierced where a guideway
+    crosses it.
 
     The rosettes draw these as spokes from the outer rings to the axis, and the
     core shuttle reference shows the tube is not a plain extrusion -- smooth
     barrel, collar groups of fine rings at segment joints, an open lattice
     section, a pale collar where it meets the drum wall.
+
+    LOAD PATH THROUGH A PIERCED SPOKE, and why one still stands up.
+
+    A spoke is a TENSION member. The drum spins, so everything in it is thrown
+    outward and the spokes are what stop the shell leaving: load runs from the
+    rim inward to the hub. The opening sits between the guideway at r 236.6 m
+    and the habitat floor at r 278.3 m, which is on the loaded side -- every
+    newton the shell pulls with passes through the pierced band. This is not a
+    hole in a stub.
+
+    Cutting a 14.8 m slot out of a 21.2 m wide member removes 70% of its
+    section and it has to be given back. Three things do that:
+
+      1. Two PIERS either side of the opening, sized here so their combined
+         cross-section is at least what the slot removed. The spoke swells
+         laterally where it is pierced -- 21.2 m wide to 35.7 m -- which is what
+         a member with a hole in it actually looks like. The self-test asserts
+         the net section, so widening the gauge has to buy its width from
+         somewhere rather than quietly thinning the piers.
+      2. A FRAME ring standing proud of both faces around the opening, taking
+         the corners, which is where a plain rectangular cut concentrates
+         stress and tears.
+      3. A HEADER inboard of the opening and a SILL outboard of it, both full
+         width. These are what make it a frame rather than two separate legs:
+         they tie the piers so both extend equally under load, and they feed the
+         full-width spoke into the piers over a length instead of at a corner.
+
+    The guideway's own weight enters here too. The truss's bottom chord and its
+    light runs are let INTO the header, embedded across the spoke's full 21.2 m
+    thickness -- that embedment is the bearing, and it is the reason the truss
+    is in the spoke plane at all. It sits inboard of the opening, so truss load
+    joins the tension above the hole and is carried into the piers by the
+    header rather than across the opening.
+
+    Sizing is an invention. Nothing in the reference set shows a spoke, let
+    alone a pierced one; net section preserved is a rule of thumb and not an
+    analysis, and it is conservative only in the one direction a rule of thumb
+    can be. A frame showing the drum's radial structure would overturn it.
     """
     rings = ring_radii(schema, profile, sector)
     ex = schema["sectors"]["extents_m"][sector]
@@ -333,39 +517,125 @@ def spoke(schema, profile, sector, from_ring, to_ring, angle_deg=0.0, z=None):
     r0 = rings[to_ring]["r_mid"]
     r1 = rings[from_ring]["r_mid"]
 
-    verts, tris = [], []
+    verts, tris, groups = [], [], []
     a = math.radians(angle_deg)
     ca, sa = math.cos(a), math.sin(a)
-    bore = schema["interior_topology"].get("spoke_bore_m", 9.0)
 
-    nseg = 9
-    for k in range(nseg):
-        f0, f1 = k / nseg, (k + 1) / nseg
-        ra, rb = r0 + (r1 - r0) * f0, r0 + (r1 - r0) * f1
-        # Collars at segment joints, lattice in the middle third.
-        lattice = 0.34 < f0 < 0.66
-        w = bore * (0.62 if lattice else 1.0)
-        # Collars at segment joints. The core shuttle reference shows the tube
-        # is not a plain extrusion: barrel sections separated by collar groups,
-        # with an open lattice through the middle third of the run.
-        collar = (k % 3 == 0)
-        ww = w * (1.18 if collar else 1.0)
-        quad = [(ca * ra - sa * ww, sa * ra + ca * ww, zc - ww),
-                (ca * ra + sa * ww, sa * ra - ca * ww, zc - ww),
-                (ca * rb + sa * ww, sa * rb - ca * ww, zc - ww),
-                (ca * rb - sa * ww, sa * rb + ca * ww, zc - ww)]
-        quad += [(x, y, z + 2 * ww) for x, y, z in quad]
-        _box(verts, tris, quad)
+    def at(r, lat, zz):
+        return (ca * r - sa * lat, sa * r + ca * lat, zz)
+
+    def emit(fn, group):
+        before = len(tris)
+        fn()
+        groups.extend([group] * (len(tris) - before))
+
+    bore = schema["interior_topology"].get("spoke_bore_m", 9.0)
+    segs = _spoke_profile(r0, r1, bore)
+
+    # The pierced band, if a guideway crosses this spoke's radial run at all.
+    por = spoke_portal(schema, profile, sector) if portal else None
+    if por and not (r0 < por["r_band0"] and por["r_band1"] < r1):
+        por = None
+
+    # Section rectangles in the (lateral, radius) plane: what the spoke occupies
+    # ignoring z. Reported rather than re-derived by the caller, because a
+    # clearance test that re-derives the shape it is testing against is testing
+    # its own arithmetic. `tram.spoke_clearance` consumes this.
+    rects = []
+
+    def box(ra, rb, ww, group):
+        rects.append((-ww, ww, ra, rb))
+        quad = [at(ra, ww, zc - ww), at(ra, -ww, zc - ww),
+                at(rb, -ww, zc - ww), at(rb, ww, zc - ww)]
+        quad += [(x, y, zz + 2 * ww) for x, y, zz in quad]
+        emit(lambda: _box(verts, tris, quad), group)
+
+    for ra, rb, ww in segs:
+        if por is None:
+            box(ra, rb, ww, "spoke")
+            continue
+        # Clip the plain run against the band. A segment can contribute a piece
+        # on either side of it, or nothing at all.
+        for ca_, cb_ in ((ra, min(rb, por["r_band0"])),
+                         (max(ra, por["r_band1"]), rb)):
+            if cb_ - ca_ > 1e-6:
+                box(ca_, cb_, ww, "spoke")
+
+    if por is not None:
+        # The section the slot removes, taken as the widest the spoke would have
+        # been anywhere across the band -- the conservative reading when the
+        # band spans a collar, which it does.
+        t = max(ww for ra, rb, ww in segs
+                if rb > por["r_band0"] and ra < por["r_band1"])
+        f = SPOKE_PORTAL_FRAME_M
+        p = SPOKE_PORTAL_PROUD_M
+        aw = por["half_w"]
+
+        # Net section: the two piers plus the two frame jambs must together be
+        # at least the plain section the band replaces. Solving for the pier
+        # width rather than asserting a chosen one means a wider gauge pushes
+        # the spoke wider instead of silently eating into the structure.
+        gross = (2 * t) * (2 * t)
+        frame_area = 2 * f * 2 * (t + p)
+        pier_w = max(f, (gross - frame_area) / (2 * (2 * t)))
+        w = por["half_w_frame"] + pier_w
+
+        band = (por["r_band0"], por["r_band1"], -w, w)
+        fr = (por["r_frame0"], por["r_frame1"],
+              -por["half_w_frame"], por["half_w_frame"])
+        hole = (por["r0"], por["r1"], -aw, aw)
+
+        emit(lambda: _ring_slab(verts, tris, at, band, fr, zc - t, zc + t),
+             "spoke_portal")
+        emit(lambda: _ring_slab(verts, tris, at, fr, hole,
+                                zc - t - p, zc + t + p), "spoke_portal_frame")
+
+        # Header, sill and the two piers; then the frame ring's four members.
+        rects.extend([
+            (-w, w, por["r_band0"], por["r_frame0"]),
+            (-w, w, por["r_frame1"], por["r_band1"]),
+            (-w, -por["half_w_frame"], por["r_frame0"], por["r_frame1"]),
+            (por["half_w_frame"], w, por["r_frame0"], por["r_frame1"]),
+            (-por["half_w_frame"], por["half_w_frame"],
+             por["r_frame0"], por["r0"]),
+            (-por["half_w_frame"], por["half_w_frame"],
+             por["r1"], por["r_frame1"]),
+            (-por["half_w_frame"], -aw, por["r0"], por["r1"]),
+            (aw, por["half_w_frame"], por["r0"], por["r1"]),
+        ])
+        por = dict(por, half_w_outer=w, pier_w=pier_w, half_thick=t,
+                   net_section_m2=2 * pier_w * 2 * t + frame_area,
+                   gross_section_m2=gross)
+
+    # Measured off the built geometry rather than predicted from the constants,
+    # so a piece emitted at the wrong depth widens this instead of hiding in it.
+    z_span = (min(p[2] for p in verts), max(p[2] for p in verts))
 
     return verts, tris, {
         "sector": sector,
+        "angle_deg": angle_deg,
+        "z_span": z_span,
         "from_ring": rings[from_ring]["id"],
         "to_ring": rings[to_ring]["id"],
         "length_m": round(r1 - r0, 1),
         "gravity_from_g": round(gravity_at(schema, r1), 3),
         "gravity_to_g": round(gravity_at(schema, r0), 3),
         "triangles": len(tris),
+        "groups": groups,
+        "section_rects": rects,
+        "portal": por,
     }
+
+
+def drum_spoke_rings(schema, profile, sector):
+    """(from_ring, to_ring) for a sector's full radial run.
+
+    Found by ring KIND, not by index: the drum has three rings where every other
+    sector has five, so an index means a different thing in each.
+    """
+    rings = ring_radii(schema, profile, sector)
+    return (next(i for i, r in enumerate(rings) if r["kind"] == "deck_stack"),
+            next(i for i, r in enumerate(rings) if r["kind"] == "core"))
 
 
 def drum_spokes(schema, profile, sector, from_ring=None, to_ring=None,
@@ -377,25 +647,25 @@ def drum_spokes(schema, profile, sector, from_ring=None, to_ring=None,
     stop matching the structure that carries them.
     """
     # Default to the full radial run: outermost deck stack to the core. Asking
-    # callers for indices meant they had to know how many rings a sector has,
-    # and the drum has three where every other sector has five.
-    rings = ring_radii(schema, profile, sector)
+    # callers for indices meant they had to know how many rings a sector has.
+    d_from, d_to = drum_spoke_rings(schema, profile, sector)
     if from_ring is None:
-        from_ring = next(i for i, r in enumerate(rings)
-                         if r["kind"] == "deck_stack")
+        from_ring = d_from
     if to_ring is None:
-        to_ring = next(i for i, r in enumerate(rings) if r["kind"] == "core")
+        to_ring = d_to
 
-    verts, tris, groups = [], [], []
+    verts, tris, groups, solids = [], [], [], []
     for i in range(SPOKE_COUNT):
-        v, t, _m = spoke(schema, profile, sector, from_ring, to_ring,
-                         360.0 * i / SPOKE_COUNT, z)
+        ang = 360.0 * i / SPOKE_COUNT
+        v, t, m = spoke(schema, profile, sector, from_ring, to_ring, ang, z)
         o = len(verts)
         verts.extend(v)
         tris.extend((a + o, b + o, c + o) for a, b, c in t)
-        groups.extend(["spoke"] * len(t))
+        groups.extend(m["groups"])
+        solids.append({"angle_deg": ang, "section_rects": m["section_rects"],
+                       "z_span": m["z_span"], "portal": m["portal"]})
     return verts, tris, {"count": SPOKE_COUNT, "triangles": len(tris),
-                         "groups": groups}
+                         "groups": groups, "solids": solids}
 
 
 def _box(verts, tris, corners):
@@ -405,6 +675,22 @@ def _box(verts, tris, corners):
                        (1, 5, 6, 2), (2, 6, 7, 3), (3, 7, 4, 0)):
         tris.append((b + a, b + d, b + c))
         tris.append((b + a, b + e, b + d))
+
+
+def _signed_volume(verts, tris):
+    """Volume enclosed by a closed surface. Positive means faces point outward.
+
+    A hole in a surface is not the only way to get it wrong: a piece can be
+    closed and inside out, in which case it renders as a silhouette and is
+    invisible from every direction it should be seen from.
+    """
+    v = 0.0
+    for a, b, c in tris:
+        p0, p1, p2 = verts[a], verts[b], verts[c]
+        v += (p0[0] * (p1[1] * p2[2] - p1[2] * p2[1])
+              - p0[1] * (p1[0] * p2[2] - p1[2] * p2[0])
+              + p0[2] * (p1[0] * p2[1] - p1[1] * p2[0])) / 6.0
+    return v
 
 
 # --- late binding ----------------------------------------------------------
@@ -1585,6 +1871,111 @@ def _selftest():
           TRUSS_COUNT == sm["count"] == SPOKE_COUNT,
           f"{TRUSS_COUNT} trusses vs {sm['count']} spokes")
     check("spokes sit at the canon 120 degree spacing", SPOKE_COUNT == 3)
+
+    # --- the guideway portal ------------------------------------------------
+    # Because the trusses are in the spoke planes, a tram car has to cross a
+    # spoke, and until this session it crossed 6.43 m into solid structure.
+    # The spoke is now pierced. What follows asserts the three things a render
+    # cannot show about a hole in a structural member: that cutting it did not
+    # open the solid, that nothing is left inside the volume it was cut for,
+    # and that enough section survives to carry the load that still runs
+    # through it.
+    fr_i, to_i = drum_spoke_rings(schema, profile, "green")
+    pv, pt, pm = spoke(schema, profile, "green", fr_i, to_i, 0.0)
+    por = pm["portal"]
+    check("the drum's spokes are pierced where the guideway crosses",
+          por is not None)
+    bnd, _nm = boundary_edges(pv, pt)
+    check("cutting the portal did not open the spoke", not bnd,
+          f"{len(bnd)} boundary edges")
+    # Each pierced piece on its own, so a fault cannot hide inside the plain
+    # run's edge count. A mitred ring is closed AND wound outward; a butted one
+    # would be neither, and the butted version is the natural way to write it.
+    for grp in ("spoke_portal", "spoke_portal_frame"):
+        sub = [t for t, g in zip(pt, pm["groups"]) if g == grp]
+        sb, sn = boundary_edges(pv, sub)
+        check(f"{grp} is a closed solid",
+              not sb and not sn and _signed_volume(pv, sub) > 0,
+              f"{len(sb)} boundary, {len(sn)} non-manifold, "
+              f"volume {_signed_volume(pv, sub):,.0f} m3")
+
+    # Nothing may be inside the structure gauge. This is the assertion the
+    # defect needed and did not have: it is about the whole volume, not about
+    # one car at one phase, so no vehicle can be built to fit and later fall out
+    # of fitting when something else moves.
+    g = guideway_gauge(schema, profile, "green")
+    fouls = [q for q in pm["section_rects"]
+             if q[0] < g["half_width_m"] - 1e-9
+             and -g["half_width_m"] < q[1] - 1e-9
+             and q[2] < g["r_outer"] - 1e-9 and g["r_inner"] < q[3] - 1e-9]
+    check("no spoke structure is inside the guideway's structure gauge",
+          not fouls, f"{len(fouls)} rectangles foul the gauge")
+    # And that the reported section is the section that was built. A clearance
+    # test consumes these rectangles; if they described a different spoke from
+    # the triangles, every test downstream would be measuring a fiction.
+    a0 = math.radians(pm["angle_deg"])
+    ca0, sa0 = math.cos(a0), math.sin(a0)
+    astray = 0
+    for x, y, _z in pv:
+        rr, ll = x * ca0 + y * sa0, -x * sa0 + y * ca0
+        if not any(l0 - 1e-6 <= ll <= l1 + 1e-6 and r0 - 1e-6 <= rr <= r1 + 1e-6
+                   for l0, l1, r0, r1 in pm["section_rects"]):
+            astray += 1
+    check("the reported section covers every vertex the spoke actually has",
+          astray == 0, f"{astray} of {len(pv)} vertices outside it")
+
+    # Net section. The piers plus the frame jambs have to give back at least the
+    # section the slot took out, or the spoke is a tension member with 70% of
+    # itself missing at the one radius where all of the load passes.
+    check("the pierced band keeps the section the slot removed",
+          por["net_section_m2"] >= por["gross_section_m2"] - 1e-6,
+          f"{por['net_section_m2']:.0f} m2 net against "
+          f"{por['gross_section_m2']:.0f} m2 gross")
+    check("the spoke widens where it is pierced",
+          por["half_w_outer"] > por["half_thick"],
+          f"half width {por['half_thick']:.1f} m -> "
+          f"{por['half_w_outer']:.1f} m")
+
+    # The truss is what the spoke is there to carry, so the bearing has to be
+    # geometry rather than an assertion in a comment. The bottom chord is let
+    # into the header: it must reach inboard past the header's inner face and
+    # stand exactly the soffit relief proud of the opening, so the car meets the
+    # chord's own running face inside the portal and not a step.
+    r_bot = r_drum * TRUSS_RADIUS_FRAC
+    check("the truss bottom chord is embedded in the portal header",
+          por["r_band0"] < r_bot - TRUSS_CHORD_M / 2.0
+          and por["half_w_frame"] > TRUSS_CHORD_M * 1.5,
+          f"header from {por['r_band0']:.1f} m, chord inner face "
+          f"{r_bot - TRUSS_CHORD_M / 2.0:.1f} m")
+    check("the chord's running face stands proud of the soffit",
+          abs((r_bot + TRUSS_CHORD_M / 2.0) - por["r0"]
+              - GUIDEWAY_SOFFIT_RELIEF_M) < 1e-9,
+          f"soffit {por['r0']:.3f} m, chord underside "
+          f"{r_bot + TRUSS_CHORD_M / 2.0:.3f} m")
+    # The light runs are the widest thing on the guideway, so they and not the
+    # car are what sets the opening's width.
+    check("the light runs pass through the opening",
+          TRUSS_CHORD_M + 3.0 + TRUSS_LAMP_R_M < por["half_w"],
+          f"lamp reaches {TRUSS_CHORD_M + 3.0 + TRUSS_LAMP_R_M} m against a "
+          f"{por['half_w']} m opening")
+    # A running gap, not a blind recess: the opening goes right through the
+    # spoke's axial thickness or the car meets a wall halfway in.
+    fz = [pv[i][2] for t, gg in zip(pt, pm["groups"])
+          if gg == "spoke_portal_frame" for i in t]
+    check("the opening runs right through the spoke in z",
+          min(fz) <= pm["z_span"][0] + 1e-9
+          and max(fz) >= pm["z_span"][1] - 1e-9,
+          f"frame z {min(fz):.1f}-{max(fz):.1f} against spoke "
+          f"{pm['z_span'][0]:.1f}-{pm['z_span'][1]:.1f}")
+
+    # Only the drum has guideways, so only the drum's spokes are pierced.
+    # Cutting the hole everywhere would weaken structure for a vehicle that does
+    # not run there.
+    o_from, o_to = drum_spoke_rings(schema, profile, other)
+    ov, ot, om = spoke(schema, profile, other, o_from, o_to, 0.0)
+    check(f"{other}: spokes carry no guideway and are not pierced",
+          om["portal"] is None
+          and not any(gg.startswith("spoke_portal") for gg in om["groups"]))
 
     gv, gt, gm = drum_guideways(schema, profile, "green")
     check("all trusses build", gm["trusses"] == TRUSS_COUNT)

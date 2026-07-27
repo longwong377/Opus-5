@@ -1,0 +1,134 @@
+[gd_scene load_steps=13 format=3]
+
+; The station against space.
+;
+; Geometry is loaded at runtime from the .glb tools/export_scene.py writes, so
+; nothing about the hull is in this file. What IS in this file is everything
+; that is a judgement: the environment, the tonemapper, and the three lights.
+;
+; Lighting is a three-point set-up, which is what every VFX house that ever
+; photographed a spaceship model used and what the show's own miniature work
+; used. In vacuum the sun is the only physical source; a fill and a rim are
+; there because the alternative is half the station in absolute black, and
+; absolute black hides both the silhouette and any modelling error inside it.
+; They are extrapolation and are declared as such -- see the return value's
+; extrapolation list.
+
+[ext_resource type="Script" path="res://scripts/render_shot.gd" id="1"]
+[ext_resource type="Shader" path="res://scenes/space_sky.gdshader" id="2"]
+[ext_resource type="Material" path="res://materials/hull_exterior.tres" id="m_hull"]
+[ext_resource type="Material" path="res://materials/structural_truss.tres" id="m_truss"]
+[ext_resource type="Material" path="res://materials/radiator.tres" id="m_rad"]
+[ext_resource type="Material" path="res://materials/cargo_module.tres" id="m_cargo"]
+[ext_resource type="Material" path="res://materials/marker_light_white.tres" id="m_navlight"]
+[ext_resource type="Material" path="res://materials/marker_light_red.tres" id="m_hazlight"]
+[ext_resource type="Material" path="res://materials/swept_array.tres" id="m_panel"]
+[ext_resource type="Material" path="res://materials/hull_banding_red.tres" id="m_band"]
+
+[sub_resource type="ShaderMaterial" id="SkyMat"]
+shader = ExtResource("2")
+shader_parameter/star_gain = 2.6
+shader_parameter/bright_density = 0.022
+shader_parameter/faint_density = 0.055
+
+[sub_resource type="Sky" id="Sky"]
+sky_material = SubResource("SkyMat")
+; 128 is plenty: the radiance map of a starfield is nearly uniform black, and
+; anything larger is a cubemap convolution this CPU renderer pays for every
+; run for no visible return.
+radiance_size = 2
+process_mode = 1
+
+[sub_resource type="Environment" id="Env"]
+background_mode = 2
+sky = SubResource("Sky")
+; Ambient stands for light the station receives that is not the sun: Epsilon
+; III below it and the rest of the sky. Kept dim and slightly blue so that
+; unlit faces read as dark rather than as holes. It is a judgement, not a
+; measurement.
+;
+; Tuned down from 0.5 by looking: at 0.5, with the fill and rim on top, a key
+; 70 degrees off the camera axis produced no visible terminator on a cylinder
+; 8 km long -- the station read as one flat grey value end to end. Vacuum has
+; almost no ambient, and the render was proving it by being wrong.
+ambient_light_source = 2
+ambient_light_color = Color(0.14, 0.16, 0.22, 1)
+ambient_light_energy = 0.22
+reflected_light_source = 2
+; AgX rather than ACES. ACES pushes bright warm highlights toward orange, and
+; the hull has a lot of near-white sunlit plate; AgX keeps the hue and rolls
+; off later, which is what stops a sunlit 8 km hull from reading as a flat
+; white shape with detail only in the shadows.
+tonemap_mode = 4
+tonemap_exposure = 1.0
+tonemap_white = 6.0
+ssao_enabled = true
+ssao_radius = 14.0
+ssao_intensity = 1.6
+ssao_power = 1.4
+ssao_light_affect = 0.15
+glow_enabled = true
+glow_normalized = true
+glow_intensity = 0.55
+glow_strength = 1.0
+glow_bloom = 0.03
+glow_blend_mode = 1
+glow_hdr_threshold = 1.1
+
+[node name="ExteriorShot" type="Node3D"]
+script = ExtResource("1")
+fallback_material = ExtResource("m_hull")
+warmup_frames = 8
+material_rules = {
+"cargo_module": ExtResource("m_cargo"),
+"cobra_bay": ExtResource("m_band"),
+"comms_grid_pylon": ExtResource("m_truss"),
+"explosive_disconnect_neck": ExtResource("m_truss"),
+"forward_swept_array": ExtResource("m_panel"),
+"greeble_hazard_light": ExtResource("m_hazlight"),
+"greeble_nav_light": ExtResource("m_navlight"),
+"heat_exchange_solar_array": ExtResource("m_panel"),
+"main_truss_spine": ExtResource("m_truss"),
+"reactor_cooling_fin": ExtResource("m_rad"),
+"reactor_spine": ExtResource("m_truss"),
+"space_traffic_prox_array": ExtResource("m_panel")
+}
+
+[node name="Camera3D" type="Camera3D" parent="."]
+fov = 46.0
+
+[node name="Sun" type="DirectionalLight3D" parent="."]
+light_energy = 3.6
+light_color = Color(1, 0.955, 0.9, 1)
+light_specular = 0.9
+shadow_enabled = true
+; Four PSSM splits over 12 km. One orthogonal map across an 8 km station is
+; 2 m per texel at 4096 and the greebles -- 15 to 50 m fittings -- shadow as
+; mush. Splits put the near quarter at sub-metre resolution, which is where
+; the camera is.
+directional_shadow_mode = 2
+directional_shadow_split_1 = 0.04
+directional_shadow_split_2 = 0.12
+directional_shadow_split_3 = 0.34
+directional_shadow_blend_splits = true
+; Range is overridden per shot by render_shot.gd -- see there for why.
+directional_shadow_max_distance = 12000.0
+shadow_bias = 0.02
+shadow_normal_bias = 0.6
+
+[node name="Fill" type="DirectionalLight3D" parent="."]
+transform = Transform3D(-0.7, 0.2, -0.68, 0, 0.96, 0.28, 0.71, 0.2, -0.67, 0, 0, 0)
+light_energy = 0.16
+light_color = Color(0.5, 0.63, 1, 1)
+light_specular = 0.2
+shadow_enabled = false
+
+[node name="Rim" type="DirectionalLight3D" parent="."]
+transform = Transform3D(0.64, -0.28, 0.72, 0, 0.93, 0.36, -0.77, -0.23, 0.6, 0, 0, 0)
+light_energy = 0.34
+light_color = Color(0.82, 0.86, 1, 1)
+light_specular = 1.0
+shadow_enabled = false
+
+[node name="WorldEnvironment" type="WorldEnvironment" parent="."]
+environment = SubResource("Env")
