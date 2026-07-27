@@ -32,6 +32,9 @@ jobs:
       - name: Rotating-frame physics
         run: python3 station/physics/test_rotating_frame.py
 
+      - name: Precision and floating origin
+        run: python3 station/physics/test_floating_origin.py
+
       - name: Confirm the schema still parses and is fully sourced
         run: |
           python3 - <<'PY'

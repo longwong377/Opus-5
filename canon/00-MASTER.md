@@ -83,6 +83,27 @@ not stated on screen — logged as invention `INV-002`.
 Gravity falls linearly with radius toward the axis: **g(r) = ω²r**, reaching zero at the core
 shuttle. This gradient is a first-class simulation feature, not set dressing.
 
+### 1.2b Numeric precision — measured
+
+float32 carries ~7 significant decimal digits, so representable-value spacing grows with
+distance from the origin. Measured in `station/physics/`:
+
+| Distance | float32 spacing |
+|---|---|
+| 8,047 m (station nose) | **0.49 mm** |
+| 16,384 m | 1.00 mm |
+| 20,000 m | 1.95 mm |
+| 50,000 m | 3.91 mm |
+
+**The station alone is marginally survivable in float32** — 0.49 mm at the nose is close to
+invisible. What is not survivable is the flight envelope: a Starfury 50 km out puts everything
+on a ~4 mm grid, which reads as shimmer on stationary geometry.
+
+So double precision is required by the *Starfury*, not by the station. Rendering still narrows
+to float32 on the GPU regardless, so a floating origin is also mandatory: rebasing world
+coordinates near the viewer reduces positional error by **over two orders of magnitude**
+(1.09 mm → 4.9 µm at 40 km in the measured case).
+
 ### 1.3 Counts
 
 | Item | Value | Authority | Source |
