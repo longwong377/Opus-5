@@ -426,7 +426,57 @@ def swept_fins(spec, profile):
     return verts, tris
 
 
+def plate_array(spec, profile):
+    """A flat plate carried above the hull on a short pylon, blading forward.
+
+    The forward structure was built as four swept wings from a top-view read of
+    "long swept structures". The orthographic sheet shows it is a single flat
+    plate-like communications array on a short pylon, extending forward as a
+    thin blade -- a plane, not a wing pair. Four wings and one plate look
+    similar in plan and nothing like each other in silhouette.
+    """
+    verts, tris = [], []
+    z0, z1 = spec["z0"], spec["z1"]
+    r0 = radius_at(profile, z0)
+    a = math.radians(spec.get("plane_deg", 90.0))
+    ca, sa = math.cos(a), math.sin(a)
+    tx, ty = -sa, ca
+    stand = spec.get("standoff_m", 70.0)
+    half = spec["width_m"] / 2.0
+    th = spec["thickness_m"] / 2.0
+    reach = spec.get("reach_m", 520.0)
+
+    # Pylon: short, and squarer than the plate it carries.
+    pr0, pr1 = r0 * 0.94, r0 + stand
+    pw = half * 0.20
+    quad = [(ca * pr0 - tx * pw, sa * pr0 - ty * pw, z0),
+            (ca * pr0 - tx * pw, sa * pr0 - ty * pw, z1),
+            (ca * pr1 - tx * pw, sa * pr1 - ty * pw, z1),
+            (ca * pr1 - tx * pw, sa * pr1 - ty * pw, z0)]
+    quad += [(x + 2 * tx * pw, y + 2 * ty * pw, z) for x, y, z in quad]
+    _box(verts, tris, quad)
+
+    # Plate: thin in the radial direction, wide across, reaching forward and
+    # tapering as it goes. Built in spanwise strips so the taper is a shape
+    # rather than a single wedge.
+    rp = r0 + stand
+    nseg = spec.get("segments", 5)
+    for k in range(nseg):
+        f0, f1 = k / nseg, (k + 1) / nseg
+        za, zb = z1 + reach * f0, z1 + reach * f1
+        w0 = half * (1.0 - 0.62 * f0)
+        w1 = half * (1.0 - 0.62 * f1)
+        quad = [(ca * rp - tx * w0, sa * rp - ty * w0, za),
+                (ca * rp + tx * w0, sa * rp + ty * w0, za),
+                (ca * rp + tx * w1, sa * rp + ty * w1, zb),
+                (ca * rp - tx * w1, sa * rp - ty * w1, zb)]
+        quad += [(x + ca * th * 2, y + sa * th * 2, z) for x, y, z in quad]
+        _box(verts, tris, quad)
+    return verts, tris
+
+
 BUILDERS = {
+    "plate_array": plate_array,
     "planar_blades": planar_blades,
     "domes": domes,
     "swept_fins": swept_fins,

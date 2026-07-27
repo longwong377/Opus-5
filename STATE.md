@@ -317,6 +317,22 @@ sensor and deflector arrays.
   whatever is through the windows. If structure alone reaches 60 k the kit has become too
   expensive to dress.
 
+## Session 2t — exterior corrections from the reference sweep
+
+- **Cargo modules: 42 → 6.** The 42 conflated two different things. Miller's table gives
+  28 + 14 = 42 cargo **bays**, which are internal volumes; the orthographic sheet shows **six
+  external modules** docked on a continuous raised dorsal rail with plinths between them. A
+  station with 42 bays and 6 modules attached is not a contradiction — it is a station that is
+  not full. The exterior systems list now says `cargo_bay` for the 42.
+- **Forward "swept arrays" were wrong.** Built as four swept wings from a *top view alone*; the
+  side view shows a single **flat plate-like communications array on a short pylon, blading
+  forward** — a plane, not a wing pair. Four wings and one plate look alike in plan and nothing
+  alike in silhouette, which is exactly how a plan-only read goes wrong. New `plate_array` kind.
+- **CONFLICTS.md status header added.** The file is append-only, 1,378 lines, with eight C-003
+  entries — one headed RESOLVED followed by four later notes narrowing it. A reader could act
+  on a heading and be wrong. There is now a CURRENT STATUS table at the top, and the schema
+  carries `assignment_status: OPEN_BLOCKING` with an assertion keeping it there.
+
 ## Autonomous continuation
 
 A **6-hourly** trigger (`trig_01JS1VWf6yada5x6maPMAzza`, fires at :45) continues the plan
@@ -621,19 +637,17 @@ hollow — but a cartoon's fill is not a label, so C-003 correctly stays open.
 
 ## Next session — start here
 
-1. **Refine the remaining crude components.** Radiators are measured (2o); still box
-   primitives with no articulation: forward swept arrays, cobra bays, docking ports,
-   observation domes and rotundas. Greebles cannot rescue a wrong silhouette.
-2. **Emissive materials in the preview renderer.** `godot/materials/` has the `.tres`
-   resources, but `tools/preview_render.py` has no concept of emission, so every deck light
-   channel, pilaster strip and door indicator renders as grey plastic. The kit's whole lighting
-   premise is currently untestable on the fast path.
-3. **Deck tile phase across junctions** — the grid is not driven from a shared origin, so
+1. **Remaining crude components.** Cobra bays, docking ports, observation domes and rotundas
+   are still box primitives. Radiators (2o), cargo modules and the forward comms plate (2t)
+   are now reference-corrected.
+2. **Deck tile phase across junctions** — the grid is not driven from a shared origin, so
    there is a visible seam at each crossing mouth.
+3. **Two structurally different drum end caps** appear across frames (`Babylon_5_2-22_34b`
+   panelled grey concentric disc vs `33a` deep red-orange open triangulated lattice). Flagged
+   in the 2r sweep, unresolved, and it changes what the drum generator emits at each end.
 4. **Publish the Godot binary** as a Release asset — container-local, 61 minutes to rebuild.
-   See `docs/godot-binary.md`.
-5. **C-003 / C-004** still block interior *layout*, on one narrow question: radial decks are
-   established, but **which ring is level 1** is not.
+5. **C-003 assignment** and **C-004 numbering** still block interior layout. One question each:
+   which longitudinal band is the drum, and which ring is level 1.
 
 ## Blocked
 

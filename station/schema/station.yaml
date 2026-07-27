@@ -168,7 +168,7 @@ exterior_systems:
   - {id: micro_gravity_maint_bay,    count: 2,  auth: 3}
   - {id: hazardous_liquid_tank,      count: 1,  auth: 3}
   - {id: inert_gases_tank,           count: 4,  auth: 3}
-  - {id: cargo_module,               count: 42, auth: 4}   # 28 rotating + 14 support structure
+  - {id: cargo_bay,                  count: 42, auth: 4}   # 28 rotating + 14 support: BAYS, not modules
   - {id: deep_space_comms_grid,      count: 2,  auth: 3}
   - {id: tachyon_transmitter,        count: 1,  auth: 3}
   - {id: space_traffic_prox_array,   count: 4,  auth: 3}
@@ -422,18 +422,24 @@ components:
           excess zone 7062-7302 peak 102 m. Count per CONFLICTS.md C-002."
 
   - id: cargo_module
-    count: 42
-    kind: dorsal_line    # a single dorsal row, not wrapped -- see 00-INDEX exterior more.jpg
-    rows: 3              # 42 total across 3 meridians, 14 per row
-    plane_deg: 90        # dorsal, i.e. on the +Y (North) meridian
+    # SIX, counted on the orthographic sheet. The 42 previously here conflated
+    # two different things: Miller's table gives 28 + 14 = 42 cargo BAYS, which
+    # are internal volumes, while the render shows six external MODULES docked
+    # on the dorsal rail. A station with 42 bays and 6 modules currently
+    # attached is not a contradiction -- it is a station that is not full.
+    count: 6
+    kind: dorsal_line
+    rows: 1              # one dorsal line, not three meridians
+    plane_deg: 90        # +Y (North) meridian
     z0: 4870
     z1: 6010
-    protrusion_m: 40
-    width_m: 96
-    fill: 0.74
+    protrusion_m: 46
+    width_m: 104
+    fill: 0.62           # plinths between modules, not a continuous run
+    rail: true
     auth: 2
-    src: "Miller callout U 'Cargo Module, Typical' on the habitat cylinder;
-          count 28 rotating + 14 support structure from the specification table"
+    src: "exterior more.jpg top view -- six dark-red modules countable on a
+          continuous raised dorsal rail with grey plinths between them"
 
   # --- structures added after the orthographic sheet read ---------------------
   - id: observation_dome
@@ -473,15 +479,21 @@ components:
     auth: 3
     src: "Contract 5 cross-section: Primary Docking Port north, Service Docking Port south"
 
-  - id: forward_swept_array
-    count: 4
-    kind: swept_fins
+  - id: forward_comms_plate
+    # Was four swept wings, read from the top view alone. The side view shows a
+    # single flat plate on a short pylon blading forward -- a plane, not a wing
+    # pair. Four wings and one plate look alike in plan and nothing alike in
+    # silhouette, which is why a plan-only read got it wrong.
+    count: 1
+    kind: plate_array
     z0: 6620
-    z1: 6900
-    span_m: 300
-    sweep_m: 620
-    thickness_m: 11
-    phase_deg: 45
+    z1: 6760
+    plane_deg: 90
+    standoff_m: 74
+    width_m: 300
+    reach_m: 540
+    thickness_m: 9
+    segments: 5
     auth: 2
     src: "reference/01-station-exterior/exterior more.jpg top view -- long swept
           structures on the forward section, edge-on in side view"
