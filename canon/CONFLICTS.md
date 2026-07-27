@@ -95,6 +95,15 @@ dialogue tying a level number to a gravity or a location we can place radially.
    which in a side cutaway of a cylinder reads as decks stacked radially. The screencap is too
    low-resolution to count them or measure spacing, so this corroborates rather than resolves.
 
+3. **On-screen, structural (authority 1).** `09-garden-core-and-transit/central corridor.webp`
+   shows **two occupied levels within a single volume** — a catwalk above a main floor, with
+   people on both. So a "level" is not necessarily a full-height deck: it can be a mezzanine
+   inside a taller space. **The level count and the deck count need not be equal**, which means
+   an address like "Grey 17" does not by itself imply seventeen decks of hull.
+
+   The same frame shows the hull's **circular structural ribs exposed rather than clad**, which
+   is a primary motif for the interior kit whatever the level topology turns out to be.
+
 **Radial numbering is now the working hypothesis, but C-004 stays BLOCKING** — a hypothesis
 with two supporting arguments is still not a sourced fact, and building 8 km of interior on it
 would be exactly the kind of guesswork this project forbids. What would close it: a lift-car

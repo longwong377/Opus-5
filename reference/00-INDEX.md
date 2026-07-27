@@ -81,3 +81,20 @@ Status: empty.
   - Also establishes public signage style: white-on-blue title bar, yellow warning text on
     black, and green vector-wireframe displays for technical readouts.
 - Feeds: `CONFLICTS.md` C-004; signage and UI language for `16-signage-typography-ui`
+
+---
+
+### 09-garden-core-and-transit/central corridor.webp
+- Source authority: **1** (on-screen footage)
+- Depicts: a two-level concourse/corridor volume, dim and industrial — reads as Downbelow or
+  a service area of Brown Sector.
+- Extracted, and all of it bears on interior structure:
+  - **Large circular structural ribs** frame the volume — ring frames of the cylindrical hull,
+    exposed rather than clad. A primary architectural motif for the interior kit.
+  - **Two occupied levels in one volume**: a catwalk with people on it above the main floor.
+    Levels are therefore not only stacked decks; a "level" can be a mezzanine within a taller
+    space. Relevant to C-004 — it means the level count and the deck count need not be equal.
+  - Illuminated floor panels set into a dark deck; overhead truss and girder structure.
+  - Lighting is low-key and practical-driven, with light coming from panels and signage
+    rather than from any ambient fill.
+- Feeds: interior kit spec, `CONFLICTS.md` C-004
