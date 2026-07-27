@@ -304,15 +304,29 @@ def swept_fins(spec, profile):
         ca, sa = math.cos(a), math.sin(a)
         tx, ty = -sa, ca
         r0 = radius_at(profile, z0)
-        # Root at z0, tip swept aft-to-fore by `sweep` and narrowing.
-        quad = [
-            (ca * r0 * 0.95 - tx * th, sa * r0 * 0.95 - ty * th, z0),
-            (ca * r0 * 0.95 - tx * th, sa * r0 * 0.95 - ty * th, z1),
-            (ca * (r0 + span) - tx * th, sa * (r0 + span) - ty * th, z1 + sweep),
-            (ca * (r0 + span) - tx * th, sa * (r0 + span) - ty * th, z1 + sweep * 0.62),
-        ]
-        quad += [(x + 2 * tx * th, y + 2 * ty * th, z) for x, y, z in quad]
-        _box(verts, tris, quad)
+        root = z1 - z0
+        # Built as several spanwise segments so the planform tapers and the
+        # trailing edge sweeps, instead of reading as one flat plank.
+        nseg = spec.get("segments", 4)
+        for k in range(nseg):
+            f0, f1 = k / nseg, (k + 1) / nseg
+            ri = r0 * 0.95 + span * f0
+            ro = r0 * 0.95 + span * f1
+            # Chord narrows toward the tip; both edges sweep forward.
+            c0, c1 = root * (1.0 - 0.72 * f0), root * (1.0 - 0.72 * f1)
+            s0, s1 = sweep * f0, sweep * f1
+            t0 = th * (1.0 - 0.55 * f0)
+            t1 = th * (1.0 - 0.55 * f1)
+            quad = [
+                (ca * ri - tx * t0, sa * ri - ty * t0, z0 + s0),
+                (ca * ri - tx * t0, sa * ri - ty * t0, z0 + s0 + c0),
+                (ca * ro - tx * t1, sa * ro - ty * t1, z0 + s1 + c1),
+                (ca * ro - tx * t1, sa * ro - ty * t1, z0 + s1),
+            ]
+            quad += [(quad[j][0] + 2 * tx * (t0 if j < 2 else t1),
+                      quad[j][1] + 2 * ty * (t0 if j < 2 else t1),
+                      quad[j][2]) for j in range(4)]
+            _box(verts, tris, quad)
     return verts, tris
 
 

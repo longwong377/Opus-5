@@ -39,6 +39,26 @@ def load():
     return schema, profile
 
 
+def plate_offset(zi, si, cfg):
+    """Deterministic radial offset for the hull plate a vertex belongs to.
+
+    B5's hull reads as assembled plating, not a smooth shell. Rather than model
+    every plate as separate geometry -- which would quadruple vertex count for
+    detail invisible at station scale -- the lathe radius is modulated per plate
+    cell. Adjacent cells differ by a metre or two, which is the real order for
+    spacecraft plating, and the shared vertices at cell boundaries bevel rather
+    than step. That reads correctly from a Starfury alongside and costs nothing.
+
+    Deterministic in (row, col) so regeneration is byte-identical -- required
+    for the CI geometry check to mean anything.
+    """
+    row = zi // cfg["rows_per_plate"]
+    col = si // cfg["segs_per_plate"]
+    h = (row * 73856093) ^ (col * 19349663)
+    h = (h ^ (h >> 13)) * 1274126177 & 0xFFFFFFFF
+    return ((h / 0xFFFFFFFF) * 2.0 - 1.0) * cfg["depth_m"]
+
+
 def feature_at(features, z):
     """Which longitudinal feature contains this z, for mesh grouping."""
     for f in features:
@@ -52,10 +72,13 @@ def build(radial_segments, z_stride):
     samples = profile["profile"][::z_stride]
     features = schema["longitudinal"]["features"]
 
+    plating = schema.get("hull_plating", {})
+    plate_cfg = plating if plating.get("enabled") else None
+
     verts = []          # (x, y, z)
     rings = []          # list of (z, first_vertex_index, radius, feature)
 
-    for s in samples:
+    for zi, s in enumerate(samples):
         z, r = s["z_m"], s["radius_m"]
         base = len(verts)
         if r <= 0.05:
@@ -66,7 +89,10 @@ def build(radial_segments, z_stride):
             continue
         for i in range(radial_segments):
             a = 2.0 * math.pi * i / radial_segments
-            verts.append((r * math.cos(a), r * math.sin(a), z))
+            rr = r
+            if plate_cfg and r > plate_cfg.get("min_radius_m", 40):
+                rr = r + plate_offset(zi, i, plate_cfg)
+            verts.append((rr * math.cos(a), rr * math.sin(a), z))
         rings.append((z, base, r, feature_at(features, z), False))
 
     groups = {}

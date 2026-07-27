@@ -291,6 +291,26 @@ radius_profile:
            the Red Section is the station's widest point is wrong."
 
 # ---------------------------------------------------------------------------
+# Hull plating.
+#
+# The hull reads as assembled plating, not a smooth shell. The lathe radius is
+# modulated per plate cell rather than modelling each plate as separate
+# geometry, which would quadruple vertex count for detail invisible at station
+# scale. Offsets are deterministic in (row, col) so regeneration is
+# byte-identical -- without that the CI geometry check means nothing.
+#
+# depth_m is the real order for spacecraft plating. Large enough to read from a
+# Starfury alongside, small enough not to disturb the silhouette.
+# ---------------------------------------------------------------------------
+hull_plating:
+  enabled: true
+  rows_per_plate: 16     # 16 x 4.07 m = ~65 m plate length
+  segs_per_plate: 4      # 4 of 64 segments -- larger panels read as plating,
+                         # smaller ones read as scales
+  depth_m: 1.3
+  min_radius_m: 40       # leave the thin spine and the nose spike smooth
+
+# ---------------------------------------------------------------------------
 # Non-axisymmetric components.
 #
 # The lathe produces the core hull only. Everything that makes the silhouette
@@ -320,15 +340,16 @@ components:
     src: "Exterior map.jpg 'Reactor Cooling Fins (12)'; excess zones 533-712 and 741-855"
 
   - id: heat_exchange_solar_array
-    count: 12
-    kind: radial_array
-    rings: 2
-    z0: 2050
-    z1: 2500
-    span_m: 400
-    chord_m: 210
-    thickness_m: 10
-    auth: 3
+    kind: swept_fins     # swept, not a radial pinwheel -- top view of exterior more.jpg
+    count: 6
+    segments: 4
+    z0: 2020
+    z1: 2330
+    span_m: 470
+    sweep_m: 430
+    thickness_m: 13
+    phase_deg: 30
+    auth: 2
     src: "Exterior map.jpg 'Heat Exchange Arrays and Emergency Solar Collectors (12)';
           excess zone 1099-1510 peak 153 m"
 
