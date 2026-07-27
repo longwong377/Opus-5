@@ -1,6 +1,6 @@
 # Project State
 
-**Last updated:** 2026-07-27 · **Session 3a** — engine renders the interior; LOD not wired; reference ask written
+**Last updated:** 2026-07-27 · **Session 3b** — corridor classes and the rib arch, from new reference
 
 ## Where we are
 
@@ -1166,6 +1166,53 @@ Ranked ask for the owner, verified against the actual folders rather than assume
 - `16-signage-typography-ui/` has three files and all three are **logos** — so C-004 has nothing
   to close on.
 - Grey has **one** interior frame and is **90 of the station's 210 decks**.
+
+## Session 3b — the corridor reference landed, and the kit was modelling one space
+
+The uploads arrived in `reference/10-interiors-generic-kit/` (8 files, of which
+`central corridor.webp` and `grey level 1.webp` duplicate ones we already held). They
+contradict a core assumption immediately.
+
+**The kit modelled ONE corridor. The reference shows at least three**, and they are not
+variations on a width — they are different kinds of space:
+
+| class | frame | character |
+|---|---|---|
+| **residential** | `grey level 1.webp` | pale grey-tan, pilasters, horizontal banding, vertical light strips, chequered deck, portal frames. Narrow, quiet, finished. |
+| **concourse** | `central corridor.webp`, `more hallway.jpg` | tall volume framed by large **elliptical ribs**, lit strip down the deck centre, downlight pools, wall screens, **upper walkway** over the lower deck |
+| **service** | `more hallways.jpg` | overhead truss instead of a soffit, vertical light tubes, chequered lit strip in deck grating, warm backlit panels, litter on the deck |
+
+Building 210 decks out of one profile would have made the whole interior read as a single endless
+hallway, which is the opposite of what the footage shows.
+
+**The elliptical rib arch is the signature of a B5 interior and the kit did not have it.**
+`ring_frame_spacing_m` existed as a constant with a comment pointing at `central corridor.webp`,
+and nothing ever built one. `rib_arch()` does now — see `docs/render-concourse.png`.
+
+**Two figures are measured, not chosen:**
+
+- An EarthForce officer stands in a circular downlight pool in `more hallway.jpg`. At 1.75 m he
+  is 261 px → **149 px/m**; the pool spans 234 px → **1.57 m**. That is the only absolute length
+  these frames yield directly, and `DOWNLIGHT_POOL_M` is it.
+- The concourse is **two decks** tall because `central corridor.webp` shows an upper walkway with
+  people on it above people on the lower deck. At INV-010's 3.6 m pitch that is **7.2 m**, and the
+  self-test asserts it stays a whole multiple — a fractional height lands the walkway between decks.
+
+The **9.0 m concourse width is the weak figure** and INV-020 says so plainly. No frame gives a
+concourse width against a known length, because the officer stands mid-space rather than against
+a wall. *One frame with a person against a concourse wall would close it.*
+
+**Third winding bug of the same family.** `downlight_pool` and `deck_strip` lie flat and must face
+up; ascending angle in XZ with +Y up gives a downward normal, so both were invisible from the only
+place they are ever seen. Found by rendering and seeing 836 of 2,100 triangles survive culling.
+The self-test now checks every flat deck element, and both new assertions were verified by
+breaking them and watching them fail.
+
+### Still to do on the new reference
+
+`more zocalo.png`, `transport.jpg`, `garden more.jpg` and `gardens or greenery.jpg` have **not
+been mined yet** — the Zocalo is the station's social centre and has no geometry at all, and
+`transport.jpg` may bear on the tram car-length conflict.
 
 ## Next session — start here
 
