@@ -4,6 +4,8 @@
 
 ## Where we are
 
+**Exterior structure complete; the two hardest physics problems are solved and unit-tested.**
+
 **The station's core hull exists and is canon-verified.** 253,184 triangles, 8,046.9 m long
 against canon's 8,047, generated entirely from `station/schema/station.yaml` and gated by 17
 passing canon assertions. It renders and it is recognisably Babylon 5.
@@ -157,6 +159,35 @@ sensor and deflector arrays.
   properly constructed orthonormal frame so they sit flush at any hull angle) and `swept_fins`.
 - **255,800 triangles**, 2,616 of them components. 19/19 assertions still passing.
 
+## Session 2e — plating and the physics foundation
+
+- **Hull plating.** Lathe radius modulated per plate cell, deterministic in (row, col) so
+  regeneration stays byte-identical. Tuned by inspection: 37 m plates read as scales, 65 m
+  plates read as plating. Depth 1.3 m.
+- **Swept structures reshaped** — built from spanwise segments so the planform tapers and the
+  trailing edge sweeps, instead of reading as flat planks. Heat-exchange collectors moved from
+  a radial pinwheel to the swept form the top view shows.
+- **Rotating-frame physics** (`station/physics/rotating_frame.py`, **25 tests passing**) —
+  gravity gradient, centrifugal, Coriolis, apparent weight, frame transforms, launch velocity
+  inheritance. Pure Python, no engine, no GPU.
+- **Floating origin and precision** (`station/physics/floating_origin.py`, **10 tests
+  passing**).
+- **Constants tightened to 9 places.** Rounding ω to 5 places put floor gravity at 1.000351 g;
+  the canon assertion for floor gravity is now 1e-6 rather than 0.5%, since it is derived and
+  any drift means the schema has stopped agreeing with itself.
+- **CI runs all three suites** — 20 canon assertions, 25 physics, 10 precision.
+
+## Physics results worth carrying forward
+
+| Quantity | Value | Why it matters |
+|---|---|---|
+| Drum floor speed | **52.2 m/s** | Inherited by anything launched — a cobra bay launch is a fling, not a drop |
+| Apparent weight, walking | **0.947× to 1.054×** | Direction of travel changes your weight. A felt characteristic of a spun habitat |
+| Coriolis climbing to axis | **1.13 m/s² spinward** | Ladders and lifts push you sideways |
+| float32 at station nose | 0.49 mm | Station alone is marginally survivable in float32 |
+| float32 at 50 km | 3.91 mm | **Starfury range is not.** Double precision is required by the flight envelope, not the station |
+| Floating origin gain | 224× | 1.09 mm naive → 4.9 µm rebased at 40 km |
+
 ## Next session — start here
 
 1. **Component refinement.** Placed but crude: the forward swept arrays read as flat planks
@@ -164,7 +195,10 @@ sensor and deflector arrays.
    the top view shows a swept form. Both need shaping, not repositioning.
 2. **Surface articulation.** No greebling, panel lines or hull plating anywhere yet. This is
    where the procedural-detail approach from ADR 0002 starts earning its keep.
-3. **Finish the Godot build** and publish the double-precision binary as a Release asset.
+3. **Finish the Godot build** (~1,960 of ~9,500 objects) and publish the double-precision
+   binary as a Release asset. Not blocking: `tools/preview_render.py` covers the visual loop.
+4. **Starfury flight model** — Newtonian 6-DOF, RCS allocation, rotate-independent-of-velocity.
+   Unblocked, and the same pure-Python-then-engine approach as the rotating frame.
 4. **C-003 / C-004.** Still blocking interiors. Radial level numbering is now the leading
    hypothesis (see C-003 UPDATE), but needs a lift display or deck plan to confirm.
 
