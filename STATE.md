@@ -283,9 +283,19 @@ sensor and deflector arrays.
 
 ## Autonomous continuation
 
-An hourly trigger (`trig_01JS1VWf6yada5x6maPMAzza`) fires into this session to continue the
-plan without prompting. It reads CLAUDE.md and this file, works the "Next session" list, and
-updates STATE.md before finishing.
+A **6-hourly** trigger (`trig_01JS1VWf6yada5x6maPMAzza`, fires at :45) continues the plan
+without prompting. It reads CLAUDE.md and this file, and:
+
+- **Stops immediately and cheaply if everything on the next-session list is blocked.** It is
+  told explicitly not to invent work to fill the time.
+- Does **exactly one coherent increment** per firing — build, test, look at it, commit, update
+  this file, stop.
+- Does not spawn a workflow unless the work genuinely needs parallel fan-out.
+
+Workflows are capped at **~5 agents** by owner decision. The adversarial verify pattern stays —
+it caught a door interpenetrating a portal frame and a greeble call-signature mismatch.
+
+To change cadence or stop it: `update_trigger` / `delete_trigger` with that id.
 
 ## Session 2j — THE ENGINE RENDERS THE STATION
 

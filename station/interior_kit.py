@@ -683,12 +683,7 @@ def bulkhead(section, p=None, depth=None, width=None, height=None):
         chamfered_aperture(w, h, p["door_chamfer_m"], p["door_sill_m"]),
         p["door_frame_m"] * 0.78)
     d0, d1 = depth or (-p["door_frame_depth_m"] * 0.34, p["door_frame_depth_m"] * 0.34)
-    # Pieces are left exactly as peeled. Inflating them to bury the shared
-    # internal faces was tried and is wrong: the faces two pieces share are
-    # edge-on from every direction and cost nothing, whereas inflation ragged
-    # the outer edge and grew spikes off the sliver pieces.
-    for piece in _polygon_difference(section, hole):
-        _prism(verts, tris, piece, d0, d1)
+    _plate_with_hole(verts, tris, section, hole, d0, d1)
     return verts, tris
 
 
@@ -787,7 +782,7 @@ def junction(arms=(0, 1, 2, 3), p=None):
     return verts, tris
 
 
-def corridor_section(length, p=None, doors=()):
+def corridor_section(length, p=None, doors=(), start_portal=True):
     """One length of corridor: portal frames, walls, deck, soffit and doors.
 
     Corridor frame: +Z runs along the corridor, +X is across, +Y is up, and the
@@ -818,7 +813,11 @@ def corridor_section(length, p=None, doors=()):
     n_bays = max(1, int(round(length / p["portal_spacing_m"])))
     bay = length / n_bays
 
-    for i in range(n_bays + 1):
+    # `start_portal=False` hands the portal at z = 0 to whatever the run butts
+    # onto. A junction already frames its own arm mouths, and two frames in the
+    # same plane is both wasted geometry and a visible double edge.
+    first = 0 if start_portal else 1
+    for i in range(first, n_bays + 1):
         v, t = portal_frame(w, h, p)
         _merge(verts, tris, v, t, offset=(0.0, 0.0, bay * i))
 
@@ -893,7 +892,7 @@ def corridor_section(length, p=None, doors=()):
     # Bullnose pilasters flanking each portal, carrying the vertical light
     # strips. They are what the wall runs die into, so the plate courses never
     # have to stop against a bare arris.
-    for i in range(n_bays + 1):
+    for i in range(first, n_bays + 1):
         for side in (-1, 1):
             v, t = pilaster(h - chamf, p)
             _merge(verts, tris, v, t, _rot_y(90.0 * side),
@@ -915,7 +914,7 @@ def corridor_junction_section(arm_length, arms=(0, 1, 2, 3), p=None):
 
     _merge(verts, tris, *junction(arms, p))
     for k in arms:
-        v, t = corridor_section(arm_length, p)
+        v, t = corridor_section(arm_length, p, start_portal=False)
         rot = _rot_y(k * 90.0)
         nx, nz = math.sin(math.radians(k * 90.0)), math.cos(math.radians(k * 90.0))
         _merge(verts, tris, v, t, rot, (nx * half, 0.0, nz * half))

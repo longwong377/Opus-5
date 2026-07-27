@@ -78,8 +78,8 @@ deterministic and unit-testable without an engine at all. The runtime consumes c
 
 ## Scope and cost discipline
 
-This project runs partly on an hourly trigger and on background workflows, so an unbounded
-session compounds. Bounds, in order of importance:
+This project runs partly on a **6-hourly trigger** (`trig_01JS1VWf6yada5x6maPMAzza`, fires at
+:45) and on background workflows, so an unbounded session compounds. Bounds, in order of importance:
 
 1. **Stop when the next-session list is empty.** If `STATE.md` has no actionable item — because
    everything remaining is blocked by `canon/CONFLICTS.md` — then say so and stop. Do not
@@ -90,6 +90,9 @@ session compounds. Bounds, in order of importance:
 3. **Workflows are for genuine fan-out**, not for work one agent can do serially. A workflow
    costs roughly its agent count times a normal turn. Five agents to build five independent
    subsystems is worth it; five agents to write one file is not.
+   **Cap: ~5 agents.** Owner's decision. Keep the adversarial verify pattern — it caught a
+   door interpenetrating a portal frame and a greeble signature mismatch — but pair a small
+   build fan-out with its verifiers rather than running ten agents at once.
 4. **Never spawn a workflow from inside a triggered firing** unless the work genuinely needs
    it. The trigger already repeats; the multiplication is what gets expensive.
 5. **Blocked is a valid outcome.** C-003 and C-004 gate all interior layout. Reporting "still
