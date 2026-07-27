@@ -30,6 +30,32 @@ BUDGETS = {
     "vertex_bandwidth_mb": 32.0,
 }
 
+# Interior is gated on what can be SEEN AT ONCE, not on total built geometry.
+# Totalling the interior is meaningless: the concentric-ring topology gives ring
+# 1 alone a circumference of 2*pi*278.3 = 1,749 m per sector, and with five
+# rings across six sectors the built total runs to millions of triangles that
+# are never simultaneously in frame. Occlusion culling means the cost that
+# matters is the current cell plus whatever is visible through its portals.
+#
+# The visible-set estimate below is deliberately pessimistic: a straight run
+# with a crossing at each end and both of those crossings' near arms partly in
+# view. A curved ring corridor sees less than this, not more.
+INTERIOR = {
+    "corridor_tris_per_m": 400,      # marginal rate along a run
+    "junction_tris": 2_000,          # one crossing, all arms
+    "visible_set_tris": 60_000,      # structure only -- see below
+    "sight_line_m": 50.0,            # how far down a corridor before it curves or a door blocks
+    "junctions_in_view": 2,
+}
+
+# 60,000 is structure only. At 1440p60 on the target card the whole frame
+# affords roughly 1.2 M triangles, and interior structure should not take more
+# than ~5% of it: the same view has to carry props, fittings, signage, NPCs and
+# whatever is through the windows. If structure alone reaches 60 k the kit has
+# become too expensive to dress.
+INTERIOR_FRAME_SHARE = 0.05
+FRAME_TRIANGLES = 1_200_000
+
 results = []
 
 
@@ -78,6 +104,37 @@ def main():
 
     print(f"\nheadroom: {BUDGETS['exterior_triangles'] - tris:,} triangles, "
           f"{BUDGETS['exterior_draw_calls'] - draws} draw calls")
+
+    # --- interior -----------------------------------------------------------
+    try:
+        sys.path.insert(0, os.path.join(ROOT, "station"))
+        import interior_kit as ik
+
+        # Marginal rate, not total: a corridor's fixed end caps would otherwise
+        # make a short sample look far more expensive per metre than a long run.
+        t1 = len(ik.corridor_section(1.0)[1])
+        t20 = len(ik.corridor_section(20.0)[1])
+        per_m = (t20 - t1) / 19.0
+        cross = len(ik.junction()[1])
+        tee = len(ik.junction(arms=(0, 1, 3))[1])
+
+        visible = (per_m * INTERIOR["sight_line_m"]
+                   + max(cross, tee) * INTERIOR["junctions_in_view"])
+
+        print("\nInterior, gated on what is visible at once rather than on total built\n")
+        check("corridor rate", per_m, INTERIOR["corridor_tris_per_m"], " tri/m",
+              "marginal along a run")
+        check("junction", max(cross, tee), INTERIOR["junction_tris"], " tri",
+              f"crossing {cross:,}, tee {tee:,}")
+        check("visible structure set", visible, INTERIOR["visible_set_tris"], " tri",
+              f"{INTERIOR['sight_line_m']:.0f} m sight line + "
+              f"{INTERIOR['junctions_in_view']} crossings")
+        share = visible / FRAME_TRIANGLES
+        check("interior share of frame", share * 100,
+              INTERIOR_FRAME_SHARE * 100, "%",
+              "structure only -- props, NPCs and signage come out of the rest")
+    except Exception as exc:
+        check("interior kit measurable", 1, 0, "", f"could not measure: {exc}")
     print("Note: these gate the numbers framerate is a function of. They say nothing\n"
           "about actual framerate, which needs the target hardware.")
 

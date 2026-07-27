@@ -293,6 +293,30 @@ sensor and deflector arrays.
   the blades stand on — on the sheet the blades never touch the hull directly, and that
   horizontal base line is a large part of the read.
 
+## Session 2r — interior triangle budget
+
+- **`budget.py` now gates the interior**, which previously had no gate at all. 8/8 passing.
+- Gated on **what is visible at once, not total built geometry**. Totalling the interior is
+  meaningless under the concentric-ring topology: ring 1 alone is 2π×278.3 = **1,749 m of
+  circumference per sector**, and five rings across six sectors run to millions of triangles
+  that are never simultaneously in frame. Occlusion culling means the cost that matters is the
+  current cell plus what is visible through its portals.
+- Measured against a deliberately pessimistic visible set — a 50 m sight line with a crossing
+  at each end:
+
+  | Metric | Now | Budget |
+  |---|---|---|
+  | Corridor rate | 285 tri/m | 400 (71%) |
+  | Junction | 1,400 tri | 2,000 (70%) |
+  | Visible structure set | 17,032 tri | 60,000 (28%) |
+  | Share of frame | 1% | 5% (28%) |
+
+- The corridor rate is measured **marginally** (20 m minus 1 m, over 19), because a run's fixed
+  end caps would otherwise make a short sample look far more expensive per metre than a long one.
+- 60,000 is structure only: the same view has to carry props, fittings, signage, NPCs and
+  whatever is through the windows. If structure alone reaches 60 k the kit has become too
+  expensive to dress.
+
 ## Autonomous continuation
 
 A **6-hourly** trigger (`trig_01JS1VWf6yada5x6maPMAzza`, fires at :45) continues the plan
@@ -597,23 +621,19 @@ hollow — but a cartoon's fill is not a label, so C-003 correctly stays open.
 
 ## Next session — start here
 
-1. **Refine the remaining crude components.** The radiators are now measured off the
-   production sheet (session 2o); still box primitives with no articulation: the forward swept
-   arrays, cobra bays, docking ports, observation domes and rotundas. Greebles cannot rescue a
-   wrong silhouette.
-2. **Emissive materials for the interior kit** — the deck light channels and signage exist as
-   geometry with nowhere for the light to come from. `godot/materials/` was started by a
-   workflow agent; check whether it landed.
-3. **Starfury geometry** — `station/starfury_geometry.py` was assigned to a workflow agent;
-   check whether it landed, otherwise build it. Physics already exists and the mesh must match
-   `aurora_thrusters()` exactly.
-4. **An interior triangle budget.** `budget.py` gates the exterior only. A corridor runs ~354
-   triangles per metre and a crossing is 10,644; a sector of these needs a gate before the
-   counts get away.
-5. **Publish the Godot binary** as a Release asset — container-local, 61 minutes to rebuild.
+1. **Refine the remaining crude components.** Radiators are measured (2o); still box
+   primitives with no articulation: forward swept arrays, cobra bays, docking ports,
+   observation domes and rotundas. Greebles cannot rescue a wrong silhouette.
+2. **Emissive materials in the preview renderer.** `godot/materials/` has the `.tres`
+   resources, but `tools/preview_render.py` has no concept of emission, so every deck light
+   channel, pilaster strip and door indicator renders as grey plastic. The kit's whole lighting
+   premise is currently untestable on the fast path.
+3. **Deck tile phase across junctions** — the grid is not driven from a shared origin, so
+   there is a visible seam at each crossing mouth.
+4. **Publish the Godot binary** as a Release asset — container-local, 61 minutes to rebuild.
    See `docs/godot-binary.md`.
-6. **C-003 / C-004** still block all interior *layout*, on narrower questions than before
-   (session 2q). Radial decks are established; **which ring is level 1** is not.
+5. **C-003 / C-004** still block interior *layout*, on one narrow question: radial decks are
+   established, but **which ring is level 1** is not.
 
 ## Blocked
 
