@@ -543,8 +543,19 @@ absolute scale at all: there is nothing of known size in frame with it.
 - A bright cylindrical **light run travels alongside**, with rectangular fixtures on the
   underside (`33a`, `34b`). This is what lights the habitat.
 - It runs **longitudinally** and lands in a heavy collar on the **end cap hub** (`34b`).
-- The web's proportions: measured off `34b`, the triangles are wider than tall, bay to depth
-  roughly 1.2–1.5. The built value is 1.5, at the edge of the measured band.
+- The web's proportions: measured off `34b`, the triangles are wider than tall. **The figure is
+  the zigzag pitch to depth, roughly 1.2–1.5**, and the built bay-to-depth is 1.5.
+
+  > **Corrected wording.** This bullet originally read "bay to depth roughly 1.2–1.5". A Warren
+  > triangle's base spans **two** bays, so taken literally that sentence gives a bay-to-depth of
+  > 0.6–0.75 — half what is built — and the next reader to trust it would have halved the truss.
+  > Measured naively off the near end of `34b` the apparent zigzag-to-depth is 1.33 and the
+  > apparent bay-to-depth is 0.67, so the recorded figure was the zigzag, uncorrected for
+  > foreshortening. The **built 1.5 is not in doubt**: INV-017's rectification of the same frame
+  > gives a car of 3.9 bays and 0.65 truss depths, and that only yields `34b`'s slender ~9 : 1
+  > car silhouette if bay-to-depth is near 1.5. Only the sentence was wrong. Caught by the agent
+  > that built the tram against this entry — which is the argument for writing inventions down
+  > with their reasoning rather than only their values.
 
 **Constrained by:**
 
@@ -600,3 +611,159 @@ kind of quantity for a skin — at the habitat cylinder it implies 44 m of hull,
 could not be reused here. It should become metric everywhere, which would re-derive every
 non-drum sector radius, so it is deliberately left for its own change rather than folded into
 this one.
+
+---
+
+## INV-014 — The drum's land-use band table
+
+**Logged retroactively.** `interior.LAND_USE` has driven the drum's appearance since the shell
+was first generated and was never written up. Found by the agent that built the heightfield on
+top of it, which is the right way round but a session too late.
+
+**Invented:** The circumferential division of the drum's ground into six bands
+(`station/interior.py`, `LAND_USE`) — fractions of circumference, land use, and relief in metres
+against the 278.3 m floor:
+
+| fraction | use | relief |
+|---|---|---|
+| 0.26 | arable | +1.2 m |
+| 0.14 | settlement | +7.0 m |
+| 0.10 | water | −2.5 m |
+| 0.22 | arable | +1.2 m |
+| 0.12 | settlement | +7.0 m |
+| 0.16 | parkland | +2.4 m |
+
+**Why necessary:** The drum's inner surface is 4.5 million m². A uniform cylinder reads as a
+pipe, and nothing can be placed on the ground without knowing what kind of ground it is.
+
+**Constrained by:** The *character* is authority 1 and is not invented — `Earhart's.webp` and
+the far side through Talia Winters' window both show long continuous **longitudinal** strips,
+greys and olive-greens with one broad orange-red band; `34b` shows an agricultural half and
+`33a` a built-up half; `29a` shows the parkland at ground level as a designed park. The
+**arrangement into six bands with these particular fractions** is not sourced, and neither are
+the reliefs. What constrains them is that the sequence must put water at the lowest point of a
+band group so it drains, must not put a settlement terrace where the guideway trusses fly
+(41.7 m above the floor, so 7 m is safe by a wide margin), and must sum to exactly 1.0 —
+asserted, after a species mix in this project once summed to 0.94 and silently dropped 6% of
+the population.
+
+**Overturned by:** Any frame establishing the drum's land use as a *map* rather than as a
+texture — a production plan of the habitat, or enough of the circumference in one shot to count
+the bands. Note the fractions are the parent of INV-015 and INV-016: changing them re-derives
+the whole ground.
+
+---
+
+## INV-015 — Drum ground terrain spectrum
+
+**Invented:** The heightfield's amplitude spectrum in `station/drum_ground.py` — six octaves of
+value noise on a 437 × 431 m fundamental at 6.0 m amplitude, halving per octave, band-limited
+to the 7.8 m Nyquist of the finest LOD — plus the within-band relief: arable gets the spectrum
+at half amplitude with a ±0.55 m per-parcel level and a 0.22 m hedge bank; settlement gets a
+2.0 m podium step per block cut by a 1.5 m avenue trench; water is a channel 5.0 m deep with the
+surface clamped flat; parkland is three octaves at 0.33 amplitude.
+
+**Why necessary:** No source gives a single elevation anywhere in the drum. The reference gives
+tone, layout and character and gives no heights at all. The item is a heightfield; a heightfield
+cannot exist without an amplitude spectrum.
+
+**Constrained by:** Two of the three constraints are hard and neither is aesthetic.
+
+1. **Amplitude proportional to wavelength is forced by the LOD budget, not chosen.** The error a
+   stride-*s* decimation introduces is bounded by the amplitude of the octaves it drops. A flat
+   spectrum — the naive "add some noise" — puts metres of error into the coarsest level and
+   forces the finest LOD across the whole drum. That was measured, not argued.
+2. **Every step is ramped over at least one coarse cell (31.2 m)** for the same reason: a step of
+   height *H* costs roughly 514·*H* metres of switch distance.
+3. The band datums are INV-014's and are not touched. The self-test asserts each band's mean
+   tracks its table relief within 2.6 m — which is the file's weakest assertion, set from
+   measured spread rather than from a principle, and recorded here as such.
+
+**Overturned by:** Any frame in which a person, a vehicle or a building of known size stands
+against drum terrain, giving an absolute vertical scale. A production elevation of the habitat
+interior. Failing both, a steadier shot of the ground from a tram, from which relative relief
+could be read against the known 41.7 m truss height.
+
+---
+
+## INV-016 — Drum ground parcels and roads
+
+**Invented:** Arable parcels of 87.4 × 323.3 m — **elongated 3.7 : 1 along the axis** — warped by
+34 m of noise so boundaries are irregular quadrilaterals, carrying one of four crops; settlement
+blocks of 62.4 × 64.6 m with 62.4 m avenues; trunk roads 20 m wide with a 31.2 m verge on each
+land-use boundary that does not touch water; ring roads 16 m wide, 28 m inboard of each cap rim.
+
+**Why necessary:** Parcel size and road width are the two numbers that decide whether the ground
+reads as farmland or as a lawn.
+
+**Constrained by:**
+
+- **Parcel size is counted, not measured**, and that limit is worth stating plainly: the only
+  object of known size in any ground frame is the end cap at 278.3 m radius, and it is never at
+  comparable depth to the fields in the same shot, so no absolute calibration is available. The
+  agricultural half of `34b` reads as roughly ten parcels across the visible arc and the built-up
+  half of `33a` as twenty or more, which against the 1,748.6 m circumference gives 100–200 m for
+  farmland and 30–60 m for built parcels.
+- **The 3.7 : 1 elongation along the axis is separately forced and is not a style choice.**
+  `Earhart's` and the Talia Winters frame both show long continuous *longitudinal* strips, and a
+  furrow ploughed across the drum climbs a 278 m hill that never ends.
+- **Block and avenue sizes are not free at all**: they are exactly one and two coarse cells,
+  because a feature narrower than the coarsest cell renders as a *different shape* at every LOD
+  level.
+- Road width from `33a`, where the trunk road carries a dashed centre line — so at least two
+  lanes each way — and is about a third the width of the small parcels beside it. The ring road's
+  existence and position are sourced from the cap zoom of the same frame; its width is not.
+- No trunk road on a water boundary, because that is a road through a lake — and because it was
+  measurably the largest LOD error in the field before it was removed.
+
+**Overturned by:** Any near-overhead frame of the drum ground with an object of known size in it,
+which would fix both parcel size and road width directly. A frame showing a bridge over the water
+band would overturn the no-road-on-water rule specifically.
+
+---
+
+## INV-017 — Tram car: length, width, depth apportionment and suspension
+
+**Invented:** The guideway tram's dimensions in `station/tram.py` — car length stored as
+`CAR_BAYS = 4.0` truss bays (**96.0 m** at INV-012's 24 m bay), width 7.2 m, a vertical
+apportionment of the measured depth into a 0.35 m suspension gap, 0.50 m shoe plate and 9.55 m
+body, and a **non-contact magnetic suspension** of two dorsal shoe plates running under the
+truss chords.
+
+**Why necessary:** The guideway existed and the vehicle did not. Nothing in the reference set
+puts a person, a door or any human-scaled object against the car or the truss.
+
+**Constrained by:**
+
+- **The length ratio is measured, and the measurement validates itself.** Projective
+  rectification of `34b` about the drum-axis vanishing point makes the Warren zigzag uniform
+  (78 ± 3 px) across a 4 : 1 range of depth, and under that rectification the near car spans
+  **3.9 ± 0.25 bays**. Independently, the car measures 0.65 of the truss depth with no scale
+  needed at all, and those two together only produce the slender ~9 : 1 silhouette `34b` plainly
+  shows if the truss's bay-to-depth ratio really is about 1.5 — which is what is built. The
+  measurements corroborate each other *and* the truss.
+- **The metres are only as sound as INV-012**, which is why `CAR_BAYS` is the stored quantity: if
+  the truss bay is ever corrected to 12 m the car becomes 48 m with no code change.
+- **The suspension is geometry, not taste.** A mechanical bogie has nowhere to run — the truss's
+  centre gap is crossed by a transverse tie every second bay, its outboard flanks carry the light
+  runs, and wheels bearing on the chord undersides are upside down. A non-contact gap is the only
+  reading that does not require inventing a hole in a truss already built and asserted.
+
+**Overturned by:** Any frame putting something of known size on or in the car — a person in a
+doorway, a platform, a door leaf — or a head-on or plan view, or a stop with a car stationary
+against a platform.
+
+**Recorded weaknesses, in the builder's own assessment:**
+
+- **`CAR_WIDTH_M = 7.2` has essentially no evidential support.** No frame shows the car end-on or
+  from above and `35a` is cropped both sides. It is 6% of the length and it sets the entire read
+  of the interior. This is the softest number in the module.
+- The second car in `34b` measures **5.4 bays** under the same rectification — a 30% disagreement
+  attributed to its tail being occluded by a spoke, which could not be *proved*. Solving for a
+  vanishing point that equalises the two cars gives x_v = 1350 against the chord-line fit's 991.5;
+  the fit does not support it, but it could not be decisively ruled out either. If the vanishing
+  point is wrong, both cars are wrong together.
+- The apportionment leaves **6 m of dead depth** below the saloon floor. The alternative reading —
+  that the dark band under the car in `34b` is partly the car's own shadow — is plausible and could
+  not be distinguished at 118 px of car. A double-deck car would resolve the proportions neatly and
+  is contradicted only by `33a` showing a single window band.

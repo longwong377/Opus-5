@@ -1,6 +1,6 @@
 # Project State
 
-**Last updated:** 2026-07-27 · **Session 2w** — streaming cells
+**Last updated:** 2026-07-27 · **Session 2x** — drum ground and tram (verification pending)
 
 ## Where we are
 
@@ -890,6 +890,62 @@ fact stored twice, and two copies eventually disagree. The file now carries the 
 and the rule for expanding them: 537 KB → 71 KB. CI regenerates it and fails on a diff, so a
 schema change that moves deck radii or cell costs shows up as a change rather than as a stale
 file nobody reran.
+
+## Session 2x — the drum ground and the tram (IN FLIGHT, verification pending)
+
+**Read this before starting anything.** Two modules from a 5-agent workflow are committed and
+their self-tests pass, but the **adversarial verification pass had not reported when this was
+written**. Treat them as sound-but-unreviewed. A third module (`station/core_tube.py`) was still
+building.
+
+| module | self-test | what it is |
+|---|---|---|
+| `station/drum_ground.py` | 69/69 | the drum's ground as a deterministic heightfield with a 5-level LOD chain |
+| `station/tram.py` | 36/36 | the guideway tram — exterior car and a saloon authored for the `35a` passenger view |
+
+Existing suites unaffected: validate 28/28, interior 117/117, budget 14/14, kit OK.
+
+**Ground:** 448 × 640 cells (3.90 × 4.04 m), 280 patches. Uniform finest LOD would be 573,440
+triangles — **2.2× the entire drum allowance**, which is the argument for the chain existing.
+LOD-resolved and swept over 36 standing positions, the worst visible set is **105,920 triangles
+(0.023 tri/m²)**, 41% of the headroom. Switch distances 245 / 550 / 1,270 / 4,668 m are *derived*
+from measured height error against curvature sagitta — and the sagitta is asserted so a future
+retune cannot silently fall back to facet width, which is the mistake `CONTRIBUTING.md` records.
+
+**Tram:** car length stored as **4.0 truss bays**, not as metres, so it re-derives if INV-012 is
+ever corrected. One car 1,252 triangles exterior, 4,158 with the saloon. Being literal about `35a`
+made it 2.5× cheaper: the long bench has *continuous* cushions, and modelling one cushion per
+seated person had cost 6,432 of the first build's 10,106 triangles.
+
+New inventions logged: **INV-014** (the `LAND_USE` band table, logged retroactively — it had
+driven the drum's appearance since the shell was first generated and was never written up),
+**INV-015** (terrain spectrum), **INV-016** (parcels and roads), **INV-017** (tram dimensions and
+suspension). **INV-012's wording was corrected**: "bay to depth roughly 1.2–1.5" was actually the
+*zigzag* pitch, and a Warren triangle's base spans two bays, so the next reader to trust it would
+have halved the truss.
+
+### Defects these modules found in code they were forbidden to touch
+
+All four are mine to fix and none is fixed yet. They are the next increment.
+
+1. **`interior.drum_interior()` emits no risers between land-use bands.** Only the top surface of
+   each band, so there are **six longitudinal slots the full length of the drum** wherever the
+   relief changes. Invisible against a dark background, which is why four sessions of renders
+   never showed it. Needs geometry and an assertion.
+2. **`budget.py`'s ground-density gate is a gate in name only.** It measures the old flat shell
+   (0.005 tri/m²) and will keep passing whatever the ground costs. It must call the ground's own
+   worst-case, and the drum visible-set line must swap the 23,040-triangle shell for 105,920.
+3. **Nothing in CI runs either new module.** `.github/**` was off-limits to the agents.
+4. **The heightfield replaces `drum_interior()`'s shell but does not delete it**, and nothing stops
+   both being emitted into one scene — they would z-fight across most of the drum. No assertion
+   catches it.
+
+### Also newly established
+
+`29a` shows a **second, different transit system** — a green-and-yellow car on an elevated track
+at garden ground level with its own station canopy, sharing nothing with the white/maroon guideway
+tram. Not modelled. Recorded so a future session does not assume the guideway tram serves the
+ground.
 
 ## Next session — start here
 
