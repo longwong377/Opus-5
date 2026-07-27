@@ -566,3 +566,65 @@ This is a third source and it appears to contradict C-007's ruling of **6 coplan
 Recorded because it explains where the radial-array reading came from, and because a future
 session that finds this rosette should not reopen a settled conflict. **C-007's lesson holds:
 a bare count in a labelled diagram does not imply an arrangement.**
+
+---
+
+## C-003 RESOLVED — both readings were right, about different axes
+
+The file that settles this had been passed over twice.
+`02-station-cutaways-and-plans/b5-schematics-from-the-security-manual-v0-u8879zcrf36h1.webp`
+is a **Sectional Schematic** from the Security Manual (authority 3), 1080×339. It was skipped
+on resolution — the same mistake, in the opposite direction, as nearly trusting the
+animated-film frames because they were the *highest* resolution in the set.
+
+**It draws sector boundaries as labelled brackets along the station's length**, and
+simultaneously draws decks as long horizontal lines symmetric about the axis. That is the
+whole conflict resolved in one drawing:
+
+> **Sectors are longitudinal ranges. Levels within them are concentric radial rings.**
+
+`other map 2.jpg` was right that sectors run along the length. The rosettes in `other map.png`
+were right that decks are concentric rings. Neither was wrong; they were describing different
+axes, and C-003 existed because I had read them as competing.
+
+### Sector extents, measured
+
+Bracket tick columns read at px 8, 431, 486, 808, 854, 1010; the rule spans px 10–1007. As
+fractions of station length, and at 8,047 m:
+
+| Sector | Fraction | z (m) | Length |
+|---|---|---|---|
+| Yellow | 0.000–0.422 | 0 – 3,397 | 3,397 |
+| Grey | 0.422–0.477 | 3,397 – 3,839 | 442 |
+| Green | 0.477–0.798 | 3,839 – 6,425 | 2,586 |
+| Red | 0.798–0.844 | 6,425 – 6,794 | 369 |
+| Blue | 0.844–1.000 | 6,794 – 8,047 | 1,253 |
+
+**Independent cross-check.** The longitudinal framework was derived months earlier from an
+entirely different sheet (Miller's top view, by pixel calibration against his own stated
+length). It agrees: Green 2,586 m here against 2,928 m there (11.7%), Red 369 m against
+430 m (14.1%). Two unrelated sources, two unrelated methods, agreement inside 15% — that is
+what makes this trustworthy rather than merely legible.
+
+This sheet has **no scale bar**, so only proportions are read from it. Absolute positions come
+from applying those proportions to the canon 8,047 m.
+
+### Brown is not a longitudinal sector on this sheet
+
+Only five brackets are drawn: Yellow, Grey, Green, Red, Blue. **Brown is absent**, and
+"Down-Below" appears instead as a label on the **outer band** in the Green region
+("WASTE MANAGEMENT SYSTEMS ('DOWN-BELOW')").
+
+The natural reading is that **Brown is a radial designation — the outermost ring — rather than
+a longitudinal one**, which would explain why it can be spoken of as a place without appearing
+as a length of station. That is consistent with the Brown rosette in `other map.png`, which
+marks DOWNBELOW with a double-headed arrow spanning an **outer annular band**.
+
+**This is inference, not what the sheet says**, and is logged as INV-009. It does not affect
+the five bracketed extents above, which are read directly.
+
+### What this does and does not close
+
+- **C-003 is RESOLVED.** Sectors are longitudinal; levels are radial rings.
+- **C-004 remains OPEN and BLOCKING**, on the single narrow question it was reduced to:
+  which ring is level 1. This sheet numbers nothing.

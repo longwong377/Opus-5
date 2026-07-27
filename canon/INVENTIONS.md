@@ -430,3 +430,22 @@ banding being drawn at the same z as the bays, which is coincidence of position,
 left on `hull_exterior`. They are glazed volumes over lit interiors and almost certainly should
 not be opaque hull, but no reference in the set shows them lit from outside, and a glowing dome
 is a large, prominent guess.
+
+---
+
+## INV-009 — Brown as a radial designation
+
+**Invented:** Treating Brown Sector / Downbelow as the outermost annular ring spanning other
+sectors, rather than as a longitudinal length of station.
+
+**Why necessary:** The Security Manual sectional schematic brackets only five sectors —
+Yellow, Grey, Green, Red, Blue. Brown is absent. But Brown is spoken of constantly on screen
+as a place people go, so it has to be somewhere.
+
+**Constrained by:** On the same sheet, "Down-Below" appears as a label on the **outer band**
+in the Green region rather than as a bracket. The Brown rosette in `other map.png` independently
+marks DOWNBELOW with a double-headed arrow spanning an **outer annular band**. Two sources
+place it radially outward rather than longitudinally.
+
+**Overturned by:** any source bracketing Brown as a length of station, or dialogue placing
+Brown fore or aft of a named sector rather than above or below one.

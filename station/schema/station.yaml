@@ -97,12 +97,34 @@ communications_grid:
 # Sector model -- PROVISIONAL, see CONFLICTS.md C-003 (BLOCKING for interiors)
 # ---------------------------------------------------------------------------
 sectors:
-  # REJECTED for interiors -- see CONFLICTS.md C-003 UPDATE. Only 50% of the
-  # station is pressurised and the habitable volume is four separated regions,
-  # so six sectors cannot be longitudinal slices: Grey and Brown would land on
-  # bare truss spine. Retained below only as exterior hull labelling.
-  model: longitudinal_EXTERIOR_LABELLING_ONLY
-  order_aft_to_fore: [grey, brown, green, red, yellow, blue]
+  # C-003 RESOLVED. The Security Manual Sectional Schematic brackets sectors along
+  # the station's length while drawing decks as concentric rings, so both readings
+  # were right about different axes: sectors are LONGITUDINAL, levels are RADIAL.
+  #
+  # Extents below are read from the bracket ticks on that sheet as fractions of
+  # station length. The sheet has no scale bar, so absolute values come from
+  # applying those fractions to the canon 8,047 m. Cross-checked independently
+  # against the Miller-derived longitudinal framework: Green agrees to 11.7%,
+  # Red to 14.1%, from two unrelated sources by two unrelated methods.
+  model: longitudinal
+  src: "b5-schematics-from-the-security-manual-v0-u8879zcrf36h1.webp Sectional Schematic"
+  auth: 3
+  order_aft_to_fore: [yellow, grey, green, red, blue]
+  extents_m:
+    yellow: {z0: 0,    z1: 3397, frac: [0.000, 0.422]}
+    grey:   {z0: 3397, z1: 3839, frac: [0.422, 0.477]}
+    green:  {z0: 3839, z1: 6425, frac: [0.477, 0.798]}
+    red:    {z0: 6425, z1: 6794, frac: [0.798, 0.844]}
+    blue:   {z0: 6794, z1: 8047, frac: [0.844, 1.000]}
+  # Brown is NOT bracketed on the sheet. "Down-Below" is labelled on the outer
+  # band in the Green region, and the Brown rosette marks DOWNBELOW spanning an
+  # outer annular band. Treated as a radial designation. INV-009.
+  brown:
+    kind: radial_designation
+    ring: outermost
+    auth: 5
+    src: "INV-009 -- inference from two sources placing it radially, not longitudinally"
+  order_aft_to_fore_LEGACY: [grey, brown, green, red, yellow, blue]
   definitions:
     grey:   {function: "Industrial zones, manufacturing, construction", src: "other map 2.jpg", auth: 4}
     brown:  {function: "Residential -- Downbelow",                      src: "other map 2.jpg", auth: 4}

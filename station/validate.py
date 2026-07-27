@@ -148,6 +148,28 @@ def main():
             set(runs[0]) == set(runs[1])
         check("greeble pass is deterministic across runs", same)
 
+    # --- sector extents (C-003 resolved) ------------------------------------
+    sec = schema["sectors"]
+    ex = sec["extents_m"]
+    order = sec["order_aft_to_fore"]
+    check("sector order matches the extents table",
+          set(order) == set(ex), f"{order} vs {sorted(ex)}")
+    span = sum(v["z1"] - v["z0"] for v in ex.values())
+    check("sector extents tile the whole station",
+          abs(span - canon_len) < 1.0, f"{span} m of {canon_len} m")
+    prev = None
+    holes = []
+    for name in order:
+        v = ex[name]
+        if prev is not None and abs(v["z0"] - prev) > 0.5:
+            holes.append(f"{prev}->{v['z0']} before {name}")
+        prev = v["z1"]
+    check("sector extents are contiguous aft to fore", not holes, "; ".join(holes))
+    # Brown is a radial designation, not a length -- it must not acquire extents.
+    check("Brown is not in the longitudinal extents",
+          "brown" not in ex,
+          "INV-009: Brown is the outermost ring, not a length of station")
+
     # --- derived physics ----------------------------------------------------
     rot = schema["station"]["rotation"]
     r = rot["habitat_floor_radius_m"]["value"]
