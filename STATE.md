@@ -188,6 +188,23 @@ sensor and deflector arrays.
 | float32 at 50 km | 3.91 mm | **Starfury range is not.** Double precision is required by the flight envelope, not the station |
 | Floating origin gain | 224× | 1.09 mm naive → 4.9 µm rebased at 40 km |
 
+## Session 2f — Starfury flight model
+
+- **`station/physics/starfury.py`, 18 tests passing.** Newtonian 6-DOF, quaternion attitude,
+  discrete thrusters with position and direction rather than an abstract force vector, and
+  Euler's equations including the gyroscopic term so a tumbling Starfury precesses.
+- Thrust is **allocated** across thrusters, so a demand the layout cannot satisfy comes out
+  partially satisfied instead of silently exact. Pretending otherwise would make the craft
+  feel like it has thrusters it does not.
+- **The defining property is proven, not assumed:** the craft rotates 344° with velocity
+  drift of exactly 0.000e+00 m/s. Flip-and-burn decelerates at thrust/mass to 0.01 m/s.
+- **Cobra bay launch works from the physics alone.** Released at rest in the drum, the craft
+  carries 52.2 m/s of inherited tangential velocity and coasts **1,313 m clear in 30 s and
+  4,710 m in 90 s with no thrust at all.** The station throws it — which is exactly what the
+  show depicts and why cobra bays need no catapult.
+- `tools/plot_trajectory.py` plots flight paths over the real hull silhouette.
+- **Aurora performance:** 18.38 m/s² on the mains, 1.87 g.
+
 ## Next session — start here
 
 1. **Component refinement.** Placed but crude: the forward swept arrays read as flat planks
@@ -197,8 +214,8 @@ sensor and deflector arrays.
    where the procedural-detail approach from ADR 0002 starts earning its keep.
 3. **Finish the Godot build** (~1,960 of ~9,500 objects) and publish the double-precision
    binary as a Release asset. Not blocking: `tools/preview_render.py` covers the visual loop.
-4. **Starfury flight model** — Newtonian 6-DOF, RCS allocation, rotate-independent-of-velocity.
-   Unblocked, and the same pure-Python-then-engine approach as the rotating frame.
+4. **Docking approach** — rotation matching against a moving bay, the inverse of the launch.
+5. **Core shuttle** — axial transit through the gravity gradient, rim to weightless axis.
 4. **C-003 / C-004.** Still blocking interiors. Radial level numbering is now the leading
    hypothesis (see C-003 UPDATE), but needs a lift display or deck plan to confirm.
 
