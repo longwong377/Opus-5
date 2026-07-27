@@ -1,6 +1,6 @@
 # Project State
 
-**Last updated:** 2026-07-27 · **Session 2y** — the drum leaked; closure now asserted
+**Last updated:** 2026-07-27 · **Session 2z** — AAA standard set; phase A in flight at the session limit
 
 ## Where we are
 
@@ -1041,6 +1041,57 @@ Drum visible set is now 51,128 / 300,000 (17%). `interior.py` self-test: **128 a
    trunk roads 51 m instead of 20 m; the settlement band comes out 62% street.
 7. **`budget.py`'s drum gate still measures the old flat shell**, so the ground's real cost is
    ungated.
+
+## Session 2z — IN FLIGHT AT THE SESSION LIMIT. Read this before anything else.
+
+The owner raised the standard to **AAA across every dimension** (see `CLAUDE.md`, "The standard"
+and "The plan, in order"). A 5-agent workflow was launched to build phase A — the ability to
+*see* AAA — and the session hit its time limit mid-run. Everything on disk at that moment is
+committed and pushed. **Nothing was lost. Nothing here has been panel-reviewed.**
+
+### How to resume
+
+```
+Workflow({scriptPath: "/root/.claude/projects/-home-user-Opus-5/25a39def-a001-5e33-8111-81bbb68b9aec/workflows/scripts/b5-aaa-foundation-wf_e8d85485-09b.js",
+          resumeFromRunId: "wf_e8d85485-09b"})
+```
+
+Resume is **same-session only**. If that fails — which it will in a fresh session — do not try
+to recover the run. The builders' output is already committed; what is missing is the *critique*
+and *rework* rounds. Re-run those directly against what is on disk, using the four dimensions in
+`docs/AAA-STANDARD.md`. The script is the template; the per-item prompts are in it.
+
+### What landed, unreviewed
+
+| | |
+|---|---|
+| `docs/AAA-STANDARD.md`, `tools/aaa_gate.py` | the scored rubric and the gate that catches **regression**, which a one-shot critic cannot see |
+| `station/materials.py` + ~50 `.tres` + 4.7 MB textures | material system, exported to Godot from one Python source so the two cannot diverge |
+| `tools/render_godot.sh`, `tools/export_scene.py`, `godot/scripts/render_shot.gd`, `godot/scenes/{exterior,drum}.tscn` | the engine render path, rebuilt around current geometry |
+| `docs/engine-exterior.png`, `-detail`, `engine-drum-interior.png` | **the first engine frames of the drum interior** |
+| `station/interior.py`, `station/tram.py` | the blocking spoke fix |
+
+Self-tests at snapshot: **interior 141/141** (was 128), **tram 44/44** (was 36).
+
+### The blocking defect is fixed
+
+Tram cars were passing **6.43 m through the radial spokes** — structural, not a placement
+accident: the guideways sit in the spoke planes because the spokes are the only thing that can
+carry a 2,586 m truss, so moving the cars could never fix it. The spoke now has an aperture.
+Both verifiers found this independently, one by point-in-box over 3,144 vertices, one by
+rendering it.
+
+### First job next session
+
+1. **Run the critique rounds** that did not happen. Judge against `docs/AAA-STANDARD.md`; every
+   dimension must reach 4. Be as harsh as the last panel was — it caught an end cap with 4,064
+   open edges and two assertions that could not fail.
+2. **Check `docs/REFERENCE-GAPS.md` exists.** The reference-audit agent may not have finished. If
+   it did not, that document still needs writing: the owner has offered to supply more reference
+   and is otherwise hands-off, so it is the only channel for asking, and a vague ask wastes it.
+3. **Verify the Godot binary situation.** It is container-local and a ~61 minute rebuild, so it
+   is gone with this container. Whether the agent found a way to make it survive is unknown; if
+   not, that is a tax on every future session and worth solving properly.
 
 ## Next session — start here
 
