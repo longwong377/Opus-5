@@ -62,10 +62,8 @@ framework in place. No geometry generated yet.
 4. **Canon-assertion tests** — generated geometry checked against `canon/00-MASTER.md`:
    overall length 8,047 m, section diameters within tolerance, airtightness, no
    self-intersection.
-2. **OW-002.** Derive Grey / Brown / Yellow extents as the remainder of the 8,047 m budget.
-3. Build Godot from source with `precision=double`, publish as a GitHub Release asset so later
-   sessions pull it in seconds rather than rebuilding for ~40 minutes.
-4. First hull generation pass from the completed schema, rendered via lavapipe and inspected.
+5. **OW-002.** Derive Grey / Brown / Yellow extents as the remainder of the 8,047 m budget,
+   now that the longitudinal framework accounts for the rest of the station.
 
 ## Blocked
 
