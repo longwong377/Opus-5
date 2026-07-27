@@ -820,27 +820,48 @@ a guess, and it is asserted per ring.
 
 ## Next session — start here
 
-1. **Remaining crude components.** Cobra bays, docking ports, observation domes and rotundas
+The drum's **structure** is complete: shell, both end caps, three guideway trusses with the
+habitat's lighting, three spokes, a correct hollow ring model, and its own performance gate.
+What follows is in rough priority order.
+
+1. **The drum's ground.** Currently four flat land-use bands — enough to judge composition, not
+   enough to stand on. The budget already settles the approach: 0.06 tri/m² of headroom across
+   4.5 million m² means a **heightfield with distance LOD**, not per-object geometry. Fields,
+   roads and settlements are displacement and texture; only what a person can walk up to gets
+   mesh. This is the largest single piece of work remaining on the drum.
+2. **The tram.** `33a`/`34b` show cars slung beneath the truss bottom chord and `35a` gives the
+   **car interior** — seats, windscreen, stanchions, wall panels — which is unusually good
+   reference for a vehicle. The guideway exists; the vehicle does not.
+3. **Streaming cells.** `streaming_cell_deg()` now sizes them (120 m in the drum's sub-floor
+   ring, 137 m in Grey ring 1) but nothing emits or joins them. A full ring corridor at the
+   drum radius is ~500,000 triangles and can never be emitted whole, so this is what makes ring
+   decks buildable at all.
+4. **Remaining crude components.** Cobra bays, docking ports, observation domes and rotundas
    are still box primitives. Radiators (2o), cargo modules and the forward comms plate (2t)
-   are now reference-corrected.
-2. **Deck tile phase across junctions** — the grid is not driven from a shared origin, so
-   there is a visible seam at each crossing mouth.
-3. ~~**Two structurally different drum end caps**~~ — **RESOLVED, and it was not a conflict.**
-   `Babylon_5_2-22_35a` settles it: that frame is shot forward through the windscreen of a drum
-   tram, and the deep red-orange triangulated lattice converges to a vanishing point with
-   regular transverse ribs. It is the **tram guideway truss**, seen from inside in `35a` and
-   from beneath in `33a` — not a bulkhead. The panelled concentric disc appears in *both* `34b`
-   and `33a` (right of frame, warm-lit) and is the only end cap. Built; see INV-011.
-4. **Publish the Godot binary** as a Release asset — container-local, 61 minutes to rebuild.
-5. **C-003 assignment** and **C-004 numbering** still block interior layout. One question each:
-   which longitudinal band is the drum, and which ring is level 1.
+   are reference-corrected.
+5. **Deck tile phase across junctions** — the grid is not driven from a shared origin, so there
+   is a visible seam at each crossing mouth.
+6. **`HULL_ALLOWANCE` should become metric.** It is a *fraction* (0.86) standing in for a hull
+   skin, which is the wrong kind of quantity — at the habitat cylinder it implies 44 m of hull,
+   which is why the drum needed `HULL_SKIN_M` instead. Fixing it re-derives every non-drum
+   sector radius, so it wants its own change. See INV-013. Grey's **1.445 g** outermost deck is
+   the visible symptom.
+7. **Publish the Godot binary** as a Release asset — container-local, 61 minutes to rebuild.
+8. **C-003 assignment** and **C-004 numbering.** These block *labelling*, not building — see the
+   note below.
+
+**On what C-003 and C-004 actually block.** They decide which *name* attaches to a volume, not
+what shape it is. Geometry is generated against `(sector, ring_index)` and labelled afterwards
+by `bind_labels()`; when the conflicts close, the mapping changes and the geometry does not.
+The "Blocked" table below is kept for the record but its first two rows are **no longer true of
+geometry** — only of the names on it.
 
 ## Blocked
 
 | Item | Blocked by | Needs |
 |---|---|---|
-| All interior level geometry | C-004 — **numbering convention** unresolved. The axis is settled: levels are concentric radial decks | A lift-car display, a numbered deck plan, or dialogue tying a level number to a gravity. Nothing else will do — the deck plans themselves have now been found and they number nothing |
-| Interior sector layout | C-003 — **Green/Brown transposition**. Sectors are longitudinal bands; the two authority-3 sheets disagree on which band is the habitat drum | Any source placing the Garden or Downbelow in a *named* sector at a longitudinal position |
+| ~~All interior level geometry~~ → **interior level *numbering*** | C-004 — **numbering convention** unresolved. The axis is settled: levels are concentric radial decks | A lift-car display, a numbered deck plan, or dialogue tying a level number to a gravity. Nothing else will do — the deck plans themselves have now been found and they number nothing |
+| ~~Interior sector layout~~ → **sector *naming*** | C-003 — **Green/Brown transposition**. Sectors are longitudinal bands; the two authority-3 sheets disagree on which band is the habitat drum. `drum_sector()` identifies the drum by **geometry**, so building proceeds; only the label waits | Any source placing the Garden or Downbelow in a *named* sector at a longitudinal position |
 | Deck spacing, ring radii, corridor width, ceiling height | Unavailable from any held source | The one sheet that draws decks has its vertical scale exaggerated ~2× (C-004 UPDATE item 3, same ruling as C-005) |
 | Grey / Brown / Yellow interiors | Near-zero reference coverage | Grey has one frame; Brown has one misfiled frame; Yellow has none |
 | Starfury cockpit | Zero reference coverage | Cockpit interior stills |
