@@ -46,9 +46,14 @@ station:
     # Derived: 1.0 g at the habitat floor radius fixes the rate exactly. See INV-002.
     target_g_at_habitat_floor: {value: 1.0,      src: "show depicts normal gait", auth: 1}
     habitat_floor_radius_m:    {value: 278.3,    src: "derived, INV-001",         auth: 5}
-    omega_rad_s:               {value: 0.18775,  src: "derived: sqrt(g/r)",       auth: 5}
-    period_s:                  {value: 33.5,     src: "derived",                  auth: 5}
-    rpm:                       {value: 1.79,     src: "derived",                  auth: 5}
+    # Carried to 9 places. Rounding omega to 5 places put floor gravity at
+    # 1.000351 g and shifted the half-gravity radius by 5 cm -- small, but the
+    # physics tests assert exact relations and rounding noise fails them for the
+    # wrong reason. Standard gravity is 9.80665 m/s^2 throughout.
+    standard_gravity_m_s2:     {value: 9.80665,      src: "CODATA",                   auth: 1}
+    omega_rad_s:               {value: 0.187717056,  src: "derived: sqrt(g0/r)",      auth: 5}
+    period_s:                  {value: 33.471574,    src: "derived: 2*pi/omega",      auth: 5}
+    rpm:                       {value: 1.792566,     src: "derived: 60/period",       auth: 5}
     # Sanity: 1.79 rpm is below the ~2-3 rpm human Coriolis tolerance threshold.
 
   # Rescaling rule applied to every Miller-derived dimension. See CONFLICTS.md C-001.

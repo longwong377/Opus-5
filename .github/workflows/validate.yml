@@ -29,6 +29,9 @@ jobs:
       - name: Canon assertions
         run: python3 station/validate.py
 
+      - name: Rotating-frame physics
+        run: python3 station/physics/test_rotating_frame.py
+
       - name: Confirm the schema still parses and is fully sourced
         run: |
           python3 - <<'PY'

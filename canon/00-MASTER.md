@@ -55,11 +55,25 @@ At bio-habitat interior radius **r = 278.3 m**, for centripetal acceleration a =
 
 | Target | ω (rad/s) | Period | RPM |
 |---|---|---|---|
-| 1.00 g | 0.18775 | **33.5 s** | **1.79** |
-| 0.50 g | 0.13276 | 47.3 s | 1.27 |
-| 0.30 g | 0.10285 | 61.1 s | 0.98 |
+| 1.00 g | **0.187717056** | **33.471574 s** | **1.792566** |
+| 0.50 g | 0.132736 | 47.336 s | 1.268 |
+| 0.30 g | 0.102807 | 61.117 s | 0.982 |
 
-**Working value: 1.0 g at the habitat floor, period 33.5 s, 1.79 rpm.** The show depicts
+**Working value: 1.0 g at the habitat floor, period 33.4716 s, 1.7926 rpm.**
+Standard gravity is 9.80665 m/s² throughout. Constants are carried to 9 places:
+rounding ω to 5 places put floor gravity at 1.000351 g and moved the half-gravity
+radius by 5 cm, which is negligible physically but fails exact-relation tests for
+the wrong reason.
+
+Derived consequences, all unit-tested in `station/physics/`:
+
+| Quantity | Value |
+|---|---|
+| Floor tangential speed | **52.2 m/s** — inherited by anything launched from the drum |
+| Half gravity at | 139.15 m radius (exactly half the floor radius) |
+| Apparent weight, brisk walk spinward | 1.054× |
+| Apparent weight, brisk walk anti-spinward | 0.947× |
+| Coriolis climbing toward the axis | 1.13 m/s² lateral, deflecting spinward | The show depicts
 normal human gait and unremarkable gravity throughout the habitation sections. 1.79 rpm sits
 comfortably below the ~2–3 rpm threshold at which Coriolis effects become disorienting, so
 this is both canon-consistent and physically sound. Rotation rate is not stated on screen —

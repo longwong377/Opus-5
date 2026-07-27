@@ -118,12 +118,18 @@ def main():
     rot = schema["station"]["rotation"]
     r = rot["habitat_floor_radius_m"]["value"]
     w = rot["omega_rad_s"]["value"]
+    g0 = rot["standard_gravity_m_s2"]["value"]
     g = w * w * r
-    check("spin gravity at habitat floor is 1.0 g", abs(g - 9.81) < 0.05,
-          f"{g:.3f} m/s^2 = {g/9.81:.3f} g")
+    # Tight: this is a derived value, so any drift means the schema's own
+    # constants have stopped agreeing with each other.
+    check("spin gravity at habitat floor is 1.0 g", abs(g / g0 - 1.0) < 1e-6,
+          f"{g:.6f} m/s^2 = {g/g0:.9f} g")
     check("rotation period consistent with omega",
-          abs(rot["period_s"]["value"] - 2 * math.pi / w) < 0.1,
-          f"{2*math.pi/w:.2f} s")
+          abs(rot["period_s"]["value"] - 2 * math.pi / w) < 1e-4,
+          f"{2*math.pi/w:.6f} s")
+    check("rpm consistent with period",
+          abs(rot["rpm"]["value"] - 60.0 / rot["period_s"]["value"]) < 1e-4,
+          f"{60.0/rot['period_s']['value']:.6f}")
     check("rotation rate below 3 rpm Coriolis tolerance",
           rot["rpm"]["value"] < 3.0, f"{rot['rpm']['value']} rpm")
 
