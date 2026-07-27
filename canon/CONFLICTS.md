@@ -1410,3 +1410,37 @@ count.** What is sourced is: *a named subsystem, "atmospheric life support regul
 on the C&C board in four channels, with three of them leadered to the ventral hull at the fore end
 of the habitat drum.* If it goes into §2 it should go in with that wording, and it should be
 logged in `canon/INVENTIONS.md` if the count of four is ever used as a geometry count.
+
+---
+
+## C-004 — a structural consequence of the ring radii, bearing on the numbering
+
+Generating the ring geometry (session 2u) produced a fact the rosettes do not state and that
+narrows what "level 1" can mean.
+
+With ring 1's floor anchored at the canon **278.3 m** and the rosette ring fractions applied,
+the rings in the habitat drum come out **38–61 m deep**:
+
+| Ring | Floor radius | Depth | Floor gravity |
+|---|---|---|---|
+| 1 | 278.3 m | 50.1 m | **1.000 g** |
+| 2 | 228.2 m | 61.2 m | 0.820 g |
+| 3 | 167.0 m | 61.2 m | 0.600 g |
+| 4 | 105.8 m | 55.7 m | 0.380 g |
+| 5 (core) | 50.1 m | 50.1 m | 0.180 g |
+
+**A 50 m ceiling is not a deck.** So the rosette rings are not individual decks — each is a
+**zone containing many decks**. At a 3–4 m deck pitch a ring holds roughly 12–17 of them.
+
+This matters for C-004 because it removes an objection. "Grey 17" seemed to imply seventeen
+concentric shells, which looked implausible against five drawn rings. Under this reading
+seventeen is an ordinary deck number **inside** a zone, and five rings and seventeen levels
+stop being in tension.
+
+**It does not resolve C-004.** Whether numbering runs outward-in or inward-out is untouched.
+But it does mean the numbering, once known, indexes **decks within rings**, not rings.
+
+Also worth recording: **ring 1's floor gravity comes out at exactly 1.000 g** without being
+fitted to. The radius came from canon and the rotation rate was solved from it in session 1;
+the ring fractions came independently from the rosettes. That they agree is a genuine
+cross-check rather than a construction.
