@@ -82,6 +82,24 @@ accessible = most neglected, which actually argues *for* it).
 **Blocking all interior level geometry.** Resolution needs a lift display, a deck plan, or
 dialogue tying a level number to a gravity or a location we can place radially.
 
+### Evidence accumulated so far — both favour the radial reading
+
+1. **Geometric (strong).** C-003 UPDATE showed the station is 50% structural and its habitable
+   volume is four separated regions, so sectors must nest inside the rotating assembly rather
+   than slice the length of the station. If sectors nest, levels almost certainly stack
+   radially — there is not enough longitudinal room for them to do otherwise.
+
+2. **On-screen (weak but authority 1).** The arrival-concourse wall display in
+   `reference/11-props-and-technology/babylon 5 welcome sign, instructions, and hub.jpg` shows
+   an in-universe cutaway of the forward section with **multiple parallel longitudinal lines**,
+   which in a side cutaway of a cylinder reads as decks stacked radially. The screencap is too
+   low-resolution to count them or measure spacing, so this corroborates rather than resolves.
+
+**Radial numbering is now the working hypothesis, but C-004 stays BLOCKING** — a hypothesis
+with two supporting arguments is still not a sourced fact, and building 8 km of interior on it
+would be exactly the kind of guesswork this project forbids. What would close it: a lift-car
+display, a deck plan, or dialogue tying a level number to a gravity or a placeable location.
+
 ---
 
 ## C-005 — Contract 5 schematic internal scale · **RESOLVED, SOURCE DEGRADED**

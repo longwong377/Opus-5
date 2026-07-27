@@ -56,3 +56,28 @@ Status: empty.
 - Status: applied — radiators corrected (C-007), cargo modules moved to dorsal rows.
   Still outstanding: the fore swept structures, and the heat-exchange collectors are
   still a crude radial pinwheel rather than the swept form the top view shows.
+
+---
+
+### 09-garden-core-and-transit/delen and sheridan in elevator.jpeg
+- Source authority: **DOWNGRADED — not the original series.**
+- This is the 2023 animated film, not live-action Babylon 5. Different design language,
+  stylised reinterpretation, and the uniforms are the later blue pattern rather than the
+  Season 2–3 lock. Cannot be used as design reference under the era lock without violating
+  it. Retained for reference only; **do not model from it.**
+- Contains no lift display, so it does not bear on C-004.
+
+### 11-props-and-technology/babylon 5 welcome sign, instructions, and hub.jpg
+- Source authority: **1** (on-screen footage, customs / arrival area)
+- Depicts: the arrival concourse — "WELCOME TO BABYLON 5", a public information sign, and an
+  **in-universe wireframe schematic of the station's forward section** on a wall display.
+- Extracted:
+  - The schematic is a cutaway of the forward docking region and shows **multiple parallel
+    longitudinal lines** running through the structure, which in a side cutaway of a
+    cylindrical station reads as **decks stacked radially**.
+  - This is **supporting evidence for the radial reading of C-004**, but weak: the source is a
+    low-resolution screencap and the lines cannot be counted or measured. It does not resolve
+    C-004 on its own.
+  - Also establishes public signage style: white-on-blue title bar, yellow warning text on
+    black, and green vector-wireframe displays for technical readouts.
+- Feeds: `CONFLICTS.md` C-004; signage and UI language for `16-signage-typography-ui`
