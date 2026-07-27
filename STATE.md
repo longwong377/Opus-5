@@ -1,6 +1,6 @@
 # Project State
 
-**Last updated:** 2026-07-27 · **Session 2z** — AAA standard set; phase A in flight at the session limit
+**Last updated:** 2026-07-27 · **Session 3a** — engine renders the interior; LOD not wired; reference ask written
 
 ## Where we are
 
@@ -1092,6 +1092,63 @@ rendering it.
 3. **Verify the Godot binary situation.** It is container-local and a ~61 minute rebuild, so it
    is gone with this container. Whether the agent found a way to make it survive is unknown; if
    not, that is a tax on every future session and worth solving properly.
+
+## Session 3a — the engine renders the interior, and it is not AAA yet
+
+Phase A's goal was **the ability to see**, and it is met. `tools/render_godot.sh` drives Godot
+4.4 double-precision on Mesa lavapipe through Xvfb and produces real Forward+ frames — shadows,
+real lights, materials, exposure. `docs/engine-drum-interior.png` is the first engine frame of
+the habitat drum. The binary was rebuilt and is at `/home/user/godot-build/dist/` with a
+`.tar.xz` beside it.
+
+The critique round never ran (the session hit its limit), so this is my own panel pass over what
+landed. It is not a substitute for the adversarial pass and that still needs doing.
+
+### Confirmed defect: the hull LOD chain is not wired into the engine
+
+Both engine frames are covered in white speckle — over the whole hull in the exterior shot and
+over the core tube in the interior one. It is not anti-aliasing: `project.godot` has 4× MSAA and
+FXAA on. It is **sub-pixel greebles**.
+
+- The exterior shot was rendered from **9,200 m**.
+- `lod_manifest.json` says lod1 is honest from **6,002 m** and cuts greeble detail to 0.45.
+- `tools/export_scene.py` has **no hull LOD handling at all** — `grep -i lod` finds only the
+  ground's LOD chain.
+- So the frame drew **lod0's 70,778 greeble triangles**, in 1,976 fittings, at a framing where a
+  20 m fitting spans **2.7 pixels**.
+
+The LOD chain exists, is computed, has a manifest and a switch-distance derivation, and is simply
+not connected. Wiring it is likely the single largest visual improvement available right now, and
+it is cheap.
+
+### Other findings from the same two frames
+
+| | |
+|---|---|
+| **Scale does not read** | No aerial perspective in a 2.6 km volume. Everything is equally crisp, so the drum reads about 50 m across rather than 556. The owner named "scale" as an AAA dimension; haze is the fix and it is cheap. |
+| **The ground is flat colour** | Large unbroken areas of olive-green. The heightfield's parcels, hedge banks and roads are not reading at all in the engine — worth checking whether the material is bound and whether the detail is simply below the LOD in use. |
+| **Light runs blow out** | Pure white with no falloff structure; they read as blown highlight rather than as fittings. |
+| **Black gap at the cap/ground junction** | Right of frame in the interior shot. Consistent with the 1.2 m axial mismatch the verifier reported between the ground rim and the cap's outermost course, which is still open. |
+
+Honest scores against `docs/AAA-STANDARD.md`: **craft 2, fidelity 3**, performance not measured
+this session, robustness good (self-tests green — interior 141/141, tram 44/44).
+
+That is the right result for phase A. The point was never that the first engine frame would be
+AAA; it was that we could finally *tell*.
+
+### `docs/REFERENCE-GAPS.md` written — and the finding in it is worse than expected
+
+Ranked ask for the owner, verified against the actual folders rather than assumed. The headline:
+
+- **`reference/10-interiors-generic-kit/` is EMPTY.** The corridor kit is 210 decks and 2,330
+  cells — the large majority of walkable space — and every dimension in `interior_kit.py` is
+  extrapolated from proportions in a *single frame of one sector*. This is now the top ask.
+- `18-audio-notes/` and `19-video-clips/` are empty; no audio work exists at all.
+- `12-starfury/` has four files, **all exterior**; the cockpit was an explicit opening-brief
+  requirement and has zero coverage.
+- `16-signage-typography-ui/` has three files and all three are **logos** — so C-004 has nothing
+  to close on.
+- Grey has **one** interior frame and is **90 of the station's 210 decks**.
 
 ## Next session — start here
 
