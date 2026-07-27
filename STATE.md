@@ -287,6 +287,30 @@ An hourly trigger (`trig_01JS1VWf6yada5x6maPMAzza`) fires into this session to c
 plan without prompting. It reads CLAUDE.md and this file, works the "Next session" list, and
 updates STATE.md before finishing.
 
+## Session 2j — THE ENGINE RENDERS THE STATION
+
+**The full pipeline works end to end, with no GPU anywhere in it:**
+
+```
+station.yaml -> generate_hull.py -> station.glb -> Godot 4.4 (precision=double)
+             -> Vulkan 1.4 on CPU (Mesa lavapipe) -> PNG -> read directly
+```
+
+- **Godot double-precision build finished** — 61 minutes, 147 MB,
+  `godot.linuxbsd.editor.double.x86_64`. Binary lives at
+  `/home/user/godot-build/godot-4.4-stable/bin/` (container-local; publish as a Release asset
+  so future sessions do not rebuild).
+- **`tools/build_and_render.sh`** runs the whole chain in one command.
+- **Headless needed Xvfb.** Godot's `--headless` disables rendering entirely, so a virtual
+  display plus the lavapipe ICD is what actually produces frames. Godot reports
+  `Vulkan 1.4.318 - Forward+ - llvmpipe` — the software rasteriser doing real Forward+.
+- **glTF export** (23 meshes, 256k triangles, 21.5 MB) with CI structural validation.
+- **LOD chain** with switch distances derived from silhouette deviation, not facet width.
+- **Budget gates** — 4/4 within budget, 64% of the triangle allowance.
+
+Three visual corrections, each caught by looking: blown-out lighting, then missing material,
+then framing. Materials live in the engine, not the export.
+
 ## Next session — start here
 
 1. **Component refinement.** Placed but crude: the forward swept arrays read as flat planks
@@ -294,8 +318,8 @@ updates STATE.md before finishing.
    the top view shows a swept form. Both need shaping, not repositioning.
 2. **Surface articulation.** No greebling, panel lines or hull plating anywhere yet. This is
    where the procedural-detail approach from ADR 0002 starts earning its keep.
-3. **Finish the Godot build** (~1,960 of ~9,500 objects) and publish the double-precision
-   binary as a Release asset. Not blocking: `tools/preview_render.py` covers the visual loop.
+3. **Publish the Godot binary as a GitHub Release asset** — it is container-local and will be
+   lost when this container is reclaimed. Rebuilding costs 61 minutes.
 4. **Core shuttle** — axial transit through the gravity gradient, rim to weightless axis.
 5. **Godot project scaffold** consuming the generated geometry, once the binary is built.
 4. **C-003 / C-004.** Still blocking interiors. Radial level numbering is now the leading
