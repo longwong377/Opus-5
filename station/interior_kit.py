@@ -62,10 +62,11 @@ def deck_panel(width, length, thickness=0.12, lit_inset=0.18):
             (-hw, lo, 0), (hw, lo, 0), (hw, hi, 0), (-hw, hi, 0),
             (-hw, lo, t), (hw, lo, t), (hw, hi, t), (-hw, hi, t)])
     # Channel floor, dropped so the strip sits recessed.
-    _box(verts, tris, [
-        (-hw, -inset, 0), (hw, -inset, 0), (hw, inset, 0), (-hw, inset, 0),
-        (-hw, -inset, t * 0.45), (hw, -inset, t * 0.45),
-        (hw, inset, t * 0.45), (-hw, inset, t * 0.45)])
+    with tag('light_deck_channel'):
+        _box(verts, tris, [
+            (-hw, -inset, 0), (hw, -inset, 0), (hw, inset, 0), (-hw, inset, 0),
+            (-hw, -inset, t * 0.45), (hw, -inset, t * 0.45),
+            (hw, inset, t * 0.45), (-hw, inset, t * 0.45)])
     return verts, tris
 
 
@@ -195,6 +196,26 @@ PROVISIONAL = {
 # ---------------------------------------------------------------------------
 
 
+def _tagging(fn):
+    """Record whatever `fn` appends to `tris` against the innermost open tag.
+
+    _slab, _prism and _plate_with_hole append directly rather than going through
+    _merge, so tagging has to wrap them as well or fittings built from raw slabs
+    -- which is most of the light fittings -- record nothing.
+    """
+    import functools
+
+    @functools.wraps(fn)
+    def wrapper(verts, tris, *a, **kw):
+        tri0 = len(tris)
+        out = fn(verts, tris, *a, **kw)
+        if _TAG_STACK:
+            _record(tris, _TAG_STACK[-1][0], tri0, len(tris))
+        return out
+    return wrapper
+
+
+@_tagging
 def _slab(verts, tris, x0, x1, y0, y1, z0, z1):
     """Axis-aligned box from two corner extents, outward-facing.
 
@@ -209,6 +230,64 @@ def _slab(verts, tris, x0, x1, y0, y1, z0, z1):
                        (x0, y0, z1), (x1, y0, z1), (x1, y1, z1), (x0, y1, z1)])
 
 
+# Material tagging. The kit's light fittings are built inline inside larger
+# pieces -- a portal's head light is part of the portal -- so tagging cannot be
+# per-function. Instead a builder opens a tag around the fitting it is emitting
+# and every triangle merged inside that window is recorded against it. The OBJ
+# writer turns those spans into groups, which is what lets a renderer know a
+# deck channel is a light source rather than grey plastic.
+_TAG_STACK = []
+# Spans are keyed by the identity of the list they were appended to. A piece
+# built inside pilaster() lands in pilaster()'s own local `tris` and is only
+# later merged into the corridor's, so an index recorded at tag time means
+# nothing in the final list. Keying by list identity lets _merge remap spans
+# into the parent's index space as the piece lands. The first attempt used bare
+# indices and silently under-reported by 90% -- most fittings simply vanished
+# from the output, which would have shipped as "emissives do not work".
+_TAG_SPANS = {}
+
+
+class tag:
+    """Mark every triangle emitted inside this block as belonging to `name`."""
+
+    def __init__(self, name):
+        self.name = name
+
+    def __enter__(self):
+        _TAG_STACK.append((self.name, None))
+        return self
+
+    def __exit__(self, *_):
+        _TAG_STACK.pop()
+
+
+def _record(tris, name, lo, hi):
+    if hi > lo:
+        _TAG_SPANS.setdefault(id(tris), []).append((name, lo, hi))
+
+
+def _carry(dst, src, offset):
+    """Move spans recorded against `src` into `dst`, shifted by `offset`.
+
+    POPS the source entry. Keying by id() is only sound if an entry is claimed
+    exactly once -- a merged sub-list becomes garbage immediately and CPython
+    will hand the same address to the next piece built, so a left-behind entry
+    would be re-carried onto unrelated geometry.
+    """
+    for name, lo, hi in _TAG_SPANS.pop(id(src), ()):
+        _TAG_SPANS.setdefault(id(dst), []).append((name, lo + offset, hi + offset))
+
+
+def reset_tags():
+    _TAG_SPANS.clear()
+    _TAG_STACK.clear()
+
+
+def tagged_spans(tris):
+    """(material, first_tri, last_tri) for everything tagged into `tris`."""
+    return sorted(_TAG_SPANS.get(id(tris), []), key=lambda s: s[1])
+
+
 def _merge(verts, tris, v, t, remap=None, offset=(0.0, 0.0, 0.0), flip=False):
     """Append a piece authored in its own frame, remapped and translated.
 
@@ -218,6 +297,7 @@ def _merge(verts, tris, v, t, remap=None, offset=(0.0, 0.0, 0.0), flip=False):
     a wall to the far side of a corridor turns it inside-out otherwise.
     """
     base = len(verts)
+    tri0 = len(tris)
     ox, oy, oz = offset
     for x, y, z in v:
         nx, ny, nz = remap(x, y, z) if remap else (x, y, z)
@@ -226,8 +306,14 @@ def _merge(verts, tris, v, t, remap=None, offset=(0.0, 0.0, 0.0), flip=False):
         tris.extend([(c + base, b + base, a + base) for a, b, c in t])
     else:
         tris.extend([(a + base, b + base, c + base) for a, b, c in t])
+    # Carry the sub-piece's own tags up into this list's index space, then tag
+    # the whole append against anything the caller has open.
+    _carry(tris, t, tri0)
+    if _TAG_STACK:
+        _record(tris, _TAG_STACK[-1][0], tri0, len(tris))
 
 
+@_tagging
 def _prism(verts, tris, poly, z0, z1):
     """Extrude a closed 2-D polygon in (x, y) along Z into a capped solid.
 
@@ -362,6 +448,7 @@ def _polygon_difference(outer, hole):
     return pieces
 
 
+@_tagging
 def _plate_with_hole(verts, tris, outline, hole, z0, z1):
     """A flat plate with a hole in it, as one shell rather than as tiled blocks.
 
@@ -450,13 +537,14 @@ def portal_frame(width, height, p=None, head_light=True):
                -depth / 2.0, depth / 2.0)
 
     if head_light:
-        # A single long fitting in the soffit, the brightest thing in frame in
-        # `grey level 1.webp` and the reason the portals read as a receding
-        # rhythm rather than as a row of identical holes.
-        lw = (width / 2.0 - p["wall_chamfer_m"]) * 0.92
-        sw = p["portal_light_w_m"]
-        _slab(verts, tris, -lw, lw, height - sw * 1.9, height - sw * 0.5,
-              -depth * 0.30, depth * 0.30)
+      with tag('light_portal_head'):
+          # A single long fitting in the soffit, the brightest thing in frame in
+          # `grey level 1.webp` and the reason the portals read as a receding
+          # rhythm rather than as a row of identical holes.
+          lw = (width / 2.0 - p["wall_chamfer_m"]) * 0.92
+          sw = p["portal_light_w_m"]
+          _slab(verts, tris, -lw, lw, height - sw * 1.9, height - sw * 0.5,
+                -depth * 0.30, depth * 0.30)
     return verts, tris
 
 
@@ -481,17 +569,18 @@ def pilaster(height, p=None, strip=True, segments=7):
     _merge(verts, tris, pv, pt, lambda x, y, z: (x, z, -y))
 
     if strip:
-        y0 = height * p["pilaster_strip_lo_frac"]
-        y1 = height * p["pilaster_strip_hi_frac"]
-        sw = p["pilaster_strip_w_m"] / 2.0
-        # Broken into short bars with gaps. A continuous tube reads as a
-        # fluorescent batten; the segmentation is what makes it read as B5.
-        bars = 7
-        pitch = (y1 - y0) / bars
-        for k in range(bars):
-            by = y0 + pitch * k
-            _slab(verts, tris, proj * 0.78, proj * 0.98,
-                  by, by + pitch * 0.68, -sw, sw)
+      with tag('light_pilaster_strip'):
+          y0 = height * p["pilaster_strip_lo_frac"]
+          y1 = height * p["pilaster_strip_hi_frac"]
+          sw = p["pilaster_strip_w_m"] / 2.0
+          # Broken into short bars with gaps. A continuous tube reads as a
+          # fluorescent batten; the segmentation is what makes it read as B5.
+          bars = 7
+          pitch = (y1 - y0) / bars
+          for k in range(bars):
+              by = y0 + pitch * k
+              _slab(verts, tris, proj * 0.78, proj * 0.98,
+                    by, by + pitch * 0.68, -sw, sw)
     return verts, tris
 
 
@@ -567,14 +656,15 @@ def wall_assembly(length, height, p=None, plaque_at=None, downlights=True,
               pz - 0.30, pz + 0.30)
 
     if downlights:
-        # Warm fittings low on the wall, the only local light source between
-        # portals in the reference and the reason the deck is pooled rather
-        # than evenly lit.
-        n = max(1, int(length / (plate_l * 3.0)))
-        for i in range(n):
-            lz = length * (i + 0.5) / n
-            _slab(verts, tris, rail_proud, rail_proud + 0.07,
-                  dado_top - 0.16, dado_top - 0.04, lz - 0.11, lz + 0.11)
+      with tag('light_downlight'):
+          # Warm fittings low on the wall, the only local light source between
+          # portals in the reference and the reason the deck is pooled rather
+          # than evenly lit.
+          n = max(1, int(length / (plate_l * 3.0)))
+          for i in range(n):
+              lz = length * (i + 0.5) / n
+              _slab(verts, tris, rail_proud, rail_proud + 0.07,
+                    dado_top - 0.16, dado_top - 0.04, lz - 0.11, lz + 0.11)
     return verts, tris
 
 
@@ -939,13 +1029,33 @@ def corridor_junction_section(arm_length, arms=(0, 1, 2, 3), p=None):
     return verts, tris
 
 
-def write_obj(path, verts, tris):
-    """Emit an OBJ so the software preview renderer can look at the result."""
+def write_obj(path, verts, tris, spans=None, default_group="structure"):
+    """Emit an OBJ so the software preview renderer can look at the result.
+
+    `spans` is the output of `tagged_spans()`. Passing it puts each light
+    fitting in its own OBJ group, which is the only way the renderer can tell a
+    deck channel from grey plastic -- without it the whole kit rendered as a
+    dark tube and its lighting premise went untested for two sessions.
+    """
+    owner = [default_group] * len(tris)
+    for name, lo, hi in (spans if spans is not None else []):
+        for i in range(lo, min(hi, len(tris))):
+            owner[i] = name
+
     with open(path, "w") as f:
+        f.write("# interior kit -- provisional dimensions, docs/interior-kit-spec.md\n")
         for x, y, z in verts:
             f.write(f"v {x:.5f} {y:.5f} {z:.5f}\n")
-        for a, b, c in tris:
-            f.write(f"f {a + 1} {b + 1} {c + 1}\n")
+        order, seen = [], set()
+        for g in owner:
+            if g not in seen:
+                seen.add(g)
+                order.append(g)
+        for g in order:
+            f.write(f"g {g}\no {g}\n")
+            for i, (a, b, c) in enumerate(tris):
+                if owner[i] == g:
+                    f.write(f"f {a + 1} {b + 1} {c + 1}\n")
 
 
 def _selftest():
