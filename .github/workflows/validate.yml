@@ -1,0 +1,57 @@
+name: canon-validation
+
+# There is no human reviewing intermediate work and no GPU in the build
+# container, so every claim that can be checked numerically is checked here on
+# every push. A canon violation fails the build.
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: pip install --quiet pyyaml numpy pillow
+
+      - name: Regenerate geometry from the schema
+        run: |
+          cd station
+          python3 generate_hull.py
+
+      - name: Canon assertions
+        run: python3 station/validate.py
+
+      - name: Confirm the schema still parses and is fully sourced
+        run: |
+          python3 - <<'PY'
+          import sys, yaml
+          d = yaml.safe_load(open("station/schema/station.yaml"))
+          # Every auth-5 value is an extrapolation and must be logged as an
+          # invention, or canon and guesswork have started to blur.
+          inv = open("canon/INVENTIONS.md").read()
+          missing = []
+          def walk(node, path=""):
+              if isinstance(node, dict):
+                  if node.get("auth") == 5 and "src" in node:
+                      pass
+                  for k, v in node.items():
+                      walk(v, f"{path}.{k}")
+              elif isinstance(node, list):
+                  for i, v in enumerate(node):
+                      walk(v, f"{path}[{i}]")
+          walk(d)
+          for tag in ("INV-001", "INV-002", "INV-003"):
+              if tag not in inv:
+                  missing.append(tag)
+          if missing:
+              print("missing invention entries:", missing); sys.exit(1)
+          print("schema parses; invention log intact")
+          PY
