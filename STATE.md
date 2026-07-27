@@ -220,6 +220,40 @@ sensor and deflector arrays.
 - **Axial ports have no tangential velocity to match at all.** That is the design rationale
   for the forward docking sphere and why large ships use it rather than a rim bay.
 
+## Session 2h — core shuttle and radial transit
+
+- **`station/physics/core_shuttle.py`, 18 tests passing.** Rim-to-axis transit through the
+  gravity gradient, plus the axial run itself.
+- **The headline result, measured not assumed.** Coriolis on radial motion is 2ωv, so peak
+  lateral load scales inversely with transit duration:
+
+  | Rim → axis in | Peak lateral |
+  |---|---|
+  | 8 s | **2.00 g** |
+  | 60 s | 0.27 g |
+  | 120 s | 0.13 g |
+  | 300 s | 0.05 g |
+
+  Holding it under 0.12 g needs **133 seconds**. A lift from the rim to the core shuttle is a
+  **two-minute-plus ride** during which weight drains away and an unexplained sideways push
+  builds and fades. That is a felt journey, and it falls out of the geometry rather than being
+  a design choice.
+- The car also has to shed **52.2 m/s of tangential speed**, costing 0.13 g along the direction
+  of rotation. Axial run across the rotating assembly: 99 s at 1.2 m/s².
+- `tools/plot_transit.py` plots the ride profile.
+
+## Test suites — all green
+
+| Suite | Tests |
+|---|---|
+| Canon assertions | 20 |
+| Rotating frame | 25 |
+| Precision / floating origin | 10 |
+| Starfury flight | 18 |
+| Docking | 15 |
+| Core shuttle | 18 |
+| **Total** | **106** |
+
 ## Next session — start here
 
 1. **Component refinement.** Placed but crude: the forward swept arrays read as flat planks
