@@ -91,7 +91,11 @@ communications_grid:
 # Sector model -- PROVISIONAL, see CONFLICTS.md C-003 (BLOCKING for interiors)
 # ---------------------------------------------------------------------------
 sectors:
-  model: longitudinal        # provisional; INV-003
+  # REJECTED for interiors -- see CONFLICTS.md C-003 UPDATE. Only 50% of the
+  # station is pressurised and the habitable volume is four separated regions,
+  # so six sectors cannot be longitudinal slices: Grey and Brown would land on
+  # bare truss spine. Retained below only as exterior hull labelling.
+  model: longitudinal_EXTERIOR_LABELLING_ONLY
   order_aft_to_fore: [grey, brown, green, red, yellow, blue]
   definitions:
     grey:   {function: "Industrial zones, manufacturing, construction", src: "other map 2.jpg", auth: 4}

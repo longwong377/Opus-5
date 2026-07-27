@@ -152,3 +152,44 @@ held at 150 m.
 
 **Lesson for the rest of the build:** a bare count in a labelled diagram does not imply an
 arrangement. Where an orthographic sheet exists, it outranks inference from a count.
+
+---
+
+## C-003 UPDATE — the longitudinal sector model fails on geometry
+
+Deriving Grey / Brown / Yellow extents (OW-002) exposed a contradiction that settles this.
+
+With the longitudinal framework complete, the station divides as:
+
+| | Length | Share |
+|---|---|---|
+| Pressurised / habitable | 3,997 m | 50% |
+| Structural (truss, spine, flares, spike, reactor) | 4,050 m | 50% |
+
+The habitable volume is **not contiguous**. It is four separated regions:
+`primary_fusion_reactor` 292 m (a reactor, not living space), `green_section` 2,928 m,
+`red_section` 430 m, `docking_sphere` 347 m. **The Green section alone is 73% of all
+habitable volume**, and the entire aft 3,107 m is bare truss spine and reactor.
+
+**Six sectors cannot be laid out as longitudinal slices across this.** Grey (industrial and
+manufacturing) and Brown (residential, Downbelow) have nowhere to go — there is no pressurised
+volume aft of the rotating assembly to put them in. Laying them along the truss spine would
+put a residential district on an unpressurised structural member.
+
+**This is decisive against the longitudinal model** and correspondingly strong support for
+`Interior map.jpg`, which shows sectors as **nested layers within the pressurised volume**
+rather than slices of the whole 8 km. Under that reading Grey and Brown are radial or
+longitudinal subdivisions *inside* the rotating assembly, which has ample room at 2,928 m
+long and up to 957 m across.
+
+**Ruling: the longitudinal model is rejected for interiors.** It stays only as the labelling
+that ties sector names to visible hull positions on the exterior, which is all
+`other map 2.jpg` ever actually demonstrated.
+
+C-003 remains **OPEN** — the exact nesting is still unestablished, and C-004 (level numbering)
+is still required before interior geometry. But one of the two candidate topologies is now
+eliminated on geometric grounds rather than by preference, which is real progress.
+
+**Consequence for C-004:** if sectors nest inside the rotating assembly, then level numbering
+is far more likely radial (decks at decreasing radius, decreasing gravity) than longitudinal.
+That does not close C-004, but it makes the radial reading the leading hypothesis.

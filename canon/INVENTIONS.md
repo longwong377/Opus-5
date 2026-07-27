@@ -51,5 +51,13 @@ model constrains hull geometry. See `CONFLICTS.md` §C-003.
 
 **Constrained by:** `other map 2.jpg` ties each sector name to a visible hull position.
 
-**Overturned by:** resolution of C-003. **This is provisional and expected to be revisited.**
-Interior layout work must not proceed on this assumption.
+**Overturned by:** resolution of C-003. **NOW OVERTURNED — see CONFLICTS.md C-003 UPDATE.**
+
+Completing the longitudinal framework showed that only 50% of the station is pressurised, that
+the habitable volume is four separated regions, and that the Green section alone accounts for
+73% of it. Six sectors cannot be laid out as longitudinal slices across that, because Grey and
+Brown would land on unpressurised truss spine. The longitudinal model is retained only as
+exterior labelling; interiors must use a nested model.
+
+This invention did its job: it was adopted provisionally to unblock hull geometry, it was
+logged rather than assumed, and the geometry it produced is what disproved it.
