@@ -6,6 +6,33 @@ convenient at the time.
 
 ---
 
+## CURRENT STATUS — read this first
+
+This file is append-only and chronological, which means the newest note on a conflict is not
+always the one nearest its heading. C-003 in particular now has eight entries spanning several
+sessions, one of which is headed "RESOLVED" and is followed by four later notes that narrow it
+further. **Do not act on a heading without checking here.**
+
+| Conflict | Status | What is actually still open |
+|---|---|---|
+| C-001 overall length | **RESOLVED** | — 8,047 m, show canon over Miller |
+| C-002 cobra bay count | Open, non-blocking | 24 vs 28; provisionally 28 bays / 24 fighters |
+| **C-003 sector arrangement** | **Model resolved, assignment OPEN and BLOCKING** | Sectors are longitudinal bands; levels are radial rings. **Which band is the ~2,000 m habitat drum** is disputed — the Green/Brown transposition |
+| **C-004 level numbering** | **OPEN and BLOCKING** | Radial axis established. **Which ring is level 1** is not |
+| C-005 Contract 5 scale | Resolved, source degraded | Topology only, never dimensions |
+| C-006 Miller drawing vs table | **RESOLVED** | Table wins on dimensions, drawing on ordering |
+| C-007 radiator arrangement | **RESOLVED** | Six coplanar blades, not a radial array |
+
+**Both blocking conflicts have been reduced to a single question each.** Neither is a broad
+unknown any more; each needs one specific piece of evidence:
+
+- **C-003** — any source placing the Garden or Downbelow in a *named sector at a longitudinal
+  position*.
+- **C-004** — any source numbering a ring, or tying a level number to a gravity or a placeable
+  location.
+
+---
+
 ## C-001 — Overall station length · **RESOLVED**
 
 | Source | Claim | Authority |
@@ -605,7 +632,14 @@ a bare count in a labelled diagram does not imply an arrangement.**
 
 ---
 
-## C-003 RESOLVED — both readings were right, about different axes
+## C-003 — MODEL RESOLVED, SECTOR ASSIGNMENT STILL OPEN
+### (was headed "RESOLVED"; corrected in session 2t — see the head entry)
+
+**This entry settles the *model*, not the *assignment*.** Later notes (2r, 2s) show that which
+longitudinal band is the habitat drum is still disputed between the two authority-3 sheets.
+Read this for the model; read the head entry for current status.
+
+Both readings were right, about different axes
 
 The file that settles this had been passed over twice.
 `02-station-cutaways-and-plans/b5-schematics-from-the-security-manual-v0-u8879zcrf36h1.webp`

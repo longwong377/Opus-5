@@ -97,7 +97,8 @@ communications_grid:
 # Sector model -- PROVISIONAL, see CONFLICTS.md C-003 (BLOCKING for interiors)
 # ---------------------------------------------------------------------------
 sectors:
-  # C-003 RESOLVED. The Security Manual Sectional Schematic brackets sectors along
+  # C-003 MODEL resolved, ASSIGNMENT still open. The Security Manual Sectional
+  # Schematic brackets sectors along
   # the station's length while drawing decks as concentric rings, so both readings
   # were right about different axes: sectors are LONGITUDINAL, levels are RADIAL.
   #
@@ -109,6 +110,11 @@ sectors:
   model: longitudinal
   src: "b5-schematics-from-the-security-manual-v0-u8879zcrf36h1.webp Sectional Schematic"
   auth: 3
+  # WARNING: the two authority-3 sheets disagree about which longitudinal band
+  # is the ~2,000 m habitat drum -- the Green/Brown transposition. The order and
+  # extents below follow the Sectional Schematic. Do not build interior layout
+  # against them until C-003's assignment question closes.
+  assignment_status: OPEN_BLOCKING
   order_aft_to_fore: [yellow, grey, green, red, blue]
   extents_m:
     yellow: {z0: 0,    z1: 3397, frac: [0.000, 0.422]}

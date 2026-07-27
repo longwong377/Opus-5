@@ -166,6 +166,12 @@ def main():
         prev = v["z1"]
     check("sector extents are contiguous aft to fore", not holes, "; ".join(holes))
     # Brown is a radial designation, not a length -- it must not acquire extents.
+    # The sector assignment is still disputed (Green/Brown transposition), so the
+    # schema must keep saying so. A future session that quietly drops this flag
+    # and builds interior layout against these extents is the failure this guards.
+    check("sector assignment is still flagged as open",
+          sec.get("assignment_status") == "OPEN_BLOCKING",
+          "C-003 assignment must stay flagged until the transposition closes")
     check("Brown is not in the longitudinal extents",
           "brown" not in ex,
           "INV-009: Brown is the outermost ring, not a length of station")
