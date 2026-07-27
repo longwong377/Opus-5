@@ -125,15 +125,36 @@ reactor cooling fins (12), heat exchange / solar arrays (12), communications gri
 cobra bays (28), cargo modules (42), observation domes and rotundas, docking ports, and the
 sensor and deflector arrays.
 
+## Session 2c — reference correction and a topology elimination
+
+- **CI added** (`.github/workflows/validate.yml`) — regenerates geometry and runs the canon
+  assertions on every push, plus checks the invention log is intact.
+- **C-007: radiators corrected.** The orthographic production sheet shows them **coplanar** —
+  3 blades above the spine, 3 below, edge-on in top view and full-face in side view. I had
+  built 12 arrayed around the axis from a bare count. Added the `planar_blades` kind.
+  *Lesson recorded: a count in a labelled diagram does not imply an arrangement.*
+- **Cargo modules moved to dorsal rows** (`dorsal_line` kind) — the sheet shows them as rows
+  along meridians, not wrapped around the circumference.
+- **C-003 half-resolved, by geometry rather than preference.** Deriving the Grey/Brown/Yellow
+  extents showed the station is **50% pressurised, 50% structural**, with habitable volume in
+  **four separated regions** and **Green alone at 73%** of it. Six sectors cannot be
+  longitudinal slices — Grey and Brown would land on bare truss spine. The longitudinal model
+  is rejected for interiors and INV-003 is marked overturned.
+- **Godot build:** running but slow — ~1,155 of ~9,500 translation units at `-j2` after the
+  first attempt was killed (OOM signature: log stops mid-compile, no error). LTO disabled and
+  parallelism capped. This is hours of background work and blocks nothing, since
+  `tools/preview_render.py` covers the visual loop for the structure-first phase.
+
 ## Next session — start here
 
-1. **Finish the Godot build** (`tools/build_godot.sh`, ~40 min on 4 cores) and publish the
-   double-precision binary as a GitHub Release asset so later sessions fetch it in seconds.
-2. **Non-axisymmetric components.** Add the fins, solar arrays, comms pylons, cobra bays and
-   cargo modules as schema-driven instanced components placed against the longitudinal
-   framework. This is what turns a lathed shape into Babylon 5.
-3. **Set up CI** to run `station/validate.py` on every push.
-4. **OW-002.** Derive Grey / Brown / Yellow extents as the remainder of the 8,047 m budget.
+1. **Remaining components.** Heat-exchange collectors are still a crude radial pinwheel where
+   the top view shows a swept form. The fore swept structures, observation domes (2), rotundas
+   (4), docking ports and sensor arrays are all still unplaced.
+2. **Surface articulation.** No greebling, panel lines or hull plating anywhere yet. This is
+   where the procedural-detail approach from ADR 0002 starts earning its keep.
+3. **Finish the Godot build** and publish the double-precision binary as a Release asset.
+4. **C-003 / C-004.** Still blocking interiors. Radial level numbering is now the leading
+   hypothesis (see C-003 UPDATE), but needs a lift display or deck plan to confirm.
 
 ## Blocked
 
