@@ -53,4 +53,6 @@ Status: empty.
     distributed around the circumference as currently generated. **Not yet fixed.**
   - Fore section carries long **swept structures** in the top view, currently unmodelled.
 - Feeds: `station/schema/station.yaml` components block
-- Status: partially applied — radiators corrected, cargo module placement still wrong
+- Status: applied — radiators corrected (C-007), cargo modules moved to dorsal rows.
+  Still outstanding: the fore swept structures, and the heat-exchange collectors are
+  still a crude radial pinwheel rather than the swept form the top view shows.

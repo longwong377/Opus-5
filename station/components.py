@@ -198,8 +198,43 @@ def planar_blades(spec, profile):
     return verts, tris
 
 
+def dorsal_line(spec, profile):
+    """Modules in a row along one line of longitude, riding the hull surface.
+
+    The orthographic sheet shows the cargo modules as a single dorsal row on the
+    mid-section, clearly visible in both top and side views -- which only happens
+    for a row lying along one meridian. They were previously wrapped around the
+    circumference, which read as surface noise rather than as a cargo train.
+    """
+    verts, tris = [], []
+    z0, z1 = spec["z0"], spec["z1"]
+    n = spec["count"]
+    rows = spec.get("rows", 1)
+    per_row = max(1, n // rows)
+    prot, w = spec["protrusion_m"], spec["width_m"]
+    length = (z1 - z0) / per_row * spec.get("fill", 0.72)
+
+    for row in range(rows):
+        a = math.radians(spec.get("plane_deg", 0.0)) + row * 2.0 * math.pi / rows
+        ca, sa = math.cos(a), math.sin(a)
+        tx, ty = -sa, ca
+        for i in range(per_row):
+            zc = z0 + (z1 - z0) * (i + 0.5) / per_row
+            r0 = radius_at(profile, zc)
+            hw = w / 2.0
+            quad = []
+            for rr in (r0 - 8, r0 + prot):
+                for zz in (zc - length / 2, zc + length / 2):
+                    quad.append((ca * rr - tx * hw, sa * rr - ty * hw, zz))
+            quad = [quad[0], quad[1], quad[3], quad[2]]
+            quad += [(x + 2 * tx * hw, y + 2 * ty * hw, z) for x, y, z in quad]
+            _box(verts, tris, quad)
+    return verts, tris
+
+
 BUILDERS = {
     "planar_blades": planar_blades,
+    "dorsal_line": dorsal_line,
     "radial_array": radial_array,
     "pylon_pair": pylon_pair,
     "radial_band": radial_band,

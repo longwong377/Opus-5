@@ -355,11 +355,14 @@ components:
 
   - id: cargo_module
     count: 42
-    kind: radial_band
-    z0: 4900
-    z1: 5980
-    protrusion_m: 34
-    width_m: 74
-    auth: 4
+    kind: dorsal_line    # a single dorsal row, not wrapped -- see 00-INDEX exterior more.jpg
+    rows: 3              # 42 total across 3 meridians, 14 per row
+    plane_deg: 90        # dorsal, i.e. on the +Y (North) meridian
+    z0: 4870
+    z1: 6010
+    protrusion_m: 40
+    width_m: 96
+    fill: 0.74
+    auth: 2
     src: "Miller callout U 'Cargo Module, Typical' on the habitat cylinder;
           count 28 rotating + 14 support structure from the specification table"
