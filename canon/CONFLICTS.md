@@ -1444,3 +1444,49 @@ Also worth recording: **ring 1's floor gravity comes out at exactly 1.000 g** wi
 fitted to. The radius came from canon and the rotation rate was solved from it in session 1;
 the ring fractions came independently from the rosettes. That they agree is a genuine
 cross-check rather than a construction.
+
+---
+
+## Note — the "two drum end caps" was a misreading, not a conflict
+
+**Status: withdrawn. Never assigned a C-number; recorded here so it cannot be re-raised.**
+
+The 2r reference sweep flagged that two structurally different drum end caps appeared across
+frames: `03-sector-blue/Babylon_5_2-22_34b.jpg` showing a panelled grey disc of concentric
+annular courses, and `Babylon_5_2-22_33a.jpg` showing a deep red-orange open triangulated
+lattice. It sat in STATE.md as blocking work on the drum's ends.
+
+They are two different **structures**, not two versions of one.
+
+`Babylon_5_2-22_35a.jpg` — from the same sequence, and never examined until now — is shot
+**forward through the windscreen of a drum tram**, past a seated passenger. Through the glass
+the red-orange triangulated lattice recedes to a vanishing point with regularly spaced
+transverse ribs and a pale conduit running along it. That is the geometry of a **guideway**, not
+of a bulkhead: a bulkhead does not have a vanishing point.
+
+Read back into `33a`, the lattice is overhead and close, and the frame also contains the
+concentric ribbed disc — lower right, lit warm and dark rather than grey, which is why it was
+not matched to `34b` on first pass. Magnifying that region shows the same radially ribbed,
+concentrically banded dished cap, with the drum's ground running up to its rim and a
+circumferential road following the boundary.
+
+So:
+
+- the **end cap** is the concentric ribbed dished bulkhead, and it is the only one. Its
+  measurements are already recorded above under "C-004 — session 2r note: the drum end cap,
+  measured", and it is now built by `station/interior.py:drum_end_cap()`.
+- the **red-orange triangulated lattice** is the longitudinal **tram guideway truss** running
+  the drum's length, carrying the tram cars visible slung beneath it in both `33a` and `34b`,
+  with the drum's lighting mounted along its underside. Not yet built.
+
+**Lesson, and the reason this is written down rather than quietly deleted:** the flag came from
+comparing two frames without looking for a third. `35a` was filed, catalogued and indexed the
+whole time. Two references disagreeing is evidence that a third is needed, not evidence of a
+contradiction — the same shape of error as reading a label leader line as hull, or a count of
+twelve radiators as a radial arrangement.
+
+**One thing this does newly establish:** the drum is lit from **longitudinal light runs mounted
+on the guideway trusses**, not from an axial sun-strip and not from the end caps. `34b` shows
+the bright tubes running alongside the truss; `33a` shows a row of rectangular fixtures on the
+truss's underside. That is authority 1, and it is the first sourced answer to what lights the
+habitat.

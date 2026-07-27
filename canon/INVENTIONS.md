@@ -474,3 +474,49 @@ every ring; nothing else needs editing.
 **Consequence worth keeping:** gravity is quoted per deck rather than per ring because it
 genuinely differs across one. Ring 1's outermost and innermost decks differ by **0.155 g**,
 which is felt walking down a single stair — 1.0000 g on deck 0 against 0.8448 g on deck 12.
+
+---
+
+## INV-011 — Drum end-cap relief: dish depth, rib size, plate segmentation
+
+**Invented:** Three numbers in `station/interior.py`'s `drum_end_cap()` that the footage
+constrains in kind but not in magnitude:
+
+- `ENDCAP_DISH = 0.18` — the cap's sagitta as a fraction of drum radius, i.e. **50.1 m** of
+  dish over a 278.3 m radius.
+- `ENDCAP_RIB_W_M = 1.6`, `ENDCAP_RIB_H_M = 0.9`, `ENDCAP_STEP_M = 1.2` — radial rib width,
+  how far a rib stands proud of its plates, and the axial depth of the step between courses.
+- The **plate segmentation rule**: each course is divided into the number of plates that makes
+  that course's plates closest to square, snapped to a multiple of four and clamped to 16–96.
+
+**Why necessary:** The cap was measured off authority-1 footage in session 2r — rib radii,
+eight to nine concentric courses, 48 rim lights at 7.4° ± 0.3°, a dished radially ribbed hub
+cone over the inner ~20%, plates "roughly square", two courses checker-plated. Every one of
+those is a **proportion or a count**. None of them is a depth, and a bulkhead with no relief
+renders as a painted disc. Something had to be chosen to turn the measurements into geometry.
+
+**Constrained by:**
+
+- The dish is *observed to exist* — the concentric bands curve in both `Babylon_5_2-22_34b` and
+  `33a` rather than reading as a flat plate — and 0.18 is a shallow torispherical head, the
+  ordinary form for a pressure bulkhead closing a cylinder. It is the profile family that is
+  sourced; the sagitta is not.
+- The segmentation rule is a **derivation from a measurement, not a free choice**: "radial depth
+  ≈ circumferential width" is what was recorded, and no single segment count can satisfy it
+  across courses whose depths differ fourfold. Per-course counts are the only way to honour it.
+  The rule reproduces the footage's most distinctive quality — fine plating at the rim, coarse
+  toward the hub, and a cog-like ring of fine radial teeth inboard, which the Blue rosette
+  description independently records in the same words.
+- Rib and step sizes are set at human scale so the cap is walkable structure rather than
+  ornament, and small enough (0.3–0.4% of radius) not to disturb the measured rib radii.
+
+**Overturned by:** any frame giving the cap's depth against a known length — the core shuttle
+tube's diameter where it passes through the hub would do it, and so would a profile view of the
+drum's end in a cutaway. Changing `ENDCAP_DISH` re-derives the whole cap; nothing else edits.
+
+**Not an invention, and worth separating out:** the cap's *aperture* is not chosen. The measured
+hub cone fills the inner ~20% of the cap radius; the schema's core ring, read independently off
+an authority-3 print diagram, sits at r/R = 0.18. Two unrelated sources landing 2% apart is a
+corroboration, so the cap is built down to the schema's core radius rather than to a new number.
+`interior.py`'s self-test asserts the two stay within 0.03 of each other, so a future edit to
+either has to confront the other.

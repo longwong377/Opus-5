@@ -476,6 +476,163 @@ def write_grouped_obj(path, verts, tris, groups):
 
 
 # --------------------------------------------------------------------------
+# Drum end cap
+# --------------------------------------------------------------------------
+
+# Measured off authority-1 footage in session 2r (see CONFLICTS.md, "C-004 --
+# session 2r note: the drum end cap, measured"). Circumferential ribs sit at
+# these normalised radii; the plates between them are roughly square, so the
+# cap is a grid of annular courses rather than a set of thin rings.
+ENDCAP_RIBS = (1.03, 0.98, 0.80, 0.71, 0.51, 0.32, 0.28, 0.25)
+
+# The measured hub cone fills the inner ~20% of the radius. The schema's
+# provisional rings -- read independently, off an authority-3 print diagram --
+# put the core at r/R = 0.18. Two unrelated sources landing 2% apart is a
+# corroboration, so the cap is built down to the schema's core radius and the
+# hub cone is the core's end structure rather than a separate invention.
+ENDCAP_RIM_LIGHTS = 48        # 7.5 deg pitch; measured 7.40 +/- 0.3 deg
+ENDCAP_SEGMENTS = 48          # radial ribs share the rim-light pitch
+ENDCAP_DISH = 0.18            # sagitta / R -- INV-011, profile family only
+ENDCAP_STEP_M = 1.2           # axial depth of a circumferential rib step
+ENDCAP_CHECKER = (2, 5)       # course indices the footage shows checker-plated
+ENDCAP_RIB_W_M = 1.6          # radial rib width, constant in metres
+ENDCAP_RIB_H_M = 0.9          # how far a rib stands proud of its plates
+
+
+def _endcap_segments(u_outer, u_inner, r0):
+    """Plate count for one course, chosen to make its plates near-square."""
+    r_mid = (u_outer + u_inner) / 2.0 * r0
+    depth = max((u_outer - u_inner) * r0, 1e-6)
+    n = int(round(2 * math.pi * r_mid / depth))
+    return max(16, min(96, 4 * int(round(n / 4.0))))
+
+
+def drum_end_cap(schema, profile, sector, end="fore"):
+    """One end bulkhead of the habitat drum, seen from inside.
+
+    STATE.md recorded this as blocked -- "two structurally different end caps
+    appear across frames". They are not two caps. `Babylon_5_2-22_35a` is shot
+    forward through the windscreen of a drum tram, and the deep red-orange
+    triangulated lattice that frame shares with `33a` converges to a vanishing
+    point with regular transverse ribs: it is the tram guideway truss seen from
+    inside and from beneath, not a bulkhead. The concentric ribbed disc appears
+    in both frames and is the only end cap.
+
+    The cap is a stepped lathe: each measured course is a flat annulus, and the
+    rib between two courses is the axial step joining them. That is what makes
+    the ribs read in silhouette rather than as drawn-on rings.
+    """
+    r0 = sector_radius(schema, profile, sector)
+    ex = schema["sectors"]["extents_m"][sector]
+    z_base = ex["z1"] if end == "fore" else ex["z0"]
+    # Outward is away from the drum interior: +z at the fore end, -z at the aft.
+    out = 1.0 if end == "fore" else -1.0
+
+    core_u = schema["interior_topology"]["provisional_rings"][-1]["r_outer"]
+    us = [u for u in ENDCAP_RIBS if u > core_u] + [core_u]
+
+    def dish(u):
+        """Axial offset of the cap surface, outward, at normalised radius u."""
+        return ENDCAP_DISH * r0 * (1.0 - u * u)
+
+    verts, tris, groups = [], [], []
+
+    def quad(p0, p1, p2, p3, group):
+        b = len(verts)
+        verts.extend([p0, p1, p2, p3])
+        tris.append((b, b + 1, b + 2))
+        tris.append((b, b + 2, b + 3))
+        groups.extend([group, group])
+
+    def ring_quad(uo_, ui_, a0, a1, z_o, z_i, group):
+        """Annular patch wound to face into the drum, at either end."""
+        pts = [pt(uo_, a0, z_o), pt(ui_, a0, z_i),
+               pt(ui_, a1, z_i), pt(uo_, a1, z_o)]
+        if out < 0:
+            pts = pts[::-1]
+        quad(pts[0], pts[1], pts[2], pts[3], group)
+
+    def pt(u, ang, zoff):
+        return (u * r0 * math.cos(ang), u * r0 * math.sin(ang),
+                z_base + out * (dish(u) + zoff))
+
+    # The measurement says the plates are "roughly square -- radial depth
+    # approximately circumferential width". No single segment count can satisfy
+    # that across courses whose radial depths differ by 4x, so each course gets
+    # the count that makes ITS plates closest to square. That reproduces what
+    # the footage actually shows: fine plating near the rim, coarse toward the
+    # hub. A uniform count gave a smooth lathe with no radial seams at all.
+    for ci in range(len(us) - 1):
+        uo, ui = us[ci], us[ci + 1]
+        n_seg = _endcap_segments(uo, ui, r0)
+        step = ENDCAP_STEP_M if ci % 2 == 0 else 0.0
+        nstep = ENDCAP_STEP_M if (ci + 1) % 2 == 0 else 0.0
+        # Half-width of a radial rib, in angle. Constant metric width, so the
+        # ribs stay the same size in the hand at every radius.
+        half = ENDCAP_RIB_W_M / 2.0 / max(uo * r0, 1.0)
+
+        for sg in range(n_seg):
+            a0 = 2 * math.pi * sg / n_seg
+            a1 = 2 * math.pi * (sg + 1) / n_seg
+            # Checker-plating: alternate plates in the marked courses sit proud
+            # by a plate thickness, which is what makes those two courses read
+            # differently from the plain ones at distance.
+            z = step - (0.35 if (ci in ENDCAP_CHECKER and sg % 2 == 0) else 0.0)
+            ring_quad(uo, ui, a0 + half, a1 - half, z, z,
+                      f"endcap_plate_c{ci}")
+
+            # Radial rib between this plate and the next, proud of both.
+            zr = step - ENDCAP_RIB_H_M
+            ring_quad(uo, ui, a1 - half, a1 + half, zr, zr, "endcap_rib")
+            # Its two flanks. Without them the rib is a coplanar stripe that
+            # only a material could distinguish; with them it shades as relief.
+            for ang, sgn in ((a1 - half, -1), (a1 + half, +1)):
+                pa, pb = pt(uo, ang, z), pt(ui, ang, z)
+                qa, qb = pt(uo, ang, zr), pt(ui, ang, zr)
+                pts = [pa, pb, qb, qa]
+                if (sgn * out) < 0:
+                    pts = pts[::-1]
+                quad(*pts, "endcap_rib")
+
+        # The circumferential rib: the axial wall joining this course to the
+        # next. Exposed face is on the side of the recessed course.
+        if abs(nstep - step) > 1e-9:
+            n_wall = max(n_seg, _endcap_segments(us[ci + 1], us[min(ci + 2, len(us) - 1)], r0))
+            for sg in range(n_wall):
+                a0 = 2 * math.pi * sg / n_wall
+                a1 = 2 * math.pi * (sg + 1) / n_wall
+                pts = [pt(ui, a0, step), pt(ui, a0, nstep),
+                       pt(ui, a1, nstep), pt(ui, a1, step)]
+                if out < 0:
+                    pts = pts[::-1]
+                quad(*pts, "endcap_course_wall")
+
+    # Rim lights. The one feature of the cap that was counted rather than
+    # estimated, and the thing that makes the rim read as a lit edge at 2 km.
+    for i in range(ENDCAP_RIM_LIGHTS):
+        a0 = 2 * math.pi * (i + 0.22) / ENDCAP_RIM_LIGHTS
+        a1 = 2 * math.pi * (i + 0.78) / ENDCAP_RIM_LIGHTS
+        if out > 0:
+            quad(pt(1.0, a0, -0.6), pt(0.965, a0, -0.6),
+                 pt(0.965, a1, -0.6), pt(1.0, a1, -0.6), "endcap_rimlight")
+        else:
+            quad(pt(1.0, a0, -0.6), pt(1.0, a1, -0.6),
+                 pt(0.965, a1, -0.6), pt(0.965, a0, -0.6), "endcap_rimlight")
+
+    return verts, tris, {
+        "sector": sector,
+        "end": end,
+        "radius_m": round(r0, 1),
+        "courses": len(us) - 1,
+        "rim_lights": ENDCAP_RIM_LIGHTS,
+        "dish_depth_m": round(ENDCAP_DISH * r0, 1),
+        "core_aperture_m": round(core_u * r0, 1),
+        "triangles": len(tris),
+        "groups": groups,
+    }
+
+
+# --------------------------------------------------------------------------
 # Self-test. There is no GPU and no reviewer, so the properties a render would
 # reveal have to be asserted numerically as well as looked at.
 # --------------------------------------------------------------------------
@@ -546,6 +703,66 @@ def _selftest():
     check("drum closes on itself at 360 deg", meta["arc_deg"] == 360.0)
     check("every drum triangle carries a land-use group",
           len(meta["groups"]) == len(tris) and all(meta["groups"]))
+
+    # --- end caps ---------------------------------------------------------
+    for end in ("fore", "aft"):
+        cv, ct, cm = drum_end_cap(schema, profile, "green", end)
+        want = -1.0 if end == "fore" else 1.0
+        plates = ribs = walls = 0
+        plates_ok = ribs_ok = 0
+        for i, (ia, ib, ic) in enumerate(ct):
+            p0, p1, p2 = cv[ia], cv[ib], cv[ic]
+            u = (p1[0] - p0[0], p1[1] - p0[1], p1[2] - p0[2])
+            w = (p2[0] - p0[0], p2[1] - p0[1], p2[2] - p0[2])
+            nz = u[0] * w[1] - u[1] * w[0]
+            nlen = math.sqrt(sum(x * x for x in (
+                u[1] * w[2] - u[2] * w[1],
+                u[2] * w[0] - u[0] * w[2], nz))) or 1.0
+            g = cm["groups"][i]
+            if g.startswith("endcap_plate") or g == "endcap_rimlight":
+                plates += 1
+                plates_ok += nz * want > 0
+            elif g == "endcap_course_wall":
+                walls += 1
+                ribs += 1
+                ribs_ok += abs(nz / nlen) < 0.05   # axial wall: radial normal
+            else:
+                ribs += 1
+                ribs_ok += 1
+        # A cap plate facing the wrong way is invisible from inside the drum,
+        # which is the only place it is ever seen.
+        check(f"{end} cap: plates and rim lights face into the drum",
+              plates and plates_ok == plates, f"{plates_ok}/{plates}")
+        check(f"{end} cap: course walls are axial", ribs_ok == ribs,
+              f"{ribs_ok}/{ribs}")
+        check(f"{end} cap: 48 rim lights",
+              cm["rim_lights"] == 48 and
+              sum(g == "endcap_rimlight" for g in cm["groups"]) == 96)
+        # 8-9 concentric courses were measured; the schema's core radius sets
+        # where the innermost one stops.
+        check(f"{end} cap: 8 concentric courses", cm["courses"] == 8,
+              str(cm["courses"]))
+        check(f"{end} cap: aperture matches the schema core radius",
+              abs(cm["core_aperture_m"] - 0.18 * r_drum) < 0.5,
+              f"{cm['core_aperture_m']} m")
+
+    # The measured hub cone fills the inner ~20% of the cap; the schema's core
+    # ring, read off an unrelated authority-3 diagram, sits at 0.18. Two
+    # independent sources agreeing to 2% is load-bearing -- assert it so a
+    # future edit to either one has to confront the other.
+    core_u = schema["interior_topology"]["provisional_rings"][-1]["r_outer"]
+    check("schema core radius corroborates the measured hub cone",
+          abs(core_u - 0.20) <= 0.03, f"r/R = {core_u}")
+
+    # Plates should be roughly square, as measured. Allow a wide band -- the
+    # observation is qualitative -- but catch a course that has gone to ribbons.
+    for ci in range(len(ENDCAP_RIBS) - 1):
+        uo, ui = ENDCAP_RIBS[ci], ENDCAP_RIBS[ci + 1]
+        n = _endcap_segments(uo, ui, r_drum)
+        width = 2 * math.pi * ((uo + ui) / 2 * r_drum) / n
+        depth = (uo - ui) * r_drum
+        check(f"cap course {ci} plates are near-square",
+              0.4 < width / depth < 2.5, f"{width:.1f} x {depth:.1f} m")
 
     # LAND_USE must tile the circumference exactly. A table summing to 0.94
     # would leave a 6% seam of untagged ground -- the same class of bug that

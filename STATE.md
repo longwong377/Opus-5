@@ -642,9 +642,12 @@ hollow — but a cartoon's fill is not a label, so C-003 correctly stays open.
    are now reference-corrected.
 2. **Deck tile phase across junctions** — the grid is not driven from a shared origin, so
    there is a visible seam at each crossing mouth.
-3. **Two structurally different drum end caps** appear across frames (`Babylon_5_2-22_34b`
-   panelled grey concentric disc vs `33a` deep red-orange open triangulated lattice). Flagged
-   in the 2r sweep, unresolved, and it changes what the drum generator emits at each end.
+3. ~~**Two structurally different drum end caps**~~ — **RESOLVED, and it was not a conflict.**
+   `Babylon_5_2-22_35a` settles it: that frame is shot forward through the windscreen of a drum
+   tram, and the deep red-orange triangulated lattice converges to a vanishing point with
+   regular transverse ribs. It is the **tram guideway truss**, seen from inside in `35a` and
+   from beneath in `33a` — not a bulkhead. The panelled concentric disc appears in *both* `34b`
+   and `33a` (right of frame, warm-lit) and is the only end cap. Built; see INV-011.
 4. **Publish the Godot binary** as a Release asset — container-local, 61 minutes to rebuild.
 5. **C-003 assignment** and **C-004 numbering** still block interior layout. One question each:
    which longitudinal band is the drum, and which ring is level 1.
