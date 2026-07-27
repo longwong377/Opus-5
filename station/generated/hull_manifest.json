@@ -3,10 +3,13 @@
  "radial_segments": 64,
  "z_stride": 1,
  "rings": 1978,
- "vertices": 126594,
- "triangles": 253184,
+ "vertices": 127378,
+ "triangles": 254360,
  "groups": {
   "aft_terminus": 1344,
+  "cargo_module": 504,
+  "cobra_bay": 336,
+  "comms_grid_pylon": 48,
   "docking_sphere": 11008,
   "explosive_disconnect_neck": 10496,
   "forward_deflector_spike": 23872,
@@ -14,18 +17,23 @@
   "forward_waist": 3584,
   "generator_torus_housing": 6272,
   "green_section": 92032,
+  "heat_exchange_solar_array": 144,
   "hull_flare_aft": 2944,
   "main_truss_spine": 43520,
   "primary_fusion_reactor": 9216,
+  "reactor_cooling_fin": 144,
   "reactor_spine": 24064,
   "red_section": 13568
  },
+ "hull_triangles": 253184,
+ "component_triangles": 1176,
+ "component_instances": 96,
  "degenerate_quads_skipped": 0,
  "cap_triangles": 128,
  "bounds": {
   "z_min_m": 0.0,
   "z_max_m": 8046.9,
   "length_m": 8046.9,
-  "max_radius_m": 480.3
+  "max_radius_m": 1210.88
  }
 }

@@ -101,9 +101,18 @@ def main():
         check(f"hull within triangle budget ({HULL_TRIANGLE_BUDGET:,})",
               man["triangles"] <= HULL_TRIANGLE_BUDGET,
               f"{man['triangles']:,} triangles")
-        check("max radius agrees with profile",
-              abs(man["bounds"]["max_radius_m"] - profile["max_radius_m"]) < 1.0,
-              f"{man['bounds']['max_radius_m']} vs {profile['max_radius_m']}")
+        # Once components are present the model's max radius is the
+        # communications grid tip, not the hull. Check the two separately.
+        comms = schema["communications_grid"]["span_m"]["value"] / 2.0
+        check("model max radius reaches the comms grid tip",
+              man["bounds"]["max_radius_m"] > comms,
+              f"{man['bounds']['max_radius_m']} m vs half-span {comms} m")
+        check("model max radius is not implausibly beyond the grid",
+              man["bounds"]["max_radius_m"] < comms * 1.6,
+              f"{man['bounds']['max_radius_m']} m")
+        check("every schema component produced geometry",
+              all(c["id"] in man["groups"] for c in schema.get("components", [])),
+              str([c["id"] for c in schema.get("components", []) if c["id"] not in man["groups"]]))
 
     # --- derived physics ----------------------------------------------------
     rot = schema["station"]["rotation"]

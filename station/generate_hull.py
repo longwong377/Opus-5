@@ -17,6 +17,8 @@ import os
 
 import yaml
 
+import components as components_mod
+
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SCHEMA = os.path.join(ROOT, "station/schema/station.yaml")
 PROFILE = os.path.join(ROOT, "station/schema/radius_profile.json")
@@ -129,9 +131,25 @@ def main():
     ap.add_argument("--radial-segments", type=int, default=DEFAULT_RADIAL_SEGMENTS)
     ap.add_argument("--z-stride", type=int, default=DEFAULT_Z_STRIDE)
     ap.add_argument("--out", default=os.path.join(OUTDIR, "hull.obj"))
+    ap.add_argument("--no-components", action="store_true",
+                    help="core hull only, for isolating lathe issues")
     a = ap.parse_args()
 
     verts, groups, rings, degenerate, caps = build(a.radial_segments, a.z_stride)
+
+    # Components attach at the hull radius the profile reports for their z, so
+    # they stay welded to the hull automatically when the profile changes.
+    schema, profile = load()
+    hull_tris = sum(len(t) for t in groups.values())
+    comp_counts = {}
+    if not a.no_components:
+        for cid, (cv, ct) in components_mod.build_all(
+                schema.get("components", []), profile["profile"]).items():
+            base = len(verts)
+            verts.extend(cv)
+            groups[cid] = [(x + base, y + base, z + base) for x, y, z in ct]
+            comp_counts[cid] = len(ct)
+
     write_obj(a.out, verts, groups)
 
     tris = sum(len(t) for t in groups.values())
@@ -145,6 +163,9 @@ def main():
         "vertices": len(verts),
         "triangles": tris,
         "groups": {k: len(v) for k, v in sorted(groups.items())},
+        "hull_triangles": hull_tris,
+        "component_triangles": sum(comp_counts.values()),
+        "component_instances": sum(c["count"] for c in schema.get("components", [])) if not a.no_components else 0,
         "degenerate_quads_skipped": degenerate,
         "cap_triangles": caps,
         "bounds": {

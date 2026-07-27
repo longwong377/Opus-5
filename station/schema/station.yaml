@@ -285,3 +285,77 @@ radius_profile:
     note: "The widest part of the station is the aft hull block, which Miller's table
            does not name at all. Larger than Red, Green or Blue. Any assumption that
            the Red Section is the station's widest point is wrong."
+
+# ---------------------------------------------------------------------------
+# Non-axisymmetric components.
+#
+# The lathe produces the core hull only. Everything that makes the silhouette
+# read as Babylon 5 rather than a smooth spindle lives here: radially arrayed
+# fins and arrays, the communications grid, cobra bays, cargo modules.
+#
+# Z positions are cross-referenced three ways: the Exterior map ordering
+# (auth 3), Miller's lettered callouts, and the envelope-excess analysis --
+# a wide running minimum of the radius profile approximates the core hull, and
+# where the envelope exceeds it by >25 m a structure protrudes. Agreement
+# between the callout and an independent excess zone is what justifies each
+# placement; where they agree the position is auth 3, where only the excess
+# zone supports it, auth 5 with an INV entry.
+# ---------------------------------------------------------------------------
+components:
+  - id: reactor_cooling_fin
+    count: 12
+    kind: radial_array
+    z0: 533
+    z1: 860
+    span_m: 340          # radial extent beyond attach radius
+    chord_m: 165         # extent along z -- reference shows elongated plates, not squares
+    thickness_m: 12
+    auth: 3
+    src: "Exterior map.jpg 'Reactor Cooling Fins (12)'; excess zones 533-712 and 741-855"
+
+  - id: heat_exchange_solar_array
+    count: 12
+    kind: radial_array
+    z0: 1099
+    z1: 1510
+    span_m: 400
+    chord_m: 210
+    thickness_m: 10
+    auth: 3
+    src: "Exterior map.jpg 'Heat Exchange Arrays and Emergency Solar Collectors (12)';
+          excess zone 1099-1510 peak 153 m"
+
+  - id: comms_grid_pylon
+    count: 2
+    kind: pylon_pair
+    z0: 2515
+    z1: 2988
+    span_m: 1060.25      # half of communications_grid.span_m = 2120.5
+    grid_width_m: 893.2  # communications_grid.width_m
+    thickness_m: 18
+    auth: 3
+    src: "Contract 5 'Deep Space Communications Grid (2)'; Miller callout B
+          'Communications Grid Support Pylon'; excess zone 2515-2988 peak 177 m.
+          Span and width from the specification table, rescaled by k."
+
+  - id: cobra_bay
+    count: 28
+    kind: radial_band
+    z0: 6980
+    z1: 7250
+    protrusion_m: 26
+    width_m: 42
+    auth: 3
+    src: "Contract 5 'COBRA BAYS (28)'; Miller callout X 'Cobra Launch Bay Support Arm (4)';
+          excess zone 7062-7302 peak 102 m. Count per CONFLICTS.md C-002."
+
+  - id: cargo_module
+    count: 42
+    kind: radial_band
+    z0: 4900
+    z1: 5980
+    protrusion_m: 34
+    width_m: 74
+    auth: 4
+    src: "Miller callout U 'Cargo Module, Typical' on the habitat cylinder;
+          count 28 rotating + 14 support structure from the specification table"

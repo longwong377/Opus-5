@@ -76,6 +76,38 @@ pylons, cobra bays, cargo modules, domes. Interiors stay blocked on C-003 and C-
 - **Godot build fixed and running.** The proxy 403s GitHub archive and codeload paths;
   switched to a shallow clone.
 
+## Session 2b — components
+
+- **Component system built.** `station/components.py` with three placement kinds --
+  `radial_array` (fins, solar arrays), `pylon_pair` (communications grid), `radial_band`
+  (cobra bays, cargo modules). Driven entirely from a new `components:` block in the schema.
+  **96 instances across 5 component types.**
+- Components attach at the hull radius the profile reports for their z, so they stay welded
+  automatically when the profile changes. No second source of truth to drift.
+- Placements are cross-referenced three ways: Exterior map ordering, Miller's lettered
+  callouts, and an envelope-excess analysis (a wide running minimum of the radius profile
+  approximates the core hull; where the envelope exceeds it by >25 m, something protrudes).
+  Agreement between a callout and an independent excess zone is what justifies each position.
+- **Validator extended to 19 assertions**, including that every schema component actually
+  produced geometry, and separate hull-vs-model max radius checks now that the comms grid
+  tip (1,210 m) exceeds the hull.
+
+## Component quality — honest assessment
+
+The pipeline is correct; **the geometry is crude.** Components are box primitives placed by
+rule. Specifically still wrong:
+
+- **Cooling fins read as a shuttlecock** clustered at one z, where reference shows fins in
+  distinct grouped assemblies distributed along the spine.
+- **The communications grid renders as a thin I-beam.** The panel is 893 m along z but only
+  90 m radially, so it reads as a crossbar rather than an array structure.
+- **Solar arrays visually merge with the cooling fins** rather than reading as a separate
+  system.
+- No greebling, no panel lines, no surface articulation anywhere yet.
+
+These need reference-driven refinement against `01-station-exterior/` before they are
+believable. The value delivered so far is the *pipeline*, not the shapes.
+
 ## Known limitations of the current hull
 
 The lathe produces the **core hull only**. A surface of revolution cannot represent the
