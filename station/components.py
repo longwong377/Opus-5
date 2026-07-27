@@ -13,13 +13,51 @@ import math
 
 
 def _box(verts, tris, corners):
-    """Append an axis-agnostic box given 8 corners in the standard order."""
+    """Append an axis-agnostic box given 8 corners in the standard order.
+
+    Winding is outward. It was inward for the first several sessions of
+    exterior work and nothing caught it, because a closed solid has the same
+    silhouette either way -- the renderer simply culled the near faces instead
+    of the far ones and shaded the inside of the far wall. Proportions judged
+    from those renders were still right; the lighting was not.
+
+    A unit cube through this function must have signed volume +1, which
+    _selftest_winding() asserts.
+    """
     b = len(verts)
     verts.extend(corners)
     for a, c, d, e in ((0, 1, 2, 3), (7, 6, 5, 4), (0, 4, 5, 1),
                        (1, 5, 6, 2), (2, 6, 7, 3), (3, 7, 4, 0)):
-        tris.append((b + a, b + c, b + d))
-        tris.append((b + a, b + d, b + e))
+        tris.append((b + a, b + d, b + c))
+        tris.append((b + a, b + e, b + d))
+
+
+def signed_volume(verts, tris):
+    """Six-times signed volume of a closed mesh. Positive means outward winding.
+
+    The cheapest possible check that a solid is not inside-out, and the one
+    that would have caught _box four sessions earlier.
+    """
+    v6 = 0.0
+    for a, b, c in tris:
+        p, q, r = verts[a], verts[b], verts[c]
+        v6 += (p[0] * (q[1] * r[2] - q[2] * r[1])
+               - p[1] * (q[0] * r[2] - q[2] * r[0])
+               + p[2] * (q[0] * r[1] - q[1] * r[0]))
+    return v6 / 6.0
+
+
+def _selftest_winding():
+    v, t = [], []
+    _box(v, t, [(0, 0, 0), (1, 0, 0), (1, 1, 0), (0, 1, 0),
+                (0, 0, 1), (1, 0, 1), (1, 1, 1), (0, 1, 1)])
+    vol = signed_volume(v, t)
+    if abs(vol - 1.0) > 1e-9:
+        raise AssertionError(
+            f"_box winding is inside-out: unit cube signed volume {vol:+.3f}, expected +1.000")
+
+
+_selftest_winding()
 
 
 def radius_at(profile, z):

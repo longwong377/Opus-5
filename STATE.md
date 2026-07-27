@@ -433,6 +433,56 @@ then framing. Materials live in the engine, not the export.
 | NPC names | 20 |
 | NPC schedules | 18 |
 
+## Session 2p — interior kit: walls, doors, junctions
+
+The corridor had ribs and a deck and no walls, so it read as a skeleton. It now reads as a
+corridor. `station/interior_kit.py` gains `wall_assembly`, `portal_frame`, `pilaster`,
+`door_frame`, `door_leaf`, `bulkhead`, `deck_grid`, `junction` and
+`corridor_junction_section`, and `corridor_section` assembles all of it.
+
+**The section was wrong and the reference says so.** Both authority-1 corridor frames --
+`07-sector-grey/grey level 1.webp` and `05-sector-green/corridor in alien sector.webp` -- show
+a **chamfered box**: flat deck, upright walls, ~45 deg chamfers into a flat soffit. The first
+assembly used `ring_frame` and read as a pipe. `ring_frame` stays in the kit, because
+`central corridor.webp` does show circular ribs -- of a two-storey volume, not a corridor. The
+two are different elements and were being conflated.
+
+**`grey level 1.webp` is the most useful interior frame in the set** and had never been
+catalogued. Square-on it gives the whole wall build-up: projecting skirt, set-back dado, heavy
+rail band at hip height throwing a deep shadow reveal, then courses of large plates with
+recessed seams; bullnose pilasters at the portal jambs carrying segmented vertical light
+strips; warm downlights low on the wall; a fine deck tile grid. All of it is now modelled and
+all of it is logged as proportions, not metres -- `INV-007`.
+
+**Doors: the aperture is sourced, the mechanism is not.** No frame in the reference set shows a
+door leaf, open, closed or moving. The aperture is fixed -- a chamfered polygon with vertical
+jambs, a flat head and a raised threshold -- and that **rules out an iris on geometry rather
+than taste**: an iris sweeps a disc and leaves the four chamfered corners unswept. The
+remaining two readings are both built and selected by one entry in `PROVISIONAL`, so
+overturning the guess is a one-word edit. `INV-008`.
+
+**Found while building: `_box` produces inside-out solids.** Given corners in the obvious
+order, `components._box` emits every face wound inward -- verified numerically, 12 of 12
+triangles facing the wrong way on a unit cube. Outdoors that only changes the shading, which is
+why it survived four sessions of exterior work. Indoors it is fatal: the camera is inside the
+geometry, so an inside-out wall is one you see straight through. The interior kit uses its own
+`_slab` and a `_selftest` gate asserts the primitives face outward.
+**The exterior components are still built on the inward convention and their normals are
+flipped.** Not fixed here -- it would flip every component at once and needs its own
+before/after render pass.
+
+**Two more bugs, both found by looking:**
+- The old `corridor_section` laid its deck with a negative-determinant remap and no winding
+  reversal, so the floor was inside-out too. `_merge` now carries an explicit `flip`.
+- A closure tiled into convex blocks shares internal faces, and a depth-sorted renderer draws
+  them over the plate in front -- the bulkhead read as separate panels with joints radiating
+  off every door corner. `_plate_with_hole` decomposes only the caps and rims the two loops, so
+  there is no internal face to draw. It is also cheaper.
+
+Verified by rendering from a 1.65 m eye height and reading the PNGs: a 21.6 m corridor with a
+wall door and a bulkhead door, a four-arm crossing, and a tee. **7,656 triangles for 21.6 m**
+(354/m); a crossing with four 7.2 m stubs is 10,644. Canon assertions 23/23, budget gates 4/4.
+
 ## Next session — start here
 
 1. **Refine the remaining crude components.** The radiators are now measured off the
@@ -445,9 +495,16 @@ then framing. Materials live in the engine, not the export.
 3. **Starfury geometry** — `station/starfury_geometry.py` was assigned to a workflow agent;
    check whether it landed, otherwise build it. Physics already exists and the mesh must match
    `aurora_thrusters()` exactly.
-4. **Publish the Godot binary** as a Release asset — container-local, 61 minutes to rebuild.
+4. **Fix the `_box` winding convention** in `components.py`. Given corners in the obvious
+   order it emits every face wound inward, so **all exterior component normals are currently
+   flipped** (session 2p, verified numerically). Cheap to change, but it changes all exterior
+   shading at once and so needs a before/after render pass of its own.
+5. **An interior triangle budget.** `budget.py` gates the exterior only. A corridor runs ~354
+   triangles per metre and a crossing is 10,644; a sector of these needs a gate before the
+   counts get away.
+6. **Publish the Godot binary** as a Release asset — container-local, 61 minutes to rebuild.
    See `docs/godot-binary.md`.
-5. **C-003 / C-004** still block all interior *layout*. Radial numbering is the leading
+7. **C-003 / C-004** still block all interior *layout*. Radial numbering is the leading
    hypothesis with three supporting arguments; needs a lift display or deck plan to confirm.
 
 ## Blocked
