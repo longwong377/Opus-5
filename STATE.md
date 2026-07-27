@@ -1,6 +1,6 @@
 # Project State
 
-**Last updated:** 2026-07-27 · **Session 2v** — the drum's interior model corrected
+**Last updated:** 2026-07-27 · **Session 2w** — streaming cells
 
 ## Where we are
 
@@ -818,6 +818,49 @@ a guess, and it is asserted per ring.
 
 `interior.py` self-test: **96 assertions.**
 
+## Session 2w — streaming cells, and "seamless" as a test
+
+A ring corridor cannot be emitted whole. One deck of Grey's outermost ring is 2,527 m around
+and would be **866,304 triangles** — fourteen times the entire interior frame budget, for one
+deck of one ring of one sector. So the cell is the unit that gets built and streamed, and until
+now nothing defined it.
+
+`ring_cells()` divides a deck's circumference into an **integer** number of cells, so they tile
+the circle exactly and there is no runt cell at 360° carrying a different amount of geometry
+from all its neighbours. The size comes from `streaming_cell_deg()` — 1.5 sight lines — rounded
+**down** in count so the actual cell is never smaller than asked for.
+
+| sector / ring | cells | cell | sight line | triangles |
+|---|---|---|---|---|
+| Grey ring 1 | 18 × 20.0° | 140 m | 91 m | **48,128** |
+| Green sub-floor | 15 × 24.0° | 118 m | 76 m | 38,720 |
+
+**"Seamless" is the project's word, so it is a test rather than a claim.** Touching bounding
+boxes do not prove two cells meet — a crack in a ring corridor is a hole a player falls through
+at 1 g. `cell_seam_report()` compares the **shared edge itself**, vertex for vertex, in the
+radial plane the cells were cut on: 22 vertices each side, identical to 0.1 mm, in every sector.
+The **wrap-around** seam is asserted separately, because it is the one a `range(n)` loop never
+reaches and the one where a rounding error in 360/n would surface.
+
+`docs/render-cell-seam.png` shows it from inside, with the two cells tinted orange and blue: the
+second cell only appears at the very end of the visible run, where the curve takes over. **The
+player never sees a cell boundary as a boundary** — which is what sizing cells against the
+sight line was for, now confirmed by eye as well as by assertion.
+
+**Three findings worth carrying:**
+
+- A **bent** corridor costs **+20%** per metre over the straight kit — 343 tri/m against
+  285 — because each 2.5° section of the bend carries its own end caps. Gated, so the overhead
+  stays visible rather than quietly growing. Welding sections is the fix if it does.
+- Grey ring 1's cells are at **80% of the cell budget with structure alone**, before any
+  dressing, props, signage or NPCs. Grey is the sector where the interior kit will have to get
+  cheaper, and it is the widest ring in the station that is also the reason.
+- `ring_arc()` now takes an explicit radius. It previously placed corridors at the ring's
+  *mid-radius*, but a ring is a zone of a dozen decks and a corridor sits on **one deck's
+  floor**.
+
+`interior.py` self-test: **112 assertions.** `budget.py`: **14 gates.**
+
 ## Next session — start here
 
 The drum's **structure** is complete: shell, both end caps, three guideway trusses with the
@@ -832,10 +875,10 @@ What follows is in rough priority order.
 2. **The tram.** `33a`/`34b` show cars slung beneath the truss bottom chord and `35a` gives the
    **car interior** — seats, windscreen, stanchions, wall panels — which is unusually good
    reference for a vehicle. The guideway exists; the vehicle does not.
-3. **Streaming cells.** `streaming_cell_deg()` now sizes them (120 m in the drum's sub-floor
-   ring, 137 m in Grey ring 1) but nothing emits or joins them. A full ring corridor at the
-   drum radius is ~500,000 triangles and can never be emitted whole, so this is what makes ring
-   decks buildable at all.
+3. ~~**Streaming cells**~~ — **done, session 2w.** `ring_cells()` / `deck_cell()` emit them and
+   the seam is asserted vertex-for-vertex, wrap-around included. What is *not* done: a cell
+   **manifest** the engine can stream from, and cell-to-cell **junction** placement (a cell is
+   currently pure corridor with no doors off it).
 4. **Remaining crude components.** Cobra bays, docking ports, observation domes and rotundas
    are still box primitives. Radiators (2o), cargo modules and the forward comms plate (2t)
    are reference-corrected.

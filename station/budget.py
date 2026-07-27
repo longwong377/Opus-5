@@ -71,6 +71,19 @@ FRAME_TRIANGLES = 1_200_000
 # structure phase exists to produce, so it gets a quarter of the frame rather
 # than a twentieth -- and it has to hold that with LOD, since the far half of
 # the drum is over a kilometre away and cannot be drawn at full rate.
+# A ring corridor cannot be emitted whole -- one deck of the drum's sub-floor
+# ring is 1,771 m around and 580,800 triangles, nine times the entire interior
+# frame budget. Cells are the unit that is built and streamed, so they are what
+# gets gated.
+CELLS = {
+    "cell_tris": 60_000,
+    "resident_tris": 180_000,     # the cell you are in plus both neighbours
+    # Bending costs more per metre than the straight kit, because each section
+    # of the bend carries its own end caps. Gated so the overhead stays visible
+    # rather than quietly growing -- welding sections is the fix if it does.
+    "bent_tris_per_m": 400,
+}
+
 DRUM = {
     "visible_set_tris": 300_000,
     "frame_share": 0.25,
@@ -143,6 +156,7 @@ def main():
         t1 = len(ik.corridor_section(1.0)[1])
         t20 = len(ik.corridor_section(20.0)[1])
         per_m = (t20 - t1) / 19.0
+        per_m_straight = per_m
         cross = len(ik.junction()[1])
         tee = len(ik.junction(arms=(0, 1, 3))[1])
 
@@ -183,6 +197,42 @@ def main():
               "structure only -- props, NPCs and signage come out of the rest")
     except Exception as exc:
         check("interior kit measurable", 1, 0, "", f"could not measure: {exc}")
+
+    # --- streaming cells ----------------------------------------------------
+    try:
+        import interior as it
+
+        schema, profile = it.load()
+        rows, worst = [], None
+        for sec in schema["sectors"]["extents_m"]:
+            rings = it.ring_radii(schema, profile, sec)
+            ri = next(i for i, r in enumerate(rings) if r["kind"] == "deck_stack")
+            plan = it.ring_cells(schema, profile, sec, ri)
+            tris = len(it.deck_cell(schema, profile, sec, ri, 0, 0)[1])
+            rows.append((sec, plan, tris))
+            if worst is None or tris > worst[2]:
+                worst = (sec, plan, tris)
+
+        sec, plan, tris = worst
+        per_m = tris / plan["cell_length_m"]
+        # Resident set: the cell you are in plus both neighbours, because you
+        # can see a sight line past a boundary in either direction.
+        resident = tris * 3
+        print("\nStreaming cells -- a full ring corridor is not emittable\n")
+        print(f"  worst cell: {sec} {plan['ring']} deck 0 -- "
+              f"{plan['cells']} cells of {plan['cell_deg']:.1f} deg, "
+              f"{plan['cell_length_m']:.0f} m, {tris:,} tri")
+        check("cell triangles", tris, CELLS["cell_tris"], " tri",
+              f"{plan['circumference_m']:,.0f} m ring would be "
+              f"{tris * plan['cells']:,} whole")
+        check("resident set (3 cells)", resident, CELLS["resident_tris"], " tri",
+              "the cell you are in plus both neighbours")
+        check("bent corridor rate", per_m, CELLS["bent_tris_per_m"], " tri/m",
+              f"{per_m / max(per_m_straight, 1e-9) - 1:+.0%} against the "
+              f"straight kit's {per_m_straight:.0f} tri/m -- each bent section "
+              f"carries its own end caps")
+    except Exception as exc:
+        check("streaming cells measurable", 1, 0, "", f"could not measure: {exc}")
 
     # --- habitat drum -------------------------------------------------------
     try:

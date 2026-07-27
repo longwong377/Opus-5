@@ -258,7 +258,7 @@ def streaming_cell_deg(r_floor, corridor_width, margin=1.5):
 
 
 def ring_arc(schema, profile, sector, ring_index, degrees=30.0,
-             start_deg=0.0, z_offset=None):
+             start_deg=0.0, z_offset=None, radius_m=None):
     """One arc of one ring deck: a corridor run bent around the station axis.
 
     The corridor kit is authored straight, along +Z. Here it is bent: each
@@ -273,7 +273,9 @@ def ring_arc(schema, profile, sector, ring_index, degrees=30.0,
     ex = schema["sectors"]["extents_m"][sector]
     z_mid = z_offset if z_offset is not None else (ex["z0"] + ex["z1"]) / 2.0
 
-    r = ring["r_mid"]
+    # A ring is a zone of a dozen decks; a corridor sits on one deck's floor,
+    # not at the zone's mid-radius. Callers that know which deck say so.
+    r = ring["r_mid"] if radius_m is None else radius_m
     total = arc_length(r, degrees)
     # One kit section per few degrees. Too coarse and the corridor is a polygon;
     # too fine and the section count explodes for no visible gain.
@@ -769,6 +771,113 @@ def drum_end_cap(schema, profile, sector, end="fore"):
 
 
 # --------------------------------------------------------------------------
+# Streaming cells
+# --------------------------------------------------------------------------
+
+def ring_cells(schema, profile, sector, ring_index, deck_index=0, margin=1.5):
+    """How a deck's circumference divides into streaming cells.
+
+    A full ring corridor is not emittable. At the drum's sub-floor radius one
+    is 1,953 m around, which at the kit's 285 tri/m is **556,000 triangles** --
+    nine times the entire interior frame budget, for one deck of one ring of one
+    sector. Rings are only buildable as cells, so the cell is the unit the
+    generator emits and the unit the engine streams.
+
+    The count is an integer, so cells tile the circle exactly and there is no
+    runt cell at 360 degrees carrying a different amount of geometry from all
+    its neighbours. Rounding DOWN means the actual cell is at least the size
+    `streaming_cell_deg()` asked for, never less.
+    """
+    decks = decks_in_ring(schema, profile, sector, ring_index)
+    if not decks:
+        return None
+    deck = decks[deck_index]
+    r = deck["floor_r_m"]
+    cw = kit.PROVISIONAL["corridor_width_m"]
+    want = streaming_cell_deg(r, cw, margin)
+    n = max(1, int(360.0 // want))
+    cell_deg = 360.0 / n
+    return {
+        "sector": sector,
+        "ring_index": ring_index,
+        "ring": ring_radii(schema, profile, sector)[ring_index]["id"],
+        "deck_index": deck_index,
+        "radius_m": r,
+        "gravity_g": round(gravity_at(schema, r), 4),
+        "circumference_m": round(2 * math.pi * r, 1),
+        "cells": n,
+        "cell_deg": cell_deg,
+        "cell_length_m": round(2 * math.pi * r / n, 1),
+        "sight_line_m": round(sight_line(r, cw), 1),
+    }
+
+
+def deck_cell(schema, profile, sector, ring_index, deck_index, cell_index,
+              z_offset=None):
+    """One streaming cell: the corridor run for one deck over one arc."""
+    plan = ring_cells(schema, profile, sector, ring_index, deck_index)
+    if plan is None:
+        raise ValueError(f"{sector} ring {ring_index} carries no decks")
+    if not 0 <= cell_index < plan["cells"]:
+        raise IndexError(f"cell {cell_index} of {plan['cells']}")
+    verts, tris, meta = ring_arc(
+        schema, profile, sector, ring_index,
+        degrees=plan["cell_deg"], start_deg=cell_index * plan["cell_deg"],
+        z_offset=z_offset, radius_m=plan["radius_m"])
+    meta.update({
+        "cell_index": cell_index,
+        "cells": plan["cells"],
+        "deck_index": deck_index,
+        "start_deg": cell_index * plan["cell_deg"],
+        "end_deg": (cell_index + 1) * plan["cell_deg"],
+        "label": f"{bind_labels(schema, sector, ring_index)}"
+                 f" deck {deck_index} cell {cell_index}",
+    })
+    return verts, tris, meta
+
+
+def _verts_at_angle(verts, angle_deg, tol_m=1e-4):
+    """Vertices lying on a given radial plane, keyed for exact comparison.
+
+    Seam checking has to be done in the plane the cells were cut on, not by
+    comparing bounding boxes: two cells can have touching bounds and still
+    leave a crack, and a crack in a ring corridor is a hole a player falls
+    through at 1 g.
+    """
+    a = math.radians(angle_deg % 360.0)
+    out = []
+    for x, y, z in verts:
+        r = math.hypot(x, y)
+        if r < 1e-9:
+            continue
+        d = (math.atan2(y, x) - a + math.pi) % (2 * math.pi) - math.pi
+        if abs(d * r) < tol_m:                 # arc distance from the plane
+            out.append((round(r, 4), round(z, 4)))
+    return sorted(set(out))
+
+
+def cell_seam_report(schema, profile, sector, ring_index, deck_index=0,
+                     cell_index=0):
+    """Compare the shared edge of two adjacent cells, vertex for vertex."""
+    plan = ring_cells(schema, profile, sector, ring_index, deck_index)
+    n = plan["cells"]
+    a, _ta, _ma = deck_cell(schema, profile, sector, ring_index, deck_index,
+                            cell_index)
+    b, _tb, _mb = deck_cell(schema, profile, sector, ring_index, deck_index,
+                            (cell_index + 1) % n)
+    seam = (cell_index + 1) * plan["cell_deg"]
+    left, right = _verts_at_angle(a, seam), _verts_at_angle(b, seam)
+    return {
+        "seam_deg": seam,
+        "left_verts": len(left),
+        "right_verts": len(right),
+        "identical": left == right,
+        "missing_from_right": [p for p in left if p not in right][:5],
+        "missing_from_left": [p for p in right if p not in left][:5],
+    }
+
+
+# --------------------------------------------------------------------------
 # Guideway truss
 # --------------------------------------------------------------------------
 
@@ -1136,6 +1245,35 @@ def _selftest():
         cell_m = math.radians(streaming_cell_deg(r["r_outer"], cw)) * r["r_outer"]
         check(f"{sec} {rid}: streaming cell exceeds its sight line",
               cell_m > v, f"cell {cell_m:.1f} m vs sight {v:.1f} m")
+
+    # --- streaming cells ---------------------------------------------------
+    # "Seamless" is the project's word and it has to be a test, not a claim. A
+    # crack between two ring cells is a hole a player falls through at 1 g, and
+    # touching bounding boxes do not prove there isn't one -- only the shared
+    # edge, vertex for vertex, does.
+    for sec in schema["sectors"]["extents_m"]:
+        rings = ring_radii(schema, profile, sec)
+        ri = next(i for i, r in enumerate(rings) if r["kind"] == "deck_stack")
+        plan = ring_cells(schema, profile, sec, ri)
+        check(f"{sec}: cells tile the circle exactly",
+              abs(plan["cells"] * plan["cell_deg"] - 360.0) < 1e-9,
+              f"{plan['cells']} x {plan['cell_deg']}")
+        check(f"{sec}: a cell is wider than its own sight line",
+              plan["cell_length_m"] > plan["sight_line_m"],
+              f"cell {plan['cell_length_m']} m vs sight {plan['sight_line_m']} m")
+        rep = cell_seam_report(schema, profile, sec, ri)
+        check(f"{sec}: adjacent cells share their seam exactly",
+              rep["identical"] and rep["left_verts"] > 0,
+              f"{rep['left_verts']} vs {rep['right_verts']} verts; "
+              f"missing {rep['missing_from_right']}{rep['missing_from_left']}")
+
+    # The wrap-around seam is the one a loop over range(n) never tests, and it
+    # is the seam where a floating-point error in 360/n would show up.
+    plan = ring_cells(schema, profile, "green", 0)
+    wrap = cell_seam_report(schema, profile, "green", 0,
+                            cell_index=plan["cells"] - 1)
+    check("the wrap-around seam closes too", wrap["identical"],
+          f"cell {plan['cells']-1} -> 0 at {wrap['seam_deg']} deg")
 
     # --- guideway trusses -------------------------------------------------
     tv, tt, tm = guideway_truss(schema, profile, "green", 0.0)
