@@ -15,6 +15,7 @@ import sys
 import yaml
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, os.path.join(ROOT, "station"))
 SCHEMA = os.path.join(ROOT, "station/schema/station.yaml")
 PROFILE = os.path.join(ROOT, "station/schema/radius_profile.json")
 MANIFEST = os.path.join(ROOT, "station/generated/hull_manifest.json")
@@ -113,6 +114,31 @@ def main():
         check("every schema component produced geometry",
               all(c["id"] in man["groups"] for c in schema.get("components", [])),
               str([c["id"] for c in schema.get("components", []) if c["id"] not in man["groups"]]))
+
+    # --- procedural surface detail ------------------------------------------
+    greebles = schema.get("greebles", {})
+    if greebles.get("enabled"):
+        import greeble
+
+        # Bare hull is a bug, not a style. If a new longitudinal feature is added
+        # without a greeble zone it silently ships as an untextured tube, and
+        # nothing else in the pipeline would notice.
+        zoned = {z["feature"] for z in greebles["zones"]}
+        naked = [f["id"] for f in features
+                 if f["id"] not in zoned
+                 and not (f.get("subfeatures")
+                          and all(s["id"] in zoned for s in f["subfeatures"]))]
+        check("every longitudinal feature is greebled", not naked, str(naked))
+
+        # The whole point of hashing on (feature, cell) instead of on a global
+        # RNG is that regeneration is byte-identical. Assert it rather than
+        # trust it: a stray dependency on dict or call order would otherwise
+        # only show up as an unexplained diff in committed geometry.
+        runs = [greeble.build_all(greebles, features, profile["profile"])[0]
+                for _ in range(2)]
+        same = all(runs[0][g] == runs[1][g] for g in runs[0]) and \
+            set(runs[0]) == set(runs[1])
+        check("greeble pass is deterministic across runs", same)
 
     # --- derived physics ----------------------------------------------------
     rot = schema["station"]["rotation"]

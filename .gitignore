@@ -8,3 +8,4 @@ godot/station.glb
 godot/.godot/
 renders/
 station/generated/corridor.obj
+station/__pycache__/

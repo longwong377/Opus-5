@@ -232,26 +232,32 @@ def _prism(verts, tris, frame, cu, cv, radius, w0, w1, sides=8, taper=0.82):
 # ---------------------------------------------------------------------------
 # Greeble kinds
 # ---------------------------------------------------------------------------
-# Sizes are absolute metres, chosen against the 65 m plate grid the plating pass
-# lays down: a greeble reads as a fitting on a plate rather than as a plate
-# itself. Heights are deliberately generous for their footprint -- a 20 x 15 m
-# block standing 5 m proud is a small equipment module, and at 8 km viewing
-# distances relief is the only thing that separates a fitting from a decal.
+# Sizes are absolute metres against a hull whose plating pass lays down 65 m
+# plates. The first attempt at this module used 10-20 m fittings and they read
+# as dirt on the lens from anywhere further out than a hundred metres: at 8 km
+# scale a lone 15 m box is sub-pixel. What reads is a 40-80 m installation with
+# its own internal detail, which is also what the orthographic sheet shows on
+# the drum flank. Every kind therefore takes a `scale`, and assemblies pair one
+# full-size primary with small satellites -- a size hierarchy, so the same
+# geometry reads at 200 m and at 20 km.
+#
+# Heights are generous for their footprint. Under a directional key light,
+# relief is the only thing separating a fitting from a decal.
 
-def _access_panel(verts, tris, frame, r, rng):
-    """A short row of raised plates along the axis -- hull access panels."""
+def _access_panel(verts, tris, frame, r, rng, scale=1.0):
+    """A row of raised plates along the axis -- hull access panels."""
     n = rng.count(2, 4)
-    hu = min(rng.span(6.0, 11.0), r * 0.13)
-    hv = rng.span(4.5, 8.0)
-    h = rng.span(2.6, 5.2)
-    pitch = hv * 2.0 + rng.span(2.0, 4.0)
+    hu = min(rng.span(11.0, 20.0) * scale, r * 0.16)
+    hv = rng.span(8.0, 15.0) * scale
+    h = rng.span(3.5, 7.0) * scale
+    pitch = hv * 2.0 + rng.span(3.0, 7.0) * scale
     v0 = -pitch * (n - 1) / 2.0
     w0 = -_bury(hu, r)
     for i in range(n):
         _slab(verts, tris, frame, 0.0, v0 + i * pitch, hu, hv, w0, h, taper=0.93)
 
 
-def _vent_grille(verts, tris, frame, r, rng):
+def _vent_grille(verts, tris, frame, r, rng, scale=1.0):
     """A louvred bank: a low base plate carrying parallel slats.
 
     The comb of fine parallel ribs is the most distinctive piece of surface
@@ -260,74 +266,86 @@ def _vent_grille(verts, tris, frame, r, rng):
     well above their base so the shadow between them reads at distance.
     """
     slats = rng.count(3, 5)
-    hu = min(rng.span(9.0, 14.0), r * 0.15)
-    pitch = rng.span(4.6, 6.4)
-    hv = pitch * slats / 2.0 + 2.5
+    hu = min(rng.span(14.0, 24.0) * scale, r * 0.18)
+    pitch = rng.span(7.0, 11.0) * scale
+    hv = pitch * slats / 2.0 + 4.0 * scale
     w0 = -_bury(hu, r)
-    _slab(verts, tris, frame, 0.0, 0.0, hu, hv, w0, rng.span(1.0, 1.8))
+    _slab(verts, tris, frame, 0.0, 0.0, hu, hv, w0, rng.span(1.4, 2.6) * scale)
     v0 = -pitch * (slats - 1) / 2.0
-    h = rng.span(5.0, 8.0)
+    h = rng.span(6.5, 11.0) * scale
     for i in range(slats):
-        _slab(verts, tris, frame, 0.0, v0 + i * pitch, hu * 0.88, pitch * 0.3,
+        _slab(verts, tris, frame, 0.0, v0 + i * pitch, hu * 0.88, pitch * 0.28,
               w0, h, taper=0.8)
 
 
-def _hatch(verts, tris, frame, r, rng):
+def _hatch(verts, tris, frame, r, rng, scale=1.0):
     """An octagonal access hatch with a raised rim."""
-    rad = min(rng.span(5.5, 10.0), r * 0.12)
-    _prism(verts, tris, frame, 0.0, 0.0, rad, -_bury(rad, r), rng.span(3.0, 6.0))
+    rad = min(rng.span(9.0, 16.0) * scale, r * 0.14)
+    _prism(verts, tris, frame, 0.0, 0.0, rad, -_bury(rad, r),
+           rng.span(4.0, 8.0) * scale)
 
 
-def _blister(verts, tris, frame, r, rng):
-    """A sensor blister -- a half-ellipsoid bulging along the surface normal."""
+def _blister(verts, tris, frame, r, rng, scale=1.0):
+    """A sensor blister: a half-ellipsoid seated on an octagonal plinth.
+
+    The plinth is not decoration. A bare dome on a curved hull reads as a pebble
+    -- soft, organic and wrong for a design language of thin hard edges (ADR
+    0002). Standing it on a hard-edged base makes it read as equipment that was
+    bolted on.
+    """
     (origin, _u, _v, n) = frame
-    rad = min(rng.span(5.0, 10.0), r * 0.11)
-    sink = _bury(rad, r)
-    base = (origin[0] - n[0] * sink, origin[1] - n[1] * sink, origin[2] - n[2] * sink)
+    rad = min(rng.span(8.0, 15.0) * scale, r * 0.13)
+    plinth = rng.span(1.6, 3.2) * scale
+    _prism(verts, tris, frame, 0.0, 0.0, rad * 1.22, -_bury(rad, r), plinth,
+           taper=0.92)
+    base = (origin[0] + n[0] * plinth, origin[1] + n[1] * plinth,
+            origin[2] + n[2] * plinth)
     dome_mesh(verts, tris, base[0], base[1], base[2], n,
-              rad, sink + rng.span(4.5, 9.0), rings=2, segs=8)
+              rad, rng.span(6.0, 14.0) * scale, rings=2, segs=8)
 
 
-def _antenna_stub(verts, tris, frame, r, rng):
+def _antenna_stub(verts, tris, frame, r, rng, scale=1.0):
     """A mast normal to the hull with a crossbar near its tip."""
-    hgt = rng.span(22.0, 48.0)
-    th = rng.span(1.8, 3.0)
+    hgt = rng.span(32.0, 72.0) * scale
+    th = rng.span(3.0, 5.0) * scale
     _slab(verts, tris, frame, 0.0, 0.0, th, th, -_bury(th, r), hgt, taper=0.55)
-    bar = rng.span(7.0, 14.0)
+    bar = rng.span(12.0, 24.0) * scale
     _slab(verts, tris, frame, 0.0, 0.0, bar, th * 0.7, hgt * 0.78, hgt * 0.88)
 
 
-def _docking_cleat(verts, tris, frame, r, rng):
+def _docking_cleat(verts, tris, frame, r, rng, scale=1.0):
     """A magnetic attachment point: a splayed pad carrying a raised bar.
 
     Canon lists both "cargo modules and magnetic attachment points" and
     retractable hard-docking mooring clamps (00-MASTER.md section 2), so these
     belong wherever something is expected to make fast to the hull.
     """
-    hu = min(rng.span(5.5, 9.0), r * 0.10)
-    hv = rng.span(4.0, 6.5)
-    pad = rng.span(2.0, 3.4)
+    hu = min(rng.span(9.0, 15.0) * scale, r * 0.12)
+    hv = rng.span(7.0, 12.0) * scale
+    pad = rng.span(3.0, 5.0) * scale
     _slab(verts, tris, frame, 0.0, 0.0, hu, hv, -_bury(hu, r), pad, taper=0.72)
-    _slab(verts, tris, frame, 0.0, 0.0, hu * 0.32, hv * 1.12, pad, pad + rng.span(3.5, 6.0))
+    _slab(verts, tris, frame, 0.0, 0.0, hu * 0.32, hv * 1.12, pad,
+          pad + rng.span(5.0, 9.0) * scale)
 
 
-def _marker_light(verts, tris, frame, r, rng, lens=2.2, base=4.0, stand=3.0):
+def _marker_light(verts, tris, frame, r, rng, scale, lens, base, stand):
     """A light housing: a shallow pedestal carrying a proud lens block.
 
     Split into two pieces so the lens can take an emissive material on its own
     group while the pedestal stays hull-coloured. That is the whole reason nav
     and hazard lights are separate mesh groups rather than one.
     """
+    lens, base, stand = lens * scale, base * scale, stand * scale
     _slab(verts, tris, frame, 0.0, 0.0, base, base, -_bury(base, r), stand, taper=0.7)
-    _slab(verts, tris, frame, 0.0, 0.0, lens, lens, stand, stand + lens * 1.1)
+    _slab(verts, tris, frame, 0.0, 0.0, lens, lens, stand, stand + lens * 1.2)
 
 
-def _nav_light(verts, tris, frame, r, rng):
-    _marker_light(verts, tris, frame, r, rng, lens=2.6, base=4.6, stand=rng.span(2.5, 4.0))
+def _nav_light(verts, tris, frame, r, rng, scale=1.0):
+    _marker_light(verts, tris, frame, r, rng, scale, 3.0, 5.4, rng.span(3.0, 5.0))
 
 
-def _hazard_light(verts, tris, frame, r, rng):
-    _marker_light(verts, tris, frame, r, rng, lens=2.0, base=3.6, stand=rng.span(2.0, 3.2))
+def _hazard_light(verts, tris, frame, r, rng, scale=1.0):
+    _marker_light(verts, tris, frame, r, rng, scale, 2.4, 4.4, rng.span(2.6, 4.2))
 
 
 # kind -> (builder, mesh group). Grouping by kind rather than by hull feature is
@@ -351,25 +369,110 @@ GROUPS = [g for _f, g in KINDS.values()] + ["greeble_conduit"]
 #
 # Read off the orthographic sheet: the reactor and spine sections are grilles
 # and plant, the finished drum skin is panels and the occasional hatch, and the
-# forward structure adds sensor and docking hardware.
-TIER_MIX = {
-    "minimal": {"access_panel": 5, "hatch": 2, "nav_light": 2, "blister": 1},
-    "clean": {"access_panel": 7, "hatch": 3, "blister": 2, "nav_light": 1, "cleat": 1},
-    "standard": {"access_panel": 6, "hatch": 3, "vent_grille": 3, "blister": 2,
-                 "cleat": 2, "antenna": 1, "nav_light": 1},
-    "cluttered": {"access_panel": 6, "vent_grille": 5, "hatch": 3, "cleat": 4,
-                  "blister": 2, "hazard_light": 2, "antenna": 1},
-    "industrial": {"vent_grille": 6, "access_panel": 5, "hatch": 3, "cleat": 3,
-                   "antenna": 2, "blister": 2, "hazard_light": 2},
+# forward structure adds sensor and docking hardware. `satellite` holds only the
+# small hardware that plausibly surrounds a bigger installation -- an antenna or
+# a vent bank is never somebody else's accessory.
+TIERS = {
+    "minimal": {
+        "primary": {"access_panel": 5, "hatch": 2, "nav_light": 2, "blister": 1},
+        "satellite": {"hatch": 2, "nav_light": 3, "access_panel": 2},
+        "satellites": (0, 1), "spread_m": 40.0,
+    },
+    "clean": {
+        "primary": {"access_panel": 7, "hatch": 3, "blister": 2, "nav_light": 1,
+                    "cleat": 1},
+        "satellite": {"access_panel": 4, "hatch": 3, "nav_light": 2, "cleat": 1},
+        "satellites": (1, 2), "spread_m": 46.0,
+    },
+    "standard": {
+        "primary": {"access_panel": 6, "hatch": 3, "vent_grille": 3, "blister": 2,
+                    "cleat": 2, "antenna": 1, "nav_light": 1},
+        "satellite": {"access_panel": 4, "hatch": 3, "nav_light": 2, "cleat": 2,
+                      "blister": 1},
+        "satellites": (1, 2), "spread_m": 52.0,
+    },
+    "cluttered": {
+        "primary": {"access_panel": 6, "vent_grille": 5, "hatch": 3, "cleat": 4,
+                    "blister": 2, "hazard_light": 2, "antenna": 1},
+        "satellite": {"access_panel": 4, "hatch": 3, "cleat": 3, "hazard_light": 2,
+                      "blister": 1},
+        "satellites": (1, 3), "spread_m": 58.0,
+    },
+    "industrial": {
+        "primary": {"vent_grille": 6, "access_panel": 5, "hatch": 3, "cleat": 3,
+                    "antenna": 2, "blister": 2, "hazard_light": 2},
+        "satellite": {"access_panel": 4, "hatch": 3, "cleat": 3, "hazard_light": 3,
+                      "blister": 1},
+        "satellites": (1, 3), "spread_m": 56.0,
+    },
 }
+
+SATELLITE_SCALE = 0.45
+
+
+def _place(out, surface, z, theta, rng, kind, scale, stats, min_radius):
+    """Build one fitting flush on the hull at (z, theta)."""
+    frame, r = surface.frame(z, theta)
+    if r < min_radius:
+        return
+    builder, group = KINDS[kind]
+    verts, tris = out[group]
+    builder(verts, tris, frame, r, rng, scale)
+    stats[kind] = stats.get(kind, 0) + 1
+
+
+def _assembly(out, surface, z, theta, rng, tier, stats, min_radius):
+    """One installation: a full-size primary fitting with satellite hardware.
+
+    Machinery clusters. A vent bank has access panels beside it and a marker
+    light on its corner; it does not sit alone in the middle of a bare plate.
+    Even scatter of single objects is precisely what makes procedural detail
+    read as noise, and clustering is the cheapest available fix.
+
+    Satellites get their own surface frame rather than being offset in the
+    primary's tangent plane, so a cluster straddling a curved section still
+    sits flush all the way across.
+    """
+    spec = TIERS[tier]
+    _place(out, surface, z, theta, rng, rng.pick(spec["primary"]), 1.0, stats,
+           min_radius)
+    spread = spec["spread_m"]
+    r = max(surface.radius(z), 1.0)
+    for _ in range(rng.count(*spec["satellites"])):
+        _place(out, surface,
+               z + rng.span(-spread, spread),
+               theta + rng.span(-spread, spread) / r,
+               rng, rng.pick(spec["satellite"]), SATELLITE_SCALE, stats,
+               min_radius)
 
 
 # ---------------------------------------------------------------------------
 # Conduit runs
 # ---------------------------------------------------------------------------
 CONDUIT_SIDES = 6
-CONDUIT_STATION_M = 34.0                      # spacing of the pipe's own rings
-CLAMP_EVERY = 3                               # stations between clamp collars
+# A pipe is straight for hundreds of metres at a time, so ring spacing is driven
+# by how far the hull has moved under it rather than by a fixed step. Uniform
+# 34 m stations cost three times the triangles for identical silhouette on the
+# drum, and are still too coarse across the forward taper.
+CONDUIT_STEP_MIN_M = 30.0
+CONDUIT_STEP_MAX_M = 150.0
+CONDUIT_SAG_TOLERANCE_M = 2.0                 # allowed radius drift between rings
+CLAMP_SPACING_M = 110.0
+
+
+def _conduit_stations(surface, z0, z1):
+    """Sample positions along a run, closer together where the hull curves."""
+    zs, z = [z0], z0
+    while z < z1:
+        r0 = surface.radius(z)
+        step = CONDUIT_STEP_MIN_M
+        while step < CONDUIT_STEP_MAX_M and z + step < z1:
+            if abs(surface.radius(z + step) - r0) > CONDUIT_SAG_TOLERANCE_M:
+                break
+            step += CONDUIT_STEP_MIN_M
+        z = min(z + step, z1)
+        zs.append(z)
+    return zs
 
 
 def _conduit_run(out, surface, zone_id, z0, z1, theta, rng, min_radius):
@@ -387,36 +490,43 @@ def _conduit_run(out, surface, zone_id, z0, z1, theta, rng, min_radius):
     """
     verts, tris = out["greeble_conduit"]
     pipes = rng.count(1, 3)
-    prad = rng.span(1.9, 3.2)
-    stand = rng.span(4.5, 8.0) + prad
-    spread = prad * 2.8
-    stations = max(2, int((z1 - z0) / CONDUIT_STATION_M))
+    prad = rng.span(2.2, 3.6)
+    spread = prad * 3.0
+    stations = _conduit_stations(surface, z0, z1)
+
+    def runnable(z):
+        # A run stops at a bulkhead rather than flying over it; steepness is the
+        # profile's way of saying "section transition".
+        return surface.radius(z) >= min_radius and abs(surface.slope_at(z)) <= 1.0
 
     for p in range(pipes):
         # Offset each pipe of a bundle by arc length, so bundles stay parallel
         # instead of fanning out where the hull is narrow.
         dtheta = (p - (pipes - 1) / 2.0) * spread / max(surface.radius((z0 + z1) / 2.0), 1.0)
         segment = []
-        for s in range(stations + 1):
-            z = z0 + (z1 - z0) * s / stations
-            r = surface.radius(z)
-            steep = abs(surface.slope_at(z)) > 1.0
-            if r < min_radius or steep:
+        for z in stations:
+            if not runnable(z):
                 _emit_pipe(verts, tris, segment, prad)
                 segment = []
                 continue
             segment.append(surface.frame(z, theta + dtheta)[0])
         _emit_pipe(verts, tris, segment, prad)
 
-        for s in range(0, stations + 1, CLAMP_EVERY):
-            z = z0 + (z1 - z0) * s / stations
-            r = surface.radius(z)
-            if r < min_radius or abs(surface.slope_at(z)) > 1.0 or p != 0:
-                continue
-            frame, r = surface.frame(z, theta)
-            half = spread * pipes / 2.0 + prad * 1.6
-            _slab(verts, tris, frame, 0.0, 0.0, half, prad * 0.9,
-                  -_bury(half, r), stand + prad * 1.5, taper=0.85)
+    # Clamps straddle the whole bundle, so they are laid out once per run at a
+    # fixed spacing in metres -- the regular tick of supports down a long pipe is
+    # most of what makes it read as plumbing rather than as a painted stripe.
+    # The collar is sized from the pipe it holds and stops just above it: given
+    # its own height it stops reading as a support and starts reading as a fin.
+    half = (pipes - 1) * spread / 2.0 + prad * 2.4
+    top = prad + _clearance(prad) + prad * 1.1
+    nclamp = max(1, int((z1 - z0) / CLAMP_SPACING_M))
+    for c in range(nclamp + 1):
+        z = z0 + (z1 - z0) * c / nclamp
+        if not runnable(z):
+            continue
+        frame, r = surface.frame(z, theta)
+        _slab(verts, tris, frame, 0.0, 0.0, half, prad * 0.85,
+              -_bury(half, r), top, taper=0.72)
 
 
 def _emit_pipe(verts, tris, frames, prad):
@@ -473,7 +583,6 @@ def _scatter(out, surface, zone, cfg, stats):
     z0, z1 = zone["z0"] + pad, zone["z1"] - pad
     tier = zone["tier"]
     rate = cfg["tiers"][tier]["per_km2"]
-    mix = TIER_MIX[tier]
     cell = cfg["cell_m"]
     min_r = cfg["min_radius_m"]
     max_slope = cfg["max_slope"]
@@ -492,20 +601,14 @@ def _scatter(out, surface, zone, cfg, stats):
         expected = rate * cell_area / 1e6
         for it in range(ncirc):
             rng = Seeded(cfg["seed"], zone_id, iz, it)
+            # Fractional expectation, so a rate finer than one per cell still
+            # produces the right average instead of silently rounding to zero.
             n = int(expected) + (1 if rng.unit() < expected - int(expected) else 0)
             for _ in range(n):
                 z = zc + rng.span(-0.38, 0.38) * (z1 - z0) / nz
                 theta = 2.0 * math.pi * (it + 0.5 + rng.span(-0.38, 0.38)) / ncirc
-                if not (z0 <= z <= z1):
-                    continue
-                frame, rr = surface.frame(z, theta)
-                if rr < min_r:
-                    continue
-                kind = rng.pick(mix)
-                builder, group = KINDS[kind]
-                verts, tris = out[group]
-                builder(verts, tris, frame, rr, rng)
-                stats[kind] = stats.get(kind, 0) + 1
+                _assembly(out, surface, z, theta, rng, tier, stats, min_r)
+                stats["assembly"] = stats.get("assembly", 0) + 1
 
 
 def _beacon_ring(out, surface, z, cfg, stats, key):
@@ -517,15 +620,12 @@ def _beacon_ring(out, surface, z, cfg, stats, key):
     the point here, so these are placed on an exact ring rather than scattered.
     """
     n = cfg["beacon_ring_count"]
-    r = surface.radius(z)
-    if r < cfg["min_radius_m"]:
+    if surface.radius(z) < cfg["min_radius_m"]:
         return
-    verts, tris = out["greeble_nav_light"]
     for i in range(n):
         rng = Seeded(cfg["seed"], "beacon", key, i)
-        frame, rr = surface.frame(z, 2.0 * math.pi * i / n)
-        _nav_light(verts, tris, frame, rr, rng)
-        stats["nav_light"] = stats.get("nav_light", 0) + 1
+        _place(out, surface, z, 2.0 * math.pi * i / n, rng, "nav_light", 1.0,
+               stats, cfg["min_radius_m"])
 
 
 def zone_extents(features):
@@ -557,10 +657,10 @@ def build_all(cfg, features, profile):
         fid = entry["feature"]
         if fid not in extents:
             raise ValueError(f"greeble zone names unknown feature: {fid}")
-        if entry["tier"] not in TIER_MIX:
-            raise ValueError(f"greeble zone {fid} names unknown tier: {entry['tier']}")
         z0, z1 = extents[fid]
         zone = {"id": fid, "z0": z0, "z1": z1, "tier": entry["tier"]}
+        if entry["tier"] not in TIERS:
+            raise ValueError(f"greeble zone {fid} names unknown tier: {entry['tier']}")
         _scatter(out, surface, zone, cfg, stats)
 
         runs = entry.get("conduit_runs", 0)

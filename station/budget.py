@@ -58,13 +58,23 @@ def main():
 
     print("Exterior geometry against the 1440p60 / 12 GB target\n")
     check("triangles", tris, BUDGETS["exterior_triangles"],
-          note=f"{man['hull_triangles']:,} hull + {man['component_triangles']:,} components")
+          note=f"{man['hull_triangles']:,} hull + {man['component_triangles']:,} components"
+               f" + {man.get('greeble_triangles', 0):,} greebles")
     check("draw calls", draws, BUDGETS["exterior_draw_calls"],
           note="one per feature group, before instancing")
     check("vertex bandwidth", bandwidth, BUDGETS["vertex_bandwidth_mb"], " MB",
           "flat-shaded, un-indexed")
     if size:
         check("glb on disk", size, BUDGETS["glb_size_mb"], " MB")
+
+    greebles = man.get("greeble_triangles", 0)
+    if greebles:
+        print(f"\nsurface detail: {greebles:,} triangles "
+              f"({greebles / BUDGETS['exterior_triangles'] * 100:.0f}% of the triangle "
+              f"budget, {greebles / tris * 100:.0f}% of the model) across "
+              f"{man.get('greeble_instances', 0):,} fittings in "
+              f"{man.get('greeble_assemblies', 0):,} assemblies and "
+              f"{man.get('greeble_conduit_runs', 0)} conduit runs")
 
     print(f"\nheadroom: {BUDGETS['exterior_triangles'] - tris:,} triangles, "
           f"{BUDGETS['exterior_draw_calls'] - draws} draw calls")

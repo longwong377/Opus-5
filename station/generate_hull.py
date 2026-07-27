@@ -211,8 +211,15 @@ def main():
         "component_triangles": sum(comp_counts.values()),
         "component_instances": sum(c["count"] for c in schema.get("components", [])) if not a.no_components else 0,
         "greeble_triangles": sum(greeble_counts.values()),
-        "greeble_instances": sum(greeble_stats.values()),
-        "greeble_instances_by_kind": dict(sorted(greeble_stats.items())),
+        # Assemblies and conduit runs are containers, not fittings -- counting
+        # them alongside their own contents would inflate the instance figure the
+        # budget report quotes.
+        "greeble_assemblies": greeble_stats.get("assembly", 0),
+        "greeble_conduit_runs": greeble_stats.get("conduit_run", 0),
+        "greeble_instances": sum(v for k, v in greeble_stats.items()
+                                 if k not in ("assembly", "conduit_run")),
+        "greeble_instances_by_kind": {k: v for k, v in sorted(greeble_stats.items())
+                                      if k not in ("assembly", "conduit_run")},
         "degenerate_quads_skipped": degenerate,
         "cap_triangles": caps,
         "bounds": {

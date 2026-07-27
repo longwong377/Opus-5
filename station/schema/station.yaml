@@ -481,16 +481,17 @@ greebles:
   conduit_end_pad_m: 60        # runs stop short of a section joint
   beacon_ring_count: 6         # marker lights per structural boundary ring
 
-  # Instances per km^2 of hull surface. The spread between clean and industrial
-  # is deliberately wide -- roughly 5x -- because on the orthographic sheet the
-  # difference between the bare drum skin and the reactor section is the single
-  # clearest thing about the model's surface treatment.
+  # Assemblies per km^2 of hull surface -- an assembly is one full-size fitting
+  # plus its satellite hardware, so instance counts run 2-5x these numbers. The
+  # spread between clean and industrial is deliberately wide, roughly 13x,
+  # because on the orthographic sheet the difference between the bare drum skin
+  # and the reactor section is the clearest thing about the surface treatment.
   tiers:
-    minimal:    {per_km2: 45}
-    clean:      {per_km2: 105}
-    standard:   {per_km2: 200}
-    cluttered:  {per_km2: 400}
-    industrial: {per_km2: 470}
+    minimal:    {per_km2: 8}
+    clean:      {per_km2: 26}
+    standard:   {per_km2: 42}
+    cluttered:  {per_km2: 88}
+    industrial: {per_km2: 105}
 
   zones:
     - {feature: aft_terminus,              tier: minimal,    conduit_runs: 0}
@@ -502,7 +503,7 @@ greebles:
     - {feature: hull_flare_aft,            tier: industrial, conduit_runs: 2}
     - {feature: aft_hull_block,            tier: cluttered,  conduit_runs: 5}
     - {feature: bearing_neck,              tier: standard,   conduit_runs: 3}
-    - {feature: habitat_cylinder,          tier: clean,      conduit_runs: 4}
+    - {feature: habitat_cylinder,          tier: clean,      conduit_runs: 6}
     - {feature: red_section,               tier: clean,      conduit_runs: 2}
     - {feature: forward_taper,             tier: standard,   conduit_runs: 2}
     - {feature: forward_waist,             tier: standard,   conduit_runs: 2}
