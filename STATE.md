@@ -4,11 +4,14 @@
 
 ## Where we are
 
-Foundation laid. Reference sorted, canon established, the dimensional conflict that would have
-poisoned everything downstream found and resolved, project memory and the parametric schema
-framework in place. No geometry generated yet.
+**The station's core hull exists and is canon-verified.** 253,184 triangles, 8,046.9 m long
+against canon's 8,047, generated entirely from `station/schema/station.yaml` and gated by 17
+passing canon assertions. It renders and it is recognisably Babylon 5.
 
-## Done this session
+What remains on the exterior is every non-axisymmetric structure — fins, solar arrays, comms
+pylons, cobra bays, cargo modules, domes. Interiors stay blocked on C-003 and C-004.
+
+## Session 1 — foundation
 
 - **Verification loop proven.** Mesa lavapipe installed, enumerates **Vulkan 1.4 on CPU**
   (`llvmpipe`). Godot renders on Vulkan, so offscreen render → PNG → direct image inspection
