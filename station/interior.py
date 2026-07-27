@@ -225,6 +225,38 @@ def arc_length(r, degrees):
     return 2.0 * math.pi * r * (degrees / 360.0)
 
 
+def sight_line(r_floor, corridor_width):
+    """How far you can see along a ring corridor before its curve occludes.
+
+    In a straight corridor a door or a bulkhead stops the view, and the number
+    is authored. In a ring corridor the *geometry* stops it: standing against
+    the outer wall, the furthest you can see is the chord tangent to the inner
+    wall, and everything past that is behind the curve.
+
+    d = 2 * sqrt(r_o^2 - r_i^2), with r_i the inner wall radius.
+
+    This matters because `budget.py` has been gating interior cost on an
+    *assumed* 50 m sight line since it was written. In the drum the assumption
+    turns out to be very nearly what the curvature actually gives -- which makes
+    the budget derived rather than asserted, and means the streaming cell size
+    follows from the station's radius instead of from a guess.
+    """
+    r_i = r_floor - corridor_width
+    if r_i <= 0:
+        return float("inf")
+    return 2.0 * math.sqrt(r_floor * r_floor - r_i * r_i)
+
+
+def streaming_cell_deg(r_floor, corridor_width, margin=1.5):
+    """Arc a streaming cell must span, in degrees.
+
+    A cell has to be at least a sight line wide or the player can see into
+    territory that is not resident yet; `margin` is how many sight lines of
+    slack to carry so a cell boundary is never the thing that pops.
+    """
+    return math.degrees(sight_line(r_floor, corridor_width) * margin / r_floor)
+
+
 def ring_arc(schema, profile, sector, ring_index, degrees=30.0,
              start_deg=0.0, z_offset=None):
     """One arc of one ring deck: a corridor run bent around the station axis.
@@ -1067,6 +1099,43 @@ def _selftest():
         depth = (uo - ui) * r_drum
         check(f"cap course {ci} plates are near-square",
               0.4 < width / depth < 2.5, f"{width:.1f} x {depth:.1f} m")
+
+    # --- sight lines and streaming cells -----------------------------------
+    # budget.py gated interior cost on an assumed 50 m sight line. In a ring
+    # corridor the curvature decides it, and the worst case across the station
+    # is 1.8x that -- so the gate was measuring against a shorter view than the
+    # station affords. These assertions keep the derived figure honest.
+    cw = kit.PROVISIONAL["corridor_width_m"]
+    sls = [(sec, r["id"], sight_line(r["r_outer"], cw))
+           for sec in schema["sectors"]["extents_m"]
+           for r in ring_radii(schema, profile, sec)
+           if r["kind"] == "deck_stack"]
+    check("every ring has a finite sight line",
+          all(math.isfinite(v) and v > 0 for _s, _r, v in sls))
+    # A wider ring curves less, so it must see further. If this inverts, the
+    # formula has been broken rather than the station reshaped.
+    for sec in schema["sectors"]["extents_m"]:
+        rs = [r for r in ring_radii(schema, profile, sec)
+              if r["kind"] == "deck_stack"]
+        vals = [sight_line(r["r_outer"], cw) for r in rs]
+        check(f"{sec}: sight line falls with radius",
+              all(vals[i] > vals[i + 1] for i in range(len(vals) - 1))
+              if len(vals) > 1 else True,
+              str([round(v, 1) for v in vals]))
+    worst = max(sls, key=lambda x: x[2])
+    check("worst-case sight line is Grey's outermost ring",
+          worst[0] == "grey" and worst[1] == "ring_1",
+          f"{worst[0]} {worst[1]} at {worst[2]:.1f} m")
+    check("worst-case sight line stays inside the corridor budget",
+          285.0 * worst[2] + 2 * 1400 < 60_000,
+          f"{285.0 * worst[2] + 2 * 1400:,.0f} tri at {worst[2]:.1f} m")
+    # A streaming cell must be wider than the view out of it, or the player
+    # sees into a cell that is not resident.
+    for sec, rid, v in sls:
+        r = next(x for x in ring_radii(schema, profile, sec) if x["id"] == rid)
+        cell_m = math.radians(streaming_cell_deg(r["r_outer"], cw)) * r["r_outer"]
+        check(f"{sec} {rid}: streaming cell exceeds its sight line",
+              cell_m > v, f"cell {cell_m:.1f} m vs sight {v:.1f} m")
 
     # --- guideway trusses -------------------------------------------------
     tv, tt, tm = guideway_truss(schema, profile, "green", 0.0)

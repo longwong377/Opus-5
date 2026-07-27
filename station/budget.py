@@ -45,8 +45,11 @@ INTERIOR = {
     "corridor_tris_per_m": 400,      # marginal rate along a run
     "junction_tris": 2_000,          # one crossing, all arms
     "visible_set_tris": 60_000,      # structure only -- see below
-    "sight_line_m": 50.0,            # how far down a corridor before it curves or a door blocks
     "junctions_in_view": 2,
+    # Fallback only. The real figure is DERIVED from the station's curvature by
+    # interior.sight_line() -- see the note below -- and this value is used only
+    # if that import fails.
+    "sight_line_m": 50.0,
 }
 
 # 60,000 is structure only. At 1440p60 on the target card the whole frame
@@ -88,7 +91,7 @@ def check(name, value, limit, unit="", note=""):
     bar = "#" * int(pct / 5) + "." * (20 - int(min(pct, 100) / 5))
     # Densities are fractions per square metre; rounding them to integers
     # printed "0 / 0" for a gate that was doing real work.
-    fmt = ",.3f" if limit < 10 else ",.0f"
+    fmt = ",.3f" if (limit < 10 and unit != "%") else ",.0f"
     print(f"{'PASS' if ok else 'FAIL'}  {name:26s} [{bar}] "
           f"{value:>10{fmt}}{unit} / {limit:{fmt}}{unit}  ({pct:.1f}%)"
           + (f"  {note}" if note else ""))
@@ -143,7 +146,27 @@ def main():
         cross = len(ik.junction()[1])
         tee = len(ik.junction(arms=(0, 1, 3))[1])
 
-        visible = (per_m * INTERIOR["sight_line_m"]
+        # The 50 m sight line was an assumption for as long as this gate has
+        # existed. It does not need to be: a ring corridor is occluded by its
+        # own curvature, and the distance is 2*sqrt(r_o^2 - r_i^2). Taking the
+        # WORST case over every ring in every sector gives 91.3 m at Grey's
+        # outermost ring -- 1.8x the assumed figure, so the gate was being
+        # measured against a view shorter than the station actually affords.
+        sight, where = INTERIOR["sight_line_m"], "assumed"
+        try:
+            import interior as it
+            schema, profile = it.load()
+            worst = max(
+                (it.sight_line(r["r_outer"], ik.PROVISIONAL["corridor_width_m"]),
+                 f"{sec} {r['id']}")
+                for sec in schema["sectors"]["extents_m"]
+                for r in it.ring_radii(schema, profile, sec)
+                if r["kind"] == "deck_stack")
+            sight, where = worst[0], f"worst case, {worst[1]}"
+        except Exception:
+            pass
+
+        visible = (per_m * sight
                    + max(cross, tee) * INTERIOR["junctions_in_view"])
 
         print("\nInterior, gated on what is visible at once rather than on total built\n")
@@ -152,7 +175,7 @@ def main():
         check("junction", max(cross, tee), INTERIOR["junction_tris"], " tri",
               f"crossing {cross:,}, tee {tee:,}")
         check("visible structure set", visible, INTERIOR["visible_set_tris"], " tri",
-              f"{INTERIOR['sight_line_m']:.0f} m sight line + "
+              f"{sight:.0f} m sight line ({where}) + "
               f"{INTERIOR['junctions_in_view']} crossings")
         share = visible / FRAME_TRIANGLES
         check("interior share of frame", share * 100,

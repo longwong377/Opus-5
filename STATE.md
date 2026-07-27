@@ -783,6 +783,41 @@ aggressive distance LOD**, not per-object geometry. Fields, roads and settlement
 and displacement; only what a person can walk up to gets mesh. Better to know that before
 anything is authored than after.
 
+## Session 2v (cont.) — the sight line was assumed; it is derivable
+
+`budget.py` has gated interior cost on a **50 m sight line** since it was written, with the
+comment "how far down a corridor before it curves or a door blocks". That is an assumption, and
+it did not need to be one.
+
+A ring corridor is occluded by **its own curvature**. Standing against the outer wall, the
+furthest you can see is the chord tangent to the inner wall:
+
+```
+d = 2 * sqrt(r_outer^2 - r_inner^2)
+```
+
+Across every ring in every sector that gives:
+
+| | sight line |
+|---|---|
+| Grey ring 1 (r = 402.2 m) | **91.3 m** — the worst case |
+| Green sub-floor (r = 310.8 m) | 80.2 m |
+| Blue ring 1 (r = 167.7 m) | 58.8 m |
+| Yellow ring 4 (r = 52.1 m) | 32.5 m — the tightest |
+
+So the gate was measuring against a view **1.8× shorter** than the station actually affords.
+Corrected, the visible structure set is **28,791 triangles against 60,000** — still comfortable,
+now honestly. `budget.py` computes it from the geometry rather than carrying a constant, and
+the 50 m figure survives only as a fallback if the import fails.
+
+**This also sizes the streaming cell**, which had no principled size before: a cell must be
+wider than the view out of it or the player sees into territory that is not resident. At
+1.5 sight lines of margin the drum's sub-floor ring wants **120 m cells (22.2°)** and Grey's
+outermost ring wants **137 m (19.5°)**. That follows from the station's radius rather than from
+a guess, and it is asserted per ring.
+
+`interior.py` self-test: **96 assertions.**
+
 ## Next session — start here
 
 1. **Remaining crude components.** Cobra bays, docking ports, observation domes and rotundas
