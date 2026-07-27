@@ -118,10 +118,11 @@ def main():
                        cwd=os.path.join(ROOT, "station"),
                        check=True, capture_output=True)
 
-    print(f"{'level':6} {'segs':>5} {'stride':>7} {'triangles':>11} {'reduce':>8} "
-          f"{'deviation':>10} {'switch':>10} {'dev px':>7} {'honest':>9}")
+    print(f"{'level':6} {'segs':>5} {'stride':>7} {'greeb':>6} {'triangles':>11} "
+          f"{'reduce':>8} {'deviation':>10} {'switch':>10} {'dev px':>7} {'honest':>9}")
     for lv in out:
         print(f"{lv['name']:6} {lv['radial_segments']:>5} {lv['z_stride']:>7} "
+              f"{lv['greeble_detail']:>6.2f} "
               f"{lv['triangles']:>11,} {lv['reduction']*100:>7.1f}% "
               f"{lv['silhouette_deviation_m']:>9.2f}m "
               f"{lv['switch_distance_m']:>9,}m "

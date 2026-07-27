@@ -469,7 +469,7 @@ components:
 # What lives here is the part that is a claim about the station: which stretch
 # of hull is finished passenger skin and which is exposed plant. The shapes and
 # the mixture of kinds per tier live in the generator, because they are craft
-# rather than canon. Every zone is auth 5 -- see INVENTIONS.md INV-004.
+# rather than canon. Every zone is auth 5 -- see INVENTIONS.md INV-006.
 # ---------------------------------------------------------------------------
 greebles:
   enabled: true
@@ -514,5 +514,5 @@ greebles:
     (orthographic production sheet, auth 2), which shows exposed plant, grille
     banks and rails across the reactor and spine sections and a comparatively
     finished skin over the habitat drum. Aft-hull-block is tiered `cluttered`
-    per INVENTIONS.md INV-004; it is provisional and does not constrain
+    per INVENTIONS.md INV-006; it is provisional and does not constrain
     anything downstream. Rates per km^2 are auth 5 throughout.

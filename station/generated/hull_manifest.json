@@ -42,6 +42,7 @@
  "hull_triangles": 253184,
  "component_triangles": 3048,
  "component_instances": 100,
+ "greeble_detail": 1.0,
  "greeble_triangles": 70778,
  "greeble_assemblies": 662,
  "greeble_conduit_runs": 52,

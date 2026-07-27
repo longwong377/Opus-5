@@ -76,6 +76,26 @@ working without an editor GUI. See `docs/adr/0001-engine-choice.md`.
 Heavy content generation happens **offline in Python** — schema → meshes, collision, navmesh —
 deterministic and unit-testable without an engine at all. The runtime consumes committed data.
 
+## Scope and cost discipline
+
+This project runs partly on an hourly trigger and on background workflows, so an unbounded
+session compounds. Bounds, in order of importance:
+
+1. **Stop when the next-session list is empty.** If `STATE.md` has no actionable item — because
+   everything remaining is blocked by `canon/CONFLICTS.md` — then say so and stop. Do not
+   invent work to fill the time. An hourly trigger finding nothing to do should cost almost
+   nothing.
+2. **One coherent increment per firing.** Build the next thing, test it, look at it, commit,
+   update `STATE.md`, stop. Do not chain five subsystems because there is context left.
+3. **Workflows are for genuine fan-out**, not for work one agent can do serially. A workflow
+   costs roughly its agent count times a normal turn. Five agents to build five independent
+   subsystems is worth it; five agents to write one file is not.
+4. **Never spawn a workflow from inside a triggered firing** unless the work genuinely needs
+   it. The trigger already repeats; the multiplication is what gets expensive.
+5. **Blocked is a valid outcome.** C-003 and C-004 gate all interior layout. Reporting "still
+   blocked, here is what would unblock it" is the correct result, not a failure to try hard
+   enough.
+
 ## Git
 
 Branch: `claude/babylon5-station-sim-discussion-kgp4by`. Commit at every meaningful step;

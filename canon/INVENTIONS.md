@@ -130,3 +130,50 @@ sleep habits. The `RHYTHMS` and `STATION_MIX` tables are the only things that ne
    morning. Sleep now follows the shift offset, so a night-shift worker sleeps during the day.
 2. **The species mix summed to 0.94**, so the aggregate layer silently dropped 120 of every
    2,000 residents. Exactly the quiet population leak the statistical layer exists to prevent.
+
+---
+
+## INV-006 — Exterior surface machinery: what it looks like and where it is dense
+
+**Invented:** The whole procedural greebling pass — `station/greeble.py` plus the `greebles:`
+block in `station/schema/station.yaml`. Three separable claims:
+
+1. **The vocabulary.** That the hull carries access panels in short rows, louvred vent banks,
+   octagonal hatches, sensor blisters on plinths, antenna stubs, magnetic cleats and marker
+   light housings, at the sizes given (fittings 15–50 m across, standing 3–11 m proud).
+2. **The density tiers.** Assemblies per km² of hull: minimal 8, clean 26, standard 42,
+   cluttered 88, industrial 105 — a 13× spread from the finished drum skin to the reactor spine.
+3. **The zone assignment.** Which longitudinal feature is finished skin and which is exposed
+   plant, including the `cluttered` tier on `aft_hull_block`.
+
+**Why necessary:** ADR 0002 commits the project to rule-scattered instanced detail rather than
+hand modelling, and 12.7 km² of hull cannot be detailed any other way by an agent. Uniform
+density would have been an invention too, and a worse one: the reference shows the contrast
+between sections is the most legible thing about the model's surface treatment.
+
+**Constrained by:**
+
+- `reference/01-station-exterior/exterior more.jpg` (orthographic production sheet, auth 2) at
+  5× magnification. It shows a clamped conduit running the full flank of the habitat drum,
+  comb-like grille banks on the reactor and forward structures, large flat plate breakup on the
+  drum, and small blisters and drums riding the dorsal ridge. Every kind in the vocabulary
+  traces to something visible there; nothing was added that is not.
+- **Size** is constrained from below by legibility, not chosen freely. The first implementation
+  used 10–20 m fittings; rendered and inspected, they read as noise at any range beyond ~100 m.
+  Sizes were raised until the detail read as installed machinery.
+- **The `cluttered` tier on `aft_hull_block`** is the one placement claim with a canon hook:
+  canon exterior system 11, *raw material storage bays (5)*, sits immediately aft of the habitat
+  cylinder, which puts bulk-handling plant in that section; and `other map 2.jpg`'s exterior
+  labelling runs Grey then Brown at the aft end. It is *not* a claim that Downbelow is there —
+  C-003 rejected the longitudinal sector model for interiors and this makes no interior claim.
+- The **triangle budget**, which caps the whole pass at 18% of the exterior allowance.
+
+**Overturned by:** any high-resolution photograph of the physical production model or a
+sufficiently close exterior shot from the show, either of which would replace the tier
+assignment with observation. Resolution of C-003 would also move the `cluttered` zone if it
+places the service and industrial functions elsewhere on the hull.
+
+**Deliberately not claimed:** greebles carry no dimensions of their own into the schema. They
+read the same radius profile the lathe does and sit on whatever surface it reports, so nothing
+downstream can build on a greeble position. Deleting the entire pass would change nothing but
+the look.

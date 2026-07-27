@@ -113,7 +113,7 @@ rule. Specifically still wrong:
 
 - Components are box primitives throughout. No taper, no truss structure, no articulation.
 - Solar arrays and cooling fins still read as the same kind of object.
-- No greebling, no panel lines, no surface detail anywhere.
+- ~~No greebling, no panel lines, no surface detail anywhere.~~ Done in session 2n.
 - Observation domes, rotundas, docking ports, sensor and deflector arrays not yet placed.
 
 These need reference-driven refinement against `01-station-exterior/` before they are
@@ -369,11 +369,39 @@ then framing. Materials live in the engine, not the export.
 - **`docs/godot-binary.md`** — reproduction, the two build pitfalls (OOM at `-j4`, proxy 403 on
   archive URLs), and why a 52 MB build artifact is deliberately not in git history.
 
-## Test suites — 148 tests green
+## Session 2n — exterior greebling
+
+- **`station/greeble.py`** — procedural surface detail scattered by rule over the whole hull.
+  Access panels, louvred vent banks, octagonal hatches, sensor blisters, antenna stubs,
+  magnetic cleats, marker lights, and clamped conduit runs following the long axis.
+  **70,778 triangles, 1,976 fittings in 662 assemblies plus 52 conduit runs** — 18% of the
+  exterior triangle budget, taking the model to 82% with 73k spare.
+- Driven from a new `greebles:` block in the schema: five density tiers assigned per
+  longitudinal feature, from `clean` on the habitat drum to `industrial` on the reactor spine,
+  a 13× spread. Logged as **INV-006**.
+- **Determinism is asserted, not assumed.** Every instance is keyed on
+  (seed, zone, cell indices) through a written-out FNV-1a, because Python's `str.__hash__` is
+  salted per process and would have produced a different hull every run. Verified two ways:
+  a new canon assertion that builds the pass twice and compares, and a byte-for-byte `cmp` of
+  the OBJ across `PYTHONHASHSEED=1` and `PYTHONHASHSEED=99999`.
+- **The first attempt was wrong and looking at it is what caught it.** 10–20 m fittings on an
+  even lattice rendered as confetti — noise, not machinery. Two changes fixed it: fittings
+  scaled up to 15–50 m, and single objects replaced by *assemblies* (one full-size primary plus
+  small satellites) so there is a size hierarchy that reads at 200 m and at 20 km.
+- **The conduit runs do most of the work.** A clamped line running 900 m down the flank of the
+  drum is the most legible surface feature on the reference sheet, and one run is worth fifty
+  scattered boxes.
+- **Caught a real LOD regression.** Scattered detail does not decimate the way the lathe does,
+  so greebles were a fixed 71k floor — **91% of lod3**. `lod.py` now drives a per-level greeble
+  detail fraction (1.0 / 0.45 / 0.12 / 0.0) and lod3 is back to 7,016 triangles. Culling is a
+  stable subset — verified that every lod1 greeble vertex exists in lod0 — so a switch removes
+  fittings rather than rearranging them.
+
+## Test suites — 151 tests green
 
 | Suite | Tests |
 |---|---|
-| Canon assertions | 20 |
+| Canon assertions | 23 |
 | Performance budgets | 4 |
 | Rotating frame | 25 |
 | Precision / floating origin | 10 |
@@ -388,8 +416,10 @@ then framing. Materials live in the engine, not the export.
 1. **Extend the interior kit** — wall assemblies (the corridor currently has ribs and deck but
    no walls), doors, junctions, and the emissive materials for the deck channels and signage.
    Still geometry only; placement stays blocked.
-2. **Greebling pass** on the exterior. Plating exists; surface clutter, vents, conduits and
-   panel lines do not. ADR 0002's procedural-detail approach starts earning its keep here.
+2. **Refine the components against reference.** Greebling is done (session 2n); the crude parts
+   are now the *components* — fins, arrays and cobra bays are still box primitives with no
+   truss structure or articulation, and solar arrays still read the same as cooling fins.
+   Greebles cannot rescue a wrong silhouette.
 3. **Publish the Godot binary as a GitHub Release asset** — it is container-local and will be
    lost when this container is reclaimed. Rebuilding costs 61 minutes.
 4. **Core shuttle** — axial transit through the gravity gradient, rim to weightless axis.

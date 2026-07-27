@@ -275,7 +275,14 @@ def _offset_polygon(poly, d):
         denom = mx * nx1 + my * ny1
         if abs(denom) < 1e-9:
             mx, my, denom = nx1, ny1, 1.0
-        out.append((poly[i][0] + d * mx / denom, poly[i][1] + d * my / denom))
+        ox, oy = d * mx / denom, d * my / denom
+        # Miter limit. At a sharp vertex the exact miter runs away to infinity;
+        # clipping a section into pieces makes sharp vertices routinely, and an
+        # unclamped miter turned them into long stray spikes floating in frame.
+        ln = math.hypot(ox, oy)
+        if ln > abs(d) * 3.0:
+            ox, oy = ox * abs(d) * 3.0 / ln, oy * abs(d) * 3.0 / ln
+        out.append((poly[i][0] + ox, poly[i][1] + oy))
     return out
 
 
@@ -346,6 +353,40 @@ def _polygon_difference(outer, hole):
         if len(rest) < 3:
             break
     return pieces
+
+
+def _plate_with_hole(verts, tris, outline, hole, z0, z1):
+    """A flat plate with a hole in it, as one shell rather than as tiled blocks.
+
+    Tiling the plate into convex blocks is the obvious construction and it is
+    wrong. Adjacent blocks share internal faces, and a depth-sorted renderer
+    happily draws one of them over the plate in front of it -- so the closure
+    round a door read as a set of separate panels with joints radiating off
+    every aperture corner. Decomposing only the caps and rimming the two loops
+    leaves no internal face to draw.
+    """
+    outline, hole = _ensure_ccw(outline), _ensure_ccw(hole)
+    for piece in _polygon_difference(outline, hole):
+        n = len(piece)
+        b = len(verts)
+        verts.extend([(x, y, z0) for x, y in piece])
+        verts.extend([(x, y, z1) for x, y in piece])
+        for i in range(1, n - 1):
+            tris.append((b, b + i + 1, b + i))
+            tris.append((b + n, b + n + i, b + n + i + 1))
+    for loop, outward in ((outline, True), (hole, False)):
+        m = len(loop)
+        b = len(verts)
+        verts.extend([(x, y, z0) for x, y in loop])
+        verts.extend([(x, y, z1) for x, y in loop])
+        for i in range(m):
+            j = (i + 1) % m
+            if outward:
+                tris.append((b + i, b + j, b + m + j))
+                tris.append((b + i, b + m + j, b + m + i))
+            else:
+                tris.append((b + j, b + i, b + m + i))
+                tris.append((b + j, b + m + i, b + m + j))
 
 
 def chamfered_arch(width, height, chamfer):
@@ -543,14 +584,12 @@ def door_frame(p=None, width=None, height=None):
     reveal = _offset_polygon(inner, fw * 0.34)
     outer = _offset_polygon(inner, fw)
 
-    def band(a, b, z0, z1):
-        n = len(a)
-        for i in range(n):
-            j = (i + 1) % n
-            _prism(verts, tris, [a[i], a[j], b[j], b[i]], z0, z1)
-
-    band(inner, reveal, -fd * 0.22, fd * 0.22)     # the reveal, set back
-    band(reveal, outer, -fd * 0.5, fd * 0.5)       # the outer frame, proud
+    _plate_with_hole(verts, tris, reveal, inner, -fd * 0.22, fd * 0.22)
+    # The outer band starts inside the reveal rather than exactly on it, so the
+    # two rings overlap rather than meeting on a shared face -- coincident faces
+    # are a depth-sort coin toss, and they tore the door corners.
+    _plate_with_hole(verts, tris, outer, _offset_polygon(inner, fw * 0.26),
+                     -fd * 0.5, fd * 0.5)
 
     # Threshold: the sill is structure, so it is a solid step, not a strip.
     _slab(verts, tris, -w / 2.0, w / 2.0, 0.0, sill, -fd * 0.5, fd * 0.5)
@@ -644,6 +683,10 @@ def bulkhead(section, p=None, depth=None, width=None, height=None):
         chamfered_aperture(w, h, p["door_chamfer_m"], p["door_sill_m"]),
         p["door_frame_m"] * 0.78)
     d0, d1 = depth or (-p["door_frame_depth_m"] * 0.34, p["door_frame_depth_m"] * 0.34)
+    # Pieces are left exactly as peeled. Inflating them to bury the shared
+    # internal faces was tried and is wrong: the faces two pieces share are
+    # edge-on from every direction and cost nothing, whereas inflation ragged
+    # the outer edge and grew spikes off the sliver pieces.
     for piece in _polygon_difference(section, hole):
         _prism(verts, tris, piece, d0, d1)
     return verts, tris

@@ -87,9 +87,6 @@ class Seeded:
         """Inclusive integer range."""
         return lo + int(self.unit() * (hi - lo + 1))
 
-    def chance(self, p):
-        return self.unit() < p
-
     def pick(self, weights):
         """Weighted choice over {name: weight}, order-independent."""
         names = sorted(weights)
@@ -330,7 +327,7 @@ def _docking_cleat(verts, tris, frame, r, rng, scale=1.0):
           pad + rng.span(5.0, 9.0) * scale)
 
 
-def _marker_light(verts, tris, frame, r, rng, scale, lens, base, stand):
+def _marker_light(verts, tris, frame, r, scale, lens, base, stand):
     """A light housing: a shallow pedestal carrying a proud lens block.
 
     Split into two pieces so the lens can take an emissive material on its own
@@ -343,11 +340,11 @@ def _marker_light(verts, tris, frame, r, rng, scale, lens, base, stand):
 
 
 def _nav_light(verts, tris, frame, r, rng, scale=1.0):
-    _marker_light(verts, tris, frame, r, rng, scale, 3.0, 5.4, rng.span(3.0, 5.0))
+    _marker_light(verts, tris, frame, r, scale, 3.0, 5.4, rng.span(3.0, 5.0))
 
 
 def _hazard_light(verts, tris, frame, r, rng, scale=1.0):
-    _marker_light(verts, tris, frame, r, rng, scale, 2.4, 4.4, rng.span(2.6, 4.2))
+    _marker_light(verts, tris, frame, r, scale, 2.4, 4.4, rng.span(2.6, 4.2))
 
 
 # kind -> (builder, mesh group). Grouping by kind rather than by hull feature is
@@ -489,7 +486,7 @@ def _conduit_stations(surface, z0, z1):
     return zs
 
 
-def _conduit_run(out, surface, zone_id, z0, z1, theta, rng, min_radius):
+def _conduit_run(out, surface, z0, z1, theta, rng, min_radius):
     """One bundle of pipes following the long axis, clamped at intervals.
 
     Canon lists secondary power distribution conduits and a fuel delivery and
@@ -701,7 +698,7 @@ def build_all(cfg, features, profile, detail=1.0):
             # Evenly spaced meridians with a small deterministic offset, so runs
             # on adjacent sections do not all line up on the same longitude.
             theta = 2.0 * math.pi * (run + rng.span(-0.18, 0.18)) / runs
-            _conduit_run(out, surface, fid, z0 + pad, z1 - pad, theta, rng,
+            _conduit_run(out, surface, z0 + pad, z1 - pad, theta, rng,
                          cfg["min_radius_m"])
             stats["conduit_run"] = stats.get("conduit_run", 0) + 1
 
