@@ -83,6 +83,20 @@ not stated on screen — logged as invention `INV-002`.
 Gravity falls linearly with radius toward the axis: **g(r) = ω²r**, reaching zero at the core
 shuttle. This gradient is a first-class simulation feature, not set dressing.
 
+**Consequence: rim-to-axis transit is slow, and the physics says so.** Coriolis on radial
+motion is 2ωv, so peak lateral load scales inversely with transit duration:
+
+| Rim → axis in | Peak lateral |
+|---|---|
+| 8 s | 2.00 g |
+| 60 s | 0.27 g |
+| 120 s | 0.13 g |
+| 300 s | 0.05 g |
+
+Holding peak lateral under 0.12 g needs **133 seconds**. A lift from the rim to the core
+shuttle is therefore a two-minute-plus ride during which weight drains away and an
+unexplained sideways push builds and fades. That is a felt journey, not a loading screen.
+
 ### 1.2b Numeric precision — measured
 
 float32 carries ~7 significant decimal digits, so representable-value spacing grows with

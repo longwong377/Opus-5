@@ -41,6 +41,9 @@ jobs:
       - name: Docking
         run: python3 station/physics/test_docking.py
 
+      - name: Core shuttle and radial transit
+        run: python3 station/physics/test_core_shuttle.py
+
       - name: Confirm the schema still parses and is fully sourced
         run: |
           python3 - <<'PY'
