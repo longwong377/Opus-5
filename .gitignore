@@ -7,3 +7,4 @@ station/generated/hull_lod*.obj
 godot/station.glb
 godot/.godot/
 renders/
+station/generated/corridor.obj
