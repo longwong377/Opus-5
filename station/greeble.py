@@ -323,7 +323,9 @@ def _docking_cleat(verts, tris, frame, r, rng, scale=1.0):
     hu = min(rng.span(9.0, 15.0) * scale, r * 0.12)
     hv = rng.span(7.0, 12.0) * scale
     pad = rng.span(3.0, 5.0) * scale
-    _slab(verts, tris, frame, 0.0, 0.0, hu, hv, -_bury(hu, r), pad, taper=0.72)
+    # Only a slight splay on the pad. A strong draft angle turns it into a
+    # pyramid, which at grazing incidence reads as a shard rather than a fitting.
+    _slab(verts, tris, frame, 0.0, 0.0, hu, hv, -_bury(hu, r), pad, taper=0.86)
     _slab(verts, tris, frame, 0.0, 0.0, hu * 0.32, hv * 1.12, pad,
           pad + rng.span(5.0, 9.0) * scale)
 

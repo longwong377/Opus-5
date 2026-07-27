@@ -145,8 +145,8 @@ PROVISIONAL = {
     # `ring_frame_spacing_m` stays for the circular ribs of the tall volumes in
     # `central corridor.webp`. Corridor portals sit closer together than that.
     "portal_spacing_m": 3.6,
-    "portal_depth_m": 0.42,
-    "portal_jamb_m": 0.30,
+    "portal_depth_m": 0.55,
+    "portal_jamb_m": 0.34,
     "portal_light_w_m": 0.09,
 
     # --- pilasters (bullnose columns carrying the vertical light strips) ----
@@ -635,7 +635,7 @@ def bulkhead(section, p=None, depth=None, width=None, height=None):
     h = height if height is not None else p["door_height_m"]
     hole = _offset_polygon(
         chamfered_aperture(w, h, p["door_chamfer_m"], p["door_sill_m"]),
-        p["door_frame_m"] * 0.94)
+        p["door_frame_m"] * 0.78)
     d0, d1 = depth or (-p["door_frame_depth_m"] * 0.34, p["door_frame_depth_m"] * 0.34)
     for piece in _polygon_difference(section, hole):
         _prism(verts, tris, piece, d0, d1)
@@ -783,27 +783,35 @@ def corridor_section(length, p=None, doors=()):
                (0.0, -0.12, length * (i + 0.5) / n_deck))
     _merge(verts, tris, *deck_grid(length, w, p))
 
-    # Soffit, spanning between the two chamfers.
+    # Soffit, spanning between the two chamfers, ribbed between portals. The
+    # ribs are not decoration: an unbroken plane overhead is the one surface a
+    # corridor never has, and without them the ceiling renders as a void rather
+    # than as the dark structure the reference actually shows.
     flat = w / 2.0 - chamf
     _slab(verts, tris, -flat, flat, h, h + p["ceiling_slab_m"], 0.0, length)
+    for i in range(n_bays):
+        for f in (0.34, 0.66):
+            rz = bay * (i + f)
+            _slab(verts, tris, -flat, flat, h - 0.07, h, rz - 0.05, rz + 0.05)
 
-    # A door needs its full outer width clear of wall, not just its centreline.
-    # Testing the centre alone let a door land on a portal and interpenetrate it.
-    clear = p["door_width_m"] / 2.0 + p["door_frame_m"]
+    # A wall door takes over a whole bay, so it is snapped to that bay's centre
+    # rather than left where the caller asked. Placing it by centreline alone
+    # let a door land on a portal frame and interpenetrate it, and a door
+    # straddling two bays would need its closure cut round a portal.
+    bay_centre = [bay * (i + 0.5) for i in range(n_bays)]
     wall_doors = {}
     for dz, side in doors:
         if side:
-            wall_doors.setdefault(side, []).append(dz)
+            i = min(range(n_bays), key=lambda k: abs(bay_centre[k] - dz))
+            wall_doors[(side, i)] = bay_centre[i]
 
+    inner = p["portal_depth_m"] / 2
     for i in range(n_bays):
-        z0 = bay * i + p["portal_depth_m"] / 2
-        z1 = bay * (i + 1) - p["portal_depth_m"] / 2
+        z0, z1 = bay * i + inner, bay * (i + 1) - inner
         for side in (-1, 1):
-            if any(dz - clear < z1 and dz + clear > z0
-                   for dz in wall_doors.get(side, ())):
-                continue
-            v, t = wall_assembly(z1 - z0, h, p,
-                                 plaque_at=(z1 - z0) * 0.5 if i == 0 and side > 0 else None)
+            v, t = wall_assembly(
+                z1 - z0, h, p, courses=(side, i) not in wall_doors,
+                plaque_at=(z1 - z0) * 0.5 if i == 0 and side > 0 else None)
             # side +1 is the mirror: negating x reverses winding, hence the flip.
             if side < 0:
                 _merge(verts, tris, v, t, offset=(-w / 2.0, 0.0, z0))
@@ -811,16 +819,23 @@ def corridor_section(length, p=None, doors=()):
                 _merge(verts, tris, v, t, lambda x, y, z: (-x, y, z),
                        (w / 2.0, 0.0, z0), flip=True)
 
-    section = chamfered_arch(w, h, chamf)
+    wall_h = h - chamf
+    fd, th = p["door_frame_depth_m"], p["wall_thickness_m"]
     for dz, side in doors:
-        # A door across the corridor closes the whole section; a door through a
-        # wall is already surrounded by wall and needs no closure of its own.
-        v, t = door_assembly(p, section=section if side == 0 else None)
         if side == 0:
-            _merge(verts, tris, v, t, offset=(0.0, 0.0, dz))
-        else:
-            _merge(verts, tris, v, t, _rot_y(90.0 * side),
-                   (side * w / 2.0, 0.0, dz))
+            # A door across the corridor closes the whole section.
+            _merge(verts, tris, *door_assembly(p, section=chamfered_arch(w, h, chamf)),
+                   offset=(0.0, 0.0, dz))
+            continue
+        i = min(range(n_bays), key=lambda k: abs(bay_centre[k] - dz))
+        span = bay - 2 * inner
+        rect = [(-span / 2, 0.0), (span / 2, 0.0), (span / 2, wall_h), (-span / 2, wall_h)]
+        # Set back so the frame stands a little proud of the wall face rather
+        # than half of it hanging in the corridor, and the closure fills the
+        # thickness the wall courses would have occupied.
+        v, t = door_assembly(p, section=rect, depth=(-0.06, th + 0.10))
+        _merge(verts, tris, v, t, _rot_y(90.0 * side),
+               (side * (w / 2.0 + 0.16), 0.0, bay_centre[i]))
 
     # Bullnose pilasters flanking each portal, carrying the vertical light
     # strips. They are what the wall runs die into, so the plate courses never
