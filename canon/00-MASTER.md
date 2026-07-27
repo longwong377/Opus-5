@@ -73,11 +73,12 @@ Derived consequences, all unit-tested in `station/physics/`:
 | Half gravity at | 139.15 m radius (exactly half the floor radius) |
 | Apparent weight, brisk walk spinward | 1.054× |
 | Apparent weight, brisk walk anti-spinward | 0.947× |
-| Coriolis climbing toward the axis | 1.13 m/s² lateral, deflecting spinward | The show depicts
-normal human gait and unremarkable gravity throughout the habitation sections. 1.79 rpm sits
-comfortably below the ~2–3 rpm threshold at which Coriolis effects become disorienting, so
-this is both canon-consistent and physically sound. Rotation rate is not stated on screen —
-logged as invention `INV-002`.
+| Coriolis climbing toward the axis | 1.13 m/s² lateral, deflecting spinward |
+
+The show depicts normal human gait and unremarkable gravity throughout the habitation
+sections. 1.7926 rpm sits comfortably below the ~2–3 rpm threshold at which Coriolis effects
+become disorienting, so this is both canon-consistent and physically sound. Rotation rate is
+not stated on screen — logged as invention `INV-002`.
 
 Gravity falls linearly with radius toward the axis: **g(r) = ω²r**, reaching zero at the core
 shuttle. This gradient is a first-class simulation feature, not set dressing.
@@ -149,10 +150,16 @@ On-screen location references take the form `<Colour> <number>` — Grey 17, Red
 Brown 2, Green 2 — i.e. **sector + level**. Level numbering is therefore a first-class part
 of the address space, which directly serves the multi-level requirement.
 
-### 3.1 Working longitudinal order (provisional)
+### 3.1 Longitudinal order — **exterior labelling only**
 
-Adopted from `other map 2.jpg`, which ties sector names directly to visible hull positions and
-is therefore the reading most easily reconciled with exterior geometry:
+**The longitudinal sector model has been rejected for interiors** — see `CONFLICTS.md`
+§C-003 UPDATE. With the longitudinal framework complete, the station is 50% pressurised and
+50% structural, the habitable volume is four separated regions, and the Green section alone
+holds 73% of it. Six sectors cannot be longitudinal slices across that: Grey and Brown would
+land on bare truss spine.
+
+The ordering below is retained only as the mapping of sector names to visible hull positions,
+which is all `other map 2.jpg` ever actually demonstrated:
 
 | Order (aft → fore) | Sector | Function |
 |---|---|---|
