@@ -346,6 +346,43 @@ then framing. Materials live in the engine, not the export.
   and I was remapping axes with inline tuple comprehensions, which silently transposed the
   wrong pair. Merging now takes an explicit remap function per piece.
 
+## Session 2m — NPC foundation
+
+- **`station/npc/names.py`, 20 tests.** Per-species name grammars fitted to names actually
+  spoken on screen, with the evidence recorded beside each pattern. Narn apostrophe structure
+  from G'Kar and Na'Toth; Centauri house names established by Londo and Carn *sharing* Mollari;
+  human surnames spanning several traditions because Earth Alliance is explicitly multinational.
+  **Vorlon is a closed list, not a generator** — two attested names is not enough to generate
+  from, and a test asserts it stays closed.
+- **`station/npc/schedule.py`, 18 tests.** Species rhythms, roles, rotating shifts, and the
+  statistical population layer. **A corridor at 03:00 is not empty** — it holds Minbari (broken
+  sleep is canon) and Centauri (still in the bars), which is a specific and different crowd
+  from 13:00.
+- Two bugs caught, both design failure modes rather than typos:
+  - Sleep resolving before work against an unshifted rhythm **put the entire night watch to
+    bed** — security showed *zero on duty at 02:00*. Sleep now follows the shift offset.
+  - The species mix summed to 0.94, so the aggregate layer **silently dropped 120 of every
+    2,000 residents**. Exactly the quiet population leak the statistical layer exists to prevent.
+- Logged as INV-004 and INV-005.
+- **`CONTRIBUTING.md`** added — the loop, plus a table of every mistake made so far and its
+  cause. All of them were caught by looking at output, not by reading code.
+- **`docs/godot-binary.md`** — reproduction, the two build pitfalls (OOM at `-j4`, proxy 403 on
+  archive URLs), and why a 52 MB build artifact is deliberately not in git history.
+
+## Test suites — 148 tests green
+
+| Suite | Tests |
+|---|---|
+| Canon assertions | 20 |
+| Performance budgets | 4 |
+| Rotating frame | 25 |
+| Precision / floating origin | 10 |
+| Starfury flight | 18 |
+| Docking | 15 |
+| Core shuttle | 18 |
+| NPC names | 20 |
+| NPC schedules | 18 |
+
 ## Next session — start here
 
 1. **Extend the interior kit** — wall assemblies (the corridor currently has ribs and deck but
