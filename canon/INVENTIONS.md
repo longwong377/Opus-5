@@ -832,3 +832,52 @@ land on *something* at each end.
 **Overturned by:** Any frame giving the hub a scale against a known object, or showing the spoke
 landing in detail. Note the whole entry is downstream of INV-018: change the tube radius and every
 figure here re-derives.
+
+---
+
+## INV-020 — Corridor classes, and the concourse's dimensions
+
+**Invented:** The three-class corridor taxonomy in `station/interior_kit.py`
+(`CORRIDOR_CLASSES`), and the concourse class's width of **9.0 m** and rib spacing of **6.0 m**.
+
+**Why necessary:** The kit modelled **one** corridor. The reference shows at least three, and
+they are not variations on a width — they are different kinds of space, with different structure,
+lighting and finish. Building 210 decks out of a single corridor profile would make the whole
+interior read as one endless hallway, which is the opposite of what the footage shows.
+
+**What is sourced, and is not invention:**
+
+| class | frame | what it establishes |
+|---|---|---|
+| residential | `grey level 1.webp` | pale grey-tan, pilasters, horizontal wall banding, vertical light strips, chequered deck, portal frames. Narrow and finished. Already what the kit built. |
+| concourse | `central corridor.webp`, `more hallway.jpg` | a tall volume framed by large **elliptical ribs**, lit strip down the deck centre, circular downlight pools, wall screens, and an **upper walkway** carrying pedestrians over the lower deck |
+| service | `more hallways.jpg` | overhead truss instead of a soffit, vertical light tubes, a chequered lit strip in deck grating running the full length, warm backlit panels, litter on the deck |
+
+The **elliptical rib arch** is the signature element of a Babylon 5 interior and the kit did not
+have it at all — `ring_frame_spacing_m` existed as a constant with a comment pointing at
+`central corridor.webp`, and nothing ever built one.
+
+**Constrained by:**
+
+- **One absolute length is measured, not chosen.** In `more hallway.jpg` an EarthForce officer
+  stands in a circular downlight pool. At 1.75 m he is 261 px, giving **149 px/m** at his depth;
+  the pool spans 234 px, so the pools are **1.57 m** across. `DOWNLIGHT_POOL_M` is that figure,
+  and the self-test asserts the built geometry still matches it.
+- **The concourse height is derived, not picked.** `central corridor.webp` shows an upper walkway
+  with people standing on it above people on the lower deck, so the volume is **two decks** tall
+  by observation. At the INV-010 pitch of 3.6 m that is **7.2 m**, and the self-test asserts it
+  stays a whole multiple — a fractional height would land the walkway between decks.
+- **The width is the weakest figure here.** 9.0 m is proportioned against the rib arches in
+  `more hallway.jpg`, whose span reads as somewhat wider than the volume is tall. No frame gives
+  a concourse width against a known length, because the officer stands in the middle of the space
+  rather than against a wall.
+
+**Overturned by:** any frame with a person against a concourse wall, or two people at known
+separation across one. The width is a single constant; changing it re-derives every concourse.
+
+**A winding bug worth recording, because it is the third of its kind.** `downlight_pool` and
+`deck_strip` lie flat and must face **up**; ascending angle in the XZ plane with +Y up gives a
+**downward** normal, so both were invisible from the only place they are ever seen. Caught by
+rendering and seeing 836 of 2,100 triangles survive culling. The self-test now asserts upward
+facing for every flat deck element, and the assertion was verified by reverting the fix and
+watching it fail.

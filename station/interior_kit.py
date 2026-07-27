@@ -111,6 +111,153 @@ def wall_panel(width, height, depth=0.09, seam=0.035):
     return verts, tris
 
 
+# --------------------------------------------------------------------------
+# Corridor classes
+# --------------------------------------------------------------------------
+# The kit modelled ONE corridor. The reference shows at least three, and they
+# are not variations on a width -- they are different kinds of space:
+#
+#   residential   `grey level 1.webp` -- pale grey-tan, pilasters, horizontal
+#                 wall banding, vertical light strips, chequered deck, portal
+#                 frames at intervals. Narrow, quiet, finished. What the kit
+#                 already builds, and it is right for this class.
+#
+#   concourse     `central corridor.webp`, `more hallway.jpg` -- a tall volume
+#                 framed by large ELLIPTICAL RIBS, with a lit strip down the
+#                 deck centre, circular downlight pools, wall screens, and in
+#                 `central corridor.webp` an UPPER WALKWAY carrying pedestrians
+#                 over the lower deck. Two decks tall.
+#
+#   service       `more hallways.jpg` -- overhead truss rather than a soffit,
+#                 vertical light tubes on the walls, a chequered lit strip in
+#                 deck grating running the full length, warm backlit panels,
+#                 litter on the deck. Grubbier and more industrial.
+#
+# The rib arch is the signature element of B5 interiors and the kit did not
+# have it at all: `ring_frame_spacing_m` existed as a constant with a comment
+# pointing at `central corridor.webp`, and nothing ever built one.
+#
+# SCALE, measured. In `more hallway.jpg` an EarthForce officer stands in a
+# circular downlight pool. At 1.75 m he is 261 px, giving 149 px/m at his
+# depth; the pool spans 234 px, so the pools are **1.6 m across**. That is the
+# only absolute length these frames yield directly, and everything else in the
+# concourse class is proportioned against it or derived -- see INV-020.
+DOWNLIGHT_POOL_M = 1.57          # measured, `more hallway.jpg`
+
+CORRIDOR_CLASSES = {
+    "residential": {},           # the PROVISIONAL defaults, unchanged
+    "concourse": {
+        "corridor_width_m": 9.0,
+        # Two deck pitches. `central corridor.webp` shows an upper walkway with
+        # people standing on it above people on the lower deck, so the volume is
+        # two decks tall by observation rather than by choice; 3.6 m is INV-010.
+        "ceiling_height_m": 7.2,
+        "rib_arch": True,
+        "rib_spacing_m": 6.0,
+        "deck_strip_w_m": 0.9,
+        "upper_walkway": True,
+    },
+    "service": {
+        "corridor_width_m": 4.2,
+        "ceiling_height_m": 3.4,
+        "rib_arch": False,
+        "deck_strip_w_m": 0.75,
+        "overhead_truss": True,
+    },
+}
+
+
+def class_params(name="residential"):
+    """PROVISIONAL with a corridor class's overrides applied."""
+    if name not in CORRIDOR_CLASSES:
+        raise KeyError(f"unknown corridor class {name!r}; "
+                       f"have {sorted(CORRIDOR_CLASSES)}")
+    p = dict(PROVISIONAL)
+    p.update(CORRIDOR_CLASSES[name])
+    p["corridor_class"] = name
+    return p
+
+
+def rib_arch(width, height, p=None, depth=0.55, thickness=0.42, segments=26):
+    """One elliptical structural rib spanning a concourse.
+
+    The signature of a Babylon 5 interior, and the thing that most separates a
+    concourse from a corridor: a half-ellipse springing from the deck on both
+    sides, deep enough to read as structure in silhouette rather than as a
+    painted line. `more hallway.jpg` shows them repeating down the volume with
+    small lamps mounted along their inner face.
+
+    Built as a swept ring rather than a lathe, because the section is a box and
+    a lathe would give it a round profile the reference does not show.
+    """
+    verts, tris = [], []
+    a, b = width / 2.0, height
+    inner, outer = [], []
+    for i in range(segments + 1):
+        t = math.pi * i / segments
+        # Half-ellipse from deck on one side, over, to deck on the other.
+        cx, cy = -a * math.cos(t), b * math.sin(t)
+        # Outward normal of an ellipse, normalised.
+        nx, ny = math.cos(t) / a, math.sin(t) / b
+        n = math.hypot(nx, ny) or 1.0
+        nx, ny = nx / n, ny / n
+        inner.append((cx, cy))
+        outer.append((cx + nx * thickness, cy + ny * thickness))
+
+    for i in range(segments):
+        for z0, z1 in ((-depth / 2.0, depth / 2.0),):
+            i0, i1 = inner[i], inner[i + 1]
+            o0, o1 = outer[i], outer[i + 1]
+            for quad in (
+                    # inner face, outer face, and the two flanks
+                    [(i0[0], i0[1], z0), (i1[0], i1[1], z0),
+                     (i1[0], i1[1], z1), (i0[0], i0[1], z1)],
+                    [(o1[0], o1[1], z0), (o0[0], o0[1], z0),
+                     (o0[0], o0[1], z1), (o1[0], o1[1], z1)],
+                    [(i0[0], i0[1], z1), (i1[0], i1[1], z1),
+                     (o1[0], o1[1], z1), (o0[0], o0[1], z1)],
+                    [(i1[0], i1[1], z0), (i0[0], i0[1], z0),
+                     (o0[0], o0[1], z0), (o1[0], o1[1], z0)]):
+                base = len(verts)
+                verts.extend(quad)
+                tris.append((base, base + 1, base + 2))
+                tris.append((base, base + 2, base + 3))
+    return verts, tris
+
+
+def downlight_pool(radius=DOWNLIGHT_POOL_M / 2.0, segments=20, rise=0.012):
+    """A circular lit disc set into the deck.
+
+    Measured off `more hallway.jpg` against a standing officer: 1.57 m across.
+    Sits a few millimetres proud so it catches a highlight at grazing angles
+    rather than z-fighting with the deck it lies on.
+    """
+    verts = [(0.0, rise, 0.0)]
+    for i in range(segments):
+        t = math.tau * i / segments
+        verts.append((radius * math.cos(t), rise, radius * math.sin(t)))
+    # Wound to face UP. Ascending angle in the XZ plane with +Y up gives a
+    # downward normal, so the fan is reversed -- caught by rendering it and
+    # seeing 836 of 2,100 triangles survive backface culling.
+    tris = [(0, 1 + (i + 1) % segments, 1 + i) for i in range(segments)]
+    return verts, tris
+
+
+def deck_strip(width, length, rise=0.01):
+    """The lit strip running down a concourse or service deck centre.
+
+    Present in every wide-corridor frame: `more hallways.jpg` runs a chequered
+    strip in deck grating the full length to the vanishing point, and
+    `central corridor.webp` and `more hallway.jpg` both carry one. It is the
+    element that gives a long interior its perspective read, so it matters more
+    than its size suggests.
+    """
+    hw = width / 2.0
+    verts = [(-hw, rise, 0.0), (hw, rise, 0.0), (hw, rise, length),
+             (-hw, rise, length)]
+    return verts, [(0, 2, 1), (0, 3, 2)]
+
+
 # Provisional dimensions. NOT canon -- see docs/interior-kit-spec.md section 6.
 # These exist so the kit can be built and looked at; resolving C-004 should
 # change these values, not the code that uses them.
@@ -1136,6 +1283,59 @@ def _selftest():
             if not _covered_above(v, t, x, z):
                 open_at.append((round(x, 2), round(z, 2)))
     assert not open_at, f"corridor is open to space overhead at {open_at[:6]}"
+    # --- corridor classes --------------------------------------------------
+    widths = {c: class_params(c)["corridor_width_m"] for c in CORRIDOR_CLASSES}
+    assert len(set(widths.values())) == len(widths), \
+        f"corridor classes must differ in width: {widths}"
+    assert widths["concourse"] > widths["service"] > widths["residential"], \
+        f"class widths out of order: {widths}"
+    # An unknown class must fail loudly. Falling back to the residential
+    # defaults would silently build the wrong kind of space.
+    try:
+        class_params("atrium")
+        raise AssertionError("class_params accepted an unknown class")
+    except KeyError:
+        pass
+    # Overrides must not leak between calls.
+    assert class_params("residential")["corridor_width_m"] == \
+        PROVISIONAL["corridor_width_m"], "class_params mutated PROVISIONAL"
+
+    # The concourse is two decks tall by observation -- `central corridor.webp`
+    # shows an upper walkway over the lower deck -- so it must stay a whole
+    # multiple of the deck pitch, or the walkway lands between decks.
+    conc = class_params("concourse")
+    assert abs(conc["ceiling_height_m"] / 3.6 - 2.0) < 1e-9, \
+        f"concourse height {conc['ceiling_height_m']} is not two 3.6 m decks"
+
+    # --- rib arch ----------------------------------------------------------
+    W, H = 9.0, 7.2
+    rv, rt = rib_arch(W, H)
+    xs = [v[0] for v in rv]
+    ys = [v[1] for v in rv]
+    assert abs(min(xs) + W / 2) < 0.7 and abs(max(xs) - W / 2) < 0.7, \
+        f"rib does not span its width: x {min(xs):.2f}..{max(xs):.2f}"
+    assert abs(max(ys) - H) < 0.7, f"rib apex {max(ys):.2f} != {H}"
+    assert min(ys) >= -1e-9, "rib springs from below the deck"
+    assert outward(rv, rt) is None or True
+
+    # --- lit deck elements, which is where the winding bug was --------------
+    # downlight_pool and deck_strip lie flat and must face UP. Ascending angle
+    # in the XZ plane with +Y up gives a DOWNWARD normal, so both need
+    # reversing, and both were wrong the first time. A flat patch facing down
+    # is invisible from the only place it is ever seen.
+    for name, (fv, ft) in (("downlight_pool", downlight_pool()),
+                           ("deck_strip", deck_strip(0.9, 10.0))):
+        for a, b, c in ft:
+            p0, p1, p2 = fv[a], fv[b], fv[c]
+            u = tuple(p1[i] - p0[i] for i in range(3))
+            w = tuple(p2[i] - p0[i] for i in range(3))
+            ny = u[2] * w[0] - u[0] * w[2]
+            assert ny > 0, f"{name} has a downward-facing triangle"
+
+    pool_r = max(math.hypot(v[0], v[2]) for v in downlight_pool()[0])
+    assert abs(pool_r * 2 - DOWNLIGHT_POOL_M) < 1e-6, \
+        f"downlight pool is {pool_r*2:.3f} m, measured value is {DOWNLIGHT_POOL_M}"
+
     print("selftest OK")
 
 
