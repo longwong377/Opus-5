@@ -171,15 +171,28 @@ longitudinal:
               here detaches as one assembly."}
     - {id: hull_flare_aft,            z0: 3016, z1: 3107, kind: flare}
     # --- rotating assembly ---------------------------------------------------
-    - {id: green_section,             z0: 3107, z1: 5846, kind: rotating_assembly,
-       table_length_m: 2739.3,
-       note: "Contains the bio-habitat drum. Liquid-helium linear bearings (label P)
-              sit at the aft end; the banded assembly read at real z~4740 is the
-              bearing race where non-rotating structure meets the drum."
-       subfeatures:
-         - {id: aft_hull_block,       z0: 3107, z1: 4207, note: "Widest pressurised volume"}
-         - {id: bearing_neck,         z0: 4207, z1: 4826}
-         - {id: habitat_cylinder,     z0: 4826, z1: 6035, label: T}}
+    - id: green_section
+      z0: 3107
+      z1: 6035
+      kind: rotating_assembly
+      table_length_m: 2739.3
+      geometric_length_m: 2928.0
+      note: "Contains the bio-habitat drum. Liquid-helium linear bearings (label P)
+             sit at the aft end; the banded assembly read at real z~4740 is the
+             bearing race where non-rotating structure meets the drum.
+             GEOMETRIC EXTENT (2928 m) EXCEEDS THE TABLE LENGTH (2739.3 m) BY 6.9%.
+             This is C-006 surfacing as geometry: the table length placed z1 at 5846,
+             but the habitat_cylinder subfeature -- read directly off the drawing --
+             runs to 6035, leaving a 189 m unassigned gap the hull generator caught.
+             A parent must contain its subfeatures, so the geometric extent governs
+             mesh generation and the table value is retained for reference only.
+             6.9% is the same order as the other drawing-vs-table disagreements
+             (Red 5.7%, Green diameter 3.9%), so this is consistent error, not a
+             new contradiction."
+      subfeatures:
+        - {id: aft_hull_block,   z0: 3107, z1: 4207, note: "Widest pressurised volume"}
+        - {id: bearing_neck,     z0: 4207, z1: 4826}
+        - {id: habitat_cylinder, z0: 4826, z1: 6035, label: T}
     # --- forward -------------------------------------------------------------
     - {id: red_section,               z0: 6035, z1: 6465, kind: hull,
        table_length_m: 445.3, drawn_length_m: 430,

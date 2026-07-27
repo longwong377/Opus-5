@@ -1,0 +1,31 @@
+{
+ "source_schema": "station/schema/station.yaml",
+ "radial_segments": 64,
+ "z_stride": 1,
+ "rings": 1978,
+ "vertices": 126594,
+ "triangles": 253184,
+ "groups": {
+  "aft_terminus": 1344,
+  "docking_sphere": 11008,
+  "explosive_disconnect_neck": 10496,
+  "forward_deflector_spike": 23872,
+  "forward_taper": 11264,
+  "forward_waist": 3584,
+  "generator_torus_housing": 6272,
+  "green_section": 92032,
+  "hull_flare_aft": 2944,
+  "main_truss_spine": 43520,
+  "primary_fusion_reactor": 9216,
+  "reactor_spine": 24064,
+  "red_section": 13568
+ },
+ "degenerate_quads_skipped": 0,
+ "cap_triangles": 128,
+ "bounds": {
+  "z_min_m": 0.0,
+  "z_max_m": 8046.9,
+  "length_m": 8046.9,
+  "max_radius_m": 480.3
+ }
+}

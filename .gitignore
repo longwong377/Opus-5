@@ -1,0 +1,4 @@
+# Generated geometry is reproducible from the schema -- regenerate with
+# station/generate_hull.py rather than committing multi-megabyte meshes.
+station/generated/*.obj
+station/generated/*.glb
