@@ -1,0 +1,48 @@
+[gd_scene load_steps=6 format=3]
+
+[ext_resource type="Script" path="res://scripts/station_view.gd" id="1"]
+[ext_resource type="PackedScene" path="res://station.glb" id="2"]
+
+[sub_resource type="Environment" id="Env"]
+background_mode = 1
+background_color = Color(0.008, 0.01, 0.018, 1)
+ambient_light_source = 2
+ambient_light_color = Color(0.16, 0.19, 0.28, 1)
+ambient_light_energy = 0.85
+tonemap_mode = 3
+tonemap_exposure = 1.55
+tonemap_white = 4.0
+ssao_enabled = true
+ssao_radius = 12.0
+ssao_intensity = 1.4
+
+[sub_resource type="StandardMaterial3D" id="Hull"]
+albedo_color = Color(0.62, 0.63, 0.66, 1)
+metallic = 0.72
+metallic_specular = 0.42
+roughness = 0.48
+
+[node name="StationView" type="Node3D"]
+script = ExtResource("1")
+hull_material = SubResource("Hull")
+
+[node name="Station" parent="." instance=ExtResource("2")]
+
+[node name="Camera3D" type="Camera3D" parent="."]
+fov = 46.0
+
+[node name="Sun" type="DirectionalLight3D" parent="."]
+transform = Transform3D(0.77, -0.31, 0.56, 0, 0.87, 0.49, -0.64, -0.38, 0.67, 0, 0, 0)
+light_energy = 2.1
+light_color = Color(1, 0.96, 0.9, 1)
+shadow_enabled = true
+directional_shadow_max_distance = 20000.0
+
+[node name="Fill" type="DirectionalLight3D" parent="."]
+transform = Transform3D(-0.7, 0.2, -0.68, 0, 0.96, 0.28, 0.71, 0.2, -0.67, 0, 0, 0)
+light_energy = 0.22
+light_color = Color(0.55, 0.68, 1, 1)
+shadow_enabled = false
+
+[node name="WorldEnvironment" type="WorldEnvironment" parent="."]
+environment = SubResource("Env")
