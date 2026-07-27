@@ -335,11 +335,22 @@ then framing. Materials live in the engine, not the export.
   precisely because they follow from level topology — putting a guess there would seed a
   number later work silently builds on.
 
+## Session 2l — interior kit built
+
+- **`station/interior_kit.py`** — ring frames, deck panels with recessed light channels,
+  handrails, wall plates. Rendered as a 20 m corridor it reads immediately as Babylon 5:
+  receding exposed ribs framing the view down the passage.
+- Dimensions that depend on level topology live in a `PROVISIONAL` dict, **not** as constants,
+  so resolving C-004 changes one table rather than a hundred call sites.
+- The first assembly produced a mangled deck: each piece is authored in its own natural frame
+  and I was remapping axes with inline tuple comprehensions, which silently transposed the
+  wrong pair. Merging now takes an explicit remap function per piece.
+
 ## Next session — start here
 
-1. **Build the interior kit** from `docs/interior-kit-spec.md` — exposed ring frames,
-   panelled walls, illuminated floor panels, red-orange handrails. Geometry only; placement
-   stays blocked. This is the largest chunk of unblocked work available.
+1. **Extend the interior kit** — wall assemblies (the corridor currently has ribs and deck but
+   no walls), doors, junctions, and the emissive materials for the deck channels and signage.
+   Still geometry only; placement stays blocked.
 2. **Greebling pass** on the exterior. Plating exists; surface clutter, vents, conduits and
    panel lines do not. ADR 0002's procedural-detail approach starts earning its keep here.
 3. **Publish the Godot binary as a GitHub Release asset** — it is container-local and will be
