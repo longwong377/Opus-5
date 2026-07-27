@@ -144,6 +144,55 @@ docking:
   service_docking_port: {side: south, auth: 3, src: "Contract 5 cross-section"}
 
 # ---------------------------------------------------------------------------
+# Longitudinal framework -- OW-001 complete.
+#
+# Read segment-by-segment from other map 4.jpg at 3x magnification against a
+# calibrated 50 m grid. z is measured from the aft terminus, +Z toward fore.
+#
+# TWO CLASSES OF NUMBER, do not confuse them:
+#   * table_*  -- from Miller's printed specification table. Authoritative.
+#   * drawn_*  -- measured by me off his drawing. Inferential, +/- ~75 m real.
+# Where they disagree the table wins; the drawing supplies ordering and the aft
+# structures the table does not cover. See CONFLICTS.md C-006.
+# ---------------------------------------------------------------------------
+longitudinal:
+  reading_uncertainty_real_m: 75
+  features:
+    # id                        drawn_z_start_m  drawn_z_end_m   (REAL metres)
+    - {id: aft_terminus,              z0: 0,    z1: 39,   kind: terminus}
+    - {id: primary_fusion_reactor,    z0: 39,   z1: 331,  kind: hull, label: J}
+    - {id: reactor_spine,             z0: 331,  z1: 1095, kind: truss, label: K,
+       contains: [reactor_coolant_purge_vents, reactor_coolant_storage_tanks]}
+    - {id: generator_torus_housing,   z0: 1095, z1: 1295, kind: flare, label: L}
+    - {id: main_truss_spine,          z0: 1295, z1: 2680, kind: truss, label: M,
+       contains: [ionization_vane_support_rings, fusion_reactor_ionization_vanes]}
+    - {id: explosive_disconnect_neck, z0: 2680, z1: 3016, kind: structural_boundary, label: O,
+       note: "Reactor jettison boundary. Structurally significant -- everything aft of
+              here detaches as one assembly."}
+    - {id: hull_flare_aft,            z0: 3016, z1: 3107, kind: flare}
+    # --- rotating assembly ---------------------------------------------------
+    - {id: green_section,             z0: 3107, z1: 5846, kind: rotating_assembly,
+       table_length_m: 2739.3,
+       note: "Contains the bio-habitat drum. Liquid-helium linear bearings (label P)
+              sit at the aft end; the banded assembly read at real z~4740 is the
+              bearing race where non-rotating structure meets the drum."
+       subfeatures:
+         - {id: aft_hull_block,       z0: 3107, z1: 4207, note: "Widest pressurised volume"}
+         - {id: bearing_neck,         z0: 4207, z1: 4826}
+         - {id: habitat_cylinder,     z0: 4826, z1: 6035, label: T}}
+    # --- forward -------------------------------------------------------------
+    - {id: red_section,               z0: 6035, z1: 6465, kind: hull,
+       table_length_m: 445.3, drawn_length_m: 430,
+       note: "Drawn and table lengths agree to 3.5% -- the strongest cross-check
+              between Miller's drawing and his table."}
+    - {id: forward_taper,             z0: 6465, z1: 6825, kind: cone}
+    - {id: forward_waist,             z0: 6825, z1: 6939, kind: neck}
+    - {id: docking_sphere,            z0: 6939, z1: 7286, kind: hull,
+       contains: [spacecraft_fuel_storage, traffic_control_sensor_array,
+                  cobra_launch_support_arms, spacecraft_bay_exhaust_vents]}
+    - {id: forward_deflector_spike,   z0: 7286, z1: 8047, kind: spike, label: I}
+
+# ---------------------------------------------------------------------------
 # What this schema does NOT yet contain, and what unblocks it.
 # ---------------------------------------------------------------------------
 open_work:

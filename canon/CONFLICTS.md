@@ -99,3 +99,29 @@ The reproduction is spliced or non-uniformly scaled across the middle. **This sh
 used for precise dimensional extraction.** It remains authoritative for *topology* — what
 components exist, their order, their counts, and the North/South convention — all of which
 survive a horizontal squeeze.
+
+---
+
+## C-006 — Miller's drawing disagrees with Miller's own table · **RESOLVED**
+
+Measured off `other map 4.jpg` at 3× against a calibrated 50 m grid, in Miller-metres:
+
+| Section | Table states | Drawing reads | Agreement |
+|---|---|---|---|
+| Red Section length | 172 m | ~166 m | **3.5%** — good |
+| Green Section outer length | 1058 m | ~1058 m as the whole rotating assembly (1200→2258) | good |
+| Bio-habitat cylinder alone | 1058 m | **~467 m** | **poor** |
+
+The habitat *cylinder* as drawn is less than half the length the table gives for the
+bio-habitat. The reconciliation: the table's 1058 m describes the **entire rotating assembly**
+— wide aft hull block, bearing neck and habitat cylinder together — not the visibly cylindrical
+portion alone. Green Section outer length and bio-habitat interior length being *the same
+number* in the table supports this: they are one envelope measured once.
+
+**Ruling: the table wins on dimensions, the drawing wins on ordering and identity.** The
+schema records both under `table_*` and `drawn_*` so the distinction survives. Drawing-derived
+z-positions carry ±75 m real uncertainty and must not be treated as precise.
+
+Red Section is the one place where an independent table figure and an independent drawing
+measurement agree closely. That agreement is the main evidence that the k = 2.5891 rescale and
+the 0.6361 px/m calibration are both sound.
