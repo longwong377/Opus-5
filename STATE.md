@@ -1104,22 +1104,39 @@ the habitat drum. The binary was rebuilt and is at `/home/user/godot-build/dist/
 The critique round never ran (the session hit its limit), so this is my own panel pass over what
 landed. It is not a substitute for the adversarial pass and that still needs doing.
 
-### Confirmed defect: the hull LOD chain is not wired into the engine
+### CORRECTED: the speckle is sub-pixel RELIEF, not a misapplied LOD
 
-Both engine frames are covered in white speckle — over the whole hull in the exterior shot and
-over the core tube in the interior one. It is not anti-aliasing: `project.godot` has 4× MSAA and
-FXAA on. It is **sub-pixel greebles**.
+**My first diagnosis of this was wrong and is corrected here.** I claimed the frame drew lod0
+where lod1 was due, computing "a 20 m fitting spans 2.7 px" from a framing assumption I had
+guessed rather than derived. Computing it properly: the exterior orbit is 9,200 m from the aim
+point, but the **nearest hull point is 5,163 m**, which is *inside* lod1's 6,000 m switch. lod0
+was the correct level. The LOD was not misapplied.
 
-- The exterior shot was rendered from **9,200 m**.
-- `lod_manifest.json` says lod1 is honest from **6,002 m** and cuts greeble detail to 0.45.
-- `tools/export_scene.py` has **no hull LOD handling at all** — `grep -i lod` finds only the
-  ground's LOD chain.
-- So the frame drew **lod0's 70,778 greeble triangles**, in 1,976 fittings, at a framing where a
-  20 m fitting spans **2.7 pixels**.
+The real cause is sharper, and it is a gap in the switch criterion itself:
 
-The LOD chain exists, is computed, has a manifest and a switch-distance derivation, and is simply
-not connected. Wiring it is likely the single largest visual improvement available right now, and
-it is cheap.
+- `lod.py` derives switch distances from **silhouette deviation** — the outline error from a
+  coarser radial segment count.
+- Greeble fittings stand **3–11 m proud** (INV-006). Their **relief** stops resolving at
+  **3,088 m** (a 3 m fitting) to **11,323 m** (an 11 m one), against the 1.5 px budget.
+- So from roughly **3 km to 6 km** the hull draws greeble relief nobody can resolve, while still
+  legitimately needing lod0's outline. That is a band ~3 km wide where the mesh is guaranteed to
+  produce high-frequency shading noise, and the silhouette criterion cannot see it.
+
+The greebles were never sub-pixel in **footprint** — at 5,163 m a 20 m fitting is about 5.8 px.
+They are sub-pixel in **relief**, which is a different measurement and the one that governs
+whether a bump reads as form or as noise.
+
+**The proper fix is to decouple the two schedules.** `LEVELS` steps `radial_segments` and
+`greeble_detail` together, so the chain cannot express "lod0 outline, lod1 greebles" — which is
+exactly what 3–6 km wants. That needs its own change and is recorded as the next visual increment.
+
+**Done this session:** `lod.py` now computes and reports the relief-resolution distances beside
+the silhouette ones, so the gap is visible in the manifest rather than latent. And
+`tools/export_scene.py` gained `pick_hull_lod()` — the chain genuinely was never connected to the
+renderer, so a 120 km shot would have drawn all 327,898 lod0 triangles to cover a few hundred
+pixels. Selection is by distance to the **nearest** point of the hull bounds, not to the aim
+point, because an 8 km station seen from 9 km has its near end at 5 km and choosing on centre
+distance would decimate geometry twice as close as the number justifying it.
 
 ### Other findings from the same two frames
 

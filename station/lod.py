@@ -58,6 +58,11 @@ FOV_DEG = 50.0
 SCREEN_H = 1440
 PIXEL_BUDGET = 1.5
 
+# Greeble fittings stand 3-11 m proud of the hull (INV-006). Their RELIEF is a
+# separate resolution question from the hull's silhouette, and it is the one
+# that bites first -- see the note at the foot of main().
+GREEBLE_RELIEF_M = (3.0, 11.0)
+
 
 def main():
     # generate_hull.py writes its manifest next to its --out path, so running
@@ -103,6 +108,12 @@ def main():
             lv["deviation_px_at_switch"] = round(px, 2)
             lv["honest_from_m"] = round(
                 dev * SCREEN_H / (PIXEL_BUDGET * 2 * math.tan(math.radians(FOV_DEG / 2))))
+    # How far out a fitting's RELIEF stops resolving. Reported for every level
+    # because it is the number the silhouette criterion misses entirely.
+    k = SCREEN_H / (PIXEL_BUDGET * 2 * math.tan(math.radians(FOV_DEG / 2)))
+    for lv in out:
+        lv["greeble_relief_resolves_to_m"] = [round(GREEBLE_RELIEF_M[0] * k),
+                                              round(GREEBLE_RELIEF_M[1] * k)]
 
     path = os.path.join(ROOT, "station/generated/lod_manifest.json")
     with open(path, "w") as f:
@@ -131,6 +142,20 @@ def main():
     total = sum(lv["triangles"] for lv in out)
     print(f"\nchain total {total:,} triangles across {len(out)} levels")
     print(f"at lod3 the whole 8 km station costs {out[-1]['triangles']:,} triangles")
+    lo, hi = out[0]["greeble_relief_resolves_to_m"]
+    print(f"\nSurface relief resolves out to {lo:,} m (a 3 m fitting) and {hi:,} m "
+          f"(an 11 m one).\nlod1's silhouette does not become honest until "
+          f"{out[1].get('honest_from_m', 0):,} m, so between roughly {lo:,} and "
+          f"{out[1].get('honest_from_m', 0):,} m\nthe hull is drawing greeble relief "
+          "nobody can resolve while still needing lod0's outline.\nThat gap is what "
+          "put white speckle over the whole hull in docs/engine-exterior.png:\nthe "
+          "greebles were not sub-pixel in FOOTPRINT, they were sub-pixel in RELIEF,\n"
+          "which the silhouette criterion does not measure.\n\n"
+          "The proper fix is to DECOUPLE the two schedules -- radial segments and\n"
+          "greeble detail currently step together in LEVELS, so the chain cannot\n"
+          "express \"lod0 outline, lod1 greebles\", which is what 3-6 km actually wants.\n"
+          "Recorded as future work; it needs its own change.")
+
     print("\nNote: deviation is computed against the model's MAX radius (the comms grid\n"
           "tip at 1,211 m). Most of the hull is far thinner -- under 480 m, much of it\n"
           "under 200 m -- so a single global LOD is dominated by the widest structure and\n"

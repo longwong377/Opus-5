@@ -30,6 +30,7 @@ Usage:
     python3 tools/export_scene.py                      # runs the self-test
 """
 import argparse
+import math
 import json
 import math
 import os
@@ -189,9 +190,66 @@ def _spherical(dist, elev_deg, az_deg, target):
             target[2] + dist * math.cos(el) * math.sin(az))
 
 
+def pick_hull_lod(eye, target, forced=""):
+    """Which hull LOD a shot should use, and why.
+
+    This did not exist, so every exterior shot drew lod0 however far away the
+    camera was -- a 95 km shot would have drawn 327,898 triangles to cover a few
+    hundred pixels. The chain was built, measured and given a manifest three
+    sessions ago and was simply never connected to the thing that renders.
+
+    Distance is taken to the NEAREST point of the hull's bounding box, not to
+    the aim point. An 8 km station seen from 9 km has its near end at about
+    5 km, and picking a level on centre distance would decimate geometry that
+    is half as far away as the number used to justify it.
+    """
+    man_path = os.path.join(GENERATED, "lod_manifest.json")
+    if not os.path.exists(man_path):
+        return os.path.join(GENERATED, "hull.obj"), "lod0", 0.0, "no lod manifest"
+    levels = json.load(open(man_path))["levels"]
+
+    hull_man = os.path.join(GENERATED, "hull_manifest.json")
+    if os.path.exists(hull_man):
+        b = json.load(open(hull_man))["bounds"]
+        r, length = b["max_radius_m"], b["length_m"]
+    else:
+        r, length = 1211.0, 8047.0
+
+    def clamp(v, lo, hi):
+        return max(lo, min(hi, v))
+
+    near = (clamp(eye[0], -r, r), clamp(eye[1], -r, r), clamp(eye[2], 0.0, length))
+    dist = math.dist(eye, near)
+
+    if forced and forced != "auto":
+        chosen = next((lv for lv in levels if lv["name"] == forced), levels[0])
+        why = f"forced {forced}"
+    else:
+        chosen = levels[0]
+        for lv in levels:
+            if dist >= lv["switch_distance_m"]:
+                chosen = lv
+        why = (f"nearest hull point {dist:,.0f} m; "
+               f"{chosen['name']} switches at {chosen['switch_distance_m']:,} m")
+
+    path = os.path.join(GENERATED, f"hull_{chosen['name']}.obj")
+    if not os.path.exists(path):
+        path = os.path.join(GENERATED, "hull.obj")
+        why += f" (hull_{chosen['name']}.obj missing -- fell back to lod0)"
+    return path, chosen["name"], dist, why
+
+
 def build_exterior(args, out_dir):
     """The whole station against space. One glb, straight off the hull."""
-    obj = os.path.join(GENERATED, "hull.obj")
+    target0 = (0.0, 0.0, args.target_z)
+    if args.eye:
+        eye0 = args.eye
+    else:
+        d0, e0, a0 = args.orbit
+        eye0 = _spherical(d0, e0, a0, target0)
+    obj, lod_name, lod_dist, lod_why = pick_hull_lod(
+        eye0, target0, getattr(args, "lod", "auto"))
+    print(f"hull LOD: {lod_name} -- {lod_why}")
     if not os.path.exists(obj):
         raise SystemExit("station/generated/hull.obj is missing -- run "
                          "station/generate_hull.py first")
@@ -212,6 +270,9 @@ def build_exterior(args, out_dir):
         "glb": [glb],
         "triangles": tris,
         "groups": groups,
+        "hull_lod": lod_name,
+        "hull_lod_distance_m": round(lod_dist),
+        "hull_lod_reason": lod_why,
         "lights": [],
         # World +Y up. The station's long axis is +Z, so using that as up would
         # stand an 8 km station on its nose.
@@ -658,6 +719,8 @@ def main():
                     metavar="DIST,ELEV,AZ")
     ap.add_argument("--target-z", type=float, default=4023.0,
                     help="exterior: station midpoint")
+    ap.add_argument("--lod", default="auto",
+                    help="hull LOD: auto (by distance), or lod0..lod3 to force")
     ap.add_argument("--fov", type=float, default=46.0)
     ap.add_argument("--sun-az", type=float, default=168.0)
     ap.add_argument("--sun-elev", type=float, default=34.0)
