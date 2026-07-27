@@ -12,6 +12,7 @@ Budgets derive from the target in CLAUDE.md: RTX 4070 / RX 7800 XT class,
 1440p60, 12 GB VRAM. Exceeding one is a build failure, not a warning.
 """
 import json
+import math
 import os
 import sys
 
@@ -56,6 +57,27 @@ INTERIOR = {
 INTERIOR_FRAME_SHARE = 0.05
 FRAME_TRIANGLES = 1_200_000
 
+# The habitat drum is not a corridor and the corridor gate does not describe it.
+# A corridor is budgeted on a 50 m sight line because a wall stops you seeing
+# further. Standing in the Garden there is no wall: the far end cap is 2.6 km
+# away, the ground overhead is 556 m up, and every triangle in the volume is in
+# the frustum at once. It is the worst visibility case in the project and until
+# now it had no gate at all.
+#
+# It also earns a bigger share than a corridor. This is the view the whole
+# structure phase exists to produce, so it gets a quarter of the frame rather
+# than a twentieth -- and it has to hold that with LOD, since the far half of
+# the drum is over a kilometre away and cannot be drawn at full rate.
+DRUM = {
+    "visible_set_tris": 300_000,
+    "frame_share": 0.25,
+    # Everything in the drum's inner surface is potentially visible, so the
+    # meaningful density is per square metre of ground, not per metre of run.
+    # This is the number that decides whether the ground can be per-object
+    # geometry or has to be a heightfield -- and it says heightfield.
+    "surface_tris_per_m2": 0.5,
+}
+
 results = []
 
 
@@ -64,8 +86,11 @@ def check(name, value, limit, unit="", note=""):
     results.append(ok)
     pct = value / limit * 100
     bar = "#" * int(pct / 5) + "." * (20 - int(min(pct, 100) / 5))
+    # Densities are fractions per square metre; rounding them to integers
+    # printed "0 / 0" for a gate that was doing real work.
+    fmt = ",.3f" if limit < 10 else ",.0f"
     print(f"{'PASS' if ok else 'FAIL'}  {name:26s} [{bar}] "
-          f"{value:>10,.0f}{unit} / {limit:,.0f}{unit}  ({pct:.0f}%)"
+          f"{value:>10{fmt}}{unit} / {limit:{fmt}}{unit}  ({pct:.1f}%)"
           + (f"  {note}" if note else ""))
     return ok
 
@@ -135,6 +160,43 @@ def main():
               "structure only -- props, NPCs and signage come out of the rest")
     except Exception as exc:
         check("interior kit measurable", 1, 0, "", f"could not measure: {exc}")
+
+    # --- habitat drum -------------------------------------------------------
+    try:
+        import interior as it
+
+        schema, profile = it.load()
+        drum = it.drum_sector(schema, profile)
+        r = it.sector_radius(schema, profile, drum)
+        ex = schema["sectors"]["extents_m"][drum]
+        length = ex["z1"] - ex["z0"]
+        area = 2 * math.pi * r * length
+
+        shell = len(it.drum_interior(schema, profile, drum, arc_deg=360.0,
+                                     seg_deg=2.0, z_step=40.0)[1])
+        caps = sum(len(it.drum_end_cap(schema, profile, drum, e)[1])
+                   for e in ("fore", "aft"))
+        trusses = len(it.drum_guideways(schema, profile, drum)[1])
+        spokes = len(it.drum_spokes(schema, profile, drum)[1])
+        total = shell + caps + trusses + spokes
+
+        print("\nHabitat drum, where everything is visible at once\n")
+        check("drum visible set", total, DRUM["visible_set_tris"], " tri",
+              f"shell {shell:,} + caps {caps:,} + trusses {trusses:,}"
+              f" + spokes {spokes:,}")
+        check("drum share of frame", total / FRAME_TRIANGLES * 100,
+              DRUM["frame_share"] * 100, "%",
+              "no occlusion -- there is no wall to hide behind")
+        check("ground surface density", shell / area,
+              DRUM["surface_tris_per_m2"], " tri/m2",
+              f"{area/1e6:.1f} million m2 of inner surface")
+        print(f"\nheadroom: {DRUM['visible_set_tris'] - total:,} triangles for "
+              f"ground detail, buildings, trams and vegetation across "
+              f"{area/1e6:.1f} million m2 -- "
+              f"{(DRUM['visible_set_tris'] - total) / area:.2f} tri/m2. "
+              f"The ground is a heightfield, not objects.")
+    except Exception as exc:
+        check("drum measurable", 1, 0, "", f"could not measure: {exc}")
     print("Note: these gate the numbers framerate is a function of. They say nothing\n"
           "about actual framerate, which needs the target hardware.")
 

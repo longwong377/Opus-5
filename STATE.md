@@ -756,6 +756,33 @@ gravity must rise with depth, and non-drum sectors must still stack inward. **71
 
 New invention: **INV-013** (6.0 m pressure hull skin).
 
+## Session 2v (cont.) — the drum had no performance gate
+
+`budget.py` gated the exterior and the corridor kit. The corridor gate is built on a **50 m
+sight line**, because a wall stops you seeing further. That describes nothing about the drum:
+standing in the Garden the far end cap is 2.6 km away, the ground overhead is 556 m up, and
+every triangle in the volume is in the frustum at once. It is the **worst visibility case in
+the project** and it had no gate at all.
+
+Three gates added, and the third is the one that matters for what comes next:
+
+| gate | now | budget |
+|---|---|---|
+| drum visible set | 42,696 tri | 300,000 tri |
+| drum share of frame | 4% | 25% |
+| ground surface density | 0.005 tri/m² | 0.5 tri/m² |
+
+The drum earns a quarter of the frame rather than a corridor's twentieth — this is the view the
+whole structure phase exists to produce — and it has to hold that with LOD, since the far half
+of the drum is over a kilometre away.
+
+**The number that constrains everything not yet built:** 257,304 triangles of headroom across
+**4.5 million m²** of inner surface is **0.06 triangles per square metre**. That is the design
+constraint for filling the drum, and it is emphatic: the ground is a **heightfield with
+aggressive distance LOD**, not per-object geometry. Fields, roads and settlements are texture
+and displacement; only what a person can walk up to gets mesh. Better to know that before
+anything is authored than after.
+
 ## Next session — start here
 
 1. **Remaining crude components.** Cobra bays, docking ports, observation domes and rotundas
