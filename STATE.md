@@ -205,6 +205,21 @@ sensor and deflector arrays.
 - `tools/plot_trajectory.py` plots flight paths over the real hull silhouette.
 - **Aurora performance:** 18.38 m/s² on the mains, 1.87 g.
 
+## Session 2g — docking
+
+- **`station/physics/docking.py`, 15 tests passing.** A bay on the rotating hull is not a
+  fixed target: it travels at 52.2 m/s on a circle whose normal sweeps a full turn every
+  33.5 s, so guidance is *interception of a known trajectory*, not pursuit.
+- **Station-keeping is not zero velocity.** Holding position 200 m off a bay requires
+  **89.8 m/s** — more than the bay itself, because the standoff point orbits at a larger
+  radius. A craft that stops dead relative to the station centre is **772 m off the bay
+  within 10 seconds.**
+- Contact is gated on three independent conditions — closing rate, lateral drift, and
+  attitude alignment. Failing to spin-match passes the closing-rate check and fails on
+  **52.2 m/s of lateral drift**, which is a scrape along the hull rather than a dock.
+- **Axial ports have no tangential velocity to match at all.** That is the design rationale
+  for the forward docking sphere and why large ships use it rather than a rim bay.
+
 ## Next session — start here
 
 1. **Component refinement.** Placed but crude: the forward swept arrays read as flat planks
@@ -214,8 +229,8 @@ sensor and deflector arrays.
    where the procedural-detail approach from ADR 0002 starts earning its keep.
 3. **Finish the Godot build** (~1,960 of ~9,500 objects) and publish the double-precision
    binary as a Release asset. Not blocking: `tools/preview_render.py` covers the visual loop.
-4. **Docking approach** — rotation matching against a moving bay, the inverse of the launch.
-5. **Core shuttle** — axial transit through the gravity gradient, rim to weightless axis.
+4. **Core shuttle** — axial transit through the gravity gradient, rim to weightless axis.
+5. **Godot project scaffold** consuming the generated geometry, once the binary is built.
 4. **C-003 / C-004.** Still blocking interiors. Radial level numbering is now the leading
    hypothesis (see C-003 UPDATE), but needs a lift display or deck plan to confirm.
 
