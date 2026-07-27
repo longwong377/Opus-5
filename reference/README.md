@@ -78,6 +78,7 @@ Multiple angles of the same thing are *more* useful than one perfect shot — I 
 | `18-audio-notes` | Notes or links on ambience, door sounds, PA announcements, engine tone |
 | `19-video-clips` | Short clips — motion reference for doors, lifts, launches, crowds |
 | `20-unsorted-dump` | Anything. I will file it. |
+| `21-QUARANTINE-animated-film` | **Do not model from.** 2023 animated feature, not the original series — wrong source, wrong era, reinterpreted designs. See the README in that folder. |
 
 ## A note on what we build from this
 
