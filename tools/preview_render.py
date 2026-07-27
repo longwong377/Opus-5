@@ -73,6 +73,32 @@ def main():
     # light direction, because a light fitting is not lit -- it emits.
     ap.add_argument("--emissive", action="append", default=[],
                     metavar="SUBSTR=R,G,B[,E]")
+    # A directional light is right for the hull, seen from outside against
+    # empty space. It is wrong inside the habitat drum: whichever way it points,
+    # one wall lights and the rest of the cylinder -- including the ground
+    # overhead, the whole reason for looking -- goes to the ambient floor.
+    # An O'Neill drum is lit from its axis, not from infinity. A point light on
+    # the axis also falls off along the length, which is most of what makes a
+    # kilometre of cylinder read as a kilometre rather than as a texture.
+    ap.add_argument("--pointlight", nargs=3, type=float, default=None,
+                    metavar=("X", "Y", "Z"),
+                    help="light from a position rather than a direction")
+    ap.add_argument("--pointlight-range", type=float, default=400.0,
+                    help="distance at which --pointlight falls to half")
+    # Preview annotation, NOT a material assertion: it colours OBJ groups so
+    # composition can be judged. Real materials come from the Godot path.
+    ap.add_argument("--tint", action="append", default=[],
+                    metavar="SUBSTR=R,G,B",
+                    help="diffuse tint for groups whose name contains SUBSTR")
+    ap.add_argument("--headlamp", action="store_true",
+                    help="light from the eye instead of a fixed direction; "
+                         "for interiors, where a directional light leaves most "
+                         "of a concave surface unlit")
+    ap.add_argument("--fog", type=float, default=0.0,
+                    help="e-folding distance in metres; fades geometry toward "
+                         "--bg with range. 0 disables. Depth cue for long "
+                         "interior sight lines, where flat shading alone gives "
+                         "no sense of a kilometre of drum receding")
     ap.add_argument("--bloom", type=float, default=1.0,
                     help="glow radius multiplier; 0 disables")
     a = ap.parse_args()
@@ -100,8 +126,36 @@ def main():
     view /= np.linalg.norm(view, axis=1)[:, None]
     facing = np.einsum("ij,ij->i", n, view) > 0
 
-    tri_depth = depth[tris].mean(axis=1)
-    visible = facing & ok & (depth[tris] > 1.0).all(axis=1)
+    # A triangle straddling the near plane used to be dropped whole. Outside the
+    # hull nothing is ever that close and it never showed; standing on the drum
+    # floor, the quad you are standing on straddles it, and so does every quad
+    # nearer than one tessellation step. The near field rendered as a black band
+    # and read as missing geometry. Clip properly instead of rejecting.
+    NEAR = 1.0
+    din = depth[tris] > NEAR
+    visible = facing & ok & din.any(axis=1)
+    fully_in = din.all(axis=1)
+    # Sort on clamped depth so a clipped triangle sorts by the part that
+    # survives, not by a vertex behind the eye with a meaningless depth.
+    tri_depth = np.maximum(depth, NEAR)[tris].mean(axis=1)
+
+    def screen_poly(t):
+        """Screen-space polygon for triangle `t`, near-plane clipped."""
+        idx = tris[t]
+        if fully_in[t]:
+            return [(sx[i], sy[i]) for i in idx]
+        pts, P = [], [cam[i] for i in idx]
+        for i in range(3):
+            p, q = P[i], P[(i + 1) % 3]
+            dp, dq = -p[2] - NEAR, -q[2] - NEAR
+            if dp >= 0:
+                pts.append(p)
+            if (dp >= 0) != (dq >= 0):
+                pts.append(p + (q - p) * (dp / (dp - dq)))
+        if len(pts) < 3:
+            return None
+        return [(a.width / 2 + p[0] * fl / -p[2],
+                 a.height / 2 - p[1] * fl / -p[2]) for p in pts]
 
     # Parse the emissive table and resolve each triangle's group to a colour.
     emis_rules = []
@@ -121,11 +175,36 @@ def main():
                     is_emis[i] = True
                     break
 
-    L = np.array(a.light, dtype=np.float64)
-    L /= np.linalg.norm(L)
-    lam = np.clip(np.einsum("ij,j->i", n, L), 0, 1)
+    if a.pointlight is not None:
+        P = np.array(a.pointlight, dtype=np.float64)
+        d = P - centroid
+        dist = np.linalg.norm(d, axis=1)
+        lam = np.clip(np.einsum("ij,ij->i", n, d / dist[:, None]), 0, 1)
+        lam *= 1.0 / (1.0 + (dist / a.pointlight_range) ** 2)
+    elif a.headlamp:
+        lam = np.clip(np.einsum("ij,ij->i", n, view), 0, 1)
+    else:
+        L = np.array(a.light, dtype=np.float64)
+        L /= np.linalg.norm(L)
+        lam = np.clip(np.einsum("ij,j->i", n, L), 0, 1)
+
+    # Default albedo is the faintly warm grey the hull renders have always used.
+    albedo = np.tile(np.array([1.0, 0.99, 0.94]), (len(tris), 1))
+    for spec in a.tint:
+        key, _, vals = spec.partition("=")
+        rgb = np.array([float(x) for x in vals.split(",")], dtype=np.float64)
+        for i, g in enumerate(groups):
+            if key in g:
+                albedo[i] = rgb
     # Ambient floor keeps unlit hull readable as form rather than silhouette.
     shade = 0.16 + 0.84 * lam
+
+    # Range attenuation, applied to the lit term only: the ambient floor is
+    # what keeps distant geometry from crushing to a silhouette, so fogging it
+    # too would undo the reason it exists.
+    if a.fog > 0:
+        cdist = np.linalg.norm(centroid - eye, axis=1)
+        shade = 0.16 + (shade - 0.16) * np.exp(-cdist / a.fog)
 
     order = np.argsort(-tri_depth)
     order = order[visible[order]]
@@ -138,15 +217,17 @@ def main():
     glow = Image.new("RGB", (a.width, a.height), (0, 0, 0))
     dg = ImageDraw.Draw(glow)
     for t in order:
-        i, j, k = tris[t]
-        poly = [(sx[i], sy[i]), (sx[j], sy[j]), (sx[k], sy[k])]
+        poly = screen_poly(t)
+        if poly is None:
+            continue
         if is_emis[t]:
             col = tuple(int(np.clip(v, 0, 1) * 255) for v in emissive[t])
             d.polygon(poly, fill=col)
             dg.polygon(poly, fill=col)
         else:
-            c = int(np.clip(shade[t], 0, 1) * 235)
-            d.polygon(poly, fill=(c, int(c * 0.99), int(c * 0.94)))
+            s = np.clip(shade[t], 0, 1) * 235
+            col = albedo[t] * s
+            d.polygon(poly, fill=tuple(int(np.clip(v, 0, 255)) for v in col))
 
     if a.bloom > 0 and is_emis.any():
         from PIL import ImageChops, ImageFilter

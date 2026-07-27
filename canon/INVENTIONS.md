@@ -449,3 +449,28 @@ place it radially outward rather than longitudinally.
 
 **Overturned by:** any source bracketing Brown as a length of station, or dialogue placing
 Brown fore or aft of a named sector rather than above or below one.
+
+---
+
+## INV-010 — Deck pitch of 3.6 m
+
+**Invented:** Floor-to-floor deck spacing of 3.6 m inside a ring zone
+(`station/interior.py`, `DECK_PITCH_M`).
+
+**Why necessary:** The rosette rings are 38–61 m deep, so they are zones rather than decks
+(see `CONFLICTS.md` C-004 note). Nothing can be placed inside one without a deck pitch, and
+level numbering indexes decks, not rings.
+
+**Constrained by:** No reference states it. 3.6 m is chosen so that the ceiling height the
+interior kit already carries — itself provisional, from `grey level 1.webp` proportions — sits
+inside a floor-to-floor with a plausible service void above it. Deck counts that fall out are
+sane against canon: Grey reaches 110 decks, which comfortably contains the on-screen "Grey 17";
+Green reaches 75.
+
+**Overturned by:** any frame where a deck's floor-to-floor can be measured against a person or
+a door, or any plan giving a deck height. Changing `DECK_PITCH_M` re-derives every deck in
+every ring; nothing else needs editing.
+
+**Consequence worth keeping:** gravity is quoted per deck rather than per ring because it
+genuinely differs across one. Ring 1's outermost and innermost decks differ by **0.155 g**,
+which is felt walking down a single stair — 1.0000 g on deck 0 against 0.8448 g on deck 12.

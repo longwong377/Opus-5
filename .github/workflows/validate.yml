@@ -61,6 +61,15 @@ jobs:
           cd station
           python3 interior_kit.py
 
+      # Ring/deck radii, spin gravity per deck, and the drum's inverted winding.
+      # The winding one matters most: the drum is the only surface in the
+      # project seen from its concave side, so the hull's convention is wrong
+      # there, and getting it wrong renders black rather than erroring.
+      - name: Interior topology and drum self-test
+        run: |
+          cd station
+          python3 interior.py
+
       - name: Rotating-frame physics
         run: python3 station/physics/test_rotating_frame.py
 
