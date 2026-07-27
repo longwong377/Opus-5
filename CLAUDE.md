@@ -10,11 +10,59 @@ First and third person. Interior and exterior generated from **one** authoritati
 they can never disagree. Flyable Starfury with seamless launch and dock. NPCs with names,
 species, roles and schedules. Era lock: **Season 2–3**.
 
+## The standard
+
+The owner set it explicitly in session 2y: *"utterly perfect, visually beautiful, with every
+single thing done at AAA quality — from textures to physics to detail to the npcs to the
+crowdedness/isolation to the mood to the ambiance to the alienness to the sound to the scale to
+the interactability to the accuracy vs the real thing. This is your magnus opus."*
+
+That is a feeling, and a feeling cannot be reviewed by an agent. `docs/AAA-STANDARD.md` turns it
+into four scored dimensions with written descriptors — **craft, fidelity, performance,
+robustness** — and defines the bar. Nothing is "done" because it was built; it is done when it
+clears the bar and stops regressing.
+
 ## Current phase
 
-**Structure first.** The complete station — inside and out, all levels, seamless and correct —
-is designed and built before any content fill. Detail, NPCs, audio and life come after the
-shell is right. Do not start filling rooms while the shell is provisional.
+**Structure first, where structure carries structure.** Geometry that other geometry depends on
+is built and made correct before anything is dressed. Polishing a surface that later moves is
+waste, and this project has paid that bill: the drum end cap was "done" for four sessions and
+was 4,064 open edges.
+
+That rule binds *dependencies*, not the calendar. The interfaces are now settled enough that
+materials, lighting, audio and NPC work run in parallel with the remaining structure.
+
+### The plan, in order
+
+| Phase | What | Done when |
+|---|---|---|
+| **A. See** | The rubric, the Godot/lavapipe PBR render path, the material and lighting systems | A frame can be rendered that is worth judging, and there is a written bar to judge it against |
+| **B. Complete the shell** | Crude exterior components, metric `HULL_ALLOWANCE`, cell junctions and doors, the docking bay, the Starfury cockpit | Every volume a player can reach exists and is watertight |
+| **C. Dress it** | Textures, decals, signage, wear, greebling at close range, per-sector identity | Each subsystem clears the bar |
+| **D. Life** | NPCs at population scale, crowd density and isolation, schedules, species behaviour, audio and ambience | The station feels inhabited, and empty where it should be |
+| **E. Play** | First and third person, flight, seamless launch and dock, doors, interaction | Hours can be lost in it |
+| **F. Ship** | Integration, performance on target hardware, the owner's first look | — |
+
+Phases overlap where they do not depend on each other. A is a hard prerequisite for C, D and E,
+because none of those can be *judged* without it.
+
+### The loop
+
+Every subsystem goes through the same cycle, and the cycle is what produces quality — not a
+single careful build:
+
+**build → harsh panel review → rework → re-judge → stop.**
+
+- The reviewer is a **panel, not an aesthete**: craft, fidelity, performance and robustness are
+  different questions, and a visual critic cannot answer the last two. Renders validate nothing
+  about framerate.
+- The reviewer's job is to be **the reason this is good**, not to be agreeable. It assumes a
+  defect is present and goes looking. Every finding cites what was run or read.
+- **It has to be able to stop.** A sufficiently harsh critic always finds something, so
+  "keep going until it's AAA" without a defined bar never terminates and one item eats unbounded
+  budget. The bar is in `docs/AAA-STANDARD.md`; the stopping rule is part of it.
+- A reviewer may be **wrong**. A builder may decline a finding with evidence. A disagreement
+  that cannot be supported is not a disagreement.
 
 ## Hard rules
 
@@ -47,6 +95,21 @@ adequate for judging composition, proportion, silhouette, layout, lighting and m
 It validates **nothing** about framerate. Performance is enforced separately by numeric budget
 gates in CI: triangle counts, draw calls, instance counts, VRAM and texture memory measured
 against the target hardware budget. Target: RTX 4070 / RX 7800 XT class, 1440p60, 12 GB VRAM.
+
+**Two render paths, and they answer different questions.** Do not confuse them:
+
+| | `tools/preview_render.py` | Godot + lavapipe |
+|---|---|---|
+| what it is | flat-shaded software rasteriser, seconds a frame | the actual engine, offscreen, minutes a frame |
+| honest about | silhouette, proportion, composition, layout, whether geometry is present and facing the right way | materials, lighting, shadows, exposure, what the thing will actually look like |
+| says nothing about | material, light, mood — everything phase C and D exist to produce | framerate, still |
+
+Judging AAA visuals from the preview rasteriser is judging the wrong artefact. Craft scores come
+from the engine path; structural scores can come from either.
+
+**A hole in geometry shows the background through it, and the background is black.** Two
+surfaces shipped open for four sessions because of this. Render against magenta when checking
+closure — better, use `interior.boundary_edges()`, which measures what no render can.
 
 ## Tools
 
@@ -90,9 +153,16 @@ This project runs partly on a **6-hourly trigger** (`trig_01JS1VWf6yada5x6maPMAz
 3. **Workflows are for genuine fan-out**, not for work one agent can do serially. A workflow
    costs roughly its agent count times a normal turn. Five agents to build five independent
    subsystems is worth it; five agents to write one file is not.
-   **Cap: ~5 agents.** Owner's decision. Keep the adversarial verify pattern — it caught a
-   door interpenetrating a portal frame and a greeble signature mismatch — but pair a small
-   build fan-out with its verifiers rather than running ten agents at once.
+
+   **Cap: ~10–14 agents per workflow, one workflow per increment.** Raised from ~5 by the owner
+   in session 2y, together with the AAA standard. The multiplication that gets expensive is
+   *many workflows at once across a repeating trigger*, not the width of a single fan-out — so
+   run one wide workflow and wait for it, rather than three narrow ones in parallel.
+
+   Keep the adversarial verify pattern. It has now caught a door interpenetrating a portal
+   frame, a greeble signature mismatch, tram cars passing 6.43 m through a structural spoke, an
+   end cap with 4,064 open edges, and two assertions that could not fail. It is the single
+   highest-yield thing in this project's process.
 4. **Never spawn a workflow from inside a triggered firing** unless the work genuinely needs
    it. The trigger already repeats; the multiplication is what gets expensive.
 5. **Blocked is a valid outcome.** C-003 and C-004 gate all interior layout. Reporting "still
