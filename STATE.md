@@ -1,6 +1,6 @@
 # Project State
 
-**Last updated:** 2026-07-27 · **Session 1**
+**Last updated:** 2026-07-27 · **Session 2**
 
 ## Where we are
 
@@ -51,19 +51,45 @@ framework in place. No geometry generated yet.
 - **Finding:** the station's widest structure is the **aft hull block at ~957 m envelope
   diameter**, which Miller's table never names. Not the Red Section.
 
+## Session 2 — the hull exists
+
+- **Hull generator built.** `station/generate_hull.py` lathes the longitudinal framework and
+  radius profile into a closed surface of revolution grouped by feature.
+  **253,184 triangles, 8,046.9 m long** against canon's 8,047.
+- **Canon assertions built.** `station/validate.py`, **17/17 passing**: gapless and
+  non-overlapping features, subfeature containment, profile spans canon length, cross-check
+  agreement, hull length, no unassigned or degenerate geometry, closed at both ends, triangle
+  budget, max radius agreement, spin gravity exactly 1.000 g, period consistency, rpm below
+  the Coriolis threshold. Runs in CI on every commit.
+- **The generator caught a schema gap on first run** — 189 m and 5,888 triangles unassigned
+  between green_section's table-derived end (5846) and its own habitat_cylinder subfeature
+  (6035). That is C-006 surfacing as geometry. Fixed, and validate.py now blocks recurrence.
+- **Software renderer built.** `tools/preview_render.py` — schema edit to inspectable image in
+  ~5 seconds, no Godot and no GPU. First render is recognisably Babylon 5.
+- **Ring artifacts diagnosed and fixed.** The raw profile flipped gradient sign on 20% of
+  samples, which lathed into visible rings. A plain low-pass would have rounded off the real
+  section transitions, so smoothing detects step edges (>4 px) and smooths only between them.
+  **Sign flips 396 → 73, max radius unchanged at 480.3 m.** Verified by re-render.
+- **Godot build fixed and running.** The proxy 403s GitHub archive and codeload paths;
+  switched to a shallow clone.
+
+## Known limitations of the current hull
+
+The lathe produces the **core hull only**. A surface of revolution cannot represent the
+non-axisymmetric structures, all of which remain to be added as separate components:
+reactor cooling fins (12), heat exchange / solar arrays (12), communications grid pylons (2),
+cobra bays (28), cargo modules (42), observation domes and rotundas, docking ports, and the
+sensor and deflector arrays.
+
 ## Next session — start here
 
-1. **Build Godot from source** with `precision=double`, publish as a GitHub Release asset so
-   later sessions pull it in seconds rather than rebuilding for ~40 minutes.
-2. **Write the hull generator** — `station/generate_hull.py`: read `station.yaml` +
-   `radius_profile.json`, emit a surface-of-revolution hull mesh with the longitudinal
-   features as separate submeshes. Deterministic, unit-testable, no engine required.
-3. **Render and inspect** via lavapipe. First look at the actual station.
-4. **Canon-assertion tests** — generated geometry checked against `canon/00-MASTER.md`:
-   overall length 8,047 m, section diameters within tolerance, airtightness, no
-   self-intersection.
-5. **OW-002.** Derive Grey / Brown / Yellow extents as the remainder of the 8,047 m budget,
-   now that the longitudinal framework accounts for the rest of the station.
+1. **Finish the Godot build** (`tools/build_godot.sh`, ~40 min on 4 cores) and publish the
+   double-precision binary as a GitHub Release asset so later sessions fetch it in seconds.
+2. **Non-axisymmetric components.** Add the fins, solar arrays, comms pylons, cobra bays and
+   cargo modules as schema-driven instanced components placed against the longitudinal
+   framework. This is what turns a lathed shape into Babylon 5.
+3. **Set up CI** to run `station/validate.py` on every push.
+4. **OW-002.** Derive Grey / Brown / Yellow extents as the remainder of the 8,047 m budget.
 
 ## Blocked
 

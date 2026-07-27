@@ -63,10 +63,40 @@ def strip_leader_lines(a):
     return out
 
 
+STEP_THRESHOLD_PX = 4.0   # a radius jump this large is real geometry, not noise
+SMOOTH_WIN = 9
+
+
 def median_filter(v, win):
     h = win // 2
     pad = np.pad(v, h, mode="edge")
     return np.array([np.median(pad[i:i + win]) for i in range(len(v))])
+
+
+def edge_preserving_smooth(v):
+    """Kill oscillation without rounding off genuine section transitions.
+
+    The raw trace flips gradient sign on ~20% of samples -- the outermost
+    horizontal run in a column is sometimes an internal detail line rather than
+    the hull outline, so the radius wobbles by a few metres. Lathed into a
+    surface of revolution that wobble becomes visible rings.
+
+    A plain low-pass would also round off the real steps: the reactor drum
+    edge, the generator torus flare, the section transitions. So detect step
+    edges first, then smooth only *between* them, leaving the steps sharp.
+    """
+    steps = np.flatnonzero(np.abs(np.diff(v)) > STEP_THRESHOLD_PX) + 1
+    bounds = np.concatenate(([0], steps, [len(v)]))
+    out = v.copy()
+    h = SMOOTH_WIN // 2
+    for a, b in zip(bounds, bounds[1:]):
+        seg = v[a:b]
+        if seg.size < 3:
+            continue
+        pad = np.pad(seg, h, mode="edge")
+        kern = np.ones(SMOOTH_WIN) / SMOOTH_WIN
+        out[a:b] = np.convolve(pad, kern, mode="valid")[:seg.size]
+    return out
 
 
 def main():
@@ -105,7 +135,7 @@ def main():
     dn, keep_dn = clean(raw_dn)
     # The hull is symmetric about the axis; averaging the two halves suppresses
     # residual leader-line bias that survived on one side only.
-    half_px = (up + dn) / 2.0
+    half_px = edge_preserving_smooth((up + dn) / 2.0)
 
     profile = [
         {
@@ -125,6 +155,7 @@ def main():
         },
         "samples": len(profile),
         "columns_rejected_as_leader_lines": rejected,
+        "smoothing": {"step_threshold_px": STEP_THRESHOLD_PX, "window": SMOOTH_WIN},
         "rejection_rate": round(rejected / (2 * len(xs)), 4),
         "max_radius_m": round(float(np.max(half_px)) * real_m_per_px, 1),
         "max_radius_at_z_m": round(float(xs[int(np.argmax(half_px))] - TAIL_PX) * real_m_per_px, 1),
