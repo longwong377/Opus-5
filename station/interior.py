@@ -78,30 +78,91 @@ def sector_radius(schema, profile, sector):
     zs = [p for p in profile if ex["z0"] <= p["z_m"] <= ex["z1"]]
     hull = sum(p["radius_m"] for p in zs) / max(1, len(zs))
 
-    # Which band is the drum is C-003's open question, so this cannot be keyed
-    # on a sector NAME. Key it on geometry instead: the sector whose hull radius
-    # is closest to the canon drum radius, over the allowance, is the drum. That
-    # answer does not move when the naming does.
+    if sector == drum_sector(schema, profile):
+        return drum_r
+    return hull * HULL_ALLOWANCE
+
+
+def drum_sector(schema, profile):
+    """Which longitudinal band is the habitat drum, decided by geometry.
+
+    Which one it is *called* is C-003's open question, so this cannot be keyed
+    on a name. The sector whose hull radius comes closest to the canon drum
+    radius over the allowance is the drum, and that answer does not move when
+    the naming does.
+    """
+    drum_r = schema["bio_habitat"]["interior_radius_m"]["value"]
     best, best_err = None, None
-    for name in schema["sectors"]["extents_m"]:
-        e = schema["sectors"]["extents_m"][name]
-        band = [p["radius_m"] for p in profile if e["z0"] <= p["z_m"] <= e["z1"]]
+    for name, e in schema["sectors"]["extents_m"].items():
+        band = [q["radius_m"] for q in profile if e["z0"] <= q["z_m"] <= e["z1"]]
         if not band:
             continue
         err = abs(sum(band) / len(band) * HULL_ALLOWANCE - drum_r)
         if best_err is None or err < best_err:
             best, best_err = name, err
-    if sector == best:
-        return drum_r
-    return hull * HULL_ALLOWANCE
+    return best
+
+
+# Pressure hull, frames and services between the outer envelope and the
+# innermost usable radius. Metric rather than fractional -- INV-013.
+HULL_SKIN_M = 6.0
+
+
+def habitat_hull_radius(schema, profile):
+    """Innermost usable radius of the drum's pressure hull.
+
+    Measured over the `habitat_cylinder` feature specifically, not over the
+    whole sector. The sector also contains the aft hull block and the bearing
+    neck, whose radii range over 128-480 m; averaging those in gives a number
+    that describes no actual surface. The habitat cylinder itself runs
+    307-328 m, tight enough to be a real shell.
+    """
+    for f in schema["longitudinal"]["features"]:
+        for g in [f] + list(f.get("subfeatures", [])):
+            if g["id"] == "habitat_cylinder":
+                band = [q["radius_m"] for q in profile
+                        if g["z0"] <= q["z_m"] <= g["z1"]]
+                return sum(band) / len(band) - HULL_SKIN_M
+    raise KeyError("habitat_cylinder not in the schema")
 
 
 def ring_radii(schema, profile, sector):
-    """Absolute radius bounds for each ring in a sector, outermost first."""
+    """Absolute radius bounds for each ring in a sector, outermost first.
+
+    The drum sector does not get the concentric-ring treatment, and applying it
+    there was wrong for as long as this function existed. The drum is **hollow**
+    -- that is authority 1, it is the whole reason the volume exists, and it is
+    what the end cap and the guideway trusses were built against. Filling it
+    with rings 2, 3 and 4 put habitable decks at 228, 167 and 106 m radius,
+    which is the open air you look up through, and it put the guideway trusses
+    at 236.6 m *inside* a deck that was supposed to be there.
+
+    In the drum the habitable volume is the stack **beneath** the ground, and
+    beneath means radially OUTWARD: in spin gravity you stand on the outside of
+    the volume looking in. So the drum's decks run from the canon 278.3 m floor
+    out to the pressure hull, they are heavier than the Garden rather than
+    lighter, and everything inboard of the floor is air.
+    """
     r_out = sector_radius(schema, profile, sector)
+    if sector == drum_sector(schema, profile):
+        hull = habitat_hull_radius(schema, profile)
+        core = schema["interior_topology"]["provisional_rings"][-1]["r_outer"]
+        return [
+            {"id": "subfloor", "kind": "deck_stack", "outward": True,
+             "r_inner": r_out, "r_outer": hull,
+             "r_mid": (r_out + hull) / 2.0},
+            {"id": "open", "kind": "open",
+             "r_inner": core * r_out, "r_outer": r_out,
+             "r_mid": (core * r_out + r_out) / 2.0},
+            {"id": "core", "kind": "core",
+             "r_inner": 0.0, "r_outer": core * r_out,
+             "r_mid": core * r_out / 2.0},
+        ]
     return [
         {
             "id": r["id"],
+            "kind": "core" if r["id"] == "core" else "deck_stack",
+            "outward": False,
             "r_inner": r["r_inner"] * r_out,
             "r_outer": r["r_outer"] * r_out,
             "r_mid": (r["r_inner"] + r["r_outer"]) / 2.0 * r_out,
@@ -126,15 +187,22 @@ def decks_in_ring(schema, profile, sector, ring_index, pitch=DECK_PITCH_M):
     than enough to feel walking down a stair.
     """
     ring = ring_radii(schema, profile, sector)[ring_index]
+    if ring["kind"] != "deck_stack":
+        return []          # open air and the core carry no decks
     depth = ring["r_outer"] - ring["r_inner"]
     n = max(1, int(depth // pitch))
     out = []
     for i in range(n):
-        floor_r = ring["r_outer"] - i * pitch
+        # A deck's floor is at its LARGER radius -- down is outward. In the drum
+        # the stack grows outward from the habitat floor, so deck 0 is the one
+        # immediately under the ground and gravity RISES with deck index.
+        floor_r = (ring["r_inner"] + (i + 1) * pitch if ring.get("outward")
+                   else ring["r_outer"] - i * pitch)
         out.append({
             "deck_index": i,
             "floor_r_m": round(floor_r, 2),
             "ceiling_r_m": round(floor_r - pitch, 2),
+            "gravity_direction": "outward",
             "floor_g": round(gravity_at(schema, floor_r), 4),
             "circumference_m": round(2 * math.pi * floor_r, 1),
         })
@@ -266,13 +334,24 @@ def spoke(schema, profile, sector, from_ring, to_ring, angle_deg=0.0, z=None):
     }
 
 
-def drum_spokes(schema, profile, sector, from_ring, to_ring, z=None):
+def drum_spokes(schema, profile, sector, from_ring=None, to_ring=None,
+                z=None):
     """Every radial spoke in a sector, at the canon 120 degree spacing.
 
     Placement used to live in whichever script happened to be rendering, which
     meant the count had no single source of truth and the trusses could silently
     stop matching the structure that carries them.
     """
+    # Default to the full radial run: outermost deck stack to the core. Asking
+    # callers for indices meant they had to know how many rings a sector has,
+    # and the drum has three where every other sector has five.
+    rings = ring_radii(schema, profile, sector)
+    if from_ring is None:
+        from_ring = next(i for i, r in enumerate(rings)
+                         if r["kind"] == "deck_stack")
+    if to_ring is None:
+        to_ring = next(i for i, r in enumerate(rings) if r["kind"] == "core")
+
     verts, tris, groups = [], [], []
     for i in range(SPOKE_COUNT):
         v, t, _m = spoke(schema, profile, sector, from_ring, to_ring,
@@ -857,18 +936,66 @@ def _selftest():
     # Gravity falls off linearly with radius, so an inner deck must always be
     # lighter than the deck outside it. A sign error here would be invisible in
     # geometry and wrong in every simulation that reads it.
-    decks = decks_in_ring(schema, profile, "green", 0)
-    check("green ring 1 has decks", len(decks) > 1, str(len(decks)))
-    check("deck gravity decreases inward",
-          all(decks[i]["floor_g"] > decks[i + 1]["floor_g"]
+    # --- the drum is hollow ------------------------------------------------
+    # This is the assertion set that did not exist while ring_radii was filling
+    # the drum with concentric decks. Rings 2, 3 and 4 sat at 228, 167 and
+    # 106 m radius -- the open air you look up through -- and the guideway
+    # trusses were built at 236.6 m, inside one of them.
+    drum = drum_sector(schema, profile)
+    check("the drum is identified by geometry, not by name", drum == "green",
+          f"{drum} -- if C-003's naming moves, this moves with it")
+    drings = ring_radii(schema, profile, drum)
+    check("the drum has exactly one open volume",
+          sum(r["kind"] == "open" for r in drings) == 1)
+    check("the drum's open volume reaches the habitat floor",
+          any(r["kind"] == "open" and abs(r["r_outer"] - r_drum) < 0.05
+              for r in drings))
+    for r in drings:
+        if r["kind"] == "deck_stack":
+            check("no drum deck stack intrudes on the open volume",
+                  r["r_inner"] >= r_drum - 1e-6,
+                  f"{r['id']} reaches in to {r['r_inner']:.1f} m")
+    # The trusses fly in that open air. If a later edit reintroduces a ring
+    # there, this is what fails.
+    tr_r = r_drum * TRUSS_RADIUS_FRAC
+    core_r = [r for r in drings if r["kind"] == "core"][0]["r_outer"]
+    check("guideway trusses fly in open air",
+          all(not (r["kind"] == "deck_stack"
+                   and r["r_inner"] <= tr_r <= r["r_outer"]) for r in drings)
+          and core_r < tr_r < r_drum, f"truss at {tr_r:.1f} m")
+
+    # --- decks -------------------------------------------------------------
+    decks = decks_in_ring(schema, profile, drum, 0)
+    check("the drum's sub-floor stack has decks", len(decks) > 1, str(len(decks)))
+    # Down is OUTWARD. The stack under the habitat floor gets heavier with
+    # depth, not lighter -- Downbelow is heavier than the Garden.
+    check("sub-floor gravity rises with depth",
+          all(decks[i]["floor_g"] < decks[i + 1]["floor_g"]
               for i in range(len(decks) - 1)))
-    check("deck 0 sits at the 1 g floor", abs(decks[0]["floor_g"] - 1.0) < 1e-4,
-          f"{decks[0]['floor_g']:.6f} g")
-    pitches = [decks[i]["floor_r_m"] - decks[i + 1]["floor_r_m"]
+    check("deck 0 sits one pitch below the 1 g floor",
+          abs(decks[0]["floor_r_m"] - (r_drum + DECK_PITCH_M)) < 0.02,
+          f"{decks[0]['floor_r_m']} m")
+    check("the deepest sub-floor deck is under 1.2 g",
+          1.0 < decks[-1]["floor_g"] < 1.2, f"{decks[-1]['floor_g']:.4f} g")
+    check("sub-floor decks stay inside the pressure hull",
+          decks[-1]["floor_r_m"] <= habitat_hull_radius(schema, profile) + 1e-6,
+          f"{decks[-1]['floor_r_m']} m")
+    pitches = [abs(decks[i]["floor_r_m"] - decks[i + 1]["floor_r_m"])
                for i in range(len(decks) - 1)]
     check("deck pitch is uniform and equals INV-010",
-          all(abs(p - DECK_PITCH_M) < 1e-6 for p in pitches),
-          f"{sorted({round(p, 4) for p in pitches})}")
+          all(abs(q - DECK_PITCH_M) < 1e-6 for q in pitches),
+          f"{sorted({round(q, 4) for q in pitches})}")
+
+    # A non-drum sector still stacks inward from its own floor, and still puts
+    # deck 0 exactly on it.
+    other = next(x for x in schema["sectors"]["extents_m"] if x != drum)
+    odecks = decks_in_ring(schema, profile, other, 0)
+    check(f"{other}: decks still stack inward", len(odecks) > 1 and
+          all(odecks[i]["floor_g"] > odecks[i + 1]["floor_g"]
+              for i in range(len(odecks) - 1)))
+    check(f"{other}: deck 0 sits on the ring floor",
+          abs(odecks[0]["floor_r_m"]
+              - sector_radius(schema, profile, other)) < 0.02)
 
     # The drum is the only surface viewed from its concave side, so it is the
     # only place the hull's winding habit is wrong. Guarded at build time too,
@@ -962,7 +1089,7 @@ def _selftest():
     # One truss per spoke. The trusses are 2.6 km long and the spokes are the
     # only radial structure that could hold them up, so the counts must match
     # or the arrangement does not stand.
-    sv, st, sm = drum_spokes(schema, profile, "green", 0, 3)
+    sv, st, sm = drum_spokes(schema, profile, "green")
     check("one guideway truss per spoke plane",
           TRUSS_COUNT == sm["count"] == SPOKE_COUNT,
           f"{TRUSS_COUNT} trusses vs {sm['count']} spokes")

@@ -568,3 +568,35 @@ Bay, depth and radius are single constants; changing them re-derives every truss
 **Consequence worth flagging:** the trusses now determine where the habitat's light comes from,
 so their radius sets the drum's entire lighting geometry. If this number moves, every interior
 lighting judgement made before the move has to be re-looked at rather than merely re-rendered.
+
+---
+
+## INV-013 — Pressure hull skin of 6.0 m
+
+**Invented:** `HULL_SKIN_M = 6.0` in `station/interior.py` — the radial thickness of pressure
+hull, frames and services between the outer envelope the radius profile reports and the
+innermost radius an interior deck can use.
+
+**Why necessary:** The drum's habitable volume is the deck stack **beneath** the habitat floor,
+running outward from the canon 278.3 m to the pressure hull. Its depth is therefore
+`hull − skin − 278.3`, and without a skin figure it is not computable.
+
+**Constrained by:**
+
+- Measured against the `habitat_cylinder` feature specifically, whose envelope runs **307.3 to
+  327.7 m** — tight enough to be a real shell, unlike the whole Green sector, which ranges over
+  128–480 m and averages to a number describing no surface that exists.
+- 6.0 m over a 316.8 m mean leaves **32.5 m** of sub-floor stack, which is **9 decks** at the
+  INV-010 pitch. Fewer than about 4 m of skin gives a hull thinner than the deck structure it
+  carries; much more than 8 m and the sub-floor stack drops below eight decks, which is too few
+  to hold the machinery a spun 2.5-million-ton habitat needs under its ground.
+
+**Overturned by:** any cutaway showing hull thickness against a deck, or a frame in the
+sub-floor levels from which a deck count to the hull can be read.
+
+**Related weakness, recorded rather than fixed:** the existing `HULL_ALLOWANCE = 0.86` is a
+*fractional* allowance and is still what every non-drum sector uses. A fraction is the wrong
+kind of quantity for a skin — at the habitat cylinder it implies 44 m of hull, which is why it
+could not be reused here. It should become metric everywhere, which would re-derive every
+non-drum sector radius, so it is deliberately left for its own change rather than folded into
+this one.

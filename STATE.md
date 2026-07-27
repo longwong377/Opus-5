@@ -1,6 +1,6 @@
 # Project State
 
-**Last updated:** 2026-07-27 · **Session 2u** — the habitat drum, built
+**Last updated:** 2026-07-27 · **Session 2v** — the drum's interior model corrected
 
 ## Where we are
 
@@ -699,6 +699,62 @@ and runs in CI.
 
 Renders: `docs/render-drum-interior.png`, `render-drum-endcap.png`,
 `render-drum-endcap-detail.png`, `render-drum-standing.png`.
+
+## Session 2v — the drum was hollow everywhere except in the ring model
+
+Building the drum exposed a contradiction that had been in `ring_radii()` since it was written,
+and that no test could have caught because no test asserted the thing it got wrong.
+
+`ring_radii()` applied the same five concentric rings to every sector. In the drum that put
+habitable decks at **228, 167 and 106 m radius** — which is the open air you look up through,
+the volume whose existence is the entire point of the drum and is authority 1. It also put the
+guideway trusses at 236.6 m **inside** one of those decks. Two subsystems built in the same
+session disagreed about whether the same cubic kilometre was air or floor.
+
+**The fix, and the reason it is more than a bug fix:** in the drum the habitable volume is the
+stack **beneath** the ground, and beneath means radially **outward** — in spin gravity you stand
+on the outside of the volume looking in. So the drum's decks run from the canon 278.3 m floor
+out to the pressure hull, and everything inboard of the floor is air.
+
+| | radius | gravity |
+|---|---|---|
+| pressure hull (inner face) | 310.8 m | 1.117 g |
+| **sub-floor deck stack** | 278.3 → 310.8 m, **9 decks** | 1.013 → 1.117 g |
+| habitat floor — the Garden | **278.3 m** | **1.000 g** |
+| open air | 50.1 → 278.3 m | — |
+| guideway trusses | 236.6 m | free flight |
+| core / shuttle axis | 0 → 50.1 m | 0.18 g → 0 |
+
+**Downbelow is heavier than the Garden.** That falls straight out of the geometry once the
+direction is right, and it is the first thing the corrected model says that the wrong one could
+not have.
+
+**Derived result worth carrying forward — gravity is a property of sector, not of station.**
+Because the station is rigid, everything at radius r feels ω²r, and the sectors have very
+different radii:
+
+| sector | outermost deck | gravity |
+|---|---|---|
+| Grey | 402.2 m | **1.445 g** |
+| Green (sub-floor) | 310.8 m | 1.117 g |
+| Green (Garden floor) | 278.3 m | 1.000 g |
+| Red | 214.9 m | 0.771 g |
+| Blue | 167.7 m | **0.602 g** |
+| Yellow | — | see `sector_report()` |
+
+Walking from Blue to Grey is a **2.4×** change in weight. That is the "real gravity changes"
+the project set out to have, and it is free — no authoring, it is what the shape implies.
+
+**Flagged, not resolved:** 1.445 g at Grey's outermost deck is high for somewhere people work.
+That is a signal about either the disputed sector extents (C-003) or the fractional
+`HULL_ALLOWANCE`, not about the physics. Recorded in INV-013 as a known weakness.
+
+`drum_spokes()` now finds its own endpoints by ring *kind* rather than by index, since the drum
+has three rings where every other sector has five. New assertions cover the whole failure class:
+no deck stack may intrude on the open volume, the trusses must fly in open air, sub-floor
+gravity must rise with depth, and non-drum sectors must still stack inward. **71 assertions.**
+
+New invention: **INV-013** (6.0 m pressure hull skin).
 
 ## Next session — start here
 
