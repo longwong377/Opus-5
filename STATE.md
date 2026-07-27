@@ -311,6 +311,24 @@ station.yaml -> generate_hull.py -> station.glb -> Godot 4.4 (precision=double)
 Three visual corrections, each caught by looking: blown-out lighting, then missing material,
 then framing. Materials live in the engine, not the export.
 
+## Session 2k — reference audit
+
+- **Eight animated-film frames quarantined.** They are from the 2023 animated feature, not
+  live-action Babylon 5: wrong source against a brief that says original design in the show,
+  wrong era (later blue uniforms against the S2–3 lock), and reinterpreted rather than
+  reproduced sets. Moved to `reference/21-QUARANTINE-animated-film/` with a README, not
+  deleted, so a future session does not rediscover and use them.
+- **The trap is worth remembering.** These were the *highest-resolution interior references in
+  the whole set* — ~2260×1180 against genuine screencaps at 800×600 or less. The pull toward
+  them is exactly backwards. **Resolution is not authority.** They form an identifiable cluster
+  by resolution and aspect ratio, which is how the remaining six were found after the first two.
+- **New C-004 evidence, authority 1.** `central corridor.webp` shows **two occupied levels in a
+  single volume** — a catwalk above a main floor. So a "level" need not be a full-height deck;
+  it can be a mezzanine. **Level count and deck count need not be equal**, which means "Grey 17"
+  does not imply seventeen decks of hull. Any interior layout assuming that would have been wrong.
+- Same frame: the hull's **circular structural ribs are exposed rather than clad** — a primary
+  motif for the interior kit regardless of how C-004 resolves.
+
 ## Next session — start here
 
 1. **Component refinement.** Placed but crude: the forward swept arrays read as flat planks
