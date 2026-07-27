@@ -93,3 +93,40 @@ because Earth Alliance is explicitly multinational.
 **Overturned by:** any further attested names, particularly for Vorlon or Drazi, which would
 convert inference into evidence. Adding an attested name to a grammar's `attested` tuple and
 re-running the tests is the intended workflow.
+
+---
+
+## INV-005 — Species rhythms, roles and population mix
+
+**Invented:** Per-species sleep/meal rhythms, the role roster, shift rotation, and the
+station's species mix (`station/npc/schedule.py`).
+
+**Why necessary:** Canon population is 250,000 with a stated species variety, but no source
+gives proportions or daily rhythms. NPCs cannot have schedules without them.
+
+**Constrained by:**
+
+- **Minbari broken sleep is canon** — the show establishes they wake for a period mid-rest.
+  Modelled directly, and it produces a real visible effect: Minbari abroad in corridors at
+  hours nobody else is.
+- **Centauri social life is depicted as nocturnal and drink-centred**, so they retire near
+  dawn rather than merely late. A first pass had them asleep from 01:30, which left them
+  asleep through the small hours — not what nocturnal means.
+- **Narn discipline** follows the Regime's depicted military character.
+- **Downbelow's unemployed** are a canon population, so `lurker` is a role with zero work hours.
+- **Species mix is inferred from on-screen crowd composition** — humans dominant, Narn and
+  Centauri the most visible non-humans, League species filling the remainder. Not stated
+  anywhere; this is the weakest part of the entry.
+- **pak'ma'ra feeding hours** are inferred from the depicted friction over their carrion diet,
+  and marked INFERRED in the code.
+
+**Overturned by:** any stated population proportion, or dialogue establishing a species'
+sleep habits. The `RHYTHMS` and `STATION_MIX` tables are the only things that need editing.
+
+**Two bugs this caught, worth recording because they are the failure modes of the design:**
+
+1. **Resolving sleep before work against an unshifted rhythm put the entire night watch to
+   bed.** Security showed *zero on duty at 02:00* — the station was unguarded from midnight to
+   morning. Sleep now follows the shift offset, so a night-shift worker sleeps during the day.
+2. **The species mix summed to 0.94**, so the aggregate layer silently dropped 120 of every
+   2,000 residents. Exactly the quiet population leak the statistical layer exists to prevent.
