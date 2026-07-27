@@ -27,7 +27,7 @@
  },
  "hull_triangles": 253184,
  "component_triangles": 1176,
- "component_instances": 96,
+ "component_instances": 90,
  "degenerate_quads_skipped": 0,
  "cap_triangles": 128,
  "bounds": {

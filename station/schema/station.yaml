@@ -303,23 +303,24 @@ radius_profile:
 # ---------------------------------------------------------------------------
 components:
   - id: reactor_cooling_fin
-    count: 12
-    kind: radial_array
-    rings: 3             # Contract 5 shows 3 discrete assemblies; 12 total = 4 per assembly
-    z0: 470
-    z1: 1000
-    span_m: 340          # radial extent beyond attach radius
-    chord_m: 165         # extent along z -- reference shows elongated plates, not squares
-    thickness_m: 12
-    auth: 3
+    kind: planar_blades  # NOT radially arrayed -- see CONFLICTS.md C-007
+    count: 6             # 3 above the spine, 3 below, all coplanar
+    plane_deg: 0
+    z0: 1120
+    z1: 1850
+    span_m: 470          # blades are tall; they dominate the aft silhouette
+    chord_m: 150         # must stay well under the 243 m blade pitch or they merge
+    root_taper: 0.5
+    thickness_m: 14
+    auth: 2
     src: "Exterior map.jpg 'Reactor Cooling Fins (12)'; excess zones 533-712 and 741-855"
 
   - id: heat_exchange_solar_array
     count: 12
     kind: radial_array
-    rings: 3
-    z0: 1099
-    z1: 1620
+    rings: 2
+    z0: 2050
+    z1: 2500
     span_m: 400
     chord_m: 210
     thickness_m: 10

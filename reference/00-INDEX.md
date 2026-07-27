@@ -38,3 +38,19 @@ Reference disagreements not yet resolved. Each needs a ruling before the affecte
 is built.
 
 Status: empty.
+
+---
+
+### 01-station-exterior/exterior more.jpg
+- Source authority: **2** (production material — orthographic renders of the CGI model)
+- Depicts: top view, side view, and two end views of the station
+- Extracted:
+  - Radiators are **coplanar blades**, 3 above the spine and 3 below — edge-on in top view,
+    full-face in side view. Overturns the radial-array reading. See `CONFLICTS.md` C-007.
+  - Communications grid reads in the end views as **very long thin masts** extending far
+    beyond the hull radius, consistent with the 2,120 m span from the specification table.
+  - A row of ~5–6 **cargo modules runs along a dorsal line** on the mid-section, not
+    distributed around the circumference as currently generated. **Not yet fixed.**
+  - Fore section carries long **swept structures** in the top view, currently unmodelled.
+- Feeds: `station/schema/station.yaml` components block
+- Status: partially applied — radiators corrected, cargo module placement still wrong

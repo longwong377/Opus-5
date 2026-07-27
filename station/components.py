@@ -155,7 +155,51 @@ def radial_band(spec, profile):
     return verts, tris
 
 
+def planar_blades(spec, profile):
+    """Tall blades lying in a single plane containing the axis.
+
+    The radiators are NOT arrayed around the axis. The orthographic reference
+    sheet (reference/01-station-exterior/exterior more.jpg) shows them edge-on
+    in the top view and full-face in the side view -- three blades above the
+    spine and three below, all coplanar. A radial array was wrong; see
+    canon/CONFLICTS.md C-007.
+
+    Coplanar is also the physically sensible arrangement for radiators on a
+    spine this thin: blades in one plane never radiate into each other.
+    """
+    verts, tris = [], []
+    z0, z1 = spec["z0"], spec["z1"]
+    per_side = spec["count"] // 2
+    span, chord, th = spec["span_m"], spec["chord_m"], spec["thickness_m"] / 2.0
+    plane = math.radians(spec.get("plane_deg", 0.0))
+    root_frac = spec.get("root_taper", 0.55)
+
+    for side in (1, -1):
+        a = plane if side > 0 else plane + math.pi
+        ca, sa = math.cos(a), math.sin(a)
+        tx, ty = -sa, ca
+        for i in range(per_side):
+            zc = z0 + (z1 - z0) * (i + 0.5) / per_side
+            r0 = radius_at(profile, zc)
+            # Blades taper: wide at the root, narrower at the tip.
+            for seg, (f0, f1) in enumerate(((0.0, 0.5), (0.5, 1.0))):
+                ri = r0 * 0.9 + span * f0
+                ro = r0 * 0.9 + span * f1
+                c0 = chord * (1.0 - (1.0 - root_frac) * f0)
+                c1 = chord * (1.0 - (1.0 - root_frac) * f1)
+                quad = [
+                    (ca * ri - tx * th, sa * ri - ty * th, zc - c0 / 2),
+                    (ca * ri - tx * th, sa * ri - ty * th, zc + c0 / 2),
+                    (ca * ro - tx * th, sa * ro - ty * th, zc + c1 / 2),
+                    (ca * ro - tx * th, sa * ro - ty * th, zc - c1 / 2),
+                ]
+                quad += [(x + 2 * tx * th, y + 2 * ty * th, z) for x, y, z in quad]
+                _box(verts, tris, quad)
+    return verts, tris
+
+
 BUILDERS = {
+    "planar_blades": planar_blades,
     "radial_array": radial_array,
     "pylon_pair": pylon_pair,
     "radial_band": radial_band,

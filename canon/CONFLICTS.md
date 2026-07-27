@@ -125,3 +125,30 @@ z-positions carry ±75 m real uncertainty and must not be treated as precise.
 Red Section is the one place where an independent table figure and an independent drawing
 measurement agree closely. That agreement is the main evidence that the k = 2.5891 rescale and
 the 0.6361 px/m calibration are both sound.
+
+---
+
+## C-007 — Radiator arrangement · **RESOLVED, corrects an earlier build**
+
+`Exterior map.jpg` states "Reactor Cooling Fins (12)" and gives no arrangement. I built them
+as 12 plates arrayed around the axis. **That was wrong.**
+
+`reference/01-station-exterior/exterior more.jpg` is an orthographic sheet showing top view,
+side view and two end views of the production model. It settles the arrangement directly:
+the radiators appear **edge-on as thin lines in the top view and full-face as tall blades in
+the side view** — which is only possible if they are **coplanar**, not radially arrayed.
+Three blades above the spine, three below.
+
+**Ruling: 6 coplanar blades, authority 2 (production material), overriding my radial-array
+reading of the authority-3 count.** The count of 12 in the Exterior map most likely counts
+radiating faces (6 blades × 2 sides) or panels per blade; it is not a count of radial positions.
+
+Coplanar is also the physically correct arrangement — blades in a single plane never radiate
+into each other, which is exactly what a radial array of 12 on a thin spine would do.
+
+Implemented as the `planar_blades` component kind. Blade pitch must stay well above chord
+length or the blades merge visually; at 6 blades over 730 m the pitch is 243 m, so chord is
+held at 150 m.
+
+**Lesson for the rest of the build:** a bare count in a labelled diagram does not imply an
+arrangement. Where an orthographic sheet exists, it outranks inference from a count.

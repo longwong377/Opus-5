@@ -12,7 +12,11 @@ set -euo pipefail
 
 GODOT_VERSION="${GODOT_VERSION:-4.4-stable}"
 BUILD_ROOT="${BUILD_ROOT:-/home/user/godot-build}"
-JOBS="$(nproc)"
+# Godot's thirdparty C++ peaks at multiple GB per compiler process. With 4
+# cores and 15 GB the build was killed part-way through with no error in the
+# log -- the signature of the OOM killer, not a compile failure. Leave a core
+# free and cap parallelism.
+JOBS="${JOBS:-2}"
 
 echo "=== Godot ${GODOT_VERSION}, double precision, ${JOBS} jobs ==="
 
@@ -42,11 +46,15 @@ cd "godot-${GODOT_VERSION}"
 # target=editor gives us a binary that can also run projects headlessly and
 # import resources, which the offline pipeline needs.
 echo "--- building (this is the slow part) ---"
+# production=yes turns on LTO, whose link step needs far more memory than this
+# container has. We need a correct double-precision binary for offscreen
+# rendering, not a fast one, so LTO is off.
 scons platform=linuxbsd \
       target=editor \
       precision=double \
-      production=yes \
+      lto=none \
       debug_symbols=no \
+      optimize=speed \
       -j"${JOBS}"
 
 BIN="$(find bin -maxdepth 1 -type f -name 'godot.linuxbsd.editor.double.*' | head -1)"
