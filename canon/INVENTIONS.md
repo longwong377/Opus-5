@@ -61,3 +61,35 @@ exterior labelling; interiors must use a nested model.
 
 This invention did its job: it was adopted provisionally to unblock hull geometry, it was
 logged rather than assumed, and the geometry it produced is what disproved it.
+
+---
+
+## INV-004 — Per-species name grammars
+
+**Invented:** Generative naming patterns for Narn, Centauri, Minbari, human, Drazi, pak'ma'ra
+and Vorlon residents (`station/npc/names.py`).
+
+**Why necessary:** Canon population is 250,000 (authority 1). Hand-authoring that many names
+is not possible, and a shared syllable pool would be immediately wrong — a Narn name and a
+Centauri name are never mistakable for each other on screen.
+
+**Constrained by:** Each grammar is fitted to names actually spoken on screen, and each records
+its evidence in the code. Narn from G'Kar, Na'Toth, Ta'Lon, G'Quan, Na'Far, Du'Rog. Centauri
+from Londo Mollari, Vir Cotto, Urza Jaddo, Carn Mollari — where Londo and Carn sharing Mollari
+is what establishes that the second element is a *house*, not a surname. Minbari from Delenn,
+Lennier, Neroon, Draal, Dukhat, Rathenn. Human surnames span several real-world traditions
+because Earth Alliance is explicitly multinational.
+
+**Evidence quality varies and is flagged in the code:**
+
+- **Vorlon has two attested names** (Kosh, Ulkesh). A generator on two data points would be
+  invention dressed as inference, so Vorlon is a **closed list**, not a generator, and a test
+  asserts it stays one.
+- **Drazi are usually addressed by title on screen**, so their pattern is inferred from
+  phonetics rather than from attested names. Marked THIN EVIDENCE.
+- **pak'ma'ra** rests mainly on the species name itself, which carries the pattern:
+  three short elements, apostrophe-separated, lowercase.
+
+**Overturned by:** any further attested names, particularly for Vorlon or Drazi, which would
+convert inference into evidence. Adding an attested name to a grammar's `attested` tuple and
+re-running the tests is the intended workflow.
