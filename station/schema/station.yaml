@@ -1,0 +1,163 @@
+# Babylon 5 — Parametric Station Schema
+#
+# THE authoritative description of the station. Exterior hull, interior shells, collision,
+# navmesh and occlusion portals are all generated from this file, which is what makes inside
+# and outside consistent by construction. See docs/adr/0003-parametric-station-schema.md
+#
+# Every dimension carries `src` (reference file or canon rule) and `auth` (authority level
+# 1-5, see canon/00-MASTER.md). Anything with auth 5 must have an INV- entry.
+#
+# Schema version 0: exterior longitudinal framework. Interior levels are BLOCKED pending
+# canon/CONFLICTS.md C-003 and C-004.
+
+meta:
+  schema_version: 0
+  era: "S2-S3"
+  canon_master: "canon/00-MASTER.md"
+  units: metres
+
+# ---------------------------------------------------------------------------
+# Coordinate convention -- fixed, do not change without an ADR.
+# ---------------------------------------------------------------------------
+# Z  station long axis. +Z toward FORE (docking sphere / C&C end).
+#    Origin z=0 at the AFT terminus (outboard face of the core fuel housing).
+#    Station occupies z in [0, 8047].
+# Y  lateral. +Y = NORTH, -Y = SOUTH, per the Contract 5 cross-section convention.
+# X  lateral, completing a right-handed frame.
+# Rotation is about +Z. Spin gravity points radially OUTWARD (away from the axis);
+# "down" for anyone standing in the habitat drum is therefore +radial.
+
+frames:
+  inertial: "SIF"          # station inertial frame; non-rotating, origin at station centre of mass
+  rotating: "SRF"          # co-rotating with the habitat drum; fictitious forces applied in-frame
+  axis: [0, 0, 1]
+
+# ---------------------------------------------------------------------------
+# Global properties
+# ---------------------------------------------------------------------------
+station:
+  overall_length_m:   {value: 8047,      src: "S1 opening narration; other map 2.jpg", auth: 1}
+  mass_tons:          {value: 2500000,   src: "S2 opening narration",                  auth: 1}
+  population_typical: {value: 250000,    src: "S1 opening narration",                  auth: 1}
+  crew_earthforce:    {value: 6500,      src: "other map 2.jpg",                       auth: 4}
+  location:           {value: "Mid-orbit, Epsilon Eridani III, Euphrates Sector", src: "show; other map 2.jpg", auth: 1}
+
+  rotation:
+    # Derived: 1.0 g at the habitat floor radius fixes the rate exactly. See INV-002.
+    target_g_at_habitat_floor: {value: 1.0,      src: "show depicts normal gait", auth: 1}
+    habitat_floor_radius_m:    {value: 278.3,    src: "derived, INV-001",         auth: 5}
+    omega_rad_s:               {value: 0.18775,  src: "derived: sqrt(g/r)",       auth: 5}
+    period_s:                  {value: 33.5,     src: "derived",                  auth: 5}
+    rpm:                       {value: 1.79,     src: "derived",                  auth: 5}
+    # Sanity: 1.79 rpm is below the ~2-3 rpm human Coriolis tolerance threshold.
+
+  # Rescaling rule applied to every Miller-derived dimension. See CONFLICTS.md C-001.
+  miller_rescale_k: {value: 2.5891, src: "8047 / 3108", auth: 5}
+
+# ---------------------------------------------------------------------------
+# Pressurised sections -- dimensions rescaled from other map 4.jpg (Miller). INV-001.
+# ---------------------------------------------------------------------------
+sections:
+  blue:
+    diameter_m: {value: 520.4, src: "other map 4.jpg x k", auth: 4}
+    length_m:   {value: 921.7, src: "other map 4.jpg x k", auth: 4}
+    function:   "Docking sphere, crew quarters, Command & Control"
+    rotating:   true
+  red:
+    diameter_m: {value: 654.9, src: "other map 4.jpg x k", auth: 4}
+    length_m:   {value: 445.3, src: "other map 4.jpg x k", auth: 4}
+    function:   "Commercial zones, residential, the Zocalo"
+    rotating:   true
+  green:
+    outer_diameter_m: {value: 595.5,  src: "other map 4.jpg x k", auth: 4}
+    outer_length_m:   {value: 2739.3, src: "other map 4.jpg x k", auth: 4}
+    function:         "Diplomatic zones, the Garden"
+    rotating:         true
+  # Grey, Brown and Yellow have NO dimensional source. Blocked -- see open_work below.
+
+bio_habitat:
+  interior_diameter_m:   {value: 556.6,     src: "other map 4.jpg x k",  auth: 4}
+  interior_radius_m:     {value: 278.3,     src: "derived",              auth: 5}
+  interior_length_m:     {value: 2739.3,    src: "other map 4.jpg x k",  auth: 4}
+  interior_surface_m2:   {value: 4787500,   src: "other map 4.jpg x k^2", auth: 4}
+  # Cross-check: pi * 556.6 * 2739.3 = 4789000 m^2. Agrees to 0.03%.
+
+communications_grid:
+  span_m:  {value: 2120.5, src: "other map 4.jpg x k", auth: 4}
+  width_m: {value: 893.2,  src: "other map 4.jpg x k", auth: 4}
+  count:   {value: 2,      src: "Contract 5",          auth: 3}
+
+# ---------------------------------------------------------------------------
+# Sector model -- PROVISIONAL, see CONFLICTS.md C-003 (BLOCKING for interiors)
+# ---------------------------------------------------------------------------
+sectors:
+  model: longitudinal        # provisional; INV-003
+  order_aft_to_fore: [grey, brown, green, red, yellow, blue]
+  definitions:
+    grey:   {function: "Industrial zones, manufacturing, construction", src: "other map 2.jpg", auth: 4}
+    brown:  {function: "Residential -- Downbelow",                      src: "other map 2.jpg", auth: 4}
+    green:  {function: "Diplomatic zones, the Garden",                  src: "other map 2.jpg", auth: 4}
+    red:    {function: "Commercial zones, residential, the Zocalo",     src: "other map 2.jpg", auth: 4}
+    yellow: {function: "Zero-G storage",                               src: "other map 2.jpg", auth: 4}
+    blue:   {function: "Docking sphere, crew quarters, C&C",           src: "other map 2.jpg", auth: 4}
+  addressing:
+    # On-screen references take the form "<Colour> <number>": Grey 17, Red 3, Blue 12.
+    format: "<sector> <level>"
+    level_axis: UNRESOLVED   # radial deck vs longitudinal slice -- CONFLICTS.md C-004
+
+# ---------------------------------------------------------------------------
+# Exterior systems, aft -> fore. Topology is authority 3 (Contract 5 + Exterior map.jpg);
+# longitudinal POSITIONS are not yet measured -- see open_work.
+# ---------------------------------------------------------------------------
+exterior_systems:
+  - {id: core_fuel_housing,          count: 1,  auth: 3}
+  - {id: coolant_manifold,           count: 8,  auth: 3}
+  - {id: primary_fusion_reactor,     count: 1,  auth: 3}
+  - {id: reactor_coolant_purge_vent, count: 1,  auth: 4}
+  - {id: fuel_delivery_venting,      count: 1,  auth: 3}
+  - {id: reactor_cooling_fin,        count: 12, auth: 3}
+  - {id: explosive_disconnect_point, count: 1,  auth: 4}
+  - {id: generator_torus_housing,    count: 1,  auth: 4}
+  - {id: heat_exchange_solar_array,  count: 12, auth: 3}
+  - {id: secondary_power_conduit,    count: 1,  auth: 3}
+  - {id: raw_material_storage_bay,   count: 5,  auth: 3}
+  - {id: habitat_cylinder,           count: 1,  auth: 3}
+  - {id: micro_gravity_maint_bay,    count: 2,  auth: 3}
+  - {id: hazardous_liquid_tank,      count: 1,  auth: 3}
+  - {id: inert_gases_tank,           count: 4,  auth: 3}
+  - {id: cargo_module,               count: 42, auth: 4}   # 28 rotating + 14 support structure
+  - {id: deep_space_comms_grid,      count: 2,  auth: 3}
+  - {id: tachyon_transmitter,        count: 1,  auth: 3}
+  - {id: space_traffic_prox_array,   count: 4,  auth: 3}
+  - {id: cobra_bay,                  count: 28, auth: 3}   # 24 fighters; CONFLICTS.md C-002
+  - {id: cobra_launch_support_arm,   count: 4,  auth: 4}
+  - {id: observation_rotunda,        count: 4,  auth: 3}
+  - {id: observation_dome,           count: 2,  auth: 3}   # Dome 1 = Command & Control
+  - {id: sanctuary,                  count: 4,  auth: 3}
+  - {id: hard_docking_mooring_clamp, count: 1,  auth: 3}
+  - {id: primary_navigation_beacon,  count: 1,  auth: 3}
+  - {id: forward_deflector_array,    count: 1,  auth: 3}
+  - {id: instrument_guidance_array,  count: 1,  auth: 3}
+
+docking:
+  primary_docking_port: {side: north, auth: 3, src: "Contract 5 cross-section"}
+  service_docking_port: {side: south, auth: 3, src: "Contract 5 cross-section"}
+
+# ---------------------------------------------------------------------------
+# What this schema does NOT yet contain, and what unblocks it.
+# ---------------------------------------------------------------------------
+open_work:
+  - id: OW-001
+    need: "Longitudinal z-positions and radius profile for every section and exterior system"
+    method: "Pixel-measure other map 4.jpg (2100x1275, internally consistent) against Miller's
+             own 3108 m length, then multiply by k=2.5891. Do NOT use the Contract 5 sheet --
+             its reproduction is spliced, see CONFLICTS.md C-005."
+    blocks: "Exterior hull generation"
+  - id: OW-002
+    need: "Grey, Brown and Yellow section dimensions"
+    method: "Derive from OW-001 measurement as the remainder of the 8047 m budget."
+    blocks: "Complete longitudinal framework"
+  - id: OW-003
+    need: "Resolution of C-003 (sector topology) and C-004 (level numbering)"
+    method: "Additional reference: wayfinding signage, lift displays, deck plans."
+    blocks: "ALL interior level geometry"
