@@ -7,11 +7,12 @@
 # Every dimension carries `src` (reference file or canon rule) and `auth` (authority level
 # 1-5, see canon/00-MASTER.md). Anything with auth 5 must have an INV- entry.
 #
-# Schema version 0: exterior longitudinal framework. Interior levels are BLOCKED pending
-# canon/CONFLICTS.md C-003 and C-004.
+# Schema version 1: exterior longitudinal framework complete; interior topology established
+# as concentric rings (see interior_topology). Interior LAYOUT still blocked pending
+# canon/CONFLICTS.md C-003 and C-004 -- specifically the level numbering convention.
 
 meta:
-  schema_version: 0
+  schema_version: 1
   era: "S2-S3"
   canon_master: "canon/00-MASTER.md"
   units: metres
@@ -112,7 +113,12 @@ sectors:
   addressing:
     # On-screen references take the form "<Colour> <number>": Grey 17, Red 3, Blue 12.
     format: "<sector> <level>"
-    level_axis: UNRESOLVED   # radial deck vs longitudinal slice -- CONFLICTS.md C-004
+    # RESOLVED as radial by the sector rosettes in other map.png, corroborated
+    # by authority-1 footage of the drum end cap. See interior_topology below
+    # and CONFLICTS.md C-004 UPDATE. What is still open is the numbering
+    # CONVENTION -- whether level 1 is the outermost ring or the innermost --
+    # which is why C-004 stays BLOCKING on narrower grounds.
+    level_axis: radial
 
 # ---------------------------------------------------------------------------
 # Exterior systems, aft -> fore. Topology is authority 3 (Contract 5 + Exterior map.jpg);
@@ -520,3 +526,62 @@ greebles:
     finished skin over the habitat drum. Aft-hull-block is tiered `cluttered`
     per INVENTIONS.md INV-006; it is provisional and does not constrain
     anything downstream. Rates per km^2 are auth 5 throughout.
+
+# ---------------------------------------------------------------------------
+# Interior topology.
+#
+# ESTABLISHED by other map.png (authority 3, six sector rosettes) and
+# independently corroborated by authority-1 footage of the drum end cap
+# (Babylon_5_2-22_34b.jpg). See canon/CONFLICTS.md C-004 UPDATE.
+#
+# What the rosettes establish, with confidence:
+#   * Sectors are CONCENTRIC ANNULAR RINGS about a central core, not
+#     longitudinal slices. This closes the axis question in C-004.
+#   * Radial "transport tubes" run as spokes from the outer rings to the axis.
+#   * The core shuttle and power core run ON the axis.
+#   * No longitudinal subdivision is drawn in any rosette.
+#
+# What they do NOT establish: ring COUNT or ring RADII. The sheet is 660x414
+# and a rosette is ~120 px across; a radial intensity trace gives roughly three
+# to four bands but the boundaries blur under angular averaging, and reading
+# exact radii off it would be over-reach. Ring boundaries below are therefore
+# PROVISIONAL fractions of the sector's outer radius, not measurements.
+# ---------------------------------------------------------------------------
+interior_topology:
+  model: concentric_rings
+  src: "other map.png sector rosettes; corroborated by Babylon_5_2-22_34b.jpg"
+  auth: 3
+  core_on_axis: [power_core, core_shuttle]
+  spokes:
+    kind: transport_tube
+    note: "Radial, outer ring to axis. Green's rosette shows only three, which is
+           notably fewer than the other sectors -- consistent with its large
+           hollow interior volume (the Garden) needing fewer crossings."
+
+  # PROVISIONAL. Fractions of sector outer radius, outermost first.
+  # Not measured -- see the note above. Gravity falls linearly with radius, so
+  # ring 1 is full weight and inner rings are progressively lighter, which is a
+  # design consequence worth preserving whatever the true radii turn out to be.
+  provisional_rings:
+    - {id: ring_1, r_outer: 1.00, r_inner: 0.82, note: "Outermost, highest gravity"}
+    - {id: ring_2, r_outer: 0.82, r_inner: 0.60}
+    - {id: ring_3, r_outer: 0.60, r_inner: 0.38}
+    - {id: ring_4, r_outer: 0.38, r_inner: 0.18}
+    - {id: core,   r_outer: 0.18, r_inner: 0.00, note: "Power core and core shuttle"}
+
+  # Facilities read directly off the rosette labels. Ring assignment is only
+  # given where a leader line clearly lands on a band; the rest are recorded
+  # without a ring rather than guessed into one.
+  sector_facilities:
+    red:    [zocalo, earharts, central_corridor, waste_management, casino,
+             dark_star, law_courts, security_central, business_district, water_storage]
+    green:  [alien_sector, council_chamber, fresh_air_restaurant, earthforce_office,
+             zen_garden, hydroponics, waste_management, power_conduits]
+    blue:   [central_docking_hub, medlab_one, observation_rotundas, fuel_stores,
+             mess_hall, bay_elevators, dock_workers_quarters, quartermasters_office,
+             docking_bays, post_office, maintenance_facilities]
+    brown:  [downbelow, happy_daze, waste_management_control, power_core]
+    grey:   [atmosphere_monitoring, commercial_research_labs, fabrication_furnaces,
+             maintenance_and_repair, primary_breaker, alpha_power_substation]
+    yellow: [power_transfer_core, cooling_fins, coolant_transfer_tubes,
+             inspection_access]
