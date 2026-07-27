@@ -149,9 +149,32 @@ docking:
 open_work:
   - id: OW-001
     need: "Longitudinal z-positions and radius profile for every section and exterior system"
-    method: "Pixel-measure other map 4.jpg (2100x1275, internally consistent) against Miller's
-             own 3108 m length, then multiply by k=2.5891. Do NOT use the Contract 5 sheet --
-             its reproduction is spliced, see CONFLICTS.md C-005."
+    status: "Calibration DONE, segmentation read OUTSTANDING"
+    calibration:
+      # Established this session against other map 4.jpg (2100x1275).
+      source: "reference/02-station-cutaways-and-plans/other map 4.jpg"
+      tail_px: 71
+      nose_px: 2048
+      centreline_px_y: 388
+      span_px: 1977
+      miller_length_m: 3108
+      px_per_miller_m: 0.6361
+      miller_m_per_px: 1.572
+      # To real scale: real_m = miller_m * 2.5891
+      real_m_per_px: 4.070
+    confirmed_correspondence:
+      # Miller's stated Green Section outer length of 1058 m matches a single continuous
+      # envelope on the drawing, and his Bio-Habitat interior length is also 1058 m.
+      # The Green Section and the bio-habitat are therefore the same longitudinal extent:
+      # Green Section IS the habitat drum. Real-scale length 2739.3 m.
+      green_section_is_bio_habitat: true
+    method: "Overlay the calibrated grid (tools/ script pattern in STATE.md), then read
+             boundaries segment-by-segment at high magnification rather than in one pass.
+             Gross structure reads as: aft reactor drum, thin spine with ionization vane
+             rings, flared generator torus, wide aft hull block, habitat cylinder, forward
+             docking structure, forward deflector spike. Exact boundaries NOT yet read --
+             do not transcribe the approximations from the session log, re-read them.
+             Do NOT use the Contract 5 sheet for dimensions, see CONFLICTS.md C-005."
     blocks: "Exterior hull generation"
   - id: OW-002
     need: "Grey, Brown and Yellow section dimensions"

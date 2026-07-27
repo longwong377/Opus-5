@@ -29,12 +29,21 @@ framework in place. No geometry generated yet.
   section dimensions, exterior system manifest, sector model.
 - **Tools** — `refzoom.py`, `measure_schematic.py`, `sort_references.py`.
 
+- **OW-001 calibration established.** `other map 4.jpg` calibrated: station spans px 71→2048,
+  centreline at y=388, giving **0.6361 px per Miller-metre** (1.572 Miller-m/px, 4.070 real
+  m/px after k). Confirmed that Miller's Green Section outer length and Bio-Habitat interior
+  length are both 1058 m and correspond to one continuous envelope — **the Green Section is
+  the habitat drum**, 2,739.3 m at real scale.
+
 ## Next session — start here
 
-1. **OW-001.** Pixel-measure `reference/02-station-cutaways-and-plans/other map 4.jpg` against
-   Miller's own 3,108 m, extract longitudinal boundaries and the radius profile for every
-   section and exterior system, rescale by k = 2.5891. Use that sheet — it is high resolution
-   (2100×1275) and internally consistent. **Do not use the Contract 5 sheet for dimensions.**
+1. **Finish OW-001.** Calibration is done and recorded in `station/schema/station.yaml`.
+   What remains is the segment-by-segment boundary read. Regenerate the calibrated grid
+   overlay, then magnify and read each transition individually — a single full-width pass is
+   not precise enough, and the approximate boundaries visible in one pass must **not** be
+   transcribed as fact. Gross structure reads as: aft reactor drum → thin spine with
+   ionization vane rings → flared generator torus → wide aft hull block → habitat cylinder →
+   forward docking structure → forward deflector spike.
 2. **OW-002.** Derive Grey / Brown / Yellow extents as the remainder of the 8,047 m budget.
 3. Build Godot from source with `precision=double`, publish as a GitHub Release asset so later
    sessions pull it in seconds rather than rebuilding for ~40 minutes.
