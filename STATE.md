@@ -254,6 +254,39 @@ sensor and deflector arrays.
 | Core shuttle | 18 |
 | **Total** | **106** |
 
+## Session 2i — engine pipeline and budgets
+
+- **glTF export** (`station/export_gltf.py`) — 23 meshes, 256,232 triangles, 21.5 MB. OBJ has
+  no normals, no material bindings and no hierarchy; glTF is what Godot imports natively and
+  it preserves per-feature grouping, so hull sections stay individually addressable for
+  streaming and damage states. Normals are per-face because the hull is faceted by design.
+- CI **structurally validates the glb** — magic, version, declared vs actual length, chunk
+  types, buffer agreement, and every accessor fitting inside its bufferView. A malformed
+  export that Godot silently half-imports would be miserable to debug later.
+- **Performance budget gates** (`station/budget.py`) — the promised numeric enforcement, since
+  framerate cannot be measured without target hardware. Currently **4/4 within budget**:
+
+  | Metric | Now | Budget |
+  |---|---|---|
+  | Triangles | 256,232 | 400,000 (64%) |
+  | Draw calls | 23 | 64 (36%) |
+  | Vertex bandwidth | 18 MB | 32 MB (58%) |
+  | glb on disk | 22 MB | 64 MB (34%) |
+
+  The exterior gets a deliberately small slice — ~2% of frame budget — because it is
+  always-visible background competing with interiors, NPCs and effects.
+
+- **Two references catalogued.** The elevator still is from the 2023 animated film, not the
+  original series — marked do-not-model-from. The arrival-concourse frame is authority 1 and
+  its in-universe cutaway shows parallel longitudinal lines consistent with **radially stacked
+  decks**, which corroborates the radial reading of C-004 without resolving it.
+
+## Autonomous continuation
+
+An hourly trigger (`trig_01JS1VWf6yada5x6maPMAzza`) fires into this session to continue the
+plan without prompting. It reads CLAUDE.md and this file, works the "Next session" list, and
+updates STATE.md before finishing.
+
 ## Next session — start here
 
 1. **Component refinement.** Placed but crude: the forward swept arrays read as flat planks

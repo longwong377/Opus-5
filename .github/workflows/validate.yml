@@ -46,6 +46,9 @@ jobs:
           print(f"glb valid: {len(g['meshes'])} meshes")
           PY
 
+      - name: Performance budgets
+        run: python3 station/budget.py
+
       - name: Canon assertions
         run: python3 station/validate.py
 
