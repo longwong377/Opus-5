@@ -499,34 +499,97 @@ def drum_interior(schema, profile, sector, arc_deg=40.0, start_deg=0.0,
                 return name, relief
         return bounds[-1][2], bounds[-1][3]
 
+    # Bands are emitted as explicit angular SPANS, with a riser wall wherever
+    # two neighbouring bands sit at different radii.
+    #
+    # The first version walked fixed-width segments and emitted only the top
+    # surface of whichever band each segment fell in. Neighbouring bands differ
+    # by up to 9.5 m of relief (settlement +7.0 against water -2.5), so that
+    # left **six longitudinal slots running the full 2,586 m length of the
+    # drum**, straight through the ground into the sub-floor decks. They were
+    # invisible for four sessions because the gap shows the background through
+    # it, and the background is black. Found by an agent rendering against
+    # magenta -- which is now the reason `_selftest` checks edges rather than
+    # pixels.
+    spans = []
+    acc = 0.0
+    for frac, name, relief in LAND_USE:
+        spans.append((acc, acc + frac, name, relief))
+        acc += frac
+
     verts, tris, groups = [], [], []
-    n_a = max(2, int(arc_deg / seg_deg))
     n_z = max(2, int((z1 - z0) / z_step))
-    for ia in range(n_a):
-        f0 = (start_deg + arc_deg * ia / n_a) / 360.0
-        f1 = (start_deg + arc_deg * (ia + 1) / n_a) / 360.0
-        name, relief = band_at(f0)
-        ra = r0 - relief
-        a0, a1 = f0 * 2 * math.pi, f1 * 2 * math.pi
+
+    def surface(f_a, f_b, ra, name):
+        n = max(1, int(round((f_b - f_a) * 360.0 / seg_deg)))
+        for ia in range(n):
+            a0 = 2 * math.pi * (f_a + (f_b - f_a) * ia / n)
+            a1 = 2 * math.pi * (f_a + (f_b - f_a) * (ia + 1) / n)
+            for iz in range(n_z):
+                za = z0 + (z1 - z0) * iz / n_z
+                zb = z0 + (z1 - z0) * (iz + 1) / n_z
+                b = len(verts)
+                verts.extend([
+                    (ra * math.cos(a0), ra * math.sin(a0), za),
+                    (ra * math.cos(a1), ra * math.sin(a1), za),
+                    (ra * math.cos(a1), ra * math.sin(a1), zb),
+                    (ra * math.cos(a0), ra * math.sin(a0), zb),
+                ])
+                # Wound so the face normal points INWARD, toward the axis. The
+                # viewer stands inside the cylinder, so the outward winding this
+                # originally had culled 95% of the drum and rendered as a black
+                # frame.
+                tris.append((b, b + 2, b + 1))
+                tris.append((b, b + 3, b + 2))
+                groups.extend([f"drum_{name}"] * 2)
+
+    def riser(f, r_lo, r_hi, name, face_ccw):
+        """The wall closing the step between two bands of different relief.
+
+        A cliff is seen from the LOW side, and low here means the larger radius
+        -- up is inward. So the exposed face points tangentially, toward
+        whichever neighbour sits further from the axis. `face_ccw` is True when
+        that neighbour is the one at increasing angle.
+        """
+        a = 2 * math.pi * f
+        ca, sa = math.cos(a), math.sin(a)
         for iz in range(n_z):
             za = z0 + (z1 - z0) * iz / n_z
             zb = z0 + (z1 - z0) * (iz + 1) / n_z
             b = len(verts)
-            verts.extend([
-                (ra * math.cos(a0), ra * math.sin(a0), za),
-                (ra * math.cos(a1), ra * math.sin(a1), za),
-                (ra * math.cos(a1), ra * math.sin(a1), zb),
-                (ra * math.cos(a0), ra * math.sin(a0), zb),
-            ])
-            # Wound so the face normal points INWARD, toward the axis. The
-            # viewer stands inside the cylinder, so the outward winding this
-            # originally had culled 95% of the drum and rendered as a black
-            # frame. Ascending angle then ascending z gives (t x z_hat), which
-            # is radially *outward* -- hence the reversal here, not there.
-            tris.append((b, b + 2, b + 1))
-            tris.append((b, b + 3, b + 2))
-            groups.append(f"drum_{name}")
-            groups.append(f"drum_{name}")
+            verts.extend([(r_lo * ca, r_lo * sa, za), (r_hi * ca, r_hi * sa, za),
+                          (r_hi * ca, r_hi * sa, zb), (r_lo * ca, r_lo * sa, zb)])
+            # Ascending radius then ascending z gives -theta; flip for +theta.
+            if face_ccw:
+                tris.append((b, b + 2, b + 1))
+                tris.append((b, b + 3, b + 2))
+            else:
+                tris.append((b, b + 1, b + 2))
+                tris.append((b, b + 2, b + 3))
+            groups.extend([f"drum_riser_{name}"] * 2)
+
+    f_start = (start_deg / 360.0)
+    f_end = f_start + arc_deg / 360.0
+    prev_r = None
+    cursor = f_start
+    while cursor < f_end - 1e-12:
+        m = cursor % 1.0
+        span = next(sp for sp in spans if sp[0] <= m < sp[1])
+        seg_end = min(f_end, cursor + (span[1] - m))
+        ra = r0 - span[3]
+        surface(cursor, seg_end, ra, span[2])
+        if prev_r is not None and abs(prev_r - ra) > 1e-9:
+            riser(cursor, min(prev_r, ra), max(prev_r, ra), span[2],
+                  face_ccw=prev_r < ra)
+        prev_r = ra
+        cursor = seg_end
+    # Closing the ring: the wrap-around boundary needs its riser too, and it is
+    # the one a linear walk never reaches.
+    if abs(arc_deg - 360.0) < 1e-9:
+        first_r = r0 - spans[0][3]
+        if abs(prev_r - first_r) > 1e-9:
+            riser(f_start, min(prev_r, first_r), max(prev_r, first_r),
+                  spans[0][2], face_ccw=prev_r < first_r)
 
     inward = _inward_fraction(verts, tris)
     if inward < 1.0:
@@ -573,6 +636,31 @@ def stand_point(schema, profile, sector, angle_deg, z, eye_h=1.7):
             (-math.cos(a), -math.sin(a), 0.0))
 
 
+def boundary_edges(verts, tris, tol=4):
+    """Edges used by exactly one triangle, i.e. the holes in a surface.
+
+    A closed surface has none; an open one has them only along its intended
+    borders. This is the measurement that four sessions of renders could not
+    make, because a hole in geometry shows the background through it and the
+    background is black.
+
+    Vertices are keyed on rounded coordinates rather than on index, so
+    coincident-but-duplicated vertices weld -- which is what the generators
+    actually emit, and what makes an index-based check useless here.
+    """
+    from collections import Counter
+
+    def key(v):
+        return (round(v[0], tol), round(v[1], tol), round(v[2], tol))
+
+    counts = Counter()
+    for a, b, c in tris:
+        for i, j in ((a, b), (b, c), (c, a)):
+            counts[tuple(sorted((key(verts[i]), key(verts[j]))))] += 1
+    return ([e for e, n in counts.items() if n == 1],
+            [e for e, n in counts.items() if n > 2])
+
+
 def _inward_fraction(verts, tris):
     """Fraction of faces whose normal points toward the spin axis.
 
@@ -592,7 +680,13 @@ def _inward_fraction(verts, tris):
              u[0] * v[1] - u[1] * v[0])
         cx = (p0[0] + p1[0] + p2[0]) / 3.0
         cy = (p0[1] + p1[1] + p2[1]) / 3.0
-        if n[0] * cx + n[1] * cy < 0:      # normal opposes the radial vector
+        # "Not pointing outward" rather than "pointing inward": the band risers
+        # are tangential walls whose radial component is zero, and they are
+        # legitimate. A flipped ground surface still scores +1 here and still
+        # fails, which is the case this measurement exists for.
+        rad = math.hypot(cx, cy) or 1.0
+        if (n[0] * cx + n[1] * cy) / rad <= 1e-6 * max(
+                1.0, math.sqrt(n[0] ** 2 + n[1] ** 2 + n[2] ** 2)):
             good += 1
     return good / max(1, len(tris))
 
@@ -694,68 +788,91 @@ def drum_end_cap(schema, profile, sector, end="fore"):
         return (u * r0 * math.cos(ang), u * r0 * math.sin(ang),
                 z_base + out * (dish(u) + zoff))
 
-    # The measurement says the plates are "roughly square -- radial depth
-    # approximately circumferential width". No single segment count can satisfy
-    # that across courses whose radial depths differ by 4x, so each course gets
-    # the count that makes ITS plates closest to square. That reproduces what
-    # the footage actually shows: fine plating near the rim, coarse toward the
-    # hub. A uniform count gave a smooth lathe with no radial seams at all.
-    for ci in range(len(us) - 1):
-        uo, ui = us[ci], us[ci + 1]
-        n_seg = _endcap_segments(uo, ui, r0)
-        step = ENDCAP_STEP_M if ci % 2 == 0 else 0.0
-        nstep = ENDCAP_STEP_M if (ci + 1) % 2 == 0 else 0.0
-        # Half-width of a radial rib, in angle. Constant metric width, so the
-        # ribs stay the same size in the hand at every radius.
-        half = ENDCAP_RIB_W_M / 2.0 / max(uo * r0, 1.0)
+    # The cap is emitted as ONE CONTINUOUS LATHE at a single fine segment count,
+    # with the plating expressed as material groups and the ribs and rim lights
+    # laid on top as closed boxes.
+    #
+    # It was not always. The first version emitted every plate as its own quad
+    # at its own per-course segment count. That made the cap read correctly and
+    # left it **open**: 4,064 of 7,684 edges were boundary edges, 3,744 of them
+    # nowhere near the rim or the aperture, so from inside the habitat you saw
+    # straight through the bulkhead in dozens of places. Three causes, all
+    # invisible against a dark background, all removed by the same decision:
+    #   - per-course segment counts put a T-junction at every course boundary,
+    #     since a coarse course's edge vertices are not a subset of a fine one's;
+    #   - the checker offset moved alternate plates 0.35 m in z with nothing
+    #     bridging the step;
+    #   - the axial course walls were built at a third segment count again.
+    # The measured "roughly square plates" character survives, because the
+    # tessellation was never what carried it -- the RIB SPACING is, and that is
+    # still per-course. What the surface does underneath is now independent of
+    # what is drawn on it.
+    n_seg = max(_endcap_segments(us[ci], us[ci + 1], r0)
+                for ci in range(len(us) - 1))
 
+    def course_z(ci):
+        return ENDCAP_STEP_M if ci % 2 == 0 else 0.0
+
+    # Radial profile as a polyline: each course a flat annulus, each rib an
+    # axial wall at the shared radius. Lathed once, so every vertex is shared
+    # and the surface is watertight by construction rather than by care.
+    rings = []
+    for ci in range(len(us) - 1):
+        rings.append((us[ci], course_z(ci), ci))
+        rings.append((us[ci + 1], course_z(ci), ci))
+        if ci + 1 < len(us) - 1:
+            rings.append((us[ci + 1], course_z(ci + 1), ci))
+
+    for i in range(len(rings) - 1):
+        (ua, za, ca), (ub, zb, _cb) = rings[i], rings[i + 1]
+        if abs(ua - ub) < 1e-12 and abs(za - zb) < 1e-12:
+            continue
+        wall = abs(ua - ub) < 1e-12
         for sg in range(n_seg):
             a0 = 2 * math.pi * sg / n_seg
             a1 = 2 * math.pi * (sg + 1) / n_seg
-            # Checker-plating: alternate plates in the marked courses sit proud
-            # by a plate thickness, which is what makes those two courses read
-            # differently from the plain ones at distance.
-            z = step - (0.35 if (ci in ENDCAP_CHECKER and sg % 2 == 0) else 0.0)
-            ring_quad(uo, ui, a0 + half, a1 - half, z, z,
-                      f"endcap_plate_c{ci}")
+            # Checker-plating is a GROUP, not a displacement. The footage shows
+            # two courses reading differently from the plain ones, which is a
+            # plating pattern; expressing it as 0.35 m of relief is what tore
+            # the surface, and 0.35 m on a 278 m radius was never going to read
+            # as relief anyway.
+            grp = ("endcap_course_wall" if wall else
+                   f"endcap_plate_c{ca}" +
+                   ("_checker" if (ca in ENDCAP_CHECKER and sg % 2 == 0) else ""))
+            ring_quad(ua, ub, a0, a1, za, zb, grp)
 
-            # Radial rib between this plate and the next, proud of both.
-            zr = step - ENDCAP_RIB_H_M
-            ring_quad(uo, ui, a1 - half, a1 + half, zr, zr, "endcap_rib")
-            # Its two flanks. Without them the rib is a coplanar stripe that
-            # only a material could distinguish; with them it shades as relief.
-            for ang, sgn in ((a1 - half, -1), (a1 + half, +1)):
-                pa, pb = pt(uo, ang, z), pt(ui, ang, z)
-                qa, qb = pt(uo, ang, zr), pt(ui, ang, zr)
-                pts = [pa, pb, qb, qa]
-                if (sgn * out) < 0:
-                    pts = pts[::-1]
-                quad(*pts, "endcap_rib")
-
-        # The circumferential rib: the axial wall joining this course to the
-        # next. Exposed face is on the side of the recessed course.
-        if abs(nstep - step) > 1e-9:
-            n_wall = max(n_seg, _endcap_segments(us[ci + 1], us[min(ci + 2, len(us) - 1)], r0))
-            for sg in range(n_wall):
-                a0 = 2 * math.pi * sg / n_wall
-                a1 = 2 * math.pi * (sg + 1) / n_wall
-                pts = [pt(ui, a0, step), pt(ui, a0, nstep),
-                       pt(ui, a1, nstep), pt(ui, a1, step)]
-                if out < 0:
-                    pts = pts[::-1]
-                quad(*pts, "endcap_course_wall")
+    # Ribs, as closed boxes so they cannot open the surface however they are
+    # spaced. Spacing stays per-course, which is what was measured.
+    for ci in range(len(us) - 1):
+        uo, ui = us[ci], us[ci + 1]
+        n_rib = _endcap_segments(uo, ui, r0)
+        z = course_z(ci)
+        half = ENDCAP_RIB_W_M / 2.0 / max(uo * r0, 1.0)
+        for sg in range(n_rib):
+            a = 2 * math.pi * (sg + 1) / n_rib
+            base = [pt(uo, a - half, z), pt(uo, a + half, z),
+                    pt(ui, a + half, z), pt(ui, a - half, z)]
+            _box(verts, tris,
+                 base + [pt(uo, a - half, z - ENDCAP_RIB_H_M),
+                         pt(uo, a + half, z - ENDCAP_RIB_H_M),
+                         pt(ui, a + half, z - ENDCAP_RIB_H_M),
+                         pt(ui, a - half, z - ENDCAP_RIB_H_M)])
+            groups.extend(["endcap_rib"] * 12)
 
     # Rim lights. The one feature of the cap that was counted rather than
-    # estimated, and the thing that makes the rim read as a lit edge at 2 km.
+    # estimated, and what makes the rim read as a lit edge at 2 km. Boxes for
+    # the same reason as the ribs: a flat patch laid on a surface is a free
+    # edge, and free edges are what tore the first cap.
+    z0c = course_z(0)
     for i in range(ENDCAP_RIM_LIGHTS):
         a0 = 2 * math.pi * (i + 0.22) / ENDCAP_RIM_LIGHTS
         a1 = 2 * math.pi * (i + 0.78) / ENDCAP_RIM_LIGHTS
-        if out > 0:
-            quad(pt(1.0, a0, -0.6), pt(0.965, a0, -0.6),
-                 pt(0.965, a1, -0.6), pt(1.0, a1, -0.6), "endcap_rimlight")
-        else:
-            quad(pt(1.0, a0, -0.6), pt(1.0, a1, -0.6),
-                 pt(0.965, a1, -0.6), pt(0.965, a0, -0.6), "endcap_rimlight")
+        base = [pt(1.0, a0, z0c), pt(1.0, a1, z0c),
+                pt(0.965, a1, z0c), pt(0.965, a0, z0c)]
+        _box(verts, tris,
+             base + [pt(1.0, a0, z0c - 0.6), pt(1.0, a1, z0c - 0.6),
+                     pt(0.965, a1, z0c - 0.6), pt(0.965, a0, z0c - 0.6)])
+        groups.extend(["endcap_rimlight"] * 12)
 
     return verts, tris, {
         "sector": sector,
@@ -1239,44 +1356,51 @@ def _selftest():
           len(meta["groups"]) == len(tris) and all(meta["groups"]))
 
     # --- end caps ---------------------------------------------------------
-    for end in ("fore", "aft"):
-        cv, ct, cm = drum_end_cap(schema, profile, "green", end)
-        want = -1.0 if end == "fore" else 1.0
-        plates = ribs = walls = 0
-        plates_ok = ribs_ok = 0
+    for cap_end in ("fore", "aft"):
+        cv, ct, cm = drum_end_cap(schema, profile, "green", cap_end)
+        want = -1.0 if cap_end == "fore" else 1.0
+        surf = surf_ok = wall = wall_ok = 0
+        solids = {}
         for i, (ia, ib, ic) in enumerate(ct):
             p0, p1, p2 = cv[ia], cv[ib], cv[ic]
             u = (p1[0] - p0[0], p1[1] - p0[1], p1[2] - p0[2])
             w = (p2[0] - p0[0], p2[1] - p0[1], p2[2] - p0[2])
-            nz = u[0] * w[1] - u[1] * w[0]
-            nlen = math.sqrt(sum(x * x for x in (
-                u[1] * w[2] - u[2] * w[1],
-                u[2] * w[0] - u[0] * w[2], nz))) or 1.0
+            n = (u[1] * w[2] - u[2] * w[1],
+                 u[2] * w[0] - u[0] * w[2],
+                 u[0] * w[1] - u[1] * w[0])
+            nlen = math.sqrt(sum(x * x for x in n)) or 1.0
             g = cm["groups"][i]
-            if g.startswith("endcap_plate") or g == "endcap_rimlight":
-                plates += 1
-                plates_ok += nz * want > 0
+            if g.startswith("endcap_plate"):
+                surf += 1
+                surf_ok += n[2] * want > 0
             elif g == "endcap_course_wall":
-                walls += 1
-                ribs += 1
-                ribs_ok += abs(nz / nlen) < 0.05   # axial wall: radial normal
+                wall += 1
+                wall_ok += abs(n[2] / nlen) < 0.05      # axial wall, radial normal
             else:
-                ribs += 1
-                ribs_ok += 1
-        # A cap plate facing the wrong way is invisible from inside the drum,
+                solids.setdefault(g, []).append([x / nlen for x in n])
+        # A cap surface facing the wrong way is invisible from inside the drum,
         # which is the only place it is ever seen.
-        check(f"{end} cap: plates and rim lights face into the drum",
-              plates and plates_ok == plates, f"{plates_ok}/{plates}")
-        check(f"{end} cap: course walls are axial", ribs_ok == ribs,
-              f"{ribs_ok}/{ribs}")
-        check(f"{end} cap: 48 rim lights",
+        check(f"{cap_end} cap: surface faces into the drum",
+              surf and surf_ok == surf, f"{surf_ok}/{surf}")
+        check(f"{cap_end} cap: course walls are axial", wall_ok == wall,
+              f"{wall_ok}/{wall}")
+        # Ribs and rim lights are closed boxes laid on the surface. The previous
+        # version of this loop put them in an `else` branch that scored every
+        # one of them as passing -- a test that could not fail, on 768 of the
+        # cap's triangles. A box is distinguishable from a flat patch by having
+        # faces that oppose each other, so that is what gets asserted.
+        for g, ns in solids.items():
+            worst = min(a[0] * b[0] + a[1] * b[1] + a[2] * b[2]
+                        for a in ns for b in ns)
+            check(f"{cap_end} cap: {g} is a solid, not a flat patch",
+                  worst < -0.9, f"most-opposed face pair dot = {worst:.3f}")
+        check(f"{cap_end} cap: 48 rim lights as closed boxes",
               cm["rim_lights"] == 48 and
-              sum(g == "endcap_rimlight" for g in cm["groups"]) == 96)
-        # 8-9 concentric courses were measured; the schema's core radius sets
-        # where the innermost one stops.
-        check(f"{end} cap: 8 concentric courses", cm["courses"] == 8,
+              sum(g == "endcap_rimlight" for g in cm["groups"]) == 48 * 12,
+              str(sum(g == "endcap_rimlight" for g in cm["groups"])))
+        check(f"{cap_end} cap: 8 concentric courses", cm["courses"] == 8,
               str(cm["courses"]))
-        check(f"{end} cap: aperture matches the schema core radius",
+        check(f"{cap_end} cap: aperture matches the schema core radius",
               abs(cm["core_aperture_m"] - 0.18 * r_drum) < 0.5,
               f"{cm['core_aperture_m']} m")
 
@@ -1395,6 +1519,45 @@ def _selftest():
     check("following `next` walks a deck exactly once and closes",
           cur == ring_ids[0]["id"] and len(set(walk)) == first["cells"],
           f"{len(set(walk))} of {first['cells']}")
+
+    # --- the drum must not leak --------------------------------------------
+    # Both surfaces below shipped with holes and passed every test at the time,
+    # because nothing measured whether they were closed. The end cap was 4,064
+    # boundary edges out of 7,684 -- gashes you could see straight through from
+    # inside the habitat -- and the shell had six longitudinal slots running its
+    # full 2,586 m wherever two land-use bands sat at different heights. Neither
+    # showed in a render against a dark background, which is exactly why this is
+    # an edge count and not a picture.
+    shell_v, shell_t, shell_m = drum_interior(schema, profile, "green",
+                                              arc_deg=360.0, seg_deg=4.0,
+                                              z_step=200.0)
+    bnd, nonman = boundary_edges(shell_v, shell_t)
+    ends = {round(z, 1) for e in bnd for (_x, _y, z) in e}
+    dex = schema["sectors"]["extents_m"]["green"]
+    check("drum shell is closed except at its two ends",
+          ends <= {round(float(dex["z0"]), 1), round(float(dex["z1"]), 1)},
+          f"{len(bnd)} boundary edges at z {sorted(ends)}")
+    check("drum shell has no non-manifold edges", not nonman, str(len(nonman)))
+    n_steps = sum(1 for i in range(len(LAND_USE))
+                  if LAND_USE[i][2] != LAND_USE[(i + 1) % len(LAND_USE)][2])
+    check("every land-use step is closed by a riser",
+          len({g for g in shell_m["groups"] if g.startswith("drum_riser")}) > 0
+          and n_steps > 0, f"{n_steps} steps in LAND_USE")
+
+    for cap_end in ("fore", "aft"):
+        cv, ct, _cm = drum_end_cap(schema, profile, "green", cap_end)
+        bnd, nonman = boundary_edges(cv, ct)
+        r_out = ENDCAP_RIBS[0] * r_drum
+        r_in = (schema["interior_topology"]["provisional_rings"][-1]["r_outer"]
+                * r_drum)
+        stray = [e for e in bnd
+                 if not all(abs(math.hypot(x, y) - r_out) < 0.6
+                            or abs(math.hypot(x, y) - r_in) < 0.6
+                            for (x, y, _z) in e)]
+        check(f"{cap_end} cap is closed except at rim and aperture",
+              not stray, f"{len(stray)} stray of {len(bnd)} boundary edges")
+        check(f"{cap_end} cap has no non-manifold edges", not nonman,
+              str(len(nonman)))
 
     # --- guideway trusses -------------------------------------------------
     tv, tt, tm = guideway_truss(schema, profile, "green", 0.0)

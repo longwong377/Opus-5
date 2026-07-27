@@ -73,6 +73,16 @@ jobs:
       # The manifest is the engine's streaming index. Regenerating it in CI
       # means a schema change that alters deck radii, cell counts or cell cost
       # shows up as a diff rather than as a stale file nobody reran.
+      # The drum's fill: ground heightfield, tram and axial tube. None of these
+      # was wired into anything when it landed, so nothing would have noticed
+      # them breaking.
+      - name: Drum ground, tram and core tube
+        run: |
+          cd station
+          python3 drum_ground.py
+          python3 tram.py
+          python3 core_tube.py
+
       - name: Streaming cell manifest
         run: |
           cd station

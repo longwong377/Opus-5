@@ -1,6 +1,6 @@
 # Project State
 
-**Last updated:** 2026-07-27 · **Session 2x** — drum ground and tram (verification pending)
+**Last updated:** 2026-07-27 · **Session 2y** — the drum leaked; closure now asserted
 
 ## Where we are
 
@@ -946,6 +946,101 @@ All four are mine to fix and none is fixed yet. They are the next increment.
 at garden ground level with its own station canopy, sharing nothing with the white/maroon guideway
 tram. Not modelled. Recorded so a future session does not assume the guideway tram serves the
 ground.
+
+## Session 2y — the drum leaked, and the tests said it did not
+
+The 5-agent verification pass reported. It ran the modules, computed clearances rather than
+eyeballing them, and deliberately broke each self-test to see whether it failed. It confirmed
+the builds were sound and found the defects were mostly in **my** code, in exactly the places
+nothing was measuring.
+
+### The drum was open in two places, for four sessions
+
+`drum_end_cap()` was **4,064 boundary edges out of 7,684** — 3,744 of them nowhere near the rim
+or the aperture. From inside the habitat you saw straight through the bulkhead in dozens of
+places. Three independent causes, all fixed by one decision:
+
+- per-course segment counts put a T-junction at every course boundary, because a coarse course's
+  edge vertices are not a subset of a fine course's;
+- the checker offset moved alternate plates 0.35 m in z with nothing bridging the step;
+- the axial course walls were built at a third segment count again.
+
+The cap is now **one continuous lathe** at a single fine segment count, with the plating as
+material groups and the ribs and rim lights as closed boxes laid on top. The measured
+"roughly square plates" character survives untouched, because the tessellation never carried it —
+the **rib spacing** does, and that is still per-course. Checker-plating became a group rather than
+0.35 m of relief, which is what it always was: a plating pattern, and 0.35 m on a 278 m radius was
+never going to read as relief.
+
+`drum_interior()` emitted only the **top surface** of each land-use band. Neighbouring bands differ
+by up to 9.5 m (settlement +7.0 against water −2.5), so there were **six longitudinal slots running
+the full 2,586 m of the drum**, straight through the ground into the sub-floor decks. Now closed by
+riser walls — and the risers face the *low* side, because a cliff is seen from below and below here
+means the larger radius.
+
+**Neither was visible in four sessions of renders, because a hole shows the background through it
+and the background is black.** An agent found them by rendering against magenta.
+
+### The fix that matters more than the geometry
+
+`boundary_edges()` now measures what no render could: edges used by exactly one triangle, welded on
+rounded coordinates because the generators emit coincident duplicates. Six new assertions:
+
+| | |
+|---|---|
+| drum shell closed except at its two ends | 374 boundary edges, all at z 3839 / 6425 |
+| drum shell has no non-manifold edges | 0 |
+| every land-use step closed by a riser | 6 steps |
+| each cap closed except at rim and aperture | 192 edges, 0 stray |
+| each cap has no non-manifold edges | 0 |
+| ribs and rim lights are solids, not flat patches | opposing-face test |
+
+**All three verified by deliberately breaking them**: removing the risers reopens 324 edges at
+eleven z values; flipping the cap winding gives 0/1536 facing correctly; making a rim light flat
+again gives 192 non-manifold edges.
+
+That last assertion replaced a genuinely vacuous one. The old cap test put ribs and rim lights in an
+`else` branch that scored **every one of 768 triangles as passing** — a test that could not fail, on
+20% of the cap.
+
+### Also this session
+
+- **INV-018 / INV-019** log the core shuttle tube (radius 19.5 m, measured as a *ratio* so the
+  sheet's 2× vertical exaggeration cancels) and its hub. `core_tube.py`, 65/65, now committed.
+- **A wrong canon citation corrected in `core_tube.py`**: it defended its one measured dimension
+  against **C-005**, which is a horizontal splice in the Contract 5 scale bar — a different defect
+  entirely. The applicable ruling is `00-MASTER` "Radial spacing" / C-004 UPDATE item 3. The
+  argument was always aimed at the right ruling; a reader checking the citation would have verified
+  the wrong thing and concluded the defence held.
+- **CI now runs `drum_ground.py`, `tram.py` and `core_tube.py`.** None of the three was wired into
+  anything when it landed.
+
+Drum visible set is now 51,128 / 300,000 (17%). `interior.py` self-test: **128 assertions**.
+
+### Still open from the verification — next increment
+
+1. **BLOCKING: tram cars pass through the radial spokes.** Confirmed independently by both
+   verifiers — one by point-in-box over 3,144 car vertices (168 inside, 6.43 m deep), one by
+   rendering it. The guideways are *deliberately* in the spoke planes (INV-012: the spokes are what
+   hold a 2.6 km truss up), so this is structural, not a placement accident — and sweeping `phase`
+   walks every car through its spoke whatever the static offset. Needs an aperture in the spoke
+   where the guideway crosses, plus a spoke-clearance assertion in `tram.py`.
+2. **`drum_ground`'s periodicity assertion is vacuous.** It compares `sample(0.0, w)` against
+   `sample(1.0, w)`, but every consumer applies `u % 1.0` first, so it is a value compared against
+   itself. Proved by monkeypatching in a real 3.295 m seam cliff — the test still reported 0.000
+   and passed.
+3. **`tram`'s "measured proportion" assertions are algebraic identities** that never touch the
+   built geometry. They hold for `CAR_BAYS = -3.0`, `CAR_DEPTH_FRAC = 99.0`.
+4. **Car length disputed between two authority-1 frames.** `34b`'s rectification gives 3.9 bays
+   (96 m); `33a` shows a whole car with ~5 window bays and a length:height near 1.8:1 against the
+   model's 21 bays and ~9:1, i.e. **3–4× shorter**. This needs recording as a conflict, not
+   resolving silently in `34b`'s favour.
+5. **Ground does not meet the end caps** — a 1.2 m axial mismatch, because the ground fades to the
+   sector extent and the cap's outermost course stands 1.2 m proud of it.
+6. **Ground tagging widths are bound to the LOD ramp width**, so avenues render 31.2 m wide and
+   trunk roads 51 m instead of 20 m; the settlement band comes out 62% street.
+7. **`budget.py`'s drum gate still measures the old flat shell**, so the ground's real cost is
+   ungated.
 
 ## Next session — start here
 
