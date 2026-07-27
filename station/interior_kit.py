@@ -753,6 +753,9 @@ def junction(arms=(0, 1, 2, 3), p=None):
         v, t = deck_panel(span / n, span)
         _merge(verts, tris, v, t, lambda x, y, z: (y, z, x),
                (0.0, -0.12, -half + span * (i + 0.5) / n))
+    # Same tile grid as a corridor run, or the floor treatment visibly changes
+    # at every crossing.
+    _merge(verts, tris, *deck_grid(span, span, p), offset=(0.0, 0.0, -half))
 
     # Soffit over the square, held up off the wall heads by the chamfer.
     _slab(verts, tris, -half, half, h, h + p["ceiling_slab_m"], -half, half)
