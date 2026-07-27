@@ -70,6 +70,15 @@ jobs:
           cd station
           python3 interior.py
 
+      # The manifest is the engine's streaming index. Regenerating it in CI
+      # means a schema change that alters deck radii, cell counts or cell cost
+      # shows up as a diff rather than as a stale file nobody reran.
+      - name: Streaming cell manifest
+        run: |
+          cd station
+          python3 -c "import interior as I; s,p=I.load(); m=I.write_cell_manifest('generated/cell_manifest.json',s,p); print(m['decks'],'decks',m['cells'],'cells')"
+          git diff --exit-code generated/cell_manifest.json
+
       - name: Rotating-frame physics
         run: python3 station/physics/test_rotating_frame.py
 

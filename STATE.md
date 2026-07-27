@@ -861,6 +861,36 @@ sight line was for, now confirmed by eye as well as by assertion.
 
 `interior.py` self-test: **112 assertions.** `budget.py`: **14 gates.**
 
+## Session 2w (cont.) — the whole interior, counted
+
+`cell_manifest()` enumerates every streaming cell in the station. The headline:
+
+> **210 decks · 2,330 cells · 80.6 million triangles** of interior corridor structure.
+
+That number is ADR 0003's argument restated as a quantity. An interior this size **cannot be
+committed as mesh files and cannot be hand-authored**. It is generated from the schema,
+deterministically, and the repository stores the rule rather than the result. The manifest is
+metadata only — 71 KB describing 80.6 M triangles.
+
+| sector | decks | cells | outermost floor | gravity | cell cost |
+|---|---|---|---|---|---|
+| **Grey** | 90 | 1,210 | 402.2 m | 1.445 g | 48,128 tri |
+| Red | 45 | 438 | 211.8 m | 0.761 g | 36,520 tri |
+| Blue | 37 | 318 | 167.7 m | 0.603 g | 34,372 tri |
+| Yellow | 29 | 226 | 137.1 m | 0.492 g | 32,480 tri |
+| Green (sub-floor) | 9 | 138 | 281.9 m | 1.013 g | 38,720 tri |
+
+**Grey is more than half the station's interior** — 90 of 210 decks. That is a consequence of it
+sitting at the widest part of the hull, and it is quietly corroborating: the on-screen "Grey 17"
+needs a sector with a lot of decks, and this one has ninety.
+
+**Committed metadata is non-derivable metadata.** The first version serialised all 2,330 cell
+records, every field of which follows from its deck's `cells` and `cell_deg`. That is the same
+fact stored twice, and two copies eventually disagree. The file now carries the 210 deck records
+and the rule for expanding them: 537 KB → 71 KB. CI regenerates it and fails on a diff, so a
+schema change that moves deck radii or cell costs shows up as a change rather than as a stale
+file nobody reran.
+
 ## Next session — start here
 
 The drum's **structure** is complete: shell, both end caps, three guideway trusses with the
