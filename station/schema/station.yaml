@@ -335,10 +335,14 @@ components:
     kind: planar_blades  # NOT radially arrayed -- see CONFLICTS.md C-007
     count: 6             # 3 above the spine, 3 below, all coplanar
     plane_deg: 0
-    z0: 1120
-    z1: 1850
-    span_m: 470          # blades are tall; they dominate the aft silhouette
-    chord_m: 150         # must stay well under the 243 m blade pitch or they merge
+    # Measured off the production sheet: a blade is ~7:1 span to max width, and
+    # the three on a side sit close together with gaps about equal to their own
+    # width. Earlier values were 3:1 and spread over 730 m, which read as three
+    # separate paddles rather than one radiator bank.
+    z0: 1315
+    z1: 1655
+    span_m: 470
+    chord_m: 68          # 470/68 = 6.9:1
     root_taper: 0.5
     thickness_m: 14
     auth: 2

@@ -177,3 +177,67 @@ places the service and industrial functions elsewhere on the hull.
 read the same radius profile the lathe does and sit on whatever surface it reports, so nothing
 downstream can build on a greeble position. Deleting the entire pass would change nothing but
 the look.
+
+---
+
+## INV-007 — Corridor section and wall build-up
+
+**Invented:** The corridor's cross-section proportions and the wall's course heights in
+`station/interior_kit.py` — chamfer size, skirt / dado / rail-band / plate-course fractions,
+portal spacing and depth, pilaster size, deck tile pitch.
+
+**Why necessary:** The kit cannot be modelled without a section, and the absolute dimensions
+that would fix one (corridor width, ceiling height, deck spacing) are blocked on C-004.
+
+**Constrained by:** Two authority-1 frames, and only those two:
+
+- `reference/07-sector-grey/grey level 1.webp` — the only frame showing a corridor wall
+  square-on. It fixes the *build-up*: a projecting skirt, a set-back dado, a heavy rail band
+  at roughly hip height throwing a deep shadow reveal, then courses of large plates with
+  recessed seams; bullnose pilasters at the portal jambs carrying segmented vertical light
+  strips; warm downlights low on the wall; a deck of fine tiles.
+- `reference/05-sector-green/corridor in alien sector.webp` — the section is a **chamfered
+  polygon**, corners at roughly 45°, in a heavy frame with a pronounced reveal.
+
+Both agree the section is a chamfered box with a flat deck and a flat soffit, **not a circular
+bore.** That is a correction: the first assembly used `ring_frame` and read as a pipe.
+`central corridor.webp` does show circular ribs, but of a two-storey volume, not a corridor.
+
+Everything invented here is recorded as a **proportion**, not a metre value, and lives in
+`PROVISIONAL`. The proportions are what the footage establishes; the height they multiply is
+not, so resolving C-004 should change the table and nothing else.
+
+**Overturned by:** a production floor plan or set drawing; or any frame in which a corridor can
+be measured against a known-size object. A frame showing a corridor of visibly different
+section would narrow the claim to the sectors it covers rather than overturn it.
+
+---
+
+## INV-008 — Pressure door leaf mechanism
+
+**Invented:** That a pressure door's leaves part on a vertical centreline and slide into the
+jambs (`"bi_parting"`).
+
+**Why necessary:** A door has to open, and the kit has to say how.
+
+**Constrained by:** The aperture is sourced and the mechanism is not. **No frame in the
+reference set shows a door leaf at all** — open, closed or moving. What
+`corridor in alien sector.webp` does fix is the opening: a chamfered polygon, taller than
+wide, with straight vertical jambs and a threshold you step over.
+
+That geometry **rules out an iris**, and on geometry rather than taste: an iris sweeps a disc,
+and a disc inscribed in this aperture leaves all four chamfered corners unswept. It cannot
+seal the opening that is actually there.
+
+Two readings survive, and both are built — `"bi_parting"` and `"horizontal_split"` — selected
+by one entry in `PROVISIONAL`. The straight vertical jambs are what favour the bi-parting
+default: they are the surface a leaf would seal against and retract into.
+
+**Overturned by:** one frame of a B5 door operating. This is the cheapest invention in the log
+to overturn and the most likely to be, so it is deliberately a table lookup rather than a
+shape: changing the default is a one-word edit, not a remodel.
+
+**Also invented, and smaller:** the door's control panel is a plain plate beside the frame at
+the height the hand-held identicard reader is used at. The reference set contains the hand-held
+reader (`11-props-and-technology/Identicard reader.webp`) but no wall-mounted one, so nothing
+more specific than a plate is claimed.

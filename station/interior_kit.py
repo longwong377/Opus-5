@@ -157,7 +157,7 @@ PROVISIONAL = {
     "pilaster_strip_hi_frac": 0.86,
 
     # --- pressure doors ----------------------------------------------------
-    # Aperture shape is sourced; the leaf mechanism is not. See INV-005.
+    # Aperture shape is sourced; the leaf mechanism is not. See INV-008.
     "door_width_m": 1.50,
     "door_height_m": 2.10,
     "door_chamfer_m": 0.40,
@@ -614,7 +614,7 @@ def door_leaf(p=None, width=None, height=None, open_fraction=0.0, mechanism=None
 
     **The mechanism is invented; the aperture is not.** No frame in the
     reference set shows a door leaf at all, open, closed or moving -- see
-    INV-005. What the reference does fix is the aperture: a chamfered polygon,
+    INV-008. What the reference does fix is the aperture: a chamfered polygon,
     taller than wide, with straight jambs. That rules an iris out on geometry
     rather than on taste, since an iris sweeps a disc and would leave the four
     chamfered corners unswept. Both remaining readings are built here and

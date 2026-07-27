@@ -172,7 +172,26 @@ def planar_blades(spec, profile):
     per_side = spec["count"] // 2
     span, chord, th = spec["span_m"], spec["chord_m"], spec["thickness_m"] / 2.0
     plane = math.radians(spec.get("plane_deg", 0.0))
-    root_frac = spec.get("root_taper", 0.55)
+
+    # Planform read off the production sheet, as fractions of (span, chord).
+    # The blades are LOZENGES, not tapered plates: narrow where they bolt to
+    # the spine, widest about a quarter of the way out, then a long slow taper
+    # to a capped tip. A simple root-to-tip taper -- which is what was here --
+    # gives a wedge and loses the whole silhouette.
+    PLANFORM = (
+        (0.00, 0.42),   # root, narrow: this is a bolted joint, not the wide part
+        (0.09, 0.78),
+        (0.27, 1.00),   # widest
+        (0.55, 0.86),
+        (0.82, 0.58),
+        (0.95, 0.34),
+        (1.00, 0.22),   # capped tip, still square rather than pointed
+    )
+    # A separate frame runs round the panel. On the sheet it reads as a pale
+    # structural border against the dark radiating face, and it is most of what
+    # makes a blade look fabricated rather than cut from card.
+    frame_t = th * 1.9
+    frame_inset = spec.get("frame_inset", 0.86)
 
     for side in (1, -1):
         a = plane if side > 0 else plane + math.pi
@@ -181,20 +200,59 @@ def planar_blades(spec, profile):
         for i in range(per_side):
             zc = z0 + (z1 - z0) * (i + 0.5) / per_side
             r0 = radius_at(profile, zc)
-            # Blades taper: wide at the root, narrower at the tip.
-            for seg, (f0, f1) in enumerate(((0.0, 0.5), (0.5, 1.0))):
-                ri = r0 * 0.9 + span * f0
-                ro = r0 * 0.9 + span * f1
-                c0 = chord * (1.0 - (1.0 - root_frac) * f0)
-                c1 = chord * (1.0 - (1.0 - root_frac) * f1)
+            root_r = r0 * 0.9
+
+            def shell(half_scale, thick):
+                for (f0, w0), (f1, w1) in zip(PLANFORM, PLANFORM[1:]):
+                    ri, ro = root_r + span * f0, root_r + span * f1
+                    c0 = chord * w0 * half_scale / 2.0
+                    c1 = chord * w1 * half_scale / 2.0
+                    quad = [
+                        (ca * ri - tx * thick, sa * ri - ty * thick, zc - c0),
+                        (ca * ri - tx * thick, sa * ri - ty * thick, zc + c0),
+                        (ca * ro - tx * thick, sa * ro - ty * thick, zc + c1),
+                        (ca * ro - tx * thick, sa * ro - ty * thick, zc - c1),
+                    ]
+                    quad += [(x + 2 * tx * thick, y + 2 * ty * thick, z)
+                             for x, y, z in quad]
+                    _box(verts, tris, quad)
+
+            shell(1.0, frame_t)              # structural frame
+            shell(frame_inset, th * 2.4)     # radiating panel, proud of the frame
+
+            # Root mount block and tip cap. Both are visible fittings on the
+            # sheet and both stop the blade reading as a floating plate.
+            for r_at, w_at, depth in ((root_r - span * 0.02, 0.46, th * 3.2),
+                                      (root_r + span * 1.0, 0.26, th * 2.8)):
+                c = chord * w_at / 2.0
+                ln = span * 0.035
                 quad = [
-                    (ca * ri - tx * th, sa * ri - ty * th, zc - c0 / 2),
-                    (ca * ri - tx * th, sa * ri - ty * th, zc + c0 / 2),
-                    (ca * ro - tx * th, sa * ro - ty * th, zc + c1 / 2),
-                    (ca * ro - tx * th, sa * ro - ty * th, zc - c1 / 2),
+                    (ca * r_at - tx * depth, sa * r_at - ty * depth, zc - c),
+                    (ca * r_at - tx * depth, sa * r_at - ty * depth, zc + c),
+                    (ca * (r_at + ln) - tx * depth, sa * (r_at + ln) - ty * depth, zc + c),
+                    (ca * (r_at + ln) - tx * depth, sa * (r_at + ln) - ty * depth, zc - c),
                 ]
-                quad += [(x + 2 * tx * th, y + 2 * ty * th, z) for x, y, z in quad]
+                quad += [(x + 2 * tx * depth, y + 2 * ty * depth, z) for x, y, z in quad]
                 _box(verts, tris, quad)
+
+    # Spine rail the blades rise from. On the sheet the blades do not touch the
+    # hull directly -- they stand on a beam running along it, which is what
+    # gives the assembly its horizontal base line.
+    rail_r = radius_at(profile, (z0 + z1) / 2.0) * 0.9
+    for side in (1, -1):
+        a = plane if side > 0 else plane + math.pi
+        ca, sa = math.cos(a), math.sin(a)
+        tx, ty = -sa, ca
+        d, h = th * 2.6, span * 0.045
+        quad = [
+            (ca * rail_r - tx * d, sa * rail_r - ty * d, z0),
+            (ca * rail_r - tx * d, sa * rail_r - ty * d, z1),
+            (ca * (rail_r + h) - tx * d, sa * (rail_r + h) - ty * d, z1),
+            (ca * (rail_r + h) - tx * d, sa * (rail_r + h) - ty * d, z0),
+        ]
+        quad += [(x + 2 * tx * d, y + 2 * ty * d, z) for x, y, z in quad]
+        _box(verts, tris, quad)
+
     return verts, tris
 
 

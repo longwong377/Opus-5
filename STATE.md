@@ -281,6 +281,18 @@ sensor and deflector arrays.
   its in-universe cutaway shows parallel longitudinal lines consistent with **radially stacked
   decks**, which corroborates the radial reading of C-004 without resolving it.
 
+## Session 2o — radiators measured, not guessed
+
+- **Radiator blades rebuilt from the production sheet.** They are **lozenges**, not tapered
+  plates: narrow at the bolted root, widest ~28% out, long slow taper to a capped tip. A
+  root-to-tip taper gives a wedge and loses the silhouette entirely.
+- Measured proportions off the sheet: **~7:1 span to max width**, three per side sitting close
+  together with gaps about equal to their own width. The previous values were 3:1 spread over
+  730 m, which read as three separate paddles rather than one radiator bank.
+- Added the structural frame around the panel, root mount blocks, tip caps, and the spine rail
+  the blades stand on — on the sheet the blades never touch the hull directly, and that
+  horizontal base line is a large part of the read.
+
 ## Autonomous continuation
 
 A **6-hourly** trigger (`trig_01JS1VWf6yada5x6maPMAzza`, fires at :45) continues the plan
@@ -423,19 +435,20 @@ then framing. Materials live in the engine, not the export.
 
 ## Next session — start here
 
-1. **Extend the interior kit** — wall assemblies (the corridor currently has ribs and deck but
-   no walls), doors, junctions, and the emissive materials for the deck channels and signage.
-   Still geometry only; placement stays blocked.
-2. **Refine the components against reference.** Greebling is done (session 2n); the crude parts
-   are now the *components* — fins, arrays and cobra bays are still box primitives with no
-   truss structure or articulation, and solar arrays still read the same as cooling fins.
-   Greebles cannot rescue a wrong silhouette.
-3. **Publish the Godot binary as a GitHub Release asset** — it is container-local and will be
-   lost when this container is reclaimed. Rebuilding costs 61 minutes.
-4. **Core shuttle** — axial transit through the gravity gradient, rim to weightless axis.
-5. **Godot project scaffold** consuming the generated geometry, once the binary is built.
-4. **C-003 / C-004.** Still blocking interiors. Radial level numbering is now the leading
-   hypothesis (see C-003 UPDATE), but needs a lift display or deck plan to confirm.
+1. **Refine the remaining crude components.** The radiators are now measured off the
+   production sheet (session 2o); still box primitives with no articulation: the forward swept
+   arrays, cobra bays, docking ports, observation domes and rotundas. Greebles cannot rescue a
+   wrong silhouette.
+2. **Emissive materials for the interior kit** — the deck light channels and signage exist as
+   geometry with nowhere for the light to come from. `godot/materials/` was started by a
+   workflow agent; check whether it landed.
+3. **Starfury geometry** — `station/starfury_geometry.py` was assigned to a workflow agent;
+   check whether it landed, otherwise build it. Physics already exists and the mesh must match
+   `aurora_thrusters()` exactly.
+4. **Publish the Godot binary** as a Release asset — container-local, 61 minutes to rebuild.
+   See `docs/godot-binary.md`.
+5. **C-003 / C-004** still block all interior *layout*. Radial numbering is the leading
+   hypothesis with three supporting arguments; needs a lift display or deck plan to confirm.
 
 ## Blocked
 

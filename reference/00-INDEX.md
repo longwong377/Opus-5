@@ -117,3 +117,42 @@ Status: empty.
   - Lighting: warm practicals at stall level, cyan neon accents above, low ambient fill. The
     space reads dim overall with bright local pools.
 - Feeds: interior kit spec, `16-signage-typography-ui`, NPC density targets for Red Sector
+
+---
+
+### 07-sector-grey/grey level 1.webp
+- Source authority: **1** (on-screen footage, Grey Sector corridor)
+- Depicts: a corridor looking down its length, wall square-on on both sides. The single most
+  useful interior frame in the set for building corridors, and the only one that shows a wall
+  flat enough to read its build-up.
+- Extracted:
+  - **The cross-section is a chamfered box, not a bore** — flat deck, upright walls, a chamfer
+    into a flat soffit. This overturns the first interior assembly, which used circular ring
+    frames and read as a pipe.
+  - **Wall build-up, bottom to top:** projecting skirt · set-back dado · **heavy rail band at
+    roughly hip height throwing a deep shadow reveal** · courses of large plates with recessed
+    seams. The seams are the dominant articulation and they are recessed, not drawn.
+  - **Portals punctuate the run** at close spacing, with heavy jambs and a **long linear light
+    fitting in the soffit** — the brightest thing in frame and the reason the portals read as a
+    receding rhythm rather than a row of holes.
+  - **Bullnose pilasters** at the portal jambs, carrying **segmented vertical light strips**
+    (short bars with gaps, not a continuous tube).
+  - **Warm downlights low on the wall**, pooling the deck rather than filling the space.
+  - **Deck is a fine tile grid**, roughly 0.5–0.7 m module.
+  - A dark **signage plaque** at high level ("Le…l …") — level identification in the corridor.
+- Feeds: `station/interior_kit.py` (`portal_frame`, `wall_assembly`, `pilaster`, `deck_grid`),
+  `canon/INVENTIONS.md` INV-007
+
+### 05-sector-green/corridor in alien sector.webp
+- Source authority: **1** (on-screen footage, alien sector doorway)
+- Depicts: a corridor looking through a doorway into a taller volume beyond.
+- Extracted:
+  - **The aperture is a chamfered polygon** — vertical jambs, sloping corners at roughly 45°,
+    a flat head and a **raised threshold you step over**. Not a rectangle and not a circle.
+  - The frame is **heavy and deep**, with a pronounced reveal. It is the depth, more than the
+    outline, that makes the opening read as a pressure boundary.
+  - Corroborates `grey level 1.webp` on the chamfered section independently.
+- **Does not show a door leaf** — open, closed or moving. Nor does any other frame in the set.
+  The leaf mechanism is therefore invented; see `canon/INVENTIONS.md` INV-008.
+- Feeds: `station/interior_kit.py` (`chamfered_aperture`, `door_frame`, `door_leaf`),
+  `canon/INVENTIONS.md` INV-008
