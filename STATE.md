@@ -1676,12 +1676,47 @@ this was written.** Nobody independent has reviewed 13,300 lines of agent-writte
 If the container is gone, the modules are committed and pushed and nothing is lost but the
 review; re-run it from the script path above, or re-launch the same panel.
 
+### Session 3j (cont.) — drum_ground had one assertion doing all the damage
+
+The sweep said 33 of `drum_ground`'s 40 constants were unguarded. The cause was a single
+assertion:
+
+```python
+check("FNV-1a is stable across processes",
+      _fnv1a("drum", 7, "ground") == _fnv1a("drum", 7, "ground") and ...)
+```
+
+**The first clause is `x == x`, computed in one process.** It says nothing about stability across
+processes — the property it is named for, and the property the entire determinism argument rests
+on. Perturbing `_FNV_OFFSET` or `_FNV_PRIME` changed every height in the drum and none of 74
+assertions noticed, because *"run it twice and compare" is satisfied by any pair of constants*.
+
+Replaced by three checks that each test what the others cannot: the constants are the **published**
+FNV-1a 64-bit values (an external fact, so a typo is caught against the standard rather than
+against ourselves); the delimiter test, which was the only real clause in the original; and **an
+actual cross-process run under two PYTHONHASHSEEDs**, which cannot be satisfied inside one
+interpreter.
+
+Plus a **golden digest** over a 16×16 sample of the heightfield — one assertion pinning every
+terrain constant at once. Guarding ~20 constants by hand would be twenty assertions restating
+twenty constants, which is how the module got here. It is *meant* to be brittle: a terrain change
+should fail it, be looked at, and have `GROUND_DIGEST` updated deliberately. Same argument as the
+committed `cell_manifest.json` diff gate — a silent terrain change is the failure mode.
+
+**74 → 77 assertions**, verified load-bearing (`_FNV_PRIME` now fails two).
+
+**And the sweep produced a false positive on its own first run, now documented in the tool.**
+`FLOOR_R`, `Z0` and `Z1` came back UNGUARDED because `configure()` overwrites them from the
+schema before anything reads them — the mutation is neutralised, not caught. Those three are
+correctness-by-construction and "fixing" them would have undone that. **Before acting on an
+UNGUARDED verdict, check whether anything assigns the name at runtime.**
+
 ### Also outstanding from this session
 
-- **`tools/mutation_sweep.py` now reaches the NPC package** (`NPC_MODULES`, per-module cwd), but
-  **the NPC modules have not actually been swept.** A `navigation` run got one mutant in before
-  its parent shell exited. That is the single cheapest next increment: `python3
-  tools/mutation_sweep.py body costume crowd animation navigation --jobs 3` under `nohup`.
+- **The NPC sweep IS RUNNING**, detached, writing to `docs/audits/mutation-sweep-npc.log` —
+  100 constants across the five modules. The committed copy of that log may be **partial**; check
+  whether the process is still alive (`pgrep -f mutation_sweep`) and re-commit the finished file.
+  Read its UNGUARDED list against the false-positive note above before acting on any of it.
 - The full session-3i sweep report is preserved at **`docs/audits/mutation-sweep-3i.log`**. It was
   only in `/tmp` and would have been lost.
 
