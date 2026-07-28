@@ -1,6 +1,6 @@
 # Project State
 
-**Last updated:** 2026-07-28 · **Session 3j** — NPC bodies, costume and crowd; phase D opens
+**Last updated:** 2026-07-28 · **Session 3j** — the whole NPC layer; cockpit unblocked
 
 ## Where we are
 
@@ -1605,11 +1605,110 @@ drum wound inside out. What the sweep measures is *coverage of the constants*, a
 assertions are strong on **relationships** and weak on **values** — which is exactly the shape
 you would predict from how they were written.
 
+## Session 3j (cont.) — animation, navigation, and a repeat defect
+
+The six-builder NPC workflow (`wnbmuyt81`, 12 agents) completed. Two more modules landed after
+the first three were committed:
+
+| module | lines | assertions |
+|---|---|---|
+| `body.py` | 2,654 | 501 |
+| `animation.py` | 3,022 | **467** |
+| `costume.py` | 2,715 | 80 |
+| `crowd.py` | 2,146 | 67 |
+| `navigation.py` | 2,751 | 86 |
+| `schedule.py` + `test_schedule.py` | — | 100 |
+| | | **1,201 across the layer** |
+
+All six are wired into CI. `animation.py` (~24 s) and `navigation.py` (~77 s) are now the
+slowest gates in the project; they are also the two that touch station geometry, so they are the
+two a schema change can silently break.
+
+### The night watch was asleep, again
+
+**Rotating roles declared `work_start = 0.0`, so the first watch ran 00:00–08:00 while the human
+sleep block ran 23:00–06:30. The night watch spent 7.5 of its 8 hours asleep.**
+
+That is the *exact* defect `INV-005` records as fixed in session 2m. It survived two sessions
+because the assertion guarding it asked only whether `on_duty > 0`, and sampling jitter always
+satisfied that. **A threshold of "more than nobody" is not a threshold** — this is the same
+family as the vacuous assertions the mutation sweep exists to find, and it is the strongest
+argument yet for that tool.
+
+Fixed by anchoring sleep to the holder's own shift as an algebraic identity. **Verified from
+outside the code rather than from the report:** sampled across 20,000 ids, coverage is continuous
+at every hour, and station-wide on-duty security measures **138–193** against `FACTIONS.md`
+§2.2's separately-stated *"roughly 150"* — a figure the module does not read.
+
+### The Starfury cockpit is unblocked, catalogued, and the pilot stands
+
+Owner upload `c5873e5`, four files, all opened and written up in `reference/00-INDEX.md`.
+**"Sitting position" is a misnomer**: the authority-2 tub shows a ribbed couch running the full
+height of the centreline with a chest yoke and a headrest recess. The pilot is braced against a
+near-vertical board, arms forward onto two angled console banks.
+
+**The resolution trap fired for the third time.** The two authority-2 production photos are
+**0.23 MP**; the two authority-4 fan models are **3.05 MP** — 13× the pixels, one authority level
+worse, and the best-lit material in the folder. Not quarantined (a fan model of the real prop is
+legitimate corroboration and says "model" in its own filename), but they are the files that must
+not be measured from.
+
+**No absolute dimension is recorded, deliberately.** See the index entry for the failed
+segmentation and why no number was published from it.
+
+## IN FLIGHT — read this before starting anything
+
+**An adversarial review panel is running over the five new NPC modules and had NOT reported when
+this was written.** Nobody independent has reviewed 13,300 lines of agent-written code.
+
+- Workflow run ID **`wf_e7c370a1-f14`**, task `wreyj01ho`.
+- Script: `~/.claude/projects/.../workflows/scripts/npc-layer-review-wf_e7c370a1-f14.js`
+- Journal: `~/.claude/projects/.../subagents/workflows/wf_e7c370a1-f14/journal.jsonl` — **read
+  this first**; it carries one `{"type":"result"}` line per completed agent with its full return
+  value, and it survives a context reset when the notification does not.
+- Shape: five harsh reviewers, one per module with a lens matched to it (body → mesh closure and
+  LOD; costume → canon and era lock; crowd → population conservation and the `use` deck tag;
+  animation → kinematics in a rotating frame; navigation → topology and reachability), each
+  non-minor finding then handed to a skeptic **told to refute it**.
+- **Treat the NPC modules as sound-but-unreviewed until that report is read**, exactly as session
+  2x's modules were treated.
+
+If the container is gone, the modules are committed and pushed and nothing is lost but the
+review; re-run it from the script path above, or re-launch the same panel.
+
+### Also outstanding from this session
+
+- **`tools/mutation_sweep.py` now reaches the NPC package** (`NPC_MODULES`, per-module cwd), but
+  **the NPC modules have not actually been swept.** A `navigation` run got one mutant in before
+  its parent shell exited. That is the single cheapest next increment: `python3
+  tools/mutation_sweep.py body costume crowd animation navigation --jobs 3` under `nohup`.
+- The full session-3i sweep report is preserved at **`docs/audits/mutation-sweep-3i.log`**. It was
+  only in `/tmp` and would have been lost.
+
 ## Next session — start here
 
 The drum's **structure** is complete: shell, both end caps, three guideway trusses with the
 habitat's lighting, three spokes, a correct hollow ring model, and its own performance gate.
 What follows is in rough priority order.
+
+0. **Read the in-flight review panel's report** — see the IN FLIGHT section above. It is the only
+   thing standing between 13,300 lines of agent-written NPC code and the project's own rule that
+   nothing is done until it clears a harsh panel. Then **sweep the NPC modules**, which has not
+   been done.
+
+0b. **The unwelded NPC joints.** Limb roots are inside the torso (asserted, passing) but the lofts
+   interpenetrate rather than blend, so a hard crease sits where a deltoid should be and the
+   shoulders read as a shelf. Craft, not closure — no gate can see it and only looking caught it.
+   `docs/render-npc-detail.png`.
+
+0c. **The plant kit.** `LIFE-SUPPORT-AND-INDUSTRY.md` §8: 62.3 M triangles — **26% of the whole
+   station interior** — is currently budgeted for Grey's 34 plant decks as walkable corridor, and
+   the plant zone is 559 m³ per resident, ~100× what life support needs. It is structure, tankage
+   and void with a thin walkable skeleton, and that kit does not exist. Largest piece of
+   misdirected content in the project.
+
+0d. **The Starfury cockpit** — now unblocked and catalogued. Size the tub from the airframe and a
+   standing 1.75 m pilot; log as an invention. See `reference/00-INDEX.md`, session 3j upload.
 
 1. ~~**The drum's ground**~~ — **built and its four review findings all closed**
    (`drum_ground.py`, 74/74). Sessions 3e and 3f.

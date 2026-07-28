@@ -1,0 +1,373 @@
+baselines for 9 modules
+  interior: 448/448
+  drum_ground: 74/74
+  tram: 44/44
+  core_tube: 65/65
+  zocalo: 96/96
+  docking_bay: 18/18
+  signage: 15/15
+  command_control: 25/25
+  council_chamber: 16/16
+
+192 mutants at x1.25, 3 at a time
+
+  [  1/192] interior.CORE_HULL_WINDOW_M -> UNGUARDED
+  [  2/192] interior.DECK_PITCH_M -> GUARDED
+  [  3/192] interior.ENDCAP_DISH -> UNGUARDED
+  [  4/192] interior.ENDCAP_RIB_H_M -> UNGUARDED
+  [  5/192] interior.ENDCAP_RIB_W_M -> UNGUARDED
+  [  6/192] interior.ENDCAP_RIM_LIGHTS -> GUARDED
+  [  7/192] interior.ENDCAP_SEGMENTS -> UNGUARDED
+  [  8/192] interior.ENDCAP_STEP_M -> UNGUARDED
+  [  9/192] interior.GUIDEWAY_GAUGE_DEPTH_M -> UNGUARDED
+  [ 10/192] interior.GUIDEWAY_GAUGE_HALF_W_M -> UNGUARDED
+  [ 11/192] interior.GUIDEWAY_SOFFIT_RELIEF_M -> UNGUARDED
+  [ 12/192] interior.HABITABLE_G_MAX -> GUARDED
+  [ 13/192] interior.HULL_SKIN_M -> UNGUARDED
+  [ 14/192] interior.SPOKE_COUNT -> GUARDED
+  [ 15/192] interior.SPOKE_PORTAL_COLLAR_M -> UNGUARDED
+  [ 16/192] interior.SPOKE_PORTAL_FRAME_M -> UNGUARDED
+  [ 17/192] interior.SPOKE_PORTAL_PROUD_M -> UNGUARDED
+  [ 18/192] interior.TRUSS_BAY_M -> UNGUARDED
+  [ 19/192] interior.TRUSS_CHORD_M -> UNGUARDED
+  [ 20/192] interior.TRUSS_COUNT -> GUARDED
+  [ 21/192] interior.TRUSS_DEPTH_M -> UNGUARDED
+  [ 22/192] interior.TRUSS_LAMP_R_M -> UNGUARDED
+  [ 23/192] interior.TRUSS_RADIUS_FRAC -> CRASH
+  [ 24/192] interior.TRUSS_WEB_M -> UNGUARDED
+  [ 25/192] drum_ground.AVENUE_CUT_M -> UNGUARDED
+  [ 26/192] drum_ground.AVENUE_W_M -> UNGUARDED
+  [ 27/192] drum_ground.BAND_BLEND_M -> UNGUARDED
+  [ 28/192] drum_ground.BLOCK_CELLS -> UNGUARDED
+  [ 29/192] drum_ground.CELLS_A -> GUARDED
+  [ 30/192] drum_ground.CELLS_Z -> UNGUARDED
+  [ 31/192] drum_ground.CROPS -> GUARDED
+  [ 32/192] drum_ground.END_FADE_M -> UNGUARDED
+  [ 33/192] drum_ground.FLOOR_R -> UNGUARDED
+  [ 34/192] drum_ground.FOV_DEG -> UNGUARDED
+  [ 35/192] drum_ground.HEDGE_H_M -> UNGUARDED
+  [ 36/192] drum_ground.HEDGE_W_M -> UNGUARDED
+  [ 37/192] drum_ground.NOISE_AMP_M -> UNGUARDED
+  [ 38/192] drum_ground.NOISE_BASE_A -> GUARDED
+  [ 39/192] drum_ground.NOISE_BASE_Z -> UNGUARDED
+  [ 40/192] drum_ground.NOISE_GAIN -> UNGUARDED
+  [ 41/192] drum_ground.NOISE_OCTAVES -> UNGUARDED
+  [ 42/192] drum_ground.PARCELS_A -> UNGUARDED
+  [ 43/192] drum_ground.PARCELS_Z -> UNGUARDED
+  [ 44/192] drum_ground.PARCEL_RELIEF_M -> UNGUARDED
+  [ 45/192] drum_ground.PARCEL_WARP_M -> UNGUARDED
+  [ 46/192] drum_ground.PARK_SMOOTH -> UNGUARDED
+  [ 47/192] drum_ground.PATCHES_A -> GUARDED
+  [ 48/192] drum_ground.PATCHES_Z -> UNGUARDED
+  [ 49/192] drum_ground.PATCH_A -> CRASH
+  [ 50/192] drum_ground.PATCH_Z -> CRASH
+  [ 51/192] drum_ground.PIXEL_BUDGET -> UNGUARDED
+  [ 52/192] drum_ground.PODIUM_STEP_M -> UNGUARDED
+  [ 53/192] drum_ground.RIM_ROAD_INSET_M -> UNGUARDED
+  [ 54/192] drum_ground.RIM_ROAD_W_M -> UNGUARDED
+  [ 55/192] drum_ground.SCREEN_H -> UNGUARDED
+  [ 56/192] drum_ground.TRUNK_ROAD_W_M -> UNGUARDED
+  [ 57/192] drum_ground.VERGE_W_M -> UNGUARDED
+  [ 58/192] drum_ground.WATER_DEPTH_M -> UNGUARDED
+  [ 59/192] drum_ground.WATER_LEVEL_M -> UNGUARDED
+  [ 60/192] drum_ground.Z0 -> UNGUARDED
+  [ 61/192] drum_ground.Z1 -> UNGUARDED
+  [ 62/192] drum_ground._FNV_OFFSET -> UNGUARDED
+  [ 63/192] drum_ground._FNV_PRIME -> UNGUARDED
+  [ 64/192] drum_ground._M64 -> GUARDED
+  [ 65/192] tram.CAR_BAYS -> GUARDED
+  [ 66/192] tram.CAR_DEPTH_FRAC -> GUARDED
+  [ 67/192] tram.CAR_WIDTH_M -> GUARDED
+  [ 68/192] tram.NOSE_M -> UNGUARDED
+  [ 69/192] tram.RAKE_M -> UNGUARDED
+  [ 70/192] tram.SEAT_PITCH_M -> UNGUARDED
+  [ 71/192] tram.SHOE_DEPTH_M -> UNGUARDED
+  [ 72/192] tram.SHOE_WIDTH_M -> GUARDED
+  [ 73/192] tram.SPOKE_CLEARANCE_M -> UNGUARDED
+  [ 74/192] tram.SUSPENSION_GAP_M -> UNGUARDED
+  [ 75/192] tram.TAIL_M -> GUARDED
+  [ 76/192] tram.TRUSS_CLEARANCE_M -> GUARDED
+  [ 77/192] tram.WALL_T -> UNGUARDED
+  [ 78/192] tram.WINDOW_PITCH_M -> UNGUARDED
+  [ 79/192] core_tube.COLLAR_BASE_RISE_M -> UNGUARDED
+  [ 80/192] core_tube.COLLAR_GAP_M -> UNGUARDED
+  [ 81/192] core_tube.COLLAR_RINGS -> UNGUARDED
+  [ 82/192] core_tube.COLLAR_RING_RISE_M -> UNGUARDED
+  [ 83/192] core_tube.COLLAR_RING_W_M -> UNGUARDED
+  [ 84/192] core_tube.CORE_TUBE_R_FRAC -> UNGUARDED
+  [ 85/192] core_tube.CORE_TUBE_R_M -> GUARDED
+  [ 86/192] core_tube.HUB_FINS -> UNGUARDED
+  [ 87/192] core_tube.HUB_FIN_W_M -> UNGUARDED
+  [ 88/192] core_tube.HUB_FLANGES -> UNGUARDED
+  [ 89/192] core_tube.HUB_LAMP_R_M -> UNGUARDED
+  [ 90/192] core_tube.HUB_LEN_M -> UNGUARDED
+  [ 91/192] core_tube.HUB_NOSE_M -> UNGUARDED
+  [ 92/192] core_tube.HUB_PORT_R_M -> UNGUARDED
+  [ 93/192] core_tube.LATTICE_DIP_M -> UNGUARDED
+  [ 94/192] core_tube.LATTICE_EVERY -> UNGUARDED
+  [ 95/192] core_tube.LATTICE_LEN_M -> UNGUARDED
+  [ 96/192] core_tube.LATTICE_RIBS -> UNGUARDED
+  [ 97/192] core_tube.NODE_BODY_R_M -> GUARDED
+  [ 98/192] core_tube.NODE_FLANGES -> UNGUARDED
+  [ 99/192] core_tube.NODE_PAD_R_M -> GUARDED
+  [100/192] core_tube.NODE_SPARS -> UNGUARDED
+  [101/192] core_tube.SECTION_M -> GUARDED
+  [102/192] core_tube.TUBE_SIDES -> UNGUARDED
+  [103/192] zocalo.BAY_LENGTH_M -> UNGUARDED
+  [104/192] zocalo.BAY_WIDTH_M -> UNGUARDED
+  [105/192] zocalo.CHAIR_SEAT_H_M -> UNGUARDED
+  [106/192] zocalo.DECK_PITCH_M -> GUARDED
+  [107/192] zocalo.GALLERY_DEPTH_M -> UNGUARDED
+  [108/192] zocalo.GALLERY_Y_M -> UNGUARDED
+  [109/192] zocalo.REF_EYE_M -> GUARDED
+  [110/192] zocalo.REF_FOCAL_PX -> GUARDED
+  [111/192] zocalo.REF_HORIZON_PX -> GUARDED
+  [112/192] zocalo.REF_H_PX -> UNGUARDED
+  [113/192] zocalo.REF_W_PX -> UNGUARDED
+  [114/192] zocalo.RIB_SEGMENTS -> UNGUARDED
+  [115/192] zocalo.RIB_SPACING_M -> UNGUARDED
+  [116/192] zocalo.TABLE_H_M -> GUARDED
+  [117/192] zocalo.TILE_M -> UNGUARDED
+  [118/192] zocalo.WELD_M -> UNGUARDED
+  [119/192] zocalo.WELL_WIDTH_M -> UNGUARDED
+  [120/192] docking_bay.BAY_COUNT -> GUARDED
+  [121/192] docking_bay.BAY_H_M -> UNGUARDED
+  [122/192] docking_bay.BAY_LEN_M -> UNGUARDED
+  [123/192] docking_bay.BAY_W_M -> GUARDED
+  [124/192] docking_bay.CHEVRON_W_M -> UNGUARDED
+  [125/192] docking_bay.DECK_DISC_D_M -> GUARDED
+  [126/192] docking_bay.DOCK_WORKER_H_M -> GUARDED
+  [127/192] docking_bay.GIRDER_D_M -> UNGUARDED
+  [128/192] docking_bay.GIRDER_PITCH_M -> UNGUARDED
+  [129/192] docking_bay.GIRDER_W_M -> UNGUARDED
+  [130/192] docking_bay.LAMPS_PER_BAY_GIRDER -> UNGUARDED
+  [131/192] docking_bay.LAMP_DROP_M -> UNGUARDED
+  [132/192] docking_bay.LAMP_R_M -> UNGUARDED
+  [133/192] docking_bay.LEDGE_COURSES -> UNGUARDED
+  [134/192] docking_bay.LEDGE_RISE_M -> UNGUARDED
+  [135/192] docking_bay.LEDGE_RUN_M -> UNGUARDED
+  [136/192] docking_bay.REF_PX_PER_M -> GUARDED
+  [137/192] signage.BOARD_FRAME_M -> UNGUARDED
+  [138/192] signage.BOARD_H_M -> UNGUARDED
+  [139/192] signage.BOARD_INSET_M -> UNGUARDED
+  [140/192] signage.BOARD_T_M -> UNGUARDED
+  [141/192] signage.BOARD_W_M -> UNGUARDED
+  [142/192] signage.MOUNT_H_M -> UNGUARDED
+  [143/192] signage.POST_GAP_M -> UNGUARDED
+  [144/192] signage.POST_W_M -> UNGUARDED
+  [145/192] command_control.CONSOLE_ARC_DEG -> UNGUARDED
+  [146/192] command_control.CONSOLE_D_M -> UNGUARDED
+  [147/192] command_control.CONSOLE_H_M -> GUARDED
+  [148/192] command_control.CONSOLE_N -> UNGUARDED
+  [149/192] command_control.CONSOLE_TILT_DEG -> UNGUARDED
+  [150/192] command_control.CONSOLE_W_M -> UNGUARDED
+  [151/192] command_control.DAIS_D_M -> UNGUARDED
+  [152/192] command_control.DAIS_RISE_M -> GUARDED
+  [153/192] command_control.DAIS_STEPS -> UNGUARDED
+  [154/192] command_control.DAIS_TREAD_M -> UNGUARDED
+  [155/192] command_control.DOME_H_M -> GUARDED
+  [156/192] command_control.DOME_R_M -> GUARDED
+  [157/192] command_control.FLOOR_L_M -> UNGUARDED
+  [158/192] command_control.FLOOR_W_M -> UNGUARDED
+  [159/192] command_control.PIT_DROP_M -> UNGUARDED
+  [160/192] command_control.RAIL_H_M -> UNGUARDED
+  [161/192] command_control.REF_PX_PER_M -> GUARDED
+  [162/192] command_control.STRIP_COURSES -> GUARDED
+  [163/192] command_control.STRIP_H_M -> UNGUARDED
+  [164/192] command_control.WINDOW_D_M -> GUARDED
+  [165/192] command_control.WINDOW_HUB_FRAC -> UNGUARDED
+  [166/192] command_control.WINDOW_MULLIONS -> UNGUARDED
+  [167/192] command_control.WINDOW_MULLION_W_M -> UNGUARDED
+  [168/192] command_control.WINDOW_RING_FRAC -> UNGUARDED
+  [169/192] command_control.WINDOW_RING_W_M -> UNGUARDED
+  [170/192] council_chamber.BENCH_ARC_DEG -> UNGUARDED
+  [171/192] council_chamber.BENCH_PANEL_INSET_M -> UNGUARDED
+  [172/192] council_chamber.BENCH_PLINTH_H_M -> UNGUARDED
+  [173/192] council_chamber.BENCH_R_M -> UNGUARDED
+  [174/192] council_chamber.BENCH_TOP_D_M -> UNGUARDED
+  [175/192] council_chamber.BENCH_TOP_H_M -> GUARDED
+  [176/192] council_chamber.BENCH_TOP_TILT_DEG -> UNGUARDED
+  [177/192] council_chamber.CHAIR_BACK_H_M -> UNGUARDED
+  [178/192] council_chamber.CHAIR_LATTICE -> UNGUARDED
+  [179/192] council_chamber.CHAIR_SEAT_H_M -> UNGUARDED
+  [180/192] council_chamber.CHAIR_W_M -> UNGUARDED
+  [181/192] council_chamber.FIN_COUNT -> UNGUARDED
+  [182/192] council_chamber.FIN_R0_M -> UNGUARDED
+  [183/192] council_chamber.FIN_R1_M -> UNGUARDED
+  [184/192] council_chamber.FIN_TILT_DEG -> UNGUARDED
+  [185/192] council_chamber.FIN_W_M -> UNGUARDED
+  [186/192] council_chamber.FLOOR_R_M -> UNGUARDED
+  [187/192] council_chamber.FLOOR_TILES -> UNGUARDED
+  [188/192] council_chamber.MEDALLION_RINGS -> UNGUARDED
+  [189/192] council_chamber.MEDALLION_R_M -> UNGUARDED
+  [190/192] council_chamber.MEDALLION_SPOKES -> UNGUARDED
+  [191/192] council_chamber.SEATS -> UNGUARDED
+  [192/192] council_chamber.WALL_H_M -> UNGUARDED
+
+========================================================================
+mutation sweep: 192 mutants in 1172s
+========================================================================
+
+UNGUARDED: 151
+  command_control.CONSOLE_ARC_DEG = 187.5  -- 25/25 (baseline 25/25)
+  command_control.CONSOLE_D_M = 0.775  -- 25/25 (baseline 25/25)
+  command_control.CONSOLE_N = 6  -- 25/25 (baseline 25/25)
+  command_control.CONSOLE_TILT_DEG = 27.5  -- 25/25 (baseline 25/25)
+  command_control.CONSOLE_W_M = 1.4375  -- 25/25 (baseline 25/25)
+  command_control.DAIS_D_M = 5.75  -- 25/25 (baseline 25/25)
+  command_control.DAIS_STEPS = 4  -- 25/25 (baseline 25/25)
+  command_control.DAIS_TREAD_M = 0.525  -- 25/25 (baseline 25/25)
+  command_control.FLOOR_L_M = 15.0  -- 25/25 (baseline 25/25)
+  command_control.FLOOR_W_M = 17.5  -- 25/25 (baseline 25/25)
+  command_control.PIT_DROP_M = 2.375  -- 25/25 (baseline 25/25)
+  command_control.RAIL_H_M = 1.3125  -- 25/25 (baseline 25/25)
+  command_control.STRIP_H_M = 0.275  -- 25/25 (baseline 25/25)
+  command_control.WINDOW_HUB_FRAC = 0.17500000000000002  -- 25/25 (baseline 25/25)
+  command_control.WINDOW_MULLIONS = 20  -- 25/25 (baseline 25/25)
+  command_control.WINDOW_MULLION_W_M = 0.125  -- 25/25 (baseline 25/25)
+  command_control.WINDOW_RING_FRAC = 0.775  -- 25/25 (baseline 25/25)
+  command_control.WINDOW_RING_W_M = 0.2  -- 25/25 (baseline 25/25)
+  core_tube.COLLAR_BASE_RISE_M = 0.875  -- 65/65 (baseline 65/65)
+  core_tube.COLLAR_GAP_M = 2.5  -- 65/65 (baseline 65/65)
+  core_tube.COLLAR_RINGS = 5  -- 65/65 (baseline 65/65)
+  core_tube.COLLAR_RING_RISE_M = 1.75  -- 65/65 (baseline 65/65)
+  core_tube.COLLAR_RING_W_M = 4.0  -- 65/65 (baseline 65/65)
+  core_tube.CORE_TUBE_R_FRAC = 0.08750000000000001  -- 65/65 (baseline 65/65)
+  core_tube.HUB_FINS = 30  -- 65/65 (baseline 65/65)
+  core_tube.HUB_FIN_W_M = 2.25  -- 65/65 (baseline 65/65)
+  core_tube.HUB_FLANGES = 5  -- 65/65 (baseline 65/65)
+  core_tube.HUB_LAMP_R_M = 1.875  -- 65/65 (baseline 65/65)
+  core_tube.HUB_LEN_M = 75.0  -- 65/65 (baseline 65/65)
+  core_tube.HUB_NOSE_M = 22.5  -- 65/65 (baseline 65/65)
+  core_tube.HUB_PORT_R_M = 33.75  -- 65/65 (baseline 65/65)
+  core_tube.LATTICE_DIP_M = 3.75  -- 65/65 (baseline 65/65)
+  core_tube.LATTICE_EVERY = 10  -- 65/65 (baseline 65/65)
+  core_tube.LATTICE_LEN_M = 32.5  -- 65/65 (baseline 65/65)
+  core_tube.LATTICE_RIBS = 10  -- 65/65 (baseline 65/65)
+  core_tube.NODE_FLANGES = 4  -- 65/65 (baseline 65/65)
+  core_tube.NODE_SPARS = 15  -- 65/65 (baseline 65/65)
+  core_tube.TUBE_SIDES = 20  -- 65/65 (baseline 65/65)
+  council_chamber.BENCH_ARC_DEG = 187.5  -- 16/16 (baseline 16/16)
+  council_chamber.BENCH_PANEL_INSET_M = 0.06875  -- 16/16 (baseline 16/16)
+  council_chamber.BENCH_PLINTH_H_M = 0.17500000000000002  -- 16/16 (baseline 16/16)
+  council_chamber.BENCH_R_M = 5.75  -- 16/16 (baseline 16/16)
+  council_chamber.BENCH_TOP_D_M = 1.1875  -- 16/16 (baseline 16/16)
+  council_chamber.BENCH_TOP_TILT_DEG = 11.25  -- 16/16 (baseline 16/16)
+  council_chamber.CHAIR_BACK_H_M = 2.425  -- 16/16 (baseline 16/16)
+  council_chamber.CHAIR_LATTICE = 5  -- 16/16 (baseline 16/16)
+  council_chamber.CHAIR_SEAT_H_M = 0.5750000000000001  -- 16/16 (baseline 16/16)
+  council_chamber.CHAIR_W_M = 0.775  -- 16/16 (baseline 16/16)
+  council_chamber.FIN_COUNT = 28  -- 16/16 (baseline 16/16)
+  council_chamber.FIN_R0_M = 2.75  -- 16/16 (baseline 16/16)
+  council_chamber.FIN_R1_M = 9.25  -- 16/16 (baseline 16/16)
+  council_chamber.FIN_TILT_DEG = 20.0  -- 16/16 (baseline 16/16)
+  council_chamber.FIN_W_M = 0.375  -- 16/16 (baseline 16/16)
+  council_chamber.FLOOR_R_M = 13.75  -- 16/16 (baseline 16/16)
+  council_chamber.FLOOR_TILES = 120  -- 16/16 (baseline 16/16)
+  council_chamber.MEDALLION_RINGS = 4  -- 16/16 (baseline 16/16)
+  council_chamber.MEDALLION_R_M = 1.6875  -- 16/16 (baseline 16/16)
+  council_chamber.MEDALLION_SPOKES = 30  -- 16/16 (baseline 16/16)
+  council_chamber.SEATS = 6  -- 16/16 (baseline 16/16)
+  council_chamber.WALL_H_M = 8.75  -- 16/16 (baseline 16/16)
+  docking_bay.BAY_H_M = 22.5  -- 23/23 (baseline 18/18)
+  docking_bay.BAY_LEN_M = 175.0  -- 23/23 (baseline 18/18)
+  docking_bay.CHEVRON_W_M = 1.125  -- 23/23 (baseline 18/18)
+  docking_bay.GIRDER_D_M = 3.0  -- 23/23 (baseline 18/18)
+  docking_bay.GIRDER_PITCH_M = 13.75  -- 23/23 (baseline 18/18)
+  docking_bay.GIRDER_W_M = 1.375  -- 23/23 (baseline 18/18)
+  docking_bay.LAMPS_PER_BAY_GIRDER = 4  -- 23/23 (baseline 18/18)
+  docking_bay.LAMP_DROP_M = 3.25  -- 23/23 (baseline 18/18)
+  docking_bay.LAMP_R_M = 0.9375  -- 23/23 (baseline 18/18)
+  docking_bay.LEDGE_COURSES = 4  -- 23/23 (baseline 18/18)
+  docking_bay.LEDGE_RISE_M = 2.75  -- 23/23 (baseline 18/18)
+  docking_bay.LEDGE_RUN_M = 4.25  -- 23/23 (baseline 18/18)
+  drum_ground.AVENUE_CUT_M = 1.875  -- 74/74 (baseline 74/74)
+  drum_ground.AVENUE_W_M = 12.5  -- 74/74 (baseline 74/74)
+  drum_ground.BAND_BLEND_M = 75.0  -- 74/74 (baseline 74/74)
+  drum_ground.BLOCK_CELLS = 20  -- 74/74 (baseline 74/74)
+  drum_ground.CELLS_Z = 800  -- 74/74 (baseline 74/74)
+  drum_ground.END_FADE_M = 87.5  -- 74/74 (baseline 74/74)
+  drum_ground.FLOOR_R = 347.875  -- 74/74 (baseline 74/74)
+  drum_ground.FOV_DEG = 62.5  -- 74/74 (baseline 74/74)
+  drum_ground.HEDGE_H_M = 0.275  -- 74/74 (baseline 74/74)
+  drum_ground.HEDGE_W_M = 14.625  -- 74/74 (baseline 74/74)
+  drum_ground.NOISE_AMP_M = 7.5  -- 74/74 (baseline 74/74)
+  drum_ground.NOISE_BASE_Z = 8  -- 74/74 (baseline 74/74)
+  drum_ground.NOISE_GAIN = 0.625  -- 74/74 (baseline 74/74)
+  drum_ground.NOISE_OCTAVES = 8  -- 74/74 (baseline 74/74)
+  drum_ground.PARCELS_A = 25  -- 74/74 (baseline 74/74)
+  drum_ground.PARCELS_Z = 10  -- 74/74 (baseline 74/74)
+  drum_ground.PARCEL_RELIEF_M = 0.6875  -- 74/74 (baseline 74/74)
+  drum_ground.PARCEL_WARP_M = 42.5  -- 74/74 (baseline 74/74)
+  drum_ground.PARK_SMOOTH = 4  -- 74/74 (baseline 74/74)
+  drum_ground.PATCHES_Z = 25  -- 74/74 (baseline 74/74)
+  drum_ground.PIXEL_BUDGET = 1.875  -- 74/74 (baseline 74/74)
+  drum_ground.PODIUM_STEP_M = 2.5  -- 74/74 (baseline 74/74)
+  drum_ground.RIM_ROAD_INSET_M = 35.0  -- 74/74 (baseline 74/74)
+  drum_ground.RIM_ROAD_W_M = 20.0  -- 74/74 (baseline 74/74)
+  drum_ground.SCREEN_H = 1800  -- 74/74 (baseline 74/74)
+  drum_ground.TRUNK_ROAD_W_M = 25.0  -- 74/74 (baseline 74/74)
+  drum_ground.VERGE_W_M = 5.0  -- 74/74 (baseline 74/74)
+  drum_ground.WATER_DEPTH_M = 6.25  -- 74/74 (baseline 74/74)
+  drum_ground.WATER_LEVEL_M = -3.125  -- 74/74 (baseline 74/74)
+  drum_ground.Z0 = 4798.75  -- 74/74 (baseline 74/74)
+  drum_ground.Z1 = 8031.25  -- 74/74 (baseline 74/74)
+  drum_ground._FNV_OFFSET = 18369976299183319040  -- 74/74 (baseline 74/74)
+  drum_ground._FNV_PRIME = 1374389535264  -- 74/74 (baseline 74/74)
+  interior.CORE_HULL_WINDOW_M = 75.0  -- 448/448 (baseline 448/448)
+  interior.ENDCAP_DISH = 0.22499999999999998  -- 448/448 (baseline 448/448)
+  interior.ENDCAP_RIB_H_M = 1.125  -- 448/448 (baseline 448/448)
+  interior.ENDCAP_RIB_W_M = 2.0  -- 448/448 (baseline 448/448)
+  interior.ENDCAP_SEGMENTS = 60  -- 448/448 (baseline 448/448)
+  interior.ENDCAP_STEP_M = 1.5  -- 448/448 (baseline 448/448)
+  interior.GUIDEWAY_GAUGE_DEPTH_M = 15.625  -- 448/448 (baseline 448/448)
+  interior.GUIDEWAY_GAUGE_HALF_W_M = 9.25  -- 448/448 (baseline 448/448)
+  interior.GUIDEWAY_SOFFIT_RELIEF_M = 0.1875  -- 448/448 (baseline 448/448)
+  interior.HULL_SKIN_M = 7.5  -- 447/447 (baseline 448/448)
+  interior.SPOKE_PORTAL_COLLAR_M = 5.0  -- 448/448 (baseline 448/448)
+  interior.SPOKE_PORTAL_FRAME_M = 2.0  -- 448/448 (baseline 448/448)
+  interior.SPOKE_PORTAL_PROUD_M = 1.5  -- 448/448 (baseline 448/448)
+  interior.TRUSS_BAY_M = 30.0  -- 448/448 (baseline 448/448)
+  interior.TRUSS_CHORD_M = 2.75  -- 448/448 (baseline 448/448)
+  interior.TRUSS_DEPTH_M = 20.0  -- 448/448 (baseline 448/448)
+  interior.TRUSS_LAMP_R_M = 1.875  -- 448/448 (baseline 448/448)
+  interior.TRUSS_WEB_M = 1.625  -- 448/448 (baseline 448/448)
+  signage.BOARD_FRAME_M = 0.09375  -- 15/15 (baseline 15/15)
+  signage.BOARD_H_M = 1.85  -- 15/15 (baseline 15/15)
+  signage.BOARD_INSET_M = 0.043750000000000004  -- 15/15 (baseline 15/15)
+  signage.BOARD_T_M = 0.1375  -- 15/15 (baseline 15/15)
+  signage.BOARD_W_M = 1.375  -- 15/15 (baseline 15/15)
+  signage.MOUNT_H_M = 1.6875  -- 15/15 (baseline 15/15)
+  signage.POST_GAP_M = 0.015  -- 15/15 (baseline 15/15)
+  signage.POST_W_M = 0.42500000000000004  -- 15/15 (baseline 15/15)
+  tram.NOSE_M = 7.5  -- 44/44 (baseline 44/44)
+  tram.RAKE_M = 1.375  -- 44/44 (baseline 44/44)
+  tram.SEAT_PITCH_M = 0.775  -- 44/44 (baseline 44/44)
+  tram.SHOE_DEPTH_M = 0.625  -- 44/44 (baseline 44/44)
+  tram.SPOKE_CLEARANCE_M = 0.375  -- 44/44 (baseline 44/44)
+  tram.SUSPENSION_GAP_M = 0.4375  -- 44/44 (baseline 44/44)
+  tram.WALL_T = 0.275  -- 44/44 (baseline 44/44)
+  tram.WINDOW_PITCH_M = 5.0  -- 44/44 (baseline 44/44)
+  zocalo.BAY_LENGTH_M = 13.5  -- 96/96 (baseline 96/96)
+  zocalo.BAY_WIDTH_M = 27.0  -- 96/96 (baseline 96/96)
+  zocalo.CHAIR_SEAT_H_M = 0.5625  -- 96/96 (baseline 96/96)
+  zocalo.GALLERY_DEPTH_M = 5.625000000000001  -- 96/96 (baseline 96/96)
+  zocalo.GALLERY_Y_M = 4.5  -- 96/96 (baseline 96/96)
+  zocalo.REF_H_PX = 1350  -- 96/96 (baseline 96/96)
+  zocalo.REF_W_PX = 1800  -- 96/96 (baseline 96/96)
+  zocalo.RIB_SEGMENTS = 32  -- 96/96 (baseline 96/96)
+  zocalo.RIB_SPACING_M = 6.75  -- 96/96 (baseline 96/96)
+  zocalo.TILE_M = 0.5625  -- 96/96 (baseline 96/96)
+  zocalo.WELD_M = 0.0025  -- 96/96 (baseline 96/96)
+  zocalo.WELL_WIDTH_M = 15.75  -- 96/96 (baseline 96/96)
+
+TIMEOUT: 0
+
+CRASH: 3
+  drum_ground.PATCH_A = 40  -- KeyError: (40, 0)
+  drum_ground.PATCH_Z = 40  -- KeyError: (0, 40)
+  interior.TRUSS_RADIUS_FRAC = 1.0625  -- TypeError: 'NoneType' object is not subscriptable
+
+GUARDED: 38
+
+41/192 constants are noticed by their own module's assertions
