@@ -1,6 +1,6 @@
 # Project State
 
-**Last updated:** 2026-07-28 · **Session 3d** — Zocalo reviewed, bay seams welded
+**Last updated:** 2026-07-28 · **Session 3e** — drum_ground: vacuous assertion replaced, cap slot closed
 
 ## Where we are
 
@@ -1273,20 +1273,70 @@ the seam-plane weld alone leaves 162/314/466, duplicate removal alone leaves 56/
 Suites: validate 28/28, budget 14/14, export_scene 24/24, zocalo 96/96, lod 94/94,
 interior 141/141, drum_ground 69/69, tram 44/44, kit OK.
 
+## Session 3e — drum_ground: a test that could not fail, and a slot round both ends
+
+Two of the four review findings against `station/drum_ground.py` fixed. Its repair agent never
+ran (its workflow died), so the findings were sitting in session 2y with evidence and nobody had
+acted on them.
+
+**1. The headline seam assertion could not fail.** It compared `sample(0.0, w)` against
+`sample(1.0, w)`, but every consumer inside `sample()` applies `u % 1.0` first — so the two calls
+are *the same call*, and the check was a value against itself. Confirmed by removing the angular
+wrap from `_value_noise`: that puts a genuine **3.295 m cliff** the full 2,586 m length of the
+drum at one angle, and the old metric still reported `0.000e+00` and still passed.
+
+Replaced with a **continuity** test across the seam — `sample(1-eps, w)` against `sample(eps, w)`
+— bounded at 5 cm rather than 1e-12, because two samples a real distance apart differ by however
+much the terrain legitimately varies over that distance, and demanding exact equality would be
+asserting the terrain is flat there. The new test catches the 3.295 m cliff, and catches a band
+boundary defect the old one missed too.
+
+**2. The ground did not reach the end caps.** It ran to the sector's z extent, but the cap's
+outermost course stands `ENDCAP_STEP_M` proud, so at the floor radius the cap plate sits beyond
+where the ground stopped — an annular slot **0.6 m** wide right round the drum at *both* ends.
+(The review measured 1.2 m; the session-2y cap rebuild, which made checker-plating a material
+group rather than 0.35 m of relief, had already halved it.)
+
+The old assertion could not see this **because it measured only one of the two surfaces**: it
+checked that the ground's *relief* faded to zero at z0/z1 and never looked at `drum_end_cap()`.
+A surface can arrive perfectly flat and still stop short.
+
+Fixed by deriving the ground's extent from `cap_plane_z()`, which reads the cap's own constants
+rather than restating them — so a change to the cap's course depth moves the ground with it
+instead of silently reopening the slot. Ground now spans **3837.8 … 6426.2** against the sector's
+3839 … 6425, and the measured gap at the floor-radius ring is **0.0000 m** at both ends.
+
+Both fixes verified load-bearing by reverting each: the extent revert reports "0.600 m short of
+the cap plate" at both ends.
+
+**Still open on this module** — findings 3 and 4 from the same review, both about tag widths
+being bound to the LOD ramp width rather than to the real feature width:
+
+- `sample()` tags a settlement cell "avenue" within `_step_ramp_m()/2` = 15.6 m of a block edge,
+  giving a **31.2 m avenue** on 62.4 × 64.6 m blocks — point-sampled, avenue is 16.17% of the
+  drum against settlement's 4.67%, so the settlement band is **62% street**.
+- `_road_mask` ramps over 31.2 m beyond the 10 m half-width, so trunk roads tag **51.2 m** wide
+  against a stated `TRUNK_ROAD_W_M = 20`.
+
+The ramp is a constraint the LOD imposes on how sharply the surface may step; the *kind tag*
+should follow the real feature width, with a separate verge kind for the ramp.
+
+Suites: validate 28/28, budget 14/14, drum_ground 71/71, zocalo 96/96, interior 141/141,
+lod 94/94, tram 44/44.
+
 ## Next session — start here
 
 The drum's **structure** is complete: shell, both end caps, three guideway trusses with the
 habitat's lighting, three spokes, a correct hollow ring model, and its own performance gate.
 What follows is in rough priority order.
 
-1. **The drum's ground.** Currently four flat land-use bands — enough to judge composition, not
-   enough to stand on. The budget already settles the approach: 0.06 tri/m² of headroom across
-   4.5 million m² means a **heightfield with distance LOD**, not per-object geometry. Fields,
-   roads and settlements are displacement and texture; only what a person can walk up to gets
-   mesh. This is the largest single piece of work remaining on the drum.
-2. **The tram.** `33a`/`34b` show cars slung beneath the truss bottom chord and `35a` gives the
-   **car interior** — seats, windscreen, stanchions, wall panels — which is unusually good
-   reference for a vehicle. The guideway exists; the vehicle does not.
+1. ~~**The drum's ground**~~ — **built** (`drum_ground.py`, 71/71, heightfield with a five-level
+   LOD chain). Two review findings remain: the avenue and trunk-road **tag widths are bound to
+   the LOD ramp width**, so streets render 2.5× too wide and the settlement band comes out 62%
+   street. See session 3e.
+2. ~~**The tram**~~ — **built** (`tram.py`, 44/44). Two things remain: its "measured proportion"
+   assertions are algebraic identities that never touch the built mesh, and the car length is
+   disputed between two authority-1 frames — see **C-008**.
 3. ~~**Streaming cells**~~ — **done, session 2w.** `ring_cells()` / `deck_cell()` emit them and
    the seam is asserted vertex-for-vertex, wrap-around included. What is *not* done: a cell
    **manifest** the engine can stream from, and cell-to-cell **junction** placement (a cell is

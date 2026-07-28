@@ -388,9 +388,33 @@ def configure(schema=None, profile=None, sector=None):
     if sector is None:
         sector = it.drum_sector(schema, profile)
     FLOOR_R = it.sector_radius(schema, profile, sector)
-    ex = schema["sectors"]["extents_m"][sector]
-    Z0, Z1 = float(ex["z0"]), float(ex["z1"])
+    # The ground runs to the CAP SURFACE, not to the sector extent.
+    #
+    # It used to stop at the sector's z0/z1, which left an annular slot 0.6 m
+    # wide right round the drum at both ends -- the cap's outermost course
+    # stands ENDCAP_STEP_M proud, so its plate at the floor radius sits that far
+    # beyond where the ground stopped. The old assertion could not see this: it
+    # checked only that the ground's RELIEF faded to zero at z0/z1 and never
+    # looked at drum_end_cap() at all, so a gap between two surfaces was scored
+    # by measuring only one of them.
+    Z0 = cap_plane_z(schema, profile, sector, "aft")
+    Z1 = cap_plane_z(schema, profile, sector, "fore")
     return schema, profile, sector
+
+
+def cap_plane_z(schema, profile, sector, end):
+    """Axial position of the end cap's surface at the drum floor radius.
+
+    Derived from `interior.drum_end_cap`'s own constants rather than restated,
+    so a change to the cap's course depth moves the ground with it instead of
+    silently reopening the slot. The cap's dish is zero at u = 1.0 by
+    construction -- ENDCAP_DISH * r * (1 - u^2) -- so at the floor radius the
+    only offset is the outermost course's step.
+    """
+    ex = schema["sectors"]["extents_m"][sector]
+    z_base = float(ex["z1"] if end == "fore" else ex["z0"])
+    out = 1.0 if end == "fore" else -1.0
+    return z_base + out * it.ENDCAP_STEP_M
 
 
 # ---------------------------------------------------------------------------
@@ -1124,12 +1148,23 @@ def _selftest():
     # A non-periodic noise lattice puts a cliff the full 2,586 m length of the
     # drum at one angle, which no render catches unless it happens to point
     # there. Assert the field itself is periodic, not just the mesh.
+    # This compared sample(0.0, w) against sample(1.0, w) and COULD NOT FAIL:
+    # every consumer inside sample() applies `u % 1.0` first, so the two calls
+    # are the same call and the check was a value against itself. Proven by
+    # monkeypatching the angular wrap out of _value_noise, which puts a genuine
+    # 3.295 m cliff at u=0 -- the old metric still reported 0.000e+00 and still
+    # passed. Continuity across the seam is the property that matters, so
+    # sample either SIDE of it.
+    eps = 1.0 / (CELLS_A * 64.0)
     worst = 0.0
     for k in range(64):
         w = k / 64.0
-        worst = max(worst, abs(sample(0.0, w)[0] - sample(1.0, w)[0]))
-    check("the terrain field is periodic around the circumference",
-          worst < 1e-12, f"max seam step {worst:.3e} m")
+        worst = max(worst, abs(sample(1.0 - eps, w)[0] - sample(eps, w)[0]))
+    # A metre-scale bound, not 1e-12: two samples a real distance apart differ
+    # by however much the terrain legitimately varies over that distance, and
+    # demanding exact equality would be asserting the terrain is flat there.
+    check("the terrain field is continuous across the 0/360 seam",
+          worst < 0.05, f"max seam step {worst:.4f} m over {eps:.2e} of a turn")
 
     # And the mesh: patch 13 and patch 0 must share their edge vertex for
     # vertex. This is the wrap seam `range(n)` never visits.
@@ -1157,8 +1192,24 @@ def _selftest():
     for k in range(64):
         u = k / 64.0
         worst = max(worst, abs(sample(u, 0.0)[0]), abs(sample(u, 1.0)[0]))
-    check("ground meets both end caps at the floor radius", worst < 1e-9,
+    check("ground arrives at the caps with no relief", worst < 1e-9,
           f"max relief at the caps {worst:.3e} m")
+
+    # And it must actually REACH them. The check above measures only the
+    # ground; a surface can arrive perfectly flat and still stop short. Measure
+    # the distance to the cap's own triangles.
+    schema_c, profile_c = it.load()
+    sec_c = it.drum_sector(schema_c, profile_c)
+    for end, w_edge in (("aft", 0.0), ("fore", 1.0)):
+        cv, ct, _cm = it.drum_end_cap(schema_c, profile_c, sec_c, end)
+        # Cap vertices sitting on the floor-radius ring.
+        ring = [q for q in cv
+                if abs(math.hypot(q[0], q[1]) - FLOOR_R) < 0.05]
+        gz = surface_point(0.0, w_edge)[2] if callable(
+            globals().get("surface_point")) else (Z0 if w_edge == 0.0 else Z1)
+        gap = min(abs(q[2] - gz) for q in ring) if ring else float("inf")
+        check(f"ground reaches the {end} cap",
+              gap < 0.01, f"{gap:.3f} m short of the cap plate")
 
     # Continuity across land-use band boundaries. `drum_interior()` steps
     # between bands with no wall between them; the heightfield must not, or the
