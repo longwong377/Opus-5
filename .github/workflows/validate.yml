@@ -92,6 +92,7 @@ jobs:
           python3 docking_bay.py
           python3 signage.py
           python3 command_control.py
+          python3 council_chamber.py
 
       - name: Streaming cell manifest
         run: |

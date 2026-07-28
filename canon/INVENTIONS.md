@@ -1063,3 +1063,30 @@ found by a test rather than by looking:
 The assertion that caught (4) was itself wrong first time round: it required the glass to stand
 *proud of* the bulkhead, which fails a correctly glazed window. Glass sits **in** an opening. It
 now checks that the glazing fits the aperture and lies within the bulkhead's depth.
+
+---
+
+## INV-025 — Council chamber dimensions and seat count
+
+**Invented:** The 4.6 m bench radius over a 150° arc, the 1.12 m top height, the fin and
+medallion geometry, and `SEATS = 5`.
+
+**Why sourced where it is:** `council chambers.webp` (authority 1) gives the curved bench with a
+**perforated mesh front panel lit from within**, high-backed **open lattice** chairs, a radiating
+fan of fins, a spoked medallion, a **polygonal mosaic** floor, and a speaking-position fan on the
+bench top. Green sector placement is authority 3 (`other map.png` Green rosette).
+
+**The seat count is a LOWER BOUND, not a number.** Five delegations are visible and the arc runs
+past both edges of the frame, so five is what can be counted, not what is there. `SEATS` is a
+parameter and the self-test asserts only `>= 5`. Asserting equality would be asserting something
+the reference does not say. A wider shot or an authority-3 plan would fix it; neither is held.
+
+**Overturned by:** any wider shot of the chamber.
+
+**A winding lesson worth recording, because I got it wrong in both directions.** The medallion's
+spokes and its concentric rings are built in the same plane and face the same way, but their
+quads are wound differently — spokes go radial-then-tangential, rings go tangential-then-radial,
+which flips the cross product. 264 triangles were facing the wall; I "fixed" the spokes as well
+as the rings and broke 48 that had been correct. **Two orientations in one function, and assuming
+they shared one cost a round trip.** The assertion caught both the original fault and my
+overcorrection, which is the argument for asserting orientation per group rather than per module.
