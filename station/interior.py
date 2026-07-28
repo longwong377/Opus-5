@@ -203,8 +203,22 @@ def drum_sector(schema, profile):
     return best
 
 
-# The heaviest deck a person may be housed or rostered on. Above this a deck is
-# still built and still pressurised -- it is plant, not habitat. INV-027.
+# The heaviest deck a person may be ASSIGNED to -- quarters, a roster, a shop.
+# Above this a deck is still built, still pressurised and still reachable; what
+# it is not is somewhere the station bills as accommodation. INV-027.
+#
+# "Plant" therefore does not mean empty, and reading it that way would delete
+# the most characterful population on the station. `LOCATIONS.md` puts
+# Downbelow "near the outer hull, around the waste recycling system, the air
+# compressors and the water reclamation facility" -- outermost rings, highest
+# gravity in the sector, "corridors and chambers, not rooms" -- and fills it
+# with Lurkers, people who ran out of money and cannot buy passage home.
+#
+# Those are the same decks. The geometry says the outer stack is too heavy to
+# billet anyone on; canon says the people with no billet live in the outer
+# stack among the machinery. Two independent derivations landing on one volume,
+# and the second explains why the worst address on the station is the worst
+# address on the station. `use == "plant"` means UNASSIGNED, not uninhabited.
 HABITABLE_G_MAX = 1.25
 
 
@@ -337,6 +351,10 @@ def decks_in_ring(schema, profile, sector, ring_index, pitch=DECK_PITCH_M):
             # machinery walked through on a catwalk, not corridor, quarters and
             # signage. Tagged here so the manifest and the budget can tell them
             # apart rather than pricing 34 decks of Grey as habitat.
+            #
+            # "plant" is UNASSIGNED, not uninhabited -- it is where Downbelow
+            # is. The NPC layer reads this to decide who may be placed: no
+            # resident is billeted here, and lurkers are placed nowhere else.
             "use": "habitat" if floor_r <= r_hab else "plant",
         })
     return out
