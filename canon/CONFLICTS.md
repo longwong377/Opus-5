@@ -22,6 +22,7 @@ further. **Do not act on a heading without checking here.**
 | C-005 Contract 5 scale | Resolved, source degraded | Topology only, never dimensions |
 | C-006 Miller drawing vs table | **RESOLVED** | Table wins on dimensions, drawing on ordering |
 | C-007 radiator arrangement | **RESOLVED** | Six coplanar blades, not a radial array |
+| C-008 tram car length | Open, non-blocking | Two authority-1 frames differ 3–4×. `34b` gives ~96 m and has the only absolute scale; `33a` is broadside and gives ~a quarter of that. Built to `34b`; see INV-017 |
 
 **Both blocking conflicts have been reduced to a single question each.** Neither is a broad
 unknown any more; each needs one specific piece of evidence:

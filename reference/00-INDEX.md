@@ -3170,3 +3170,25 @@ C-004. That is correct handling, not a miscatalogue.
 Two files already flagged elsewhere and repeated here so they are not lost: **`Galen.jpg` is
 *Crusade*** (out of scope, not merely out of era) and **`Doug's Dugout.webp` contains a real ZIMA
 product placement** which must not be reproduced.
+
+## Session 3b upload — `10-interiors-generic-kit/`
+
+Eight files. **Three are duplicates of material already held** and are flagged here so no session
+re-mines them expecting new information:
+
+| file | status |
+|---|---|
+| `more hallway.jpg` | **NEW**, authority 1. Concourse-class volume: large elliptical ribs, an EarthForce officer standing in a circular downlight pool (the project's only direct absolute length in an interior — 1.57 m), wall screens, dark blue-grey palette |
+| `more hallways.jpg` | **NEW**, authority 1. Service-class corridor: overhead truss, vertical light tubes, chequered lit strip in deck grating running to the vanishing point, warm backlit panels, litter on the deck |
+| `more zocalo.png` | **NEW**, authority 1. The Zocalo — neon sign, upper gallery with pedestrians, pale tiled deck, pedestal café tables, tubular "5" chairs, vendor stalls with awnings, mixed-species crowd |
+| `garden more.jpg` | **NEW**, authority 1 |
+| `gardens or greenery.jpg` | **NEW**, authority 1 |
+| `transport.jpg` | **DUPLICATE** of `03-sector-blue/Babylon_5_2-22_34b.jpg`, MD5 `e2bf2216d53aa9ba89342267db3f92f6`. Looked like it might break C-008 and cannot — same evidence, different filename |
+| `central corridor.webp` | **DUPLICATE** of `09-garden-core-and-transit/central corridor.webp` |
+| `grey level 1.webp` | **DUPLICATE** of `07-sector-grey/grey level 1.webp` |
+
+This upload closed the project's largest reference gap. Before it,
+`10-interiors-generic-kit/` was **empty**, and the corridor kit — 210 decks and 2,330 streaming
+cells, the large majority of walkable space — was extrapolated from proportions in a single frame
+of one sector. The three new interior frames establish that there are **at least three corridor
+classes**, not one; see INV-020.
