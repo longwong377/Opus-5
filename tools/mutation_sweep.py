@@ -59,6 +59,14 @@ MODULES = (
     "docking_bay", "signage", "command_control", "council_chamber",
 )
 
+# The NPC layer lives in its own package and its modules import each other by
+# bare name, so they only resolve with `station/npc` on the path and as cwd.
+NPC_MODULES = ("body", "costume", "crowd", "animation", "navigation")
+
+
+def _dir_for(mod):
+    return os.path.join(STATION, "npc") if mod in NPC_MODULES else STATION
+
 # Constants that are knobs on the harness rather than facts about the station.
 # Perturbing them changes how finely something is sampled, not what it is, so
 # an unchanged verdict is the correct answer rather than a finding. Every entry
@@ -92,7 +100,7 @@ def _worker(payload):
         "    print(json.dumps({'ok':-1,'total':-1,'crash':f'{type(e).__name__}: {e}'}))\n"
     )
     try:
-        r = subprocess.run([sys.executable, "-c", driver], cwd=STATION,
+        r = subprocess.run([sys.executable, "-c", driver], cwd=_dir_for(mod),
                            capture_output=True, text=True, timeout=timeout)
     except subprocess.TimeoutExpired:
         return dict(module=mod, const=const, value=value, verdict="TIMEOUT",
@@ -116,9 +124,10 @@ def baseline(mod, timeout):
 
 
 def constants(mod):
-    sys.path.insert(0, STATION)
+    d = _dir_for(mod)
+    sys.path.insert(0, d)
     cwd = os.getcwd()
-    os.chdir(STATION)
+    os.chdir(d)
     try:
         M = importlib.import_module(mod)
     finally:
@@ -153,7 +162,7 @@ def main():
     ap.add_argument("--jobs", type=int, default=max(1, (os.cpu_count() or 2) - 1))
     args = ap.parse_args()
 
-    mods = args.modules or list(MODULES)
+    mods = args.modules or list(MODULES) + list(NPC_MODULES)
     t0 = time.time()
 
     print(f"baselines for {len(mods)} modules")
