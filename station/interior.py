@@ -1199,6 +1199,25 @@ def ring_cells(schema, profile, sector, ring_index, deck_index=0, margin=1.5):
     cw = kit.PROVISIONAL["corridor_width_m"]
     want = streaming_cell_deg(r, cw, margin)
     n = max(1, int(360.0 // want))
+    # Snap UP to a divisor of 36, so every cell spans a whole number of 10
+    # degree regions.
+    #
+    # The gazetteer research (docs/gazetteer/LOCATIONS.md section 1) turned up a
+    # reading in which the number in "Grey 17" is not a radial level at all but
+    # one of 36 angular regions of 10 degrees each. That source is authority 4
+    # and contradicts itself, so nothing here adopts it -- C-004 stays open. But
+    # it costs NOTHING to keep the option, and retrofitting it after cells carry
+    # authored content would be expensive.
+    #
+    # Snapping UP rather than down is what makes it free. Down was affordable
+    # but barely: Grey ring 2 landed at 59,040 triangles against the 60,000
+    # cell gate, 98% with structure alone and nothing left for props, signage or
+    # NPCs. Up gives SMALLER cells, so the worst cell in the station stays where
+    # it was and Grey ring 2 drops to 39,360. Every cell is still wider than its
+    # own sight line, which is the property that actually matters; the margin
+    # falls from 1.5 to between 1.12 and 1.68, which is slack rather than a
+    # guarantee.
+    n = min([d for d in (1, 2, 3, 4, 6, 9, 12, 18, 36) if d >= n] or [36])
     cell_deg = 360.0 / n
     return {
         "sector": sector,
@@ -1765,6 +1784,21 @@ def _selftest():
               rep["identical"] and rep["left_verts"] > 0,
               f"{rep['left_verts']} vs {rep['right_verts']} verts; "
               f"missing {rep['missing_from_right']}{rep['missing_from_left']}")
+
+    # Every cell spans a whole number of 10 degree regions -- see ring_cells().
+    # Cheap to keep, expensive to retrofit, and it does not commit us to the
+    # reading that motivated it: C-004 is untouched either way.
+    for sec in schema["sectors"]["extents_m"]:
+        for i, r in enumerate(ring_radii(schema, profile, sec)):
+            if r["kind"] != "deck_stack":
+                continue
+            pl = ring_cells(schema, profile, sec, i)
+            check(f"{sec} {r['id']}: cell count divides 36",
+                  36 % pl["cells"] == 0,
+                  f"{pl['cells']} cells of {pl['cell_deg']:.2f} deg")
+            check(f"{sec} {r['id']}: cell spans whole 10 deg regions",
+                  abs(pl["cell_deg"] / 10.0 - round(pl["cell_deg"] / 10.0)) < 1e-9,
+                  f"{pl['cell_deg']:.2f} deg")
 
     # The wrap-around seam is the one a loop over range(n) never tests, and it
     # is the seam where a floating-point error in 360/n would show up.

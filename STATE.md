@@ -1,6 +1,6 @@
 # Project State
 
-**Last updated:** 2026-07-28 · **Session 3f** — street widths decoupled from the LOD ramp
+**Last updated:** 2026-07-28 · **Session 3g** — C-004 third reading; cells aligned to 10° regions
 
 ## Where we are
 
@@ -1358,6 +1358,52 @@ comparing against a remembered number, and are verified load-bearing: reinstatin
 tag reports **76.9% against 29.0% predicted**.
 
 `drum_ground.py`: **74/74**.
+
+## Session 3g — a third reading of C-004, and cell counts aligned to it for free
+
+Read the gazetteer's `LOCATIONS.md` (580 lines, 212 rows, era-locked, every authority-4 row
+labelled and the blocked-egress caveat stated up front). Its §1 is the most consequential thing
+the research turned up.
+
+**C-004 may have been asking the wrong question for four sessions.** It has been framed as "which
+ring is level 1". One source says the number in `Grey 17` is not a radial level at all but one of
+**36 angular regions of 10° each**. That would explain C-004's standing puzzle — *no source we
+hold numbers a ring* — by the simplest available route: because rings are not what the numbers
+index.
+
+**Not adopted, and C-004 stays OPEN.** Authority 4 cannot close what two authority-3 sheets could
+not; the same wiki contradicts itself on the same page; and `Brown-57` breaks *both* readings
+(57 > 36 regions, and > the 30 levels the same wiki gives Grey). Recorded in `CONFLICTS.md` so a
+future session finds it already weighed rather than rediscovering it.
+
+**But the option was taken, because it turned out to be free.** `ring_cells()` now snaps every
+cell count **up** to a divisor of 36, so a cell always spans a whole number of 10° regions.
+
+| | snap down | snap up |
+|---|---|---|
+| worst cell | **59,040** tri — 98% of the gate, structure alone | **48,128**, unchanged |
+| Grey ring 2 | 59,040 | **39,360** |
+| cells under their own sight line | none | none |
+
+Down was affordable but left nothing for props, signage or NPCs. Up gives *smaller* cells, so it
+is strictly cheaper. Station total: **2,330 → 2,646 cells**, 80.6 → **80.5 M triangles**. If the
+angular reading is wrong, nothing has to be undone.
+
+Cost: the cell-length-over-sight-line margin falls from a designed 1.5 to **1.12–1.68**. That is
+slack rather than the guarantee; the guarantee is that a cell exceeds its own sight line, and it
+is now asserted per ring. `interior.py`: **175/175** (34 new), and removing the snap fails 24.
+
+### The gazetteer's other findings, recorded but not yet acted on
+
+- **X-1** may *reconcile* C-002 rather than contradict it: "four cobra bay support arms" × 7 bays
+  = the 28 of Contract 5. Does not close 24-vs-28.
+- **X-2** a fan source puts the Alien Sector between the docking bays and Red; the authority-3
+  schematic puts it aft of the drum. Authority 3 wins.
+- **X-3** a fan sector ordering agrees with `other map.png` *exactly*, including Yellow as the
+  non-rotating aft half — **but it is very likely an echo of the same print sources, not an
+  independent witness.** C-003 stays open.
+- **X-6** is a rare authority-3/4 cross-check that *holds*: medical distributed across Red, Green
+  and Blue with the primary Medlab in Blue; law and security in Red.
 
 ## Next session — start here
 

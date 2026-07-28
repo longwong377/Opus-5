@@ -1560,3 +1560,54 @@ The same batch's `central corridor.webp` and `grey level 1.webp` are likewise du
 already held in `09-garden-core-and-transit/` and `07-sector-grey/`. The genuinely new files were
 `more hallway.jpg`, `more hallways.jpg`, `more zocalo.png`, `garden more.jpg` and
 `gardens or greenery.jpg`.
+
+
+---
+
+## C-004 — a third reading, from the gazetteer research
+
+**Status: C-004 stays OPEN and BLOCKING. This adds a reading, it does not close one.**
+
+C-004 has been framed for four sessions as *"which ring is level 1"* — outermost-in or
+innermost-out. `docs/gazetteer/LOCATIONS.md` §1 turned up a third possibility that had not been
+on the list, and it deserves to be here rather than only in a research document.
+
+> "These sectors were divided up into **36 regions, each region consisting of a 10-degree arc**
+> and were numbered; Blue 01 to Blue 36 and Red 01 to Red 36 for example."
+> — **authority 4**, babylon5.fandom.com/wiki/Babylon_5
+
+**If that is right, the number in "Grey 17" is an angular segment, not a radial level at all.**
+
+### Why it is not adopted
+
+- **Authority 4 cannot close what two authority-3 sheets could not.**
+- **The same wiki contradicts itself** on the same page, also describing the placards as applying
+  "a **level** / area name (i.e. Blue-3, Red-5, Green-2, Brown-57, Grey-16)".
+- **`Brown-57` breaks both readings**: 57 exceeds 36 regions, and exceeds the 30 levels the same
+  wiki gives Grey.
+- The research was read through **search summaries, not the pages** — this session's egress
+  blocked direct fetches — and a summary can drop a qualifier.
+
+### Why it is nevertheless worth recording
+
+It would explain C-004's standing puzzle — *no source we hold numbers a ring* — by the simplest
+route available: **because rings may not be what the numbers index.**
+
+### What was done about it, and why that is not a commitment
+
+`station/interior.py::ring_cells()` now snaps every streaming-cell count **up** to a divisor of
+36, so a cell always spans a whole number of 10° regions. Measured before choosing:
+
+| | snap down | snap up |
+|---|---|---|
+| worst cell | **59,040** tri — 98% of the 60,000 gate, structure alone | **48,128** tri, unchanged |
+| Grey ring 2 | 59,040 | **39,360** |
+| cells narrower than their own sight line | none | none |
+
+So the alignment was taken in the direction that makes it **free**. Station total moved 2,330 →
+2,646 cells and 80.6 → 80.5 M triangles. Nothing about the numbering is decided by this; if the
+angular reading turns out to be wrong, nothing has to be undone.
+
+The margin of cell length over sight line falls from a designed 1.5 to between **1.12 and 1.68**.
+That is slack, not a guarantee — the guarantee is that a cell exceeds its own sight line, and
+that is asserted per ring.
