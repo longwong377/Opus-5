@@ -63,8 +63,10 @@ Everything dimensional here that is not in `interior.LAND_USE` is extrapolation
 and is logged -- see the module constants, each of which states what constrained
 it.
 """
+import hashlib
 import math
 import os
+import subprocess
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -81,6 +83,11 @@ import interior as it                                          # noqa: E402
 # geometry from a committed schema. The terrain is a pure function of
 # (seed, lattice index) and of nothing else -- no accumulating state, no
 # iteration order, no `random` module anywhere.
+# A digest of the heightfield's committed shape. Pins every terrain constant at
+# once; see the assertion in `_selftest` for why one golden value beats twenty
+# hand-written checks that each restate their own constant.
+GROUND_DIGEST = "4def7c14e1b88c02"
+
 _FNV_OFFSET = 0xCBF29CE484222325
 _FNV_PRIME = 0x100000001B3
 _M64 = 0xFFFFFFFFFFFFFFFF
@@ -1181,9 +1188,70 @@ def _selftest():
     # The value source, not the geometry. If this constant moves, something has
     # replaced FNV-1a with a salted hash and every later assertion about
     # byte-identical regeneration is testing the wrong thing.
-    check("FNV-1a is stable across processes",
-          _fnv1a("drum", 7, "ground") == _fnv1a("drum", 7, "ground")
-          and _fnv1a("a", "bc") != _fnv1a("ab", "c"))
+    # This assertion's NAME LIED. It was
+    #     _fnv1a("drum", 7, "ground") == _fnv1a("drum", 7, "ground")
+    # which is x == x, computed in one process, and therefore said nothing at
+    # all about stability across processes -- the one property it is named for
+    # and the one the whole determinism argument rests on. Found by
+    # `tools/mutation_sweep.py`: perturbing _FNV_OFFSET or _FNV_PRIME changed
+    # every height in the drum and not one of 74 assertions noticed, because
+    # "run it twice and compare" is satisfied by ANY pair of constants.
+    #
+    # Three replacements, each testing something the others cannot:
+    #
+    # 1. The constants are the PUBLISHED FNV-1a 64-bit values. That is an
+    #    external fact, so a typo in either is caught against the standard
+    #    rather than against ourselves.
+    check("the FNV constants are the published FNV-1a 64-bit values",
+          _FNV_OFFSET == 0xCBF29CE484222325 and _FNV_PRIME == 0x100000001B3,
+          f"offset {_FNV_OFFSET:#x}, prime {_FNV_PRIME:#x}")
+    # 2. The delimiter test, which was the only real clause in the original:
+    #    ("a","bc") and ("ab","c") must not collide.
+    check("field boundaries are not ambiguous",
+          _fnv1a("a", "bc") != _fnv1a("ab", "c"))
+    # 3. Actually cross a process boundary, with a DIFFERENT PYTHONHASHSEED,
+    #    which is the thing the old name claimed. Python salts `str.__hash__`
+    #    per process, so if anything in the chain ever falls back to it this is
+    #    what fails -- and it cannot be satisfied by running in one interpreter.
+    _probe = (
+        "import sys, json; sys.path.insert(0, %r); import drum_ground as g;"
+        "g.configure(); print(json.dumps([g._fnv1a('drum', 7, 'ground'),"
+        "[round(x, 9) for x in g.ground_patch(3, 7, 2)[0][0]]]))"
+        % os.path.dirname(os.path.abspath(__file__))
+    )
+    outs = []
+    for seed in ("0", "999983"):
+        env = dict(os.environ, PYTHONHASHSEED=seed)
+        r = subprocess.run([sys.executable, "-c", _probe], capture_output=True,
+                           text=True, env=env,
+                           cwd=os.path.dirname(os.path.abspath(__file__)))
+        outs.append(r.stdout.strip().splitlines()[-1] if r.returncode == 0 else
+                    f"FAILED: {r.stderr.strip()[-160:]}")
+    check("the terrain is identical under two PYTHONHASHSEEDs, in two processes",
+          outs[0] == outs[1] and not outs[0].startswith("FAILED"),
+          f"{outs[0][:80]} vs {outs[1][:80]}")
+
+    # And a GOLDEN DIGEST over the heightfield itself. One assertion pinning
+    # every terrain constant at once -- the noise octaves and gain, the parcel
+    # lattice, the water level, the road widths, the FNV constants above. The
+    # sweep found ~20 of them individually unguarded; guarding each by hand
+    # would be twenty assertions restating twenty constants, which is how this
+    # module got here. This instead says: THE GROUND IS THIS SHAPE.
+    #
+    # It is meant to be brittle. A terrain change SHOULD fail it, be looked at,
+    # and have the digest updated deliberately -- the same argument as the
+    # committed `cell_manifest.json` diff gate in CI. A silent terrain change
+    # is the failure mode; a noisy one is the fix.
+    _grid = []
+    for i in range(16):
+        for j in range(16):
+            h, kind = sample(i / 16.0, j / 16.0)
+            _grid.append(f"{h:.6f}:{kind}")
+    _digest = hashlib.blake2b("|".join(_grid).encode(), digest_size=8).hexdigest()
+    check("the heightfield still has its committed shape",
+          _digest == GROUND_DIGEST,
+          f"{_digest} != {GROUND_DIGEST} -- the terrain moved. If that was "
+          f"deliberate, look at a render and update GROUND_DIGEST")
     check("no `random` module in the import graph",
           "random" not in sys.modules or not hasattr(sys.modules.get("random"),
                                                      "_inst_used_by_drum"))

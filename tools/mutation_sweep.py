@@ -28,6 +28,17 @@ WHAT A FINDING MEANS -- and it is not always a defect:
               because a crash usually means an unvalidated input rather than a
               deliberate check.
 
+KNOWN FALSE POSITIVE, and it bit the first run. A constant that is OVERWRITTEN
+before it is read -- typically a module-level default filled in by a
+`configure()` that reads the schema -- is reported UNGUARDED, because the
+mutation is neutralised rather than caught. `drum_ground.FLOOR_R`, `Z0` and `Z1`
+are all of this kind: the module takes them from `interior` on every call and
+its docstring says "never from a constant here". Those three needed no fix and
+a session that "fixed" them would have been undoing correctness-by-construction.
+So before acting on an UNGUARDED verdict, check whether anything assigns the
+name at runtime. The tool cannot see through a re-initialisation and does not
+pretend to.
+
 The sweep is deliberately NOT a CI gate. It costs about fifty minutes of CPU
 and its output needs judgement, both of which are wrong for a per-push hook.
 Run it when a module's assertions have been rewritten, or when a suite has
