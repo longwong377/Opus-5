@@ -238,6 +238,26 @@ RIM_ROAD_W_M = 16.0
 # cutting across a field.
 TRUNK_ROAD_W_M = 20.0
 
+# Street width between settlement blocks. SEPARATE from `_step_ramp_m()`, and
+# that separation is the point: the ramp is a constraint the LOD imposes on how
+# sharply the surface may step, and it was being used as the street's width as
+# well. That made avenues 31.2 m wide on 62.4 m blocks -- point-sampled over the
+# lod0 lattice, avenue came out 16.17% of the whole drum against settlement's
+# 4.67%, so the settlement band was 62% street. The same conflation made trunk
+# roads tag 51.2 m wide against the 20 m above.
+#
+# A carriageway now has a FLAT part at its real width and a VERGE ramped over
+# one stride-8 cell either side. The geometry still ramps over 31.2 m, because
+# it must; only the kind tag stops pretending the ramp is roadway. -- INV-021
+AVENUE_W_M = 10.0
+# The made shoulder either side of a carriageway or a street: kerb, gutter,
+# the strip a verge material covers. Its own number, and deliberately NOT the
+# LOD ramp -- the first attempt at this fix set the verge tag to one full ramp
+# (31.2 m) and, since a settlement block is only 62.4 m across, tagged EVERY
+# settlement cell as either avenue or verge. Plain settlement disappeared
+# entirely. Both widths have to be real widths.
+VERGE_W_M = 4.0
+
 # ---------------------------------------------------------------------------
 # The step rule, which the first version of this module got wrong
 # ---------------------------------------------------------------------------
@@ -494,17 +514,24 @@ def _road_mask(u, w):
         cut to untouched field over its own half-width is a step of whatever
         relief it removed, and the terrace or hedge it cuts through is exactly
         the relief that is largest.
+
+        Returns (strength, zone) where zone is "road", "verge" or None.
+        Strength is a GEOMETRY weight and stays ramped over the full stride-8
+        cell, because the LOD requires that. The zone is what the KIND TAG
+        follows, and it stops at the made width -- tagging the whole ramp as
+        roadway is what made trunk roads read 51.2 m wide against a stated 20.
         """
         if d <= half_width:
-            return 1.0
+            return 1.0, "road"
         if d >= half_width + ramp:
-            return 0.0
-        return 1.0 - _smoothstep((d - half_width) / ramp)
+            return 0.0, None
+        st = 1.0 - _smoothstep((d - half_width) / ramp)
+        return st, ("verge" if d <= half_width + VERGE_W_M else None)
 
     for z_ring in (Z0 + RIM_ROAD_INSET_M, Z1 - RIM_ROAD_INSET_M):
-        s = profile(abs(z - z_ring), RIM_ROAD_W_M / 2.0)
+        s, zone = profile(abs(z - z_ring), RIM_ROAD_W_M / 2.0)
         if s > best:
-            best, kind = s, "ring"
+            best, kind = s, ("ring" if zone == "road" else zone)
 
     bands = _bands()
     for i, (lo, _hi, name, _relief) in enumerate(bands):
@@ -514,9 +541,9 @@ def _road_mask(u, w):
         if name == "water" or bands[i - 1][2] == "water":
             continue
         d = abs(((u - lo + 0.5) % 1.0) - 0.5) * circ
-        s = profile(d, TRUNK_ROAD_W_M / 2.0)
+        s, zone = profile(d, TRUNK_ROAD_W_M / 2.0)
         if s > best:
-            best, kind = s, "trunk"
+            best, kind = s, ("trunk" if zone == "road" else zone)
     return best, kind
 
 
@@ -578,8 +605,10 @@ def sample(u, w):
     elif kind == "settlement":
         _p, d_edge, _c = _parcel(u, w, CELLS_A // BLOCK_CELLS,
                                  CELLS_Z // BLOCK_CELLS, 0.0, SEED + "/block")
-        if d_edge < _step_ramp_m() / 2.0:
+        if d_edge < AVENUE_W_M / 2.0:
             kind = "avenue"
+        elif d_edge < AVENUE_W_M / 2.0 + VERGE_W_M:
+            kind = "verge"
 
     # Water is clamped AFTER blending, so the shoreline follows the blended
     # ground rather than the band boundary. A lake whose edge is a straight line
@@ -603,8 +632,15 @@ def sample(u, w):
         base = sum(wt * (relief + _band_relief(name, u, w, roadbed=True))
                    for name, relief, wt in weights)
         h = h * (1.0 - strength) + base * strength
-        if strength > 0.5:
-            kind = "road" if road_kind == "trunk" else "ring_road"
+        # Only the made surface renames the ground. Beyond it the road is still
+        # shaping the height -- that is what `strength` is for -- but the
+        # material stays whatever band the road is cut into.
+        if road_kind == "trunk":
+            kind = "road"
+        elif road_kind == "ring":
+            kind = "ring_road"
+        elif road_kind == "verge":
+            kind = "verge"
 
     h *= fade
     if fade < 1.0 and kind not in ("road", "ring_road"):
@@ -637,13 +673,19 @@ def _band_relief(name, u, w, roadbed=False):
         # carries is the podium level and the streets between blocks, which is
         # what makes the band read as rectilinear at distance instead of
         # dissolving into the arable noise.
-        avenue_w = 2.0 * _step_ramp_m()
+        avenue_w = AVENUE_W_M
         plateau, d_edge, _cell = _parcel(u, w, CELLS_A // BLOCK_CELLS,
                                          CELLS_Z // BLOCK_CELLS, 0.0,
                                          SEED + "/block")
         h = PODIUM_STEP_M * (plateau + 1.0) / 2.0
-        if not roadbed and d_edge < avenue_w / 2.0:
-            h -= AVENUE_CUT_M * (1.0 - _smoothstep(d_edge / (avenue_w / 2.0)))
+        # Flat trench at the street's own width, then ramped out over one
+        # stride-8 cell -- the same shape as a road, and for the same reason.
+        if not roadbed:
+            half, ramp = avenue_w / 2.0, _step_ramp_m()
+            if d_edge <= half:
+                h -= AVENUE_CUT_M
+            elif d_edge < half + ramp:
+                h -= AVENUE_CUT_M * (1.0 - _smoothstep((d_edge - half) / ramp))
         return h
 
     if name == "water":
@@ -721,6 +763,12 @@ _KIND_GROUP = {
     **{f"arable{i}": f"ground_arable_{i}" for i in range(CROPS)},
     "hedge": "ground_hedge",
     "avenue": "ground_avenue",
+    # The strip either side of a carriageway or a street. It exists as its own
+    # kind so that the LOD's 31.2 m geometry ramp stops being tagged as roadway:
+    # it is the ground the road is cut INTO, so it takes the neighbouring band's
+    # material in the engine, and here it gets a group of its own so the split
+    # is visible and measurable.
+    "verge": "ground_verge",
     "settlement": "ground_settlement",
     "water": "ground_shore",
     "shore": "ground_shore",
@@ -1183,6 +1231,47 @@ def _selftest():
           on_angle(left, a_wrap) == on_angle(right, a_wrap)
           and len(on_angle(right, a_wrap)) == PATCH_Z + 1,
           f"{len(on_angle(left, a_wrap))} vs {len(on_angle(right, a_wrap))}")
+
+    # --- tagged widths are the REAL widths ---------------------------------
+    # The kind tag used to ride on the LOD's geometry ramp, so a 20 m trunk road
+    # tagged 51.2 m and a street on a 62.5 m block tagged 31.2 m -- about 74% of
+    # the settlement band was street. Both are asserted against their own stated
+    # widths now, derived rather than compared to a remembered number.
+    circ = 2.0 * math.pi * FLOOR_R
+    # Walk a transect across a trunk road and measure where the tag starts and
+    # stops. The boundary between the last two land-use bands carries one.
+    bands = _bands()
+    lo = next(b[0] for b in bands[1:] if b[2] != "water"
+              and bands[bands.index(b) - 1][2] != "water")
+    n = 4000
+    tagged = [k for k in
+              (sample((lo + (i - n // 2) / float(n) * 0.06) % 1.0, 0.5)[1]
+               for i in range(n)) if k == "road"]
+    got = len(tagged) / float(n) * 0.06 * circ
+    check("a trunk road tags at its own width, not the LOD ramp",
+          abs(got - TRUNK_ROAD_W_M) < 3.0,
+          f"{got:.1f} m tagged against a stated {TRUNK_ROAD_W_M} m")
+
+    # And the street grid. Sampled OFF the block lattice: w = 0.5 lands exactly
+    # on a block boundary at the 40-cell pitch, where d_edge is 0 by
+    # construction, and measuring there reports every cell as street.
+    na, nz = CELLS_A // BLOCK_CELLS, CELLS_Z // BLOCK_CELLS
+    block_a, block_z = circ / na, (Z1 - Z0) / nz
+    predicted = 1.0 - ((block_a - AVENUE_W_M) / block_a) * \
+        ((block_z - AVENUE_W_M) / block_z)
+    NA = NZ = 401
+    seen = [sample((i + 0.5) / NA, (j + 0.5) / NZ)[1]
+            for i in range(NA) for j in range(NZ)]
+    av = sum(1 for k in seen if k == "avenue")
+    se = sum(1 for k in seen if k in ("settlement", "avenue"))
+    share = av / float(max(se, 1))
+    check("the street grid covers the fraction its own width implies",
+          abs(share - predicted) < 0.12,
+          f"{share*100:.1f}% of the settlement band against {predicted*100:.1f}% "
+          f"predicted for a {AVENUE_W_M} m street on {block_a:.0f} x {block_z:.0f} m blocks")
+    check("verge is a made shoulder, not the whole ramp",
+          VERGE_W_M < _step_ramp_m() / 4.0,
+          f"{VERGE_W_M} m against a {_step_ramp_m():.1f} m LOD ramp")
 
     # --- watertight with the drum shell and the end caps -------------------
     # `drum_end_cap()` puts its rim circle at exactly the floor radius, so the

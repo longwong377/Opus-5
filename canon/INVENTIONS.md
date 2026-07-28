@@ -881,3 +881,47 @@ separation across one. The width is a single constant; changing it re-derives ev
 rendering and seeing 836 of 2,100 triangles survive culling. The self-test now asserts upward
 facing for every flat deck element, and the assertion was verified by reverting the fix and
 watching it fail.
+
+---
+
+## INV-021 — Street and verge widths in the drum's settlement bands
+
+**Invented:** `AVENUE_W_M = 10.0` and `VERGE_W_M = 4.0` in `station/drum_ground.py` — the made
+width of a street between settlement blocks, and of the shoulder either side of a street or a
+carriageway.
+
+**Why necessary:** They existed implicitly and wrongly. Both the street's width and the road
+kind-tag's width were taken from `_step_ramp_m()` — **one stride-8 cell, 31.2 m** — which is not
+a width at all. It is a *constraint the LOD imposes on how sharply the heightfield may step*, and
+using it as a feature size made:
+
+- streets **31.2 m wide on 62.5 × 64.7 m blocks**, so about **74% of the settlement band was
+  street** and the blocks were islands in it;
+- trunk roads tag **51.2 m** against their own stated `TRUNK_ROAD_W_M = 20.0`.
+
+**Constrained by:**
+
+- **Neither number is free of the geometry.** The surface still ramps over the full 31.2 m,
+  because it must; what changed is that the *kind tag* stops at the made width. A carriageway is
+  now flat at its own width, then a verge, then untouched band.
+- **10 m** is a two-lane street with footways on a 62.5 m block — a dense urban grid, which is
+  what `33a`'s built parcels show: fine internal subdivision, not boulevards. It yields **29%**
+  street by area, and the self-test asserts the measured coverage against that geometric
+  prediction rather than against a remembered number.
+- **4 m** is a kerb, gutter and planting strip. It is asserted to be less than a quarter of the
+  LOD ramp, so the two can never silently re-merge.
+- Trunk roads now measure **4.51%** of the drum's surface against **4.58%** predicted from four
+  band boundaries at 20 m on a 1,748.6 m circumference — i.e. the stated width is now the
+  rendered width.
+
+**Overturned by:** any frame where a street's width can be read against a building or a person.
+`33a` shows the built parcels from too far away to measure one.
+
+**Two measurement traps recorded, because both produced confident wrong numbers:**
+
+1. The block grid is 40 cells along the drum, so **w = 0.5 lands exactly on a block boundary**,
+   where `d_edge` is 0 by construction. Sampling there reports *every* settlement cell as street.
+   The original review's "62% street" and my own first re-measurement both hit this.
+2. A first attempt at the fix set the verge tag to one full LOD ramp. Since that is half a
+   block, it tagged **every** settlement cell as either avenue or verge and plain settlement
+   vanished entirely. A width must be a width at both ends of the fix.

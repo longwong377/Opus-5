@@ -1,6 +1,6 @@
 # Project State
 
-**Last updated:** 2026-07-28 · **Session 3e** — drum_ground: vacuous assertion replaced, cap slot closed
+**Last updated:** 2026-07-28 · **Session 3f** — street widths decoupled from the LOD ramp
 
 ## Where we are
 
@@ -1324,16 +1324,49 @@ should follow the real feature width, with a separate verge kind for the ramp.
 Suites: validate 28/28, budget 14/14, drum_ground 71/71, zocalo 96/96, interior 141/141,
 lod 94/94, tram 44/44.
 
+## Session 3f — the LOD ramp was being used as a street width
+
+The last two `drum_ground` review findings, and they turned out to share one root cause worth
+stating plainly: **`_step_ramp_m()` is not a width.** It is one stride-8 cell, 31.2 m, and it
+exists to constrain how sharply the heightfield may step so the LOD chain stays honest. It was
+being used as the size of a street and as the extent of a road's kind tag.
+
+| | was | now |
+|---|---|---|
+| street on a 62.5 × 64.7 m block | 31.2 m → **~74% of the band was street** | 10 m → **29%**, asserted against the area its own width implies |
+| trunk road tagged width | 51.2 m against a stated 20 | **4.51%** of the drum measured against **4.58%** predicted |
+
+The geometry still ramps over the full 31.2 m, because it must. What changed is that the **kind
+tag** stops at the made width: a carriageway is flat at its own width, then a verge (`VERGE_W_M`,
+4 m, its own new group), then untouched band. `docs/render-drum-settlement.png` shows the result
+— pale block plateaux, streets at a believable width, a verge strip along each edge and a wider
+trunk road crossing. Logged as **INV-021**.
+
+### Two measurement traps, both of which produced confident wrong numbers
+
+1. **The block grid is 40 cells along the drum, so `w = 0.5` lands exactly on a block boundary**,
+   where `d_edge` is 0 by construction — sampling there reports *every* settlement cell as
+   street. The original review's "62% street" figure and my own first re-measurement both hit
+   this. Measure off-lattice.
+2. **A width must be a width at both ends of the fix.** My first attempt set the *verge* tag to
+   one full LOD ramp; since that is half a block, it tagged every settlement cell as either
+   avenue or verge and plain settlement disappeared. Caught only because the coverage numbers
+   still looked wrong after the "fix".
+
+New assertions derive the expected coverage from `AVENUE_W_M` and the block pitch rather than
+comparing against a remembered number, and are verified load-bearing: reinstating the ramp-width
+tag reports **76.9% against 29.0% predicted**.
+
+`drum_ground.py`: **74/74**.
+
 ## Next session — start here
 
 The drum's **structure** is complete: shell, both end caps, three guideway trusses with the
 habitat's lighting, three spokes, a correct hollow ring model, and its own performance gate.
 What follows is in rough priority order.
 
-1. ~~**The drum's ground**~~ — **built** (`drum_ground.py`, 71/71, heightfield with a five-level
-   LOD chain). Two review findings remain: the avenue and trunk-road **tag widths are bound to
-   the LOD ramp width**, so streets render 2.5× too wide and the settlement band comes out 62%
-   street. See session 3e.
+1. ~~**The drum's ground**~~ — **built and its four review findings all closed**
+   (`drum_ground.py`, 74/74). Sessions 3e and 3f.
 2. ~~**The tram**~~ — **built** (`tram.py`, 44/44). Two things remain: its "measured proportion"
    assertions are algebraic identities that never touch the built mesh, and the car length is
    disputed between two authority-1 frames — see **C-008**.
