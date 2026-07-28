@@ -1135,6 +1135,57 @@ def zocalo_run(bays=3, p=None, seed="zocalo", cap_ends=False, **kw):
     for i in range(bays):
         v, t, g = zocalo_bay(p, index=i, seed=seed, **kw)
         m.add(v, t, None, offset=(0.0, 0.0, i * p["bay_length_m"]), groups=g)
+
+    # Weld the seams. Every longitudinal member -- the walls, the rails, the
+    # purlins, the gallery slab and its beams -- is emitted per bay as a CLOSED
+    # solid, so two adjacent bays meet face to face and every edge around that
+    # face is shared by four triangles instead of two. Measured before this
+    # existed: +152 non-manifold edges per added bay, 10 for one bay, 466 for
+    # four, all of valence exactly 4 and 106 of them lying precisely on the
+    # seam plane. In the engine that is a doubled coplanar face on every seam,
+    # which z-fights, and the triangles behind it are never visible from
+    # anywhere.
+    #
+    # A face lying ENTIRELY in an interior seam plane is sandwiched between two
+    # bays by definition, so it can be dropped without opening anything: the
+    # side faces either side of it then meet at the edge and the run becomes one
+    # continuous solid. The ribs also sit on seam planes but are 0.55 m deep, so
+    # their flanks are never coplanar with one and they survive untouched.
+    seams = [i * p["bay_length_m"] for i in range(1, bays)]
+    if seams:
+        before = len(m.t)
+        keep_t, keep_g = [], []
+        for tri, grp in zip(m.t, m.g):
+            zs = [m.v[i][2] for i in tri]
+            interior_face = any(
+                all(abs(z - sz) <= WELD_M for z in zs) for sz in seams)
+            if not interior_face:
+                keep_t.append(tri)
+                keep_g.append(grp)
+        m.t, m.g = keep_t, keep_g
+        m.welded_faces = before - len(m.t)
+
+        # Second seam defect, separate mechanism: the rail is emitted by BOTH
+        # bays at a shared boundary, so 24 triangles exist twice over at every
+        # seam -- same position, same winding, wholly redundant. A duplicate is
+        # not a touching face and the plane test above cannot see it, because
+        # the rail straddles the seam rather than lying in it. Dropping the
+        # second copy is safe: it is the same surface, and two of them z-fight.
+        seen, dedup_t, dedup_g = set(), [], []
+        for tri, grp in zip(m.t, m.g):
+            pts = [tuple(round(c, 4) for c in m.v[i]) for i in tri]
+            # Canonical rotation, so the key preserves WINDING -- an oppositely
+            # wound twin is a touching face, not a duplicate, and must survive.
+            r = min(range(3), key=lambda i: pts[i])
+            key = (pts[r], pts[(r + 1) % 3], pts[(r + 2) % 3], grp)
+            if key in seen:
+                continue
+            seen.add(key)
+            dedup_t.append(tri)
+            dedup_g.append(grp)
+        m.duplicate_faces = len(m.t) - len(dedup_t)
+        m.t, m.g = dedup_t, dedup_g
+
     if cap_ends:
         hw, ceil = p["bay_width_m"] / 2.0, p["ceiling_height_m"]
         for z in (0.0, bays * p["bay_length_m"]):
@@ -1724,6 +1775,34 @@ def _selftest():
     check("the sight line demands more bays than the gate affords",
           rep["sight_bays"] > rep["bays_in_gate"],
           f"{rep['sight_bays']} vs {rep['bays_in_gate']}")
+
+    # --- seams -------------------------------------------------------------
+    # A run of bays must cost no more non-manifold geometry than the same bays
+    # standing alone: the seam itself must contribute NOTHING. Before the weld
+    # in zocalo_run() it contributed 152 edges per seam -- every longitudinal
+    # member is emitted per bay as a closed solid, so adjacent bays met face to
+    # face and every edge around that face was shared by four triangles, and
+    # the rail was emitted twice over. Both are invisible in a render and both
+    # z-fight in the engine.
+    import interior as _it
+    per_bay = None
+    for n in (1, 2, 3, 4):
+        rv, rt, _rg = zocalo_run(n)
+        _b, nm = _it.boundary_edges(rv, rt)
+        if per_bay is None:
+            per_bay = len(nm)
+        check(f"run of {n} bays adds nothing non-manifold at its seams",
+              len(nm) == per_bay * n,
+              f"{len(nm)} against {per_bay} x {n} = {per_bay * n}")
+    # The weld must CLOSE, not open. A standalone bay has two open ends; joining
+    # two bays should retire one end from each, so the marginal cost of a bay in
+    # a run is strictly less than a bay on its own, and constant.
+    bounds = [len(_it.boundary_edges(*zocalo_run(n)[:2])[0]) for n in (1, 2, 3, 4)]
+    steps = [bounds[i + 1] - bounds[i] for i in range(3)]
+    check("each added bay costs the same boundary, so seams are uniform",
+          len(set(steps)) == 1, str(steps))
+    check("joining bays closes boundary rather than opening it",
+          steps[0] < bounds[0], f"{steps[0]} per added bay vs {bounds[0]} alone")
 
     print(f"{ok}/{ok + fail} passed")
     return 1 if fail else 0

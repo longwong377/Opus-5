@@ -1,6 +1,6 @@
 # Project State
 
-**Last updated:** 2026-07-27 · **Session 3b** — corridor classes and the rib arch, from new reference
+**Last updated:** 2026-07-28 · **Session 3d** — Zocalo reviewed, bay seams welded
 
 ## Where we are
 
@@ -1213,6 +1213,65 @@ breaking them and watching them fail.
 `more zocalo.png`, `transport.jpg`, `garden more.jpg` and `gardens or greenery.jpg` have **not
 been mined yet** — the Zocalo is the station's social centre and has no geometry at all, and
 `transport.jpg` may bear on the tram car-length conflict.
+
+## Session 3d — the Zocalo reviewed, and its bay seams welded
+
+**Both workflows died.** Last write 01:09; the container restarted under them and nothing moved
+for 5h38m. Of workflow 1's four builders, **two landed** (`zocalo.py`, `lod.py`); the
+drum_ground repair and the metric hull skin did not. Of the gazetteer's six researchers, **four
+landed**. **No critique round ran on anything.** All output was committed as it appeared.
+
+So this session did the review step the loop was missing, on the largest unjudged thing:
+`station/zocalo.py`, 75 KB and 90/90 self-tested, that nobody had ever looked at.
+
+### It is good work
+
+The module solved a **photogrammetric scale** off `more zocalo.png` rather than guessing —
+horizon at 370.5 px and a seated eye height of 1.265 m solved from two 0.75 m features at two
+depths, and a focal length of 2,517 px from the table-top ellipse aspect. Bay dimensions are
+whole multiples of `DECK_PITCH_M`: a 21.6 m bay, a 12.6 m well against a measured 12.7 m arch
+span, tiles at 0.45 m. `docs/render-zocalo.png` shows ribs arching over a two-level volume with
+galleries, shopfronts, a staircase, pedestal tables and the "5" chairs.
+
+### The defect the review found
+
+**Every bay seam carried doubled geometry.** Non-manifold edge count by run length was 10, 162,
+314, 466 for one to four bays — **+152 per seam**, all of valence exactly 4, with 106 of them
+lying precisely on the seam plane. Two independent mechanisms:
+
+1. Every longitudinal member — walls, rails, purlins, gallery slab and beams — is emitted per bay
+   as a **closed solid**, so adjacent bays meet face to face and each edge around that face is
+   shared by four triangles instead of two.
+2. The **rail is emitted twice** at each shared boundary: 24 triangles in identical position and
+   winding. A duplicate is not a touching face, so the plane test cannot see it — the rail
+   straddles the seam rather than lying in it.
+
+Both are invisible in a render and both z-fight in the engine.
+
+**Fixed in `zocalo_run()`**: a face lying entirely in an interior seam plane is sandwiched between
+two bays by definition and is dropped; then exact duplicates are removed on a winding-preserving
+key, so an oppositely-wound twin (a genuine touching face) survives. The ribs also sit on seam
+planes but are 0.55 m deep, so their flanks are never coplanar with one.
+
+**Result: 10, 20, 30, 40** — exactly 10 per bay, **nothing per seam**. Boundary edges go
+312 → 524 → 736 → 948, a constant +212 per bay, which is *less* than a standalone bay's 312
+because each seam retires 100 open edges. The weld closes rather than opens, confirmed against a
+magenta background.
+
+Three new assertions, and **both fixes verified load-bearing** by disabling each independently:
+the seam-plane weld alone leaves 162/314/466, duplicate removal alone leaves 56/102/148.
+
+### Still open
+
+- **10 non-manifold edges inside a single bay** — a separate, smaller mechanism, not the seams.
+- The drum_ground repair and metric hull skin never ran; their specs are in the dead workflow
+  script at `.../workflows/scripts/b5-zocalo-and-debt-wf_03274a8a-d9c.js` and the findings they
+  were to fix are listed in session 2y.
+- Gazetteer is missing `LIFE-SUPPORT-AND-INDUSTRY.md`, `MEDIA-AND-COMMS.md` and the synthesis
+  pass that cross-checks every proposed location against the 210 built decks.
+
+Suites: validate 28/28, budget 14/14, export_scene 24/24, zocalo 96/96, lod 94/94,
+interior 141/141, drum_ground 69/69, tram 44/44, kit OK.
 
 ## Next session — start here
 
