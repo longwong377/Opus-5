@@ -1781,11 +1781,39 @@ def _selftest():
         # is what the fraction could not promise: 0.86 removed 65 m in grey and
         # 22 m in yellow, neither of which is a thickness of anything.
         if sec != drum_sector(schema, profile):
+            # NOTE what this does and does not test. It guards the FORMULA --
+            # that `sector_radius` subtracts a metric skin rather than scaling
+            # by a fraction, which is the regression this change exists to
+            # prevent. It cannot guard the VALUE: r_out is defined as
+            # shell - HULL_SKIN_M, so the difference is that constant by
+            # construction, whatever it is set to. `tools/mutation_sweep.py`
+            # reported HULL_SKIN_M unguarded on exactly this point; the
+            # assertions that do pin the value are below.
             check(f"{sec}: outermost floor is one metric skin inside the shell",
                   abs((shell - r_out) - HULL_SKIN_M) < 1e-6,
                   f"{shell - r_out:.2f} m")
         check(f"{sec}: outermost floor is inside the core hull",
               r_out <= shell + 1e-6, f"{r_out:.1f} m vs shell {shell:.1f} m")
+
+    # HULL_SKIN_M is an invention (INV-013) with no source to check it against,
+    # so it cannot be asserted directly -- but its CONSEQUENCES are published
+    # and can be. The drum's sub-floor stack is the one place the skin decides
+    # something the rest of the project quotes: STATE.md, the gazetteer's
+    # Downbelow section and the streaming manifest all state nine decks between
+    # the Garden floor and the pressure hull. At a 7.5 m skin that becomes
+    # eight. This is what makes the constant load-bearing rather than decorative.
+    #
+    # Be honest about the band it pins: the stack is 38.5 - skin metres at a
+    # 3.6 m pitch, so nine decks holds for any skin in (2.5, 6.1] m. It catches
+    # a hull growing thick enough to eat habitable volume, which is the failure
+    # that matters, and not a hull thinning from 6 m to 4 m, which is invisible
+    # to every consequence the project currently derives.
+    stack = decks_in_ring(schema, profile, drum_sector(schema, profile), 0)
+    check("the drum's sub-floor stack is the nine decks the project quotes",
+          len(stack) == 9,
+          f"{len(stack)} decks in "
+          f"{habitat_hull_radius(schema, profile) - r_drum:.1f} m at a "
+          f"{DECK_PITCH_M} m pitch")
 
     # --- the habitable ceiling ---------------------------------------------
     r_hab = habitable_radius(schema)

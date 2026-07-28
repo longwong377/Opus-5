@@ -76,14 +76,33 @@ DECK_DISC_D_M = 10.6
 # Blue Section is 520.4 m in diameter (00-MASTER.md 1.1, authority 3 rescaled),
 # and the Security Manual sectional schematic gives DOCKING BAYS (24). Bay 17
 # appears on screen, which cross-checks the count from the other direction.
-BAY_COUNT = 24
+#
+# Read from the schema for the same reason as BAY_W_M below: a canon count that
+# lives as a literal in one module is a fact this project cannot regenerate
+# from its own source of truth.
+BAY_COUNT = int(it.load()[0]["docking"]["docking_bay"]["count"])
 
 # 42 m is the schema's own `cobra_bay` width, authority 3 off Contract 5. Using
 # it here is not a guess dressed as a citation: it is the width the same
 # document gives the same station for the same class of structure -- a bay cut
 # into a rotating hull to take a craft -- and adopting it keeps one number
 # instead of inventing a second. See INV-022.
-BAY_W_M = 42.0
+#
+# READ FROM THE SCHEMA, not retyped from it. It was a bare `42.0` with the
+# sentence above sitting over it, which is a duplicated literal wearing a
+# citation -- exactly what hard rule 4 exists to stop ("consistency is by
+# construction, not by discipline"). `tools/mutation_sweep.py` found it: with
+# the value perturbed to 52.5 m the module still passed 18/18, because the only
+# assertion touching it asks whether a bay FITS its 66.5 m of arc, and 52.5
+# also fits. The prose was the only thing holding the two numbers together.
+def _schema_bay_width_m():
+    for c in it.load()[0]["components"]:
+        if c["id"] == "cobra_bay":
+            return float(c["width_m"])
+    raise KeyError("cobra_bay is not in the schema's components")
+
+
+BAY_W_M = _schema_bay_width_m()
 BAY_H_M = 18.0          # INV-022: a LOW slot, which is what the frame shows
 BAY_LEN_M = 140.0       # INV-022
 
@@ -368,11 +387,34 @@ def _selftest():
           f"{BAY_W_M} m bay")
 
     # Placement: 24 bays must tile the circle without overlapping.
-    check("24 bays tile the circle", abs(BAY_COUNT * bay_pitch_deg() - 360) < 1e-9)
+    #
+    # This was `abs(BAY_COUNT * bay_pitch_deg() - 360) < 1e-9`, and
+    # `bay_pitch_deg()` returns `360.0 / BAY_COUNT`. That is x * (360/x) == 360,
+    # which is true for every value of x including the wrong ones -- an
+    # algebraic identity restating its own input, the third of this family in
+    # the project. It is replaced by a test on the PLACED GEOMETRY: build every
+    # bay, take the angle each one actually landed at, and check the gaps
+    # between consecutive bays are equal and close the circle. That can fail.
+    angles = sorted(bay_angle_deg(i) % 360.0 for i in range(BAY_COUNT))
+    gaps = [(angles[(i + 1) % BAY_COUNT] - angles[i]) % 360.0
+            for i in range(BAY_COUNT)]
+    check(f"{BAY_COUNT} placed bays tile the circle evenly",
+          len(set(round(g, 9) for g in gaps)) == 1
+          and abs(sum(gaps) - 360.0) < 1e-9,
+          f"gaps {sorted(set(round(g, 3) for g in gaps))}")
+    check("no two bays are placed at the same angle",
+          len(set(round(a, 9) for a in angles)) == BAY_COUNT)
+
     r0 = bay_radius(schema, profile)
     arc = 2.0 * math.pi * r0 / BAY_COUNT
     check("a bay fits the arc it is allotted", arc > BAY_W_M,
           f"{arc:.1f} m of arc for a {BAY_W_M} m bay at r={r0:.1f}")
+    # And that the bays do not merely fit their slices but leave hull between
+    # them. Two bays sharing a wall is not 24 bays, it is one annulus, and the
+    # "fits" test above passes right up to the moment they touch.
+    check("there is hull structure between neighbouring bays",
+          arc - BAY_W_M >= BAY_W_M * 0.25,
+          f"{arc - BAY_W_M:.1f} m of hull between {BAY_W_M} m bays")
 
     # Placed geometry must sit inside the hull and face the axis.
     pv, pt, _pg = place_bay(0, schema, profile)
@@ -383,6 +425,25 @@ def _selftest():
           abs(max(radii) - r0) < 1e-6)
 
     check("bays are numbered and 17 exists", BAY_COUNT >= 17)
+
+    # Both canon numbers are read from the schema rather than retyped, so these
+    # cannot drift silently -- but a later edit could reintroduce a literal, and
+    # then the module would look sourced and not be. Asserting the tie is what
+    # makes the derivation load-bearing rather than merely tidy.
+    check("the bay count is the schema's, not a literal",
+          BAY_COUNT == int(schema["docking"]["docking_bay"]["count"]),
+          f"{BAY_COUNT} vs schema "
+          f"{schema['docking']['docking_bay']['count']}")
+    check("the bay width is the schema's cobra_bay width",
+          abs(BAY_W_M - _schema_bay_width_m()) < 1e-9,
+          f"{BAY_W_M} vs schema {_schema_bay_width_m()}")
+    # 24 docking bays and 28 cobra bays are DIFFERENT SYSTEMS, both listed on
+    # the same sheet. If a future edit ever collapses them into one number this
+    # is what says so.
+    check("docking bays are not the cobra bays",
+          BAY_COUNT != sum(c["count"] for c in schema["components"]
+                           if c["id"] == "cobra_bay"),
+          "24 bays and 28 launch tubes -- see C-002")
 
     print(f"{ok}/{ok + fail} passed")
     return 1 if fail else 0

@@ -185,6 +185,18 @@ exterior_systems:
 docking:
   primary_docking_port: {side: north, auth: 3, src: "Contract 5 cross-section"}
   service_docking_port: {side: south, auth: 3, src: "Contract 5 cross-section"}
+  # The rotating bays craft actually fly into, and a DIFFERENT system from the
+  # 28 cobra_bay fighter launch tubes of C-002 -- the sectional schematic lists
+  # both, so 24 and 28 are not two readings of one number.
+  #
+  # This lived only as `BAY_COUNT = 24` in docking_bay.py with its sources in a
+  # comment. A canon count belongs in the schema that every generator reads,
+  # not in one module that happens to draw it.
+  docking_bay:
+    count: 24
+    auth: 3
+    src: "Security Manual sectional schematic, DOCKING BAYS (24); Bay 17 named
+      on screen (authority 1) cross-checks the count from the other direction"
 
 # ---------------------------------------------------------------------------
 # Longitudinal framework -- OW-001 complete.
