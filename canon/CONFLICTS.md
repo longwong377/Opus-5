@@ -1490,3 +1490,72 @@ on the guideway trusses**, not from an axial sun-strip and not from the end caps
 the bright tubes running alongside the truss; `33a` shows a row of rectangular fixtures on the
 truss's underside. That is authority 1, and it is the first sourced answer to what lights the
 habitat.
+
+---
+
+## C-008 — Drum tram car length · **OPEN, NON-BLOCKING**
+
+Two authority-1 frames of the same vehicle disagree about its length by a factor of three to
+four. Recorded rather than resolved, because resolving it silently in favour of whichever frame
+was measured first is exactly the failure this file exists to prevent.
+
+### The two readings
+
+**`03-sector-blue/Babylon_5_2-22_34b.jpg` — 3.9 bays ≈ 96 m.**
+Cars are seen slung beneath the guideway truss, from above and behind. Rectifying against the
+truss's top-chord nodes directly above them gives a car of about **4.0 bays** at the built
+`TRUSS_BAY_M` of 24 m. This is what `station/tram.py` was built to, and an independent verifier
+re-measured it against the same nodes and got 4.0 against the builder's claimed 3.9 ± 0.25.
+
+**`03-sector-blue/Babylon_5_2-22_33a.jpg` — roughly a quarter of that.**
+This frame shows an **entire car, nose to tail, in three-quarter view**. It carries about **five
+bright window panes** in its maroon band and has an overall length-to-height ratio near **1.8:1**.
+The built model has **21 window bays** at a 4.0 m pitch and a ratio near **9:1**.
+
+### Why this is not simply a measurement error
+
+Both are on-screen footage, both show the same vehicle class, and the 34b rectification is
+geometrically careful — it was checked by a second party against the same features. The tension
+is real:
+
+- 34b is a **near-axial** view. Its vanishing point is close to the car, so a small error in
+  identifying which truss node sits above which end of the car scales badly. Foreshortening is
+  doing most of the work in that measurement.
+- 33a is a **broadside** view, where length is least foreshortened — but it gives no absolute
+  scale at all, only the car's own proportions.
+
+So the two frames are strong on different axes: 34b has a scale reference and weak geometry;
+33a has good geometry and no scale. A 96 m tram with five windows would need 19 m between
+windows, which is not what 33a shows; a 25 m tram would not span four truss bays.
+
+### What would close it
+
+**One frame with a person beside, boarding, or inside a car with the exterior visible.** A door
+of known height against the flank settles it immediately. `35a` is shot *inside* a car and is
+therefore no help with its length.
+
+Failing that, any shot of a car against the end cap or a spoke, both of which now have derived
+dimensions.
+
+### What is built while it stays open
+
+`station/tram.py` builds to the **34b reading**, because it is the only one with an absolute
+scale. That is recorded in INV-017 rather than presented as settled. If 33a wins, `CAR_BAYS` is a
+single constant and every car re-derives.
+
+**Do not treat the 34b figure as canon.** It is the better-supported of two readings that cannot
+both be right.
+
+---
+
+### Reference note — `transport.jpg` is a duplicate, not a third source
+
+`10-interiors-generic-kit/transport.jpg`, uploaded in the session-3b batch, is **byte-identical**
+to `03-sector-blue/Babylon_5_2-22_34b.jpg` (both MD5 `e2bf2216d53aa9ba89342267db3f92f6`). It
+looked like it might break the tie above and it cannot — it is the same evidence under a different
+filename. Recorded so no future session re-mines it expecting new information.
+
+The same batch's `central corridor.webp` and `grey level 1.webp` are likewise duplicates of files
+already held in `09-garden-core-and-transit/` and `07-sector-grey/`. The genuinely new files were
+`more hallway.jpg`, `more hallways.jpg`, `more zocalo.png`, `garden more.jpg` and
+`gardens or greenery.jpg`.
