@@ -91,6 +91,7 @@ jobs:
           python3 zocalo.py
           python3 docking_bay.py
           python3 signage.py
+          python3 plant.py
           python3 command_control.py
           python3 council_chamber.py
 

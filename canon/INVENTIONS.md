@@ -1190,3 +1190,72 @@ figure is explicitly a placeholder priced with the wrong kit until plant space h
 
 **Overturned by:** any on-screen statement of gravity in a named sector, or dialogue placing
 quarters somewhere the geometry puts above 1.25 g.
+
+---
+
+## INV-028 — The plant kit: bays, tank farms, deep frames and catwalks
+
+**Invented:** everything in `station/plant.py` — `BAY_DECKS = 5`, the frame section and pitches,
+`TANK_R_M = 4.5`, the farm lattice (`FARM_PITCH_DEG = 30`, `FARM_PITCH_Z_M = 100`, 2×2 tanks),
+`CATWALK_W_M = 1.8` / `CATWALK_CLEAR_M = 2.4`, and the pipe runs.
+
+**Why it exists.** INV-027 tagged Grey's outer 34 decks `plant`, and the manifest was still
+pricing them with the corridor kit — **62.3 M triangles, 26% of the station's entire interior**,
+for volume that is not rooms.
+
+**The one structural decision, and what constrains it.** Plant space is **not decked at
+`DECK_PITCH_M`**. A 3.6 m floor-to-floor pitch is a corridor's pitch and a tank farm wants
+height, so the 34 decks regroup into 7 bays of ~17.7 m. `BAY_DECKS = 5` is squeezed from both
+sides: fewer than four and a bay is too short for a tank worth plumbing; more than six and 34
+stops dividing without a large runt. The 4-deck remainder is kept as a shallower top bay rather
+than dropped — a runt bay is real volume, and this project has shipped a "finished" surface with
+4,064 open edges by rounding one away.
+
+**What the tankage is constrained by, and why the assertion is not circular.** Tank *count* is
+**not** derived from the volume it must hold. It falls out of the farm lattice — how many farms
+fit round the circumference and along the sector at a fixed pitch — and the self-test then asserts
+the result clears `LIFE-SUPPORT-AND-INDUSTRY.md` L-04's **397,500 m³** thirty-day reserve. A
+sparser lattice would fail it. Laid out: **1,232,508 m³, 3.1× the reserve**, which is the right
+kind of margin because water is not the only commodity (fuel slush, coolant, greywater, waste
+holding all share the farm).
+
+**And a second assertion in the opposite direction**, because the first one alone would reward
+filling the zone: tankage must stay **under 10% of the plant volume**. It sits at **0.88%**. The
+first implementation tiled the annulus wall-to-wall and produced **65.1 M m³ — 164× the reserve
+and 46.6% of the zone**, which is precisely the error the gazetteer warned against. Two
+assertions bracketing a quantity from both sides is what caught it.
+
+**Result: 453,528 triangles for the whole zone against the 62,273,664 placeholder — 0.7%.**
+
+**Overturned by:** any on-screen view of the station's machine spaces, of which we hold none.
+
+### Four defects, three found only by rendering it
+
+The self-test passed 21/21 while three of these were live. Recorded because the pattern is the
+project's oldest and this is the clearest instance of it.
+
+1. **`_place()` reverses winding.** Its Jacobian is `d/dx = (-sin, cos, 0)`, `d/dy = (cos, sin, 0)`,
+   `d/dz = (0, 0, 1)` — determinant **−1**, because local +x becomes tangential and +y becomes
+   radial, which is a left-handed pair. Everything through it came out inside-out. Found by
+   standing on the catwalk in a render and **seeing the magenta background through the floor**.
+   `CONTRIBUTING.md` already records this twice — `_box` emitting inward solids, and
+   `corridor_section` laying its deck through a negative-determinant remap. Third instance.
+   `_absorb()` now takes an explicit `flip`, and the gate asserts on a **placed** solid, because
+   the local test passes either way and that is what let it ship.
+2. **The pipes were 457 m in radius.** `_cyl(..., 0.0, 0.0, z0, z1, rr)` passed the pipe's radial
+   *position* as its *radius*, building a full station-width cylinder shell whose inside surface
+   filled the entire frame. A radius used where an extent was meant.
+3. **The frame rings spanned 360°**, so every streaming cell carried a complete ring round the
+   whole station. Same family as (2). Replaced by `_arc_band()`.
+4. **The catwalk was a 158 m × 120 m plate**, spanning the full arc *and* the full z extent, with
+   `CATWALK_W_M` used as a radial offset rather than a width. A catwalk runs **along** the arc —
+   the direction a person travels in a ring — and is 1.8 m wide across, in z.
+
+**A gate that failed to catch (3), and why it matters.** A new assertion checks that no piece is
+radially larger than its own bay. It missed the 360° ring because it measures **vertex** radii,
+and every vertex of a coarse polygon sits at the same radius even though its chords cut far
+inside. *Gates that sample vertices cannot see chords.*
+
+**And one assertion that could not object to its own constant.** `CATWALK_CLEAR_M` was 1.8 m —
+100 mm of clearance for a 1.7 m person, a crawl space — and the assertion guarding it read
+`CATWALK_CLEAR_M >= 1.8`, the value itself. Now 2.4 m against a `>= 2.1` bar.
