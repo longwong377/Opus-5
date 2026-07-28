@@ -1,6 +1,6 @@
 # Project State
 
-**Last updated:** 2026-07-28 · **Session 3h** — docking bay, signage and C&C built
+**Last updated:** 2026-07-28 · **Session 3i** — metric hull skin; the station has a basement
 
 ## Where we are
 
@@ -1462,6 +1462,84 @@ window. Glass sits **in** an opening.
 
 All three wired into CI. **INV-022, INV-023, INV-024** logged.
 
+## Session 3i — the hull allowance went metric, and the prediction attached to it was wrong
+
+`HULL_ALLOWANCE = 0.86` is gone. Every non-drum sector now takes its outermost deck floor from
+an **extracted core hull less a metric `HULL_SKIN_M`**, the same 6 m the drum already used.
+
+The fraction was the wrong kind of quantity twice over. It removed **65 m** of notional
+structure in Grey and **22 m** in Yellow — pressure hull and frames do not scale with distance
+from the spin axis. And it multiplied the **mean of a sector band**, which describes no surface:
+Yellow's band ranges 18–440 m, Blue's 116–268 m, and neither sector has a point where the hull
+is at its own mean.
+
+**Extracting the shell.** The radius profile traces the *outline*, so it reports whatever stands
+proud at each z. Session 2b's technique — a wide running minimum — is right in principle and
+**erodes at a step**: it reported 428.7 m in Grey, below Grey's own narrowest real sample of
+436.4 m, a radius no point in the sector has. The operator is a morphological **opening**,
+erosion then dilation, which strips protrusions and restores step edges. Asserted per sector.
+
+**The cross-check is what justifies applying it where nothing can be measured.** Run against the
+band holding the habitat cylinder it returns **314.3 m**; `habitat_hull_radius()` — written four
+sessions earlier, a plain mean over one *named schema feature* — gives **316.8 m**. **2.5 m
+apart on a 315 m radius, from two methods that share no arithmetic.**
+
+### The prediction was wrong, and finding that out was the point
+
+`STATE.md` had Grey's **1.445 g** outermost deck recorded as "the visible symptom" of the
+fraction, to be fixed when the allowance went metric. **It got worse: 1.693 g.** The 0.86 had
+been quietly deleting 65 m of hull that is really there. Grey sits on the aft hull block — the
+station's widest structure, identified in session 1, which Miller's table never names — and a
+rigid body spinning at a rate fixed by the habitat floor puts 1.7 g on anything 471 m out. No
+honest allowance moves it inboard.
+
+So the premise was wrong rather than the arithmetic, and the design answer is the one a real
+station would give: **you do not put quarters at the bottom of a gravity well, you put mass
+there.** `HABITABLE_G_MAX = 1.25` (**347.9 m**) declares the heaviest deck a person may be
+housed on. Every deck now carries a `use` tag.
+
+| | decks | plant | outermost floor | gravity |
+|---|---|---|---|---|
+| **Grey** | 105 | **34** | 471.2 m | **1.693 g** |
+| Red | 59 | 0 | 268.1 m | 0.963 g |
+| Blue | 45 | 0 | 211.6 m | 0.760 g |
+| Yellow | 33 | 0 | 155.4 m | 0.559 g |
+| Green (sub-floor) | 9 | 0 | 278.3 m | 1.000 g |
+
+**Grey's outer 123 m is the station's basement** — tankage, reservoirs, waste processing, reactor
+auxiliaries. 26% of the station's interior structure, and a thing the scope asks for by name:
+*"the physical plant that makes 250,000 people possible: food, water, air, power, waste."* The
+fraction was concealing it behind a plausible number.
+
+The ceiling's **lower bound is not taste**: the drum's own sub-floor stack reaches 1.117 g at the
+pressure hull and is occupied, so a ceiling below that would contradict geometry already built.
+That is the assertion that fails first if anyone lowers the constant. Logged as **INV-026** and
+**INV-027**.
+
+### Three defects the change exposed, none of them the thing being changed
+
+- **`drum_sector()` was comparing a hull radius to a floor radius** — a category error, a surface
+  against something 32 m inside it. On corrected shell radii that comparison picks **red**, whose
+  shell sits four metres from where the Garden's ground is. Matched hull-to-hull the drum wins by
+  **17×**. The old code got the right answer for the wrong reason: the drum band's mean was
+  inflated by the aft hull block it happens to contain. The self-test now asserts the **margin**
+  — a test that only checks who won cannot tell 17× from a coin toss, and this decides which band
+  the entire habitat is built in.
+- **The divisor-of-36 cell snap has a 2× gap between 18 and 36.** Grey's widened ring asks for 19
+  cells, snaps up to 36, and halves the cell to 82.2 m against a **98.9 m sight line** — the
+  player sees 17 m into a cell that is not resident. Snapping up now runs only as far as the
+  guarantee holds, then falls back down.
+- **The cell gate was pricing tankage as corridor.** It measured deck 0 of the outermost ring,
+  which in Grey is plant, at the kit's 285 tri/m — **94.8% of budget**, implying habitat
+  corridors had 5% of headroom for props, signage and NPCs. Split by `use`, the worst *habitat*
+  cell is Grey ring 2 deck 11 at 1.246 g and **66.2%**. They have 34%.
+
+**Station total: 210 → 251 decks, 2,646 → 3,414 cells, 80.5 M → 110.2 M triangles.** Red, Blue
+and Yellow were all being cut short. `interior.py` **175 → 448 assertions**, `budget.py` 15/15,
+and every new assertion was verified load-bearing by reintroducing its defect — the plain running
+minimum, the floor-matched drum test, a 1.10 g ceiling, the unconditional snap-up, and the
+fraction itself.
+
 ## Next session — start here
 
 The drum's **structure** is complete: shell, both end caps, three guideway trusses with the
@@ -1482,11 +1560,8 @@ What follows is in rough priority order.
    are reference-corrected.
 5. **Deck tile phase across junctions** — the grid is not driven from a shared origin, so there
    is a visible seam at each crossing mouth.
-6. **`HULL_ALLOWANCE` should become metric.** It is a *fraction* (0.86) standing in for a hull
-   skin, which is the wrong kind of quantity — at the habitat cylinder it implies 44 m of hull,
-   which is why the drum needed `HULL_SKIN_M` instead. Fixing it re-derives every non-drum
-   sector radius, so it wants its own change. See INV-013. Grey's **1.445 g** outermost deck is
-   the visible symptom.
+6. ~~**`HULL_ALLOWANCE` should become metric.**~~ — **done, session 3i.** See below; the
+   prediction attached to it was wrong and the correction is the interesting part.
 7. **Publish the Godot binary** as a Release asset — container-local, 61 minutes to rebuild.
 8. **C-003 assignment** and **C-004 numbering.** These block *labelling*, not building — see the
    note below.
