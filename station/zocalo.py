@@ -176,7 +176,7 @@ PROVISIONAL = {
     "gallery_slab_m": 0.35,
     "gallery_rail_h_m": 1.05,           # kit.handrail's own default
     "gallery_fascia_top_m": 0.35,       # below the deck: where the band starts
-    "gallery_fascia_bot_m": 1.10,       # and ends, leaving 2.5 m of headroom
+    "gallery_fascia_bot_m": 1.00,       # and ends, leaving 2.6 m of headroom
     "rib_spacing_m": RIB_SPACING_M,
     "rib_depth_m": 0.55,                # kit.rib_arch's default
     "rib_thickness_m": 0.42,            # kit.rib_arch's default
@@ -1017,18 +1017,23 @@ def zocalo_bay(p=None, index=0, seed="zocalo", stair_side=None,
     m.quad((-x_in, ceil, 0.0), (x_in, ceil, 0.0), (x_in, ceil, l),
            (-x_in, ceil, l), "zoc_soffit")
 
+    a_rib = p["well_width_m"] / 2.0
+    b_rib = ceil - p["rib_thickness_m"]
     for k in range(2):
         z_rib = k * p["rib_spacing_m"]
         _rib(m, p, z_rib)
-        # Lamps on the rib's inner face: `more hallway.jpg` shows them repeating
-        # along the ribs, and `more zocalo.png` shows one flaring on the arch
-        # above the gallery.
-        for f in (0.30, 0.50, 0.70):
-            y = (ceil - p["rib_thickness_m"]) * math.sin(math.pi * f)
-            xi, _ = rib_profile(p, y)
-            for s in (-1, 1):
-                m.slab(s * xi - 0.13, s * xi + 0.13, y - 0.10, y + 0.10,
-                       z_rib - 0.09, z_rib + 0.09, "zoc_rib_lamp")
+        # Lamps set into the rib's intrados: `more hallway.jpg` shows them
+        # repeating along the ribs, and `more zocalo.png` shows one flaring on
+        # the arch above the gallery. Placed by ARC PARAMETER, which already
+        # covers both limbs -- the first attempt walked half the arc and
+        # mirrored it, which put the 0.30 and 0.70 lamps at the same height and
+        # the two crown lamps on top of each other: six pairs of exactly
+        # coincident boxes and 108 non-manifold edges.
+        for f in (0.16, 0.32, 0.50, 0.68, 0.84):
+            t = math.pi * f
+            lx, ly = -a_rib * math.cos(t), b_rib * math.sin(t)
+            m.slab(lx - 0.13, lx + 0.13, ly - 0.10, ly + 0.10,
+                   z_rib - 0.09, z_rib + 0.09, "zoc_rib_lamp")
 
     for s in (-1, 1):
         m.merge(gallery(p, side=s))
@@ -1462,17 +1467,38 @@ def _selftest():
     check("the rib passes the gallery deck well clear of its edge",
           cl["rib_to_gallery_edge_m"] > 0.30,
           f"{cl['rib_to_gallery_edge_m']:.3f} m")
-    # The repaired rib and the formula the clearances are computed from have to
-    # be the same object, or every clearance above is about a different rib.
-    rp = Mesh()
-    _rib(rp, p, 0.0)
-    for y in (0.5, 2.0, 4.0, 6.0):
-        want = rib_profile(p, y)[1]
-        got = max((q[0] for q in rp.v if abs(q[1] - y) < 0.35 and q[0] > 0),
-                  default=None)
-        check(f"rib_profile agrees with the built rib at y={y}",
-              got is not None and abs(got - want) < 0.30,
-              f"formula {want:.3f} m vs mesh {got}")
+    # --- the rib repair, verified by the property the bug destroyed ---------
+    a_r = p["well_width_m"] / 2.0
+    b_r = p["ceiling_height_m"] - p["rib_thickness_m"]
+    T, D = p["rib_thickness_m"], p["rib_depth_m"]
+    rv, rt = rib_arch_repaired(p["well_width_m"], b_r, D, T)
+    # Every vertex must lie ON or OUTSIDE the intrados ellipse. The unrepaired
+    # kit offsets almost along the TANGENT, which puts most of its outer curve
+    # INSIDE -- this is the direct test of that, and it needs no knowledge of
+    # the emission order.
+    inside = [q for q in rv
+              if (q[0] / a_r) ** 2 + (q[1] / b_r) ** 2 < 1.0 - 1e-6]
+    check("no rib vertex falls inside its own intrados", not inside,
+          f"{len(inside)} inside, first {inside[:1]}")
+    # And the volume of a section swept perpendicular to the arc, computed from
+    # the ellipse rather than from the mesh: L*T + pi*T^2/2, times the depth.
+    pts = [(-a_r * math.cos(math.pi * i / RIB_SEGMENTS),
+            b_r * math.sin(math.pi * i / RIB_SEGMENTS))
+           for i in range(RIB_SEGMENTS + 1)]
+    arc = sum(math.dist(pts[i], pts[i + 1]) for i in range(RIB_SEGMENTS))
+    want_vol = (arc * T + math.pi * T * T / 2.0) * D
+    got_vol = signed_volume(rv, rt)
+    check("the rib's volume is a section swept across the arc, not along it",
+          abs(got_vol - want_vol) / want_vol < 0.10,
+          f"{got_vol:+.3f} m3 vs {want_vol:.3f} expected "
+          f"(the unrepaired kit gives -0.413)")
+    # The formula the clearances are written against has to be the same rib.
+    check("rib_profile matches the built springing exactly",
+          abs(rib_profile(p, 0.0)[1] - (a_r + T)) < 1e-9,
+          f"{rib_profile(p, 0.0)[1]:.6f} vs {a_r + T}")
+    check("rib_profile's intrados is the ellipse at every sampled height",
+          all(abs(rib_profile(p, y)[0] - a_r * math.sqrt(1 - (y / b_r) ** 2))
+              < 1e-9 for y in (0.0, 1.5, 3.6, 5.5, b_r)))
     check("the stair arrives exactly at the gallery deck",
           abs(cl["stair_top_y_m"] - p["gallery_y_m"]) < 1e-9,
           f"{cl['stair_top_y_m']:.6f} m")

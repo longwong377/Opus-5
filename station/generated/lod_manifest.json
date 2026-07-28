@@ -180,6 +180,68 @@
    "z_m": 3124.98
   }
  ],
+ "relief_cull_proposal": [
+  {
+   "distance_m": 2000,
+   "relief_threshold_m": 1.295,
+   "pieces_dropped": 154,
+   "pieces_kept": 4790,
+   "triangles_dropped": 2116,
+   "triangles_kept": 68662,
+   "largest_piece_dropped_m": 1.291,
+   "honest_from_m": 1329
+  },
+  {
+   "distance_m": 4271,
+   "relief_threshold_m": 2.766,
+   "pieces_dropped": 1594,
+   "pieces_kept": 3350,
+   "triangles_dropped": 19178,
+   "triangles_kept": 51600,
+   "largest_piece_dropped_m": 2.766,
+   "honest_from_m": 2847
+  },
+  {
+   "distance_m": 6320,
+   "relief_threshold_m": 4.093,
+   "pieces_dropped": 2511,
+   "pieces_kept": 2433,
+   "triangles_dropped": 30404,
+   "triangles_kept": 40374,
+   "largest_piece_dropped_m": 4.093,
+   "honest_from_m": 4213
+  },
+  {
+   "distance_m": 12000,
+   "relief_threshold_m": 7.772,
+   "pieces_dropped": 3586,
+   "pieces_kept": 1358,
+   "triangles_dropped": 43552,
+   "triangles_kept": 27226,
+   "largest_piece_dropped_m": 7.772,
+   "honest_from_m": 8000
+  },
+  {
+   "distance_m": 23950,
+   "relief_threshold_m": 15.511,
+   "pieces_dropped": 4763,
+   "pieces_kept": 181,
+   "triangles_dropped": 68220,
+   "triangles_kept": 2558,
+   "largest_piece_dropped_m": 15.364,
+   "honest_from_m": 15815
+  },
+  {
+   "distance_m": 49204,
+   "relief_threshold_m": 31.867,
+   "pieces_dropped": 4852,
+   "pieces_kept": 92,
+   "triangles_dropped": 69858,
+   "triangles_kept": 920,
+   "largest_piece_dropped_m": 29.923,
+   "honest_from_m": 30802
+  }
+ ],
  "levels": [
   {
    "name": "lod0",
