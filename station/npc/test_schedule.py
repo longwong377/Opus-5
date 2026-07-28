@@ -484,6 +484,25 @@ def main():
     check("tens of thousands are still at work at 03:00",
           at3_full[Activity.WORK] > 15_000, f"{at3_full[Activity.WORK]:,} working")
 
+    # Commuting. `Activity.TRANSIT` was in the enum and nothing emitted it, so
+    # the corridors and lifts had no population and everyone teleported to
+    # work. The check is not that transit exists but that it peaks where the
+    # source independently says the Central Corridor is busy -- 07:00-09:00 and
+    # 17:00-19:00 (2.5) -- which nothing here was tuned to produce.
+    tr = [population_activity(float(h), STATION_MIX,
+                              RESIDENT_TOTAL)[Activity.TRANSIT] for h in range(24)]
+    morning = max(range(6, 11), key=lambda h: tr[h])
+    evening = max(range(14, 21), key=lambda h: tr[h])
+    check("commuting peaks near the Central Corridor's stated rush hours",
+          tr[morning] > 2 * (sum(tr) / 24) and tr[evening] > 2 * (sum(tr) / 24)
+          and 7 <= morning <= 9 and 16 <= evening <= 18,
+          f"peaks {morning:02d}:00 ({tr[morning]:,}) and {evening:02d}:00 "
+          f"({tr[evening]:,}) against a mean of {sum(tr) / 24:,.0f}; the "
+          f"evening peak is an hour EARLY against 2.5's 17:00-19:00")
+    check("the third peak is the midnight watch handover, not a bug",
+          tr[0] > sum(tr) / 24, f"00:00 = {tr[0]:,}, third busiest -- the "
+          "16-hour watch coming off and the 0-hour watch going on")
+
     # THE claim the whole LOD design rests on, tested rather than asserted in a
     # docstring: the sampled layer must reproduce what enumerating individuals
     # gives, or the population changes when the player looks away.

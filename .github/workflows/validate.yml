@@ -129,6 +129,18 @@ jobs:
       - name: NPC schedules
         run: python3 station/npc/test_schedule.py
 
+      # Bodies, costume and crowd. `body.py` carries its own closure gates --
+      # signed volume, an edge census and a ray-parity `contains()` -- because
+      # the first lineup render showed limbs detached from the torso and no
+      # existing gate could see it. Those gates only protect anything if they
+      # run here.
+      - name: NPC bodies, costume and crowd
+        run: |
+          cd station/npc
+          python3 body.py
+          python3 costume.py
+          python3 crowd.py
+
       - name: Confirm the schema still parses and is fully sourced
         run: |
           python3 - <<'PY'

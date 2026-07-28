@@ -29,17 +29,21 @@ refugee population rather than a trading one.
 
 WHAT CHANGED, AND WHY IT MATTERED
 ---------------------------------
-`STATION_MIX` was six species summing to 0.94 (INV-005). Two defects followed
-from that and both are now impossible rather than merely fixed:
+`STATION_MIX` was six species. INV-005 records that an EARLIER version of it
+summed to 0.94 and silently dropped 120 of every 2,000 residents; the version
+this session found summed to 1.00, so the leak had been fixed and the defence
+against it had not been. Both halves of that defence now exist:
 
-  1. The sum was checked by eye. It silently dropped 120 residents of every
-     2,000. `population_activity()` now *raises* on a mix that does not sum to
-     1, and the counts are integers that sum to exactly 250,000.
-  2. Apportionment was `int(total * share)`, which truncates. With shares stored
-     as `count / 250000` the float lands just below the exact value often enough
-     to lose a person per species per call -- the same leak by a different
-     mechanism. Replaced with integer largest-remainder apportionment, which
-     sums to `total` exactly for *every* total, not just the convenient ones.
+  1. The sum was checked by eye, and by a test with a **0.06 tolerance** --
+     which is wide enough for a 0.94 mix to walk straight through the assertion
+     written to catch it. `population_activity()` now *raises* on a mix that
+     does not sum to 1, the tolerance is 1e-9, and the counts are integers
+     summing to exactly 250,000.
+  2. Apportionment was `int(total * share)`, which truncates. Flooring fourteen
+     shares loses up to thirteen people per call and loses them again every
+     station-hour, because the aggregate layer is recomputed from the same
+     shares. Replaced with integer largest-remainder apportionment, which sums
+     to `total` exactly for *every* total, not just the convenient ones.
 
 Six species cannot read as a galactic port. The mix is now fifteen, from
 FACTIONS.md §2.4, and the Vorlon is a hard-coded singleton because `int(250000 *
@@ -432,6 +436,7 @@ def shift_offset(npc_id: str, role: Role) -> float:
 
 
 MEAL_HALF_WINDOW_H = 0.3     # 0.6 h of meal, centred -- see the note in activity_at
+TRANSIT_H = 0.5              # each way; see the note in activity_at
 
 
 def wake_hour(species: str) -> float:
@@ -565,6 +570,21 @@ def activity_at(npc_id: str, species: str, hour: float) -> Activity:
             + shift_offset(npc_id, role) + jitter
         if _in_window(hour, w0, role.work_hours):
             return Activity.WORK
+        # Commuting. `Activity.TRANSIT` existed in the enum and nothing ever
+        # emitted it, so the corridors and lifts had no population of their own
+        # -- everyone teleported between quarters and workplace. Half an hour
+        # each way is not a guess: the drum is 2,586 m end to end and a
+        # rim-to-axis lift is a two-minute ride at 0.12 g of lateral
+        # acceleration (docs/AAA-STANDARD.md, interaction checklist), so a
+        # cross-sector commute is tens of minutes.
+        #
+        # It also produces something checkable: aggregate TRANSIT should peak
+        # at the hours FACTIONS.md 2.5 independently gives the Central Corridor
+        # as busy -- 07:00-09:00 and 17:00-19:00. Nothing here was tuned to
+        # make that happen; it falls out of the role start times.
+        if _in_window(hour, w0 - TRANSIT_H, TRANSIT_H) \
+                or _in_window(hour, w0 + role.work_hours, TRANSIT_H):
+            return Activity.TRANSIT
 
     r = _u(npc_id, f"leisure-{int(hour)}")
     if species == "centauri" and r < 0.55:
@@ -697,11 +717,15 @@ def _require_unit_sum(mix: dict) -> None:
 def apportion(total: int, mix: dict = None) -> dict:
     """Integer largest-remainder apportionment. Sums to `total` exactly.
 
-    `int(total * share)` truncates, and with shares stored as `count / 250000`
-    the float lands just below the exact value often enough to lose a person
-    per species per call -- `int(2000 * (1750/250000))` is 13, not 14. Hare
-    quota with an explicit deterministic tie-break instead: floor everything,
-    then hand the remainder to the largest fractional parts.
+    `int(total * share)` truncates, and flooring fourteen shares loses people:
+    measured, 12 of 997, 13 of 999, 6 of 12,345, 1 of 45,001. It loses them
+    again every station-hour, because the aggregate layer is recomputed from
+    the same shares. Hare quota with an explicit deterministic tie-break
+    instead: floor everything, then hand the remainder to the largest
+    fractional parts.
+
+    The measured losses are in the test, not only here, so a change to the mix
+    that happens to make truncation exact cannot quietly retire the fix.
     """
     mix = STATION_MIX if mix is None else mix
     _require_unit_sum(mix)
