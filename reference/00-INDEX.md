@@ -3192,3 +3192,82 @@ This upload closed the project's largest reference gap. Before it,
 cells, the large majority of walkable space — was extrapolated from proportions in a single frame
 of one sector. The three new interior frames establish that there are **at least three corridor
 classes**, not one; see INV-020.
+
+---
+
+## Session 3j upload — the Starfury cockpit, and the resolution trap for the third time
+
+Four files, all into `12-starfury/`. **This closes the last "zero reference coverage" item in
+`STATE.md`'s Blocked table.** The cockpit was the only interior in the project with no reference
+at all, and it is required for Act III.
+
+**Read the authority column before the resolution column, and this upload is why.**
+
+| file | px | MP | authority | what it is |
+|---|---|---|---|---|
+| `starfury cockpit and sitting position 2.jpg` | 411×555 | 0.23 | **2** | **The production cockpit tub, canopy off, shot down the axis. The most useful of the four by a wide margin.** © 1998 Mark Dickson |
+| `starfury cockpit and sitting position.jpg` | 412×562 | 0.23 | **2** | The same prop assembled with its canopy frame, on a dolly on the stage floor. © 1998 Mark Dickson |
+| `starfury cockpit and sitting position model.jpg` | 1512×2016 | 3.05 | **4** | A fan-built physical scale model, lit, with a figure in the cockpit |
+| `starfury cockpit and sitting position another model.jpg` | 1512×2016 | 3.05 | **4** | A second, different fan-built model |
+
+> **The two authority-4 files carry 13× the pixels of the two authority-2 files.**
+
+That is the third time this exact pattern has appeared in this reference set, and it has now
+produced two quarantine folders:
+
+1. Session 2k — eight **animated-film** frames, ~2260×1180, against genuine screencaps at 800×600
+   or less. `21-QUARANTINE-animated-film/`.
+2. Session 2q — nine **AI-generated** character turnarounds, the largest a 2528×1696 PNG with its
+   own generation prompt burned into it. `22-QUARANTINE-ai-generated/`.
+3. **This upload.** Not quarantined, because a fan model of the real prop is legitimate
+   authority-4 corroboration and is *labelled as a model in its own filename*. But it is the
+   sharpest, brightest, best-lit material in the folder and it is the material that must not be
+   measured from.
+
+**RESOLUTION IS NOT AUTHORITY.** Written here for the third time because twice was not enough.
+
+### What the authority-2 interior establishes
+
+`...sitting position 2.jpg` is a straight-down-the-axis view into the empty tub and it settles the
+cockpit's architecture:
+
+- **The tub is an elongated hexagon in plan** — narrow at the head, flaring to its widest point
+  roughly **35–40% of the way down**, then tapering to a narrower base. Not a cylinder, not a
+  rectangle.
+- **The interior is green throughout** — walls, floor and console faces. This is the set's own
+  colour, not a lighting cast; both authority-4 models reproduce it independently, which is the
+  one thing they are good for.
+- **Two angled side console banks**, each carrying vertical columns of small labelled switch
+  plates, plus **one circular instrument cluster per side**.
+- **A ribbed couch runs almost the full height of the tub on the centreline.** This is the single
+  most important feature and it is what "sitting position" means here: the pilot is **braced
+  against a near-vertical back board, effectively standing rather than seated**.
+- **A dark oval headrest recess at top centre**, with a **bright Y-shaped chest yoke** immediately
+  below it.
+- Yellow-and-black hazard striping across the head end.
+- **Ignore the yellow gas bottle and the coloured hand tools clamped to the side walls.** They are
+  stage equipment stored in the prop, not set dressing. A future session will otherwise model a
+  fire extinguisher into a starfighter.
+
+Both authority-4 models corroborate the posture independently: their pilot figures stand upright
+in the tub with arms forward and down onto the side consoles.
+
+### What is NOT established, and must not be invented quietly
+
+**No absolute dimension.** The two authority-2 photos contain no human and no scale bar. The two
+files that *do* contain a figure are authority 4 and their figures are toy-scale, so a stature
+read off them measures the modeller's parts bin.
+
+Attempted and reported rather than published: automated segmentation of the tub outline on
+`...2.jpg` gives contradictory answers depending on threshold — a loose green mask tracks the
+outer wall in the upper half and then runs to the frame edge, and a tight mask locks onto the
+central couch (60 px) instead of the walls. **On a dark 411×555 JPEG of an all-green set this is
+not a reliable measurement, and no number is recorded from it.** The *shape* proportions above are
+robust to threshold and are recorded; the absolute size is not, and is not.
+
+The cockpit's absolute scale must therefore come from the airframe it sits in —
+`station/starfury_geometry.py` and the Aurora's overall dimensions — with the tub sized to fit a
+standing 1.75 m pilot inside it and the result logged as an invention. That is the next session's
+job, and the constraint is a real one rather than a free choice: the tub must simultaneously fit
+the pilot, fit the pod at the X-frame intersection, and match the 35–40% widest-point proportion
+measured here.
