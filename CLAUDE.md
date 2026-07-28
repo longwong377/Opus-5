@@ -10,6 +10,23 @@ First and third person. Interior and exterior generated from **one** authoritati
 they can never disagree. Flyable Starfury with seamless launch and dock. NPCs with names,
 species, roles and schedules. Era lock: **Season 2–3**.
 
+## Scope — what "the whole station" means
+
+Set by the owner in session 3c and binding on everything below. The simulation must contain
+**every point of interest and location from the show, in the right place**, and must be a living
+thing rather than a building:
+
+- NPCs with quarters, jobs, schedules and events — not crowds, *residents*
+- transports and visitors arriving and departing continuously; the jump gate working
+- customs and immigration, law enforcement, crime, the black market, Downbelow's underclass
+- every major faction present, with the friction between them visible in a corridor
+- the physical plant that makes 250,000 people possible: food, water, air, power, waste
+- an information layer the player can use — comms, ISN, propaganda, signage, announcements
+- *"the simulation exists around you rather than in text"*
+
+`docs/gazetteer/` is where that scope is enumerated and sourced. Nothing is considered complete
+while a gazetteer entry for it is unbuilt.
+
 ## The standard
 
 The owner set it explicitly in session 2y: *"utterly perfect, visually beautiful, with every
@@ -66,8 +83,21 @@ single careful build:
 
 ## Hard rules
 
-1. **Nothing is built from memory.** Every dimension, layout and name traces to
-   `canon/00-MASTER.md`. If it is not sourced there, it does not get modelled.
+1. **Nothing is built from memory — but everything gets built.** Every dimension, layout and
+   name either traces to `canon/00-MASTER.md` **or is a declared extrapolation** logged in
+   `canon/INVENTIONS.md`. What is forbidden is *unmarked* invention: a number that looks sourced
+   and is not. Owner's instruction, session 3c: *"you extrapolate to the best of your ability
+   based on your research"* and *"I don't have perfect photo references."*
+
+   So the answer to "the show never establishes this" is **never** to leave a hole. It is to
+   extrapolate in style, reason it out on the page, mark it authority 5, and record what would
+   overturn it. A station with a declared-invented corridor width is finishable; a station with
+   a missing corridor is not.
+
+   The bar for an extrapolation is that a reader can see *why* it is that value: what constrained
+   it, what it was derived from, what it would break if wrong. `INV-020`'s concourse width is a
+   good example of the standard — it says plainly which of its three numbers is weak and what one
+   frame would close it.
 2. **Log every invention** in `canon/INVENTIONS.md` — what, why, what constrained it, what
    would overturn it. Canon and extrapolation must never blur.
 3. **Blocking conflicts block.** `canon/CONFLICTS.md` entries marked BLOCKING stop the
@@ -165,9 +195,14 @@ This project runs partly on a **6-hourly trigger** (`trig_01JS1VWf6yada5x6maPMAz
    highest-yield thing in this project's process.
 4. **Never spawn a workflow from inside a triggered firing** unless the work genuinely needs
    it. The trigger already repeats; the multiplication is what gets expensive.
-5. **Blocked is a valid outcome.** C-003 and C-004 gate all interior layout. Reporting "still
-   blocked, here is what would unblock it" is the correct result, not a failure to try hard
-   enough.
+5. **Blocked applies to *labels*, almost never to *building*.** C-003 and C-004 decide which
+   *name* attaches to a volume, not what shape it is — `drum_sector()` identifies the drum by
+   geometry precisely so that construction never waits on the naming. Before reporting anything
+   as blocked, check whether it is the label or the thing that is actually stuck. It is nearly
+   always the label, and the thing can be built and named later.
+
+   A real block is when proceeding would make the work *wrong* rather than merely *provisional*.
+   Those are rare. Say what would unblock it and go build something else.
 
 ## Git
 
