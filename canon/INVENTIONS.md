@@ -1011,3 +1011,55 @@ project held:
 | **Six atmospheres** available simultaneously, others to order | a life-support requirement with a number in it, and the mechanic behind the alien sector and Kosh's encounter suit |
 | The station runs on **Earth Mean Time (EMT)** | every NPC schedule in `station/npc/schedule.py` was implicitly on some clock; this names it |
 | There is a **Business Center**, handling currency exchange | a sourced location the gazetteer can place |
+
+---
+
+## INV-024 — Command & Control room dimensions
+
+**Invented:** The room's plan in `station/command_control.py` — a 14 × 12 m upper floor, a 4.6 m
+stepped command dais, five standing consoles over a 150° arc, a 1.9 m drop to the forward pit,
+and light strips at 2.35 m and 3.55 m.
+
+**Why necessary:** C&C is the most-seen room in the show and the gazetteer ranks it fourth. It
+also pays a structural debt: the exterior `observation_dome` component is a box primitive, and
+C&C's window is that dome's glazing seen from inside — the two must agree or the station has a
+window looking out at nothing.
+
+**What is sourced:** a great circular window on radial spoke mullions crossed by a concentric
+ring band; a raised circular dais on a stepped plinth; wedge consoles on slim legs, lit; two
+courses of horizontal light strips; stairs down at the right; a lower forward pit of red-lit
+consoles; **two occupied levels in one volume**, which is what makes it read as a bridge.
+
+**Constrained by:**
+
+- **Dome dimensions are read from the schema, not restated** — radius 46 m, height 34 m,
+  Contract 5 authority 3 — and the self-test asserts they match and that the window fits inside.
+- **The window is measured, and the measurement needed a correction I first omitted.** The
+  officer stands 175 px in an 816×616 frame → 100 px/m *at his depth*. Fitting the window's arc
+  (chord 280 px, sagitta 215 px) gives 306 px across. Dividing those directly gives **3.1 m and
+  is wrong**: the window is in the bulkhead *behind* him, and pixels-per-metre falls with
+  distance. At ~5 m to the officer and ~4 m more to the bulkhead the scale there is 56 px/m, so
+  the window is **5.5 m**. A factor of 1.8, and the same trap that put the tram car length in
+  dispute in C-008.
+
+**Overturned by:** a wider shot of C&C, or any frame showing the dome's glazing from outside.
+
+**Five defects the assertions caught while building it**, all invisible in a render and each
+found by a test rather than by looking:
+
+1. **The glazing was laid flat.** `disc()` builds in XZ at a height; the window needed XY at a
+   depth. The glass ended up on the ceiling while the mullions stood correctly in the bulkhead.
+2. **The measurement above**, uncorrected for depth.
+3. **The mullions were full-diameter bars**, so sixteen of them piled up at the centre into a
+   solid starburst with no glass between them. A spoked window has a hub; they now run from it
+   to the rim.
+4. **The bulkhead had no aperture.** It was one solid slab with the glazing laid on it, so the
+   glass was sealed inside 0.30 m of steel. An opening is a hole in something, and the something
+   has to be built with the hole already in it — four panels around it, not a slab.
+5. **The glazing faced out of the room.** Ascending angle in XY gives a +Z normal, which points
+   through the bulkhead and is culled from the only side anyone stands on. Fourth instance of
+   this family in the project.
+
+The assertion that caught (4) was itself wrong first time round: it required the glass to stand
+*proud of* the bulkhead, which fails a correctly glazed window. Glass sits **in** an opening. It
+now checks that the glazing fits the aperture and lies within the bulkhead's depth.

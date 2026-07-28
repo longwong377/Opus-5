@@ -1,6 +1,6 @@
 # Project State
 
-**Last updated:** 2026-07-28 · **Session 3g** — C-004 third reading; cells aligned to 10° regions
+**Last updated:** 2026-07-28 · **Session 3h** — docking bay, signage and C&C built
 
 ## Where we are
 
@@ -1404,6 +1404,63 @@ is now asserted per ring. `interior.py`: **175/175** (34 new), and removing the 
   independent witness.** C-003 stays open.
 - **X-6** is a rare authority-3/4 cross-check that *holds*: medical distributed across Red, Green
   and Blue with the primary Medlab in Blue; law and security in Red.
+
+## Session 3h — three rooms built, from the gazetteer's ranked list
+
+Working straight down `docs/gazetteer/LOCATIONS.md` §19. #1 Zocalo was already built; this
+session did **#3 the docking bay, #2 the customs signage, and #4 C&C**.
+
+| module | what | assertions |
+|---|---|---|
+| `docking_bay.py` | the room the launch-and-dock requirement lands in | 18/18 |
+| `signage.py` | backlit boards **and the only readable sign we hold, verbatim** | 15/15 |
+| `command_control.py` | the bridge, in Observation Dome 1 | 25/25 |
+
+### The docking bay
+
+Width is not a free number: **42 m is the schema's own `cobra_bay` width**, authority 3 off
+Contract 5 — the width that document gives *this station* for *this class of structure*. The
+self-test asserts it fits: 24 bays at a 254.2 m deck radius get **66.5 m of arc** each. Deck is
+at **0.913 g**. One measured length, the deck disc at 10.6 m, from an 11-worker file at 16 px/m.
+
+**A bay is not a hangar, and the geometry says so.** The first placement mapped the width along a
+*tangent* and pushed both walls 0.9 m *outside* the pressure hull. A bay is cut into a **rotating**
+hull, so its deck follows an arc — corrected, it cambers **0.87 m** across 42 m.
+
+### Signage — the project had none
+
+`16-signage-typography-ui/` is three logos. The module is deliberately two things: board geometry,
+and **the text verbatim as canon data**, because what a sign says is a fact about the station, not
+a decoration, and belongs in version control rather than baked into a texture nobody can grep.
+
+Transcribed exactly, **including the prop's own spelling** — `ARANGEMENT` with one R,
+`ATMOCHEMICAL`. Asserted, because a well-meaning correction is how a transcription rots.
+
+**Three facts these boards establish that are not signage at all:** six atmospheres available
+simultaneously with more to order (a life-support number, and the mechanic behind the alien
+sector); the station runs on **Earth Mean Time**, which names the clock every NPC schedule was
+implicitly on; and there is a **Business Center** handling currency exchange — a sourced location.
+
+### C&C, and a measurement error worth remembering
+
+Dome dimensions are **read from the schema rather than restated** (46 m radius, 34 m high,
+Contract 5), and the window is asserted to fit inside it.
+
+The window measurement needed a correction I first omitted. The officer is 175 px → 100 px/m
+*at his depth*; the window's fitted arc is 306 px across. Dividing directly gives **3.1 m and is
+wrong** — the window is in the bulkhead *behind* him and px/m falls with distance. At ~5 m to him
+and ~4 m more to the bulkhead, the scale there is 56 px/m and the window is **5.5 m**. A factor
+of **1.8**, and the same trap that put the tram car length in dispute (C-008).
+
+**Five defects the assertions caught while building C&C**, every one invisible in a render:
+the glazing laid flat (XZ disc where an XY one was needed, so the glass was on the ceiling); the
+uncorrected measurement; full-diameter mullions piling into a solid starburst with no glass
+between them; a bulkhead with **no aperture**, so the glass was sealed inside 0.30 m of steel;
+and glazing wound to face *out* through the bulkhead. The aperture assertion was itself wrong
+first time — it demanded the glass stand *proud of* the wall, which fails a correctly glazed
+window. Glass sits **in** an opening.
+
+All three wired into CI. **INV-022, INV-023, INV-024** logged.
 
 ## Next session — start here
 
