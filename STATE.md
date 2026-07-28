@@ -1656,6 +1656,48 @@ not be measured from.
 **No absolute dimension is recorded, deliberately.** See the index entry for the failed
 segmentation and why no number was published from it.
 
+## Session 3j (cont.) — the plant kit, and four defects only a render found
+
+`station/plant.py`, **24 assertions**, wired into CI. The 62.3 M-triangle corridor placeholder
+over Grey's 34 plant decks is gone.
+
+**The structural decision:** plant space is **not decked at `DECK_PITCH_M`**. A 3.6 m pitch is a
+corridor's pitch and a tank farm wants height, so the 34 decks regroup into **7 bays of ~17.7 m**
+and the *bay* is the unit built. The 4-deck remainder is kept as a shallower top bay, not dropped.
+
+| | |
+|---|---|
+| whole zone | **453,528 tri** against the 62,273,664 placeholder — **0.7%** |
+| tankage laid out | 1,232,508 m³, **3.1×** the 397,500 m³ reserve, **0.88%** of the zone |
+
+**Why the reserve assertion is not circular:** tank *count* is not derived from the volume it must
+hold. It falls out of a fixed farm lattice, and the test then asserts the result clears L-04's
+reserve — a sparser lattice would fail. A **second assertion brackets it from the other side**
+(tankage < 10% of plant volume), and that pair is what caught the first implementation, which
+tiled the annulus and produced **65.1 M m³ — 164× the reserve and 46.6% of the zone**.
+
+### Four defects, three found only by rendering it — the self-test passed 21/21 while they were live
+
+1. **`_place()` reverses winding**, Jacobian determinant **−1**. Everything through it was
+   inside-out. Found by standing on the catwalk and **seeing magenta through the floor**. Third
+   instance of this family in the project. The gate now asserts on a **placed** solid, because
+   the local test passes either way — which is exactly what let it ship.
+2. **The pipes were 457 m in radius** — radial *position* passed as *radius*.
+3. **The frame rings spanned 360°**, so every cell carried a ring round the whole station.
+4. **The catwalk was a 158 × 120 m plate** spanning the full arc *and* z, with `CATWALK_W_M` used
+   as a radial offset rather than a width.
+
+**Two lessons worth more than the fixes.** A new gate checking that no piece is radially larger
+than its bay **missed** the 360° ring, because it measures **vertex** radii and every vertex of a
+coarse polygon sits at the same radius while its chords cut far inside — *gates that sample
+vertices cannot see chords*. And `CATWALK_CLEAR_M` was 1.8 m, a crawl space giving a 1.7 m person
+100 mm, guarded by `CATWALK_CLEAR_M >= 1.8` — the value itself, so it could not object.
+
+`docs/render-plant-bay.png` is the corrected view. It reads flat grey because there is no
+lighting or material yet; that is phase C, not a geometry defect.
+
+Logged as **INV-028**.
+
 ## IN FLIGHT — read this before starting anything
 
 **An adversarial review panel is running over the five new NPC modules and had NOT reported when
@@ -1736,7 +1778,9 @@ What follows is in rough priority order.
    shoulders read as a shelf. Craft, not closure — no gate can see it and only looking caught it.
    `docs/render-npc-detail.png`.
 
-0c. **The plant kit.** `LIFE-SUPPORT-AND-INDUSTRY.md` §8: 62.3 M triangles — **26% of the whole
+0c. ~~**The plant kit.**~~ — **built, session 3j.** `station/plant.py`. What remains is the
+   PHASE C pass on it: lighting, material and dressing. Old note kept for the numbers:
+   **The plant kit.** `LIFE-SUPPORT-AND-INDUSTRY.md` §8: 62.3 M triangles — **26% of the whole
    station interior** — is currently budgeted for Grey's 34 plant decks as walkable corridor, and
    the plant zone is 559 m³ per resident, ~100× what life support needs. It is structure, tankage
    and void with a thin walkable skeleton, and that kit does not exist. Largest piece of
