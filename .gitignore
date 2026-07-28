@@ -19,3 +19,7 @@ godot/scripts/*.uid
 # station/generated/*.glb rule above does not reach this subdirectory.
 station/generated/scene/
 tools/__pycache__/
+
+# Python bytecode. Regenerated on every import; 14 of these were tracked.
+__pycache__/
+*.pyc
