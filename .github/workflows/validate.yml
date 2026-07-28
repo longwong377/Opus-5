@@ -90,6 +90,7 @@ jobs:
           cd station
           python3 zocalo.py
           python3 docking_bay.py
+          python3 signage.py
 
       - name: Streaming cell manifest
         run: |

@@ -971,3 +971,43 @@ follows an arc rather than a chord. The first placement mapped the bay's width a
 and pushed both walls 0.9 m *outside* the pressure hull. Corrected, the deck cambers **0.87 m**
 across its 42 m width — small, but enough that a craft parked across the bay sits measurably
 nose-down relative to one parked along it, and it is the reason a bay is not a hangar.
+
+---
+
+## INV-023 — Signage board dimensions
+
+**Invented:** `BOARD_W_M = 1.10`, `BOARD_H_M = 1.48`, and the frame, inset and mounting heights
+in `station/signage.py`.
+
+**Why necessary:** `reference/01-station-exterior/welcome to babylon 5.webp` is the **only frame
+in the entire reference set showing readable station signage**, and it is cropped to the boards
+themselves — there is nothing of known size in it. The proportions are sourced; the scale is not.
+
+**Constrained by:**
+
+- The frame shows the panel **markedly taller than wide**, with a wide flat frame and the lit
+  face set back inside it. The 3:4 ratio is measured off the frame; only the absolute size is
+  chosen.
+- **The mounting height is bounded at both ends and asserted.** The board must span standing eye
+  height (1.7 m) or it cannot be read, and its underside must clear a walking crowd. 1.35 m to
+  1.35 + 1.48 = 2.83 m satisfies both.
+- **The size is checked against legibility rather than taste.** A capital stays readable to about
+  250× its height when looked for and half that at a glance. This board's body text gives a
+  ~57 mm capital, so it serves **6.4 m at a glance and 12.8 m if sought** — which is what decides
+  how many boards a concourse needs, and says one board covers a bay of a hall, not the hall.
+
+**Overturned by:** any wider shot of the customs hall showing a board against a person or a door.
+
+**Not an invention, and the more important half of the module:** the board **text is transcribed
+verbatim at authority 1**, including the prop's own spelling — `ARANGEMENT` with one R and
+`ATMOCHEMICAL`. Both are on the screen-used board and both are reproduced; the self-test asserts
+they survive, because a well-meaning correction is exactly how a transcription rots.
+
+**Three facts these boards establish that are not signage at all**, and that nothing else in the
+project held:
+
+| | |
+|---|---|
+| **Six atmospheres** available simultaneously, others to order | a life-support requirement with a number in it, and the mechanic behind the alien sector and Kosh's encounter suit |
+| The station runs on **Earth Mean Time (EMT)** | every NPC schedule in `station/npc/schedule.py` was implicitly on some clock; this names it |
+| There is a **Business Center**, handling currency exchange | a sourced location the gazetteer can place |
