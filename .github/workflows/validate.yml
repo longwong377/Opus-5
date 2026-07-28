@@ -141,6 +141,15 @@ jobs:
           python3 costume.py
           python3 crowd.py
 
+      # Animation and navigation are the two that touch station geometry, so
+      # they are the two a schema change can silently break. Slowest gates in
+      # the project at ~24 s and ~77 s; both are worth it.
+      - name: NPC animation and navigation
+        run: |
+          cd station/npc
+          python3 animation.py
+          python3 navigation.py
+
       - name: Confirm the schema still parses and is fully sourced
         run: |
           python3 - <<'PY'
