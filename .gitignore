@@ -18,3 +18,4 @@ godot/scripts/*.uid
 # because a gitignore "*" does not cross a directory separator, so the
 # station/generated/*.glb rule above does not reach this subdirectory.
 station/generated/scene/
+tools/__pycache__/

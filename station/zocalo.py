@@ -197,6 +197,7 @@ PROVISIONAL = {
     "seat_zone_out_m": 5.35,
     # Stalls sit in the colonnade under the gallery.
     "stall_x_m": 9.00,
+    "gallery_stall_x_m": 9.20,
     "stall_w_m": 2.40,
     "stall_d_m": 1.20,
     "stall_counter_h_m": 1.00,
@@ -528,14 +529,18 @@ def _rib(mesh, p, z, group="zoc_rib"):
 def tiled_deck(p, index=0, seed="zocalo"):
     """The lower deck: large pale square tiles on a darker grid.
 
-    One quad per tile, not one quad per bay, for two reasons worth the 2,304
-    triangles: tiles have to vary individually -- the reference deck is scuffed
-    in the traffic lanes and clean under the tables -- and the flat-shaded
-    preview has no textures at all, so a tiled floor with no tile geometry
-    renders as a blank plane and cannot be judged at all.
+    One quad per tile, not one quad per bay, for ONE reason worth the 2,304
+    triangles: tiles vary individually. The reference deck is scuffed in the
+    traffic lanes, clean under the tables and chevron-banded at the thresholds,
+    and a per-tile quad is what lets a material differ tile to tile.
 
-    The chevron band at each end of the bay is a MATERIAL on selected tiles, not
-    geometry, and so is the tile pattern. Three groups, three draw calls.
+    It is NOT for the preview render, and an earlier version of this comment
+    claimed it was. Coplanar quads shade identically under a flat-shaded
+    rasteriser, so the tile joints do not appear at all -- only the three
+    material groups do. Checked, not assumed.
+
+    The chevron band and the tile pattern itself are MATERIALS on those groups,
+    not geometry. Three groups, three draw calls.
     """
     m = Mesh()
     w, l, tile = p["bay_width_m"], p["bay_length_m"], p["tile_m"]
@@ -1013,9 +1018,20 @@ def zocalo_bay(p=None, index=0, seed="zocalo", stair_side=None,
                   offset=(hw, 0.0, 0.0), groups=wg)
     kit.reset_tags()
 
-    # Soffit over the well. Faces DOWN: it is only ever seen from beneath.
-    m.quad((-x_in, ceil, 0.0), (x_in, ceil, 0.0), (x_in, ceil, l),
-           (-x_in, ceil, l), "zoc_soffit")
+    # Soffit, the FULL width of the bay. It spanned only the well on the first
+    # pass, which left the gallery's upper storey open to the background: a
+    # magenta render put 27% of the frame through the hole, and against the
+    # black the render is meant to be judged on it read as unlit ceiling.
+    m.quad((-hw, ceil, 0.0), (hw, ceil, 0.0), (hw, ceil, l),
+           (-hw, ceil, l), "zoc_soffit")
+    # Longitudinal purlins spanning rib to rib. A 233 m2 ceiling with nothing on
+    # it reads as a lid, and the reference shows structure overhead in every
+    # frame of this set. Five shallow beams, 60 triangles, and the soffit stops
+    # being a flat plane.
+    for k in range(5):
+        px = -8.0 + 4.0 * k
+        m.slab(px - 0.16, px + 0.16, ceil - 0.34, ceil - WELD_M, 0.0, l,
+               "zoc_purlin")
 
     a_rib = p["well_width_m"] / 2.0
     b_rib = ceil - p["rib_thickness_m"]
@@ -1054,6 +1070,15 @@ def zocalo_bay(p=None, index=0, seed="zocalo", stair_side=None,
                 m.merge(vendor_stall(p, variant=var, seed=seed),
                         remap=kit._rot_y(90.0 if s < 0 else -90.0),
                         offset=(s * p["stall_x_m"], 0.0, z))
+                # And the same trade on the gallery. Without it the upper deck
+                # is a shelf with a rail on it: the render read as one empty
+                # pale plane across a third of the frame, and `zocalo.webp`
+                # shows the upper level trading exactly as the lower one does.
+                # Staggered half a pitch so the two levels do not line up.
+                m.merge(vendor_stall(p, variant=(var + 3) % 6, seed=seed),
+                        remap=kit._rot_y(90.0 if s < 0 else -90.0),
+                        offset=(s * p["gallery_stall_x_m"], p["gallery_y_m"],
+                                (z + l * 0.25) % l))
 
     if stair_side:
         m.merge(stair_flight(p),
@@ -1094,18 +1119,27 @@ def zocalo_bay(p=None, index=0, seed="zocalo", stair_side=None,
     return m.as_tuple()
 
 
-def zocalo_run(bays=3, p=None, seed="zocalo", **kw):
+def zocalo_run(bays=3, p=None, seed="zocalo", cap_ends=False, **kw):
     """`bays` bays end to end along +z.
 
     The tile grid is driven from the run's origin and the bay length is a whole
     number of tiles, so the deck pattern is continuous across every seam -- the
     defect STATE.md records at cell junctions, not repeated here.
+
+    `cap_ends` closes the two ends with a bulkhead. OFF by default, because the
+    concourse does continue and a wall there would be a lie about the space; ON
+    for a render, where an open end is 27% of the frame showing the background.
     """
     p = p or params()
     m = Mesh()
     for i in range(bays):
         v, t, g = zocalo_bay(p, index=i, seed=seed, **kw)
         m.add(v, t, None, offset=(0.0, 0.0, i * p["bay_length_m"]), groups=g)
+    if cap_ends:
+        hw, ceil = p["bay_width_m"] / 2.0, p["ceiling_height_m"]
+        for z in (0.0, bays * p["bay_length_m"]):
+            m.slab(-hw, hw, 0.0, ceil, z - 0.30 if z > 0 else z,
+                   z if z > 0 else z + 0.30, "zoc_bulkhead")
     return m.as_tuple()
 
 
@@ -1131,8 +1165,10 @@ def budget_report(p=None, seed="zocalo", out=print):
     structure = drawn - inst_drawn
 
     plan = seating_plan(p, 0, seed, (1, 0, -1, 0)[0])
-    stall_variants = sorted({(0 * 4 + (0 if s < 0 else 2) + k) % 6
-                             for s in (-1, 1) for k in range(2)})
+    stall_variants = sorted({v for s in (-1, 1) for k in range(2)
+                             for v in ((0 * 4 + (0 if s < 0 else 2) + k) % 6,
+                                       ((0 * 4 + (0 if s < 0 else 2) + k) + 3)
+                                       % 6)})
     proto = {"table": len(pedestal_table(p).t),
              "chair": len(cafe_chair(p).t),
              "service": len(drinks_service().t),
@@ -1142,7 +1178,8 @@ def budget_report(p=None, seed="zocalo", out=print):
               "chair": sum(c for _, _, c, _, _ in plan),
               "service": sum(1 for *_, s in plan if s),
               "downlight": p["downlights_per_bay"],
-              "stall": 4}
+              # Four in the colonnade and four on the gallery.
+              "stall": 8}
     # Unique = the bay's one-off structure, plus one copy of each prototype.
     # Stalls carry six variants, so a run resident-set holds six stall meshes.
     unique = structure + sum(proto.values())
@@ -1217,10 +1254,22 @@ def budget_report(p=None, seed="zocalo", out=print):
         f"objects that is")
     out(f"    {full * len(per):,} draw calls, against budget.py's whole-exterior "
         f"ceiling of {budget.BUDGETS['exterior_draw_calls']}.")
+    # Structure materials are shared across bays, so they cost one draw call
+    # each however long the run is. There is no interior draw-call gate in
+    # budget.py -- only an exterior one -- and this is the number that would
+    # need one.
+    struct_groups = [k for k in per if not k.startswith(INSTANCED)]
+    out(f"\n  draw calls for a run of ANY length: {len(struct_groups)} "
+        f"structure materials + {len(proto)} MultiMeshes = "
+        f"{len(struct_groups) + len(proto)}.")
+    out(f"  budget.py gates draw calls for the exterior "
+        f"({budget.BUDGETS['exterior_draw_calls']}) and NOT for interiors. "
+        f"That gap is worth closing.")
     return {"structure": structure, "drawn": drawn, "unique": unique,
             "per_group": per, "prototypes": proto, "counts": counts,
             "bays_in_gate": n_bays, "sight_bays": full,
-            "lod_switch_m": d_tube, "area_m2": area}
+            "lod_switch_m": d_tube, "area_m2": area,
+            "draw_calls": len(struct_groups) + len(proto)}
 
 
 # ---------------------------------------------------------------------------
@@ -1313,10 +1362,23 @@ def clearances(p=None):
 
     stall = vendor_stall(p, 0)
     out["awning_top_m"] = max(q[1] for q in stall.v)
+    # LATERAL half-extent, which is the stall's own DEPTH: every stall is
+    # rotated 90 degrees to face the well, so its local z becomes world x. The
+    # first version measured local x and passed the well-clearance test for the
+    # wrong reason while failing the wall test by 0.29 m.
+    out["awning_half_w_m"] = max(abs(q[2]) for q in stall.v)
     out["awning_to_gallery_soffit_m"] = (y_g - p["gallery_slab_m"]
                                          - out["awning_top_m"])
-    out["stall_awning_to_well_m"] = (p["stall_x_m"]
-                                     - max(abs(q[0]) for q in stall.v) - x_edge)
+    out["stall_awning_to_well_m"] = (p["stall_x_m"] - out["awning_half_w_m"]
+                                     - x_edge)
+    # The gallery-level stall has a ceiling above it and a drop beside it.
+    out["gallery_stall_headroom_m"] = (p["ceiling_height_m"] - y_g
+                                       - out["awning_top_m"])
+    out["gallery_stall_to_edge_m"] = (p["gallery_stall_x_m"]
+                                      - out["awning_half_w_m"] - x_edge)
+    out["gallery_stall_to_wall_m"] = (p["bay_width_m"] / 2.0
+                                      - p["gallery_stall_x_m"]
+                                      - out["awning_half_w_m"])
 
     gal = gallery(p, 1)
     out["colonnade_headroom_m"] = min(q[1] for q in gal.v)
@@ -1518,6 +1580,14 @@ def _selftest():
     check("no stall awning overhangs the open well",
           cl["stall_awning_to_well_m"] > 0.0,
           f"{cl['stall_awning_to_well_m']:.3f} m")
+    check("the gallery-level stall fits under the soffit",
+          cl["gallery_stall_headroom_m"] > 0.30,
+          f"{cl['gallery_stall_headroom_m']:.3f} m")
+    check("no gallery stall overhangs the well or fouls the side wall",
+          cl["gallery_stall_to_edge_m"] > 0.0
+          and cl["gallery_stall_to_wall_m"] > 0.0,
+          f"edge {cl['gallery_stall_to_edge_m']:.3f} m, "
+          f"wall {cl['gallery_stall_to_wall_m']:.3f} m")
     check("nothing the gallery hangs is at head height in the colonnade",
           cl["colonnade_headroom_m"] >= 2.4,
           f"{cl['colonnade_headroom_m']:.2f} m")
@@ -1559,23 +1629,32 @@ def _selftest():
               f"{len(nm)} edges used by three or more triangles")
 
     # The stair's cap triangulation. A fan anchored at the wrong vertex still
-    # reports the right volume AND the right closure and renders as spikes, so
-    # the assertion has to be about where the triangles physically are.
+    # reports the right volume AND the right closure AND the right signed area,
+    # because fan triangulation cancels: triangles that fall outside come out
+    # negative and net to the correct total. What does NOT cancel is the sum of
+    # their ABSOLUTE areas, so that is what this compares -- unsigned fan area
+    # against the outline's shoelace area, equal only if every triangle is
+    # inside the profile and none overlaps another.
+    #
+    # A centroid-in-profile test was tried first and did NOT catch it: with the
+    # fan anchored at the bottom-front corner the worst triangle's centroid
+    # lands exactly ON the profile, at 2.400 m against a 2.400 m limit.
     sm = stair_flight(p)
     hw = p["stair_width_m"] / 2.0
-    riser = p["gallery_y_m"] / p["stair_risers"]
-    outside = 0
+    out = stair_outline(p)
+    shoelace = abs(sum(out[i][0] * out[(i + 1) % len(out)][1]
+                       - out[(i + 1) % len(out)][0] * out[i][1]
+                       for i in range(len(out)))) / 2.0
+    fan = 0.0
     for tri in sm.t:
-        pts = [sm.v[k] for k in tri]
-        if not all(abs(abs(q[0]) - hw) < 1e-9 for q in pts):
-            continue
-        cy = sum(q[1] for q in pts) / 3.0
-        cz = sum(q[2] for q in pts) / 3.0
-        step = min(p["stair_risers"] - 1, int(cz / p["stair_going_m"]))
-        if cy > (step + 1) * riser + 1e-9:
-            outside += 1
-    check("every stair cap triangle lies under the staircase", outside == 0,
-          f"{outside} outside the profile")
+        q = [sm.v[k] for k in tri]
+        if not all(abs(qq[0] - hw) < 1e-9 for qq in q):
+            continue                                   # the +x cap only
+        fan += abs((q[1][2] - q[0][2]) * (q[2][1] - q[0][1])
+                   - (q[2][2] - q[0][2]) * (q[1][1] - q[0][1])) / 2.0
+    check("the stair cap tiles its outline without spilling outside it",
+          abs(fan - shoelace) < 1e-9,
+          f"fan area {fan:.6f} m2 vs outline {shoelace:.6f} m2")
 
     # --- the bay's open edges, reconciled against a declared list ------------
     bnd, nm = it.boundary_edges(v, t)
@@ -1615,9 +1694,11 @@ def _selftest():
     dv2, _ = group_mesh(v2, t2, g2, "zoc_deck_")
     face1 = sorted({round(q[0], 6) for q in dv1 if abs(q[2] - l) < 1e-9})
     face2 = sorted({round(q[0], 6) for q in dv2 if abs(q[2] - l) < 1e-9})
+    mismatch = [q for q in face1 if q not in face2][:3]
     check("the deck's tile joints are continuous across the bay seam",
           face1 == face2 and len(face1) == nx + 1,
-          f"{len(face1)} vs {len(face2)}, expected {nx + 1}")
+          f"{len(face1)} joints vs {len(face2)}, expected {nx + 1}; "
+          f"not shared: {mismatch}")
     expect = [round(-p["bay_width_m"] / 2 + i * p["tile_m"], 6)
               for i in range(nx + 1)]
     check("the seam's joints sit on the tile grid, not near it",

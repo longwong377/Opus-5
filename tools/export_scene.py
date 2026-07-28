@@ -719,6 +719,30 @@ def _selftest():
     else:
         print("note: no exported scene to check; run --shot drum first")
 
+    # -- exterior material coverage, reported not gated --------------------
+    # The drum's coverage is asserted above. The EXTERIOR's never was, and it is
+    # worse: 21 of the hull's 32 groups match no rule in exterior.tscn, so every
+    # greeble group and the drum's own `green_section` render on the fallback.
+    # That is why a re-render of `docs/engine-exterior.png` at its own committed
+    # camera does not reproduce it (8.69% speckled pixels against 5.72%): the
+    # surfaces are not the ones the frame was judged on.
+    #
+    # Printed rather than checked, deliberately. `godot/scenes/exterior.tscn` is
+    # not this file's to edit, and a hard check here turns
+    # tools/build_and_render.sh red for every other agent until someone else's
+    # file changes. It should BECOME a check the moment the .tscn binds them --
+    # a note that nobody promotes is how this stayed invisible for two sessions.
+    hull_man = os.path.join(GENERATED, "hull_manifest.json")
+    ext_tscn = os.path.join(ROOT, "godot/scenes/exterior.tscn")
+    if os.path.exists(hull_man) and os.path.exists(ext_tscn):
+        ext_rules = scene_material_rules(ext_tscn)
+        hull_groups = sorted(json.load(open(hull_man))["groups"])
+        unbound = unmatched_groups(hull_groups, ext_rules)
+        if unbound:
+            print(f"note: exterior.tscn binds {len(ext_rules)} rules and leaves "
+                  f"{len(unbound)} of {len(hull_groups)} hull groups on the "
+                  f"fallback material: {', '.join(unbound[:6])}...")
+
     # -- hull LOD selection ------------------------------------------------
     # The chain is derived in station/lod.py and flattened into the manifest;
     # this is the consumer. What can go wrong here and nowhere else: selecting

@@ -116,9 +116,10 @@ opens** — see §11.
 | JG-P4 | **The gate's own appearance.** | Four struts (JG-2 permits three or four; four gives the symmetry the aperture needs), each 3.2 km × 180 m × 60 m per JG-3, arranged on a 3.5 km circle about a common axis, tips inboard. **The struts are the only sourced dimensions in the whole gate and they should be honoured exactly.** | **T-02** |
 
 **Why the distance matters more than it looks.** It sets the whole rhythm of the port. At 65 km,
-a transport decelerating at a comfortable 0.3 g runs gate-to-station in **~4.5 minutes**; a
-Starfury at the Aurora's measured **18.38 m/s² on the mains** (`station/physics/starfury.py`,
-STATE.md session 2f) does it in **2.7 minutes** flat-out. Both are short enough to watch and long
+a transport flying accelerate-flip-decelerate at a comfortable 0.3 g runs gate-to-station in
+**5.0 minutes** (6.1 min at 0.2 g, 8.6 min at 0.1 g); a Starfury at the Aurora's measured
+**18.38 m/s² on the mains** (`station/physics/starfury.py`, STATE.md session 2f) does it in
+**2.0 minutes** flat-out. Both are short enough to watch and long
 enough to be a journey. It also puts the gate at **8× the station's own length**, so from the
 station the gate is a structure you can see and not read — which is the right visual relationship.
 The `station/physics/floating_origin.py` work already measured float32 at 50 km as **3.91 mm** of
@@ -265,11 +266,14 @@ should implement.
 | **7 · Elevator transfer** | bay elevator carries the craft outboard to the assigned bay (D-8) | **~90 s** (T-04) | **the bottleneck: there are two elevators for 24 bays** |
 | **8 · Berth** | landing pad, then down to the parking level (D-9); shutdown, ramp out | — | announcement fires here (D-11) |
 
-**The two-elevator bottleneck is a genuine simulation constraint, not colour.** Two elevators at
-~90 s each way plus load and unload is roughly **8–12 movements per hour**, against §5's ~55
-arrivals *and* ~55 departures per day. That is comfortable on average and tight at the peak — so
-the port has a queue that is usually short and occasionally real. That is precisely the texture
-the brief asks for, and it falls out of an authority-3 count rather than being designed in.
+**The two-elevator bottleneck is a genuine simulation constraint, not colour.** At 90 s out, 90 s
+back and ~120 s of loading and securing, one elevator does **12 movements an hour** and the pair
+does **24**. Against §5's traffic — ~110 movements a day, peaking at ~15 an hour — that is
+**62% utilisation at the peak and about 20% on average.** So the port has spare capacity that is
+usually invisible and occasionally not: a liner disgorging while freight is still turning round, or
+**one elevator out of service**, and the queue becomes real. That is precisely the texture the
+brief asks for, and it falls out of an authority-3 count of two rather than being designed in.
+**"One elevator down" is the cheapest high-value event in this whole document.**
 
 ### 4.4 Traffic control
 
@@ -425,10 +429,12 @@ and they are what make the port feel alive rather than uniform.
 no reason to prefer daylight, which is itself a nice alien-ness — a port that never closes, laid
 over a human working day.
 
-**A liner arrival is a separate axis.** 600 passengers through one hall in 90 minutes is
-**~7 people a minute at one hall**, against a background of well under 1 per minute. The customs
-hall must be built to look **absurdly over-scaled most of the time and barely adequate twice a
-week.** That contrast is the design, not a compromise.
+**A liner arrival is a separate axis.** The background is **~1 person a minute across both halls**
+(1,500/day), i.e. about **0.5 a minute per hall**. A liner puts **600 passengers through one hall
+in 90 minutes — 6.7 a minute**, which is **13× the per-hall background.** The customs hall must
+therefore be built to look **absurdly over-scaled most of the time and barely adequate twice a
+week.** That contrast is the design, not a compromise, and it is the same "crowdedness and
+isolation" axis the owner named.
 
 ---
 
@@ -668,12 +674,12 @@ Consolidated from the above. Authority as marked per row elsewhere.
 
 | system | the rule | cadence |
 |---|---|---|
-| **Gate** | one transit at a time, ~110 s spacing (T-02) | ~110 arrivals + departures a day through one aperture |
+| **Gate** | one transit at a time, ~110 s spacing (T-02) | ~110 movements a day through one aperture = **3.4 h of gate time in 24, a 14% duty cycle** — so the gate is never the constraint, which is why the *station* can be |
 | **Inbound corridor** | 65 km (T-01), 4–7 min under power | 1 hull inbound at any moment on average |
 | **Traffic control** | C&C hails by name and type, assigns bay and vector, takes control (D-1…D-5) | continuous radio texture in Blue |
 | **Roll match** | **1.7926 rpm, one turn per 33.4716 s** (D-6) | the signature visual of an arrival |
 | **Axial entry** | dead centre, zero tangential velocity (D-7; `axial_approach_is_trivial`) | ~60 s |
-| **Bay elevators** | **2 for 24 bays**, ~90 s each way (D-8, T-04) | **the bottleneck; the queue lives here** |
+| **Bay elevators** | **2 for 24 bays**, ~90 s each way, ~5 min full cycle (D-8, T-04) | **24 movements/hour capacity, 62% used at peak — the bottleneck, and where the queue lives** |
 | **Berthing** | landing pad, then down to the parking level (D-9) | |
 | **Announcement** | ship name, bay number, customs area (D-11) | every arrival; the station's voice |
 | **Customs** | 2 halls, ~7 numbered areas, 10-step process (§6.3) | ~1,500 people/day; **7/min during a liner** |
@@ -759,16 +765,17 @@ standard shuttle and the 60 m Brezebel with room to manoeuvre, and excludes anyt
 a warship. *Overturned by:* any bay frame with a full ship and a person in it, or any stated bay
 dimension.
 
-**T-04 — The bay elevator cycle is ~90 s each way, and it is the port's bottleneck.**
+**T-04 — The bay elevator cycle is ~90 s each way (~5 min full cycle), and it is the port's
+bottleneck.**
 The elevator carries a craft from the axial mouth out to a bay. In the docking sphere that is a
 radial run of roughly 190–260 m (§4.6). The core-shuttle work already measured the constraint on
 radial motion in a rotating frame: Coriolis is 2ωv, so a fast radial run throws its load sideways —
 **8 s rim-to-axis is 2.00 g; 120 s is 0.13 g** (`00-MASTER.md` §1.2). A bay elevator's run is a
 fraction of the rim-to-axis distance but carries an unrestrained *spacecraft* on a cradle, so it
 wants the same gentleness. 90 s over ~230 m is a mean 2.6 m/s, which is a slow industrial lift.
-**Two elevators × ~90 s each way plus load and unload ≈ 8–12 movements/hour**, against ~110
-movements a day. *Overturned by:* any frame timing an elevator, or a third elevator appearing in a
-source.
+A full cycle is 90 s out + 90 s back + ~120 s of loading and securing = **5 min**, so one elevator
+does **12 movements/hour** and the pair does **24**, against ~110 movements a day peaking at ~15 an
+hour. *Overturned by:* any frame timing an elevator, or a third elevator appearing in a source.
 
 **T-05 / T-06 — The daily manifest and the passenger flow.** Reasoning is in §5.2 and §5.3 rather
 than repeated here. The load-bearing choices: 55 movements a day comes from an authority-4 figure
