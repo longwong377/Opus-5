@@ -925,3 +925,49 @@ using it as a feature size made:
 2. A first attempt at the fix set the verge tag to one full LOD ramp. Since that is half a
    block, it tagged **every** settlement cell as either avenue or verge and plain settlement
    vanished entirely. A width must be a width at both ends of the fix.
+
+---
+
+## INV-022 — Docking bay dimensions
+
+**Invented:** `BAY_W_M = 42.0`, `BAY_H_M = 18.0`, `BAY_LEN_M = 140.0` in
+`station/docking_bay.py`, plus the ledge, girder and floodlight pitches.
+
+**Why necessary:** The bay is the hinge of the seamless launch-and-dock requirement — the flight
+model and the docking solver have both existed since session 2g and had no room to arrive in. No
+frame gives the bay an absolute size.
+
+**What is sourced, and is not invention:**
+
+- **24 bays** — Security Manual sectional schematic (authority 3), cross-checked on screen by
+  "docking bay 17".
+- **Blue Section is 520.4 m in diameter** — `00-MASTER.md` §1.1. The deck radius is that less the
+  INV-013 hull skin: **254.2 m**, which puts the bay at **0.913 g**.
+- **A long low slot, not a hangar box**; red-orange box girders overhead carrying pendant
+  floodlights; stepped side ledges with chevron nosings on *every* step; a large red deck disc
+  with a white oval emblem; the ceiling is the ribbed, curving inner wall of the rotating hull.
+  All authority 1, `dock.webp` and `Minbari Flyer 969 in docking bay 17.webp`.
+
+**Constrained by:**
+
+- **The width is not a free number.** 42 m is the schema's own `cobra_bay` `width_m`, authority 3
+  off Contract 5 — the width that document gives *this station* for *this class of structure*, a
+  bay cut into a rotating hull to take a craft. Adopting it keeps one number rather than
+  inventing a second, and the self-test asserts the bay fits its allotted arc: at 254.2 m radius
+  each of 24 bays gets **66.5 m**, so a 42 m bay leaves 24.5 m of structure between neighbours.
+- **The one measured length is the deck disc.** `dock.webp` is 1000×750; a dock worker stands
+  ~28 px, giving **16.0 px/m** at that depth; the disc spans 170 px → **10.6 m**. The file of
+  eleven workers then reads 19.4 m long, i.e. 1.94 m apart — a walking file, which is the
+  consistency check that the scale is sane. The gazetteer is explicit that markings must be sized
+  against the workers, **not** against the Starfuries, whose own size is itself derived.
+- **Height and length are proportioned**, not measured: 18 m is low enough that the frame's
+  flat-topped mouth reads as a slot, and 140 m holds the row of parked craft the frame shows.
+
+**Overturned by:** any frame with a person against a bay wall, or a craft of known length parked
+across the bay rather than along it.
+
+**A geometric consequence worth keeping.** The bay is cut into a *rotating* hull, so its deck
+follows an arc rather than a chord. The first placement mapped the bay's width along a **tangent**
+and pushed both walls 0.9 m *outside* the pressure hull. Corrected, the deck cambers **0.87 m**
+across its 42 m width — small, but enough that a craft parked across the bay sits measurably
+nose-down relative to one parked along it, and it is the reason a bay is not a hangar.

@@ -83,6 +83,14 @@ jobs:
           python3 tram.py
           python3 core_tube.py
 
+      # Interiors that are places rather than kit: the station's social centre
+      # and the room the launch-and-dock requirement lands in.
+      - name: Zocalo and docking bay
+        run: |
+          cd station
+          python3 zocalo.py
+          python3 docking_bay.py
+
       - name: Streaming cell manifest
         run: |
           cd station
