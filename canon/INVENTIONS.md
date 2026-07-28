@@ -1259,3 +1259,53 @@ inside. *Gates that sample vertices cannot see chords.*
 **And one assertion that could not object to its own constant.** `CATWALK_CLEAR_M` was 1.8 m —
 100 mm of clearance for a 1.7 m person, a crawl space — and the assertion guarding it read
 `CATWALK_CLEAR_M >= 1.8`, the value itself. Now 2.4 m against a `>= 2.1` bar.
+
+---
+
+## INV-029 — The customs hall and arrival concourse
+
+**Invented:** every dimension in `station/customs.py` — the 34 × 17 × 7.2 m hall, the screen
+gantry, the X-braced brackets, the backlit ceiling grid, the bollards, the light strips and the
+customs desks.
+
+**What is sourced.** `reference/11-props-and-technology/babylon 5 welcome sign, instructions, and
+hub.jpg` (authority 1) establishes the *contents* and their arrangement: three suspended screens
+in a row — a talking head, the WELCOME board, and **a green vector wireframe of the whole
+station** — carried on rust-brown X-braced brackets, under a backlit coffered ceiling grid, with
+heavy cylindrical bollards flanking the approach, ranked vertical light strips along one wall,
+and a dense species-mixed crowd. The two blue boards come from `signage.py` and are **reused, not
+re-typed**.
+
+**New canon, transcribed here for the first time.** The welcome board's third line has never been
+recorded in this project:
+
+> **REMEMBER** — *Smoking permitted in designated areas only*
+
+Verbatim, including the prop's own sentence case under an all-caps header, and asserted as such.
+It is a fact about the station rather than a decoration: smoking is *permitted* aboard, in
+designated areas, which gives the bars a texture nothing else in the reference set supplies.
+
+**The width is the interesting number, and the first value was wrong.** It was built at the
+interior kit's `concourse` width of **9.0 m** and the self-test rejected it: three 3.2 m screens
+with gaps span **11.4 m** and do not fit. That is not a screen-sizing problem — **the kit's
+"concourse" class describes the Central Corridor** (a two-level corridor with an upper walkway,
+INV-020), and an arrival hall is a different kind of space. The reference shows a crowd flowing
+*beneath* three side-by-side screens with wall structure well outside them.
+
+So the width is **derived from what the room demonstrably contains**: 3 screens + 2 gaps + 2
+bracket bays + a walkable margin at each wall = exactly 16.0 m. That exact sum was adopted first
+and put the assertion on a floating-point knife-edge with **zero slack** — a room sized to
+precisely its contents is one where adding a single fitting overflows a wall. **17.0 m**, and the
+assertion checks the derivation rather than a remembered number, so changing the screens fails
+loudly instead of quietly overflowing.
+
+**Height is not free and is not invented:** 7.2 m is two `DECK_PITCH_M` deck pitches, asserted as
+a whole number of them, because the hall sits inside a deck stack and cannot exceed the decks it
+occupies.
+
+**Placement is uncontested**, which is rare here. Blue Sector's outermost ring, adjacent to the
+docking bays — defined by what it adjoins rather than by a name, so **neither C-003 nor C-004 can
+move it**. It lands at **0.760 g**, and that is a characterisation rather than a detail: the
+player's first experience of the station is being noticeably lighter.
+
+**Overturned by:** any wider shot of the hall, or a frame showing its far wall.
