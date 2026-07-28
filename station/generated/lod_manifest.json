@@ -1,4 +1,185 @@
 {
+ "screen": {
+  "fov_deg": 50.0,
+  "screen_h": 1440,
+  "deviation_budget_px": 1.5,
+  "shading_sample_px": 1.0,
+  "far_plane_m": 200000.0,
+  "m_per_m_deviation": 1029.363,
+  "m_per_m_shading": 1544.045
+ },
+ "schedules": {
+  "silhouette": [
+   {
+    "radial_segments": 64,
+    "error_m": 1.459,
+    "error_baseline": "true surface of revolution",
+    "error_source": "sagitta r(1-cos(pi/n)) at r=1210.88 m",
+    "honest_from_m": 1502,
+    "feature_m": 24.6,
+    "feature_source": "facet width 2r sin(pi/n) at mean r=250.6 m",
+    "aliases_beyond_m": 37984
+   },
+   {
+    "radial_segments": 32,
+    "error_m": 5.831,
+    "error_baseline": "true surface of revolution",
+    "error_source": "sagitta r(1-cos(pi/n)) at r=1210.88 m",
+    "honest_from_m": 6002,
+    "feature_m": 49.13,
+    "feature_source": "facet width 2r sin(pi/n) at mean r=250.6 m",
+    "aliases_beyond_m": 75859
+   },
+   {
+    "radial_segments": 16,
+    "error_m": 23.267,
+    "error_baseline": "true surface of revolution",
+    "error_source": "sagitta r(1-cos(pi/n)) at r=1210.88 m",
+    "honest_from_m": 23950,
+    "feature_m": 97.79,
+    "feature_source": "facet width 2r sin(pi/n) at mean r=250.6 m",
+    "aliases_beyond_m": 150992
+   },
+   {
+    "radial_segments": 8,
+    "error_m": 92.173,
+    "error_baseline": "true surface of revolution",
+    "error_source": "sagitta r(1-cos(pi/n)) at r=1210.88 m",
+    "honest_from_m": 94880,
+    "feature_m": 191.82,
+    "feature_source": "facet width 2r sin(pi/n) at mean r=250.6 m",
+    "aliases_beyond_m": 296179
+   }
+  ],
+  "longitudinal": [
+   {
+    "z_stride": 1,
+    "rings": 1978,
+    "error_m": 0.0,
+    "error_baseline": "the traced profile, i.e. stride 1",
+    "error_source": "max distance from a dropped profile sample to the chord of its kept neighbours",
+    "honest_from_m": 0,
+    "length_lost_m": 0.0,
+    "feature_m": 4.07,
+    "feature_source": "ring spacing 4.0703 m x stride",
+    "aliases_beyond_m": 6284
+   },
+   {
+    "z_stride": 2,
+    "rings": 989,
+    "error_m": 47.8,
+    "error_baseline": "the traced profile, i.e. stride 1",
+    "error_source": "max distance from a dropped profile sample to the chord of its kept neighbours, at z=3138.2 m",
+    "honest_from_m": 49204,
+    "length_lost_m": 4.0,
+    "feature_m": 8.141,
+    "feature_source": "ring spacing 4.0703 m x stride",
+    "aliases_beyond_m": 12570
+   },
+   {
+    "z_stride": 4,
+    "rings": 495,
+    "error_m": 70.45,
+    "error_baseline": "the traced profile, i.e. stride 1",
+    "error_source": "max distance from a dropped profile sample to the chord of its kept neighbours, at z=3138.2 m",
+    "honest_from_m": 72519,
+    "length_lost_m": 4.0,
+    "feature_m": 16.281,
+    "feature_source": "ring spacing 4.0703 m x stride",
+    "aliases_beyond_m": 25139
+   },
+   {
+    "z_stride": 8,
+    "rings": 248,
+    "error_m": 175.863,
+    "error_baseline": "the traced profile, i.e. stride 1",
+    "error_source": "max distance from a dropped profile sample to the chord of its kept neighbours, at z=3138.2 m",
+    "honest_from_m": 181027,
+    "length_lost_m": 4.0,
+    "feature_m": 32.562,
+    "feature_source": "ring spacing 4.0703 m x stride",
+    "aliases_beyond_m": 50277
+   }
+  ],
+  "greeble": [
+   {
+    "greeble_detail": 1.0,
+    "pieces": 4944,
+    "greeble_triangles": 70778,
+    "error_m": 0.0,
+    "error_baseline": "the full greeble set, i.e. detail 1.0",
+    "error_source": "relief of the tallest piece this cull removes, measured as point-to-surface distance",
+    "honest_from_m": 0,
+    "feature_m": 3.985,
+    "feature_source": "median relief of the pieces this level keeps",
+    "aliases_beyond_m": 6153,
+    "strict_subset_of_full": true
+   },
+   {
+    "greeble_detail": 0.89,
+    "pieces": 1980,
+    "greeble_triangles": 34640,
+    "error_m": 71.16,
+    "error_baseline": "the full greeble set, i.e. detail 1.0",
+    "error_source": "relief of the tallest piece this cull removes, measured as point-to-surface distance",
+    "honest_from_m": 73249,
+    "feature_m": 8.799,
+    "feature_source": "median relief of the pieces this level keeps",
+    "aliases_beyond_m": 13586,
+    "strict_subset_of_full": true
+   },
+   {
+    "greeble_detail": 0.45,
+    "pieces": 1158,
+    "greeble_triangles": 22794,
+    "error_m": 71.16,
+    "error_baseline": "the full greeble set, i.e. detail 1.0",
+    "error_source": "relief of the tallest piece this cull removes, measured as point-to-surface distance",
+    "honest_from_m": 73249,
+    "feature_m": 9.401,
+    "feature_source": "median relief of the pieces this level keeps",
+    "aliases_beyond_m": 14516,
+    "strict_subset_of_full": true
+   },
+   {
+    "greeble_detail": 0.12,
+    "pieces": 371,
+    "greeble_triangles": 7994,
+    "error_m": 71.16,
+    "error_baseline": "the full greeble set, i.e. detail 1.0",
+    "error_source": "relief of the tallest piece this cull removes, measured as point-to-surface distance",
+    "honest_from_m": 73249,
+    "feature_m": 9.756,
+    "feature_source": "median relief of the pieces this level keeps",
+    "aliases_beyond_m": 15064,
+    "strict_subset_of_full": true
+   },
+   {
+    "greeble_detail": 0.0,
+    "pieces": 0,
+    "greeble_triangles": 0,
+    "error_m": 71.16,
+    "error_baseline": "the full greeble set, i.e. detail 1.0",
+    "error_source": "relief of the tallest piece this cull removes, measured as point-to-surface distance",
+    "honest_from_m": 73249,
+    "feature_m": 0.0,
+    "feature_source": "median relief of the pieces this level keeps",
+    "aliases_beyond_m": 0,
+    "strict_subset_of_full": true
+   }
+  ]
+ },
+ "quality_floor_m": 1502,
+ "greeble_off_hull_pieces": [
+  {
+   "group": "greeble_panel",
+   "z_m": 3112.42
+  },
+  {
+   "group": "greeble_panel",
+   "z_m": 3124.98
+  }
+ ],
  "levels": [
   {
    "name": "lod0",
@@ -6,73 +187,294 @@
    "z_stride": 1,
    "greeble_detail": 1.0,
    "switch_distance_m": 0,
+   "honest_from_m": {
+    "silhouette": 1502,
+    "longitudinal": 0,
+    "greeble": 0
+   },
+   "binding_schedule_honest_from_m": 1502,
+   "aliases_beyond_m": {
+    "silhouette": 37984,
+    "longitudinal": 6284,
+    "greeble": 6153
+   },
+   "switch_reason": "coarsest honest option in each schedule: silhouette 1,502 m, longitudinal 0 m, greeble 0 m",
+   "used_to_m": 6002,
+   "aliasing_gap": {},
+   "far_end_m": 8047,
+   "aliasing_gap_at_far_end": {
+    "longitudinal": 6284,
+    "greeble": 6153
+   },
    "triangles": 327346,
+   "hull_triangles": 253184,
    "greeble_triangles": 70778,
+   "rings": 1978,
+   "vertices": 180638,
    "max_radius_m": 1210.88,
    "length_m": 8046.9,
-   "reduction": 0.0,
-   "silhouette_deviation_m": 1.46,
-   "greeble_relief_resolves_to_m": [
-    3088,
-    11323
-   ]
+   "obj": "station/generated/hull_lod0.obj",
+   "reduction": 0.0
   },
   {
    "name": "lod1",
    "radial_segments": 32,
-   "z_stride": 2,
-   "greeble_detail": 0.45,
-   "switch_distance_m": 6000,
-   "triangles": 89474,
-   "greeble_triangles": 22794,
+   "z_stride": 1,
+   "greeble_detail": 1.0,
+   "switch_distance_m": 6002,
+   "honest_from_m": {
+    "silhouette": 6002,
+    "longitudinal": 0,
+    "greeble": 0
+   },
+   "binding_schedule_honest_from_m": 6002,
+   "aliases_beyond_m": {
+    "silhouette": 75859,
+    "longitudinal": 6284,
+    "greeble": 6153
+   },
+   "switch_reason": "coarsest honest option in each schedule: silhouette 6,002 m, longitudinal 0 m, greeble 0 m",
+   "used_to_m": 23950,
+   "aliasing_gap": {
+    "longitudinal": 6284,
+    "greeble": 6153
+   },
+   "far_end_m": 14049,
+   "aliasing_gap_at_far_end": {
+    "longitudinal": 6284,
+    "greeble": 6153
+   },
+   "triangles": 200754,
+   "hull_triangles": 126592,
+   "greeble_triangles": 70778,
+   "rings": 1978,
+   "vertices": 117342,
    "max_radius_m": 1210.88,
-   "length_m": 8042.9,
-   "reduction": 0.727,
-   "silhouette_deviation_m": 5.83,
-   "deviation_px_at_switch": 1.5,
-   "honest_from_m": 6002,
-   "greeble_relief_resolves_to_m": [
-    3088,
-    11323
-   ]
+   "length_m": 8046.9,
+   "obj": "station/generated/hull_lod1.obj",
+   "reduction": 0.387
   },
   {
    "name": "lod2",
    "radial_segments": 16,
-   "z_stride": 4,
-   "greeble_detail": 0.12,
-   "switch_distance_m": 24000,
-   "triangles": 27218,
-   "greeble_triangles": 7994,
+   "z_stride": 1,
+   "greeble_detail": 1.0,
+   "switch_distance_m": 23950,
+   "honest_from_m": {
+    "silhouette": 23950,
+    "longitudinal": 0,
+    "greeble": 0
+   },
+   "binding_schedule_honest_from_m": 23950,
+   "aliases_beyond_m": {
+    "silhouette": 150992,
+    "longitudinal": 6284,
+    "greeble": 6153
+   },
+   "switch_reason": "coarsest honest option in each schedule: silhouette 23,950 m, longitudinal 0 m, greeble 0 m",
+   "used_to_m": 49204,
+   "aliasing_gap": {
+    "longitudinal": 6284,
+    "greeble": 6153
+   },
+   "far_end_m": 31997,
+   "aliasing_gap_at_far_end": {
+    "longitudinal": 6284,
+    "greeble": 6153
+   },
+   "triangles": 137458,
+   "hull_triangles": 63296,
+   "greeble_triangles": 70778,
+   "rings": 1978,
+   "vertices": 85694,
    "max_radius_m": 1210.88,
-   "length_m": 8042.9,
-   "reduction": 0.917,
-   "silhouette_deviation_m": 23.27,
-   "deviation_px_at_switch": 1.5,
-   "honest_from_m": 23950,
-   "greeble_relief_resolves_to_m": [
-    3088,
-    11323
-   ]
+   "length_m": 8046.9,
+   "obj": "station/generated/hull_lod2.obj",
+   "reduction": 0.58
   },
   {
    "name": "lod3",
+   "radial_segments": 16,
+   "z_stride": 2,
+   "greeble_detail": 1.0,
+   "switch_distance_m": 49204,
+   "honest_from_m": {
+    "silhouette": 23950,
+    "longitudinal": 49204,
+    "greeble": 0
+   },
+   "binding_schedule_honest_from_m": 49204,
+   "aliases_beyond_m": {
+    "silhouette": 150992,
+    "longitudinal": 12570,
+    "greeble": 6153
+   },
+   "switch_reason": "coarsest honest option in each schedule: silhouette 23,950 m, longitudinal 49,204 m, greeble 0 m",
+   "used_to_m": 72519,
+   "aliasing_gap": {
+    "longitudinal": 12570,
+    "greeble": 6153
+   },
+   "far_end_m": 57251,
+   "aliasing_gap_at_far_end": {
+    "longitudinal": 12570,
+    "greeble": 6153
+   },
+   "triangles": 105810,
+   "hull_triangles": 31648,
+   "greeble_triangles": 70778,
+   "rings": 989,
+   "vertices": 69870,
+   "max_radius_m": 1210.88,
+   "length_m": 8042.9,
+   "obj": "station/generated/hull_lod3.obj",
+   "reduction": 0.677
+  },
+  {
+   "name": "lod4",
+   "radial_segments": 16,
+   "z_stride": 4,
+   "greeble_detail": 1.0,
+   "switch_distance_m": 72519,
+   "honest_from_m": {
+    "silhouette": 23950,
+    "longitudinal": 72519,
+    "greeble": 0
+   },
+   "binding_schedule_honest_from_m": 72519,
+   "aliases_beyond_m": {
+    "silhouette": 150992,
+    "longitudinal": 25139,
+    "greeble": 6153
+   },
+   "switch_reason": "coarsest honest option in each schedule: silhouette 23,950 m, longitudinal 72,519 m, greeble 0 m",
+   "used_to_m": 73249,
+   "aliasing_gap": {
+    "longitudinal": 25139,
+    "greeble": 6153
+   },
+   "far_end_m": 80566,
+   "aliasing_gap_at_far_end": {
+    "longitudinal": 25139,
+    "greeble": 6153
+   },
+   "triangles": 90002,
+   "hull_triangles": 15840,
+   "greeble_triangles": 70778,
+   "rings": 495,
+   "vertices": 61966,
+   "max_radius_m": 1210.88,
+   "length_m": 8042.9,
+   "obj": "station/generated/hull_lod4.obj",
+   "reduction": 0.725
+  },
+  {
+   "name": "lod5",
+   "radial_segments": 16,
+   "z_stride": 4,
+   "greeble_detail": 0.0,
+   "switch_distance_m": 73249,
+   "honest_from_m": {
+    "silhouette": 23950,
+    "longitudinal": 72519,
+    "greeble": 73249
+   },
+   "binding_schedule_honest_from_m": 73249,
+   "aliases_beyond_m": {
+    "silhouette": 150992,
+    "longitudinal": 25139,
+    "greeble": 0
+   },
+   "switch_reason": "coarsest honest option in each schedule: silhouette 23,950 m, longitudinal 72,519 m, greeble 73,249 m",
+   "used_to_m": 94880,
+   "aliasing_gap": {
+    "longitudinal": 25139
+   },
+   "far_end_m": 81296,
+   "aliasing_gap_at_far_end": {
+    "longitudinal": 25139
+   },
+   "triangles": 19224,
+   "hull_triangles": 15840,
+   "greeble_triangles": 0,
+   "rings": 495,
+   "vertices": 10066,
+   "max_radius_m": 1210.88,
+   "length_m": 8042.9,
+   "obj": "station/generated/hull_lod5.obj",
+   "reduction": 0.941
+  },
+  {
+   "name": "lod6",
+   "radial_segments": 8,
+   "z_stride": 4,
+   "greeble_detail": 0.0,
+   "switch_distance_m": 94880,
+   "honest_from_m": {
+    "silhouette": 94880,
+    "longitudinal": 72519,
+    "greeble": 73249
+   },
+   "binding_schedule_honest_from_m": 94880,
+   "aliases_beyond_m": {
+    "silhouette": 296179,
+    "longitudinal": 25139,
+    "greeble": 0
+   },
+   "switch_reason": "coarsest honest option in each schedule: silhouette 94,880 m, longitudinal 72,519 m, greeble 73,249 m",
+   "used_to_m": 181027,
+   "aliasing_gap": {
+    "longitudinal": 25139
+   },
+   "far_end_m": 102927,
+   "aliasing_gap_at_far_end": {
+    "longitudinal": 25139
+   },
+   "triangles": 11304,
+   "hull_triangles": 7920,
+   "greeble_triangles": 0,
+   "rings": 495,
+   "vertices": 6106,
+   "max_radius_m": 1210.88,
+   "length_m": 8042.9,
+   "obj": "station/generated/hull_lod6.obj",
+   "reduction": 0.965
+  },
+  {
+   "name": "lod7",
    "radial_segments": 8,
    "z_stride": 8,
    "greeble_detail": 0.0,
-   "switch_distance_m": 95000,
+   "switch_distance_m": 181027,
+   "honest_from_m": {
+    "silhouette": 94880,
+    "longitudinal": 181027,
+    "greeble": 73249
+   },
+   "binding_schedule_honest_from_m": 181027,
+   "aliases_beyond_m": {
+    "silhouette": 296179,
+    "longitudinal": 50277,
+    "greeble": 0
+   },
+   "switch_reason": "coarsest honest option in each schedule: silhouette 94,880 m, longitudinal 181,027 m, greeble 73,249 m",
+   "used_to_m": 200000,
+   "aliasing_gap": {
+    "longitudinal": 50277
+   },
+   "far_end_m": 189074,
+   "aliasing_gap_at_far_end": {
+    "longitudinal": 50277
+   },
    "triangles": 7352,
+   "hull_triangles": 3968,
    "greeble_triangles": 0,
+   "rings": 248,
+   "vertices": 4130,
    "max_radius_m": 1210.88,
    "length_m": 8042.9,
-   "reduction": 0.978,
-   "silhouette_deviation_m": 92.17,
-   "deviation_px_at_switch": 1.5,
-   "honest_from_m": 94879,
-   "greeble_relief_resolves_to_m": [
-    3088,
-    11323
-   ]
+   "obj": "station/generated/hull_lod7.obj",
+   "reduction": 0.978
   }
  ]
 }

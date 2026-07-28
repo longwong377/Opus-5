@@ -190,24 +190,20 @@ def _spherical(dist, elev_deg, az_deg, target):
             target[2] + dist * math.cos(el) * math.sin(az))
 
 
-def pick_hull_lod(eye, target, forced=""):
-    """Which hull LOD a shot should use, and why.
+def hull_near_distance(eye):
+    """Distance from the eye to the nearest point of the hull's bounding box.
 
-    This did not exist, so every exterior shot drew lod0 however far away the
-    camera was -- a 95 km shot would have drawn 327,898 triangles to cover a few
-    hundred pixels. The chain was built, measured and given a manifest three
-    sessions ago and was simply never connected to the thing that renders.
+    Distance is taken to the NEAREST point of the hull, not to the aim point.
+    An 8 km station seen from 9 km has its near end at about 5 km, and picking
+    a level on centre distance would decimate geometry that is half as far away
+    as the number used to justify it.
 
-    Distance is taken to the NEAREST point of the hull's bounding box, not to
-    the aim point. An 8 km station seen from 9 km has its near end at about
-    5 km, and picking a level on centre distance would decimate geometry that
-    is half as far away as the number used to justify it.
+    The box is a conservative stand-in for the surface: it is never further from
+    the eye than the hull is, so the level chosen is never coarser than the true
+    nearest point would justify. Erring toward a finer level is the right way
+    round -- the failure this guards against is decimating geometry the player
+    is looking at from close range.
     """
-    man_path = os.path.join(GENERATED, "lod_manifest.json")
-    if not os.path.exists(man_path):
-        return os.path.join(GENERATED, "hull.obj"), "lod0", 0.0, "no lod manifest"
-    levels = json.load(open(man_path))["levels"]
-
     hull_man = os.path.join(GENERATED, "hull_manifest.json")
     if os.path.exists(hull_man):
         b = json.load(open(hull_man))["bounds"]
@@ -219,24 +215,96 @@ def pick_hull_lod(eye, target, forced=""):
         return max(lo, min(hi, v))
 
     near = (clamp(eye[0], -r, r), clamp(eye[1], -r, r), clamp(eye[2], 0.0, length))
-    dist = math.dist(eye, near)
+    return math.dist(eye, near)
+
+
+def pick_hull_lod(eye, target, forced=""):
+    """Which hull LOD a shot should use, and why.
+
+    This did not exist, so every exterior shot drew lod0 however far away the
+    camera was -- a 95 km shot would have drawn 327,346 triangles to cover a few
+    hundred pixels. The chain was built, measured and given a manifest three
+    sessions ago and was simply never connected to the thing that renders.
+
+    Selection is on the COMBINED schedules. `station/lod.py` no longer steps
+    radial segments, z stride and greeble detail together: they are three
+    independent schedules with three separately derived switch distances, and a
+    level is the distinct combination those three produce over a distance band.
+    The chain in the manifest is already that flattened combination, so the walk
+    here stays a walk -- but the reason string now names WHICH schedule moved,
+    because "lod3" says nothing about whether the outline or the surface detail
+    just changed and that is the first question when a render looks wrong.
+    """
+    man_path = os.path.join(GENERATED, "lod_manifest.json")
+    if not os.path.exists(man_path):
+        return os.path.join(GENERATED, "hull.obj"), "lod0", 0.0, "no lod manifest"
+    man = json.load(open(man_path))
+    levels = man["levels"]
+    dist = hull_near_distance(eye)
 
     if forced and forced != "auto":
-        chosen = next((lv for lv in levels if lv["name"] == forced), levels[0])
+        chosen = next((lv for lv in levels if lv["name"] == forced), None)
+        if chosen is None:
+            # Raised rather than quietly falling back to lod0. The override is a
+            # debugging tool, and silently rendering a different level than the
+            # one asked for wastes the session that asked for it.
+            raise SystemExit(
+                f"--lod {forced}: no such level. The chain has "
+                f"{', '.join(lv['name'] for lv in levels)}. Note the chain is "
+                f"derived, so its length changes when a schedule changes.")
         why = f"forced {forced}"
     else:
         chosen = levels[0]
         for lv in levels:
             if dist >= lv["switch_distance_m"]:
                 chosen = lv
-        why = (f"nearest hull point {dist:,.0f} m; "
-               f"{chosen['name']} switches at {chosen['switch_distance_m']:,} m")
+        why = (f"nearest hull point {dist:,.0f} m; {chosen['name']} "
+               f"= {chosen['radial_segments']} segments / z-stride "
+               f"{chosen['z_stride']} / greeble {chosen['greeble_detail']:g}, "
+               f"from {chosen['switch_distance_m']:,} m")
+        honest = chosen.get("honest_from_m")
+        if isinstance(honest, dict):
+            # Which schedule is holding the level back. With one table this was
+            # unanswerable; with three it is the useful half of the reason.
+            binding = max(honest, key=lambda k: honest[k])
+            why += f" (binding schedule: {binding} at {honest[binding]:,} m)"
+        gap = chosen.get("aliasing_gap_at_far_end") or {}
+        if gap:
+            why += ("; drawing sub-pixel "
+                    + "/".join(sorted(gap)) + " detail at its far end")
 
     path = os.path.join(GENERATED, f"hull_{chosen['name']}.obj")
     if not os.path.exists(path):
         path = os.path.join(GENERATED, "hull.obj")
-        why += f" (hull_{chosen['name']}.obj missing -- fell back to lod0)"
+        why += (f" (hull_{chosen['name']}.obj missing -- fell back to hull.obj; "
+                f"run `python3 station/lod.py --build`)")
     return path, chosen["name"], dist, why
+
+
+def it_length():
+    """Hull length from the built manifest, for the LOD selection assertions.
+
+    Read rather than hard-coded: the assertions below construct eye positions
+    relative to the nose, and a stale constant would put them inside the hull
+    where every one of them would pass for the wrong reason.
+    """
+    hull_man = os.path.join(GENERATED, "hull_manifest.json")
+    if os.path.exists(hull_man):
+        return float(json.load(open(hull_man))["bounds"]["length_m"])
+    return 8047.0
+
+
+def _lod_options(name):
+    """The three schedule settings behind a level name, or {} if unknown."""
+    man_path = os.path.join(GENERATED, "lod_manifest.json")
+    if not os.path.exists(man_path):
+        return {}
+    for lv in json.load(open(man_path))["levels"]:
+        if lv["name"] == name:
+            return {k: lv[k] for k in
+                    ("radial_segments", "z_stride", "greeble_detail")
+                    if k in lv}
+    return {}
 
 
 def build_exterior(args, out_dir):
@@ -273,6 +341,11 @@ def build_exterior(args, out_dir):
         "hull_lod": lod_name,
         "hull_lod_distance_m": round(lod_dist),
         "hull_lod_reason": lod_why,
+        # The three schedule settings, written into the shot rather than left
+        # implicit in a level name. A frame that is compared against an earlier
+        # one months later needs to know whether it was drawn with the same
+        # outline AND the same surface detail, and "lod1" does not say.
+        "hull_lod_options": _lod_options(lod_name),
         "lights": [],
         # World +Y up. The station's long axis is +Z, so using that as up would
         # stand an 8 km station on its nose.
@@ -645,6 +718,80 @@ def _selftest():
               "exported glb declared length matches its size")
     else:
         print("note: no exported scene to check; run --shot drum first")
+
+    # -- hull LOD selection ------------------------------------------------
+    # The chain is derived in station/lod.py and flattened into the manifest;
+    # this is the consumer. What can go wrong here and nowhere else: selecting
+    # on the aim point instead of the near point, an off-by-one at a switch
+    # boundary, and an override that silently renders something else.
+    man_path = os.path.join(GENERATED, "lod_manifest.json")
+    if os.path.exists(man_path):
+        levels = json.load(open(man_path))["levels"]
+        check(len(levels) >= 2, f"lod manifest has a chain ({len(levels)} levels)")
+
+        # Selection must agree with the manifest at, just below and just above
+        # every switch distance. The just-below case is the one that matters:
+        # `>=` written as `>` puts every boundary in the wrong level and no
+        # render would show it.
+        wrong = []
+        for i, lv in enumerate(levels):
+            d = lv["switch_distance_m"]
+            for delta, want in ((0.0, lv["name"]),
+                                (+1.0, lv["name"]),
+                                (-1.0, levels[max(0, i - 1)]["name"])):
+                if d + delta < 0:
+                    continue
+                # Put the eye on the axis, `d` beyond the nose, so the nearest
+                # point of the bounding box is exactly `d` away by construction.
+                eye = (0.0, 0.0, it_length() + d + delta)
+                _p, got, dist, _w = pick_hull_lod(eye, (0.0, 0.0, 0.0))
+                if got != want or abs(dist - (d + delta)) > 1.0:
+                    wrong.append((lv["name"], delta, got, round(dist)))
+        check(not wrong,
+              f"LOD selection matches the manifest at every switch boundary "
+              f"(mismatches: {wrong[:4]})")
+
+        # Measured to the NEAREST point, not the aim point. Constructed so the
+        # two answers differ by more than a switch band: an eye abeam the
+        # station's midpoint is `length/2` closer to the near end than to the
+        # far end, and selecting on the aim point would say otherwise.
+        half = it_length() / 2.0
+        eye = (0.0, 0.0, it_length() + 1000.0)
+        near = hull_near_distance(eye)
+        aim = math.dist(eye, (0.0, 0.0, half))
+        check(near < aim - 1000.0,
+              f"selection distance is to the near end ({near:,.0f} m), not to "
+              f"the aim point ({aim:,.0f} m)")
+
+        # Every level the chain can select must have a mesh on disk, or the
+        # renderer quietly falls back to hull.obj and draws the finest level at
+        # 100 km. The fallback exists; it must never be the normal path.
+        missing = [lv["name"] for lv in levels
+                   if not os.path.exists(
+                       os.path.join(GENERATED, f"hull_{lv['name']}.obj"))]
+        check(not missing, f"every chain level has a built mesh: missing {missing}")
+
+        # The override must reach the level asked for, and must refuse a name
+        # the chain does not have rather than rendering lod0 and saying nothing.
+        _p, got, _d, _w = pick_hull_lod((0.0, 0.0, 0.0), (0.0, 0.0, 0.0),
+                                        forced=levels[-1]["name"])
+        check(got == levels[-1]["name"],
+              f"--lod override reaches {levels[-1]['name']} (got {got})")
+        # Caught broadly and scored, not allowed to propagate. An exception here
+        # aborts the run and every assertion after it silently never executes --
+        # the failure mode the glb probe below already carries a note about, and
+        # the breakage harness reproduced it here by making the refusal fall
+        # through into a `None['name']`.
+        try:
+            _p, got, _d, _w = pick_hull_lod((0.0, 0.0, 0.0), (0.0, 0.0, 0.0),
+                                            forced="lod99")
+            check(False, f"--lod with an unknown level is refused (silently "
+                         f"rendered {got})")
+        except SystemExit:
+            check(True, "--lod with an unknown level is refused")
+        except Exception as exc:                     # noqa: BLE001
+            check(False, f"--lod with an unknown level is refused clearly, "
+                         f"not with {type(exc).__name__}: {exc}")
 
     # -- budget -----------------------------------------------------------
     # The drum gate is 300,000 triangles (station/budget.py). A shot that
