@@ -1,6 +1,6 @@
 # Project State
 
-**Last updated:** 2026-07-28 · **Session 3i** — metric hull skin; the station has a basement
+**Last updated:** 2026-07-28 · **Session 3j** — NPC bodies, costume and crowd; phase D opens
 
 ## Where we are
 
@@ -1540,6 +1540,71 @@ and every new assertion was verified load-bearing by reintroducing its defect �
 minimum, the floor-matched drum test, a 1.10 g ceiling, the unconditional snap-up, and the
 fraction itself.
 
+## Session 3j — phase D opens, and the assertion suites got audited
+
+**`station/npc/` gains `body.py`, `costume.py` and `crowd.py`** — 648 assertions between them,
+all green and all wired into CI, which is the only place their gates run.
+
+| module | lines | assertions | what |
+|---|---|---|---|
+| `body.py` | 2,654 | **501** | fifteen species as parametric bodies, per-individual variation seeded off the npc id |
+| `costume.py` | 2,715 | 80 | fabrics, decals, silhouettes, attachments, era-gated |
+| `crowd.py` | 2,146 | 67 | placement and density |
+
+Three construction paths — humanoid, encounter suit (**the Vorlon is a robe with no body in
+it**, which is the point) and column. Statures span **1.53 m (Vree) to 2.05 m (Vorlon)**.
+
+**`body.py` carries its own closure gates because nothing in the project could see this class of
+defect.** The first lineup render showed limbs detached from the torso; signed volume and the
+edge census both passed it, because a detached arm is still a closed solid. So it has a
+ray-parity `contains()`, and the ray direction is deliberately **not** axis-aligned: the torso's
+rings and the leg's root ring both put vertices at exactly z = 0, and an axis-aligned ray grazes
+that shared edge and reports inside-or-outside on floating-point luck. **The only vertices it
+ever rejected were the ones at z = 0 exactly.**
+
+### Rendered and read — `docs/render-npc-lineup.png`, `render-npc-detail.png`
+
+Against magenta. Fifteen figures, **all closed** — no background bleeds through any of them, and
+26,734 of 57,412 triangles draw, which is the backface-cull ratio a solid gives. The Minbari bone
+crest reads at 12 m. The Vorlon encounter suit reads.
+
+**What the render shows that the assertions do not, and it is the first rework item for phase D:
+the joints are unwelded.** Limb roots *are* inside the torso — that is asserted and passing — but
+the lofts **interpenetrate rather than blend**, so a hard crease sits where a deltoid should be
+and the shoulders read as a shelf the arms hang off. Craft, not closure. A gate that asks "is the
+root inside" cannot ask "does the surface flow", and only looking caught it.
+
+### The assertion suites were audited, and the result is worse than expected
+
+`tools/mutation_sweep.py` (session 3i) perturbs every module-level numeric constant, re-runs that
+module's suite in a fresh subprocess, and asks whether anything noticed. Full sweep: **192
+mutants in 1,172 s**.
+
+> **Only 41 of 192 constants — 21% — are noticed by their own module's assertions.**
+
+| module | noticed |
+|---|---|
+| `signage` | **0%** |
+| `council_chamber` | 4% |
+| `core_tube` | 17% |
+| `drum_ground` | 18% |
+| `interior` | 25% |
+| `command_control` | 28% |
+| `zocalo` / `docking_bay` | 29% |
+| `tram` | **43%** — the best in the project |
+
+The tool is explicit that it cannot tell an unguarded constant from a deliberately loose one:
+`council_chamber.SEATS` 5→6 passes **correctly**, because INV-025 asserts a lower bound on
+purpose. So 21% is a floor on the real figure, not the figure. But 0% for `signage` and 4% for
+`council_chamber` are not explicable that way, and those two are where the next audit increment
+should go.
+
+**Do not read this as "the suites are worthless".** They have caught a door interpenetrating a
+portal frame, tram cars passing 6.43 m through a spoke, an end cap with 4,064 open edges and a
+drum wound inside out. What the sweep measures is *coverage of the constants*, and it says the
+assertions are strong on **relationships** and weak on **values** — which is exactly the shape
+you would predict from how they were written.
+
 ## Next session — start here
 
 The drum's **structure** is complete: shell, both end caps, three guideway trusses with the
@@ -1580,7 +1645,7 @@ geometry** — only of the names on it.
 | ~~Interior sector layout~~ → **sector *naming*** | C-003 — **Green/Brown transposition**. Sectors are longitudinal bands; the two authority-3 sheets disagree on which band is the habitat drum. `drum_sector()` identifies the drum by **geometry**, so building proceeds; only the label waits | Any source placing the Garden or Downbelow in a *named* sector at a longitudinal position |
 | Deck spacing, ring radii, corridor width, ceiling height | Unavailable from any held source | The one sheet that draws decks has its vertical scale exaggerated ~2× (C-004 UPDATE item 3, same ruling as C-005) |
 | Grey / Brown / Yellow interiors | Near-zero reference coverage | Grey has one frame; Brown has one misfiled frame; Yellow has none |
-| Starfury cockpit | Zero reference coverage | Cockpit interior stills |
+| ~~Starfury cockpit~~ | ~~Zero reference coverage~~ | **UNBLOCKED, session 3j.** The owner uploaded four cockpit references (commit `c5873e5`), now in `reference/12-starfury/`: `starfury cockpit and sitting position{,  2, model, another model}.jpg`. **Not yet read or catalogued** — that is the first thing the next session should do, because it also settles the pilot's posture, which the flight model has been agnostic about |
 
 ## Reference gaps worth filling
 
@@ -1596,7 +1661,7 @@ becomes blocking once interiors start:
 3. **Brown Sector / Downbelow** — one misfiled frame
    (`01-station-exterior/sleeping-in-light-05.jpg`, S5, station derelict).
 4. **Yellow Sector** — zero files.
-5. **Starfury cockpit interior** — zero files; needed for Act III.
+5. ~~**Starfury cockpit interior**~~ — **closed, session 3j.** Four files uploaded by the owner; see the Blocked table. Uncatalogued.
 6. **Grey Sector** — one file, and it is the most useful interior frame in the set.
 
 ## Uncatalogued reference, and misfiled reference
