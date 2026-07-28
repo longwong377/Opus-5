@@ -1090,3 +1090,103 @@ which flips the cross product. 264 triangles were facing the wall; I "fixed" the
 as the rings and broke 48 that had been correct. **Two orientations in one function, and assuming
 they shared one cost a round trip.** The assertion caught both the original fault and my
 overcorrection, which is the argument for asserting orientation per group rather than per module.
+
+---
+
+## INV-026 — The hull allowance is metric, and the shell it measures from is extracted
+
+**Invented:** `HULL_SKIN_M = 6.0` applied to every sector rather than only the drum;
+`CORE_HULL_WINDOW_M = 60.0`; and `sector_shell_radius()`, which takes a sector's outermost
+deck floor from the longest run of near-constant core-hull radius inside its band.
+
+**What it replaces.** `HULL_ALLOWANCE = 0.86`, a fraction of the mean envelope radius, in place
+since the interior model was first written. It was the wrong kind of quantity twice over:
+
+- **A fraction is not a thickness.** It removed 65 m of notional structure in Grey and 22 m in
+  Yellow. Pressure hull, frames and services do not scale with how far a sector sits from the
+  spin axis; a 6 m shell is 6 m everywhere.
+- **The mean of a band describes no surface.** Yellow's band ranges 18–440 m and Blue's
+  116–268 m. Multiplying those means is arithmetic *about* a shape rather than a measurement
+  *of* one, and there is no point in either sector where the hull is at its own mean.
+
+**How the shell is found.** `radius_profile.json` traces the station's outline, so it reports
+whatever stands proud at each z. Session 2b established the separation: a protrusion is local in
+z, the hull varies slowly, so a wide running minimum approximates the core hull. A running
+minimum alone **erodes at a step** — it reported 428.7 m in Grey, below Grey's own narrowest real
+sample of 436.4 m, a radius no point in the sector has. The operator is therefore a morphological
+**opening**, erosion then dilation at the same window, which strips features narrower than the
+window and restores the edges of those wider than it. Asserted per sector: the opened profile
+never falls below the band's own raw minimum.
+
+**What constrained it — and this is the part worth trusting.** Run against the band containing
+the habitat cylinder, the generalised extraction returns **314.3 m**. `habitat_hull_radius()`, an
+entirely separate derivation written four sessions earlier — a plain mean over one *named schema
+feature* — gives **316.8 m**. **2.5 m apart on a 315 m radius, 0.8%, from two methods that share
+no arithmetic.** That is the cross-check that justifies applying the method to the four sectors
+where no independent measurement exists.
+
+**A second thing it fixed, which was not the target.** `drum_sector()` identified the drum by
+matching a *hull* radius against the 278.3 m *floor* radius — a category error, comparing a
+surface to something 32 m inside it. On the corrected shell radii that comparison picks **red**,
+whose shell sits 274 m out, four metres from where the Garden's ground is. Matched hull-to-hull
+the drum wins at 2.5 m with red 42.7 m behind, a 17× margin. The old code got the right answer
+for the wrong reason: the drum band's mean was inflated by the aft hull block it happens to
+contain. The self-test now asserts the **margin**, not the winner — a test that only checks who
+won cannot tell 17× from a coin toss, and this decides which band the entire habitat is built in.
+
+**Consequence.** Every non-drum sector radius moved outward. The station goes from 210 decks and
+2,646 cells to **251 decks and 3,414 cells**, 80.5 M → **110.2 M triangles** of interior
+structure. Red, Blue and Yellow were all being cut short.
+
+**Overturned by:** any sourced figure for pressure-hull thickness, or a deck plan establishing an
+outermost deck radius in a named sector.
+
+---
+
+## INV-027 — The habitable gravity ceiling, and the station's basement
+
+**Invented:** `HABITABLE_G_MAX = 1.25`, and with it the `use` tag — `habitat` or `plant` — on
+every deck in the station.
+
+**Why this exists at all.** `STATE.md` recorded Grey's 1.445 g outermost deck as "the visible
+symptom" of the fractional `HULL_ALLOWANCE`, to be fixed when the allowance went metric. **That
+was wrong, and fixing the allowance is what proved it wrong: Grey got heavier, not lighter —
+1.445 g → 1.693 g.** The 0.86 fraction had been quietly deleting 65 m of hull that is really
+there. Grey sits on the aft hull block, the widest structure on the station at 478 m envelope
+radius — identified in session 1 as the station's widest structure, which Miller's table never
+names — and no honest allowance moves it inboard. A rigid body spinning at a rate fixed by the
+habitat floor puts 1.7 g on anything 471 m out. That is not a bug to be corrected; it is what the
+shape means.
+
+So the premise was wrong rather than the arithmetic. The design response is the one any real
+station would make: **you do not put quarters at the bottom of a gravity well, you put mass
+there.** Tankage, reservoirs, waste processing, reactor auxiliaries, ballast.
+
+**What constrained the number.**
+
+- **Lower bound, 1.117 g.** The drum's own sub-floor stack runs out to the pressure hull at
+  310.8 m, and that space is occupied — it is the service level under the Garden and
+  `LAW-CRIME-DOWNBELOW.md` sites people in it. The station demonstrably houses people to at
+  least 1.117 g, so the ceiling cannot sit below it without contradicting geometry already
+  built. **The self-test asserts exactly this**, and it is the assertion that fails first if
+  anyone lowers the constant.
+- **Upper bound, ~1.5 g.** Sustained occupancy at 1.5 g is a permanent 50% weight penalty on a
+  civilian population, which is not somewhere quarters get sited.
+
+1.25 g sits between them, clear of the drum's demonstrated 1.117 g. Radius **347.9 m**.
+
+**What it produces.** Grey's outer 123 m — **34 of its 105 decks** — become plant. Every other
+sector is entirely habitat. That is 26% of the station's interior structure reclassified, and it
+is a place the scope asks for by name: *"the physical plant that makes 250,000 people possible:
+food, water, air, power, waste."* The fraction was concealing it behind a plausible number.
+
+**It also unmasked a budget error.** The cell gate priced deck 0 of the first deck-stack ring,
+which is the outermost deck, which in Grey is plant — charging tankage at the corridor kit's
+285 tri/m. That put the worst cell at **94.8% of budget** and implied habitat corridors had 5%
+of headroom left for props, signage and NPCs. Split by `use`, the worst *habitat* cell is Grey
+ring 2 deck 11 at 1.246 g and **66.2%**. They have 34%. Both are still gated — a plant deck is
+not free, and exempting it is how a subsystem grows without anything noticing — but the plant
+figure is explicitly a placeholder priced with the wrong kit until plant space has its own.
+
+**Overturned by:** any on-screen statement of gravity in a named sector, or dialogue placing
+quarters somewhere the geometry puts above 1.25 g.

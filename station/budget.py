@@ -203,30 +203,54 @@ def main():
         import interior as it
 
         schema, profile = it.load()
-        rows, worst = [], None
+        # The gate used to price deck 0 of the first deck-stack ring, which is
+        # the OUTERMOST deck -- and in Grey that deck is at 471 m and 1.693 g,
+        # so it is plant rather than habitat. Charging tankage and machinery at
+        # the corridor kit's 285 tri/m put the worst cell at 94.8% of its
+        # budget and left the impression that habitat corridors had 5% of
+        # headroom for props, signage and NPCs. They have 32%.
+        #
+        # So the scan runs over every deck and splits on `use`. Both are still
+        # gated -- a plant deck is not free, and exempting it is how a subsystem
+        # grows without anything noticing -- but they are reported apart, and
+        # the plant figure is explicitly a placeholder priced with the wrong
+        # kit until plant space has its own.
+        worst = {"habitat": None, "plant": None}
         for sec in schema["sectors"]["extents_m"]:
             rings = it.ring_radii(schema, profile, sec)
-            ri = next(i for i, r in enumerate(rings) if r["kind"] == "deck_stack")
-            plan = it.ring_cells(schema, profile, sec, ri)
-            tris = len(it.deck_cell(schema, profile, sec, ri, 0, 0)[1])
-            rows.append((sec, plan, tris))
-            if worst is None or tris > worst[2]:
-                worst = (sec, plan, tris)
+            for ri, ring in enumerate(rings):
+                if ring["kind"] != "deck_stack":
+                    continue
+                for deck in it.decks_in_ring(schema, profile, sec, ri):
+                    di = deck["deck_index"]
+                    plan = it.ring_cells(schema, profile, sec, ri, di)
+                    cur = worst[deck["use"]]
+                    if cur is None or plan["cell_length_m"] > cur[1]["cell_length_m"]:
+                        worst[deck["use"]] = (sec, plan, di)
 
-        sec, plan, tris = worst
-        per_m = tris / plan["cell_length_m"]
-        # Resident set: the cell you are in plus both neighbours, because you
-        # can see a sight line past a boundary in either direction.
-        resident = tris * 3
         print("\nStreaming cells -- a full ring corridor is not emittable\n")
-        print(f"  worst cell: {sec} {plan['ring']} deck 0 -- "
-              f"{plan['cells']} cells of {plan['cell_deg']:.1f} deg, "
-              f"{plan['cell_length_m']:.0f} m, {tris:,} tri")
-        check("cell triangles", tris, CELLS["cell_tris"], " tri",
-              f"{plan['circumference_m']:,.0f} m ring would be "
-              f"{tris * plan['cells']:,} whole")
-        check("resident set (3 cells)", resident, CELLS["resident_tris"], " tri",
-              "the cell you are in plus both neighbours")
+        for use in ("habitat", "plant"):
+            if worst[use] is None:
+                continue
+            sec, plan, di = worst[use]
+            tris = len(it.deck_cell(schema, profile, sec, plan["ring_index"],
+                                    di, 0)[1])
+            print(f"  worst {use} cell: {sec} {plan['ring']} deck {di} at "
+                  f"{plan['gravity_g']:.3f} g -- {plan['cells']} cells of "
+                  f"{plan['cell_deg']:.1f} deg, {plan['cell_length_m']:.0f} m, "
+                  f"{tris:,} tri")
+            note = (f"{plan['circumference_m']:,.0f} m ring would be "
+                    f"{tris * plan['cells']:,} whole")
+            if use == "plant":
+                note += " -- priced with the corridor kit as a placeholder"
+            check(f"{use} cell triangles", tris, CELLS["cell_tris"], " tri", note)
+            if use == "habitat":
+                per_m = tris / plan["cell_length_m"]
+                # Resident set: the cell you are in plus both neighbours,
+                # because you can see a sight line past a boundary either way.
+                check("resident set (3 cells)", tris * 3,
+                      CELLS["resident_tris"], " tri",
+                      "the cell you are in plus both neighbours")
         check("bent corridor rate", per_m, CELLS["bent_tris_per_m"], " tri/m",
               f"{per_m / max(per_m_straight, 1e-9) - 1:+.0%} against the "
               f"straight kit's {per_m_straight:.0f} tri/m -- each bent section "

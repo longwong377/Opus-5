@@ -54,58 +54,184 @@ def hull_radius_at(profile, z):
     return profile[lo]["radius_m"]
 
 
-# Structure between the outer hull surface and the outermost deck floor:
-# pressure hull, frames, services, and the thickness of the deck itself.
-HULL_ALLOWANCE = 0.86
+# Pressure hull, frames and services between the core hull surface and the
+# innermost usable radius. Metric rather than fractional -- INV-013, INV-026.
+#
+# This replaced a `HULL_ALLOWANCE = 0.86` fraction, which was the wrong KIND of
+# quantity twice over. A fraction of the radius removed 65 m of notional
+# structure in Grey and 22 m in Yellow; pressure hull and frames do not scale
+# with how far a sector sits from the spin axis. And it multiplied the *mean
+# envelope radius over the whole sector band*, which describes no actual
+# surface: Yellow's band ranges 18-440 m and Blue's 116-268 m, so their means
+# are arithmetic about a shape rather than a measurement of one.
+HULL_SKIN_M = 6.0
+
+# Half-window for the morphological opening that recovers the core hull from
+# the envelope. Sized to strip anything narrower than ~120 m in z, which is
+# every component the exterior places and no section of hull.
+CORE_HULL_WINDOW_M = 60.0
+
+_CORE_HULL_CACHE = {}
+
+
+def core_hull_profile(profile, window_m=CORE_HULL_WINDOW_M):
+    """The pressure hull under the envelope, with protrusions stripped.
+
+    `radius_profile.json` traces the station's OUTLINE, so it reports the top of
+    whatever is standing proud at each z -- a cobra bay, a cargo module, a
+    radiator root. Session 2b established the technique for separating the two:
+    a protrusion is local in z and the hull varies slowly, so a wide running
+    minimum approximates the core hull.
+
+    A running minimum alone is wrong at a step, and measurably so. It ERODES:
+    for one window either side of a real change in section it reports the
+    narrower value, so Grey came out at 428.7 m -- below its own raw minimum of
+    436.4 m, a radius no point in Grey actually has. The fix is a morphological
+    opening, erosion followed by dilation at the same window, which removes
+    features narrower than the window and restores the edges of those wider
+    than it. Asserted: the opened profile never falls below the raw minimum.
+    """
+    key = (id(profile), window_m)
+    if key in _CORE_HULL_CACHE:
+        return _CORE_HULL_CACHE[key]
+    rs = [q["radius_m"] for q in profile]
+    zs = [q["z_m"] for q in profile]
+    step = (zs[-1] - zs[0]) / max(1, len(zs) - 1)
+    half = max(1, int(round(window_m / step)))
+
+    def sweep(v, fn):
+        n = len(v)
+        return [fn(v[max(0, i - half):min(n, i + half + 1)]) for i in range(n)]
+
+    out = sweep(sweep(rs, min), max)
+    _CORE_HULL_CACHE[key] = out
+    return out
+
+
+def sector_shell_radius(schema, profile, sector, tol=0.05):
+    """The radius of a sector's principal pressurised shell.
+
+    A sector is a longitudinal band, and its hull radius is not constant across
+    it -- Blue's runs 116 to 268 m. One number has to stand for the whole band
+    because rings are expressed as fractions of it, so the question is which
+    number, and a mean is the one answer that is guaranteed to describe no
+    surface present in the sector.
+
+    What is taken instead is the LONGEST RUN of near-constant core-hull radius
+    inside the band: the sector's widest real cylinder, the piece of it that is
+    actually shell rather than taper. That is a surface you could put a tape
+    measure on.
+
+    Cross-check, and it is a strong one: run against the band that contains the
+    habitat cylinder this returns 314.3 m, where `habitat_hull_radius()` -- a
+    completely separate derivation, a plain mean over one named schema feature
+    -- gives 316.8 m before its own skin. 2.5 m apart on a 315 m radius, 0.8%,
+    from two methods that share no arithmetic. The self-test asserts it.
+    """
+    core = core_hull_profile(profile)
+    ex = schema["sectors"]["extents_m"][sector]
+    idx = [i for i, q in enumerate(profile) if ex["z0"] <= q["z_m"] <= ex["z1"]]
+    if not idx:
+        raise ValueError(f"sector {sector!r} covers no profile samples")
+    c = [core[i] for i in idx]
+
+    best_n, best_r, i = -1, None, 0
+    while i < len(c):
+        j, lo, hi = i, c[i], c[i]
+        while j + 1 < len(c):
+            nlo, nhi = min(lo, c[j + 1]), max(hi, c[j + 1])
+            if nhi - nlo > tol * nlo:
+                break
+            lo, hi, j = nlo, nhi, j + 1
+        if j - i > best_n:
+            best_n, best_r = j - i, (lo + hi) / 2.0
+        i = j + 1
+    return best_r
 
 
 def sector_radius(schema, profile, sector):
     """Radius of the OUTERMOST DECK FLOOR in a sector -- not the hull envelope.
 
-    The first pass used the mean hull radius and put ring 1 at 328 m and
+    The first pass used the mean envelope radius and put ring 1 at 328 m and
     **1.18 g**, which is wrong twice over: the envelope includes protrusions
     that are outside the pressure hull entirely, and canon fixes the habitat
     floor at 278.3 m *because* that is where spin gravity is exactly 1.0 g.
 
     The drum sector is therefore anchored to the canon figure directly, and
-    every other sector derives from its own hull radius less an allowance for
-    pressure hull, frames, services and deck thickness. Deriving the drum the
-    same way would let a rounding error move the one radius the whole rotation
-    rate was solved from.
-    """
-    drum_r = schema["bio_habitat"]["interior_radius_m"]["value"]
-    ex = schema["sectors"]["extents_m"][sector]
-    zs = [p for p in profile if ex["z0"] <= p["z_m"] <= ex["z1"]]
-    hull = sum(p["radius_m"] for p in zs) / max(1, len(zs))
+    every other sector sits `HULL_SKIN_M` inside its own principal shell.
+    Deriving the drum the same way would let a rounding error move the one
+    radius the whole rotation rate was solved from.
 
+    Note what this function does NOT promise: that the deck at this radius is
+    somewhere a person can be. Grey's is at 1.693 g. See `habitable_radius()`.
+    """
     if sector == drum_sector(schema, profile):
-        return drum_r
-    return hull * HULL_ALLOWANCE
+        return schema["bio_habitat"]["interior_radius_m"]["value"]
+    return sector_shell_radius(schema, profile, sector) - HULL_SKIN_M
 
 
 def drum_sector(schema, profile):
     """Which longitudinal band is the habitat drum, decided by geometry.
 
     Which one it is *called* is C-003's open question, so this cannot be keyed
-    on a name. The sector whose hull radius comes closest to the canon drum
-    radius over the allowance is the drum, and that answer does not move when
-    the naming does.
+    on a name. The drum is the band whose principal shell matches the measured
+    habitat pressure hull, and that answer does not move when the naming does.
+
+    Matched against `habitat_hull_radius()` rather than against the 278.3 m
+    floor, because the shell and the pressure hull are the same surface and the
+    floor is 32 m inside it. Comparing a hull radius to a floor radius is a
+    category error, and here it does not merely blur the answer -- it gives the
+    wrong one. Against the floor the best match is **red**, at 4.3 m, with the
+    drum 36 m away in second place; red's shell happens to sit 274 m out, four
+    metres from where the Garden's ground is. Against the pressure hull the
+    drum wins at 2.5 m with red 42.7 m behind it, a 17x margin.
+
+    The old fraction-based version got the right answer for the wrong reason:
+    it multiplied a mean envelope radius, and the drum band's mean was inflated
+    by the aft hull block it happens to contain. Neither the comparison nor the
+    margin was sound; the result was luck.
     """
-    drum_r = schema["bio_habitat"]["interior_radius_m"]["value"]
+    target = habitat_hull_radius(schema, profile) + HULL_SKIN_M
     best, best_err = None, None
-    for name, e in schema["sectors"]["extents_m"].items():
-        band = [q["radius_m"] for q in profile if e["z0"] <= q["z_m"] <= e["z1"]]
-        if not band:
+    for name in schema["sectors"]["extents_m"]:
+        try:
+            err = abs(sector_shell_radius(schema, profile, name) - target)
+        except ValueError:
             continue
-        err = abs(sum(band) / len(band) * HULL_ALLOWANCE - drum_r)
         if best_err is None or err < best_err:
             best, best_err = name, err
     return best
 
 
-# Pressure hull, frames and services between the outer envelope and the
-# innermost usable radius. Metric rather than fractional -- INV-013.
-HULL_SKIN_M = 6.0
+# The heaviest deck a person may be housed or rostered on. Above this a deck is
+# still built and still pressurised -- it is plant, not habitat. INV-027.
+HABITABLE_G_MAX = 1.25
+
+
+def habitable_radius(schema, g_max=HABITABLE_G_MAX):
+    """The outermost radius at which people live and work.
+
+    Making the hull allowance metric did not fix Grey's heavy outermost deck --
+    it made it worse, 1.445 g to 1.693 g, because the 0.86 fraction had been
+    quietly deleting 65 m of hull that is really there. Grey sits on the aft
+    hull block, the widest structure on the station at 478 m envelope radius,
+    and no honest allowance moves it inboard.
+
+    So the premise was wrong rather than the arithmetic. `STATE.md` had this
+    recorded as a symptom of `HULL_ALLOWANCE`; it is not. A rigid body spinning
+    at a rate fixed by the habitat floor puts 1.7 g on anything 471 m out, and
+    the design response is the one any real station would make: you do not put
+    quarters at the bottom of the gravity well, you put MASS there. Tankage,
+    reservoirs, waste processing, reactor auxiliaries, ballast.
+
+    Grey's outer 123 m becomes the station's basement, which is a place the
+    scope asks for by name -- "the physical plant that makes 250,000 people
+    possible: food, water, air, power, waste" -- and which the fraction was
+    concealing behind a plausible number.
+    """
+    rot = schema["station"]["rotation"]
+    w = rot["omega_rad_s"]["value"]
+    return g_max * rot["standard_gravity_m_s2"]["value"] / (w * w)
 
 
 def habitat_hull_radius(schema, profile):
@@ -191,6 +317,7 @@ def decks_in_ring(schema, profile, sector, ring_index, pitch=DECK_PITCH_M):
         return []          # open air and the core carry no decks
     depth = ring["r_outer"] - ring["r_inner"]
     n = max(1, int(depth // pitch))
+    r_hab = habitable_radius(schema)
     out = []
     for i in range(n):
         # A deck's floor is at its LARGER radius -- down is outward. In the drum
@@ -205,6 +332,12 @@ def decks_in_ring(schema, profile, sector, ring_index, pitch=DECK_PITCH_M):
             "gravity_direction": "outward",
             "floor_g": round(gravity_at(schema, floor_r), 4),
             "circumference_m": round(2 * math.pi * floor_r, 1),
+            # Built and pressurised either way. What changes is what is IN it,
+            # and therefore what it costs to dress: a plant deck is tankage and
+            # machinery walked through on a catwalk, not corridor, quarters and
+            # signage. Tagged here so the manifest and the budget can tell them
+            # apart rather than pricing 34 decks of Grey as habitat.
+            "use": "habitat" if floor_r <= r_hab else "plant",
         })
     return out
 
@@ -1217,7 +1350,23 @@ def ring_cells(schema, profile, sector, ring_index, deck_index=0, margin=1.5):
     # own sight line, which is the property that actually matters; the margin
     # falls from 1.5 to between 1.12 and 1.68, which is slack rather than a
     # guarantee.
-    n = min([d for d in (1, 2, 3, 4, 6, 9, 12, 18, 36) if d >= n] or [36])
+    # Snapping up is only safe while the smaller cell still clears its own
+    # sight line, and the divisor list has a 2x gap between 18 and 36 where it
+    # stops being. Grey's ring 1 found it the moment the metric hull allowance
+    # widened the ring: it asks for 19 cells, 36 is the next divisor up, and
+    # that halves the cell to 82.2 m against a 98.9 m sight line -- the player
+    # standing at one end sees 17 m into a cell that is not resident.
+    #
+    # So the snap runs up only as far as the guarantee holds, then falls back
+    # DOWN to the nearest divisor at or below the requested count. Down is
+    # always safe for the guarantee, because it makes cells larger; it costs
+    # triangles per cell rather than correctness, and the cell gate is what
+    # catches that.
+    divisors = (1, 2, 3, 4, 6, 9, 12, 18, 36)
+    circ = 2 * math.pi * r
+    sight = sight_line(r, cw)
+    up = [d for d in divisors if d >= n and circ / d >= sight]
+    n = min(up) if up else max([d for d in divisors if d <= n] or [1])
     cell_deg = 360.0 / n
     return {
         "sector": sector,
@@ -1335,6 +1484,11 @@ def cell_manifest(schema, profile):
                     "deck_index": di,
                     "floor_r_m": deck["floor_r_m"],
                     "floor_g": deck["floor_g"],
+                    # "habitat" or "plant" -- above HABITABLE_G_MAX a deck is
+                    # pressurised volume the player can reach but nobody is
+                    # billeted on. The engine needs it to pick a kit, and the
+                    # NPC layer needs it to know where not to place residents.
+                    "use": deck["use"],
                     "z0": ex["z0"], "z1": ex["z1"],
                     "cells": plan["cells"],
                     "cell_deg": plan["cell_deg"],
@@ -1567,6 +1721,101 @@ def _selftest():
     check("drum floor is exactly 1 g",
           abs(gravity_at(schema, r_drum) - 1.0) < 1e-6,
           f"{gravity_at(schema, r_drum):.9f} g")
+
+    # --- the core hull, and the metric skin that replaced HULL_ALLOWANCE ----
+    # The fraction is gone. Asserting its absence is cheap and it is exactly
+    # the kind of thing a later session reintroduces because a fraction is the
+    # obvious way to write "most of the radius".
+    check("HULL_ALLOWANCE is gone", "HULL_ALLOWANCE" not in globals(),
+          "a fraction of the radius is the wrong kind of quantity for a "
+          "pressure hull -- see INV-026")
+
+    core = core_hull_profile(profile)
+    raw = [q["radius_m"] for q in profile]
+    check("the opening never erodes below the raw profile",
+          all(c >= r - 1e-9 or abs(c - r) < 1e-9
+              for c, r in zip(core, [min(raw)] * len(raw))) and
+          min(core) >= min(raw) - 1e-9,
+          f"core min {min(core):.1f} vs raw min {min(raw):.1f}")
+    check("the opening never rises above the raw profile",
+          all(c <= r + 1e-9 for c, r in zip(core, raw)),
+          "an opening is bounded above by its input")
+    for sec, ex in schema["sectors"]["extents_m"].items():
+        band = [(core[i], raw[i]) for i, q in enumerate(profile)
+                if ex["z0"] <= q["z_m"] <= ex["z1"]]
+        if not band:
+            continue
+        # A plain running minimum failed this in grey: it reported 428.7 m in a
+        # band whose narrowest real sample is 436.4 m, because the window
+        # reached past the band edge into a narrower neighbour and eroded the
+        # step. The dilation half of the opening is what restores it.
+        check(f"{sec}: core hull is not eroded past the band's own minimum",
+              min(c for c, _ in band) >= min(r for _, r in band) - 1e-9,
+              f"core {min(c for c, _ in band):.1f} < raw "
+              f"{min(r for _, r in band):.1f}")
+
+    # The cross-check that justifies the whole method: the generalised shell
+    # extraction and the drum's hand-measured pressure hull are two derivations
+    # that share no arithmetic, and they land 2.5 m apart on a 315 m radius.
+    shell_drum = sector_shell_radius(schema, profile, drum_sector(schema, profile))
+    hull_drum = habitat_hull_radius(schema, profile) + HULL_SKIN_M
+    check("shell extraction agrees with the measured habitat pressure hull",
+          abs(shell_drum - hull_drum) / hull_drum < 0.01,
+          f"{shell_drum:.1f} m vs {hull_drum:.1f} m "
+          f"({abs(shell_drum - hull_drum):.1f} m apart)")
+
+    # Matching the drum on its pressure hull rather than on its floor is what
+    # makes the identification robust. Assert the MARGIN, not just the winner:
+    # a test that only checks which one won cannot tell a 39x margin from a
+    # coin toss, and this decides which band the whole habitat is built in.
+    errs = sorted(abs(sector_shell_radius(schema, profile, s) - hull_drum)
+                  for s in schema["sectors"]["extents_m"])
+    check("the drum is identified by a wide margin, not a narrow one",
+          errs[1] > 10 * max(errs[0], 0.1),
+          f"best {errs[0]:.1f} m, runner-up {errs[1]:.1f} m")
+
+    for sec in schema["sectors"]["extents_m"]:
+        r_out = sector_radius(schema, profile, sec)
+        shell = sector_shell_radius(schema, profile, sec)
+        # The outermost floor sits inside real hull, by exactly the skin. This
+        # is what the fraction could not promise: 0.86 removed 65 m in grey and
+        # 22 m in yellow, neither of which is a thickness of anything.
+        if sec != drum_sector(schema, profile):
+            check(f"{sec}: outermost floor is one metric skin inside the shell",
+                  abs((shell - r_out) - HULL_SKIN_M) < 1e-6,
+                  f"{shell - r_out:.2f} m")
+        check(f"{sec}: outermost floor is inside the core hull",
+              r_out <= shell + 1e-6, f"{r_out:.1f} m vs shell {shell:.1f} m")
+
+    # --- the habitable ceiling ---------------------------------------------
+    r_hab = habitable_radius(schema)
+    check("the habitable ceiling is exactly HABITABLE_G_MAX",
+          abs(gravity_at(schema, r_hab) - HABITABLE_G_MAX) < 1e-9,
+          f"{gravity_at(schema, r_hab):.9f} g at {r_hab:.1f} m")
+    # The drum's sub-floor stack is occupied by construction -- it is the
+    # service space under the Garden and the gazetteer sites people in it. If
+    # the ceiling ever drops below the pressure hull's 1.117 g, the drum's own
+    # basement becomes plant and that is a contradiction, not a design change.
+    d_hull = habitat_hull_radius(schema, profile)
+    check("the drum's whole sub-floor stack stays habitable",
+          gravity_at(schema, d_hull) <= HABITABLE_G_MAX,
+          f"pressure hull is {gravity_at(schema, d_hull):.3f} g against a "
+          f"{HABITABLE_G_MAX} g ceiling")
+    seen_plant = False
+    for sec in schema["sectors"]["extents_m"]:
+        for ri, ring in enumerate(ring_radii(schema, profile, sec)):
+            if ring["kind"] != "deck_stack":
+                continue
+            for d in decks_in_ring(schema, profile, sec, ri):
+                want = "habitat" if d["floor_g"] <= HABITABLE_G_MAX else "plant"
+                seen_plant = seen_plant or d["use"] == "plant"
+                check(f"{sec} {ring['id']} d{d['deck_index']}: use matches "
+                      f"gravity", d["use"] == want,
+                      f"{d['use']} at {d['floor_g']:.3f} g")
+    # If nothing is plant the tag is dead weight and the ceiling is not doing
+    # any work -- which would mean either the ceiling or the radii moved.
+    check("the station has plant decks at all", seen_plant,
+          "grey's outer 34 decks sit above 1.25 g")
 
     # Rings must descend inward and never cross the axis.
     for sec in schema["sectors"]["extents_m"]:
