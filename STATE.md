@@ -2453,9 +2453,67 @@ One trap worth carrying: the new block first bound `import numpy as _np` inside 
 this module already has a module-level `_np()` helper. Python scopes per function, not per line, so
 every later call to it raised `UnboundLocalError`.
 
+## Session 3l (cont.) — the bespoke fan-out. 5 of 6 clusters home; layer 3 is much further along than "50 places" suggested
+
+`materials.py` **1,205 assertions**, up from 924. Applied this session: the Zocalo (24 materials,
+39 groups), the drum landscape (17, 33), signage (2, 3), plus the corridor kit tagged.
+
+### Real coverage, measured rather than estimated
+
+| tier | groups | resolved |
+|---|---|---|
+| procedural, `rooms.py` 68 rooms | 124 | **124** |
+| `zocalo` | 39 | **39** |
+| `core_tube` + `tram` | 41 | **41 — already were, before the fan-out** |
+| `garden` + `drum_ground` | 33 | **33** |
+| `signage` | 3 | **3** |
+| `command_control`+`council_chamber`+`customs`+`docking_bay` | 55 | 6 — **proposal in hand, not applied** |
+| `plant`+`alien_sector`+`hospitality`+`quarters` | ? | **agent hit the session limit; never ran** |
+
+### Findings, in order of how much they cost to miss
+
+1. **80% of every corridor was ONE untagged material.** `tag()` had four call sites, all light
+   fittings; every structural surface fell into the default. Six reviewed materials —
+   `kit_deck`, `kit_pilaster`, `kit_reveal`, `kit_skirt`, `kit_rail_band` — were bound to
+   fragments nothing emitted. Fixed: 13 groups, 0% untagged, **no new material authored**.
+   `interior_kit` now asserts zero untagged triangles and ≥12 groups.
+2. **`KNOWN_GROUPS` could not see the bespoke modules at all.** Its scan is a regex restricted to
+   `drum|endcap|truss|tram|core|ground|greeble|light`, so all 124 rooms.py groups and all 42 from
+   command_control/council_chamber/docking_bay/signage were invisible. The gate passed over a
+   short list. `test_materials_layer3.py` now RUNS the generators.
+3. **THE SAME DEFECT TWICE, one level apart:** `interior_kit` tagged the light strip and not the
+   pilaster it sits in; `zocalo` claimed `zoc_rib_cap` and `zoc_rib_lamp` and not the arch they
+   sit on. **The fitting gets named, the thing it is mounted on does not.** Look for it again.
+4. **Three of my own gates were wrong about the corpus**, and running them against known-good data
+   is what showed it: bimodal metallic failed 19 reviewed materials; the draw-call budget counted
+   the LIBRARY when a draw call is paid per material DRAWN (worst single view is 9, not 80); and
+   the ambiguity gate failed six deliberate general/specific overrides. **Run a new rule against
+   known-good data before trusting it against new data.**
+5. **`transit` needed nothing.** I sized the bespoke work from a regex upper bound of 499 string
+   literals instead of measuring per-module coverage, and spent an agent on a cluster already
+   finished. Establish entry points first, then measure, then decide what to propose.
+
+### Entry points, which were the expensive part
+
+Recorded in `docs/layer3-proposals/bespoke/*.json` under `entry_points`. Only 3 of 15 modules have
+`write_obj()`. Notably **`zocalo` does NOT** — it has `write_run(path, bays=3, ...)` and
+`write_bay(path, ...)`, so `test_materials_layer3._via_write_obj("zocalo")` would fail. Its full
+group set needs `zocalo_run(3, cap_ends=True)` (38) plus the `table_pedestal_five` variant (39);
+`write_run` defaults `cap_ends=False` and emits only 37.
+
 ## NEXT SESSION
 
-1. **Layer 3's other 50 places** — the bespoke modules. Same shape: enumerate each module's emitted
+1. **Apply `blue_public`** — `docs/layer3-proposals/bespoke/blue_public.json`, 27 materials over
+   55 groups, 49 of them currently unresolved. It is validated except for two things, both easy:
+   eight entries are REBINDS of existing procedural materials (`shell_wall_panel`,
+   `shell_deck_public`, `steel_gantry_oxide`, `edge_chevron_nosing`, …) and must be merged into
+   those materials' `binds` rather than added as new ones — the same shape as `signage_panel`; and
+   `council_medallion_spoke` is claimed by both `drum_structure` and `furn_service_steel`, whose
+   fragments do not contain each other, so one must be made specific.
+2. **Re-run the `plant_living` cluster** — `plant`, `alien_sector`, `hospitality`, `quarters`. It
+   is the only one that never produced a result. The workflow can be resumed with
+   `resumeFromRunId: "wf_e25e65a5-33c"`; the five that finished replay from cache.
+3. **Layer 3's other 50 places** — the bespoke modules. Same shape: enumerate each module's emitted
    groups, propose, gate. `zocalo`, `interior_kit`, `core_tube` and `tram` are the big ones.
 2. **The lighting rig has no night side** (layer 4, blocking) — the arrival shot cannot be composed
    until it changes, and the owner's opening beat depends on it.
