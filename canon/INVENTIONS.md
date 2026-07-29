@@ -1406,3 +1406,69 @@ placement map was −1.
 
 **Overturned by:** any second interior frame of the Alien Sector, or a source giving the number of
 quarters or their sizes.
+
+---
+
+## INV-032 — Residential quarters, by class
+
+**Invented:** every area and dimension in `station/quarters.py` — `UNIT_ASPECT = 1.6`,
+`UNIT_H_M = 2.8`, the seven per-class areas, the fittings list and the fitting sizes.
+
+**Sourced:** the *classes* and their *sectors*, from `LOCATIONS.md` §11. Authority is marked per
+row in `CLASSES` — "Dock Workers' Quarters" in the Blue rosette is authority 3, most of the rest
+is authority 4.
+
+**The design spine is canon and is now a test.** §11 states it in one line: *"Gravity does the
+work for free… the people with the least power live where they weigh the most."* This module
+asserts that against live geometry instead of restating it:
+
+| rank | class | sector | gravity | unit |
+|---|---|---|---|---|
+| 0 | command | Blue | 0.760 g | 4.6 × 7.4 m, 34 m² |
+| 1 | personnel | Blue | 0.760 g | 3.4 × 5.4 m, 18 m² |
+| 2 | diplomatic | Green | 1.000 g | 5.4 × 8.6 m, 46 m² |
+| 3 | alien_resident | Green | 1.000 g | 3.7 × 5.9 m, 22 m² |
+| 4 | civilian | Red | 0.963 g | 3.2 × 5.1 m, 16 m² |
+| 5 | transient | Red | 0.963 g | 2.4 × 3.8 m, 9 m² |
+| 6 | **lurker** | Grey | **1.693 g** | **no rooms** |
+
+**2.23× body weight between the top and the bottom of the housing ladder**, and 5.1× floor area
+between an ambassador and a transient.
+
+**Being precise about what is true.** Rank and gravity are **not** monotonic across every adjacent
+pair — Green's 1.000 g outranks Red's 0.963 g — and my first docstring claimed they were, which is
+a docstring lying about its own code, the failure class this project shipped once before as a
+comment reading "wound inward" over code winding outward. What is asserted is the claim §11
+actually makes: the lowest class lives at the highest gravity, the highest class does not, and
+the spread is felt rather than marginal. **Rank orders floor area *within a sector***, which is
+what a housing allocation would produce, and that is asserted per sector.
+
+The first area assertion tried to paper over the diplomatic/command inversion with a compound
+`or` and failed — the assertion being right and the claim being wrong. **Rank is social order, not
+floor area**: ambassadorial suites outrank command quarters on this station.
+
+**`lurker` emits no geometry, deliberately.** §11 is explicit that Downbelow is "corridors and
+chambers, **not rooms**", and `plant.py` already builds that architecture — the plant zone is
+where `interior.py` tags decks `plant`, meaning *unassigned*, which is exactly what a lurker is.
+The class exists in the table, ranks lowest, participates in the gravity assertion and returns
+`([], [], [])`. `unit_dims()` returns `(0, 0)` rather than a fake cell, and both are asserted:
+handing back a 1 × 1 m room is how Downbelow would quietly become an apartment block.
+
+**Showers are the class marker.** Authority 4 gives them to command quarters and the executive
+suites *only*, and `LIFE-SUPPORT-AND-INDUSTRY.md` L-03/L-04 supplies the reason — the water loop
+must be >98% closed, so water is rationed. A utility becomes a visible class distinction.
+Asserted: exactly `{command, diplomatic}` have one, and a class claiming a shower must actually
+build the fitting.
+
+**A stale canon figure, flagged rather than copied.** §11 quotes *"command quarters in Blue at
+0.603 g"*. That predates INV-026 — with the fractional `HULL_ALLOWANCE`, Blue's outermost floor
+sat at 167.7 m; with the metric skin it is **211.6 m and 0.760 g**. This module reads gravity live
+and **asserts the divergence**, so nobody re-copies the old number believing it still holds. §11
+needs refreshing.
+
+**Usability is checked, not assumed:** every class must fit a bed across its width, leave a
+`WALK_MIN_M` clear path past its fittings, and fit under a deck pitch — an area check alone would
+pass a 9 m² cell with a 2.05 m bed jammed across it. Runs of units tile exactly, because a
+residual gap between two quarters is a void invisible in any elevation.
+
+**Overturned by:** any on-screen view of quarters with a measurable feature.
