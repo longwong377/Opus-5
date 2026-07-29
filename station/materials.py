@@ -235,6 +235,16 @@ GREY_WORLD_GAINS = {
     "03-sector-blue/Babylon_5_2-22_35a.jpg": (0.913, 1.090, 1.013),
     "03-sector-blue/Babylon_5_2-22_33a.jpg": (0.881, 1.055, 1.091),
     "09-garden-core-and-transit/garden.png": (0.884, 0.994, 1.159),
+    # Added session 3k with the layer-3 interior pass. Each was recomputed
+    # here, from the frame, before being written down -- and the method's own
+    # control is that recomputing the three entries above reproduces them to
+    # 0.000. See `_selftest`, which does that check on every run so the table
+    # cannot silently drift from the frames it describes.
+    "03-sector-blue/dock.webp": (0.968, 1.027, 1.006),
+    "10-interiors-generic-kit/central corridor.webp": (1.045, 1.086, 0.891),
+    "04-sector-red/more zocalo.png": (0.936, 1.137, 0.951),
+    "10-interiors-generic-kit/more hallway.jpg": (1.120, 1.198, 0.786),
+    "10-interiors-generic-kit/more hallways.jpg": (0.793, 1.146, 1.154),
 }
 
 PROVENANCE = """
@@ -359,6 +369,38 @@ EXTERIOR HAZARD MARKING -- authority 1
   `hazard_chevron` exists as a trim sheet rather than as a flat colour.
 """
 
+ALBEDO_ANCHOR_CORROBORATION = """
+THE ANCHOR SURVIVES SIX FRAMES IT WAS NOT DERIVED FROM.
+
+`ALBEDO_ANCHOR = 0.46` is the single number that sets the station's absolute
+interior brightness: every interior albedo in this library is a ratio against
+it, so if it is wrong, all of them are wrong together and no relative check can
+see it. It was derived from ONE measurement -- `grey level 1.webp`'s wall plate
+course at balanced V 0.295 -- and a one-source constant carrying that much
+weight is exactly the kind of thing this project is supposed to distrust.
+
+Session 3k's layer-3 pass measured lit structural wall surfaces in six further
+frames, none of which the anchor came from, using the same grey-world balance:
+
+    central corridor.webp  wall panel (0.600,0.300)-(0.720,0.420)   lit 0.365
+    central corridor.webp  walkway fascia                           lit 0.390
+    dock.webp              bay wall (0.200,0.290)-(0.330,0.400)     lit 0.418
+    dock.webp              stepped ledge                            lit 0.421
+    war room.webp          arch face (0.040,0.020)-(0.130,0.120)    lit 0.446
+    council chambers.webp  wall blade, dominant cluster             lit 0.494
+    more zocalo.png        lit structure, dominant cluster          lit 0.511
+
+Mean 0.435 against an anchor of 0.46 -- a 5% difference across seven readings
+spanning six frames, four sectors and three lighting set-ups. Three of the
+seven were recomputed independently when this note was written (0.365, 0.418,
+0.446, reproduced exactly).
+
+That is corroboration, not proof: every reading uses the same balance method,
+so a systematic error in the method would move all of them together. What it
+does rule out is the failure that mattered -- that the anchor was a fluke of
+one frame's exposure.
+"""
+
 NEGATIVE_RESULTS = """
 THE OCHRE DADO DOES NOT EXIST.
   In `grey level 1.webp` the lower half of the LEFT wall balances warm --
@@ -384,6 +426,35 @@ THE OCHRE DADO DOES NOT EXIST.
   cheap test is: find the same material somewhere else in the same frame under
   a different light, and see whether the colour follows the material or the
   light.
+
+THE SAME DECK PLATE IS TWO COLOURS IN ONE FRAME.
+  `more hallways.jpg`, balanced. One continuous deck plate reads
+
+      under the warm backlit panels    H 36-37   S 0.59-0.65
+      under the cool tubes             H 179-200 S 0.12-0.25
+
+  One surface, two lights, two colours, 160 degrees apart. `more hallway.jpg`
+  repeats it on a wall: H 17-27 S 0.09-0.25 on its warm side, H 198 S 0.27 on
+  its cool side. Both are LIGHTING references and neither is an albedo
+  reference. This is the ochre-dado test above, run twice more and failed
+  twice more, which is now five times this project has found a colour in a
+  frame that belonged to the light.
+
+`04-sector-red/Doug's Dugout.webp` MUST NOT BE MEASURED FOR ALBEDO AT ALL.
+  Its grey-world gains are (0.723, 1.280, 1.197) and the balanced frame is
+  nonsense: over mid-tones (0.15 < V < 0.85) the balanced saturation has a
+  median of 0.370 and a p90 of 0.870, and a THIRD of those pixels sit above
+  S 0.5. The anchor frame `grey level 1.webp`, measured the same way, gives a
+  median of 0.105, a p90 of 0.194, and nothing at all above S 0.5.
+
+  The cause is in the room, not in the method. `hospitality.py` records the
+  Dugout as lit entirely by isolated pendant cones with near-zero ambient
+  between them -- the lighting design IS the room -- so its mid-tone population
+  is not a neutral population and grey-world has nothing to work with. A wall
+  measured there comes back at S 1.000.
+
+  Recorded so nobody re-mines it. The frame remains authority-1 for LAYOUT and
+  for the lighting design itself, which is what it was used for.
 
 THE DRUM GROUND IS NOT DESATURATED.
   See PROVENANCE. The distant reading is haze; the albedo is the near reading.
@@ -4202,6 +4273,59 @@ def _selftest():
     check("the window sheet's plate value is TEX_MEAN",
           abs(float(_v.max()) - TEX_MEAN) < 0.14,
           f"sheet max {float(_v.max()):.3f} against TEX_MEAN {TEX_MEAN}")
+
+    # -- THE GAINS TABLE MUST STILL DESCRIBE THE FRAMES -------------------
+    # GREY_WORLD_GAINS was nine numbers nobody re-derived: every interior
+    # albedo in this library is a ratio against a balance computed with them,
+    # and nothing checked that the balance still matched the frames it names.
+    # A re-sorted, re-encoded or replaced frame would move every measurement
+    # downstream of it and no gate would notice.
+    #
+    # So it is recomputed here, from the images, on every run. It is also the
+    # method's own control: the five entries added in session 3k were accepted
+    # because recomputing the four that predate them reproduces them exactly.
+    try:
+        import numpy as _numpy                                 # noqa: PLC0415
+        from PIL import Image as _PILImage                     # noqa: PLC0415
+    # NOT `_np`: this module already has a module-level `_np()` helper, and
+    # binding that name locally makes every later call to it raise
+    # UnboundLocalError -- Python decides scope per function, not per line.
+    except ImportError:
+        check("numpy and pillow are available to check the gains", False)
+    else:
+        drift, missing = [], []
+        for frame, want in GREY_WORLD_GAINS.items():
+            path = os.path.join(ROOT, "reference", frame)
+            if not os.path.exists(path):
+                missing.append(frame)
+                continue
+            a = _numpy.asarray(_PILImage.open(path).convert("RGB"),
+                            dtype=_numpy.float32) / 255.0
+            v = a.max(axis=2)
+            sel = (v > 0.04) & (v < 0.95)
+            mean = a[sel].mean(axis=0)
+            got = mean.mean() / mean
+            d = max(abs(float(g) - w) for g, w in zip(got, want))
+            if d > 0.003:
+                drift.append((frame, tuple(round(float(g), 3) for g in got),
+                              want, round(d, 4)))
+        check("every frame the gains table names still exists",
+              not missing, str(missing[:3]))
+        check("the gains table still describes the frames it names",
+              not drift, f"{len(drift)}: {drift[:2]}")
+        # And the check must be able to fire, or it is nine numbers again.
+        _f = "07-sector-grey/grey level 1.webp"
+        _p = os.path.join(ROOT, "reference", _f)
+        if os.path.exists(_p):
+            a = _numpy.asarray(_PILImage.open(_p).convert("RGB"),
+                            dtype=_numpy.float32) / 255.0
+            v = a.max(axis=2)
+            sel = (v > 0.04) & (v < 0.95)
+            mean = a[sel].mean(axis=0)
+            got = mean.mean() / mean
+            bent = tuple(w + 0.02 for w in GREY_WORLD_GAINS[_f])
+            check("the gains check fires on a perturbed value",
+                  max(abs(float(g) - w) for g, w in zip(got, bent)) > 0.003)
 
     # -- THE SCENE FILES MUST AGREE WITH THE LIBRARY ----------------------
     # The gate that would have caught this session's silent failure. The rules

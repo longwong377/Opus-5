@@ -2420,15 +2420,46 @@ Also declared openly by a proposer rather than hidden: `shell_rib_oxide` sits at
 neutrality line, with a fallback at S 0.200 that preserves the finding — *"do not fall back to
 neutral grey, which two authority-1 frames contradict."*
 
+## Session 3l — the five findings are folded in, and the gains table now checks itself
+
+Item 1 of the previous list, done. All five went into `materials.py`, and **every number was
+reproduced from the frames before being written down** rather than taken on the proposers' word:
+
+- **Three existing gains recomputed exactly** (council chambers, war room, grey level 1 — dmax
+  0.0000). That is the method's own control, and it is what makes the five new ones trustworthy.
+- **Five new `GREY_WORLD_GAINS`** — all reproduced to ≤0.002 of the claimed values.
+- **`ALBEDO_ANCHOR_CORROBORATION`**, a new block. Three of the seven readings were recomputed
+  independently and came back at 0.365 / 0.418 / 0.446 — the proposal's figures exactly. Recorded
+  with the honest caveat: same balance method throughout, so it rules out a one-frame fluke rather
+  than a systematic error.
+- **Two new `NEGATIVE_RESULTS` instances** — the same deck plate at H 36–37 under warm panels and
+  H 179–200 under cool tubes. Five times now this project has found a colour that belonged to the
+  light.
+- **`Doug's Dugout.webp` excluded from albedo measurement**, with the numbers: balanced mid-tone
+  saturation median 0.370, p90 0.870, a third of pixels above S 0.5 — against the anchor frame's
+  0.105 / 0.194 / 0.000 measured identically.
+
+**The gains table now verifies itself.** It was nine numbers nobody re-derived, and every interior
+albedo in the library is a ratio against a balance computed with them — so a re-sorted, re-encoded
+or replaced frame would move every measurement downstream and no gate would notice. `materials.py`
+recomputes all fourteen from the images on every run, and the check is proven able to fire by
+perturbing an entry.
+
+923 assertions (was 920). No material value and no geometry changed, so the exported `.tres` are
+byte-identical — which is the correct outcome for a provenance increment and was verified rather
+than assumed.
+
+One trap worth carrying: the new block first bound `import numpy as _np` inside `_selftest`, and
+this module already has a module-level `_np()` helper. Python scopes per function, not per line, so
+every later call to it raised `UnboundLocalError`.
+
 ## NEXT SESSION
 
-1. **Fold findings 1–5 into `materials.py`.** They are canon and they are currently only in
-   `docs/layer3-proposals/*.json` and this file.
-2. **Layer 3's other 50 places** — the bespoke modules. Same shape: enumerate each module's emitted
+1. **Layer 3's other 50 places** — the bespoke modules. Same shape: enumerate each module's emitted
    groups, propose, gate. `zocalo`, `interior_kit`, `core_tube` and `tram` are the big ones.
-3. **The lighting rig has no night side** (layer 4, blocking) — the arrival shot cannot be composed
+2. **The lighting rig has no night side** (layer 4, blocking) — the arrival shot cannot be composed
    until it changes, and the owner's opening beat depends on it.
-4. **The magenta guideway light runs** in `drum_interior_engine`.
+3. **The magenta guideway light runs** in `drum_interior_engine`.
 
 **On agents here: the concurrency cap is 2.** Size fan-out for two lanes, not sixteen. Prefer a
 mechanical gate to a reviewer agent wherever the question is computable, and capture each agent's
