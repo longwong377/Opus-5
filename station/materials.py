@@ -3121,7 +3121,8 @@ def _build():
         albedo=(0.620, 0.620, 0.610), roughness=0.35, metallic=0,
         specular=0.25,
         emission=(0.942, 0.929, 1.000), emission_energy=6,
-        binds=("bay_lamp", "light_highbay"), scenes=("interior",),
+        binds=("bay_lamp", "light_highbay", "light_plant_flood"),
+        scenes=("interior",),
         source="reference/03-sector-blue/dock.webp (authority 1). Measured RAW, because a source keeps its own colour and balancing it would remove exactly the thing being read — the same treatment materials.py gives the Zocalo shopfront and the rotunda altar. The two unoccluded flood cores read rgb 0.408/0.400/0.435 (H 253 S 0.081) at (0.368,0.092)-(0.386,0.108) and rgb 0.539/0.524/0.565 (H 263 S 0.073) at (0.527,0.070)-(0.545,0.088); k-means over the pool at (0.360,0.085)-(0.395,0.115) puts 11.8% on rgb 0.585/0.577/0.621 (H 250 S 0.071). Near-neutral at every reading, faintly cool, S never above 0.081 — normalised to its peak channel that is (0.942, 0.929, 1.000). docking_bay.py's docstring records the fitting itself from this frame: pendant floodlights hanging at regular spacing off the lattice gantry, 'the bay's whole lighting scheme and the first thing that reads'.",
         extrapolated="emission_energy 6.0 and the housing albedo. Energy: matched to materials.py's light_pilaster_strip (6.0), which is a corridor's principal wall light, on the argument that this is the bay's principal light and the fitting is far larger — docking_bay.py builds it as a 1.5 m box against the strip's ~0.1 m tube, so at equal energy this delivers roughly fifteen times the flux, which is the right order for a 42 x 140 m hangar against a 3 m corridor. The visible beam shafts in the frame are haze, not intensity, and were not used to argue it up. Housing 0.62: the geometry is the whole fitting, so it must not read as a hole when unlit; 0.62 is a painted steel lamp body, darker than materials.py's truss_lamp tube at 0.95 because that is glass and this is not. Overturned by any frame showing a dark bay bay with the floods off.",
         note=("`light_highbay` is rooms.py's industrial and store fitting and "
@@ -3132,7 +3133,11 @@ def _build():
               "neutral, differing by 0.09 in the channel a normalisation "
               "choice moves. A plant hall and a cargo bay are lit the way a "
               "docking bay is, and giving them a second flood material would "
-              "be recording that difference as real.")))
+              "be recording that difference as real. `light_plant_flood` is "
+              "the same fitting again in plant.py, and it is a separate GROUP "
+              "only because its range transfers unscaled: a five-deck plant "
+              "bay is 5 x DECK_PITCH_M = 18.0 m, which is the depth "
+              "bay_flood's 30 m range was measured at.")))
 
         # command_control.py's docstring calls these 'the room's ambient
         # light', and it is the truest thing in the module: every other surface

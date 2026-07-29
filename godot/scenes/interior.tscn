@@ -304,6 +304,7 @@ material_rules = {
 "light_market_pool": ExtResource("m_light_market_pool"),
 "light_pendant": ExtResource("m_bar_pendant_lamp"),
 "light_pilaster_strip": ExtResource("m_light_pilaster_strip"),
+"light_plant_flood": ExtResource("m_bay_floodlight"),
 "light_platform_pool": ExtResource("m_light_platform_pool"),
 "light_portal_head": ExtResource("m_light_portal_head"),
 "light_service_tube": ExtResource("m_light_service_tube"),

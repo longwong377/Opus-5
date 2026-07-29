@@ -681,6 +681,15 @@ FIXTURE_LIGHTING = {
     # centre of the room stays dark.
     "cc_light_strip": {"kind": "omni", "colour": (0.243, 0.546, 1.000),
                        "energy_rel": 0.44, "range_m": 3.5, "shadow": False},
+    # plant.py's flood: bay_flood again, and the ONE range in the project that
+    # transfers with no arithmetic at all. It was measured at 30 m in an 18 m
+    # docking bay and a five-deck plant bay is 5 x DECK_PITCH_M = 18.0 m.
+    # Its companion, light_service_tube, is measured EMISSIVE ONLY and is
+    # already in the table above by that name -- the cold blue tubes are what
+    # you see in a service space and they light nothing.
+    "light_plant_flood": {"kind": "spot", "colour": (0.850, 0.830, 1.000),
+                          "energy_rel": 1.00, "range_m": 30.0, "shadow": True,
+                          "angle_deg": 35.0},
 }
 # EVERYTHING NOT IN THAT TABLE IS EMISSIVE ONLY, and for rooms.py that is:
 # light_service_tube, light_bar_backlight, light_indicator_red and
@@ -812,6 +821,22 @@ BESPOKE_EXPOSURE = {
     "hospitality": 1.34,     # vs reference/04-sector-red/Doug's Dugout.webp
     "command_control": 0.93,  # vs 03-sector-blue/comand and contorl.webp
     "docking_bay": 0.90,     # vs reference/03-sector-blue/dock.webp
+    "plant": 0.88,           # vs 10-interiors-generic-kit/more hallways.jpg,
+                             # the measured SERVICE corridor -- the register
+                             # whose walls are black except where a panel or
+                             # the deck strip reaches them.
+                             #
+                             # AND IT BARELY MOVES THE NUMBER, which is worth
+                             # knowing before someone iterates on it: the plant
+                             # frame is mostly below the measurable floor, so
+                             # dimming it pushes more pixels under 0.01 and
+                             # RAISES the median of what is left. The two
+                             # effects cancel and the frame sits at 1.59x its
+                             # reference either way -- inside tolerance, and
+                             # not reachable by exposure. In a volume that is
+                             # 139.8 million cubic metres of void with seven
+                             # floods in it, the median of the lit pixels is
+                             # not an exposure measurement.
 }
 
 
@@ -1084,6 +1109,61 @@ QUARTERS_CLASS = {
 }
 
 
+# Modules that build in STATION coordinates rather than in a local Y-up frame,
+# and therefore have to be unrolled before a person can be stood in them.
+#
+# Eight of the nine interior modules build a room the way you would model one:
+# origin at the floor, +Y up, walk down +Z. `plant` does not, and it is right
+# not to -- it builds an arc of the outer deck stack in place, at radius 447 to
+# 471 m, because its whole subject is a bay that spans five decks of a spinning
+# ring and it has to know where those decks are.
+#
+# The consequence for a RENDER is that "up" there is radially INWARD, toward
+# the spin axis, and every other part of this shot -- the camera's up vector,
+# `open_standpoint`'s eye height, a spot light's downward aim -- assumes +Y.
+# The first plant frame is what showed it: the camera stood in a tangential
+# direction and looked at two tanks side-on from outside them.
+UNROLL = {"plant"}
+
+# Group-name fragments whose triangles are THE SURFACE PEOPLE STAND ON, for
+# modules where that is not the bottom of the model.
+#
+# `open_standpoint` finds candidate floors by histogramming near-horizontal
+# triangle area, and in a plant bay that picks the tank-farm floor and the tank
+# tops -- both far larger than the walkway. But plant.py's own docstring calls
+# the catwalk "the walkable skeleton", and the module knows which group it is.
+# Asking beats inferring, exactly as `light_` tagging beats guessing which
+# material glows.
+WALK_SURFACE = {"plant": ("plant_catwalk",)}
+
+
+def unroll_to_local(verts):
+    """Station coordinates -> a standing frame, by unrolling the cylinder.
+
+    +X is along the arc, +Y is UP (which is radially inward, because down is
+    outward under spin), +Z is along the station's axis. The mid-point of the
+    geometry becomes the origin.
+
+    Unrolling rather than projecting, because the arc is what a walker
+    experiences: a plant bay spans about 20 degrees at 460 m, which is 160 m of
+    catwalk and 8 m of sagitta. Flattening it makes the catwalk straight, which
+    is what it feels like at 1.7 g, and costs nothing this shot can see.
+    """
+    import numpy as np
+
+    a = np.asarray(verts, dtype=np.float64)
+    r = np.hypot(a[:, 0], a[:, 1])
+    ang = np.arctan2(a[:, 1], a[:, 0])
+    # Unwrap about the mean angle so a bay straddling +/-pi does not tear.
+    mid = np.arctan2(np.sin(ang).mean(), np.cos(ang).mean())
+    d = (ang - mid + math.pi) % (2 * math.pi) - math.pi
+    r_ref = float(r.max())              # the floor: the largest radius is down
+    x = d * r_ref
+    y = r_ref - r
+    z = a[:, 2] - a[:, 2].mean()
+    return [(float(x[i]), float(y[i]), float(z[i])) for i in range(len(a))]
+
+
 def interior_geometry(room):
     """(verts, tris, spans, extent) for a room key, or the corridor kit.
 
@@ -1117,12 +1197,14 @@ def interior_geometry(room):
                 f"exterior-scene and belong in those shots.")
         r = build(schema, profile, place)
         v, t = r[0], r[1]
+        if place["module"] in UNROLL:
+            v = unroll_to_local(v)
         return v, t, to_spans(r[2] if len(r) > 2 else None, len(t)), None
     v, t, g = R.build(schema, profile, place)
     return v, t, g, R.bay_span_m(place)
 
 
-def open_standpoint(verts, tris, eye_h, clear_m=0.75):
+def open_standpoint(verts, tris, eye_h, clear_m=0.75, walk_spans=None):
     """Somewhere inside this geometry a person could actually stand.
 
     `rooms.standpoint` searches the walkable grid, but it needs a room whose
@@ -1143,7 +1225,83 @@ def open_standpoint(verts, tris, eye_h, clear_m=0.75):
     a = np.asarray(verts, dtype=np.float64)
     tri = np.asarray(tris, dtype=np.int64)
     lo, hi = a.min(axis=0), a.max(axis=0)
-    y = min(max(eye_h, lo[1] + 0.3), hi[1] - 0.3)
+
+    # WHICH SURFACE ARE YOU STANDING ON? Not necessarily the bottom of the
+    # model. plant.py's walkable skeleton is a catwalk threaded near the INNER
+    # face of an 18 m bay -- 15.6 m above the outer face the tanks stand on --
+    # so an eye at 1.7 m absolute stands in the tank farm and looks at the
+    # underside of everything. The frame showed exactly that: a dark wall of
+    # frame and two lit tanks edge-on.
+    #
+    # So the floors are found rather than assumed: near-horizontal triangles,
+    # weighted by area, histogrammed by height. A level carrying a few percent
+    # of the model's horizontal area is a deck someone could be on; anything
+    # less is a table top.
+    p_all = a[tri]
+    n = np.cross(p_all[:, 1] - p_all[:, 0], p_all[:, 2] - p_all[:, 0])
+    area2 = np.linalg.norm(n, axis=1)
+    ok = area2 > 1e-12
+    up = np.zeros(len(tri))
+    up[ok] = np.abs(n[ok, 1]) / area2[ok]
+    flat = ok & (up > 0.85)
+    if walk_spans:
+        # The module named its walkway. Restrict the search to it and skip the
+        # histogram entirely: a declared answer beats an inferred one.
+        mask = np.zeros(len(tri), dtype=bool)
+        for _n, _l, _h in walk_spans:
+            mask[_l:_h] = True
+        flat = flat & mask
+    levels = [float(lo[1])]
+    if flat.any():
+        ys = p_all[flat][:, :, 1].mean(axis=1)
+        w = area2[flat] / 2.0
+        edges = np.arange(lo[1], hi[1] + 0.5, 0.5)
+        hist, _ = np.histogram(ys, bins=edges, weights=w)
+        keep = hist > 0.03 * w.sum()
+        levels = [float(edges[i]) for i in np.where(keep)[0]]
+        if not levels:
+            levels = [float(lo[1])]
+    # Only levels with headroom for a person, and never more than a handful:
+    # every extra level is another occupancy grid.
+    levels = sorted({round(v, 1) for v in levels if v + eye_h < hi[1] + 0.5})[:6]
+    # AND LOOK DOWN WHICHEVER AXIS YOU CAN SEE FURTHEST ALONG. The search
+    # scores by the clear run in +Z, which is right for eight of the nine
+    # modules because a room is modelled with its length down Z. A plant
+    # catwalk is not: plant.py runs it ALONG THE ARC -- "the direction a person
+    # travels in a ring" -- so it is 80 m in X and 1.8 m in Z, and aiming down
+    # Z pointed the camera across a 1.8 m walkway into 139 million cubic metres
+    # of unlit void. Swapping the axes and taking the better score costs one
+    # more grid and needs no per-module knowledge.
+    # When the module DECLARED its walkway, its long axis is the answer and no
+    # search is needed. That matters because the score below is "how far can
+    # you see", and empty void scores highest: at the plant catwalk's height
+    # the bay is clear for 441 m down Z and the walkway is 1.8 m wide in that
+    # direction, so the honest-looking metric aimed the camera off the side of
+    # the walkway into the dark.
+    axes = (False, True)
+    if walk_spans:
+        w = a[np.unique(tri[np.concatenate(
+            [np.arange(l, h) for _n, l, h in walk_spans])])]
+        span = w.max(axis=0) - w.min(axis=0)
+        axes = (True,) if span[0] > span[2] else (False,)
+    swapped = a[:, [2, 1, 0]]
+    best = None
+    for v in levels:
+        for flip in axes:
+            pts = swapped if flip else a
+            e, m, score = _standpoint_at(pts, tri, v + eye_h, clear_m)
+            if best is None or score > best[0]:
+                best = (score, (e[2], e[1], e[0]) if flip else e,
+                        (m[2], m[1], m[0]) if flip else m)
+    return best[1], best[2]
+
+
+def _standpoint_at(a, tri, y, clear_m):
+    """The standpoint search at one height. See `open_standpoint`."""
+    import numpy as np
+
+    lo, hi = a.min(axis=0), a.max(axis=0)
+    y = min(max(y, lo[1] + 0.3), hi[1] - 0.3)
 
     # OCCUPANCY FROM TRIANGLE FOOTPRINTS, NOT FROM VERTICES. The first version
     # scored each candidate by its distance to the nearest VERTEX in the eye's
@@ -1189,9 +1347,9 @@ def open_standpoint(verts, tris, eye_h, clear_m=0.75):
 
     aim_x = float((lo[0] + hi[0]) / 2)
     if not free.any():
-        # Nowhere clear at all. Report it rather than pretending: a module
-        # whose eye height is solid is a geometry question, not a camera one.
-        return (aim_x, y, float(lo[2] + 1.0)), (aim_x, y, float(hi[2] - 0.5))
+        # Nowhere clear at all. Score 0, so a level that IS clear wins.
+        return ((aim_x, y, float(lo[2] + 1.0)),
+                (aim_x, y, float(hi[2] - 0.5)), 0.0)
 
     # STAND WHERE YOU CAN SEE DOWN THE ROOM. Picking the free cell nearest the
     # near end is not the same thing and the Zocalo proved it: `zoc_bulkhead`
@@ -1225,7 +1383,10 @@ def open_standpoint(verts, tris, eye_h, clear_m=0.75):
     # capped run aims at its cap and not through it.
     aim_z = min(float(hi[2] - 0.5),
                 eye[2] + (int(ahead[(s + e) // 2, j]) + 1) * cell)
-    return eye, (aim_x, y, aim_z)
+    # The score is HOW FAR YOU CAN SEE, in metres, which is what picks between
+    # standing levels: the plant bay's tank-farm floor sees a wall of frame and
+    # its catwalk sees 400 m down the bay.
+    return eye, (aim_x, y, aim_z), float(best) * cell
 
 
 def build_interior(args, out_dir):
@@ -1255,7 +1416,11 @@ def build_interior(args, out_dir):
     else:
         # A bespoke module: no declared extent and no prop naming convention,
         # so the standpoint is searched for against the geometry itself.
-        eye, aim = open_standpoint(verts, tris, args.eye_height)
+        walk = [sp for sp in spans
+                if any(f in sp[0] for f in WALK_SURFACE.get(
+                    __import__("directory").by_key(room)["module"], ()))]
+        eye, aim = open_standpoint(verts, tris, args.eye_height,
+                                   walk_spans=walk or None)
 
     obj = os.path.join(out_dir, f"{room}.obj")
     write_obj(obj, verts, tris, per_triangle(spans, len(tris)))

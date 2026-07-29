@@ -127,6 +127,54 @@ PIPE_R_M = 0.45
 PIPE_SEG = 8
 PIPES_PER_FRAME = 3
 
+# ---------------------------------------------------------------------------
+# Light fittings
+# ---------------------------------------------------------------------------
+# LAYER 4. This module built no light of any kind, and the first interior frame
+# of a plant bay was 85% black -- two tanks in the dark. That is not a lighting
+# defect, it is a missing object, in exactly the way `rooms.FIXTURES` was.
+#
+# The measured family is the SERVICE CORRIDOR in docs/layer4-lighting/
+# corridor_kit.json, whose finding is the whole character of this space: its
+# balanced median luminance is 0.060 against a residential corridor's 0.265,
+# and "its walls are black except where a panel or the deck strip reaches
+# them". A plant bay should be lit exactly that much and no more -- and
+# Downbelow squats in these frames, which is the same argument twice.
+#
+# TWO FITTINGS, and the split matters:
+#
+#   light_service_tube  MEASURED EMISSIVE ONLY. Cold blue vertical tubes on
+#                       the frames, flanking the catwalk. The measurement is
+#                       explicit that they flank a service corridor in pairs
+#                       and that they light nothing -- they are the thing you
+#                       see, not the thing that lets you see. Aspect ~13:1 for
+#                       the lower run, which at 0.11 m across is 1.43 m tall.
+#   light_plant_flood   The docking bay's flood, and it transfers WITHOUT
+#                       SCALING for once: `bay_flood` was measured at 30 m
+#                       range in an 18 m bay, and a five-deck plant bay is
+#                       5 x DECK_PITCH_M = 18 m. The one number in this file
+#                       that did not have to be argued.
+#
+# Both are hung off the CATWALK, because that is where a person is. Everything
+# outboard of it is tankage that nobody stands in, and lighting the tank farm
+# evenly would read as a warehouse rather than as a thin walkable skeleton
+# threaded through 139.8 million cubic metres of machinery.
+#
+# INV-037 records the archetype-to-fitting mapping this follows.
+TUBE_W_M = 0.11            # across the tube -- gives 13:1 at TUBE_H_M
+TUBE_H_M = 1.43            # measured aspect for the lower run
+TUBE_SILL_M = 0.60         # deck to the bottom of the tube, so it reads at
+                           # head height rather than as a skirting light
+TUBE_PITCH_M = 7.2         # two deck frames apart along the catwalk: the
+                           # measurement gives no pitch, only "they flank the
+                           # corridor in pairs", and a pair every other frame
+                           # is what leaves the walls between them dark
+TUBE_PROUD_M = 0.12        # clear of the catwalk edge, on the frame face
+FLOOD_M = 0.80             # a flood housing, square
+FLOOD_DROP_M = 0.34
+FLOOD_PITCH_M = 11.0       # MEASURED: bay_flood's own spacing, and the bay it
+                           # was measured in is the same 18 m deep as this one
+
 # What the tankage has to hold, from LIFE-SUPPORT-AND-INDUSTRY.md L-04:
 # 13,250 m3/day of water throughput, thirty days of reserve.
 RESERVE_M3 = 397_500.0
@@ -405,6 +453,40 @@ def plant_bay(schema, profile, bay, arc_deg, start_deg=0.0, z_span=None,
         _box(local, lt, lg, "plant_rail",
              (-half_len, r_walk - RAIL_H_M - RAIL_R_M, zr - RAIL_R_M),
              (half_len, r_walk - RAIL_H_M + RAIL_R_M, zr + RAIL_R_M))
+        _absorb(verts, tris, groups, _place(local, mid), lt, lg, flip=True)
+
+    # --- light fittings ---------------------------------------------------
+    # See the LIGHT FITTINGS block above. Hung off the catwalk, in the
+    # catwalk's own frame, so they cannot drift away from the walkway they
+    # light: `half_len`, `r_walk` and `zc_walk` are the same three values the
+    # deck and its rails were built from a few lines up.
+    n_tube = max(2, int(2 * half_len / TUBE_PITCH_M))
+    for side in (-1, 1):
+        # Just outboard of the rail line, on the frame face. Inward is up, so
+        # the tube runs from r_walk - TUBE_SILL_M to a SMALLER radius.
+        zr = zc_walk + side * (CATWALK_W_M / 2 + TUBE_PROUD_M)
+        for j in range(n_tube):
+            xw = (-half_len + TUBE_W_M
+                  + j * (2 * half_len - 2 * TUBE_W_M) / max(n_tube - 1, 1))
+            local, lt, lg = [], [], []
+            _box(local, lt, lg, "light_service_tube",
+                 (xw - TUBE_W_M / 2, r_walk - TUBE_SILL_M - TUBE_H_M,
+                  zr - TUBE_W_M / 2),
+                 (xw + TUBE_W_M / 2, r_walk - TUBE_SILL_M,
+                  zr + TUBE_W_M / 2))
+            _absorb(verts, tris, groups, _place(local, mid), lt, lg, flip=True)
+
+    # Floods on the bay's inner face, over the catwalk, throwing outward --
+    # which under spin is down. They are the only thing in a plant bay that
+    # lights anything.
+    n_flood = max(1, int(2 * half_len / FLOOD_PITCH_M))
+    for j in range(n_flood):
+        xw = (-half_len + FLOOD_M
+              + j * (2 * half_len - 2 * FLOOD_M) / max(n_flood - 1, 1))
+        local, lt, lg = [], [], []
+        _box(local, lt, lg, "light_plant_flood",
+             (xw - FLOOD_M / 2, r_in, zc_walk - FLOOD_M / 2),
+             (xw + FLOOD_M / 2, r_in + FLOOD_DROP_M, zc_walk + FLOOD_M / 2))
         _absorb(verts, tris, groups, _place(local, mid), lt, lg, flip=True)
 
     # --- pipe runs --------------------------------------------------------
