@@ -71,8 +71,8 @@ a number this repository computes, never a summary anyone writes.
 | # | Layer | Done when | Status |
 |---|---|---|---|
 | **0** | **Engine path** | A materialled, lit frame comes out of Godot + lavapipe and can be scored against `docs/AAA-STANDARD.md`. Infrastructure, not per-location | **BLOCKING — see below** |
-| **1** | **Addressed** | All 126 have `(sector, ring, deck, angle, z)`, footprints that do not collide, declared functions and interactions | 29 / 126 |
-| **2** | **Geometry** | Every addressed location has mesh, closed, correctly wound, inside its own footprint | 19 / 126 |
+| **1** | **Addressed** | All 126 have `(sector, ring, deck, angle, z)`, footprints that do not collide, declared functions and interactions | **118 addressed + 8 formally deferred = 126. COMPLETE** |
+| **2** | **Geometry** | Every addressed location has mesh, closed, correctly wound, inside its own footprint | 50 / 126 — **CURRENT** |
 | **3** | **Materials** | Every mesh carries PBR materials from `materials.py`. No flat colour anywhere | 0 |
 | **4** | **Lighting** | Every location lit, in the engine, to its reference's mood | 0 |
 | **5** | **Props & function** | The 71 declared interactable types exist and do what `directory.py` says they do | 0 |

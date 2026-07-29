@@ -234,6 +234,7 @@ PLACES = (
        (50.0, 300.0), module="garden", auth=1,
        functions=("agriculture", "recreation", "civic", "atmosphere_plant"),
        interacts=("building_door", "bench", "pool_edge", "path"),
+       within="the_garden",
        note="Settlement band. The drum's open volume, not a deck."),
     _P("hydroponics", "Hydroponics", "green", 0, 5, 200.0, 4600.0,
        (30.0, 120.0), auth=3,
@@ -264,12 +265,418 @@ PLACES = (
        functions=("power_generation",),
        interacts=("reactor_console", "blast_door"),
        note="Non-rotating aft assembly; everything aft of z=2680 jettisons."),
+
+    # ======================================================================
+    # M1 BATCH — the remaining gazetteer rows, session 3k
+    # ----------------------------------------------------------------------
+    # Angles are allocated per (sector, ring, deck) so nothing collides; the
+    # assertions check that rather than trusting this comment. Where the
+    # gazetteer says "unplaced", the entry is a PROPOSED placement at auth 5
+    # with its constraint in the note -- CLAUDE.md rule 1: extrapolate and mark
+    # it, never leave a hole.
+    # ======================================================================
+
+    # --- Blue: command, docking, medical, admin ---------------------------
+    _P("obs_dome_2", "Observation Dome 2", "blue", 0, 0, 90.0, 7960.0,
+       (20.0, 36.0), module="components", auth=3,
+       functions=("observation", "structure"), interacts=("viewport",)),
+    _P("war_room", "The War Room", "blue", 1, 0, 300.0, 7900.0, (10.0, 24.0),
+       auth=5, functions=("defence_command", "briefing"),
+       interacts=("tactical_display", "console", "blast_door"),
+       adjacent=("cnc",),
+       note="PROPOSED. No source assigns it; constraint is that it must be "
+            "secure and reachable from C&C without crossing public space."),
+    _P("admin_complex", "Station commander's administration complex", "blue",
+       1, 1, 314.0, 7900.0, (12.0, 28.0), auth=5,
+       functions=("administration", "command"),
+       interacts=("desk", "babcom_terminal", "door"),
+       adjacent=("cnc",),
+       note="PROPOSED. Contested between Blue on screen and Green in print."),
+    _P("bay_elevators", "Bay elevators (2)", "blue", 0, 0, 300.0, 7115.0,
+       (8.0, 24.0), auth=3, functions=("transit", "cargo_handling"),
+       interacts=("lift_call", "lift_door"), adjacent=("docking_bays",)),
+    _P("lowg_bays", "Low-g / zero-g docking bays", "blue", 0, 0, 130.0, 7115.0,
+       (16.0, 60.0), auth=3, functions=("ship_arrival", "microgravity_handling"),
+       interacts=("bay_door", "docking_clamp", "handhold")),
+    _P("cobra_bays", "Cobra bays (28)", "blue", 0, 0, 0.0, 6900.0,
+       (360.0, 120.0), module="components", auth=3,
+       functions=("starfury_launch", "fighter_maintenance"),
+       interacts=("launch_tube", "clamp"),
+       note="Exterior launch tubes; C-002 on 24 vs 28."),
+    _P("cargo_bays", "Cargo bays (42)", "blue", 1, 3, 60.0, 7000.0,
+       (60.0, 200.0), auth=3, functions=("cargo_handling", "storage"),
+       interacts=("cargo_crane", "container", "manifest_terminal")),
+    _P("quartermaster", "Quartermaster's Office", "blue", 1, 2, 20.0, 7250.0,
+       (6.0, 16.0), auth=3, functions=("logistics", "issue_stores"),
+       interacts=("issue_counter", "manifest_terminal", "locker")),
+    _P("post_office", "Post Office", "blue", 1, 2, 34.0, 7250.0, (6.0, 16.0),
+       auth=3, functions=("mail", "commerce"),
+       interacts=("counter", "parcel_locker", "babcom_terminal")),
+    _P("fuel_stores", "Fuel stores", "blue", 0, 8, 240.0, 7000.0,
+       (30.0, 90.0), auth=3, functions=("fuel_storage", "hazardous_storage"),
+       interacts=("valve", "tank_gauge", "blast_door")),
+    _P("mooring_clamps", "Hard docking mooring clamps", "blue", 0, 0, 180.0,
+       7115.0, (14.0, 50.0), module="components", auth=3,
+       functions=("ship_mooring",), interacts=("docking_clamp",),
+       within="docking_bays"),
+    _P("plantroom_bay", "A docking bay dressed as a plant room", "blue", 0, 0,
+       260.0, 7115.0, (10.0, 40.0), auth=1,
+       functions=("plant", "cargo_handling"),
+       interacts=("valve", "catwalk", "bay_door")),
+    _P("proximity_arrays", "Space traffic proximity arrays (4)", "blue", 0, 0,
+       200.0, 7900.0, (30.0, 60.0), module="components", auth=3,
+       functions=("traffic_control", "sensors"), interacts=()),
+    _P("nav_beacon", "Primary navigation beacon", "blue", 0, 0, 340.0, 8000.0,
+       (10.0, 24.0), module="components", auth=3,
+       functions=("navigation",), interacts=()),
+    _P("vorlon_berth", "The Vorlon transport berth", "blue", 0, 0, 320.0,
+       7115.0, (10.0, 40.0), auth=4,
+       functions=("ship_arrival", "diplomatic_privilege"),
+       interacts=("bay_door", "docking_clamp"),
+       note="Kept clear for the Vorlon transport; a privilege made physical."),
+    _P("infirmary", "The infirmary", "blue", 0, 1, 116.0, 7300.0, (8.0, 20.0),
+       auth=4, functions=("medical", "triage"),
+       interacts=("diagnostic_bed", "medcabinet"), adjacent=("medlab_one",)),
+    _P("isolab", "Isolab", "blue", 0, 1, 128.0, 7300.0, (6.0, 16.0), auth=4,
+       functions=("medical", "quarantine", "research"),
+       interacts=("isolation_door", "diagnostic_bed", "medcabinet"),
+       adjacent=("medlab_one",)),
+    _P("morgue", "Morgue / mortuary", "blue", 0, 6, 140.0, 7300.0,
+       (8.0, 20.0), auth=5, functions=("medical", "mortuary"),
+       interacts=("cold_drawer", "door"),
+       note="PROPOSED. Unplaced by every source; sited with medical and at "
+            "low traffic."),
+    _P("cryo_storage", "Cryo storage", "blue", 0, 7, 152.0, 7300.0,
+       (8.0, 20.0), auth=5, functions=("medical", "storage"),
+       interacts=("cryo_pod", "console"),
+       note="PROPOSED. Unplaced; sited with the morgue."),
+    _P("sanctuary_blue", "The Sanctuary", "blue", 1, 5, 76.0, 7500.0,
+       (10.0, 24.0), auth=3, functions=("worship", "quiet"),
+       interacts=("pew", "door")),
+    _P("comms_grid", "Deep space communications grids (2)", "blue", 0, 0,
+       160.0, 7900.0, (40.0, 120.0), module="components", auth=3,
+       functions=("communications",), interacts=()),
+
+    # --- Red: commerce, law, media ----------------------------------------
+    _P("eclipse_cafe", "Eclipse Cafe", "red", 0, 0, 110.0, 6620.0,
+       (4.0, 12.0), module="hospitality", auth=4,
+       functions=("hospitality", "food_service"),
+       interacts=("bar_counter", "table", "stool"), adjacent=("zocalo",)),
+    _P("shops_kiosks", "Shops, kiosks and cart vendors", "red", 0, 0, 24.0,
+       6600.0, (40.0, 100.0), module="zocalo", auth=4,
+       functions=("commerce", "retail"),
+       interacts=("market_stall", "shopfront", "credit_terminal"),
+       adjacent=("zocalo",), within="zocalo"),
+    _P("ceremonial_rooms", "Rooms for ceremonial and festive hire", "red",
+       1, 3, 100.0, 6600.0, (10.0, 26.0), auth=4,
+       functions=("ceremony", "hire"), interacts=("door", "table")),
+    _P("water_storage", "Water storage", "red", 3, 0, 20.0, 6600.0,
+       (40.0, 120.0), auth=3, functions=("water_storage",),
+       interacts=("tank_gauge", "valve", "catwalk"),
+       note="Named in an INNER ring of the Red rosette."),
+    _P("waste_red", "Waste management systems, Red", "red", 3, 4, 90.0, 6600.0,
+       (30.0, 100.0), auth=3, functions=("waste_processing",),
+       interacts=("valve", "catwalk", "tank_gauge")),
+    _P("central_corridor", "The Central Corridor", "red", 0, 0, 300.0, 6600.0,
+       (40.0, 120.0), module="interior_kit", auth=3,
+       functions=("transit", "public_social"),
+       interacts=("babcom_terminal", "gallery_rail", "door"),
+       note="Two-level public concourse; exposed hull ribs. Outermost ring."),
+    _P("medlab_red", "Medlab, Red", "red", 1, 4, 240.0, 6600.0, (10.0, 24.0),
+       auth=4, functions=("medical", "triage"),
+       interacts=("diagnostic_bed", "medcabinet")),
+    _P("outdoor_rec", "Outdoor recreation -- lake pool, ball diamond", "red",
+       1, 5, 60.0, 6650.0, (30.0, 90.0), auth=3,
+       functions=("recreation", "sport"),
+       interacts=("pool_edge", "bench", "path")),
+
+    # --- Green: diplomacy, the drum, worship -------------------------------
+    _P("conference_5", "Conference / lounge with the \"5\" floor roundel",
+       "green", 0, 0, 40.0, 4100.0, (8.0, 20.0), auth=4,
+       functions=("diplomacy", "meeting"),
+       interacts=("table", "seat", "door")),
+    _P("conference_rooms", "Conference rooms (general)", "green", 0, 0, 56.0,
+       4100.0, (12.0, 28.0), auth=3, functions=("meeting",),
+       interacts=("table", "seat", "babcom_terminal", "door")),
+    _P("earthforce_office", "Earthforce Office", "green", 0, 2, 70.0, 4100.0,
+       (8.0, 20.0), auth=3, functions=("administration", "military_liaison"),
+       interacts=("desk", "babcom_terminal", "door")),
+    _P("league_delegations", "League of Non-Aligned Worlds delegations",
+       "green", 0, 1, 200.0, 4100.0, (16.0, 40.0), module="quarters", auth=3,
+       functions=("diplomatic_mission", "residence"),
+       interacts=("door", "babcom_terminal", "reception"),
+       adjacent=("council_chamber",)),
+    _P("domed_rotunda", "The domed rotunda", "green", 0, 0, 84.0, 4200.0,
+       (10.0, 26.0), auth=4, functions=("observation", "public_social"),
+       interacts=("viewport", "bench")),
+    _P("obs_rotundas", "Observation rotundas (4)", "green", 0, 0, 96.0, 4200.0,
+       (12.0, 30.0), module="components", auth=3,
+       functions=("observation",), interacts=("viewport", "bench")),
+    _P("drum_office", "A drum-facing office with a multi-pane window", "green",
+       0, 2, 128.0, 4900.0, (6.0, 16.0), auth=1,
+       functions=("offices",), interacts=("desk", "viewport", "babcom_terminal"),
+       note="Talia Winters' office; the clearest view of the drum interior."),
+    _P("telepath_office", "The resident commercial telepath's office", "green",
+       0, 2, 140.0, 4900.0, (6.0, 16.0), auth=5,
+       functions=("offices", "psi_corps"),
+       interacts=("desk", "babcom_terminal"),
+       note="PROPOSED. Unplaced; sited with the drum-facing offices."),
+    _P("zen_garden", "The Zen Garden", "green", 1, 0, 150.0, 5000.0,
+       (20.0, 80.0), module="garden", auth=3,
+       functions=("recreation", "contemplation"),
+       interacts=("path", "bench")),
+    _P("garden_terrace", "A landscaped garden terrace", "green", 1, 0, 130.0,
+       4900.0, (14.0, 60.0), module="garden", auth=1,
+       functions=("recreation",), interacts=("path", "bench", "pool_edge"),
+       within="garden_town"),
+    _P("water_rec", "Water recreation facilities", "green", 1, 0, 175.0,
+       5100.0, (16.0, 70.0), module="garden", auth=3,
+       functions=("recreation", "sport"), interacts=("pool_edge", "bench")),
+    _P("drum_endcaps", "The drum end caps", "green", 1, 0, 340.0, 4000.0,
+       (18.0, 100.0), module="interior", auth=1,
+       functions=("structure", "transit"), interacts=("service_ladder",)),
+    _P("drum_spokes", "The three radial spokes", "green", 1, 0, 0.0, 5200.0,
+       (12.0, 60.0), module="interior", auth=1,
+       functions=("transit", "structure"),
+       interacts=("lift_call", "lift_door")),
+    _P("subfloor_stack", "The sub-floor deck stack under the Garden", "green",
+       0, 7, 250.0, 5000.0, (60.0, 300.0), module="interior", auth=3,
+       functions=("services", "informal_residence", "storage"),
+       interacts=("catwalk", "door", "valve")),
+    _P("ground_tram", "Ground-level tram", "green", 1, 0, 210.0, 5000.0,
+       (20.0, 200.0), auth=5,
+       functions=("transit",), interacts=("tram_door", "seat"),
+       note="PROPOSED. A second transit system at ground level; the guideway "
+            "tram flies overhead and cannot serve the fields."),
+    _P("drum_tram", "The drum guideway tram", "green", 1, 0, 240.0, 5000.0,
+       (24.0, 240.0), module="tram", auth=1,
+       functions=("transit",), interacts=("tram_door", "seat", "handhold")),
+    _P("alien_worship", "Alien worship spaces", "green", 0, 4, 330.0, 4400.0,
+       (12.0, 30.0), auth=4, functions=("worship",),
+       interacts=("door", "shrine"), adjacent=("alien_sector",)),
+    _P("waste_green", "Waste management systems, Green", "green", 0, 8, 190.0,
+       4600.0, (30.0, 120.0), auth=3, functions=("waste_processing",),
+       interacts=("valve", "catwalk")),
+    _P("medlab_green", "Medlab, Green", "green", 0, 2, 158.0, 4300.0,
+       (8.0, 22.0), auth=4, functions=("medical", "triage"),
+       interacts=("diagnostic_bed", "medcabinet")),
+    _P("ngrath", "N'Grath's premises", "green", 0, 6, 344.0, 4400.0,
+       (5.0, 14.0), auth=4, functions=("black_market", "crime"),
+       interacts=("door", "credit_terminal"),
+       note="Quarters in Green, operations in Brown."),
+
+    # --- Grey: industry, research, power -----------------------------------
+    _P("alpha_substation", "Alpha power substation", "grey", 0, 40, 20.0,
+       3618.0, (20.0, 100.0), auth=3, functions=("power_distribution",),
+       interacts=("reactor_console", "blast_door")),
+    _P("primary_breaker", "Primary breaker", "grey", 0, 42, 40.0, 3618.0,
+       (12.0, 60.0), auth=3, functions=("power_distribution",),
+       interacts=("breaker_lever", "console")),
+    _P("fabrication", "Fabrication furnaces", "grey", 0, 50, 70.0, 3618.0,
+       (30.0, 200.0), auth=4, functions=("fabrication", "industry"),
+       interacts=("furnace_control", "crane", "catwalk")),
+    _P("maintenance", "Maintenance and repair facilities", "grey", 0, 55,
+       110.0, 3618.0, (30.0, 200.0), auth=4,
+       functions=("repair", "fabrication"),
+       interacts=("workbench", "tool_rack", "crane")),
+    _P("research_labs", "Commercial research laboratories", "grey", 0, 60,
+       150.0, 3618.0, (24.0, 140.0), auth=4, functions=("research",),
+       interacts=("lab_bench", "console", "door")),
+    _P("gravity_torus", "Variable gravity research torus", "grey", 0, 65,
+       220.0, 3618.0, (30.0, 160.0), auth=4,
+       functions=("research", "variable_gravity"),
+       interacts=("console", "door")),
+    _P("zerog_maint", "Zero-G maintenance facility", "grey", 0, 70, 260.0,
+       3618.0, (24.0, 140.0), auth=4, functions=("repair", "microgravity_handling"),
+       interacts=("handhold", "tool_rack")),
+    _P("atmos_monitor", "Atmosphere monitoring station", "grey", 0, 30, 300.0,
+       3618.0, (12.0, 60.0), auth=3, functions=("air_handling", "monitoring"),
+       interacts=("console", "tank_gauge")),
+    _P("raw_material", "Raw material storage bays (5)", "grey", 0, 75, 330.0,
+       3618.0, (24.0, 160.0), auth=3, functions=("storage",),
+       interacts=("container", "crane")),
+    _P("micro_g_bays", "Micro-gravity maintenance bays (2)", "grey", 0, 80,
+       350.0, 3618.0, (10.0, 60.0), auth=3,
+       functions=("repair", "microgravity_handling"), interacts=("handhold",)),
+    _P("downbelow_arch", "Downbelow's architecture", "grey", 0, 20, 200.0,
+       3618.0, (60.0, 300.0), module="plant", auth=1,
+       functions=("informal_residence", "transit"),
+       interacts=("catwalk", "makeshift_door", "brazier"),
+       within="plant_zone",
+       note="ERA CAVEAT: the only frame is S5 with the station derelict. The "
+            "set architecture is in era; the debris and dead panels are not."),
+    _P("black_market", "The Downbelow black market", "grey", 0, 22, 230.0,
+       3618.0, (30.0, 150.0), auth=4,
+       functions=("black_market", "commerce", "crime"),
+       interacts=("stall", "credit_terminal"), within="plant_zone"),
+    _P("thieves_guild", "Thieves Guild presence", "grey", 0, 24, 250.0, 3618.0,
+       (20.0, 100.0), auth=4, functions=("crime", "organised_crime"),
+       interacts=("makeshift_door",), within="plant_zone"),
+    _P("welded_shut", "Sections welded shut", "grey", 0, 26, 270.0, 3618.0,
+       (24.0, 120.0), auth=4, functions=("sealed_volume",),
+       interacts=("welded_door",),
+       note="Unfinished or abandoned volume. Sealed doors with a reason."),
+    _P("water_reclamation", "Water reclamation", "grey", 0, 5, 150.0, 3618.0,
+       (40.0, 200.0), module="plant", auth=3,
+       functions=("water_reclamation",),
+       interacts=("valve", "tank_gauge", "catwalk"), within="plant_zone"),
+    _P("waste_control", "Waste Management Control", "grey", 0, 8, 190.0,
+       3618.0, (14.0, 70.0), auth=3, functions=("waste_processing", "control"),
+       interacts=("console", "valve"), within="plant_zone"),
+    _P("air_compressors", "Air compressors", "grey", 0, 10, 215.0, 3618.0,
+       (24.0, 120.0), module="plant", auth=4, functions=("air_handling",),
+       interacts=("valve", "tank_gauge"), within="plant_zone"),
+
+    # --- Yellow: engineering ----------------------------------------------
+    _P("disconnect_point", "Explosive disconnect point", "yellow", 0, 0, 40.0,
+       2680.0, (30.0, 60.0), auth=3, functions=("structure", "emergency"),
+       interacts=("blast_door",)),
+    _P("power_transfer", "Power transfer core + 12 cooling fins", "yellow", 0,
+       0, 90.0, 900.0, (60.0, 300.0), module="components", auth=3,
+       functions=("power_distribution", "cooling"), interacts=("console",)),
+    _P("mainstage_node", "Mainstage power distribution node", "yellow", 0, 2,
+       140.0, 3000.0, (20.0, 100.0), auth=3, functions=("power_distribution",),
+       interacts=("console", "breaker_lever")),
+    _P("spinal_cargo", "Spinal cargo facility", "yellow", 0, 4, 200.0, 2200.0,
+       (40.0, 400.0), auth=3, functions=("cargo_handling", "storage"),
+       interacts=("cargo_crane", "container")),
+    _P("hazard_tanks", "Hazardous liquid and inert gas holding tanks",
+       "yellow", 0, 6, 260.0, 1400.0, (40.0, 300.0), auth=3,
+       functions=("hazardous_storage", "atmosphere_feedstock"),
+       interacts=("valve", "tank_gauge", "blast_door")),
+    _P("rotation_drivers", "Rotation drivers and mag-lev bearing points",
+       "yellow", 0, 8, 320.0, 3300.0, (40.0, 120.0), auth=3,
+       functions=("rotation", "structure"), interacts=("console",)),
+    _P("core_shuttle", "The core shuttle", "yellow", 0, 30, 0.0, 1700.0,
+       (20.0, 3000.0), module="core_tube", auth=1,
+       functions=("transit",), interacts=("shuttle_door", "seat", "handhold"),
+       note="Runs the axis across the whole station."),
+
+    # --- M1 completion: the last real places ------------------------------
+    _P("alien_resident_qtr", "Alien residential quarters", "green", 0, 4,
+       260.0, 4500.0, (30.0, 90.0), module="quarters", auth=4,
+       functions=("residence",),
+       interacts=("door", "babcom_terminal", "locker", "bunk"),
+       note="The non-human population who are NOT ambassadors -- the majority "
+            "of the station's aliens. Distinct from both the ambassadorial "
+            "suites and the sealed Alien Sector."),
+    _P("earharts", "Earhart's", "green", 1, 0, 120.0, 4800.0, (5.0, 16.0),
+       module="hospitality", auth=3,
+       functions=("hospitality", "food_service", "recreation"),
+       interacts=("bar_counter", "table", "stool", "menu_display"),
+       within="garden_town",
+       note="A named bar on the drum floor -- agricultural fields behind it."),
+    _P("fresh_air", "The Fresh Air Restaurant", "green", 1, 0, 128.0, 4800.0,
+       (5.0, 16.0), module="hospitality", auth=3,
+       functions=("hospitality", "food_service"),
+       interacts=("table", "seat", "menu_display"), within="garden_town",
+       note="The name is the joke: real air, on the drum floor."),
+    _P("happy_daze", "Happy Daze Bar", "grey", 0, 18, 240.0, 3618.0,
+       (5.0, 14.0), module="hospitality", auth=4,
+       functions=("hospitality", "recreation", "black_market_fringe"),
+       interacts=("bar_counter", "table", "stool"), within="plant_zone",
+       note="Downbelow's bar. The bottom of the hospitality ladder."),
+    _P("security_posts", "Security posts / checkpoints", "red", 2, 2, 230.0,
+       6600.0, (30.0, 120.0), auth=4,
+       functions=("law_enforcement", "checkpoint"),
+       interacts=("duty_desk", "identicard_reader", "barrier"),
+       adjacent=("security_central",),
+       note="Distributed across all sectors; registered here at its Red hub."),
+    _P("nightwatch", "Nightwatch", "red", 2, 3, 244.0, 6600.0, (10.0, 30.0),
+       auth=1, functions=("surveillance", "political_policing"),
+       interacts=("duty_desk", "babcom_terminal"),
+       adjacent=("security_central",),
+       note="ERA-CRITICAL: exists only after S2E22. costume.py gates the "
+            "armband on the same datum."),
+    _P("minipax", "The Ministry of Peace office", "red", 2, 4, 258.0, 6600.0,
+       (8.0, 20.0), auth=5, functions=("political_policing", "administration"),
+       interacts=("desk", "babcom_terminal"),
+       adjacent=("nightwatch",),
+       note="PROPOSED. Unplaced by every source; sited with Nightwatch, which "
+            "it runs."),
+    _P("the_garden", "The Garden (the drum interior)", "green", 1, 0, 60.0,
+       5100.0, (60.0, 600.0), module="interior", auth=1,
+       functions=("agriculture", "recreation", "atmosphere_plant",
+                  "public_social"),
+       interacts=("path", "bench"),
+       note="The open volume itself -- 2.6 km long, 556 m of air overhead."),
+    _P("sanctuaries", "Sanctuaries (4)", "green", 0, 5, 20.0, 4300.0,
+       (16.0, 50.0), auth=3, functions=("worship",),
+       interacts=("pew", "door", "shrine"),
+       note="A counted exterior system whose function Contract 5 never "
+            "states; X-7. Four of them."),
+    _P("interfaith_chapel", "The interfaith chapel", "green", 0, 5, 40.0,
+       4300.0, (8.0, 22.0), auth=5, functions=("worship", "ceremony"),
+       interacts=("pew", "door"), adjacent=("sanctuaries",),
+       note="PROPOSED. Unplaced; sited with the Sanctuaries."),
+    _P("shuttle_car", "Core shuttle car interior", "yellow", 0, 30, 40.0,
+       1700.0, (8.0, 40.0), module="core_tube", auth=3,
+       functions=("transit",), interacts=("seat", "handhold", "shuttle_door"),
+       within="core_shuttle"),
+    _P("radial_tubes", "Radial transport tubes (the spokes)", "green", 1, 0,
+       20.0, 5200.0, (10.0, 50.0), module="interior", auth=3,
+       functions=("transit",), interacts=("lift_call", "lift_door",
+                                          "handhold"),
+       note="The 2-minute rim-to-axis ride; 2.00 g of Coriolis if rushed."),
+    _P("transfer_systems", "Concentric personnel transfer systems", "green",
+       0, 6, 100.0, 4700.0, (20.0, 90.0), auth=3,
+       functions=("transit",), interacts=("lift_call", "lift_door"),
+       note="The schematic's own callout, at the rotating interface."),
+    _P("lifts", "Transport tubes / lifts (between levels)", "blue", 0, 5,
+       80.0, 7500.0, (40.0, 200.0), auth=3, functions=("transit",),
+       interacts=("lift_call", "lift_door", "level_plaque"),
+       note="Distributed; registered at its Blue hub. The LEVEL plaque is "
+            "authority-1 signage whose number is a parameter -- C-004."),
+    _P("standard_corridor", "Standard corridor", "blue", 0, 9, 300.0, 7500.0,
+       (60.0, 400.0), module="interior_kit", auth=1,
+       functions=("transit",),
+       interacts=("door", "babcom_terminal", "level_plaque"),
+       note="The kit. 3,414 streaming cells of it across 251 decks."),
+    _P("medlab_others", "The other Medlabs", "red", 1, 7, 320.0, 6600.0,
+       (12.0, 30.0), auth=4, functions=("medical", "triage"),
+       interacts=("diagnostic_bed", "medcabinet"),
+       note="X-6: medical distributed across Red, Green and Blue."),
 )
 
 
 # Gazetteer rows deliberately NOT addressed yet, each with a reason. This list
 # is what keeps "126 rows" from being a vague backlog: everything is either
 # placed above or named here.
+# Gazetteer rows that are deliberately NOT addressed as places, each with the
+# reason. Layer 1 is complete when every row is either in PLACES or here.
+NOT_A_PLACE = {
+    "\"Customs Sector\"": "an area LABEL used alongside the six colour sectors, "
+                         "not a room. Wayfinding must carry both naming "
+                         "systems; that is a signage requirement.",
+    "The jump gate": "off-station. Its own subsystem, not a location on the "
+                     "8,047 m hull.",
+    "The Zocalo neon wordmark": "a prop within the Zocalo, not a separate "
+                                "place. Six Latin glyphs, ZoCaLo.",
+    "The \"5\" roundel as furniture branding": "a motif applied across many "
+                                             "places, not a place.",
+    "Babcom terminals": "a prop type, already declared in 20 places' "
+                        "`interacts`. Registering it as a location would "
+                        "double-count it.",
+    "Public information monitors": "a prop type, as above.",
+    "Alien signage systems": "a signage/typography system spanning every "
+                             "place, not a place.",
+    "ISN -- Interstellar Network News": "a broadcast, not a room. It is world "
+                                        "system W8 (information).",
+}
+
+# Gazetteer rows whose wording differs enough from the place name that fuzzy
+# matching cannot resolve them. Mapped by hand rather than by loosening the
+# threshold, which would start matching unrelated rows to each other.
+ALIASES = {
+    "Customs (×2, north and south)": "customs_north",
+    "An unnamed bar / diner": "bar_unnamed",
+    "Alien sector corridor": "alien_sector",
+    "Kosh's quarters (Vorlon ambassador)": "kosh_quarters",
+    "A second, ground-level transit system": "ground_tram",
+    "Ambassadorial / diplomatic quarters": "ambassadorial_suites",
+    "Alien residential quarters": "alien_resident_qtr",
+}
+
 DEFERRED = {
     "unplaced": "no source places it; needs a P-number proposal first",
     "off_station": "not on the station -- the jump gate, arriving ships",
@@ -525,18 +932,37 @@ def _selftest():
         if "residence" in p["functions"]:
             check(f"{p['key']}: residence is within the habitable ceiling",
                   g <= it.HABITABLE_G_MAX, f"{g:.3f} g")
-        if "informal_residence" in p["functions"]:
-            # The exception that proves it: Downbelow is ABOVE the ceiling,
-            # which is exactly why nobody is billeted there.
-            check(f"{p['key']}: informal residence is above the ceiling",
-                  g > it.HABITABLE_G_MAX,
-                  f"{g:.3f} g -- unassigned is the point")
+    # Informal residence, stated honestly. The first version asserted EVERY
+    # informal-residence place sits above the habitable ceiling, and
+    # subfloor_stack failed it at 1.103 g -- correctly, because LOCATIONS.md
+    # puts Downbelow in "Grey OR the drum sub-floor" and the sub-floor is below
+    # the ceiling. The per-place claim was false. What the sources DO say is
+    # that the worst of it is the heaviest inhabited place on the station.
+    informal = [q for q in PLACES if "informal_residence" in q["functions"]]
+    check("informal residence exists at all", bool(informal))
+    if informal:
+        gs = [gravity_of(schema, profile, q) for q in informal]
+        formal = [gravity_of(schema, profile, q) for q in PLACES
+                  if "residence" in q["functions"]]
+        check("the worst informal residence is above the habitable ceiling",
+              max(gs) > it.HABITABLE_G_MAX,
+              f"heaviest {max(gs):.3f} g vs a {it.HABITABLE_G_MAX} g ceiling")
+        check("and it is heavier than any formal residence",
+              not formal or max(gs) > max(formal),
+              "the people with the least power live where they weigh the most")
 
     # --- every place does something ----------------------------------------
     for p in PLACES:
         check(f"{p['key']}: has a declared function", bool(p["functions"]),
               "a room with no function is set dressing")
-        if p["key"] not in ("obs_dome_1", "fusion_core"):
+        # A place with no interactions must be one a player cannot enter --
+        # hull-mounted systems and sealed structure. Anything else with an
+        # empty tuple is a room that cannot be used, which is what this check
+        # exists to surface.
+        unenterable = {"structure", "sensors", "navigation", "communications",
+                       "power_generation", "cooling", "rotation",
+                       "sealed_volume"}
+        if not (set(p["functions"]) & unenterable):
             check(f"{p['key']}: has something to interact with",
                   bool(p["interacts"]),
                   "the brief asks for locations that can be used")
@@ -553,6 +979,29 @@ def _selftest():
     # --- the gazetteer is the source, and coverage is countable ------------
     rows = gazetteer_rows()
     check("the gazetteer parses", len(rows) > 100, f"{len(rows)} rows")
+
+    # LAYER 1's EXIT CRITERION: every gazetteer row is addressed or explicitly
+    # deferred. No third state. This is what makes 126 a denominator rather
+    # than a backlog.
+    import difflib
+    low = [q["name"].lower() for q in PLACES]
+    unresolved = []
+    for r in rows:
+        if difflib.get_close_matches(r.lower(), low, n=1, cutoff=0.70):
+            continue
+        if any(difflib.SequenceMatcher(None, r.lower(), k.lower()).ratio() > 0.7
+               for k in NOT_A_PLACE):
+            continue
+        # Aliases match by PREFIX, not by ratio. The gazetteer's row for the
+        # unnamed bar carries an 60-character parenthetical, which drags any
+        # similarity ratio to 0.64; lowering the threshold to catch it would
+        # start matching unrelated rows to each other. A prefix is exact.
+        if any(r.lower().startswith(k.lower().rstrip(")( ")) for k in ALIASES):
+            continue
+        unresolved.append(r)
+    check("every gazetteer row is addressed or explicitly deferred",
+          not unresolved,
+          f"{len(unresolved)} unresolved: {[u[:34] for u in unresolved[:6]]}")
     cov = coverage(schema, profile)
     check("coverage is reported honestly",
           cov["addressed"] + cov["unaddressed"] == cov["gazetteer_rows"])

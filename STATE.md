@@ -1855,6 +1855,51 @@ work from 2n and 3k is paying off.
 **Next: the emissive pass.** Window lights are the difference between a model and a city, and they
 are the first thing the owner's opening shot shows.
 
+## Session 3k (cont.) — LAYER 1 IS COMPLETE
+
+**All 126 gazetteer rows are resolved: 118 addressed, 8 formally deferred with a reason.** No
+third state, and `directory.py` asserts it — the check parses `LOCATIONS.md` and fails if any row
+is neither in `PLACES` nor in `NOT_A_PLACE`.
+
+```
+    1 addressed    [##################  ] 118/126   COMPLETE (+8 deferred)
+    2 geometry     [#######             ]  50/126   <- CURRENT
+    3-8                                     0/126
+```
+
+**740 assertions in `directory.py`**, up from 222. Every place carries an address, a footprint,
+declared functions, declared interactions, adjacency, and containment where it nests.
+
+**The 8 deferred rows are not places**, and each says why: `"Customs Sector"` is an area label
+used *alongside* the six colour sectors rather than a room; the jump gate is off-station; the
+Zocalo wordmark and the "5" roundel are props and motifs; Babcom terminals and public monitors are
+prop *types* already declared in 20 places' `interacts`, so registering them as locations would
+double-count; alien signage spans every place; and ISN is a broadcast — world system W8, not a room.
+
+### Five defects the assertions caught during the batch
+
+1. **Four collisions that were really containment** — mooring clamps in the docking bays, shops in
+   the Zocalo, the garden terrace in the townscape. Then a fifth pair after the fix: **Earhart's
+   and the Fresh Air were nested in the Garden when they are really in the *townscape***. Siblings
+   inside one container still collide, so nesting has to be the *true* nesting rather than the
+   nearest convenient one.
+2. **My own false claim.** I had asserted that *every* informal-residence place sits above the
+   habitable ceiling. `subfloor_stack` failed it at 1.103 g — **correctly**, because
+   `LOCATIONS.md` puts Downbelow in "Grey **or** the drum sub-floor" and the sub-floor is below
+   the ceiling. Replaced with what the sources actually support: the *worst* of it is above the
+   ceiling and heavier than any formal residence.
+3. **Three places with no interactions** — the proximity arrays, nav beacon and comms grid. Those
+   are hull systems a player cannot enter, so the check now exempts a named set of unenterable
+   *functions* rather than a hardcoded list of keys.
+4. **Fuzzy matching is the wrong tool for aliases.** Seven long rows failed to resolve; the
+   unnamed bar's 60-character parenthetical drags its similarity ratio to 0.64. Lowering the
+   threshold would have started matching unrelated rows to each other, so aliases match by
+   **prefix**, which is exact.
+5. **`Customs (×2…)` uses U+00D7**, not the letter x. A prefix match is exact about codepoints,
+   which is how that surfaced at all.
+
+**Next: layer 2 — geometry for the 76 addressed locations that do not have it.**
+
 ## IN FLIGHT — read this before starting anything
 
 **An adversarial review panel is running over the five new NPC modules and had NOT reported when
