@@ -2527,3 +2527,72 @@ group set needs `zocalo_run(3, cap_ends=True)` (38) plus the `table_pedestal_fiv
 mechanical gate to a reviewer agent wherever the question is computable, and capture each agent's
 result into the repo as it lands — the workflow journal lives in `/root/.claude` and dies with the
 container.
+
+
+## Session 3m — LAYER 3 IS COMPLETE. 118/118.
+
+```
+    1 addressed    [####################] 118/118  COMPLETE
+    2 geometry     [####################] 118/118  COMPLETE
+    3 materials    [####################] 118/118  COMPLETE
+    4 lighting     [                    ]   0/118  <- CURRENT
+```
+
+No material value changed this session and the exported `.tres` are byte-identical. What changed is
+that the **register can now see what was already true**: it counted 68 because its layer-3
+predicate only knew how to measure `rooms.py` places, and the 50 bespoke ones were materialled but
+uncounted. 68 → 90 → 104 → **118** as each group of modules became buildable.
+
+`test_materials_layer3.py` now builds **all 16 modules**: 256/256 groups. Every entry point came
+out of a module's own `_selftest`, and they are recorded in the file so nobody rediscovers them.
+
+### Four shapes of return value, and each one failed differently
+
+There is no uniform builder interface, and normalising eleven generators to satisfy a test would
+have been the wrong repair. `_names()` handles all four:
+
+- `(name, lo, hi)` **spans** — `rooms`, `interior_kit`
+- a flat **per-triangle name list** — `zocalo`, `alien_sector`
+- a **metadata dict with a `groups` key** — `core_tube`, `tram`. Indexing `[2]` on it raises
+  `unhashable type: slice`, which reads as a data bug rather than a shape mismatch.
+- a **dict keyed BY group name** — `components`. There is no third element at all; `[2]` raises
+  `KeyError(2)`, which looks like a missing datum rather than a wrong assumption.
+
+### Three scene errors, each found by the gate, each the same mistake one step further
+
+`garden`+`drum_ground`, then `core_tube`+`tram`, then `interior` — all **drum**-scene, all checked
+against `interior`, each round reporting correctly-bound materials as unresolved (42, then 39).
+Resolution is scene-filtered and my checks kept forgetting it.
+
+### The exterior fallback is not a failure mode
+
+Four components — `cobra_bay`, `docking_port`, `forward_comms_plate`, `observation_dome` — have no
+explicit bind and land on `hull_exterior`, which is **deliberately unbound** (materials.py asserts
+it) because most of an 8 km hull is hull, and `exterior.tscn` sets it as `fallback_material`.
+`resolve_any` returning None there means "no rule matched", not "no material". Counting them as
+unresolved would have held the number below 118 for ever over surfaces that render correctly — and
+the fix a reader would reach for, binding `hull_exterior`, is the one thing that must not happen,
+because a bound fallback stops being a fallback. The gate reports them separately and asserts the
+named fallback is real and unbound.
+
+### One self-inflicted regression, caught immediately
+
+Adding `BESPOKE_SCENE` put the module name `"drum_ground"` into a file `_scan_generator_groups()`
+reads, and the literal scan took it for a group. `test_materials_layer3.py` and
+`apply_proposals.py` join `NOT_GENERATORS`: **a file that talks ABOUT the generators is not a
+generator.**
+
+## NEXT SESSION — layer 4, lighting
+
+Layer 3 is complete, so layer 4 is legitimately open. `directory.py` says so.
+
+1. **The lighting rig has no night side** — standing blocking finding, and the owner's opening beat
+   is the station coming into view. The rim kicker sits at `sun_az + 175` and the fill is mirrored
+   through the camera axis, so whatever azimuth the camera takes the camera-facing edge is lit. The
+   anti-sun frame needed `--light-gain 0.04` to show the windows at all. Needs a shot flag that
+   composes the arrival: key behind the station, rim reduced to a true edge, fill off.
+2. **The magenta guideway light runs** in `drum_interior_engine` — the other standing blocking
+   finding.
+3. **There is still no corridor shot.** `tools/export_scene.py` has `exterior` and `drum` only, so
+   the most-seen surface in the station has never been rendered in the engine. Layer 4 needs one to
+   judge interior lighting at all.

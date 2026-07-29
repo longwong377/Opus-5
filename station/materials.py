@@ -4738,7 +4738,13 @@ def _scan_generator_groups():
 #
 # The distinction is real and worth keeping sharp: a SPECIFICATION names places
 # and props, a GENERATOR names surfaces. Only the second kind needs a material.
-NOT_GENERATORS = {"materials.py", "directory.py", "rooms.py"}
+# `test_materials_layer3.py` and `apply_proposals.py` joined the list when
+# BESPOKE_SCENE landed: its keys are MODULE names -- "drum_ground", "core_tube",
+# "tram" -- and the scan reads them as group literals. Same reason as
+# directory.py's place keys and rooms.py's prop types. A file that talks ABOUT
+# the generators is not a generator.
+NOT_GENERATORS = {"materials.py", "directory.py", "rooms.py",
+                  "test_materials_layer3.py", "apply_proposals.py"}
 
 # Literals that match the group prefixes but are not group names: manifest
 # statistics, and prefixes used in a `startswith` test. Kept explicit rather

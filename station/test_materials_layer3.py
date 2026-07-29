@@ -145,12 +145,18 @@ def _via_write_obj(mod_name):
 def _names(result):
     """Group names out of a builder's third return value.
 
-    Modules disagree about the shape: some return (name, lo, hi) spans, some a
-    flat per-triangle list of names. Both are handled rather than one being
-    declared correct, because normalising them would mean editing eleven
-    generators to satisfy a test.
+    THREE shapes, because eleven generators were written independently and
+    normalising them would mean editing every one to satisfy a test:
+      * (name, lo, hi) spans          -- rooms.py, interior_kit
+      * a flat per-triangle name list -- zocalo, alien_sector
+      * a metadata DICT with a "groups" key -- core_tube, tram
+    The dict one is the reason this function exists rather than an inline
+    expression: `result[2][:2]` on a dict raises "unhashable type: slice",
+    which reads as a data bug rather than as a shape mismatch.
     """
     g = result[2]
+    if isinstance(g, dict):
+        g = g.get("groups") or ()
     if not g:
         return set()
     return {x[0] for x in g} if isinstance(g[0], (list, tuple)) else set(g)
@@ -188,6 +194,84 @@ def _plant(schema, profile):
     return out
 
 
+def _zocalo(_schema, _profile):
+    """`cap_ends=True`, and that flag is the whole point.
+
+    zocalo has no write_obj(); it has write_run(path, bays=3) and
+    write_bay(path). write_run DEFAULTS cap_ends=False and emits 37 groups --
+    everything except `zoc_bulkhead`. Building it the convenient way would
+    leave one group permanently unenumerated and this gate would report full
+    coverage over a set that was quietly one short.
+    """
+    import zocalo                                              # noqa: PLC0415
+    return _names(zocalo.zocalo_run(3, cap_ends=True))
+
+
+def _customs(schema, profile):
+    import customs                                             # noqa: PLC0415
+    return _names(customs.hall(schema, profile))
+
+
+def _interior_kit(_schema, _profile):
+    """Corridor and junction. The kit's groups come from tagged spans, and
+    `tagged_spans` is keyed on the tris list, so each build is read before the
+    next one replaces it."""
+    import interior_kit as kit                                 # noqa: PLC0415
+    kit.reset_tags()
+    out = set()
+    for v, t in (kit.corridor_section(21.6),
+                 kit.corridor_junction_section(6.0)):
+        out |= {n for n, _lo, _hi in kit.tagged_spans(t)}
+    return out
+
+
+def _core_tube(schema, profile):
+    import core_tube as ct                                     # noqa: PLC0415
+    sector = it.drum_sector(schema, profile)
+    out = _names(ct.core_tube(schema, profile, sector))
+    for end in ("fore", "aft"):
+        out |= _names(ct.core_hub(schema, profile, sector, end=end))
+    out |= _names(ct.spoke_node(schema, profile, sector))
+    return out
+
+
+def _tram(_schema, _profile):
+    import tram                                                # noqa: PLC0415
+    v, t, meta = tram.tram_car(interior=True, glazed=True)
+    g = meta["groups"]
+    return {x[0] for x in g} if g and isinstance(g[0], (list, tuple)) else set(g)
+
+
+def _garden(schema, profile):
+    import garden                                              # noqa: PLC0415
+    return _names(garden.townscape(schema, profile))
+
+
+def _interior(schema, profile):
+    """interior.py's own geometry: the end caps, the spokes, the drum shell
+    and the guideways. Four builders rather than one, because the module has
+    no single assembly entry point -- the drum is assembled by the exporter."""
+    sector = it.drum_sector(schema, profile)
+    out = set()
+    for fn in (it.drum_end_cap, it.drum_spokes, it.drum_interior,
+               it.drum_guideways):
+        out |= _names(fn(schema, profile, sector))
+    return out
+
+
+def _components(schema, _profile):
+    """The exterior fittings. `schema.get("components", [])` is what
+    generate_hull.py passes; calling build_all with `exterior_systems`
+    instead raises KeyError('kind'), which is a wrong-argument error dressed
+    as a data error."""
+    import components                                          # noqa: PLC0415
+    # A FOURTH shape: build_all returns {group_name: (verts, tris)}, so the
+    # group names ARE the keys and there is no third element at all.
+    # `result[2]` on it raises KeyError(2), which looks like a missing datum
+    # rather than a wrong assumption about the return type.
+    return set(components.build_all(schema.get("components", []), _profile))
+
+
 BESPOKE_BUILDERS = {
     "command_control": _via_write_obj("command_control"),
     "council_chamber": _via_write_obj("council_chamber"),
@@ -204,14 +288,46 @@ BESPOKE_BUILDERS = {
     "hospitality": _hospitality,
     "quarters": _quarters,
     "plant": _plant,
+    "zocalo": _zocalo,
+    "customs": _customs,
+    "interior_kit": _interior_kit,
+    "core_tube": _core_tube,
+    "tram": _tram,
+    "garden": _garden,
+    "interior": _interior,
+    "components": _components,
 }
 
 # Every module that owns at least one addressed place, so the gate can say how
 # much of layer 3 it is NOT yet able to see.
+# Which scene each module's surfaces belong to. Garden and ground are seen
+# from inside the drum, not from a corridor, and checking them against the
+# interior scene reported 42 correctly-bound materials as unresolved.
+# The core tube and the trams are seen from inside the drum too -- their
+# materials are declared `drum` and checking them against `interior` reported
+# 39 correctly-bound groups as unresolved, the same mistake as the garden's 42
+# one step further along. Anything the drum's camera can see belongs here.
+BESPOKE_SCENE = {"garden": "drum", "drum_ground": "drum",
+                 "core_tube": "drum", "tram": "drum",
+                 "interior": "drum", "components": "exterior"}
+
+# A scene may declare a FALLBACK MATERIAL, and on the exterior that is not a
+# failure mode -- it is the design. `hull_exterior` is deliberately unbound
+# (materials.py asserts it) because most of an 8 km hull IS hull, and
+# exterior.tscn sets it as `fallback_material`. So a hull piece with no
+# explicit bind renders as hull, correctly, and `resolve_any` returning None
+# for it means "no rule matched", not "no material".
+#
+# Counting those as unresolved would report four correctly-rendered components
+# as defects for ever, and the fix a reader would reach for -- binding
+# hull_exterior -- is the one thing that must not happen, since a bound
+# fallback stops being a fallback.
+SCENE_FALLBACK = {"exterior": "hull_exterior"}
+
 BESPOKE_ALL = ("zocalo", "customs", "command_control", "council_chamber",
                "garden", "alien_sector", "plant", "hospitality", "quarters",
                "docking_bay", "signage", "interior_kit", "core_tube", "tram",
-               "components")
+               "components", "interior")
 
 
 def bespoke_groups(schema, profile):
@@ -223,6 +339,24 @@ def bespoke_groups(schema, profile):
         except Exception as exc:                               # noqa: BLE001
             out[name] = {f"__error__ {type(exc).__name__}: {exc}"}
     return out
+
+
+def bespoke_unresolved(schema, profile):
+    """(unresolved groups, total) across the bespoke modules, scene-aware."""
+    miss, total, fell_back = [], 0, []
+    for name, groups in bespoke_groups(schema, profile).items():
+        scene = BESPOKE_SCENE.get(name, "interior")
+        for g in groups:
+            if g.startswith("__error__"):
+                continue
+            total += 1
+            if M.resolve_any(g, scene) is not None:
+                continue
+            if scene in SCENE_FALLBACK:
+                fell_back.append(f"{name}/{g}")
+            else:
+                miss.append(f"{name}/{g}")
+    return sorted(miss), total, sorted(fell_back)
 
 
 def unresolved(groups, scene="interior"):
@@ -306,17 +440,26 @@ def _selftest():
             if any(x.startswith("__error__") for x in v)}
     check("every bespoke module this gate knows how to build, builds",
           not errs, str(errs))
+    b_miss, b_total, b_fallback = bespoke_unresolved(schema, profile)
     b_all = {g for v in bg.values() for g in v if not g.startswith("__error__")}
-    b_miss = unresolved(b_all)
-    print(f"  bespoke   {len(b_all) - len(b_miss)}/{len(b_all)} groups over "
+    print(f"  bespoke   {b_total - len(b_miss)}/{b_total} groups over "
           f"{len(BESPOKE_BUILDERS)} of {len(BESPOKE_ALL)} modules "
           f"({len(BESPOKE_ALL) - len(BESPOKE_BUILDERS)} still unenumerated)")
     # NOT a hard failure yet: the remaining modules' entry points are still
     # being established, and failing the build for work that is openly
     # in progress teaches the next reader to ignore this file. It becomes a
     # hard check when BESPOKE_BUILDERS covers BESPOKE_ALL.
+    if b_fallback:
+        print(f"            {len(b_fallback)} on the exterior fallback by "
+              f"design: {[x.split('/')[1] for x in b_fallback][:5]}")
     if b_miss:
         print(f"            {len(b_miss)} unresolved, e.g. {b_miss[:6]}")
+    check("no bespoke group is unresolved in a scene with no fallback",
+          not b_miss, f"{len(b_miss)}: {b_miss[:5]}")
+    check("every scene fallback named is a real, deliberately unbound material",
+          all(n in M.BY_NAME and M.BY_NAME[n].binds == ()
+              for n in SCENE_FALLBACK.values()),
+          str(SCENE_FALLBACK))
     check("the bespoke enumeration is honest about what it cannot see",
           set(BESPOKE_BUILDERS) <= set(BESPOKE_ALL),
           str(sorted(set(BESPOKE_BUILDERS) - set(BESPOKE_ALL))))

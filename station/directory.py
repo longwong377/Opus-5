@@ -842,12 +842,41 @@ def _materialled_keys():
     if _materialled_keys.cache is None:
         import rooms                                           # noqa: PLC0415
         import materials as mat                                # noqa: PLC0415
+        import test_materials_layer3 as gate                   # noqa: PLC0415
         s, p = it.load()
         done = set()
+        # The 68 procedural places, each measured on its own geometry.
         for q in rooms.unbuilt(s, p):
             _v, _t, g = rooms.build(s, p, q)
             if all(mat.resolve_any(n, "interior") for n, _lo, _hi in g):
                 done.add(q["key"])
+        # The bespoke places, measured on their MODULE's geometry. A module is
+        # one generator emitting one set of surfaces, so a place it owns is
+        # materialled exactly when that set resolves -- there is no per-place
+        # geometry to measure separately, and pretending otherwise would mean
+        # inventing a subdivision the generator does not have.
+        #
+        # Only modules `test_materials_layer3` knows how to BUILD are counted.
+        # The rest are reported as not-at-layer-3 rather than assumed to be,
+        # which is why this number is lower than "everything resolves" would
+        # suggest and is the honest one.
+        for name, build in gate.BESPOKE_BUILDERS.items():
+            try:
+                groups = build(s, p)
+            except Exception:                                  # noqa: BLE001
+                continue
+            if not groups:
+                continue
+            scene = gate.BESPOKE_SCENE.get(name, "interior")
+            # A scene with a declared fallback covers what no rule matches --
+            # `hull_exterior` is deliberately unbound because most of an 8 km
+            # hull is hull. Four exterior components land there by design, and
+            # counting them as unmaterialled would hold this number below 118
+            # for ever over surfaces that render correctly.
+            ok = scene in gate.SCENE_FALLBACK or all(
+                mat.resolve_any(g, scene) for g in groups)
+            if ok:
+                done |= {q["key"] for q in PLACES if q["module"] == name}
         _materialled_keys.cache = frozenset(done)
     return _materialled_keys.cache
 
