@@ -2270,3 +2270,80 @@ they read as a different material rather than the same hull with windows in it. 
 between windows should match `hull_exterior`'s 0.60.
 
 Craft claims cite an **engine** frame — `tools/render_godot.sh`, not `tools/preview_render.py`.
+
+## Session 3k (cont.) — the window mapping is cylindrical, and two tools were lying
+
+Round 2's two majors and one minor against `exterior_approach` are all reworked and verified in
+engine frames. `docs/engine-windows-nightside.png` (3.4 km, anti-sun, `--light-gain 0.04`) shows
+the station as a dark silhouette lit from within: window bands running **around** the barrel, with
+visible unlit blocks along its length.
+
+**The crosshatch was triplanar, and triplanar is not optional here.** `export_gltf.py` writes
+POSITION and NORMAL and nothing else, so **no mesh in this project has UVs** and every material
+relies on world triplanar. That is right for plating and greebles and wrong for any pattern with an
+orientation, because it blends two grids across the drum's barrel.
+`godot/materials/hull_window.gdshader` projects about the spin axis. Two details in it are
+load-bearing and neither is obvious:
+
+- the seam closes because the repeat count around the circumference is snapped to a whole number
+  **at a reference radius**. Snapping per-fragment radius would close it everywhere and put a ring
+  wherever the whole number steps — the tapered aft block would show a stack of bands;
+- mip selection uses derivatives from the **smooth tangent frame**, not from the uv. `dFdx` of a
+  seam-discontinuous uv is the width of the station and picks the coarsest mip, drawing the seam as
+  a blurred stripe — the artefact the mapping exists to remove, reintroduced by how it is sampled.
+
+**The darkness minor was found by arithmetic, not by eye.** Material albedo 0.18 against a sheet
+plate value of 0.60 rendered the hull *between* windows at 0.15 against `hull_exterior`'s 0.60 —
+four times darker. Now asserted from the values that ship.
+
+### Two tools that reported success while doing nothing
+
+1. **`--light-gain` was a no-op on the exterior.** It scaled only the lights carried in the shot
+   JSON, and the exterior shot has `"lights": 0` because its key, fill and rim are nodes in
+   `exterior.tscn`. Two renders an order of magnitude apart in gain came back **byte-identical**.
+   Without it there is no way to turn the rig down and therefore no way to see whether an emissive
+   material emits.
+2. **A shader that fails to compile still renders.** Godot logs `SHADER ERROR`, falls back, and
+   hands out a valid PNG of the wrong thing at **exit 0**. A redefinition of the built-in `TAU`
+   cost one round exactly that way. `render_godot.sh` now exits 3 on it.
+
+*Both belong to the same family as the paste step earlier this session: a step that appears to work
+and does not. When a change does not show up in the output, suspect the pipe before the change.*
+
+### The .tres gates had been testing a file that is never written
+
+`ShaderMaterial` export is a separate writer, not a branch in `tres()` — the two resources share
+almost nothing. Adding it meant the self-test loop's `text = tres(m)` was checking a
+StandardMaterial3D that no longer ships for `habitat_windows`; nine assertions would have gone on
+passing about it. The loop tests `exported_tres` now.
+
+Its own gate is the shader analogue of `STANDARD_MATERIAL_KEYS`: Godot silently **drops** an
+unrecognised `shader_parameter` and runs the shader at its declared default, so every parameter is
+checked against the uniforms the `.gdshader` actually declares, and a uniform nobody sets has to be
+on an explicit list.
+
+## NEXT SESSION
+
+**New blocking finding, and it is layer 4 rather than layer 3:**
+
+> **The lighting rig has no night side.** The rim kicker sits at `sun_az + 175` and the fill is
+> mirrored through the camera axis, so whatever azimuth the camera takes, the camera-facing edge is
+> lit. That is a correct rig for showing a model's silhouette and the wrong one for a city at
+> night — the anti-sun frame needed `--light-gain 0.04` to show the windows at all. **The owner's
+> opening beat is the station coming into view, so that shot cannot be composed until the rig
+> changes.**
+
+Order:
+
+1. **The rig.** A shot flag that composes the arrival: key behind the station, rim reduced to a
+   true edge, fill off. It is a lighting judgement, so it belongs to layer 4 — but the opening beat
+   depends on it and nothing else does, so it is worth doing before the other 117 places are lit.
+2. **The magenta guideway light runs** in `drum_interior_engine` — the remaining standing blocking
+   finding, and a materials defect.
+3. **Materials across the 118 places.** `rooms.py`'s 11 archetypes are the right granularity for a
+   material set, not 68 rooms. Hero and featured first, by authority.
+
+Layer 3 still reads **0/118** in the register, and that is correct: the exterior is not one of the
+118 places. What is finished is the exterior's blocking finding and the two majors behind it.
+
+Craft claims cite an **engine** frame — `tools/render_godot.sh`, not `tools/preview_render.py`.
