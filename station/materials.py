@@ -841,7 +841,7 @@ def _build():
         "light_pilaster_strip", "Pilaster Light Strip — segmented vertical tube",
         albedo=(0.850, 0.860, 0.880), roughness=0.28, metallic=0.0,
         specular=0.20, emission=(0.880, 0.930, 1.000), emission_energy=6.0,
-        binds=("light_pilaster_strip",), scenes=("interior",),
+        binds=("light_pilaster_strip", "customs_light_strip"), scenes=("interior",),
         source="grey level 1.webp strip (0.183,0.214)-(0.197,0.366), balanced V 0.609 S 0.024 — the brightest large feature and still nearly neutral",
         note="Eleven discrete cells in the frame, not a continuous tube. The segmentation is geometry."))
 
@@ -1210,7 +1210,7 @@ def _build():
         albedo=(0.212, 0.212, 0.214), roughness=0.35, metallic=0,
         specular=0.5,
         emission=(1.000, 0.612, 0.353), emission_energy=0.5,
-        binds=("prop_console", "prop_reactor_console", "prop_furnace_control", "prop_irrigation_control"), scenes=("interior",),
+        binds=("prop_console", "prop_reactor_console", "prop_furnace_control", "prop_irrigation_control", "cc_console_face"), scenes=("interior",),
         source="03-sector-blue/war room.webp (authority 1), balanced with the gains already in materials.GREY_WORLD_GAINS (1.088/1.062/0.877). 6-cluster over the console assembly (0.55,0.60)-(1.00,1.00): V 0.596 at 4.0%, 0.390 at 13.1%, 0.286 at 23.8%, 0.210 at 28.2%, 0.136 at 28.0% — area-weighted mean V 0.240. Same frame, the console's own pale capping rail (0.625,0.634)-(0.719,0.662) reads V 0.529 S 0.051, and its dark control face (0.79,0.79)-(0.87,0.85) V 0.290 S 0.028. Emission colour corroborated on 03-sector-blue/comand and contorl.webp: the two lit control beds, luminance-weighted mean of everything above L 0.30, balanced, rgb(0.640, 0.478, 0.317) H 30 S 0.505, normalised (1.000, 0.747, 0.495).",
         extrapolated="The absolute level, via ALBEDO_ANCHOR. The frame gives a RATIO (assembly 0.240 / the console's own pale case 0.529 = 0.454); the case is the same painted panel work as the walls, so the anchor 0.46 x 0.454 = 0.209 sets the level. Also extrapolated: emission_energy 0.5 by flux-matching (see reasoning), and the decision to give one box a uniform emission at all."))
 
@@ -1243,7 +1243,7 @@ def _build():
         albedo=(0.052, 0.054, 0.062), roughness=0.12, metallic=0,
         specular=0.65,
         emission=(0.930, 1.000, 0.915), emission_energy=0.8,
-        binds=("prop_babcom_terminal", "prop_monitor_wall", "prop_tactical_display"), scenes=("interior",),
+        binds=("prop_babcom_terminal", "prop_monitor_wall", "prop_tactical_display", "customs_screen"), scenes=("interior",),
         source="11-props-and-technology/babylon 5 welcome sign, instructions, and hub.jpg (authority 1), grey-world gains 1.046/1.065/0.905. Unlit screen field (0.32,0.19)-(0.56,0.235) balanced rgb(0.053, 0.054, 0.082); whole-panel dominant clusters 49.3% at V 0.037 (centre screen) and 45.9% at V 0.051 (right screen); bezel V 0.092. Content registers in the same frame: green wireframe H 121-141, blue title bar rgb(0.145,0.154,0.627) H 239 S 0.768, yellow caps H 60-75. Fourth panel from 03-sector-blue/war room.webp, the backlit galactic map, lit content luminance-weighted mean normalised (0.858, 0.918, 1.000).",
         extrapolated="The blue channel trimmed from the measured 0.082 to 0.062, and emission_energy 0.8 by flux-matching. The single emission colour is a real average across four measured panels rather than a colour any one screen has."))
 
@@ -1431,7 +1431,7 @@ def _build():
         "shell_wall_panel", "Room Shell Wall — the station's painted panel, at room scale",
         albedo=(0.455, 0.455, 0.455), roughness=0.56, metallic=0,
         specular=0.38, texture="wall_plate", uv_scale=1.0 / 4,
-        binds=("commerce_wall", "detention_wall", "generic_wall", "hospitality_wall", "office_wall", "transit_wall", "worship_wall"), scenes=("interior",),
+        binds=("commerce_wall", "detention_wall", "generic_wall", "hospitality_wall", "office_wall", "transit_wall", "worship_wall", "customs_wall", "customs_endwall"), scenes=("interior",),
         source="07-sector-grey/grey level 1.webp wall plate course (0.019,0.236)-(0.125,0.293), balanced V 0.295 — the anchor measurement, restated here only as the level this material is pinned to. Corroborated in six frames the anchor did not come from: 03-sector-blue/war room.webp arch face (0.040,0.020)-(0.130,0.120) balanced V 0.286; 05-sector-green/council chambers.webp wall blade dominant cluster V 0.270 (29.9% of (0.00,0.00)-(0.30,0.20)); 03-sector-blue/dock.webp bay wall (0.200,0.290)-(0.330,0.400) V 0.268; 09-garden-core-and-transit/central corridor.webp walkway fascia (0.300,0.245)-(0.600,0.275) V 0.250 and wall panel (0.600,0.300)-(0.720,0.420) V 0.234; 04-sector-red/more zocalo.png lit structure cluster V 0.317. lit() of those seven: 0.365-0.511, mean 0.435.",
         extrapolated="Nothing about the colour. The 4.0 m texture repeat is chosen, not measured — but it is chosen to PRESERVE a measurement: wall_plate lays 6 plate courses across its repeat, so 4.0 m holds the 0.667 m course pitch materials.py already read off grey level 1.webp against a 2.1 m door. Any other repeat silently changes that pitch. Roughness 0.56 and specular 0.38 are extrapolated: no frame in the set separates gloss from geometry on a wall."))
 
@@ -1476,7 +1476,7 @@ def _build():
         "shell_wall_industrial", "Plant Shell Wall — heavy plate, grubby, foundry and cargo hall",
         albedo=(0.420, 0.420, 0.420), roughness=0.7, metallic=0,
         specular=0.32, texture="hull_plate", uv_scale=1.0 / 12,
-        binds=("industrial_wall", "store_wall"), scenes=("interior",),
+        binds=("industrial_wall", "store_wall", "bay_backwall", "bay_ceiling", "bay_ledge"), scenes=("interior",),
         source="03-sector-blue/dock.webp (grey-world gains 0.968/1.027/1.007), bay wall (0.200,0.290)-(0.330,0.400) balanced V 0.268 S 0.113, and stepped ledge (0.155,0.315)-(0.285,0.440) V 0.328 S 0.096 — lit() 0.418 and 0.511. 09-garden-core-and-transit/central corridor.webp (gains 1.044/1.085/0.892), wall panel (0.600,0.300)-(0.720,0.420) V 0.234 and walkway fascia (0.300,0.245)-(0.600,0.275) V 0.250 — lit() 0.365 and 0.390. Mean of the four: 0.421.",
         extrapolated="Roughness 0.70 and specular 0.32 — no frame separates gloss from geometry, and both are pushed to the dull end because these are the volumes the station does not keep clean. The 12.0 m hull_plate repeat is chosen: 16 plates across the repeat gives 0.75 m plates, deliberately within 12% of the corridor's measured 0.667 m course so that a plant wall and a finished wall share a plate module and differ only in how the seam is cut."))
 
@@ -1501,7 +1501,7 @@ def _build():
         "shell_deck_public", "Public Shell Deck — pale tiled floor, concourse and office",
         albedo=(0.396, 0.396, 0.396), roughness=0.32, metallic=0,
         specular=0.58, texture="deck_plate", uv_scale=1.0 / 4,
-        binds=("commerce_deck", "detention_deck", "generic_deck", "hospitality_deck", "office_deck", "transit_deck"), scenes=("interior",),
+        binds=("commerce_deck", "detention_deck", "generic_deck", "hospitality_deck", "office_deck", "transit_deck", "cc_floor", "cc_pit", "customs_deck"), scenes=("interior",),
         source="04-sector-red/more zocalo.png (gains 0.936/1.137/0.950), tile field lit (0.200,0.620)-(0.340,0.720) balanced V 0.611, and k-means over (0.15,0.60)-(0.55,0.95) giving lit deck clusters at V 0.465 / 0.619 / 0.715 against lit structure clusters at V 0.317 / 0.436 in the same frame — a deck:wall ratio of 1.8. 05-sector-green/council chambers.webp floor (0.900,0.860)-(0.990,0.990) V 0.496 against wall clusters V 0.270-0.425, ratio ~1.5. 07-sector-grey/grey level 1.webp deck field V 0.471 against wall 0.295, ratio 1.60.",
         extrapolated="The albedo is a DERIVED value, not a measured one, and the derivation is the interesting part — see reasoning. 0.396 is 0.87x the wall it meets. The 4.0 m deck_plate repeat gives 1.0 m tiles, estimated off more zocalo.png's joint grid against the café furniture; it is the weakest number in this material and one frame with a person standing on a tile joint would close it."))
 
@@ -1542,7 +1542,7 @@ def _build():
         "shell_deck_industrial", "Plant Shell Deck — worn plate with recessed seams, bay and store",
         albedo=(0.365, 0.365, 0.365), roughness=0.52, metallic=0,
         specular=0.46, texture="deck_plate", uv_scale=1.0 / 6,
-        binds=("industrial_deck", "store_deck"), scenes=("interior",),
+        binds=("industrial_deck", "store_deck", "bay_deck"), scenes=("interior",),
         source="03-sector-blue/dock.webp (gains 0.968/1.027/1.007), lit apron (0.300,0.665)-(0.500,0.720) balanced V 0.501 S 0.080 and deck mid (0.300,0.500)-(0.500,0.545) V 0.239 S 0.067 — the same deck at a 2.1x illumination range and near-neutral at both ends. Against the bay wall in the same frame at V 0.268, the lit deck is 1.9x. 10-interiors-generic-kit/more hallways.jpg (gains 0.794/1.145/1.154) shows the plate construction: large flat plates with recessed seams and litter, and the same deck balances H 36 S 0.65 on its warm-lit half and H 179-200 S 0.12-0.25 on its cool-lit half — one surface, two lights, two colours, so it is neutral.",
         extrapolated="The albedo is derived at 0.87x its wall by the deck:wall ratio argument, not read off a frame. Roughness 0.52 and specular 0.46 are extrapolated. The 6.0 m repeat gives 1.5 m plates, which is kit_deck_plate's existing figure and is kept deliberately so that two deck materials visible in one shot cannot disagree about how big a deck plate is."))
 
@@ -1564,7 +1564,7 @@ def _build():
         "shell_deck_stone", "Sanctuary Deck — polished slab, the one hard floor in the station",
         albedo=(0.400, 0.424, 0.425), roughness=0.2, metallic=0,
         specular=0.66, texture="deck_plate", uv_scale=1.0 / 3.2,
-        binds=("worship_deck",), scenes=("interior",),
+        binds=("worship_deck", "cc_dais", "council_floor_1"), scenes=("interior",),
         source="05-sector-green/council chambers.webp (gains 0.998/1.082/0.932, which reproduce the value already in GREY_WORLD_GAINS exactly). Floor (0.900,0.860)-(0.990,0.990) balanced rgb 0.426/0.488/0.493, H 180 S 0.146 V 0.496; k-means over (0.80,0.80)-(1.00,1.00) puts 45.0% of the band on rgb(0.421,0.490,0.493) H 183 S 0.146. Wall blades in the same frame cluster at V 0.270 / 0.425, so the floor is ~1.5x the wall. This is a ceremonial floor, NOT a chapel floor — the reference set has no worship space in it at all.",
         extrapolated="Two things. (1) The saturation is CUT from the measured 0.146 to 0.059, because council chambers is keyed cool and the wall in the same frame is also cool (H 196-211) — one frame with a single-temperature key cannot separate a cool floor from a cool light, so the measured cast is carried at less than half strength as a hint rather than as a fact. (2) The mottle is missing entirely: there is no stone sheet among the seven that exist, so deck_plate at 3.2 m stands in with 0.8 m slab joints. That is the honest gap in this material and one procedural stone sheet closes it. Value 0.419 is 0.92x the wall by the deck:wall ratio argument, not the raw 0.769 that lit() would give."))
 
@@ -1587,7 +1587,7 @@ def _build():
         "shell_rib_painted", "Shell Rib — painted structural pilaster, floor to soffit",
         albedo=(0.469, 0.469, 0.469), roughness=0.4, metallic=0,
         specular=0.46,
-        binds=("commerce_rib", "detention_rib", "generic_rib", "hospitality_rib", "medical_rib", "office_rib", "research_rib", "transit_rib", "worship_rib"), scenes=("interior",),
+        binds=("commerce_rib", "detention_rib", "generic_rib", "hospitality_rib", "medical_rib", "office_rib", "research_rib", "transit_rib", "worship_rib", "council_fin", "cc_mullion", "cc_ring", "cc_hub"), scenes=("interior",),
         source="07-sector-grey/grey level 1.webp pilaster bullnose face (0.188,0.394)-(0.206,0.731), balanced V 0.301 against the wall plate course at V 0.295 in the same frame — a ratio of 1.02, which is the whole measurement. Corroborated at room scale by 03-sector-blue/war room.webp, whose arch pier (0.245,0.100)-(0.300,0.550) balances V 0.235 against the arch face at V 0.286 and the console rail at V 0.233: the pier is not lighter than what it sits against, it is differently shaped. 00-INDEX.md's war room entry calls that arch 'the chamfered structural language of the corridors at room scale', which is exactly the claim this material makes.",
         extrapolated="Roughness 0.40 and specular 0.46 — the frame shows a specular roll-off along the bullnose but fixes the kind and not the value, the same caveat kit_pilaster already carries. The albedo is not extrapolated: 0.469 is 1.031x shell_wall_panel and 0.983x shell_wall_clinical, so it sits inside +/-3% of BOTH walls it meets, which is the measured pilaster:wall relationship applied twice."))
 
@@ -1619,7 +1619,7 @@ def _build():
         "shell_rib_oxide", "Plant Rib — red-oxide primed structural steel, bay and cargo hall",
         albedo=(0.379, 0.315, 0.265), roughness=0.45, metallic=0,
         specular=0.42, texture="truss_steel", uv_scale=1.0 / 2.5,
-        binds=("industrial_rib", "store_rib"), scenes=("interior",),
+        binds=("industrial_rib", "store_rib", "customs_bracket", "customs_hanger"), scenes=("interior",),
         source="03-sector-blue/dock.webp (gains 0.968/1.027/1.007): k-means over the overhead structure band (0.00,0.00)-(0.55,0.20) gives rgb(0.080,0.042,0.029) H 15 S 0.633 and rgb(0.129,0.068,0.052) H 13 S 0.595; over the left pier band (0.02,0.18)-(0.14,0.58) gives H 22 S 0.618, H 17 S 0.731, H 17 S 0.677 and H 16 S 0.400. 09-garden-core-and-transit/central corridor.webp (gains 1.044/1.085/0.892): the hull ring frames at (0.87,0.10)-(0.94,0.55) cluster at V 0.086 S 0.440, V 0.157 S 0.324, V 0.243 S 0.318 and V 0.462 S 0.294 — all at H 28-34. 00-INDEX.md independently describes both: 'red-orange box girders' in dock.webp and ring frames in 'dark oxide red' in central corridor.webp.",
         extrapolated="Value 0.379 = lit(0.243) from central corridor's dominant lit ring cluster. Hue 26 deg is the midpoint of the two frames' registers (dock H 13-22, central corridor H 28-34). Saturation 0.301 is set so that truss_steel's own (1.000, 0.980, 0.950) tint carries the rendered surface to S 0.336, which is the mean of the four cleanest lit clusters across the two frames (0.294, 0.318, 0.324, 0.400) — the declared albedo is pulled below the target on purpose so the sheet does not double-count. Roughness 0.45 and specular 0.42 are extrapolated from the specular roll-off visible along the ring tube (the V 0.462 cluster). The 2.5 m truss_steel repeat gives 0.5 m panels, about one per rib face."))
     # ---- steel_heavy ---------------------------------------------------
@@ -1654,7 +1654,7 @@ def _build():
         "steel_gantry_oxide", "Gantry Steel — oxide-primed heavy structure, handling and plant",
         albedo=(0.300, 0.255, 0.242), roughness=0.52, metallic=0.3,
         specular=0.45, texture="truss_steel", uv_scale=1.0 / 4,
-        binds=("fix_gantry_rail", "fix_racking_run", "fix_catenary_run", "crane", "prop_docking_clamp"), scenes=("interior",),
+        binds=("fix_gantry_rail", "fix_racking_run", "fix_catenary_run", "crane", "prop_docking_clamp", "bay_girder"), scenes=("interior",),
         source="reference/03-sector-blue/dock.webp (authority 1), grey-world gains 0.968/1.027/1.006. The overhead heavy steel — deep box girders and a lattice gantry, which is exactly this family — clusters over (0.02,0.02)-(0.50,0.30) at 27.2% rgb(0.095,0.054,0.040) H 15.0 S 0.577, 20.1% rgb(0.055,0.026,0.015) H 17.1 S 0.729, 14.9% rgb(0.140,0.083,0.067) H 13.1 S 0.520; box girder lit top face (0.300,0.020)-(0.520,0.045) rgb 0.110,0.052,0.036 H 13.5; lattice top chord (0.238,0.133)-(0.423,0.154) rgb 0.068,0.036,0.024 H 16.9. Corroborated in reference/09-garden-core-and-transit/central corridor.webp (gains 1.045/1.086/0.891): ring rib (0.036,0.330)-(0.058,0.405) rgb 0.139,0.077,0.098 H 340 S 0.450, rib clusters H 3.5 S 0.209 and H 345 S 0.110. THE FRAMES DO NOT ESTABLISH THE LEVEL — dock.webp's steel sits at V 0.055-0.140 and is not under the key, so no ratio to a co-lit neutral exists; the value here is set by argument, not measured.",
         extrapolated="The albedo LEVEL (0.300 max channel) and the SATURATION (0.193 against a measured 0.11-0.58). Level: reference/03-sector-blue/dock.webp and station/materials.py's `structural_truss` source line agree that structural steel is the darkest large thing in frame; the library's two existing structural-steel values are 0.260 and 0.204, and painted steel indoors sits just above bare steel outdoors, so 0.300 — 0.65x the corridor wall's 0.46. Saturation: the two frames bracket S 0.11-0.58 and the value sits at the bottom of that bracket because a non-accented surface in this library is capped at 0.20; the remaining chroma belongs to the warm practicals in layer 4. Also extrapolated: the 4 m texture repeat (truss_steel is 5x5 plates per repeat, so 0.80 m plate faces — a girder web's stiffener pitch). Overturned by: any frame showing this steel under a measurable key beside a co-lit neutral, which would fix both the level and the saturation at once."))
 
@@ -1720,7 +1720,7 @@ def _build():
         "steel_catwalk_tread", "Catwalk — painted walkway plate, tread worn to steel",
         albedo=(0.266, 0.266, 0.270), roughness=0.34, metallic=0.3,
         specular=0.5, texture="deck_stud", uv_scale=1.0 / 0.64,
-        binds=("prop_catwalk",), scenes=("interior",),
+        binds=("prop_catwalk", "cc_stair"), scenes=("interior",),
         source="reference/03-sector-blue/dock.webp (authority 1), balanced 0.968/1.027/1.006: the raised walkway platform at (0.240,0.520)-(0.330,0.545) reads rgb 0.277,0.278,0.276 (S 0.006, V 0.278) against the lit deck beside it at (0.330,0.640)-(0.420,0.680) rgb 0.406,0.379,0.367 and (0.300,0.700)-(0.400,0.760) rgb 0.395,0.387,0.383 — a same-frame, same-light RATIO of 0.278/0.400 = 0.695, which is what is used here. reference/09-garden-core-and-transit/central corridor.webp shows the second catwalk in the set: a two-person-wide mezzanine with a solid fascia beam and a plain two-bar railing, walked on by figures, per reference/00-INDEX.md. Neither frame resolves the tread pattern; that is extrapolated.",
         extrapolated="The tread pattern and its 0.64 m repeat, and the metallic. Pattern: reference/10-interiors-generic-kit/more hallways.jpg shows the deck's service strip as a fine bar grid — roughly 30 bars across the strip at magnification — but that frame establishes no absolute length, so the 40 mm pitch (deck_stud's 16 studs over a 0.64 m repeat, with the sheet's transverse joint every 0.32 m) is derived from assuming a walkway-width strip and is the weak number here. What is NOT extrapolated is the value: 0.695 x the deck's albedo, applied to the mean of the library's two measured decks (`kit_deck` 0.400, `kit_deck_plate` 0.360) = 0.266, so the catwalk moves if the decks move. Overturned by: a frame showing a catwalk beside a scale reference, which would fix the tread pitch."))
 
@@ -1831,7 +1831,7 @@ def _build():
         "viewport_glazing", "Viewport — dark glazing onto the drum",
         albedo=(0.040, 0.042, 0.046), roughness=0.07, metallic=0,
         specular=0.92,
-        binds=("prop_viewport",), scenes=("interior",),
+        binds=("prop_viewport", "cc_glazing"), scenes=("interior",),
         source="reference/14-characters-and-uniforms/talia-winters in gorgeous office.webp (authority 1; reference/00-INDEX.md calls it the clearest view of the habitat drum interior the project holds), grey-world gains 0.844/1.075/1.131. It shows a drum office viewport head-on: the glazing carries NO visible tint or veiling reflection — the drum's ground, guideway trusses and lit blocks read through it unattenuated — and it is divided by near-black vertical mullions with a dark sill, measured at (0.560,0.530)-(0.780,0.560) rgb 0.043,0.038,0.067, V 0.067. station/directory.py places prop_viewport in `drum_office` (offices, green sector) and `domed_rotunda` (observation, public_social), which is the same room class as the frame.",
         extrapolated="That the aperture is rendered as one dark, near-mirror surface rather than as transparent glass in a frame. station/rooms.py builds prop_viewport as a single 2.40 x 0.20 x 1.40 m box, so there is no frame member to separate from the pane; the material has to read as 'a window' from that one box. Constrained by: it must be the darkest thing in any room it stands in (0.042 luminance, an order below the door leaf) so it reads as an opening rather than a panel, and roughness 0.07 with specular 0.92 makes it carry the room as a reflection, which is what the measured mullion-and-sill darkness plus an untinted view actually look like from inside. The precedent is `tram_glass`, opaque rather than transparent for the same reason — a sort costs more than it buys. Overturned by: layer 5 splitting the viewport into pane and frame, at which point the pane should become genuinely transmissive and this material becomes the frame's."))
 
@@ -1851,7 +1851,7 @@ def _build():
         "grab_rail_bare", "Grab Rail — polished bare tube, micro-gravity handhold",
         albedo=(0.560, 0.565, 0.580), roughness=0.22, metallic=0.9,
         specular=0.65,
-        binds=("prop_handhold",), scenes=("interior",),
+        binds=("prop_handhold", "cc_rail", "cc_console_leg"), scenes=("interior",),
         source="reference/03-sector-blue/Babylon_5_2-22_35a.jpg (authority 1), balanced 0.913/1.090/1.013 — the tram saloon's vertical stanchions, the only object in the whole reference set that is a metal pole a person grips. station/materials.py already carries that reading as `tram_saloon_post` (0.560, 0.565, 0.580), whose source line records that the poles read as bare metal against the painted panels and shows a specular roll-off along their length. The value is reproduced here rather than re-derived. station/rooms.py sizes prop_handhold at 0.60 x 0.10 x 0.10 m, wall-mounted, and station/directory.py places it only in `lowg_bays`, `zerog_maint` and `micro_g_bays` — every one a microgravity_handling or repair volume.",
         extrapolated="metallic 0.90 and roughness 0.22, both raised from `tram_saloon_post`'s 0.75 and 0.28. The 0.75 is itself declared an extrapolation in station/materials.py ('the frame shows a specular roll-off along the pole, which fixes the kind but not the value'), and the physical rule is that bare metal is 0.9-1.0 and an intermediate value needs a worn-coating argument this object cannot make — it has no coating. Roughness drops to 0.22 on a specific argument: this is the only object in the station gripped by every occupant of a zero-g bay on every transit, and a handrail polished by constant use is smoother than a tram stanchion held occasionally. Overturned by: a frame showing a micro-g handhold, which the set does not contain."))
 
@@ -1877,7 +1877,7 @@ def _build():
         "edge_chevron_nosing", "Edge Nosing — yellow/black chevron on the platform drop",
         albedo=(0.900, 0.720, 0.060), roughness=0.62, metallic=0.05,
         specular=0.4, texture="hazard_chevron", uv_scale=1.0 / 2.4,
-        binds=("fix_platform_edge",), scenes=("interior",),
+        binds=("fix_platform_edge", "bay_chevron"), scenes=("interior",),
         source="reference/03-sector-blue/Minbari Flyer 969 in docking bay 17.webp (authority 1): the bay wall is a stepped ziggurat of ledges and EVERY STEP NOSING CARRIES YELLOW/BLACK HAZARD CHEVRONS — reference/00-INDEX.md records this and draws the consequence explicitly, that the chevron is applied by rule to all step edges and is therefore a generator rule rather than a decal placement. Corroborated by reference/03-sector-blue/dock.webp, which shows the same marking on the ramp edges of the bay deck, and by reference/01-station-exterior/Cobra Bays with starfurries.webp on the bay lip. The albedo is ACCENTS['hazard_yellow'] (0.900, 0.720, 0.060), the value station/materials.py already measured off dock.webp's deck chevrons; this is the same register, not a second one.",
         extrapolated="The stripe pitch, and that a tram platform edge is a step edge in the sense the rule means. Pitch: a Fourier scan along dock.webp's lower ramp chevron run, source pixels (248,505) to (315,556), puts the stripe peaks at k = 6-8 over a 67 px horizontal extent; at the scale reference/00-INDEX.md measures in that frame (the red deck disc, 156 px = 9.4 m, so 16.6 px/m) that run is 4.0 m and the cycle is 0.50-0.67 m. uv_scale 1/2.4 gives 4 cycles per repeat = 0.60 m, inside that bracket, against the exterior sibling's declared-invented 0.75 m. So this measurement also CORROBORATES the exterior material's guess. Overturned by: a frame showing a station transit platform, of which the set holds none."))
 
@@ -1905,7 +1905,7 @@ def _build():
         "furn_casework", "Furniture Casework — painted steel desk, counter and locker bodies",
         albedo=(0.400, 0.396, 0.388), roughness=0.45, metallic=0,
         specular=0.5,
-        binds=("prop_desk", "prop_duty_desk", "prop_counter", "prop_issue_counter", "prop_parcel_locker", "prop_lab_bench", "fix_fume_column"), scenes=("interior",),
+        binds=("prop_desk", "prop_duty_desk", "prop_counter", "prop_issue_counter", "prop_parcel_locker", "prop_lab_bench", "fix_fume_column", "council_top", "council_frame", "council_plinth", "customs_bollard", "customs_desk"), scenes=("interior",),
         source="05-sector-green/council chambers.webp, balanced (gains 0.998/1.082/0.932): the council bench's plain grey frame (0.160,0.560)-(0.195,0.680) rgb(0.258,0.272,0.267) S 0.063, and the same bench's lit slab top (0.460,0.420)-(0.600,0.450) rgb(0.630,0.649,0.672) S 0.065. That bench is the only piece of station casework in the whole reference set measured square-on under a mild cast, and 00-INDEX.md reads its construction directly — 'a grey slab top with a chamfered edge', 'set in a plain grey frame with a bottom kick rail', 'a recessed plinth'. NO FRAME EXISTS of an office desk, a post-office counter, a quartermaster's issue counter, a parcel locker, a lab bench or a fume column.",
         extrapolated="The level, and the extension from one ceremonial bench to seven working units. The council bench brackets rather than fixes it — 0.63 lit against 0.27 in shadow — because 00-INDEX.md records that chamber as deliberately lit asymmetrically ('the fan-and-medallion side is bright, the opposite wall ... almost no fill'), so neither end is the albedo. 0.400 is chosen as one rung below ALBEDO_ANCHOR and it is inside the corridor kit's own measured ladder: the kit's darkest lit element, the dado, is lit(0.247) = 0.385, and its wall is 0.460. Overturned by any frame of a working office or issue counter, or by a frame containing a reflectance standard."))
 
@@ -2009,7 +2009,7 @@ def _build():
         "furn_service_steel", "Service Stainless — servery, tray stack and mortuary drawers",
         albedo=(0.560, 0.565, 0.575), roughness=0.31, metallic=1,
         specular=0.5,
-        binds=("prop_serving_counter", "prop_tray_dispenser", "prop_cold_drawer"), scenes=("interior",),
+        binds=("prop_serving_counter", "prop_tray_dispenser", "prop_cold_drawer", "council_medallion"), scenes=("interior",),
         source="NO FRAME SHOWS A STATION SERVERY, TRAY DISPENSER OR MORTUARY DRAWER. What is sourced is that bright chrome is the station's food-service metal: 00-INDEX.md on 04-sector-red/more zocalo.png reads the tableware as a 'chrome domed-top shaker and stacked tumblers', and the shaker is visible in frame at (0.55,0.50)-(0.64,0.72) as a hard specular cylinder with no diffuse term. The library's only measured bare-metal furniture, `tram_saloon_post` from the same authority-1 frame set, sits at 0.560/0.565/0.580 roughness 0.28.",
         extrapolated="Everything except the kind of surface. The albedo is the physical F0 of stainless steel, ~0.56 and very slightly cool, not a screen measurement — for a conductor the albedo IS the specular reflectance, so this is the one case where physics fixes the number better than a screencap could. Roughness 0.31 is a directionally brushed 2B/4 finish. Overturned by any frame of the mess hall servery or a medlab."))
 
@@ -2080,7 +2080,7 @@ def _build():
         "furn_stall_frame", "Market Armature — black tube stall frames and awning rails",
         albedo=(0.075, 0.074, 0.074), roughness=0.32, metallic=0,
         specular=0.5,
-        binds=("fix_stall_frame", "fix_awning_rail"), scenes=("interior",),
+        binds=("fix_stall_frame", "fix_awning_rail", "council_chair"), scenes=("interior",),
         source="04-sector-red/more zocalo.png, raw: the black tubular hoop round a café pedestal (0.455,0.824)-(0.530,0.840) reads 0.094/0.063/0.090, and against that frame's deck anchor (deck tile raw V 0.690 -> `kit_deck_plate` 0.360, x0.522) that is 0.049. Cross-check in a second frame and a second sector: 05-sector-green/council chambers.webp balanced, the chair's black square-section lattice (0.435,0.160)-(0.455,0.250) rgb(0.106,0.102,0.117), scaled by that frame's floor-mosaic reference gives 0.109. 00-INDEX.md reads the Zocalo stall canopies as 'fabric on radiating spars, parasol-fashion' and 09-garden-core-and-transit/central corridor.webp shows a vendor front as 'backlit orange-red panels behind vertical mullions over a counter' — the market's structure is a slender armature in both.",
         extrapolated="The level within the 0.049-0.109 bracket the two frames give; 0.075 is the midpoint. Also extrapolated: that the Zocalo's black tubework, measured on café furniture, is the same finish as the stall armature beside it. What supports it is that both are the same lightweight tube in the same concourse, and that no other dark furniture finish appears anywhere in the set."))
 
@@ -2938,6 +2938,172 @@ def _build():
         binds=("garden_window_band",), scenes=("drum",),
         source="reference/09-garden-core-and-transit/The Gardens.webp (authority 1), measured RAW because a source is radiance. reference/00-INDEX.md, authority 1: 'continuous horizontal window banding — rows of small bright rectangles in dark recessed bands, giving strong horizontal striping. One large building at right shows exactly three stacked glazed bands over a solid battered base', and separately 'low blockish buildings with lit window bands'. At 3x magnification the two bands on the right-hand block resolve into rows of bright rectangles in dark recesses. The lower band, measured across the block: raw p99 reaches (1.000, 0.980, 0.902) — THE RED CHANNEL CLIPS, which is the library's own test for a source (see zoc_neon_face, where the same test is what separates a source from a lit surface). Raw p90 (0.710,0.620,0.553), normalised (1.000, 0.874, 0.780); brightest k-means cluster (0.880,0.821,0.747). The upper band gives raw p90 (0.514,0.388,0.298) and p99 (0.773,0.659,0.570).",
         extrapolated="The emission colour and the energy. COLOUR is taken from materials.WINDOW_TEMPS[0] (1.000, 0.836, 0.640), the library's warm-practical window register, and NOT from this frame, because the frame cannot supply it: raw it normalises to (1.000, 0.874, 0.780), and balanced with this frame's gains (0.854, 1.056, 1.134) it normalises to (0.925, 1.000, 0.958) — a GREEN window, which is impossible. reference/00-INDEX.md declares this file uncolour-matchable for exactly this reason. The two readings bracket the library's register and reusing it keeps the drum's town, the civic arcade (garden_glass) and the hull's apertures at one colour temperature, which is CLAUDE.md hard rule 4 applied to light. ENERGY 2.6 against garden_glass's 1.2, and the difference is measured, not felt: these bands CLIP in their frame and the civic arcade does not clip in its own (maximum 0.628), so one is a source at saturation and the other is a dim one. 2.6 matches materials.zoc_screen's, a backlit panel of similar apparent brightness. ALBEDO near black because the band is a 0.06 m proud box that IS a light and a pale substrate under an emission double-counts it. Overturned by: any neutral-cast frame of the drum settlement at night."))
+
+    # =====================================================================
+    # LAYER 3 -- BLUE SECTOR PUBLIC: C&C, the Council Chamber, customs, the bay
+    # =====================================================================
+    # NINE materials for 55 groups, because EIGHTEEN of the surfaces turned out
+    # to be ones this library already has. The proposal rebound them --
+    # `bay_deck` onto shell_deck_industrial, `cc_floor` and `customs_deck` onto
+    # shell_deck_public, `council_top` onto furn_casework -- instead of
+    # authoring near-duplicates, which is what keeps a docking bay's deck and
+    # a fabrication bay's deck the same deck.
+    #
+    # That is the same move `signage_panel` made: the material already existed
+    # and had simply never been bound to the geometry it was measured from.
+
+    # ---- blue sector public (bespoke) ----------------------------------
+
+        # The disc is the only painted marking on the station whose SIZE is
+        # measured rather than chosen (docking_bay.py DECK_DISC_D_M = 10.6 m
+        # off the dock workers), so it deserved a measured colour too. It comes
+        # out a dusty oxide red at S 0.26, not a fire red — which is what a
+        # worn hangar-deck marking should be, and it is high enough above the
+        # STRUCTURAL_SAT_MAX 0.20 ceiling that the gate will demand the frame
+        # citation it has. The level is set by ratio to the deck rather than by
+        # lit() because both surfaces sit inside the same floodlight pool,
+        # where lit() (calibrated on a diffusely lit wall) would overstate
+        # both.
+    a(Material(
+        "bay_deck_marking", "Bay Deck Marking — the red painted landing disc",
+        albedo=(0.405, 0.299, 0.308), roughness=0.58, metallic=0,
+        specular=0.38,
+        binds=("bay_disc",), scenes=("interior",),
+        source="reference/03-sector-blue/dock.webp (authority 1), balanced with the gains already in materials.GREY_WORLD_GAINS (0.968/1.027/1.006, recomputed here from the frame as 0.9684/1.0271/1.0063). THE TINT TEST, run and PASSED: value-banded over the disc at (0.450,0.645)-(0.590,0.715) it reads rgb 0.363/0.266/0.271 H 357.1 S 0.266 at V 0.30-0.42 (n=777); 0.480/0.359/0.372 H 353.2 S 0.252 at V 0.42-0.52 (n=1287); 0.568/0.419/0.433 H 354.2 S 0.263 at V 0.52-0.62 (n=3505); 0.652/0.541/0.558 H 351.0 S 0.170 at V 0.62-0.80 (n=1016). Saturation is FLAT at 0.25-0.27 across a 1.8x range of value, falling only in the clipping band, and hue holds at H 351-357 throughout — the multiplicative signature of a real tint, where materials.NEGATIVE_RESULTS' five recorded cases all showed saturation collapsing as value rose. LEVEL: the deck it is painted on, same frame, same flood pool. k-means over (0.22,0.50)-(0.62,0.78) puts the dominant 25.6% of the deck on balanced rgb 0.237/0.237/0.233 (H 50 S 0.017, dead neutral) -> lit() 0.370, which reproduces materials.py's shell_deck_industrial 0.365 to 1.4%. Inside the pool the disc's luminance is 0.87x the deck's (disc L 0.458 at (0.470,0.655)-(0.520,0.690) against deck L 0.526 at (0.412,0.650)-(0.442,0.685)), so 0.87 x 0.370 = 0.322 luminance, carried on the measured hue normalised to peak (1.000, 0.738, 0.762).",
+        extrapolated="Roughness 0.58 and specular 0.38 — no frame separates gloss from geometry here, and both are set slightly duller than the deck's own 0.52 because deck traffic paint is a flat coating and a glossier value would flare under the pendant floods. Nothing about the colour: hue, saturation and the 0.87 ratio are all measured in one frame under one light. Overturned by any frame showing this disc away from a flood pool."))
+
+        # Splitting bay_emblem from bay_disc is the module's decision and it is
+        # right — a red disc with a white device on it is what the frame shows
+        # — but the material has to admit that the frame cannot colour the
+        # device. Making it a declared extrapolation bracketed by three
+        # measured numbers is better than quietly copying the disc's red, which
+        # is what a single material would have done.
+    a(Material(
+        "bay_deck_emblem", "Bay Deck Emblem — worn white line paint inside the disc",
+        albedo=(0.560, 0.545, 0.530), roughness=0.6, metallic=0,
+        specular=0.38,
+        binds=("bay_emblem",), scenes=("interior",),
+        source="reference/03-sector-blue/dock.webp (authority 1), balanced (0.968/1.027/1.006). A NEGATIVE MEASUREMENT, and it is the honest content of this entry: at 4x magnification the emblem is two pale rounded bars about 4 px tall, and the frame does not resolve them clear of the red around them. The bars at (0.4735,0.6965)-(0.4855,0.7035) read balanced rgb 0.627/0.491/0.515 (H 349.5 S 0.216 V 0.627) and at (0.5205,0.6975)-(0.5325,0.7045) rgb 0.630/0.497/0.525 (H 347.6 S 0.211), against the disc ground 15 px away at (0.4930,0.6975)-(0.5130,0.7040) rgb 0.619/0.503/0.525 (H 348.9 S 0.187 V 0.619). That is 1.3% brighter and 15% MORE saturated than its own ground — i.e. the sample is dominated by the red it sits in, not by the emblem. All the frame establishes is what docking_bay.py's docstring already records from it: a white oval emblem inside the red disc.",
+        extrapolated="The whole albedo. Constrained rather than free: (1) it must be lighter than the disc it sits inside, whose luminance is measured at 0.322; (2) it must be lighter than the deck at 0.370, or it would read as a stain rather than a marking; (3) it must sit below fresh white line paint, which is 0.70-0.75, because nothing in a working docking bay is fresh. 0.547 luminance is the middle of that bracket, i.e. white line paint about half worn. Saturation 0.054 is neutral: no frame gives it a hue, and the 15% desaturation the sample shows against its red ground is the only directional evidence, which says less saturated, not warmer. Overturned by one frame that resolves the emblem at more than about 10 px."))
+
+        # The bay's read in dock.webp is entirely lighting: red steel overhead,
+        # dark everywhere except under the floods, and pools on the deck. If
+        # bay_lamp is not emissive the room is a grey box with boxes hanging in
+        # it. The colour is the easy part — three independent samples all land
+        # inside S 0.081 of neutral, so this is a plain cool-white industrial
+        # flood, not a coloured practical, and it must NOT pick up the cyan
+        # register that the Blue-sector accent table would otherwise suggest.
+    a(Material(
+        "bay_floodlight", "Bay Floodlight — pendant cool-white flood on the overhead lattice",
+        albedo=(0.620, 0.620, 0.610), roughness=0.35, metallic=0,
+        specular=0.25,
+        emission=(0.942, 0.929, 1.000), emission_energy=6,
+        binds=("bay_lamp",), scenes=("interior",),
+        source="reference/03-sector-blue/dock.webp (authority 1). Measured RAW, because a source keeps its own colour and balancing it would remove exactly the thing being read — the same treatment materials.py gives the Zocalo shopfront and the rotunda altar. The two unoccluded flood cores read rgb 0.408/0.400/0.435 (H 253 S 0.081) at (0.368,0.092)-(0.386,0.108) and rgb 0.539/0.524/0.565 (H 263 S 0.073) at (0.527,0.070)-(0.545,0.088); k-means over the pool at (0.360,0.085)-(0.395,0.115) puts 11.8% on rgb 0.585/0.577/0.621 (H 250 S 0.071). Near-neutral at every reading, faintly cool, S never above 0.081 — normalised to its peak channel that is (0.942, 0.929, 1.000). docking_bay.py's docstring records the fitting itself from this frame: pendant floodlights hanging at regular spacing off the lattice gantry, 'the bay's whole lighting scheme and the first thing that reads'.",
+        extrapolated="emission_energy 6.0 and the housing albedo. Energy: matched to materials.py's light_pilaster_strip (6.0), which is a corridor's principal wall light, on the argument that this is the bay's principal light and the fitting is far larger — docking_bay.py builds it as a 1.5 m box against the strip's ~0.1 m tube, so at equal energy this delivers roughly fifteen times the flux, which is the right order for a 42 x 140 m hangar against a 3 m corridor. The visible beam shafts in the frame are haze, not intensity, and were not used to argue it up. Housing 0.62: the geometry is the whole fitting, so it must not read as a hole when unlit; 0.62 is a painted steel lamp body, darker than materials.py's truss_lamp tube at 0.95 because that is glass and this is not. Overturned by any frame showing a dark bay bay with the floods off."))
+
+        # command_control.py's docstring calls these 'the room's ambient
+        # light', and it is the truest thing in the module: every other surface
+        # in that frame is a reflection of these strips. Using
+        # ACCENTS['cool_blue'] rather than a new number is deliberate —
+        # SECTOR_ACCENT already names cool_blue as Blue Sector's register and
+        # cites this exact room, so the strip IS the register, not a thing that
+        # resembles it. The saturation looks alarming for a light source until
+        # you notice the whole frame reads H 215-230; that is what makes this
+        # room the one place on the station where a saturated light is measured
+        # rather than chosen.
+    a(Material(
+        "light_command_strip", "C&C Wall Course — the cool-blue backlit strip that is the whole room's ambient",
+        albedo=(0.780, 0.800, 0.840), roughness=0.28, metallic=0,
+        specular=0.2,
+        emission=(0.240, 0.320, 1.000), emission_energy=3.8,
+        binds=("cc_light_strip",), scenes=("interior",),
+        source="reference/03-sector-blue/comand and contorl.webp (authority 1). Measured RAW — see the coverage note: this frame's grey-world balance is INVALID for albedo, but a source read raw is exactly what it is good for, and materials.py's ACCENTS['cool_blue'] was already derived from it. Pooling the two high courses (0.02,0.145)-(0.25,0.185) and (0.83,0.145)-(0.99,0.185) with the mid course (0.09,0.395)-(0.27,0.428) and banding by value: rgb 0.073/0.147/0.274 H 218.0 S 0.734 at V 0.20-0.35 (n=3743); 0.229/0.307/0.424 H 216.0 S 0.459 at V 0.35-0.50 (n=1055); 0.375/0.456/0.571 H 215.3 S 0.342 at V 0.50-0.65 (n=750); 0.546/0.621/0.733 H 215.9 S 0.255 at V 0.65-0.80 (n=1155); 0.758/0.847/0.935 H 209.9 S 0.189 at V 0.80-1.01 (n=2998). Hue is CONSTANT at H 210-218 across a 3.5x range of value while saturation falls monotonically 0.734 -> 0.189 — a source blowing toward white with its register intact. The un-clipped V 0.35-0.50 band normalises to (0.540, 0.724, 1.000), H 216 S 0.46. Emission is taken as materials.py's ACCENTS['cool_blue'] (0.240, 0.320, 1.000), whose own note records 'H 228, C&C brightest cluster H228 S0.880' from this frame; my independent read lands in the same register 12 deg away and less saturated only because the sample sits nearer the clipped core.",
+        extrapolated="emission_energy 3.8 and the diffuser albedo. Energy: two-thirds of materials.py's light_pilaster_strip (6.0) because the emitting area is roughly ten times larger — command_control.py builds four courses 0.22 m tall running the full 12 m room against a pilaster strip's ~0.1 x 2 m — and because the frame shows a room that is dark everywhere the courses do not reach, so this is a bright source in a dark room rather than a bright room. Albedo 0.78/0.80/0.84: a pale cool diffuser, reproduced in kind from light_pilaster_strip's (0.85, 0.86, 0.88) and taken down 8% because these are recessed panels behind a grille rather than a bare tube. Overturned by an engine render at this room's real light levels that comes out too blue at a correct exposure."))
+
+        # council_chamber.py says it plainly: 'THE LIGHT IS THE POINT. If the
+        # mesh panel is not emissive this room is a grey box with chairs.' The
+        # interesting part is that the docstring also calls it 'perforated gold
+        # mesh', and the frame does not support gold at any value band under
+        # either treatment. Carrying the warmth as H 65 at S 0.09 keeps the
+        # cream the magnification shows while refusing the saturation the word
+        # 'gold' implies — and it keeps the panel inside the neutral band the
+        # rest of the station obeys, which matters because this surface lights
+        # every delegate's face.
+    a(Material(
+        "council_lit_mesh", "Council Bench Panel — the perforated backlit face, the room's light source",
+        albedo=(0.420, 0.410, 0.390), roughness=0.45, metallic=0,
+        specular=0.35,
+        emission=(1.000, 0.968, 0.910), emission_energy=2,
+        binds=("council_mesh",), scenes=("interior",),
+        source="reference/05-sector-green/council chambers.webp (authority 1), balanced with the gains already in materials.GREY_WORLD_GAINS (0.998/1.082/0.932, recomputed here from the frame as 0.9977/1.0818/0.9317). THE PANEL IS NOT GOLD, and that is this material's main finding. Value-banded over the mesh at (0.24,0.755)-(0.66,0.890): balanced H 61.1 S 0.102 at V 0.25-0.35, H 114.2 S 0.068 at V 0.35-0.45, H 71.6 S 0.087 at V 0.45-0.55, H 75.4 S 0.046 at V 0.55-0.65, H 92.3 S 0.029 at V 0.65-0.80. Read RAW over the same region it gives H 336.7/254.8/298.1/282.6/271.6 at S 0.081/0.072/0.058/0.090/0.118. Both readings stay under S 0.12 at every band and they disagree about which side of neutral it sits, so the panel is a WHITE source with a cream lean, not a gold one; at 7x NEAREST magnification it resolves as a fine pale-grey and cream grille. Hue is taken from the balanced read (H 65) at the middle of its measured saturation (0.09), giving (1.000, 0.968, 0.910). LEVEL evidence for the energy: the panel's brightest band is balanced V 0.667 against the room's lit fin wall at V 0.259 (k-means dominant, 28.1% of (0.00,0.00)-(0.20,0.30)) — a ratio of 2.6.",
+        extrapolated="emission_energy 2.0 and the unlit albedo. Energy: derived from that 2.6 ratio. A source only 2.6x the value of the surfaces it lights is a large, soft, low-intensity emitter, not a lamp — which is why 2.0 sits below materials.py's furn_shrine_lit (2.2) and light_deck_channel (3.5) despite this being the room's only light, and why flux-matching against a corridor strip was rejected: council_chamber.py's panel is 12.0 m of arc x 0.92 m = 11.1 m2, fifty-five times a pilaster strip's area, and matching that strip's flux would put the energy at 0.11 and black the room out. Albedo 0.42: the perforated sheet's own metal when unlit, set at the frame's paint-system level (fin wall lit() 0.404) and not brighter, because a sheet that is roughly half open reads darker than the solid metal it is punched from. Overturned by a frame showing this bench with the panel off."))
+
+        # The honest gap here is that the fan is TWO things and the geometry is
+        # one group: 13 white blades with saturated blue wedges between them,
+        # measured at (0.29,0.490)-(0.37,0.550) as balanced rgb
+        # 0.333/0.395/0.486, H 216 S 0.316 — the only saturated element
+        # anywhere on the bench. council_chamber.py tags all thirteen quads
+        # council_speak_fan, so a material cannot express both and the blue
+        # belongs to a decal in a later layer. I have taken the majority
+        # surface, the white blade, and recorded the blue reading here so the
+        # next pass does not have to re-derive it. At luminance 0.533 this is
+        # also the palest non-emissive surface I am proposing anywhere, which
+        # is correct: the frame says it is.
+    a(Material(
+        "council_speak_inlay", "Speaking-Position Inlay — the white fan laid into the bench top",
+        albedo=(0.524, 0.535, 0.540), roughness=0.32, metallic=0,
+        specular=0.55,
+        binds=("council_speak_fan",), scenes=("interior",),
+        source="reference/05-sector-green/council chambers.webp (authority 1), balanced (0.998/1.082/0.932). The fan's white blades at (0.44,0.417)-(0.59,0.483) read balanced rgb 0.618/0.641/0.669, H 213 S 0.075, V 0.669, luminance 0.638 — the brightest diffuse surface anywhere in the room, 2.6x the lit fin wall (V 0.259) and 1.4x the bench slab it lies on (luminance 0.457 at (0.44,0.583)-(0.59,0.623)). LEVEL: this frame's transform for an up-facing pale surface is already fixed by a reviewed material — materials.py's shell_deck_stone maps this frame's floor patch (0.900,0.860)-(0.990,0.990) at balanced V 0.496 onto luminance 0.419, i.e. x0.845 — so 0.638 x 0.845 = 0.539. SATURATION is cut from the measured 0.075 to 0.030 for the reason shell_deck_stone's own note gives for cutting 0.146 to 0.059: this chamber is keyed cool and its walls are cool in the same frame (fin wall H 190-206), so one frame with a single-temperature key cannot separate a cool surface from a cool light.",
+        extrapolated="Roughness 0.32 and specular 0.55, and the decision to make this one material rather than two. Gloss: at 2x magnification the fan carries a specular sheen the speckled slab beside it does not, so it is smoother than the slab's casework (0.45) without going near the 0.15 mirror floor. The saturation cut is declared above. Overturned by any second frame of this bench under a warm key."))
+
+        # shell_deck_stone was derived from THIS floor in THIS frame — its own
+        # source string says so and its note says 'This is a ceremonial floor,
+        # NOT a chapel floor.' So the right structure is not three new
+        # materials but one reuse plus two siblings: council_floor_1 takes
+        # shell_deck_stone unchanged as the pale tile, and these two carry the
+        # mid and dark shades. Folding all three into one material would have
+        # satisfied coverage and killed the mosaic, which council_chamber.py's
+        # own self-test asserts must have more than one shade.
+    a(Material(
+        "council_floor_mid", "Council Mosaic — mid tile",
+        albedo=(0.344, 0.346, 0.330), roughness=0.2, metallic=0,
+        specular=0.66, texture="deck_plate", uv_scale=1.0 / 3.2,
+        binds=("council_floor_0",), scenes=("interior",),
+        source="reference/05-sector-green/council chambers.webp (authority 1), balanced (0.998/1.082/0.932). The mosaic was sampled on the only two strips of floor the ambassador does not stand on, (0.725,0.640)-(0.762,0.990) and (0.950,0.560)-(0.999,0.990), pooled and 4-clustered: 32.4% rgb 0.438/0.486/0.470 (H 159 S 0.100, luminance 0.475), 23.5% rgb 0.406/0.412/0.365 (H 67 S 0.112, luminance 0.407), 31.6% rgb 0.319/0.309/0.292 (H 38 S 0.083, luminance 0.310), 12.5% rgb 0.233/0.225/0.218 (luminance 0.226). That is a three-shade ladder, which is what council_chamber.py's mosaic_floor() emits. LEVEL through the same x0.845 transform materials.py's shell_deck_stone already establishes on this frame's floor (balanced V 0.496 -> luminance 0.419): the 23.5% cluster becomes 0.344. SATURATION cut from the measured 0.112 to 0.045, exactly as shell_deck_stone cut 0.146 to 0.059 and for the same stated reason — a single-temperature key cannot separate a tinted floor from a tinted light. Roughness, specular and the 3.2 m deck_plate repeat are reproduced from shell_deck_stone unchanged so the three tiles read as one floor.",
+        extrapolated="The saturation cut (declared above) and the assignment of shade index to cluster. council_chamber.py picks a tile's shade from a blake2b hash, so which of 0/1/2 lands on which polygon is arbitrary and only the ladder as a whole is meaningful; what is asserted is that the three together reproduce the measured spread of 0.262 / 0.344 / 0.419 luminance. Overturned by a wider or better-lit shot of this floor."))
+
+        # The dark tile is what stops the mosaic reading as one flat slab:
+        # 0.262 against 0.419 is a 1.6x ladder, which is what the frame shows
+        # at magnification. It sits below materials.py's shell_deck_industrial
+        # (0.365) but it is a polished ceremonial floor, not a plant deck, so
+        # it keeps shell_deck_stone's roughness 0.20 and specular 0.66 — dark
+        # and polished, not dark and matte.
+    a(Material(
+        "council_floor_dark", "Council Mosaic — dark tile",
+        albedo=(0.265, 0.262, 0.256), roughness=0.2, metallic=0,
+        specular=0.66, texture="deck_plate", uv_scale=1.0 / 3.2,
+        binds=("council_floor_2",), scenes=("interior",),
+        source="reference/05-sector-green/council chambers.webp (authority 1), balanced (0.998/1.082/0.932). Same pooled k-means over the two clean floor strips as council_floor_mid: the 31.6% cluster reads rgb 0.319/0.309/0.292, H 38 S 0.083, luminance 0.310. Through the x0.845 transform materials.py's shell_deck_stone establishes for this frame's floor, that is 0.262. Saturation cut from the measured 0.083 to 0.033, on shell_deck_stone's stated single-key argument. Roughness, specular and the 3.2 m deck_plate repeat reproduced from shell_deck_stone.",
+        extrapolated="The saturation cut, and the risk that this cluster is contaminated: the left-hand strip runs beside the Centauri ambassador's warm costume, which is the likeliest source of its H 38 warm lean. That is the second reason the hue is carried at 40% strength rather than as measured, and it is why the shade is separated from its siblings by VALUE, which cannot be contaminated the same way. Overturned by a frame of this floor with nobody standing on it."))
+
+        # A CORRECTION TO THE MODULE, and it is worth carrying: customs.py's
+        # docstring describes 'a backlit ceiling grid above the screens —
+        # yellow-green illuminated panels in a coffered lattice.' Measured, the
+        # register is H 54.6-57.0 at every value band — an amber-gold, roughly
+        # 60 degrees warmer than yellow-green. Six bands agree to within 2.4
+        # degrees, so this is not a marginal call. It matters because this is
+        # the ceiling of the player's first room and it sets the colour of the
+        # light falling on the arrival crowd.
+    a(Material(
+        "light_ceiling_grid", "Arrival Hall Ceiling Grid — the backlit amber coffer",
+        albedo=(0.480, 0.470, 0.380), roughness=0.35, metallic=0,
+        specular=0.22,
+        emission=(1.000, 0.987, 0.734), emission_energy=2.6,
+        binds=("customs_ceiling_lamp",), scenes=("interior",),
+        source="reference/11-props-and-technology/babylon 5 welcome sign, instructions, and hub.jpg (authority 1), balanced with gains 1.046/1.065/0.905 — the same gains materials.py's device_screen_glass already cites for this frame, recomputed here from the frame as 1.0455/1.0652/0.9052 and reproducing them exactly. Value-banded over the grid at (0.310,0.010)-(0.570,0.160): H 60.1 S 0.090 at V 0.06-0.10 (n=7013, the dark lattice between cells); then the lit cells, H 55.3 S 0.356 at V 0.10-0.16 (n=2539), H 54.6 S 0.357 at V 0.16-0.24 (n=2175), H 56.7 S 0.302 at V 0.24-0.34 (n=1760), H 57.0 S 0.267 at V 0.34-0.50 (n=1284), H 56.9 S 0.247 at V 0.50-0.75 (n=212). Hue is CONSTANT at H 54.6-57.0 across an 8.5x range of value while saturation falls monotonically — a lit panel blowing toward white with its register intact. Normalised from the V 0.34-0.50 band (rgb 0.399/0.394/0.293) that is (1.000, 0.987, 0.734).",
+        extrapolated="emission_energy 2.6 and the diffuser albedo. Energy: the frame ranks its own three source families and this one is last — measured balanced peaks are 0.99 for the screens, 0.82 for the vertical wall strips and 0.55 for the ceiling grid — so it is ambient decoration rather than a task light and sits below materials.py's light_deck_channel (3.5), which is the library's other decorative-register source. Albedo 0.48/0.47/0.38 carries a hint of the emission hue, following light_downlight's pattern of an albedo tinted toward its own output; it is otherwise unsourced because the grid is never seen unlit. Overturned by any frame of this ceiling with the panels off."))
 
     return tuple(M)
 

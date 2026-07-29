@@ -2503,13 +2503,14 @@ group set needs `zocalo_run(3, cap_ends=True)` (38) plus the `table_pedestal_fiv
 
 ## NEXT SESSION
 
-1. **Apply `blue_public`** — `docs/layer3-proposals/bespoke/blue_public.json`, 27 materials over
-   55 groups, 49 of them currently unresolved. It is validated except for two things, both easy:
-   eight entries are REBINDS of existing procedural materials (`shell_wall_panel`,
-   `shell_deck_public`, `steel_gantry_oxide`, `edge_chevron_nosing`, …) and must be merged into
-   those materials' `binds` rather than added as new ones — the same shape as `signage_panel`; and
-   `council_medallion_spoke` is claimed by both `drum_structure` and `furn_service_steel`, whose
-   fragments do not contain each other, so one must be made specific.
+1. **APPLIED.** `blue_public` landed: **9 new materials for 55 groups**, because EIGHTEEN of its
+   surfaces were ones this library already had. The proposal rebound them — `bay_deck` onto
+   `shell_deck_industrial`, `cc_floor` and `customs_deck` onto `shell_deck_public`, `council_top`
+   onto `furn_casework` — instead of authoring near-duplicates, which is what keeps a docking
+   bay's deck and a fabrication bay's deck the same deck. The `council_medallion_spoke`
+   "competition" was my validation ignoring scene filtering: `drum_structure` is a drum-scene
+   material and cannot compete inside `interior`. **Bespoke coverage 4/42 → 42/42** for the four
+   modules the gate can build; 1,269 assertions.
 2. **Re-run the `plant_living` cluster** — `plant`, `alien_sector`, `hospitality`, `quarters`. It
    is the only one that never produced a result. The workflow can be resumed with
    `resumeFromRunId: "wf_e25e65a5-33c"`; the five that finished replay from cache.
