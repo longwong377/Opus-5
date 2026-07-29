@@ -1590,3 +1590,46 @@ fixtures per square metre; letting a room pass it by growing more wall ribs is e
 measure would go vacuous.
 
 **Overturned by:** any frame of one of these interiors, which fixes what is actually in it.
+
+---
+
+## INV-036 — Habitat windows: the station lit from within
+
+**Status:** extrapolation, authority 5. `station/materials.py`, `FIXTURES`-adjacent but separate:
+`WINDOW_*`, `gen_window_sheet`, material `habitat_windows`.
+
+**What:** every aperture dimension (1.10 × 1.35 m at 2.40 m centres, 1.05 m sill), the band layout
+(eight decks per repeat, two of them glazed), the 66% lit fraction, and the three colour registers.
+
+**Why it exists:** the standing blocking finding against `exterior_approach` — *"NO EMISSIVE
+WINDOWS ANYWHERE. A station housing 250,000 people renders completely unlit from within. It reads
+as a derelict, not a city."* It is the first thing the owner's opening beat shows.
+
+**What is sourced and what is not.** No frame in the reference set shows the hull lit from within
+at range, so every dimension here is extrapolated. What *is* sourced is **which sections get them**:
+`schema/station.yaml` names `green_section` (containing `habitat_cylinder` and `aft_hull_block`) and
+`red_section` as the pressurised, inhabited volumes, and `directory.py`'s sector z-extents agree.
+The truss spine, the reactor and the deflector spike have nobody in them and stay dark — which is
+what makes the lit part read as inhabited rather than as a lightbox.
+
+**Row pitch is not a number here.** It is `interior.DECK_PITCH_M`, imported. CLAUDE.md hard rule 4:
+a schema change that moves the decks moves the windows with them. The sheet's repeat is also square
+*by derivation* — the column pitch is the row repeat divided by the column count — because `.tres`
+writes one scalar `uv1_scale` and a non-square sheet would be silently stretched.
+
+**Two bakes, and the first one was wrong in an instructive way.** Version one glazed *every* deck of
+both habitat sections. The engine frame came back reading as rust-coloured static: the drum is 500 m
+across, so a 2.4 m pitch puts ~650 apertures round the circumference and they alias into noise long
+before they resolve into windows. Worse, the white speckle turned out to be the window *frames* —
+modelled as metallic 0.55 standing 0.25 proud, so every aperture threw a sunlit specular highlight.
+
+Both were the wrong building rather than the wrong tuning. A window surround is a shadowed recess,
+not a bright ridge; and the reference hull is mostly **plate with window strips in it**. The sheet is
+now eight decks tall with two glazed, and the frame is a dark rebate.
+
+**The lit fraction is not 1.0, and that is the whole difference between a city and a lightbox.**
+Roughly a third of the population is asleep on a 24 h cycle (`npc/schedule.py`), quarters are empty
+while their resident is on shift, and plant volumes have no windows lit at all.
+
+**Overturned by:** any frame showing the hull lit from within — which would fix the band spacing,
+the lit fraction and the colour mix at once.

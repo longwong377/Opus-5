@@ -1,4 +1,4 @@
-[gd_scene load_steps=32 format=3]
+[gd_scene load_steps=39 format=3]
 
 ; Standing inside the habitat drum.
 ;
@@ -76,6 +76,12 @@
 [ext_resource type="Material" path="res://materials/tram_glass.tres" id="m_glass"]
 [ext_resource type="Material" path="res://materials/tram_headlight.tres" id="m_headlight"]
 [ext_resource type="Material" path="res://materials/unbound.tres" id="m_unbound"]
+[ext_resource type="Material" path="res://materials/hazard_chevron.tres" id="m_hazard_chevron"]
+[ext_resource type="Material" path="res://materials/tram_saloon_floor.tres" id="m_tram_saloon_floor"]
+[ext_resource type="Material" path="res://materials/tram_saloon_post.tres" id="m_tram_saloon_post"]
+[ext_resource type="Material" path="res://materials/tram_saloon_seat.tres" id="m_tram_saloon_seat"]
+[ext_resource type="Material" path="res://materials/tram_saloon_strip.tres" id="m_tram_saloon_strip"]
+[ext_resource type="Material" path="res://materials/tram_saloon_wall.tres" id="m_tram_saloon_wall"]
 
 [sub_resource type="Environment" id="Env"]
 ; Flat colour, not a sky: from inside the drum there is nothing beyond the
@@ -134,15 +140,25 @@ fallback_material = ExtResource("m_unbound")
 warmup_frames = 8
 light_gain = 1.0
 material_rules = {
+"bay_lip": ExtResource("m_hazard_chevron"),
 "core_hub_": ExtResource("m_core_dark"),
 "core_hub_lamp": ExtResource("m_lamp_small"),
 "core_node_": ExtResource("m_core_dark"),
+"core_tube": ExtResource("m_core"),
 "core_tube_band": ExtResource("m_core_band"),
 "core_tube_band_warm": ExtResource("m_core_band_warm"),
 "core_tube_barrel": ExtResource("m_core"),
 "core_tube_cage": ExtResource("m_core_dark"),
 "core_tube_collar": ExtResource("m_core_collar"),
 "core_tube_end": ExtResource("m_core_dark"),
+"drum_arable": ExtResource("m_field"),
+"drum_parkland": ExtResource("m_park"),
+"drum_riser_arable": ExtResource("m_shore"),
+"drum_riser_parkland": ExtResource("m_shore"),
+"drum_riser_settlement": ExtResource("m_settlement"),
+"drum_riser_water": ExtResource("m_shore"),
+"drum_settlement": ExtResource("m_settlement"),
+"drum_water": ExtResource("m_water"),
 "endcap_course_wall": ExtResource("m_endcap_dark"),
 "endcap_plate": ExtResource("m_endcap"),
 "endcap_plate_c2_checker": ExtResource("m_endcap_checker"),
@@ -161,13 +177,34 @@ material_rules = {
 "ground_road": ExtResource("m_road"),
 "ground_settlement": ExtResource("m_settlement"),
 "ground_shore": ExtResource("m_shore"),
+"ground_verge": ExtResource("m_park"),
 "ground_water": ExtResource("m_water"),
+"hazard_stripe": ExtResource("m_hazard_chevron"),
 "spoke": ExtResource("m_struct"),
-"tram_": ExtResource("m_struct"),
 "tram_band": ExtResource("m_tram_band"),
 "tram_body": ExtResource("m_tram_body"),
+"tram_cap": ExtResource("m_tram_body"),
 "tram_glass": ExtResource("m_glass"),
 "tram_headlight": ExtResource("m_headlight"),
+"tram_in_bezel": ExtResource("m_tram_saloon_wall"),
+"tram_in_ceiling": ExtResource("m_tram_saloon_wall"),
+"tram_in_device": ExtResource("m_tram_saloon_strip"),
+"tram_in_floor": ExtResource("m_tram_saloon_floor"),
+"tram_in_mullion": ExtResource("m_tram_saloon_wall"),
+"tram_in_plinth": ExtResource("m_tram_saloon_floor"),
+"tram_in_post": ExtResource("m_tram_saloon_post"),
+"tram_in_readout": ExtResource("m_tram_saloon_strip"),
+"tram_in_reveal": ExtResource("m_tram_saloon_wall"),
+"tram_in_seat": ExtResource("m_tram_saloon_seat"),
+"tram_in_skirt": ExtResource("m_tram_saloon_floor"),
+"tram_in_strip": ExtResource("m_tram_saloon_strip"),
+"tram_in_wall": ExtResource("m_tram_saloon_wall"),
+"tram_in_window": ExtResource("m_glass"),
+"tram_port": ExtResource("m_tram_body"),
+"tram_recess": ExtResource("m_tram_body"),
+"tram_roof": ExtResource("m_tram_body"),
+"tram_shoe": ExtResource("m_tram_body"),
+"tram_valance": ExtResource("m_tram_body"),
 "truss_chord": ExtResource("m_truss"),
 "truss_lamp": ExtResource("m_lamp"),
 "truss_tie": ExtResource("m_truss"),

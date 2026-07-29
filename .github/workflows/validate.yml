@@ -122,6 +122,16 @@ jobs:
           python3 -c "import interior as I; s,p=I.load(); m=I.write_cell_manifest('generated/cell_manifest.json',s,p); print(m['decks'],'decks',m['cells'],'cells')"
           git diff --exit-code generated/cell_manifest.json
 
+      # Layer 3. The material library and -- the part that was missing -- the
+      # gate that the scene files on disk agree with it. Material rules used to
+      # be emitted to a .txt for a human to paste into a .tscn; the first
+      # material added after that exported cleanly, passed every assertion, and
+      # never reached the render, and two others had been missing from the
+      # exterior scene for longer. Nothing was gating on it because this file
+      # never ran materials.py at all.
+      - name: Materials, and that the scenes still agree with them
+        run: python3 station/materials.py
+
       - name: Rotating-frame physics
         run: python3 station/physics/test_rotating_frame.py
 

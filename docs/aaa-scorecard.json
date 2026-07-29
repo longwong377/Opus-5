@@ -1,436 +1,493 @@
 {
-  "version": 1,
-  "notes": "SEED, NOT A REVIEW. Round 1 for every subsystem was scored by the author of docs/AAA-STANDARD.md from facts already recorded in STATE.md, so that the gate has real data to run against. No adversarial review round has produced these numbers. Treat every score as provisional until a reviewer other than the builder has scored it. The scores are deliberately conservative: where STATE.md records a defect, the descriptor it matches is the score.",
-  "bar": {
-    "min_score": 4,
-    "clean_rounds_required": 2,
-    "max_rounds": 4
-  },
-  "subsystems": {
-    "drum_ground": {
-      "status": "active",
-      "rounds": [
-        {
-          "round": 1,
-          "reviewer": "seed from STATE.md session 2x/2y",
-          "date": "2026-07-27",
-          "scores": {
-            "craft": 3,
-            "fidelity": 3,
-            "performance": 1,
-            "robustness": 0
-          },
-          "evidence": {},
-          "broke_assertions": false,
-          "findings": [
-            {
-              "severity": "blocking",
-              "dimension": "robustness",
-              "descriptor": "R0",
-              "where": "station/drum_ground.py",
-              "text": "The periodicity assertion compares sample(0.0, w) against sample(1.0, w), but every consumer applies u % 1.0 first, so it is a value compared against itself. Monkeypatching a 3.295 m seam cliff still scored 0.000 and passed."
-            },
-            {
-              "severity": "blocking",
-              "dimension": "performance",
-              "descriptor": "P1",
-              "where": "station/budget.py",
-              "text": "The ground-density gate measures the old flat shell at 0.005 tri/m2 and will keep printing PASS whatever the ground costs. Worst visible set is 105,920 triangles and is ungated."
-            },
-            {
-              "severity": "major",
-              "dimension": "fidelity",
-              "descriptor": "F3",
-              "text": "Ground tagging widths are bound to the LOD ramp width, so avenues render 31.2 m and trunk roads 51 m against an intended 20 m, and the settlement band comes out 62% street. INV-016 is single-source with no cross-check."
-            },
-            {
-              "severity": "major",
-              "dimension": "craft",
-              "descriptor": "C3",
-              "text": "Ground does not meet the end caps: a 1.2 m axial mismatch where the cap's outermost course stands proud of the terrain."
-            }
-          ]
-        }
-      ]
-    },
-    "exterior_components": {
-      "status": "active",
-      "rounds": [
-        {
-          "round": 1,
-          "reviewer": "seed from STATE.md sessions 2b/2d/2o/2t",
-          "date": "2026-07-27",
-          "scores": {
-            "craft": 1,
-            "fidelity": 3,
-            "performance": 4,
-            "robustness": 2
-          },
-          "evidence": {
-            "performance": "budget.py: 2,616 component triangles inside the 400,000 exterior allowance; 23 draw calls of 64"
-          },
-          "broke_assertions": false,
-          "findings": [
-            {
-              "severity": "blocking",
-              "dimension": "craft",
-              "descriptor": "C1",
-              "where": "station/components.py",
-              "text": "Cobra bays, docking ports, observation domes and rotundas are box primitives placed by rule. Correct positions, placeholder shapes."
-            },
-            {
-              "severity": "major",
-              "dimension": "fidelity",
-              "descriptor": "F3",
-              "text": "Radiators and the forward comms plate are reference-corrected and cross-checked; the remaining component types are placed from callout position alone with no second source."
-            },
-            {
-              "severity": "major",
-              "dimension": "robustness",
-              "descriptor": "R2",
-              "text": "validate.py asserts each component produced geometry and stayed inside the radius envelope. Nothing asserts a component is closed, and no assertion has been deliberately broken."
-            }
-          ]
-        }
-      ]
-    },
-    "habitat_drum_shell": {
-      "status": "active",
-      "rounds": [
-        {
-          "round": 1,
-          "reviewer": "seed from STATE.md sessions 2u/2v/2y",
-          "date": "2026-07-27",
-          "scores": {
-            "craft": 3,
-            "fidelity": 4,
-            "performance": 4,
-            "robustness": 3
-          },
-          "evidence": {
-            "fidelity": "Hub cone measured at ~20% of cap radius against the schema's 0.18 read off an unrelated authority-3 print diagram: two independent sources 2% apart, asserted to stay within 0.03. Lighting from truss light runs sourced to 34b and 33a, authority 1.",
-            "performance": "budget.py drum gate: 51,128 of 300,000 triangles (17%), 4% of a 1.2 M frame against a 25% allowance"
-          },
-          "broke_assertions": false,
-          "findings": [
-            {
-              "severity": "major",
-              "dimension": "craft",
-              "descriptor": "C3",
-              "text": "Land-use bands are flat surfaces with riser walls. The shell reads at drum scale and has no tertiary detail at walking distance."
-            },
-            {
-              "severity": "major",
-              "dimension": "robustness",
-              "descriptor": "R3",
-              "where": "station/interior.py",
-              "text": "boundary_edges() and _inward_fraction() are genuine class-level assertions and three of the six new ones were verified by deliberate breakage. Not all of them were, and ROBUSTNESS 4 requires every assertion to have been broken and observed to fail."
-            },
-            {
-              "severity": "minor",
-              "dimension": "craft",
-              "descriptor": "C4",
-              "text": "Checker plating became a material group rather than 0.35 m of relief, which is correct, but no material has been authored to carry it yet."
-            }
-          ]
-        }
-      ]
-    },
-    "hull_exterior": {
-      "status": "active",
-      "rounds": [
-        {
-          "round": 1,
-          "reviewer": "seed from STATE.md sessions 1/2/2e/2n",
-          "date": "2026-07-27",
-          "scores": {
-            "craft": 3,
-            "fidelity": 4,
-            "performance": 4,
-            "robustness": 3
-          },
-          "evidence": {
-            "fidelity": "Miller's tabulated diameters against the independently traced radius profile agree to 5.7% (Red) and 3.9% (Green); hull length 8,046.9 m against canon 8,047. Two derivations that could not have copied each other.",
-            "performance": "budget.py: 256,232 of 400,000 triangles (64%), 23 of 64 draw calls, 18 of 32 MB vertex bandwidth; LOD switch distances derived from silhouette sagitta r(1-cos(pi/n))"
-          },
-          "broke_assertions": false,
-          "findings": [
-            {
-              "severity": "major",
-              "dimension": "craft",
-              "descriptor": "C3",
-              "text": "Plating and greebles give a size hierarchy that reads at 200 m and at 20 km, but the tertiary tier is generic: the same panel, hatch and blister repeated without regard to what the part does."
-            },
-            {
-              "severity": "major",
-              "dimension": "robustness",
-              "descriptor": "R3",
-              "where": "station/validate.py",
-              "text": "28 canon assertions and byte-for-byte determinism across two PYTHONHASHSEED values. The hull has no boundary_edges() closure assertion -- 'closed at both ends' is not the same measurement -- and the assertions have not been deliberately broken."
-            }
-          ]
-        }
-      ]
-    },
-    "interior_kit": {
-      "status": "active",
-      "rounds": [
-        {
-          "round": 1,
-          "reviewer": "seed from STATE.md sessions 2l/2p/2w",
-          "date": "2026-07-27",
-          "scores": {
-            "craft": 3,
-            "fidelity": 3,
-            "performance": 4,
-            "robustness": 3
-          },
-          "evidence": {
-            "performance": "budget.py: 28,791 of 60,000 visible structure triangles (48%) against a 91.3 m sight line DERIVED from ring curvature, 285 tri/m marginal against 400; cell seam asserted vertex for vertex including wrap-around"
-          },
-          "broke_assertions": false,
-          "findings": [
-            {
-              "severity": "major",
-              "dimension": "fidelity",
-              "descriptor": "F3",
-              "text": "INV-007's chamfered corridor section is inferred, not observed. 'corridor in alien sector.webp' shows a chamfered aperture; nothing establishes the passage behind it has that profile, and 'grey level 1.webp' shows a rectangular portal header. Single source, no cross-check."
-            },
-            {
-              "severity": "major",
-              "dimension": "craft",
-              "descriptor": "C3",
-              "text": "A door bay has no wall build-up: corridor_section passes courses=False for the bay a wall door takes over, so skirt, dado, rail band and plate courses stop dead at the door. grey level 1.webp shows the build-up running continuously past portals."
-            },
-            {
-              "severity": "major",
-              "dimension": "robustness",
-              "descriptor": "R3",
-              "text": "Every primitive is now gated on signed volume and a corridor is asserted closed overhead, both class-level. Assertions have been broken and observed to fail for the closure test only, not for the rest."
-            },
-            {
-              "severity": "minor",
-              "dimension": "craft",
-              "descriptor": "C4",
-              "text": "Junction cross-corridor deck tile pitch is 0.57 m against the arms' 0.605 m, and the grid is not driven from a shared origin, so there is a visible seam at each crossing mouth."
-            }
-          ]
-        }
-      ]
-    },
-    "npc_foundation": {
-      "status": "active",
-      "rounds": [
-        {
-          "round": 1,
-          "reviewer": "seed from STATE.md session 2m",
-          "date": "2026-07-27",
-          "scores": {
-            "craft": 3,
-            "fidelity": 4,
-            "performance": 0,
-            "robustness": 3
-          },
-          "evidence": {
-            "fidelity": "Per-species grammars fitted to names spoken on screen with the evidence recorded beside each pattern; Centauri house names established by Londo and Carn sharing Mollari; Vorlon kept a closed list because two attested names cannot support a generator, and a test asserts it stays closed."
-          },
-          "broke_assertions": false,
-          "findings": [
-            {
-              "severity": "blocking",
-              "dimension": "performance",
-              "descriptor": "P0",
-              "where": "station/budget.py",
-              "text": "NPC density is not gated anywhere. Interior structure is already allowed only 5% of a 1.2 M triangle frame and NPCs come out of the same frame; nothing measures what a populated corridor costs."
-            },
-            {
-              "severity": "major",
-              "dimension": "craft",
-              "descriptor": "C3",
-              "text": "Names, roles and schedules exist; there is no body, no animation and no crowd behaviour, so nothing yet reads as a person at any distance."
-            },
-            {
-              "severity": "major",
-              "dimension": "robustness",
-              "descriptor": "R3",
-              "text": "38 tests covering the two design bugs found (unshifted sleep rhythm, species mix summing to 0.94). Determinism of NPC identity against iteration order is not asserted, and no assertion has been deliberately broken."
-            }
-          ]
-        }
-      ]
-    },
-    "tram": {
-      "status": "active",
-      "rounds": [
-        {
-          "round": 1,
-          "reviewer": "seed from STATE.md sessions 2x/2y",
-          "date": "2026-07-27",
-          "scores": {
-            "craft": 3,
-            "fidelity": 2,
-            "performance": 2,
-            "robustness": 0
-          },
-          "evidence": {},
-          "broke_assertions": false,
-          "findings": [
-            {
-              "severity": "blocking",
-              "dimension": "robustness",
-              "descriptor": "R0",
-              "where": "station/tram.py",
-              "text": "The 'measured proportion' assertions are algebraic identities that never touch the built geometry. They hold for CAR_BAYS = -3.0 and CAR_DEPTH_FRAC = 99.0. Separately, tram cars pass through the radial spokes: 168 of 3,144 car vertices sit 6.43 m inside, confirmed independently by point-in-box and by rendering, and no assertion exists between the two modules."
-            },
-            {
-              "severity": "blocking",
-              "dimension": "fidelity",
-              "descriptor": "F2",
-              "text": "Car length is disputed between two authority-1 frames -- 34b's rectification gives 3.9 bays (96 m), 33a shows ~5 window bays at a length:height near 1.8:1 against the model's 21 bays and ~9:1, i.e. 3-4x shorter. This is unresolved and unrecorded as a conflict."
-            },
-            {
-              "severity": "major",
-              "dimension": "performance",
-              "descriptor": "P2",
-              "text": "1,252 triangles exterior and 4,158 with the saloon, measured once for one car. No worst-case sweep over a full guideway of cars, and no entry in budget.py."
-            },
-            {
-              "severity": "major",
-              "dimension": "craft",
-              "descriptor": "C3",
-              "text": "Exterior car and saloon read as the intended object at guideway distance. Being literal about 35a's continuous bench cushions made it 2.5x cheaper, but there is no tertiary detail and no material differentiation."
-            }
-          ]
-        }
-      ]
-    },
-    "exterior_approach": {
-      "status": "active",
-      "rounds": [
-        {
-          "round": 1,
-          "reviewer": "builder, session 3k -- FIRST ENGINE-RENDERED SCORE IN THE PROJECT",
-          "date": "2026-07-29",
-          "scores": {
-            "craft": 3,
-            "fidelity": 4,
-            "performance": 3,
-            "robustness": 4
-          },
-          "evidence": {
-            "engine": "Godot 4.4 double + Mesa lavapipe, Forward+, 1280x720",
-            "frames": [
-              "docs/engine-approach-far.png (14 km, 34 s)",
-              "docs/engine-approach-near.png (3.4 km, 27 s)"
-            ],
-            "triangles": 200754,
-            "note": "Every previous render in this project came from tools/preview_render.py, the flat-shaded rasteriser, which CLAUDE.md says judges structure and not craft. This is the first frame ever scored on craft."
-          },
-          "broke_assertions": false,
-          "findings": [
-            {
-              "severity": "blocking",
-              "dimension": "craft",
-              "descriptor": "C2",
-              "where": "godot/materials/, exterior",
-              "text": "NO EMISSIVE WINDOWS ANYWHERE. A station housing 250,000 people is rendered completely unlit from within. At any approach distance this is the single largest failure: it reads as a derelict, not a city. The owner's opening beat is the station coming into view -- and what comes into view has nobody home."
-            },
-            {
-              "severity": "major",
-              "dimension": "craft",
-              "descriptor": "C3",
-              "where": "godot/materials/",
-              "text": "The whole hull is one pale beige note. No material variation between metal, composite and glazing; no per-sector identity. The 2.23x gravity gradient and five distinct sectors are invisible from outside."
-            },
-            {
-              "severity": "major",
-              "dimension": "craft",
-              "descriptor": "C3",
-              "where": "godot/scenes/exterior.tscn",
-              "text": "Single hard key light, no fill and no bounce. The shadow side is pure black, which flattens an 8 km object into a cutout. No bloom, no lens response, no exposure adaptation."
-            },
-            {
-              "severity": "major",
-              "dimension": "craft",
-              "descriptor": "C3",
-              "where": "exterior",
-              "text": "Scale does not read. Nothing in frame gives size -- no traffic, no Starfury, no transport, no lit windows to count. An 8,047 m object photographs like a 2 m model."
-            },
-            {
-              "severity": "minor",
-              "dimension": "craft",
-              "descriptor": "C4",
-              "where": "components.py solar/heat-exchange arrays",
-              "text": "Swept arrays read as flat grey cards. No specular response, so they do not read as panels."
-            },
-            {
-              "severity": "minor",
-              "dimension": "performance",
-              "descriptor": "P3",
-              "where": "whole path",
-              "text": "27-34 s per 720p frame on lavapipe. Adequate for judging, says nothing about framerate. No measurement on target hardware exists anywhere in the project."
-            }
-          ],
-          "what_is_good": [
-            "Silhouette is unmistakably Babylon 5 at both 14 km and 3.4 km.",
-            "Hull plating, greebling, panel lines and clamped conduit runs all read at 3.4 km and resolve away cleanly at 14 km -- the LOD and greeble-relief work from sessions 2n and 3k is paying off.",
-            "Orange-red marker lights scattered over the hull are the only thing currently giving the station life, and they work.",
-            "Structural banding breaks the drum's mass convincingly."
-          ]
-        }
-      ]
-    },
-    "drum_interior_engine": {
-      "status": "active",
-      "rounds": [
-        {
-          "round": 1,
-          "reviewer": "builder, session 3k -- M0 interior path proof",
-          "date": "2026-07-29",
-          "scores": {
-            "craft": 2,
-            "fidelity": 3,
-            "performance": 4,
-            "robustness": 3
-          },
-          "evidence": {
-            "engine": "Godot 4.4 double + lavapipe, Forward+, 1000x560, 15 s",
-            "frames": [
-              "docs/engine-m0-interior.png"
-            ]
-          },
-          "broke_assertions": false,
-          "findings": [
-            {
-              "severity": "blocking",
-              "dimension": "craft",
-              "descriptor": "C2",
-              "where": "godot/materials/, guideway light runs",
-              "text": "THE HABITAT'S LIGHT RUNS RENDER MAGENTA ON ONE SIDE AND WHITE ON THE OTHER. These are the drum's ONLY light source and are authority 1 (Babylon_5_2-22_33a/34b). Half of them are falling back to an unassigned material. Invisible to every assertion in the project and invisible in the preview rasteriser, which does not do materials at all."
-            },
-            {
-              "severity": "major",
-              "dimension": "craft",
-              "descriptor": "C3",
-              "where": "drum ground",
-              "text": "The ground reads as flat olive and tan blocks with hard edges between land-use bands. No texture, no transition, no detail at any distance."
-            },
-            {
-              "severity": "major",
-              "dimension": "craft",
-              "descriptor": "C3",
-              "where": "drum",
-              "text": "No atmospheric perspective. A 2.6 km volume with 556 m of air overhead shows no haze, so the far end cap reads at the same contrast as the near ground and the volume collapses."
-            }
-          ],
-          "what_is_good": [
-            "The payoff view works: ground curves up and away, the far side arches overhead.",
-            "Guideway trusses recede correctly and read as structure.",
-            "Core tube, hub and spokes read at the vanishing point.",
-            "15 s per frame -- the interior path is FASTER than the exterior, so iteration is cheap."
-          ]
-        }
-      ]
+ "version": 1,
+ "notes": "SEED, NOT A REVIEW. Round 1 for every subsystem was scored by the author of docs/AAA-STANDARD.md from facts already recorded in STATE.md, so that the gate has real data to run against. No adversarial review round has produced these numbers. Treat every score as provisional until a reviewer other than the builder has scored it. The scores are deliberately conservative: where STATE.md records a defect, the descriptor it matches is the score.",
+ "bar": {
+  "min_score": 4,
+  "clean_rounds_required": 2,
+  "max_rounds": 4
+ },
+ "subsystems": {
+  "drum_ground": {
+   "status": "active",
+   "rounds": [
+    {
+     "round": 1,
+     "reviewer": "seed from STATE.md session 2x/2y",
+     "date": "2026-07-27",
+     "scores": {
+      "craft": 3,
+      "fidelity": 3,
+      "performance": 1,
+      "robustness": 0
+     },
+     "evidence": {},
+     "broke_assertions": false,
+     "findings": [
+      {
+       "severity": "blocking",
+       "dimension": "robustness",
+       "descriptor": "R0",
+       "where": "station/drum_ground.py",
+       "text": "The periodicity assertion compares sample(0.0, w) against sample(1.0, w), but every consumer applies u % 1.0 first, so it is a value compared against itself. Monkeypatching a 3.295 m seam cliff still scored 0.000 and passed."
+      },
+      {
+       "severity": "blocking",
+       "dimension": "performance",
+       "descriptor": "P1",
+       "where": "station/budget.py",
+       "text": "The ground-density gate measures the old flat shell at 0.005 tri/m2 and will keep printing PASS whatever the ground costs. Worst visible set is 105,920 triangles and is ungated."
+      },
+      {
+       "severity": "major",
+       "dimension": "fidelity",
+       "descriptor": "F3",
+       "text": "Ground tagging widths are bound to the LOD ramp width, so avenues render 31.2 m and trunk roads 51 m against an intended 20 m, and the settlement band comes out 62% street. INV-016 is single-source with no cross-check."
+      },
+      {
+       "severity": "major",
+       "dimension": "craft",
+       "descriptor": "C3",
+       "text": "Ground does not meet the end caps: a 1.2 m axial mismatch where the cap's outermost course stands proud of the terrain."
+      }
+     ]
     }
+   ]
+  },
+  "exterior_components": {
+   "status": "active",
+   "rounds": [
+    {
+     "round": 1,
+     "reviewer": "seed from STATE.md sessions 2b/2d/2o/2t",
+     "date": "2026-07-27",
+     "scores": {
+      "craft": 1,
+      "fidelity": 3,
+      "performance": 4,
+      "robustness": 2
+     },
+     "evidence": {
+      "performance": "budget.py: 2,616 component triangles inside the 400,000 exterior allowance; 23 draw calls of 64"
+     },
+     "broke_assertions": false,
+     "findings": [
+      {
+       "severity": "blocking",
+       "dimension": "craft",
+       "descriptor": "C1",
+       "where": "station/components.py",
+       "text": "Cobra bays, docking ports, observation domes and rotundas are box primitives placed by rule. Correct positions, placeholder shapes."
+      },
+      {
+       "severity": "major",
+       "dimension": "fidelity",
+       "descriptor": "F3",
+       "text": "Radiators and the forward comms plate are reference-corrected and cross-checked; the remaining component types are placed from callout position alone with no second source."
+      },
+      {
+       "severity": "major",
+       "dimension": "robustness",
+       "descriptor": "R2",
+       "text": "validate.py asserts each component produced geometry and stayed inside the radius envelope. Nothing asserts a component is closed, and no assertion has been deliberately broken."
+      }
+     ]
+    }
+   ]
+  },
+  "habitat_drum_shell": {
+   "status": "active",
+   "rounds": [
+    {
+     "round": 1,
+     "reviewer": "seed from STATE.md sessions 2u/2v/2y",
+     "date": "2026-07-27",
+     "scores": {
+      "craft": 3,
+      "fidelity": 4,
+      "performance": 4,
+      "robustness": 3
+     },
+     "evidence": {
+      "fidelity": "Hub cone measured at ~20% of cap radius against the schema's 0.18 read off an unrelated authority-3 print diagram: two independent sources 2% apart, asserted to stay within 0.03. Lighting from truss light runs sourced to 34b and 33a, authority 1.",
+      "performance": "budget.py drum gate: 51,128 of 300,000 triangles (17%), 4% of a 1.2 M frame against a 25% allowance"
+     },
+     "broke_assertions": false,
+     "findings": [
+      {
+       "severity": "major",
+       "dimension": "craft",
+       "descriptor": "C3",
+       "text": "Land-use bands are flat surfaces with riser walls. The shell reads at drum scale and has no tertiary detail at walking distance."
+      },
+      {
+       "severity": "major",
+       "dimension": "robustness",
+       "descriptor": "R3",
+       "where": "station/interior.py",
+       "text": "boundary_edges() and _inward_fraction() are genuine class-level assertions and three of the six new ones were verified by deliberate breakage. Not all of them were, and ROBUSTNESS 4 requires every assertion to have been broken and observed to fail."
+      },
+      {
+       "severity": "minor",
+       "dimension": "craft",
+       "descriptor": "C4",
+       "text": "Checker plating became a material group rather than 0.35 m of relief, which is correct, but no material has been authored to carry it yet."
+      }
+     ]
+    }
+   ]
+  },
+  "hull_exterior": {
+   "status": "active",
+   "rounds": [
+    {
+     "round": 1,
+     "reviewer": "seed from STATE.md sessions 1/2/2e/2n",
+     "date": "2026-07-27",
+     "scores": {
+      "craft": 3,
+      "fidelity": 4,
+      "performance": 4,
+      "robustness": 3
+     },
+     "evidence": {
+      "fidelity": "Miller's tabulated diameters against the independently traced radius profile agree to 5.7% (Red) and 3.9% (Green); hull length 8,046.9 m against canon 8,047. Two derivations that could not have copied each other.",
+      "performance": "budget.py: 256,232 of 400,000 triangles (64%), 23 of 64 draw calls, 18 of 32 MB vertex bandwidth; LOD switch distances derived from silhouette sagitta r(1-cos(pi/n))"
+     },
+     "broke_assertions": false,
+     "findings": [
+      {
+       "severity": "major",
+       "dimension": "craft",
+       "descriptor": "C3",
+       "text": "Plating and greebles give a size hierarchy that reads at 200 m and at 20 km, but the tertiary tier is generic: the same panel, hatch and blister repeated without regard to what the part does."
+      },
+      {
+       "severity": "major",
+       "dimension": "robustness",
+       "descriptor": "R3",
+       "where": "station/validate.py",
+       "text": "28 canon assertions and byte-for-byte determinism across two PYTHONHASHSEED values. The hull has no boundary_edges() closure assertion -- 'closed at both ends' is not the same measurement -- and the assertions have not been deliberately broken."
+      }
+     ]
+    }
+   ]
+  },
+  "interior_kit": {
+   "status": "active",
+   "rounds": [
+    {
+     "round": 1,
+     "reviewer": "seed from STATE.md sessions 2l/2p/2w",
+     "date": "2026-07-27",
+     "scores": {
+      "craft": 3,
+      "fidelity": 3,
+      "performance": 4,
+      "robustness": 3
+     },
+     "evidence": {
+      "performance": "budget.py: 28,791 of 60,000 visible structure triangles (48%) against a 91.3 m sight line DERIVED from ring curvature, 285 tri/m marginal against 400; cell seam asserted vertex for vertex including wrap-around"
+     },
+     "broke_assertions": false,
+     "findings": [
+      {
+       "severity": "major",
+       "dimension": "fidelity",
+       "descriptor": "F3",
+       "text": "INV-007's chamfered corridor section is inferred, not observed. 'corridor in alien sector.webp' shows a chamfered aperture; nothing establishes the passage behind it has that profile, and 'grey level 1.webp' shows a rectangular portal header. Single source, no cross-check."
+      },
+      {
+       "severity": "major",
+       "dimension": "craft",
+       "descriptor": "C3",
+       "text": "A door bay has no wall build-up: corridor_section passes courses=False for the bay a wall door takes over, so skirt, dado, rail band and plate courses stop dead at the door. grey level 1.webp shows the build-up running continuously past portals."
+      },
+      {
+       "severity": "major",
+       "dimension": "robustness",
+       "descriptor": "R3",
+       "text": "Every primitive is now gated on signed volume and a corridor is asserted closed overhead, both class-level. Assertions have been broken and observed to fail for the closure test only, not for the rest."
+      },
+      {
+       "severity": "minor",
+       "dimension": "craft",
+       "descriptor": "C4",
+       "text": "Junction cross-corridor deck tile pitch is 0.57 m against the arms' 0.605 m, and the grid is not driven from a shared origin, so there is a visible seam at each crossing mouth."
+      }
+     ]
+    }
+   ]
+  },
+  "npc_foundation": {
+   "status": "active",
+   "rounds": [
+    {
+     "round": 1,
+     "reviewer": "seed from STATE.md session 2m",
+     "date": "2026-07-27",
+     "scores": {
+      "craft": 3,
+      "fidelity": 4,
+      "performance": 0,
+      "robustness": 3
+     },
+     "evidence": {
+      "fidelity": "Per-species grammars fitted to names spoken on screen with the evidence recorded beside each pattern; Centauri house names established by Londo and Carn sharing Mollari; Vorlon kept a closed list because two attested names cannot support a generator, and a test asserts it stays closed."
+     },
+     "broke_assertions": false,
+     "findings": [
+      {
+       "severity": "blocking",
+       "dimension": "performance",
+       "descriptor": "P0",
+       "where": "station/budget.py",
+       "text": "NPC density is not gated anywhere. Interior structure is already allowed only 5% of a 1.2 M triangle frame and NPCs come out of the same frame; nothing measures what a populated corridor costs."
+      },
+      {
+       "severity": "major",
+       "dimension": "craft",
+       "descriptor": "C3",
+       "text": "Names, roles and schedules exist; there is no body, no animation and no crowd behaviour, so nothing yet reads as a person at any distance."
+      },
+      {
+       "severity": "major",
+       "dimension": "robustness",
+       "descriptor": "R3",
+       "text": "38 tests covering the two design bugs found (unshifted sleep rhythm, species mix summing to 0.94). Determinism of NPC identity against iteration order is not asserted, and no assertion has been deliberately broken."
+      }
+     ]
+    }
+   ]
+  },
+  "tram": {
+   "status": "active",
+   "rounds": [
+    {
+     "round": 1,
+     "reviewer": "seed from STATE.md sessions 2x/2y",
+     "date": "2026-07-27",
+     "scores": {
+      "craft": 3,
+      "fidelity": 2,
+      "performance": 2,
+      "robustness": 0
+     },
+     "evidence": {},
+     "broke_assertions": false,
+     "findings": [
+      {
+       "severity": "blocking",
+       "dimension": "robustness",
+       "descriptor": "R0",
+       "where": "station/tram.py",
+       "text": "The 'measured proportion' assertions are algebraic identities that never touch the built geometry. They hold for CAR_BAYS = -3.0 and CAR_DEPTH_FRAC = 99.0. Separately, tram cars pass through the radial spokes: 168 of 3,144 car vertices sit 6.43 m inside, confirmed independently by point-in-box and by rendering, and no assertion exists between the two modules."
+      },
+      {
+       "severity": "blocking",
+       "dimension": "fidelity",
+       "descriptor": "F2",
+       "text": "Car length is disputed between two authority-1 frames -- 34b's rectification gives 3.9 bays (96 m), 33a shows ~5 window bays at a length:height near 1.8:1 against the model's 21 bays and ~9:1, i.e. 3-4x shorter. This is unresolved and unrecorded as a conflict."
+      },
+      {
+       "severity": "major",
+       "dimension": "performance",
+       "descriptor": "P2",
+       "text": "1,252 triangles exterior and 4,158 with the saloon, measured once for one car. No worst-case sweep over a full guideway of cars, and no entry in budget.py."
+      },
+      {
+       "severity": "major",
+       "dimension": "craft",
+       "descriptor": "C3",
+       "text": "Exterior car and saloon read as the intended object at guideway distance. Being literal about 35a's continuous bench cushions made it 2.5x cheaper, but there is no tertiary detail and no material differentiation."
+      }
+     ]
+    }
+   ]
+  },
+  "exterior_approach": {
+   "status": "active",
+   "rounds": [
+    {
+     "round": 1,
+     "reviewer": "builder, session 3k -- FIRST ENGINE-RENDERED SCORE IN THE PROJECT",
+     "date": "2026-07-29",
+     "scores": {
+      "craft": 3,
+      "fidelity": 4,
+      "performance": 3,
+      "robustness": 4
+     },
+     "evidence": {
+      "engine": "Godot 4.4 double + Mesa lavapipe, Forward+, 1280x720",
+      "frames": [
+       "docs/engine-approach-far.png (14 km, 34 s)",
+       "docs/engine-approach-near.png (3.4 km, 27 s)"
+      ],
+      "triangles": 200754,
+      "note": "Every previous render in this project came from tools/preview_render.py, the flat-shaded rasteriser, which CLAUDE.md says judges structure and not craft. This is the first frame ever scored on craft."
+     },
+     "broke_assertions": false,
+     "findings": [
+      {
+       "severity": "blocking",
+       "dimension": "craft",
+       "descriptor": "C2",
+       "where": "godot/materials/, exterior",
+       "text": "NO EMISSIVE WINDOWS ANYWHERE. A station housing 250,000 people is rendered completely unlit from within. At any approach distance this is the single largest failure: it reads as a derelict, not a city. The owner's opening beat is the station coming into view -- and what comes into view has nobody home."
+      },
+      {
+       "severity": "major",
+       "dimension": "craft",
+       "descriptor": "C3",
+       "where": "godot/materials/",
+       "text": "The whole hull is one pale beige note. No material variation between metal, composite and glazing; no per-sector identity. The 2.23x gravity gradient and five distinct sectors are invisible from outside."
+      },
+      {
+       "severity": "major",
+       "dimension": "craft",
+       "descriptor": "C3",
+       "where": "godot/scenes/exterior.tscn",
+       "text": "Single hard key light, no fill and no bounce. The shadow side is pure black, which flattens an 8 km object into a cutout. No bloom, no lens response, no exposure adaptation."
+      },
+      {
+       "severity": "major",
+       "dimension": "craft",
+       "descriptor": "C3",
+       "where": "exterior",
+       "text": "Scale does not read. Nothing in frame gives size -- no traffic, no Starfury, no transport, no lit windows to count. An 8,047 m object photographs like a 2 m model."
+      },
+      {
+       "severity": "minor",
+       "dimension": "craft",
+       "descriptor": "C4",
+       "where": "components.py solar/heat-exchange arrays",
+       "text": "Swept arrays read as flat grey cards. No specular response, so they do not read as panels."
+      },
+      {
+       "severity": "minor",
+       "dimension": "performance",
+       "descriptor": "P3",
+       "where": "whole path",
+       "text": "27-34 s per 720p frame on lavapipe. Adequate for judging, says nothing about framerate. No measurement on target hardware exists anywhere in the project."
+      }
+     ],
+     "what_is_good": [
+      "Silhouette is unmistakably Babylon 5 at both 14 km and 3.4 km.",
+      "Hull plating, greebling, panel lines and clamped conduit runs all read at 3.4 km and resolve away cleanly at 14 km -- the LOD and greeble-relief work from sessions 2n and 3k is paying off.",
+      "Orange-red marker lights scattered over the hull are the only thing currently giving the station life, and they work.",
+      "Structural banding breaks the drum's mass convincingly."
+     ]
+    },
+    {
+     "round": 2,
+     "reviewer": "builder, session 3k -- NOT an independent review; the round-1 blocking finding was raised by this same author and this round records that it is answered, not that the subsystem is good.",
+     "date": "2026-07-29",
+     "scores": {
+      "craft": 4,
+      "fidelity": 4,
+      "performance": 3,
+      "robustness": 4
+     },
+     "evidence": {
+      "frames": [
+       "docs/engine-windows-nightside.png (3.4 km, anti-sun, 40 s)",
+       "docs/engine-windows-near.png (3.4 km, sunlit, 35 s)"
+      ],
+      "path": "Godot 4.4 double + Mesa lavapipe, Forward+, 1280x720",
+      "materials": "station/materials.py 600 assertions; habitat_windows bound to green_section, red_section, aft_hull_block, habitat_cylinder, observation_rotunda"
+     },
+     "broke_assertions": false,
+     "findings": [
+      {
+       "severity": "resolved",
+       "dimension": "craft",
+       "descriptor": "C4",
+       "where": "station/materials.py habitat_windows, INV-036",
+       "text": "ROUND 1'S BLOCKING FINDING IS ANSWERED. The anti-sun frame shows warm window bands running the length of both habitat sections with a scatter of marker lights: the station reads as inhabited rather than as a derelict. The sunlit frame correctly shows the bands as texture and not as light, which is what a lit hull does."
+      },
+      {
+       "severity": "major",
+       "dimension": "craft",
+       "descriptor": "C3",
+       "where": "godot/materials/habitat_windows.tres",
+       "text": "Triplanar cross-projection. World triplanar samples the sheet on two axes across the drum's barrel and the second projection shows as a faint crosshatch over the window rows. Visible in engine-windows-nightside.png as a regular lattice on the cylinder. Fix needs either cylindrical UVs on the drum mesh or a shader that projects about the spin axis; neither is a material change, which is why it is not fixed here."
+      },
+      {
+       "severity": "major",
+       "dimension": "craft",
+       "descriptor": "C3",
+       "where": "station/materials.py WINDOW_BANDS",
+       "text": "The band pattern tiles visibly. One 28.8 m repeat over a 1,209 m drum is 42 identical courses, and at 3.4 km the regularity reads as ladder rungs. Wants a second, much longer-period variation -- blocks of dark hull where a section has no quarters behind it."
+      },
+      {
+       "severity": "minor",
+       "dimension": "craft",
+       "descriptor": "C4",
+       "where": "station/materials.py habitat_windows albedo",
+       "text": "The habitat sections now sit darker than the rest of the hull, so they read as a different material rather than as the same hull with windows in it. The sheet's albedo is exempt from TEX_MEAN renormalisation for a good reason; the plate value between windows should still match hull_exterior's 0.60."
+      },
+      {
+       "severity": "blocking",
+       "dimension": "robustness",
+       "descriptor": "R2",
+       "where": "godot/scenes/*.tscn",
+       "text": "RESOLVED THIS ROUND, recorded because the failure mode is general. Material rules were emitted to a .txt for a human to paste into the scene files. habitat_windows exported cleanly, passed 594 assertions and did not reach the render; two other materials had been missing from the exterior scene for longer. patch_scene_rules now writes the block and a gate asserts the file matches the library. Proven able to fail by deleting a rule."
+      }
+     ]
+    }
+   ]
+  },
+  "drum_interior_engine": {
+   "status": "active",
+   "rounds": [
+    {
+     "round": 1,
+     "reviewer": "builder, session 3k -- M0 interior path proof",
+     "date": "2026-07-29",
+     "scores": {
+      "craft": 2,
+      "fidelity": 3,
+      "performance": 4,
+      "robustness": 3
+     },
+     "evidence": {
+      "engine": "Godot 4.4 double + lavapipe, Forward+, 1000x560, 15 s",
+      "frames": [
+       "docs/engine-m0-interior.png"
+      ]
+     },
+     "broke_assertions": false,
+     "findings": [
+      {
+       "severity": "blocking",
+       "dimension": "craft",
+       "descriptor": "C2",
+       "where": "godot/materials/, guideway light runs",
+       "text": "THE HABITAT'S LIGHT RUNS RENDER MAGENTA ON ONE SIDE AND WHITE ON THE OTHER. These are the drum's ONLY light source and are authority 1 (Babylon_5_2-22_33a/34b). Half of them are falling back to an unassigned material. Invisible to every assertion in the project and invisible in the preview rasteriser, which does not do materials at all."
+      },
+      {
+       "severity": "major",
+       "dimension": "craft",
+       "descriptor": "C3",
+       "where": "drum ground",
+       "text": "The ground reads as flat olive and tan blocks with hard edges between land-use bands. No texture, no transition, no detail at any distance."
+      },
+      {
+       "severity": "major",
+       "dimension": "craft",
+       "descriptor": "C3",
+       "where": "drum",
+       "text": "No atmospheric perspective. A 2.6 km volume with 556 m of air overhead shows no haze, so the far end cap reads at the same contrast as the near ground and the volume collapses."
+      }
+     ],
+     "what_is_good": [
+      "The payoff view works: ground curves up and away, the far side arches overhead.",
+      "Guideway trusses recede correctly and read as structure.",
+      "Core tube, hub and spokes read at the vanishing point.",
+      "15 s per frame -- the interior path is FASTER than the exterior, so iteration is cheap."
+     ]
+    }
+   ]
   }
+ }
 }

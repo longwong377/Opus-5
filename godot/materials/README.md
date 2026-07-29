@@ -5,7 +5,7 @@ truth is `station/materials.py`; the `.tres` files and `textures/` are its
 output, and each one says so in its own header.
 
 ```bash
-python3 station/materials.py                 # self-test, 523 assertions
+python3 station/materials.py                 # self-test, 600 assertions
 python3 station/materials.py --export        # rewrite this directory
 godot --headless --path godot --import
 godot --headless --path godot --script res://scripts/verify_materials.gd
@@ -13,6 +13,18 @@ godot --headless --path godot --script res://scripts/verify_materials.gd
 
 Editing a `.tres` by hand changes what renders until the next export overwrites
 it, and the change is then lost with no diff to show for it.
+
+**`--export` also rewrites the `material_rules` block in `godot/scenes/*.tscn`,
+and only that block.** It used to emit the table to `material_rules.gen.txt`
+for a human to paste in, on the reasoning that a generator rewriting another
+agent's scene file is how two sources of truth start. That reasoning was
+backwards: the `.txt` and the `.tscn` *were* the two sources, and nobody was
+doing the paste. `habitat_windows` — the fix for the exterior's blocking
+finding — exported cleanly, passed every assertion, and did not reach the
+render; `greeble_fitting` and `hazard_chevron` had been missing for longer.
+The lights, the environment and the tonemapper are judgements and are still
+owned by whoever wrote them. `materials.py` asserts the file on disk matches
+what it would write, so a hand edit or a forgotten export fails CI.
 
 ## Why a generator and not a folder
 
@@ -33,9 +45,9 @@ worse than one.
 
 | | count | |
 |---|---|---|
-| `*.tres` | 59 | one `StandardMaterial3D` each |
-| `textures/*.png` | 21 | 7 procedural trim sheets × albedo / normal / ORM |
-| `material_rules.gen.txt` | 1 | the `material_rules` tables, to paste into a scene |
+| `*.tres` | 60 | one `StandardMaterial3D` each |
+| `textures/*.png` | 25 | 8 procedural trim sheets × albedo / normal / ORM, plus one emission map for `hull_window` |
+| `material_rules.gen.txt` | 1 | the `material_rules` tables, as a readable artefact |
 
 Coverage: hull exterior and its greebling, the interior corridor kit, drum
 ground land-use bands, end-cap courses, the guideway truss and its light runs,

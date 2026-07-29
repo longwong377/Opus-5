@@ -3,6 +3,7 @@
 
 ; --- exterior ---
 material_rules = {
+"aft_hull_block": ExtResource("m_habitat_windows"),
 "bay_lip": ExtResource("m_hazard_chevron"),
 "cargo_module": ExtResource("m_cargo_module"),
 "comms_grid_pylon": ExtResource("m_structural_truss"),
@@ -17,11 +18,15 @@ material_rules = {
 "greeble_nav_light": ExtResource("m_marker_light_white"),
 "greeble_panel": ExtResource("m_greeble_fitting"),
 "greeble_vent": ExtResource("m_greeble_fitting"),
+"green_section": ExtResource("m_habitat_windows"),
+"habitat_cylinder": ExtResource("m_habitat_windows"),
 "hazard_stripe": ExtResource("m_hazard_chevron"),
 "heat_exchange_solar_array": ExtResource("m_swept_array"),
 "main_truss_spine": ExtResource("m_structural_truss"),
+"observation_rotunda": ExtResource("m_habitat_windows"),
 "reactor_cooling_fin": ExtResource("m_radiator"),
 "reactor_spine": ExtResource("m_structural_truss"),
+"red_section": ExtResource("m_habitat_windows"),
 "space_traffic_prox_array": ExtResource("m_swept_array"),
 }
 
@@ -64,6 +69,7 @@ material_rules = {
 "ground_road": ExtResource("m_ground_road"),
 "ground_settlement": ExtResource("m_ground_settlement"),
 "ground_shore": ExtResource("m_ground_shore"),
+"ground_verge": ExtResource("m_ground_parkland"),
 "ground_water": ExtResource("m_ground_water"),
 "hazard_stripe": ExtResource("m_hazard_chevron"),
 "spoke": ExtResource("m_drum_structure"),

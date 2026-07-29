@@ -1,4 +1,4 @@
-[gd_scene load_steps=13 format=3]
+[gd_scene load_steps=17 format=3]
 
 ; The station against space.
 ;
@@ -24,6 +24,9 @@
 [ext_resource type="Material" path="res://materials/marker_light_red.tres" id="m_hazlight"]
 [ext_resource type="Material" path="res://materials/swept_array.tres" id="m_panel"]
 [ext_resource type="Material" path="res://materials/hull_banding_red.tres" id="m_band"]
+[ext_resource type="Material" path="res://materials/greeble_fitting.tres" id="m_greeble_fitting"]
+[ext_resource type="Material" path="res://materials/habitat_windows.tres" id="m_habitat_windows"]
+[ext_resource type="Material" path="res://materials/hazard_chevron.tres" id="m_hazard_chevron"]
 
 [sub_resource type="ShaderMaterial" id="SkyMat"]
 shader = ExtResource("2")
@@ -80,17 +83,30 @@ script = ExtResource("1")
 fallback_material = ExtResource("m_hull")
 warmup_frames = 8
 material_rules = {
+"aft_hull_block": ExtResource("m_habitat_windows"),
+"bay_lip": ExtResource("m_hazard_chevron"),
 "cargo_module": ExtResource("m_cargo"),
-"cobra_bay": ExtResource("m_band"),
 "comms_grid_pylon": ExtResource("m_truss"),
 "explosive_disconnect_neck": ExtResource("m_truss"),
 "forward_swept_array": ExtResource("m_panel"),
+"greeble_antenna": ExtResource("m_greeble_fitting"),
+"greeble_blister": ExtResource("m_greeble_fitting"),
+"greeble_cleat": ExtResource("m_greeble_fitting"),
+"greeble_conduit": ExtResource("m_greeble_fitting"),
+"greeble_hatch": ExtResource("m_greeble_fitting"),
 "greeble_hazard_light": ExtResource("m_hazlight"),
 "greeble_nav_light": ExtResource("m_navlight"),
+"greeble_panel": ExtResource("m_greeble_fitting"),
+"greeble_vent": ExtResource("m_greeble_fitting"),
+"green_section": ExtResource("m_habitat_windows"),
+"habitat_cylinder": ExtResource("m_habitat_windows"),
+"hazard_stripe": ExtResource("m_hazard_chevron"),
 "heat_exchange_solar_array": ExtResource("m_panel"),
 "main_truss_spine": ExtResource("m_truss"),
+"observation_rotunda": ExtResource("m_habitat_windows"),
 "reactor_cooling_fin": ExtResource("m_rad"),
 "reactor_spine": ExtResource("m_truss"),
+"red_section": ExtResource("m_habitat_windows"),
 "space_traffic_prox_array": ExtResource("m_panel")
 }
 
