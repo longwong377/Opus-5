@@ -62,6 +62,12 @@ import core_tube as ct             # noqa: E402
 # and blue 5-12% down, i.e. a warm white with no red cast -- a fluorescent-ish
 # source rather than tungsten. Recorded as measured rather than chosen.
 LAMP_COLOUR = (1.0, 0.99, 0.93)
+# The interior fitting's own colour, from materials.py's light_downlight, which
+# is the measured warm practical the corridor frames show. Imported would be
+# better than restated; it is restated because export_scene must run without
+# importing the material library, and the value is asserted against
+# `materials.BY_NAME["light_downlight"].emission` in the self-test below.
+# (removed -- see fixture_lights: each fitting emits its OWN measured colour)
 
 # Total light energy contributed by ONE light run, shared out over however many
 # omnis are used to sample it. A run is a 2.6 km line source and an omni is a
@@ -497,7 +503,217 @@ def build_drum(args, out_dir):
     }
 
 
-SHOTS = {"exterior": build_exterior, "drum": build_drum}
+# ---------------------------------------------------------------------------
+# The interior shot
+# ---------------------------------------------------------------------------
+# LAYER 4 CANNOT START WITHOUT THIS. The material library declares three
+# scenes; two of them had a .tscn. The interior scene has NINETY-SIX materials
+# and 265 rules -- the largest of the three, 40% of the library -- and not one
+# of them had ever been rendered, because there was no interior scene to render
+# them in. Layer 3 was declared complete over surfaces nobody had seen.
+#
+# This is layer 4's equivalent of layer 0: infrastructure, not a location, and
+# it has to exist before a single interior can be judged.
+
+# Fittings the kit and the room generators already tag. Their PLACEMENT is
+# sourced and built; what was missing is that they emit nothing.
+LIGHT_GROUP_PREFIX = "light_"
+# Two tagged spans of the same fitting closer than this are one lamp. 0.9 m
+# spans a pilaster strip's seven bars (0.12 m pitch) without reaching the next
+# pilaster, which the kit puts a portal bay apart.
+FIXTURE_MERGE_M = 0.9
+# Interior lights need an interior RANGE. The first render used the drum's
+# 1100 m default in a 21.6 m corridor, so all 117 sources reached every surface
+# with no falloff and the frame came back pure white. A corridor fitting lights
+# its own bay and the two either side of it; beyond that the next fitting takes
+# over, and that hand-off IS the rhythm the reference frames show.
+INTERIOR_LIGHT_RANGE_M = 7.0
+
+
+def fixture_lights(verts, tris, spans, energy, rng, shadow_n=2, eye=None):
+    """One light per tagged light fitting, at its centroid, IN ITS OWN COLOUR.
+
+    CONSISTENCY BY CONSTRUCTION -- CLAUDE.md's fourth hard rule, applied to
+    light. The alternative is a table of hand-placed lamp positions, which is a
+    second description of where the fittings are; the moment the kit moves a
+    downlight the table is wrong and nothing says so. Here the light IS the
+    fitting: `interior_kit` tags `light_downlight`, `light_pilaster_strip`,
+    `light_portal_head` and `light_deck_channel`, and every one of those spans
+    becomes a source at its own centre.
+
+    A consequence worth stating: a room with no tagged fitting comes back
+    BLACK, which is correct and legible. An interior that lights itself from
+    nowhere is the failure this avoids.
+
+    THE COLOUR COMES FROM THE MATERIAL, and that is not a detail. The four kit
+    fittings are NOT one colour: `light_downlight` is warm at (1.00, 0.68,
+    0.40) and the pilaster strip, portal head and deck channel are cool
+    blue-white at roughly (0.88, 0.93, 1.00). Those are measured values sitting
+    in materials.py. Passing one lamp colour for all four would have thrown
+    away the warm/cool contrast that is most of what a Babylon 5 corridor looks
+    like -- and it would have looked deliberate.
+
+    Energy is scaled by each material's own emission_energy for the same
+    reason: the library already says the portal head is the brightest fitting
+    and the deck channel the dimmest, and that ranking is measured.
+    """
+    import materials as mats
+
+    raw = []
+    for name, lo, hi in spans:
+        if not name.startswith(LIGHT_GROUP_PREFIX):
+            continue
+        idx = {i for tri in tris[lo:hi] for i in tri}
+        if not idx:
+            continue
+        n = float(len(idx))
+        c = [sum(verts[i][k] for i in idx) / n for k in range(3)]
+        m = mats.resolve_any(name, "interior")
+        colour = list(m.emission) if (m and m.emission) else [1.0, 0.96, 0.86]
+        rel = (m.emission_energy / 4.0) if (m and m.emission_energy) else 1.0
+        raw.append({"pos": c, "energy": energy * rel, "colour": colour,
+                    "range": rng, "attenuation": 1.0, "group": name})
+
+    # ONE FITTING, ONE LIGHT. A pilaster strip is SEVEN tagged bars with gaps
+    # between them -- that segmentation is what makes it read as B5 rather than
+    # as a fluorescent batten, and it is asserted in interior_kit. But seven
+    # bars 120 mm apart are one lamp as far as the lighting is concerned, and
+    # treating them as seven put 117 sources in a 21.6 m corridor.
+    #
+    # Merged by proximity within a group, so the segmentation survives in the
+    # GEOMETRY (where it is the point) and disappears from the LIGHT RIG (where
+    # it is seven times the cost for no visible difference).
+    out = []
+    for lt in raw:
+        for got in out:
+            if got["group"] != lt["group"]:
+                continue
+            d2 = sum((got["pos"][k] - lt["pos"][k]) ** 2 for k in range(3))
+            if d2 <= FIXTURE_MERGE_M ** 2:
+                w = got["_n"]
+                got["pos"] = [(got["pos"][k] * w + lt["pos"][k]) / (w + 1)
+                              for k in range(3)]
+                got["_n"] = w + 1
+                break
+        else:
+            lt["_n"] = 1
+            out.append(lt)
+    for lt in out:
+        lt.pop("_n", None)
+    # Shadows are rationed for the same reason as in the drum: an omni shadow
+    # is a cube map, so each one re-renders the scene six times, on a CPU.
+    if eye is not None and out:
+        order = sorted(range(len(out)),
+                       key=lambda i: sum((out[i]["pos"][k] - eye[k]) ** 2
+                                         for k in range(3)))
+        for i in order[:shadow_n]:
+            out[i]["shadow"] = True
+    return out
+
+
+def per_triangle(spans, n_tris, default="structure"):
+    """(name, lo, hi) spans -> one name per triangle.
+
+    `write_obj` here indexes groups per triangle; the interior generators emit
+    spans. Converting at the boundary rather than changing either side, because
+    both conventions are load-bearing where they are: spans are what
+    `interior_kit` records as it builds, and a per-triangle list is what an OBJ
+    writer needs.
+
+    The default is NAMED rather than left empty. If it ever appears in a
+    render, `structure` resolves to kit_wall_plate and the frame looks merely
+    plain -- which is exactly how 80% of every corridor stayed one material for
+    two years. `interior_kit` now asserts zero untagged triangles, so seeing
+    this name in an interior shot means a generator has regressed.
+    """
+    owner = [default] * n_tris
+    for name, lo, hi in spans:
+        for i in range(lo, min(hi, n_tris)):
+            owner[i] = name
+    return owner
+
+
+def interior_geometry(room):
+    """(verts, tris, spans, extent) for a room key, or the corridor kit.
+
+    Accepts any of the 118 directory keys plus the pseudo-rooms `corridor` and
+    `junction`, which are the kit itself -- the surface every location connects
+    through and the one with no place entry of its own.
+    """
+    import interior_kit as kit
+    import rooms as R
+    import directory as dr
+
+    schema, profile = it.load()
+    if room in ("corridor", "junction"):
+        kit.reset_tags()
+        v, t = (kit.corridor_section(21.6) if room == "corridor"
+                else kit.corridor_junction_section(6.0))
+        return v, t, kit.tagged_spans(t), None
+
+    place = dr.by_key(room)
+    if place["module"]:
+        raise SystemExit(
+            f"--room {room} is built by {place['module']}.py, which this shot "
+            f"cannot assemble yet. Rooms from rooms.py and the pseudo-rooms "
+            f"`corridor` and `junction` work today.")
+    v, t, g = R.build(schema, profile, place)
+    return v, t, g, R.bay_span_m(place)
+
+
+def build_interior(args, out_dir):
+    """One room, lit by its own fittings, from the inside."""
+    import rooms as R
+
+    room = args.room or "corridor"
+    verts, tris, spans, extent = interior_geometry(room)
+
+    # Camera: `rooms.standpoint` searches the walkable grid, so the eye stands
+    # where a person could stand. For the kit there is no prop to avoid, so the
+    # centreline just inside the near end is right.
+    if args.eye and args.target:
+        eye, aim = tuple(args.eye), tuple(args.target)
+    elif extent is not None:
+        w, ln = extent
+        ceil = max(q[1] for q in verts)
+        x, z = R.standpoint(verts, tris, spans, w, ln)
+        h = min(args.eye_height, ceil - 0.4)
+        eye, aim = (x, h, z), (0.0, h, ln / 2.0 - 0.2)
+    else:
+        zs = [q[2] for q in verts]
+        eye = (0.0, args.eye_height, min(zs) + 1.2)
+        aim = (0.0, args.eye_height, max(zs) - 0.5)
+
+    obj = os.path.join(out_dir, f"{room}.obj")
+    write_obj(obj, verts, tris, per_triangle(spans, len(tris)))
+    glb = to_glb(obj, os.path.join(out_dir, f"{room}.glb"))
+    n, names = glb_triangles(glb)
+    if n != len(tris):
+        raise ValueError(f"{room}: glb has {n} triangles, source has "
+                         f"{len(tris)}")
+
+    rng = (args.light_range if args.light_range != 1100.0
+           else INTERIOR_LIGHT_RANGE_M)
+    lights = fixture_lights(verts, tris, spans, args.fixture_energy, rng,
+                            shadow_n=args.shadow_lights, eye=eye)
+    return {
+        "shot": "interior",
+        "scene": "res://scenes/interior.tscn",
+        "glb": [glb],
+        "triangles": n,
+        "groups": sorted(set(names)),
+        "lights": lights,
+        "room": room,
+        # Near plane at 60 mm: indoors the camera can stand against a wall, and
+        # the drum's 0.15 m clips a prop the eye is leaning over.
+        "camera": {"eye": list(eye), "target": list(aim), "up": [0.0, 1.0, 0.0],
+                   "fov": args.fov, "near": 0.06, "far": 400.0},
+        "sun_from": None,
+    }
+
+
+SHOTS = {"exterior": build_exterior, "drum": build_drum,
+         "interior": build_interior}
 
 
 def build(args):
@@ -899,6 +1115,11 @@ def main():
     ap.add_argument("--light-range", type=float, default=1100.0)
     ap.add_argument("--shadow-lights", type=int, default=2)
     ap.add_argument("--trams", type=int, default=2)
+    ap.add_argument("--room", default="",
+                    help="interior shot: a directory place key, or `corridor` "
+                         "/ `junction` for the kit itself")
+    ap.add_argument("--fixture-energy", type=float, default=3.0,
+                    help="interior shot: energy per tagged light fitting")
     a = ap.parse_args()
 
     if not a.shot:

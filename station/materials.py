@@ -4286,7 +4286,12 @@ def export_tres(outdir=MATERIAL_DIR):
 
 SCENE_FILES = {"exterior": os.path.join(ROOT, "godot", "scenes",
                                         "exterior.tscn"),
-               "drum": os.path.join(ROOT, "godot", "scenes", "drum.tscn")}
+               "drum": os.path.join(ROOT, "godot", "scenes", "drum.tscn"),
+               # The interior scene has the most materials of the three and was
+               # the last to get a file. Adding it here is what makes its 265
+               # rules reach the engine at all.
+               "interior": os.path.join(ROOT, "godot", "scenes",
+                                        "interior.tscn")}
 
 
 def patch_scene_rules(path, scene):

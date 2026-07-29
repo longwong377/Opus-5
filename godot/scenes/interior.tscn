@@ -1,0 +1,443 @@
+[gd_scene load_steps=98 format=3]
+
+; A room, from the inside.
+;
+; LAYER 4 COULD NOT START WITHOUT THIS FILE. The material library declares
+; three scenes and two of them had a .tscn. The interior scene has NINETY-SIX
+; materials and 265 rules -- the largest of the three, 40% of the library --
+; and not one had ever been rendered, because there was nowhere to render it.
+; Layer 3 was declared complete over surfaces nobody had ever seen.
+;
+; Its material_rules block is written by station/materials.py --export and
+; asserted against the library on every run. Everything else here is a
+; judgement and is owned by whoever writes it, exactly as in exterior.tscn.
+;
+; THREE DECISIONS, and each is a difference from the drum scene rather than a
+; copy of it:
+;
+; 1. THERE ARE NO SCENE LIGHTS. Not one. Every source in an interior shot comes
+;    from tools/export_scene.py's fixture_lights(), which puts an omni at the
+;    centroid of each tagged `light_*` span -- so the light IS the fitting the
+;    kit already builds and cannot drift from it. A room with no tagged fitting
+;    renders BLACK, and that is the correct answer rather than a bug: a room
+;    that lights itself from nowhere is what this arrangement exists to
+;    prevent.
+;
+; 2. AMBIENT IS A TENTH OF THE DRUM'S. The drum is an open volume half a
+;    kilometre across with a sun-tube; a corridor is a closed box whose only
+;    light is its fittings. NEGATIVE_RESULTS records five separate occasions
+;    where a colour in a reference frame turned out to belong to the light, and
+;    the corollary is that these rooms are lit hard and locally. Ambient here
+;    is a floor that stops unlit geometry being pure black, not a fill.
+;
+; 3. SSAO RADIUS IS 0.6 m, not 2.5. The drum's subject is a landscape; this
+;    one's is a skirting board, a rail band and the reveal above it. At 2.5 m
+;    the contact shadow that makes a skirt read as proud of the wall is smeared
+;    across the whole wall.
+
+[ext_resource type="Script" path="res://scripts/render_shot.gd" id="1"]
+[ext_resource type="Material" path="res://materials/accent_warning.tres" id="m_accent_warning"]
+[ext_resource type="Material" path="res://materials/alien_status_lamp.tres" id="m_alien_status_lamp"]
+[ext_resource type="Material" path="res://materials/bar_cell_matrix.tres" id="m_bar_cell_matrix"]
+[ext_resource type="Material" path="res://materials/bar_dartboard.tres" id="m_bar_dartboard"]
+[ext_resource type="Material" path="res://materials/bar_pendant_lamp.tres" id="m_bar_pendant_lamp"]
+[ext_resource type="Material" path="res://materials/bar_pendant_shade.tres" id="m_bar_pendant_shade"]
+[ext_resource type="Material" path="res://materials/bar_pendant_stem.tres" id="m_bar_pendant_stem"]
+[ext_resource type="Material" path="res://materials/bay_deck_emblem.tres" id="m_bay_deck_emblem"]
+[ext_resource type="Material" path="res://materials/bay_deck_marking.tres" id="m_bay_deck_marking"]
+[ext_resource type="Material" path="res://materials/bay_floodlight.tres" id="m_bay_floodlight"]
+[ext_resource type="Material" path="res://materials/clad_services.tres" id="m_clad_services"]
+[ext_resource type="Material" path="res://materials/container_skin.tres" id="m_container_skin"]
+[ext_resource type="Material" path="res://materials/council_floor_dark.tres" id="m_council_floor_dark"]
+[ext_resource type="Material" path="res://materials/council_floor_mid.tres" id="m_council_floor_mid"]
+[ext_resource type="Material" path="res://materials/council_lit_mesh.tres" id="m_council_lit_mesh"]
+[ext_resource type="Material" path="res://materials/council_speak_inlay.tres" id="m_council_speak_inlay"]
+[ext_resource type="Material" path="res://materials/device_console_bed.tres" id="m_device_console_bed"]
+[ext_resource type="Material" path="res://materials/device_reader_shell.tres" id="m_device_reader_shell"]
+[ext_resource type="Material" path="res://materials/device_screen_glass.tres" id="m_device_screen_glass"]
+[ext_resource type="Material" path="res://materials/door_blast_plate.tres" id="m_door_blast_plate"]
+[ext_resource type="Material" path="res://materials/door_leaf_painted.tres" id="m_door_leaf_painted"]
+[ext_resource type="Material" path="res://materials/door_scrap_welded.tres" id="m_door_scrap_welded"]
+[ext_resource type="Material" path="res://materials/edge_chevron_nosing.tres" id="m_edge_chevron_nosing"]
+[ext_resource type="Material" path="res://materials/emissive_signage.tres" id="m_emissive_signage"]
+[ext_resource type="Material" path="res://materials/furn_casework.tres" id="m_furn_casework"]
+[ext_resource type="Material" path="res://materials/furn_clinical.tres" id="m_furn_clinical"]
+[ext_resource type="Material" path="res://materials/furn_dark_stone.tres" id="m_furn_dark_stone"]
+[ext_resource type="Material" path="res://materials/furn_gaming_baize.tres" id="m_furn_gaming_baize"]
+[ext_resource type="Material" path="res://materials/furn_pale_composite.tres" id="m_furn_pale_composite"]
+[ext_resource type="Material" path="res://materials/furn_paving.tres" id="m_furn_paving"]
+[ext_resource type="Material" path="res://materials/furn_screen_panel.tres" id="m_furn_screen_panel"]
+[ext_resource type="Material" path="res://materials/furn_service_steel.tres" id="m_furn_service_steel"]
+[ext_resource type="Material" path="res://materials/furn_shop_steel.tres" id="m_furn_shop_steel"]
+[ext_resource type="Material" path="res://materials/furn_shrine_lit.tres" id="m_furn_shrine_lit"]
+[ext_resource type="Material" path="res://materials/furn_stall_canvas.tres" id="m_furn_stall_canvas"]
+[ext_resource type="Material" path="res://materials/furn_stall_frame.tres" id="m_furn_stall_frame"]
+[ext_resource type="Material" path="res://materials/furn_upholstery.tres" id="m_furn_upholstery"]
+[ext_resource type="Material" path="res://materials/furn_worship_stone.tres" id="m_furn_worship_stone"]
+[ext_resource type="Material" path="res://materials/grab_rail_bare.tres" id="m_grab_rail_bare"]
+[ext_resource type="Material" path="res://materials/kit_deck.tres" id="m_kit_deck"]
+[ext_resource type="Material" path="res://materials/kit_deck_plate.tres" id="m_kit_deck_plate"]
+[ext_resource type="Material" path="res://materials/kit_pilaster.tres" id="m_kit_pilaster"]
+[ext_resource type="Material" path="res://materials/kit_rail_band.tres" id="m_kit_rail_band"]
+[ext_resource type="Material" path="res://materials/kit_reveal.tres" id="m_kit_reveal"]
+[ext_resource type="Material" path="res://materials/kit_skirt.tres" id="m_kit_skirt"]
+[ext_resource type="Material" path="res://materials/kit_wall_plate.tres" id="m_kit_wall_plate"]
+[ext_resource type="Material" path="res://materials/light_ceiling_grid.tres" id="m_light_ceiling_grid"]
+[ext_resource type="Material" path="res://materials/light_command_strip.tres" id="m_light_command_strip"]
+[ext_resource type="Material" path="res://materials/light_deck_channel.tres" id="m_light_deck_channel"]
+[ext_resource type="Material" path="res://materials/light_downlight.tres" id="m_light_downlight"]
+[ext_resource type="Material" path="res://materials/light_pilaster_strip.tres" id="m_light_pilaster_strip"]
+[ext_resource type="Material" path="res://materials/light_portal_head.tres" id="m_light_portal_head"]
+[ext_resource type="Material" path="res://materials/plant_switchgear.tres" id="m_plant_switchgear"]
+[ext_resource type="Material" path="res://materials/plant_valve_metal.tres" id="m_plant_valve_metal"]
+[ext_resource type="Material" path="res://materials/shell_deck_clinical.tres" id="m_shell_deck_clinical"]
+[ext_resource type="Material" path="res://materials/shell_deck_industrial.tres" id="m_shell_deck_industrial"]
+[ext_resource type="Material" path="res://materials/shell_deck_public.tres" id="m_shell_deck_public"]
+[ext_resource type="Material" path="res://materials/shell_deck_stone.tres" id="m_shell_deck_stone"]
+[ext_resource type="Material" path="res://materials/shell_rib_oxide.tres" id="m_shell_rib_oxide"]
+[ext_resource type="Material" path="res://materials/shell_rib_painted.tres" id="m_shell_rib_painted"]
+[ext_resource type="Material" path="res://materials/shell_wall_clinical.tres" id="m_shell_wall_clinical"]
+[ext_resource type="Material" path="res://materials/shell_wall_industrial.tres" id="m_shell_wall_industrial"]
+[ext_resource type="Material" path="res://materials/shell_wall_panel.tres" id="m_shell_wall_panel"]
+[ext_resource type="Material" path="res://materials/sign_deck_plaque.tres" id="m_sign_deck_plaque"]
+[ext_resource type="Material" path="res://materials/sign_mount_dark.tres" id="m_sign_mount_dark"]
+[ext_resource type="Material" path="res://materials/sign_neon_venue.tres" id="m_sign_neon_venue"]
+[ext_resource type="Material" path="res://materials/signage_panel.tres" id="m_signage_panel"]
+[ext_resource type="Material" path="res://materials/steel_catwalk_tread.tres" id="m_steel_catwalk_tread"]
+[ext_resource type="Material" path="res://materials/steel_furnace_scorched.tres" id="m_steel_furnace_scorched"]
+[ext_resource type="Material" path="res://materials/steel_gantry_oxide.tres" id="m_steel_gantry_oxide"]
+[ext_resource type="Material" path="res://materials/viewport_glazing.tres" id="m_viewport_glazing"]
+[ext_resource type="Material" path="res://materials/zoc_armature.tres" id="m_zoc_armature"]
+[ext_resource type="Material" path="res://materials/zoc_cafe_table.tres" id="m_zoc_cafe_table"]
+[ext_resource type="Material" path="res://materials/zoc_chair_seat.tres" id="m_zoc_chair_seat"]
+[ext_resource type="Material" path="res://materials/zoc_deck_chevron.tres" id="m_zoc_deck_chevron"]
+[ext_resource type="Material" path="res://materials/zoc_deck_light.tres" id="m_zoc_deck_light"]
+[ext_resource type="Material" path="res://materials/zoc_deck_tile.tres" id="m_zoc_deck_tile"]
+[ext_resource type="Material" path="res://materials/zoc_deck_worn.tres" id="m_zoc_deck_worn"]
+[ext_resource type="Material" path="res://materials/zoc_five_panel.tres" id="m_zoc_five_panel"]
+[ext_resource type="Material" path="res://materials/zoc_gallery_slab.tres" id="m_zoc_gallery_slab"]
+[ext_resource type="Material" path="res://materials/zoc_neon_back.tres" id="m_zoc_neon_back"]
+[ext_resource type="Material" path="res://materials/zoc_neon_face.tres" id="m_zoc_neon_face"]
+[ext_resource type="Material" path="res://materials/zoc_rail.tres" id="m_zoc_rail"]
+[ext_resource type="Material" path="res://materials/zoc_rib_lamp.tres" id="m_zoc_rib_lamp"]
+[ext_resource type="Material" path="res://materials/zoc_screen.tres" id="m_zoc_screen"]
+[ext_resource type="Material" path="res://materials/zoc_service_chrome.tres" id="m_zoc_service_chrome"]
+[ext_resource type="Material" path="res://materials/zoc_stair.tres" id="m_zoc_stair"]
+[ext_resource type="Material" path="res://materials/zoc_stall_canvas.tres" id="m_zoc_stall_canvas"]
+[ext_resource type="Material" path="res://materials/zoc_stall_counter.tres" id="m_zoc_stall_counter"]
+[ext_resource type="Material" path="res://materials/zoc_stall_light.tres" id="m_zoc_stall_light"]
+[ext_resource type="Material" path="res://materials/zoc_stall_post.tres" id="m_zoc_stall_post"]
+[ext_resource type="Material" path="res://materials/zoc_stall_sign.tres" id="m_zoc_stall_sign"]
+[ext_resource type="Material" path="res://materials/zoc_structure.tres" id="m_zoc_structure"]
+[ext_resource type="Material" path="res://materials/zoc_table_edge.tres" id="m_zoc_table_edge"]
+[ext_resource type="Material" path="res://materials/zoc_wall_plate.tres" id="m_zoc_wall_plate"]
+
+[sub_resource type="Environment" id="Env"]
+; Flat colour, not a sky. Near-black rather than pure black for the reason the
+; drum scene gives: pure black let two structural holes survive four sessions
+; of renders, because a hole and an unlit surface were the same pixels. A faint
+; cool grey means an actual hole reads as slightly wrong instead of as shadow.
+background_mode = 1
+background_color = Color(0.010, 0.012, 0.018, 1)
+ambient_light_source = 2
+ambient_light_color = Color(0.52, 0.55, 0.62, 1)
+; 0.015, a tenth of the drum's 0.15. See decision 2 above.
+ambient_light_energy = 0.015
+reflected_light_source = 1
+tonemap_mode = 4
+tonemap_exposure = 1.0
+; White point 4.0 against the drum's 8.0: nothing in a corridor is as bright as
+; a sun-tube, and an 8.0 white point rolls the fittings off to grey.
+tonemap_white = 4.0
+ssao_enabled = true
+ssao_radius = 0.6
+ssao_intensity = 2.2
+ssao_power = 1.5
+ssao_light_affect = 0.15
+glow_enabled = true
+; The fittings are small and bright and the room is dark, which is exactly the
+; case glow is for. Kept low: a corridor lit by haloes is a music video.
+glow_intensity = 0.55
+glow_strength = 0.9
+glow_bloom = 0.05
+glow_hdr_threshold = 1.1
+glow_blend_mode = 1
+
+[node name="InteriorShot" type="Node3D"]
+script = ExtResource("1")
+warmup_frames = 8
+material_rules = {
+"accent_warning": ExtResource("m_accent_warning"),
+"alien_bar": ExtResource("m_grab_rail_bare"),
+"alien_deck": ExtResource("m_kit_deck"),
+"alien_endwall": ExtResource("m_shell_wall_panel"),
+"alien_lattice": ExtResource("m_furn_screen_panel"),
+"alien_lock_wall": ExtResource("m_shell_wall_industrial"),
+"alien_mask_dispenser": ExtResource("m_device_reader_shell"),
+"alien_portal_chamfer": ExtResource("m_kit_pilaster"),
+"alien_portal_head": ExtResource("m_kit_pilaster"),
+"alien_portal_jamb": ExtResource("m_kit_pilaster"),
+"alien_portal_sill": ExtResource("m_kit_pilaster"),
+"alien_quarter_shell": ExtResource("m_shell_wall_panel"),
+"alien_ring": ExtResource("m_kit_pilaster"),
+"alien_status_lamp": ExtResource("m_alien_status_lamp"),
+"alien_stile": ExtResource("m_kit_pilaster"),
+"alien_wall": ExtResource("m_shell_wall_panel"),
+"bar_backbar": ExtResource("m_furn_casework"),
+"bar_cell_matrix": ExtResource("m_bar_cell_matrix"),
+"bar_dartboard": ExtResource("m_bar_dartboard"),
+"bar_deck": ExtResource("m_shell_deck_public"),
+"bar_display": ExtResource("m_device_screen_glass"),
+"bar_footrail": ExtResource("m_grab_rail_bare"),
+"bar_neon_clamp": ExtResource("m_furn_shop_steel"),
+"bar_neon_glyph": ExtResource("m_sign_neon_venue"),
+"bar_neon_tube": ExtResource("m_sign_neon_venue"),
+"bar_pendant_lamp": ExtResource("m_bar_pendant_lamp"),
+"bar_pendant_shade": ExtResource("m_bar_pendant_shade"),
+"bar_pendant_stem": ExtResource("m_bar_pendant_stem"),
+"bar_servery": ExtResource("m_furn_casework"),
+"bar_stool": ExtResource("m_furn_upholstery"),
+"bar_table": ExtResource("m_furn_casework"),
+"bar_table_stem": ExtResource("m_furn_shop_steel"),
+"bar_wall": ExtResource("m_shell_wall_panel"),
+"bay_backwall": ExtResource("m_shell_wall_industrial"),
+"bay_ceiling": ExtResource("m_shell_wall_industrial"),
+"bay_chevron": ExtResource("m_edge_chevron_nosing"),
+"bay_deck": ExtResource("m_shell_deck_industrial"),
+"bay_disc": ExtResource("m_bay_deck_marking"),
+"bay_emblem": ExtResource("m_bay_deck_emblem"),
+"bay_girder": ExtResource("m_steel_gantry_oxide"),
+"bay_lamp": ExtResource("m_bay_floodlight"),
+"bay_ledge": ExtResource("m_shell_wall_industrial"),
+"bulkhead": ExtResource("m_kit_wall_plate"),
+"cc_console_face": ExtResource("m_device_console_bed"),
+"cc_console_leg": ExtResource("m_grab_rail_bare"),
+"cc_dais": ExtResource("m_shell_deck_stone"),
+"cc_floor": ExtResource("m_shell_deck_public"),
+"cc_glazing": ExtResource("m_viewport_glazing"),
+"cc_hub": ExtResource("m_shell_rib_painted"),
+"cc_light_strip": ExtResource("m_light_command_strip"),
+"cc_mullion": ExtResource("m_shell_rib_painted"),
+"cc_pit": ExtResource("m_shell_deck_public"),
+"cc_rail": ExtResource("m_grab_rail_bare"),
+"cc_ring": ExtResource("m_shell_rib_painted"),
+"cc_stair": ExtResource("m_steel_catwalk_tread"),
+"ceiling_slab": ExtResource("m_kit_reveal"),
+"commerce_deck": ExtResource("m_shell_deck_public"),
+"commerce_rib": ExtResource("m_shell_rib_painted"),
+"commerce_wall": ExtResource("m_shell_wall_panel"),
+"concourse_deck": ExtResource("m_kit_deck_plate"),
+"council_chair": ExtResource("m_furn_stall_frame"),
+"council_fin": ExtResource("m_shell_rib_painted"),
+"council_floor_0": ExtResource("m_council_floor_mid"),
+"council_floor_1": ExtResource("m_shell_deck_stone"),
+"council_floor_2": ExtResource("m_council_floor_dark"),
+"council_frame": ExtResource("m_furn_casework"),
+"council_medallion": ExtResource("m_furn_service_steel"),
+"council_mesh": ExtResource("m_council_lit_mesh"),
+"council_plinth": ExtResource("m_furn_casework"),
+"council_speak_fan": ExtResource("m_council_speak_inlay"),
+"council_top": ExtResource("m_furn_casework"),
+"crane": ExtResource("m_steel_gantry_oxide"),
+"customs_bollard": ExtResource("m_furn_casework"),
+"customs_bracket": ExtResource("m_shell_rib_oxide"),
+"customs_ceiling_lamp": ExtResource("m_light_ceiling_grid"),
+"customs_deck": ExtResource("m_shell_deck_public"),
+"customs_desk": ExtResource("m_furn_casework"),
+"customs_endwall": ExtResource("m_shell_wall_panel"),
+"customs_hanger": ExtResource("m_shell_rib_oxide"),
+"customs_light_strip": ExtResource("m_light_pilaster_strip"),
+"customs_screen": ExtResource("m_device_screen_glass"),
+"customs_wall": ExtResource("m_shell_wall_panel"),
+"deck_grid": ExtResource("m_kit_deck"),
+"deck_panel": ExtResource("m_kit_deck"),
+"deck_plate": ExtResource("m_kit_deck_plate"),
+"detention_deck": ExtResource("m_shell_deck_public"),
+"detention_rib": ExtResource("m_shell_rib_painted"),
+"detention_wall": ExtResource("m_shell_wall_panel"),
+"door_frame": ExtResource("m_kit_pilaster"),
+"door_leaf": ExtResource("m_kit_pilaster"),
+"fix_awning_rail": ExtResource("m_furn_stall_frame"),
+"fix_back_shelving": ExtResource("m_furn_dark_stone"),
+"fix_catenary_run": ExtResource("m_steel_gantry_oxide"),
+"fix_cell_divider": ExtResource("m_furn_shop_steel"),
+"fix_dais": ExtResource("m_furn_worship_stone"),
+"fix_equipment_gantry": ExtResource("m_furn_clinical"),
+"fix_fume_column": ExtResource("m_furn_casework"),
+"fix_furnace_stack": ExtResource("m_steel_furnace_scorched"),
+"fix_gantry_rail": ExtResource("m_steel_gantry_oxide"),
+"fix_partition_screen": ExtResource("m_furn_screen_panel"),
+"fix_plant_column": ExtResource("m_clad_services"),
+"fix_platform_edge": ExtResource("m_edge_chevron_nosing"),
+"fix_racking_run": ExtResource("m_steel_gantry_oxide"),
+"fix_screen_panel": ExtResource("m_furn_screen_panel"),
+"fix_service_duct": ExtResource("m_clad_services"),
+"fix_service_riser": ExtResource("m_clad_services"),
+"fix_stall_frame": ExtResource("m_furn_stall_frame"),
+"generic_deck": ExtResource("m_shell_deck_public"),
+"generic_rib": ExtResource("m_shell_rib_painted"),
+"generic_wall": ExtResource("m_shell_wall_panel"),
+"handrail": ExtResource("m_kit_rail_band"),
+"hazard_frame": ExtResource("m_accent_warning"),
+"hospitality_deck": ExtResource("m_shell_deck_public"),
+"hospitality_rib": ExtResource("m_shell_rib_painted"),
+"hospitality_wall": ExtResource("m_shell_wall_panel"),
+"industrial_deck": ExtResource("m_shell_deck_industrial"),
+"industrial_rib": ExtResource("m_shell_rib_oxide"),
+"industrial_wall": ExtResource("m_shell_wall_industrial"),
+"light_deck_channel": ExtResource("m_light_deck_channel"),
+"light_downlight": ExtResource("m_light_downlight"),
+"light_pilaster_strip": ExtResource("m_light_pilaster_strip"),
+"light_portal_head": ExtResource("m_light_portal_head"),
+"medical_deck": ExtResource("m_shell_deck_clinical"),
+"medical_rib": ExtResource("m_shell_rib_painted"),
+"medical_wall": ExtResource("m_shell_wall_clinical"),
+"office_deck": ExtResource("m_shell_deck_public"),
+"office_rib": ExtResource("m_shell_rib_painted"),
+"office_wall": ExtResource("m_shell_wall_panel"),
+"pilaster": ExtResource("m_kit_pilaster"),
+"plant_catwalk": ExtResource("m_steel_catwalk_tread"),
+"plant_frame": ExtResource("m_steel_gantry_oxide"),
+"plant_frame_ring": ExtResource("m_steel_gantry_oxide"),
+"plant_pipe": ExtResource("m_clad_services"),
+"plant_rail": ExtResource("m_grab_rail_bare"),
+"plant_tank": ExtResource("m_clad_services"),
+"portal_frame": ExtResource("m_kit_pilaster"),
+"prop_babcom_terminal": ExtResource("m_device_screen_glass"),
+"prop_bar_counter": ExtResource("m_furn_dark_stone"),
+"prop_barrier": ExtResource("m_door_leaf_painted"),
+"prop_bay_door": ExtResource("m_door_blast_plate"),
+"prop_bench": ExtResource("m_furn_pale_composite"),
+"prop_blast_door": ExtResource("m_door_blast_plate"),
+"prop_breaker_lever": ExtResource("m_plant_switchgear"),
+"prop_bunk": ExtResource("m_furn_upholstery"),
+"prop_catwalk": ExtResource("m_steel_catwalk_tread"),
+"prop_cell_door": ExtResource("m_door_leaf_painted"),
+"prop_cold_drawer": ExtResource("m_furn_service_steel"),
+"prop_console": ExtResource("m_device_console_bed"),
+"prop_container": ExtResource("m_container_skin"),
+"prop_counter": ExtResource("m_furn_casework"),
+"prop_credit_terminal": ExtResource("m_device_reader_shell"),
+"prop_cryo_pod": ExtResource("m_furn_clinical"),
+"prop_desk": ExtResource("m_furn_casework"),
+"prop_diagnostic_bed": ExtResource("m_furn_clinical"),
+"prop_docking_clamp": ExtResource("m_steel_gantry_oxide"),
+"prop_door": ExtResource("m_door_leaf_painted"),
+"prop_duty_desk": ExtResource("m_furn_casework"),
+"prop_exchange_terminal": ExtResource("m_device_reader_shell"),
+"prop_furnace_control": ExtResource("m_device_console_bed"),
+"prop_gaming_table": ExtResource("m_furn_gaming_baize"),
+"prop_grow_rack": ExtResource("m_furn_shop_steel"),
+"prop_handhold": ExtResource("m_grab_rail_bare"),
+"prop_identicard_reader": ExtResource("m_device_reader_shell"),
+"prop_intercom": ExtResource("m_device_reader_shell"),
+"prop_irrigation_control": ExtResource("m_device_console_bed"),
+"prop_isolation_door": ExtResource("m_door_blast_plate"),
+"prop_issue_counter": ExtResource("m_furn_casework"),
+"prop_lab_bench": ExtResource("m_furn_casework"),
+"prop_level_plaque": ExtResource("m_sign_deck_plaque"),
+"prop_lift_call": ExtResource("m_device_reader_shell"),
+"prop_lift_door": ExtResource("m_door_leaf_painted"),
+"prop_makeshift_door": ExtResource("m_door_scrap_welded"),
+"prop_manifest_terminal": ExtResource("m_device_reader_shell"),
+"prop_medcabinet": ExtResource("m_furn_clinical"),
+"prop_monitor_wall": ExtResource("m_device_screen_glass"),
+"prop_neon_sign": ExtResource("m_sign_neon_venue"),
+"prop_office_door": ExtResource("m_door_leaf_painted"),
+"prop_parcel_locker": ExtResource("m_furn_casework"),
+"prop_path": ExtResource("m_furn_paving"),
+"prop_pew": ExtResource("m_furn_worship_stone"),
+"prop_pool_edge": ExtResource("m_furn_dark_stone"),
+"prop_public_gallery": ExtResource("m_door_leaf_painted"),
+"prop_reactor_console": ExtResource("m_device_console_bed"),
+"prop_seat": ExtResource("m_furn_upholstery"),
+"prop_serving_counter": ExtResource("m_furn_service_steel"),
+"prop_shrine": ExtResource("m_furn_shrine_lit"),
+"prop_stall": ExtResource("m_furn_stall_canvas"),
+"prop_table": ExtResource("m_furn_pale_composite"),
+"prop_tactical_display": ExtResource("m_device_screen_glass"),
+"prop_tank_gauge": ExtResource("m_plant_switchgear"),
+"prop_tool_rack": ExtResource("m_furn_shop_steel"),
+"prop_tram_door": ExtResource("m_door_leaf_painted"),
+"prop_tray_dispenser": ExtResource("m_furn_service_steel"),
+"prop_valve": ExtResource("m_plant_valve_metal"),
+"prop_viewport": ExtResource("m_viewport_glazing"),
+"prop_welded_door": ExtResource("m_door_scrap_welded"),
+"prop_workbench": ExtResource("m_furn_shop_steel"),
+"qtr_babcom": ExtResource("m_device_reader_shell"),
+"qtr_bed": ExtResource("m_furn_upholstery"),
+"qtr_deck": ExtResource("m_kit_deck"),
+"qtr_desk": ExtResource("m_furn_casework"),
+"qtr_locker": ExtResource("m_furn_casework"),
+"qtr_seat": ExtResource("m_furn_upholstery"),
+"qtr_shower": ExtResource("m_furn_clinical"),
+"qtr_wall": ExtResource("m_shell_wall_panel"),
+"rail_band": ExtResource("m_kit_rail_band"),
+"research_deck": ExtResource("m_shell_deck_clinical"),
+"research_rib": ExtResource("m_shell_rib_painted"),
+"research_wall": ExtResource("m_shell_wall_clinical"),
+"reveal": ExtResource("m_kit_reveal"),
+"sign_face": ExtResource("m_signage_panel"),
+"sign_frame": ExtResource("m_sign_mount_dark"),
+"sign_post": ExtResource("m_sign_mount_dark"),
+"signage_neon": ExtResource("m_emissive_signage"),
+"signage_panel": ExtResource("m_signage_panel"),
+"skirt": ExtResource("m_kit_skirt"),
+"soffit": ExtResource("m_kit_reveal"),
+"store_deck": ExtResource("m_shell_deck_industrial"),
+"store_rib": ExtResource("m_shell_rib_oxide"),
+"store_wall": ExtResource("m_shell_wall_industrial"),
+"structure": ExtResource("m_kit_wall_plate"),
+"transit_deck": ExtResource("m_shell_deck_public"),
+"transit_rib": ExtResource("m_shell_rib_painted"),
+"transit_wall": ExtResource("m_shell_wall_panel"),
+"wall_assembly": ExtResource("m_kit_wall_plate"),
+"wall_panel": ExtResource("m_kit_wall_plate"),
+"wall_reveal": ExtResource("m_kit_reveal"),
+"worship_deck": ExtResource("m_shell_deck_stone"),
+"worship_rib": ExtResource("m_shell_rib_painted"),
+"worship_wall": ExtResource("m_shell_wall_panel"),
+"zoc_chair_five": ExtResource("m_zoc_five_panel"),
+"zoc_chair_frame": ExtResource("m_zoc_armature"),
+"zoc_chair_seat": ExtResource("m_zoc_chair_seat"),
+"zoc_deck_chevron": ExtResource("m_zoc_deck_chevron"),
+"zoc_deck_strip": ExtResource("m_zoc_deck_light"),
+"zoc_deck_tile": ExtResource("m_zoc_deck_tile"),
+"zoc_deck_worn": ExtResource("m_zoc_deck_worn"),
+"zoc_downlight": ExtResource("m_zoc_deck_light"),
+"zoc_gallery_beam": ExtResource("m_zoc_structure"),
+"zoc_gallery_slab": ExtResource("m_zoc_gallery_slab"),
+"zoc_gallery_strut": ExtResource("m_zoc_structure"),
+"zoc_neon_back": ExtResource("m_zoc_neon_back"),
+"zoc_neon_face": ExtResource("m_zoc_neon_face"),
+"zoc_purlin": ExtResource("m_zoc_structure"),
+"zoc_rail": ExtResource("m_zoc_rail"),
+"zoc_rib_arch": ExtResource("m_zoc_structure"),
+"zoc_rib_cap": ExtResource("m_zoc_structure"),
+"zoc_rib_lamp": ExtResource("m_zoc_rib_lamp"),
+"zoc_screen": ExtResource("m_zoc_screen"),
+"zoc_service_chrome": ExtResource("m_zoc_service_chrome"),
+"zoc_stair": ExtResource("m_zoc_stair"),
+"zoc_stall_awning": ExtResource("m_zoc_stall_canvas"),
+"zoc_stall_counter": ExtResource("m_zoc_stall_counter"),
+"zoc_stall_goods": ExtResource("m_zoc_stall_canvas"),
+"zoc_stall_light": ExtResource("m_zoc_stall_light"),
+"zoc_stall_mast": ExtResource("m_zoc_armature"),
+"zoc_stall_post": ExtResource("m_zoc_stall_post"),
+"zoc_stall_sign": ExtResource("m_zoc_stall_sign"),
+"zoc_stall_spar": ExtResource("m_zoc_armature"),
+"zoc_table_col": ExtResource("m_zoc_cafe_table"),
+"zoc_table_edge": ExtResource("m_zoc_table_edge"),
+"zoc_table_five": ExtResource("m_zoc_five_panel"),
+"zoc_table_foot": ExtResource("m_zoc_cafe_table"),
+"zoc_table_top": ExtResource("m_zoc_cafe_table"),
+"zoc_wall": ExtResource("m_zoc_wall_plate")
+}
+
+[node name="Camera3D" type="Camera3D" parent="."]
+fov = 55.0
+near = 0.06
+far = 400.0
+
+[node name="WorldEnvironment" type="WorldEnvironment" parent="."]
+environment = SubResource("Env")

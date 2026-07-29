@@ -2596,3 +2596,66 @@ Layer 3 is complete, so layer 4 is legitimately open. `directory.py` says so.
 3. **There is still no corridor shot.** `tools/export_scene.py` has `exterior` and `drum` only, so
    the most-seen surface in the station has never been rendered in the engine. Layer 4 needs one to
    judge interior lighting at all.
+
+
+## Session 3n — LAYER 4 HAS AN EYE. The first interior frame in the project's history.
+
+`docs/engine-corridor.png` — Godot 4.4 double + lavapipe, 1280×720, 24 s. Segmented pilaster
+strips, warm downlight pools low on the wall, portal heads receding overhead, studded deck plate
+with the specular run the frames show, rail band and skirt reading as articulation.
+
+**Layer 4 could not start without this.** The material library declares three scenes; two had a
+`.tscn`. The interior scene has **96 materials and 265 rules — the largest of the three, 40% of
+the library — and not one had ever been rendered**, because there was nowhere to render it. Layer 3
+was declared complete over surfaces nobody had ever seen. This is layer 4's equivalent of layer 0.
+
+### The light IS the fitting
+
+`fixture_lights()` puts an omni at the centroid of every tagged `light_*` span, so lighting follows
+geometry and cannot drift from it — CLAUDE.md hard rule 4 applied to light. The alternative is a
+table of lamp positions, which is a second description of where the fittings are; the moment the
+kit moves a downlight the table is wrong and nothing says so.
+
+Colour and relative energy come from **each fitting's own material**. The four kit fittings are not
+one colour: `light_downlight` is warm at (1.00, 0.68, 0.40) and the pilaster strip, portal head and
+deck channel are cool blue-white near (0.88, 0.93, 1.00). Passing one lamp colour would have thrown
+away the warm/cool contrast that is most of what a B5 corridor looks like — **and it would have
+looked deliberate.**
+
+### THE FINDING, and the shot produced it on first use
+
+> **ZERO of the 68 procedural rooms have a light fitting.** `medlab_one` renders BLACK. The only
+> things that glow in a `rooms.py` room are seventeen terminal screens.
+
+That is the `FIXTURES` lesson one layer up. At layer 2 the room contained its controls and not the
+machine they controlled; here the room contains everything except the means to see it. A room with
+no lamp is a room nobody can be in.
+
+The black frame is the shot behaving correctly, not failing — `fixture_lights` is documented to
+return nothing when nothing is tagged, precisely so that an unlit room is legible instead of being
+quietly filled by ambient.
+
+### Two calibration errors, both mine, both caught by looking
+
+The first frame came back **pure white**: I left `--light-range` at the drum's **1100 m** default
+inside a 21.6 m corridor, so all 117 sources reached every surface with no falloff. And 117 was
+itself wrong — a pilaster strip is seven tagged bars 120 mm apart, which is one lamp. Merging by
+proximity within a group took it to 33 and kept the segmentation where it belongs, in the geometry.
+
+### Also
+
+`interior.tscn` has **no scene lights at all**, deliberately. Ambient is 0.015 — a tenth of the
+drum's — because a corridor is a closed box whose only light is its fittings. SSAO radius 0.6 m
+against the drum's 2.5, because the subject here is a skirting board, not a landscape.
+
+## NEXT SESSION — layer 4
+
+1. **Give `rooms.py` light fittings.** 68 rooms, zero lamps. Archetype-driven, the same shape as
+   `FIXTURES`: a medlab has a ceiling grid, an industrial bay has high bays, a chapel has something
+   else. Until this exists, 68 of 118 locations cannot be lit at all.
+2. **The corridor is too bright and too even.** It reads as a clean modern hospital rather than
+   `grey level 1.webp`'s mood. The fitting-to-fill ratio is the number that fixes it, and a
+   three-agent measurement pass over the reference frames was running when this was written —
+   its results land in `docs/` and should be applied before tuning by eye.
+3. **The lighting rig still has no night side** (exterior, blocking) — the arrival shot.
+4. **The magenta guideway light runs** in `drum_interior_engine`.
