@@ -439,13 +439,55 @@ concourse *is* the tutorial — the customs board explains atmospheres, time, cu
 its own voice. → **L7 uses the authority-1 signage as onboarding**, which is both elegant and
 canon.
 
-### 4.10 The thing nobody plans for: **what does the player DO?**
+### 4.10 THE OPENING — set by the owner, session 3k
+
+**This is now a design decision, not a proposal.** Verbatim:
+
+> *"You arrive on a transport ship and slowly see the station come into view before landing and
+> being processed. You pick your species/name/occupation etc. or maybe it's random. And you just
+> experience life aboard the vessel per your role or per your decisions; 1 of 250,000."*
+
+It is the right opening and it resolves several things the plan had left open:
+
+**It makes the first five minutes the tutorial, using only what canon already provides.** The
+approach establishes scale — 8,047 m arriving slowly through a viewport is the only way a player
+ever *feels* the size. The dock establishes the launch-and-dock hinge from the passenger side.
+Customs establishes the rules in the station's own voice: six atmospheres, Earth Mean Time,
+identicards, the Business Center, *smoking permitted in designated areas only*. Every one of those
+is authority-1 signage already transcribed in `signage.py` and `customs.py`. **The station explains
+itself, and we do not write a word of tutorial.**
+
+**It makes character creation diegetic.** Species, name and occupation are not a menu — they are
+what the identicard says, and the identicard is a prop we already model. `npc/names.py` generates
+per-species names to attested grammars; `npc/schedule.py` holds the roster; `quarters.py` sorts
+residence by class. **Picking a species picks an atmosphere, a quarters class, a gravity, a
+faction standing and a working day**, all from systems that exist.
+
+**It answers "what does the player do" without a quest list.** You do your job, or you don't. The
+consequences come from the economy, the law and the reputation systems rather than from a script.
+Roll random and you get a life you did not choose, which is the more interesting version and is
+also what being one of 250,000 means.
+
+**Sequence, and what each beat requires:**
+
+| Beat | What the player sees | Systems required | Status |
+|---|---|---|---|
+| 1. Approach | The station growing in a viewport over minutes. Rotation visible. Traffic in the lanes | hull geometry, materials, lighting, transport interior, traffic (W5) | geometry ✓, rest ✗ |
+| 2. Dock | Bay doors, the spin-match, clamps, the transport settling | docking physics ✓, bay geometry ✓, animation | partial |
+| 3. Disembark | First gravity. First crowd. The bay's noise and scale | controller (L1), crowd, audio | ✗ |
+| 4. Customs | Queue, identicard, atmosphere assignment, the boards | customs geometry ✓, signage ✓, interaction (L2), status (L4) | partial |
+| 5. Concourse | "WELCOME TO BABYLON 5", the station schematic screen, the crowd | geometry ✓, screens (E7), UI (L6) | partial |
+| 6. Your quarters | The room your class gets. Rent starts | quarters ✓, economy (W3), status (L4) | partial |
+| 7. Your first shift | The roster says where to be | schedule ✓, navigation ✓, needs (S2) | partial |
+
+**This becomes M5's exit criterion**: the seven beats playable end to end.
+
+### 4.11 The thing nobody plans for: **what does the player DO?**
 
 "Be one of 250,000" is a premise, not a loop. Without a role the result is a walking simulator with
 excellent architecture.
 
-**Proposal, and it needs an owner decision at M5:** the player is a **new arrival with a work
-permit**. That single choice activates every system already researched — customs and a visa
+**Settled by the owner — see §4.10.** The player is a **new arrival with a work permit**. That single choice activates every system already researched — customs and a visa
 (W5), a quarters class and rent (W3), a job with a roster (A1), an income, a reputation, and access
 to Downbelow when the money runs out. It is also exactly the show's own entry point for a
 newcomer. Everything else — flight, crime, diplomacy — becomes reachable from it rather than

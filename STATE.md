@@ -1816,6 +1816,45 @@ within a layer, order by the gazetteer's ranked list then by authority, authorit
 is complete when `directory.py` says so; and **nothing is "done" at a layer it has not reached** —
 a room with geometry and no materials is at layer 2, and calling it finished is false.
 
+## Session 3k (cont.) — M0 IS DONE. The engine path is alive and the first frame is scored.
+
+**The owner set the opening**, and it is now a design decision in `docs/MASTER-PLAN.md` §4.10:
+arrive on a transport, watch the station come into view, dock, be processed through customs, pick
+(or be dealt) a species/name/occupation, and live as **1 of 250,000**. That makes the first five
+minutes the tutorial using only authority-1 signage the project already holds, and it makes
+character creation diegetic — the identicard *is* the character sheet.
+
+**The engine path was not missing. It had rotted from disuse.** `tools/render_godot.sh` was built
+in session 2j and never run again; every render from 2j to 3k came from the flat-shaded
+rasteriser. Reviving it took one command.
+
+| frame | distance | time |
+|---|---|---|
+| `docs/engine-approach-far.png` | 14 km | 34 s |
+| `docs/engine-approach-near.png` | 3.4 km | 27 s |
+
+200,754 triangles, Godot 4.4 double + Mesa lavapipe, Forward+, 1280×720.
+
+**First craft score in the project's history** — `docs/aaa-scorecard.json`, subsystem
+`exterior_approach`: **craft 3, fidelity 4, performance 3, robustness 4.**
+
+### The one blocking finding, and it is the right one to have found first
+
+> **NO EMISSIVE WINDOWS ANYWHERE.** A station housing 250,000 people renders completely unlit from
+> within. It reads as a derelict, not a city. The owner's opening beat is the station coming into
+> view — and what comes into view has nobody home.
+
+Three majors behind it: the hull is one pale beige note with no material variation or sector
+identity; a single hard key with no fill or bounce flattens an 8 km object into a cutout; and
+**scale does not read** — nothing in frame gives size, so 8,047 m photographs like a 2 m model.
+
+What is genuinely good: the silhouette is unmistakable at both ranges, and the plating, greebling
+and conduit runs read at 3.4 km then resolve away cleanly at 14 km — the LOD and greeble-relief
+work from 2n and 3k is paying off.
+
+**Next: the emissive pass.** Window lights are the difference between a model and a city, and they
+are the first thing the owner's opening shot shows.
+
 ## IN FLIGHT — read this before starting anything
 
 **An adversarial review panel is running over the five new NPC modules and had NOT reported when
