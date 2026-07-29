@@ -2780,13 +2780,71 @@ exposure, so it scales both.
 Frames: `docs/engine-medlab.png`, `docs/engine-market.png`. Suites: rooms 579, materials 1364,
 layer-3 gate 34, directory 744, export_scene 80, measure_frame 9.
 
+## Session 3o (cont.) — the bespoke modules can be seen, and four of them are lit
+
+**The interior shot could assemble exactly two things**: the corridor kit and a rooms.py bay.
+All fifty locations built by a bespoke module raised SystemExit — so the Zocalo, the docking bay,
+command and control, the council chamber, seven classes of quarters, the alien sector and the
+plant rooms had materials, had lamps in several cases, and **had never been rendered from the
+inside**. `BESPOKE_GEOMETRY` records the entry point for each of the nine interior-scene modules;
+`to_spans` normalises the four shapes their third return value comes in.
+
+**Three defects between that and a frame worth looking at, all found by looking:**
+
+1. **The archetype exposures leaked onto bespoke rooms.** `rooms.archetype()` reads a place's
+   `functions`, so it classifies a bespoke place happily — C&C came out "office" and took office's
+   0.14, calibrated against a rooms.py bay with rooms.py fittings. The frame came back **100% below
+   the measurable floor**. A bespoke module now falls back to the corridor anchor.
+2. **`open_standpoint` measured distance to VERTICES.** A 30 m end cap is two triangles with four
+   corners, so its middle scored as the most open spot in the room and the Zocalo camera stood
+   outside the concourse with a bulkhead filling the frame. It now rasterises triangle footprints
+   (`rooms.walkable`'s method) and scores by **the clear run ahead** — `zoc_bulkhead` caps both ends
+   and the stall awnings overhang past them, so "nearest free cell" was worth nothing.
+3. **The light rig gated on SPELLING.** `fixture_lights` skipped any group not named `light_*`,
+   which locked out every bespoke module: `zoc_rib_lamp`, `bay_lamp`, `bar_pendant_lamp` are all
+   recorded in the measurements as real sources, two shadow-casting, and none could ever cast.
+   Membership of `FIXTURE_LIGHTING` is the gate now. Renaming nine modules' groups would have
+   broken their material binds, scene rules and layer-3 count to satisfy a convention.
+
+**Five bespoke fittings now cast, and no value in them is new.** `bay_lamp`, `zoc_rib_lamp`,
+`zoc_stall_light`, `bar_pendant_lamp`, `cc_light_strip` — every one is a fitting its module already
+builds and the committed JSON already measures, and unlike the room fittings **not one range needed
+scaling**: each was measured in the very volume its module builds. `BESPOKE_EXPOSURE` calibrates
+four modules to 1.38–1.46× their reference frames against a 1.40 target. The corrections were small
+(0.90–1.34), which is the informative part: what those modules lacked was not exposure but sources.
+
+Frames: `docs/engine-zocalo.png` — the station's social centre, elliptical rib arches, gallery and
+stairs both sides, stalls under awnings, warm rib lamps against the cool deck strip.
+`docs/engine-cnc.png`, `docs/engine-dugout.png`, `docs/engine-docking-bay.png`.
+
+**A workflow that cost time and produced nothing.** Six proposal agents plus six adversarial
+verifiers were launched for the bespoke modules. The machine's concurrency cap is 2, so after
+fifteen minutes two agents were still on their first pass and none had written its output. It was
+stopped and the work done serially from the same committed JSON the agents were being asked to
+read. **The lesson is about this machine, not about the pattern**: at 2 concurrent, a 12-agent
+fan-out is a 6-deep queue, and the useful width here is 2–4.
+
 ## NEXT SESSION — layer 4
 
-1. **The bespoke sixteen.** Layer 4 stands at 68/118; the other 50 are the module-built places, and
+1. **The bespoke sixteen, continued.** Layer 4 stands at 68/118; the other 50 are the module-built places, and
    several already build lamps (`zoc_rib_lamp`, `bay_lamp`, `cc_light_strip`). What they do not have
    is a calibrated exposure and a frame measured against its reference, which is what layer 4 *is*.
    The measured fixtures for them are already committed in `docs/layer4-lighting/public_social.json`
-   and `command_working.json` — 42 of them, unapplied.
+   and `command_working.json`. Five are now applied; the rest need GEOMETRY before they can be
+   lit, which is layer-2 work reached from layer 4:
+   * **`plant` (5 places) has no light fitting of any kind** and renders 85% black — two tanks in
+     the dark. It is the `rooms.py` industrial problem in a module that was not covered by
+     `rooms.LIGHTS`.
+   * **`quarters` (7 places)** has only `qtr_babcom`, a comms panel. No lamp.
+   * **`council_chamber`**: `cc_house_wash` is measured as the chamber's whole lighting scheme and
+     its "fitting is never in frame" — there is no geometry to hang a light on. Needs either an
+     invisible tagged proxy or a different mechanism; decide and argue it.
+   * **`docking_bay`**: `bay_mouth` — "NOT PRESENT IN docking_bay.py, which builds the mouth as an
+     opening and lights nothing."
+   * **`command_control`**: two more wall courses, `cc_console_skirt`, `cc_pit_indicator`.
+   * **`zocalo`**: the measurement says 60–100 bulbs a stall against the 6–9 zocalo.py places, and
+     that the overhead downlight's cone must be ≥50°— but zocalo.py has no ceiling fitting geometry
+     at all; `zoc_downlight` is the lit patch ON THE DECK.
 2. **Our lamps clip where the show's do not.** Measured across the eleven calibration renders and
    their reference frames: ours clip 0.00–3.13% of the frame, the references 0.00–0.54%. The
    Zocalo reference clips 0.00% and our market frame 3.13%; the war room 0.00% and our medlab

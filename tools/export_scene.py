@@ -635,6 +635,52 @@ FIXTURE_LIGHTING = {
     "light_soffit_blade": {"kind": "omni", "colour": (1.000, 0.703, 0.440),
                            "energy_rel": 0.92, "range_m": 4.0,
                            "shadow": False},
+
+    # --- the bespoke modules ----------------------------------------------
+    # These five are the fittings the bespoke generators ALREADY BUILD and that
+    # the committed measurements already describe. Nothing here is new
+    # geometry, no colour is invented, and -- unlike the room fittings above --
+    # NO RANGE NEEDED SCALING: every one was measured in the very volume its
+    # module builds, so the number transfers as read.
+    #
+    # bay_flood, measured in reference/03-sector-blue/dock.webp: spot, 7391 K,
+    # range 30 m, spacing 11 m, SHADOW, cone half-angle 28-35 deg, emitting
+    # face at BAY_H_M - GIRDER_D_M - LAMP_DROP_M = 13.0 m. The 30 m range is
+    # right here and would be wrong anywhere else: docking_bay.py's BAY_H_M
+    # really is 18 m. 35 deg is the top of the measured range and is taken
+    # rather than opened further.
+    "bay_lamp": {"kind": "spot", "colour": (0.850, 0.830, 1.000),
+                 "energy_rel": 1.00, "range_m": 30.0, "shadow": True,
+                 "angle_deg": 35.0},
+    # zoc_rib_lamp, measured in reference/04-sector-red/zocalo.webp: omni,
+    # 2990 K, energy_rel 0.30, range 6 m, no shadow. Five per rib at the
+    # measured (x, y) intrados positions, ribs at 5.4 m pitch. This is the
+    # concourse's warm register and the only thing in the Zocalo that is not
+    # cool.
+    "zoc_rib_lamp": {"kind": "omni", "colour": (1.000, 0.398, 0.233),
+                     "energy_rel": 0.30, "range_m": 6.0, "shadow": False},
+    # zoc_stall_light, measured in the same frame by blob analysis -- 64
+    # discrete bulbs at a median spacing of 2.6 bulb diameters: omni, 3800 K,
+    # energy_rel 0.19, range 2.5 m. FIXTURE_MERGE_M does the heavy lifting: the
+    # geometry keeps every bulb and the rig gets one lamp per 0.9 m.
+    "zoc_stall_light": {"kind": "omni", "colour": (1.000, 0.492, 0.420),
+                        "energy_rel": 0.19, "range_m": 2.5, "shadow": False},
+    # bar_pendant_lamp, measured in reference/04-sector-red/Doug's Dugout.webp:
+    # spot, 3900 K, range 3.5 m, spacing 2.2 m, SHADOW, one per table. Cone
+    # from the shade itself -- hung below standing eye height (~1.9 m) over a
+    # 1.20 m table at 0.74 m, so atan(0.60/1.16) = 27.4 deg. This is the
+    # module's own fitting, which hospitality.py already places and asserts.
+    "bar_pendant_lamp": {"kind": "spot", "colour": (1.000, 0.554, 0.393),
+                         "energy_rel": 1.00, "range_m": 3.5, "shadow": True,
+                         "angle_deg": 27.4},
+    # cc_wall_course, measured raw in reference/03-sector-blue/comand and
+    # contorl.webp: omni, 22000 K, energy_rel 0.44, range 3.5 m, no shadow.
+    # command_control.py's group is `cc_light_strip` and the measurement is of
+    # that object. The placement note is the reason a 3.5 m range on a 7 m
+    # half-width is correct rather than mean: the courses throw OUTWARD and the
+    # centre of the room stays dark.
+    "cc_light_strip": {"kind": "omni", "colour": (0.243, 0.546, 1.000),
+                       "energy_rel": 0.44, "range_m": 3.5, "shadow": False},
 }
 # EVERYTHING NOT IN THAT TABLE IS EMISSIVE ONLY, and for rooms.py that is:
 # light_service_tube, light_bar_backlight, light_indicator_red and
@@ -751,7 +797,22 @@ ROOM_EXPOSURE = {
 # The frame came back 100% below the measurable floor: not one pixel of the
 # station's bridge above 0.01 linear. An exposure measured on one generator's
 # geometry says nothing about another's.
-BESPOKE_EXPOSURE = {}
+#
+# Four are measured. Same procedure as ROOM_EXPOSURE and the same 1.40 target:
+# render the module's room, measure it and its reference frame with
+# tools/measure_frame.py, scale. At the anchor they came in at 1.53, 1.04, 1.51
+# and 1.55 of their references' medians, so the corrections are small -- which
+# is the interesting part. It says the anchor was a reasonable default and that
+# what those four modules were missing was not exposure but SOURCES: none of
+# their lamps cast anything until FIXTURE_LIGHTING learned their names.
+#
+# The rest stay absent, which means the anchor, which means not yet measured.
+BESPOKE_EXPOSURE = {
+    "zocalo": 0.92,          # vs reference/04-sector-red/more zocalo.png
+    "hospitality": 1.34,     # vs reference/04-sector-red/Doug's Dugout.webp
+    "command_control": 0.93,  # vs 03-sector-blue/comand and contorl.webp
+    "docking_bay": 0.90,     # vs reference/03-sector-blue/dock.webp
+}
 
 
 def room_exposure(room):
