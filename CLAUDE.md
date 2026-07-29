@@ -39,29 +39,57 @@ into four scored dimensions with written descriptors — **craft, fidelity, perf
 robustness** — and defines the bar. Nothing is "done" because it was built; it is done when it
 clears the bar and stops regressing.
 
-## Current phase
+## The plan — LAYERS, COMPLETED IN ORDER
 
-**Structure first, where structure carries structure.** Geometry that other geometry depends on
-is built and made correct before anything is dressed. Polishing a surface that later moves is
-waste, and this project has paid that bill: the drum end cap was "done" for four sessions and
-was 4,064 open edges.
+**Set by the owner, session 3k, and it supersedes the phase plan that came before it:**
+*"I'd rather do something in layers but complete, rather than small slices which do not add up
+together."*
 
-That rule binds *dependencies*, not the calendar. The interfaces are now settled enough that
-materials, lighting, audio and NPC work run in parallel with the remaining structure.
+That is a decision about how work is *finished*, and it is binding. The previous plan was six
+overlapping phases, which sounds like an order and is not one: with phases running in parallel,
+every session picks whatever seems plausible, nothing is ever completed, and progress becomes a
+feeling rather than a number. That is exactly what happened between sessions 3h and 3k — fifteen
+modules of geometry, of which twelve did not know where they were on the station.
 
-### The plan, in order
+**So: one layer at a time, across ALL 126 locations, finished before the next begins.**
 
-| Phase | What | Done when |
-|---|---|---|
-| **A. See** | The rubric, the Godot/lavapipe PBR render path, the material and lighting systems | A frame can be rendered that is worth judging, and there is a written bar to judge it against |
-| **B. Complete the shell** | Crude exterior components, metric `HULL_ALLOWANCE`, cell junctions and doors, the docking bay, the Starfury cockpit | Every volume a player can reach exists and is watertight |
-| **C. Dress it** | Textures, decals, signage, wear, greebling at close range, per-sector identity | Each subsystem clears the bar |
-| **D. Life** | NPCs at population scale, crowd density and isolation, schedules, species behaviour, audio and ambience | The station feels inhabited, and empty where it should be |
-| **E. Play** | First and third person, flight, seamless launch and dock, doors, interaction | Hours can be lost in it |
-| **F. Ship** | Integration, performance on target hardware, the owner's first look | — |
+A completed layer is a state the next context inherits cleanly. A half-finished vertical slice
+plus 125 grey boxes is not, and this project loses its context regularly.
 
-Phases overlap where they do not depend on each other. A is a hard prerequisite for C, D and E,
-because none of those can be *judged* without it.
+### The layers
+
+`docs/gazetteer/LOCATIONS.md` holds the **126 locations**. `station/directory.py` is the register,
+parses that file, and **prints per-layer completion in CI** — so the answer to "how far are we" is
+a number this repository computes, never a summary anyone writes.
+
+| # | Layer | Done when | Status |
+|---|---|---|---|
+| **0** | **Engine path** | A materialled, lit frame comes out of Godot + lavapipe and can be scored against `docs/AAA-STANDARD.md`. Infrastructure, not per-location | **BLOCKING — see below** |
+| **1** | **Addressed** | All 126 have `(sector, ring, deck, angle, z)`, footprints that do not collide, declared functions and interactions | 29 / 126 |
+| **2** | **Geometry** | Every addressed location has mesh, closed, correctly wound, inside its own footprint | 19 / 126 |
+| **3** | **Materials** | Every mesh carries PBR materials from `materials.py`. No flat colour anywhere | 0 |
+| **4** | **Lighting** | Every location lit, in the engine, to its reference's mood | 0 |
+| **5** | **Props & function** | The 71 declared interactable types exist and do what `directory.py` says they do | 0 |
+| **6** | **Inhabitants** | NPCs placed, scheduled and animated in every location, at real density | 0 |
+| **7** | **Audio** | Ambience and event audio per location | 0 |
+| **8** | **Judged** | Every location scored against the rubric in an engine frame, and passing | 0 |
+
+**Layer 0 is blocking and is not done.** The Godot 4.4 double-precision binary and the project both
+exist and the binary runs — but **every one of the 27 renders in session 3k came from
+`tools/preview_render.py`**, the flat-shaded rasteriser. By this file's own rule below, that
+judges structure and says nothing about craft. So no frame in this project has ever been scored
+against the AAA standard. Finish layer 0 before layers 3–8, or the craft layers cannot be
+completed *or* checked.
+
+### Rules that follow from working in layers
+
+1. **Do not start a layer before the one above it is complete.** The exception is layer 0, which
+   is infrastructure and must finish first regardless.
+2. **Within a layer, order by the gazetteer's ranked list, then by authority.** Authority-1
+   locations first — they are the ones a viewer can catch us on.
+3. **A layer is complete when `directory.py` says so**, not when it feels done.
+4. **Nothing is "done" at a layer it has not reached.** A room with geometry and no materials is
+   at layer 2. Saying it is built is true; saying it is finished is not.
 
 ### The loop
 

@@ -382,6 +382,58 @@ def gazetteer_rows():
     return rows
 
 
+# The layers, from CLAUDE.md's plan. A location's layer is the HIGHEST one it
+# has reached; layers are cumulative and ordered, so a room with geometry but no
+# materials is at layer 2 and saying it is finished is false.
+#
+# `reached` is a predicate over a place. Layers 3+ have no evidence to read yet
+# -- there are no materials, no lights, no props -- and they deliberately return
+# False rather than being omitted, so the register reports zero instead of
+# reporting nothing.
+LAYERS = (
+    (1, "addressed", lambda p: True),
+    (2, "geometry", lambda p: bool(p["module"])),
+    (3, "materials", lambda p: bool(p.get("materials"))),
+    (4, "lighting", lambda p: bool(p.get("lights"))),
+    (5, "props", lambda p: bool(p.get("props_built"))),
+    (6, "inhabitants", lambda p: bool(p.get("npcs_placed"))),
+    (7, "audio", lambda p: bool(p.get("audio"))),
+    (8, "judged", lambda p: bool(p.get("rubric_score"))),
+)
+
+
+def layer_of(place):
+    """The highest CONTIGUOUS layer this place has reached.
+
+    Contiguous matters: a place that somehow had audio but no materials is not
+    at layer 7, it is at layer 2 with a stray attribute. Reporting the highest
+    reached rather than the highest contiguous is how a project convinces
+    itself it is further along than it is.
+    """
+    n = 0
+    for idx, _name, reached in LAYERS:
+        if not reached(place):
+            break
+        n = idx
+    return n
+
+
+def layer_report(schema, profile):
+    """Per-layer completion across the WHOLE gazetteer, not just what is placed.
+
+    The denominator is every location row, including the 97 with no address --
+    a layer is not complete because the places we happen to have registered are
+    done with it.
+    """
+    total = len(gazetteer_rows())
+    out = []
+    for idx, name, _reached in LAYERS:
+        n = sum(1 for p in PLACES if layer_of(p) >= idx)
+        out.append(dict(layer=idx, name=name, done=n, total=total,
+                        complete=(n == total)))
+    return out
+
+
 def coverage(schema, profile):
     """What fraction of the gazetteer has an address, and what has geometry."""
     rows = gazetteer_rows()
@@ -505,6 +557,26 @@ def _selftest():
     check("coverage is reported honestly",
           cov["addressed"] + cov["unaddressed"] == cov["gazetteer_rows"])
 
+    # --- the layer model ---------------------------------------------------
+    rep = layer_report(schema, profile)
+    check("no layer claims more than the gazetteer holds",
+          all(r["done"] <= r["total"] for r in rep))
+    # Layers are cumulative: each must be <= the one above it. A break here
+    # means layer_of() is reporting a non-contiguous layer as reached.
+    check("layer completion is monotonically non-increasing",
+          all(rep[i]["done"] >= rep[i + 1]["done"]
+              for i in range(len(rep) - 1)),
+          str([(r["name"], r["done"]) for r in rep]))
+    # CLAUDE.md's rule 1: do not start a layer before the one above it is
+    # complete. This does not fail the build -- work in progress is normal --
+    # but it names which layer is the current one, so a session cannot drift
+    # into a later layer without the register saying so.
+    current = next((r for r in rep if not r["complete"]), None)
+    check("there is a current layer, and it is the earliest incomplete one",
+          current is not None and current["layer"] == min(
+              r["layer"] for r in rep if not r["complete"]),
+          str(current))
+
     print(f"\nSTATION DIRECTORY")
     print(f"  gazetteer rows       {cov['gazetteer_rows']:4d}")
     print(f"  addressed here       {cov['addressed']:4d}"
@@ -518,6 +590,16 @@ def _selftest():
         print(f"  {mark} {p['sector']:6s} r{p['ring']}d{p['deck']:<3d} "
               f"{p['angle_deg']:5.0f}deg z{p['z_m']:6.0f} {g:5.3f}g  "
               f"{p['name'][:38]:38s} {len(p['interacts'])} interactions")
+    print("\n  LAYER COMPLETION across all "
+          f"{len(gazetteer_rows())} gazetteer locations")
+    for r in rep:
+        bar = "#" * int(20 * r["done"] / max(r["total"], 1))
+        flag = "  <- CURRENT" if r is current else ""
+        print(f"    {r['layer']} {r['name']:12s} [{bar:20s}] "
+              f"{r['done']:3d}/{r['total']}{flag}")
+    print("\n  Layer 0 (engine path) is infrastructure and BLOCKING: no frame "
+          "in this\n  project has yet been scored against docs/AAA-STANDARD.md.")
+
     print(f"\n{ok}/{ok + fail} passed")
     return 1 if fail else 0
 

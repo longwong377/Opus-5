@@ -1769,6 +1769,53 @@ an eye skips; this check scales and should be used on every interior from here.
 
 Logged as **INV-033**.
 
+## Session 3k (cont.) — THE MASTER PLAN CHANGED. Read this before anything else.
+
+**Owner decision, session 3k:** *"I'd rather do something in layers but complete, rather than
+small slices which do not add up together."*
+
+`CLAUDE.md`'s six overlapping phases are **superseded**. They sounded like an order and were not
+one: with phases running in parallel, every session picked whatever seemed plausible, nothing was
+ever completed, and progress became a feeling. That is precisely what happened between 3h and 3k —
+**fifteen modules of geometry, twelve of which did not know where they were on the station.**
+
+**The plan is now one layer at a time, across all 126 locations, finished before the next begins.**
+
+`station/directory.py` computes and prints completion per layer in CI, so "how far are we" is a
+number this repository calculates rather than a summary anyone writes:
+
+```
+    1 addressed    [####                ]  29/126  <- CURRENT
+    2 geometry     [###                 ]  19/126
+    3 materials    [                    ]   0/126
+    4 lighting     [                    ]   0/126
+    5 props        [                    ]   0/126
+    6 inhabitants  [                    ]   0/126
+    7 audio        [                    ]   0/126
+    8 judged       [                    ]   0/126
+```
+
+**LAYER 0 IS BLOCKING AND IS NOT DONE.** The Godot 4.4 double-precision binary exists at
+`/home/user/godot-build/godot-4.4-stable/bin/` and **runs** (verified session 3k), and
+`godot/` holds the project. But **all 27 renders in session 3k came from
+`tools/preview_render.py`** — the flat-shaded rasteriser, which by CLAUDE.md's own rule judges
+structure and says nothing about craft. **No frame in this project has ever been scored against
+`docs/AAA-STANDARD.md`.** Finish layer 0 before layers 3–8 or the craft layers cannot be completed
+*or* checked.
+
+**Order of work from here:**
+
+1. **Layer 0** — wire `materials.py` → Godot → lavapipe → PNG, and score one frame against the
+   rubric. Infrastructure; blocking.
+2. **Layer 1** — address the remaining **97** locations in `directory.py`.
+3. **Layer 2** — geometry for all 126.
+4. Then 3 → 8 in order.
+
+**Rules that now bind** (in `CLAUDE.md`): do not start a layer before the one above is complete;
+within a layer, order by the gazetteer's ranked list then by authority, authority-1 first; a layer
+is complete when `directory.py` says so; and **nothing is "done" at a layer it has not reached** —
+a room with geometry and no materials is at layer 2, and calling it finished is false.
+
 ## IN FLIGHT — read this before starting anything
 
 **An adversarial review panel is running over the five new NPC modules and had NOT reported when
