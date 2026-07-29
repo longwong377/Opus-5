@@ -1472,3 +1472,52 @@ pass a 9 m² cell with a 2.05 m bed jammed across it. Runs of units tile exactly
 residual gap between two quarters is a void invisible in any elevation.
 
 **Overturned by:** any on-screen view of quarters with a measurable feature.
+
+---
+
+## INV-033 — The bar/diner
+
+**Invented:** every dimension in `station/hospitality.py`.
+
+**Why it exists.** `npc/schedule.py` makes **hospitality the largest single workplace on the
+station** — 734 of 3,000 sampled residents, ahead of the concourse (556) and the Zocalo (488) —
+and it had no geometry. Every one of those NPCs was clocking on to nowhere.
+
+**What the frame gives** (`Doug's Dugout.webp`, authority 1; the uploader's caption is **not** a
+canon name and this module never uses it, per `LOCATIONS.md` §218): **low pendant cone lamps, one
+over each table**, shallow polished shades on slim stems with a bright rim and a hot pool beneath,
+and near-zero ambient between them. A cyan neon glyph beside a **vertical tube in four segments
+split by three clamp bands** (counted, not chosen, and asserted as counts). An **orange-red
+backlit cell matrix ~12 across in a stepped irregular silhouette**. A **regulation 20-segment
+dartboard**. An **amber display reading "209"**, carried as data for the same reason
+`signage.BOARDS` is.
+
+**The lighting design is the room**, and it is asserted as such: one pendant per table one-to-one,
+each with a source inside its shade, hung **below standing eye height** so it pools rather than
+lights the room, and **clear of a seated diner's head**. A pendant 200 mm higher stops being this
+room.
+
+**The dartboard is a real dartboard.** `DART_SEQUENCE` is the regulation clockwise order and the
+self-test checks three things about it: every number 1–20 appears once, the sequence matches, and
+**the mean adjacent difference exceeds 5** — the defining property of the real layout is that high
+numbers neighbour low ones so a near miss is punished, and a naive 1..20 ring would score ~1.
+The board is also asserted at 451 mm across. A plausible-looking ring of numbers is wrong in a way
+a player can catch.
+
+**A real-world trademark is excluded by assertion, not by memory.** The frame contains a lit
+**ZIMA** panel — genuine 1990s product placement, recorded in the reference index *as observed*
+and reproduced nowhere. `_selftest` reads its own source and asserts the string appears at most
+once, in the note explaining the exclusion, and that no geometry group carries it. *"I remembered
+not to" is not a guarantee, and the next session will not have seen the frame.*
+
+**And it is asserted NOT to be the Zocalo:** under half a concourse's ceiling height and under
+120 m² of floor. Building the station's social life out of concourse alone would have made it one
+note.
+
+**One defect, found by rendering against magenta.** The deck and soffit spanned only the inner
+wall face while the walls sit outboard of it, leaving an open corner at every wall/soffit
+junction — visible as a few magenta pixels where the ceiling met the far wall. Both now run to the
+outer wall extent. Verified by **counting magenta pixels in the render (0)** rather than by eye,
+which is the check that scales: a hole a few pixels across is exactly what an eye skips.
+
+**Overturned by:** any second frame of a station bar.
