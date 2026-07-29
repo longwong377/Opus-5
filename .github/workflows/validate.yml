@@ -159,6 +159,27 @@ jobs:
           done
           echo "interior shot exports for corridor, junction and five rooms"
 
+      # The nine bespoke modules the interior shot can assemble. This is the
+      # step that would have caught the state this session started in: fifty
+      # locations had materials and in several cases lamps, and NOT ONE of them
+      # could be assembled into a shot -- `interior_geometry` raised SystemExit
+      # for every module-built place, so none had ever been rendered from the
+      # inside and nothing said so. Each entry point here is a different
+      # function with a different signature, established by reading each
+      # module's own _selftest; a signature change breaks silently otherwise.
+      #
+      # `plant_zone` earns its place twice: it is the only module that builds
+      # in STATION coordinates, so it is the only one exercising
+      # `unroll_to_local` and the declared-walkway standpoint.
+      - name: Bespoke interior shot exports
+        run: |
+          for r in zocalo cnc customs_north bar_unnamed council_chamber \
+                   docking_bays qtr_command alien_sector plant_zone; do
+            python3 tools/export_scene.py --shot interior --room "$r" \
+              --out "/tmp/$r.png" >/dev/null
+          done
+          echo "interior shot exports for nine bespoke modules"
+
       # export_scene's own gates over the light rig: that every archetype has
       # an exposure and an ambient, that every fitting rooms.py places resolves
       # to a material that emits, and that every fitting is either a measured
