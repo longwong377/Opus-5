@@ -127,6 +127,7 @@ material_rules = {
 material_rules = {
 "accent_warning": ExtResource("m_accent_warning"),
 "alien_bar": ExtResource("m_grab_rail_bare"),
+"alien_ceiling_lamp": ExtResource("m_light_alien_lattice"),
 "alien_deck": ExtResource("m_kit_deck"),
 "alien_deck_grating": ExtResource("m_light_deck_grating"),
 "alien_endwall": ExtResource("m_shell_wall_panel"),

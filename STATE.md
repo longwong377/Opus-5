@@ -2968,7 +2968,27 @@ in the working tree. It is all here now and it is good — every change is drive
   pixels — 100% of the frame's clipping — and the reference's own cells do not clip (raw sRGB V p99
   0.927). A value that blows is refuted by the frame it came from.
 
-## NEXT SESSION — layer 4, the last 28
+### The alien sector is lit — 92 / 118
+
+The agent's `alien_sector.py` work was already committed; what was missing was the one line that
+makes a fitting cast, and it had left the exact dict in `CAST_FITTINGS` with the measurement behind
+it. Colour read RAW off the descending shafts and **corroborated by the floor grating — the same
+source seen twice, agreeing in R:G to 0.7%**. Range 4.0 m derived from the module's own dimensions:
+the grille hangs at `GALLERY_H_M` 3.4 m and the deck's far corner is √(3.4² + 2.1²) = 4.00 m away.
+Cone 30° against the 31.7° that covers wall to wall, so the skirtings stay dark — the frame's
+darkest surfaces are the pier feet.
+
+**The light hangs on the trough and not on the grille**, which cost that agent a render to learn:
+`alien_lattice` is fifty-six separate bars and `fitting_bodies` correctly reads each as its own
+luminaire, so the frame came back with 126 lamps at 7.10× its reference. A grille is a *diffuser*;
+the source is behind it. Eight troughs where there were fifty-six bars. `docs/engine-alien-sector.png`
+— amber floor grating and ceiling lattice against cold grey walls, which is the frame's own
+(1.000, 0.796, 0.273).
+
+`BESPOKE_EXPOSURE["alien_sector"] = 1.00` is an entry rather than an omission: rendered and measured
+at the anchor, correction none, and saying so explicitly is what makes it count as measured.
+
+## NEXT SESSION — layer 4, the last 26
 
 1. **The council chamber's right half is black** (`docs/engine-council.png`, crushed 52%) because
    `house_cove()` only sweeps the rear half-arc, 0 to π. Its measured ambient ratio of 0.210 makes

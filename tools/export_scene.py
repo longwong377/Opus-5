@@ -753,6 +753,28 @@ FIXTURE_LIGHTING = {
     # Its companion, light_service_tube, is measured EMISSIVE ONLY and is
     # already in the table above by that name -- the cold blue tubes are what
     # you see in a service space and they light nothing.
+    # alien_sector.CAST_FITTINGS, and it lives THERE because that is the module
+    # that measured it. Copied here because membership of this table is the
+    # gate and a dict in another file is not membership; alien_sector's own
+    # self-test asserts the two agree, so they cannot drift.
+    #
+    # Colour measured RAW off the descending shafts and corroborated by the
+    # floor grating -- the same source seen twice, agreeing in R:G to 0.7%.
+    # Range 4.0 m is derived from the module's own dimensions: the grille hangs
+    # at GALLERY_H_M 3.4 m and the deck's far corner is sqrt(3.4^2 + 2.1^2) =
+    # 4.00 m away, so it is the reach that lights the whole floor and no more.
+    # Cone 30 deg against the 31.7 deg that covers wall to wall, so the last
+    # 0.14 m at the skirting stays dark -- the frame's darkest surfaces are the
+    # pier feet.
+    #
+    # THE LIGHT HANGS ON THE TROUGH AND NOT ON THE GRILLE, which cost a render
+    # to learn: `alien_lattice` is fifty-six separate bars and `fitting_bodies`
+    # correctly reads each as its own luminaire, so the frame came back with
+    # 126 lamps at 7.10x its reference. A grille is a DIFFUSER; the source is
+    # behind it. Eight troughs where there were fifty-six bars.
+    "alien_ceiling_lamp": {"kind": "spot", "colour": (1.000, 0.675, 0.060),
+                           "energy_rel": 1.00, "range_m": 4.0, "shadow": True,
+                           "angle_deg": 30.0},
     "light_plant_flood": {"kind": "spot", "colour": (0.850, 0.830, 1.000),
                           "energy_rel": 1.00, "range_m": 30.0, "shadow": True,
                           "angle_deg": 35.0},
@@ -944,6 +966,12 @@ BESPOKE_EXPOSURE = {
                              # deck. Re-calibrate when the shot is right.
     "docking_bay": 0.90,     # vs reference/03-sector-blue/dock.webp -- 13
                              # lamps became 39 and it measured 1.38 -> 1.39.
+    # 1.0, and it is an entry rather than an omission. The gallery was
+    # rendered and measured at the anchor -- median 0.0680 against the
+    # corridor's 0.0741, no clipping, 3.7% crushed -- so the correction is
+    # none, and saying so explicitly is what makes it count as measured. An
+    # absent key means "not yet looked at"; this one has been.
+    "alien_sector": 1.00,
     "quarters": 1.12,        # vs reference/07-sector-grey/grey level 1.webp,
                              # the residential corridor a unit opens off
     "council_chamber": 2.84,  # vs 05-sector-green/council chambers.webp
