@@ -690,7 +690,30 @@ FIXTURE_LIGHTING = {
     "light_plant_flood": {"kind": "spot", "colour": (0.850, 0.830, 1.000),
                           "energy_rel": 1.00, "range_m": 30.0, "shadow": True,
                           "angle_deg": 35.0},
+    # cc_house_wash, the council chamber's whole lighting scheme: 6300 K,
+    # range 18 m, shadow. Measured as DIRECTIONAL -- a broad soft wash -- and
+    # emitted here as a ring of omnis, because the rig derives a light from a
+    # piece of geometry and a cove is a real object at a real place while a
+    # directional light is a direction with no position. Twelve omnis round the
+    # rear arc at 18 m reach is the same wash by another construction.
+    "light_house_cove": {"kind": "omni", "colour": (1.000, 0.966, 0.944),
+                         "energy_rel": 0.35, "range_m": 18.0, "shadow": False},
 }
+# CUSTOMS IS DELIBERATELY ABSENT AND IT COST A RENDER TO BE SURE. The arrival
+# hall's ceiling coffer looked like the obvious next entry: materials.py's
+# light_ceiling_grid measured its colour on the fitting itself, and the same
+# frame ranks its three source families by balanced peak -- screens 0.99, wall
+# strips 0.82, ceiling grid 0.55 -- which reads as an energy_rel of 0.56.
+# Given a light, customs.hall() emits 210 separate coffers, the frame came back
+# at 18.9x its reference with 14% of it clipped, and the exposure needed to
+# rescue it was 0.07.
+#
+# The real answer was already written in that material's own source note: the
+# grid is "ambient decoration rather than a task light", ranked LAST of the
+# three families in its frame. It is emissive-only, for the same reason the
+# pilaster strip is, and customs therefore has no measured cast source yet --
+# so it is not at layer 4, which is the honest count rather than a rescued one.
+#
 # EVERYTHING NOT IN THAT TABLE IS EMISSIVE ONLY, and for rooms.py that is:
 # light_service_tube, light_bar_backlight, light_indicator_red and
 # light_deck_channel. All four are recorded `emissive_only` in the measured
@@ -823,6 +846,7 @@ BESPOKE_EXPOSURE = {
     "docking_bay": 0.90,     # vs reference/03-sector-blue/dock.webp
     "quarters": 1.12,        # vs reference/07-sector-grey/grey level 1.webp,
                              # the residential corridor a unit opens off
+    "council_chamber": 2.84,  # vs 05-sector-green/council chambers.webp
     "plant": 0.88,           # vs 10-interiors-generic-kit/more hallways.jpg,
                              # the measured SERVICE corridor -- the register
                              # whose walls are black except where a panel or

@@ -1,4 +1,4 @@
-[gd_scene load_steps=106 format=3]
+[gd_scene load_steps=107 format=3]
 
 ; A room, from the inside.
 ;
@@ -139,6 +139,7 @@
 [ext_resource type="Material" path="res://materials/light_service_tube.tres" id="m_light_service_tube"]
 [ext_resource type="Material" path="res://materials/light_strip_warm.tres" id="m_light_strip_warm"]
 [ext_resource type="Material" path="res://materials/light_wall_course.tres" id="m_light_wall_course"]
+[ext_resource type="Material" path="res://materials/light_house_cove.tres" id="m_light_house_cove"]
 
 [sub_resource type="Environment" id="Env"]
 ; Flat colour, not a sky. Near-black rather than pure black for the reason the
@@ -300,6 +301,7 @@ material_rules = {
 "light_deck_channel": ExtResource("m_light_deck_channel"),
 "light_downlight": ExtResource("m_light_downlight"),
 "light_highbay": ExtResource("m_bay_floodlight"),
+"light_house_cove": ExtResource("m_light_house_cove"),
 "light_indicator_red": ExtResource("m_light_indicator_red"),
 "light_market_pool": ExtResource("m_light_market_pool"),
 "light_pendant": ExtResource("m_bar_pendant_lamp"),

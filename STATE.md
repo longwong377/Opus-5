@@ -2859,9 +2859,43 @@ below the measurable floor, so dimming pushes more pixels under 0.01 and *raises
 remains. The two cancel and it sits at 1.59× either way. In 139.8 million m³ of void with seven
 floods in it, the median of the lit pixels is not an exposure measurement.
 
-## NEXT SESSION — layer 4, the last 29
+## Session 3o (cont. 3) — the council chamber, and a fitting that is never in frame
 
-1. **The remaining bespoke modules.** Layer 4 stands at 68/118; the other 50 are the module-built places, and
+**90 / 118.** The chamber's measured lighting scheme, `cc_house_wash`, is *the whole room* —
+directional, 6300 K, range 18 m, shadow, "a broad soft near-neutral wash" — and the measurement
+states the difficulty in the same line: **"fitting never in frame"**. That is a real problem for a
+rig where every light is derived from tagged geometry. Adding a lamp where the frames show none is
+invention; adding nothing leaves the chamber on ambient, and its ratio of 0.210 makes it one of the
+two brightest measured spaces on the station, so "no source" is wrong too. `house_cove()` is the
+smallest thing that can carry a light and still be concealed: a cove high on the rear wall, above
+the fin fan, facing away from the room. Declared, in `INV-037` and on the material.
+
+**A value that was wrong, and the render said so within one frame.** The cove's `emission_energy`
+was set at `light_downlight`'s 4.0 on the argument that the reference shows a wash and not a source
+— and 4.0 drew a bright white bar across the top of the chamber, which is the exact failure that
+argument was made to avoid. Now 1.2, below `light_ceiling_grid`'s 2.6.
+
+**Customs was tried and withdrawn, and the withdrawal is the finding.** The arrival hall's ceiling
+coffer looked like the obvious next entry: its colour was measured on the fitting itself and the
+same frame ranks its three source families by balanced peak (screens 0.99, wall strips 0.82, grid
+0.55 → an energy_rel of 0.56). Given a light, `customs.hall()` emits **210 separate coffers**, the
+frame came back at **18.9× its reference with 14% clipped**, and the exposure needed to rescue it
+was 0.07. The real answer was already written in that material's own source note — the grid is
+*"ambient decoration rather than a task light"*, ranked last of the three. It is emissive-only for
+the same reason the pilaster strip is, and **customs therefore has no measured cast source and is
+not at layer 4** — the honest count rather than a rescued one.
+
+## NEXT SESSION — layer 4, the last 28
+
+1. **A light at a large fitting's centroid lights the fitting.** `docs/engine-council.png` shows the
+   cove as a bright arc, and it is not the emissive — that is now 1.2 — it is the cove's own omni
+   sitting ~5 m from it at range 18 and washing it point-blank. Affects any fitting whose geometry
+   is large compared with its range. The fix is probably an offset along the fitting's normal.
+2. **`to_spans` collapses a contiguous run into one lamp.** The chamber's twelve cove segments are
+   twelve quads of one group emitted consecutively, so they become one span and one light at the
+   arc's centroid. That is documented behaviour and is right for a wall course; it is wrong for a
+   ring of twelve. A per-instance tag or a distance-based split is the answer.
+3. **The remaining bespoke modules.** Layer 4 stands at 68/118; the other 50 are the module-built places, and
    several already build lamps (`zoc_rib_lamp`, `bay_lamp`, `cc_light_strip`). What they do not have
    is a calibrated exposure and a frame measured against its reference, which is what layer 4 *is*.
    The measured fixtures for them are already committed in `docs/layer4-lighting/public_social.json`

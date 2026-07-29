@@ -250,6 +250,7 @@ material_rules = {
 "light_deck_channel": ExtResource("m_light_deck_channel"),
 "light_downlight": ExtResource("m_light_downlight"),
 "light_highbay": ExtResource("m_bay_floodlight"),
+"light_house_cove": ExtResource("m_light_house_cove"),
 "light_indicator_red": ExtResource("m_light_indicator_red"),
 "light_market_pool": ExtResource("m_light_market_pool"),
 "light_pendant": ExtResource("m_bar_pendant_lamp"),

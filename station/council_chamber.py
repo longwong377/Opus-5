@@ -72,6 +72,32 @@ FLOOR_R_M = 11.0
 FLOOR_TILES = 96                # irregular polygons, not a grid
 WALL_H_M = 7.0
 
+# ---------------------------------------------------------------------------
+# The house lighting
+# ---------------------------------------------------------------------------
+# LAYER 4. docs/layer4-lighting/public_social.json measures `cc_house_wash` as
+# this chamber's entire lighting scheme -- directional, 6300 K, range 18 m,
+# SHADOW, "a broad soft near-neutral wash over the whole chamber" -- and states
+# the problem in the same line: **"fitting never in frame"**.
+#
+# That is a real difficulty for a rig where every light is derived from a
+# tagged piece of geometry (export_scene.fixture_lights), and the wrong answers
+# are easy. Adding a lamp where a lamp is not is an invention the frames
+# contradict. Adding no light at all leaves the chamber lit by ambient, which
+# is what it was, and its ambient ratio of 0.210 makes it one of the two
+# BRIGHTEST measured spaces on the station -- so "no source" is also wrong.
+#
+# What the frame supports is a CONCEALED COVE: a source high on the wall, above
+# the fin fan, throwing up and inward, whose fitting you cannot see because it
+# faces away from the room. That is standard for a chamber lit this evenly, it
+# is consistent with a fitting never appearing in shot, and it is the smallest
+# thing that can carry a light. It is declared invention -- INV-037 -- and what
+# would overturn it is any frame showing the chamber's ceiling.
+COVE_H_M = 0.22                 # the lit face, seen only as a glow on the wall
+COVE_D_M = 0.30                 # how far it stands off the wall
+COVE_Y_M = WALL_H_M - 1.10      # above the fins, below the ceiling
+COVE_SEGS = 12                  # round the chamber's rear arc
+
 
 class _M:
     def __init__(self):
@@ -303,6 +329,27 @@ def mosaic_floor(m, seed="council"):
                       f"council_floor_{shade}")
 
 
+def house_cove(m):
+    """The concealed high-level cove. See THE HOUSE LIGHTING above.
+
+    Segments of an arc at COVE_Y_M, standing COVE_D_M off the wall over the
+    same half of the chamber the fin fan occupies -- the wall the camera faces
+    and the wall the measurement watched brighten.
+    """
+    r = FLOOR_R_M - COVE_D_M
+    for k in range(COVE_SEGS):
+        a0 = math.pi * k / COVE_SEGS
+        a1 = math.pi * (k + 1) / COVE_SEGS
+        c0, s0 = math.cos(a0), math.sin(a0)
+        c1, s1 = math.cos(a1), math.sin(a1)
+        # A lit strip facing INTO the room, its housing hidden behind the lip.
+        m.quad((r * c0, COVE_Y_M, r * s0),
+               (r * c1, COVE_Y_M, r * s1),
+               (r * c1, COVE_Y_M + COVE_H_M, r * s1),
+               (r * c0, COVE_Y_M + COVE_H_M, r * s0),
+               "light_house_cove")
+
+
 def council_chamber(seats=SEATS):
     """The room. Bench centred on the origin, delegates outboard of it."""
     m = _M()
@@ -313,6 +360,7 @@ def council_chamber(seats=SEATS):
         chair(m, f * BENCH_ARC_DEG * 0.92, BENCH_R_M + 0.55)
     fin_wall(m)
     medallion(m, 5.1, -0.34)
+    house_cove(m)
     return m.as_tuple()
 
 

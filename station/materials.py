@@ -883,6 +883,15 @@ def _build():
     # bar_pendant_lamp 9.0.
 
     a(Material(
+        "light_house_cove", "House Cove — the council chamber's concealed wash",
+        albedo=(0.640, 0.630, 0.610), roughness=0.32, metallic=0.0,
+        specular=0.22, emission=(1.000, 0.966, 0.944), emission_energy=1.2,
+        binds=("light_house_cove",), scenes=("interior",),
+        source="docs/layer4-lighting/public_social.json, fixture `cc_house_wash`, measured from reference/05-sector-green/council chambers.webp (authority 1). Directional, 6300 K, energy_rel 1.0, range 18 m, shadow: 'concealed high-level house lighting, fitting never in frame; a broad soft near-neutral wash over the whole chamber'. The chamber's ambient ratio is 0.210, one of the two brightest measured spaces on the station — it is a room with no dark corners, and this is the only thing in it that could produce that.",
+        extrapolated="THE FITTING ITSELF, and that is the honest way to say it. The measurement is explicit that the source is never in shot, so its colour and its behaviour are measured and its GEOMETRY is not. council_chamber.house_cove() puts it where a chamber lit this evenly would be lit from — a concealed cove high on the rear wall, above the fin fan, whose housing you cannot see because it faces away from the room. Also extrapolated: the diffuser albedo, and emission_energy 1.2, and the first value was WRONG and the render said so. It was set at light_downlight's 4.0 on the argument that the frame shows a wash and not a source — and 4.0 drew a bright white bar across the top of the chamber, which is the exact failure the argument was made to avoid. 1.2 sits below light_ceiling_grid's 2.6, the library's other concealed-decorative source, and is what a cove looks like when you are seeing its glow on the wall rather than its lens. The energy that produces the WASH is separate and unchanged: it lives in export_scene.FIXTURE_LIGHTING, so dimming the fitting does not dim the room. Overturned by any frame showing this chamber's ceiling.",
+        note="A near-neutral that is not quite neutral: (1.000, 0.966, 0.944) at 6300 K against light_ceiling_batten's (1.000, 0.980, 1.000) at 6530 K. Two measured whites, kept apart."))
+
+    a(Material(
         "light_service_tube", "Service Tube — cold blue wall batten",
         albedo=(0.070, 0.100, 0.150), roughness=0.28, metallic=0.0,
         specular=0.20, emission=(0.300, 0.550, 1.000), emission_energy=3.0,
