@@ -2189,3 +2189,84 @@ Layer 2 is complete, so layer 3 is legitimately open. Order:
    material set.
 
 Craft claims cite an **engine** frame. `tools/render_godot.sh`, not `tools/preview_render.py`.
+
+## Session 3k (cont.) — LAYER 3 BEGINS: the station is lit from within
+
+`docs/engine-windows-nightside.png` — Godot 4.4 double + lavapipe, 3.4 km, anti-sun side — shows
+warm window bands running the length of both habitat sections with a scatter of marker lights.
+**The station reads as inhabited.** The sunlit frame (`docs/engine-windows-near.png`) correctly
+shows the same bands as texture rather than as light, which is what a lit hull does.
+
+That answers the standing blocking finding: *"NO EMISSIVE WINDOWS ANYWHERE. A station housing
+250,000 people renders completely unlit from within. It reads as a derelict, not a city."*
+Scorecard `exterior_approach` round 2: **craft 3 → 4**, recorded as a *builder* round, not an
+independent review.
+
+### The failure that mattered more than the feature
+
+**The material exported cleanly, passed 594 assertions, and did not reach the render.**
+
+Material rules were emitted to `material_rules.gen.txt` for a human to paste into
+`godot/scenes/*.tscn` — the stated reasoning being that a generator rewriting another agent's file
+is how two sources of truth start. That reasoning is *backwards*: the `.txt` and the `.tscn` **were**
+the two sources, and nobody is doing the paste. Godot printed `fallback material used by 21
+group(s)` and nothing was reading it. `greeble_fitting` and `hazard_chevron` had been missing from
+the exterior scene for longer than this session.
+
+- `patch_scene_rules()` writes the `material_rules` block and the `ext_resource` lines it needs, and
+  fixes `load_steps`. The lights, environment and tonemapper are judgements and stay owned by
+  whoever wrote them.
+- A gate asserts the file on disk matches what the library would write. **Proven able to fail** by
+  deleting one rule and watching it fire.
+- **`materials.py` was not in CI at all.** It is now.
+
+*Any generator whose output needs a manual step to take effect has no effect. Look for others.*
+
+### Two bakes, and the first one was the wrong building
+
+Version one glazed **every** deck of both habitat sections. The engine frame came back as
+rust-coloured static: the drum is 500 m across, so a 2.4 m pitch puts ~650 apertures round the
+circumference and they alias into noise long before they resolve into windows. Worse, the white
+speckle was the window **frames** — metallic 0.55 standing 0.25 proud, so every aperture threw a
+sunlit specular highlight.
+
+Neither was a tuning problem. A window surround is a shadowed recess, not a bright ridge; the
+reference hull is mostly plate with window strips in it. The sheet is now eight decks tall with two
+glazed, and the frame is a dark rebate. INV-036 records both bakes, because the first is the more
+useful record.
+
+Row pitch is `interior.DECK_PITCH_M`, **imported, not restated** — hard rule 4. The repeat is square
+*by derivation*, because `.tres` writes one scalar `uv1_scale` and a non-square sheet would be
+silently stretched with nothing to catch it.
+
+### Also fixed: a pre-existing failing gate that was mostly false positives
+
+*"Every group literal found in the generators resolves"* listed 8 names. Six were `directory.py`
+place keys and `rooms.py` prop types the regex began matching when those files landed; one was an
+`lod.py` manifest statistic; **exactly one — `ground_verge` — was a real surface with no material.**
+A *specification* names places and props; a *generator* names surfaces. Only the second kind needs a
+material, and the scanner now skips the first kind.
+
+## NEXT SESSION — layer 3 continues
+
+Layer 3 is 0/118 by the register's count: the exterior is not one of the 118 places. What is done is
+the exterior's blocking finding. Order:
+
+1. **The two standing majors on `exterior_approach`, both craft:**
+   - *Triplanar cross-projection.* World triplanar samples the sheet on two axes across the drum's
+     barrel and the second projection shows as a crosshatch over the window rows. Needs cylindrical
+     UVs on the drum mesh or a shader projecting about the spin axis — **not a material change**,
+     which is why it was not fixed with the material.
+   - *The band pattern tiles visibly.* One 28.8 m repeat over a 1,209 m drum is 42 identical
+     courses. Wants a long-period variation: blocks of dark hull where a section has no quarters.
+2. **The magenta guideway light runs** in `drum_interior_engine` — the other standing blocking
+   finding, and also a materials defect.
+3. **Then materials across the 118 places.** The archetype in `rooms.py` is already the right
+   granularity for a material set — 11 archetypes, not 68 rooms. Hero and featured rooms first, by
+   authority.
+
+One minor worth folding into (1): the habitat sections now sit darker than the rest of the hull, so
+they read as a different material rather than the same hull with windows in it. The plate value
+between windows should match `hull_exterior`'s 0.60.
+
+Craft claims cite an **engine** frame — `tools/render_godot.sh`, not `tools/preview_render.py`.
