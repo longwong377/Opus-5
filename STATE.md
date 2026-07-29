@@ -2659,3 +2659,66 @@ against the drum's 2.5, because the subject here is a skirting board, not a land
    its results land in `docs/` and should be applied before tuning by eye.
 3. **The lighting rig still has no night side** (exterior, blocking) — the arrival shot.
 4. **The magenta guideway light runs** in `drum_interior_engine`.
+
+
+## Session 3n (cont.) — the corridor is lit to a MEASURED number, not to taste
+
+`docs/engine-corridor.png`. Three agents measured the reference frames; 58 fixtures, **32 of them
+emissive-only**, and three ambient ratios. Applying it changed the frame completely.
+
+### The finding that fixed the render
+
+> **Of the four fittings `interior_kit` builds, exactly ONE lights anything.**
+> `light_downlight` is an omni at 2650 K, range 1.2 m, no shadow. `light_pilaster_strip` and
+> `light_portal_head` are **emissive only** — the strip is the brightest thing on the wall and it
+> illuminates nothing.
+
+Two independent tests in `grey level 1.webp`: the deck directly beneath the strip reads balanced
+L 0.29–0.35 against a mid-corridor deck field of 0.446, i.e. **darker**; and `materials.py`'s own
+PROVENANCE already had the pilaster face at V 0.301 against a wall plate three metres away at
+V 0.295. So a corridor is lit by a few weak warm downlights and *read* by a lot of cool emissive
+trim — and treating the trim as lighting floods the fill and destroys exactly that contrast. That
+is why the first frame looked like a clean modern hospital. 33 sources → 12.
+
+### Calibrated against the measurement, not by eye
+
+The discriminating number is the agents' **between-fittings ratio on one surface: trough/peak
+0.52–0.55**, and it is trustworthy because they ran a control — an *unfitted* wall scanned the same
+way varies only 0.83–0.92, so the 0.52 is the fittings and not a lens vignette.
+
+Measured on my own render and swept: ambient 0.55 → 0.383, 0.90 → 0.462, **1.30 → 0.526**, inside
+the band. `interior.tscn` ambient is 1.30.
+
+**Two traps in that calibration, both worth carrying:**
+
+1. **The metric is resolution-dependent.** A 640×360 sweep said ambient 0.55 gave 0.465; at
+   1280×720 the same scene gives 0.383. Different pixels, different AA, different bloom. *Calibrate
+   at the resolution you judge at.*
+2. **Whole-frame p10/p90 and the wall scan disagreed** — they pointed at ambient 1.05 and 0.56.
+   That gap is a real difference between my shot and the reference: my corridor section ends in an
+   open black aperture and the reference frame is closed, which depresses the global percentile.
+   The wall metric has a control; the global one does not. Trust the one that was designed against
+   a null.
+
+### Still open on this frame
+
+The agents also found **two corrections to `interior_kit`'s own geometry and one to `materials.py`**,
+neither applied yet:
+- the pilaster strip is built 0.50→0.86 of wall height (0.90 m, 7 bars at 0.129 m pitch) and
+  measures **0.56→0.75 (0.48 m, 3 cells at 0.196 m pitch)** — roughly 1.9× too long with cells 1.5×
+  too small;
+- the strip's library colour is linear (0.748, 0.848, 1.000), a decided blue; measured balanced it
+  is (0.956, 1.000, 0.895) at 6200 K. The agent states the circularity honestly — grey-world forces
+  the dominant illuminant to neutral — and gives the constraint that survives it: the unfitted wall
+  balances to linear (0.738, 0.955, 1.000), so *some* blue bias is defensible and one that strong
+  is not.
+
+## NEXT SESSION — layer 4
+
+1. **Give `rooms.py` light fittings.** Still zero of 68. Archetype-driven, same shape as `FIXTURES`.
+   Until this exists 68 of 118 locations render black.
+2. **Apply the two geometry corrections and the strip colour** above — measured, in
+   `docs/layer4-lighting/corridor_kit.json`, not yet applied.
+3. **Apply `public_social` and `command_working`** — 42 more measured fixtures in the same folder,
+   including whether C&C's blue is the light or the screens.
+4. **The exterior rig still has no night side**; **the magenta guideway runs** in the drum.

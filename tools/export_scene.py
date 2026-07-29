@@ -529,6 +529,39 @@ FIXTURE_MERGE_M = 0.9
 # over, and that hand-off IS the rhythm the reference frames show.
 INTERIOR_LIGHT_RANGE_M = 7.0
 
+# WHICH FITTINGS ACTUALLY EMIT LIGHT, measured off the reference frames in
+# session 3n and recorded in docs/layer4-lighting/corridor_kit.json.
+#
+# THE FIRST INTERIOR RENDER MADE EVERY TAGGED FITTING A REAL SOURCE and came
+# back looking like a clean modern hospital. It is not a tuning error. Of the
+# four fittings interior_kit builds, exactly ONE lights anything:
+#
+#   light_downlight       omni, 2650 K, range 1.2 m, no shadow
+#   light_pilaster_strip  EMISSIVE ONLY -- it is the brightest thing on the
+#                         wall and it illuminates nothing. Two independent
+#                         tests in `grey level 1.webp`: the deck directly
+#                         beneath it reads balanced L 0.29-0.35 against a
+#                         mid-corridor deck field of 0.446, i.e. DARKER; and
+#                         materials.py's own PROVENANCE has the pilaster face
+#                         at V 0.301 against a wall plate three metres away at
+#                         V 0.295.
+#   light_portal_head     EMISSIVE ONLY, same finding.
+#
+# So a corridor is lit by a handful of weak warm downlights and read by a lot
+# of cool emissive trim. That contrast is the room. Treating the trim as
+# lighting floods the fill and destroys it.
+#
+# (name, colour_linear, energy_rel, range_m, shadow) -- absent means emissive
+# only, which is the DEFAULT: a fitting has to be measured to become a source.
+FIXTURE_LIGHTING = {
+    "light_downlight": ((1.000, 0.420, 0.133), 1.00, 1.2, False),
+}
+
+# Darkest measurable surface / brightest lit surface, balanced. Measured in
+# three corridor frames and they do not agree, because they are three different
+# kinds of corridor -- which is itself the finding.
+AMBIENT_RATIO = {"residential": 0.300, "concourse": 0.120, "service": 0.060}
+
 
 def fixture_lights(verts, tris, spans, energy, rng, shadow_n=2, eye=None):
     """One light per tagged light fitting, at its centroid, IN ITS OWN COLOUR.
@@ -568,11 +601,16 @@ def fixture_lights(verts, tris, spans, energy, rng, shadow_n=2, eye=None):
             continue
         n = float(len(idx))
         c = [sum(verts[i][k] for i in idx) / n for k in range(3)]
-        m = mats.resolve_any(name, "interior")
-        colour = list(m.emission) if (m and m.emission) else [1.0, 0.96, 0.86]
-        rel = (m.emission_energy / 4.0) if (m and m.emission_energy) else 1.0
-        raw.append({"pos": c, "energy": energy * rel, "colour": colour,
-                    "range": rng, "attenuation": 1.0, "group": name})
+        spec = FIXTURE_LIGHTING.get(name)
+        if spec is None:
+            # Emissive only. The material still glows -- that is what makes the
+            # trim read -- but it casts nothing. Measured, not assumed; see
+            # FIXTURE_LIGHTING.
+            continue
+        colour, rel, frange, shadow = spec
+        raw.append({"pos": c, "energy": energy * rel, "colour": list(colour),
+                    "range": frange if frange else rng, "attenuation": 1.0,
+                    "group": name, "_shadow": shadow})
 
     # ONE FITTING, ONE LIGHT. A pilaster strip is SEVEN tagged bars with gaps
     # between them -- that segmentation is what makes it read as B5 rather than
@@ -602,11 +640,16 @@ def fixture_lights(verts, tris, spans, energy, rng, shadow_n=2, eye=None):
         lt.pop("_n", None)
     # Shadows are rationed for the same reason as in the drum: an omni shadow
     # is a cube map, so each one re-renders the scene six times, on a CPU.
-    if eye is not None and out:
-        order = sorted(range(len(out)),
-                       key=lambda i: sum((out[i]["pos"][k] - eye[k]) ** 2
-                                         for k in range(3)))
-        for i in order[:shadow_n]:
+    # Shadows only where the MEASUREMENT says the fitting casts one. In
+    # `grey level 1.webp` a pilaster projecting 0.17 m from the wall a metre
+    # from a downlight lens throws no visible shadow, so the downlight does not
+    # get one here either. Rationing by distance to the eye -- the drum's rule
+    # -- would have invented three.
+    castable = [i for i, lt in enumerate(out) if lt.pop("_shadow", False)]
+    if eye is not None and castable:
+        castable.sort(key=lambda i: sum((out[i]["pos"][k] - eye[k]) ** 2
+                                        for k in range(3)))
+        for i in castable[:shadow_n]:
             out[i]["shadow"] = True
     return out
 
