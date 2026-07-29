@@ -2092,3 +2092,100 @@ becomes blocking once interiors start:
 them: **Still uncatalogued** (~25 files, mostly single-character portraits and race-makeup
 shots) and **Misfiled — recommended moves** (nine files whose folder is wrong, deliberately
 *not* moved because the schema and specs cite some by path).
+
+## Session 3k (cont.) — LAYER 2 IS COMPLETE. Every place on the station has geometry.
+
+```
+  LAYER COMPLETION across 118 places (126 gazetteer rows less 8 that are not locations)
+    1 addressed    [####################] 118/118  COMPLETE
+    2 geometry     [####################] 118/118  COMPLETE
+    3 materials    [                    ]   0/118  <- CURRENT
+```
+
+`station/rooms.py` — **567 assertions**, 68 locations, 11 archetypes, 12,516 triangles — generates
+every addressed location that has no bespoke module, from the specification `directory.py` already
+held. The hero and featured rooms keep their own modules; this is the ~84-location procedural tier
+`docs/MASTER-PLAN.md` §3.4 called for, and it is the reason the arithmetic closes.
+
+### The defect the first verification render found, and it is the transferable one
+
+**`interacts` is what a PLAYER CAN USE. It is not an inventory of what is in the room.** Built from
+it alone, *"Fabrication furnaces"* came out a grey box containing two control podiums, a catwalk
+and a crane — **the controls for a furnace, and no furnace.** *"Primary fusion core"* declared two
+interactables and no reactor. A furnace is correctly absent from `interacts`, because you do not
+walk up to one and operate it; it is just as correctly required in the geometry.
+
+No material and no light makes an absent object present, so it is a **layer 2** defect. `FIXTURES`
+adds per-archetype scenery — furnace stacks, plant columns, racking runs, equipment gantries, a
+sanctuary dais, market stall frames, overhead service runs — plus structural wall ribs at a pitch
+derived from room height, because a flat run of wall to a 7.5 m soffit is the strongest tell that a
+volume is a placeholder. INV-035.
+
+**Expect the same shape of gap in every later layer.** The declared list is never the whole room.
+
+### Three gates that caught things on their first run
+
+1. **No two solids in a room may occupy the same cubic metre.** Caught a 3.2 m monitor wall
+   swallowing a cell door, and a medcabinet inside a babcom terminal — *both present in the version
+   this module was about to be committed at*. Root cause: the wall-prop lattice stepped `(i * 2.1)
+   % (ln - 2.4)` regardless of how wide each prop was, and wrapped back over itself. It is a cursor
+   now, and moves to the end walls when a wall fills — which also means doors land on end walls,
+   where you would actually enter.
+2. **A 0.9 m walker must cross the floor end to end.** A flood fill on a 0.15 m grid. The first
+   version measured a single clear x-span and read a furnace stack you walk *around* as impassable,
+   reporting 0.00 m clear in a 10 m hall.
+3. **Every declared prop must exist as geometry, and no geometry may exist that nothing declares.**
+   Both directions. This is the check that stops the module being a box generator with a good
+   docstring.
+
+Each is asserted to be **able to fail** — a disjoint pair, touching faces, an open bay, a bay walled
+across, an island to route around, a gap narrower than the walker, something hanging overhead.
+Three assertions in this project have been vacuous, one of them named *"FNV-1a is stable across
+processes"* and comparing a value to itself.
+
+### Two structural lessons
+
+**`lateral_stack()` exists because two halves of the same module disagreed.** `bay_span_m()` derived
+the bay width from one formula and `build()` laid objects out with another; a fusion core was sized
+for a 1.25 m aisle and built with 0.99 m. There is now one description of the cross-section and both
+callers use it. *Any time a size is computed in one place and consumed in another, expect this.*
+
+**`directory.py`'s layer-2 predicate is a membership test**, not `module or GENERATOR`. The lazy
+form returns True for every row in the table — a completion counter that cannot go down, which is
+the same class of defect as an assertion that cannot fail. It asks `rooms.unbuilt()` what it
+actually emits, and the self-test hands it a synthetic place to prove it still says no.
+
+**The layer denominator changed from 126 to 118, and that needed care.** 8 gazetteer rows are not
+locations — a prop type declared in 20 rooms, a broadcast, an area label, the off-station jump gate.
+Left in the denominator they hold every layer at 118/126 forever and CLAUDE.md rule 3 ("a layer is
+complete when `directory.py` says so") can never fire. Both numbers are now printed, and the
+existing assertion that every row is addressed *or* deferred with a reason is what stops the
+deferral list being grown to make a number go green.
+
+### Camera bugs, three in a row, all from picking a standpoint by arithmetic
+
+A hand-typed `--eye` from a previous, larger version of the bay put the camera outside the end wall
+(flat grey frame that looked like a lighting bug). A third of the way in put it past the first rank
+of props, so the shot meant to prove the room is furnished showed the half that is empty. A fixed
+1.1 m off-centre put it inside a 2.4 m furnace stack. `standpoint()` now searches the same walkable
+grid the gate uses, so the camera stands where a player could stand and cannot go stale.
+
+Five rooms rendered against magenta — fabrication, cargo bays, sanctuary, N'Grath's lair, medlab.
+**Zero magenta pixels: all closed, all correctly wound.** `docs/render-rooms.png` is the fabrication
+bay. Those are preview-rasteriser frames and say nothing about craft, per this file's own rule.
+
+## NEXT SESSION — layer 3, materials
+
+Layer 2 is complete, so layer 3 is legitimately open. Order:
+
+1. **The emissive pass.** The standing blocking finding against `exterior_approach`: *no emissive
+   windows anywhere* — 250,000 people and the station renders unlit from within, reading as a
+   derelict. It is the first thing the owner's opening beat shows. Fix it, re-render through
+   `tools/render_godot.sh`, re-score.
+2. **The magenta guideway light runs** in `drum_interior_engine` — the other standing blocking
+   finding, and also a materials defect.
+3. **Then materials across the 118**, hero and featured first by authority, procedural rooms from
+   `rooms.py` archetype by archetype — the archetype is already the right granularity for a
+   material set.
+
+Craft claims cite an **engine** frame. `tools/render_godot.sh`, not `tools/preview_render.py`.

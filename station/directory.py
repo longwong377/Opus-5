@@ -861,17 +861,30 @@ def layer_of(place):
 
 
 def layer_report(schema, profile):
-    """Per-layer completion across the WHOLE gazetteer, not just what is placed.
+    """Per-layer completion, counted against every gazetteer row that is a PLACE.
 
-    The denominator is every location row, including the 97 with no address --
-    a layer is not complete because the places we happen to have registered are
-    done with it.
+    THE DENOMINATOR IS THE DELICATE PART. It was every gazetteer row, which was
+    right while rows were unaddressed: a layer is not complete because the
+    places we happen to have registered are done with it. But 8 of the 126 rows
+    are not locations -- a prop type declared in 20 rooms' `interacts`, a
+    broadcast, an area label, the off-station jump gate -- and they can never
+    reach any layer. Left in the denominator they would hold every layer at
+    118/126 forever, and CLAUDE.md rule 3 says a layer is complete when this
+    file says so. A rule that can never fire is not a rule.
+
+    So the denominator is rows-minus-deferrals, and BOTH numbers are reported
+    and printed. Moving a row into `NOT_A_PLACE` to make a number go green is
+    the failure this guards against, and it is guarded by the assertion that
+    every row is either addressed or deferred WITH A REASON -- so the deferral
+    list cannot grow silently, and the report shows its size next to the count.
     """
-    total = len(gazetteer_rows())
+    rows = len(gazetteer_rows())
+    total = rows - len(NOT_A_PLACE)
     out = []
     for idx, name, _reached in LAYERS:
         n = sum(1 for p in PLACES if layer_of(p) >= idx)
         out.append(dict(layer=idx, name=name, done=n, total=total,
+                        gazetteer_rows=rows, deferred=len(NOT_A_PLACE),
                         complete=(n == total)))
     return out
 
@@ -1094,15 +1107,19 @@ def _selftest():
         print(f"  {mark} {p['sector']:6s} r{p['ring']}d{p['deck']:<3d} "
               f"{p['angle_deg']:5.0f}deg z{p['z_m']:6.0f} {g:5.3f}g  "
               f"{p['name'][:38]:38s} {len(p['interacts'])} interactions")
-    print("\n  LAYER COMPLETION across all "
-          f"{len(gazetteer_rows())} gazetteer locations")
+    print(f"\n  LAYER COMPLETION across {rep[0]['total']} places "
+          f"({rep[0]['gazetteer_rows']} gazetteer rows less "
+          f"{rep[0]['deferred']} that are not locations)")
     for r in rep:
         bar = "#" * int(20 * r["done"] / max(r["total"], 1))
-        flag = "  <- CURRENT" if r is current else ""
+        flag = ("  <- CURRENT" if r is current
+                else "  COMPLETE" if r["complete"] else "")
         print(f"    {r['layer']} {r['name']:12s} [{bar:20s}] "
               f"{r['done']:3d}/{r['total']}{flag}")
-    print("\n  Layer 0 (engine path) is infrastructure and BLOCKING: no frame "
-          "in this\n  project has yet been scored against docs/AAA-STANDARD.md.")
+    print("\n  Layer 0 (engine path) is infrastructure and is DONE: Godot 4.4 "
+          "double +\n  lavapipe renders exterior and interior offscreen, and "
+          "four frames are scored\n  in docs/aaa-scorecard.json. The craft "
+          "layers can now be checked as well as built.")
 
     print(f"\n{ok}/{ok + fail} passed")
     return 1 if fail else 0

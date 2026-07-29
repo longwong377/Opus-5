@@ -68,24 +68,40 @@ plus 125 grey boxes is not, and this project loses its context regularly.
 parses that file, and **prints per-layer completion in CI** — so the answer to "how far are we" is
 a number this repository computes, never a summary anyone writes.
 
+The denominator is **118 places** — the 126 gazetteer rows less 8 that are not locations (a prop
+type, a broadcast, an area label, the off-station jump gate). `directory.py` prints both numbers
+and asserts every row is addressed *or* deferred with a reason, so the deferral list cannot be
+grown to make a number go green.
+
 | # | Layer | Done when | Status |
 |---|---|---|---|
-| **0** | **Engine path** | A materialled, lit frame comes out of Godot + lavapipe and can be scored against `docs/AAA-STANDARD.md`. Infrastructure, not per-location | **BLOCKING — see below** |
-| **1** | **Addressed** | All 126 have `(sector, ring, deck, angle, z)`, footprints that do not collide, declared functions and interactions | **118 addressed + 8 formally deferred = 126. COMPLETE** |
-| **2** | **Geometry** | Every addressed location has mesh, closed, correctly wound, inside its own footprint | 50 / 126 — **CURRENT** |
-| **3** | **Materials** | Every mesh carries PBR materials from `materials.py`. No flat colour anywhere | 0 |
+| **0** | **Engine path** | A materialled, lit frame comes out of Godot + lavapipe and can be scored against `docs/AAA-STANDARD.md`. Infrastructure, not per-location | **DONE** |
+| **1** | **Addressed** | All have `(sector, ring, deck, angle, z)`, footprints that do not collide, declared functions and interactions | **118 / 118 COMPLETE** |
+| **2** | **Geometry** | Every addressed location has mesh, closed, correctly wound, inside its own footprint | **118 / 118 COMPLETE** |
+| **3** | **Materials** | Every mesh carries PBR materials from `materials.py`. No flat colour anywhere | 0 / 118 — **CURRENT** |
 | **4** | **Lighting** | Every location lit, in the engine, to its reference's mood | 0 |
-| **5** | **Props & function** | The 71 declared interactable types exist and do what `directory.py` says they do | 0 |
+| **5** | **Props & function** | The declared interactable types exist and do what `directory.py` says they do | 0 |
 | **6** | **Inhabitants** | NPCs placed, scheduled and animated in every location, at real density | 0 |
 | **7** | **Audio** | Ambience and event audio per location | 0 |
 | **8** | **Judged** | Every location scored against the rubric in an engine frame, and passing | 0 |
 
-**Layer 0 is blocking and is not done.** The Godot 4.4 double-precision binary and the project both
-exist and the binary runs — but **every one of the 27 renders in session 3k came from
-`tools/preview_render.py`**, the flat-shaded rasteriser. By this file's own rule below, that
-judges structure and says nothing about craft. So no frame in this project has ever been scored
-against the AAA standard. Finish layer 0 before layers 3–8, or the craft layers cannot be
-completed *or* checked.
+**Layer 0 is done.** `tools/render_godot.sh` renders exterior *and* interior offscreen through
+Godot 4.4 double + Mesa lavapipe, and frames are scored in `docs/aaa-scorecard.json`. It had never
+been missing — it was built in session 2j and then not run again, so every render from 2j to 3k
+came from the flat-shaded rasteriser, which judges structure and says nothing about craft.
+Reviving it took one command. **Do not let it rot a second time: any craft claim cites an engine
+frame, or it is not a craft claim.**
+
+**Layer 2 is done**, and the thing that finished it is worth carrying forward: `interacts` in
+`directory.py` is *what a player can use*, and a room built from it alone is controls without
+machinery — "Fabrication furnaces" was a grey box holding two control podiums and no furnace.
+`rooms.FIXTURES` supplies what a room is named for. Expect the same gap in every later layer:
+**the declared list is never the whole room.**
+
+**Layer 3 is the current layer**, and it inherits the standing blocking finding against
+`exterior_approach`: *no emissive windows anywhere* — a station housing 250,000 renders unlit from
+within and reads as a derelict rather than a city. That is the first thing the owner's opening
+shot shows, so it is the first thing layer 3 fixes.
 
 ### Rules that follow from working in layers
 
