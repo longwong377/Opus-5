@@ -62,7 +62,19 @@ def validate(family, mats, seen_names, seen_frags):
     for m in mats:
         n = m.get("name", "?")
         if n in M.BY_NAME:
-            bad.append(f"{family}/{n}: name already in the library")
+            # ALREADY APPLIED is not a collision. Families land one at a time
+            # and get merged as they land, so re-validating the whole set after
+            # the fourth arrives re-checks three that are already in the file.
+            # The distinction that matters is whether the library's version is
+            # THIS proposal: same name and same binds means merged, and it is
+            # skipped. Same name with different binds is a real conflict and
+            # still fails.
+            live = M.BY_NAME[n]
+            if tuple(live.binds) == tuple(m.get("binds", ())):
+                m["_applied"] = True
+                continue
+            bad.append(f"{family}/{n}: name in the library with different "
+                       f"binds ({live.binds} vs {tuple(m.get('binds', ()))})")
         if n in seen_names:
             bad.append(f"{family}/{n}: name proposed twice")
         seen_names.add(n)
@@ -109,6 +121,9 @@ def _wrap(text, width, indent):
 
 
 def render(family, mats):
+    mats = [m for m in mats if not m.get("_applied")]
+    if not mats:
+        return []
     out = [f"    # ---- {family} " + "-" * (62 - len(family))]
     for m in mats:
         n, alb = m["name"], m["albedo"]
@@ -154,8 +169,9 @@ def main(argv):
         for b in bad:
             print("  " + b, file=sys.stderr)
         return 1
-    print(f"; {len(families)} families, {total} materials, validated",
-          file=sys.stderr)
+    done = sum(1 for _f, ms, _n in families for m in ms if m.get("_applied"))
+    print(f"; {len(families)} families, {total} materials, validated "
+          f"({done} already applied, {total - done} to emit)", file=sys.stderr)
     if "--check" in argv:
         return 0
     for family, mats, _note in families:

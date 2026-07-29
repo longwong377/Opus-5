@@ -1805,6 +1805,352 @@ def _build():
         source="reference/03-sector-blue/Minbari Flyer 969 in docking bay 17.webp (authority 1): the bay wall is a stepped ziggurat of ledges and EVERY STEP NOSING CARRIES YELLOW/BLACK HAZARD CHEVRONS — reference/00-INDEX.md records this and draws the consequence explicitly, that the chevron is applied by rule to all step edges and is therefore a generator rule rather than a decal placement. Corroborated by reference/03-sector-blue/dock.webp, which shows the same marking on the ramp edges of the bay deck, and by reference/01-station-exterior/Cobra Bays with starfurries.webp on the bay lip. The albedo is ACCENTS['hazard_yellow'] (0.900, 0.720, 0.060), the value station/materials.py already measured off dock.webp's deck chevrons; this is the same register, not a second one.",
         extrapolated="The stripe pitch, and that a tram platform edge is a step edge in the sense the rule means. Pitch: a Fourier scan along dock.webp's lower ramp chevron run, source pixels (248,505) to (315,556), puts the stripe peaks at k = 6-8 over a 67 px horizontal extent; at the scale reference/00-INDEX.md measures in that frame (the red deck disc, 156 px = 9.4 m, so 16.6 px/m) that run is 4.0 m and the cycle is 0.50-0.67 m. uv_scale 1/2.4 gives 4 cycles per repeat = 0.60 m, inside that bracket, against the exterior sibling's declared-invented 0.75 m. So this measurement also CORROBORATES the exterior material's guess. Overturned by: a frame showing a station transit platform, of which the set holds none."))
 
+    # ---- furnishing ----------------------------------------------------
+
+        # This is the station's default furniture carcass and it takes seven of
+        # my thirty-five groups, so getting it wrong is worse than getting any
+        # other one wrong. Two decisions carry it. METALLIC 0.0 — it is paint
+        # on steel, not steel; the specular of an enamelled panel is dielectric
+        # and giving it a metal response would make every desk in the station
+        # read as bare aluminium. And it sits BELOW the wall it stands against,
+        # not above: a room is legible because its furniture separates from the
+        # surface behind it, and the corridor wall is 0.460. Roughness 0.45 is
+        # satin enamel — smoother than the wall plate's 0.56 because a painted
+        # furniture panel is sprayed and a wall panel is not, which is also why
+        # it takes no texture: it is a coated panel, and the same reason
+        # `radiator` ships untextured. The seven groups merge because they are
+        # one object at seven sizes — a desk, a duty desk, a service counter,
+        # an issue counter, a locker bank, a lab bench and a fume enclosure are
+        # all a sprayed steel carcass at desk-to-2.6 m scale, and nothing on
+        # screen would separate them. What I deliberately did NOT merge into it
+        # is the servery and the workshop bench: those are bare metal, and bare
+        # metal is a different BRDF, not a different colour.
+    a(Material(
+        "furn_casework", "Furniture Casework — painted steel desk, counter and locker bodies",
+        albedo=(0.400, 0.396, 0.388), roughness=0.45, metallic=0,
+        specular=0.5,
+        binds=("prop_desk", "prop_duty_desk", "prop_counter", "prop_issue_counter", "prop_parcel_locker", "prop_lab_bench", "fix_fume_column"), scenes=("interior",),
+        source="05-sector-green/council chambers.webp, balanced (gains 0.998/1.082/0.932): the council bench's plain grey frame (0.160,0.560)-(0.195,0.680) rgb(0.258,0.272,0.267) S 0.063, and the same bench's lit slab top (0.460,0.420)-(0.600,0.450) rgb(0.630,0.649,0.672) S 0.065. That bench is the only piece of station casework in the whole reference set measured square-on under a mild cast, and 00-INDEX.md reads its construction directly — 'a grey slab top with a chamfered edge', 'set in a plain grey frame with a bottom kick rail', 'a recessed plinth'. NO FRAME EXISTS of an office desk, a post-office counter, a quartermaster's issue counter, a parcel locker, a lab bench or a fume column.",
+        extrapolated="The level, and the extension from one ceremonial bench to seven working units. The council bench brackets rather than fixes it — 0.63 lit against 0.27 in shadow — because 00-INDEX.md records that chamber as deliberately lit asymmetrically ('the fan-and-medallion side is bright, the opposite wall ... almost no fill'), so neither end is the albedo. 0.400 is chosen as one rung below ALBEDO_ANCHOR and it is inside the corridor kit's own measured ladder: the kit's darkest lit element, the dado, is lit(0.247) = 0.385, and its wall is 0.460. Overturned by any frame of a working office or issue counter, or by a frame containing a reflectance standard."))
+
+        # The thing that nearly went wrong here is worth recording. In more
+        # zocalo.png the furniture reads plainly blue-white and the ratio test
+        # appears to confirm it — the same pedestal at V 0.498 and V 0.718
+        # holds B/R at 1.176 and 1.212, constant across a 1.44x range, which is
+        # the signature of a tinted surface rather than a tinted light. But the
+        # deck tile in the same frame holds B/R 1.158, and the library already
+        # calls that deck neutral-to-warm. Everything in the frame is at B/R
+        # 1.16-1.21, so the blue is the frame and the concourse's cool ambient,
+        # and the furniture is neutral to within 4% of the deck. Third time
+        # this project has caught that; the only reason I caught it is that
+        # materials.py insists on a same-frame control. What survives is the
+        # small cool bias, and it survives because garden.png shows it as a
+        # DIFFERENCE between two surfaces in one light rather than as a
+        # property of the whole frame. Untextured because these are moulded,
+        # not plated: 00-INDEX.md reads the Zocalo pedestals and chair backs as
+        # 'white drums carrying a large outlined 5', and a plate seam across a
+        # moulded drum would be a lie. Roughness 0.40 — smoother than casework,
+        # because the frames show a soft broad highlight rolling round the
+        # drums, which is a gel-coat and not a spray. `prop_bench` belongs here
+        # rather than with anything softer because the geometry is 1.80 x 0.45
+        # x 0.45, a backless slab — exactly the object garden.png shows, so the
+        # mesh and the reference agree without any argument.
+    a(Material(
+        "furn_pale_composite", "Moulded Composite Furniture — café tables, chairs and slab benches",
+        albedo=(0.402, 0.412, 0.432), roughness=0.4, metallic=0,
+        specular=0.5,
+        binds=("prop_table", "prop_bench"), scenes=("interior",),
+        source="Three frames, three independent anchors. (a) 04-sector-red/more zocalo.png, raw: the pedestal café table's top (0.515,0.706)-(0.580,0.731) reads 0.592/0.600/0.718 and the concourse deck tile beside it (0.237,0.652)-(0.287,0.712) reads 0.596/0.573/0.690 — two up-facing surfaces equal in value to within 4%, so against `kit_deck_plate`'s 0.360 the furniture is 0.375. (b) 04-sector-red/Casino.webp, balanced: a small round café table (0.524,0.547)-(0.579,0.575) rgb(0.410,0.441,0.425) S 0.092, scaled by that frame's mural-wall anchor (balanced 0.491 -> ALBEDO_ANCHOR) gives 0.413. (c) 09-garden-core-and-transit/garden.png, raw: a 'low white slab bench' (0.495,0.936)-(0.635,0.962) 0.624/0.643/0.686, scaled x0.667 by the lawn anchor gives 0.416/0.429/0.458. Mean of the three, 0.415. The cool bias is measured, not styled: in garden.png the bench slab runs B-R +0.063 while the paving two metres away under the same key runs B-R -0.041, a 0.104 swing between two surfaces in one light.",
+        extrapolated="Only the reconciliation. The three anchors span 0.375 to 0.458, a 22% spread, and 0.432 sits inside it; one frame containing a reflectance standard collapses the spread. Also extrapolated: that the Zocalo's café furniture, the Casino's round tables and the Garden's slab benches are one material. They are three sets in three sectors; what ties them is that all three measure pale, near-neutral and slightly cool, and that the modelled objects are the same objects."))
+
+        # Merging a bar counter with a garden pool coping looks like
+        # over-merging until you read what the index calls them: 'dark stone
+        # bar counter' and 'dark stone coping'. They are the same surface, and
+        # both frames show the same tell — a hard specular streak running along
+        # the top arris with the body of the stone going near-black beside it.
+        # That is what roughness 0.24 and specular 0.60 reproduce, and it is
+        # the whole reason this material is not just a dark colour: at 0.094
+        # albedo, everything you actually see is the specular. It also gives
+        # the hospitality set its one genuinely dark object, which matters
+        # because the Casino, the Zocalo bar and Doug's Dugout are all dim
+        # rooms where the bar is the darkest thing in frame and the light sits
+        # on top of it. RED FLAG I AM RAISING RATHER THAN PAINTING OVER: the
+        # Zocalo counter's pale rectangular inlays are the best-observed detail
+        # on this surface and no existing trim sheet can produce them, so this
+        # ships untextured and the detail is lost until a sheet exists. And
+        # 0.094 is dark enough that it will look like a hole in any render that
+        # is not exposed for the bar — that is correct, and it is what the
+        # frames show, but a reviewer should expect it.
+    a(Material(
+        "furn_dark_stone", "Dark Polished Stone — bar counters, back fittings and pool copings",
+        albedo=(0.094, 0.092, 0.093), roughness=0.24, metallic=0,
+        specular=0.6,
+        binds=("prop_bar_counter", "fix_back_shelving", "prop_pool_edge"), scenes=("interior",),
+        source="Both objects are called dark stone by the index and both measure near-black. (a) 11-props-and-technology/Zocalo neon signage in background.jpg — 00-INDEX.md: 'a dark stone bar counter inlaid with small pale rectangles'. Balanced, an 8-way cluster over the counter band (0.0,0.80)-(1.0,1.0) gives 29.3% at V 0.082, 28.9% at V 0.060, 16.2% at V 0.034, with the pale inlays at V 0.127-0.389. (b) 09-garden-core-and-transit/garden.png — 00-INDEX.md: 'rectangular reflecting pool with a dark stone coping'. Raw (0.535,0.850)-(0.579,0.868) 0.129/0.078/0.086; removing that frame's measured additive warm key (the paving holds R-B at +0.041 and +0.039 across a 1.63x value range, so it is additive) leaves 0.088/0.074/0.086, and the lawn anchor x0.667 leaves 0.059/0.049/0.057. (c) Cross-check, 04-sector-red/Casino.webp balanced: the bar's front face (0.300,0.430)-(0.500,0.450) V 0.197, the brightest of the three and under green spill.",
+        extrapolated="The single level for three groups. The evidence spans 0.055 (garden coping, corrected) to 0.197 (Casino bar face under spill), and 0.094 sits inside it. The coping figure is a lower bound because the measured strip includes the coping's own shadowed return face, which no albedo should carry. Also extrapolated: that a bar's back fitting is the same surface as its counter — no frame shows a back fitting clear of bottles and glassware; both frames that show one show it dark."))
+
+        # Deliberately identical in value to `tram_saloon_seat`, because it IS
+        # `tram_saloon_seat` seen from `rooms.py` instead of from the tram
+        # module — if a later pass merges the two, nothing changes and nothing
+        # was lost. Kept as its own entry only because the fragments differ and
+        # I may not edit the existing material. This is one of the two surfaces
+        # in my family allowed above saturation 0.20, and it is allowed on the
+        # terms materials.py already set: S 0.400 at H 5 sits in the `maroon`
+        # accent register, and the register exists precisely because the
+        # reference shows exactly two populations in that car — a near-neutral
+        # shell at S 0.11-0.14 and a red soft-goods set at S 0.22-0.59.
+        # Upholstery is genuinely accented; it is the one thing in a grey
+        # station that is allowed to be a colour. Roughness 0.90 rather than
+        # the tram entry's 0.88 because this also covers bedding, which is the
+        # roughest surface anywhere in the library. Specular 0.25: cloth has
+        # almost no specular lobe, and giving it the default 0.5 is what makes
+        # cheap renders look like vinyl.
+    a(Material(
+        "furn_upholstery", "Soft Goods — maroon seat and bunk upholstery",
+        albedo=(0.375, 0.237, 0.225), roughness=0.9, metallic=0,
+        specular=0.25,
+        binds=("prop_seat", "prop_bunk"), scenes=("interior",),
+        source="03-sector-blue/Babylon_5_2-22_35a.jpg, authority 1, already measured and already in this library: the lit cushion cluster, balanced (gains 0.913/1.090/1.013), rgb(0.375,0.237,0.225) H 5 S 0.401, 10.4% of the saloon. 00-INDEX.md reads that frame as 'bench and individual seating in red-maroon upholstery on moulded grey bases'. Five of the seven locations that declare `prop_seat` — ground_tram, drum_tram, core_shuttle, shuttle_car — ARE that vehicle, so for most of its uses this is not an analogy, it is the same seat. No frame shows a bunk.",
+        extrapolated="That a bunk mattress and blanket take the seat's cloth. What constrains it: the station's only measured soft goods are this maroon set, quarters are fitted out by the same authority that fits out the transit cars, and a second invented colour for bedding would be unmarked invention where a sourced one exists. Overturned by any frame of crew or civilian quarters."))
+
+        # Three objects that are all sheet stainless because of what they DO,
+        # not what they look like: a hot servery, a tray stack and a mortuary
+        # cold drawer are all wipe-down food-or-tissue-contact metal, and every
+        # one of them would be stainless in a real installation for the same
+        # reason. That is a better argument than a colour match, and it is why
+        # they merge. METALLIC 1.0 is the whole point — this is the only bright
+        # bare metal in the furnishing family, and at metallic 1.0 with
+        # roughness 0.31 it will pick up and throw back the room's practicals,
+        # which is exactly how a servery reads in a dim mess hall and is
+        # something no diffuse grey can imitate. I have kept it clearly apart
+        # from `furn_shop_steel`: a servery and a scarred workbench are both
+        # steel and read nothing alike, so per the brief they are two
+        # materials, not one. Untextured because a brushed finish is a
+        # sub-millimetre anisotropy and the seven available sheets are all
+        # plate patterns — tiling `truss_steel` across a servery front would
+        # put structural weld seams on a food counter.
+    a(Material(
+        "furn_service_steel", "Service Stainless — servery, tray stack and mortuary drawers",
+        albedo=(0.560, 0.565, 0.575), roughness=0.31, metallic=1,
+        specular=0.5,
+        binds=("prop_serving_counter", "prop_tray_dispenser", "prop_cold_drawer"), scenes=("interior",),
+        source="NO FRAME SHOWS A STATION SERVERY, TRAY DISPENSER OR MORTUARY DRAWER. What is sourced is that bright chrome is the station's food-service metal: 00-INDEX.md on 04-sector-red/more zocalo.png reads the tableware as a 'chrome domed-top shaker and stacked tumblers', and the shaker is visible in frame at (0.55,0.50)-(0.64,0.72) as a hard specular cylinder with no diffuse term. The library's only measured bare-metal furniture, `tram_saloon_post` from the same authority-1 frame set, sits at 0.560/0.565/0.580 roughness 0.28.",
+        extrapolated="Everything except the kind of surface. The albedo is the physical F0 of stainless steel, ~0.56 and very slightly cool, not a screen measurement — for a conductor the albedo IS the specular reflectance, so this is the one case where physics fixes the number better than a screencap could. Roughness 0.31 is a directionally brushed 2B/4 finish. Overturned by any frame of the mess hall servery or a medlab."))
+
+        # METALLIC 0.95, and I have to justify it rather than leave it in the
+        # forbidden band: this is bare metal with a thin oxide, not metal under
+        # a coating, and 0.95 rather than 1.0 only acknowledges the oxide film
+        # and the grime that a working shop puts on everything. If any of these
+        # four turns out to be painted in a frame, the correct fix is to move
+        # that group to `furn_casework`, not to slide the metallic value down —
+        # a half-metallic surface is a rendering error, not a compromise. This
+        # is the one furnishing material that takes a texture, and it earns it:
+        # `truss_steel` at a 1.2 m repeat puts plate grain and weld runs across
+        # a 2.0 m bench and a 2.4 m rack at roughly the right frequency for the
+        # surfaces the sheet was authored for, and these are the only objects
+        # in my family big enough and flat enough to show it.
+        # `fix_cell_divider` sits here rather than with the office partition
+        # because a brig divider is 0.30 m thick and full height — that is a
+        # structural steel partition, and it should read as heavier than
+        # anything else in the room.
+    a(Material(
+        "furn_shop_steel", "Utility Steel — benches, racks and cell dividers, unpainted",
+        albedo=(0.470, 0.466, 0.458), roughness=0.58, metallic=0.95,
+        specular=0.5, texture="truss_steel", uv_scale=1.0 / 1.2,
+        binds=("prop_workbench", "prop_tool_rack", "prop_grow_rack", "fix_cell_divider"), scenes=("interior",),
+        source="NO FRAME SHOWS A WORKSHOP BENCH, TOOL RACK, GROW RACK OR BRIG DIVIDER. Bracketed against the library's own measured steel registers, which come from authority-1 exterior and drum frames: `truss_steel` 0.204/0.200/0.181 (34b lattice), `greeble_fitting` 0.310/0.306/0.300 (exterior more.jpg dorsal fittings), `tram_saloon_post` 0.560/0.565/0.580 (35a poles). Those are painted or coated structure; unpainted mill and galvanised steel sits above them.",
+        extrapolated="The whole surface. What constrains it: these four objects are the station's unpainted utility steelwork — a bench top scarred back to bare metal, an open tool rack, a wet galvanised grow rack, a heavy brig divider — and the painted register already exists next door in `furn_casework`, so anything that would be sprayed goes there and only what would not comes here. 0.470 is below the servery's 0.560 because scuffed and oxidised steel loses reflectance, and roughness 0.58 is twice the servery's because a workshop surface is abraded in every direction. Overturned by any frame of maintenance, hydroponics or the brig."))
+
+        # Four groups merge because a medlab is fitted out as one system: a
+        # diagnostic bed, a wall cabinet, a cryo pod and an equipment gantry
+        # are the same sealed coated shell at four shapes, and the show's
+        # medical spaces read as a single fit-out rather than as assembled
+        # parts. The one deliberate departure from every other material I am
+        # proposing is that this one is BRIGHTER than the wall. That is the
+        # only lever available to make a medlab feel different from a store
+        # room when both are grey boxes at layer 3, and it is what the lighting
+        # layer will amplify — a clinical room reads clinical because its
+        # surfaces return more light than the corridor outside it, not because
+        # they are white. Roughness 0.33 and specular 0.55 give the broad soft
+        # sheen of a sealed polymer; metallic 0.0 because a wipe-clean clinical
+        # surface is a coating over whatever is underneath. Untextured,
+        # deliberately: any plate seam is a dirt trap, and a clinical surface
+        # that shows plating would be wrong in a way a viewer would feel
+        # without being able to name.
+    a(Material(
+        "furn_clinical", "Clinical Fit-out — beds, cabinets, pods and equipment gantries",
+        albedo=(0.500, 0.512, 0.535), roughness=0.33, metallic=0,
+        specular=0.55,
+        binds=("prop_diagnostic_bed", "prop_medcabinet", "prop_cryo_pod", "fix_equipment_gantry"), scenes=("interior",),
+        source="THERE IS NO MEDICAL INTERIOR ANYWHERE IN reference/. 03-sector-blue/ holds command and control, the war room, a docking bay, a Minbari flyer and four drum CGI plates; no medlab, no infirmary, no morgue, no cryo bay, and no other folder holds one either. Nothing here is measured. The one thing borrowed from a measurement is the SHAPE of the tint: 03-sector-blue/Babylon_5_2-22_35a.jpg's saloon panelling, balanced rgb(0.486,0.486,0.546), is the library's only near-neutral surface that measures cool rather than warm-neutral (B/R 1.12), and this uses the same 1.07 ratio at a lower strength.",
+        extrapolated="All four numbers, and I am marking this the weakest material in the family. What constrains it: it must sit near ALBEDO_ANCHOR to belong to the same station (0.535 is 1.16x the wall, the only surface in my family placed ABOVE the wall); it must be wipe-clean, which fixes roughness low and forbids a texture; it must not be white, because nothing in a lived-in station stays at 0.8 and a white medlab is the Star Trek reading the brief rules out; and the cool bias must be small enough to stay inside the neutral band at S 0.065. ONE MEDLAB FRAME OVERTURNS ALL OF IT, and this is the single highest-value reference gap in the furnishing family — six medlabs, a morgue and cryo storage depend on it."))
+
+        # This is the darkest structural thing in my family and that is the
+        # point of it: the market reads as lightweight goods hung on a nearly
+        # invisible frame, which is what 'built as lightweight structures
+        # inside a hard architectural shell' means, and a mid-grey armature
+        # would turn a stall into a booth. Two frames in two sectors both put
+        # the station's tube furniture at 0.05-0.11, which is a real black
+        # paint and not a shadow — the council chair reading is under a bright
+        # key. METALLIC 0.0: black-painted tube is paint, and the hoops in more
+        # zocalo show a single hard specular line running the length of the
+        # tube with no coloured metal response beneath it, which is a
+        # dielectric gloss. Roughness 0.32 reproduces that line. Untextured — a
+        # 40 mm tube has no room for a trim sheet, and at that albedo nothing
+        # would be visible anyway. Split from `furn_stall_canvas` because the
+        # frames plainly show two things: a dark armature and a pale canopy,
+        # and merging them would produce a grey mush that matches neither.
+    a(Material(
+        "furn_stall_frame", "Market Armature — black tube stall frames and awning rails",
+        albedo=(0.075, 0.074, 0.074), roughness=0.32, metallic=0,
+        specular=0.5,
+        binds=("fix_stall_frame", "fix_awning_rail"), scenes=("interior",),
+        source="04-sector-red/more zocalo.png, raw: the black tubular hoop round a café pedestal (0.455,0.824)-(0.530,0.840) reads 0.094/0.063/0.090, and against that frame's deck anchor (deck tile raw V 0.690 -> `kit_deck_plate` 0.360, x0.522) that is 0.049. Cross-check in a second frame and a second sector: 05-sector-green/council chambers.webp balanced, the chair's black square-section lattice (0.435,0.160)-(0.455,0.250) rgb(0.106,0.102,0.117), scaled by that frame's floor-mosaic reference gives 0.109. 00-INDEX.md reads the Zocalo stall canopies as 'fabric on radiating spars, parasol-fashion' and 09-garden-core-and-transit/central corridor.webp shows a vendor front as 'backlit orange-red panels behind vertical mullions over a counter' — the market's structure is a slender armature in both.",
+        extrapolated="The level within the 0.049-0.109 bracket the two frames give; 0.075 is the midpoint. Also extrapolated: that the Zocalo's black tubework, measured on café furniture, is the same finish as the stall armature beside it. What supports it is that both are the same lightweight tube in the same concourse, and that no other dark furniture finish appears anywhere in the set."))
+
+        # `prop_stall` is the whole 1.8 x 1.2 x 2.1 m stall — canopy, frame and
+        # goods in one box — and the surface that identifies it at any distance
+        # is the canvas, so the canvas is what it gets. Roughness 0.92 is the
+        # second-roughest material in the family after bedding, and it is doing
+        # real work: the market must read as the only soft, matte,
+        # light-absorbing thing in a station otherwise made of plate and paint,
+        # and that contrast is most of what makes a concourse feel like a
+        # market rather than a corridor with boxes in it. Specular 0.30 for the
+        # same reason — woven cloth has almost no coherent lobe. The one
+        # location that declares this group is `black_market` in Grey Sector,
+        # which is not the Zocalo; I am extending the Zocalo's market fabric to
+        # it deliberately, because a black-market stall is the same makeshift
+        # construction pitched somewhere it should not be, and the difference
+        # between the two is lighting and siting, not cloth.
+    a(Material(
+        "furn_stall_canvas", "Stall Canvas — awning fabric and stacked goods",
+        albedo=(0.380, 0.345, 0.312), roughness=0.92, metallic=0,
+        specular=0.3,
+        binds=("prop_stall",), scenes=("interior",),
+        source="04-sector-red/more zocalo.png, the stall canopy at (0.625,0.122)-(0.670,0.143) and a second panel at (0.730,0.115)-(0.775,0.136): raw 0.212/0.137/0.137 and 0.197/0.129/0.137, H 20-23. 00-INDEX.md on the same frame: 'Market stalls with fabric awnings, string lighting and hanging goods'; 'Stall canopies are fabric on radiating spars, parasol-fashion'; and on the lighting, 'warm practicals at stall level, cyan neon accents above, low ambient fill'.",
+        extrapolated="The level, and most of the warmth. The measured patches sit ABOVE the stall practicals in the frame's dim ceiling zone, so their V 0.20 is a lighting floor, not an albedo — carrying it through the frame's x0.522 deck anchor would give 0.111, which is a black awning, and that is plainly not what the frame shows. 0.380 is a tan canvas raised to the level a fabric under a practical would need to read as the frames do. The hue is kept but pulled back to S 0.179, just inside the neutral band, because the index says the light at stall level is warm and an unknown share of the measured H 20-23 is that light rather than the cloth. Overturned by a frame of a stall canopy lit from the front."))
+
+        # The second of the two surfaces in my family above saturation 0.20,
+        # and it earns it the same way the tram upholstery does: it is a
+        # deliberately coloured cloth, it lands at H 216-219 against the
+        # `cool_blue` register's H 228, and the same-object control rules out
+        # the lighting. A casino table is supposed to be the one saturated
+        # object in the room. Roughness 0.95 — baize is the flattest diffuse
+        # surface that exists, and a table that catches any specular reads as
+        # plastic. CAVEAT THE NEXT LAYER MUST KNOW: `rooms.build` emits
+        # `prop_gaming_table` as a single 1.60 x 1.10 x 0.78 box, so this blue
+        # will cover the apron and the padded rail too, which the frame shows
+        # as dark with a lit chase around it. I bound the identifying surface
+        # rather than averaging the two, because an averaged mid-blue would
+        # match neither; splitting the box is a layer-2 fix and is worth
+        # making, since this is one of only two prop types in the whole station
+        # that is allowed to be a colour.
+    a(Material(
+        "furn_gaming_baize", "Gaming Baize — the casino table cloth",
+        albedo=(0.138, 0.276, 0.483), roughness=0.95, metallic=0,
+        specular=0.25,
+        binds=("prop_gaming_table",), scenes=("interior",),
+        source="04-sector-red/Casino.webp, balanced (gains 1.014/1.071/0.926): the felt (0.264,0.583)-(0.377,0.630) rgb(0.147,0.294,0.515) H 219 S 0.686 V 0.515, scaled x0.937 by that frame's mural-wall anchor (balanced V 0.491 -> ALBEDO_ANCHOR). 00-INDEX.md calls it 'a blue-felt gaming table on a raised kerb'. The proof that the blue is the cloth and not the room: the SAME table's apron, 0.05 of frame height below the felt and under the same light, reads (0.270,0.660)-(0.400,0.700) rgb(0.099,0.084,0.102), B/R 1.02 — dead neutral — while the felt is at B/R 3.50. One object, one light, two hues.",
+        extrapolated="Nothing about the colour. The level rides on the mural-wall anchor, which assumes the Casino's back wall is a wall-class surface at ALBEDO_ANCHOR; if it is not, this scales with it. The saturation may be a few points high because the Casino is lit with strong coloured practicals, but the apron control caps how much of it can be light."))
+
+        # This is the one material in my family placed slightly above the wall
+        # for a reason that is about mood rather than physics: a sanctuary is a
+        # room where the furniture is the architecture — a pew and a dais are
+        # cut stone, not casework — and stone that is lighter and matter than
+        # the corridor is what separates a chapel from an office at the moment
+        # a player walks in. Roughness 0.66 is honed, not polished; it is the
+        # deliberate opposite of `furn_dark_stone`'s 0.24, and the pair of them
+        # gives the station two stones that behave in opposite ways under one
+        # light. Untextured because none of the seven sheets is a stone:
+        # `deck_plate` would put a mechanical slab grid across a pew, which
+        # reads as decking. `fix_dais` is 3.20 x 1.60 x 0.35 — a platform, not
+        # a lectern — and the council bench is the station's own precedent for
+        # what a raised speaking place is made of, which is why I used it for
+        # the form even though it belongs to a bespoke module.
+    a(Material(
+        "furn_worship_stone", "Worship Stone — pews and the sanctuary dais",
+        albedo=(0.468, 0.462, 0.432), roughness=0.66, metallic=0,
+        specular=0.4,
+        binds=("prop_pew", "fix_dais"), scenes=("interior",),
+        source="05-sector-green/rotunda.webp, the only worship-class interior in the set, balanced: the floor's cream-and-grey radiating mosaic (0.550,0.900)-(0.680,0.970) rgb(0.439,0.457,0.398) S 0.140 V 0.457. 00-INDEX.md reads that room as a 'stepped, coffered dome in gold and grey' over a 'circular mosaic with a radiating sunburst in cream and grey'. Corroborating the form of a raised speaking platform, 00-INDEX.md on 05-sector-green/council chambers.webp: a faceted raised bench with 'a grey slab top with a chamfered edge', a riveted bullnose capping rail and 'a recessed plinth holding the whole bench off the floor'. NO FRAME SHOWS A PEW, A CHAPEL OR A SANCTUARY DAIS.",
+        extrapolated="That a sanctuary's furniture is cut from the same pale stone as a rotunda's floor, and the small warm bias. The bias is the weakest part: rotunda.webp's grey-world gains are 0.766/1.153/1.208, extreme enough that hue from it is soft, so S is held to 0.077 — about half the measured 0.140 — on the argument that some of the cream is the room's very warm key. The level, 0.468, is the measured mosaic value taken at face value, which is legitimate here only because it lands within 2% of ALBEDO_ANCHOR from an entirely independent direction. Overturned by any frame of a chapel or sanctuary."))
+
+        # Merged because they are the same object at two heights — a 0.16 x
+        # 1.80 x 1.75 m office divider and a 0.22 x 2.60 m full-height
+        # sanctuary screen are one panel system, and nothing on screen would
+        # separate them; keeping them apart would have meant inventing two sets
+        # of numbers from the same zero evidence, which doubles the invention
+        # for no gain. Roughness 0.30 with specular 0.45 gives a
+        # translucent-composite sheen rather than a matte board, which is what
+        # makes a screen read as a screen when it is only a thin box. THE
+        # OBVIOUS NEXT MOVE, and I am flagging rather than taking it: every
+        # frame that shows a divider in this station shows it BACKLIT. I have
+        # not given this emission because no frame shows either of these two
+        # specific objects, and inventing an emitter is a larger claim than
+        # inventing a colour. If layer 4 wants the station's screens lit — and
+        # on this evidence it should — the right fix is a lit variant with its
+        # own group, not raising the emission on a material that also has to
+        # serve a cubicle partition in an administration office.
+    a(Material(
+        "furn_screen_panel", "Panel Screen — office partitions and sanctuary screens",
+        albedo=(0.505, 0.508, 0.515), roughness=0.3, metallic=0,
+        specular=0.45,
+        binds=("fix_screen_panel", "fix_partition_screen"), scenes=("interior",),
+        source="NO FRAME SHOWS AN OFFICE PARTITION OR A SANCTUARY SCREEN. What is sourced is that thin light-passing panels are the station's idiom for dividing a space without closing it: 00-INDEX.md on 05-sector-green/rotunda.webp records 'wall panels of vertical blue light slots' and hanging banners between columns; on 05-sector-green/council chambers.webp, a 'very fine square-hole perforated sheet ... evenly backlit with no visible lamp hotspots'; on 04-sector-red/Earhart's.webp, 'wood-slat screens' read through the glazed band; and on 05-sector-green/conference aerea.webp, 'arrays of tall narrow illuminated slots'.",
+        extrapolated="All four numbers. What constrains them: the panel must read as thinner and lighter than the wall behind it or it is a wall (hence 0.515, just above ALBEDO_ANCHOR, and the lowest saturation in the family at 0.019); it is 0.16-0.22 m thick in the geometry, which is a panel and not a partition wall; and it must be smooth, because a translucent screen with plate texture is a contradiction. Overturned by any frame of an office interior or a chapel."))
+
+        # The only emitter I am proposing, and it emits because the frame shows
+        # it emitting — it clips to white in a room where nothing else does. It
+        # is also the reason this material exists at all rather than being
+        # folded into `furn_worship_stone`: a sanctuary needs one point of
+        # light or it is a dark box, and this is the station's own answer to
+        # what that light looks like. The near-black blue body is measured, and
+        # it is built the way the library already builds emitter housings —
+        # `emissive_signage` at (0.050,0.090,0.100), `marker_light_red` at
+        # (0.100,0.050,0.040), `light_downlight` at (0.300,0.240,0.190) all
+        # carry their emission's tint in the albedo, because a housing sits in
+        # its own light. That is why its S 0.409 is not a coloured structural
+        # surface. The independent arrival of the rotunda altar at the
+        # cool_blue register's exact value is the strongest corroboration I
+        # found anywhere in this pass, and it is worth noting that it makes the
+        # register a measurement from two frames rather than one. Same
+        # whole-box caveat as the gaming table: the slab is the emitter, the
+        # body is not, and splitting them is a layer-2 fix.
+    a(Material(
+        "furn_shrine_lit", "Shrine — dark body under a lit altar slab",
+        albedo=(0.068, 0.076, 0.115), roughness=0.3, metallic=0,
+        specular=0.35,
+        emission=(0.240, 0.320, 1.000), emission_energy=2.2,
+        binds=("prop_shrine",), scenes=("interior",),
+        source="05-sector-green/rotunda.webp — 00-INDEX.md: 'a blue illuminated altar table'. Balanced (gains 0.766/1.153/1.208): the lit slab (0.280,0.795)-(0.440,0.845) rgb(0.243,0.321,0.981) H 233 S 0.730 V 0.981, raw 95th percentile 0.847/0.882/1.000 — it clips, so it is a source and not a lit surface. The body below it, (0.300,0.860)-(0.420,0.900), reads rgb(0.003,0.009,0.142): near-black with only its own light on it. The measured emission is (0.243,0.321,0.981) and ACCENTS['cool_blue'] is (0.240,0.320,1.000) — the altar IS the cool_blue register, to three decimals, from a frame that register was not derived from.",
+        extrapolated="The energy, 2.2, and it is a compromise I want on the record. The frame says the altar clips, which argues for much more; but `rooms.build` emits `prop_shrine` as one 1.10 x 0.60 x 1.70 m box, so whatever I set applies to the body as well as the slab, and a clipping value would turn a shrine into a lightbox. 2.2 is set against the library's own ladder — `tram_saloon_strip` 2.6, `marker_light_red` 2.1, `light_deck_channel` 3.5, `light_pilaster_strip` 6.0 — at the low end, where an object that is only partly a lamp belongs. Also extrapolated: that the alien shrines in alien_worship take the same light as the rotunda's altar."))
+
+        # The neutrality here is the whole result, and it is the fourth time
+        # this project has found a colour that belonged to the light:
+        # garden.png's grey-world gains (0.884/0.994/1.159) push the paving to
+        # H 224 S 0.225 because the drum's khaki farmland fills the upper half
+        # of the frame and drags the estimate blue, while the raw frame reads H
+        # 11 S 0.062. Neither number is the albedo; the constant R-B across
+        # three light levels is, and it says neutral. At 0.437 the path lands
+        # just under the corridor wall's 0.460 and just under the pale
+        # furniture standing on it, which is where a ground plane belongs.
+        # `deck_plate` is the only sheet in the library that is large flat
+        # panels with recessed seams, and at a 1.6 m repeat it reads as
+        # flagstone jointing rather than as decking — the one place in my
+        # family where an existing sheet genuinely fits the observed surface.
+        # Kept apart from `furn_pale_composite` despite landing within 1% of it
+        # in value: the difference between paving and furniture here is
+        # entirely roughness and jointing (0.70 and textured against 0.40 and
+        # smooth), and that is exactly the kind of difference that reads on
+        # screen even when the albedo does not.
+    a(Material(
+        "furn_paving", "Garden Paving — flagstone path",
+        albedo=(0.437, 0.437, 0.437), roughness=0.7, metallic=0,
+        specular=0.35, texture="deck_plate", uv_scale=1.0 / 1.6,
+        binds=("prop_path",), scenes=("interior",),
+        source="09-garden-core-and-transit/garden.png raw, three light levels on one surface: lit (0.586,0.876)-(0.640,0.900) 0.696/0.659/0.655; mid (0.660,0.800)-(0.760,0.850) 0.686/0.651/0.667; shadowed (0.360,0.960)-(0.460,0.985) 0.427/0.392/0.388. R-B holds at +0.041, +0.019 and +0.039 across a 1.63x range of value while R/B runs 1.063 to 1.100 — a constant DIFFERENCE, so the warmth is an additive key and the stone is neutral. Neutral base 0.655, scaled x0.667 by that frame's lawn anchor (raw lawn 0.522/0.655/0.376 against `ground_parkland` 0.345/0.425/0.260, per-channel scales 0.661/0.649/0.691) gives 0.437. 00-INDEX.md on the same frame: 'large pale flagstone paving'; 03-sector-blue/Babylon_5_2-22_29a.jpg independently shows 'paved winding paths in small setts'.",
+        extrapolated="The 1.6 m slab repeat. The frame plainly shows large rectangular slabs with open joints, but every run of paving in it is seen at a grazing angle, so a joint pitch cannot be recovered without a ground-plane homography and I did not fake one — 00-INDEX.md's own calibration (1.75 m figures at ~40 px/m at their depth, and explicitly not transferable) is the only scale in the frame. This is the same class of number `hazard_chevron` already declares extrapolated: 'the frames show the pattern, not its scale'. One frame of a path square-on closes it."))
+
     return tuple(M)
 
 
