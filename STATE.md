@@ -2511,9 +2511,12 @@ group set needs `zocalo_run(3, cap_ends=True)` (38) plus the `table_pedestal_fiv
    "competition" was my validation ignoring scene filtering: `drum_structure` is a drum-scene
    material and cannot compete inside `interior`. **Bespoke coverage 4/42 → 42/42** for the four
    modules the gate can build; 1,269 assertions.
-2. **Re-run the `plant_living` cluster** — `plant`, `alien_sector`, `hospitality`, `quarters`. It
-   is the only one that never produced a result. The workflow can be resumed with
-   `resumeFromRunId: "wf_e25e65a5-33c"`; the five that finished replay from cache.
+2. **DONE, without re-running the agent.** `plant`, `alien_sector`, `hospitality` and `quarters`
+   were enumerated by hand -- entry points read out of each `_selftest` -- and materialled. **Of
+   46 unresolved groups, FORTY were surfaces this library already had**: a cabin floor is the
+   kit's deck panel, a bunk and a bar stool are the same soft goods, a grab bar and a plant
+   handrail are one extrusion. Only six were new, all in Doug's Dugout or an airlock. Measuring
+   first is what turned a whole agent's work into an afternoon's rebinding.
 3. **Layer 3's other 50 places** — the bespoke modules. Same shape: enumerate each module's emitted
    groups, propose, gate. `zocalo`, `interior_kit`, `core_tube` and `tram` are the big ones.
 2. **The lighting rig has no night side** (layer 4, blocking) — the arrival shot cannot be composed

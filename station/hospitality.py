@@ -259,7 +259,14 @@ def room():
 
     # The bar counter along the right-hand wall, with a back bar behind it.
     bx = hw - BAR_D_M - 0.25
-    _box(v, t, g, "bar_counter",
+    # `bar_servery`, not `bar_counter`: rooms.py emits `prop_bar_counter`
+    # for the procedural bars, and `bar_counter` is a SUFFIX of it. Under
+    # substring/longest-wins a material binding the short name also
+    # matches the long one. It resolves correctly today only because
+    # `prop_bar_counter` happens to be longer, and would stop the moment
+    # either was renamed -- the same latent shape as `_wall` reaching into
+    # `prop_monitor_wall`.
+    _box(v, t, g, "bar_servery",
          (bx, 0.0, -BAR_L_M / 2), (bx + BAR_D_M, BAR_H_M, BAR_L_M / 2))
     _box(v, t, g, "bar_footrail",
          (bx - 0.14, BAR_FOOT_M, -BAR_L_M / 2),

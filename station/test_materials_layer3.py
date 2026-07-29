@@ -142,11 +142,68 @@ def _via_write_obj(mod_name):
     return build
 
 
+def _names(result):
+    """Group names out of a builder's third return value.
+
+    Modules disagree about the shape: some return (name, lo, hi) spans, some a
+    flat per-triangle list of names. Both are handled rather than one being
+    declared correct, because normalising them would mean editing eleven
+    generators to satisfy a test.
+    """
+    g = result[2]
+    if not g:
+        return set()
+    return {x[0] for x in g} if isinstance(g[0], (list, tuple)) else set(g)
+
+
+def _alien(schema, profile):
+    import alien_sector                                        # noqa: PLC0415
+    return _names(alien_sector.gallery(schema, profile))
+
+
+def _hospitality(_schema, _profile):
+    import hospitality                                         # noqa: PLC0415
+    return _names(hospitality.room())
+
+
+def _quarters(schema, profile):
+    """Every class, because they do not emit the same set.
+
+    A lurker's berth has no shower and a command cabin does, so building one
+    class and calling it coverage would leave `qtr_shower` unowned and
+    unnoticed.
+    """
+    import quarters                                            # noqa: PLC0415
+    out = set()
+    for cls in quarters.CLASSES:
+        out |= _names(quarters.run(schema, profile, cls["key"]))
+    return out
+
+
+def _plant(schema, profile):
+    import plant                                               # noqa: PLC0415
+    out = set()
+    for bay in plant.bays(schema, profile):
+        out |= _names(plant.plant_bay(schema, profile, bay, 10.0))
+    return out
+
+
 BESPOKE_BUILDERS = {
     "command_control": _via_write_obj("command_control"),
     "council_chamber": _via_write_obj("council_chamber"),
     "docking_bay": _via_write_obj("docking_bay"),
     "signage": _via_write_obj("signage"),
+    # NOT `_via_write_obj`: none of these four has one. Their entry points were
+    # established by reading each module's own _selftest, which is the
+    # canonical usage, and they are recorded here so nobody rediscovers them.
+    # `zocalo` is the notable absentee -- it has write_run(path, bays=3) and
+    # write_bay(path) rather than write_obj(path), and its full 38-group set
+    # needs zocalo_run(3, cap_ends=True); write_run defaults cap_ends=False and
+    # emits only 37.
+    "alien_sector": _alien,
+    "hospitality": _hospitality,
+    "quarters": _quarters,
+    "plant": _plant,
 }
 
 # Every module that owns at least one addressed place, so the gate can say how
