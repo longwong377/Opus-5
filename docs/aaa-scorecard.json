@@ -379,6 +379,58 @@
           ]
         }
       ]
+    },
+    "drum_interior_engine": {
+      "status": "active",
+      "rounds": [
+        {
+          "round": 1,
+          "reviewer": "builder, session 3k -- M0 interior path proof",
+          "date": "2026-07-29",
+          "scores": {
+            "craft": 2,
+            "fidelity": 3,
+            "performance": 4,
+            "robustness": 3
+          },
+          "evidence": {
+            "engine": "Godot 4.4 double + lavapipe, Forward+, 1000x560, 15 s",
+            "frames": [
+              "docs/engine-m0-interior.png"
+            ]
+          },
+          "broke_assertions": false,
+          "findings": [
+            {
+              "severity": "blocking",
+              "dimension": "craft",
+              "descriptor": "C2",
+              "where": "godot/materials/, guideway light runs",
+              "text": "THE HABITAT'S LIGHT RUNS RENDER MAGENTA ON ONE SIDE AND WHITE ON THE OTHER. These are the drum's ONLY light source and are authority 1 (Babylon_5_2-22_33a/34b). Half of them are falling back to an unassigned material. Invisible to every assertion in the project and invisible in the preview rasteriser, which does not do materials at all."
+            },
+            {
+              "severity": "major",
+              "dimension": "craft",
+              "descriptor": "C3",
+              "where": "drum ground",
+              "text": "The ground reads as flat olive and tan blocks with hard edges between land-use bands. No texture, no transition, no detail at any distance."
+            },
+            {
+              "severity": "major",
+              "dimension": "craft",
+              "descriptor": "C3",
+              "where": "drum",
+              "text": "No atmospheric perspective. A 2.6 km volume with 556 m of air overhead shows no haze, so the far end cap reads at the same contrast as the near ground and the volume collapses."
+            }
+          ],
+          "what_is_good": [
+            "The payoff view works: ground curves up and away, the far side arches overhead.",
+            "Guideway trusses recede correctly and read as structure.",
+            "Core tube, hub and spokes read at the vanishing point.",
+            "15 s per frame -- the interior path is FASTER than the exterior, so iteration is cheap."
+          ]
+        }
+      ]
     }
   }
 }
