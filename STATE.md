@@ -2760,6 +2760,17 @@ same code**, which is what `--against` does and what the docstring now says at l
 corridor's existing 1.30 ambient was vindicated by that test: reference 0.086/0.053, ours
 0.081/0.074.
 
+**A finding I recorded and then had to withdraw, which is the point of measuring.** I wrote down
+that 23% of the market frame being crushed below the measurable floor was a defect against
+`grey level 1.webp`'s 2.25%. Running the *other ten* reference frames through the same code refutes
+it flatly: the show's interiors crush **far harder** than ours — the Zocalo reference 54.9% against
+our market's 19.2%, the C&C reference 49.8% against our brig's 13.2%, `more hallways.jpg` 61.5%
+against our fabrication's 54.4%. `grey level 1.webp` is the outlier, because it is the one *bright*
+residential corridor in the set, and I had generalised from it. The rooms are not too black; if
+anything the generic archetype at 10.7% is the only one over its reference. **Same lesson as the
+ratio, twice in one session: run the new statistic against the whole corpus before trusting it
+against one frame.**
+
 **The finding that fell out of it.** Scaling only the fittings moved medical from 7.5× to 3.1× and
 moved transit, worship and generic by *nothing at all*. In those rooms the fittings contribute
 almost nothing to the frame — a corridor downlight reaches 1.2 m — and what fills the room is
@@ -2776,10 +2787,12 @@ layer-3 gate 34, directory 744, export_scene 80, measure_frame 9.
    is a calibrated exposure and a frame measured against its reference, which is what layer 4 *is*.
    The measured fixtures for them are already committed in `docs/layer4-lighting/public_social.json`
    and `command_working.json` — 42 of them, unapplied.
-2. **23% of the market frame is crushed below the measurable floor**, against 2.25% in
-   `grey level 1.webp`. The soffit is the culprit: every fitting aims down and nothing lights the
-   ceiling. The reference corridors are dark overhead but not *black* — their soffit reads 0.158
-   against a 0.446 deck. A bounce or a soffit fitting is the fix, not more ambient.
+2. **Our lamps clip where the show's do not.** Measured across the eleven calibration renders and
+   their reference frames: ours clip 0.00–3.13% of the frame, the references 0.00–0.54%. The
+   Zocalo reference clips 0.00% and our market frame 3.13%; the war room 0.00% and our medlab
+   2.48%. It is the lamp *lens geometry* blowing, so the fix is `emission_energy` on the fittings
+   rather than the exposure — with the caveat that a graded screencap rolls off and a render does
+   not, so some of the gap is the medium.
 3. **Apply the two `interior_kit` geometry corrections and the strip colour** — measured, in
    `docs/layer4-lighting/corridor_kit.json`, still not applied: the pilaster strip is built
    0.50→0.86 of wall height and measures 0.56→0.75, ~1.9× too long with cells 1.5× too small.

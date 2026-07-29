@@ -62,6 +62,14 @@ WHAT IT EXCLUDES, and the reference excluded the same two populations by hand:
     is nearly crushed and is not used". Below `floor` a surface has no
     measurable value, so it is not one.
 
+    DO NOT READ A HIGH CRUSHED FRACTION AS A DEFECT. The show's interiors
+    crush hard, and far harder than our renders do: `more hallways.jpg` 61.5%,
+    the Zocalo 54.9%, command and control 49.8%, Doug's Dugout 63.3%, against
+    19-54% for the rooms calibrated against them. `grey level 1.webp` at 2.25%
+    is the outlier -- it is the one BRIGHT residential corridor in the set --
+    and generalising from it produced a written-down finding that the other ten
+    frames refuted the same afternoon.
+
 The consequence worth stating: this measures a frame, not a room. Point the
 camera at a wall and it will report whatever that wall does. It is a
 regression gate on a FIXED shot, which is what the render scripts produce.
