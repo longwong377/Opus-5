@@ -1735,6 +1735,40 @@ nobody re-copies the old number. **§11 needs refreshing.**
 
 Logged as **INV-032**. `docs/render-quarters.png`.
 
+## Session 3k (cont.) — the bar, and the largest workplace on the station
+
+`station/hospitality.py`, **27 assertions**, in CI. `npc/schedule.py` makes hospitality the
+**largest single workplace on the station** — 734 of 3,000 sampled residents, ahead of the
+concourse (556) and the Zocalo (488) — and it had no geometry. Every one of those NPCs was
+clocking on to nowhere.
+
+It is deliberately **not** the Zocalo, and that is asserted: under half a concourse's ceiling
+height, under 120 m² of floor. A low, dark, tight room lit **entirely by pendant cones over the
+tables**, so it reads as a field of separate pools with near-zero ambient. Social life built out
+of concourse alone would have been one note.
+
+**The lighting design is asserted, not described:** one pendant per table one-to-one, a source
+inside every shade, hung **below standing eye height** so it pools instead of lighting the room,
+and clear of a seated diner's head. A pendant 200 mm higher stops being this room.
+
+**The dartboard is a real dartboard.** `DART_SEQUENCE` is the regulation clockwise order, and the
+test checks the sequence, that 1–20 each appear once, and that the **mean adjacent difference
+exceeds 5** — the defining property of the real layout is that high numbers neighbour low ones, so
+a naive 1..20 ring would score ~1. A plausible-looking ring is wrong in a way a player can catch.
+
+**A real-world trademark is excluded by assertion.** The frame's lit **ZIMA** panel is genuine
+1990s product placement, recorded as observed and reproduced nowhere. The self-test **reads its
+own source** and asserts the string appears at most once, in the note explaining the exclusion.
+*"I remembered not to" is not a guarantee, and the next session will not have seen the frame.*
+
+**One defect, and a better way of checking for it.** Deck and soffit spanned only the inner wall
+face while the walls sit outboard, leaving an open corner at every wall/soffit junction — a few
+magenta pixels where the ceiling met the far wall. Fixed, and closure verified by **counting
+magenta pixels in the render (0)** rather than by eye. A hole a few pixels across is exactly what
+an eye skips; this check scales and should be used on every interior from here.
+
+Logged as **INV-033**.
+
 ## IN FLIGHT — read this before starting anything
 
 **An adversarial review panel is running over the five new NPC modules and had NOT reported when
