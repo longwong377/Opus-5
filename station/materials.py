@@ -882,7 +882,12 @@ def _build():
         albedo=(0.060, 0.062, 0.140), roughness=0.30, metallic=0.0,
         specular=0.25, emission=(0.151, 0.156, 0.434), emission_energy=3.0,
         texture="signage_panel", uv_scale=1.0 / 1.6, triplanar=False,
-        binds=("signage_panel",), scenes=("interior",),
+        # `sign_face` is signage.py's board face -- the object this material was
+        # measured FROM. It went unbound because the material predates the
+        # module. Session 3l's bespoke pass re-measured the frame independently
+        # and landed on the same albedo to three places, so this is one surface
+        # with one value, not two materials that happen to agree.
+        binds=("signage_panel", "sign_face"), scenes=("interior",),
         source="welcome to babylon 5.webp panel field (0.02,0.32)-(0.52,0.95): field rgb(0.151,0.156,0.434), B-R constant at 0.28 through the letters",
         note=("The one non-triplanar material. A sign has an orientation and a "
               "reading direction; projecting it three ways would mirror the "
@@ -2649,6 +2654,20 @@ def _build():
         binds=("zoc_stall_sign",), scenes=("interior",),
         source="reference/04-sector-red/more zocalo.png (authority 1), balanced with the gains already in materials.GREY_WORLD_GAINS (0.936/1.137/0.951). The disc sign stands clear of the stall at the frame's right edge, a pale circular board on a pole carrying dark lettering; measured at (0.958,0.075)-(0.998,0.160) it reads rgb 0.308/0.290/0.239 H 50 S 0.218 V 0.308. The load-bearing figure is a RATIO in one light, not the level: the gallery structure immediately behind it at (0.535,0.140)-(0.585,0.175) reads V 0.147, so the sign is 2.1x the painted structure it hangs in front of, and it is the palest object in the colonnade's upper band. reference/04-sector-red/zocalo.webp shows the same class of trader board at (0.138,0.285)-(0.188,0.380) as a dark banner with pale script — the opposite polarity, so the group carries both readings.",
         extrapolated="The level and the saturation. The frame's absolute readings in that band are three to four stops under the foreground and cannot be anchored; what it gives is the 2.1x ratio, and 0.470 is chosen as one notch ABOVE ALBEDO_ANCHOR because a shop sign has to read against the structure it hangs on, which is what the ratio says it does. Saturation is cut from the measured 0.218 to 0.072: the sign sits in the throw of the stall's warm string lights, and every other surface those lights reach in this frame reads H 17-30, so most of the measured warmth is the practicals and only a cream cast survives as paint. Overturned by: any Zocalo frame showing a trader's board under a neutral key."))
+
+    # The board's POST AND FRAME, which are not the board. `welcome to babylon
+    # 5.webp` shows two backlit blue panels held in a dark surround that reads
+    # near-black against them; giving the whole assembly the panel's material
+    # would make the mount glow, and giving it the wall's would make the panel
+    # sit on a pale slab. It is the contrast that makes a lit sign read as lit.
+    a(Material(
+        "sign_mount_dark", "Sign Mount — dark structural post and board frame, matte painted steel",
+        albedo=(0.103, 0.100, 0.099),
+        roughness=0.7, metallic=0,
+        specular=0.35,
+        binds=("sign_frame", "sign_post"), scenes=("interior",),
+        source="reference/01-station-exterior/welcome to babylon 5.webp (authority 1, 1000x750; reference/00-INDEX.md files it as 'misfiled — this is signage, not exterior' and calls it 'two backlit blue information boards in the customs hall'). MEASURED RAW, NOT BALANCED — see extrapolated. POST, clear of both boa",
+        extrapolated="THE LEVEL, and the decision to measure this frame raw. Both are declared in full. (1) GREY-WORLD FAILS ON THIS FRAME, and I checked rather than assumed. Its gains are (1.262, 1.276, 0.702), and its balanced mid-tone population (0.15 < V < 0.85) has median saturation 0.299 and p90 0.469 against the a"))
 
     return tuple(M)
 
