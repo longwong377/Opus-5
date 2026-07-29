@@ -892,12 +892,110 @@ def per_triangle(spans, n_tris, default="structure"):
     return owner
 
 
+def to_spans(groups, n_tris):
+    """Normalise a generator's third return value to (name, lo, hi) spans.
+
+    FOUR SHAPES, because eleven generators were written independently and
+    normalising them at source would mean editing every one:
+
+      * (name, lo, hi) spans          -- rooms.py, interior_kit
+      * a flat per-triangle name list -- command_control, zocalo, alien_sector
+      * a metadata DICT with "groups" -- core_tube, tram
+      * nothing at all
+
+    `test_materials_layer3._names` already converts all four to a SET of names,
+    which is all a coverage gate needs. The light rig needs more than the
+    names: `fixture_lights` puts one source at each span's centroid, so the
+    per-triangle shape has to become runs and not just a set. Runs, and not one
+    span per group -- a module that emits its ten bay floods as ten contiguous
+    stretches of one group gets ten lamps, which is right, and collapsing them
+    to a single span would put one lamp at the centroid of all ten.
+    """
+    if isinstance(groups, dict):
+        groups = groups.get("groups") or ()
+    if not groups:
+        return [("structure", 0, n_tris)]
+    if isinstance(groups[0], (list, tuple)):
+        return [tuple(x) for x in groups]
+    out, start = [], 0
+    for i in range(1, len(groups) + 1):
+        if i == len(groups) or groups[i] != groups[start]:
+            out.append((groups[start], start, i))
+            start = i
+    return out
+
+
+# THE INTERIOR-SCENE BESPOKE MODULES AND HOW TO BUILD ONE ROOM OF EACH.
+#
+# Until this table existed the interior shot could assemble exactly two things:
+# the corridor kit and a rooms.py bay. Every one of the fifty locations built
+# by a bespoke module raised SystemExit -- so the Zocalo, the docking bay,
+# command and control and the council chamber had materials, had lamps in some
+# cases, and had NEVER BEEN RENDERED FROM THE INSIDE. Layer 4's whole method is
+# to look at a frame and measure it, and there was no frame to look at.
+#
+# The entry points are NOT uniform and were established by reading each
+# module's own _selftest, which is its canonical usage. They are recorded here
+# so nobody has to rediscover them a third time -- test_materials_layer3 had
+# already found them once for the coverage gate. Each takes (schema, profile,
+# place) and returns whatever its module returns; `to_spans` normalises.
+#
+# `signage` is absent deliberately: it builds a sign board, which is a prop
+# that stands in other rooms rather than a room you can stand in.
+BESPOKE_GEOMETRY = {
+    "alien_sector": lambda s, p, q: __import__("alien_sector").gallery(s, p),
+    "command_control":
+        lambda s, p, q: __import__("command_control").command_control(),
+    "council_chamber":
+        lambda s, p, q: __import__("council_chamber").council_chamber(),
+    "customs": lambda s, p, q: __import__("customs").hall(s, p),
+    "docking_bay": lambda s, p, q: __import__("docking_bay").docking_bay(
+        0, s, p),
+    "hospitality": lambda s, p, q: __import__("hospitality").room(),
+    # The bay a place lands in is the first one; plant.bays() partitions the
+    # deck by arc and every bay is the same construction.
+    "plant": lambda s, p, q: __import__("plant").plant_bay(
+        s, p, __import__("plant").bays(s, p)[0], 10.0),
+    # THE CLASS COMES FROM THE PLACE. A lurker's berth and a command cabin are
+    # different geometry, and rendering one class seven times would be seven
+    # frames of one room. See QUARTERS_CLASS.
+    "quarters": lambda s, p, q: __import__("quarters").run(
+        s, p, __import__("quarters").class_by_key(QUARTERS_CLASS[q["key"]])),
+    "zocalo": lambda s, p, q: __import__("zocalo").zocalo_run(
+        3, cap_ends=True),
+}
+
+
+# Directory key -> quarters class key. Four of the seven differ, and they
+# differ for a reason rather than by accident: the directory names a PLACE ON
+# THE STATION and quarters.py names a HOUSING CLASS, and the ambassadorial
+# suites and the League delegations are two places drawing on one class. A
+# `key.removeprefix("qtr_")` would have produced three KeyErrors and no hint
+# that the two vocabularies are different things.
+#
+# Asserted against both vocabularies in the self-test, so a new place or a
+# renamed class fails here rather than rendering the wrong room.
+QUARTERS_CLASS = {
+    "qtr_command": "command",
+    "qtr_personnel": "personnel",
+    "qtr_civilian": "civilian",
+    "qtr_transient": "transient",
+    "ambassadorial_suites": "diplomatic",
+    "league_delegations": "diplomatic",
+    "alien_resident_qtr": "alien_resident",
+}
+
+
 def interior_geometry(room):
     """(verts, tris, spans, extent) for a room key, or the corridor kit.
 
     Accepts any of the 118 directory keys plus the pseudo-rooms `corridor` and
     `junction`, which are the kit itself -- the surface every location connects
     through and the one with no place entry of its own.
+
+    `extent` is (width_x, length_z) when the generator can say what one bay of
+    the room is, and None when the camera has to find its own way -- see
+    `build_interior`.
     """
     import interior_kit as kit
     import rooms as R
@@ -912,12 +1010,63 @@ def interior_geometry(room):
 
     place = dr.by_key(room)
     if place["module"]:
-        raise SystemExit(
-            f"--room {room} is built by {place['module']}.py, which this shot "
-            f"cannot assemble yet. Rooms from rooms.py and the pseudo-rooms "
-            f"`corridor` and `junction` work today.")
+        build = BESPOKE_GEOMETRY.get(place["module"])
+        if build is None:
+            raise SystemExit(
+                f"--room {room} is built by {place['module']}.py, which the "
+                f"interior shot cannot assemble. Modules it can: "
+                f"{', '.join(sorted(BESPOKE_GEOMETRY))}. The rest are drum- or "
+                f"exterior-scene and belong in those shots.")
+        r = build(schema, profile, place)
+        v, t = r[0], r[1]
+        return v, t, to_spans(r[2] if len(r) > 2 else None, len(t)), None
     v, t, g = R.build(schema, profile, place)
     return v, t, g, R.bay_span_m(place)
+
+
+def open_standpoint(verts, tris, eye_h, clear_m=0.75):
+    """Somewhere inside this geometry a person could actually stand.
+
+    `rooms.standpoint` searches the walkable grid, but it needs a room whose
+    props are named `prop_` and `fix_` and whose extent the generator will
+    state. A bespoke module has neither, so this asks a cruder question that
+    needs nothing: which point at eye height is FURTHEST FROM ANY SURFACE,
+    preferring the near end of the volume so the shot looks down its length.
+
+    Crude is the right trade here. Three camera bugs in this project came from
+    picking a standpoint by arithmetic -- an eye outside its own end wall, an
+    eye past the first rank of props, an eye 1.1 m inside a furnace stack --
+    and all three were "compute a position and trust it". This computes a
+    position and then checks it against the geometry, which is the property
+    that matters.
+    """
+    import numpy as np
+
+    a = np.asarray(verts, dtype=np.float64)
+    lo, hi = a.min(axis=0), a.max(axis=0)
+    y = min(max(eye_h, lo[1] + 0.3), hi[1] - 0.3)
+    # Only surfaces a standing person could walk into: knee to just overhead.
+    band = a[(a[:, 1] > y - 1.0) & (a[:, 1] < y + 1.0)]
+    if len(band) == 0:
+        band = a
+    inset = 0.4
+    xs = np.linspace(lo[0] + inset, hi[0] - inset, 41)
+    zs = np.linspace(lo[2] + inset, hi[2] - inset, 61)
+    gx, gz = np.meshgrid(xs, zs, indexing="ij")
+    d = np.sqrt((gx[..., None] - band[:, 0]) ** 2
+                + (gz[..., None] - band[:, 2]) ** 2).min(axis=-1)
+    free = d > clear_m
+    if not free.any():                      # nowhere clear: take the roomiest
+        i, j = np.unravel_index(np.argmax(d), d.shape)
+        return (float(xs[i]), float(y), float(zs[j])), (float((lo[0] + hi[0]) / 2),
+                                                        float(y), float(hi[2] - 0.5))
+    # Nearest the near end, and among those the one with the most room.
+    js = np.where(free.any(axis=0))[0]
+    j = int(js[0])
+    i = int(np.argmax(np.where(free[:, j], d[:, j], -1.0)))
+    eye = (float(xs[i]), float(y), float(zs[j]))
+    aim = (float((lo[0] + hi[0]) / 2), float(y), float(hi[2] - 0.5))
+    return eye, aim
 
 
 def build_interior(args, out_dir):
@@ -938,10 +1087,16 @@ def build_interior(args, out_dir):
         x, z = R.standpoint(verts, tris, spans, w, ln)
         h = min(args.eye_height, ceil - 0.4)
         eye, aim = (x, h, z), (0.0, h, ln / 2.0 - 0.2)
-    else:
+    elif room in ("corridor", "junction"):
+        # The kit has no prop to avoid, so the centreline just inside the near
+        # end is right and is cheaper than searching for it.
         zs = [q[2] for q in verts]
         eye = (0.0, args.eye_height, min(zs) + 1.2)
         aim = (0.0, args.eye_height, max(zs) - 0.5)
+    else:
+        # A bespoke module: no declared extent and no prop naming convention,
+        # so the standpoint is searched for against the geometry itself.
+        eye, aim = open_standpoint(verts, tris, args.eye_height)
 
     obj = os.path.join(out_dir, f"{room}.obj")
     write_obj(obj, verts, tris, per_triangle(spans, len(tris)))
@@ -1227,6 +1382,56 @@ def _selftest():
           f"({[k for k, g in ROOM_EXPOSURE.items() if not 0.1 <= g <= 10.0]})")
     check(room_exposure("corridor") == 1.0,
           "the corridor is the anchor and its exposure is 1.0")
+
+    # -- the bespoke modules the interior shot can now assemble -------------
+    import directory as dr                                     # noqa: PLC0415
+    import quarters as Q                                       # noqa: PLC0415
+    import test_materials_layer3 as l3gate                     # noqa: PLC0415
+
+    # to_spans, against all four shapes it exists for. Written first because
+    # the shape normaliser is where a silent wrong answer would live: three of
+    # the four shapes degrade into something plausible rather than raising.
+    check(to_spans([("a", 0, 2), ("b", 2, 4)], 4) == [("a", 0, 2), ("b", 2, 4)],
+          "to_spans passes spans through")
+    check(to_spans(["a", "a", "b", "a"], 4)
+          == [("a", 0, 2), ("b", 2, 3), ("a", 3, 4)],
+          "to_spans turns a per-triangle list into RUNS, not one span a group")
+    check(to_spans({"groups": [("a", 0, 3)]}, 3) == [("a", 0, 3)],
+          "to_spans reads the metadata dict shape")
+    check(to_spans(None, 7) == [("structure", 0, 7)],
+          "to_spans names the default rather than leaving it empty")
+
+    qplaces = {q["key"] for q in dr.PLACES if q["module"] == "quarters"}
+    check(set(QUARTERS_CLASS) == qplaces,
+          f"every quarters place maps to a class "
+          f"(missing {sorted(qplaces - set(QUARTERS_CLASS))}, "
+          f"stale {sorted(set(QUARTERS_CLASS) - qplaces)})")
+    qclasses = {c["key"] for c in Q.CLASSES}
+    check(set(QUARTERS_CLASS.values()) <= qclasses,
+          f"every mapped class exists in quarters.CLASSES "
+          f"({sorted(set(QUARTERS_CLASS.values()) - qclasses)})")
+    # Two places share `diplomatic` and that is deliberate; a mapping that
+    # collapsed to ONE class would render seven frames of one room and look
+    # like coverage.
+    check(len(set(QUARTERS_CLASS.values())) >= 5,
+          f"the quarters mapping distinguishes classes "
+          f"({len(set(QUARTERS_CLASS.values()))} distinct)")
+
+    # Every interior-scene module that owns a place must be assemblable, or the
+    # shot silently cannot look at those locations -- which is how fifty of
+    # them reached layer 3 without a single interior frame ever being rendered.
+    owning = {q["module"] for q in dr.PLACES if q["module"]}
+    interior_mods = {m for m in owning
+                     if l3gate.BESPOKE_SCENE.get(m, "interior") == "interior"}
+    # `signage` builds a sign board -- a prop that stands in other rooms, not a
+    # room. `interior_kit` IS the corridor, and `interior_geometry` handles it
+    # by name as the two pseudo-rooms rather than through this table.
+    missing = interior_mods - set(BESPOKE_GEOMETRY) - {"signage", "interior_kit"}
+    check(not missing,
+          f"every interior-scene bespoke module can be assembled ({sorted(missing)})")
+    check(set(BESPOKE_GEOMETRY) <= owning,
+          f"no entry builds a module that owns no place "
+          f"({sorted(set(BESPOKE_GEOMETRY) - owning)})")
 
     # -- glb integrity ----------------------------------------------------
     # Only if something has already been exported; a bare checkout has not.
