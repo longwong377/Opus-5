@@ -825,6 +825,41 @@ def _generated_keys():
 _generated_keys.cache = None
 
 
+def _materialled_keys():
+    """Places whose every emitted group resolves to a material.
+
+    Computed, not flagged. The alternative was a `materials=True` field on each
+    entry, which is a claim somebody types; this asks the material library
+    whether it actually covers the geometry, so the number falls the moment a
+    room grows a surface nobody has painted.
+
+    Only the generated places can be answered today: `rooms.py` will tell you
+    exactly which groups a place emits, and the fifteen bespoke modules will
+    not without being run. Those are reported as NOT at layer 3 rather than
+    assumed to be at it -- CLAUDE.md rule 4, nothing is done at a layer it has
+    not reached, and an unknown is not a pass.
+    """
+    if _materialled_keys.cache is None:
+        import rooms                                           # noqa: PLC0415
+        import materials as mat                                # noqa: PLC0415
+        s, p = it.load()
+        done = set()
+        for q in rooms.unbuilt(s, p):
+            _v, _t, g = rooms.build(s, p, q)
+            if all(mat.resolve_any(n, "interior") for n, _lo, _hi in g):
+                done.add(q["key"])
+        _materialled_keys.cache = frozenset(done)
+    return _materialled_keys.cache
+
+
+_materialled_keys.cache = None
+
+
+def materials_of(place):
+    """Does every surface this place emits carry a material?"""
+    return place["key"] in _materialled_keys()
+
+
 def geometry_of(place):
     """Which module builds this place, or None if nothing does."""
     if place["module"]:
@@ -835,7 +870,7 @@ def geometry_of(place):
 LAYERS = (
     (1, "addressed", lambda p: True),
     (2, "geometry", lambda p: bool(geometry_of(p))),
-    (3, "materials", lambda p: bool(p.get("materials"))),
+    (3, "materials", materials_of),
     (4, "lighting", lambda p: bool(p.get("lights"))),
     (5, "props", lambda p: bool(p.get("props_built"))),
     (6, "inhabitants", lambda p: bool(p.get("npcs_placed"))),

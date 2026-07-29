@@ -2347,3 +2347,90 @@ Layer 3 still reads **0/118** in the register, and that is correct: the exterior
 118 places. What is finished is the exterior's blocking finding and the two majors behind it.
 
 Craft claims cite an **engine** frame — `tools/render_godot.sh`, not `tools/preview_render.py`.
+
+## Session 3k (cont.) — LAYER 3 AT 68/118. The procedural interior is materialled.
+
+```
+    1 addressed    [####################] 118/118  COMPLETE
+    2 geometry     [####################] 118/118  COMPLETE
+    3 materials    [###########         ]  68/118  <- CURRENT
+```
+
+**41 materials across four families**, covering all 124 groups `rooms.py` emits for the 68
+procedural locations. `materials.py` 920 assertions; `test_materials_layer3.py` 30/30 with coverage
+at 124/124.
+
+The layer-3 predicate is **computed, not flagged**. It asks the material library whether it covers
+each place's actual emitted geometry, so the number falls the moment a room grows a surface nobody
+has painted. The fifteen bespoke modules cannot be answered without running them, so they report as
+NOT at layer 3 rather than being assumed to be — an unknown is not a pass.
+
+### How this was built, and what it changes about using agents here
+
+Four agents, one per surface family, proposing structured specs. **No reviewer agents**, and the
+reason matters: this machine runs **two agents at a time** (`min(16, cores-2)` on four cores), so
+the first design — seven proposers each shadowed by a skeptic — was a queue seven deep, ~105
+minutes. More importantly, most of the reviewer's checklist is *computable*, and a reviewer is the
+wrong instrument for a computable question.
+
+So the checklist was split. `station/test_materials_layer3.py` holds everything mechanical:
+coverage, fragment ambiguity, the measured neutral band, physical ranges, deck-against-wall, and
+whether a cited file exists. It runs on every push instead of once.
+
+**Writing that gate against the reviewed library first is what made it right.** Three of its rules
+were wrong and 60 already-reviewed materials proved it:
+- a bimodal-metallic rule failed **nineteen** of them including `hull_exterior` at 0.34, a measured
+  value — this project authors metallic as a blend for painted metal, deliberately;
+- the saturation rule swept in radiators, cargo modules and hazard chevrons, all meant to be
+  saturated;
+- a source-*length* rule failed `core_band`, whose source is `"34b"` — a real authority-1 frame ID.
+
+And the fragment check as first written **could not fire**: `frag in g and len(frag) > len(g)`,
+which no pair of strings satisfies. *A gate that fails the reviewed corpus is wrong about the
+corpus.* Run new rules against known-good data before trusting them against new data.
+
+`apply_proposals.py` renders the committed JSON into source rather than anyone retyping it: 41
+materials × 11 fields is 450 chances to transpose a digit, and a wrong roughness passes every gate
+here — in range, plausible, and not what was measured.
+
+### Findings from the proposals that are CANON work, not material work
+
+Not yet folded into `materials.py`'s PROVENANCE / NEGATIVE_RESULTS. **Do this next; it is the most
+valuable thing in the proposals.**
+
+1. **`ALBEDO_ANCHOR` is independently corroborated.** Lit structural walls across **six frames the
+   anchor was not derived from** give 0.365 / 0.390 / 0.418 / 0.421 / 0.446 / 0.494 / 0.511 — mean
+   0.435 against the anchor's 0.46. The one number setting the station's absolute level survives
+   evidence it did not come from.
+2. **The heavy structural steel is PAINTED warm, not lit warm.** In `dock.webp`, R/G holds
+   1.69–2.12 across a 2.5× value range while R−B does not: a multiplicative signature, i.e. pigment
+   — and the *opposite* of the hull's additive blue. Corroborated in `central corridor.webp`.
+3. **`Doug's Dugout.webp` must never be measured for albedo.** Grey-world gains 0.723/1.279/1.196
+   and the balanced result is nonsense (a wall at S 1.000): the room is lit entirely by isolated
+   pendant cones with near-zero ambient, so its mid-tone population is not neutral and the method
+   has nothing to work with.
+4. **Five new `GREY_WORLD_GAINS`**: dock.webp 0.968/1.027/1.007; central corridor.webp
+   1.044/1.085/0.892; more zocalo.png 0.936/1.137/0.950; more hallway.jpg 1.118/1.196/0.788; more
+   hallways.jpg 0.794/1.145/1.154. The method was validated by reproducing two existing gains
+   exactly.
+5. **Two new NEGATIVE_RESULTS instances.** In `more hallways.jpg` the *same* deck plate balances
+   H 36–37 under warm panels and H 179–200 under cool tubes — one surface, two lights, two colours.
+
+Also declared openly by a proposer rather than hidden: `shell_rib_oxide` sits at S 0.301, above the
+neutrality line, with a fallback at S 0.200 that preserves the finding — *"do not fall back to
+neutral grey, which two authority-1 frames contradict."*
+
+## NEXT SESSION
+
+1. **Fold findings 1–5 into `materials.py`.** They are canon and they are currently only in
+   `docs/layer3-proposals/*.json` and this file.
+2. **Layer 3's other 50 places** — the bespoke modules. Same shape: enumerate each module's emitted
+   groups, propose, gate. `zocalo`, `interior_kit`, `core_tube` and `tram` are the big ones.
+3. **The lighting rig has no night side** (layer 4, blocking) — the arrival shot cannot be composed
+   until it changes, and the owner's opening beat depends on it.
+4. **The magenta guideway light runs** in `drum_interior_engine`.
+
+**On agents here: the concurrency cap is 2.** Size fan-out for two lanes, not sixteen. Prefer a
+mechanical gate to a reviewer agent wherever the question is computable, and capture each agent's
+result into the repo as it lands — the workflow journal lives in `/root/.claude` and dies with the
+container.
