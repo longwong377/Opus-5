@@ -30,6 +30,15 @@ room. Read at full size for this module, it establishes:
   * A **gated passage** beyond, with **vertical white light strips** ranked
     along the left-hand wall, a red-orange sign panel, and a second WELCOME
     legend on the right-hand wall.
+
+    **CORRECTED IN SESSION 3p, and the correction is the room's lighting.**
+    That sentence is true and it is not a description of a shape: magnified,
+    the strips are the *cells* of one horizontal COURSE at mid-height, not a
+    rank of full-height bars. The module built the bars, and they were the
+    wrong fitting in the wrong place for three layers. The measurement,
+    including the pitch-to-height ratio it turns on, is on `STRIP_W_M` below.
+    They are also **the only thing in this room that measurably lights a
+    wall** — see `CAST_FITTINGS`.
   * A **dense, species-mixed crowd** at floor level. This is a busy room.
 
 **`reference/01-station-exterior/welcome to babylon 5.webp`** -- authority 1,

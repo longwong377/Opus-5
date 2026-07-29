@@ -772,6 +772,20 @@ FIXTURE_LIGHTING = {
     # correctly reads each as its own luminaire, so the frame came back with
     # 126 lamps at 7.10x its reference. A grille is a DIFFUSER; the source is
     # behind it. Eight troughs where there were fifty-six bars.
+    # customs.CAST_FITTINGS -- the ARRIVAL HALL WALL BAND, and it is here for
+    # the reason the coffer is not. OMNI rather than spot because the wall
+    # reads brighter both ABOVE the band (measured, 1.9-2.0x over 0.09 of frame
+    # height) and below it before the crowd occludes the deck, so it throws in
+    # both directions off the wall face. Colour is the family's measured
+    # (0.956, 1.000, 0.895) at 6200 K from corridor_kit.json's
+    # `light_pilaster_strip`; the customs frame's own reading of its cells is
+    # violet-leaning and was rejected, with the argument on
+    # materials.light_arrival_strip. energy_rel 0.83 is 0.839/0.905, this
+    # band's balanced V p99 against the screens' -- the same normalisation the
+    # withdrawn coffer proposal used, applied to the family that survived.
+    "customs_light_strip": {"kind": "omni", "colour": (0.956, 1.000, 0.895),
+                            "energy_rel": 0.83, "range_m": 3.5,
+                            "shadow": False},
     "alien_ceiling_lamp": {"kind": "spot", "colour": (1.000, 0.675, 0.060),
                            "energy_rel": 1.00, "range_m": 4.0, "shadow": True,
                            "angle_deg": 30.0},
@@ -787,7 +801,12 @@ FIXTURE_LIGHTING = {
     "light_house_cove": {"kind": "omni", "colour": (1.000, 0.966, 0.944),
                          "energy_rel": 0.35, "range_m": 18.0, "shadow": False},
 }
-# CUSTOMS IS DELIBERATELY ABSENT AND IT COST A RENDER TO BE SURE. The arrival
+# THE CUSTOMS COFFER IS DELIBERATELY ABSENT AND THE WALL BAND IS NOT. What
+# follows was written when neither was in the table. It is still right about
+# the COFFER, which is the fitting it is about; `customs_light_strip` was added
+# later from a separate measurement and is above.
+#
+# THE COFFER COST A RENDER TO BE SURE. The arrival
 # hall's ceiling coffer looked like the obvious next entry: materials.py's
 # light_ceiling_grid measured its colour on the fitting itself, and the same
 # frame ranks its three source families by balanced peak -- screens 0.99, wall
@@ -966,12 +985,14 @@ BESPOKE_EXPOSURE = {
                              # deck. Re-calibrate when the shot is right.
     "docking_bay": 0.90,     # vs reference/03-sector-blue/dock.webp -- 13
                              # lamps became 39 and it measured 1.38 -> 1.39.
-    # 1.0, and it is an entry rather than an omission. The gallery was
-    # rendered and measured at the anchor -- median 0.0680 against the
-    # corridor's 0.0741, no clipping, 3.7% crushed -- so the correction is
-    # none, and saying so explicitly is what makes it count as measured. An
-    # absent key means "not yet looked at"; this one has been.
-    "alien_sector": 1.00,
+    # 0.47, and my own 1.00 was worse-founded. I set that by eye against the
+    # CORRIDOR's median, having not found a reference frame for this sector.
+    # `reference/05-sector-green/corridor in alien sector.webp` exists, is
+    # authority 1, and is the frame the module's own fitting was measured from.
+    # Calibrated against it the correction is 0.47, not none.
+    "alien_sector": 0.47,
+    "customs": 0.62,         # vs 11-props-and-technology/babylon 5 welcome
+                             # sign, instructions, and hub.jpg
     "quarters": 1.12,        # vs reference/07-sector-grey/grey level 1.webp,
                              # the residential corridor a unit opens off
     "council_chamber": 2.84,  # vs 05-sector-green/council chambers.webp

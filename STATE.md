@@ -2988,7 +2988,55 @@ the source is behind it. Eight troughs where there were fifty-six bars. `docs/en
 `BESPOKE_EXPOSURE["alien_sector"] = 1.00` is an entry rather than an omission: rendered and measured
 at the anchor, correction none, and saying so explicitly is what makes it count as measured.
 
-## NEXT SESSION — layer 4, the last 26
+### The workflow's report, and a correction to my own claim — 95 / 118
+
+Both agents finished after the session boundary. Their module work was already committed; what was
+missing was the four lines in `export_scene` that make a fitting cast, and applying them takes
+layer 4 from 92 to **95**. `customs_north` lands at x1.36 of its reference and `alien_sector` at
+x1.31, both against the x1.40 target.
+
+**I attributed the council chamber's bright arc to the wrong thing.** The previous next-session item
+said it was the cove's own omni washing it point-blank. It is not: rendering with
+`--fixture-energy 0` — every fixture light removed — leaves the arc *unchanged*. It is the cove's
+**emissive face**, seen directly, because `house_cove()` builds the lit strip with no concealing lip
+although its own docstring says "its housing hidden behind the lip". The fix belongs in
+`council_chamber.py`, not in the rig.
+
+**Two exposures I set were worse-founded than I thought.** `alien_sector` was 1.00 because I set it
+by eye against the *corridor's* median, not having found a reference frame for the sector —
+`reference/05-sector-green/corridor in alien sector.webp` exists, is authority 1, and is the frame
+the module's fitting was measured from. Against it the correction is 0.47. And `zocalo` needed
+0.92 → 0.84 because recovering the five-lamps-per-rib the module actually builds multiplied its flux.
+
+## NEXT SESSION — layer 4, the last 23
+
+1. **`command_control`'s camera stands below the deck.** The session-3o `open_standpoint` rewrite
+   puts the cnc eye at **y = −0.20 m**, under the floor, looking down the pit away from the wall
+   courses. `docs/engine-cnc.png` was rendered at the old camera, so
+   `BESPOKE_EXPOSURE["command_control"] = 0.93` is calibrated against a shot the pipeline no longer
+   produces. Fix the standpoint, *then* re-calibrate — an exposure is not a rescue for a camera
+   fault.
+2. **`house_cove()` has no concealing lip** — see above. Build it, or drop
+   `light_house_cove`'s emission.
+3. **Our frames crush far LESS than the show's**: customs 0.28% against the reference's 50.34%,
+   alien 6.63% against 14.51%. The p5/p95 ratios are respectable, so this is the deep end of the
+   curve rather than contrast — a global tonemapping question, not a per-room one.
+4. **`00-INDEX.md` has been asking for `light_grating` in `interior_kit.py` since session 2q.** It
+   was built inside `alien_sector.py` because that was the agent's file. It is one station-wide part
+   with a tint parameter appearing in four frames; when it moves into the kit,
+   `light_deck_grating` and `light_deck_channel` become one material with two tints.
+5. **The alien sector's walls are the wrong colour and it is a LAYER-3 problem.** The reference is
+   dark olive-green throughout; `alien_wall` binds the shared shell material and renders pale
+   blue-grey. What the frame supports is a per-sector tint on the shell wall — the same idea
+   `SECTOR_ACCENT` already carries for accents.
+6. **The pilaster strip's measured colour is still unapplied**, and `light_arrival_strip` now
+   disagrees with it on purpose: `corridor_kit.json` measures the family at linear
+   (0.956, 1.000, 0.895) and calls `light_pilaster_strip`'s (0.880, 0.930, 1.000) "a decided blue"
+   its own measurement does not support. Changing it moves the residential corridor, which is the
+   anchor every exposure is calibrated against.
+7. **A stray `struct.py` in the scratchpad shadows the standard library** and makes every numpy
+   import fail for anything run with that directory as cwd. Not ours; know about it.
+8. **The remaining bespoke modules.**
 
 1. **The council chamber's right half is black** (`docs/engine-council.png`, crushed 52%) because
    `house_cove()` only sweeps the rear half-arc, 0 to π. Its measured ambient ratio of 0.210 makes

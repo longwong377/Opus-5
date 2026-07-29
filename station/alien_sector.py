@@ -143,9 +143,8 @@ GRATING_DEPTH_M = 0.05     # the light box below the louvres
 # bands against 0.0221 / 0.0229 / 0.0258 / 0.0271 across its bottom four --
 # brightest at the top, falling by a factor of two downward, which is what
 # 00-INDEX.md means by "hard vertical light shafts descending from a source
-# high above". `overhead_lattice()` is the only geometry in this module up
-# there, and its own docstring has said since it was written that it exists so
-# the material pass can make it the room's light source.
+# high above". So the gallery is lit from the ceiling, and the fitting has to
+# be up there.
 #
 # RANGE, derived from this module's own dimensions: the grille hangs at
 # GALLERY_H_M = 3.4 m and the far corner of the deck is at
@@ -173,8 +172,9 @@ GRATING_DEPTH_M = 0.05     # the light box below the louvres
 # would be one. A grille is a DIFFUSER; the thing 00-INDEX.md calls "a source
 # high above" is behind it. So the module now builds the source -- a recessed
 # trough in the soffit at the kit's own corridor rhythm -- and the grille goes
-# back to being what it looks like, a lit surface that casts nothing. Eight
-# troughs where there were fifty-six bars, which is the 7x.
+# back to being what it looks like, a lit surface that casts nothing. Seven
+# troughs where there were fifty-six bars, which is the 8x, and the frame lands
+# at 3.29x its reference at the anchor exposure instead of 9.94x.
 CEILING_LAMP_SPACING_M = 3.6   # interior_kit `service` portal_spacing_m: the
                                # rhythm every fitting in a corridor sits on,
                                # and the same figure corridor_kit.json's
@@ -342,11 +342,16 @@ def barred_screen(width, height):
 
 
 def overhead_lattice(length, width, y):
-    """The grille that throws the amber grid onto the deck.
+    """The grille the amber light comes down through.
 
-    Emitted as a group of its own so the material pass can make it the room's
-    light source. In the frame the floor is the brightest thing in the shot,
-    and it is lit through this.
+    A DIFFUSER, not a source, and the distinction was settled by a render:
+    this docstring used to say the group existed "so the material pass can make
+    it the room's light source", and doing exactly that gave the light rig
+    fifty-six luminaires -- one per bar -- and a frame at 7.10x its reference.
+    What casts is `ceiling_lamps()`, the trough 15 mm above these bars; what
+    this does is cut the trough's output into the hard-edged shafts
+    00-INDEX.md reads in the frame. It still carries an emission, because a
+    backlit grille glows.
     """
     v, t, g = [], [], []
     hw = width / 2.0
