@@ -3837,6 +3837,23 @@ def _selftest():
     missed = sorted(g for g in scanned if resolve_any(g) is None)
     check("every group literal found in the generators resolves",
           not missed, str(missed[:10]))
+    # AND THIS CHECK SEES LESS THAN ITS NAME SUGGESTS. The scan is restricted
+    # to the prefixes drum|endcap|truss|tram|core|ground|greeble|light, so
+    # every group that does not start with one is invisible to it -- all 124
+    # of rooms.py's, and all 42 emitted by command_control, council_chamber,
+    # docking_bay and signage. It passed over a list containing none of them.
+    #
+    # Widening the regex is the obvious fix and the wrong one: that is exactly
+    # what made it start matching directory.py place keys and rooms.py prop
+    # names, six false failures in one run. The real coverage question is
+    # answered by station/test_materials_layer3.py, which RUNS the generators
+    # and reads the groups they actually emit. This assertion records the
+    # limitation so the name cannot be read as a guarantee.
+    check("the literal scan does not claim to cover the whole station",
+          not any(g.startswith(("prop_", "fix_", "cc_", "council_", "bay_",
+                                "sign_")) for g in scanned),
+          "the prefix scan has started matching room groups -- widen "
+          "test_materials_layer3.py's BESPOKE_BUILDERS instead")
 
     check("the exterior hull material is deliberately unbound (it is the fallback)",
           BY_NAME["hull_exterior"].binds == ())

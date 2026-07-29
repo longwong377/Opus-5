@@ -107,6 +107,67 @@ def station_groups(schema, profile):
     return out
 
 
+# Bespoke modules whose geometry this gate knows how to build. The value is a
+# callable taking (schema, profile) and returning group names.
+#
+# WHY BY RUNNING THEM. `materials.KNOWN_GROUPS` is fed by a regex over the
+# generators' source, restricted to the prefixes
+# `drum|endcap|truss|tram|core|ground|greeble|light`. Every group in this
+# project that does NOT start with one of those is invisible to it -- which is
+# all 124 of rooms.py's, and all 42 of command_control's, council_chamber's,
+# docking_bay's and signage's. Its gate, "every known generator group resolves
+# to a material", therefore passed over a list that did not contain them.
+#
+# A gate whose input list is short is not a gate. Widening the regex is the
+# obvious fix and the wrong one: it is what made the scan match directory.py
+# place keys and rooms.py prop names, six false failures in one run. Asking the
+# generator what it emits cannot drift, because it IS the emission.
+#
+# This table grows as entry points are established. A module absent from it is
+# reported as UNCHECKED rather than silently passing -- an unknown is not a
+# pass, and the count below says how many are still unknown.
+def _via_write_obj(mod_name):
+    def build(_schema, _profile):
+        import importlib, tempfile, os as _os, io as _io, contextlib
+        mod = importlib.import_module(mod_name)
+        fd, path = tempfile.mkstemp(suffix=".obj")
+        _os.close(fd)
+        try:
+            with contextlib.redirect_stdout(_io.StringIO()):
+                mod.write_obj(path)
+            with open(path) as f:
+                return {ln[2:].strip() for ln in f if ln.startswith("g ")}
+        finally:
+            _os.unlink(path)
+    return build
+
+
+BESPOKE_BUILDERS = {
+    "command_control": _via_write_obj("command_control"),
+    "council_chamber": _via_write_obj("council_chamber"),
+    "docking_bay": _via_write_obj("docking_bay"),
+    "signage": _via_write_obj("signage"),
+}
+
+# Every module that owns at least one addressed place, so the gate can say how
+# much of layer 3 it is NOT yet able to see.
+BESPOKE_ALL = ("zocalo", "customs", "command_control", "council_chamber",
+               "garden", "alien_sector", "plant", "hospitality", "quarters",
+               "docking_bay", "signage", "interior_kit", "core_tube", "tram",
+               "components")
+
+
+def bespoke_groups(schema, profile):
+    """{module: {group names}} for every bespoke module we can build."""
+    out = {}
+    for name, build in sorted(BESPOKE_BUILDERS.items()):
+        try:
+            out[name] = build(schema, profile)
+        except Exception as exc:                               # noqa: BLE001
+            out[name] = {f"__error__ {type(exc).__name__}: {exc}"}
+    return out
+
+
 def unresolved(groups, scene="interior"):
     return sorted(g for g in groups if M.resolve_any(g, scene) is None)
 
@@ -158,6 +219,31 @@ def _selftest():
           not miss, f"{len(miss)} of {len(groups)} unresolved: {miss[:8]}")
     print(f"  coverage  {len(groups) - len(miss)}/{len(groups)} groups "
           f"({100 * (len(groups) - len(miss)) / max(len(groups), 1):.0f}%)")
+
+    # --- 1b. THE BESPOKE MODULES ------------------------------------------
+    # The 50 places with their own generator. Reported separately from the
+    # procedural 68 because they are a different tier of the plan and because
+    # their coverage is much worse -- collapsing the two into one percentage
+    # would hide that behind rooms.py's 100%.
+    bg = bespoke_groups(schema, profile)
+    errs = {k: sorted(v)[0] for k, v in bg.items()
+            if any(x.startswith("__error__") for x in v)}
+    check("every bespoke module this gate knows how to build, builds",
+          not errs, str(errs))
+    b_all = {g for v in bg.values() for g in v if not g.startswith("__error__")}
+    b_miss = unresolved(b_all)
+    print(f"  bespoke   {len(b_all) - len(b_miss)}/{len(b_all)} groups over "
+          f"{len(BESPOKE_BUILDERS)} of {len(BESPOKE_ALL)} modules "
+          f"({len(BESPOKE_ALL) - len(BESPOKE_BUILDERS)} still unenumerated)")
+    # NOT a hard failure yet: the remaining modules' entry points are still
+    # being established, and failing the build for work that is openly
+    # in progress teaches the next reader to ignore this file. It becomes a
+    # hard check when BESPOKE_BUILDERS covers BESPOKE_ALL.
+    if b_miss:
+        print(f"            {len(b_miss)} unresolved, e.g. {b_miss[:6]}")
+    check("the bespoke enumeration is honest about what it cannot see",
+          set(BESPOKE_BUILDERS) <= set(BESPOKE_ALL),
+          str(sorted(set(BESPOKE_BUILDERS) - set(BESPOKE_ALL))))
 
     # --- 2. FRAGMENT SAFETY ----------------------------------------------
     # The failure this catches has already happened once in this project, in
