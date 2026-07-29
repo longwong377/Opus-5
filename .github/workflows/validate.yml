@@ -94,6 +94,7 @@ jobs:
           python3 plant.py
           python3 customs.py
           python3 garden.py
+          python3 alien_sector.py
           python3 command_control.py
           python3 council_chamber.py
 

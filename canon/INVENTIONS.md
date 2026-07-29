@@ -1353,3 +1353,56 @@ interior behind the columns. Fixed with an inner drum, and asserted by group nam
 come back.
 
 **Overturned by:** any other frame of the Garden's architecture, of which we hold three more.
+
+---
+
+## INV-031 — The Alien Sector: galleries, atmosphere locks and the barred screen
+
+**Invented:** every dimension in `station/alien_sector.py` — the gallery, the two-door lock, the
+barred screen's bar pitch and stile count, the overhead lattice, the ring fitting, the mask
+dispenser, and `QUARTERS_PER_GALLERY = 4`.
+
+**The mechanic is canon, not invented.** The customs board is authority 1 and says *"SIX
+DIFFERENT ATMOSPHERES ARE CURRENTLY AVAILABLE ON B-5"*. Six simultaneous atmospheres is a
+life-support architecture: at minimum six independently conditioned volumes **with locks between
+them** (`LIFE-SUPPORT-AND-INDUSTRY.md` §2.1). This module is those locks. The atmosphere
+*classes* are read from `npc/schedule.py` rather than restated, and that module deliberately
+carries **no numbers** for five of the six, because only `DES/ATMOS: HUMAN/02` is numbered on any
+prop we hold. An assertion checks that no class here carries a digit — a wrong number printed on a
+wall is worse than no number.
+
+**What the frame establishes** (`corridor in alien sector.webp`, authority 1, the only interior
+view of the quarter we hold): a heavy chamfered polygonal portal, and beyond it a **horizontal-
+barred grille screen across the whole opening**. *You do not walk into a quarter; you look through
+bars into it.* That is the single most informative thing in the frame and it is what makes this
+containment rather than corridor. Plus amber light falling through an overhead lattice onto the
+deck, a dark circular ring fitting, green point lights, and a dark-olive/amber/near-black palette.
+
+**The lock depth is derived, not chosen.** A lock must hold one occupant clear of both leaves at
+once, and the occupant this sector exists for is wearing an encounter suit — so
+`lock_depth_m()` = suit depth + clearance fore and aft + two door reveals = **2.75 m**. A change
+to the body model moves the architecture, which is the direction that dependency should run.
+Asserted: **every quarter has two doors, because one door is not a lock.**
+
+### Three defects, each caught by a different gate
+
+1. **The barred screen was invisible** — placed 50 mm behind the inner portal's *near* face, it
+   sat inside that portal's own 0.55 m reveal and the jambs occluded it entirely. The render
+   showed an empty dark aperture where the frame's headline feature should be. *A screen inside a
+   jamb is not a screen.* Found by rendering into the lock.
+2. **The containment assertion then failed by 20 mm**, because its limit was built from a padded
+   magic `0.25`. That is the assertion doing its job, but a limit made of a magic number cannot
+   say *why* it was exceeded. It is now derived from what is actually placed outboard.
+3. **The bars opened onto void.** With the screen finally visible, the render showed the magenta
+   background *through* it — the quarter interiors are not built in this increment, so there was
+   genuinely nothing behind the grille. This project's own rule is that a hole shows the
+   background through it, so real void behind a grille is **indistinguishable from a defect** to
+   the next session that renders it. A closed `alien_quarter_shell` now backs every screen, and an
+   assertion requires one per screen. The room is there; it is simply undressed.
+
+**Also asserted:** the wall placement map has determinant **+1**, checked on a *placed* solid.
+`plant.py` passed its local winding test and shipped every surface inside-out because its
+placement map was −1.
+
+**Overturned by:** any second interior frame of the Alien Sector, or a source giving the number of
+quarters or their sizes.

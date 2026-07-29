@@ -1,6 +1,6 @@
 # Project State
 
-**Last updated:** 2026-07-28 · **Session 3j** — the whole NPC layer; cockpit unblocked
+**Last updated:** 2026-07-28 · **Session 3k** — the Alien Sector; ranked build list finished
 
 ## Where we are
 
@@ -1761,6 +1761,48 @@ UNGUARDED verdict, check whether anything assigns the name at runtime.**
   Read its UNGUARDED list against the false-positive note above before acting on any of it.
 - The full session-3i sweep report is preserved at **`docs/audits/mutation-sweep-3i.log`**. It was
   only in `/tmp` and would have been lost.
+
+## Session 3k — the Alien Sector, and the ranked build list is finished
+
+`station/alien_sector.py`, **22 assertions**, in CI. **This closes the gazetteer's ranked
+build list of eight.**
+
+| # | location | status |
+|---|---|---|
+| 1 | Zocalo | built |
+| 2 | Customs hall / arrival concourse | built, session 3j |
+| 3 | Docking bay | built |
+| 4 | C&C | built |
+| 5 | Garden townscape | built, session 3j |
+| 6 | Council Chamber | built |
+| 7 | Downbelow's architecture | built as `plant.py`, session 3j |
+| 8 | **Alien Sector** | **built, this session** |
+
+**The mechanic is canon, not invented.** The customs board is authority 1 — *"SIX DIFFERENT
+ATMOSPHERES ARE CURRENTLY AVAILABLE ON B-5"* — and six simultaneous atmospheres is a life-support
+architecture: six independently conditioned volumes **with locks between them**. This module is
+those locks. Atmosphere classes are read from `npc/schedule.py`, which deliberately carries **no
+numbers** for five of the six, and an assertion checks that no class here carries a digit.
+
+**The lock depth is derived:** a lock must hold one occupant clear of both leaves at once, and
+that occupant wears an encounter suit, so depth = suit + clearance fore and aft + two reveals =
+**2.75 m**. Asserted: *every quarter has two doors, because one door is not a lock.*
+
+### Three defects, each caught by a different gate
+
+1. **The barred screen was invisible** — placed inside the inner portal's own 0.55 m reveal, so
+   the jambs occluded it entirely and the render showed an empty aperture where the frame's
+   headline feature belongs. *A screen inside a jamb is not a screen.*
+2. **The containment assertion then failed by 20 mm**, because its limit was a padded magic
+   `0.25`. The assertion worked; the magic number meant it could not say *why*. Now derived from
+   what is actually placed outboard.
+3. **The bars opened onto void.** With the screen visible, the render showed magenta *through*
+   it — the quarter interiors are a separate increment, so there was genuinely nothing behind the
+   grille. **Real void behind a grille is indistinguishable from a defect** to the next session
+   that renders it, so a closed `alien_quarter_shell` now backs every screen, asserted one per
+   screen.
+
+Renders: `docs/render-alien-sector.png`, `docs/render-alien-lock.png`. Logged as **INV-031**.
 
 ## Next session — start here
 
