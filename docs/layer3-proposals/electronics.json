@@ -1,0 +1,192 @@
+{
+ "materials": [
+  {
+   "name": "device_console_bed",
+   "title": "Console Instrument Bed \u2014 control podium, charcoal with a warm key field",
+   "binds": [
+    "prop_console",
+    "prop_reactor_console",
+    "prop_furnace_control",
+    "prop_irrigation_control"
+   ],
+   "albedo": [
+    0.212,
+    0.212,
+    0.214
+   ],
+   "roughness": 0.35,
+   "metallic": 0,
+   "specular": 0.5,
+   "emission": [
+    1,
+    0.612,
+    0.353
+   ],
+   "emission_energy": 0.5,
+   "texture": null,
+   "uv_scale_denom": null,
+   "source": "03-sector-blue/war room.webp (authority 1), balanced with the gains already in materials.GREY_WORLD_GAINS (1.088/1.062/0.877). 6-cluster over the console assembly (0.55,0.60)-(1.00,1.00): V 0.596 at 4.0%, 0.390 at 13.1%, 0.286 at 23.8%, 0.210 at 28.2%, 0.136 at 28.0% \u2014 area-weighted mean V 0.240. Same frame, the console's own pale capping rail (0.625,0.634)-(0.719,0.662) reads V 0.529 S 0.051, and its dark control face (0.79,0.79)-(0.87,0.85) V 0.290 S 0.028. Emission colour corroborated on 03-sector-blue/comand and contorl.webp: the two lit control beds, luminance-weighted mean of everything above L 0.30, balanced, rgb(0.640, 0.478, 0.317) H 30 S 0.505, normalised (1.000, 0.747, 0.495).",
+   "extrapolated": "The absolute level, via ALBEDO_ANCHOR. The frame gives a RATIO (assembly 0.240 / the console's own pale case 0.529 = 0.454); the case is the same painted panel work as the walls, so the anchor 0.46 x 0.454 = 0.209 sets the level. Also extrapolated: emission_energy 0.5 by flux-matching (see reasoning), and the decision to give one box a uniform emission at all.",
+   "reasoning": "A console is not a desk and must not render as one. Both authority-1 console frames show the same two-part object \u2014 a pale grey moulded case and a much darker instrument face carrying lit keys \u2014 at a consistent ratio: war room 0.290/0.529 = 0.55, and the whole assembly averages 0.454 of its own case. rooms.py emits prop_console as ONE box, so the material has to be the assembly's area-weighted read, which is 0.21: a dark instrument mass, well below the 0.46 wall and below the 0.40 deck. NEUTRAL by refusal, not by choice \u2014 the two frames disagree on hue (war room balances warm H 9-40 under a warm key; C&C reads H 247-251 RAW under a blue key), and both balanced saturations (0.028, 0.082) bracket the corridor wall's own 0.046, so there is no tint any frame supports. THE EMISSION IS THE POINT: C&C's key field measures warm in BOTH the raw frame (H 346-354) and the balanced one (H 18-30) inside a room whose ambient is blue, so the warmth belongs to the object, not the light \u2014 this is the NEGATIVE_RESULTS test run on a console and passed. It lands on ACCENTS['warm_practical'] (H 24), independently re-derived at H 30. Energy is flux-matched rather than picked: the lit fraction above L 0.30 is 0.370 (C&C left bed), 0.285 (C&C right bed), 0.203 (war-room console face), mean 0.286; the top plus front faces are 2.38 of the 3.745 m2 visible on a 1.40x0.65x1.05 box with its back to a wall, i.e. 0.635; 0.286 x 0.635 = 0.182 x 2.6 (tram_saloon_strip, a fully lit device panel) = 0.47. metallic 0.0 because a console case is moulded and painted \u2014 the metal, if any, is under the coating, so it is not in the 0.2-0.8 worn-plate band hull_exterior occupies. KNOWN LIMIT, declared: the box glows uniformly, including its back and underside. The fix is a sub-group split in rooms.py (case / control face) and it belongs to layer 5, not here. No cross-frame ratio is claimed from C&C: an operator stands on the console centreline in that frame and its grey-world gains (1.307/1.130/0.741) are the most aggressive in the reference set."
+  },
+  {
+   "name": "device_screen_glass",
+   "title": "Screen Glass \u2014 dark panel with lit content",
+   "binds": [
+    "prop_babcom_terminal",
+    "prop_monitor_wall",
+    "prop_tactical_display"
+   ],
+   "albedo": [
+    0.052,
+    0.054,
+    0.062
+   ],
+   "roughness": 0.12,
+   "metallic": 0,
+   "specular": 0.65,
+   "emission": [
+    0.93,
+    1,
+    0.915
+   ],
+   "emission_energy": 0.8,
+   "texture": null,
+   "uv_scale_denom": null,
+   "source": "11-props-and-technology/babylon 5 welcome sign, instructions, and hub.jpg (authority 1), grey-world gains 1.046/1.065/0.905. Unlit screen field (0.32,0.19)-(0.56,0.235) balanced rgb(0.053, 0.054, 0.082); whole-panel dominant clusters 49.3% at V 0.037 (centre screen) and 45.9% at V 0.051 (right screen); bezel V 0.092. Content registers in the same frame: green wireframe H 121-141, blue title bar rgb(0.145,0.154,0.627) H 239 S 0.768, yellow caps H 60-75. Fourth panel from 03-sector-blue/war room.webp, the backlit galactic map, lit content luminance-weighted mean normalised (0.858, 0.918, 1.000).",
+   "extrapolated": "The blue channel trimmed from the measured 0.082 to 0.062, and emission_energy 0.8 by flux-matching. The single emission colour is a real average across four measured panels rather than a colour any one screen has.",
+   "reasoning": "Every station screen in the reference set is the same surface: a near-black glass field carrying high-chroma content, in a bezel barely brighter than the field. That is true of the three concourse panels, the war-room map and the war-room console readout, so babcom terminal, monitor wall and tactical display are one material at three sizes \u2014 the brief's steel-door / blast-door case exactly. roughness 0.12 because it IS glass, which is the only thing the mirror rule in test_materials_layer3.py permits below 0.15; the name carries 'screen' and 'glass' so MIRROR_OK sees it. THE BLUE TRIM IS DECLARED, NOT HIDDEN: the measured field is rgb(0.053, 0.054, 0.082), but at V 0.08 on a black field in a chroma-subsampled JPEG a 7-code blue excess is at the resolution limit, and S 0.35 would put a surface over STRUCTURAL_SAT_MAX; 0.062 keeps it at S 0.161 and inside the measurement's noise. The emission colour is the lit-area-weighted mean of four panels \u2014 lit fractions above L 0.30 of 0.157, 0.315 and 0.204 (concourse) and 0.374 (war-room map) \u2014 giving peak-normalised (0.931, 1.000, 0.912). Its slight green bias is the green wireframe content, and it is honest that a screen averages to near-neutral because screens carry mixed content; layer 5 gives them real content and can then justify a per-screen colour. Energy = 3.0 (signage_panel, a fully backlit panel) x mean lit fraction 0.2625 = 0.79. As light_deck_channel already says of itself: an emissive is not a light, and a monitor wall in Security Central will need a real light beside it in layer 4."
+  },
+  {
+   "name": "device_reader_shell",
+   "title": "Reader Shell \u2014 black moulded card reader and kiosk",
+   "binds": [
+    "prop_identicard_reader",
+    "prop_credit_terminal",
+    "prop_exchange_terminal",
+    "prop_manifest_terminal",
+    "prop_lift_call",
+    "prop_intercom"
+   ],
+   "albedo": [
+    0.145,
+    0.143,
+    0.145
+   ],
+   "roughness": 0.3,
+   "metallic": 0,
+   "specular": 0.5,
+   "emission": [
+    1,
+    0.33,
+    0.25
+   ],
+   "emission_energy": 0.25,
+   "texture": null,
+   "uv_scale_denom": null,
+   "source": "11-props-and-technology/credit chit.jpg (authority 1), grey-world gains 0.919/1.003/1.093. The counter-mounted card reader clusters 41.4% at V 0.121 against the same frame's counter top at V 0.393; its red LED bar clusters at rgb(0.317, 0.100, 0.128) H 352 S 0.683. Second indicator measurement from 11-props-and-technology/Identicard reader.webp: the amber lens stack (0.196,0.375)-(0.245,0.56) balances rgb(0.269, 0.094, 0.028) H 16 S 0.897. Object identity from reference/00-INDEX.md, which reads the credit-chit reader as 'a small black wedge plinth with a top slot and a red LED line on its front face'.",
+   "extrapolated": "The absolute level via ALBEDO_ANCHOR (ratio 0.121/0.393 = 0.308 x 0.46 = 0.142), and emission_energy, which is FLOORED rather than measured \u2014 see reasoning.",
+   "reasoning": "These six are one object at six sizes: a small dark moulded device with a slot or a button and one indicator. The reference supports the black: the counter reader is 0.31 of its own counter top, i.e. roughly a third of the wall's albedo, and it reads as matte black in the frame. A COUNTER-READING IS RECORDED RATHER THAN SUPPRESSED \u2014 the handheld scanner in 'Identicard reader.webp' balances much lighter, V 0.241-0.431, which would argue for ~0.35. I did not use it: that frame's grey-world gains are 0.837/1.042/1.182 on a warm-lit scene, and after correction the body reads H 200-220, a blue that is plainly the over-correction and not the paint. The counter reader is the object my props actually are (a wall reader, a credit kiosk, a lift call plate); the handheld is a different prop the directory does not declare. The indicator colour is the strongest agreement in this family: two independent authority-1 frames of two different devices give normalised (1.000, 0.315, 0.404) and (1.000, 0.349, 0.104), mean (1.000, 0.332, 0.254) \u2014 within 0.03 of marker_light_red's (1.000, 0.300, 0.120), measured on the hull, which suggests one indicator-lamp register across the whole station. ENERGY IS AT A DECLARED FLOOR AND SAYS SO: flux-matching gives 2.1 x 0.05 = 0.105 (LED bar 78x42 px in a 170x290 px plinth = 0.066; lens stack 39x83 px in a ~300x330 px body = 0.033), which is below the level at which anything reads at all. 0.25 is the floor I apply consistently across this family's prop-scale indicators, and it is chosen, not measured. metallic 0.0: moulded plastic. roughness 0.30 because a moulded consumer device is semi-gloss \u2014 smoother than the console's instrument bed, which is why these two materials stay separate despite both being dark."
+  },
+  {
+   "name": "sign_neon_venue",
+   "title": "Venue Neon \u2014 concourse sign board, cyan tube on a dark ground",
+   "binds": [
+    "prop_neon_sign"
+   ],
+   "albedo": [
+    0.094,
+    0.1,
+    0.112
+   ],
+   "roughness": 0.3,
+   "metallic": 0,
+   "specular": 0.25,
+   "emission": [
+    0.444,
+    1,
+    0.939
+   ],
+   "emission_energy": 1.3,
+   "texture": null,
+   "uv_scale_denom": null,
+   "source": "11-props-and-technology/Zocalo neon signage in background.jpg (authority 1), grey-world gains 0.935/1.162/0.935. Wordmark 5-cluster over (0.47,0.03)-(0.65,0.16): 33.3% rgb(0.591, 0.999, 0.921) H 168, 26.5% rgb(0.385, 0.995, 0.879) H 169 S 0.613, 11.5% rgb(0.316, 0.832, 0.709) H 166. Board ground between the chevron blades (0.36,0.10)-(0.44,0.125) balances rgb(0.092, 0.105, 0.136). Lit fraction of the sign board (0.30,0.02)-(0.78,0.19): 0.386 above L 0.30, 0.283 above L 0.50, 0.225 above L 0.70. Cross-checked against 04-sector-red/more zocalo.png and 04-sector-red/Darkstar_logo.webp \u2014 see extrapolated.",
+   "extrapolated": "The choice of the cyan state over the orange-red state, and emission_energy 1.3 by flux-matching. The board ground's blue channel is trimmed from the measured 0.136 to 0.112 to keep S under 0.20.",
+   "reasoning": "This is the same register as the library's existing emissive_signage, re-measured from a SECOND frame: my clusters bracket 0.385-0.591 in red at H 166-169, and ACCENTS['cyan_neon'] = (0.444, 1.000, 0.939) sits inside that bracket. That is corroboration, not a new colour, and I have kept the accent value rather than replacing it with mine. RECORDED, NOT PICKED \u2014 reference/00-INDEX.md's own instruction for this sign: 04-sector-red/more zocalo.png (1440x1080, the best Zocalo frame in the set) shows the SAME wordmark ORANGE-RED, clustering rgb(0.768, 0.253, 0.146) H 10 S 0.810, rgb(0.836, 0.390, 0.171) H 20, rgb(0.901, 0.550, 0.263) H 27 at V 0.77-0.90; and Darkstar_logo.webp shows the Dark Star venue sign as a dark ground with warm pale letterforms (V 0.347 H 36, V 0.540 H 39). Cyan wins because the library already has exactly one neon register and prop_neon_sign is used in only two places, so a second register bought for one prop would split what the file deliberately keeps unified; the orange-red numbers are recorded here so a future sub-group split can take them in one edit. Albedo is the BOARD, not the tube: prop_neon_sign is a 1.60x0.10x0.55 m box, i.e. sign plus backing plate, so it sits a little above emissive_signage's glyph-only 0.050/0.090/0.100. Energy = 4.5 (emissive_signage, a neon tube) x 0.283 (the measured fraction of the board above L 0.50) = 1.27, so the box radiates the flux the real board does even though it cannot show where the tube is."
+  },
+  {
+   "name": "sign_deck_plaque",
+   "title": "Deck Plaque \u2014 the amber corridor sign, matte and unlit",
+   "binds": [
+    "prop_level_plaque"
+   ],
+   "albedo": [
+    0.391,
+    0.379,
+    0.321
+   ],
+   "roughness": 0.72,
+   "metallic": 0,
+   "specular": 0.35,
+   "emission": null,
+   "emission_energy": null,
+   "texture": null,
+   "uv_scale_denom": null,
+   "source": "07-sector-grey/grey level 1.webp (authority 1), balanced with the gains already in materials.GREY_WORLD_GAINS (0.970/1.087/0.953). Amber sign plaque (0.084,0.309)-(0.111,0.360): rgb(0.251, 0.243, 0.206) H 49 S 0.181 V 0.251, p10 0.228, p90 0.281. Same frame, wall plate course (0.019,0.236)-(0.125,0.293) V 0.295 \u2014 the exact region materials.ALBEDO_ANCHOR is calibrated on. Same frame, the wall immediately above the plaque (0.070,0.280)-(0.125,0.300): H 202 S 0.027 V 0.340.",
+   "extrapolated": "The absolute level only, via ALBEDO_ANCHOR: the plaque is 0.251/0.295 = 0.851 of the anchored wall plate course, so 0.46 x 0.851 = 0.391 and the channels scale with it.",
+   "reasoning": "This is the one prop in my family that materials.py had already measured without knowing it \u2014 PROVENANCE lists 'amber sign plaque V 0.247 S 0.184' in the corridor kit's own region table, and it is prop_level_plaque. I re-measured it (0.251, S 0.181) rather than copying the number. THE HARD PART IS THAT THIS FRAME IS THE ONE NEGATIVE_RESULTS WARNS ABOUT: the plaque sits on the LEFT wall, the wall whose warmth turned out to be warm downlights rather than ochre paint. So I ran the test that entry prescribes \u2014 find the same light on a different material \u2014 and it passes in the strongest possible form: the wall 20 px ABOVE the plaque, under the same fitting, balances H 202 S 0.027, dead neutral, while the plaque balances S 0.181. Across a few centimetres of one wall under one light, the warmth follows the object. The failed case was warmth that followed the wall; this is warmth that does not. AND IT IS NOT EMISSIVE, which is the finding that surprised me: a p10-to-p90 spread of 0.053 about a 0.251 median is a flat matte face with no hot spot, and the plaque reads DARKER than the wall it is fixed to (0.251 against 0.340). A backlit plaque cannot be darker than its surround. So it gets no emission and a high roughness, and it will read as a painted sign catching the corridor's own light \u2014 which is what the frame shows. S 0.179 keeps it under STRUCTURAL_SAT_MAX without trimming, and the source cites the frame regardless. It stays separate from sign_neon_venue because a matte painted plaque and a glowing tube sign are not the same surface by any reading."
+  },
+  {
+   "name": "plant_valve_metal",
+   "title": "Valve \u2014 bare metal handwheel and stem, worn by use",
+   "binds": [
+    "prop_valve"
+   ],
+   "albedo": [
+    0.545,
+    0.54,
+    0.528
+   ],
+   "roughness": 0.42,
+   "metallic": 0.95,
+   "specular": 0.5,
+   "emission": null,
+   "emission_energy": null,
+   "texture": null,
+   "uv_scale_denom": null,
+   "source": "NO FRAME ESTABLISHES THIS. The reference set holds no view of the station's machine spaces at all: reference/08-sector-yellow-engineering/ and reference/06-sector-brown-downbelow/ are empty directories, and canon/INVENTIONS.md says the same thing in its own words for the plant zone \u2014 'Overturned by: any on-screen view of the station's machine spaces, of which we hold none.' What IS sourced is the object: station/directory.py declares valve in eleven locations, all of them water storage, waste, fuel, air handling or reclamation, and station/rooms.py sizes it 0.45 m square, wall-mounted \u2014 a handwheel, not a control panel.",
+   "extrapolated": "Every number. Declared in full rather than dressed as a reading.",
+   "reasoning": "A valve is the one genuinely metallic thing in my family and the gate's physicality rule decides most of it: metallic 0.95 because a handwheel is bare metal with no coating over it, which is why it does NOT sit in the 0.2-0.8 blend band that hull_exterior (0.34) and greeble_fitting (0.42) occupy \u2014 those are painted or worn plate, and materials.py's test file records that the library authors that band deliberately for exactly that case. At metallic 0.95 the albedo is effectively F0, and mild steel's is about 0.56 neutral; 0.545/0.540/0.528 is that with a 3% warm bias for grime, smaller than the 6% hull_exterior declares. Roughness 0.42 is placed on the library's own ladder rather than picked in the abstract: rougher than tram_saloon_post at 0.28, which is a brushed rail nobody grips hard, and smoother than structural_truss at 0.46, because a valve is a touched object and hands polish a handwheel. Untextured for the reason radiator is untextured \u2014 it is a small formed object, not plate, and every sheet this project owns (hull_plate, wall_plate, deck_stud, deck_plate, truss_steel) is architectural at metre scale and would read as a wall wrapped round a 0.45 m wheel. WHAT WOULD OVERTURN IT: any engineering-space frame. If station valves turn out to be painted bodies with a coloured handwheel, this becomes two surfaces and metallic drops to 0.0 for the body."
+  },
+  {
+   "name": "plant_switchgear",
+   "title": "Switchgear and Gauge \u2014 painted plant instrument case",
+   "binds": [
+    "prop_breaker_lever",
+    "prop_tank_gauge"
+   ],
+   "albedo": [
+    0.298,
+    0.296,
+    0.29
+   ],
+   "roughness": 0.55,
+   "metallic": 0,
+   "specular": 0.4,
+   "emission": [
+    1,
+    0.612,
+    0.353
+   ],
+   "emission_energy": 0.25,
+   "texture": null,
+   "uv_scale_denom": null,
+   "source": "NO FRAME ESTABLISHES THE CASE \u2014 same gap as plant_valve_metal: reference/08-sector-yellow-engineering/ is empty and canon/INVENTIONS.md records that the machine spaces have no on-screen view. Placed instead on materials.py's own measured value ladder, between kit_reveal (0.140), greeble_fitting (0.310, measured on 01-station-exterior/exterior more.jpg as bolted-on unpainted machinery) and kit_wall_plate (0.460). The INDICATOR colour is measured: the only two authority-1 readings of a small indicator in the whole set are the amber lens stack in 11-props-and-technology/Identicard reader.webp (H 16, S 0.897) and the lit key field in 03-sector-blue/comand and contorl.webp (H 30, S 0.505), and both sit in the warm_practical register at H 24.",
+   "extrapolated": "The albedo, roughness, specular and the emission_energy floor. The emission colour is the measured accent register; everything else here is declared invention.",
+   "reasoning": "A breaker lever and a tank gauge are the same object at two sizes \u2014 a painted enclosure on a plant-room wall with a handle or a dial face and one indicator \u2014 so they share a material rather than getting one each for two groups. metallic 0.0 because a painted enclosure is a dielectric: the steel is under the coat, and this is precisely the distinction the library's own test file documents when it explains why hull_exterior sits at 0.34 (48 m of plating worn through in places) while a 0.3 m instrument case has no such story. The value is deliberately BELOW the wall: 0.298 against 0.460 makes plant fittings read as darker machinery bolted onto lighter architecture, which is the relationship greeble_fitting already encodes on the exterior at 0.310 against the hull's 0.600 \u2014 I am reusing a measured relationship where I have no measurement of my own. Energy sits at the same declared 0.25 floor as device_reader_shell and for the same reason: a dial lamp is a few square centimetres of a 0.30 m box, flux-matching gives a number that renders as nothing, and a plant room where nothing is powered reads as abandoned. NOT hazard_yellow, although SECTOR_ACCENT maps Yellow sector to it \u2014 that mapping carries the comment 'NO REFERENCE. Extrapolated from the sector being engineering', and preferring a measured register to an extrapolated one is the whole discipline here. WHAT WOULD OVERTURN IT: an engineering frame; and specifically, if breaker handles turn out to be hazard-coloured, the handle becomes a second surface and ACCENTS['hazard_yellow'] finally gets a measurement behind it."
+  }
+ ],
+ "coverage_note": "All 18 assigned groups are covered by 7 materials, and I verified this mechanically rather than by inspection. A script loaded station/materials.py and station/rooms.py, built all 68 procedural locations to get the 124 group names rooms.py actually emits, and ran the same two checks test_materials_layer3.py runs: (1) every one of my 18 groups is emitted by rooms.py and matched by exactly one of my binds; (2) running the gate's own ambiguous() logic over the union of the existing interior binds and my proposed binds returns EMPTY \u2014 no group is claimed by two materials. I also checked the reverse direction: no fragment I chose matches any group other than itself, and no existing bind fragment (\"structure\", \"wall_panel\", \"wall_assembly\", \"bulkhead\", \"pilaster\", \"portal_frame\", \"door_frame\", \"rail_band\", \"handrail\", \"reveal\", \"wall_reveal\", \"soffit\", \"ceiling_slab\", \"skirt\", \"deck_grid\", \"deck_panel\", \"deck_plate\", \"concourse_deck\", \"signage_neon\", \"signage_panel\", \"accent_warning\", \"hazard_frame\", the four light_* fragments) is a substring of any of my 18 group names. Every fragment is a full prop_* name for that reason \u2014 \"console\" would have swallowed prop_reactor_console and \"neon\" is one character from colliding with the existing signage_neon, so nothing shorter is safe here. Gate compliance, checked value by value: saturation is 0.009 / 0.161 / 0.014 / 0.161 / 0.179 / 0.031 / 0.027, all under STRUCTURAL_SAT_MAX = 0.20 (the two nearest, sign_deck_plaque at 0.179 and device_screen_glass at 0.161, cite real frames anyway); metallic is 0.0 everywhere except plant_valve_metal at 0.95, so nothing lands in the 0.2-0.8 band without the coating argument the rule demands; only device_screen_glass is below ROUGHNESS_MIRROR at 0.12 and its name carries both \"screen\" and \"glass\" so MIRROR_OK passes it; every cited basename was checked to exist in the repo and none resolves into 21-QUARANTINE or 22-QUARANTINE (grey level 1.webp and more zocalo.png each exist in two live folders, which is fine, and neither is a quarantine path). Every material uses texture: null, and that is a position rather than an omission: all seven are small coated or moulded objects in the brief's sense, rooms.py boxes ship POSITION and NORMAL only so any sheet would be triplanar-projected and would mirror a sign's lettering, and all seven available sheets are architectural plate at metre scale. THREE THINGS A REVIEWER SHOULD PUSH ON. First, uniform box emission: rooms.py emits one box per prop, so a console glows on its underside and a card kiosk glows on its back. I flux-matched every energy so total radiated light is right at distance, and named the sub-group split that fixes it up close \u2014 it is a layer-5 job, not a material fault. Second, two energies (device_reader_shell, plant_switchgear) sit at a declared 0.25 floor rather than at their computed 0.105 and are marked as chosen, not measured. Third, three of my seven have real reference behind every number (console, screen, plaque), one has reference for its emission but not its case (switchgear), and one has none at all (valve) \u2014 the reference set contains no frame of the station's machine spaces, and both plant materials say so in their source string instead of borrowing a plausible-sounding citation. The strongest results are the two tests that could have gone the other way: the corridor plaque's warmth follows the OBJECT and not the light (its surround balances S 0.027 dead neutral 20 px away under the same downlight), which passes the exact test NEGATIVE_RESULTS prescribes; and the console key field measures warm in both the raw and the balanced C&C frame despite that room's ambient being blue, which independently re-derives ACCENTS[\"warm_practical\"] at H 30 against its recorded H 24. The Zocalo neon likewise re-derives ACCENTS[\"cyan_neon\"] from a second frame. Nothing in this proposal replaces an existing accent value; where I measured one again I kept the library's number and recorded mine as corroboration.",
+ "_family": "electronics",
+ "_agent": "a33f0b592cb78baa4"
+}
