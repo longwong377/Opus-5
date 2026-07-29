@@ -2930,6 +2930,44 @@ x1.41 at 1280×720 — resolution dependence, not regression. The exposure table
 640×360 against a 1.40 anchor derived at 1280×720, so they are internally consistent but the anchor
 and the calibrations were taken at different resolutions.
 
+### Two generated-artefact holes, both found by the stop hook
+
+**A truncated texture was committed, and nothing could see it.** `deck_stud_orm.png` was in the
+repository at 196,673 bytes against the 613,211 it regenerates to — PIL refuses to load it. It is
+the occlusion/roughness/metallic map for `kit_deck`, the deck of every corridor on the station.
+Every existing gate passed on it: the material resolves, the size is declared, the slope is
+declared, and the VRAM budget is computed from `TEX_SIZE` rather than from the file.
+
+**The cause was my own timeouts.** A full `materials.py --export` takes 51 s and I had been running
+it under 2-minute `timeout` calls that also had a render queued behind them; a killed export leaves
+a half-written PNG. Two more textures were caught mid-write during this very session, a different
+one each run, which is what identified it.
+
+**Two `.tres` files the ENGINE READS had drifted from the library.** Three emission energies were
+re-tuned against engine frames and `light_arrival_strip` still said 5 against the library's 3,
+`light_deck_grating` 3.5 against 1.2. This is the scene-rules defect one file down — material rules
+used to be emitted to a `.txt` for a human to paste in, and `patch_scene_rules` exists because the
+first material added after that never reached the render. The `.tres` had no equivalent gate.
+
+Both now gated in `materials.py`, and both gates were shown to fire on the exact artefacts that
+were in HEAD.
+
+### The second agent's work, and a bookkeeping note
+
+The alien/customs agent from the previous firing did complete real work, and my `git add -A`
+swept part of it into the commit before this one, which was titled for the light rig. The rest was
+in the working tree. It is all here now and it is good — every change is driven by an engine frame:
+
+* **`light_ceiling_grid` 2.6 → 0.8**, and the argument is one this project had only ever made in
+  the other direction: **the energy ladder is blind to AREA.** `customs.hall()` coffers 64% of a
+  34 × 17 m soffit — roughly 370 m² against `light_pilaster_strip`'s ~0.2 m², a factor of 1,800 the
+  ladder says nothing about. `bay_floodlight` already argues *upward* from size ("the fitting is far
+  larger … roughly fifteen times the flux"); nobody had argued downward. Customs' clipping went from
+  **14.42% to 0.00%** and the ceiling now reads as an amber lattice with dark ribs.
+* **`light_arrival_strip` 5.0 → 3.0**, because at 5.0 that one band accounted for 2,054 clipped
+  pixels — 100% of the frame's clipping — and the reference's own cells do not clip (raw sRGB V p99
+  0.927). A value that blows is refuted by the frame it came from.
+
 ## NEXT SESSION — layer 4, the last 28
 
 1. **The council chamber's right half is black** (`docs/engine-council.png`, crushed 52%) because

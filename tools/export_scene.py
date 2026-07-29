@@ -2158,6 +2158,33 @@ def _selftest():
           "a sampled fitting's shares sum to one, so sampling never changes "
           "how much light is in the room")
     check(len(_parts) > 1, f"an extended fitting is sampled ({len(_parts)})")
+    # AND THE SHARES ARE AREAS, not one over the count. Summing to one is true
+    # of both and cannot tell them apart, so this asks a shape the two answers
+    # disagree about: an area-6 triangle beside an area-0.06 one, ten metres
+    # off. By area the far one takes 0.99% of the light; one-over-N would give
+    # it a third. The far sliver is one cluster and the big triangle is many,
+    # so getting this wrong dumps most of a strip's light on its end cap.
+    _uneven = [(0.0, 0.0, 0.0), (3.0, 0.0, 0.0), (0.0, 4.0, 0.0),
+               (20.0, 0.0, 0.0), (20.3, 0.0, 0.0), (20.0, 0.4, 0.0)]
+    _far = sum(sh for p, sh in sample_body(
+        _uneven, [(0, 1, 2), (3, 4, 5)], [0, 1], 1.0) if p[0] > 15.0)
+    check(abs(_far - 0.06 / 6.06) < 1e-6,
+          f"a sample's share of its fitting's energy is its share of the "
+          f"fitting's AREA ({_far:.4f} against {0.06 / 6.06:.4f})")
+    # THE MERGE MUST NOT UNDO THE SAMPLING. FIXTURE_MERGE_M is 0.9 m and a
+    # sample pitch is range/4, so every fitting that throws less than 3.6 m
+    # samples at a pitch INSIDE the merge radius -- `zoc_stall_light` at
+    # 2.5 m samples at 0.625 m. Distance alone cannot tell "two bulbs on one
+    # string" from "two samples of one strip"; identity can, and this is the
+    # constructed case that proves the identity is being used, because nothing
+    # in the library is currently both short-range and long enough to trip it.
+    _strip = [(0.0, 0.0, 0.0), (5.0, 0.0, 0.0), (0.0, 0.0, 0.1),
+              (5.0, 0.0, 0.1)]
+    _st = [(0, 1, 2), (1, 3, 2)]
+    _sl = fixture_lights(_strip, _st, [("zoc_stall_light", 0, 2)], 1.0, 7.0)
+    check(len(_sl) > 4,
+          f"a 5 m fitting throwing 2.5 m keeps its samples through the "
+          f"0.9 m merge ({len(_sl)} lamps)")
 
     # -- the bespoke modules the interior shot can now assemble -------------
     import directory as dr                                     # noqa: PLC0415

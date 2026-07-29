@@ -159,8 +159,32 @@ GRATING_DEPTH_M = 0.05     # the light box below the louvres
 # taken rather than 32 so the last 0.14 m of each half-width stays dark at the
 # skirting -- the frame's darkest surfaces are the pier feet, and a corridor
 # whose wall bases are lit is not this room.
+#
+# THE LIGHT HANGS ON THE TROUGH, NOT ON THE GRILLE, and finding that out cost
+# a render. `alien_lattice` was the obvious carrier -- it is the only geometry
+# up there and its docstring asks for the job -- but the grille is FIFTY-SIX
+# separate bars, and `export_scene.fitting_bodies` correctly reads each one as
+# its own luminaire: the frame came back with 126 lamps and at 7.10x its
+# reference, with the soffit washed cream from 0.1 m away. Re-rendered with the
+# lamps removed entirely, the same room measures 1.24x, so the grille alone was
+# contributing six times the whole frame.
+#
+# That is not a tuning error either, and dividing `energy_rel` by 56 to hide it
+# would be one. A grille is a DIFFUSER; the thing 00-INDEX.md calls "a source
+# high above" is behind it. So the module now builds the source -- a recessed
+# trough in the soffit at the kit's own corridor rhythm -- and the grille goes
+# back to being what it looks like, a lit surface that casts nothing. Eight
+# troughs where there were fifty-six bars, which is the 7x.
+CEILING_LAMP_SPACING_M = 3.6   # interior_kit `service` portal_spacing_m: the
+                               # rhythm every fitting in a corridor sits on,
+                               # and the same figure corridor_kit.json's
+                               # `light_downlight` carries as its spacing
+CEILING_LAMP_W_FRAC = 0.80     # of the gallery width, so the shafts fall
+                               # across the walkway and not on the skirtings
+CEILING_LAMP_L_M = 0.30
+CEILING_LAMP_DEPTH_M = 0.12
 CAST_FITTINGS = {
-    "alien_lattice": {
+    "alien_ceiling_lamp": {
         "kind": "spot",
         # linear (1.000, 0.675, 0.060), measured RAW off the descending shafts
         # at (0.400,0.010)-(0.560,0.180); corroborated by the floor grating at
@@ -341,6 +365,31 @@ def overhead_lattice(length, width, y):
     return v, t, g
 
 
+def ceiling_lamps(length, width, y):
+    """The recessed troughs above the grille -- the room's only cast source.
+
+    Set so the emitting face sits 15 mm below the soffit line, inside the top
+    of the 0.20 m the lattice hangs in: seen from the deck it is a lit panel
+    behind the grille, which is what makes a shaft hard-edged rather than a
+    glow. Coplanar with the soffit would z-fight; below the grille would put
+    the source in front of its own diffuser.
+
+    One trough per `CEILING_LAMP_SPACING_M`, each a single closed body under
+    `FIXTURE_LIGHTING`'s range, so the rig gives it one lamp at its centroid
+    rather than sampling it -- see CAST_FITTINGS for why that matters here.
+    """
+    v, t, g = [], [], []
+    w = width * CEILING_LAMP_W_FRAC / 2.0
+    n = max(1, int((length - CEILING_LAMP_SPACING_M / 2.0)
+                   / CEILING_LAMP_SPACING_M))
+    for j in range(n):
+        z = CEILING_LAMP_SPACING_M / 2.0 + j * CEILING_LAMP_SPACING_M
+        _box(v, t, g, "alien_ceiling_lamp",
+             (-w, y - 0.015, z - CEILING_LAMP_L_M / 2),
+             (w, y - 0.015 + CEILING_LAMP_DEPTH_M, z + CEILING_LAMP_L_M / 2))
+    return v, t, g
+
+
 def deck_grating(length, width):
     """The illuminated floor grid -- the frame's brightest surface.
 
@@ -407,6 +456,9 @@ def gallery(schema, profile):
 
     lv, lt, lg = overhead_lattice(GALLERY_LEN_M, GALLERY_W_M, GALLERY_H_M)
     _absorb(V, T, G, lv, lt, lg)
+
+    cv, ct, cg = ceiling_lamps(GALLERY_LEN_M, GALLERY_W_M, GALLERY_H_M)
+    _absorb(V, T, G, cv, ct, cg)
 
     gv, gt, gg = deck_grating(GALLERY_LEN_M, GALLERY_W_M)
     _absorb(V, T, G, gv, gt, gg)
@@ -549,10 +601,27 @@ def _selftest():
     # `.get` rather than `[...]`, so deleting the entry REPORTS a failure
     # instead of raising out of the middle of the self-test. A guard that
     # crashes tells you less than one that prints.
-    lat = CAST_FITTINGS.get("alien_lattice", {})
-    check("the overhead grille is the fitting the light rig hangs on",
-          set(CAST_FITTINGS) == {"alien_lattice"}
-          and "alien_lattice" in names, str(sorted(CAST_FITTINGS)))
+    lat = CAST_FITTINGS.get("alien_ceiling_lamp", {})
+    check("the trough above the grille is what the light rig hangs on",
+          set(CAST_FITTINGS) == {"alien_ceiling_lamp"}
+          and "alien_ceiling_lamp" in names, str(sorted(CAST_FITTINGS)))
+    # The grille is a DIFFUSER. Hanging the light on it gave 126 lamps and a
+    # frame at 7.10x its reference; this is the guard against that returning.
+    n_lamp = names.count("alien_ceiling_lamp")
+    check("there are troughs, at the kit's corridor rhythm and not per bar",
+          n_lamp == max(1, int((GALLERY_LEN_M - CEILING_LAMP_SPACING_M / 2)
+                               / CEILING_LAMP_SPACING_M))
+          and n_lamp < names.count("alien_lattice") / 4,
+          f"{n_lamp} troughs against {names.count('alien_lattice')} grille bars")
+    check("and the grille itself casts nothing",
+          "alien_lattice" in names and "alien_lattice" not in CAST_FITTINGS,
+          "a diffuser is not a source")
+    check("each trough is one body inside its own range, so it is one lamp",
+          math.dist((0.0, 0.0, 0.0),
+                    (GALLERY_W_M * CEILING_LAMP_W_FRAC, CEILING_LAMP_DEPTH_M,
+                     CEILING_LAMP_L_M)) < lat.get("range_m", 0.0),
+          f"{math.dist((0, 0, 0), (GALLERY_W_M * CEILING_LAMP_W_FRAC, CEILING_LAMP_DEPTH_M, CEILING_LAMP_L_M)):.2f} m "
+          f"body against a {lat.get('range_m')} m reach")
     check("it is a spot, because the frame's shafts descend vertically",
           lat.get("kind") == "spot", str(lat.get("kind")))
     check("its reach is derived from this gallery, not borrowed from a bay",
