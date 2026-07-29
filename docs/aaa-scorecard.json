@@ -434,6 +434,64 @@
        "text": "RESOLVED THIS ROUND, recorded because the failure mode is general. Material rules were emitted to a .txt for a human to paste into the scene files. habitat_windows exported cleanly, passed 594 assertions and did not reach the render; two other materials had been missing from the exterior scene for longer. patch_scene_rules now writes the block and a gate asserts the file matches the library. Proven able to fail by deleting a rule."
       }
      ]
+    },
+    {
+     "round": 3,
+     "reviewer": "builder, session 3k -- rework of round 2's two majors and one minor. Still not an independent review.",
+     "date": "2026-07-29",
+     "scores": {
+      "craft": 4,
+      "fidelity": 4,
+      "performance": 3,
+      "robustness": 4
+     },
+     "evidence": {
+      "frames": [
+       "docs/engine-windows-nightside.png (3.4 km, anti-sun, --light-gain 0.04)",
+       "docs/engine-windows-near.png (3.4 km, sunlit)",
+       "close 900 m frame used to verify the mapping, not kept"
+      ],
+      "path": "Godot 4.4 double + Mesa lavapipe, Forward+, 1280x720",
+      "shader": "godot/materials/hull_window.gdshader, cylindrical about world +Z"
+     },
+     "broke_assertions": false,
+     "findings": [
+      {
+       "severity": "resolved",
+       "dimension": "craft",
+       "descriptor": "C4",
+       "where": "godot/materials/hull_window.gdshader",
+       "text": "TRIPLANAR CROSSHATCH GONE. The habitat hull has no UVs -- export_gltf.py writes POSITION and NORMAL only -- so every material relies on world triplanar, which blends two grids across the drum's barrel. Replaced with a cylindrical mapping about the spin axis. The seam closes because the repeat count around the circumference is snapped to a whole number at a reference radius, and mip selection uses derivatives taken from the smooth tangent frame rather than from the discontinuous uv."
+      },
+      {
+       "severity": "resolved",
+       "dimension": "craft",
+       "descriptor": "C4",
+       "where": "hull_window.gdshader dark_block_fraction",
+       "text": "BAND TILING BROKEN UP. 28% of blocks, five repeats square, have no lit windows -- a section with no quarters behind it. Clearly visible in the anti-sun frame as unlit segments along the barrel. Sized in repeats so a block boundary never cuts a window in half."
+      },
+      {
+       "severity": "resolved",
+       "dimension": "craft",
+       "descriptor": "C4",
+       "where": "station/materials.py habitat_windows albedo",
+       "text": "PLATE VALUE NOW MATCHES THE HULL. Was rendering at 0.15 against hull_exterior's 0.60 -- four times darker -- so the habitat sections read as a bolted-on material. Asserted numerically from the values that ship rather than judged by eye."
+      },
+      {
+       "severity": "blocking",
+       "dimension": "craft",
+       "descriptor": "C2",
+       "where": "tools/export_scene.py, the three-point rig",
+       "text": "THE LIGHTING RIG HAS NO NIGHT SIDE, and the owner's opening beat is the station coming into view. The rim kicker sits at sun_az + 175 and the fill is mirrored through the camera axis, so whatever azimuth the camera takes, the camera-facing edge is lit. That rig is correct for showing a model's silhouette and wrong for a city at night: the anti-sun frame here needed --light-gain 0.04 to show the windows at all. LAYER 4 work -- the rig is a lighting judgement, not a material -- but it is recorded as blocking because until it changes, the shot the opening is built on cannot be composed."
+      },
+      {
+       "severity": "major",
+       "dimension": "robustness",
+       "descriptor": "R2",
+       "where": "godot/scripts/render_shot.gd, tools/render_godot.sh",
+       "text": "RESOLVED THIS ROUND, both general failure modes. (1) --light-gain scaled only the lights carried in the shot JSON; the exterior shot has \"lights\": 0 because its key, fill and rim are nodes in exterior.tscn, so the flag did nothing and two renders an order of magnitude apart in gain came back BYTE-IDENTICAL. (2) A shader that fails to compile still renders -- Godot falls back and hands out a valid PNG of the wrong thing at exit 0. A redefinition of the built-in TAU cost one round exactly that way. render_godot.sh now exits 3 on SHADER ERROR."
+      }
+     ]
     }
    ]
   },

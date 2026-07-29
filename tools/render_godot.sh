@@ -137,6 +137,8 @@ export VK_ICD_FILENAMES=/usr/share/vulkan/icd.d/lvp_icd.json
 # been fine, but the frame budget is time, not framerate, so nothing here is
 # tuned for speed at the cost of correctness.
 START=$(date +%s)
+LOGFILE="$(mktemp)"
+trap 'rm -f "$LOGFILE"' EXIT
 set +e
 timeout "$TIMEOUT" xvfb-run -a --server-args="-screen 0 ${RES}x24" \
   "$GODOT" --path "$ROOT/godot" \
@@ -144,6 +146,7 @@ timeout "$TIMEOUT" xvfb-run -a --server-args="-screen 0 ${RES}x24" \
   --resolution "$RES" \
   "$SCENE_PATH" \
   -- "${USER_ARGS[@]}" 2>&1 \
+  | tee "$LOGFILE" \
   | grep -Ev '^(WARNING: Leaked|     at: ~Dependency|ERROR: [0-9]+ RID alloc|WARNING: ObjectDB|     at: cleanup)'
 RC=${PIPESTATUS[0]}
 set -e
@@ -152,5 +155,21 @@ echo "--- ${SHOT} finished in $(( $(date +%s) - START ))s (exit ${RC}) ---"
 if [ ! -f "$OUT" ]; then
   echo "NO PNG WRITTEN -- the render failed. Do not report a render." >&2
   exit 1
+fi
+
+# A SHADER THAT FAILS TO COMPILE STILL RENDERS. Godot logs "SHADER ERROR",
+# falls back, and hands back a perfectly valid PNG of the wrong thing -- the
+# frame looks merely disappointing rather than broken, and the disappointment
+# gets attributed to the material instead of to a typo. It cost one render
+# round here: `const float TAU` redefined a Godot built-in, the run reported
+# `exit 0`, and the PNG was the fallback material.
+#
+# There is no way to compile-check a shader without the engine, so the engine's
+# own complaint is the check.
+if grep -qE '^(SHADER ERROR|ERROR: Shader compilation failed)' "$LOGFILE"; then
+  echo "SHADER FAILED TO COMPILE -- the PNG is the fallback material, not the" >&2
+  echo "material you meant. Do not score this frame." >&2
+  grep -E '^(SHADER ERROR|ERROR: Shader compilation failed)' "$LOGFILE" >&2
+  exit 3
 fi
 ls -l "$OUT"

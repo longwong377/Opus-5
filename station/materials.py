@@ -146,6 +146,10 @@ DECK_PITCH_M = _it.DECK_PITCH_M
 # into windows. That is not a texture-filtering problem to tune away -- it is
 # the wrong building. The reference hull is mostly PLATE with window strips in
 # it, so the sheet is now eight decks tall with two of them glazed.
+# The radius the cylindrical mapping closes exactly at: the green sector's
+# shell, imported rather than restated for the same reason DECK_PITCH_M is.
+DRUM_REF_RADIUS_M = round(_it.sector_shell_radius(*_it.load(), "green"), 1)
+
 WINDOW_ROWS = 8                    # decks per texture repeat
 WINDOW_BANDS = (3, 4)              # which of those rows carry apertures
 WINDOW_COLS = 12                   # apertures across the same repeat
@@ -437,13 +441,13 @@ class Material:
 
     __slots__ = ("name", "title", "albedo", "roughness", "metallic", "specular",
                  "emission", "emission_energy", "emission_texture",
-                 "texture", "uv_scale",
+                 "shader", "shader_params", "texture", "uv_scale",
                  "triplanar", "normal_scale", "binds", "scenes", "source",
                  "note", "extrapolated")
 
     def __init__(self, name, title, albedo, roughness, metallic=0.0,
                  specular=0.5, emission=None, emission_energy=0.0,
-                 emission_texture=None,
+                 emission_texture=None, shader=None, shader_params=None,
                  texture=None, uv_scale=1.0, triplanar=True, normal_scale=1.0,
                  binds=(), scenes=(), source="", note="", extrapolated=""):
         self.name = name
@@ -455,6 +459,8 @@ class Material:
         self.emission = tuple(emission) if emission else None
         self.emission_energy = emission_energy
         self.emission_texture = emission_texture
+        self.shader = shader
+        self.shader_params = dict(shader_params or {})
         self.texture = texture
         self.uv_scale = uv_scale
         self.triplanar = triplanar
@@ -536,11 +542,34 @@ def _build():
         # something. `emission` is white because the MAP carries the colour --
         # three registers, per aperture -- and emission_operator MULTIPLY lets
         # it through unchanged.
-        albedo=(0.180, 0.186, 0.196), roughness=0.30, metallic=0.30,
+        # ALBEDO IS THE HULL'S, NOT A DARKER ONE, and the sheet's plate value
+        # is TEX_MEAN so the two multiply back to the hull's 0.60. The first
+        # version set 0.18 here and 0.60 in the sheet, which rendered the plate
+        # between windows at 0.15 -- FOUR TIMES DARKER than the hull it is
+        # continuous with -- so the habitat sections read as a different
+        # material bolted on rather than as the same hull with windows in it.
+        # Logged as a minor against exterior_approach round 2 and measured
+        # rather than eyeballed: 0.72 * 0.8333 = 0.60, hull_exterior exactly.
+        albedo=(0.600, 0.582, 0.564), roughness=0.58, metallic=0.34,
         specular=0.45, texture="hull_window", uv_scale=1.0 / WINDOW_REPEAT_M,
         normal_scale=1.0,
         emission=(1.0, 1.0, 1.0), emission_energy=3.4,
         emission_texture="hull_window",
+        # Cylindrical about the spin axis. See godot/materials/hull_window.gdshader
+        # -- world triplanar blends two grids across the drum's barrel and draws
+        # them as a crosshatch, which is what round 2 logged as a major.
+        shader="hull_window",
+        shader_params={
+            "albedo_color": (0.8333, 0.8083, 0.7833),
+            "emission_color": (1.0, 1.0, 1.0),
+            "emission_energy": 3.4,
+            "metallic": 0.34, "roughness": 0.58, "specular": 0.45,
+            "normal_scale": 1.0,
+            "repeat_m": WINDOW_REPEAT_M,
+            "ref_radius_m": DRUM_REF_RADIUS_M,
+            "dark_block_fraction": 0.28,
+            "block_repeats": 5.0,
+        },
         binds=("green_section", "red_section", "aft_hull_block",
                "habitat_cylinder", "observation_rotunda"),
         scenes=("exterior",),
@@ -1633,7 +1662,10 @@ def gen_window_sheet(size, seed):
     # the white speckle in the render was the FRAMES rather than the emission.
     # A window surround is a shadowed recess; it should darken the hull, not
     # sparkle on it.
-    val = np.where(inside, 0.14, np.where(frame, 0.22, 0.60)).astype(np.float32)
+    # Plate sits at TEX_MEAN so that albedo_color (the hull's, divided by
+    # TEX_MEAN) multiplies back to exactly hull_exterior. Asserted below.
+    val = np.where(inside, 0.14, np.where(frame, 0.26, TEX_MEAN)
+                   ).astype(np.float32)
     val = val * (0.92 + 0.16 * _fbm(size, (seed, "grime"), octaves=5, base=6))
     rough = np.where(inside, 0.12, np.where(frame, 0.62, 0.58)).astype(np.float32)
     metal = np.where(inside, 0.0, np.where(frame, 0.10, 0.34)).astype(np.float32)
@@ -1899,6 +1931,72 @@ def _num(v):
     return s
 
 
+SHADER_DIR = MATERIAL_DIR
+
+# Uniforms a shader may declare and the library may leave alone. Kept explicit
+# so that adding one is a decision someone made, not a gate quietly widening.
+SHADER_DEFAULTS_OK = {"albedo_tex", "orm_tex", "normal_tex", "emission_tex"}
+
+
+def shader_uniforms(name):
+    """Uniform names a .gdshader declares.
+
+    Read back out of the shader source for the same reason `tres` checks its
+    keys against `STANDARD_MATERIAL_KEYS`: Godot silently DROPS a
+    `shader_parameter/` it does not recognise and renders the shader at its
+    declared defaults. That looks like a plausible surface rather than an
+    error, which is exactly how `emission_energy` would sit at 3.4 forever
+    while the library thinks it set 6.0.
+    """
+    path = os.path.join(SHADER_DIR, f"{name}.gdshader")
+    with open(path) as f:
+        src = f.read()
+    return set(re.findall(r"^uniform\s+\S+\s+([A-Za-z_][A-Za-z0-9_]*)",
+                          src, re.M))
+
+
+def shader_tres(m):
+    """One ShaderMaterial as Godot 4 text.
+
+    A separate function rather than a branch inside `tres` because the two
+    resources share almost nothing: a ShaderMaterial has no albedo_color, no
+    roughness and no uv1_scale -- it has a shader and a bag of parameters, and
+    every property name is the shader's rather than the engine's.
+    """
+    ext = [f'[ext_resource type="Shader" '
+           f'path="res://materials/{m.shader}.gdshader" id="1_shader"]']
+    body = [f'resource_name = "{m.title}"', 'shader = ExtResource("1_shader")']
+    ids = {}
+    if m.texture:
+        for i, kind in enumerate(TEXTURE_MAPS):
+            ids[kind] = f"{i + 2}_{kind}"
+            ext.append(f'[ext_resource type="Texture2D" '
+                       f'path="res://materials/textures/{m.texture}_{kind}.png" '
+                       f'id="{ids[kind]}"]')
+    if m.emission_texture:
+        ids["emission"] = f"{len(ext) + 1}_emission"
+        ext.append(f'[ext_resource type="Texture2D" '
+                   f'path="res://materials/textures/'
+                   f'{m.emission_texture}_emission.png" '
+                   f'id="{ids["emission"]}"]')
+    for kind, rid in sorted(ids.items()):
+        body.append(f'shader_parameter/{kind}_tex = ExtResource("{rid}")')
+    for k, v in sorted(m.shader_params.items()):
+        if isinstance(v, tuple) and len(v) == 3:
+            body.append(f"shader_parameter/{k} = {_c(v)}")
+        else:
+            body.append(f"shader_parameter/{k} = {_num(v)}")
+    head = (f'[gd_resource type="ShaderMaterial" load_steps={len(ext) + 1} '
+            "format=3]")
+    # Same shape rules as `tres`: the [gd_resource] tag on line one and ';'
+    # comments, not '#'. Getting either wrong fails the load with a parse error
+    # and no amount of Python-side checking sees it.
+    banner = [";" + ln[1:] if ln.startswith("#") else ln
+              for ln in HEADER.strip().splitlines()]
+    return "\n".join([head, ""] + banner + [""] + ext + ["", "[resource]"]
+                      + body) + "\n"
+
+
 def tres(m):
     """One StandardMaterial3D as Godot 4 text.
 
@@ -2026,7 +2124,9 @@ def export_tres(outdir=MATERIAL_DIR):
     for m in MATERIALS:
         path = os.path.join(outdir, f"{m.name}.tres")
         with open(path, "w") as f:
-            f.write(tres(m))
+            f.write(shader_tres(m) if m.shader else tres(m))
+        if m.shader:
+            written.append(f"  ({m.shader}.gdshader)")
         written.append(f"{m.name}.tres")
     for old, new in SUPERSEDED.items():
         p = os.path.join(outdir, old)
@@ -2661,8 +2761,49 @@ def _selftest():
           not (set(SUPERSEDED) & {f"{m.name}.tres" for m in MATERIALS}))
 
     # -- .tres validity, without an engine --------------------------------
+    # `exported_tres` and not `tres`, because habitat_windows exports as a
+    # ShaderMaterial and testing the StandardMaterial3D text that `tres` would
+    # have written is testing a file that is never on disk. Nine assertions
+    # below would have gone on passing about it.
+    def exported_tres(m):
+        return shader_tres(m) if m.shader else tres(m)
+
     for m in MATERIALS:
-        text = tres(m)
+        text = exported_tres(m)
+        if m.shader:
+            # A ShaderMaterial shares only the two shape rules with a
+            # StandardMaterial3D; every other property name is the shader's.
+            check(f"{m.name}.tres opens with the resource tag on line 1",
+                  text.splitlines()[0].startswith("[gd_resource "))
+            check(f"{m.name}.tres uses ';' comments, not '#'",
+                  not any(l.lstrip().startswith("#")
+                          for l in text.splitlines()))
+            check(f"{m.name}.tres declares it is a ShaderMaterial",
+                  'type="ShaderMaterial"' in text.splitlines()[0])
+            n_ext = text.count("[ext_resource")
+            check(f"{m.name}.tres load_steps counts the ext_resources",
+                  f"load_steps={n_ext + 1}" in text)
+            # THE GATE THAT MATTERS. Godot silently DROPS a shader_parameter it
+            # does not recognise and runs the shader at its declared default,
+            # which reads as a plausible surface rather than as an error --
+            # identical in kind to the StandardMaterial3D key check, and
+            # identical in consequence: the library would believe it set a
+            # value the render never saw.
+            declared = shader_uniforms(m.shader)
+            set_here = set(re.findall(r"shader_parameter/(\w+) = ", text))
+            check(f"{m.name}: every shader_parameter is a real uniform",
+                  set_here <= declared, str(sorted(set_here - declared)))
+            check(f"{m.name}: every texture map reaches the shader",
+                  {f"{k}_tex" for k in TEXTURE_MAPS} | (
+                      {"emission_tex"} if m.emission_texture else set())
+                  <= set_here,
+                  str(sorted(set_here)))
+            # A uniform the shader declares and nobody sets runs at its default.
+            # That is legitimate, but it must be a decision, not an oversight.
+            check(f"{m.name}: no shader uniform is left at a silent default",
+                  declared - set_here <= SHADER_DEFAULTS_OK,
+                  str(sorted(declared - set_here - SHADER_DEFAULTS_OK)))
+            continue
         # Godot's text-resource parser wants the [gd_resource] tag on line one
         # and takes ';' as its comment character, not '#'. Getting either wrong
         # fails EVERY material in the directory with "Parse Error: Expected
@@ -2962,6 +3103,35 @@ def _selftest():
         n = len(scene_materials(scene))
         check(f"{scene}'s material count is inside its draw-call budget",
               n <= DRAW_CALL_BUDGET[scene], f"{n} > {DRAW_CALL_BUDGET[scene]}")
+
+    # -- the shader gates must be able to fail ----------------------------
+    _w = BY_NAME["habitat_windows"]
+    _fake = Material("probe", "probe", albedo=(0.5, 0.5, 0.5), roughness=0.5,
+                     shader="hull_window", texture="hull_window",
+                     shader_params={"not_a_uniform": 1.0})
+    check("the shader-uniform gate rejects an invented parameter",
+          not set(re.findall(r"shader_parameter/(\w+) = ", shader_tres(_fake)))
+          <= shader_uniforms("hull_window"))
+    check("the shader-uniform gate accepts the real material",
+          set(re.findall(r"shader_parameter/(\w+) = ", shader_tres(_w)))
+          <= shader_uniforms("hull_window"))
+
+    # -- THE PLATE BETWEEN WINDOWS IS THE HULL ----------------------------
+    # Measured, not asserted in prose. The first bake rendered it at 0.15
+    # against the hull's 0.60 and the habitat sections read as a different
+    # material. Both sides are computed here from the values that ship.
+    _h = BY_NAME["hull_exterior"]
+    _hull_v = TEX_MEAN * emitted_albedo(_h)[0]
+    _plate_v = TEX_MEAN * _w.shader_params["albedo_color"][0]
+    check("the hull between windows renders at the hull's own value",
+          abs(_hull_v - _plate_v) < 0.01,
+          f"windows {_plate_v:.3f} against hull {_hull_v:.3f}")
+    # And the sheet must actually put TEX_MEAN there, or the arithmetic above
+    # is about a number the texture does not contain.
+    _v, _r, _m, _ao, _hh, _e = gen_window_sheet(256, "window")
+    check("the window sheet's plate value is TEX_MEAN",
+          abs(float(_v.max()) - TEX_MEAN) < 0.14,
+          f"sheet max {float(_v.max()):.3f} against TEX_MEAN {TEX_MEAN}")
 
     # -- THE SCENE FILES MUST AGREE WITH THE LIBRARY ----------------------
     # The gate that would have caught this session's silent failure. The rules

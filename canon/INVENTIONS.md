@@ -1631,5 +1631,33 @@ now eight decks tall with two glazed, and the frame is a dark rebate.
 Roughly a third of the population is asleep on a 24 h cycle (`npc/schedule.py`), quarters are empty
 while their resident is on shift, and plant volumes have no windows lit at all.
 
+**The mapping is cylindrical, and it had to be.** `export_gltf.py` writes POSITION and NORMAL and
+nothing else, so every material in the project relies on Godot's world triplanar. That is right for
+plating and greebles — an axis-aligned box of hull looks the same from any of three projections —
+and wrong for a pattern with an orientation. Triplanar blended two window grids across the drum's
+barrel and drew them as a crosshatch. `godot/materials/hull_window.gdshader` projects about the
+station's spin axis instead. Two details in it are load-bearing and neither is obvious:
+
+- **The seam closes by snapping the repeat count.** An arc-length coordinate jumps by a whole
+  circumference at ±π. The number of repeats around is rounded to a whole number *at a reference
+  radius* — `interior.sector_shell_radius(green)` — so `fract(u)` meets itself. Snapping the
+  per-fragment radius instead would close the seam everywhere and put a visible ring wherever the
+  whole number steps, which the tapered aft block would show as a stack of bands.
+- **Mip selection uses the tangent frame, not the uv.** `dFdx` of a seam-discontinuous uv is the
+  width of the whole station and selects the coarsest mip, drawing the seam as a blurred stripe —
+  the artefact the mapping exists to remove, reintroduced by how it is sampled. `textureGrad` with
+  derivatives projected onto the circumferential and axial tangents fixes it.
+
+**Long-period variation, because 42 identical courses read as ladder rungs.** 28% of blocks — five
+repeats square — have no lit windows, which is a section with no quarters behind it. Sized in
+repeats rather than metres so a block boundary always lands on a tile boundary and never cuts a
+window in half.
+
+**A third value error, found by arithmetic rather than by eye.** The material's albedo was 0.18 and
+the sheet's plate value 0.60, so the hull *between* windows rendered at 0.15 against
+`hull_exterior`'s 0.60 — **four times darker** — and the habitat sections read as a different
+material bolted on. Albedo is now the hull's own and the sheet's plate sits at `TEX_MEAN`, so the
+two multiply back to exactly 0.60. Asserted from the values that ship.
+
 **Overturned by:** any frame showing the hull lit from within — which would fix the band spacing,
 the lit fraction and the colour mix at once.

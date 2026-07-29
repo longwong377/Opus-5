@@ -70,6 +70,15 @@ func _ready() -> void:
 		warmup_frames = int(args["warmup"])
 	if args.has("light-gain"):
 		light_gain = float(args["light-gain"])
+		# Scale the SCENE's own lights too, not only the light runs the shot
+		# JSON carries. The exterior shot has "lights": 0 -- its key, fill and
+		# rim are DirectionalLight3D nodes in exterior.tscn -- so --light-gain
+		# was a documented flag that did exactly nothing there, and two renders
+		# an order of magnitude apart in gain came back byte-identical. That
+		# matters beyond tidiness: with no way to turn the rig down there is no
+		# way to see whether an emissive material emits, and the rig is built so
+		# that a rim kicker always lights the camera-facing edge.
+		_scale_scene_lights(self, light_gain)
 	if args.has("no-ssao"):
 		var env := ($WorldEnvironment as WorldEnvironment).environment
 		env.ssao_enabled = false
@@ -260,6 +269,13 @@ func _spawn_lights() -> void:
 			shadowed += 1
 	print("render_shot: %d light-run sources, %d casting shadows"
 		% [lights.size(), shadowed])
+
+
+func _scale_scene_lights(node: Node, gain: float) -> void:
+	if node is Light3D:
+		(node as Light3D).light_energy *= gain
+	for child in node.get_children():
+		_scale_scene_lights(child, gain)
 
 
 func _capture() -> void:
