@@ -266,8 +266,8 @@ Every row is a system that must exist. **Status** is honest as of session 3k.
 
 | # | Layer | Status |
 |---|---|---|
-| P1 | Addressed | 29/126 |
-| P2 | Geometry | 19/126 |
+| P1 | Addressed | **118/118 COMPLETE** |
+| P2 | Geometry | **118/118 COMPLETE** |
 | P3 | Materials | 0 |
 | P4 | Lighting | 0 |
 | P5 | Props (geometry) | 0 |
