@@ -1309,3 +1309,47 @@ move it**. It lands at **0.760 g**, and that is a characterisation rather than a
 player's first experience of the station is being noticeably lighter.
 
 **Overturned by:** any wider shot of the hall, or a frame showing its far wall.
+
+---
+
+## INV-030 — The Garden's townscape
+
+**Invented:** everything in `station/garden.py` except the one measurement below — the civic
+landmark's radii and storey heights, the pool, terrace, lawn, flagpoles, waterfall bank, the
+red-orange stair, the generic block buildings and the trees.
+
+**Measured, not invented:** the landmark's height. In `garden.png` the two walking figures are
+~35 px and the building stands ~330 px from terrace to tower cap; at a 1.7 m stature that is
+**16 m, about five storeys**, which agrees with the gazetteer's independent "~6 storeys" read.
+Recorded as a measurement with its arithmetic on the page, and everything else is proportioned
+against it.
+
+**What the frame establishes** (authority 1, and it is the best interior reference we hold): a
+landmark of **stacked cylindrical drums** in warm buff concrete — a tall tower with a
+**colonnaded upper storey**, a lower drum beside it colonnaded the same way, **cantilevered slab
+terraces** wrapping the base, a **warm-lit glazed ground floor**; a **rectangular reflecting
+pool**; paved terraces and mown lawn; a **tall thin waterfall** on a planted bank; **flagpoles
+with white banners**; and a **red-orange external stair**, the one saturated accent in an
+otherwise buff and green scene. The idiom is streamline-moderne, not the station's industrial
+grey, and that contrast is the point: **the Garden is where the station stops looking like a
+machine.**
+
+**The constraint that shaped the module.** The drum's inner surface is 4.5 M m² with ~250,000
+triangles of headroom — **0.06 tri/m²**. So fields, roads and settlement pattern stay as
+heightfield and texture, and only what a person can walk up to gets mesh. The whole townscape
+comes in at **2,228 triangles, 0.035 tri/m²**, and both the 0.5 gate and the real 0.06 budget are
+asserted.
+
+**Placement is constrained, not chosen.** Buildings may only stand in **settlement bands**, whose
+arcs are read from `interior.LAND_USE` rather than restated — 93.6–144° and 259.2–302.4°. Asking
+for a building on a field raises, and the self-test checks that it raises. Every footing takes its
+ground radius from `drum_ground.terrain_sample()`, so a building follows the heightfield instead
+of floating over it; the base-lands-on-terrain error is asserted to under 1 µm.
+
+**A defect found only by rendering against magenta.** The colonnade was a ring of fins with
+**nothing behind them**, so the bays were open through the building and the background showed
+through the top of the tower — a hole, not a colonnade. The reference shows a dark recessed
+interior behind the columns. Fixed with an inner drum, and asserted by group name so it cannot
+come back.
+
+**Overturned by:** any other frame of the Garden's architecture, of which we hold three more.
