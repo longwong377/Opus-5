@@ -41,6 +41,12 @@ clears the bar and stops regressing.
 
 ## The plan — LAYERS, COMPLETED IN ORDER
 
+> **`docs/MASTER-PLAN.md` is the full plan** — three tracks (places, systems, player), twelve
+> milestones, every system enumerated with its status, and an audit that found this section
+> incomplete in two blocking ways: the eight layers below describe *a set of places, not a
+> simulation*, and *there is no player*. Read it before planning a session. What follows is the
+> PLACES track only.
+
 **Set by the owner, session 3k, and it supersedes the phase plan that came before it:**
 *"I'd rather do something in layers but complete, rather than small slices which do not add up
 together."*
