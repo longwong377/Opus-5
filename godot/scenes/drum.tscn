@@ -1,4 +1,4 @@
-[gd_scene load_steps=39 format=3]
+[gd_scene load_steps=56 format=3]
 
 ; Standing inside the habitat drum.
 ;
@@ -82,6 +82,23 @@
 [ext_resource type="Material" path="res://materials/tram_saloon_seat.tres" id="m_tram_saloon_seat"]
 [ext_resource type="Material" path="res://materials/tram_saloon_strip.tres" id="m_tram_saloon_strip"]
 [ext_resource type="Material" path="res://materials/tram_saloon_wall.tres" id="m_tram_saloon_wall"]
+[ext_resource type="Material" path="res://materials/garden_bank_planting.tres" id="m_garden_bank_planting"]
+[ext_resource type="Material" path="res://materials/garden_bark.tres" id="m_garden_bark"]
+[ext_resource type="Material" path="res://materials/garden_bronze_joinery.tres" id="m_garden_bronze_joinery"]
+[ext_resource type="Material" path="res://materials/garden_civic_render.tres" id="m_garden_civic_render"]
+[ext_resource type="Material" path="res://materials/garden_coping_stone.tres" id="m_garden_coping_stone"]
+[ext_resource type="Material" path="res://materials/garden_falling_water.tres" id="m_garden_falling_water"]
+[ext_resource type="Material" path="res://materials/garden_flagstone.tres" id="m_garden_flagstone"]
+[ext_resource type="Material" path="res://materials/garden_foliage.tres" id="m_garden_foliage"]
+[ext_resource type="Material" path="res://materials/garden_glass.tres" id="m_garden_glass"]
+[ext_resource type="Material" path="res://materials/garden_loggia_recess.tres" id="m_garden_loggia_recess"]
+[ext_resource type="Material" path="res://materials/garden_mast.tres" id="m_garden_mast"]
+[ext_resource type="Material" path="res://materials/garden_mown_grass.tres" id="m_garden_mown_grass"]
+[ext_resource type="Material" path="res://materials/garden_pennant.tres" id="m_garden_pennant"]
+[ext_resource type="Material" path="res://materials/garden_pool_water.tres" id="m_garden_pool_water"]
+[ext_resource type="Material" path="res://materials/garden_terracotta.tres" id="m_garden_terracotta"]
+[ext_resource type="Material" path="res://materials/garden_town_block.tres" id="m_garden_town_block"]
+[ext_resource type="Material" path="res://materials/garden_town_window.tres" id="m_garden_town_window"]
 
 [sub_resource type="Environment" id="Env"]
 ; Flat colour, not a sky: from inside the drum there is nothing beyond the
@@ -165,6 +182,26 @@ material_rules = {
 "endcap_plate_c5_checker": ExtResource("m_endcap_checker"),
 "endcap_rib": ExtResource("m_endcap_rib"),
 "endcap_rimlight": ExtResource("m_rimlight"),
+"garden_bank": ExtResource("m_garden_bank_planting"),
+"garden_banner": ExtResource("m_garden_pennant"),
+"garden_block": ExtResource("m_garden_town_block"),
+"garden_canopy": ExtResource("m_garden_foliage"),
+"garden_cap": ExtResource("m_garden_civic_render"),
+"garden_colonnade": ExtResource("m_garden_civic_render"),
+"garden_colonnade_core": ExtResource("m_garden_loggia_recess"),
+"garden_flagpole": ExtResource("m_garden_mast"),
+"garden_glazing": ExtResource("m_garden_glass"),
+"garden_lawn": ExtResource("m_garden_mown_grass"),
+"garden_mullion": ExtResource("m_garden_bronze_joinery"),
+"garden_pool_coping": ExtResource("m_garden_coping_stone"),
+"garden_slab": ExtResource("m_garden_civic_render"),
+"garden_stair_accent": ExtResource("m_garden_terracotta"),
+"garden_terrace": ExtResource("m_garden_flagstone"),
+"garden_tower": ExtResource("m_garden_civic_render"),
+"garden_trunk": ExtResource("m_garden_bark"),
+"garden_water": ExtResource("m_garden_pool_water"),
+"garden_waterfall": ExtResource("m_garden_falling_water"),
+"garden_window_band": ExtResource("m_garden_town_window"),
 "ground_arable": ExtResource("m_field"),
 "ground_arable_0": ExtResource("m_field0"),
 "ground_arable_1": ExtResource("m_field1"),

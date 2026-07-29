@@ -2669,6 +2669,276 @@ def _build():
         source="reference/01-station-exterior/welcome to babylon 5.webp (authority 1, 1000x750; reference/00-INDEX.md files it as 'misfiled — this is signage, not exterior' and calls it 'two backlit blue information boards in the customs hall'). MEASURED RAW, NOT BALANCED — see extrapolated. POST, clear of both boa",
         extrapolated="THE LEVEL, and the decision to measure this frame raw. Both are declared in full. (1) GREY-WORLD FAILS ON THIS FRAME, and I checked rather than assumed. Its gains are (1.262, 1.276, 0.702), and its balanced mid-tone population (0.15 < V < 0.85) has median saturation 0.299 and p90 0.469 against the a"))
 
+    # =====================================================================
+    # LAYER 3 -- THE DRUM LANDSCAPE
+    # =====================================================================
+    # garden.py's townscape and drum_ground.py's land-use bands: the only
+    # surfaces in the project that are seen from a kilometre away and from two
+    # metres in the same shot, because the drum curves overhead. Scene is
+    # `drum`, not `interior`.
+    #
+    # Six general/specific overrides live in here and they are deliberate:
+    # `garden_water` for the pool and `garden_waterfall` for the fall,
+    # `garden_colonnade` and `garden_colonnade_core`, `ground_arable` and its
+    # four crop variants. Substring-with-longest-wins exists for exactly that,
+    # and test_materials_layer3.ambiguous() was rewritten to report containment
+    # pairs rather than fail them -- it had been treating every specialisation
+    # as a defect, which teaches a reader to distrust the check.
+
+    # ---- drum landscape (bespoke) --------------------------------------
+
+        # The single most important decision in the Garden, because this
+        # material is most of the building the gazetteer ranks fifth and the
+        # shot the owner's opening beat is composed around. Everything about
+        # the frame says warm sandstone and the project has now found five
+        # times that a colour in a frame belonged to the light; this is the
+        # sixth, and it is the cleanest instance in the set, because a cylinder
+        # gives a continuous lit-to-shaded ramp of ONE material under ONE light
+        # and the saturation falls all the way down it. The four groups are
+        # bound together because the frame measures them within 1.1% — they are
+        # one poured render seen at four orientations, and splitting them would
+        # be painting contrast that the reference does not have.
+    a(Material(
+        "garden_civic_render", "Garden Civic Render — the stacked-drum landmark's stone, shafts, colonnade fins, caps and slab terraces",
+        albedo=(0.358, 0.358, 0.358), roughness=0.7, metallic=0,
+        specular=0.42,
+        binds=("garden_tower", "garden_colonnade", "garden_cap", "garden_slab"), scenes=("drum",),
+        source="reference/09-garden-core-and-transit/garden.png (authority 1). Grey-world gains recomputed here from the frame: (0.884, 0.994, 1.159), reproducing materials.GREY_WORLD_GAINS to 0.000. Method control on the same frame: the lawn balances to H 112.0 S 0.337 V 0.651, reproducing the figure materials.PROVENANCE already records for it (H 114 S 0.330 V 0.651). LEVEL, via an in-frame anchor: the lawn's raw median is 0.522/0.655/0.373, luminance 0.606; materials.ground_parkland (0.345,0.425,0.260) has luminance 0.396; so K = 0.6534 converts this frame's raw luminance to albedo. Four render surfaces measured raw: tower shaft lit half (0.418,0.402)-(0.470,0.500) 0.580/0.525/0.537 lum 0.548; colonnade fin cluster 0.583/0.539/0.548 lum 0.549; cantilevered slab top (0.205,0.535)-(0.300,0.552) 0.586/0.545/0.552 lum 0.554; slab fascia (0.205,0.556)-(0.300,0.572) 0.587/0.537/0.548 lum 0.548. Mean lum 0.547 x K = 0.358, and the four agree within 1.1% of each other, which is why they are one material and not four. The lower second drum reads 0.475/0.420/0.420 lum 0.431 -> 0.282: same cylinder in less light, not a second stone. ORIENTATION CONTROL, which is what lets a vertical shaft be compared with a horizontal slab and with the paving at all: the horizontal slab top (lum 0.543) and the vertical lit shaft (lum 0.548) differ by 3.1% — inside a drum the bounce is nearly isotropic, so orientation is not what separates these surfaces.",
+        extrapolated="The NEUTRALITY, and the roughness/specular/metallic. Neutrality is not a guess but it is a reading of a test rather than a direct measurement. The frame's architecture LOOKS warm pinkish sandstone — reference/00-INDEX.md reads it that way — and the test materials.NEGATIVE_RESULTS prescribes says the warmth is the light. Run on the tower cylinder alone (one material, one light, a continuous lit-to-shaded ramp), RAW, binned by value: V 0.30-0.40 meanS 0.220 rgb 0.353/0.293/0.277 R-B +0.076; 0.40-0.45 S 0.168 0.426/0.368/0.355 +0.071; 0.45-0.50 S 0.133 0.478/0.419/0.419 +0.059; 0.50-0.55 S 0.117 0.529/0.470/0.473 +0.055; 0.55-0.60 S 0.093 0.580/0.529/0.537 +0.043; 0.60-0.70 S 0.082 0.605/0.556/0.570 +0.036. Saturation FALLS monotonically 0.220 -> 0.082 while R rises 1.7x, and R-B holds roughly constant instead of scaling: that is an additive coloured lift, exactly the arithmetic materials.PROVENANCE uses to declare the hull neutral. Fitting R = k*B + c over those bins gives R = 0.862*B + 0.117 and G = 0.895*B + 0.046; the independent second drum gives R = 0.956*B + 0.076 and G = 0.970*B + 0.014. Both fits put the reflectance ratios AT or slightly BELOW neutral (R/B 0.86-0.96, G/B 0.89-0.97) and neither supports warm, so the render is set exactly neutral and the residual is left to the light. THE BALANCE MUST NOT BE USED FOR HUE ON THIS FRAME AND THIS IS THE SECOND FINDING: balanced with the recorded gains the same cylinder's saturation RISES with value (0.101 -> 0.187) and R-B runs -0.016 -> -0.120, i.e. the balance injects a multiplicative blue; the terrace paving, a different material on a horizontal plane, balances to H 222.6 S 0.215 — a lavender pavement, and above the 0.02-0.16 band materials.py says every large station surface occupies. The cause is in the scene: khaki farmland overhead fills 35% of this frame, so grey-world reads the subject's real warmth as a cast. Roughness 0.70: fine architectural render, matte, with the soft even falloff and no specular streak the frame shows across 20 facets of cylinder; below the 0.75 the library gives endcap_course_wall and above the 0.62 it gives drum_structure, because this is stucco, not plate. Metallic 0.0 and specular 0.42 follow from it being mineral render. Texture null and that is a gap, not a choice: none of the eight sheets in materials.TEX_SIZE is an architectural render — hull_plate and wall_plate are plate courses with rebated seams and the frame shows a seamless surface. Overturned by: any frame of this building under a cool or neutral key."))
+
+        # garden.py built this drum specifically because without it the render
+        # showed the magenta background through the top of the building — the
+        # module says so, and its self-test asserts the group exists. That
+        # makes it the one surface here whose job is to be DARK; give it the
+        # render's albedo and the fins stop reading as fins. It is also the
+        # surface most likely to be got wrong in both directions at once, so
+        # the value is derived from a stated precedent rather than chosen, and
+        # the frame reading it is half of is published so the next session can
+        # move it with evidence.
+    a(Material(
+        "garden_loggia_recess", "Colonnade Loggia — the recessed drum standing behind the fins",
+        albedo=(0.179, 0.179, 0.179), roughness=0.78, metallic=0,
+        specular=0.38,
+        binds=("garden_colonnade_core",), scenes=("drum",),
+        source="reference/09-garden-core-and-transit/garden.png (authority 1), raw, with the same in-frame ladder as garden_civic_render (lawn lum 0.606 -> materials.ground_parkland lum 0.396, K = 0.6534). A 2-cluster k-means across the colonnade band at (0.455,0.288)-(0.478,0.345) separates the two populations cleanly: 54.6% at rgb(0.161,0.095,0.062) lum 0.106 -> 0.070, and 45.4% at rgb(0.583,0.539,0.548) lum 0.549 -> 0.359 — the bay interior and the fin in front of it, and the fin reproduces garden_civic_render's 0.358 from an independent region. A second probe across a pure bay at (0.459,0.290)-(0.470,0.340) gives 69.3% at rgb(0.157,0.092,0.059), lum 0.103 -> 0.067. So the frame reads the loggia at 0.19x the fin standing in front of it.",
+        extrapolated="The DEGREE of shadow baked in, and the neutrality. The frame's 0.19x has the full self-shadow of a 3.4 m deep loggia in it; the engine will supply that occlusion again, so baking all of it double-counts and the bays go black. materials.py has already made this call once for exactly this class of surface — endcap_course_wall, 'the riser behind each rib... in shadow behind every rib step', sits at 0.255 against endcap_plate's 0.430, i.e. 0.59x. Half of that precedent, 0.50x of garden_civic_render's 0.358, gives 0.179: dark enough that the colonnade reads as a colonnade rather than as a solid drum with stripes painted on it, and bright enough that engine shadowing has somewhere to go. Neutral for the same reason garden_civic_render is: the raw bay reads S 0.62, but the frame's built region has meanS 0.518 at V 0.10-0.20 falling to 0.082 at V 0.60-0.70, so the warmth on the darkest surfaces is the additive key, not paint — a deep recess lit only by bounce off warm ground is a LIGHTING statement and belongs to layer 4. Roughness 0.78 rather than the render's 0.70 because this surface is never cleaned. Overturned by: an engine frame of the loggia showing the bays reading either as solid or as holes."))
+
+        # This is the Garden's contribution to the standing blocking finding —
+        # 'NO EMISSIVE WINDOWS ANYWHERE... it reads as a derelict, not a city'
+        # — carried inside the drum, where the same failure would make the
+        # civic landmark read as an abandoned building at the centre of a
+        # farmed cylinder. The interesting measurement is the one that says how
+        # BRIGHT it is not: the panes do not clip, and they are two thirds of
+        # the lit paving, so the honest fix is a dim source and not a lightbox.
+    a(Material(
+        "garden_glass", "Ground-Floor Arcade Glazing — the warmly lit glass ring behind the mullions",
+        albedo=(0.060, 0.056, 0.052), roughness=0.1, metallic=0,
+        specular=0.5,
+        emission=(1.000, 0.836, 0.640), emission_energy=1.2,
+        binds=("garden_glazing",), scenes=("drum",),
+        source="reference/09-garden-core-and-transit/garden.png (authority 1), measured RAW because a source is radiance and balancing it is meaningless. reference/00-INDEX.md calls this 'a deeply recessed arcade of tall narrow bronze-framed windows, grouped in threes and fours by mullions, warmly lit from within' (authority 1). Two pane-core regions clear of the piers, (0.6625,0.6370)-(0.6790,0.6680) and (0.7200,0.6370)-(0.7400,0.6680): medians 0.361/0.300/0.282 and 0.365/0.280/0.253; p90 0.491/0.420/0.409 and 0.535/0.480/0.463; p99 0.594/0.504/0.482 and 0.598/0.523/0.553. NOTHING CLIPS — the arcade's raw maximum is 0.628 — so by the library's own test (see zoc_neon_face, where the red channel clips and the surface is therefore declared a source) this is a DIM source, not a bright one. p90 normalised to peak is (1.000, 0.854, 0.832). Level against the same frame's terrace paving (raw lum 0.658): pane p90 lum 0.434, i.e. the windows are 0.66x the lit ground, so they must not out-shine the scene.",
+        extrapolated="The emission colour, the albedo and the energy. COLOUR: taken from materials.WINDOW_TEMPS[0], the library's already-derived warm-practical window register (1.000, 0.836, 0.640), rather than from this frame's normalised p90 (1.000, 0.854, 0.832). The frame corroborates R and G to 0.018 and reads B high, which is what a 4-px pane does when the pale render pier beside it (measured 1.000/0.876/0.921 on the same row) bleeds into it; and taking the library's register keeps the Garden's windows the same temperature as the hull's, which is CLAUDE.md hard rule 4 applied to light. ALBEDO near black because what is modelled is a glass ring 0.25 m behind the mullions that IS a light; a pale substrate under an emission double-counts it — the argument materials.py already makes for zoc_screen (0.055,0.060,0.075). ROUGHNESS 0.10 is glass, which is one of the three things materials.py permits below 0.15. ENERGY 1.2, and it is deliberately the lowest emissive energy in the library: the panes measure 0.66x the lit paving, so this is a lit interior seen through glass in a daylit drum, not a sign. It sits far below zoc_screen's 2.6 and signage_panel's 3.0 because those are read at 1.5 m in a dim concourse and this is read at ~40 m in a lit one; the value is set so the glass reads as a source when the building's own shadow falls across it, which is what the frame shows, and does not blow out at drum noon. Overturned by: an engine frame at the drum's day exposure where the arcade either disappears or blooms."))
+
+        # 0.22 m square posts in a ring of fourteen, and they are the thing
+        # that makes a glazed ground floor read as architecture rather than as
+        # a lit band. The value matters less than the discipline: this is the
+        # darkest surface in the set and therefore the one where the frame's
+        # warm additive key does the most damage, so the bracket is stated
+        # rather than a single warm number presented as measured.
+    a(Material(
+        "garden_bronze_joinery", "Arcade Joinery — the dark bronze mullions and window surrounds",
+        albedo=(0.140, 0.098, 0.082), roughness=0.45, metallic=0.25,
+        specular=0.45,
+        binds=("garden_mullion",), scenes=("drum",),
+        source="reference/09-garden-core-and-transit/garden.png (authority 1), raw, in-frame ladder K = 0.6534. reference/00-INDEX.md records the material directly at authority 1: 'a deeply recessed arcade of tall narrow bronze-framed windows' and 'dark bronze joinery'. The dark reveal and head of the right-wing arcade, (0.6570,0.6230)-(0.7050,0.6370), k-means: 78.0% at rgb(0.240,0.137,0.091) H 18.3 S 0.620 lum 0.155 -> albedo 0.102; the remaining 22.0% at rgb(0.501,0.429,0.427) is the pale pier bleeding in. The pale render pier between window groups, measured separately at (0.7020,0.6250)-(0.7110,0.6700), reads 0.478/0.419/0.440 — 4.6x brighter and 0.5 in saturation apart, which is what makes the dark member a different material rather than the render in shadow.",
+        extrapolated="The saturation and the metallic. Saturation is pulled back from the frame's measured 0.62 to 0.41. The reason is the additive test in garden_civic_render's entry, applied where it bites hardest: this frame's built region has mean saturation 0.518 at V 0.10-0.20 falling to 0.082 at V 0.60-0.70, and the fitted additive lift on the tower is +0.117 R / +0.046 G / +0.000 B — which on a reading of 0.240 R is half the signal. Subtracting the lift outright gives (0.123, 0.091, 0.091), a NEUTRAL dark member; taking the raw gives (1.000, 0.571, 0.379). Those are the two defensible endpoints and the value sits between them at chromaticity (1.000, 0.700, 0.586), scaled to the ladder's 0.102. Both endpoints are published so the next session can pick differently with one edit. METALLIC 0.25 rather than a real bronze's ~0.9: the frame shows no specular glint on any of the fourteen members at any orientation, so what is modelled is patinated or lacquered bronze whose visible surface is a dielectric coat, treated the same way materials.zoc_neon_back treats painted sheet steel at metallic 0.10. Roughness 0.45 is joinery: harder than render, softer than polished metal. Overturned by: a frame with a specular highlight of known colour on a mullion, which would give both the metallic and the true hue at once."))
+
+        # Saturation 0.594 is far over the structural ceiling and it is
+        # measured, twice, in two regions of an authority-1 frame, with the
+        # index naming the material in words. This is the one place in the
+        # Garden where colour is allowed to be colour, and it is worth being
+        # exact about: the register agrees with a value the library already
+        # holds, the LEVEL does not, and pretending the two are one material
+        # would quietly brighten the stair 3.5x on an argument nobody wrote
+        # down.
+    a(Material(
+        "garden_terracotta", "Terracotta Stair — the external flight, the one saturated accent in the Garden",
+        albedo=(0.180, 0.089, 0.073), roughness=0.8, metallic=0,
+        specular=0.35,
+        binds=("garden_stair_accent",), scenes=("drum",),
+        source="reference/09-garden-core-and-transit/garden.png (authority 1), in-frame ladder K = 0.6534. reference/00-INDEX.md, authority 1: 'red-orange painted external stairs (the accent again, outdoors)' and 'a tall terracotta slab pylon stands proud at the right — the red-orange accent again, here as primary architecture rather than trim'. Two separate regions, at 10x magnification the stepped profile of the flight is unambiguous: (0.8880,0.5450)-(0.9280,0.5900) raw median 0.310/0.129/0.086 H 11.6 S 0.722 lum 0.165 -> 0.108, k-means 58% at (0.306,0.129,0.083) and 42% at (0.312,0.134,0.093) — one population, so the reading is the object and not an edge; and (0.8600,0.6100)-(0.9400,0.6500) raw median 0.292/0.141/0.114 H 9.2 S 0.611 lum 0.171 -> 0.112. Balanced with the recorded gains the same region reads 0.267/0.133/0.109, normalised (1.000, 0.498, 0.408) H 8.9 S 0.591 — the chromaticity used here. INDEPENDENT REGISTER CORROBORATION: materials.accent_warning is 'red-orange hazard paint' at H 12-20 S ~0.68, mean rgb (0.667, 0.306, 0.215), normalised (1.000, 0.459, 0.321) — this frame's (1.000, 0.498, 0.408) reproduces that register in a DRUM scene that accent_warning never used.",
+        extrapolated="The LEVEL, and the decision not to reuse accent_warning's. The two agree on the register to within 0.04 in normalised chromaticity and disagree on level by 3.5x: accent_warning sits at luminance 0.395, this at 0.108. The disagreement is recorded rather than reconciled, and the reading taken here is the frame's, for two reasons. First, the anchor chain: accent_warning's level rides on materials.ALBEDO_ANCHOR through interior frames under interior key, and this one rides on the lawn in its own frame through ground_parkland — and that chain independently reproduces the anchor (see garden_flagstone), so it is not the chain that is wrong. Second, they are not the same material: accent_warning is hazard PAINT on plate, and reference/00-INDEX.md names this one terracotta, i.e. unglazed fired clay, which is genuinely a dark oxide red. Roughness 0.80 follows from that — fired clay is the roughest built surface in this scene, rougher than the 0.70 render. Overturned by: a frame showing the stair and a hazard-painted surface in one shot, which would settle whether the station has one red-orange or two."))
+
+        # The paving is what the two figures walk on and what sets the scale of
+        # the whole shot, and it turned out to be the most valuable measurement
+        # in the set for a reason that has nothing to do with the Garden: it
+        # lands on ALBEDO_ANCHOR from an entirely separate direction. That is
+        # the check ALBEDO_ANCHOR_CORROBORATION says it cannot do for itself —
+        # 'every reading uses the same balance method, so a systematic error in
+        # the method would move all of them together' — and this one does not
+        # use the balance at all.
+    a(Material(
+        "garden_flagstone", "Terrace Paving — large pale flagstones, the brightest surface in the Garden",
+        albedo=(0.430, 0.430, 0.430), roughness=0.55, metallic=0,
+        specular=0.45, texture="deck_plate", uv_scale=1.0 / 2.5,
+        binds=("garden_terrace",), scenes=("drum",),
+        source="reference/09-garden-core-and-transit/garden.png (authority 1), raw, in-frame ladder K = 0.6534 (lawn raw 0.522/0.655/0.373 lum 0.606 -> materials.ground_parkland lum 0.396). reference/00-INDEX.md, authority 1: 'large pale flagstone paving' and 'pale concrete paving'. Region (0.545,0.845)-(0.790,0.925), clear of the two walking figures: raw median 0.682/0.651/0.663 lum 0.658 -> albedo 0.430; 90.8% of the region falls in one k-means cluster, so it is a single surface. Raw saturation ramp across it: V 0.50-0.60 S 0.107 R-B +0.056; 0.60-0.65 S 0.071 +0.038; 0.65-0.70 S 0.050 +0.022; 0.70-0.75 S 0.048 +0.011; 0.75-0.85 S 0.057 -0.021 — saturation falls and R-B crosses zero at the brightest, so the most directly lit paving is neutral and the warmth below it is the same additive key the tower shows. THE RESULT WORTH CARRYING: 0.430 reproduces materials.ALBEDO_ANCHOR_CORROBORATION's seven-frame mean of 0.435 to 1%, and materials.ALBEDO_ANCHOR itself (0.46) to 6.5%, through a chain that shares nothing with either — a drum scene, a ground_parkland anchor derived from reference/03-sector-blue/Babylon_5_2-22_29a.jpg, and no use of ALBEDO_ANCHOR at any step. That is an eighth corroboration of the one number the whole library hangs on, and the first from outside the interior.",
+        extrapolated="Neutrality, roughness, and the texture stand-in. Neutrality is read off the ramp above rather than asserted. Roughness 0.55: laid stone, walked on, so smoother than the 0.70 render it abuts and rougher than anything polished — the same deck-smoother-than-wall logic materials.py enforces for interiors, applied here where the frame supports it (the paving is 1.20x the render's luminance, and the orientation control in garden_civic_render's entry shows only 3% of that is the horizontal/vertical difference, so it is a genuine albedo gap, not a lighting one). TEXTURE is a declared stand-in and the reason is worth recording: none of the eight sheets in materials.TEX_SIZE is a flagstone, so deck_plate — a seamed plate pattern — is bound at uv_scale 1/2.5 because 2.5 m is garden.TERRACE_SLAB_M, the module's OWN paving module. That keeps the joint spacing tied to the geometry rather than to a number picked to look right, and if garden.py ever changes its paving module the two must be changed together. Overturned by: a stucco/flagstone sheet being added to materials.TEX_SIZE, at which point this rebinds."))
+
+        # 12 triangles, and it is the line that separates the water from the
+        # terrace in the frame's strongest horizontal. If it took the paving's
+        # value the pool would lose its edge and read as a hole in the
+        # flagstones.
+    a(Material(
+        "garden_coping_stone", "Pool Coping — the dark stone rim of the reflecting pool",
+        albedo=(0.191, 0.191, 0.191), roughness=0.6, metallic=0,
+        specular=0.4,
+        binds=("garden_pool_coping",), scenes=("drum",),
+        source="reference/09-garden-core-and-transit/garden.png (authority 1), raw, in-frame ladder K = 0.6534. reference/00-INDEX.md, authority 1: 'rectangular reflecting pool with a dark stone coping'. Region (0.042,0.754)-(0.250,0.787), the coping band running the full near edge of the pool: raw median 0.322/0.282/0.298 lum 0.292 -> albedo 0.191. Against the paving it abuts in the same frame (lum 0.658) that is 0.44x, which is what makes it read as a dark stone edge rather than as the terrace continuing.",
+        extrapolated="Neutrality and the finish. Raw saturation is 0.12 and the frame's additive key accounts for most of it by the test in garden_civic_render's entry, so the coping is set neutral; at this saturation the decision is nearly cosmetic and is recorded only for consistency. Roughness 0.60: dressed stone with a sawn face, rougher than the walked flagstone (0.55) because nobody walks on a coping and it never polishes, and well short of anything wet. Overturned by: a frame of the coping under a cool key."))
+
+        # The alternative was a second water value, which would have meant the
+        # drum's lake and the Garden's pool disagreeing about what water is in
+        # a scene where both can be in frame. The useful work here was
+        # verification, not measurement: ground_water's stored reading was
+        # recomputed from the frame before being reused, and it reproduces.
+    a(Material(
+        "garden_pool_water", "Reflecting Pool — still water, the surface that shows the drum overhead",
+        albedo=(0.055, 0.115, 0.145), roughness=0.06, metallic=0,
+        specular=0.85,
+        binds=("garden_water",), scenes=("drum",),
+        source="NOT A NEW MEASUREMENT: reproduced exactly from materials.ground_water, whose own source IS this pool in this frame — 'godot/scenes/drum.tscn; garden.png water balances H 195 S 0.476'. That reading was recomputed here before reuse: reference/09-garden-core-and-transit/garden.png (authority 1) at (0.042,0.813)-(0.250,0.892), balanced with the gains already in materials.GREY_WORLD_GAINS (0.884/0.994/1.159), gives median 0.184/0.292/0.341 H 198.5 S 0.461 V 0.341, with all three k-means clusters inside H 188-201 — reproducing the recorded H 195 S 0.476 on a region that entry did not specify. Raw the same region reads 0.208/0.294/0.294, lum 0.276, which through the in-frame ladder (K = 0.6534) is 0.180 — against ground_water's own luminance of 0.104, i.e. the frame reads the lit pool 1.7x its stored albedo, which is the specular sky term this material's roughness 0.06 exists to produce and not a reason to raise the diffuse value.",
+        extrapolated="Nothing new. The one judgement is that the Garden's rectangular reflecting pool and the drum's lake are the same water and take the same material — which is not much of a stretch, since ground_water was measured off this pool. Roughness 0.06 is below the library's 0.15 floor and is one of the three things allowed there; materials.py's own note says why it must stay there: 'in a drum the water reflects the ground overhead, which is the single most legible statement the geometry can make about where you are standing', and a 30 x 12 m rectangle four metres from the camera is exactly where that statement gets made. Overturned by: nothing this frame can supply."))
+
+        # The fragment matters as much as the value. 'garden_water' is a
+        # SUBSTRING of 'garden_waterfall', so resolution by longest match only
+        # sends the fall here as long as the full fragment stays bound; drop it
+        # and the waterfall silently becomes still pool water at roughness 0.06
+        # and turns into a vertical mirror. Both fragments must survive
+        # together.
+    a(Material(
+        "garden_falling_water", "Waterfall — the aerated column down the planted bank",
+        albedo=(0.205, 0.228, 0.236), roughness=0.32, metallic=0,
+        specular=0.6,
+        binds=("garden_waterfall",), scenes=("drum",),
+        source="reference/09-garden-core-and-transit/garden.png (authority 1), raw, in-frame ladder K = 0.6534. reference/00-INDEX.md, authority 1: 'a tall thin waterfall on a planted bank'. Region (0.104,0.500)-(0.140,0.700), the full drop: raw median 0.314/0.349/0.361 lum 0.342 -> albedo 0.224; balanced 0.277/0.347/0.418 H 210.4 S 0.337; k-means gives the fall's two bright populations at (0.356,0.447,0.549) H 211.7 and (0.268,0.333,0.396) H 209.5, with the third cluster (0.162,0.183,0.181) the dark bank showing through. At 3x magnification the column is plainly a pale blue-white foaming sheet, not a smooth one.",
+        extrapolated="The chromaticity is taken RAW and not corrected, and that is the choice worth flagging. This frame carries an additive WARM key (see garden_civic_render), so a surface that still reads COOL raw is reading cool despite the light, and correcting it further would push it to a saturation no water has. So the raw normalised (0.870, 0.967, 1.000) is used as measured, scaled to the ladder's 0.224. Roughness 0.32: this is the same water as garden_pool_water and NOT the same surface — falling aerated water is foam, which scatters, so it must sit well above the 0.15 floor while the still pool sits below it. That the fall measures 2.1x the pool's luminance (0.224 against ground_water's 0.104) is the frame agreeing: foam is brighter than a mirror pointed at a dark ceiling. Specular 0.60 between the pool's 0.85 and a mineral surface. Overturned by: a frame of the fall against a bright background, which would separate the water's own scattering from what is behind it."))
+
+        # This is the material the whole Garden ladder stands on, so the honest
+        # thing is to say plainly that its level cannot corroborate itself.
+        # What it can do — and did — is corroborate its own HUE from a second
+        # frame, and then hand the level onward to the paving, which lands on
+        # ALBEDO_ANCHOR from outside. Adding a second, differently-valued green
+        # here would have broken the chain and put a visible seam where the
+        # terrace meets the parkland band.
+    a(Material(
+        "garden_mown_grass", "Mown Lawn — the striped grass strips on the terrace",
+        albedo=(0.345, 0.425, 0.260), roughness=0.95, metallic=0,
+        specular=0.35,
+        binds=("garden_lawn",), scenes=("drum",),
+        source="NOT A NEW MEASUREMENT: reproduced exactly from materials.ground_parkland ('Parkland — designed park at ground level', sampled from reference/03-sector-blue/Babylon_5_2-22_29a.jpg). AND IT IS THE FRAME'S OWN ANCHOR, so the agreement in LEVEL is by construction and is not evidence: this material's value is what defines K = 0.6534 for every other Garden measurement. What IS independent is the chromaticity. reference/09-garden-core-and-transit/garden.png (authority 1) at (0.820,0.790)-(0.975,0.860), raw median 0.522/0.655/0.373, normalised 0.336/0.421/0.240; materials.ground_parkland normalised is 0.334/0.412/0.252 — two different frames, two different sectors of the reference set, agreeing to within 0.012 on all three channels. Balanced, the same region gives H 112.0 S 0.337 V 0.651, reproducing the figure materials.PROVENANCE already records for this lawn (H 114 S 0.330 V 0.651) and confirming the balance is being applied the way that block applied it.",
+        extrapolated="That the Garden's mown terrace lawn and the drum's parkland band are one material. reference/00-INDEX.md reads the Garden's grass as 'striped mown lawn' and the parkland band as 'a designed park, not rough grass' — the same maintained turf under the same axial light, at 40 m and at 400 m. Roughness 0.95 and specular 0.35 are ground_parkland's and are carried unchanged. Overturned by: a frame showing mown stripe and open parkland in one shot at a value ratio away from 1.0."))
+
+        # Two hundred and forty triangles of tree per settlement band, so the
+        # material is the whole read. The library already contains a measured
+        # value for dense drum vegetation and it is 7% from what a second frame
+        # gives for a canopy specifically — inventing a third green when two
+        # independent readings already agree would be the kind of unmarked
+        # invention CLAUDE.md's first hard rule is about.
+    a(Material(
+        "garden_foliage", "Tree Canopy — dense broadleaf massing",
+        albedo=(0.225, 0.275, 0.170), roughness=0.98, metallic=0,
+        specular=0.35,
+        binds=("garden_canopy",), scenes=("drum",),
+        source="NOT A NEW MEASUREMENT: reproduced exactly from materials.ground_hedge ('Hedge — field boundary, darkest green in frame', from Babylon_5_2-22_34b.jpg). CORROBORATED in a frame it did not use: reference/03-sector-blue/Babylon_5_2-22_29a.jpg (authority 1, and reference/00-INDEX.md places this frame in the Garden, not Blue sector). Its grey-world gains, computed here, are (0.884, 1.043, 1.099). The rounded broadleaf canopy at (0.250,0.190)-(0.400,0.260) balances to median 0.212/0.253/0.181 H 94.7 S 0.286, luminance 0.239, against ground_hedge's luminance of 0.257 — 7% apart, on a surface ground_hedge was not measured from. In reference/09-garden-core-and-transit/garden.png the deciduous masses behind and left of the building sit at albedo 0.12-0.18 through the in-frame ladder, i.e. this value seen in shadow.",
+        extrapolated="That a tree canopy and a hedgerow are the same material. They are the same thing at different scales — dense leaf mass presenting a rough, self-shadowing surface — and garden.tree() builds the canopy as a 6-segment drum, which is a foliage BILLBOARD's cousin at 0.06 tri/m2 and can carry no leaf detail of its own; all the read has to come from the material. Roughness 0.98 and specular 0.35 are ground_hedge's, unchanged. NOTE ON 29a AS A COLOUR SOURCE: it is used here for corroboration only and its balanced structural surfaces come back at S 0.19-0.32, which is the same over-correction garden.png shows — the frame is dominated by dark foliage, so grey-world reads the subject as a cast. Its foliage reading is trusted precisely because foliage is what dominates it. Overturned by: a near-field tree in an unambiguously neutral frame."))
+
+        # garden.tree() gives a trunk 0.44 m square and 3 m tall and there is
+        # genuinely no reference for it, so the choice is a marked
+        # extrapolation or a hole, and CLAUDE.md is explicit that the answer is
+        # never a hole. What makes it reviewable is that it says exactly which
+        # number is sourced (the bank's 0.132), which constraint fixes the rest
+        # (darker than the canopy over it), and that one photograph would
+        # overturn the whole entry.
+    a(Material(
+        "garden_bark", "Tree Trunk — bark, dark grey-brown",
+        albedo=(0.148, 0.135, 0.121), roughness=0.92, metallic=0,
+        specular=0.3,
+        binds=("garden_trunk",), scenes=("drum",),
+        source="NO FRAME MEASURES THIS, and saying so is the point. In reference/09-garden-core-and-transit/garden.png no trunk exceeds two pixels and every one of them stands against dark canopy, so any reading is a mixture; in reference/03-sector-blue/Babylon_5_2-22_29a.jpg (authority 1) trunks are visible — reference/00-INDEX.md records 'palm trees lining streets and open ground, plus dark rounded broadleaf trees' — but at that frame's exposure they are inseparable from the shadow behind them. The only sourced quantity is the level it is tied to: reference/09-garden-core-and-transit/garden.png's planted bank at (0.010,0.590)-(0.075,0.700), raw median 0.235/0.200/0.129, luminance 0.202, which through the in-frame ladder (lawn lum 0.606 -> materials.ground_parkland lum 0.396, K = 0.6534) is 0.132.",
+        extrapolated="Everything except the level it is pinned to. Value 0.135 sits at the planted bank's 0.132, on the argument that bark and shaded planted earth are the same class of dark organic surface and no frame in the set separates them; it must stay BELOW garden_foliage's 0.257 so a trunk never reads brighter than the canopy above it, which is the one relationship a viewer would notice. Saturation is held to 0.18 — under the library's 0.20 structural ceiling — because there is no frame to buy anything higher with, and because the warm reading the bank gives is the frame's additive key by the test in garden_civic_render's entry. Roughness 0.92: bark is the second-roughest surface in this set after foliage. Overturned by: any near-field frame of a tree in the drum, which would settle it in one measurement — this is the weakest entry in the family and it is 88 triangles."))
+
+        # A 14 x 12 m box that reads as a mass in silhouette behind the
+        # waterfall, so what it owes is a level dark enough to give the fall
+        # something to be pale against, and a hue that does not turn into an
+        # ochre hillside — which is exactly the mistake NEGATIVE_RESULTS
+        # records for the corridor dado, made outdoors.
+    a(Material(
+        "garden_bank_planting", "Planted Bank — the dark embankment the waterfall runs down",
+        albedo=(0.138, 0.140, 0.118), roughness=0.95, metallic=0,
+        specular=0.32,
+        binds=("garden_bank",), scenes=("drum",),
+        source="reference/09-garden-core-and-transit/garden.png (authority 1), raw, in-frame ladder K = 0.6534. reference/00-INDEX.md, authority 1: 'a tall thin waterfall on a planted bank'. Region (0.010,0.590)-(0.075,0.700), the bank clear of the fall: raw median 0.235/0.200/0.129 luminance 0.202 -> albedo 0.132; k-means over it gives 43.3% at (0.242,0.200,0.154) lum 0.205, 30.9% at (0.171,0.141,0.078) lum 0.143 and 25.8% at (0.273,0.286,0.146) lum 0.273 — soil, shadow and planting, whose weighted level is what the single value takes. Against materials.ground_hedge (luminance 0.257) the bank reads 0.52x, i.e. planting seen in shadow with earth showing through it.",
+        extrapolated="The chromaticity, which is pulled from the raw reading's saturation 0.45 down to 0.157. Raw, this bank is strongly warm (H 40); corrected by the additive lift fitted on the tower (+0.117 R, +0.046 G, +0.000 B) it goes cool-olive; the value sits between, at a dark olive-neutral, and both endpoints are published. The reason not to keep the raw warmth is materials.NEGATIVE_RESULTS' rule applied where it bites hardest — this frame's built region runs mean saturation 0.518 at V 0.10-0.20 against 0.082 at V 0.60-0.70, so the darkest surfaces are the most cast-contaminated, and 0.202 is dark. Roughness 0.95 as planting. Overturned by: a frame of this bank from the other side of the pool, where it is lit rather than shadowed."))
+
+        # Four banners of 12 triangles each and they are the brightest thing in
+        # the lower half of the frame, which is why they are worth being exact
+        # about: get them wrong downward and the flagpole group disappears; get
+        # them wrong upward and four small white rectangles become the
+        # composition's focal point instead of the building.
+    a(Material(
+        "garden_pennant", "Banner — white cloth on the flagpoles",
+        albedo=(0.478, 0.478, 0.478), roughness=0.85, metallic=0,
+        specular=0.3,
+        binds=("garden_banner",), scenes=("drum",),
+        source="reference/09-garden-core-and-transit/garden.png (authority 1), raw, in-frame ladder K = 0.6534. reference/00-INDEX.md, authority 1: 'flagpoles with white banners' and 'at least four slender white flagpoles'. At 6x magnification the banners are unambiguous hanging white pennants. Region (0.8115,0.4200)-(0.8198,0.5200), the leftmost banner's flat face: raw median 0.669/0.631/0.651 luminance 0.641 -> 0.419; p90 0.747/0.722/0.741 luminance 0.728 -> 0.476; k-means 69.6% at (0.697,0.670,0.690) and 30.4% at (0.489,0.443,0.449) — the lit face and its shaded folds. Chromaticity of the lit face is 1.000/0.961/0.990, i.e. neutral to within 4%, which for a warm-cast frame is a white surface.",
+        extrapolated="Taking p90 rather than the median, and the neutrality. p90 because the median includes the folds — the 30% shaded cluster — and a hanging cloth's albedo is the flat lit face, not the average of face and fold; the two differ by 1.4x and the folds are geometry the engine will produce for itself. Neutral because 1.000/0.961/0.990 is inside the frame's noise and because it is the only surface in the Garden the index calls white outright. At 0.478 it is the brightest material in the family, just above the paving's 0.430, which is what the frame shows. Roughness 0.85 as woven cloth, specular 0.30. Overturned by: a frame showing the banner carrying an emblem, which the reference does not resolve."))
+
+        # Four 12-triangle boxes 9 m tall. The temptation was to publish the
+        # probe's 0.375/0.262/0.256 as measured, and it would have passed every
+        # gate in the project while being half a reading of the object behind
+        # it. Saying which number is real (the banner's 0.476), what
+        # relationship the frame supports (pole slightly below cloth), and what
+        # would settle it is worth more than a citation stapled to a
+        # contaminated pixel.
+    a(Material(
+        "garden_mast", "Flagpole — slender painted metal mast",
+        albedo=(0.452, 0.452, 0.452), roughness=0.38, metallic=0.15,
+        specular=0.5,
+        binds=("garden_flagpole",), scenes=("drum",),
+        source="reference/09-garden-core-and-transit/garden.png (authority 1). THE POLE CANNOT BE MEASURED AND THIS ENTRY SAYS SO. garden.FLAGPOLE_R_M is 0.11 m, which at this frame's scale is one to two pixels; a probe at (0.8770,0.5450)-(0.8820,0.5900) returns 0.375/0.262/0.256 H 8.1 S 0.35, and its two k-means clusters are (0.375,0.262,0.256) and (0.300,0.177,0.167) — both warm, because the pole at that station is standing in front of the terracotta stair and the reading is at least half background. What the frame DOES establish, at 6x magnification, is the pole's relationship to its own banner: a pale grey-silver shaft with a dark finial cap, reading marginally darker than the cloth beside it. reference/00-INDEX.md, authority 1: 'at least four slender white flagpoles'.",
+        extrapolated="The whole value, and it is pinned to one measured neighbour rather than chosen. garden_pennant's lit face measures 0.476 in this frame; the index calls both the poles and the banners white; the magnified frame reads the pole a little below the cloth; so the mast sits just under it at 0.452, which is also materials.ALBEDO_ANCHOR's neighbourhood and therefore not a value that will look out of family anywhere. Neutral rather than the warm probe reading, because the probe is a mixture with the terracotta behind it — a warm number taken from that region would be the stair's colour, which is the same trap materials.zoc_neon_back records for a sign board carrying its own tube's spill. Metallic 0.15 and roughness 0.38: painted metal, so mostly dielectric, with enough sheen for a 9 m mast to catch a highlight and read as round. Overturned by: any higher-resolution frame of the flagpoles, or one where they stand against sky rather than against the stair."))
+
+        # Twelve of these per settlement band and they are the town — the
+        # difference between the Garden being a building in a field and the
+        # Garden being a district. Neither available frame can be
+        # colour-matched, so what is published is the bracket both give, the
+        # reason the value sits where it does inside it, and the fact that
+        # nothing here is a hue measurement.
+    a(Material(
+        "garden_town_block", "Town Block — the low flat-roofed buildings of the drum settlement",
+        albedo=(0.335, 0.335, 0.335), roughness=0.72, metallic=0,
+        specular=0.42,
+        binds=("garden_block",), scenes=("drum",),
+        source="TWO FRAMES, BRACKETING, and neither can be colour-matched. reference/09-garden-core-and-transit/The Gardens.webp (authority 1) is the frame that shows this object — reference/00-INDEX.md: 'low-rise flat-roofed blocky buildings, two to four storeys, in a dense orthogonal street grid. Pale warm stone' — and the same index says outright 'the whole frame carries a heavy pink-magenta cast (tape colour shift)... Do not colour-match this file'. Its gains, computed here, are (0.854, 1.056, 1.134). So it is used for a RATIO only: block wall raw luminance 0.341-0.361 against the distant mown hillside in the same frame at 0.516-0.523, i.e. 0.66-0.70x; anchoring that hillside to materials.ground_parkland (luminance 0.396) puts the wall at 0.269. reference/03-sector-blue/Babylon_5_2-22_29a.jpg (authority 1, and reference/00-INDEX.md places this frame in the Garden) gives the second bracket: its glazed-band building's wall at (0.560,0.060)-(0.640,0.150) balances to luminance 0.353, and its broadleaf canopy at (0.250,0.190)-(0.400,0.260) to 0.239 against materials.ground_hedge's 0.257, so K29 = 1.075 and the wall is 0.380. The bracket is 0.269-0.380.",
+        extrapolated="The value inside the bracket, and the neutrality. 0.335 is set at 0.94x garden_civic_render's 0.358 rather than at the bracket's midpoint, and the reason is a statement about what the object is: reference/00-INDEX.md reads the town as 'pale warm stone' and reference/14-characters-and-uniforms/talia-winters in gorgeous office.webp — whose reading materials.py already quotes in drum_ground.py's header — as 'low wide grey settlement blocks, terraced rather than towered'. Same construction as the civic landmark, plainer and dirtier; a hair below it, and inside both frames' brackets. Neutral because both frames' balanced structural surfaces come back at H 220-265 S 0.19-0.32, which is the same grey-world over-correction garden.png shows and the index warns about for The Gardens.webp by name. Roughness 0.72, just above the civic render's 0.70, on the same argument: plainer render, less maintained. Overturned by: a clean, neutral-cast frame of the drum settlement at ground level, which the reference set does not contain."))
+
+        # This is the standing blocking finding — 'a station housing 250,000
+        # renders completely unlit from within' — as it appears INSIDE the
+        # hull. Twelve blocks a band with up to three bands each is the only
+        # artificial light in the drum's town, and if it ships unlit the
+        # settlement reads as ruins in a farmed cylinder. The frame is unusable
+        # for colour and perfectly good for the one thing that sets the energy:
+        # whether the source clips. It does.
+    a(Material(
+        "garden_town_window", "Town Window Band — the lit horizontal banding on the settlement blocks",
+        albedo=(0.070, 0.062, 0.052), roughness=0.3, metallic=0,
+        specular=0.4,
+        emission=(1.000, 0.836, 0.640), emission_energy=2.6,
+        binds=("garden_window_band",), scenes=("drum",),
+        source="reference/09-garden-core-and-transit/The Gardens.webp (authority 1), measured RAW because a source is radiance. reference/00-INDEX.md, authority 1: 'continuous horizontal window banding — rows of small bright rectangles in dark recessed bands, giving strong horizontal striping. One large building at right shows exactly three stacked glazed bands over a solid battered base', and separately 'low blockish buildings with lit window bands'. At 3x magnification the two bands on the right-hand block resolve into rows of bright rectangles in dark recesses. The lower band, measured across the block: raw p99 reaches (1.000, 0.980, 0.902) — THE RED CHANNEL CLIPS, which is the library's own test for a source (see zoc_neon_face, where the same test is what separates a source from a lit surface). Raw p90 (0.710,0.620,0.553), normalised (1.000, 0.874, 0.780); brightest k-means cluster (0.880,0.821,0.747). The upper band gives raw p90 (0.514,0.388,0.298) and p99 (0.773,0.659,0.570).",
+        extrapolated="The emission colour and the energy. COLOUR is taken from materials.WINDOW_TEMPS[0] (1.000, 0.836, 0.640), the library's warm-practical window register, and NOT from this frame, because the frame cannot supply it: raw it normalises to (1.000, 0.874, 0.780), and balanced with this frame's gains (0.854, 1.056, 1.134) it normalises to (0.925, 1.000, 0.958) — a GREEN window, which is impossible. reference/00-INDEX.md declares this file uncolour-matchable for exactly this reason. The two readings bracket the library's register and reusing it keeps the drum's town, the civic arcade (garden_glass) and the hull's apertures at one colour temperature, which is CLAUDE.md hard rule 4 applied to light. ENERGY 2.6 against garden_glass's 1.2, and the difference is measured, not felt: these bands CLIP in their frame and the civic arcade does not clip in its own (maximum 0.628), so one is a source at saturation and the other is a dim one. 2.6 matches materials.zoc_screen's, a backlit panel of similar apparent brightness. ALBEDO near black because the band is a 0.06 m proud box that IS a light and a pale substrate under an emission double-counts it. Overturned by: any neutral-cast frame of the drum settlement at night."))
+
     return tuple(M)
 
 

@@ -181,20 +181,39 @@ def ambiguous(groups, scene="interior"):
     check that could not fire, which is the defect this project has shipped
     three times and now probes for explicitly.
 
-    The real, computable defect is AMBIGUITY: two materials' fragments both
-    match one group, so which one wins is decided by fragment length rather
-    than by anybody's intent. `_wall` and `prop_monitor_wall` are exactly that
-    shape -- the monitor happens to win because its name is longer, and would
-    silently stop winning if someone renamed it.
+    The real defect is a NON-DETERMINISTIC pair: two fragments match one group
+    and NEITHER CONTAINS THE OTHER, so which wins is decided by incidental
+    length rather than by anybody's intent. Rename either and the winner flips.
+
+    CONTAINMENT IS NOT A DEFECT, and the first version of this treated it as
+    one. Substring-with-longest-wins exists precisely so a general fragment can
+    be overridden by a specific one: `garden_water` for the pool and
+    `garden_waterfall` for the fall, `ground_arable` for arable land and
+    `ground_arable_0..3` for its crop variants, `garden_colonnade` for the
+    colonnade and `garden_colonnade_core` for its recess. Those are six
+    deliberate specialisations, they resolve deterministically, and flagging
+    them taught nothing except to distrust this check.
+
+    So containment pairs are RETURNED SEPARATELY rather than failed -- visible,
+    because an override list is worth reading, and not a build failure. Every
+    group still has to have an owner, which is what stops a general fragment
+    quietly becoming the only claim on something it was never meant to cover.
     """
-    out = []
+    competing, overrides = [], []
     for g in sorted(groups):
-        owners = {m.name for m in M.MATERIALS
-                  if scene in m.scenes
-                  for frag in m.binds if frag in g}
-        if len(owners) > 1:
-            out.append((g, sorted(owners)))
-    return out
+        hits = {}
+        for m in M.MATERIALS:
+            if scene not in m.scenes:
+                continue
+            for frag in m.binds:
+                if frag in g:
+                    hits.setdefault(m.name, set()).add(frag)
+        if len(hits) < 2:
+            continue
+        frags = sorted({f for fs in hits.values() for f in fs}, key=len)
+        nested = all(frags[i] in frags[i + 1] for i in range(len(frags) - 1))
+        (overrides if nested else competing).append((g, sorted(hits)))
+    return competing, overrides
 
 
 def _selftest():
@@ -248,9 +267,12 @@ def _selftest():
     # --- 2. FRAGMENT SAFETY ----------------------------------------------
     # The failure this catches has already happened once in this project, in
     # the partition of these very groups: "_wall" caught prop_monitor_wall.
-    amb = ambiguous(groups)
-    check("no group is claimed by two different materials",
+    amb, overrides = ambiguous(groups)
+    check("no group is claimed by two fragments that do not contain each other",
           not amb, f"{len(amb)}: {amb[:4]}")
+    if overrides:
+        print(f"  {len(overrides)} deliberate general/specific overrides, "
+              f"e.g. {overrides[0][0]} -> {overrides[0][1]}")
     # And the gate must be able to fire, or it is decoration.
     check("the ambiguity test can fire", _ambiguity_probe())
 
@@ -395,11 +417,22 @@ def _ambiguity_probe():
                    source="probe")
     saved = M.MATERIALS
     try:
+        # `_wall` IS contained in `prop_monitor_wall`, so that pair is now an
+        # override rather than a defect. The shape the gate exists for is two
+        # fragments that do not contain each other -- here `alpha` and `beta`
+        # both matching one group, where the winner is whichever name happens
+        # to be longer.
+        c = M.Material("probe_c", "c", albedo=(0.5, 0.5, 0.5), roughness=0.5,
+                       binds=("alpha",), scenes=("interior",), source="probe")
+        d = M.Material("probe_d", "d", albedo=(0.5, 0.5, 0.5), roughness=0.5,
+                       binds=("beta",), scenes=("interior",), source="probe")
+        M.MATERIALS = (c, d)
+        fires = bool(ambiguous({"alpha_beta_thing"})[0])
         M.MATERIALS = (a, b)
-        fires = bool(ambiguous({"prop_monitor_wall"}))
+        override = bool(ambiguous({"prop_monitor_wall"})[1])
         M.MATERIALS = (a,)
-        quiet = not ambiguous({"office_wall"})
-        return fires and quiet
+        quiet = not any(ambiguous({"office_wall"}))
+        return fires and override and quiet
     finally:
         M.MATERIALS = saved
 
