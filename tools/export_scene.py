@@ -738,6 +738,22 @@ ROOM_EXPOSURE = {
 }
 
 
+# Bespoke modules get their own exposure, once each has been through a layer-4
+# pass -- rendered, measured against its reference frame with
+# tools/measure_frame.py, and scaled. EMPTY IS THE HONEST STATE and not an
+# oversight: a bespoke module falls back to the corridor's anchor rather than
+# borrowing an archetype's number.
+#
+# It borrowed one for exactly one render and the result is why this exists.
+# `rooms.archetype()` reads a place's `functions`, so it happily classifies a
+# bespoke place too -- command and control came out "office" and took office's
+# 0.14, which was calibrated against a rooms.py bay with rooms.py fittings.
+# The frame came back 100% below the measurable floor: not one pixel of the
+# station's bridge above 0.01 linear. An exposure measured on one generator's
+# geometry says nothing about another's.
+BESPOKE_EXPOSURE = {}
+
+
 def room_exposure(room):
     """Exposure multiplier for one room. See ROOM_EXPOSURE."""
     if room in ("corridor", "junction"):
@@ -745,7 +761,10 @@ def room_exposure(room):
     import directory as dr
     import rooms as R
 
-    return ROOM_EXPOSURE.get(R.archetype(dr.by_key(room)), 1.0)
+    place = dr.by_key(room)
+    if place["module"]:
+        return BESPOKE_EXPOSURE.get(place["module"], 1.0)
+    return ROOM_EXPOSURE.get(R.archetype(place), 1.0)
 
 
 def ambient_energy(room):
@@ -762,8 +781,13 @@ def ambient_energy(room):
     import rooms as R
 
     place = dr.by_key(room)
-    ratio = AMBIENT_BY_ARCHETYPE.get(R.archetype(place),
-                                     AMBIENT_CALIBRATED_RATIO)
+    # A bespoke module takes the corridor's fill until its own layer-4 pass
+    # measures one, for the reason recorded on BESPOKE_EXPOSURE: an archetype
+    # inferred from a place's `functions` is a rooms.py number and rooms.py
+    # did not build this room.
+    ratio = (AMBIENT_CALIBRATED_RATIO if place["module"]
+             else AMBIENT_BY_ARCHETYPE.get(R.archetype(place),
+                                           AMBIENT_CALIBRATED_RATIO))
     return (AMBIENT_CALIBRATED_ENERGY * ratio / AMBIENT_CALIBRATED_RATIO
             * room_exposure(room))
 
@@ -1043,30 +1067,91 @@ def open_standpoint(verts, tris, eye_h, clear_m=0.75):
     import numpy as np
 
     a = np.asarray(verts, dtype=np.float64)
+    tri = np.asarray(tris, dtype=np.int64)
     lo, hi = a.min(axis=0), a.max(axis=0)
     y = min(max(eye_h, lo[1] + 0.3), hi[1] - 0.3)
-    # Only surfaces a standing person could walk into: knee to just overhead.
-    band = a[(a[:, 1] > y - 1.0) & (a[:, 1] < y + 1.0)]
-    if len(band) == 0:
-        band = a
-    inset = 0.4
-    xs = np.linspace(lo[0] + inset, hi[0] - inset, 41)
-    zs = np.linspace(lo[2] + inset, hi[2] - inset, 61)
-    gx, gz = np.meshgrid(xs, zs, indexing="ij")
-    d = np.sqrt((gx[..., None] - band[:, 0]) ** 2
-                + (gz[..., None] - band[:, 2]) ** 2).min(axis=-1)
-    free = d > clear_m
-    if not free.any():                      # nowhere clear: take the roomiest
-        i, j = np.unravel_index(np.argmax(d), d.shape)
-        return (float(xs[i]), float(y), float(zs[j])), (float((lo[0] + hi[0]) / 2),
-                                                        float(y), float(hi[2] - 0.5))
-    # Nearest the near end, and among those the one with the most room.
-    js = np.where(free.any(axis=0))[0]
+
+    # OCCUPANCY FROM TRIANGLE FOOTPRINTS, NOT FROM VERTICES. The first version
+    # scored each candidate by its distance to the nearest VERTEX in the eye's
+    # y band, and put the Zocalo camera inside a bulkhead: a 30 m x 8 m end cap
+    # is two triangles with four corners between them, so its middle is thirty
+    # metres from the nearest vertex and reads as the most open spot in the
+    # room. The frame came back a flat grey field. Coarse architecture is
+    # exactly what this has to handle, so what is rasterised is each triangle's
+    # xz footprint -- the same method rooms.walkable uses, which has been right
+    # about a racking run standing in front of the only door.
+    p = a[tri]                                                # (n, 3, 3)
+    y0, y1 = p[:, :, 1].min(axis=1), p[:, :, 1].max(axis=1)
+    # Knee to just overhead. A floor spans no height at all and never
+    # intersects this band, which is why the deck does not block the room.
+    solid = (y1 > y - 0.9) & (y0 < y + 0.9)
+    cell = 0.25
+    nx = max(4, int((hi[0] - lo[0]) / cell) + 1)
+    nz = max(4, int((hi[2] - lo[2]) / cell) + 1)
+    blocked = np.zeros((nx, nz), dtype=bool)
+    q = p[solid]
+    if len(q):
+        i0 = np.clip(((q[:, :, 0].min(axis=1) - lo[0]) / cell).astype(int), 0, nx - 1)
+        i1 = np.clip(((q[:, :, 0].max(axis=1) - lo[0]) / cell).astype(int), 0, nx - 1)
+        j0 = np.clip(((q[:, :, 2].min(axis=1) - lo[2]) / cell).astype(int), 0, nz - 1)
+        j1 = np.clip(((q[:, :, 2].max(axis=1) - lo[2]) / cell).astype(int), 0, nz - 1)
+        for k in range(len(q)):
+            blocked[i0[k]:i1[k] + 1, j0[k]:j1[k] + 1] = True
+
+    # Erode by the body radius: standing 0.1 m from a wall is not standing
+    # somewhere, and a camera at the near plane against a surface renders it as
+    # a flat field, which is the artefact this whole function exists to avoid.
+    pad = max(1, int(clear_m / cell))
+    free = ~blocked
+    for s in range(1, pad + 1):
+        free[s:, :] &= ~blocked[:-s, :]
+        free[:-s, :] &= ~blocked[s:, :]
+        free[:, s:] &= ~blocked[:, :-s]
+        free[:, :-s] &= ~blocked[:, s:]
+
+    def _pt(i, j):
+        return (float(lo[0] + (i + 0.5) * cell), float(y),
+                float(lo[2] + (j + 0.5) * cell))
+
+    aim_x = float((lo[0] + hi[0]) / 2)
+    if not free.any():
+        # Nowhere clear at all. Report it rather than pretending: a module
+        # whose eye height is solid is a geometry question, not a camera one.
+        return (aim_x, y, float(lo[2] + 1.0)), (aim_x, y, float(hi[2] - 0.5))
+
+    # STAND WHERE YOU CAN SEE DOWN THE ROOM. Picking the free cell nearest the
+    # near end is not the same thing and the Zocalo proved it: `zoc_bulkhead`
+    # caps both ends of the run at z 0 and z 32.4, the stall awnings overhang
+    # to z -1.89, and the nearest free cell was therefore OUTSIDE the concourse
+    # with an end cap filling the frame. Scoring by the clear run AHEAD makes
+    # that cell worth nothing and a cell inside the volume worth 130.
+    ahead = np.zeros((nx, nz), dtype=np.int32)
+    for j in range(nz - 2, -1, -1):
+        ahead[:, j] = np.where(free[:, j + 1], ahead[:, j + 1] + 1, 0)
+    ahead = np.where(free, ahead, -1)
+    best = int(ahead.max())
+    # Among the cells that see nearly as far, the one furthest back, so the
+    # shot is from the end of the volume rather than from its middle.
+    good = ahead >= max(1, int(best * 0.85))
+    js = np.where(good.any(axis=0))[0]
     j = int(js[0])
-    i = int(np.argmax(np.where(free[:, j], d[:, j], -1.0)))
-    eye = (float(xs[i]), float(y), float(zs[j]))
-    aim = (float((lo[0] + hi[0]) / 2), float(y), float(hi[2] - 0.5))
-    return eye, aim
+    col = good[:, j]
+    runs, start = [], None
+    for i in range(nx + 1):
+        if i < nx and col[i] and start is None:
+            start = i
+        elif start is not None and (i == nx or not col[i]):
+            runs.append((start, i - 1))
+            start = None
+    s, e = max(runs, key=lambda r: r[1] - r[0])
+    eye = _pt((s + e) // 2, j)
+    # Aim at the end of the clear run, on the centreline of the VOLUME rather
+    # than of the eye's own aisle: a shot that tracks the aisle it stands in
+    # never shows the room widening. Clamped to what is actually visible, so a
+    # capped run aims at its cap and not through it.
+    aim_z = min(float(hi[2] - 0.5),
+                eye[2] + (int(ahead[(s + e) // 2, j]) + 1) * cell)
+    return eye, (aim_x, y, aim_z)
 
 
 def build_interior(args, out_dir):
