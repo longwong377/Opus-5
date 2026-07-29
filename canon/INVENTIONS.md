@@ -1728,3 +1728,46 @@ frame two and a half stops hotter than the show. It is used here only for what i
 **What would overturn it:** a Season 2–3 frame of any of these interiors. A brig frame would settle
 `light_cage_lamp`, which is the weakest row in the table and is declared as such; a medlab frame
 would settle whether a medlab really takes the restaurant's neutral batten.
+
+### INV-037 addendum — the bespoke modules
+
+The table above maps the eleven `rooms.py` archetypes. The sixteen bespoke modules were done
+separately and three of them needed a judgement rather than a lookup.
+
+**`plant` → the service corridor, plus the docking bay's flood.** Nothing in the show establishes
+a plant-room fitting. What is measured is the service corridor's *character*, and it is emphatic:
+balanced median luminance 0.060 against a residential corridor's 0.265, "its walls are black except
+where a panel or the deck strip reaches them". A plant bay is lit exactly that much and no more —
+and Downbelow squats in these frames, which is the same argument twice. The flood is `bay_flood`,
+and it is the **one range in this project that transferred with no arithmetic at all**: measured at
+30 m in an 18 m bay, and a five-deck plant bay is 5 × `DECK_PITCH_M` = 18.0 m exactly.
+
+**`quarters` → the residential corridor's own kit.** A unit opens off a corridor and is built from
+that corridor's kit, so it takes the corridor's fittings and the corridor's split between them:
+`light_downlight` casts, `light_portal_head` does not. The mount height transfers **as a ratio, not
+a length** — the measurement is "0.35 ± 0.02 of clear deck-to-soffit height on two independent
+columns", which is 0.88 m in a corridor and 0.98 m under a 2.8 m quarters ceiling. Carrying the
+0.88 m across would have put it at 0.31 of this ceiling and quietly lost the thing measured.
+
+**No per-class lighting, and that is a decision rather than an omission.** Nothing in the reference
+distinguishes an ambassador's suite from a transient cell by its fittings. What *does* differ is how
+many fittings a unit gets, because the spacing is measured and the unit areas are not — the class
+marker doing its own work.
+
+**`council_chamber` → a fitting invented to carry a measured source.** `cc_house_wash` is measured
+as the chamber's entire lighting scheme and the measurement says in the same line that its **fitting
+is never in frame**. Every light in this rig derives from tagged geometry, so both easy answers are
+wrong: a lamp where the frames show none is invention, and no source at all leaves the chamber on
+ambient when its measured ratio of 0.210 makes it one of the two brightest spaces on the station.
+`house_cove()` is the smallest object that can carry a light and still be concealed — high on the
+rear wall, above the fin fan, facing away from the room. **The colour and behaviour are measured;
+the geometry is invented.** Overturned by any frame showing this chamber's ceiling.
+
+**One mapping was withdrawn, and the withdrawal is on the record.** The customs hall's ceiling
+coffer looked like the obvious next entry — its colour was measured on the fitting itself, and the
+same frame ranks its three source families by balanced peak (screens 0.99, wall strips 0.82, grid
+0.55 → an `energy_rel` of 0.56). Given a light, `customs.hall()` emits 210 separate coffers, the
+render came back at **18.9× its reference frame with 14% of it clipped**, and the exposure needed to
+rescue it was 0.07. The answer was already written in that material's own source note: the grid is
+*"ambient decoration rather than a task light"*, ranked last of the three. It stays emissive-only,
+and customs is therefore recorded as **not at layer 4** rather than counted with a rescued number.
