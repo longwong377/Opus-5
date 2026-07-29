@@ -1698,6 +1698,43 @@ lighting or material yet; that is phase C, not a geometry defect.
 
 Logged as **INV-028**.
 
+## Session 3k (cont.) — residential quarters, and the class gradient as a test
+
+`station/quarters.py`, **48 assertions**, in CI. The most-repeated interior on the station;
+`npc/crowd.py` previously had nowhere to send 250,000 residents home to.
+
+`LOCATIONS.md` §11 states the spine in one line — *"Gravity does the work for free… the people
+with the least power live where they weigh the most"* — and this asserts it against **live**
+geometry rather than restating it.
+
+| rank | class | sector | gravity | unit |
+|---|---|---|---|---|
+| 0 | command | Blue | 0.760 g | 34 m², **shower** |
+| 1 | personnel | Blue | 0.760 g | 18 m² |
+| 2 | diplomatic | Green | 1.000 g | 46 m², **shower** |
+| 3 | alien_resident | Green | 1.000 g | 22 m² |
+| 4 | civilian | Red | 0.963 g | 16 m² |
+| 5 | transient | Red | 0.963 g | 9 m² |
+| 6 | **lurker** | Grey | **1.693 g** | **no rooms** |
+
+**2.23× body weight** and **5.1× floor area** between an ambassador and a transient.
+
+**Two claims I had to make honest.** My docstring said rank and gravity were monotonic across
+every pair — they are not (Green's 1.000 g outranks Red's 0.963 g), and that is a docstring lying
+about its own code. And the first area assertion failed correctly: **rank is social order, not
+floor area** — ambassadorial suites outrank command quarters here. What holds is that rank orders
+area *within a sector*, asserted per sector.
+
+**`lurker` emits nothing, deliberately.** §11 says Downbelow is "corridors and chambers, not
+rooms" and `plant.py` already builds it. `unit_dims()` returns `(0, 0)` rather than a fake cell —
+handing back a 1 × 1 m room is how Downbelow quietly becomes an apartment block.
+
+**A stale canon figure is flagged, not copied.** §11 quotes Blue at **0.603 g**, which predates
+INV-026; it is now **0.760 g**. The module reads gravity live and *asserts the divergence*, so
+nobody re-copies the old number. **§11 needs refreshing.**
+
+Logged as **INV-032**. `docs/render-quarters.png`.
+
 ## IN FLIGHT — read this before starting anything
 
 **An adversarial review panel is running over the five new NPC modules and had NOT reported when
