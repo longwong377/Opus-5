@@ -1,0 +1,537 @@
+{
+ "findings": "MEASURED, NOT RECALLED. Every frame in the public_social family opened and read. Method reproduced first as its own control: the five family frames already in materials.GREY_WORLD_GAINS recompute to 4 dp \u2014 zocalo.webp 0.9059/1.1854/0.9501, more zocalo.png 0.9362/1.1368/0.9504, Casino.webp 1.0145/1.0707/0.9257, council chambers.webp 0.9975/1.0820/0.9318, conference aerea.webp 1.1216/1.0263/0.8818 \u2014 and Doug's Dugout reproduces NEGATIVE_RESULTS' 0.723/1.279/1.196 exactly. Independent corroboration that my pipeline matches the library's: more zocalo.png's neon board raw p95 comes back (0.980, 0.510, 0.294), the exact figure zoc_neon_face records; zocalo.webp's cyan wordmark comes back normalised (0.410, 0.984, 1.000) against the recorded (0.411, 0.986, 1.000).\n\nTWO NEW GREY-WORLD GAINS, computed the same way (pixels 0.04 < V < 0.95), for the table:\n  \"04-sector-red/Earhart's.webp\": (0.8525, 0.9901, 1.2240)   n=279,426\n  \"04-sector-red/Fresh air.webp\": (1.0027, 0.9306, 1.0774)   n=562,113\n\n=== 1. THE RATIO BETWEEN FITTINGS AND FILL \u2014 THE HEADLINE ===\n\nAcross six public/social spaces the fill sits at 4-10% of the key. It is astonishingly consistent, and the one space that breaks it breaks it for a reason.\n\nThe cleanest instance is Casino.webp, because it is ONE surface, ONE material, ONE depth, alternately lit and shadowed by a grille: the deck at (0.28,0.90)-(0.40,1.00) carries hard diagonal stripes; balanced, the lit stripes peak at Y 0.50-0.63 (p97 0.583) and the troughs between them sit at Y 0.11-0.18, with the deepest ground at Y 0.043. Trough/peak = 0.073 to 0.23. That is a direct photometric statement: block the room's key and 7-23% of the illumination remains.\n\nThe second cleanest is conference aerea.webp, a near-plan view where a horizontal profile across the floor at y 0.62-0.66 reads: 0.05-0.08 outside the pool, a rise from 0.08 to 0.78 across \u0394x 0.06 of frame width, a flat 0.44-0.78 across the medallion, and a fall back to 0.05. Off-pool/pool = 0.083. The rise and fall are SHARP \u2014 that pool has an edge, so the fitting is a spot with a defined cone, not an omni.\n\nPer space (darkest measurable surface / brightest lit surface, balanced):\n  fresh_air_restaurant   0.041   dougs_dugout   0.09    zocalo_concourse  0.094\n  conference_lounge      0.100   casino         0.074   council_chamber   0.21\n\nWhole-frame check, balanced luminance with clipped sources excluded, p50/p95:\n  Doug's Dugout 0.060 (56.2% of the frame below Y 0.05) \u00b7 Fresh Air 0.118 (54.5%) \u00b7\n  more zocalo 0.138 (35.1%) \u00b7 conference aerea 0.167 \u00b7 zocalo 0.241 \u00b7 Casino 0.345 \u00b7\n  council chambers 0.397 (only 8.4%) \u00b7 Earhart's 0.523.\n\nSo: SET AMBIENT/GI AT ROUGHLY 0.08 OF THE KEY IN A SOCIAL SPACE, AND AT 0.20 IN THE COUNCIL CHAMBER. The ceremonial room is the only one in the family that is lit like a room rather than like a set of pools, and that difference is the sector's identity, not an accident of exposure.\n\nWHAT LOOKS LIKE AMBIENT IS NOT AMBIENT \u2014 IT IS COLOURED SPILL. In conference aerea the floor away from the medallion reads H 190-200 S 0.63-0.86 on the left (the cyan floor track) and H 21-44 S 0.18-0.47 on the right (the warm table lamps). One continuous floor, two hues 170 degrees apart. Same test on one table: its left side reads normalised (0.742, 0.873, 1.000) and its right side (1.000, 0.807, 0.809). That is NEGATIVE_RESULTS' signature for the sixth and seventh time, and here it is the answer rather than the warning: a B5 social interior has NO neutral fill term. Every photon on a dark surface came from a named fitting. A grey ambient will kill these rooms.\n\nA SECOND, DIFFERENT RATIO \u2014 AND DO NOT CONFUSE THEM. On the Zocalo deck a chair leg casts shadows only 0.74 as dark as the deck beside them (profile at y 0.965-0.975: lit 0.63-0.70, trough 0.47-0.55), and ONE leg casts two to three distinct shadows at once (magnified crop of more zocalo.png at (0.05,0.78)-(0.40,1.00)). That is not fill \u2014 it is overlap. At zocalo.py's 2.7 m pool pitch under a 7.2 m ceiling the spacing/height ratio is 0.375, so the pools merge completely and the deck shows no periodicity at all (constant-depth scan x 0.17-0.42 runs 0.57-0.68 with no dips). Blocking one of ~4 contributors leaves 74%. So: DEEP shadow where a fitting is the only source (Fresh Air, under a table: 0.017 against a lit deck of 0.414, i.e. 0.04); SHALLOW shadow on the concourse deck where four fittings overlap.\n\nAND THE THING THE ZOCALO ACTUALLY IS: a bright floor under a black ceiling. Balanced, the deck under the downlights reads Y 0.657 while the soffit above reads 0.062, the purlin run 0.062 and the gallery slab edge 0.028. Ratio 0.04-0.09. The arch scanlines reproduce materials.py's claim \u2014 row peaks 0.485/0.619/0.647/0.851 against row medians 0.102/0.127/0.130/0.093, ratio 0.10-0.21.\n\n=== 2. WHERE THE FITTINGS ARE ===\n\nPlacement in interior_kit.py and zocalo.py is already sourced and I did not re-derive it; I reproduce it in the fixtures list in metres and add what the frames measure:\n\n \u00b7 Zocalo deck pools: x \u00b14.7 m, z 1.35/4.05/6.75/9.45 per 10.8 m bay (2.7 m pitch), pool 1.57 m, ceiling 7.2 m. spacing/height 0.375 \u2192 merged wash, no visible pooling. CONSEQUENCE FOR THE ENGINE: kit.downlight_pool() models the POOL, not the lens. In more zocalo.png the deck carries cast shadows from chairs and feet, so its brightness is from OVERHEAD sources; the disc must be a SpotLight above deck aimed down (cone half-angle \u2265 50\u00b0 to merge at that pitch) with the disc as its baked core, not an emissive floor plate.\n \u00b7 Zocalo rib lamps: 5 per rib at (x, y) = (\u00b15.52, 3.27), (\u00b13.38, 5.72), (0.00, 6.78) m; ribs every 5.4 m; 10 per bay.\n \u00b7 Zocalo stall festoon: awning eave at 2.29 m. zocalo.py places 6-9 bulbs per stall. MEASURED, zocalo.webp (0.00,0.14)-(0.32,0.30): 64 discrete bulb blobs, median area 8 px, median nearest-neighbour spacing 7.8 px = 2.6 bulb-diameters. Scaled on the 3.0 m awning (\u224895 px/m) that is a pitch of ~0.08 m and 60-100 bulbs per stall, swagged over the whole canopy frame. The module is out by roughly a factor of ten, and it matters for energy: 64 tiny bulbs and 7 bright ones are different objects.\n \u00b7 Fresh Air overhead run: warm rectangular downlights mounted ON the red structural tubes, detected by blob analysis at frame (0.192,0.210) (0.367,0.318) (0.441,0.108) (0.482,0.390) (0.584,0.257) (0.671,0.349) (0.877,0.174) (0.911,0.296). Grouped by tube slope they sit at 0.33-0.44 of frame width apart while each fitting is 0.026-0.047 wide \u2014 a pitch of 9-13 fitting-lengths. At a 0.6 m fitting that is 5.5-7.5 m, which brackets zocalo.py's 5.4 m rib pitch from an unrelated room.\n \u00b7 Casino: two large gridded backlit panels HIGH on the wall (frame (0.037,0.049)-(0.138,0.262) and (0.694,0.139)-(0.817,0.287)), a ring of ~24 filament bulbs at 1-2.5 m, a continuous mint bar-back strip at counter height, a cyan tube along the balustrade at ~1.0 m.\n \u00b7 conference aerea: overhead spot on the floor medallion (fitting out of frame); a lit panel ON each table top at ~0.75 m; a cyan tube inlaid in the step nosing AT DECK LEVEL running a hexagon round the dais; arcs of cool louvred slits at high level.\n \u00b7 Doug's Dugout: pendants below standing eye height, one per table, as hospitality.py records.\n\n=== 3. COLOUR TEMPERATURE, AND THE ONE CORRECTION THAT MATTERS ===\n\nTHERE ARE TWO WARM REGISTERS AND THE LIBRARY ONLY HAS ONE. Every architectural fitting that actually lights a public room measures 4000-5000 K:\n  Fresh Air tube downlights   (1.000, 0.86, 0.72) sRGB  ~4200-4500 K  (dE to the Planckian locus 0.006-0.019 \u2014 these are near-perfect blackbodies)\n  Casino backlit wall panels  (1.000, 0.96, 0.87)       ~5200-5700 K\n  conference aerea pool+lamps (1.000, 0.79, 0.70)       ~4000 K\n  Doug's Dugout pendant       (1.000, 0.77, 0.66)       ~3900 K\nwhile the small decorative practicals measure 2000-3000 K:\n  Casino bulb wheel (1.000, 0.548, 0.393) ~2220 K (hue rock-steady H 13-15 across a 4.4x value ladder \u2014 a real tint, not a cast)\n  Zocalo rib lamp   (1.000, 0.664, 0.520) ~2990 K\n  Zocalo wordmark   (1.000, 0.520, 0.300) ~2000 K\n\nmaterials.light_downlight ships emission (1.0, 0.68, 0.40) = ~2790 K, and ACCENTS['warm_practical'] ships (1.000, 0.612, 0.353) = ~2440 K. THE SHIPPED VALUE CONTRADICTS ITS OWN CITATION: light_downlight's source line records grey level 1.webp's lens at balanced H 27 S 0.238, and H 27 / S 0.238 / V 1.0 is (1.000, 0.869, 0.762) \u2014 4600 K, which is my family's architectural register to within 0.01 in every channel. ACCENTS' own note says it took \"Casino H21 S0.457 lifted to source level\", and lifting is backwards: a neutral surface under a single source takes the source's hue exactly, so a lit surface bounds the source's saturation from ABOVE, not below. If layer 4 hangs (1.0, 0.68, 0.40) on every light_downlight in the station, every pale wall goes sodium-orange. The deep-amber value is correct for the bulb-wheel/festoon/neon class and wrong for the downlight class.\n\nTHE SPACES MIX REGISTERS, AND THE MIX IS THE LOOK. Every one of the six is a warm key against a cyan or cool-blue fill:\n  Zocalo   \u2014 WARM overhead (rib lamps 2990 K, festoon, neon) against a COOL deck. The lit deck balances normalised (0.851, 0.992, 1.000) on the left and (0.581, 0.789, 1.000) under the blue practical on the right; one continuous deck, H 173-183 vs H 203-210.\n  conference aerea \u2014 WARM 4000 K key against a CYAN floor track (0.362, 0.901, 1.000) and a COOL-BLUE louvre perimeter (0.690, 0.809, 1.000), plus a genuinely MAGENTA backlit chequer panel at H 299-302, constant across a 1.7x value range.\n  Casino   \u2014 5200-5700 K panels against a MINT bar-back (0.725, 1.000, 0.965), a cyan rail (0.716, 0.934, 1.000) and cool-blue table felt.\n  Fresh Air\u2014 4400 K tube downlights + one 6500 K neutral batten against CYAN neon (0.476, 0.978, 1.000, which reproduces ACCENTS['cyan_neon']) and a large cyan backlit garden wall.\n  Council  \u2014 the outlier again: its brightest surface, the perforated table fascia, balances to S 0.021, i.e. NEUTRAL. The chamber is one even neutral wash with a cool-blue wall accent. No warm register at all.\nSo SECTOR_ACCENT's \"red \u2192 warm_practical, green \u2192 cyan_neon\" is advisory and half right: both sectors carry both, and it is the SPLIT between key and fill that identifies them, not a single hue.\n\nEARHART'S IS THE EMISSIVE-WINDOW DATUM, and it is directly relevant to the standing blocking finding against exterior_approach. Raw, the glazed band's interior clusters run H 216-265 across a 20x value range \u2014 a genuine cool-blue, ~9900 K, brightest resolved cluster (0.787, 0.872, 1.000). The lit band peaks at Y 0.613 against the daylit hull shell above it at Y 0.350, i.e. a lit window band reads ~1.75x the surface beside it, and the dark interior voids between bays read Y 0.031, i.e. 0.09x that shell. So an emissive window band is NOT a uniform glow: it is a 1.75x/0.09x checker, and the dark bays are what makes it read as a building.\n\n=== 4. SHADOWS \u2014 WHICH ONES EARN THEIR FRAME TIME ===\n\nCAST BY SOMETHING, ALWAYS. Casino.webp is the proof that these rooms have a directional key: the grille shadow on the deck is hard-edged (0.13 to 0.55 across ~7-11 px of an 814-wide frame), repeating and crisp along its whole run, thrown from the upper left, i.e. by the left backlit panel. The Casino's mural, by contrast, is washed almost evenly by those same panels: across x 0.14-0.66 at y 0.10-0.20 it runs Y 0.386-0.539, min/max 0.72, and between the two panels it is still 0.83-0.89 of the value under one. THE RULE THE FAMILY GIVES: AREA PANELS WASH (0.8 across a bay), POINT PRACTICALS POOL (0.08). Both exist; do not model one with the other.\n\nWorth shadows: the Casino wall panels (the only hard shadow in the family and a signature of the room); the Fresh Air tube downlights (the under-table shadow at 0.04 of the lit deck is the deepest reading in the family and is what makes that room read); the conference-lounge medallion spot (a hard-edged pool that a standing figure must break); one Zocalo deck downlight per bay; the two or three nearest Dugout pendants.\nNot worth shadows: the Zocalo rib lamps (10 per bay, set into the arch they light, nothing occludes them), the stall festoon (60-100 bulbs, each negligible), the neon, the shopfront screens, the deck strip, the conference-lounge floor track (it is the FILL \u2014 shadowing an uplight both costs and lies), the conference table lamps, the council chamber's louvres.\nAnd the cheap win the Zocalo measurement licenses: because ~4 deck downlights overlap at any point and the measured shadow depth is 0.74, turning shadows off on three of every four costs about 25% of one fitting's contribution. That is a real, measured budget for a real, measured error.\n\n=== CAVEATS, STATED PLAINLY ===\n \u00b7 Doug's Dugout was measured RAW ONLY and only for emitters, per NEGATIVE_RESULTS. Its pendant colour is read off the brightest resolved lit object under the pool (the bun, raw (0.867, 0.663, 0.569), normalised (1.000, 0.765, 0.656)); the deep H 0-8 readings everywhere else in that frame are the objects' own colour plus falloff, not the lamp.\n \u00b7 Grey-world is circular for a single-illuminant frame: it removes the average cast, which in a one-key room is the key. It is trustworthy HERE because these rooms are two-register \u2014 the residual after balancing splits warm one way and cyan the other, which is the signal. Where I balanced a source rather than a lit surface (conference aerea's table lamps) I say so and cross-check against the surface it lights.\n \u00b7 conference aerea's medallion floor is assumed neutral-albedo. If it is a warm terrazzo, its 4000 K reads too warm. One frame of that floor under a different light would close it.\n \u00b7 The Fresh Air fitting pitch of 5.5-7.5 m rests on an assumed 0.6 m fitting length; the ratio (9-13 fitting-lengths) is the measurement and survives whatever the length is.",
+ "fixtures": [
+  {
+   "key": "zoc_downlight_overhead",
+   "space": "zocalo_concourse",
+   "kind": "spot",
+   "colour": [
+    0.694,
+    0.982,
+    1
+   ],
+   "kelvin_est": 7740,
+   "energy_rel": 1,
+   "range_m": 12,
+   "spacing_m": 2.7,
+   "shadow": true,
+   "placement": "ceiling, 7.2 m above deck, aimed down; one above each of zocalo.py's pool centres at x = +/-4.7 m from the bay centreline, z = 1.35 / 4.05 / 6.75 / 9.45 m in a 10.8 m bay. Cone must be wide (half-angle >= 50 deg): spacing/height = 2.7/7.2 = 0.375 and the pools MERGE.",
+   "source": "reference/04-sector-red/more zocalo.png (authority 1), balanced with the gains already in materials.GREY_WORLD_GAINS (0.936/1.137/0.951, recomputed here as 0.9362/1.1368/0.9504). The clean deck field (0.215,0.815)-(0.315,0.859) reads balanced rgb 0.554/0.687/0.671, H 173 S 0.192, V 0.687, Y 0.657 -- the brightest non-source surface in the frame. Normalised to its peak channel that is (0.851, 0.992, 1.000) sRGB, linear (0.694, 0.982, 1.000). A constant-depth scan at y 0.955-0.995 runs 0.57-0.68 across x 0.17-0.42 with NO periodic dips, which is what a 0.375 spacing/height ratio produces. Chair legs at (0.05,0.78)-(0.40,1.00) cast two to three distinct shadows each, so the deck's brightness is from OVERHEAD sources and not from an emissive floor plate.",
+   "extrapolated": "range_m and the cone angle. Range is set so the fitting still reaches the deck at 7.2 m with margin; the angle is derived from the measured absence of periodicity rather than measured directly. The colour is a lit-surface reading, so it assumes the deck tile is neutral -- materials.shell_deck_public and zoc_deck_tile both treat it as neutral on the two-light evidence, so this reuses their assumption rather than adding one.",
+   "reasoning": "This is the Zocalo's key and the reason the room reads as a bright floor under a black ceiling: the deck is Y 0.657 while the soffit above it is Y 0.062, the purlins 0.062 and the gallery slab edge 0.028. kit.downlight_pool() models the POOL, not the lens, so the engine light belongs overhead and the 1.57 m disc is its baked core."
+  },
+  {
+   "key": "zoc_deck_strip",
+   "space": "zocalo_concourse",
+   "kind": "emissive_only",
+   "colour": [
+    0.694,
+    0.982,
+    1
+   ],
+   "kelvin_est": 7740,
+   "energy_rel": 0.25,
+   "range_m": 2.5,
+   "spacing_m": null,
+   "shadow": false,
+   "placement": "continuous 0.9 m strip inlaid down the bay centreline, deck level (rise 0.01 m), full 10.8 m of every bay",
+   "source": "Colour reproduced from the deck measurement above so the strip and the downlights cannot disagree, which is the discipline materials.zoc_deck_light already applies against light_deck_channel. Its own frame evidence is negative in the useful way: in reference/04-sector-red/more zocalo.png the concourse deck shows a tile grid and cast shadows and NOT a bright longitudinal band, so whatever the strip contributes at this camera position it is not the deck's brightness.",
+   "extrapolated": "The energy, 0.25. Nothing in the family resolves the strip against the downlights. It is set to a quarter because it is a 0.9 m emissive lens that must read as a line at 20 m without competing with the pools; the frame rules out its being the key and cannot say more.",
+   "reasoning": "An emissive is not a light. This carries the fitting's own glow and a short range so the deck immediately beside it lifts, and the room's illumination comes from the overhead spots."
+  },
+  {
+   "key": "zoc_rib_lamp",
+   "space": "zocalo_concourse",
+   "kind": "omni",
+   "colour": [
+    1,
+    0.398,
+    0.233
+   ],
+   "kelvin_est": 2990,
+   "energy_rel": 0.3,
+   "range_m": 6,
+   "spacing_m": 5.4,
+   "shadow": false,
+   "placement": "set into the elliptical rib intrados, 5 per rib at (x, y) = (-5.52, 3.27), (-3.38, 5.72), (0.00, 6.78), (+3.38, 5.72), (+5.52, 3.27) m; ribs at 5.4 m pitch, so 10 per 10.8 m bay",
+   "source": "reference/04-sector-red/more zocalo.png (authority 1), balanced 0.936/1.137/0.951. The lamp at (0.460,0.030)-(0.472,0.052) reads balanced rgb 0.402/0.267/0.209, H 18 S 0.481, V 0.402, and its raw max is 0.929/1.000/0.909 -- it CLIPS, so it is a source. Normalised (1.000, 0.664, 0.520) sRGB, linear (1.000, 0.398, 0.233), ~2990 K. Energy from what it lights: the arch intrados at (0.440,0.045)-(0.500,0.075), near a lamp, reads Y 0.085 with p95 0.624/0.600/0.427, and the same intrados away from any lamp at (0.560,0.030)-(0.620,0.060) reads Y 0.063 with p95 only 0.092 -- and the arch scanlines peak at balanced V 0.254 against row medians of 0.093-0.130. Against the deck's Y 0.657 that is 0.13 to 0.37.",
+   "extrapolated": "energy_rel 0.30 is the midpoint of the 0.13-0.37 bracket the intrados readings give, and range_m 6.0 is set so the lamp reaches the deck weakly and the soffit strongly, which is the falloff the frame shows. The blue channel is the resolved reading (0.520) rather than light_downlight's 0.40; materials.py argues bloom for the difference, but this fitting is measured on a resolved 12x22 px surface and three unrelated frames in this family put the architectural warm register at B/R 0.67-0.87, so the higher blue is kept.",
+   "reasoning": "Ten of these per bay and nothing occludes them -- they are set into the very surface they light. Shadows here are pure cost. This is the DECORATIVE warm register at ~3000 K, one notch cooler than the Casino bulb wheel and one notch warmer than the architectural downlights, and it is what gives the arch its 4-6x separation from the black soffit."
+  },
+  {
+   "key": "zoc_stall_light",
+   "space": "zocalo_concourse",
+   "kind": "omni",
+   "colour": [
+    1,
+    0.492,
+    0.42
+   ],
+   "kelvin_est": 3800,
+   "energy_rel": 0.19,
+   "range_m": 2.5,
+   "spacing_m": 0.08,
+   "shadow": false,
+   "placement": "festooned along and over the stall awning frame, eave at 2.29 m, 3.0 m awning; 60-100 bulbs per stall, NOT the 6-9 zocalo.py places",
+   "source": "COUNT AND PITCH MEASURED: reference/04-sector-red/zocalo.webp (authority 1), blob analysis over (0.00,0.14)-(0.32,0.30) at the 88th-percentile luminance gives 64 discrete bulbs, median blob area 8 px, median nearest-neighbour spacing 7.8 px -- a pitch of 2.6 bulb diameters. Scaled on zocalo.py's own 3.0 m awning width (~95 px/m at that depth) the pitch is ~0.08 m. COLOUR from reference/04-sector-red/more zocalo.png, balanced 0.936/1.137/0.951: the bulbs at (0.756,0.158)-(0.774,0.198) read 0.162/0.125/0.116 H 12 S 0.285, normalised (1.000, 0.772, 0.716), and the canopy they light at (0.700,0.150)-(0.860,0.200) reads 0.169/0.116/0.108 H 8, normalised (1.000, 0.686, 0.639). ENERGY: that canopy at Y 0.127 against the deck's Y 0.657 is 0.19. zocalo.webp is NOT used for their colour -- there they measure H 234-281, bluer than white, because the cyan wordmark is 1.5 m above them and their cores are 2-3 px, exactly as materials.zoc_stall_light already records.",
+   "extrapolated": "The energy is per STRING, not per bulb: 0.19 is what the whole festoon puts on its own canopy. Divided 64 ways each bulb is ~0.003, which is why the engine should light this with one or two low omnis per stall and let the geometry carry the glitter. Colour is the midpoint of the bulb reading and the canopy reading.",
+   "reasoning": "The module's 6-9 bulbs and the frame's 60-100 are different objects and they look different: a handful of bright bulbs is a fairground, dozens of dim ones is a market. This is the correction with the largest visual consequence in the Zocalo after the deck."
+  },
+  {
+   "key": "zoc_neon_face",
+   "space": "zocalo_concourse",
+   "kind": "emissive_only",
+   "colour": [
+    1,
+    0.233,
+    0.073
+   ],
+   "kelvin_est": 2000,
+   "energy_rel": 0.29,
+   "range_m": 4,
+   "spacing_m": null,
+   "shadow": false,
+   "placement": "1.9 x 0.84 m board on the gallery face at 4.75 m above the deck (gallery 3.6 + rail 1.05 + 0.10), one per bay",
+   "source": "reference/04-sector-red/more zocalo.png, measured RAW because a source is radiance. Over the board (0.054,0.109)-(0.203,0.190) the raw p95 is (0.980, 0.510, 0.294) -- REPRODUCED TO 3 DP from materials.zoc_neon_face, which is my control that this pipeline matches the library's -- p99 (1.000, 0.533, 0.322), max (1.000, 0.655, 0.561). The red channel CLIPS. Normalised (1.000, 0.520, 0.300) sRGB, linear (1.000, 0.233, 0.073), ~2000 K. ENERGY from its spill: the plate around the board at (0.030,0.190)-(0.055,0.205) reads balanced Y 0.191 and the wall a metre to its right at (0.205,0.120)-(0.240,0.180) reads Y 0.101 at H 356 -- the sign's own red on the wall. 0.191/0.657 = 0.29. THE CYAN VARIANT IS EQUALLY ATTESTED: zocalo.webp's wordmark normalises to (0.410, 0.984, 1.000), reproducing the recorded (0.411, 0.986, 1.000).",
+   "extrapolated": "Nothing in the colour. range_m 4.0 is set from the measured spill: H 356 is still legible on the wall about a metre out and gone by three.",
+   "reasoning": "Deepest-amber register in the family at 2000 K. It is a sign, not a room light, and its job in the engine is to put a warm red on the structure within 3-4 m of it -- which the frame shows it doing and which is the concourse's only warm anchor against three cyan sources."
+  },
+  {
+   "key": "zoc_screen",
+   "space": "zocalo_concourse",
+   "kind": "emissive_only",
+   "colour": [
+    0.125,
+    0.481,
+    1
+   ],
+   "kelvin_est": null,
+   "energy_rel": 0.22,
+   "range_m": 3,
+   "spacing_m": 5.4,
+   "shadow": false,
+   "placement": "backlit shopfront panel in the colonnade, 1.10-2.60 m above deck, x = +/-10.59 m, four per bay",
+   "source": "reference/04-sector-red/more zocalo.png, raw. The lit shopfront at (0.462,0.278)-(0.512,0.372) k-means gives three lit bands at a CONSTANT H 207-214 across a 1.8x value range -- 0.350/0.653/0.903, 0.269/0.484/0.759, 0.207/0.332/0.496 -- which is a source, not a lit surface. Normalised (0.388, 0.723, 1.000) sRGB, linear (0.125, 0.481, 1.000). Magnified at 6x over (0.40,0.25)-(0.58,0.42) it resolves as a mullioned panel with a bright blue field, confirming what the module builds. ENERGY: the colonnade pier immediately beside it at (0.430,0.300)-(0.455,0.360) reads balanced Y 0.142; 0.142/0.657 = 0.22. A WARM-RED VARIANT is equally attested in the same colonnade at (0.281,0.312)-(0.303,0.352), balanced 0.514/0.314/0.254 H 13 S 0.492.",
+   "extrapolated": "energy_rel and range. The pier reading is the only surface the frame gives at a known distance from this panel, so 0.22 rests on one measurement. Choosing blue over the attested red is the choice materials.zoc_screen already argued and I am not reopening it.",
+   "reasoning": "Off-locus by any measure -- a saturated blue gas panel, not a white light. It lights only its own bay of the colonnade, so a short range and no shadow."
+  },
+  {
+   "key": "casino_wall_panel",
+   "space": "casino",
+   "kind": "directional",
+   "colour": [
+    1,
+    0.911,
+    0.72
+   ],
+   "kelvin_est": 5300,
+   "energy_rel": 1,
+   "range_m": 14,
+   "spacing_m": null,
+   "shadow": true,
+   "placement": "large gridded backlit panel high on the wall, roughly 2.5 x 4 m, two visible: frame (0.037,0.049)-(0.138,0.262) and (0.694,0.139)-(0.817,0.287). Head height well above the mural band, i.e. 5-7 m in a two-storey room.",
+   "source": "reference/04-sector-red/Casino.webp (authority 1), gains recomputed here as 1.0145/1.0707/0.9257, reproducing GREY_WORLD_GAINS exactly. RAW k-means, LEFT panel: (0.982,0.947,0.866) H 42 S 0.118 / (0.927,0.861,0.768) H 35 / (0.812,0.764,0.677) H 39 / (0.771,0.666,0.560) H 30 / (0.687,0.547,0.448) H 25. RIGHT panel: (0.965,0.948,0.886) H 47 S 0.082 / (0.882,0.864,0.799) H 47 / (0.799,0.781,0.716) H 47 / (0.674,0.640,0.583) H 37. Hue is constant at H 37-47 across a 2x range on the right panel and the cores clip -- a source. Mid-ladder normalised (1.000, 0.94-0.98, 0.83-0.90), taken at (1.000, 0.960, 0.865) sRGB, linear (1.000, 0.911, 0.720), ~5300 K. THAT IT CASTS A HARD SHADOW IS MEASURED: the deck at (0.28,0.90)-(0.40,1.00) carries hard diagonal grille stripes thrown from the upper left -- balanced p97 0.583, p05 0.043, and single-row profiles rise 0.13 to 0.55 in 7-11 px of an 814-wide frame.",
+   "extrapolated": "range_m and the panel's physical size, both scaled off the mural band it washes rather than measured against a figure. energy_rel 1.0 is by definition -- it is the brightest and largest source in the room and the only one that casts.",
+   "reasoning": "This is the AREA source of the family and it behaves completely differently from the point practicals: the mural it washes runs balanced Y 0.386-0.539 across x 0.14-0.66 (min/max 0.72) and is still at 0.83-0.89 midway between the two panels. Area panels wash; point practicals pool. It is also the only fitting in the whole family that throws a hard-edged shadow, so it earns its shadow map."
+  },
+  {
+   "key": "casino_bulb_wheel",
+   "space": "casino",
+   "kind": "omni",
+   "colour": [
+    1,
+    0.261,
+    0.128
+   ],
+   "kelvin_est": 2220,
+   "energy_rel": 0.2,
+   "range_m": 3,
+   "spacing_m": 0.25,
+   "shadow": false,
+   "placement": "ring of ~24 individual filament bulbs round a 1.6 m wheel-of-fortune, hub at roughly 1.6 m, bulbs from 1.0 to 2.5 m",
+   "source": "reference/04-sector-red/Casino.webp, RAW k-means over (0.000,0.390)-(0.130,0.645): (0.851,0.616,0.545) H 14 S 0.359 / (0.524,0.338,0.287) H 13 S 0.452 / (0.354,0.194,0.139) H 15 S 0.606 / (0.195,0.085,0.052) H 14 S 0.736. Hue is rock-steady at H 13-15 across a 4.4x range of value while saturation rises as value falls -- the clipped-core signature, and a REAL tint rather than a cast. Mid-ladder normalised (1.000, 0.548, 0.393) sRGB, linear (1.000, 0.261, 0.128), ~2220 K. This is the reading materials.ACCENTS records as 'Casino H21 S0.457' and is the true home of the deep-amber register.",
+   "extrapolated": "energy_rel 0.20 and range 3.0 m. Twenty-four small bulbs on a signage wheel do not light a casino; the frame shows their reach falling off within a couple of metres of the wheel, but no surface at a known distance resolves cleanly enough to put a number on it.",
+   "reasoning": "2220 K, and it is a decorative fitting, not an architectural one. This is the register ACCENTS['warm_practical'] was derived from, and it is correct HERE and wrong for downlights -- which is the single most consequential thing in this report."
+  },
+  {
+   "key": "casino_bar_backlight",
+   "space": "casino",
+   "kind": "emissive_only",
+   "colour": [
+    0.484,
+    1,
+    0.922
+   ],
+   "kelvin_est": null,
+   "energy_rel": 0.3,
+   "range_m": 4,
+   "spacing_m": null,
+   "shadow": false,
+   "placement": "continuous horizontal strip along the bar back, roughly 1.1-1.4 m above deck, ~10 m run",
+   "source": "reference/04-sector-red/Casino.webp, RAW k-means over (0.20,0.360)-(0.66,0.400): (0.482,0.665,0.642) H 172 S 0.275 / (0.347,0.512,0.487) H 171 S 0.323 / (0.288,0.397,0.395) H 179 S 0.273. Hue constant at H 171-179 across a 1.7x value range at essentially constant saturation -- a real tint. Normalised (0.725, 1.000, 0.965) sRGB, linear (0.484, 1.000, 0.922). This is a MINT/AQUA and it is distinctly greener and much less saturated (S 0.27-0.32) than ACCENTS['cyan_neon'] (S 0.556); it is a fifth register the library does not have.",
+   "extrapolated": "energy_rel and range. The strip is a wide backlit band behind a crowd, so nothing clean stands next to it at a known distance; 0.3 is set from its share of the frame's mid-tones and its visible reach onto the mural above it, where the balanced hue swings to H 154-180 across the whole middle of the wall.",
+   "reasoning": "It is the reason the Casino's mural balances H 154-180 across its whole middle while reading H 51 at the left edge next to the warm panel: one wall, two lights, 120 degrees apart. Include it or the room's cool half disappears."
+  },
+  {
+   "key": "casino_rail_tube",
+   "space": "casino",
+   "kind": "emissive_only",
+   "colour": [
+    0.471,
+    0.856,
+    1
+   ],
+   "kelvin_est": null,
+   "energy_rel": 0.15,
+   "range_m": 2.5,
+   "spacing_m": null,
+   "shadow": false,
+   "placement": "cyan tube run along the top of the balustrade rail, ~1.0 m above deck",
+   "source": "reference/04-sector-red/Casino.webp, RAW k-means over (0.020,0.660)-(0.215,0.800): (0.549,0.716,0.767) H 194 S 0.284 / (0.358,0.493,0.545) H 197 / (0.249,0.287,0.332) H 213 / (0.081,0.129,0.165) H 206. Normalised (0.716, 0.934, 1.000) sRGB, linear (0.471, 0.856, 1.000).",
+   "extrapolated": "energy_rel and range, both set from its visible reach along the rail and onto the deck immediately below it.",
+   "reasoning": "A rail-height cyan line. Same family as the conference lounge's floor track: B5 puts its cool register LOW and its warm register HIGH, over and over."
+  },
+  {
+   "key": "fa_tube_downlight",
+   "space": "fresh_air_restaurant",
+   "kind": "spot",
+   "colour": [
+    1,
+    0.711,
+    0.47
+   ],
+   "kelvin_est": 4400,
+   "energy_rel": 1,
+   "range_m": 16,
+   "spacing_m": 6,
+   "shadow": true,
+   "placement": "small rectangular fitting clamped to the red structural tubes crossing the volume overhead, aimed down; pitch 9-13 fitting-lengths along each tube, several parallel tube runs",
+   "source": "reference/04-sector-red/Fresh air.webp (authority 1). NEW GAINS, computed here: (1.0027, 0.9306, 1.0774), n=562,113. Blob analysis (luminance > 0.30, R > B + 0.02) locates the fittings at frame (0.192,0.210) (0.367,0.318) (0.441,0.108) (0.482,0.390) (0.584,0.257) (0.671,0.349) (0.877,0.174) (0.911,0.296), 22-47 px wide, Lmax 0.82-1.00. COLOUR from the resolved (unclipped) medians: C (0.416,0.357,0.294) H 31, D (0.582,0.496,0.392) H 33, B (0.588,0.547,0.463) H 40, normalising to (1.000, 0.858, 0.707), (1.000, 0.852, 0.674) and (1.000, 0.930, 0.787). Mean (1.000, 0.860, 0.715) sRGB, linear (1.000, 0.711, 0.470); CCT 4240-4990 K with dE to the Planckian locus of 0.006-0.019 -- these are near-perfect blackbodies. SPACING: grouped by tube slope the fittings sit 0.33-0.44 of frame width apart against a fitting width of 0.026-0.047, i.e. 9-13 fitting-lengths. SHADOW: the deck under a table edge at (0.415,0.930)-(0.470,0.960) reads balanced Y 0.017 against the open deck at (0.31,0.955)-(0.47,0.995) at Y 0.414 -- a ratio of 0.041, the deepest occlusion shadow in the family.",
+   "extrapolated": "spacing_m 6.0 assumes a 0.6 m fitting; the RATIO, 9-13 fitting-lengths, is the measurement and survives any assumption about the length. range_m 16 is set by the height of the tube runs above the tables, judged from the canopy, not measured.",
+   "reasoning": "The best-behaved measurement in the family: three independent fittings in one frame, all resolved, all landing within 0.08 of each other and all within 0.02 of the Planckian locus. 4400 K, NOT 2790 K. This is the number light_downlight should be carrying, and its own citation (grey level 1.webp, balanced H 27 S 0.238 = (1.000, 0.869, 0.762)) agrees with me and not with its shipped value."
+  },
+  {
+   "key": "fa_batten",
+   "space": "fresh_air_restaurant",
+   "kind": "directional",
+   "colour": [
+    1,
+    0.98,
+    1
+   ],
+   "kelvin_est": 6530,
+   "energy_rel": 0.9,
+   "range_m": 12,
+   "spacing_m": null,
+   "shadow": true,
+   "placement": "one large neutral-white batten hung well below the tube runs, roughly 4-5 m above the tables, over the entrance side",
+   "source": "reference/04-sector-red/Fresh air.webp, RAW over (0.372,0.455)-(0.430,0.480): median (0.776, 0.769, 0.776), S 0.010 -- NEUTRAL -- with p95 and max both (1.000, 1.000, 1.000). It clips fully in all three channels and has the largest bloom in the frame. Normalised (1.000, 0.991, 1.000) sRGB, linear (1.000, 0.980, 1.000), ~6530 K.",
+   "extrapolated": "energy_rel 0.9 -- it is the brightest single fitting in the frame by median and clip behaviour, but the tube downlights are the room's key by count and reach, so it is placed just below them rather than at 1.0. range_m and height are judged from the canopy, not measured.",
+   "reasoning": "A genuinely neutral 6500 K fitting sitting in the same room as 4400 K downlights and cyan neon. Worth carrying because a room whose every light is warm has no white in it, and this is the frame's white."
+  },
+  {
+   "key": "fa_neon_arc",
+   "space": "fresh_air_restaurant",
+   "kind": "emissive_only",
+   "colour": [
+    0.192,
+    0.951,
+    1
+   ],
+   "kelvin_est": null,
+   "energy_rel": 0.2,
+   "range_m": 3,
+   "spacing_m": null,
+   "shadow": false,
+   "placement": "curved cyan tubes tracing the restaurant fascia above the sign, and a second run lower at roughly 3 m",
+   "source": "reference/04-sector-red/Fresh air.webp, RAW over (0.375,0.520)-(0.500,0.560): median (0.184, 0.420, 0.435) H 184 S 0.577, p95 (0.435, 0.894, 0.914), max (0.533, 0.984, 1.000) -- clips in G and B. Normalised (0.476, 0.978, 1.000) sRGB, linear (0.192, 0.951, 1.000). That REPRODUCES materials.ACCENTS['cyan_neon'] (0.444, 1.000, 0.939) to within 0.06 from a frame that register was not derived from.",
+   "extrapolated": "energy_rel and range, judged from its reach onto the fascia it is mounted on.",
+   "reasoning": "Independent corroboration of cyan_neon in a third room. The cyan register is real and stable across the whole family."
+  },
+  {
+   "key": "fa_backlit_wall",
+   "space": "fresh_air_restaurant",
+   "kind": "emissive_only",
+   "colour": [
+    0.173,
+    0.727,
+    1
+   ],
+   "kelvin_est": null,
+   "energy_rel": 0.4,
+   "range_m": 6,
+   "spacing_m": null,
+   "shadow": false,
+   "placement": "large raked backlit panel behind the planting at low level, roughly 0.5-3 m above deck, spanning half the room's width",
+   "source": "reference/04-sector-red/Fresh air.webp, RAW over (0.02,0.575)-(0.46,0.72): p95 (0.435, 0.835, 0.961), max (0.867, 1.000, 1.000) -- clips. Normalised (0.453, 0.869, 1.000) sRGB, linear (0.173, 0.727, 1.000).",
+   "extrapolated": "energy_rel 0.4, from its size and its visible reach into the planting in front of it; no surface at a known distance resolves against it.",
+   "reasoning": "The room's whole cool half, at LOW level again, under warm fittings at high level. That vertical split -- warm above, cool below -- recurs in four of the six spaces and is the most transferable compositional rule in this family."
+  },
+  {
+   "key": "fa_planting_uplight",
+   "space": "fresh_air_restaurant",
+   "kind": "omni",
+   "colour": [
+    0.638,
+    0.601,
+    1
+   ],
+   "kelvin_est": 10530,
+   "energy_rel": 0.2,
+   "range_m": 2.5,
+   "spacing_m": 3,
+   "shadow": false,
+   "placement": "slim vertical tube fittings standing among the planting between the tables, roughly 1.2-2.0 m tall",
+   "source": "reference/04-sector-red/Fresh air.webp, RAW over (0.600,0.645)-(0.622,0.720) and (0.745,0.640)-(0.765,0.700): medians (0.392,0.369,0.490) H 252 and (0.257,0.231,0.278) H 272, p95 (0.992,0.992,1.000) and (0.761,0.741,0.929) -- they clip. Normalised on the resolved second (0.761, 0.741, 0.929) sRGB, linear (0.638, 0.601, 1.000), ~10500 K but off-locus.",
+   "extrapolated": "energy_rel, range and the 3.0 m spacing, which is read off how many appear across the visible planting rather than measured against anything.",
+   "reasoning": "A third cool register in one room. These are the fittings that separate figures from the dark planting behind them at eye level -- without them the crowd merges into the foliage, which is exactly what a naive engine build will produce."
+  },
+  {
+   "key": "ca_medallion_spot",
+   "space": "conference_lounge",
+   "kind": "spot",
+   "colour": [
+    1,
+    0.589,
+    0.4
+   ],
+   "kelvin_est": 3950,
+   "energy_rel": 1,
+   "range_m": 10,
+   "spacing_m": null,
+   "shadow": true,
+   "placement": "single broad overhead spot on axis above the raised floor medallion, fitting out of frame; the pool is coincident with the medallion and has a HARD edge",
+   "source": "reference/05-sector-green/conference aerea.webp (authority 1), gains recomputed as 1.1216/1.0263/0.8818, reproducing GREY_WORLD_GAINS. Balanced, the medallion's pale annulus reads 0.550/0.612/0.512 (Y 0.591) at (0.400,0.583)-(0.450,0.667) and 0.702/0.555/0.467 H 23 S 0.335 (Y 0.580) at (0.620,0.600)-(0.690,0.680). Normalised (1.000, 0.791, 0.665) sRGB, linear (1.000, 0.589, 0.400), ~3950 K. THE EDGE IS MEASURED: a horizontal profile at y 0.62-0.66 reads 0.05-0.08 outside, rises 0.08 -> 0.78 across dx 0.06 of frame width, holds 0.44-0.78 across the disc, and falls back to 0.05 by x 0.78. The vertical profile does the same at y 0.77-0.80.",
+   "extrapolated": "range_m and the cone angle, since the fitting is out of frame; the pool's hard edge and its diameter relative to the room fix the RATIO of cone angle to height even though neither is separately measured. The colour assumes the medallion terrazzo is neutral -- if it is warm, this reads too warm, and one frame of that floor under a different light closes it.",
+   "reasoning": "The single best demonstration in the family that these are SPOTS, not omnis: an omni cannot produce a rise from 0.08 to 0.78 across 6% of a frame. Off-pool floor at 0.083 of pool. A figure standing in it must occlude it, so it casts."
+  },
+  {
+   "key": "ca_table_lamp",
+   "space": "conference_lounge",
+   "kind": "emissive_only",
+   "colour": [
+    1,
+    0.587,
+    0.448
+   ],
+   "kelvin_est": 3950,
+   "energy_rel": 0.5,
+   "range_m": 2,
+   "spacing_m": null,
+   "shadow": false,
+   "placement": "a lit panel set into each table top, ~0.75 m above deck, one per table, 5-6 visible in the room",
+   "source": "reference/05-sector-green/conference aerea.webp. RAW k-means over the lower-left table's lamp (0.300,0.742)-(0.375,0.833): (0.960,0.835,0.848) H 354 S 0.130 / (0.727,0.615,0.629) H 353 / (0.478,0.398,0.428) H 338 / (0.290,0.201,0.224) H 345 -- hue constant across a 5.7x value range, so a real tint, but read RAW it is pink because this frame's balance is R-deficient. The honest reading is on the LIT SURFACES beside the lamps, balanced: table tops at (0.265,0.510)-(0.300,0.545) normalise (1.000, 0.807, 0.809), at (0.800,0.545)-(0.830,0.585) (1.000, 0.878, 0.786), at (0.660,0.815)-(0.700,0.855) (1.000, 0.671, 0.577). Mid (1.000, 0.790, 0.700) sRGB, linear (1.000, 0.587, 0.448), ~3950 K.",
+   "extrapolated": "energy_rel 0.5, placed between the medallion spot and the floor track from the lamps' clip behaviour (all five clip in R) and the size of the pool each makes on its own table.",
+   "reasoning": "THE TWO-LIGHT TEST, run on one table: its lamp side normalises (1.000, 0.807, 0.809) and its far side, facing the cyan floor track, normalises (0.742, 0.873, 1.000). One table, two sides, two illuminants, ~170 degrees apart. That is the whole design of this room in one object."
+  },
+  {
+   "key": "ca_floor_track",
+   "space": "conference_lounge",
+   "kind": "emissive_only",
+   "colour": [
+    0.108,
+    0.789,
+    1
+   ],
+   "kelvin_est": null,
+   "energy_rel": 0.35,
+   "range_m": 4,
+   "spacing_m": null,
+   "shadow": false,
+   "placement": "cyan tube inlaid in the step nosing AT DECK LEVEL, running a hexagon around the raised dais; the room's only floor-level fitting",
+   "source": "reference/05-sector-green/conference aerea.webp, RAW k-means over (0.094,0.583)-(0.144,0.733): (0.311,0.775,0.860) H 189 S 0.639 / (0.145,0.626,0.721) H 190 / (0.051,0.433,0.559) H 195 / (0.020,0.285,0.402) H 198. Hue constant H 189-198 across a 3.6x value range. Normalised (0.362, 0.901, 1.000) sRGB, linear (0.108, 0.789, 1.000). ITS REACH IS MEASURED: the floor at (0.170,0.640)-(0.240,0.700) reads balanced H 197 S 0.807, at (0.05,0.75)-(0.15,0.85) H 200 S 0.725, and the step riser at (0.30,0.34)-(0.40,0.40) H 195 S 0.589 -- everything within a few metres of the track carries its hue at very high saturation.",
+   "extrapolated": "energy_rel 0.35 and range 4.0 m, judged from how far the H 190-200 signature persists across the floor before the warm side takes over near x 0.72.",
+   "reasoning": "THIS IS THE FILL, and it is cyan. In this room the surfaces that look like they are sitting in ambient are sitting in this fitting's spill at S 0.72-0.86. Do not shadow it -- it is an uplight and shadowing an uplight both costs frame time and under-lights the very surfaces it exists to reach."
+  },
+  {
+   "key": "ca_window_louvre",
+   "space": "conference_lounge",
+   "kind": "emissive_only",
+   "colour": [
+    0.434,
+    0.619,
+    1
+   ],
+   "kelvin_est": null,
+   "energy_rel": 0.25,
+   "range_m": 5,
+   "spacing_m": 0.4,
+   "shadow": false,
+   "placement": "arcs of narrow vertical louvred slits round the upper perimeter of the rotunda, high level, above head height",
+   "source": "reference/05-sector-green/conference aerea.webp, RAW k-means over (0.02,0.19)-(0.18,0.27): (0.467,0.548,0.677) H 217 S 0.309 / (0.304,0.377,0.497) H 217 / (0.136,0.209,0.320) H 216 / (0.021,0.073,0.130) H 211. Hue constant H 211-217 across a 22x range of value -- as clean a tint measurement as anything in the family. Normalised (0.690, 0.809, 1.000) sRGB, linear (0.434, 0.619, 1.000). The right-hand arc at (0.70,0.11)-(0.88,0.18) gives H 216 independently.",
+   "extrapolated": "energy_rel and range. The louvres sit above the room's occupied zone and nothing at a known distance from them resolves.",
+   "reasoning": "H 216, a genuine cool BLUE, distinct from the cyan of the floor track at H 190-198 by 20 degrees at similar saturation. This is materials.ACCENTS['cool_blue'] territory and it belongs at the perimeter and high up. Three cool registers plus one warm key in a single room -- these interiors are not two-tone."
+  },
+  {
+   "key": "ca_chequer_panel",
+   "space": "conference_lounge",
+   "kind": "emissive_only",
+   "colour": [
+    1,
+    0.649,
+    1
+   ],
+   "kelvin_est": null,
+   "energy_rel": 0.2,
+   "range_m": 4,
+   "spacing_m": null,
+   "shadow": false,
+   "placement": "large backlit chequerboard panel in the wall, full height of the upper level; two attested, one magenta and one near-neutral",
+   "source": "reference/05-sector-green/conference aerea.webp, RAW k-means over (0.32,0.01)-(0.41,0.08): (0.567,0.465,0.564) H 302 S 0.179 / (0.497,0.395,0.495) H 302 / (0.419,0.318,0.418) H 301 / (0.326,0.228,0.327) H 299. Hue constant at H 299-302 across a 1.7x value range with R = B to three decimals at every level -- a real MAGENTA, not a cast. Normalised (1.000, 0.826, 1.000) sRGB, linear (1.000, 0.649, 1.000). The NEUTRAL VARIANT is equally attested in the same frame at (0.945,0.05)-(0.995,0.40): (0.770,0.717,0.757) S 0.069, normalised (1.000, 0.931, 0.983), ~6250 K.",
+   "extrapolated": "energy_rel and range. Both variants are recorded rather than one chosen, on the same argument materials.zoc_neon_face uses for its two attested colours.",
+   "reasoning": "A magenta light source, which no register in materials.ACCENTS covers. Small, but it is measured and it is the kind of thing that makes an interior look authored rather than generated. Whether it ships is a material decision; that it exists is a measurement."
+  },
+  {
+   "key": "cc_house_wash",
+   "space": "council_chamber",
+   "kind": "directional",
+   "colour": [
+    1,
+    0.966,
+    0.944
+   ],
+   "kelvin_est": 6300,
+   "energy_rel": 1,
+   "range_m": 18,
+   "spacing_m": null,
+   "shadow": true,
+   "placement": "concealed high-level house lighting, fitting never in frame; a broad soft near-neutral wash over the whole chamber",
+   "source": "reference/05-sector-green/council chambers.webp (authority 1), gains recomputed as 0.9975/1.0820/0.9318, reproducing GREY_WORLD_GAINS. THE COLOUR IS THE FRAME'S OWN NEUTRALITY: the chamber's brightest surface, the perforated table fascia at (0.40,0.640)-(0.61,0.730), balances to 0.649/0.653/0.639, S 0.021 -- neutral to within 2%. Floor 0.426/0.488/0.493 (Y 0.475) at the region materials.py already cites, 0.434/0.433/0.376 (Y 0.429) below the fascia. THE EVENNESS IS THE MEASUREMENT: p50/p95 of the balanced frame excluding clipped sources is 0.397, against 0.06-0.24 for every other space in the family, and only 8.4% of the frame sits below Y 0.05 against 35-56% in the Zocalo, Fresh Air and the Dugout.",
+   "extrapolated": "Everything about the fitting -- kind, height, range -- because no fitting is visible. What is measured is the RESULT: a soft neutral wash at a fill ratio of 0.21, and that is what the engine has to reproduce however it is rigged.",
+   "reasoning": "The family's one counter-example, and it is a counter-example for a reason: the ceremonial room is lit like a room, the commercial rooms are lit like sets of pools. Its fill is 0.21 against 0.04-0.10 everywhere else and its brightest surface is NEUTRAL where every other space in the family is warm. That contrast is Green sector's identity and it should not be flattened by a single station-wide lighting rig."
+  },
+  {
+   "key": "cc_table_fascia",
+   "space": "council_chamber",
+   "kind": "emissive_only",
+   "colour": [
+    0.989,
+    1,
+    0.953
+   ],
+   "kelvin_est": 6400,
+   "energy_rel": 0.4,
+   "range_m": 3,
+   "spacing_m": null,
+   "shadow": false,
+   "placement": "backlit fine-perforated screen forming the whole front fascia of the council table, roughly 0.15-1.0 m above the floor, ~6 m run",
+   "source": "reference/05-sector-green/council chambers.webp. Balanced over (0.40,0.640)-(0.61,0.730): 0.649/0.653/0.639, H 77 S 0.021, V 0.653, Y 0.652 -- the brightest surface in the frame and essentially neutral. Raw it is (0.651,0.604,0.686) H 274 S 0.120, i.e. the frame's own magenta cast; k-means gives four bands at H 268-313 with saturation 0.085-0.125, so the RAW hue is capture, not fitting. Magnified at 3x it resolves as a fine square perforation grid with warm-tan dots on a pale ground. The floor below it reads Y 0.429 and the table top above it Y 0.338, so the fascia is 1.5x the floor and 1.9x the table.",
+   "extrapolated": "energy_rel 0.4 and range 3.0 m. The fascia is a low, wide, dim source and nothing in the frame separates its contribution from the house wash.",
+   "reasoning": "A low-level, wide, NEUTRAL emissive band -- the same compositional move as the conference lounge's cyan floor track and the Zocalo's deck strip, but neutral instead of coloured, which is again the ceremonial room refusing the accent every other space takes."
+  },
+  {
+   "key": "bar_pendant_lamp",
+   "space": "dougs_dugout",
+   "kind": "spot",
+   "colour": [
+    1,
+    0.554,
+    0.393
+   ],
+   "kelvin_est": 3900,
+   "energy_rel": 1,
+   "range_m": 3.5,
+   "spacing_m": 2.2,
+   "shadow": true,
+   "placement": "inside a shallow cone shade hung below standing eye height, one per table, as hospitality.py records and asserts",
+   "source": "reference/04-sector-red/Doug's Dugout.webp, RAW ONLY. materials.NEGATIVE_RESULTS forbids this frame for albedo and its gains recompute to (0.7235, 1.2793, 1.1961), reproducing that entry exactly -- but an emitter's colour is the illuminant rather than a reflectance, so the frame is usable for exactly this. The near pendant's rim at (0.400,0.062)-(0.650,0.094) is FULLY CLIPPED (median 1.000/0.965/1.000, S 0.035) so it gives intensity, not colour. The colour comes from the brightest resolved lit object inside its pool, the bun at (0.535,0.780)-(0.590,0.830): raw (0.867, 0.663, 0.569), H 19 S 0.344, normalised (1.000, 0.765, 0.656) sRGB, linear (1.000, 0.554, 0.393), ~3900 K. FILL: the table under the pendant reads Y 0.113 while the wall between pendants at (0.055,0.60)-(0.115,0.80) reads Y 0.008 and at (0.855,0.62)-(0.905,0.86) Y 0.013, and the ceiling between them Y 0.058. Fill/key 0.07-0.11.",
+   "extrapolated": "The colour rests on the bun's albedo being pale and warm-neutral, which it is not exactly -- it is bread. The deep H 0-8 readings elsewhere in that frame (the table at (1.000, 0.391, 0.305), the shade's underside at (1.000, 0.513, 0.484)) are the objects' own colour plus falloff, not the lamp, and taking them literally would put the pendant at 1500-1800 K, which nothing else in the family supports. spacing_m 2.2 is hospitality.py's table pitch, reproduced not measured.",
+   "reasoning": "materials.bar_pendant_lamp currently carries ACCENTS['warm_practical'] at 2440 K and energy 9.0. The energy is right -- this fitting is the sole source in its room and its rim clips completely white while 56.2% of the frame sits below Y 0.05, the most extreme distribution in the family. The colour is too saturated by the same margin as light_downlight's. Shadows: the pendant IS the design, so the two or three nearest ones cast and the rest do not."
+  },
+  {
+   "key": "bar_neon_glyph",
+   "space": "dougs_dugout",
+   "kind": "emissive_only",
+   "colour": [
+    0.227,
+    0.783,
+    1
+   ],
+   "kelvin_est": null,
+   "energy_rel": 0.25,
+   "range_m": 2.5,
+   "spacing_m": null,
+   "shadow": false,
+   "placement": "wall-mounted neon figure on the left wall at roughly 1.8-2.6 m, plus a vertical cyan tube in four segments split by three clamp bands (hospitality.py)",
+   "source": "reference/04-sector-red/Doug's Dugout.webp, RAW over (0.120,0.012)-(0.163,0.110): median (0.043, 0.133, 0.361) H 223 S 0.880, p95 (0.514, 0.898, 1.000), max (0.624, 1.000, 1.000) -- clips in G and B. Normalised on the p95, (0.514, 0.898, 1.000) sRGB, linear (0.227, 0.783, 1.000).",
+   "extrapolated": "energy_rel and range, judged from its glow on the wall around it in a room with no ambient at all.",
+   "reasoning": "The Dugout's only cool light, against nine warm pendants. Even the darkest, warmest room in the family carries a cool accent."
+  },
+  {
+   "key": "bar_backlit_sign",
+   "space": "dougs_dugout",
+   "kind": "emissive_only",
+   "colour": [
+    0.061,
+    0.23,
+    1
+   ],
+   "kelvin_est": null,
+   "energy_rel": 0.3,
+   "range_m": 2.5,
+   "spacing_m": null,
+   "shadow": false,
+   "placement": "backlit brand panel on the rear wall at roughly 1.6-2.2 m",
+   "source": "reference/04-sector-red/Doug's Dugout.webp, RAW over (0.463,0.200)-(0.533,0.290): median (0.220, 0.416, 0.804) H 220 S 0.727, p95 (0.678, 0.918, 1.000), max (0.918, 1.000, 1.000) -- clips. Normalised on the median, (0.274, 0.517, 1.000) sRGB, linear (0.061, 0.230, 1.000). A SECOND signage source in the same frame is a red LED dot-matrix panel at (0.225,0.035)-(0.340,0.265): median (0.259, 0.086, 0.094) H 357 S 0.667, normalised (1.000, 0.332, 0.363), linear (1.000, 0.090, 0.108).",
+   "extrapolated": "energy_rel and range for both. Neither has a surface at a known distance in front of it.",
+   "reasoning": "Two more signage emitters, blue and red, in a room whose architectural lighting is nine identical pendants. In a space with fill at 0.07-0.11 the signage is a real fraction of what the eye actually receives, and dropping it leaves the background of every Dugout shot black."
+  },
+  {
+   "key": "earharts_window_band",
+   "space": "earharts",
+   "kind": "emissive_only",
+   "colour": [
+    0.582,
+    0.733,
+    1
+   ],
+   "kelvin_est": 10000,
+   "energy_rel": 1,
+   "range_m": 8,
+   "spacing_m": null,
+   "shadow": false,
+   "placement": "continuous glazed band around the saucer, ~2.4 m tall, divided into bays by solid piers; lit interior visible through it",
+   "source": "reference/04-sector-red/Earhart's.webp (authority 1). NEW GAINS, computed here: (0.8525, 0.9901, 1.2240), n=279,426. Measured RAW because what is being read is emission through glazing. K-means over the centre bay (0.435,0.385)-(0.605,0.535): (0.559,0.619,0.710) H 216 S 0.212 / (0.415,0.451,0.578) H 227 / (0.313,0.315,0.425) H 239 / (0.216,0.198,0.281) H 253 / (0.118,0.102,0.167) H 254 / (0.035,0.029,0.044) H 265. Hue constant H 216-265 across a TWENTY-FOLD range of value -- the cleanest tint measurement in the family. Normalised on the brightest cluster, (0.787, 0.872, 1.000) sRGB, linear (0.582, 0.733, 1.000), ~10000 K. LEVEL: that cluster is Y 0.613 against the daylit exterior shell above it at (0.05,0.10)-(0.60,0.26), balanced Y 0.340, i.e. the lit band reads 1.75x the surface beside it; the dark interior voids between bays read Y 0.031, i.e. 0.09x.",
+   "extrapolated": "energy_rel is 1.0 by definition (it is the only fitting in this frame). range_m 8.0 is the glazing's own depth into the room, judged from the visible interior, not measured.",
+   "reasoning": "This is the datum the standing blocking finding against exterior_approach needs: a lit interior seen from outside is NOT a uniform glow. It is a 1.75x/0.09x checker -- bright bays against dark ones, at a cool 10000 K -- and it is the DARK bays that make it read as a building rather than a lightbox. Also worth noting for its own sake: the interior register visible here is cool blue, while the concourse two decks below is warm-over-cool. The restaurants are cooler than the market."
+  }
+ ],
+ "ambient": [
+  {
+   "space": "zocalo_concourse",
+   "ratio": 0.094,
+   "source": "reference/04-sector-red/more zocalo.png, balanced 0.936/1.137/0.951. Darkest MEASURABLE structural surface: the soffit above the gallery fascia at (0.60,0.005)-(0.75,0.022), Y 0.062, and the purlin run at (0.640,0.040)-(0.760,0.080), Y 0.062 (the gallery slab edge at Y 0.028 is nearly crushed and is not used). Brightest lit surface: the clean deck field at (0.215,0.815)-(0.315,0.859), Y 0.657. 0.062/0.657 = 0.094. Cross-check in reference/04-sector-red/zocalo.webp (gains 0.906/1.185/0.950): the side wall at (0.855,0.110)-(0.900,0.290) reads Y 0.464 and the same wall out of the fittings' reach at (0.900,0.330)-(0.980,0.430) reads Y 0.0685 -- 0.148. Whole-frame p50/p95 excluding clipped sources: 0.138 (more zocalo), 0.241 (zocalo, where a close crowd dominates the mid-tones). SEPARATE AND DO NOT CONFUSE: a chair leg on the deck casts a shadow only 0.74 as dark as the deck beside it, because ~4 downlight pools overlap at any point (spacing/height 2.7/7.2 = 0.375) and one occluder removes only one of them."
+  },
+  {
+   "space": "casino",
+   "ratio": 0.074,
+   "source": "reference/04-sector-red/Casino.webp, balanced 1.014/1.071/0.926 (recomputed 1.0145/1.0707/0.9257). THE BEST-DEFINED RATIO IN THE FAMILY because it is one surface, one material, one depth: the deck at (0.28,0.90)-(0.40,1.00) carries hard grille shadow stripes thrown from the upper-left backlit panel. Balanced, p97 of that patch is 0.583 and p05 is 0.043 -- 0.074. The p90/p10 pair over the same patch is 0.515/0.087 = 0.168, which is the shallower figure for a shadow immediately adjacent to a lit stripe and therefore receiving bounce from it. Cross-surface check: the deck right of the stripes at (0.60,0.86)-(0.70,0.94) reads Y 0.025 against the mural under the left panel at (0.18,0.10)-(0.22,0.20) at Y 0.542 -- 0.046. Whole-frame p50/p95: 0.345, the second-highest in the family, because a large area source washes a large wall."
+  },
+  {
+   "space": "fresh_air_restaurant",
+   "ratio": 0.041,
+   "source": "reference/04-sector-red/Fresh air.webp, balanced with the NEW gains computed here (1.0027, 0.9306, 1.0774). Deck under a table edge at (0.415,0.930)-(0.470,0.960): Y 0.017. Open deck between the tables at (0.31,0.955)-(0.47,0.995): Y 0.414. 0.017/0.414 = 0.041 -- the deepest occlusion shadow in the family. The overhead canopy, a different material, reads Y 0.019 at (0.16,0.02)-(0.30,0.10) and Y 0.064 at (0.55,0.05)-(0.75,0.13), giving 0.046-0.155 against the same deck. Whole-frame p50/p95: 0.118, with 54.5% of the frame below Y 0.05."
+  },
+  {
+   "space": "conference_lounge",
+   "ratio": 0.1,
+   "source": "reference/05-sector-green/conference aerea.webp, balanced 1.122/1.026/0.882 (recomputed 1.1216/1.0263/0.8818). Floor under the overhead pool: the medallion's pale annulus at (0.400,0.583)-(0.450,0.667) Y 0.591 and at (0.620,0.600)-(0.690,0.680) Y 0.580. Floor away from the pool: (0.760,0.560)-(0.830,0.640) Y 0.077, (0.300,0.860)-(0.380,0.930) Y 0.057, (0.560,0.900)-(0.640,0.980) Y 0.047, upper terrace (0.640,0.430)-(0.740,0.470) Y 0.064. Range 0.080-0.133, taken at 0.10. Confirmed by a continuous profile at y 0.62-0.66: 0.05-0.08 outside, 0.44-0.78 inside, with a rise across only dx 0.06 of frame width. A SECOND FALLOFF WITHIN THE POOL: the medallion's own rim reads Y 0.188-0.253, i.e. 0.32-0.43 of its centre. THE FILL IS NOT NEUTRAL -- off-pool floor reads H 190-200 S 0.63-0.86 on the cyan-track side and H 21-44 S 0.18-0.47 on the warm-lamp side."
+  },
+  {
+   "space": "council_chamber",
+   "ratio": 0.21,
+   "source": "reference/05-sector-green/council chambers.webp, balanced 0.998/1.082/0.932 (recomputed 0.9975/1.0820/0.9318). Darkest measurable structural surface: the dark wall panel upper right at (0.760,0.020)-(0.860,0.120), Y 0.098. Brightest lit (non-emissive) surface: the floor at (0.900,0.860)-(0.990,0.990), Y 0.475. 0.098/0.475 = 0.206. The deepest shadow in the frame, (0.020,0.640)-(0.090,0.740) at Y 0.0375, gives 0.079 -- but almost nothing in this chamber is that dark, which is the point. Whole-frame p50/p95 is 0.397 and only 8.4% of the frame is below Y 0.05, against 35-56% in the Zocalo, Fresh Air and the Dugout. THIS SPACE IS THE FAMILY'S OUTLIER AND IT IS AN OUTLIER ON PURPOSE: it is lit like a room, everything else is lit like a set of pools."
+  },
+  {
+   "space": "dougs_dugout",
+   "ratio": 0.09,
+   "source": "reference/04-sector-red/Doug's Dugout.webp, RAW ONLY -- materials.NEGATIVE_RESULTS forbids balancing this frame and its gains recompute to (0.7235, 1.2793, 1.1961), reproducing that entry exactly. A ratio between two luminances inside one exposure does not need the balance. Table top under the near pendant at (0.28,0.905)-(0.72,0.985): Y 0.113. Wall between pendants at (0.055,0.60)-(0.115,0.80): Y 0.0084; at (0.855,0.62)-(0.905,0.86): Y 0.0126. Ceiling between pendants at (0.40,0.28)-(0.60,0.34): Y 0.058. 0.010/0.113 = 0.09. Whole-frame p50/p95 excluding clipped sources: 0.060, the lowest in the family, with 56.2% of the frame below Y 0.05 -- which is hospitality.py's 'near-zero ambient between them', measured."
+  },
+  {
+   "space": "earharts",
+   "ratio": 0.05,
+   "source": "reference/04-sector-red/Earhart's.webp, RAW, with the NEW gains recorded but not applied (this is emission through glazing, not a reflectance). Darkest measurable interior surface: the deepest cluster inside the centre window bay (0.435,0.385)-(0.605,0.535), Y 0.031. Brightest: the same bay's top cluster, Y 0.613. 0.031/0.613 = 0.051. THE EXTERIOR REFERENCE MATTERS MORE THAN THE RATIO HERE: the daylit shell above the band at (0.05,0.10)-(0.60,0.26) balances to Y 0.340, so the lit window band is 1.75x the surface beside it and the dark bays are 0.09x it. That bracket is the emissive-window datum layer 4 needs, and it says the band must be a checker rather than a glow."
+  }
+ ],
+ "_family": "public_social"
+}

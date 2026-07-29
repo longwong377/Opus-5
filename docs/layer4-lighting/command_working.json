@@ -1,0 +1,337 @@
+{
+ "findings": "## THE HEADLINE: C&C's cool blue is the LIGHT, not the screens. Measured, not argued.\n\nThe parent's question decides whether C&C gets blue lamps or grey lamps in front of blue displays. Five independent tests all say **blue lamps**, and the surprising half of the result is that **C&C's screens are warm**:\n\n1. **Whole-frame grey-world gain for `comand and contorl.webp` is (1.307, 1.130, 0.741)** over 420,864 mid-tone pixels (0.04<V<0.95). NOT IN `GREY_WORLD_GAINS` \u2014 report it. Raw channel means are R 0.1374 / G 0.1590 / B 0.2426. A screen covering a few percent of frame cannot move a 420k-pixel population by B/R = 1.77.\n2. **The frame fails the Doug's-Dugout validity test harder than Doug's Dugout does.** Balanced saturation over 0.15<V<0.85: median **0.420**, p90 **0.891**, **33.2 %** above S 0.5. The Dugout is 0.370 / 0.870 / ~33 %; `grey level 1.webp` is 0.105 / 0.194 / 0.000; `war room.webp` 0.213 / 0.391 / 0.009; `dock.webp` 0.130 / 0.272 / 0.027. `NEGATIVE_RESULTS` already diagnoses this shape \u2014 *the lighting design IS the room* \u2014 and it now applies to C&C. **Do not use C&C's balance for albedo.** Sources read raw.\n3. **41.3 % of the frame is blue-dominant at S>0.45, V>0.10, and it is all architecture.** A 10\u00d78 occupancy map puts it at 8-9/10 across the whole left third and right third, top to bottom \u2014 both side walls, ceiling, rails, both lower decks. Red-dominant pixels at S>0.25 are **2.5 %** and sit exactly on the console beds and the forward pit. Green-dominant: **0.0 %**.\n4. **I reproduce the 6-cluster claim in `SECTOR_ACCENT` and it does not support `ACCENTS['cool_blue']` as an emitter.** My run: 33.1 % H 222.2 S 0.631 V 0.147; 25.6 % V 0.035; 20.1 % H 225.9 S 0.562 V 0.279; 14.0 % V 0.366; 4.5 % H 214.1 S 0.190 V 0.763; **2.7 % H 227.2 S 0.876 V 0.616**. The recorded `cool_blue` (0.240, 0.320, 1.000), \"H 228 S 0.880\", is the **2.7 % cluster**, and its spatial map puts it on the left wall panel and the two lower-deck light pools. It is a **crushed lit-wall reading**, not the emitter: at V 0.19-0.28 on that wall the red channel sits at 1-10 codes of 255, so S is quantisation-inflated. Arithmetic proof: pushed through McCamy, (0.240,0.320,1.000) returns 2406 K at xy (0.172, 0.107) \u2014 nowhere near any locus. **If you use it as an emission colour you double-apply the blue** and C&C renders as a blacklight cave.\n5. **The un-clipped source colour, pooled over four courses on the right wall, value-banded raw**: H 213.5 S 0.676 V 0.298 (n=367); H 211.9 S 0.498 V 0.428 (n=523); H 211.0 S 0.414 V 0.568 (n=355); H 208.0 S 0.370 V 0.739 (n=623); H 202.8 S 0.251 V 0.933 (n=1496). **Hue constant across a 3.1\u00d7 value range while saturation falls monotonically** \u2014 the project's own signature for a source blowing to white with its register intact. Corroborated on a lit surface: the pale lower deck at (0.860,0.560)-(0.960,0.585) reads H 210.0 S 0.470, normalised (0.530, 0.765, 1.000), agreeing with the V 0.35-0.50 band's (0.502, 0.735, 1.000) to 0.03. My independent read also reproduces the previous agent's (0.540, 0.724, 1.000) to 0.04.\n\n**And C&C mixes registers, which the library does not currently record.** The console beds read raw H 340-356 S 0.19-0.33 (top-decile core (0.859,0.772,0.784)) \u2014 warm cream with green/amber/red content visible at 6\u00d7. The console skirts are cyan light boxes at H 195-197 S 0.31-0.37. The forward pit is red. **Nothing blue in that room is a screen.**\n\n## THE DAIS KEY EXISTS AND IT IS NOT IN `command_control.py`\n\nA horizontal profile across the dais apron at y .690-.735 finds a **hard-edged cast shadow**: L 0.558 \u2192 0.271 across ~6 px at x 0.482, and 0.258 \u2192 0.475 across ~6 px at x 0.548. Same surface, two illuminants, and the hue flips with them \u2014 **lit H 320-335 S 0.11-0.14, shadow H 239-262 S 0.20-0.33**. That is the ochre-dado test run on this frame and passed. Lit-minus-shadow isolates the key: (0.582,0.510,0.549) \u2212 (0.267,0.231,0.306) = (0.315, 0.279, 0.243), normalised **(1.000, 0.886, 0.771), H 31, CCT ~4700 K**. Fill/key on that surface is **0.43**. `command_control.py` has no such fitting; the room is currently strip-only and would render with the dais flat and shadowless.\n\n## THE RATIO BETWEEN FITTINGS AND FILL \u2014 and C&C is not pooled the way a corridor is\n\nTwo independent methods agree per space (region pairs, and p10/p90 of balanced frame luminance):\n\n| space | darkest / brightest lit | frame p10/p90 |\n|---|---|---|\n| **C&C** | **0.047** (corner L 0.0250 / dais apron L 0.5281) | 0.055 |\n| **docking bay** (`dock.webp`) | **0.076** (deck between L 0.0301 / deck in pool L 0.398) | 0.099 |\n| **bay 17** (large-craft bay) | **0.11** | 0.118 |\n| **tram saloon** (35a) | **0.17** | 0.093 |\n| **war room** | **0.23** (floor L 0.0917 / wall under a bank L 0.40) | 0.219 |\n\n**The war room is four to five times flatter than C&C.** They are both Blue-sector command spaces and they must not be lit the same way.\n\n**But C&C's side WALL is nearly evenly washed.** A 320-row vertical profile at x .885-.965 finds four courses at y .169 / .300 / .428 / .548 and the wall between them at L 0.090-0.115 against L 0.139 immediately beside a course \u2014 **0.65 to 0.93**. The pooling in C&C is horizontal (walls bright, room centre and pit black), not vertical. Do not carry a corridor's wall-pooling into it.\n\n**The docking bay is the opposite and the most extreme space I measured.** Along one deck band at y .735-.765: L 0.030-0.035 outside the pool, rising to a peak of 0.398 inside it. **The deck between floods is 8 % of the deck under one.**\n\n## PLACEMENT: `command_control.py` builds two courses; the frame shows four\n\nFour courses per side wall, image pitch 78/78/73 px against a bright-band height of 13 px \u2014 **pitch = 6.0\u00d7 the fitting's own height**. Applied to the module's `STRIP_H_M = 0.22`, that is **1.32 m**, which reproduces the module's existing 1.20 m pitch (`STRIP_Y_M = (2.35, 3.55)`) to 10 %. So the module's pitch is right and its **count is short by two**: extend to y \u2248 1.15 m, and one course on the pit wall. Segmentation is coarse, not the corridor pilaster's seven cells: bars run 49-65 px with 2-11 px joints (\u2248 0.5-1.2 m bars, 0.02-0.2 m joints) \u2014 a nearly continuous run broken by narrow joints.\n\n## THE DOCKING BAY HAS A SECOND SOURCE THE MODULE DOES NOT HAVE\n\nThe open mouth reads balanced H 212.7 S 0.278 L 0.4465 over ~15 % of frame \u2014 comparable in surface luminance to flood-lit deck, over a hundred times the solid angle. It is the only thing that can shape the parked craft. But the deck between pools is L 0.030, so it is **directional, not an ambient dome**. `docking_bay.py` builds the mouth as an opening and nothing else lights through it.\n\n## CORROBORATIONS AND METHOD CONTROLS\n\n- Three `GREY_WORLD_GAINS` entries reproduce exactly from the frames: `war room` (1.088, 1.062, 0.877), `33a` (0.881, 1.055, 1.091), `35a` (0.913, 1.090, 1.013). `dock.webp` reproduces to (0.968, 1.027, **1.007** vs 1.006).\n- `ALBEDO_ANCHOR_CORROBORATION`'s \"dock.webp bay wall (0.200,0.290)-(0.330,0.400) lit 0.418\" reproduces **exactly**: my balanced V is 0.268, and 0.268 \u00d7 1.559 = 0.418.\n- `bay_floodlight`'s (0.942, 0.929, 1.000) reproduces on a different sample set: four flood cores raw give (0.931, 0.921, 1.000). **A counter-reading is on the record**: the deck those floods light reads faintly *warm* (H 17-45, S 0.03-0.07). Source cool by 7 %, lit deck warm by 4 % \u2014 the honest conclusion is **neutral \u00b17 %**, and the existing value sits inside that.\n\n## NEW GAINS TO RECORD (computed here, same method)\n\n```\n03-sector-blue/comand and contorl.webp              (1.307, 1.130, 0.741)   INVALID for albedo\n03-sector-blue/Minbari Flyer 969 in docking bay 17  (0.985, 1.161, 0.890)   marginal (S med 0.236, p90 0.583)\n03-sector-blue/Babylon_5_2-22_29a.jpg               (0.884, 1.043, 1.099)\n03-sector-blue/Babylon_5_2-22_34b.jpg               (0.983, 0.964, 1.058)\n```\n\n## A FIFTH ACCENT REGISTER, AND A TRAP INSIDE IT\n\n`ACCENTS` has no entry between warm_practical (H 24) and cyan (H 187-199). Three independent frames put a backlit **amber-gold** source at **H 51-57**: the tram saloon's bench panels raw H 51.3-53.3 S 0.52-0.57 (35a), and `light_ceiling_grid`'s customs coffer at H 54.6-57.0. That is 28\u00b0 off warm_practical and should be its own register.\n\n**The trap**: hazard chevron paint in bay 17 under a near-neutral light reads raw H 49.8 S 0.60 \u2014 hue-degenerate with the amber source. Two different things at the same hue; only value and context separate them. This is the sixth time in this project a colour in a frame has had to be assigned to either light or surface, and here they collide.\n\n## OTHER NOTES\n\n- **The war room's wall practicals are WARM and survive a valid balance**: banks of short vertical strips at H 24-36 S 0.19-0.26 balanced, against a galactic map at H 207 S 0.303 balanced. Both registers survive the same correction, so this is a genuine two-register room and not a global cast. Faces in it read H 16-25 S 0.42-0.48 \u2014 lit by the warm practicals, not the map.\n- **`Babylon_5_2-22_29a` and `33a`/`34b` are not command-or-working frames** \u2014 29a is the park/tram, 33a and 34b are drum interiors. I computed their gains and left them to the garden and transit families. Worth flagging to whoever has 33a: the transit spine's underside carries a run of small white lights and the tram car shows lit windows \u2014 relevant to the standing `exterior_approach` finding.\n- **`light_command_strip`'s current `emission_energy = 3.8` was derived against the wrong colour.** If the emission moves from (0.240, 0.320, 1.000) to the measured (0.243, 0.546, 1.000) linear, the fitting's luminance more than doubles at the same energy and the number needs re-deriving.\n- Not my files, but flagged since it cost me a run: `scratchpad/struct.py` shadows the stdlib `struct` module for anything run with the shared scratchpad as cwd, and it `exec`s `break.py`. Leftover from a mutation sweep. Work from a subdirectory.",
+ "fixtures": [
+  {
+   "key": "cc_wall_course",
+   "space": "command_control",
+   "kind": "omni",
+   "colour": [
+    0.2429,
+    0.5462,
+    1
+   ],
+   "energy_rel": 0.44,
+   "kelvin_est": 22000,
+   "range_m": 3.5,
+   "spacing_m": 1.2,
+   "placement": "Four horizontal courses per side wall, at x = +/-7.0 m (FLOOR_W_M/2), running z -3.6 to +5.04 m. Vertical pitch 1.2 m measured (see reasoning); command_control.py already places two at y 2.35 and 3.55 with STRIP_H_M 0.22 -- extend to a third at y ~1.15 and a fourth on the pit wall ~1.15 m above the pit floor. Emitting face flush in the wall, throwing outward; the room centre stays dark.",
+   "shadow": false,
+   "source": "reference/03-sector-blue/comand and contorl.webp (authority 1), measured RAW -- this frame's grey-world balance is INVALID for albedo (balanced S median 0.420, p90 0.891, 33.2% above S 0.5, worse than Doug's Dugout's 0.370/0.870), and NEGATIVE_RESULTS' rule is that a source read raw is exactly what such a frame is good for. Pooled four course cores on the clean right wall (x .885-.965) and value-banded: H 213.5 S 0.676 V 0.298 (n=367); H 211.9 S 0.498 V 0.428 (n=523); H 211.0 S 0.414 V 0.568 (n=355); H 208.0 S 0.370 V 0.739 (n=623); H 202.8 S 0.251 V 0.933 (n=1496). Hue constant across 3.1x value while saturation falls monotonically. Un-clipped V 0.35-0.50 band normalises to sRGB (0.502, 0.735, 1.000); the lit pale lower deck at (0.860,0.560)-(0.960,0.585) independently gives H 210.0 S 0.470 = (0.530, 0.765, 1.000). Colour reported is the lit-deck reading, linearised. Placement pitch from a 320-row vertical profile at x .885-.965: courses at frame y .169/.300/.428/.548, deltas 78/78/73 px against a 13 px bright band = pitch 6.0x fitting height; at STRIP_H_M 0.22 that is 1.32 m, reproducing the module's own 1.20 m.",
+   "extrapolated": "energy_rel, range_m, and the fourth course's exact height. Energy is by DELIVERED illuminance, not emitter luminance: the wall immediately beside a course reads L 0.139 against the dais apron's net key contribution of L 0.317, giving 0.44. Emitter luminance would rank it 1.0 (peak L 0.85) but every bright emitter in the frame clips, so that ranking is uninformative. range_m 3.5 is set so the room centre stays dark, which the frame requires (centre columns of a 10x8 blue-occupancy map read 0-2/10 against 8-9/10 at the walls).",
+   "reasoning": "THIS IS THE ANSWER TO THE BRIEF'S QUESTION: C&C GETS BLUE LAMPS. 41.3% of the frame is blue-dominant at S>0.45 V>0.10, and the occupancy map puts all of it on architecture -- both side walls floor to ceiling, ceiling, rails, both lower decks, and the crew's white uniform shirts (man on the stair H 237.5 S 0.343; officer at the dais H 224.5 S 0.617). The screens are the opposite register: red-dominant pixels are 2.5% and sit exactly on the console beds and the pit; green-dominant is 0.0%. DO NOT USE ACCENTS['cool_blue'] (0.240,0.320,1.000) AS THE EMISSION. I reproduce the cluster it came from (2.7% at H 227.2 S 0.876 V 0.616, spatially on the left wall panel and the lower-deck pools) and it is a lit-wall reading whose red channel is crushed to 1-10 codes of 255, inflating S. Through McCamy it returns 2406 K at xy (0.172, 0.107), which is not a light chromaticity at all. The measured emitter sits at xy (0.237, 0.256), CCT ~22000 K nominal -- near the high end of the Planckian locus but well outside any lamp range, so treat kelvin_est as descriptive only and set the colour directly. sRGB-normalised equivalent for reconciling with materials.py's existing emission convention: (0.530, 0.765, 1.000). NO SHADOW: four long diffuse courses per wall is eight shadow-casters for a room whose only hard shadow is on the dais, and the wall wash is nearly flat (fill/fitting 0.65-0.93 along the wall), which is what a shadowless linear source produces."
+  },
+  {
+   "key": "cc_dais_key",
+   "space": "command_control",
+   "kind": "spot",
+   "colour": [
+    1,
+    0.76,
+    0.5558
+   ],
+   "energy_rel": 1,
+   "kelvin_est": 4725,
+   "range_m": 9,
+   "spacing_m": null,
+   "placement": "One fitting above and forward of the command dais, on the window (+Z) side, aimed down and aft at the dais deck; it throws the standing officer's shadow toward the room's aft entrance. Height ~3.5 m above the dais deck, cone wide enough to cover the 4.6 m DAIS_D_M plus its apron. NOT PRESENT IN command_control.py.",
+   "shadow": true,
+   "source": "reference/03-sector-blue/comand and contorl.webp (authority 1), raw. Horizontal profile of the dais apron at y .690-.735, sampled in 6 px columns: LIT plateau x .386-.482 at L 0.26->0.585, H 314-335, S 0.11-0.17; SHADOW x .489-.548 at L 0.183-0.292, H 239-262, S 0.20-0.33; LIT again x .555-.644 at L 0.28-0.475. The edges are hard -- L 0.558 -> 0.271 across ~6 px at x .482 and 0.258 -> 0.475 across ~6 px at x .548. Region medians: apron lit (0.392,0.690)-(0.452,0.735) rgb 0.582/0.510/0.549 L 0.5281; apron shadow (0.478,0.680)-(0.535,0.730) rgb 0.267/0.231/0.306 L 0.2443. Lit minus shadow isolates the key: (0.315, 0.279, 0.243), normalised (1.000, 0.886, 0.771), H 30.9, S 0.229, xy (0.3535, 0.3588), CCT ~4725 K.",
+   "extrapolated": "That it is a fitting at all rather than the 5.5 m window acting as an area source; the 3.5 m height; range_m; the cone angle. The frame cannot separate the two hypotheses -- the window is on the same side and would throw shadows the same way -- but the window field itself reads only L 0.288 raw, which is dim for a source producing L 0.53 on the apron, so a discrete key is the better bet. Overturned by any C&C frame showing the dais from the window side, or one with the window shuttered.",
+   "reasoning": "THE SINGLE SHADOW-CASTER IN C&C, and the performance decision follows from it: give this one light a shadow map and give none to the eight wall courses. It is also the room's SECOND REGISTER and the proof that C&C is not monochrome -- the same apron surface reads H 320-335 S 0.12 where the key lands and H 239-262 S 0.28 in its own cast shadow. Fill/key on that surface is 0.43 (L 0.2443/0.5281), which is the number to hit: the shadow must fill blue, not go black. Set to 1.0 because it delivers the highest surface luminance anywhere in the room (net key contribution L 0.317 against the wall course's L 0.139), and every other C&C energy is scaled against it by delivered illuminance. sRGB-normalised equivalent: (1.000, 0.886, 0.771)."
+  },
+  {
+   "key": "cc_console_skirt",
+   "space": "command_control",
+   "kind": "emissive_only",
+   "colour": [
+    0.3931,
+    0.8073,
+    1
+   ],
+   "energy_rel": 0.2,
+   "kelvin_est": 11040,
+   "range_m": 2.5,
+   "spacing_m": null,
+   "placement": "A lit box in the fascia of each of the CONSOLE_N=5 wedge desks, below the tilted control face, facing outward and down onto the dais deck. Roughly the desk's own CONSOLE_W_M 1.15 wide by ~0.35 m tall.",
+   "shadow": false,
+   "source": "reference/03-sector-blue/comand and contorl.webp (authority 1), raw, top-decile cores. Skirt L (0.440,0.435)-(0.520,0.480) rgb 0.561/0.800/0.890 H 196.4 S 0.370 V 0.890; skirt R (0.545,0.435)-(0.680,0.480) rgb 0.608/0.812/0.882 H 195.4 S 0.311 V 0.882. Region medians away from the cores give H 203.6-220.8 S 0.45-0.48. Normalised (0.660, 0.910, 1.000), xy (0.261, 0.303), CCT ~11040 K.",
+   "extrapolated": "energy_rel and range_m. Energy set at 0.2 of the wall course by emitter-luminance ratio (core L 0.77 vs 0.85 = 0.91) scaled down for area -- a 1.15 x 0.35 m box against an 8.64 x 0.22 m course run, roughly a fifth of the emitting area. No frame separates their delivered contributions because both light the same dais edge.",
+   "reasoning": "A DISTINCT REGISTER FROM THE WALL COURSE, and worth keeping separate: at H 195-197 it is 10-17 degrees greener than the courses' H 205-215, consistently across two independent cores. Same lamp family, different filter or diffuser. It matters because these boxes are at knee height around the dais and they are what actually lights an officer's legs and the dais deck's near edge -- the courses are 7 m away on the walls. Reported as emissive_only because the fascia is a bright box in every frame and a real light beside it is optional; if the dais reads flat in the engine, add one small omni per desk at 0.2. sRGB-normalised: (0.660, 0.910, 1.000)."
+  },
+  {
+   "key": "cc_console_bed",
+   "space": "command_control",
+   "kind": "emissive_only",
+   "colour": [
+    1,
+    0.6957,
+    0.7293
+   ],
+   "energy_rel": 0.15,
+   "kelvin_est": 5269,
+   "range_m": null,
+   "spacing_m": null,
+   "placement": "The tilted lit face on top of each of the five wedge desks -- cc_console_face in command_control.py -- at CONSOLE_H_M 1.02 above the dais, tilted CONSOLE_TILT_DEG 22.",
+   "shadow": false,
+   "source": "reference/03-sector-blue/comand and contorl.webp (authority 1), raw, top-decile cores over the whole bed: bed L (0.395,0.365)-(0.500,0.430) rgb 0.859/0.772/0.784 H 351.8 S 0.100 V 0.859; bed R (0.585,0.365)-(0.700,0.430) rgb 0.565/0.455/0.467 H 353.6 S 0.194 V 0.565. Mean normalised (1.000, 0.852, 0.870). At 6x NEAREST the beds resolve as a green readout bar, cream/amber panels and red-brown fields -- measured spot reads H 155.5 (green bar), H 340-356 (warm fields).",
+   "extrapolated": "energy_rel, and the single averaged colour. The bed is genuinely multi-coloured content and one emission value is a compromise of the kind materials.py's device_screen_glass already declares for its four-panel average; layer 5 should give these real content and a per-panel colour.",
+   "reasoning": "THIS IS THE FITTING THAT SETTLES THE BRIEF'S QUESTION, because it is what the 'blue displays' hypothesis predicts and it is not blue. Every lit control bed in C&C reads warm (H 340-356) with green content, at S 0.10-0.19. Red-dominant pixels at S>0.25 are 2.5% of the frame and the occupancy map puts them here and in the pit -- nowhere else. So the room's blue cannot be screen spill, and 'grey lamps in front of blue displays' is ruled out by the displays themselves. NOTE THE MAGENTA LEAN AND DO NOT OVER-READ IT: the dais apron under its key leans the same way (H 320-335), so H ~350 here is partly this frame's non-blue rendition rather than the panel. sRGB-normalised: (1.000, 0.852, 0.870)."
+  },
+  {
+   "key": "cc_pit_indicator",
+   "space": "command_control",
+   "kind": "emissive_only",
+   "colour": [
+    1,
+    0.1152,
+    0.143
+   ],
+   "energy_rel": 0.03,
+   "kelvin_est": null,
+   "range_m": null,
+   "spacing_m": null,
+   "placement": "The forward pit, PIT_DROP_M 1.9 below the upper floor: a field of small red and amber indicators across the pit consoles, at seated working height.",
+   "shadow": false,
+   "source": "reference/03-sector-blue/comand and contorl.webp (authority 1), raw. The pit is the darkest working area in frame: pit panel at (0.055,0.755)-(0.115,0.795) reads rgb 0.071/0.012/0.020, H 352 S 0.833 V 0.071; whole-pit region medians sit at L 0.019-0.033. THE READING IS WEAK AND SAID SO: the indicators are 2-4 px each and the whole pit sits below V 0.08. Colour is therefore taken from the strongest red reading in my family -- bay 17's red beacon HALO (below), (1.000, 0.374, 0.414) -- reconciled with materials.py's existing indicator register (1.000, 0.332, 0.254) and marker_light_red (1.000, 0.300, 0.120).",
+   "extrapolated": "Essentially the whole entry. The colour is the station's existing indicator register rather than a measurement of this pit, on the argument that a 3-px source at V 0.07 cannot outvote three resolved readings of the same lamp type. Energy 0.03 is set from the pit's measured L 0.019-0.033 against the dais apron's 0.528. Overturned by any closer shot of the C&C pit.",
+   "reasoning": "Included because leaving it out would make the pit a black hole, and the frame is emphatic that the pit is lit ONLY by its own consoles -- the wall courses do not reach it and the dais key is above and forward of it. This is where C&C's 0.047 ambient ratio actually comes from: the room has a working level that is essentially unlit, and that is the mood. Do not fill it."
+  },
+  {
+   "key": "bay_flood",
+   "space": "docking_bay",
+   "kind": "spot",
+   "colour": [
+    0.8502,
+    0.8296,
+    1
+   ],
+   "energy_rel": 1,
+   "kelvin_est": 7391,
+   "range_m": 30,
+   "spacing_m": 11,
+   "placement": "Exactly where docking_bay.py already puts bay_lamp: LAMPS_PER_BAY_GIRDER=3 across BAY_W_M=42 m (centres at x -14, 0, +14), on girders at GIRDER_PITCH_M=11.0 m along z, emitting face at y = BAY_H_M - GIRDER_D_M - LAMP_DROP_M = 13.0 m above deck. Aimed straight down. Cone half-angle 28-35 degrees.",
+   "shadow": true,
+   "source": "reference/03-sector-blue/dock.webp (authority 1), gains (0.968, 1.027, 1.006) reproduced from GREY_WORLD_GAINS to 0.001. Colour measured RAW from four unoccluded flood cores, top-30% by value: (0.608,0.600,0.639) H 252.0 S 0.061; (0.635,0.620,0.690) H 253.3 S 0.102; (0.408,0.400,0.423) H 260.0 S 0.056; (0.551,0.561,0.622) H 231.7 S 0.114. Mean normalised (0.931, 0.921, 1.000) -- reproduces materials.py's bay_floodlight (0.942, 0.929, 1.000) to 0.011 on a different sample set. Cone half-angle from the deck pool: at y .735-.765 the pool spans x .28-.56 of a 1000 px frame at roughly 16-20 px/m, i.e. 14-17.5 m from a lamp 13.0 m up.",
+   "extrapolated": "range_m, the cone angle to within its 28-35 degree bracket, and the decision to make it a spot rather than an omni. Spot because the frame shows visible beam CONES in haze below three of the four floods -- cone B at (0.505,0.110)-(0.560,0.150) reads raw L 0.530 falling to L 0.448 at (0.470,0.230)-(0.600,0.265) -- and because an omni at this height would light the girders above it, which are among the darkest things in frame (lit girder L 0.050, shadow side L 0.028).",
+   "reasoning": "A COUNTER-READING IS ON THE RECORD: the source measures faintly COOL (S 0.056-0.114, B highest) while the deck it lights measures faintly WARM (H 17-45, S 0.03-0.07 across the pool). Both are within a few code values of neutral, so the honest conclusion is a NEUTRAL white to +/-7%, and the library's existing value sits inside that bracket -- which is why I keep it rather than move it. It must NOT pick up the Blue-sector cool register: this is the one Blue-sector space measured here whose principal light is not blue. SHADOW IS TRUE AND IT IS EARNED: the deck profile at y .735-.765 falls L 0.226 -> 0.064 across one 25 px step at x .555-.580, where a parked craft's wing crosses -- an occlusion edge, not a falloff. Budget it as shadow-casting only for the floods within the player's bay; the rest of the 140 m run can drop shadows without the frame changing."
+  },
+  {
+   "key": "bay_mouth",
+   "space": "docking_bay",
+   "kind": "directional",
+   "colour": [
+    0.48,
+    0.6902,
+    1
+   ],
+   "energy_rel": 0.9,
+   "kelvin_est": 11462,
+   "range_m": null,
+   "spacing_m": null,
+   "placement": "The open bay mouth at z=0, filling the full BAY_W_M 42 m by the mouth's height, aimed down the bay's axis (+z) and slightly down. NOT PRESENT IN docking_bay.py, which builds the mouth as an opening and lights nothing through it.",
+   "shadow": true,
+   "source": "reference/03-sector-blue/dock.webp (authority 1), balanced (0.968, 1.027, 1.006). Mouth upper (0.400,0.240)-(0.650,0.290) rgb 0.387/0.455/0.536, H 212.7 S 0.278 V 0.537 L 0.4465; mouth lower haze (0.300,0.300)-(0.600,0.400) rgb 0.288/0.314/0.383, H 223.7 S 0.246 L 0.3136. Normalised (0.722, 0.849, 1.000), xy (0.268, 0.286), CCT ~11462 K. It occupies roughly 15% of frame and is the second brightest large area after the deck pools.",
+   "extrapolated": "energy_rel, the direction, and the choice of 'directional' over a large area emitter. Energy 0.9 is by surface luminance against the deck pool's L 0.398; as a flux it is far larger, but treating it as a dome would be wrong -- the deck between pools sits at L 0.030, which a strong ambient could not produce. So: strong from one direction, negligible as fill.",
+   "reasoning": "THE BAY'S MISSING SECOND SOURCE. dock.webp's whole read is a dark bay with a luminous slot at the end of it, and the parked craft are shaped by light coming from that slot, not from the floods overhead. Without it the row of Starfuries will render as silhouettes against nothing. Note the register: at H 213-224 this is the SAME cool blue family as C&C's wall courses, but at S 0.25-0.28 rather than 0.47-0.50 -- washed out by 100+ m of haze, which is aerial perspective and belongs to the fog term, exactly as PROVENANCE argues for the drum ground. Do not saturate it to match C&C. sRGB-normalised: (0.722, 0.849, 1.000)."
+  },
+  {
+   "key": "bay17_gallery_lamp",
+   "space": "docking_bay_large",
+   "kind": "omni",
+   "colour": [
+    1,
+    0.693,
+    0.693
+   ],
+   "energy_rel": 1,
+   "kelvin_est": null,
+   "range_m": 8,
+   "spacing_m": 1.4,
+   "placement": "A row of five small rectangular lamps set in the face of a control gallery high on the bay's side wall, above the parked craft. In-frame at x .664-.742, y .136-.163, spaced about 1.4x their own width apart.",
+   "shadow": false,
+   "source": "reference/03-sector-blue/Minbari Flyer 969 in docking bay 17.webp (authority 1). NEW GAINS COMPUTED HERE: (0.985, 1.161, 0.890), n=481038, raw mean (0.1364, 0.1158, 0.1510). Balance is MARGINAL on this frame -- balanced S median 0.236, p90 0.583, 15.6% above S 0.5 -- so this is measured RAW. Top-20% core over (0.664,0.136)-(0.742,0.163): rgb 0.590/0.502/0.502, H 0.0 S 0.150 V 0.590, normalised (1.000, 0.851, 0.851). Peak L 0.521, the brightest emitter in the frame apart from the red beacon core.",
+   "extrapolated": "energy_rel, range_m, the spacing in metres, and the reading of R>G=B as a warm white rather than a tint. G and B are equal to three decimals, which is a warm white; the frame gives no scale so spacing_m is expressed from the lamps' own apparent width and is provisional.",
+   "reasoning": "BAY 17 IS A DIFFERENT ARCHETYPE FROM dock.webp AND SHOULD NOT INHERIT ITS LIGHTING. There are no overhead pendant floods anywhere in this frame. The bay is lit entirely by low-level and gallery practicals plus whatever falls on the craft, and its ambient ratio is 0.11 against dock's 0.076 only because the pale Minbari hull is doing the work. This is the large-craft / low-g bay the docking module distinguishes, and its lighting design is 'equipment lit, structure dark'."
+  },
+  {
+   "key": "bay17_marker_red",
+   "space": "docking_bay_large",
+   "kind": "omni",
+   "colour": [
+    1,
+    0.1152,
+    0.143
+   ],
+   "energy_rel": 0.55,
+   "kelvin_est": null,
+   "range_m": 4,
+   "spacing_m": null,
+   "placement": "A single beacon on the bay wall at gallery height, in-frame at x .926-.948, y .108-.150, with a visible halo about 2.5x the core diameter.",
+   "shadow": false,
+   "source": "reference/03-sector-blue/Minbari Flyer 969 in docking bay 17.webp (authority 1), raw. THE CORE IS BLOWN AND THE HALO IS THE HONEST READING, which is the same treatment materials.py gives the Zocalo string lights: core (0.957,0.535,0.547) H 358.3 S 0.441 V 0.957 -- clipped, and normalised (1.000, 0.559, 0.572) it would read pink; halo over (0.910,0.095)-(0.962,0.170) reads (0.388,0.145,0.161) H 356.1 S 0.626 V 0.388, normalised (1.000, 0.374, 0.414). Peak L 0.626.",
+   "extrapolated": "energy_rel and range_m. Energy 0.55 is the halo's L 0.198 against the gallery lamp row's L 0.521; using the blown core instead would put it above 1.0, which is what clipping always does. The colour is the halo normalisation, which lands within 0.09 of materials.py's existing indicator register (1.000, 0.332, 0.254) and within 0.12 of marker_light_red (1.000, 0.300, 0.120) -- a third independent frame agreeing that the station has ONE red indicator register.",
+   "reasoning": "Small, but it is the only saturated marker lamp measurable anywhere in my family, and it corroborates a register the library derived from the hull and from two props. It also demonstrates the rule the whole layer needs: read a source's HALO, not its core. Reported at the halo colour with the core reading on the record."
+  },
+  {
+   "key": "bay17_service_cyan",
+   "space": "docking_bay_large",
+   "kind": "emissive_only",
+   "colour": [
+    0.0996,
+    0.2582,
+    0.7011
+   ],
+   "energy_rel": 0.18,
+   "kelvin_est": null,
+   "range_m": 3,
+   "spacing_m": null,
+   "placement": "A low service light on the deck beside the parked craft, in-frame at x .468-.552, y .700-.742 -- below hull level, throwing up onto the ship's underside.",
+   "shadow": false,
+   "source": "reference/03-sector-blue/Minbari Flyer 969 in docking bay 17.webp (authority 1), raw, top-30% core over (0.468,0.700)-(0.552,0.742): rgb 0.071/0.114/0.176, H 215.6 S 0.600 V 0.176, normalised (0.403, 0.648, 1.000). Peak L 0.109. A WEAK READING: the source is about 12 x 6 px and sits at V 0.18, so it is near the frame's noise floor.",
+   "extrapolated": "energy_rel and range_m, and the decision to keep it at all given the reading's weakness. Kept because it is the only thing lighting the ship's underside in a frame where the underside reads as the brightest surface after the hull top, and because its H 215.6 puts it squarely in the same cool register as C&C's wall courses -- i.e. it is a standard station lamp, not a Minbari one.",
+   "reasoning": "Low deck practicals are the docking bay's answer to what the corridor solves with light_deck_channel, and this frame is the only evidence I have that they exist in a bay at all. Colour is the normalised reading linearised; at this signal level, treat the CHROMATICITY as corroboration of the cool register rather than as a new measurement, and take the level from the register."
+  },
+  {
+   "key": "wr_console_fascia_lamp",
+   "space": "war_room",
+   "kind": "omni",
+   "colour": [
+    1,
+    0.9529,
+    0.6278
+   ],
+   "energy_rel": 1,
+   "kelvin_est": 5171,
+   "range_m": 3,
+   "spacing_m": null,
+   "placement": "Elongated white slot lamps set into the curved console fascia at waist-to-knee height, facing outward into the room. In-frame at x .564-.590 y .742-.800 and x .800-.828 y .855-.950, i.e. repeating around the console's arc.",
+   "shadow": false,
+   "source": "reference/03-sector-blue/war room.webp (authority 1), gains (1.088, 1.062, 0.877) reproduced from GREY_WORLD_GAINS exactly. This frame's balance IS valid -- balanced S median 0.213, p90 0.391, 0.9% above S 0.5 -- so lit surfaces and sources can both be read balanced and compared. Top-decile cores: lamp A rgb 1.000/0.979/0.815 H 53.1 S 0.185 V 1.000; lamp B rgb 1.000/0.979/0.812 H 53.2 S 0.188 V 1.000. Two lamps agreeing to 0.003 in every channel. Raw they read (0.949,0.922,0.929) and (0.922,0.922,0.925) -- neutral, i.e. the warmth is real relative to this frame's own neutral and not a global cast.",
+   "extrapolated": "energy_rel = 1.0 (they clip, so this is a floor not a measurement), range_m, and the spacing. The fascia curves away from camera and the frame does not resolve a repeat interval reliably.",
+   "reasoning": "THE WAR ROOM IS A WARM ROOM WITH ONE COLD WALL, and that is the finding that separates it from C&C. Both are Blue-sector command spaces; if they are lit the same the station loses a distinction the show makes. Every practical in this room reads warm under a VALID balance -- fascia lamps H 53, wall strip banks H 24-36, fin strips H 39.5, soffit blade H 44 -- while the galactic map reads H 207. Two registers surviving the same correction is not a cast. The faces confirm which one is the key: H 15.9 S 0.484 and H 24.7 S 0.415. sRGB-normalised: (1.000, 0.979, 0.814)."
+  },
+  {
+   "key": "wr_wall_strip_bank",
+   "space": "war_room",
+   "kind": "omni",
+   "colour": [
+    1,
+    0.7639,
+    0.5163
+   ],
+   "energy_rel": 0.61,
+   "kelvin_est": 4611,
+   "range_m": 4,
+   "spacing_m": 1.4,
+   "placement": "Ganged banks of SHORT VERTICAL strips recessed in the back wall, at two heights: an upper course above standing head height (frame y .145-.182, ~2.4-2.8 m) and a lower course at about seated shoulder height (frame y .432-.480, ~1.2 m). Vertical pitch ~1.4 m. Not one long tube -- each bank is 4-8 short bars side by side.",
+   "shadow": false,
+   "source": "reference/03-sector-blue/war room.webp (authority 1), balanced (1.088, 1.062, 0.877). Top-decile cores: hi bank L rgb 0.444/0.396/0.334 H 33.8 S 0.248 V 0.444; hi bank 2 rgb 0.414/0.366/0.334 H 24.6 S 0.194; mid bank L rgb 0.648/0.583/0.481 H 36.5 S 0.258 V 0.649; mid bank 2 rgb 0.621/0.546/0.464 H 31.2 S 0.252 V 0.621. Four independent banks landing in H 24.6-36.5 at S 0.19-0.26. Heights inferred against the seated crew member (head at frame y .455-.47) and the standing crew (head at y .32).",
+   "extrapolated": "The heights in metres and the 1.4 m pitch (inferred from figures, not from a scale bar); energy_rel; range_m. Energy 0.61 is the mid bank's core L 0.590 against the fascia lamp's clipped L 0.971.",
+   "reasoning": "These are the war room's ambient, and they are the reason the room's ambient ratio is 0.23 against C&C's 0.047: many small warm sources distributed over the wall at two heights, rather than four bright cold courses with black between them. The room reads soft and worked-in; C&C reads dark and instrumented. That contrast is the single most transferable thing in this measurement set. sRGB-normalised: (1.000, 0.888, 0.746)."
+  },
+  {
+   "key": "wr_galactic_map",
+   "space": "war_room",
+   "kind": "emissive_only",
+   "colour": [
+    0.4451,
+    0.7087,
+    1
+   ],
+   "energy_rel": 0.29,
+   "kelvin_est": 11653,
+   "range_m": null,
+   "spacing_m": null,
+   "placement": "The full back-and-side wall above the console arc -- roughly 40% of the frame, from waist height to the ceiling. A backlit map, not a screen: it is the room's largest emitting surface by an order of magnitude.",
+   "shadow": false,
+   "source": "reference/03-sector-blue/war room.webp (authority 1), balanced (1.088, 1.062, 0.877). Field median over (0.620,0.100)-(0.980,0.450), n=70200: rgb 0.233/0.287/0.334, H 207.4 S 0.303 V 0.334 L 0.2790. Raw the same region gives H 219.5 S 0.438. The bright galactic core at (0.665,0.060)-(0.780,0.200) blows to near-neutral (balanced H 55.6 S 0.181 on its top decile), which is why the FIELD and not the core is the reading. Normalised (0.698, 0.859, 1.000), xy (0.265, 0.289).",
+   "extrapolated": "energy_rel 0.29, taken as surface luminance against the fascia lamps. As FLUX this is the largest source in the room by a wide margin and the parent should expect to tune it down rather than up; a surface-luminance ratio is the only thing a single frame can give, and it deliberately understates a big soft source -- the same trap council_lit_mesh's note records for its 11.1 m2 bench panel.",
+   "reasoning": "The war room's cool half. Its register (H 207 balanced, H 219.5 raw) is the same cool blue family as C&C's wall courses but at S 0.30 rather than S 0.47-0.50, and it survives a VALID grey-world balance, which C&C's cannot -- so this is the cleanest evidence in my whole family that the cool register is real and not an artefact of one frame's cast. Because it is one enormous soft emitter it should cast no shadow and should be the room's dominant fill on every surface facing it; the warm practicals then supply the key. sRGB-normalised: (0.698, 0.859, 1.000)."
+  },
+  {
+   "key": "wr_holo_table",
+   "space": "war_room",
+   "kind": "emissive_only",
+   "colour": [
+    0.8378,
+    1,
+    0.8276
+   ],
+   "energy_rel": 0.91,
+   "kelvin_est": 6382,
+   "range_m": 2.5,
+   "spacing_m": null,
+   "placement": "A large elliptical light table standing free on the floor at the room's near-left, its top surface at about 0.9 m, glowing upward and outward. In-frame it fills x .00-.30, y .70-.95.",
+   "shadow": false,
+   "source": "reference/03-sector-blue/war room.webp (authority 1). AMBIGUOUS AND SAID SO. Balanced (1.088, 1.062, 0.877) the top-decile core reads rgb 0.836/0.904/0.832, H 116.7 S 0.079 -- a near-white with a faint green lean. RAW the same core reads rgb 0.757/0.839/0.957, H 215.3 S 0.209 -- a cool blue-white. Region median balanced: H 192.9 S 0.054 V 0.767. Peak L 0.884, the second brightest emitter in the room.",
+   "extrapolated": "The choice of the BALANCED reading over the raw one, and energy_rel. The frame's balance is valid, so the balanced reading is the defensible one -- but the balance is dominated by the galactic map's blue, and a table that raw-reads H 215 is very likely genuinely cool. I have taken the balanced near-white and pushed nothing; a later pass with a second war-room frame should settle it. If it must be decided now, err cool: (0.90, 0.96, 1.00).",
+   "reasoning": "Kept as its own fitting because it is the only source in my family that lights a room from BELOW. It is what puts the up-light on the two standing officers' chests and papers -- the held papers read balanced H 347.3 S 0.100, i.e. near-neutral, which is consistent with a white-ish table and not with the warm wall practicals. Energy 0.91 is emitter luminance against the clipped fascia lamps, and like them it is a floor rather than a measurement."
+  },
+  {
+   "key": "wr_soffit_blade",
+   "space": "war_room",
+   "kind": "omni",
+   "colour": [
+    1,
+    0.7031,
+    0.4397
+   ],
+   "energy_rel": 0.92,
+   "kelvin_est": null,
+   "range_m": 4,
+   "spacing_m": null,
+   "placement": "A lit blade or light box in the soffit at the room's far left, above and behind the wall strip banks, in-frame at x .000-.045, y .235-.285. Reads as a downward-facing slot washing the wall below it.",
+   "shadow": false,
+   "source": "reference/03-sector-blue/war room.webp (authority 1), balanced (1.088, 1.062, 0.877), top-decile core over (0.000,0.235)-(0.045,0.285): rgb 0.960/0.887/0.693, H 43.6 S 0.278 V 0.960, peak L 0.889. The vertical wall profile at x .020-.050 shows it as a single sharp peak: L rises 0.28 -> 0.749 between y .218 and y .246 and falls back to 0.267 by y .268 -- a 2.8x spike over 0.05 of frame height.",
+   "extrapolated": "energy_rel, range_m, and the reading of the fitting as a soffit blade rather than a wall-mounted box. The frame cuts it off at the left edge so only part of it is visible.",
+   "reasoning": "Included because the wall profile makes it the war room's single strongest local feature and because it is warmer than the strip banks (H 43.6 against H 24-36) -- a third warm sub-register. Its usefulness is as a placement note: the war room puts practicals ABOVE and BELOW the eye line and almost nothing at it, which is why faces in that room are lit from two directions and read soft. sRGB-normalised: (1.000, 0.924, 0.722)."
+  },
+  {
+   "key": "tram_amber_panel",
+   "space": "tram_saloon",
+   "kind": "emissive_only",
+   "colour": [
+    1,
+    0.846,
+    0.1706
+   ],
+   "energy_rel": 1,
+   "kelvin_est": 3947,
+   "range_m": 1.5,
+   "spacing_m": null,
+   "placement": "Backlit rectangular panels set into the bench base, low on the saloon wall just above the floor, spaced along the bench run. In-frame three are visible at x .578-.638, x .668-.772 and x .838-.952, all at y .790-.845.",
+   "shadow": false,
+   "source": "reference/03-sector-blue/Babylon_5_2-22_35a.jpg (authority 1), gains (0.913, 1.090, 1.013) reproduced from GREY_WORLD_GAINS exactly. Measured RAW because these are emitters. Top-half cores: panel A rgb 0.502/0.482/0.357 H 51.9 S 0.289 V 0.502 (nearest camera, part-blown); panel B rgb 0.463/0.427/0.220 H 51.3 S 0.525 V 0.463; panel C rgb 0.369/0.345/0.157 H 53.3 S 0.574 V 0.369. Three panels agreeing at H 51.3-53.3 with saturation rising as value falls -- the clipping signature again. Colour taken from B and C, the least blown: normalised (1.000, 0.929, 0.450), xy (0.401, 0.447), CCT ~3947 K.",
+   "extrapolated": "energy_rel and range_m. Energy 1.0 because these are the only localisable practical in the saloon; the room's actual key is a broad soft overhead the frame gives me no way to place, and it is stronger. Stated so the parent does not read 1.0 as 'the brightest thing in a tram'.",
+   "reasoning": "A FIFTH ACCENT REGISTER THAT materials.ACCENTS DOES NOT HAVE. H 51-53 here, and materials.py's light_ceiling_grid measured the customs coffer at H 54.6-57.0 across six value bands in a different frame and a different sector. Two independent authority-1 frames put a backlit AMBER-GOLD source at H 51-57 -- 28 degrees off warm_practical's H 24 and nowhere near cyan. It should be its own register. THE TRAP THAT COMES WITH IT: hazard chevron PAINT in bay 17, under a near-neutral light, reads raw H 49.8 S 0.602 -- hue-degenerate with this source. Two different things at one hue, separable only by value and context, and this project has now had to assign a colour to light-or-surface six times. sRGB-normalised: (1.000, 0.929, 0.450)."
+  }
+ ],
+ "ambient": [
+  {
+   "space": "command_control",
+   "ratio": 0.047,
+   "source": "reference/03-sector-blue/comand and contorl.webp, raw luminance (this frame's grey-world balance is invalid for surfaces -- see findings). Darkest measurable structural surface: upper-left corner (0.005,0.005)-(0.080,0.055) L 0.0250; also dais drum face L 0.0322, stair treads L 0.0367, ceiling band L 0.0701. Brightest lit non-emitting surface: dais apron under its key (0.392,0.690)-(0.452,0.735) L 0.5281. 0.0250/0.5281 = 0.047. CORROBORATED by an independent whole-frame statistic: p10/p90 of balanced luminance = 0.0198/0.3625 = 0.055. SEPARATELY, AND DIFFERENT: the side WALL is nearly evenly washed -- a 320-row profile at x .885-.965 gives L 0.090-0.115 midway between courses against L 0.139 immediately beside one, i.e. 0.65-0.93. C&C pools in PLAN, not on the wall."
+  },
+  {
+   "space": "war_room",
+   "ratio": 0.23,
+   "source": "reference/03-sector-blue/war room.webp, balanced (1.088, 1.062, 0.877), a valid balance (S median 0.213, p90 0.391). Darkest measurable: floor (0.300,0.920)-(0.500,1.000) L 0.0917 and rail band L 0.0905. Brightest lit non-emitting surface: back wall directly under a strip bank, from the x .020-.050 vertical profile, L 0.40. 0.0917/0.40 = 0.23. Corroborated by whole-frame p10/p90 = 0.1062/0.4858 = 0.219. THE POINT OF THIS NUMBER IS THE COMPARISON: the war room is 4-5x flatter than C&C, and the two rooms are 200 m apart in the same sector."
+  },
+  {
+   "space": "docking_bay",
+   "ratio": 0.076,
+   "source": "reference/03-sector-blue/dock.webp, balanced (0.968, 1.027, 1.006). Measured along ONE deck band at y .735-.765 so both readings are the same surface at the same depth: outside the pool at x .105-.205, L 0.0301-0.0351; inside the pool at x .480-.530, L 0.363-0.398. 0.0301/0.398 = 0.076. Corroborated by whole-frame p10/p90 = 0.0351/0.3559 = 0.099. THE MOST EXTREME SPACE IN MY FAMILY: the deck between two floods is 8% of the deck under one. A bay lit any flatter than this stops reading as a working hangar."
+  },
+  {
+   "space": "docking_bay_large",
+   "ratio": 0.11,
+   "source": "reference/03-sector-blue/Minbari Flyer 969 in docking bay 17.webp, NEW GAINS (0.985, 1.161, 0.890) computed here; balance is MARGINAL (S median 0.236, p90 0.583, 15.6% above S 0.5) so this is a value ratio and not a colour claim. Darkest measurable structural: p10 of frame luminance 0.0330, matching the drum-wall patch at (0.02,0.02)-(0.35,0.28) p10 0.0351 and the open deck at (0.12,0.42)-(0.78,0.95) median 0.0863. Brightest lit structural surface: the chevron ledge run at (0.01,0.36)-(0.16,0.48) p90 L 0.3132. 0.0330/0.3132 = 0.105. Whole-frame p10/p90 = 0.118, but that is flattered by the pale Minbari hull. A DIFFERENT ARCHETYPE FROM dock.webp: no overhead floods anywhere in the frame, everything lit by gallery and deck practicals, and the hazard chevrons are the brightest structural surface in the room because they are the only high-albedo paint catching what little light there is."
+  },
+  {
+   "space": "tram_saloon",
+   "ratio": 0.17,
+   "source": "reference/03-sector-blue/Babylon_5_2-22_35a.jpg, balanced (0.913, 1.090, 1.013) reproduced from GREY_WORLD_GAINS exactly. Darkest measurable: floor / foreground shadow (0.22,0.92)-(0.45,0.99) L 0.0819. Brightest lit non-emitting surface: upper wall panel (0.60,0.44)-(0.66,0.52) L 0.4937. 0.0819/0.4937 = 0.166. Whole-frame p10/p90 = 0.0416/0.4455 = 0.093, lower because a third of the frame is dark soft goods and window. A SOFT, EVENLY LIT BOX with one low practical band -- closer to the war room than to C&C, which is the right answer for a public vehicle."
+  }
+ ],
+ "_family": "command_working"
+}

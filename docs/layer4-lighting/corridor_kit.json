@@ -1,0 +1,343 @@
+{
+ "fixtures": [
+  {
+   "key": "light_downlight",
+   "space": "corridor_residential",
+   "kind": "omni",
+   "colour": [
+    1,
+    0.42,
+    0.13
+   ],
+   "kelvin_est": 2650,
+   "energy_rel": 1,
+   "range_m": 1.2,
+   "spacing_m": 3.6,
+   "shadow": false,
+   "placement": "0.88 m above the deck \u2014 measured at 0.35 +/- 0.02 of clear deck-to-soffit height on two independent columns (0.334 at x=0.232, 0.370 at x=0.465). 0.10-0.17 m proud of the wall face, immediately beside a portal jamb / pilaster, one per bay. Lens ~0.22 x 0.12 m.",
+   "source": "reference/07-sector-grey/grey level 1.webp (authority 1), grey-world gains recomputed from the frame as 0.970/1.087/0.953 \u2014 reproduces materials.GREY_WORLD_GAINS to 0.000. Two fittings isolated by connected-component labelling above L 0.60: blob at x 0.456-0.473 y 0.489-0.509 and blob at x 0.225-0.237 y 0.534-0.558. Both clip in R only (max 1.000, 0.863-0.890, 0.843-0.890) and in no other channel. Raw radial halo medians, downlight A: r 5-7 px (0.808,0.661,0.625) H12 S0.226; r 7-10 (0.508,0.367,0.325) H14 S0.359; r 10-14 (0.388,0.278,0.247) H13 S0.364; r 14-20 (0.306,0.239,0.227) H9 S0.256; r 20-28 (0.227,0.180,0.180); far field r 40-55 (0.224,0.192,0.196). Hue CONSTANT at H 9-14 across a 2.8x range of value while saturation peaks at S 0.36 in the un-clipped band and falls both toward the clipped core and outward into the fill \u2014 the source signature this project applies to the rotunda altar and the Zocalo neon. Downlight B repeats it: H 358-8, S peaks 0.32 at r 7-14. Fill-subtracted (halo minus far field), balanced: r 7-10 -> linear (1.000,0.435,0.168) = 2881 K; r 10-14 -> linear (1.000,0.304,0.076) = 2231 K. Height: column luminance profiles at x 0.222-0.242 and x 0.452-0.478 locate the deck line (y 0.785, 0.695) and the wall-top/chamfer (y 0.075, 0.17) against the lens (y 0.548, 0.501); a vertical world line images to a vertical image line with y linear in world height, so the fractions are exact.",
+   "extrapolated": "spacing_m 3.6 \u2014 the frame does not resolve the run metrically; it is interior_kit's own portal_spacing_m, and the kit's downlight count (one per plate_l*3.0 = 3.45 m) already puts one per bay, which is all the frame constrains. range_m 1.2 is a Godot cutoff chosen where the measured contribution has fallen under 3% of fill, not a measured quantity.",
+   "reasoning": "THIS IS THE STATION'S ONLY WARM REGISTER IN A RESIDENTIAL CORRIDOR and materials.py already had its colour right: the library's emission (1.000,0.680,0.400) sRGB linearises to (1.000,0.420,0.133), and my fill-subtracted measurement gives (1.000,0.435,0.168) and (1.000,0.304,0.076) \u2014 the existing value sits between two independent reads. Do not change it. KIND IS OMNI, NOT SPOT, and this was tested rather than assumed: the halo at r 8-22 px reads L 0.277 above / 0.288 below on fitting A and 0.282 / 0.297 on fitting B \u2014 a 4-5% below-bias, i.e. symmetric. The strong left/right asymmetry (0.19 vs 0.28) is occlusion by the jamb it is mounted against, not a cone. HEIGHT IS CONFIRMED EXACTLY: interior_kit places the lens at dado_top-0.10 = 0.875 m = 0.35 of wall_h; I measure 0.35 +/- 0.02. ENERGY: it is the only fitting in the residential frame that measurably lights anything. Its contribution equals the ambient fill at d ~ 0.17 m, is +39% of fill at 0.37 m and +17% at 0.5 m; the ratio between the r 7-10 and r 14-20 bands is consistent with inverse-square, so it is a real point light \u2014 just a weak one. NO SHADOW: nothing in the frame casts one, and the pilaster projecting 0.17 m from the wall a metre from a lens would show one if there were.",
+   "kelvin_est_note": null
+  },
+  {
+   "key": "light_pilaster_strip",
+   "space": "corridor_residential",
+   "kind": "emissive_only",
+   "colour": [
+    0.956,
+    1,
+    0.895
+   ],
+   "kelvin_est": 6200,
+   "energy_rel": 0.93,
+   "range_m": 0.4,
+   "spacing_m": 3.6,
+   "shadow": false,
+   "placement": "Set into the pilaster bullnose face, 0.133-0.167 m proud. MEASURED VERTICAL SPAN 0.56 -> 0.75 of clear deck-to-soffit height = 1.40 -> 1.88 m above the deck at a 3.0 m ceiling; centre 1.64 m; length 0.48 m. Cell pitch 0.196 m, so 3 cells, duty 0.75-0.85.",
+   "source": "reference/07-sector-grey/grey level 1.webp (authority 1), balanced 0.970/1.087/0.953. Near-right strip found as five connected blobs at x 0.786-0.813, y 0.000-0.025 / 0.049-0.113 / 0.124-0.192 / 0.209-0.275 / 0.288-0.344; far-left strip at x 0.184-0.193, y 0.218-0.363. Per-row max-luminance profile through x 0.786-0.812 gives cell centres 0.081, 0.157, 0.243, 0.316 (pitch 0.076/0.086/0.073, mean 0.078; cell length 0.064-0.065; duty 0.83). Left strip profile through x 0.182-0.196 gives cells 0.216-0.365 with gap minima at 0.277, 0.342, 0.363, and locates the deck at y 0.79 and the wall top at y 0.025 for the fraction. Colour: blob means raw (0.842,0.773,0.825) and (0.834,0.753,0.832), balanced (0.972,1.000,0.936) and (0.988,1.000,0.969), linear (0.938,1.000,0.860) and (0.974,1.000,0.930), CCT 6159 K and 6310 K, both within 0.006 of the Planckian locus in xy. Neither strip clips ANY channel (max 0.961/0.894/0.965).",
+   "extrapolated": "That it should carry a small real light at all. Nothing in the frame requires one; range_m 0.4 and the implied sub-0.1 energy are a floor I would apply so the fitting is not physically inert, not a measurement. spacing_m 3.6 is interior_kit's portal spacing, since strips ride pilasters and pilasters ride portals.",
+   "reasoning": "IT IS THE BRIGHTEST THING ON THE WALL AND IT LIGHTS NOTHING. Two independent tests. (1) The pilaster face it is set into reads L 0.31-0.41 alongside the strip (y 0.01-0.34) and L 0.31-0.35 a metre below the strip's bottom end (y 0.37-0.67) \u2014 a 1.09x lift, and that test is weak because the face is coplanar with the emitter. (2) The deck directly beneath the left pilaster reads balanced L 0.29-0.35 against a mid-corridor deck field of 0.446 \u2014 DARKER, not brighter. materials.py's own PROVENANCE has the same result from the other direction: pilaster bullnose face V 0.301 against a wall plate course three metres away at V 0.295. So it is an emissive marker, and the light must come from elsewhere. ITS COLOUR IS NEUTRAL, NOT BLUE. materials.py gives it emission (0.880,0.930,1.000) = linear (0.748,0.848,1.000), a decided blue. Measured, balanced, it is linear (0.956,1.000,0.895) at 6200 K \u2014 within 5% of the frame's own white point in every channel. THE CAVEAT IS REAL AND I AM STATING IT: grey-world balancing a frame forces its mean illuminant to neutral, so a fitting that IS the dominant illuminant necessarily balances to neutral, and this measurement cannot distinguish 'the strip is white' from 'the strip defines white here'. What survives that circularity is the wall: the unfitted right wall, whose albedo materials.py establishes as neutral, balances to sRGB (0.874,0.980,1.000) = linear (0.738,0.955,1.000), so the fill in this corridor IS cool by about a 26% red deficit. A blue bias on this fitting is therefore defensible; a blue as strong as linear (0.748,0.848,1.000) is not, because it would make the wall cooler than measured. GEOMETRY CORRECTION: interior_kit builds the strip from 0.50 to 0.86 of height (0.90 m long, 7 bars at 0.129 m pitch). Measured span is 0.56 to 0.75 (0.48 m, 3 cells at 0.196 m pitch). The centre is right; the strip is roughly 1.9x too long and its cells 1.5x too small.",
+   "kelvin_est_note": null
+  },
+  {
+   "key": "light_portal_head",
+   "space": "corridor_residential",
+   "kind": "emissive_only",
+   "colour": [
+    1,
+    0.936,
+    0.955
+   ],
+   "kelvin_est": 6340,
+   "energy_rel": 0.84,
+   "range_m": null,
+   "spacing_m": 3.6,
+   "shadow": false,
+   "placement": "In the portal soffit, immediately under the aperture head. Measured width 0.64 of the clear aperture; measured height/length aspect 0.072, i.e. a 0.12 m tall bar on a 1.66 m run at a 2.6 m corridor width.",
+   "source": "reference/07-sector-grey/grey level 1.webp (authority 1), balanced 0.970/1.087/0.953. Single connected blob at x 0.277-0.443, y 0.178-0.198 \u2014 167 x 12 px, raw mean (0.796,0.690,0.794), max (0.965,0.855,0.918): it does not clip. Balanced (1.000,0.971,0.980), linear (1.000,0.936,0.955), CCT 6336 K, 0.004 from the locus. Local effect measured in bands under the fitting over x 0.290-0.430: soffit above it L 0.274; the fitting L 0.738; the first band below L 0.212; second band 0.209; third 0.253; fourth 0.270.",
+   "extrapolated": "Nothing about the emission. The absence of a real light beside it is a reading of the frame, not a measurement of zero; and spacing_m 3.6 is interior_kit's portal_spacing_m rather than anything the frame resolves.",
+   "reasoning": "SAME STORY AS THE PILASTER STRIP, AND MORE DECISIVE: the surface immediately below this fitting reads L 0.209-0.212, DARKER than the soffit above it at 0.274. A doorhead light that leaves the doorhead darker than the ceiling is not illuminating anything \u2014 it is a lamp seen directly. Colour is the same 6200-6340 K neutral white as the pilaster strip, from an independent blob in the same frame, which is why I treat the two as one register rather than two. GEOMETRY IS CONFIRMED, not corrected: interior_kit builds the bar 0.126 m tall spanning 0.57 of the aperture width, 0.045-0.171 m under the head; I measure 0.12 m tall spanning 0.64 of the width, sitting immediately under the head. Height is exact; width is 13% narrow. Energy 0.84 is its balanced core luminance (0.755) against the downlight's (0.895).",
+   "kelvin_est_note": null
+  },
+  {
+   "key": "corridor_soft_fill",
+   "space": "corridor_residential",
+   "kind": "directional",
+   "colour": [
+    0.738,
+    0.955,
+    1
+   ],
+   "kelvin_est": null,
+   "energy_rel": 2.5,
+   "range_m": null,
+   "spacing_m": null,
+   "shadow": false,
+   "placement": "Not a fitting. A broad soft source, above and slightly ahead of the viewer: the deck is the brightest large surface in the frame (balanced L 0.446) and the soffit the darkest (0.158), so it comes down; and it has a soft along-corridor falloff with an edge-to-peak ratio of 0.55 measured on the deck and 0.52 on the wall.",
+   "source": "reference/07-sector-grey/grey level 1.webp (authority 1), balanced 0.970/1.087/0.953. Large-surface ladder, balanced median luminance: deck field (0.300,0.750)-(0.500,0.950) 0.446; left wall plate 0.288; right wall upper plate 0.263; soffit/ceiling (0.019,0.020)-(0.300,0.090) 0.158; skirt 0.134. Colour from the right wall (x 0.845-0.925, y 0.14-0.62), whose albedo materials.py establishes as neutral: sRGB (0.874,0.980,1.000) -> linear (0.738,0.955,1.000). That wall's R-B is negative at every one of twelve sampled heights from y 0.02 to 0.62 (-0.017 to -0.044), so the cool bias is not a sampling artefact. Falloff: deck scan y 0.80-0.95 runs L 0.267 at the edges to 0.491 at the peak (ratio 0.55); wall scan runs 0.183-0.194 at the ends to 0.352-0.381 at the peak across four independent height bands (ratio 0.51-0.55).",
+   "extrapolated": "Everything about the fixture, which is why it is flagged as such: the reference cannot show a source that is off-camera. What is measured is its EFFECT \u2014 level, colour, and falloff shape. Kind 'directional' is a suggestion; a large area light or a lifted ambient term reproduces the same numbers. energy_rel 2.5 is deliberately greater than 1 and is explained below.",
+   "reasoning": "THIS IS THE MOST IMPORTANT ENTRY IN THE SET AND IT IS THE ONE THE KIT DOES NOT HAVE. Every one of the three fittings interior_kit emits for a residential corridor was tested for its effect on a nearby surface and two of them produce none at all, while the third lifts the wall by only 39% at 0.37 m. Yet the corridor is evenly and generously lit at balanced median L 0.265. The light therefore is not in the fittings. On the wall, the fill delivers L 0.27 and the brightest fitting adds at most +0.11 at its own peak \u2014 a ratio of 2.5, which is what energy_rel records. Build the room this way round and it reads as the show; build it from the fittings and it will be a dark corridor with three bright dots. This is film practice showing through \u2014 the practicals are dressing and the key is off-camera \u2014 and reproducing it is what makes the render look like the footage rather than like a physically-correct but wrong-looking room.",
+   "kelvin_est_note": null
+  },
+  {
+   "key": "concourse_deck_spot",
+   "space": "corridor_concourse",
+   "kind": "spot",
+   "colour": [
+    0.85,
+    1,
+    0.87
+   ],
+   "kelvin_est": null,
+   "energy_rel": 1,
+   "range_m": 4,
+   "spacing_m": null,
+   "shadow": true,
+   "placement": "OVERHEAD, throwing down onto the deck. Pool 1.57 m across (interior_kit's own DOWNLIGHT_POOL_M, measured against a standing officer at 149 px/m). Narrow: at a 3.6 m mount the half-angle is 12.3 deg, at a 7.2 m ceiling 6.2 deg. Edge blend ~0.5 \u2014 the pool's penumbra is about 60% of its radius.",
+   "source": "reference/10-interiors-generic-kit/more hallway.jpg (authority 1; materials.NEGATIVE_RESULTS classes it a LIGHTING reference and not an albedo reference, which is exactly what it is being used for). Grey-world gains recomputed as 1.120/1.198/0.786, reproducing the table. Isolated pool at (0.499,0.7345): raw radial medians L 0.66 in r 0-8 px, 0.155 at r 8-13, 0.068 at r 13-20, 0.052 at r 20-30, 0.042 at r 30-45. Contribution above the 0.042 ambient floor falls as roughly 1/d^2.9 between those bands \u2014 steeper than inverse square, i.e. a cone edge. Foreground pool at (0.4335,0.955) scanned across the deck at y 0.93-0.99, balanced: pool 0.706-0.904, deck 11 px outside it 0.079, at 0.42 m 0.074, at 0.94 m 0.057, at 1.63 m 0.038, far right 0.018. Colour from the UN-CLIPPED bands of the pool at (0.2665,0.6465): r 5-9 balanced (0.906,1.000,0.976) -> linear (0.800,1.000,0.948); r 9-14 balanced (0.956,1.000,0.896) -> linear (0.903,1.000,0.782). The clipped core reads bluer raw, normalised (0.566,0.669,1.000).",
+   "extrapolated": "The mount height and therefore the cone half-angle \u2014 the frame fixes the pool diameter and not the throw. range_m 4.0 follows from the mount height. The colour is quoted from the un-clipped bands because the core clips in B; a builder wanting the core reading should use raw (0.28,0.40,1.00) linear and put the difference in the room's ambient instead.",
+   "reasoning": "IT IS A REAL LIGHT AND IT IS THE ONLY SHADOW-CASTER IN THE WHOLE CORRIDOR SET. The magnified crop of the foreground pool shows the officer casting a hard, dark, directional contact shadow across the lit deck, and the deck tiles inside the pool are visible as tiles \u2014 individual pale plates with dark joints and a light-fall gradient \u2014 which an emissive disc set into the floor cannot produce. interior_kit's downlight_pool() docstring says 'a circular lit disc set into the deck' and materials.py binds it to light_deck_channel as an emissive; the frame says it is the LIT FOOTPRINT OF AN OVERHEAD SPOT. That is a change of kind, not of value, and it is the one place in this family where a shadow-casting light is worth the frame time. Its core is 13-15x the deck beside it and it has almost no spill: the deck 0.08 m outside the pool edge is at L 0.079 against a frame-wide deck floor of 0.05, so blend low and let the cone edge be visible.",
+   "kelvin_est_note": null
+  },
+  {
+   "key": "concourse_deck_pool_emissive",
+   "space": "corridor_concourse",
+   "kind": "emissive_only",
+   "colour": [
+    0.85,
+    1,
+    0.87
+   ],
+   "kelvin_est": null,
+   "energy_rel": 0.9,
+   "range_m": null,
+   "spacing_m": null,
+   "shadow": false,
+   "placement": "The 1.57 m disc on the deck itself, sitting a few mm proud, exactly as interior_kit.downlight_pool() already builds it.",
+   "source": "Same frame and same measurement as concourse_deck_spot: reference/10-interiors-generic-kit/more hallway.jpg, balanced 1.120/1.198/0.786. Foreground pool blobs at x 0.327-0.438 and 0.467-0.540, y 0.922-0.998, raw means (0.643,0.754,0.975) and (0.583,0.684,0.968), max (0.831,0.933,1.000) \u2014 clips in B. Balanced core luminance 1.055 against the arch lamps' 1.132, giving energy_rel 0.9.",
+   "extrapolated": "Its continued existence as an emissive at all. If the spot above it is built, this disc is double-counting; I keep it at 0.9 only because a lit-deck material is how the geometry currently carries the pool and because a spot alone will not survive an aggressive tonemap.",
+   "reasoning": "Kept separate from the spot deliberately. materials.py's light_deck_channel already says of itself 'an emissive is not a light. Forward+ needs a real OmniLight3D beside this one' \u2014 this is the same object needing the opposite fix, a real light INSTEAD of the emissive rather than beside it. If both ship, drop this to about 0.3 or the deck will read as self-luminous and the spot's shadow will have nothing to sit on.",
+   "kelvin_est_note": null
+  },
+  {
+   "key": "concourse_rib_lamp",
+   "space": "corridor_concourse",
+   "kind": "omni",
+   "colour": [
+    1,
+    0.55,
+    0.2
+   ],
+   "kelvin_est": 2900,
+   "energy_rel": 1,
+   "range_m": 0.6,
+   "spacing_m": null,
+   "shadow": false,
+   "placement": "Strung along the INNER FACE of the elliptical ribs, following the arc from deck to crown, at intervals of roughly its own diameter times 8-12. Small: about 15 x 17 px at mid-depth in a frame where a man is 261 px.",
+   "source": "reference/10-interiors-generic-kit/more hallway.jpg (authority 1), gains 1.120/1.198/0.786. Four lamps isolated at (0.247,0.217), (0.542,0.232), (0.741,0.027), (0.201,0.309). All four clip in ALL THREE channels at the core (34-93% of core pixels at max) \u2014 they are the hottest fittings in the frame. Un-clipped halo medians, balanced and peak-normalised: (1.000,0.856,0.689) H25 / (1.000,0.900,0.689) H34 / (1.000,0.889,0.667) H33 / (1.000,0.744,0.599) H22, i.e. linear (1.000,0.70-0.79,0.43) at 4270-4420 K. Fill-subtracted (halo at r 8-12 minus far field at r 18-26) that becomes balanced (1.000,0.770,0.479) -> linear (1.000,0.550,0.199), ~2900 K. Falloff on lamp (0.247,0.217): L 0.670 at r 5-8 px, 0.292 at r 8-12, 0.133 at r 12-18, 0.103 at r 18-26 against a frame ambient floor of 0.06-0.10.",
+   "extrapolated": "range_m 0.6 and the arc spacing. The frame shows the lamps receding along three nested arches at foreshortened intervals and does not fix a metric pitch; the spacing is stated as a ratio to lamp size rather than in metres for that reason.",
+   "reasoning": "SAME REGISTER AS THE RESIDENTIAL DOWNLIGHT, MEASURED IN A DIFFERENT SECTOR, A DIFFERENT CORRIDOR CLASS AND A DIFFERENT FRAME. Fill-subtracted it reads linear (1.000,0.550,0.199) against the residential downlight's (1.000,0.435,0.168) and materials.ACCENTS['warm_practical'] at linear (1.000,0.333,0.102). Three independent instruments landing in one 2200-3000 K warm register is the strongest colour agreement in this family, and station/zocalo.py's rib lamp already found it a fourth time. AND IT LIGHTS NOTHING: its halo reaches the frame's ambient floor within 20 px, less than twice its own apparent radius. Build it emissive with a small shadowless omni and let the room's fill come from elsewhere. THE MIXED REGISTER IS THE POINT \u2014 the lamps' own halos fall from H 25-34 warm at r 8-12 px to H 240-251 BLUE at r 12-26 px. Warm points inside a blue ambient.",
+   "kelvin_est_note": null
+  },
+  {
+   "key": "concourse_deck_channel",
+   "space": "corridor_concourse",
+   "kind": "emissive_only",
+   "colour": [
+    0.719,
+    1,
+    0.817
+   ],
+   "kelvin_est": null,
+   "energy_rel": 0.7,
+   "range_m": 0.5,
+   "spacing_m": null,
+   "shadow": false,
+   "placement": "A run of discrete lit deck panels down the centre of the volume, the full length to the vanishing point. It is the element that gives the concourse its perspective read.",
+   "source": "reference/10-interiors-generic-kit/central corridor.webp (authority 1), gains recomputed as 1.045/1.086/0.891, reproducing the table. Strip cells isolated at x 0.411-0.438 and 0.465-0.491 (y 0.977-0.998) and x 0.432-0.448 and 0.463-0.476 (y 0.653-0.670), raw means H 211-227 S 0.08-0.19. Representative raw (0.681,0.758,0.845) -> balanced (0.864,1.000,0.915) -> linear (0.719,1.000,0.817). Effect measured by a deck scan at y 0.60-0.70, balanced: deck under the strip run x 0.27-0.45 reads L 0.200-0.327 at H 197-211; deck at the walls x 0.87-0.99 reads L 0.062-0.100 at H 15-26. Corroborated in more hallway.jpg, whose strip cells read H 224-235 S 0.31-0.50 raw.",
+   "extrapolated": "range_m 0.5 and energy_rel 0.7 relative to the rib lamps \u2014 the strip does not clip while the lamps clip in three channels, so it is measurably dimmer per unit area, but I cannot put a ratio on two things one of which is saturated.",
+   "reasoning": "MEASURED BLUER THAN THE LIBRARY HAS IT. materials.py's light_deck_channel emission (0.860,0.910,1.000) linearises to (0.711,0.807,1.000); the frame gives linear (0.719,1.000,0.817), which is the same COOLNESS arranged differently \u2014 a green-leaning white rather than a blue one. The green lean is what balancing a blue-cast frame does to its least-blue object, and the honest statement is that the deck strip is the concourse's local neutral: it is the coolest large feature relative to the warm rib lamps and the least blue thing relative to the room's blue wash. THE COLOUR SPLIT ACROSS THE DECK IS THE FINDING: cool H 197-211 down the middle where the strip is, warm H 15-26 at the walls where the practicals are. One deck material, two lights, 170 degrees apart \u2014 materials.NEGATIVE_RESULTS records the same effect in more hallways.jpg, and this is an independent third instance.",
+   "kelvin_est_note": null
+  },
+  {
+   "key": "concourse_wall_tube",
+   "space": "corridor_concourse",
+   "kind": "emissive_only",
+   "colour": [
+    0.943,
+    1,
+    0.639
+   ],
+   "kelvin_est": 5310,
+   "energy_rel": 0.85,
+   "range_m": null,
+   "spacing_m": null,
+   "shadow": false,
+   "placement": "A vertical tube on the wall at the edge of the volume, running roughly a deck pitch: measured 0.149 of frame height at x 0.800-0.812, i.e. a tall narrow batten, aspect ~8:1.",
+   "source": "reference/10-interiors-generic-kit/central corridor.webp (authority 1), gains 1.045/1.086/0.891. Blob at x 0.800-0.812, y 0.473-0.622 (11 x 90 px), raw mean (0.854,0.838,0.829), max (1.000,1.000,0.988) \u2014 clips in R and G. Region median raw (0.925,0.914,0.914) -> balanced (0.975,1.000,0.820) -> linear (0.943,1.000,0.639). A second lit element in the same frame, the sign panel at x 0.848-0.961 y 0.367-0.402, balanced (0.941,1.000,0.770) -> linear (0.871,1.000,0.554).",
+   "extrapolated": "energy_rel 0.85 \u2014 set from balanced core luminance against the frame's brightest fitting, which is a proxy and not a flux measurement. Whether this is the same object as the residential light_pilaster_strip.",
+   "reasoning": "IT IS WARMER THAN THE RESIDENTIAL PILASTER STRIP AND THAT DIFFERENCE IS MEASURED, NOT STYLED. Residential strip: linear (0.956,1.000,0.895), 6200 K. Concourse wall tube: linear (0.943,1.000,0.639), 5310 K \u2014 a 26% blue deficit against a 10% one. Read against the concourse's blue ambient this is what makes the tube read as a warm accent on a cold wall. Its clipping in R and G but not B says the same thing independently. If the two are bound to one material the concourse loses that contrast; I would keep them separate.",
+   "kelvin_est_note": null
+  },
+  {
+   "key": "service_wall_tube",
+   "space": "corridor_service",
+   "kind": "emissive_only",
+   "colour": [
+    0.3,
+    0.55,
+    1
+   ],
+   "kelvin_est": null,
+   "energy_rel": 1,
+   "range_m": 0.5,
+   "spacing_m": null,
+   "shadow": false,
+   "placement": "Vertical tubes on the wall and on stanchions, in two courses \u2014 an upper run hung off the overhead truss (y 0.116-0.191 in frame) and a lower run at head height (y 0.224-0.486). Aspect ~13:1 for the lower run, ~3:1 for the upper. They flank the corridor in pairs.",
+   "source": "reference/10-interiors-generic-kit/more hallways.jpg (authority 1; materials.NEGATIVE_RESULTS classes it a LIGHTING reference, not an albedo reference). Gains recomputed as 0.793/1.146/1.154, reproducing the table. Tubes isolated at x 0.394-0.405 y 0.116-0.191; x 0.399-0.415 y 0.224-0.444; x 0.542-0.546 y 0.226-0.486; x 0.546-0.560 y 0.116-0.191; x 0.652-0.659 y 0.118-0.188. Cores clip to white. Un-clipped halo medians, balanced and peak-normalised: r 8-14 gives (0.576,0.754,1.000) H208 S0.42, (0.655,0.704,1.000) H226, (0.719,0.891,1.000) H192; r 14-22 gives (0.514,0.661,1.000) H212 S0.49. Linear (0.291,0.528,1.000) to (0.475,0.770,1.000). Fill-subtracted (halo r 8-14 minus far field r 34-50) gives balanced (0.477,0.767,1.000) -> linear (0.191,0.545,1.000).",
+   "extrapolated": "range_m 0.5, energy_rel 1.0 (they are the brightest fittings in the frame by core radiance, but every candidate clips), and the metric spacing, which the frame's foreshortening does not yield.",
+   "reasoning": "THE SERVICE CORRIDOR RUNS THE OPPOSITE REGISTER MIX FROM THE CONCOURSE AND THAT IS THE SINGLE BEST THING IN THIS FRAME. The tubes' own halos read H 192-226 cool at r 8-22 px and then flip to H 322-357 WARM at r 22-50 px as the frame's amber ambient takes over. So: cool tubes in a warm room, where the concourse is warm lamps in a cool room. The frame's mean illuminant relative to the residential baseline is linear (1.000,0.563,0.413) \u2014 strongly amber \u2014 against the concourse's (0.469,0.520,1.000). This is the same colour register materials.ACCENTS calls cool_blue (H 216-235), at lower saturation. The tubes light very little: their halos reach the ambient floor by r 34-50 px, and the wall behind them at x 0.86-0.94 reads balanced L 0.021-0.055 over its whole upper half \u2014 essentially black.",
+   "kelvin_est_note": null
+  },
+  {
+   "key": "service_deck_channel",
+   "space": "corridor_service",
+   "kind": "emissive_only",
+   "colour": [
+    0.46,
+    0.8,
+    1
+   ],
+   "kelvin_est": null,
+   "energy_rel": 0.64,
+   "range_m": 0.8,
+   "spacing_m": null,
+   "shadow": false,
+   "placement": "A chequer of lit cells set in DECK GRATING, running the full length of the corridor to the vanishing point, roughly 0.75-0.9 m wide \u2014 interior_kit's deck_strip_w_m for this class. Flush with the deck, not proud.",
+   "source": "reference/10-interiors-generic-kit/more hallways.jpg (authority 1), gains 0.793/1.146/1.154. Strip isolated as one 126 x 208 px blob at x 0.419-0.541, y 0.639-0.998 plus its cells. Radial medians raw: L 0.476 at r 0-8 px, 0.578 at r 8-16, 0.617 at r 16-28, 0.620 at r 28-45, 0.578 at r 45-70. Representative raw (0.675,0.596,0.655) -> balanced (0.708,0.904,1.000) -> linear (0.460,0.795,1.000). Effect: deck scan at y 0.80-0.92, balanced \u2014 deck at the strip L 0.48-0.75 at H 191-202; deck 3-4 m out L 0.09-0.14 at H 33-49; deck at the frame edges L 0.016-0.05 at H 10-26 with S 0.75-0.95.",
+   "extrapolated": "range_m 0.8. energy_rel 0.64 is the strip's balanced core luminance (0.659) against the tubes' (1.022) \u2014 a radiance proxy, not flux; the strip is far larger so its total contribution is much greater than 0.64 suggests.",
+   "reasoning": "THIS IS THE FRAME THAT PROVES ONE SURFACE TAKES TWO COLOURS FROM TWO LIGHTS, AND I REPRODUCED materials.NEGATIVE_RESULTS INDEPENDENTLY. That note records one continuous deck plate reading H 36-37 S 0.59-0.65 under the warm backlit panels and H 179-200 S 0.12-0.25 under the cool tubes. My scan of the same deck gives H 191-202 at the strip and H 33-49 four metres away, on the same plate, in one frame. That is the reason this whole family must be built with coloured lights rather than coloured paint.",
+   "kelvin_est_note": null
+  },
+  {
+   "key": "service_panel_warm",
+   "space": "corridor_service",
+   "kind": "emissive_only",
+   "colour": [
+    1,
+    0.356,
+    0.299
+   ],
+   "kelvin_est": null,
+   "energy_rel": 0.69,
+   "range_m": 1.5,
+   "spacing_m": null,
+   "shadow": false,
+   "placement": "Backlit wall panels at head height on both sides, roughly 0.5 x 0.8 m in the frame's mid-depth, set flush in the wall build-up.",
+   "source": "reference/10-interiors-generic-kit/more hallways.jpg (authority 1), gains 0.793/1.146/1.154. Panel at (0.6325,0.332): raw core (0.967,0.612,0.547) H9 S0.43, clipping in R; un-clipped halo r 5-10 raw (0.412,0.180,0.165) H4 S0.60, r 10-18 (0.192,0.067,0.082) H353 S0.65. Hue constant at H 353-9 across a 5x range of value while saturation stays 0.43-0.65 \u2014 a source. Balanced r 5-10 (1.000,0.631,0.583) -> linear (1.000,0.356,0.299). Chromaticity sits 0.048 off the Planckian locus, so a CCT for it would be meaningless and is reported null.",
+   "extrapolated": "range_m 1.5 and energy_rel. The panel's area is large enough that its flux is much greater than its radiance ratio implies.",
+   "reasoning": "THIS IS WHAT MAKES THE SERVICE CORRIDOR AMBER. It is not a warm white \u2014 it is off-locus toward red at linear (1.000,0.356,0.299), and it is what puts H 33-49 on a deck four metres away. Two further backlit registers are attested in the same frame and belong with it: a magenta panel at (0.253,0.349) reading balanced (0.901,0.585,1.000) -> linear (0.789,0.302,1.000), and a deep red window at (0.050,0.360) reading balanced (1.000,0.116,0.039) -> linear (1.000,0.013,0.003) at S 0.94-1.00. Downbelow's grubby light is these three plus the cool tubes, and no other colour appears in the frame.",
+   "kelvin_est_note": null
+  },
+  {
+   "key": "service_panel_red",
+   "space": "corridor_service",
+   "kind": "emissive_only",
+   "colour": [
+    1,
+    0.013,
+    0.003
+   ],
+   "kelvin_est": null,
+   "energy_rel": 0.05,
+   "range_m": 1,
+   "spacing_m": null,
+   "shadow": false,
+   "placement": "A tall backlit window in the left wall behind a stair, roughly 0.6 x 1.2 m in frame at x 0.02-0.09, y 0.30-0.42.",
+   "source": "reference/10-interiors-generic-kit/more hallways.jpg (authority 1), gains 0.793/1.146/1.154. Radial medians at (0.050,0.360), raw: r 0-5 (0.204,0.000,0.000) S1.000; r 5-10 (0.149,0.012,0.004) S0.974; r 10-18 (0.108,0.004,0.012) S0.964; r 18-30 (0.078,0.004,0.008) S0.950; r 30-45 (0.071,0.004,0.008) S0.944. Saturation is FLAT at 0.94-1.00 across a 2.9x range of value \u2014 the multiplicative signature of a real coloured source rather than a bloom. Balanced r 5-10 (1.000,0.116,0.039) -> linear (1.000,0.013,0.003).",
+   "extrapolated": "energy_rel 0.05 is its balanced core luminance ratio, which is honest and also misleading: a saturated red has almost no luminance, and 0.05 will read as off. Whatever energy is chosen, the CHROMATICITY is the measurement.",
+   "reasoning": "Recorded because it is the deepest-saturated light anywhere in the corridor set \u2014 S 0.94-1.00 sustained across five radial bands \u2014 and because a builder tempted to fold it into the warm panel register would lose it. It is a different colour from service_panel_warm (linear B 0.003 against 0.299), not a dimmer version of it.",
+   "kelvin_est_note": null
+  },
+  {
+   "key": "service_sign_neon_green",
+   "space": "corridor_service",
+   "kind": "emissive_only",
+   "colour": [
+    0.423,
+    1,
+    0.631
+   ],
+   "kelvin_est": null,
+   "energy_rel": 0.87,
+   "range_m": 1,
+   "spacing_m": null,
+   "shadow": false,
+   "placement": "A wall-mounted illuminated sign board high on the left wall, x 0.081-0.115, y 0.127-0.234 in frame \u2014 above head height, in the truss zone.",
+   "source": "reference/10-interiors-generic-kit/more hallways.jpg (authority 1), gains 0.793/1.146/1.154. Blob at x 0.081-0.115, y 0.127-0.234 (36 x 63 px), raw mean (0.814,0.841,0.717) H73 S0.15, max (1.000,1.000,0.992). Region median raw (0.835,0.847,0.686) -> balanced (0.682,1.000,0.816) -> linear (0.423,1.000,0.631). A second chromatic source in the same frame for contrast: the blue screen at x 0.716-0.813 y 0.31-0.40, raw (0.407,0.706,0.892) H203 S0.54 -> balanced (0.314,0.786,1.000) -> linear (0.079,0.577,1.000).",
+   "extrapolated": "energy_rel 0.87 from balanced core luminance. That this is signage rather than an architectural fitting \u2014 it is read from its position and shape, not from legible content.",
+   "reasoning": "Included because materials.ACCENTS has four registers and NONE of them is green, and this frame has an unambiguous green source at linear (0.423,1.000,0.631). It is a fifth register and it belongs to signage, not to architecture \u2014 which is consistent, since ACCENTS' four are all architectural or soft-goods. It matters for the corridor kit only in that a service corridor's colour comes from its signage and its backlit panels rather than from its light fittings.",
+   "kelvin_est_note": null
+  },
+  {
+   "key": "concourse_soft_fill",
+   "space": "corridor_concourse",
+   "kind": "directional",
+   "colour": [
+    0.469,
+    0.52,
+    1
+   ],
+   "kelvin_est": null,
+   "energy_rel": 0.35,
+   "range_m": null,
+   "spacing_m": null,
+   "shadow": false,
+   "placement": "Not a fitting. A broad cold wash from above, much weaker than the residential corridor's: the concourse's balanced median luminance is 0.071-0.126 against the residential 0.265.",
+   "source": "Derived from the grey-world gain vectors themselves, which are a measurement of each frame's mean illuminant. reference/10-interiors-generic-kit/more hallway.jpg gains 1.120/1.198/0.786 and reference/07-sector-grey/grey level 1.webp gains 0.970/1.087/0.953; the ratio, peak-normalised, is sRGB (0.714,0.748,1.000) -> linear (0.469,0.520,1.000). reference/10-interiors-generic-kit/central corridor.webp against the same baseline gives sRGB (0.868,0.936,1.000) -> linear (0.725,0.860,1.000). Corroborated directly on surfaces: in more hallway.jpg the arch lamps' outer halos read H 240-251 raw, and the deck away from every fitting reads H 231-255 S 0.42-0.65.",
+   "extrapolated": "The fixture. The colour and level are measured; the form is not, for the same reason as corridor_soft_fill \u2014 the reference cannot show an off-camera source.",
+   "reasoning": "USING GREY-WORLD AGAINST A BASELINE FRAME RATHER THAN AGAINST NEUTRAL IS WHAT MAKES THIS CAST-INDEPENDENT. Balancing a frame to neutral destroys exactly the thing a lighting pass is trying to measure \u2014 materials.NEGATIVE_RESULTS' whole point is that these frames' colour belongs to the light. Taking the ratio of two frames' gain vectors cancels the shared telecine cast and leaves the difference in ILLUMINANT, which is what I want. Against grey level 1 the two concourse frames come out blue by 53% and 27% in red respectively, and the service frame comes out amber. The residential frame's own gains are within 5% of unity in R and B, so it is the right baseline. energy_rel 0.35 records that the concourse fill delivers roughly a third of the wall irradiance the residential fill does, from the median luminance ratio 0.126/0.265 = 0.48 and 0.071/0.265 = 0.27.",
+   "kelvin_est_note": null
+  },
+  {
+   "key": "service_soft_fill",
+   "space": "corridor_service",
+   "kind": "directional",
+   "colour": [
+    1,
+    0.563,
+    0.413
+   ],
+   "kelvin_est": null,
+   "energy_rel": 0.2,
+   "range_m": null,
+   "spacing_m": null,
+   "shadow": false,
+   "placement": "Not a fitting. Almost absent: the service corridor's balanced median luminance is 0.060 and its p10 is 0.008. Its walls are black except where a panel or the deck strip reaches them.",
+   "source": "reference/10-interiors-generic-kit/more hallways.jpg gains 0.793/1.146/1.154 ratioed against reference/07-sector-grey/grey level 1.webp gains 0.970/1.087/0.953, peak-normalised: sRGB (1.000,0.775,0.675) -> linear (1.000,0.563,0.413). Corroborated on surfaces: the tubes' outer halos flip to H 322-357 at r 22-50 px; the deck at 3-4 m from the strip reads H 33-49; the deck at the frame edges reads H 10-26 at S 0.75-0.95. Right wall vertical scan at x 0.86-0.94 reads balanced L 0.021-0.055 across the whole upper half.",
+   "extrapolated": "The fixture and energy_rel 0.2, taken from the median-luminance ratio 0.060/0.265 = 0.23.",
+   "reasoning": "THE SERVICE CORRIDOR HAS ALMOST NO FILL AND THAT IS THE CLASS'S DEFINING PROPERTY. Its p10 balanced luminance is 0.008 against the residential corridor's 0.152 \u2014 nineteen times darker. Whatever amber colour it has comes from the backlit panels themselves bouncing, not from an architectural wash, which is why the fill's colour matches service_panel_warm's register rather than any lamp's.",
+   "kelvin_est_note": null
+  }
+ ],
+ "ambient": [
+  {
+   "space": "corridor_residential",
+   "ratio": 0.3,
+   "source": "reference/07-sector-grey/grey level 1.webp (authority 1), balanced with gains recomputed from the frame as 0.970/1.087/0.953 (reproduces materials.GREY_WORLD_GAINS exactly). Balanced median luminance of the large structural surfaces: deck field (0.300,0.750)-(0.500,0.950) 0.446 \u2014 the brightest; left wall plate 0.288; right wall upper plate 0.263; soffit/ceiling (0.019,0.020)-(0.300,0.090) 0.158; skirt (0.019,0.771)-(0.134,0.793) 0.134 \u2014 the darkest. 0.134/0.446 = 0.30; ceiling/deck = 0.354. Whole-frame robust check: balanced p10/p90 = 0.152/0.397 = 0.38. THE BETWEEN-FITTINGS RATIO ON ONE SURFACE: horizontal scans along the fitted left wall at four independent heights give trough/peak of 0.52, 0.53, 0.55, 0.52 (plate course 0.183/0.352, mid row 0.194/0.381, rail nosing 0.194/0.366, dado 0.152/0.278); the deck gives 0.267/0.491 = 0.55. CONTROL, and it is what makes those numbers mean something: the UNFITTED right wall, scanned the same way, varies only 0.83-0.92 along its run, so the 0.52 is the fittings and not a lens vignette."
+  },
+  {
+   "space": "corridor_concourse",
+   "ratio": 0.12,
+   "source": "Two frames, and they bracket rather than agree. reference/10-interiors-generic-kit/more hallway.jpg (authority 1, gains 1.120/1.198/0.786): deck scan at y 0.93-0.99, balanced \u2014 deck under the 1.57 m pool 0.706-0.904, deck 0.08 m outside it 0.079, at 0.42 m 0.074, at 0.94 m 0.057, at 1.63 m 0.038, far edge 0.018. Ratio 0.057/0.79 = 0.072, and 0.023 at the frame edges. Whole-frame p10/p90 = 0.023/0.279 = 0.082. reference/10-interiors-generic-kit/central corridor.webp (authority 1, gains 1.045/1.086/0.891): deck scan at y 0.60-0.70 \u2014 deck under the lit strip run 0.200-0.327, deck at the walls 0.062-0.100; ratio 0.19. Whole-frame p10/p90 = 0.054/0.295 = 0.18. 0.12 is the midpoint of 0.072 and 0.19; the difference between the two frames is dramatic-wide-shot against working-scene and both are canon, so a builder should treat 0.07-0.19 as the range the class covers rather than 0.12 as a fact."
+  },
+  {
+   "space": "corridor_service",
+   "ratio": 0.06,
+   "source": "reference/10-interiors-generic-kit/more hallways.jpg (authority 1, gains recomputed as 0.793/1.146/1.154, reproducing the table). Deck scan at y 0.80-0.92, balanced: deck at the lit strip 0.480-0.751; deck 3-4 m out 0.086-0.128; deck at the frame edges 0.016-0.050. Ratio 0.09/0.63 = 0.14 near, 0.02/0.63 = 0.03 far. Right wall vertical scan at x 0.86-0.94 gives 0.021-0.055 over the whole upper half against 0.18 at the deck \u2014 the walls are effectively black. Whole-frame p10/p90 = 0.008/0.380 = 0.021. 0.06 is a working midpoint between the near-deck 0.14 and the p10/p90 0.021."
+  }
+ ],
+ "findings": "METHOD CONTROL FIRST. All four frames' grey-world gains were recomputed from the images over 0.04 < V < 0.95 before anything was read, and all four reproduce materials.GREY_WORLD_GAINS to three decimals (grey level 1 0.970/1.087/0.953; central corridor 1.045/1.086/0.891; more hallway 1.120/1.198/0.786; more hallways 0.793/1.146/1.154). Doug's Dugout was not measured for albedo; it was not needed. Emitters are stated raw where a raw radiance mattered and balanced where a relative colour mattered, and every entry says which. All colours in the fixtures array are LINEAR, converted from the balanced sRGB reading with the standard sRGB EOTF; CCT is quoted only where the chromaticity lies within 0.02 of the Planckian locus in xy and is null otherwise.\n\nTHE HEADLINE, AND IT IS NOT WHAT THE FIXTURE LIST IMPLIES: OF THE FOUR LIGHT GROUPS interior_kit EMITS, ONLY ONE MEASURABLY LIGHTS ANYTHING. Each was tested against a surface near it.\n  * light_pilaster_strip \u2014 the brightest large feature in grey level 1. The pilaster face it sits in reads L 0.31-0.41 alongside it and 0.31-0.35 a metre below its bottom end (1.09x, and that test is weak because the face is coplanar with the emitter). The decisive test is the deck directly beneath the pilaster: balanced L 0.29-0.35 against a mid-corridor deck field of 0.446 \u2014 DARKER. materials.py's own PROVENANCE has the same result from the other direction (bullnose face V 0.301, wall plate three metres away V 0.295).\n  * light_portal_head \u2014 the band of surface immediately below it reads L 0.209-0.212, darker than the soffit ABOVE it at 0.274.\n  * light_downlight \u2014 the only one that works, and only just: its contribution equals the ambient fill at d ~ 0.17 m, is +39% of fill at 0.37 m and +17% at 0.5 m. The band-to-band ratio is consistent with inverse square, so it is a real point light, weak.\n  * light_deck_channel \u2014 see below; in the concourse it is not an emissive at all.\nCONSEQUENCE FOR LAYER 4: the residential corridor is at balanced median luminance 0.265 and the fittings cannot account for it. The light is off-camera \u2014 film practice showing through, practicals as dressing and key from the grid. Build a broad soft cool source (measured effect: linear (0.738,0.955,1.000), delivering 2.5x the wall irradiance that the brightest fitting adds at its own peak) and hang the fittings inside it. Build it from the fittings and you will get a dark corridor with three bright dots.\n\nQUESTION 1, THE RATIO BETWEEN FITTINGS AND FILL. Three corridor classes, three regimes, an order of magnitude apart, and this is the number that decides whether a render reads as the show.\n  residential  wall between fittings / wall under one = 0.52 +/- 0.02, from four independent height bands on one wall (0.52, 0.53, 0.55, 0.52); the deck gives 0.55 independently. Ambient ratio 0.30. Balanced median luminance 0.265.\n  concourse    deck between pools / deck under one = 0.07 (more hallway) to 0.19 (central corridor). Balanced median luminance 0.071-0.126.\n  service      0.14 near the deck strip, 0.03 at the walls. Balanced median luminance 0.060; p10 0.008.\nCONTROL: the unfitted right wall of grey level 1, scanned identically, varies only 0.83-0.92 along its run, so the residential 0.52 is the fittings and not a lens vignette. The residential corridor is a FILLED space with a gentle pool; the concourse and service corridors are POOLED spaces in near-blackness, four to nineteen times darker at the tenth percentile. One `ambient_energy` for the whole kit would be wrong by a factor of five.\n\nQUESTION 2, PLACEMENT. interior_kit's placements were checked against the frame rather than assumed.\n  CONFIRMED EXACTLY \u2014 light_downlight height. The kit puts the lens at dado_top-0.10 = 0.875 m = 0.35 of wall_h. Two independent column profiles through the two visible fittings, using the fact that a vertical world line images to a vertical image line with y linear in world height, give 0.334 and 0.370 \u2014 0.35 +/- 0.02.\n  CONFIRMED \u2014 light_portal_head. Kit builds a 0.126 m bar spanning 0.57 of the aperture, 0.045-0.171 m under the head. Measured: 0.12 m tall (aspect 0.072 on a 167 px run), spanning 0.64 of the aperture, immediately under the head.\n  CORRECTION \u2014 light_pilaster_strip extent. Kit builds 0.50 -> 0.86 of wall height, 7 bars at 0.129 m pitch, duty 0.68. Measured from per-row max-luminance profiles of both visible strips: span 0.56 -> 0.75 (1.40-1.88 m at a 3.0 m ceiling), cell pitch 0.196 m, so 3 cells, duty 0.75-0.85 (bloom-inflated, so an upper bound). The CENTRE is right at 0.655 vs the kit's 0.68; the strip is roughly 1.9x too long and its cells 1.5x too small. That changes emitting area by about 90%, which is why it belongs in a lighting brief and not only a geometry one.\n  CORRECTION OF KIND \u2014 light_deck_channel in the concourse. interior_kit.downlight_pool()'s docstring calls the 1.57 m pool 'a circular lit disc set into the deck' and materials.py binds it to an emissive. The magnified crop of more hallway.jpg shows the standing officer casting a hard, dark, directional contact shadow ACROSS the lit deck, and the deck tiles inside the pool are visible as tiles with dark joints and a light-fall gradient. It is the lit footprint of an OVERHEAD SPOT. Its falloff is 1/d^2.9 between bands \u2014 steeper than inverse square, i.e. a cone edge \u2014 and its core is 13-15x the deck 0.08 m outside it.\n  ABSENCE \u2014 light_deck_channel in the residential class. interior_kit.deck_panel() tags a lit channel unconditionally, for every corridor class. grey level 1 shows a chequered deck with NO lit centre strip: a scan at y 0.80-0.95 gives a broad soft peak from 0.267 to 0.491 with no narrow bright feature anywhere. The deck strip belongs to concourse and service, where it is the dominant feature and the corridor's perspective cue, and not to the residential corridor.\n  SPACING is the one thing I could not recover metrically. The frames do not resolve a run of downlights against a known length; what is constrained is that there is at most one per portal bay and they sit at the jambs, which is what the kit already builds (one per 3.45 m against portal_spacing_m 3.6).\n\nQUESTION 3, COLOUR TEMPERATURE, AND YES, EVERY SPACE MIXES REGISTERS.\n  ONE WARM PRACTICAL REGISTER ACROSS THE WHOLE STATION, now measured a fourth time. Fill-subtracted, the residential wall downlight reads linear (1.000,0.435,0.168) at 2881 K and (1.000,0.304,0.076) at 2231 K; the concourse rib lamp reads linear (1.000,0.550,0.199) at ~2900 K; materials.ACCENTS['warm_practical'] linearises to (1.000,0.333,0.102); station/zocalo.py found it once more on the Zocalo arch. materials.py's light_downlight emission (1.000,0.680,0.400) linearises to (1.000,0.420,0.133), which sits between my two reads \u2014 THE LIBRARY'S EXISTING VALUE IS CONFIRMED, DO NOT CHANGE IT.\n  THE RESIDENTIAL CORRIDOR IS TWO REGISTERS SPLIT BY HEIGHT, and it is measurable on ONE wall. On the fitted left wall, R-B is +0.037 to +0.056 at H 45-53 S 0.20-0.25 in the band below the rail (y 0.50-0.62, 0.74-0.78) and -0.006 to -0.024 at H 227-249 S 0.02-0.07 in the plate courses above it (y 0.34-0.46). Warm below hip height, cool above. The unfitted right wall is negative at every one of twelve heights from y 0.02 to 0.62. This is materials.NEGATIVE_RESULTS' ochre-dado finding measured a second way and it holds: the warmth is the practicals and it is confined to their throw.\n  THE ARCHITECTURAL WHITE IS NEUTRAL, NOT BLUE. Pilaster strip linear (0.956,1.000,0.895) at 6200 K, portal head linear (1.000,0.936,0.955) at 6336 K, both within 0.006 of the Planckian locus, from two independent blobs. materials.py has them at linear (0.748,0.848,1.000) and (0.787,0.869,1.000) \u2014 decidedly blue. I FLAG THE CIRCULARITY MYSELF: grey-world forces a frame's mean illuminant to neutral, so a fitting that IS the dominant illuminant must balance neutral, and this measurement cannot separate 'the strip is white' from 'the strip defines white here'. What survives is the WALL: the unfitted right wall, whose albedo materials.py establishes as neutral, balances to linear (0.738,0.955,1.000), a 26% red deficit. So a cool bias is right; one as strong as the library's is not, because it would put the wall cooler than measured.\n  THE THREE CLASSES SIT AT THREE DIFFERENT WHITE POINTS, and taking the ratio of two frames' grey-world gain vectors cancels the shared telecine cast and leaves the difference in ILLUMINANT. Against grey level 1 as baseline: central corridor linear (0.725,0.860,1.000); more hallway linear (0.469,0.520,1.000); more hallways linear (1.000,0.563,0.413). Residential neutral, concourse cold, service amber.\n  AND THE REGISTER MIX INVERTS BETWEEN THEM. In more hallway the rib lamps' own halos read H 25-34 warm at r 8-12 px and H 240-251 BLUE at r 12-26 \u2014 warm points in a cold room. In more hallways the tubes' halos read H 192-226 cool at r 8-22 and H 322-357 WARM at r 22-50 \u2014 cold tubes in an amber room. Same fitting language, opposite colour logic, and it is what separates a public concourse from Downbelow at a glance.\n  materials.NEGATIVE_RESULTS' one-plate-two-colours result reproduced independently, a third and fourth time: in more hallways one continuous deck reads H 191-202 at the strip and H 33-49 four metres away; in central corridor the deck reads H 197-211 down the middle and H 15-26 at the walls. Coloured lights, never coloured paint.\n  A FIFTH REGISTER EXISTS AND ACCENTS DOES NOT HAVE IT: green. more hallways' sign board reads linear (0.423,1.000,0.631). It belongs to signage, not architecture, which is consistent with ACCENTS' four all being architectural or soft-goods.\n\nQUESTION 4, SHADOWS, AND THIS IS THE CHEAPEST DECISION IN THE WHOLE FAMILY. Exactly ONE fitting in four frames casts a shadow that matters: the concourse deck spot, whose pool contains a hard, dark, directional contact shadow of a standing man. Nothing else does. In grey level 1 a pilaster projects 0.17 m from the wall a metre from a lit lens and throws no shadow at all; the dark band under the rail is a 0.06 m RECESS reading L 0.117-0.122 against a wall at 0.28 (0.43x \u2014 an ambient-occlusion signature, not a cast shadow), which materials.py already records. In more hallways the overhead truss is silhouetted against nothing and leaves no pattern on the deck. So: shadows OFF on every wall, pilaster, portal and deck-channel emitter in the kit; shadows ON only for the concourse deck spot, of which there are a handful per bay. That is one shadow-casting light per pool instead of one per fitting, and it costs almost nothing.\n\nONE ENERGY FINDING WORTH ACTING ON. In grey level 1 no fitting clips more than a single channel: the downlight clips R only (max 1.000, 0.863-0.890, 0.843-0.890), the pilaster strip clips nothing (max 0.961/0.894/0.965), the portal head clips nothing (max 0.965/0.855/0.918). Their balanced core luminances are 0.895, 0.832 and 0.755 \u2014 all three run at the same surface radiance within 20%, and what differs between them is AREA and COLOUR, which the geometry already supplies. materials.py currently gives them luminance-weighted energies of 2.91, 5.55 and 4.62, making the strip roughly twice the downlight where the frame shows them equal or the downlight slightly higher. Flattening those three to within 20% of each other, with the downlight top, is what the frame supports. By contrast the concourse and service fittings DO clip all three channels (arch lamps 34-93% of core pixels, service tubes to white) \u2014 so the residential corridor's fittings really are dimmer objects, not just smaller ones, and the difference belongs in the energy rather than in the exposure.\n\nFILES: measurement scripts at /tmp/claude-0/-home-user-Opus-5/25a39def-a001-5e33-8111-81bbb68b9aec/scratchpad/corridor_light/ (m.py, blobs.py, col.py) and the two magnified crops that settled the pool-shadow question at .../corridor_light/mh_pool.png and .../corridor_light/mh_arch.png. Nothing in /home/user/Opus-5 was edited. UNRELATED HAZARD NOTICED IN PASSING, flagged because it will bite the next agent: /tmp/claude-0/-home-user-Opus-5/25a39def-a001-5e33-8111-81bbb68b9aec/scratchpad/struct.py is a leftover from an earlier session's mutation-testing run and it SHADOWS THE STDLIB `struct` MODULE, so any python3 invoked with that directory as cwd fails on `import numpy` with 'cannot import name pack from struct'. I worked around it by running from a subdirectory; deleting it would be the real fix.",
+ "_family": "corridor_kit"
+}
