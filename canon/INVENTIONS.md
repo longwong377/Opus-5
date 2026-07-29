@@ -1521,3 +1521,72 @@ outer wall extent. Verified by **counting magenta pixels in the render (0)** rat
 which is the check that scales: a hole a few pixels across is exactly what an eye skips.
 
 **Overturned by:** any second frame of a station bar.
+
+---
+
+## INV-034 — The procedural room kit: prop dimensions and archetype layout
+
+**Status:** extrapolation, authority 5. `station/rooms.py`.
+
+**What:** every prop dimension in `PROPS` (65 types), the eleven `ARCHETYPES` and the mapping from
+a location's declared `functions` onto one, the per-archetype floor `DENSITY` and nominal ceiling
+`CEIL_BY_ARCHETYPE`.
+
+**Why it exists at all:** `docs/MASTER-PLAN.md` §3.4 tiers the station at ~12 hero locations, ~30
+featured and ~84 procedural. Writing 68 bespoke room modules is the arithmetic the plan says does
+not close. So the 68 addressed locations with no bespoke module are generated from the
+specification `directory.py` already holds — where they are, how big, what they are FOR, and what
+a player can use in them.
+
+**What constrains the numbers.** Not taste. Four properties, each asserted rather than asserted-
+in-prose: a prop must be usable by a 1.7 m occupant; it must fit inside its room; no two solids may
+occupy the same cubic metre; and a 0.9 m walker must still be able to cross the floor end to end.
+
+**Two sizes were picked instead of derived, and both were wrong.**
+
+*Ceiling height* was a global 2.9 m. A `bay_door` is 5 m tall, so three bay locations could not
+contain their own declared props. It is now `ceiling_m()`: the archetype's nominal, raised to hold
+the tallest thing the room declares, and deliberately permitted to exceed `DECK_PITCH_M` — a
+docking bay spans decks and pretending otherwise is what put a 5 m door in a 2.9 m room.
+
+*Bay span* was a flat 40 m, which rendered a 1,600 m² hall containing six props against one wall.
+It is now `bay_span_m()`: as long as the props ranked down its two side walls plus working gaps,
+as wide as the deepest prop on each side plus the aisle. A bay READS as furnished by construction,
+because it is exactly the room its contents need; the full location is that bay instanced along
+its real footprint by `bays_in()`.
+
+**Overturned by:** any frame establishing a real dimension for one of these rooms, which promotes
+that room out of the procedural tier and into a bespoke module.
+
+---
+
+## INV-035 — Fixtures: the machinery a room is named for
+
+**Status:** extrapolation, authority 5. `station/rooms.py`, `FIXTURES`.
+
+**What:** per-archetype non-interactable scenery — furnace stacks and plant columns in industrial
+space, racking runs in stores, equipment gantries in medlabs, a dais in a sanctuary, stall frames
+in a market, service ducts overhead nearly everywhere — plus structural wall ribs at a pitch
+derived from the room's height.
+
+**Why, and this is the point:** `interacts` in `directory.py` is *what a player can use*. It is
+not an inventory of what is in the room, and building from it alone produced a defect the first
+verification render made obvious. **"Fabrication furnaces" came out a grey box containing two
+control podiums, a catwalk and a crane — the controls for a furnace, and no furnace.** "Primary
+fusion core" declared two interactables and no reactor. A furnace is correctly absent from
+`interacts`, because you do not walk up to one and operate it; it is just as correctly required in
+the geometry.
+
+**It is a layer 2 defect, not a layer 3 one.** No material and no light makes an absent object
+present. That distinction is why this landed here rather than being deferred to the materials pass.
+
+**What constrains the dimensions:** the same four asserted properties as INV-034, plus one more the
+fixtures forced into existence — `lateral_stack()`, a single description of what consumes the bay's
+width, because the sizing formula and the placement code had each grown their own and disagreed by
+260 mm in a fusion core.
+
+**Ribs are excluded from the "is it furnished" metric** on purpose. That metric counts props and
+fixtures per square metre; letting a room pass it by growing more wall ribs is exactly how the
+measure would go vacuous.
+
+**Overturned by:** any frame of one of these interiors, which fixes what is actually in it.

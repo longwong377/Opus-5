@@ -797,9 +797,44 @@ def gazetteer_rows():
 # -- there are no materials, no lights, no props -- and they deliberately return
 # False rather than being omitted, so the register reports zero instead of
 # reporting nothing.
+GENERATOR = "rooms"
+
+
+def _generated_keys():
+    """Keys `rooms.py` actually emits geometry for.
+
+    Imported lazily: `rooms` imports this module at load time, and asking for
+    it at import would be circular. Cached because `layer_report` asks 118
+    times.
+
+    This is a MEMBERSHIP TEST rather than `module is None`, and the difference
+    is the whole point. Treating "no bespoke module" as "the generator covers
+    it" would make the layer-2 predicate return True for every row in the
+    table -- a counter that cannot go down, which is the same class of defect
+    as an assertion that cannot fail. Asking the generator what it built means
+    the count drops the moment it stops building something.
+    """
+    if _generated_keys.cache is None:
+        import rooms                                          # noqa: PLC0415
+        s, p = it.load()
+        _generated_keys.cache = frozenset(
+            q["key"] for q in rooms.unbuilt(s, p))
+    return _generated_keys.cache
+
+
+_generated_keys.cache = None
+
+
+def geometry_of(place):
+    """Which module builds this place, or None if nothing does."""
+    if place["module"]:
+        return place["module"]
+    return GENERATOR if place["key"] in _generated_keys() else None
+
+
 LAYERS = (
     (1, "addressed", lambda p: True),
-    (2, "geometry", lambda p: bool(p["module"])),
+    (2, "geometry", lambda p: bool(geometry_of(p))),
     (3, "materials", lambda p: bool(p.get("materials"))),
     (4, "lighting", lambda p: bool(p.get("lights"))),
     (5, "props", lambda p: bool(p.get("props_built"))),
@@ -1025,6 +1060,26 @@ def _selftest():
           current is not None and current["layer"] == min(
               r["layer"] for r in rep if not r["complete"]),
           str(current))
+
+    # --- THE LAYER-2 PREDICATE MUST BE ABLE TO SAY "NO" --------------------
+    # `module=None` used to mean "unbuilt" and now means "the generator builds
+    # it". The lazy way to express that is `module or GENERATOR`, which is True
+    # for every row in the table -- a completion counter that cannot go down.
+    # This asserts the predicate is a real membership test by handing it a
+    # place the generator does not build.
+    ghost = _P("__not_a_real_place__", "ghost", "blue", 0, 0, 0.0, 7000.0,
+               (1.0, 1.0))
+    check("layer 2 says no to a place nothing builds",
+          geometry_of(ghost) is None and layer_of(ghost) == 1)
+    check("layer 2 says yes to a generated place",
+          geometry_of(by_key("fabrication")) == GENERATOR)
+    check("layer 2 still credits bespoke modules",
+          geometry_of(by_key("cnc")) == "command_control")
+    # And the generator's coverage plus the bespoke modules must be the whole
+    # table -- if a row falls between them it is at layer 1 and must be seen.
+    ungeom = [p["key"] for p in PLACES if not geometry_of(p)]
+    check("every addressed place has geometry from somewhere",
+          not ungeom, f"{len(ungeom)}: {ungeom[:6]}")
 
     print(f"\nSTATION DIRECTORY")
     print(f"  gazetteer rows       {cov['gazetteer_rows']:4d}")

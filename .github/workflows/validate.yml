@@ -97,9 +97,24 @@ jobs:
           python3 alien_sector.py
           python3 quarters.py
           python3 hospitality.py
-          python3 directory.py
           python3 command_control.py
           python3 council_chamber.py
+
+      # Layer 2: the 68 addressed locations with no bespoke module. Its gates
+      # are the ones nothing else in the project has: that every prop a
+      # location DECLARES exists as geometry, that no two solids in a room
+      # occupy the same cubic metre, and that a walker can still cross the
+      # floor. The last two caught defects on their first run -- a monitor
+      # wall swallowing a cell door, and a racking run standing in front of
+      # the only way into a cargo bay.
+      #
+      # `directory.py` runs after it because its layer-2 counter asks the
+      # generator what it built.
+      - name: Generated rooms, and the layer register
+        run: |
+          cd station
+          python3 rooms.py
+          python3 directory.py
 
       - name: Streaming cell manifest
         run: |
