@@ -1,0 +1,791 @@
+{
+ "coverage_note": "Both modules built and ran cleanly; nothing was blocked. 41 distinct groups, obtained by RUNNING the code and reading `meta[\"groups\"]` (a per-triangle list) \u2014 not by grepping strings. `core_axis()` is the whole-assembly entry point for core_tube and subsumes `core_tube()`, both `core_hub()` ends and `spoke_node()`; `tram_car(interior=True, glazed=True)` is the maximal tram entry point and subsumes `car_shell()` + `car_saloon()`. `guideway_cars()` / `drum_trams()` only place copies of `tram_car` and emit no new group names (verified by running them: exterior-only, 10 groups). `truss_envelope()` returns clearance boxes, not geometry. Neither module has `write_obj`; both return `(verts, tris, meta_dict)` where the SPAN list is `meta[\"parts\"]` and `meta[\"groups\"]` is per-triangle. My 41 groups exactly reproduce the 41 core_*/tram_* names already in `materials.KNOWN_GROUPS` \u2014 no extras, none missing. Verification of the method: I re-derived GREY_WORLD_GAINS for 33a, 35a and garden.png from the images using materials.py's own algorithm and reproduced the committed table to within 0.0004, so every reading below is on the same footing as the existing library. `03-sector-blue/Babylon_5_2-22_34b.jpg` is NOT in GREY_WORLD_GAINS and must be added as (0.983, 0.964, 1.058) before any 34b-sourced value is committed \u2014 several of my proposals depend on it.",
+ "entry_points": [
+  {
+   "module": "core_tube",
+   "call": "import interior as it, core_tube as ct; schema, profile = it.load(); sector = it.drum_sector(schema, profile); verts, tris, meta = ct.core_axis(schema, profile, sector)  # meta['groups'] is per-triangle; meta['parts'] is the (name, lo, hi) span list. Subsumes core_tube(), core_hub(...,'fore'), core_hub(...,'aft'), spoke_node(). 12,682 verts / 13,148 tris. Run from station/ (module does 'import interior as it', no package prefix).",
+   "group_count": 17
+  },
+  {
+   "module": "tram",
+   "call": "import interior as it, tram; verts, tris, meta = tram.tram_car(interior=True, glazed=True)  # meta['groups'] is per-triangle. Takes NO (schema, profile, sector) \u2014 the car is built in its own local frame and expressed in interior.TRUSS_BAY_M / TRUSS_DEPTH_M. car_shell() and car_saloon() return a bare (verts, tris, groups) TRIPLE, not a meta dict. guideway_cars(schema, profile, sector, angle_deg) and drum_trams(schema, profile, sector) place copies into world space and add no new group names. 3,484 verts / 4,158 tris.",
+   "group_count": 24
+  }
+ ],
+ "findings": "METHOD. My grey-world implementation reproduces the committed GREY_WORLD_GAINS for 33a (0.881,1.055,1.091), 35a (0.913,1.090,1.013) and garden.png (0.884,0.994,1.159) to within 0.0004, so it is the same measurement the rest of the library rests on.\n\n`reference/10-interiors-generic-kit/transport.jpg` \u2014 named in my brief as \"authority 1\" for Season 2-3 trams \u2014 is BYTE-IDENTICAL to `03-sector-blue/Babylon_5_2-22_34b.jpg` and to `01-station-exterior/view.jpg`, md5 e2bf2216d53aa9ba89342267db3f92f6. Three filenames, one frame. `reference/00-INDEX.md:3186` and materials.NEGATIVE_RESULTS already record this. It is not independent evidence and I have cited it as 34b throughout, so nothing double-counts it.\n\n34b IS NOT IN GREY_WORLD_GAINS. It is the only frame that shows the hub brace, the spoke-node bell and spars, and the tram roof \u2014 nine of my proposals depend on it. Its gains are (0.983, 0.964, 1.058) and must be added to the table, or the recompute gate will have nothing to check them against.\n\nPEAK-SATURATION SAMPLING IS UNSAFE ON THESE FRAMES. Selecting the top-N most saturated pixels in a small box returns JPEG chroma ringing, not colour: a barrel patch I had measured at S 0.070 over 1,875 px returned S 0.253 at H 280 when sampled that way over 600 px. Every colour claim below is a MEDIAN over a stated region with a stated pixel count. This nearly produced a fabricated finding and is worth writing into the measurement discipline.\n\nTHE WARM TUBE BAND IS REAL, AND IT PASSES THE NEGATIVE_RESULTS TEST. A hue map of 33a shows a spatially coherent diagonal blob of R>G>B across the tube at cols 199-230 / rows 458-505 \u2014 a band wrapping the barrel, not speckle. Medians over matched 624-px boxes: band core B-R = -0.074 (H 29, S 0.169); barrel 30 px UP-tube B-R = +0.030; barrel 30 px DOWN-tube B-R = +0.029; pale collar rings B-R = +0.036. Same surface, same light, same distance, both sides \u2014 and only the band is warm. The drum ground behind is also warm but at H 64 and only B-R -0.025, so it is neither bleed nor bounce. This is the cheap test NEGATIVE_RESULTS prescribes, run and PASSED rather than failed for a sixth time.\n\nTWO MATERIALS WERE DOING NINETEEN GROUPS' WORK. `core_structure` covers 10 groups and `tram_body` covers 7 \u2014 that is the flat colour layer 3 exists to remove, and in both cases the module's OWN PROSE already contradicts it. tram.py:car_shell writes the livery down explicitly \u2014 \"dark valance below the waist, white body, maroon behind the window band, maroon cap above the cant\" \u2014 and then five of those groups were bound to one white. core_tube.py's docstring calls out \"a cranked BRIGHT brace\"; 34b measures that brace at V 0.772 against a cap field at V 0.361, a factor of 2.1, and it was bound to the darkest material on the axis (V 0.245). The lesson generalises: where a generator's docstring describes a surface, that description is measurable evidence, and a material that contradicts it is a defect you can find without a render.\n\nFIVE FURTHER BINDING DEFECTS, ALL FRAME-BACKED: (1) `tram_in_reveal` is bound to neutral grey; 35a measures it H 347 S 0.568 over 3,200 px and tram.py says \"in the MAROON the reference is emphatic about\". (2) `tram_in_skirt` is bound to neutral grey; 35a measures H 6 S 0.641 over 11,200 px and tram.py says \"Dark red skirt\". (3) `tram_in_device` is bound to an emissive amber at energy 2.6; tram.py calls it \"a dark unit on the wall\" and 35a measures the body V 0.258 S 0.098 \u2014 a dark box currently made to glow. (4) `tram_in_readout` shares that amber; measured RAW it is violet at H 278, normalised (0.894, 0.696, 1.000). (5) The lit strips are not amber: four independent fittings in 35a measure H 50-53 raw, normalised (1.000, 0.92, 0.45), against the committed emission (1.0, 0.78, 0.22) at H 39. The discriminator is the green channel \u2014 0.92 measured against 0.78 committed.\n\nEMITTERS MUST BE MEASURED UNBALANCED. Grey-world balance corrects for the illuminant so that LIT surfaces read true; an emitter is the illuminant. Balanced, 35a's strips read H 71 (yellow-green) and the hub lamps read H 239 with p90 clipped at 1.000; raw, the strips read H 51 and the lamps read S 0.009 \u2014 neutral white \u2014 and do not clip. The library has no stated convention for this and the difference is large enough to change a material.\n\n`core_band_warm` AND THE OVERSATURATION RISK. The committed value is S 0.635; the measured blend is S 0.169. I propose S 0.446 via an explicit 50/50 de-mix against the adjacent pale ring, because the rings are sub-pixel and blur together \u2014 but the honest range is 0.17 to 0.45 and the committed 0.635 is outside it at either end.\n\nPROCESS FINDING, OUTSIDE MY REMIT BUT IT AFFECTS THE HEADLINE NUMBER. `directory.py:872` makes the layer-2 predicate `lambda p: bool(geometry_of(p))`, and `geometry_of` returns `place[\"module\"]` if the row names one. So layer 2 passes for any place that NAMES a module, whether or not that module builds it. `shuttle_car` (\"Core shuttle car interior\", directory.py:613) names module=\"core_tube\", and I ran core_tube: it emits a tube, two hubs and a node, and no car interior of any kind \u2014 no seat, no floor, no shell. So \"Layer 2: 118/118 COMPLETE\" includes at least one place with no geometry. This is the same class of defect as the assertions-that-could-not-fail the project's adversarial pattern already caught, and `_materialled_keys` (directory.py:828) is honest about the mirror problem for layer 3 \u2014 it can only answer for rooms.py and reports the bespoke modules as NOT at layer 3 rather than assuming. That is the right behaviour, and this task's output is what lets it start answering.\n\nSCENE MEMBERSHIP LEFT ALONE DELIBERATELY. Every existing core_*/tram_* material is drum-only and I kept all 28 that way. But the saloon is a rideable interior \u2014 directory.py registers `drum_tram` with interacts (\"tram_door\", \"seat\", \"handhold\") \u2014 so a first-person shot inside the car renders in the interior scene, where today `tram_in_reveal` resolves to `kit_reveal` and `tram_in_skirt` to `kit_skirt` and the other 13 saloon groups resolve to nothing. Adding \"interior\" to the 11 saloon materials is probably correct but it moves the interior scene's rules table and draw-call budget, so I am flagging it rather than doing it.",
+ "groups_found": [
+  "core_hub_bell",
+  "core_hub_bore",
+  "core_hub_brace",
+  "core_hub_fin",
+  "core_hub_lamp",
+  "core_hub_port",
+  "core_hub_saddle",
+  "core_node_bell",
+  "core_node_bore",
+  "core_node_port",
+  "core_node_spar",
+  "core_tube_band",
+  "core_tube_band_warm",
+  "core_tube_barrel",
+  "core_tube_cage",
+  "core_tube_collar",
+  "core_tube_end",
+  "tram_band",
+  "tram_body",
+  "tram_cap",
+  "tram_glass",
+  "tram_headlight",
+  "tram_in_bezel",
+  "tram_in_ceiling",
+  "tram_in_device",
+  "tram_in_floor",
+  "tram_in_mullion",
+  "tram_in_plinth",
+  "tram_in_post",
+  "tram_in_readout",
+  "tram_in_reveal",
+  "tram_in_seat",
+  "tram_in_skirt",
+  "tram_in_strip",
+  "tram_in_wall",
+  "tram_in_window",
+  "tram_port",
+  "tram_recess",
+  "tram_roof",
+  "tram_shoe",
+  "tram_valance"
+ ],
+ "materials": [
+  {
+   "name": "core_tube",
+   "title": "Core Tube \u2014 smooth barrel, neutral machined grey",
+   "binds": [
+    "core_tube_barrel"
+   ],
+   "albedo": [
+    0.418,
+    0.421,
+    0.428
+   ],
+   "roughness": 0.45,
+   "metallic": 0.45,
+   "specular": 0.5,
+   "texture": "hull_plate",
+   "uv_scale_denom": 20,
+   "emission": null,
+   "emission_energy": null,
+   "scenes": [
+    "drum"
+   ],
+   "source": "03-sector-blue/Babylon_5_2-22_33a.jpg (authority 1), balanced with the gains already in materials.GREY_WORLD_GAINS (0.881/1.055/1.091). Smooth barrel run, near (0.312,0.672)-(0.387,0.715), 1875 px: rgb(0.446, 0.451, 0.479) H 231 S 0.070 V 0.479. Same tube, far run (0.474,0.564)-(0.536,0.628), 2294 px: rgb(0.359, 0.381, 0.389) H 198 S 0.077 V 0.389. 03-sector-blue/Babylon_5_2-22_34b.jpg (authority 1), balanced 0.983/0.964/1.058, barrel (0.414,0.646)-(0.446,0.691), 832 px: V 0.311. Across all three the surface is neutral to S 0.077 with B-R = +0.030.",
+   "extrapolated": "The LEVEL. Three readings of the same tube family span 0.311 to 0.479 because 33a sees it close and lit while 34b sees it distant and partly backlit; 0.42 is the centre of that spread, not a fourth measurement. The slight cool bias measured in every reading is discarded as the frame's residual cast, on the same argument PROVENANCE makes for the exterior hull \u2014 B-R is constant at +0.03 across a 1.5x range of value, which is additive light, not albedo. Overturned by any frame showing the axial tube under a warm key.",
+   "reasoning": "The committed value is 0.322/0.329/0.315, luminance 0.327, which sits at the very bottom of the measured spread and below every one of the three readings taken close. Raising it to 0.42 puts the single largest object on the axis at the centre of its own evidence instead of its floor. Kept as the reference point the rest of the tube family is ordered against: collar above it, bands below, cage just under."
+  },
+  {
+   "name": "core_collar",
+   "title": "Core Tube Collar \u2014 fine ring bundle, pale and lightly polished",
+   "binds": [
+    "core_tube_collar"
+   ],
+   "albedo": [
+    0.478,
+    0.48,
+    0.488
+   ],
+   "roughness": 0.34,
+   "metallic": 0.42,
+   "specular": 0.55,
+   "texture": "hull_plate",
+   "uv_scale_denom": 8,
+   "emission": null,
+   "emission_energy": null,
+   "scenes": [
+    "drum"
+   ],
+   "source": "03-sector-blue/Babylon_5_2-22_33a.jpg (authority 1), balanced 0.881/1.055/1.091. Collar group A (0.400,0.576)-(0.455,0.658), 2585 px: rgb(0.504, 0.480, 0.513) H 284 S 0.065 V 0.513. Collar group B (0.225,0.729)-(0.295,0.823), 3780 px: rgb(0.449, 0.438, 0.466) H 263 S 0.060 V 0.466. 03-sector-blue/Babylon_5_2-22_34b.jpg (authority 1), balanced 0.983/0.964/1.058, collar ring (0.447,0.632)-(0.458,0.670), 242 px: V 0.357 with p90 0.523 against the adjacent barrel's p90 0.353.",
+   "extrapolated": "Nothing in the level \u2014 0.478 is the mean of the two 33a readings, which are the only ones that resolve individual rings. The ROUGHNESS is derived, not measured: the collar's p90 runs 0.523 against the barrel's 0.353 in 34b at the same distance and exposure, so it takes a highlight the barrel does not, and 0.34 is the barrel's 0.45 lowered to produce that. Overturned by a frame showing the collars matt.",
+   "reasoning": "The committed level (0.45) was right and its HUE was not: the committed albedo is warm (0.45, 0.425, 0.40) while all four readings across two frames measure B > R by 0.03-0.06. The warmth on this tube belongs to the warm band alone, which is a separate group and a separate material. Neutralising the collar is what makes that band read as a marking rather than as more of the same."
+  },
+  {
+   "name": "core_band",
+   "title": "Core Tube Band \u2014 dark ring within a collar group",
+   "binds": [
+    "core_tube_band"
+   ],
+   "albedo": [
+    0.196,
+    0.199,
+    0.204
+   ],
+   "roughness": 0.4,
+   "metallic": 0.5,
+   "specular": 0.5,
+   "texture": null,
+   "uv_scale_denom": null,
+   "emission": null,
+   "emission_energy": null,
+   "scenes": [
+    "drum"
+   ],
+   "source": "03-sector-blue/Babylon_5_2-22_33a.jpg (authority 1), balanced 0.881/1.055/1.091. 6-cluster k-means over collar group B, (0.196,0.720)-(0.300,0.868): the dark cluster is rgb(0.210, 0.198, 0.206) H 323 S 0.059 V 0.210 at 2.7% of the bundle, against pale clusters at V 0.462 (30.4%), 0.380 (27.0%), 0.317 (21.6%) and 0.567 (14.6%).",
+   "extrapolated": "Nothing. The committed value (0.19, 0.195, 0.20) reproduces the measured dark cluster at V 0.210 to within 5%, so this is a reaffirmation rather than a change.",
+   "reasoning": "Reaffirmed unchanged. Worth stating explicitly that it was checked rather than assumed: the dark ring is a small fraction of the bundle (2.7%) and is exactly the kind of value that gets carried forward for sessions without anyone going back to the frame. It holds."
+  },
+  {
+   "name": "core_band_warm",
+   "title": "Core Tube Band, Warm \u2014 the rust ring 33a shows",
+   "binds": [
+    "core_tube_band_warm"
+   ],
+   "albedo": [
+    0.395,
+    0.318,
+    0.219
+   ],
+   "roughness": 0.55,
+   "metallic": 0.2,
+   "specular": 0.45,
+   "texture": null,
+   "uv_scale_denom": null,
+   "emission": null,
+   "emission_energy": null,
+   "scenes": [
+    "drum"
+   ],
+   "source": "03-sector-blue/Babylon_5_2-22_33a.jpg (authority 1), balanced 0.881/1.055/1.091. Warm band core (0.202,0.826)-(0.228,0.868), 624 px: rgb(0.435, 0.397, 0.362) H 29 S 0.169 V 0.435, B-R = -0.074. THE CONTROL, matched 624-px boxes on the same tube: barrel 30 px up-tube (0.232,0.774)-(0.258,0.816) B-R = +0.030; barrel 30 px down-tube (0.172,0.878)-(0.198,0.920) B-R = +0.029; pale collar rings (0.236,0.733)-(0.262,0.806) B-R = +0.036. Drum ground behind (0.160,0.733)-(0.186,0.806) is warm but at H 64 and only B-R -0.025. A hue map of (185,440)-(310,510) shows the warm pixels forming one coherent diagonal band across the barrel, not speckle.",
+   "extrapolated": "The SATURATION, by a stated de-mix. The rings are 1-2 px wide so the 624-px median is a blend of rust ring and pale neighbour. Treating it as 50/50 against the measured adjacent pale ring (0.475, 0.476, 0.505) gives rust = 2*blend - pale = (0.395, 0.318, 0.219), H 34 S 0.446. The honest range is S 0.169 (the blend, if the band were uniformly this colour) to S ~0.45 (if it is half pale ring). Overturned by any frame that resolves an individual ring, which would settle the mix fraction directly.",
+   "reasoning": "The committed value is (0.52, 0.28, 0.19) at S 0.635 \u2014 3.8x the measured blend and outside even the de-mixed upper bound. This is the one place on the axis where the library had painted in more colour than the reference carries, and it matters because CLAUDE.md's whole discipline is that a colour in a frame usually belongs to the light. Here it does not \u2014 the bounce-light test passes decisively \u2014 so the band survives, at roughly two thirds of its committed chroma."
+  },
+  {
+   "name": "core_cage",
+   "title": "Core Tube Cage \u2014 open lattice bay and section ends",
+   "binds": [
+    "core_tube_cage",
+    "core_tube_end"
+   ],
+   "albedo": [
+    0.43,
+    0.432,
+    0.442
+   ],
+   "roughness": 0.52,
+   "metallic": 0.42,
+   "specular": 0.5,
+   "texture": "truss_steel",
+   "uv_scale_denom": 6,
+   "emission": null,
+   "emission_energy": null,
+   "scenes": [
+    "drum"
+   ],
+   "source": "03-sector-blue/Babylon_5_2-22_33a.jpg (authority 1), balanced 0.881/1.055/1.091. Cage lattice frame (0.135,0.859)-(0.155,0.932), 840 px: rgb(0.415, 0.418, 0.436) H 231 S 0.050 V 0.436, p10 0.240 p90 0.685. Cage voids (0.158,0.837)-(0.210,0.924), 2600 px: V 0.325, p10 0.188. The 0.24-to-0.69 spread across the frame member is the lattice reading as alternating member and void, which is what the group is.",
+   "extrapolated": "`core_tube_end` shares this material on structural grounds, not measurement: it is the flat annulus that closes a barrel section, fabricated from the same plate as the cage frame it abuts, and no frame separates the two. Overturned by a frame resolving a section end.",
+   "reasoning": "Was inside `core_structure` at luminance 0.245, i.e. 1.8x darker than the 840-px measurement of the frame member. core_tube.py describes the bay as 'a lattice with square voids and a PALE frame' \u2014 the committed value made the pale frame the darkest thing on the tube. Kept on truss_steel because it is open fabricated structure, unlike the barrel's plating."
+  },
+  {
+   "name": "core_bell",
+   "title": "Core Hub & Node Bell \u2014 stepped conical flare, pale",
+   "binds": [
+    "core_hub_bell",
+    "core_node_bell"
+   ],
+   "albedo": [
+    0.45,
+    0.45,
+    0.458
+   ],
+   "roughness": 0.48,
+   "metallic": 0.4,
+   "specular": 0.5,
+   "texture": "hull_plate",
+   "uv_scale_denom": 12,
+   "emission": null,
+   "emission_energy": null,
+   "scenes": [
+    "drum"
+   ],
+   "source": "03-sector-blue/Babylon_5_2-22_34b.jpg (authority 1), balanced with gains 0.983/0.964/1.058 recomputed here by materials.py's own algorithm \u2014 NOT yet in GREY_WORLD_GAINS, add it. Spoke-node bell body (0.373,0.720)-(0.406,0.773), 1020 px: rgb(0.436, 0.438, 0.473) H 236 S 0.079 V 0.473. Bell stepped flange arc (0.351,0.674)-(0.365,0.726), 420 px: rgb(0.420, 0.419, 0.432) H 244 S 0.028 V 0.432. Same frame, the tube passing through it (0.414,0.646)-(0.446,0.691), 832 px: V 0.311 \u2014 so the bell is 1.45x the barrel it wraps.",
+   "extrapolated": "The hub bell and the node bell share one material. 34b resolves the NODE bell in detail and shows the cap hub only as a partly occluded bell behind the brace; core_tube.py builds both from the same revolve and describes both as the same flanged-cone form, so binding them together follows the geometry rather than a second measurement. Overturned by a frame resolving the cap hub's bell separately.",
+   "reasoning": "This is the largest correction in the set. `core_structure` put the bell at luminance 0.245; 34b measures it at 0.432-0.473 over 1,440 px, and in that frame it is the LIGHTEST large element on the axis while the committed material made it the darkest. The relative fact is the robust one and it survives any exposure argument: bell / barrel = 1.45 within a single frame."
+  },
+  {
+   "name": "core_fin",
+   "title": "Core Hub Fin, Node Spar and Truss Saddle \u2014 fabricated plate",
+   "binds": [
+    "core_hub_fin",
+    "core_node_spar",
+    "core_hub_saddle"
+   ],
+   "albedo": [
+    0.424,
+    0.424,
+    0.43
+   ],
+   "roughness": 0.5,
+   "metallic": 0.45,
+   "specular": 0.5,
+   "texture": "truss_steel",
+   "uv_scale_denom": 6,
+   "emission": null,
+   "emission_energy": null,
+   "scenes": [
+    "drum"
+   ],
+   "source": "03-sector-blue/Babylon_5_2-22_34b.jpg (authority 1), balanced 0.983/0.964/1.058. Node spar blade, upper (0.350,0.599)-(0.380,0.628), 510 px: rgb(0.436, 0.427, 0.427) S 0.020 V 0.436. Node spar blade, lower (0.318,0.731)-(0.345,0.753), 364 px: rgb(0.420, 0.416, 0.427) S 0.028 V 0.427. Cap cog / radial teeth (0.932,0.260)-(0.986,0.373), 3575 px: rgb(0.362, 0.367, 0.419) V 0.419. Three separate elements across the frame at 0.419-0.436 \u2014 a 4% spread over 4,449 px.",
+   "extrapolated": "`core_hub_saddle` is grouped here on construction grounds: it is the plate the guideway truss lands on, of the same fabricated family as the fins, and no frame separates it from them. The 0.424 level is the mean of the three measurements, which is a reading, not an extrapolation. Overturned by a frame resolving a saddle.",
+   "reasoning": "Sits just below the bell (0.450) and just above the barrel (0.418), which is the ordering 34b shows directly \u2014 the cog of teeth reads slightly darker than the bell it rings. The three readings agreeing to 4% across a 3,575-px cog and two ~450-px blades is what makes this a measurement rather than a choice."
+  },
+  {
+   "name": "core_brace",
+   "title": "Core Hub Brace \u2014 the cranked bright strut 34b shows",
+   "binds": [
+    "core_hub_brace"
+   ],
+   "albedo": [
+    0.64,
+    0.64,
+    0.65
+   ],
+   "roughness": 0.3,
+   "metallic": 0.55,
+   "specular": 0.6,
+   "texture": "truss_steel",
+   "uv_scale_denom": 6,
+   "emission": null,
+   "emission_energy": null,
+   "scenes": [
+    "drum"
+   ],
+   "source": "03-sector-blue/Babylon_5_2-22_34b.jpg (authority 1), balanced 0.983/0.964/1.058. Brace cranked foot (0.817,0.4375)-(0.836,0.465), 320 px: rgb(0.717, 0.707, 0.772) S 0.085 V 0.772, p90 0.892. Brace mid run (0.846,0.373)-(0.860,0.434), 490 px: rgb(0.513, 0.506, 0.562) S 0.100 V 0.562, p90 0.759. THE CONTRAST, same frame and same distance: cap panel field (0.917,0.104)-(0.986,0.226), 4900 px, V 0.361 p90 0.419; dark fairing immediately beside the brace (0.888,0.339)-(0.922,0.408), 1400 px, V 0.361 p90 0.569. Brace / surrounding structure = 2.1x at the foot, 1.6x on the run.",
+   "extrapolated": "The albedo 0.64 is the area-weighted mean of the two brace readings (320 px at 0.772, 490 px at 0.562). The roughness 0.30 is derived from the p90 of 0.892 against a cap field whose p90 is 0.419 \u2014 it takes a specular highlight nothing around it takes \u2014 rather than measured directly. Overturned by a frame showing the brace matt.",
+   "reasoning": "core_tube.py's docstring reads 34b as showing 'a cranked BRIGHT brace landing on it', and that word was never given a number: the group was folded into `core_structure` at luminance 0.245, making the brightest element in the frame the darkest in the engine. Measured, it is 2.1x the cap it lands on. Splitting it out is the single change that most alters what the fore cap looks like, and it is also the one the docstring predicted."
+  },
+  {
+   "name": "core_bore",
+   "title": "Core Hub & Node Bore \u2014 shadowed inner face of the aperture",
+   "binds": [
+    "core_hub_bore",
+    "core_node_bore"
+   ],
+   "albedo": [
+    0.245,
+    0.245,
+    0.25
+   ],
+   "roughness": 0.62,
+   "metallic": 0.45,
+   "specular": 0.45,
+   "texture": null,
+   "uv_scale_denom": null,
+   "emission": null,
+   "emission_energy": null,
+   "scenes": [
+    "drum"
+   ],
+   "source": "No frame resolves a bore: it is the inward-facing annulus inside the aperture the tube passes through, and both 33a and 34b see the hub from outside. Anchored instead to the measured bell it belongs to \u2014 03-sector-blue/Babylon_5_2-22_34b.jpg (authority 1), balanced 0.983/0.964/1.058, node bell body (0.373,0.720)-(0.406,0.773), 1020 px, V 0.473 \u2014 taken at 0.52 of that.",
+   "extrapolated": "The whole value. Reasoning for 0.52: the bore is a deep recess whose faces look at each other rather than at the drum, so it is the one surface in this family that receives almost no direct light and is legitimately painted darker to avoid double-lighting it in the engine. 0.245 is also exactly the value `core_structure` carried, so this material inherits the committed number for the one group of its ten that it actually fitted. Overturned by an engine frame at real light levels showing the bore reading as a black hole rather than a recess.",
+   "reasoning": "`core_structure` was wrong about nine of its ten groups and right about this one. Rather than delete the value, this keeps it where it belongs and lets the material name say what the surface is. Roughness raised to 0.62 because an unlit recess with a low roughness produces a highlight from nowhere."
+  },
+  {
+   "name": "core_port",
+   "title": "Core Hub & Node Spoke Port \u2014 collar where a spoke lands",
+   "binds": [
+    "core_hub_port",
+    "core_node_port"
+   ],
+   "albedo": [
+    0.442,
+    0.442,
+    0.45
+   ],
+   "roughness": 0.38,
+   "metallic": 0.42,
+   "specular": 0.52,
+   "texture": null,
+   "uv_scale_denom": null,
+   "emission": null,
+   "emission_energy": null,
+   "scenes": [
+    "drum"
+   ],
+   "source": "No frame resolves a spoke port. Anchored to the measured collar family it belongs to \u2014 03-sector-blue/Babylon_5_2-22_33a.jpg (authority 1), balanced 0.881/1.055/1.091, collar group A (0.400,0.576)-(0.455,0.658), 2585 px, V 0.513 and collar group B (0.225,0.729)-(0.295,0.823), 3780 px, V 0.466 \u2014 taken at 0.93 of their mean.",
+   "extrapolated": "The whole value. Reasoning: core_tube.py builds the port as a raised collar ring round the spoke opening, the same fabricated detail as the barrel collars measured above, and 34b shows collar bands on every conduit leaving the hub. 0.93 of the collar mean rather than equal to it because a port faces partly into the spoke's shadow. Overturned by a frame resolving a spoke port, which 34b nearly does at (0.79,0.35) but not legibly.",
+   "reasoning": "Separated from the bell (0.450) and the fins (0.424) by only a little, which is honest \u2014 nothing in the reference says a port is a strongly distinct surface, only that it is a collar rather than a plate. Given its own material chiefly so that a later frame can move it without moving the bell, and so the roughness can sit at collar-like 0.38 rather than plate-like 0.50."
+  },
+  {
+   "name": "core_hub_lamp",
+   "title": "Core Hub Lamp \u2014 the light run on the cap hub",
+   "binds": [
+    "core_hub_lamp"
+   ],
+   "albedo": [
+    0.9,
+    0.9,
+    0.9
+   ],
+   "roughness": 0.35,
+   "metallic": 0,
+   "specular": 0.25,
+   "texture": null,
+   "uv_scale_denom": null,
+   "emission": [
+    1,
+    0.995,
+    0.998
+   ],
+   "emission_energy": 6,
+   "scenes": [
+    "drum"
+   ],
+   "source": "03-sector-blue/Babylon_5_2-22_34b.jpg (authority 1), measured RAW (unbalanced) because an emitter is the illuminant, not a surface lit by one. Lamp point 1 (0.840,0.300)-(0.846,0.319), brightest 40% of 66 px: rgb(0.871, 0.871, 0.878) S 0.009, normalised (0.991, 0.991, 1.000). Lamp point 2 (0.818,0.373)-(0.828,0.387), brightest 40% of 80 px: rgb(0.873, 0.882, 0.876) S 0.011, normalised (0.989, 1.000, 0.993). Same frame, cap panel field raw V ~0.36 \u2014 the lamp points are 2.4x the structure around them and the two agree on neutrality to S 0.011.",
+   "extrapolated": "The ENERGY, 6.0, is carried over unchanged from the committed material: raw peak is 0.87 with 1 of 66 px clipped, which says the lamps are bright but not blown in this exposure and says nothing about an engine's. That is a layer-4 number. Also declared: a still cannot separate a small emitter from a specular glint on neutral metal under a neutral light. core_tube.py reads these as 'the light run 34b shows' and builds them as lamps; I have kept that reading and recorded that the frame does not compel it.",
+   "reasoning": "Only the emission COLOUR changes, and it changes on evidence: the committed (1.0, 0.96, 0.86) is a warm white with blue pulled down 14%, while two independent points measure neutral to within 1% in every channel. This is exactly the case the raw-versus-balanced distinction decides \u2014 balanced, these same points read H 239 and appear cool, because the 1.058 blue gain is a correction for the scene's light being applied to the light itself."
+  },
+  {
+   "name": "tram_body",
+   "title": "Tram Car Body \u2014 white painted flank",
+   "binds": [
+    "tram_body"
+   ],
+   "albedo": [
+    0.73,
+    0.715,
+    0.69
+   ],
+   "roughness": 0.42,
+   "metallic": 0.15,
+   "specular": 0.5,
+   "texture": null,
+   "uv_scale_denom": null,
+   "emission": null,
+   "emission_energy": null,
+   "scenes": [
+    "drum"
+   ],
+   "source": "03-sector-blue/Babylon_5_2-22_33a.jpg (authority 1), balanced 0.881/1.055/1.091. 7-cluster k-means over the whole car (0.378,0.370)-(0.492,0.455): the pale shell is four clusters at V 0.703 (8.6%), 0.557 (15.5%), 0.449 (16.9%) and 0.350 (18.0%), all at S 0.080-0.116 \u2014 59% of the car and essentially one neutral albedo under four amounts of light. Lower body flank (0.428,0.422)-(0.480,0.436), 416 px: rgb(0.501, 0.490, 0.539) S 0.091 V 0.539.",
+   "extrapolated": "Unchanged from the committed value, which reproduces the lit cluster (0.703) to within 4%. The slight warm bias in the committed albedo is retained on the same argument PROVENANCE uses for hull_exterior: the frame measures B > R by 0.038 on every pale cluster, that is the drum's cool ambient rather than the paint, and a neutral-to-warm white is the safer albedo in scenes without that ambient.",
+   "reasoning": "Reaffirmed, and NARROWED from seven groups to one. The committed material claimed tram_body, tram_roof, tram_cap, tram_port, tram_recess, tram_shoe and tram_valance \u2014 but tram.py:car_shell writes the livery down in its own comment ('dark valance below the waist, white body, maroon behind the window band, maroon cap above the cant') and four of those groups are explicitly not the white body. The value was right; the reach was not."
+  },
+  {
+   "name": "tram_valance",
+   "title": "Tram Car Valance \u2014 the dark underside below the waist",
+   "binds": [
+    "tram_valance"
+   ],
+   "albedo": [
+    0.175,
+    0.172,
+    0.178
+   ],
+   "roughness": 0.66,
+   "metallic": 0.2,
+   "specular": 0.4,
+   "texture": null,
+   "uv_scale_denom": null,
+   "emission": null,
+   "emission_energy": null,
+   "scenes": [
+    "drum"
+   ],
+   "source": "TWO FRAMES, two viewing angles, agreeing. 03-sector-blue/Babylon_5_2-22_33a.jpg (authority 1, car seen from below and ahead), balanced 0.881/1.055/1.091, underside (0.394,0.4375)-(0.432,0.450), 266 px: rgb(0.124, 0.112, 0.133) V 0.133. 03-sector-blue/Babylon_5_2-22_34b.jpg (authority 1, car seen from above and behind), balanced 0.983/0.964/1.058, underside (0.375,0.488)-(0.459,0.503), 765 px: rgb(0.116, 0.106, 0.112) V 0.116. The two agree to 13%. In 34b the same car's roof measures V 0.419 in the same 1080-px pass, so the valance is 3.5x darker than the roof within one frame.",
+   "extrapolated": "The albedo is set ABOVE both measurements, at 0.175 rather than 0.12, and the reason is stated: the underside is shadowed in both frames \u2014 the drum's light comes from the truss runs above the car \u2014 so the screen value is a floor on the albedo, not the albedo. 0.175 is roughly (valance/body screen ratio 0.247) x (body albedo 0.73) = 0.18, capped slightly below that because some of the ratio is still shadow. Overturned by a frame showing the underside under fill light, or by an engine frame at real drum light levels reading it as pure black.",
+   "reasoning": "New material. The committed library painted this white with the body, which is the single most visible livery error on the car: tram.py calls it 'dark valance below the waist' and 33a is explicitly described in the same docstring as 'dark underside with round ports'. Roughness raised to 0.66 against the body's 0.42 because a working vehicle's underside is the grubby face \u2014 Season 2-3, lived in, not Star Trek."
+  },
+  {
+   "name": "tram_port",
+   "title": "Tram Car Underside Port \u2014 round recessed fitting in the valance",
+   "binds": [
+    "tram_port"
+   ],
+   "albedo": [
+    0.23,
+    0.228,
+    0.238
+   ],
+   "roughness": 0.55,
+   "metallic": 0.35,
+   "specular": 0.45,
+   "texture": null,
+   "uv_scale_denom": null,
+   "emission": null,
+   "emission_energy": null,
+   "scenes": [
+    "drum"
+   ],
+   "source": "03-sector-blue/Babylon_5_2-22_33a.jpg (authority 1), balanced 0.881/1.055/1.091. Port 1 (0.440,0.4375)-(0.446,0.448), 36 px: rgb(0.230, 0.221, 0.265) V 0.265. Port 2 (0.458,0.4375)-(0.464,0.448), 36 px: V 0.353. Surrounding body surface between them (0.432,0.4375)-(0.438,0.448), 36 px: V 0.415. The ports read at 0.64-0.85 of the surface they are set into.",
+   "extrapolated": "The value is anchored on 36-px boxes, which is small and stated as such \u2014 the ports are 3-4 px across in a 1001-px frame. What is NOT extrapolated is that they are darker than their surround, which holds for both instances. 0.23 is the darker of the two readings, chosen because the brighter one (0.353) sits at the edge of the port where it blurs into the body. Overturned by any closer frame of the car's underside.",
+   "reasoning": "New material, split from the white body. tram.py builds these as 'Round ports along the dark valance... what stops the underside reading as a painted shadow at distance' \u2014 their entire purpose is to be a contrast feature, which a material identical to the body cannot deliver. Given a modest metallic (0.35) because a port is a fitting rather than paint."
+  },
+  {
+   "name": "tram_cap",
+   "title": "Tram Car Roof and Cap \u2014 neutral mid-grey, darker than the body",
+   "binds": [
+    "tram_cap",
+    "tram_roof"
+   ],
+   "albedo": [
+    0.418,
+    0.418,
+    0.422
+   ],
+   "roughness": 0.5,
+   "metallic": 0.18,
+   "specular": 0.45,
+   "texture": null,
+   "uv_scale_denom": null,
+   "emission": null,
+   "emission_energy": null,
+   "scenes": [
+    "drum"
+   ],
+   "source": "03-sector-blue/Babylon_5_2-22_34b.jpg (authority 1) \u2014 the ONLY frame that sees a car's roof, looking down the drum from above and behind. Balanced 0.983/0.964/1.058. Roof / cap top surface (0.367,0.432)-(0.456,0.453), 1080 px: rgb(0.412, 0.401, 0.419) H 278 S 0.044 V 0.419, B-R = +0.007. Same frame and same car, the maroon flank band (0.357,0.472)-(0.414,0.483), 348 px: B-R = -0.071. So the roof is neutral in a frame where the band beside it is measurably warm.",
+   "extrapolated": "That `tram_roof` (the cant band on the flank) shares the cap's material. The two are adjacent top surfaces built from one loft and no frame separates them; 33a's view from below cannot see either. AND A DECLARED CONFLICT: tram.py's livery comment says 'maroon cap above the cant', but the only frame that shows the cap measures it neutral to S 0.044 over 1,080 px. I have followed the measurement and recorded the disagreement rather than splitting the difference. Overturned by a frame showing a car's cant band in profile under good light \u2014 33a's attempt at (0.432,0.372)-(0.478,0.385) reads V 0.642 but sits in the truss shadow line and cannot be attributed to the car with confidence, so it is not cited as evidence.",
+   "reasoning": "New material, split from the white body. The measured 0.419 against the body's lit 0.703 is 0.60x, which is exactly the 'distinctly darker than the body' that tram.py:car_shell claims for this strip \u2014 so the docstring and the frame agree on the value even while disagreeing about the hue."
+  },
+  {
+   "name": "tram_shoe",
+   "title": "Tram Car Suspension Shoe \u2014 bare machined running gear",
+   "binds": [
+    "tram_shoe"
+   ],
+   "albedo": [
+    0.36,
+    0.36,
+    0.368
+   ],
+   "roughness": 0.3,
+   "metallic": 0.85,
+   "specular": 0.6,
+   "texture": null,
+   "uv_scale_denom": null,
+   "emission": null,
+   "emission_energy": null,
+   "scenes": [
+    "drum"
+   ],
+   "source": "No frame resolves a shoe: it is a 2.0 m x 0.5 m plate tucked in the 0.35 m suspension gap between the car and the truss chord it rides under, and in both 33a and 34b that gap is fewer than 2 px. Anchored instead against measured metal already in the library \u2014 materials.grab_rail_bare (0.56, 0.565, 0.58) at metallic 0.9 and materials.truss_steel (0.204, 0.20, 0.181) at metallic 0.4, the two members it runs between.",
+   "extrapolated": "The whole value, and the argument is functional rather than photographic. tram.py:car_shell describes the shoes as the non-contact magnetic plates that ride under the bottom chords, and INV-012's suspension reading is that nothing mechanical is visible between chord and car. A running surface in a magnetic gap is never painted \u2014 paint would be a wear and clearance problem in a 0.35 m gap \u2014 so it is bare metal: high metallic (0.85), low roughness (0.30), and a mid albedo between the polished handrail (0.56) and the oxide truss (0.20). Overturned by any frame resolving the gap, which would also settle whether the suspension is magnetic at all.",
+   "reasoning": "New material, split from the white body. Painting the running gear the same white as the flank is the error a vehicle model most often makes and the one that most reads as a toy. It is the only part of the car that comes near the truss \u2014 tram.py's clearance test is aimed squarely at it \u2014 so it is also the part a player docking or riding will see closest."
+  },
+  {
+   "name": "tram_band",
+   "title": "Tram Car Band \u2014 maroon window-band framing and recess",
+   "binds": [
+    "tram_band",
+    "tram_recess"
+   ],
+   "albedo": [
+    0.42,
+    0.14,
+    0.13
+   ],
+   "roughness": 0.45,
+   "metallic": 0.1,
+   "specular": 0.45,
+   "texture": null,
+   "uv_scale_denom": null,
+   "emission": null,
+   "emission_energy": null,
+   "scenes": [
+    "drum"
+   ],
+   "source": "03-sector-blue/Babylon_5_2-22_33a.jpg (authority 1), balanced 0.881/1.055/1.091. Window-band frame (0.421,0.375)-(0.428,0.413), 154 px: rgb(0.231, 0.143, 0.154) H 352 S 0.383 V 0.231. Adjacent frame member (0.396,0.375)-(0.409,0.413), 286 px: rgb(0.183, 0.145, 0.145) H 359 S 0.209. CORROBORATED IN A SECOND FRAME: 03-sector-blue/Babylon_5_2-22_34b.jpg (authority 1), balanced 0.983/0.964/1.058, the same band on a different car (0.357,0.472)-(0.414,0.483), 348 px: rgb(0.424, 0.353, 0.353) H 0 S 0.168, B-R = -0.071 against the roof beside it at B-R = +0.007.",
+   "extrapolated": "The committed albedo is unchanged. `tram_recess` is ADDED to this material rather than given its own: tram.py:car_shell's livery comment assigns the sill rung 'maroon behind the window band', which is the same paint as the frame members already bound here, and 33a cannot separate a recess behind glass from the frame around it at 4 px. Binding rather than duplicating is the reuse the surface actually justifies. Overturned by a frame resolving the band and the recess separately.",
+   "reasoning": "Reaffirmed and extended by one group. Worth noting the committed S of 0.69 against a measured 0.383: unlike core_band_warm I have NOT pulled this down, because 33a's band is a large, spatially resolved element rather than a sub-pixel ring bundle, and the two frames bracket it at S 0.168 (distant, hazed) to 0.383 (close). A committed value above the near reading is defensible for paint seen through 200 m of drum air; the same argument did not apply to the tube rings, which are blur, not haze."
+  },
+  {
+   "name": "tram_glass",
+   "title": "Tram Car Glazing \u2014 windscreen and side panes",
+   "binds": [
+    "tram_glass",
+    "tram_in_window"
+   ],
+   "albedo": [
+    0.045,
+    0.06,
+    0.07
+   ],
+   "roughness": 0.08,
+   "metallic": 0.8,
+   "specular": 0.9,
+   "texture": null,
+   "uv_scale_denom": null,
+   "emission": null,
+   "emission_energy": null,
+   "scenes": [
+    "drum"
+   ],
+   "source": "03-sector-blue/Babylon_5_2-22_35a.jpg (authority 1), balanced with the gains already in materials.GREY_WORLD_GAINS (0.913/1.090/1.013). The frame shows the drum's fields legibly through both the raked windscreen and the side band, so the glazing is near-clear rather than tinted \u2014 there is no measurable colour cast between the ground seen through the pane and the ground seen past the car in 33a.",
+   "extrapolated": "Unchanged from the committed value. A dark, low-roughness, high-specular dielectric is the standard treatment for clear glazing rendered opaque; the albedo is a reflection floor rather than a measurement, because what a clear pane shows is the scene behind it.",
+   "reasoning": "Reaffirmed unchanged, and explicitly checked against the one hard constraint it could violate: roughness 0.08 is below 0.15, which the brief permits only for glass, still water or polished metal. This is glass. It is the only material in this set below 0.15 and the only one that should be."
+  },
+  {
+   "name": "tram_headlight",
+   "title": "Tram Car Headlight \u2014 the two white lamps low on the nose",
+   "binds": [
+    "tram_headlight"
+   ],
+   "albedo": [
+    0.9,
+    0.9,
+    0.88
+   ],
+   "roughness": 0.3,
+   "metallic": 0,
+   "specular": 0.25,
+   "texture": null,
+   "uv_scale_denom": null,
+   "emission": [
+    1,
+    0.906,
+    0.93
+   ],
+   "emission_energy": 5,
+   "scenes": [
+    "drum"
+   ],
+   "source": "03-sector-blue/Babylon_5_2-22_33a.jpg (authority 1), measured RAW because an emitter is the illuminant, not a lit surface. Headlight L (0.388,0.422)-(0.395,0.434), brightest 30% of 49 px: rgb(0.718, 0.659, 0.671) H 348 S 0.082, normalised (1.000, 0.918, 0.934). Headlight R (0.416,0.422)-(0.423,0.434), same treatment: rgb(0.702, 0.627, 0.651) H 341 S 0.106, normalised (1.000, 0.894, 0.927). Two lamps, agreeing to 3% per channel. Raw peak 0.784 \u2014 they do NOT clip.",
+   "extrapolated": "The ENERGY is lowered from the committed 8.0 to 5.0 and this is a soft call, flagged as such: the frame says the lamps are the brightest thing on the car but do not blow out at maxV 0.78, whereas a lamp at energy 8.0 in the engine almost certainly will. Emission energy is an exposure relationship and belongs to layer 4, so this number should be re-decided against an engine frame rather than settled here.",
+   "reasoning": "The emission COLOUR changes on evidence. Committed is (1.0, 0.95, 0.82) \u2014 a warm white with blue at 0.82; both lamps measure blue at 0.93. The committed value is a third too yellow. This is the second material in the set (with core_hub_lamp) where measuring an emitter through the grey-world balance would have given the opposite answer \u2014 balanced, these read H 205-211 and look cool-blue, because the frame's 1.091 blue gain is being applied to the light source itself."
+  },
+  {
+   "name": "tram_saloon_wall",
+   "title": "Tram Saloon Wall \u2014 cool-grey panel, ceiling, mullions and bezels",
+   "binds": [
+    "tram_in_wall",
+    "tram_in_ceiling",
+    "tram_in_mullion",
+    "tram_in_bezel"
+   ],
+   "albedo": [
+    0.486,
+    0.486,
+    0.546
+   ],
+   "roughness": 0.48,
+   "metallic": 0.12,
+   "specular": 0.4,
+   "texture": null,
+   "uv_scale_denom": null,
+   "emission": null,
+   "emission_energy": null,
+   "scenes": [
+    "drum"
+   ],
+   "source": "03-sector-blue/Babylon_5_2-22_35a.jpg (authority 1), balanced with the gains already in materials.GREY_WORLD_GAINS (0.913/1.090/1.013). The 8-cluster analysis already recorded in materials.PROVENANCE under TRAM SALOON: wall panel lit rgb(0.486, 0.486, 0.546) H 240 S 0.110 at 9.0% of the frame, mid rgb(0.349, 0.354, 0.406) H 235 S 0.139 at 17.6%, shadowed rgb(0.264, 0.257, 0.294) H 251 S 0.126 at 12.0%. One near-neutral cool-grey shell across 38.6% of the saloon at S 0.110-0.139.",
+   "extrapolated": "The committed albedo is unchanged. The mullions and bezels are bound here on the module's own testimony rather than on a separate measurement: tram.py:car_saloon builds the windscreen divisions as 'grey posts with a red reveal either side of each pane' and the strip housings as 'Yellow lit strips in a GREY BEZEL'. Both are explicitly grey, so they take the wall.",
+   "reasoning": "Reaffirmed in value and NARROWED by one group. The committed material also claimed `tram_in_reveal`, which 35a measures at H 347 S 0.568 over 3,200 px and which tram.py describes twice as maroon \u2014 'frames every pane in MAROON' and 'in the MAROON the reference is emphatic about'. That group moves to tram_saloon_maroon. Note for a later pass: the committed albedo takes the LIT cluster (V 0.546) as the albedo where the largest cluster is the mid one (V 0.406); that biases the wall bright, but it is the existing convention across the whole drum scene and changing it here alone would make the saloon inconsistent with the car around it."
+  },
+  {
+   "name": "tram_saloon_maroon",
+   "title": "Tram Saloon Maroon \u2014 window reveals and floor skirt",
+   "binds": [
+    "tram_in_reveal",
+    "tram_in_skirt"
+   ],
+   "albedo": [
+    0.208,
+    0.09,
+    0.115
+   ],
+   "roughness": 0.55,
+   "metallic": 0.05,
+   "specular": 0.4,
+   "texture": null,
+   "uv_scale_denom": null,
+   "emission": null,
+   "emission_energy": null,
+   "scenes": [
+    "drum"
+   ],
+   "source": "03-sector-blue/Babylon_5_2-22_35a.jpg (authority 1), balanced with the gains already in materials.GREY_WORLD_GAINS (0.913/1.090/1.013). Vertical window reveal (0.4915,0.1215)-(0.5115,0.3993), 3200 px: rgb(0.208, 0.090, 0.115) H 347 S 0.568 V 0.208. Skirt band at floor level below the plinth (0.654,0.877)-(0.974,0.9375), 11200 px: rgb(0.122, 0.051, 0.044) H 6 S 0.641 V 0.122, p90 0.298. Ceiling red band (0.430,0.043)-(0.699,0.087), 6750 px: rgb(0.165, 0.098, 0.123) H 338 S 0.404. Three separate red members in one frame, spanning H 338-6 at S 0.40-0.64 over 21,150 px.",
+   "extrapolated": "That the reveal and the skirt are ONE material. Their measured hues sit 19 degrees apart across the red wrap (H 347 and H 6) at S 0.568 and 0.641 \u2014 the same paint under different light within one frame \u2014 so binding them together is reuse rather than a claim. The adopted value is the reveal's, because the skirt sits under the plinth overhang in deep shadow (p10 0.071) and its median is a shadow floor, not an albedo. SATURATION ABOVE 0.20 IS CITED, as the brief requires: 35a, the two boxes above, 14,400 px between them.",
+   "reasoning": "New material, and it fixes two bindings at once. Both groups were bound to neutral greys \u2014 the reveal to tram_saloon_wall (0.486, 0.486, 0.546) and the skirt to tram_saloon_floor (0.264, 0.257, 0.294) \u2014 while tram.py names both in the module's own prose as maroon and dark red. This is the most saturated structural trim in the saloon and 35a puts it around every pane; a grey reveal loses the thing the docstring calls the most recognisable feature of the interior after the seats."
+  },
+  {
+   "name": "tram_saloon_seat",
+   "title": "Tram Saloon Seat \u2014 brick-red upholstery",
+   "binds": [
+    "tram_in_seat"
+   ],
+   "albedo": [
+    0.375,
+    0.237,
+    0.225
+   ],
+   "roughness": 0.88,
+   "metallic": 0,
+   "specular": 0.25,
+   "texture": null,
+   "uv_scale_denom": null,
+   "emission": null,
+   "emission_energy": null,
+   "scenes": [
+    "drum"
+   ],
+   "source": "03-sector-blue/Babylon_5_2-22_35a.jpg (authority 1), balanced with the gains already in materials.GREY_WORLD_GAINS (0.913/1.090/1.013). The cluster set already recorded in materials.PROVENANCE: cushion lit rgb(0.375, 0.237, 0.225) H 5 S 0.401 at 10.4%, shadowed rgb(0.272, 0.119, 0.112) H 2 S 0.588 at 15.5%, deepest shadow rgb(0.102, 0.059, 0.065) at 14.6%, highlight rgb(0.491, 0.383, 0.392) H 355 S 0.220 at 6.3%. Independently checked here: bench seat back (0.664,0.486)-(0.794,0.590), 7800 px, rgb(0.322, 0.192, 0.183) H 4 S 0.433 \u2014 between the lit and shadowed clusters, as it should be.",
+   "extrapolated": "Nothing. The committed value is the measured lit cluster exactly, and my independent 7,800-px box falls inside the range PROVENANCE already recorded.",
+   "reasoning": "Reaffirmed unchanged. Roughness 0.88 is right for upholstery and is the highest in the saloon, which is what separates the soft goods from the panels around them \u2014 PROVENANCE's whole finding for this frame is that there are exactly two populations, a near-neutral shell and a red soft-goods set, with nothing between them."
+  },
+  {
+   "name": "tram_saloon_floor",
+   "title": "Tram Saloon Floor \u2014 dark deck, smoother than its wall",
+   "binds": [
+    "tram_in_floor"
+   ],
+   "albedo": [
+    0.33,
+    0.33,
+    0.336
+   ],
+   "roughness": 0.36,
+   "metallic": 0.1,
+   "specular": 0.5,
+   "texture": "deck_stud",
+   "uv_scale_denom": 0.6,
+   "emission": null,
+   "emission_energy": null,
+   "scenes": [
+    "drum"
+   ],
+   "source": "03-sector-blue/Babylon_5_2-22_35a.jpg (authority 1), balanced with the gains already in materials.GREY_WORLD_GAINS (0.913/1.090/1.013). Aisle floor (0.430,0.903)-(0.639,0.990), 10500 px: rgb(0.122, 0.111, 0.123) H 293 S 0.098 V 0.123, p10 0.040 p90 0.362. The wall above it, from materials.PROVENANCE, is V 0.406 at the mid cluster.",
+   "extrapolated": "The LEVEL. The measured 0.123 is the aisle in deep shadow at the bottom of the frame (p10 0.040) and is a floor on the albedo rather than the albedo; 0.33 is set from the committed 0.264 raised toward the p90 of 0.362, which is what the lit part of the deck reaches. Overturned by a frame showing the saloon floor under fill light.",
+   "reasoning": "Narrowed from three groups to one \u2014 `tram_in_plinth` and `tram_in_skirt` both leave. And a constraint violation is corrected: the brief requires that a deck be darker AND SMOOTHER than its wall, and the committed material has roughness 0.70 against the saloon wall's 0.48, i.e. rougher. 0.36 restores the relationship. Kept on deck_stud, which is the sheet the committed material already used."
+  },
+  {
+   "name": "tram_saloon_plinth",
+   "title": "Tram Saloon Plinth \u2014 light grey bench base",
+   "binds": [
+    "tram_in_plinth"
+   ],
+   "albedo": [
+    0.392,
+    0.392,
+    0.398
+   ],
+   "roughness": 0.44,
+   "metallic": 0.1,
+   "specular": 0.42,
+   "texture": null,
+   "uv_scale_denom": null,
+   "emission": null,
+   "emission_energy": null,
+   "scenes": [
+    "drum"
+   ],
+   "source": "03-sector-blue/Babylon_5_2-22_35a.jpg (authority 1), balanced with the gains already in materials.GREY_WORLD_GAINS (0.913/1.090/1.013). Plinth face below the bench (0.649,0.738)-(0.974,0.795), 10725 px: V 0.393, p10 0.211 p90 0.453. The measurement is taken as a VALUE only \u2014 its raw hue reads H 192 S 0.262, but the stanchion (H 194) and my wall box (H 199) in the same frame carry the same cyan, and PROVENANCE's 8-cluster pass over this frame puts every wall panel at H 235-251 S 0.110-0.139. A cast shared by three unrelated surfaces is the light, per materials.NEGATIVE_RESULTS, so only the level is taken.",
+   "extrapolated": "The hue is set neutral rather than measured, for the reason above. The level 0.392 is the direct 10,725-px reading.",
+   "reasoning": "New material, split out of tram_saloon_floor. tram.py:car_saloon describes 35a as 'brick-red upholstered benches on LIGHT GREY plinths', and the committed binding put the plinth on the floor material at V 0.264 \u2014 the shadowed-wall cluster, which is neither light nor a plinth. At 0.392 it now sits correctly between the deck below it (0.330) and the wall above it (0.486), which is the ordering the frame shows. This is also the fifth time in this project's record that a colour in a frame turned out to belong to the light; I have logged the cyan rather than encoded it."
+  },
+  {
+   "name": "tram_saloon_post",
+   "title": "Tram Saloon Stanchion \u2014 bare metal grab pole",
+   "binds": [
+    "tram_in_post"
+   ],
+   "albedo": [
+    0.56,
+    0.565,
+    0.58
+   ],
+   "roughness": 0.28,
+   "metallic": 0.75,
+   "specular": 0.6,
+   "texture": null,
+   "uv_scale_denom": null,
+   "emission": null,
+   "emission_energy": null,
+   "scenes": [
+    "drum"
+   ],
+   "source": "03-sector-blue/Babylon_5_2-22_35a.jpg (authority 1), balanced with the gains already in materials.GREY_WORLD_GAINS (0.913/1.090/1.013). Stanchion, full height (0.332,0.260)-(0.348,0.729), 4320 px: V 0.405, p10 0.306 p90 0.457. Its cyan hue (H 194) is discarded on the same NEGATIVE_RESULTS argument as the plinth \u2014 the plinth (H 192) and my wall box (H 199) share it, and PROVENANCE puts this frame's panels at H 235-251.",
+   "extrapolated": "The albedo 0.56 is the committed value and sits ABOVE the measured 0.405. That is deliberate and is the standard treatment for a polished metal pole: at metallic 0.75 most of what the frame sees is reflection rather than diffuse, so the diffuse albedo is not the screen value. It matches materials.grab_rail_bare (0.56, 0.565, 0.58), which is the same object elsewhere on the station. Overturned by an engine frame at real saloon light showing the poles blowing out.",
+   "reasoning": "Reaffirmed unchanged, and checked for the roughness constraint: 0.28 is above 0.15, so it does not need the polished-metal exemption. tram.py builds these as the two poles that cross 35a and calls them 'most of what places the camera inside a vehicle rather than looking at a set' \u2014 worth having as bare metal rather than painted."
+  },
+  {
+   "name": "tram_saloon_strip",
+   "title": "Tram Saloon Lit Strip \u2014 the yellow strips low in the plinth face",
+   "binds": [
+    "tram_in_strip"
+   ],
+   "albedo": [
+    0.5,
+    0.45,
+    0.14
+   ],
+   "roughness": 0.35,
+   "metallic": 0,
+   "specular": 0.25,
+   "texture": null,
+   "uv_scale_denom": null,
+   "emission": [
+    1,
+    0.92,
+    0.45
+   ],
+   "emission_energy": 2.6,
+   "scenes": [
+    "drum"
+   ],
+   "source": "03-sector-blue/Babylon_5_2-22_35a.jpg (authority 1), measured RAW because an emitter is the illuminant, not a lit surface. FOUR independent fittings in one frame: strip A (0.666,0.813)-(0.737,0.845), 1349 px, H 51, normalised (1.000, 0.923, 0.487); strip B (0.761,0.809)-(0.841,0.844), 1600 px, H 50, normalised (1.000, 0.926, 0.547); strip C (0.857,0.804)-(0.937,0.839), 1600 px, H 53, normalised (1.000, 0.935, 0.424); strip D (0.579,0.823)-(0.631,0.854), 936 px, H 51, normalised (1.000, 0.943, 0.618). Brightest 15% of A and C \u2014 the lit core rather than the bezel \u2014 give (1.000, 0.926, 0.479) and (1.000, 0.913, 0.417). Raw peak 0.475: they are bright but do not clip.",
+   "extrapolated": "The blue channel, 0.45, is the mean of the four cores; it is the noisiest of the three because it is the smallest and most affected by the bezel bleeding into the box. Red and green are tight to 3%. The ENERGY 2.6 is carried over from the committed material unchanged \u2014 the frame says the strips do not blow out at this exposure and says nothing about an engine's, so that is a layer-4 number.",
+   "reasoning": "Narrowed from three groups to one, and the emission colour corrected. Committed emission is (1.0, 0.78, 0.22), which is amber at H 39; four independent fittings measure H 50-53 and put green at 0.92 rather than 0.78. These are lemon-yellow strips, not amber ones. tram.py says they 'are the only light source below waist height and they are what makes the interior read as a vehicle rather than as a room', so the hue is load-bearing. The two groups that leave \u2014 `tram_in_readout` and `tram_in_device` \u2014 are a different register entirely and are handled separately."
+  },
+  {
+   "name": "tram_saloon_readout",
+   "title": "Tram Saloon Readout \u2014 the violet display on the wall device",
+   "binds": [
+    "tram_in_readout"
+   ],
+   "albedo": [
+    0.14,
+    0.1,
+    0.16
+   ],
+   "roughness": 0.25,
+   "metallic": 0,
+   "specular": 0.3,
+   "texture": null,
+   "uv_scale_denom": null,
+   "emission": [
+    0.88,
+    0.65,
+    1
+   ],
+   "emission_energy": 1.6,
+   "scenes": [
+    "drum"
+   ],
+   "source": "03-sector-blue/Babylon_5_2-22_35a.jpg (authority 1), measured RAW because an emitter is the illuminant. Readout face (0.747,0.462)-(0.785,0.493), 684 px: rgb(0.431, 0.302, 0.506) H 278 S 0.403, normalised (0.853, 0.597, 1.000). Brightest 15% \u2014 the lit core rather than its dark bezel: rgb(0.565, 0.439, 0.631) H 279 S 0.304, normalised (0.894, 0.696, 1.000). Raw peak 0.624, so it does not clip.",
+   "extrapolated": "The adopted (0.880, 0.650, 1.000) is the mean of the whole-region and core normalisations, which agree on hue to 1 degree. The ENERGY 1.6 is set below the strips' 2.6 because the readout measures dimmer than they do in the same frame (core V 0.631 against strip cores at 0.475 \u2014 brighter per pixel but over a far smaller area) \u2014 this is a layer-4 number and should be re-decided against an engine frame.",
+   "reasoning": "New material. The committed library bound this group to tram_saloon_strip, so the one piece of equipment 35a shows glowed the same amber as the floor strips. The frame puts it at H 278-279 \u2014 violet \u2014 and tram.py calls it 'a MAGENTA readout' in two separate comments. Two emissive registers in one small cabin is exactly the kind of detail that reads as a working vehicle rather than a set; collapsing them loses it."
+  },
+  {
+   "name": "tram_saloon_device",
+   "title": "Tram Saloon Wall Device \u2014 dark equipment housing",
+   "binds": [
+    "tram_in_device"
+   ],
+   "albedo": [
+    0.258,
+    0.233,
+    0.258
+   ],
+   "roughness": 0.42,
+   "metallic": 0.2,
+   "specular": 0.45,
+   "texture": null,
+   "uv_scale_denom": null,
+   "emission": null,
+   "emission_energy": null,
+   "scenes": [
+    "drum"
+   ],
+   "source": "03-sector-blue/Babylon_5_2-22_35a.jpg (authority 1), balanced with the gains already in materials.GREY_WORLD_GAINS (0.913/1.090/1.013). Device body, below the readout (0.744,0.507)-(0.789,0.573), 1710 px: rgb(0.258, 0.233, 0.258) H 299 S 0.098 V 0.258, p10 0.147 p90 0.449. Near-neutral and dark, against the wall it is mounted on at V 0.406 (materials.PROVENANCE mid cluster) \u2014 the unit is 0.64x its own wall.",
+   "extrapolated": "Nothing in the albedo \u2014 0.258 is the direct 1,710-px reading. What IS a judgement: giving it no emission at all. tram.py describes 'a dark unit on the wall above the bench back with a magenta readout and A BLANK SCREEN beneath it', and the blank screen is the part this group covers; the lit part is tram_in_readout, which is a separate group with its own material.",
+   "reasoning": "New material, and it removes a light that should not exist. The committed library bound this group to tram_saloon_strip, an emitter at energy 2.6 \u2014 so the dark housing and its blank screen were both radiating amber. A dark box that glows is the most visible class of material error there is, and it is here in the frame the module was built from."
+  }
+ ],
+ "_cluster": "transit"
+}

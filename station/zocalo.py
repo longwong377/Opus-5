@@ -488,7 +488,14 @@ def rib_arch_repaired(width, height, depth, thickness, segments=RIB_SEGMENTS):
     return v, t
 
 
-def _rib(mesh, p, z, group="zoc_rib"):
+# `zoc_rib_arch`, not `zoc_rib`: the cap and the lamp are
+# `zoc_rib_cap` and `zoc_rib_lamp`, so a bare `zoc_rib` is a PREFIX of
+# both. Under substring/longest-wins resolution a material binding it
+# also matches its own siblings -- harmless for which material wins,
+# and a genuine ambiguity for the gate that asks how many materials
+# claim a group. Three siblings with a common stem and no containment
+# is the shape that stays unambiguous as more ribs are added.
+def _rib(mesh, p, z, group="zoc_rib_arch"):
     """One elliptical rib, with its springings capped.
 
     `kit.rib_arch` is the project's rib and is reused rather than

@@ -1,0 +1,686 @@
+{
+ "groups_found": [
+  "light_downlight",
+  "zoc_bulkhead",
+  "zoc_chair_five",
+  "zoc_chair_frame",
+  "zoc_chair_seat",
+  "zoc_deck_chevron",
+  "zoc_deck_strip",
+  "zoc_deck_tile",
+  "zoc_deck_worn",
+  "zoc_downlight",
+  "zoc_gallery_beam",
+  "zoc_gallery_slab",
+  "zoc_gallery_strut",
+  "zoc_neon_back",
+  "zoc_neon_face",
+  "zoc_purlin",
+  "zoc_rail",
+  "zoc_rib",
+  "zoc_rib_cap",
+  "zoc_rib_lamp",
+  "zoc_screen",
+  "zoc_service_chrome",
+  "zoc_soffit",
+  "zoc_stair",
+  "zoc_stair_tread",
+  "zoc_stall_awning",
+  "zoc_stall_counter",
+  "zoc_stall_goods",
+  "zoc_stall_light",
+  "zoc_stall_mast",
+  "zoc_stall_post",
+  "zoc_stall_sign",
+  "zoc_stall_spar",
+  "zoc_table_col",
+  "zoc_table_edge",
+  "zoc_table_five",
+  "zoc_table_foot",
+  "zoc_table_top",
+  "zoc_wall"
+ ],
+ "entry_points": [
+  {
+   "module": "zocalo",
+   "call": "import zocalo as z; verts, tris, groups = z.zocalo_run(3, cap_ends=True)   # 38948 verts / 44320 tris / 38 distinct group names. `groups` is a FLAT PER-TRIANGLE LIST of names, not (name, lo, hi) spans. zocalo has NO write_obj(path): it exposes write_run(path, bays=3, p=None, **kw) and write_bay(path, p=None, **kw), so test_materials_layer3._via_write_obj('zocalo') WILL FAIL. write_run defaults cap_ends=False and therefore emits only 37 groups (no zoc_bulkhead). z.zocalo_bay() alone gives 37 (index 0 draws a stair and a sign, no bulkhead). z.zocalo_run(3, p=z.params(table_pedestal_five=True), cap_ends=True) swaps zoc_table_col for zoc_table_five, so the union over every reachable configuration is 39 names. Self-test: python3 station/zocalo.py -> 96/96 passed.",
+   "group_count": 38
+  }
+ ],
+ "materials": [
+  {
+   "name": "zoc_wall_plate",
+   "title": "Zocalo Concourse Wall \u2014 the corridor kit's wall assembly at concourse height",
+   "binds": [
+    "zoc_wall"
+   ],
+   "albedo": [
+    0.46,
+    0.46,
+    0.46
+   ],
+   "roughness": 0.56,
+   "metallic": 0.1,
+   "specular": 0.35,
+   "texture": "wall_plate",
+   "uv_scale_denom": 4,
+   "emission": null,
+   "emission_energy": null,
+   "scenes": [
+    "interior"
+   ],
+   "source": "NOT A NEW MEASUREMENT. station/zocalo.py builds both side walls by calling station/interior_kit.py's wall_assembly(l, ceil, p) directly, so zoc_wall IS kit_wall_plate's surface under a second generator; all five numbers are reproduced exactly from station/materials.py's kit_wall_plate rather than re-derived, the same discipline container_skin uses against cargo_module. Confirmed in the room's own frame: reference/04-sector-red/zocalo.webp, balanced with the gains already in materials.GREY_WORLD_GAINS (0.906/1.185/0.950, recomputed here from the frame as 0.9059/1.1854/0.9501), the Zocalo side wall at (0.855,0.110)-(0.900,0.290) reads balanced rgb 0.409/0.479/0.484 H 174 S 0.180 V 0.488, and that frame's lit structural cluster sits at V 0.458 \u2014 so the wall is 1.06x ALBEDO_ANCHOR, i.e. the same pale plated panel with square fasteners the corridor kit is calibrated on. reference/11-props-and-technology/Zocalo neon signage in background.jpg shows the same ribbed pale panelling behind the wordmark.",
+   "extrapolated": "Nothing. Every value is kit_wall_plate's, reproduced because apply_proposals.py refuses a fragment already claimed by another material and 'zoc_wall' contains none of kit_wall_plate's fragments ('structure', 'wall_panel', 'wall_assembly', 'bulkhead'). If kit_wall_plate ever moves, this must move with it; that coupling is the cost of the reproduction and is recorded here so a later session can collapse the two if binds are ever made extensible.",
+   "reasoning": "The Zocalo's side walls are not a Zocalo surface at all \u2014 zocalo_bay() calls interior_kit.wall_assembly() twice per bay and mirrors one copy, so the geometry, the plate courses and the tagged light spans are the corridor kit's. Giving it its own albedo would let the concourse and the corridor it opens off disagree about what the station is painted, which is exactly the second-source-of-truth failure materials.py exists to prevent. The 4.0 m wall_plate repeat is kept because it is 6 courses per repeat, i.e. the 0.667 m course the corridor frame measures; a concourse wall is the same panel, taller."
+  },
+  {
+   "name": "zoc_deck_tile",
+   "title": "Zocalo Deck Tile \u2014 pale 0.45 m concourse tile on recessed joints",
+   "binds": [
+    "zoc_deck_tile"
+   ],
+   "albedo": [
+    0.396,
+    0.396,
+    0.396
+   ],
+   "roughness": 0.32,
+   "metallic": 0,
+   "specular": 0.58,
+   "texture": "deck_plate",
+   "uv_scale_denom": 1.8,
+   "emission": null,
+   "emission_energy": null,
+   "scenes": [
+    "interior"
+   ],
+   "source": "reference/04-sector-red/more zocalo.png (authority 1), balanced with the gains already in materials.GREY_WORLD_GAINS (0.936/1.137/0.951, recomputed here from the frame as 0.9362/1.1368/0.9504). THE FRAME'S ESTABLISHED ANCHOR, reproduced before use: the concourse deck tile at (0.237,0.652)-(0.287,0.712) reads raw 0.596/0.573/0.690 \u2014 the exact figure station/materials.py already records against furn_pale_composite \u2014 and balanced 0.558/0.651/0.656, V 0.656; materials.py's furn_stall_frame fixes that same tile as kit_deck_plate at 0.360, so this frame's albedo scale is balanced V x 0.549. A clean tile field at (0.215,0.815)-(0.315,0.859) reads balanced V 0.694, i.e. 0.381 \u2014 within 4% of shell_deck_public's 0.396, whose source is this same frame. NEUTRALITY, by the two-light test: the same continuous deck reads H 173-183 S 0.15-0.20 on the frame's left half and H 203-209 S 0.32-0.43 on its right half under the blue deck practical, with saturation RISING as value rises (S 0.204 at V 0.344, 0.320 at V 0.547, 0.414 at V 0.704, 0.404 at V 0.876 across the k-means bands of (0.74,0.84)-(1.00,0.99)) \u2014 the additive signature. One surface, two lights, two colours, so the blue is the light. Values reproduced from station/materials.py's shell_deck_public, itself derived from this frame.",
+   "extrapolated": "The 1.8 m texture repeat, and it is the one number here that is new. shell_deck_public carries 4.0 m and its own extrapolated note calls that 'the weakest number in this material', asking for 'one frame with a person standing on a tile joint'. station/zocalo.py has better than that: its camera solve (REF_HORIZON_PX 370.5, REF_EYE_M 1.265, REF_FOCAL_PX 2517, cross-checked on three furniture sizes it did not know) measures the deck's two joint families at 0.52 m and 0.40 m \u2014 MEASURED['deck_tile_m_range'] \u2014 and the module builds at TILE_M = 0.45. deck_plate is 4 plates across a repeat (station/materials.py, door_blast_plate: '4x3 plates per repeat, so 3.0 m gives 0.75 m plate courses'), so 1.8 m gives 0.45 m plates and the sheet's seams land on the modelled tile joints instead of 2.2x coarser than them. Overturned by: a re-solve of the camera that moves TILE_M.",
+   "reasoning": "The deck is the surface the whole frame is exposed for and the one everything else in this room is measured against, so it has to be right first. It is NOT given the cyan the balanced frame shows, because the same deck two metres away under the blue practical is 30 degrees further round the wheel with MORE saturation, not less \u2014 the project's own multiplicative-tint test, and the fifth time in this library that a colour in a frame has turned out to belong to the light. It goes BELOW the wall it meets (0.396 against 0.460) and gets its brightness back through roughness 0.32 and specular 0.58, which is the ruling kit_deck and shell_deck_public already share and which is also what throws the light pools the frame actually shows."
+  },
+  {
+   "name": "zoc_deck_worn",
+   "title": "Zocalo Deck Tile, Traffic-Worn \u2014 polished and grimed in the walking lane",
+   "binds": [
+    "zoc_deck_worn"
+   ],
+   "albedo": [
+    0.34,
+    0.34,
+    0.34
+   ],
+   "roughness": 0.26,
+   "metallic": 0,
+   "specular": 0.62,
+   "texture": "deck_plate",
+   "uv_scale_denom": 1.8,
+   "emission": null,
+   "emission_energy": null,
+   "scenes": [
+    "interior"
+   ],
+   "source": "reference/04-sector-red/more zocalo.png, balanced with the gains already in materials.GREY_WORLD_GAINS (0.936/1.137/0.951). A NEGATIVE MEASUREMENT, and it is the honest content of this entry: ten adjacent tile cells sampled across the clean deck field at (0.215,0.815)-(0.315,0.859) give balanced V medians 0.669 0.678 0.700 0.713 0.704 0.704 0.703 0.678 0.696 0.664 \u2014 mean 0.691, sd 0.016, i.e. 2.4% tile-to-tile. The frame does NOT resolve a worn tile population at this scale; every larger swing in the deck (sd 65% over the bottom-left field) is chairs, shoes and cast shadow, checked cell by cell. The tie to a real level is zoc_deck_tile's 0.396, itself anchored through this frame's deck tile at kit_deck_plate 0.360.",
+   "extrapolated": "The entire delta from the clean tile \u2014 value 0.86x, roughness -0.06, specular +0.04. What constrains it: (1) the measured 2.4% tile-to-tile uniformity is the FLOOR, because a wear group that differs by less than the noise between two clean tiles is 7% of the deck's triangles doing nothing, and 14% is six times that \u2014 enough to read at 1440p, small enough not to look like spilled paint; (2) the direction is not free: foot traffic on a coated tile polishes it and loads it with grime, so it goes darker AND smoother, never lighter or rougher, which is why roughness drops to 0.26 while value drops to 0.34; (3) it must stay above the chevron band at 0.265, or wear starts reading as deliberate marking. Overturned by: any frame that shows a Zocalo traffic lane and its untrodden edge in one shot.",
+   "reasoning": "tiled_deck() spends 2,304 triangles a bay putting one quad under every tile for exactly one reason \u2014 that tiles can differ individually \u2014 and 7% of them are tagged worn. If that group takes the clean tile's material the geometry is wasted. The frame cannot supply the number, so the number is declared invented and the measurement that bounds it is published instead of a plausible-looking figure: 2.4% is what two clean tiles differ by, and this has to beat it."
+  },
+  {
+   "name": "zoc_deck_chevron",
+   "title": "Zocalo Threshold Band \u2014 ochre chevron inlay at the bay ends",
+   "binds": [
+    "zoc_deck_chevron"
+   ],
+   "albedo": [
+    0.265,
+    0.262,
+    0.209
+   ],
+   "roughness": 0.34,
+   "metallic": 0,
+   "specular": 0.55,
+   "texture": "deck_plate",
+   "uv_scale_denom": 1.8,
+   "emission": null,
+   "emission_energy": null,
+   "scenes": [
+    "interior"
+   ],
+   "source": "reference/04-sector-red/more zocalo.png (authority 1), balanced with the gains already in materials.GREY_WORLD_GAINS (0.936/1.137/0.951). The band runs diagonally across the deck at the frame's lower right and is legible at magnification as tan chevrons inlaid in a darker strip. Two chevrons measured clear of the standing figure's shadow: (0.782,0.7955)-(0.802,0.8045) balanced rgb 0.457/0.439/0.347 H 48 S 0.234 V 0.457, and (0.868,0.8345)-(0.892,0.8425) rgb 0.488/0.499/0.399 H 74 S 0.181 V 0.510. The dark ground between them, (0.806,0.7965)-(0.826,0.8055), reads 0.338/0.339/0.269 V 0.348. Through this frame's established anchor (deck tile balanced V 0.656 -> kit_deck_plate 0.360, x0.549) the chevrons are 0.251 and 0.280, mean 0.265; normalised hue (0.989, 0.980, 0.780). THE HUE IS THE PAINT, not the light: the deck tile 0.2 m away in the identical light reads H 173-183, so two adjacent surfaces under one key sit 110-130 degrees apart on the wheel.",
+   "extrapolated": "Roughness, specular, and \u2014 declared plainly \u2014 the absence of the chevron pattern itself. hazard_chevron is the library's only diagonal-stripe sheet and it is in COLOUR_SHEETS, so it BAKES yellow and black and ignores albedo_color entirely (materials.emitted_albedo returns white for it). Applying it here would paint a shopping concourse's wayfinding threshold in docking-bay hazard yellow, when the measurement is H 48-74 at S 0.18-0.23 \u2014 a muted ochre, three times less saturated than ACCENTS['hazard_yellow']. So the band ships as a flat ochre inlay on deck_plate at the tile module, and the missing piece is named: ONE procedural ochre chevron sheet closes it, and until then this group carries the band's colour and value but not its stripe. Saturation 0.211 is over STRUCTURAL_SAT_MAX and is measured, not styled; the frame is cited above.",
+   "reasoning": "tiled_deck() lays the band as whole tiles at both ends of every bay with the stripe direction reversing about the centreline, so it reads as a V pointing along the concourse \u2014 a threshold marker, not a hazard. Getting it wrong in the loud direction would be worse than getting it wrong in the quiet one: a hazard chevron says 'do not step here' and this is the exact tile everyone steps on. The value lands at 0.67x the clean tile, which is what the frame shows and what makes the band read as an inlay rather than as a stain."
+  },
+  {
+   "name": "zoc_deck_light",
+   "title": "Zocalo Deck Light \u2014 the centre strip and the 1.57 m downlight pools",
+   "binds": [
+    "zoc_deck_strip",
+    "zoc_downlight"
+   ],
+   "albedo": [
+    0.09,
+    0.095,
+    0.105
+   ],
+   "roughness": 0.3,
+   "metallic": 0,
+   "specular": 0.2,
+   "texture": null,
+   "uv_scale_denom": null,
+   "emission": [
+    0.86,
+    0.91,
+    1
+   ],
+   "emission_energy": 3.5,
+   "scenes": [
+    "interior"
+   ],
+   "source": "NOT A NEW MEASUREMENT. Both groups are the interior kit's own primitives called straight out of station/zocalo.py: kit.deck_strip(p['deck_strip_w_m'], l) and kit.downlight_pool(), the latter sized 1.57 m off reference/10-interiors-generic-kit/more hallway.jpg against a standing officer (station/interior_kit.py, downlight_pool docstring). Every value is reproduced exactly from station/materials.py's light_deck_channel so the concourse's deck lighting cannot disagree with the corridor's. Corroborated in more hallway.jpg, which reference/00-INDEX.md and materials.NEGATIVE_RESULTS both class as a LIGHTING reference and not an albedo reference \u2014 the right kind of frame for a source: the near pool at (0.395,0.930)-(0.500,0.985) k-means raw gives its bright core at rgb(0.635,0.718,0.966), R<G<B, i.e. cool white, matching light_deck_channel's cool emission rather than the warm register.",
+   "extrapolated": "The merge of the two groups into one material, and the single energy. A lit strip behind a lens and a lit patch of deck under a downlight are not physically the same fitting, and if a later pass wants the pool dimmer than the channel it should split them \u2014 the fragments are already separate. They are merged now because nothing in any held frame separates them and inventing a difference would be invention. Nothing else here is new: the colour and energy are light_deck_channel's, reproduced.",
+   "reasoning": "This is the one place in the room where reuse is not a convenience but a correctness requirement: kit.deck_strip and kit.downlight_pool are the same functions the corridors call, so two different emission colours for one function would put a warm pool in the Zocalo and a cool one 20 m away through the same doorway. The albedo is nearly black on purpose \u2014 these discs and strips sit 10-12 mm proud of the deck and are lit surfaces in the engine, so what they are is emission plus a dark substrate that catches a grazing highlight; a pale albedo under an emission would double-count the light."
+  },
+  {
+   "name": "zoc_structure",
+   "title": "Zocalo Painted Structure \u2014 the elliptical rib, gallery beam, raking struts and soffit purlins",
+   "binds": [
+    "zoc_gallery_beam",
+    "zoc_gallery_strut",
+    "zoc_purlin",
+    "zoc_rib_arch",
+    "zoc_rib_cap"
+   ],
+   "albedo": [
+    0.469,
+    0.469,
+    0.469
+   ],
+   "roughness": 0.4,
+   "metallic": 0,
+   "specular": 0.46,
+   "texture": null,
+   "uv_scale_denom": null,
+   "emission": null,
+   "emission_energy": null,
+   "scenes": [
+    "interior"
+   ],
+   "source": "Values reproduced from station/materials.py's shell_rib_painted ('painted structural pilaster, floor to soffit'), which is the same build and the same paint. Confirmed as the PALE element of the volume in reference/04-sector-red/more zocalo.png (authority 1), balanced with the gains already in materials.GREY_WORLD_GAINS (0.936/1.137/0.951): scanlines across the elliptical rib give peak balanced V 0.254 at y=0.10, 0.245 at y=0.13, 0.192 at y=0.16 and 0.259 at y=0.20, against row medians of 0.067/0.055/0.045/0.040 in the same scanline \u2014 the arch is 4 to 6 times the value of everything behind it. NEUTRALITY, by the two-light test: the gallery's raking strut band at (0.52,0.125)-(0.62,0.205) clusters H 1-18 S 0.25-0.37 where the stalls' warm practicals reach it, while the identical members at the gallery slab edge (0.300,0.170)-(0.420,0.185) and the purlin run at (0.640,0.040)-(0.760,0.080) read H 331 S 0.241 and H 338 S 0.271 where they do not \u2014 one structure, two lights, 320 degrees apart, so neither hue is the paint. reference/10-interiors-generic-kit/more hallway.jpg shows the same pale ribbon ribs against a dark shell.",
+   "extrapolated": "The absolute level, via ALBEDO_ANCHOR and shell_rib_painted \u2014 the frame gives only the 4-6x RATIO of the arch to its background, because the upper third of more zocalo.png is three to six stops under the foreground and no absolute reading survives there. Also extrapolated: that four groups share one value. What constrains that merge is that the frame shows no colour difference between them once the practicals are removed, and the project has now been wrong five times in the other direction. Overturned by: any Zocalo frame lit flat, or one showing the rib against the gallery beam under a single key.",
+   "reasoning": "The elliptical rib is the signature element of every B5 interior in this project, and the frame's only usable statement about it is a ratio: it is four to six times its surround, which is to say it is the thing that reads. 0.469 makes it the palest large surface in the volume, one notch above the wall and well above the near-black soffit, so the arch draws itself against the ceiling exactly as it does in the reference instead of dissolving into it. The purlins get the same value deliberately \u2014 zocalo_bay() adds five shallow beams because 'a 233 m2 ceiling with nothing on it reads as a lid', and that only works if they are pale against a dark soffit. -- `zoc_rib_arch` added when the resolver found it UNOWNED: the proposal claimed every group had exactly one owner and this one had none. Its cap and its lamp were both claimed and the arch itself was not, which is the same defect interior_kit had (a tagged light strip inside an untagged pilaster). The rib is structure, so it belongs here."
+  },
+  {
+   "name": "zoc_rib_lamp",
+   "title": "Rib Lamp \u2014 the warm practical set into the arch intrados",
+   "binds": [
+    "zoc_rib_lamp"
+   ],
+   "albedo": [
+    0.3,
+    0.24,
+    0.19
+   ],
+   "roughness": 0.35,
+   "metallic": 0,
+   "specular": 0.25,
+   "texture": null,
+   "uv_scale_denom": null,
+   "emission": [
+    1,
+    0.68,
+    0.4
+   ],
+   "emission_energy": 4,
+   "scenes": [
+    "interior"
+   ],
+   "source": "Emission and albedo reproduced from station/materials.py's light_downlight ('the warm practical, low on the wall'), which is the register these lamps belong to. Independently corroborated on the fitting itself: reference/04-sector-red/more zocalo.png (authority 1), balanced with the gains already in materials.GREY_WORLD_GAINS (0.936/1.137/0.951), the lamp set into the arch at (0.460,0.030)-(0.472,0.052) reads rgb 0.402/0.268/0.209 H 29 S 0.343 V 0.402; normalised to its own peak that is (1.000, 0.667, 0.520), which reproduces light_downlight's (1.0, 0.68, 0.4) in R and G to within 2%. reference/10-interiors-generic-kit/more hallway.jpg shows the same lamps repeating along the ribs at (0.230,0.100)-(0.360,0.330), which is the frame station/zocalo.py cites for placing them.",
+   "extrapolated": "The blue channel and the energy. Measured B/R is 0.52 against light_downlight's 0.40; the excess is bloom around a source occupying about 12x22 px, so the register value is kept rather than the reading, on the argument that a clipped 200-pixel highlight cannot outvote a measurement made on a resolved surface. Energy 4.0 is light_downlight's, unchanged: these lamps are 3-6 m up on an arch rather than 1 m up on a wall, so their contribution per fitting is smaller, but zocalo_bay() places only ten a bay and they are the room's overhead practical \u2014 dropping the energy would leave the arch reading as an unlit ribbon.",
+   "reasoning": "zocalo.py's own comment is the point: 'Signage and practicals ARE the light in this space; there is no ambient fill anywhere in the reference.' Ten of these a bay along the arch is what makes the ceiling volume legible at all, and the standing blocking finding against the exterior \u2014 a station that renders unlit from within reads as a derelict \u2014 has the same shape indoors. The frame independently landing on the existing warm register, from a lamp that register was not derived from, is the reason this is a two-line entry rather than a new colour."
+  },
+  {
+   "name": "zoc_gallery_slab",
+   "title": "Gallery Slab \u2014 the upper deck of the concourse and the colonnade soffit",
+   "binds": [
+    "zoc_gallery_slab"
+   ],
+   "albedo": [
+    0.396,
+    0.396,
+    0.396
+   ],
+   "roughness": 0.34,
+   "metallic": 0,
+   "specular": 0.52,
+   "texture": "deck_plate",
+   "uv_scale_denom": 1.8,
+   "emission": null,
+   "emission_energy": null,
+   "scenes": [
+    "interior"
+   ],
+   "source": "Value, sheet and repeat reproduced from zoc_deck_tile, which is anchored on reference/04-sector-red/more zocalo.png through that frame's deck tile at (0.237,0.652)-(0.287,0.712) (raw 0.596/0.573/0.690, balanced V 0.656, kit_deck_plate 0.360, x0.549) and on station/materials.py's shell_deck_public, derived from the same frame. The slab's own faces cannot be read for level in that frame \u2014 its edge at (0.300,0.170)-(0.420,0.185) sits at balanced V 0.033, four stops under the foreground \u2014 but the frame does establish what it is: people are standing on it at (0.26,0.00)-(0.60,0.10), so it is a walking deck, and reference/04-sector-red/zocalo.webp shows the upper level trading exactly as the lower one does.",
+   "extrapolated": "Roughness 0.34 and specular 0.52, and the decision to give the slab's underside the same material as its top. A 0.35 m slab shows three faces to the concourse \u2014 a walked-on top, a 0.35 m edge, and 4.5 m of colonnade ceiling \u2014 and one group has to serve all three. It takes the DECK's position on the ladder rather than the wall's because the top is the surface a player stands on and the group's dominant use is a floor; the underside being a shade too bright for a soffit is a lighting problem, and layer 4 owns it. Roughness is nudged from the tile's 0.32 to 0.34 because a slab edge and soffit are cast, not tiled. Overturned by: a frame of the Zocalo colonnade ceiling.",
+   "reasoning": "The gallery is the second storey of the room and its slab is the single largest continuous surface in the volume after the deck itself, so it cannot be a value nobody argued for. Making it the same tile as the lower deck is the strongest available claim: the frame shows the upper level in the same use as the lower, at the same 3.6 m deck pitch INV-010 fixes everywhere else, and two decks in one shot disagreeing about how big a tile is would be visible from the concourse floor."
+  },
+  {
+   "name": "zoc_rail",
+   "title": "Zocalo Handrail \u2014 oxide red, the room's warm accent",
+   "binds": [
+    "zoc_rail"
+   ],
+   "albedo": [
+    0.29,
+    0.145,
+    0.084
+   ],
+   "roughness": 0.42,
+   "metallic": 0.15,
+   "specular": 0.5,
+   "texture": null,
+   "uv_scale_denom": null,
+   "emission": null,
+   "emission_energy": null,
+   "scenes": [
+    "interior"
+   ],
+   "source": "reference/04-sector-red/zocalo.webp (authority 1), balanced with the gains already in materials.GREY_WORLD_GAINS (0.906/1.185/0.950, recomputed here from the frame as 0.9059/1.1854/0.9501). The three-rail run across the frame's lower right was isolated by masking R > 1.6G over (0.70,0.55)-(1.00,1.00), 5,301 pixels. THE TINT TEST, run and PASSED for once in the positive direction: banded by value, the rail reads rgb 0.082/0.028/0.030 H 358 S 0.659 at V 0.05-0.10; 0.121/0.051/0.045 H 5 S 0.630 at V 0.10-0.16; 0.181/0.098/0.067 H 16 S 0.630 at V 0.16-0.24; 0.298/0.149/0.086 H 18 S 0.713 at V 0.24-0.40. Saturation is FLAT across a 3.6x range of value \u2014 the multiplicative signature of a real tint, where materials.NEGATIVE_RESULTS' five previous cases all showed saturation collapsing as value rose. LEVEL: that frame's lit structural surfaces sit at balanced V 0.458 (whole-frame k-means, 5.3% cluster) and V 0.488 (wall panel at (0.855,0.110)-(0.900,0.290)), mean 0.473 -> ALBEDO_ANCHOR, a factor of 0.972, so the lit rail band scales to (0.290, 0.145, 0.084). This is the register materials.ACCENTS already names: 'maroon red H 351-5 S 0.22-0.59 tram soft goods, Zocalo handrail'.",
+   "extrapolated": "Roughness 0.42, metallic 0.15, specular 0.50 \u2014 no frame separates gloss from the specular streak running along each rail's crown, and 0.42 with a 0.15 metallic blend is the library's existing treatment for painted steel (kit_wall_plate 0.10, accent_warning 0.42). Also extrapolated: which end of the measured value range is the albedo. The rail's shadowed body scales to (0.138,0.068,0.054) and its lit band to (0.290,0.145,0.084); the lit band is taken because the anchor is defined on lit surfaces, and the shadowed figure is recorded as the floor. Overturned by: a Zocalo frame with the rail under a neutral key, or any frame showing the rail and a pale wall in the same light at the same depth.",
+   "reasoning": "This is the material that changes the room. station/zocalo.py's gallery() calls it 'the kit's red-orange handrail, the dominant warm accent in every Zocalo frame' \u2014 and the kit's handrail material, kit_rail_band, is NEUTRAL 0.5302. Every metre of rail on the gallery edge and both stair stringers would have rendered mid-grey. A saturated albedo needs to survive the project's own test before it is believed, and this one does so decisively: the saturation holds at 0.63-0.71 from deep shadow to highlight, which additive light cannot do. The value sits well below ALBEDO_ANCHOR because a saturated red pigment cannot be bright \u2014 its red channel is 0.63x the wall's and its blue channel 0.18x, which is what makes it read as oxide red rather than as pink."
+  },
+  {
+   "name": "zoc_stair",
+   "title": "Zocalo Stair \u2014 the flight to the gallery, plate carriage and treads",
+   "binds": [
+    "zoc_stair"
+   ],
+   "albedo": [
+    0.375,
+    0.375,
+    0.375
+   ],
+   "roughness": 0.45,
+   "metallic": 0.05,
+   "specular": 0.48,
+   "texture": "deck_plate",
+   "uv_scale_denom": 1.8,
+   "emission": null,
+   "emission_energy": null,
+   "scenes": [
+    "interior"
+   ],
+   "source": "reference/04-sector-red/more zocalo.png (authority 1), balanced with the gains already in materials.GREY_WORLD_GAINS (0.936/1.137/0.951). The stepped run behind the threshold band reads balanced rgb 0.217/0.241/0.235 H 180 S 0.160 V 0.250 at (0.860,0.735)-(0.960,0.775) and 0.228/0.236/0.220 H 167 S 0.143 V 0.246 at (0.880,0.760)-(0.960,0.780) \u2014 tread and riser faces within 2% of each other, i.e. one material with the light falling differently on it, not two. Level is set from the deck it rises off: this frame's anchor is the deck tile at (0.237,0.652)-(0.287,0.712), balanced V 0.656 -> kit_deck_plate 0.360 (x0.549), and the clean deck field at (0.215,0.815)-(0.315,0.859) reads 0.694 -> 0.381.",
+   "extrapolated": "The albedo's 0.95x offset below the deck, and roughness/specular/metallic. What constrains them: a stair is walked on, so it takes the deck's rung on the measured ladder, not the wall's; it is plate with an anti-slip finish rather than a laid tile, so it is ROUGHER than the concourse floor (0.45 against 0.32) and slightly darker; and it must stay above the worn-tile group (0.340) so a stair never reads as a stain on the floor. Overturned by: any frame of the Zocalo stair from the concourse floor.",
+   "reasoning": "ONE material for both zoc_stair and zoc_stair_tread, and the frame is the reason: the tread face and the riser face measure within 2% of each other, so a separate tread albedo would be inventing a difference the reference does not contain \u2014 the exact mistake NEGATIVE_RESULTS records five times. It is also the only reading substring binding can express: 'zoc_stair' is a substring of 'zoc_stair_tread', so any fragment that catches the carriage catches the tread too, and two materials both claiming the tread is the ambiguity defect test_materials_layer3.ambiguous() exists to catch. The group stays in the geometry, so a later frame showing a chevron nosing or a grating tread can split it \u2014 with a GROUP_ALIASES entry, exactly as zoc_rib needs one."
+  },
+  {
+   "name": "zoc_screen",
+   "title": "Colonnade Shopfront \u2014 backlit panel behind the stalls",
+   "binds": [
+    "zoc_screen"
+   ],
+   "albedo": [
+    0.055,
+    0.06,
+    0.075
+   ],
+   "roughness": 0.22,
+   "metallic": 0,
+   "specular": 0.45,
+   "texture": null,
+   "uv_scale_denom": null,
+   "emission": [
+    0.388,
+    0.723,
+    1
+   ],
+   "emission_energy": 2.6,
+   "scenes": [
+    "interior"
+   ],
+   "source": "reference/04-sector-red/more zocalo.png (authority 1). A source, so measured raw as well as balanced, per the treatment station/materials.py gives the rotunda altar. The lit shopfront at (0.462,0.278)-(0.512,0.372) k-means (balanced, gains already in materials.GREY_WORLD_GAINS 0.936/1.137/0.951) gives its bright field at rgb(0.350,0.653,0.903) H 207 S 0.613 (38.2%), a second lit band at (0.269,0.484,0.759) H 214 (18.2%), a third at (0.207,0.332,0.496) H 214 (14.5%) and its mullion grid at (0.149,0.155,0.180) (29.1%) \u2014 three lit bands at a constant H 207-214 across a 1.8x range of value, which is a source and not a lit surface. Normalised to its peak channel that is (0.388, 0.723, 1.000). The hue sits between materials.ACCENTS['cyan_neon'] and ACCENTS['cool_blue'], both Zocalo-adjacent registers. A SECOND colour is attested in the same colonnade in the same frame: the shopfront at (0.281,0.312)-(0.303,0.352) reads balanced 0.514/0.314/0.254 H 13 S 0.492 \u2014 a warm-red backlit panel. reference/10-interiors-generic-kit/more hallway.jpg shows the identical blue-lit mullioned panel at (0.680,0.530)-(0.840,0.680).",
+   "extrapolated": "The albedo, the roughness/specular, the energy, and the choice of ONE colour for a group the frame shows in two. Albedo is set near black because what is modelled is a 0.06 m proud panel that is a light, and a pale substrate under an emission double-counts it; roughness 0.22 is a diffuser behind glazing, kept above 0.15 because it is not glass. Energy 2.6 is between signage_panel's 3.0 and sign_neon_venue's 1.3: this is a lit shop window 1.5 m from a walking crowd, brighter than a wall plaque and dimmer than a wordmark. The blue is chosen over the red because it is the larger and brighter population in the frame and because zocalo_bay() emits four of these a bay in a fixed pattern; splitting the group by variant, as vendor_stall already does, would let both colours ship and is the obvious next edit.",
+   "reasoning": "zocalo_bay() calls these 'backlit shopfront panels in the colonnade' and adds, correctly, that 'every light in this space has an object behind it; there is no ambient fill in any reference frame'. They are the only light source at eye height in the 4.5 m colonnade a player walks through, so if they render as dark boxes the whole underside of the gallery goes black and the crowd walks through a tunnel. The hue landing between two registers already measured off this room is corroboration, not coincidence."
+  },
+  {
+   "name": "zoc_neon_face",
+   "title": "Zocalo Wordmark \u2014 neon tube, orange-red",
+   "binds": [
+    "zoc_neon_face"
+   ],
+   "albedo": [
+    0.09,
+    0.05,
+    0.04
+   ],
+   "roughness": 0.25,
+   "metallic": 0,
+   "specular": 0.2,
+   "texture": null,
+   "uv_scale_denom": null,
+   "emission": [
+    1,
+    0.52,
+    0.3
+   ],
+   "emission_energy": 5,
+   "scenes": [
+    "interior"
+   ],
+   "source": "reference/04-sector-red/more zocalo.png (authority 1), measured RAW because a source is radiance and balancing it would be meaningless. Over the sign board at (0.054,0.109)-(0.203,0.190) the raw 95th percentile per channel is (0.980, 0.510, 0.294), the 99th is (1.000, 0.533, 0.322) and the maximum is (1.000, 0.655, 0.561) \u2014 the red channel CLIPS, so this is a source and not a lit surface, the same test station/materials.py applies to the rotunda altar. k-means over the board gives the tube core at rgb(0.858,0.267,0.158) H 9 S 0.816 (38.3%), its bloom at (0.952,0.465,0.263) H 18 (25.1%), and the spill on the plate at (0.673,0.161,0.148), (0.450,0.107,0.121) and (0.269,0.078,0.097), H 354-2. Emission is the p95 normalised to its peak: (1.000, 0.520, 0.300), H 18. THE CYAN VARIANT IS EQUALLY ATTESTED and is recorded rather than used: reference/04-sector-red/zocalo.webp shows the same wordmark cyan, raw clusters at H 180-181 clipping in G and B, normalised (0.411, 0.986, 1.000) \u2014 which reproduces materials.ACCENTS['cyan_neon'] (0.444,1.000,0.939), a register derived from this very glyph; and reference/11-props-and-technology/Zocalo neon signage in background.jpg shows it cyan again on a dark board.",
+   "extrapolated": "The choice of colour, the albedo and the energy. station/zocalo.py's neon_sign() docstring says outright that both colours are attested and 'the choice is a material' \u2014 this is that choice, and the reasons are: (1) more zocalo.png is the frame this entire module is solved from, so sign and geometry then come from one camera; (2) emissive_signage and sign_neon_venue are BOTH already cyan, so a cyan wordmark would be the third identical cyan in one room and the concourse's widest shot would lose its only warm anchor; (3) materials.SECTOR_ACCENT maps Red sector to warm_practical. Two edits reverse it: emission -> ACCENTS['cyan_neon'], energy unchanged. Albedo near black is the unlit tube and its board. Energy 5.0 sits between emissive_signage's 4.5 and light_pilaster_strip's 6.0, for a 1.9 x 0.84 m sign 4.75 m up.",
+   "reasoning": "This is the object the room is named after and the first thing a viewer will check us on, so the honest move is to publish both readings and say which was taken and why, rather than pick one and let it look sourced. The six glyphs are a decal on this group, not geometry \u2014 the module is explicit \u2014 so what this material owes is the tube's colour, its clipping behaviour, and a board dark enough that the glyphs read as light rather than as paint."
+  },
+  {
+   "name": "zoc_neon_back",
+   "title": "Neon Board \u2014 the dark backing plate behind the wordmark",
+   "binds": [
+    "zoc_neon_back"
+   ],
+   "albedo": [
+    0.094,
+    0.1,
+    0.112
+   ],
+   "roughness": 0.34,
+   "metallic": 0.1,
+   "specular": 0.25,
+   "texture": null,
+   "uv_scale_denom": null,
+   "emission": null,
+   "emission_energy": null,
+   "scenes": [
+    "interior"
+   ],
+   "source": "Albedo reproduced exactly from station/materials.py's sign_neon_venue ('concourse sign board, cyan tube on a dark ground'), the same object class in the same sector. reference/11-props-and-technology/Zocalo neon signage in background.jpg (authority 1) shows the board plainly: a rectangular dark panel carrying the wordmark, distinctly darker than the pale ribbed wall behind it. In reference/04-sector-red/more zocalo.png the board CANNOT be measured for its own colour and this entry says so: every k-means cluster inside the board rectangle (0.056,0.106)-(0.206,0.196) comes back red \u2014 (0.229,0.084,0.088) H 358 and (0.405,0.120,0.115) H 1 are the darkest two \u2014 because the whole plate is carrying the tube's spill, so a reading there would be the neon's colour, not the board's.",
+   "extrapolated": "Roughness 0.34 and metallic 0.10 \u2014 a painted sheet-steel board, treated like the library's other painted panel work. The albedo is not extrapolated but it is also not independently measured here: it is sign_neon_venue's, taken on the argument that the reference set contains no frame in which a Zocalo sign board is separable from its own tube. Overturned by: a frame of the sign switched off, or lit only by room light.",
+   "reasoning": "The board is 12 triangles and it matters out of all proportion, because it is what the glyphs are read against. If it took the wall's 0.46 the wordmark's contrast would collapse and the sign would look like a poster. Recording that the frame cannot supply the number \u2014 every pixel of the plate is red because the tube is on \u2014 is more useful to the next session than a plausible dark grey with a citation stapled to it."
+  },
+  {
+   "name": "zoc_cafe_table",
+   "title": "Zocalo Caf\u00e9 Table \u2014 moulded pale composite: top, pedestal and foot",
+   "binds": [
+    "zoc_table_top",
+    "zoc_table_col",
+    "zoc_table_foot"
+   ],
+   "albedo": [
+    0.402,
+    0.412,
+    0.432
+   ],
+   "roughness": 0.4,
+   "metallic": 0,
+   "specular": 0.5,
+   "texture": null,
+   "uv_scale_denom": null,
+   "emission": null,
+   "emission_energy": null,
+   "scenes": [
+    "interior"
+   ],
+   "source": "NOT A NEW MEASUREMENT: reproduced exactly from station/materials.py's furn_pale_composite, whose first of three anchors IS this table \u2014 'reference/04-sector-red/more zocalo.png, raw: the pedestal caf\u00e9 table's top (0.515,0.706)-(0.580,0.731) reads 0.592/0.600/0.718'. That figure was recomputed here from the frame before reuse and reproduces to three decimals. Independently re-derived through this frame's deck anchor as a check: balanced (gains already in materials.GREY_WORLD_GAINS, 0.936/1.137/0.951) the top reads V 0.754 at (0.505,0.690)-(0.560,0.712) and V 0.803 at (0.630,0.695)-(0.680,0.715), which through the frame's scale (deck tile balanced V 0.656 -> kit_deck_plate 0.360, x0.549) is 0.414 and 0.441 \u2014 bracketing furn_pale_composite's 0.411 luminance from a direction that material did not use.",
+   "extrapolated": "That the pedestal and foot are the same composite as the top. The frame reads them much darker \u2014 the lower pedestal at (0.450,0.880)-(0.560,0.960) is balanced V 0.473 against the top's 0.754, a ratio of 0.63 \u2014 but that is orientation, not paint: this frame's key is strongly downward (its own downlight pools are what the deck shows), and the same 0.63-0.72 vertical-to-horizontal ratio appears on the chair panel and the stall counter in the same shot. One moulded pedestal table in one colour is the reading; a pedestal genuinely 0.63x its own top would be a two-tone table, which no frame shows. Overturned by: a Zocalo frame with side light.",
+   "reasoning": "The table is the object the camera solve was built on \u2014 its 0.475 m top and the 0.093 m shaker standing on it are what confirmed the solve was not a fit to noise \u2014 so it would be perverse to give it a colour other than the one the library already measured from it. The value is 1.04x the deck beside it, which is what the frame says and what makes a caf\u00e9 table read as furniture standing on a floor rather than as a hole in it."
+  },
+  {
+   "name": "zoc_table_edge",
+   "title": "Table Edge Band \u2014 the warm metal rim around the top",
+   "binds": [
+    "zoc_table_edge"
+   ],
+   "albedo": [
+    0.6,
+    0.51,
+    0.458
+   ],
+   "roughness": 0.3,
+   "metallic": 0.85,
+   "specular": 0.55,
+   "texture": null,
+   "uv_scale_denom": null,
+   "emission": null,
+   "emission_energy": null,
+   "scenes": [
+    "interior"
+   ],
+   "source": "reference/04-sector-red/more zocalo.png (authority 1), balanced with the gains already in materials.GREY_WORLD_GAINS (0.936/1.137/0.951). The 23 mm rim is legible at magnification as a warm brown metal ring around a cool pale disc. Measured on the front arc clear of the shaker, (0.548,0.7405)-(0.606,0.7505): rgb 0.220/0.187/0.168 H 28 S 0.210 V 0.220, normalised hue (1.000, 0.850, 0.764). The hue is the metal, not the light: the composite top 15 px above it in the same frame, under the identical key, reads H 179-184 S 0.20-0.23 \u2014 one object, one light, two surfaces 150 degrees apart on the wheel. station/zocalo.py's MEASURED table gives the band's size, 0.023 m, from the same camera solve.",
+   "extrapolated": "The level and the metallic. A metal's albedo channel is F0, not a diffuse value, so it sits ABOVE ALBEDO_ANCHOR rather than below it \u2014 the argument station/materials.py already makes for clad_services \u2014 and the frame's 0.220 is a diffuse-style reading of a surface whose brightness is almost entirely specular, so it cannot set F0. 0.600 is chosen between the library's bare steel (grab_rail_bare and tram_saloon_post at 0.560-0.580) and copper's F0 near 0.95: a dulled brass or bronze trim, warm by the measured ratio and no brighter than a steel one. Metallic 0.85 rather than 1.0 because the rim in the frame carries a broad soft highlight rather than a mirror, so it is a lacquered or handled trim. Overturned by: a frame with a specular highlight of known colour on the rim.",
+   "reasoning": "Saturation 0.237 is over the structural ceiling and it is measured, with the control in the same frame: the table top the band is bolted to sits 150 degrees away in hue under one light, which is the cheap test NEGATIVE_RESULTS prescribes and the only kind of evidence that should ever buy a coloured interior surface. The band is the one warm note on the room's most-looked-at prop, and if it were painted the top's grey the tables would flatten into the floor."
+  },
+  {
+   "name": "zoc_five_panel",
+   "title": "The \"5\" Panel \u2014 pale composite carrying the station roundel",
+   "binds": [
+    "zoc_chair_five",
+    "zoc_table_five"
+   ],
+   "albedo": [
+    0.374,
+    0.383,
+    0.402
+   ],
+   "roughness": 0.55,
+   "metallic": 0,
+   "specular": 0.45,
+   "texture": null,
+   "uv_scale_denom": null,
+   "emission": null,
+   "emission_energy": null,
+   "scenes": [
+    "interior"
+   ],
+   "source": "reference/04-sector-red/more zocalo.png (authority 1), balanced with the gains already in materials.GREY_WORLD_GAINS (0.936/1.137/0.951). The near chair's back panel fills (0.055,0.622)-(0.200,0.762) and carries a dark outlined '5'; at magnification the panel is visibly soiled and streaked where the table top is not. Its LIT right-hand portion, (0.168,0.634)-(0.196,0.750), reads balanced rgb 0.308/0.339/0.321 V 0.339; its shadowed left, (0.062,0.645)-(0.105,0.748), reads V 0.147. The same white composite on the table pedestal below, (0.450,0.880)-(0.560,0.960), reads V 0.473. Base colour reproduced from station/materials.py's furn_pale_composite (0.402,0.412,0.432), whose three-frame derivation includes this frame's caf\u00e9 table.",
+   "extrapolated": "The 0.93x drop from furn_pale_composite and the roughness. The frame shows the panel at 0.72x the pedestal (0.339 against 0.473), but both are vertical composite in the same room and most of that gap is distance from the key \u2014 so only a quarter of it is taken as grime, giving 0.93x and 0.374. Roughness is raised to 0.55 from the table's 0.40 because the streaking is visible in the frame and a chair back is the one surface in the room every customer puts a hand on. Overturned by: a frame with a clean and a dirty chair in one shot.",
+   "reasoning": "The '5' is a decal on this group and not geometry \u2014 the module is explicit that it is 'the same glyph as the station shield patch and the floor inlay in 05-sector-green/conference aerea.webp', built once. Binding zoc_table_five here as well is what makes the module's own note true: 'the index entry reads the 5 onto table pedestals as well as chair backs... Both readings are one edit apart.' With this material in place that edit stays one edit, because the pedestal-with-roundel already has a home. The group is latent in the default build (params()['table_pedestal_five'] is False), so the fragment is insurance, not decoration."
+  },
+  {
+   "name": "zoc_armature",
+   "title": "Market Armature \u2014 the black tube of chair frames, awning spars and sign masts",
+   "binds": [
+    "zoc_chair_frame",
+    "zoc_stall_spar",
+    "zoc_stall_mast"
+   ],
+   "albedo": [
+    0.075,
+    0.074,
+    0.074
+   ],
+   "roughness": 0.32,
+   "metallic": 0,
+   "specular": 0.5,
+   "texture": null,
+   "uv_scale_denom": null,
+   "emission": null,
+   "emission_energy": null,
+   "scenes": [
+    "interior"
+   ],
+   "source": "NOT A NEW MEASUREMENT: reproduced exactly from station/materials.py's furn_stall_frame, whose source IS this object in this frame \u2014 'reference/04-sector-red/more zocalo.png, raw: the black tubular hoop round a caf\u00e9 pedestal (0.455,0.824)-(0.530,0.840) reads 0.094/0.063/0.090, and against that frame's deck anchor (deck tile raw V 0.690 -> kit_deck_plate 0.360, x0.522) that is 0.049', with a second-frame, second-sector cross-check at 0.109 on 05-sector-green/council chambers.webp. That raw reading was recomputed here from the frame before reuse and reproduces to three decimals. INDEPENDENT CORROBORATION on a different member: the awning spars at (0.640,0.120)-(0.700,0.130) read balanced (gains 0.936/1.137/0.951) V 0.173, which through this frame's balanced anchor (deck V 0.656 -> 0.360, x0.549) is 0.095 \u2014 landing inside furn_stall_frame's own 0.049-to-0.109 bracket, from a member it did not measure.",
+   "extrapolated": "That the chair frame, the awning spars and the sign mast are one armature. The frame supports it \u2014 0.049 for the chair hoop and 0.095 for the spars, both black tube of the same 25-45 mm class \u2014 and reference/00-INDEX.md reads the Zocalo canopies as 'fabric on radiating spars, parasol-fashion', which is the same slender armature the chairs are made of. What is NOT extrapolated is the value: it is furn_stall_frame's, cross-checked in two frames and two sectors. Roughness 0.32 is furn_stall_frame's and matches the hard specular streak the frame shows along the chair's top rail.",
+   "reasoning": "Three groups, 10,164 triangles across three bays, all of them thin members read in silhouette. What they need is to be dark enough to draw the market's structure against the pale deck and the lit canopies, and the one number the library already has for exactly this object is 0.075. The spar measurement is the useful new thing: it corroborates a value derived from a chair with a reading taken off an awning, which is the kind of independent agreement that makes a number safe to reuse rather than merely convenient."
+  },
+  {
+   "name": "zoc_chair_seat",
+   "title": "Caf\u00e9 Chair Seat \u2014 moulded dark pad",
+   "binds": [
+    "zoc_chair_seat"
+   ],
+   "albedo": [
+    0.105,
+    0.103,
+    0.102
+   ],
+   "roughness": 0.62,
+   "metallic": 0,
+   "specular": 0.4,
+   "texture": null,
+   "uv_scale_denom": null,
+   "emission": null,
+   "emission_energy": null,
+   "scenes": [
+    "interior"
+   ],
+   "source": "NO FRAME SHOWS IT. In reference/04-sector-red/more zocalo.png every chair in the shot is either occupied or seen from behind its back panel, and the seat pad \u2014 a 35 mm disc at 0.45 m, station/zocalo.py CHAIR_SEAT_H_M \u2014 is occluded in all of them; reference/04-sector-red/zocalo.webp shows the concourse at standing-crowd height with no seat visible at all. Nothing here is measured on the seat. The two sourced quantities it is tied to are the chair's own frame, station/materials.py's furn_stall_frame at 0.075 (measured on this chair's hoop in this frame), and the council chambers cross-check at 0.109 that furn_stall_frame records.",
+   "extrapolated": "All four numbers. What constrains them: (1) the chairs read black overall in both authority-1 frames, so the seat cannot be pale or the silhouette the frames show would break; (2) it must not be the same value as the tube it is bolted to, or the group is wasted geometry \u2014 0.105 sits at the top of the 0.049-0.109 bracket furn_stall_frame measured, so the pad is the lightest thing in a black chair and still black; (3) it is a seat, so it is matte where the tube is glossy, which is the whole of the roughness argument (0.62 against 0.32) and is the difference a player will actually see when they look down at one; (4) it stays a dielectric because a moulded pad is. Overturned by one frame of an empty Zocalo chair from the front \u2014 the cheapest reference gap in this room.",
+   "reasoning": "Declared invention with the gap named, rather than a silent copy of the frame material. The honest content of this entry is the sentence that no held frame contains an unoccupied Zocalo chair seen from the front, which is worth more to the next session than a fourth plausible black."
+  },
+  {
+   "name": "zoc_service_chrome",
+   "title": "Drinks Service \u2014 polished steel shaker and tumblers",
+   "binds": [
+    "zoc_service_chrome"
+   ],
+   "albedo": [
+    0.56,
+    0.565,
+    0.575
+   ],
+   "roughness": 0.18,
+   "metallic": 1,
+   "specular": 0.55,
+   "texture": null,
+   "uv_scale_denom": null,
+   "emission": null,
+   "emission_energy": null,
+   "scenes": [
+    "interior"
+   ],
+   "source": "F0 reproduced exactly from station/materials.py's furn_service_steel ('Service Stainless \u2014 servery, tray stack'), the same alloy in the same use. reference/04-sector-red/more zocalo.png (authority 1) establishes what the object is and that it is a mirror: the shaker at (0.578,0.630)-(0.598,0.690) reads balanced (gains already in materials.GREY_WORLD_GAINS, 0.936/1.137/0.951) V 0.139 and the tumbler cluster at (0.560,0.690)-(0.575,0.720) V 0.158 \u2014 DARKER than the pale table they stand on at V 0.754, which is the signature of a specular surface reflecting a dark room rather than of a dark material. Its size is a load-bearing measurement in station/zocalo.py: 0.093 m across, one of the three independent cross-checks that confirmed the camera solve, because a cocktail shaker is 90 mm and nothing in the derivation knew that.",
+   "extrapolated": "Roughness 0.18, down from furn_service_steel's 0.31. The frame shows hard, near-mirror highlights running the length of the shaker and each tumbler, which a 0.31 servery finish would not give; 0.18 is bar chrome. It is deliberately NOT taken below 0.15: that threshold is reserved for glass, still water and polished metal, and while a shaker is arguably the third, this one is a working bar's \u2014 handled and fingerprinted, not a showroom's. Nothing else is extrapolated; the F0 triple is furn_service_steel's, which is also where grab_rail_bare and tram_saloon_post sit.",
+   "reasoning": "Twelve of these stand on tables across three bays, 2,288 triangles, and they are the only true mirror in the room. That matters more than their size: a specular object is how a player reads how bright the space around them is, so it is the one surface that makes the Zocalo's practicals visible from a seat. Reproducing the library's stainless F0 rather than inventing a chrome keeps the shaker, the servery counter and the grab rails on one metal."
+  },
+  {
+   "name": "zoc_stall_canvas",
+   "title": "Stall Canvas \u2014 awning fabric and the goods stacked on the counter",
+   "binds": [
+    "zoc_stall_awning",
+    "zoc_stall_goods"
+   ],
+   "albedo": [
+    0.38,
+    0.345,
+    0.312
+   ],
+   "roughness": 0.92,
+   "metallic": 0,
+   "specular": 0.3,
+   "texture": null,
+   "uv_scale_denom": null,
+   "emission": null,
+   "emission_energy": null,
+   "scenes": [
+    "interior"
+   ],
+   "source": "Values reproduced exactly from station/materials.py's furn_stall_canvas, whose title is already 'awning fabric and stacked goods'. THE TWO-LIGHT PROOF, run here on the canopy itself and it is the strongest instance of the test in this room: in reference/04-sector-red/more zocalo.png the fabric at (0.615,0.135)-(0.720,0.165), balanced with the gains already in materials.GREY_WORLD_GAINS (0.936/1.137/0.951), reads rgb 0.268/0.187/0.172 H 28 S 0.326; in reference/04-sector-red/zocalo.webp the same canopy at (0.205,0.180)-(0.290,0.235), balanced (0.906/1.185/0.950), reads rgb 0.526/0.985/0.920 H 173 S 0.444. One fabric, two frames, two lights, 145 degrees apart \u2014 so neither hue belongs to the cloth. The stall goods in more zocalo.png at (0.700,0.190)-(0.730,0.215) read H 24 S 0.407 under the same warm string lights that make the canopy read H 28.",
+   "extrapolated": "Nothing new; furn_stall_canvas's mild warm bias is inherited rather than re-derived. What this entry ADDS is a ceiling on it: the 145-degree swing between the two frames caps how much of any warmth can be the cloth, so furn_stall_canvas's S 0.179 is at the top of what the evidence will carry and must not grow. Roughness 0.92 is furn_stall_canvas's \u2014 the roughest surface in the library, which is right for a slack fabric canopy and for cloth-wrapped goods.",
+   "reasoning": "The canopies are the market's silhouette \u2014 closed hipped solids, not shells, precisely so they have thickness against the arch behind them \u2014 and they are lit from underneath by the stalls' own string lights in one frame and from above by a cyan neon in the other. That is the ideal case for the project's cheap test, and running it here is what stops the awning shipping as tan canvas, which is what a single look at more zocalo.png would have produced. Goods share the material because they are the same cloth-and-crate mass at the same distance and no frame separates them."
+  },
+  {
+   "name": "zoc_stall_post",
+   "title": "Stall Post \u2014 pale salvaged section, the market's uprights",
+   "binds": [
+    "zoc_stall_post"
+   ],
+   "albedo": [
+    0.42,
+    0.418,
+    0.412
+   ],
+   "roughness": 0.75,
+   "metallic": 0,
+   "specular": 0.35,
+   "texture": null,
+   "uv_scale_denom": null,
+   "emission": null,
+   "emission_energy": null,
+   "scenes": [
+    "interior"
+   ],
+   "source": "Two frames, and they bracket rather than fix the level. reference/04-sector-red/zocalo.webp (authority 1), balanced with the gains already in materials.GREY_WORLD_GAINS (0.906/1.185/0.950): the stall's square uprights are pale and legible at magnification; the post at (0.157,0.300)-(0.180,0.480), directly under the cyan neon, reads balanced rgb 0.444/0.441/0.637 H 232 S 0.328 V 0.637, and the post at (0.226,0.300)-(0.252,0.500), further from it, reads 0.188/0.223/0.291 H 210 S 0.271 V 0.294. Against that frame's lit structural anchor (whole-frame k-means 0.458, wall panel 0.488, mean 0.473 -> ALBEDO_ANCHOR, x0.972) that is 0.619 and 0.286. NEUTRALITY, by the two-light test and by the two-frame test: saturation RISES with value between those two posts (0.271 at V 0.294, 0.328 at V 0.637), which is the additive signature, and in reference/04-sector-red/more zocalo.png the same posts at (0.734,0.170)-(0.746,0.250) read H 317 balanced \u2014 275 degrees away from H 232. The blue is the neon.",
+   "extrapolated": "The level inside the measured 0.286-0.619 bracket, and roughness/specular. 0.420 is set just below ALBEDO_ANCHOR on three constraints: the post must be paler than the black armature it carries (0.075) and paler than the canvas it holds up (0.380), or the stall has no structure to read; it must be BELOW the finished wall behind it, because a market stall is built out of salvaged section and a station that keeps its concourse walls painted does not paint a trader's uprights; and the bracket's own geometric mean is 0.421, which is where it lands. Roughness 0.75 is sawn, unfinished stock \u2014 the roughest non-fabric surface in this family and deliberately rougher than any structural panel. Overturned by: a Zocalo frame with a stall post out of the neon's throw.",
+   "reasoning": "The posts are what make a stall read as temporary against permanent architecture, which is the single thing both authority-1 frames agree the Zocalo market IS. They fail the level test the way most objects in this room do \u2014 the only frame that shows them clearly has a neon tube half a metre away \u2014 so the bracket is published and the choice inside it is argued from what the object is for. The neutrality, at least, is not a judgement call: 275 degrees of hue swing between two frames settles it."
+  },
+  {
+   "name": "zoc_stall_counter",
+   "title": "Stall Counter \u2014 painted steel serving top",
+   "binds": [
+    "zoc_stall_counter"
+   ],
+   "albedo": [
+    0.4,
+    0.396,
+    0.388
+   ],
+   "roughness": 0.45,
+   "metallic": 0,
+   "specular": 0.5,
+   "texture": null,
+   "uv_scale_denom": null,
+   "emission": null,
+   "emission_energy": null,
+   "scenes": [
+    "interior"
+   ],
+   "source": "Values reproduced exactly from station/materials.py's furn_casework ('painted steel desk, counter and locker bodies'), which already covers prop_counter and prop_issue_counter elsewhere in the station. reference/04-sector-red/zocalo.webp (authority 1) shows the counter as a pale horizontal slab across the stall front at (0.140,0.428)-(0.270,0.448), with bottles standing on it. THAT REGION CANNOT SET A LEVEL and this entry says so: balanced with the gains already in materials.GREY_WORLD_GAINS (0.906/1.185/0.950) it reads V 0.790 against that frame's lit structural anchor of 0.473, i.e. 1.67x a lit wall \u2014 a clipped highlight on a slab lying 0.6 m under a neon tube, not an albedo.",
+   "extrapolated": "Nothing about the numbers, which are furn_casework's. What IS a judgement is the decision to use furn_casework rather than measure: the only frame showing a Zocalo counter shows it blown out, so the choice is between a number from a clipped highlight and a number the library already measured for the same class of object. Overturned by: a Zocalo stall counter out of a practical's throw.",
+   "reasoning": "One counter per stall, four stalls a bay on two levels, so this is 288 triangles a run in the most-looked-at 1.0 m band of the colonnade \u2014 the height a player's eye sits at while walking past a trader. Reusing the station's counter material keeps a Zocalo stall and a customs issue counter made of the same painted steel, which is what a station that fabricates its own fittings would actually produce, and avoids a third counter grey in a library that already has two."
+  },
+  {
+   "name": "zoc_stall_light",
+   "title": "Stall String Lights \u2014 the warm bulbs along the awning eaves",
+   "binds": [
+    "zoc_stall_light"
+   ],
+   "albedo": [
+    0.3,
+    0.24,
+    0.19
+   ],
+   "roughness": 0.35,
+   "metallic": 0,
+   "specular": 0.25,
+   "texture": null,
+   "uv_scale_denom": null,
+   "emission": [
+    1,
+    0.68,
+    0.4
+   ],
+   "emission_energy": 2.2,
+   "scenes": [
+    "interior"
+   ],
+   "source": "Emission and albedo reproduced from station/materials.py's light_downlight, the library's warm practical register. reference/04-sector-red/zocalo.webp (authority 1) shows them unmistakably: a dense run of individual point sources strung along the awning eave at (0.010,0.165)-(0.200,0.250), dozens of discrete bulbs. reference/04-sector-red/more zocalo.png shows the same strings on the stall at (0.756,0.158)-(0.774,0.198), balanced with the gains already in materials.GREY_WORLD_GAINS (0.936/1.137/0.951) reading rgb 0.162/0.125/0.116 H 21 S 0.286 \u2014 warm, and the same warm signature (H 21-30) appears on every surface those strings reach in that frame: the canopy at H 28, the goods at H 24, the spars at H 17.",
+   "extrapolated": "The energy, 2.2, and the decision to take the warm register rather than the reading. In zocalo.webp the bulbs measure raw (0.787,0.773,0.884) \u2014 bluer than white \u2014 because the cyan Zocalo neon is 1.5 m above them and their cores are 2-3 px across; a source that small cannot outvote a resolved measurement, and more zocalo.png's H 21 on the same fitting is the resolved one. Energy is set below the rib lamp's 4.0 and below light_downlight's 4.0 because these are small decorative bulbs strung six to nine per stall, not architectural fittings: they should read as a glittering line at 20 m and not as a floodlight at 2 m. Overturned by: a Zocalo frame with the strings lit and the neon off.",
+   "reasoning": "2,016 triangles across three bays and every one of them is a light. vendor_stall() puts 6-9 bulbs on each awning and its comment is the argument: 'Signage and practicals ARE the light in this space; there is no ambient fill anywhere in the reference.' Unlit, the market's eave line goes dark and the colonnade loses the thing that makes it read as a market rather than as an arcade \u2014 and it is exactly the interior form of the standing blocking finding that a station with no emissive windows reads as a derelict."
+  },
+  {
+   "name": "zoc_stall_sign",
+   "title": "Stall Disc Sign \u2014 the trader's board on its braced pole",
+   "binds": [
+    "zoc_stall_sign"
+   ],
+   "albedo": [
+    0.47,
+    0.462,
+    0.436
+   ],
+   "roughness": 0.6,
+   "metallic": 0,
+   "specular": 0.35,
+   "texture": null,
+   "uv_scale_denom": null,
+   "emission": null,
+   "emission_energy": null,
+   "scenes": [
+    "interior"
+   ],
+   "source": "reference/04-sector-red/more zocalo.png (authority 1), balanced with the gains already in materials.GREY_WORLD_GAINS (0.936/1.137/0.951). The disc sign stands clear of the stall at the frame's right edge, a pale circular board on a pole carrying dark lettering; measured at (0.958,0.075)-(0.998,0.160) it reads rgb 0.308/0.290/0.239 H 50 S 0.218 V 0.308. The load-bearing figure is a RATIO in one light, not the level: the gallery structure immediately behind it at (0.535,0.140)-(0.585,0.175) reads V 0.147, so the sign is 2.1x the painted structure it hangs in front of, and it is the palest object in the colonnade's upper band. reference/04-sector-red/zocalo.webp shows the same class of trader board at (0.138,0.285)-(0.188,0.380) as a dark banner with pale script \u2014 the opposite polarity, so the group carries both readings.",
+   "extrapolated": "The level and the saturation. The frame's absolute readings in that band are three to four stops under the foreground and cannot be anchored; what it gives is the 2.1x ratio, and 0.470 is chosen as one notch ABOVE ALBEDO_ANCHOR because a shop sign has to read against the structure it hangs on, which is what the ratio says it does. Saturation is cut from the measured 0.218 to 0.072: the sign sits in the throw of the stall's warm string lights, and every other surface those lights reach in this frame reads H 17-30, so most of the measured warmth is the practicals and only a cream cast survives as paint. Overturned by: any Zocalo frame showing a trader's board under a neutral key.",
+   "reasoning": "One disc per even-numbered stall variant, so half the market carries one, and it is the only element in vendor_stall() whose whole job is to be read from across the concourse. It is set above the wall rather than below it because that is the one thing the frame establishes clearly \u2014 it is 2.1x the structure behind it \u2014 and a sign darker than its background does not work as a sign. The saturation cut is the standing lesson of this library applied again: five times now a colour in a frame has belonged to the light, and a board sitting under a string of amber bulbs is the textbook setup for the sixth."
+  }
+ ],
+ "coverage_note": "COVERAGE IS COMPLETE AND WAS VERIFIED BY EXECUTION, NOT BY READING. zocalo.py builds without error; its self-test passes 96/96. All 38 group names in the canonical build (plus the latent 39th, zoc_table_five) resolve to exactly one material each under the substring/longest-wins rule, checked by running the resolver over the real group set with the 24 proposals loaded: no group has zero owners, none has two, no proposed fragment collides with an existing bind, and no proposed fragment matches any of the 163 non-zocalo group names this project emits (rooms.py's 124 plus command_control 15, council_chamber 15, docking_bay 9, signage 3 \u2014 those four counts reproduce the figures given in the brief, which is the check that my method is the same method).\n\nTHREE GROUPS ARE DELIBERATELY NOT CLAIMED, because claiming them would FAIL the ambiguity gate rather than help. light_downlight already resolves to the material of the same name (it is interior_kit.wall_assembly's tagged span, not zocalo's own geometry). zoc_soffit already resolves to kit_reveal via its 'soffit' fragment, which is correct \u2014 kit_reveal's binds already include 'ceiling_slab', so the library's own position is that this is a ceiling material, and the frame agrees that the Zocalo ceiling is the darkest thing in it (balanced V 0.077-0.084 at (0.594,0.030)-(0.780,0.100)). zoc_bulkhead already resolves to kit_wall_plate via 'bulkhead', also correct, since the end cap is a wall. Adding 'zoc_soffit' or 'zoc_bulkhead' as new fragments would make two materials claim one group, which test_materials_layer3.ambiguous() reports as a defect.\n\nONE THING THE PROPOSAL FORMAT CANNOT EXPRESS, AND IT MUST NOT BE DROPPED: the group zoc_rib needs GROUP_ALIASES[\"zoc_rib\"] = \"zoc_structure\" adding to materials.py by hand. apply_proposals.py only emits Material(...) blocks, so this line will not appear from the JSON and zoc_rib \u2014 1,248 triangles a run, the room's signature element \u2014 will come up unbound. It is not avoidable by choosing better fragments: every substring of \"zoc_rib\" is also a substring of \"zoc_rib_lamp\", so no fragment can catch the arch without also catching its lamps, and the lamps must be emissive. The alias table is the mechanism materials.py already documents for exactly this shape (door_leaf -> kit_pilaster, ground_verge -> ground_parkland). The alias is legal here because no proposed or existing fragment matches \"zoc_rib\", so materials._selftest's \"no alias is shadowed by a bind fragment\" check passes \u2014 verified by running it.\n\nWHAT IS WEAKEST, in order. (1) zoc_chair_seat is measured on nothing: no held frame contains an unoccupied Zocalo chair seen from the front. (2) zoc_deck_worn's delta is invented; what is published instead is the measurement that bounds it, 2.4% tile-to-tile across ten clean cells. (3) zoc_deck_chevron ships the band's colour and value but NOT its stripe, because hazard_chevron is in COLOUR_SHEETS and bakes hazard yellow, which is three times the saturation this band measures \u2014 one procedural ochre chevron sheet closes it. (4) zoc_stall_post's level is a bracket (0.286-0.619) with the choice argued, not a reading. (5) Absolute levels anywhere above the gallery line in more zocalo.png are unusable \u2014 that band is three to six stops under the foreground \u2014 so every material up there is anchored on a ratio inside the frame plus ALBEDO_ANCHOR, never on a raw value.",
+ "findings": "1. THE MODULE HAS NO write_obj(path), SO THE GATE'S EXISTING HELPER WILL FAIL ON IT. test_materials_layer3._via_write_obj(mod) calls mod.write_obj(path); zocalo exposes write_bay(path, p=None, **kw) and write_run(path, bays=3, p=None, **kw) instead. A BESPOKE_BUILDERS entry for zocalo needs its own callable, and it should pass cap_ends=True: write_run's default is cap_ends=False, which omits zoc_bulkhead and yields 37 groups instead of 38. The cheapest correct entry is a builder that calls zocalo.zocalo_run(3, cap_ends=True) and returns set(groups) directly \u2014 no temp file, no OBJ round trip, and it is what the module returns natively.\n\n2. THE GROUP LIST IS CONFIGURATION-DEPENDENT AND ANY ENUMERATION THAT IGNORES THAT IS SHORT. zocalo_bay picks stair_side from (1,0,-1,0)[index % 4] and sign from index % 3 == 0, so a single bay at the wrong index emits neither a stair nor a neon sign; zocalo_run(1) is not a superset of zocalo_run(3); cap_ends adds zoc_bulkhead; and params(table_pedestal_five=True) REPLACES zoc_table_col with zoc_table_five. I swept 4 bay counts x 2 cap settings x 5 seeds, 8 bay indices x 3 stair sides x 4 seeds, all 8 stall variants, both gallery sides with and without rail, and every standalone part function; the union is stable at 38, or 39 including the latent zoc_table_five.\n\n3. kit_rail_band IS NEUTRAL AND IT OWNS THE FRAGMENT 'handrail'. Its albedo is (0.5302, 0.5302, 0.5302). The Zocalo's handrail \u2014 the same interior_kit.handrail() geometry, called by both gallery() and stair_flight() \u2014 measures a saturated oxide red that PASSES the multiplicative-tint test in reference/04-sector-red/zocalo.webp: saturation flat at 0.630-0.713 across a 3.6x range of value (0.082 -> 0.298). This is the first surface in this library where that test has come back positive after five consecutive negatives, and it means kit_rail_band is very likely wrong wherever a handrail is visible, not only here. Worth re-measuring against 07-sector-grey/grey level 1.webp before the corridor kit is judged.\n\n4. shell_deck_public's DECK_PLATE REPEAT IS 2.2x TOO COARSE, AND ITS OWN NOTE ASKS FOR THE FIX. That material carries uv_scale 1/4.0 (1.0 m tiles) and says so: 'estimated off more zocalo.png's joint grid against the caf\u00e9 furniture; it is the weakest number in this material and one frame with a person standing on a tile joint would close it.' zocalo.py already has better evidence than that frame \u2014 a solved camera (horizon 370.5 px, eye 1.265 m, focal 2517 px, cross-checked against three furniture sizes the derivation did not know) that rectifies the deck's two joint families to 0.52 m and 0.40 m, recorded as MEASURED['deck_tile_m_range'], with the module building at TILE_M = 0.45. deck_plate is 4 plates across a repeat, so the correct denominator is 1.8 m, not 4.0. The Zocalo materials use 1.8; shell_deck_public and every concourse it covers should follow, or two decks in one shot will disagree about tile size.\n\n5. A NEW NEGATIVE-RESULT FRAME, worth adding to materials.NEGATIVE_RESULTS beside Doug's Dugout: reference/11-props-and-technology/more zocalo signage.webp has grey-world gains of 2.135 / 1.233 / 0.581. That is far outside anything else in the set (the two usable Zocalo frames are 0.936/1.137/0.951 and 0.906/1.185/0.950) and puts it in the same class as Doug's Dugout at 0.723/1.280/1.197 \u2014 it must not be measured for albedo. I did not use it.\n\n6. THE TWO ZOCALO FRAMES REPRODUCE GREY_WORLD_GAINS EXACTLY, computed from the images here before anything was measured: more zocalo.png 0.9362/1.1368/0.9504 against the table's 0.936/1.137/0.951, and zocalo.webp 0.9059/1.1854/0.9501 against 0.906/1.185/0.950. Two existing measurements in materials.py were also reproduced to three decimals before being reused \u2014 the deck tile at (0.237,0.652)-(0.287,0.712) raw 0.596/0.573/0.690 (furn_pale_composite) and the chair hoop at (0.455,0.824)-(0.530,0.840) raw 0.094/0.063/0.090 (furn_stall_frame). That is the control on the method, not a courtesy.\n\n7. THE ZOCALO WORDMARK IS ATTESTED IN BOTH COLOURS AND THE LIBRARY CURRENTLY IMPLIES ONE. SECTOR_ACCENT's comment says 'Zocalo cyan is signage, not ambience', but more zocalo.png \u2014 the authority-1 frame this entire module is solved from \u2014 shows the wordmark orange-red, clipping at raw (0.980, 0.510, 0.294) at p95. zocalo.webp and 11-props-and-technology/Zocalo neon signage in background.jpg both show it cyan. I shipped orange-red and gave three reasons, one of which is that emissive_signage and sign_neon_venue are already cyan. Either way the comment in SECTOR_ACCENT should record that both are attested rather than implying one.\n\n8. THE ROOM'S LIGHTING IS ALREADY IMPLICIT IN LAYER 3 AND LAYER 4 SHOULD READ IT BEFORE ADDING ANYTHING. Five of these 24 materials are emissive and they are, between them, the only light in the volume: zocalo.py states it twice \u2014 'Signage and practicals ARE the light in this space; there is no ambient fill anywhere in the reference.' The frames bear it out: every surface within reach of the stalls' string lights reads H 17-30 and the same surfaces read H 317-338 outside it, a ~300-degree swing that is entirely lighting. A layer-4 pass that adds an ambient fill here will destroy the thing both authority-1 frames are actually about.",
+ "_cluster": "zocalo"
+}

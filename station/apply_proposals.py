@@ -106,6 +106,16 @@ def validate(family, mats, seen_names, seen_frags):
     return bad
 
 
+def _q(text):
+    """Make a value safe inside a double-quoted Python literal.
+
+    Straight double quotes become single; a stray backslash would escape the
+    closing quote, so it goes too. Applied to EVERY string field -- see the
+    note in render().
+    """
+    return str(text).replace("\\", "/").replace('"', "'")
+
+
 def _wrap(text, width, indent):
     """Comment-wrap prose to the project's 79 columns."""
     words, lines, cur = text.split(), [], indent
@@ -131,7 +141,12 @@ def render(family, mats):
         for ln in _wrap(m["reasoning"], 79, "        # "):
             out.append(ln)
         out.append("    a(Material(")
-        out.append(f'        "{n}", "{m["title"]}",')
+        # EVERY string field needs escaping, not just the long ones. The
+        # first version escaped `source` and `extrapolated` -- the fields
+        # likely to quote a frame -- and left `title`, which is exactly where
+        # a proposer wrote The "5" Panel. It emitted a SyntaxError, so it
+        # failed loudly; a field that merely truncated would not have.
+        out.append(f'        "{_q(n)}", "{_q(m["title"])}",')
         out.append(f"        albedo=({alb[0]:.3f}, {alb[1]:.3f}, {alb[2]:.3f}),"
                    f" roughness={m['roughness']}, metallic={m['metallic']},")
         line = f"        specular={m['specular']}"
@@ -146,9 +161,8 @@ def render(family, mats):
         binds = ", ".join(f'"{b}"' for b in m["binds"])
         out.append(f"        binds=({binds}{',' if len(m['binds']) == 1 else ''}),"
                    f' scenes=("interior",),')
-        out.append(f'        source="{m["source"].replace(chr(34), chr(39))}",')
-        out.append(f'        extrapolated="'
-                   f'{m["extrapolated"].replace(chr(34), chr(39))}"))')
+        out.append(f'        source="{_q(m["source"])}",')
+        out.append(f'        extrapolated="{_q(m["extrapolated"])}"))')
     return out
 
 
