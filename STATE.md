@@ -2885,17 +2885,58 @@ was 0.07. The real answer was already written in that material's own source note
 the same reason the pilaster strip is, and **customs therefore has no measured cast source and is
 not at layer 4** — the honest count rather than a rescued one.
 
+## Session 3p — a span is not a fitting, and a fitting is not always a point
+
+Both defects from the previous list are closed, and the numbers say what they were worth. A tagged
+span was cut into contiguous runs and each run became ONE lamp at its centroid — so a module that
+emitted all of one fitting family in one go got one lamp however many it had built. Measured across
+every lit room, that lost three quarters of the station's lamps and put several survivors in mid-air.
+
+`fitting_bodies()` cuts a span into connected bodies, welded **by position rather than by vertex
+index** — `council_chamber._M.quad` appends four fresh vertices per quad, so index connectivity
+would have called one continuous cove twelve fittings and multiplied its flux by twelve.
+`sample_body()` then samples any body longer than its own throw, sharing its energy **by area**, so
+sampling changes where the light comes from and never how much there is.
+
+**The recovered counts are the evidence, because they are numbers the MODULES chose and this code
+had to rediscover independently:**
+
+| room | fitting | before | after | what the module says |
+|---|---|---|---|---|
+| docking_bays | `bay_lamp` | 13 | **39** | `LAMPS_PER_BAY_GIRDER = 3` × 13 girders |
+| zocalo | `zoc_rib_lamp` | 6 | **30** | five per rib, measured, × 6 ribs |
+| cnc | `cc_light_strip` | 1 | **36** | four wall courses, sampled |
+| council_chamber | `light_house_cove` | 1 | **6** | a 33.6 m continuous cove |
+
+The single `cc_light_strip` lamp had been sitting **6.92 m from the nearest strip with a measured
+range of 3.5 m** — twice its own reach away from the fitting it stood for, in the middle of a room
+the measurement says stays dark.
+
+**The corridor is byte-identical**: 12 lamps, 36.00 total energy, before and after. That mattered
+because it is the anchor every exposure in the file was calibrated against, and it is now asserted
+rather than hoped for.
+
+**One gate I wrote was vacuous and had to be replaced.** "Every light is inside its fitting's
+bounding box" passes the old rig trivially — the centroid of a set of points is always inside their
+bounding box. The version that ships probes the fitting's *surface* and fires on the old rig at
+exactly the distances its comment claims (cove 0.216 of its reach, `cc_light_strip` 1.976,
+`zoc_rib_lamp` 0.288). A first attempt at *that* measured distance to the nearest **vertex** and
+failed a correctly-placed sample 4.32 m from the corner of an 8.64 m box — the same lesson
+`open_standpoint` already carries: **coarse architecture is what this project is made of and vertex
+distance is never the question.**
+
+**A measurement caveat worth carrying.** The corridor reads x1.64 of its reference at 640×360 and
+x1.41 at 1280×720 — resolution dependence, not regression. The exposure tables were calibrated at
+640×360 against a 1.40 anchor derived at 1280×720, so they are internally consistent but the anchor
+and the calibrations were taken at different resolutions.
+
 ## NEXT SESSION — layer 4, the last 28
 
-1. **A light at a large fitting's centroid lights the fitting.** `docs/engine-council.png` shows the
-   cove as a bright arc, and it is not the emissive — that is now 1.2 — it is the cove's own omni
-   sitting ~5 m from it at range 18 and washing it point-blank. Affects any fitting whose geometry
-   is large compared with its range. The fix is probably an offset along the fitting's normal.
-2. **`to_spans` collapses a contiguous run into one lamp.** The chamber's twelve cove segments are
-   twelve quads of one group emitted consecutively, so they become one span and one light at the
-   arc's centroid. That is documented behaviour and is right for a wall course; it is wrong for a
-   ring of twelve. A per-instance tag or a distance-based split is the answer.
-3. **The remaining bespoke modules.** Layer 4 stands at 68/118; the other 50 are the module-built places, and
+1. **The council chamber's right half is black** (`docs/engine-council.png`, crushed 52%) because
+   `house_cove()` only sweeps the rear half-arc, 0 to π. Its measured ambient ratio of 0.210 makes
+   it one of the two brightest spaces on the station — a room with no dark corners. Either the cove
+   goes all the way round or a second one does.
+2. **The remaining bespoke modules.** Layer 4 stands at 68/118; the other 50 are the module-built places, and
    several already build lamps (`zoc_rib_lamp`, `bay_lamp`, `cc_light_strip`). What they do not have
    is a calibrated exposure and a frame measured against its reference, which is what layer 4 *is*.
    The measured fixtures for them are already committed in `docs/layer4-lighting/public_social.json`

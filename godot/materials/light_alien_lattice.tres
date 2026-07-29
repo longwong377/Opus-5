@@ -8,11 +8,11 @@
 ; lost with no diff to show for it. Edit station/materials.py.
 
 [resource]
-resource_name = "Arrival Hall Ceiling Grid — the backlit amber coffer"
-albedo_color = Color(0.48, 0.47, 0.38, 1)
+resource_name = "Alien Sector Overhead Grille — the amber source above"
+albedo_color = Color(0.12, 0.098, 0.062, 1)
 metallic = 0
 metallic_specular = 0.22
-roughness = 0.35
+roughness = 0.32
 emission_enabled = true
-emission = Color(1, 0.987, 0.734, 1)
-emission_energy_multiplier = 0.8
+emission = Color(1, 0.841, 0.272, 1)
+emission_energy_multiplier = 1.2

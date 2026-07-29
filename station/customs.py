@@ -120,11 +120,105 @@ BOLLARD_R_M = 0.55
 BOLLARD_H_M = 1.15
 BOLLARD_SEG = 12
 
-# Vertical light strips ranked along the gate wall.
-STRIP_W_M = 0.22
-STRIP_H_M = 2.6
-STRIP_PITCH_M = 1.35
-STRIP_SILL_M = 0.9
+# ---------------------------------------------------------------------------
+# The gate wall's light course -- THE ROOM'S ONE CAST SOURCE
+# ---------------------------------------------------------------------------
+# THIS WAS BUILT AS THE WRONG SHAPE FOR THREE LAYERS. The docstring above reads
+# the frame as "vertical white light strips ranked along the left-hand wall",
+# which is accurate, and the module turned it into nineteen full-height bars
+# 2.6 m tall standing off a 0.9 m sill. Magnified, the frame shows one
+# horizontal COURSE of short vertical cells at mid-height -- the cells are
+# vertical, the fitting is not.
+#
+# Measured on the authority-1 frame (gains recomputed from it as
+# 1.0456/1.0655/0.9050, reproducing the figure materials.light_ceiling_grid
+# already cites for this frame). Near run at (0.253,0.727)-(0.358,0.787): a
+# per-column max-luminance profile puts cell centres at px 331/345/362/377/
+# 406/418, pitch 14.5 px, and the row profile puts the band's 10%-of-peak edges
+# at rows 460 and 502, height 41 px. So PITCH / BAND HEIGHT = 0.354, which is
+# dimensionless and therefore the only thing a frame with no scale bar can
+# give. The far run corroborates it at 0.34-0.42 (11-13.5 px pitch, ~32 px
+# band) -- two depths, one ratio, which is what says the two runs are one
+# fitting.
+#
+# THE METRE COMES FROM THE FAMILY, NOT FROM THIS FRAME. 00-INDEX.md's
+# generalisation is that these strips are one station-wide fitting tinted per
+# environment, and docs/layer4-lighting/corridor_kit.json measures its cell
+# module in the residential corridor: "Cell pitch 0.196 m". Through the
+# measured ratio that fixes the band:
+#
+#     band height = 0.196 / 0.354 = 0.554 m  ->  0.55
+#     cell width  = 0.196 x 0.75   = 0.147 m   (duty from the same measurement's
+#                                               0.75-0.85; the low end, because
+#                                               a 14.5 px period on this frame
+#                                               cannot resolve duty and a wide
+#                                               cell is the flattering error)
+#
+# AND THE SCALE IT IMPLIES IS CHECKED AGAINST A HUMAN, using nothing the
+# derivation used: 41 px = 0.554 m is 74 px/m at that depth, so the band's
+# lower edge at y 0.790 puts the deck at y 1.010 -- just off the bottom of the
+# frame -- and a 1.75 m standing head at y 0.806. The crowd's heads at that x
+# sit at y 0.80-0.82. The check passes, and if it had failed it would have
+# meant the 0.196 m module does not transfer between the two rooms.
+#
+# Sill 1.90 m falls out of the same arithmetic, and it is the architectural
+# point of the fitting: the course runs from just above a standing crowd to
+# 2.45 m, just over a door head, so a hall full of people is lit over their
+# heads and the light is never in anyone's eyes.
+STRIP_W_M = 0.147         # one cell across; 0.75 duty on the 0.196 m module
+STRIP_H_M = 0.55          # band height, = 0.196 / 0.354
+STRIP_PITCH_M = 0.196     # corridor_kit.json's measured cell module
+STRIP_SILL_M = 1.90       # underside of the course above the deck
+
+# The exact entry this fitting needs in tools/export_scene.FIXTURE_LIGHTING,
+# kept here because THIS is the module that measured it and export_scene is
+# where it is consumed. Membership of that table is the gate: a group absent
+# from it glows and casts nothing.
+#
+# WHY THIS ONE AND NOT THE CEILING COFFER. The coffer was tried in session 3o
+# and withdrawn -- hall() emits 210 of them, the frame came back at 18.9x its
+# reference with 14% clipped, and materials.light_ceiling_grid's own source
+# note already ranked the grid LAST of the frame's three source families
+# (screens 0.99, wall strips 0.82, ceiling grid 0.55) and called it "ambient
+# decoration rather than a task light". Recomputed here over the same frame as
+# balanced V p99: screens 0.905, wall strips 0.839, grid 0.472 -- the same
+# order, and the same 0.55:0.82 ratio to within a box choice. The wall strips
+# are the strongest non-screen family in the room and they are the ones that
+# measurably light a wall; see materials.light_arrival_strip for the two-column
+# gradient test and for the corridor control that gives the opposite answer.
+#
+# RANGE. Not measured here, and the honest reason is that this frame cannot
+# measure it: the only surface the band lights that is visible is the wall it
+# is set INTO, so every ray reaching it arrives at grazing incidence and the
+# falloff collapses far faster than the fitting's reach into the room --
+# corridor_kit.json flags the same weakness ("that test is weak because the
+# face is coplanar with the emitter"). Taken coplanar it gives 0.82 m to 3% of
+# fill, which is a floor and not the number. 3.5 m is command and control's
+# `cc_wall_course` from docs/layer4-lighting/command_working.json, the one
+# MEASURED fitting in this project of the same type -- a lit band flush in a
+# wall throwing outward, whose measurement says in as many words that the
+# centre of the room stays dark. On a 17 m hall a 3.5 m reach lights the gate
+# wall and its approach and leaves the middle to the ambient, which is what
+# the reference frame shows.
+CAST_FITTINGS = {
+    # omni, not spot: the wall reads brighter both ABOVE the band (measured,
+    # 1.9-2.0x over 0.09 of frame height) and below it before the crowd
+    # occludes the deck, so it throws in both directions off the wall face.
+    "customs_light_strip": {
+        "kind": "omni",
+        # linear (0.956, 1.000, 0.895), 6200 K -- corridor_kit.json fixture
+        # `light_pilaster_strip`, the family's measured colour. The customs
+        # frame's own reading of its cells is violet-leaning and was rejected;
+        # the argument is on materials.light_arrival_strip.
+        "colour": (0.956, 1.000, 0.895),
+        # 0.839 / 0.905, this band's balanced V p99 against the screens', the
+        # brightest family in its own frame. Same normalisation the withdrawn
+        # coffer proposal used (0.55/0.99), applied to the family that survived.
+        "energy_rel": 0.83,
+        "range_m": 3.5,
+        "shadow": False,
+    },
+}
 
 # The customs desks. Two halls, north and south (authority 3, Security Manual),
 # each processing arrivals against identicards.
@@ -295,7 +389,13 @@ def hall(schema, profile, sector="blue", with_crowd_clearance=True):
                 t.append((c, a, b))
             g.append(("customs_bollard", t0, len(t)))
 
-    # --- vertical light strips on the gate wall ---------------------------
+    # --- the gate wall's light course -------------------------------------
+    # One cell per span, deliberately. `export_scene.to_spans` gives each
+    # emitted span its own lamp and `FIXTURE_MERGE_M` (0.9 m) then merges them
+    # by proximity, so a 0.196 m cell module comes out as roughly one source
+    # every 1.8 m of run -- the segmentation survives in the geometry, where it
+    # is the fitting's whole character, and disappears from the light rig,
+    # where 132 sources would be 132 shadow-free cube maps for no visible gain.
     n_strip = int((z_screen - 2.0) / STRIP_PITCH_M)
     for j in range(n_strip):
         zc = 2.0 + j * STRIP_PITCH_M
@@ -434,6 +534,51 @@ def _selftest():
     check("the desks leave a walkable gap between them",
           (HALL_W_M - 2.8) / max(DESKS - 1, 1) - DESK_W_M > 0.8,
           f"{(HALL_W_M - 2.8) / max(DESKS - 1, 1) - DESK_W_M:.2f} m")
+
+    # --- layer 4: the room has a cast source, and it is the measured one ---
+    # Every one of these fails if the light course is deleted, renamed, or
+    # quietly re-proportioned back to the nineteen full-height bars it used to
+    # be. The room was at layer 3 with no cast source at all; that is the
+    # regression these guard against.
+    names = [n for n, _lo, _hi in g]
+    n_cells = names.count("customs_light_strip")
+    check("the gate wall carries a light course",
+          n_cells >= 100, f"{n_cells} cells")
+    check("every cell of it is one span, so the rig can merge them itself",
+          n_cells == int((HALL_LEN_M - 6.0 - 2.0) / STRIP_PITCH_M),
+          f"{n_cells} spans")
+    check("the course is the fitting the light rig is told to hang on",
+          set(CAST_FITTINGS) == {"customs_light_strip"}
+          and "customs_light_strip" in names,
+          str(sorted(CAST_FITTINGS)))
+    # The withdrawn experiment, asserted so it cannot be repeated by accident:
+    # 210 coffers given lights put the frame at 18.9x its reference.
+    check("the ceiling coffer is NOT proposed as a source",
+          "customs_ceiling_lamp" in names
+          and "customs_ceiling_lamp" not in CAST_FITTINGS,
+          f"{names.count('customs_ceiling_lamp')} coffers, emissive only")
+    # The frame's dimensionless reading, which is the only thing it could give.
+    check("the course reproduces the frame's pitch-to-height ratio",
+          abs(STRIP_PITCH_M / STRIP_H_M - 0.354) <= 0.03,
+          f"{STRIP_PITCH_M / STRIP_H_M:.3f} against a measured 0.354")
+    check("its cell module is the family's measured 0.196 m",
+          abs(STRIP_PITCH_M - 0.196) < 1e-9, f"{STRIP_PITCH_M} m")
+    check("the course clears a standing crowd, as every head in the frame does",
+          STRIP_SILL_M >= 1.85, f"{STRIP_SILL_M} m to the underside")
+    check("and sits below the suspended screens",
+          STRIP_SILL_M + STRIP_H_M <= SCREEN_HANG_M,
+          f"{STRIP_SILL_M + STRIP_H_M:.2f} m against screens at {SCREEN_HANG_M} m")
+    # A range measured in one volume is wrong in another, so the one borrowed
+    # here is asserted to be the borrowed value rather than drifting silently.
+    # `.get` rather than `[...]`: deleting the entry must REPORT a failure, not
+    # raise out of the middle of the self-test.
+    band = CAST_FITTINGS.get("customs_light_strip", {})
+    check("the borrowed range is cc_wall_course's, not an invented number",
+          band.get("range_m") == 3.5,
+          "docs/layer4-lighting/command_working.json, fixture cc_wall_course")
+    check("a 3.5 m reach leaves the middle of a 17 m hall to the ambient",
+          0.0 < band.get("range_m", 0.0) < HALL_W_M / 2,
+          f"{band.get('range_m')} m against a {HALL_W_M / 2} m half-width")
 
     # --- containment -------------------------------------------------------
     xs = [q[0] for q in v]

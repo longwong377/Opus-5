@@ -841,9 +841,14 @@ def _build():
         "light_pilaster_strip", "Pilaster Light Strip — segmented vertical tube",
         albedo=(0.850, 0.860, 0.880), roughness=0.28, metallic=0.0,
         specular=0.20, emission=(0.880, 0.930, 1.000), emission_energy=6.0,
-        binds=("light_pilaster_strip", "customs_light_strip"), scenes=("interior",),
+        binds=("light_pilaster_strip",), scenes=("interior",),
         source="grey level 1.webp strip (0.183,0.214)-(0.197,0.366), balanced V 0.609 S 0.024 — the brightest large feature and still nearly neutral",
-        note="Eleven discrete cells in the frame, not a continuous tube. The segmentation is geometry."))
+        note=("Eleven discrete cells in the frame, not a continuous tube. The "
+              "segmentation is geometry. `customs_light_strip` USED TO BIND "
+              "HERE and now has its own material, light_arrival_strip: the "
+              "arrival hall's band measurably lights the wall it is set into "
+              "and this fitting measurably does not, which is a difference "
+              "one material cannot carry.")))
 
     a(Material(
         "light_portal_head", "Portal Head Light — over the doorway",
@@ -890,6 +895,58 @@ def _build():
         source="docs/layer4-lighting/public_social.json, fixture `cc_house_wash`, measured from reference/05-sector-green/council chambers.webp (authority 1). Directional, 6300 K, energy_rel 1.0, range 18 m, shadow: 'concealed high-level house lighting, fitting never in frame; a broad soft near-neutral wash over the whole chamber'. The chamber's ambient ratio is 0.210, one of the two brightest measured spaces on the station — it is a room with no dark corners, and this is the only thing in it that could produce that.",
         extrapolated="THE FITTING ITSELF, and that is the honest way to say it. The measurement is explicit that the source is never in shot, so its colour and its behaviour are measured and its GEOMETRY is not. council_chamber.house_cove() puts it where a chamber lit this evenly would be lit from — a concealed cove high on the rear wall, above the fin fan, whose housing you cannot see because it faces away from the room. Also extrapolated: the diffuser albedo, and emission_energy 1.2, and the first value was WRONG and the render said so. It was set at light_downlight's 4.0 on the argument that the frame shows a wash and not a source — and 4.0 drew a bright white bar across the top of the chamber, which is the exact failure the argument was made to avoid. 1.2 sits below light_ceiling_grid's 2.6, the library's other concealed-decorative source, and is what a cove looks like when you are seeing its glow on the wall rather than its lens. The energy that produces the WASH is separate and unchanged: it lives in export_scene.FIXTURE_LIGHTING, so dimming the fitting does not dim the room. Overturned by any frame showing this chamber's ceiling.",
         note="A near-neutral that is not quite neutral: (1.000, 0.966, 0.944) at 6300 K against light_ceiling_batten's (1.000, 0.980, 1.000) at 6530 K. Two measured whites, kept apart."))
+
+    # ---- the segmented light strip is a FAMILY, and its members differ ------
+    # 00-INDEX.md's re-examination of `corridor in alien sector.webp` states
+    # the generalisation this library now has to carry: the station's amber
+    # chamfer bars are "the same fitting family as the grey corridor's white
+    # vertical strips, tinted amber here". docs/layer4-lighting/corridor_kit
+    # .json measures three members and they are NOT one material — residential
+    # 6200 K, concourse 5310 K, and its own note says "if the two are bound to
+    # one material the concourse loses that contrast; I would keep them
+    # separate". The arrival hall is the fourth member and it is separated for
+    # a stronger reason than tint: IT LIGHTS ITS WALL AND THE CORRIDOR'S DOES
+    # NOT, which is a difference no shared material can express.
+    a(Material(
+        "light_arrival_strip", "Arrival Hall Wall Band — the gate-wall light course",
+        albedo=(0.845, 0.855, 0.850), roughness=0.28, metallic=0.0,
+        specular=0.20, emission=(0.980, 1.000, 0.952), emission_energy=5.0,
+        binds=("customs_light_strip",), scenes=("interior",),
+        source="reference/11-props-and-technology/babylon 5 welcome sign, instructions, and hub.jpg (authority 1), grey-world gains recomputed from the frame as 1.0456/1.0655/0.9050 — reproducing the figure light_ceiling_grid already cites for this frame to 0.000. THE FITTING IS NOT WHAT customs.py BUILT: it is one horizontal COURSE of short vertical cells at mid-height, not a rank of full-height strips. Near run isolated at (0.253,0.727)-(0.358,0.787); per-column max-luminance profile gives cell centres at px 331/345/362/377/406/418, i.e. pitch 14.5 px, against a band height of 41 px measured on the row profile (rise through 10% of peak at row 460, fall at row 502). Pitch/height = 0.354, and the far run corroborates it dimensionlessly (11-13.5 px pitch on a ~32 px band, 0.34-0.42). IT CASTS, and that is the whole reason this material exists. Two independent wall columns above the band, (0.290,0.560)-(0.320,0.880) and (0.300,0.560)-(0.340,0.880), rise MONOTONICALLY toward it — balanced L 0.0211 -> 0.0260 -> 0.0319 -> 0.0370 -> 0.0399 and 0.0191 -> 0.0272 -> 0.0331 -> 0.0355 -> 0.0379 over y 0.629 -> 0.710, factors of 1.89 and 1.98 — and the gradient's DIRECTION rules out the ceiling grid overhead, which would make the same wall brightest at its top. The identical test on the corridor fitting in grey level 1.webp gives the opposite answer twice: the wall beside the strip reads L 0.0373-0.0505 against 0.0686 four cells away, and the wall below it BRIGHTENS with distance (0.0459 at y 0.374 to 0.0717 at y 0.491). Two frames, one test, two answers.",
+        extrapolated="THE COLOUR, and the reason is a negative result worth carrying. The value here is the family's MEASURED linear (0.956, 1.000, 0.895) at 6200 K from docs/layer4-lighting/corridor_kit.json, fixture `light_pilaster_strip`. The customs frame's own reading of its cells was taken and NOT used: value-banded over (0.280,0.735)-(0.330,0.772) it gives normalised sRGB (0.860, 0.814, 1.000) at V 0.50-0.75 and (0.911, 0.870, 1.000) at V 0.75-1.01, hue constant at 255-259 across the two bands — a violet-leaning cool white. The residual against the family value is R and B up, G down, which is exactly the direction chroma bleed from the H 334 maroon wall these 9 px cells sit on would push it at 4:2:0 on a 1262x634 screencap. The decisive check is that the fill-subtraction corridor_kit.json used on `light_downlight` FAILS here: (wall above the band minus wall two band-heights higher) returns H 333.6 balanced, the wall's own measured hue of H 334.3, so in this neighbourhood the frame's chroma is the wall and not the lamp. Also extrapolated: the diffuser albedo, and emission_energy 5.0 — below light_pilaster_strip's 6.0 on two counts, that this band is 0.839/0.905 = 0.93 of its own frame's brightest family where the corridor strip is 1.00 of its, and that light_house_cove's lesson applies (a fitting that also CASTS gets part of its rendered brightness back off the wall, so its emission belongs lower than a fitting that only glows). Overturned by any frame of this wall at a resolution that resolves a cell across.",
+        note=("materials.light_pilaster_strip still carries the library's older "
+              "(0.880, 0.930, 1.000), which corridor_kit.json calls 'a decided "
+              "blue' and too strong for its own measurement. That correction "
+              "is on STATE.md's list and is NOT made here: it moves the "
+              "residential corridor, which is the anchor every exposure in "
+              "this project is calibrated against. The two will agree when it "
+              "lands.")))
+
+    a(Material(
+        "light_alien_lattice", "Alien Sector Overhead Grille — the amber source above",
+        albedo=(0.120, 0.098, 0.062), roughness=0.32, metallic=0.0,
+        specular=0.22, emission=(1.000, 0.841, 0.272), emission_energy=1.2,
+        binds=("alien_lattice",), scenes=("interior",),
+        source="reference/05-sector-green/corridor in alien sector.webp (authority 1), read RAW. THE BALANCE IS INVALID FOR THIS FRAME and that is stated before it is used: grey-world gains computed from it are 0.7716/0.9012/1.6825, a 68% blue lift, because the frame is emphatically amber throughout — 00-INDEX.md calls it 'yellow-green overall with one cold blue pocket' — and balancing erases the very thing being measured. NEGATIVE_RESULTS' rule, already applied to `comand and contorl.webp` by light_dais_key, is that a SOURCE read raw is what raw is for. Colour from the descending light shafts at (0.400,0.010)-(0.560,0.180), top decile: linear (1.000, 0.675, 0.060), H 39.3. Corroborated by the floor grating at (0.300,0.820)-(0.520,0.950), an independent region: linear (1.000, 0.680, 0.035), H 40.1 — the same source seen twice, agreeing in R:G to 0.7%. THE SOURCE IS OVERHEAD, and this was tested rather than assumed: a vertical profile of the caged volume at (0.30,0.10)-(0.55,0.75) reads L 0.0473/0.0511/0.0384/0.0505 across its top four bands and 0.0221/0.0229/0.0258/0.0271 across its bottom four — brightest at the TOP, falling by a factor of 2 downward. The whole frame's lit structure (0.008 < L < 0.10, 715,264 px) is linear (1.000, 0.796, 0.273) at H 43.1, i.e. every lit surface in the room carries this fitting's hue.",
+        extrapolated="Housing albedo and emission_energy 1.2, taken from light_house_cove for a reason that is the same reason: the fitting is not in shot. What the frame shows is the shafts it throws and the volume it lights, never the lens, so its colour and behaviour are measured and its brightness as an object is not. 1.2 is where light_house_cove ended up after 4.0 drew a bright white bar across the top of the council chamber; the throw is carried by export_scene.FIXTURE_LIGHTING, so dimming the fitting does not dim the room. Overturned by any frame looking UP in this quarter.",
+        note=("alien_sector.overhead_lattice()'s docstring has said since it "
+              "was written that this group exists 'so the material pass can "
+              "make it the room's light source'. It was bound to "
+              "furn_screen_panel — an office partition — for two layers. The "
+              "measurement now backs the docstring.")))
+
+    a(Material(
+        "light_deck_grating", "Illuminated Deck Grating — louvre bars over a light box",
+        albedo=(0.150, 0.122, 0.070), roughness=0.34, metallic=0.0,
+        specular=0.22, emission=(1.000, 0.839, 0.200), emission_energy=3.5,
+        binds=("alien_deck_grating",), scenes=("interior",),
+        source="reference/05-sector-green/corridor in alien sector.webp (authority 1), read raw for the reason given under light_alien_lattice. The grating occupies (0.230,0.790)-(0.600,0.980) and is THE BRIGHTEST THING IN THE FRAME by a wide margin — L p90 0.223 against 0.122 for the shafts, 0.118 for the blue bay and 0.061 for the chamfer bars — and it does NOT clip (V max 0.796), which is unusual for a source and is what sets its energy below the fittings that do. Core linear (1.000, 0.671, 0.033), H 39.6 S 0.97. 00-INDEX.md magnified it: 'a grid of roughly square cells, each cell containing about three short horizontal louvre bars over a light box', 'roughly 7 cells across', and it generalises the part — 'the illuminated floor grating is a station-wide element, colour-tinted per environment ... one kit part with a tint parameter, not four set dressings', appearing white/blue in central corridor.webp, checkerboard white in sleeping-in-light-05.jpg, saturated yellow here and as pooled uplight in grey level 1.webp.",
+        extrapolated="Housing albedo and emission_energy 3.5, which is light_deck_channel's exactly — that material is this same station-wide part in its corridor tint, so the two are one fitting at one energy in two colours, which is what the index's generalisation means. What is NOT extrapolated and is worth stating as a finding: this fitting is EMISSIVE ONLY, and it is the third instance in this project of the brightest thing in a frame lighting nothing. The pier feet either side of the grating are the darkest surfaces in the frame (left pier L 0.0094-0.0107 flat from head to foot over y 0.15-0.90; right pier falling to 0.0103 at y 0.873 from a mid-height maximum of 0.0183 at the chamfer bars), and the caged volume above it is brightest at the top. A floor that bright with dark walls at its edge is a light box under a louvre, not a source. Overturned by a frame of this deck showing the pier bases lifted.",
+        note=("00-INDEX.md's Feeds line has asked for this since session 2q: "
+              "'new light_grating with tint' in station/interior_kit.py. It is "
+              "built in alien_sector.py instead because that is the module "
+              "this pass owns; when it moves into the kit, the tint parameter "
+              "is the only thing that has to change.")))
 
     a(Material(
         "light_service_tube", "Service Tube — cold blue wall batten",
@@ -2297,7 +2354,7 @@ def _build():
         "furn_screen_panel", "Panel Screen — office partitions and sanctuary screens",
         albedo=(0.505, 0.508, 0.515), roughness=0.3, metallic=0,
         specular=0.45,
-        binds=("fix_screen_panel", "fix_partition_screen", "alien_lattice"), scenes=("interior",),
+        binds=("fix_screen_panel", "fix_partition_screen"), scenes=("interior",),
         source="NO FRAME SHOWS AN OFFICE PARTITION OR A SANCTUARY SCREEN. What is sourced is that thin light-passing panels are the station's idiom for dividing a space without closing it: 00-INDEX.md on 05-sector-green/rotunda.webp records 'wall panels of vertical blue light slots' and hanging banners between columns; on 05-sector-green/council chambers.webp, a 'very fine square-hole perforated sheet ... evenly backlit with no visible lamp hotspots'; on 04-sector-red/Earhart's.webp, 'wood-slat screens' read through the glazed band; and on 05-sector-green/conference aerea.webp, 'arrays of tall narrow illuminated slots'.",
         extrapolated="All four numbers. What constrains them: the panel must read as thinner and lighter than the wall behind it or it is a wall (hence 0.515, just above ALBEDO_ANCHOR, and the lowest saturation in the family at 0.019); it is 0.16-0.22 m thick in the geometry, which is a panel and not a partition wall; and it must be smooth, because a translucent screen with plate texture is a contradiction. Overturned by any frame of an office interior or a chapel."))
 
@@ -3246,7 +3303,7 @@ def _build():
         "light_ceiling_grid", "Arrival Hall Ceiling Grid — the backlit amber coffer",
         albedo=(0.480, 0.470, 0.380), roughness=0.35, metallic=0,
         specular=0.22,
-        emission=(1.000, 0.987, 0.734), emission_energy=2.6,
+        emission=(1.000, 0.987, 0.734), emission_energy=0.8,
         binds=("customs_ceiling_lamp",), scenes=("interior",),
         source="reference/11-props-and-technology/babylon 5 welcome sign, instructions, and hub.jpg (authority 1), balanced with gains 1.046/1.065/0.905 — the same gains materials.py's device_screen_glass already cites for this frame, recomputed here from the frame as 1.0455/1.0652/0.9052 and reproducing them exactly. Value-banded over the grid at (0.310,0.010)-(0.570,0.160): H 60.1 S 0.090 at V 0.06-0.10 (n=7013, the dark lattice between cells); then the lit cells, H 55.3 S 0.356 at V 0.10-0.16 (n=2539), H 54.6 S 0.357 at V 0.16-0.24 (n=2175), H 56.7 S 0.302 at V 0.24-0.34 (n=1760), H 57.0 S 0.267 at V 0.34-0.50 (n=1284), H 56.9 S 0.247 at V 0.50-0.75 (n=212). Hue is CONSTANT at H 54.6-57.0 across an 8.5x range of value while saturation falls monotonically — a lit panel blowing toward white with its register intact. Normalised from the V 0.34-0.50 band (rgb 0.399/0.394/0.293) that is (1.000, 0.987, 0.734).",
         extrapolated="emission_energy 2.6 and the diffuser albedo. Energy: the frame ranks its own three source families and this one is last — measured balanced peaks are 0.99 for the screens, 0.82 for the vertical wall strips and 0.55 for the ceiling grid — so it is ambient decoration rather than a task light and sits below materials.py's light_deck_channel (3.5), which is the library's other decorative-register source. Albedo 0.48/0.47/0.38 carries a hint of the emission hue, following light_downlight's pattern of an albedo tinted toward its own output; it is otherwise unsourced because the grid is never seen unlit. Overturned by any frame of this ceiling with the panels off."))
@@ -3371,8 +3428,16 @@ def _build():
         emission=(0.220, 1.000, 0.380), emission_energy=5.0,
         binds=("alien_status_lamp",), scenes=("interior",),
         source="alien_sector.py builds one green status lamp per lock -- the "
-               "state indicator on an atmosphere seal. No frame in the "
-               "reference set shows the Alien Sector's locks.",
+               "state indicator on an atmosphere seal. NO FRAME SHOWS A LOCK, "
+               "and that has not changed. What the layer-4 pass did find is "
+               "that the register exists in this quarter: "
+               "reference/05-sector-green/corridor in alien sector.webp "
+               "(authority 1) carries small green points low on the right, "
+               "read raw at (0.643,0.500)-(0.668,0.552) as linear (0.878, "
+               "1.000, 0.739) H 88 and at (0.603,0.437)-(0.622,0.462) as "
+               "(0.806, 1.000, 0.827) H 126, both dim (V max 0.267 and 0.596) "
+               "and both a few pixels across. 00-INDEX.md names them "
+               "'green point lights low on the right'.",
         note="Green because the lamp means the seal holds. It is the only "
              "saturated green in the interior library and it is a fitting, not "
              "a surface, so the neutrality rule does not reach it.",
@@ -3380,7 +3445,13 @@ def _build():
                      "constrains it: it must read at a glance from down a "
                      "gallery, it must not be confusable with the warm "
                      "practical register, and it must be dimmer than a "
-                     "pendant, which is task lighting."))
+                     "pendant, which is task lighting. THE SATURATION IS NOT "
+                     "CHANGED to match the frame's H 88-126 at S 0.19-0.26, "
+                     "and the reason is that those blobs are 20-40 px on an "
+                     "amber field: a saturated green core blurred against "
+                     "H 39 surroundings reads exactly as a desaturated "
+                     "yellow-green, which is what they read as. Overturned by "
+                     "a frame that resolves one of these lamps."))
 
     return tuple(M)
 

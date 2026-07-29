@@ -101,6 +101,84 @@ LATTICE_CELL_M = 0.62
 LATTICE_BAR_M = 0.09
 LATTICE_DROP_M = 0.20
 
+# ---------------------------------------------------------------------------
+# The illuminated deck grating -- what makes this quarter look like itself
+# ---------------------------------------------------------------------------
+# 00-INDEX.md's re-examination of the frame magnified its floor and found "a
+# grid of roughly square cells, each cell containing about three short
+# horizontal louvre bars over a light box ... roughly 7 cells across x 3-4
+# deep in view", saturated yellow, and THE BRIGHTEST THING IN THE SHOT. It then
+# generalises the part, which is the sentence this constant exists because of:
+# "the illuminated floor grating is a station-wide element, colour-tinted per
+# environment ... one kit part with a tint parameter, not four set dressings",
+# appearing white/blue in `central corridor.webp`, checkerboard white in
+# `sleeping-in-light-05.jpg`, saturated yellow here and as pooled uplight in
+# `grey level 1.webp`.
+#
+# THE CELL IS NOT A NEW NUMBER. It is `LATTICE_CELL_M`, this module's existing
+# 0.62 m (INV-031), and the frame corroborates it rather than the other way
+# round: seven cells across a `service`-class 4.2 m gallery is 0.60 m a cell.
+# The gap between cells is `LATTICE_BAR_M`, so the deck grating and the
+# overhead lattice are one module at one pitch, which is what "one kit part"
+# means in geometry.
+#
+# IT IS EMISSIVE ONLY, and that is a measurement, not an omission. See
+# materials.light_deck_grating: the pier feet either side of this grating are
+# the darkest surfaces in the frame (left pier flat at L 0.0094-0.0107 from
+# head to foot) and the caged volume above it is brightest at its TOP. The
+# third instance in this project of the brightest thing in a frame lighting
+# nothing, after the pilaster strip and the portal head.
+GRATING_CELL_M = LATTICE_CELL_M
+GRATING_GAP_M = LATTICE_BAR_M
+GRATING_PROUD_M = 0.004    # enough to beat z-fighting with the deck top
+GRATING_DEPTH_M = 0.05     # the light box below the louvres
+
+# The exact entry this module needs in tools/export_scene.FIXTURE_LIGHTING.
+# Kept here because this is the module that measured it; membership of that
+# table is the gate, and a group absent from it glows and casts nothing.
+#
+# THE SOURCE IS OVERHEAD AND IT WAS TESTED, NOT ASSUMED. A vertical profile of
+# the caged volume beyond the bars, (0.30,0.10)-(0.55,0.75) on the authority-1
+# frame read raw, gives L 0.0473 / 0.0511 / 0.0384 / 0.0505 across its top four
+# bands against 0.0221 / 0.0229 / 0.0258 / 0.0271 across its bottom four --
+# brightest at the top, falling by a factor of two downward, which is what
+# 00-INDEX.md means by "hard vertical light shafts descending from a source
+# high above". `overhead_lattice()` is the only geometry in this module up
+# there, and its own docstring has said since it was written that it exists so
+# the material pass can make it the room's light source.
+#
+# RANGE, derived from this module's own dimensions: the grille hangs at
+# GALLERY_H_M = 3.4 m and the far corner of the deck is at
+# sqrt(3.4^2 + (4.2/2)^2) = 4.00 m, so 4.0 m is the reach that gets light to
+# the whole floor and no further. It lands on the same number as the two
+# MEASURED omni fittings in docs/layer4-lighting/command_working.json
+# (`wr_wall_strip_bank` and `wr_soffit_blade`, both range 4), which is a
+# corroboration rather than the derivation.
+#
+# CONE: atan(2.1 / 3.4) = 31.7 deg covers wall to wall from that height. 30 is
+# taken rather than 32 so the last 0.14 m of each half-width stays dark at the
+# skirting -- the frame's darkest surfaces are the pier feet, and a corridor
+# whose wall bases are lit is not this room.
+CAST_FITTINGS = {
+    "alien_lattice": {
+        "kind": "spot",
+        # linear (1.000, 0.675, 0.060), measured RAW off the descending shafts
+        # at (0.400,0.010)-(0.560,0.180); corroborated by the floor grating at
+        # (0.300,0.820)-(0.520,0.950), linear (1.000, 0.680, 0.035) -- the same
+        # source seen twice, agreeing in R:G to 0.7%. The frame's whole lit
+        # structure sits at linear (1.000, 0.796, 0.273), so every surface in
+        # the room carries this colour. See materials.light_alien_lattice for
+        # why the frame is read raw and not balanced.
+        "colour": (1.000, 0.675, 0.060),
+        # The only cast source in the gallery, so 1.0 by definition of a
+        # within-family relative. The LEVEL is set by the module's exposure.
+        "energy_rel": 1.00,
+        "range_m": 4.0,
+        "shadow": True,
+        "angle_deg": 30.0,
+    },
+}
+
 # Fittings.
 RING_R_M = 0.62            # the dark circular ring on the far wall
 RING_SECTION_M = 0.11
@@ -263,6 +341,35 @@ def overhead_lattice(length, width, y):
     return v, t, g
 
 
+def deck_grating(length, width):
+    """The illuminated floor grid -- the frame's brightest surface.
+
+    A grid of lit cells set flush into the deck, one cell per
+    `GRATING_CELL_M`, separated by `GRATING_GAP_M` of dark structure. Centred
+    across the gallery, so a margin of unlit deck runs along each wall: the
+    frame shows exactly that, dark floor between the grating's edge and the
+    piers.
+
+    Cells are emitted one span each. Nothing merges them into one lamp because
+    nothing lights them -- they ARE the emitter, and a light box is not a
+    light. If a later pass ever gives this fitting a source it will get one
+    lamp per cell and want merging, which `FIXTURE_MERGE_M` already does.
+    """
+    v, t, g = [], [], []
+    nx = max(1, int(width / GRATING_CELL_M))
+    nz = max(1, int(length / GRATING_CELL_M))
+    x0 = -nx * GRATING_CELL_M / 2.0          # centred, so both margins match
+    c = GRATING_CELL_M - GRATING_GAP_M
+    for i in range(nx):
+        for j in range(nz):
+            cx = x0 + (i + 0.5) * GRATING_CELL_M
+            cz = (j + 0.5) * GRATING_CELL_M
+            _box(v, t, g, "alien_deck_grating",
+                 (cx - c / 2, -GRATING_DEPTH_M, cz - c / 2),
+                 (cx + c / 2, GRATING_PROUD_M, cz + c / 2))
+    return v, t, g
+
+
 def _to_wall(verts, wall_x, z_quarter):
     """Author-frame -> gallery left wall.
 
@@ -300,6 +407,9 @@ def gallery(schema, profile):
 
     lv, lt, lg = overhead_lattice(GALLERY_LEN_M, GALLERY_W_M, GALLERY_H_M)
     _absorb(V, T, G, lv, lt, lg)
+
+    gv, gt, gg = deck_grating(GALLERY_LEN_M, GALLERY_W_M)
+    _absorb(V, T, G, gv, gt, gg)
 
     # The ring fitting on the end wall.
     _torus_ring(V, T, G, "alien_ring", 0.0, GALLERY_H_M * 0.55,
@@ -430,6 +540,51 @@ def _selftest():
     check("the overhead lattice exists to throw the amber grid",
           "alien_lattice" in names)
     check("the far-wall ring fitting is present", "alien_ring" in names)
+
+    # --- layer 4: the room has a cast source and a lit deck ----------------
+    # These fail if either fitting is deleted, renamed, or moved off the table
+    # the light rig reads. Before this pass the gallery had no source of any
+    # kind: its lattice was bound to an office partition material and rendered
+    # as a grey corridor at 2.84x its reference frame.
+    # `.get` rather than `[...]`, so deleting the entry REPORTS a failure
+    # instead of raising out of the middle of the self-test. A guard that
+    # crashes tells you less than one that prints.
+    lat = CAST_FITTINGS.get("alien_lattice", {})
+    check("the overhead grille is the fitting the light rig hangs on",
+          set(CAST_FITTINGS) == {"alien_lattice"}
+          and "alien_lattice" in names, str(sorted(CAST_FITTINGS)))
+    check("it is a spot, because the frame's shafts descend vertically",
+          lat.get("kind") == "spot", str(lat.get("kind")))
+    check("its reach is derived from this gallery, not borrowed from a bay",
+          abs(lat.get("range_m", 0.0)
+              - round(math.hypot(GALLERY_H_M, GALLERY_W_M / 2), 1)) < 0.06,
+          f"{lat.get('range_m')} m against "
+          f"{math.hypot(GALLERY_H_M, GALLERY_W_M / 2):.2f} m to the far "
+          f"corner of the deck")
+    check("its cone reaches the walls without lighting their feet",
+          0.0 < lat.get("angle_deg", 0.0)
+          < math.degrees(math.atan2(GALLERY_W_M / 2, GALLERY_H_M)),
+          f"{lat.get('angle_deg')} deg against "
+          f"{math.degrees(math.atan2(GALLERY_W_M / 2, GALLERY_H_M)):.1f} deg "
+          f"wall to wall")
+    n_cell = names.count("alien_deck_grating")
+    check("the deck is an illuminated grating, the frame's brightest surface",
+          n_cell == (int(GALLERY_W_M / GRATING_CELL_M)
+                     * int(GALLERY_LEN_M / GRATING_CELL_M)),
+          f"{n_cell} cells")
+    # The floor is bright and it lights nothing -- the third instance of that
+    # finding in this project. Asserting it stops a later pass from "fixing"
+    # a dark room by turning the floor into a lamp.
+    check("and it is EMISSIVE ONLY, which is measured, not forgotten",
+          "alien_deck_grating" not in CAST_FITTINGS,
+          "the pier feet either side of it are the darkest thing in the frame")
+    check("the grating leaves a dark margin at each wall, as the frame shows",
+          int(GALLERY_W_M / GRATING_CELL_M) * GRATING_CELL_M
+          < GALLERY_W_M - 0.2,
+          f"{GALLERY_W_M - int(GALLERY_W_M / GRATING_CELL_M) * GRATING_CELL_M:.2f} m of margin")
+    check("its cell is the module's own lattice cell, not a new number",
+          GRATING_CELL_M == LATTICE_CELL_M and GRATING_GAP_M == LATTICE_BAR_M,
+          f"{GRATING_CELL_M} m cell, {GRATING_GAP_M} m gap")
     # Every screen must have a quarter behind it. Without one the bars open on
     # void, and a render cannot tell that from a hole in the geometry.
     check("every barred screen has a quarter behind it",

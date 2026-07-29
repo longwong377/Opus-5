@@ -8,11 +8,11 @@
 ; lost with no diff to show for it. Edit station/materials.py.
 
 [resource]
-resource_name = "Arrival Hall Ceiling Grid — the backlit amber coffer"
-albedo_color = Color(0.48, 0.47, 0.38, 1)
+resource_name = "Illuminated Deck Grating — louvre bars over a light box"
+albedo_color = Color(0.15, 0.122, 0.07, 1)
 metallic = 0
 metallic_specular = 0.22
-roughness = 0.35
+roughness = 0.34
 emission_enabled = true
-emission = Color(1, 0.987, 0.734, 1)
-emission_energy_multiplier = 0.8
+emission = Color(1, 0.839, 0.2, 1)
+emission_energy_multiplier = 3.5

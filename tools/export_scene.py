@@ -522,6 +522,72 @@ LIGHT_GROUP_PREFIX = "light_"
 # spans a pilaster strip's seven bars (0.12 m pitch) without reaching the next
 # pilaster, which the kit puts a portal bay apart.
 FIXTURE_MERGE_M = 0.9
+
+# A FITTING IS A CONNECTED BODY, AND A TAGGED SPAN IS NOT ONE. `to_spans` cuts
+# a per-triangle group list into contiguous runs, so a module that emits all of
+# one fitting family in one go emits ONE span however many lamps it built --
+# and `fixture_lights` used to put a single source at that span's centroid.
+# Measured across every lit room, that lost three quarters of the station's
+# lamps and put several of the survivors in mid-air:
+#
+#   room             fitting            spans  bodies  what the span really is
+#   council_chamber  light_house_cove       1       1  a 33.6 m continuous cove
+#   cnc              cc_light_strip         1       4  four 8.6 m wall courses
+#   zocalo           zoc_rib_lamp           6      30  five lamps per rib -- the
+#                                                      measured number
+#   zocalo           light_downlight        6      18  three per bay
+#   docking_bays     bay_lamp              13      39  three per bay
+#
+# The single `cc_light_strip` lamp sat 6.92 m from the nearest strip with a
+# measured range of 3.5 m -- twice its own reach away from the fitting it was
+# supposed to be, in the middle of a room the measurement says stays dark.
+#
+# Welded by POSITION rather than by vertex index, because none of these
+# generators shares indices between primitives: `council_chamber._M.quad`
+# appends four fresh vertices per quad, so index connectivity would call one
+# continuous cove twelve fittings and multiply its flux by twelve. Position
+# connectivity gets both cases right -- the cove's segments meet exactly and
+# are one body; two rib lamps 2 m apart are two.
+FIXTURE_WELD_M = 1e-4
+
+# A FITTING LONGER THAN ITS OWN THROW CANNOT BE A POINT: the far end of the
+# fitting is beyond the near end's reach, so no single position stands for it.
+# One point at the centroid of the council chamber's cove sat 3.89 m out in the
+# room facing the cove and washed it point-blank -- the bright white arc across
+# the top of `docs/engine-council.png`, which survived dropping the material's
+# own emission_energy to 1.2 because the lamp, not the emission, was drawing it.
+#
+# So an extended fitting is SAMPLED, exactly as the drum's 2.6 km light runs
+# are, and for the same stated reason: "the sampling density is a cost decision
+# and must not be a look decision, so energy is normalised by count" (see
+# RUN_ENERGY). Sampling a fitting therefore never changes how much light is in
+# the room, only where it comes from.
+#
+# The density is the drum's own, measured off the rig that has been rendering
+# since session 2j: `light_runs` samples a 2,586 m sector with ten omnis of
+# range 1,100 m, i.e. one sample per 258.6 m against an 1,100 m reach --
+# range / 4.25. Rounded to 4 here, which is slightly denser, and denser is the
+# safe direction when the energy is normalised.
+#
+# WHERE THE THRESHOLD SITS, measured over every lit fitting in the library as
+# body extent / its own measured range:
+#
+#   light_stall_festoon 0.04   light_wall_strip_bank 0.09   light_downlight 0.22
+#   light_ceiling_batten 0.26  light_soffit_blade 0.31   light_wall_course 0.69
+#   ---------------------------------------------------- 1.0 -------------------
+#   light_house_cove 1.33      cc_light_strip 2.47
+#
+# Two fittings are extended and fourteen are not, with the nearest of each 31%
+# and 33% clear of the line. A fitting that drifts across it is a fitting whose
+# geometry has changed shape, which is worth a re-render either way.
+EXTENDED_SAMPLES_PER_RANGE = 4.0
+# Cost bound, not a look bound. A 200 m light strip at range/4 would emit
+# hundreds of omnis and every one of them re-lights the scene; past this the
+# pitch is widened instead. Nothing in the library reaches it -- the cove takes
+# 8 samples and a wall course 10 -- so it is a guard against a future fitting,
+# and because the energy is normalised, hitting it costs fidelity and not
+# brightness.
+EXTENDED_SAMPLE_CAP = 24
 # Interior lights need an interior RANGE. The first render used the drum's
 # 1100 m default in a 21.6 m corridor, so all 117 sources reached every surface
 # with no falloff and the frame came back pure white. A corridor fitting lights
@@ -839,11 +905,45 @@ ROOM_EXPOSURE = {
 # their lamps cast anything until FIXTURE_LIGHTING learned their names.
 #
 # The rest stay absent, which means the anchor, which means not yet measured.
+#
+# ONE OF THEM MOVED WHEN `fixture_lights` LEARNED WHAT A FITTING IS. Splitting
+# a span into its connected bodies multiplied three modules' flux -- the Zocalo
+# by 2.92, command and control by 4.00, the docking bay by 3.00 -- and only the
+# Zocalo's FRAME moved with it. All three were re-rendered at 640x360 with the
+# old rig and the new one at the same camera and the same exposure, and
+# differenced pixel by pixel:
+#
+#   zocalo   52.5% of the frame changed, +3.6 mean   1.42 -> 1.54 of its ref
+#   docking   7.3% changed, every one brighter       1.38 -> 1.39
+#   cnc       45 PIXELS changed out of 230,400       1.18 -> 1.18
+#
+# Only the Zocalo is rescaled, because only the Zocalo's measurement moved. The
+# docking bay's floods were already spread over the bay three to a span, so the
+# one lamp a span stood among them rather than away from them, and splitting
+# them apart moved the light a metre. cnc is the interesting one and it is NOT
+# evidence the fix did nothing there: its shot stands in the pit below the
+# strips looking away from them, so it can see neither the wall the courses
+# wash nor the courses themselves.
 BESPOKE_EXPOSURE = {
-    "zocalo": 0.92,          # vs reference/04-sector-red/more zocalo.png
+    "zocalo": 0.84,          # vs reference/04-sector-red/more zocalo.png
+                             # 0.92 x 1.40/1.54, re-measured after the body
+                             # split took it from 36 lamps to 96. Verified at
+                             # 1.43 of the reference on the re-render.
     "hospitality": 1.34,     # vs reference/04-sector-red/Doug's Dugout.webp
     "command_control": 0.93,  # vs 03-sector-blue/comand and contorl.webp
-    "docking_bay": 0.90,     # vs reference/03-sector-blue/dock.webp
+                             # UNCHANGED, and the reason is worth a line
+                             # because the number looks stale and is not: this
+                             # shot now measures 1.18 rather than the 1.40 it
+                             # was set at, but it measures 1.18 with the OLD
+                             # rig too. What moved is the CAMERA -- session
+                             # 3o's rewrite of `open_standpoint` -- not the
+                             # light. Correcting an exposure for a camera move
+                             # would be treating an exposure as a rescue, and
+                             # the shot itself is the thing to look at first:
+                             # it stands the eye at y = -0.20 m, below the
+                             # deck. Re-calibrate when the shot is right.
+    "docking_bay": 0.90,     # vs reference/03-sector-blue/dock.webp -- 13
+                             # lamps became 39 and it measured 1.38 -> 1.39.
     "quarters": 1.12,        # vs reference/07-sector-grey/grey level 1.webp,
                              # the residential corridor a unit opens off
     "council_chamber": 2.84,  # vs 05-sector-green/council chambers.webp
@@ -904,6 +1004,141 @@ def ambient_energy(room):
             * room_exposure(room))
 
 
+def fitting_bodies(verts, tris, lo, hi, weld=FIXTURE_WELD_M):
+    """One tagged span -> its CONNECTED BODIES, one list of triangles each.
+
+    This is what makes a fitting a fitting rather than a run of triangles that
+    happen to share a name. See FIXTURE_WELD_M for what it was measured to be
+    worth and why the weld is by position rather than by vertex index.
+
+    Union-find over welded vertex positions. Rounding coordinates to a grid of
+    `weld` and unioning triangles that share a cell is the whole method: it is
+    O(triangles) with no spatial structure, and the failure it can have -- two
+    vertices either side of a cell boundary reading as distinct -- costs one
+    extra body, which the FIXTURE_MERGE_M pass then puts back together if they
+    really were 0.1 mm apart.
+    """
+    key, owner = {}, {}
+    parent = list(range(hi - lo))
+
+    def find(a):
+        while parent[a] != a:
+            parent[a] = parent[parent[a]]
+            a = parent[a]
+        return a
+
+    for k in range(lo, hi):
+        for i in tris[k]:
+            p = verts[i]
+            cell = (round(p[0] / weld), round(p[1] / weld), round(p[2] / weld))
+            v = key.setdefault(cell, len(key))
+            if v in owner:
+                a, b = find(k - lo), find(owner[v])
+                if a != b:
+                    parent[a] = b
+            else:
+                owner[v] = k - lo
+    bodies = {}
+    for k in range(hi - lo):
+        bodies.setdefault(find(k), []).append(lo + k)
+    return list(bodies.values())
+
+
+def surface_points(verts, tris, body, spacing, max_split=16):
+    """Points spread over a body's SURFACE, with their share of its area.
+
+    SAMPLING BY TRIANGLE IS NOT SAMPLING BY GEOMETRY, and the first version of
+    `sample_body` proved it on the first fitting it was pointed at: command and
+    control's wall course is an 8.64 m box drawn with twelve triangles, so
+    clustering triangle centroids could never place a sample anywhere except at
+    a triangle's centroid. It produced four lamps for that course -- one on
+    each end cap and TWO AT THE SAME POINT in the middle -- and left the length
+    of the course, which is the part that lights the room, unsampled.
+
+    So the candidates come from subdividing each triangle to `spacing`, not
+    from counting them. A long thin box then yields points all along itself
+    however few triangles it is made of, which is the property that makes the
+    sampling a statement about the fitting rather than about its tessellation.
+
+    Each triangle splits into n x n congruent sub-triangles, so every returned
+    point carries the same area A/n^2 -- no quadrature weights to get wrong.
+    """
+    pts = []
+    for k in body:
+        a, b, c = (verts[i] for i in tris[k])
+        ab = [b[j] - a[j] for j in range(3)]
+        ac = [c[j] - a[j] for j in range(3)]
+        cr = (ab[1] * ac[2] - ab[2] * ac[1],
+              ab[2] * ac[0] - ab[0] * ac[2],
+              ab[0] * ac[1] - ab[1] * ac[0])
+        area = 0.5 * math.sqrt(sum(q * q for q in cr))
+        if area <= 0.0:
+            continue
+        longest = max(math.dist(a, b), math.dist(b, c), math.dist(c, a))
+        n = max(1, min(max_split, int(math.ceil(longest / spacing))))
+        w = area / (n * n)
+        for i in range(n):
+            for j in range(n - i):
+                for du, dv in (((3 * i + 1), (3 * j + 1)),
+                               ((3 * i + 2), (3 * j + 2))):
+                    if du + dv > 3 * n - 1:
+                        continue        # the down-facing sub-triangle of the
+                    u, v = du / (3.0 * n), dv / (3.0 * n)   # last row does not
+                    pts.append(([a[q] + u * ab[q] + v * ac[q]              # exist
+                                 for q in range(3)], w))
+    return pts
+
+
+def sample_body(verts, tris, body, pitch, cap=EXTENDED_SAMPLE_CAP):
+    """One extended fitting -> the (position, share of its energy) it lights
+    from.
+
+    Greedy clustering against each cluster's SEED, not against its running
+    mean, and the difference is the whole point. The FIXTURE_MERGE_M pass below
+    merges against a running mean, which is right for its job -- pulling seven
+    pilaster bars into one lamp -- and catastrophic here: on a line source the
+    mean walks along the line as members are added, every next point is still
+    within pitch of it, and a 33.6 m cove comes back as one cluster, which is
+    the defect this function exists to fix. Measuring from a fixed seed bounds
+    a cluster at `pitch` and cannot chain.
+
+    Order-dependent, and that is acceptable rather than ignored: a different
+    ordering gives more clusters and smaller ones, never a cluster wider than
+    2 x pitch, so the property that matters -- every sample sits ON the fitting
+    and none of them stands off it -- holds however the generator emits.
+
+    THE SHARE IS BY AREA, not one over the count. The end cap of a light strip
+    is a hundredth of its emitting surface and should not put out a tenth of
+    its light; weighting by area also makes the result stable when the pitch
+    moves, because a cluster that splits in two hands each half its own area.
+    """
+    while True:
+        seeds = []
+        p2 = pitch * pitch
+        for p, w in surface_points(verts, tris, body, pitch / 3.0):
+            for s in seeds:
+                if sum((s[0][j] - p[j]) ** 2 for j in range(3)) <= p2:
+                    s[1].append((p, w))
+                    break
+            else:
+                seeds.append((p, [(p, w)]))
+        if seeds and len(seeds) <= cap:
+            break
+        if not seeds:
+            return []
+        # Over the cost bound. Widening the pitch is the right lever because
+        # the energy is normalised: a coarser sampling of the same fitting is
+        # the same amount of light in fewer places.
+        pitch *= 2.0
+    total = sum(w for s in seeds for _p, w in s[1]) or 1.0
+    out = []
+    for _seed, members in seeds:
+        m = sum(w for _p, w in members) or 1.0
+        out.append(([sum(p[j] * w for p, w in members) / m for j in range(3)],
+                    m / total))
+    return out
+
+
 def fixture_lights(verts, tris, spans, energy, rng, shadow_n=2, eye=None):
     """One light per tagged light fitting, at its centroid, IN ITS OWN COLOUR.
 
@@ -930,10 +1165,25 @@ def fixture_lights(verts, tris, spans, energy, rng, shadow_n=2, eye=None):
     Energy is scaled by each material's own emission_energy for the same
     reason: the library already says the portal head is the brightest fitting
     and the deck channel the dimmest, and that ranking is measured.
+
+    A SPAN IS NOT A FITTING AND A FITTING IS NOT ALWAYS A POINT, which is the
+    other half of "the light IS the fitting" and was missing. Each tagged span
+    is cut into connected BODIES (`fitting_bodies`), and a body longer than its
+    own measured range is SAMPLED (`sample_body`) rather than collapsed to a
+    centroid that would sit off the fitting looking back at it. Those are two
+    different corrections and they move the light in opposite directions: a
+    body is a whole fitting and gets a fitting's energy, so more bodies is more
+    light; samples are one fitting seen in several places and share its energy
+    between them, so more samples is the same light better spread.
     """
     import materials as mats
 
     raw = []
+    # One entry per connected body, so a sample can say which fitting it is a
+    # sample OF. The merge below needs that: two bodies 0.1 m apart are one
+    # lamp, but two samples of one 33.6 m cove 4.5 m apart are not, and without
+    # an identity the merge cannot tell those cases apart by distance alone.
+    seen_bodies = []
     for name, lo, hi in spans:
         # MEMBERSHIP OF THE TABLE IS THE GATE, not the name. It used to be the
         # `light_` prefix, and that rule locked every bespoke module out of the
@@ -955,27 +1205,54 @@ def fixture_lights(verts, tris, spans, energy, rng, shadow_n=2, eye=None):
             # trim read -- but it casts nothing. Measured per fitting, not
             # assumed; see FIXTURE_LIGHTING.
             continue
-        idx = {i for tri in tris[lo:hi] for i in tri}
-        if not idx:
-            continue
-        n = float(len(idx))
-        c = [sum(verts[i][k] for i in idx) / n for k in range(3)]
         spec = FIXTURE_LIGHTING[name]
-        lt = {"pos": c, "energy": energy * spec["energy_rel"],
-              "colour": list(spec["colour"]),
-              "range": spec.get("range_m") or rng, "attenuation": 1.0,
-              "group": name, "_shadow": spec["shadow"]}
-        if spec["kind"] == "spot":
-            # Every spot in this table is a ceiling or soffit fitting aimed
-            # straight down. That is the measurement in all five cases; the
-            # one that is not quite -- cc_dais_key, "aimed down and aft" --
-            # is aimed down here, because the aft direction is a property of
-            # the room command and control is, and rooms.py builds the same
-            # bay in eleven archetypes with no aft.
-            lt["kind"] = "spot"
-            lt["angle"] = spec["angle_deg"]
-            lt["aim"] = [0.0, -1.0, 0.0]
-        raw.append(lt)
+        reach = spec.get("range_m") or rng
+        for body in fitting_bodies(verts, tris, lo, hi):
+            bidx = {i for k in body for i in tris[k]}
+            if not bidx:
+                continue
+            b0 = [min(verts[i][j] for i in bidx) for j in range(3)]
+            b1 = [max(verts[i][j] for i in bidx) for j in range(3)]
+            # The body's own size, against the distance the measurement says
+            # it throws. See EXTENDED_SAMPLES_PER_RANGE for where the line is
+            # and what sits either side of it.
+            if math.dist(b0, b1) > reach:
+                parts = sample_body(verts, tris, body,
+                                    reach / EXTENDED_SAMPLES_PER_RANGE)
+            else:
+                # NOT the surface sampler with one cluster: a compact fitting
+                # keeps the vertex centroid it has always had, to the last bit,
+                # so the twelve lamps of `docs/engine-corridor.png` -- this
+                # project's calibration anchor -- do not move by a millimetre
+                # for a change that was never about them.
+                n = float(len(bidx))
+                parts = [([sum(verts[i][j] for i in bidx) / n
+                           for j in range(3)], 1.0)]
+            fitting = len(seen_bodies)
+            seen_bodies.append(name)
+            for c, share in parts:
+                lt = {"pos": c,
+                      # Shared, not repeated: samples are one fitting seen in
+                      # several places and `share` sums to 1 across them.
+                      # Bodies are not -- each is its own fitting and carries a
+                      # fitting's energy.
+                      "energy": energy * spec["energy_rel"] * share,
+                      "colour": list(spec["colour"]),
+                      "range": reach, "attenuation": 1.0,
+                      "group": name, "_shadow": spec["shadow"],
+                      "_fitting": fitting}
+                if spec["kind"] == "spot":
+                    # Every spot in this table is a ceiling or soffit fitting
+                    # aimed straight down. That is the measurement in all five
+                    # cases; the one that is not quite -- cc_dais_key, "aimed
+                    # down and aft" -- is aimed down here, because the aft
+                    # direction is a property of the room command and control
+                    # is, and rooms.py builds the same bay in eleven archetypes
+                    # with no aft.
+                    lt["kind"] = "spot"
+                    lt["angle"] = spec["angle_deg"]
+                    lt["aim"] = [0.0, -1.0, 0.0]
+                raw.append(lt)
 
     # ONE FITTING, ONE LIGHT. A pilaster strip is SEVEN tagged bars with gaps
     # between them -- that segmentation is what makes it read as B5 rather than
@@ -986,10 +1263,18 @@ def fixture_lights(verts, tris, spans, energy, rng, shadow_n=2, eye=None):
     # Merged by proximity within a group, so the segmentation survives in the
     # GEOMETRY (where it is the point) and disappears from the LIGHT RIG (where
     # it is seven times the cost for no visible difference).
+    #
+    # NEVER ACROSS THE SAMPLES OF ONE FITTING. `sample_body` spreads an
+    # extended fitting on purpose, and its pitch is range/4 -- 0.88 m for a
+    # 3.5 m wall course, which is inside this 0.9 m radius. Merging by distance
+    # alone would therefore undo the split for every fitting throwing less than
+    # 3.6 m and leave the fix working only on the long-range ones, which is the
+    # sort of half-applied correction that reads as a tuning problem later.
     out = []
     for lt in raw:
         for got in out:
-            if got["group"] != lt["group"]:
+            if (got["group"] != lt["group"]
+                    or got["_fitting"] == lt["_fitting"]):
                 continue
             d2 = sum((got["pos"][k] - lt["pos"][k]) ** 2 for k in range(3))
             if d2 <= FIXTURE_MERGE_M ** 2:
@@ -1003,6 +1288,7 @@ def fixture_lights(verts, tris, spans, energy, rng, shadow_n=2, eye=None):
             out.append(lt)
     for lt in out:
         lt.pop("_n", None)
+        lt.pop("_fitting", None)
     # Shadows are rationed for the same reason as in the drum: an omni shadow
     # is a cube map, so each one re-renders the scene six times, on a CPU.
     # Shadows only where the MEASUREMENT says the fitting casts one. In
@@ -1749,6 +2035,129 @@ def _selftest():
           f"({[k for k, g in ROOM_EXPOSURE.items() if not 0.1 <= g <= 10.0]})")
     check(room_exposure("corridor") == 1.0,
           "the corridor is the anchor and its exposure is 1.0")
+
+    # -- a span is not a fitting, and a fitting is not always a point -------
+    # Both corrections are invisible in a still if you are not counting, and
+    # both were live for a session: one span became one lamp however many
+    # fittings it held, and a fitting longer than its own throw was collapsed
+    # to a centroid standing off it. The measured recoveries are the gate,
+    # because they are numbers the MODULES chose and this code has to
+    # rediscover:
+    #   docking_bay  LAMPS_PER_BAY_GIRDER=3 x 13 girders = 39
+    #   zocalo       5 rib lamps per rib, measured, x 6 ribs = 30
+    #   command_control  four wall courses, one per measured course
+    def _lamps(room):
+        v, t, g, _e = interior_geometry(room)
+        return fixture_lights(v, t, g, 3.0 * room_exposure(room), 7.0)
+
+    _bay = _lamps("docking_bays")
+    check(len(_bay) == 39,
+          f"the docking bay recovers its three floods a girder ({len(_bay)})")
+    _zoc = [x for x in _lamps("zocalo") if x["group"] == "zoc_rib_lamp"]
+    check(len(_zoc) == 30,
+          f"the Zocalo recovers its five rib lamps a rib ({len(_zoc)})")
+    # Stated on the bodies as well as on the lamps, because the lamp count of
+    # an EXTENDED fitting is a sampling decision and can land on the right
+    # number for the wrong reason -- reverting the body split and letting the
+    # sampler loose on the whole span happened to give the Zocalo 30 lamps
+    # again. `command_control` emits its four wall courses consecutively under
+    # one group, which is the case `to_spans` cannot see, and four is a count
+    # the module chose rather than one this file can arrive at by tuning.
+    _cv, _ct, _cg = interior_geometry("cnc")[:3]
+    _courses = [len(fitting_bodies(_cv, _ct, lo, hi))
+                for n, lo, hi in _cg if n == "cc_light_strip"]
+    check(_courses == [4],
+          f"one span of cc_light_strip is four wall courses ({_courses})")
+    # EVERY LIGHT SITS ON THE FITTING IT STANDS FOR. This is defect 1 written
+    # as a property, and it is the one that fires on a revert of either half of
+    # the fix -- the counts above catch the split, this catches the placement.
+    #
+    # MEASURED AS A SURFACE DISTANCE, and that is the whole difficulty. An
+    # "inside its bounding box" version was written first and was VACUOUS: the
+    # centroid of a set of points is inside their bounding box by construction,
+    # so both defective lamps passed it. The council chamber is the case that
+    # shows why -- a semicircular arc's bounding box is the half-disc, and a
+    # lamp 3.89 m out in front of the arc sits comfortably in the middle of it.
+    # Vertex distance is no better: a wall course is an 8.6 m box with eight
+    # corners, so a sample correctly placed at its midpoint is 4 m from the
+    # nearest vertex. `open_standpoint` has the same lesson written on it.
+    #
+    # `surface_points` is therefore reused as the probe. Distance to the
+    # nearest sampled point OVER-estimates distance to the surface by at most
+    # the sampling spacing, so a pass here implies a pass on the true distance,
+    # which is the safe direction for a gate.
+    #
+    # The threshold is a fraction of the fitting's OWN reach, because 0.77 m
+    # off a flood that throws 30 m is a point source and 0.77 m off a downlight
+    # that throws 1.2 m is not. Measured over every lit fitting in these rooms,
+    # with the rig before this change and after it:
+    #
+    #   after   0.008 .. 0.075  (worst: zoc_stall_light, a merged bulb string)
+    #   before  0.008 .. 1.976  (cc_light_strip 1.976 -- a lamp twice its own
+    #                            range from the strip it represents --
+    #                            zoc_rib_lamp 0.288, light_house_cove 0.216)
+    #
+    # 0.125 is the geometric middle of that gap: 67% clear of the worst pass
+    # and 42% clear of the nearest failure.
+    astray = []
+    for _room in ("corridor", "council_chamber", "cnc", "zocalo",
+                  "docking_bays"):
+        _v, _t, _g = interior_geometry(_room)[:3]
+        for _name, _lo, _hi in _g:
+            if _name not in FIXTURE_LIGHTING:
+                continue
+            _reach = FIXTURE_LIGHTING[_name].get("range_m") or 7.0
+            _probe = surface_points(_v, _t, list(range(_lo, _hi)),
+                                    _reach / 40.0, max_split=48)
+            for _lt in fixture_lights(_v, _t, [(_name, _lo, _hi)], 1.0, 7.0):
+                _d = min(math.dist(_lt["pos"], _p) for _p, _w in _probe)
+                if _d > 0.125 * _reach:
+                    astray.append(f"{_room}/{_name} {_d:.2f} m of {_reach} m")
+                    break
+    check(not astray,
+          f"every light sits ON the fitting it stands for ({astray[:3]})")
+
+    # THE ANCHOR MUST NOT MOVE. docs/engine-corridor.png is what every exposure
+    # in this file was calibrated against, so a change to the rig that alters
+    # the corridor invalidates ROOM_EXPOSURE and BESPOKE_EXPOSURE together.
+    # Twelve lamps at 36.0 total energy, and both numbers are checked because
+    # either could move alone.
+    _cor = _lamps("corridor")
+    check(len(_cor) == 12 and abs(sum(x["energy"] for x in _cor) - 36.0) < 1e-6,
+          f"the corridor anchor is unmoved ({len(_cor)} lamps, "
+          f"{sum(x['energy'] for x in _cor):.2f} energy)")
+
+    # -- and the two new pieces must be able to fail -----------------------
+    # A gate that cannot fail is worse than no gate. Both of these are checked
+    # on constructed geometry rather than on a room, so they say something
+    # about the ALGORITHM and not about whatever the generators happen to emit.
+    # A quad drawn as two triangles, plus a third triangle ten metres away.
+    _v = [(0.0, 0.0, 0.0), (1.0, 0.0, 0.0), (0.0, 1.0, 0.0), (1.0, 1.0, 0.0),
+          (9.0, 0.0, 0.0), (10.0, 0.0, 0.0), (9.0, 1.0, 0.0)]
+    _t = [(0, 1, 2), (1, 3, 2), (4, 5, 6)]
+    check(len(fitting_bodies(_v, _t, 0, 2)) == 1,
+          "two triangles sharing an edge are one fitting")
+    check(len(fitting_bodies(_v, _t, 0, 3)) == 2,
+          "a third triangle ten metres away is a second fitting")
+    # Welding by POSITION, not by index: council_chamber._M.quad appends four
+    # fresh vertices per quad, so index connectivity would call one continuous
+    # cove twelve fittings and multiply its flux by twelve.
+    _dv = [(0.0, 0.0, 0.0), (1.0, 0.0, 0.0), (0.0, 1.0, 0.0),
+           (1.0, 0.0, 0.0), (0.0, 1.0, 0.0), (1.0, 1.0, 0.0)]
+    check(len(fitting_bodies(_dv, [(0, 1, 2), (3, 4, 5)], 0, 2)) == 1,
+          "triangles that share an EDGE BY POSITION are one body, even with "
+          "no shared vertex index")
+    # The sampler's weights are areas, so they must sum to the area. A silent
+    # error here would redistribute a fitting's energy, not lose it, which is
+    # the kind of defect a render cannot show.
+    _tri = [(0.0, 0.0, 0.0), (3.0, 0.0, 0.0), (0.0, 4.0, 0.0)]
+    _w = sum(w for _p, w in surface_points(_tri, [(0, 1, 2)], [0], 0.4))
+    check(abs(_w - 6.0) < 1e-9, f"the sampler's weights sum to the area ({_w})")
+    _parts = sample_body(_tri, [(0, 1, 2)], [0], 1.0)
+    check(abs(sum(sh for _p, sh in _parts) - 1.0) < 1e-9,
+          "a sampled fitting's shares sum to one, so sampling never changes "
+          "how much light is in the room")
+    check(len(_parts) > 1, f"an extended fitting is sampled ({len(_parts)})")
 
     # -- the bespoke modules the interior shot can now assemble -------------
     import directory as dr                                     # noqa: PLC0415

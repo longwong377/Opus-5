@@ -1,4 +1,4 @@
-[gd_scene load_steps=107 format=3]
+[gd_scene load_steps=110 format=3]
 
 ; A room, from the inside.
 ;
@@ -140,6 +140,9 @@
 [ext_resource type="Material" path="res://materials/light_strip_warm.tres" id="m_light_strip_warm"]
 [ext_resource type="Material" path="res://materials/light_wall_course.tres" id="m_light_wall_course"]
 [ext_resource type="Material" path="res://materials/light_house_cove.tres" id="m_light_house_cove"]
+[ext_resource type="Material" path="res://materials/light_alien_lattice.tres" id="m_light_alien_lattice"]
+[ext_resource type="Material" path="res://materials/light_arrival_strip.tres" id="m_light_arrival_strip"]
+[ext_resource type="Material" path="res://materials/light_deck_grating.tres" id="m_light_deck_grating"]
 
 [sub_resource type="Environment" id="Env"]
 ; Flat colour, not a sky. Near-black rather than pure black for the reason the
@@ -179,8 +182,9 @@ material_rules = {
 "accent_warning": ExtResource("m_accent_warning"),
 "alien_bar": ExtResource("m_grab_rail_bare"),
 "alien_deck": ExtResource("m_kit_deck"),
+"alien_deck_grating": ExtResource("m_light_deck_grating"),
 "alien_endwall": ExtResource("m_shell_wall_panel"),
-"alien_lattice": ExtResource("m_furn_screen_panel"),
+"alien_lattice": ExtResource("m_light_alien_lattice"),
 "alien_lock_wall": ExtResource("m_shell_wall_industrial"),
 "alien_mask_dispenser": ExtResource("m_device_reader_shell"),
 "alien_portal_chamfer": ExtResource("m_kit_pilaster"),
@@ -255,7 +259,7 @@ material_rules = {
 "customs_desk": ExtResource("m_furn_casework"),
 "customs_endwall": ExtResource("m_shell_wall_panel"),
 "customs_hanger": ExtResource("m_shell_rib_oxide"),
-"customs_light_strip": ExtResource("m_light_pilaster_strip"),
+"customs_light_strip": ExtResource("m_light_arrival_strip"),
 "customs_screen": ExtResource("m_device_screen_glass"),
 "customs_wall": ExtResource("m_shell_wall_panel"),
 "deck_grid": ExtResource("m_kit_deck"),
