@@ -821,6 +821,8 @@ BESPOKE_EXPOSURE = {
     "hospitality": 1.34,     # vs reference/04-sector-red/Doug's Dugout.webp
     "command_control": 0.93,  # vs 03-sector-blue/comand and contorl.webp
     "docking_bay": 0.90,     # vs reference/03-sector-blue/dock.webp
+    "quarters": 1.12,        # vs reference/07-sector-grey/grey level 1.webp,
+                             # the residential corridor a unit opens off
     "plant": 0.88,           # vs 10-interiors-generic-kit/more hallways.jpg,
                              # the measured SERVICE corridor -- the register
                              # whose walls are black except where a panel or

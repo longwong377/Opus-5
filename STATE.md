@@ -2824,9 +2824,44 @@ stopped and the work done serially from the same committed JSON the agents were 
 read. **The lesson is about this machine, not about the pattern**: at 2 concurrent, a 12-agent
 fan-out is a 6-deep queue, and the useful width here is 2–4.
 
-## NEXT SESSION — layer 4
+## Session 3o (cont. 2) — LAYER 4 IS 89 / 118
 
-1. **The bespoke sixteen, continued.** Layer 4 stands at 68/118; the other 50 are the module-built places, and
+**`plant` and `quarters` have light, and the counter is a two-part test now.** A bespoke module
+counts toward layer 4 when it emits a group the rig will actually turn into a source — membership
+of `FIXTURE_LIGHTING`, which is what `fixture_lights` tests — **and** it has a calibrated exposure.
+Fittings without an exposure is a lit room at an unmeasured brightness, and the layer is "lit to its
+reference's mood", not "lit". That takes it from 68 to **89 of 118**.
+
+**plant** built no light of any kind and rendered 85% black. It now carries the measured SERVICE
+register: `light_service_tube` (emissive only — the thing you see, not the thing that lets you see)
+and `light_plant_flood`, which is the docking bay's flood and **the one range in this project that
+transferred with no arithmetic at all** — measured at 30 m in an 18 m bay, and a five-deck plant bay
+is 5 × `DECK_PITCH_M` = 18.0 m exactly.
+
+**quarters** had only a Babcom screen. It now takes the residential corridor's own kit, and the
+measured height transfers **as a ratio, not a length**: "0.35 ± 0.02 of clear deck-to-soffit height"
+is 0.88 m in a corridor and 0.98 m under a 2.8 m quarters ceiling. No per-class lighting — nothing
+in the reference distinguishes an ambassador's suite from a transient cell by its fittings, and what
+does differ is how many fittings a unit gets, because the spacing is fixed and the unit sizes are
+not. `docs/engine-quarters.png`.
+
+**Three camera defects, each found by looking at the frame it produced.** `plant.py` builds in
+STATION coordinates, and rightly — its subject is a bay spanning five decks of a spinning ring. But
+"up" there is radially *inward* and the shot assumes +Y, so `unroll_to_local` flattens the arc into
+a standing frame. `open_standpoint` assumed the floor was the bottom of the model, and the plant
+catwalk is 15.6 m up — it now finds standing levels by histogramming near-horizontal triangle area,
+and uses the module's *declared* walkway where there is one. And the aim was always +Z, while the
+catwalk runs along the arc — so the camera looked across a 1.8 m walkway into unlit void. **Asking
+the module beats inferring**, the same way `light_` tagging beats guessing which material glows.
+
+**A negative result.** `BESPOKE_EXPOSURE["plant"]` barely moves the measurement: the frame is mostly
+below the measurable floor, so dimming pushes more pixels under 0.01 and *raises* the median of what
+remains. The two cancel and it sits at 1.59× either way. In 139.8 million m³ of void with seven
+floods in it, the median of the lit pixels is not an exposure measurement.
+
+## NEXT SESSION — layer 4, the last 29
+
+1. **The remaining bespoke modules.** Layer 4 stands at 68/118; the other 50 are the module-built places, and
    several already build lamps (`zoc_rib_lamp`, `bay_lamp`, `cc_light_strip`). What they do not have
    is a calibrated exposure and a frame measured against its reference, which is what layer 4 *is*.
    The measured fixtures for them are already committed in `docs/layer4-lighting/public_social.json`

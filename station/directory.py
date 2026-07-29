@@ -915,12 +915,32 @@ def _lit_keys():
     """
     if _lit_keys.cache is None:
         import rooms                                            # noqa: PLC0415
+        import test_materials_layer3 as gate                    # noqa: PLC0415
+        sys.path.insert(0, os.path.join(
+            os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+            "tools"))
+        import export_scene as X                                # noqa: PLC0415
         s, p = it.load()
         done = set()
         for q in rooms.unbuilt(s, p):
             _v, _t, g = rooms.build(s, p, q)
             if any(n.startswith("light_") for n, _lo, _hi in g):
                 done.add(q["key"])
+        # A BESPOKE MODULE COUNTS ON TWO CONDITIONS, not one. It must emit a
+        # group the light rig will actually turn into a source -- membership of
+        # FIXTURE_LIGHTING, which is what `fixture_lights` tests -- AND it must
+        # have a calibrated exposure. Fittings without an exposure is a lit
+        # room at an unmeasured brightness, and layer 4 is "lit to its
+        # reference's mood", not "lit".
+        for name, build in gate.BESPOKE_BUILDERS.items():
+            if name not in X.BESPOKE_EXPOSURE:
+                continue
+            try:
+                groups = build(s, p)
+            except Exception:                                  # noqa: BLE001
+                continue
+            if any(g in X.FIXTURE_LIGHTING for g in groups):
+                done |= {q["key"] for q in PLACES if q["module"] == name}
         _lit_keys.cache = frozenset(done)
     return _lit_keys.cache
 

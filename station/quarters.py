@@ -126,6 +126,19 @@ SCREEN_W_M, SCREEN_H_M, SCREEN_T_M = 0.75, 0.45, 0.06
 SHOWER_M = 1.00
 WALK_MIN_M = 0.75          # the clear path a person needs past the fittings
 
+# Light fittings. Every value MEASURED, from docs/layer4-lighting/
+# corridor_kit.json's residential-corridor family -- see the block in `unit()`
+# for what each one is and why a quarters unit takes the corridor's kit.
+DOWNLIGHT_FRAC = 0.35      # of clear deck-to-soffit height, MEASURED on two
+                           # independent columns at 0.334 and 0.370
+DOWNLIGHT_PITCH_M = 3.6    # measured spacing along a corridor
+DOWNLIGHT_W_M = 0.26
+DOWNLIGHT_H_M = 0.22
+DOWNLIGHT_D_M = 0.12       # 0.10-0.17 m proud of the wall face, measured
+PORTAL_HEAD_FRAC = 0.64    # of the clear aperture, measured
+PORTAL_HEAD_H_M = 0.12     # measured height/length aspect 0.072 on a 1.66 m run
+PORTAL_HEAD_D_M = 0.10
+
 
 def class_by_key(key):
     for c in CLASSES:
@@ -224,6 +237,51 @@ def unit(cls):
         _box(v, t, g, "qtr_shower",
              (hw - SHOWER_M - 0.05, 0.0, d - SHOWER_M - 0.05),
              (hw - 0.05, UNIT_H_M, d - 0.05))
+
+    # --- light fittings ---------------------------------------------------
+    # LAYER 4. Until this existed the only thing that glowed in a quarters unit
+    # was the Babcom screen, and seven locations rendered black. See INV-037.
+    #
+    # A unit opens off a corridor and is built from the corridor's kit, so it
+    # takes the corridor's own MEASURED fittings from docs/layer4-lighting/
+    # corridor_kit.json, and takes the split with them:
+    #
+    #   light_downlight    the warm practical, 2650 K, omni, range 1.2 m,
+    #                      spacing 3.6 m, NO shadow -- and the ONLY fitting in
+    #                      the residential kit that casts anything.
+    #   light_portal_head  in the door soffit. MEASURED EMISSIVE ONLY, twice
+    #                      over: the deck beneath the trim reads DARKER than
+    #                      mid-corridor deck, and the lit face measures within
+    #                      0.006 of a wall plate three metres away.
+    #
+    # THE HEIGHT IS TRANSFERRED AS A RATIO, NOT AS A LENGTH. The corridor
+    # measurement is "0.35 +/- 0.02 of clear deck-to-soffit height on two
+    # independent columns", which is 0.88 m in a 2.5 m corridor and is 0.98 m
+    # here. Carrying the 0.88 across would put it at 0.31 of this ceiling and
+    # quietly lose the thing that was actually measured.
+    #
+    # NO PER-CLASS LIGHTING, deliberately. Nothing in the reference
+    # distinguishes an ambassador's suite from a transient cell by its
+    # fittings, and inventing a difference would be exactly the unmarked
+    # invention the first hard rule forbids. What DOES differ is how many
+    # fittings a unit gets, because the spacing is fixed and the unit sizes are
+    # not -- which is the class marker doing its own work.
+    lit_y = DOWNLIGHT_FRAC * UNIT_H_M
+    n_dl = max(1, int((d - 0.6) / DOWNLIGHT_PITCH_M))
+    for i in range(n_dl):
+        zc = 0.6 + (i + 0.5) * (d - 0.6) / n_dl - DOWNLIGHT_W_M / 2
+        # The shower is a full-height box on this wall. A lamp inside it lights
+        # the inside of the shower.
+        if "shower" in f and zc + DOWNLIGHT_W_M > d - SHOWER_M - 0.15:
+            continue
+        _box(v, t, g, "light_downlight",
+             (hw - DOWNLIGHT_D_M, lit_y, zc),
+             (hw, lit_y + DOWNLIGHT_H_M, zc + DOWNLIGHT_W_M))
+    # Portal head: in the soffit of the open door wall, 0.64 of the aperture.
+    ph = w * PORTAL_HEAD_FRAC
+    _box(v, t, g, "light_portal_head",
+         (-ph / 2, UNIT_H_M - PORTAL_HEAD_H_M, 0.0),
+         (ph / 2, UNIT_H_M, PORTAL_HEAD_D_M))
 
     return v, t, g
 
@@ -421,6 +479,56 @@ def _selftest():
     # --- winding ----------------------------------------------------------
     bv, bt, bg = [], [], []
     _box(bv, bt, bg, "probe", (0, 0, 0), (1, 2, 3))
+    # --- lights: no quarters renders black --------------------------------
+    # LAYER 4's floor, and the failure it guards is specific: for a session the
+    # only emissive thing in a quarters unit was the Babcom screen, and seven
+    # locations came out dark. `export_scene.fixture_lights` makes a real
+    # source per fitting in its table and nothing else in an interior casts, so
+    # a unit with no fitting is a black room however many of its props glow.
+    dark, pierced = [], []
+    for c in CLASSES:
+        v, t, g = unit(c)
+        names = {n for n, _l, _h in g}
+        if not v:                       # lurker: no room at all, by design
+            check(f"{c['key']} builds no room and no lamp", not names)
+            continue
+        if not (names & {"light_downlight", "light_portal_head"}):
+            dark.append(c["key"])
+        # Named in full rather than by prefix. materials.py scans this file
+        # for quoted group literals, and a bare prefix reads to it as a group
+        # nobody has painted -- including one written inside a comment, which
+        # is how this line came to be worded without one.
+        lamps = [(n, lo, hi) for n, lo, hi in g
+                 if n in ("light_downlight", "light_portal_head")]
+        solids = [(n, lo, hi) for n, lo, hi in g
+                  if n.startswith("qtr_") and n not in ("qtr_deck",
+                                                        "qtr_soffit",
+                                                        "qtr_wall")]
+
+        def _aabb(lo, hi, _v=v, _t=t):
+            idx = {i for tri in _t[lo:hi] for i in tri}
+            q = [_v[i] for i in idx]
+            return (min(x[0] for x in q), min(x[1] for x in q),
+                    min(x[2] for x in q), max(x[0] for x in q),
+                    max(x[1] for x in q), max(x[2] for x in q))
+
+        for ln, llo, lhi in lamps:
+            la = _aabb(llo, lhi)
+            for sn, slo, shi in solids:
+                sa = _aabb(slo, shi)
+                if all(la[i] < sa[i + 3] - 1e-6 and sa[i] < la[i + 3] - 1e-6
+                       for i in range(3)):
+                    pierced.append(f"{c['key']}: {ln} in {sn}")
+    check("every quarters class with a room has a light fitting",
+          not dark, f"{dark}")
+    check("no light fitting is inside a fitting -- a lamp in the shower "
+          "lights the inside of the shower", not pierced, f"{pierced[:4]}")
+    # The measured height is a RATIO of the ceiling, not a corridor's length.
+    # If someone replaces it with 0.88 this fails, which is the point.
+    check("the downlight sits at the measured fraction of the ceiling",
+          abs(DOWNLIGHT_FRAC * UNIT_H_M - 0.98) < 0.02,
+          f"{DOWNLIGHT_FRAC * UNIT_H_M:.2f} m at UNIT_H_M {UNIT_H_M}")
+
     check("primitives are wound outward", _signed_volume(bv, bt) > 0)
     check("the winding test can fail",
           _signed_volume(bv, [(a, c, b) for a, b, c in bt]) < 0)
