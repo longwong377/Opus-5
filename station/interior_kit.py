@@ -713,7 +713,14 @@ def pilaster(height, p=None, strip=True, segments=7):
             hw * math.cos(math.pi * k / segments)) for k in range(segments + 1)]
     pv, pt = [], []
     _prism(pv, pt, arc, 0.0, height)
-    _merge(verts, tris, pv, pt, lambda x, y, z: (x, z, -y))
+    # The COLUMN, not just the strip in its face. The light strip has been
+    # tagged since the kit was written and the bullnose it sits in has not, so
+    # `kit_pilaster` -- a reviewed, exported material binding 'pilaster' --
+    # attached to nothing, and every column in the station rendered as wall
+    # plate. A tinted render makes it obvious: the strips read white and the
+    # columns read as untagged structure.
+    with tag('pilaster'):
+        _merge(verts, tris, pv, pt, lambda x, y, z: (x, z, -y))
 
     if strip:
       with tag('light_pilaster_strip'):
@@ -780,20 +787,37 @@ def wall_assembly(length, height, p=None, plaque_at=None, downlights=True,
     # left a 0.5 m slot open to space down both sides of every bay -- which read
     # as a dark ceiling rather than as a hole, because the preview background is
     # black, and was patched with soffit ribs instead of being closed.
-    _prism(verts, tris,
-           [(0.0, wall_h), (0.0, wall_h - 0.02), (-th, wall_h - 0.02),
-            (-th, height), (chamf, height)], 0.0, length)
+    # TAGGED, and the tags are the whole point. `tag()` existed for two years
+    # with four call sites, all of them light fittings -- so every structural
+    # surface in the kit fell into the untagged default, `structure`, and
+    # 80.5% of a corridor rendered as one material. The build-up read off
+    # `grey level 1.webp` is a skirt, a dado, a rail band throwing a shadow
+    # reveal, and plate courses above; it is described in the docstring above
+    # and was, until now, invisible to the renderer.
+    #
+    # Names are not new: they are the fragments `kit_skirt`, `kit_rail_band`,
+    # `kit_reveal` and `kit_wall_plate` have bound since they were written.
+    # Those materials were reviewed, exported and attached to nothing.
+    with tag('soffit'):
+        _prism(verts, tris,
+               [(0.0, wall_h), (0.0, wall_h - 0.02), (-th, wall_h - 0.02),
+                (-th, height), (chamf, height)], 0.0, length)
     if not courses:
         return verts, tris
 
-    _slab(verts, tris, -th, rail_proud * 0.55, 0.0, sk_h, 0.0, length)
-    plated(0.0, sk_h, dado_top - p["wall_reveal_m"])
+    with tag('skirt'):
+        _slab(verts, tris, -th, rail_proud * 0.55, 0.0, sk_h, 0.0, length)
+    with tag('wall_panel'):
+        plated(0.0, sk_h, dado_top - p["wall_reveal_m"])
     # The reveal is a set-back band, not a gap. A gap would show daylight
     # through the wall; the deep shadow in the frame is a recess, not a void.
-    _slab(verts, tris, -th, -p["wall_reveal_m"] * 0.5,
-          dado_top - p["wall_reveal_m"], dado_top, 0.0, length)
-    _slab(verts, tris, -th, rail_proud, dado_top, rail_top, 0.0, length)
-    plated(0.0, rail_top, wall_h, courses=p["wall_plate_courses"])
+    with tag('wall_reveal'):
+        _slab(verts, tris, -th, -p["wall_reveal_m"] * 0.5,
+              dado_top - p["wall_reveal_m"], dado_top, 0.0, length)
+    with tag('rail_band'):
+        _slab(verts, tris, -th, rail_proud, dado_top, rail_top, 0.0, length)
+    with tag('wall_panel'):
+        plated(0.0, rail_top, wall_h, courses=p["wall_plate_courses"])
 
     if plaque_at is not None:
         # Signage plate at eye level, matching the "Level ..." plate visible on
@@ -1074,7 +1098,8 @@ def corridor_section(length, p=None, doors=(), start_portal=True):
     first = 0 if start_portal else 1
     for i in range(first, n_bays + 1):
         v, t = portal_frame(w, h, p)
-        _merge(verts, tris, v, t, offset=(0.0, 0.0, bay * i))
+        with tag('portal_frame'):
+            _merge(verts, tris, v, t, offset=(0.0, 0.0, bay * i))
 
     # Deck panels are authored flat in XY with thickness along +Z. The remap is
     # a cyclic permutation, so winding survives untouched -- and it puts the
@@ -1083,20 +1108,24 @@ def corridor_section(length, p=None, doors=(), start_portal=True):
     n_deck = max(1, int(round(length / p["deck_panel_l_m"])))
     for i in range(n_deck):
         v, t = deck_panel(length / n_deck, w)
-        _merge(verts, tris, v, t, lambda x, y, z: (y, z, x),
-               (0.0, -0.12, length * (i + 0.5) / n_deck))
-    _merge(verts, tris, *deck_grid(length, w, p))
+        with tag('deck_panel'):
+            _merge(verts, tris, v, t, lambda x, y, z: (y, z, x),
+                   (0.0, -0.12, length * (i + 0.5) / n_deck))
+    with tag('deck_grid'):
+        _merge(verts, tris, *deck_grid(length, w, p))
 
     # Soffit, spanning between the two chamfers, ribbed between portals. The
     # ribs are not decoration: an unbroken plane overhead is the one surface a
     # corridor never has, and without them the ceiling renders as a void rather
     # than as the dark structure the reference actually shows.
     flat = w / 2.0 - chamf
-    _slab(verts, tris, -flat, flat, h, h + p["ceiling_slab_m"], 0.0, length)
-    for i in range(n_bays):
-        for f in (0.34, 0.66):
-            rz = bay * (i + f)
-            _slab(verts, tris, -flat, flat, h - 0.07, h, rz - 0.05, rz + 0.05)
+    with tag('ceiling_slab'):
+        _slab(verts, tris, -flat, flat, h, h + p["ceiling_slab_m"], 0.0, length)
+        for i in range(n_bays):
+            for f in (0.34, 0.66):
+                rz = bay * (i + f)
+                _slab(verts, tris, -flat, flat, h - 0.07, h,
+                      rz - 0.05, rz + 0.05)
 
     # A wall door takes over a whole bay, so it is snapped to that bay's centre
     # rather than left where the caller asked. Placing it by centreline alone
@@ -1117,11 +1146,16 @@ def corridor_section(length, p=None, doors=(), start_portal=True):
                 z1 - z0, h, p, courses=(side, i) not in wall_doors,
                 plaque_at=(z1 - z0) * 0.5 if i == 0 and side > 0 else None)
             # side +1 is the mirror: negating x reverses winding, hence the flip.
-            if side < 0:
-                _merge(verts, tris, v, t, offset=(-w / 2.0, 0.0, z0))
-            else:
-                _merge(verts, tris, v, t, lambda x, y, z: (-x, y, z),
-                       (w / 2.0, 0.0, z0), flip=True)
+            # `wall_assembly` tags its own parts, and `_carry` moves those spans
+            # across intact -- so this outer tag only claims whatever the
+            # assembly left untagged, which is the correct fallback rather than
+            # a value that overrides it.
+            with tag('wall_assembly'):
+                if side < 0:
+                    _merge(verts, tris, v, t, offset=(-w / 2.0, 0.0, z0))
+                else:
+                    _merge(verts, tris, v, t, lambda x, y, z: (-x, y, z),
+                           (w / 2.0, 0.0, z0), flip=True)
 
     wall_h = h - chamf
     fd, th = p["door_frame_depth_m"], p["wall_thickness_m"]
@@ -1203,6 +1237,20 @@ def write_obj(path, verts, tris, spans=None, default_group="structure"):
             for i, (a, b, c) in enumerate(tris):
                 if owner[i] == g:
                     f.write(f"f {a + 1} {b + 1} {c + 1}\n")
+
+
+def _tag_coverage(length=21.6):
+    """(total tris, untagged tris, {group: tris}) for one corridor section."""
+    reset_tags()
+    v, t = corridor_section(length)
+    owner = ["structure"] * len(t)
+    for name, lo, hi in tagged_spans(t):
+        for i in range(lo, min(hi, len(t))):
+            owner[i] = name
+    counts = {}
+    for g in owner:
+        counts[g] = counts.get(g, 0) + 1
+    return len(t), counts.get("structure", 0), counts
 
 
 def _selftest():
@@ -1335,6 +1383,26 @@ def _selftest():
     pool_r = max(math.hypot(v[0], v[2]) for v in downlight_pool()[0])
     assert abs(pool_r * 2 - DOWNLIGHT_POOL_M) < 1e-6, \
         f"downlight pool is {pool_r*2:.3f} m, measured value is {DOWNLIGHT_POOL_M}"
+
+    # --- EVERY STRUCTURAL SURFACE MUST CARRY A TAG ------------------------
+    # `tag()` shipped with four call sites, all light fittings, so 80.5% of a
+    # corridor fell into the untagged default and rendered as one material --
+    # while six reviewed materials (kit_deck, kit_pilaster, kit_reveal,
+    # kit_skirt, kit_rail_band and half of kit_wall_plate) bound fragments that
+    # nothing emitted. They were not wrong; they had nothing to attach to.
+    #
+    # This is the gate that stops it recurring. It is deliberately a HARD zero
+    # rather than a threshold: an untagged triangle is a surface the material
+    # library cannot see, and "mostly tagged" is how it got to 80%.
+    total, untagged, counts = _tag_coverage()
+    print(f"tag coverage: {total - untagged}/{total} tris tagged, "
+          f"{len(counts)} groups")
+    assert untagged == 0, (
+        f"{untagged} of {total} corridor triangles carry no tag: "
+        f"{sorted(counts)}")
+    # And a floor on the count, because one giant tag would satisfy the above
+    # while losing exactly the distinction the tags exist to make.
+    assert len(counts) >= 12, f"only {len(counts)} groups: {sorted(counts)}"
 
     print("selftest OK")
 
