@@ -823,19 +823,32 @@ def fixture_lights(verts, tris, spans, energy, rng, shadow_n=2, eye=None):
 
     raw = []
     for name, lo, hi in spans:
-        if not name.startswith(LIGHT_GROUP_PREFIX):
+        # MEMBERSHIP OF THE TABLE IS THE GATE, not the name. It used to be the
+        # `light_` prefix, and that rule locked every bespoke module out of the
+        # light rig: zocalo.py's lamp is `zoc_rib_lamp`, the docking bay's is
+        # `bay_lamp`, the bar's is `bar_pendant_lamp`, and no amount of
+        # measurement could make any of them cast because none of them is
+        # spelled right. Renaming nine modules' groups would have broken their
+        # material binds, their scene rules and the layer-3 coverage count, to
+        # satisfy a convention.
+        #
+        # Nothing is lost by the change. The prefix was never the real test --
+        # a `light_` group absent from FIXTURE_LIGHTING was already skipped --
+        # so this is the same rule stated once instead of twice. The convention
+        # survives where it means something: interior_kit and rooms.py still
+        # tag `light_*`, the self-test asserts it, and `directory._lit_keys`
+        # still counts by it for the generated rooms.
+        if name not in FIXTURE_LIGHTING:
+            # Emissive only. The material still glows -- that is what makes the
+            # trim read -- but it casts nothing. Measured per fitting, not
+            # assumed; see FIXTURE_LIGHTING.
             continue
         idx = {i for tri in tris[lo:hi] for i in tri}
         if not idx:
             continue
         n = float(len(idx))
         c = [sum(verts[i][k] for i in idx) / n for k in range(3)]
-        spec = FIXTURE_LIGHTING.get(name)
-        if spec is None:
-            # Emissive only. The material still glows -- that is what makes the
-            # trim read -- but it casts nothing. Measured, not assumed; see
-            # FIXTURE_LIGHTING.
-            continue
+        spec = FIXTURE_LIGHTING[name]
         lt = {"pos": c, "energy": energy * spec["energy_rel"],
               "colour": list(spec["colour"]),
               "range": spec.get("range_m") or rng, "attenuation": 1.0,
@@ -1453,6 +1466,23 @@ def _selftest():
           f"({sorted(unaccounted)})")
     check(not (emissive_only & set(FIXTURE_LIGHTING)),
           "no fitting is declared emissive-only and given a light too")
+    # Now that membership rather than spelling is the gate, a TYPO in a key is
+    # a fitting that silently never lights. So every key must be a group some
+    # generator actually emits. rooms.py and interior_kit are asked directly;
+    # the bespoke modules come from the layer-3 gate, which already builds all
+    # sixteen for its coverage count.
+    emitted = {n for a in R.LIGHTS for n, *_ in R.LIGHTS[a]}
+    import interior_kit as _kit                                # noqa: PLC0415
+    import test_materials_layer3 as l3gate                     # noqa: PLC0415
+    _kit.reset_tags()
+    for _v, _t in (_kit.corridor_section(21.6),
+                   _kit.corridor_junction_section(6.0)):
+        emitted |= {n for n, _lo, _hi in _kit.tagged_spans(_t)}
+    for _m, _groups in l3gate.bespoke_groups(*it.load()).items():
+        emitted |= {g for g in _groups if not g.startswith("__error__")}
+    ghost = set(FIXTURE_LIGHTING) - emitted
+    check(not ghost,
+          f"every fitting given a light is a group something emits ({sorted(ghost)})")
     for n, spec in FIXTURE_LIGHTING.items():
         check(spec["kind"] in ("omni", "spot"), f"{n}: known light kind")
         check(spec["kind"] != "spot" or 0.0 < spec["angle_deg"] < 90.0,
@@ -1471,7 +1501,6 @@ def _selftest():
     # -- the bespoke modules the interior shot can now assemble -------------
     import directory as dr                                     # noqa: PLC0415
     import quarters as Q                                       # noqa: PLC0415
-    import test_materials_layer3 as l3gate                     # noqa: PLC0415
 
     # to_spans, against all four shapes it exists for. Written first because
     # the shape normaliser is where a silent wrong answer would live: three of
