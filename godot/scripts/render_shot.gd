@@ -83,6 +83,16 @@ func _ready() -> void:
 		var env := ($WorldEnvironment as WorldEnvironment).environment
 		env.ssao_enabled = false
 		env.ssil_enabled = false
+	# Per-shot ambient. The .tscn owns the LOOK and keeps its calibrated value
+	# as the default; what the shot may override is HOW MUCH FILL THIS ROOM
+	# HAS, which is a measured property of the room and not of the look. A brig
+	# measures 0.047 darkest-over-brightest and a residential corridor 0.300,
+	# and one ambient_light_energy for both is the difference between a station
+	# and a set of rooms with the lights on.
+	if _shot.has("ambient"):
+		var wenv := ($WorldEnvironment as WorldEnvironment).environment
+		wenv.ambient_light_energy = float(_shot["ambient"])
+		print("render_shot: ambient %.3f" % wenv.ambient_light_energy)
 
 	var t0 := Time.get_ticks_msec()
 	_load_geometry()
@@ -250,25 +260,58 @@ func _spawn_lights() -> void:
 	holder.name = "LightRuns"
 	add_child(holder)
 	var shadowed := 0
+	var spots := 0
 	for l in lights:
-		var o := OmniLight3D.new()
+		# A SPOT IS NOT A DIM OMNI. Five of the eleven fittings rooms.py places
+		# were measured as spots -- a bay flood, a market downlight, a bar
+		# pendant, a platform pool, a dais key -- and every one of them was
+		# identified as a spot BY ITS SHAPE: a hard-edged pool with a
+		# body-shaped hole in it, a 1.57 m disc on a deck, a cone shade over a
+		# table. Rendering those as omnis would throw away the measurement and
+		# leave the frame looking evenly and wrongly lit.
+		var o: Light3D
+		if String(l.get("kind", "omni")) == "spot":
+			var s := SpotLight3D.new()
+			s.spot_range = float(l.get("range", 500.0))
+			s.spot_attenuation = float(l.get("attenuation", 1.0))
+			s.spot_angle = float(l.get("angle", 45.0))
+			# Penumbra: the one measured value for it -- concourse_deck_spot,
+			# "edge blend ~0.5, the pool's penumbra is about 60% of its
+			# radius" -- is a soft edge on a NARROW cone. Godot's attenuation
+			# is a falloff exponent rather than a blend width, so what is
+			# carried across is the qualitative finding: these pools have
+			# edges, and they are not razors.
+			s.spot_angle_attenuation = 0.6
+			o = s
+			spots += 1
+		else:
+			o = OmniLight3D.new()
+			(o as OmniLight3D).omni_range = float(l.get("range", 500.0))
+			(o as OmniLight3D).omni_attenuation = float(
+				l.get("attenuation", 1.0))
 		# Parent first, position second. global_position on a node that is not
 		# yet in the tree is a no-op that logs "!is_inside_tree()" and silently
 		# leaves the light at the origin -- which, inside a drum, is on the
 		# spin axis inside the core tube, i.e. lighting nothing.
 		holder.add_child(o)
 		o.global_position = _v3(l["pos"])
+		if o is SpotLight3D:
+			# look_at needs a target that is not the light's own position and
+			# an up vector that is not parallel to the aim. Every aim in the
+			# table is straight down, so up must be +Z rather than the default
+			# +Y or the basis is degenerate and Godot logs and bails.
+			var aim: Vector3 = _v3(l.get("aim", [0.0, -1.0, 0.0]))
+			o.look_at(o.global_position + aim.normalized(),
+				Vector3(0.0, 0.0, 1.0))
 		var c = l.get("colour", [1, 1, 1])
 		o.light_color = Color(float(c[0]), float(c[1]), float(c[2]))
 		o.light_energy = float(l.get("energy", 1.0)) * light_gain
-		o.omni_range = float(l.get("range", 500.0))
-		o.omni_attenuation = float(l.get("attenuation", 1.0))
 		if bool(l.get("shadow", false)):
 			o.shadow_enabled = true
 			o.shadow_bias = omni_shadow_bias
 			shadowed += 1
-	print("render_shot: %d light-run sources, %d casting shadows"
-		% [lights.size(), shadowed])
+	print("render_shot: %d light-run sources (%d spot), %d casting shadows"
+		% [lights.size(), spots, shadowed])
 
 
 func _scale_scene_lights(node: Node, gain: float) -> void:

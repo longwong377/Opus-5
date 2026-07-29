@@ -256,6 +256,152 @@ FIXTURES = {
 }
 FIXTURE_PITCH_M = 4.5      # spacing of repeated fixtures along the room
 
+# ---------------------------------------------------------------------------
+# Light fittings: the reason a room is not black
+# ---------------------------------------------------------------------------
+# LAYER 4. Until this table existed, sixty-eight of the station's 118 locations
+# rendered BLACK -- `export_scene.fixture_lights` makes one source per tagged
+# `light_*` group and this generator tagged none, so the only things that
+# glowed in a rooms.py room were seventeen terminal screens. That is not a
+# tuning problem; it is a missing object, the same class of defect FIXTURES was
+# added for.
+#
+# NOTHING HERE IS INVENTED FROM SCRATCH. Three agents measured every light
+# source visible in the reference frames in session 3n and the results are
+# committed in docs/layer4-lighting/*.json -- colour, colour temperature,
+# relative energy, range, spacing, shadow, and the frame each came from. What
+# this table does is decide WHICH MEASURED FITTING EACH ARCHETYPE USES, and
+# that mapping is the extrapolation (INV-036). The alternative -- authoring
+# eleven new lamp colours by eye -- is exactly the unmarked invention the
+# project's first hard rule forbids.
+#
+# The mapping, and why:
+#
+#   industrial  <- bay_flood + service_wall_tube. A 7.5 m plant hall is lit
+#                  the way a docking bay is: a few cool high-bay floods and
+#                  cold blue tube trim on the walls.
+#   store       <- bay_flood + the concourse deck channel. Same high bay; the
+#                  deck run is what gives a cargo hall its length.
+#   transit     <- concourse_deck_spot + deck channel. The measured concourse.
+#   hospitality <- bar_pendant_lamp + casino_bar_backlight. Doug's Dugout and
+#                  the Casino are the two measured hospitality interiors and
+#                  they agree: warm pendants over the tables, a cyan strip
+#                  behind the bar, and darkness in between.
+#   worship     <- cc_dais_key + cc_wall_course. A key on the dais and cold
+#                  courses on the walls -- the chapel's dais is the only thing
+#                  in the room that should be lit.
+#   medical     <- fa_batten + service_wall_tube. The only measured NEUTRAL
+#                  white source in the whole set (S 0.010, clipping in all
+#                  three channels) belongs over a medlab bed.
+#   research    <- fa_batten + cc_wall_course.
+#   detention   <- fa_batten's register behind a guard + cc_pit_indicator.
+#                  The brig is the one archetype with NO measured frame; see
+#                  `light_cage_lamp` in materials.py for what is declared.
+#   commerce    <- zoc_downlight_overhead + zoc_stall_light. The Zocalo.
+#   office      <- wr_soffit_blade + wr_wall_strip_bank. The War Room is the
+#                  measured working office and its light is warm, wall-mounted
+#                  and low -- not a ceiling grid.
+#   generic     <- light_downlight + deck channel: the corridor kit's own
+#                  fittings, so an unclassified room reads as station fabric.
+#
+# (name, w_along_z, d_along_x, h, kind, mount_y_m). Kinds:
+#   "ceiling" -- two rows either side of the free overhead channel
+#   "key"     -- ONE fitting on the centreline, over whatever the spine holds
+#   "course"  -- a horizontal band on both long walls at mount_y_m
+#   "festoon" -- small bulbs strung along the channel edges at mount_y_m
+#   "deck"    -- discrete lit panels inlaid down the channel at deck level
+LIGHTS = {
+    "industrial":  (("light_highbay", 0.80, 0.80, 0.34, "ceiling", 0.0),
+                    ("light_service_tube", 0.11, 0.13, 1.43, "course", 0.95)),
+    "store":       (("light_highbay", 0.80, 0.80, 0.34, "ceiling", 0.0),
+                    ("light_deck_channel", 1.20, 0.90, 0.02, "deck", 0.0)),
+    "transit":     (("light_platform_pool", 0.62, 0.62, 0.22, "ceiling", 0.0),
+                    ("light_deck_channel", 1.20, 0.90, 0.02, "deck", 0.0)),
+    "hospitality": (("light_pendant", 0.46, 0.46, 0.30, "ceiling", 0.0),
+                    ("light_bar_backlight", 1.60, 0.06, 0.16, "course", 1.25)),
+    "worship":     (("light_dais_key", 0.55, 0.55, 0.28, "key", 0.0),
+                    ("light_wall_course", 2.40, 0.08, 0.22, "course", 1.15)),
+    "medical":     (("light_ceiling_batten", 1.80, 0.34, 0.12, "ceiling", 0.0),
+                    ("light_service_tube", 0.11, 0.13, 1.43, "course", 0.95)),
+    "research":    (("light_ceiling_batten", 1.80, 0.34, 0.12, "ceiling", 0.0),
+                    ("light_wall_course", 2.40, 0.08, 0.22, "course", 1.15)),
+    "detention":   (("light_cage_lamp", 0.40, 0.40, 0.18, "ceiling", 0.0),
+                    ("light_indicator_red", 0.10, 0.05, 0.10, "course", 2.10)),
+    "commerce":    (("light_market_pool", 0.55, 0.55, 0.24, "ceiling", 0.0),
+                    ("light_stall_festoon", 0.06, 0.06, 0.06, "festoon", 2.29)),
+    "office":      (("light_soffit_blade", 1.20, 0.28, 0.14, "ceiling", 0.0),
+                    ("light_wall_strip_bank", 0.09, 0.06, 0.34, "course", 1.20)),
+    "generic":     (("light_downlight", 0.26, 0.10, 0.22, "course", 0.88),
+                    ("light_deck_channel", 1.20, 0.90, 0.02, "deck", 0.0)),
+}
+
+# How many times a course repeats UP the wall, and at what vertical pitch.
+# Three of the four measured wall fittings are ganged in more than one course
+# and saying so is most of what makes a wall read as lit rather than as having
+# a strip on it. All three numbers are measured:
+#   cc_wall_course        "Four horizontal courses per side wall ... vertical
+#                          pitch 1.2 m measured", from y ~1.15
+#   wr_wall_strip_bank    "two heights ... vertical pitch ~1.4 m", the lower at
+#                          seated shoulder height ~1.2 m
+#   service_wall_tube     "two courses -- an upper run hung off the overhead
+#                          truss and a lower run at head height". Only the
+#                          LOWER is placed: the upper hangs from a truss this
+#                          generator does not build, and inventing the truss to
+#                          hang it from would be a layer-2 change made inside
+#                          layer 4.
+LIGHT_COURSES = {"light_wall_course": (4, 1.20),
+                 "light_wall_strip_bank": (2, 1.40),
+                 "light_service_tube": (1, 0.0)}
+
+# Spacing along the room, in metres, as MEASURED. Where a frame gives a
+# spacing this is that number; where it does not, the derivation is stated.
+LIGHT_PITCH_M = {
+    # measured directly
+    "light_downlight": 3.6,          # corridor_kit.json, spacing_m 3.6
+    "light_wall_strip_bank": 1.4,    # command_working.json: banks of 4-8 bars
+                                     # at ~1.4 m. The BAR is 0.09 wide, so this
+                                     # is the bank pitch and the bars inside a
+                                     # bank are not modelled individually.
+    "light_pendant": 2.2,            # public_social.json, one per table
+    "light_wall_course": 2.60,       # the 1.2 m in command_working.json is the
+                                     # VERTICAL pitch of four courses, not an
+                                     # along-wall spacing -- the placement says
+                                     # each course runs continuously from
+                                     # z -3.6 to +5.04 m. So the along-wall
+                                     # figure is a construction joint: 2.40 m
+                                     # sections with a 0.20 m gap.
+    # derived, and the derivation is the argument
+    "light_service_tube": 2.4,       # "they flank the corridor in pairs"; no
+                                     # pitch measured. Set to two thirds of the
+                                     # 3.6 m deck frame so a pair lands between
+                                     # every rib rather than on one.
+    "light_stall_festoon": 0.156,    # MEASURED AS A RATIO, not a length:
+                                     # zocalo.webp blob analysis gives a median
+                                     # nearest-neighbour spacing of 2.6 bulb
+                                     # diameters. The bulb here is 0.06 m, so
+                                     # the pitch is 0.06 x 2.6. Taking the
+                                     # JSON's 0.08 m literally would assume
+                                     # their bulb size rather than this one's.
+    "light_platform_pool": 3.6,      # no spacing measured; the pool is 1.57 m
+                                     # across and the deck frame is 3.6, so one
+                                     # pool a bay with dark deck between them --
+                                     # which is what the frame shows.
+    "light_ceiling_batten": 3.6,     # one batten a deck frame
+    "light_cage_lamp": 3.0,
+    "light_soffit_blade": 3.0,
+    "light_indicator_red": 1.6,
+    "light_deck_channel": 1.6,       # "discrete lit deck panels", 1.20 long
+    "light_bar_backlight": 1.8,      # "continuous horizontal strip ... ~10 m
+                                     # run": one 1.60 m section every 1.80 m
+                                     # reads continuous and leaves the joint.
+}
+# Two fittings' spacing scales with MOUNTING HEIGHT rather than being fixed,
+# because both were measured in volumes far taller than the room they are being
+# put in and a fixed spacing would carry the wrong floor coverage across.
+#   bay_flood:               11.0 m spacing at a 18.0 m mount = 0.611
+#   zoc_downlight_overhead:   2.7 m spacing at a  7.2 m mount = 0.375
+LIGHT_PITCH_RATIO = {"light_highbay": 0.611, "light_market_pool": 0.375}
+
 # Wall ribs. Every B5 interior in the reference is heavily articulated: a flat
 # wall run from floor to a 7.5 m soffit is the single strongest tell that a
 # volume is a placeholder box. Ribs are structural, cheap, and true of the
@@ -310,6 +456,24 @@ def fixtures_for(place):
     for name, w, d, h, kind in FIXTURES.get(archetype(place), ()):
         out.append((name, w, d, ceiling_m(place) if h == 0.0 else h, kind))
     return tuple(out)
+
+
+def lights_for(place):
+    """Light fittings for one room: archetype set, verbatim from LIGHTS."""
+    return LIGHTS.get(archetype(place), LIGHTS["generic"])
+
+
+def light_pitch_m(name, place):
+    """Spacing between repeats of one fitting, in metres.
+
+    Height-scaled where the fitting was measured in a volume much taller than
+    the room it is being placed in -- see LIGHT_PITCH_RATIO. Floored at 1.2 m
+    so a low ceiling cannot pack floods shoulder to shoulder.
+    """
+    ratio = LIGHT_PITCH_RATIO.get(name)
+    if ratio is not None:
+        return max(1.2, ratio * ceiling_m(place))
+    return LIGHT_PITCH_M[name]
 
 
 def _u(*parts):
@@ -576,18 +740,119 @@ def build(schema, profile, place, max_span_m=None):
         _box(v, t, g, f"prop_{key}",
              (xc - pd / 2, top - ph, z0), (xc + pd / 2, top, z0 + pw))
 
+    # ------------------------------------------------------------------
+    # Light fittings. See LIGHTS. Emitted LAST and tested against what is
+    # already standing, because a lamp is the one thing in the room whose
+    # position is negotiable: a furnace has to be where the furnace is, and a
+    # fitting that would be inside it simply is not fitted there. The
+    # alternative -- reserving a lighting zone up front the way
+    # `lateral_stack` reserves the wall band -- would push the props around to
+    # suit the lamps, which is backwards.
+    #
+    # RIBS COUNT AS OBSTACLES HERE and do not for props. A prop standing in
+    # front of a rib is a chair against an articulated wall; a light course
+    # running THROUGH one is a strip of light passing through structure, and
+    # the wall course is the fitting most likely to do it.
+    obstacles = _boxes(v, t, g, lambda n: n.startswith(("prop_", "fix_"))
+                       or n.endswith("_rib"))
+
+    def _lay(name, x0, x1, y0, y1, lw, pitch):
+        """Repeat one fitting down the z axis, THROUGH the gaps.
+
+        The first version placed fittings at nominal centres and dropped any
+        that collided, and it produced ZERO wall courses in every room in the
+        station. The reason is worth keeping: `rib_pitch_m` and the fitting
+        pitch are both derived from the room, so the nominal positions of the
+        two lattices coincide and every single course landed on a rib.
+
+        So the free intervals are measured first and the fitting is laid into
+        them at its own measured pitch, centred in each run. A light course in
+        the recessed bay BETWEEN two ribs is also what the reference frames
+        show; the collide-and-drop version could not have got there.
+        """
+        blocks = sorted((s[2], s[5]) for _n, s in obstacles
+                        if s[0] < x1 - 1e-6 and x0 < s[3] - 1e-6
+                        and s[1] < y1 - 1e-6 and y0 < s[4] - 1e-6)
+        runs, cur = [], -hl + 0.05
+        for b0, b1 in blocks + [(hl - 0.05, hl)]:
+            if b0 - cur >= lw:
+                runs.append((cur, b0))
+            cur = max(cur, b1)
+        n = 0
+        for lo, hi in runs:
+            k = max(1, int((hi - lo - lw) / pitch) + 1)
+            span = lw + (k - 1) * pitch
+            z = lo + (hi - lo - span) / 2.0
+            for _ in range(k):
+                _box(v, t, g, name, (x0, y0, z), (x1, y1, z + lw))
+                z += pitch
+                n += 1
+        return n
+
+    for name, lw, ld, lh, kind, my in lights_for(place):
+        # A key fitting is a single object over the spine, so it has no pitch
+        # and asking for one would need an entry in LIGHT_PITCH_M that means
+        # nothing.
+        pitch = ln if kind == "key" else light_pitch_m(name, place)
+        if kind in ("ceiling", "key"):
+            top = ceil - 0.02
+            if kind == "key":
+                # One fitting, on the centreline, over whatever the spine
+                # holds. In a chapel that is the dais, and the dais is the
+                # only thing in the room that should be lit.
+                xs = [chan_c]
+            else:
+                # Two rows a quarter of the free channel either side of its
+                # centre. The centreline already carries the `over` fixtures
+                # and anything riding them, so a row down the middle would be
+                # squeezed out of every industrial and store bay in the
+                # station.
+                q = (chan_hi - chan_lo) / 4.0
+                xs = ([chan_c] if chan_hi - chan_lo < ld + 0.4
+                      else [chan_c - q, chan_c + q])
+                xs = [min(max(x, chan_lo + ld / 2), chan_hi - ld / 2)
+                      for x in xs]
+            for x in xs:
+                _lay(name, x - ld / 2, x + ld / 2, top - lh, top, lw, pitch)
+        elif kind == "course":
+            # Courses repeat UP the wall as well as along it: the war room's
+            # strip banks are at two heights and command and control's wall
+            # courses at four. Each is clamped under the soffit rather than
+            # dropped, and duplicates that clamp onto the same height collapse
+            # -- so a 2.9 m office gets its upper course just under the
+            # ceiling instead of losing it.
+            ncourse, vpitch = LIGHT_COURSES.get(name, (1, 0.0))
+            ys, top_y = [], ceil - lh - 0.15
+            for k in range(ncourse):
+                y = round(min(my + k * vpitch, top_y), 3)
+                if y > 0.0 and y not in ys:
+                    ys.append(y)
+            for s in (-1, 1):
+                x = s * hw
+                for y0 in ys:
+                    _lay(name, min(x, x - s * ld), max(x, x - s * ld),
+                         y0, y0 + lh, lw, pitch)
+        elif kind == "festoon":
+            # Strung along the inboard edge of whatever flanks the room -- in
+            # a market that is the stall awning, whose eave the frame puts at
+            # 2.29 m. Dense: the measurement's whole point is that a stall
+            # carries 60-100 bulbs and not the six a generator would place.
+            y0 = min(my, ceil - lh - 0.10)
+            for x in (chan_lo + ld / 2, chan_hi - ld / 2):
+                _lay(name, x - ld / 2, x + ld / 2, y0, y0 + lh, lw, pitch)
+        elif kind == "deck":
+            _lay(name, chan_c - ld / 2, chan_c + ld / 2, 0.0, lh, lw, pitch)
+        else:
+            raise ValueError(f"{place['key']}: unknown light kind {kind!r}")
+
     return v, t, g
 
 
-def _solid_boxes(v, t, g):
-    """AABBs of the room's solid objects -- props and fixtures, not shell.
-
-    Ribs are excluded: they are wall articulation flush against a wall, and a
-    prop legitimately stands in front of one.
-    """
+def _boxes(v, t, g, pred):
+    """AABBs of the groups whose name satisfies `pred`."""
     out = []
     for name, lo, hi in g:
-        if not (name.startswith("prop_") or name.startswith("fix_")):
+        if not pred(name):
             continue
         idx = {i for tri in t[lo:hi] for i in tri}
         pts = [v[i] for i in idx]
@@ -595,6 +860,17 @@ def _solid_boxes(v, t, g):
                            min(q[2] for q in pts), max(q[0] for q in pts),
                            max(q[1] for q in pts), max(q[2] for q in pts))))
     return out
+
+
+def _solid_boxes(v, t, g):
+    """AABBs of the room's solid objects -- props and fixtures, not shell.
+
+    Ribs are excluded: they are wall articulation flush against a wall, and a
+    prop legitimately stands in front of one. Light fittings are excluded for
+    the same reason and one more: a deck channel is 20 mm proud and a wall
+    course is 130 mm proud, neither of which a walker collides with.
+    """
+    return _boxes(v, t, g, lambda n: n.startswith(("prop_", "fix_")))
 
 
 def _overlaps(a, b, eps=1e-6):
@@ -914,6 +1190,85 @@ def _selftest():
     dual = sorted({n for a in FIXTURES for n, *_ in FIXTURES[a]} & set(PROPS))
     check("no fixture is also a prop", not dual, f"{dual}")
 
+    # --- lights: the room is not black ------------------------------------
+    # LAYER 4's floor. `export_scene.fixture_lights` makes one source per
+    # tagged `light_*` group and nothing else in an interior emits, so a room
+    # with no fitting renders BLACK -- which is what all 68 of these did until
+    # this table existed. The gate is therefore not "are there lights" but
+    # "does every room get every fitting its archetype declares", because the
+    # placement routine is allowed to skip a fitting it cannot fit and a room
+    # that quietly lost its wall course would look merely dim.
+    unlit = [a for a, _ in ARCHETYPES if not LIGHTS.get(a)]
+    check("every archetype has light fittings",
+          not unlit and bool(LIGHTS.get("generic")), f"no lights for {unlit}")
+    nopitch = sorted({n for a in LIGHTS for n, _w, _d, _h, k, _y in LIGHTS[a]
+                      if k != "key" and n not in LIGHT_PITCH_M
+                      and n not in LIGHT_PITCH_RATIO})
+    check("every repeated fitting has a measured or derived pitch",
+          not nopitch, f"{nopitch}")
+    kinds = {k for a in LIGHTS for _n, _w, _d, _h, k, _y in LIGHTS[a]}
+    check("no light declares a kind the builder cannot place",
+          kinds <= {"ceiling", "key", "course", "festoon", "deck"}, f"{kinds}")
+    # A fitting is neither a prop nor a fixture, for the same reason a fixture
+    # is not a prop: the moment one name appears in two tables the honesty
+    # checks above stop partitioning anything.
+    lit_names = {n for a in LIGHTS for n, *_ in LIGHTS[a]}
+    check("no light fitting is also a prop or a fixture",
+          not (lit_names & set(PROPS))
+          and not (lit_names & {n for a in FIXTURES for n, *_ in FIXTURES[a]}),
+          f"{sorted(lit_names & set(PROPS))}")
+    check("every fitting name is tagged so the exporter can find it",
+          all(n.startswith("light_") for n in lit_names),
+          f"{sorted(n for n in lit_names if not n.startswith('light_'))}")
+
+    dark, pierced, outside, unwalkable = [], [], [], []
+    lamp_total = 0
+    for p in places:
+        v, t, g = build(schema, profile, p)
+        want = {n for n, *_ in lights_for(p)}
+        got = {n for n, _l, _h in g if n.startswith("light_")}
+        lamps = _boxes(v, t, g, lambda n: n.startswith("light_"))
+        lamp_total += len(lamps)
+        if want - got:
+            dark.append((p["key"], sorted(want - got)))
+        # A fitting inside a furnace stack lights the inside of the furnace.
+        # Ribs count here and do not for props: a chair in front of an
+        # articulated wall is a chair; a light course through one is a strip
+        # of light passing through structure.
+        solid = _boxes(v, t, g, lambda n: n.startswith(("prop_", "fix_"))
+                       or n.endswith("_rib"))
+        for ln_, lb in lamps:
+            if any(_overlaps(lb, sb) for _sn, sb in solid):
+                pierced.append((p["key"], ln_))
+                break
+        bw, bl = bay_span_m(p)
+        ceil = ceiling_m(p)
+        for ln_, lb in lamps:
+            if (lb[0] < -bw / 2 - WALL_T_M - 1e-6
+                    or lb[3] > bw / 2 + WALL_T_M + 1e-6
+                    or lb[2] < -bl / 2 - WALL_T_M - 1e-6
+                    or lb[5] > bl / 2 + WALL_T_M + 1e-6
+                    or lb[1] < -1e-6 or lb[4] > ceil + 1e-6):
+                outside.append((p["key"], ln_))
+                break
+        # The deck channel is 20 mm proud and the warm practical is 100 mm
+        # proud at hip height. Neither should close a room, and the flood fill
+        # is the only thing that can say so.
+        if not walkable(_boxes(v, t, g, lambda n: not n.endswith(
+                ("_deck", "_soffit", "_wall", "_rib"))), bw, bl):
+            unwalkable.append(p["key"])
+    check("no room renders black -- every fitting its archetype declares is "
+          "placed", not dark, f"{len(dark)}: {dark[:4]}")
+    check("no light fitting is inside something solid",
+          not pierced, f"{len(pierced)}: {pierced[:4]}")
+    check("every light fitting is inside the room it lights",
+          not outside, f"{len(outside)}: {outside[:4]}")
+    check("the lit room is still walkable",
+          not unwalkable, f"{len(unwalkable)}: {unwalkable[:6]}")
+    print(f"  lights: {lamp_total} fittings over {len(places)} rooms "
+          f"({lamp_total / len(places):.1f} each), "
+          f"{len(lit_names)} distinct types")
+
     # --- AND THE TWO NEW GATES MUST BE ABLE TO FAIL -----------------------
     # Three assertions in this project have been vacuous -- one of them named
     # "FNV-1a is stable across processes" and comparing a value to itself. A
@@ -938,6 +1293,29 @@ def _selftest():
                         ("r", (0.3, 0.0, 0.0, 2.0, 2.0, 0.5))], 4.0, 8.0))
     check("something hanging overhead does not block the floor",
           walkable([("o", (-2.0, 2.4, 0.0, 2.0, 2.8, 0.5))], 4.0, 8.0))
+
+    # The light gates are only worth their runtime if they can fire. The
+    # interpenetration one in particular went green on its first run and that
+    # is exactly when a gate deserves least trust -- four of this project's
+    # material rules were wrong about the corpus rather than the corpus being
+    # clean. So: take a real room, put a lamp inside its own furnace, and
+    # confirm the check that just passed 68 rooms says so.
+    fv, ft, fg = build(schema, profile, dr.by_key("fabrication"))
+    fx = _boxes(fv, ft, fg, lambda n: n.startswith("fix_"))
+    check("there is a fixture to hide a lamp inside", bool(fx))
+    x0, y0, z0, x1, y1, z1 = fx[0][1]
+    _box(fv, ft, fg, "light_probe",
+         ((x0 + x1) / 2 - 0.1, (y0 + y1) / 2 - 0.1, (z0 + z1) / 2 - 0.1),
+         ((x0 + x1) / 2 + 0.1, (y0 + y1) / 2 + 0.1, (z0 + z1) / 2 + 0.1))
+    probe = _boxes(fv, ft, fg, lambda n: n == "light_probe")
+    check("the lamp-inside-a-solid gate fires",
+          any(_overlaps(probe[0][1], sb) for _n, sb in fx))
+    # And that a room MISSING a fitting is detected -- the failure mode that
+    # would otherwise show up as a room that is merely dim.
+    check("the missing-fitting gate fires",
+          bool({n for n, *_ in LIGHTS["worship"]}
+               - {n for n, _l, _h in build(
+                   schema, profile, dr.by_key("fabrication"))[2]}))
 
     print(f"\nrooms: {len(places)} locations, {len(arches)} archetypes, "
           f"{total:,} triangles ({total / len(places):,.0f} each)")

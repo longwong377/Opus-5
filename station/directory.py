@@ -889,6 +889,50 @@ def materials_of(place):
     return place["key"] in _materialled_keys()
 
 
+def _lit_keys():
+    """Places whose geometry emits at least one tagged light fitting.
+
+    Computed for the same reason layer 3 is, and against the same failure. The
+    predicate this replaces was `bool(place.get("lights"))` -- a field nobody
+    sets, so the counter read 0 whatever the geometry did, and would have read
+    118 the moment somebody typed the field in.
+
+    WHY A TAGGED FITTING AND NOT "ANYTHING THAT GLOWS". Seventeen of the 68
+    generated rooms emit a console or a screen, and `device_screen_glass` has
+    an emission. Counting those would have reported the station lit while
+    every one of those rooms rendered black, which is precisely what it did
+    for a session: `export_scene.fixture_lights` makes a real light source per
+    `light_*` group and nothing else in an interior casts anything, so a
+    location without one is dark no matter how many of its props glow.
+
+    The sixteen bespoke modules are reported as NOT at layer 4 rather than
+    assumed to be. Several of them do build lamps -- the Zocalo's rib lamps,
+    the docking bay's floods -- but they have not been through a layer-4 pass,
+    which is a calibrated exposure and a frame measured against its reference
+    (tools/measure_frame.py), not just a lamp in the geometry. CLAUDE.md rule
+    4: nothing is done at a layer it has not reached, and an unknown is not a
+    pass.
+    """
+    if _lit_keys.cache is None:
+        import rooms                                            # noqa: PLC0415
+        s, p = it.load()
+        done = set()
+        for q in rooms.unbuilt(s, p):
+            _v, _t, g = rooms.build(s, p, q)
+            if any(n.startswith("light_") for n, _lo, _hi in g):
+                done.add(q["key"])
+        _lit_keys.cache = frozenset(done)
+    return _lit_keys.cache
+
+
+_lit_keys.cache = None
+
+
+def lighting_of(place):
+    """Does this place emit a light fitting the renderer will turn into a lamp?"""
+    return place["key"] in _lit_keys()
+
+
 def geometry_of(place):
     """Which module builds this place, or None if nothing does."""
     if place["module"]:
@@ -900,7 +944,7 @@ LAYERS = (
     (1, "addressed", lambda p: True),
     (2, "geometry", lambda p: bool(geometry_of(p))),
     (3, "materials", materials_of),
-    (4, "lighting", lambda p: bool(p.get("lights"))),
+    (4, "lighting", lighting_of),
     (5, "props", lambda p: bool(p.get("props_built"))),
     (6, "inhabitants", lambda p: bool(p.get("npcs_placed"))),
     (7, "audio", lambda p: bool(p.get("audio"))),

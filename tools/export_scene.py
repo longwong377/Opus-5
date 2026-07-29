@@ -551,16 +551,221 @@ INTERIOR_LIGHT_RANGE_M = 7.0
 # of cool emissive trim. That contrast is the room. Treating the trim as
 # lighting floods the fill and destroys it.
 #
-# (name, colour_linear, energy_rel, range_m, shadow) -- absent means emissive
-# only, which is the DEFAULT: a fitting has to be measured to become a source.
+# Absent means EMISSIVE ONLY, which is the default: a fitting has to be
+# measured to become a source. Fields: kind ("omni" or "spot"), colour_linear,
+# energy_rel, range_m, shadow, and for a spot the cone half-angle in degrees.
+#
+# The eleven room fittings below come from docs/layer4-lighting/*.json exactly
+# as the four kit fittings above do. Two things had to be DERIVED rather than
+# read, and both are stated on the entry: a range measured in an 18 m docking
+# bay is wrong in a 7.5 m plant hall, and a cone angle is almost never given
+# directly -- it falls out of the pool diameter or the fitting spacing over the
+# mounting height.
 FIXTURE_LIGHTING = {
-    "light_downlight": ((1.000, 0.420, 0.133), 1.00, 1.2, False),
+    # --- the corridor kit -------------------------------------------------
+    "light_downlight": {"kind": "omni", "colour": (1.000, 0.420, 0.133),
+                        "energy_rel": 1.00, "range_m": 1.2, "shadow": False},
+    # --- rooms.py, industrial and store -----------------------------------
+    # bay_flood: measured range 30 m at a 13.0 m emitting height in an 18 m
+    # bay. Scaled to the tallest room archetype's 7.5 m ceiling -- 30 x 7.5/18
+    # -- because an unscaled 30 m range in a 12 m room is no falloff at all,
+    # which is the exact defect that made the first interior render white.
+    # Cone: the frame gives 28-35 deg at 18 m, and the same floor coverage from
+    # 2.4x closer needs it wider; 35 deg is the top of the measured range and
+    # is taken rather than opened further.
+    "light_highbay": {"kind": "spot", "colour": (0.850, 0.830, 1.000),
+                      "energy_rel": 1.00, "range_m": 12.5, "shadow": True,
+                      "angle_deg": 35.0},
+    # --- rooms.py, transit ------------------------------------------------
+    # concourse_deck_spot, measured: range 4 m, and a half-angle stated
+    # outright -- 12.3 deg at a 3.6 m mount for a 1.57 m pool.
+    "light_platform_pool": {"kind": "spot", "colour": (0.850, 1.000, 0.870),
+                            "energy_rel": 1.00, "range_m": 4.0, "shadow": True,
+                            "angle_deg": 12.3},
+    # --- rooms.py, hospitality --------------------------------------------
+    # bar_pendant_lamp, measured: range 3.5 m, one per table at 2.2 m spacing.
+    # Cone from the shade: hung below standing eye height (~1.9 m) over a
+    # 1.20 m table at 0.74 m, so atan(0.60 / 1.16) = 27.4 deg.
+    "light_pendant": {"kind": "spot", "colour": (1.000, 0.554, 0.393),
+                      "energy_rel": 1.00, "range_m": 3.5, "shadow": True,
+                      "angle_deg": 27.4},
+    # --- rooms.py, worship ------------------------------------------------
+    # cc_dais_key, measured: range 9 m, ~3.5 m above the dais, cone wide
+    # enough to cover a 4.6 m dais plus its apron -- atan(2.3 / 3.5) = 33.3.
+    "light_dais_key": {"kind": "spot", "colour": (1.000, 0.760, 0.556),
+                       "energy_rel": 1.00, "range_m": 9.0, "shadow": True,
+                       "angle_deg": 33.3},
+    # --- rooms.py, worship and research -----------------------------------
+    # cc_wall_course, measured: omni, range 3.5, energy_rel 0.44, and the
+    # placement is explicit that it throws OUTWARD and the room centre stays
+    # dark -- which a 3.5 m range on a 7 m half-width delivers by itself.
+    "light_wall_course": {"kind": "omni", "colour": (0.243, 0.546, 1.000),
+                          "energy_rel": 0.44, "range_m": 3.5, "shadow": False},
+    # --- rooms.py, medical, research and detention ------------------------
+    # fa_batten, measured: range 12 m, hung 4-5 m above the tables. Scaled to
+    # a 3.0 m medical ceiling by the same argument as the high bay:
+    # 12 x 3.0/5.0 = 7.2.
+    "light_ceiling_batten": {"kind": "omni", "colour": (1.000, 0.980, 1.000),
+                             "energy_rel": 0.90, "range_m": 7.2,
+                             "shadow": True},
+    # DECLARED, not measured: the brig has no reference frame. It takes the
+    # batten's colour behind a guard, at half its energy and half its reach,
+    # because a cell block is the one interior that should be lit adequately
+    # and not well. See materials.light_ceiling_batten.
+    "light_cage_lamp": {"kind": "omni", "colour": (1.000, 0.980, 1.000),
+                        "energy_rel": 0.45, "range_m": 4.0, "shadow": False},
+    # --- rooms.py, commerce -----------------------------------------------
+    # zoc_downlight_overhead, measured: range 12 m from 7.2 m, and the
+    # measurement states the conclusion for us -- spacing/height = 0.375, the
+    # pools MERGE, so the half-angle is at least 50 deg.
+    "light_market_pool": {"kind": "spot", "colour": (0.694, 0.982, 1.000),
+                          "energy_rel": 1.00, "range_m": 12.0, "shadow": True,
+                          "angle_deg": 50.0},
+    # zoc_stall_light, measured: omni, range 2.5, energy_rel 0.19. Sixty to a
+    # hundred bulbs a stall, so `FIXTURE_MERGE_M` does most of the work here --
+    # the geometry keeps every bulb and the rig gets one lamp per 0.9 m.
+    "light_stall_festoon": {"kind": "omni", "colour": (1.000, 0.492, 0.420),
+                            "energy_rel": 0.19, "range_m": 2.5,
+                            "shadow": False},
+    # --- rooms.py, office -------------------------------------------------
+    # wr_wall_strip_bank and wr_soffit_blade, both measured omni at range 4.
+    "light_wall_strip_bank": {"kind": "omni", "colour": (1.000, 0.764, 0.516),
+                              "energy_rel": 0.61, "range_m": 4.0,
+                              "shadow": False},
+    "light_soffit_blade": {"kind": "omni", "colour": (1.000, 0.703, 0.440),
+                           "energy_rel": 0.92, "range_m": 4.0,
+                           "shadow": False},
+}
+# EVERYTHING NOT IN THAT TABLE IS EMISSIVE ONLY, and for rooms.py that is:
+# light_service_tube, light_bar_backlight, light_indicator_red and
+# light_deck_channel. All four are recorded `emissive_only` in the measured
+# JSON. The trim glows and casts nothing; treating it as lighting is what
+# flooded the first interior render and destroyed exactly the contrast the
+# reference frames are made of.
+
+# Darkest measurable surface / brightest lit surface, balanced, per space.
+# THIS TABLE WAS DEAD FOR A SESSION: it was measured, committed, and read by
+# nothing, while interior.tscn carried one hand-calibrated ambient_light_energy
+# for every room in the station. `ambient_energy()` below is what uses it.
+#
+# The corridor numbers came from three frames that do not agree, because they
+# are three different kinds of corridor -- which is itself the finding.
+AMBIENT_RATIO = {"residential": 0.300, "concourse": 0.120, "service": 0.060}
+
+# The room archetypes, mapped onto measured spaces. `rooms.LIGHTS` maps the
+# same eleven archetypes onto measured FITTINGS and this is the other half of
+# it: how much light is in the room that no fitting accounts for.
+#
+# Medical, research and office take the war room's 0.23 rather than a corridor
+# number, because they are the measured WORKING interiors and a working
+# interior has fill. Detention takes command and control's 0.047, the darkest
+# thing measured anywhere in the reference.
+AMBIENT_BY_ARCHETYPE = {
+    "industrial": 0.060,     # corridor_service
+    "store": 0.076,          # docking_bay
+    "transit": 0.120,        # corridor_concourse
+    "hospitality": 0.090,    # dougs_dugout
+    "worship": 0.210,        # council_chamber
+    "medical": 0.230,        # war_room
+    "research": 0.230,       # war_room
+    "detention": 0.047,      # command_control
+    "commerce": 0.094,       # zocalo_concourse
+    "office": 0.230,         # war_room
+    "generic": 0.300,        # corridor_residential
+}
+# interior.tscn's ambient_light_energy, calibrated in session 3n against the
+# residential corridor -- which is the AMBIENT_RATIO 0.300 row. Every other
+# space scales off that one measured point rather than off a guess.
+AMBIENT_CALIBRATED_ENERGY = 1.30
+AMBIENT_CALIBRATED_RATIO = 0.300
+
+
+# THE MISSING HALF OF `energy_rel`, and it is worth being precise about what
+# is missing. Every fixture in docs/layer4-lighting/*.json carries an
+# `energy_rel` that is RELATIVE WITHIN ITS OWN MEASURED FAMILY -- the war
+# room's brightest fitting is 1.0 and so is the docking bay's, and those are
+# not the same number of lumens. Nothing in the measurement could supply the
+# ratio between families, because no frame contains two of them.
+#
+# So it is measured HERE, from our own renders, against the reference frame
+# each archetype was mapped to. The procedure, and it is repeatable:
+#
+#   1. render one room per archetype
+#   2. tools/measure_frame.py both it and its mapped reference frame
+#   3. gain *= 1.40 * ref_median / our_median
+#
+# The 1.40 is not a fudge. It is the offset the CORRIDOR already sits at and
+# has been judged good at: `grey level 1.webp` measures median linear
+# luminance 0.0533 and our corridor at the calibrated ambient renders 0.0741,
+# i.e. 1.40x. A film frame carries a grade, a stock and chroma subsampling and
+# our render carries none of them, so matching a reference exactly would make
+# every room darker than the one room in this project anyone has looked at.
+# Targeting the corridor's own offset makes every archetype as faithful as the
+# corridor is, which is the most that can honestly be claimed.
+#
+# Session 3o, first pass, at gain 1.0 everywhere (our median / ref median):
+#   industrial 1.08  store 0.97  transit 1.70  hospitality 1.27  worship 0.53
+#   medical 7.47  research 7.75  detention 2.39  commerce 2.42  office 7.16
+#   generic 0.77
+# Medical, research and office at 7x is one defect with one cause: those three
+# are the archetypes whose fittings got the largest measured RANGES (the
+# 7.2 m scaled batten) or the tightest measured SPACING (the strip bank at
+# 1.4 m, which puts 12-23 lamps in a bay), and range and count both multiply
+# flux while `energy_rel` says nothing about either.
+#
+# IT SCALES THE AMBIENT TOO, and the first version did not -- which is the
+# finding that produced this shape. Scaling only the fittings moved medical
+# from 7.5x to 3.1x and moved transit, worship and generic by nothing at all
+# (1.70 -> 1.70, 0.53 -> 0.55, 0.77 -> 0.77), because in those three rooms the
+# fittings contribute almost nothing to the frame: a corridor downlight
+# reaches 1.2 m and a platform pool 4 m, so what fills the room is ambient and
+# the emissive surfaces. An exposure that cannot move the dominant term is not
+# an exposure. Scaling both preserves the fill-to-key relationship -- which is
+# what AMBIENT_BY_ARCHETYPE and `energy_rel` measure -- and sets only the
+# level, which is what nothing measured.
+ROOM_EXPOSURE = {
+    "industrial": 1.30,
+    "store": 1.42,
+    "transit": 0.75,
+    "hospitality": 1.20,
+    "worship": 2.25,
+    "medical": 0.14,
+    "research": 0.14,
+    "detention": 0.53,
+    "commerce": 0.51,
+    "office": 0.14,
+    "generic": 1.67,
 }
 
-# Darkest measurable surface / brightest lit surface, balanced. Measured in
-# three corridor frames and they do not agree, because they are three different
-# kinds of corridor -- which is itself the finding.
-AMBIENT_RATIO = {"residential": 0.300, "concourse": 0.120, "service": 0.060}
+
+def room_exposure(room):
+    """Exposure multiplier for one room. See ROOM_EXPOSURE."""
+    if room in ("corridor", "junction"):
+        return 1.0                      # the anchor: it is what 1.0 means
+    import directory as dr
+    import rooms as R
+
+    return ROOM_EXPOSURE.get(R.archetype(dr.by_key(room)), 1.0)
+
+
+def ambient_energy(room):
+    """Ambient light energy for one interior room.
+
+    The corridor and junction pseudo-rooms are the residential corridor the
+    calibration was made in, so they get exactly the calibrated value and this
+    function is a no-op for them. Everything else scales by the ratio of its
+    space's measured darkest/brightest against that corridor's.
+    """
+    if room in ("corridor", "junction"):
+        return AMBIENT_CALIBRATED_ENERGY
+    import directory as dr
+    import rooms as R
+
+    place = dr.by_key(room)
+    ratio = AMBIENT_BY_ARCHETYPE.get(R.archetype(place),
+                                     AMBIENT_CALIBRATED_RATIO)
+    return (AMBIENT_CALIBRATED_ENERGY * ratio / AMBIENT_CALIBRATED_RATIO
+            * room_exposure(room))
 
 
 def fixture_lights(verts, tris, spans, energy, rng, shadow_n=2, eye=None):
@@ -607,10 +812,21 @@ def fixture_lights(verts, tris, spans, energy, rng, shadow_n=2, eye=None):
             # trim read -- but it casts nothing. Measured, not assumed; see
             # FIXTURE_LIGHTING.
             continue
-        colour, rel, frange, shadow = spec
-        raw.append({"pos": c, "energy": energy * rel, "colour": list(colour),
-                    "range": frange if frange else rng, "attenuation": 1.0,
-                    "group": name, "_shadow": shadow})
+        lt = {"pos": c, "energy": energy * spec["energy_rel"],
+              "colour": list(spec["colour"]),
+              "range": spec.get("range_m") or rng, "attenuation": 1.0,
+              "group": name, "_shadow": spec["shadow"]}
+        if spec["kind"] == "spot":
+            # Every spot in this table is a ceiling or soffit fitting aimed
+            # straight down. That is the measurement in all five cases; the
+            # one that is not quite -- cc_dais_key, "aimed down and aft" --
+            # is aimed down here, because the aft direction is a property of
+            # the room command and control is, and rooms.py builds the same
+            # bay in eleven archetypes with no aft.
+            lt["kind"] = "spot"
+            lt["angle"] = spec["angle_deg"]
+            lt["aim"] = [0.0, -1.0, 0.0]
+        raw.append(lt)
 
     # ONE FITTING, ONE LIGHT. A pilaster strip is SEVEN tagged bars with gaps
     # between them -- that segmentation is what makes it read as B5 rather than
@@ -737,7 +953,8 @@ def build_interior(args, out_dir):
 
     rng = (args.light_range if args.light_range != 1100.0
            else INTERIOR_LIGHT_RANGE_M)
-    lights = fixture_lights(verts, tris, spans, args.fixture_energy, rng,
+    lights = fixture_lights(verts, tris, spans,
+                            args.fixture_energy * room_exposure(room), rng,
                             shadow_n=args.shadow_lights, eye=eye)
     return {
         "shot": "interior",
@@ -747,6 +964,12 @@ def build_interior(args, out_dir):
         "groups": sorted(set(names)),
         "lights": lights,
         "room": room,
+        # Per-room ambient. interior.tscn carries one calibrated number and it
+        # is the residential corridor's; a brig and a chapel are not lit to the
+        # same fill and AMBIENT_RATIO has said so, in a table nothing read,
+        # since it was measured.
+        "ambient": (args.ambient if args.ambient is not None
+                    else ambient_energy(room)),
         # Near plane at 60 mm: indoors the camera can stand against a wall, and
         # the drum's 0.15 m clips a prop the eye is leaning over.
         "camera": {"eye": list(eye), "target": list(aim), "up": [0.0, 1.0, 0.0],
@@ -954,6 +1177,56 @@ def _selftest():
     check(not overlap,
           f"drum shot does not emit the band shell alongside the heightfield "
           f"(overlap: {sorted(overlap)[:4]})")
+
+    # -- the interior light rig -------------------------------------------
+    # THE TABLES ARE THREE FILES APART AND THEY DESCRIBE ONE THING. rooms.py
+    # decides which fitting an archetype gets, materials.py gives the fitting
+    # a colour, and FIXTURE_LIGHTING here decides whether it casts anything.
+    # A fitting missing from any one of the three is a defect that renders as
+    # "slightly dim" and nothing else notices.
+    import rooms as R                                          # noqa: PLC0415
+    import materials as mats                                   # noqa: PLC0415
+
+    arches = {a for a, _keys in R.ARCHETYPES} | {"generic"}
+    check(arches <= set(ROOM_EXPOSURE),
+          f"every archetype has a calibrated exposure "
+          f"(missing {sorted(arches - set(ROOM_EXPOSURE))})")
+    check(arches <= set(AMBIENT_BY_ARCHETYPE),
+          f"every archetype has an ambient ratio "
+          f"(missing {sorted(arches - set(AMBIENT_BY_ARCHETYPE))})")
+    fittings = {n for a in R.LIGHTS for n, *_ in R.LIGHTS[a]}
+    unpainted = {n for n in fittings if not mats.resolve_any(n, "interior")}
+    check(not unpainted,
+          f"every room fitting resolves to a material ({sorted(unpainted)})")
+    dark = {n for n in fittings
+            if not mats.resolve_any(n, "interior").emission}
+    check(not dark,
+          f"every room fitting resolves to something that EMITS ({sorted(dark)})")
+    # Absent from FIXTURE_LIGHTING means emissive-only, which is a MEASURED
+    # claim per fitting and not a default anyone may fall into by forgetting.
+    # These four are recorded `emissive_only` in docs/layer4-lighting/*.json.
+    emissive_only = {"light_service_tube", "light_bar_backlight",
+                     "light_indicator_red", "light_deck_channel"}
+    unaccounted = fittings - set(FIXTURE_LIGHTING) - emissive_only
+    check(not unaccounted,
+          f"every room fitting is a measured source or a measured emissive "
+          f"({sorted(unaccounted)})")
+    check(not (emissive_only & set(FIXTURE_LIGHTING)),
+          "no fitting is declared emissive-only and given a light too")
+    for n, spec in FIXTURE_LIGHTING.items():
+        check(spec["kind"] in ("omni", "spot"), f"{n}: known light kind")
+        check(spec["kind"] != "spot" or 0.0 < spec["angle_deg"] < 90.0,
+              f"{n}: a spot has a cone under 90 degrees")
+        check(0.0 < spec["energy_rel"] <= 1.0, f"{n}: energy_rel in (0, 1]")
+        check(spec.get("range_m", 1.0) > 0.0, f"{n}: a positive range")
+    # The exposure is an EXPOSURE, not a rescue: a value that has run away by
+    # more than an order of magnitude either side means a fitting's own energy
+    # or range is wrong and is being papered over here.
+    check(all(0.1 <= g <= 10.0 for g in ROOM_EXPOSURE.values()),
+          f"no archetype's exposure has run away "
+          f"({[k for k, g in ROOM_EXPOSURE.items() if not 0.1 <= g <= 10.0]})")
+    check(room_exposure("corridor") == 1.0,
+          "the corridor is the anchor and its exposure is 1.0")
 
     # -- glb integrity ----------------------------------------------------
     # Only if something has already been exported; a bare checkout has not.
@@ -1163,6 +1436,11 @@ def main():
                          "/ `junction` for the kit itself")
     ap.add_argument("--fixture-energy", type=float, default=3.0,
                     help="interior shot: energy per tagged light fitting")
+    ap.add_argument("--ambient", type=float, default=None,
+                    help="interior shot: override the room's ambient energy. "
+                         "Exists so the anchor in AMBIENT_CALIBRATED_ENERGY "
+                         "can be found by rendering and measuring rather than "
+                         "by taste -- see tools/measure_frame.py")
     a = ap.parse_args()
 
     if not a.shot:

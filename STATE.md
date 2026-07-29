@@ -1,6 +1,6 @@
 # Project State
 
-**Last updated:** 2026-07-28 · **Session 3k** — the Alien Sector; ranked build list finished
+**Last updated:** 2026-07-29 · **Session 3o** — layer 4 at 68/118; the 68 procedural rooms are lit
 
 ## Where we are
 
@@ -2713,12 +2713,75 @@ neither applied yet:
   balances to linear (0.738, 0.955, 1.000), so *some* blue bias is defensible and one that strong
   is not.
 
+## Session 3o — the 68 dark rooms are lit, and the exposure is a measured number
+
+**`directory.py` now reports layer 4 at 68/118, and that number is computed.** The predicate it
+replaced was `bool(place.get("lights"))` — a field nobody sets, so the counter read 0 whatever the
+geometry did and would have read 118 the moment someone typed the field in. It now asks the
+generator whether the place emits a tagged `light_*` group, which is the only thing that becomes a
+real source in the renderer.
+
+**`rooms.LIGHTS`: eleven archetypes, two fittings each, sixteen distinct types, 1,184 fittings
+over 68 rooms.** Same shape as `FIXTURES` and for the same reason. Nothing in it is a new lamp
+colour: every fitting is one the three measurement agents recorded in `docs/layer4-lighting/*.json`,
+and what is invented is *which measured fitting each kind of room uses* — `INV-037`, with the
+argument for each of the eleven rows. Eight new materials carry them; three existing materials took
+an extra bind where the layer-4 measurement and the layer-3 material turned out to be the same
+object (`bay_floodlight`, `bar_pendant_lamp`, `sign_neon_venue` — the last corroborated from a
+different frame to within 0.04 in every channel).
+
+**Placement had to go through the gaps, not around the collisions.** The first version put fittings
+at nominal centres and dropped whatever collided, and produced *zero* wall courses in every room in
+the station. `rib_pitch_m` and the fitting pitch are both derived from the room, so the two lattices
+coincide and every course landed on a rib. `_lay()` now measures the free intervals first and lays
+the fitting into them at its own measured pitch — which is also where the reference frames put a
+light course, in the recessed bay between two ribs.
+
+**The renderer grew spots.** Five of the eleven fittings were measured as spots and every one was
+identified *by its shape* — a hard-edged pool with a body-shaped hole in it, a 1.57 m disc on a
+deck, a cone shade over a table. `render_shot.gd` was omni-only, so rendering them would have
+thrown the measurement away.
+
+**`ROOM_EXPOSURE`, and why it exists.** Every fixture in the measured JSON carries an `energy_rel`
+that is relative *within its own family*; no reference frame contains two families, so nothing in
+the measurement says how a war room's 1.0 compares to a docking bay's. That missing number is now
+measured from our own renders: render one room per archetype, measure it and its mapped reference
+frame with the same code, scale until the render sits at the multiple of its reference the corridor
+already sits at. Two passes took the spread from **0.53–7.75 to 1.32–1.52** against a 1.40 target.
+
+**`tools/measure_frame.py` — and it was wrong on its first day, in a way worth recording.** It
+reproduces the reference measurement on a PNG. Used naively against the JSON's `ambient.ratio` it
+drove the corridor to an ambient of 5.6 and a frame two and a half stops hotter than the show —
+because the JSON's ratio is two hand-picked regions of a *balanced* frame and this is a whole-frame
+percentile of a raw one. Running `grey level 1.webp` through the same code settled it: the frame
+whose entry says 0.300 measures 0.086, and across eleven spaces the two statistics correlate at
+Pearson 0.65. **The only valid comparison is our frame against the show's frame, measured by the
+same code**, which is what `--against` does and what the docstring now says at length. The
+corridor's existing 1.30 ambient was vindicated by that test: reference 0.086/0.053, ours
+0.081/0.074.
+
+**The finding that fell out of it.** Scaling only the fittings moved medical from 7.5× to 3.1× and
+moved transit, worship and generic by *nothing at all*. In those rooms the fittings contribute
+almost nothing to the frame — a corridor downlight reaches 1.2 m — and what fills the room is
+ambient and the emissive surfaces. An exposure that cannot move the dominant term is not an
+exposure, so it scales both.
+
+Frames: `docs/engine-medlab.png`, `docs/engine-market.png`. Suites: rooms 579, materials 1364,
+layer-3 gate 34, directory 744, export_scene 80, measure_frame 9.
+
 ## NEXT SESSION — layer 4
 
-1. **Give `rooms.py` light fittings.** Still zero of 68. Archetype-driven, same shape as `FIXTURES`.
-   Until this exists 68 of 118 locations render black.
-2. **Apply the two geometry corrections and the strip colour** above — measured, in
-   `docs/layer4-lighting/corridor_kit.json`, not yet applied.
-3. **Apply `public_social` and `command_working`** — 42 more measured fixtures in the same folder,
-   including whether C&C's blue is the light or the screens.
-4. **The exterior rig still has no night side**; **the magenta guideway runs** in the drum.
+1. **The bespoke sixteen.** Layer 4 stands at 68/118; the other 50 are the module-built places, and
+   several already build lamps (`zoc_rib_lamp`, `bay_lamp`, `cc_light_strip`). What they do not have
+   is a calibrated exposure and a frame measured against its reference, which is what layer 4 *is*.
+   The measured fixtures for them are already committed in `docs/layer4-lighting/public_social.json`
+   and `command_working.json` — 42 of them, unapplied.
+2. **23% of the market frame is crushed below the measurable floor**, against 2.25% in
+   `grey level 1.webp`. The soffit is the culprit: every fitting aims down and nothing lights the
+   ceiling. The reference corridors are dark overhead but not *black* — their soffit reads 0.158
+   against a 0.446 deck. A bounce or a soffit fitting is the fix, not more ambient.
+3. **Apply the two `interior_kit` geometry corrections and the strip colour** — measured, in
+   `docs/layer4-lighting/corridor_kit.json`, still not applied: the pilaster strip is built
+   0.50→0.86 of wall height and measures 0.56→0.75, ~1.9× too long with cells 1.5× too small.
+4. **The exterior rig still has no night side** (blocking, the arrival shot); **the magenta
+   guideway runs** in the drum.

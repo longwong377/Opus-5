@@ -1661,3 +1661,70 @@ two multiply back to exactly 0.60. Asserted from the values that ship.
 
 **Overturned by:** any frame showing the hull lit from within — which would fix the band spacing,
 the lit fraction and the colour mix at once.
+
+---
+
+## INV-037 — Room lighting: which measured fitting each archetype uses
+
+**Authority 5** — the *mapping* is invented. Every colour, temperature, range, spacing and
+shadow decision it maps *onto* is measured, and cited.
+
+**What was invented.** `rooms.LIGHTS` gives each of the eleven room archetypes two light
+fittings. The archetype→fitting assignment is this entry. Nothing else here is new: the eleven
+distinct fittings are the ones three agents measured off the reference frames in session 3n and
+recorded in `docs/layer4-lighting/*.json`, with the frame, the region, the balance and the
+colour temperature for each.
+
+**Why an invented mapping rather than an invented lamp.** Sixty-eight of the station's 118
+locations had no light fitting at all and rendered black — `export_scene.fixture_lights` makes one
+real source per tagged `light_*` group and this generator tagged none, so the only things that
+glowed in a `rooms.py` room were seventeen terminal screens. The two ways out were to author eleven
+new lamp colours by eye, or to decide which *already-measured* fitting each kind of room uses. The
+first is unmarked invention wearing a measurement's clothes; the second is one clearly-marked
+judgement over a body of sourced values.
+
+**The mapping, and the argument for each:**
+
+| archetype | fitting | why |
+|---|---|---|
+| industrial | `bay_flood` + `service_wall_tube` | a 7.5 m plant hall is lit like a docking bay: cool high-bay floods, cold blue tube trim |
+| store | `bay_flood` + the concourse deck channel | same high bay; the deck run gives a cargo hall its length |
+| transit | `concourse_deck_spot` + deck channel | the measured concourse, unchanged |
+| hospitality | `bar_pendant_lamp` + `casino_bar_backlight` | Doug's Dugout and the Casino are the two measured hospitality interiors and they agree: warm pendants over the tables, a cyan strip behind the bar, darkness between |
+| worship | `cc_dais_key` + `cc_wall_course` | a key on the dais and cold courses on the walls. The dais is the only thing in a chapel that should be lit |
+| medical | `fa_batten` + `service_wall_tube` | the only genuinely NEUTRAL source in the measured set (S 0.010, clipping in all three channels) belongs over a medlab bed |
+| research | `fa_batten` + `cc_wall_course` | as medical, with the colder trim of an instrumented room |
+| detention | `fa_batten`'s register behind a guard + `cc_pit_indicator` | **the one archetype with no reference frame at all** |
+| commerce | `zoc_downlight_overhead` + `zoc_stall_light` | the Zocalo, which is what a market on this station is |
+| office | `wr_soffit_blade` + `wr_wall_strip_bank` | the War Room is the measured working office and its light is warm, wall-mounted and low. The obvious wrong answer is a cool ceiling grid; the only measured office does not have one |
+| generic | `light_downlight` + deck channel | the corridor kit's own fittings, so an unclassified room reads as station fabric |
+
+**What is derived rather than mapped.** Two families of number could not be carried across as
+measured and the derivation is on the line in each case:
+
+- **Spacing that scales with mounting height.** A bay flood is measured at 11 m spacing from an
+  18 m mount — 0.611 of the height — and a Zocalo downlight at 2.7 m from 7.2 m, 0.375. Carried as
+  ratios, because a fixed 11 m spacing in a 7.5 m plant hall is one lamp.
+- **Range measured in a volume far larger than the room.** The bay flood's 30 m becomes 12.5 m
+  (30 × 7.5/18) and the restaurant batten's 12 m becomes 7.2 m (12 × 3.0/5.0). An unscaled range
+  is no falloff at all, which is exactly what made the first lit interior render come back white.
+
+**The exposure is measured, and it had to be, because `energy_rel` could not supply it.** Every
+fixture in the JSON carries an energy relative to the brightest fitting *in its own family*, and no
+reference frame contains two families, so nothing in the measurement says how a war room's 1.0
+compares to a docking bay's. `export_scene.ROOM_EXPOSURE` is that missing number, obtained by
+rendering one room per archetype, measuring it and its mapped reference frame with the same code
+(`tools/measure_frame.py`), and scaling until the render sits at the same multiple of its reference
+that the **corridor already sits at and has been judged good at** — 1.40×. Two passes brought all
+eleven from a spread of 0.53–7.75 to 1.32–1.52 against a 1.40 target.
+
+**A negative result worth keeping.** The per-space `ambient.ratio` in the JSON is a *contrast*
+figure taken from two hand-picked regions of a grey-world-balanced frame. It is not reproducible as
+a whole-frame statistic — `grey level 1.webp`'s entry says 0.300 and the same frame measures 0.086
+by percentile — and treating it as a level target drives the corridor to an ambient of 5.6 and a
+frame two and a half stops hotter than the show. It is used here only for what it is: the
+*relative* fill-to-key of one space against another.
+
+**What would overturn it:** a Season 2–3 frame of any of these interiors. A brig frame would settle
+`light_cage_lamp`, which is the weakest row in the table and is declared as such; a medlab frame
+would settle whether a medlab really takes the restaurant's neutral batten.

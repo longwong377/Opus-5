@@ -78,8 +78,8 @@ grown to make a number go green.
 | **0** | **Engine path** | A materialled, lit frame comes out of Godot + lavapipe and can be scored against `docs/AAA-STANDARD.md`. Infrastructure, not per-location | **DONE** |
 | **1** | **Addressed** | All have `(sector, ring, deck, angle, z)`, footprints that do not collide, declared functions and interactions | **118 / 118 COMPLETE** |
 | **2** | **Geometry** | Every addressed location has mesh, closed, correctly wound, inside its own footprint | **118 / 118 COMPLETE** |
-| **3** | **Materials** | Every mesh carries PBR materials from `materials.py`. No flat colour anywhere | 0 / 118 — **CURRENT** |
-| **4** | **Lighting** | Every location lit, in the engine, to its reference's mood | 0 |
+| **3** | **Materials** | Every mesh carries PBR materials from `materials.py`. No flat colour anywhere | **118 / 118 COMPLETE** |
+| **4** | **Lighting** | Every location lit, in the engine, to its reference's mood | 68 / 118 — **CURRENT** |
 | **5** | **Props & function** | The declared interactable types exist and do what `directory.py` says they do | 0 |
 | **6** | **Inhabitants** | NPCs placed, scheduled and animated in every location, at real density | 0 |
 | **7** | **Audio** | Ambience and event audio per location | 0 |
@@ -98,10 +98,16 @@ machinery — "Fabrication furnaces" was a grey box holding two control podiums 
 `rooms.FIXTURES` supplies what a room is named for. Expect the same gap in every later layer:
 **the declared list is never the whole room.**
 
-**Layer 3 is the current layer**, and it inherits the standing blocking finding against
-`exterior_approach`: *no emissive windows anywhere* — a station housing 250,000 renders unlit from
-within and reads as a derelict rather than a city. That is the first thing the owner's opening
-shot shows, so it is the first thing layer 3 fixes.
+**Layer 3 is done.** The emissive-window finding it inherited is closed (`INV-036`,
+`hull_window.gdshader`).
+
+**Layer 4 is the current layer**, and the lesson it has produced so far is about MEASUREMENT, not
+light: `docs/layer4-lighting/*.json` records a per-space `ambient.ratio` taken from two hand-picked
+regions of a balanced frame, and a whole-frame percentile of the same frame gives a different
+number (0.300 vs 0.086 on `grey level 1.webp`). Tuning a render against the wrong one of those
+lands it two and a half stops hot. **The only valid comparison is our frame against the show's
+frame, measured by the same code** — `tools/measure_frame.py --against`. Every room exposure in
+`export_scene.ROOM_EXPOSURE` was obtained that way and the derivation is in `INV-037`.
 
 ### Rules that follow from working in layers
 

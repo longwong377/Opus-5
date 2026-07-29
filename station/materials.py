@@ -862,6 +862,113 @@ def _build():
               "the right wall does not. It is the whole warm register of the "
               "station's interior in one object.")))
 
+    # ---- layer 4: the fittings the 68 generated rooms are lit by ----------
+    # `rooms.LIGHTS` maps each of the eleven archetypes onto MEASURED fittings
+    # rather than inventing lamp colours per room type; these are the
+    # materials those tags resolve to. Every colour below is a linear triple
+    # from docs/layer4-lighting/*.json, which three agents measured off the
+    # reference frames in session 3n — the file names the frame, the region
+    # and the balance for each. What is extrapolated here is the SAME thing in
+    # every entry and is not repeated in full each time: the housing albedo
+    # (the geometry is the whole fitting, so an unlit lamp must not read as a
+    # hole — the pattern light_downlight, marker_light_red and emissive_signage
+    # already follow of carrying the emission's tint at low value), and the
+    # emission_energy, which is placed on THIS LIBRARY'S ladder because the
+    # JSON's `energy_rel` is relative within its own measured family and two
+    # families' 1.0 are not the same number of lumens.
+    #
+    # The ladder, for reference: light_ceiling_grid 2.6, light_deck_channel
+    # 3.5, light_command_strip 3.8, light_downlight 4.0, emissive_signage 4.5,
+    # light_portal_head 5.0, light_pilaster_strip 6.0, bay_floodlight 6.0,
+    # bar_pendant_lamp 9.0.
+
+    a(Material(
+        "light_service_tube", "Service Tube — cold blue wall batten",
+        albedo=(0.070, 0.100, 0.150), roughness=0.28, metallic=0.0,
+        specular=0.20, emission=(0.300, 0.550, 1.000), emission_energy=3.0,
+        binds=("light_service_tube",), scenes=("interior",),
+        source="docs/layer4-lighting/corridor_kit.json, fixture `service_wall_tube`, measured from reference/10-interiors-generic-kit/more hallways.jpg (authority 1; NEGATIVE_RESULTS classes that frame a LIGHTING reference and not an albedo reference, which is what it is used for here). Gains recomputed as 0.793/1.146/1.154, reproducing GREY_WORLD_GAINS. Tubes isolated at x 0.394-0.405 y 0.116-0.191 and x 0.399-0.415 y 0.224-0.444; aspect ~13:1 for the lower run. The measurement calls it EMISSIVE ONLY and export_scene.FIXTURE_LIGHTING keeps it that way: it is the brightest thing on a service wall and it lights nothing.",
+        extrapolated="Housing albedo and emission_energy 3.0. Energy sits below light_command_strip's 3.8 — the same cold-blue register on a smaller fitting — and well below the pilaster strip's 6.0, because a service corridor's balanced median luminance is 0.060 against a residential corridor's 0.265 and the tube must not lift it.",
+        note="The measurement records TWO courses of these, an upper run hung off an overhead truss and a lower at head height. Only the lower is placed: rooms.py builds no truss to hang the upper from, and inventing one would be a layer-2 change made inside layer 4."))
+
+    a(Material(
+        "light_platform_pool", "Platform Downlight — the overhead pool source",
+        albedo=(0.180, 0.200, 0.185), roughness=0.30, metallic=0.0,
+        specular=0.20, emission=(0.850, 1.000, 0.870), emission_energy=5.0,
+        binds=("light_platform_pool",), scenes=("interior",),
+        source="docs/layer4-lighting/corridor_kit.json, fixture `concourse_deck_spot`, measured from reference/10-interiors-generic-kit/more hallway.jpg (authority 1), gains recomputed 1.120/1.198/0.786. The pool is 1.57 m across — interior_kit's own DOWNLIGHT_POOL_M, itself measured against a standing officer at 149 px/m — and the measurement derives the cone from it: half-angle 12.3 deg at a 3.6 m mount, 6.2 deg at 7.2 m, penumbra about 60% of the pool radius.",
+        extrapolated="Housing albedo and emission_energy 5.0, matched to light_portal_head rather than to light_pilaster_strip: this is a fitting that actually throws (export_scene gives it a shadow-casting spot), and the strip is the brighter surface precisely because it does not.",
+        note="Same colour as the lit deck patch beneath it, which is correct and not a copy: a pool on the deck is this lamp's own light coming back."))
+
+    a(Material(
+        "light_dais_key", "Dais Key Light — the one fitting that throws a shadow",
+        albedo=(0.220, 0.170, 0.130), roughness=0.32, metallic=0.0,
+        specular=0.25, emission=(1.000, 0.760, 0.556), emission_energy=6.0,
+        binds=("light_dais_key",), scenes=("interior",),
+        source="docs/layer4-lighting/command_working.json, fixture `cc_dais_key`, measured from reference/03-sector-blue/comand and contorl.webp (authority 1), raw — that frame's grey-world balance is INVALID for albedo (balanced S median 0.420, p90 0.891) and NEGATIVE_RESULTS' rule is that a source read raw is exactly what raw is for. Found by a horizontal profile of the dais apron at y .690-.735 in 6 px columns: LIT plateau x .386-.482 at L 0.26-0.585 H 314-335, SHADOW x .489-.548 at L 0.183-0.292, LIT again x .555-.644 — i.e. a hard-edged pool with a body-shaped hole in it, which is what identifies it as a single keyed source at ~3.5 m rather than a wash. 4725 K.",
+        extrapolated="Housing albedo and emission_energy 6.0. It is set at bay_floodlight's level and above light_downlight's 4.0 because the frame shows it as the only fitting in the room casting a legible shadow, which is a statement about its intensity relative to the fill and not about its size.",
+        note="rooms.py places it as the `key` kind: ONE fitting, on the centreline, over whatever the spine carries. In a chapel that is the dais, and the dais is the only thing in the room that should be lit."))
+
+    a(Material(
+        "light_wall_course", "Wall Course — cold horizontal band, flush in the wall",
+        albedo=(0.060, 0.090, 0.150), roughness=0.30, metallic=0.0,
+        specular=0.20, emission=(0.243, 0.546, 1.000), emission_energy=3.4,
+        binds=("light_wall_course",), scenes=("interior",),
+        source="docs/layer4-lighting/command_working.json, fixture `cc_wall_course`, measured from reference/03-sector-blue/comand and contorl.webp (authority 1), raw, for the reason given under light_dais_key. Four horizontal courses per side wall at a measured 1.2 m vertical pitch, each running the room's full length with its emitting face flush in the wall and throwing OUTWARD, so the centre of the room stays dark. 22000 K — the coldest source in the measured set, and the reading is a strong blue rather than a blue-white.",
+        extrapolated="Housing albedo and emission_energy 3.4, just under light_command_strip's 3.8. The two are the same architectural idea in the same sector and the 0.4 separates a course flush in a wall from a proud strip; nothing in the frames distinguishes them further.",
+        note=("The G channel is what separates this from light_command_strip's "
+              "(0.240, 0.320, 1.000): 0.546 against 0.320. Both are Blue "
+              "Sector cold sources measured in the same frame and they are NOT "
+              "the same colour, so they are not the same material.")))
+
+    a(Material(
+        "light_ceiling_batten", "Ceiling Batten — the neutral white overhead",
+        albedo=(0.780, 0.780, 0.780), roughness=0.30, metallic=0.0,
+        specular=0.20, emission=(1.000, 0.980, 1.000), emission_energy=7.0,
+        binds=("light_ceiling_batten", "light_cage_lamp"), scenes=("interior",),
+        source="docs/layer4-lighting/public_social.json, fixture `fa_batten`, measured from reference/04-sector-red/Fresh air.webp raw over (0.372,0.455)-(0.430,0.480): median (0.776, 0.769, 0.776) at S 0.010 — NEUTRAL, the only genuinely neutral source in the whole measured set — with p95 and max both (1.000, 1.000, 1.000). It clips in all three channels and carries the largest bloom in the frame. Normalised (1.000, 0.991, 1.000) sRGB. 6530 K.",
+        extrapolated="Housing albedo, emission_energy 7.0, and the SECOND BIND. Energy 7.0 sits above bay_floodlight's 6.0 and below bar_pendant_lamp's 9.0: it clips harder than the bay floods do in their frame but it is a room-scale batten rather than the sole source in a dark bar. Albedo 0.78 rather than the near-black the other fittings carry, because this one is a diffuser panel and a diffuser is pale when it is off — the same argument light_pilaster_strip makes at 0.85. `light_cage_lamp` is the DECLARED part: the brig is the one archetype in rooms.py with no measured reference frame at all, and rather than invent a colour for it, it takes this neutral batten behind a guard. What would overturn it: any Season 2-3 frame inside the brig.",
+        note="Medical, research and detention all resolve here. A medlab, a lab and a cell block are the three interiors that should be lit by something honest and colourless, and this is the only measured source that is."))
+
+    a(Material(
+        "light_indicator_red", "Indicator — small red status lamp",
+        albedo=(0.120, 0.030, 0.035), roughness=0.35, metallic=0.0,
+        specular=0.25, emission=(1.000, 0.115, 0.143), emission_energy=0.9,
+        binds=("light_indicator_red",), scenes=("interior",),
+        source="docs/layer4-lighting/command_working.json, fixture `cc_pit_indicator`, measured from reference/03-sector-blue/comand and contorl.webp (authority 1), raw. The forward pit is the darkest working area in frame: a pit panel at (0.055,0.755)-(0.115,0.795) reads rgb 0.071/0.012/0.020 at H 352 S 0.833, and whole-pit region medians sit at L 0.019-0.033.",
+        extrapolated="Housing albedo and emission_energy 0.9. THE SOURCE MEASUREMENT SAYS OF ITSELF THAT IT IS WEAK — the indicators are a few pixels each in the darkest part of the frame — so the energy is floored on the library ladder rather than argued up, below light_ceiling_grid's 2.6 and near device_reader_shell's 0.25. It should read as a row of points on a dark wall and never as a light.",
+        note=("Distinct from marker_light_red (1.000, 0.300, 0.120), which is "
+              "an exterior hazard beacon: that one is orange-red and this is "
+              "nearer a pure red at H 352. Two reds, measured separately, in "
+              "the same way accent_warning and hull_banding_red are.")))
+
+    a(Material(
+        "light_market_pool", "Market Downlight — the Zocalo's overhead",
+        albedo=(0.150, 0.200, 0.205), roughness=0.30, metallic=0.0,
+        specular=0.20, emission=(0.694, 0.982, 1.000), emission_energy=5.5,
+        binds=("light_market_pool",), scenes=("interior",),
+        source="docs/layer4-lighting/public_social.json, fixture `zoc_downlight_overhead`, measured from reference/04-sector-red/more zocalo.png (authority 1) balanced with the gains already in GREY_WORLD_GAINS (0.936/1.137/0.951, recomputed there as 0.9362/1.1368/0.9504). Mounted 7.2 m above the deck, one above each of zocalo.py's pool centres; spacing 2.7 m over a 7.2 m drop, so spacing/height = 0.375 and the pools MERGE — the measurement's own conclusion is that the cone must be at least 50 deg half-angle. 7740 K.",
+        extrapolated="Housing albedo and emission_energy 5.5, between light_portal_head's 5.0 and light_pilaster_strip's 6.0. It is the principal overhead of a public concourse, so it belongs above a doorway light and below a bay flood.",
+        note=("NOT the same object as `zoc_downlight`, which zoc_deck_light "
+              "binds: that group is kit.downlight_pool(), the 1.57 m lit patch "
+              "ON THE DECK, and this is the fitting 7.2 m above it. The layer-4 "
+              "measurement separates them and gives them different colours — "
+              "(0.850, 1.000, 0.870) for the pool against (0.694, 0.982, 1.000) "
+              "for the source.")))
+
+    a(Material(
+        "light_strip_warm", "Warm Wall Strip — the working office's light",
+        albedo=(0.230, 0.180, 0.130), roughness=0.30, metallic=0.0,
+        specular=0.25, emission=(1.000, 0.764, 0.516), emission_energy=4.2,
+        binds=("light_wall_strip_bank", "light_soffit_blade"),
+        scenes=("interior",),
+        source="docs/layer4-lighting/command_working.json, fixtures `wr_wall_strip_bank` and `wr_soffit_blade`, both measured from reference/03-sector-blue/war room.webp (authority 1) balanced (1.088, 1.062, 0.877). Strip bank top-decile cores: hi bank rgb 0.444/0.396/0.334 H 33.8 S 0.248, hi bank 2 rgb 0.414/0.366/0.334 H 24.6, mid bank rgb 0.648/0.583/0.481 H 36.5 S 0.258, mid bank 2 rgb 0.621/0.546/0.464 — four readings, hue stable at H 25-37. Soffit blade top-decile core over (0.000,0.235)-(0.045,0.285): rgb 0.960/0.887/0.693 H 43.6 S 0.278 V 0.960, and its vertical wall profile is a single sharp peak rising L 0.28 to 0.749. Banks are ganged at two heights, ~1.2 m and ~2.4-2.8 m, vertical pitch ~1.4 m; each bank is 4-8 short bars side by side rather than one tube. 4611 K.",
+        extrapolated="Housing albedo, emission_energy 4.2, and THE MERGE OF TWO FITTINGS INTO ONE MATERIAL. The merge: the two measure (1.000, 0.764, 0.516) and (1.000, 0.703, 0.440), which is 0.06-0.08 apart in two channels against a 0.28 saturation — inside the spread of the four strip-bank readings themselves — and they are the same warm register in the same room. If a later pass finds a frame that separates them the bind fragments are already distinct and splitting is a two-line change. Energy 4.2 is set just above light_downlight's 4.0: the same warm practical idea, ganged.",
+        note=("This is what a WORKING interior is lit by, and it is warm, wall-"
+              "mounted and low. The obvious wrong answer for an office is a "
+              "cool ceiling grid; the only measured office in the reference "
+              "does not have one.")))
+
     a(Material(
         "accent_warning", "Accent Warning — red-orange hazard paint",
         albedo=(0.700, 0.321, 0.225), roughness=0.42, metallic=0.0,
@@ -1310,9 +1417,19 @@ def _build():
         albedo=(0.094, 0.100, 0.112), roughness=0.3, metallic=0,
         specular=0.25,
         emission=(0.444, 1.000, 0.939), emission_energy=1.3,
-        binds=("prop_neon_sign", "bar_neon_glyph", "bar_neon_tube"), scenes=("interior",),
+        binds=("prop_neon_sign", "bar_neon_glyph", "bar_neon_tube",
+               "light_bar_backlight"), scenes=("interior",),
         source="11-props-and-technology/Zocalo neon signage in background.jpg (authority 1), grey-world gains 0.935/1.162/0.935. Wordmark 5-cluster over (0.47,0.03)-(0.65,0.16): 33.3% rgb(0.591, 0.999, 0.921) H 168, 26.5% rgb(0.385, 0.995, 0.879) H 169 S 0.613, 11.5% rgb(0.316, 0.832, 0.709) H 166. Board ground between the chevron blades (0.36,0.10)-(0.44,0.125) balances rgb(0.092, 0.105, 0.136). Lit fraction of the sign board (0.30,0.02)-(0.78,0.19): 0.386 above L 0.30, 0.283 above L 0.50, 0.225 above L 0.70. Cross-checked against 04-sector-red/more zocalo.png and 04-sector-red/Darkstar_logo.webp — see extrapolated.",
-        extrapolated="The choice of the cyan state over the orange-red state, and emission_energy 1.3 by flux-matching. The board ground's blue channel is trimmed from the measured 0.136 to 0.112 to keep S under 0.20."))
+        extrapolated="The choice of the cyan state over the orange-red state, and emission_energy 1.3 by flux-matching. The board ground's blue channel is trimmed from the measured 0.136 to 0.112 to keep S under 0.20.",
+        note=("`light_bar_backlight` is rooms.py's hospitality wall course, "
+              "and it is here rather than in a material of its own because "
+              "the two agree. docs/layer4-lighting/public_social.json measures "
+              "`casino_bar_backlight` — a continuous strip along the bar back "
+              "at 1.1-1.4 m — at (0.484, 1.000, 0.922) from a DIFFERENT frame "
+              "(Casino.webp) than this one was measured from, and lands within "
+              "0.04 of this emission in every channel. Two independent "
+              "measurements of the same cyan tube register is corroboration, "
+              "not a coincidence to paper over with a second material.")))
 
         # This is the one prop in my family that materials.py had already
         # measured without knowing it — PROVENANCE lists 'amber sign plaque V
@@ -2634,7 +2751,13 @@ def _build():
         albedo=(0.300, 0.240, 0.190), roughness=0.35, metallic=0,
         specular=0.25,
         emission=(1.000, 0.680, 0.400), emission_energy=2.2,
-        binds=("zoc_stall_light",), scenes=("interior",),
+        # `light_stall_festoon` is rooms.py's commerce fitting -- the market
+        # bays, the black market and N'Grath's. It is the same object: the
+        # measurement this material's own extrapolated field argues with
+        # (docs/layer4-lighting/public_social.json's zoc_stall_light) is the
+        # one rooms.py places, and the two rooms are the same room in two
+        # sectors. One fitting, one material.
+        binds=("zoc_stall_light", "light_stall_festoon"), scenes=("interior",),
         source="Emission and albedo reproduced from station/materials.py's light_downlight, the library's warm practical register. reference/04-sector-red/zocalo.webp (authority 1) shows them unmistakably: a dense run of individual point sources strung along the awning eave at (0.010,0.165)-(0.200,0.250), dozens of discrete bulbs. reference/04-sector-red/more zocalo.png shows the same strings on the stall at (0.756,0.158)-(0.774,0.198), balanced with the gains already in materials.GREY_WORLD_GAINS (0.936/1.137/0.951) reading rgb 0.162/0.125/0.116 H 21 S 0.286 — warm, and the same warm signature (H 21-30) appears on every surface those strings reach in that frame: the canopy at H 28, the goods at H 24, the spars at H 17.",
         extrapolated="The energy, 2.2, and the decision to take the warm register rather than the reading. In zocalo.webp the bulbs measure raw (0.787,0.773,0.884) — bluer than white — because the cyan Zocalo neon is 1.5 m above them and their cores are 2-3 px across; a source that small cannot outvote a resolved measurement, and more zocalo.png's H 21 on the same fitting is the resolved one. Energy is set below the rib lamp's 4.0 and below light_downlight's 4.0 because these are small decorative bulbs strung six to nine per stall, not architectural fittings: they should read as a glittering line at 20 m and not as a floodlight at 2 m. Overturned by: a Zocalo frame with the strings lit and the neon off."))
 
@@ -2998,9 +3121,18 @@ def _build():
         albedo=(0.620, 0.620, 0.610), roughness=0.35, metallic=0,
         specular=0.25,
         emission=(0.942, 0.929, 1.000), emission_energy=6,
-        binds=("bay_lamp",), scenes=("interior",),
+        binds=("bay_lamp", "light_highbay"), scenes=("interior",),
         source="reference/03-sector-blue/dock.webp (authority 1). Measured RAW, because a source keeps its own colour and balancing it would remove exactly the thing being read — the same treatment materials.py gives the Zocalo shopfront and the rotunda altar. The two unoccluded flood cores read rgb 0.408/0.400/0.435 (H 253 S 0.081) at (0.368,0.092)-(0.386,0.108) and rgb 0.539/0.524/0.565 (H 263 S 0.073) at (0.527,0.070)-(0.545,0.088); k-means over the pool at (0.360,0.085)-(0.395,0.115) puts 11.8% on rgb 0.585/0.577/0.621 (H 250 S 0.071). Near-neutral at every reading, faintly cool, S never above 0.081 — normalised to its peak channel that is (0.942, 0.929, 1.000). docking_bay.py's docstring records the fitting itself from this frame: pendant floodlights hanging at regular spacing off the lattice gantry, 'the bay's whole lighting scheme and the first thing that reads'.",
-        extrapolated="emission_energy 6.0 and the housing albedo. Energy: matched to materials.py's light_pilaster_strip (6.0), which is a corridor's principal wall light, on the argument that this is the bay's principal light and the fitting is far larger — docking_bay.py builds it as a 1.5 m box against the strip's ~0.1 m tube, so at equal energy this delivers roughly fifteen times the flux, which is the right order for a 42 x 140 m hangar against a 3 m corridor. The visible beam shafts in the frame are haze, not intensity, and were not used to argue it up. Housing 0.62: the geometry is the whole fitting, so it must not read as a hole when unlit; 0.62 is a painted steel lamp body, darker than materials.py's truss_lamp tube at 0.95 because that is glass and this is not. Overturned by any frame showing a dark bay bay with the floods off."))
+        extrapolated="emission_energy 6.0 and the housing albedo. Energy: matched to materials.py's light_pilaster_strip (6.0), which is a corridor's principal wall light, on the argument that this is the bay's principal light and the fitting is far larger — docking_bay.py builds it as a 1.5 m box against the strip's ~0.1 m tube, so at equal energy this delivers roughly fifteen times the flux, which is the right order for a 42 x 140 m hangar against a 3 m corridor. The visible beam shafts in the frame are haze, not intensity, and were not used to argue it up. Housing 0.62: the geometry is the whole fitting, so it must not read as a hole when unlit; 0.62 is a painted steel lamp body, darker than materials.py's truss_lamp tube at 0.95 because that is glass and this is not. Overturned by any frame showing a dark bay bay with the floods off.",
+        note=("`light_highbay` is rooms.py's industrial and store fitting and "
+              "resolves here deliberately: docs/layer4-lighting/"
+              "command_working.json re-measured this same fitting in the same "
+              "frame for layer 4 and got (0.850, 0.830, 1.000) against the "
+              "(0.942, 0.929, 1.000) above — the same faintly cool near-"
+              "neutral, differing by 0.09 in the channel a normalisation "
+              "choice moves. A plant hall and a cargo bay are lit the way a "
+              "docking bay is, and giving them a second flood material would "
+              "be recording that difference as real.")))
 
         # command_control.py's docstring calls these 'the room's ambient
         # light', and it is the truest thing in the module: every other surface
@@ -3165,7 +3297,7 @@ def _build():
         albedo=(0.090, 0.088, 0.084), roughness=0.30, metallic=0.0,
         specular=0.25,
         emission=(1.000, 0.612, 0.353), emission_energy=9.0,
-        binds=("bar_pendant_lamp",), scenes=("interior",),
+        binds=("bar_pendant_lamp", "light_pendant"), scenes=("interior",),
         source="ACCENTS['warm_practical'], which is the register measured "
                "across the balanced interiors at H 12-35. Doug's Dugout.webp "
                "corroborates the HUE without being balanced: the pools beneath "
@@ -3175,7 +3307,14 @@ def _build():
                "frame cannot support.",
         extrapolated="The energy. 9.0 matches light_downlight, the other "
                      "fitting in this library that is the sole source in its "
-                     "room."))
+                     "room.",
+        note=("`light_pendant` is rooms.py's hospitality fitting and it is "
+              "this lamp, not a lookalike: docs/layer4-lighting/"
+              "public_social.json measures `bar_pendant_lamp` at (1.000, "
+              "0.554, 0.393) against this material's (1.000, 0.612, 0.353) "
+              "from the same frame, and the mess hall, the Dark Star and the "
+              "Casino are lit by the fitting Doug's Dugout was measured "
+              "from.")))
 
     a(Material(
         "bar_cell_matrix", "Backlit Cell Matrix -- orange-red, twelve across",

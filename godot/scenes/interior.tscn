@@ -1,4 +1,4 @@
-[gd_scene load_steps=98 format=3]
+[gd_scene load_steps=106 format=3]
 
 ; A room, from the inside.
 ;
@@ -131,6 +131,14 @@
 [ext_resource type="Material" path="res://materials/zoc_structure.tres" id="m_zoc_structure"]
 [ext_resource type="Material" path="res://materials/zoc_table_edge.tres" id="m_zoc_table_edge"]
 [ext_resource type="Material" path="res://materials/zoc_wall_plate.tres" id="m_zoc_wall_plate"]
+[ext_resource type="Material" path="res://materials/light_ceiling_batten.tres" id="m_light_ceiling_batten"]
+[ext_resource type="Material" path="res://materials/light_dais_key.tres" id="m_light_dais_key"]
+[ext_resource type="Material" path="res://materials/light_indicator_red.tres" id="m_light_indicator_red"]
+[ext_resource type="Material" path="res://materials/light_market_pool.tres" id="m_light_market_pool"]
+[ext_resource type="Material" path="res://materials/light_platform_pool.tres" id="m_light_platform_pool"]
+[ext_resource type="Material" path="res://materials/light_service_tube.tres" id="m_light_service_tube"]
+[ext_resource type="Material" path="res://materials/light_strip_warm.tres" id="m_light_strip_warm"]
+[ext_resource type="Material" path="res://materials/light_wall_course.tres" id="m_light_wall_course"]
 
 [sub_resource type="Environment" id="Env"]
 ; Flat colour, not a sky. Near-black rather than pure black for the reason the
@@ -285,10 +293,24 @@ material_rules = {
 "industrial_deck": ExtResource("m_shell_deck_industrial"),
 "industrial_rib": ExtResource("m_shell_rib_oxide"),
 "industrial_wall": ExtResource("m_shell_wall_industrial"),
+"light_bar_backlight": ExtResource("m_sign_neon_venue"),
+"light_cage_lamp": ExtResource("m_light_ceiling_batten"),
+"light_ceiling_batten": ExtResource("m_light_ceiling_batten"),
+"light_dais_key": ExtResource("m_light_dais_key"),
 "light_deck_channel": ExtResource("m_light_deck_channel"),
 "light_downlight": ExtResource("m_light_downlight"),
+"light_highbay": ExtResource("m_bay_floodlight"),
+"light_indicator_red": ExtResource("m_light_indicator_red"),
+"light_market_pool": ExtResource("m_light_market_pool"),
+"light_pendant": ExtResource("m_bar_pendant_lamp"),
 "light_pilaster_strip": ExtResource("m_light_pilaster_strip"),
+"light_platform_pool": ExtResource("m_light_platform_pool"),
 "light_portal_head": ExtResource("m_light_portal_head"),
+"light_service_tube": ExtResource("m_light_service_tube"),
+"light_soffit_blade": ExtResource("m_light_strip_warm"),
+"light_stall_festoon": ExtResource("m_zoc_stall_light"),
+"light_wall_course": ExtResource("m_light_wall_course"),
+"light_wall_strip_bank": ExtResource("m_light_strip_warm"),
 "medical_deck": ExtResource("m_shell_deck_clinical"),
 "medical_rib": ExtResource("m_shell_rib_painted"),
 "medical_wall": ExtResource("m_shell_wall_clinical"),

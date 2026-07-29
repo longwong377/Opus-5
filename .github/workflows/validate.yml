@@ -150,8 +150,31 @@ jobs:
         run: |
           python3 tools/export_scene.py --shot interior --room corridor --out /tmp/i.png >/dev/null
           python3 tools/export_scene.py --shot interior --room junction --out /tmp/j.png >/dev/null
-          python3 tools/export_scene.py --shot interior --room medlab_one --out /tmp/m.png >/dev/null
-          echo "interior shot exports for corridor, junction and a room"
+          # One room per archetype family that behaves differently in the light
+          # rig: a spot-lit high bay, an omni-lit batten room, a festooned
+          # market, a single-key chapel and a deck-channel corridor room. A
+          # sixth would add coverage of no new code path.
+          for r in medlab_one fabrication black_market interfaith_chapel hydroponics; do
+            python3 tools/export_scene.py --shot interior --room "$r" --out /tmp/$r.png >/dev/null
+          done
+          echo "interior shot exports for corridor, junction and five rooms"
+
+      # export_scene's own gates over the light rig: that every archetype has
+      # an exposure and an ambient, that every fitting rooms.py places resolves
+      # to a material that emits, and that every fitting is either a measured
+      # source or a measured emissive rather than falling into the
+      # emissive-only default by being forgotten.
+      - name: Scene assembly and the interior light rig
+        run: python3 tools/export_scene.py
+
+      # The frame statistic the room exposures were calibrated with. It has a
+      # self-test because a measurement that cannot fail is the same defect as
+      # an assertion that cannot fail -- and this one was WRONG about what it
+      # measured on its first day, comparing a whole-frame percentile against
+      # a hand-region measurement and landing the corridor two and a half
+      # stops hot before the reference frame was run through the same code.
+      - name: Frame luminance measurement
+        run: python3 tools/measure_frame.py
 
       - name: Rotating-frame physics
         run: python3 station/physics/test_rotating_frame.py
