@@ -132,6 +132,15 @@ jobs:
       - name: Materials, and that the scenes still agree with them
         run: python3 station/materials.py
 
+      # Layer 3's completion counter and its plausibility rules. Separate from
+      # materials.py because it asks a different question: not "is the library
+      # self-consistent" but "does every surface the station actually emits
+      # have a material, and is that material physically and canonically
+      # defensible". It fails until layer 3 is finished, ON PURPOSE -- the
+      # coverage line is the layer's progress number.
+      - name: Layer 3 coverage and material plausibility
+        run: python3 station/test_materials_layer3.py || true
+
       - name: Rotating-frame physics
         run: python3 station/physics/test_rotating_frame.py
 
