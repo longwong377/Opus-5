@@ -1,0 +1,238 @@
+{
+ "coverage_note": "All 33 assigned groups are bound, by 9 materials, using EXACT full group names as binds \u2014 never a fragment. Verified mechanically against the full 113-group list plus materials.KNOWN_GROUPS, GROUP_ALIASES and every existing bind: (a) no proposed name collides with a name in BY_NAME; (b) no proposed fragment is identical to an existing bind or alias key; (c) no proposed fragment occurs as a substring of ANY other group anywhere in the station (checked against the 113 list, KNOWN_GROUPS, the alias keys and the 11 `*_soffit` groups) \u2014 so nothing is swallowed; (d) because each bind IS the whole group name, its match length is maximal and no existing fragment can outrank it. `{arch}_soffit` (11 groups, not in my list) still resolves to `kit_reveal` via its \"soffit\" fragment, asserted after the change.\n\nREFERENCE COVERAGE, PLAINLY. Sourced from authority-1 frames: the standard painted wall (grey level 1 + 6 corroborating frames), the industrial/store wall and deck (dock.webp, central corridor.webp, more hallways.jpg), the public deck (more zocalo.png, grey level 1, council chambers), the oxide rib (dock.webp + central corridor.webp), the worship deck's value and cast (council chambers). NOT sourced \u2014 the reference set contains NO medlab, NO brig, NO research lab and NO chapel frame at all: `shell_wall_clinical` and `shell_deck_clinical` are declared extrapolations in full, and `shell_deck_stone` borrows the one ceremonial floor in the set (council chambers) because there is no chapel floor to measure.\n\nMETHOD. Every reading is a median or k-means cluster over a named fractional region of a named frame, AFTER a grey-world balance computed over pixels with 0.04 < V < 0.95 \u2014 the same procedure materials.py records. The method was validated by reproducing two gains already in GREY_WORLD_GAINS exactly (council chambers 0.998/1.082/0.932; war room 1.088/1.062/0.877). Five frames I used carry NEW gains that should be added to GREY_WORLD_GAINS: dock.webp 0.968/1.027/1.007; central corridor.webp 1.044/1.085/0.892; more zocalo.png 0.936/1.137/0.950; more hallway.jpg 1.118/1.196/0.788; more hallways.jpg 0.794/1.145/1.154.\n\nTHREE RESULTS WORTH CARRYING INTO THE FILE, beyond the materials themselves.\n1. ALBEDO_ANCHOR IS INDEPENDENTLY CORROBORATED. Lit structural wall surfaces across SIX frames the anchor was not derived from give lit() albedos of 0.365 / 0.390 / 0.418 / 0.421 / 0.446 / 0.494 / 0.511 (central corridor wall panel and walkway fascia, dock bay wall and stepped ledge, council chambers wall, war room arch face, more zocalo lit structure). Mean 0.435, and the anchor is 0.46. The one number that sets the station's absolute level survives contact with six frames it did not come from.\n2. TWO NEW INSTANCES OF THE NEGATIVE_RESULTS TEST, both negative. In `more hallways.jpg` the SAME deck plate balances H 36-37 S 0.59-0.65 under the warm backlit panels and H 179-200 S 0.12-0.25 under the cool tubes \u2014 one surface, two lights, two colours, so the deck is neutral. In `more hallway.jpg` the same right-hand wall clusters at H 17-27 S 0.09-0.25 on its warm side and H 198 S 0.27 on its cool side. Same shape as the ochre dado. Both frames are lighting references, not albedo references.\n3. `04-sector-red/Doug's Dugout.webp` MUST NOT BE MEASURED FOR ALBEDO. Its grey-world gains are 0.723/1.279/1.196 and the balanced result is nonsense \u2014 a wall at S 1.000. The frame is lit entirely by isolated pendant cones with near-zero ambient, so its mid-tone population is not neutral and grey-world has nothing to work with. Recorded so nobody re-mines it.\n\nRELATIONSHIPS THE SET ENFORCES, all verified numerically: every deck is 0.87-0.92x the luminance of the wall it meets and 0.18-0.36 rougher-negative (smoother); the three walls sit within a 1.14 luminance ratio of each other, inside the measured +/-15% corridor spread; every material is metallic 0.0; no roughness is below 0.20; every declared saturation is <= 0.059 except `shell_rib_oxide`.\n\nTHE ONE GATE CONFLICT, DECLARED RATHER THAN HIDDEN. `shell_rib_oxide` is S 0.301 (0.336 after the truss_steel sheet's own warm tint). It is above the 0.20 neutrality line and I am not disguising it. It is the only one. If the gate rejects it, the fallback that PRESERVES the finding is albedo (0.379, 0.331, 0.303) at S 0.200 \u2014 do not fall back to neutral grey, which two authority-1 frames contradict.",
+ "materials": [
+  {
+   "name": "shell_wall_panel",
+   "title": "Room Shell Wall \u2014 the station's painted panel, at room scale",
+   "binds": [
+    "commerce_wall",
+    "detention_wall",
+    "generic_wall",
+    "hospitality_wall",
+    "office_wall",
+    "transit_wall",
+    "worship_wall"
+   ],
+   "albedo": [
+    0.455,
+    0.455,
+    0.455
+   ],
+   "roughness": 0.56,
+   "metallic": 0,
+   "specular": 0.38,
+   "emission": null,
+   "emission_energy": null,
+   "texture": "wall_plate",
+   "uv_scale_denom": 4,
+   "source": "07-sector-grey/grey level 1.webp wall plate course (0.019,0.236)-(0.125,0.293), balanced V 0.295 \u2014 the anchor measurement, restated here only as the level this material is pinned to. Corroborated in six frames the anchor did not come from: 03-sector-blue/war room.webp arch face (0.040,0.020)-(0.130,0.120) balanced V 0.286; 05-sector-green/council chambers.webp wall blade dominant cluster V 0.270 (29.9% of (0.00,0.00)-(0.30,0.20)); 03-sector-blue/dock.webp bay wall (0.200,0.290)-(0.330,0.400) V 0.268; 09-garden-core-and-transit/central corridor.webp walkway fascia (0.300,0.245)-(0.600,0.275) V 0.250 and wall panel (0.600,0.300)-(0.720,0.420) V 0.234; 04-sector-red/more zocalo.png lit structure cluster V 0.317. lit() of those seven: 0.365-0.511, mean 0.435.",
+   "extrapolated": "Nothing about the colour. The 4.0 m texture repeat is chosen, not measured \u2014 but it is chosen to PRESERVE a measurement: wall_plate lays 6 plate courses across its repeat, so 4.0 m holds the 0.667 m course pitch materials.py already read off grey level 1.webp against a 2.1 m door. Any other repeat silently changes that pitch. Roughness 0.56 and specular 0.38 are extrapolated: no frame in the set separates gloss from geometry on a wall.",
+   "reasoning": "This is the surface with the most screen area in the station \u2014 44 office, 32 generic, 20 commerce, 16 worship, 12 each detention/hospitality/transit spans out of rooms.build. It is therefore the material that must not be interesting. The measured finding is that the station is essentially ONE albedo and that everything reading as contrast is geometry, shadow or a fitting, so this is pinned to ALBEDO_ANCHOR and left pure neutral. It is NOT warm and NOT cool: five of the seven corroborating frames balance cool (H 168-220) and two balance warm (H 30), and the two warm ones are the two with warm practicals low on the wall. That is the ochre-dado asymmetry again \u2014 the hue follows the light, not the paint, so there is no hue. Metallic 0.0 because a painted panel is a dielectric at its surface; the existing kit_wall_plate's 0.10 is neither metal nor paint and is not copied. Detention is here rather than with the industrial set on purpose: two of its three locations (security_central, security_posts) are staffed public-facing rooms, and a brig reads hard because of its lighting, its cell dividers and its cell doors, not because somebody painted the wall darker.",
+   "reasoning_note": ""
+  },
+  {
+   "name": "shell_wall_clinical",
+   "title": "Clinical Shell Wall \u2014 wipe-clean lining, medlab and laboratory",
+   "binds": [
+    "medical_wall",
+    "research_wall"
+   ],
+   "albedo": [
+    0.47,
+    0.478,
+    0.488
+   ],
+   "roughness": 0.48,
+   "metallic": 0,
+   "specular": 0.44,
+   "emission": null,
+   "emission_energy": null,
+   "texture": "wall_plate",
+   "uv_scale_denom": 6,
+   "source": "NO FRAME. The reference set contains no medlab, no infirmary, no isolab, no morgue and no laboratory interior \u2014 00-INDEX.md's folder inventory has nothing in any sector folder for these ten locations. Nothing here is measured. The only sourced quantity is the level it is tied to: ALBEDO_ANCHOR 0.46, itself derived from 07-sector-grey/grey level 1.webp's wall plate course.",
+   "extrapolated": "All of it, and this material is the reason the coverage note exists. Constrained rather than free: (1) luminance 0.477 is 1.048x the anchor, which keeps it inside the +/-15% spread the corridor's four lit elements measured, so the clinical rooms cannot drift out of the station's one paint system; (2) the cool bias is S 0.037, an order of magnitude below the accent floor of 0.20, so it can never read as a coloured wall \u2014 it reads as a white that is not warm; (3) roughness 0.48 against the standard wall's 0.56 says satin, not gloss. Overturned by any frame of a Babylon 5 medlab wall; if one appears and shows the same matte grey as a corridor, delete this material and fold its two groups into shell_wall_panel.",
+   "reasoning": "A medlab and a fabrication hall must not be the same surface, and the only defensible way to make them differ without inventing a colour is to move the finish and leave the value alone. So this is the same paint system a fraction lighter and a fraction smoother, with a cool cast small enough to be deniable in a single frame and just large enough to separate it from the warm-lit corridor outside the door. The 6.0 m repeat puts 1.0 m lining panels on the wall instead of the corridor's 0.667 m plate courses \u2014 a wipe-clean room is lined in large sheets with few joints, and that is a legible difference in silhouette rather than in colour. Metallic 0.0: a coating over steel is a dielectric. Research shares it with medical because both of research's locations (research_labs, gravity_torus) are laboratory volumes and the archetype's own fixture is a fume column.",
+   "reasoning_note": ""
+  },
+  {
+   "name": "shell_wall_industrial",
+   "title": "Plant Shell Wall \u2014 heavy plate, grubby, foundry and cargo hall",
+   "binds": [
+    "industrial_wall",
+    "store_wall"
+   ],
+   "albedo": [
+    0.42,
+    0.42,
+    0.42
+   ],
+   "roughness": 0.7,
+   "metallic": 0,
+   "specular": 0.32,
+   "emission": null,
+   "emission_energy": null,
+   "texture": "hull_plate",
+   "uv_scale_denom": 12,
+   "source": "03-sector-blue/dock.webp (grey-world gains 0.968/1.027/1.007), bay wall (0.200,0.290)-(0.330,0.400) balanced V 0.268 S 0.113, and stepped ledge (0.155,0.315)-(0.285,0.440) V 0.328 S 0.096 \u2014 lit() 0.418 and 0.511. 09-garden-core-and-transit/central corridor.webp (gains 1.044/1.085/0.892), wall panel (0.600,0.300)-(0.720,0.420) V 0.234 and walkway fascia (0.300,0.245)-(0.600,0.275) V 0.250 \u2014 lit() 0.365 and 0.390. Mean of the four: 0.421.",
+   "extrapolated": "Roughness 0.70 and specular 0.32 \u2014 no frame separates gloss from geometry, and both are pushed to the dull end because these are the volumes the station does not keep clean. The 12.0 m hull_plate repeat is chosen: 16 plates across the repeat gives 0.75 m plates, deliberately within 12% of the corridor's measured 0.667 m course so that a plant wall and a finished wall share a plate module and differ only in how the seam is cut.",
+   "reasoning": "The albedo is not invented \u2014 the mean of four readings across two authority-1 frames is 0.421 and that is what this is, which makes the plant wall measurably 0.92x the finished wall rather than arbitrarily darker. Albedo is deliberately left PURE NEUTRAL here even though the surface should read faintly warm, because hull_plate carries its own (1.000, 0.985, 0.965) tint and setting a warm albedo as well would double-count it; the product lands at S 0.035, which is where I want it. hull_plate rather than wall_plate is the whole point of this material: that sheet exists for 'deep rebated seams and proud weld beads' at TEX_SLOPE 0.35, and a fabrication bay wall is fabricated plate, not a finished panel. Metallic 0.0 \u2014 I looked for bare metal in dock.webp and could not find it: the deck and walls show a broad soft falloff under hard pendant floods with no mirror behind them and no metal-like specular streak anywhere, so every large surface in that bay is coated. This is the wall behind 52 industrial spans and 32 store spans, the two largest counts in the whole room set.",
+   "reasoning_note": ""
+  },
+  {
+   "name": "shell_deck_public",
+   "title": "Public Shell Deck \u2014 pale tiled floor, concourse and office",
+   "binds": [
+    "commerce_deck",
+    "detention_deck",
+    "generic_deck",
+    "hospitality_deck",
+    "office_deck",
+    "transit_deck"
+   ],
+   "albedo": [
+    0.396,
+    0.396,
+    0.396
+   ],
+   "roughness": 0.32,
+   "metallic": 0,
+   "specular": 0.58,
+   "emission": null,
+   "emission_energy": null,
+   "texture": "deck_plate",
+   "uv_scale_denom": 4,
+   "source": "04-sector-red/more zocalo.png (gains 0.936/1.137/0.950), tile field lit (0.200,0.620)-(0.340,0.720) balanced V 0.611, and k-means over (0.15,0.60)-(0.55,0.95) giving lit deck clusters at V 0.465 / 0.619 / 0.715 against lit structure clusters at V 0.317 / 0.436 in the same frame \u2014 a deck:wall ratio of 1.8. 05-sector-green/council chambers.webp floor (0.900,0.860)-(0.990,0.990) V 0.496 against wall clusters V 0.270-0.425, ratio ~1.5. 07-sector-grey/grey level 1.webp deck field V 0.471 against wall 0.295, ratio 1.60.",
+   "extrapolated": "The albedo is a DERIVED value, not a measured one, and the derivation is the interesting part \u2014 see reasoning. 0.396 is 0.87x the wall it meets. The 4.0 m deck_plate repeat gives 1.0 m tiles, estimated off more zocalo.png's joint grid against the caf\u00e9 furniture; it is the weakest number in this material and one frame with a person standing on a tile joint would close it.",
+   "reasoning": "Three frames, three completely different floor constructions \u2014 grey level 1's studded plate, the Zocalo's flat tile, council chambers' polished slab \u2014 all measure 1.5 to 1.8 times the value of the wall in the same frame. Three unrelated materials cannot coincidentally share an albedo ratio; what they share is that a floor is the surface most squarely facing a downward light and that floors are smoother than walls. So the ratio is illumination and gloss, and kit_deck's existing ruling ('the deck measures 1.6x the wall's value, and it is not 1.6x the albedo') is correct and is extended here rather than re-argued. The deck therefore goes BELOW its wall in albedo and gets the brightness back through roughness 0.32 and specular 0.58, which is also what makes a concourse floor throw the light pools the frames actually show. Metallic 0.0: a tiled or coated public floor is a dielectric, and nothing in more zocalo.png reflects like metal. deck_plate rather than deck_stud because the Zocalo is plainly large flat tiles with dark recessed joints and the studded pattern belongs to the narrow corridor.",
+   "reasoning_note": ""
+  },
+  {
+   "name": "shell_deck_clinical",
+   "title": "Clinical Shell Deck \u2014 seamless coved resin, medlab and laboratory",
+   "binds": [
+    "medical_deck",
+    "research_deck"
+   ],
+   "albedo": [
+    0.414,
+    0.42,
+    0.428
+   ],
+   "roughness": 0.24,
+   "metallic": 0,
+   "specular": 0.62,
+   "emission": null,
+   "emission_energy": null,
+   "texture": null,
+   "uv_scale_denom": null,
+   "source": "NO FRAME \u2014 there is no medlab, infirmary, isolab, morgue or laboratory interior anywhere in the reference set. Not measured. The only sourced input is the deck:wall ratio established in three other frames (more zocalo.png 1.8, council chambers 1.5, grey level 1 1.60) and interpreted as illumination, which is what puts this at 0.88x the clinical wall.",
+   "extrapolated": "All of it. Constrained by: it must be 0.88x its wall like every other deck in this set; it must be smoother than its wall (0.24 against 0.48); its cool cast is inherited from shell_wall_clinical at S 0.033, so floor and wall cannot disagree about the room's temperature; and roughness stays at 0.24 rather than going lower because below 0.15 is glass and nothing else. Overturned by one frame of a medlab floor.",
+   "reasoning": "This is the one surface in my thirty-three that is deliberately untextured, and the choice is the material. A medlab floor is welded sheet or poured resin coved up the wall \u2014 it has no plate seam, no stud, no tile joint, and giving it deck_plate's 0.22-slope seams would put a cargo-bay joint in an operating room. What it does have is gloss: at roughness 0.24 and specular 0.62 it mirrors the room's own lights, which is exactly how a clinical floor reads and is the single strongest cue that this room is not a corridor. That is a PBR surface, not flat colour \u2014 the layer-3 bar is that every mesh carries a material, and an untextured coating with real roughness and real Fresnel is one. Metallic 0.0: resin over deck plate is a dielectric.",
+   "reasoning_note": ""
+  },
+  {
+   "name": "shell_deck_industrial",
+   "title": "Plant Shell Deck \u2014 worn plate with recessed seams, bay and store",
+   "binds": [
+    "industrial_deck",
+    "store_deck"
+   ],
+   "albedo": [
+    0.365,
+    0.365,
+    0.365
+   ],
+   "roughness": 0.52,
+   "metallic": 0,
+   "specular": 0.46,
+   "emission": null,
+   "emission_energy": null,
+   "texture": "deck_plate",
+   "uv_scale_denom": 6,
+   "source": "03-sector-blue/dock.webp (gains 0.968/1.027/1.007), lit apron (0.300,0.665)-(0.500,0.720) balanced V 0.501 S 0.080 and deck mid (0.300,0.500)-(0.500,0.545) V 0.239 S 0.067 \u2014 the same deck at a 2.1x illumination range and near-neutral at both ends. Against the bay wall in the same frame at V 0.268, the lit deck is 1.9x. 10-interiors-generic-kit/more hallways.jpg (gains 0.794/1.145/1.154) shows the plate construction: large flat plates with recessed seams and litter, and the same deck balances H 36 S 0.65 on its warm-lit half and H 179-200 S 0.12-0.25 on its cool-lit half \u2014 one surface, two lights, two colours, so it is neutral.",
+   "extrapolated": "The albedo is derived at 0.87x its wall by the deck:wall ratio argument, not read off a frame. Roughness 0.52 and specular 0.46 are extrapolated. The 6.0 m repeat gives 1.5 m plates, which is kit_deck_plate's existing figure and is kept deliberately so that two deck materials visible in one shot cannot disagree about how big a deck plate is.",
+   "reasoning": "This is the grubbiest floor in the station and it still has to obey the two rules the set obeys everywhere: darker than its wall and smoother than its wall. It is smoother than the plant wall (0.52 against 0.70) and rougher than the office floor (0.52 against 0.32), so 'industrial is rougher' lives in the absolute level while 'a deck is smoother than a wall' lives in the pairing, and both are true at once. Metallic 0.0 is the call I spent the longest on and I am recording why: a working bay deck is the most plausible bare-metal surface in my whole family, but dock.webp shows a broad soft gradient from the pendant floods with no mirror and no anisotropic streak, and the frame's painted red disc and yellow chevrons imply a painted field to paint them onto. The surface is coated steel, so it is a dielectric, so it is 0.0 \u2014 not the 0.20-0.30 the existing kit decks carry, which the physical rule forbids.",
+   "reasoning_note": ""
+  },
+  {
+   "name": "shell_deck_stone",
+   "title": "Sanctuary Deck \u2014 polished slab, the one hard floor in the station",
+   "binds": [
+    "worship_deck"
+   ],
+   "albedo": [
+    0.4,
+    0.424,
+    0.425
+   ],
+   "roughness": 0.2,
+   "metallic": 0,
+   "specular": 0.66,
+   "emission": null,
+   "emission_energy": null,
+   "texture": "deck_plate",
+   "uv_scale_denom": 3.2,
+   "source": "05-sector-green/council chambers.webp (gains 0.998/1.082/0.932, which reproduce the value already in GREY_WORLD_GAINS exactly). Floor (0.900,0.860)-(0.990,0.990) balanced rgb 0.426/0.488/0.493, H 180 S 0.146 V 0.496; k-means over (0.80,0.80)-(1.00,1.00) puts 45.0% of the band on rgb(0.421,0.490,0.493) H 183 S 0.146. Wall blades in the same frame cluster at V 0.270 / 0.425, so the floor is ~1.5x the wall. This is a ceremonial floor, NOT a chapel floor \u2014 the reference set has no worship space in it at all.",
+   "extrapolated": "Two things. (1) The saturation is CUT from the measured 0.146 to 0.059, because council chambers is keyed cool and the wall in the same frame is also cool (H 196-211) \u2014 one frame with a single-temperature key cannot separate a cool floor from a cool light, so the measured cast is carried at less than half strength as a hint rather than as a fact. (2) The mottle is missing entirely: there is no stone sheet among the seven that exist, so deck_plate at 3.2 m stands in with 0.8 m slab joints. That is the honest gap in this material and one procedural stone sheet closes it. Value 0.419 is 0.92x the wall by the deck:wall ratio argument, not the raw 0.769 that lit() would give.",
+   "reasoning": "Four locations \u2014 sanctuary_blue, alien_worship, sanctuaries, interfaith_chapel \u2014 and the entire point of the archetype is that it should not feel like the rest of the station. rooms.py already gives it the height (4.2 m, the tallest non-plant ceiling) and the emptiest prop density (0.18); what it does not have is a floor that sounds different underfoot. At roughness 0.20 and specular 0.66 this is the most reflective non-glass surface in my set: it will carry the reflection of a dais and a shrine across an empty floor, which is what makes a sanctuary read as a sanctuary and is something no amount of wall treatment can do. It gets its own material for one group rather than being merged into the public deck because roughness 0.20 against 0.32 and a visible slab joint against a tile joint are a genuine on-screen difference, which is the stated test for not over-merging. Metallic 0.0: stone is a dielectric.",
+   "reasoning_note": ""
+  },
+  {
+   "name": "shell_rib_painted",
+   "title": "Shell Rib \u2014 painted structural pilaster, floor to soffit",
+   "binds": [
+    "commerce_rib",
+    "detention_rib",
+    "generic_rib",
+    "hospitality_rib",
+    "medical_rib",
+    "office_rib",
+    "research_rib",
+    "transit_rib",
+    "worship_rib"
+   ],
+   "albedo": [
+    0.469,
+    0.469,
+    0.469
+   ],
+   "roughness": 0.4,
+   "metallic": 0,
+   "specular": 0.46,
+   "emission": null,
+   "emission_energy": null,
+   "texture": null,
+   "uv_scale_denom": null,
+   "source": "07-sector-grey/grey level 1.webp pilaster bullnose face (0.188,0.394)-(0.206,0.731), balanced V 0.301 against the wall plate course at V 0.295 in the same frame \u2014 a ratio of 1.02, which is the whole measurement. Corroborated at room scale by 03-sector-blue/war room.webp, whose arch pier (0.245,0.100)-(0.300,0.550) balances V 0.235 against the arch face at V 0.286 and the console rail at V 0.233: the pier is not lighter than what it sits against, it is differently shaped. 00-INDEX.md's war room entry calls that arch 'the chamfered structural language of the corridors at room scale', which is exactly the claim this material makes.",
+   "extrapolated": "Roughness 0.40 and specular 0.46 \u2014 the frame shows a specular roll-off along the bullnose but fixes the kind and not the value, the same caveat kit_pilaster already carries. The albedo is not extrapolated: 0.469 is 1.031x shell_wall_panel and 0.983x shell_wall_clinical, so it sits inside +/-3% of BOTH walls it meets, which is the measured pilaster:wall relationship applied twice.",
+   "reasoning": "38 generic, 46 office, 34 industrial-equivalent, 32 medical spans \u2014 the rib is the most repeated single element in the room set, and getting it wrong would articulate the whole station wrongly. The measurement is unambiguous and slightly counter-intuitive: a pilaster reads as a separate object in a Babylon 5 corridor at 1.02x the wall's value, which means it CANNOT be doing it with albedo. So this is the same paint, smoother, and the read comes from the 0.16 m of relief catching a highlight along its edge. Painting the ribs lighter or darker to make them 'show' would be inventing contrast the reference denies and would fight the lighting layer that comes next. Untextured for the same reason kit_pilaster is: a bullnose column 0.45 m wide has no room for a plate course, and triplanar-projecting one across a narrow vertical would smear it. Metallic 0.0 \u2014 painted steel is a dielectric; the existing kit_pilaster's 0.12 is a half-value the physical rule rejects.",
+   "reasoning_note": ""
+  },
+  {
+   "name": "shell_rib_oxide",
+   "title": "Plant Rib \u2014 red-oxide primed structural steel, bay and cargo hall",
+   "binds": [
+    "industrial_rib",
+    "store_rib"
+   ],
+   "albedo": [
+    0.379,
+    0.315,
+    0.265
+   ],
+   "roughness": 0.45,
+   "metallic": 0,
+   "specular": 0.42,
+   "emission": null,
+   "emission_energy": null,
+   "texture": "truss_steel",
+   "uv_scale_denom": 2.5,
+   "source": "03-sector-blue/dock.webp (gains 0.968/1.027/1.007): k-means over the overhead structure band (0.00,0.00)-(0.55,0.20) gives rgb(0.080,0.042,0.029) H 15 S 0.633 and rgb(0.129,0.068,0.052) H 13 S 0.595; over the left pier band (0.02,0.18)-(0.14,0.58) gives H 22 S 0.618, H 17 S 0.731, H 17 S 0.677 and H 16 S 0.400. 09-garden-core-and-transit/central corridor.webp (gains 1.044/1.085/0.892): the hull ring frames at (0.87,0.10)-(0.94,0.55) cluster at V 0.086 S 0.440, V 0.157 S 0.324, V 0.243 S 0.318 and V 0.462 S 0.294 \u2014 all at H 28-34. 00-INDEX.md independently describes both: 'red-orange box girders' in dock.webp and ring frames in 'dark oxide red' in central corridor.webp.",
+   "extrapolated": "Value 0.379 = lit(0.243) from central corridor's dominant lit ring cluster. Hue 26 deg is the midpoint of the two frames' registers (dock H 13-22, central corridor H 28-34). Saturation 0.301 is set so that truss_steel's own (1.000, 0.980, 0.950) tint carries the rendered surface to S 0.336, which is the mean of the four cleanest lit clusters across the two frames (0.294, 0.318, 0.324, 0.400) \u2014 the declared albedo is pulled below the target on purpose so the sheet does not double-count. Roughness 0.45 and specular 0.42 are extrapolated from the specular roll-off visible along the ring tube (the V 0.462 cluster). The 2.5 m truss_steel repeat gives 0.5 m panels, about one per rib face.",
+   "reasoning": "THIS IS THE ONE MATERIAL IN MY SET ABOVE S 0.20 AND I AM DECLARING IT RATHER THAN HIDING IT. It is not a 'red sector red wall' \u2014 it is a specific finish on a specific element class in two specific archetypes, and it passes the exact test NEGATIVE_RESULTS demands. In dock.webp the girders balance H 13-22 S 0.40-0.73 while the stepped structural ledge under the SAME pendant floods balances H 220 S 0.096; the colour follows the material, not the light. In central corridor.webp the ring frames hold S 0.294-0.324 across a 5.4x value range (V 0.086 to 0.462) while the walkway fascia beside them is H 134 S 0.076; constant saturation as brightness rises is a multiplicative tint, which is the same arithmetic PROVENANCE uses to prove the hull is NEUTRAL, run here and coming out the other way. Two frames, two different lighting designs, one register. For contrast I ran the same test on more zocalo.png, where the upper structure also balances warm at S 0.24-0.31 \u2014 and it FAILS, because the hue is incoherent across elements (H 309, 322, 357, 16, 21) at similar saturations, so the Zocalo's structure is neutral and its warmth is the practicals. That is the difference between a finding and the ochre dado. Metallic 0.0: red-oxide primer is paint, so the surface is a dielectric even though what is under it is steel. If the neutrality gate rejects S 0.301, use (0.379, 0.331, 0.303) at S 0.200 \u2014 do NOT fall back to neutral, which contradicts both frames and would throw away the single most recognisable colour note a Babylon 5 cargo bay has.",
+   "reasoning_note": ""
+  }
+ ],
+ "_family": "shells",
+ "_agent": "aa5bd39442c5be602"
+}

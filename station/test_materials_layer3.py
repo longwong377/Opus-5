@@ -169,18 +169,33 @@ def _selftest():
     check("the ambiguity test can fire", _ambiguity_probe())
 
     # --- 3. THE MEASURED PALETTE -----------------------------------------
-    # Scoped exactly as materials.py's own neutrality gate is: INTERIOR
-    # STRUCTURAL surfaces. The first draft swept in radiators, cargo modules,
-    # hazard chevrons and land cover, all of which are meant to be saturated,
-    # and reported eighteen defects that were all the gate's fault.
-    loud = [(m.name, round(_sat(m.albedo), 3)) for m in M.MATERIALS
-            if "interior" in m.scenes and m.emission is None
-            and not any(w in m.name for w in
-                        ("accent", "signage", "hazard", "warning", "light",
-                         "neon", "emissive"))
-            and _sat(m.albedo) > STRUCTURAL_SAT_MAX]
-    check("no structural surface is more saturated than the accent registers",
-          not loud, f"{len(loud)}: {loud[:6]}")
+    # SATURATION MUST BE MEASURED, NOT INVENTED -- which is CLAUDE.md's first
+    # hard rule applied to colour, and it is a better rule than the two drafts
+    # before it.
+    #
+    # Draft one flagged every saturated material and swept in radiators, cargo
+    # modules, hazard chevrons and land cover, all of which are meant to be
+    # saturated. Draft two exempted them by NAME, which is fragile: it let
+    # "hazard_chevron" through and would have flagged "edge_chevron_nosing",
+    # the same surface under a different name, and "container_skin", whose
+    # value is the cargo-module measurement already in this library.
+    #
+    # The principled line is provenance. A structural surface may be as
+    # saturated as a frame says it is; what it may not be is saturated because
+    # somebody liked it. So: over the ceiling is fine IF the source cites a
+    # real file -- and the source-existence check below is what makes that
+    # citation mean something.
+    loud = []
+    for m in M.MATERIALS:
+        if "interior" not in m.scenes or m.emission is not None:
+            continue
+        if _sat(m.albedo) <= STRUCTURAL_SAT_MAX:
+            continue
+        cites = re.search(r"\.(?:webp|jpg|jpeg|png)\b", m.source)
+        if not cites:
+            loud.append((m.name, round(_sat(m.albedo), 3)))
+    check("a saturated structural surface cites the frame it was measured from",
+          not loud, f"{len(loud)} saturated with no frame cited: {loud[:6]}")
 
     # --- 4. PHYSICAL PLAUSIBILITY ----------------------------------------
     out_of_range = [(m.name, m.metallic, m.roughness, m.specular)

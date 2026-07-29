@@ -1,0 +1,275 @@
+{
+ "materials": [
+  {
+   "name": "steel_gantry_oxide",
+   "title": "Gantry Steel \u2014 oxide-primed heavy structure, handling and plant",
+   "binds": [
+    "fix_gantry_rail",
+    "fix_racking_run",
+    "fix_catenary_run",
+    "crane",
+    "prop_docking_clamp"
+   ],
+   "albedo": [
+    0.3,
+    0.255,
+    0.242
+   ],
+   "roughness": 0.52,
+   "metallic": 0.3,
+   "specular": 0.45,
+   "texture": "truss_steel",
+   "uv_scale_denom": 4,
+   "emission": null,
+   "emission_energy": null,
+   "source": "reference/03-sector-blue/dock.webp (authority 1), grey-world gains 0.968/1.027/1.006. The overhead heavy steel \u2014 deep box girders and a lattice gantry, which is exactly this family \u2014 clusters over (0.02,0.02)-(0.50,0.30) at 27.2% rgb(0.095,0.054,0.040) H 15.0 S 0.577, 20.1% rgb(0.055,0.026,0.015) H 17.1 S 0.729, 14.9% rgb(0.140,0.083,0.067) H 13.1 S 0.520; box girder lit top face (0.300,0.020)-(0.520,0.045) rgb 0.110,0.052,0.036 H 13.5; lattice top chord (0.238,0.133)-(0.423,0.154) rgb 0.068,0.036,0.024 H 16.9. Corroborated in reference/09-garden-core-and-transit/central corridor.webp (gains 1.045/1.086/0.891): ring rib (0.036,0.330)-(0.058,0.405) rgb 0.139,0.077,0.098 H 340 S 0.450, rib clusters H 3.5 S 0.209 and H 345 S 0.110. THE FRAMES DO NOT ESTABLISH THE LEVEL \u2014 dock.webp's steel sits at V 0.055-0.140 and is not under the key, so no ratio to a co-lit neutral exists; the value here is set by argument, not measured.",
+   "extrapolated": "The albedo LEVEL (0.300 max channel) and the SATURATION (0.193 against a measured 0.11-0.58). Level: reference/03-sector-blue/dock.webp and station/materials.py's `structural_truss` source line agree that structural steel is the darkest large thing in frame; the library's two existing structural-steel values are 0.260 and 0.204, and painted steel indoors sits just above bare steel outdoors, so 0.300 \u2014 0.65x the corridor wall's 0.46. Saturation: the two frames bracket S 0.11-0.58 and the value sits at the bottom of that bracket because a non-accented surface in this library is capped at 0.20; the remaining chroma belongs to the warm practicals in layer 4. Also extrapolated: the 4 m texture repeat (truss_steel is 5x5 plates per repeat, so 0.80 m plate faces \u2014 a girder web's stiffener pitch). Overturned by: any frame showing this steel under a measurable key beside a co-lit neutral, which would fix both the level and the saturation at once.",
+   "reasoning": "The two-frame differential is what makes this warm rather than neutral, and it is the file's own test applied twice. Within dock.webp the steel holds R/G 1.69-2.12 and R/B 2.09-3.67 across a 2.5x value range while R-B runs 0.040/0.055/0.073 \u2014 the RATIO is near-constant and the DIFFERENCE is not, which by the PROVENANCE test is multiplicative, i.e. paint, the opposite signature to the hull's additive blue. The background bay wall in the same region and the same light clusters at rgb(0.034,0.040,0.036) S 0.158 near-neutral, and the gantry platform at (0.240,0.520)-(0.330,0.545) reads rgb 0.277,0.278,0.276 at S 0.006 \u2014 dead neutral. So the warm follows the object, not the light. In central corridor.webp the rib measures S 0.21-0.45 against a wall panel beside it at S 0.017 and a similar value: same conclusion, independent frame. This is the one place in the interior where a surface's warmth is the paint rather than the practical, and NEGATIVE_RESULTS is the reason I checked before believing it. One material covers gantry rail, racking run, catenary run, cranes and docking clamp because they are one paint system on one grade of steel at different sections \u2014 a crane and the rail it rides are the same surface, and dock.webp shows exactly that assembly as one continuous red-oxide. metallic 0.30 is the worn-coating case and is stated as such: crane wheels rub the rail head, forks rub the racking beam at pallet height, and a docking clamp is walked over \u2014 bare steel under a thin coating, which is precisely the exception the physical rule allows. truss_steel is the right sheet because it bakes weld beads on 22% of seams and welded structural steel is what these objects are.",
+   "type": "extended"
+  },
+  {
+   "name": "clad_services",
+   "title": "Clad Services \u2014 sheet-metal duct, riser and plant column",
+   "binds": [
+    "fix_service_duct",
+    "fix_service_riser",
+    "fix_plant_column"
+   ],
+   "albedo": [
+    0.52,
+    0.525,
+    0.53
+   ],
+   "roughness": 0.52,
+   "metallic": 0.9,
+   "specular": 0.55,
+   "texture": "wall_plate",
+   "uv_scale_denom": 7.2,
+   "emission": null,
+   "emission_energy": null,
+   "source": "NO FRAME IN THE REFERENCE SET SHOWS A STATION PLANT ROOM, A SERVICE DUCT OR A RISER. reference/08-sector-yellow-engineering/ is empty (only .gitkeep) and reference/00-INDEX.md carries no engineering-interior entry. What IS sourced is what these objects are for: station/rooms.py FIXTURES gives service_duct as an overhead run (0.90/0.60/0.55 m square) in industrial, medical, research and generic rooms, service_riser as a full-height 0.70 m flank in generic rooms, and plant_column as a full-height 1.10 m flank in industrial rooms; station/directory.py places them in air_handling, water_reclamation, waste_processing and power locations. The albedo is a bare-metal F0, not a diffuse reflectance, and is declared invented.",
+   "extrapolated": "Everything: colour, roughness, metallic, and the 7.2 m repeat. Constrained by three things. (1) It must be the PALE element in an industrial room \u2014 station/rooms.py puts a 4.6 m furnace stack on the centreline of the same room, and if the flank and the overhead run were also dark the room would have no read at all; contrast between the machine and its services is most of what makes a plant room legible. (2) A metal's albedo is its F0, not a diffuse value, so it sits ABOVE ALBEDO_ANCHOR (0.52 against 0.46) rather than below it \u2014 bare steel and zinc F0 are around 0.52-0.58, which is also where `tram_saloon_post` (0.560/0.565/0.580, measured off Babylon_5_2-22_35a.jpg) already sits. (3) 7.2 m repeat: wall_plate is 6 courses per repeat, so 7.2 m gives 1.2 m sections \u2014 one flange line per duct length. Overturned by: any frame of a B5 plant room or service riser, which would replace all four numbers at once.",
+   "reasoning": "Three objects, one material, and the merge is the honest call rather than the cheap one: a duct, a riser and a plant column are the same clad-sheet service casing at three sizes, and inventing three separate finishes for three grey boxes nothing in the reference set distinguishes would be invention dressed as detail. Because the sheet is projected triplanar in world space, one uv_scale gives all three the SAME physical sheet size, which is what a real cladding system does. metallic 0.90 is the physical value for bare galvanised sheet and is not the worn-coating case \u2014 the roughness of 0.52 is what stops it reading as a mirror overhead in 31 locations and is what galvanising actually looks like. This is the largest group in my family by location count, so it is also the one most likely to be caught being wrong; the source string says plainly that it is unsourced rather than borrowing authority from a frame that does not show it.",
+   "type": "extended"
+  },
+  {
+   "name": "steel_furnace_scorched",
+   "title": "Furnace Stack \u2014 heat-scorched steel shell",
+   "binds": [
+    "fix_furnace_stack"
+   ],
+   "albedo": [
+    0.215,
+    0.198,
+    0.19
+   ],
+   "roughness": 0.78,
+   "metallic": 0,
+   "specular": 0.35,
+   "texture": "truss_steel",
+   "uv_scale_denom": 2.4,
+   "emission": null,
+   "emission_energy": null,
+   "source": "NO FRAME SHOWS A FURNACE OR ANY B5 industrial plant interior \u2014 reference/08-sector-yellow-engineering/ is empty. The object is sourced from station/rooms.py FIXTURES: a 2.40 x 2.40 x 4.60 m spine fixture repeated at 4.5 m centres down the centreline of every industrial room, standing in 13 locations including fabrication, waste_red, waste_green and alpha_substation per station/directory.py. The value is placed against two MEASURED library anchors rather than invented free: station/materials.py `truss_steel` at (0.204,0.200,0.181), sampled off Babylon_5_2-22_34b.jpg, and `structural_truss` at (0.260,0.255,0.248), whose source line records it as the darkest thing on the station.",
+   "extrapolated": "The whole surface. Set at luminance 0.201, level with `truss_steel` \u2014 the darkest rung of the library's existing value ladder \u2014 because a furnace shell is heat-scorched and is the one object in the room that should be darker than the room's own steelwork. It has to be darker than `steel_gantry_oxide` (0.264) or the spine fixture and the flanking racking read as one mass, and it has to be lighter than nothing, because at layer 3 there is no light in the room yet and a value below 0.18 is indistinguishable from an unlit hole. Hue is carried at S 0.116 \u2014 half the gantry's \u2014 on the argument that a scorched shell keeps some of the warm cast of the steel it is made from but loses saturation to the oxide. Overturned by: any B5 engineering-interior frame at all; this material has the weakest evidence in the family and should be the first thing re-measured if one arrives.",
+   "reasoning": "metallic 0.0 is the physical answer and is deliberate: mill scale and heat oxide are dielectrics, and a scorched shell is not bare metal even though it is made of it, so this is NOT the worn-coating case and does not get an intermediate value. roughness 0.78 follows \u2014 an oxidised surface scatters. The 2.4 m repeat is derived, not picked: the stack is 2.4 m square, so exactly one texture repeat covers each face and the sheet's plate seams land on the object's own edges instead of wandering across them. This is the object CLAUDE.md's layer-2 note is about \u2014 'Fabrication furnaces was a grey box holding two control podiums and no furnace' \u2014 so it is the one fixture in the family where getting the read wrong loses the whole room, which is why it is the darkest thing in it rather than another grey.",
+   "type": "extended"
+  },
+  {
+   "name": "steel_catwalk_tread",
+   "title": "Catwalk \u2014 painted walkway plate, tread worn to steel",
+   "binds": [
+    "prop_catwalk"
+   ],
+   "albedo": [
+    0.266,
+    0.266,
+    0.27
+   ],
+   "roughness": 0.34,
+   "metallic": 0.3,
+   "specular": 0.5,
+   "texture": "deck_stud",
+   "uv_scale_denom": 0.64,
+   "emission": null,
+   "emission_energy": null,
+   "source": "reference/03-sector-blue/dock.webp (authority 1), balanced 0.968/1.027/1.006: the raised walkway platform at (0.240,0.520)-(0.330,0.545) reads rgb 0.277,0.278,0.276 (S 0.006, V 0.278) against the lit deck beside it at (0.330,0.640)-(0.420,0.680) rgb 0.406,0.379,0.367 and (0.300,0.700)-(0.400,0.760) rgb 0.395,0.387,0.383 \u2014 a same-frame, same-light RATIO of 0.278/0.400 = 0.695, which is what is used here. reference/09-garden-core-and-transit/central corridor.webp shows the second catwalk in the set: a two-person-wide mezzanine with a solid fascia beam and a plain two-bar railing, walked on by figures, per reference/00-INDEX.md. Neither frame resolves the tread pattern; that is extrapolated.",
+   "extrapolated": "The tread pattern and its 0.64 m repeat, and the metallic. Pattern: reference/10-interiors-generic-kit/more hallways.jpg shows the deck's service strip as a fine bar grid \u2014 roughly 30 bars across the strip at magnification \u2014 but that frame establishes no absolute length, so the 40 mm pitch (deck_stud's 16 studs over a 0.64 m repeat, with the sheet's transverse joint every 0.32 m) is derived from assuming a walkway-width strip and is the weak number here. What is NOT extrapolated is the value: 0.695 x the deck's albedo, applied to the mean of the library's two measured decks (`kit_deck` 0.400, `kit_deck_plate` 0.360) = 0.266, so the catwalk moves if the decks move. Overturned by: a frame showing a catwalk beside a scale reference, which would fix the tread pitch.",
+   "reasoning": "Both frames that show a catwalk show a SOLID deck with a fascia, not open grating, so this is a walkway plate and not a mesh \u2014 modelling it as grating would put an alpha-tested surface in the budget for a read the reference does not support. The value is the strongest thing about this material: a ratio between two surfaces under the same light in the same frame is exactly what a screencap can honestly give, and it says a catwalk is about 0.70 of the deck it hangs over, i.e. darker than the finished floor, which is what a service walkway is. metallic 0.30 is the worn-coating case and is stated: a catwalk is a strip of steel that people walk down in one line, and the paint on that line is gone \u2014 deck_stud's ORM already inverts roughness on the crowns for exactly this reason, and roughness 0.34 lets the polished tread carry the brightness as specular rather than as albedo, which is the same argument `kit_deck` makes for the corridor floor.",
+   "type": "extended"
+  },
+  {
+   "name": "door_leaf_painted",
+   "title": "Door Leaf \u2014 painted panel: leaves, gallery front, checkpoint barrier",
+   "binds": [
+    "prop_door",
+    "prop_office_door",
+    "prop_lift_door",
+    "prop_tram_door",
+    "prop_cell_door",
+    "prop_public_gallery",
+    "prop_barrier"
+   ],
+   "albedo": [
+    0.385,
+    0.385,
+    0.385
+   ],
+   "roughness": 0.42,
+   "metallic": 0,
+   "specular": 0.45,
+   "texture": "wall_plate",
+   "uv_scale_denom": 4,
+   "emission": null,
+   "emission_energy": null,
+   "source": "NO FRAME IN THE SET SHOWS A DOOR LEAF \u2014 open, closed or moving. reference/00-INDEX.md states this explicitly against reference/07-sector-grey/grey level 1.webp and records that the leaf mechanism is therefore invented (canon/INVENTIONS.md INV-008). The colour is NOT invented free, though: it is `lit(0.247)` = 0.3852, the balanced value of that frame's DADO PANEL at (0.019,0.563)-(0.134,0.731), run through station/materials.py's single ALBEDO_ANCHOR. The dado is the corridor's set-back flat panel and is the closest measured analogue in the whole reference set to a flat panel standing in a wall build-up. Neutral because NEGATIVE_RESULTS shows that frame's warm dado reading is the downlights, not the paint.",
+   "extrapolated": "That a door leaf takes the dado's albedo rather than the wall's or the frame's. Constrained by: it must read as a SEPARATE PLANE from the `kit_pilaster` jamb it sits inside (0.469) under one light, and 0.385 is 0.82x that \u2014 the smallest step that separates two coplanar-ish surfaces without inventing contrast the reference denies. It must not be darker than the reveal (0.140), which is the wall's deliberate shadow gap and the only thing in the build-up meant to read as a hole. The 4 m repeat is NOT extrapolated: it is `kit_wall_plate`'s own repeat, so the leaf's plate courses land on the same 0.67 m pitch as the wall around it, which is what a kit-built station does. Overturned by: any frame showing a leaf, which would replace the value outright.",
+   "reasoning": "Seven groups, one material, and the merge is the brief's own example: an office door, a cell door, a lift door and a tram door are the same painted panel at 0.20-0.30 m of thickness, and nothing about thickness changes a surface. The public gallery front and the checkpoint barrier join them because they are the same object too \u2014 a flat painted panel standing 1.05 m proud in a room \u2014 and giving a courtroom gallery its own material would be three numbers invented to distinguish two boxes. prop_barrier is deliberately NOT chevron-marked: the chevron in this reference set marks physical drop and collision edges (step nosings, ramp lips, bay lips), and a security checkpoint barrier is access control, not a fall hazard; putting hazard stripes on it would be extending a measured rule past what it measures. metallic 0.0 because paint is a dielectric and a door leaf is not rubbed back \u2014 unlike the gantry rail and the blast door's leading edge, there is no mechanism here that removes the coating, so this material gets the clean physical zero rather than the worn-coating exception.",
+   "type": "extended"
+  },
+  {
+   "name": "door_blast_plate",
+   "title": "Blast Door \u2014 heavy pressure plate, bay and isolation",
+   "binds": [
+    "prop_blast_door",
+    "prop_bay_door",
+    "prop_isolation_door"
+   ],
+   "albedo": [
+    0.32,
+    0.32,
+    0.325
+   ],
+   "roughness": 0.48,
+   "metallic": 0.3,
+   "specular": 0.5,
+   "texture": "deck_plate",
+   "uv_scale_denom": 3,
+   "emission": null,
+   "emission_energy": null,
+   "source": "No frame shows a blast, bay or isolation door leaf \u2014 the same gap reference/00-INDEX.md records for every door in the set. What the frames DO establish is the aperture these close: reference/03-sector-blue/dock.webp shows the bay mouth as a very wide, low, flat-topped opening, and reference/03-sector-blue/Minbari Flyer 969 in docking bay 17.webp shows the bay built as stepped plate ledges (both authority 1, per reference/00-INDEX.md). Sizes are from station/rooms.py PROPS: bay_door 6.00 x 0.60 x 5.00 m, blast_door 2.60 x 0.45 x 2.60 m, isolation_door 1.90 x 0.35 x 2.35 m \u2014 0.35-0.60 m of thickness against the ordinary leaf's 0.20-0.22 m. The value is placed on the library's own ladder, not measured.",
+   "extrapolated": "The value, the metallic, and the 3 m repeat. Value 0.320 sits between the painted leaf (0.385) and the gantry steel (0.264): a pressure door is bare or minimally coated plate rather than a finished panel, so it is darker than the leaf, but it is an internal fitting kept clean rather than plant, so it is lighter than the machinery. Repeat: deck_plate is 4x3 plates per repeat, so 3.0 m gives 0.75 m plate courses \u2014 a 2.6 m blast door reads as three and a half plates across and a 6 m bay door as eight, which is the build a plate-armoured door actually has and is why deck_plate (large flat plates with recessed seams) is the sheet rather than the finer wall_plate. Overturned by: a frame showing any of these three leaves.",
+   "reasoning": "Kept separate from `door_leaf_painted` because these read differently on screen and not merely at a different thickness: at 6 x 5 m the bay door is the largest single surface any of my groups produces, and its plate courses are legible where an ordinary leaf's are not \u2014 one material for both would either give the 6 m door a domestic panel pitch or give the 1.1 m office door a blast door's plating. metallic 0.30 is the worn-coating case, stated: a pressure door's leading edge and rubbing strips run against their seals and frames every cycle and are the one part of a door that goes back to bare steel \u2014 the ORM's wear term is keyed to plate edges, which is where that wear physically is. These three sit in fusion_core, war_room, fuel_stores, alpha_substation, hazard_tanks, lowg_bays, vorlon_berth, medlab_one and isolab per station/directory.py \u2014 every one of them a volume you are sealed out of, which is what the extra thickness is for.",
+   "type": "extended"
+  },
+  {
+   "name": "door_scrap_welded",
+   "title": "Scrap Door \u2014 welded plate over a Downbelow opening",
+   "binds": [
+    "prop_makeshift_door",
+    "prop_welded_door"
+   ],
+   "albedo": [
+    0.25,
+    0.216,
+    0.203
+   ],
+   "roughness": 0.82,
+   "metallic": 0.35,
+   "specular": 0.4,
+   "texture": "truss_steel",
+   "uv_scale_denom": 1.6,
+   "emission": null,
+   "emission_energy": null,
+   "source": "No frame shows either door. What is sourced is WHERE THEY ARE and therefore what they are: station/directory.py places makeshift_door in `thieves_guild` (functions crime, organised_crime, Grey Sector) and welded_door in `welded_shut` (function sealed_volume, Grey Sector) \u2014 the station's underclass and its abandoned volumes. reference/00-INDEX.md's Downbelow-adjacent entry for reference/09-garden-core-and-transit/central corridor.webp records exposed structure, litter and practical-only lighting for that register, and reference/10-interiors-generic-kit/more hallways.jpg (authority 1) shows litter on the deck of a service corridor of the same character. The hue is carried from the same oxide family as `steel_gantry_oxide`, whose measurement is in dock.webp; the level is invented.",
+   "extrapolated": "The whole surface. Constrained by: it must be the one door in the family that does NOT look like the others, because that is its entire function in the simulation \u2014 a welded plate over an opening is scavenged material, not station stock, and if it renders as another painted leaf then Downbelow reads as the same building as Blue Sector. Value 0.250 puts it below the painted leaf (0.385) and beside the gantry steel (0.264): unpainted plate that has been in a corridor for years. Saturation 0.188 stays inside the library's neutrality cap while keeping the oxide direction the dock measurement establishes for bare station steel. The 1.6 m repeat is derived: truss_steel is 5x5 plates per repeat, so 1.6 m gives 0.32 m plate faces \u2014 offcuts, not stock sheet \u2014 and truss_steel is the only sheet in the set that bakes weld beads (22% of seams), which is literally what a welded door is. Overturned by: any Brown Sector / Downbelow reference at all, of which this project currently holds none.",
+   "reasoning": "metallic 0.35 is the worn-coating case and is the strongest instance of it in the family: a scrap plate is bare steel under patchy oxide, so the surface is genuinely part metal and part dielectric, and the ORM's wear term distributes that over the plate edges rather than uniformly. roughness 0.82 is the highest in the family because oxide scatters and this plate has no coating to hold a sheen. Merging the makeshift door and the welded door is safe \u2014 one is a plate hung over an opening and the other is a plate welded across it, the same material at the same age \u2014 and separating them would be two inventions where one will do. This is the material most likely to be wrong, and the source string says so: the reference tree's `06-sector-brown-downbelow/` folder contains nothing but a .gitkeep.",
+   "type": "extended"
+  },
+  {
+   "name": "container_skin",
+   "title": "Cargo Container \u2014 red-brown painted container skin, interior",
+   "binds": [
+    "prop_container"
+   ],
+   "albedo": [
+    0.34,
+    0.222,
+    0.205
+   ],
+   "roughness": 0.68,
+   "metallic": 0,
+   "specular": 0.4,
+   "texture": "hull_plate",
+   "uv_scale_denom": 6,
+   "emission": null,
+   "emission_energy": null,
+   "source": "reference/01-station-exterior/exterior more.jpg, dorsal cargo boxes: H 351-5, S 0.25-0.47, V 0.29 \u2014 the measurement already recorded in station/materials.py against `cargo_module`, whose albedo (0.340, 0.222, 0.205) is reproduced here EXACTLY rather than re-derived. The same measurement was taken beside a hull the same sheet shows to be neutral (PROVENANCE: saturation falls 0.396 -> 0.038 while R equals G at every level), so the container's colour is a same-frame differential against a neutral reference and belongs to the paint, not the light. A separate material is required only because `cargo_module` is scenes=('exterior',) and prop_container is interior geometry; the colour is not a second opinion.",
+   "extrapolated": "The 6 m texture repeat: hull_plate is 16 plates per repeat, so 6.0 m gives 0.375 m panel pitch. `cargo_module` uses 12 m (0.75 m panels) because it is seen from a kilometre away; a 2.40 x 1.20 x 1.20 m container is seen from two metres in cargo_bays, raw_material and spinal_cargo, so the panel pitch is halved to stay legible at that range. Nothing else here is extrapolated.",
+   "reasoning": "This is the one material in my family whose saturation exceeds 0.20 without being an ACCENT register value, and it is deliberate: S 0.397 is a MEASURED library value that already ships, on a MOVABLE OBJECT rather than a station surface. The neutrality finding is about the station's structural surfaces \u2014 walls, decks, ribs, hulls \u2014 and a shipping container is livery, which is the same category as `tram_band` (S 0.69) and `hull_banding_red` (S 0.81) already in the file. Reproducing the number rather than softening it is the honest call: dropping it to 0.20 would be discarding an authority-2 measurement to satisfy a rule the measurement is not about, and it would leave a hold full of containers reading as more grey boxes in a room whose walls, deck and racking are already grey. metallic 0.0 is a deliberate divergence from `cargo_module`'s 0.15: paint is a dielectric, the 0.15 predates the physical-metallic rule, and 0.15 is exactly the kind of unjustified middle value that rule exists to stop. Called out here rather than left as a silent inconsistency.",
+   "type": "extended"
+  },
+  {
+   "name": "viewport_glazing",
+   "title": "Viewport \u2014 dark glazing onto the drum",
+   "binds": [
+    "prop_viewport"
+   ],
+   "albedo": [
+    0.04,
+    0.042,
+    0.046
+   ],
+   "roughness": 0.07,
+   "metallic": 0,
+   "specular": 0.92,
+   "texture": null,
+   "uv_scale_denom": null,
+   "emission": null,
+   "emission_energy": null,
+   "source": "reference/14-characters-and-uniforms/talia-winters in gorgeous office.webp (authority 1; reference/00-INDEX.md calls it the clearest view of the habitat drum interior the project holds), grey-world gains 0.844/1.075/1.131. It shows a drum office viewport head-on: the glazing carries NO visible tint or veiling reflection \u2014 the drum's ground, guideway trusses and lit blocks read through it unattenuated \u2014 and it is divided by near-black vertical mullions with a dark sill, measured at (0.560,0.530)-(0.780,0.560) rgb 0.043,0.038,0.067, V 0.067. station/directory.py places prop_viewport in `drum_office` (offices, green sector) and `domed_rotunda` (observation, public_social), which is the same room class as the frame.",
+   "extrapolated": "That the aperture is rendered as one dark, near-mirror surface rather than as transparent glass in a frame. station/rooms.py builds prop_viewport as a single 2.40 x 0.20 x 1.40 m box, so there is no frame member to separate from the pane; the material has to read as 'a window' from that one box. Constrained by: it must be the darkest thing in any room it stands in (0.042 luminance, an order below the door leaf) so it reads as an opening rather than a panel, and roughness 0.07 with specular 0.92 makes it carry the room as a reflection, which is what the measured mullion-and-sill darkness plus an untinted view actually look like from inside. The precedent is `tram_glass`, opaque rather than transparent for the same reason \u2014 a sort costs more than it buys. Overturned by: layer 5 splitting the viewport into pane and frame, at which point the pane should become genuinely transmissive and this material becomes the frame's.",
+   "reasoning": "roughness 0.07 is below the 0.15 floor and is allowed to be, because this is glass and nothing else in the family goes near it. metallic 0.0 is the physical value \u2014 glass is a dielectric \u2014 and this is deliberately NOT `tram_glass`'s metallic 0.80, which is a distance hack for a 236 m read and would give a hand's-breadth viewport a chrome sheen. No emission: a viewport does not emit, it shows what is behind it, and putting emission here would be the exact failure mode INV-036's note describes for the hull \u2014 a lightbox instead of a window. It is the only untextured surface in the family besides the grab rail, which is the brief's rule for small objects and coated panels applied where it belongs: a trim sheet on a 2.4 m pane would be dirt on glass at any scale.",
+   "type": "extended"
+  },
+  {
+   "name": "grab_rail_bare",
+   "title": "Grab Rail \u2014 polished bare tube, micro-gravity handhold",
+   "binds": [
+    "prop_handhold"
+   ],
+   "albedo": [
+    0.56,
+    0.565,
+    0.58
+   ],
+   "roughness": 0.22,
+   "metallic": 0.9,
+   "specular": 0.65,
+   "texture": null,
+   "uv_scale_denom": null,
+   "emission": null,
+   "emission_energy": null,
+   "source": "reference/03-sector-blue/Babylon_5_2-22_35a.jpg (authority 1), balanced 0.913/1.090/1.013 \u2014 the tram saloon's vertical stanchions, the only object in the whole reference set that is a metal pole a person grips. station/materials.py already carries that reading as `tram_saloon_post` (0.560, 0.565, 0.580), whose source line records that the poles read as bare metal against the painted panels and shows a specular roll-off along their length. The value is reproduced here rather than re-derived. station/rooms.py sizes prop_handhold at 0.60 x 0.10 x 0.10 m, wall-mounted, and station/directory.py places it only in `lowg_bays`, `zerog_maint` and `micro_g_bays` \u2014 every one a microgravity_handling or repair volume.",
+   "extrapolated": "metallic 0.90 and roughness 0.22, both raised from `tram_saloon_post`'s 0.75 and 0.28. The 0.75 is itself declared an extrapolation in station/materials.py ('the frame shows a specular roll-off along the pole, which fixes the kind but not the value'), and the physical rule is that bare metal is 0.9-1.0 and an intermediate value needs a worn-coating argument this object cannot make \u2014 it has no coating. Roughness drops to 0.22 on a specific argument: this is the only object in the station gripped by every occupant of a zero-g bay on every transit, and a handrail polished by constant use is smoother than a tram stanchion held occasionally. Overturned by: a frame showing a micro-g handhold, which the set does not contain.",
+   "reasoning": "This is the brightest and smoothest surface in the family, and it should be \u2014 0.565 luminance against a 0.46 wall, because for a metal the albedo IS the F0 reflectance and not a diffuse value, so it sits above the anchor rather than below it. Untextured on purpose, which is the brief's rule for small objects: the object is a 100 mm tube, and any trim sheet at any repeat would put plate seams on something that has none. It is a one-group material and stays one because nothing else in the family is polished bare tube \u2014 merging it into the catwalk (painted, worn, metallic 0.30) or the clad services (galvanised sheet, roughness 0.52) would lose the single read that matters here, which is that in a micro-g bay the thing you can reach for is the thing that catches the light.",
+   "type": "extended"
+  },
+  {
+   "name": "edge_chevron_nosing",
+   "title": "Edge Nosing \u2014 yellow/black chevron on the platform drop",
+   "binds": [
+    "fix_platform_edge"
+   ],
+   "albedo": [
+    0.9,
+    0.72,
+    0.06
+   ],
+   "roughness": 0.62,
+   "metallic": 0.05,
+   "specular": 0.4,
+   "texture": "hazard_chevron",
+   "uv_scale_denom": 2.4,
+   "emission": null,
+   "emission_energy": null,
+   "source": "reference/03-sector-blue/Minbari Flyer 969 in docking bay 17.webp (authority 1): the bay wall is a stepped ziggurat of ledges and EVERY STEP NOSING CARRIES YELLOW/BLACK HAZARD CHEVRONS \u2014 reference/00-INDEX.md records this and draws the consequence explicitly, that the chevron is applied by rule to all step edges and is therefore a generator rule rather than a decal placement. Corroborated by reference/03-sector-blue/dock.webp, which shows the same marking on the ramp edges of the bay deck, and by reference/01-station-exterior/Cobra Bays with starfurries.webp on the bay lip. The albedo is ACCENTS['hazard_yellow'] (0.900, 0.720, 0.060), the value station/materials.py already measured off dock.webp's deck chevrons; this is the same register, not a second one.",
+   "extrapolated": "The stripe pitch, and that a tram platform edge is a step edge in the sense the rule means. Pitch: a Fourier scan along dock.webp's lower ramp chevron run, source pixels (248,505) to (315,556), puts the stripe peaks at k = 6-8 over a 67 px horizontal extent; at the scale reference/00-INDEX.md measures in that frame (the red deck disc, 156 px = 9.4 m, so 16.6 px/m) that run is 4.0 m and the cycle is 0.50-0.67 m. uv_scale 1/2.4 gives 4 cycles per repeat = 0.60 m, inside that bracket, against the exterior sibling's declared-invented 0.75 m. So this measurement also CORROBORATES the exterior material's guess. Overturned by: a frame showing a station transit platform, of which the set holds none.",
+   "reasoning": "This is the best-evidenced thing in my family and the only place a saturated accent belongs in it: an ACCENT register value, on an object whose entire function is to be seen and not stepped over. fix_platform_edge is a 0.45 x 0.22 m nosing flanking a transit hall \u2014 station/rooms.py builds it as the drop at the guideway \u2014 and the reference's rule is that the station marks step and ramp edges this way. I deliberately did NOT extend it to prop_barrier: the frames mark FALL and COLLISION edges, and a security checkpoint barrier is access control, so binding it here would be stretching a measured rule past what it measures; that group went to door_leaf_painted instead. metallic 0.05 and roughness 0.62 are taken verbatim from the existing `hazard_chevron` material so the interior and exterior chevron differ ONLY in scene and repeat \u2014 a separate material is needed at all solely because `hazard_chevron` is scenes=('exterior','drum') and this geometry is interior. Note for the applier: hazard_chevron is in COLOUR_SHEETS, so emitted_albedo() writes albedo_color white and Material.albedo keeps the measured colour \u2014 same as the exterior sibling, no special handling.",
+   "type": "extended"
+  }
+ ],
+ "coverage_note": "All 27 assigned groups are covered by exactly 11 materials, verified mechanically rather than by eye. I reimplemented the engine's resolution rule (substring, longest fragment wins) and ran it over the full 113-group list together with every existing bind in station/materials.py and every key in GROUP_ALIASES. Results: no fragment of mine equals an existing bind or alias key; no duplicates among my own; no fragment of mine wins on any group outside my 27; no existing KNOWN_GROUP or alias key changes owner (in particular \"door_leaf\" still falls through to its kit_pilaster alias, which a bare \"door\" fragment would have silently stolen); all 27 of mine resolve to me. Fragment choices that were traps and were avoided: \"door\" (swallows all ten door groups plus the alias), \"prop_bar\" (swallows prop_bar_counter), \"prop_lift\" (swallows prop_lift_call), \"gantry\" (swallows fix_equipment_gantry), \"column\" (swallows fix_fume_column), \"furnace\" (swallows prop_furnace_control). \"crane\" is used and is safe \u2014 prop_cargo_crane and prop_crane are the only groups in the station containing it.\n\nValue ladder, luminance, against kit_wall_plate 0.460 and kit_deck_plate 0.356: grab_rail 0.565 and clad_services 0.524 sit ABOVE the wall because they are metals and their albedo is F0, not diffuse reflectance; then door_leaf 0.385, door_blast 0.320, catwalk 0.266, gantry_oxide 0.264, container 0.246, scrap_door 0.222, furnace 0.201 (level with the library's existing truss_steel 0.204, the darkest rung), viewport 0.042. Saturation: nine of eleven sit at or below 0.193. The two above are declared and argued in place \u2014 container_skin at 0.397 reproduces cargo_module's existing measured livery value verbatim on a movable object, and edge_chevron_nosing is ACCENTS['hazard_yellow'] itself. Metallic is 0.0 or 0.90 everywhere except four surfaces at 0.30-0.35, each of which states the worn-coating mechanism (crane wheels on the rail head, boots on the catwalk tread, seals on the blast door's leading edge, patchy oxide on scrap plate). Only viewport_glazing goes below roughness 0.15, and it is glass. No material in the family emits.\n\nTwo things a reviewer should push on. First, the strongest finding here is that the station's heavy structural steel is genuinely PAINTED warm, not lit warm: dock.webp holds R/G near-constant at 1.69-2.12 across a 2.5x value range while R-B is not constant (multiplicative, i.e. paint \u2014 the opposite signature to the hull's additive blue), and in the same frame at the same light the background wall reads S 0.158 and the gantry platform S 0.006; central corridor.webp repeats the result with a rib at S 0.21-0.45 beside a wall panel at S 0.017. The frames support S 0.11-0.58 and I applied 0.193, at the library's cap for a non-accented surface. That is a deliberate under-application of a measurement and the material says so; if the neutrality rule is meant to stop at the shell and not reach fixtures, this value should go up, not down. Second, the reference tree has NO engineering or Downbelow interior at all \u2014 reference/08-sector-yellow-engineering/ and reference/06-sector-brown-downbelow/ contain only .gitkeep \u2014 so steel_furnace_scorched, clad_services and door_scrap_welded are extrapolations end to end and their source strings say so plainly rather than borrowing authority from frames that do not show them. Those three cover 6 of my 27 groups but 44 of the location-instances, so they are where a single Brown or Yellow Sector frame would buy the most.",
+ "_family": "steel_heavy",
+ "_agent": "a3590827b4253e092"
+}
