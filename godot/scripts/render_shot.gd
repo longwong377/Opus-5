@@ -33,7 +33,58 @@ extends Node3D
 ## derived geometry (see export_scene.light_runs); this is the exposure knob
 ## for them, and it lives with the environment because that is what it is
 ## judged against.
+##
+## IT IS NOT THE EXPOSURE KNOB FOR A NIGHT SIDE, and the difference is not a
+## detail. On the anti-sun side most of the light in frame is EMISSION -- the
+## habitat window sheet -- and emission is a material property that no light
+## energy scales. Measured at the arrival distance with `--light-gain 0.0`:
+## the drum's box is 99.4% below tools/measure_frame.py's measurable floor and
+## its p50 is 0.0017, i.e. turning every light off changes a night frame by
+## almost nothing, because almost none of a night frame is lights. A night
+## exposure therefore has to be `tonemap_exposure` on the Environment, which
+## scales what the camera receives rather than what the scene emits.
 @export var light_gain: float = 1.0
+## The second lighting condition, selected by the shot's `lighting` field.
+##
+## THE STANDING BLOCKING FINDING THIS CLOSES: the exterior rig rendered one
+## condition, full sun. A station 8 km long in orbit has a terminator, and the
+## side facing away from the sun is where it reads as INHABITED rather than as
+## a lit model -- it is the first thing the owner's opening beat shows.
+##
+## The whole night LOOK is in the scene file, not here: a second Environment
+## with its own exposure, ambient and bloom threshold, and the names of the
+## lights that go dark. This script only selects between them. That split is
+## the one this file's header already argues for -- a look has to be judged as
+## a whole, and a look spread across a Python file and a scene file cannot be
+## -- and it is why the night side is NOT a second .tscn: exterior.tscn's
+## `material_rules` block is written by `station/materials.py --export`, so a
+## copy of this scene would silently stop matching the material library the
+## first time a material was added. Two copies of a mapping drift; this
+## project has written that down twice already.
+@export var night_environment: Environment
+## Lights that are dark in the night condition, by node name.
+##
+## The rim in particular MUST go, and the numbers are worth having rather than
+## the intuition. It is aimed from `sun_az + 175`, and a night shot puts the sun
+## behind the station, so at the arrival framing the three lights sit at 136,
+## 49 and 116 degrees from the camera axis -- the SUN is the backlight and the
+## RIM is a three-quarter frontal key on the one hemisphere the shot exists to
+## show dark. Measured: leaving the rim and the fill burning makes the habitat's
+## median 5.2x brighter and lifts the station's visible footprint from 67% to
+## 88%. The night side becomes a dim day side. That is the defect recorded
+## against this rig in session 3k, restated: "whatever azimuth the camera takes,
+## the camera-facing edge is lit".
+##
+## On the night side the sun IS the rim. It grazes the limb, which is a real
+## edge in the right place, for free.
+##
+## NOTE FOR ANYONE TIGHTENING THE GATES: the frame gates in
+## tools/export_scene.gate_exterior_night do NOT catch this. A night frame with
+## both lights burning still passes all four, though two of them only just
+## (x4.2 against a x4.0 floor). What catches it is the static check in that
+## file's self-test, which reads this list out of the .tscn and fails if `Rim`
+## leaves it. Do not delete that check on the grounds that the frames are gated.
+@export var night_lights_off: PackedStringArray = PackedStringArray()
 ## Shadow settings for the omnis that are allowed to cast. Kept low because an
 ## omni shadow is a cube map and this renderer is a CPU.
 @export var omni_shadow_bias: float = 0.08
@@ -79,6 +130,15 @@ func _ready() -> void:
 		# way to see whether an emissive material emits, and the rig is built so
 		# that a rim kicker always lights the camera-facing edge.
 		_scale_scene_lights(self, light_gain)
+	# Before anything else touches the environment. `--no-ssao` and the shot's
+	# `ambient` both write to whichever Environment is mounted, and applying
+	# them to the day one and then swapping it out would drop both on the floor
+	# with no error -- the class of failure this file already carries two scars
+	# from.
+	if not _apply_lighting(String(args.get("lighting",
+			_shot.get("lighting", "day")))):
+		get_tree().quit(2)
+		return
 	if args.has("no-ssao"):
 		var env := ($WorldEnvironment as WorldEnvironment).environment
 		env.ssao_enabled = false
@@ -105,6 +165,44 @@ func _ready() -> void:
 		await RenderingServer.frame_post_draw
 	_capture()
 	get_tree().quit()
+
+
+## Mount the named lighting condition. Returns false if the run should abort.
+##
+## EVERY BRANCH HERE FAILS LOUDLY, and that is deliberate. The two worst bugs
+## this pipeline has produced were both a step that appeared to work and did
+## nothing -- `--light-gain` scaling no lights on the exterior, and material
+## rules pasted into a file nobody read back. A night render that quietly came
+## out with the day look would be the same bug a third time, and it would be
+## worse than the other two because the PNG would look plausible.
+func _apply_lighting(condition: String) -> bool:
+	print("render_shot: lighting %s" % condition)
+	if condition == "day":
+		return true
+	if condition != "night":
+		push_error("render_shot: unknown lighting condition '%s' -- this "
+			% condition + "scene has 'day' and 'night'")
+		return false
+	if night_environment == null:
+		push_error("render_shot: lighting=night, but this scene declares no "
+			+ "night_environment. Refusing to render: the frame would come "
+			+ "out with the DAY exposure and the day ambient and would look "
+			+ "like a perfectly good night shot of an underlit station.")
+		return false
+	($WorldEnvironment as WorldEnvironment).environment = night_environment
+	for n in night_lights_off:
+		var l := get_node_or_null(String(n)) as Light3D
+		if l == null:
+			# A misspelt name is not a warning. It leaves that light BURNING
+			# through the night frame, which is exactly the rim-as-frontal-fill
+			# defect this condition exists to remove.
+			push_error("render_shot: night_lights_off names '%s', " % n
+				+ "which is not a Light3D in this scene.")
+			return false
+		l.visible = false
+	print("render_shot: night environment mounted, %d light(s) dark: %s"
+		% [night_lights_off.size(), ", ".join(night_lights_off)])
+	return true
 
 
 ## `godot ... -- --scene-json=/path --out=/path` . Everything after the bare

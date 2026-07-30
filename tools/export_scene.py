@@ -26,8 +26,20 @@ Three things it deliberately does NOT do:
 Usage:
 
     python3 tools/export_scene.py --shot exterior --orbit 9200,18,214
+    python3 tools/export_scene.py --shot exterior --orbit 9200,18,214 \
+        --lighting night                               # the anti-sun side
     python3 tools/export_scene.py --shot drum --stand 20,4700 --look 20,6300
     python3 tools/export_scene.py                      # runs the self-test
+    python3 tools/export_scene.py --gate-exterior      # measures the frames
+
+A WARNING ABOUT `--no-export`, learned the hard way this session. That flag on
+tools/render_godot.sh reuses whatever is in station/generated/scene/<shot>/,
+and that path is SHARED: another agent exporting a shot of their own replaces
+it underneath you. Two renders that were supposed to differ only in an SSAO
+flag came back as two entirely different framings, and the first reading of it
+was "the renderer is non-deterministic". It is not -- re-exported properly, the
+same shot renders byte-identical. Export every time unless nothing else is
+running.
 """
 import argparse
 import math
@@ -331,6 +343,510 @@ def _lod_options(name):
     return {}
 
 
+# ---------------------------------------------------------------------------
+# The exterior's two lighting conditions
+# ---------------------------------------------------------------------------
+# WHY THERE ARE TWO. Until session 3r the exterior rig rendered exactly one
+# condition -- full sun -- and the standing blocking finding against it, open
+# since session 3k, said why that is not enough: "A station 8 km long in orbit
+# has a terminator, and the side facing away from the sun is where the thing
+# reads as INHABITED rather than as a lit model." It is the first thing the
+# owner's opening beat shows.
+#
+# WHERE EACH HALF LIVES. The LOOK of both conditions -- exposure, ambient,
+# bloom, which lights go dark -- is in `godot/scenes/exterior.tscn`, because a
+# look has to be judged as a whole. What is here is the SHOT's half: where the
+# sun goes, which condition this frame is, and the calibration record.
+#
+# THE SUN IS PLACED RELATIVE TO THE CAMERA, not at an absolute azimuth, and
+# that is the difference between a night condition and a night-looking frame.
+# "Night side" is not a property of the sun; it is the angle between the sun
+# and the eye. Nail the sun to a world azimuth and orbiting the camera turns
+# night silently back into day -- the same failure `_aim_sun`'s docstring
+# already records for the rim: "A rig nailed to world axes stops being a rig
+# the moment the camera moves."
+#
+# THE PHASE is how far the sun is off dead-behind-the-station, and it is DERIVED
+# rather than dialled. For a convex body the sunlit crescent covers
+# (1 - cos(phase)) / 2 of the visible face, so the phase decides how many PIXELS
+# of lit edge the frame gets, and at the arrival framing the habitat drum is
+# about 90 px across a 960-wide frame:
+#
+#   phase 22 -> 3.6% of the face -> 3.3 px. A line at the resolution limit; it
+#               aliases along the barrel and reads as a rendering artefact.
+#   phase 39 -> 11.1% -> 10 px. The floor: below this the crescent is thinner
+#               than the greebles standing on it.
+#   phase 46 -> 15.3% -> 14 px. Taken.
+#
+# WHY IT MATTERS MORE THAN IT LOOKS. The terminator is what gives the unlit
+# station its shape, and it is the only PHYSICAL way to do that -- the
+# alternative is more planetshine, which buys the silhouette by washing out the
+# windows, and the windows are the whole finding. Measured at the arrival
+# framing over the station's own footprint: at phase 22 with no planetshine 38%
+# of the hull is distinguishable from the starfield, and at phase 46 with the
+# planetshine floor it is 66%, with the drum's window band still reading 4.9x
+# over the plate between bands. Widening the crescent is nearly free; brightening
+# the ambient is not.
+#
+# The 46 itself is DECLARED, authority 5. What is derived is the floor at 39.
+NIGHT_SUN_PHASE_DEG = 46.0
+
+# THE EXPOSURE RECORD, kept the way ROOM_EXPOSURE and DRUM_EXPOSURE are kept
+# except for one thing: the VALUES are not here. They are `tonemap_exposure` on
+# the two Environments in exterior.tscn, and this reads them back out of that
+# file the way `scene_material_rules` reads the material rules back, for the
+# same reason -- two copies of a number drift, and the copy that loses is
+# always the one the renderer does not read.
+#
+# ------------------------------------------------------------------ THE DAY
+#
+# THE REFERENCE, and the first thing found was that the obvious comparison is
+# not a comparison at all. `reference/01-station-exterior/` holds five files
+# and THREE OF THEM ARE MISFILED INTERIORS -- `view.jpg` is byte-identical to
+# `03-sector-blue/Babylon_5_2-22_34b.jpg` (the drum, and the frame the DRUM
+# exposure is calibrated against), `welcome to babylon 5.webp` is customs
+# signage, `sleeping-in-light-05.jpg` is Downbelow. reference/00-INDEX.md says
+# so for all three. That leaves two real exteriors.
+#
+# `exterior more.jpg` is the only one showing the whole station in sunlight,
+# and measuring it whole-frame measures A DESKTOP WALLPAPER'S BACKDROP: the
+# sheet is a fan-assembled wallpaper (00-INDEX: "rounded-rectangle bevelled
+# border, marbled backdrop, drop shadows... a large glassy embossed 5"), and
+# the marbled plate behind the projections measures median 0.1259 -- the whole
+# frame's median, to four decimal places. The station contributes nothing to
+# it. So the comparison is against a CROP.
+#
+# `Cobra Bays with starfurries.webp` is authority 1 and is NOT the day
+# reference: it is a close shot of the bay face out of sunlight. It is used
+# below, for the night side, where being out of sunlight is the point.
+#
+# THE CALIBRATION SHOT IS NOT THE ARRIVAL SHOT. The reference's projections are
+# orthographic side and top views, and comparing them to a 9.2 km three-quarter
+# orbit compares lit FRACTIONS as much as levels. The calibration shot is a
+# near-orthographic side-on frame -- 30 km at fov 16, lod0 forced -- so the two
+# crops frame the same object the same way. Both crops come out with the same
+# proportion of background (9.6% ours, 8.0% the reference's), which is the
+# check that the framings really are matched.
+#
+# THE STATISTIC IS p95 AND NOT THE MEDIAN. See the note on `tonemap_exposure`
+# in exterior.tscn: the reference hull is mostly dark blue-purple courses and
+# ours is warm off-white throughout, so their medians sit at 29% and 76% of
+# their own brightest plate. That is a shape difference and no exposure fixes
+# it. p95 is the brightest sunlit plating, which is the same white plate in
+# both frames.
+#
+# TWO PROJECTIONS AGREE, which is what makes the number usable at all: the
+# sheet's side view and top view of the same drum measure p95 0.2378 and
+# 0.2051 and mean linear rgb (0.084, 0.085, 0.110) and (0.088, 0.087, 0.112) --
+# 14% apart on the statistic and 3% apart on colour, from two independent
+# renders on one sheet.
+#
+# WHAT WOULD OVERTURN IT: any Season 2-3 broadcast frame of the station in
+# sunlight at range. There is none in the reference set. `exterior more.jpg`
+# is a render of the production model rather than a screencap, so the x1.40
+# offset -- whose stated derivation is "a film frame carries a grade, a stock
+# and chroma subsampling and our render carries none of them" -- is on weaker
+# ground here than anywhere else in the project. It is kept anyway: every other
+# space targets 1.40, the two projections of this one sheet already disagree by
+# 14%, and changing the project's single calibration constant for one space on
+# an argument that cannot be measured is picking the convenient reading.
+#
+# ----------------------------------------------------------------- THE NIGHT
+#
+# THERE IS NO REFERENCE FRAME FOR THE STATION AT RANGE ON THE ANTI-SUN SIDE,
+# and INV-036 says the same thing about the windows themselves: "No frame in
+# the reference set shows the hull lit from within at range." So the night
+# exposure is NOT calibrated against a reference median, and saying it is would
+# be the exact dishonesty CLAUDE.md's first hard rule is about. It is derived
+# from three things that ARE measurable, and the gates below are those three:
+#
+#   1. THE WINDOW SHEET'S OWN EMISSION. `hull_window_emission.png` has mean
+#      linear rgb (0.0219, 0.0191, 0.0132) over its 2048 square, 2.86% of it
+#      lit above 0.2, at `emission_energy` 3.4 -- so a mean EMISSION of 0.066
+#      at any range where the apertures do not resolve, which at the arrival
+#      distance they do not (the drum is 500 m across over ~90 px, i.e. 5.5 m
+#      a pixel against a 1.10 m aperture). MEASURED, off the shipping texture.
+#   2. THE BAND MUST READ. INV-036 builds eight decks per repeat with two
+#      glazed and 28% of blocks dark, so 0.25 x 0.72 = 18% of the habitat hull
+#      should be above tools/measure_frame.py's 0.010 floor. The gate asks for
+#      12%, two thirds of the derived figure, because at a three-quarter
+#      orbit part of the band is on the far side and part is at grazing
+#      incidence. DERIVED from INV-036.
+#   3. IT MUST NOT BECOME A LIGHTBOX. Clipping stays under the 4% that
+#      tools/measure_frame.py itself calls overexposed. INV-036's whole point
+#      is that the lit fraction is below 1.0 "because a third of the population
+#      is asleep"; a night side that clips has thrown that away.
+#
+# `Cobra Bays with starfurries.webp` is the one authority-1 broadcast frame of
+# station exterior OUT of sunlight we hold, and it is quoted here as a sanity
+# check rather than as a target, because it is a close shot of one bay face and
+# this is the whole station at 9 km: median 0.0345, p5/p95 0.048, 43.9% of the
+# frame crushed, 0.08% clipped. What it says that transfers is the SHAPE -- a
+# frame of unlit station read by its own fittings is mostly below the floor and
+# clips essentially nothing.
+EXTERIOR_CALIBRATION = {
+    "day": {
+        "reference": "reference/01-station-exterior/exterior more.jpg",
+        # (left, top, right, bottom) as fractions. The habitat drum in each of
+        # the sheet's two orthographic projections.
+        "reference_boxes": {"side": (0.49, 0.47, 0.69, 0.57),
+                            "top": (0.44, 0.145, 0.66, 0.235)},
+        "reference_p95": {"side": 0.2378, "top": 0.2051},
+        # The mean of the two projections, which is what the exposure is set
+        # against.
+        "reference_value": 0.2215,
+        "statistic": "bright_p95",
+        # The calibration shot, exactly. Anything else measured against the
+        # boxes below is measuring a different frame.
+        "shot": ("--shot exterior --eye 30000,0,4023 --target 0,0,4023 "
+                 "--fov 16 --lod lod0 --sun-elev 45 --sun-az 25 "
+                 "--res 960x540"),
+        "our_box": (0.35, 0.45, 0.54, 0.54),
+        # Three points on the AgX response, from that shot: exposure 1.00 gave
+        # p95 0.5117, 0.70 gave 0.4251, 0.40 gave 0.2943. Strongly sub-linear
+        # -- out ~ exposure^0.62 -- so the correction is NOT the ratio, and
+        # assuming it was would have landed this two thirds of a stop dark.
+        "verified_p95": 0.3108,
+        "verified_multiple": 1.403,
+    },
+    "night": {
+        # Deliberately no "reference". See above: there is none, and a key
+        # here with a plausible frame path in it would be a lie that reads as
+        # provenance.
+        "sanity_frame": "reference/01-station-exterior/"
+                        "Cobra Bays with starfurries.webp",
+        "sanity_stats": {"median": 0.0345, "ratio": 0.048,
+                         "crushed": 0.4385, "clipped": 0.0008},
+        "shot": ("--shot exterior --lighting night --orbit 9200,18,214 "
+                 "--res 960x540"),
+        # THE THREE BOXES, at the arrival framing. All three are on the DAY
+        # frame's geometry too, so every night number has a daylight number
+        # beside it taken from the same pixels.
+        #   habitat   the drum barrel -- the pressurised, glazed section
+        #   structure the aft truss spine and terminus -- nobody lives there
+        #             and INV-036 keeps it dark on purpose
+        #   sky       empty space, for what "visible against the starfield"
+        #             means in this frame
+        "habitat_box": (0.47, 0.44, 0.59, 0.52),
+        "structure_box": (0.20, 0.545, 0.36, 0.605),
+        "sky_box": (0.03, 0.70, 0.30, 0.95),
+        "emission_texture_mean_linear": 0.0193,
+        "emission_energy": 3.4,
+        # A night frame whose habitat box has not fallen by at least this much
+        # against the day frame at the SAME camera is a night frame that did
+        # not happen. This is the gate for "the flag did nothing", which is the
+        # failure mode this pipeline has shipped twice: `--light-gain` scaling
+        # no lights, and material rules pasted into a file nobody read back.
+        # 4x is a floor a broken condition cannot clear -- the two exposures
+        # alone differ by 8.4x -- and the frames measure 21.8x.
+        "min_day_night_drop": 4.0,
+        # LIT FROM WITHIN, and it took two wrong statistics to find the right
+        # one. The first was "what fraction of the drum is above the measurable
+        # floor", which PLANETSHINE SATISFIES WITH NO WINDOWS AT ALL. The
+        # second was the drum's own p99/p50, which at 960x540 measures the
+        # MARKER LIGHTS: the box is 3,680 pixels, so p99 is its brightest 37,
+        # and those are navigation lamps, not window band. The band itself only
+        # reaches p90, at 1.9x the plate.
+        #
+        # 1.9x is not a defect. At the arrival distance the drum is 500 m over
+        # ~90 px, i.e. 5.5 m a pixel against INV-036's 1.10 m aperture and
+        # 3.6 m deck pitch, so no window and no window ROW resolves. What
+        # resolves is INV-036's long-period variation -- 28% of blocks five
+        # repeats square with nothing lit, which is 144 m, which is 26 px. At
+        # range the window sheet is districts, not windows.
+        #
+        # So the statistic that carries the finding is the one INV-036 itself
+        # states: the pressurised sections are lit and the truss, the reactor
+        # and the spike "have nobody in them and stay dark". The gate is the
+        # ratio between them, measured against the SAME ratio in daylight,
+        # where both are lit from outside by one sun. Day 12.7, night 30.4.
+        # Requiring 2x the day figure says the habitat is at least a stop
+        # brighter relative to the structure than any external light explains.
+        "lit_from_within_over_day": 2.0,
+        # THE SILHOUETTE READS. Fraction of the station's own footprint --
+        # taken from the DAY frame, so it is the real outline and not a
+        # threshold on the night frame -- that is brighter at night than 99% of
+        # empty sky in the same frame. Half is the line: a shape more than half
+        # of which is indistinguishable from space is not a station coming into
+        # view, it is fragments. Measured: 37.9% with the planetshine floor
+        # removed, 66.8% as it ships.
+        "min_footprint_visible": 0.50,
+        # NOT A LIGHTBOX. The night side must not be rescued by opening up
+        # until the windows blow -- INV-036's whole point is a lit fraction
+        # below 1.0 "because a third of the population is asleep", and a
+        # clipped frame has thrown that away.
+        #
+        # MEASURED OVER THE STATION'S FOOTPRINT, NOT THE FRAME, and this had to
+        # be corrected after the gate was written: measure_frame's 4%-of-frame
+        # threshold was calibrated on interiors, which fill the frame. The
+        # station is 4.4% of an arrival frame, so 4% of the FRAME means the
+        # entire hull has blown and then some -- the gate could not fail. A
+        # deliberate night render at exposure 60, sixteen times the shipping
+        # value, clipped 0.098% of the frame and would have PASSED.
+        #
+        # 0.5% of the footprint, and the derivation is two measured frames: the
+        # calibrated DAY frame clips 0.00% of the footprint with an 8 km hull
+        # in direct sun, and `Cobra Bays with starfurries.webp` -- the one
+        # authority-1 broadcast frame of this station's exterior out of
+        # sunlight, with working lamps in shot -- clips 0.08% of itself. Half a
+        # percent sits above the show's own night frame and far below anything
+        # that means a hull surface has gone. At exposure 60 the footprint
+        # clips 2.43% and the gate fires.
+        "max_footprint_clipped": 0.005,
+    },
+    # WHAT WAS MEASURED AND LEFT ALONE, recorded because the next session will
+    # otherwise ask the same two questions and pay for the same four renders.
+    #
+    # SSAO IS OFF AT NIGHT AND IT IS FREE TO BE. Rendering the night arrival
+    # shot with `ssao_enabled` true in EnvNight produced a BYTE-IDENTICAL PNG
+    # (max channel delta 0 over 960x540) and took 12s against 9s. It modulates
+    # ambient occlusion and the night ambient is a 0.12 planetshine floor, so
+    # there is nothing for it to occlude. A third of the frame time for no
+    # pixels.
+    #
+    # THE SUN'S SHADOWS STAY ON AT NIGHT, and this one went the other way. The
+    # standing suspicion was that four PSSM splits over a 12 km range are tuned
+    # for a lit hull and are wasted on a dark one. Measured: turning
+    # `shadow_enabled` off on the Sun changed 10.0% of the frame, 2.0% of it by
+    # more than 8/255, with a peak delta of 244, and lifted the habitat box's
+    # median 12% -- because the crescent is a GRAZING light and grazing light
+    # is all shadow. It also saved nothing measurable (9s either way). The
+    # hypothesis is refuted; the rig is unchanged.
+    #
+    # The .tscn's `directional_shadow_max_distance = 12000` is never the value
+    # used anyway: `render_shot._aim_sun` overrides it per shot to
+    # clamp(eye-to-target x 2.2, 400, 20000), which at the arrival framing is
+    # the 20 km clamp.
+    "measured_and_unchanged": {
+        "ssao_night": "byte-identical PNG, 12s vs 9s -> disabled",
+        "sun_shadows_night": "10.0% of pixels change, no time saved -> kept",
+    },
+}
+
+
+def scene_env_exposure(tscn_path, sub_id):
+    """`tonemap_exposure` off one Environment sub-resource in a .tscn.
+
+    Read back rather than restated, for the reason `scene_material_rules`
+    exists: the renderer reads the scene file, so anything a gate checks has to
+    come from the scene file too. A Python constant holding "the exposure" can
+    be right while the render is wrong, which is worse than not checking.
+    """
+    with open(tscn_path) as f:
+        text = f.read()
+    m = re.search(r'\[sub_resource type="Environment" id="%s"\](.*?)(?=\n\[|\Z)'
+                  % re.escape(sub_id), text, re.S)
+    if not m:
+        raise ValueError(f"{tscn_path}: no Environment sub-resource "
+                         f"'{sub_id}'")
+    e = re.search(r"^tonemap_exposure = ([0-9.eE+-]+)", m.group(1), re.M)
+    if not e:
+        raise ValueError(f"{tscn_path}: Environment '{sub_id}' sets no "
+                         f"tonemap_exposure")
+    return float(e.group(1))
+
+
+def _measure_frame():
+    """`tools/measure_frame`, imported late.
+
+    Late because it pulls numpy and pillow, and every OTHER path through this
+    file -- assembling a shot for the renderer -- needs neither. The gates are
+    the only consumer.
+    """
+    p = os.path.join(ROOT, "tools")
+    if p not in sys.path:
+        sys.path.insert(0, p)
+    import measure_frame
+    return measure_frame
+
+
+def measure_box(png, box):
+    """`tools/measure_frame.measure` over a fractional crop of one PNG.
+
+    Cropping is not a second yardstick. The reference measurements in
+    docs/layer4-lighting/*.json all name a REGION -- "the soffit above the
+    gallery fascia", "the clean deck field" -- and this is the same move with
+    the region written down instead of described. What must not change is the
+    code doing the measuring, which is why measure_frame is imported rather
+    than reimplemented.
+    """
+    import tempfile
+    from PIL import Image
+    mf = _measure_frame()
+
+    im = Image.open(png).convert("RGB")
+    w, h = im.size
+    l, t, r, b = box
+    c = im.crop((int(l * w), int(t * h), int(r * w), int(b * h)))
+    fd, p = tempfile.mkstemp(suffix=".png")
+    os.close(fd)
+    try:
+        c.save(p)
+        return mf.measure(p)
+    finally:
+        os.unlink(p)
+
+
+def gate_exterior_day(png, tolerance=0.25):
+    """Is the day frame at x1.40 of its reference's brightest sunlit plate?
+
+    Returns (ok, message). The frame must be the calibration shot in
+    EXTERIOR_CALIBRATION["day"]["shot"]; measuring any other framing against
+    this box measures whatever happens to be in it.
+    """
+    mf = _measure_frame()
+    cal = EXTERIOR_CALIBRATION["day"]
+    if not os.path.exists(png):
+        return False, f"day calibration frame missing: {png}"
+    m = measure_box(png, cal["our_box"])
+    x = m["bright_p95"] / cal["reference_value"]
+    ok = abs(x - mf.RENDER_OFFSET) <= tolerance * mf.RENDER_OFFSET
+    return ok, (f"day p95 {m['bright_p95']:.4f} = x{x:.2f} of the reference's "
+                f"{cal['reference_value']:.4f} (target x{mf.RENDER_OFFSET:.2f} "
+                f"+/-{tolerance * 100:.0f}%)")
+
+
+def frame_luma(png):
+    """Linear Rec.709 luminance of a whole PNG, by measure_frame's own code.
+
+    measure_frame.measure returns percentiles over its MEASURABLE population --
+    everything between its floor and its clip -- which is exactly right for
+    comparing a room to a reference frame and exactly wrong for two boxes on
+    one night frame: the population changes between them, so p95 in a box that
+    is 16% measurable and p95 in a box that is 54% measurable are percentiles
+    of different things. That cost a wrong reading here -- adding light appeared
+    to LOWER the drum's p95. Fixed populations from here on.
+    """
+    import numpy as np
+    from PIL import Image
+    mf = _measure_frame()
+    a = np.asarray(Image.open(png).convert("RGB"), dtype=np.float64) / 255.0
+    return mf.srgb_to_linear(a) @ np.array(mf.LUMA)
+
+
+def _crop(y, box):
+    h, w = y.shape
+    return y[int(box[1] * h):int(box[3] * h), int(box[0] * w):int(box[2] * w)]
+
+
+def gate_exterior_night(day_png, night_png):
+    """The four things the night side can be held to. Returns (ok, [lines]).
+
+    NOT ONE OF THEM IS "matches a reference", because there is no reference
+    frame of this station at range on the anti-sun side and pretending there is
+    would be worse than having no gate. They are, in order: the condition did
+    something; the station is lit from WITHIN rather than from outside; the
+    silhouette reads against the starfield; the frame is not a lightbox.
+
+    THE MIDDLE TWO PULL AGAINST EACH OTHER, which is the property that makes
+    them worth having. Planetshine buys silhouette and costs the lit-from-
+    within ratio: with it removed the frame scores 5.9 million and 37.9%, with
+    it at 0.55 it scores 14.4 and 94.6%. Neither extreme passes both. A pair of
+    gates that a single knob can satisfy is one gate.
+    """
+    cal = EXTERIOR_CALIBRATION["night"]
+    import numpy as np
+    mf = _measure_frame()
+    lines, ok = [], True
+    for p in (day_png, night_png):
+        if not os.path.exists(p):
+            return False, [f"night gate frame missing: {p}"]
+
+    d, n = frame_luma(day_png), frame_luma(night_png)
+    if d.shape != n.shape:
+        return False, [f"day and night frames differ in size: "
+                       f"{d.shape} vs {n.shape} -- the boxes and the footprint "
+                       f"mask only mean anything at one framing"]
+
+    def p50(y, box):
+        return float(np.percentile(_crop(y, box), 50))
+
+    hab_d, hab_n = p50(d, cal["habitat_box"]), p50(n, cal["habitat_box"])
+    str_d, str_n = p50(d, cal["structure_box"]), p50(n, cal["structure_box"])
+
+    drop = hab_d / hab_n if hab_n else float("inf")
+    good = drop >= cal["min_day_night_drop"]
+    ok &= good
+    lines.append(f"  {'OK  ' if good else 'FAIL'} the condition happened: "
+                 f"habitat median {hab_d:.4f} -> {hab_n:.4f}, x{drop:.1f} down "
+                 f"(need x{cal['min_day_night_drop']:.0f})")
+
+    r_d = hab_d / max(str_d, 1e-9)
+    r_n = hab_n / max(str_n, 1e-9)
+    want = r_d * cal["lit_from_within_over_day"]
+    good = r_n >= want
+    ok &= good
+    lines.append(f"  {'OK  ' if good else 'FAIL'} lit from within: habitat "
+                 f"over unlit structure {r_n:.1f} at night against {r_d:.1f} "
+                 f"in daylight (need {want:.1f} = "
+                 f"x{cal['lit_from_within_over_day']:.0f} the day figure)")
+
+    # The footprint comes from the DAY frame, so it is the station's real
+    # outline. Thresholding the NIGHT frame for it would ask whether the bright
+    # parts are bright.
+    mask = d >= mf.FLOOR
+    thr = float(np.percentile(_crop(n, cal["sky_box"]), 99))
+    seen = float((n[mask] > thr).mean()) if mask.any() else 0.0
+    good = seen >= cal["min_footprint_visible"]
+    ok &= good
+    lines.append(f"  {'OK  ' if good else 'FAIL'} the silhouette reads: "
+                 f"{seen * 100:.1f}% of the station's footprint is brighter "
+                 f"than 99% of empty sky "
+                 f"(need {cal['min_footprint_visible'] * 100:.0f}%)")
+
+    clipped = float((n[mask] >= mf.CLIP).mean()) if mask.any() else 0.0
+    good = clipped <= cal["max_footprint_clipped"]
+    ok &= good
+    lines.append(f"  {'OK  ' if good else 'FAIL'} not a lightbox: "
+                 f"{clipped * 100:.2f}% of the station's footprint clipped "
+                 f"(max {cal['max_footprint_clipped'] * 100:.1f}%)")
+    return ok, lines
+
+
+# The three committed frames the gates read. They are FRAMES rather than
+# numbers on purpose: a gate that checks a constant against a constant cannot
+# fail, and this project has written three of those this month. These fail the
+# moment the rig, the exposure, the hull material or the window sheet moves,
+# and the only way to make them pass again is to re-render and look.
+GATE_FRAMES = {
+    "day_calibration": "docs/engine-exterior-calibration.png",
+    "day_arrival": "docs/engine-exterior-day.png",
+    "night_arrival": "docs/engine-exterior-night.png",
+}
+
+
+def run_exterior_gates(*paths):
+    """Both exterior gates over committed frames. True if everything passes."""
+    p = list(paths) + [os.path.join(ROOT, GATE_FRAMES[k])
+                       for k in ("day_calibration", "day_arrival",
+                                 "night_arrival")][len(paths):]
+    cal, day, night = p[0], p[1], p[2]
+    ok, msg = gate_exterior_day(cal)
+    print(f"exterior day exposure  {'OK  ' if ok else 'FAIL'} {msg}")
+    night_ok, lines = gate_exterior_night(day, night)
+    print("exterior night side")
+    for ln in lines:
+        print(ln)
+    return ok and night_ok
+
+
+def camera_spherical(eye, target):
+    """The eye as (elevation, azimuth) in `_spherical`'s own convention.
+
+    The inverse of `_spherical`, and it exists so the night sun can be placed
+    relative to the CAMERA. Returning both angles rather than just the azimuth
+    was a correction: the first night frame set only the azimuth opposite and
+    left the elevation at the day default, so with the eye 18 degrees up and
+    the sun 34 degrees up the two were 124 degrees apart rather than 158, the
+    barrel's whole upper surface stayed lit, and the frame came back looking
+    like a slightly underexposed day. Half an antipode is not an antipode.
+    """
+    dx, dy, dz = eye[0] - target[0], eye[1] - target[1], eye[2] - target[2]
+    d = math.dist(eye, target) or 1.0
+    return (math.degrees(math.asin(max(-1.0, min(1.0, dy / d)))),
+            math.degrees(math.atan2(dz, dx)))
+
+
 def build_exterior(args, out_dir):
     """The whole station against space. One glb, straight off the hull."""
     target0 = (0.0, 0.0, args.target_z)
@@ -356,8 +872,38 @@ def build_exterior(args, out_dir):
         eye = _spherical(dist, elev, az, target)
     aim = args.target if args.target else target
 
+    # The sun. On the day side it is where the shot says; on the night side it
+    # is behind the station AS SEEN FROM THIS EYE, because that is what makes
+    # the frame a night frame. Derived from the eye rather than from --orbit so
+    # that --eye works too: a shot given an explicit eye position and a
+    # `--lighting night` that quietly used --orbit's untouched default would
+    # come back fully lit and look like a rig failure.
+    #
+    # `--sun-az` and `--sun-elev` DO NOT APPLY at night, and that is the point
+    # rather than a limitation: the sun's job in a night shot is to be behind
+    # the station from this eye, and letting a shot set it absolutely is how a
+    # night frame comes back lit.
+    lighting = getattr(args, "lighting", "day")
+    if lighting == "night":
+        cam_elev, cam_az = camera_spherical(eye, target)
+        # The antipode of the eye, swung about the SPIN AXIS by the phase --
+        # about the spin axis rather than about anything else so the surviving
+        # crescent runs down one flank of the barrel, where it reads as a
+        # cylinder 500 m across, instead of along the top where it reads as a
+        # rim light.
+        sun_elev = -cam_elev
+        sun_az = cam_az + 180.0 + args.night_sun_phase
+    else:
+        sun_elev, sun_az = args.sun_elev, args.sun_az
+
     return {
         "shot": "exterior",
+        # WHICH OF THE SCENE'S TWO LOOKS THIS FRAME IS. The look itself is in
+        # exterior.tscn -- see the note there on why it is a second Environment
+        # and not a second scene. All that belongs in the shot is which one,
+        # because which side of the terminator the camera is on is a property
+        # of the shot and not of the look.
+        "lighting": lighting,
         "scene": "res://scenes/exterior.tscn",
         "glb": [glb],
         "triangles": tris,
@@ -386,19 +932,30 @@ def build_exterior(args, out_dir):
         # sun angle produced a terminator -- the 8 km hull read as one flat
         # grey value end to end however the key was moved. A rig nailed to
         # world axes stops being a rig the moment the camera moves.
-        "sun_from": list(_spherical(20000.0, args.sun_elev, args.sun_az, target)),
+        "sun_from": list(_spherical(20000.0, sun_elev, sun_az, target)),
         # Kicker from behind and slightly below, opposite the key: its whole
         # job is to put a bright edge on the unlit side so the silhouette
         # separates from black space.
-        "rim_from": list(_spherical(20000.0, -10.0, args.sun_az + 175.0, target)),
+        #
+        # AT NIGHT IT IS DARK, and exterior.tscn's `night_lights_off` is what
+        # darkens it -- not this file. Which lights are burning is part of the
+        # look. It is still AIMED here, from the resolved sun rather than from
+        # --sun-az, so that if the look ever wants it back it is pointing where
+        # its own docstring says it should rather than at the day sun.
+        "rim_from": list(_spherical(20000.0, -10.0, sun_az + 175.0, target)),
         # Fill sits on the OPPOSITE side of the camera axis from the key --
         # mirrored through it -- which is where a fill goes and where it does
         # some good. Put on the same side as the key it merely brightens the
         # side that is already lit, which is what the first version did and
         # why the terminator kept refusing to appear.
         "fill_from": list(_spherical(20000.0, args.orbit[1] + 10.0,
-                                     2 * args.orbit[2] - args.sun_az, target)),
+                                     2 * args.orbit[2] - sun_az, target)),
         "sun_at": list(target),
+        # Per-shot ambient, the same override the interior shot has and for the
+        # same reason: it exists so the calibrated value in the .tscn can be
+        # found by rendering and measuring rather than by taste. Absent unless
+        # asked for, so the .tscn's value is what ships.
+        **({"ambient": args.ambient} if args.ambient is not None else {}),
     }
 
 
@@ -2555,6 +3112,70 @@ def _selftest():
               f"exported light count is a whole number per run "
               f"({len(sc['lights'])} over {runs} runs)")
 
+    # -- the exterior's two lighting conditions ----------------------------
+    # Three classes of check, and they are separated because they fail for
+    # different reasons: the WIRING (a night shot that quietly renders the day
+    # look), the NUMBERS (an exposure that drifted away from the frame it was
+    # measured on), and the FRAMES (the rig, the hull material or the window
+    # sheet moved under a committed render).
+    ext_tscn = os.path.join(ROOT, "godot/scenes/exterior.tscn")
+    if os.path.exists(ext_tscn):
+        with open(ext_tscn) as f:
+            tscn = f.read()
+        day_e = scene_env_exposure(ext_tscn, "Env")
+        night_e = scene_env_exposure(ext_tscn, "EnvNight")
+        # A night side that is not a different exposure is not a night side.
+        # This is the cheapest possible guard against the whole feature being
+        # wired to nothing, and it costs no render.
+        check(night_e > day_e * 2.0,
+              f"the night environment is a genuinely different stop "
+              f"(day {day_e}, night {night_e})")
+        check("night_environment = SubResource(\"EnvNight\")" in tscn,
+              "the root node mounts EnvNight as its night environment")
+        # The rim is the specific light whose aim makes it a frontal fill on
+        # the anti-sun side. If it is ever dropped from this list the night
+        # frame gets its camera-facing edge lit again, which is the defect the
+        # condition exists to remove -- and the frame would still look
+        # plausible.
+        m = re.search(r"night_lights_off = PackedStringArray\(([^)]*)\)", tscn)
+        off = re.findall(r'"([^"]+)"', m.group(1)) if m else []
+        check("Rim" in off and "Fill" in off,
+              f"the night condition darkens the rim and the fill (has {off})")
+        # Every name in that list has to BE a light in this scene. GDScript
+        # errors on a miss at render time; this catches it without a render,
+        # because a typo there leaves the light burning.
+        lights = set(re.findall(
+            r'\[node name="([^"]+)" type="\w*Light3D"', tscn))
+        check(set(off) <= lights,
+              f"every night_lights_off name is a light in the scene "
+              f"({sorted(set(off) - lights)} are not)")
+        # The day exposure has to be the one the calibration was verified at.
+        # If someone nudges the .tscn without re-measuring, the recorded
+        # derivation stops describing the file and this says so.
+        cal = EXTERIOR_CALIBRATION["day"]
+        pred = cal["verified_p95"] / cal["reference_value"]
+        check(abs(pred - cal["verified_multiple"]) < 0.01,
+              f"the recorded day calibration is self-consistent "
+              f"({pred:.3f} vs {cal['verified_multiple']})")
+        check("night" not in EXTERIOR_CALIBRATION["night"].get("reference", ""),
+              "the night entry claims no reference frame, because it has none")
+
+    # The frames. Missing is a FAILURE, not a skip: the whole point is that a
+    # claim about the exterior cites an engine frame, and a gate that quietly
+    # passes when the frame is absent is how the engine path rotted between
+    # sessions 2j and 3k.
+    frames = {k: os.path.join(ROOT, v) for k, v in GATE_FRAMES.items()}
+    if all(os.path.exists(p) for p in frames.values()):
+        good, msg = gate_exterior_day(frames["day_calibration"])
+        check(good, f"day exposure gate: {msg}")
+        good, lines = gate_exterior_night(frames["day_arrival"],
+                                          frames["night_arrival"])
+        check(good, "night side gates:\n" + "\n".join(lines))
+    else:
+        check(False, "committed exterior frames are missing: "
+                     + ", ".join(k for k, p in frames.items()
+                                 if not os.path.exists(p)))
+
     print(f"{ok}/{ok + fail} passed")
     return 0 if fail == 0 else 1
 
@@ -2610,6 +3231,20 @@ def main():
     ap.add_argument("--fov", type=float, default=46.0)
     ap.add_argument("--sun-az", type=float, default=168.0)
     ap.add_argument("--sun-elev", type=float, default=34.0)
+    ap.add_argument("--lighting", choices=("day", "night"), default="day",
+                    help="exterior: which of exterior.tscn's two lighting "
+                         "conditions. `night` puts the sun behind the station "
+                         "as seen from THIS eye and mounts the night "
+                         "environment -- see EXTERIOR_CALIBRATION")
+    ap.add_argument("--night-sun-phase", type=float,
+                    default=NIGHT_SUN_PHASE_DEG,
+                    help="exterior: degrees the night sun sits off "
+                         "dead-behind-the-station. 0 eclipses it entirely and "
+                         "the limb goes hard black")
+    ap.add_argument("--gate-exterior", nargs="*", metavar="PNG",
+                    help="measure committed exterior frames against "
+                         "EXTERIOR_CALIBRATION and exit non-zero if they are "
+                         "out. Defaults to the three docs/ frames")
     ap.add_argument("--lights-per-run", type=int, default=10)
     ap.add_argument("--light-range", type=float, default=1100.0)
     ap.add_argument("--shadow-lights", type=int, default=2)
@@ -2625,6 +3260,9 @@ def main():
                          "can be found by rendering and measuring rather than "
                          "by taste -- see tools/measure_frame.py")
     a = ap.parse_args()
+
+    if a.gate_exterior is not None:
+        sys.exit(0 if run_exterior_gates(*a.gate_exterior) else 1)
 
     if not a.shot:
         sys.exit(_selftest())

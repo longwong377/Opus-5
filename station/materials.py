@@ -686,10 +686,86 @@ def _build():
         "swept_array", "Swept Array — collector and sensor panel faces",
         albedo=(0.360, 0.365, 0.375), roughness=0.66, metallic=0.25,
         specular=0.35,
+        # `forward_comms_plate` is the fourth of the four groups that were on
+        # the exterior fallback by design, and it is the one that needed no new
+        # material: 00-INDEX's read of the same sheet says the "swept
+        # structures" of the top view ARE a flat plate-like communications
+        # array, i.e. the same panel family as the collectors and the proximity
+        # arrays, measured in the same pass off the same image. Binding it here
+        # is one measurement covering four components, not a fourth guess.
         binds=("heat_exchange_solar_array", "forward_swept_array",
-               "space_traffic_prox_array"),
+               "space_traffic_prox_array", "forward_comms_plate"),
         scenes=("exterior",),
         source="exterior more.jpg top-view swept blades, V 0.34, near-neutral — darker than hull, not white"))
+
+    # ---- the glazed blisters: observation domes, rotundas, docking ports ---
+    #
+    # INV-008 left all of these on `hull_exterior` and said why: "they are
+    # glazed volumes over lit interiors and almost certainly should not be
+    # opaque hull, but no reference in the set shows them lit from outside,
+    # and a glowing dome is a large, prominent guess."
+    #
+    # THAT CAUTION IS RIGHT AND IS KEPT. What has changed is that the domes are
+    # no longer a single smooth surface: components.domes now emits the shell
+    # and its FRAME as separate groups, because 03-sector-blue/comand and
+    # contorl.webp is authority 1, is Observation Dome 1 seen from inside, and
+    # shows the glazing "carried on radial spoke mullions with a broad
+    # concentric ring band" (00-INDEX). So the structure is sourced even though
+    # the light through the glass is not, and the two can now be said
+    # separately instead of averaged into one grey egg.
+    #
+    # `dome_glazing` is therefore dark glass and NOT an emissive. That is a
+    # smaller claim than the one INV-008 declined, and it replaces a claim that
+    # is certainly wrong -- that a window is hull plating.
+    a(Material(
+        "dome_glazing", "Dome Glazing — observation dome, rotunda and docking port glass",
+        albedo=(0.045, 0.048, 0.055), roughness=0.10, metallic=0.0,
+        specular=0.85,
+        binds=("observation_dome", "docking_port"), scenes=("exterior",),
+        source="03-sector-blue/comand and contorl.webp (authority 1) — Observation "
+               "Dome 1 is Command and Control and its aperture is GLAZED, a large "
+               "circle of panes on radial mullions, not plating. Contract 5 names "
+               "'OB. DOME 1 (COMMAND & CONTROL)' and 'OB. DOME 2'.",
+        note=("`observation_rotunda` is deliberately NOT bound here. It stays on "
+              "`habitat_windows`, which INV-036 put it on, and 00-INDEX's "
+              "re-examination of 05-sector-green/rotunda.webp says the rotunda's "
+              "window ring looks INWARD onto the drum rather than out at space. "
+              "Two different fittings; one of them is not settled and this "
+              "material does not settle it."),
+        extrapolated=("every number. No frame in the set shows any of these from "
+                      "outside, so this is a dark dielectric — 4.5% albedo, "
+                      "roughness 0.10, specular 0.85 — which is what unlit glass "
+                      "does at grazing incidence in a Forward+ renderer. It is "
+                      "chosen to be the SMALL guess: it makes the domes read as "
+                      "glass in silhouette and adds no light to the frame. "
+                      "Overturned by any exterior frame showing a dome, which "
+                      "would settle whether they are lit from within — and if "
+                      "they are, this becomes an emissive and the entry stands "
+                      "as the record of why it was not one first.")))
+
+    a(Material(
+        "dome_structure", "Dome Structure — mullions, ring band and base collar",
+        # hull_exterior's measured albedo. The mullions are the pale structural
+        # members carrying the glazing and they are continuous with the hull
+        # plating at the dome's base collar; in the C&C frame they are the
+        # lightest thing in the aperture.
+        albedo=(0.600, 0.582, 0.564), roughness=0.58, metallic=0.30,
+        specular=0.45, texture="hull_plate", uv_scale=1.0 / 16.0,
+        normal_scale=0.9,
+        binds=("observation_dome_frame", "observation_rotunda_frame",
+               "docking_port_frame"),
+        scenes=("exterior",),
+        source="03-sector-blue/comand and contorl.webp (authority 1) — radial spoke "
+               "mullions and a broad concentric ring band, pale against the glazing. "
+               "Albedo adopted from `hull_exterior`, measured neutral on exterior "
+               "more.jpg (INV-008).",
+        note=("Bound by the full `*_frame` fragments rather than by a bare "
+              "`_frame`, which would also match the interior kit's portal_frame "
+              "and door_frame. Longest-fragment resolution would still sort that "
+              "out today; it would stop doing so the moment someone emitted a "
+              "group called `frame`."),
+        extrapolated="the 16 m plate repeat and the finish; the mullion COUNT is "
+                     "measured — see components.DOME_MULLIONS and INV-041"))
 
     a(Material(
         "hull_banding_red", "Hull Banding Red — exterior structural marking",
@@ -712,22 +788,31 @@ def _build():
         binds=("hazard_stripe", "bay_lip"), scenes=("exterior", "drum"),
         source="Cobra Bays with starfurries.webp bay lip; dock.webp deck marking",
         note=("The only high-chroma paint on the exterior in any authority-1 "
-              "frame. No geometry carries the `hazard_stripe` group yet; the "
-              "material exists so the group has somewhere to land."),
+              "frame. It waited three sessions for geometry and now has some: "
+              "components.cobra_bay_ring emits `hazard_stripe_cobra` -- the "
+              "sill you cross going into a bay and the nosing on each of its "
+              "two deck ledges, which is where every chevron in the reference "
+              "frame is."),
         extrapolated="the 3 m stripe pitch — the frames show the pattern, not its scale"))
 
     a(Material(
         "marker_light_white", "Marker Light White — section-joint beacon",
         albedo=(0.080, 0.080, 0.085), roughness=0.30, metallic=0.0,
         specular=0.20, emission=(1.000, 0.950, 0.880), emission_energy=1.3,
-        binds=("greeble_nav_light",), scenes=("exterior",),
+        # `cobra_marker_white` is the geometry this material was measured from
+        # and never had: files of marker lights down the inner faces of a bay's
+        # columns. It was bound to `greeble_nav_light` alone, which is a
+        # section-joint beacon somewhere else entirely on the hull.
+        binds=("greeble_nav_light", "cobra_marker_white"), scenes=("exterior",),
         source="Cobra Bays with starfurries.webp — red and white marker lights on the columns"))
 
     a(Material(
         "marker_light_red", "Marker Light Red — hazard beacon",
         albedo=(0.100, 0.050, 0.040), roughness=0.30, metallic=0.0,
         specular=0.20, emission=(1.000, 0.300, 0.120), emission_energy=2.1,
-        binds=("greeble_hazard_light",), scenes=("exterior",),
+        # Same closure as marker_light_white: the beacons on the cobra bay
+        # column heads are literally what the 96% figure below was measured on.
+        binds=("greeble_hazard_light", "cobra_beacon_red"), scenes=("exterior",),
         source="Cobra Bays with starfurries.webp — 96% of the frame's saturated-bright pixels are H 15-20"))
 
     a(Material(
@@ -744,6 +829,64 @@ def _build():
                "greeble_conduit"),
         scenes=("exterior",),
         source="exterior more.jpg dorsal fittings, V 0.20-0.31 against hull plating 0.28-0.37"))
+
+    # ---- the cobra bays --------------------------------------------------
+    #
+    # These two are the reason `cobra_bay` sat on the exterior fallback for
+    # eleven sessions: there was nothing to bind, because the bay was one box.
+    # It is now a framed well in five groups, and three of the five need no
+    # new material at all -- the hazard lip lands on `hazard_chevron` and the
+    # two light families on `marker_light_red` and `marker_light_white`, which
+    # were MEASURED OFF THIS BAY'S OWN REFERENCE FRAME and had no geometry to
+    # sit on. That loop closing is worth more than a new colour would be.
+    #
+    # NEITHER OF THE TWO BELOW INTRODUCES A COLOUR. Each adopts an albedo
+    # already measured on the exterior sheet, for the same reason
+    # docking_bay.py adopts the schema's cobra bay width instead of inventing
+    # a second one: two numbers for one surface is how a project ends up with
+    # two answers. What differs is finish and texture scale, and those are
+    # extrapolated and say so.
+    a(Material(
+        "bay_frame", "Cobra Bay Frame — the columns, sill and lintel of a launch well",
+        # greeble_fitting's measured albedo exactly. A bay's frame is the same
+        # register as every other thing bolted to the hull: fabricated metal,
+        # consistently darker and less warm than the plating it stands on.
+        albedo=(0.310, 0.306, 0.300), roughness=0.52, metallic=0.42,
+        specular=0.50, texture="hull_plate", uv_scale=1.0 / 24.0,
+        normal_scale=1.1,
+        binds=("cobra_bay",), scenes=("exterior",),
+        source="Albedo adopted from `greeble_fitting`, measured on exterior more.jpg "
+               "at V 0.20-0.31 against hull plating 0.28-0.37. The FORM is authority 1: "
+               "01-station-exterior/Cobra Bays with starfurries.webp shows heavy "
+               "chamfered box columns with red beacons at their heads.",
+        note=("Textured with hull_plate rather than greeble_fitting's truss_steel, "
+              "because a column 9.7 m across and 42 m long is plate-built structure "
+              "and a 6 m steel repeat on it reads as noise. Do NOT read the frame's "
+              "warm brown as paint: INV-008 established for this exact frame that "
+              "the hue there is a warm key light, and tinting albedo to match it is "
+              "the mistake that made the whole hull steel blue in session 2c."),
+        extrapolated="the 24 m plate repeat, and roughness/metallic, which no "
+                     "reference in the set can measure — INV-008 constraint 2"))
+
+    a(Material(
+        "bay_well", "Cobra Bay Well — the liner, floor and ledges inside the bay",
+        # structural_truss's measured albedo: the darkest surface on the sheet,
+        # and an unpainted well liner is the same unpainted structural metal.
+        albedo=(0.260, 0.255, 0.248), roughness=0.66, metallic=0.30,
+        specular=0.40, texture="truss_steel", uv_scale=1.0 / 10.0,
+        normal_scale=1.0,
+        binds=("cobra_bay_well",), scenes=("exterior",),
+        source="Albedo adopted from `structural_truss`, measured on exterior more.jpg "
+               "at V 0.204 against hull 0.44. Cobra Bays with starfurries.webp shows "
+               "at least three stepped deck levels inside the bay volume.",
+        note=("Darker than the frame by a measured step, NOT crushed to black. "
+              "The bay interior is nearly black in the reference and it is "
+              "tempting to paint that in, but the frame is a night shot and the "
+              "well is 24 m deep: Forward+ shadow maps and SSAO produce that "
+              "darkness from the geometry, which is the honest place for it. "
+              "Painting it as well would double-count and the bay would go flat "
+              "black in the one shot -- a lit approach -- that it exists for."),
+        extrapolated="roughness, metallic and the 10 m repeat"))
 
     # ---- interior corridor kit -----------------------------------------
     #
@@ -3522,6 +3665,16 @@ KNOWN_GROUPS = tuple(sorted(set(
      "space_traffic_prox_array", "greeble_nav_light", "greeble_hazard_light",
      "greeble_panel", "greeble_vent", "greeble_hatch", "greeble_blister",
      "greeble_antenna", "greeble_cleat", "greeble_conduit")
+    # The exterior components. They were absent from this list for as long as
+    # they had no materials, which is backwards -- the list exists to catch a
+    # group with no material, so leaving the unbound ones out of it is the one
+    # case it cannot report. `forward_comms_plate` and the three `*_frame`
+    # groups are here for that reason as much as for coverage.
+    + ("cobra_bay", "cobra_bay_well", "hazard_stripe_cobra",
+       "cobra_beacon_red", "cobra_marker_white", "forward_comms_plate",
+       "observation_dome", "observation_dome_frame",
+       "observation_rotunda", "observation_rotunda_frame",
+       "docking_port", "docking_port_frame")
     # drum shell and caps
     + tuple(f"drum_{n}" for n in _LAND_USE_NAMES)
     + tuple(f"drum_riser_{n}" for n in _LAND_USE_NAMES)

@@ -256,7 +256,7 @@ more specific than a plate is claimed.
 
 ---
 
-## INV-009 — Aurora-class Starfury airframe dimensions
+## INV-042 — Aurora-class Starfury airframe dimensions
 
 **Invented:** Every dimension in `station/starfury_geometry.py` — overall length 6.0 m, span
 9.26 m, fuselage and canopy sections, boom sweep and bow, nacelle profile, engine bell size,
@@ -317,7 +317,7 @@ around the ones that existed.
 
 ---
 
-## INV-010 — Station material palette
+## INV-043 — Station material palette
 
 **Invented:** The surface properties of every material in `godot/materials/` — metallic,
 roughness, specular, emission energy — plus the decision that the exterior hull albedo carries
@@ -1771,3 +1771,266 @@ render came back at **18.9× its reference frame with 14% of it clipped**, and t
 rescue it was 0.07. The answer was already written in that material's own source note: the grid is
 *"ambient decoration rather than a task light"*, ranked last of the three. It stays emissive-only,
 and customs is therefore recorded as **not at layer 4** rather than counted with a rescued number.
+
+
+---
+
+## INV-038 — The exterior's night side: the terminator, planetshine and the night exposure
+
+**Status:** extrapolation, authority 5. `godot/scenes/exterior.tscn` (`EnvNight`, `night_lights_off`),
+`tools/export_scene.NIGHT_SUN_PHASE_DEG` and `EXTERIOR_CALIBRATION["night"]`.
+
+**What:** the sun's phase angle on a night shot (46°), the planetshine ambient (energy 0.12, colour
+(0.30, 0.27, 0.24)), the night exposure (`tonemap_exposure` 3.6) and the decision that the fill and
+the rim are dark.
+
+**Why it exists:** the standing blocking finding recorded in session 3k — *"The lighting rig has no
+night side... the owner's opening beat is the station coming into view, so that shot cannot be
+composed until the rig changes."* INV-036 built the windows; this is the lighting condition that
+lets them read.
+
+**What is sourced and what is not.** Nothing here is sourced. No frame in the reference set shows
+this station at range on the anti-sun side — INV-036 says the same of the windows themselves. The
+one authority-1 broadcast frame of station exterior *out of* sunlight is
+`reference/01-station-exterior/Cobra Bays with starfurries.webp`, a close shot of one bay face, and
+it is used for exactly one thing: its 0.08% clipped fraction is the anchor for the rule that a night
+frame must not blow.
+
+**The phase is derived, and it is the only number here that is.** The sunlit crescent covers
+(1 − cos φ)/2 of a convex body's visible face. At the arrival framing the habitat drum is ~90 px
+across a 960-wide frame, so φ = 22° gives a 3.3 px crescent that aliases along the barrel, φ = 39°
+gives 10 px and is the floor, φ = 46° gives 14 px. **46 is declared; the floor at 39 is derived.**
+
+**Planetshine is a measured trade, not a level.** The station holds station over Epsilon III, which
+fills a large solid angle beneath it, so the unlit hull is lit by a planet rather than by nothing.
+How much is decided by measuring what it costs, at the arrival framing:
+
+| ambient energy | footprint visible against the starfield | habitat / unlit structure |
+|---|---|---|
+| 0.00 | 37.9% | unbounded |
+| **0.12** | **66.8%** | **30.4** |
+| 0.55 | 94.6% | 14.4 — daylight's own ratio |
+
+At 0 the truss and reactor are indistinguishable from space and the station reads as two blocks
+rather than an 8 km object. At 0.55 the pressurised sections are no more distinct from the unlit
+ones than they are in full sun, which is the whole finding thrown away. 0.12 also happens to put the
+unlit habitat hull at 0.0112, just over `tools/measure_frame.py`'s 0.010 floor — the dimmest value
+that is still a value.
+
+**The exposure is declared, and it had to be an exposure.** Most of a night frame is EMISSION, and
+no light energy scales emission: a `--light-gain 0.0` render at the arrival distance leaves the drum
+99.4% below the measurable floor with a p50 of 0.0017. Raising `emission_energy` instead would change
+INV-036's *physical* claim about the windows in order to fix a *photographic* one. 3.6 is 8.4× the
+day exposure — three and a bit stops, conservative for the difference between a sunlit surface and a
+lit window. Four measured constraints bound it and all four are gated: the sheet's mean emission,
+the habitat-to-structure ratio, the silhouette against the starfield, and clipping.
+
+**The fill and the rim are dark, and the sun is the rim.** At the arrival framing the three lights
+sit at 136°, 49° and 116° off the camera axis: the sun is the backlight and the rim is a
+three-quarter frontal key on the hemisphere the condition exists to show dark. Measured with both
+left burning, the habitat's median is 5.2× brighter and the visible footprint goes from 67% to 88% —
+a dim day side.
+
+**Overturned by:** any Season 2–3 frame of the station at range on the anti-sun side. It would fix
+the planetshine level, the exposure and the crescent width at once.
+
+---
+
+## INV-039 — The exterior day exposure, and the statistic it is measured on
+
+**Status:** extrapolation, authority 5 (the *procedure* is the project's; the choice of statistic and
+the target are the judgement). `godot/scenes/exterior.tscn` `Env.tonemap_exposure = 0.43`,
+derivation in `tools/export_scene.EXTERIOR_CALIBRATION["day"]`.
+
+**What:** the exterior was the last lit volume in the project with no measured exposure. It is now
+0.43, verified at ×1.403 of its reference.
+
+**The reference, and what had to be established before it could be used.**
+`reference/01-station-exterior/` holds five files and **three are misfiled interiors** — `view.jpg`
+is byte-identical to `03-sector-blue/Babylon_5_2-22_34b.jpg`, `welcome to babylon 5.webp` is customs
+signage, `sleeping-in-light-05.jpg` is Downbelow; `reference/00-INDEX.md` says so for all three.
+That leaves `exterior more.jpg` as the only sunlit whole-station reference, and **measuring it
+whole-frame measures a desktop wallpaper's backdrop**: the marbled plate reads median 0.1259 and so
+does the whole frame, to four decimals. The comparison is against recorded crops of the habitat drum
+in the sheet's two orthographic projections, and against a matched near-orthographic render of ours
+(30 km, fov 16, lod0) rather than against the arrival orbit, so lit fractions are comparable.
+
+**It is measured on p95, not the median.** The reference hull is mostly dark blue-purple courses,
+mean linear rgb (0.086, 0.086, 0.111), median at 29% of its brightest plate; ours is warm off-white
+throughout, (0.395, 0.350, 0.312), median at 76%. That is a *shape* difference and no exposure fixes
+it — matching the median would put our sunlit plating at half the show's and would have to be undone
+the moment the hull material gains its banding. p95 is the brightest sunlit plating and is the same
+white plate in both frames. **The residual median gap of 3.30× is a layer-3 finding against the hull
+material and is recorded as one, not tuned away.**
+
+**AgX is not linear here and assuming it was would have cost two thirds of a stop.** Three points
+from the calibration shot: exposure 1.00 → p95 0.5117, 0.70 → 0.4251, 0.40 → 0.2943, i.e.
+out ≈ exposure^0.62.
+
+**The weakest thing about it, stated plainly.** `exterior more.jpg` is a render of the production
+model on a fan-assembled wallpaper sheet, not a broadcast frame, so the ×1.40 offset — whose stated
+derivation is "a film frame carries a grade, a stock and chroma subsampling and our render carries
+none of them" — is on weaker ground here than anywhere else in the project. ×1.40 is kept anyway:
+every other space targets it, the two projections of this one sheet already disagree by 14%, and
+changing the project's single calibration constant for one space on an argument that cannot be
+measured is picking the convenient reading.
+
+**Overturned by:** one Season 2–3 broadcast frame of the station in sunlight at range. It would
+settle both the level and the ×1.40.
+
+---
+
+## INV-040 — The cobra bay: a framed well, and the proportions of one
+
+**Invented:** every proportion in `station/components.py`'s `COBRA_*` block and in
+`cobra_bay_ring` / `_cobra_bay` — the bay's axial length, the sill and lintel heights, the
+column step, the plinth and capital oversails, the two deck ledges, the stowed launch arm, the
+hull-datum construction, and 14 bays per ring.
+
+**Why necessary:** all 28 cobra bays were one box each, 21 m across the hull by 42 m along it,
+standing 26 m proud. A blister. `01-station-exterior/Cobra Bays with starfurries.webp` is
+authority 1 and shows the opposite — a deep structural well you look *into*. A blister and a
+well have the same silhouette from 9 km and nothing in common from 400 m, and 400 m is where
+the owner's opening beat ends up. Task #10 has been open since session 1 for this fitting.
+
+**What is sourced, and is not invention:**
+
+| quantity | value | authority | source |
+|---|---|---|---|
+| bay count | 28 | 3 | Contract 5 "COBRA BAYS (28)"; C-002 provisional, 28 bays / 24 fighters |
+| bay unit width | **42 m** | 3 | `station.yaml` `cobra_bay.width_m`; the same figure `docking_bay.py` reads rather than retypes |
+| protrusion | **26 m** | 3 | `station.yaml` `cobra_bay.protrusion_m` |
+| z band | 6980–7250 | 3 | `station.yaml`; excess zone 7062–7302, peak 102 m |
+| the bay is a framed WELL, not a blister | form | 1 | `Cobra Bays with starfurries.webp` |
+| heavy chamfered box columns; red beacons at their heads; amber/white marker lights in vertical files down their inner faces; yellow/black chevrons on **every** deck nosing; at least three stepped deck levels; a triangulated lattice launch arm with a pentagonal cradle ring, hinged at a heavy root block, which **swings** | form | 1 | same frame; 00-INDEX session-2r extraction |
+
+**The one measurement, and why a ratio is all that frame can give.** That frame has no scale
+anchor: no figure, no caption, and INV-008 already records that `01-station-exterior/` contains
+no authority-1 exterior hull frame at all. A *ratio* survives having no scale. Measured at
+native 843×474: the two framing columns read **57 px** wide with **136 px** of clear opening
+between them, so a column is 57/250 = **0.228** of the bay unit and the clear mouth is
+**0.544**. Taken as `COBRA_COLUMN_FRAC = 0.23`, with the clear falling out as 1 − 2(0.23) =
+0.54 — the measured 0.544 to within one pixel at that magnification. Against the schema's 42 m
+unit: columns **9.66 m**, clear mouth **22.7 m**.
+
+**What is extrapolated, worst first:**
+
+1. **The axial length, 42 m, is the weakest number here and nothing supports it.** No source
+   gives a cobra bay's extent along the station's axis. 42 m is inherited from the box this
+   replaces, where it was `2 × (width / 2)` — an artefact of that builder's arithmetic, not a
+   measurement of anything. It sets the mouth's aspect (22.7 wide × 32.3 long) and, through the
+   hull datum below, how much the bay tilts.
+2. **The hull datum.** The hull flares from 166 m to 191 m *inside one bay's length* at the aft
+   ring. Sizing a bay off the radius at its centre buries its fore end; sizing it off the
+   maximum stands its aft end 51 m proud of a hull the schema says it clears by 26. Both are
+   wrong for the same reason, so the bay is built on the straight line between the hull radii
+   at its own two ends and `protrusion_m` is measured from that. The bay therefore *tilts with
+   the hull*, which is what a rigid structure bolted to a flare does. Consequence worth stating
+   plainly: where the hull dishes below that line — up to 13.5 m at the aft ring — the bay is
+   proud of the hull by more than 26 m, and no rigid bay can avoid that.
+3. **Ledges at 0.30 and 0.58 of the well height**, projecting 0.22 of the clear width from
+   alternate sides. Sourced: *that* there are at least three stepped levels. Invented: which
+   three. The well floor is the third.
+4. **`COBRA_BEAM_RISE = 0.58`, `COBRA_SHAFT_RISE = 0.55`, `COBRA_SHAFT_FRAC = 0.82`,
+   `COBRA_PLINTH_FRAC` and `COBRA_CAPITAL_FRAC = 1.14`, `COBRA_BEAM_FRAC = 0.50`.** These exist
+   because the first build ran columns and beams to the same radius, and face-on that is one
+   flat 42 × 42 m plate with a hole in it — no relief anywhere, which is exactly what a box
+   primitive looks like. The reference's column heads are the highest thing in frame and the
+   beacons sit on them, so the beams became low ties and the columns step in and oversail.
+5. **14 bays per ring, two rings.** Inherited from the builder this replaces, where it was an
+   undocumented anti-crowding cap. It is now `spec.get("per_ring", 14)` and guarded: 28 in one
+   ring needs 1,176 m of arc against 1,049 m available at the aft ring's radius, so two rings is
+   not merely tidier, it is the only arrangement that fits at that radius. Weak corroboration:
+   the fore barrel in `exterior more.jpg`'s side view carries two separate light-grey bands of
+   rectangular cells rather than one.
+6. **The launch arm as three boxes.** A lattice truss and a solid boom differ by a few pixels of
+   transparency at this range and by ~300 triangles a bay. Stowed rather than extended, because
+   an extended arm is a runtime pose and this is hull geometry.
+
+**Overturned by:** any frame showing a cobra bay mouth against something of known size — the
+same want INV-022 already lists. Specifically, a Starfury unforeshortened in a bay mouth would
+close the absolute scale: a rough read of the cradle ring in the reference against the 6.8 m
+across-flats span in `starfury_geometry.py` suggests the bay in *that* frame is nearer 28 m than
+42 m, which would make the schema's 42 m the *pitch* rather than the mouth. That read is far too
+weak to act on — the ring is oblique and its diameter is guessed — but it is the direction the
+evidence leans and it is recorded so it is not rediscovered as a surprise.
+
+**Two defects the new gates caught, both invisible to any render.** The bays were sized off one
+radius per ring (above), and the capitals were scaled off `depth`, which now carries however far
+the frame reaches down to find the hull — 31 m at the aft ring — putting 34.5 m of column above
+a hull the schema says the bay clears by 26. `components._selftest` measures both against a
+datum it recomputes from the profile itself, and each was verified by reintroducing the bug and
+watching the gate go red at 1.33× and 2.06×.
+
+---
+
+---
+
+## INV-041 — Dome glazing: mullions, ring band and collar, and why the domes still do not glow
+
+**Invented:** the fitting proportions in `station/components.py`'s `_dome_fittings` —
+`DOME_BAND_PHI = 0.42`, `DOME_RIB_SEGMENTS = 2`, mullion section 0.055 × 0.045 of the dome
+radius, band and collar widths of 0.16 of the dome height, the 0.05 × max(radius, height)
+standoff — and every number in the `dome_glazing` material.
+
+**Why necessary:** `domes` served three components and eight instances — `observation_dome`
+(Dome 1 is Command and Control), `observation_rotunda` (4) and `docking_port` (2) — and built
+all eight as a bare half-ellipsoid with one material. Grey eggs. They are also among the
+largest fittings on the hull: the docking ports are 88 m across.
+
+**What is sourced, and is not invention:** `03-sector-blue/comand and contorl.webp` is authority
+1, is Observation Dome 1 seen from inside, and shows the glazing as "a large circle carried on
+**radial spoke mullions** with a **broad concentric ring band**, set in a flat-panelled
+bulkhead" (00-INDEX). That is the whole organising idea of the refit, and 00-INDEX's own entry
+says it "should match the exterior `domes` component". Counts, radii, heights and positions are
+unchanged from the schema (Contract 5, authority 3).
+
+**The mullion count is measured.** The upper arc of that frame at 5× gives **8 to 9 panes**
+across the visible half, closing to **16–18** for a full ring. `DOME_MULLIONS = 16` is taken
+because it is inside the counted range *and* divides the shell's segment count, so every rib
+lands on a shell seam. A rib crossing a seam has to be pushed further out to stay proud of the
+shell, and the further out it goes the more it reads as a cage over the dome rather than as its
+glazing bars.
+
+**The mullions stop at the ring band, and that is sourced too.** They ran to the pole in the
+first build and the render said no: sixteen 4.8 m bars converging on a point is 77 m of
+structure crowding into nothing, and it read as a starburst. The reference does not do it
+either — the phrasing is "a **large circle** carried on radial spoke mullions", and inside the
+band the frame shows one unbroken pane. Fixing the accuracy fixed the artefact.
+
+**What is extrapolated:** every fitting *dimension*. `DOME_BAND_PHI = 0.42` is the band's
+latitude read off the frame's proportions rather than measured; the section sizes are chosen so
+a 4.8 m bar on an 88 m dome reads as structure at 400 m without becoming a rib cage; the
+standoff of 0.05 × max(radius, height) is derived, not chosen — it is what keeps a straight
+chord between two rib nodes clear of the curved shell between them, given a sagitta of 0.034 r
+over a 30° chord.
+
+**`dome_glazing` is entirely extrapolated, and it is deliberately the SMALL guess.** INV-008
+left these on `hull_exterior` and said why: "they are glazed volumes over lit interiors and
+almost certainly should not be opaque hull, but no reference in the set shows them lit from
+outside, and a glowing dome is a large, prominent guess." **That caution is kept and no dome
+emits light.** What has changed is that the C&C frame establishes the aperture is *glazed*, so
+leaving it as hull plating is a claim that is certainly wrong. The material is therefore a dark
+dielectric — albedo (0.045, 0.048, 0.055), roughness 0.10, specular 0.85, no emission — which is
+what unlit glass does in a Forward+ renderer. It makes the domes read as glass in silhouette and
+adds nothing to the frame's light.
+
+`observation_rotunda`'s shell is **not** bound to it and stays on `habitat_windows`, because
+00-INDEX's re-examination of `05-sector-green/rotunda.webp` reads the rotunda's window ring as
+looking **inward** onto the drum. Two different fittings; one of them is unresolved and this
+entry does not resolve it.
+
+**Overturned by:** any exterior frame showing a dome. If the domes are lit from within,
+`dome_glazing` becomes an emissive and this entry stands as the record of why it was not one
+first. A second frame of the C&C window would also settle the mullion count between 16 and 18.
+
+**A closure defect worth recording, because no render could ever have found it.** `dome_mesh`
+was never closed: **56 boundary edges** each on `observation_dome` and `docking_port` and **112**
+on `observation_rotunda`, from an open base ring and a top ring of `segs` coincident vertices
+forming `segs` degenerate quads at the pole. The base sits inside the hull and the hole faces
+away from every camera, so the geometry has been open since the domes were first built. Found by
+an edge census, not by looking. Repaired at zero triangle cost — the pole becomes one vertex with
+a fan under it, which frees exactly the `segs` triangles the base disc needs — and greeble.py's
+blisters, which call the same function, are repaired with it.
+
+---
