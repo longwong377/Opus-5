@@ -55,6 +55,7 @@ material_rules = {
 "core_tube_end": ExtResource("m_core_structure"),
 "drum_arable": ExtResource("m_ground_arable"),
 "drum_parkland": ExtResource("m_ground_parkland"),
+"drum_ring_frame": ExtResource("m_endcap_rib"),
 "drum_riser_arable": ExtResource("m_ground_shore"),
 "drum_riser_parkland": ExtResource("m_ground_shore"),
 "drum_riser_settlement": ExtResource("m_ground_settlement"),

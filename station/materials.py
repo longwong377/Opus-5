@@ -1304,7 +1304,11 @@ def _build():
         "endcap_rib", "End Cap Rib — the radial ribs",
         albedo=(0.321, 0.327, 0.350), roughness=0.50, metallic=0.35,
         specular=0.50,
-        binds=("endcap_rib",), scenes=("drum",),
+        binds=("endcap_rib",
+               # Session 3s (INV-073): the drum shell's circumferential ring
+               # frames are the same structural member as an end cap rib --
+               # painted steel carrying hoop load -- at a different radius.
+               "drum_ring_frame"), scenes=("drum",),
         source="34b outer grey, sampled 0.321/0.327/0.350"))
 
     a(Material(
@@ -3723,6 +3727,7 @@ KNOWN_GROUPS = tuple(sorted(set(
     # drum shell and caps
     + tuple(f"drum_{n}" for n in _LAND_USE_NAMES)
     + tuple(f"drum_riser_{n}" for n in _LAND_USE_NAMES)
+    + ("drum_ring_frame",)
     + tuple(f"endcap_plate_c{i}" for i in range(8))
     + ("endcap_plate_c2_checker", "endcap_plate_c5_checker",
        "endcap_rib", "endcap_rimlight", "endcap_course_wall", "spoke")

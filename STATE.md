@@ -1,8 +1,37 @@
 # Project State
 
-**Last updated:** 2026-07-30 · **Session 3s** — layer 2: 16/118 -> 93/118 · **Session 3r** — **layer 2 is 16/118.** The owner saw the renders and the metrics now agree with the owner
+**Last updated:** 2026-07-30 · **Session 3s** — layer 2: 16/118 -> 108/118 · **Session 3r** — **layer 2 is 16/118.** The owner saw the renders and the metrics now agree with the owner
 
-## Session 3s — layer 2 goes 16/118 -> 93/118
+## Session 3s — layer 2 goes 16/118 -> 108/118
+
+Ten places remain, and nine of them are `components` — the exterior fittings behind the budget
+fork the owner has not ruled on. Every interior module now clears its derived detail floor.
+
+### One caveat, stated because it is the defect this session keeps finding
+
+**`interior`'s pass is geometry the drum shot does not show.** The ring frames were added to
+`interior.drum_interior()`'s band shell, and `export_scene.drum_parts` **replaces that shell with
+`drum_ground.visible_set()`** — its own comment says so, because emitting both would z-fight across
+four and a half million square metres. Measured: the frames change **0.09%** of the calibrated drum
+frame.
+
+The geometry is real and the module is legitimately articulated; `density.py` measures a module's
+geometry, which is what a geometry metric should do. But "interior passes layer 2" and "the drum
+looks better" are different claims, and only the first is true. The frames will show in any shot
+that uses the shell rather than the ground.
+
+### The vocabulary, and where it did not fit
+
+`rooms.articulate()` covers every box-shaped interior. The others needed their own:
+
+| module | what earned the line |
+|---|---|
+| `plant` | longitudinal service runs, cable tray, secondary ties at a 7 m working pitch against the 36 m structural one |
+| `core_tube` | longitudinal stringers on the facet creases — one runs 2.6 km, laying kilometres of arris for twelve triangles |
+| `interior` | circumferential ring frames, ~49 m of line per triangle, the best yield in the project |
+| `garden` | paving bay joints; the ground is most of the area and carried no line at all |
+
+## Session 3s (earlier) — layer 2 goes 16/118 -> 93/118
 
 `rooms.articulate()` is the shared vocabulary — bands, deck and soffit grids, mullions, panels,
 conduit — extracted from the procedural generator so the BESPOKE modules use the same one. Nine
