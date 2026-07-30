@@ -137,7 +137,7 @@ PATH_W_M = 2.4
 PATH_PITCH_M = 14.0
 KERB_W_M = 0.15
 KERB_H_M = 0.12
-HEDGE_RUNS = 18
+HEDGE_RUNS = 24
 HEDGE_MIN_M = 6.0
 HEDGE_MAX_M = 18.0
 HEDGE_W_M = 0.8
@@ -224,9 +224,19 @@ TRACK_H_M = 0.9
 SLEEPER_PITCH_M = 3.2
 SLEEPER_W_M = 0.24
 SLEEPER_T_M = 0.16
-BOUNDARIES = 9
+BOUNDARIES = 16
 BOUNDARY_W_M = 0.35
 BOUNDARY_H_M = 0.55
+JOINT_PITCH_M = 1.8
+JOINT_W_M = 0.06
+BEDS = 28
+BED_MIN_M = 5.0
+BED_MAX_M = 16.0
+BED_EDGE_M = 0.10
+BED_EDGE_H_M = 0.22
+TRENCHES = 15
+TRENCH_W_M = 0.70
+TRENCH_LIP_M = 0.09
 
 # Settlement bands, read from interior.LAND_USE rather than restated.
 _SETTLEMENT = "settlement"
@@ -912,6 +922,52 @@ def hard_landscape(seed="garden"):
         _box(v, t, g, "garden_kerb",
              (min(ex0, ex1) - KERB_W_M, -0.16, min(ez0, ez1) - KERB_W_M),
              (max(ex0, ex1) + KERB_W_M, KERB_H_M, max(ez0, ez1) + KERB_W_M))
+
+    # THE GROUND ITSELF. After the buildings and the planting were rebuilt the
+    # module still sat at 80.9% of its floor, and the reason is arithmetic: the
+    # townscape's 39,193 m2 is nearly all GROUND, and a flat plane carries no
+    # line at any triangle count. Every object added above raises the numerator
+    # and the ground raises only the denominator.
+    #
+    # What a real settlement floor has, and 29a shows: paths are laid in bays
+    # with expansion joints, planting beds are edged, and service runs are
+    # covered by trench lids. All three are grooves and upstands -- continuous,
+    # thin, and the cheapest line on the station.
+    # Bay joints BOTH WAYS across the whole terrace, not only the spine. A slab
+    # field is laid in bays; the joints are what stops 39,000 m2 of ground being
+    # a single flat plane that carries no line at any triangle count.
+    for i in range(int((2 * hl) / JOINT_PITCH_M)):
+        jx = -hl + JOINT_PITCH_M * (i + 0.5)
+        _box(v, t, g, "garden_paving_joint",
+             (jx - JOINT_W_M / 2, -0.13, -hw), (jx + JOINT_W_M / 2, -0.105, hw))
+    for i in range(int((2 * hw) / JOINT_PITCH_M)):
+        jz = -hw + JOINT_PITCH_M * (i + 0.5)
+        _box(v, t, g, "garden_paving_joint",
+             (-hl, -0.13, jz - JOINT_W_M / 2), (hl, -0.105, jz + JOINT_W_M / 2))
+    for i in range(BEDS):
+        bx = -hl + 3.0 + (2 * hl - 6.0) * _u(seed, "bdx", i)
+        bz = (1.0 if _u(seed, "bds", i) > 0.5 else -1.0) * (
+            PATH_W_M + 2.0 + 6.0 * _u(seed, "bdz", i))
+        bl = BED_MIN_M + (BED_MAX_M - BED_MIN_M) * _u(seed, "bdl", i)
+        bw = BED_MIN_M * 0.55 + BED_MIN_M * 0.5 * _u(seed, "bdw", i)
+        for (ex0, ez0, ex1, ez1) in ((bx, bz - bw / 2, bx + bl, bz - bw / 2),
+                                     (bx, bz + bw / 2, bx + bl, bz + bw / 2),
+                                     (bx, bz - bw / 2, bx, bz + bw / 2),
+                                     (bx + bl, bz - bw / 2, bx + bl,
+                                      bz + bw / 2)):
+            _box(v, t, g, "garden_bed_edge",
+                 (min(ex0, ex1) - BED_EDGE_M, -0.10, min(ez0, ez1) - BED_EDGE_M),
+                 (max(ex0, ex1) + BED_EDGE_M, BED_EDGE_H_M,
+                  max(ez0, ez1) + BED_EDGE_M))
+    for i in range(TRENCHES):
+        tzz = -hw + 2 * hw * (i + 0.5) / TRENCHES
+        if abs(tzz) < PATH_W_M + 1.0:
+            continue
+        for k in range(2):
+            zo = tzz + (k - 0.5) * TRENCH_W_M
+            _box(v, t, g, "garden_trench_lid",
+                 (-hl + 2.0, -0.12, zo - TRENCH_LIP_M / 2),
+                 (hl - 2.0, -0.06, zo + TRENCH_LIP_M / 2))
 
     # A PERGOLA over the spine. Long beams, and 29a's setting is a designed
     # civic landscape rather than a park -- the colonnade of `civic_landmark()`

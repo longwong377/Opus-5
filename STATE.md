@@ -1,6 +1,45 @@
 # Project State
 
-**Last updated:** 2026-07-30 · **Session 3s** — the Garden rebuilt 16.3% -> 80.9% of its floor · **Session 3r** — **layer 2 is 16/118.** The owner saw the renders and the metrics now agree with the owner
+**Last updated:** 2026-07-30 · **Session 3s** — the Garden PASSES its detail floor, 16.3% -> 101.4% · **Session 3r** — **layer 2 is 16/118.** The owner saw the renders and the metrics now agree with the owner
+
+## Session 3s — the Garden is the first thing rebuilt against the new bar
+
+**`directory.py` layer 2: 16/118 -> 20/118.** The four Garden places pass at **101.4%** of their
+derived detail floor, from 16.3%. `garden.tree()` 30 -> 440 triangles, `block_building()` 48 ->
+~1,600, the townscape 2,228 -> 22,620. Every object added is one `reference/00-INDEX.md` already
+extracted from `29a` and `33a` and that nobody had built: setted paths, clipped hedges, bench,
+circular planter with red-brown coping, orange sail canopies, the transit track, field boundaries.
+Only the dimensions are invention (INV-072).
+
+**THE DESIGN RULE, and it generalises to the other 98 places.** Line density is metres of visible
+line per m², so **LENGTH earns it, not triangle count**. Measured in this module:
+
+| element | m of line per triangle |
+|---|---|
+| dwarf boundary wall | ~20 |
+| continuous cill band | 5.3 |
+| downpipe | 2.0 |
+| **panel relief — what the budget bound is derived from** | **0.17** |
+
+Long thin prisms and continuous bands are how a *landscape* reaches its floor; panel relief is how
+a *wall* does. Choosing wrong wastes the budget by thirty times. The last 20% came entirely from
+paving bay joints — the ground is most of the area and was carrying no line at all.
+
+**TWO DEFECTS THE METRIC COULD NOT SEE AND THE RENDER COULD**, which is the argument for still
+looking at every frame:
+1. The limbs were built with the ring-based taper helper, which shares one axis for all rings — so
+   they were vertical stubs at the trunk while the foliage sat offset. **The canopy floated in
+   three disconnected pieces and the line density was fine.** `_limb()` sweeps between arbitrary
+   points; collars now crease against the trunk.
+2. 23 new group names took the fallback material and the whole townscape rendered **magenta**.
+   Caught by the layer-3 gate dropping 34/34 -> 33/34 — the gate working. All 23 bind to
+   already-measured materials; no new colour was introduced. It happened a second time with the
+   ground groups, and the gate caught that too.
+
+**Next, and it is now a known quantity:** 98 places remain below the floor. The 68 procedural rooms
+in `rooms.py` are 58% of the station and share one generator, so one rebuild moves all of them —
+that is the highest-leverage target, and the cill-band/pilaster vocabulary built here is directly
+what a room interior needs.
 
 ## READ THIS FIRST — session 3r found the project was measuring the wrong things
 
