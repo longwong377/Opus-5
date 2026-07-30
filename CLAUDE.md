@@ -80,7 +80,8 @@ grown to make a number go green.
 | **2a** | **Geometry — topology** | Every addressed location has mesh, closed, correctly wound, inside its own footprint | **118 / 118 COMPLETE** |
 | **2b** | **Geometry — articulation** | Every location survives the rubric's *half* distance: primary form, secondary structure, tertiary fittings, and the thing it is named for actually in it | **0 / 118 — see below** |
 | **3** | **Materials** | Every mesh carries PBR materials from `materials.py`. No flat colour anywhere | **118 / 118 COMPLETE** |
-| **4** | **Lighting** | Every location lit, in the engine, to its reference's mood | 113 / 118 — **CURRENT** |
+| **4a** | **Lighting — level** | Every location has a rig and a measured exposure, median-matched to its reference | **118 / 118 COMPLETE** |
+| **4b** | **Lighting — mood** | Every location matches its reference's *distribution*, not just its median — p5, p95, crushed, clipped | **1 / 17 measurable — see below** |
 | **5** | **Props & function** | The declared interactable types exist and do what `directory.py` says they do | 0 |
 | **6** | **Inhabitants** | NPCs placed, scheduled and animated in every location, at real density | 0 |
 | **7** | **Audio** | Ambience and event audio per location | 0 |
@@ -144,7 +145,43 @@ are a 1. This is not "everything is bad", it is "the bulk was never articulated"
    set at 17% of budget and the ground at 0.05 tri/m². 83% headroom sat unspent for sessions
    because the gate only ever said "under budget, pass".
 
-**Layer 4 is the current layer**, and the lesson it has produced so far is about MEASUREMENT, not
+### LAYER 4 SPLIT FOR THE SAME REASON LAYER 2 DID: the criterion could not fail
+
+Session 3r. Layer 4's criterion said *"lit to its reference's mood"* and the test was a **median**
+within x1.40 +/-25%. A median is a statistic a flat, washed-out frame matches perfectly, so the
+criterion could not express the thing it was named for.
+
+`tools/measure_frame.py` now compares the whole distribution — p5, p95, p5/p95, crushed (as a ratio
+*and* an absolute envelope) and a one-sided clipped cap. The tolerances are **derived, not chosen**:
+33 deduplicated authority-1 frames, paired by the interchangeability rule this project already used
+(`DRUM_CALIBRATION` accepts two references whose medians agree within `TOL`), 124 qualifying pairs,
+band = p95 of |ln(a/b)|. Validated by running the gate on the show against itself — 248 trials,
+combined pass 77.4%, stated rather than tuned to look better. `--derive` recomputes every band from
+the corpus and fails if a recorded value has drifted.
+
+**The result: 17 of 17 exposures pass the median test. 1 of 17 passes the distribution test.**
+`p5` is the discriminator and fails 13 of 17, bright on 11 — **including the corridor anchor that
+defines 1.00 for the entire project** (p5 x1.64). Two rooms fail the opposite way, crushing far
+*more* than their references (`quarters` x38.1, `alien_sector` x29.5).
+
+Two negative results worth keeping: `p95` (band x3.27) and `p5/p95` (x3.38) are nearly inert. The
+ratio is the statistic that *sounds* like it measures mood and measures least, because it inherits
+p95's variance.
+
+**And the derivation formula behind every room exposure is invalid.** Every value came from
+`gain *= 1.40 * ref_median / our_median`, which assumes the median scales with exposure. Measured
+over the corpus, `d(ln median)/d(ln gain)` ranges from **0.97 to 0.01** and goes **negative** on
+four frames — including `customs`' own reference — because raising exposure recruits sub-floor
+pixels into the measurable set from the bottom. STATE.md had recorded the symptom on `plant` ("sits
+at 1.59x either way") and blamed that room's geometry. It is a property of the statistic.
+
+**Nine of eleven `ROOM_EXPOSURE` values have no committed frame at all** and are therefore not
+verifiable in either direction. They were set by rendering, measuring, and not keeping the render.
+
+**Layer 4 is therefore split.** 4a — a rig and a measured level — is genuinely complete and the work
+is real. 4b is the bar that was missing, and it is 1/17 on the frames that exist.
+
+**Layer 4's older lesson still stands, and it is about MEASUREMENT, not
 light: `docs/layer4-lighting/*.json` records a per-space `ambient.ratio` taken from two hand-picked
 regions of a balanced frame, and a whole-frame percentile of the same frame gives a different
 number (0.300 vs 0.086 on `grey level 1.webp`). Tuning a render against the wrong one of those

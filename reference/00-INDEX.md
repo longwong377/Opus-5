@@ -3271,3 +3271,34 @@ standing 1.75 m pilot inside it and the result logged as an invention. That is t
 job, and the constraint is a real one rather than a free choice: the tub must simultaneously fit
 the pilot, fit the pod at the X-frame intersection, and match the 35–40% widest-point proportion
 measured here.
+
+---
+
+## Session 3r — two byte-duplications this index did not record, and one of them calibrates a room
+
+Found by hashing the whole reference tree during the frame-distribution work, not by reading.
+Both were listed as **NEW, authority 1** and are neither.
+
+| listed as new | is byte-identical to | MD5 |
+|---|---|---|
+| `10-interiors-generic-kit/garden more.jpg` | `03-sector-blue/Babylon_5_2-22_29a.jpg` | `1d530f22…` |
+| `10-interiors-generic-kit/more hallways.jpg` | `01-station-exterior/sleeping-in-light-05.jpg` | `68934048…` |
+
+`more hallway.jpg` (**singular**) is a genuinely different file. Do not collapse the two names.
+
+### The second one matters beyond bookkeeping — it is an era-lock breach in a calibration
+
+`sleeping-in-light-05.jpg` is **S5 "Sleeping in Light"**, and the entry above already carries the
+caveat: *"S5 is outside the S2–3 lock, and in this episode the station is abandoned — the debris,
+the darkness and the dead panels are the finale state, not normal operation. The set architecture
+is in-era; the dressing is not."*
+
+That caveat is correct and it was not applied. Under its duplicate name this frame is
+`BESPOKE_EXPOSURE['plant']`'s calibration reference and `corridor_service`'s measured frame — so a
+working room's brightness is derived from **the darkness of an abandoned station three seasons
+outside the era lock**. Exposure is dressing, not architecture. It is exactly the use the caveat
+forbids.
+
+Recorded as `C-009`. The architectural extractions from this frame stand; the level statistics do
+not.
+

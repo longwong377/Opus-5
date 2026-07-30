@@ -1,0 +1,2246 @@
+{
+ "_what": "The show's own frames, measured by tools/measure_frame.py, and the tolerances derived from them. This is the corpus behind measure_frame.DIST_BAND, CRUSHED_ENVELOPE and CLIPPED_CAP. Regenerate and re-check with `python3 tools/measure_frame.py --derive`; that command fails if the module's constants have stopped describing what is in here.",
+ "_why": "Every exposure in this project was set by a MEDIAN test against a reference frame -- x1.40 +/-25%. The owner looked at the renders and said they read as blockout while every gate was green, and both were true: a median says where the middle of a picture sits and nothing about how far it reaches. docs/engine-drum-garden.png sits at x1.49 of garden.png (green) with p5 at 3.2x the reference's and 0.01% of the frame black against the reference's 5.63%.",
+ "method": {
+  "corpus": "32 deduplicated authority-1 on-screen frames that depict a lit SET or a lit exterior -- the thing our renders are. Props on a studio backdrop, schematics, costume stills, fan reconstructions and both QUARANTINE folders are excluded. Byte-identical duplicates counted once.",
+  "pair_rule": "Two show frames whose medians agree within TOL (+/-25%) are treated as the same lighting register measured twice. This is NOT a new judgement: it is the rule export_scene.DRUM_CALIBRATION already applies when it accepts garden.png against Babylon_5_2-22_34b.jpg (8% apart) and rejects 33a and 29a.",
+  "statistic": "For each qualifying pair and each statistic, |ln(a/b)|. The band is the p95 of that distribution, so each band admits 95% of the disagreement the show has with itself at matched level.",
+  "why_not_max": "The maximum of 121 samples is one pair, not a tolerance. Using it would fit an envelope to the single worst case and the gate could never fail.",
+  "why_not_p90": "At p90 the combined verdict rejects 27% of the pairs the show itself produces. A gate that fails a quarter of the reference material is measuring the material.",
+  "application": "A render is compared against its reference RE-EXPOSED TO RENDER_OFFSET -- measure(ref, gain=1.40) -- so the level offset the median gate already allows is not charged again as a shape difference. Scaling the IMAGE is not the same as scaling the STATISTICS: it lifts sub-floor pixels into the measurable set where they arrive at the bottom and hold p5 down. garden.png p5 goes 0.0180 -> 0.0178 under x1.40, not to 0.0252.",
+  "clipped": "No usable pairwise structure -- two median-agreeing show frames disagree on clipped fraction by x53 at p90 and x134 at the maximum. Gated as an absolute cap at the p95 of the corpus's clipped fraction at the offset instead.",
+  "crushed_envelope": "The ratio band alone is blind at both ends: x11.52 of nearly nothing is still nearly nothing, and against a reference that crushes half the frame it permits a render that is 90% black. The envelope is the min and max the corpus itself occupies at the offset."
+ },
+ "render_offset": 1.4,
+ "quantile": 0.95,
+ "corpus": [
+  {
+   "file": "reference/03-sector-blue/Babylon_5_2-22_34b.jpg",
+   "class": "drum",
+   "why": "S2E22, drum interior wide. The frame DRUM_EXPOSURE is set on. 00-INDEX records 01-station-exterior/view.jpg as a duplicate; 10-interiors-generic-kit/transport.jpg is a THIRD byte-identical copy and 00-INDEX does not say so."
+  },
+  {
+   "file": "reference/03-sector-blue/Babylon_5_2-22_33a.jpg",
+   "class": "drum",
+   "why": "S2E22, drum, camera under a guideway truss. The tram framing's composition source."
+  },
+  {
+   "file": "reference/03-sector-blue/Babylon_5_2-22_35a.jpg",
+   "class": "drum",
+   "why": "S2E22, drum, tram saloon interior. = 02-station-cutaways-and-plans/inside.jpg."
+  },
+  {
+   "file": "reference/03-sector-blue/Babylon_5_2-22_29a.jpg",
+   "class": "drum",
+   "why": "S2E22, misfiled: this is the Garden. = 10-interiors-generic-kit/garden more.jpg, which 00-INDEX does not record. INV-044 establishes its darkness is CONTENT."
+  },
+  {
+   "file": "reference/09-garden-core-and-transit/garden.png",
+   "class": "drum",
+   "why": "Period CGI, garden and townscape. The garden framing's reference."
+  },
+  {
+   "file": "reference/09-garden-core-and-transit/The Gardens.webp",
+   "class": "drum",
+   "why": "Period CGI, garden from the axis. = The_Gardens01.webp."
+  },
+  {
+   "file": "reference/09-garden-core-and-transit/central corridor.webp",
+   "class": "drum",
+   "why": "= 10-interiors-generic-kit/central corridor.webp. corridor_concourse's second measured frame."
+  },
+  {
+   "file": "reference/03-sector-blue/comand and contorl.webp",
+   "class": "command",
+   "why": "Command and control. BESPOKE_EXPOSURE['command_control'] reference."
+  },
+  {
+   "file": "reference/03-sector-blue/war room.webp",
+   "class": "command",
+   "why": "War room. ROOM_EXPOSURE medical/research/office reference."
+  },
+  {
+   "file": "reference/03-sector-blue/dock.webp",
+   "class": "dock",
+   "why": "Docking bay. BESPOKE_EXPOSURE['docking_bay'] and ROOM_EXPOSURE store reference."
+  },
+  {
+   "file": "reference/03-sector-blue/Minbari Flyer 969 in docking bay 17.webp",
+   "class": "dock",
+   "why": "Second docking bay frame, CGI."
+  },
+  {
+   "file": "reference/13-other-ships/kosh's transport.webp",
+   "class": "dock",
+   "why": "Third docking bay frame; 00-INDEX says its value is the bay, not the ship."
+  },
+  {
+   "file": "reference/04-sector-red/more zocalo.png",
+   "class": "public",
+   "why": "1440x1080, the best Zocalo frame. BESPOKE_EXPOSURE['zocalo'] reference. = 10-interiors-generic-kit/more zocalo.png."
+  },
+  {
+   "file": "reference/04-sector-red/zocalo.webp",
+   "class": "public",
+   "why": "Second Zocalo frame; zocalo_concourse's measured frame in public_social.json."
+  },
+  {
+   "file": "reference/11-props-and-technology/Zocalo neon signage in background.jpg",
+   "class": "public",
+   "why": "Third Zocalo frame; the signage is the subject but the concourse is the set."
+  },
+  {
+   "file": "reference/04-sector-red/Casino.webp",
+   "class": "bar",
+   "why": "casino, measured space in public_social.json."
+  },
+  {
+   "file": "reference/04-sector-red/Doug's Dugout.webp",
+   "class": "bar",
+   "why": "BESPOKE_EXPOSURE['hospitality'] reference."
+  },
+  {
+   "file": "reference/04-sector-red/Earhart's.webp",
+   "class": "bar",
+   "why": "earharts, measured space in public_social.json."
+  },
+  {
+   "file": "reference/04-sector-red/Fresh air.webp",
+   "class": "bar",
+   "why": "fresh_air_restaurant, measured space."
+  },
+  {
+   "file": "reference/11-props-and-technology/fresh air resturant signage with view.webp",
+   "class": "bar",
+   "why": "Same scene as Fresh air.webp at 1200x1046 -- a DIFFERENT encode, not a byte duplicate, so it is kept: it is the corpus's only measure of encode-only variation (p5 0.0110 vs 0.0109, crushed 69.97% vs 69.90%)."
+  },
+  {
+   "file": "reference/07-sector-grey/grey level 1.webp",
+   "class": "corridor",
+   "why": "The residential corridor. THE ANCHOR: RENDER_OFFSET itself is our corridor over this frame. = 10-interiors-generic-kit/grey level 1.webp."
+  },
+  {
+   "file": "reference/05-sector-green/corridor in alien sector.webp",
+   "class": "corridor",
+   "why": "BESPOKE_EXPOSURE['alien_sector'] reference."
+  },
+  {
+   "file": "reference/01-station-exterior/sleeping-in-light-05.jpg",
+   "class": "corridor",
+   "why": "MISFILED -- an S5 Downbelow interior, not an exterior. = 10-interiors-generic-kit/more hallways.jpg, which is BESPOKE_EXPOSURE['plant']'s reference and corridor_service's measured frame. S5 is outside the S2-3 era lock."
+  },
+  {
+   "file": "reference/10-interiors-generic-kit/more hallway.jpg",
+   "class": "corridor",
+   "why": "SINGULAR 'hallway' -- a different file from 'more hallways.jpg'. corridor_concourse's first measured frame."
+  },
+  {
+   "file": "reference/05-sector-green/council chambers.webp",
+   "class": "civic",
+   "why": "BESPOKE_EXPOSURE['council_chamber'] and ROOM_EXPOSURE worship reference."
+  },
+  {
+   "file": "reference/05-sector-green/rotunda.webp",
+   "class": "civic",
+   "why": "Green sector rotunda."
+  },
+  {
+   "file": "reference/05-sector-green/conference aerea.webp",
+   "class": "civic",
+   "why": "conference_lounge, measured space."
+  },
+  {
+   "file": "reference/14-characters-and-uniforms/talia-winters in gorgeous office.webp",
+   "class": "civic",
+   "why": "00-INDEX: the clearest view of the habitat drum interior we hold, seen from an office."
+  },
+  {
+   "file": "reference/01-station-exterior/welcome to babylon 5.webp",
+   "class": "customs",
+   "why": "MISFILED -- customs signage, not exterior. The customs hall is the set."
+  },
+  {
+   "file": "reference/11-props-and-technology/babylon 5 welcome sign, instructions, and hub.jpg",
+   "class": "customs",
+   "why": "BESPOKE_EXPOSURE['customs'] reference."
+  },
+  {
+   "file": "reference/01-station-exterior/Cobra Bays with starfurries.webp",
+   "class": "exterior",
+   "why": "The one authority-1 broadcast frame of station exterior out of sunlight. EXTERIOR_CALIBRATION['night']['sanity_frame']."
+  },
+  {
+   "file": "reference/12-starfury/Starfury.jpg",
+   "class": "exterior",
+   "why": "Starfury in space, CGI. The corpus's second exterior."
+  },
+  {
+   "file": "reference/10-interiors-generic-kit/gardens or greenery.jpg",
+   "class": "drum",
+   "why": "Authority 1 per 00-INDEX's 10-interiors table. The garden's civic landmark, its water and the drum arching overhead -- the same subject garden.png holds. It was MISSED on the first pass of this corpus and added when the tree was re-enumerated file by file. Adding one frame in 33 moved the p5 band from x1.224 to x1.290, which is the honest measure of how stable a 33-frame estimate is: p95 of a 124-pair sample is the 6th-largest value and one new frame contributes 26 new pairs."
+  }
+ ],
+ "pairs": {
+  "n_corpus": 33,
+  "n_pairs": 124,
+  "n_possible": 528,
+  "rule": "max(median_a,median_b)/min(...) <= 1 + TOL, TOL = 0.25"
+ },
+ "dispersion_ln": {
+  "dark_p5": {
+   "n": 124,
+   "p50": 0.04483415877256026,
+   "p68": 0.07354242899182835,
+   "p90": 0.16806379956590625,
+   "p95": 0.2548165959262743,
+   "max": 0.48928956605155294
+  },
+  "bright_p95": {
+   "n": 124,
+   "p50": 0.48280946450122686,
+   "p68": 0.588676971902739,
+   "p90": 0.962424073126039,
+   "p95": 1.1836569529038359,
+   "max": 1.553585507479565
+  },
+  "ratio": {
+   "n": 124,
+   "p50": 0.5249450334407303,
+   "p68": 0.6718775807421424,
+   "p90": 1.0349130643105755,
+   "p95": 1.2172406690523134,
+   "max": 1.5011332389533998
+  },
+  "crushed": {
+   "n": 124,
+   "p50": 0.46579745968135433,
+   "p68": 0.6529061386714055,
+   "p90": 1.6091828715947607,
+   "p95": 2.4350087313072875,
+   "max": 3.3383007687238573
+  }
+ },
+ "bands_ln": {
+  "dark_p5": 0.2548165959262743,
+  "bright_p95": 1.1836569529038359,
+  "ratio": 1.2172406690523134,
+  "crushed": 2.4350087313072875
+ },
+ "bands_as_multiple": {
+  "dark_p5": 1.2902249666569723,
+  "bright_p95": 3.2662970835001754,
+  "ratio": 3.3778542446967745,
+  "crushed": 11.415918388823213
+ },
+ "crushed_envelope": [
+  0.0022451612903225805,
+  0.6391650732950924
+ ],
+ "clipped_cap": 0.036935286935286936,
+ "clipped_note": "Absolute, one-sided, and derived from the corpus's OWN clipped fraction at the offset rather than from a pairwise band: the pairwise dispersion of clipped over the 121 pairs is x2.78 at p50, x7.83 at p68 and x53.7 at p90, which is no structure at all. 3.69% independently corroborates the 4% overexposure threshold report() already carried, which was derived from our own lamp geometry clipping 1.3-3.1%.",
+ "measurements": {
+  "reference/03-sector-blue/Babylon_5_2-22_34b.jpg": {
+   "class": "drum",
+   "size": "1014x576",
+   "median": 0.15154319031940636,
+   "dark_p5": 0.029375127443869626,
+   "bright_p95": 0.44574902495756624,
+   "ratio": 0.0659005983168803,
+   "crushed": 0.0374411023449485,
+   "clipped": 0.009005862371246986,
+   "at_offset": {
+    "median": 0.20986880354887902,
+    "dark_p5": 0.03392650739244235,
+    "bright_p95": 0.6029305650850367,
+    "ratio": 0.05626934402912115,
+    "crushed": 0.026562157571772955,
+    "clipped": 0.013840948937102783
+   },
+   "file": "reference/03-sector-blue/Babylon_5_2-22_34b.jpg"
+  },
+  "reference/03-sector-blue/Babylon_5_2-22_33a.jpg": {
+   "class": "drum",
+   "size": "1001x576",
+   "median": 0.11660235010700036,
+   "dark_p5": 0.012652992672194325,
+   "bright_p95": 0.6136178271267979,
+   "ratio": 0.02062031465324379,
+   "crushed": 0.0928776085026085,
+   "clipped": 0.0,
+   "at_offset": {
+    "median": 0.15340777979162756,
+    "dark_p5": 0.015815876553814355,
+    "bright_p95": 0.3600232822110047,
+    "ratio": 0.04393014934113313,
+    "crushed": 0.06611790986790987,
+    "clipped": 0.036935286935286936
+   },
+   "file": "reference/03-sector-blue/Babylon_5_2-22_33a.jpg"
+  },
+  "reference/03-sector-blue/Babylon_5_2-22_35a.jpg": {
+   "class": "drum",
+   "size": "1001x576",
+   "median": 0.05221229879633894,
+   "dark_p5": 0.013401600971732047,
+   "bright_p95": 0.25306581810747264,
+   "ratio": 0.05295697803818223,
+   "crushed": 0.25887307137307136,
+   "clipped": 0.0,
+   "at_offset": {
+    "median": 0.06711445297521201,
+    "dark_p5": 0.013450873104747416,
+    "bright_p95": 0.3417808217100755,
+    "ratio": 0.039355260009754055,
+    "crushed": 0.2154702935952936,
+    "clipped": 0.0
+   },
+   "file": "reference/03-sector-blue/Babylon_5_2-22_35a.jpg"
+  },
+  "reference/03-sector-blue/Babylon_5_2-22_29a.jpg": {
+   "class": "drum",
+   "size": "1001x576",
+   "median": 0.055920700154568896,
+   "dark_p5": 0.012385340276283612,
+   "bright_p95": 0.3163766395788963,
+   "ratio": 0.039147455048415554,
+   "crushed": 0.2565091158841159,
+   "clipped": 0.0,
+   "at_offset": {
+    "median": 0.06999019176775705,
+    "dark_p5": 0.01309437131733123,
+    "bright_p95": 0.4091147188211986,
+    "ratio": 0.03200660038597647,
+    "crushed": 0.20640297202797203,
+    "clipped": 0.003610972360972361
+   },
+   "file": "reference/03-sector-blue/Babylon_5_2-22_29a.jpg"
+  },
+  "reference/09-garden-core-and-transit/garden.png": {
+   "class": "drum",
+   "size": "800x507",
+   "median": 0.14055306015170588,
+   "dark_p5": 0.01804589917338978,
+   "bright_p95": 0.3772683904002229,
+   "ratio": 0.04783305368956539,
+   "crushed": 0.05629437869822485,
+   "clipped": 0.0,
+   "at_offset": {
+    "median": 0.19182932665678923,
+    "dark_p5": 0.017821464974405517,
+    "bright_p95": 0.5245953481026047,
+    "ratio": 0.033971831886926776,
+    "crushed": 0.027803254437869823,
+    "clipped": 0.0
+   },
+   "file": "reference/09-garden-core-and-transit/garden.png"
+  },
+  "reference/09-garden-core-and-transit/The Gardens.webp": {
+   "class": "drum",
+   "size": "574x382",
+   "median": 0.3347278185145002,
+   "dark_p5": 0.03447285677569161,
+   "bright_p95": 0.5634637072436707,
+   "ratio": 0.06118026118190391,
+   "crushed": 0.02021270773665104,
+   "clipped": 0.00341591112246201,
+   "at_offset": {
+    "median": 0.45556752115919,
+    "dark_p5": 0.04263773465453741,
+    "bright_p95": 0.7328558389509455,
+    "ratio": 0.05818024826761516,
+    "crushed": 0.013285112282686027,
+    "clipped": 0.02627834430924713
+   },
+   "file": "reference/09-garden-core-and-transit/The Gardens.webp"
+  },
+  "reference/09-garden-core-and-transit/central corridor.webp": {
+   "class": "drum",
+   "size": "800x600",
+   "median": 0.02476626853035748,
+   "dark_p5": 0.010665506204150337,
+   "bright_p95": 0.1650572731857619,
+   "ratio": 0.06461700231862524,
+   "crushed": 0.3727916666666667,
+   "clipped": 0.00022916666666666666,
+   "at_offset": {
+    "median": 0.026490745247149835,
+    "dark_p5": 0.01118506241512989,
+    "bright_p95": 0.18079851136780148,
+    "ratio": 0.061864792638562864,
+    "crushed": 0.22606666666666667,
+    "clipped": 0.0042875
+   },
+   "file": "reference/09-garden-core-and-transit/central corridor.webp"
+  },
+  "reference/03-sector-blue/comand and contorl.webp": {
+   "class": "command",
+   "size": "814x610",
+   "median": 0.033147212909910656,
+   "dark_p5": 0.01099720765944414,
+   "bright_p95": 0.33911855718301975,
+   "ratio": 0.03242879938743379,
+   "crushed": 0.4982317638055343,
+   "clipped": 4.4306601683650866e-05,
+   "at_offset": {
+    "median": 0.03477260565762359,
+    "dark_p5": 0.011031059300457377,
+    "bright_p95": 0.3703094313716055,
+    "ratio": 0.02978876141393145,
+    "crushed": 0.40867402424779475,
+    "clipped": 0.007232045756635921
+   },
+   "file": "reference/03-sector-blue/comand and contorl.webp"
+  },
+  "reference/03-sector-blue/war room.webp": {
+   "class": "command",
+   "size": "1000x556",
+   "median": 0.0451094368192781,
+   "dark_p5": 0.012795432556500399,
+   "bright_p95": 0.41711481409888734,
+   "ratio": 0.030676044398334233,
+   "crushed": 0.096431654676259,
+   "clipped": 0.0,
+   "at_offset": {
+    "median": 0.05684118622084865,
+    "dark_p5": 0.012399839595004063,
+    "bright_p95": 0.5307438756684588,
+    "ratio": 0.02336313269632508,
+    "crushed": 0.031363309352517986,
+    "clipped": 0.007649280575539569
+   },
+   "file": "reference/03-sector-blue/war room.webp"
+  },
+  "reference/03-sector-blue/dock.webp": {
+   "class": "dock",
+   "size": "1000x750",
+   "median": 0.03728615808853131,
+   "dark_p5": 0.010960094006488246,
+   "bright_p95": 0.20035661131705093,
+   "ratio": 0.05470293161000128,
+   "crushed": 0.4589666666666667,
+   "clipped": 0.0,
+   "at_offset": {
+    "median": 0.044110728027250606,
+    "dark_p5": 0.01167421204075921,
+    "bright_p95": 0.2694647735179523,
+    "ratio": 0.043323703830925604,
+    "crushed": 0.388196,
+    "clipped": 0.0
+   },
+   "file": "reference/03-sector-blue/dock.webp"
+  },
+  "reference/03-sector-blue/Minbari Flyer 969 in docking bay 17.webp": {
+   "class": "dock",
+   "size": "1000x563",
+   "median": 0.0305852018938702,
+   "dark_p5": 0.01113935638862048,
+   "bright_p95": 0.254796318732631,
+   "ratio": 0.04371867083491696,
+   "crushed": 0.6626660746003552,
+   "clipped": 0.0,
+   "at_offset": {
+    "median": 0.033441417055887185,
+    "dark_p5": 0.01127143054820519,
+    "bright_p95": 0.32380162982916927,
+    "ratio": 0.034809678240815996,
+    "crushed": 0.6073179396092362,
+    "clipped": 0.0003001776198934281
+   },
+   "file": "reference/03-sector-blue/Minbari Flyer 969 in docking bay 17.webp"
+  },
+  "reference/13-other-ships/kosh's transport.webp": {
+   "class": "dock",
+   "size": "800x600",
+   "median": 0.04657027679544814,
+   "dark_p5": 0.01240223121924119,
+   "bright_p95": 0.2321663529378217,
+   "ratio": 0.05341958928287395,
+   "crushed": 0.278,
+   "clipped": 0.0,
+   "at_offset": {
+    "median": 0.05981212456152893,
+    "dark_p5": 0.012496443391371837,
+    "bright_p95": 0.3153107825685386,
+    "ratio": 0.03963214733595577,
+    "crushed": 0.22365833333333332,
+    "clipped": 0.0007145833333333333
+   },
+   "file": "reference/13-other-ships/kosh's transport.webp"
+  },
+  "reference/04-sector-red/more zocalo.png": {
+   "class": "public",
+   "size": "1440x1080",
+   "median": 0.05972919962736729,
+   "dark_p5": 0.011227734603019138,
+   "bright_p95": 0.3630743903058559,
+   "ratio": 0.03092406102661449,
+   "crushed": 0.5489731224279836,
+   "clipped": 0.0,
+   "at_offset": {
+    "median": 0.05996780793745371,
+    "dark_p5": 0.011521984920624775,
+    "bright_p95": 0.496348995062325,
+    "ratio": 0.023213474863947283,
+    "crushed": 0.48506172839506173,
+    "clipped": 0.000773533950617284
+   },
+   "file": "reference/04-sector-red/more zocalo.png"
+  },
+  "reference/04-sector-red/zocalo.webp": {
+   "class": "public",
+   "size": "985x576",
+   "median": 0.029899177334503854,
+   "dark_p5": 0.011239867806158417,
+   "bright_p95": 0.7804557402024884,
+   "ratio": 0.014401672288606967,
+   "crushed": 0.42317752397067115,
+   "clipped": 0.0004741257755217146,
+   "at_offset": {
+    "median": 0.03186632426508081,
+    "dark_p5": 0.011103940096874073,
+    "bright_p95": 0.34952820004693613,
+    "ratio": 0.031768366888231016,
+    "crushed": 0.31937570501974055,
+    "clipped": 0.036169275239706714
+   },
+   "file": "reference/04-sector-red/zocalo.webp"
+  },
+  "reference/11-props-and-technology/Zocalo neon signage in background.jpg": {
+   "class": "public",
+   "size": "1024x576",
+   "median": 0.04883529708156163,
+   "dark_p5": 0.011753784290376173,
+   "bright_p95": 0.4597928686334684,
+   "ratio": 0.025563215726483783,
+   "crushed": 0.4820353190104167,
+   "clipped": 0.0002780490451388889,
+   "at_offset": {
+    "median": 0.055042434251855316,
+    "dark_p5": 0.011756965073548177,
+    "bright_p95": 0.39014782407471416,
+    "ratio": 0.030134642174235716,
+    "crushed": 0.4278513590494792,
+    "clipped": 0.015038384331597222
+   },
+   "file": "reference/11-props-and-technology/Zocalo neon signage in background.jpg"
+  },
+  "reference/04-sector-red/Casino.webp": {
+   "class": "bar",
+   "size": "814x610",
+   "median": 0.06311901784769322,
+   "dark_p5": 0.01270800271960624,
+   "bright_p95": 0.4370648354945749,
+   "ratio": 0.029075783928547094,
+   "crushed": 0.2857574414951464,
+   "clipped": 0.0007451564828614009,
+   "at_offset": {
+    "median": 0.0774599696876269,
+    "dark_p5": 0.013265483066829412,
+    "bright_p95": 0.44653602340277343,
+    "ratio": 0.029707531691936996,
+    "crushed": 0.24136625448100857,
+    "clipped": 0.01786361622427196
+   },
+   "file": "reference/04-sector-red/Casino.webp"
+  },
+  "reference/04-sector-red/Doug's Dugout.webp": {
+   "class": "bar",
+   "size": "1000x557",
+   "median": 0.0516447790996413,
+   "dark_p5": 0.011506850851065651,
+   "bright_p95": 0.45592420446467496,
+   "ratio": 0.025238517144700535,
+   "crushed": 0.6329910233393178,
+   "clipped": 0.003917414721723519,
+   "at_offset": {
+    "median": 0.05403507807739006,
+    "dark_p5": 0.011704843394528595,
+    "bright_p95": 0.4311292394901378,
+    "ratio": 0.027149268299155448,
+    "crushed": 0.5895026929982047,
+    "clipped": 0.013438061041292639
+   },
+   "file": "reference/04-sector-red/Doug's Dugout.webp"
+  },
+  "reference/04-sector-red/Earhart's.webp": {
+   "class": "bar",
+   "size": "720x408",
+   "median": 0.0645688477265981,
+   "dark_p5": 0.012932118995731203,
+   "bright_p95": 0.21629775670988244,
+   "ratio": 0.05978850262916456,
+   "crushed": 0.17194308278867101,
+   "clipped": 0.0,
+   "at_offset": {
+    "median": 0.08599201513846946,
+    "dark_p5": 0.014760033015180073,
+    "bright_p95": 0.292045649336077,
+    "ratio": 0.05054015715945382,
+    "crushed": 0.13600217864923747,
+    "clipped": 0.00011914488017429194
+   },
+   "file": "reference/04-sector-red/Earhart's.webp"
+  },
+  "reference/04-sector-red/Fresh air.webp": {
+   "class": "bar",
+   "size": "1000x871",
+   "median": 0.030007644072288002,
+   "dark_p5": 0.010983416848964917,
+   "bright_p95": 0.44991866936506214,
+   "ratio": 0.0244120050951987,
+   "crushed": 0.6997095292766935,
+   "clipped": 0.0012732491389207806,
+   "at_offset": {
+    "median": 0.031139593508139277,
+    "dark_p5": 0.011026403396209137,
+    "bright_p95": 0.4295444900093899,
+    "ratio": 0.02566999147391717,
+    "crushed": 0.6388461538461538,
+    "clipped": 0.007374282433983926
+   },
+   "file": "reference/04-sector-red/Fresh air.webp"
+  },
+  "reference/11-props-and-technology/fresh air resturant signage with view.webp": {
+   "class": "bar",
+   "size": "1200x1046",
+   "median": 0.029847408876446723,
+   "dark_p5": 0.010944914033818082,
+   "bright_p95": 0.44959212871221044,
+   "ratio": 0.024344096203748396,
+   "crushed": 0.699016889738687,
+   "clipped": 0.0012619502868068833,
+   "at_offset": {
+    "median": 0.031139593508139277,
+    "dark_p5": 0.011002964751645602,
+    "bright_p95": 0.42914458375840464,
+    "ratio": 0.02563929539849427,
+    "crushed": 0.6391650732950924,
+    "clipped": 0.00737093690248566
+   },
+   "file": "reference/11-props-and-technology/fresh air resturant signage with view.webp"
+  },
+  "reference/07-sector-grey/grey level 1.webp": {
+   "class": "corridor",
+   "size": "1000x556",
+   "median": 0.05329595909796523,
+   "dark_p5": 0.015165025944143842,
+   "bright_p95": 0.1756251737425054,
+   "ratio": 0.08634881674980259,
+   "crushed": 0.022469424460431656,
+   "clipped": 0.0,
+   "at_offset": {
+    "median": 0.07288323741996611,
+    "dark_p5": 0.018757657202683103,
+    "bright_p95": 0.2260661335403698,
+    "ratio": 0.08297420276502164,
+    "crushed": 0.005214028776978417,
+    "clipped": 0.007194244604316547
+   },
+   "file": "reference/07-sector-grey/grey level 1.webp"
+  },
+  "reference/05-sector-green/corridor in alien sector.webp": {
+   "class": "corridor",
+   "size": "1000x775",
+   "median": 0.02069290736649395,
+   "dark_p5": 0.01046514422183619,
+   "bright_p95": 0.12293038285599414,
+   "ratio": 0.0851306567075082,
+   "crushed": 0.14507870967741934,
+   "clipped": 0.0,
+   "at_offset": {
+    "median": 0.026588862764748745,
+    "dark_p5": 0.01237362930917433,
+    "bright_p95": 0.15966589348240048,
+    "ratio": 0.07749700978273259,
+    "crushed": 0.0022451612903225805,
+    "clipped": 0.0004361290322580645
+   },
+   "file": "reference/05-sector-green/corridor in alien sector.webp"
+  },
+  "reference/01-station-exterior/sleeping-in-light-05.jpg": {
+   "class": "corridor",
+   "size": "1024x576",
+   "median": 0.037862966466790944,
+   "dark_p5": 0.010815977901378516,
+   "bright_p95": 0.42696109545948746,
+   "ratio": 0.025332467094545383,
+   "crushed": 0.6147884792751737,
+   "clipped": 0.005366007486979167,
+   "at_offset": {
+    "median": 0.03436808438523574,
+    "dark_p5": 0.011270336255633943,
+    "bright_p95": 0.42633160815510435,
+    "ratio": 0.02643561030908519,
+    "crushed": 0.5441674126519097,
+    "clipped": 0.013807508680555556
+   },
+   "file": "reference/01-station-exterior/sleeping-in-light-05.jpg"
+  },
+  "reference/10-interiors-generic-kit/more hallway.jpg": {
+   "class": "corridor",
+   "size": "1024x576",
+   "median": 0.024472553336846985,
+   "dark_p5": 0.010702097699394406,
+   "bright_p95": 0.305526212483232,
+   "ratio": 0.03502841086010505,
+   "crushed": 0.6813320583767362,
+   "clipped": 0.00027635362413194444,
+   "at_offset": {
+    "median": 0.024938197362356827,
+    "dark_p5": 0.010766518999582166,
+    "bright_p95": 0.343682080222717,
+    "ratio": 0.031326972277999236,
+    "crushed": 0.5927937825520834,
+    "clipped": 0.0018208821614583333
+   },
+   "file": "reference/10-interiors-generic-kit/more hallway.jpg"
+  },
+  "reference/05-sector-green/council chambers.webp": {
+   "class": "civic",
+   "size": "1000x750",
+   "median": 0.0767102415465076,
+   "dark_p5": 0.01238869429356086,
+   "bright_p95": 0.35236354009619547,
+   "ratio": 0.035158842740025655,
+   "crushed": 0.196532,
+   "clipped": 0.0,
+   "at_offset": {
+    "median": 0.09583200701510752,
+    "dark_p5": 0.013038177272257135,
+    "bright_p95": 0.4873067162820124,
+    "ratio": 0.026755587059694306,
+    "crushed": 0.14130533333333334,
+    "clipped": 0.0
+   },
+   "file": "reference/05-sector-green/council chambers.webp"
+  },
+  "reference/05-sector-green/rotunda.webp": {
+   "class": "civic",
+   "size": "716x968",
+   "median": 0.0784683115021811,
+   "dark_p5": 0.01209563147461405,
+   "bright_p95": 0.738261126854983,
+   "ratio": 0.0163839474064439,
+   "crushed": 0.4552928343875525,
+   "clipped": 0.013390795973960017,
+   "at_offset": {
+    "median": 0.06716980455520113,
+    "dark_p5": 0.011697373069611017,
+    "bright_p95": 0.7905675241931297,
+    "ratio": 0.01479617200510432,
+    "crushed": 0.40247414469735443,
+    "clipped": 0.05293988642134909
+   },
+   "file": "reference/05-sector-green/rotunda.webp"
+  },
+  "reference/05-sector-green/conference aerea.webp": {
+   "class": "civic",
+   "size": "800x600",
+   "median": 0.02199539683038513,
+   "dark_p5": 0.010552674974406049,
+   "bright_p95": 0.40152715099609365,
+   "ratio": 0.02628134846728886,
+   "crushed": 0.5682083333333333,
+   "clipped": 0.0,
+   "at_offset": {
+    "median": 0.021185196278128208,
+    "dark_p5": 0.010717089850519102,
+    "bright_p95": 0.46797151408244986,
+    "ratio": 0.022901158570585355,
+    "crushed": 0.4297770833333333,
+    "clipped": 0.0032541666666666665
+   },
+   "file": "reference/05-sector-green/conference aerea.webp"
+  },
+  "reference/14-characters-and-uniforms/talia-winters in gorgeous office.webp": {
+   "class": "civic",
+   "size": "1080x817",
+   "median": 0.04486206802317628,
+   "dark_p5": 0.011351095905193167,
+   "bright_p95": 0.2573796038680846,
+   "ratio": 0.0441025463346776,
+   "crushed": 0.5770932499206674,
+   "clipped": 0.0,
+   "at_offset": {
+    "median": 0.053689823225442496,
+    "dark_p5": 0.011565819977509308,
+    "bright_p95": 0.3291776237582619,
+    "ratio": 0.03513549871786819,
+    "crushed": 0.5225610861779773,
+    "clipped": 0.002521646493494719
+   },
+   "file": "reference/14-characters-and-uniforms/talia-winters in gorgeous office.webp"
+  },
+  "reference/01-station-exterior/welcome to babylon 5.webp": {
+   "class": "customs",
+   "size": "1000x750",
+   "median": 0.03428722195912533,
+   "dark_p5": 0.011796504841338994,
+   "bright_p95": 0.30098853097667616,
+   "ratio": 0.03919253934048774,
+   "crushed": 0.27242933333333336,
+   "clipped": 0.0,
+   "at_offset": {
+    "median": 0.04393705908776905,
+    "dark_p5": 0.011792951933076324,
+    "bright_p95": 0.4138772466063424,
+    "ratio": 0.028493839730921813,
+    "crushed": 0.19767333333333334,
+    "clipped": 0.0
+   },
+   "file": "reference/01-station-exterior/welcome to babylon 5.webp"
+  },
+  "reference/11-props-and-technology/babylon 5 welcome sign, instructions, and hub.jpg": {
+   "class": "customs",
+   "size": "1262x634",
+   "median": 0.0295568344378088,
+   "dark_p5": 0.010729196771972083,
+   "bright_p95": 0.3100179179615931,
+   "ratio": 0.03460831181151691,
+   "crushed": 0.5034432851565038,
+   "clipped": 0.0,
+   "at_offset": {
+    "median": 0.028034457162723975,
+    "dark_p5": 0.010654523474454182,
+    "bright_p95": 0.366103230236256,
+    "ratio": 0.02910251151725304,
+    "crushed": 0.35500082488864004,
+    "clipped": 0.0015522904407904933
+   },
+   "file": "reference/11-props-and-technology/babylon 5 welcome sign, instructions, and hub.jpg"
+  },
+  "reference/01-station-exterior/Cobra Bays with starfurries.webp": {
+   "class": "exterior",
+   "size": "843x474",
+   "median": 0.03447137143555659,
+   "dark_p5": 0.011487054835759722,
+   "bright_p95": 0.23756837931518673,
+   "ratio": 0.048352625332008584,
+   "crushed": 0.43854578034045577,
+   "clipped": 0.0007833185679034591,
+   "at_offset": {
+    "median": 0.04269119199610865,
+    "dark_p5": 0.011866033357873748,
+    "bright_p95": 0.29522040433781566,
+    "ratio": 0.04019381175393164,
+    "crushed": 0.3722064557462548,
+    "clipped": 0.0031382795020796733
+   },
+   "file": "reference/01-station-exterior/Cobra Bays with starfurries.webp"
+  },
+  "reference/12-starfury/Starfury.jpg": {
+   "class": "exterior",
+   "size": "640x420",
+   "median": 0.041548036669162305,
+   "dark_p5": 0.011161057371386132,
+   "bright_p95": 0.7883792740348057,
+   "ratio": 0.014156964469988577,
+   "crushed": 0.5283258928571428,
+   "clipped": 0.008954613095238095,
+   "at_offset": {
+    "median": 0.03672292574669238,
+    "dark_p5": 0.010873578719473255,
+    "bright_p95": 0.5294633335306868,
+    "ratio": 0.020536981563885844,
+    "crushed": 0.4208407738095238,
+    "clipped": 0.041796875
+   },
+   "file": "reference/12-starfury/Starfury.jpg"
+  },
+  "reference/10-interiors-generic-kit/gardens or greenery.jpg": {
+   "class": "drum",
+   "size": "696x441",
+   "median": 0.14029463002608922,
+   "dark_p5": 0.01800876790114804,
+   "bright_p95": 0.37627177066736456,
+   "ratio": 0.047861065604808094,
+   "crushed": 0.055151562540725105,
+   "clipped": 0.0,
+   "at_offset": {
+    "median": 0.19166537498319056,
+    "dark_p5": 0.018184798516125734,
+    "bright_p95": 0.5234720868860712,
+    "ratio": 0.0347388121958898,
+    "crushed": 0.027627909401308416,
+    "clipped": 3.2580081841165585e-06
+   },
+   "file": "reference/10-interiors-generic-kit/gardens or greenery.jpg"
+  }
+ },
+ "show_vs_show_admission": {
+  "at_gain_1.0": {
+   "n": 248,
+   "combined": 171,
+   "rate": 0.69,
+   "per_check": {
+    "p5": 0.935,
+    "p95": 0.944,
+    "p5/p95": 0.935,
+    "crushed": 0.935,
+    "crushed in show range": 0.843,
+    "clipped under cap": 1.0
+   }
+  },
+  "at_the_offset": {
+   "n": 248,
+   "combined": 192,
+   "rate": 0.774,
+   "per_check": {
+    "p5": 0.911,
+    "p95": 1.0,
+    "p5/p95": 0.968,
+    "crushed": 0.855,
+    "crushed in show range": 1.0,
+    "clipped under cap": 0.944
+   }
+  }
+ },
+ "show_vs_show_note": "THE GATE RUN ON THE SHOW AGAINST ITSELF, which is the only validation that means anything: for each of the 124 median-agreeing pairs, in both orders (248 trials), one frame stands in for our render and the other for its reference.\n  * `at_gain_1.0` is where the four RATIO bands were derived, and there they admit 93.5-94.4% -- the ~95% they were built for. The `crushed in show range` and `clipped under cap` rows in that block are meaningless: both thresholds are measured at the offset and this block is not at it.\n  * `at_the_offset` is the form the gate is APPLIED in -- the reference side is always measure(ref, gain=RENDER_OFFSET). There the envelope admits 100% and the cap 94.4% (both by construction, being derived from that population), p95 100%, p5/p95 96.8%, p5 91.1% and crushed 85.5%. The crushed band loses ten points because it was estimated at gain 1.0 and is applied to a GAINED reference, and gaining changes a censored fraction nonlinearly. That is a known and stated looseness in one of the six checks, not a hidden one.\n  * THE COMBINED VERDICT ADMITS 77.4% (192 of 248). Six checks at 85-100% cannot combine to 95%. Loosening them until it did would require each at ~99%, which is the observed maximum, which is an envelope and not a tolerance. Part of the missing 23% is also real: the 124 pairs include a war room against a residential corridor, which agree on median by coincidence and are not the same picture at all.",
+ "median_exposure_response": {
+  "reference/03-sector-blue/Babylon_5_2-22_34b.jpg": {
+   "median_at_gain": {
+    "x0.5": 0.07832265350703708,
+    "x0.7": 0.10804786614574573,
+    "x1.0": 0.15154319031940636,
+    "x1.4": 0.20986880354887902,
+    "x2.0": 0.28899301109682124
+   },
+   "exponent_1_to_1p4": 0.9677229979219423,
+   "monotonic": true
+  },
+  "reference/03-sector-blue/Babylon_5_2-22_33a.jpg": {
+   "median_at_gain": {
+    "x0.5": 0.06392432796964655,
+    "x0.7": 0.0865431557517864,
+    "x1.0": 0.11660235010700036,
+    "x1.4": 0.15340777979162756,
+    "x2.0": 0.21141228178291183
+   },
+   "exponent_1_to_1p4": 0.8153129575213142,
+   "monotonic": true
+  },
+  "reference/03-sector-blue/Babylon_5_2-22_35a.jpg": {
+   "median_at_gain": {
+    "x0.5": 0.034265464092811296,
+    "x0.7": 0.040807038901911945,
+    "x1.0": 0.05221229879633894,
+    "x1.4": 0.06711445297521201,
+    "x2.0": 0.08628637972675038
+   },
+   "exponent_1_to_1p4": 0.7462171072597094,
+   "monotonic": true
+  },
+  "reference/03-sector-blue/Babylon_5_2-22_29a.jpg": {
+   "median_at_gain": {
+    "x0.5": 0.035622756444760366,
+    "x0.7": 0.04429626608846795,
+    "x1.0": 0.055920700154568896,
+    "x1.4": 0.06999019176775705,
+    "x2.0": 0.08954516147627302
+   },
+   "exponent_1_to_1p4": 0.6669807244369294,
+   "monotonic": true
+  },
+  "reference/09-garden-core-and-transit/garden.png": {
+   "median_at_gain": {
+    "x0.5": 0.07354302621531454,
+    "x0.7": 0.10070158768680705,
+    "x1.0": 0.14055306015170588,
+    "x1.4": 0.1918293266567892,
+    "x2.0": 0.2696248558032701
+   },
+   "exponent_1_to_1p4": 0.9243585335749666,
+   "monotonic": true
+  },
+  "reference/09-garden-core-and-transit/The Gardens.webp": {
+   "median_at_gain": {
+    "x0.5": 0.17041740485508536,
+    "x0.7": 0.23699068587569758,
+    "x1.0": 0.3347278185145002,
+    "x1.4": 0.45556752115918997,
+    "x2.0": 0.5710626141789649
+   },
+   "exponent_1_to_1p4": 0.9160524640285573,
+   "monotonic": true
+  },
+  "reference/09-garden-core-and-transit/central corridor.webp": {
+   "median_at_gain": {
+    "x0.5": 0.02145178018986295,
+    "x0.7": 0.02383422620957598,
+    "x1.0": 0.02476626853035748,
+    "x1.4": 0.02649074524714984,
+    "x2.0": 0.03169922719152951
+   },
+   "exponent_1_to_1p4": 0.20005468884540098,
+   "monotonic": true
+  },
+  "reference/03-sector-blue/comand and contorl.webp": {
+   "median_at_gain": {
+    "x0.5": 0.027782215462564794,
+    "x0.7": 0.031114858728925242,
+    "x1.0": 0.033147212909910656,
+    "x1.4": 0.034772605657623586,
+    "x2.0": 0.03509014783016966
+   },
+   "exponent_1_to_1p4": 0.14227398234533561,
+   "monotonic": true
+  },
+  "reference/03-sector-blue/war room.webp": {
+   "median_at_gain": {
+    "x0.5": 0.02816933575500132,
+    "x0.7": 0.03457209422787965,
+    "x1.0": 0.0451094368192781,
+    "x1.4": 0.05684118622084865,
+    "x2.0": 0.07588351847951834
+   },
+   "exponent_1_to_1p4": 0.6870394659375246,
+   "monotonic": true
+  },
+  "reference/03-sector-blue/dock.webp": {
+   "median_at_gain": {
+    "x0.5": 0.025417148829058482,
+    "x0.7": 0.03104921886726768,
+    "x1.0": 0.03728615808853131,
+    "x1.4": 0.044110728027250606,
+    "x2.0": 0.052797931452521825
+   },
+   "exponent_1_to_1p4": 0.49953856379426814,
+   "monotonic": true
+  },
+  "reference/03-sector-blue/Minbari Flyer 969 in docking bay 17.webp": {
+   "median_at_gain": {
+    "x0.5": 0.02528619553932682,
+    "x0.7": 0.027360616755476054,
+    "x1.0": 0.0305852018938702,
+    "x1.4": 0.03344141705588719,
+    "x2.0": 0.035112683639467415
+   },
+   "exponent_1_to_1p4": 0.2653379979902802,
+   "monotonic": true
+  },
+  "reference/13-other-ships/kosh's transport.webp": {
+   "median_at_gain": {
+    "x0.5": 0.028055343722034644,
+    "x0.7": 0.03605900715019732,
+    "x1.0": 0.04657027679544814,
+    "x1.4": 0.05981212456152893,
+    "x2.0": 0.0690730608625063
+   },
+   "exponent_1_to_1p4": 0.7437341462810437,
+   "monotonic": true
+  },
+  "reference/04-sector-red/more zocalo.png": {
+   "median_at_gain": {
+    "x0.5": 0.056132692344683315,
+    "x0.7": 0.06108128056987071,
+    "x1.0": 0.05972919962736729,
+    "x1.4": 0.05996780793745372,
+    "x2.0": 0.06009528082544159
+   },
+   "exponent_1_to_1p4": 0.01184905206155709,
+   "monotonic": false
+  },
+  "reference/04-sector-red/zocalo.webp": {
+   "median_at_gain": {
+    "x0.5": 0.024580607912656684,
+    "x0.7": 0.0258259068932101,
+    "x1.0": 0.029899177334503854,
+    "x1.4": 0.031866324265080806,
+    "x2.0": 0.03784128723107876
+   },
+   "exponent_1_to_1p4": 0.18937318879500203,
+   "monotonic": true
+  },
+  "reference/11-props-and-technology/Zocalo neon signage in background.jpg": {
+   "median_at_gain": {
+    "x0.5": 0.0354574758503571,
+    "x0.7": 0.04137498985341314,
+    "x1.0": 0.04883529708156163,
+    "x1.4": 0.055042434251855316,
+    "x2.0": 0.06290834577588675
+   },
+   "exponent_1_to_1p4": 0.35560457692859865,
+   "monotonic": true
+  },
+  "reference/04-sector-red/Casino.webp": {
+   "median_at_gain": {
+    "x0.5": 0.040377937205540115,
+    "x0.7": 0.049683785021562545,
+    "x1.0": 0.06311901784769322,
+    "x1.4": 0.0774599696876269,
+    "x2.0": 0.0969836179018416
+   },
+   "exponent_1_to_1p4": 0.60848754856405,
+   "monotonic": true
+  },
+  "reference/04-sector-red/Doug's Dugout.webp": {
+   "median_at_gain": {
+    "x0.5": 0.042293896612235246,
+    "x0.7": 0.04816706445563217,
+    "x1.0": 0.0516447790996413,
+    "x1.4": 0.05403507807739007,
+    "x2.0": 0.05813956923940885
+   },
+   "exponent_1_to_1p4": 0.1344667304040948,
+   "monotonic": true
+  },
+  "reference/04-sector-red/Earhart's.webp": {
+   "median_at_gain": {
+    "x0.5": 0.03765819777731859,
+    "x0.7": 0.04866664211873525,
+    "x1.0": 0.0645688477265981,
+    "x1.4": 0.08599201513846946,
+    "x2.0": 0.11682688723494225
+   },
+   "exponent_1_to_1p4": 0.8515483668155385,
+   "monotonic": true
+  },
+  "reference/04-sector-red/Fresh air.webp": {
+   "median_at_gain": {
+    "x0.5": 0.02814681422992927,
+    "x0.7": 0.028619098769965573,
+    "x1.0": 0.030007644072288002,
+    "x1.4": 0.031139593508139277,
+    "x2.0": 0.03320296254888696
+   },
+   "exponent_1_to_1p4": 0.11004759676108206,
+   "monotonic": true
+  },
+  "reference/11-props-and-technology/fresh air resturant signage with view.webp": {
+   "median_at_gain": {
+    "x0.5": 0.02815163126930384,
+    "x0.7": 0.028578030818597482,
+    "x1.0": 0.029847408876446723,
+    "x1.4": 0.031139593508139277,
+    "x2.0": 0.03316420229320204
+   },
+   "exponent_1_to_1p4": 0.12596011426088863,
+   "monotonic": true
+  },
+  "reference/07-sector-grey/grey level 1.webp": {
+   "median_at_gain": {
+    "x0.5": 0.028536089619829653,
+    "x0.7": 0.0385867208882787,
+    "x1.0": 0.05329595909796523,
+    "x1.4": 0.07288323741996611,
+    "x2.0": 0.10326294739794412
+   },
+   "exponent_1_to_1p4": 0.9302347270831076,
+   "monotonic": true
+  },
+  "reference/05-sector-green/corridor in alien sector.webp": {
+   "median_at_gain": {
+    "x0.5": 0.015431108926466939,
+    "x0.7": 0.016898417383535484,
+    "x1.0": 0.02069290736649395,
+    "x1.4": 0.02658886276474874,
+    "x2.0": 0.037933863699026356
+   },
+   "exponent_1_to_1p4": 0.745088020684621,
+   "monotonic": true
+  },
+  "reference/01-station-exterior/sleeping-in-light-05.jpg": {
+   "median_at_gain": {
+    "x0.5": 0.039111415638052836,
+    "x0.7": 0.04034235898594637,
+    "x1.0": 0.037862966466790944,
+    "x1.4": 0.03436808438523573,
+    "x2.0": 0.03818786435289974
+   },
+   "exponent_1_to_1p4": -0.2878250611231726,
+   "monotonic": false
+  },
+  "reference/10-interiors-generic-kit/more hallway.jpg": {
+   "median_at_gain": {
+    "x0.5": 0.027482982916287396,
+    "x0.7": 0.0253059234616805,
+    "x1.0": 0.024472553336846985,
+    "x1.4": 0.024938197362356824,
+    "x2.0": 0.025586270477446195
+   },
+   "exponent_1_to_1p4": 0.056017819604003066,
+   "monotonic": false
+  },
+  "reference/05-sector-green/council chambers.webp": {
+   "median_at_gain": {
+    "x0.5": 0.048706447899793365,
+    "x0.7": 0.06117550240138949,
+    "x1.0": 0.0767102415465076,
+    "x1.4": 0.09583200701510751,
+    "x2.0": 0.12551034332491715
+   },
+   "exponent_1_to_1p4": 0.6614557773710819,
+   "monotonic": true
+  },
+  "reference/05-sector-green/rotunda.webp": {
+   "median_at_gain": {
+    "x0.5": 0.06716553625066571,
+    "x0.7": 0.07276459502461959,
+    "x1.0": 0.0784683115021811,
+    "x1.4": 0.06716980455520115,
+    "x2.0": 0.05925097351322325
+   },
+   "exponent_1_to_1p4": -0.4620620712976547,
+   "monotonic": false
+  },
+  "reference/05-sector-green/conference aerea.webp": {
+   "median_at_gain": {
+    "x0.5": 0.053508860452450256,
+    "x0.7": 0.03351417024664047,
+    "x1.0": 0.02199539683038513,
+    "x1.4": 0.02118519627812821,
+    "x2.0": 0.02277051900946057
+   },
+   "exponent_1_to_1p4": -0.11154129049912513,
+   "monotonic": false
+  },
+  "reference/14-characters-and-uniforms/talia-winters in gorgeous office.webp": {
+   "median_at_gain": {
+    "x0.5": 0.028055343722034644,
+    "x0.7": 0.03573050614948548,
+    "x1.0": 0.04486206802317628,
+    "x1.4": 0.053689823225442496,
+    "x2.0": 0.05855500954799865
+   },
+   "exponent_1_to_1p4": 0.533865278775473,
+   "monotonic": true
+  },
+  "reference/01-station-exterior/welcome to babylon 5.webp": {
+   "median_at_gain": {
+    "x0.5": 0.030723964841545014,
+    "x0.7": 0.031726250825343694,
+    "x1.0": 0.03428722195912533,
+    "x1.4": 0.04393705908776904,
+    "x2.0": 0.05944870332267524
+   },
+   "exponent_1_to_1p4": 0.737015897348048,
+   "monotonic": true
+  },
+  "reference/11-props-and-technology/babylon 5 welcome sign, instructions, and hub.jpg": {
+   "median_at_gain": {
+    "x0.5": 0.024904689462290363,
+    "x0.7": 0.027947683509858934,
+    "x1.0": 0.0295568344378088,
+    "x1.4": 0.028034457162723972,
+    "x2.0": 0.02875519368536981
+   },
+   "exponent_1_to_1p4": -0.15716195471692174,
+   "monotonic": false
+  },
+  "reference/01-station-exterior/Cobra Bays with starfurries.webp": {
+   "median_at_gain": {
+    "x0.5": 0.022362030143895255,
+    "x0.7": 0.02734665529485337,
+    "x1.0": 0.03447137143555659,
+    "x1.4": 0.042691191996108664,
+    "x2.0": 0.05403905528251801
+   },
+   "exponent_1_to_1p4": 0.6356050608427514,
+   "monotonic": true
+  },
+  "reference/12-starfury/Starfury.jpg": {
+   "median_at_gain": {
+    "x0.5": 0.03401495396869286,
+    "x0.7": 0.03848959687846977,
+    "x1.0": 0.041548036669162305,
+    "x1.4": 0.03672292574669238,
+    "x2.0": 0.016156590116552596
+   },
+   "exponent_1_to_1p4": -0.36689216739709424,
+   "monotonic": false
+  },
+  "reference/10-interiors-generic-kit/gardens or greenery.jpg": {
+   "median_at_gain": {
+    "x0.5": 0.07361710006495197,
+    "x0.7": 0.10051667260240757,
+    "x1.0": 0.14029463002608922,
+    "x1.4": 0.19166537498319053,
+    "x2.0": 0.2693258786055063
+   },
+   "exponent_1_to_1p4": 0.9272869125380724,
+   "monotonic": true
+  }
+ },
+ "median_exposure_response_note": "d(ln median)/d(ln gain) between x1.0 and x1.4, measured by scaling each reference frame's LINEAR luminance. If measure_frame's median were proportional to exposure this would be 1.0 everywhere. It ranges 0.97 (Babylon_5_2-22_34b.jpg) to 0.01 (more zocalo.png), and 7 of 33 frames go DOWN somewhere in x0.5..x2.0 -- rotunda.webp -0.46, Starfury.jpg -0.37, sleeping-in-light-05.jpg -0.29, babylon 5 welcome sign...jpg -0.16, conference aerea.webp -0.11, more hallway.jpg +0.06 non-monotone, more zocalo.png +0.01 non-monotone. CAUSE: raising exposure recruits sub-floor pixels into the measurable set and they arrive at the BOTTOM. CONSEQUENCE: every value in export_scene.ROOM_EXPOSURE and BESPOKE_EXPOSURE was obtained from `gain *= 1.40 * ref_median / our_median`, which assumes this exponent is 1. On the customs reference it is negative. STATE.md already records the symptom for the plant -- 'it sits at 1.59x either way' -- and attributes it to that room; it is a property of the statistic.",
+ "reverification": {
+  "_what": "Every exposure in tools/export_scene.py that has a committed frame and a recorded reference, re-measured with the distribution comparison. old_verdict is the median test the exposure was SET by; new_verdict is the whole-distribution test. NO EXPOSURE VALUE WAS CHANGED to produce this table -- the point of it is to say how far off we are.",
+  "_headline": "17 of 17 pass the old median test. 1 of 17 passes the new whole-distribution test. The single pass is docs/engine-market.png against more zocalo.png, and it is the evidence that the gate is not simply rejecting everything. p5 fails on 13 of 17; the crushed ratio on 4; the crushed envelope on 3; p95 on 2; p5/p95 on 3; the clipped cap on none.",
+  "_not_verifiable": {
+   "ROOM_EXPOSURE": "9 of the 11 archetype exposures have NO COMMITTED FRAME and therefore cannot be re-verified at all: industrial, store, transit, hospitality, worship, research, detention, office, generic. Only medical (docs/engine-medlab.png) and commerce (docs/engine-market.png) were committed. Their values were set from renders that were measured and then discarded.",
+   "EXTERIOR_CALIBRATION night": "No reference frame exists -- export_scene says so explicitly and refuses to record a `reference` key. The distribution comparison cannot be run. What can be said: docs/engine-exterior-night.png is 97.92% crushed, against 37.22% for `Cobra Bays with starfurries.webp` and 42.08% for `Starfury.jpg` at the same offset -- outside the corpus envelope, but the frame is 9.2 km of mostly empty starfield and the statistic is content-dominated at that framing.",
+   "exterior day reference": "`exterior more.jpg` is authority 2, a render of the production CGI model, and is NOT a member of the corpus the bands were derived from -- the corpus is broadcast frames only. Its distribution verdict is reported for information; the bands were not derived from production renders and may not describe one."
+  },
+  "rows": [
+   {
+    "family": "DRUM_CALIBRATION",
+    "key": "wide",
+    "exposure": 1.41,
+    "frame": "docs/engine-drum.png",
+    "reference": "reference/03-sector-blue/Babylon_5_2-22_34b.jpg",
+    "our_box": null,
+    "reference_box": null,
+    "median_multiple": 1.3920724754573623,
+    "old_verdict": "PASS",
+    "new_verdict": "FAIL",
+    "ours": {
+     "median": 0.2109591040866422,
+     "dark_p5": 0.05906567445418331,
+     "bright_p95": 0.4309158390600025,
+     "ratio": 0.1370700937404131,
+     "crushed": 0.0,
+     "clipped": 0.006558159722222222
+    },
+    "reference_at_offset": {
+     "median": 0.20986880354887902,
+     "dark_p5": 0.03392650739244235,
+     "bright_p95": 0.6029305650850367,
+     "ratio": 0.05626934402912115,
+     "crushed": 0.026562157571772955,
+     "clipped": 0.013840948937102783
+    },
+    "checks": {
+     "p5": {
+      "x": 1.7409889491702022,
+      "ok": false
+     },
+     "p95": {
+      "x": 0.7147022626050258,
+      "ok": true
+     },
+     "p5/p95": {
+      "x": 2.4359639534712727,
+      "ok": true
+     },
+     "crushed": {
+      "x": null,
+      "ok": false
+     },
+     "crushed in show range": {
+      "x": null,
+      "ok": false
+     },
+     "clipped under cap": {
+      "x": null,
+      "ok": true
+     }
+    }
+   },
+   {
+    "family": "DRUM_CALIBRATION",
+    "key": "garden",
+    "exposure": 1.41,
+    "frame": "docs/engine-drum-garden.png",
+    "reference": "reference/09-garden-core-and-transit/garden.png",
+    "our_box": null,
+    "reference_box": null,
+    "median_multiple": 1.4929721979889572,
+    "old_verdict": "PASS",
+    "new_verdict": "FAIL",
+    "ours": {
+     "median": 0.20984181114876643,
+     "dark_p5": 0.05725697686274686,
+     "bright_p95": 0.6648809052030545,
+     "ratio": 0.08611613961941138,
+     "crushed": 9.45216049382716e-05,
+     "clipped": 0.013342978395061728
+    },
+    "reference_at_offset": {
+     "median": 0.19182932665678923,
+     "dark_p5": 0.017821464974405517,
+     "bright_p95": 0.5245953481026047,
+     "ratio": 0.033971831886926776,
+     "crushed": 0.027803254437869823,
+     "clipped": 0.0
+    },
+    "checks": {
+     "p5": {
+      "x": 3.212809774335447,
+      "ok": false
+     },
+     "p95": {
+      "x": 1.2674167005251669,
+      "ok": true
+     },
+     "p5/p95": {
+      "x": 2.5349277573857023,
+      "ok": true
+     },
+     "crushed": {
+      "x": 0.003399659746649194,
+      "ok": false
+     },
+     "crushed in show range": {
+      "x": null,
+      "ok": false
+     },
+     "clipped under cap": {
+      "x": null,
+      "ok": true
+     }
+    }
+   },
+   {
+    "family": "DRUM_CALIBRATION",
+    "key": "tram",
+    "exposure": 1.41,
+    "frame": "docs/engine-drum-tram.png",
+    "reference": "reference/03-sector-blue/Babylon_5_2-22_34b.jpg",
+    "our_box": null,
+    "reference_box": null,
+    "median_multiple": 1.4950851714912454,
+    "old_verdict": "PASS",
+    "new_verdict": "FAIL",
+    "ours": {
+     "median": 0.22656997668702009,
+     "dark_p5": 0.050363666632392876,
+     "bright_p95": 0.6292942513142827,
+     "ratio": 0.08003198269681984,
+     "crushed": 0.028285108024691356,
+     "clipped": 0.030765817901234567
+    },
+    "reference_at_offset": {
+     "median": 0.20986880354887902,
+     "dark_p5": 0.03392650739244235,
+     "bright_p95": 0.6029305650850367,
+     "ratio": 0.05626934402912115,
+     "crushed": 0.026562157571772955,
+     "clipped": 0.013840948937102783
+    },
+    "checks": {
+     "p5": {
+      "x": 1.4844931147734988,
+      "ok": false
+     },
+     "p95": {
+      "x": 1.0437259076847891,
+      "ok": true
+     },
+     "p5/p95": {
+      "x": 1.4223016826960126,
+      "ok": true
+     },
+     "crushed": {
+      "x": 1.0648648532508271,
+      "ok": true
+     },
+     "crushed in show range": {
+      "x": null,
+      "ok": true
+     },
+     "clipped under cap": {
+      "x": null,
+      "ok": true
+     }
+    }
+   },
+   {
+    "family": "ANCHOR",
+    "key": "corridor (=1.00)",
+    "exposure": 1.0,
+    "frame": "docs/engine-corridor.png",
+    "reference": "reference/07-sector-grey/grey level 1.webp",
+    "our_box": null,
+    "reference_box": null,
+    "median_multiple": 1.3897377594367037,
+    "old_verdict": "PASS",
+    "new_verdict": "FAIL",
+    "ours": {
+     "median": 0.0740674067838364,
+     "dark_p5": 0.03072875373697917,
+     "bright_p95": 0.3773850996131489,
+     "ratio": 0.08142545577045489,
+     "crushed": 0.009533420138888889,
+     "clipped": 0.017645399305555556
+    },
+    "reference_at_offset": {
+     "median": 0.07288323741996611,
+     "dark_p5": 0.018757657202683103,
+     "bright_p95": 0.2260661335403698,
+     "ratio": 0.08297420276502164,
+     "crushed": 0.005214028776978417,
+     "clipped": 0.007194244604316547
+    },
+    "checks": {
+     "p5": {
+      "x": 1.638197851946229,
+      "ok": false
+     },
+     "p95": {
+      "x": 1.6693570757503902,
+      "ok": true
+     },
+     "p5/p95": {
+      "x": 0.9813345962605664,
+      "ok": true
+     },
+     "crushed": {
+      "x": 1.8284172463684796,
+      "ok": true
+     },
+     "crushed in show range": {
+      "x": null,
+      "ok": true
+     },
+     "clipped under cap": {
+      "x": null,
+      "ok": true
+     }
+    }
+   },
+   {
+    "family": "ROOM_EXPOSURE",
+    "key": "medical",
+    "exposure": 0.14,
+    "frame": "docs/engine-medlab.png",
+    "reference": "reference/03-sector-blue/war room.webp",
+    "our_box": null,
+    "reference_box": null,
+    "median_multiple": 1.2109313756925741,
+    "old_verdict": "PASS",
+    "new_verdict": "FAIL",
+    "ours": {
+     "median": 0.05462443238428569,
+     "dark_p5": 0.019107185679523856,
+     "bright_p95": 0.5114811284104568,
+     "ratio": 0.03735657997569481,
+     "crushed": 0.05805362654320988,
+     "clipped": 0.02499807098765432
+    },
+    "reference_at_offset": {
+     "median": 0.05684118622084865,
+     "dark_p5": 0.012399839595004063,
+     "bright_p95": 0.5307438756684588,
+     "ratio": 0.02336313269632508,
+     "crushed": 0.031363309352517986,
+     "clipped": 0.007649280575539569
+    },
+    "checks": {
+     "p5": {
+      "x": 1.5409220041219087,
+      "ok": false
+     },
+     "p95": {
+      "x": 0.9637061337095203,
+      "ok": true
+     },
+     "p5/p95": {
+      "x": 1.5989542353440829,
+      "ok": true
+     },
+     "crushed": {
+      "x": 1.851004493521315,
+      "ok": true
+     },
+     "crushed in show range": {
+      "x": null,
+      "ok": true
+     },
+     "clipped under cap": {
+      "x": null,
+      "ok": true
+     }
+    }
+   },
+   {
+    "family": "ROOM_EXPOSURE",
+    "key": "commerce",
+    "exposure": 0.51,
+    "frame": "docs/engine-market.png",
+    "reference": "reference/04-sector-red/more zocalo.png",
+    "our_box": null,
+    "reference_box": null,
+    "median_multiple": 1.284295741033103,
+    "old_verdict": "PASS",
+    "new_verdict": "PASS",
+    "ours": {
+     "median": 0.07670995669674381,
+     "dark_p5": 0.012508397761192443,
+     "bright_p95": 0.37105274807788396,
+     "ratio": 0.03371056494255348,
+     "crushed": 0.23057291666666666,
+     "clipped": 0.0319020061728395
+    },
+    "reference_at_offset": {
+     "median": 0.05996780793745371,
+     "dark_p5": 0.011521984920624775,
+     "bright_p95": 0.496348995062325,
+     "ratio": 0.023213474863947283,
+     "crushed": 0.48506172839506173,
+     "clipped": 0.000773533950617284
+    },
+    "checks": {
+     "p5": {
+      "x": 1.0856113636116598,
+      "ok": true
+     },
+     "p95": {
+      "x": 0.7475642174540759,
+      "ok": true
+     },
+     "p5/p95": {
+      "x": 1.4521981366481744,
+      "ok": true
+     },
+     "crushed": {
+      "x": 0.4753475757190124,
+      "ok": true
+     },
+     "crushed in show range": {
+      "x": null,
+      "ok": true
+     },
+     "clipped under cap": {
+      "x": null,
+      "ok": true
+     }
+    }
+   },
+   {
+    "family": "BESPOKE_EXPOSURE",
+    "key": "zocalo",
+    "exposure": 0.84,
+    "frame": "docs/engine-zocalo.png",
+    "reference": "reference/04-sector-red/more zocalo.png",
+    "our_box": null,
+    "reference_box": null,
+    "median_multiple": 1.4343973910628127,
+    "old_verdict": "PASS",
+    "new_verdict": "FAIL",
+    "ours": {
+     "median": 0.08567540811576556,
+     "dark_p5": 0.03241235692692916,
+     "bright_p95": 0.666012175220073,
+     "ratio": 0.04866631291870756,
+     "crushed": 0.12806423611111112,
+     "clipped": 0.010060763888888888
+    },
+    "reference_at_offset": {
+     "median": 0.05996780793745371,
+     "dark_p5": 0.011521984920624775,
+     "bright_p95": 0.496348995062325,
+     "ratio": 0.023213474863947283,
+     "crushed": 0.48506172839506173,
+     "clipped": 0.000773533950617284
+    },
+    "checks": {
+     "p5": {
+      "x": 2.8130879488402956,
+      "ok": false
+     },
+     "p95": {
+      "x": 1.3418223504944218,
+      "ok": true
+     },
+     "p5/p95": {
+      "x": 2.096468245445275,
+      "ok": true
+     },
+     "crushed": {
+      "x": 0.2640163686688725,
+      "ok": true
+     },
+     "crushed in show range": {
+      "x": null,
+      "ok": true
+     },
+     "clipped under cap": {
+      "x": null,
+      "ok": true
+     }
+    }
+   },
+   {
+    "family": "BESPOKE_EXPOSURE",
+    "key": "hospitality",
+    "exposure": 1.34,
+    "frame": "docs/engine-dugout.png",
+    "reference": "reference/04-sector-red/Doug's Dugout.webp",
+    "our_box": null,
+    "reference_box": null,
+    "median_multiple": 1.4614768197219181,
+    "old_verdict": "PASS",
+    "new_verdict": "FAIL",
+    "ours": {
+     "median": 0.07547764751378475,
+     "dark_p5": 0.018855919480053922,
+     "bright_p95": 0.1894198536287052,
+     "ratio": 0.09954563430829537,
+     "crushed": 0.3101953125,
+     "clipped": 0.0
+    },
+    "reference_at_offset": {
+     "median": 0.05403507807739006,
+     "dark_p5": 0.011704843394528595,
+     "bright_p95": 0.4311292394901378,
+     "ratio": 0.027149268299155448,
+     "crushed": 0.5895026929982047,
+     "clipped": 0.013438061041292639
+    },
+    "checks": {
+     "p5": {
+      "x": 1.6109501720346027,
+      "ok": false
+     },
+     "p95": {
+      "x": 0.43935747399716374,
+      "ok": true
+     },
+     "p5/p95": {
+      "x": 3.6666046838320137,
+      "ok": false
+     },
+     "crushed": {
+      "x": 0.5261982959269444,
+      "ok": true
+     },
+     "crushed in show range": {
+      "x": null,
+      "ok": true
+     },
+     "clipped under cap": {
+      "x": null,
+      "ok": true
+     }
+    }
+   },
+   {
+    "family": "BESPOKE_EXPOSURE",
+    "key": "command_control",
+    "exposure": 1.1,
+    "frame": "docs/engine-cnc.png",
+    "reference": "reference/03-sector-blue/comand and contorl.webp",
+    "our_box": null,
+    "reference_box": null,
+    "median_multiple": 1.4582510192111848,
+    "old_verdict": "PASS",
+    "new_verdict": "FAIL",
+    "ours": {
+     "median": 0.048336957009887355,
+     "dark_p5": 0.015853447273673445,
+     "bright_p95": 0.08379238324126052,
+     "ratio": 0.18919914508252092,
+     "crushed": 0.5144704861111111,
+     "clipped": 0.0
+    },
+    "reference_at_offset": {
+     "median": 0.03477260565762359,
+     "dark_p5": 0.011031059300457377,
+     "bright_p95": 0.3703094313716055,
+     "ratio": 0.02978876141393145,
+     "crushed": 0.40867402424779475,
+     "clipped": 0.007232045756635921
+    },
+    "checks": {
+     "p5": {
+      "x": 1.4371645407631992,
+      "ok": false
+     },
+     "p95": {
+      "x": 0.22627666524964868,
+      "ok": false
+     },
+     "p5/p95": {
+      "x": 6.351359912333827,
+      "ok": false
+     },
+     "crushed": {
+      "x": 1.2588773829167277,
+      "ok": true
+     },
+     "crushed in show range": {
+      "x": null,
+      "ok": true
+     },
+     "clipped under cap": {
+      "x": null,
+      "ok": true
+     }
+    }
+   },
+   {
+    "family": "BESPOKE_EXPOSURE",
+    "key": "docking_bay",
+    "exposure": 0.9,
+    "frame": "docs/engine-docking-bay.png",
+    "reference": "reference/03-sector-blue/dock.webp",
+    "our_box": null,
+    "reference_box": null,
+    "median_multiple": 1.4361321163050098,
+    "old_verdict": "PASS",
+    "new_verdict": "FAIL",
+    "ours": {
+     "median": 0.05354784912456562,
+     "dark_p5": 0.01783682908469515,
+     "bright_p95": 0.38366914457993634,
+     "ratio": 0.04649013176241724,
+     "crushed": 0.0909375,
+     "clipped": 0.011041666666666667
+    },
+    "reference_at_offset": {
+     "median": 0.044110728027250606,
+     "dark_p5": 0.01167421204075921,
+     "bright_p95": 0.2694647735179523,
+     "ratio": 0.043323703830925604,
+     "crushed": 0.388196,
+     "clipped": 0.0
+    },
+    "checks": {
+     "p5": {
+      "x": 1.5278829117048627,
+      "ok": false
+     },
+     "p95": {
+      "x": 1.4238192976803905,
+      "ok": true
+     },
+     "p5/p95": {
+      "x": 1.0730876552902513,
+      "ok": true
+     },
+     "crushed": {
+      "x": 0.2342566641593422,
+      "ok": true
+     },
+     "crushed in show range": {
+      "x": null,
+      "ok": true
+     },
+     "clipped under cap": {
+      "x": null,
+      "ok": true
+     }
+    }
+   },
+   {
+    "family": "BESPOKE_EXPOSURE",
+    "key": "alien_sector",
+    "exposure": 0.47,
+    "frame": "docs/engine-alien-sector.png",
+    "reference": "reference/05-sector-green/corridor in alien sector.webp",
+    "our_box": null,
+    "reference_box": null,
+    "median_multiple": 1.3108706857023948,
+    "old_verdict": "PASS",
+    "new_verdict": "FAIL",
+    "ours": {
+     "median": 0.02712572566869206,
+     "dark_p5": 0.014198406726229696,
+     "bright_p95": 0.24376275233050165,
+     "ratio": 0.05824682643465981,
+     "crushed": 0.06629774305555555,
+     "clipped": 0.0
+    },
+    "reference_at_offset": {
+     "median": 0.026588862764748745,
+     "dark_p5": 0.01237362930917433,
+     "bright_p95": 0.15966589348240048,
+     "ratio": 0.07749700978273259,
+     "crushed": 0.0022451612903225805,
+     "clipped": 0.0004361290322580645
+    },
+    "checks": {
+     "p5": {
+      "x": 1.147473095521166,
+      "ok": true
+     },
+     "p95": {
+      "x": 1.5267052155842595,
+      "ok": true
+     },
+     "p5/p95": {
+      "x": 0.7516009533523706,
+      "ok": true
+     },
+     "crushed": {
+      "x": 29.529167165549172,
+      "ok": false
+     },
+     "crushed in show range": {
+      "x": null,
+      "ok": true
+     },
+     "clipped under cap": {
+      "x": null,
+      "ok": true
+     }
+    }
+   },
+   {
+    "family": "BESPOKE_EXPOSURE",
+    "key": "customs",
+    "exposure": 0.62,
+    "frame": "docs/engine-customs.png",
+    "reference": "reference/11-props-and-technology/babylon 5 welcome sign, instructions, and hub.jpg",
+    "our_box": null,
+    "reference_box": null,
+    "median_multiple": 1.3596109198715334,
+    "old_verdict": "PASS",
+    "new_verdict": "FAIL",
+    "ours": {
+     "median": 0.04018579485847984,
+     "dark_p5": 0.018290519164400523,
+     "bright_p95": 0.54639099522085,
+     "ratio": 0.033475147512282,
+     "crushed": 0.0028428819444444443,
+     "clipped": 0.00018663194444444445
+    },
+    "reference_at_offset": {
+     "median": 0.028034457162723975,
+     "dark_p5": 0.010654523474454182,
+     "bright_p95": 0.366103230236256,
+     "ratio": 0.02910251151725304,
+     "crushed": 0.35500082488864004,
+     "clipped": 0.0015522904407904933
+    },
+    "checks": {
+     "p5": {
+      "x": 1.7166904937846152,
+      "ok": false
+     },
+     "p95": {
+      "x": 1.4924506262024773,
+      "ok": true
+     },
+     "p5/p95": {
+      "x": 1.1502494378341437,
+      "ok": true
+     },
+     "crushed": {
+      "x": 0.008008099545504509,
+      "ok": false
+     },
+     "crushed in show range": {
+      "x": null,
+      "ok": true
+     },
+     "clipped under cap": {
+      "x": null,
+      "ok": true
+     }
+    }
+   },
+   {
+    "family": "BESPOKE_EXPOSURE",
+    "key": "quarters",
+    "exposure": 1.12,
+    "frame": "docs/engine-quarters.png",
+    "reference": "reference/07-sector-grey/grey level 1.webp",
+    "our_box": null,
+    "reference_box": null,
+    "median_multiple": 1.2631096147993361,
+    "old_verdict": "PASS",
+    "new_verdict": "FAIL",
+    "ours": {
+     "median": 0.06731863836659203,
+     "dark_p5": 0.01511173263093286,
+     "bright_p95": 0.10023290250380595,
+     "ratio": 0.15076618808239192,
+     "crushed": 0.19864149305555556,
+     "clipped": 0.0
+    },
+    "reference_at_offset": {
+     "median": 0.07288323741996611,
+     "dark_p5": 0.018757657202683103,
+     "bright_p95": 0.2260661335403698,
+     "ratio": 0.08297420276502164,
+     "crushed": 0.005214028776978417,
+     "clipped": 0.007194244604316547
+    },
+    "checks": {
+     "p5": {
+      "x": 0.8056300671051432,
+      "ok": true
+     },
+     "p95": {
+      "x": 0.44337867390431945,
+      "ok": true
+     },
+     "p5/p95": {
+      "x": 1.8170248469798913,
+      "ok": true
+     },
+     "crushed": {
+      "x": 38.09750608447357,
+      "ok": false
+     },
+     "crushed in show range": {
+      "x": null,
+      "ok": true
+     },
+     "clipped under cap": {
+      "x": null,
+      "ok": true
+     }
+    }
+   },
+   {
+    "family": "BESPOKE_EXPOSURE",
+    "key": "council_chamber",
+    "exposure": 2.27,
+    "frame": "docs/engine-council.png",
+    "reference": "reference/05-sector-green/council chambers.webp",
+    "our_box": null,
+    "reference_box": null,
+    "median_multiple": 1.4075143710853844,
+    "old_verdict": "PASS",
+    "new_verdict": "FAIL",
+    "ours": {
+     "median": 0.10797076738614057,
+     "dark_p5": 0.028678472856291708,
+     "bright_p95": 0.7697800189187017,
+     "ratio": 0.037255413431717704,
+     "crushed": 0.44182725694444447,
+     "clipped": 0.0
+    },
+    "reference_at_offset": {
+     "median": 0.09583200701510752,
+     "dark_p5": 0.013038177272257135,
+     "bright_p95": 0.4873067162820124,
+     "ratio": 0.026755587059694306,
+     "crushed": 0.14130533333333334,
+     "clipped": 0.0
+    },
+    "checks": {
+     "p5": {
+      "x": 2.1995768470884554,
+      "ok": false
+     },
+     "p95": {
+      "x": 1.5796622398145184,
+      "ok": true
+     },
+     "p5/p95": {
+      "x": 1.3924349089630241,
+      "ok": true
+     },
+     "crushed": {
+      "x": 3.126755703567059,
+      "ok": true
+     },
+     "crushed in show range": {
+      "x": null,
+      "ok": true
+     },
+     "clipped under cap": {
+      "x": null,
+      "ok": true
+     }
+    }
+   },
+   {
+    "family": "BESPOKE_EXPOSURE",
+    "key": "plant",
+    "exposure": 0.88,
+    "frame": "docs/engine-plant.png",
+    "reference": "reference/10-interiors-generic-kit/more hallways.jpg",
+    "our_box": null,
+    "reference_box": null,
+    "median_multiple": 1.5928917091678334,
+    "old_verdict": "PASS",
+    "new_verdict": "FAIL",
+    "ours": {
+     "median": 0.06031160536945099,
+     "dark_p5": 0.01061149070602696,
+     "bright_p95": 0.08074033472994058,
+     "ratio": 0.13142738064587128,
+     "crushed": 0.8697178819444444,
+     "clipped": 0.0
+    },
+    "reference_at_offset": {
+     "median": 0.03436808438523574,
+     "dark_p5": 0.011270336255633943,
+     "bright_p95": 0.42633160815510435,
+     "ratio": 0.02643561030908519,
+     "crushed": 0.5441674126519097,
+     "clipped": 0.013807508680555556
+    },
+    "checks": {
+     "p5": {
+      "x": 0.941541624432223,
+      "ok": true
+     },
+     "p95": {
+      "x": 0.18938388143289228,
+      "ok": false
+     },
+     "p5/p95": {
+      "x": 4.971603799164164,
+      "ok": false
+     },
+     "crushed": {
+      "x": 1.5982542536055557,
+      "ok": true
+     },
+     "crushed in show range": {
+      "x": null,
+      "ok": false
+     },
+     "clipped under cap": {
+      "x": null,
+      "ok": true
+     }
+    }
+   },
+   {
+    "family": "EXTERIOR_CALIBRATION",
+    "key": "day (side box)",
+    "exposure": 0.43,
+    "frame": "docs/engine-exterior-calibration.png",
+    "reference": "reference/01-station-exterior/exterior more.jpg",
+    "our_box": [
+     0.35,
+     0.45,
+     0.54,
+     0.54
+    ],
+    "reference_box": [
+     0.49,
+     0.47,
+     0.69,
+     0.57
+    ],
+    "median_multiple": 1.4030280220203433,
+    "old_verdict": "PASS",
+    "new_verdict": "FAIL",
+    "ours": {
+     "median": 0.21440303521999074,
+     "dark_p5": 0.03594472997937185,
+     "bright_p95": 0.310770706877506,
+     "ratio": 0.1156631856989658,
+     "crushed": 0.11698717948717949,
+     "clipped": 0.0
+    },
+    "reference_at_offset": {
+     "median": 0.08158341592566053,
+     "dark_p5": 0.01573159849413434,
+     "bright_p95": 0.32451596838771635,
+     "ratio": 0.04847711677269135,
+     "crushed": 0.047892252604166664,
+     "clipped": 0.003173828125
+    },
+    "checks": {
+     "p5": {
+      "x": 2.2848746103438975,
+      "ok": false
+     },
+     "p95": {
+      "x": 0.9576438053926883,
+      "ok": true
+     },
+     "p5/p95": {
+      "x": 2.385933681685509,
+      "ok": true
+     },
+     "crushed": {
+      "x": 2.4427161623423306,
+      "ok": true
+     },
+     "crushed in show range": {
+      "x": null,
+      "ok": true
+     },
+     "clipped under cap": {
+      "x": null,
+      "ok": true
+     }
+    }
+   },
+   {
+    "family": "EXTERIOR_CALIBRATION",
+    "key": "day (top box)",
+    "exposure": 0.43,
+    "frame": "docs/engine-exterior-calibration.png",
+    "reference": "reference/01-station-exterior/exterior more.jpg",
+    "our_box": [
+     0.35,
+     0.45,
+     0.54,
+     0.54
+    ],
+    "reference_box": [
+     0.44,
+     0.145,
+     0.66,
+     0.235
+    ],
+    "median_multiple": 1.4030280220203433,
+    "old_verdict": "PASS",
+    "new_verdict": "FAIL",
+    "ours": {
+     "median": 0.21440303521999074,
+     "dark_p5": 0.03594472997937185,
+     "bright_p95": 0.310770706877506,
+     "ratio": 0.1156631856989658,
+     "crushed": 0.11698717948717949,
+     "clipped": 0.0
+    },
+    "reference_at_offset": {
+     "median": 0.09412315921674841,
+     "dark_p5": 0.02518435542030471,
+     "bright_p95": 0.28217875531215586,
+     "ratio": 0.08924965096130255,
+     "crushed": 0.04944963999006869,
+     "clipped": 0.0023586857568484647
+    },
+    "checks": {
+     "p5": {
+      "x": 1.4272642431972535,
+      "ok": false
+     },
+     "p95": {
+      "x": 1.101325670437949,
+      "ok": true
+     },
+     "p5/p95": {
+      "x": 1.2959511264544419,
+      "ok": true
+     },
+     "crushed": {
+      "x": 2.3657842506168865,
+      "ok": true
+     },
+     "crushed in show range": {
+      "x": null,
+      "ok": true
+     },
+     "clipped under cap": {
+      "x": null,
+      "ok": true
+     }
+    }
+   },
+   {
+    "family": "EXTERIOR_CALIBRATION",
+    "key": "EXTERIOR_CALIBRATION night arrival",
+    "frame": "docs/engine-exterior-night.png",
+    "reference": null,
+    "old_verdict": "n/a",
+    "new_verdict": "n/a -- no reference frame exists",
+    "ours": {
+     "median": 0.018979541846540087,
+     "dark_p5": 0.010618615525094103,
+     "bright_p95": 0.41084552905627797,
+     "ratio": 0.025845761421537963,
+     "crushed": 0.9791782407407408,
+     "clipped": 0.0
+    }
+   },
+   {
+    "family": "EXTERIOR_CALIBRATION",
+    "key": "(day arrival, not the calibration shot)",
+    "frame": "docs/engine-exterior-day.png",
+    "reference": null,
+    "old_verdict": "n/a",
+    "new_verdict": "n/a -- no reference frame exists",
+    "ours": {
+     "median": 0.11434053966609316,
+     "dark_p5": 0.016592301622834295,
+     "bright_p95": 0.35058662070376156,
+     "ratio": 0.04732725278998723,
+     "crushed": 0.9596836419753086,
+     "clipped": 0.0
+    }
+   }
+  ]
+ }
+}

@@ -215,6 +215,13 @@ jobs:
       # measured on its first day, comparing a whole-frame percentile against
       # a hand-region measurement and landing the corridor two and a half
       # stops hot before the reference frame was run through the same code.
+      # Guards the distribution tolerances against drifting from the corpus they
+      # were derived from: --derive recomputes all six bands from the 33
+      # authority-1 frames and fails if a recorded value has moved. NOT
+      # --gate-drum, which exits 1 by design until the exposures are addressed.
+      - name: Frame distribution tolerances still match their corpus
+        run: python3 tools/measure_frame.py --derive
+
       - name: Frame luminance measurement
         run: python3 tools/measure_frame.py
 

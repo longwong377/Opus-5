@@ -2294,3 +2294,314 @@ subject relative to the eye and invalidate both the framing and the 5.47% contri
 for it. `tools/export_scene.py --gate-drum` is what says so.
 
 ---
+
+## INV-060 — The whole-distribution frame comparison, and the five tolerances derived from the show's own frames
+
+**Authority 5 — declared method.** Every number below is measured off reference frames; what is
+*invented* is the shape of the comparison and the five thresholds, and those are logged here.
+
+**What:** `tools/measure_frame.py` now compares a render to its reference frame on **p5, p95, the
+p5/p95 ratio, the crushed fraction and the clipped fraction** as well as on the median, with a
+per-statistic tolerance and a combined verdict. The reference side is measured at
+`gain = RENDER_OFFSET` so that the level offset the median gate already allows is not charged a
+second time as a shape difference. The corpus, the pairs, every measurement and the re-verification
+table are in `docs/layer4-lighting/frame_distribution.json`;
+`python3 tools/measure_frame.py --derive` recomputes the thresholds from that corpus and exits
+non-zero if the constants in the module have stopped describing it.
+
+**Why necessary:** every exposure in this project — `ROOM_EXPOSURE`, `BESPOKE_EXPOSURE`,
+`DRUM_CALIBRATION`, `EXTERIOR_CALIBRATION` — was set by one test: our frame's median over its
+reference's median must land at x1.40 ±25%. The owner looked at the renders and said they read as
+blockout while every gate was green, and **both were true**. A median says where the middle of a
+picture sits and nothing about how far it reaches. `docs/engine-drum-garden.png` sits at x1.49 of
+`garden.png` — inside the band — with p5 at **3.21x** the reference's and **0.01%** of the frame
+below the measurable floor against the reference's 2.78% at the same exposure. A frame with no
+blacks reads washed out whatever its median is, and the median test cannot see it.
+
+### What is sourced
+
+- **The corpus: 33 deduplicated authority-1 on-screen frames** that depict a lit set or a lit
+  exterior — the thing our renders are. Every authority rating comes from
+  `reference/00-INDEX.md`. Props on a studio backdrop, schematics, costume stills, authority-2
+  production art, authority-4 fan reconstructions and both QUARANTINE folders are excluded.
+- **The measurements**: `tools/measure_frame.py`, the same code on both sides, which is the only
+  comparison this project has ever accepted (see the module docstring and INV-037).
+- **The pair rule is not new.** `DRUM_CALIBRATION` already rules that two references may be used
+  interchangeably when their medians agree within `TOL` — it accepts `garden.png` against
+  `Babylon_5_2-22_34b.jpg` at *"8% apart, inside the ±25% the gate allows"* and rejects `33a` and
+  `29a` on the same ground. Applied to the corpus, **124 of the 528 possible pairs qualify**.
+
+### What is declared, and what constrained each of the five
+
+| statistic | form | value | what constrained it |
+|---|---|---|---|
+| p5 | ratio to reference-at-offset | **x1.290** | p95 of \|ln(a/b)\| over the 124 pairs (ln 0.2548) |
+| p95 | ratio | **x3.266** | same, ln 1.1837 |
+| p5/p95 | ratio | **x3.378** | same, ln 1.2172 |
+| crushed | ratio | **x11.42** | same, ln 2.4350 |
+| crushed | absolute envelope | **0.22%–63.92%** | the min and max the corpus itself occupies at the offset |
+| clipped | absolute cap, one-sided | **3.69%** | p95 of the corpus's own clipped fraction at the offset |
+
+**Why the p95 quantile and not the maximum or p90.** The maximum of 124 samples is one pair, not a
+tolerance: fitting to it produces an envelope no render could ever fall outside. At p90 the four
+ratio bands reject roughly a tenth of matched pairs each, which compounds to about a quarter of the
+reference material, and a gate that fails a quarter of the reference material is measuring the
+material. At p95 each band admits 95% of the show's disagreement with itself. The 5% excluded per
+statistic is the tail where the median test calls two frames equivalent and they are different
+*pictures* — `29a` against `34b` is exactly that case and INV-044 already says so.
+
+**And it is validated by running the gate on the show against itself**, both orders, 248 trials, in
+exactly the form it is applied to us: per check it admits **85.5%–100%**, and the combined verdict
+admits **77.4% (192 of 248)**. Six checks at 85–100% cannot combine to 95%; loosening them until
+they did would put every one at its observed maximum. Part of the missing 23% is also real — the 124
+pairs include a war room against a residential corridor, which agree on median by coincidence and
+are not the same picture at all. One band is measurably looser than its nominal 95%: `crushed`
+admits 85.5% because it was estimated at gain 1.0 and is applied to a *gained* reference, and
+gaining changes a censored fraction nonlinearly. Stated, not hidden.
+
+**THE ESTIMATE IS NOT STABLE TO ONE FRAME.** `gardens or greenery.jpg` was missed on the first
+enumeration of the corpus and adding it — one frame in 33, 26 new pairs — moved the p5 band from
+x1.224 to **x1.290**. p95 of a 124-pair sample is its 6th-largest value. These are bands good to
+about 5%, not to three figures, and anyone tightening one should re-derive rather than trim.
+
+**Why the reference is re-measured at `gain = RENDER_OFFSET` rather than compared raw.** Our
+renders deliberately sit at 1.40x the show's level (INV-037). Comparing raw p5 to raw p5 would
+count that offset twice. And scaling the **image** is not the same as multiplying the reference's
+**statistics** by 1.40, which is the point: a gain lifts sub-floor pixels into the measurable set
+where they arrive at the bottom and hold p5 down. `garden.png`'s p5 goes 0.0180 → **0.0178** under
+a x1.40 gain, not to 0.0252. A frame with a black population keeps it when you brighten it, and
+that is precisely the property our renders do not have.
+
+**Why crushed needs an absolute envelope as well as a ratio.** The ratio band is blind at both
+ends. Against a reference that crushes 30%, x11.52 permits anything from 2.6% to 100%; against one
+that crushes 0.22% it permits nothing meaningful. The envelope is the range the show's own frames
+occupy and it is what catches `docs/engine-plant.png` at 86.97% — outside anything in the corpus —
+and `docs/engine-drum.png` at 0.00%.
+
+**Why clipped is an absolute cap and not a band.** It was tried as a band and the corpus refused
+to supply one: over the same 124 pairs the pairwise dispersion of the clipped fraction is x2.78 at
+p50, x7.83 at p68 and **x53.7 at p90**. That is no structure at all — clipping is a function of
+whether a practical light happens to be in shot. The cap is the corpus's own p95 at the offset, and
+the interesting part is that **3.69% lands within 8% of the 4% threshold `report()` already
+carried**, which had been derived independently from our own lamp geometry clipping 1.3–3.1%. Two
+routes, one number.
+
+### Two of the five results are negative, and that is recorded rather than hidden
+
+**p95 and p5/p95 are nearly inert.** At the corpus's own dispersion the bands are x3.27 and x3.38,
+which almost nothing fails. p5/p95 is the statistic that *sounds* like the right one and measures
+the least, because it inherits p95's variance. They are kept because they do fire on the frames
+where nothing bright is in shot at all — `docs/engine-cnc.png` p95 x0.23, `docs/engine-plant.png`
+x0.19 — and because a reader needs to see that they were tried. **p5 is the discriminator**: it is
+tight (x1.22) because the show's frames crush, so their 5th measurable percentile sits within 22%
+of the 0.010 floor in almost every frame. Ours sit at 1.5–3.2x their references'.
+
+### A measured finding that came with it, and it is not an invention
+
+The median of the measurable pixels **is not proportional to exposure, and on some frames is not
+monotonic in it**. Measured by scaling each corpus frame's linear luminance: d(ln median)/d(ln
+gain) between x1.0 and x1.4 ranges from **0.97** (`Babylon_5_2-22_34b.jpg`) to **0.01**
+(`more zocalo.png`), and **7 of 33 frames go down** somewhere in x0.5..x2.0 — `rotunda.webp`
+−0.46, `Starfury.jpg` −0.37, `sleeping-in-light-05.jpg` −0.29,
+`babylon 5 welcome sign, instructions, and hub.jpg` −0.16. The cause is the same censoring as
+above. The consequence is that `gain *= 1.40 * ref_median / our_median`, the formula every value in
+`ROOM_EXPOSURE` and `BESPOKE_EXPOSURE` was obtained from, assumes an exponent of 1 and on the
+customs reference the exponent is **negative**. `STATE.md` already records the symptom for one room
+— the plant *"sits at 1.59x either way"* — and attributes it to that room's geometry; it is a
+property of the statistic. Numbers per frame are in
+`docs/layer4-lighting/frame_distribution.json` under `median_exposure_response`.
+
+### What it says about the exposures we already shipped
+
+Every exposure with a committed frame and a recorded reference, re-measured. **Nothing was retuned
+to produce this** — the table is the finding.
+
+| family | exposure | old (median) | new | what fails |
+|---|---|---|---|---|
+| `DRUM_CALIBRATION` | wide | PASS x1.39 | **FAIL** | p5 x1.74, crushed 0.00% vs 2.66% |
+| `DRUM_CALIBRATION` | garden | PASS x1.49 | **FAIL** | p5 x3.21, crushed 0.01% vs 2.78% |
+| `DRUM_CALIBRATION` | tram | PASS x1.50 | **FAIL** | p5 x1.48 |
+| anchor | corridor (defines 1.00) | PASS x1.39 | **FAIL** | p5 x1.64 |
+| `ROOM_EXPOSURE` | medical | PASS x1.21 | **FAIL** | p5 x1.54 |
+| `ROOM_EXPOSURE` | commerce | PASS x1.28 | **PASS** | — |
+| `BESPOKE_EXPOSURE` | zocalo | PASS x1.43 | **FAIL** | p5 x2.81 |
+| `BESPOKE_EXPOSURE` | hospitality | PASS x1.46 | **FAIL** | p5 x1.61, p5/p95 x3.67 |
+| `BESPOKE_EXPOSURE` | command_control | PASS x1.46 | **FAIL** | p5 x1.44, p95 x0.23, p5/p95 x6.35 |
+| `BESPOKE_EXPOSURE` | docking_bay | PASS x1.44 | **FAIL** | p5 x1.53 |
+| `BESPOKE_EXPOSURE` | alien_sector | PASS x1.31 | **FAIL** | crushed x29.53 (too MUCH) |
+| `BESPOKE_EXPOSURE` | customs | PASS x1.36 | **FAIL** | p5 x1.72, crushed x0.01 |
+| `BESPOKE_EXPOSURE` | quarters | PASS x1.26 | **FAIL** | crushed x38.10 (too MUCH) |
+| `BESPOKE_EXPOSURE` | council_chamber | PASS x1.41 | **FAIL** | p5 x2.20 |
+| `BESPOKE_EXPOSURE` | plant | PASS x1.59 | **FAIL** | p95 x0.19, p5/p95 x4.97, 86.97% crushed |
+| `EXTERIOR_CALIBRATION` | day, side box | PASS x1.40 (on p95) | **FAIL** | p5 x2.28, p5/p95 x2.39 |
+| `EXTERIOR_CALIBRATION` | day, top box | PASS x1.40 (on p95) | **FAIL** | p5 x1.43 |
+
+**17 of 17 on the old test, 1 of 17 on the new one.** `p5` fails 13 of 17 and it fails in one
+direction on eleven of them: our shadows are brighter than the show's. The single pass is
+`docs/engine-market.png`, which is the evidence the gate is not merely rejecting everything.
+
+**Two of the failures are the opposite defect and that matters**: `alien_sector` and `quarters`
+crush 30x and 38x MORE than their references, which happen to be the two brightest, least-crushed
+frames in the whole corpus. The comparison is two-sided and fires both ways.
+
+**Nine `ROOM_EXPOSURE` values cannot be verified at all** — industrial, store, transit, hospitality,
+worship, research, detention, office and generic have no committed render. They were each set by
+rendering a room, measuring it, and not keeping the render, so they are unfalsifiable until someone
+re-renders them. `export_scene.EXPOSURE_FRAMES` records that as data and
+`export_scene.py --gate-frames` prints it per row rather than passing them in silence.
+
+**And `EXTERIOR_CALIBRATION['night']` has no reference frame at all**, which `export_scene` already
+states and refuses to paper over. The most that can be said is that
+`docs/engine-exterior-night.png` is 97.92% crushed against 37.22% for
+`Cobra Bays with starfurries.webp` at the same offset — outside the corpus envelope, but the frame
+is 9.2 km of mostly empty starfield and at that framing the statistic is content, not exposure.
+
+### What this does NOT settle
+
+- **It cannot separate "our shadows are too bright" from "our scene has nothing dark in it."** Both
+  read as too few blacks. INV-044 already establishes that part of the garden frame's shortfall is
+  *content*: `29a`'s clipped hedge, timber retaining walls and broadleaf canopy are things
+  `garden.py` does not build, and no exposure puts foliage in a frame. A p5 or crushed failure is
+  therefore a pointer to one of two different fixes, and the entry cannot say which.
+- **It is still a whole-frame statistic on a fixed shot.** Point the camera at a wall and it
+  reports the wall. The framing guard is `frame_signature`, not this.
+- **The bands were derived from broadcast frames and may not describe a production render.**
+  `EXTERIOR_CALIBRATION`'s day reference, `exterior more.jpg`, is authority 2 and is *not* in the
+  corpus; its distribution verdict is reported for information only.
+- **It says nothing about colour, texture, geometry density or silhouette** — the other things
+  "blockout" means. This is one axis of craft, measured.
+
+**Overturned by:** more authority-1 broadcast frames in `reference/`, which would move every band —
+`--derive` is what forces the constants to follow. Any change to `FLOOR` or `CLIP` invalidates all
+five at once, because every one of them is defined on the censored population those two thresholds
+select. Any change to `RENDER_OFFSET` invalidates the offset-referred comparison and the two
+absolute thresholds, which are both measured at that gain. And a demonstration that the show's
+grade differs systematically between the frames we hold and the frames we do not — the corpus is 33
+images from a 110-episode series — would mean the dispersion is being estimated off a biased sample.
+
+---
+
+## INV-070 — The geometric detail floor: visible line density, and the three bounds that derive it
+
+**Invented:** the metric and gate in `station/density.py` — a per-location floor on **visible
+line density**, λ = (length of edges a viewer would see as a line) / (surface area), in m⁻¹ — and
+the derivation of that floor from three bounds with the smallest taken.
+
+**Why necessary:** CLAUDE.md's layer-2 exit criterion is *"mesh, closed, correctly wound, inside
+its own footprint"*, and every word of it is topological. **A cube passes all of it.** So 118
+locations of blockout passed layer 2, layer 3 painted the blockout, layer 4 lit the blockout, and
+every gate in the repository stayed green while the owner looked at the result and said the
+buildings are "shitty little cubes" and the trees are a "sad excuse for a tree". The only density
+figure anywhere in the project was a **ceiling** — `garden.py`'s self-test asserts the townscape
+is *below* 0.06 tri/m², and `block_building` is documented "Cheap by design". There was no floor,
+so there was nothing to fail. This is the floor.
+
+**Constrained by** — and this is the part that matters, because a floor with no derivation is a
+guess with a decimal point. Three independent bounds, mapping onto three of the four dimensions
+in `docs/AAA-STANDARD.md`, and the gate uses the **least** of them:
+
+1. **PERFORMANCE.** `budget.py` allots a triangle count to each scene's visible set (60,000
+   interior, 300,000 drum, 400,000 exterior), read live rather than copied. Spend it as relief and
+   the achievable line density follows from the construction: a raised-panel grid of pitch *e* over
+   area *S* costs 12 triangles per cell (a closed box) and lays down 2*e* of line per cell, so
+   *n* = 12·S/e² and λ = 2/e, giving **λ_budget = 2·√(n / 12S)**. Nothing in that is chosen. The
+   self-test builds the very construction it is priced from, at the pitch the allotment buys, and
+   asserts it clears the floor *inside* the allotment — so the floor is demonstrably reachable and
+   not aspirational.
+2. **PERCEPTION.** At 1440p (CLAUDE.md's stated target) and the project's own camera FOV — 55°
+   interior and drum, 46° exterior, read out of `godot/scenes/*.tscn` — one pixel subtends
+   θ = fov/1440. A feature needs two samples to exist, so the finest useful pitch is 2p where
+   p = d·θ, and **λ_nyquist = 1/p**. Geometry past this is sub-pixel and is waste, not detail.
+3. **FIDELITY.** Measured off Babylon 5's own frames by `measure_reference()`, with the same Canny
+   operator at the same absolute contrast thresholds that `edge_fraction()` would apply to one of
+   our renders. See INV-071 for the frames, the scale anchors and their uncertainty.
+   **λ_ref = 2·f_edge / (proj_ratio · p)**, where f_edge is the dimensionless fraction of screen
+   pixels lying on a line and proj_ratio is total surface over mean projected area, measured per
+   mesh and coming out 4.00 everywhere because the meshes are closed (Cauchy).
+
+   Bounds 1 and 2 are **ceilings** — past either, the geometry cannot be drawn or cannot be seen.
+   Bound 3 is a **target**. Taking the minimum therefore reads: *match the show, unless the card or
+   the screen cannot carry it.*
+
+**Why line density and not triangles:** a subdivided cube is still a cube. Coplanar subdivision
+adds edges of zero dihedral, which draw nothing, so λ does not move — asserted directly, on a box
+split 8×8 per face at 64× the triangles. Two other cheats are closed the same way: a lathe of
+radius *r* at turn angle τ can reach at most 1/(r·τ) and τ cannot fall below the crease threshold
+without the segments becoming invisible, which puts every tessellated cylinder below the floor at
+every scale the station is built at; and greeble finer than one screen pixel is excluded, because a
+line only counts when both facets meeting at it are at least one pixel across at the composing
+distance.
+
+**The crease threshold, 3.24°, is derived rather than typed.** The image operator calls a pixel an
+edge at a 4% luminance step. Under Lambert shading, dI = sin(α)·dα, and at α = 45° — the median
+incidence over a hemisphere and the elevation every one of this project's render scripts actually
+uses (`--sun-elev 45`) — a 4% step needs 0.0566 rad = 3.24° of normal change. The same threshold
+defines a facet: a patch of surface with no visible line inside it.
+
+**Result on the content as it stands: 11 of 118 locations reach the floor.** The measurement is at
+module granularity for the 50 bespoke places (same granularity `directory.py` already uses for
+layers 3 and 4) and per place for the 68 procedural ones. All 118 bind on the performance bound,
+and on the fidelity bound alone every location sits between **0.2% and 19.7%** of what a Babylon 5
+set carries, median 5.0%.
+
+**Overturned by:** a rendering path that carries relief in geometry differently — Nanite-class
+micropolygon rendering would move bound 1 by an order of magnitude, and displacement mapping with
+correct silhouettes would move the geometry/texture line that bound 2 encodes. A change to
+`budget.py`'s visible-set figures moves bound 1 directly and is meant to. A scale-anchored hull
+frame would replace the exterior's inherited f_edge with a measured one. And a demonstration that
+line density is the wrong proxy for perceived detail — a location that clears λ and still reads as
+blockout — would mean the metric measures the wrong thing; λ says nothing about whether the lines
+are in the right places, which is the one thing left for a reviewer.
+
+---
+
+## INV-071 — Metres per pixel in three reference frames, and the 1.75 m that sets it
+
+**Invented:** the pixel-to-metre scale of the three frames `density.REFERENCE` measures, and hence
+the absolute value of bound 3 above.
+
+**Why necessary:** an edge-pixel fraction is dimensionless. Turning it into a line density in m⁻¹
+needs a scale, and none of the reference frames carries one.
+
+**Constrained by:** a standing human figure in each frame, measured at magnification
+(`tools/refzoom.py` and a pixel-column dump), against an assumed stature:
+
+| frame | figure | assumed stature | m/px | what it is |
+|---|---|---|---|---|
+| `10-interiors-generic-kit/more hallway.jpg` | 247 px | 1.80 m | 0.00729 | Grey transit tube, one figure mid-frame |
+| `10-interiors-generic-kit/garden more.jpg` | 104 px | 1.70 m | 0.01635 | Garden terrace, standing group mid-frame |
+| `09-garden-core-and-transit/garden.png` | 70 px | 1.75 m | 0.02500 | Garden landmark, two figures on the paving |
+
+Stature is the only number here not measured off the frame. 1.70–1.80 m is an ordinary adult range
+and the three frames were given values inside it according to whether the figure is male, female or
+unresolvable; the resulting λ figures agree to within a factor of 1.8 across three frames from two
+sectors, which is the cross-check that makes them usable at all.
+
+**Three things this bound is NOT honest about, stated because they change how it may be used:**
+
+* the counts include every line a set gets from **paint, decals, cast shadow, dressing and
+  costume**, not only from form, so bound 3 over-states what geometry must supply;
+* **perspective**. m/px is measured at the anchor figure's depth and applied to the whole frame.
+  Foreground reads too coarse, background too fine. On `garden.png`, where the far side of the drum
+  is half a kilometre behind the figures, this makes the number a **lower** bound;
+* our composing framing is **closer** than these plates were shot at (2.8 m for a 2.9 m room,
+  against 7.3 mm/px on a 1024 px plate), and requiring an equal screen line fraction at finer
+  resolution requires more line per metre. Where that matters the column is labelled `%show` and is
+  **not gated**.
+
+Because bound 3 is one of three with the minimum taken, and because the performance bound binds on
+all 118 locations, none of these three caveats currently affects a single verdict. They would if
+`budget.py`'s allotments rose by 5× or more.
+
+**Overturned by:** any frame with an object of established dimension in it — a Starfury, a
+docking-bay door, a cobra-bay well — which would replace an assumed stature with a canon length. A
+production still with a slate or a set drawing with a scale bar would close it outright.
+
+**Adjacent finding, not this entry's subject but found while measuring it:** `garden.py`'s docstring
+derives `TOWER_H_M = 16.0` from *"the two figures are ~35 px tall"* in `garden.png`. Measured at 11×
+magnification and confirmed by a green-channel column dump, **those figures are 70–77 px**, not 35.
+The green suit alone spans y = 352–401 and the full figure y ≈ 342–419. Whatever the tower's true
+height is — the tower stands behind the figures, so a perspective correction pushes it back up — the
+stated derivation is out by a factor of two and does not support the number it is attached to. Not
+fixed here: `garden.py` is outside this work's file list, and the correction needs a depth estimate
+this entry has no source for.

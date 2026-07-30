@@ -1611,3 +1611,41 @@ angular reading turns out to be wrong, nothing has to be undone.
 The margin of cell length over sight line falls from a designed 1.5 to between **1.12 and 1.68**.
 That is slack, not a guarantee — the guarantee is that a cell exceeds its own sight line, and
 that is asserted per ring.
+
+
+---
+
+## C-009 — `plant` and `corridor_service` are exposed against an out-of-era, abandoned station · **OPEN, NON-BLOCKING for geometry, BLOCKING for those two exposures**
+
+`BESPOKE_EXPOSURE['plant'] = 0.88` and `corridor_service`'s measured frame both cite
+`10-interiors-generic-kit/more hallways.jpg`, which is **byte-identical** to
+`01-station-exterior/sleeping-in-light-05.jpg` (MD5 `68934048ea8652ef2fdb5ed25a82f96d`) — S5
+"Sleeping in Light", in which the station is **abandoned**.
+
+`reference/00-INDEX.md` already ruled on this frame: *"The set architecture is in-era; the dressing
+is not."* Brightness is dressing. Deriving a working plant room's exposure from a derelict corridor
+lit by dead panels is the precise use that ruling forbids, and it was done under the duplicate
+filename, which is how it escaped notice.
+
+**Why this is a conflict and not simply a bug:** the frame is authority 1 and its *architecture* is
+genuinely the best Downbelow-class reference held — the illuminated centre grating, the recessed
+deck panels, the pilaster light bars are all in-era set build. Discarding the frame loses real
+evidence. Using its levels imports the finale. The two uses have to be separated, and no other held
+frame covers plant-class interiors.
+
+### What is affected
+
+- `plant` exposure 0.88, and the five gazetteer places on `station/plant.py`
+- `corridor_service`'s measured frame
+- `plant`'s entry in the session-3r distribution re-verification, which fails at p95 ×0.19 and
+  86.97% crushed — **consistent with having been matched to a dark, dead corridor**
+
+### What would close it
+
+An S2–3 frame of any industrial or service corridor with the lights **on**. Failing that, derive
+plant's exposure from the in-era corridor kit — `interior_kit` is the project's anchor and is
+in-era — and keep `sleeping-in-light-05.jpg` for architecture only.
+
+### What is built while it stays open
+
+The geometry stands. The exposure is marked suspect and must not be cited as measured-in-era.

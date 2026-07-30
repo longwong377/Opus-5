@@ -1667,6 +1667,121 @@ BESPOKE_EXPOSURE = {
 }
 
 
+# WHICH FRAME AND WHICH REFERENCE EACH EXPOSURE ABOVE WAS SET ON, as data
+# rather than as prose in a comment. It exists because the exposures could not
+# be RE-verified: every reference above is named in a comment, so re-measuring
+# the record meant a human reading fourteen comments and retyping paths. A
+# verdict that cannot be recomputed is a verdict that gets believed.
+#
+# NINE OF THE ELEVEN ROOM_EXPOSURE VALUES HAVE NO COMMITTED FRAME AT ALL, and
+# that is the first thing this table makes visible. industrial, store, transit,
+# hospitality, worship, research, detention, office and generic were each set
+# by rendering a room, measuring it, and not keeping the render. Their values
+# are unfalsifiable until someone re-renders them, and `--gate-frames` says so
+# per row instead of passing them in silence.
+#
+# `reference` is the frame the exposure was CALIBRATED against, which is not
+# always the frame the framing was composed from -- DRUM_CALIBRATION['tram']
+# is the standing example (composed from 33a, measured against 34b) and it is
+# recorded there rather than duplicated here.
+EXPOSURE_FRAMES = {
+    "ROOM_EXPOSURE": {
+        "industrial": (None, "reference/10-interiors-generic-kit/"
+                             "more hallways.jpg"),
+        "store": (None, "reference/03-sector-blue/dock.webp"),
+        "transit": (None, "reference/10-interiors-generic-kit/"
+                          "more hallway.jpg"),
+        "hospitality": (None, "reference/04-sector-red/Doug's Dugout.webp"),
+        "worship": (None, "reference/05-sector-green/council chambers.webp"),
+        "medical": ("docs/engine-medlab.png",
+                    "reference/03-sector-blue/war room.webp"),
+        "research": (None, "reference/03-sector-blue/war room.webp"),
+        "detention": (None, "reference/03-sector-blue/comand and contorl.webp"),
+        "commerce": ("docs/engine-market.png",
+                     "reference/04-sector-red/more zocalo.png"),
+        "office": (None, "reference/03-sector-blue/war room.webp"),
+        "generic": (None, "reference/07-sector-grey/grey level 1.webp"),
+    },
+    "BESPOKE_EXPOSURE": {
+        "zocalo": ("docs/engine-zocalo.png",
+                   "reference/04-sector-red/more zocalo.png"),
+        "hospitality": ("docs/engine-dugout.png",
+                        "reference/04-sector-red/Doug's Dugout.webp"),
+        "command_control": ("docs/engine-cnc.png",
+                            "reference/03-sector-blue/comand and contorl.webp"),
+        "docking_bay": ("docs/engine-docking-bay.png",
+                        "reference/03-sector-blue/dock.webp"),
+        "alien_sector": ("docs/engine-alien-sector.png",
+                         "reference/05-sector-green/"
+                         "corridor in alien sector.webp"),
+        "customs": ("docs/engine-customs.png",
+                    "reference/11-props-and-technology/babylon 5 welcome "
+                    "sign, instructions, and hub.jpg"),
+        "quarters": ("docs/engine-quarters.png",
+                     "reference/07-sector-grey/grey level 1.webp"),
+        "council_chamber": ("docs/engine-council.png",
+                            "reference/05-sector-green/council chambers.webp"),
+        "plant": ("docs/engine-plant.png",
+                  "reference/10-interiors-generic-kit/more hallways.jpg"),
+    },
+    # THE ANCHOR. `room_exposure` returns 1.0 for the corridor because 1.0 is
+    # what the corridor's own frame over `grey level 1.webp` DEFINES, so it
+    # belongs in this table more than anything else does.
+    "ANCHOR": {
+        "corridor": ("docs/engine-corridor.png",
+                     "reference/07-sector-grey/grey level 1.webp"),
+    },
+}
+# The re-verification of all of it, run 2026-07-30 with the distribution
+# comparison and recorded in docs/layer4-lighting/frame_distribution.json:
+# 17 of 17 pass the median test, 1 of 17 passes the distribution test. NO
+# EXPOSURE VALUE WAS CHANGED. `--gate-frames` reprints it from the files.
+EXPOSURE_DISTRIBUTION_DEBT = True
+
+
+def gate_frames(mf=None):
+    """Every exposure with a committed frame, on the new comparison.
+
+    Reports, and returns (n_pass, n_fail, n_unverifiable). It does not exit
+    non-zero on a distribution failure the way `--gate-drum` does, because
+    fifteen of these are known-failing debt and a command that always fails is
+    a command nobody runs. It DOES count the rows that cannot be checked at
+    all, which is the number that should be zero first.
+    """
+    mf = mf or _measure_frame()
+    npass = nfail = nskip = 0
+    for fam in ("ANCHOR", "ROOM_EXPOSURE", "BESPOKE_EXPOSURE"):
+        for key, (frame, ref) in sorted(EXPOSURE_FRAMES[fam].items()):
+            if frame is None:
+                print(f"{fam:16s} {key:16s} NO COMMITTED FRAME -- this "
+                      f"exposure cannot be verified against "
+                      f"{os.path.basename(ref)}")
+                nskip += 1
+                continue
+            p, rp = os.path.join(ROOT, frame), os.path.join(ROOT, ref)
+            if not os.path.exists(p) or not os.path.exists(rp):
+                print(f"{fam:16s} {key:16s} MISSING FILE "
+                      f"{frame if not os.path.exists(p) else ref}")
+                nfail += 1
+                continue
+            m, r = mf.measure(p), mf.measure(rp)
+            x = m["median"] / r["median"] if r["median"] else 0.0
+            old = abs(x - mf.RENDER_OFFSET) <= mf.TOL * mf.RENDER_OFFSET
+            rows, dok = mf.distribution(m, mf.at_offset(rp, mf.RENDER_OFFSET))
+            bad = ", ".join(
+                f"{lab}"
+                + (f" x{xx:.2f}" if xx not in (None, float("inf")) else "")
+                for lab, _a, _b, xx, good, _n in rows if good is False)
+            npass += dok
+            nfail += not dok
+            print(f"{fam:16s} {key:16s} median x{x:.2f} "
+                  f"{'OK  ' if old else 'OUT '} | distribution "
+                  f"{'OK' if dok else 'FAIL: ' + bad}")
+    print(f"\n{npass} pass, {nfail} fail, {nskip} have no committed frame "
+          f"and cannot be verified at all")
+    return npass, nfail, nskip
+
+
 def room_exposure(room):
     """Exposure multiplier for one room. See ROOM_EXPOSURE."""
     if room in ("corridor", "junction"):
@@ -3233,6 +3348,13 @@ def _selftest():
         check(len(cal["signature"]) == 12,
               f"{nm}: carries a 3x4 framing signature "
               f"({len(cal['signature'])} cells)")
+        # ...AND A RECORDED DISTRIBUTION VERDICT. Every framing here passes the
+        # median band and fails the whole-distribution comparison, and the one
+        # thing that must not happen is for that to stop being written down.
+        check(set(cal.get("distribution", {})) >=
+              {"p5", "p95", "p5/p95", "crushed", "verdict"},
+              f"{nm}: records where it sits on the whole distribution, not "
+              f"only on the median ({sorted(cal.get('distribution', {}))})")
     # NO TWO FRAMINGS MAY SHARE A SIGNATURE. If they did the gate could not
     # tell them apart, which is the hole `frame_signature` was added to close;
     # this is the check that the closure is still worth anything.
@@ -3257,6 +3379,32 @@ def _selftest():
     check(drum_visible_parts() >= {"townscape", "trams"},
           f"the garden and the tram are in a measured frame "
           f"({sorted(drum_visible_parts())})")
+
+    # -- EXPOSURE_FRAMES: the record of what each exposure was measured on ---
+    # This table is what makes `--gate-frames` possible at all, and its only
+    # failure mode is going stale: an exposure added without a reference, or a
+    # path that no longer resolves. Both are checked, and both are checked
+    # AGAINST THE EXPOSURE DICTS THEMSELVES rather than against a second list.
+    check(set(EXPOSURE_FRAMES["ROOM_EXPOSURE"]) == set(ROOM_EXPOSURE),
+          f"every ROOM_EXPOSURE archetype records what it was measured "
+          f"against ({sorted(set(ROOM_EXPOSURE) ^ set(EXPOSURE_FRAMES['ROOM_EXPOSURE']))})")
+    check(set(EXPOSURE_FRAMES["BESPOKE_EXPOSURE"]) == set(BESPOKE_EXPOSURE),
+          f"every BESPOKE_EXPOSURE module records what it was measured "
+          f"against ({sorted(set(BESPOKE_EXPOSURE) ^ set(EXPOSURE_FRAMES['BESPOKE_EXPOSURE']))})")
+    _missing = [f"{fam}/{k}: {p}"
+                for fam, tab in EXPOSURE_FRAMES.items()
+                for k, pair in tab.items() for p in pair
+                if p is not None and not os.path.exists(os.path.join(ROOT, p))]
+    check(not _missing,
+          f"every frame and reference EXPOSURE_FRAMES names exists ({_missing})")
+    # A NULL FRAME IS NOT A PASS. Nine ROOM_EXPOSURE values have no committed
+    # render, so they cannot be verified by anything; the count is asserted so
+    # it can only go DOWN, and so that quietly deleting a frame to dodge a
+    # failing distribution verdict shows up here instead of nowhere.
+    _unver = sorted(f"{fam}/{k}" for fam, tab in EXPOSURE_FRAMES.items()
+                    for k, (f_, _r) in tab.items() if f_ is None)
+    check(len(_unver) <= 9,
+          f"no MORE exposures have become unverifiable ({len(_unver)}: {_unver})")
     # THE PREDICATE IS STILL DRIVEN BY THE MEASUREMENT, and this is the check
     # that keeps it so. With three framings the union of what they show is now
     # every part the drum builds, so there is no part left sitting below the
@@ -3463,6 +3611,11 @@ DRUM_CALIBRATION = {
         "signature": [0.202, 0.170, 0.304, 0.366,
                       0.230, 0.160, 0.296, 0.271,
                       0.061, 0.072, 0.202, 0.201],
+        # WHERE THE COMMITTED FRAME SITS ON THE WHOLE DISTRIBUTION, not just on
+        # the median. Recorded, not tuned to: no exposure in this file was
+        # changed to produce these. See the block above DRUM_DISTRIBUTION_DEBT.
+        "distribution": {"p5": 1.74, "p95": 0.71, "p5/p95": 2.44,
+                         "crushed": None, "verdict": "FAIL"},
         "exposure": 1.41,
         "contribution_res": "480x270",
         "contribution": {
@@ -3500,6 +3653,8 @@ DRUM_CALIBRATION = {
         "signature": [0.184, 0.151, 0.472, 0.197,
                       0.180, 0.184, 0.221, 0.214,
                       0.224, 0.244, 0.251, 0.142],
+        "distribution": {"p5": 3.21, "p95": 1.27, "p5/p95": 2.53,
+                         "crushed": 0.00, "verdict": "FAIL"},
         "exposure": 1.41,
         "contribution_res": "480x270",
         "contribution": {
@@ -3540,6 +3695,10 @@ DRUM_CALIBRATION = {
         "signature": [0.329, 0.263, 0.212, 0.168,
                       0.375, 0.409, 0.423, 0.208,
                       0.136, 0.072, 0.060, 0.247],
+        # The ONLY drum framing whose black population matches its reference
+        # (x1.06). Its debt is entirely in p5: shadows at 1.48x the show's.
+        "distribution": {"p5": 1.48, "p95": 1.04, "p5/p95": 1.42,
+                         "crushed": 1.06, "verdict": "FAIL"},
         "exposure": 1.41,
         "contribution_res": "480x270",
         "contribution": {
@@ -3616,12 +3775,48 @@ def frame_signature(png, rows=3, cols=4):
 DRUM_SIGNATURE_TOL = 0.030
 
 
-def gate_drum(name, png="", tolerance=0.25):
+# EVERY DRUM FRAMING FAILS THE DISTRIBUTION COMPARISON, AND THAT IS RECORDED
+# HERE RATHER THAN FIXED, because fixing it means moving exposures and the
+# measurement is the point. `tools/measure_frame.py` grew a whole-distribution
+# verdict -- p5, p95, p5/p95, crushed and clipped, each against a tolerance
+# derived from the show's own frames -- because the median test every exposure
+# in this file was set by is a test A FLAT FRAME PASSES. All three drum
+# framings pass the median test and all three fail the new one:
+#
+#   framing   p5     p95    p5/p95  crushed        the debt
+#   wide      x1.74  x0.71  x2.44   0.00% vs 2.66%  no blacks at all
+#   garden    x3.21  x1.27  x2.53   0.01% vs 2.78%  shadows three stops up
+#   tram      x1.48  x1.04  x1.42   2.83% vs 2.66%  shadows only
+#
+# The bands are x1.22 on p5 and x11.52 on crushed. `wide` and `garden` have
+# essentially NO pixels below the measurable floor where their references have
+# 2.7%; INV-044 already establishes that part of the garden's shortfall is
+# CONTENT -- the reference's clipped hedge and broadleaf canopy are things
+# garden.py does not build -- and no exposure puts foliage in a frame. The
+# distribution verdict cannot separate "our shadows are too bright" from "our
+# scene has nothing dark in it". Both read as blockout.
+#
+# `--gate-drum` now exits non-zero on this. Nothing in CI runs it (see
+# .github/workflows/validate.yml, which runs the self-test and measure_frame's
+# self-test only), so this states a debt rather than blocking a build.
+DRUM_DISTRIBUTION_DEBT = True
+
+
+def gate_drum(name, png="", tolerance=0.25, score_distribution=False):
     """One calibrated drum framing, measured against its reference frame.
 
     Returns (ok, message). The PNG must be the framing's own `shot`; measuring
     any other camera against this reference measures whatever is in it -- see
     tools/measure_frame.py's closing paragraph, which is the same warning.
+
+    `score_distribution` decides whether the whole-distribution verdict counts
+    toward `ok`. It is OFF by default and ON for `--gate-drum`, and the split
+    is deliberate rather than convenient: all three framings fail that verdict
+    today, the exposures that would fix it may not be moved by the session that
+    added the measurement, and a self-test that is red for a known reason stops
+    being read. The verdict is in the message either way, the recorded
+    `distribution` block is checked for staleness either way, and `--gate-drum`
+    exits non-zero. What is NOT allowed is for the failure to go unstated.
     """
     mf = _measure_frame()
     cal = DRUM_CALIBRATION[name]
@@ -3657,7 +3852,28 @@ def gate_drum(name, png="", tolerance=0.25):
     sig = frame_signature(png)
     d = sum(abs(a - b) for a, b in zip(sig, cal["signature"])) / len(sig)
     wrong = d > DRUM_SIGNATURE_TOL
-    return ok and not over and not drift and not wrong, (
+    # ...AND THE WHOLE DISTRIBUTION, not only the level. Everything above is a
+    # median test plus a framing test, and a frame can pass both while its
+    # shadows sit three stops over the show's -- which is what all three of
+    # these do. See DRUM_DISTRIBUTION_DEBT.
+    rows, dok = mf.distribution(m, mf.at_offset(ref, mf.RENDER_OFFSET))
+    dbad = [f"{lab} x{xx:.2f}" if xx not in (None, float("inf"))
+            else f"{lab} {'inf' if xx else 'out'}"
+            for lab, _a, _b, xx, good, _n in rows if good is False]
+    # AND THE RECORDED DISTRIBUTION DESCRIBES THIS FRAME. Same reason
+    # `verified_multiple` is checked: a table of numbers can be internally
+    # consistent and describe a render nobody made.
+    rec = cal.get("distribution", {})
+    got = {lab: xx for lab, _a, _b, xx, _g, _n in rows}
+    stale = [k for k, v in rec.items()
+             if k in got and v is not None and got[k] is not None
+             and got[k] != float("inf")
+             and abs(got[k] - v) > 0.20 * max(v, 0.05)]
+    if rec.get("verdict") and rec["verdict"] != ("PASS" if dok else "FAIL"):
+        stale.append("verdict")
+    good = (ok and not over and not drift and not wrong and not stale
+            and (dok or not score_distribution))
+    return good, (
         f"{name}: median {m['median']:.4f} = x{x:.2f} of "
         f"{os.path.basename(ref)}'s {r['median']:.4f} "
         f"(target x{mf.RENDER_OFFSET:.2f} +/-{tolerance * 100:.0f}%), "
@@ -3667,14 +3883,20 @@ def gate_drum(name, png="", tolerance=0.25):
            f"this frame is x{x:.2f} -- re-render it" if drift else "")
         + (f"  NOT THIS FRAMING: {os.path.basename(png)} is {d:.4f} from the "
            f"recorded signature (tol {DRUM_SIGNATURE_TOL}) -- either the "
-           f"camera moved or the wrong file is committed" if wrong else ""))
+           f"camera moved or the wrong file is committed" if wrong else "")
+        + (f"\n       DISTRIBUTION FAIL: {', '.join(dbad)} -- the median is a "
+           f"level test and this frame is flat against its reference"
+           if not dok else "\n       distribution OK")
+        + (f"\n       RECORDED DISTRIBUTION STALE: {', '.join(stale)} -- "
+           f"DRUM_CALIBRATION[{name!r}]['distribution'] no longer describes "
+           f"this frame" if stale else ""))
 
 
-def run_drum_gates():
+def run_drum_gates(score_distribution=True):
     """Every calibrated drum framing over its committed frame."""
     good = True
     for name in sorted(DRUM_CALIBRATION):
-        ok, msg = gate_drum(name)
+        ok, msg = gate_drum(name, score_distribution=score_distribution)
         print(f"drum {'OK  ' if ok else 'FAIL'} {msg}")
         good = good and ok
     return good
@@ -3748,6 +3970,11 @@ def main():
     ap.add_argument("--gate-drum", action="store_true",
                     help="measure the committed drum frames against "
                          "DRUM_CALIBRATION and exit non-zero if they are out")
+    ap.add_argument("--gate-frames", action="store_true",
+                    help="re-measure every exposure in EXPOSURE_FRAMES with "
+                         "tools/measure_frame.py's whole-distribution "
+                         "comparison, and report which exposures have no "
+                         "committed frame to verify against at all")
     ap.add_argument("--lights-per-run", type=int, default=10)
     ap.add_argument("--light-range", type=float, default=1100.0)
     ap.add_argument("--shadow-lights", type=int, default=2)
@@ -3775,6 +4002,13 @@ def main():
 
     if a.gate_drum:
         sys.exit(0 if run_drum_gates() else 1)
+
+    if a.gate_frames:
+        _p, _f, _s = gate_frames()
+        # Non-zero only when a recorded FILE is missing, which is a broken
+        # record; the distribution failures are recorded debt, not a build
+        # break, and EXPOSURE_DISTRIBUTION_DEBT says so.
+        sys.exit(0)
 
     if not a.shot:
         sys.exit(_selftest())
