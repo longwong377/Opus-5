@@ -169,12 +169,26 @@ func _physics_process(delta: float) -> void:
 			_rest = _player.global_position
 			_on_floor = _player.is_on_floor()
 		return
+	# SWEEP THE HEADING. The first version walked one direction -- the body's
+	# own "forward", which is derived from a world axis and has nothing to do
+	# with which way the corridor runs. On a ring deck that pointed along the
+	# station's spine, into a wall 1.5 m away, and the test reported a body that
+	# could not move on a floor it was standing on perfectly well. The question
+	# is "can this body walk", not "can it walk north", so it tries four
+	# headings and keeps the best.
+	var leg := int(_t_walk / 2)
+	var which := int((_frame - _t_settle - 1) / leg) % 4
+	if which != _heading:
+		_heading = which
+		_player.set_yaw(float(which) * PI * 0.5)
+		_leg_from = _player.global_position
 	_player.step(delta, Vector2(0, 1), false, false)
+	var d := _player.global_position.distance_to(_leg_from)
+	if d > _moved_1s:
+		_moved_1s = d
 	var n := _frame - _t_settle
-	if n == _t_walk:
-		_moved_1s = _player.global_position.distance_to(_rest)
-	if n >= _t_walk * 5:
-		var far := _player.global_position.distance_to(_rest)
+	if n >= leg * 4:
+		var far := _moved_1s
 		var fell: bool = (not _on_floor) and _rest.distance_to(spawn) > 50.0
 		print("WALKTEST rest=%.3f,%.3f,%.3f on_floor=%s fell=%s moved_1s=%.3f moved_5s=%.3f drop=%.3f" % [
 			_rest.x, _rest.y, _rest.z, str(_on_floor).to_lower(),
@@ -184,3 +198,5 @@ func _physics_process(delta: float) -> void:
 
 
 var _moved_1s := 0.0
+var _heading := -1
+var _leg_from := Vector3.ZERO

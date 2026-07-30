@@ -169,6 +169,51 @@ PROPS = {
     "path":             (6.00, 1.60, 0.04, "floor"),
     "pool_edge":        (4.00, 0.60, 0.25, "floor"),
     "tray_dispenser":   (0.80, 0.55, 1.30, "floor"),
+    # --- session 3u: the 33 declared interactables that had no definition ----
+    # `directory.py` has carried these in `interacts` since layer 1 -- they are
+    # what a player can USE -- and `PROPS` never gained an entry for any of
+    # them, so `lateral_stack` raised KeyError on the location. It went unnoticed
+    # because every gate that touches a room either samples a subset or catches
+    # broadly; `station/deck.py` found it by trying to assemble five of them
+    # into one deck and getting one.
+    #
+    # Dimensions are (width, depth, height, mount) like the rest, chosen at the
+    # scale the object has to be to work: a customs desk you queue at, a service
+    # ladder a person climbs, a market stall you walk past. All extrapolation
+    # and all replaceable -- what matters is that the location BUILDS.
+    "menu_display": (0.6, 0.06, 0.8, "wall"),
+    "customs_desk": (2.2, 0.9, 1.05, "floor"),
+    "info_board": (1.2, 0.08, 0.9, "wall"),
+    "shower": (0.9, 0.9, 2.1, "floor"),
+    "market_stall": (2.4, 1.6, 2.2, "floor"),
+    "shopfront": (3.0, 0.4, 2.4, "wall"),
+    "gallery_rail": (2.0, 0.08, 1.05, "floor"),
+    "reception": (2.6, 0.8, 1.1, "floor"),
+    "airlock_door": (1.6, 0.25, 2.1, "wall"),
+    "atmosphere_status_lamp": (0.22, 0.12, 0.22, "wall"),
+    "service_ladder": (0.5, 0.18, 2.4, "wall"),
+    "brazier": (0.7, 0.7, 0.9, "floor"),
+    "shuttle_door": (1.8, 0.25, 2.1, "wall"),
+    "comms_channel": (0.4, 0.1, 0.5, "wall"),
+    "baggage_scanner": (1.4, 2.2, 1.6, "floor"),
+    "station_schematic_screen": (1.8, 0.1, 1.2, "wall"),
+    "welcome_board": (2.0, 0.1, 1.0, "wall"),
+    "bollard": (0.25, 0.25, 0.9, "floor"),
+    "deck_marking": (1.2, 1.2, 0.01, "floor"),
+    "bay_control_booth": (2.4, 2.0, 2.4, "floor"),
+    "cafe_table": (0.8, 0.8, 0.74, "floor"),
+    "planter": (1.2, 0.6, 0.7, "floor"),
+    "dartboard": (0.45, 0.06, 0.45, "wall"),
+    "pendant_lamp": (0.3, 0.3, 0.4, "ceiling"),
+    "delegate_bench": (2.4, 0.6, 0.9, "floor"),
+    "speaking_position": (1.0, 0.6, 1.15, "floor"),
+    "gallery_door": (1.2, 0.2, 2.1, "wall"),
+    "breather_dispenser": (0.5, 0.3, 1.3, "wall"),
+    "barred_screen": (1.6, 0.1, 2.2, "wall"),
+    "building_door": (1.4, 0.2, 2.2, "wall"),
+    "standpipe": (0.3, 0.3, 1.1, "floor"),
+    "launch_tube": (3.0, 3.0, 3.0, "floor"),
+    "clamp": (1.2, 1.2, 0.8, "floor"),
 }
 
 # Which archetype a location uses, chosen by its primary function. Order

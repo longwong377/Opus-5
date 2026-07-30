@@ -73,6 +73,13 @@ func body_up() -> Vector3:
 	return -gravity_dir()
 
 
+## Face a given yaw. The headless walk test uses this to try more than one
+## direction, because a body's "forward" is derived from a world axis and a
+## corridor runs whichever way it runs.
+func set_yaw(y: float) -> void:
+	_yaw = y
+
+
 func _unhandled_input(event: InputEvent) -> void:
 	if event is InputEventMouseMotion and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED:
 		_yaw -= event.relative.x * look_sensitivity
@@ -99,6 +106,15 @@ func step(delta: float, wish: Vector2, jump: bool, sprint: bool) -> void:
 	fwd = fwd.normalized().rotated(up, _yaw)
 	var right := fwd.cross(up).normalized()
 
+	# THE BODY ITSELF IS ORIENTED, not just the camera, and this was the bug
+	# that stopped a body walking on a ring deck. A CapsuleShape3D stands along
+	# its owner's LOCAL Y. Leaving the body unrotated while calling its up
+	# "radial" put a 1.8 m capsule lying sideways through the floor and the wall
+	# -- the body reported `on_floor = true`, because it was, and could not move
+	# in any of four directions, because it was embedded. It is not enough for
+	# gravity to know which way is up; the shape has to.
+	global_transform.basis = Basis(right, up, -fwd).orthonormalized()
+
 	var speed := sprint_m_s if sprint else speed_m_s
 	var horiz := (fwd * wish.y + right * wish.x)
 	if horiz.length() > 1.0:
@@ -120,9 +136,9 @@ func step(delta: float, wish: Vector2, jump: bool, sprint: bool) -> void:
 	up_direction = up
 	move_and_slide()
 
+	# The camera rides the body now, so it only needs the look pitch.
 	if _cam != null:
-		_cam.global_transform.basis = Basis(right, up, -fwd).orthonormalized()
-		_cam.rotate_object_local(Vector3.RIGHT, _pitch)
+		_cam.transform.basis = Basis(Vector3.RIGHT, -_pitch)
 
 
 func _physics_process(delta: float) -> void:
