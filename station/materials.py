@@ -1699,7 +1699,12 @@ def _build():
         "plant_valve_metal", "Valve — bare metal handwheel and stem, worn by use",
         albedo=(0.545, 0.540, 0.528), roughness=0.42, metallic=0.95,
         specular=0.5,
-        binds=("prop_valve",), scenes=("interior",),
+        binds=("prop_valve",
+               # Session 3s articulation (INV-073). High-level conduit
+               # runs are bare metal service pipe -- the same surface
+               # this entry was measured on, at a different diameter. No
+               # new colour is introduced.
+               "commerce_conduit", "detention_conduit", "generic_conduit", "hospitality_conduit", "medical_conduit", "office_conduit", "research_conduit", "transit_conduit", "worship_conduit", "industrial_conduit", "store_conduit"), scenes=("interior",),
         source="NO FRAME ESTABLISHES THIS. The reference set holds no view of the station's machine spaces at all: reference/08-sector-yellow-engineering/ and reference/06-sector-brown-downbelow/ are empty directories, and canon/INVENTIONS.md says the same thing in its own words for the plant zone — 'Overturned by: any on-screen view of the station's machine spaces, of which we hold none.' What IS sourced is the object: station/directory.py declares valve in eleven locations, all of them water storage, waste, fuel, air handling or reclamation, and station/rooms.py sizes it 0.45 m square, wall-mounted — a handwheel, not a control panel.",
         extrapolated="Every number. Declared in full rather than dressed as a reading."))
 
@@ -1759,7 +1764,9 @@ def _build():
         "shell_wall_panel", "Room Shell Wall — the station's painted panel, at room scale",
         albedo=(0.455, 0.455, 0.455), roughness=0.56, metallic=0,
         specular=0.38, texture="wall_plate", uv_scale=1.0 / 4,
-        binds=("commerce_wall", "detention_wall", "generic_wall", "hospitality_wall", "office_wall", "transit_wall", "worship_wall", "customs_wall", "customs_endwall", "qtr_wall", "alien_wall", "alien_endwall", "alien_quarter_shell", "bar_wall"), scenes=("interior",),
+        binds=("commerce_wall", "detention_wall", "generic_wall", "hospitality_wall", "office_wall", "transit_wall", "worship_wall", "customs_wall", "customs_endwall", "qtr_wall", "alien_wall", "alien_endwall", "alien_quarter_shell", "bar_wall",
+               # Session 3s articulation (INV-073). Skirting, dado, picture rail, cornice and raised panel are all the same painted wall plane worked into relief -- no new surface and no new colour.
+               "commerce_skirt", "detention_skirt", "generic_skirt", "hospitality_skirt", "medical_skirt", "office_skirt", "research_skirt", "transit_skirt", "worship_skirt", "industrial_skirt", "store_skirt", "commerce_dado", "detention_dado", "generic_dado", "hospitality_dado", "medical_dado", "office_dado", "research_dado", "transit_dado", "worship_dado", "industrial_dado", "store_dado", "commerce_rail", "detention_rail", "generic_rail", "hospitality_rail", "medical_rail", "office_rail", "research_rail", "transit_rail", "worship_rail", "industrial_rail", "store_rail", "commerce_cornice", "detention_cornice", "generic_cornice", "hospitality_cornice", "medical_cornice", "office_cornice", "research_cornice", "transit_cornice", "worship_cornice", "industrial_cornice", "store_cornice", "commerce_panel", "detention_panel", "generic_panel", "hospitality_panel", "medical_panel", "office_panel", "research_panel", "transit_panel", "worship_panel", "industrial_panel", "store_panel"), scenes=("interior",),
         source="07-sector-grey/grey level 1.webp wall plate course (0.019,0.236)-(0.125,0.293), balanced V 0.295 — the anchor measurement, restated here only as the level this material is pinned to. Corroborated in six frames the anchor did not come from: 03-sector-blue/war room.webp arch face (0.040,0.020)-(0.130,0.120) balanced V 0.286; 05-sector-green/council chambers.webp wall blade dominant cluster V 0.270 (29.9% of (0.00,0.00)-(0.30,0.20)); 03-sector-blue/dock.webp bay wall (0.200,0.290)-(0.330,0.400) V 0.268; 09-garden-core-and-transit/central corridor.webp walkway fascia (0.300,0.245)-(0.600,0.275) V 0.250 and wall panel (0.600,0.300)-(0.720,0.420) V 0.234; 04-sector-red/more zocalo.png lit structure cluster V 0.317. lit() of those seven: 0.365-0.511, mean 0.435.",
         extrapolated="Nothing about the colour. The 4.0 m texture repeat is chosen, not measured — but it is chosen to PRESERVE a measurement: wall_plate lays 6 plate courses across its repeat, so 4.0 m holds the 0.667 m course pitch materials.py already read off grey level 1.webp against a 2.1 m door. Any other repeat silently changes that pitch. Roughness 0.56 and specular 0.38 are extrapolated: no frame in the set separates gloss from geometry on a wall."))
 
@@ -1829,7 +1836,9 @@ def _build():
         "shell_deck_public", "Public Shell Deck — pale tiled floor, concourse and office",
         albedo=(0.396, 0.396, 0.396), roughness=0.32, metallic=0,
         specular=0.58, texture="deck_plate", uv_scale=1.0 / 4,
-        binds=("commerce_deck", "detention_deck", "generic_deck", "hospitality_deck", "office_deck", "transit_deck", "cc_floor", "cc_pit", "customs_deck", "bar_deck"), scenes=("interior",),
+        binds=("commerce_deck", "detention_deck", "generic_deck", "hospitality_deck", "office_deck", "transit_deck", "cc_floor", "cc_pit", "customs_deck", "bar_deck",
+               # Session 3s articulation (INV-073). A bay joint is the deck's own material at its edges.
+               "commerce_deck_joint", "detention_deck_joint", "generic_deck_joint", "hospitality_deck_joint", "medical_deck_joint", "office_deck_joint", "research_deck_joint", "transit_deck_joint", "worship_deck_joint", "industrial_deck_joint", "store_deck_joint"), scenes=("interior",),
         source="04-sector-red/more zocalo.png (gains 0.936/1.137/0.950), tile field lit (0.200,0.620)-(0.340,0.720) balanced V 0.611, and k-means over (0.15,0.60)-(0.55,0.95) giving lit deck clusters at V 0.465 / 0.619 / 0.715 against lit structure clusters at V 0.317 / 0.436 in the same frame — a deck:wall ratio of 1.8. 05-sector-green/council chambers.webp floor (0.900,0.860)-(0.990,0.990) V 0.496 against wall clusters V 0.270-0.425, ratio ~1.5. 07-sector-grey/grey level 1.webp deck field V 0.471 against wall 0.295, ratio 1.60.",
         extrapolated="The albedo is a DERIVED value, not a measured one, and the derivation is the interesting part — see reasoning. 0.396 is 0.87x the wall it meets. The 4.0 m deck_plate repeat gives 1.0 m tiles, estimated off more zocalo.png's joint grid against the café furniture; it is the weakest number in this material and one frame with a person standing on a tile joint would close it."))
 
@@ -1915,7 +1924,9 @@ def _build():
         "shell_rib_painted", "Shell Rib — painted structural pilaster, floor to soffit",
         albedo=(0.469, 0.469, 0.469), roughness=0.4, metallic=0,
         specular=0.46,
-        binds=("commerce_rib", "detention_rib", "generic_rib", "hospitality_rib", "medical_rib", "office_rib", "research_rib", "transit_rib", "worship_rib", "council_fin", "cc_mullion", "cc_ring", "cc_hub"), scenes=("interior",),
+        binds=("commerce_rib", "detention_rib", "generic_rib", "hospitality_rib", "medical_rib", "office_rib", "research_rib", "transit_rib", "worship_rib", "council_fin", "cc_mullion", "cc_ring", "cc_hub",
+               # Session 3s articulation (INV-073). A mullion is a rib at bay scale -- same painted structural surface, and the entry's own measurement is a pilaster:wall ratio that applies at either size.
+               "commerce_mullion", "detention_mullion", "generic_mullion", "hospitality_mullion", "medical_mullion", "office_mullion", "research_mullion", "transit_mullion", "worship_mullion", "industrial_mullion", "store_mullion"), scenes=("interior",),
         source="07-sector-grey/grey level 1.webp pilaster bullnose face (0.188,0.394)-(0.206,0.731), balanced V 0.301 against the wall plate course at V 0.295 in the same frame — a ratio of 1.02, which is the whole measurement. Corroborated at room scale by 03-sector-blue/war room.webp, whose arch pier (0.245,0.100)-(0.300,0.550) balances V 0.235 against the arch face at V 0.286 and the console rail at V 0.233: the pier is not lighter than what it sits against, it is differently shaped. 00-INDEX.md's war room entry calls that arch 'the chamfered structural language of the corridors at room scale', which is exactly the claim this material makes.",
         extrapolated="Roughness 0.40 and specular 0.46 — the frame shows a specular roll-off along the bullnose but fixes the kind and not the value, the same caveat kit_pilaster already carries. The albedo is not extrapolated: 0.469 is 1.031x shell_wall_panel and 0.983x shell_wall_clinical, so it sits inside +/-3% of BOTH walls it meets, which is the measured pilaster:wall relationship applied twice."))
 

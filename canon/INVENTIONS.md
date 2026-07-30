@@ -2644,3 +2644,44 @@ relief is how a *wall* does. Choosing the wrong one wastes the budget by an orde
 
 **Overturned by:** any frame establishing the Garden's storey heights or planting scale against a
 figure of known stature.
+
+
+---
+
+## INV-073 — Interior articulation: the bands, grids and trim every procedural room carries
+
+**Status:** extrapolation, authority 5, session 3s.
+
+**Invented:** the fit-out proportions added to `station/rooms.py`'s `build()` — skirting 0.14 m
+(with a 0.05 m secondary), dado at 0.95 m, picture rail 0.75 m below soffit, cornice 0.16 m
+projecting 0.055 m, deck bay joints at 0.40 m, soffit tee grid at 0.40 m with a 0.07 m tee, wall
+mullions 6 per bay at 0.06 x 0.035 m, raised panels 0.045 m proud, and up to four 0.11 m conduit
+runs at high level.
+
+**What is sourced.** The *language* is `07-sector-grey/grey level 1.webp` and
+`03-sector-blue/war room.webp`, already used by `materials.shell_rib_painted`, whose entry records
+the pilaster-to-wall relationship this extends. Every new group binds to a material **already
+measured** — wall trim to the wall plane, joints to the deck, mullions to the pilaster, conduit to
+`plant_valve_metal`. **No new colour is introduced anywhere.**
+
+**Why necessary.** The 68 procedural rooms are 58% of the station and shared one generator that
+emitted deck, soffit, four walls, ribs and fixtures — 336 triangles over 384 m², **18.0% of the
+detail floor** (`station/density.py`, INV-070). A flat field of wall between ribs is what reads as
+a placeholder box.
+
+**The rule this applies, carried from INV-072.** Line density is metres of visible line per m², so
+LENGTH earns it. A band round a room's perimeter is twelve triangles laying four lines the length
+of that perimeter — roughly 13 m of line per triangle at this room size, against panel relief's
+0.17. Bands first, then grids, then panels. The module went 18.0% → 100.7% at 2,592 triangles a
+bay, inside a habitat cell budget still at 66%.
+
+**One defect this found, and it is the reason the trim check exists.** The walkability flood fill
+treats any non-shell group as an obstacle, so the new trim broke it on all 68 rooms. The tempting
+fix — add the trim to the ignore list — is the move this project keeps catching itself at: a gate
+found something and the gate gets changed. Instead the exemption is *earned*: a check asserts every
+trim group is either thinner than a step (0.10 m) or above head height (2.0 m). It immediately
+caught a 0.11 m conduit at chest height in the brig and in security_central, because those cells
+have a low soffit. The conduits now stop rather than drop; a low room gets fewer, not lower.
+
+**Overturned by:** any frame establishing B5 interior trim heights against a figure of known
+stature.

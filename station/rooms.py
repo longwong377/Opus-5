@@ -409,6 +409,32 @@ LIGHT_PITCH_RATIO = {"light_highbay": 0.611, "light_market_pool": 0.375}
 # picked, so a schema change moves them.
 RIB_D_M = 0.16
 RIB_W_M = 0.45
+# Articulation bands and grids -- INV-073. Domestic/industrial fit-out
+# proportions; nothing in canon fixes them, and a room without them reads as a
+# box, which is what the owner saw.
+SKIRT_H_M = 0.14
+SKIRT_D_M = 0.035
+DADO_H_M = 0.95
+BAND_H_M = 0.09
+BAND_D_M = 0.030
+CORNICE_H_M = 0.16
+CORNICE_D_M = 0.055
+CORNICE_DROP_M = 0.75
+DECK_BAY_M = 0.40
+JOINT_W_M = 0.05
+SOFFIT_BAY_M = 0.40
+TEE_W_M = 0.07
+TEE_D_M = 0.04
+CONDUITS = 4
+CONDUIT_R_M = 0.055
+PANEL_D_M = 0.045
+_TRIM_SUFFIXES = ("_skirt", "_dado", "_rail", "_cornice", "_deck_joint",
+                  "_soffit_tee", "_conduit", "_panel", "_mullion")
+TRIM_MAX_PROUD_M = 0.10          # a step you do not trip on
+TRIM_HEAD_M = 2.0
+MULLIONS_PER_BAY = 6
+MULLION_W_M = 0.06
+MULLION_D_M = 0.035                # above this it is out of the walking envelope
 
 
 AISLE_M = WALK_M + 0.5     # a walker plus 0.25 m either side of fixed objects
@@ -610,6 +636,105 @@ def build(schema, profile, place, max_span_m=None):
             x0 = s * hw
             _box(v, t, g, f"{arch}_rib", (min(x0, x0 - s * RIB_D_M), 0.0, zc),
                  (max(x0, x0 - s * RIB_D_M), ceil, zc + RIB_W_M))
+
+    # ARTICULATION. Ribs alone leave a flat field of wall between them, and
+    # `station/density.py` scores the whole module at 18% of its floor. What
+    # follows is archetype-agnostic on purpose: it is the vocabulary any built
+    # interior has, so one pass moves all 68 procedural rooms.
+    #
+    # THE ARITHMETIC THAT CHOSE IT, measured on station/garden.py in this same
+    # session (INV-072): line density is metres of visible line per m2, so
+    # LENGTH earns it, not triangle count. A continuous band round a room's
+    # perimeter is twelve triangles laying four lines the length of that
+    # perimeter -- about 13 m of line per triangle in a room this size. A panel
+    # relief grid, which is the construction the budget bound is derived from,
+    # yields 0.17. Bands first, then grids, then panels.
+    per = 2 * (2 * ow + 2 * ol)                      # noqa: F841  (documented)
+    for y, h_, d_, nm in ((0.0, SKIRT_H_M, SKIRT_D_M, "skirt"),
+                          (SKIRT_H_M + 0.02, 0.05, SKIRT_D_M * 0.6, "skirt"),
+                          (DADO_H_M, BAND_H_M, BAND_D_M, "dado"),
+                          (DADO_H_M + BAND_H_M + 0.06, 0.05, BAND_D_M * 0.7,
+                           "dado"),
+                          (ceil - CORNICE_DROP_M, BAND_H_M, BAND_D_M, "rail"),
+                          (ceil - CORNICE_DROP_M - 0.14, 0.05, BAND_D_M * 0.7,
+                           "rail"),
+                          (ceil - CORNICE_H_M, CORNICE_H_M, CORNICE_D_M,
+                           "cornice")):
+        if y + h_ > ceil:
+            continue
+        for s in (-1, 1):
+            _box(v, t, g, f"{arch}_{nm}",
+                 (s * (hw - d_), y, -hl), (s * hw, y + h_, hl))
+            _box(v, t, g, f"{arch}_{nm}",
+                 (-hw, y, s * (hl - d_)), (hw, y + h_, s * hl))
+    # Deck bay joints, both ways. The floor is the largest single surface in
+    # any room and a flat plane carries no line at any triangle count -- that
+    # is what held the Garden at 80.9% until its paving was jointed.
+    for i in range(1, max(2, int(2 * hw / DECK_BAY_M))):
+        x = -hw + (2 * hw) * i / max(2, int(2 * hw / DECK_BAY_M))
+        _box(v, t, g, f"{arch}_deck_joint",
+             (x - JOINT_W_M / 2, -0.01, -hl), (x + JOINT_W_M / 2, 0.012, hl))
+    for i in range(1, max(2, int(2 * hl / DECK_BAY_M))):
+        z = -hl + (2 * hl) * i / max(2, int(2 * hl / DECK_BAY_M))
+        _box(v, t, g, f"{arch}_deck_joint",
+             (-hw, -0.01, z - JOINT_W_M / 2), (hw, 0.012, z + JOINT_W_M / 2))
+    # Soffit service grid: the T-bar every serviced ceiling has, and the run it
+    # conceals. Both are continuous, which is why they are affordable.
+    for i in range(1, max(2, int(2 * hl / SOFFIT_BAY_M))):
+        z = -hl + (2 * hl) * i / max(2, int(2 * hl / SOFFIT_BAY_M))
+        _box(v, t, g, f"{arch}_soffit_tee",
+             (-hw, ceil - TEE_D_M, z - TEE_W_M / 2),
+             (hw, ceil, z + TEE_W_M / 2))
+    _box(v, t, g, f"{arch}_soffit_tee",
+         (-TEE_W_M / 2, ceil - TEE_D_M, -hl), (TEE_W_M / 2, ceil, hl))
+    # High-level conduit along both long walls: a six-sided prism is 2 m of
+    # line per triangle and every serviced deck on this station has one.
+    for s in (-1, 1):
+        for k in range(CONDUITS):
+            yy = ceil - CORNICE_H_M - 0.22 - k * 0.20
+            # ABOVE HEAD HEIGHT OR NOT AT ALL. A 110 mm conduit at chest height
+            # in a 2.4 m detention cell is something you walk into, and the trim
+            # check above caught exactly that on `brig` and `security_central`.
+            # A low room gets fewer conduits, not lower ones.
+            if yy - CONDUIT_R_M < TRIM_HEAD_M:
+                break
+            _box(v, t, g, f"{arch}_conduit",
+                 (s * (hw - CONDUIT_R_M * 2), yy - CONDUIT_R_M, -hl),
+                 (s * hw, yy + CONDUIT_R_M, hl))
+    # Deck joints on the SOFFIT too, and a second grid direction: a serviced
+    # ceiling is a tile field, and the tile edges are continuous line for
+    # twelve triangles a run.
+    for i in range(1, max(2, int(2 * hw / SOFFIT_BAY_M))):
+        x = -hw + (2 * hw) * i / max(2, int(2 * hw / SOFFIT_BAY_M))
+        _box(v, t, g, f"{arch}_soffit_tee",
+             (x - TEE_W_M / 2, ceil - TEE_D_M, -hl),
+             (x + TEE_W_M / 2, ceil, hl))
+    # Vertical mullions dividing each wall bay, dado to cornice. A bay of bare
+    # wall between two ribs is the flat field the owner reads as a placeholder.
+    mtop = min(ceil - CORNICE_H_M - 0.05, ceil - 0.3)
+    for i in range(nrib):
+        z0 = -hl + i * (ln / nrib) + RIB_W_M
+        z1 = -hl + (i + 1) * (ln / nrib) - RIB_W_M
+        if z1 - z0 < 0.6:
+            continue
+        for k in range(1, MULLIONS_PER_BAY + 1):
+            zc = z0 + (z1 - z0) * k / (MULLIONS_PER_BAY + 1)
+            for s in (-1, 1):
+                _box(v, t, g, f"{arch}_mullion",
+                     (s * (hw - MULLION_D_M), SKIRT_H_M, zc - MULLION_W_M / 2),
+                     (s * hw, mtop, zc + MULLION_W_M / 2))
+    # Recessed panels in the wall field between ribs, above the dado.
+    ptop = min(ceil - CORNICE_H_M - 0.30, ceil - 0.5)
+    if ptop > DADO_H_M + 0.4:
+        for i in range(nrib):
+            z0 = -hl + i * (ln / nrib) + RIB_W_M
+            z1 = -hl + (i + 1) * (ln / nrib) - RIB_W_M
+            if z1 - z0 < 0.5:
+                continue
+            for s in (-1, 1):
+                _box(v, t, g, f"{arch}_panel",
+                     (s * (hw - PANEL_D_M), DADO_H_M + 0.25, z0),
+                     (s * hw, ptop, z1))
 
     # Fixtures: the machinery the room is named for. See FIXTURES.
     # `inset` records the depth each side loses to flanking scenery, and
@@ -1255,7 +1380,8 @@ def _selftest():
         # proud at hip height. Neither should close a room, and the flood fill
         # is the only thing that can say so.
         if not walkable(_boxes(v, t, g, lambda n: not n.endswith(
-                ("_deck", "_soffit", "_wall", "_rib"))), bw, bl):
+                ("_deck", "_soffit", "_wall", "_rib") + _TRIM_SUFFIXES)), bw,
+                bl):
             unwalkable.append(p["key"])
     check("no room renders black -- every fitting its archetype declares is "
           "placed", not dark, f"{len(dark)}: {dark[:4]}")
@@ -1263,6 +1389,33 @@ def _selftest():
           not pierced, f"{len(pierced)}: {pierced[:4]}")
     check("every light fitting is inside the room it lights",
           not outside, f"{len(outside)}: {outside[:4]}")
+    # THE EXEMPTION ABOVE IS EARNED HERE, not assumed. Adding the articulation
+    # trim to the flood fill's ignore list would otherwise be exactly the move
+    # this project keeps catching itself at: a gate found something, and the
+    # gate was changed. Trim is genuinely not an obstacle -- a 22 mm deck joint
+    # and a 35 mm skirting are things you walk over and past -- but that is a
+    # claim about DIMENSIONS, so it is measured. Make a "skirting" half a metre
+    # deep and this fails, and the walkability exemption stops applying to it.
+    fat = []
+    for p in places[:12]:
+        v, t, g = build(schema, profile, p)
+        ceil_ = ceiling_m(p)
+        for nm, lo, hi in g:
+            if not nm.endswith(_TRIM_SUFFIXES):
+                continue
+            pts = [v[i] for tri in t[lo:hi] for i in tri]
+            if not pts:
+                continue
+            xs = [q[0] for q in pts]
+            ys = [q[1] for q in pts]
+            zs = [q[2] for q in pts]
+            thin = min(max(xs) - min(xs), max(ys) - min(ys),
+                       max(zs) - min(zs))
+            # Either it is thinner than a step, or it is above head height.
+            if thin > TRIM_MAX_PROUD_M and min(ys) < TRIM_HEAD_M:
+                fat.append((p["key"], nm, round(thin, 3)))
+    check("every articulation band is trim, not an obstacle -- thinner than a "
+          "step or above head height", not fat, f"{len(fat)}: {fat[:3]}")
     check("the lit room is still walkable",
           not unwalkable, f"{len(unwalkable)}: {unwalkable[:6]}")
     print(f"  lights: {lamp_total} fittings over {len(places)} rooms "

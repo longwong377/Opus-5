@@ -1,8 +1,25 @@
 # Project State
 
-**Last updated:** 2026-07-30 · **Session 3s** — the Garden PASSES its detail floor, 16.3% -> 101.4% · **Session 3r** — **layer 2 is 16/118.** The owner saw the renders and the metrics now agree with the owner
+**Last updated:** 2026-07-30 · **Session 3s** — layer 2: 16/118 -> 78/118. Garden and all 68 procedural rooms pass their floor · **Session 3r** — **layer 2 is 16/118.** The owner saw the renders and the metrics now agree with the owner
 
-## Session 3s — the Garden is the first thing rebuilt against the new bar
+## Session 3s — layer 2 goes 16/118 -> 78/118
+
+The Garden **and** the 68 procedural rooms now pass their derived detail floor. `rooms.py` was
+18.0% of bar at 336 triangles over 384 m² — deck, soffit, four walls, ribs, fixtures, and a flat
+field of wall between them. It is now **100.7%** at 2,592 a bay, inside a habitat cell budget still
+at 66%. One generator, so one pass moved all 68 (INV-073).
+
+`docs/engine-room-articulated.png` is the frame: jointed deck, skirting, dado, panelled walls with
+mullions, cornice, and a serviced soffit with its tee grid.
+
+**The trim check is the part worth keeping.** Adding the new trim broke the walkability flood fill
+on all 68 rooms, because it treats any non-shell group as an obstacle. The tempting fix is to add
+the trim to the ignore list — a gate found something, so change the gate. Instead the exemption is
+earned: every trim group must be thinner than a step (0.10 m) or above head height (2.0 m). That
+immediately caught a **0.11 m conduit at chest height in the brig and security_central**, whose
+soffits are low. Conduits now stop rather than drop.
+
+## Session 3s (cont.) — the Garden, rebuilt first
 
 **`directory.py` layer 2: 16/118 -> 20/118.** The four Garden places pass at **101.4%** of their
 derived detail floor, from 16.3%. `garden.tree()` 30 -> 440 triangles, `block_building()` 48 ->
