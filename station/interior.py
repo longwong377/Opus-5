@@ -495,22 +495,22 @@ SPOKE_COUNT = 3
 # light run at lateral 6.7 m, nearly twice the car's half width; the depth is
 # the car's 11.5 m below the chord centreline (tram.py, read off 33a/34b as
 # 0.65 of the truss depth) plus a metre of slack.
-GUIDEWAY_GAUGE_DEPTH_M = 12.5     # radially outward from the chord centreline
-GUIDEWAY_GAUGE_HALF_W_M = 7.4     # lateral half width
+GUIDEWAY_GAUGE_DEPTH_M = 12.5     # radially outward from the chord centreline; INV-050
+GUIDEWAY_GAUGE_HALF_W_M = 7.4     # lateral half width; INV-050
 # The soffit sits just inboard of the bottom chord's running face, so the chord
 # and its light runs stand proud of it and a car meets the same surfaces inside
 # the portal that it meets everywhere else on the run. Flush would be
 # structurally identical and would leave two coplanar faces in one plane, which
 # z-fights across the whole opening.
-GUIDEWAY_SOFFIT_RELIEF_M = 0.15
+GUIDEWAY_SOFFIT_RELIEF_M = 0.15   # INV-050
 
 # The portal frame. A hole is not a portal: this project has already shipped a
 # door interpenetrating a portal frame, and an unframed cut is where a real
 # structure tears. The frame is a ring of heavier section standing proud of both
 # faces of the spoke, and it is what lines the opening the car passes through.
-SPOKE_PORTAL_FRAME_M = 1.6        # section of that ring, radially and laterally
-SPOKE_PORTAL_PROUD_M = 1.2        # how far it stands proud of each spoke face
-SPOKE_PORTAL_COLLAR_M = 4.0       # header and sill depth beyond the frame
+SPOKE_PORTAL_FRAME_M = 1.6        # section of that ring, radially and laterally; INV-050
+SPOKE_PORTAL_PROUD_M = 1.2        # how far it stands proud of each spoke face; INV-050
+SPOKE_PORTAL_COLLAR_M = 4.0       # header and sill depth beyond the frame; INV-050
 
 
 def guideway_gauge(schema, profile, sector):

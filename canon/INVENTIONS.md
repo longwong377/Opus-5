@@ -2034,3 +2034,194 @@ a fan under it, which frees exactly the `segs` triangles the base disc needs —
 blisters, which call the same function, are repaired with it.
 
 ---
+
+## INV-050 — The guideway structure gauge, the spoke portal, and the clearances they buy
+
+**Invented:** The volume kept clear of structure along a drum guideway, the aperture cut through
+each radial spoke to hold it open, and the clearance the tram car keeps inside it. In
+`station/interior.py`: `GUIDEWAY_GAUGE_DEPTH_M = 12.5` radially outward from the bottom chord's
+centreline, `GUIDEWAY_GAUGE_HALF_W_M = 7.4` laterally, `GUIDEWAY_SOFFIT_RELIEF_M = 0.15`,
+`SPOKE_PORTAL_FRAME_M = 1.6`, `SPOKE_PORTAL_PROUD_M = 1.2`, `SPOKE_PORTAL_COLLAR_M = 4.0`. In
+`station/tram.py`: `TRUSS_CLEARANCE_M = SPOKE_CLEARANCE_M = 0.30`.
+
+These were built in session 2y to close the blocking defect where tram cars passed **6.43 m**
+through solid spoke structure, and they were never logged. This entry is the record; the numbers
+are unchanged by it.
+
+**Why necessary:** The guideway trusses are in the spoke planes because nothing else can carry
+them — 2,586 m of truss does not span unsupported and the spokes are the only radial structure
+there is (INV-012). A car therefore *has* to cross a spoke, and no placement can avoid it:
+`tram.guideway_cars` takes a `phase` that walks the whole train along the run, so whatever static
+offset is chosen, every car reaches its own spoke eventually. Either the structure opens or the
+simulation contains a vehicle that drives through a girder.
+
+**Constrained by:**
+
+- **The gauge is sized off the INFRASTRUCTURE, not off the vehicle.** The widest thing on a
+  guideway is the light run at lateral 6.7 m, nearly twice the car's half width; 7.4 m clears it
+  by 0.7 m. The depth is the car's 11.5 m below the chord centreline (INV-017's 0.65 of the truss
+  depth, read off `33a`/`34b`) plus a metre. Sizing it off the car would mean re-cutting the spoke
+  every time the vehicle changed.
+- **The soffit relief is a rendering constraint with a structural reading.** At 0.15 m inboard of
+  the chord's running face, the chord and its light runs stand proud of the opening, so a car
+  meets the same surfaces inside the portal that it meets everywhere else. Flush would be
+  structurally identical and would leave two coplanar faces across the whole opening, which
+  z-fights.
+- **The portal's net section is solved, not chosen.** Cutting a 14.8 m slot out of a 21.2 m member
+  removes 70% of it. `interior.spoke()` sizes the two piers so that pier area plus frame-jamb area
+  is at least the gross area removed, which widens the spoke from 21.2 m to 35.7 m where it is
+  pierced. A wider gauge therefore buys its width by pushing the spoke wider rather than by
+  thinning the piers, and the self-test asserts the net section.
+- **The 0.30 m clearance is the suspension gap, and that is the argument.** INV-017 sets a
+  non-contact magnetic gap of 0.35 m between the shoe plates and the chords. Requiring the fixed
+  structure to clear the car by less than that would mean the spoke, not the running gear, decides
+  how close the car may be built. 0.30 m is just inside it, so the running gear stays the binding
+  constraint and `tram.py` asserts `spoke_clearance >= truss_clearance`.
+
+**Measured, this session, surface to surface:** the built car clears the built spoke by
+**0.500 m** and the built truss by **0.350 m**, the second being exactly the suspension gap. Both
+were recomputed from the meshes by an independent script before anything was changed, and both
+agree with `tram.py`'s own metrics. The 6.43 m interpenetration is closed and stays closed.
+
+**How it is measured matters as much as the number.** The clearance metrics were vertex loops:
+they walked the car's vertices and measured each against the obstacle rectangles. That reports a
+comfortable gap for an obstacle lying *wholly inside* the car, because such an obstacle contains
+no vertex. Demonstrated: a 1.4 m member placed in the car's underfloor void — where a bearing
+beam would go, and `interior.spoke()`'s own docstring discusses letting the truss chord into the
+header — returns **0.500 m of clearance** from the vertex loop, the identical number it returns
+with no member there at all, while the surface metric returns **−0.831 m**. Both metrics are now
+surface tests: the car is projected triangle by triangle into the sweep plane and each projected
+triangle is measured against each obstacle rectangle by separating axis and edge-pair distance.
+The projection of a closed solid is the union of the projections of its boundary triangles, so
+this is the real surface rather than a point cloud sampled from it.
+
+**Overturned by:** any frame showing a guideway crossing a spoke. The whole arrangement — a
+framed portal with piers, header and sill — is a structural argument from a rule of thumb, not an
+analysis, and nothing in the reference set shows the drum's radial structure at all. A frame
+showing the truss simply passing *outboard* of the spokes, or the spokes stopping short of the
+guideway radius, would remove the need for a portal entirely.
+
+---
+
+## INV-051 — Windscreen mullion and reveal standoff
+
+**Invented:** The rule that the tram saloon's windscreen mullions and sill/head reveals are set
+**entirely behind** the screen surface, with a 10 mm relief, in `station/tram.py:car_saloon()`.
+
+**Why necessary:** `35a` shows the screen divided by grey posts with a red reveal either side of
+each pane, and those members read as standing proud *on the inside* — the camera is inside the
+car and sees their inboard faces. The mullions were built by `_strut`, which centres its section
+on the line through its two endpoints; those endpoints lie *in* the screen, so half of every
+member was in front of it. Measured: **74 mm of mullion and 100 mm of reveal protruding through
+the nose of the car**, at the one place a car is seen close up from outside (`33a`). Found by
+replacing a vacuous triangle-count assertion with a containment one, not by looking at a render —
+90 mm on a 96 m car is well under a pixel at any distance the car has been rendered from.
+
+**Constrained by:**
+
+- **The offset direction is derived, not chosen.** It is the screen's own outward normal, taken
+  from the two rails of the aperture, so a change to `RAKE_M` carries the members with it instead
+  of leaving them stale.
+- **The offset distance is measured per member, not predicted.** `_strut` orients its depth axis
+  from its endpoints, so a vertical mullion and a lateral sill rail present different amounts of
+  themselves to the screen. Each member is built, its own worst projection past the screen plane
+  is measured, and it is slid back by that plus the relief.
+- **Two constraints, because the screen is not the whole nose.** The raked plane exists only
+  between the sill and the cant; below the sill the front cap is flat at the nose plane, and the
+  sill reveal is offset 0.11 m below the sill, which is exactly where the extrapolated screen
+  plane runs forward of the car. Without the second clamp the reveal still stood 20 mm proud.
+- **10 mm of relief rather than flush.** Flush is coplanar with the glass and z-fights across the
+  whole screen — the same reason `GUIDEWAY_SOFFIT_RELIEF_M` exists.
+
+**What this does not change:** the members' sections (0.10 × 0.16 for a mullion, 0.13 × 0.20 for a
+reveal), their count, or the aperture. The self-test's ray casts confirm the unglazed screen is
+still an aperture the camera sees through and the glazed one still closed.
+
+**Overturned by:** a frame showing the screen's *outside*. If the mullions are external members —
+which is how a heavy vehicle's screen is often framed — they belong in front of the glass and this
+entry is exactly backwards. `35a` is an interior shot and shows only the inboard faces; `33a`
+shows the car from below and ahead but not close enough on the screen to settle it.
+
+---
+
+## INV-044 — The Garden's calibrated framing, and why `29a` is not the frame to measure it against
+
+**Invented:** the camera of the `garden` entry in `tools/export_scene.py`'s `DRUM_CALIBRATION` —
+eye at world `(-90.144, 246.253, 4956.0)`, aim at `(-95.185, 243.275, 4900.0)`, vertical fov 45,
+960×540. In `garden.townscape()`'s own local frame (origin at 112°, z 4900, ground radius
+272.234 m) that is an eye at `(x -9, y +10, z +56)` looking at `(x -3, y +11, z 0)` — 56 m out
+along the station axis from the civic landmark, 8.0 m above the ground it stands over, looking
+back at it.
+
+**Why necessary:** layer 4 counts a location once it has been seen in a frame *measured against
+its reference*. Four locations (`garden_town`, `garden_terrace`, `zen_garden`, `water_rec`) hang
+off `station/garden.py`, and its geometry had never appeared in a rendered frame — the wide drum
+shot builds the townscape and shows exactly 0.00% of it, 92° around the barrel. A camera is not
+in canon. One had to be chosen, and the choice decides the measurement, so it is logged.
+
+**What is sourced, and is not invention:** `reference/09-garden-core-and-transit/garden.png`,
+authority 1, is the frame `garden.townscape()` was built from — `station/garden.py`'s own
+docstring names it as its source and `reference/00-INDEX.md`'s re-examination adds "Do not
+colour-match [`The Gardens.webp`] — match `garden.png`, which is clean". The *composition* is
+that frame's and not a preference: civic landmark at mid distance, settlement around it, the
+drum's far side arching overhead, the guideway crossing the upper frame.
+
+**How the distance and the fov were derived.** `00-INDEX.md`'s re-measure of `garden.png` gives
+two independent scales in one frame: the two walking figures at ≈40 px/m at their depth, and the
+ground-floor window band at ≈11 px/m at the building. A 1.75 m stature over 70 px of a 507 px
+frame implies a vertical fov of **45.8°**, which is why the framing uses 45 rather than the
+project's 46 default; and at 11 px/m the building stands **≈56 m** from the camera. Both numbers
+are read off the reference, not chosen. The 8.0 m eye height is not: `garden.png` looks *down* on
+the reflecting pool's water surface, which a 1.7 m stance on this build does not, and at 1.7 m
+the terrace slab fills the lower half of the frame. It is set to the lowest height that puts the
+pool and the terrace in the lower third.
+
+**What is NOT matched, stated because a reader can see it in the frame.** Our civic landmark is
+**16.45 m** to the cap and `garden.png`'s is **25–30 m**, so the tower subtends 38% of frame
+height where the reference's fills 65%. This entry does not fix that — it is layer-2 debt — but it
+records the cause, because the number has a bad derivation behind it. `garden.py` sets
+`TOWER_H_M = 16.0` from "the two figures are ~35 px tall; the landmark stands ~330 px … at a 1.7 m
+stature that is ~16 m". Measured here, the green figure in that frame is **80–103 px** tall
+(80 read off a 6× crop, 103 by a luminance threshold that also catches the cast shadow at the
+feet) — between 2.3× and 2.9× the 35 px the derivation assumed. And `00-INDEX.md` rejects the
+method outright regardless of the pixel count: *"That figure cannot be carried to the building,
+which is much further away."* Two independent reasons the 16 m is wrong, and the index's own
+window-band ladder gives 25–30 m.
+
+**Why the reference is `garden.png` and not `Babylon_5_2-22_29a.jpg`.** `29a` is authority 1, is
+the Garden (`00-INDEX.md` says so, and says the file is misfiled), and is what
+`docs/engine-drum-terrace.png` was matched to when the garden was read as 2.5 stops hot at x3.49.
+It is the wrong comparison and the numbers say why:
+
+* One volume, one rig, one exposure. The committed wide frame `docs/engine-drum.png`, verified at
+  **x1.39** of `34b`, reads **x1.50** of `garden.png`, **x1.81** of `33a` and **x3.77** of `29a`
+  from the same pixels. Picking the reference picks the answer.
+* `29a` is not a darker garden, it is a different picture. Its own lit paving measures median
+  **0.1515** — `34b`'s whole-frame median to four decimal places. What drags its whole-frame
+  median to 0.0559 is that **60.1%** of the frame is below linear Y 0.05: clipped hedge at 0.0296
+  (78% crushed), timber-slat retaining wall at 0.0263, broadleaf canopy at 0.0569.
+  `station/garden.py` builds no hedge, no canopy and no retaining wall, so our frame at that
+  camera is 0.28% crushed. This corroborates a finding `station/materials.py` already carries for
+  the same file: *"the frame is dominated by dark foliage, so grey-world reads the subject as a
+  cast."*
+* Shadow coverage cannot close it, and that was tested rather than assumed. At the same camera,
+  taking `--shadow-lights` from 2 to all 60 moves the median 0.1952 → 0.1408, which is 28% of the
+  way to the 0.0783 that x1.40 of `29a` requires, at 2.45× the render time. With every light at
+  zero energy the frame still measures 0.0823 — **above** that target — because what remains is
+  the drum's ambient term and the emissive window bands, and a shadow touches neither. Full
+  numbers and costs in `docs/layer4-lighting/drum_open_volume.json`.
+
+**Overturned by:** a Season 2–3 frame of the Garden with a recoverable camera, which would replace
+this framing rather than corroborate it; or a corrected `TOWER_H_M`, which changes the 56 m,
+because the distance was derived to make a landmark of the reference's size read the way the
+reference's does. `29a` becomes a usable reference the moment `garden.py` builds the terrace it
+shows — cut-and-cover portal, timber-slat retaining walls, hedge banks and canopy — at which point
+the content mix matches and the comparison means something.
+
+**Corroboration worth keeping.** Two different cameras on the same module measured against the
+same reference: this framing at **x1.49** and `docs/engine-drum-terrace.png`, a 20 m close view of
+a block facade, at **x1.39**. 7% apart, both inside the ±25% band. The exposure claim is therefore
+not an artefact of one lucky camera, which is the failure mode a single calibrated frame per space
+cannot rule out.
+
+---

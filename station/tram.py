@@ -45,6 +45,13 @@ from outside and its faces point away from the car's axis; the saloon is seen
 from inside and its faces point at it. Both are measured, not asserted in a
 comment -- `_facing_fraction` refuses geometry that would render black.
 
+CLEARANCE. The car crosses a radial spoke every time round, because the
+guideways are in the spoke planes and nothing else could hold a 2.6 km truss up.
+The spoke is cut open for it; the gauge, the portal and the clearances they buy
+are INV-050, and `truss_clearance`/`spoke_clearance` are what keep the cut open.
+Both are SURFACE tests, and the header above them says why a vertex loop is not.
+The windscreen members' standoff is INV-051.
+
 No pseudo-randomness anywhere, so regeneration is byte-identical by
 construction rather than by seeding discipline.
 """
@@ -95,7 +102,7 @@ SEAT_PITCH_M = 0.62           # one seated person, cushion plus its gap
 # Clearance the car must keep from every truss member. A door interpenetrating
 # a portal frame is a mistake this project has already made once; this is the
 # number the self-test enforces so it cannot happen a second time in a place
-# nobody is looking.
+# nobody is looking. INV-050.
 TRUSS_CLEARANCE_M = 0.30
 
 
@@ -672,16 +679,61 @@ def car_saloon(glazed=True):
     # The screen is the body's front cap. Its divisions are separate members
     # standing proud on the inside, which is how they read in 35a: grey posts
     # with a red reveal either side of each pane.
+    #
+    # STANDING PROUD ON THE INSIDE, and it did not. `_strut` centres its section
+    # on the line through its two endpoints, and those endpoints lie IN the
+    # screen, so half of every mullion and reveal was in front of it -- 74 mm of
+    # mullion and 100 mm of reveal poking out through the nose of the car, at
+    # the one place a car is seen close up from outside (33a). Found by
+    # replacing a vacuous triangle-count check with a containment one. Each
+    # member is now slid back until it is wholly behind the screen plane.
     fr = rings[-1]
     n = len(fr) // 2
     right, left = fr[:n], fr[n:][::-1]
     a_lo_r, a_hi_r = right[sill_i], right[sill_i + 2]
     a_lo_l, a_hi_l = left[sill_i], left[sill_i + 2]
+    # The screen's outward normal, taken from the aperture's own two rails so a
+    # change to RAKE_M carries the members with it. The screen leans back at the
+    # top, so outward is forward and inboard.
+    dy, dz = a_hi_r[1] - a_lo_r[1], a_hi_r[2] - a_lo_r[2]
+    ln = math.hypot(dy, dz) or 1.0
+    nrm = (0.0, -dz / ln, dy / ln)
+    if nrm[2] < 0.0:
+        nrm = (0.0, -nrm[1], -nrm[2])
+
+    z_nose = car_length() / 2.0
+
+    def behind(fn, group, relief=0.01):
+        """Emit a member, then slide it back until it clears the screen.
+
+        Measured on the member's own vertices rather than predicted from its
+        section: `_strut` orients its depth axis from the endpoints, so how much
+        of it lands in front of the screen depends on which way the member runs,
+        and a mullion and a sill rail do not get the same answer.
+
+        Two constraints, because the screen is not the whole nose. The raked
+        plane only exists between the sill and the cant; below the sill the cap
+        is flat at z_nose, and the sill reveal is offset 0.11 m below the sill,
+        which is exactly where the extrapolated plane runs forward of the car.
+        """
+        b = len(verts)
+        emit(fn, group)
+        over = max(sum((verts[i][k] - a_lo_r[k]) * nrm[k] for k in range(3))
+                   for i in range(b, len(verts)))
+        d = over + relief
+        if d > 0.0:
+            for i in range(b, len(verts)):
+                verts[i] = tuple(verts[i][k] - d * nrm[k] for k in range(3))
+        dz_ = max(verts[i][2] for i in range(b, len(verts))) - z_nose + relief
+        if dz_ > 0.0:
+            for i in range(b, len(verts)):
+                verts[i] = (verts[i][0], verts[i][1], verts[i][2] - dz_)
+
     for i in range(1, 5):
         t = i / 5.0
         p_lo = tuple(a_lo_l[j] + (a_lo_r[j] - a_lo_l[j]) * t for j in range(3))
         p_hi = tuple(a_hi_l[j] + (a_hi_r[j] - a_hi_l[j]) * t for j in range(3))
-        emit(lambda p_lo=p_lo, p_hi=p_hi: _strut(
+        behind(lambda p_lo=p_lo, p_hi=p_hi: _strut(
             verts, tris, p_lo, p_hi, 0.10, 0.16), "tram_in_mullion")
     # Sill and head reveals, in the maroon the reference is emphatic about.
     # Offset clear of the aperture rather than centred on its edge: centred,
@@ -690,8 +742,8 @@ def car_saloon(glazed=True):
     for (lo, hi), dy in (((a_lo_l, a_lo_r), -0.11), ((a_hi_l, a_hi_r), 0.11)):
         lo = (lo[0], lo[1] + dy, lo[2])
         hi = (hi[0], hi[1] + dy, hi[2])
-        emit(lambda lo=lo, hi=hi: _strut(verts, tris, lo, hi, 0.13, 0.20),
-             "tram_in_reveal")
+        behind(lambda lo=lo, hi=hi: _strut(verts, tris, lo, hi, 0.13, 0.20),
+               "tram_in_reveal")
 
     return verts, tris, groups
 
@@ -797,23 +849,151 @@ def truss_envelope():
     return boxes
 
 
-def truss_clearance(verts):
-    """Smallest distance from any car vertex to the truss envelope.
+# ---------------------------------------------------------------------------
+# SURFACE separation, and why a vertex loop is not it.
+#
+# Both clearance tests below used to walk the car's VERTICES and measure each
+# one against the obstacle rectangles. That is the trap this repository keeps
+# falling into -- three other functions here already carry a comment about it --
+# and it is worth writing down exactly why, because the arithmetic looks right:
+#
+#   * a rectangle that lies WHOLLY INSIDE the car contains no car vertex, so a
+#     vertex loop reports the distance to the nearest vertex, which is a
+#     comfortable positive number, while a beam runs the length of the saloon;
+#   * two rectangles can cross like a plus sign with no corner of either inside
+#     the other, so vertex-in-box misses that too.
+#
+# Neither is hypothetical. `interior.spoke()`'s own docstring says the truss's
+# bottom chord and light runs are "let INTO the header"; the day somebody adds a
+# tie across the portal to carry them it lands inside the car's footprint, and
+# the vertex loop then reports 0.500 m -- the SAME number it reports with no tie
+# there at all, because the tie touches no vertex. Measured, not supposed:
+# `_selftest` builds that case and runs both metrics on it.
+#
+# What replaces it: the car is projected TRIANGLE by triangle into the plane the
+# sweep lives in, and each projected triangle is measured against each obstacle
+# rectangle exactly -- separating-axis for overlap, edge-pair distance for the
+# gap. The projection of a closed solid is the union of the projections of its
+# boundary triangles, so this is the real surface, not a point cloud sampled
+# from it.
+# ---------------------------------------------------------------------------
+
+def _tri_rect_gap(tri, rect):
+    """Exact signed separation between a 2-D triangle and an axis-aligned box.
+
+    Positive is a gap; negative is the penetration depth, i.e. the shortest
+    translation that would separate them. Both shapes are convex, so the
+    separating-axis theorem over the five candidate axes -- the rectangle's two
+    and the triangle's three -- is complete: no separating axis means they
+    really do overlap.
+    """
+    l0, l1, r0, r1 = rect
+    quad = ((l0, r0), (l1, r0), (l1, r1), (l0, r1))
+
+    # Overlap test and, if they overlap, the minimum translation distance.
+    depth = float("inf")
+    for poly in (tri, quad):
+        n = len(poly)
+        for i in range(n):
+            x0, y0 = poly[i]
+            x1, y1 = poly[(i + 1) % n]
+            ax, ay = y0 - y1, x1 - x0
+            ln = math.hypot(ax, ay)
+            if ln < 1e-12:
+                continue
+            ax, ay = ax / ln, ay / ln
+            ta = [ax * p[0] + ay * p[1] for p in tri]
+            qa = [ax * p[0] + ay * p[1] for p in quad]
+            # Separated on this axis when one interval starts past the other's
+            # end; otherwise they overlap by however much they share.
+            sep = max(min(ta) - max(qa), min(qa) - max(ta))
+            if sep > 0.0:
+                depth = 0.0             # separated on this axis -> disjoint
+                break
+            depth = min(depth, -sep)
+        if depth == 0.0:
+            break
+    if depth > 0.0:
+        return -depth
+
+    # Disjoint and convex, so the closest pair of points lies on the boundaries
+    # and it is enough to walk the 3 x 4 edge pairs.
+    best = float("inf")
+    for i in range(3):
+        p, q = tri[i], tri[(i + 1) % 3]
+        for j in range(4):
+            best = min(best, _seg_seg_gap(p, q, quad[j], quad[(j + 1) % 4]))
+    return best
+
+
+def _seg_seg_gap(p, q, r, s):
+    """Distance between two 2-D segments."""
+    def pt_seg(a, b, c):
+        bx, by = c[0] - b[0], c[1] - b[1]
+        ln = bx * bx + by * by
+        if ln < 1e-18:
+            return math.hypot(a[0] - b[0], a[1] - b[1])
+        t = ((a[0] - b[0]) * bx + (a[1] - b[1]) * by) / ln
+        t = 0.0 if t < 0.0 else (1.0 if t > 1.0 else t)
+        return math.hypot(a[0] - b[0] - t * bx, a[1] - b[1] - t * by)
+    return min(pt_seg(p, r, s), pt_seg(q, r, s), pt_seg(r, p, q), pt_seg(s, p, q))
+
+
+def _surface_gap(tris2d, rects):
+    """Smallest signed separation between a projected surface and some boxes.
+
+    Branch and bound on the bounding boxes: a disjoint pair of AABBs is a lower
+    bound on the true distance, so once a close pair has been found the rest of
+    the mesh is rejected with two comparisons apiece. Exact, and fast enough
+    that the 24-phase world sweep still runs in under a second.
+    """
+    worst = float("inf")
+    for tri in tris2d:
+        (ax, ay), (bx, by), (cx, cy) = tri
+        tl0 = ax if ax < bx else bx
+        tl0 = tl0 if tl0 < cx else cx
+        tl1 = ax if ax > bx else bx
+        tl1 = tl1 if tl1 > cx else cx
+        tr0 = ay if ay < by else by
+        tr0 = tr0 if tr0 < cy else cy
+        tr1 = ay if ay > by else by
+        tr1 = tr1 if tr1 > cy else cy
+        for rc in rects:
+            dl = rc[0] - tl1 if rc[0] > tl1 else (tl0 - rc[1] if tl0 > rc[1]
+                                                  else 0.0)
+            dr = rc[2] - tr1 if rc[2] > tr1 else (tr0 - rc[3] if tr0 > rc[3]
+                                                  else 0.0)
+            if dl or dr:
+                lo = math.hypot(dl, dr)
+                if lo >= worst:
+                    continue
+            d = _tri_rect_gap(tri, rc)
+            if d < worst:
+                worst = d
+    return worst
+
+
+def car_section(verts, tris, r_bot=None):
+    """The car's footprint in the sweep plane, one 2-D triangle per face.
+
+    With `r_bot` the plane is the spoke's (lateral, radius); without it, the
+    car's own (x, y). z is dropped either way, and dropping it is the point --
+    a car's z is a function of the guideway phase, so a shape measured in this
+    plane answers for every phase at once.
+    """
+    if r_bot is None:
+        return [tuple((verts[i][0], verts[i][1]) for i in t) for t in tris]
+    return [tuple((verts[i][0], r_bot - verts[i][1]) for i in t) for t in tris]
+
+
+def truss_clearance(verts, tris):
+    """Smallest SURFACE separation between the car and the truss envelope.
 
     Negative means interpenetration. A door interpenetrating a portal frame is
     a mistake this project has already made, and the reason it survived is that
     a solid inside another solid renders as a perfectly convincing solid.
     """
-    boxes = truss_envelope()
-    worst = float("inf")
-    for x, y, _z in verts:
-        for x0, x1, y0, y1 in boxes:
-            dx = max(x0 - x, 0.0, x - x1)
-            dy = max(y0 - y, 0.0, y - y1)
-            if dx == 0.0 and dy == 0.0:
-                return -min(min(x - x0, x1 - x), min(y - y0, y1 - y))
-            worst = min(worst, math.hypot(dx, dy))
-    return worst
+    return _surface_gap(car_section(verts, tris), truss_envelope())
 
 
 # ---------------------------------------------------------------------------
@@ -823,7 +1003,7 @@ def truss_clearance(verts):
 # The bar for the spoke is the bar for the truss. Anything tighter than the
 # suspension gap would mean the fixed structure, not the running gear, is what
 # decides how close the car can be built -- and the spoke is the one piece of
-# structure a car cannot steer around.
+# structure a car cannot steer around. INV-050.
 SPOKE_CLEARANCE_M = TRUSS_CLEARANCE_M
 
 
@@ -840,9 +1020,9 @@ def spoke_section(schema, profile, sector):
     return it.spoke(schema, profile, sector, fr, to, 0.0)[2]["section_rects"]
 
 
-def spoke_clearance(schema, profile, sector, verts):
-    """Smallest distance from any car vertex to spoke structure, over the whole
-    run rather than at one point on it. Negative means interpenetration.
+def spoke_clearance(schema, profile, sector, verts, tris):
+    """Smallest SURFACE separation between the car and spoke structure, over the
+    whole run rather than at one point on it. Negative means interpenetration.
 
     z is dropped, and dropping it is the point. A spoke sits at one fixed z; a
     car's z is a function of the guideway phase, which `guideway_cars` takes as
@@ -857,19 +1037,8 @@ def spoke_clearance(schema, profile, sector, verts):
     radius is the chord radius minus y.
     """
     r_bot = it.sector_radius(schema, profile, sector) * it.TRUSS_RADIUS_FRAC
-    rects = spoke_section(schema, profile, sector)
-    worst = float("inf")
-    for x, y, _z in verts:
-        lat, r = x, r_bot - y
-        for l0, l1, r0, r1 in rects:
-            dl = max(l0 - lat, 0.0, lat - l1)
-            dr = max(r0 - r, 0.0, r - r1)
-            if dl == 0.0 and dr == 0.0:
-                d = -min(min(lat - l0, l1 - lat), min(r - r0, r1 - r))
-            else:
-                d = math.hypot(dl, dr)
-            worst = min(worst, d)
-    return worst
+    return _surface_gap(car_section(verts, tris, r_bot),
+                        spoke_section(schema, profile, sector))
 
 
 def spoke_sweep_report(schema, profile, sector, phases=24, per_guideway=2):
@@ -882,37 +1051,41 @@ def spoke_sweep_report(schema, profile, sector, phases=24, per_guideway=2):
     off a different chord, would clear the section rectangles perfectly in the
     car's own frame and still hit the structure in the drum.
 
-    `vertices_in_spoke_z` is reported so the caller can assert the sweep
-    actually drove cars through the spokes. A sweep that never reaches one
-    passes for the wrong reason.
+    Triangles, not vertices, and the z filter is on the triangle's own z RANGE:
+    a face can straddle the spoke's 23.6 m band with both its ends outside it,
+    and a vertex filter drops exactly the face that is inside the structure.
+
+    `faces_in_spoke_z` is reported so the caller can assert the sweep actually
+    drove cars through the spokes. A sweep that never reaches one passes for the
+    wrong reason.
     """
     sm = it.drum_spokes(schema, profile, sector)[2]
     worst = float("inf")
-    inside = crossings = 0
+    overlapping = crossings = 0
     for i in range(phases):
-        wv = drum_trams(schema, profile, sector, per_guideway=per_guideway,
-                        phase=i / float(phases), interior=False)[0]
+        wv, wt, _wm = drum_trams(schema, profile, sector,
+                                 per_guideway=per_guideway,
+                                 phase=i / float(phases), interior=False)
         for s in sm["solids"]:
             a = math.radians(s["angle_deg"])
             ca, sa = math.cos(a), math.sin(a)
             z0, z1 = s["z_span"]
-            for x, y, z in wv:
-                if not z0 <= z <= z1:
+            band = []
+            for t in wt:
+                p = (wv[t[0]], wv[t[1]], wv[t[2]])
+                if max(q[2] for q in p) < z0 or min(q[2] for q in p) > z1:
                     continue
                 crossings += 1
-                r = x * ca + y * sa
-                lat = -x * sa + y * ca
-                for l0, l1, r0, r1 in s["section_rects"]:
-                    dl = max(l0 - lat, 0.0, lat - l1)
-                    dr = max(r0 - r, 0.0, r - r1)
-                    if dl == 0.0 and dr == 0.0:
-                        inside += 1
-                        d = -min(min(lat - l0, l1 - lat), min(r - r0, r1 - r))
-                    else:
-                        d = math.hypot(dl, dr)
-                    worst = min(worst, d)
-    return {"phases": phases, "vertices_in_spoke_z": crossings,
-            "inside": inside, "min_clearance_m": worst}
+                band.append(tuple((-q[0] * sa + q[1] * ca,
+                                   q[0] * ca + q[1] * sa) for q in p))
+            if not band:
+                continue
+            g = _surface_gap(band, s["section_rects"])
+            if g < 0.0:
+                overlapping += 1
+            worst = min(worst, g)
+    return {"phases": phases, "faces_in_spoke_z": crossings,
+            "overlapping": overlapping, "min_clearance_m": worst}
 
 
 # ---------------------------------------------------------------------------
@@ -1150,9 +1323,20 @@ def _selftest():
           and abs(ry - 1.5 * hang) < 1e-6,
           f"{rz:.1f} m long and {ry:.2f} m below the chord on a truss 1.5x "
           "bigger")
+    # `len(et) == len(st_)` used to be half of this check and could not fail:
+    # `tram_car(interior=False)` returns `car_shell()` unmodified, so the two
+    # are the same list. What "a strict addition" has to mean geometrically is
+    # that the saloon adds detail INSIDE the shell and nothing outside it -- a
+    # saloon built at the wrong scale or hung off the wrong datum would still
+    # satisfy a triangle count.
+    box_s = [(min(p[i] for p in ev), max(p[i] for p in ev)) for i in range(3)]
+    outside = sum(1 for p in iv
+                  if any(p[i] < box_s[i][0] - 1e-9 or p[i] > box_s[i][1] + 1e-9
+                         for i in range(3)))
     check("interior LOD is a strict addition to the exterior",
-          len(et) < len(lt) and len(et) == len(st_),
-          f"{len(et)} exterior vs {len(lt)} with saloon")
+          len(et) < len(lt) and outside == 0,
+          f"{len(et)} exterior vs {len(lt)} with saloon; {outside} saloon "
+          "vertices outside the shell's own extent")
 
     # --- it hangs BELOW the chord, and does not touch it ---------------------
     # Getting the sign wrong builds a car riding on top of the guideway, which
@@ -1165,7 +1349,7 @@ def _selftest():
     check("the car is entirely outboard of the truss depth",
           y_max < it.TRUSS_DEPTH_M / 2.0, f"y_max {y_max:.2f}")
 
-    clear = truss_clearance(lv)
+    clear = truss_clearance(lv, lt)
     check("the car clears every truss member",
           clear >= TRUSS_CLEARANCE_M - 1e-9,
           f"min clearance {clear:.3f} m, need {TRUSS_CLEARANCE_M} m")
@@ -1176,7 +1360,7 @@ def _selftest():
     # A clearance test that cannot fail is worthless. Prove it fires.
     lifted = [(x, y + 1.0, z) for x, y, z in lv]
     check("the clearance test detects interpenetration",
-          truss_clearance(lifted) < 0, f"{truss_clearance(lifted):.3f} m")
+          truss_clearance(lifted, lt) < 0, f"{truss_clearance(lifted, lt):.3f} m")
 
     # --- and against the radial spokes --------------------------------------
     # The guideways are in the spoke planes because nothing else could carry a
@@ -1196,7 +1380,7 @@ def _selftest():
           f"{max(abs(x) for x, _y, _z in lv):.2f} m against a gauge of "
           f"{g['r_inner']:.2f}-{g['r_outer']:.2f} m by {g['half_width_m']} m")
 
-    sc = spoke_clearance(schema, profile, sector, lv)
+    sc = spoke_clearance(schema, profile, sector, lv, lt)
     check("the car clears the spoke at every phase, not just the default",
           sc >= SPOKE_CLEARANCE_M,
           f"{sc:.3f} m, need {SPOKE_CLEARANCE_M} m")
@@ -1211,11 +1395,57 @@ def _selftest():
     wide = [(x * 3.0, y, z) for x, y, z in lv]
     deep = [(x, y - 3.0, z) for x, y, z in lv]
     check("the spoke clearance test detects a car too wide for the portal",
-          spoke_clearance(schema, profile, sector, wide) < 0,
-          f"{spoke_clearance(schema, profile, sector, wide):.3f} m")
+          spoke_clearance(schema, profile, sector, wide, lt) < 0,
+          f"{spoke_clearance(schema, profile, sector, wide, lt):.3f} m")
     check("the spoke clearance test detects a car hanging below the portal",
-          spoke_clearance(schema, profile, sector, deep) < 0,
-          f"{spoke_clearance(schema, profile, sector, deep):.3f} m")
+          spoke_clearance(schema, profile, sector, deep, lt) < 0,
+          f"{spoke_clearance(schema, profile, sector, deep, lt):.3f} m")
+
+    # And the failure a VERTEX loop cannot see, which is the reason these two
+    # metrics were rewritten as surface tests.
+    #
+    # Put a 1.4 m square member down the middle of the portal, two metres below
+    # the saloon floor. That is not a contrived place: it is the car's
+    # underfloor void, it is where running gear or a bearing beam would go, and
+    # `interior.spoke()`'s docstring already talks about letting the truss's
+    # bottom chord and light runs INTO the header. It lands wholly inside the
+    # car's footprint and contains not one car vertex, so the vertex loop
+    # returns the same 0.500 m it returns with no member there at all, while
+    # 1.4 m of structure runs the length of the car.
+    r_bot_l = it.sector_radius(schema, profile, sector) * it.TRUSS_RADIUS_FRAC
+    sec2d = car_section(lv, lt, r_bot_l)
+    h = 0.7
+    r_void = r_bot_l - (level_y("floor") - 2.0)
+    member = (-h, h, r_void - h, r_void + h)
+    rects = list(spoke_section(schema, profile, sector))
+
+    def vertex_loop(rs):
+        """What the metric this replaced would have said. The two are compared
+        by running both, not by remembering a number."""
+        worst = float("inf")
+        for x, y, _z in lv:
+            lat, r = x, r_bot_l - y
+            for l0, l1, r0, r1 in rs:
+                dl = max(l0 - lat, 0.0, lat - l1)
+                dr = max(r0 - r, 0.0, r - r1)
+                if dl == 0.0 and dr == 0.0:
+                    worst = min(worst, -min(min(lat - l0, l1 - lat),
+                                            min(r - r0, r1 - r)))
+                else:
+                    worst = min(worst, math.hypot(dl, dr))
+        return worst
+
+    surf = _surface_gap(sec2d, rects + [member])
+    vtx, vtx0 = vertex_loop(rects + [member]), vertex_loop(rects)
+    check("a member wholly inside the car is inside the car",
+          surf < 0.0, f"surface separation {surf:.3f} m")
+    # The demonstration has to keep demonstrating. If the saloon ever grows a
+    # fitting into that void the comparison stops being about the metric, so
+    # say so here rather than letting the pair quietly become a tautology.
+    check("...and the vertex loop it replaced is blind to it",
+          abs(vtx - vtx0) < 1e-9 and vtx > 0.0,
+          f"vertex loop {vtx:.3f} m with the member against {vtx0:.3f} m "
+          "without it")
 
     # World-space cross-check: real cars at 24 phases on all three guideways,
     # measured against the real spokes. The planar test above already covers
@@ -1223,10 +1453,10 @@ def _selftest():
     # disagree about where they are.
     swp = spoke_sweep_report(schema, profile, sector, phases=24)
     check("the sweep actually drives cars through the spokes",
-          swp["vertices_in_spoke_z"] > 0,
-          f"{swp['vertices_in_spoke_z']} car vertices inside a spoke's z span")
-    check("no car vertex is inside a spoke at any sampled phase",
-          swp["inside"] == 0, f"{swp['inside']} inside")
+          swp["faces_in_spoke_z"] > 0,
+          f"{swp['faces_in_spoke_z']} car faces inside a spoke's z span")
+    check("no car surface overlaps a spoke at any sampled phase",
+          swp["overlapping"] == 0, f"{swp['overlapping']} overlapping")
     check("the swept world clearance agrees with the planar one",
           abs(swp["min_clearance_m"] - sc) < 0.05,
           f"world {swp['min_clearance_m']:.3f} m vs planar {sc:.3f} m")
@@ -1312,7 +1542,32 @@ def _selftest():
     # --- placement ----------------------------------------------------------
     ex = schema["sectors"]["extents_m"][sector]
     v, t, m = guideway_cars(schema, profile, sector, 0.0, count=3)
-    check("three cars place on one guideway", m["cars"] == 3)
+    # This was `m["cars"] == 3`, and `guideway_cars` returns `{"cars": count}` --
+    # the argument, handed straight back. It could not fail. It passed for
+    # count = 0 and for a build that emitted no geometry at all. What has to be
+    # true is that three separate car BODIES came out, so count them off the
+    # mesh: split the emitted vertices at every z gap wider than a car and see
+    # how many runs there are. That also catches the one way this function can
+    # legitimately lose a car -- the clamp on the line after the spacing, which
+    # will happily stack two cars at the same end of the run.
+    zs_all = sorted(p[2] for p in v)
+    runs, start = [], zs_all[0]
+    for a, b in zip(zs_all, zs_all[1:]):
+        # Split on a gap wider than half a car: the body has its own z gaps --
+        # window bays, the ports along the valance -- and the widest of those is
+        # 4.1 m, while the headway between cars is 862 m.
+        if b - a > L / 2.0:
+            runs.append((start, a))
+            start = b
+    runs.append((start, zs_all[-1]))
+    check("three separate car bodies come out of one guideway",
+          len(runs) == 3 and all(abs((hi - lo) - L) < 0.05 for lo, hi in runs),
+          f"{len(runs)} runs of "
+          f"{[round(hi - lo, 1) for lo, hi in runs]} m against a {L:.0f} m car")
+    check("and every one of them is real geometry",
+          len(t) == 3 * m["car_triangles"] and len(v) == 3 * len(ev),
+          f"{len(t)} triangles, {len(v)} vertices for three "
+          f"{m['car_triangles']}-triangle cars")
     for p in m["placements"]:
         check(f"car at z={p['z_m']} is inside the sector",
               ex["z0"] + L / 2 - 1e-6 <= p["z_m"] <= ex["z1"] - L / 2 + 1e-6)
@@ -1338,14 +1593,38 @@ def _selftest():
           f"{r0 - tallest - max(rr):.1f} m over a {tallest} m terrace")
 
     dv, dt, dm = drum_trams(schema, profile, sector, per_guideway=2)
-    check("one line per guideway", dm["guideways"] == it.TRUSS_COUNT
-          == it.SPOKE_COUNT, f"{dm['guideways']}")
-    check("all guideway cars build", dm["cars"] == 2 * it.TRUSS_COUNT)
-
-    # Cars on different guideways must be 120 degrees apart, not stacked.
+    # These three were:
+    #     dm["guideways"] == it.TRUSS_COUNT == it.SPOKE_COUNT
+    #     dm["cars"] == 2 * it.TRUSS_COUNT
+    #     sorted({p["angle_deg"] ...}) == [0.0, 120.0, 240.0]
+    # and the first two could not fail. `drum_trams` returns
+    # `{"guideways": it.TRUSS_COUNT}` -- the constant, handed back -- and
+    # `interior.py` defines `TRUSS_COUNT = SPOKE_COUNT`, so all three names in
+    # that chain are one object. `dm["cars"]` is `len(places)`, appended once
+    # per iteration of `range(count)` over `range(TRUSS_COUNT)`, so it is
+    # `count * TRUSS_COUNT` by construction. The third compared derived angles
+    # against a literal, which says the constant is 3 and nothing about the
+    # station.
+    #
+    # What actually matters is the invariant the spoke defect turned on: a
+    # guideway that is not in a spoke plane is a truss nothing holds up, and a
+    # car on it crosses the spoke where there is no portal. So take the spokes'
+    # angles from the BUILT spokes and require the lines to match them.
+    spoke_angs = sorted(s["angle_deg"]
+                        for s in it.drum_spokes(schema, profile,
+                                                sector)[2]["solids"])
     angs = sorted({p["angle_deg"] for p in dm["placements"]})
-    check("guideway lines sit at the spoke angles",
-          angs == [0.0, 120.0, 240.0], str(angs))
+    check("there is one tram line per BUILT spoke, in its plane",
+          len(angs) == len(spoke_angs)
+          and all(abs(a - b) < 1e-9 for a, b in zip(angs, spoke_angs)),
+          f"lines at {angs} against spokes at {spoke_angs}")
+    # And the cars are geometry, not entries in a list. Two per line, each a
+    # whole car, measured off the emitted mesh.
+    check("every line carries its cars as real geometry",
+          len(dm["placements"]) == 2 * len(spoke_angs)
+          and len(dt) == 2 * len(spoke_angs) * len(et),
+          f"{len(dm['placements'])} placements and {len(dt)} triangles for "
+          f"{len(spoke_angs)} lines of two {len(et)}-triangle cars")
 
     # --- determinism --------------------------------------------------------
     a1 = tram_car(interior=True)[0]

@@ -1252,9 +1252,48 @@ def _selftest():
           _digest == GROUND_DIGEST,
           f"{_digest} != {GROUND_DIGEST} -- the terrain moved. If that was "
           f"deliberate, look at a render and update GROUND_DIGEST")
-    check("no `random` module in the import graph",
-          "random" not in sys.modules or not hasattr(sys.modules.get("random"),
-                                                     "_inst_used_by_drum"))
+    # This was
+    #     "random" not in sys.modules or not hasattr(sys.modules.get("random"),
+    #                                                "_inst_used_by_drum")
+    # and `_inst_used_by_drum` is a name NOTHING in this repository sets --
+    # `grep -r` finds it once, in the assertion itself. So `hasattr` is always
+    # False, `not hasattr` is always True, and the second clause is the constant
+    # True. The check could not fail for any change to any module, which is a
+    # peculiarly bad outcome for a determinism guard: the golden digest and the
+    # two-process seed test both catch a terrain that has ALREADY changed, and
+    # this was supposed to be the one that catches the mechanism.
+    #
+    # So catch the mechanism. Make every public entry point of `random` raise,
+    # build ground with it, and put the module back. A live call through
+    # `random` -- however it got into the import graph -- now stops the suite
+    # instead of being invisible until a digest mismatch nobody can explain.
+    import random as _rnd
+    _tripped = []
+
+    def _forbid(name):
+        def f(*_a, **_k):
+            _tripped.append(name)
+            raise AssertionError(f"drum_ground called random.{name}()")
+        return f
+
+    _names = [n for n in dir(_rnd)
+              if not n.startswith("_") and callable(getattr(_rnd, n, None))
+              and n not in ("Random", "SystemRandom")]
+    _saved = {n: getattr(_rnd, n) for n in _names}
+    try:
+        for n in _names:
+            setattr(_rnd, n, _forbid(n))
+        _probe_ok, _probe_err = True, ""
+        try:
+            sample(0.317, 0.611)
+            ground_patch(2, 4, 4)
+        except Exception as exc:                      # noqa: BLE001
+            _probe_ok, _probe_err = False, str(exc)
+    finally:
+        for n, fn in _saved.items():
+            setattr(_rnd, n, fn)
+    check("building ground calls nothing in `random`", _probe_ok,
+          f"{_probe_err} (tripped: {sorted(set(_tripped))})")
     v1 = ground_patch(3, 7, 2)[0]
     v2 = ground_patch(3, 7, 2)[0]
     check("regeneration is byte-identical", v1 == v2,
@@ -1460,11 +1499,37 @@ def _selftest():
     # Parcels wrap: the count around the circumference is an integer, so parcel
     # 14 neighbours parcel 0. Otherwise the last parcel is a runt with a hedge
     # down one side and a cliff down the other.
+    #
+    # This compared `_parcel(0.0, w)` against `_parcel(1.0, w)` and COULD NOT
+    # FAIL -- the same defect, in the same module, as the seam assertion sixty
+    # lines above, which was found and fixed in session 3e and then left here.
+    # `_parcel` applies `u % 1.0` on its first line and `_value_noise` applies
+    # it again, so u = 1.0 and u = 0.0 are the same call and the check compared
+    # a value with itself. Proved by monkeypatching the wrap out of both: the
+    # old form still returned equal and still passed.
+    #
+    # The property is continuity ACROSS the seam, so sample either side of it,
+    # exactly as the terrain seam check now does -- and separately require the
+    # cell INDEX to wrap, which is the part that makes parcel 14 a neighbour of
+    # parcel 0 rather than a runt.
+    _pk = (PARCELS_A, PARCELS_Z, PARCEL_WARP_M, SEED + "/parcel")
+    eps_p = 1.0 / (PARCELS_A * 4096.0)
+    p_lo = _parcel(1.0 - eps_p, 0.5, *_pk)
+    p_hi = _parcel(eps_p, 0.5, *_pk)
+    check("the parcel field is continuous across the 0/360 seam",
+          abs(p_lo[0] - p_hi[0]) < 0.02 and abs(p_lo[1] - p_hi[1]) < 0.5,
+          f"plateau step {abs(p_lo[0] - p_hi[0]):.4f}, edge-distance step "
+          f"{abs(p_lo[1] - p_hi[1]):.4f} m across the seam")
+    # The cell index has to WRAP, not restart. Adjacent-or-equal modulo the
+    # count is the right form and the measurement says why: the grid is warped
+    # by up to PARCEL_WARP_M, so the cell boundary is not at u = 0 and the two
+    # samples either side of the seam are both in cell 19 -- one parcel
+    # spanning the seam, which is exactly the property. Requiring cell 19 to
+    # meet cell 0 would have been asserting the warp away.
     check("the parcel grid closes on itself",
-          _parcel(0.0, 0.5, PARCELS_A, PARCELS_Z, PARCEL_WARP_M,
-                  SEED + "/parcel")[:2]
-          == _parcel(1.0, 0.5, PARCELS_A, PARCELS_Z, PARCEL_WARP_M,
-                     SEED + "/parcel")[:2])
+          (p_hi[2][0] - p_lo[2][0]) % PARCELS_A <= 1,
+          f"cell {p_lo[2][0]} meets cell {p_hi[2][0]} across the seam, of "
+          f"{PARCELS_A}")
 
     # Roads. 33a shows a ring road at the cap rim; it must exist and it must be
     # flat, because a road that follows the terrain is a track.
@@ -1514,10 +1579,27 @@ def _selftest():
         check(f"stride {s} vertices all exist at lod0", not missing,
               f"{len(missing)} of {len(coarse)} are new")
 
-    check("switch distances increase with stride",
-          all(table[i]["switch_distance_m"] <= table[i + 1]["switch_distance_m"]
+    # This was `table[i]["switch_distance_m"] <= table[i+1][...]` and could not
+    # fail: `lod_table()` walks the rows with a running max and overwrites each
+    # switch distance with it, so the list it returns is sorted by construction
+    # -- its own docstring says "Monotonic by construction". The assertion
+    # restated the clamp.
+    #
+    # What the clamp HIDES is the thing worth asserting. If a coarser level's
+    # measured error came out below a finer one's, the clamp would quietly give
+    # them the same switch distance and one level of the chain would become
+    # unreachable. So assert on the errors, which nothing clamps, and then that
+    # the clamp had nothing to do.
+    check("error grows with stride, so no level is unreachable",
+          all(table[i]["error_m"] < table[i + 1]["error_m"]
               for i in range(len(table) - 1)),
-          str([r["switch_distance_m"] for r in table]))
+          str([r["error_m"] for r in table]))
+    clamped = [r for r in table
+               if abs(r["switch_distance_m"] - _switch_distance(r["error_m"]))
+               > 1.0]
+    check("the monotonic clamp in lod_table() never has to fire", not clamped,
+          f"{[r['level'] for r in clamped]} had their switch distance raised, "
+          "which means a coarser level measured cleaner than a finer one")
     # The sagitta, not the facet width. At the coarsest level the facets are
     # 62 m wide and the pop is 1.75 m -- a factor of 36 apart, which is the
     # mistake CONTRIBUTING.md records.
@@ -1527,9 +1609,29 @@ def _selftest():
           coarsest["curvature_sagitta_m"] < facet_w / 10.0,
           f"sagitta {coarsest['curvature_sagitta_m']:.2f} m vs facet "
           f"{facet_w:.1f} m")
-    for row in table:
+    # This was `row["error_m"] >= row["curvature_sagitta_m"] - 1e-9` at every
+    # level, and `lod_error_report` computes `err = max(worst, sagitta)`, so it
+    # was `max(a, b) >= b`. Five assertions, none of which could fail, on the
+    # number that decides how much ground is drawn.
+    #
+    # Its NAME is the right test: the switch distance must be set by a MEASURED
+    # height error, not by the drum's curvature alone. `lod_error_report`'s own
+    # docstring warns that a subsampled measurement reports near zero for
+    # exactly the features that cause the pop -- and a near-zero measurement
+    # would leave the sagitta winning every `max()` while every one of these
+    # assertions still passed. So require the measurement to be the larger term.
+    # lod0 is exempt and has to be: at stride 1 nothing is decimated, so its
+    # height error is exactly 0 by definition and curvature is all there is.
+    for row in table[1:]:
         check(f"{row['level']} error is dominated by a real measurement",
-              row["error_m"] >= row["curvature_sagitta_m"] - 1e-9)
+              row["height_error_m"] > row["curvature_sagitta_m"],
+              f"measured {row['height_error_m']} m against a "
+              f"{row['curvature_sagitta_m']} m sagitta -- the chain is being "
+              "sized by geometry, so the heightfield sampling measured nothing")
+    check("lod0 is the level with nothing decimated out of it",
+          table[0]["height_error_m"] == 0.0
+          and table[0]["error_m"] == round(table[0]["curvature_sagitta_m"], 3),
+          f"lod0 height error {table[0]['height_error_m']} m")
 
     # --- LOD seams ----------------------------------------------------------
     # A T-junction between a fine patch and a coarse one leaves a sawtooth of
@@ -1593,18 +1695,96 @@ def _selftest():
           f"patches per level {vm['patches_per_level']}")
 
     # --- standing on it -----------------------------------------------------
+    # Both of these used to be restatements of `stand_on_ground`'s own two
+    # lines and neither could fail.
+    #
+    #   "eye stands 1.7 m above the ground" computed
+    #       gh = sample((ang / 360.0) % 1.0, 0.5)[0]
+    #   and compared FLOOR_R - gh - r_eye against 1.7, where the function had
+    #   just set r_eye = FLOOR_R - sample(same u, same w)[0] - 1.7. The two
+    #   samples are the same call, so the identity is 1.7 == 1.7. It passes
+    #   with the camera buried in a terrace, which is the exact failure the
+    #   function's docstring says it exists to prevent.
+    #
+    #   "up points toward the axis" computed up . eye, where up is
+    #   (-cos a, -sin a, 0) and eye is (r cos a, r sin a, z). That dot product
+    #   is -r for every angle and every terrain. It is < 0 by algebra.
+    #
+    # The player does not stand on `sample()`, they stand on TRIANGLES. So cast
+    # the ray the camera's own `up` defines, outward from the eye, and require
+    # it to hit the built mesh at exactly eye height. That crosses from the
+    # field to the geometry -- border clamping, the water clamp and the LOD
+    # lattice all live in between -- and it is a unit test of `up` as well,
+    # because a mis-scaled or mis-signed `up` moves where the ray goes.
+    def _ray_ground(origin, direction, verts, tris):
+        """Nearest forward hit, Moller-Trumbore. None if the ray misses."""
+        ox, oy, oz = origin
+        dx, dy, dz = direction
+        best = None
+        for a, b, c in tris:
+            p0, p1, p2 = verts[a], verts[b], verts[c]
+            e1 = (p1[0] - p0[0], p1[1] - p0[1], p1[2] - p0[2])
+            e2 = (p2[0] - p0[0], p2[1] - p0[1], p2[2] - p0[2])
+            h = (dy * e2[2] - dz * e2[1], dz * e2[0] - dx * e2[2],
+                 dx * e2[1] - dy * e2[0])
+            det = e1[0] * h[0] + e1[1] * h[1] + e1[2] * h[2]
+            if -1e-12 < det < 1e-12:
+                continue
+            inv = 1.0 / det
+            s = (ox - p0[0], oy - p0[1], oz - p0[2])
+            u_ = inv * (s[0] * h[0] + s[1] * h[1] + s[2] * h[2])
+            if u_ < 0.0 or u_ > 1.0:
+                continue
+            q = (s[1] * e1[2] - s[2] * e1[1], s[2] * e1[0] - s[0] * e1[2],
+                 s[0] * e1[1] - s[1] * e1[0])
+            v_ = inv * (dx * q[0] + dy * q[1] + dz * q[2])
+            if v_ < 0.0 or u_ + v_ > 1.0:
+                continue
+            t_ = inv * (e2[0] * q[0] + e2[1] * q[1] + e2[2] * q[2])
+            if t_ > 1e-9 and (best is None or t_ < best):
+                best = t_
+        return best
+
+    # A camera placed on the CONTINUOUS field cannot sit exactly on the mesh,
+    # and should not be expected to: the mesh chords the field between lattice
+    # points and chords the drum's curvature as well. Both are bounded and
+    # small. A lod0 facet is 3.90 m around by 4.04 m along and its curvature
+    # sagitta is 6.8 mm (`lod_table`, lod0); the field's own variation across
+    # one facet supplies the rest, and the worst of the six standing points is
+    # 17.6 mm. So the tolerance is the mesh's own discretisation, stated here,
+    # and the worst observed value is asserted separately below so that bound
+    # cannot quietly grow into a datum error nobody notices.
+    STAND_TOL_M = 0.05
+    worst_stand = 0.0
+    z_mid = (Z0 + Z1) / 2.0
     for ang in (0.0, 37.0, 95.0, 180.0, 263.0, 359.0):
-        e, up = stand_on_ground(schema, profile, sector, ang, (Z0 + Z1) / 2.0)
+        e, up = stand_on_ground(schema, profile, sector, ang, z_mid)
         r_eye = math.hypot(e[0], e[1])
-        gh = sample((ang / 360.0) % 1.0, 0.5)[0]
-        check(f"eye at {ang:g} deg stands 1.7 m above the ground",
-              abs((FLOOR_R - gh - r_eye) - 1.7) < 1e-6,
-              f"{FLOOR_R - gh - r_eye:.4f} m")
-        check(f"up at {ang:g} deg points toward the axis",
-              up[0] * e[0] + up[1] * e[1] < 0)
+        check(f"up at {ang:g} deg is the unit inward radial",
+              abs(math.sqrt(sum(c * c for c in up)) - 1.0) < 1e-12
+              and abs(up[0] * e[0] / r_eye + up[1] * e[1] / r_eye + 1.0) < 1e-12
+              and up[2] == 0.0,
+              f"up {tuple(round(c, 6) for c in up)}")
+        # The patch the eye is over, at lod0 -- the level the player is served.
+        u_e = (ang / 360.0) % 1.0
+        w_e = (z_mid - Z0) / (Z1 - Z0)
+        pa = (int(u_e * CELLS_A) // PATCH_A) % PATCHES_A
+        pz = min(int(w_e * CELLS_Z) // PATCH_Z, PATCHES_Z - 1)
+        pv, pt, _pg, _pm = ground_patch(pa, pz, 1)
+        hit = _ray_ground(e, (-up[0], -up[1], -up[2]), pv, pt)
+        detail = (f"no hit on patch {(pa, pz)}" if hit is None
+                  else f"{hit:.4f} m to the mesh")
+        check(f"eye at {ang:g} deg stands 1.7 m above the BUILT ground",
+              hit is not None and abs(hit - 1.7) < STAND_TOL_M, detail)
+        if hit is not None:
+            worst_stand = max(worst_stand, abs(hit - 1.7))
         # And it must not be inside the guideway truss, which flies at 0.85 R.
         check(f"eye at {ang:g} deg is below the guideways",
               r_eye > FLOOR_R * it.TRUSS_RADIUS_FRAC)
+    check("the field and the lod0 mesh agree to within a facet's chord",
+          worst_stand < 0.03,
+          f"worst standing discrepancy {worst_stand * 1000:.1f} mm -- above a "
+          "facet's own chord error this is a datum mistake, not discretisation")
 
     print(f"{ok}/{ok + fail} passed")
     return 1 if fail else 0
