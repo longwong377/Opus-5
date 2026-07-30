@@ -15,6 +15,13 @@ extends Node3D
 ## between sessions 2j and 3k.
 
 @export var glb_path: String = ""
+## A separate, simplified mesh to collide against. See `station/collision.py`:
+## the render corridor carries a 66 mm lighting channel down its centreline and
+## 22 mm grid tiles either side of it, and a capsule dropped on that stands
+## perfectly still while reporting `on_floor=true`. A player walks on a surface
+## built for walking on. Empty means collide against the visible mesh, which is
+## right for a single room and wrong for a deck.
+@export var collision_path: String = ""
 ## Where to put the body, in world metres. The spawn is a CLAIM -- "a person can
 ## stand here" -- and the test's first assertion is that the claim is true.
 @export var spawn: Vector3 = Vector3.ZERO
@@ -29,6 +36,8 @@ func _ready() -> void:
 	var args := _args()
 	if args.has("glb"):
 		glb_path = args["glb"]
+	if args.has("collision"):
+		collision_path = args["collision"]
 	if args.has("spawn"):
 		spawn = _vec(args["spawn"])
 	if args.has("gravity-mode"):
@@ -75,22 +84,46 @@ func _vec(s: String) -> Vector3:
 ## choice here and it is also the expensive one; that is a runtime streaming
 ## problem, not a reason to use the wrong shape.
 func _load_level() -> bool:
-	if glb_path == "" or not FileAccess.file_exists(glb_path):
-		return false
-	var doc := GLTFDocument.new()
-	var state := GLTFState.new()
-	if doc.append_from_file(glb_path, state) != OK:
-		return false
-	var scene := doc.generate_scene(state)
+	var scene := _load_glb(glb_path)
 	if scene == null:
 		return false
 	add_child(scene)
+
+	# WHICH MESH IS THE FLOOR. With a collision mesh supplied, the visible one
+	# gets no colliders at all and the proxy is invisible -- that separation is
+	# the whole point, and giving both of them shapes would put the millimetre
+	# detail straight back in the body's way.
+	if collision_path != "":
+		var col := _load_glb(collision_path)
+		if col == null:
+			push_error("walk: could not load collision %s" % collision_path)
+			return false
+		add_child(col)
+		var c := 0
+		for m in _all_meshes(col):
+			m.create_trimesh_collision()
+			m.visible = false
+			c += 1
+		print("walk: %d collision meshes (proxy), %d visual meshes (no collision)"
+			% [c, _all_meshes(scene).size()])
+		return c > 0
+
 	var n := 0
 	for m in _all_meshes(scene):
 		m.create_trimesh_collision()
 		n += 1
 	print("walk: %d mesh instances given trimesh collision" % n)
 	return n > 0
+
+
+func _load_glb(path: String) -> Node:
+	if path == "" or not FileAccess.file_exists(path):
+		return null
+	var doc := GLTFDocument.new()
+	var state := GLTFState.new()
+	if doc.append_from_file(path, state) != OK:
+		return null
+	return doc.generate_scene(state)
 
 
 func _all_meshes(node: Node) -> Array:
@@ -140,6 +173,8 @@ func _spawn_player() -> void:
 func _run_walk_test(args: Dictionary) -> void:
 	_t_settle = int(args.get("settle", "150"))
 	_t_walk = int(args.get("steps", "120"))
+	_t_traverse = int(args.get("traverse", "0"))
+	_trace = int(args.get("trace", "0"))
 	_testing = true
 	set_physics_process(true)
 
@@ -148,8 +183,36 @@ var _testing := false
 var _frame := 0
 var _t_settle := 150
 var _t_walk := 120
+var _trace := 0
 var _rest := Vector3.ZERO
 var _on_floor := false
+
+
+## Why a body is not moving, in the only terms that can answer it: what it was
+## told to do, what it did, and what stopped it. A walk test that only prints
+## `moved=0.001` says a body is stuck and nothing about why -- three sessions of
+## this project were spent guessing at exactly that class of question from a
+## single summary number.
+func _trace_line(tag: String) -> void:
+	var p := _player.global_position
+	var cols := ""
+	for i in _player.get_slide_collision_count():
+		var c := _player.get_slide_collision(i)
+		var who := "?"
+		var o = c.get_collider()
+		if o != null:
+			who = str(o.name)
+		cols += " hit[n=%.2f,%.2f,%.2f d=%.3f %s]" % [
+			c.get_normal().x, c.get_normal().y, c.get_normal().z,
+			c.get_depth(), who]
+	print("TRACE %s f=%d p=%.3f,%.3f,%.3f r=%.3f v=%.3f,%.3f,%.3f |v|=%.3f floor=%s wall=%s fn=%.2f,%.2f,%.2f%s" % [
+		tag, _frame, p.x, p.y, p.z, sqrt(p.x * p.x + p.y * p.y),
+		_player.velocity.x, _player.velocity.y, _player.velocity.z,
+		_player.velocity.length(),
+		str(_player.is_on_floor()).to_lower(),
+		str(_player.is_on_wall()).to_lower(),
+		_player.get_floor_normal().x, _player.get_floor_normal().y,
+		_player.get_floor_normal().z, cols])
 
 
 ## THE TEST RUNS ON REAL PHYSICS FRAMES, and the first version did not. It
@@ -165,6 +228,8 @@ func _physics_process(delta: float) -> void:
 	_frame += 1
 	if _frame <= _t_settle:
 		_player.step(delta, Vector2.ZERO, false, false)
+		if _trace > 0 and _frame % _trace == 0:
+			_trace_line("settle")
 		if _frame == _t_settle:
 			_rest = _player.global_position
 			_on_floor = _player.is_on_floor()
@@ -176,27 +241,75 @@ func _physics_process(delta: float) -> void:
 	# could not move on a floor it was standing on perfectly well. The question
 	# is "can this body walk", not "can it walk north", so it tries four
 	# headings and keeps the best.
+	#
+	# EACH LEG STARTS FROM THE REST POSE. It did not, and the legs were
+	# therefore not independent: leg 0 walked the body into the axial wall and
+	# left it there, so leg 1 measured a body already jammed against something
+	# and scored the corridor's own length as zero. A heading test whose result
+	# depends on the previous heading is not a heading test.
 	var leg := int(_t_walk / 2)
-	var which := int((_frame - _t_settle - 1) / leg) % 4
-	if which != _heading:
-		_heading = which
-		_player.set_yaw(float(which) * PI * 0.5)
-		_leg_from = _player.global_position
-	_player.step(delta, Vector2(0, 1), false, false)
-	var d := _player.global_position.distance_to(_leg_from)
-	if d > _moved_1s:
-		_moved_1s = d
 	var n := _frame - _t_settle
-	if n >= leg * 4:
-		var far := _moved_1s
+	if _phase == 0:
+		var which := int((n - 1) / leg)
+		if which >= 4:
+			_phase = 1
+			_best_yaw = _yaw_of_leg
+			_player.global_position = _rest
+			_player.velocity = Vector3.ZERO
+			_player.set_yaw(_best_yaw)
+			_traverse_from = _rest
+			_traverse_prev = _rest
+			return
+		if which != _heading:
+			_heading = which
+			_player.global_position = _rest
+			_player.velocity = Vector3.ZERO
+			_player.set_yaw(float(which) * PI * 0.5)
+			_leg_from = _rest
+		_player.step(delta, Vector2(0, 1), false, false)
+		if _trace > 0 and n % _trace == 0:
+			_trace_line("walk%d" % which)
+		var d := _player.global_position.distance_to(_leg_from)
+		_leg_m[which] = maxf(_leg_m[which], d)
+		if d > _moved_1s:
+			_moved_1s = d
+			_yaw_of_leg = float(which) * PI * 0.5
+		return
+
+	# TRAVERSE. Four one-second nudges prove a body is not wedged; they do not
+	# prove you can GO ANYWHERE, which is the milestone this is for. Walk the
+	# best heading for as long as asked and report the distance covered, the
+	# straight-line displacement, and whether the floor was ever lost -- a body
+	# that walks 80 m and falls off at 60 has not crossed the deck.
+	_player.step(delta, Vector2(0, 1), false, false)
+	var p := _player.global_position
+	_path_m += p.distance_to(_traverse_prev)
+	_traverse_prev = p
+	if not _player.is_on_floor():
+		_off_floor += 1
+	if _trace > 0 and n % _trace == 0:
+		_trace_line("traverse")
+	if n >= leg * 4 + _t_traverse:
 		var fell: bool = (not _on_floor) and _rest.distance_to(spawn) > 50.0
-		print("WALKTEST rest=%.3f,%.3f,%.3f on_floor=%s fell=%s moved_1s=%.3f moved_5s=%.3f drop=%.3f" % [
+		print(("WALKTEST rest=%.3f,%.3f,%.3f on_floor=%s fell=%s moved_1s=%.3f "
+			+ "drop=%.3f legs=%.2f/%.2f/%.2f/%.2f traverse_m=%.2f net_m=%.2f "
+			+ "offfloor=%d/%d") % [
 			_rest.x, _rest.y, _rest.z, str(_on_floor).to_lower(),
-			str(fell).to_lower(), _moved_1s, far,
-			spawn.distance_to(_rest)])
+			str(fell).to_lower(), _moved_1s, spawn.distance_to(_rest),
+			_leg_m[0], _leg_m[1], _leg_m[2], _leg_m[3],
+			_path_m, _traverse_from.distance_to(p), _off_floor, _t_traverse])
 		get_tree().quit(0)
 
 
 var _moved_1s := 0.0
 var _heading := -1
 var _leg_from := Vector3.ZERO
+var _leg_m := [0.0, 0.0, 0.0, 0.0]
+var _phase := 0
+var _yaw_of_leg := 0.0
+var _best_yaw := 0.0
+var _t_traverse := 0
+var _traverse_from := Vector3.ZERO
+var _traverse_prev := Vector3.ZERO
+var _path_m := 0.0
+var _off_floor := 0

@@ -22,7 +22,23 @@ whose collision is missing reports `on_floor=false` and `fell=true`; a room whos
 spawn is inside a workbench reports `walks` near zero. Both happened while this
 file was being written, which is why both are checks.
 
-Run: python3 station/walkable.py [--rooms N] [--verbose]
+AND THE DECK, which is a different question and needed a different test.
+`--deck` assembles a real ring corridor with its rooms, gives it the collision
+shell from `station/collision.py`, and walks a body along it for as long as
+asked. A room test can only ever say "not wedged"; a body that takes two
+successful footsteps and stops at the third scores identically to one that
+crosses the station. So the deck run reports **how far it actually got** and
+**whether it was ever off the floor**, and both are asserted:
+
+  traverse_m  distance covered walking one heading for thirty seconds
+  offfloor    physics frames spent not standing on anything
+
+That pair is what milestone W2 means by "go somewhere". Before the collision
+shell existed this test reported a body that stood on the assembled deck with
+`on_floor=true` and moved 1 mm in every direction, and no assertion in the
+project could fail for it.
+
+Run: python3 station/walkable.py [--rooms N] [--deck] [--verbose]
 """
 import argparse
 import json
@@ -35,6 +51,8 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
 sys.path.insert(0, HERE)
 
+import collision as C                                           # noqa: E402
+import deck as D                                                # noqa: E402
 import directory as dr                                          # noqa: E402
 import interior as it                                           # noqa: E402
 import rooms as R                                               # noqa: E402
@@ -45,6 +63,16 @@ import rooms as R                                               # noqa: E402
 MIN_WALK_M = 0.25
 # Falling through the deck shows up as a large drop from the spawn.
 MAX_DROP_M = 3.0
+
+# How long the deck traverse runs, in physics frames, and how far it has to get.
+# Thirty seconds at 4.2 m/s is 126 m of corridor; the bar is set at half that so
+# a single snag fails it while ordinary contact with a wall does not. A corridor
+# that only lets a body cover 60 m of a 126 m walk has something in it.
+TRAVERSE_FRAMES = 1800
+MIN_TRAVERSE_M = 63.0
+# The deck spawns a body 50 mm above its floor, so a drop of more than a step
+# means it is not where the shell says the floor is.
+MAX_DECK_DROP_M = 0.30
 
 
 def godot_binary():
@@ -89,6 +117,85 @@ def walk_room(key, godot, timeout=180):
     return d
 
 
+def _glb(obj_path, glb_path):
+    """OBJ -> GLB, because Godot reads glTF and the generators write OBJ."""
+    import export_gltf
+    argv = sys.argv
+    sys.argv = ["export_gltf", "--obj", obj_path, "--out", glb_path]
+    try:
+        export_gltf.main()
+    finally:
+        sys.argv = argv
+
+
+def walk_deck(sector, ring, deck, godot, timeout=1800, traverse=None):
+    """Assemble a deck, put a body on it, and walk it.
+
+    The render mesh and the collision shell are exported separately and BOTH are
+    handed to the engine -- the shell to stand on, the render mesh to be the
+    place. Handing over only the render mesh is what this test used to do and
+    the body could not take a step; see `station/collision.py`.
+    """
+    schema, profile = it.load()
+    out = os.path.join(ROOT, "station/generated/scene/deck")
+    os.makedirs(out, exist_ok=True)
+    stem = f"{sector}_{ring}_{deck}"
+    v, t, g, s = D.build_deck(schema, profile, sector, ring, deck)
+    D.write_obj(os.path.join(out, f"{stem}.obj"), v, t, g)
+    cv, ct, cm = D.build_collision(schema, profile, sector, ring, deck)
+    C.write_obj(os.path.join(out, f"{stem}_col.obj"), cv, ct)
+    _glb(os.path.join(out, f"{stem}.obj"), os.path.join(out, f"{stem}.glb"))
+    _glb(os.path.join(out, f"{stem}_col.obj"),
+         os.path.join(out, f"{stem}_col.glb"))
+
+    sx, sy, sz = s["spawn"]
+    cmd = [godot, "--headless", "--path", os.path.join(ROOT, "godot"),
+           "res://scenes/walk.tscn", "--",
+           f"--glb={os.path.join(out, stem + '.glb')}",
+           f"--collision={os.path.join(out, stem + '_col.glb')}",
+           f"--spawn={sx},{sy},{sz}", "--gravity-mode=drum", "--walk-test",
+           f"--traverse={traverse if traverse is not None else TRAVERSE_FRAMES}"]
+    try:
+        res = subprocess.run(cmd, capture_output=True, text=True,
+                             timeout=timeout).stdout
+    except subprocess.TimeoutExpired:
+        return {"key": stem, "error": f"timed out after {timeout}s"}
+    m = re.search(r"WALKTEST (.+)", res)
+    if not m:
+        return {"key": stem, "error": "no verdict printed"}
+    d = {"key": stem, "rooms": s["rooms"], "spawn_at": s["spawn_at"],
+         "render_tris": len(t), "collision_tris": len(ct),
+         "arc_deg": cm["arc_deg"]}
+    for tok in m.group(1).split():
+        k, _, val = tok.partition("=")
+        d[k] = val
+    return d
+
+
+def deck_verdict(d):
+    """Pass/fail for a deck, in the terms milestone W2 is written in."""
+    if "error" in d:
+        return False, d["error"]
+    if d.get("on_floor") != "true":
+        return False, "the body never reached a floor"
+    if float(d.get("drop", 0)) > MAX_DECK_DROP_M:
+        return False, (f"dropped {float(d['drop']):.2f} m from a spawn 50 mm "
+                       f"above the shell -- the floor is not where it says")
+    if float(d.get("moved_1s", 0)) < MIN_WALK_M:
+        return False, f"walked {float(d.get('moved_1s', 0)):.2f} m in a second"
+    off, tot = (d.get("offfloor", "0/0").split("/") + ["0"])[:2]
+    if int(off) > 0:
+        return False, (f"left the floor for {off} of {tot} frames -- it walked "
+                       f"off the deck")
+    got = float(d.get("traverse_m", 0))
+    if got < MIN_TRAVERSE_M:
+        return False, (f"covered {got:.1f} m of corridor, under the "
+                       f"{MIN_TRAVERSE_M:.0f} m bar -- something is snagging")
+    return True, (f"{d['rooms']} rooms over {float(d['arc_deg']):.0f} deg; a "
+                  f"body spawns at {d['spawn_at']}, walks {got:.1f} m and "
+                  f"never leaves the floor")
+
+
 def verdict(d):
     """Pass/fail for one room, with the reason a player would give."""
     if "error" in d:
@@ -111,12 +218,34 @@ def main():
     ap.add_argument("--keys", default="",
                     help="comma-separated room keys, overrides --rooms")
     ap.add_argument("--json", action="store_true")
+    ap.add_argument("--deck", default="",
+                    help="also walk an assembled deck, as sector/ring/deck "
+                         "(e.g. blue/0/0)")
+    ap.add_argument("--deck-only", action="store_true")
+    ap.add_argument("--traverse", type=int, default=None,
+                    help="physics frames of continuous walking on the deck")
     a = ap.parse_args()
 
     godot = godot_binary()
     if godot is None:
         print("no double-precision Godot binary; see docs/godot-binary.md")
         return 1
+
+    if a.deck or a.deck_only:
+        sector, ring, deck = (a.deck or "blue/0/0").split("/")
+        d = walk_deck(sector, int(ring), int(deck), godot,
+                      traverse=a.traverse)
+        good, why = deck_verdict(d)
+        print(f"  {'PASS' if good else 'FAIL'}  deck {sector}/{ring}/{deck}"
+              f"  {why}")
+        if good:
+            print(f"        {d['render_tris']:,} render triangles, "
+                  f"{d['collision_tris']:,} collision "
+                  f"({d['collision_tris'] / d['render_tris'] * 100:.1f}%)")
+        if a.deck_only:
+            return 0 if good else 1
+        if not good:
+            return 1
 
     if a.keys:
         keys = [k for k in a.keys.split(",") if k]

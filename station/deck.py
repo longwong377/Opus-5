@@ -27,6 +27,7 @@ import sys
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 
+import collision as C                                           # noqa: E402
 import directory as dr                                          # noqa: E402
 import interior as it                                           # noqa: E402
 import rooms as R                                               # noqa: E402
@@ -95,6 +96,44 @@ def _place_local(verts, radius_m, angle_deg, z_m):
     return out
 
 
+def deck_arc(sector, ring, deck, z_m, max_rooms=None):
+    """The angular span of corridor a cluster needs, and the places on it.
+
+    Pulled out of `build_deck` so the render mesh and the collision shell are
+    laid over EXACTLY the same arc rather than each recomputing it -- two copies
+    of this arithmetic is one copy too many for geometry that has to agree about
+    where the floor is.
+    """
+    here = places_on(sector, ring, deck, z_m)
+    if max_rooms is not None:
+        here = here[:max_rooms]
+    if not here:
+        raise ValueError(f"no gazetteer location on {sector}/{ring}/{deck}")
+    lo = min(q["angle_deg"] for q in here) - ARC_PAD_DEG
+    hi = max(q["angle_deg"] for q in here) + ARC_PAD_DEG
+    return here, lo, min(360.0, hi - lo)
+
+
+def build_collision(schema, profile, sector, ring, deck, z_m=None,
+                    max_rooms=None):
+    """The deck's COLLISION geometry -- what a body stands on, not what it sees.
+
+    See `station/collision.py` for why these are different meshes. In short: the
+    render corridor's deck carries a 66 mm lighting channel and 22 mm grid
+    tiles, and a capsule dropped on it stands still forever while reporting that
+    it is on the floor.
+    """
+    plan = it.ring_cells(schema, profile, sector, ring, deck)
+    if plan is None:
+        raise ValueError(f"{sector} ring {ring} carries no deck {deck}")
+    if z_m is None:
+        z_m = (z_clusters(sector, ring, deck) or [None])[0]
+    _here, lo, span = deck_arc(sector, ring, deck, z_m, max_rooms)
+    return C.corridor_shell(schema, profile, sector, ring, degrees=span,
+                            start_deg=lo, radius_m=plan["radius_m"],
+                            z_offset=z_m)
+
+
 def build_deck(schema, profile, sector, ring, deck, with_rooms=True,
                max_rooms=None, z_m=None):
     """One deck as a single mesh. Returns (verts, tris, groups, stats)."""
@@ -108,17 +147,9 @@ def build_deck(schema, profile, sector, ring, deck, with_rooms=True,
 
     if z_m is None:
         z_m = (z_clusters(sector, ring, deck) or [None])[0]
-    here = places_on(sector, ring, deck, z_m)
-    if max_rooms is not None:
-        here = here[:max_rooms]
-    if not here:
-        raise ValueError(f"no gazetteer location on {sector}/{ring}/{deck}")
-
-    # The corridor, over the arc the rooms actually occupy plus a margin, so a
-    # player can walk past the last door rather than stopping at it.
-    lo = min(q["angle_deg"] for q in here) - ARC_PAD_DEG
-    hi = max(q["angle_deg"] for q in here) + ARC_PAD_DEG
-    span = min(360.0, hi - lo)
+    # The corridor runs over the arc the rooms actually occupy plus a margin, so
+    # a player can walk past the last door rather than stopping at it.
+    here, lo, span = deck_arc(sector, ring, deck, z_m, max_rooms)
     # AT THE CLUSTER'S OWN z. The corridor is a 3.2 m section swept round the
     # ring; putting it at the deck's nominal z while the rooms sit elsewhere is
     # what made a body fall 263 m through empty space.
@@ -129,12 +160,28 @@ def build_deck(schema, profile, sector, ring, deck, with_rooms=True,
     T.extend(ct)
     G.extend(cm["groups"] if isinstance(cm, dict) and "groups" in cm else [])
     stats["corridor_tris"] = len(ct)
-    # THE SPAWN COMES FROM THE CORRIDOR, NOT THE ASSEMBLED DECK. Computed over
-    # everything, the largest constant-radius surface in the MESH belonged to a
-    # room whose geometry reaches z = -302, so the "floor" it picked was seven
-    # kilometres from the corridor and the body fell forever. The corridor is
-    # what a player spawns in; ask it directly.
-    stats["spawn"] = spawn_m(cv, ct)
+
+    # THE SPAWN COMES FROM THE COLLISION SHELL, which is the only mesh that
+    # knows where the floor a body rests on actually is. Two earlier versions of
+    # this line were wrong in instructive ways and both are worth keeping:
+    #
+    #  * computed over the whole assembled deck, the largest constant-radius
+    #    surface belonged to a room whose geometry reaches z = -302, so the
+    #    "floor" was seven kilometres away and the body fell forever;
+    #  * computed over the corridor alone, it took the CENTROID of the floor
+    #    triangles -- and the centroid of a 344 degree ring of floor is near the
+    #    axis, so the angle recovered from it was whatever numerical asymmetry
+    #    the arc happened to have. It also landed dead on the centreline, which
+    #    is the inside of the lighting channel: the body straddled a 66 mm slot
+    #    and could not take a step.
+    #
+    # A place has an angle. Stand the player at one.
+    _cvx, _ctx, cmeta = C.corridor_shell(
+        schema, profile, sector, ring, degrees=span, start_deg=lo,
+        radius_m=radius, z_offset=z_m)
+    stats["collision_meta"] = cmeta
+    stats["spawn"] = C.stand_at(cmeta, here[0]["angle_deg"])
+    stats["spawn_at"] = here[0]["key"]
 
     if not with_rooms:
         return V, T, G, stats
@@ -160,39 +207,43 @@ def build_deck(schema, profile, sector, ring, deck, with_rooms=True,
     return V, T, G, stats
 
 
-def spawn_m(verts, tris, up_is_inward=True):
-    """A point a body can stand on, computed from the deck's own floor.
+def floor_radius(verts, tris, quantum=0.001, near_m=0.30, min_share=0.02):
+    """The radius of the surface a boot rests on, read off an emitted mesh.
 
-    STOP GUESSING SPAWNS. Three hand-picked corridor points put a body through
-    the deck and reported an identical 313 m fall each time, which is the
-    signature of a spawn over no floor at all. `rooms.spawn_m` already learned
-    this for rooms -- read the free channel rather than assume the origin is
-    clear -- and a deck needs the same.
+    What is LEFT of the old `spawn_m` after the parts that were wrong came out.
+    Finding the floor of a spun ring this way is sound -- a corridor sweeps its
+    section round the axis, so its deck is thousands of triangles at one radius
+    while everything else varies. Deriving a POSITION from it was not: see the
+    note in `build_deck`.
 
-    The floor of a spun ring is the largest CONSTANT-RADIUS surface in the mesh:
-    a corridor sweeps its section round the ring, so its deck is thousands of
-    triangles at one radius while everything else varies. Find that radius, take
-    the centroid of the triangles on it, and stand 1 m inboard -- inboard,
-    because up is inward when the floor is the outer wall.
+    THE DECK IS NOT ONE PLANE, and taking the commonest radius gets the wrong
+    one. A corridor deck is three surfaces stacked within 88 mm -- a lighting
+    channel at the bottom, its panel 66 mm above that, and grid tiles 22 mm
+    above the panel -- and the panel's radius wins on triangle count, because
+    every wall and portal in the section also has its base at that height. A
+    player walks on the TILES. So: find the deck plane by weight, then take the
+    highest substantial surface within `near_m` of it, which is the same rule
+    `collision.corridor_profile` applies by casting rays from above.
+
+    That makes this an independent check rather than a restatement: the shell
+    derives its floor by ray casting through the kit's cross-section, this reads
+    it off emitted triangle radii, and `_selftest` fails if they disagree.
+
+    `quantum` is 1 mm, not the 0.1 m the first version used -- rounding the
+    radius to a decimetre put the answer 50 mm from the surface it named.
     """
     import collections
-    bands = collections.defaultdict(list)
+    bands = collections.Counter()
     for tri in tris:
         rs = [math.hypot(verts[j][0], verts[j][1]) for j in tri]
-        if max(rs) - min(rs) < 0.05:
-            key = round(sum(rs) / 3.0, 1)
-            bands[key].append([sum(verts[j][k] for j in tri) / 3.0
-                               for k in range(3)])
+        if max(rs) - min(rs) < 0.002:
+            bands[round(sum(rs) / 3.0 / quantum) * quantum] += 1
     if not bands:
         return None
-    r_floor = max(bands, key=lambda k: len(bands[k]))
-    pts = bands[r_floor]
-    cx = sum(p[0] for p in pts) / len(pts)
-    cy = sum(p[1] for p in pts) / len(pts)
-    cz = sum(p[2] for p in pts) / len(pts)
-    a = math.atan2(cy, cx)
-    r = r_floor - 1.0 if up_is_inward else r_floor + 1.0
-    return (r * math.cos(a), r * math.sin(a), cz)
+    r0, n0 = bands.most_common(1)[0]
+    # Smallest radius is highest: up is inward on a spun ring.
+    return min(r for r, n in bands.items()
+               if abs(r - r0) <= near_m and n >= n0 * min_share)
 
 
 def write_obj(path, verts, tris, groups):
@@ -272,13 +323,41 @@ def _selftest():
           f"floor r={math.hypot(*probe[0][:2]):.1f} "
           f"head r={math.hypot(*probe[1][:2]):.1f}")
 
-    sp = spawn_m(v, t)
+    sp = s["spawn"]
     check("a deck reports a spawn point", sp is not None)
     if sp:
         rr = math.hypot(sp[0], sp[1])
         check("the spawn is at the deck's own radius, off the floor",
               plan["radius_m"] * 0.9 < rr < plan["radius_m"] * 1.05,
               f"spawn r={rr:.1f} against deck {plan['radius_m']:.1f}")
+        # The spawn is at a PLACE, not at the numerical centroid of an arc.
+        want = math.radians(dr.by_key(s["spawn_at"])["angle_deg"])
+        got = math.atan2(sp[1], sp[0])
+        check("the player starts at a named location, not at a centroid",
+              abs(math.atan2(math.sin(got - want), math.cos(got - want)))
+              < 1e-6,
+              f"{s['spawn_at']} is at {math.degrees(want):.2f} deg, "
+              f"spawn is at {math.degrees(got):.2f} deg")
+
+    # THE COLLISION SHELL AND THE RENDER MESH MUST AGREE ABOUT THE FLOOR. They
+    # are built by different code from the same schema, which is the only way
+    # this project allows two things to match -- and it is worth an assertion
+    # because a shell 50 mm out is a player hovering or sunk, and neither shows
+    # up in a render.
+    cv, ct, cm = build_collision(schema, profile, "blue", 0, 0)
+    check("a collision shell is emitted", len(ct) > 0)
+    probe = dict(cm, arc_deg=8.0, start_deg=0.0)
+    rv, rt, _ = it.ring_arc(schema, profile, "blue", 0, degrees=8.0,
+                            start_deg=0.0, radius_m=plan["radius_m"],
+                            z_offset=7120.0)
+    r_render = C.underfoot_radius(rv, rt, probe)
+    check("the shell's floor sits on the render mesh's floor",
+          r_render is not None
+          and abs(r_render - cm["floor_r_m"]) < 0.003,
+          f"render floor r={r_render}, shell floor r={cm['floor_r_m']}")
+    check("collision is an order of magnitude cheaper than render",
+          len(ct) * 10 < s["corridor_tris"],
+          f"{len(ct):,} collision vs {s['corridor_tris']:,} corridor render")
 
     print(f"{ok}/{ok + fail} passed")
     return 1 if fail else 0
@@ -291,6 +370,9 @@ def main():
     ap.add_argument("--deck", type=int, default=0)
     ap.add_argument("--max-rooms", type=int, default=None)
     ap.add_argument("--obj", default="")
+    ap.add_argument("--collision-obj", default="",
+                    help="where to write the collision shell -- the mesh a "
+                         "body stands on, which is not the one it looks at")
     ap.add_argument("--selftest", action="store_true")
     a = ap.parse_args()
     if a.selftest:
@@ -302,11 +384,20 @@ def main():
     print(f"{a.sector} ring {a.ring} deck {a.deck}: {s['rooms']} rooms, "
           f"{len(t):,} triangles "
           f"({s['corridor_tris']:,} corridor + {s['room_tris']:,} rooms)")
+    sp = s["spawn"]
+    print(f"  spawn {sp[0]:.3f},{sp[1]:.3f},{sp[2]:.3f} at {s['spawn_at']}")
     for k, why in s["skipped"]:
         print(f"  skipped {k}: {why}")
     if a.obj:
         write_obj(a.obj, v, t, g)
         print(f"  wrote {a.obj}")
+    if a.collision_obj:
+        cv, ct, cm = build_collision(schema, profile, a.sector, a.ring, a.deck,
+                                     max_rooms=a.max_rooms)
+        C.write_obj(a.collision_obj, cv, ct)
+        print(f"  wrote {a.collision_obj}: {len(ct):,} collision triangles "
+              f"({len(ct) / max(1, s['corridor_tris']) * 100:.1f}% of the "
+              f"corridor's render mesh), clear width {cm['half_w_m'] * 2:.3f} m")
     return 0
 
 

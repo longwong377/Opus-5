@@ -100,10 +100,18 @@ func step(delta: float, wish: Vector2, jump: bool, sprint: bool) -> void:
 
 	# Basis from the body's own up, so "forward" stays tangential to the drum
 	# floor rather than to the world.
-	var fwd := up.cross(Vector3.RIGHT)
-	if fwd.length() < 0.01:
-		fwd = up.cross(Vector3.FORWARD)
-	fwd = fwd.normalized().rotated(up, _yaw)
+	#
+	# THE REFERENCE AXIS IS THE SPIN AXIS, and picking it by hand matters. The
+	# first version took `up.cross(Vector3.RIGHT)`, which DEGENERATES TO ZERO
+	# wherever `up` is parallel to world X -- ring angles 0 and 180 degrees, one
+	# of which is where the deck's own spawn happens to sit. It fell back to a
+	# different world axis there, so a player walking round the ring had their
+	# heading frame flip discontinuously twice a lap. On a spun habitat `up` is
+	# radial and therefore ALWAYS perpendicular to the spin axis, so +Z is a
+	# reference that can never degenerate. Choose the one the geometry
+	# guarantees rather than the one that usually works.
+	var fwd := Vector3(0, 0, 1) if gravity_mode == "drum" else Vector3.FORWARD
+	fwd = (fwd - up * fwd.dot(up)).normalized().rotated(up, _yaw)
 	var right := fwd.cross(up).normalized()
 
 	# THE BODY ITSELF IS ORIENTED, not just the camera, and this was the bug
