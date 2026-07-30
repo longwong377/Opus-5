@@ -73,6 +73,7 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 import interior as it                                          # noqa: E402
+import rooms as _rooms                                          # noqa: E402
 import interior_kit as kit                                     # noqa: E402
 import signage as sg                                           # noqa: E402
 
@@ -332,6 +333,13 @@ def hall(schema, profile, sector="blue", with_crowd_clearance=True):
          (-hw, HALL_H_M, 0.0), (hw, HALL_H_M + 0.25, HALL_LEN_M))
     _box(v, t, g, "customs_endwall",
          (-hw, 0.0, HALL_LEN_M), (hw, HALL_H_M, HALL_LEN_M + 0.25))
+
+    # ARTICULATION -- rooms.articulate(), INV-073. The hall was 32.3% of its
+    # detail floor. Its shell runs z 0..HALL_LEN_M, hence z_off. The soffit grid
+    # is off because this hall's ceiling IS a backlit grid, built below.
+    _rooms.articulate(v, t, g, "customs", hw, HALL_LEN_M / 2.0, HALL_H_M,
+                      z_off=HALL_LEN_M / 2.0, soffit=False,
+                      scale=1.5)
 
     # --- the backlit ceiling grid ----------------------------------------
     nx = max(1, int(HALL_W_M / CEIL_CELL_M))

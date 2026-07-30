@@ -63,7 +63,8 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "npc"))
 
-import interior as it                                          # noqa: E402
+import interior as it
+import rooms as _rooms                                          # noqa: E402
 import interior_kit as kit                                     # noqa: E402
 
 # ---------------------------------------------------------------------------
@@ -239,6 +240,11 @@ def room():
              (s * (hw + WALL_T_M), ROOM_H_M, hl))
         _box(v, t, g, "bar_wall", (-hw - WALL_T_M, 0.0, s * hl),
              (hw + WALL_T_M, ROOM_H_M, s * (hl + WALL_T_M)))
+
+    # ARTICULATION -- rooms.articulate(), INV-073. The bar was 23.9% of its
+    # detail floor: a box with tables in it. One vocabulary for every
+    # box-shaped interior on the station rather than nine that drift apart.
+    _rooms.articulate(v, t, g, "bar", hw, hl, ROOM_H_M, ow=ow, ol=ol)
 
     # Tables in a loose grid, each with its own pendant and stools.
     for i in range(TABLES_X):

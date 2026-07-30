@@ -1,8 +1,29 @@
 # Project State
 
-**Last updated:** 2026-07-30 · **Session 3s** — layer 2: 16/118 -> 78/118. Garden and all 68 procedural rooms pass their floor · **Session 3r** — **layer 2 is 16/118.** The owner saw the renders and the metrics now agree with the owner
+**Last updated:** 2026-07-30 · **Session 3s** — layer 2: 16/118 -> 93/118 · **Session 3r** — **layer 2 is 16/118.** The owner saw the renders and the metrics now agree with the owner
 
-## Session 3s — layer 2 goes 16/118 -> 78/118
+## Session 3s — layer 2 goes 16/118 -> 93/118
+
+`rooms.articulate()` is the shared vocabulary — bands, deck and soffit grids, mullions, panels,
+conduit — extracted from the procedural generator so the BESPOKE modules use the same one. Nine
+copies of this would have drifted apart; it is the same station, built by the same people. Applied
+to `hospitality` (23.9% -> 102.1%), `quarters` (53.6% -> 110.4%) and `customs` (32.3% -> 111.0%),
+each with `scale` and per-element flags so a 3 m cabin is not given a 12 m ward's pitch.
+
+**Every flag on the quarters call was forced by an assertion, not chosen.** Bands off because the
+unit's own `light_downlight` sits at dado height and `light_portal_head` at cornice height, so a
+continuous band there buries a lamp in solid trim — quarters' own check caught it. Mullions off
+because the diplomatic unit's downlight lands inside one. What is left is the deck and the wall
+panels, which no fitting occupies, at a finer pitch to make up the line.
+
+**One bug worth remembering: I named a parameter `zc` and the mullion loop already bound `zc`.**
+The shift block then translated every band by the last mullion's z, and all 68 rooms left their own
+footprint. The footprint assertion caught it immediately. Renamed to `z_off`.
+
+**Not applicable to `plant`, `alien_sector` or `command_control`** — they build arc bands and
+circular galleries in cylindrical space, not boxes. Those need their own pass.
+
+## Session 3s (earlier) — layer 2 goes 16/118 -> 78/118
 
 The Garden **and** the 68 procedural rooms now pass their derived detail floor. `rooms.py` was
 18.0% of bar at 336 triangles over 384 m² — deck, soffit, four walls, ribs, fixtures, and a flat

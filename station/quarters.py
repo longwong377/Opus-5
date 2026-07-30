@@ -76,6 +76,7 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 import interior as it                                          # noqa: E402
+import rooms as _rooms                                          # noqa: E402
 import interior_kit as kit                                     # noqa: E402
 
 # ---------------------------------------------------------------------------
@@ -205,6 +206,26 @@ def unit(cls):
     _box(v, t, g, "qtr_soffit", (-hw, UNIT_H_M, 0.0), (hw, UNIT_H_M + 0.12, d))
     _box(v, t, g, "qtr_wall", (-hw - WALL_T_M, 0.0, 0.0), (-hw, UNIT_H_M, d))
     _box(v, t, g, "qtr_wall", (hw, 0.0, 0.0), (hw + WALL_T_M, UNIT_H_M, d))
+
+    # ARTICULATION -- rooms.articulate(), INV-073. The unit was 53.6% of its
+    # detail floor. Its shell runs z 0..d rather than centred, hence z_off.
+    _rooms.articulate(v, t, g, "qtr", hw, d / 2.0, UNIT_H_M,
+                      z_off=d / 2.0, scale=1.7, soffit=False,
+                      conduit=False, bands=False, mullions=False)
+    # BANDS OFF, and it is not a taste call. This unit's own
+    # light_downlight sits at dado height on the wall and its
+    # light_portal_head at cornice height, so a continuous band at
+    # either level puts a lamp inside solid trim -- which quarters'
+    # own assertion caught, and which would render as a lamp lighting
+    # the inside of a moulding. A 3 m cabin is also the one room on
+    # the station where a dado rail would be wrong: it is a ship's
+    # cabin, not a wardroom.
+    #
+    # MULLIONS OFF for the same reason -- the diplomatic unit's
+    # downlight lands inside one. What is left is the deck and the
+    # wall panels, neither of which any fitting occupies, run at a
+    # finer pitch to make up the line. The assertion drove every one
+    # of these choices; none of them was a preference.
     _box(v, t, g, "qtr_wall", (-hw - WALL_T_M, 0.0, d),
          (hw + WALL_T_M, UNIT_H_M, d + WALL_T_M))
 
