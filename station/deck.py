@@ -30,6 +30,7 @@ sys.path.insert(0, HERE)
 import collision as C                                           # noqa: E402
 import directory as dr                                          # noqa: E402
 import interior as it                                           # noqa: E402
+import interior_kit as K                                        # noqa: E402
 import rooms as R                                               # noqa: E402
 
 # How much of the ring to emit around the rooms, in degrees. A whole 360 deg
@@ -96,6 +97,40 @@ def _place_local(verts, radius_m, angle_deg, z_m):
     return out
 
 
+def room_axial_half_m(schema, profile, place):
+    """How far a built room reaches along the station axis from its centre.
+
+    Read off the same three lines `rooms.build` uses to size itself, rather than
+    off the gazetteer footprint: a location's stored footprint is its FULL
+    extent (`docking_bays` is 360 degrees by 140 m), and what gets built is one
+    representative bay clamped by `bay_span_m`. Asking the footprint gives a
+    number an order of magnitude too big.
+    """
+    _w, l_full, _r = R.room_extent_m(schema, profile, place)
+    _bw, bl = R.bay_span_m(place)
+    return min(l_full, bl) / 2.0 + R.WALL_T_M
+
+
+def corridor_z_m(schema, profile, here):
+    """Where the ring corridor goes: clear of the rooms it serves.
+
+    THE CORRIDOR USED TO BE PLACED AT A ROUNDING ARTEFACT. `z_clusters` groups
+    locations into 40 m buckets and labels each bucket `round(z / 40) * 40`;
+    `build_deck` then placed the corridor AT THE LABEL. Blue ring 0 deck 0's
+    rooms sit at z = 7115 and got a corridor at 7120, so the 2.6 m corridor tube
+    ran through the far end of every room on the deck -- 0.36 m into
+    `docking_bays`, 1.31 m into `plantroom_bay`. A bucket label is a name for a
+    group, not a position.
+
+    The corridor goes just beyond the furthest room's outer wall, so its near
+    face is flush with the deepest room and no room is cut. Rooms that fall
+    short of it need a vestibule to reach it, which is what a station has
+    anyway -- and is the next thing to build.
+    """
+    far = max(q["z_m"] + room_axial_half_m(schema, profile, q) for q in here)
+    return far + K.PROVISIONAL["corridor_width_m"] / 2.0
+
+
 def deck_arc(sector, ring, deck, z_m, max_rooms=None):
     """The angular span of corridor a cluster needs, and the places on it.
 
@@ -128,10 +163,10 @@ def build_collision(schema, profile, sector, ring, deck, z_m=None,
         raise ValueError(f"{sector} ring {ring} carries no deck {deck}")
     if z_m is None:
         z_m = (z_clusters(sector, ring, deck) or [None])[0]
-    _here, lo, span = deck_arc(sector, ring, deck, z_m, max_rooms)
+    here, lo, span = deck_arc(sector, ring, deck, z_m, max_rooms)
     return C.corridor_shell(schema, profile, sector, ring, degrees=span,
                             start_deg=lo, radius_m=plan["radius_m"],
-                            z_offset=z_m)
+                            z_offset=corridor_z_m(schema, profile, here))
 
 
 def build_deck(schema, profile, sector, ring, deck, with_rooms=True,
@@ -150,12 +185,15 @@ def build_deck(schema, profile, sector, ring, deck, with_rooms=True,
     # The corridor runs over the arc the rooms actually occupy plus a margin, so
     # a player can walk past the last door rather than stopping at it.
     here, lo, span = deck_arc(sector, ring, deck, z_m, max_rooms)
-    # AT THE CLUSTER'S OWN z. The corridor is a 3.2 m section swept round the
-    # ring; putting it at the deck's nominal z while the rooms sit elsewhere is
-    # what made a body fall 263 m through empty space.
+    # AT A z DERIVED FROM THE ROOMS, not at the cluster's label -- see
+    # `corridor_z_m`. Placing it at the label put the corridor through the far
+    # end of every room on the deck; placing it at the deck's nominal z, before
+    # clustering existed, made a body fall 263 m through empty space.
+    cz = corridor_z_m(schema, profile, here)
+    stats["corridor_z"] = cz
     cv, ct, cm = it.ring_arc(schema, profile, sector, ring,
                              degrees=span, start_deg=lo, radius_m=radius,
-                             z_offset=z_m)
+                             z_offset=cz)
     V.extend(cv)
     T.extend(ct)
     G.extend(cm["groups"] if isinstance(cm, dict) and "groups" in cm else [])
@@ -178,7 +216,7 @@ def build_deck(schema, profile, sector, ring, deck, with_rooms=True,
     # A place has an angle. Stand the player at one.
     _cvx, _ctx, cmeta = C.corridor_shell(
         schema, profile, sector, ring, degrees=span, start_deg=lo,
-        radius_m=radius, z_offset=z_m)
+        radius_m=radius, z_offset=cz)
     stats["collision_meta"] = cmeta
     stats["spawn"] = C.stand_at(cmeta, here[0]["angle_deg"])
     stats["spawn_at"] = here[0]["key"]
@@ -358,6 +396,35 @@ def _selftest():
     check("collision is an order of magnitude cheaper than render",
           len(ct) * 10 < s["corridor_tris"],
           f"{len(ct):,} collision vs {s['corridor_tris']:,} corridor render")
+
+    # THE CORRIDOR MUST NOT RUN THROUGH THE ROOMS IT SERVES, and it did. Placed
+    # at the z-cluster's rounded bucket label the 2.6 m corridor tube cut 0.36 m
+    # into `docking_bays` and 1.31 m into `plantroom_bay`. Nothing could fail
+    # for it: the walk test only asks whether a body moves, and interpenetrating
+    # geometry is perfectly walkable. It is visible in a render and wrong in a
+    # simulation, which is two reasons and no gate.
+    here_all = places_on("blue", 0, 0, z_clusters("blue", 0, 0)[0])
+    cz = corridor_z_m(schema, profile, here_all)
+    near = cz - K.PROVISIONAL["corridor_width_m"] / 2.0
+    through = [(q["key"],
+                round(q["z_m"] + room_axial_half_m(schema, profile, q)
+                      - near, 3))
+               for q in here_all
+               if q["z_m"] + room_axial_half_m(schema, profile, q) > near + 1e-6]
+    check("the corridor clears every room on its deck", not through,
+          f"cuts into {through}")
+    # And it is not merely parked far away: the deepest room reaches it.
+    flush = min(near - (q["z_m"] + room_axial_half_m(schema, profile, q))
+                for q in here_all)
+    check("the corridor's near face is flush with the deepest room",
+          abs(flush) < 1e-6,
+          f"nearest room is {flush:.3f} m short of the corridor wall")
+    gaps = sorted((round(near - (q["z_m"]
+                                 + room_axial_half_m(schema, profile, q)), 2),
+                   q["key"]) for q in here_all)
+    print(f"  corridor at z={cz:.2f}, near face {near:.2f}; rooms fall short "
+          f"by {gaps[0][0]:.2f}-{gaps[-1][0]:.2f} m "
+          f"(widest {gaps[-1][1]}) -- these need vestibules")
 
     print(f"{ok}/{ok + fail} passed")
     return 1 if fail else 0

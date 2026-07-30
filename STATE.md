@@ -103,12 +103,41 @@ it. So the corridor tube passes through the far end of every room — 0.36 m int
 | `mooring_clamps` | 180° | 7118.18 | — (0.5 m short) |
 | `bay_elevators` | 300° | 7118.03 | — (0.7 m short) |
 
-**The next increment is therefore three things, in this order:** place the corridor from the rooms
-it serves rather than from a rounded bucket label; cut the doors — `corridor_section` **already
-takes `doors=((z, side), ...)`** and `ring_arc` simply never passes them, and in the corridor's kit
-frame +x maps to world +z so a room at lower z is `side = -1`; and bridge the 0–0.7 m each room
-falls short with a vestibule, which is what a station has anyway. Rooms are closed boxes and will
-need an opening cut in the far wall to match.
+**The first of those three is now done** (see below). What remains is the doors and the vestibules.
+
+### The corridor no longer runs through the rooms — `corridor_z_m`
+
+A bucket label is a name for a group, not a position. The corridor is now placed just beyond the
+furthest room's outer wall, from `rooms.build`'s own sizing (`room_extent_m` clamped by
+`bay_span_m`, plus `WALL_T_M`) — **not** from the gazetteer footprint, which is a location's full
+extent and an order of magnitude too big (`docking_bays` is 360° × 140 m).
+
+| | corridor z | near face | rooms cut |
+|---|---|---|---|
+| **old** — rounded cluster label | 7120.00 | 7118.70 | **4 of 6** — `plantroom_bay` 1.31 m, `docking_bays` 0.36 m, `lowg_bays` and `vorlon_berth` 0.08 m |
+| **new** — derived from the rooms | 7121.31 | 7120.01 | **0 of 6**, and flush with the deepest |
+
+Asserted both ways: the corridor must clear every room *and* its near face must be flush with the
+deepest one, so the check cannot be satisfied by parking the corridor a kilometre away. **Nothing
+could have failed for this before** — the walk test only asks whether a body moves, and
+interpenetrating geometry is perfectly walkable. It was visible in a render and wrong in a
+simulation: two reasons and no gate.
+
+### What is left of W2, precisely
+
+Rooms now fall **0.00 to 1.98 m** short of the corridor wall (`bay_elevators` is the widest,
+`plantroom_bay` is flush). So:
+
+1. **Cut the doors.** `corridor_section` **already takes `doors=((z, side), ...)`** — `courses=False`
+   omits that bay's wall body entirely and `door_assembly` fills it with a bulkhead, frame and leaf.
+   `ring_arc` simply never passes them. In the corridor's kit frame +x maps to world +z, so a room
+   at lower z is **`side = -1`**, and kit z maps to angle, so the door's `dz` is the room's angle
+   converted to arc length.
+2. **Vestibules** for the 0–1.98 m shortfall, which is what a station has anyway.
+3. **An opening in the room's far wall.** `rooms.build` emits each wall as a single `_box`; an
+   aperture means four boxes around it. Contained, but it is a real change to a shared generator.
+4. **Matching openings and vestibule floors in the collision shell** — otherwise the player walks up
+   to a door they can see through and cannot pass.
 
 ## Session 3t — what shadow coverage buys, and why the level then fights the shape
 
