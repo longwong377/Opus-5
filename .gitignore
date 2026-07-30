@@ -23,3 +23,10 @@ tools/__pycache__/
 # Python bytecode. Regenerated on every import; 14 of these were tracked.
 __pycache__/
 *.pyc
+
+# Agent worktrees. `Agent(isolation: "worktree")` checks the repository out
+# under here so a background agent can render and edit without racing the main
+# tree -- 54 MB a copy, transient, and removed when the agent finishes. It is
+# infrastructure, not content, and committing it would put a second copy of the
+# whole project inside the project.
+.claude/worktrees/
