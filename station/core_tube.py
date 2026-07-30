@@ -91,6 +91,8 @@ COLLAR_BASE_RISE_M = 0.7      # the whole group stands slightly proud
 LATTICE_EVERY = 8             # one bay every N sections
 LATTICE_LEN_M = 26.0
 LATTICE_RIBS = 8
+STRINGER_W_M = 0.55           # INV-073: longitudinal stiffener on each fold
+STRINGER_RISE_M = 0.42
 LATTICE_DIP_M = 3.0           # how far the skin steps in under the cage
 
 # The hub. `34b` gives the form -- stepped conical bell, cog of fine radial
@@ -424,6 +426,48 @@ def core_tube(schema, profile, sector, z_span=None):
                          zl + 1.1, zl + LATTICE_LEN_M - 1.1, 0.8,
                          "core_tube_cage")
             parts.append(("cage_rib", b, len(tris)))
+
+    # LONGITUDINAL STRINGERS -- INV-073's rule at station scale. The tube was
+    # 52.4% of its detail floor: a 16-sided barrel 2.6 km long whose only
+    # circumferential relief is a collar group every 130 m, so between collars
+    # there is 130 m of unbroken facet. Stringers are what a pressure tube of
+    # this diameter actually carries, and they are the cheapest line on the
+    # station -- one runs the whole span, so it lays kilometres of arris for
+    # twelve triangles.
+    #
+    # They sit ON the facet crease lines, not between them: a stringer in the
+    # middle of a facet is a second edge where the barrel has none, and a
+    # stringer on the crease is what stiffens the fold. TUBE_SIDES of them.
+    b = len(tris)
+    for k in range(TUBE_SIDES):
+        a_deg = 360.0 * k / TUBE_SIDES
+        ca = math.cos(math.radians(a_deg))
+        sa = math.sin(math.radians(a_deg))
+        # tangential unit, for the stringer's width
+        tx, ty = -sa, ca
+        r_o = CORE_TUBE_R_M + STRINGER_RISE_M
+        r_i = CORE_TUBE_R_M - 0.05
+        hwid = STRINGER_W_M / 2.0
+        n0 = len(verts)
+        for zz in (z0, z1):
+            for (rr, sgn) in ((r_i, -1), (r_i, 1), (r_o, 1), (r_o, -1)):
+                verts.append((rr * ca + tx * hwid * sgn,
+                              rr * sa + ty * hwid * sgn, zz))
+        for q in range(4):
+            q2 = (q + 1) % 4
+            tris.append((n0 + q, n0 + q2, n0 + 4 + q2))
+            tris.append((n0 + q, n0 + 4 + q2, n0 + 4 + q))
+        # CAP BOTH ENDS. The first version left them open and the tube's own
+        # watertightness assertion reported exactly 128 boundary edges -- eight
+        # per stringer, sixteen stringers. A hole in geometry shows the
+        # background through it and the background is black, which is why this
+        # project measures closure instead of looking for it.
+        tris.append((n0, n0 + 2, n0 + 1))
+        tris.append((n0, n0 + 3, n0 + 2))
+        tris.append((n0 + 4, n0 + 5, n0 + 6))
+        tris.append((n0 + 4, n0 + 6, n0 + 7))
+        groups.extend(["core_tube_stringer"] * 12)
+    parts.append(("stringer", b, len(tris)))
 
     _guard(verts, tris, groups, "core_tube")
     return verts, tris, {
