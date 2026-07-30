@@ -240,10 +240,31 @@ This project runs partly on a **6-hourly trigger** (`trig_01JS1VWf6yada5x6maPMAz
    costs roughly its agent count times a normal turn. Five agents to build five independent
    subsystems is worth it; five agents to write one file is not.
 
-   **Cap: ~10–14 agents per workflow, one workflow per increment.** Raised from ~5 by the owner
-   in session 2y, together with the AAA standard. The multiplication that gets expensive is
-   *many workflows at once across a repeating trigger*, not the width of a single fan-out — so
-   run one wide workflow and wait for it, rather than three narrow ones in parallel.
+   **ASK THE OWNER BEFORE STARTING ANY AGENT.** Set in session 3q and standing. Not "ask before
+   a big fan-out" — ask before setting any of them in motion, and propose the pairing so it can
+   be chosen.
+
+   **Cap: 2–3 agents, and that is the HARDWARE, not a preference.** The owner set 2–3 in session
+   3q and it matches the machine exactly: `nproc` is 4, the workflow runtime caps concurrency at
+   `min(16, nproc - 2)`, so **two agents run and everything else queues**. The old guidance here
+   said ~10–14 and it was measured wrong in session 3o: a 12-agent fan-out became a six-deep
+   queue, ran fifteen minutes with two agents still on their first pass, wrote nothing, and was
+   killed. The work was then done serially from the same committed data the agents were being
+   asked to read.
+
+   Two agents *is* the useful width. The session-3p run cost 596k subagent tokens over 66
+   minutes, both finished, and it caught two of this agent's own factual claims as wrong plus a
+   camera defect this agent had introduced. Width beyond two buys nothing on this box.
+
+   **Give agents disjoint file lists and check for hidden collisions.** `materials.py --export`
+   rewrites the `.tscn` files, so an agent owning `materials.py` and an agent owning
+   `exterior.tscn` collide even though their file lists look separate. Have the second report
+   what to apply and apply it at integration.
+
+   **Their work is not done when they return it.** In three runs: one agent's output was left
+   uncommitted at a session boundary, one wrote entries into a module that did nothing until
+   four lines were added to `export_scene`, and one shipped gates that had to be replaced.
+   Verify against the gates, render, and integrate — the review is the main agent's job.
 
    Keep the adversarial verify pattern. It has now caught a door interpenetrating a portal
    frame, a greeble signature mismatch, tram cars passing 6.43 m through a structural spoke, an
