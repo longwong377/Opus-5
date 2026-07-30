@@ -3008,15 +3008,45 @@ by eye against the *corridor's* median, not having found a reference frame for t
 the module's fitting was measured from. Against it the correction is 0.47. And `zocalo` needed
 0.92 → 0.84 because recovering the five-lamps-per-rib the module actually builds multiplied its flux.
 
+## Session 3q — the camera stands on a floor
+
+**Three defects in `open_standpoint`, and the first was mine from session 3o.** The eye in command
+and control sat at **y = −0.20 m** — in the 1.9 m instrument pit with its eyes at deck level,
+looking down the pit and away from the wall courses that light the room.
+
+1. **The level was reported at its histogram bin's LEFT EDGE**, up to 0.5 m below the surface it
+   stood for. It is now the area-weighted mean Y of the surfaces in the bin — exact, and one line.
+2. **The search preferred a long view over a large floor.** The pit is real floor and a person can
+   be in it; it is 17% of the room's horizontal area against the main deck's 47%, and that is what
+   makes one of them *the* floor. The level score is now multiplied by its area share.
+3. **"Nothing blocks the body" and "something holds the body up" are different questions**, and
+   only the first was being asked. With 1 and 2 fixed the eye was at a standing height — and in
+   three rooms out of eight it was standing over a hole: the pit's open mouth, off the near end of
+   the docking bay's deck, and outside the council chamber's raised floor. A level's histogram says
+   the floor *exists*; it does not say it is under this particular cell. The occupancy grid now
+   carries a floor mask.
+
+**Every eye now lands at exactly 1.70 m above its own floor** (1.60 where the ceiling forces a
+crouch), across all nine bespoke rooms.
+
+**The gate cost three attempts and the failure was the same one three times.** Asking for a nearby
+*vertex* failed customs and the docking bay — the two rooms with the biggest floors, whose decks are
+single quads with their corners twenty metres away. That is the third time this session vertex
+distance has been the wrong question about coarse architecture; `open_standpoint` itself and the
+light-placement gate both carry the same lesson now.
+
+**Two exposures re-measured, both because a correction moved the frame rather than because a number
+looked wrong.** `command_control` 0.93 → **1.10** (the old value was calibrated against a shot of
+the underside of a floor) and `council_chamber` 2.84 → **2.27** (the cove became six lamps round the
+arc, and the camera moved onto the chamber floor; at the old value the corrected frame read x1.75,
+the very edge of tolerance). Both now land at x1.46 and x1.41 against the x1.40 target.
+
+`docs/engine-cnc.png` is the station's bridge from its own deck: the blue wall courses casting along
+the wall, the command dais and its rails, a console's lit fascia, the radial viewport.
+
 ## NEXT SESSION — layer 4, the last 23
 
-1. **`command_control`'s camera stands below the deck.** The session-3o `open_standpoint` rewrite
-   puts the cnc eye at **y = −0.20 m**, under the floor, looking down the pit away from the wall
-   courses. `docs/engine-cnc.png` was rendered at the old camera, so
-   `BESPOKE_EXPOSURE["command_control"] = 0.93` is calibrated against a shot the pipeline no longer
-   produces. Fix the standpoint, *then* re-calibrate — an exposure is not a rescue for a camera
-   fault.
-2. **`house_cove()` has no concealing lip** — see above. Build it, or drop
+1. **`house_cove()` has no concealing lip** — see above. Build it, or drop
    `light_house_cove`'s emission.
 3. **Our frames crush far LESS than the show's**: customs 0.28% against the reference's 50.34%,
    alien 6.63% against 14.51%. The p5/p95 ratios are respectable, so this is the deep end of the

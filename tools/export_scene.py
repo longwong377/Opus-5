@@ -971,7 +971,11 @@ BESPOKE_EXPOSURE = {
                              # split took it from 36 lamps to 96. Verified at
                              # 1.43 of the reference on the re-render.
     "hospitality": 1.34,     # vs reference/04-sector-red/Doug's Dugout.webp
-    "command_control": 0.93,  # vs 03-sector-blue/comand and contorl.webp
+    # 1.10, and the 0.93 it replaces was measured against a frame the pipeline
+    # could not produce: the standpoint search stood this camera at y = -0.20 m,
+    # in the instrument pit, until the floor test above was added. Re-measured
+    # at the corrected camera and at the recovered lamp count (1 -> 36).
+    "command_control": 1.10,  # vs 03-sector-blue/comand and contorl.webp
                              # UNCHANGED, and the reason is worth a line
                              # because the number looks stale and is not: this
                              # shot now measures 1.18 rather than the 1.40 it
@@ -995,7 +999,12 @@ BESPOKE_EXPOSURE = {
                              # sign, instructions, and hub.jpg
     "quarters": 1.12,        # vs reference/07-sector-grey/grey level 1.webp,
                              # the residential corridor a unit opens off
-    "council_chamber": 2.84,  # vs 05-sector-green/council chambers.webp
+    # 2.27, from 2.84. Two things moved it and both were corrections rather
+    # than tuning: the cove became six lamps spread round the arc instead of
+    # one at its centroid, and the camera moved onto the chamber floor. At the
+    # old value the corrected frame reads x1.75 of its reference, the very edge
+    # of the tolerance band.
+    "council_chamber": 2.27,  # vs 05-sector-green/council chambers.webp
     "plant": 0.88,           # vs 10-interiors-generic-kit/more hallways.jpg,
                              # the measured SERVICE corridor -- the register
                              # whose walls are black except where a panel or
@@ -1619,12 +1628,26 @@ def open_standpoint(verts, tris, eye_h, clear_m=0.75, walk_spans=None):
         edges = np.arange(lo[1], hi[1] + 0.5, 0.5)
         hist, _ = np.histogram(ys, bins=edges, weights=w)
         keep = hist > 0.03 * w.sum()
-        levels = [float(edges[i]) for i in np.where(keep)[0]]
+        # THE LEVEL IS THE AREA-WEIGHTED MEAN OF THE SURFACES IN ITS BIN, not
+        # the bin's edge and not its centre. `edges` starts at the model's
+        # lowest vertex, so a deck at y = 0 in a room whose pit bottoms out at
+        # -1.9 lands in the bin [-0.4, 0.1) -- reported at its left edge that
+        # is 0.4 m INTO the deck, and at its centre 0.15 m above it. Neither is
+        # the floor. The mean is, exactly, and costs one more line.
+        which = np.digitize(ys, edges) - 1
+        levels = []
+        for i in np.where(keep)[0]:
+            m = which == i
+            levels.append((float((ys[m] * w[m]).sum() / w[m].sum()),
+                           float(hist[i] / w.sum())))
         if not levels:
-            levels = [float(lo[1])]
+            levels = [(float(lo[1]), 1.0)]
+    else:
+        levels = [(v, 1.0) for v in levels]
     # Only levels with headroom for a person, and never more than a handful:
     # every extra level is another occupancy grid.
-    levels = sorted({round(v, 1) for v in levels if v + eye_h < hi[1] + 0.5})[:6]
+    levels = sorted({(round(v, 1), round(sh, 4)) for v, sh in levels
+                     if v + eye_h < hi[1] + 0.5})[:6]
     # AND LOOK DOWN WHICHEVER AXIS YOU CAN SEE FURTHEST ALONG. The search
     # scores by the clear run in +Z, which is right for eight of the nine
     # modules because a room is modelled with its length down Z. A plant
@@ -1647,17 +1670,28 @@ def open_standpoint(verts, tris, eye_h, clear_m=0.75, walk_spans=None):
         axes = (True,) if span[0] > span[2] else (False,)
     swapped = a[:, [2, 1, 0]]
     best = None
-    for v in levels:
+    for v, share in levels:
         for flip in axes:
             pts = swapped if flip else a
-            e, m, score = _standpoint_at(pts, tri, v + eye_h, clear_m)
+            e, m, score = _standpoint_at(pts, tri, v + eye_h, clear_m,
+                                          floor_y=v)
+            # WEIGHTED BY HOW MUCH FLOOR THE LEVEL IS. View length alone put
+            # the command and control camera at y = -0.20 m -- standing in the
+            # 1.9 m instrument pit with its eyes at deck level, looking down
+            # the pit and away from the wall courses that light the room. The
+            # pit is real floor and a person can be in it, so rejecting it
+            # outright would be wrong; it is 17% of the room's horizontal area
+            # against the main deck's 47%, and that is the thing that makes one
+            # of them THE floor. Multiplying is enough to settle it and still
+            # lets a small level win when it is the only one worth standing on.
+            score *= share
             if best is None or score > best[0]:
                 best = (score, (e[2], e[1], e[0]) if flip else e,
                         (m[2], m[1], m[0]) if flip else m)
     return best[1], best[2]
 
 
-def _standpoint_at(a, tri, y, clear_m):
+def _standpoint_at(a, tri, y, clear_m, floor_y=None):
     """The standpoint search at one height. See `open_standpoint`."""
     import numpy as np
 
@@ -1690,6 +1724,34 @@ def _standpoint_at(a, tri, y, clear_m):
         j1 = np.clip(((q[:, :, 2].max(axis=1) - lo[2]) / cell).astype(int), 0, nz - 1)
         for k in range(len(q)):
             blocked[i0[k]:i1[k] + 1, j0[k]:j1[k] + 1] = True
+
+    # AND THERE HAS TO BE A FLOOR UNDER IT. "Nothing blocks the body" and
+    # "something holds the body up" are different questions and only the first
+    # was being asked, so the camera stood over the command and control pit's
+    # open mouth, off the near end of the docking bay's deck, and outside the
+    # council chamber's raised floor -- three rooms out of eight, each with a
+    # perfectly good deck a few metres away. A level's histogram says the floor
+    # EXISTS; it does not say it is under this particular cell.
+    if floor_y is not None:
+        holds = np.zeros((nx, nz), dtype=bool)
+        fy = p[:, :, 1].mean(axis=1)
+        near = np.abs(fy - floor_y) < 0.35
+        # Near-horizontal only: a wall panel crossing the right height is not
+        # something to stand on.
+        nrm = np.cross(p[:, 1] - p[:, 0], p[:, 2] - p[:, 0])
+        mag = np.linalg.norm(nrm, axis=1)
+        flat_ok = (mag > 1e-12)
+        upness = np.zeros(len(p))
+        upness[flat_ok] = np.abs(nrm[flat_ok, 1]) / mag[flat_ok]
+        f = p[near & flat_ok & (upness > 0.85)]
+        for k in range(len(f)):
+            fi0 = int(np.clip((f[k, :, 0].min() - lo[0]) / cell, 0, nx - 1))
+            fi1 = int(np.clip((f[k, :, 0].max() - lo[0]) / cell, 0, nx - 1))
+            fj0 = int(np.clip((f[k, :, 2].min() - lo[2]) / cell, 0, nz - 1))
+            fj1 = int(np.clip((f[k, :, 2].max() - lo[2]) / cell, 0, nz - 1))
+            holds[fi0:fi1 + 1, fj0:fj1 + 1] = True
+        if holds.any():
+            blocked |= ~holds
 
     # Erode by the body radius: standing 0.1 m from a wall is not standing
     # somewhere, and a camera at the near plane against a surface renders it as
@@ -2165,6 +2227,53 @@ def _selftest():
                     break
     check(not astray,
           f"every light sits ON the fitting it stands for ({astray[:3]})")
+
+    # -- the camera stands ON a floor ---------------------------------------
+    # It did not. Session 3o's level search scored candidate standing heights
+    # by how far you could see from them, and in command and control that put
+    # the eye at y = -0.20 m: standing in the 1.9 m instrument pit with its
+    # eyes at deck level, looking down the pit and away from the wall courses
+    # that light the room. The exposure calibrated against that shot was
+    # therefore calibrated against a frame of the underside of a floor.
+    #
+    # Two causes, both fixed: the level was reported at its histogram bin's
+    # LEFT EDGE, which is up to 0.5 m below the surface it stands for; and the
+    # search preferred a long view over a large floor, so a narrow pit beat the
+    # deck above it. The pit is real floor and a person can be in it -- it is
+    # 17% of the room's horizontal area against the main deck's 47%, and that
+    # is what makes one of them THE floor.
+    #
+    # The gate is that the eye sits a standing height above SOME real surface
+    # of the room, which is a property no view-length score can satisfy by
+    # accident.
+    floors = []
+    for _room in ("cnc", "zocalo", "council_chamber", "customs_north",
+                  "alien_sector", "docking_bays", "bar_unnamed", "qtr_command"):
+        _v, _t, _g, _x = interior_geometry(_room)
+        _walk = [sp for sp in _g if any(
+            f in sp[0] for f in WALK_SURFACE.get(
+                __import__("directory").by_key(_room)["module"], ()))]
+        _eye, _aim = open_standpoint(_v, _t, 1.7, walk_spans=_walk or None)
+        # UNDER THE EYE'S FOOTPRINT, not near a vertex. A customs deck is one
+        # large quad and its corners are twenty metres from the camera; asking
+        # for a nearby VERTEX failed both of the rooms with the biggest floors
+        # in the project. That is the third time this session that vertex
+        # distance has been the wrong question about coarse architecture --
+        # `open_standpoint` and the light-placement gate had it too.
+        _drop = None
+        for _k in range(len(_t)):
+            _q = [_v[i] for i in _t[_k]]
+            _y = sum(x[1] for x in _q) / 3.0
+            if not _eye[1] - 2.0 < _y < _eye[1] - 1.2:
+                continue
+            if (min(x[0] for x in _q) - 0.3 <= _eye[0] <= max(x[0] for x in _q) + 0.3
+                    and min(x[2] for x in _q) - 0.3 <= _eye[2]
+                    <= max(x[2] for x in _q) + 0.3):
+                _d = _eye[1] - _y
+                _drop = _d if _drop is None else min(_drop, _d)
+        if _drop is None:
+            floors.append(f"{_room}: nothing under the eye to stand on")
+    check(not floors, f"the camera stands on a floor ({floors})")
 
     # THE ANCHOR MUST NOT MOVE. docs/engine-corridor.png is what every exposure
     # in this file was calibrated against, so a change to the rig that alters
