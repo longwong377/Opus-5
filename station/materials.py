@@ -1709,6 +1709,11 @@ def _build():
         albedo=(0.545, 0.540, 0.528), roughness=0.42, metallic=0.95,
         specular=0.5,
         binds=("prop_valve", "customs_conduit", "bar_conduit", "qtr_conduit",
+               # Session 3u population. Bodies carry no material of their own
+               # yet -- npc/costume.py has Fabric and Decal per role and is the
+               # right source -- so they take a neutral surface rather than the
+               # magenta fallback. Wiring costume.py is the next NPC job.
+               "npc_seated", "npc_standing",
                "dress_metal", "dress_conduit", "dress_band",
                "dress_wallbox",
                "alien_conduit", "plant_conduit", "plant_tray",

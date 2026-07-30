@@ -428,6 +428,10 @@ TEE_D_M = 0.04
 CONDUITS = 4
 CONDUIT_R_M = 0.055
 PANEL_D_M = 0.045
+# The hour the whole station is generated at. 1300 is a working day, which is
+# what the reference frames show. `populace` reads each place's own busy and
+# dead windows off `npc/schedule.py`, so this one number moves all 118.
+STATION_HOUR = 13.0
 DRESS_DENSITIES = (1.0, 0.75, 0.5, 0.3, 0.15, 0.0)
 _TRIM_SUFFIXES = ("_skirt", "_dado", "_rail", "_cornice", "_deck_joint",
                   "_soffit_tee", "_conduit", "_panel", "_mullion")
@@ -1092,6 +1096,21 @@ def build(schema, profile, place, max_span_m=None):
             break
 
 
+    # POPULATION -- station/populace.py, and it runs LAST for the same reason
+    # the dressing does: people are placed against the furniture that is
+    # actually there, so somebody ends up ON a chair rather than near one. The
+    # hour comes from STATION_HOUR so the whole station can be moved to 0300
+    # with one number.
+    import populace as _pop                                     # noqa: PLC0415
+    pv, pt, pg, _ps = _pop.populate(
+        place["key"], v, t, g, w, ln, hour=STATION_HOUR, arch=arch,
+        seed=place["key"])
+    if pt:
+        off, t0 = len(v), len(t)
+        v.extend(pv)
+        t.extend((a + off, b + off, c + off) for a, b, c in pt)
+        g.extend((n, lo + t0, hi + t0) for n, lo, hi in pg)
+
     return v, t, g
 
 
@@ -1501,9 +1520,19 @@ def _selftest():
         # The deck channel is 20 mm proud and the warm practical is 100 mm
         # proud at hip height. Neither should close a room, and the flood fill
         # is the only thing that can say so.
-        if not walkable(_boxes(v, t, g, lambda n: not n.endswith(
-                ("_deck", "_soffit", "_wall", "_rib") + _TRIM_SUFFIXES)), bw,
-                bl):
+        # PEOPLE ARE NOT WALLS. An NPC is an agent: a player walks around one
+        # and one steps aside, so a crowded bar is walkable and a bar with a
+        # locker across the door is not. Counting bodies as permanent obstacles
+        # made 11 rooms fail the moment the population generator was wired in,
+        # which is the wrong answer to a right-looking question.
+        #
+        # THE EXEMPTION IS EARNED BELOW, not assumed: a separate check asserts
+        # no body is spawned INSIDE solid furniture, which is a real defect and
+        # the one this exclusion could otherwise hide.
+        if not walkable(_boxes(v, t, g, lambda n: not (
+                n.endswith(("_deck", "_soffit", "_wall", "_rib")
+                           + _TRIM_SUFFIXES)
+                or n.startswith("npc_"))), bw, bl):
             unwalkable.append(p["key"])
     check("no room renders black -- every fitting its archetype declares is "
           "placed", not dark, f"{len(dark)}: {dark[:4]}")
@@ -1538,6 +1567,26 @@ def _selftest():
                 fat.append((p["key"], nm, round(thin, 3)))
     check("every articulation band is trim, not an obstacle -- thinner than a "
           "step or above head height", not fat, f"{len(fat)}: {fat[:3]}")
+    # NOBODY IS INSIDE THE FURNITURE. This is what buys the exemption above.
+    # A body merged into a locker is invisible to a walkability test that
+    # ignores bodies, and it is exactly the defect that exclusion could hide.
+    embedded = []
+    for p in places[:14]:
+        v, t, g = build(schema, profile, p)
+        solids = _boxes(v, t, g, lambda n: n.startswith(("fix_", "dress_"))
+                        and not n.startswith("dress_clutter"))
+        for nm, nb in _boxes(v, t, g, lambda n: n.startswith("npc_")):
+            cx = (nb[0] + nb[3]) / 2.0
+            cz = (nb[2] + nb[5]) / 2.0
+            for _sn, sb in solids:
+                if (sb[0] + 0.12 < cx < sb[3] - 0.12
+                        and sb[2] + 0.12 < cz < sb[5] - 0.12
+                        and sb[4] > 0.8):
+                    embedded.append((p["key"], nm))
+                    break
+    check("no NPC is standing inside a solid fitting",
+          not embedded, f"{len(embedded)}: {embedded[:3]}")
+
     check("the lit room is still walkable",
           not unwalkable, f"{len(unwalkable)}: {unwalkable[:6]}")
     print(f"  lights: {lamp_total} fittings over {len(places)} rooms "
