@@ -1,6 +1,6 @@
 {
  "version": 1,
- "notes": "SEED, NOT A REVIEW. Round 1 for every subsystem was scored by the author of docs/AAA-STANDARD.md from facts already recorded in STATE.md, so that the gate has real data to run against. No adversarial review round has produced these numbers. Treat every score as provisional until a reviewer other than the builder has scored it. The scores are deliberately conservative: where STATE.md records a defect, the descriptor it matches is the score.",
+ "notes": "SEED, NOT A REVIEW. Round 1 for every subsystem was scored by the author of docs/AAA-STANDARD.md from facts already recorded in STATE.md, so that the gate has real data to run against. No adversarial review round has produced these numbers. Treat every score as provisional until a reviewer other than the builder has scored it. The scores are deliberately conservative: where STATE.md records a defect, the descriptor it matches is the score.  SESSION 3r: first scores taken from CLOSE frames rather than wide ones. AAA-STANDARD.md's craft section has always required judging 'at three distances: the distance the player normally sees it from, half that, and the distance at which it is one pixel of silhouette.' Only the first was ever rendered, which is how 118 locations of blockout passed three layers. The standard did not fail here -- applying it did.",
  "bar": {
   "min_score": 4,
   "clean_rounds_required": 2,
@@ -543,6 +543,100 @@
       "Guideway trusses recede correctly and read as structure.",
       "Core tube, hub and spokes read at the vanishing point.",
       "15 s per frame -- the interior path is FASTER than the exterior, so iteration is cheap."
+     ]
+    }
+   ]
+  },
+  "zocalo_interior": {
+   "status": "active",
+   "rounds": [
+    {
+     "round": 1,
+     "reviewer": "main agent, session 3r -- first scores taken from CLOSE frames",
+     "date": "2026-07-30",
+     "scores": {
+      "craft": 3,
+      "fidelity": 3,
+      "performance": 3,
+      "robustness": 3
+     },
+     "evidence": {
+      "craft": "docs/engine-zocalo-close.png -- ribbed arches, a gallery with railings, stall canopies, tables and stools, floor tiling, warm/cool separation. Reads as the intended place at its normal distance, which is C3."
+     },
+     "broke_assertions": false,
+     "findings": [
+      {
+       "severity": "major",
+       "dimension": "craft",
+       "descriptor": "C3",
+       "where": "station/zocalo.py",
+       "text": "Falls apart at half distance, which is the C3 descriptor exactly. The arches are undifferentiated white surfaces with no panel breaks, joints or wear. No signage anywhere in a market concourse. No people."
+      },
+      {
+       "severity": "major",
+       "dimension": "craft",
+       "descriptor": "C3",
+       "where": "tools/export_scene.py fixture lighting",
+       "text": "Floor light pools blow to pure white discs. Clipped highlights read as a rendering error rather than as lighting."
+      }
+     ]
+    }
+   ]
+  },
+  "generated_rooms": {
+   "status": "active",
+   "rounds": [
+    {
+     "round": 1,
+     "reviewer": "main agent, session 3r -- first scores taken from CLOSE frames",
+     "date": "2026-07-30",
+     "scores": {
+      "craft": 1,
+      "fidelity": 2,
+      "performance": 4,
+      "robustness": 3
+     },
+     "evidence": {
+      "craft": "docs/engine-casino-close.png -- flat panelled walls, four ceiling lights blown to white blobs, one dark counter slab, one blue box on the floor. A casino with no tables, no machines, no chairs."
+     },
+     "broke_assertions": false,
+     "findings": [
+      {
+       "severity": "blocking",
+       "dimension": "craft",
+       "descriptor": "C1",
+       "where": "station/rooms.py",
+       "text": "These 68 rooms are 58% of the station's 118 locations. Each is the archetype kit with a few fixtures dropped in, so the room is named for a function it does not contain. Largest craft deficit in the project by location count."
+      }
+     ]
+    }
+   ]
+  },
+  "garden_townscape": {
+   "status": "active",
+   "rounds": [
+    {
+     "round": 1,
+     "reviewer": "main agent, session 3r -- first scores taken from CLOSE frames",
+     "date": "2026-07-30",
+     "scores": {
+      "craft": 1,
+      "fidelity": 2,
+      "performance": 4,
+      "robustness": 3
+     },
+     "evidence": {
+      "craft": "docs/engine-drum-terrace.png. garden.tree() is one box plus one cylinder; garden.block_building() is one box plus window bands and its docstring says 'Cheap by design'. The whole settlement -- 12 buildings, 10 trees, a landmark -- is 2,228 triangles."
+     },
+     "broke_assertions": false,
+     "findings": [
+      {
+       "severity": "blocking",
+       "dimension": "craft",
+       "descriptor": "C1",
+       "where": "station/garden.py",
+       "text": "The owner's words were 'shitty little cubes' and 'sad excuse for a tree'. Both are literally accurate descriptions of the generators. C1 is correct and has been correct since the module was written."
+      }
      ]
     }
    ]

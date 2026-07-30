@@ -77,7 +77,8 @@ grown to make a number go green.
 |---|---|---|---|
 | **0** | **Engine path** | A materialled, lit frame comes out of Godot + lavapipe and can be scored against `docs/AAA-STANDARD.md`. Infrastructure, not per-location | **DONE** |
 | **1** | **Addressed** | All have `(sector, ring, deck, angle, z)`, footprints that do not collide, declared functions and interactions | **118 / 118 COMPLETE** |
-| **2** | **Geometry** | Every addressed location has mesh, closed, correctly wound, inside its own footprint | **118 / 118 COMPLETE** |
+| **2a** | **Geometry — topology** | Every addressed location has mesh, closed, correctly wound, inside its own footprint | **118 / 118 COMPLETE** |
+| **2b** | **Geometry — articulation** | Every location survives the rubric's *half* distance: primary form, secondary structure, tertiary fittings, and the thing it is named for actually in it | **0 / 118 — see below** |
 | **3** | **Materials** | Every mesh carries PBR materials from `materials.py`. No flat colour anywhere | **118 / 118 COMPLETE** |
 | **4** | **Lighting** | Every location lit, in the engine, to its reference's mood | 113 / 118 — **CURRENT** |
 | **5** | **Props & function** | The declared interactable types exist and do what `directory.py` says they do | 0 |
@@ -100,6 +101,48 @@ machinery — "Fabrication furnaces" was a grey box holding two control podiums 
 
 **Layer 3 is done.** The emissive-window finding it inherited is closed (`INV-036`,
 `hull_window.gdshader`).
+
+### LAYER 2 WAS UNDER-SPECIFIED, AND IT COST THREE LAYERS OF WORK
+
+Session 3r, and it is the most expensive lesson in this file. The owner looked at the renders and
+said the buildings are *"shitty little cubes"* and the trees a *"sad excuse for a tree"*. Both are
+literally accurate descriptions of the generators. **Every gate was green when they said it.**
+
+The cause is one sentence — layer 2's old exit criterion, *"mesh, closed, correctly wound, inside
+its own footprint"*. That is a **topological** test and **a cube passes every word of it**. So 118
+locations of blockout passed layer 2 legitimately, and layers 3 and 4 dutifully put materials and
+lighting on blockout. `station/garden.py`'s `block_building()` docstring says **"Cheap by design"** —
+an explicit placeholder, correctly labelled, and nobody ever came back for it.
+
+**`docs/AAA-STANDARD.md` would have caught this on day one.** Its craft section has always said to
+judge *"at three distances: the distance the player normally sees it from, half that, and the
+distance at which it is one pixel of silhouette"*, and C1 is defined as *"a box primitive standing
+in for a named object"*. **Only the first distance was ever rendered.** At 200 m a box reads as a
+building. The standard did not fail; applying it did — and the rubric was never run against a single
+one of the 118 interior locations until 3r.
+
+So layer 2 is split. **2a is what was actually tested and it is genuinely complete** — the closure
+and winding work is real and hard-won. **2b is the bar that was missing.** The first honest
+close-range scores are in `docs/aaa-scorecard.json`:
+
+| subject | craft | what the frame shows |
+|---|---|---|
+| `zocalo_interior` | **3** | arches, gallery, stalls, tables, tiling — reads as the place, falls apart at half distance |
+| `generated_rooms` | **1** | flat panels, blown-out lights, a counter slab. **58% of the station** |
+| `garden_townscape` | **1** | box + cylinder trees, box buildings, 2,228 tri for a whole settlement |
+
+**The quality is uneven, and that matters:** the Zocalo is genuinely a 3 and the 68 generated rooms
+are a 1. This is not "everything is bad", it is "the bulk was never articulated".
+
+**Rules that follow, and they are binding:**
+
+1. **Every craft claim cites a frame at the rubric's HALF distance, not the normal one.** A wide
+   shot is not evidence about craft. This is the rule that would have prevented all of it.
+2. **A layer's exit criterion must be able to fail on the current content.** If it cannot, it is
+   measuring the wrong thing — the same defect as an assertion that cannot fail, at plan scale.
+3. **The triangle budget is a TARGET, not a ceiling.** `station/budget.py` reports the drum visible
+   set at 17% of budget and the ground at 0.05 tri/m². 83% headroom sat unspent for sessions
+   because the gate only ever said "under budget, pass".
 
 **Layer 4 is the current layer**, and the lesson it has produced so far is about MEASUREMENT, not
 light: `docs/layer4-lighting/*.json` records a per-space `ambient.ratio` taken from two hand-picked
