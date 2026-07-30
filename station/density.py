@@ -797,9 +797,31 @@ def _m_garden(s, p):
 
 
 def _m_interior(s, p):
+    """The drum as the EXPORTER emits it, not as this module used to imagine it.
+
+    THIS MEASURED DISCARDED GEOMETRY, and an adversarial review caught it. The
+    old version scored `it.drum_interior()`'s band shell -- and
+    `export_scene.drum_parts` REPLACES that shell with
+    `drum_ground.visible_set()`, because emitting both would z-fight across four
+    and a half million square metres. Its own comment says so.
+
+    So five gazetteer rows were certified COMPLETE on a mesh nobody renders:
+    lambda 0.1320 measured (103.4%, PASS) against 0.1105 as actually rendered
+    (86.3%, FAIL), with the ground alone at 30.4% of its floor. I found the
+    substitution myself in session 3s, measured it at 0.09% of the frame, wrote
+    it into STATE.md as "one caveat" -- and flipped the layer green anyway.
+    A gate that scores something the player never sees is worse than no gate,
+    because it prints PASS.
+
+    The ground is visibility-culled from an eye position, exactly as the shot
+    builds it, so what this returns is what the drum frame contains.
+    """
+    import drum_ground as dg                                    # noqa: PLC0415
     sec = it.drum_sector(s, p)
-    parts = [it.drum_interior(s, p, sec, arc_deg=360.0, seg_deg=2.0,
-                              z_step=40.0)[:2],
+    dg.configure(s, p, sec)
+    eye = dg.stand_on_ground(s, p, sec, 205.0, (dg.Z0 + dg.Z1) / 2)[0]
+    gv, gt, _gg, _gm = dg.visible_set(eye)
+    parts = [(gv, gt),
              it.drum_spokes(s, p, sec)[:2],
              it.drum_guideways(s, p, sec)[:2]]
     parts += [it.drum_end_cap(s, p, sec, e)[:2] for e in ("fore", "aft")]
@@ -1384,6 +1406,33 @@ def _selftest(verbose=True):
     # --- 8. THE VERDICT MUST BE ABLE TO GO EITHER WAY ---------------------
     schema, profile = it.load()
     rows = [r for r in report(schema, profile) if "error" not in r]
+    # THE TWO REGISTRIES MUST AGREE ABOUT WHAT THE DRUM IS. This is the
+    # structural fix for the defect above: it is not enough to point
+    # `_m_interior` at the right mesh once, because nothing stopped it drifting
+    # the first time. `export_scene.drum_parts` is the one list of what the drum
+    # shot contains; if this module scores a part that list does not carry, or
+    # misses one it does, the scores describe a station nobody renders.
+    try:
+        sys.path.insert(0, os.path.join(ROOT, "tools"))
+        import export_scene as _X                               # noqa: PLC0415
+        _s, _p = it.load()
+        _sec = it.drum_sector(_s, _p)
+        import drum_ground as _dg                               # noqa: PLC0415
+        _dg.configure(_s, _p, _sec)
+        _eye = _dg.stand_on_ground(_s, _p, _sec, 205.0,
+                                   (_dg.Z0 + _dg.Z1) / 2)[0]
+        _shot = {n for n, _v, _t, _g in _X.drum_parts(_s, _p, _sec, _eye)}
+        # What `_m_interior` scores, by the same names the shot uses.
+        _scored = {"ground", "spokes", "guideways", "endcap_fore", "endcap_aft"}
+        check("the drum this module scores is the drum the exporter emits",
+              _scored <= _shot,
+              f"scored but not in the shot: {sorted(_scored - _shot)}")
+        check("...and the shell it used to score is NOT in the shot, which is "
+              "why scoring it certified geometry nobody renders",
+              "drum_interior" not in _shot and "shell" not in _shot)
+    except Exception as _e:                                     # noqa: BLE001
+        check("the drum registries can be compared at all", False, str(_e))
+
     check("every one of the 118 places was measured",
           len(rows) == 118, f"{len(rows)} rows")
     check("no location is measured with zero surface area",
