@@ -3094,7 +3094,58 @@ places. Fifteen have a frame of their own, 68 inherit an archetype's (11 frames)
 drum shot, 2 are the anchor. That is documented and defensible, but "105 lit" reads as "105 were
 looked at" and roughly twenty were.
 
-## NEXT SESSION — layer 4, the last 13
+### Layer 4 is 113/118, and the five that remain have a measured reason
+
+**The nine `components` places now count.** They are hull fittings — cobra bays, the observation
+domes and rotundas, mooring clamps, proximity arrays, nav beacon, comms grids, power transfer core
+— and they fell through every branch: not in `BESPOKE_EXPOSURE` (which holds *room* exposures) and
+not in the drum. The exterior is a lit volume like any other and now has a measured day exposure,
+so they reach layer 4 on the same two-part condition as everything else. What makes it falsifiable:
+`directory.py` reads `exterior.tscn` back and the nine only count while the scene is still at the
+exposure the calibration was verified at. Setting it to the old 1.00 drops the count to 105 and
+fails an `export_scene` check — demonstrated, both.
+
+**`garden.townscape()` was missing from `drum_parts` entirely.** Added: it stands on the drum floor
+inside the settlement arc, 2,228 tri. That is a real hole closed — the drum shot was not building
+geometry that exists.
+
+**But adding it to the list is not the same as it being in the frame, and this is the finding.**
+The calibrated drum shot was re-rendered with and without the townscape: **zero pixels changed.**
+I had looked at the frame first and thought I could see the settlement overhead; those were the
+ground's own band, and the diff caught me. So every drum part was then measured the same way, one
+omission per render, percent of frame moving by more than 8/255:
+
+| ground | guideways | endcap_fore | spokes | core | trams | endcap_aft | townscape |
+|--------|-----------|-------------|--------|------|-------|------------|-----------|
+| 89.53 | 34.60 | 5.43 | 1.38 | 1.28 | **0.01** | **0.00** | **0.00** |
+
+That caught a second one I was not looking for: **`trams` moves thirteen pixels**. The tram's place
+was being counted off a frame it is not meaningfully in, exactly as the garden's four were.
+`DRUM_FRAME_CONTRIBUTION` and a stated 0.5% threshold now gate the branch, and both exclusions are
+pinned by assertions. **113/118.**
+
+### The garden reads 2.5x hot, and the cause is not exposure
+
+A terrace-level frame matched to `Babylon_5_2-22_29a.jpg` — the authority-1 garden reference the
+townscape was built from — measures **x3.49 against the x1.40 target**. Do not fix this with
+exposure. `DRUM_EXPOSURE` scales light *energy*, so lowering it darkens the wide drum shot that
+currently measures x1.40 correctly against `34b`. One volume, one rig, one number; the two
+references differ by 2.7x in median because the show lit those scenes differently.
+
+**The real cause: 58 of the drum's 60 lights cast no shadows** (`--shadow-lights` defaults to 2).
+29a's darkness is *occlusion* — canopy, building, planting — and our garden has none, so it receives
+unshadowed light from every source. That is a shadow-coverage problem with a real CPU cost, since an
+omni shadow is a cube map.
+
+Also noted while there: at terrace range the townscape's 2,228 triangles read as boxes on sticks.
+Layer 2 passed it because nothing had looked at it up close. That is layer-2 debt this layer-4 pass
+surfaced, not a lighting fault.
+
+## NEXT SESSION — layer 4, the last 5
+
+0. **The garden (4) and the tram (1).** Neither is a tuning job. The garden needs shadow coverage in
+   the drum before any exposure claim about it means anything; the tram needs a framing that
+   actually shows a car. Both are named above with their measurements.
 
 0. **The garden has never been rendered.** Four locations. It needs a `BESPOKE_GEOMETRY` entry or a
    place in `drum_parts`, then a frame and an exposure like every other module.

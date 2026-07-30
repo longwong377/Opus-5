@@ -61,6 +61,7 @@ sys.path.insert(0, STATION)
 import interior as it              # noqa: E402
 import drum_ground as dg           # noqa: E402
 import tram                        # noqa: E402
+import garden as gd                # noqa: E402
 import core_tube as ct             # noqa: E402
 
 
@@ -508,6 +509,14 @@ EXTERIOR_CALIBRATION = {
         # assuming it was would have landed this two thirds of a stop dark.
         "verified_p95": 0.3108,
         "verified_multiple": 1.403,
+        # THE EXPOSURE THOSE TWO NUMBERS WERE TAKEN AT. Not a duplicate of the
+        # .tscn's value -- it is the statement "the verification above
+        # describes a scene set to this", and the self-test reads the .tscn
+        # back and compares. Without it the recorded derivation can stay
+        # internally consistent while describing a file nobody has measured:
+        # set `Env`'s tonemap_exposure to 1.00 and every number here is still
+        # self-consistent and every one of them is wrong.
+        "exposure": 0.43,
     },
     "night": {
         # Deliberately no "reference". See above: there is none, and a key
@@ -993,6 +1002,26 @@ def drum_parts(schema, profile, sector, eye, trams=2):
     v, t, m = tram.drum_trams(schema, profile, sector,
                               per_guideway=trams, glazed=True)
     parts.append(("trams", v, t, m["groups"]))
+
+    # THE GARDEN'S TOWNSCAPE. It stands on the drum floor inside the settlement
+    # arc at 93.6-144 deg (`garden.settlement_arcs`), so it is part of what the
+    # eye reaches from the Garden floor in the same sense the ground is -- and
+    # it was missing from this list, which is how four locations came to be
+    # counted as lit off a frame their geometry is not in. 2,228 tri.
+    v, t, spans = gd.townscape(schema, profile, sector)
+    # `garden` reports (name, lo, hi) SPANS; every other part here reports one
+    # name per triangle, which is what `write_obj` indexes. Expanded rather
+    # than special-cased downstream, and asserted complete -- a span list that
+    # missed a triangle would write an OBJ with an unnamed face, and an unnamed
+    # face takes the fallback material silently.
+    per_tri = [None] * len(t)
+    for nm, lo, hi in spans:
+        for i in range(lo, hi):
+            per_tri[i] = nm
+    if any(x is None for x in per_tri):
+        raise ValueError(f"townscape: {per_tri.count(None)} triangles of "
+                         f"{len(t)} are in no group span")
+    parts.append(("townscape", v, t, per_tri))
     return parts
 
 
@@ -3157,6 +3186,13 @@ def _selftest():
         check(abs(pred - cal["verified_multiple"]) < 0.01,
               f"the recorded day calibration is self-consistent "
               f"({pred:.3f} vs {cal['verified_multiple']})")
+        # ...and that it describes THIS FILE. Self-consistency is a property of
+        # the dict; this is the one that fails when the scene moves under it.
+        scene_exp = scene_env_exposure(
+            os.path.join(ROOT, "godot/scenes/exterior.tscn"), "Env")
+        check(abs(scene_exp - cal["exposure"]) < 1e-6,
+              f"exterior.tscn is at the exposure the day calibration was "
+              f"verified at ({scene_exp} vs {cal['exposure']})")
         check("night" not in EXTERIOR_CALIBRATION["night"].get("reference", ""),
               "the night entry claims no reference frame, because it has none")
 
@@ -3178,6 +3214,43 @@ def _selftest():
 
     print(f"{ok}/{ok + fail} passed")
     return 0 if fail == 0 else 1
+
+
+# WHAT THE CALIBRATED DRUM FRAME ACTUALLY SHOWS, measured part by part.
+#
+# `drum_parts` is the list of what the shot BUILDS. This is the list of what
+# the shot SHOWS, and they are not the same -- which is the whole finding.
+# Layer 4 counts a location when it has been seen in a frame measured against
+# its reference, so a predicate built on the first list credits geometry
+# nobody has looked at. That is how `garden` came to be counted, and measuring
+# it properly caught `tram` doing the same thing.
+#
+# METHOD, and it is reproducible: render the calibrated drum shot
+# (--stand 20,4700 --look 20,6300), then re-render with one part omitted and
+# count pixels that move by more than 8/255. Numbers are percent of frame at
+# 480x270.
+#
+#     ground        89.53      guideways     34.60      endcap_fore    5.43
+#     spokes         1.38      core           1.28      trams          0.01
+#     endcap_aft     0.00      townscape      0.00
+#
+# THE THRESHOLD IS 0.5% AND IT IS A JUDGEMENT, stated so it can be argued
+# with. Below it the geometry is a handful of pixels at the far end of a 2.6 km
+# drum -- `trams` is 13 pixels at this resolution -- and a frame's exposure
+# says nothing about a fitting that small. `endcap_aft` is behind the camera
+# and `townscape` is 92 degrees around the barrel; both are exactly zero.
+DRUM_FRAME_CONTRIBUTION = {
+    "ground": 89.53, "guideways": 34.60, "endcap_fore": 5.43,
+    "spokes": 1.38, "core": 1.28, "trams": 0.01,
+    "endcap_aft": 0.00, "townscape": 0.00,
+}
+DRUM_FRAME_MIN_PERCENT = 0.5
+
+
+def drum_visible_parts():
+    """Part names the calibrated drum frame demonstrably shows."""
+    return {k for k, v in DRUM_FRAME_CONTRIBUTION.items()
+            if v >= DRUM_FRAME_MIN_PERCENT}
 
 
 def drum_groups(schema, profile, sector, eye=None):

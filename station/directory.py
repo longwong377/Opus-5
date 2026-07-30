@@ -975,11 +975,21 @@ def _lit_keys():
             # shot's, rather than by listing the modules here: a list would be
             # a second copy of `drum_parts`, and this project's recurring
             # failure is two copies of a mapping with one of them updated.
+            # ...AND ONLY THE PARTS IT DEMONSTRABLY SHOWS. Membership of
+            # `drum_parts` is what the shot BUILDS; `drum_visible_parts` is
+            # what it SHOWS, measured by omitting one part at a time and
+            # counting pixels that move. Three of the eight contribute
+            # essentially nothing -- `endcap_aft` is behind the camera,
+            # `townscape` is 92 degrees around the barrel, and `trams` is
+            # thirteen pixels at the far end of a 2.6 km drum.
             eye = (0.0, it.sector_radius(s, p, it.drum_sector(s, p)) * 0.5,
                    0.0)
+            visible = X.drum_visible_parts()
             shot_groups = set()
             for _n, _v, _t, g_ in X.drum_parts(s, p, it.drum_sector(s, p),
                                                eye):
+                if _n not in visible:
+                    continue
                 shot_groups |= ({x[0] for x in g_}
                                 if g_ and isinstance(g_[0], (list, tuple))
                                 else set(g_))
@@ -991,6 +1001,55 @@ def _lit_keys():
                 except Exception:                              # noqa: BLE001
                     continue
                 if groups & shot_groups:
+                    done |= {q["key"] for q in PLACES if q["module"] == name}
+        # THE EXTERIOR IS A LIT VOLUME TOO, and the nine `components` places --
+        # cobra bays, the observation domes and rotundas, mooring clamps,
+        # proximity arrays, nav beacon, comms grids, power transfer core -- are
+        # fittings on its hull. They fell through both branches above: they are
+        # not in BESPOKE_EXPOSURE, which holds ROOM exposures, and they are not
+        # in the drum.
+        #
+        # The condition is the same two-part one, read the same way. A real rig:
+        # the exterior's is the Sun, and unlike an interior it needs no
+        # FIXTURE_LIGHTING membership, because a hull fitting in sunlight is lit
+        # by the sun whether or not it carries a lamp of its own. And a measured
+        # exposure: `EXTERIOR_CALIBRATION["day"]` was derived against
+        # `exterior more.jpg`'s habitat drum by `tools/measure_frame.py`, the
+        # same code every room exposure uses, and verified at x1.403.
+        #
+        # WHAT MAKES THIS FALSIFIABLE rather than a second way of saying the
+        # exterior exists: the .tscn is read back, and the recorded verification
+        # only counts if the scene is still at the exposure it was verified at.
+        # Set `Env`'s tonemap_exposure back to the 1.00 it sat at for four
+        # sessions -- two and a third stops hot, the setting that made
+        # `engine-approach-far.png` a white shape -- and these nine places stop
+        # counting, which is correct, because nobody would have measured the
+        # frame they are in.
+        try:
+            cal = X.EXTERIOR_CALIBRATION["day"]
+            tscn = os.path.join(os.path.dirname(os.path.dirname(
+                os.path.abspath(__file__))), "godot/scenes/exterior.tscn")
+            calibrated = abs(X.scene_env_exposure(tscn, "Env")
+                             - cal["exposure"]) < 1e-6
+        except Exception:                                      # noqa: BLE001
+            calibrated = False
+        if calibrated:
+            hull = os.path.join(os.path.dirname(os.path.dirname(
+                os.path.abspath(__file__))), "station/generated/hull.obj")
+            ext_groups = set()
+            if os.path.exists(hull):
+                with open(hull) as f:
+                    for line in f:
+                        if line.startswith("g "):
+                            ext_groups.add(line[2:].strip())
+            for name, sc in gate.BESPOKE_SCENE.items():
+                if sc != "exterior" or name not in gate.BESPOKE_BUILDERS:
+                    continue
+                try:
+                    groups = gate.BESPOKE_BUILDERS[name](s, p)
+                except Exception:                              # noqa: BLE001
+                    continue
+                if groups & ext_groups:
                     done |= {q["key"] for q in PLACES if q["module"] == name}
         _lit_keys.cache = frozenset(done)
     return _lit_keys.cache
@@ -1252,6 +1311,13 @@ def _selftest():
           _garden and not (_garden & _lit), f"{sorted(_garden & _lit)}")
     check("the core tube IS counted -- the drum shot contains it",
           _core and _core <= _lit, f"{sorted(_core - _lit)}")
+    # The tram was found the same way and by accident: measuring every drum
+    # part's contribution to check the garden's claim showed `trams` moving
+    # 0.01% of the frame, thirteen pixels at the far end of a 2.6 km drum. It
+    # was being counted for the same reason the garden was.
+    _tram = {q["key"] for q in PLACES if q["module"] == "tram"}
+    check("the tram is not counted -- 0.01% of the drum frame is not a look",
+          _tram and not (_tram & _lit), f"{sorted(_tram & _lit)}")
 
     # --- the layer model ---------------------------------------------------
     rep = layer_report(schema, profile)
