@@ -1,6 +1,37 @@
 # Project State
 
-**Last updated:** 2026-07-30 · **Session 3s** — layers 1-4 all 118/118. Layer 5 is next · **Session 3r** — **layer 2 is 16/118.** The owner saw the renders and the metrics now agree with the owner
+**Last updated:** 2026-07-30 · **Session 3t** — shadow coverage measured; the first frame to pass the distribution test · **3s** — layers 1-4 all 118/118 · **Session 3r** — **layer 2 is 16/118.** The owner saw the renders and the metrics now agree with the owner
+
+## Session 3t — what shadow coverage buys, and why the level then fights the shape
+
+**`--ambient` did nothing on the drum shot.** Documented, honoured by the exterior and interior
+shots, silently dropped by `build_drum` — three renders at 0.55, 0.30 and 0.15 came back with an
+identical p5 of 0.0458. Same defect as `--light-gain` on the exterior, found the same way: by
+disbelieving a number that would not move. Fixed.
+
+**The hypothesis was wrong and the measurement said so.** Ambient does *not* set the shadow floor:
+0.15 → 0.02 moves p5 only 0.0458 → 0.0427. Shadow **count** is the lever.
+
+| shadow lights | p5 | crushed | render |
+|---|---|---|---|
+| 2 (current default) | 0.0560 | 0.20% | 11 s |
+| 6 | 0.0470 | 1.23% | 14 s |
+| 20 | 0.0337 | 1.84% | 31 s |
+| **32** | **0.0207** | **3.86%** | 47 s |
+| *reference `garden.png`* | *0.0180* | *5.63%* | |
+
+**At 32 lights the frame passes all six distribution checks** — p5 ×1.16 inside the ×1.29 band —
+and it is the first frame in this project to do so besides the one that already did.
+`docs/engine-drum-garden-shadows.png`.
+
+**And then the level cannot be recovered.** Its median is ×0.49 instead of ×1.40, and gain
+2.0/3.0/4.0 give medians ×0.98/×1.42/×1.82 with p5 0.0298/0.0467/0.0653 — the same lights light the
+shadows, so every stop that fixes the level undoes the shape. **Getting both needs light that is
+brighter where it lands and no brighter where it does not**: tighter falloff, more directional
+fittings. That is a rig change rather than a number, and it is the real content of layer 4b.
+
+The default stays at 2 deliberately: all three `DRUM_CALIBRATION` framings recorded their exposures
+at 2, and raising it silently would invalidate every one without re-deriving anything.
 
 ## Session 3s — layer 2 goes 16/118 -> 118/118, and layers 3 and 4 follow it
 

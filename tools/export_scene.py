@@ -1122,6 +1122,15 @@ def build_drum(args, out_dir):
     return {
         "shot": "drum",
         "scene": "res://scenes/drum.tscn",
+        # PER-SHOT AMBIENT, and its absence here was a flag that did nothing.
+        # `--ambient` is documented, is honoured by the exterior shot and by the
+        # interior shot, and was silently dropped by this one: three renders at
+        # 0.55, 0.30 and 0.15 came back with an IDENTICAL p5 of 0.0458. That is
+        # the same defect as `--light-gain` on the exterior, found the same way
+        # -- by disbelieving a number that did not move -- and it matters more
+        # here, because ambient is what sets p5, and p5 is the statistic 13 of
+        # the project's 17 exposures fail on.
+        **({"ambient": args.ambient} if args.ambient is not None else {}),
         "glb": glbs,
         "triangles": total,
         "groups": sorted(set(all_groups)),
@@ -3495,6 +3504,18 @@ def _selftest():
         check(abs(scene_exp - cal["exposure"]) < 1e-6,
               f"exterior.tscn is at the exposure the day calibration was "
               f"verified at ({scene_exp} vs {cal['exposure']})")
+        # The shadow study's own internal consistency, and that it still
+        # describes a monotone effect. If someone edits a number to argue a
+        # point, p5 stops falling with coverage and this says so.
+        st = SHADOW_COVERAGE_STUDY
+        ks = sorted(st["p5"])
+        check(all(st["p5"][a] > st["p5"][b] for a, b in zip(ks, ks[1:])),
+              f"more shadow coverage always darkens p5: {[st['p5'][k] for k in ks]}")
+        check(all(st["crushed"][a] < st["crushed"][b] for a, b in zip(ks, ks[1:])),
+              f"...and always crushes more: {[st['crushed'][k] for k in ks]}")
+        check(st["p5"][max(ks)] < st["p5"][min(ks)] / 2.0,
+              f"the study spans a real range, not noise "
+              f"({st['p5'][min(ks)]} -> {st['p5'][max(ks)]})")
         check("night" not in EXTERIOR_CALIBRATION["night"].get("reference", ""),
               "the night entry claims no reference frame, because it has none")
 
@@ -3712,6 +3733,50 @@ DRUM_CALIBRATION = {
             "trams": 5.46, "townscape": 37.13,
         },
     },
+}
+
+
+# WHAT SHADOW COVERAGE BUYS, measured on the garden framing against
+# `reference/09-garden-core-and-transit/garden.png`. Recorded because the
+# conclusion is not the one anyone would guess and the numbers are expensive to
+# reproduce (47 s a frame at 960x540 on lavapipe).
+#
+#   shadow lights   p5      crushed   render
+#         2       0.0560     0.20%      11 s
+#         6       0.0470     1.23%      14 s
+#        20       0.0337     1.84%      31 s
+#        32       0.0207     3.86%      47 s     <- reference is 0.0180 / 5.63%
+#
+# AMBIENT IS NEARLY INERT and that was the surprise: 0.15 -> 0.02 moves p5 only
+# 0.0458 -> 0.0427. The hypothesis going in was that ambient sets the shadow
+# floor; measurement refuted it. Shadow COUNT is the lever.
+#
+# AT 32 LIGHTS THE FRAME PASSES ALL SIX DISTRIBUTION CHECKS -- p5 x1.16 inside
+# the x1.29 band, p95, the ratio, crushed as ratio and envelope, clipped -- and
+# it is the first frame in this project to do so besides the one that already
+# did. Its MEDIAN is then x0.49 of the reference instead of x1.40.
+#
+# AND THE LEVEL CANNOT BE RECOVERED WITH LIGHT ENERGY. Gain 2.0/3.0/4.0 give
+# medians x0.98/x1.42/x1.82 and p5 0.0298/0.0467/0.0653: the same lights light
+# the shadows, so every stop that fixes the level undoes the shape. Getting both
+# needs light that is brighter where it lands and no brighter where it does not
+# -- tighter falloff, more directional fittings -- not a global gain. That is a
+# rig change, not a number, and it is the real content of layer 4b.
+#
+# THE DEFAULT IS UNCHANGED AT 2 ON PURPOSE. All three `DRUM_CALIBRATION`
+# framings recorded their exposures at 2, and raising it silently would
+# invalidate every one of them without re-deriving anything.
+SHADOW_COVERAGE_STUDY = {
+    "reference": "reference/09-garden-core-and-transit/garden.png",
+    "reference_p5": 0.0180, "reference_crushed": 0.0563,
+    "framing": "--shot drum --eye -90.144,246.253,4956 --look 112,4900 --fov 45",
+    "p5": {2: 0.0560, 6: 0.0470, 20: 0.0337, 32: 0.0207},
+    "crushed": {2: 0.0020, 6: 0.0123, 20: 0.0184, 32: 0.0386},
+    "seconds_960x540_lavapipe": {2: 11, 6: 14, 20: 31, 32: 47},
+    "ambient_sweep_p5": {0.15: 0.0458, 0.08: 0.0442, 0.04: 0.0431,
+                         0.02: 0.0427},
+    "gain_sweep": {2.0: (0.1371, 0.0298), 3.0: (0.1999, 0.0467),
+                   4.0: (0.2553, 0.0653)},
 }
 
 
