@@ -962,9 +962,36 @@ def _lit_keys():
         # read x1.03 of its reference against the x1.40 target until session
         # 3q measured it. Without the exposure this branch does not fire.
         if X.DRUM_EXPOSURE and X.RUN_ENERGY > 0:
-            drum_mods = {m for m, sc in gate.BESPOKE_SCENE.items()
-                         if sc == "drum"}
-            done |= {q["key"] for q in PLACES if q["module"] in drum_mods}
+            # ONLY THE MODULES THE DRUM SHOT ACTUALLY CONTAINS, and the first
+            # version of this did not check. It counted every drum-scene module
+            # because the DRUM had an exposure, which took `garden` -- four
+            # locations -- on the strength of a frame its geometry is not in.
+            # `drum_parts` is the one list of what the shot holds: ground, two
+            # end caps, guideways, spokes, core and trams. `garden.townscape()`
+            # is not among them, so the four garden places have never appeared
+            # in a rendered frame and are not at layer 4.
+            #
+            # Computed by intersecting each module's own group names with the
+            # shot's, rather than by listing the modules here: a list would be
+            # a second copy of `drum_parts`, and this project's recurring
+            # failure is two copies of a mapping with one of them updated.
+            eye = (0.0, it.sector_radius(s, p, it.drum_sector(s, p)) * 0.5,
+                   0.0)
+            shot_groups = set()
+            for _n, _v, _t, g_ in X.drum_parts(s, p, it.drum_sector(s, p),
+                                               eye):
+                shot_groups |= ({x[0] for x in g_}
+                                if g_ and isinstance(g_[0], (list, tuple))
+                                else set(g_))
+            for name, sc in gate.BESPOKE_SCENE.items():
+                if sc != "drum" or name not in gate.BESPOKE_BUILDERS:
+                    continue
+                try:
+                    groups = gate.BESPOKE_BUILDERS[name](s, p)
+                except Exception:                              # noqa: BLE001
+                    continue
+                if groups & shot_groups:
+                    done |= {q["key"] for q in PLACES if q["module"] == name}
         _lit_keys.cache = frozenset(done)
     return _lit_keys.cache
 
@@ -1205,6 +1232,26 @@ def _selftest():
     cov = coverage(schema, profile)
     check("coverage is reported honestly",
           cov["addressed"] + cov["unaddressed"] == cov["gazetteer_rows"])
+
+    # --- layer 4 counts what has been SEEN, not what shares a rig ----------
+    # The drum branch of `_lit_keys` counted every drum-scene module because
+    # the DRUM had a measured exposure, and that took `garden` -- four
+    # locations -- on the strength of a frame its geometry is not in. The drum
+    # shot holds ground, two end caps, guideways, spokes, core and trams;
+    # `garden.townscape()` is not among them.
+    #
+    # This pins the distinction rather than the number. It fails if the
+    # predicate is re-broadened, and it ALSO fails once garden really does
+    # enter a rendered frame -- which is the right time to be made to look at
+    # this again, because the fix then is to update the assertion, not the
+    # predicate.
+    _lit = _lit_keys()
+    _garden = {q["key"] for q in PLACES if q["module"] == "garden"}
+    _core = {q["key"] for q in PLACES if q["module"] == "core_tube"}
+    check("the garden is not counted as lit -- it is in no rendered frame",
+          _garden and not (_garden & _lit), f"{sorted(_garden & _lit)}")
+    check("the core tube IS counted -- the drum shot contains it",
+          _core and _core <= _lit, f"{sorted(_core - _lit)}")
 
     # --- the layer model ---------------------------------------------------
     rep = layer_report(schema, profile)

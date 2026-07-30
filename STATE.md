@@ -3073,7 +3073,31 @@ interior modules face, they count. 97 → **109**.
 `docs/engine-drum.png`: the ground curving up and over, the core tube and its spoke node, the
 guideway trusses blazing along the crown, the end cap's concentric rings.
 
-## NEXT SESSION — layer 4, the last 9
+### Correction — the drum branch was counting to green, 109 → 105
+
+I wrote the drum branch of `_lit_keys` and it was the weakest predicate in the project. It counted
+**every** drum-scene module because the *drum* had a measured exposure. `drum_parts()` is the one
+list of what the drum shot holds — ground, two end caps, guideways, spokes, core, trams — and
+`garden.townscape()` is not among them. Four locations were being counted on the strength of a frame
+their geometry does not appear in.
+
+Now computed by intersecting each module's own group names with the shot's, rather than by listing
+modules, because a list would be a second copy of `drum_parts` and two copies of a mapping with one
+of them updated is this project's recurring failure. `interior`, `core_tube` and `tram` survive —
+they really are in that frame. `garden` does not. **105/118.**
+
+Pinned by an assertion that fails both if the predicate is re-broadened *and* once the garden really
+does enter a frame — which is the right moment to be made to look at this again.
+
+**The wider point, from the critique this came out of:** about twenty measured frames justify 105
+places. Fifteen have a frame of their own, 68 inherit an archetype's (11 frames), 8 come from the
+drum shot, 2 are the anchor. That is documented and defensible, but "105 lit" reads as "105 were
+looked at" and roughly twenty were.
+
+## NEXT SESSION — layer 4, the last 13
+
+0. **The garden has never been rendered.** Four locations. It needs a `BESPOKE_GEOMETRY` entry or a
+   place in `drum_parts`, then a frame and an exposure like every other module.
 
 **Every remaining place is `components` — the exterior fittings**: cobra bays, docking ports,
 observation domes, rotundas. They are lit by the exterior rig (key, fill and rim as

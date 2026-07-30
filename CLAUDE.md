@@ -79,7 +79,7 @@ grown to make a number go green.
 | **1** | **Addressed** | All have `(sector, ring, deck, angle, z)`, footprints that do not collide, declared functions and interactions | **118 / 118 COMPLETE** |
 | **2** | **Geometry** | Every addressed location has mesh, closed, correctly wound, inside its own footprint | **118 / 118 COMPLETE** |
 | **3** | **Materials** | Every mesh carries PBR materials from `materials.py`. No flat colour anywhere | **118 / 118 COMPLETE** |
-| **4** | **Lighting** | Every location lit, in the engine, to its reference's mood | 109 / 118 — **CURRENT** |
+| **4** | **Lighting** | Every location lit, in the engine, to its reference's mood | 105 / 118 — **CURRENT** |
 | **5** | **Props & function** | The declared interactable types exist and do what `directory.py` says they do | 0 |
 | **6** | **Inhabitants** | NPCs placed, scheduled and animated in every location, at real density | 0 |
 | **7** | **Audio** | Ambience and event audio per location | 0 |
