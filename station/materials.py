@@ -1700,6 +1700,8 @@ def _build():
         albedo=(0.545, 0.540, 0.528), roughness=0.42, metallic=0.95,
         specular=0.5,
         binds=("prop_valve", "customs_conduit", "bar_conduit", "qtr_conduit",
+               "alien_conduit", "plant_conduit", "plant_tray",
+               "plant_tie_secondary",
                # Session 3s articulation (INV-073). High-level conduit
                # runs are bare metal service pipe -- the same surface
                # this entry was measured on, at a different diameter. No
@@ -1774,6 +1776,8 @@ def _build():
                "bar_dado", "bar_rail", "bar_cornice", "bar_panel",
                "bar_skirt", "qtr_dado", "qtr_rail", "qtr_cornice",
                "qtr_panel", "qtr_skirt", "customs_skirt",
+               "alien_dado", "alien_rail", "alien_cornice", "alien_panel",
+               "alien_skirt", "alien_deck_joint",
                # Session 3s articulation (INV-073). Skirting, dado, picture rail, cornice and raised panel are all the same painted wall plane worked into relief -- no new surface and no new colour.
                "commerce_skirt", "detention_skirt", "generic_skirt", "hospitality_skirt", "medical_skirt", "office_skirt", "research_skirt", "transit_skirt", "worship_skirt", "industrial_skirt", "store_skirt", "commerce_dado", "detention_dado", "generic_dado", "hospitality_dado", "medical_dado", "office_dado", "research_dado", "transit_dado", "worship_dado", "industrial_dado", "store_dado", "commerce_rail", "detention_rail", "generic_rail", "hospitality_rail", "medical_rail", "office_rail", "research_rail", "transit_rail", "worship_rail", "industrial_rail", "store_rail", "commerce_cornice", "detention_cornice", "generic_cornice", "hospitality_cornice", "medical_cornice", "office_cornice", "research_cornice", "transit_cornice", "worship_cornice", "industrial_cornice", "store_cornice", "commerce_panel", "detention_panel", "generic_panel", "hospitality_panel", "medical_panel", "office_panel", "research_panel", "transit_panel", "worship_panel", "industrial_panel", "store_panel"), scenes=("interior",),
         source="07-sector-grey/grey level 1.webp wall plate course (0.019,0.236)-(0.125,0.293), balanced V 0.295 — the anchor measurement, restated here only as the level this material is pinned to. Corroborated in six frames the anchor did not come from: 03-sector-blue/war room.webp arch face (0.040,0.020)-(0.130,0.120) balanced V 0.286; 05-sector-green/council chambers.webp wall blade dominant cluster V 0.270 (29.9% of (0.00,0.00)-(0.30,0.20)); 03-sector-blue/dock.webp bay wall (0.200,0.290)-(0.330,0.400) V 0.268; 09-garden-core-and-transit/central corridor.webp walkway fascia (0.300,0.245)-(0.600,0.275) V 0.250 and wall panel (0.600,0.300)-(0.720,0.420) V 0.234; 04-sector-red/more zocalo.png lit structure cluster V 0.317. lit() of those seven: 0.365-0.511, mean 0.435.",
@@ -1935,6 +1939,7 @@ def _build():
         albedo=(0.469, 0.469, 0.469), roughness=0.4, metallic=0,
         specular=0.46,
         binds=("commerce_rib", "detention_rib", "generic_rib", "hospitality_rib", "medical_rib", "office_rib", "research_rib", "transit_rib", "worship_rib", "council_fin", "cc_mullion", "cc_ring", "cc_hub", "customs_mullion", "bar_mullion",
+               "alien_mullion",
                "qtr_mullion",
                # Session 3s articulation (INV-073). A mullion is a rib at bay scale -- same painted structural surface, and the entry's own measurement is a pilaster:wall ratio that applies at either size.
                "commerce_mullion", "detention_mullion", "generic_mullion", "hospitality_mullion", "medical_mullion", "office_mullion", "research_mullion", "transit_mullion", "worship_mullion", "industrial_mullion", "store_mullion"), scenes=("interior",),

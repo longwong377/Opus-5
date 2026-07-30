@@ -125,6 +125,17 @@ RAIL_POST_PITCH_M = 2.2
 # long line reads at any distance where fifty scattered boxes read as noise.
 PIPE_R_M = 0.45
 PIPE_SEG = 8
+# Articulation runs -- INV-073's rule in a cylindrical hall. All long, all thin.
+SERVICE_RUNS = 6
+SERVICE_OFFSET_M = 2.2
+CONDUIT_R_M = 0.11
+TRAYS = 3
+TRAY_W_M = 0.42
+TRAY_D_M = 0.14
+SECONDARY_TIE_M = 7.0
+TIE_D_M = 0.22
+TIE_W_M = 0.30
+RAIL_T_M = 0.06
 PIPES_PER_FRAME = 3
 
 # ---------------------------------------------------------------------------
@@ -211,7 +222,6 @@ def _cyl(verts, tris, groups, name, cx, cy, z0, z1, r, seg=TANK_SEG,
             b = n0 + 2 * ((k + 1) % seg) + (1 if up else 0)
             tris.append((c, a, b) if up else (c, b, a))
     groups.append((name, t0, len(tris)))
-    return verts, tris, groups
 
 
 def _box(verts, tris, groups, name, lo, hi):
@@ -505,7 +515,59 @@ def plant_bay(schema, profile, bay, arc_deg, start_deg=0.0, z_span=None,
         _absorb(verts, tris, groups,
                 _place(local, start_deg + arc_deg / 2), lt, lg, flip=True)
 
+    # --- ARTICULATION (INV-073's rule, applied to a cylindrical hall) -------
+    # 31.1% of its detail floor over 594,000 m2. A plant hall is the easiest
+    # volume on the station to earn line in and the hardest to earn it the
+    # naive way: the surfaces are enormous, so panel relief is hopeless, but
+    # everything a real plant room has -- pipe, tray, rail, grating -- is a
+    # LONG THIN RUN, which is the highest yield geometry there is (INV-072:
+    # ~20 m of line per triangle against panel relief's 0.17).
+    #
+    # Longitudinal service runs at every frame bay, not just three radii.
+    for k in range(SERVICE_RUNS):
+        rr = r_in + 0.6 + k * (r_out - r_in - 1.2) / max(1, SERVICE_RUNS - 1)
+        for side in (-1, 1):
+            local, lt, lg = [], [], []
+            _cyl(local, lt, lg, "plant_conduit",
+                 side * SERVICE_OFFSET_M, rr, z0, z1, CONDUIT_R_M,
+                 seg=6, cap_lo=False, cap_hi=False)
+            _absorb(verts, tris, groups,
+                    _place(local, start_deg + arc_deg / 2), lt, lg, flip=True)
+    # Cable tray beside them: a channel section is four long lines.
+    for k in range(TRAYS):
+        rr = r_in + 1.2 + k * (r_out - r_in - 2.4) / max(1, TRAYS - 1)
+        local, lt, lg = [], [], []
+        _box(local, lt, lg, "plant_tray",
+             (-TRAY_W_M / 2, rr, z0), (TRAY_W_M / 2, rr + TRAY_D_M, z1))
+        _absorb(verts, tris, groups,
+                _place(local, start_deg + arc_deg / 2), lt, lg, flip=True)
+    # Circumferential ties at a working pitch rather than a structural one:
+    # a 36 m ring spacing is right for the load path and leaves 36 m of blank
+    # frame between rings, which is what reads as a placeholder.
+    n_sec = max(1, int((z1 - z0) / SECONDARY_TIE_M))
+    for j in range(1, n_sec):
+        zz = z0 + j * (z1 - z0) / n_sec
+        _arc_band(verts, tris, groups, "plant_tie_secondary",
+                  r_in + 0.35, r_in + 0.35 + TIE_D_M, zz, zz + TIE_W_M,
+                  start_deg, arc_deg)
+        _arc_band(verts, tris, groups, "plant_tie_secondary",
+                  r_out - 0.35 - TIE_D_M, r_out - 0.35, zz, zz + TIE_W_M,
+                  start_deg, arc_deg)
+    # Catwalk handrail: two long runs and their standards, the length of the
+    # bay. A rail is the cheapest line in this module.
+    for side in (-1, 1):
+        for rk in range(2):
+            local, lt, lg = [], [], []
+            _box(local, lt, lg, "plant_rail",
+                 (side * (CATWALK_W_M / 2) - RAIL_T_M / 2,
+                  r_in + CATWALK_CLEAR_M + 0.55 + rk * 0.45, z0),
+                 (side * (CATWALK_W_M / 2) + RAIL_T_M / 2,
+                  r_in + CATWALK_CLEAR_M + 0.55 + rk * 0.45 + RAIL_T_M, z1))
+            _absorb(verts, tris, groups,
+                    _place(local, start_deg + arc_deg / 2), lt, lg, flip=True)
+
     return verts, tris, groups
+
 
 
 def _farm_angles(start_deg, arc_deg):

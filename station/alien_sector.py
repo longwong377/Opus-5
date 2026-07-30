@@ -64,6 +64,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "npc"))
 
 import interior as it                                          # noqa: E402
+import rooms as _rooms                                          # noqa: E402
 import interior_kit as kit                                     # noqa: E402
 import signage as sg                                           # noqa: E402
 import schedule as sched                                       # noqa: E402
@@ -458,6 +459,12 @@ def gallery(schema, profile):
          (hw, GALLERY_H_M + 0.22, GALLERY_LEN_M))
     _box(V, T, G, "alien_endwall", (-hw, 0.0, GALLERY_LEN_M),
          (hw, GALLERY_H_M, GALLERY_LEN_M + 0.22))
+
+    # ARTICULATION -- rooms.articulate(), INV-073. 39.0% of its floor. Soffit
+    # grid off: this gallery's ceiling is its overhead lattice, built below,
+    # and two grids in one plane is one too many.
+    _rooms.articulate(V, T, G, "alien", hw, GALLERY_LEN_M / 2.0, GALLERY_H_M,
+                      z_off=GALLERY_LEN_M / 2.0, soffit=False, scale=0.38)
 
     lv, lt, lg = overhead_lattice(GALLERY_LEN_M, GALLERY_W_M, GALLERY_H_M)
     _absorb(V, T, G, lv, lt, lg)
