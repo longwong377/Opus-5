@@ -77,6 +77,24 @@ LAMP_COLOUR = (1.0, 0.99, 0.93)
 # about the previous render is void.
 RUN_ENERGY = 24.0
 
+# THE DRUM'S EXPOSURE, measured the same way every interior room's is: render
+# the shot, measure it and its reference frame with tools/measure_frame.py, and
+# scale until it sits at the multiple of its reference the corridor sits at.
+#
+# It was the last lit volume in the project with no measured exposure. The drum
+# rig has been rendering since session 2j and RUN_ENERGY was set by eye; at
+# gain 1.00 the standard drum shot reads x1.03 of
+# reference/03-sector-blue/Babylon_5_2-22_34b.jpg against the x1.40 target --
+# under-exposed by a third. The response is very nearly linear (gain 1.36 gave
+# x1.35), so 1.36 x 1.40/1.35 = 1.41.
+#
+# SEPARATE FROM RUN_ENERGY ON PURPOSE. RUN_ENERGY is the physical claim -- the
+# total flux one 2.6 km light run contributes, normalised so that sampling
+# density stays a cost decision. This is the exposure that claim is viewed at,
+# and keeping them apart is what let the sampling density change in session 3p
+# without anyone having to re-argue the flux.
+DRUM_EXPOSURE = 1.41
+
 # A light 500 m across the drum should not be 20x dimmer than one 40 m
 # overhead: the drum reads near-uniformly lit in `34b`, which is what a line
 # source 2.6 km long inside a reflective cavity actually does. Godot's omni
@@ -86,7 +104,7 @@ LAMP_ATTENUATION = 0.7
 
 def light_energy(per_run):
     """Energy for one omni, given how many sample the run. See RUN_ENERGY."""
-    return RUN_ENERGY / max(1, per_run)
+    return RUN_ENERGY * DRUM_EXPOSURE / max(1, per_run)
 
 
 def light_runs(schema, profile, sector, per_run=10, z_span=None):
@@ -2530,9 +2548,9 @@ def _selftest():
         # was divisible by six, which is true of nearly any plausible mistake.
         runs = 2 * it.TRUSS_COUNT
         total_e = sum(l["energy"] for l in sc["lights"])
-        check(abs(total_e - RUN_ENERGY * runs) < 1e-6,
+        check(abs(total_e - RUN_ENERGY * DRUM_EXPOSURE * runs) < 1e-6,
               f"exported light energy sums to one run's worth per run "
-              f"({total_e:.3f} against {RUN_ENERGY * runs:.3f})")
+              f"({total_e:.3f} against {RUN_ENERGY * DRUM_EXPOSURE * runs:.3f})")
         check(len(sc["lights"]) % runs == 0,
               f"exported light count is a whole number per run "
               f"({len(sc['lights'])} over {runs} runs)")

@@ -933,7 +933,15 @@ def _lit_keys():
         # room at an unmeasured brightness, and layer 4 is "lit to its
         # reference's mood", not "lit".
         for name, build in gate.BESPOKE_BUILDERS.items():
-            if name not in X.BESPOKE_EXPOSURE:
+            # THE ANCHOR COUNTS, and it was the one module this test excluded.
+            # `interior_kit` builds the corridor and the junction -- the two
+            # places every exposure in the project is calibrated against, whose
+            # fittings were the first ever measured and whose frame is what
+            # 1.40 means. It has no BESPOKE_EXPOSURE entry because it IS the
+            # 1.0 the others are measured in, handled by name in
+            # `export_scene.room_exposure`, so a membership test on that dict
+            # reported the best-calibrated room on the station as unlit.
+            if name != "interior_kit" and name not in X.BESPOKE_EXPOSURE:
                 continue
             try:
                 groups = build(s, p)
@@ -941,6 +949,22 @@ def _lit_keys():
                 continue
             if any(g in X.FIXTURE_LIGHTING for g in groups):
                 done |= {q["key"] for q in PLACES if q["module"] == name}
+        # THE DRUM IS ONE LIT VOLUME WITH ONE RIG, and its rig is not
+        # FIXTURE_LIGHTING. `export_scene.light_runs` derives sixty sources
+        # from the guideway trusses' own placement arithmetic -- authority 1,
+        # `Babylon_5_2-22_34b.jpg` shows the tubes alongside the truss -- so
+        # the modules inside the drum are lit by the drum, exactly as the
+        # corridor kit's two places are lit by the corridor's fittings.
+        #
+        # The condition is the same two-part one the interior modules face: a
+        # real rig, and a measured exposure. `DRUM_EXPOSURE` is that exposure
+        # and it was the last lit volume in the project to get one -- the shot
+        # read x1.03 of its reference against the x1.40 target until session
+        # 3q measured it. Without the exposure this branch does not fire.
+        if X.DRUM_EXPOSURE and X.RUN_ENERGY > 0:
+            drum_mods = {m for m, sc in gate.BESPOKE_SCENE.items()
+                         if sc == "drum"}
+            done |= {q["key"] for q in PLACES if q["module"] in drum_mods}
         _lit_keys.cache = frozenset(done)
     return _lit_keys.cache
 

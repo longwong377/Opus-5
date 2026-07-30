@@ -3044,7 +3044,46 @@ the very edge of tolerance). Both now land at x1.46 and x1.41 against the x1.40 
 `docs/engine-cnc.png` is the station's bridge from its own deck: the blue wall courses casting along
 the wall, the command dais and its rails, a console's lit fascia, the radial viewport.
 
-## NEXT SESSION — layer 4, the last 23
+## Session 3q (cont.) — the drum is calibrated, 109 / 118
+
+**The counter was excluding the anchor.** `interior_kit` builds the corridor and the junction — the
+two places every exposure in the project is calibrated against, whose fittings were the first ever
+measured and whose frame is what x1.40 *means*. It has no `BESPOKE_EXPOSURE` entry because it **is**
+the 1.0 the others are measured in, so a membership test on that dict reported the best-calibrated
+room on the station as unlit. 95 → 97.
+
+**The drum was the last lit volume in the project with no measured exposure.** Its rig has been
+rendering since session 2j and `RUN_ENERGY` was set by eye. Measured against
+`reference/03-sector-blue/Babylon_5_2-22_34b.jpg` with the same code as every room, the standard
+drum shot read **x1.03 of its reference against the x1.40 target** — under-exposed by a third. The
+response is very nearly linear (gain 1.36 gave x1.35), so `DRUM_EXPOSURE = 1.41`, verified at
+**x1.39**.
+
+`DRUM_EXPOSURE` is kept separate from `RUN_ENERGY` on purpose. `RUN_ENERGY` is the physical claim —
+the total flux one 2.6 km light run contributes, normalised so sampling density stays a cost
+decision — and this is the exposure that claim is viewed at. Keeping them apart is what let the
+sampling density change in session 3p without anyone re-arguing the flux.
+
+**The drum is one lit volume with one rig**, and that rig is not `FIXTURE_LIGHTING`:
+`light_runs()` derives sixty sources from the guideway trusses' own placement arithmetic. The
+modules inside the drum are lit by the drum, exactly as the corridor kit's two places are lit by the
+corridor's fittings — so with a real rig and a measured exposure, the same two-part test the
+interior modules face, they count. 97 → **109**.
+
+`docs/engine-drum.png`: the ground curving up and over, the core tube and its spoke node, the
+guideway trusses blazing along the crown, the end cap's concentric rings.
+
+## NEXT SESSION — layer 4, the last 9
+
+**Every remaining place is `components` — the exterior fittings**: cobra bays, docking ports,
+observation domes, rotundas. They are lit by the exterior rig (key, fill and rim as
+`DirectionalLight3D` nodes in `exterior.tscn`) and that rig has never been measured against a
+reference either. It is the same job the drum just had. Note the standing blocking finding while
+you are there: **the exterior rig has no night side**, which the arrival shot needs.
+
+Then, in the order they were found:
+
+1. **`house_cove()` has no concealing lip**
 
 1. **`house_cove()` has no concealing lip** — see above. Build it, or drop
    `light_house_cove`'s emission.
