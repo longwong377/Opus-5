@@ -3722,6 +3722,20 @@ def _selftest():
 # with. Below it the geometry is a handful of pixels at the far end of a 2.6 km
 # drum -- `trams` in the wide framing is 13 pixels at this resolution -- and a
 # frame's exposure says nothing about a fitting that small.
+#
+# `largest_region` LOST DISCRIMINATING POWER IN SESSION 3u AND THAT IS RECORDED
+# RATHER THAN QUIETLY LIVED WITH. It exists to separate "a solid object in
+# frame" from "a spatter of shadow changes", and with 24 lamps casting instead
+# of 2, a part's shadow is now a large CONNECTED region rather than a spatter.
+# `guideways` in the wide framing went from 34.60% moved / 34.52% largest to
+# 79.50% / 65.91% -- the guideway itself did not grow, its shadow now falls
+# across the drum floor and the floor is one blob. So the two statistics no
+# longer disagree the way they were built to, and the check they feed
+# (DRUM_SUBJECT_MIN_PERCENT: a framing's declared SUBJECT must be a contiguous
+# 3% of frame) still does its job only because every declared subject is a solid
+# body in shot. It would no longer catch a part that is present purely as
+# shadow. Replacing it needs a mask that excludes shadow-only change, which is a
+# depth or stencil readback this renderer does not currently expose.
 DRUM_FRAME_MIN_PERCENT = 0.5
 # A framing's DECLARED SUBJECT is held to more than the visibility threshold:
 # it must be a contiguous 3% of the frame. That is the difference between "this
@@ -3785,14 +3799,14 @@ DRUM_CALIBRATION = {
         "exposure": 3.807,
         "contribution_res": "480x270",
         "contribution": {
-            "ground": 89.53, "guideways": 34.60, "endcap_fore": 5.43,
-            "endcap_aft": 0.00, "spokes": 1.38, "core": 1.28,
-            "trams": 0.01, "townscape": 0.00,
+            "ground": 89.87, "guideways": 79.50, "endcap_fore": 5.52,
+            "endcap_aft": 0.00, "spokes": 1.92, "core": 2.43, "trams": 0.01,
+            "townscape": 0.00,
         },
         "largest_region": {
-            "ground": 82.39, "guideways": 34.52, "endcap_fore": 5.43,
-            "endcap_aft": 0.00, "spokes": 1.34, "core": 1.28,
-            "trams": 0.01, "townscape": 0.00,
+            "ground": 82.51, "guideways": 65.91, "endcap_fore": 5.52,
+            "endcap_aft": 0.00, "spokes": 1.90, "core": 1.32, "trams": 0.01,
+            "townscape": 0.00,
         },
     },
     # THE GARDEN. Composition matched to `garden.png` -- the authority-1 frame
@@ -3824,14 +3838,14 @@ DRUM_CALIBRATION = {
         "exposure": 3.807,
         "contribution_res": "480x270",
         "contribution": {
-            "ground": 49.15, "guideways": 47.49, "endcap_fore": 0.00,
-            "endcap_aft": 11.70, "spokes": 0.00, "core": 1.75,
-            "trams": 8.11, "townscape": 30.78,
+            "ground": 59.40, "guideways": 54.61, "endcap_fore": 0.00,
+            "endcap_aft": 11.85, "spokes": 1.05, "core": 1.81,
+            "trams": 6.16, "townscape": 33.20,
         },
         "largest_region": {
-            "ground": 33.20, "guideways": 47.41, "endcap_fore": 0.00,
-            "endcap_aft": 5.30, "spokes": 0.00, "core": 1.74,
-            "trams": 7.94, "townscape": 30.14,
+            "ground": 40.74, "guideways": 51.82, "endcap_fore": 0.00,
+            "endcap_aft": 5.32, "spokes": 0.68, "core": 1.79, "trams": 5.10,
+            "townscape": 32.14,
         },
     },
     # THE TRAM. `trams` is 0.01% of the wide frame -- thirteen pixels -- so the
@@ -3868,14 +3882,14 @@ DRUM_CALIBRATION = {
         "exposure": 3.807,
         "contribution_res": "480x270",
         "contribution": {
-            "ground": 57.06, "guideways": 97.19, "endcap_fore": 0.00,
-            "endcap_aft": 0.00, "spokes": 0.00, "core": 0.00,
-            "trams": 5.47, "townscape": 37.30,
+            "ground": 70.19, "guideways": 77.59, "endcap_fore": 0.00,
+            "endcap_aft": 0.00, "spokes": 0.00, "core": 11.19,
+            "trams": 6.49, "townscape": 27.19,
         },
         "largest_region": {
-            "ground": 24.51, "guideways": 97.17, "endcap_fore": 0.00,
-            "endcap_aft": 0.00, "spokes": 0.00, "core": 0.00,
-            "trams": 5.46, "townscape": 37.13,
+            "ground": 33.34, "guideways": 75.34, "endcap_fore": 0.00,
+            "endcap_aft": 0.00, "spokes": 0.00, "core": 10.94,
+            "trams": 5.78, "townscape": 27.03,
         },
     },
 }

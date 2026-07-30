@@ -5190,7 +5190,15 @@ def _scan_generator_groups():
 # directory.py's place keys and rooms.py's prop types. A file that talks ABOUT
 # the generators is not a generator.
 NOT_GENERATORS = {"materials.py", "directory.py", "rooms.py",
-                  "test_materials_layer3.py", "apply_proposals.py"}
+                  "test_materials_layer3.py", "apply_proposals.py",
+                  # METRICS, NOT GENERATORS. `density.py` names the drum's PART
+                  # names -- ground, spokes, guideways, endcap_fore, endcap_aft
+                  # -- in the assertion that its registry agrees with
+                  # `export_scene.drum_parts`. Those are part names, not group
+                  # names, and the scanner cannot tell them apart. Adding a
+                  # measurement module to the list of things that emit geometry
+                  # is the error here, not the strings.
+                  "density.py", "walkable.py", "budget.py", "lod.py"}
 
 # Literals that match the group prefixes but are not group names: manifest
 # statistics, and prefixes used in a `startswith` test. Kept explicit rather
