@@ -889,6 +889,17 @@ def materials_of(place):
     return place["key"] in _materialled_keys()
 
 
+# Which `drum_parts` part each place-bearing drum module supplies. Needed
+# because DRUM_CALIBRATION is keyed by PART and PLACES by MODULE, and the two
+# vocabularies are not the same: `interior` alone supplies four parts.
+_MODULE_PARTS = {
+    "interior": ("endcap_fore", "endcap_aft", "guideways", "spokes"),
+    "core_tube": ("core",),
+    "tram": ("trams",),
+    "garden": ("townscape",),
+}
+
+
 def _lit_keys():
     """Places whose geometry emits at least one tagged light fitting.
 
@@ -1305,19 +1316,59 @@ def _selftest():
     # this again, because the fix then is to update the assertion, not the
     # predicate.
     _lit = _lit_keys()
-    _garden = {q["key"] for q in PLACES if q["module"] == "garden"}
+    # THESE TWO CHECKS USED TO NAME THE GARDEN AND THE TRAM and assert they
+    # were NOT counted, because at the time each was being credited off a frame
+    # it did not appear in -- the garden 0.00% of the wide drum shot, the tram
+    # 0.01%. Both were written to fail in two directions: if the predicate were
+    # re-broadened, AND once the geometry really did enter a measured frame,
+    # "which is the right time to be made to look at this again, because the
+    # fix then is to update the assertion, not the predicate."
+    #
+    # That second direction fired. `DRUM_CALIBRATION` now carries a garden
+    # framing measured against `garden.png` -- the frame garden.townscape() was
+    # actually built from, which is NOT the 29a I had assumed -- where the
+    # townscape is 30.78% of the picture, and a tram framing where the cars are
+    # 5.47%. So the specific claims are retired and replaced by the INVARIANT
+    # they were two instances of, which is stronger than either: no place is
+    # credited at layer 4 off a frame its own geometry is not in.
+    import test_materials_layer3 as _gate                    # noqa: PLC0415
+    sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(
+        os.path.abspath(__file__))), "tools"))
+    import export_scene as _X                                # noqa: PLC0415
+    import test_materials_layer3 as _gate                    # noqa: PLC0415
+    sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(
+        os.path.abspath(__file__))), "tools"))
+    import export_scene as _X                                # noqa: PLC0415
+    # MY FIRST REPLACEMENT FOR THESE WAS VACUOUS AND THE PROBE CAUGHT IT.
+    # It asserted "no module counted as lit has a contribution below the
+    # threshold" -- but `_lit_keys` credits a module BY that same threshold on
+    # that same table, so the two can never disagree. Zeroing the townscape
+    # dropped the count 118 -> 114 and the check never fired, because the
+    # module simply stopped being counted. One source of truth cannot
+    # cross-check itself, and dressing that up as an assertion is the exact
+    # defect this file exists to catch.
+    #
+    # What IS falsifiable is the MECHANISM: these four places are credited only
+    # because `drum_visible_parts` takes the UNION over framings. The wide shot
+    # -- the only drum framing that existed this morning -- shows 0.00% of the
+    # townscape and 0.01% of the trams, and crediting them off it was the bug.
+    # So: assert the wide framing alone would still credit neither. That fails
+    # if someone puts a fictitious number in wide's table, and it fails if the
+    # union is ever collapsed back to one framing.
+    _wide = _X.DRUM_CALIBRATION["wide"]["contribution"]
+    _wide_only = {k for k, v in _wide.items()
+                  if v >= _X.DRUM_FRAME_MIN_PERCENT}
+    check("the wide drum shot alone still credits neither the garden nor the "
+          "tram -- crediting them off it was the defect",
+          "townscape" not in _wide_only and "trams" not in _wide_only,
+          f"wide credits {sorted(_wide_only & {'townscape', 'trams'})}")
+    check("...and they ARE credited, by framings that do show them",
+          {q["key"] for q in PLACES if q["module"] in ("garden", "tram")}
+          <= _lit,
+          f"{sorted({q['key'] for q in PLACES if q['module'] in ('garden', 'tram')} - _lit)}")
     _core = {q["key"] for q in PLACES if q["module"] == "core_tube"}
-    check("the garden is not counted as lit -- it is in no rendered frame",
-          _garden and not (_garden & _lit), f"{sorted(_garden & _lit)}")
     check("the core tube IS counted -- the drum shot contains it",
           _core and _core <= _lit, f"{sorted(_core - _lit)}")
-    # The tram was found the same way and by accident: measuring every drum
-    # part's contribution to check the garden's claim showed `trams` moving
-    # 0.01% of the frame, thirteen pixels at the far end of a 2.6 km drum. It
-    # was being counted for the same reason the garden was.
-    _tram = {q["key"] for q in PLACES if q["module"] == "tram"}
-    check("the tram is not counted -- 0.01% of the drum frame is not a look",
-          _tram and not (_tram & _lit), f"{sorted(_tram & _lit)}")
 
     # --- the layer model ---------------------------------------------------
     rep = layer_report(schema, profile)

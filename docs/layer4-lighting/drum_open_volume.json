@@ -1,0 +1,90 @@
+{
+  "_family": "drum_open_volume",
+  "findings": "MEASURED, NOT RECALLED. Every number here comes from tools/measure_frame.py run on the file named beside it, or from an engine render whose command line is quoted. The family is the habitat drum seen from inside -- one volume, one rig (export_scene.light_runs derives 60 omnis from the guideway trusses' own arithmetic), one exposure (export_scene.DRUM_EXPOSURE = 1.41, measured against Babylon_5_2-22_34b.jpg in session 3q). What this file records is the thing that took two sessions to see: with one rig and one exposure, WHICH REFERENCE A FRAME IS COMPARED AGAINST DECIDES THE ANSWER, and two of the four authority-1 drum references disagree with the one the exposure was set on. Also recorded: a shadow-coverage sweep with its CPU cost, run to test the hypothesis that the garden read hot because 58 of the 60 lights cast no shadows. It does not.",
+  "references": [
+    {
+      "file": "reference/03-sector-blue/Babylon_5_2-22_34b.jpg",
+      "authority": 1,
+      "depicts": "the drum from near the axis: floor, guideway truss with light run, two tram cars slung beneath it, fore end cap",
+      "median": 0.1515,
+      "ratio": 0.066,
+      "dark_p5": 0.0294,
+      "bright_p95": 0.4457,
+      "clipped": 0.0090,
+      "crushed": 0.0374,
+      "role": "THE ANCHOR. export_scene.DRUM_EXPOSURE was derived against this frame; every other drum reference is judged by whether it agrees with it."
+    },
+    {
+      "file": "reference/09-garden-core-and-transit/garden.png",
+      "authority": 1,
+      "depicts": "the Garden's civic landmark, reflecting pool and terrace, with the drum's far side and the radial spoke overhead. The frame station/garden.py's own docstring names as its source.",
+      "median": 0.1406,
+      "ratio": 0.048,
+      "dark_p5": 0.0180,
+      "bright_p95": 0.3773,
+      "clipped": 0.0000,
+      "crushed": 0.0563,
+      "role": "AGREES WITH THE ANCHOR to 8% (0.1406 against 0.1515), so it is a valid second reference for the same volume. The garden framing in export_scene.DRUM_CALIBRATION is measured against it."
+    },
+    {
+      "file": "reference/03-sector-blue/Babylon_5_2-22_33a.jpg",
+      "authority": 1,
+      "depicts": "one tram car from below and ahead, the truss underside with its row of light boxes, the radial spoke tube and hub, the far side of the drum",
+      "median": 0.1166,
+      "ratio": 0.021,
+      "dark_p5": 0.0127,
+      "bright_p95": 0.6136,
+      "clipped": 0.0000,
+      "crushed": 0.0929,
+      "role": "USED FOR COMPOSITION, NOT FOR LEVEL. It is the frame the tram framing's camera placement reproduces -- below the truss, car slung beneath, far surface behind -- but docs/engine-drum.png, which is verified at x1.39 of the anchor, reads x1.81 against this frame. Calibrating anything to 33a would demand re-exposing the whole drum by 0.55 stops and would break the frame the exposure was measured on."
+    },
+    {
+      "file": "reference/03-sector-blue/Babylon_5_2-22_29a.jpg",
+      "authority": 1,
+      "depicts": "a sunken, canopied garden terrace: cut-and-cover tunnel portal, timber-slat retaining walls, clipped hedges, broadleaf canopy overhanging the frame, a lit cascade, an elevated surface-transit vehicle behind a railing",
+      "median": 0.0559,
+      "ratio": 0.039,
+      "dark_p5": 0.0124,
+      "bright_p95": 0.3164,
+      "clipped": 0.0000,
+      "crushed": 0.2565,
+      "role": "NOT A REFERENCE FOR ANY FRAME WE CAN RENDER, and this is the finding. It is x0.37 of the anchor, and the difference is CONTENT rather than illumination -- see regions below. station/garden.py builds none of the things that make it dark. It is also not the frame garden.townscape() was built from; garden.png is, by that module's own docstring."
+    }
+  ],
+  "region_decomposition_29a": {
+    "method": "tools/measure_frame.py's own measure(), applied to fractional (left, top, right, bottom) crops of reference/03-sector-blue/Babylon_5_2-22_29a.jpg. Median of the measurable population, as everywhere else in this project.",
+    "whole_frame_median": 0.0559,
+    "regions": [
+      {"what": "paved courtyard, the lit ground plane", "box": [0.30, 0.56, 0.52, 0.92], "median": 0.1515, "crushed": 0.118},
+      {"what": "glazed multi-storey building band", "box": [0.33, 0.02, 0.60, 0.25], "median": 0.0741, "crushed": 0.032},
+      {"what": "grey streamlined transit pod", "box": [0.68, 0.28, 0.86, 0.42], "median": 0.0761, "crushed": 0.079},
+      {"what": "broadleaf canopy, upper right", "box": [0.62, 0.00, 1.00, 0.28], "median": 0.0569, "crushed": 0.304},
+      {"what": "clipped hedge bank, right", "box": [0.60, 0.40, 0.82, 0.60], "median": 0.0296, "crushed": 0.783},
+      {"what": "timber-slat retaining wall, left", "box": [0.00, 0.42, 0.16, 1.00], "median": 0.0263, "crushed": 0.308}
+    ],
+    "fraction_below_linear_Y_0.05": 0.601,
+    "what_it_means": "The LIT PAVING of 29a measures 0.1515 -- the anchor's whole-frame median to four decimal places. The frame's low whole-frame median is 60.1% of it being dark foliage and dark timber at albedo 0.13 or below. Our garden frame at the same camera is 0.28% crushed because station/garden.py contains no hedge, no canopy and no retaining wall. Comparing the two whole-frame is comparing content, and no lighting change closes it."
+  },
+  "shadow_coverage_sweep": {
+    "hypothesis_tested": "that the drum's terrace frame reads hot because 58 of its 60 omnis cast no shadows (--shadow-lights defaults to 2), and that the fix is shadow coverage rather than exposure.",
+    "verdict": "REFUTED, twice over. Full coverage moves the frame 28% of the way to the 29a target and stops; and the frame is above that target with every light switched off, so no shadow scheme can reach it.",
+    "framing": "tools/render_godot.sh --shot drum --eye \" -92.7,242.7,4887\" --look 112,4905 --fov 45 --res 960x540  (== docs/engine-drum-terrace.png, reproduced byte-identical)",
+    "machine": "Mesa lavapipe on CPU, nproc 4, 960x540. Wall time is the whole render_godot.sh invocation including the geometry export, which is ~20 s of the total and does not vary with shadow count.",
+    "rows": [
+      {"shadow_lights": 2, "median": 0.1952, "dark_p5": 0.0675, "crushed": 0.0028, "wall_s": 31, "x_of_29a": 3.49, "x_of_garden_png": 1.39},
+      {"shadow_lights": 8, "median": 0.1857, "dark_p5": 0.0472, "crushed": 0.0037, "wall_s": 38, "x_of_29a": 3.32, "x_of_garden_png": 1.32},
+      {"shadow_lights": 20, "median": 0.1460, "dark_p5": 0.0361, "crushed": 0.0052, "wall_s": 51, "x_of_29a": 2.61, "x_of_garden_png": 1.04},
+      {"shadow_lights": 60, "median": 0.1408, "dark_p5": 0.0227, "crushed": 0.0061, "wall_s": 76, "x_of_29a": 2.52, "x_of_garden_png": 1.00}
+    ],
+    "floor": {
+      "what": "the same framing with --light-gain 0, i.e. all 60 omnis at zero energy. What is left is the drum.tscn ambient term (0.15) and the emissive materials, neither of which a shadow can touch.",
+      "median": 0.0823,
+      "crushed": 0.3405,
+      "wall_s": 31,
+      "x_of_29a": 1.47
+    },
+    "cost": "0.78 s of wall time per additional shadow-casting omni at 960x540 ((76 - 31) / 58). Full coverage is 2.45x the render time of the default. An omni shadow is a cube map, so each one re-renders the scene six times.",
+    "decision": "--shadow-lights stays at 2. The wide drum framing is verified at x1.39 with 2, so raising the default would move the one frame in this volume that is calibrated. The contrast finding is real and is recorded rather than acted on: full coverage takes dark_p5 from 0.0675 to 0.0227 and crushed from 0.28% to 0.61%, against the references' 3.7-25.7% crushed. That is the project's standing global tonemapping question, not a garden-specific fault, and it should be settled once for every space rather than by re-rating one volume's shadow budget."
+  },
+  "framings": "The calibrated framings themselves -- camera, reference, per-part frame contribution and verified multiple -- live in tools/export_scene.py's DRUM_CALIBRATION, next to the code that renders them, and are gated by `python3 tools/export_scene.py --gate-drum`. This file holds the measurements those choices were made FROM."
+}

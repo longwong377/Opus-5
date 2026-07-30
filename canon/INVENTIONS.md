@@ -2225,3 +2225,72 @@ not an artefact of one lucky camera, which is the failure mode a single calibrat
 cannot rule out.
 
 ---
+
+## INV-045 — The drum tram's calibrated framing: the camera `33a` puts you at, measured against `34b`
+
+**Invented:** the camera of the `tram` entry in `tools/export_scene.py`'s `DRUM_CALIBRATION` —
+`--stand 96,4875` (on the drum floor at 96°, z 4875, eye 1.7 m) aimed at
+`(-121.5, 210.444, 4916.5)`, vertical fov 45, 960×540. The aim point is the centre of the car on
+the 120° guideway at z 4916.5, one of the six `tram.drum_trams` places. The car is 120 m away and
+broadside.
+
+**Why necessary:** `drum_tram` is an authority-1 location and `tram.py` is 1,100 lines of measured
+vehicle, and the only frame the project had ever measured it in was the wide drum shot, where
+`trams` moves **0.01% of the frame — thirteen pixels** at 480×270, at the far end of a 2.6 km
+drum. A frame's exposure says nothing about a fitting that small, so the place was correctly
+excluded from layer 4 in session 3q and stayed excluded because nobody had pointed a camera at the
+car. A camera is not in canon; it had to be chosen and it decides the measurement, so it is logged.
+
+**What is sourced:** `reference/03-sector-blue/Babylon_5_2-22_33a.jpg`, authority 1, is the frame
+that shows one car close, and `station/tram.py`'s docstring already names it: *"one car from below
+and ahead: white body, maroon window-band framing, dark underside with round ports, two white
+lights low on the nose."* The framing reproduces that frame's **relationship**, which
+`reference/00-INDEX.md` pins independently: *"The axial truss carries, on its underside, a row of
+large bright rectangular light boxes."* You can only see the underside from below it, so 33a's
+camera is **outboard of the guideway**, between the truss and the floor, with the far surface of
+the drum beyond the car. That is the framing built here.
+
+**Why the camera is on the floor and not near the axis, which is where it was tried first.** The
+car hangs 6.5–11.5 m outboard of the truss's bottom chord at the *same* angular position
+(`CAR_DEPTH_FRAC = 0.65` of a 16 m truss depth, guideway at r = 236.555 m, car at r = 238.0–248.1
+m). So from any camera inboard of the truss, the ray to the car crosses r = 236.555 within about a
+degree of the truss's own bearing, and the truss is ±1.2° wide. Computed for the first attempt —
+eye at r 150, θ 106°, 135 m from the car — the crossing lands at **119.42°**, 0.58° off the truss
+at 120°, and the render came back with the truss across the frame and no car visible at all. This
+is a property of the geometry, not of that particular camera: an inboard vantage cannot see this
+car except through the Warren lattice. Recorded because it is the kind of thing that gets retried.
+
+**Why 96° and z 4875 out of the five framings rendered.** All five put the car in frame. The
+choice is the CONTENT MIX, which is what makes a median comparison mean anything — the same
+principle `EXTERIOR_CALIBRATION` states as *"both crops come out with the same proportion of
+background… which is the check that the framings really are matched"*. Against `34b`'s 3.74%
+crushed and 0.90% clipped:
+
+| framing | crushed | clipped | x of 34b | note |
+|---|---|---|---|---|
+| `--stand 88,4880` | 0.62% | 2.69% | 1.47 | car small and behind the light run's glare |
+| **`--stand 96,4875`** | **2.83%** | **3.08%** | **1.50** | **taken** |
+| `--stand 100,4870` | 2.82% | 4.11% | 1.55 | car largest, but over `measure_frame`'s own 4% overexposure verdict |
+| `--stand 104,4740` | 0.00% | 2.38% | 1.49 | 33a's oblique, but the car foreshortens to a sliver |
+| `--stand 216,5300` (240° guideway, open fields) | 0.00% | 3.52% | 1.86 | the most legible car in the set and the worst measurement: no dark content at all |
+
+**Why it is measured against `34b` and not against `33a`, which is its framing source.** Because
+33a disagrees with the drum's own calibration. The committed wide frame `docs/engine-drum.png`,
+verified at x1.39 of 34b, reads **x1.81** of 33a from the same pixels — 33a's whole-frame median is
+0.1166 against 34b's 0.1515. One volume, one rig, one exposure, so calibrating the tram to 33a
+would demand re-exposing the whole drum by 0.55 stops and would break the frame `DRUM_EXPOSURE`
+was set on. 34b is also not an arbitrary substitute: it **contains the tram cars**, and
+`tram.py`'s `CAR_BAYS = 4.0` was measured off it by projective rectification. The same reasoning
+and the same numbers are in INV-044 for `29a` and the garden.
+
+**What this framing does NOT settle.** The car's *colour*: 33a reads white body with maroon
+window-band framing, and at 120 m through the drum's fog this frame cannot adjudicate a material.
+And the two white nose lights: `tram.py` builds `tram_headlight` and the aspect here is broadside,
+so they are edge-on. Both need a nose-on framing, which is a different shot and is not this one.
+
+**Overturned by:** a Season 2–3 frame of the drum tram with a recoverable camera; or any change to
+`interior.TRUSS_RADIUS_FRAC`, `TRUSS_DEPTH_M` or `tram.CAR_DEPTH_FRAC`, all of which move the
+subject relative to the eye and invalidate both the framing and the 5.47% contribution measured
+for it. `tools/export_scene.py --gate-drum` is what says so.
+
+---
