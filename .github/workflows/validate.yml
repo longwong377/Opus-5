@@ -136,10 +136,31 @@ jobs:
       # materials.py because it asks a different question: not "is the library
       # self-consistent" but "does every surface the station actually emits
       # have a material, and is that material physically and canonically
-      # defensible". It fails until layer 3 is finished, ON PURPOSE -- the
-      # coverage line is the layer's progress number.
+      # defensible".
+      #
+      # THE `|| true` IS GONE. It was correct when it was written -- this gate
+      # failed on purpose while layer 3 was incomplete, and the coverage line
+      # was the layer's progress number. Layer 3 finished at 118/118 and the
+      # escape hatch outlived it, which left the completion gate for a finished
+      # layer running in CI with its exit code discarded: a gate that cannot
+      # fail, the one defect this project most wants to avoid, sitting in the
+      # file that is supposed to catch them. It exits 0 on its own now.
       - name: Layer 3 coverage and material plausibility
-        run: python3 station/test_materials_layer3.py || true
+        run: python3 station/test_materials_layer3.py
+
+      # NEVER RAN IN CI AT ALL. 41 checks over the exterior component library --
+      # cobra bays, observation domes and rotundas, docking ports, mooring
+      # clamps -- including the closure checks that caught `dome_mesh` shipping
+      # 56 boundary edges per dome, invisible because the hole faces into the
+      # hull.
+      - name: Exterior components
+        run: python3 station/components.py
+
+      # Also never ran. The LOD chain is what the exterior shot actually
+      # renders: export_scene reads hull_lod0.obj, not hull.obj, and nothing
+      # else in the pipeline regenerates it.
+      - name: LOD chain
+        run: python3 station/lod.py
 
       # Layer 4 infrastructure. The interior scene has more materials than the
       # other two combined and had no .tscn at all until now, so none of them
