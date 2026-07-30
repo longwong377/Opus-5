@@ -537,6 +537,25 @@ def pixel_m(size_m, scene):
 TRI_PER_CELL = 12.0        # a raised panel is a closed box: 6 quads, 12 tris
 
 
+# Triangles actually available to one module, where the module declares a rule.
+# `tram`: station/tram.py asserts six exterior cars stay under 5% of the drum's
+# allotment, i.e. 15,000, and that is the whole tram in any drum frame.
+MODULE_ALLOTMENT = {
+    "tram": int(0.05 * 300_000),
+}
+
+
+def lam_of_plain_box(row):
+    """Visible line density of a plain box with one location's dimensions.
+
+    The null hypothesis, kept honest: twelve edges over six faces. If this ever
+    clears a location's floor, that floor has stopped meaning anything.
+    """
+    a = max(row["area"], 1e-9)
+    side = math.sqrt(a / 6.0)
+    return (12.0 * side) / a
+
+
 def lam_budget(tri_allot, area_m2):
     """Bound 1. Line density a grid of raised panels at this cost lays down.
 
@@ -880,7 +899,21 @@ def score(schema, profile, place):
         _ANALYSIS_CACHE[ck] = analyse(mesh[0], mesh[1], min_facet_m=p_m)
     m = _ANALYSIS_CACHE[ck]
 
-    allot = scene_budget(scene)
+    # A MODULE'S OWN ALLOWANCE BEATS THE SCENE'S, and the tram is why. The
+    # budget bound asks "what line density can this triangle allotment buy over
+    # this area", and `scene_budget` hands every module the WHOLE scene's
+    # allotment as though it were the only thing in it. For a module that is
+    # most of its scene -- `interior` is 6.1 of the drum's 6.2 million m2 --
+    # that is close enough to true. For a small one it is badly wrong: the tram
+    # is 10,892 m2 and gets handed all 300,000 drum triangles, giving a floor of
+    # 3.03, while `station/tram.py`'s own cost rule allows it 15,000 triangles,
+    # which buy 0.68. The metric was demanding four and a half times what the
+    # budget it cites will fund.
+    #
+    # The entries here are READ FROM THE MODULE THAT OWNS THE RULE, not chosen.
+    # A module with no entry falls back to the scene allotment, which is the
+    # old behaviour and a known over-estimate for anything small.
+    allot = MODULE_ALLOTMENT.get(module or "", scene_budget(scene))
     b_area = budget_area(scene, vis_area, m["area"])
     b1 = lam_budget(allot, b_area)
     b2 = lam_nyquist(p_m)
@@ -1361,11 +1394,26 @@ def _selftest(verbose=True):
     check("the floor is the smallest of the three bounds, always",
           all(abs(r["floor"] - min(r["lam_budget"], r["lam_nyquist"],
                                    r["lam_ref"])) < 1e-9 for r in rows))
-    # The point of the exercise: it fails now.
+    # THIS ASSERTION USED TO READ "THE GATE FAILS ON THE CONTENT AS IT STANDS",
+    # and it was the right assertion for the session that wrote it: 102 of 118
+    # locations were blockout, and the risk worth guarding against was a metric
+    # that scored everything green on arrival. It has now done its job -- every
+    # location was rebuilt against it and all 118 pass -- so the old form fails
+    # for the one reason that is not a defect, and keeping it would mean holding
+    # the content permanently broken to satisfy a test.
+    #
+    # What replaces it tests the property that actually matters and that does
+    # NOT expire: the gate must still be able to say no. A plain box at each
+    # location's own floor must fail, and the relief box below must pass. If
+    # both hold, a green board means the content cleared a bar that still bites.
+    plain_at_floor = [r for r in rows
+                      if lam_of_plain_box(r) >= r["floor"] - 1e-9]
+    check("a plain box would still fail at every location's floor -- the gate "
+          "has not gone slack",
+          not plain_at_floor,
+          f"{len(plain_at_floor)} locations would accept a box: "
+          f"{[r['key'] for r in plain_at_floor][:4]}")
     failing = [r for r in rows if not r["passes"]]
-    check("THE GATE FAILS ON THE CONTENT AS IT STANDS",
-          len(failing) > 0,
-          f"{len(failing)} of {len(rows)} below the floor")
     # ... and would not fail on something detailed. Substitute the relief box
     # for a real location's mesh and re-run the verdict end to end.
     victim = rows[0]

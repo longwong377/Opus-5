@@ -603,24 +603,41 @@ def predicted_triangles(schema, profile, level):
     caps = sum(n for s in (samples[0], samples[-1]) if s["radius_m"] > 0.05)
     greeb = sum(v[1] for v in greeble_pieces(
         schema, profile, level["greeble_detail"]).values())
-    # Components do not decimate. They are hand-authored primitives welded to
-    # the hull at the profile radius, not lathe output, so no schedule touches
-    # them and their cost is a constant floor under every level -- which is
-    # itself worth knowing: at lod7 they are 46% of the mesh.
-    return lathe + caps + greeb + component_triangles(schema, profile)
+    # COMPONENTS NOW DECIMATE, in the one respect that matters at range: their
+    # stiffener ribs. The shells themselves are hand-authored primitives welded
+    # to the hull and no lathe schedule touches those -- that part of the old
+    # comment here stands, and their cost is still a floor under every level.
+    # What changed is that session 3s put chordwise ribs on the radiator blades,
+    # the comms plate and the cooling fins, taking components from 19,800 to
+    # 53,568 triangles and from 46% of lod7 to 93% of it. A 1.5 m stiffener is
+    # invisible at the distance lod7 is drawn from, so it is dropped there.
+    return (lathe + caps + greeb
+            + component_triangles(schema, profile,
+                                  component_detail(level)))
 
 
-_COMPONENT_TRIS = None
+def component_detail(level):
+    """Rib detail for a level, from the same greeble schedule the hull uses.
+
+    Not a second schedule: `greeble_detail` already encodes how much small
+    surface decoration a level carries, and a stiffener rib is small surface
+    decoration. One knob, so the two cannot disagree about what "far away"
+    means.
+    """
+    return max(0.0, min(1.0, float(level["greeble_detail"])))
 
 
-def component_triangles(schema, profile):
-    global _COMPONENT_TRIS
-    if _COMPONENT_TRIS is None:
+_COMPONENT_TRIS = {}
+
+
+def component_triangles(schema, profile, detail=1.0):
+    key = round(detail, 4)
+    if key not in _COMPONENT_TRIS:
         import components as components_mod
         parts = components_mod.build_all(schema.get("components", []),
-                                         profile["profile"])
-        _COMPONENT_TRIS = sum(len(t) for _v, t in parts.values())
-    return _COMPONENT_TRIS
+                                         profile["profile"], detail=detail)
+        _COMPONENT_TRIS[key] = sum(len(t) for _v, t in parts.values())
+    return _COMPONENT_TRIS[key]
 
 
 # ---------------------------------------------------------------------------

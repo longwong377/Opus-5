@@ -185,8 +185,16 @@ def main():
 
     comp_counts = {}
     if not a.no_components:
+        # Component rib detail rides the SAME knob as greebles. A stiffener rib
+        # is small surface decoration and `--greeble-detail` is already what a
+        # coarse level turns down; giving ribs a second knob would let the two
+        # disagree about what "far away" means, and `station/lod.py`'s model
+        # would then describe a mesh nobody writes -- which is exactly what its
+        # "the chain's triangle model matches what the generator wrote"
+        # assertion caught when this was left at full detail.
         merge(components_mod.build_all(schema.get("components", []),
-                                       profile["profile"]), comp_counts)
+                                       profile["profile"],
+                                       detail=a.greeble_detail), comp_counts)
 
     # Surface detail last, so it inherits the finished profile rather than a
     # provisional one. Greebles carry no canon dimensions of their own -- they

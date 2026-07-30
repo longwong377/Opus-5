@@ -1394,7 +1394,12 @@ def _build():
         "tram_band", "Tram Banding — the red livery stripe",
         albedo=(0.420, 0.140, 0.130), roughness=0.45, metallic=0.10,
         specular=0.45,
-        binds=("tram_band",), scenes=("drum",),
+        binds=("tram_band", "tram_duct", "tram_channel",
+               # Session 3s (INV-073): the car's longitudinal bodyside
+               # articulation -- cant rail, waist rail and rubbing strake are
+               # the banding worked into relief, not a new livery colour.
+               "tram_cant_rail", "tram_waist_rail", "tram_strake",
+               "tram_pillar", "tram_panel"), scenes=("drum",),
         source="33a livery stripe"))
 
     a(Material(

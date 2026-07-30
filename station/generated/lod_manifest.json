@@ -268,11 +268,11 @@
     "longitudinal": 6284,
     "greeble": 6153
    },
-   "triangles": 343762,
+   "triangles": 377530,
    "hull_triangles": 253184,
    "greeble_triangles": 70778,
    "rings": 1978,
-   "vertices": 190536,
+   "vertices": 213048,
    "max_radius_m": 1210.88,
    "length_m": 8046.9,
    "obj": "station/generated/hull_lod0.obj",
@@ -306,15 +306,15 @@
     "longitudinal": 6284,
     "greeble": 6153
    },
-   "triangles": 217170,
+   "triangles": 250938,
    "hull_triangles": 126592,
    "greeble_triangles": 70778,
    "rings": 1978,
-   "vertices": 127240,
+   "vertices": 149752,
    "max_radius_m": 1210.88,
    "length_m": 8046.9,
    "obj": "station/generated/hull_lod1.obj",
-   "reduction": 0.368
+   "reduction": 0.335
   },
   {
    "name": "lod2",
@@ -344,15 +344,15 @@
     "longitudinal": 6284,
     "greeble": 6153
    },
-   "triangles": 153874,
+   "triangles": 187642,
    "hull_triangles": 63296,
    "greeble_triangles": 70778,
    "rings": 1978,
-   "vertices": 95592,
+   "vertices": 118104,
    "max_radius_m": 1210.88,
    "length_m": 8046.9,
    "obj": "station/generated/hull_lod2.obj",
-   "reduction": 0.552
+   "reduction": 0.503
   },
   {
    "name": "lod3",
@@ -382,15 +382,15 @@
     "longitudinal": 12570,
     "greeble": 6153
    },
-   "triangles": 122226,
+   "triangles": 155994,
    "hull_triangles": 31648,
    "greeble_triangles": 70778,
    "rings": 989,
-   "vertices": 79768,
+   "vertices": 102280,
    "max_radius_m": 1210.88,
    "length_m": 8042.9,
    "obj": "station/generated/hull_lod3.obj",
-   "reduction": 0.644
+   "reduction": 0.587
   },
   {
    "name": "lod4",
@@ -420,15 +420,15 @@
     "longitudinal": 25139,
     "greeble": 6153
    },
-   "triangles": 106418,
+   "triangles": 140186,
    "hull_triangles": 15840,
    "greeble_triangles": 70778,
    "rings": 495,
-   "vertices": 71864,
+   "vertices": 94376,
    "max_radius_m": 1210.88,
    "length_m": 8042.9,
    "obj": "station/generated/hull_lod4.obj",
-   "reduction": 0.69
+   "reduction": 0.629
   },
   {
    "name": "lod5",
@@ -464,7 +464,7 @@
    "max_radius_m": 1210.88,
    "length_m": 8042.9,
    "obj": "station/generated/hull_lod5.obj",
-   "reduction": 0.896
+   "reduction": 0.906
   },
   {
    "name": "lod6",
@@ -500,7 +500,7 @@
    "max_radius_m": 1210.88,
    "length_m": 8042.9,
    "obj": "station/generated/hull_lod6.obj",
-   "reduction": 0.919
+   "reduction": 0.927
   },
   {
    "name": "lod7",
@@ -536,7 +536,7 @@
    "max_radius_m": 1210.88,
    "length_m": 8042.9,
    "obj": "station/generated/hull_lod7.obj",
-   "reduction": 0.931
+   "reduction": 0.937
   }
  ]
 }

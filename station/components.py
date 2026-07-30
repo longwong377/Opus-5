@@ -155,6 +155,26 @@ def radial_array(spec, profile):
         c = [corners[0], corners[1], corners[3], corners[2]]
         c += [(x + 2 * tx * th, y + 2 * ty * th, z) for x, y, z in c]
         _box(verts, tris, c)
+        # RADIAL STIFFENERS. The last flat-plate builder without them: these
+        # are the reactor cooling fins and the heat-exchange arrays, and a
+        # radiator plate spanning `span` metres with two outline edges is the
+        # same defect `swept_fins` and `planar_blades` had.
+        for rk in range(1, _ribs(ARRAY_RIBS) + 1):
+            zz = za + (zb - za) * rk / (ARRAY_RIBS + 1)
+            for face in (-1, 1):
+                off = th + ARRAY_RIB_P_M / 2.0
+                rq = []
+                for rr in (inner, outer):
+                    rq.append((rx * rr + tx * face * off,
+                               ry * rr + ty * face * off,
+                               zz - ARRAY_RIB_W_M / 2))
+                    rq.append((rx * rr + tx * face * off,
+                               ry * rr + ty * face * off,
+                               zz + ARRAY_RIB_W_M / 2))
+                rq = [rq[0], rq[1], rq[3], rq[2]]
+                rq += [(x + tx * face * ARRAY_RIB_P_M,
+                        y + ty * face * ARRAY_RIB_P_M, z) for x, y, z in rq]
+                _box(verts, tris, rq)
     return verts, tris
 
 
@@ -223,6 +243,18 @@ def pylon_pair(spec, profile):
 # which one is weak. The weak one is the bay's AXIAL length: no source gives
 # it, and 42 m is inherited from the box this replaces, where it was an
 # artefact of `2 * (width/2)` rather than a measurement of anything.
+FIN_RIBS = 14                  # INV-073: chordwise stiffeners on a radiator blade
+FIN_RIB_W_M = 1.4
+FIN_RIB_P_M = 0.55
+PLATE_RIBS = 11
+PLATE_RIB_W_M = 1.6
+PLATE_RIB_P_M = 0.7
+BLADE_RIBS = 11
+BLADE_RIB_W_M = 1.8
+BLADE_RIB_P_M = 0.6
+ARRAY_RIBS = 6
+ARRAY_RIB_W_M = 1.5
+ARRAY_RIB_P_M = 0.6
 COBRA_COLUMN_FRAC = 0.23      # column width / bay unit width, measured, see above
 COBRA_BEAM_FRAC = 0.50        # head and sill beam depth, as a fraction of a column
 COBRA_CAPITAL_FRAC = 1.14     # capital oversails its column by 7% each side
@@ -560,6 +592,34 @@ def planar_blades(spec, profile):
                     quad += [(x + 2 * tx * thick, y + 2 * ty * thick, z)
                              for x, y, z in quad]
                     _box(verts, tris, quad)
+                    # CHORDWISE RIBS, as on `swept_fins`. These blades are the
+                    # largest single surfaces on the exterior and carried only
+                    # their own planform outline -- two lines for a 500 m
+                    # radiator. A stiffened panel is what one actually is.
+                    for rk in range(1, _ribs(BLADE_RIBS) + 1):
+                        fr = rk / (_ribs(BLADE_RIBS) + 1)
+                        za = zc - c0 + 2 * c0 * fr
+                        zb = zc - c1 + 2 * c1 * fr
+                        for face in (-1, 1):
+                            off = thick + BLADE_RIB_P_M / 2.0
+                            rq = [
+                                (ca * ri + tx * face * off,
+                                 sa * ri + ty * face * off, za
+                                 - BLADE_RIB_W_M / 2),
+                                (ca * ri + tx * face * off,
+                                 sa * ri + ty * face * off, za
+                                 + BLADE_RIB_W_M / 2),
+                                (ca * ro + tx * face * off,
+                                 sa * ro + ty * face * off, zb
+                                 + BLADE_RIB_W_M / 2),
+                                (ca * ro + tx * face * off,
+                                 sa * ro + ty * face * off, zb
+                                 - BLADE_RIB_W_M / 2),
+                            ]
+                            rq += [(x + tx * face * BLADE_RIB_P_M,
+                                    y + ty * face * BLADE_RIB_P_M, z)
+                                   for x, y, z in rq]
+                            _box(verts, tris, rq)
 
             shell(1.0, frame_t)              # structural frame
             shell(frame_inset, th * 2.4)     # radiating panel, proud of the frame
@@ -890,6 +950,39 @@ def swept_fins(spec, profile):
                       quad[j][1] + 2 * ty * (t0 if j < 2 else t1),
                       quad[j][2]) for j in range(4)]
             _box(verts, tris, quad)
+            # CHORDWISE STIFFENER RIBS -- INV-073's rule on a radiator blade.
+            # A fin is the largest flat area on the exterior and carried two
+            # lines, its leading and trailing edge. A radiator this size has
+            # flow channels and the ribs between them; each one runs the full
+            # span of its segment, which is the cheapest line there is.
+            for rk in range(1, _ribs(FIN_RIBS) + 1):
+                fr = rk / (_ribs(FIN_RIBS) + 1)
+                za = z0 + s0 + c0 * fr
+                zb = z0 + s1 + c1 * fr
+                for face in (-1, 1):
+                    ta = t0 + face * 0.0
+                    rq = [
+                        (ca * ri + tx * face * (ta + FIN_RIB_P_M)
+                         - tx * FIN_RIB_W_M / 2,
+                         sa * ri + ty * face * (ta + FIN_RIB_P_M)
+                         - ty * FIN_RIB_W_M / 2, za),
+                        (ca * ri + tx * face * (ta + FIN_RIB_P_M)
+                         + tx * FIN_RIB_W_M / 2,
+                         sa * ri + ty * face * (ta + FIN_RIB_P_M)
+                         + ty * FIN_RIB_W_M / 2, za),
+                        (ca * ro + tx * face * (t1 + FIN_RIB_P_M)
+                         + tx * FIN_RIB_W_M / 2,
+                         sa * ro + ty * face * (t1 + FIN_RIB_P_M)
+                         + ty * FIN_RIB_W_M / 2, zb),
+                        (ca * ro + tx * face * (t1 + FIN_RIB_P_M)
+                         - tx * FIN_RIB_W_M / 2,
+                         sa * ro + ty * face * (t1 + FIN_RIB_P_M)
+                         - ty * FIN_RIB_W_M / 2, zb),
+                    ]
+                    rq += [(rq[j][0] - tx * face * FIN_RIB_P_M,
+                            rq[j][1] - ty * face * FIN_RIB_P_M,
+                            rq[j][2]) for j in range(4)]
+                    _box(verts, tris, rq)
     return verts, tris
 
 
@@ -939,6 +1032,28 @@ def plate_array(spec, profile):
                 (ca * rp - tx * w1, sa * rp - ty * w1, zb)]
         quad += [(x + ca * th * 2, y + sa * th * 2, z) for x, y, z in quad]
         _box(verts, tris, quad)
+        # SPANWISE RIBS AND A FRAME EDGE. A communications plate this size is
+        # a stiffened panel, not a sheet: the ribs are what stop it flexing and
+        # they are the only thing giving 500 m of flat plate any line at all.
+        for rk in range(1, _ribs(PLATE_RIBS) + 1):
+            fr = rk / (_ribs(PLATE_RIBS) + 1)
+            wr0 = w0 + (w1 - w0) * 0.0
+            xa = -wr0 + 2 * wr0 * fr
+            wr1 = w1
+            xb = -wr1 + 2 * wr1 * fr
+            for face in (0, 1):
+                rr = rp + (th * 2 if face else 0.0)
+                pr = PLATE_RIB_P_M * (1 if face else -1)
+                rq = [(ca * rr + tx * (xa - PLATE_RIB_W_M / 2),
+                       sa * rr + ty * (xa - PLATE_RIB_W_M / 2), za),
+                      (ca * rr + tx * (xa + PLATE_RIB_W_M / 2),
+                       sa * rr + ty * (xa + PLATE_RIB_W_M / 2), za),
+                      (ca * rr + tx * (xb + PLATE_RIB_W_M / 2),
+                       sa * rr + ty * (xb + PLATE_RIB_W_M / 2), zb),
+                      (ca * rr + tx * (xb - PLATE_RIB_W_M / 2),
+                       sa * rr + ty * (xb - PLATE_RIB_W_M / 2), zb)]
+                rq += [(x + ca * pr, y + sa * pr, z) for x, y, z in rq]
+                _box(verts, tris, rq)
     return verts, tris
 
 
@@ -961,7 +1076,23 @@ BUILDERS = {
 }
 
 
-def build_all(specs, profile):
+# HOW MUCH RIB DETAIL THIS BUILD EMITS, 0..1. Session 3s put chordwise
+# stiffeners on the radiator blades, the comms plate and the cooling fins, which
+# took components from 19,800 to 53,568 triangles. Components are welded
+# primitives that no lathe schedule decimates, so at the coarsest LOD they went
+# from 46% of the mesh to 93% and `station/lod.py`'s "coarsest under a tenth of
+# finest" assertion refused the chain -- correctly. A stiffener 1.5 m wide is
+# invisible at the distance lod7 is drawn from, and geometry you cannot see is
+# the definition of what a LOD drops.
+DETAIL = 1.0
+
+
+def _ribs(n):
+    """Rib count at the current detail level. Zero is a valid answer."""
+    return max(0, int(round(n * DETAIL)))
+
+
+def build_all(specs, profile, detail=1.0):
     """Return {group_name: (verts, tris)} for every component in the schema.
 
     Most builders return one (verts, tris) and take the component's id as their
@@ -973,6 +1104,15 @@ def build_all(specs, profile):
     is the only thing standing between a renamed group and a component that
     silently stops being built.
     """
+    global DETAIL
+    prev, DETAIL = DETAIL, detail
+    try:
+        return _build_all(specs, profile)
+    finally:
+        DETAIL = prev
+
+
+def _build_all(specs, profile):
     out = {}
     for spec in specs:
         builder = BUILDERS.get(spec["kind"])

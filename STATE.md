@@ -1,8 +1,39 @@
 # Project State
 
-**Last updated:** 2026-07-30 · **Session 3s** — layer 2: 16/118 -> 108/118 · **Session 3r** — **layer 2 is 16/118.** The owner saw the renders and the metrics now agree with the owner
+**Last updated:** 2026-07-30 · **Session 3s** — layers 1-4 all 118/118. Layer 5 is next · **Session 3r** — **layer 2 is 16/118.** The owner saw the renders and the metrics now agree with the owner
 
-## Session 3s — layer 2 goes 16/118 -> 108/118
+## Session 3s — layer 2 goes 16/118 -> 118/118, and layers 3 and 4 follow it
+
+Every one of the 118 locations clears its derived detail floor. Layers 1, 2, 3 and 4 all read
+COMPLETE; layer 5 (props & function) is the current layer at 0/118.
+
+**The exterior "fork" was not a fork.** It looked like one because meeting the components' floor
+was priced with panel relief at 0.17 m of line per triangle, which would indeed have cost the whole
+400,000 allotment. Ribs on the plates that already exist -- radiator blades, comms plate, cooling
+fins -- deliver the same line for a fraction of it. Exterior sits at **377,530 / 400,000 (94.4%)**
+with the hull untouched and no budget raised. Nothing needed deciding.
+
+**The tram exposed a real defect in the metric.** Its floor was 3.030 while its own cost rule allows
+15,000 triangles, which buy 0.678 -- the metric demanded four and a half times what the budget it
+cites will fund, because `scene_budget` hands every module the whole scene's allotment as though it
+were the only thing in it. Close enough for `interior` (6.1 of the drum's 6.2 million m2), badly
+wrong for a 10,892 m2 vehicle. `density.MODULE_ALLOTMENT` now reads a module's own declared cap
+where it has one.
+
+**Components now decimate.** The ribs took them from 46% of lod7 to 93%, and `lod.py`'s "coarsest
+under a tenth of finest" refused the chain -- correctly, since a 1.5 m stiffener is invisible at the
+distance lod7 is drawn from. Rib count rides `--greeble-detail`, the knob that already means "how
+much small surface decoration does this level carry", so the two cannot disagree about what far away
+means. `lod.py`'s "the model matches what the generator wrote" then caught that I had taught the
+model to decimate and not the generator.
+
+**And the density gate's headline assertion had to be retired.** It read "THE GATE FAILS ON THE
+CONTENT AS IT STANDS", which was right when 102 of 118 were blockout and became a demand that the
+content stay broken. Replaced by the property that does not expire: a plain box must still fail at
+every location's floor. Demonstrated failing -- inflate the box's line density and it fires on 90
+locations.
+
+## Session 3s (earlier) — layer 2 goes 16/118 -> 108/118
 
 Ten places remain, and nine of them are `components` — the exterior fittings behind the budget
 fork the owner has not ruled on. Every interior module now clears its derived detail floor.
