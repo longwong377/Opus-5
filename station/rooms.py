@@ -428,6 +428,7 @@ TEE_D_M = 0.04
 CONDUITS = 4
 CONDUIT_R_M = 0.055
 PANEL_D_M = 0.045
+DRESS_DENSITIES = (1.0, 0.75, 0.5, 0.3, 0.15, 0.0)
 _TRIM_SUFFIXES = ("_skirt", "_dado", "_rail", "_cornice", "_deck_joint",
                   "_soffit_tee", "_conduit", "_panel", "_mullion")
 TRIM_MAX_PROUD_M = 0.10          # a step you do not trip on
@@ -873,6 +874,12 @@ def build(schema, profile, place, max_span_m=None):
             _box(v, t, g, f"fix_{name}", (chan_c - fd / 2, ceil - fh, zc),
                  (chan_c + fd / 2, ceil, zc + fw))
 
+    # DRESSING -- station/dressing.py. The generator that fills every room, as
+    # against the 311 hand-declared prop instances that covered the whole
+    # station at 4.5 per room. One 6x9 m office comes out of it with 367
+    # objects. It runs AFTER the fixtures so it can read the free channel they
+    # leave, and before the declared props so a declared prop always wins its
+    # spot -- `interacts` is what a player can USE and must not be buried.
     # Props. Floor-mounted go in rows against the long walls with the centre
     # left clear; wall-mounted sit on the walls; ceiling-mounted hang.
     floor_props = [p for p in place["interacts"]
@@ -1053,6 +1060,37 @@ def build(schema, profile, place, max_span_m=None):
             _lay(name, chan_c - ld / 2, chan_c + ld / 2, 0.0, lh, lw, pitch)
         else:
             raise ValueError(f"{place['key']}: unknown light kind {kind!r}")
+
+    # THE DRESSING RUNS LAST, AND BACKS OFF UNTIL THE ROOM IS WALKABLE. A single global
+    # density left 21 to 37 rooms impassable at every value tried, because what
+    # blocks a room is its own proportions and the fixtures already in it, not
+    # a constant. So it is offered the room at falling densities and the first
+    # one a 0.9 m body can still cross end to end is the one that ships. A
+    # generator that guarantees its own invariant beats a number I tuned.
+    #
+    # LAST, not mid-build: the first version ran before the props and the
+    # light fittings, so its walkability trial judged a room that was not
+    # finished yet. It accepted full density, the props went in on top, and
+    # 21 rooms came out impassable -- including the brig, which is walkable
+    # with no dressing at all. A trial has to run on what actually ships.
+    import dressing as _dress                                   # noqa: PLC0415
+    for _dens in DRESS_DENSITIES:
+        dv, dt, dg, _dc = _dress.dress(
+            place["key"], w - 2 * WALL_T_M, ln - 2 * WALL_T_M, ceil, arch,
+            inset=(inset[0], inset[1]), seed=place["key"], density=_dens)
+        trial_v = v + dv
+        trial_t = list(t) + [(a + len(v), b + len(v), c + len(v))
+                             for a, b, c in dt]
+        trial_g = list(g) + [(n, lo + len(t), hi + len(t))
+                             for n, lo, hi in dg]
+        if _dens == 0.0 or walkable(
+                _boxes(trial_v, trial_t, trial_g,
+                       lambda n: not n.endswith(
+                           ("_deck", "_soffit", "_wall", "_rib")
+                           + _TRIM_SUFFIXES)), bw, bl):
+            v, t, g = trial_v, trial_t, trial_g
+            break
+
 
     return v, t, g
 

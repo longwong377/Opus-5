@@ -1570,7 +1570,7 @@ def _build():
         albedo=(0.052, 0.054, 0.062), roughness=0.12, metallic=0,
         specular=0.65,
         emission=(0.930, 1.000, 0.915), emission_energy=0.8,
-        binds=("prop_babcom_terminal", "prop_monitor_wall", "prop_tactical_display", "customs_screen", "bar_display"), scenes=("interior",),
+        binds=("prop_babcom_terminal", "prop_monitor_wall", "prop_tactical_display", "customs_screen", "bar_display", "dress_screen"), scenes=("interior",),
         source="11-props-and-technology/babylon 5 welcome sign, instructions, and hub.jpg (authority 1), grey-world gains 1.046/1.065/0.905. Unlit screen field (0.32,0.19)-(0.56,0.235) balanced rgb(0.053, 0.054, 0.082); whole-panel dominant clusters 49.3% at V 0.037 (centre screen) and 45.9% at V 0.051 (right screen); bezel V 0.092. Content registers in the same frame: green wireframe H 121-141, blue title bar rgb(0.145,0.154,0.627) H 239 S 0.768, yellow caps H 60-75. Fourth panel from 03-sector-blue/war room.webp, the backlit galactic map, lit content luminance-weighted mean normalised (0.858, 0.918, 1.000).",
         extrapolated="The blue channel trimmed from the measured 0.082 to 0.062, and emission_energy 0.8 by flux-matching. The single emission colour is a real average across four measured panels rather than a colour any one screen has."))
 
@@ -1709,6 +1709,8 @@ def _build():
         albedo=(0.545, 0.540, 0.528), roughness=0.42, metallic=0.95,
         specular=0.5,
         binds=("prop_valve", "customs_conduit", "bar_conduit", "qtr_conduit",
+               "dress_metal", "dress_conduit", "dress_band",
+               "dress_wallbox",
                "alien_conduit", "plant_conduit", "plant_tray",
                "plant_tie_secondary",
                # Session 3s articulation (INV-073). High-level conduit
@@ -1785,6 +1787,11 @@ def _build():
                "bar_dado", "bar_rail", "bar_cornice", "bar_panel",
                "bar_skirt", "qtr_dado", "qtr_rail", "qtr_cornice",
                "qtr_panel", "qtr_skirt", "customs_skirt",
+               # Session 3u dressing (INV-074): case bodies, cabinet doors
+               # and work tops are the same painted board this entry was
+               # measured for. No new colour is introduced.
+               "dress_crate", "dress_crate_lid", "dress_door",
+               "dress_top", "dress_clutter", "dress_soft",
                "alien_dado", "alien_rail", "alien_cornice", "alien_panel",
                "alien_skirt", "alien_deck_joint",
                "bay_dado", "bay_rail", "bay_cornice", "bay_panel",
