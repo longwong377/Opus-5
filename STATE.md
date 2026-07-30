@@ -1017,20 +1017,34 @@ That last assertion replaced a genuinely vacuous one. The old cap test put ribs 
 
 Drum visible set is now 51,128 / 300,000 (17%). `interior.py` self-test: **128 assertions**.
 
+### The layer-4 count is coupled to `tools/export_scene.py` — read this before believing a number
+
+`directory.py`'s layer-4 figure is not computed from `directory.py` alone. `_lit_keys()` imports
+`export_scene`, reads `EXTERIOR_CALIBRATION`, `DRUM_FRAME_CONTRIBUTION` and `drum_parts()`, and
+reads `godot/scenes/exterior.tscn` back off disk. **Its number is only meaningful against a
+committed copy of those files.** A session that runs `directory.py` while anything is mid-edit gets
+a number that describes a tree nobody will ever commit — which happened in 3q, where a concurrent
+agent read 745/747 against a half-rewritten `export_scene.py` and correctly declined to treat it as
+a regression.
+
+This coupling is deliberate and worth keeping: it is what makes the count falsifiable rather than a
+field somebody types. But it means **the number is a property of the tree, not of the register**.
+
 ### Still open from the verification — next increment
 
-1. **BLOCKING: tram cars pass through the radial spokes.** Confirmed independently by both
-   verifiers — one by point-in-box over 3,144 car vertices (168 inside, 6.43 m deep), one by
-   rendering it. The guideways are *deliberately* in the spoke planes (INV-012: the spokes are what
-   hold a 2.6 km truss up), so this is structural, not a placement accident — and sweeping `phase`
-   walks every car through its spoke whatever the static offset. Needs an aperture in the spoke
-   where the guideway crosses, plus a spoke-clearance assertion in `tram.py`.
+1. ~~**BLOCKING: tram cars pass through the radial spokes.**~~ **CLOSED in 2y** by
+   `interior.spoke()`'s framed portal, and re-verified in 3q by an independent surface test:
+   0.500 m at the portal header, 0.350 m at the truss bottom chord, with 0 of 200 spoke vertices
+   and 0 of 2,632 truss vertices outside the obstacle models used to measure it. **The guard was
+   the problem, not the geometry** — see below.
 2. **`drum_ground`'s periodicity assertion is vacuous.** It compares `sample(0.0, w)` against
    `sample(1.0, w)`, but every consumer applies `u % 1.0` first, so it is a value compared against
    itself. Proved by monkeypatching in a real 3.295 m seam cliff — the test still reported 0.000
    and passed.
-3. **`tram`'s "measured proportion" assertions are algebraic identities** that never touch the
-   built geometry. They hold for `CAR_BAYS = -3.0`, `CAR_DEPTH_FRAC = 99.0`.
+3. ~~**`tram`'s "measured proportion" assertions are algebraic identities**~~ **CLOSED in 3e**,
+   and nine MORE vacuous assertions were found in `tram` and `drum_ground` in 3q and replaced,
+   each demonstrated failing. Assume more exist: every one so far was found by someone
+   deliberately breaking the thing an assertion guarded, never by reading it.
 4. **Car length disputed between two authority-1 frames.** `34b`'s rectification gives 3.9 bays
    (96 m); `33a` shows a whole car with ~5 window bays and a length:height near 1.8:1 against the
    model's 21 bays and ~9:1, i.e. **3–4× shorter**. This needs recording as a conflict, not
