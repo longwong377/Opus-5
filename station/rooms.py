@@ -740,6 +740,41 @@ def articulate(v, t, g, prefix, hw, hl, ceil, nrib=None, ln=None,
     return v, t, g
 
 
+def spawn_m(schema, profile, place):
+    """A point in this room where a person can actually stand, in room-local m.
+
+    THE WALKABLE BUILD NEEDS THIS AND GUESSING DOES NOT WORK. The first walk
+    test spawned a body at the room's origin, which in a room with a `spine`
+    fixture is INSIDE the machinery: the body walked 0.63 m and stopped against
+    a workbench. The room already knows where its free channel is -- that is
+    what `lateral_stack` computes so that scenery and props do not occupy the
+    same cubic metre -- so the answer is read from the room rather than assumed
+    about it.
+
+    Returned in the same local frame `build()` emits: x across, y up from the
+    deck, z along. y is a small clearance above the deck so the body settles
+    onto the floor rather than starting embedded in it.
+    """
+    w_full, l_full, _r = room_extent_m(schema, profile, place)
+    bw, bl = bay_span_m(place)
+    w, ln = min(w_full, bw), min(l_full, bl)
+    hw, hl = w / 2.0, ln / 2.0
+    _need, i0, i1 = lateral_stack(place)
+    fx = fixtures_for(place)
+    # A spine fixture sits ON the centreline, so the free lane is beside it.
+    spine_d = max([f[2] for f in fx if f[4] == "spine"], default=0.0)
+    lo, hi = -hw + i0, hw - i1
+    if spine_d > 0.0:
+        # Take the wider of the two lanes either side of the spine.
+        left = (lo, -spine_d / 2.0)
+        right = (spine_d / 2.0, hi)
+        lo, hi = left if (left[1] - left[0]) > (right[1] - right[0]) else right
+    x = (lo + hi) / 2.0
+    # Keep clear of the end walls, and of the first fixture bay along z.
+    z = max(-hl + 1.2, min(hl - 1.2, -hl + FIXTURE_PITCH_M * 0.5))
+    return (x, 0.35, z)
+
+
 def build(schema, profile, place, max_span_m=None):
     """Geometry for one representative bay of a location.
 

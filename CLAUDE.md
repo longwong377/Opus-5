@@ -39,7 +39,67 @@ into four scored dimensions with written descriptors — **craft, fidelity, perf
 robustness** — and defines the bar. Nothing is "done" because it was built; it is done when it
 clears the bar and stops regressing.
 
-## The plan — LAYERS, COMPLETED IN ORDER
+## THE PLAN — A PLAYABLE BUILD AT ALL TIMES
+
+**Set by the owner, session 3u, and it REPLACES the layer plan below as the ordering rule.**
+
+The owner's words: *"how is it possible that we've come this far and we still do not have a walkable
+ship? that's the entire fucking point."* They are right, and the cause was structural rather than
+careless, so the fix has to be structural too.
+
+### Why the layer plan produced nothing playable, mechanically
+
+The layer rule was "one layer at a time across all 118 locations, finished before the next begins".
+That is **eight horizontal slices**. A horizontal slice cannot be walked in. Under that rule the
+first moment a player could stand up is *after the last layer of the last location* — so at every
+point before the very end, and by construction, there is no build. Four layers came back COMPLETE
+and the result was an empty shell nobody could enter.
+
+It was adopted for a good reason — session 3k's "layers but complete, rather than small slices which
+do not add up together" — and applied too literally. The cure for slices that do not add up is
+**slices that DO add up**, not the abolition of slices.
+
+### Why no gate caught it
+
+Every gate in this repository measures **a part in isolation**: `density.py` scores one module's line
+density, `measure_frame.py` scores one image, `directory.py` counts locations per layer,
+`budget.py` counts triangles. **Not one of them asks whether a player can walk from A to B.** 118
+locations could each pass all eight layers and still be 118 disconnected boxes with no floor
+collision — which is exactly what they were. As of session 3u the string `CollisionShape` appeared
+**nowhere in the project**. There was no floor to stand on, and no assertion could fail for its
+absence.
+
+### The rule that replaces the layer rule
+
+1. **THE BUILD IS ALWAYS WALKABLE.** Every session ends with a build a player can launch and walk
+   in. If a change would break that, it is not landed until it does not.
+2. **Integration is a gate, not a phase.** `station/walkable.py` asserts the player can spawn, stand,
+   walk, and reach the neighbouring location. It runs in CI. It must be able to fail — and when it
+   was written it *did* fail, on everything.
+3. **Depth before breadth, in the places the player actually goes.** One corridor furnished to
+   Starfield density beats 118 articulated empty rooms. Breadth is what generators are for and it
+   comes after the loop closes.
+4. **A layer number is not progress.** Progress is what a player can do. "Layers 1-4 complete"
+   described an empty shell and read like half a game. Report what works, not what scores.
+5. **Props and inhabitants are not polish.** They are most of the remaining product. Measured in 3u:
+   across the 68 procedural rooms the split is **95.9% architecture, 1.7% fixtures, 2.5% props** --
+   311 prop instances in the whole station, about 4.5 per room, and zero NPCs anywhere.
+
+### The order of work, and it is vertical
+
+| # | Milestone | Done when |
+|---|---|---|
+| **W1** | **Stand up** | Collision on the station mesh, a character controller, per-deck gravity. A player spawns in the corridor kit and walks. Asserted headlessly |
+| **W2** | **Go somewhere** | Two named locations joined by real walkable geometry; the player walks between them without leaving the floor |
+| **W3** | **A furnished room** | ONE location at true prop density -- the reference is the owner's Starfield frames, not our own past work -- with a stated props/m2 |
+| **W4** | **A populated room** | NPCs standing, sitting and walking in it. `station/npc/` already has twelve tested modules with zero importers; wire them |
+| **W5** | **The loop** | Spawn -> walk -> use something -> an NPC reacts. The smallest complete experience |
+| **W6+** | **Breadth** | Roll W3-W5 outward by generator across the 118, in the order a player meets them |
+
+The layer material below is still the right description of the PLACES track and its lessons are
+real. It is no longer the ordering rule.
+
+## The layer plan — still the right description of the shell, no longer the order
 
 > **`docs/MASTER-PLAN.md` is the full plan** — three tracks (places, systems, player), twelve
 > milestones, every system enumerated with its status, and an audit that found this section

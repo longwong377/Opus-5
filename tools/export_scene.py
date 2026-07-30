@@ -1103,12 +1103,25 @@ def build_drum(args, out_dir):
     runs = light_runs(schema, profile, sector, per_run=args.lights_per_run)
     lights = []
     per_light = light_energy(args.lights_per_run)
+    att = (args.light_attenuation if args.light_attenuation is not None
+           else LAMP_ATTENUATION)
     for run in runs:
         for p in run:
-            lights.append({"pos": list(p), "energy": per_light,
-                           "colour": list(LAMP_COLOUR),
-                           "range": args.light_range,
-                           "attenuation": LAMP_ATTENUATION})
+            lt = {"pos": list(p), "energy": per_light,
+                  "colour": list(LAMP_COLOUR),
+                  "range": args.light_range,
+                  "attenuation": att}
+            if args.light_kind == "spot":
+                # A GUIDEWAY FITTING THROWS LIGHT AT THE FLOOR BENEATH IT, and
+                # inside a spun drum "beneath" is radially OUTWARD: the lamps
+                # sit at r 236.6 m and the floor is at r 278.3 m, so down is
+                # away from the spin axis. Aiming these at the axis would light
+                # the core tube and nothing else. See LIGHT_DIRECTIONALITY.
+                r = math.hypot(p[0], p[1]) or 1.0
+                lt["kind"] = "spot"
+                lt["aim"] = [p[0] / r, p[1] / r, 0.0]
+                lt["angle"] = args.light_cone
+            lights.append(lt)
     # Shadow casting is rationed, not free: an omni shadow is a cube map, so
     # each one re-renders the scene six times, and this renderer is a CPU. The
     # nearest few carry the shadows because they are the ones whose occluders
@@ -4042,6 +4055,21 @@ def main():
                          "committed frame to verify against at all")
     ap.add_argument("--lights-per-run", type=int, default=10)
     ap.add_argument("--light-range", type=float, default=1100.0)
+    # THE DIRECTIONALITY KNOBS, and they exist so that LIGHT_DIRECTIONALITY's
+    # table can be reproduced by running something rather than by hand-editing
+    # `build_drum` -- the same reason `--omit` exists. Defaults are None/omni,
+    # so nothing changes unless a measurement asks for it.
+    ap.add_argument("--light-attenuation", type=float, default=None,
+                    metavar="EXP",
+                    help="drum: override LAMP_ATTENUATION. Godot's omni "
+                         "falloff is pow(1 - d/range, EXP), so a larger "
+                         "exponent concentrates the light near the fitting")
+    ap.add_argument("--light-kind", choices=("omni", "spot"), default="omni",
+                    help="drum: emit the guideway light runs as spots aimed "
+                         "radially outward at the floor beneath them, instead "
+                         "of as point sources")
+    ap.add_argument("--light-cone", type=float, default=60.0, metavar="DEG",
+                    help="drum: spot half-angle when --light-kind spot")
     ap.add_argument("--shadow-lights", type=int, default=2)
     ap.add_argument("--trams", type=int, default=2)
     ap.add_argument("--omit", default="", metavar="PART[,PART...]",
