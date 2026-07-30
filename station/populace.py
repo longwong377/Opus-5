@@ -47,6 +47,11 @@ SEAT_BAND = (0.38, 0.66)
 DESK_BAND = (0.68, 1.15)
 # A body needs this much clear floor in front of a desk to stand at it.
 STAND_OFF_M = 0.55
+# Half the shoulder width of a standing body, from npc/body.py's own build.
+BODY_R_M = 0.32
+# The group `dressing._chair` gives a seat pan. Seating is a kind of object,
+# not a height band.
+SEAT_GROUP = "dress_soft"
 # LOD1 from `schedule.NPC_BUDGET`: 2,000 triangles, good from 6 to 18 m, which
 # is the range a room is seen at. LOD0 is 8,000 and is for a face in dialogue.
 ROOM_LOD = 1
@@ -79,16 +84,38 @@ def occupancy(place_key, area_m2, hour, arch="generic"):
     if pc is not None:
         peak = pc.peak_per_100m2 * area_m2 / 100.0
         f = _hour_factor(pc, hour)
-        return max(MIN_PRESENT, int(round(peak * f)))
-    rate = FALLBACK_PER_100M2.get(arch, 0.6)
+        return max(STAFFED_MINIMUM.get(arch, MIN_PRESENT),
+                   int(round(peak * f)))
+    rate = FALLBACK_PER_100M2.get(arch, 4.0)
     day = 0.25 + 0.75 * max(0.0, math.sin(math.pi * (hour - 6.0) / 14.0))
-    return max(MIN_PRESENT, int(round(rate * area_m2 / 100.0 * day)))
+    floor = STAFFED_MINIMUM.get(arch, MIN_PRESENT)
+    return max(floor, int(round(rate * area_m2 / 100.0 * day)))
 
 
+# Peak occupancy per 100 m2 for places with no `PlaceCrowd` entry of their own.
+# ANCHORED TO THE ONE MEASURED VALUE THIS PROJECT HAS: `schedule.PLACES` puts
+# the Zocalo at 20.0 per 100 m2 at peak, which is the busiest public space on
+# the station. Everything here is a fraction of that and says which:
+#   a working office at 8.0 is 40% of a market -- a desk each and room to pass
+#   a bar at 14.0 is 70%, which is what a full room feels like
+#   a plant space at 3.0 is a shift of two or three in a big hall
+# The first version of this table was a quarter of these values and produced 60
+# people across 68 rooms with 25 of them EMPTY. A station of 250,000 with empty
+# rooms at one in the afternoon is not quiet, it is abandoned, and that reads as
+# a bug rather than as a mood.
 FALLBACK_PER_100M2 = {
-    "commerce": 6.0, "hospitality": 8.0, "transit": 5.0, "office": 2.5,
-    "medical": 2.0, "research": 1.5, "industrial": 1.0, "store": 0.5,
-    "detention": 0.8, "worship": 1.5, "generic": 1.2,
+    "commerce": 15.0, "hospitality": 14.0, "transit": 12.0, "office": 8.0,
+    "medical": 6.0, "research": 5.0, "industrial": 3.0, "store": 2.0,
+    "detention": 3.0, "worship": 4.0, "generic": 4.0,
+}
+
+# Archetypes that are never unattended, and the minimum on duty. A medical bay,
+# a cell block, a transit hub and a plant space all have somebody in them at
+# 0400 -- that is what a staffed facility means -- while a store room and a
+# chapel legitimately empty out. Without this the night station reads as
+# evacuated instead of asleep.
+STAFFED_MINIMUM = {
+    "medical": 1, "detention": 1, "transit": 1, "industrial": 1, "office": 1,
 }
 
 
@@ -125,7 +152,7 @@ def species_for(place_key, i, seed):
     return dom[int(_u(seed, "dom", i) * len(dom)) % len(dom)]
 
 
-def _faces_in_band(v, t, g, lo_h, hi_h, min_area=0.12):
+def _faces_in_band(v, t, g, lo_h, hi_h, min_area=0.12, only=None):
     """Upward faces whose height is in a band -- seats, or desks.
 
     Read off the geometry rather than tracked beside it, for the reason
@@ -134,6 +161,8 @@ def _faces_in_band(v, t, g, lo_h, hi_h, min_area=0.12):
     """
     out = []
     for _name, lo, hi in g:
+        if only is not None and not _name.startswith(only):
+            continue
         for tri in t[lo:hi]:
             p = [v[i] for i in tri]
             y = p[0][1]
@@ -179,7 +208,14 @@ def populate(place_key, room_v, room_t, room_g, w_m, l_m, hour=13.0,
         n = min(n, max_people)
     hw, hl = w_m / 2.0, l_m / 2.0
 
-    seats = _faces_in_band(room_v, room_t, room_g, *SEAT_BAND)
+    # SEATS ARE SEATING, not any face at seat height. A shelf tier sits at
+    # 0.5 m and a crate lid at 0.6, and neither is something you sit on -- the
+    # first version put a body on a crate lid and its own "no NPC inside a
+    # solid fitting" check caught the pelvis inside the crate. `dress_soft` is
+    # what `dressing._chair` emits for a seat pan and a back, so it is the
+    # geometry's own word for "you can sit here".
+    seats = _faces_in_band(room_v, room_t, room_g, *SEAT_BAND,
+                           only=SEAT_GROUP)
     desks = _faces_in_band(room_v, room_t, room_g, *DESK_BAND)
     seats.sort(key=lambda s: (-s[3], s[0], s[2]))
     desks.sort(key=lambda s: (-s[3], s[0], s[2]))
@@ -190,6 +226,18 @@ def populate(place_key, room_v, room_t, room_g, w_m, l_m, hour=13.0,
 
     def _clear(x, z, r=0.45):
         return all((x - ux) ** 2 + (z - uz) ** 2 > r * r for ux, uz in used)
+
+    def _inside(x, z):
+        """A whole body fits within the room, not just its centre point.
+
+        The seat and desk placements skipped this and put a shoulder through
+        the end wall of three cargo rooms -- a bench hard against the wall is a
+        perfectly good bench, and the person sitting on it still has a body.
+        rooms.py's footprint assertion caught it; the wander placement already
+        allowed for width and these two did not.
+        """
+        return (abs(x) + BODY_R_M <= hw + 1e-9
+                and abs(z) + BODY_R_M <= hl + 1e-9)
 
     for i in range(n):
         sp = species_for(place_key, i, seed)
@@ -203,7 +251,7 @@ def populate(place_key, room_v, room_t, room_g, w_m, l_m, hour=13.0,
 
         if i < len(seats):
             sx, sy, sz, _a = seats[i]
-            if not _clear(sx, sz):
+            if not _clear(sx, sz) or not _inside(sx, sz):
                 continue
             # Seated: the body's origin drops to the seat pan, and it faces the
             # room rather than the wall it is against.
@@ -219,7 +267,7 @@ def populate(place_key, room_v, room_t, room_g, w_m, l_m, hour=13.0,
             # Stand OFF the desk, on the side facing the room centre.
             ux = dx - STAND_OFF_M * (1.0 if dx > 0 else -1.0)
             uz = dz
-            if not _clear(ux, uz):
+            if not _clear(ux, uz) or not _inside(ux, uz):
                 continue
             _place_body(v, t, g, mesh, ux, 0.0, uz,
                         math.atan2(dx - ux, dz - uz), "npc_standing")
@@ -228,9 +276,15 @@ def populate(place_key, room_v, room_t, room_g, w_m, l_m, hour=13.0,
             continue
 
         # Everyone else is in the room, in the circulation lane, spaced out.
+        # BODY_R_M off every wall. The first version inset by 0.6 m from a
+        # half-span it had been handed as the OUTER extent, so a shoulder poked
+        # through the wall and rooms.py's footprint assertion caught it on three
+        # locations. A person has width; a placement point is not a person.
         for _try in range(8):
-            px = (_u(seed, "px", i, _try) - 0.5) * (2 * hw - 1.2)
-            pz = (_u(seed, "pz", i, _try) - 0.5) * (2 * hl - 1.2)
+            px = (_u(seed, "px", i, _try) - 0.5) * max(
+                0.0, 2 * hw - 2 * BODY_R_M - 0.3)
+            pz = (_u(seed, "pz", i, _try) - 0.5) * max(
+                0.0, 2 * hl - 2 * BODY_R_M - 0.3)
             if _clear(px, pz, 0.7):
                 _place_body(v, t, g, mesh, px, 0.0, pz,
                             _u(seed, "yaw", i) * math.tau, "npc_standing")

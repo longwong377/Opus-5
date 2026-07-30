@@ -1103,8 +1103,8 @@ def build(schema, profile, place, max_span_m=None):
     # with one number.
     import populace as _pop                                     # noqa: PLC0415
     pv, pt, pg, _ps = _pop.populate(
-        place["key"], v, t, g, w, ln, hour=STATION_HOUR, arch=arch,
-        seed=place["key"])
+        place["key"], v, t, g, w - 2 * WALL_T_M, ln - 2 * WALL_T_M,
+        hour=STATION_HOUR, arch=arch, seed=place["key"])
     if pt:
         off, t0 = len(v), len(t)
         v.extend(pv)
