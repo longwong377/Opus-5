@@ -512,10 +512,32 @@ def _selftest():
     lo, hi = arcs[0]
     area = 2 * math.pi * r_floor * (hi - lo) / 360.0 * 260.0
     dens = len(T) / area
+    # THE 0.06 tri/m2 CHECK THAT USED TO BE HERE WAS A CEILING ON DETAIL, and
+    # it was the most harmful line in this repository. In session 3r the owner
+    # looked at a render of this module and called the buildings "shitty little
+    # cubes" and the trees a "sad excuse for a tree". Both are literally accurate
+    # -- `tree()` is 30 triangles and renders as a hexagonal prism, and
+    # `block_building()` is 48 -- and THIS ASSERTION WOULD HAVE FAILED ANY
+    # ATTEMPT TO FIX THEM. A test suite actively defending the defect, green the
+    # whole time.
+    #
+    # It was not written in bad faith: 0.06 tri/m2 is what the drum budget leaves
+    # if the townscape is treated as a minor tenant of 4.5 million m2 of ground.
+    # The error is that a budget SHARE was written down as a quality LIMIT, and
+    # nothing recorded which of the two it was.
+    #
+    # What replaces it: the surface gate stays, because overrunning the drum's
+    # allotment is a real failure. The floor now lives in `station/density.py`
+    # (INV-070), which measures visible line density against a bound derived from
+    # the budget, a Nyquist limit and the show's own frames. This module measures
+    # 0.343 against a floor of 2.107 -- 16.3% of the bar and 0.8% of what a B5
+    # set shows -- and `station/directory.py` reports it as NOT at layer 2.
     check("the townscape is inside the drum's 0.5 tri/m2 surface gate",
           dens < 0.5, f"{dens:.4f} tri/m2 over {area:,.0f} m2")
-    check("and inside the 0.06 tri/m2 the drum budget actually leaves",
-          dens < 0.06, f"{dens:.4f} tri/m2")
+    # No assertion stands in for the paragraph above. `"0.06" not in <a string
+    # that never contains it>` was my first attempt and it was a third vacuous
+    # check in one session -- a comment wearing an assertion's clothes. The real
+    # gate is `station/density.py`, it fails on this module today, and CI runs it.
 
     # --- determinism ------------------------------------------------------
     a1 = townscape(schema, profile, sector)[0]

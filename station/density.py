@@ -32,12 +32,12 @@ actually looks like -- a detailed surface is one with a lot of line-work on it
 -- and it has three properties that matter:
 
   * **Subdivision cannot move it.** A coplanar split has a dihedral of zero, so
-    it contributes no line. `_probe_subdivided` in the self-test builds exactly
+    it contributes no line. `_subdivided_box` in the self-test builds exactly
     that cheat and asserts the number does not budge.
   * **Tessellating a curve cannot move it far enough to matter.** A lathe at
     turn angle tau has one line per R*tau of surface, so its best possible
     lambda is 1/(R*tau_min) -- a hard ceiling well under the floor at every
-    scale this station is built at. `_probe_cylinder` demonstrates it.
+    scale this station is built at. `_cylinder` demonstrates it.
   * **Sub-pixel greeble cannot move it.** A line only counts if both surfaces
     that meet at it are at least one screen pixel across at the distance the
     location is composed from. Detail finer than that is the normal map's job,
@@ -55,14 +55,17 @@ three of the four dimensions in `docs/AAA-STANDARD.md`:
 
   1. **PERFORMANCE -- what the card can draw.** `budget.py` allots a triangle
      count to each scene's visible set. Spend it as relief and the achievable
-     line density follows exactly: a displaced grid of pitch e over area S
-     costs about 10 triangles per cell (a raised face plus four returns, two
-     triangles each) and lays down 2e of line per cell, so
+     line density follows exactly: a grid of raised panels at pitch e over area
+     S costs 12 triangles per cell -- a closed box, which is what
+     `_relief_box` in the self-test actually builds -- and lays down 2e of line
+     per cell, so
 
-         n = 10 S / e^2 ,   lambda = 2 / e   =>   lambda_budget = 0.632 sqrt(n/S)
+         n = 12 S / e^2 ,   lambda = 2 / e   =>   lambda_budget = 0.577 sqrt(n/S)
 
      Nothing here is chosen; `n` comes straight out of `budget.py` and `S` is
-     measured off the mesh.
+     measured. `lam_budget` and `budget_pitch` are two rearrangements of the
+     same equation and the self-test asserts they agree -- the first draft had
+     10 in one and 12 in the other, a 9% discrepancy nothing would have caught.
 
   2. **PERCEPTION -- what the screen can show.** At 1440p (CLAUDE.md's target)
      and the project's own camera FOV (read out of `godot/scenes/*.tscn`, not
@@ -121,6 +124,25 @@ WHAT THIS MEASURE IS NOT HONEST ABOUT
   * It says nothing about whether the lines are in the right places. A surface
     can hit lambda and still be ugly. This is a floor under blockout, not a
     definition of good.
+  * **The exterior's scope stops at the fittings.** `_m_components` builds the
+    96 hull fittings, 6,296,778 m2 of surface, and not the hull they sit on.
+    Integrating the radius profile puts the hull's own lateral surface at
+    14,967,709 m2, so the full exterior assembly is 21,264,487 m2 and the
+    exterior floor computed on the fittings alone -- 0.146 m^-1 -- is 1.8x
+    harsher than the 0.079 m^-1 the whole assembly would give. The fittings
+    measure 0.052 m^-1, so they fail on either scope (36% or 66% of bar) and no
+    verdict turns on it. Widening the scope needs `generate_hull` to hand over a
+    mesh, which it does not currently do in memory.
+  * **The interior floor bottoms out.** Clipping to the 99 m sight line caps the
+    visible surface at about 20,900 m2, so every location bigger than that in
+    both axes gets the same floor, ~0.98 m^-1 -- a line every metre. Eleven of
+    the sixteen locations that currently pass are district-scale rooms scraping
+    over that cap by 3% to 21%, and they are the same blockout as the sixty that
+    fail. The floor is right (60,000 triangles genuinely cannot articulate
+    20,900 m2 more finely than that) and it is also weakest exactly where the
+    location is largest. Read the `%show` column for those rows: all eleven sit
+    at 5% of what a Babylon 5 set carries. The fix is streaming and LOD raising
+    `budget.py`'s interior allotment, not a change here.
 """
 import json
 import math
@@ -512,11 +534,19 @@ def pixel_m(size_m, scene):
     return d * (fov / SCREEN_H_PX), d
 
 
+TRI_PER_CELL = 12.0        # a raised panel is a closed box: 6 quads, 12 tris
+
+
 def lam_budget(tri_allot, area_m2):
-    """Bound 1. Line density a displaced grid of this triangle count lays down."""
+    """Bound 1. Line density a grid of raised panels at this cost lays down.
+
+    Strictly `2 / budget_pitch(tri_allot, area_m2)`, and written that way so the
+    two cannot drift. They did drift once: 10 triangles per cell here against 12
+    there, which put every floor 9% high.
+    """
     if area_m2 <= 0:
         return 0.0
-    return 2.0 * math.sqrt(tri_allot / (10.0 * area_m2))
+    return 2.0 / budget_pitch(tri_allot, area_m2)
 
 
 def lam_nyquist(p_m):
@@ -1007,7 +1037,7 @@ def budget_pitch(tri_allot, area_m2):
     """
     if tri_allot <= 0 or area_m2 <= 0:
         return float("inf")
-    return math.sqrt(12.0 * area_m2 / tri_allot)
+    return math.sqrt(TRI_PER_CELL * area_m2 / tri_allot)
 
 
 # ---------------------------------------------------------------------------
@@ -1101,17 +1131,17 @@ def _selftest(verbose=True):
         for w in (1e-6, 1e-5, 1e-4, 1e-3, 1e-2):
             globals()["WELD_M"] = w
             lams.append(analyse(bv, bt)["lam"])
-        globals()["WELD_M"] = 0.5
+        globals()["WELD_M"] = 6.0
         collapsed = analyse(bv, bt)["lam"]
     finally:
         globals()["WELD_M"] = saved_weld
     check("the weld tolerance is insensitive across four orders of magnitude",
           max(lams) - min(lams) < 1e-12,
           f"{min(lams):.6f}..{max(lams):.6f} /m over 1 um to 1 cm")
-    probe("and it does bite once it approaches the size of a feature",
+    probe("and it does bite once it exceeds the size of a feature",
           abs(collapsed - plain["lam"]) > 1e-6,
-          f"at 0.5 m the 3 m box reads {collapsed:.4f} instead of "
-          f"{plain['lam']:.4f} /m")
+          f"at 6 m -- past the 3 m box's own thickness -- it reads "
+          f"{collapsed:.4f} instead of {plain['lam']:.4f} /m")
 
     # --- 3. TESSELLATING A CURVE CANNOT REACH THE FLOOR -------------------
     # A lathe of radius r at turn angle tau lays down one line per r*tau of
@@ -1180,6 +1210,14 @@ def _selftest(verbose=True):
           f"{subd['lam']:.3f} /m, {subd['tris']:,} tri")
 
     # --- 6. THE BOUNDS ARE FUNCTIONS, NOT CONSTANTS -----------------------
+    check("the budget bound and the pitch it implies are one equation",
+          abs(lam_budget(60_000, 320.0)
+              - 2.0 / budget_pitch(60_000, 320.0)) < 1e-12
+          and abs(lam_budget(60_000, 320.0)
+                  - 2.0 * math.sqrt(60_000 / (TRI_PER_CELL * 320.0))) < 1e-12,
+          f"{lam_budget(60_000, 320.0):.6f} /m at pitch "
+          f"{budget_pitch(60_000, 320.0) * 100:.2f} cm, "
+          f"{TRI_PER_CELL:.0f} triangles a cell")
     check("the budget bound falls as a location gets bigger",
           lam_budget(60_000, 1000.0) < lam_budget(60_000, 100.0))
     check("the budget bound rises with the allotment",

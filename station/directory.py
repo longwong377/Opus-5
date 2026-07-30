@@ -1081,9 +1081,50 @@ def geometry_of(place):
     return GENERATOR if place["key"] in _generated_keys() else None
 
 
+def _articulated_keys():
+    """Layer 2b: places that clear their DERIVED detail floor.
+
+    THE OLD PREDICATE WAS `bool(geometry_of(place))` -- does a mesh exist -- and
+    that is why 118 locations of blockout passed layer 2 while the owner, looking
+    at a render, called the buildings "shitty little cubes" and every gate in the
+    repository was green. A cube has a mesh. It is closed, correctly wound and
+    inside its footprint, so it satisfied every word of the criterion, and layers
+    3 and 4 then put materials and lighting on blockout.
+
+    `station/density.py` supplies the missing half: visible line density against
+    a floor derived three ways -- the triangle budget, a Nyquist limit at the
+    distance the place is actually composed from, and edge density measured off
+    scale-anchored B5 frames -- smallest bound wins. A subdivided box cannot
+    defeat it: split a box 8x8 per face and it has 64x the triangles and an
+    IDENTICAL lambda to six decimal places, because a coplanar split draws no
+    line.
+
+    ERRORS ARE NOT CAUGHT HERE, and that is deliberate. The first version of
+    this wrapped `density.score` in a bare `except` returning False, called it
+    with the wrong signature, and reported a confident **0/118** -- a number that
+    looked entirely plausible and was fabricated by the exception handler. A
+    silent except that invents a count is the same defect as an assertion that
+    cannot fail. If the metric breaks, this must break loudly.
+    """
+    if _articulated_keys.cache is None:
+        import density                                          # noqa: PLC0415
+        s, p = it.load()
+        out = set()
+        for q in PLACES:
+            if not geometry_of(q):
+                continue
+            if density.score(s, p, q)["passes"]:
+                out.add(q["key"])
+        _articulated_keys.cache = frozenset(out)
+    return _articulated_keys.cache
+
+
+_articulated_keys.cache = None
+
+
 LAYERS = (
     (1, "addressed", lambda p: True),
-    (2, "geometry", lambda p: bool(geometry_of(p))),
+    (2, "geometry", lambda p: p["key"] in _articulated_keys()),
     (3, "materials", materials_of),
     (4, "lighting", lighting_of),
     (5, "props", lambda p: bool(p.get("props_built"))),

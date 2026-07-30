@@ -78,9 +78,9 @@ grown to make a number go green.
 | **0** | **Engine path** | A materialled, lit frame comes out of Godot + lavapipe and can be scored against `docs/AAA-STANDARD.md`. Infrastructure, not per-location | **DONE** |
 | **1** | **Addressed** | All have `(sector, ring, deck, angle, z)`, footprints that do not collide, declared functions and interactions | **118 / 118 COMPLETE** |
 | **2a** | **Geometry — topology** | Every addressed location has mesh, closed, correctly wound, inside its own footprint | **118 / 118 COMPLETE** |
-| **2b** | **Geometry — articulation** | Every location survives the rubric's *half* distance: primary form, secondary structure, tertiary fittings, and the thing it is named for actually in it | **0 / 118 — see below** |
-| **3** | **Materials** | Every mesh carries PBR materials from `materials.py`. No flat colour anywhere | **118 / 118 COMPLETE** |
-| **4a** | **Lighting — level** | Every location has a rig and a measured exposure, median-matched to its reference | **118 / 118 COMPLETE** |
+| **2b** | **Geometry — articulation** | Visible line density at or above its floor, derived from budget / Nyquist / the show's own frames — `station/density.py`, INV-070. **This is the layer the register now reports** | **16 / 118 — CURRENT** |
+| **3** | **Materials** | Every mesh carries PBR materials from `materials.py`. No flat colour anywhere | **16 / 118** — materials are done on all 118, but a place cannot be at layer 3 while it fails 2b |
+| **4a** | **Lighting — level** | Every location has a rig and a measured exposure, median-matched to its reference | **16 / 118** — done on all 118, gated behind 2b for the same reason |
 | **4b** | **Lighting — mood** | Every location matches its reference's *distribution*, not just its median — p5, p95, crushed, clipped | **1 / 17 measurable — see below** |
 | **5** | **Props & function** | The declared interactable types exist and do what `directory.py` says they do | 0 |
 | **6** | **Inhabitants** | NPCs placed, scheduled and animated in every location, at real density | 0 |

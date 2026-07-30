@@ -153,6 +153,12 @@ jobs:
       # clamps -- including the closure checks that caught `dome_mesh` shipping
       # 56 boundary edges per dome, invisible because the hole faces into the
       # hull.
+      # The metric that makes blockout unable to pass layer 2. --selftest only:
+      # the bare `density.py` report exits 1 BY DESIGN until the content is
+      # rebuilt, and a gate that is red on purpose must not block the branch.
+      - name: Geometric detail metric
+        run: python3 station/density.py --selftest
+
       - name: Exterior components
         run: python3 station/components.py
 
