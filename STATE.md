@@ -1,6 +1,114 @@
 # Project State
 
-**Last updated:** 2026-07-30 · **Session 3t** — shadow coverage measured; the first frame to pass the distribution test · **3s** — layers 1-4 all 118/118 · **Session 3r** — **layer 2 is 16/118.** The owner saw the renders and the metrics now agree with the owner
+**Last updated:** 2026-07-30 · **Session 3v** — **a player walks 126 m of the station.** W1 done, W2 half · **3u** — the plan is vertical now; walkability is a gate · **3t** — shadow coverage measured · **3s** — layers 1-4 all 118/118 · **3r** — layer 2 is 16/118
+
+## Session 3v — the body walks, and what stopped it was millimetres
+
+**W1 IS DONE AND W2 IS HALF DONE.** A body spawns in Blue ring 0 deck 0, stands, and walks
+**125.93 m** round the ring corridor in thirty seconds without once leaving the floor
+(`offfloor=0/1800`). It cannot yet get *into* anything — see the bottom of this section.
+
+### What stopped it, and it was none of the things it looked like
+
+Session 3u left a body that stood on the assembled deck reporting `on_floor=true` and moved
+**1 mm** in all four headings. The candidates were the rooms, the arc size, double precision, and
+7 km from the origin. **It was none of them.** Casting rays into the corridor's own cross-section
+gave the answer in one pass:
+
+| surface | kit y | what it is |
+|---|---|---|
+| grid tiles | **+0.022** | `deck_grid`, proud, 38 mm seams between them |
+| deck panel | 0.000 | `deck_panel`'s plates |
+| lighting channel | **−0.066** | 0.18 m wide, down the exact centreline |
+
+A 0.35 m capsule dropped on the centreline straddles a 66 mm slot; Godot returns an internal-edge
+normal tilted 18° across the corridor and `move_and_slide` spends all six iterations sliding
+against a lip it cannot climb. Moving the spawn off the channel does not help — 0.62 m along there
+is a 22 mm step at every tile seam.
+
+**The proof, before writing anything:** a smooth shell at the same radius, same distance from the
+origin, same 344°, walked at **4.200 m/s** on the first try. It is the millimetres.
+
+### `station/collision.py` — a player walks on a surface built for walking on
+
+The fix every shipping game uses, and it was needed here for two independent reasons: the physical
+one above, and that trimesh collision over 458,160 corridor triangles is not affordable at runtime.
+
+**The profile is not written down — it is MEASURED** off `interior_kit.corridor_section` by ray
+casting, so if the kit's floor or walls move the shell moves with them. Hard rule 4 applied to the
+third thing that has to agree.
+
+| | value | why that one |
+|---|---|---|
+| floor | +0.022 m | the top of the proud tiles — what a boot rests on, not the panel under them |
+| half width | 1.080 m | the pinch **at a portal frame**, not the 1.255 m between them |
+| cost | 7,816 tri | **1.5%** of the corridor's 458,160 render triangles |
+
+### The gate, and it fails on the content it was written for
+
+`walkable.py --deck` assembles a deck, walks it, and asserts distance covered and frames off the
+floor. Same deck, same spawn, collision taken from the render mesh as before:
+
+| | moved_1s | legs | traverse |
+|---|---|---|---|
+| **without the shell** | 0.000 | 0.00 / 0.00 / 0.00 / 0.00 | 0.00 m |
+| **with it** | 4.200 | 0.73 / 4.20 / 0.73 / 4.20 | 41.93 m |
+
+`on_floor=true` in **both**. That is what this project has been shipping: a body that reports it is
+standing on the floor and cannot move a millimetre. The axial legs stop at 0.73 m because the
+corridor is 2.16 m clear and the capsule is 0.35 m — correct, not a snag.
+
+### Two more defects, both found by reading the trace rather than the code
+
+* **The heading frame degenerated at two points on every ring.** `player.gd` derived forward from
+  `up.cross(Vector3.RIGHT)`, which is **zero** wherever `up` is parallel to world X — ring angles 0
+  and 180, one of which is where this deck's own spawn sits. On a spun habitat `up` is radial and
+  therefore always perpendicular to the spin axis, so +Z can never degenerate. Use the axis the
+  geometry guarantees, not the one that usually works.
+* **The four heading legs were not independent.** Leg 0 walked the body into the axial wall and
+  left it there, so leg 1 measured a body already jammed and scored a clear corridor as zero.
+
+### Two gates were wrong on the way, and that is the recurring lesson
+
+* `floor_steps` first walked **the centreline alone** and called the render corridor smooth to
+  0.6 mm — the centreline is the inside of the channel, the one continuous lane on the deck. Nine
+  lanes now: **shell 0.72 mm, render 22.20 mm**, which is the tile height exactly. Same species of
+  error as rendering at one distance only.
+* The shell-agrees-with-render check first compared triangle-radius statistics, and **I caught
+  myself widening its tolerances to make it pass.** Replaced with a cast: the shell floor must equal
+  the median surface a body meets over the width and length it can occupy. Bumping the shell 10 mm
+  moves it 0.13 → 9.87 mm and fails, demonstrated.
+
+### WHAT DOES NOT WORK YET — there is no door, and the corridor is in the wrong place
+
+`ring_arc` is called with `doors=()`, so the corridor is a closed tube. A player walks 126 m of
+station and cannot get into any of it. **W2 is half done: "go a long way" yes, "go somewhere" no.**
+
+And the reason is not just a missing hole — it is measured, and it is a placement bug:
+
+```
+corridor   world z 7118.70 .. 7121.30   (placed at the cluster label, 7120)
+rooms      world z 7109.99 .. 7120.01   (actually centred at z_m = 7115)
+```
+
+`z_clusters` returns `round(z/40)*40`, a **bucket label**, and `build_deck` places the corridor at
+it. So the corridor tube passes through the far end of every room — 0.36 m into `docking_bays`,
+**1.31 m into `plantroom_bay`**. Per-room overlap, measured:
+
+| room | angle | far end z | overlap with corridor |
+|---|---|---|---|
+| `plantroom_bay` | 260° | 7120.01 | 1.31 m |
+| `docking_bays` | 0° | 7119.06 | 0.36 m |
+| `lowg_bays`, `vorlon_berth` | 130°, 320° | 7118.78 | 0.08 m |
+| `mooring_clamps` | 180° | 7118.18 | — (0.5 m short) |
+| `bay_elevators` | 300° | 7118.03 | — (0.7 m short) |
+
+**The next increment is therefore three things, in this order:** place the corridor from the rooms
+it serves rather than from a rounded bucket label; cut the doors — `corridor_section` **already
+takes `doors=((z, side), ...)`** and `ring_arc` simply never passes them, and in the corridor's kit
+frame +x maps to world +z so a room at lower z is `side = -1`; and bridge the 0–0.7 m each room
+falls short with a vestibule, which is what a station has anyway. Rooms are closed boxes and will
+need an opening cut in the far wall to match.
 
 ## Session 3t — what shadow coverage buys, and why the level then fights the shape
 

@@ -87,14 +87,33 @@ absence.
 
 ### The order of work, and it is vertical
 
-| # | Milestone | Done when |
-|---|---|---|
-| **W1** | **Stand up** | Collision on the station mesh, a character controller, per-deck gravity. A player spawns in the corridor kit and walks. Asserted headlessly |
-| **W2** | **Go somewhere** | Two named locations joined by real walkable geometry; the player walks between them without leaving the floor |
-| **W3** | **A furnished room** | ONE location at true prop density -- the reference is the owner's Starfield frames, not our own past work -- with a stated props/m2 |
-| **W4** | **A populated room** | NPCs standing, sitting and walking in it. `station/npc/` already has twelve tested modules with zero importers; wire them |
-| **W5** | **The loop** | Spawn -> walk -> use something -> an NPC reacts. The smallest complete experience |
-| **W6+** | **Breadth** | Roll W3-W5 outward by generator across the 118, in the order a player meets them |
+| # | Milestone | Done when | Status |
+|---|---|---|---|
+| **W1** | **Stand up** | Collision on the station mesh, a character controller, per-deck gravity. A player spawns in the corridor kit and walks. Asserted headlessly | **DONE** (3v) |
+| **W2** | **Go somewhere** | Two named locations joined by real walkable geometry; the player walks between them without leaving the floor | **HALF** — 126 m of ring corridor walked, `offfloor=0/1800`; **no door into any room** |
+| **W3** | **A furnished room** | ONE location at true prop density -- the reference is the owner's Starfield frames, not our own past work -- with a stated props/m2 | `dressing.py` built (3u) |
+| **W4** | **A populated room** | NPCs standing, sitting and walking in it. `station/npc/` already has twelve tested modules with zero importers; wire them | `populace.py` built (3u) |
+| **W5** | **The loop** | Spawn -> walk -> use something -> an NPC reacts. The smallest complete experience | |
+| **W6+** | **Breadth** | Roll W3-W5 outward by generator across the 118, in the order a player meets them | |
+
+### COLLISION IS NOT RENDER GEOMETRY, and that rule was learned expensively
+
+Session 3v, and it is the W-track's equivalent of the layer-2 lesson. A body stood on the assembled
+deck reporting `on_floor=true` and moved **1 mm** in all four headings. The cause was not the rooms,
+the arc size, double precision, or 7 km from the origin. It was that the corridor deck carries a
+**66 mm lighting channel down its centreline and 22 mm proud grid tiles either side of it**, and a
+capsule dropped on that wedges on an internal edge.
+
+`station/collision.py` sweeps a smooth shell instead, at **1.5%** of the render mesh's triangles,
+and the body walks 126 m. Two things follow and both are binding:
+
+1. **A player walks on a surface built for walking on.** Any new walkable geometry needs a shell.
+   The shell's profile is **measured off the kit by ray casting**, never written down, so it cannot
+   drift from what it stands in for — hard rule 4 applied to a third mesh.
+2. **A walk gate must report DISTANCE COVERED, not "did it move".** Four one-second nudges prove a
+   body is not wedged; they do not prove you can go anywhere. `walkable.py --deck` asserts metres
+   traversed and frames spent off the floor, and it **fails on the pre-shell content** — that A/B is
+   in `STATE.md` and is the evidence the gate is real.
 
 The layer material below is still the right description of the PLACES track and its lessons are
 real. It is no longer the ordering rule.
