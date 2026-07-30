@@ -109,6 +109,32 @@ lands it two and a half stops hot. **The only valid comparison is our frame agai
 frame, measured by the same code** — `tools/measure_frame.py --against`. Every room exposure in
 `export_scene.ROOM_EXPOSURE` was obtained that way and the derivation is in `INV-037`.
 
+### OPEN DECISION — layer 5 may be the wrong next thing, and the plan says so
+
+The two planning documents contradict each other at exactly the next step, and this section is
+where the next context will look first, so it is recorded here rather than left to be rediscovered.
+
+- **This section's rule** says finish a layer across all 118 before starting the next. That makes
+  layer 5, props & function, the next work.
+- **`docs/MASTER-PLAN.md` §3.2** says *"S1–S3 before P5–P6. Props and inhabitants should be placed
+  against what the simulation needs, not guessed. A bar needs a till because the economy has
+  money."* and *"L1–L2 early. Building 71 prop behaviours before knowing the verb set is how you
+  build the wrong 71."*
+
+Both were set deliberately and they cannot both be followed. The layer rule exists because parallel
+phases meant nothing ever finished; §3.2 exists because props built with no economy and no verb set
+are props built twice.
+
+**Recommendation, not a decision — the owner has not ruled.** Follow §3.2: when layer 4 closes, go
+to the SYSTEMS and PLAYER tracks (S1–S3, L1–L2) before layer 5. The layer rule's purpose is that
+work *completes*, and completing the places track first still leaves a station nobody can stand in.
+`MASTER-PLAN.md` §1.3 is titled *"FINDING 2 — there is no player"*, and it is still true: every
+script in `godot/scripts/` is a screenshot tool, and `station/npc/` and `station/physics/` are
+twelve tested modules with **zero importers outside their own directories**.
+
+Whoever picks this up: it is a real fork, it is cheap to raise with the owner, and guessing wrong
+costs a track's worth of rework.
+
 ### Rules that follow from working in layers
 
 1. **Do not start a layer before the one above it is complete.** The exception is layer 0, which
