@@ -111,10 +111,34 @@ background_mode = 1
 background_color = Color(0.012, 0.016, 0.024, 1)
 ambient_light_source = 2
 ambient_light_color = Color(0.55, 0.56, 0.52, 1)
-ambient_light_energy = 0.15
+; 0.15 -> 0.03 in session 3u, and it revises the paragraph above rather than
+; contradicting it. The cavity argument is right: there IS bounce in here. What
+; is wrong is the word "ambient" -- interreflection falls off inside a recess
+; and under an eaves, and Godot's ambient term is a CONSTANT added to every
+; surface whatever it can see. The only thing that occludes it in this scene is
+; SSAO, and SSAO was measured inert here: pushed to radius 12 m, intensity 4.0
+; and light_affect 0.9 it changed 0.23% of the garden frame by more than 8/255.
+; So at 0.15 this was an unoccluded flat fill carrying most of the frame, and it
+; is the term that makes every shadow the same grey. Measured on the garden
+; framing at 24 shadow casters: 0.15 -> 0.03 moves p5 0.0175 -> 0.0158.
+;
+; IT IS NEARLY INERT AT THE OLD 2 SHADOW CASTERS -- 0.15 -> 0.02 moved p5 by
+; 0.003, which session 3t recorded and generalised into "ambient is not the
+; lever". That reading was conditional on the shadow count it was taken at: with
+; 58 of 60 omnis passing through every wall, ambient is a rounding error next to
+; the light leak. Occlude the direct light and ambient becomes what fills the
+; shadow, because it is then the ONLY thing in it.
+ambient_light_energy = 0.03
 reflected_light_source = 1
 tonemap_mode = 4
 tonemap_exposure = 1.0
+; INERT UNDER AgX AND KEPT ONLY SO THAT IS WRITTEN DOWN. tonemap_mode 4 is AgX,
+; and `apply_tonemapping` in
+; servers/rendering/renderer_rd/shaders/effects/tonemap.glsl passes `white` to
+; Reinhard, Filmic and ACES and calls `tonemap_agx(color)` with no white at all.
+; All three scenes in this project carry a tonemap_white (8.0 here, 4.0 interior,
+; 6.0 exterior) and exterior.tscn's comment says the two differ "deliberately";
+; under AgX none of them configures anything.
 tonemap_white = 8.0
 ssao_enabled = true
 ; 2.5 m: human scale. The exterior scene uses 14 m because its subject is
@@ -138,6 +162,31 @@ fog_light_energy = 0.8
 fog_density = 0.00012
 fog_aerial_perspective = 0.0
 fog_sky_affect = 0.0
+; GLOW WAS THE LARGEST SINGLE TERM IN THIS FRAME'S SHADOWS, and it was found by
+; measurement rather than by looking: switching glow off on the calibrated
+; garden framing took p5 from 0.0282 to 0.0158 -- 44% of the shadow floor was
+; bloom, not light. Two separate defects, both now fixed, both confirmed against
+; the engine's own source rather than inferred from the picture:
+;
+;  1. `glow_bloom = 0.06` is not a bloom amount, it is a FLOOR on how much of
+;     each pixel enters the glow buffer. copy.glsl line 194:
+;         feedback = max(smoothstep(threshold, threshold + scale, luminance),
+;                        glow_bloom)
+;     so with hdr_threshold 0.95 and bloom 0.06 the ENTIRE frame -- four and a
+;     half million square metres of lit ground included -- fed 6% of itself into
+;     a blur that was then screen-blended back over the shadows. It is a
+;     whole-frame lift wearing a highlight effect's name. Now 0.0: only what is
+;     actually over the threshold blooms, which is the light tube, which is the
+;     thing that should.
+;  2. The glow LEVELS were the engine defaults, and Environment's constructor
+;     (scene/resources/environment.cpp:1605) sets levels 3 and 5 -- the 1/4 and
+;     1/16 resolution mips. Level 5 is a halo the width of the frame. A 2.6 km
+;     light tube that clips across the whole picture therefore painted the whole
+;     picture. Levels 1 and 2 are a tight halo at the fitting, which is what
+;     `34b` shows and all that was ever wanted.
+;
+; Glow stays ON. The tube in `34b` has a real halo and killing glow outright
+; costs that; what is removed is the part that was never about the tube.
 glow_enabled = true
 glow_levels/1 = 1.0
 glow_levels/2 = 1.0

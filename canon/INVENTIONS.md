@@ -2685,3 +2685,71 @@ have a low soffit. The conduits now stop rather than drop; a low room gets fewer
 
 **Overturned by:** any frame establishing B5 interior trim heights against a figure of known
 stature.
+
+## INV-080 — The drum's shadow ration, its ambient, and the two post-process terms that were lighting it
+
+**Status:** extrapolation, authority 5, session 3u. Supersedes the exposure half of INV-037 for
+the drum only.
+
+**Invented:** `export_scene.DRUM_SHADOW_LIGHTS = 24` (was 2), `drum.tscn`'s
+`ambient_light_energy = 0.03` (was 0.15), `glow_bloom = 0.0` (was 0.06), `glow_levels` 1 and 2 in
+place of the engine's default 3 and 5, and `DRUM_EXPOSURE = 1.41 x 2.70 = 3.807` (was 1.41).
+
+**What is sourced.** Nothing here is a new claim about the *fittings* — the light runs are still
+where `interior.guideway_truss` puts them, still `LAMP_COLOUR`, still authority 1 from
+`Babylon_5_2-22_34b.jpg` and `33a`. What is invented is how much of that light is allowed to reach
+a surface the fitting cannot see, which the show's frames constrain only through their own
+histograms. Three do:
+
+| frame | what it constrains |
+|---|---|
+| `09-garden-core-and-transit/garden.png` | the whole distribution the garden framing is matched to — p5 0.0180, crushed 5.63% |
+| `03-sector-blue/Babylon_5_2-22_34b.jpg` | the drum floor is evenly lit end to end and the truss is a **black silhouette** against it |
+| `03-sector-blue/Babylon_5_2-22_33a.jpg` | the truss underside, seen from below, is dark; the tram is slung in that dark |
+
+**Why necessary.** At 2 of 60 lamps casting shadows, 58 light sources passed through every wall in
+the volume. The calibrated garden frame had **0.99% of its pixels below the measurable floor
+against its reference's 5.63%**, and its p5 sat at **x2.97** of the show's when both were put on the
+same median. Nothing in the drum had a dark side. That is the state the owner called blockout, and
+no exposure fixes it because exposure moves the whole histogram together.
+
+**How each number was reached.**
+
+* **24 shadow casters.** Measured on the garden framing at matched median: 2 gives p5 x2.92, 24
+  gives x0.94, 60 gives x0.84. 24 clears the x1.29 band with 27% of margin, so the last 36 buy
+  margin nobody asked for and cost 60 s -> 76 s a frame.
+* **Ambient 0.03.** At 24 casters, 0.15 -> 0.03 moves p5 0.0175 -> 0.0158. It is nearly inert at
+  **2** casters (0.15 -> 0.02 moves p5 by 0.003, session 3t), and that is the whole point: an
+  unoccluded constant fill only matters once the direct light is occluded. SSAO, the only thing
+  that occludes ambient in this scene, was measured inert — radius 12 m, intensity 4.0,
+  light_affect 0.9 changed **0.23%** of the frame by more than 8/255.
+* **glow_bloom 0.0 and the tight levels.** Not a taste judgement and not derived from a frame:
+  `copy.glsl:194` computes `feedback = max(smoothstep(threshold, threshold+scale, luminance),
+  glow_bloom)`, so 0.06 fed 6% of **every pixel in the frame** into the glow blur regardless of its
+  luminance, and Godot's default levels 3 and 5 (`environment.cpp:1605`) blur it at 1/4 and 1/16
+  resolution — a halo the width of the picture. Switching glow off entirely took p5 0.0282 ->
+  0.0158, so **44% of the drum's shadow floor was bloom rather than light**. Levels 1-2 with
+  bloom 0 keep the halo on the light tube, which `34b` shows, and remove the wash.
+* **Exposure x2.70.** A compensation, not a new level judgement: the three terms above were
+  carrying most of the frame's median and the lamps have to make it up. It is **not** the garden
+  framing's own best number (x2.40 would put it at x1.38 against the x1.40 target); it is the value
+  that fits all three calibrated framings inside the +/-25% band at once.
+
+**What it costs, stated rather than implied.** 13 s -> 60 s a frame at 960x540 **on lavapipe, a CPU
+rasteriser**. That is a bound on how often this project can look at a frame and says nothing about
+an RTX 4070, where 24 omni shadow cube maps in a 250k-triangle scene is an ordinary load. Nothing
+in `station/budget.py` moves: no triangle, instance or texture changes.
+
+**The residual, and it is content rather than light.** The garden framing passes both tests; its
+foreground is still x1.55 brighter than the reference's at matched level. Measured on
+`garden.png`'s bottom third: **30.9% of it is below linear Y 0.04 against 0.4% of ours**, and only
+**2.8%** of that population is near-neutral — 22.1% is green-dominant and 20.5% blue/teal, mean
+chromaticity r/g/b 0.433/0.293/0.266. A grey surface in shadow is neutral. The show's dark
+foreground is **foliage, water and dark timber**, which is what INV-044 concluded from `29a` two
+sessions earlier: no exposure and no shadow scheme puts foliage in a frame. See
+`export_scene.LIGHT_DIRECTIONALITY`.
+
+**Overturned by:** an authority-1 frame of the drum interior showing the guideway light runs
+throwing a *visibly bounded* pool rather than a wash, which would make the fittings directional
+after all; or a measurement showing that lavapipe's shadow attenuation differs materially from a
+hardware Vulkan driver's, which would make every number above a software artefact.

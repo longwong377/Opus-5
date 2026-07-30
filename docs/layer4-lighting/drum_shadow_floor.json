@@ -1,0 +1,146 @@
+{
+  "_what": "Every measurement session 3u took while getting one drum framing to pass BOTH the level test and the whole-distribution test at once, including the hypotheses that were refuted. The conclusions live in export_scene.SHADOW_COVERAGE_STUDY, export_scene.LIGHT_DIRECTIONALITY and canon INV-080; this is the working, kept so the numbers can be argued with rather than believed.",
+
+  "_why": "Session 3t left a paradox: at 32 shadow-casting lights the garden framing passed all six distribution checks and its median then read x0.49 of its reference, and raising light energy to fix the level re-lifted p5 in lockstep. The reading offered was that the rig needed light that is brighter where it lands and no brighter where it does not -- tighter falloff, directional fittings. Both halves of that are wrong, and the file records how.",
+
+  "framing": {
+    "shot": "--shot drum --eye \" -90.144,246.253,4956.0\" --target \" -95.185,243.275,4900.0\" --fov 45 --res 960x540",
+    "reference": "reference/09-garden-core-and-transit/garden.png",
+    "reference_median": 0.1406,
+    "reference_p5_at_our_offset": 0.0178,
+    "reference_crushed": 0.0563,
+    "note": "DRUM_CALIBRATION['garden']. All 'x' figures below are ours over the reference measured at gain RENDER_OFFSET, which is what measure_frame.distribution compares."
+  },
+
+  "finding_1_the_distribution_verdict_is_not_level_invariant": {
+    "claim": "measure_frame.distribution is presented as a SHAPE test -- at_offset re-exposes the reference so the x1.40 level allowance is not charged twice. It does not achieve that, because FLOOR censors the measurable set from below and our frames have almost no sub-floor population to lose while the show's frames have several percent.",
+    "method": "post-hoc gain applied to ONE UNCHANGED PNG and re-measured, so the picture's shape is fixed by construction and only the exposure moves",
+    "docs/engine-drum-garden.png (pre-3u)": {
+      "gain": [0.25, 0.35, 0.5, 0.7, 0.85, 1.0, 1.4, 2.0, 3.0],
+      "x_median": [0.38, 0.54, 0.76, 1.06, 1.28, 1.49, 2.02, 2.79, 3.97],
+      "x_p5": [1.26, 1.55, 1.90, 2.42, 2.82, 3.21, 4.27, 5.84, 7.85],
+      "crushed_pct": [3.47, 2.20, 0.82, 0.32, 0.11, 0.01, 0.01, 0.0, 0.0]
+    },
+    "docs/engine-drum-garden-shadows.png (32 shadow casters, the 3t frame)": {
+      "gain": [0.25, 0.5, 0.7, 1.0, 1.4, 2.0, 3.0],
+      "x_median": [0.15, 0.26, 0.35, 0.49, 0.67, 0.93, 1.34],
+      "x_p5": [0.65, 0.86, 0.98, 1.16, 1.38, 1.53, 2.02],
+      "verdict": ["FAIL", "PASS", "PASS", "PASS", "FAIL", "FAIL", "FAIL"]
+    },
+    "consequence": "The 3t headline -- 'at 32 lights the frame passes all six checks' -- is true only over gains 0.50-1.00, which is where that frame's median sits at x0.26 to x0.49 of its reference. Brought to a level the median band accepts it reads p5 x2.02 and fails. The pass was bought by being a stop and a half under.",
+    "what_shadow_coverage_is_actually_worth": "x2.92 -> x2.00 on p5 AT MATCHED MEDIAN, 2 casters to 60. Real, and about a third of the distance to the x1.29 band rather than all of it."
+  },
+
+  "finding_2_directional_light_is_the_wrong_direction": {
+    "claim": "The reference frame gets DARKER toward the camera. The lamps are 41.7 m above the floor the camera stands on and 400-500 m from the drum's far side, so concentrating light where it lands brightens the foreground and dims the overhead -- it inverts the gradient the reference has.",
+    "method": "horizontal thirds, every frame put on a matched whole-frame median of x1.40 before anything is read",
+    "bands": {
+      "_columns": ["median", "p5", "crushed"],
+      "reference garden.png": {
+        "farside_overhead": [0.2321, 0.0766, 0.0120],
+        "middle": [0.1758, 0.0209, 0.0244],
+        "near_foreground": [0.1030, 0.0132, 0.0470]
+      },
+      "ours, 2 shadow casters (the 3t rig)": {
+        "farside_overhead": [0.2077, 0.0489, 0.0020],
+        "middle": [0.1847, 0.0275, 0.0103],
+        "near_foreground": [0.1685, 0.0614, 0.0000]
+      },
+      "ours, omni decay 2.0 energy-compensated": {
+        "farside_overhead": [0.1913, 0.0459, 0.0045],
+        "middle": [0.1866, 0.0184, 0.0070],
+        "near_foreground": [0.2087, 0.0811, 0.0000]
+      },
+      "ours, spot 85 deg aimed at the floor": {
+        "farside_overhead": [0.1617, 0.0491, 0.0000],
+        "middle": [0.1698, 0.0140, 0.0057],
+        "near_foreground": [0.2255, 0.0791, 0.0000]
+      }
+    },
+    "x_p5_at_matched_median": {
+      "omni decay 0.7 range 1100 (the rig)": 2.92,
+      "omni decay 2.0, energy x2600": 3.55,
+      "omni decay 0.7 range 300": 2.64,
+      "spot 85 deg": 2.85,
+      "note": "range 300 and spot 85 also clip 21% of the frame once normalised back to a passing level. Nothing directional improved on the rig it was meant to replace."
+    },
+    "a_measurement_error_worth_keeping": "The first attempt set --light-attenuation to 3.0 and 8.0 and produced frames indistinguishable from one with every lamp switched off; at 8.0 the PNG was BYTE-IDENTICAL to the lights-off render. Godot 4's omni falloff is (1 - (d/range)^4)^2 * d^(-attenuation) -- `attenuation` is a decay exponent on DISTANCE, not a shaping exponent on the windowing term, so 41.7^-8 is 4e-13. export_scene's comment said otherwise and is corrected.",
+    "the_geometry_forbids_it_anyway": {
+      "trusses": 3,
+      "spacing_deg": 120,
+      "lamp_height_above_floor_m": 41.7,
+      "floor_radius_m": 278.3,
+      "cone_halfangle_to_reach_midway_between_trusses_deg": 81.9,
+      "consequence": "Any genuinely directional guideway fitting leaves the drum floor in three lit stripes with three black gaps. Babylon_5_2-22_34b.jpg shows the floor evenly lit end to end with the truss a black silhouette against it."
+    }
+  },
+
+  "finding_3_what_the_shadow_floor_was_actually_made_of": {
+    "method": "one term removed at a time on the same framing, everything else fixed; p5 read raw",
+    "terms": [
+      {"term": "glow (whole effect off)", "p5": 0.0158, "from": 0.0282, "share_of_p5": 0.44,
+       "mechanism": "copy.glsl:194 feedback = max(smoothstep(threshold, threshold+scale, luminance), glow_bloom) -- glow_bloom 0.06 is a FLOOR on how much of every pixel enters the glow buffer, and Godot's default glow levels 3 and 5 (environment.cpp:1605) blur it at 1/4 and 1/16 resolution. A 2.6 km light tube clipping across the frame therefore painted the whole frame."},
+      {"term": "glow_bloom -> 0.0, levels 1+2 only, glow still on", "p5": 0.0168, "from": 0.0282,
+       "mechanism": "recovers 92% of the glow-off improvement while keeping the halo on the fitting, which 34b shows"},
+      {"term": "ambient 0.15 -> 0.03 at 24 casters", "p5": 0.0158, "from": 0.0175},
+      {"term": "ambient 0.15 -> 0.02 at 2 casters (session 3t)", "p5": 0.0427, "from": 0.0458,
+       "note": "the same knob, nearly inert, because 58 unshadowed omnis swamped it. 3t recorded this as 'ambient is not the lever' without the condition."},
+      {"term": "ambient 0.03 -> 0.0 at 24 casters", "p5": 0.0243, "from": 0.0243,
+       "note": "no change at all -- by 0.03 the residual floor is glow, not ambient"},
+      {"term": "fog_density halved 0.00012 -> 0.00006", "p5": 0.0223, "from": 0.0223,
+       "note": "REFUTED. Fog was predicted to be the additive floor and moved p5 not at all."},
+      {"term": "SSAO radius 2.5 -> 12 m, intensity 1.8 -> 4.0, light_affect 0.2 -> 0.9",
+       "pixels_changed_by_more_than_8_of_255": 0.0023,
+       "note": "REFUTED. SSAO is the only thing occluding ambient in this scene and it is inert at this scale."}
+    ]
+  },
+
+  "finding_4_p5_is_not_monotone_in_exposure_or_in_ambient": {
+    "claim": "measure_frame's docstring records that the MEDIAN of the measurable set is not proportional to exposure, because raising exposure recruits sub-floor pixels into the measured set from the bottom. The same is true of p5, and p5 is the statistic layer 4b rests on.",
+    "evidence_raising_gain_LOWERED_p5": {
+      "config": "4 samples/run, 24 of 24 casting, ambient 0.03, tight glow",
+      "light_gain": [2.35, 3.0, 3.8],
+      "x_median": [0.94, 1.15, 1.38],
+      "p5": [0.0168, 0.0166, 0.0160]
+    },
+    "evidence_raising_ambient_LOWERED_the_median": {
+      "framing": "tram",
+      "ambient": [0.03, 0.08],
+      "median": [0.1578, 0.1567],
+      "crushed": [0.1843, 0.1705]
+    },
+    "why_it_matters": "It is the resolution of session 3t's paradox. 'Every stop that fixes the level undoes the shape' holds only while a frame has NO sub-floor population. Once it has real blacks, raising exposure recruits them upward into the bottom of the measurable set and p5 falls. The paradox was a property of a frame with no blacks, not of the rig."
+  },
+
+  "finding_5_the_residual_is_content": {
+    "measurement": "fraction of the bottom third of the frame below linear Y 0.04, and how much of that population is chromatic rather than neutral",
+    "reference garden.png": {"dark_fraction": 0.309, "green_dominant": 0.221,
+      "blue_teal_dominant": 0.205, "near_neutral": 0.028,
+      "mean_chromaticity_rgb": [0.433, 0.293, 0.266]},
+    "ours (pre-3u rig)": {"dark_fraction": 0.004, "green_dominant": 0.168,
+      "blue_teal_dominant": 0.088, "near_neutral": 0.747,
+      "mean_chromaticity_rgb": [0.372, 0.357, 0.271]},
+    "reading": "A grey surface in shadow is neutral; a dark thing is not. 97% of the show's dark foreground is foliage, water and dark timber -- content garden.py does not put in this framing. INV-044 reached the same conclusion from 29a two sessions earlier and it generalises to garden.png.",
+    "what_would_close_it": "dense planting and standing water in the garden framing's foreground, and deeper self-occluding recesses in the civic landmark's loggia. That is station/garden.py and station/materials.py, not a lighting rig."
+  },
+
+  "what_shipped": {
+    "DRUM_SHADOW_LIGHTS": 24,
+    "ambient_light_energy": 0.03,
+    "glow_bloom": 0.0,
+    "glow_levels": [1.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+    "DRUM_EXPOSURE": 3.807,
+    "seconds_per_frame_960x540_lavapipe": {"before": 13, "after": 60},
+    "cost_note": "lavapipe is a CPU rasteriser. These seconds bound how often this project can look at a frame and say nothing about an RTX 4070, where 24 omni shadow cube maps in a 250k-triangle scene is an ordinary load. No triangle, instance, draw-call or texture number changes.",
+    "framings": {
+      "wide": {"x_median": 1.73, "x_p5": 2.92, "distribution": "FAIL"},
+      "garden": {"x_median": 1.50, "x_p5": 0.89, "distribution": "PASS"},
+      "tram": {"x_median": 1.06, "x_p5": 0.40, "distribution": "FAIL"}
+    },
+    "the_uncomfortable_part": "One rig and one exposure, and the three calibrated framings of this volume now disagree on level by x1.63 where at the old rig they agreed to within 7%. The +/-25% band admits a spread of x1.667, so it is very nearly exhausted: wide sits 1.2% under the ceiling and tram 1.0% over the floor. That spread is the rig working -- with 24 of 60 lamps occluded, how much light a framing receives depends on how much of it is in shadow, and an open 2.6 km ground plane and a camera looking up through a Warren truss are as different as that gets -- but it means a geometry change of a few percent will push one of them out. The next session should expect to re-derive DRUM_EXPOSURE rather than assume it holds."
+  },
+
+  "not_done": {
+    "interior": "The two glow defects are present in interior.tscn (bloom 0.05, default levels) and exterior.tscn (bloom 0.03, default levels) as well, and tonemap_white is set in all three and is dead under AgX. Not changed here: interior.tscn's environment is shared by 17 calibrated exposures, nine of which have no committed frame at all (export_scene.EXPOSURE_FRAMES), so moving it invalidates more than one session can re-derive."
+  }
+}
