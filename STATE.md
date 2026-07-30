@@ -1017,6 +1017,30 @@ That last assertion replaced a genuinely vacuous one. The old cap test put ribs 
 
 Drum visible set is now 51,128 / 300,000 (17%). `interior.py` self-test: **128 assertions**.
 
+### The task list had three stale session-1 entries, and one of them cost a bad brief
+
+Audited every pending task against the code in 3q, after a brief went out claiming two defects had
+been open since session 1 and the agent receiving it found both closed. The list is not a record of
+what is undone:
+
+| # | claimed | actual |
+|---|---------|--------|
+| 10 | crude exterior components | done in 3q — cobra bays and all three dome-based components |
+| 12 | tram cars pass through the spokes | **closed in 2y**, `interior.spoke()`'s framed portal |
+| 13 | vacuous assertions in drum_ground and tram | **the two named ones closed in 2y/3e** |
+| 14 | record the car-length conflict | **already recorded**, `CONFLICTS.md` C-008, and thoroughly |
+| 11 | junctions and doors on streaming cells | **genuinely open** — verified below |
+
+Only #11 survived the audit. `interior.deck_cell()` is four lines: it calls `ring_arc()` for one
+deck over one arc and updates metadata, so a cell is a plain corridor run — 29,920 tri, 8 sections,
+no junction and no door groups in it. The kit has both; they are simply not placed on the rings.
+
+**The lesson is the one this repository already knows and keeps paying for: the register has to
+compute its answer.** `directory.py` does, which is why its number can be trusted and argued with.
+The task list does not, so it drifted into a source of false premises — and a false premise handed
+to an agent is a whole agent-run spent on a closed defect. Check any task against the code before
+briefing anyone on it, including yourself.
+
 ### The layer-4 count is coupled to `tools/export_scene.py` — read this before believing a number
 
 `directory.py`'s layer-4 figure is not computed from `directory.py` alone. `_lit_keys()` imports
