@@ -1,6 +1,38 @@
 # Project State
 
-**Last updated:** 2026-07-29 · **Session 3o** — layer 4 at 68/118; the 68 procedural rooms are lit
+**Last updated:** 2026-07-30 · **Session 3r** — **layer 2 is 16/118.** The owner saw the renders and the metrics now agree with the owner
+
+## READ THIS FIRST — session 3r found the project was measuring the wrong things
+
+The owner looked at the renders and said the buildings are *"shitty little cubes"* and the trees a
+*"sad excuse for a tree"*, and asked where they went wrong. **Every gate was green when they said
+it.** Three things were true at once, and the third is the answer:
+
+1. Materials on 118/118, lighting on 118/118, all measured and all real work.
+2. Both were applied to **blockout**, and nothing in the repository could say so.
+3. `station/garden.py` contained `check(..., dens < 0.06)` — **an assertion that the Garden must
+   stay BELOW 0.06 tri/m².** A ceiling on detail, in the module the owner complained about, which
+   would have failed any attempt to fix it. Green for three sessions.
+
+Two metrics were built to close that gap, and both are deliberately failing right now:
+
+| | before | after | what it measures |
+|---|---|---|---|
+| `station/density.py` (INV-070) | — | **16/118 pass** | visible line density vs a floor derived from budget, Nyquist and B5 frames |
+| `tools/measure_frame.py` distribution | 17/17 pass | **1/17 pass** | p5, p95, crushed, clipped — not just the median |
+
+**Layer 2 is 16/118 and layers 3 and 4 cascade to 16/118 behind it**, because a place cannot be at
+layer 3 while it fails layer 2. `directory.py` prints it. Nothing was retuned to make a number move;
+the point was to learn the distance.
+
+**The numbers that answer "how bad":** on fidelity alone every one of the 118 locations sits between
+**0.20% and 19.7%** of a Babylon 5 set's line density, median **5.0%**. `garden.tree()` is 30
+triangles — a hexagonal prism, one line every 113 cm on a 7 m tree, **2.2% of its floor**.
+`block_building()` is 48 triangles, one line every 3.8 m on a 15 m building, **3.2%**.
+
+**A DECISION IS WAITING FOR THE OWNER** (see the end of this section): the exterior's detail floor
+and its triangle budget are the same number by construction. Either the 400,000 allotment rises or
+the hull's 253,184 comes down through LOD. That is upstream of any rebuild.
 
 ## Where we are
 
