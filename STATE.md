@@ -1,6 +1,6 @@
 # Project State
 
-**Last updated:** 2026-07-30 · **Session 3r** — **layer 2 is 16/118.** The owner saw the renders and the metrics now agree with the owner
+**Last updated:** 2026-07-30 · **Session 3s** — the Garden rebuilt 16.3% -> 80.9% of its floor · **Session 3r** — **layer 2 is 16/118.** The owner saw the renders and the metrics now agree with the owner
 
 ## READ THIS FIRST — session 3r found the project was measuring the wrong things
 

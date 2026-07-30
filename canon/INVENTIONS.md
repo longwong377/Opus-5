@@ -2605,3 +2605,42 @@ height is — the tower stands behind the figures, so a perspective correction p
 stated derivation is out by a factor of two and does not support the number it is attached to. Not
 fixed here: `garden.py` is outside this work's file list, and the correction needs a depth estimate
 this entry has no source for.
+
+
+---
+
+## INV-072 — The Garden's articulation: tree, block, and the hard landscape
+
+**Status:** extrapolation, authority 5, session 3s.
+
+**Invented:** every proportion in `station/garden.py`'s `tree()`, `block_building()` and
+`hard_landscape()` — trunk radius 0.26 m, root flare x1.45 over 0.55 m, fork at 0.42 of height,
+3–5 limbs; storey 3.2 m, structural bay 4.0 m, pilaster 0.55 x 0.18 m, expressed slab 0.32 m,
+cill 0.85 m, window 1.95 m, reveal 0.28 m, cornice 0.45 m projecting 0.34 m, parapet 0.85 m;
+kerb 0.15 x 0.12 m, hedge 0.8 x 1.05 m, step 0.16 rise / 0.34 going, planter r 3.1 m, bench
+1.8 x 0.45 m, sail 5.2 x 3.4 m on 3.6 m masts, pergola 4.5 m bays at 2.9 m, track gauge 2.1 m.
+
+**What is sourced and is not invented.** `reference/03-sector-blue/Babylon_5_2-22_29a.jpg`
+(authority 1) is extracted in `reference/00-INDEX.md` as showing "paved winding paths in small
+setts; clipped hedges; a water feature / cascade against a planted bank; a timber bench; a circular
+raised planter with a **red-brown coping**; **orange sail canopies** on masts; a **multi-storey
+glazed building** behind" and "a streamlined green-and-white transit car on a track".
+`Babylon_5_2-22_33a.jpg` reads the drum wall as "landscape with roads and **field boundaries**".
+Every object added here appears in that list. **None of them existed in the module.** What is
+invented is their dimensions, not their presence.
+
+**Why necessary.** The module scored 16.3% of its detail floor (`station/density.py`, INV-070) and
+the owner, shown a render, called the buildings "shitty little cubes" and the trees a "sad excuse
+for a tree". `tree()` was 30 triangles — a box trunk and one 6-segment cylinder — and
+`block_building()` was 48: a box with proud bands. The module also **asserted `dens < 0.06 tri/m2`**,
+so the sparseness was enforced, not accidental.
+
+**The one design rule worth carrying forward.** Line density is metres of visible line per m2, so
+what earns it is LENGTH, not triangle count. Measured in this module: a continuous cill band yields
+**5.3 m of line per triangle**, a downpipe 2.0, a dwarf boundary wall about 20 — and a panel-relief
+grid, which is the construction the budget bound itself is derived from, yields **0.17**. Thirty
+times worse. Long thin prisms and continuous bands are how a landscape reaches its floor; panel
+relief is how a *wall* does. Choosing the wrong one wastes the budget by an order of magnitude.
+
+**Overturned by:** any frame establishing the Garden's storey heights or planting scale against a
+figure of known stature.
