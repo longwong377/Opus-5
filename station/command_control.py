@@ -51,6 +51,7 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 import interior as it                                        # noqa: E402
+import rooms as _rooms                                          # noqa: E402
 
 # --- measured --------------------------------------------------------------
 REF_PX_PER_M = 100.0
@@ -275,6 +276,29 @@ def command_control():
         z = L * 0.10 + s * 0.30
         m.box(hw - 3.2, hw - 0.4, y, y + PIT_DROP_M / steps, z, z + 0.30,
               "cc_stair")
+
+    # ARTICULATION -- rooms.articulate(), INV-073. 92.4% of its floor, so this
+    # is a nudge rather than a rebuild: bands and mullions only. No deck joints
+    # (the floor is a stepped pit, not a slab field) and no soffit grid (the
+    # ceiling is the ring and hub built above). The band ceiling is a
+    # fraction of DOME_H_M rather than a room height, because this room
+    # does not have one -- it is a gallery under a 34 m dome, and the
+    # trim belongs at the gallery's own head height, not the dome's.
+    #
+    # Same span/per-triangle adaptation as docking_bay: `_M` carries one group
+    # per triangle, `articulate` emits spans.
+    av, at, aspans = [], [], []
+    _rooms.articulate(av, at, aspans, "cc", hw, L * 0.40, DOME_H_M * 0.22,
+                      z_off=L * 0.05, deck=False, soffit=False,
+                      conduit=False, scale=2.6)
+    off = len(m.v)
+    per = [None] * len(at)
+    for nm, lo, hi in aspans:
+        for i in range(lo, hi):
+            per[i] = nm
+    m.v.extend(av)
+    m.t.extend((a + off, b + off, c + off) for a, b, c in at)
+    m.g.extend(per)
 
     return m.as_tuple()
 

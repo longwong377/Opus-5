@@ -599,7 +599,7 @@ def bays_in(schema, profile, place):
 def articulate(v, t, g, prefix, hw, hl, ceil, nrib=None, ln=None,
                ow=None, ol=None, z_off=0.0, x_off=0.0, scale=1.0,
                soffit=True, conduit=True, bands=True,
-               mullions=True):
+               mullions=True, deck=True):
     """Bands, grids, mullions, panels and conduit for a box-shaped interior.
 
     Extracted from `build()` so the BESPOKE modules can carry the same
@@ -667,11 +667,11 @@ def articulate(v, t, g, prefix, hw, hl, ceil, nrib=None, ln=None,
     # Deck bay joints, both ways. The floor is the largest single surface in
     # any room and a flat plane carries no line at any triangle count -- that
     # is what held the Garden at 80.9% until its paving was jointed.
-    for i in range(1, max(2, int(2 * hw / deck_bay))):
+    for i in range(1, max(2, int(2 * hw / deck_bay)) if deck else 1):
         x = -hw + (2 * hw) * i / max(2, int(2 * hw / deck_bay))
         _box(v, t, g, f"{arch}_deck_joint",
              (x - JOINT_W_M / 2, -0.01, -hl), (x + JOINT_W_M / 2, 0.012, hl))
-    for i in range(1, max(2, int(2 * hl / deck_bay))):
+    for i in range(1, max(2, int(2 * hl / deck_bay)) if deck else 1):
         z = -hl + (2 * hl) * i / max(2, int(2 * hl / deck_bay))
         _box(v, t, g, f"{arch}_deck_joint",
              (-hw, -0.01, z - JOINT_W_M / 2), (hw, 0.012, z + JOINT_W_M / 2))

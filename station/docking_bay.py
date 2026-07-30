@@ -53,6 +53,7 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 import interior as it                                        # noqa: E402
+import rooms as _rooms                                          # noqa: E402
 
 # ---------------------------------------------------------------------------
 # Measured
@@ -256,6 +257,34 @@ def docking_bay(index=0, schema=None, profile=None):
     # --- back wall, and the mouth left open ---------------------------------
     m.quad((-hw, 0.0, L), (-hw, ceil_y(0.5), L), (hw, ceil_y(0.5), L),
            (hw, 0.0, L), "bay_backwall")
+
+    # ARTICULATION -- rooms.articulate(), INV-073. 38.2% of its detail floor:
+    # a 140 m hangar whose walls were flat plate. Conduit off -- a bay this tall
+    # puts the band above the useful envelope -- and the grids coarse, because
+    # 23,000 m2 at a corridor's pitch is not detail, it is a triangle bill.
+    #
+    # `_M` keeps ONE GROUP PER TRIANGLE and `articulate` emits (name, lo, hi)
+    # SPANS, so this adapts rather than reaching into either. Two group
+    # conventions in one module is how a mesh silently loses its material
+    # bindings.
+    av, at, aspans = [], [], []
+    _rooms.articulate(av, at, aspans, "bay", hw, L / 2.0, H,
+                      z_off=L / 2.0, conduit=False, deck=False,
+                      scale=5.5)
+    # DECK JOINTS OFF, and this one is a placement fact rather than a
+    # taste call: a joint is emitted 10 mm BELOW the deck plane, which
+    # is correct in a room whose deck is a 140 mm slab and wrong here,
+    # because once placed the bay's deck IS the outermost surface --
+    # up is radially inward. Ten millimetres put the bay outside
+    # Blue's hull. Both of this module's own assertions caught it.
+    off = len(m.v)
+    per = [None] * len(at)
+    for nm, lo, hi in aspans:
+        for i in range(lo, hi):
+            per[i] = nm
+    m.v.extend(av)
+    m.t.extend((a + off, b + off, c + off) for a, b, c in at)
+    m.g.extend(per)
 
     return m.as_tuple()
 
