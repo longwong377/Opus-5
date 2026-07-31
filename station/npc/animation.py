@@ -383,6 +383,22 @@ PART_CHAINS = {
     "vorlon_robe": ("base", "column"),
     "vorlon_yoke": ("collar",), "vorlon_shells": ("head",),
     "vorlon_hood": ("head",), "vorlon_tubes": ("head",),
+    # THE WARDROBE'S OWN PARTS. `npc/costume.py` modifies the base parts in
+    # place -- same names, counts and order, so everything above transfers --
+    # and APPENDS four accessories, which have no entry here and which `_bind`
+    # correctly refused to skin: "body.py has grown a part this module cannot
+    # skin". It had not; costume.py had.
+    #
+    # Each chain is the joint the garment actually hangs from, and the choices
+    # are anatomy rather than preference: a belt rides the pelvis and must not
+    # follow the spine, or it slides up the ribs when a body bends; a skirt
+    # hangs from the pelvis and swings with the hips, which is why it gets the
+    # hip bones as well and a stole does not; a collar and a cowl sit on the
+    # shoulders and turn with the head, so both span chest to head.
+    "belt": ("pelvis",),
+    "skirt": ("pelvis", "hip_r", "hip_l"),
+    "collar": ("chest", "neck"),
+    "cowl": ("chest", "neck", "head"),
 }
 
 # EXTRAPOLATED, authority 5. Where along the hip-to-ankle line the knee sits, as
@@ -821,9 +837,16 @@ class Rig:
     ind: object
     sp: object
     skel: Skeleton
-    parts: tuple             # (name, verts, tris) as body.py emitted them
+    parts: tuple             # (name, verts, tris) -- DRESSED, if the wardrobe
+                             # is reachable; this is what gets skinned
     groups: tuple            # OBJ material group per part, for the renderer
     binding: tuple
+    # THE BARE FIGURE, kept alongside. The skeleton is measured off it and the
+    # cross-check in `_selftest` interrogates it -- a robed Minbari has no leg
+    # part in `parts` at all, because the costume replaced it with a skirt, and
+    # an assertion about where the knee is has to ask the body rather than the
+    # gown.
+    base_parts: tuple = ()
 
 
 _RIG_CACHE = {}
@@ -831,6 +854,12 @@ _RIG_CACHE = {}
 # calibration and for the shared skin binding, so neither depends on which
 # resident happened to be built first.
 NOMINAL = "__nominal__"
+
+
+# Whether a rigged figure is dressed. Mirrors `populace.DRESSED`, and is here
+# rather than imported from there because the dependency runs the other way --
+# `populace` imports this module, not the reverse.
+DRESSED = True
 
 
 def rig(species: str, npc_id: str, lod: int = 0) -> Rig:
@@ -850,17 +879,59 @@ def rig(species: str, npc_id: str, lod: int = 0) -> Rig:
     sp = body.SPECIES[species]
     kw = dict(seg=lv["radial_segments"], ring_stride=lv["ring_stride"],
               features=lv["features"])
-    m = body._PLANS[sp.plan](ind, sp, **kw)
-    # The same figure with the stoop suppressed. `_ring_partition` needs flat
-    # rings and `_bend` destroys them; the two builds differ by exactly that
-    # transform, so vertex ORDER is identical and the partition transfers.
-    m0 = body._PLANS[sp.plan](replace(ind, stoop_deg=0.0), sp, **kw)
+    # DRESSED, IF THE WARDROBE IS REACHABLE. `npc/costume.py` modifies the base
+    # parts in place -- same names, same vertex counts, same order -- and
+    # appends accessories, so the ring partition and the binding transfer
+    # unchanged. Without this the rig builds `body._PLANS` directly and every
+    # POSED person on the station is nude while `populace._mesh_for` returns a
+    # clothed one: the two disagreed by 64 vertices and populace's own gate
+    # caught it.
+    # THE BONES COME FROM THE BODY AND THE SKIN FROM THE WARDROBE, and they
+    # are built separately because a costume can remove the very rings the
+    # skeleton is measured from. A robed Minbari's legs are replaced by a
+    # skirt, so `_skeleton`'s `_rings_by_height(unstooped, "leg")` returns an
+    # empty list and the build dies on an IndexError -- which is what happened
+    # when this passed the dressed mesh to both. A garment is a surface over a
+    # skeleton, not a different skeleton.
+    nude0 = body._PLANS[sp.plan](replace(ind, stoop_deg=0.0), sp, **kw)
+    # AND THE BARE FIGURE AS IT STANDS. `nude0` has the stoop suppressed
+    # because `_ring_partition` needs flat rings; the joint-containment
+    # cross-check needs the figure in its ACTUAL attitude, which is this one.
+    # Handing it the unstooped body instead put three joints outside the parts
+    # they drive on the two most stooped species -- a Gaim's head and a
+    # Pak'ma'ra's head and shoulder.
+    nude = body._PLANS[sp.plan](ind, sp, **kw)
+    m = m0 = None
+    if DRESSED:
+        try:
+            import costume as _cos                              # noqa: PLC0415
+            m = _cos.dressed_mesh(species, npc_id, lod=lod, chain=chain)
+            m0 = _cos.dressed_mesh(species, npc_id, lod=lod, chain=chain,
+                                   ind=replace(ind, stoop_deg=0.0))
+            if (isinstance(m, tuple) or isinstance(m0, tuple)
+                    or [n for n, _v, _t in m.parts]
+                    != [n for n, _v, _t in m0.parts]):
+                m = m0 = None
+        except Exception:                                       # noqa: BLE001
+            m = m0 = None
+    if m is None:
+        m = nude
+        # The same figure with the stoop suppressed. `_ring_partition` needs
+        # flat rings and `_bend` destroys them; the two builds differ by
+        # exactly that transform, so vertex ORDER is identical and the
+        # partition transfers.
+        m0 = nude0
     parts = tuple((n, tuple(v), tuple(t)) for n, v, t in m.parts)
     parts0 = tuple((n, tuple(v), tuple(t)) for n, v, t in m0.parts)
+    nparts0 = tuple((n, tuple(v), tuple(t)) for n, v, t in nude0.parts)
+    nparts = tuple((n, tuple(v), tuple(t)) for n, v, t in nude.parts)
     groups = tuple(g for g, _lo, _hi in m.spans)
-    skel = _skeleton(ind, sp, parts0, parts0)
+    # The skeleton is measured off the NUDE unstooped figure -- see above --
+    # while the binding partitions the DRESSED one, which is the mesh that
+    # actually gets skinned.
+    skel = _skeleton(ind, sp, nparts0, nparts0)
     out = Rig(species, npc_id, lod, ind, sp, skel, parts, groups,
-              tuple(_bind(skel, parts, parts0)))
+              tuple(_bind(skel, parts, parts0)), nparts)
     _RIG_CACHE[key] = out
     return out
 
@@ -2769,11 +2840,17 @@ def _selftest():
         # bug cannot pass both.
         legp = "leg" if sk.plan == "humanoid" else "suit_leg"
         armp = "arm" if sk.plan == "humanoid" else "suit_arm"
-        lv, lt = next((v, t) for n, v, t in rg.parts
+        # AGAINST THE BARE FIGURE, which is what this check has always meant
+        # -- "the mesh body.py actually built". Since the rig dresses, a robed
+        # figure's `parts` has a skirt where its legs were and this raised
+        # StopIteration rather than failing an assertion. A gown is not
+        # evidence about where a knee is.
+        src = rg.base_parts or rg.parts
+        lv, lt = next((v, t) for n, v, t in src
                       if n == legp and _side_of(v) == "r")
-        av, at = next((v, t) for n, v, t in rg.parts
+        av, at = next((v, t) for n, v, t in src
                       if n == armp and _side_of(v) == "r")
-        hv, ht = next((v, t) for n, v, t in rg.parts if n == "head"
+        hv, ht = next((v, t) for n, v, t in src if n == "head"
                       or n == "gaim_helmet")
         # A joint sits ON the cap of the loft it drives, so testing the joint
         # itself asks the ray caster about a boundary point. Step 8% down the
@@ -2846,13 +2923,41 @@ def _selftest():
                   f"{name}: ring weights sum to 1")
             check(len(ring) <= MAX_INFLUENCES,
                   f"{name}: at most {MAX_INFLUENCES} influences ({len(ring)})")
+    # UNDRESSED FOR THIS ONE, because the claim is about the BODY. Two
+    # residents in different costume sets have different meshes -- a coat here,
+    # a robe there -- so their bindings differ completely, and the measured
+    # figure went from 0.03 to 1.00 the moment the wardrobe was switched on.
+    # That is not a regression in the binding; it is the binding correctly
+    # describing two different surfaces. It costs nothing at runtime either:
+    # `apply_pose` runs offline in Python and the table never ships, and the
+    # crowd instances shared per-species bodies rather than per-resident ones.
+    global DRESSED
+    _was = DRESSED
+    DRESSED = False
+    _RIG_CACHE.clear()
+    ra = rig("human", "skin-a", 0)
     rb = rig("human", "skin-b", 0)
     worst_w = 0.0
-    for (_p1, w1, _r1), (_p2, w2, _r2) in zip(rg.binding, rb.binding):
+    for (_p1, w1, _r1), (_p2, w2, _r2) in zip(ra.binding, rb.binding):
         for r1, r2 in zip(w1, w2):
             d1, d2 = dict(r1), dict(r2)
             for k in set(d1) | set(d2):
                 worst_w = max(worst_w, abs(d1.get(k, 0.0) - d2.get(k, 0.0)))
+    DRESSED = _was
+    _RIG_CACHE.clear()
+    # AND THE CONVERSE, which is the negative control: dressed, they DO differ,
+    # so the number above is a property of the body and not of the fitter.
+    _da, _db = rig("human", "skin-a", 0), rig("human", "skin-b", 0)
+    _worst_d = 0.0
+    for (_p1, w1, _r1), (_p2, w2, _r2) in zip(_da.binding, _db.binding):
+        for r1, r2 in zip(w1, w2):
+            d1, d2 = dict(r1), dict(r2)
+            for k in set(d1) | set(d2):
+                _worst_d = max(_worst_d, abs(d1.get(k, 0.0) - d2.get(k, 0.0)))
+    check(_worst_d > worst_w,
+          f"BREAK: DRESSED, two residents' bindings differ far more "
+          f"({_worst_d:.4f} against {worst_w:.4f}) -- two costumes are two "
+          f"surfaces, and the sharing claim above is about the body")
     check(worst_w < 0.05,
           f"the binding is the same table for two residents ({worst_w:.4f}) -- "
           f"so it is stored once per species, not per NPC. Not exactly equal: "

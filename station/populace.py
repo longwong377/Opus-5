@@ -455,6 +455,53 @@ def bake_instances(instances, lod=None):
     return v, t, g
 
 
+def _body_half_w(mesh):
+    """Widest horizontal half-extent of a built body, about its own centre.
+
+    A dressed figure is wider than the bare one it was built from -- a coat, a
+    skirt, a stole -- so a placement test against `BODY_R_M` starts putting
+    shoulders through walls the moment the wardrobe is switched on. Measured
+    off the mesh in hand, which costs nothing because the caller already has
+    it.
+    """
+    verts = mesh[0] if mesh else ()
+    if not verts:
+        return BODY_R_M
+    cx = sum(q[0] for q in verts) / len(verts)
+    cz = sum(q[2] for q in verts) / len(verts)
+    return max(math.hypot(q[0] - cx, q[2] - cz) for q in verts)
+
+
+def _placed_bounds(mesh, x, z, yaw):
+    """Where a body ACTUALLY ends up: `(xmin, xmax, zmin, zmax)` in room space.
+
+    NOT A RADIUS AROUND THE PLACEMENT POINT, and the difference decides whether
+    anybody can sit down. Two cruder tests were tried and both are wrong:
+
+      * `BODY_R_M`, a nude human's 0.32 m shoulder. Once the wardrobe was
+        switched on a coat and a skirt went through the wall, and `rooms.py`'s
+        footprint assertion caught it -- "earthforce_office: inside its own
+        footprint -- x -4.27..4.07 in +/-3.89".
+      * the mesh's own largest radius. A seated figure is deep FORWARD -- its
+        thighs project 0.83 m -- and no wider across the shoulders than a
+        standing one, so a circle refused every seat against a wall. A bench IS
+        against a wall; the depth points into the room, not through the brick.
+        It emptied every chair on the station.
+
+    A body's box is not centred on its origin, so the honest test is the one
+    the placement actually performs: rotate the vertices by `yaw` about Y and
+    translate, exactly as `_place_body` does, then take the extremes. Same
+    arithmetic, so the test cannot disagree with the placement.
+    """
+    verts = mesh[0] if mesh else ()
+    if not verts:
+        return x - BODY_R_M, x + BODY_R_M, z - BODY_R_M, z + BODY_R_M
+    ca, sa = math.cos(yaw), math.sin(yaw)
+    xs = [x + px * ca - pz * sa for px, _py, pz in verts]
+    zs = [z + px * sa + pz * ca for px, _py, pz in verts]
+    return min(xs), max(xs), min(zs), max(zs)
+
+
 def body_capsule(mesh):
     """`(radius_m, height_m)` a body occupies, MEASURED off the mesh in hand.
 
@@ -497,6 +544,14 @@ def _material_family(part_name):
     it. If the two ever disagree, `test_materials_layer3.py`'s coverage gate
     fails -- it resolves every emitted group name.
     """
+    # A COSTUME GROUP IS ALREADY A MATERIAL KEY. `costume.group_name` emits
+    # `<slot>__<fabric>` with a DOUBLE underscore -- `npc_cloth__civ_dark_warm`
+    # -- and the material is bound to the whole of it, because the wardrobe is
+    # one material per fabric and not one per slot. Splitting on single
+    # underscores truncated that to `npc_cloth`, which nothing binds, and 24
+    # groups on a deck went unresolved the moment people got dressed.
+    if "__" in part_name:
+        return part_name
     parts = part_name.split("_")
     return "_".join(parts[:2]) if len(parts) >= 2 else part_name
 
@@ -1242,7 +1297,7 @@ def populate(place_key, room_v, room_t, room_g, w_m, l_m, hour=13.0,
                 return True
         return False
 
-    def _inside(x, z):
+    def _inside(x, z, m=None, yaw=0.0):
         """A whole body fits within the room, not just its centre point.
 
         The seat and desk placements skipped this and put a shoulder through
@@ -1251,8 +1306,21 @@ def populate(place_key, room_v, room_t, room_g, w_m, l_m, hour=13.0,
         rooms.py's footprint assertion caught it; the wander placement already
         allowed for width and these two did not.
         """
-        return (abs(x) + BODY_R_M <= hw + 1e-9
-                and abs(z) + BODY_R_M <= hl + 1e-9)
+        # THE BODY'S OWN HALF-WIDTH, not the nominal 0.32 m. `BODY_R_M` is a
+        # nude human's shoulder, and once people got dressed a coat and a
+        # skirt made them wider -- `rooms.py`'s footprint assertion caught it
+        # immediately: "earthforce_office: inside its own footprint -- x
+        # -4.27..4.07 in +/-3.89". The same measurement already guards the
+        # corridor placement; this is the room half of it.
+        # THE MESH BEING PLACED, not the standing one. A SEATED figure is
+        # deeper than a standing one -- its thighs project 0.83 m where a
+        # stance is 0.54 -- so testing the idle mesh let a sitter's knees
+        # through the wall: "earthforce_office: inside its own footprint --
+        # x -4.27..4.07 in +/-3.89", and 4.07 is the room's own deck.
+        x0, x1, z0, z1 = _placed_bounds(m if m is not None else mesh,
+                                        x, z, yaw)
+        return (-hw - 1e-9 <= x0 and x1 <= hw + 1e-9
+                and -hl - 1e-9 <= z0 and z1 <= hl + 1e-9)
 
     for i in range(n):
         who = people[i]
@@ -1280,17 +1348,29 @@ def populate(place_key, room_v, room_t, room_g, w_m, l_m, hour=13.0,
         seated = False
         if i < len(seats):
             sx, sy, sz, _a = seats[i]
-            if _clear(sx, sz) and _inside(sx, sz):
+            seat_mesh = _pose_mesh(sp, who.npc_id, lod, "sit", g_ms2, sy)
+            # FACING THE ROOM, and the sign was inverted. `_place_body` maps
+            # the body's local +Z -- its facing -- to `(-sin(yaw), cos(yaw))`,
+            # so to look along `(fx, fz)` the yaw is `atan2(-fx, fz)`. It was
+            # `atan2(-sx, -sz)`, which is `atan2(-fx, -fz)` for a seat at
+            # `(sx, sz)` wanting to face the centre: correct in z and MIRRORED
+            # IN X. Measured on a bench at x = -2.61 it faced (-1.00, -0.02) --
+            # straight at the wall -- and put the sitter's back 0.33 m through
+            # it. Every seated person on the station was sitting backwards, and
+            # `rooms.py`'s footprint assertion is what finally caught it,
+            # because the placement test used to be a symmetric circle that
+            # could not tell the two apart.
+            seat_yaw = math.atan2(sx, -sz)
+            if _clear(sx, sz) and _inside(sx, sz, seat_mesh, seat_yaw):
                 # A SEATED PERSON IS A SEATED POSE, not a standing one dropped
                 # 0.42 m. That constant put a 1.829 m figure's feet 0.42 m
                 # through the deck and its knees inside the chair; `sit_clip`
                 # takes the seat's own measured height `sy` and puts the hips
                 # on the pan and the feet on the floor, so the body's origin
                 # stays at deck level like every other placement here.
-                _place_body(v, t, g,
-                            _pose_mesh(sp, who.npc_id, lod, "sit", g_ms2, sy),
+                _place_body(v, t, g, seat_mesh,
                             sx, 0.0, sz,
-                            math.atan2(-sx, -sz), f"npc_seated_{i}",
+                            seat_yaw, f"npc_seated_{i}",
                             actors, who_rec)
                 used.append((sx, sz))
                 stats["seated"] += 1
@@ -1304,8 +1384,10 @@ def populate(place_key, room_v, room_t, room_g, w_m, l_m, hour=13.0,
             uz = dz
             if _clear(ux, uz) and _inside(ux, uz) and _free(ux, uz):
                 _mv, _mt = len(v), len(t)
+                # Same convention, same inversion: to face the desk from
+                # the stand-off point the yaw is `atan2(-(dx-ux), dz-uz)`.
                 _place_body(v, t, g, mesh, ux, 0.0, uz,
-                            math.atan2(dx - ux, dz - uz), f"npc_standing_{i}",
+                            math.atan2(ux - dx, dz - uz), f"npc_standing_{i}",
                             actors, who_rec)
                 if not _embedded(_mv, _mt):
                     used.append((ux, uz))
@@ -1723,6 +1805,38 @@ def _selftest():
     check("...and the corridor's triangle cost is a small share of a deck",
           cs["triangles"] < 60_000,
           f"{cs['triangles']:,} for {cs['placed']} people at lod {cs['lod']}")
+    # -- NOBODY SITS FACING THE WALL ---------------------------------------
+    # `_place_body` maps a body's local +Z to `(-sin(yaw), cos(yaw))`, so
+    # facing `(fx, fz)` needs `atan2(-fx, fz)`. The seat placement used
+    # `atan2(-sx, -sz)` -- correct in z and MIRRORED IN X -- so a sitter on the
+    # -x wall faced (-1.00, -0.02), straight at it, with 0.33 m of their back
+    # through the plaster. It survived because the placement test was a
+    # symmetric circle around the body's centre, which cannot tell forwards
+    # from backwards. `rooms.py`'s footprint assertion caught it only once the
+    # test became the body's real placed bounds.
+    _sv, _st, _sg, _ss = populate("t", dv, dt, dg, 6.0, 9.0, hour=13.0,
+                                  arch="office")
+    _seated = [a for a in _ss["actors"] if a["pose"] == "seated"]
+    _facing = []
+    for a in _seated:
+        _ca, _sa = math.cos(a["yaw"]), math.sin(a["yaw"])
+        # Their forward, against the direction from them to the room's centre.
+        _fx, _fz = -_sa, _ca
+        _tx, _tz = -a["x"], -a["z"]
+        _n = math.hypot(_tx, _tz) or 1.0
+        _facing.append((_fx * _tx + _fz * _tz) / _n)
+    check("a seated person faces the room, not the wall behind them",
+          bool(_facing) and min(_facing) > 0.0,
+          f"{sum(1 for c in _facing if c <= 0)} of {len(_facing)} face away; "
+          f"worst dot {min(_facing) if _facing else 0:+.2f}")
+    check("...and every one of them is inside the room they are in",
+          all(-2.9 <= x <= 2.9 for a in _seated
+              for x in _placed_bounds(
+                  _pose_mesh(a["who"]["species"], a["who"]["id"], ROOM_LOD,
+                             "sit", G0_MS2, 0.45),
+                  a["x"], a["z"], a["yaw"])[:2]),
+          "a sitter's back is through the wall")
+
     # -- THE WARDROBE ------------------------------------------------------
     # `costume.py` measured 53 reachable (slot, fabric) materials, 32 off
     # authority-1 show frames, and nothing had ever put one on anybody.

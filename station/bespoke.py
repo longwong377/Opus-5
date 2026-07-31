@@ -667,8 +667,14 @@ def compare(schema, profile, places=None):
 # Split, so both halves are real assertions: the first fails if the zone stops
 # working, the second fails if those two rooms regress back into needing it.
 # Re-measure with `compose(..., door_at=(0,0,0))` and move a key if it changes.
-ZONE_DEPENDENT = ("cnc", "customs_south", "zocalo")
-ZONE_FREED = ("council_chamber", "arrival_concourse")
+# RE-MEASURED AGAIN IN 3z, after the wardrobe was switched on. A dressed body
+# is wider than a bare one -- a coat, a skirt, a stole -- so
+# `arrival_concourse` moved back from FREED to DEPENDENT: its own furniture
+# clears the aperture, and its people no longer do. That is the split doing its
+# job twice in one session, and it is why these are two measured lists rather
+# than one count.
+ZONE_DEPENDENT = ("cnc", "customs_south", "zocalo", "arrival_concourse")
+ZONE_FREED = ("council_chamber",)
 
 
 def _selftest():

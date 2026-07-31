@@ -1816,6 +1816,14 @@ def material_specs():
         slot, _, key = group.partition("__")
         if key in FABRICS:
             pairs.add((slot, key))
+    # AND WHAT THE MESH BUILDER EMITS DIRECTLY, which is a THIRD path and was
+    # missed by both of the first two. `_build_mesh` writes the Nightwatch
+    # armband as a literal -- `group_name("npc_cloth_trim", "nightwatch_black")`
+    # -- under `era_active("nightwatch_visible")`, so it appears in no `SETS`
+    # slot AND in no `Costume` record, which is what `worn_fabrics` reads. No
+    # sample size can find it, at any datum. Three groups on an assembled deck
+    # went unresolved for exactly this reason.
+    pairs.update(BUILDER_FABRICS)
     out = []
     for slot, key in sorted(pairs):
         group = group_name(slot, key)
@@ -1848,7 +1856,32 @@ def material_specs():
     return tuple(uniq)
 
 
-def worn_fabrics(sample=60, species=None):
+# (slot, fabric) pairs `_build_mesh` writes as LITERALS rather than reading off
+# the `Costume` record. There is one, and `_selftest` greps this file's own
+# source for two-literal `group_name(...)` calls and asserts the list covers
+# every one -- so a second such garment cannot be added without this list
+# noticing, which is the only way a hand-kept list stays honest.
+BUILDER_FABRICS = frozenset({("npc_cloth_trim", "nightwatch_black")})
+
+
+def _era_datum_for(event):
+    """A datum at which `event` is active, from its own recorded window.
+
+    `ERA_EVENTS[event]` carries `((season, episode), description)`, so the
+    event's own start is the datum that turns it on -- read from the table
+    rather than written down a second time.
+    """
+    when = ERA_EVENTS[event][0]
+    return when
+
+
+# Draws per species when sweeping an era event. Smaller than `SPEC_SAMPLE`
+# because an event changes ONE slot on the roles it touches, so the reachable
+# set converges far faster than the whole wardrobe's does.
+ERA_SAMPLE = 200
+
+
+def worn_fabrics(sample=60, species=None, datum=None):
     """Which fabrics the station's own mix actually puts on people.
 
     MEASURED, not tabulated: `costume_for` is a pure function of species and
@@ -1863,7 +1896,8 @@ def worn_fabrics(sample=60, species=None):
     for sp in species:
         for i in range(sample):
             try:
-                cs = costume_for(sp, f"worn/{sp}/{i}")
+                cs = (costume_for(sp, f"worn/{sp}/{i}") if datum is None
+                      else costume_for(sp, f"worn/{sp}/{i}", datum=datum))
             except Exception:                                   # noqa: BLE001
                 continue
             for slot, attr in (("npc_cloth", "cloth"),
@@ -1884,8 +1918,16 @@ def build_dressed(species, npc_id, lod=0, chain=None, datum=ERA_DATUM,
     return out if isinstance(out, tuple) else out.as_tuple()
 
 
+def dressed_mesh(species, npc_id, lod=0, chain=None, datum=ERA_DATUM,
+                 costume=None, distance_m=None, ind=None):
+    """The dressed figure as a `body.Mesh`, so a caller that needs its spans
+    as well as its parts -- `animation.rig` -- gets both from one build."""
+    return _build_mesh(species, npc_id, lod, chain, datum, costume,
+                       distance_m, ind)
+
+
 def dressed_parts(species, npc_id, lod=0, chain=None, datum=ERA_DATUM,
-                  costume=None, distance_m=None):
+                  costume=None, distance_m=None, ind=None):
     """The CLOSED PARTS of a dressed figure, for per-part assertions.
 
     Parts, not spans. The torso is emitted as two spans -- body and yoke -- of
@@ -1893,14 +1935,23 @@ def dressed_parts(species, npc_id, lod=0, chain=None, datum=ERA_DATUM,
     boundary edges that is not there, and the natural "fix" for a false failure
     is to delete the check.
     """
-    out = _build_mesh(species, npc_id, lod, chain, datum, costume, distance_m)
+    out = _build_mesh(species, npc_id, lod, chain, datum, costume,
+                      distance_m, ind)
     return [] if isinstance(out, tuple) else list(out.parts)
 
 
 def _build_mesh(species, npc_id, lod=0, chain=None, datum=ERA_DATUM,
-                costume=None, distance_m=None):
+                costume=None, distance_m=None, ind=None):
     sp = body.SPECIES[species]
-    ind = body.individual(species, npc_id)
+    # `ind` OVERRIDES THE FIGURE, and exists for one caller: `animation.rig`
+    # builds the same body twice -- once as itself and once with the stoop
+    # suppressed, because `_ring_partition` needs flat rings -- and binds the
+    # first to the second vertex for vertex. It can only do that for a DRESSED
+    # figure if it can ask for a dressed one with a modified individual.
+    # Without this the rig dresses nobody and every POSED person on the station
+    # is nude while the rest-pose probe is clothed, which is exactly the
+    # mismatch `populace`'s own gate caught: 1216 vertices against 1152.
+    ind = ind if ind is not None else body.individual(species, npc_id)
     levels = chain or body.lod_chain()
     lv = levels[max(0, min(lod, len(levels) - 1))]
     c = costume or costume_for(species, npc_id, datum)
@@ -2821,6 +2872,27 @@ def _selftest():
     # the station with no clothes on.
     _specs = material_specs()
     _groups = {m["group"] for m in _specs}
+    # THE BUILDER'S LITERALS, CHECKED AGAINST THIS FILE'S OWN SOURCE. A
+    # `group_name("slot", "fabric")` call with two literals is a garment no
+    # `Costume` record mentions and no sample can reach -- the Nightwatch
+    # armband is one and was missed by both other sources. Grepping the source
+    # is what stops `BUILDER_FABRICS` going stale the day a second one lands.
+    import re as _re                                            # noqa: PLC0415
+    _src = open(__file__).read()
+    # Filtered to pairs that name a REAL slot and a REAL fabric: this file's
+    # own tests and docstrings call `group_name("slot", "fabric")` and
+    # `group_name("npc_not_a_slot", "x")` to prove it rejects them, and those
+    # are not garments. The filter is the same predicate `material_specs` uses,
+    # so it cannot quietly exclude a real one.
+    _lits = {(a, b) for a, b in _re.findall(
+        r'group_name\(\s*"([a-z_]+)"\s*,\s*"([a-z_]+)"\s*\)', _src)
+        if a in MATERIAL_SLOTS and b in FABRICS}
+    check(_lits <= set(BUILDER_FABRICS),
+          f"every fabric the mesh builder writes as a literal is declared in "
+          f"BUILDER_FABRICS ({sorted(_lits - set(BUILDER_FABRICS))} are not)")
+    check(bool(_lits),
+          f"...and the grep finds them at all -- {len(_lits)} literal "
+          f"group_name calls in this file")
     check(len(_specs) > 40 and len(_groups) == len(_specs),
           f"the wardrobe exports {len(_specs)} materials, one per reachable "
           f"(slot, fabric), with no duplicate group")

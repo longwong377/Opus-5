@@ -83,6 +83,11 @@ STRUCTURAL_SAT_MAX = 0.20
 ROUGHNESS_MIRROR = 0.15
 MIRROR_OK = ("glaz", "glass", "window", "screen", "viewport", "monitor",
              "display", "polish", "water", "mirror")
+# At or above this metallic a surface may be mirror-smooth without naming
+# itself one: a polished metal IS a mirror, and a material with metallic 1.0
+# has no diffuse lobe to be dulled by roughness in the first place. 0.9 rather
+# than 1.0 so a metal with a trace of surface film still qualifies.
+MIRROR_METALLIC = 0.9
 
 # Emissive fittings are exempt from the neutral-albedo rule: a lamp is allowed
 # to be a colour. The rule is about SURFACES.
@@ -513,8 +518,20 @@ def _selftest():
                             and 0.0 <= m.specular <= 1.0)]
     check("metallic, roughness and specular are all in [0, 1]",
           not out_of_range, str(out_of_range[:4]))
+    # A FULLY METALLIC SURFACE IS ALLOWED TO BE SMOOTH, and that is physics
+    # rather than an exemption. This tested the NAME against a word list --
+    # glass, window, polish, mirror -- which caught every dielectric mirror in
+    # the library and then rejected `npc_metal__psi_chrome`, whose metallic is
+    # 1.00 and whose own measurement note in `npc/costume.py` reads "a mirror
+    # photographs as its surroundings". Adding "chrome" to the word list would
+    # have fixed the symptom and left the next polished metal to trip it.
+    #
+    # The word list stays for DIELECTRICS: glass and water are smooth without
+    # being metal, and there is no material property that distinguishes them
+    # from a smooth painted panel, which would be wrong.
     mirror = [(m.name, m.roughness) for m in M.MATERIALS
               if m.roughness < ROUGHNESS_MIRROR
+              and m.metallic < MIRROR_METALLIC
               and not any(w in m.name for w in MIRROR_OK)]
     check("only glass and polished metal are mirror-smooth",
           not mirror, f"{len(mirror)}: {mirror[:6]}")

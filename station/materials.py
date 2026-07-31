@@ -1997,6 +1997,37 @@ def _build():
         metallic=0.0, specular=0.3,
         binds=("npc_hair", "npc_crest",), scenes=("interior",),
         source="npc/costume.py, darkest measured human surface"))
+    # THE WARDROBE, IMPORTED RATHER THAN RESTATED, and it is the largest single
+    # block of measurement this file has ever been handed. `npc/costume.py`
+    # holds a `Fabric` per garment with an albedo read off a named frame and
+    # region, a roughness, a metallic and an authority -- a complete PBR spec,
+    # sourced -- and this file's only use of that module was TWO CONSTANTS.
+    # So `populace` built `body.build`, the bare figure, and 2,016 inhabitants
+    # stood on the station with no clothes on.
+    #
+    # ONE MATERIAL PER FABRIC, not per slot. `costume.group_name`'s own note
+    # says "one material, any number of fabrics", which is right about this
+    # resolver and wrong about the wardrobe: measured over the station mix the
+    # cloth slot draws on SEVENTEEN distinct fabrics with no dominant one, so a
+    # single `npc_cloth` would dress the whole station in one coat. Longest
+    # fragment wins, so `npc_cloth__civ_dark_warm` beats a slot-level bind and
+    # both can coexist.
+    #
+    # The reachable set is `costume.material_specs()`'s business, and it is a
+    # union of two incomplete sources -- see its docstring, which records that
+    # sampling misses rare roles and the declared table misses the fallbacks.
+    for _spec in _costume.material_specs():
+        a(Material(
+            _spec["name"], _spec["title"],
+            albedo=tuple(_spec["albedo"]), roughness=_spec["roughness"],
+            metallic=_spec["metallic"], specular=0.4,
+            binds=(_spec["group"],), scenes=("interior",),
+            source=_spec["source"],
+            note=_spec["note"],
+            extrapolated=("" if not _spec["declared"] else
+                          "DECLARED in npc/costume.py: no frame resolves this "
+                          "garment, and the value is its own reasoned "
+                          "extrapolation there rather than a second one here.")))
     a(Material(
         "plant_valve_metal", "Valve — bare metal handwheel and stem, worn by use",
         albedo=(0.545, 0.540, 0.528), roughness=0.42, metallic=0.95,

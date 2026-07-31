@@ -1,4 +1,4 @@
-[gd_scene load_steps=116 format=3]
+[gd_scene load_steps=170 format=3]
 
 ; A room, from the inside.
 ;
@@ -149,6 +149,60 @@
 [ext_resource type="Material" path="res://materials/sign_text_lit.tres" id="m_sign_text_lit"]
 [ext_resource type="Material" path="res://materials/kit_soffit.tres" id="m_kit_soffit"]
 [ext_resource type="Material" path="res://materials/npc_suit_lacquer.tres" id="m_npc_suit_lacquer"]
+[ext_resource type="Material" path="res://materials/npc_cloth__centauri_brocade.tres" id="m_npc_cloth__centauri_brocade"]
+[ext_resource type="Material" path="res://materials/npc_cloth__civ_collar_yoke.tres" id="m_npc_cloth__civ_collar_yoke"]
+[ext_resource type="Material" path="res://materials/npc_cloth__civ_cool_dark.tres" id="m_npc_cloth__civ_cool_dark"]
+[ext_resource type="Material" path="res://materials/npc_cloth__civ_dark_warm.tres" id="m_npc_cloth__civ_dark_warm"]
+[ext_resource type="Material" path="res://materials/npc_cloth__civ_light_shirt.tres" id="m_npc_cloth__civ_light_shirt"]
+[ext_resource type="Material" path="res://materials/npc_cloth__civ_lurker.tres" id="m_npc_cloth__civ_lurker"]
+[ext_resource type="Material" path="res://materials/npc_cloth__civ_mid_warm.tres" id="m_npc_cloth__civ_mid_warm"]
+[ext_resource type="Material" path="res://materials/npc_cloth__civ_worker_drab.tres" id="m_npc_cloth__civ_worker_drab"]
+[ext_resource type="Material" path="res://materials/npc_cloth__ef_command_wool.tres" id="m_npc_cloth__ef_command_wool"]
+[ext_resource type="Material" path="res://materials/npc_cloth__ef_coverall.tres" id="m_npc_cloth__ef_coverall"]
+[ext_resource type="Material" path="res://materials/npc_cloth__ef_security_twill.tres" id="m_npc_cloth__ef_security_twill"]
+[ext_resource type="Material" path="res://materials/npc_cloth__league_bone.tres" id="m_npc_cloth__league_bone"]
+[ext_resource type="Material" path="res://materials/npc_cloth__league_dark.tres" id="m_npc_cloth__league_dark"]
+[ext_resource type="Material" path="res://materials/npc_cloth__minbari_black.tres" id="m_npc_cloth__minbari_black"]
+[ext_resource type="Material" path="res://materials/npc_cloth__minbari_cream.tres" id="m_npc_cloth__minbari_cream"]
+[ext_resource type="Material" path="res://materials/npc_cloth__minbari_worker.tres" id="m_npc_cloth__minbari_worker"]
+[ext_resource type="Material" path="res://materials/npc_cloth__monastic_habit.tres" id="m_npc_cloth__monastic_habit"]
+[ext_resource type="Material" path="res://materials/npc_cloth__narn_salvage.tres" id="m_npc_cloth__narn_salvage"]
+[ext_resource type="Material" path="res://materials/npc_cloth__narn_suede.tres" id="m_npc_cloth__narn_suede"]
+[ext_resource type="Material" path="res://materials/npc_cloth__psi_grey.tres" id="m_npc_cloth__psi_grey"]
+[ext_resource type="Material" path="res://materials/npc_cloth__psi_ochre.tres" id="m_npc_cloth__psi_ochre"]
+[ext_resource type="Material" path="res://materials/npc_cloth__psi_olive.tres" id="m_npc_cloth__psi_olive"]
+[ext_resource type="Material" path="res://materials/npc_cloth__ranger_tabard.tres" id="m_npc_cloth__ranger_tabard"]
+[ext_resource type="Material" path="res://materials/npc_cloth_trim__centauri_stole.tres" id="m_npc_cloth_trim__centauri_stole"]
+[ext_resource type="Material" path="res://materials/npc_cloth_trim__civ_collar_yoke.tres" id="m_npc_cloth_trim__civ_collar_yoke"]
+[ext_resource type="Material" path="res://materials/npc_cloth_trim__civ_cool_dark.tres" id="m_npc_cloth_trim__civ_cool_dark"]
+[ext_resource type="Material" path="res://materials/npc_cloth_trim__civ_light_shirt.tres" id="m_npc_cloth_trim__civ_light_shirt"]
+[ext_resource type="Material" path="res://materials/npc_cloth_trim__civ_lurker.tres" id="m_npc_cloth_trim__civ_lurker"]
+[ext_resource type="Material" path="res://materials/npc_cloth_trim__civ_worker_drab.tres" id="m_npc_cloth_trim__civ_worker_drab"]
+[ext_resource type="Material" path="res://materials/npc_cloth_trim__ef_black_leather.tres" id="m_npc_cloth_trim__ef_black_leather"]
+[ext_resource type="Material" path="res://materials/npc_cloth_trim__ef_command_leather.tres" id="m_npc_cloth_trim__ef_command_leather"]
+[ext_resource type="Material" path="res://materials/npc_cloth_trim__league_dark.tres" id="m_npc_cloth_trim__league_dark"]
+[ext_resource type="Material" path="res://materials/npc_cloth_trim__league_stole.tres" id="m_npc_cloth_trim__league_stole"]
+[ext_resource type="Material" path="res://materials/npc_cloth_trim__minbari_black.tres" id="m_npc_cloth_trim__minbari_black"]
+[ext_resource type="Material" path="res://materials/npc_cloth_trim__minbari_cream.tres" id="m_npc_cloth_trim__minbari_cream"]
+[ext_resource type="Material" path="res://materials/npc_cloth_trim__monastic_habit.tres" id="m_npc_cloth_trim__monastic_habit"]
+[ext_resource type="Material" path="res://materials/npc_cloth_trim__narn_apron.tres" id="m_npc_cloth_trim__narn_apron"]
+[ext_resource type="Material" path="res://materials/npc_cloth_trim__narn_iridescent.tres" id="m_npc_cloth_trim__narn_iridescent"]
+[ext_resource type="Material" path="res://materials/npc_cloth_trim__narn_salvage.tres" id="m_npc_cloth_trim__narn_salvage"]
+[ext_resource type="Material" path="res://materials/npc_cloth_trim__psi_black_panel.tres" id="m_npc_cloth_trim__psi_black_panel"]
+[ext_resource type="Material" path="res://materials/npc_cloth_trim__ranger_black.tres" id="m_npc_cloth_trim__ranger_black"]
+[ext_resource type="Material" path="res://materials/npc_leather__civ_boot.tres" id="m_npc_leather__civ_boot"]
+[ext_resource type="Material" path="res://materials/npc_leather__ef_black_leather.tres" id="m_npc_leather__ef_black_leather"]
+[ext_resource type="Material" path="res://materials/npc_leather__ef_command_leather.tres" id="m_npc_leather__ef_command_leather"]
+[ext_resource type="Material" path="res://materials/npc_leather__minbari_black.tres" id="m_npc_leather__minbari_black"]
+[ext_resource type="Material" path="res://materials/npc_leather__narn_apron.tres" id="m_npc_leather__narn_apron"]
+[ext_resource type="Material" path="res://materials/npc_leather__psi_black_panel.tres" id="m_npc_leather__psi_black_panel"]
+[ext_resource type="Material" path="res://materials/npc_leather__ranger_black.tres" id="m_npc_leather__ranger_black"]
+[ext_resource type="Material" path="res://materials/npc_metal__ef_gold.tres" id="m_npc_metal__ef_gold"]
+[ext_resource type="Material" path="res://materials/npc_metal__league_cord.tres" id="m_npc_metal__league_cord"]
+[ext_resource type="Material" path="res://materials/npc_metal__narn_yoke.tres" id="m_npc_metal__narn_yoke"]
+[ext_resource type="Material" path="res://materials/npc_metal__psi_chrome.tres" id="m_npc_metal__psi_chrome"]
+[ext_resource type="Material" path="res://materials/npc_metal__ranger_gold.tres" id="m_npc_metal__ranger_gold"]
+[ext_resource type="Material" path="res://materials/npc_cloth_trim__nightwatch_black.tres" id="m_npc_cloth_trim__nightwatch_black"]
 
 [sub_resource type="Environment" id="Env"]
 ; Flat colour, not a sky. Near-black rather than pure black for the reason the
@@ -424,10 +478,64 @@ material_rules = {
 "medical_wall": ExtResource("m_shell_wall_clinical"),
 "npc_body": ExtResource("m_npc_skin"),
 "npc_brow": ExtResource("m_npc_skin"),
+"npc_cloth__centauri_brocade": ExtResource("m_npc_cloth__centauri_brocade"),
+"npc_cloth__civ_collar_yoke": ExtResource("m_npc_cloth__civ_collar_yoke"),
+"npc_cloth__civ_cool_dark": ExtResource("m_npc_cloth__civ_cool_dark"),
+"npc_cloth__civ_dark_warm": ExtResource("m_npc_cloth__civ_dark_warm"),
+"npc_cloth__civ_light_shirt": ExtResource("m_npc_cloth__civ_light_shirt"),
+"npc_cloth__civ_lurker": ExtResource("m_npc_cloth__civ_lurker"),
+"npc_cloth__civ_mid_warm": ExtResource("m_npc_cloth__civ_mid_warm"),
+"npc_cloth__civ_worker_drab": ExtResource("m_npc_cloth__civ_worker_drab"),
+"npc_cloth__ef_command_wool": ExtResource("m_npc_cloth__ef_command_wool"),
+"npc_cloth__ef_coverall": ExtResource("m_npc_cloth__ef_coverall"),
+"npc_cloth__ef_security_twill": ExtResource("m_npc_cloth__ef_security_twill"),
+"npc_cloth__league_bone": ExtResource("m_npc_cloth__league_bone"),
+"npc_cloth__league_dark": ExtResource("m_npc_cloth__league_dark"),
+"npc_cloth__minbari_black": ExtResource("m_npc_cloth__minbari_black"),
+"npc_cloth__minbari_cream": ExtResource("m_npc_cloth__minbari_cream"),
+"npc_cloth__minbari_worker": ExtResource("m_npc_cloth__minbari_worker"),
+"npc_cloth__monastic_habit": ExtResource("m_npc_cloth__monastic_habit"),
+"npc_cloth__narn_salvage": ExtResource("m_npc_cloth__narn_salvage"),
+"npc_cloth__narn_suede": ExtResource("m_npc_cloth__narn_suede"),
+"npc_cloth__psi_grey": ExtResource("m_npc_cloth__psi_grey"),
+"npc_cloth__psi_ochre": ExtResource("m_npc_cloth__psi_ochre"),
+"npc_cloth__psi_olive": ExtResource("m_npc_cloth__psi_olive"),
+"npc_cloth__ranger_tabard": ExtResource("m_npc_cloth__ranger_tabard"),
+"npc_cloth_trim__centauri_stole": ExtResource("m_npc_cloth_trim__centauri_stole"),
+"npc_cloth_trim__civ_collar_yoke": ExtResource("m_npc_cloth_trim__civ_collar_yoke"),
+"npc_cloth_trim__civ_cool_dark": ExtResource("m_npc_cloth_trim__civ_cool_dark"),
+"npc_cloth_trim__civ_light_shirt": ExtResource("m_npc_cloth_trim__civ_light_shirt"),
+"npc_cloth_trim__civ_lurker": ExtResource("m_npc_cloth_trim__civ_lurker"),
+"npc_cloth_trim__civ_worker_drab": ExtResource("m_npc_cloth_trim__civ_worker_drab"),
+"npc_cloth_trim__ef_black_leather": ExtResource("m_npc_cloth_trim__ef_black_leather"),
+"npc_cloth_trim__ef_command_leather": ExtResource("m_npc_cloth_trim__ef_command_leather"),
+"npc_cloth_trim__league_dark": ExtResource("m_npc_cloth_trim__league_dark"),
+"npc_cloth_trim__league_stole": ExtResource("m_npc_cloth_trim__league_stole"),
+"npc_cloth_trim__minbari_black": ExtResource("m_npc_cloth_trim__minbari_black"),
+"npc_cloth_trim__minbari_cream": ExtResource("m_npc_cloth_trim__minbari_cream"),
+"npc_cloth_trim__monastic_habit": ExtResource("m_npc_cloth_trim__monastic_habit"),
+"npc_cloth_trim__narn_apron": ExtResource("m_npc_cloth_trim__narn_apron"),
+"npc_cloth_trim__narn_iridescent": ExtResource("m_npc_cloth_trim__narn_iridescent"),
+"npc_cloth_trim__narn_salvage": ExtResource("m_npc_cloth_trim__narn_salvage"),
+"npc_cloth_trim__nightwatch_black": ExtResource("m_npc_cloth_trim__nightwatch_black"),
+"npc_cloth_trim__psi_black_panel": ExtResource("m_npc_cloth_trim__psi_black_panel"),
+"npc_cloth_trim__ranger_black": ExtResource("m_npc_cloth_trim__ranger_black"),
 "npc_crest": ExtResource("m_npc_hair"),
 "npc_foot": ExtResource("m_npc_skin"),
 "npc_hair": ExtResource("m_npc_hair"),
 "npc_hand": ExtResource("m_npc_skin"),
+"npc_leather__civ_boot": ExtResource("m_npc_leather__civ_boot"),
+"npc_leather__ef_black_leather": ExtResource("m_npc_leather__ef_black_leather"),
+"npc_leather__ef_command_leather": ExtResource("m_npc_leather__ef_command_leather"),
+"npc_leather__minbari_black": ExtResource("m_npc_leather__minbari_black"),
+"npc_leather__narn_apron": ExtResource("m_npc_leather__narn_apron"),
+"npc_leather__psi_black_panel": ExtResource("m_npc_leather__psi_black_panel"),
+"npc_leather__ranger_black": ExtResource("m_npc_leather__ranger_black"),
+"npc_metal__ef_gold": ExtResource("m_npc_metal__ef_gold"),
+"npc_metal__league_cord": ExtResource("m_npc_metal__league_cord"),
+"npc_metal__narn_yoke": ExtResource("m_npc_metal__narn_yoke"),
+"npc_metal__psi_chrome": ExtResource("m_npc_metal__psi_chrome"),
+"npc_metal__ranger_gold": ExtResource("m_npc_metal__ranger_gold"),
 "npc_skin": ExtResource("m_npc_skin"),
 "npc_suit": ExtResource("m_npc_suit_lacquer"),
 "npc_suit_robe": ExtResource("m_npc_suit_lacquer"),
