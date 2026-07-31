@@ -939,15 +939,70 @@ def _build():
         "kit_reveal", "Corridor Reveal — the shadow gap under the rail band",
         albedo=(0.140, 0.140, 0.145), roughness=0.85, metallic=0.05,
         specular=0.25,
-        binds=("reveal", "wall_reveal", "soffit", "ceiling_slab"),
+        binds=("reveal", "wall_reveal"),
         scenes=("interior",),
         source="grey level 1.webp rail reveal (0.019,0.501)-(0.134,0.526), balanced V 0.160",
         note=("Painted dark, not merely shadowed. Cannot be separated from "
               "shadow in a single frame; assigned dark because a deep reveal is "
               "the strongest horizontal in the wall build-up and modelling it "
               "as pure occlusion would cost geometry to get a result paint "
-              "gives for nothing."),
+              "gives for nothing. IT NO LONGER CARRIES THE CEILING -- see "
+              "`kit_soffit`. `soffit` and `ceiling_slab` bound here for four "
+              "layers, so every ceiling on the station was painted with the "
+              "rail band's shadow-gap value, which is the one value in this "
+              "material that is deliberately pushed BELOW what the frame "
+              "reads."),
         extrapolated="that the reveal is painted rather than only shadowed"))
+
+        # THE CEILING IS NOT THE RAIL BAND'S SHADOW GAP, and binding them to
+        # one material was a measurement error rather than a shortcut.
+        # PROVENANCE measures the two separately, in two regions of the same
+        # frame, and lists them as two surfaces:
+        #
+        #     soffit / ceiling             (0.019,0.020)-(0.300,0.090)  V 0.162  S 0.123
+        #     rail band reveal, in shadow  (0.019,0.501)-(0.134,0.526)  V 0.160  S 0.205
+        #
+        # They agree in value to 1% and disagree in saturation by 66%, which is
+        # what two different surfaces under two different lights look like. The
+        # reveal's albedo is then deliberately taken BELOW lit(0.160) = 0.249,
+        # down to 0.140, on an argument about a deep recess -- "a deep reveal is
+        # the strongest horizontal in the wall build-up". None of that argument
+        # is about a ceiling, and the ceiling inherited it anyway.
+        #
+        # 0.2526 IS lit(0.162), the library's own convention, applied to the
+        # region PROVENANCE already publishes -- the same step that produced
+        # kit_wall_plate = lit(0.295), kit_pilaster = lit(0.301) and
+        # kit_rail_band = lit(0.340). Measured consequence on the assembled
+        # deck at 1280x720: the soffit population went x0.052 -> x0.094 of the
+        # lit wall plate. docs/reference-values.md section 7 puts the show's
+        # overhead at x0.10-0.32 across three frames and three sectors, so this
+        # moves the rung from 6x too dark to 2-3x too dark and does NOT close
+        # it. What is left is light, not paint: measured on the same frame the
+        # soffit receives 0.159 of the irradiance the wall does, and the show's
+        # ceiling at x0.32 of its wall cannot be that starved.
+    a(Material(
+        "kit_soffit", "Corridor Soffit — the overhead, and it is one of the darkest things in frame",
+        albedo=(0.2526, 0.2526, 0.2526), roughness=0.72, metallic=0.05,
+        specular=0.28,
+        binds=("soffit", "ceiling_slab"), scenes=("interior",),
+        source="grey level 1.webp soffit / ceiling (0.019,0.020)-(0.300,0.090), balanced V 0.162 S 0.123 -- the region materials.PROVENANCE already publishes, reproduced by docs/reference-values.md section 0 at linear Y 0.0198, x0.321 of the lit wall plate. Corroborated across frames and sectors by docs/reference-values.md section 7: central corridor.webp overhead (0.250,0.005)-(0.600,0.050) x0.25 of its wall panel, dock.webp overhead girders x0.107 -- three frames, three sectors, the overhead is 0.1-0.32x the lit wall and is one of the darkest named surfaces in the frame, not one of the brightest.",
+        note=("Split off `kit_reveal`, which is the rail band's shadow gap and "
+              "was carrying the ceiling as well. A ceiling and a 20 mm recess "
+              "are not one surface."),
+        extrapolated=("Roughness 0.72 and specular 0.28 -- no frame separates "
+                      "gloss from geometry overhead, and both sit between "
+                      "kit_wall_plate's 0.56/0.35 and kit_reveal's 0.85/0.25 "
+                      "because a soffit is the same paint system as the wall on "
+                      "a surface nobody cleans. AND THE ALBEDO IS A FLOOR, NOT "
+                      "A BEST ESTIMATE: `lit()` maps the balanced value of a "
+                      "surface lit AT THE ANCHOR'S LEVEL, and PROVENANCE "
+                      "deliberately excludes the soffit from the four lit "
+                      "elements it says the corridor's one albedo is drawn "
+                      "from. A surface reading V 0.162 while receiving less "
+                      "light than the anchor has an albedo ABOVE lit(0.162), so "
+                      "0.2526 understates it by however much the show's ceiling "
+                      "is in shadow. Overturned by any frame of a corridor "
+                      "ceiling under a light that also falls on the wall.")))
 
     a(Material(
         "kit_skirt", "Corridor Skirt — kick zone at the deck",
@@ -994,25 +1049,91 @@ def _build():
         source="sleeping-in-light-05.jpg deck strip; central corridor.webp. Blows to white; lower half reads (0.83, 0.83, 0.87) cool-white",
         note="An emissive is not a light. Forward+ needs a real OmniLight3D beside this one."))
 
+    # ===================================================================
+    # THE TWO CORRIDOR LENSES ARE SET BY THE FRAME NOW, NOT BY THE LADDER
+    # ===================================================================
+    # Session 3z. Every other emission_energy in this file is placed on the
+    # LIBRARY'S OWN ladder -- see the comment above light_house_cove, which says
+    # so plainly -- because `docs/layer4-lighting/*.json` records energy_rel
+    # relative within its own measured family and two families' 1.0 are not the
+    # same number of lumens. That is a ranking, and a ranking cannot say whether
+    # a lens blows.
+    #
+    # THESE TWO CAN NOW BE MEASURED, because `tools/export_scene.py --shot deck`
+    # exists and renders the assembled corridor lit by these very fittings.
+    # Measured on `docs/engine-deck-corridor.png` at 1280x720, linear Y by
+    # tools/measure_frame.py's own code, as a ratio to that frame's lit wall
+    # plate (0.905,0.180)-(0.965,0.240):
+    #
+    #     fitting                    OURS at 5.0/6.0     SHOW, grey level 1.webp
+    #     ceiling strip, near        x13.72  BLOWN       x7.715
+    #     ceiling strip, second      x13.34  BLOWN       (same fitting)
+    #     pilaster strip             x13.46  BLOWN       x4.696
+    #     whole frame at/above 0.95   4.64%               0.000%
+    #
+    # THE SHOW'S CORRIDOR DOES NOT BLOW A SINGLE PIXEL. `grey level 1.webp`
+    # maxes at linear 0.8158 and puts 0.000% of itself at or above 0.95; ours
+    # put 4.64% there and FAILED tools/measure_frame.py's derived CLIPPED_CAP of
+    # 3.69%. `light_arrival_strip` already made exactly this argument and
+    # already made exactly this change -- "a value that blows is refuted by the
+    # frame it came from", 5.0 -> 3.0 -- and it applies here twice over.
+    #
+    # AND THE BLOWN LENSES WERE MOST OF THE FRAME'S LIGHT. Zero-albedo probe
+    # (every kit surface set to albedo 0, everything else shipped, so what is
+    # left at a pixel is glow and specular): the soffit population came back at
+    # 92% of its shipped luminance, the pilasters at 20%, the walls at 5%. The
+    # corridor's ceiling was reading x4.40 of the lit wall -- against the show's
+    # x0.23-0.32 -- and 92% of that was halo off these two lenses. A ceiling was
+    # being lit by bloom.
+    #
+    # IT IS NOT THE GLOW SETTINGS, and that was tested rather than assumed:
+    # rendering the same frame with `interior.tscn`'s glow_bloom at 0.0 instead
+    # of 0.05 moved the halo 30 px off the strip from x3.57 to x3.73 of the wall
+    # and left the clipped fraction at 4.64%. The halo is HDR spill from lenses
+    # sitting far above glow_hdr_threshold, so the fix is the lens.
+    #
+    # DIMMING THE LENS DOES NOT DIM THE ROOM. `export_scene.fixture_lights`
+    # takes a fitting's cast energy from `FIXTURE_LIGHTING[key]["energy_rel"]`,
+    # not from `emission_energy`; this value sets only how bright the lens
+    # itself renders and therefore how much it spills. That separation is what
+    # light_arrival_strip's note already states.
+    #
+    # THE VALUES ARE SOLVED, NOT CHOSEN. AgX (interior.tscn tonemap_mode 4,
+    # white 4.0) has a shoulder, so lens output is not proportional to energy
+    # and the number was found by rendering: at energy 0.5/1.0/2.0 the ceiling
+    # strip reads x7.65/x9.73/x13.47 and the pilaster strip x6.54/x8.77/x11.86
+    # of the lit wall. Log-log interpolation onto the show's x7.715 and x4.696
+    # gives 0.51 and 0.23, and the confirming render lands at x7.68 and x4.64 --
+    # 0.5% and 1.2% off target, with the frame clipping 0.00%.
     a(Material(
         "light_pilaster_strip", "Pilaster Light Strip — segmented vertical tube",
         albedo=(0.850, 0.860, 0.880), roughness=0.28, metallic=0.0,
-        specular=0.20, emission=(0.880, 0.930, 1.000), emission_energy=6.0,
+        specular=0.20, emission=(0.880, 0.930, 1.000), emission_energy=0.23,
         binds=("light_pilaster_strip",), scenes=("interior",),
-        source="grey level 1.webp strip (0.183,0.214)-(0.197,0.366), balanced V 0.609 S 0.024 — the brightest large feature and still nearly neutral",
+        source="grey level 1.webp strip (0.183,0.214)-(0.197,0.366), balanced V 0.609 S 0.024 — the brightest large feature and still nearly neutral. THE ENERGY IS MEASURED OFF THE SAME REGION: linear Y 0.2890 there against that frame's lit wall plate (0.019,0.236)-(0.125,0.293) at 0.0615, i.e. x4.696, and 0.23 is the energy that renders x4.64 on the assembled deck. At the old 6.0 the whole strip read x13.46 and blew — median 0.9635 across the cells AND the gaps between them, so the segmentation this material's own note calls 'what makes it read as B5' had been erased by its own halo.",
         note=("Eleven discrete cells in the frame, not a continuous tube. The "
               "segmentation is geometry. `customs_light_strip` USED TO BIND "
               "HERE and now has its own material, light_arrival_strip: the "
               "arrival hall's band measurably lights the wall it is set into "
               "and this fitting measurably does not, which is a difference "
-              "one material cannot carry.")))
+              "one material cannot carry. light_arrival_strip's note says the "
+              "colour correction here 'is NOT made here: it moves the "
+              "residential corridor'. That is still true and the COLOUR is "
+              "still untouched; the ENERGY is changed because the corridor's "
+              "own engine frame now exists to measure it against.")))
 
     a(Material(
         "light_portal_head", "Portal Head Light — over the doorway",
         albedo=(0.840, 0.850, 0.870), roughness=0.30, metallic=0.0,
-        specular=0.20, emission=(0.900, 0.940, 1.000), emission_energy=5.0,
+        specular=0.20, emission=(0.900, 0.940, 1.000), emission_energy=0.51,
         binds=("light_portal_head",), scenes=("interior",),
-        source="grey level 1.webp far portal head — the strip above the aperture blows to V 0.988"))
+        source="grey level 1.webp ceiling light strip (0.270,0.179)-(0.440,0.196), linear Y 0.4748 against that frame's lit wall plate at 0.0615, i.e. x7.715 — and the frame's own maximum is 0.8158, so even the brightest fitting in a show corridor has headroom above it. 0.51 is the energy that renders x7.68 on the assembled deck. The older note that 'the strip above the aperture blows to V 0.988' is a reading of the FAR portal head at the vanishing point, five bays away and one pixel tall; it is not a licence for the near one to blow, and at the old 5.0 every portal head in frame did.",
+        note=("The near portal head is the largest emissive surface a player "
+              "ever stands under in this kit: `interior_kit.portal_frame` makes "
+              "it 0.92 of the flat soffit width, where the show's ceiling strip "
+              "is a narrow batten. Matching luminance per pixel therefore still "
+              "leaves us far more emissive AREA than the frame has, which is "
+              "geometry and not material.")))
 
     a(Material(
         "light_downlight", "Wall Downlight — the warm practical, low on the wall",
@@ -1965,9 +2086,10 @@ def _build():
         "shell_wall_industrial", "Plant Shell Wall — heavy plate, grubby, foundry and cargo hall",
         albedo=(0.420, 0.420, 0.420), roughness=0.7, metallic=0,
         specular=0.32, texture="hull_plate", uv_scale=1.0 / 12,
-        binds=("industrial_wall", "store_wall", "bay_backwall", "bay_ceiling", "bay_ledge", "alien_lock_wall"), scenes=("interior",),
+        binds=("industrial_wall", "store_wall", "bay_backwall", "bay_ceiling", "bay_ledge", "alien_lock_wall", "prop_bay_control_booth"), scenes=("interior",),
         source="03-sector-blue/dock.webp (grey-world gains 0.968/1.027/1.007), bay wall (0.200,0.290)-(0.330,0.400) balanced V 0.268 S 0.113, and stepped ledge (0.155,0.315)-(0.285,0.440) V 0.328 S 0.096 — lit() 0.418 and 0.511. 09-garden-core-and-transit/central corridor.webp (gains 1.044/1.085/0.892), wall panel (0.600,0.300)-(0.720,0.420) V 0.234 and walkway fascia (0.300,0.245)-(0.600,0.275) V 0.250 — lit() 0.365 and 0.390. Mean of the four: 0.421.",
-        extrapolated="Roughness 0.70 and specular 0.32 — no frame separates gloss from geometry, and both are pushed to the dull end because these are the volumes the station does not keep clean. The 12.0 m hull_plate repeat is chosen: 16 plates across the repeat gives 0.75 m plates, deliberately within 12% of the corridor's measured 0.667 m course so that a plant wall and a finished wall share a plate module and differ only in how the seam is cut."))
+        note="`prop_bay_control_booth` binds here, and the honest form of the reason is a NEGATIVE MEASUREMENT: NO FRAME IN THE SET SHOWS A DOCKING-BAY CONTROL BOOTH. reference/00-INDEX.md's two entries for dock.webp enumerate what is on that deck — hazard chevrons, the red disc, a broad marked lane, about twenty small white bollards, and 'a signage pylon ... carrying four rectangular plaques ... with a green-lit display panel on its lower flank' — and no control position; nor does Minbari Flyer 969 in docking bay 17.webp, whose bay walls are stepped ledges with chevron nosings. The one thing the frame DOES establish is what a structure standing in that bay is clad in, and it is this material's own first two regions: the bay wall at (0.200,0.290)-(0.330,0.400) and the stepped ledge at (0.155,0.315)-(0.285,0.440), the second of which IS the large stepped mass at the deck edge that a booth would sit among. `rooms.PROPS['bay_control_booth']` is 2.4 x 2.0 x 2.4 m and floor-mounted — a small plated structure, not a console — and `bay_backwall`, `bay_ceiling` and `bay_ledge` already resolve here, so the booth is clad in the bay it stands in. Until this bind it matched no rule and rendered on the glTF fallback.",
+        extrapolated="Roughness 0.70 and specular 0.32 — no frame separates gloss from geometry, and both are pushed to the dull end because these are the volumes the station does not keep clean. The 12.0 m hull_plate repeat is chosen: 16 plates across the repeat gives 0.75 m plates, deliberately within 12% of the corridor's measured 0.667 m course so that a plant wall and a finished wall share a plate module and differ only in how the seam is cut. AND THE CONTROL BOOTH ITSELF: that it is heavy plate in the bay's own finish rather than a glazed cabin. Constrained by there being no frame of one and by everything else standing on that deck being plated; overturned by any frame showing a docking-bay control position, which would replace the choice outright."))
 
         # Three frames, three completely different floor constructions — grey
         # level 1's studded plate, the Zocalo's flat tile, council chambers'
@@ -3496,9 +3618,10 @@ def _build():
         "bay_deck_marking", "Bay Deck Marking — the red painted landing disc",
         albedo=(0.405, 0.299, 0.308), roughness=0.58, metallic=0,
         specular=0.38,
-        binds=("bay_disc",), scenes=("interior",),
+        binds=("bay_disc", "prop_deck_marking"), scenes=("interior",),
         source="reference/03-sector-blue/dock.webp (authority 1), balanced with the gains already in materials.GREY_WORLD_GAINS (0.968/1.027/1.006, recomputed here from the frame as 0.9684/1.0271/1.0063). THE TINT TEST, run and PASSED: value-banded over the disc at (0.450,0.645)-(0.590,0.715) it reads rgb 0.363/0.266/0.271 H 357.1 S 0.266 at V 0.30-0.42 (n=777); 0.480/0.359/0.372 H 353.2 S 0.252 at V 0.42-0.52 (n=1287); 0.568/0.419/0.433 H 354.2 S 0.263 at V 0.52-0.62 (n=3505); 0.652/0.541/0.558 H 351.0 S 0.170 at V 0.62-0.80 (n=1016). Saturation is FLAT at 0.25-0.27 across a 1.8x range of value, falling only in the clipping band, and hue holds at H 351-357 throughout — the multiplicative signature of a real tint, where materials.NEGATIVE_RESULTS' five recorded cases all showed saturation collapsing as value rose. LEVEL: the deck it is painted on, same frame, same flood pool. k-means over (0.22,0.50)-(0.62,0.78) puts the dominant 25.6% of the deck on balanced rgb 0.237/0.237/0.233 (H 50 S 0.017, dead neutral) -> lit() 0.370, which reproduces materials.py's shell_deck_industrial 0.365 to 1.4%. Inside the pool the disc's luminance is 0.87x the deck's (disc L 0.458 at (0.470,0.655)-(0.520,0.690) against deck L 0.526 at (0.412,0.650)-(0.442,0.685)), so 0.87 x 0.370 = 0.322 luminance, carried on the measured hue normalised to peak (1.000, 0.738, 0.762).",
-        extrapolated="Roughness 0.58 and specular 0.38 — no frame separates gloss from geometry here, and both are set slightly duller than the deck's own 0.52 because deck traffic paint is a flat coating and a glossier value would flare under the pendant floods. Nothing about the colour: hue, saturation and the 0.87 ratio are all measured in one frame under one light. Overturned by any frame showing this disc away from a flood pool."))
+        note="`prop_deck_marking` IS THIS OBJECT SEEN THROUGH THE OTHER BUILDER, and the bind is a measurement rather than a name match. `directory.py` declares `deck_marking` an interactable of docking_bays; `docking_bay.py` realises it as `bay_disc` at DECK_DISC_D_M = 10.6 m, and `rooms.py` realises the same declared interactable as `prop_deck_marking`, a 1.2 x 1.2 x 0.01 m floor-mounted patch. One interactable, two builders, and until now the generic one matched no material rule at all -- 48 triangles a deck on the glTF fallback, printed by every render as `fallback material used by 2 group(s)`. WHICH MARKING, measured rather than assumed: dock.webp's deck carries two painted populations, and over the deck region (0.20,0.44)-(0.62,0.78), balanced, they separate cleanly -- red at H 330-20 S>0.20 is 6.71% of the deck at balanced V 0.509 S 0.300 H 350.2, yellow at H 35-80 S>0.20 is 3.25% at V 0.180 S 0.289 H 60.3. The red is the larger population by 2.1x, and the yellow one is already built and already materialled: `docking_bay.py` emits it as `bay_chevron` and `edge_chevron_nosing` binds it, on STEP NOSINGS, which is a vertical edge treatment and not a marking lying in the deck plane. `rooms.PROPS['deck_marking']` mounts on the floor and is 10 mm proud, so it is the flat one.",
+        extrapolated="Roughness 0.58 and specular 0.38 — no frame separates gloss from geometry here, and both are set slightly duller than the deck's own 0.52 because deck traffic paint is a flat coating and a glossier value would flare under the pendant floods. Nothing about the colour: hue, saturation and the 0.87 ratio are all measured in one frame under one light. Overturned by any frame showing this disc away from a flood pool. ALSO EXTRAPOLATED, since `prop_deck_marking` now binds here: that a 1.2 m deck patch is painted in the same oxide red as the 10.6 m landing disc rather than in a third colour. Constrained by the frame carrying exactly two deck paints and the other one being spoken for; overturned by any frame resolving a small deck marking in a bay."))
 
         # Splitting bay_emblem from bay_disc is the module's decision and it is
         # right — a red disc with a white device on it is what the frame shows
