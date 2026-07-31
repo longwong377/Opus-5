@@ -649,7 +649,7 @@ def bays_in(schema, profile, place):
 def articulate(v, t, g, prefix, hw, hl, ceil, nrib=None, ln=None,
                ow=None, ol=None, z_off=0.0, x_off=0.0, scale=1.0,
                soffit=True, conduit=True, bands=True,
-               mullions=True, deck=True):
+               mullions=True, deck=True, door_at=None):
     """Bands, grids, mullions, panels and conduit for a box-shaped interior.
 
     Extracted from `build()` so the BESPOKE modules can carry the same
@@ -712,8 +712,21 @@ def articulate(v, t, g, prefix, hw, hl, ceil, nrib=None, ln=None,
         for s in (-1, 1):
             _box(v, t, g, f"{arch}_{nm}",
                  (s * (hw - d_), y, -hl), (s * hw, y + h_, hl))
-            _box(v, t, g, f"{arch}_{nm}",
-                 (-hw, y, s * (hl - d_)), (hw, y + h_, s * hl))
+            # THE BANDS HAVE TO KNOW ABOUT THE DOOR TOO. Cutting the wall BOX
+            # round an aperture and then running a skirt, a dado and a rail
+            # straight across it leaves the opening barred at shin, hip and
+            # shoulder -- visible in the first frame taken through one. A hole
+            # in a wall is a hole in everything that wall carries.
+            if s > 0 and door_at is not None and y < door_at[2]:
+                dx0 = door_at[0] - door_at[1] / 2.0
+                dx1 = door_at[0] + door_at[1] / 2.0
+                for a, b in ((-hw, dx0), (dx1, hw)):
+                    if b - a > 1e-6:
+                        _box(v, t, g, f"{arch}_{nm}",
+                             (a, y, s * (hl - d_)), (b, y + h_, s * hl))
+            else:
+                _box(v, t, g, f"{arch}_{nm}",
+                     (-hw, y, s * (hl - d_)), (hw, y + h_, s * hl))
     # Deck bay joints, both ways. The floor is the largest single surface in
     # any room and a flat plane carries no line at any triangle count -- that
     # is what held the Garden at 80.9% until its paving was jointed.
@@ -905,7 +918,8 @@ def build(schema, profile, place, max_span_m=None, door_at=None):
 
     # ARTICULATION -- see `articulate()` and INV-073. One vocabulary for every
     # box-shaped interior on the station, procedural and bespoke alike.
-    articulate(v, t, g, arch, hw, hl, ceil, nrib=nrib, ln=ln, ow=ow, ol=ol)
+    articulate(v, t, g, arch, hw, hl, ceil, nrib=nrib, ln=ln, ow=ow, ol=ol,
+               door_at=door_at)
 
     # Fixtures: the machinery the room is named for. See FIXTURES.
     # `inset` records the depth each side loses to flanking scenery, and

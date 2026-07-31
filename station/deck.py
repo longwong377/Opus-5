@@ -212,6 +212,57 @@ def build_collision(schema, profile, sector, ring, deck, z_m=None,
     return v, t, meta
 
 
+def vestibule_render(radius_m, angle_deg, z_from, z_to, width_m, height_m,
+                     floor_y=0.022, wall_t=0.12):
+    """The vestibule a player can SEE, as distinct from the one they stand on.
+
+    The first version of this passage existed only in the collision shell, so a
+    body walked from the corridor into a room across two metres of nothing --
+    the doorway framed a black hole in the deck. Physics and pixels disagreeing
+    about whether there is a floor is the same defect as them disagreeing about
+    a wall, which is what `rooms.build(door_at=)` had just fixed at the other
+    end of this passage. Both directions are the same bug.
+
+    Its groups are the corridor kit's own tag names -- `deck_panel`, `deck_grid`,
+    `wall_panel`, `soffit` -- so it is made of the same materials as the corridor
+    it opens off, by construction rather than by a second table that can drift.
+
+    `floor_y` is the corridor's tile top, not the room's deck: the collision
+    shell is flat at that radius the whole way, so matching it here is what puts
+    a boot on the surface it appears to be on.
+    """
+    hw = width_m / 2.0
+    lo, hi = min(z_from, z_to), max(z_from, z_to)
+    v, t, g = [], [], []
+
+    def box(name, x0, y0, z0, x1, y1, z1):
+        lo_t = len(t)
+        base = len(v)
+        for xx, yy, zz in ((x0, y0, z0), (x1, y0, z0), (x1, y1, z0),
+                           (x0, y1, z0), (x0, y0, z1), (x1, y0, z1),
+                           (x1, y1, z1), (x0, y1, z1)):
+            a = math.radians(angle_deg) + xx / max(radius_m, 1e-9)
+            r = radius_m - yy
+            v.append((r * math.cos(a), r * math.sin(a), zz))
+        for q in ((0, 1, 2), (0, 2, 3), (4, 6, 5), (4, 7, 6),
+                  (0, 4, 5), (0, 5, 1), (1, 5, 6), (1, 6, 2),
+                  (2, 6, 7), (2, 7, 3), (3, 7, 4), (3, 4, 0)):
+            t.append(tuple(base + i for i in q))
+        g.append((name, lo_t, len(t)))
+
+    if hi - lo < 1e-6:
+        return v, t, g
+    box("deck_panel", -hw, -0.14, lo, hw, 0.0, hi)
+    box("deck_grid", -hw + 0.04, 0.0, lo, hw - 0.04, floor_y, hi)
+    for s in (-1.0, 1.0):
+        x = s * hw
+        box("wall_panel", min(x, x + s * wall_t), floor_y, lo,
+            max(x, x + s * wall_t), height_m, hi)
+    box("soffit", -hw - wall_t, height_m, lo, hw + wall_t,
+        height_m + 0.14, hi)
+    return v, t, g
+
+
 def room_shell_for(schema, profile, meta, place, door_angle_deg):
     """A room's collision shell, sized the way `rooms.build` sizes the room."""
     w_full, _l, _r = R.room_extent_m(schema, profile, place)
@@ -308,6 +359,19 @@ def build_deck(schema, profile, sector, ring, deck, with_rooms=True,
         G.extend((f"{q['key']}__{n}", lo_ + t0, hi_ + t0) for n, lo_, hi_ in rg)
         stats["rooms"] += 1
         stats["room_tris"] += len(rt)
+
+        # And the passage joining it to the corridor, so the doorway frames a
+        # floor rather than the black the preview renders empty space as.
+        inner = q["z_m"] + room_interior_half_m(schema, profile, q)
+        vv, vt, vg = vestibule_render(
+            radius, door["angle_deg"], inner,
+            cz - C.corridor_profile()["half_w"],
+            K.PROVISIONAL["door_width_m"], K.PROVISIONAL["door_height_m"])
+        off, t0 = len(V), len(T)
+        V.extend(vv)
+        T.extend((a + off, b + off, c + off) for a, b, c in vt)
+        G.extend((n, lo_ + t0, hi_ + t0) for n, lo_, hi_ in vg)
+        stats["vestibule_tris"] = stats.get("vestibule_tris", 0) + len(vt)
     stats["triangles"] = len(T)
     return V, T, G, stats
 
