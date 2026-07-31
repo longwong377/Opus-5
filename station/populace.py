@@ -26,11 +26,37 @@ place. A shift change is `hour=`.
 Poses, not animation, for now: a standing figure and a seated figure read as a
 populated station in a frame and cost nothing at runtime. `npc/animation.py` has
 `Rig`, `Skeleton` and `apply_pose` for when they need to walk.
+
+THEY ARE PEOPLE NOW, AND THAT IS THE DIFFERENCE BETWEEN A CROWD AND RESIDENTS.
+Everything above was true and produced 278 bodies of which **not one had a name,
+a job, a home, or anywhere to be at 14:00** -- which is a crowd, and CLAUDE.md's
+scope asks for the opposite in as many words. `station/npc/resident.py` supplies
+the person: the nine-field identicard record from the authority-1 prop, a home
+and a job resolved out of `directory.PLACES` by function, and a destination for
+every hour on Earth Mean Time.
+
+Three consequences here, and each one was a defect before it was a feature:
+
+  * **The body is built from the RESIDENT'S id, not from a slot number.** It was
+    `f"{seed}-{i}"`, cached once per species, so every human in a room was the
+    same mesh and the record said FEMALE while the mesh was whatever the slot
+    hashed to. `resident()` reads `body.individual()` for SEX and PHYS CHR, so
+    the two now come from one call and a card cannot describe somebody else.
+  * **`who` in the actor record is the PERSON**, not the species string it was.
+    `deck.py` copies that field verbatim into `<deck>_actors.json`, so identity
+    reaches the engine with no change to any file this module does not own.
+  * **A room with no `PlaceCrowd` entry is no longer all human.** 101 of the 118
+    directory places have no entry of their own and every one of them was
+    populated with 100% humans -- on a station whose own species mix is 62%.
+    `SECTOR_MIX` derives the fallback from the `PlaceCrowd` entries that DO
+    exist in the same sector, so the Alien Sector's neighbours inherit the Alien
+    Sector's composition rather than Earth's.
 """
 import hashlib
 import math
 import os
 import sys
+from functools import lru_cache as _lru_cache
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
@@ -38,7 +64,16 @@ sys.path.insert(0, os.path.join(HERE, "npc"))
 
 import body as _body                                            # noqa: E402
 import dressing as _dress                                       # noqa: E402
+import resident as _res                                         # noqa: E402
 import schedule as _sched                                       # noqa: E402
+
+# THE STATION'S SEED. Every id this module hands to `resident` carries it, so
+# one number changes who lives aboard -- different names, roles, homes, ages and
+# cards -- while leaving the calibrated species mix and the crowd curve alone,
+# because those are canon rather than a random draw. `_selftest` gates both
+# directions: the same seed twice gives the same station, a different seed does
+# not.
+STATION_SEED = "b5"
 
 # Seat and desk heights, in metres. A face inside SEAT_BAND is something you sit
 # on; one inside DESK_BAND is something you stand at and work on. Taken from
@@ -145,14 +180,116 @@ def _hour_factor(pc, hour):
     return 0.45
 
 
+# A SECTOR'S COMPOSITION, DERIVED FROM THE PLACES IN IT THAT ARE MEASURED.
+# `schedule.PLACES` gives a human share and a ranked non-human list for 25
+# places. `directory.PLACES` has 118, so **101 of them had no entry and were
+# populated entirely with humans** -- Blue Sector's cargo bays, Green Sector's
+# conference rooms, the Alien Sector's own corridors. On a station the same
+# module says is 62% human with a fifteen-species mix, an all-human room is a
+# bug that renders as a design decision.
+#
+# The fix reads the sector rather than inventing one: a place with no entry of
+# its own takes the mean human share of the entries that ARE in its sector,
+# weighted by their peak density so a 25-per-100m2 customs hall counts for more
+# than a 2-per-100m2 suite, and the union of their dominant species ranked by
+# how many of those places name each one. So Green Sector's unmeasured rooms
+# inherit Green Sector's aliens and Blue Sector's inherit Blue Sector's crew,
+# and nothing is typed in.
+def _sector_mix():
+    acc = {}
+    for pc in _CROWD.values():
+        if pc.sealed:
+            continue
+        w = max(pc.peak_per_100m2, 0.05)
+        row = acc.setdefault(pc.sector, [0.0, 0.0, {}])
+        dom = row[2]
+        row[0] += pc.human_share * w
+        row[1] += w
+        for rank, sp in enumerate(pc.dominant):
+            dom[sp] = dom.get(sp, 0.0) + w / (rank + 1.0)
+    out = {}
+    for sector, (hw, w, dom) in acc.items():
+        if not sector or w <= 0:
+            continue
+        out[sector] = (hw / w,
+                       tuple(k for k, _v in sorted(dom.items(),
+                                                   key=lambda kv: (-kv[1], kv[0]))))
+    return out
+
+
+SECTOR_MIX = _sector_mix()
+# The whole-station fallback, for a sector no measured place sits in. Derived
+# from `schedule.STATION_COUNTS` rather than chosen, so it cannot drift from the
+# mix the rest of the project apportions 250,000 people over.
+_NONHUMAN = tuple(sp for sp, _c in sorted(_sched.STATION_COUNTS.items(),
+                                          key=lambda kv: -kv[1])
+                  if sp != "human")
+STATION_FALLBACK = (_sched.STATION_MIX["human"], _NONHUMAN)
+
+
+# `schedule.PLACES` and `directory.PLACES` were authored independently and eight
+# of the 25 crowd entries name a place the directory holds under another key. So
+# eight measured compositions -- including the customs halls, "the most
+# species-diverse space on the station" -- were being thrown away and replaced
+# by a sector average. Each row says which directory entry it is and why.
+#
+# THE MIX ONLY, DELIBERATELY. `occupancy()` still reads `_CROWD` directly and
+# still falls back per archetype, because these entries carry peak densities and
+# busy windows that would move headcounts in eight places at once -- the customs
+# halls go from 4.0 to 25.0 per 100 m2 -- and this increment is about WHO is in a
+# room, not how many. The measured numbers are in the session notes; applying
+# them is the next increment and needs its own render.
+CROWD_ALIAS = {
+    # 00-MASTER.md 1.4: the customs board says exchange is "through Business
+    # Center", and records that it "matches 'Business District' in the Red
+    # Sector cross-section". The two names are the same place, at authority 1.
+    "business_center": "business_district",
+    # schedule's own place string is "Mess Hall, Quartermaster, Post Office".
+    "mess_hall": "crew_country",
+    "quartermaster": "crew_country",
+    "post_office": "crew_country",
+    # "Customs halls (x2, north and south)" is the directory's two halls.
+    "customs_north": "customs_halls",
+    "customs_south": "customs_halls",
+    # "Fresh Air Restaurant" under a shorter key.
+    "fresh_air": "fresh_air_restaurant",
+    # "Fabrication furnaces, power, repair" -- schedule names the function,
+    # the directory names the rooms.
+    "fabrication": "industrial_grey",
+    "maintenance": "industrial_grey",
+    # FACTIONS.md 2.5's Dock Workers' Quarters is Blue Sector personnel
+    # accommodation, which the directory holds as qtr_personnel.
+    "qtr_personnel": "dock_workers_quarters",
+}
+
+
+def _mix_for(place_key):
+    """(human share, ranked non-human species) for a place. Never all-human."""
+    pc = _CROWD.get(place_key) or _CROWD.get(CROWD_ALIAS.get(place_key, ""))
+    if pc is not None and (pc.dominant or not pc.sealed):
+        return pc.human_share, (pc.dominant or _NONHUMAN)
+    sector = _SECTOR_OF.get(place_key, "")
+    share, dom = SECTOR_MIX.get(sector, STATION_FALLBACK)
+    return share, (dom or _NONHUMAN)
+
+
+def _sector_index():
+    try:
+        import directory as _D                                  # noqa: PLC0415
+    except Exception:                                           # noqa: BLE001
+        return {}
+    return {p["key"]: p["sector"] for p in _D.PLACES}
+
+
+_SECTOR_OF = _sector_index()
+
+
 def species_for(place_key, i, seed):
     """Which species this person is, from the place's own mix."""
-    pc = _CROWD.get(place_key)
-    if pc is None:
+    human_share, dom = _mix_for(place_key)
+    if _u(seed, "sp", i) < human_share:
         return "human"
-    if _u(seed, "sp", i) < pc.human_share:
-        return "human"
-    dom = pc.dominant or ("human",)
+    dom = dom or ("human",)
     return dom[int(_u(seed, "dom", i) * len(dom)) % len(dom)]
 
 
@@ -220,6 +357,65 @@ def _place_body(v, t, g, mesh, x, y, z, yaw, group, actors=None, who=None):
                        else "standing"})
 
 
+@_lru_cache(maxsize=4096)
+def _mesh_for(species, npc_id, lod):
+    """This individual's body. Cached, because a room asks for it once.
+
+    Per-INDIVIDUAL rather than per-species: `body.individual` varies stature,
+    build, shoulder, head and sex per id, and caching one mesh per species threw
+    all of that away -- 278 people were five meshes repeated. The cache key is
+    the id, so the variation survives and a repeat still costs nothing.
+
+    Falls back to a human body for a species `body.py` cannot build, rather than
+    dropping the person: a missing inhabitant is invisible to every gate here
+    and a wrong-species one is not.
+    """
+    try:
+        return _body.build(species, npc_id, lod=lod)[:3]
+    except Exception:                                           # noqa: BLE001
+        return _body.build("human", npc_id, lod=lod)[:3]
+
+
+def _who(res, hour, place_key):
+    """The person, as the actor record carries them out to the engine.
+
+    `who` USED TO BE THE SPECIES STRING, and `deck.py` copies this field
+    verbatim into `<deck>_actors.json` -- so making it the person is how a name
+    and a job reach the runtime without touching a file this module does not
+    own. The fields are the identicard's, plus the two things the card cannot
+    know: where they live and why they are standing here.
+    """
+    return {
+        "id": res.npc_id,
+        "name": res.name,
+        "card_name": res.card_name,
+        "species": res.species,
+        "origin": res.origin,
+        "atmos": f"{res.atmos_class}/{res.atmos_code}".rstrip("/"),
+        "sex": res.sex,
+        "dob": res.dob_card,
+        "age": res.age,
+        "psi": res.licensed_psi,
+        "visa": res.visas,
+        "role": res.role,
+        "home": res.home,
+        "job": res.job,
+        # WHY THEY ARE HERE, which is the field that makes the rest mean
+        # anything: "work" and "recreation" are different people standing in
+        # the same room, and an NPC that can be asked will need to answer it.
+        "doing": res.activity_at(hour).value,
+        "at_post": _res.where_at(res, hour),
+        # AND WHETHER THE CLOCK SENT THEM, said out loud. `occupancy` can ask
+        # for more bodies than the schedule supplies -- a medlab wants 18 and
+        # its roster has three medics on this watch -- so the rest are the
+        # place's own regulars filling out the room. Recording which is which
+        # is the difference between a compromise and a lie, and it is the field
+        # a later increment will use to shrink the gap.
+        "here_by": ("schedule" if _res.where_at(res, hour) == place_key
+                    else "fill"),
+    }
+
+
 def populate(place_key, room_v, room_t, room_g, w_m, l_m, hour=13.0,
              arch="generic", seed=None, lod=ROOM_LOD, max_people=None):
     """Put the hour's population into one room. Returns (v, t, g, stats).
@@ -256,8 +452,38 @@ def populate(place_key, room_v, room_t, room_g, w_m, l_m, hour=13.0,
     desks.sort(key=lambda s: (-s[3], s[0], s[2]))
 
     stats = {"seated": 0, "standing": 0, "walking": 0, "wanted": n}
-    cache = {}
     used = []
+
+    # WHO IS IN THIS ROOM. The species mix is unchanged -- it is calibrated per
+    # place and per sector and is canon, not a draw -- but each slot in it is
+    # now filled by a PERSON: `resident.roster` hands back the place's own
+    # regulars, ranked so that everybody the clock actually sends here comes
+    # first. It is asked for the whole room in one call per species rather than
+    # once per body, because the pool is a property of the place and re-casting
+    # it per occupant is exactly the defect `crowd._pool_capacity` documents.
+    slots = [species_for(place_key, i, seed) for i in range(n)]
+    # `pool_id` already carries the place, so folding the default seed -- which
+    # IS the place key -- back in gave ids reading `res:b5:docking_bays:
+    # docking_bays:vree:60`. Only a caller-supplied seed adds anything.
+    pool_seed = (STATION_SEED if seed == place_key
+                 else f"{STATION_SEED}:{seed}")
+    want = {}
+    for sp in slots:
+        want[sp] = want.get(sp, 0) + 1
+    queue = {sp: list(_res.roster(place_key, hour, sp, k, pool_seed))
+             for sp, k in want.items()}
+    people = []
+    for sp in slots:
+        q = queue.get(sp)
+        # A roster can only ever come back short if `resident.affiliates`
+        # returned short, which it is written never to do; the guard is here
+        # because a missing person would silently become a missing BODY and
+        # this project has paid for a room that emptied without a gate noticing.
+        people.append(q.pop(0) if q else _res.resident(
+            _res.pool_id(place_key, sp, len(people), pool_seed), sp))
+    stats["scheduled"] = sum(1 for r in people
+                             if _res.where_at(r, hour) == place_key)
+    stats["named"] = sum(1 for r in people if r.name)
 
     def _clear(x, z, r=0.45):
         return all((x - ux) ** 2 + (z - uz) ** 2 > r * r for ux, uz in used)
@@ -388,14 +614,16 @@ def populate(place_key, room_v, room_t, room_g, w_m, l_m, hour=13.0,
                 and abs(z) + BODY_R_M <= hl + 1e-9)
 
     for i in range(n):
-        sp = species_for(place_key, i, seed)
-        key = (sp, lod)
-        if key not in cache:
-            try:
-                cache[key] = _body.build(sp, f"{seed}-{i}", lod=lod)[:3]
-            except Exception:                                   # noqa: BLE001
-                cache[key] = _body.build("human", f"{seed}-{i}", lod=lod)[:3]
-        mesh = cache[key]
+        who = people[i]
+        sp = who.species
+        # THE BODY IS THIS PERSON'S BODY. It was `_body.build(sp, f"{seed}-{i}")`
+        # cached once per (species, lod), so every human in a room was one mesh
+        # repeated -- and worse, `resident` reads `body.individual(species,
+        # npc_id)` for SEX and PHYS CHR, so the card described a body nobody was
+        # standing in. Same id on both sides, and `resident._selftest` asserts
+        # the two agree.
+        mesh = _mesh_for(sp, who.npc_id, lod)
+        who_rec = _who(who, hour, place_key)
 
         # A SEAT THAT DOES NOT WORK OUT MEANS THE PERSON STANDS, not that the
         # person ceases to exist. Every failure below used to be a bare
@@ -413,7 +641,7 @@ def populate(place_key, room_v, room_t, room_g, w_m, l_m, hour=13.0,
                 # room rather than the wall it is against.
                 _place_body(v, t, g, mesh, sx, sy - 0.42, sz,
                             math.atan2(-sx, -sz), f"npc_seated_{i}",
-                            actors, sp)
+                            actors, who_rec)
                 used.append((sx, sz))
                 stats["seated"] += 1
                 seated = True
@@ -428,7 +656,7 @@ def populate(place_key, room_v, room_t, room_g, w_m, l_m, hour=13.0,
                 _mv, _mt = len(v), len(t)
                 _place_body(v, t, g, mesh, ux, 0.0, uz,
                             math.atan2(dx - ux, dz - uz), f"npc_standing_{i}",
-                            actors, sp)
+                            actors, who_rec)
                 if not _embedded(_mv, _mt):
                     used.append((ux, uz))
                     stats["standing"] += 1
@@ -448,7 +676,7 @@ def populate(place_key, room_v, room_t, room_g, w_m, l_m, hour=13.0,
             _mv, _mt = len(v), len(t)
             _place_body(v, t, g, mesh, px, 0.0, pz,
                         _u(seed, "yaw", i) * math.tau, f"npc_standing_{i}",
-                        actors, sp)
+                        actors, who_rec)
             if _embedded(_mv, _mt):
                 continue
             used.append((px, pz))
@@ -514,9 +742,188 @@ def _selftest():
     check("the seat band finds seats in a dressed room", len(seats) > 0,
           f"{len(seats)} seat faces")
 
+    # ------------------------------------------------------------------
+    # RESIDENTS, not a crowd
+    # ------------------------------------------------------------------
+    zv, zt, zg, zs = populate("zocalo", dv, dt, dg, 14.0, 22.0, hour=13.0,
+                              arch="commerce")
+    acts = zs["actors"]
+    check("the Zocalo at 1300 is populated", len(acts) > 3, f"{len(acts)}")
+
+    # EVERY BODY IS A PERSON. `who` was the species string; if it is still a
+    # string then nothing downstream can ask an inhabitant anything.
+    all_dicts = bool(acts) and all(isinstance(a["who"], dict) for a in acts)
+    check("every actor carries a person record, not a species string",
+          all_dicts)
+    if not all_dicts:
+        # Everything below reads the record, so it would raise rather than
+        # report -- and a crashed suite hides whatever else regressed. Bail out
+        # loudly instead.
+        print(f"{ok}/{ok + fail} passed (aborted: `who` is not a record)")
+        return 1
+    need = {"id", "name", "species", "origin", "role", "home", "job", "doing"}
+    check("...and the record carries an identity, a home and a job",
+          all(need <= set(a["who"]) for a in acts),
+          str(sorted(need & set(acts[0]["who"]))))
+    # NEGATIVE CONTROL: the same test on the field set MINUS one must fail, or
+    # it passes for any dict at all.
+    check("...and the same test rejects a record missing a field",
+          not all(need <= (set(a["who"]) - {"home"}) for a in acts))
+
+    check("every inhabitant lives somewhere real",
+          all(a["who"]["home"] for a in acts))
+    named = [a for a in acts if a["who"]["name"]]
+    check("most inhabitants have a name", len(named) > len(acts) * 0.5,
+          f"{len(named)} of {len(acts)}")
+    # NEGATIVE CONTROL for the naming rule: the eight species with no attested
+    # personal name must NOT have been given one. If this ever passes trivially
+    # -- because no such species turned up -- the detail says so.
+    unnamed_sp = {a["who"]["species"] for a in acts if not a["who"]["name"]}
+    check("...and nobody from a species with no attested name has one",
+          unnamed_sp <= set(_sched.SPECIES_WITHOUT_NAMES),
+          f"unnamed species present: {sorted(unnamed_sp) or 'none in this room'}")
+
+    # THE CARD DESCRIBES THE BODY THAT WAS BUILT, and this is measured on the
+    # MESH rather than on the record. The first version of this check compared
+    # `who["sex"]` against `body.individual(species, who["id"]).sex` -- which
+    # is the record against itself, and it went on passing with the body
+    # deliberately rebuilt from the slot number instead of the person. A gate
+    # that cannot fail on the defect it names is worse than none.
+    #
+    # `_place_body` translates by (x, y, z) and rotates about Y, so for a
+    # STANDING body (y = 0) the world y of every vertex IS the body's own local
+    # y. The multiset of those is a fingerprint of the individual: stature,
+    # build, head size and sex all move it. Comparing it to a fresh build from
+    # the person's id is exact and cannot be satisfied by a different person.
+    spans = {nm: (lo, hi) for nm, lo, hi in zg}
+    mism = []
+    for a in acts:
+        if a["pose"] != "standing" or a["group"] not in spans:
+            continue
+        lo, hi = spans[a["group"]]
+        idx = {i for tri in zt[lo:hi] for i in tri}
+        got = sorted(round(zv[i][1], 6) for i in idx)
+        bv, _bt, _bg = _mesh_for(a["who"]["species"], a["who"]["id"], ROOM_LOD)
+        want = sorted(round(q[1], 6) for q in bv)
+        if got != want:
+            mism.append(a["who"]["id"])
+    check("a person's card and a person's MESH are the same individual",
+          not mism, f"{len(mism)} of {len(acts)} bodies belong to somebody else")
+    # NEGATIVE CONTROL: the same comparison against a DIFFERENT person's body
+    # must fail, or the fingerprint is not a fingerprint.
+    a0 = next(a for a in acts if a["pose"] == "standing")
+    lo, hi = spans[a0["group"]]
+    idx = {i for tri in zt[lo:hi] for i in tri}
+    got = sorted(round(zv[i][1], 6) for i in idx)
+    other = _mesh_for(a0["who"]["species"], a0["who"]["id"] + "-not-me",
+                      ROOM_LOD)[0]
+    check("...and the same comparison rejects somebody else's body",
+          got != sorted(round(q[1], 6) for q in other))
+
+    # The record's own SEX still has to agree with the individual, which is a
+    # different claim from the one above and is the one the card renders.
+    bad = [a for a in acts
+           if a["who"]["species"] not in _res.HIVE_SPECIES
+           and a["who"]["sex"] != {"f": "FEMALE", "m": "MALE", "none": ""}[
+               _body.individual(a["who"]["species"], a["who"]["id"]).sex]]
+    check("a person's card says the sex their body was built with",
+          not bad, f"{len(bad)} of {len(acts)} disagree")
+
+    # THE CLOCK MOVES PEOPLE, and it must move WHO and not only HOW MANY.
+    def _ids(hour, seed=None):
+        _v, _t, _g, st = populate("zocalo", dv, dt, dg, 14.0, 22.0, hour=hour,
+                                  arch="commerce", seed=seed)
+        return [a["who"]["id"] for a in st["actors"]], st
+
+    at09, s09 = _ids(9.0)
+    at22, s22 = _ids(22.0)
+    check("the Zocalo holds different people at 09:00 and 22:00",
+          set(at09) != set(at22),
+          f"{len(set(at09) & set(at22))} of {len(at09)}/{len(at22)} in common")
+    # NEGATIVE CONTROL: the same hour twice must give the same people, or the
+    # difference above is noise and says nothing about the clock.
+    check("...and the same hour twice gives the same people",
+          _ids(9.0)[0] == at09)
+
+    # And people are here because the schedule sent them, not only because a
+    # density curve asked for bodies.
+    check("a real share of the room is there because of the schedule",
+          s09["scheduled"] >= 1 and s22["scheduled"] >= 1,
+          f"09:00 {s09['scheduled']}/{s09['placed']}, "
+          f"22:00 {s22['scheduled']}/{s22['placed']}")
+    # NEGATIVE CONTROL: a place nobody lives or works in must score lower.
+    _v, _t, _g, sw = populate("welded_shut", dv, dt, dg, 14.0, 22.0, hour=9.0,
+                              arch="store")
+    check("...and a sealed volume nobody is affiliated with does not",
+          sw["scheduled"] == 0, f"welded_shut {sw['scheduled']}/{sw['placed']}")
+
+    # DETERMINISM, BOTH DIRECTIONS. Same seed, same station; different seed,
+    # different people -- and the same species mix either way, because the mix
+    # is canon and not a draw.
+    global STATION_SEED
+    keep = STATION_SEED
+    try:
+        base_ids, base_st = _ids(13.0)
+        base_sp = [a["who"]["species"] for a in base_st["actors"]]
+        STATION_SEED = "b5"
+        check("the same seed gives the same station", _ids(13.0)[0] == base_ids)
+        STATION_SEED = "other-seed"
+        alt_ids, alt_st = _ids(13.0)
+        check("a different seed gives a different station",
+              alt_ids != base_ids, f"{alt_ids[:1]} vs {base_ids[:1]}")
+        check("...and does NOT move the calibrated species mix",
+              [a["who"]["species"] for a in alt_st["actors"]] == base_sp)
+    finally:
+        STATION_SEED = keep
+
+    # A ROOM WITH NO CROWD ENTRY IS NOT ALL HUMAN. 101 of the 118 places have
+    # no entry of their own and every one of them used to be.
+    cargo = {species_for("cargo_bays", i, "s") for i in range(60)}
+    check("a Blue Sector cargo bay is not all human", len(cargo) > 1,
+          str(sorted(cargo)))
+    # NEGATIVE CONTROL: Yellow Sector maintenance is 95% human by measurement,
+    # so it must come back nearly all human -- or the check above is just
+    # "everything is mixed" and means nothing.
+    yellow = [species_for("spinal_cargo", i, "s") for i in range(60)]
+    check("...and Yellow Sector, measured at 0.95 human, still is",
+          yellow.count("human") >= 50,
+          f"{yellow.count('human')}/60 human")
+
     print(f"{ok}/{ok + fail} passed")
     return 1 if fail else 0
 
 
+def _cast(hour=13.0, places=("zocalo", "security_central", "downbelow",
+                             "medlab_one", "alien_sector")):
+    """Print who is actually in a few rooms. The readable form of the gates."""
+    import dressing as D                                        # noqa: PLC0415
+    import rooms as R                                           # noqa: PLC0415
+    for key in places:
+        try:
+            place = R._dir.by_key(key) if hasattr(R, "_dir") else None
+        except Exception:                                       # noqa: BLE001
+            place = None
+        arch = "generic"
+        if place is not None:
+            arch = R.archetype(place)
+        w, l = 14.0, 22.0
+        dv, dt, dg, _c = D.dress(key, w, l, 3.2, arch)
+        _v, _t, _g, st = populate(key, dv, dt, dg, w, l, hour=hour, arch=arch)
+        print(f"\n{key} at {hour:04.1f} EMT -- {st['placed']} present, "
+              f"{st['scheduled']} of them sent here by the clock")
+        for a in st["actors"][:6]:
+            w_ = a["who"]
+            nm = w_["name"] or f"<{w_['species']}, no attested name>"
+            print(f"  {nm:<26} {w_['species']:<9} {w_['origin']:<18} "
+                  f"{w_['role']:<10} home {w_['home']:<20} "
+                  f"job {w_['job'] or '-':<18} {w_['doing']}")
+
+
 if __name__ == "__main__":
+    if "--cast" in sys.argv:
+        h = 13.0
+        if "--hour" in sys.argv:
+            h = float(sys.argv[sys.argv.index("--hour") + 1])
+        _cast(hour=h)
+        sys.exit(0)
     sys.exit(_selftest())
