@@ -1163,9 +1163,22 @@ def _selftest():
     # go quiet again. A defect nothing prints is a defect nobody fixes.
     gen = fs.get("generic_for_module", [])
     owned = [q for q in here_all if q.get("module")]
-    check("every module-owned place on this deck is reported as generic",
-          len(gen) == len(owned),
-          f"{len(gen)} reported against {len(owned)} module-owned places")
+    # COUNTED AGAINST `module_places`, NOT `generic_for_module`, and the change
+    # is the point. This asserted that EVERY module-owned place came back
+    # generic -- which was true while the assembler composed nothing, and which
+    # would fail the moment one was fixed. It passed today only because the
+    # cluster it tests has no composed place left on it, so it was an assertion
+    # that could only ever punish progress.
+    #
+    # `module_places` carries every module-owned place with `used` in
+    # {bespoke, generic}, so counting it preserves exactly what this gate was
+    # written for -- the substitution cannot go quiet -- and survives the
+    # substitution being fixed, which is the outcome it exists to encourage.
+    # Found by the composition agent while closing 23 of them.
+    check("every module-owned place on this deck is accounted for",
+          len(fs.get("module_places", [])) == len(owned),
+          f"{len(fs.get('module_places', []))} reported against {len(owned)} "
+          f"module-owned places")
     check("...each with a module name and a stated reason",
           all(m and w for _k, m, _n, w in gen), str(gen[:2]))
     # THREE REASONS NOW, NOT TWO. This asserted that the reason is exactly
