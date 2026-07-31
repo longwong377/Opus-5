@@ -293,9 +293,226 @@ def _selftest():
           f"generic {g:,} tri, bespoke {b:,} tri (x{b / g:.2f})")
     richer = [r[0] for r in rows if r[2] and r[3] and r[3] > r[2]]
     print(f"  bespoke is RICHER for {len(richer)}: {', '.join(sorted(richer))}")
+
+    # --- the frame adapter ------------------------------------------------
+    import deck as _D                                          # noqa: PLC0415
+
+    # Every builder is either DECLARED or explicitly UNKNOWN. A module in
+    # neither would raise at assembly time with no explanation, which is the
+    # one outcome worse than refusing.
+    check("every builder's near end is declared or explicitly unknown",
+          set(NEAR_END) | set(NEAR_END_UNKNOWN) == set(BESPOKE_GEOMETRY),
+          f"unaccounted {sorted(set(BESPOKE_GEOMETRY) - set(NEAR_END) - set(NEAR_END_UNKNOWN))}")
+    check("...and none is in both", not (set(NEAR_END) & set(NEAR_END_UNKNOWN)))
+    check("every declared near end cites the module's own words",
+          all(len(w) > 30 for _e, w in NEAR_END.values()))
+
+    def signed_volume(vv, tt):
+        cx = [sum(q[i] for q in vv) / len(vv) for i in range(3)]
+        tot = 0.0
+        for tri in tt:
+            a, b_, c = [[vv[i][k] - cx[k] for k in range(3)] for i in tri]
+            tot += (a[0] * (b_[1] * c[2] - b_[2] * c[1])
+                    - a[1] * (b_[0] * c[2] - b_[2] * c[0])
+                    + a[2] * (b_[0] * c[1] - b_[1] * c[0])) / 6.0
+        return tot
+
+    placed = 0
+    for q in _dr.PLACES:
+        mod = q.get("module")
+        if mod not in NEAR_END:
+            continue
+        ah = _D.room_axial_half_m(schema, profile, q)
+        v, t, _g = room_shell(schema, profile, q, ah)
+        xs = [p[0] for p in v]
+        ys = [p[1] for p in v]
+        zs = [p[2] for p in v]
+        placed += 1
+        check(f"{q['key']}: near face lands on the assembler's plane",
+              abs(max(zs) - ah) < 1e-6, f"{max(zs):.4f} against {ah:.4f}")
+        check(f"{q['key']}: the room extends AWAY from the corridor",
+              min(zs) < ah - 1e-6, f"z runs {min(zs):.2f}..{max(zs):.2f}")
+        check(f"{q['key']}: the floor is at y = 0",
+              abs(min(ys)) < 1e-6, f"{min(ys):.4f}")
+        check(f"{q['key']}: centred across the corridor",
+              abs(min(xs) + max(xs)) < 1e-6, f"{min(xs):.3f}..{max(xs):.3f}")
+        # THE FLIP MUST NOT INVERT THE ROOM. `min_z` modules are turned by a
+        # half turn about the vertical AND have their winding reversed to
+        # match; get either half wrong and the room renders inside-out, which
+        # a triangle count, an extent and a render against black all miss.
+        raw = BESPOKE_GEOMETRY[mod](schema, profile, q)
+        rv = unroll_to_local(raw[0]) if mod in UNROLL else raw[0]
+        before, after = signed_volume(rv, raw[1]), signed_volume(v, t)
+        check(f"{q['key']}: recentring does not turn the room inside-out",
+              (before > 0) == (after > 0) or abs(before) < 1e-9,
+              f"signed volume {before:.1f} -> {after:.1f}")
+
+    # AND AN UNDECLARED MODULE MUST REFUSE. The failure mode this prevents is
+    # silent: a room placed the wrong way round has the same triangle count,
+    # the same extent and the same materials as one placed correctly.
+    refused = 0
+    for mod in NEAR_END_UNKNOWN:
+        q = next((p for p in _dr.PLACES if p.get("module") == mod), None)
+        if q is None:
+            continue
+        try:
+            room_shell(schema, profile, q, 4.0)
+        except KeyError:
+            refused += 1
+    check("an undeclared module refuses rather than guessing",
+          refused == len([m for m in NEAR_END_UNKNOWN
+                          if any(p.get("module") == m for p in _dr.PLACES)]),
+          f"{refused} refused")
+    print(f"  frame adapter: {placed} places recentred, "
+          f"{len(NEAR_END)} modules declared, {len(NEAR_END_UNKNOWN)} refused")
+
     print(f"{ok}/{ok + fail} passed")
     return 1 if fail else 0
 
+
+
+# ---------------------------------------------------------------------------
+# Putting a bespoke room where a generic one goes
+# ---------------------------------------------------------------------------
+# WHICH END OF A BESPOKE ROOM MEETS THE CORRIDOR. There is no way to infer
+# this: `docking_bay` and `command_control` are built the same way round in
+# their own frames and want OPPOSITE ends against a corridor, because one's
+# +Z runs in from a vacuum mouth and the other's runs out toward a window.
+# Guessing would place a room backwards, which changes no triangle count, no
+# extent, no gate -- and is the first thing a player would notice.
+#
+# So each entry is DECLARED, with the module's own words as the source. A
+# module that is not here raises rather than defaulting: `rooms.build`'s
+# convention (near face at +z) is a fine default for a room somebody authored
+# knowing about it, and none of these were.
+NEAR_END = {
+    # "Frame: +Z runs INTO the bay from the mouth at z = 0" -- the mouth is the
+    # vacuum end, so the crew end a corridor reaches is the far one.
+    "docking_bay": ("max_z", "docking_bay.docking_bay: '+Z runs INTO the bay "
+                             "from the mouth at z = 0'"),
+    # "+X across, +Y up, +Z forward toward the window; deck at y = 0" -- the
+    # window is the far wall, so the way in is the near one. OPPOSITE of the
+    # bay, from an identically-worded frame.
+    "command_control": ("min_z", "command_control: '+Z forward toward the "
+                                 "window; deck at y = 0'"),
+    # "z runs ALONG it -- from the gate line at z=0 to the board wall at
+    # z=HALL_LEN_M". You arrive at the gate line.
+    "customs": ("min_z", "customs.hall: 'from the gate line at z=0 to the "
+                         "board wall at z=HALL_LEN_M'"),
+    # "The whole bar, authored with x across, y up, z along", and it measures
+    # symmetric about the origin (z -5.91..+5.91), so either end serves and the
+    # generic convention applies unchanged.
+    "hospitality": ("max_z", "hospitality.room: authored symmetric about the "
+                             "origin, z -5.91..+5.91"),
+    # "Bench centred on the origin, delegates outboard of it" -- symmetric.
+    "council_chamber": ("max_z", "council_chamber: 'Bench centred on the "
+                                 "origin'"),
+}
+
+# The four that are NOT declared, and why each is genuinely undecidable from
+# what the module says about itself. Recorded so the next reader does not
+# repeat the search rather than as an apology.
+NEAR_END_UNKNOWN = {
+    "quarters": "quarters.run builds 'a row of units opening off one side of "
+                "a corridor' -- it contains its OWN corridor, so which face "
+                "meets the ring's corridor is a layout decision nobody has "
+                "made, not a fact about the module.",
+    "zocalo": "zocalo_run builds 'bays end to end along +z' and its docstring "
+              "says the concourse CONTINUES -- both ends are open by design, "
+              "so neither is the near one until a layout says so.",
+    "alien_sector": "alien_sector.gallery documents no frame at all.",
+    "plant": "plant builds in STATION coordinates at radius 447-471 and is "
+             "unrolled for rendering; its walkable surface is a catwalk "
+             "(WALK_SURFACE), not a floor, and a corridor joining it is a "
+             "different connection from a door in a wall.",
+}
+
+
+# WHAT THE NINE MODULES LOOK LIKE AS SURFACES, audited when the adapter's
+# winding gate was written. Recorded because it is the first time anything has
+# asked, and because the obvious reading of it is wrong:
+#
+#     module            signed vol   open edges   non-manifold   triangles
+#     alien_sector           368.8            0            118      11,680
+#     command_control       -202.1          342             44       1,334
+#     council_chamber       -243.0        1,592              0       1,916
+#     customs                513.0           48             54       7,296
+#     docking_bay        -67,236.4          151             34       3,740
+#     hospitality             39.2          824             58       4,796
+#     plant               47,233.5          192              0       8,452
+#     quarters               136.3            0             71       2,088
+#     zocalo              -1,246.8          734             32      44,320
+#
+# Four are negative and it is TEMPTING to call them inside-out. Do not: signed
+# volume is only decisive for a CLOSED surface, and only two of the nine are
+# closed (`alien_sector` and `quarters`, both positive). For the other seven
+# the statistic is measuring their openings as much as their winding. What can
+# be said is narrower and still useful: **seven of nine bespoke modules are
+# open surfaces**, up to 1,592 edges on `council_chamber`, and nothing has ever
+# gated that -- the closure work in session 3x reached `interior_kit`,
+# `dressing` and the assembler, and stopped at the bespoke modules' door.
+#
+# `room_shell` therefore asserts only that recentring PRESERVES whatever
+# orientation a module had, which is the question it is entitled to ask.
+
+
+def room_shell(schema, profile, place, axial_half_m):
+    """Bespoke geometry recentred into `rooms.build`'s frame.
+
+    `rooms.build` emits a room CENTRED on its origin with the walkable floor at
+    y = 0 (its deck slab reaching to -0.14) and the face that meets the
+    corridor at +z. A bespoke module emits whatever frame suited authoring it,
+    and the three differ in every axis: `docking_bay` runs z from -0.75 to
+    +140.75 with its floor at y = 0, `command_control` from -4.20 to +8.70 with
+    its floor at y = -1.90, `zocalo` from -1.89 to +32.54.
+
+    Placing one without this adapter puts the room up to **70 m along the
+    station's axis** from the door meant to serve it.
+
+    Returns (verts, tris, groups) in the assembler's frame, or raises for a
+    module whose near end is not declared -- see `NEAR_END_UNKNOWN`. Raising is
+    the point: a room placed the wrong way round changes no triangle count and
+    no extent, so nothing downstream can catch it.
+    """
+    mod = place.get("module")
+    if mod not in BESPOKE_GEOMETRY:
+        raise KeyError(f"{place['key']}: no builder for module {mod!r}")
+    if mod not in NEAR_END:
+        raise KeyError(
+            f"{place['key']}: {mod} has no declared near end. "
+            f"{NEAR_END_UNKNOWN.get(mod, 'undeclared')}")
+    r = BESPOKE_GEOMETRY[mod](schema, profile, place)
+    v, t = r[0], r[1]
+    if mod in UNROLL:
+        v = unroll_to_local(v)
+    g = r[2] if len(r) > 2 else None
+
+    end, _why = NEAR_END[mod]
+    xs = [p[0] for p in v]
+    ys = [p[1] for p in v]
+    zs = [p[2] for p in v]
+    # x on the room's own centreline, floor to y = 0, and the near face onto
+    # the plane the assembler expects. Flipped when the module's near end is
+    # its MINIMUM z, by a half turn about the vertical -- (x, y, z) ->
+    # (-x, y, -z) -- which is a rotation and so preserves winding. Mirroring in
+    # z alone would face it the right way with every triangle inside-out, the
+    # defect `dressing._cyl` shipped for sessions because neither a render nor
+    # a triangle count can see it.
+    cx = (min(xs) + max(xs)) / 2.0
+    y0 = min(ys)
+    if end == "max_z":
+        out = [(x - cx, y - y0, z - max(zs) + axial_half_m) for x, y, z in v]
+    else:
+        # (x, y, z) -> (-x, y, -z) is diag(-1, 1, -1), whose determinant is
+        # +1. IT IS A ROTATION AND THE WINDING MUST NOT BE TOUCHED. The first
+        # version reversed the triangles as well, on the reflex that turning
+        # geometry round needs it, and that inverted every customs hall --
+        # signed volume +513 to -513. The gate caught it; nothing else would
+        # have, because an inside-out room has the same triangle count, the
+        # same extent and, against black, the same render.
+        out = [(-(x - cx), y - y0, -(z - min(zs)) + axial_half_m)
+               for x, y, z in v]
+    return out, t, g
 
 if __name__ == "__main__":
     raise SystemExit(_selftest())
