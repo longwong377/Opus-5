@@ -4363,3 +4363,225 @@ valid severity; evidence keyed by `frames`/`path`/`shader`; `what_is_good` is no
 key; dimensions below the bar with no finding). The two rounds added here are clean. The rest
 are left as found, because editing past rounds to make a gate green is precisely the failure
 that file exists to catch.
+
+---
+
+## Agent report — lighting the playable build
+
+**Session 3w, one agent, scope: `godot/scripts/walk.gd`, `godot/scripts/dress_scene.gd`
+(new), `godot/scenes/walk.tscn`, four PNGs under `docs/`, this section. Nothing under
+`station/` or `tools/` was touched, and `player.gd`, `door.gd` and `npc.gd` were read but
+not edited.**
+
+### What was wrong
+
+`docs/judge-3w.md` finding 5: `walk.tscn` is the only scene a player can stand in — it is
+what `station/walkable.py` launches and what CI runs — and it **applied no material rules and
+created no lights**. It loaded a `.glb`, gave it collision, stood a body on it, and lit the
+whole thing with a hand-written `ambient_light_energy = 0.6`. Meanwhile `tools/export_scene.py`
+carried 429 material rules and sixteen measured light fittings that were used **only to take
+screenshots**. The playable build and the beautiful build were two different builds.
+
+### What was built
+
+`godot/scripts/dress_scene.gd`, called from `walk.gd::_dress_level()` immediately after the
+`.glb` is added to the tree. **It contains no material table and no lighting table.** Both are
+read from the definitions that already ship:
+
+| what | where it is read from | how |
+|---|---|---|
+| 429 material rules | `godot/scenes/interior.tscn` (`station/materials.py --export` writes it) | the scene is `instantiate()`d and **never added to the tree**, so `render_shot.gd::_ready` never fires; its own `_material_for()` does the matching, so the table *and* the matcher are the shipping ones |
+| the interior look | the same scene's `WorldEnvironment` | ACES, exposure 1.0, white 4.0, ambient **1.30** (`AMBIENT_CALIBRATED_ENERGY`), SSAO 0.6 m, low glow — mounted verbatim, replacing the hand-written 0.6 flat fill |
+| 16 fitting measurements | `tools/export_scene.py::FIXTURE_LIGHTING` | **parsed out of the Python source** at load, together with `FIXTURE_MERGE_M`, `INTERIOR_LIGHT_RANGE_M`, `INTERIOR_SHADOW_LIGHTS`, `EXTENDED_SAMPLES_PER_RANGE`, `EXTENDED_SAMPLE_CAP` and the `--fixture-energy` argparse default |
+
+Parsing Python from GDScript is a wart and it is deliberate. The alternative was retyping
+sixteen *measured* fittings — colours, ranges, cone angles, shadow flags — into a second
+table, which is correct on the day it is written and silently wrong afterwards. **The exact
+change that removes the wart is written out below and needs a file this agent does not own.**
+
+### The gate, run and reported
+
+```
+  PASS  deck blue/0/0  6 rooms over 344 deg, 6 doors; a body spawns in the corridor and
+        WALKS INTO docking_bays (6.3 m -> 0.04 m), never leaving the floor, 5 of the room
+        look up (123 deg turned, 4 deg off)
+        control: with the doors inert the body is stopped 5.26 m short. The door is what
+        opens the way.
+        597,418 render triangles, 9,588 collision (1.6%)
+```
+
+Run three times: twice in a `git worktree` at HEAD (isolated, because a concurrent session
+was rewriting `station/generated/scene/deck/*` mid-test and the first baseline run failed on
+*its* half-finished `populace.py`), once in the working tree. `exit=0` every time. **Dressing
+runs in the headless walk test too, on purpose** — a step that only ever runs in the
+configuration nobody checks is a step that rots, and this file has that scar twice already.
+Its summary lines appear in the CI log:
+
+```
+dress: 271/286 meshes MATERIALLED, 15 group(s) on the glTF fallback: deck_untagged, ...
+dress: 850 light sources at energy 3.00 from { "light_highbay": 18, "light_downlight": 832 },
+       2 casting shadows
+dress: emissive-only (measured, not missing): light_pilaster_strip, light_portal_head, ...
+```
+
+### The frames, and the measured difference
+
+Rendered through Godot 4.4 double + Mesa lavapipe under Xvfb at 1280x720, from the
+**player's own camera** — `player.gd` already carries a Camera3D at `eye_height_m` = 1.7 m
+parented to the body, so the eye is where the physics actually put a standing person, not
+where a camera was told to go. The body is settled for 120 physics frames first; the log
+records `eye 209.823,0.000,7121.305 (r=211.523, 0.045 m below spawn), on_floor=true`.
+`--no-dress` is the control and produces the build exactly as it shipped before this change.
+
+| frame | what |
+|---|---|
+| `docs/walk3w-sightline-before.png` | control, corridor sight line |
+| `docs/walk3w-sightline-after.png` | dressed, same camera |
+| `docs/walk3w-wall-before.png` | control, wall at 1.3 m — the rubric's half distance |
+| `docs/walk3w-wall-after.png` | dressed, same camera |
+
+`tools/measure_frame.py --against reference/07-sector-grey/grey level 1.webp`:
+
+| | before (`--no-dress`) | after | the show |
+|---|---|---|---|
+| **sight line** median vs ref | **x3.61 — OUT OF RANGE** | **x1.68 — OK** (target x1.40 +/-25%) | 0.0533 |
+| p5 / p95 | **1.000** | 0.056 | 0.083 |
+| distribution tests passed | **1 of 6** | **5 of 6** | — |
+| clipped / crushed | 0.00% / 0.02% | 2.52% / 1.53% | cap 3.69% / 0.22–63.92% |
+| **wall at 1.3 m** median vs ref | **x3.61 — OUT OF RANGE** | **x1.12 — OK** | |
+| p5 / p95 | **1.000** | 0.096 | 0.083 |
+| distribution tests passed | **2 of 6** | **5 of 6** | — |
+
+`p5/p95 = 1.000` is not a rounding: the control frame's 5th and 95th percentiles are the same
+number. The whole 1280x720 frame contains **84 unique colours**; the dressed frame contains
+**61,505**. 100.00% of pixels differ, mean |delta| 54.5/255, max 145/255.
+
+**The playable build now measures the same as the best frame the screenshot path can produce.**
+`docs/judge-3w.md`'s "groups recovered" row is x1.68, p5 x1.41 (band x1.29), 5 of 6 — this
+frame is x1.68, p5 x1.39, 5 of 6. The one remaining failure is `p5` at x1.39 against a x1.29
+band, i.e. **the shadows are 8% too bright**, and it is inherited rather than introduced:
+CLAUDE.md already records the corridor anchor that defines 1.00 for the whole project as
+sitting at p5 x1.64. Tuning it here would be a second exposure judged against nothing.
+
+### The lamp positions were checked against the Python, not asserted
+
+`export_scene.fixture_lights` needs the generator's `(name, lo, hi)` spans and a `.glb` has
+lost them — `export_gltf.load_obj_groups` keys on the group NAME, so the deck's 832 corridor
+downlights arrive as **one mesh of 9,984 triangles**. `dress_scene._fittings` recovers them by
+single-linkage clustering at `FIXTURE_MERGE_M`, which is the same constant for the same
+purpose. Verified against the Python by running `fixture_lights` on the same assembled deck:
+
+```
+Python  850 lamps: light_downlight 832, light_highbay 18
+GDScript 850 lamps: light_downlight 832, light_highbay 18
+worst position disagreement 0.32 mm; 0 lamps unmatched within 50 mm
+```
+
+Extended-fitting sampling is implemented but **never fires on a ring deck** and is therefore
+untested against the Python: the widest body here is a 1.371 m high bay against a 12.5 m
+range. It prints when it fires, because that means a fitting has changed shape.
+
+### Two assertions that were made to fail before they were believed
+
+* **the lighting parse.** Run from a project directory with no sibling `tools/`:
+  `dress: FAILED -- no such file: .../tools/export_scene.py`, then `dress: 0 light sources`.
+  The walk test still passes, which is the design — walkability must not depend on the look.
+* **the material counter.** Its first version printed `271/286 meshes on a material rule` in a
+  worktree where **every `[ext_resource]` in interior.tscn had resolved to null** and not one
+  material existed. It counted rules matched, not materials applied. Now: with the import
+  cache, `271/286 MATERIALLED`; without it, `169/286 MATERIALLED` plus
+  `dress: 102 group(s) MATCHED A RULE THAT IS NULL`. Reproduced both ways.
+
+### Findings in files this agent does not own — with the exact changes
+
+1. **`godot/.godot/` is gitignored, so a fresh clone renders on the glTF fallback and says so
+   only in a wall of parse errors.** `git worktree add` + `render_godot.sh` produced 40 lines
+   of `Parse Error: [ext_resource] referenced non-existent resource` and then a perfectly
+   valid PNG of the wrong thing. `cp -a godot/.godot <worktree>/godot/` fixes it. This is the
+   same class as the `.tres` header check `render_godot.sh` already carries; suggest that
+   script gain a check that `godot/.godot/` exists before rendering.
+
+2. **`export_scene.fixture_lights` cannot see a room fitting on an assembled deck.**
+   `deck.py` prefixes a room's groups with its place key (`f"{q['key']}__{n}"`), and
+   `FIXTURE_LIGHTING` is an exact-name table, so `docking_bays__light_highbay` matches
+   nothing. On blue/0/0 that is **18 of the 850 lamps, and all four rooms with high bays**.
+   The corridor kit's unprefixed `light_downlight` is the only thing that matches today.
+   *Exact change,* `tools/export_scene.py`, in `fixture_lights`' span loop:
+   ```python
+   -        if name not in FIXTURE_LIGHTING:
+   +        # A ring deck prefixes a room's groups with its place key; deck.py
+   +        # splits on the same separator itself (deck.py:702).
+   +        name = name.split("__")[-1]
+   +        if name not in FIXTURE_LIGHTING:
+   ```
+
+3. **`fixture_lights` aims every spot at world -Y, which is wrong on a ring.** `lt["aim"] =
+   [0.0, -1.0, 0.0]` is right for one room in its own frame and wrong the moment the room is
+   rotated into the ring: at ring angle 90 deg "down" is +Y, and a bay flood would fire along
+   a wall. `dress_scene.gd` uses the radial direction, the same rule as `export_scene.radial_aim`.
+   *Exact change,* same function:
+   ```python
+   -                    lt["aim"] = [0.0, -1.0, 0.0]
+   +                    # Down is radially OUTWARD on a spun ring. Same rule as
+   +                    # radial_aim(); [0,-1,0] is only right in a room's own frame.
+   +                    r = math.hypot(c[0], c[1])
+   +                    lt["aim"] = ([c[0] / r, c[1] / r, 0.0] if r > 1e-3
+   +                                 else [0.0, -1.0, 0.0])
+   ```
+
+4. **The Python parse should not be necessary.** *Exact change,* `tools/export_scene.py`, in
+   `main()`:
+   ```python
+   ap.add_argument("--dump-lighting", default="",
+                   help="write FIXTURE_LIGHTING and the interior light "
+                        "constants to JSON, so the runtime reads one "
+                        "definition instead of re-typing it")
+   ...
+   if a.dump_lighting:
+       json.dump({"fixtures": FIXTURE_LIGHTING,
+                  "merge_m": FIXTURE_MERGE_M,
+                  "range_m": INTERIOR_LIGHT_RANGE_M,
+                  "shadow_n": INTERIOR_SHADOW_LIGHTS,
+                  "samples_per_range": EXTENDED_SAMPLES_PER_RANGE,
+                  "sample_cap": EXTENDED_SAMPLE_CAP,
+                  "fixture_energy": a.fixture_energy},
+                 open(a.dump_lighting, "w"), indent=1)
+       return 0
+   ```
+   and one line in `station/walkable.py::walk_deck` to emit it beside the mesh. Then
+   `dress_scene._read_lighting()` reads the JSON and `_py_block`/`_strip_comments`/`_py_number`
+   delete. **Leave the parse in as the fallback** until the JSON is proven to exist in CI.
+
+5. **15 of 198 deck groups have no material rule at all** (unchanged by this work, listed so
+   it is not read as a regression): `deck_untagged`, `docking_bays__prop_bay_control_booth`,
+   `docking_bays__prop_deck_marking`, and **all twelve `doorleaf_<room>_<n>`**. The door
+   leaves are the ones that matter — they are the thing a player walks up to and touches, and
+   they render as untextured glTF white. `station/materials.py` needs a rule for `doorleaf`
+   (`kit_portal_frame` or a new leaf material) and `deck.py` needs to stop emitting
+   `deck_untagged`.
+
+6. **`walk.gd` creates all 850 lights at load with no streaming or distance cull.** It renders
+   (26 s a frame on lavapipe against 13 s undressed) and the walk gate is unaffected, but
+   Godot's `rendering/limits/cluster_builder/max_clustered_elements` defaults to **512** and
+   this deck puts 850 lights in one scene. No dropped-light warning appeared in any log here,
+   so it is not currently biting; it will on a deck with more rooms. This belongs with
+   judge-3w finding 6 (nothing gates the deck) rather than with the look.
+
+### Not verified, stated so silence is not read as a pass
+
+* **Framerate.** No GPU. 26 s a frame on a CPU rasteriser says nothing about 1440p60, and the
+  850 lights are the obvious suspect for the first real profiling pass.
+* **Rendering anything but `blue/0/0`.** The other 65 ring decks were not rendered with
+  dressing on. The **drum was walked** and passes — `drum_walk.py` launches the same
+  `walk.tscn`, so it inherits the dressing, and
+  `walkable.py --deck green/1/0` gives `PASS drum green/1/0 a body spawns on hedge at
+  the_garden, walks 126.0 m over 25 ground patches and never leaves the floor`, exit 0. It was
+  **not rendered**, and it should be before anyone trusts it: the drum has its own
+  environment in `drum.tscn` that `dress_scene.gd` does **not** read, and mounting the
+  *interior* environment — ambient 1.30, white point 4.0, SSAO at 0.6 m — inside a 556 m
+  cavity with a sun-tube is almost certainly wrong. The right shape is for `dress_scene`
+  to take the scene name to harvest from, `walk.gd` to pass `drum.tscn` when
+  `gravity-mode=drum`; it is deliberately not guessed at here.
+* **Whether the doors read.** `door.gd` runs, but the shot is taken from the spawn and no door
+  is in frame.
+* **The p5 debt.** Inherited from the corridor anchor and not re-derived here.

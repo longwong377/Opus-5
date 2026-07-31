@@ -234,17 +234,28 @@ func _read_lighting() -> void:
 # ---------------------------------------------------------------------------
 
 ## Give every mesh under `root` the material the interior scene binds to its
-## group name. Returns {meshes, bound, unmatched}.
+## group name. Returns {meshes, bound, unmatched, ruled_but_null}.
 ##
 ## The matching is `render_shot.gd`'s own `_material_for` -- longest substring
 ## wins -- called on the instantiated interior scene. Restating eight lines of
 ## matcher here would be a second implementation of the thing whose duplication
 ## this project has already paid for twice.
+##
+## `bound` COUNTS MATERIALS APPLIED, NOT RULES MATCHED, and the difference is
+## not pedantry: it was measured. `godot/.godot/` is gitignored, so a fresh
+## clone or a `git worktree` has no import cache, every `[ext_resource]` in
+## interior.tscn resolves to NULL, and the rules dictionary still has all 429
+## keys pointing at nothing. The first version of this counter reported
+## "271/286 on a material rule" over a frame in which not one material existed.
+## A summary line that cannot distinguish "bound" from "matched a rule whose
+## value is null" is the same defect as an assertion that cannot fail.
 func bind(root: Node) -> Dictionary:
 	if _owner == null:
-		return {"meshes": 0, "bound": 0, "unmatched": PackedStringArray()}
+		return {"meshes": 0, "bound": 0, "unmatched": PackedStringArray(),
+			"ruled_but_null": PackedStringArray()}
 	var rules: Dictionary = _owner.get("material_rules")
 	var missed := {}
+	var empty := {}
 	var meshes := 0
 	var bound := 0
 	for mi in _mesh_instances(root):
@@ -256,15 +267,17 @@ func bind(root: Node) -> Dictionary:
 			if key.contains(String(frag)):
 				hit = true
 				break
-		if hit:
-			bound += 1
-		else:
-			missed[key] = true
 		if mat != null:
+			bound += 1
 			for i in mi.mesh.get_surface_count():
 				mi.set_surface_override_material(i, mat)
+		elif hit:
+			empty[key] = true
+		if not hit:
+			missed[key] = true
 	return {"meshes": meshes, "bound": bound,
-		"unmatched": PackedStringArray(missed.keys())}
+		"unmatched": PackedStringArray(missed.keys()),
+		"ruled_but_null": PackedStringArray(empty.keys())}
 
 
 ## Drop the instantiated interior scene. Call once binding is done; the

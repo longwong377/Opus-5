@@ -177,9 +177,21 @@ func _dress_level(scene: Node) -> void:
 	var m: Dictionary = _dress.bind(scene)
 	_dress.release()
 	var un: PackedStringArray = m["unmatched"]
-	print("dress: %d/%d meshes on a material rule, %d group(s) on the glTF "
-		% [m["bound"], m["meshes"], un.size()]
-		+ "fallback%s" % ("" if un.is_empty() else ": " + ", ".join(un)))
+	print("dress: %d/%d meshes MATERIALLED, %d group(s) on the glTF fallback%s"
+		% [m["bound"], m["meshes"], un.size(),
+			("" if un.is_empty() else ": " + ", ".join(un))])
+	# A rule that resolves to null is worse than no rule: the summary above
+	# reads as a success and the frame is the glTF default. It happens whenever
+	# `godot/.godot/` is absent (it is gitignored), and the engine only says so
+	# in a wall of [ext_resource] parse errors nobody reads.
+	var nul: PackedStringArray = m["ruled_but_null"]
+	if not nul.is_empty():
+		push_error("walk: %d group(s) matched a material rule that resolved to "
+			% nul.size() + "NULL -- the material library did not load")
+		print("dress: %d group(s) MATCHED A RULE THAT IS NULL -- run "
+			% nul.size() + "`station/materials.py --export` and let Godot "
+			+ "import once; the frame is the glTF fallback: %s"
+			% ", ".join(nul.slice(0, 6)))
 
 	_lights = Node3D.new()
 	_lights.name = "Fittings"
