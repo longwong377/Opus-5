@@ -367,10 +367,19 @@ def dress(place, w_m, l_m, ceil_m, arch, inset=(0.0, 0.0), seed=None,
     # exists so a room can always end up walkable -- still hung wall boxes at
     # chest height and left 23 rooms impassable. A zero that does not mean zero
     # is worse than no fallback at all, because it looks like one.
+    # AND THEY SCALE ALL THE WAY DOWN. `max(2, ...)` meant two wall boxes went
+    # up at EVERY density above zero, so the ladder had no rung on which the
+    # furniture survived and the services did not -- and in a marginal room it
+    # is the services that close the path, because `rooms.walkable` dilates
+    # every obstacle by the walker's radius and a 0.14 m panel becomes a 1.04 m
+    # block. `bay_elevators` was unwalkable with FOUR extra objects and
+    # walkable with none, so the whole dressing was thrown away to remove two
+    # shallow panels. A floor under a scale factor is a scale factor that does
+    # not reach zero.
     for wall_x, facing, run, axis in walls[:2]:
         if density <= 0.0:
             break
-        n = max(2, int(run / 2.2 * density))
+        n = int(run / 2.2 * density)
         for i in range(n):
             zz = -hl + run * (i + 0.5) / n
             if _u(seed, "svc", wall_x, i) < 0.45:

@@ -1211,8 +1211,12 @@ def build(schema, profile, place, max_span_m=None, door_at=None,
                              for a, b, c in dt]
         trial_g = list(g) + [(n, lo + len(t), hi + len(t))
                              for n, lo, hi in dg]
-        if _dens == 0.0 or walkable(
-                _boxes(trial_v, trial_t, trial_g, is_solid), bw, bl):
+        _trial_boxes = _boxes(trial_v, trial_t, trial_g, is_solid)
+        _ok = walkable(_trial_boxes, bw, bl)
+        if report is not None:
+            report.setdefault("trials", []).append(
+                (_dens, _ok, len(_trial_boxes)))
+        if _dens == 0.0 or _ok:
             v, t, g = trial_v, trial_t, trial_g
             # WHICH DENSITY IT SETTLED ON. Without this the only way to know how
             # much furniture a room actually got is to re-run the trial from

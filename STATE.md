@@ -35,14 +35,27 @@ still assembles, walks and renders.
 room, falling 1.0 → 0.75 → 0.5 → 0.3 → 0.15 → 0.0. Measured over all 87 walkable rooms
 for the first time (`build(..., report=)`):
 
-| density | rooms |
-|---|---|
-| **1.0** | 43 |
-| 0.75 | 16 |
-| 0.5 | 15 |
-| 0.3 | 7 |
-| 0.15 | 3 |
-| **0.0 — empty** | 3 |
+| density | rooms (before) | after the services fix below |
+|---|---|---|
+| **1.0** | 43 | 43 |
+| 0.75 | 16 | 16 |
+| 0.5 | 15 | 15 |
+| 0.3 | 7 | **10** |
+| 0.15 | 3 | 3 |
+| **0.0 — empty** | **3** | **0** |
+
+**No room on the station is empty any more**, and the fix was one `max()`. Services —
+wall panels and conduit drops — were placed as `n = max(2, int(run / 2.2 * density))`, so
+**two went up at every density above zero**. The ladder therefore had no rung on which the
+furniture survived and the services did not. In a marginal room it is the services that
+close the path, because `rooms.walkable` dilates every obstacle by the walker's radius
+and a 0.14 m panel becomes a 1.04 m block: `bay_elevators` measured unwalkable with
+**four** extra objects and walkable with none, so its entire dressing was discarded to
+remove two shallow panels. **A floor under a scale factor is a scale factor that does not
+reach zero** — the same defect this module's own comment had already caught once, at
+`density=0.0`, and fixed only for that one value.
+
+The station now carries **109,200 triangles of furniture**.
 
 **44 of 87 rooms are furniture-starved, and the worst of them are the ones that should
 be fullest:** `mess_hall`, `happy_daze` and `bar_unnamed` at **0.15**, `casino` and
