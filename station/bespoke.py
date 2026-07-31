@@ -116,25 +116,15 @@ UNROLL = {"plant"}
 # material glows.
 WALK_SURFACE = {"plant": ("plant_catwalk",)}
 
-# HEADROOM, where the bounding box does not give it. Same shape of fact as
-# WALK_SURFACE and for the same reason: the module knows and the box does not.
-#
-# `compose` takes a room's ceiling as `max(y) - min(y)` over the shell, which
-# is right for every module that builds a room and wrong for the one that
-# builds a slice of the outer stack. A plant cell is 18 m tall and its walkway
-# hangs 15.6 m up it, so the box says 18 m of headroom where `plant`'s own
-# `CATWALK_CLEAR_M` says 2.4 -- and `dressing.dress` hangs its ceiling-mounted
-# props at whatever it is told, which would put every conduit drop and light
-# in that room 15 m above a body's head and 8 m below the tanks.
-#
-# Read from the module's own constant rather than repeated here, so it cannot
-# drift from the clearance the geometry is actually built with.
-def _plant_headroom():
-    import plant as _p                                          # noqa: PLC0415
-    return _p.CATWALK_CLEAR_M
-
-
-CEILING_M = {"plant": _plant_headroom}
+# NO PER-MODULE CEILING OVERRIDE, AND THE ONE THAT WAS HERE IS WORTH A NOTE.
+# `compose` takes a room's ceiling as `max(y) - min(y)` over the shell, and the
+# first version of the plant composition needed that overridden to
+# `plant.CATWALK_CLEAR_M` -- because a gantry hung 15.6 m up an 18 m bay has
+# 2.4 m of headroom and a bounding box cannot see it. Putting the walkway on
+# the bay's own FLOOR instead made the box right again: the room really is 18 m
+# tall, `dressing`'s conduit riser really does run all 18 m of the wall, and it
+# is the correct content for a machine hall. Recorded because "the fix removed
+# the need for the mechanism" is the outcome to prefer over a second registry.
 
 
 def unroll_to_local(verts):
@@ -540,8 +530,6 @@ def compose(schema, profile, place, axial_half_m, density=1.0, report=None,
     # handing the full extent puts a crate through a bulkhead.
     inset = 2.0 * _R.WALL_T_M
     ceil = max(2.2, max(p[1] for p in v) - min(p[1] for p in v))
-    if place.get("module") in CEILING_M:
-        ceil = max(2.2, CEILING_M[place["module"]]())
 
     # DENSITY FALLS UNTIL THE ROOM FITS ITS BUDGET, which is `rooms.build`'s own
     # idiom applied to a different binding constraint. `rooms.build` falls

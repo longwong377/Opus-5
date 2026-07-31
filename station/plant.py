@@ -429,10 +429,27 @@ def room_cell(schema, profile, place):
     half_w = min(w_full, bw) / 2.0
     half_l = min(l_full, bl) / 2.0
 
+    # THE WALKWAY IS THE ADDRESSED DECK'S OWN FLOOR. Every one of the five
+    # plant places is addressed to the OUTERMOST deck of its bay -- plant_zone
+    # and downbelow to deck 0, water_reclamation to 5, air_compressors to 10,
+    # downbelow_arch to 20, and `bays()` starts a bay at every fifth deck -- so
+    # `bay["r_outer"]` IS that deck's floor radius to within 50 mm. Standing
+    # there is what makes the room continuous with the corridor that serves it,
+    # which is `deck.build_deck`'s own rule: "a step between a corridor and a
+    # room is a trip hazard the walk test would find and a player would feel".
+    #
+    # It is also the only choice that keeps the room inside the station. The
+    # module's own gantry sits at `r_inner + CATWALK_CLEAR_M`, 15.6 m inboard
+    # of the outer face; `room_shell` puts the walkable floor at y = 0 and
+    # `_place_local` puts y = 0 at the corridor's radius, so the other 15.6 m
+    # of bay would land OUTBOARD of the corridor floor -- and deck 0's floor is
+    # the outermost radius in the whole stack. plant_zone's tank farm would
+    # hang through the pressure hull.
+    r_walk = bay["r_outer"]
     # The angle that subtends the shell's width AT THE WALKWAY, not at the
-    # bay's outer face. The two differ by the bay's own 18 m of depth -- 3.8%
-    # at r 471 -- and the walkway is the surface the width has to be right on.
-    r_walk = bay["r_inner"] + CATWALK_CLEAR_M
+    # bay's outer face -- the two coincide here and the expression is written
+    # against the walkway anyway, because that is the surface the width has to
+    # be right on and a future bay choice may separate them again.
     arc_deg = math.degrees(2.0 * half_w / r_walk)
     start_deg = place["angle_deg"] - arc_deg / 2.0
     z0, z1 = place["z_m"] - half_l, place["z_m"] + half_l
@@ -459,38 +476,61 @@ def room_cell(schema, profile, place):
                      # the register addressing a water reclamation facility IS
                      # the statement that the tankage is here.
                      farm_at=farm_at, farm_tanks=(max(1, n_a), n_z),
-                     # Hard against the near face: the walkway's near EDGE is
-                     # at z1, so `bespoke.near_face_opening` finds floor in the
-                     # first 1.8 m of its 2.0 m approach band.
-                     walk_z=z1 - CATWALK_W_M / 2.0,
-                     # ...and the rail and the tubes go on the open side only.
+                     # THE FLOOR IS THE CELL. 1.8 m of gantry is what the
+                     # streaming volume wants and it is not a room: it leaves
+                     # `near_face_opening` no floor at the door, and it hands
+                     # `dressing.dress` a 1.8 x 14 m strip, which furnishes a
+                     # corridor. An addressed machine room is a room.
+                     walk_r=r_walk, walk_w=(z1 - z0),
+                     walk_z=(z0 + z1) / 2.0,
+                     # ...and the rail and the service tubes go on the FAR side
+                     # only: the near side is the wall the corridor's door is
+                     # in, and a tube stands TUBE_PROUD_M past the rail line.
                      walk_sides=(-1,))
 
 
 def plant_bay(schema, profile, bay, arc_deg, start_deg=0.0, z_span=None,
-              sector=None, walk_z=None, walk_sides=(-1, 1), farm_at=None,
-              farm_tanks=None):
+              sector=None, walk_z=None, walk_w=None, walk_r=None,
+              walk_sides=(-1, 1), farm_at=None, farm_tanks=None):
     """One bay of plant over an arc: frames, tankage, catwalk and pipe runs.
 
-    `walk_z` and `walk_sides` ARE THE PLACEMENT DECISION, and they exist
-    because a plant cell has two entirely different jobs. INV-231.
+    THE FOUR `walk_*` ARGUMENTS ARE THE PLACEMENT DECISION, and they exist
+    because a plant cell has two entirely different jobs. INV-231. All four
+    default to what this module has always built, so the streaming cells and
+    the exterior are unchanged; `plant.room_cell` is the only caller that sets
+    them, and its docstring is where the reasoning for each value lives.
 
     As a STREAMING CELL of the outer stack -- which is all this module built
-    until now -- the catwalk belongs down the middle of the cell, because the
-    cell is 442 m of axis and there is no door anywhere. Both defaults say
-    exactly that and the exterior build is unchanged.
+    until now -- the walkable skeleton is a 1.8 m catwalk down the middle of
+    the cell at the bay's INNER face, a gantry over the tank farm. That is
+    right for 442 m of axis with no door anywhere in it, and it is what the
+    gazetteer's "thin walkable skeleton threaded through it" describes.
 
-    As a ROOM ON A RING DECK the cell is 9.6 m of axis with a pressure door in
-    one end of it, and a walkway down the middle of that is a walkway a body
-    cannot reach: `bespoke.near_face_opening` wants floor within
-    `APPROACH_DEPTH_M` of the near face and a catwalk at the centre of a 9.6 m
-    cell is 2.1 m short of it. So the caller says where the walkway goes.
+    As a ROOM ON A RING DECK none of those three choices survives contact with
+    the corridor, and each fails for its own measurable reason:
 
-    `walk_sides` follows from it rather than being a second decision: the rails
-    and the service tubes are built per side of the walkway, and the side that
-    is against the doorway wall must carry neither. A walkway along a bulkhead
-    is railed on its open side only -- and a 1.05 m rail across the aperture is
-    exactly what `deck._mouth_clear`'s 0.735 m probe calls a wall.
+      * `walk_z` -- a walkway down the middle of a 9.96 m cell is 2.1 m short
+        of `bespoke.APPROACH_DEPTH_M`, so `near_face_opening` finds no floor at
+        the door and the room is not enterable.
+      * `walk_r` -- the catwalk sits at `r_inner + CATWALK_CLEAR_M`, 15.6 m
+        inboard of the bay's outer face. `bespoke.room_shell` puts the walkable
+        floor at y = 0 and `deck._place_local` puts y = 0 at the CORRIDOR's own
+        radius, so the bay's other 15.6 m lands OUTBOARD of the corridor floor
+        -- and `plant_zone` and `downbelow` are addressed to deck 0, whose
+        floor is the outermost radius in the stack. Their tank farm would hang
+        through the pressure hull.
+      * `walk_w` -- 1.8 m of floor is a gantry, and `dressing.dress` handed
+        1.8 m by 14 m furnishes a corridor. An addressed machine room is a room
+        you stand in, and its floor is the cell's floor.
+
+    `walk_sides` follows from the others rather than being a fourth decision:
+    the rail and the service tubes are built per side of the walkway, and the
+    side against the doorway wall may carry neither. A walkway along a bulkhead
+    is railed on its open side only -- a 1.05 m rail across the aperture is
+    exactly what `deck._mouth_clear`'s 0.735 m probe calls a wall, and a
+    service tube stands `TUBE_PROUD_M` past the rail line, which on a full-cell
+    floor is 0.12 m PAST the near face and silently moves the whole room up the
+    axis when `room_shell` recentres on it.
     """
     if sector is None:
         sector = "grey"
@@ -500,6 +540,11 @@ def plant_bay(schema, profile, bay, arc_deg, start_deg=0.0, z_span=None,
 
     r_out, r_in = bay["r_outer"], bay["r_inner"]
     spec = tanks_in_bay(bay)
+    # The walkable surface, resolved BEFORE the tankage because the tanks are
+    # seated on it. See the four `walk_*` paragraphs in the docstring.
+    r_walk = r_in + CATWALK_CLEAR_M if walk_r is None else float(walk_r)
+    walk_w = CATWALK_W_M if walk_w is None else float(walk_w)
+    zc_walk = (z0 + z1) / 2.0 if walk_z is None else float(walk_z)
 
     # --- deep frames ------------------------------------------------------
     # Radial members at FRAME_PITCH_DEG round, tied by circumferential rings at
@@ -551,6 +596,19 @@ def plant_bay(schema, profile, bay, arc_deg, start_deg=0.0, z_span=None,
         step = 2 * TANK_R_M + TANK_CLEAR_M
         step_deg = math.degrees(step / max(r_out, 1e-9))
         n_a, n_z = farm_tanks or (FARM_TANKS_A, FARM_TANKS_Z)
+        # A TANK STANDS ON THE FLOOR THE CALLER NOMINATED. `tanks_in_bay` seats
+        # it `TANK_CLEAR_M` inboard of the bay's outer face, which is right
+        # while the walkway is a gantry at the bay's INNER face and wrong the
+        # moment `walk_r` puts the walkable surface at the outer face -- there
+        # the same tank hangs 1.6 m in the air over the deck a body is standing
+        # on. Seated on `r_walk` with its top left where it was, so the fit test
+        # in `tanks_in_bay` still governs whether there is one at all.
+        r_base = spec["r_base"]
+        t_height = spec["height_m"]
+        if walk_r is not None:
+            top = r_base - t_height
+            r_base = r_walk
+            t_height = max(1.0, r_base - top)
         centres = (list(farm_at) if farm_at is not None
                    else _farm_angles(start_deg, arc_deg))
         for fa in centres:
@@ -562,8 +620,8 @@ def plant_bay(schema, profile, bay, arc_deg, start_deg=0.0, z_span=None,
                         if not (z0 + TANK_R_M <= zc <= z1 - TANK_R_M):
                             continue
                         local, lt, lg = [], [], []
-                        _tank_radial(local, lt, lg, zc, spec["r_base"],
-                                     spec["r_base"] - spec["height_m"])
+                        _tank_radial(local, lt, lg, zc, r_base,
+                                     r_base - t_height)
                         _absorb(verts, tris, groups, _place(local, a), lt, lg,
                                 flip=True)
 
@@ -577,22 +635,20 @@ def plant_bay(schema, profile, bay, arc_deg, start_deg=0.0, z_span=None,
     # not a catwalk but a 158 m x 120 m plate, and it used CATWALK_W_M as a
     # radial offset rather than as a width. Both obvious the moment it was
     # rendered from standing height, and neither visible to any assertion.
-    r_walk = r_in + CATWALK_CLEAR_M
     mid = start_deg + arc_deg / 2
-    zc_walk = (z0 + z1) / 2.0 if walk_z is None else float(walk_z)
     half_len = arc_length(r_walk, arc_deg) / 2
 
     local, lt, lg = [], [], []
     _box(local, lt, lg, "plant_catwalk",
-         (-half_len, r_walk, zc_walk - CATWALK_W_M / 2),
-         (half_len, r_walk + CATWALK_T_M, zc_walk + CATWALK_W_M / 2))
+         (-half_len, r_walk, zc_walk - walk_w / 2),
+         (half_len, r_walk + CATWALK_T_M, zc_walk + walk_w / 2))
     _absorb(verts, tris, groups, _place(local, mid), lt, lg, flip=True)
 
     # Posts along both long edges, then one top rail per side. Rail height is
     # measured INWARD from the deck, because inward is up.
     n_post = max(2, int(2 * half_len / RAIL_POST_PITCH_M))
     for side in walk_sides:
-        zr = zc_walk + side * CATWALK_W_M / 2
+        zr = zc_walk + side * walk_w / 2
         for j in range(n_post):
             xw = (-half_len + RAIL_R_M
                   + j * (2 * half_len - 2 * RAIL_R_M) / max(n_post - 1, 1))
@@ -623,7 +679,7 @@ def plant_bay(schema, profile, bay, arc_deg, start_deg=0.0, z_span=None,
         # of geometry OUTSIDE the plane `bespoke.room_shell` recentres on --
         # which does not fail, it silently moves the whole room 0.12 m up the
         # axis and puts the tubes in the corridor.
-        zr = zc_walk + side * (CATWALK_W_M / 2 + TUBE_PROUD_M)
+        zr = zc_walk + side * (walk_w / 2 + TUBE_PROUD_M)
         for j in range(n_tube):
             xw = (-half_len + TUBE_W_M
                   + j * (2 * half_len - 2 * TUBE_W_M) / max(n_tube - 1, 1))
