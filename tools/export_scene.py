@@ -1917,7 +1917,7 @@ or occlusion, not a light.
 THE FRAMES ARE COMMITTED, which is the point of EXPOSURE_FRAMES' complaint that
 "nine of the eleven ROOM_EXPOSURE values have no committed frame at all":
 
-  docs/engine-deck-corridor.png            BEFORE. `--soft-fill 0` reproduces
+  docs/engine-deck-corridor-prefill.png    BEFORE. `--soft-fill 0` reproduces
                                            it BYTE FOR BYTE, 0 pixels differing
                                            of 921,600, which is what makes the
                                            flag a usable negative control.
@@ -1933,6 +1933,19 @@ THE FRAMES ARE COMMITTED, which is the point of EXPOSURE_FRAMES' complaint that
                                            even deck, dim walls and a black
                                            overhead is what the fill is for,
                                            and a row of pools is not.
+
+AND THE FRAME THAT WAS ALREADY COMMITTED IS STALE, which is why there is a
+`-prefill` before-frame rather than a diff against the existing one.
+`docs/engine-deck-corridor.png` was last written by 8b39055 and the lens fix
+c05a877 -- which changed `light_pilaster_strip`, `light_portal_head` and
+interior.tscn -- did not re-take it. Measured today it reads 4.64% CLIPPED
+against a 3.69% cap and p5 x1.45, i.e. the blown-lens state; the same command
+run against the same code renders 0.00% clipped and p5 x0.77. A committed frame
+that no longer matches the code that made it is worse than none, because it is
+the thing the next reader diffs against. It should be regenerated:
+
+  tools/render_godot.sh --shot deck --deck blue/0/0 --at docking_bays \\
+      --res 1280x720 --out docs/engine-deck-corridor.png
 """
 
 
