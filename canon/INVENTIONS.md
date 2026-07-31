@@ -4014,3 +4014,41 @@ appearing and **every deck went on passing** — for six runs, while nobody on t
 runtime. *A gate that disappears when the thing it tests is broken is worse than no gate, because
 it prints PASS.* It now fails, and its negative control is run at unit level in one second rather
 than through a Godot session that the very defect makes too slow to finish.
+
+---
+
+## INV-134 — A composed room's collision is its dressing, not its whole mesh
+
+`station/deck.py`, `room_geometry()` and `_dress_solid()`.
+
+**What.** One function decides bespoke-versus-generic for a room, and both `build_deck` (what is
+drawn) and `build_collision` (what is stood in) call it. For a **composed** room the solids come
+from its `dress_*` spans alone; its walls and floor stay represented by `room_shell_for`'s smooth
+shell.
+
+**Why necessary.** The bespoke-versus-generic choice lived only in `build_deck`, so
+`build_collision` went on calling `rooms.build` for its solids. Since 23 module-owned places began
+composing in session 3z, a player **saw** the Zocalo and **walked through** a generic bay's
+furniture, standing in places the drawn room has nothing at all. Two descriptions of one room —
+hard rule 4's failure mode, and it appeared the moment one of them improved.
+
+**What constrained the predicate, and it is the part that nearly went wrong.** `prop_boxes` finds
+objects as **connected components of shared vertices**, which is exactly right for a generic bay,
+where every `_box` call is its own island. A composed room's module geometry is **one welded
+mesh**, so the same rule collapses the Zocalo's 702,840 triangles into **one solid filling the
+room** — measured, 1 box against the generic build's 39. Shipping that would have sealed a room the
+player is meant to walk into: worse than the divergence it was meant to fix. Taking `dress_*` alone
+gives **41** for the Zocalo, 56 for the Council Chamber, 33 for C&C — against the generic 39, 30
+and 31, so the counts are comparable and the positions are the drawn room's.
+
+The shell is deliberately **not** taken from the composed mesh, and that is the
+collision-is-not-render rule rather than a shortcut: a smooth shell exists because a capsule
+dropped on a 66 mm lighting channel wedges on an internal edge.
+
+**Negative control, in `deck._selftest` and run:** taking the whole composed mesh instead of its
+dressing yields **1 solid against 41**, and the gate names it as sealing the room.
+
+**What would overturn it.** A module that emits its furniture welded to its shell — then
+`dress_*` would miss it and the room would go back to being furnished only by what `compose` adds.
+`bespoke.compose` runs `dressing` itself, so today every composed room has some; a module that
+built its own fittings inline would need them tagged.

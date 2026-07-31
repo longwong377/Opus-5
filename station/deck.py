@@ -315,6 +315,59 @@ def deck_plan(schema, profile, sector, ring, deck, z_m=None, max_rooms=None):
             "doors": [(q["angle_deg"], -1) for q, _d, _x in rooms]}
 
 
+def _dress_solid(name):
+    """Is this span a piece of FURNITURE, as opposed to the room's own fabric?
+
+    Used for a composed room, where the module's shell and its dressing are in
+    one mesh and only the second is a thing a body walks into -- the first is
+    represented by `room_shell_for`. `dress_` is what `dressing.dress` prefixes
+    everything it emits, including the fixtures it forwards under `dress_mp_`,
+    and `npc_` is excluded for the reason `rooms.is_solid` excludes it: static
+    collision is generated once and a person baked into it is a statue.
+    """
+    return name.startswith("dress_")
+
+
+def room_geometry(schema, profile, q, dx=None, report=None):
+    """A room's geometry, and WHICH build produced it. One decision, two callers.
+
+    ONE DESCRIPTION OF ONE ROOM, and it exists because there were two. Since
+    session 3z the assembler composes 23 module-owned places from their own
+    modules -- the Zocalo is the Zocalo -- while `build_collision` went on
+    calling `rooms.build` for its solids. So a player **saw** the Zocalo and
+    **walked through** a generic bay's furniture standing in places the drawn
+    room has nothing. That is hard rule 4's failure mode exactly: two
+    descriptions of one thing, drifting the moment either improves.
+
+    Returns `(verts, tris, spans, used)` with `used` in {"bespoke", "generic"}.
+    `report` collects the same diagnostics `build_deck` prints.
+    """
+    rep = {} if report is None else report
+    mod = q.get("module")
+    if mod in BSP.NEAR_END:
+        try:
+            brep = {}
+            bv, bt, bg = BSP.compose(
+                schema, profile, q, room_axial_half_m(schema, profile, q),
+                report=brep)
+            # A COMPOSED ROOM STILL HAS TO BE ENTERABLE, and the same test the
+            # assembler applies is applied here -- so collision cannot take the
+            # bespoke build for a room the render fell back on, which would
+            # reintroduce the divergence in the opposite direction.
+            if dx is None or _mouth_clear(bv, bt, dx):
+                rep.update(brep)
+                return bv, bt, bg, "bespoke"
+            rep["why"] = "composed room is walled at the doorway"
+        except Exception as e:                                  # noqa: BLE001
+            rep["why"] = f"compose raised: {str(e)[:60]}"
+    rv, rt, rg = R.build(
+        schema, profile, q,
+        door_at=None if dx is None else
+        (dx, K.PROVISIONAL["door_width_m"], K.PROVISIONAL["door_height_m"]),
+        report=rep)
+    return rv, rt, rg, "generic"
+
+
 def build_collision(schema, profile, sector, ring, deck, z_m=None,
                     max_rooms=None, props=False):
     """The deck's COLLISION geometry -- what a body stands on, not what it sees.
@@ -348,6 +401,7 @@ def build_collision(schema, profile, sector, ring, deck, z_m=None,
     meta["unopened"] = d["unopened"]
     meta["groups"] = []
     opened = {q["key"]: door for q, door, _dx in d["rooms"]}
+    _dxs = {q["key"]: dx for q, _door, dx in d["rooms"]}
     for q in d["here"]:
         door = opened.get(q["key"])
         inner = q["z_m"] + room_interior_half_m(schema, profile, q)
@@ -372,8 +426,31 @@ def build_collision(schema, profile, sector, ring, deck, z_m=None,
         # player walks through is a backdrop, not a place.
         if props:
             try:
-                rv, rt, rg = R.build(schema, profile, q)
-                boxes = C.prop_boxes(rv, rt, rg)
+                # THE ROOM THAT IS ACTUALLY DRAWN, not a generic stand-in. See
+                # `room_geometry`: this called `R.build` unconditionally, so
+                # every composed place put its solids where a generic bay's
+                # furniture would have been.
+                rv, rt, rg, _used = room_geometry(schema, profile, q,
+                                                  dx=_dxs.get(q["key"]))
+                # THE FURNITURE FROM THE ROOM THAT IS DRAWN; THE SHELL FROM
+                # THE SHELL. A composed room's module geometry is one welded
+                # mesh, so `prop_boxes`' connected-component rule -- which is
+                # right for a generic bay, where each `_box` call is its own
+                # island -- collapses the Zocalo's 702,840 triangles into ONE
+                # solid filling the room. Measured: 1 box against the generic
+                # build's 39. Shipping that would seal the room a player is
+                # supposed to walk into, which is worse than the divergence it
+                # was meant to fix.
+                #
+                # So the predicate takes the DRESSING and nothing else. The
+                # module's own walls and floor are already represented, by
+                # `room_shell_for`, as the smooth shell the
+                # collision-is-not-render rule requires -- and `compose` adds
+                # its furniture as separate `dress_*` islands exactly as
+                # `rooms.build` does, so the component rule holds for them.
+                solid = (_dress_solid if _used == "bespoke"
+                         else R.is_solid)
+                boxes = C.prop_boxes(rv, rt, rg, solid=solid)
                 pieces.append(C.boxes_mesh(
                     boxes, lambda pts, qq=q: _place_local(
                         pts, d["radius"], qq["angle_deg"], qq["z_m"])))
@@ -679,54 +756,24 @@ def build_deck(schema, profile, sector, ring, deck, with_rooms=True,
     # is what their collision shell also is.
     opened = {q["key"]: dx for q, _d, dx in dp["rooms"]}
     for q in here:
-        used = "generic"
         why = ""
         try:
             dx = opened.get(q["key"])
             rep = {}
-            # THE ROOM'S OWN MODULE, WHERE ONE EXISTS AND ITS FRAME IS KNOWN.
-            # `bespoke.compare` measured a straight swap at x0.54 -- the modules
-            # are shells and `rooms.build` runs `dressing` and `populace`
-            # inside itself -- so this composes instead: the module's true
-            # shape and scale, filled by the same dressing a generic bay gets.
-            # A docking bay stops being a 12 m store bay AND stops being an
-            # empty 141 m shed.
-            mod = q.get("module")
-            if mod in BSP.NEAR_END:
-                brep = {}
-                bv, bt, bg = BSP.compose(
-                    schema, profile, q,
-                    room_axial_half_m(schema, profile, q), report=brep)
-                # A COMPOSED ROOM STILL HAS TO BE ENTERABLE. No bespoke builder
-                # takes `door_at`, so the aperture the corridor opens onto is
-                # whatever the module happened to build there. Measured rather
-                # than assumed: if the vestibule's mouth is walled, the room is
-                # unreachable and the generic bay -- which IS cut for its door
-                # -- is the better build however much less like the place it
-                # looks. Falling back loudly beats shipping a sealed room.
-                if dx is None or _mouth_clear(bv, bt, dx):
-                    rv, rt, rg = bv, bt, bg
-                    # THE CAST LIST HAS TO COME WITH IT. `deck.py` reads
-                    # `rep["actors"]` to write `<deck>_actors.json`, which is
-                    # the only way `godot/scripts/npc.gd` learns who is where
-                    # and which way they face. Composed people left in a
-                    # separate dict are people the engine cannot find, and the
-                    # walk gate says so in as many words: "reached
-                    # customs_north and NOBODY noticed".
-                    rep["actors"] = brep.get("actors", [])
-                    used, why = "bespoke", (
-                        f"{brep.get('dressed', 0)} dressed at "
-                        f"{brep.get('density', 0):.2f}, "
-                        f"{brep.get('people', 0)} people")
-                else:
-                    why = "composed room is walled at the doorway"
-            if used == "generic":
-                rv, rt, rg = R.build(
-                    schema, profile, q,
-                    door_at=None if dx is None else
-                    (dx, K.PROVISIONAL["door_width_m"],
-                     K.PROVISIONAL["door_height_m"]),
-                    report=rep)
+            # ONE DECISION, AND `build_collision` MAKES THE SAME ONE. The
+            # bespoke-versus-generic choice used to live here and nowhere else,
+            # so collision went on deriving its solids from `rooms.build` for
+            # rooms this loop had composed -- a player saw the Zocalo and
+            # walked through a generic bay's furniture. `room_geometry` is now
+            # the single answer to "what is in this room"; see its docstring.
+            rv, rt, rg, used = room_geometry(schema, profile, q, dx=dx,
+                                             report=rep)
+            if used == "bespoke":
+                why = (f"{rep.get('dressed', 0)} dressed at "
+                       f"{rep.get('density', 0):.2f}, "
+                       f"{rep.get('people', 0)} people")
+            else:
+                why = rep.get("why", "")
         except Exception as e:                                  # noqa: BLE001
             stats["skipped"].append((q["key"], str(e)[:60]))
             continue
@@ -1236,6 +1283,35 @@ def _selftest():
           "is_solid disagrees about what a body walks into")
     print(f"  {pm.get('prop_boxes', 0)} furniture boxes, "
           f"{len(pt) - len(ct):,} collision triangles for them")
+
+    # -- COLLISION FOLLOWS THE COMPOSITION ---------------------------------
+    # A player SAW the Zocalo and WALKED THROUGH a generic bay's furniture:
+    # `build_deck` composed 23 module-owned places from their own modules while
+    # `build_collision` went on calling `rooms.build` for its solids. Two
+    # descriptions of one room, which is hard rule 4's failure mode.
+    zq = next((x for x in dr.PLACES if x["key"] == "zocalo"), None)
+    if zq is not None:
+        zv, zt, zg, zused = room_geometry(schema, profile, zq, dx=0.0)
+        check("the Zocalo's collision comes from the Zocalo", zused == "bespoke",
+              f"room_geometry returned {zused}")
+        dressed = C.prop_boxes(zv, zt, zg, solid=_dress_solid)
+        check("...and its furniture is a room full of separate objects",
+              20 < len(dressed) < 400, f"{len(dressed)} solids")
+        # THE NEGATIVE CONTROL, and it is the trap this nearly walked into. A
+        # composed room's module geometry is ONE WELDED MESH, so `is_solid` --
+        # right for a generic bay, where every `_box` call is its own island --
+        # collapses the whole room into a single solid. Shipping that would
+        # SEAL a room the player is meant to walk into.
+        whole = C.prop_boxes(zv, zt, zg)
+        check("BREAK: taking the whole composed mesh instead collapses it to "
+              "ONE solid filling the room -- which would seal it",
+              len(whole) <= 2 and len(whole) < len(dressed) / 10,
+              f"{len(whole)} solids against {len(dressed)} dressing-only")
+        # AND BOTH CALLERS AGREE, which is the property that was missing.
+        gv2, gt2, gg2, gused = room_geometry(schema, profile, zq, dx=0.0)
+        check("...and the two callers get the same room, by construction",
+              gused == zused and len(gt2) == len(zt),
+              f"{gused}/{len(gt2)} against {zused}/{len(zt)}")
 
     print(f"{ok}/{ok + fail} passed")
     return 1 if fail else 0
