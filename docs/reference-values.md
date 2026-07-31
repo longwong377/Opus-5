@@ -585,23 +585,65 @@ one flat value across a 2 m × 2 m field"*. The 10 m and 20 m frames are fine.
 
 ### 6.4 Our ladder against the show's
 
-`judge3x-corridor-5m.png`, ratios to its own left-wall upper plate (Y 0.678):
+> **CORRECTED, session 4a. Two things in the original table were wrong and one of them was wrong
+> in a way that *looked* corroborated.** Read the correction before the table.
+>
+> **1. The "ceiling / soffit … OURS 1.12" row was not measured on the overhead.** It was measured
+> on a **near-field pilaster face**. `export_scene.SOFT_FILL_LADDER_BOXES`' own comment records
+> the same discovery independently — its first soffit box, `(0.230,0.120)-(0.320,0.200)`, "landed
+> on a near-field PILASTER FACE rather than on the overhead, and read ×0.89 — which reproduced
+> section 6.4's own 'ceiling / soffit … OURS 1.12' and so looked corroborated." Measured here,
+> that box reads **×1.23** on `judge3x-corridor-5m.png`, ×1.00 on `engine-corridor.png` and
+> ×0.89 on `engine-deck-corridor.png`. It tracks the wall in every frame, because it *is* wall.
+>
+> **2. The OURS column recorded no regions at all**, while the SHOW table in §1 gives coordinates
+> for every rung — so the OURS side could not be recomputed by anyone who came after, and the
+> pilaster mistake was undetectable from the page. Every OURS number below now names its box.
+> The boxes are `export_scene.SOFT_FILL_LADDER_BOXES`, as data, so the two documents cannot drift.
+>
+> **3. The stated anchor does not reproduce either.** §1's anchor box `(0.019,0.236)-(0.125,0.293)`
+> applied to `judge3x-corridor-5m.png` gives Y **0.6358**, not the 0.678 written above it — 6.6%
+> apart. The conclusions it carries are not sensitive to 6.6%, but the number is not recomputable
+> and is corrected here rather than left.
+>
+> **4. And the frame itself is the wrong frame to draw a conclusion from.** §6.1, on this same
+> page, already establishes that `judge3x-corridor-5m.png` is the **ad-hoc rig** — four hand-placed
+> omnis and a scratch ambient — and that it fails every band while the shipped rig passes. Its
+> anchor wall sits at Y 0.652 against the shipped corridor's 0.060, i.e. **10.9× hotter**, so
+> every rung above it is compressed against the top of the scale by construction. The table below
+> keeps it because the original conclusions were drawn from it, and adds the shipped rig beside it.
 
-| element | SHOW × wall | OURS × wall |
-|---|---|---|
-| ceiling / soffit | **0.23 – 0.32** | **1.12** |
-| dark horizontal band / groove | **0.23 – 0.30** | **0.86 – 1.05** |
-| dado / lower wall | 0.73 | 0.76 – 0.82 |
-| skirt | 0.24 | — |
-| floor field | **2.49** | **0.69** |
-| wall light fitting | **4.70** | **1.30** |
-| ceiling light strip | **7.72** | **1.46** |
-| far end of the corridor | 11.36 (a lit hatch) | 0.20 (dark) |
-| deck spread within one frame | **×4.73** | ×1.99 (`door-4m`: ×1.65) |
+Ratios to each frame's own lit wall plate, `SOFT_FILL_LADDER_BOXES["lit wall plate (ANCHOR)"]`
+`(0.320,0.355)-(0.400,0.430)`. `judge3x` is the ad-hoc rig; the other two are the shipped
+fixtures, the shipped soft fill and the shipped materials.
 
-Four rungs are wrong by roughly the same factor and in a consistent direction: **the ceiling is
-~4× too bright, the dark bands ~4× too bright, the floor ~3.6× too dark, and the fittings ~3.6–5×
-too dim.** Everything is being pulled toward the wall.
+| element | box | SHOW × wall | `judge3x-5m` **ad-hoc** | `engine-corridor` **stale** | corridor **re-rendered 4a** |
+|---|---|---|---|---|---|
+| ceiling / soffit | `(0.400,0.115)-(0.600,0.190)` | **0.23 – 0.32** | 0.99 | **1.82** | **0.214** |
+| floor field | `(0.430,0.800)-(0.570,0.900)` | **2.49** | 0.59 | **0.29** | **2.59** |
+| deck beside the wall | `(0.330,0.745)-(0.410,0.770)` | — | 1.31 | 0.67 | 1.78 |
+| lit wall plate, opposite | `(0.610,0.355)-(0.690,0.430)` | — | 0.19 | 0.73 | 0.98 |
+| — *the pilaster face the 1.12 came from* | `(0.230,0.120)-(0.320,0.200)` | — | 1.23 | 1.00 | 0.99 |
+
+Rows the original table carried that have no recorded box and therefore cannot be re-measured —
+dark band, dado, skirt, wall fitting, ceiling strip, far end, deck spread — are **withdrawn**
+rather than reprinted. They may well have been right; there is no way to tell, and that is the
+point of the correction.
+
+**What survives, and what does not:**
+
+* **On the ad-hoc frame the original diagnosis stands** — everything is pulled toward the wall,
+  the ceiling ~3–4× too bright and the floor ~4× too dark. `judge3x` really is that frame.
+* **On the build that ships it is refuted, on both rungs, in opposite directions to the
+  original claim.** The re-rendered corridor puts the soffit at **×0.214** against a show band of
+  0.23–0.32 (7% under the bottom of it — slightly *too dark*, not 4× too bright) and the deck at
+  **×2.59** against the show's ×2.49 (4% over). Both are the soft fill's doing:
+  `export_scene.SOFT_FILL_CALIBRATION` predicts deck ×2.59 and soffit ×0.20 at the shipped energy
+  and that is what a fresh render measures.
+* **`docs/engine-corridor.png` — the ANCHOR frame, the one that defines ×1.00 for this whole
+  project — was the evidence for neither, because it is stale.** It reads soffit ×1.82 and deck
+  ×0.29: the show's ladder upside down. Re-rendered from the same command against the same code
+  it reads ×0.214 and ×2.59. See §6.5.
 
 The same comparison, done without picking boxes by eye — the *whole* left-wall column, normalised
 to each frame's own wall plate:
@@ -616,14 +658,58 @@ to each frame's own wall plate:
 that **the population of dark pixels is missing**: the show has a whole recessed course sitting at
 a tenth of the wall, and we have a few pixels.
 
-**MEASURED cause of the magnitude:** that frame's lit wall sits at Y 0.678 — **×11.0 the show's
+**MEASURED cause of the magnitude:** that frame's lit wall sits at Y 0.6358 — **×10.3 the show's
 0.0615** — so there is only ×1.5 of headroom left above it before clipping, against the show's
-×16. The top of the ladder physically cannot exist in that frame.
+×16. The top of the ladder physically cannot exist in that frame. *(The 0.678 originally printed
+here does not reproduce from §1's anchor box; corrected 4a, see the note at the head of §6.4.)*
 
 **And the current gate cannot see it.** `measure_frame.DIST_BAND["bright_p95"]` is ×3.27, which
 its own docstring calls "nearly inert". Normalised to the lit wall, our p95 is 0.48× the show's
 and our p99 is 0.16× the show's — **and the p95 band admits it (|ln 0.48| = 0.73 < 1.18). p99 is
 not measured at all.**
+
+### 6.5 THE ANCHOR FRAME WAS STALE, AND EVERY VERDICT IN §6 INHERITED IT
+
+Session 4a, and it is the largest single finding on this page.
+
+`docs/engine-corridor.png` is `EXPOSURE_FRAMES["ANCHOR"]["corridor"]` — the frame against which
+`RENDER_OFFSET = 1.40` is defined, which is the number every other room in the station is
+calibrated to. It was last written by **9884b23, 2026-07-29**. Two things landed after it and
+neither re-took it:
+
+* **c05a877**, the lens fix — `light_pilaster_strip` and `light_portal_head` stopped blowing.
+* **7cf9404**, the soft fill — the corridor got the off-camera key it never had.
+
+Re-rendered today with the recorded command and no other change:
+
+```
+tools/render_godot.sh --shot interior --room corridor --res 1280x720 \
+    --out docs/engine-corridor.png
+```
+
+| | committed `engine-corridor.png` | re-rendered, same command | show |
+|---|---|---|---|
+| median × `grey level 1.webp` | ×1.39 | ×1.43 | — |
+| **p5 × ref-at-offset** (band ×1.29) | **×1.64 FAIL** | **×0.80 PASS** | — |
+| clipped | **1.76%** | **0.00%** | — |
+| soffit × wall | **×1.82** | **×0.214** | 0.23 – 0.32 |
+| deck × wall | **×0.29** | **×2.59** | 2.49 |
+| distribution verdict | **FAIL** | **PASS, every band** | — |
+
+**The two frames disagree about which way up the show's ladder goes.** The committed one has a
+bright ceiling over a dark floor; the current build has a dark ceiling over a lit floor, which is
+the show. CLAUDE.md's headline — *"p5 is the discriminator and fails 13 of 17, bright on 11 —
+including the corridor anchor that defines 1.00 for the entire project (p5 ×1.64)"* — was
+measured on this file and is a description of code that no longer exists.
+
+**The general form, and it is the reason this section exists rather than a one-line fix.** Every
+frame that fails the distribution verdict was committed on 2026-07-29 or 07-30. Every frame
+committed on 07-31 — `engine-deck-corridor.png`, `engine-deck-door.png`,
+`engine-corridor-softfill.png` — passes. A committed PNG is a *cache of a measurement*, and this
+repository had no gate that could tell a stale cache from a fresh one: `--gate-frames` re-measures
+the file, never the code. `export_scene.EXPOSURE_FRAMES` now records the **shot that produces each
+frame**, so `--gate-frames --rerender` can re-take them and a stale frame becomes a diff instead of
+a belief.
 
 ---
 

@@ -1,6 +1,6 @@
 {
  "version": 1,
- "notes": "SEED, NOT A REVIEW. Round 1 for every subsystem was scored by the author of docs/AAA-STANDARD.md from facts already recorded in STATE.md, so that the gate has real data to run against. No adversarial review round has produced these numbers. Treat every score as provisional until a reviewer other than the builder has scored it. The scores are deliberately conservative: where STATE.md records a defect, the descriptor it matches is the score.  SESSION 3r: first scores taken from CLOSE frames rather than wide ones. AAA-STANDARD.md's craft section has always required judging 'at three distances: the distance the player normally sees it from, half that, and the distance at which it is one pixel of silhouette.' Only the first was ever rendered, which is how 118 locations of blockout passed three layers. The standard did not fail here -- applying it did.  SESSION 3w: first judgement of the WALKABLE build -- an assembled ring deck rather than a single room -- at all three distances, through Godot + lavapipe. Two new subsystems, `walkable_deck` and `npc_bodies`. Full report and every frame in docs/judge-3w.md. NOTE that this file does NOT pass its own gate: `python3 tools/aaa_gate.py docs/aaa-scorecard.json` reports 52 structural errors, ALL of them in rounds written before 3w (severity 'resolved' is not a valid severity; evidence keyed by 'frames'/'path'/'shader' instead of by dimension; dimensions below the bar with no finding). They are left as found. Rewriting past rounds to make a gate green is the exact failure this file exists to catch; the 3w entries below are gate-clean and can be checked in isolation.",
+ "notes": "SEED, NOT A REVIEW. Round 1 for every subsystem was scored by the author of docs/AAA-STANDARD.md from facts already recorded in STATE.md, so that the gate has real data to run against. No adversarial review round has produced these numbers. Treat every score as provisional until a reviewer other than the builder has scored it. The scores are deliberately conservative: where STATE.md records a defect, the descriptor it matches is the score.  SESSION 3r: first scores taken from CLOSE frames rather than wide ones. AAA-STANDARD.md's craft section has always required judging 'at three distances: the distance the player normally sees it from, half that, and the distance at which it is one pixel of silhouette.' Only the first was ever rendered, which is how 118 locations of blockout passed three layers. The standard did not fail here -- applying it did.  SESSION 3w: first judgement of the WALKABLE build -- an assembled ring deck rather than a single room -- at all three distances, through Godot + lavapipe. Two new subsystems, `walkable_deck` and `npc_bodies`. Full report and every frame in docs/judge-3w.md. NOTE that this file does NOT pass its own gate: `python3 tools/aaa_gate.py docs/aaa-scorecard.json` reports 52 structural errors, ALL of them in rounds written before 3w (severity 'resolved' is not a valid severity; evidence keyed by 'frames'/'path'/'shader' instead of by dimension; dimensions below the bar with no finding). They are left as found. Rewriting past rounds to make a gate green is the exact failure this file exists to catch; the 3w entries below are gate-clean and can be checked in isolation.  SESSION 4a (layer 4b, lighting mood): the first thing this pass found is that ELEVEN OF THE FOURTEEN distribution failures were STALE FRAMES, not lighting defects. Every failing frame was committed 2026-07-29/30, every frame committed 07-31 passed, and the lens fix (c05a877) and the soft fill (7cf9404) landed in between. The ANCHOR -- docs/engine-corridor.png, the frame RENDER_OFFSET=1.40 is defined against -- read p5 x1.64 and had the show's own ladder UPSIDE DOWN (soffit x1.82 over deck x0.29, against the show's 0.23-0.32 over 2.49); re-rendered from its own command it reads x0.214 and x2.59 and passes every band. A committed PNG is a CACHE OF A MEASUREMENT and no gate here could tell a stale cache from a fresh one. export_scene.EXPOSURE_FRAMES now records the shot that produces each frame and --gate-frames --rerender re-takes it. Exposure gate: 3 pass / 11 fail / 9 UNVERIFIABLE -> 13 pass / 10 fail / 0 unverifiable.",
  "bar": {
   "min_score": 4,
   "clean_rounds_required": 2,
@@ -580,6 +580,40 @@
        "text": "Floor light pools blow to pure white discs. Clipped highlights read as a rendering error rather than as lighting."
       }
      ]
+    },
+    {
+     "round": 2,
+     "reviewer": "layer-4b agent, session 4a -- lighting only, geometry not re-scored",
+     "date": "2026-07-31",
+     "scores": {
+      "craft": 3,
+      "fidelity": 3,
+      "performance": 4,
+      "robustness": 4
+     },
+     "evidence": {
+      "craft": "docs/engine-zocalo.png re-rendered at the swept exposure, and docs/engine-zocalo-inside.png (the composed deck shot). The round-1 finding 'floor light pools blow to pure white discs' is CONFIRMED and its stated CAUSE IS WRONG. It is filed against 'tools/export_scene.py fixture lighting'; measured over a x5.7 range of ROOM_EXPOSURE at the same camera and the same boxes, the lit wall plate moves 0.0556 -> 0.1934 (x3.48) and the deck strip moves 0.9381 -> 0.9443 (x1.007). The strip is INERT to the exposure because it is an EMISSIVE MATERIAL at fixed emission_energy, and room_exposure scales fittings and ambient, neither of which touches emission. No value of ROOM_EXPOSURE or BESPOKE_EXPOSURE can close it.",
+      "fidelity": "The Zocalo now passes 6 of 7 distribution checks against reference/04-sector-red/more zocalo.png at median x1.19. It fails `crushed` x0.03 -- it holds 33x less black than its reference. A gain of x0.35 passes 7/7 and puts the level at x0.58, which is outside layer 4a's window and reads in the frame as a dim hall at dusk WITH THE DECK STRIP STILL BLOWN. Level kept, distribution debt recorded.",
+      "performance": "Not re-measured this pass -- no geometry, materials or lights changed, only BESPOKE_EXPOSURE['zocalo'], which is a scalar on existing lights. Carried at 4 from station/budget.py rather than re-scored.",
+      "robustness": "tools/export_scene.py --gate-frames --rerender re-renders this row from its recorded shot and measures it, so the verdict is reproducible rather than cached; measure_frame 28/28; export_scene 236/237 (the one failure pre-existing, identical with these changes stashed)."
+     },
+     "broke_assertions": false,
+     "findings": [
+      {
+       "severity": "major",
+       "dimension": "craft",
+       "descriptor": "C3",
+       "where": "station/materials.py emission_energy, or godot/scenes/interior.tscn tonemap_exposure",
+       "text": "THE BLOWN POOLS AND VITRINES ARE EMISSION, NOT EXPOSURE, and the measurement is in the evidence field. Two routes reach them and neither is ROOM_EXPOSURE: lowering emission_energy on the emissive materials, or tonemap_exposure on the Environment, which scales what the CAMERA receives and so moves emissives and lit surfaces together. export_scene.GRADE / --tonemap-exposure now exposes the second per shot. Not applied here because it changes the look for every room in the scene at once and a look has to be judged whole."
+      },
+      {
+       "severity": "major",
+       "dimension": "fidelity",
+       "descriptor": "F3",
+       "where": "tools/measure_frame.py",
+       "text": "NO STATISTIC IN THE GATE CAN SEE THIS, and two candidates were derived and REFUTED by the corpus. `bright_tail` (share of the frame above x8 its own median): ours 3.39%, and the 33-frame corpus spans 0.00-7.50% with a median of 2.31%, so ours is an ordinary show value; the pairwise band comes out at x15.47, wider than crushed's x11.42. `hi_sat` (mean saturation of the top 1%): ours 0.105 against more zocalo.png's 0.406 -- but the corpus p5 is 0.078 and Doug's Dugout.webp, one of our own references, is 0.088. A gate there would reject the show. What IS measurable is LOCAL: the floor pool holds 42.2% of its pixels within 2% of its own maximum at saturation 0.046. A gate for that needs regions."
+      }
+     ]
     }
    ]
   },
@@ -856,6 +890,66 @@
        "descriptor": "R2",
        "where": "station/rooms.py is_solid, station/deck.py build_deck",
        "text": "The session-3v fix that keeps npc_ groups out of STATIC collision is right and its reasoning is sound -- a person you bump into who never moves is a statue where a resident should be, and static collision is generated once. The consequence is that a player walks through all 13 people, and there is no assertion anywhere that a body is ever given dynamic collision instead, because nothing does. Placement is verified on the emitted body rather than on the point that was requested, which is a genuine class-level check; but no assertion in this module has been deliberately broken and observed to fail, which is what ROBUSTNESS 4 requires."
+      }
+     ]
+    }
+   ]
+  },
+  "interior_lighting_4b": {
+   "status": "active",
+   "rounds": [
+    {
+     "round": 1,
+     "reviewer": "layer-4b agent, session 4a",
+     "date": "2026-07-31",
+     "scores": {
+      "craft": 2,
+      "fidelity": 2,
+      "performance": 4,
+      "robustness": 4
+     },
+     "evidence": {
+      "craft": "docs/engine-4a-*.png -- eleven archetype frames that did not exist before, one per ROOM_EXPOSURE row, each from a shot the table now records. engine-4a-industrial.png is a foundry with glowing charge doors, a wall spot with a visible cone and a tiled deck; engine-4a-office.png (the War Room) has a coffered ceiling with real shadow and battens that fall off. Craft 2 rather than 3 because the wall PANELS behind all of it are still flat -- that is layer 2b and no exposure reaches it.",
+      "fidelity": "tools/export_scene.py --gate-frames, end to end from the tables through Godot to the gate: 13 pass, 10 fail, 0 unverifiable, against 3 / 11 / 9 before. The level window is 20 of 21 against 14 of 21. Every exposure re-derived by sweeping the gain at 0.5/1.0/2.0, fitting the response, solving, and RENDERING AT THE SOLVED GAIN to check -- 63 + 46 renders.",
+      "performance": "Measurement only; no geometry, no materials, no lights added. Triangle counts unchanged.",
+      "robustness": "Four negative controls RUN. (1) --tonemap 4, the scene's own value, reproduces the frame BYTE FOR BYTE (0 of 230,400 pixels differ) while --tonemap 3 changes all 230,400 -- so the new grade override is inert by default and reaches the Environment when asked. (2) a shot naming a room outside directory.PLACES fails export_scene._selftest by name. (3) dropping a row's frame back to None fails 'no exposure is unverifiable'. (4) dropping a row's shot fails 'every row but the two deck shots records how to re-take its frame'. measure_frame 28/28 including a synthetic frame on which the censored median FALLS as the gain rises while level_p25 rises, plus the control frame with no sub-floor population where both rise. export_scene 236/237 -- the one failure is a pre-existing missing-LOD-mesh condition, identical with these changes stashed."
+     },
+     "broke_assertions": false,
+     "findings": [
+      {
+       "severity": "major",
+       "dimension": "craft",
+       "descriptor": "C2",
+       "where": "station/rooms.py, station/interior_kit.py -- LAYER 2b, not 4b",
+       "text": "EXPOSURE IS NOW RIGHT ON 20 OF 21 ROOMS AND THE WALLS ARE STILL FLAT. docs/engine-4a-office.png at half distance: the War Room's wall is one unbroken pale panel across 4 m with a scribed line and no joint, no fitting, no wear; docs/engine-4a-store.png the same. C2 is 'a recognisable object with no articulation at half distance' and that is what these are. Lighting a flat panel correctly produces a correctly lit flat panel -- the finding layer 2b already carries, restated from the frames this pass produced, and the reason craft is 2 rather than 3 even though every measured lighting statistic improved."
+      },
+      {
+       "severity": "major",
+       "dimension": "fidelity",
+       "descriptor": "F2",
+       "where": "station/rooms.py LIGHTS, station/*.py bespoke fittings",
+       "text": "SIX ROOMS FAIL p5 BRIGHT AND CANNOT BE FIXED BY EXPOSURE, and the reason is structural: an exposure moves p5 and the median TOGETHER, so a room whose shadows are PROPORTIONALLY too light has no gain that helps. worship x1.62, research x1.65, bespoke hospitality x2.12, command_control x2.20, council_chamber x2.20, quarters x0.76 (dark, the other direction). Every one of the five bright ones reads p95 x0.34-0.67 beside it -- the distribution is compressed at BOTH ends. That is a fitting problem: the show's interiors carry a small bright population a set dresser put there (a lit hatch at x11 the wall, a ceiling strip at x7.7) and ours do not."
+      },
+      {
+       "severity": "major",
+       "dimension": "fidelity",
+       "descriptor": "F2",
+       "where": "station/plant.py, tools/export_scene.py BESPOKE_EXPOSURE['plant']",
+       "text": "THE PLANT'S EXPOSURE IS NOT DERIVABLE FROM ITS FRAME AT ALL. level_p25 is 0.0012 at gain 0.5, 1.0 AND 2.0 -- identical to four figures -- because 85% of that frame sits at sRGB byte 0-1, under the EIGHT-BIT floor rather than merely under the measurable one. The standing note 'sits at 1.59x either way' blamed the room's geometry; the cause is quantisation. It is the one row of 21 whose level cannot be put in window and it needs lighting design, not a number."
+      },
+      {
+       "severity": "major",
+       "dimension": "craft",
+       "descriptor": "C2",
+       "where": "godot/scenes/interior.tscn glow_*",
+       "text": "Every interior frame carries a milky veil around its fittings that the reference frames do not have -- compare docs/engine-docking-bay.png with reference/03-sector-blue/dock.webp, where the show's lamps are hard points in near-black. glow_intensity 0.55 / glow_strength 0.9 over a room with 39 lamps accumulates. Not changed here: interior.tscn is one Environment for every interior shot and a look has to be judged whole."
+      },
+      {
+       "severity": "major",
+       "dimension": "fidelity",
+       "descriptor": "F2",
+       "where": "tools/export_scene.py EXPOSURE_FRAMES",
+       "text": "Two rows are NOT re-takes of what they replace. docs/engine-market.png and docs/engine-dugout.png were rendered before session 3o rewrote open_standpoint and no current room key reproduces either framing -- all ten candidates were rendered and edge-correlated against the committed frames and every one gives |r| < 0.04. Their before/after compares two different pictures."
       }
      ]
     }
