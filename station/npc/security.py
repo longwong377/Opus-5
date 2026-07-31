@@ -507,6 +507,169 @@ def presence_at(place_key: str, hour: float, schema=None, profile=None,
 
 
 # ===========================================================================
+# 5b.  What the force is policing -- Downbelow, and the arithmetic of emptiness
+# ===========================================================================
+
+# 25 m2 A PERSON, and the gazetteer is explicit that this is a SQUAT and not an
+# apartment: "a sleeping pitch plus shared circulation". LAW-CRIME-DOWNBELOW.md
+# 5.3 brackets it at 10 (packed) and 50 (spread).
+SQUAT_M2_PER_PERSON = 25.0
+
+# WHERE THE CAMPS ARE, and the rule is SOURCED while the placement is not.
+# Section 5.3: they cluster "around the waste recycling system, the air
+# compressors and the water reclamation facility" (authority 4). That is a
+# THERMAL AND UTILITY rule rather than an aesthetic one -- compressors are
+# warm, plant rooms are lit and powered around the clock, and a water plant is
+# water. Every key here is a register place, so a camp anchored to a facility
+# that gets moved follows it.
+DOWNBELOW_ANCHORS = ("waste_control", "air_compressors", "water_reclamation")
+
+# The nodes of the black-market route. Section 8.4 is emphatic that it "needs
+# no dedicated room -- what it needs is a ROUTE", and the route is placeable:
+# cargo bay -> a bribed docker -> cargo lift -> the unfinished decks -> a
+# fixer's back room -> a stall's under-counter -> a customer. Each entry is
+# (register key, what happens there, authority).
+BLACK_MARKET_ROUTE = (
+    ("cargo_bays", "entry -- 42 bays on a station that is not full, with "
+                   "spare volume nobody inventories", 3),
+    ("dock_workers_quarters", "the bribed docker. An organised, underpaid "
+                              "workforce at the only entry point is where "
+                              "the leak is", 3),
+    ("raw_material", "storage in the unfinished decks -- what 146 million m2 "
+                     "of unaudited floor is for", 5),
+    ("alien_sector", "the fixer. N'Grath's model: a sealed non-oxygen room "
+                     "reached by appointment; business comes to him", 4),
+    ("black_market", "the margin, where the finished commercial ring meets "
+                     "the unfinished one -- stalls with no licence plate", 5),
+    ("zocalo", "retail, under a counter", 5),
+)
+
+
+def ring0_decks(schema=None, profile=None) -> list:
+    """Every deck of the outermost ring, which is where the people are."""
+    if schema is None:
+        schema, profile = it.load()
+    decks, _cells = nav.cell_plan(schema, profile)
+    return [d for d in decks if d["ring_index"] == 0]
+
+
+def cell_floor_m2(deck, schema=None, profile=None) -> float:
+    """One streaming cell's FLOOR area -- arc length times sector length.
+
+    NOT `navigation.cell_nav_area_m2`, which is the walkable corridor STRIP
+    through a cell and comes to 151-355 m2. The gazetteer's "140 m of arc by
+    442 m of length" is the whole footprint, rooms included, and mixing the two
+    is a x200 error in a number that decides how empty the sector feels.
+    """
+    if schema is None:
+        schema, profile = it.load()
+    ex = schema["sectors"]["extents_m"][deck["sector"]]
+    return deck["cell_length_m"] * (ex["z1"] - ex["z0"])
+
+
+def lurker_total() -> int:
+    """The Downbelow population, from `schedule`'s own species apportionment."""
+    return sum(int(w.get("lurker", 0)) for w in sched.ROLE_WEIGHTS.values())
+
+
+def squat_report(schema=None, profile=None) -> dict:
+    """The arithmetic that turns "there are lurkers" into geometry.
+
+    RECOMPUTED, and it comes out STRONGER than the gazetteer's version rather
+    than weaker, which is the useful kind of correction. Section 5.3 reaches
+    "about eight occupied cells inside seven hundred and fifty empty ones" and
+    calls that "the whole tonal instruction for the sector". Against the built
+    rings it is about FIVE inside a THOUSAND, and the occupied ones hold 4,400
+    people rather than 2,500 -- so the two things the gazetteer asks for, a
+    refugee camp indoors and an enormous emptiness around it, are both more
+    true than it claimed.
+    """
+    if schema is None:
+        schema, profile = it.load()
+    ring0 = ring0_decks(schema, profile)
+    cells = sum(d["cells"] for d in ring0)
+    floor = sum(cell_floor_m2(d, schema, profile) * d["cells"] for d in ring0)
+    mean_cell = floor / max(1, cells)
+    lurk = lurker_total()
+    squat = lurk * SQUAT_M2_PER_PERSON
+    occupied = squat / mean_cell
+    return {
+        "lurkers": lurk,
+        "squat_m2": squat,
+        "ring0_decks": len(ring0),
+        "ring0_cells": cells,
+        "ring0_floor_m2": floor,
+        "mean_cell_m2": mean_cell,
+        "share": squat / floor if floor else 0.0,
+        "occupied_cells": occupied,
+        "per_occupied_cell": lurk / occupied if occupied else 0.0,
+    }
+
+
+# The gazetteer's own version of the same arithmetic, for the comparison.
+SQUAT_CLAIMS = {"occupied_cells": 8.0, "ring0_cells": 753,
+                "share": 0.0053, "per_occupied_cell": 2500.0,
+                "ring0_floor_m2": 94.5e6, "station_cells": 2330}
+
+
+def camps(schema=None, profile=None) -> list:
+    """Where the squats are, one entry per anchor facility that has a row.
+
+    THE REGISTER CARRIES ONE DOWNBELOW AND THE GAZETTEER PROPOSES FOUR, and
+    that gap is reported rather than closed here. Section 5.3 reads the waste
+    system as *distributed* -- "Red, Green and Brown rosettes plus twice on the
+    sectional schematic" -- and concludes "one camp per pressurised sector.
+    Four camps, not one Downbelow". `directory.PLACES` has the Grey cluster
+    only. Adding three register rows is a placement decision (D-04) and belongs
+    to whoever owns the register, not to this module.
+    """
+    r = squat_report(schema, profile)
+    have = [k for k in DOWNBELOW_ANCHORS if _has_place(k)]
+    if not have:
+        return []
+    each = r["lurkers"] / len(have)
+    out = []
+    for k in have:
+        q = dr.by_key(k)
+        out.append({"anchor": k, "sector": q.get("sector"),
+                    "angle_deg": q.get("angle_deg"), "people": each,
+                    "why": "waste, air or water -- warm, lit and powered "
+                           "around the clock (LAW-CRIME-DOWNBELOW.md 5.3)"})
+    return out
+
+
+# 95% AS AVOIDANCE AND 5% AS CONTACT. FACTIONS.md 12 sets this for factional
+# friction and LAW-CRIME-DOWNBELOW.md 8.5 applies it to crime for the same
+# reason: "a station where a fight happens every time the player walks through
+# Downbelow is a cheaper place than one where nothing happens and it still
+# feels dangerous". Danger reads as ATTENTION.
+CONTACT_SHARE = 0.05
+# Section 10: 1-2 contact events per hour of play in Downbelow, authority 5.
+DOWNBELOW_CONTACT_PER_HOUR = 1.5
+
+
+def hostility(place_key: str, hour: float, schema=None, profile=None) -> dict:
+    """How a place should FEEL, as two numbers an NPC director can execute.
+
+    `attention` is the 95%: people stopping talking, a lookout speaking into
+    nothing, a group blocking a route without touching anyone. `contact` is
+    the 5%, in events per hour. Both scale with how unpoliced the place is,
+    which is what makes the security layer and the crime layer one system
+    rather than two.
+    """
+    pres = presence_at(place_key, hour, schema, profile)
+    unpoliced = 1.0 if not pres["policed"] else 1.0 / (1.0 + pres["officers"])
+    contact = DOWNBELOW_CONTACT_PER_HOUR * unpoliced
+    return {
+        "place": place_key,
+        "officers": pres["officers"],
+        "attention": contact * (1.0 - CONTACT_SHARE) / CONTACT_SHARE,
+        "contact_per_hour": contact,
+        "policed": pres["policed"],
+    }
+
+
+# ===========================================================================
 # 6.  Reports
 # ===========================================================================
 
@@ -623,6 +786,39 @@ def report(out=print):
         note = p["why"] or ""
         out(f"  {k:18s} {p['officers']:5.1f} officers "
             f"(fixed {p['fixed']}, roving {p['roving']:.1f}) {note}")
+    out("")
+    out("")
+    sq = squat_report(schema, profile)
+    c = SQUAT_CLAIMS
+    out("DOWNBELOW -- the arithmetic of emptiness, recomputed")
+    out(f"  {sq['lurkers']:,} lurkers x {SQUAT_M2_PER_PERSON:.0f} m2 = "
+        f"{sq['squat_m2']:,.0f} m2 squatted")
+    out(f"  the outermost ring is {sq['ring0_decks']} decks, "
+        f"{sq['ring0_cells']:,} cells, {sq['ring0_floor_m2'] / 1e6:.1f} M m2 "
+        f"(the gazetteer counted {c['ring0_cells']} cells over "
+        f"{c['ring0_floor_m2'] / 1e6:.1f} M)")
+    out(f"  so {sq['occupied_cells']:.1f} cells are occupied of "
+        f"{sq['ring0_cells']:,} -- {sq['share'] * 100:.2f}% -- at "
+        f"{sq['per_occupied_cell']:,.0f} people each")
+    out(f"  the gazetteer says {c['occupied_cells']:.0f} of "
+        f"{c['ring0_cells']} at {c['per_occupied_cell']:,.0f}. FIVE inside a "
+        f"THOUSAND, and denser: both halves of 5.3's tonal instruction are "
+        f"MORE true than it claimed")
+    for cp in camps(schema, profile):
+        out(f"    camp at {cp['anchor']:20s} {cp['sector']:6s} "
+            f"{cp['people']:,.0f} people")
+    out("")
+    out("HOSTILITY -- 95% avoidance, 5% contact (FACTIONS.md 12, LAW 8.5)")
+    for k in ("downbelow", "black_market", "happy_daze", "zocalo",
+              "customs_north", "council_chamber"):
+        h = hostility(k, 18.0, schema, profile)
+        out(f"  {k:18s} {h['officers']:5.1f} officers -> "
+            f"{h['contact_per_hour']:5.2f} contact events an hour, "
+            f"{h['attention']:5.2f} of attention")
+    out("")
+    out("THE BLACK MARKET IS A ROUTE, NOT A ROOM (LAW 8.4)")
+    for k, why, auth in BLACK_MARKET_ROUTE:
+        out(f"  {k:24s} auth {auth}  {why[:56]}")
     out("")
     pt = patrol("zocalo", 0)
     names = " and ".join(
@@ -824,6 +1020,77 @@ def _selftest(out=print):                                       # noqa: C901
     check(0.0 < q["officers"] < z["officers"],
           "an ordinary residential place is policed, thinly",
           f"{q['officers']:.2f} against the Zocalo's {z['officers']:.1f}")
+
+    # -- Downbelow, recomputed ------------------------------------------
+    sq = squat_report(schema, profile)
+    n += 1
+    check(sq["lurkers"] > 15_000 and sq["lurkers"] < 25_000,
+          "the Downbelow population comes from schedule's own apportionment "
+          "and lands in FACTIONS.md 2.2's ~20,000",
+          f"{sq['lurkers']:,}")
+    n += 1
+    check(sq["ring0_cells"] > SQUAT_CLAIMS["ring0_cells"],
+          "the built outermost ring has MORE cells than the gazetteer counted "
+          "-- the same re-address that moved the beat",
+          f"{sq['ring0_cells']} vs {SQUAT_CLAIMS['ring0_cells']}")
+    n += 1
+    # THE TONAL INSTRUCTION, AS AN ASSERTION. Section 5.3: "Downbelow is about
+    # eight occupied cells inside seven hundred and fifty empty ones ... that
+    # is the whole tonal instruction for the sector, and it is arithmetic, not
+    # taste." Recomputed it is about five inside a thousand, so the statement
+    # this gate defends is the SHAPE -- a tiny occupied fraction -- not the
+    # eight.
+    check(sq["occupied_cells"] < sq["ring0_cells"] / 100.0,
+          "under 1% of the outermost ring is squatted -- the emptiness is "
+          "arithmetic, not taste",
+          f"{sq['occupied_cells']:.1f} of {sq['ring0_cells']} "
+          f"({sq['share'] * 100:.2f}%)")
+    n += 1
+    check(sq["per_occupied_cell"] > SQUAT_CLAIMS["per_occupied_cell"],
+          "and the occupied cells are DENSER than the gazetteer said, so its "
+          "'refugee camp indoors' reading is strengthened rather than weakened",
+          f"{sq['per_occupied_cell']:,.0f} vs "
+          f"{SQUAT_CLAIMS['per_occupied_cell']:,.0f}")
+    n += 1
+    cf = cell_floor_m2(ring0_decks(schema, profile)[0], schema, profile)
+    check(cf > 10_000.0,
+          "a cell FLOOR is tens of thousands of m2, not the few hundred "
+          "cell_nav_area_m2 gives for its corridor strip -- mixing the two is "
+          "a x200 error in how empty the sector feels", f"{cf:,.0f} m2")
+    n += 1
+    cps = camps(schema, profile)
+    check(cps and abs(sum(c["people"] for c in cps) - sq["lurkers"]) < 1.0,
+          "every lurker is in a camp and no lurker is in two",
+          f"{len(cps)} camps, {sum(c['people'] for c in cps):,.0f} people")
+    n += 1
+    # EITHER VOCABULARY, AND THE GATE SAYS WHICH. `navigation.register_nodes`
+    # records that this station is described by two: `directory.PLACES`, which
+    # is rooms, and `schedule.PLACES`, which is crowd REGIONS -- eight names
+    # exist only in the second, and `dock_workers_quarters` is one of them. A
+    # route node may legitimately be a region: "a bribed docker" is a person in
+    # a district, not a room you walk into. What must never happen is a node
+    # that is in neither, which is a typo that reads as content.
+    unknown = [k for k, _w, _a in BLACK_MARKET_ROUTE
+               if not _has_place(k) and k not in sched.PLACES]
+    regions = [k for k, _w, _a in BLACK_MARKET_ROUTE
+               if not _has_place(k) and k in sched.PLACES]
+    check(not unknown,
+          "every node of the black-market route is a register place or a "
+          "schedule crowd region", f"unknown: {unknown}")
+    out(f"  black-market route: {len(BLACK_MARKET_ROUTE) - len(regions)} "
+        f"register rooms, {len(regions)} crowd region(s) {regions}")
+    n += 1
+    hd = hostility("downbelow", 18.0, schema, profile)
+    hz = hostility("zocalo", 18.0, schema, profile)
+    check(hd["contact_per_hour"] > 10.0 * hz["contact_per_hour"],
+          "Downbelow is an order of magnitude more dangerous than the "
+          "Zocalo, and the reason is the officers standing in one of them",
+          f"{hd['contact_per_hour']:.2f}/h against "
+          f"{hz['contact_per_hour']:.2f}/h")
+    n += 1
+    check(abs(hd["contact_per_hour"] - DOWNBELOW_CONTACT_PER_HOUR) < 1e-9,
+          "an unpoliced place gets section 10's stated 1-2 contact events an "
+          "hour exactly", f"{hd['contact_per_hour']}")
 
     # -- THE MEMO, ASSERTED BY CALL COUNT AND NOT BY A STOPWATCH ---------
     # `populace.populate` calls `presence_at` once per room, so a whole-station

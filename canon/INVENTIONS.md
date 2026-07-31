@@ -4531,3 +4531,68 @@ dramatic geometry is not a design choice; it falls out of an 8 km station.
 back toward 402 m — in which case the module's staleness assertion (`ratio > 1.10`) fires, which is
 deliberate: it is written as a bound rather than an equality so that closing the gap gets looked
 at instead of passing silently.
+
+---
+
+## INV-242 — Downbelow's occupied fraction, recomputed against the built rings
+
+`station/npc/security.py` (`SQUAT_M2_PER_PERSON`, `DOWNBELOW_ANCHORS`, `squat_report`, `camps`,
+`cell_floor_m2`, `CONTACT_SHARE`, `DOWNBELOW_CONTACT_PER_HOUR`, `hostility`,
+`BLACK_MARKET_ROUTE`).
+
+**What.** How much of the station Downbelow physically occupies, where the camps are, and how
+dangerous an unpoliced place is — as numbers an NPC director can execute.
+
+**Why necessary.** `LAW-CRIME-DOWNBELOW.md` §5.3 calls its own version of this *"the whole tonal
+instruction for the sector, and it is arithmetic, not taste"*. It was arithmetic over a station
+whose outermost ring has since moved.
+
+| | gazetteer §5.3 | recomputed | source of the difference |
+|---|---|---|---|
+| outermost-ring cells | 753 | **1,038** (62 decks) | the hull-correct re-address, same cause as INV-241 |
+| its floor area | 94.5 M m² | **115.3 M m²** | follows |
+| lurkers | ~20,000 | **20,390** | `schedule.ROLE_WEIGHTS`, summed over ten species — derived, not restated |
+| squatted floor at 25 m²/person | 500,000 m² | **509,750 m²** | follows |
+| as a share of the ring | 0.53% | **0.44%** | |
+| **occupied cells** | **≈8 of 753** | **4.6 of 1,038** | |
+| **people per occupied cell** | **≈2,500** | **4,444** | |
+
+**Both halves of the tonal instruction come out MORE true, not less.** §5.3 asks for two things at
+once — *"the occupied pockets are dense … it should feel like a refugee camp indoors, not a few
+figures in shadow"* and *"everything around them is enormous and empty … the isolation the owner
+asked for lives here"*. Recomputed, the pockets are **78% denser** and the emptiness is **38%
+larger**. **Five occupied cells inside a thousand.**
+
+**The unit trap that would have produced a ×200 error.** `navigation.cell_nav_area_m2` returns
+151–355 m² for a cell — that is the **walkable corridor strip** through it. The gazetteer's "140 m
+of arc by 442 m of length" is the whole **footprint**, rooms included, and comes to 34,538–276,516 m²
+depending on sector. `cell_floor_m2` computes the second and its docstring names the first, because
+using the corridor strip would say Downbelow squats thirty-four times the entire outermost ring.
+
+**The camps are anchored to a SOURCED rule and a PROPOSED count.** §5.3's rule is authority 4 and
+thermal, not aesthetic: the camps cluster *"around the waste recycling system, the air compressors
+and the water reclamation facility"* — compressors are warm, plant rooms are lit and powered around
+the clock, a water plant is water. `DOWNBELOW_ANCHORS` names the three register keys, so a camp
+follows its facility if the facility moves. **The register carries one Downbelow and §5.3 proposes
+four** (it reads the waste system as distributed, one per pressurised sector); `camps()` reports the
+gap rather than closing it, because adding three register rows is placement decision D-04 and
+belongs to whoever owns the register.
+
+**Hostility is the 95/5 rule with a denominator.** `FACTIONS.md` §12 sets *"95% as avoidance and 5%
+as contact"* for factional friction and §8.5 applies it to crime, with §10 giving 1–2 contact events
+per hour of play in Downbelow. `hostility()` scales that by `1/(1 + officers present)`, which is
+what makes the policing layer and the crime layer **one system**: Downbelow gets the stated 1.50
+events an hour exactly, and the Zocalo — with twelve officers standing in it — gets **0.11**, a
+factor of fourteen, from the officers alone.
+
+**The black market is a route, not a room**, and §8.4 says so explicitly. `BLACK_MARKET_ROUTE`
+carries six nodes with the authority on each. One of them, `dock_workers_quarters`, exists only in
+`schedule.PLACES` and not in `directory.PLACES` — legitimately, because "a bribed docker" is a
+person in a district rather than a room you walk into. The gate accepts either vocabulary and
+**prints which**, because a node in neither is a typo that reads as content.
+
+**What would overturn it.** A canon figure for the Downbelow population — everything above is
+linear in it, and 20,000 is authority 5 bracketed by an authority-4 forum estimate of 13,000 and a
+weak upper reading of 50,000. At 13,000 it is three occupied cells; at 50,000, eleven. The
+qualitative statement — a handful of camps inside a thousand empty cells — survives the whole
+bracket, which is why it is the thing the gate asserts rather than the count.
