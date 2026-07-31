@@ -29,8 +29,17 @@ Usage:
     python3 tools/export_scene.py --shot exterior --orbit 9200,18,214 \
         --lighting night                               # the anti-sun side
     python3 tools/export_scene.py --shot drum --stand 20,4700 --look 20,6300
+    python3 tools/export_scene.py --shot deck --at docking_bays
     python3 tools/export_scene.py                      # runs the self-test
     python3 tools/export_scene.py --gate-exterior      # measures the frames
+
+FOUR SHOTS, AND ONLY ONE OF THEM IS THE BUILD. `interior` renders ONE ROOM in
+its own local frame with a camera this file invents; `deck` renders what
+`station/deck.py` assembles and `station/walkable.py` walks -- a ring corridor
+with its rooms, doors, vestibules, furniture and inhabitants, at its real
+radius seven kilometres down the station, through the camera
+`godot/scripts/player.gd` ships. Use `interior` to judge a room and `deck`
+to judge the game.
 
 A WARNING ABOUT `--no-export`, learned the hard way this session. That flag on
 tools/render_godot.sh reuses whatever is in station/generated/scene/<shot>/,
@@ -173,6 +182,19 @@ INTERIOR_SHADOW_LIGHTS = 2
 # because the wrong reading makes every number derived from this parameter
 # meaningless rather than merely off.
 LAMP_ATTENUATION = 0.7
+
+
+# The render shots' own camera, as distinct from the player's. 46 degrees is
+# what every exterior, drum and interior frame in docs/ was composed at, and
+# 1.7 m is the stature this project stands a person at everywhere. Named here
+# because `--fov` and `--eye-height` now default to None -- see main().
+SHOT_FOV_DEG = 46.0
+SHOT_EYE_HEIGHT_M = 1.7
+
+
+def _eye_h(args):
+    """The standing eye height a non-deck shot uses."""
+    return SHOT_EYE_HEIGHT_M if args.eye_height is None else args.eye_height
 
 
 def light_energy(per_run):
@@ -1010,7 +1032,8 @@ def build_exterior(args, out_dir):
         # World +Y up. The station's long axis is +Z, so using that as up would
         # stand an 8 km station on its nose.
         "camera": {"eye": list(eye), "target": list(aim), "up": [0.0, 1.0, 0.0],
-                   "fov": args.fov, "near": 1.0, "far": 200000.0},
+                   "fov": SHOT_FOV_DEG if args.fov is None else args.fov,
+                   "near": 1.0, "far": 200000.0},
         # The three lights are given as the points they come FROM, so the
         # scene can aim a DirectionalLight without anyone having to reason
         # about which axis a hand-written 3x3 basis points down.
@@ -1146,7 +1169,7 @@ def build_drum(args, out_dir):
     if args.stand:
         ang, z = args.stand
         eye, up = dg.stand_on_ground(schema, profile, sector, ang, z,
-                                     eye_h=args.eye_height)
+                                     eye_h=_eye_h(args))
     elif args.eye:
         eye = tuple(args.eye)
         a = math.atan2(eye[1], eye[0])
@@ -1157,7 +1180,7 @@ def build_drum(args, out_dir):
     if args.look:
         ang, z = args.look
         aim, _ = dg.stand_on_ground(schema, profile, sector, ang, z,
-                                    eye_h=args.eye_height)
+                                    eye_h=_eye_h(args))
     elif args.target:
         aim = tuple(args.target)
     else:
@@ -1229,7 +1252,8 @@ def build_drum(args, out_dir):
                    # Near plane at 0.15 m: the camera is a person's eye and
                    # things get close indoors. Far plane clears the drum's
                    # 2.6 km diagonal with room for the end cap behind it.
-                   "fov": args.fov, "near": 0.15, "far": 12000.0},
+                   "fov": SHOT_FOV_DEG if args.fov is None else args.fov,
+                   "near": 0.15, "far": 12000.0},
         "sun_from": None,
         "sector": sector,
         "floor_radius_m": dg.FLOOR_R,
@@ -2799,21 +2823,21 @@ def build_interior(args, out_dir):
         w, ln = extent
         ceil = max(q[1] for q in verts)
         x, z = R.standpoint(verts, tris, spans, w, ln)
-        h = min(args.eye_height, ceil - 0.4)
+        h = min(_eye_h(args), ceil - 0.4)
         eye, aim = (x, h, z), (0.0, h, ln / 2.0 - 0.2)
     elif room in ("corridor", "junction"):
         # The kit has no prop to avoid, so the centreline just inside the near
         # end is right and is cheaper than searching for it.
         zs = [q[2] for q in verts]
-        eye = (0.0, args.eye_height, min(zs) + 1.2)
-        aim = (0.0, args.eye_height, max(zs) - 0.5)
+        eye = (0.0, _eye_h(args), min(zs) + 1.2)
+        aim = (0.0, _eye_h(args), max(zs) - 0.5)
     else:
         # A bespoke module: no declared extent and no prop naming convention,
         # so the standpoint is searched for against the geometry itself.
         walk = [sp for sp in spans
                 if any(f in sp[0] for f in WALK_SURFACE.get(
                     __import__("directory").by_key(room)["module"], ()))]
-        eye, aim = open_standpoint(verts, tris, args.eye_height,
+        eye, aim = open_standpoint(verts, tris, _eye_h(args),
                                    walk_spans=walk or None)
 
     obj = os.path.join(out_dir, f"{room}.obj")
@@ -2848,7 +2872,8 @@ def build_interior(args, out_dir):
         # Near plane at 60 mm: indoors the camera can stand against a wall, and
         # the drum's 0.15 m clips a prop the eye is leaning over.
         "camera": {"eye": list(eye), "target": list(aim), "up": [0.0, 1.0, 0.0],
-                   "fov": args.fov, "near": 0.06, "far": 400.0},
+                   "fov": SHOT_FOV_DEG if args.fov is None else args.fov,
+                   "near": 0.06, "far": 400.0},
         "sun_from": None,
     }
 
@@ -3005,10 +3030,13 @@ def spots_lighting_the_floor(lights, floor_r_m):
 
     IT HAS TO BE A GEOMETRIC TEST AND NOT A COMPARISON OF AIM VECTORS. At ring
     angle 270 the outward radial IS (0, -1, 0), so a -Y aim is accidentally
-    correct there and a gate that checked "is the aim radial" would pass on a
-    deck that happened to sit at the right angle. This asks the question the
-    fitting exists to answer -- is the deck directly beneath it inside this
-    lamp's cone and within its reach -- which is false at every angle but two.
+    correct there. THIS IS NOT HYPOTHETICAL: swept over twelve decks in four
+    sectors, 44 spots, the -Y rig lights the floor beneath 14 of them -- every
+    one on `grey/0/22` (rooms at 230 deg) and `grey/0/70` (260 deg). A gate
+    that asked "is the aim radial", or one that ran on either of those two
+    decks, would have been green with the defect live. This asks the question
+    the fitting exists to answer -- is the deck directly beneath it inside this
+    lamp's cone and within its reach.
 
     The floor point is the fitting's own position pushed out to the shell's
     floor radius, so `q - p` is exactly `radial_aim(p) * (floor_r - r)` and the
@@ -3063,7 +3091,8 @@ def deck_camera(args, stats, cam):
 
     meta = stats["collision_meta"]
     floor_r, cz = meta["floor_r_m"], meta["z_m"]
-    eye_h = args.eye_height if args.eye_height != 1.7 else cam["eye_height_m"]
+    eye_h = (cam["eye_height_m"] if args.eye_height is None
+             else args.eye_height)
 
     at = args.at or stats["spawn_at"]
     a0 = math.radians(dr.by_key(at)["angle_deg"])
@@ -3163,7 +3192,7 @@ def build_deck_shot(args, out_dir):
         "ambient": (args.ambient if args.ambient is not None
                     else ambient_energy("corridor") * DECK_EXPOSURE),
         "camera": {"eye": list(eye), "target": list(aim), "up": list(up),
-                   "fov": (args.fov if args.fov != 46.0 else cam["fov"]),
+                   "fov": (cam["fov"] if args.fov is None else args.fov),
                    "near": 0.06, "far": 400.0},
         "sun_from": None,
     }
@@ -3819,6 +3848,15 @@ def _selftest():
     check(_ds["spawn_at"] in {q["key"] for q in dr.PLACES},
           f"the deck's default standpoint is a gazetteer place "
           f"({_ds['spawn_at']})")
+
+    # THE PLAYER'S LENS IS NOT THE RENDER SHOTS' LENS, which is why `--fov`
+    # defaults to None rather than to 46: with a float default, "nobody said"
+    # and "the user asked for 46" are the same value, and a deck shot that
+    # asked for 46 would silently have been taken at 70.
+    check(SHOT_FOV_DEG != _cam["fov"],
+          f"the shot camera ({SHOT_FOV_DEG} deg) and the player's "
+          f"({_cam['fov']} deg) are different lenses, so which one a deck "
+          f"frame was taken through is a question with an answer")
 
     check(parse_deck("blue/0/0") == ("blue", 0, 0), "parse_deck reads a deck")
     check("deck" in SHOTS and SHOTS["deck"] is build_deck_shot,
@@ -4991,14 +5029,23 @@ def main():
                     help="drum: derive the eye from the heightfield")
     ap.add_argument("--look", type=_pair, metavar="DEG,Z",
                     help="drum: derive the aim point from the heightfield")
-    ap.add_argument("--eye-height", type=float, default=1.7)
+    # DEFAULT None SO THAT "NOBODY SAID" AND "THE USER ASKED FOR THE DEFAULT"
+    # ARE DIFFERENT STATES. Every shot but the deck resolves these to the
+    # literals they have always had; the deck resolves them to the SHIPPED
+    # player camera, and with a plain float default `--fov 46` on a deck shot
+    # would have silently given the player's 70 instead.
+    ap.add_argument("--eye-height", type=float, default=None,
+                    help="standing eye height (default 1.7; the deck shot "
+                         "takes player.gd's)")
     ap.add_argument("--orbit", type=_triple, default=(9200.0, 18.0, 214.0),
                     metavar="DIST,ELEV,AZ")
     ap.add_argument("--target-z", type=float, default=4023.0,
                     help="exterior: station midpoint")
     ap.add_argument("--lod", default="auto",
                     help="hull LOD: auto (by distance), or lod0..lod3 to force")
-    ap.add_argument("--fov", type=float, default=46.0)
+    ap.add_argument("--fov", type=float, default=None,
+                    help="vertical field of view (default 46; the deck shot "
+                         "takes player.gd's)")
     ap.add_argument("--sun-az", type=float, default=168.0)
     ap.add_argument("--sun-elev", type=float, default=34.0)
     ap.add_argument("--lighting", choices=("day", "night"), default="day",
