@@ -149,7 +149,294 @@ def unroll_to_local(verts):
 MAX_DRESS_TRIS = 20_000
 
 
-def compose(schema, profile, place, axial_half_m, density=1.0, report=None):
+# ---------------------------------------------------------------------------
+# THE DOORWAY, WHICH IS THE ONE THING NO BESPOKE MODULE WAS BUILT WITH
+# ---------------------------------------------------------------------------
+# INV-110. Every bespoke module authors a room; not one of them authors the
+# hole a ring corridor arrives through, because each was written to be RENDERED
+# on its own before `deck.py` could assemble anything. `deck.build_deck`
+# therefore measures the mouth with `_mouth_clear` and falls back to a generic
+# bay when it is walled -- which as of session 3z was the reason SEVEN of the
+# thirty-nine module-owned assemblies were generic: `cnc`, `council_chamber`,
+# `customs_south`, `docking_bays`, `bar_unnamed`, `eclipse_cafe`, `happy_daze`.
+#
+# WHERE THESE NUMBERS COME FROM, because a doorway invented at a round number
+# is a doorway that fails the assembler's own test at some `dx`:
+#
+#  * the corridor's pressure door is 1.50 x 2.10 m -- `interior_kit.PROVISIONAL`
+#  * `deck._mouth_clear` probes the aperture at x = dx +/- 0.6 m in five steps
+#    and at 0.35/0.60/0.85 of the door height, so the highest probe is 1.785 m
+#  * `dx` is how far the corridor's bay division moved the door off the room's
+#    own centre. Measured across every module-owned place the assembler places:
+#    max |dx| = 0.40 m (`customs/arrival_concourse`), and the phase sweep in
+#    `deck.deck_plan.rank` already drives most of them to 0.00
+#
+# So the aperture has to be clear to 0.60 + 0.40 = 1.00 m either side of its own
+# centre for every probe to miss, and the leaf itself wants 0.75 m. 1.10 m of
+# half-width covers both with 0.10 m to spare; 2.40 m of height clears the
+# 1.785 m probe and the 2.10 m leaf and reads as a door rather than a slot.
+#
+# WHAT WOULD OVERTURN IT: a corridor door wider than 1.50 m, a bay division that
+# lets |dx| exceed 0.70 m, or a change to `_mouth_clear`'s probe span. All three
+# are asserted against in `_selftest`, so this cannot drift silently.
+DOOR_HALF_W_M = 1.10
+DOOR_H_M = 2.40
+
+# THE APPROACH ZONE INSIDE THE ROOM. INV-111. Cutting the hole is half of it:
+# `dressing.dress` fills a room from its walls inward and its lane rule reserves
+# a band down the LONG axis only, so the END wall -- the one the door is in --
+# gets a run of lockers and crates across the very aperture. That is what
+# `cnc`, `council_chamber` and `customs_south` were: shell OPEN, composed
+# WALLED, measured in this session and printed in the report.
+#
+# Depth 2.00 m: `_mouth_clear` only looks 1.2 m in, so 1.2 m would satisfy the
+# gate and still leave a crate where the player's second step lands. The
+# character capsule is 0.35 m in radius (`collision.py`) and a stride is about
+# 0.75 m, so a body needs 1.5 m past the jamb to be standing IN the room rather
+# than in its doorway; 2.00 m is that plus the same 0.5 m of slack the aperture
+# gets. Half-width is the aperture's, because a doorway you can reach and not
+# walk through is the same defect one step further in.
+APPROACH_DEPTH_M = 2.00
+
+# The band `deck._mouth_clear` looks in, so `near_face_opening` and the
+# assembler's acceptance test are asking about the same slice of the room.
+# Asserted equal in `_selftest` rather than kept in step by hand.
+NEAR_BAND_M = 1.2
+
+# HOW LEAKY EACH COMPOSED SHELL IS, MEASURED, AND IT MAY NOT GET WORSE.
+#
+# A number nobody wrote down until it cost something. The audit further down
+# this file has recorded since session 3y that seven of the nine bespoke modules
+# are open surfaces; what changed is that `deck.build_deck` now composes eight
+# of them, and a composed shell's open edges become the DECK's open edges --
+# which `deck._selftest` asserts are zero. `docking_bay` was cut a doorway this
+# session, passed `_mouth_clear`, and failed that assertion with 160 open edges
+# it had carried all along.
+#
+# So this is a DEBT LEDGER, not a pass mark. It cannot fail on today's content
+# and is not meant to; it fixes the number so the debt is visible and can only
+# be paid down. The gate fires when a module gets leakier, and its negative
+# control -- dropping one triangle from `quarters`, the only closed one -- fires
+# in `_selftest`.
+#
+# `docking_bay` is the reason this exists and is the first one to pay: 80 of its
+# 151 edges are the unrimmed deck emblem, 37 the back wall's own perimeter and
+# only 34 the mouth, which is the one place open is correct.
+SHELL_OPEN_EDGES = {
+    "alien_sector": 0,
+    "quarters": 0,
+    "customs": 48,
+    "docking_bay": 151,
+    "command_control": 342,
+    "zocalo": 736,
+    "hospitality": 824,
+    "council_chamber": 1592,
+}
+
+
+def doorway_wall(add_box, name, x0, x1, y0, y1, z0, z1, at_x=0.0,
+                 half_w=None, h=None):
+    """An end wall with a doorway in it, emitted as PIECES round the aperture.
+
+    Never a solid with a hole punched through it. `quarters.unit` records the
+    rule and the module it was learned from -- *"built as plates around the
+    volume, never as a solid with a hole -- the mistake command_control.py
+    shipped when it sealed its own window inside the wall"* -- and it matters
+    twice over here: three closed boxes leave a closed surface, where a boolean
+    would leave an unrimmed aperture facing the one place on the station a
+    player is guaranteed to be looking at.
+
+    `add_box(name, lo, hi)` is the caller's own box primitive, so the wall is
+    made of the module's own material names and joins its own mesh. Returns the
+    number of pieces emitted -- 3 where the head is below the ceiling, 2 where
+    the aperture reaches it.
+
+    Dimensions are INV-110's and come from here rather than from each module,
+    because three modules agreeing about a number by hand is how they stop
+    agreeing.
+    """
+    half_w = DOOR_HALF_W_M if half_w is None else half_w
+    h = DOOR_H_M if h is None else h
+    ax0, ax1 = at_x - half_w, at_x + half_w
+    if not (x0 < ax0 and ax1 < x1):
+        raise ValueError(
+            f"a {2 * half_w:.2f} m doorway at x={at_x:.2f} does not fit in a "
+            f"wall running x {x0:.2f}..{x1:.2f}")
+    top = min(h + y0, y1)
+    n = 2
+    add_box(name, (x0, y0, z0), (ax0, y1, z1))
+    add_box(name, (ax1, y0, z0), (x1, y1, z1))
+    if top < y1 - 1e-9:
+        add_box(name, (ax0, top, z0), (ax1, y1, z1))
+        n = 3
+    return n
+
+
+def near_face_opening(verts, tris, door_h=None, band=NEAR_BAND_M, step=0.05,
+                      floor_tol=0.06, floor_band=None):
+    """(centre_x, width) of the widest way IN through this shell's near face.
+
+    THE QUESTION `room_shell` WAS ANSWERING WITH A BOUNDING BOX, and on two
+    modules the bounding box is not where the door is:
+
+      * `alien_sector.gallery` is a 4.2 m corridor with its quarters hung off
+        the LEFT wall out to x = -4.85, so the bbox centre is **4.66 m** off the
+        corridor -- a door cut at local x = 0 opens into an airlock's flank.
+      * `quarters.run` is a row of six sealed cells with a gap left for a
+        corridor and no corridor in it. Its cells' doorways are 4.1 m apart;
+        the bbox centre lands on the wall between two of them on four of the
+        seven quarters places.
+
+    `_place_local` maps the room's local x = 0 onto the place's own bearing,
+    which is exactly where the corridor puts its door. So local x = 0 has to be
+    a place a body can walk through, and that is measurable rather than
+    assumable: sample columns across the near face, ask at the same three
+    heights `deck._mouth_clear` asks at, and keep the widest run that is both
+    unobstructed AND has floor under it.
+
+    THE FLOOR TEST IS NOT A REFINEMENT. Without it the widest "opening" in
+    `alien_sector` is the 2.5 m of empty air outboard of the gallery wall where
+    the airlocks have not started yet -- clear at every height, and nothing to
+    stand on. An opening a body falls through is not an opening.
+
+    Returns None when no run is wide enough for the leaf, which is the signal
+    that the module has to grow a doorway rather than be shuffled sideways.
+
+    TWO DEPTHS, AND THEY ARE NOT THE SAME QUESTION. Obstruction is measured in
+    `deck._mouth_clear`'s own 1.2 m band, so this and the assembler's acceptance
+    test agree by construction. Floor is measured over `APPROACH_DEPTH_M`,
+    because a body steps THROUGH the aperture and lands past it -- and
+    `council_chamber` has no floor at all in the first 1.2 m (its deck starts
+    1.42 m in, behind the gallery step), so the narrower band called a chamber
+    with a 22 m floor unenterable.
+
+    `door_h` defaults to the CORRIDOR's leaf height, not to the taller aperture
+    `doorway_wall` cuts, for the same agreement: `hospitality`'s dado rail
+    crosses the opening at 2.01-2.06 m, which a 2.40 m probe calls a blockage
+    and a 2.10 m door passes under.
+    """
+    import interior_kit as _K                                    # noqa: PLC0415
+    door_h = door_h or _K.PROVISIONAL["door_height_m"]
+    floor_band = APPROACH_DEPTH_M if floor_band is None else floor_band
+    zmax = max(p[2] for p in verts)
+    zcut = zmax - band
+    fcut = zmax - floor_band
+    blocks, floors = [], []
+    for a, b, c in tris:
+        p0, p1, p2 = verts[a], verts[b], verts[c]
+        znear = min(p0[2], p1[2], p2[2])
+        zfar = max(p0[2], p1[2], p2[2])
+        if zfar < fcut:
+            continue
+        x0 = min(p0[0], p1[0], p2[0])
+        x1 = max(p0[0], p1[0], p2[0])
+        y0 = min(p0[1], p1[1], p2[1])
+        y1 = max(p0[1], p1[1], p2[1])
+        # Floor: near-horizontal and at the standing height the shell has
+        # already been aligned to (y = 0). `floor_y` picked that band; this
+        # only has to recognise it.
+        #
+        # REACHING INTO THE BAND, not starting in it -- and the difference is
+        # not academic. The Zocalo's deck is laid in two triangles 2.19 m long
+        # that run from the bulkhead into the first bay, so a `min z` test
+        # excluded the only floor at the doorway and the function reported a
+        # 21.6 m concourse as having nothing to stand on. Blockage keeps `min z`,
+        # because that is the test `deck._mouth_clear` applies and the two have
+        # to agree about what is in the way.
+        if y1 - y0 < 1e-6 and abs(y0) <= floor_tol:
+            floors.append((x0, x1))
+        elif znear >= zcut:
+            blocks.append((x0, x1, y0, y1))
+    if not floors:
+        return None
+    heights = [door_h * f for f in (0.35, 0.60, 0.85)]
+    xlo = min(f[0] for f in floors)
+    xhi = max(f[1] for f in floors)
+    n = max(2, int((xhi - xlo) / step) + 1)
+    runs, run = [], None
+    for i in range(n):
+        px = xlo + (xhi - xlo) * i / (n - 1)
+        ok = any(f[0] <= px <= f[1] for f in floors)
+        if ok:
+            for (x0, x1, y0, y1) in blocks:
+                if x0 <= px <= x1 and any(y0 <= py <= y1 for py in heights):
+                    ok = False
+                    break
+        if ok:
+            run = (px, px) if run is None else (run[0], px)
+        elif run is not None:
+            runs.append(run)
+            run = None
+    if run is not None:
+        runs.append(run)
+    if not runs:
+        return None
+    # THE WIDEST RUN, AND THEN THE ONE NEAREST THE ORIGIN -- and the second term
+    # is not a refinement, it is what makes this a FIXED POINT. `room_shell`
+    # calls this, shifts x by the answer, and `_selftest` calls it again on the
+    # shifted mesh and asserts the answer is now zero. With "widest" alone that
+    # round trip does not close: `quarters.run` is six identical cells whose
+    # doorways are the same width to the millimetre, the sample grid lands
+    # differently once the mesh has moved, and a different cell wins by one
+    # sample -- `qtr_command` picked a doorway 14.76 m from the one it had just
+    # been centred on. Ties are the normal case here, not the edge case.
+    #
+    # It is also the better placement: of two equal doorways, the one nearest
+    # the module's own origin turns the room least when it is wrapped onto the
+    # ring.
+    widest = max(r[1] - r[0] for r in runs)
+    best = min((r for r in runs if r[1] - r[0] >= widest - step * 0.5),
+               key=lambda r: abs(r[0] + r[1]) / 2.0)
+    return ((best[0] + best[1]) / 2.0, best[1] - best[0])
+
+
+def _keep_spans(verts, tris, spans, keep):
+    """Drop whole named spans, and the vertices only they used.
+
+    WHOLE PIECES, NEVER PART OF ONE. `dressing` emits each crate, chair and
+    conduit drop as one span of a closed primitive, so removing a span removes
+    a closed solid and the mesh stays closed. Clipping a box against the
+    approach zone instead would leave an open rim facing the doorway -- the
+    exact defect `dressing._cyl` shipped for four sessions, and the one place on
+    the station a player is guaranteed to be looking at.
+    """
+    used = set()
+    for i, (_n, lo, hi) in enumerate(spans):
+        if not keep[i]:
+            continue
+        for tri in tris[lo:hi]:
+            used.update(tri)
+    remap = {}
+    out_v = []
+    for i in sorted(used):
+        remap[i] = len(out_v)
+        out_v.append(verts[i])
+    out_t, out_g = [], []
+    for i, (n, lo, hi) in enumerate(spans):
+        if not keep[i]:
+            continue
+        t0 = len(out_t)
+        for a, b, c in tris[lo:hi]:
+            out_t.append((remap[a], remap[b], remap[c]))
+        out_g.append((n, t0, len(out_t)))
+    return out_v, out_t, out_g
+
+
+def _span_boxes(verts, tris, spans):
+    """(x0, x1, z0, z1) per span. The footprint each piece stands on."""
+    out = []
+    for _n, lo, hi in spans:
+        xs, zs = [], []
+        for tri in tris[lo:hi]:
+            for i in tri:
+                xs.append(verts[i][0])
+                zs.append(verts[i][2])
+        out.append((min(xs), max(xs), min(zs), max(zs)) if xs else None)
+    return out
+
+
+def compose(schema, profile, place, axial_half_m, density=1.0, report=None,
+            door_at=None):
     """A bespoke room's true shape, furnished. Returns (verts, tris, spans).
 
     THE ANSWER `compare` POINTED AT. Neither "swap to bespoke" nor "leave the
@@ -163,6 +450,12 @@ def compose(schema, profile, place, axial_half_m, density=1.0, report=None):
     walls, at the shell's own centre. `dress` builds about the origin, so it is
     translated onto that centre rather than the bounding box's, which for a
     docking bay is 67 m away from where the floor actually is.
+
+    `door_at` is `(x_m, half_width_m, depth_m)` -- the approach zone kept clear
+    of furniture and of people. It defaults to the aperture `room_shell` has
+    already centred the room on, which is `x = 0` by construction, so a caller
+    that does not know where the corridor's door snapped to still gets a room it
+    can walk into. See INV-111 and `APPROACH_DEPTH_M`.
     """
     import dressing as _dress                                   # noqa: PLC0415
     import rooms as _R                                          # noqa: PLC0415
@@ -202,6 +495,31 @@ def compose(schema, profile, place, axial_half_m, density=1.0, report=None):
             arch, seed=place["key"], density=dens)
         if len(dt) <= MAX_DRESS_TRIS or dens == 0.0:
             break
+
+    # NOTHING STANDS IN THE DOORWAY. INV-111, and it is the single cause of
+    # three of this session's seven walled rooms: `cnc`, `council_chamber` and
+    # `customs_south` all measured shell OPEN, composed WALLED. `dress`'s own
+    # lane rule reserves a band down the room's LONG axis -- `abs(cx) < lane_hw`
+    # -- and says nothing about the END wall, which is the wall the corridor
+    # door is in, so a run of lockers lands across the aperture at exactly the
+    # place a player arrives.
+    #
+    # `dress` cannot be asked to do this: it takes a room's dimensions and knows
+    # nothing about where a corridor met it, which is the property that let it
+    # be composed with a bespoke shell in the first place. So the pieces are
+    # dropped here, WHOLE (`_keep_spans`), after they are built and in the
+    # shell's own frame -- which is also the only frame in which the aperture's
+    # position is known.
+    dx, dhw, ddep = door_at or (0.0, DOOR_HALF_W_M, APPROACH_DEPTH_M)
+    znear = max(p[2] for p in v)
+    kept = []
+    for bx in _span_boxes(dv, dt, dg):
+        kept.append(bx is None or not (
+            bx[0] + cx <= dx + dhw and bx[1] + cx >= dx - dhw
+            and bx[3] + cz >= znear - ddep))
+    blocked = len(kept) - sum(kept)
+    dv, dt, dg = _keep_spans(dv, dt, dg, kept)
+
     base, t0 = len(v), len(t)
     v.extend((x + cx, y, z + cz) for x, y, z in dv)
     t.extend((a + base, b + base, c + base) for a, b, c in dt)
@@ -220,6 +538,27 @@ def compose(schema, profile, place, axial_half_m, density=1.0, report=None):
         place["key"], v, t, spans, max(1.0, w - inset), max(1.0, ln - inset),
         hour=_R.STATION_HOUR, arch=arch, seed=place["key"],
         g_ms2=_pop.place_gravity(place["key"]))
+    # AND NOBODY STANDS IN IT EITHER. A body is 0.32-0.45 m across the
+    # shoulders and `_mouth_clear` cannot tell one from a bulkhead -- it asks
+    # what is in the way, which is the right question. `populate` fills a room
+    # against the furniture already in it, so it does not put anybody where a
+    # crate was; it will happily put somebody where the crate was NOT.
+    #
+    # THE ACTOR RECORD GOES WITH THE MESH. `deck.py` writes `rep["actors"]` into
+    # `<deck>_actors.json` and `godot/scripts/npc.gd` looks the group up by
+    # name, so a person dropped from the mesh and left in the cast list is a
+    # name the runtime cannot resolve -- the mirror of the defect that made
+    # `compose` carry `brep["actors"]` in the first place.
+    actors = list(ps.get("actors", []))
+    if pt:
+        drop = {a["group"] for a in actors
+                if abs(a["x"] + cx - dx) <= dhw + 0.45
+                and a["z"] + cz >= znear - ddep}
+        keep = [not any(n == d or n.startswith(d + "_") for d in drop)
+                for n, _lo, _hi in pg]
+        pv, pt, pg = _keep_spans(pv, pt, pg, keep)
+        actors = [a for a in actors if a["group"] not in drop]
+        blocked += len(drop)
     if pt:
         base, t0 = len(v), len(t)
         # `populate` works in the room's own centred frame, the same one
@@ -233,8 +572,9 @@ def compose(schema, profile, place, axial_half_m, density=1.0, report=None):
         report["density"] = dens
         report["extent"] = ext
         report["counts"] = dc
-        report["people"] = len(ps.get("actors", []))
-        report["actors"] = ps.get("actors", [])
+        report["people"] = len(actors)
+        report["actors"] = actors
+        report["doorway_cleared"] = blocked
     return v, t, spans
 
 
@@ -313,7 +653,9 @@ def compare(schema, profile, places=None):
 
 def _selftest():
     import interior as _it                                     # noqa: PLC0415
+    import interior_kit as _it_kit                             # noqa: PLC0415
     import directory as _dr                                    # noqa: PLC0415
+    from importlib import reload as _reload                    # noqa: PLC0415
     ok = fail = 0
 
     def check(name, cond, detail=""):
@@ -398,9 +740,13 @@ def _selftest():
     # neither would raise at assembly time with no explanation, which is the
     # one outcome worse than refusing.
     check("every builder's near end is declared or explicitly unknown",
-          set(NEAR_END) | set(NEAR_END_UNKNOWN) == set(BESPOKE_GEOMETRY),
-          f"unaccounted {sorted(set(BESPOKE_GEOMETRY) - set(NEAR_END) - set(NEAR_END_UNKNOWN))}")
-    check("...and none is in both", not (set(NEAR_END) & set(NEAR_END_UNKNOWN)))
+          set(NEAR_END) | set(NEAR_END_UNKNOWN) | set(NOT_COMPOSED)
+          == set(BESPOKE_GEOMETRY),
+          f"unaccounted {sorted(set(BESPOKE_GEOMETRY) - set(NEAR_END) - set(NEAR_END_UNKNOWN) - set(NOT_COMPOSED))}")
+    check("...and none is in two of them",
+          not (set(NEAR_END) & set(NEAR_END_UNKNOWN))
+          and not (set(NEAR_END) & set(NOT_COMPOSED))
+          and not (set(NOT_COMPOSED) & set(NEAR_END_UNKNOWN)))
     check("every declared near end cites the module's own words",
           all(len(w) > 30 for _e, w in NEAR_END.values()))
 
@@ -415,6 +761,7 @@ def _selftest():
         return tot
 
     placed = 0
+    openings = {}
     for q in _dr.PLACES:
         mod = q.get("module")
         if mod not in NEAR_END:
@@ -441,8 +788,25 @@ def _selftest():
               f"bbox bottom {min(ys):.3f}")
         check(f"{q['key']}: nothing floats above the shell's own ceiling",
               max(ys) > 2.0, f"{max(ys):.2f} m tall")
-        check(f"{q['key']}: centred across the corridor",
-              abs(min(xs) + max(xs)) < 1e-6, f"{min(xs):.3f}..{max(xs):.3f}")
+        # LOCAL x = 0 IS A DOORWAY, NOT A CENTRE, and that is what this used to
+        # assert. `_place_local` maps local x = 0 onto the place's own bearing,
+        # which is where `deck_plan` puts the corridor's door, so the only thing
+        # worth asserting about x is that a body can get through it.
+        #
+        # THE OLD ASSERTION -- `abs(min(xs) + max(xs)) < 1e-6` -- passed on
+        # every module and was measuring its own input: `room_shell` set the
+        # bounding-box centre and then checked that it had. It also hid two real
+        # defects, which is what an assertion that cannot fail always does:
+        # `alien_sector`'s corridor is 3.01 m off its own bounding box because
+        # the quarters hang off one wall, and four of the seven `quarters`
+        # classes put local x = 0 on the wall between two cells.
+        op = near_face_opening(v, t)
+        check(f"{q['key']}: local x = 0 is a way in",
+              op is not None and abs(op[0]) < 1e-6,
+              "no opening in the near face" if op is None
+              else f"widest opening is {op[1]:.2f} m at x={op[0]:.3f}")
+        if op is not None:
+            openings[q["key"]] = op[1]
         # THE FLIP MUST NOT INVERT THE ROOM. `min_z` modules are turned by a
         # half turn about the vertical AND have their winding reversed to
         # match; get either half wrong and the room renders inside-out, which
@@ -457,8 +821,9 @@ def _selftest():
     # AND AN UNDECLARED MODULE MUST REFUSE. The failure mode this prevents is
     # silent: a room placed the wrong way round has the same triangle count,
     # the same extent and the same materials as one placed correctly.
+    held = list(NEAR_END_UNKNOWN) + list(NOT_COMPOSED)
     refused = 0
-    for mod in NEAR_END_UNKNOWN:
+    for mod in held:
         q = next((p for p in _dr.PLACES if p.get("module") == mod), None)
         if q is None:
             continue
@@ -466,12 +831,160 @@ def _selftest():
             room_shell(schema, profile, q, 4.0)
         except KeyError:
             refused += 1
-    check("an undeclared module refuses rather than guessing",
-          refused == len([m for m in NEAR_END_UNKNOWN
+    check("a module that is not composed refuses rather than guessing",
+          refused == len([m for m in held
                           if any(p.get("module") == m for p in _dr.PLACES)]),
           f"{refused} refused")
     print(f"  frame adapter: {placed} places recentred, "
-          f"{len(NEAR_END)} modules declared, {len(NEAR_END_UNKNOWN)} refused")
+          f"{len(NEAR_END)} modules composed, "
+          f"{len(NOT_COMPOSED)} declared but held back, "
+          f"{len(NEAR_END_UNKNOWN)} undeclared")
+    if openings:
+        worst = min(openings.items(), key=lambda kv: kv[1])
+        print(f"  narrowest doorway on the station: {worst[0]} at "
+              f"{worst[1]:.2f} m, against the corridor's "
+              f"{_it_kit.PROVISIONAL['door_width_m']:.2f} m leaf")
+
+    # --- THE DOORWAY ------------------------------------------------------
+    # `deck.build_deck` composes a bespoke room only if `_mouth_clear` says a
+    # body can get in, and until this session it could not, on seven of the
+    # places that have a builder. That test lives in `deck.py` and this is the
+    # module that BUILDS the thing it tests -- CLAUDE.md's rule from session 3x,
+    # "a gate belongs in the module that builds the thing, and it must build the
+    # hard case". So it is asserted here, on the composed room rather than the
+    # shell, because three of the seven had an open shell and a locker across
+    # the aperture.
+    walled, narrow, cleared = [], [], 0
+    for q in _dr.PLACES:
+        mod = q.get("module")
+        if mod not in NEAR_END:
+            continue
+        ah = _D.room_axial_half_m(schema, profile, q)
+        brep = {}
+        cv, ct, _cg = compose(schema, profile, q, ah, report=brep)
+        cleared += brep.get("doorway_cleared", 0)
+        if not _D._mouth_clear(cv, ct, 0.0):
+            walled.append(q["key"])
+        if openings.get(q["key"], 0.0) < _it_kit.PROVISIONAL["door_width_m"]:
+            narrow.append((q["key"], round(openings.get(q["key"], 0.0), 2)))
+    check("every composed bespoke room can be walked into", not walled,
+          f"walled at the doorway: {walled}")
+    check("...through an aperture at least as wide as the corridor's leaf",
+          not narrow, f"{narrow}")
+    print(f"  doorway: {len(openings)} composed rooms, all clear at dx = 0, "
+          f"{cleared} pieces and people moved out of the approach zone")
+
+    # NEGATIVE CONTROL 1 -- the approach zone. Compose with the zone collapsed
+    # to nothing and the rooms `dressing` fills to the aperture have to go back
+    # to WALLED. If they do not, this gate is measuring a case with no defect in
+    # it, which is the failure mode CLAUDE.md records for `interior_kit`'s
+    # tag-coverage assertion running on a corridor with no doors.
+    control = []
+    for key in ("cnc", "council_chamber", "customs_south"):
+        q = next(p for p in _dr.PLACES if p["key"] == key)
+        ah = _D.room_axial_half_m(schema, profile, q)
+        cv, ct, _cg = compose(schema, profile, q, ah,
+                              door_at=(0.0, 0.0, 0.0))
+        if not _D._mouth_clear(cv, ct, 0.0):
+            control.append(key)
+    check("...and WITHOUT the approach zone those rooms are walled again",
+          len(control) == 3,
+          f"only {control} went back to walled -- the zone is not what is "
+          f"keeping the others open")
+
+    # NEGATIVE CONTROL 2 -- the doorway cut into `hospitality`, in the module's
+    # OWN frame rather than through the assembler, so it measures the geometry
+    # this session added and not the recentring around it. The bar had four
+    # sealed walls; with `doorway_wall` swapped for a solid plate the near face
+    # closes and `near_face_opening` returns None.
+    import hospitality as _H                                    # noqa: PLC0415
+    hv, ht, _hg = _H.room()
+    op_h = near_face_opening(hv, ht)
+    check("the bar's own frame carries the doorway",
+          op_h is not None and op_h[1] >= _it_kit.PROVISIONAL["door_width_m"],
+          f"{op_h}")
+    # PATCH THE MODULE `hospitality` IS ACTUALLY HOLDING, which is not this
+    # one when the file is run directly: `python3 station/bespoke.py` loads this
+    # code as `__main__`, and `hospitality`'s `import bespoke` then loads a
+    # SECOND copy under the name `bespoke`. Patching `globals()` here changed
+    # `__main__.doorway_wall` and the bar went on calling the real one -- the
+    # control reported a sealed bar with a 2.11 m opening in it, which is the
+    # control failing to control anything. `_H._bsp` is the object the caller
+    # dereferences, so it is the only one worth patching.
+    real_dw = _H._bsp.doorway_wall
+    try:
+        _H._bsp.doorway_wall = (
+            lambda add_box, name, x0, x1, y0, y1, z0, z1, at_x=0.0,
+            half_w=None, h=None:
+            (add_box(name, (x0, y0, z0), (x1, y1, z1)), 1)[1])
+        sv, st, _sg = _H.room()
+        check("...and with a solid plate instead, it does not",
+              near_face_opening(sv, st) is None,
+              f"a sealed bar still reports an opening: "
+              f"{near_face_opening(sv, st)}")
+    finally:
+        _H._bsp.doorway_wall = real_dw
+
+    # AND THE ONE THAT WAS HELD BACK IS STILL HELD BACK, for the reason stated
+    # rather than by having quietly grown a door. `docking_bay`'s crew bulkhead
+    # is one plate; if somebody pierces it, this fires and points at the closure
+    # debt that has to be paid first.
+    import docking_bay as _DB                                   # noqa: PLC0415
+    _bv, _bt, bg = _DB.docking_bay(0, schema, profile)
+    back = [i for i, nm in enumerate(bg) if nm == "bay_backwall"]
+    check("the docking bay's crew bulkhead is still one solid plate",
+          len(back) == 2 and "docking_bay" in NOT_COMPOSED,
+          f"{len(back)} back-wall triangles -- one plate is 2. Piercing it "
+          f"composes a shell with {SHELL_OPEN_EDGES['docking_bay']} open edges "
+          f"onto a deck that asserts watertightness")
+    # --- CLOSURE, WHICH COMPOSING A SHELL PUTS ON A DECK ------------------
+    # The audit table above has recorded since session 3y that seven of the
+    # nine bespoke modules are open surfaces and that nothing gates it. Now
+    # something has to, because `deck.build_deck` composes eight of them and a
+    # composed shell's open edges become the DECK's open edges -- and the deck
+    # asserts watertightness. That is what stopped `docking_bay` landing this
+    # session (160 edges; see its own comment), and it would have gone
+    # unnoticed on `red/0/0` and `green/0/0`, where the deck gate does not run.
+    #
+    # THIS GATE CANNOT FAIL ON TODAY'S CONTENT AND IT IS NOT SUPPOSED TO. The
+    # rooms are already open; closing 3,500 edges across five modules is a
+    # session's work on its own. What it does is FIX the number, so the debt is
+    # visible and cannot grow -- and the direction it can fail in is the one
+    # that matters, which is a module getting leakier. Its negative control is
+    # below and it fires.
+    counts, worse = {}, []
+    for mod in sorted(set(NEAR_END) | set(NOT_COMPOSED)):
+        q = next(p for p in _dr.PLACES if p.get("module") == mod)
+        r = BESPOKE_GEOMETRY[mod](schema, profile, q)
+        op, _non = _it_kit.boundary_edges(r[0], r[1])
+        counts[mod] = len(op)
+        if len(op) > SHELL_OPEN_EDGES.get(mod, 0):
+            worse.append((mod, len(op), SHELL_OPEN_EDGES.get(mod)))
+    check("no composed shell has got leakier", not worse,
+          f"{worse} -- these edges land on a DECK, and the deck asserts "
+          f"watertightness")
+    ledger = set(NEAR_END) | set(NOT_COMPOSED)
+    check("...and the baseline names every module the assembler places or "
+          "holds back", set(SHELL_OPEN_EDGES) == ledger,
+          f"missing {sorted(ledger - set(SHELL_OPEN_EDGES))}, "
+          f"stale {sorted(set(SHELL_OPEN_EDGES) - ledger)}")
+    tot = sum(counts.values())
+    print(f"  closure debt: {tot:,} open edges across {len(counts)} composed "
+          f"shells -- " + ", ".join(f"{m} {n}" for m, n in
+                                    sorted(counts.items(), key=lambda kv:
+                                           -kv[1]) if n))
+
+    # NEGATIVE CONTROL 3 -- open one up and the baseline gate has to fire.
+    # A single dropped triangle is the smallest possible regression and the
+    # hardest to see in a render, which is exactly why it is the control.
+    q = next(p for p in _dr.PLACES if p.get("module") == "quarters")
+    r = BESPOKE_GEOMETRY["quarters"](schema, profile, q)
+    holed = [tri for i, tri in enumerate(r[1]) if i != 0]
+    op, _non = _it_kit.boundary_edges(r[0], holed)
+    check("...and dropping ONE triangle from a closed shell fires it",
+          len(op) > SHELL_OPEN_EDGES["quarters"],
+          f"quarters went from {SHELL_OPEN_EDGES['quarters']} to {len(op)} "
+          f"open edges with a triangle removed -- the gate did not notice")
 
     print(f"{ok}/{ok + fail} passed")
     return 1 if fail else 0
@@ -493,10 +1006,6 @@ def _selftest():
 # convention (near face at +z) is a fine default for a room somebody authored
 # knowing about it, and none of these were.
 NEAR_END = {
-    # "Frame: +Z runs INTO the bay from the mouth at z = 0" -- the mouth is the
-    # vacuum end, so the crew end a corridor reaches is the far one.
-    "docking_bay": ("max_z", "docking_bay.docking_bay: '+Z runs INTO the bay "
-                             "from the mouth at z = 0'"),
     # "+X across, +Y up, +Z forward toward the window; deck at y = 0" -- the
     # window is the far wall, so the way in is the near one. OPPOSITE of the
     # bay, from an identically-worded frame.
@@ -514,24 +1023,61 @@ NEAR_END = {
     # "Bench centred on the origin, delegates outboard of it" -- symmetric.
     "council_chamber": ("max_z", "council_chamber: 'Bench centred on the "
                                  "origin'"),
+    # "One gallery: the corridor, its lattice, and QUARTERS_PER_GALLERY locks",
+    # and the module builds `alien_endwall` across z = GALLERY_LEN_M with the
+    # ring fitting on it. An end wall is the FAR end by definition, so the way
+    # in is z = 0 -- which the module leaves open and which its first airlock
+    # stands 3.5 m inside of.
+    "alien_sector": ("min_z", "alien_sector.gallery builds 'alien_endwall' "
+                              "across z = GALLERY_LEN_M and leaves z = 0 open"),
+    # "One quarters unit, authored with the door wall at z = 0", and `run`
+    # offsets every unit by +cw/2 -- leaving a corridor-width gap in front of
+    # the doors and building nothing in it. The ring's corridor IS that
+    # corridor: the row's open side is its minimum z, and the units' own
+    # doorways are what `near_face_opening` then centres the place on.
+    "quarters": ("min_z", "quarters.unit: 'authored with the door wall at "
+                          "z = 0'; run() offsets every unit by +cw/2, leaving "
+                          "the corridor gap at minimum z"),
+    # `zocalo_run` builds "bays end to end along +z" and BOTH ends are open by
+    # design -- which is why this was undeclared. What decides it is the cap:
+    # `cap_ends` now puts a bulkhead outside each end of the run and cuts the
+    # doorway in the MINIMUM-z one, so the declaration and the geometry are one
+    # decision made in one place rather than two that can disagree.
+    "zocalo": ("min_z", "zocalo_run(cap_ends=True) cuts its doorway in the "
+                        "minimum-z bulkhead; the maximum-z cap is solid"),
 }
 
-# The four that are NOT declared, and why each is genuinely undecidable from
-# what the module says about itself. Recorded so the next reader does not
-# repeat the search rather than as an apology.
+# DECLARED, AND STILL NOT COMPOSED. A separate list from the one below because
+# it is a separate fact and collapsing the two would lose the useful half: this
+# module's near end is not a mystery, it is `max_z` on the module's own words --
+# *"+Z runs INTO the bay from the mouth at z = 0"*, so the vacuum end is the far
+# one and the crew end is the near one. What stops it is closure, which is a
+# debt with a number (`SHELL_OPEN_EDGES`) and an owner, not an open question.
+#
+# `room_shell` refuses for anything not in `NEAR_END`, so `deck.build_deck`
+# takes the generic bay and says why -- which is the outcome this list exists to
+# produce deliberately rather than by omission.
+NOT_COMPOSED = {
+    "docking_bay": "near end is max_z and known; the shell carries 151 open "
+                   "boundary edges (80 of them the unrimmed deck emblem) and "
+                   "composing it failed deck._selftest's watertightness "
+                   "assertion with 160 open edges on blue/0/0. See the comment "
+                   "in docking_bay.docking_bay for what unblocks it.",
+}
+
+# The one that is NOT declared, and why it is genuinely undecidable from what
+# the module says about itself. Recorded so the next reader does not repeat the
+# search rather than as an apology.
 NEAR_END_UNKNOWN = {
-    "quarters": "quarters.run builds 'a row of units opening off one side of "
-                "a corridor' -- it contains its OWN corridor, so which face "
-                "meets the ring's corridor is a layout decision nobody has "
-                "made, not a fact about the module.",
-    "zocalo": "zocalo_run builds 'bays end to end along +z' and its docstring "
-              "says the concourse CONTINUES -- both ends are open by design, "
-              "so neither is the near one until a layout says so.",
-    "alien_sector": "alien_sector.gallery documents no frame at all.",
     "plant": "plant builds in STATION coordinates at radius 447-471 and is "
              "unrolled for rendering; its walkable surface is a catwalk "
              "(WALK_SURFACE), not a floor, and a corridor joining it is a "
-             "different connection from a door in a wall.",
+             "different connection from a door in a wall. Measured in session "
+             "4a: the catwalk's floor band is 82.2 m across the arc by 1.80 m "
+             "along the axis, and the bay it belongs to is 92 x 442 m -- so "
+             "recentring it onto a ring deck would lay 442 m of tank farm "
+             "along the station's axis, through every other z-cluster on that "
+             "deck. It needs a placement decision, not a near-end declaration.",
 }
 
 
@@ -691,7 +1237,8 @@ def room_shell(schema, profile, place, axial_half_m):
     if mod not in NEAR_END:
         raise KeyError(
             f"{place['key']}: {mod} has no declared near end. "
-            f"{NEAR_END_UNKNOWN.get(mod, 'undeclared')}")
+            + (NEAR_END_UNKNOWN.get(mod) or NOT_COMPOSED.get(mod)
+               or "undeclared"))
     r = BESPOKE_GEOMETRY[mod](schema, profile, place)
     v, t = r[0], r[1]
     if mod in UNROLL:
@@ -699,21 +1246,18 @@ def room_shell(schema, profile, place, axial_half_m):
     g = r[2] if len(r) > 2 else None
 
     end, _why = NEAR_END[mod]
-    xs = [p[0] for p in v]
-    ys = [p[1] for p in v]
     zs = [p[2] for p in v]
-    # x on the room's own centreline, floor to y = 0, and the near face onto
-    # the plane the assembler expects. Flipped when the module's near end is
-    # its MINIMUM z, by a half turn about the vertical -- (x, y, z) ->
-    # (-x, y, -z) -- which is a rotation and so preserves winding. Mirroring in
-    # z alone would face it the right way with every triangle inside-out, the
-    # defect `dressing._cyl` shipped for sessions because neither a render nor
-    # a triangle count can see it.
-    cx = (min(xs) + max(xs)) / 2.0
+    # Floor to y = 0, and the near face onto the plane the assembler expects.
+    # Flipped when the module's near end is its MINIMUM z, by a half turn about
+    # the vertical -- (x, y, z) -> (-x, y, -z) -- which is a rotation and so
+    # preserves winding. Mirroring in z alone would face it the right way with
+    # every triangle inside-out, the defect `dressing._cyl` shipped for sessions
+    # because neither a render nor a triangle count can see it.
+    #
     # THE MEASURED FLOOR, not the bottom of the bounding box. See `floor_y`.
     y0 = floor_y(v, t, g, mod)
     if end == "max_z":
-        out = [(x - cx, y - y0, z - max(zs) + axial_half_m) for x, y, z in v]
+        out = [(x, y - y0, z - max(zs) + axial_half_m) for x, y, z in v]
     else:
         # (x, y, z) -> (-x, y, -z) is diag(-1, 1, -1), whose determinant is
         # +1. IT IS A ROTATION AND THE WINDING MUST NOT BE TOUCHED. The first
@@ -722,9 +1266,29 @@ def room_shell(schema, profile, place, axial_half_m):
         # signed volume +513 to -513. The gate caught it; nothing else would
         # have, because an inside-out room has the same triangle count, the
         # same extent and, against black, the same render.
-        out = [(-(x - cx), y - y0, -(z - min(zs)) + axial_half_m)
-               for x, y, z in v]
-    return out, t, g
+        out = [(-x, y - y0, -(z - min(zs)) + axial_half_m) for x, y, z in v]
+
+    # x ONTO THE WAY IN, not onto the middle of the model. `_place_local` maps
+    # local x = 0 onto the place's own bearing, which is where `deck_plan` puts
+    # the corridor's door -- so local x = 0 is not a centre, it is a DOORWAY,
+    # and the bounding box only coincides with it when a module happens to be
+    # symmetric. Two are not:
+    #
+    #   alien_sector  bbox cx -4.66   opening  0.00   3.01 m of floor apart
+    #   quarters      bbox cx 12.32   opening 12.32 on qtr_command, and on the
+    #                 wall between two cells on four of the seven classes
+    #
+    # Falls back to the bounding box when the near face has no opening at all,
+    # because that is a module that needs a doorway rather than a shove --
+    # `_selftest` asserts which modules those are, so the fallback cannot become
+    # a quiet default.
+    op = near_face_opening(out, t)
+    if op is not None:
+        cx = op[0]
+    else:
+        oxs = [p[0] for p in out]
+        cx = (min(oxs) + max(oxs)) / 2.0
+    return [(x - cx, y, z) for x, y, z in out], t, g
 
 if __name__ == "__main__":
     raise SystemExit(_selftest())

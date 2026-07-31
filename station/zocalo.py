@@ -80,6 +80,7 @@ import budget                                          # noqa: E402
 import interior as it                                  # noqa: E402
 import interior_kit as kit                             # noqa: E402
 from components import _box, signed_volume             # noqa: E402
+import bespoke as _bsp                                 # noqa: E402
 
 
 # ---------------------------------------------------------------------------
@@ -1195,9 +1196,41 @@ def zocalo_run(bays=3, p=None, seed="zocalo", cap_ends=False, **kw):
 
     if cap_ends:
         hw, ceil = p["bay_width_m"] / 2.0, p["ceiling_height_m"]
-        for z in (0.0, bays * p["bay_length_m"]):
-            m.slab(-hw, hw, 0.0, ceil, z - 0.30 if z > 0 else z,
-                   z if z > 0 else z + 0.30, "zoc_bulkhead")
+        # OUTSIDE EVERYTHING THE RUN BUILT, not at the nominal bay boundary.
+        # The stalls' awnings, masts and signs overhang the first bay's start by
+        # up to 1.89 m, so a cap at z = 0 leaves 1.89 m of concourse furniture
+        # standing in FRONT of its own end wall. That is invisible on its own
+        # and decisive once the run is placed on a ring: `bespoke.room_shell`
+        # puts the extreme z on the corridor's plane, so the near face of the
+        # room became a stall sign and the bulkhead sat 1.89 m inside it --
+        # where `deck._mouth_clear`, which only looks 1.2 m in, could not see
+        # it. The gate would have passed a room sealed two metres past its door.
+        zs = [q[2] for q in m.v] or [0.0, bays * p["bay_length_m"]]
+        z_lo, z_hi = min(zs) - 0.30, max(zs) + 0.30
+        # AND THE DECK RUNS OUT TO MEET THEM. `zoc_deck_tile` is laid per bay,
+        # z 0..bays*bay_length, so moving the bulkheads outboard of the stalls'
+        # overhang left 2.19 m of concourse at the near end with a wall, a
+        # ceiling and NO FLOOR -- which `bespoke.near_face_opening` reported as
+        # "no floor under the doorway" and refused to centre the room on. It was
+        # right to: a doorway a body steps through into nothing is worse than a
+        # sealed one, because the sealed one is visible.
+        for z0, z1 in ((z_lo, 0.0), (bays * p["bay_length_m"], z_hi)):
+            if z1 - z0 > 1e-6:
+                m.slab(-hw, hw, -0.14, 0.0, z0, z1, "zoc_deck_tile")
+        # THE NEAR CAP CARRIES A DOORWAY. `cap_ends` exists because an open end
+        # is 27% of a render frame showing the background; on an assembled deck
+        # it is also 21.6 x 7.2 m of hole into the back of the ring corridor,
+        # which `deck.py`'s watertightness gate would fail. But a capped end is
+        # a Zocalo nobody can walk into, and that is what `deck.py` was
+        # reporting for all four zocalo places. INV-110 sizes the aperture.
+        #
+        # `min_z` is the near end -- see `bespoke.NEAR_END` -- so the doorway
+        # goes in the z_lo cap.
+        _bsp.doorway_wall(
+            lambda n, lo, hi: m.slab(lo[0], hi[0], lo[1], hi[1],
+                                     lo[2], hi[2], n),
+            "zoc_bulkhead", -hw, hw, 0.0, ceil, z_lo, z_lo + 0.30)
+        m.slab(-hw, hw, 0.0, ceil, z_hi - 0.30, z_hi, "zoc_bulkhead")
     return m.as_tuple()
 
 

@@ -123,6 +123,11 @@ BED_L_M, BED_W_M, BED_H_M = 2.05, 0.95, 0.55
 DESK_L_M, DESK_D_M, DESK_H_M = 1.30, 0.60, 0.74
 SEAT_M = 0.55
 LOCKER_W_M, LOCKER_D_M, LOCKER_H_M = 0.90, 0.55, 2.05
+# How far in from the open door wall the locker stands. See `unit()`: at the
+# old 0.05 m it narrowed a civilian cell's entry to 0.80 m, against the ring
+# corridor's 1.50 m leaf. `bespoke.NEAR_BAND_M` (1.20 m) is the slice
+# `deck._mouth_clear` inspects, plus this module's own 50 mm skirting gap.
+LOCKER_Z0_M = 1.25
 SCREEN_W_M, SCREEN_H_M, SCREEN_T_M = 0.75, 0.45, 0.06
 SHOWER_M = 1.00
 WALK_MIN_M = 0.75          # the clear path a person needs past the fittings
@@ -244,9 +249,23 @@ def unit(cls):
              (hw - SEAT_M - 0.35, 0.0, 0.6 + DESK_D_M + 0.15),
              (hw - 0.35, 0.42, 0.6 + DESK_D_M + 0.15 + SEAT_M))
     if "locker" in f:
+        # NOT ACROSS ITS OWN FRONT DOOR. The locker stood at z = 0.05 -- hard
+        # against the open door wall -- and with the desk opposite it at
+        # z = 0.60 the two left a **0.80 m** clear entry in a civilian cell,
+        # measured by `bespoke.near_face_opening` in session 4a. That is
+        # narrower than the ring corridor's own 1.50 m pressure leaf, so once
+        # `deck.py` composes a quarters place the door it cuts is wider than
+        # the gap behind it, and `deck._mouth_clear` fails the room at any
+        # door offset past 0.2 m.
+        #
+        # `LOCKER_Z0_M` is `bespoke.NEAR_BAND_M` plus the 50 mm skirting
+        # clearance every fitting in this module already keeps: far enough in
+        # that the doorway band contains nothing but the desk, which is on the
+        # opposite wall. It clears the bed in every class -- the shallowest is
+        # `transient` at d = 3.79, whose bed starts at 2.79.
         _box(v, t, g, "qtr_locker",
-             (-hw + 0.05, 0.0, 0.05),
-             (-hw + 0.05 + LOCKER_W_M, LOCKER_H_M, 0.05 + LOCKER_D_M))
+             (-hw + 0.05, 0.0, LOCKER_Z0_M),
+             (-hw + 0.05 + LOCKER_W_M, LOCKER_H_M, LOCKER_Z0_M + LOCKER_D_M))
     if "screen" in f:
         # A Babcom terminal in every quarters -- LOCATIONS.md line 371: "how
         # news and propaganda physically reach people".

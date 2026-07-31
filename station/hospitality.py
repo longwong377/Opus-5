@@ -66,6 +66,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "npc
 import interior as it
 import rooms as _rooms                                          # noqa: E402
 import interior_kit as kit                                     # noqa: E402
+import bespoke as _bsp                                         # noqa: E402
 
 # ---------------------------------------------------------------------------
 # The room. Small and low -- that is the point of it.
@@ -238,8 +239,26 @@ def room():
     for s in (-1, 1):
         _box(v, t, g, "bar_wall", (s * hw, 0.0, -hl),
              (s * (hw + WALL_T_M), ROOM_H_M, hl))
-        _box(v, t, g, "bar_wall", (-hw - WALL_T_M, 0.0, s * hl),
-             (hw + WALL_T_M, ROOM_H_M, s * (hl + WALL_T_M)))
+        if s > 0:
+            # THE BAR HAD NO DOOR. Four sealed walls, which is what every
+            # bespoke module was: each was written to be RENDERED on its own,
+            # before `deck.py` could assemble one onto a ring, so nothing ever
+            # had to be entered. `deck.build_deck` measures the mouth with
+            # `_mouth_clear` and fell back to a generic store bay for all three
+            # bars -- `bar_unnamed`, `eclipse_cafe` and `happy_daze` -- so a
+            # player walked into a grey box where a bar should be.
+            #
+            # The +z wall, because `bespoke.NEAR_END` declares this module's
+            # near end `max_z` on the module's own evidence (it is authored
+            # symmetric about the origin, z -5.91..+5.91), and that is the face
+            # the ring corridor arrives at.
+            _bsp.doorway_wall(
+                lambda n, lo, hi: _box(v, t, g, n, lo, hi), "bar_wall",
+                -hw - WALL_T_M, hw + WALL_T_M, 0.0, ROOM_H_M,
+                s * hl, s * (hl + WALL_T_M))
+        else:
+            _box(v, t, g, "bar_wall", (-hw - WALL_T_M, 0.0, s * hl),
+                 (hw + WALL_T_M, ROOM_H_M, s * (hl + WALL_T_M)))
 
     # ARTICULATION -- rooms.articulate(), INV-073. The bar was 23.9% of its
     # detail floor: a box with tables in it. One vocabulary for every

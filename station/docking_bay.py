@@ -55,6 +55,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import directory as _directory                                  # noqa: E402
 import interior as it                                        # noqa: E402
 import rooms as _rooms                                          # noqa: E402
+import bespoke as _bsp                                          # noqa: E402
 
 # ---------------------------------------------------------------------------
 # Measured
@@ -256,6 +257,36 @@ def docking_bay(index=0, schema=None, profile=None):
                   z - LAMP_R_M, z + LAMP_R_M, "bay_lamp")
 
     # --- back wall, and the mouth left open ---------------------------------
+    # THE CREW END IS A BULKHEAD AND IT HAS NO HATCH, WHICH IS WHY THIS BAY IS
+    # STILL ASSEMBLED AS A GENERIC 12 m STORE BAY. Session 4a cut the doorway
+    # here -- three plates round an INV-110 aperture, exactly as `hospitality`
+    # and `zocalo` now carry -- `deck._mouth_clear` accepted it, and the deck
+    # `_selftest` immediately failed:
+    #
+    #     FAIL  the deck is watertight once the lettering is set aside
+    #           -- 160 open edges in the solid geometry
+    #
+    # The doorway was not the cause. `interior_kit.boundary_edges` puts this
+    # module at **151 open edges before the change and 160 after**, and they are
+    # not at the mouth: 80 lie mid-bay on the deck emblem (`_disc` lays a flat
+    # disc at y = 0.02 with no rim -- `dressing._cyl`'s defect in a second
+    # costume), 37 at the back wall's own unwelded perimeter and 34 at the
+    # mouth, which is the only one of the three that is correct content.
+    #
+    # So composing this bay puts 160 holes into a deck, and every one of them
+    # shows the background, and the background is black. `bespoke.py`'s own
+    # audit table predicted it in as many words -- *"seven of nine bespoke
+    # modules are open surfaces ... nothing has ever gated that"* -- and the
+    # reason nothing caught it before is that `deck._selftest` builds
+    # `blue/0/0`'s FIRST z-cluster, where this bay was already generic.
+    #
+    # The doorway is therefore reverted rather than shipped: a room a player can
+    # enter through a wall full of holes is worse than one they cannot enter.
+    # WHAT UNBLOCKS IT, in order: rim `_disc`, weld the back wall to the deck
+    # and ledges, and decide what the mouth is -- open to vacuum is honest
+    # content and the deck gate cannot express it, so either the gate grows a
+    # principled exemption or the mouth grows the atmosphere-retention surface
+    # the show implies and this project has never sourced.
     m.quad((-hw, 0.0, L), (-hw, ceil_y(0.5), L), (hw, ceil_y(0.5), L),
            (hw, 0.0, L), "bay_backwall")
 
