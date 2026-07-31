@@ -334,12 +334,45 @@ with no rim — `dressing._cyl`'s defect in a second costume.
 a player now **sees** the Zocalo and **stands in** a generic bay. Every `walkable.py` PASS is real
 but is testing the generic shell; the bespoke geometry is render-only.
 
+### 13. THE WARDROBE, AND A DEFECT THE ROUND TEST WAS HIDING
+
+`npc/costume.py` is 2,800 lines of measured wardrobe — an albedo, roughness, metallic, authority
+and source frame per fabric — and its only importer was `materials.py`, for **two constants**.
+Everybody was naked. It exports **53 materials** now, 32 at authority 1, and clothing the station
+costs **2.7%**: the cloth replaces the skin it covers.
+
+Reaching a **posed** body took three separations, each real:
+
+- `animation.rig` built its own mesh from `body.py`, so posed people stayed nude while the
+  rest-pose probe was clothed — populace's own gate caught the 64-vertex mismatch.
+- **Bones from the body, skin from the wardrobe.** Passing the dressed mesh to `_skeleton` killed
+  the Minbari: a robe replaces the legs with a skirt, so the leg-ring search returned nothing.
+- `_bind` refused four accessories with *"body.py has grown a part this module cannot skin"*. It
+  had not; costume.py had. Belt, skirt, collar and cowl declare their chains now.
+
+**And every seated person on the station was sitting backwards.** `_place_body` maps local +Z to
+`(−sin, cos)`, so facing `(fx, fz)` needs `atan2(−fx, fz)`; the seat used `atan2(−sx, −sz)` —
+correct in z and **mirrored in x**. On a bench at x = −2.61 the sitter faced the wall with 0.33 m
+of their back through it. It survived because the placement test was a **symmetric circle**, which
+cannot tell forwards from backwards; it is the body's real placed bounds now, and the desk
+placement had the same inversion.
+
+Three more, all caught by gates rather than by looking: `_by_material` truncated
+`npc_cloth__civ_dark_warm` to `npc_cloth`, which nothing binds; the mirror-smooth gate tested a
+NAME word list and rejected `npc_metal__psi_chrome`, whose metallic is 1.00; and `material_specs`
+needed a **third** source, because the Nightwatch armband is written by the mesh builder as a
+literal and is in neither `SETS` nor any sample.
+
 ### What is next, in order
 
 1. ~~**The walk gate's 80x regression**~~ — **FIXED (§11): a parse error, not the people loop.**
    10.2 s with people on, the same as off. The crowd is verified at 5,966 m.
-2. **Collision must follow the composition — see §12.** A player sees the Zocalo and stands in a
-   generic box. `build_collision` and `deck.py`, both of which the composition agent did not own.
+2. ~~**Collision must follow the composition**~~ — **DONE (3z).** `deck.room_geometry` is the single
+   answer to "what is in this room" and both `build_deck` and `build_collision` call it. The trap it
+   nearly walked into is worth keeping: a composed room's module geometry is ONE WELDED MESH, so
+   `prop_boxes`' connected-component rule collapsed the Zocalo's 702,840 triangles into **one solid
+   filling the room** — 1 box against the generic build's 39. Taking the `dress_*` spans alone gives
+   41, and the shell stays the smooth shell. INV-134.
 3. ~~**The shared phase-mesh crowd**~~ — **DONE and verified (§11).** 5,966 m covered, 0
    triangles of their own in the deck, 112 shared bodies for the whole station.
 4. ~~**W5, the loop**~~ — **DONE**, and `walkable.py --deck blue/0/0` has been reporting all four
@@ -350,10 +383,14 @@ but is testing the generic shell; the bespoke geometry is render-only.
    available today** — what it lacks is the route in the actor JSON and the clip sampled at more
    than one frame. Emit `route` (a list of world points from `NavGraph.path`) and the eight
    `walk_clip` phases per person, and the corridor walks.
-5. **Runtime LOD for people.** `corridor_lod` bakes at the mean viewing distance because a static
-   mesh has no other option; the near figure in `docs/engine-corridor-populated.png` is 484
-   triangles at 6 m where `NPC_BUDGET` would give it 8,000. `npc.gd` holds each person's parts
-   already; swapping them by distance is the fix.
+5. ~~**Runtime LOD for people**~~ — **DONE (3z).** Three rungs derived from `NPC_BUDGET`'s own
+   bands: `18 m → chain lod 2, 45 m → lod 4, 400 m → lod 8`, 307,456 triangles of library shared by
+   the whole station. Measured on `blue/0/0`: **LOD 2:3/4:5/8:126, nearest 6.2 m** — the figure a
+   player looks at gained 4.3× its triangles and the other 126 got cheaper; deck primitives went
+   376 → 341. The near 0–6 m band is **capped** at the 6–18 m level and says so: shipping chain
+   level 0 would mean 510,720 triangles resident to draw the four agents that band ever holds.
+   INV-230. `docs/engine-crowd-lod.png` is the frame, and it is still not AAA at 6 m — chain lod 2
+   is `features='no_detail'`, so the hands are mitts and the face has none.
 6. **`bespoke.compose` for the last 26.** 20 have no builder at all (`components` x14,
    `interior_kit` x3, `core_tube` x2, `interior` x1); of the 6 that do, 5 are `plant` — whose
    walkable band is 82.2 x 1.80 m against a 92 x 442 m bay, so it needs a placement decision
