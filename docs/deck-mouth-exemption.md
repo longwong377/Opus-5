@@ -105,6 +105,42 @@ That entry is deliberately not added yet: a registry with no consumer is the
 `station/npc/` failure mode this project has already paid for twice. Add it in the
 same change that teaches `deck.py` to read it.
 
+## A SECOND THING FOR WHOEVER OWNS `deck.py`: green/0/0 has never been walkable
+
+Found while verifying this session's closure work, and **it is not caused by it** —
+the A/B is below and both halves were run.
+
+```
+python3 station/walkable.py --deck green/0/0 --deck-only
+  FAIL  deck green/0/0  dropped 0.57 m from a spawn 50 mm above the shell
+        -- the floor is not where it says
+```
+
+That is the verdict at HEAD **and** at `b9aa9a4`, this session's parent, with
+`station/` checked out wholesale at each — same failure, same 0.57 m, to the
+centimetre. `red/0/0` and `blue/0/0` both PASS at HEAD.
+
+What is known about it:
+
+* `deck.build_deck` spawns at `C.stand_at(cmeta, here[0]["angle_deg"])`, and
+  `here[0]` on green/0/0 is `council_chamber` at angle 0.0 — so the body is put
+  at the **corridor's** floor radius on the **chamber's** bearing.
+* The chamber's own alignment is not the cause: `bespoke.floor_y` returns 0.000
+  for it, `dressable_extent` 22.0 × 22.0 m, and `room_shell` places its floor
+  band at y = 0 exactly. All three are unchanged by this session's rebuild.
+* `room_shell_for` sizes a composed room's collision from `rooms.room_extent_m`
+  and `rooms.bay_span_m`, **not** from the module's mesh, so no change to
+  `council_chamber.py` can move that shell at all.
+
+So the discrepancy is between the corridor shell's `floor_r_m` and whatever the
+body actually lands on at that bearing. `blue/0/0` and `red/0/0` do not show it,
+which suggests something specific to this cluster's geometry rather than to the
+shell in general. It needs someone who owns `collision.py` and `deck.py`.
+
+**It is worth treating as a real defect and not a gate quirk**: 0.57 m is
+three times `MAX_DECK_DROP_M` and a player spawning on that deck falls half a
+metre before they can move.
+
 ## What to check afterwards
 
 1. `python3 station/docking_bay.py` — 35/35, including the mouth-loop assertions.
