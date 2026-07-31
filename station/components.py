@@ -1087,6 +1087,41 @@ BUILDERS = {
 DETAIL = 1.0
 
 
+# --- the ionization vanes: MEASURED, NOT BUILT ------------------------------
+#
+# `docs/volume-audit.md` §5.1 lists "Ionization vane support rings (3) and
+# fusion reactor ionization vanes (6)" as canon with no builder:
+# `00-MASTER.md` §1.3 counts both at authority 4, and
+# `schema.longitudinal.features[main_truss_spine].contains` names both, and
+# grep for `ionization`/`vane` in `station/` returns only Starfury geometry.
+#
+# THE RINGS ARE ON THE DRAWING AND THEY HAVE BEEN MEASURED. `other map 4.jpg`
+# at the profile extractor's own calibration (TAIL_PX 71, 4.0703 m/px, from
+# `station/extract_radius_profile.py`) shows three heavy transverse ribs
+# crossing the truss spine, read as ink density in the upper rail band
+# (rows AXIS_PY-40 .. AXIS_PY-8):
+#
+#     rib   peak px    z (m)     spacing
+#     1     465-474    1,604-1,640, centre ~1,620
+#     2     537-542    1,897-1,917, centre ~1,907      287 m
+#     3     610-612    2,194-2,202, centre ~2,198      291 m
+#
+# Three ribs, evenly spaced to within 1.4%, inside `main_truss_spine`
+# (z 1295-2680) whose `contains` names exactly three support rings. Their
+# radial extent reaches the spine's own lathed radius (164.8 m) and no further,
+# so they are flush bands rather than protruding fins. Nothing in the frame
+# resolves the six VANES; two per ring is the reading "support ring" implies
+# and it is a reading, not a measurement.
+#
+# WHY THERE IS NO BUILDER HERE. A component needs a spec in
+# `station.yaml::components`, which is the only machine-readable home for one,
+# and the counts 3 and 6 live only in `canon/00-MASTER.md` §1.3 as a table.
+# Writing them as literals in this file would put a canon count in a second
+# place -- the exact defect `docking_bay._schema_bay_width_m` was rewritten to
+# remove, and `tools/mutation_sweep.py` found that one by perturbing a literal
+# nothing was tied to. The spec belongs in the schema. Proposed text is in the
+# session report; whoever owns `station.yaml` adds it and `radial_band` or a
+# `bands` builder consumes it, with the z values above rather than a formula.
 def _ribs(n):
     """Rib count at the current detail level. Zero is a valid answer."""
     return max(0, int(round(n * DETAIL)))
