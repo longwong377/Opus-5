@@ -42,6 +42,9 @@ class Person:
 	var rest_yaw: float = 0.0        # the yaw the generator baked in
 	var yaw: float = 0.0             # where they are looking now
 	var noticed := false
+	var body: StaticBody3D = null    # what a player bumps into
+	var r_m: float = 0.0
+	var h_m: float = 0.0
 
 
 ## Wire the cast list to the meshes it describes.
@@ -84,8 +87,72 @@ func collect(visual: Node, actors: Array) -> int:
 			else Vector3.UP)
 		p.rest_yaw = float(a.get("yaw", 0.0))
 		p.yaw = p.rest_yaw
+		p.r_m = float(a.get("r_m", 0.0))
+		p.h_m = float(a.get("h_m", 0.0))
 		_people.append(p)
+	if not _args().has("no-npc-collision"):
+		for p in _people:
+			_give_body(p)
+	else:
+		print("npc: inhabitant collision DISABLED (negative control)")
 	return _people.size()
+
+
+## A PERSON IS SOMETHING YOU BUMP INTO, and until this existed a player walked
+## through all 147 of them.
+##
+## NOT IN THE STATIC COLLISION, and that is deliberate rather than an oversight
+## anybody should correct: `station/rooms.py::is_solid` excludes every `npc_`
+## group because static collision is generated ONCE, so baking inhabitants into
+## it makes permanent statues -- a person you bump into and who never moves is
+## worse than one you walk through. The capsule therefore lives here, on a node
+## that follows the person, and `station/populace.py::body_capsule` measures it
+## off that individual's own mesh: 0.269 m for a human, 0.414 for a Vorlon in
+## an encounter suit. A single number could not say that.
+##
+## Upright along the body's OWN up, which on a spun ring points at the axis and
+## not at world +Y. Getting that wrong lays every capsule on its side, which a
+## walk test reads as "the corridor is clear" -- the failure that looks like
+## success.
+func _give_body(p: Person) -> void:
+	if p.r_m <= 0.0 or p.h_m <= 0.0:
+		return
+	var sb := StaticBody3D.new()
+	sb.name = "body_" + p.group
+	var cs := CollisionShape3D.new()
+	var cap := CapsuleShape3D.new()
+	# Godot's capsule height INCLUDES its two hemispherical ends, so a body
+	# 1.80 m tall with a 0.27 m radius is a 1.80 m capsule and not a 2.34 m
+	# one. Clamped so a wide short figure cannot ask for a negative cylinder.
+	cap.radius = p.r_m
+	cap.height = maxf(p.h_m, 2.0 * p.r_m + 0.01)
+	cs.shape = cap
+	sb.add_child(cs)
+	add_child(sb)
+	# A Godot capsule stands along its own +Y. Build a basis whose +Y is the
+	# body's up -- inward on the ring -- and put its centre half a height along
+	# that from the feet.
+	var up := p.up
+	var fwd := Vector3(0, 0, 1)
+	if absf(fwd.dot(up)) > 0.99:
+		fwd = Vector3(1, 0, 0)
+	var right := fwd.cross(up).normalized()
+	fwd = up.cross(right).normalized()
+	sb.global_transform = Transform3D(Basis(right, up, fwd),
+		p.pivot + up * (cap.height * 0.5))
+	p.body = sb
+
+
+func _args() -> Dictionary:
+	var out := {}
+	for a in OS.get_cmdline_user_args():
+		var s2 := a.trim_prefix("--")
+		var eq := s2.find("=")
+		if eq < 0:
+			out[s2] = true
+		else:
+			out[s2.substr(0, eq)] = s2.substr(eq + 1)
+	return out
 
 
 func watch(body: Node3D) -> void:
@@ -137,6 +204,11 @@ func _physics_process(delta: float) -> void:
 		var xf := Transform3D(b, p.pivot - b * p.pivot)
 		for m in p.parts:
 			m.global_transform = xf
+		# THE CAPSULE IS NOT TOUCHED HERE, and that is correct rather than an
+		# omission: it is a body of revolution about the person's own up axis,
+		# so turning to look at you moves nothing a player could feel. It will
+		# need updating the day these people WALK, and `p.body` is held for
+		# exactly that.
 
 
 ## For the headless test: how far the nearest person has turned from the pose

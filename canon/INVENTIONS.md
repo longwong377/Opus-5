@@ -3709,3 +3709,40 @@ way and the inhabitants still turn to look, so the merge costs no behaviour.
 **What would overturn it.** A MultiMesh or skinned-crowd pipeline, which would make per-person
 primitives the wrong unit entirely — a thousand instances of one mesh is one draw call, and this
 bound would then be measuring something that no longer costs anything.
+
+---
+
+## INV-106 — An inhabitant's collision capsule, measured off their own body
+
+`station/populace.py`, `body_capsule()`; `godot/scripts/npc.gd`, `_give_body()`.
+
+**What.** Every inhabitant carries a capsule in the actor record: **radius = the widest horizontal
+extent of their own posed mesh about its own vertical axis**, height = that mesh's height. A human
+measures **0.269 m**, a Narn 0.295, a Minbari 0.276, a Pak'ma'ra 0.312, a Vorlon in an encounter
+suit 0.414. It is built at runtime on a node that follows the person, not baked into the deck.
+
+**Why necessary.** A player walked through all 147 of them. `walkable.py --deck blue/0/0 --bump`
+measured it: steering straight at a named resident the body reached **0.03 m** — through them.
+
+**Why it is NOT in the static collision, which is the part worth keeping.** `rooms.is_solid`
+excludes every `npc_` group deliberately, and the exclusion is right: static collision is generated
+**once**, so an inhabitant baked into it is a permanent statue — a person you bump into and who
+never moves is worse than one you walk through, and it is permanent. That function's comment ends
+"NPCs get their own capsules when they get their own movement"; this is that capsule.
+
+**What constrained it.** The **widest** extent rather than the chest — a human is 0.269 m at the
+arms against 0.206 at the chest, and the arms are exactly what a player would otherwise clip
+through. Measured per individual off the mesh already in hand, so a Vorlon's suit and a Narn's
+build differ without a table saying so, which is hard rule 4 applied to a body. It does not close
+the corridor: 0.269 m against the collision shell's own 1.081 m half-width leaves 0.81 m either
+side of somebody standing on the centreline, and the deck's walk gate still passes at 6.3 m → 0.04 m.
+
+**Negative control, run, and it is now a CI step:** with `--no-npc-collision` the body reaches
+**0.03 m** of Amis Keffer and walks through them; with the capsule on it is stopped **0.71 m**
+away, which is their 0.36 m plus the player capsule's own. `BUMP_MARGIN_M = 0.25` is half the
+smallest true separation and well outside the ~0.05 m the walker's stopping distance varies by
+between runs.
+
+**What would overturn it.** A crowd system with its own avoidance, which would want a smaller
+physical capsule and a larger steering radius — the two are different numbers and this is only the
+first.

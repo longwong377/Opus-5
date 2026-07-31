@@ -322,6 +322,37 @@ def _faces_in_band(v, t, g, lo_h, hi_h, min_area=0.12, only=None):
     return out
 
 
+def body_capsule(mesh):
+    """`(radius_m, height_m)` a body occupies, MEASURED off the mesh in hand.
+
+    A PERSON IS NOT IN THE STATION'S COLLISION AND MUST NOT BE. `rooms.is_solid`
+    excludes `npc_` groups deliberately: static collision is generated once, so
+    baking 147 inhabitants into it makes 147 permanent statues -- a person you
+    bump into and who never moves is worse than one you walk through. Its
+    comment ends "NPCs get their own capsules when they get their own
+    movement", and this is that capsule: carried in the actor record, applied
+    by the runtime, and moving with the person.
+
+    The radius is the widest horizontal extent about the body's own vertical
+    axis, not the chest and not a constant. A human measures 0.269 m against
+    0.206 at the chest, and the difference is the arms -- which are exactly
+    what a player would otherwise clip through. Measured per species and per
+    individual, so a Vorlon's encounter suit is 0.414 m and a Narn 0.295, which
+    a single number could not express.
+
+    The corridor still passes: 0.269 m against a 1.081 m half-width leaves
+    0.81 m of clearance either side of somebody standing on the centreline.
+    """
+    verts = mesh[0]
+    if not verts:
+        return 0.0, 0.0
+    ys = [q[1] for q in verts]
+    cx = sum(q[0] for q in verts) / len(verts)
+    cz = sum(q[2] for q in verts) / len(verts)
+    r = max(math.hypot(q[0] - cx, q[2] - cz) for q in verts)
+    return round(r, 4), round(max(ys) - min(ys), 4)
+
+
 def _material_family(part_name):
     """The material fragment a body part binds through: `npc_skin_torso` ->
     `npc_skin`, `npc_suit_robe` -> `npc_suit`, `npc_hair` -> `npc_hair`.
@@ -406,9 +437,13 @@ def _place_body(v, t, g, mesh, x, y, z, yaw, group, actors=None, who=None):
     for nm, lo, hi in _by_material(bg):
         g.append((f"{group}_{nm}", t0 + lo, t0 + hi))
     if actors is not None:
+        r_m, h_m = body_capsule(mesh)
         actors.append({"group": group, "who": who, "x": x, "y": y, "z": z,
                        "yaw": yaw, "pose": "seated" if "seated" in group
-                       else "standing"})
+                       else "standing",
+                       # WHAT A PLAYER BUMPS INTO. Not in the static collision
+                       # -- see `body_capsule` -- so it travels with the person.
+                       "r_m": r_m, "h_m": h_m})
 
 
 @_lru_cache(maxsize=4096)
@@ -1207,6 +1242,7 @@ def _place_ring_body(v, t, g, mesh, px, py, pz, radius_m, ang_rad, way,
     round the ring rather than into the wall. `way` picks which way round.
     """
     bv, bt, bg = mesh
+    _cap = body_capsule(mesh)
     ca, sa = math.cos(ang_rad), math.sin(ang_rad)
     # Down (radially outward), up (inward), and the tangent.
     ux, uy = -ca, -sa                       # local +Y  -> inward
@@ -1228,7 +1264,8 @@ def _place_ring_body(v, t, g, mesh, px, py, pz, radius_m, ang_rad, way,
                        # frame, where 0 faces the station axis (+Z). A body
                        # facing the tangent is a quarter turn off that, and
                        # `way` decides which quarter.
-                       "yaw": math.pi / 2.0 * way, "pose": "walking"})
+                       "yaw": math.pi / 2.0 * way, "pose": "walking",
+                       "r_m": _cap[0], "h_m": _cap[1]})
 
 
 def _R_STATION_HOUR():

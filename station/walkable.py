@@ -151,7 +151,8 @@ def room_target(meta, place):
 
 
 def walk_deck(sector, ring, deck, godot, timeout=1800, traverse=None,
-              goto_key=None, no_doors=False, z_m=None):
+              goto_key=None, no_doors=False, z_m=None, bump=False,
+              no_npc_collision=False):
     """Assemble a deck, put a body on it, and walk it.
 
     The render mesh and the collision shell are exported separately and BOTH are
@@ -211,11 +212,29 @@ def walk_deck(sector, ring, deck, godot, timeout=1800, traverse=None,
     # a path, and there is no pathfinder yet.
     goto = goto_key or s["spawn_at"]
     tx, ty, tz = room_target(cm, dr.by_key(goto))
+    # -- IS A PERSON SOMETHING YOU BUMP INTO? ------------------------------
+    # `rooms.is_solid` keeps every `npc_` group OUT of the static collision on
+    # purpose -- static collision is generated once, so an inhabitant baked
+    # into it is a permanent statue. The capsule therefore lives on a runtime
+    # node (`npc.gd::_give_body`), and this is the only thing that can tell
+    # whether it is actually there: steer the body straight at a person
+    # instead of at a room, and see how close it gets.
+    bumped = None
+    if bump:
+        cand = [a for a in s.get("actors", ())
+                if float(a.get("r_m", 0.0)) > 0.0]
+        if cand:
+            px, py, pz = s["spawn"]
+            bumped = min(cand, key=lambda a: (a["x"] - px) ** 2
+                         + (a["y"] - py) ** 2 + (a["z"] - pz) ** 2)
+            tx, ty, tz = bumped["x"], bumped["y"], bumped["z"]
     cmd += [f"--actors={os.path.join(out, stem + '_actors.json')}",
             f"--goto={tx},{ty},{tz}", f"--door-key={goto}",
             f"--door-travel={K.PROVISIONAL['door_width_m'] / 2.0}"]
     if no_doors:
         cmd += ["--no-doors"]
+    if no_npc_collision:
+        cmd += ["--no-npc-collision"]
     try:
         res = subprocess.run(cmd, capture_output=True, text=True,
                              timeout=timeout).stdout
@@ -228,10 +247,25 @@ def walk_deck(sector, ring, deck, godot, timeout=1800, traverse=None,
          "render_tris": len(t), "collision_tris": len(ct),
          "arc_deg": cm["arc_deg"], "goto": goto,
          "doors": len(cm.get("rooms", ()))}
+    if bumped is not None:
+        d["bumped"] = bumped["group"]
+        d["bump_r_m"] = float(bumped["r_m"])
+        d["bump_who"] = (bumped.get("who") or {}).get("name", "") \
+            if isinstance(bumped.get("who"), dict) else ""
+        d["npc_collision"] = "off" if no_npc_collision else "on"
     for tok in m.group(1).split():
         k, _, val = tok.partition("=")
         d[k] = val
     return d
+
+
+# How much closer the body must get with an inhabitant's capsule OFF than with
+# it on, for "they are solid" to be a claim rather than noise. A person's own
+# radius is 0.27-0.41 m and the player capsule adds its own, so a real block
+# separates the two runs by more than half a metre; 0.25 is half of the
+# smallest true separation and well outside the ~0.05 m the walker's own
+# stopping distance varies by between runs.
+BUMP_MARGIN_M = 0.25
 
 
 def deck_verdict(d):
@@ -322,6 +356,9 @@ def main():
                          "and they are six different places")
     ap.add_argument("--traverse", type=int, default=None,
                     help="physics frames of continuous walking on the deck")
+    ap.add_argument("--bump", action="store_true",
+                    help="steer at the nearest INHABITANT instead of a room, "
+                         "and check they are something you bump into")
     a = ap.parse_args()
 
     godot = godot_binary()
@@ -367,6 +404,37 @@ def main():
             print(f"        {d['render_tris']:,} render triangles, "
                   f"{d['collision_tris']:,} collision "
                   f"({d['collision_tris'] / d['render_tris'] * 100:.1f}%)")
+        # -- AND A PERSON IS SOMETHING YOU BUMP INTO -----------------------
+        # `is_solid` keeps inhabitants out of the STATIC collision on purpose,
+        # so nothing in the static mesh can answer this. The capsule is built
+        # at runtime by `npc.gd::_give_body`, and the only honest test is to
+        # walk at somebody: with the capsule the body stops about a radius
+        # short, without it the body walks through them and arrives.
+        if a.bump and not drum:
+            hit = walk_deck(sector, int(ring), int(deck), godot,
+                            traverse=a.traverse, z_m=a.z, bump=True)
+            through = walk_deck(sector, int(ring), int(deck), godot,
+                                traverse=a.traverse, z_m=a.z, bump=True,
+                                no_npc_collision=True)
+            stop = float(hit.get("goto_best_m", -1.0))
+            walk_through = float(through.get("goto_best_m", -1.0))
+            r = float(hit.get("bump_r_m", 0.0))
+            who = hit.get("bump_who") or hit.get("bumped", "somebody")
+            if stop < 0 or walk_through < 0:
+                print(f"  FAIL  the bump test did not run  {hit.get('error')} "
+                      f"/ {through.get('error')}")
+                good = False
+            elif stop <= walk_through + BUMP_MARGIN_M:
+                print(f"  FAIL  inhabitants are not solid -- the body got "
+                      f"{stop:.2f} m from {who} with their capsule on and "
+                      f"{walk_through:.2f} m with it off. A person you walk "
+                      f"through is a hologram.")
+                good = False
+            else:
+                print(f"        a person is SOLID: walking straight at {who} "
+                      f"(r {r:.2f} m) the body is stopped {stop:.2f} m away; "
+                      f"control: with their capsule off it reaches "
+                      f"{walk_through:.2f} m and walks through them.")
         if a.deck_only:
             return 0 if good else 1
         if not good:

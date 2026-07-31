@@ -191,6 +191,16 @@ jobs:
       - name: The station is walkable
         run: python3 station/walkable.py --rooms 6
 
+      # AND A PERSON IS SOMETHING YOU BUMP INTO. `rooms.is_solid` keeps every
+      # `npc_` group OUT of the static collision on purpose -- static collision
+      # is generated once, so an inhabitant baked into it is a permanent
+      # statue -- so nothing in the static mesh can answer this. `--bump`
+      # steers the body straight at a named resident and reports how close it
+      # gets, against a control run with their capsule off that walks through
+      # them. Both runs, every time: a solid claim needs the control.
+      - name: The inhabitants are solid
+        run: python3 station/walkable.py --deck blue/0/0 --deck-only --bump
+
       # AND THE WHOLE STATION, not six rooms of it. `--sweep` is the only gate
       # here that asks a whole-station question: every deck assembles, every
       # room has a door, and no doorway has a hole in the floor.
