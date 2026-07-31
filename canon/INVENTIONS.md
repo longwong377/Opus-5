@@ -4477,13 +4477,29 @@ exactly two rows at `chan_c ± (chan_hi - chan_lo)/4`, so `LIGHT_PITCH_M`'s meas
 honoured along one axis and replaced by a geometric fraction along the other. `qtr_command` is
 29.6 × 7.5 m and its six downlights sit at a **single z**.
 
-**And the ambient is solved against the black fraction, because that is the statistic it
-controls.** `AMBIENT_BY_ARCHETYPE`'s values are the per-space `ambient.ratio` from
+**And the ambient is solved against p5, because that is the statistic it controls.**
+`AMBIENT_BY_ARCHETYPE`'s values are the per-space `ambient.ratio` from
 `docs/layer4-lighting/*.json`, which CLAUDE.md has flagged since layer 4 opened as *two hand-picked
 regions of a balanced frame* — 0.300 against a whole-frame 0.086 on the same image. An ambient is a
-constant irradiance whichever way a surface faces, so it is exactly the light in the places nothing
-else reaches, and `crushed` is that population by definition. `AMBIENT_SOLVED` therefore holds a
-per-family ratio obtained by rendering against the reference's own crushed fraction, measured by
-the same code, alternating with the fitting energy against the median — two knobs that are
-orthogonal where `room_exposure` is not, since it scales both together and so cannot separate a
-room's level from its contrast at all.
+constant irradiance whichever way a surface faces, so nothing lit only by it is in shadow, and this
+project had already measured the consequence without having a use for it: *"fixture energy is INERT
+(0 → 2.0 moves p5 by x1.0000), the soft fill nearly so, and AMBIENT OWNS p5 (1.30 → 2.60 moves it
+x2.35)"*. That gives `d(ln p5)/d(ln ambient) = 1.22` against `d(ln median)/d(ln ambient) = 0.84`, so
+the shape `p5/median` goes as `ambient^0.38`, and each row of `AMBIENT_SOLVED` is stepped by it and
+verified by a re-render.
+
+**`ambient_energy` also stops multiplying by `room_exposure` for a solved row**, and that is the
+structural half. The reason recorded for the coupling was true when it was written — *"in those
+three rooms the fittings contribute almost nothing to the frame … an exposure that cannot move the
+dominant term is not an exposure"* — and the reach fix removed it. With the fittings reaching the
+floor the exposure moves the dominant term by itself, so the ambient can be absolute again and a
+room's level and its contrast can be set apart, which under the old coupling was impossible.
+
+**FOUR ROWS OF ELEVEN, AND THE SEVEN ABSENCES ARE THE RESULT.** `detention`,
+`industrial`, `mod:command_control` and `mod:council_chamber` came out strictly better —
+command and control and the council chamber were the two worst p5 misses on the station at x2.20
+each and both now pass. The seven that did not all failed the same way: the ambient cut fixed p5
+and the fittings could not make the level up, so the frame either left the level window or its
+black fraction ran past the x11.42 band (`medical` crushed x16.2, `research` x18.2). That is the
+fitting count showing through — a room whose sources cannot carry its level has only the flat term
+to carry it, and taking the flat term away leaves a hole rather than a shadow.

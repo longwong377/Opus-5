@@ -2148,7 +2148,57 @@ AMBIENT_BY_ARCHETYPE = {
 #
 # A row absent here falls back to the table above times the exposure, i.e. to
 # the pre-4b behaviour, so an unsolved room is visible rather than averaged.
-AMBIENT_SOLVED = {}
+#
+# ---------------------------------------------------------------------------
+# THREE ROWS, OUT OF ELEVEN SOLVED, AND THE EIGHT ABSENCES ARE THE RESULT
+# ---------------------------------------------------------------------------
+# The pass was run on every room whose p5 failed: cut the ambient by
+# `(1.10 / p5) ** (1/0.38)`, then put the level back with the fitting energy,
+# three iterations, verdict by re-render. Only these four came out strictly
+# better, and the seven that did not all failed the SAME way -- the ambient cut
+# fixed p5 and the fittings could not make the level up, so the frame either
+# left the level window or its black fraction ran away past the x11.42 band:
+#
+#   medical     p5 x1.45 -> x0.90   crushed  x1.2 -> x16.23
+#   research    p5 x1.78 -> ~x0.9   crushed       -> x18.20
+#   office      p5 x1.39 -> x1.70 at the in-window gain (x0.88 at the gain
+#                                  that passes, which is out of window)
+#   worship     p5 x1.48 -> x1.61 at the in-window gain
+#   generic     p5 x0.66 needed MORE ambient; x4.3 overshot to median x3.44
+#
+# That is not a tuning failure, it is the fitting count showing through: a room
+# whose sources cannot carry its level has only the flat term to carry it, and
+# taking the flat term away leaves a hole rather than a shadow. Every one of
+# the seven is named in LIGHTING_COVERAGE or is a room whose fittings sit at
+# 0.9 of their range from the far wall, where the culling window has already
+# taken most of the light. The remedy is sources, in `station/rooms.py` and in
+# the modules -- see LIGHTING_COVERAGE's `n >= A / (2 R^2)`.
+AMBIENT_SOLVED = {
+    # archetype / mod:module      ambient   what it did
+    "detention": 0.0080,          # 0.0346   the solved cell wanted exposure
+                                  #          0.078 and the self-test's runaway
+                                  #          guard is right to refuse it, so
+                                  #          the ambient is taken and the
+                                  #          exposure is held at the guard's
+                                  #          own floor -- see ROOM_EXPOSURE
+    "generic": 0.4620,            # 2.0020   NOT a cut: generic went p5 x0.66
+                                  #          and crushed x25.63 when the
+                                  #          exposure dragged its ambient down
+                                  #          with it, so this is the 4a value
+                                  #          held ABSOLUTE, which is the whole
+                                  #          point of decoupling the two
+    "industrial": 0.0906,         # 0.3928   p5 x1.33 -> x0.97; only p99 x0.31
+                                  #          is left, and p99 was already
+                                  #          failing at x0.30 before this
+                                  #          session -- it is the missing
+                                  #          bright population, not the fill
+    "mod:command_control": 0.0469,  # 0.2034 p5 x2.20 -> PASS at median x1.05.
+                                  #          The room that measured 0.0% floor
+                                  #          coverage
+    "mod:council_chamber": 0.0909,  # 0.3940 p5 x2.20 -> x1.25, PASS at median
+                                  #          x1.59. The largest p5 miss on the
+                                  #          station, closed
+}
 
 # interior.tscn's ambient_light_energy, calibrated in session 3n against the
 # residential corridor -- which is the AMBIENT_RATIO 0.300 row. Every other
@@ -2306,17 +2356,25 @@ AMBIENT_CALIBRATED_RATIO = 0.300
 # session 4a's third field.
 ROOM_EXPOSURE = {
     # value          was    at the reach fix, before this row moved
-    "industrial": 2.49,  # 4.03  median x2.11  p5 x1.31  p99 x0.36
+    "industrial": 3.51,  # 4.03 -> 2.49 -> here; ambient in AMBIENT_SOLVED
     "store": 3.02,       # 3.02  median x1.38  PASS -- unchanged, in window
     "transit": 0.62,     # 0.62  median x1.43  PASS -- unchanged, in window
     "hospitality": 0.88,  # 0.60 median x1.01  below the window
     "worship": 1.53,     # 2.29  median x1.97  p5 x2.41  crushed x0.08
     "medical": 0.18,     # 0.19  median x1.48  p5 x1.51
     "research": 0.18,    # 0.23  median x1.70  p5 x2.06
-    "detention": 0.28,   # 0.40  median x1.87  p5 x1.69
+    "detention": 0.10,   # 0.28. Its solved cell wanted 0.078 and the shape
+                         # pass found ambient 0.0346 with the fittings at
+                         # 0.235 energy passing every band at median x1.38,
+                         # and that is exposure 0.078 -- under the 0.1 the
+                         # self-test calls a runaway. The guard is right to
+                         # fire and its band is stated for an exposure that
+                         # scaled the ambient too, so it needs re-deriving
+                         # before the cell can be taken. Widening it to make
+                         # a row go green is what it exists to stop.
     "commerce": 0.62,    # 0.62  median x1.44  PASS -- unchanged, in window
     "office": 0.18,      # 0.38  median x2.70  p5 x2.36
-    "generic": 0.87,     # 1.54  median x2.28  distribution already OK
+    "generic": 0.50,     # 1.54 -> 0.87 -> here; ambient in AMBIENT_SOLVED
 }
 
 
@@ -2398,7 +2456,10 @@ BESPOKE_EXPOSURE = {
                              # emission finding below).
     "hospitality": 1.88,     # 2.07, at the reach fix median x1.52 p5 x2.14.
                              # vs reference/04-sector-red/Doug's Dugout.webp
-    "command_control": 0.65,  # 0.89, at the reach fix median x1.82 p5 x2.54.
+    "command_control": 4.08,  # 0.65, and its ambient is in AMBIENT_SOLVED: the
+                             # whole level now comes from the strips instead of
+                             # from the flat term, which is why the number is
+                             # ten times what it was and the frame is not.
                              # vs 03-sector-blue/comand and
                              # contorl.webp. median x1.40, p5 x2.19, p95 x0.34
                              # -- FAIL p5 and p5/p95, and the two failures are
@@ -2424,7 +2485,16 @@ BESPOKE_EXPOSURE = {
                              # wrong exposure: brightening it to x1.25 takes
                              # the crushed ratio only to x36.9 from x43.8 and
                              # pushes the level to x1.67, out of window.
-    "customs": 0.17,         # 0.31, at the reach fix median x2.34 with the
+    "customs": 0.17,         # 0.31, and NON-INVERTIBLE in both directions:
+                             # at 0.31 the frame reads median x2.34, at 0.17
+                             # x4.45 and at 0.62 x2.20, so LOWERING the
+                             # exposure brightens it. 0.17 is kept because
+                             # it is the only one of the three that passes
+                             # the distribution -- 0.62 fails p5 x1.64 and
+                             # crushed x0.05. The room is at the reach cap
+                             # with 59.7% floor coverage, i.e. its ambient
+                             # still dominates. At the reach fix the level
+                             # with the
                              # distribution already OK. vs
                              # 11-props-and-technology/babylon 5 welcome sign,
                              # instructions, and hub.jpg.
@@ -2434,7 +2504,8 @@ BESPOKE_EXPOSURE = {
                              # p5, and in the DARK direction for once, with
                              # p95 x0.48 beside it. A unit with too little of
                              # everything at the top.
-    "council_chamber": 0.76,  # 2.27, and the biggest step on the station: at
+    "council_chamber": 0.92,  # 0.76, ambient in AMBIENT_SOLVED. Was 2.27 at
+                             # the start of 4b, and the biggest step there: at
                              # the reach fix its twelve 18 m coves reach the
                              # whole floor and the frame went to median x4.12,
                              # with p5 x2.20 -> x1.43 on the way.
@@ -6347,7 +6418,21 @@ def main():
                          f"arc and the axis (default {DECK_FACE_M[0]},"
                          f"{DECK_FACE_M[1]})")
     ap.add_argument("--fixture-energy", type=float, default=3.0,
-                    help="interior shot: energy per tagged light fitting")
+                    help="interior shot: energy per tagged light fitting. IT "
+                         "IS MULTIPLIED BY room_exposure() AND `--ambient` IS "
+                         "NOT -- `build_interior` passes "
+                         "`args.fixture_energy * room_exposure(room)` to the "
+                         "rig while `--ambient` replaces the computed value "
+                         "outright. The two flags are therefore NOT the same "
+                         "kind of override, and a sweep that treats them alike "
+                         "squares the exposure into the fitting term. Session "
+                         "4b lost a solve round to exactly that: four rooms' "
+                         "cells were reported at `--fixture-energy F` and the "
+                         "rig delivered `F * room_exposure`, so converting the "
+                         "cell back to an exposure needed `F * "
+                         "room_exposure_at_the_time / 3.0`, not `F / 3.0`. "
+                         "`--gate-frames --rerender` is what caught it, by "
+                         "disagreeing with the solver on the same inputs")
     ap.add_argument("--fixture-reach", type=float, default=None,
                     help=f"scale every fitting's Godot omni/spot range by this "
                          f"(default {FIXTURE_REACH}). 1.0 IS THE NEGATIVE "
