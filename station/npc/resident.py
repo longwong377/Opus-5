@@ -633,9 +633,16 @@ class Resident:
 # INV-004's rule is that a grammar fitted to zero attested names is invention
 # dressed as inference, so those cards are rendered with an EMPTY name field,
 # which is a state the prop itself shows three times.
-def _split_name(species: str, npc_id: str):
+# `sex` IS PASSED THROUGH, and it comes off the body so the card, the mesh and
+# the name are one individual. Without it the name and the SEX field were
+# independent draws: measured over 400 humans, ALL 22 given names appeared
+# with both sexes, so "SINCLAIR, MATEO / SEX: FEMALE" was the general case
+# rather than a quirk. Only the human grammar has gendered names and only
+# because the show attests them; `name_for` ignores `sex` elsewhere rather
+# than inventing a gender system per species.
+def _split_name(species: str, npc_id: str, sex=None):
     try:
-        full = npc_names.name_for(species, npc_id)
+        full = npc_names.name_for(species, npc_id, sex=sex)
     except KeyError:
         return "", ""
     if " " in full:                       # human, centauri: given + family
@@ -691,8 +698,11 @@ def resident(npc_id: str, species: str = "human") -> Resident:
     """
     rhythm = sched.RHYTHMS.get(species, sched.RHYTHMS["human"])
     role = sched.role_for(npc_id, species)
-    surname, forename = _split_name(species, npc_id)
+    # THE BODY FIRST, so the name can agree with it. `individual` decides SEX
+    # and it decides the mesh; drawing the name from a separate hash gave a
+    # station where every human given name appeared with both sexes.
     ind = npc_body.individual(species, npc_id)
+    surname, forename = _split_name(species, npc_id, sex=ind.sex)
 
     home = home_for(npc_id, species, role.key)
     # A role with no work hours has no job, and saying so is better than

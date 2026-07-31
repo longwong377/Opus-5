@@ -98,17 +98,52 @@ def _minbari(seed):
 # screen, not given names, and a card reading `SINCLAIR, ERICSSON` is the one
 # place that shows. Moved to where they belong; the two replacements keep the
 # multinational rationale below and the pool the same size.
-HUMAN_GIVEN = ("Jeffrey", "Susan", "Michael", "Stephen", "Elizabeth", "Zack", "Warren",
-               "Lianna", "Marcus", "David", "Amis", "Neeoma", "Tessa", "Mateo",
-               "Ko", "Aisha", "Anna", "Bo", "Nadia", "Piotr", "Yuki", "Ade")
+# SPLIT BY SEX, because the identicard carries a SEX field and the two were
+# drawn from independent hashes. Measured over 400 humans before the split:
+# **all 22 given names appeared with BOTH sexes** -- "Nadia" came out MALE 13
+# times, "Jeffrey" FEMALE 13 -- so `SINCLAIR, MATEO / SEX: FEMALE` was not a
+# quirk of one record, it was the general case. A cast list whose names and
+# sexes disagree is the "random string generator" outcome, and it was printed
+# on the one document in this project reproduced from an authority-1 frame.
+#
+# NOTHING IS INVENTED HERE. Which sex Jeffrey Sinclair, Susan Ivanova, Michael
+# Garibaldi, Stephen Franklin, Zack Allan, Warren Keffer, Lianna Kemmer, Marcus
+# Cole, David Corwin, Neeoma Connally and Tessa Halloran are is a fact about the
+# show, and these are its names. The genuinely unmarked ones stay unmarked:
+# `ANY` is drawn from for either sex rather than assigned a gender this project
+# has no source for.
+HUMAN_GIVEN_M = ("Jeffrey", "Michael", "Stephen", "Zack", "Warren", "Marcus",
+                 "David", "Mateo", "Piotr")
+HUMAN_GIVEN_F = ("Susan", "Elizabeth", "Lianna", "Neeoma", "Tessa", "Aisha",
+                 "Anna", "Nadia")
+HUMAN_GIVEN_ANY = ("Amis", "Ko", "Bo", "Yuki", "Ade")
+HUMAN_GIVEN = HUMAN_GIVEN_M + HUMAN_GIVEN_F + HUMAN_GIVEN_ANY
 HUMAN_SURNAME = ("Sinclair", "Ivanova", "Garibaldi", "Franklin", "Allan", "Keffer",
                  "Cole", "Corwin", "Connally", "Winters", "Alexander", "Redway",
                  "Okoro", "Nakamura", "Silva", "Haddad", "Novak", "Lindqvist",
                  "Mbeki", "Rossi", "Duval", "Chowdhury", "Ericsson", "Ramirez")
 
 
-def _human(seed):
-    return f"{_pick(HUMAN_GIVEN, seed, 'g')} {_pick(HUMAN_SURNAME, seed, 's')}"
+def _human(seed, sex=None):
+    """A human name. With `sex`, the given name agrees with it.
+
+    The unmarked pool is offered to both, so a station of 155,000 humans is not
+    split into two disjoint name sets -- which would be a stronger claim about
+    these names than the show makes.
+    """
+    # BOTH SPELLINGS. `body.individual` returns 'm'/'f' and the identicard
+    # renders MALE/FEMALE, so a caller can reasonably hand over either. The
+    # first version compared against the card's spelling only, silently took
+    # the ungendered branch for every single person, and the defect it was
+    # written to fix survived unchanged -- a fix that cannot fail is as bad as
+    # an assertion that cannot.
+    k = str(sex or "").strip().lower()[:1]
+    pool = HUMAN_GIVEN
+    if k == "m":
+        pool = HUMAN_GIVEN_M + HUMAN_GIVEN_ANY
+    elif k == "f":
+        pool = HUMAN_GIVEN_F + HUMAN_GIVEN_ANY
+    return f"{_pick(pool, seed, 'g')} {_pick(HUMAN_SURNAME, seed, 's')}"
 
 
 # --- Drazi -----------------------------------------------------------------
@@ -174,10 +209,20 @@ GRAMMARS = {
 }
 
 
-def name_for(species: str, npc_id) -> str:
+def name_for(species: str, npc_id, sex=None) -> str:
+    """A name for one individual. `sex` is honoured where a grammar has it.
+
+    Only the human grammar carries gendered given names, and only because the
+    show attests them. For every other species this project has no source that
+    marks a name by sex, so `sex` is accepted and ignored rather than faked --
+    the alternative is inventing a gender system per species, which INV-004
+    forbids.
+    """
     g = GRAMMARS.get(species)
     if g is None:
         raise KeyError(f"no naming grammar for species {species!r}")
+    if species == "human" and sex:
+        return _human(npc_id, sex=sex)
     return g.name(npc_id)
 
 
