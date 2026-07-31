@@ -4339,12 +4339,22 @@ construction at each room's dimensions:
 | | wall facet p50 | deck facet p50 | wall λ |
 |---|---|---|---|
 | before | 3.94 – 9.51 m | 5.26 – 12.80 m | 2.98 – 5.64 |
-| after | 0.83 – 1.47 m | 0.58 – 0.76 m | 4.16 – 5.38 |
+| after, over all 78 | 0.83 – 1.21 m | 0.53 – 0.85 m | 4.86 – 5.87 |
 | the corridor as built | 0.99 m | 0.57 m | 3.62 |
 
-**What it costs.** 1,206,552 → 1,596,204 triangles over the 78 procedural rooms, +32%: deck
-+155,736, wall +208,344, soffit +25,572. On the assembled deck `budget.py`'s `frustum structure`
-goes 98,919 → 118,863 against a 60,000 allowance, and `resident triangles` 593,824 → 632,980
+**77 of 78 locations pass on every surface; 233 of 234 surfaces pass.** The one miss is
+`lake_pool`'s deck at 0.85 m against a 0.70 m floor, and its cause is the hidden-substrate effect
+`density.kit_like_floor` documents: on the largest decks the substrate slab's own top face — which
+is entirely covered by tiles and which `analyse` counts anyway — carries just over half the
+measured area, so the area-weighted median tips off the tiles and onto it.
+
+The tile count uses `ceil`, not `round`, and `--shell` is what found it: a module is a CEILING on
+coarseness, so rounding the count down makes the tile bigger than the module it came from. Four
+decks were failing on exactly that, `lake_pool` at 0.85 m and three more short by 2%.
+
+**What it costs.** 1,206,552 → 1,607,208 triangles over the 78 procedural rooms, +33%: deck
++162,924, wall +208,344, soffit +29,388. On the assembled deck `budget.py`'s `frustum structure`
+goes 98,919 → 118,587 against a 60,000 allowance, and `resident triangles` 593,824 → 632,212
 against 180,000. **Both readings were already failing before this work** — 165% and 330% — and
 `budget.py` names the cause itself: *"walk.gd loads one .glb whole — there is no streaming and no
 LOD"*. `station/lod.py` exists and has no importer in the deck path. No gate changed verdict:

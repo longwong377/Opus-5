@@ -996,9 +996,17 @@ def _plate_deck(v, t, g, name, y_face, sign, x0, x1, z0, z1, tile, seam,
     The walking surface does not move: the tile tops sit exactly on `y_face`
     (y = 0 for a deck, y = ceil for a soffit) and the substrate is set back
     behind them, so every height in the room is what it was.
+
+    `ceil`, NOT `round`, and it is worth one line of why. A tile module is a
+    CEILING on coarseness -- it is the size the gate measures against -- so
+    rounding the count DOWN makes the tile bigger than the module it came from.
+    `density.py --shell` caught exactly that on four decks: `lake_pool` at
+    0.85 m against a 0.62 m tile, and three more at 0.59-0.60 m missing their
+    floor by 2%. Rounding up can only make a tile smaller than the reference,
+    which is a direction the floor does not care about.
     """
-    nx = max(1, int(round((x1 - x0) / tile)))
-    nz = max(1, int(round((z1 - z0) / tile)))
+    nx = max(1, int(math.ceil((x1 - x0) / tile - 1e-9)))
+    nz = max(1, int(math.ceil((z1 - z0) / tile - 1e-9)))
     for i in range(nx):
         px0 = x0 + (x1 - x0) * i / nx
         px1 = x0 + (x1 - x0) * (i + 1) / nx
