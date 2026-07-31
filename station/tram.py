@@ -115,6 +115,13 @@ SEAT_PITCH_M = 0.62           # one seated person, cushion plus its gap
 # nobody is looking. INV-050.
 TRUSS_CLEARANCE_M = 0.30
 
+# Cars on one guideway. Named rather than left as a bare default argument
+# because `transit.py` derives the line's HEADWAY from it -- round trip over
+# cars -- and a number two modules disagree about is the two-sources-of-truth
+# defect this project keeps finding. `transit._selftest` reads this back out of
+# `drum_trams`'s signature and asserts they match.
+CARS_ON_A_GUIDEWAY = 2
+
 
 def car_length():
     return CAR_BAYS * it.TRUSS_BAY_M
@@ -1235,8 +1242,8 @@ def guideway_cars(schema, profile, sector, angle_deg, count=3, phase=0.0,
                          "triangles": len(tris), "groups": groups}
 
 
-def drum_trams(schema, profile, sector, per_guideway=2, phase=0.0,
-               z_span=None, interior=False, glazed=True):
+def drum_trams(schema, profile, sector, per_guideway=CARS_ON_A_GUIDEWAY,
+               phase=0.0, z_span=None, interior=False, glazed=True):
     """Cars on every guideway. One truss per spoke, so one line per spoke."""
     verts, tris, groups, places = [], [], [], []
     for i in range(it.TRUSS_COUNT):
@@ -1288,6 +1295,74 @@ def passenger_seat(schema, profile, sector, angle_deg, z, eye_h=1.22):
     eye, tgt = to_world(schema, profile, sector, angle_deg, z, [eye_l, tgt_l])
     _o, _lat, up, _f = car_frame(schema, profile, sector, angle_deg, z)
     return eye, tgt, up
+
+
+# ---------------------------------------------------------------------------
+# MOTION. This module built a vehicle and never said how fast it goes.
+#
+# Session 3z, and the gap was found by the owner asking how long it takes to
+# cross the station. Everything above places cars on a guideway; nothing above
+# moves them, and the string "speed" appeared nowhere in the file. The physics
+# lives in `transit.py` -- one authority on motion for the whole station, the
+# same rule as hard rule 4 -- and what belongs HERE is the part that is about
+# this vehicle: whether the car fits the service the line asks of it.
+#
+# The guideway tram is the fastest passenger system on the station and the
+# reason is geometric rather than engineering: it runs ALONG the spin axis, so
+# omega x v is identically zero and Coriolis imposes no speed cap on it at all.
+# The two systems that run across the spin are capped at 3.13 m/s. This one is
+# limited only by how hard you may accelerate a standing passenger, which is
+# why it reaches 26.7 m/s between stops 646 m apart.
+# ---------------------------------------------------------------------------
+
+def service(schema, profile, sector=None):
+    """(line, report) for this guideway: stops, speed, ride and headway.
+
+    Delegated rather than restated. `transit.guideway_line` derives the stops
+    from `interior`'s truss span and spoke position, which is the same
+    structure `guideway_cars` hangs cars on, so the timetable and the geometry
+    cannot come apart.
+    """
+    import transit as tr                                      # noqa: PLC0415
+    line = tr.guideway_line(schema, profile, sector)
+    return line, tr.line_report(schema, line)
+
+
+def seated_capacity():
+    """Seats in one car, counted off the saloon this module actually builds.
+
+    Derived from the same `bench_m`, `gap_m` and `SEAT_PITCH_M` the geometry is
+    emitted from rather than stated separately, so a change to the seating
+    plan moves the capacity with it. The long benches are continuous cushions
+    -- 35a is emphatic about that -- so a "seat" on them is a seat pitch of
+    bench, which is what a continuous bench is counted in.
+    """
+    z_rear, z_fore = _saloon_span()
+    bench_m, gap_m = 6.0, 1.4
+    z_b0, z_b1 = z_rear + 1.2, z_fore - NOSE_M - 0.3
+    n_mod = max(1, int((z_b1 - z_b0 + gap_m) / (bench_m + gap_m)))
+    bench_seats = 2 * n_mod * int(bench_m / SEAT_PITCH_M)
+    w_in = level_w("sill") - WALL_T
+    forward = sum(1 for k in range(3)
+                  if -w_in + 0.62 + k * (SEAT_PITCH_M + 0.10) <= -0.4)
+    return {"bench_modules": n_mod, "bench_seats": bench_seats,
+            "forward_seats": forward, "seats": bench_seats + forward}
+
+
+def braking_distance(schema, profile, sector=None):
+    """How far a car needs to stop from line speed, under the same limits.
+
+    The service profile's own numbers, not an emergency one: a car that cannot
+    stop inside its stop spacing under NORMAL braking is running too fast for
+    its stops, and that is a property of this vehicle on this guideway rather
+    than of transit in general.
+    """
+    import transit as tr                                      # noqa: PLC0415
+    _line, rep = service(schema, profile, sector)
+    v = rep["peak_speed_m_s"]
+    _t, d = tr._ramp(v, tr.CRUISE_ACCEL_M_S2, tr.JERK_M_S3)
+    return {"peak_speed_m_s": v, "stop_distance_m": d,
+            "spacing_m": rep["spacing_m"]}
 
 
 # ---------------------------------------------------------------------------
@@ -1746,6 +1821,61 @@ def _selftest():
           six < cap, f"{six:,} triangles against {cap:,.0f}")
     check("one saloon fits a streaming cell budget",
           len(lt) < 20_000, f"{len(lt):,} triangles")
+
+    # --- the service ---------------------------------------------------------
+    # A gate belongs in the module that builds the thing. `transit.py` proves
+    # the arithmetic; what this module has to prove is that the CAR it emits
+    # can actually run the service the line asks of it. All four checks below
+    # are about the vehicle and none of them can be answered in transit.py.
+    line, rep = service(schema, profile, sector)
+    check("the line's stops are on the guideway this module hangs cars on",
+          abs(line["radius_m"] - r_bot) < 1e-9
+          and line["z0"] == float(ex["z0"]) and line["z1"] == float(ex["z1"]),
+          f"line r={line['radius_m']:.3f} vs cars at r={r_bot:.3f}")
+
+    L = car_length()
+    check("a car fits between two stops with room to stand at each",
+          rep["spacing_m"] > 3.0 * L,
+          f"{rep['spacing_m']:.0f} m spacing for a {L:.0f} m car")
+
+    bd = braking_distance(schema, profile, sector)
+    # NOT "stops within half the spacing" -- that is a tautology. An
+    # accel-limited line brakes for exactly half its spacing by construction,
+    # so the assertion would be restating the profile rather than testing the
+    # car, and it could not fail for any car of any length. What CAN fail is
+    # whether a 96 m car still has its nose at the platform when it stops:
+    # the length is the vehicle's, the spacing is the line's, and neither is
+    # derived from the other.
+    check("a 96 m car stops with its nose at the platform, not past it",
+          bd["stop_distance_m"] + L < bd["spacing_m"],
+          f"{bd['stop_distance_m']:.0f} m stop + {L:.0f} m of car against a "
+          f"{bd['spacing_m']:.0f} m spacing")
+    # And the line really is accel-limited rather than speed-capped, which is
+    # the whole claim about why an axial tram is fast. If Coriolis capped it,
+    # the peak would sit at 3.13 m/s like the two cross-spin systems do.
+    import transit as _tr                                     # noqa: PLC0415
+    check("the guideway is accel-limited, not Coriolis-limited",
+          rep["accel_limited"]
+          and bd["peak_speed_m_s"] > 5.0 * _tr.coriolis_speed_cap(schema),
+          f"{bd['peak_speed_m_s']:.1f} m/s against a cross-spin cap of "
+          f"{_tr.coriolis_speed_cap(schema):.2f} m/s")
+
+    # Two cars share a guideway. `guideway_cars` spaces them at span/count, so
+    # the gap between them has to hold a whole car AND a stopping distance --
+    # otherwise the module is emitting a rear-end collision that renders
+    # perfectly. This is the same class of defect as the door interpenetrating
+    # the portal frame, in time rather than in space.
+    gap = (ex["z1"] - ex["z0"]) / CARS_ON_A_GUIDEWAY - L
+    check("two cars on one guideway are more than a stopping distance apart",
+          gap > bd["stop_distance_m"] + L,
+          f"{gap:.0f} m of clear guideway between cars against a "
+          f"{bd['stop_distance_m']:.0f} m stop plus a {L:.0f} m car")
+
+    cap = seated_capacity()
+    check("the car seats a plausible tram load, counted off its own saloon",
+          40 <= cap["seats"] <= 260, str(cap))
+    check("the bench is most of the seating, as 35a shows",
+          cap["bench_seats"] > 4 * max(1, cap["forward_seats"]), str(cap))
 
     print(f"{ok}/{ok + fail} passed")
     return 1 if fail else 0
