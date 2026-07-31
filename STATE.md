@@ -196,9 +196,75 @@ directory **830/830**, validate 32/32, materials **1467/1467**, layer3 **34/34**
 material coverage **406/406**), aperture 22/22, transit 85/85, resident 44/44, schedule 100/100,
 crowd 67/67, body 501/501, export_scene 243/243.
 
+### 9. THE INHABITANTS ARE SOLID, AND THE ENGINE IS HANDED A THIRD OF WHAT IT WAS
+
+**A player walked through all 147 of them.** Measured, not assumed: `walkable.py --deck blue/0/0
+--bump` steers the body straight at a named resident, and it reached **0.03 m** — through them.
+
+**Why they were not solid is the part worth keeping.** `rooms.is_solid` excludes every `npc_` group
+deliberately, and the exclusion is right: static collision is generated **once**, so an inhabitant
+baked into it is a permanent statue. That function's comment ends *"NPCs get their own capsules when
+they get their own movement"*. `populace.body_capsule` measures the capsule off the individual's own
+posed mesh — the **widest** horizontal extent, 0.269 m for a human against 0.206 at the chest, and
+the difference is the arms — and `npc.gd::_give_body` builds it at runtime on a node that follows
+them, upright along the body's **own** up, which on a spun ring points at the axis and not at
+world +Y.
+
+The gate and its control are both CI steps now:
+
+> *a person is SOLID: walking straight at Amis Keffer (r 0.36 m) the body is stopped 0.71 m away;
+> control: with their capsule off it reaches 0.03 m and walks through them.*
+
+**And the draw-call gate measured the wrong artefact.** It counts feature groups in the hull
+manifest — 41 of 64 — which is right for the exterior. It is not what `export_gltf` writes: **one
+mesh, one node and one primitive per OBJ group**. Measured on the shipped `.glb` the first time
+anybody looked: **1,262 primitives, 1,052 of them people** — twelve per inhabitant, because
+`body.py` tags twelve parts. `NPC_BUDGET["max_draw_calls"]` is 32.
+
+The twelve names exist so each part binds its own material, and the materials are only ever two or
+three. `populace._by_material` merges the **runs** — never reordering, so no triangle moves:
+**1,262 → 376, and 1,052 people → 166.** Negative control run: patched out and rebuilt, the new gate
+reads 1,262 / 600 FAIL; restored, 376 / 600 PASS. INV-105, INV-106.
+
+### 10. WHY NPCs STILL DO NOT MOVE, AND EXACTLY WHAT WOULD FIX IT
+
+This is the one thing left in the "living station" column and it is now a **specified** task rather
+than an open problem. Three measurements settle the design:
+
+1. **A rigid per-part transform cannot walk.** `npc.gd` already transforms each person's parts every
+   physics frame, so the obvious extension is to drive the twelve parts from a clip. Measured: the
+   worst vertex is **145 mm** out, at the knee, because `npc_skin_leg` is ONE part spanning hip to
+   ankle and a rigid body cannot bend in the middle.
+2. **Splitting each part at its dominant bone closes it to 14 mm**, in **19 pieces**, over all eight
+   phases (`animation.rigid_track`, gated, with the 145 mm figure as its negative control). Every
+   walking species is under 100 mm; the Gaim are worst at 90 mm because the encounter-suit plan is
+   rigid plates rather than a limbed body.
+3. **But 19 pieces a person does not ship.** At twelve it was already 1,262 primitives on one deck.
+   19 would be worse than the state the merge just fixed.
+
+**So the answer is not more pieces, it is instancing, and the arithmetic is favourable.** Emit the
+eight walk phases ONCE per (species, LOD) as shared meshes, and make each corridor walker a glTF
+**node referencing** one of them — which the format supports natively and `export_gltf` already
+half does, since it writes one node per mesh. On `blue/0/0`:
+
+| | today | shared phase set |
+|---|---|---|
+| walker geometry | 134 unique bodies × 484 tri = **64,856** | 8 species × 8 phases × 484 = **30,976**, shared |
+| walker primitives | 134 | **64**, instanced |
+| animation | none | free — swap the node's mesh index per frame |
+
+It is a net **triangle saving and a 2× primitive saving**, and it animates. The cost is that walkers
+become their species' nominal body rather than their own — which is what every real crowd system
+does, and room occupants keep their unique meshes. The work is in `populace` (emit walkers as
+instance references rather than baked triangles), `export_gltf` (nodes sharing a mesh index) and
+`npc.gd` (advance along the ring, swap the phase).
+
 ### What is next, in order
 
-1. **W5, the loop — and it is now ONE step away.** Routing exists and is gated (118/118 places,
+1. **The shared phase-mesh crowd — see §10 above, which specifies it completely.** This is the
+   whole of "make the station feel alive" and the arithmetic is already done.
+2. ~~**W5, the loop**~~ — **DONE**, and `walkable.py --deck blue/0/0` has been reporting all four
+   steps for a while. Routing exists and is gated (118/118 places,
    every sampled resident's home and job mutually reachable). Poses exist and reach a frame,
    including a walk cycle. What does not exist: nobody **moves**. `npc.gd` already transforms each
    person rigidly about their own pivot every physics frame, so **translation along a route is
@@ -215,8 +281,11 @@ crowd 67/67, body 501/501, export_scene 243/243.
    sphere is only wide enough for a 254.2 m deck over **58 m of that**. Either the bay is 140 m
    and mis-addressed or INV-022 is wrong. `docking_bay._selftest` ratchets it at ≥40% so it
    cannot get worse. **A real fork, not mine to rule on.**
-5. **Props are still not solid.** `dressing.py` puts 82,362 triangles of furniture on the station
-   and none of it is in the collision shells, so a player walks through tables.
+5. ~~**Props are still not solid.**~~ **WRONG — they have been solid since 3v.**
+   `collision.prop_boxes` derives them from the room's own emitted mesh and `deck.py --selftest`
+   prints *"114 furniture boxes, 1,368 collision triangles for them"*. This entry was inherited
+   from an older list and is left here struck through rather than deleted, because a next-session
+   list that quietly loses items is how a real one gets distrusted.
 6. **The ionization vanes.** Three support rings measured off `other map 4.jpg` (z 1620/1907/2198,
    agreeing to 1.4% in spacing); the six vanes do not resolve in any frame. The agent recorded the
    measurement and did **not** build them, because the counts live only in `00-MASTER.md` §1.3 and
