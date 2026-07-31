@@ -3668,3 +3668,117 @@ recognisable hull section would move `comms_operations` (or confirm it); a resol
 level numbering would replace every deck index here; and a decision on the `decks_in_ring`
 z-clipping that volume-audit.md §7.1 proposes would change every floor radius, because these are
 the outermost decks the hull leaves and they are the first ones such a clip would touch.
+
+
+## INV-110 — A bespoke room's doorway is 2.20 m wide and 2.40 m high, derived from the assembler's own probe
+
+`station/bespoke.py`, `DOOR_HALF_W_M` / `DOOR_H_M` / `doorway_wall()`; applied in
+`station/hospitality.py` and `station/zocalo.py`.
+
+**What.** Every module that builds a named place in its own frame — the Zocalo, a bar, a docking
+bay, C&C — now leaves a clear aperture **2.20 m wide by 2.40 m high** in the face that a ring
+corridor arrives at, cut as three closed plates round the hole rather than as a hole punched
+through one solid.
+
+**Why necessary.** Not one of the nine bespoke modules authored a doorway, because each was
+written to be *rendered* on its own, before `station/deck.py` could assemble one onto a ring.
+`deck.build_deck` measures the mouth with `_mouth_clear` and falls back to a generic store bay when
+it is walled, so as of session 3z seven module-owned places assembled as grey boxes for this reason
+alone: `cnc`, `council_chamber`, `customs_south`, `docking_bays`, `bar_unnamed`, `eclipse_cafe` and
+`happy_daze`. A bar with four sealed walls is not a bar.
+
+**What constrained it.** Three measurements, none of them a preference:
+
+* the corridor's pressure door is **1.50 × 2.10 m** (`interior_kit.PROVISIONAL`), so the leaf
+  itself wants 0.75 m of half-width;
+* `deck._mouth_clear`, which is the assembler's own acceptance test and therefore the thing the
+  aperture has to satisfy, probes at **x = dx ± 0.60 m** in five steps and at 0.35/0.60/0.85 of the
+  door height — so the highest probe is **1.785 m**;
+* `dx` is how far the corridor's bay division moved the door off the room's own centre. Measured
+  across every module-owned place the assembler places, **max |dx| = 0.40 m**
+  (`customs/arrival_concourse`); `deck.deck_plan.rank`'s phase sweep already drives most to 0.00.
+
+0.60 + 0.40 = 1.00 m is what every probe needs to miss, and 1.10 m of half-width covers that and
+the leaf with 0.10 m to spare. 2.40 m of height clears the 1.785 m probe and the 2.10 m leaf and
+reads as a door rather than a slot. The three-plate construction is not a taste call either:
+`quarters.unit` already records the rule — *"built as plates around the volume, never as a solid
+with a hole — the mistake command_control.py shipped when it sealed its own window inside the
+wall"* — and here it also keeps the surface closed, where a boolean would leave an unrimmed
+aperture facing the one place on the station a player is guaranteed to be looking at.
+
+**What would overturn it.** A corridor door wider than 1.50 m; a change to `_mouth_clear`'s probe
+span; or a bay division that lets |dx| exceed 0.70 m. All three are asserted against in
+`bespoke._selftest`, which measures the narrowest doorway on the station every run (currently
+`qtr_civilian` at 1.70 m) and fails if any composed room's aperture drops below the corridor's own
+leaf width — so this number cannot drift silently.
+
+## INV-111 — A doorway keeps a 2.20 × 2.00 m approach zone clear of furniture and of people
+
+`station/bespoke.py`, `APPROACH_DEPTH_M`, and the span filter in `compose()`.
+
+**What.** Inside a composed bespoke room, no piece of `dressing` furniture and no `populace`
+inhabitant may stand within **1.10 m either side of the doorway and 2.00 m in from the near face**.
+Whole pieces are dropped, never clipped, and a dropped person is dropped from the cast list as well
+as from the mesh.
+
+**Why necessary.** Cutting the hole is only half of it. `dressing.dress` fills a room from its
+walls inward and its circulation rule reserves a band down the room's **long** axis only —
+`abs(cx) - sw/2 < lane_hw` — which says nothing about the **end** wall, and the end wall is the one
+the corridor's door is in. Measured this session, three places had an **open shell and a walled
+composition**: `cnc`, `council_chamber` and `customs_south` each built a clear mouth and then put a
+run of lockers across it. The room the player arrives at is furnished into a wall.
+
+`dress` cannot be asked to fix this: it takes a room's dimensions and knows nothing about where a
+corridor met it, and that ignorance is exactly the property that lets it be composed with a bespoke
+shell in the first place. So the pieces are dropped after they are built, in the shell's own frame,
+which is the only frame in which the aperture's position is known.
+
+**What constrained it.** The half-width is INV-110's, because a doorway you can reach and cannot
+walk through is the same defect one step further in. The depth is the argument: `_mouth_clear` only
+looks **1.2 m** in, so 1.2 m would satisfy the gate and still leave a crate where the player's
+second step lands. The character capsule is **0.35 m** in radius (`station/collision.py`) and a
+stride is about 0.75 m, so a body needs roughly 1.5 m past the jamb to be standing *in* the room
+rather than in its doorway; 2.00 m is that plus the same 0.5 m of slack the aperture gets.
+
+**What would overturn it.** A change to the capsule radius, or a room whose declared function puts
+something at the door on purpose — a customs desk, a maître d' stand, a security checkpoint. The
+second is likely and is the reason `compose` takes `door_at` as a parameter rather than reading a
+constant: a caller that knows better can say so.
+
+## INV-112 — Local x = 0 in a bespoke room is a DOORWAY, not a centre, and it is measured
+
+`station/bespoke.py`, `near_face_opening()`, used by `room_shell()`.
+
+**What.** When a bespoke module's geometry is recentred onto a ring, the x it is centred on is the
+middle of the widest **way in** through its near face — a run of x that is unobstructed at the
+corridor's own three probe heights *and* has floor under it — rather than the middle of its
+bounding box.
+
+**Why necessary.** `deck._place_local` maps a room's local x = 0 onto the place's own bearing,
+which is precisely where `deck_plan` puts the corridor's door. So local x = 0 is not a centre, it
+is a doorway, and the bounding box coincides with it only when a module happens to be symmetric.
+Two are not, and both were wrong on the shipped build:
+
+* **`alien_sector.gallery`** is a 4.2 m corridor with its quarters hung off the left wall out to
+  x = −4.85, so its bounding-box centre is **4.66 m** off the corridor. Measured: with bbox
+  centring there is **no floor at all** under the doorway — the door opened onto the 3 m of empty
+  air outboard of the gallery wall. `_mouth_clear` reported that as OPEN, because nothing is in the
+  way of a probe cast into a void. It is the clearest false pass this project has found.
+* **`quarters.run`** is a row of identical cells whose doorways are 4.1 m apart. On four of the
+  seven quarters classes the bounding-box centre lands on the wall between two cells;
+  `qtr_command` and `qtr_civilian` both measure WALLED with bbox centring and OPEN with this.
+
+**What constrained it.** The obstruction test uses `deck._mouth_clear`'s own **1.2 m** band and its
+own three probe heights, so the two agree by construction rather than by being kept in step. The
+floor test uses INV-111's **2.00 m**, because a body steps *through* the aperture and lands past it
+— `council_chamber` has no floor whatever in the first 1.2 m, its deck starting 1.42 m in behind
+the gallery step, and the narrower band called a chamber with a 22 m floor unenterable. Ties are
+broken toward the origin, which is what makes the operation a **fixed point**: `room_shell` shifts
+by the answer and `_selftest` re-measures and asserts the answer is now zero. With "widest" alone
+that round trip does not close, because six identical cells are identical to the millimetre and the
+sample grid lands differently once the mesh has moved.
+
+**What would overturn it.** A module whose near face has several equally good doorways and a
+*reason* to prefer one — a Zocalo whose concourse should meet the corridor at a named entrance
+rather than at whichever gap is widest. That is a layout decision and this is a measurement; the
+measurement is the right default and the wrong override.
