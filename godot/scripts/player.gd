@@ -47,6 +47,14 @@ func _ready() -> void:
 	_cam.position = Vector3(0.0, eye_height_m, 0.0)
 	_cam.near = 0.15
 	_cam.far = 12000.0
+	# THE SHIPPED CAMERA MUST NOT BE WIDER THAN THE ONE THE BUDGET GATES. Godot's
+	# `Camera3D` defaults to 75 degrees vertical -- verified against the engine,
+	# not remembered -- and `station/budget.py` counts the frustum at 70 (INV-083),
+	# so the build was rendering 5 degrees MORE than anything measured it. A
+	# budget gated on a narrower view than ships understates by exactly the
+	# geometry the wider view adds, which is the same defect as measuring the kit
+	# in isolation and calling it a frame.
+	_cam.fov = 70.0
 	if not Engine.is_editor_hint():
 		Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
 

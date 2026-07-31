@@ -848,7 +848,7 @@ def _sweep():
     schema, profile = it.load()
     decks = sorted({(q["sector"], q["ring"], q["deck"]) for q in dr.PLACES})
     ok, failed, deferred, holes, unopened, served = [], [], [], [], [], 0
-    drum = []
+    drum, dw_lod0 = [], 0
     for s, r, dk in decks:
         if (s, r) in NOT_RING_DECKS:
             # NOT DEFERRED ANY MORE, COUNTED. The drum is a different KIND of
@@ -863,6 +863,7 @@ def _sweep():
                 holes.append((s, r, dk))
             served += len(rows)
             drum.append((s, r, dk, len(rows), len(dt)))
+            dw_lod0 = max(dw_lod0, int(dm["drum_lod0_triangles"]))
             continue
         try:
             v, t, m = build_collision(schema, profile, s, r, dk)
@@ -890,8 +891,18 @@ def _sweep():
     for u in unopened[:10]:
         print(f"     no door: {u}")
     print(f"  {len(holes)} decks with a hole in the floor  {holes[:5]}")
-    print(f"  {sum(x[4] for x in ok):,} collision triangles for the whole "
-          f"walkable station")
+    # THE HEADLINE USED TO SUM `ok` ALONE AND CALL THAT THE STATION. It is the
+    # ring decks only -- the drum takes the `continue` above and never reaches
+    # this sum -- so the number printed 75,642 when the walkable station is
+    # 649,082, wrong by 8.6x, and it was the drum's own ground that was missing:
+    # 88% of the real total (station/budget.py, session 3w). A whole-station
+    # figure that quietly excludes the largest walkable surface on the station
+    # is the same defect as a gate that measures a part in isolation, one level
+    # up. Per tile is what actually resides; lod0 is what exists.
+    print(f"  {sum(x[4] for x in ok):,} collision triangles across the ring "
+          f"decks, {sum(x[4] for x in drum):,} more in the drum's ground per "
+          f"tile ({dw_lod0:,} for the whole drum at lod0) -- the walkable "
+          f"station is {sum(x[4] for x in ok) + dw_lod0:,}")
     bad = len(failed) + len(holes) + len(unopened)
     if bad:
         print("A deck that does not assemble is a deck nobody can be on.")

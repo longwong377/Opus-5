@@ -50,7 +50,13 @@ import interior_kit as K                                        # noqa: E402
 # How much a facet of the swept shell may sag inside the true cylinder. At the
 # ring radius this sets the step count; 1 mm is far below anything a character
 # controller reacts to and still costs only a few thousand triangles.
-MAX_SAG_M = 0.001
+# TIED TO THE STEP TOLERANCE, not chosen independently. Sagging less than the
+# largest lip this project certifies a floor smooth at buys nothing a body can
+# feel: `station/budget.py` measured the corridor shell built at 977 steps where
+# 437 reach the same certified 5 mm, 2.24x finer than the tolerance and 4,325
+# wasted triangles a deck (INV-085). Two numbers describing one thing had drifted
+# apart because only one of them was ever derived.
+MAX_SAG_M = 0.005
 
 # The tallest lip a walking body should ever meet on a floor it is meant to
 # cross. Godot's own step handling is generous, but the failure this module

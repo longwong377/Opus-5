@@ -2850,7 +2850,7 @@ is exactly why the question is worth one capture.
 
 ---
 
-## INV-083 — The budgeted camera: 70 degrees vertical at 16:9, and the shipped camera is wider
+## INV-083 — The budgeted camera: 70 degrees vertical at 16:9 — CLOSED, the shipped camera now matches
 
 **Authority 5 — declared extrapolation. Session 3x.**
 
@@ -2876,12 +2876,18 @@ degrees vertical, and gating there would flatter the content by 40% (93,618 tria
 155,018 at the same pose). The upper bound is the shipped camera: `player.gd` sets **no** `fov`, so
 a player is given Godot 4's Camera3D default of **75 degrees vertical**, and at that fov the same
 pose renders **161,792 triangles, 6,774 more than the budget measures**. `budget.py` therefore gates
-that the shipped camera is not wider than the budgeted one, and **that check is red today**.
+that the shipped camera is not wider than the budgeted one.
 
-**What would overturn it.** A decision to ship a different fov. The fix either way is one line —
-`_cam.fov = 70.0` in `player.gd`, or move `DECK["fov_v_deg"]` to 75 and re-measure — and the gate
-names both. A `fov` slider in options, which most PC games have, turns this into a bound that must
-be measured at the widest setting the slider allows.
+**CLOSED the same session it was opened.** `player.gd` now sets `_cam.fov = 70.0` explicitly, so the
+budget and the build agree by construction rather than by coincidence, and the gate reads
+`70 deg / 70 deg, +0 against the budgeted camera`. The alternative — moving `DECK["fov_v_deg"]` to 75
+and re-measuring — was rejected because it makes `frustum structure` worse by 6,774 triangles to fix
+a bookkeeping mismatch, and the wide bound was already deliberate.
+
+**What would overturn it.** A decision to ship a different fov; the gate names the one line either
+way. A `fov` slider in options, which most PC games have, turns this into a bound that must be
+measured at the widest setting the slider allows — and note the check is one-sided by design: a
+NARROWER shipped camera is fine, because it renders less than the budget priced.
 
 ---
 
@@ -2926,9 +2932,10 @@ instances none of them.
 
 **Authority 5 — declared extrapolation. Session 3x.**
 
-There was no collision budget at all, on any deck, before this. The station carries 75,642 collision
+There was no collision budget at all, on any deck, before this. The station carried 75,642 collision
 triangles across 66 ring decks (`deck.py --sweep`) and 573,440 more in the drum's ground at lod0,
-and none of it was measured against anything.
+and none of it was measured against anything. **Bound 1 was red on first measurement and applying
+its own remedy took the ring decks to 35,746 — a 53% cut — for a station total of 609,186.**
 
 **Bound 1 — tessellation against tolerance, and it invents nothing.** The only correctness
 requirement on a collision surface is that it represent the surface to within the tolerance the walk
@@ -2936,12 +2943,21 @@ gate certifies. Triangles finer than that buy nothing a player can feel and cost
 time and streaming latency. Both generators already claim to derive their density this way, so the
 bound is theirs:
 
-* **corridor** — `collision.corridor_shell` sizes its angular step from `MAX_SAG_M = 1 mm`, the sag
-  of a facet inside the true cylinder, and its own comment says 1 mm "is far below anything a
+* **corridor** — `collision.corridor_shell` sized its angular step from `MAX_SAG_M = 1 mm`, the sag
+  of a facet inside the true cylinder, and its own comment said 1 mm "is far below anything a
   character controller reacts to". The tolerance a floor is *certified* against is
   `collision.STEP_TOLERANCE_M = 5 mm`. Sag scales as the square of the step, so 5 mm allows
-  `sqrt(5)` times fewer steps: **437 against the 977 built. The shell is 2.24x the size the
-  project's own certified tolerance requires** — 4,325 triangles a deck, and this bound is red.
+  `sqrt(5)` times fewer steps: **437 against the 977 built. The shell was 2.24x the size the
+  project's own certified tolerance required** — 4,325 triangles a deck, and this bound was red.
+
+  **FIXED, and the fix is the bound's own argument applied.** `MAX_SAG_M = STEP_TOLERANCE_M` now,
+  so the two cannot diverge again by anybody editing one of them. The shell builds 437 steps,
+  `blue/0/0`'s corridor shell falls 7,824 -> 3,496 triangles and the whole deck 5,150. **What
+  changed for a body: nothing measurable.** The shell's own floor lip rose 0.72 mm -> 1.85 mm
+  against the 5 mm bar it is certified at, and the same deck re-walked to the same numbers —
+  `traverse_m 125.94`, `offfloor 0/1800`, into `docking_bays` from 6.31 m to 0.04 m, 5 inhabitants
+  looking up 3 deg off. A collision change that is not re-walked is a collision change nobody
+  checked.
 * **drum** — `drum_walk.collision_stride` already picks the coarsest LOD stride whose height error
   stays under `drum_walk.STEP_M` (0.10 m, itself `rooms.TRIM_MAX_PROUD_M`). Stride 1 at 0.007 m is
   legal, stride 2 at 0.193 m is not, so the bound is that the tile was *built* at stride 1. It was.
@@ -2954,9 +2970,11 @@ faces and BVH in system RAM, and this engine is built `precision=double`, so a `
 bytes. Per triangle: 3 vertices x 24 B = **72 B** of face array, plus a BVH of about 2N nodes each
 holding an AABB (2 x Vector3 = 48 B) and three ints, ~64 B a node = **128 B**. **About 200 B a
 triangle.** The allowance is **1% of a 16 GB machine = 160 MB = 800,000 triangles**; 16 GB is the
-companion figure to CLAUDE.md's stated 12 GB VRAM card and is itself declared. Measured: 649,082
-triangles resident if the whole station were loaded at once — **130 MB, 81% of the allowance, and
-88% of it is the drum**.
+companion figure to CLAUDE.md's stated 12 GB VRAM card and is itself declared. Measured: 609,186
+triangles resident if the whole station were loaded at once — **122 MB, 76% of the allowance, and
+94% of it is the drum**. (649,082 and 88% before bound 1's fix. Cutting the corridors made the
+drum's *share* larger, which is the honest reading: the ring decks were never where the collision
+memory was, and the one number worth attacking next is the drum's 573,440.)
 
 **What this bound is actually for, stated because it is not obvious from the number.** The
 regression this project has already made once is handing the render mesh to the physics engine

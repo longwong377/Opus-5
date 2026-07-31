@@ -46,8 +46,25 @@ jobs:
           print(f"glb valid: {len(g['meshes'])} meshes")
           PY
 
+      # THIS STEP IS EXPECTED RED, and saying so here is the point. Session 3w
+      # replaced budget.py's synthetic visible-set estimate with a real frustum
+      # sweep over the assembled deck, and the estimate had been 3.2x optimistic:
+      # three content bounds went over the moment they were measured honestly.
+      # The remedy is to move the content, not the limit. `--no-deck` is the only
+      # honest lever if this has to pass for an unrelated reason, and it prints a
+      # banner saying the one gate that measures what a player renders was
+      # skipped. It also now costs ~62 s rather than 2 s, because measuring a
+      # frame means building one.
       - name: Performance budgets
         run: python3 station/budget.py
+
+      # SEPARATE, because it asks a different question and must stay green.
+      # `RING_DECK_COLLISION_TRIS` is a cache of a 60 s whole-station sweep, and
+      # a cache that can go stale silently is a second copy of a computed number.
+      # `--no-deck` keeps this step to the drift check rather than re-running the
+      # frame budget above.
+      - name: Whole-station collision total has not drifted
+        run: python3 station/budget.py --station --no-deck
 
       - name: Canon assertions
         run: python3 station/validate.py

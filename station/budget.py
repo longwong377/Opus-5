@@ -744,11 +744,11 @@ def deck_section(args):
                    f"{len(tris):,} tri, "
                    f"{len(tris)/COLLISION['max_resident_tris']*100:.0f}% of this "
                    f"allowance on its own")
-        print(f"  NOT IN `deck.py --sweep`'s headline figure: the drum. The "
-              f"sweep prints {drum['ring_decks']:,} 'for the whole walkable "
-              f"station' and sums ring decks only -- the drum's ground is "
-              f"{drum['drum_lod0']:,} triangles at lod0, "
-              f"{drum['drum_lod0']/max(station,1)*100:.0f}% of the real total.")
+        print(f"  the drum is {drum['drum_lod0']/max(station,1)*100:.0f}% of "
+              f"that total and `deck.py --sweep`'s headline omitted it until "
+              f"this file measured it -- the sweep called {drum['ring_decks']:,} "
+              f"'the whole walkable station' and summed ring decks only. It "
+              f"now prints all three numbers.")
 
     return {
         "frustum_all": n_all, "frustum_structure": n_struct,
@@ -784,10 +784,17 @@ def drum_collision():
         return None
 
 
-# `python3 station/deck.py --sweep`, run at 9f13dbf. Sixty-six ring decks, and
-# building them all takes ~60 s, which is why it is not rebuilt on every budget
-# run -- `--station` does rebuild it and fails if this number has drifted.
-RING_DECK_COLLISION_TRIS = 75_642
+# `python3 station/deck.py --sweep`. Sixty-six ring decks, and building them all
+# takes ~60 s, which is why it is not rebuilt on every budget run -- `--station`
+# does rebuild it and fails if this number has drifted.
+#
+# IT DRIFTED ON PURPOSE AND THE GATE CAUGHT IT, which is what a cached number is
+# for. Was 75,642 at 9f13dbf, when `collision.MAX_SAG_M` was 1 mm; tying the sag
+# to `STEP_TOLERANCE_M` (5 mm, the tolerance `floor_steps` actually certifies a
+# floor against -- INV-085) took every corridor shell to a coarser angular step
+# and the station to 35,746, a 53% cut for no change a foot can feel. The shell
+# lip rose 0.72 mm -> 1.85 mm against a 5 mm bar, and the deck still walks.
+RING_DECK_COLLISION_TRIS = 35_746
 
 
 def main(argv=None):
@@ -997,15 +1004,27 @@ def main(argv=None):
         out = subprocess.run(
             [sys.executable, os.path.join(ROOT, "station/deck.py"), "--sweep"],
             capture_output=True, text=True, check=False).stdout
-        m = re.search(r"([\d,]+) collision triangles for the whole", out)
-        got = int(m.group(1).replace(",", "")) if m else -1
-        check("ring-deck collision total", abs(got - RING_DECK_COLLISION_TRIS),
-              0, " tri",
-              f"deck.py --sweep says {got:,}, this file records "
-              f"{RING_DECK_COLLISION_TRIS:,}",
-              when="any drift at all -- the recorded figure is a cache of a "
-                   "60 s sweep and a cache that can go stale silently is a "
-                   "second copy of a computed number")
+        # THIS READS ANOTHER PROGRAM'S PROSE, so it breaks when the prose
+        # changes -- and it did, the moment `_sweep`'s headline was corrected to
+        # name the drum. It went RED rather than quietly green, which is the
+        # only failure direction that is acceptable for a cache check, but a
+        # missing match and a real drift must not print the same way: `got = -1`
+        # against 35,746 reads as an off-by-one drift and is a parse failure.
+        m = re.search(r"([\d,]+) collision triangles across the ring", out)
+        if m is None:
+            check("ring-deck collision total", 1, 0, "",
+                  "deck.py --sweep printed no ring-deck figure this file can "
+                  "read -- its headline wording changed and this regex did not",
+                  when="any change to `_sweep`'s headline line")
+        else:
+            got = int(m.group(1).replace(",", ""))
+            check("ring-deck collision total",
+                  abs(got - RING_DECK_COLLISION_TRIS), 0, " tri",
+                  f"deck.py --sweep says {got:,}, this file records "
+                  f"{RING_DECK_COLLISION_TRIS:,}",
+                  when="any drift at all -- the recorded figure is a cache of a "
+                       "60 s sweep and a cache that can go stale silently is a "
+                       "second copy of a computed number")
 
     print("Note: these gate the numbers framerate is a function of. They say nothing\n"
           "about actual framerate, which needs the target hardware.")
