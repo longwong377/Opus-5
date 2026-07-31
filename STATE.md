@@ -1,6 +1,6 @@
 # Project State
 
-**Last updated:** 2026-07-31 · **Session 3z** — **the register is routable, a lift is a vehicle, people are POSED, and the docking bays have an outside** · **3y** — the generic-bay substitution is measured and declared: do NOT swap, compose · **3x** — the doors close, 1,572 open edges → 0 · **3w** — the frame budget measured for real · **3v** — W1/W2 done, 66/66 decks assemble
+**Last updated:** 2026-07-31 · **Session 3z** — **the register is routable, a lift is a vehicle, the corridors have people walking in them, and every single-room cluster was sealed** · **3y** — the generic-bay substitution is measured and declared: do NOT swap, compose · **3x** — the doors close, 1,572 open edges → 0 · **3w** — the frame budget measured for real · **3v** — W1/W2 done, 66/66 decks assemble
 
 ## Session 3z (last) — FOUR THINGS THE STATION COULD NOT DO, AND NOW CAN
 
@@ -114,21 +114,110 @@ Six negative controls, all fire. Two of them did not fire on the first pass and 
 defects in the gates. `docs/engine-deck-corridor.png` was **two content commits stale** — it
 showed a blown-lens state that no longer reproduces — and is refreshed.
 
+### 7. THE CORRIDOR HAS PEOPLE IN IT, AND THE DENSITY IS DERIVED
+
+Every person this project had ever placed was placed in a **room**. A player spawned in the
+corridor, walked its 126 m and met **nobody** — on a station of 250,000, in the one space the
+scope names twice.
+
+The density is derived from three things this repository can recompute:
+
+1. `schedule.RESIDENT_TOTAL` = **250,000** (authority 1, the opening narration)
+2. **50.8 min/day** — the mean time a resident spends walking in corridors, measured by walking
+   each resident's **own** 24-hour schedule (`resident.where_at` hour by hour) and pricing every
+   change of place through the nav graph, counting only `walk`/`stair`/`door` links. Not the
+   commute: the whole day, meals and recreation included, which is why it is five times the
+   5.0 min a one-way commute spends on foot.
+3. **825,066 m²** of corridor — 317,333 m of ring at `PROVISIONAL`'s own width, over 251 decks.
+
+250,000 × 50.8/1440 = **8,812 walking at any instant**, over 825,066 m², is **1.07 per 100 m²**
+— one person every 36 m. **That is sparse and it is supposed to be.**
+`FALLBACK_PER_100M2["transit"]` is 12.0, eleven times this, which would put 914 people on one
+Blue deck. The station simply has 0.83 km² of corridor. What makes a corridor feel busy is the
+**distribution**, which `corridor_headcount` takes from the occupancy of the places each deck
+serves: 134 on Blue's six-room docking cluster, 4 on a plant deck.
+
+Everyone is **walking** — `walk_clip` at a per-resident phase, the first use of the Froude gait
+ladder for anything — and half go each way round the ring.
+
+Two measured defects found while building it, both caught by gates written alongside:
+
+- **The stride advance comes off; the bob and the sway do not.** `walk_clip`'s root moves in
+  three axes and they are not the same kind of motion. Taking all three off lifted all eight
+  phases 0.104–0.143 m: eighty people hovering 12 cm over the deck.
+- **A body's half-width is measured, not `BODY_R_M`.** That constant is a nominal human's 0.32 m
+  and this station has fifteen species; a wide shoulder went 0.10 m through the end wall.
+
+`docs/engine-corridor-populated.png` is the frame, and it is the first here where a player would
+meet somebody. **Honest craft read at 6 m:** the near figure is LOD 4 at 484 triangles and its
+shoulders and head show it. That is the documented bake-time compromise — `corridor_lod` picks
+for the 33 m **mean** distance down a 66 m sight line — and the fix for the close encounter is
+runtime LOD in `npc.gd`, not a bigger bake.
+
+### 8. EVERY SINGLE-ROOM Z-CLUSTER ON THE STATION WAS SEALED (agent, merged)
+
+`deck_plan` swept 24 phases of the structural grid and **`break`ed on the first phase with no
+unopened room**. On a one-room cluster that is the first phase tried — so the door stayed
+wherever the bay division put it. The fit test asks only whether the leaf lands inside the
+room's **wall**, which a door 1.33 m off centre does in a 7 m room. A body steering straight at
+the room crosses the corridor wall 0.14 m along that line and meets the jamb.
+
+`walkable.py --deck` measured **0.70–0.74 m of progress** into every single-room cluster —
+corridor half-width less the capsule radius — including `grey/0/24 → thieves_guild`, **which
+this file records PASSING in 3v**. A silent regression on everything except `blue/0/0`, whose
+goto target happens to sit at `dx = 0.00`.
+
+Fixed by ranking all 24 phases instead of stopping: rooms opened first, then doors nearest their
+room's centre. `grey/0/24` now walks 4.3 m → 0.05 m, matching its 3v record exactly.
+
+The agent also added **ten locations** — reactor hall, fuel bunkerage, coolant gallery, generator
+hall, heat exchanger hall, comms operations, cargo transfer deck, mooring gallery, EVA lock,
+gunnery control — with **six of the audit's ten addresses corrected** after re-verification at
+401 samples per span. `coolant_gallery` was the bad one: at the audit's z 450–950 Yellow carries
+**one** deck stack, so ring 3 does not exist anywhere in that band. INV-104.
+
+### WHERE THE STATION IS, as of the end of 3z
+
+`python3 station/deck.py --sweep`, which is the only gate here that asks a whole-station question:
+
+```
+71 decks in the gazetteer, 90 z-clusters assembled across them
+  90 assemble, 0 fail, 0 deferred, 1 on heightfield ground
+  128 of 128 locations on an assembled cluster, 128 with a door or on ground, 0 without
+  0 decks with a hole in the floor
+  963 people walking in the corridors and 449 in the rooms, over 45,179 m2 of assembled
+  corridor: 2.13 per 100 m2 against the station-wide 1.07 the derivation gives
+  49 module-owned places assembled as GENERIC bays (18 have a bespoke builder unused)
+  58,660 collision triangles across the ring decks — the walkable station is 632,100
+```
+
+Suites: navigation 93/93, populace 50/50, deck 28/28, rooms 673/673, bespoke 79/79,
+directory **830/830**, validate 32/32, materials **1467/1467**, layer3 **34/34** (interior
+material coverage **406/406**), aperture 22/22, transit 85/85, resident 44/44, schedule 100/100,
+crowd 67/67, body 501/501, export_scene 243/243.
+
 ### What is next, in order
 
-1. **W5, the loop.** Routing exists and is gated; poses exist. What does not: nobody **moves**.
-   The bodies are baked into the merged mesh and `npc.gd` transforms them rigidly about their own
-   pivot, so translation along a route is available today; the legs need the clips sampled at more
-   than frame 0 and pushed to the engine as data.
-2. **`bespoke.compose` for the remaining module places.** 39 of 106 ring-deck places are owned by
-   a bespoke module and assembled as generic bays; 4 compose today.
-3. **`directory.py`'s `docking_bays` footprint.** The register puts a 140 m bay at z 7115 and the
+1. **W5, the loop — and it is now ONE step away.** Routing exists and is gated (118/118 places,
+   every sampled resident's home and job mutually reachable). Poses exist and reach a frame,
+   including a walk cycle. What does not exist: nobody **moves**. `npc.gd` already transforms each
+   person rigidly about their own pivot every physics frame, so **translation along a route is
+   available today** — what it lacks is the route in the actor JSON and the clip sampled at more
+   than one frame. Emit `route` (a list of world points from `NavGraph.path`) and the eight
+   `walk_clip` phases per person, and the corridor walks.
+2. **Runtime LOD for people.** `corridor_lod` bakes at the mean viewing distance because a static
+   mesh has no other option; the near figure in `docs/engine-corridor-populated.png` is 484
+   triangles at 6 m where `NPC_BUDGET` would give it 8,000. `npc.gd` holds each person's parts
+   already; swapping them by distance is the fix.
+3. **`bespoke.compose` for the remaining module places.** The sweep now says **49** module-owned
+   places are assembled as generic bays, 18 of them with a builder that exists and was not used.
+4. **`directory.py`'s `docking_bays` footprint.** The register puts a 140 m bay at z 7115 and the
    sphere is only wide enough for a 254.2 m deck over **58 m of that**. Either the bay is 140 m
    and mis-addressed or INV-022 is wrong. `docking_bay._selftest` ratchets it at ≥40% so it
    cannot get worse. **A real fork, not mine to rule on.**
-4. **Props are still not solid.** `dressing.py` puts 82,362 triangles of furniture on the station
+5. **Props are still not solid.** `dressing.py` puts 82,362 triangles of furniture on the station
    and none of it is in the collision shells, so a player walks through tables.
-5. **The ionization vanes.** Three support rings measured off `other map 4.jpg` (z 1620/1907/2198,
+6. **The ionization vanes.** Three support rings measured off `other map 4.jpg` (z 1620/1907/2198,
    agreeing to 1.4% in spacing); the six vanes do not resolve in any frame. The agent recorded the
    measurement and did **not** build them, because the counts live only in `00-MASTER.md` §1.3 and
    writing them as literals would put a canon count in a second place.
