@@ -226,6 +226,15 @@ def roving_pairs(hour: float) -> int:
 # 3.  The beat -- recomputed against the built station
 # ===========================================================================
 
+# MEMOISED, AND THE COST OF NOT DOING IT WAS MEASURED. `navigation.cell_plan`
+# walks every sector, ring and deck to build 2,330 cells, and `presence_at` is
+# called once per room by `populace.populate` -- so a whole-station sweep was
+# rebuilding the entire cell plan 128 times to learn which deck is outermost.
+# Keyed on the schema's identity because `interior.load()` returns a singleton
+# and a dict is not hashable.
+_OUTERMOST = {}
+
+
 def outermost_decks(schema=None, profile=None) -> dict:
     """The outermost pressurised deck of each sector, as `cell_plan` built it.
 
@@ -236,12 +245,17 @@ def outermost_decks(schema=None, profile=None) -> dict:
     """
     if schema is None:
         schema, profile = it.load()
+    key = (id(schema), id(profile))
+    hit = _OUTERMOST.get(key)
+    if hit is not None:
+        return hit
     decks, _cells = nav.cell_plan(schema, profile)
     out = {}
     for d in decks:
         s = d["sector"]
         if s not in out or d["floor_r_m"] > out[s]["floor_r_m"]:
             out[s] = d
+    _OUTERMOST[key] = out
     return out
 
 
@@ -810,6 +824,42 @@ def _selftest(out=print):                                       # noqa: C901
     check(0.0 < q["officers"] < z["officers"],
           "an ordinary residential place is policed, thinly",
           f"{q['officers']:.2f} against the Zocalo's {z['officers']:.1f}")
+
+    # -- THE MEMO, ASSERTED BY CALL COUNT AND NOT BY A STOPWATCH ---------
+    # `populace.populate` calls `presence_at` once per room, so a whole-station
+    # sweep calls it 128 times. Without the memo each call rebuilt the entire
+    # 2,330-cell plan. A timing assertion would be flaky under load; counting
+    # the calls is exact.
+    n += 1
+    real_plan = nav.cell_plan
+    calls = []
+
+    def _counting(sch, prof):
+        calls.append(1)
+        return real_plan(sch, prof)
+    try:
+        nav.cell_plan = _counting
+        _OUTERMOST.clear()
+        for _ in range(50):
+            presence_at("zocalo", 18.0, schema, profile, G)
+        memo_calls = len(calls)
+        del calls[:]
+        for _ in range(50):
+            _OUTERMOST.clear()
+            presence_at("zocalo", 18.0, schema, profile, G)
+        naive_calls = len(calls)
+    finally:
+        nav.cell_plan = real_plan
+        _OUTERMOST.clear()
+    check(memo_calls == 1,
+          "50 presence_at calls build the cell plan ONCE",
+          f"{memo_calls}")
+    n += 1
+    check(naive_calls >= 50,
+          "and the control -- clearing the memo each time -- builds it every "
+          "call, which is what the sweep was doing", f"{naive_calls}")
+    out(f"  memo: 50 calls -> {memo_calls} cell_plan build(s); "
+        f"control (memo cleared each call) -> {naive_calls}")
 
     # -- the gazetteer is actually read ----------------------------------
     n += 1
