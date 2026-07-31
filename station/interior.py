@@ -412,7 +412,7 @@ def streaming_cell_deg(r_floor, corridor_width, margin=1.5):
 
 
 def ring_arc(schema, profile, sector, ring_index, degrees=30.0,
-             start_deg=0.0, z_offset=None, radius_m=None):
+             start_deg=0.0, z_offset=None, radius_m=None, doors=()):
     """One arc of one ring deck: a corridor run bent around the station axis.
 
     The corridor kit is authored straight, along +Z. Here it is bent: each
@@ -421,6 +421,24 @@ def ring_arc(schema, profile, sector, ring_index, degrees=30.0,
     curved -- at 278 m radius a 30 degree arc is 146 m long and closes 30
     degrees of heading, which is visible from inside and is a large part of why
     the drum reads as a drum.
+
+    `doors` is a sequence of (angle_deg, side) -- where a room opens off this
+    corridor, in the corridor's own coordinate, which is an angle. Side -1 and
+    +1 are the two hands of the corridor; because the kit's +x becomes world +z
+    under the remap below, **a room at lower world z is side -1**.
+
+    UNTIL SESSION 3v THIS ARGUMENT DID NOT EXIST and `corridor_section` had
+    supported doors since it was written. The corridor was a closed tube for
+    every one of the sessions that built rooms to open off it -- a player could
+    walk 126 m of station and could not get into any of it, and no gate could
+    fail for it because every gate measured one mesh at a time.
+
+    The returned meta carries `doors_at`: where each door ACTUALLY landed, which
+    is not where it was asked for. A wall door snaps to the nearest bay centre,
+    since a door straddling two bays would need its closure cut round a portal
+    frame. Anything placing geometry on the far side of that door -- a
+    vestibule, a room's matching aperture -- has to build against the snapped
+    angle, so it is reported rather than left to be recomputed.
     """
     rings = ring_radii(schema, profile, sector)
     ring = rings[ring_index]
@@ -437,11 +455,41 @@ def ring_arc(schema, profile, sector, ring_index, degrees=30.0,
     n = max(1, int(round(degrees / step_deg)))
     seg_len = total / n
 
+    # Which section each door falls in, and where along it. Under the remap
+    # below a vertex at kit z sits at world angle `start + delta*i + z/r`, with
+    # delta = seg_len/r the angular width of one section -- so the arithmetic
+    # inverts exactly and a door's angle converts to a section and an offset
+    # with nothing approximated.
+    start_rad = math.radians(start_deg)
+    delta = seg_len / r
+    per_section, asked = {}, []
+    for ang_deg, side in doors:
+        phi = math.radians(ang_deg) - start_rad
+        # Wrap into the arc: an arc may start at -12 degrees and hold a door
+        # at 332, which is the same place approached the other way round.
+        phi = phi % (2.0 * math.pi)
+        if phi > math.radians(degrees) + 1e-9:
+            continue                            # not on this arc at all
+        i = min(n - 1, max(0, int(phi / delta)))
+        per_section.setdefault(i, []).append(((phi - delta * i) * r, side))
+        asked.append((i, ang_deg, side))
+
     verts, tris = [], []
     kit.reset_tags()
+    placed = []
     for i in range(n):
         a = math.radians(start_deg + degrees * (i + 0.5) / n)
-        v, t = kit.corridor_section(seg_len)
+        here = per_section.get(i, ())
+        v, t = kit.corridor_section(seg_len, doors=here)
+        for dz, side in here:
+            _ib, c = kit.wall_door_snap(seg_len, dz, None)
+            placed.append({
+                "angle_deg": math.degrees(start_rad + delta * i + c / r),
+                "side": side,
+                # The door plane is the wall face: kit x = side * w/2, and the
+                # remap sends kit x straight to world z.
+                "z_m": z_mid + side * kit.PROVISIONAL["corridor_width_m"] / 2.0,
+            })
         ca, sa = math.cos(a), math.sin(a)
 
         # The kit's +Z becomes the tangential direction; its +Y (up) becomes
@@ -464,6 +512,9 @@ def ring_arc(schema, profile, sector, ring_index, degrees=30.0,
         "arc_length_m": round(total, 1),
         "sections": n,
         "triangles": len(tris),
+        "z_m": z_mid,
+        "doors_at": placed,
+        "doors_asked": len(doors),
     }
 
 

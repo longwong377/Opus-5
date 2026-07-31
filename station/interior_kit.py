@@ -1061,6 +1061,29 @@ def junction(arms=(0, 1, 2, 3), p=None):
     return verts, tris
 
 
+def corridor_bays(length, p=None):
+    """The bay division of a corridor run: (count, pitch, centres along +z).
+
+    One definition, because two callers need it. `corridor_section` snaps a wall
+    door to the nearest bay centre -- a door straddling two bays would have to
+    have its closure cut round a portal frame -- and anything placing geometry
+    on the OTHER side of that door has to know where it actually ended up, not
+    where it was asked for. Recomputing the arithmetic at the second call site
+    is how the two silently drift apart.
+    """
+    p = p or PROVISIONAL
+    n = max(1, int(round(length / p["portal_spacing_m"])))
+    bay = length / n
+    return n, bay, [bay * (i + 0.5) for i in range(n)]
+
+
+def wall_door_snap(length, dz, p=None):
+    """Where a wall door asked for at `dz` will actually be put: (bay, centre)."""
+    n, _bay, centres = corridor_bays(length, p)
+    i = min(range(n), key=lambda k: abs(centres[k] - dz))
+    return i, centres[i]
+
+
 def corridor_section(length, p=None, doors=(), start_portal=True):
     """One length of corridor: portal frames, walls, deck, soffit and doors.
 
@@ -1089,8 +1112,7 @@ def corridor_section(length, p=None, doors=(), start_portal=True):
     w, h = p["corridor_width_m"], p["ceiling_height_m"]
     chamf = p["wall_chamfer_m"]
 
-    n_bays = max(1, int(round(length / p["portal_spacing_m"])))
-    bay = length / n_bays
+    n_bays, bay, bay_centre = corridor_bays(length, p)
 
     # `start_portal=False` hands the portal at z = 0 to whatever the run butts
     # onto. A junction already frames its own arm mouths, and two frames in the
@@ -1131,12 +1153,11 @@ def corridor_section(length, p=None, doors=(), start_portal=True):
     # rather than left where the caller asked. Placing it by centreline alone
     # let a door land on a portal frame and interpenetrate it, and a door
     # straddling two bays would need its closure cut round a portal.
-    bay_centre = [bay * (i + 0.5) for i in range(n_bays)]
     wall_doors = {}
     for dz, side in doors:
         if side:
-            i = min(range(n_bays), key=lambda k: abs(bay_centre[k] - dz))
-            wall_doors[(side, i)] = bay_centre[i]
+            i, c = wall_door_snap(length, dz, p)
+            wall_doors[(side, i)] = c
 
     inner = p["portal_depth_m"] / 2
     for i in range(n_bays):
@@ -1165,7 +1186,7 @@ def corridor_section(length, p=None, doors=(), start_portal=True):
             _merge(verts, tris, *door_assembly(p, section=chamfered_arch(w, h, chamf)),
                    offset=(0.0, 0.0, dz))
             continue
-        i = min(range(n_bays), key=lambda k: abs(bay_centre[k] - dz))
+        i, _c = wall_door_snap(length, dz, p)
         span = bay - 2 * inner
         rect = [(-span / 2, 0.0), (span / 2, 0.0), (span / 2, wall_h), (-span / 2, wall_h)]
         # Setback puts the frame's front face a little proud of the wall face

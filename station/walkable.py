@@ -42,6 +42,7 @@ Run: python3 station/walkable.py [--rooms N] [--deck] [--verbose]
 """
 import argparse
 import json
+import math
 import os
 import re
 import subprocess
@@ -70,6 +71,9 @@ MAX_DROP_M = 3.0
 # that only lets a body cover 60 m of a 126 m walk has something in it.
 TRAVERSE_FRAMES = 1800
 MIN_TRAVERSE_M = 63.0
+# How close to the middle of a room counts as being in it. A body that stops in
+# the doorway is not inside; one standing anywhere in the far half is.
+ARRIVED_M = 1.5
 # The deck spawns a body 50 mm above its floor, so a drop of more than a step
 # means it is not where the shell says the floor is.
 MAX_DECK_DROP_M = 0.30
@@ -128,7 +132,21 @@ def _glb(obj_path, glb_path):
         sys.argv = argv
 
 
-def walk_deck(sector, ring, deck, godot, timeout=1800, traverse=None):
+def room_target(meta, place):
+    """A point on the floor in the middle of a room, for the body to walk to.
+
+    ON THE FLOOR, not at eye or waist height. Aiming at a room's mid-height left
+    an irreducible 0.85 m in the "how close did it get" number, because a body
+    standing on the deck can never close a radial offset -- which reads as a
+    near miss and is nothing of the kind.
+    """
+    a = math.radians(place["angle_deg"])
+    r = meta["floor_r_m"] - 0.05
+    return (r * math.cos(a), r * math.sin(a), place["z_m"])
+
+
+def walk_deck(sector, ring, deck, godot, timeout=1800, traverse=None,
+              goto_key=None):
     """Assemble a deck, put a body on it, and walk it.
 
     The render mesh and the collision shell are exported separately and BOTH are
@@ -155,6 +173,15 @@ def walk_deck(sector, ring, deck, godot, timeout=1800, traverse=None):
            f"--collision={os.path.join(out, stem + '_col.glb')}",
            f"--spawn={sx},{sy},{sz}", "--gravity-mode=drum", "--walk-test",
            f"--traverse={traverse if traverse is not None else TRAVERSE_FRAMES}"]
+    # Walking INTO a named place is the claim W2 actually makes, and it is a
+    # strictly harder question than "did the body move": it fails when the route
+    # is blocked, not only when the body is wedged. The body steers straight at
+    # the target, so the target has to be one it can reach without navigating --
+    # the room the spawn is standing outside. Reaching one across the ring needs
+    # a path, and there is no pathfinder yet.
+    goto = goto_key or s["spawn_at"]
+    tx, ty, tz = room_target(cm, dr.by_key(goto))
+    cmd += [f"--goto={tx},{ty},{tz}"]
     try:
         res = subprocess.run(cmd, capture_output=True, text=True,
                              timeout=timeout).stdout
@@ -165,7 +192,8 @@ def walk_deck(sector, ring, deck, godot, timeout=1800, traverse=None):
         return {"key": stem, "error": "no verdict printed"}
     d = {"key": stem, "rooms": s["rooms"], "spawn_at": s["spawn_at"],
          "render_tris": len(t), "collision_tris": len(ct),
-         "arc_deg": cm["arc_deg"]}
+         "arc_deg": cm["arc_deg"], "goto": goto,
+         "doors": len(cm.get("rooms", ()))}
     for tok in m.group(1).split():
         k, _, val = tok.partition("=")
         d[k] = val
@@ -187,6 +215,17 @@ def deck_verdict(d):
     if int(off) > 0:
         return False, (f"left the floor for {off} of {tot} frames -- it walked "
                        f"off the deck")
+    if "goto_best_m" in d:
+        near = float(d["goto_best_m"])
+        if near > ARRIVED_M:
+            return False, (f"got within {near:.2f} m of {d['goto']} from "
+                           f"{float(d['goto_start_m']):.1f} m away -- the way "
+                           f"in is blocked")
+        return True, (f"{d['rooms']} rooms over {float(d['arc_deg']):.0f} deg, "
+                      f"{d['doors']} doors; a body spawns in the corridor and "
+                      f"WALKS INTO {d['goto']} "
+                      f"({float(d['goto_start_m']):.1f} m -> {near:.2f} m), "
+                      f"never leaving the floor")
     got = float(d.get("traverse_m", 0))
     if got < MIN_TRAVERSE_M:
         return False, (f"covered {got:.1f} m of corridor, under the "

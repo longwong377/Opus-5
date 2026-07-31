@@ -97,8 +97,8 @@ def _place_local(verts, radius_m, angle_deg, z_m):
     return out
 
 
-def room_axial_half_m(schema, profile, place):
-    """How far a built room reaches along the station axis from its centre.
+def room_interior_half_m(schema, profile, place):
+    """Half a built room's INSIDE length along the station axis.
 
     Read off the same three lines `rooms.build` uses to size itself, rather than
     off the gazetteer footprint: a location's stored footprint is its FULL
@@ -108,7 +108,14 @@ def room_axial_half_m(schema, profile, place):
     """
     _w, l_full, _r = R.room_extent_m(schema, profile, place)
     _bw, bl = R.bay_span_m(place)
-    return min(l_full, bl) / 2.0 + R.WALL_T_M
+    return min(l_full, bl) / 2.0
+
+
+def room_axial_half_m(schema, profile, place):
+    """The same, to the OUTSIDE of the wall. Which of the two is wanted matters:
+    the corridor is placed clear of a room's outer face, and a vestibule joins
+    its inner one."""
+    return room_interior_half_m(schema, profile, place) + R.WALL_T_M
 
 
 def corridor_z_m(schema, profile, here):
@@ -164,9 +171,55 @@ def build_collision(schema, profile, sector, ring, deck, z_m=None,
     if z_m is None:
         z_m = (z_clusters(sector, ring, deck) or [None])[0]
     here, lo, span = deck_arc(sector, ring, deck, z_m, max_rooms)
-    return C.corridor_shell(schema, profile, sector, ring, degrees=span,
-                            start_deg=lo, radius_m=plan["radius_m"],
-                            z_offset=corridor_z_m(schema, profile, here))
+    cz = corridor_z_m(schema, profile, here)
+
+    # The doors have to come from the RENDER corridor, not be recomputed here.
+    # A wall door snaps to the nearest bay centre, by up to 1.5 m of arc; a
+    # shell that cut its holes at the asked-for angles would give the player a
+    # door they can see and cannot enter, and a stretch of wall they can walk
+    # through. `ring_arc` reports where they landed and this uses that.
+    _rv, _rt, rmeta = it.ring_arc(schema, profile, sector, ring, degrees=span,
+                                  start_deg=lo, radius_m=plan["radius_m"],
+                                  z_offset=cz,
+                                  doors=[(q["angle_deg"], -1) for q in here])
+    doors = rmeta["doors_at"]
+    v, t, meta = C.corridor_shell(schema, profile, sector, ring, degrees=span,
+                                  start_deg=lo, radius_m=plan["radius_m"],
+                                  z_offset=cz, doors=doors)
+    # THE VESTIBULE JOINS TWO INTERIOR FACES, and getting either end wrong is a
+    # hole in the floor. The first version ran from the room's OUTER face to the
+    # kit's nominal half width (1.30 m) while the shell's floor edge is at its
+    # MEASURED clear half width (1.0806 m) -- a 0.219 m gap in the deck at every
+    # doorway, and a body that walked into one fell through and accelerated
+    # outward under spin gravity for 30 km. `plantroom_bay` got no vestibule at
+    # all, because outer-face-to-nominal computed as zero length.
+    near = cz - meta["half_w_m"]
+
+    # A vestibule per room, then the room's own shell with a hole in the end the
+    # vestibule arrives at.
+    meta["rooms"] = []
+    for q, d in zip(here, doors):
+        inner = q["z_m"] + room_interior_half_m(schema, profile, q)
+        for vv, tt in (C.vestibule_shell(meta, d["angle_deg"], inner, near),
+                       room_shell_for(schema, profile, meta, q,
+                                      d["angle_deg"])):
+            off = len(v)
+            v.extend(vv)
+            t.extend((a + off, b + off, c + off) for a, b, c in tt)
+        meta["rooms"].append({"key": q["key"], "door_deg": d["angle_deg"],
+                              "vestibule_m": round(near - inner, 3)})
+    meta["triangles"] = len(t)
+    return v, t, meta
+
+
+def room_shell_for(schema, profile, meta, place, door_angle_deg):
+    """A room's collision shell, sized the way `rooms.build` sizes the room."""
+    w_full, _l, _r = R.room_extent_m(schema, profile, place)
+    bw, _bl = R.bay_span_m(place)
+    return C.room_shell(meta, place["angle_deg"], min(w_full, bw) / 2.0,
+                        room_interior_half_m(schema, profile, place),
+                        R.ceiling_m(place), place["z_m"],
+                        door_angle_deg=door_angle_deg)
 
 
 def build_deck(schema, profile, sector, ring, deck, with_rooms=True,
@@ -193,11 +246,17 @@ def build_deck(schema, profile, sector, ring, deck, with_rooms=True,
     stats["corridor_z"] = cz
     cv, ct, cm = it.ring_arc(schema, profile, sector, ring,
                              degrees=span, start_deg=lo, radius_m=radius,
-                             z_offset=cz)
+                             z_offset=cz,
+                             doors=[(q["angle_deg"], -1) for q in here])
     V.extend(cv)
     T.extend(ct)
-    G.extend(cm["groups"] if isinstance(cm, dict) and "groups" in cm else [])
+    # NAMED, and it was not. `ring_arc` returns no groups, so 458,160 corridor
+    # triangles went into the OBJ as `deck_untagged` -- one anonymous mesh. The
+    # engine now has to tell the corridor from the rooms, because the collision
+    # shell replaces exactly the corridor and the rooms keep their own.
+    G.append(("corridor", 0, len(ct)))
     stats["corridor_tris"] = len(ct)
+    stats["doors"] = cm["doors_at"]
 
     # THE SPAWN COMES FROM THE COLLISION SHELL, which is the only mesh that
     # knows where the floor a body rests on actually is. Two earlier versions of
@@ -224,9 +283,17 @@ def build_deck(schema, profile, sector, ring, deck, with_rooms=True,
     if not with_rooms:
         return V, T, G, stats
 
-    for q in here:
+    by_key = {d["angle_deg"]: d for d in cm["doors_at"]}
+    for q, door in zip(here, cm["doors_at"]):
         try:
-            rv, rt, rg = R.build(schema, profile, q)
+            # The door's angle in the ROOM's frame: the room's local x is arc
+            # length from its own centre, so the offset is however far the
+            # corridor's bay snapping moved the door.
+            dx = math.radians(door["angle_deg"] - q["angle_deg"]) * radius
+            rv, rt, rg = R.build(
+                schema, profile, q,
+                door_at=(dx, K.PROVISIONAL["door_width_m"],
+                         K.PROVISIONAL["door_height_m"]))
         except Exception as e:                                  # noqa: BLE001
             stats["skipped"].append((q["key"], str(e)[:60]))
             continue
@@ -424,7 +491,19 @@ def _selftest():
                    q["key"]) for q in here_all)
     print(f"  corridor at z={cz:.2f}, near face {near:.2f}; rooms fall short "
           f"by {gaps[0][0]:.2f}-{gaps[-1][0]:.2f} m "
-          f"(widest {gaps[-1][1]}) -- these need vestibules")
+          f"(widest {gaps[-1][1]}) -- these are bridged by vestibules")
+
+    # EVERY DOORWAY MUST HAVE A FLOOR ACROSS IT. Three separately-generated
+    # meshes hand a walking body to one another here, and the first assembly
+    # left a 0.219 m hole at all six -- a body that found one fell through and
+    # accelerated outward for 30 km under spin gravity.
+    holes = C.floor_holes(cv, ct, cm)
+    check("there is a floor all the way from the corridor into every room",
+          not holes,
+          f"{len(holes)} sample points over nothing, first at {holes[:3]}")
+    print(f"  {len(cm['rooms'])} doors, vestibules "
+          f"{min(r['vestibule_m'] for r in cm['rooms']):.2f}-"
+          f"{max(r['vestibule_m'] for r in cm['rooms']):.2f} m")
 
     print(f"{ok}/{ok + fail} passed")
     return 1 if fail else 0

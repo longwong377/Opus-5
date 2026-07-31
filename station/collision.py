@@ -192,12 +192,23 @@ def _strip(verts, tris, pts_a, pts_b, want):
 
 def corridor_shell(schema, profile, sector, ring_index, degrees=30.0,
                    start_deg=0.0, radius_m=None, z_offset=None, p=None,
-                   prof=None):
+                   prof=None, doors=()):
     """A closed, smooth collision shell for one arc of ring corridor.
 
     Same arguments and same frame as `interior.ring_arc`, deliberately: the two
     are the render and the collide of one corridor and any divergence between
     their signatures is a divergence waiting to happen.
+
+    `doors` is `ring_arc`'s own `meta["doors_at"]` -- the SNAPPED positions, not
+    the requested ones -- so the hole a player walks through is the hole they can
+    see. Passing the asked-for angles instead would put the two up to 1.5 m
+    apart, which is a door you can see and cannot enter, or worse a wall you can
+    walk through.
+
+    THE COLLISION APERTURE HAS NO SILL. The visible door has a 100 mm one, and a
+    100 mm vertical face is a wall to a capsule, not a step -- the player would
+    stop dead in the doorway. Feet passing 100 mm through a sill is invisible in
+    first person and is exactly the class of thing this module exists to smooth.
     """
     rings = it.ring_radii(schema, profile, sector)
     ring = rings[ring_index]
@@ -213,29 +224,66 @@ def corridor_shell(schema, profile, sector, ring_index, degrees=30.0,
     # Steps sized so a facet's sag stays under MAX_SAG_M: sag = r(1-cos(dt/2)).
     dt = 2.0 * math.acos(max(-1.0, 1.0 - MAX_SAG_M / max(r, 1e-9)))
     steps = max(4, int(math.ceil(math.radians(degrees) / dt)))
-    angs = [math.radians(start_deg + degrees * i / steps)
-            for i in range(steps + 1)]
 
-    def band(rad, x):
-        return [(rad * math.cos(a), rad * math.sin(a), z_mid + x) for a in angs]
+    def arc_angles(a0_deg, a1_deg):
+        """Angles across a sub-range at the shell's own resolution."""
+        n = max(1, int(math.ceil(abs(a1_deg - a0_deg) / (degrees / steps))))
+        return [math.radians(a0_deg + (a1_deg - a0_deg) * i / n)
+                for i in range(n + 1)]
+
+    angs = arc_angles(start_deg, start_deg + degrees)
+
+    def band(rad, x, aa=None):
+        return [(rad * math.cos(a), rad * math.sin(a), z_mid + x)
+                for a in (angs if aa is None else aa)]
 
     verts, tris = [], []
     inward = [(-math.cos(a), -math.sin(a), 0.0) for a in angs]
     outward = [(math.cos(a), math.sin(a), 0.0) for a in angs]
 
-    # Floor: faces inward, which is UP for anyone standing on a spun ring.
+    # Floor: faces inward, which is UP for anyone standing on a spun ring. It
+    # runs THROUGH the doorways uninterrupted -- a player steps from corridor to
+    # vestibule without the floor ever handing over.
     _strip(verts, tris, band(floor_r, -hw), band(floor_r, hw),
            lambda i: inward[i])
     # Ceiling: faces outward, back down at the floor.
     _strip(verts, tris, band(ceil_r, -hw), band(ceil_r, hw),
            lambda i: outward[i])
+
     # Walls: face into the corridor, which is +Z for the -x side and vice versa.
-    _strip(verts, tris, band(floor_r, -hw), band(ceil_r, -hw),
-           lambda i: (0.0, 0.0, 1.0))
-    _strip(verts, tris, band(floor_r, hw), band(ceil_r, hw),
-           lambda i: (0.0, 0.0, -1.0))
+    # Each is broken by the doors on its own hand: full height between them, and
+    # only a header above them, so the aperture is genuinely open.
+    door_w = (p or K.PROVISIONAL)["door_width_m"]
+    door_h = (p or K.PROVISIONAL)["door_height_m"]
+    head_r = r - door_h
+    for side, face in ((-1.0, (0.0, 0.0, 1.0)), (1.0, (0.0, 0.0, -1.0))):
+        cuts = sorted((d["angle_deg"] - math.degrees(door_w / 2.0 / r),
+                       d["angle_deg"] + math.degrees(door_w / 2.0 / r))
+                      for d in doors if d.get("side", -1) == side)
+        at = start_deg
+        for c0, c1 in cuts:
+            c0 = max(c0, start_deg)
+            c1 = min(c1, start_deg + degrees)
+            if c1 <= at:
+                continue
+            if c0 > at:
+                aa = arc_angles(at, c0)
+                _strip(verts, tris, band(floor_r, side * hw, aa),
+                       band(ceil_r, side * hw, aa), lambda i, f=face: f)
+            # Over the opening, wall only from the door head upward.
+            aa = arc_angles(c0, c1)
+            _strip(verts, tris, band(head_r, side * hw, aa),
+                   band(ceil_r, side * hw, aa), lambda i, f=face: f)
+            at = c1
+        if at < start_deg + degrees:
+            aa = arc_angles(at, start_deg + degrees)
+            _strip(verts, tris, band(floor_r, side * hw, aa),
+                   band(ceil_r, side * hw, aa), lambda i, f=face: f)
 
     return verts, tris, {
+        "doors": list(doors),
+        "door_w_m": door_w,
+        "door_h_m": door_h,
         "sector": sector,
         "ring_index": ring_index,
         "radius_m": round(r, 3),
@@ -249,6 +297,151 @@ def corridor_shell(schema, profile, sector, ring_index, degrees=30.0,
         "triangles": len(tris),
         "profile": q,
     }
+
+
+def _quad(verts, tris, pts, want):
+    """One quad, wound so its faces point the way `want` says.
+
+    Winding decides whether a surface is a floor or a hole: Godot's
+    ConcavePolygonShape3D has `backface_collision` off, so a face wound away
+    from the player is a face the player falls through.
+    """
+    base = len(verts)
+    verts.extend(pts)
+    for tri in ((base, base + 1, base + 2), (base, base + 2, base + 3)):
+        p, q, s = (verts[j] for j in tri)
+        u = [q[k] - p[k] for k in range(3)]
+        w = [s[k] - p[k] for k in range(3)]
+        nrm = [u[1] * w[2] - u[2] * w[1], u[2] * w[0] - u[0] * w[2],
+               u[0] * w[1] - u[1] * w[0]]
+        tris.append(tri if sum(nrm[k] * want[k] for k in range(3)) > 0
+                    else (tri[0], tri[2], tri[1]))
+
+
+def room_shell(meta, angle_deg, hw_m, hl_m, ceil_m, z_m, door_angle_deg=None,
+               steps=None):
+    """A room's collision: floor, ceiling, four walls, and a hole to get in by.
+
+    ROOMS GET A SHELL FOR THE SAME REASON THE CORRIDOR DOES. `articulate` runs
+    the same skirting, dado, rail and deck-joint vocabulary round every room on
+    the station, so a room's render mesh has the millimetre relief that stopped
+    the body in the corridor -- and its walls carry bands that cross a doorway.
+
+    WHAT THIS COSTS, and it is worth saying plainly rather than discovering
+    later: **the props in the room are not solid.** `dressing.py` puts 82,362
+    triangles of furniture on this station and none of it is in this shell, so a
+    player walks through tables. Prop collision is a real piece of work -- convex
+    decomposition per prop type, not trimesh per instance -- and it is its own
+    task, not a line in this one.
+
+    The room's frame is the ring's: it spans `angle_deg +/- hw/r`, world z from
+    `z_m -/+ hl`, and radius from the deck floor inward by `ceil_m`.
+    """
+    r = meta["floor_r_m"]
+    ceil_r = r - ceil_m
+    da = hw_m / r
+    a0, a1 = math.radians(angle_deg) - da, math.radians(angle_deg) + da
+    z0, z1 = z_m - hl_m, z_m + hl_m
+    n = steps or max(2, int(math.ceil(2 * da / max(
+        2.0 * math.acos(max(-1.0, 1.0 - MAX_SAG_M / max(r, 1e-9))), 1e-9))))
+    verts, tris = [], []
+
+    def arc(rad, z, i0, i1):
+        return [(rad * math.cos(a0 + (a1 - a0) * k / n),
+                 rad * math.sin(a0 + (a1 - a0) * k / n), z)
+                for k in (i0, i1)]
+
+    # Floor and ceiling, tessellated round the arc so they do not sag.
+    for k in range(n):
+        m = (a0 + (a1 - a0) * (k + 0.5) / n)
+        up = (-math.cos(m), -math.sin(m), 0.0)
+        down = (math.cos(m), math.sin(m), 0.0)
+        for rad, want in ((r, up), (ceil_r, down)):
+            p0, p1 = arc(rad, z0, k, k + 1)
+            q0, q1 = arc(rad, z1, k, k + 1)
+            _quad(verts, tris, [p0, p1, q1, q0], want)
+
+    # The two long walls, at the room's angular edges, facing in.
+    for a, s in ((a0, 1.0), (a1, -1.0)):
+        inward = (-math.sin(a) * s, math.cos(a) * s, 0.0)
+        _quad(verts, tris,
+              [(r * math.cos(a), r * math.sin(a), z0),
+               (r * math.cos(a), r * math.sin(a), z1),
+               (ceil_r * math.cos(a), ceil_r * math.sin(a), z1),
+               (ceil_r * math.cos(a), ceil_r * math.sin(a), z0)], inward)
+
+    # The two end walls. The far one -- toward the corridor, at higher z -- is
+    # broken by the doorway; the near one is solid.
+    door_h = meta["door_h_m"]
+    door_da = meta["door_w_m"] / 2.0 / r
+    for z, want in ((z0, (0.0, 0.0, 1.0)), (z1, (0.0, 0.0, -1.0))):
+        cuts = []
+        if door_angle_deg is not None and z == z1:
+            d = math.radians(door_angle_deg)
+            cuts = [(max(a0, d - door_da), min(a1, d + door_da))]
+        at = a0
+        spans = []
+        for c0, c1 in cuts:
+            if c0 > at:
+                spans.append((at, c0, r))
+            spans.append((c0, c1, r - door_h))     # header only over the door
+            at = c1
+        if at < a1:
+            spans.append((at, a1, r))
+        for b0, b1, rad_lo in spans:
+            if b1 - b0 < 1e-9:
+                continue
+            _quad(verts, tris,
+                  [(rad_lo * math.cos(b0), rad_lo * math.sin(b0), z),
+                   (rad_lo * math.cos(b1), rad_lo * math.sin(b1), z),
+                   (ceil_r * math.cos(b1), ceil_r * math.sin(b1), z),
+                   (ceil_r * math.cos(b0), ceil_r * math.sin(b0), z)], want)
+    return verts, tris
+
+
+def vestibule_shell(meta, angle_deg, z_from, z_to, width_m=None, height_m=None):
+    """A walkable stub joining a corridor door to a room that does not reach it.
+
+    WHY THESE EXIST. The rooms on a deck are sized by what they hold, so their
+    outer walls do not land on one line: on Blue ring 0 deck 0 the corridor sits
+    flush against `plantroom_bay` and **1.98 m** clear of `bay_elevators`. A door
+    onto a 2 m gap is a door onto vacuum. A short entry passage is also simply
+    what a station has, so this is architecture rather than a patch.
+
+    Built in the shell's frame: floor at the corridor's own floor radius so a
+    player crosses the threshold without a step, walls at the door's width, and
+    a ceiling at the door head. Open at both ends -- it is a hole between two
+    places, and capping it would be the wall it exists to remove.
+    """
+    r = meta["floor_r_m"]
+    hw = (width_m or meta["door_w_m"]) / 2.0
+    ceil_r = r - (height_m or meta["door_h_m"])
+    da = hw / r
+    a0, a1 = math.radians(angle_deg) - da, math.radians(angle_deg) + da
+    lo, hi = min(z_from, z_to), max(z_from, z_to)
+    if hi - lo < 1e-6:
+        return [], []                      # flush already: the door IS the join
+
+    verts, tris = [], []
+
+    def quad(pts, want):
+        _quad(verts, tris, pts, want)
+
+    mid = (a0 + a1) / 2.0
+    up = (-math.cos(mid), -math.sin(mid), 0.0)
+    down = (math.cos(mid), math.sin(mid), 0.0)
+    for rad, want in ((r, up), (ceil_r, down)):
+        quad([(rad * math.cos(a0), rad * math.sin(a0), lo),
+              (rad * math.cos(a1), rad * math.sin(a1), lo),
+              (rad * math.cos(a1), rad * math.sin(a1), hi),
+              (rad * math.cos(a0), rad * math.sin(a0), hi)], want)
+    for a, s in ((a0, 1.0), (a1, -1.0)):
+        inward = (-math.sin(a) * s, math.cos(a) * s, 0.0)
+        quad([(r * math.cos(a), r * math.sin(a), lo),
+              (r * math.cos(a), r * math.sin(a), hi),
+              (ceil_r * math.cos(a), ceil_r * math.sin(a), hi),
+              (ceil_r * math.cos(a), ceil_r * math.sin(a), lo)], inward)
+    return verts, tris
 
 
 def stand_at(meta, angle_deg, x_m=0.0, above_m=0.05):
@@ -367,6 +560,53 @@ def floor_steps(verts, tris, meta, samples=240, lanes=9):
             worst = max(worst, abs(rad - prev))
         prev = rad
     return worst
+
+
+def floor_holes(verts, tris, meta, along_m=0.35, samples=90):
+    """Places on a route from the corridor into each room where there is no
+    floor. Returns a list of (room_key, z, angle_deg).
+
+    THE GATE THAT WOULD HAVE SAVED A DEBUG CYCLE. The corridor shell, the
+    vestibules and the room shells are three separately-generated meshes that
+    have to hand a walking body over to one another, and the first assembly left
+    a **0.219 m gap at every doorway**: the vestibule ran to the kit's nominal
+    half width while the corridor's floor stops at its MEASURED clear half
+    width. A body that walked into one fell through and accelerated outward
+    under spin gravity for 30 km.
+
+    The walk test did catch it -- `offfloor=2363/3000` -- but only after a
+    Godot launch, and only for the one route it happened to take. This walks
+    every doorway in Python, in a second, and says WHICH one and WHERE.
+
+    `along_m` is the sampling pitch, a capsule diameter: a hole a body cannot
+    fall through is not a hole.
+    """
+    bins, nbin = _down_index(verts, tris)
+    top = meta["floor_r_m"] - 1.9
+    out = []
+    for room in meta.get("rooms", ()):
+        a = math.radians(room["door_deg"])
+        z1 = meta["z_m"] - meta["half_w_m"] + 0.2      # inside the corridor
+        z0 = z1 - room["vestibule_m"] - 2.0            # into the room
+        n = max(samples, int((z1 - z0) / along_m))
+        b = int((math.atan2(math.sin(a), math.cos(a)) + math.pi)
+                / (2 * math.pi) * nbin) % nbin
+        o_dir = (math.cos(a), math.sin(a), 0.0)
+        for i in range(n + 1):
+            z = z0 + (z1 - z0) * i / n
+            o = (top * math.cos(a), top * math.sin(a), z)
+            hit = None
+            for tz0, tz1, tri in bins.get(b, ()):
+                if z < tz0 - 1e-6 or z > tz1 + 1e-6:
+                    continue
+                h = _ray_tri(o, o_dir, verts[tri[0]], verts[tri[1]],
+                             verts[tri[2]])
+                if h is not None and (hit is None or h < hit):
+                    hit = h
+            if hit is None or abs(top + hit - meta["floor_r_m"]) > 0.05:
+                out.append((room["key"], round(z, 3),
+                            round(room["door_deg"], 2)))
+    return out
 
 
 def write_obj(path, verts, tris, name="collision"):

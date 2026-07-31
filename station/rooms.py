@@ -825,13 +825,47 @@ def spawn_m(schema, profile, place):
     return (x, 0.35, z)
 
 
-def build(schema, profile, place, max_span_m=None):
+def _end_wall_with_door(v, t, g, arch, ow, ceil, hl, ol, door_at):
+    """The +z end wall as three pieces round an opening, instead of one box.
+
+    No sill piece: the aperture runs to the deck. The visible corridor door has
+    a 100 mm sill and this end does not, because a 100 mm vertical face is a
+    wall to a character capsule rather than a step -- see `collision.py`. Two
+    thresholds a metre apart, one you step over and one you do not, is worse
+    than neither having one.
+    """
+    x, w, h = door_at
+    x0, x1 = x - w / 2.0, x + w / 2.0
+    if not (-ow < x0 and x1 < ow):
+        raise ValueError(
+            f"a {w:.2f} m door at x={x:.2f} does not fit in a {2 * ow:.2f} m "
+            f"wall -- the corridor door snapped further than this room is wide")
+    h = min(h, ceil)
+    _box(v, t, g, f"{arch}_wall", (-ow, 0.0, hl), (x0, ceil, ol))
+    _box(v, t, g, f"{arch}_wall", (x1, 0.0, hl), (ow, ceil, ol))
+    if h < ceil:
+        _box(v, t, g, f"{arch}_wall", (x0, h, hl), (x1, ceil, ol))
+
+
+def build(schema, profile, place, max_span_m=None, door_at=None):
     """Geometry for one representative bay of a location.
 
     A 300 m storage run is a corridor of identical bays; emitting all of it
     would put millions of triangles into a layer that only has to prove the
     volume exists, is closed, and is furnished. `bays_in()` says how many the
     streaming system instances.
+
+    `door_at` is `(x_m, width_m, height_m)` -- an opening in the wall at +z,
+    which is the end a ring corridor arrives at. Without it a room is a sealed
+    box, which is what all 118 of them were until session 3v: the collision
+    shell let a player walk into the room and the render mesh still showed them
+    a solid wall to walk through. Physics and pixels disagreeing about whether
+    there is a wall there is worse than either being wrong on its own.
+
+    The x is NOT the room's centre. A corridor door snaps to the nearest bay
+    centre of its kit section, by up to 1.5 m of arc, so the opening has to be
+    cut where the door actually landed -- `interior.ring_arc` reports that in
+    `meta["doors_at"]` and the caller converts it to this frame.
     """
     w_full, l_full, _r = room_extent_m(schema, profile, place)
     bw, bl = bay_span_m(place)
@@ -850,7 +884,10 @@ def build(schema, profile, place, max_span_m=None):
     _box(v, t, g, f"{arch}_soffit", (-ow, ceil, -ol), (ow, ceil + 0.14, ol))
     for s in (-1, 1):
         _box(v, t, g, f"{arch}_wall", (s * hw, 0.0, -ol), (s * ow, ceil, ol))
-        _box(v, t, g, f"{arch}_wall", (-ow, 0.0, s * hl), (ow, ceil, s * ol))
+        if s > 0 and door_at is not None:
+            _end_wall_with_door(v, t, g, arch, ow, ceil, hl, ol, door_at)
+        else:
+            _box(v, t, g, f"{arch}_wall", (-ow, 0.0, s * hl), (ow, ceil, s * ol))
 
     # Structural ribs on both long walls, floor to soffit. Articulation, not
     # decoration: a flat run of wall from deck to a 7.5 m soffit is what makes

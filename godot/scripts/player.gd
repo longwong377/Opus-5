@@ -94,7 +94,15 @@ func _unhandled_input(event: InputEvent) -> void:
 ## vector and no window, keyboard or mouse. A player controller that can only be
 ## tested by a human is a player controller that never gets tested here -- there
 ## is no human and no GPU in this container.
-func step(delta: float, wish: Vector2, jump: bool, sprint: bool) -> void:
+## `world_dir`, when non-zero, steers the body toward a direction in WORLD space
+## instead of deriving one from the look yaw. The headless test uses it to walk
+## somewhere specific -- "can this body get from the corridor into medlab" is a
+## different question from "can it move", and only the first is what milestone
+## W2 claims. The direction is flattened onto the floor plane, because on a
+## spun ring the target is usually a little above or below you and walking at it
+## directly would mean walking into the deck.
+func step(delta: float, wish: Vector2, jump: bool, sprint: bool,
+		world_dir: Vector3 = Vector3.ZERO) -> void:
 	var up := body_up()
 	var g := gravity_dir() * gravity_m_s2
 
@@ -111,7 +119,13 @@ func step(delta: float, wish: Vector2, jump: bool, sprint: bool) -> void:
 	# reference that can never degenerate. Choose the one the geometry
 	# guarantees rather than the one that usually works.
 	var fwd := Vector3(0, 0, 1) if gravity_mode == "drum" else Vector3.FORWARD
-	fwd = (fwd - up * fwd.dot(up)).normalized().rotated(up, _yaw)
+	if world_dir.length_squared() > 1e-9:
+		var flat := world_dir - up * world_dir.dot(up)
+		if flat.length() > 1e-4:
+			fwd = flat.normalized()
+		wish = Vector2(0, 1)
+	else:
+		fwd = (fwd - up * fwd.dot(up)).normalized().rotated(up, _yaw)
 	var right := fwd.cross(up).normalized()
 
 	# THE BODY ITSELF IS ORIENTED, not just the camera, and this was the bug

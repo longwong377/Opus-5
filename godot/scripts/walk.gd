@@ -174,6 +174,9 @@ func _run_walk_test(args: Dictionary) -> void:
 	_t_settle = int(args.get("settle", "150"))
 	_t_walk = int(args.get("steps", "120"))
 	_t_traverse = int(args.get("traverse", "0"))
+	if args.has("goto"):
+		_goto = _vec(args["goto"])
+		_have_goto = true
 	_trace = int(args.get("trace", "0"))
 	_testing = true
 	set_physics_process(true)
@@ -281,8 +284,20 @@ func _physics_process(delta: float) -> void:
 	# best heading for as long as asked and report the distance covered, the
 	# straight-line displacement, and whether the floor was ever lost -- a body
 	# that walks 80 m and falls off at 60 has not crossed the deck.
-	_player.step(delta, Vector2(0, 1), false, false)
+	#
+	# With `--goto`, steer at a named place instead of holding a heading. That
+	# is the actual W2 claim -- "two named locations joined by real walkable
+	# geometry" -- and it is a strictly harder question than "did it move",
+	# because it fails when the route is blocked rather than when the body is.
+	if _have_goto:
+		_player.step(delta, Vector2.ZERO, false, false,
+			_goto - _player.global_position)
+	else:
+		_player.step(delta, Vector2(0, 1), false, false)
 	var p := _player.global_position
+	var gd := p.distance_to(_goto)
+	if gd < _goto_best:
+		_goto_best = gd
 	_path_m += p.distance_to(_traverse_prev)
 	_traverse_prev = p
 	if not _player.is_on_floor():
@@ -291,13 +306,18 @@ func _physics_process(delta: float) -> void:
 		_trace_line("traverse")
 	if n >= leg * 4 + _t_traverse:
 		var fell: bool = (not _on_floor) and _rest.distance_to(spawn) > 50.0
+		var goto_s := ""
+		if _have_goto:
+			goto_s = " goto_start_m=%.2f goto_best_m=%.2f goto_end_m=%.2f" % [
+				_traverse_from.distance_to(_goto), _goto_best, gd]
 		print(("WALKTEST rest=%.3f,%.3f,%.3f on_floor=%s fell=%s moved_1s=%.3f "
 			+ "drop=%.3f legs=%.2f/%.2f/%.2f/%.2f traverse_m=%.2f net_m=%.2f "
-			+ "offfloor=%d/%d") % [
+			+ "offfloor=%d/%d%s") % [
 			_rest.x, _rest.y, _rest.z, str(_on_floor).to_lower(),
 			str(fell).to_lower(), _moved_1s, spawn.distance_to(_rest),
 			_leg_m[0], _leg_m[1], _leg_m[2], _leg_m[3],
-			_path_m, _traverse_from.distance_to(p), _off_floor, _t_traverse])
+			_path_m, _traverse_from.distance_to(p), _off_floor, _t_traverse,
+			goto_s])
 		get_tree().quit(0)
 
 
@@ -313,3 +333,6 @@ var _traverse_from := Vector3.ZERO
 var _traverse_prev := Vector3.ZERO
 var _path_m := 0.0
 var _off_floor := 0
+var _goto := Vector3.ZERO
+var _have_goto := false
+var _goto_best := 1e30
