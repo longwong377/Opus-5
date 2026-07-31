@@ -546,6 +546,16 @@ def ring_arc(schema, profile, sector, ring_index, degrees=30.0,
         "z_m": z_mid,
         "doors_at": placed,
         "doors_asked": len(doors),
+        # THE MATERIAL SPANS, which this function recorded and then threw away.
+        # `interior_kit` tags every surface it builds -- skirting, rail band,
+        # deck grid, and the three `light_*` fittings a corridor is lit BY --
+        # and `ring_arc` returned none of them, so an assembler had nothing to
+        # name the geometry with. `deck.py` then labelled all 458,400 triangles
+        # `corridor`: materials.py's substring rules match that zero times and
+        # `FIXTURE_LIGHTING` is an exact-name table, so 77% of a deck shipped
+        # with the glTF fallback material and the corridor emitted NO LIGHT
+        # SOURCES AT ALL while 850 fittings sat in the mesh untagged.
+        "groups": kit.tagged_spans(tris),
     }
 
 

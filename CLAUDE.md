@@ -98,9 +98,19 @@ absence.
 
 **`python3 station/deck.py --sweep` is the answer to "how much of the station can I walk in".**
 It is the only gate here that asks a whole-station question; every other one measures a part.
-Run it before claiming coverage. What it does NOT yet cover: the drum (`green/1`, an open barrel
-whose floor is `drum_ground`'s heightfield), and the secondary z-clusters — 87 of the 106
-non-drum locations are on an assembled cluster.
+Run it before claiming coverage. **99 of 118 locations** are on a walkable surface: 87 on
+assembled ring decks and 12 on the drum's collision ground. What it does NOT cover: the
+secondary z-clusters, 19 locations on decks whose *busiest* cluster is the one that gets built.
+
+**THE DRUM INVERTS THE COLLISION RULE, and that is not an exception to it.** A corridor needs a
+*smooth* shell because its 66 mm channel and 22 mm tiles are decoration a foot should not feel.
+The drum needs the *shape of its own ground*, because there the relief IS the content —
+flattening a 7 m settlement podium onto a 4 m lake bed leaves a player hovering over the fields
+and buried in the town. `station/drum_walk.py` therefore authors no terrain: it calls
+`drum_ground.ground_patch`, the same function the render ground is built from. **And its gate is
+SLOPE, not lip** — `collision.floor_steps` is right on a flat corridor and would fail a correct
+hill, because the drum rises 0.24 m between lattice points, which is 3.5°, which is a field.
+What a character controller actually tests is rise over run against `floor_max_angle`.
 
 **Props are not solid.** `dressing.py` puts 82,362 triangles of furniture on the station and none
 of it is in the collision shells, so a player walks through tables. That is the next thing a

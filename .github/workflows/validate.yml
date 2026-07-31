@@ -166,6 +166,19 @@ jobs:
       - name: The station is walkable
         run: python3 station/walkable.py --rooms 6
 
+      # AND THE WHOLE STATION, not six rooms of it. `--sweep` is the only gate
+      # here that asks a whole-station question: every deck assembles, every
+      # room has a door, and no doorway has a hole in the floor.
+      - name: How much of the station can be walked in
+        run: python3 station/deck.py --sweep
+
+      # The drum is a different KIND of walkable surface -- a heightfield, not a
+      # corridor -- so its collision is the SHAPE of its own ground rather than
+      # a smooth shell, and its gate measures SLOPE rather than lip. See
+      # station/drum_walk.py; `--full` adds the whole-drum survey at ~70 s.
+      - name: The habitat drum is walkable
+        run: python3 station/drum_walk.py --selftest
+
       - name: Exterior components
         run: python3 station/components.py
 

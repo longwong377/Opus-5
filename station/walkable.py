@@ -159,6 +159,16 @@ def walk_deck(sector, ring, deck, godot, timeout=1800, traverse=None,
     place. Handing over only the render mesh is what this test used to do and
     the body could not take a step; see `station/collision.py`.
     """
+    # THE DRUM IS NOT A RING DECK. `deck.build_deck` rejects green/1 by name and
+    # the drum's floor is a heightfield, not a corridor: see
+    # `station/drum_walk.py`, whose rule INVERTS this file's. A corridor needs a
+    # smooth shell because its millimetre relief is decoration; the drum needs
+    # the shape of its own ground, because there the relief IS the content.
+    if (sector, ring) in D.NOT_RING_DECKS:
+        import drum_walk as DW                                  # noqa: PLC0415
+        return DW.walk(key=goto_key or "the_garden", traverse=traverse,
+                       timeout=timeout, godot=godot)
+
     schema, profile = it.load()
     out = os.path.join(ROOT, "station/generated/scene/deck")
     os.makedirs(out, exist_ok=True)
@@ -315,9 +325,14 @@ def main():
         sector, ring, deck = (a.deck or "blue/0/0").split("/")
         d = walk_deck(sector, int(ring), int(deck), godot,
                       traverse=a.traverse, no_doors=a.no_doors)
-        good, why = deck_verdict(d)
-        print(f"  {'PASS' if good else 'FAIL'}  deck {sector}/{ring}/{deck}"
-              f"  {why}")
+        drum = (sector, int(ring)) in D.NOT_RING_DECKS
+        if drum:
+            import drum_walk as DW                              # noqa: PLC0415
+            good, why = DW.walk_verdict(d)
+        else:
+            good, why = deck_verdict(d)
+        print(f"  {'PASS' if good else 'FAIL'}  "
+              f"{'drum' if drum else 'deck'} {sector}/{ring}/{deck}  {why}")
 
         # THE NEGATIVE CONTROL, and it is the whole reason the door claim means
         # anything. A body that reaches the room proves the route is open; it
@@ -325,7 +340,9 @@ def main():
         # wall gives exactly the same number. So the same run is repeated with
         # the doors inert: the closed panels stay solid and the body must NOT
         # get in. If both runs pass, the doors are scenery.
-        if good and not a.no_doors:
+        # The drum has no doors, so `--no-doors` is not a control there --
+        # running it would compare a thing against itself and pass.
+        if good and not a.no_doors and not drum:
             n = walk_deck(sector, int(ring), int(deck), godot,
                           traverse=a.traverse, no_doors=True)
             blocked, _w = deck_verdict(n)

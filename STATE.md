@@ -208,6 +208,46 @@ visibly non-human, which is `npc/body.py`'s species mix reaching a frame for the
 time. **The turn itself is measured, not pictured:** the preview bakes the generated pose,
 so the evidence for it is the headless number.
 
+### 77% OF THE DECK HAD NO MATERIAL AND THE CORRIDOR EMITTED NO LIGHT — my bug
+
+An agent judging the build against the AAA rubric found it, and it traces to one line I wrote
+two commits ago. `deck.py` labelled all 458,400 corridor triangles `corridor` — a single group.
+That "fixed" untagged geometry by replacing **fourteen real names with one fake one**:
+
+* `materials.py` resolves by **substring**, and its 429 rules match `corridor` **zero** times, so
+  77% of a deck rendered with the glTF fallback material;
+* `FIXTURE_LIGHTING` is an **exact-name** table, so the corridor's `light_downlight`,
+  `light_pilaster_strip` and `light_portal_head` fittings were invisible to it and **the deck
+  emitted no light sources at all** while 850 fittings sat in the mesh.
+
+`interior_kit` had recorded the spans the whole time — **741 of them over 14 names** in an 8°
+arc — and `ring_arc` simply never returned them. It does now, and the deck OBJ carries **198
+distinct group names** including all three `light_*` groups.
+
+The deck selftest's own check missed it and had to be replaced: `sum(hi−lo) <= len(t)` was a
+proxy that held only while the corridor was one flat group. The kit's tags **nest** —
+`wall_assembly` contains `skirt`, `rail_band` and the rest — so real spans legitimately sum to
+more than the mesh. It now asserts every span is in range and that >99% of triangles are named.
+
+### The drum walks — 99 of 118 locations are on a walkable surface
+
+```
+PASS  drum green/1/0  a body spawns on hedge at the_garden, walks 126.0 m over
+      25 ground patches and never leaves the floor
+python3 station/deck.py --sweep
+  66 assemble, 0 fail, 0 deferred, 1 on heightfield ground
+  99 locations on an assembled cluster, 87 with a door, 0 without
+```
+
+`station/drum_walk.py` (agent-built, verified here: 23/23, and `--sabotage lift` genuinely fails
+at 21/23 with +0.581 m). **It inverts `collision.py`'s rule and that is the point** — a corridor
+needs a *smooth* shell because its millimetre relief is decoration; the drum needs the *shape of
+its own ground*, because there the relief is the content. It authors no terrain: it calls
+`drum_ground.ground_patch`, the function the render ground is built from. **Its gate is SLOPE,
+not lip** — the drum rises 0.24 m between lattice points, which is 3.5°, which is a field.
+
+CI now runs `deck.py --sweep` and `drum_walk.py --selftest` as well.
+
 ### Still open
 
 * **Nothing else is interactable.** `directory.interacts` declares verbs for all 118
@@ -4182,3 +4222,144 @@ the derivation, the seams, the controls and all twelve locations.
   and their scores are session 3t/3u's and are untouched.
 * **`drum_ground.py --selftest` was not re-run** — nothing in it was modified, and it is already in
   CI at line 82.
+
+## Agent report — AAA judgement
+
+**Session 3w. Task #18, open for several sessions, now closed.** The WALKABLE station was
+judged against `docs/AAA-STANDARD.md` through the ENGINE path — Godot 4.4 double + Mesa
+lavapipe, `godot/scenes/interior.tscn`, 1280×720 — at the rubric's three distances, on four
+subjects: the corridor from 1.7 m eye height, a doorway close up, a furnished room, and a
+person at conversational range. **Fifteen frames, all committed under `docs/judge3w-*.png`.**
+Full report with every number in **`docs/judge-3w.md`**; scores in `docs/aaa-scorecard.json`
+under two new subsystems, `walkable_deck` and `npc_bodies`, both gate-clean.
+
+Subject: `python3 station/deck.py --sector blue --ring 0 --deck 0` — 344° of corridor at
+r = 211.55 m, six rooms with doors, 597,418 render triangles, 9,588 collision, 13 people.
+Nothing under `station/` or `godot/` was edited to produce any of it.
+
+| | craft | fidelity | performance | robustness |
+|---|---|---|---|---|
+| **`walkable_deck`** | **1** | **1** | **1** | **1** |
+| **`npc_bodies`** | **1** | **2** | **0** | **2** |
+
+### THE FINDING, and it is one line of code
+
+**`station/deck.py:484` writes `G.append(("corridor", 0, len(ct)))` — all 458,400 corridor
+triangles, 77% of the deck, as ONE anonymous group — and `interior_kit` had already recorded
+14 material spans for them while building.** `interior.ring_arc` still holds those spans when
+it returns (`interior_kit.tagged_spans(tris)` gives `deck_grid`, `wall_panel`,
+`light_pilaster_strip`, `light_downlight`, `light_portal_head`, `skirt`, `dado`, `rail_band`,
+`portal_frame`, `pilaster`, `soffit`, `ceiling_slab`, `wall_reveal`, `wall_assembly`); it just
+does not return them. Two consequences, both measured, neither previously known:
+
+1. **No material.** `interior.tscn`'s 429 substring rules match `corridor` zero times and the
+   scene declares no `fallback_material`, so 458,400 triangles take the glTF default. The
+   engine prints it on every run: `fallback material used by 15 group(s): corridor,
+   doorleaf_…` — the corridor **and all twelve door leaves**.
+2. **No light.** `export_scene.FIXTURE_LIGHTING` is an **exact-name** table. The corridor's
+   822 `light_downlight` fittings are inside the blob, and `deck.py`'s `<key>__` room prefix
+   breaks the rooms' names too. **The shipped deck emits 0 light sources. 850 are available
+   from the geometry's own tags.**
+
+| | frame | median | p5/p95 | vs `grey level 1.webp` |
+|---|---|---|---|---|
+| **as shipped** | `docs/judge3w-corridor-20m.png` | 0.3074 | **0.695** | **×5.77 — level test OUT OF RANGE, 4 of 6 distribution tests FAIL** |
+| spans recovered | `docs/judge3w-corridor-20m-materials.png` | 0.0903 | 0.057 | ×1.68 — level OK, 5 of 6 pass |
+
+*(the show's own corridor is 0.083)*. **99.5% of the pixels change**, mean |Δ| 75/255. Same
+geometry, same camera, same exposure. Fixing this is `return kit.tagged_spans(tris)` from
+`ring_arc` and using it in `build_deck`, and it is worth more than any other change available.
+
+**And the playable scene is worse than that frame.** `godot/scripts/walk.gd` applies **no
+material rules at all** and creates **no lights** — just `ambient_light_energy = 0.6`
+(lines 182–190). The frames above at least bind the room materials through `interior.tscn`.
+
+### Every person on the station is a black silhouette, and the cause is one binding
+
+`interior.tscn` binds `npc_standing` and `npc_seated` to **`plant_valve_metal`** — albedo
+0.545, **metallic 0.95** — in a scene with `reflected_light_source = 1`
+(`REFLECTION_SOURCE_DISABLED`). At metallic 0.95 diffuse is scaled to ~5% and there is no
+environment to reflect, so a person is black by construction. `docs/judge3w-person-2m.png`
+at conversational range is **43.59% crushed**. The bodies underneath are better than that —
+at 1 m the outline shows head, shoulders, coat, separate legs, and the Vree is a distinct
+non-human form. None of it is visible.
+
+### Four things nothing in this repository was measuring
+
+* **Every doorway is an unclosed cut.** 1,572 boundary edges on the assembled deck; **1,470 in
+  `corridor` and every one within 2 m of a door — 245 at each of six — with ZERO at the two
+  arc ends**, which are correctly capped. Visible at 2.5 m as torn jambs and floating
+  fragments (`docs/judge3w-door-2m5-shipped.png`). `--selftest` never counts an edge; `--sweep`
+  counts floor holes by ray cast, which cannot see a hole in a wall. *(Checked and NOT wrong:
+  point-in-volume returns 0 corridor triangles inside the closed-leaf box at all six doors —
+  3v's leaf fix held.)*
+* **`deck.py`, `collision.py`, `dressing.py` and `populace.py` do not run in CI at all**, and
+  the walk step is `walkable.py --rooms 6`. **`--deck` never runs**, so the door negative
+  control and the distance assertion are unguarded, and neither does `--sweep`. CLAUDE.md
+  states as binding that this gate "runs in CI". It does not. *(Run by hand this session it
+  PASSES — 6.3 m → 0.04 m, doors inert stops 5.26 m short — and generation is byte-identical
+  across five `PYTHONHASHSEED` values. The work is real; nothing protects it.)*
+* **`budget.py` prints PASS on a quantity that is not what ships.** It reports "visible
+  structure set 30,941 / 60,000 (51.6%)" from the corridor kit in isolation. Measured in the
+  frustum of the standing camera of `judge3w-corridor-20m.png`: **82,478 triangles — 137% of
+  that allowance.** Ungated besides: 597,418 resident per deck, **188 draw calls with no
+  interior draw-call budget in existence**, 97,590 triangles of furniture, 28,636 of people.
+* **The rooms do not light themselves.** `interior.tscn`'s header argues a room lighting itself
+  from nowhere is what the fixture rig exists to prevent. Turn ambient down to 0.05 and
+  `docking_bays` is **black** (`docs/judge3w-room-6m-fittings-only.png`); adding all its
+  fittings to a deck with zero lights moves **5.9% of the frame by 0.6/255**. Flat ambient is
+  doing all the work, which is why no frame taken in a room has a shadow, a falloff or a
+  direction.
+
+### Content findings, ranked
+
+1. **One corridor class on 66 of 66 decks.** `ring_arc` calls `corridor_section` with no `p=`,
+   so the whole walkable station is the default **2.6 m × 3.0 m** residential passage.
+   `interior_kit.CORRIDOR_CLASSES` defines `concourse` at **9.0 m** and `service` at 4.2 m,
+   sourced in INV-840, and nothing ever asks for either.
+2. **Signage: one group, 24 triangles, on the entire deck.** `grey level 1.webp` carries a
+   placard, a lit sign and floor markings within 10 m of the camera. `signage.py` runs in CI
+   and puts nothing on the walkable station.
+3. **Nobody is in the corridor.** All 13 actors are in rooms behind closed doors; a player can
+   walk 1,270 m of ring and never see a person.
+4. **Repetition is indexable.** 138 identical kit sections / ~414 identical bays over 1,270 m,
+   mirror-symmetric, one door per 210 m of walking.
+5. **Blank at half distance.** At 1.12 m (`docs/judge3w-corridor-wall-1m.png`) the wall panels
+   carry no bolt, seam, vent, wear or fixing; the joints are black lines; the downlight is a
+   glowing white box. 2.5% of the corridor frames is *clipped* — battens and strips blow to
+   white, `light_pilaster_strip` aliases into notched blocks, and the sight line gets
+   **brighter** with distance from accumulated bloom.
+6. **The door is the only usable thing on the station and it is blank** — no handle, control
+   plate, release, chevron, name or number, and `doorleaf_*` matches no material rule.
+7. **Prop collision has no stated tolerance.** `docking_bays`' 26,268 triangles / 2,189
+   primitives of furniture become **15 AABBs up to 7.41 m across**, 209 m³ in a 655 m³ room.
+   Deck-wide 8,175 primitives → 114 boxes. A player collides with air and walks through gaps.
+8. **Six constants from the walkable layer are unlogged** — `ARC_PAD_DEG`, `Z_CLUSTER_M`,
+   `deck_index`'s rule, the arc-phase sweep, `corridor_z_m`, the vestibule, `prop_boxes`'
+   `min_m`/`gap`. `INVENTIONS.md` stops at INV-081.
+
+### What is genuinely good, so it is not lost
+
+With the spans recovered, `docs/judge3w-corridor-10m.png` is **the best interior frame this
+project has produced**. Warm `light_downlight` against cool `light_pilaster_strip` is a
+*measured* relationship and is the most Babylon-5 thing in the build; the deck plate, skirt,
+dado, rail band, mullioned panels, cornice and serviced soffit all read — session 3s's
+layer-2b work is real and it shows. The walk gate's negative control (fail if the doors-inert
+run also passes) is the best piece of engineering in the subsystem. `--sweep` re-run: 66 of 67
+decks assemble, 87 locations with a door, 0 floor holes, 75,642 collision triangles.
+
+### Not judged, stated so silence is not read as a pass
+
+Framerate, stutter and shader cost (no GPU). Whether the door *animation* reads —
+`render_shot.gd` does not run `door.gd`, so every door in every frame is closed. Whether the
+void over a door head is a hole or an unlit surface — that needs a two-background diff in a
+scene file this agent does not own, and the 245 open edges per door supersede the question.
+The habitat drum. And 31 of the 118 gazetteer locations, which are in secondary z-clusters
+and cannot be walked to at all.
+
+**One process finding:** `docs/aaa-scorecard.json` does not pass its own gate — 52 structural
+errors, **every one in a round written before this session** (`severity: "resolved"` is not a
+valid severity; evidence keyed by `frames`/`path`/`shader`; `what_is_good` is not a schema
+key; dimensions below the bar with no finding). The two rounds added here are clean. The rest
+are left as found, because editing past rounds to make a gate green is precisely the failure
+that file exists to catch.

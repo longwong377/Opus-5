@@ -477,11 +477,15 @@ def build_deck(schema, profile, sector, ring, deck, with_rooms=True,
                              door_leaves=False)
     V.extend(cv)
     T.extend(ct)
-    # NAMED, and it was not. `ring_arc` returns no groups, so 458,160 corridor
-    # triangles went into the OBJ as `deck_untagged` -- one anonymous mesh. The
-    # engine now has to tell the corridor from the rooms, because the collision
-    # shell replaces exactly the corridor and the rooms keep their own.
-    G.append(("corridor", 0, len(ct)))
+    # NAMED WITH THE NAMES THE KIT ALREADY GAVE IT. The first version of this
+    # line labelled all 458,400 corridor triangles `corridor` -- one group --
+    # which fixed "untagged" by replacing fourteen real names with one fake one.
+    # `materials.py`'s substring rules matched it zero times, so 77% of the deck
+    # rendered with the glTF fallback material; and `FIXTURE_LIGHTING` is an
+    # exact-name table, so the corridor's `light_downlight`, `light_pilaster_strip`
+    # and `light_portal_head` fittings were invisible to it and the deck emitted
+    # NO LIGHT SOURCES AT ALL. `ring_arc` had the spans the whole time.
+    G.extend(cm["groups"])
     stats["corridor_tris"] = len(ct)
     stats["doors"] = cm["doors_at"]
 
@@ -671,8 +675,21 @@ def _selftest():
     check("a deck assembles", len(t) > 0, str(s)[:120])
     check("it has corridor AND rooms in one mesh",
           s["corridor_tris"] > 0 and s["room_tris"] > 0, str(s)[:120])
-    check("every triangle is grouped",
-          sum(hi - lo for _n, lo, hi in g) <= len(t))
+    # EVERY GROUP POINTS AT REAL TRIANGLES. Not "the spans sum to the triangle
+    # count": the corridor's spans come from `interior_kit`'s tag stack and
+    # NEST -- `wall_assembly` contains `skirt`, `rail_band` and the rest -- so
+    # they legitimately sum to more than the mesh. Summing them was a proxy that
+    # happened to hold while the corridor was one flat group, and it failed the
+    # moment the real fourteen names came back.
+    check("every group points at triangles that exist",
+          all(0 <= lo <= hi <= len(t) for _n, lo, hi in g),
+          f"{sum(1 for _n, lo, hi in g if not 0 <= lo <= hi <= len(t))} "
+          f"of {len(g)} out of range")
+    covered = set()
+    for _n, lo, hi in g:
+        covered.update(range(lo, hi))
+    check("almost every triangle is named", len(covered) > 0.99 * len(t),
+          f"{len(covered):,} of {len(t):,} triangles carry a group")
 
     # THE POINT: the rooms are at DIFFERENT places, not stacked on the origin.
     # A deck whose rooms all landed at (0,0,0) would look assembled and be one
@@ -831,9 +848,21 @@ def _sweep():
     schema, profile = it.load()
     decks = sorted({(q["sector"], q["ring"], q["deck"]) for q in dr.PLACES})
     ok, failed, deferred, holes, unopened, served = [], [], [], [], [], 0
+    drum = []
     for s, r, dk in decks:
         if (s, r) in NOT_RING_DECKS:
-            deferred.append((s, r, dk))
+            # NOT DEFERRED ANY MORE, COUNTED. The drum is a different KIND of
+            # walkable surface -- a heightfield rather than a corridor -- not an
+            # absent one, and leaving it out of the whole-station number made
+            # the number quietly smaller than the station. `drum_walk` builds
+            # collision ground from `drum_ground.ground_patch` itself.
+            import drum_walk as DW                              # noqa: PLC0415
+            rows = DW.places()
+            dv, dt, _dg, dm = DW.build(key=rows[0]["key"])
+            if DW.holes(dv, dt, dm, n_a=8, n_z=8):
+                holes.append((s, r, dk))
+            served += len(rows)
+            drum.append((s, r, dk, len(rows), len(dt)))
             continue
         try:
             v, t, m = build_collision(schema, profile, s, r, dk)
@@ -848,9 +877,12 @@ def _sweep():
 
     print(f"{len(decks)} decks in the gazetteer")
     print(f"  {len(ok)} assemble, {len(failed)} fail, "
-          f"{len(deferred)} deferred")
+          f"{len(deferred)} deferred, {len(drum)} on heightfield ground")
     for s, r, dk in deferred:
         print(f"     deferred {s}/{r}/{dk}: {NOT_RING_DECKS[(s, r)]}")
+    for s, r, dk, n_loc, n_tri in drum:
+        print(f"     drum {s}/{r}/{dk}: {n_loc} locations on collision ground, "
+              f"{n_tri:,} triangles a tile -- {NOT_RING_DECKS[(s, r)][:44]}...")
     for f in failed:
         print(f"     FAIL {f[0]}/{f[1]}/{f[2]}: {f[3]}")
     print(f"  {served} locations on an assembled cluster, "

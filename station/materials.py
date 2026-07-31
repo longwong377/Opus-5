@@ -5196,6 +5196,13 @@ def _scan_generator_groups():
 # the generators is not a generator.
 NOT_GENERATORS = {"materials.py", "directory.py", "rooms.py",
                   "test_materials_layer3.py", "apply_proposals.py",
+                  # COLLISION, NOT RENDER. `drum_walk.py` emits the surface a
+                  # body stands on, which is never drawn and therefore carries
+                  # no material -- its `drum_ground` group name is the collision
+                  # ground's, not the render ground's. Same category as the
+                  # metrics below: a module that emits no visible geometry
+                  # cannot be missing a material for it.
+                  "drum_walk.py", "collision.py",
                   # METRICS, NOT GENERATORS. `density.py` names the drum's PART
                   # names -- ground, spokes, guideways, endcap_fore, endcap_aft
                   # -- in the assertion that its registry agrees with
