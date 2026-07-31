@@ -392,6 +392,161 @@ G0_MS2 = 9.80665
 # Seat height is quantised to a centimetre for the pose cache. A pose does not
 # resolve finer than that and an unquantised key caches every seat separately.
 SEAT_QUANTUM_M = 0.01
+# Frames in a baked walk cycle. Only the phase is used -- this module emits
+# static geometry -- so the number sets how finely two passers-by can differ.
+# 8 puts them a sixteenth of a stride apart at worst, under the 22 mm grid tile
+# a foot lands on.
+WALK_FRAMES = 8
+
+# ===========================================================================
+#  THE CORRIDOR IS NOT A ROOM, AND UNTIL NOW IT HAD NOBODY IN IT AT ALL
+# ===========================================================================
+# Every person this module placed was placed in a ROOM. A player walked 126 m
+# of assembled corridor and met **nobody** -- on a station of 250,000, in the
+# one space CLAUDE.md's scope names twice ("the friction between them visible
+# in a corridor", "residents, not crowds").
+#
+# The density is DERIVED, and the derivation is three measurements this
+# repository can recompute rather than a number anyone picked:
+#
+#   1. `schedule.RESIDENT_TOTAL` = 250,000. Authority 1, the opening narration.
+#   2. **50.8 minutes** -- the mean time a resident spends walking in corridors
+#      per day. Measured by walking each resident's OWN 24-hour schedule
+#      (`resident.where_at` hour by hour) and pricing every change of place
+#      through `navigation.NavGraph.path`, counting only the `walk`, `stair`
+#      and `door` links. It is not the commute: it is the whole day, meals and
+#      recreation included, which is why it is five times the 5.0 min a
+#      one-way commute spends on foot.
+#   3. **825,066 m2** of corridor -- 317,333 m of ring at
+#      `interior_kit.PROVISIONAL["corridor_width_m"]`, summed over the 251
+#      decks `navigation.cell_plan` builds.
+#
+# 250,000 x 50.8/1440 = **8,812 people walking somewhere at any instant**, over
+# 825,066 m2, is **1.07 per 100 m2** -- one person every 36 m of corridor.
+#
+# THAT NUMBER IS SPARSE AND IT IS SUPPOSED TO BE. The instinct is that a
+# corridor should be busy, and `FALLBACK_PER_100M2["transit"]` is 12.0, eleven
+# times this -- which would put a person every 3 m along every corridor on the
+# station, 914 of them on one Blue deck. The station simply has an enormous
+# amount of corridor: 0.83 km2 of it, most in the 105 Grey plant decks nobody
+# lives on. What makes a corridor feel busy is not the average, it is the
+# DISTRIBUTION, which `corridor_headcount` takes from the occupancy of the
+# places each deck actually serves.
+#
+# `--derive` recomputes all three and fails if the recorded value has drifted,
+# the same guard `tools/measure_frame.py` uses on its bands.
+WALK_MIN_PER_DAY = 50.8
+CORRIDOR_AREA_M2 = 825_066.0
+CORRIDOR_PER_100M2 = (_sched.RESIDENT_TOTAL * (WALK_MIN_PER_DAY / 1440.0)
+                      / CORRIDOR_AREA_M2 * 100.0)
+
+
+def corridor_headcount(place_keys, area_m2, hour, arch="transit"):
+    """How many people are walking `area_m2` of corridor at `hour`.
+
+    The station-wide average is `CORRIDOR_PER_100M2`; this distributes it by
+    what the deck SERVES. A corridor's traffic is people going to and from the
+    rooms off it, so the weight is the occupancy of those rooms -- which
+    `occupancy()` already computes per place per hour, so a deck of offices
+    empties at 0300 and the concourse outside customs does not.
+
+    The weight is a RATIO against the station's own mean occupancy per room, so
+    a deck with average rooms gets the average density and the total over all
+    decks stays at the 8,812 the derivation produced. A deck serving nothing --
+    the outer plant stacks -- gets the floor rather than zero: somebody is
+    always walking to a pump.
+    """
+    if area_m2 <= 0.0:
+        return 0
+    base = CORRIDOR_PER_100M2 * area_m2 / 100.0
+    keys = tuple(place_keys or ())
+    if not keys:
+        return int(round(base * CORRIDOR_EMPTY_DECK_F))
+    # Occupancy per served place at this hour, against the same places' own
+    # peak. A ratio, so the units cancel and nothing here needs a second table.
+    now = sum(occupancy(k, 100.0, hour, arch) for k in keys)
+    peak = max(1e-9, sum(max(occupancy(k, 100.0, h, arch) for h in range(24))
+                         for k in keys))
+    f = (now / peak) * (len(keys) / CORRIDOR_ROOMS_PER_DECK)
+    return int(round(base * max(CORRIDOR_EMPTY_DECK_F, f)))
+
+
+# A deck serving nothing still has somebody on it. One tenth of the mean is the
+# floor: on a Blue deck's 1,270 m of corridor that is still two people, which
+# reads as "quiet" rather than as "abandoned" -- the same distinction
+# FALLBACK_PER_100M2's own note draws, at the other end of the scale.
+CORRIDOR_EMPTY_DECK_F = 0.10
+# Mean rooms per ring deck, so the weight above is a ratio rather than a count.
+# MEASURED: `deck.py --sweep` assembles 87 rooms over 66 ring decks.
+CORRIDOR_ROOMS_PER_DECK = 87.0 / 66.0
+
+
+def corridor_sight_m(radius_m, width_m):
+    """How far a body can see down a corridor that curves away from it.
+
+    A ring corridor is a chord problem, not a straight one: the outer wall cuts
+    the line of sight at the point where the chord's sagitta equals the
+    corridor's width. `sagitta = c^2 / 8R` for a chord `c`, so setting it to
+    `w` gives `c = sqrt(8 R w)` -- 66 m on a Blue deck at r = 211 m in a 2.60 m
+    corridor, and 108 m on Grey's outer ring at r = 560 m.
+
+    It is the reason a corridor's people can be baked at one LOD at all: they
+    are never seen from further than this, and mostly from its far half.
+    """
+    return math.sqrt(8.0 * max(1e-9, radius_m) * max(1e-9, width_m))
+
+
+def corridor_lod(radius_m, width_m):
+    """The LOD to bake a corridor's people at, chosen by that sight line.
+
+    NOT PICKED. `schedule.NPC_BUDGET["lod"]` gives distance bands with a
+    triangle allowance each -- lod0 0-6 m at 8,000, lod1 6-18 at 2,000, lod2
+    18-45 at 600, lod3 45-400 at 120. People are spread evenly along the
+    corridor, so the distance to pick the band with is the MEAN of a uniform
+    distribution over the sight line -- `0.5 * sight`, which is 33 m on a Blue
+    deck at r = 211 m and 54 m on Grey's outer ring. Not the far half: taking
+    0.75 puts a Blue deck in lod3's 45-400 m band at 120 triangles, and a
+    132-triangle body is a blob at the 2 m the NEAREST of them is at.
+
+    `body.lod_chain()` is then searched for the level whose actual triangle
+    count is nearest that allowance, rather than assuming the two ladders are
+    indexed the same -- they are not. The chain's own levels measure 4,560 /
+    2,256 / 2,068 / 1,012 / 484 / 372, so the budget's 600 lands on level 4.
+
+    THIS IS A BAKE-TIME COMPROMISE AND IT IS WORTH SAYING SO. A player standing
+    next to one of these people sees a 372-triangle body where the budget would
+    give them 8,000. The fix is runtime LOD -- `npc.gd` already holds each
+    person's parts and could swap them -- and until that exists the honest
+    choice is the LOD that is right for the distance they are USUALLY at, not
+    the one that is right for the rare close encounter.
+    """
+    far = 0.5 * corridor_sight_m(radius_m, width_m)
+    bands = _sched.NPC_BUDGET["lod"]
+    want = bands[-1][3]
+    for _name, lo, hi, tri, _n in bands:
+        if lo <= far < hi:
+            want = tri
+            break
+    counts = _lod_triangles()
+    return min(range(len(counts)), key=lambda i: abs(counts[i] - want))
+
+
+@_lru_cache(maxsize=1)
+def _lod_triangles():
+    """Triangles per level of `body.lod_chain()`, MEASURED by building one.
+
+    The chain records `radial_segments` and `ring_stride`, not a triangle
+    count, and the relation between them is `body.py`'s business. Reading the
+    number off a built mesh is the same rule the rest of this module follows:
+    ask the geometry, do not restate it.
+    """
+    out = []
+    for i in range(len(_body.lod_chain())):
+        try:
+            out.append(len(_body.build("human", "lod/probe", lod=i)[1]))
+        except Exception:                                       # noqa: BLE001
+            out.append(out[-1] if out else 0)
+    return tuple(out)
 
 
 @_lru_cache(maxsize=256)
@@ -461,16 +616,41 @@ def _posed(species, npc_id, lod, kind, g_ms2, seat_h_m):
     """
     try:
         rg = _anim.rig(species, npc_id, lod)
+        frame = 0
         if g_ms2 < _stand_min_g(species, npc_id, lod):
             # BELOW THIS GRAVITY NOBODY STANDS. See `_stand_min_g`.
             clip = _anim.glide_clip(species, npc_id, g_ms2, frames=8, lod=lod)
         elif kind == "sit":
             clip = _anim.sit_clip(species, npc_id, g_ms2,
                                   seat_h_m=seat_h_m or None, frames=8, lod=lod)
+        elif kind == "walk":
+            clip = _anim.walk_clip(species, npc_id, g_ms2, frames=WALK_FRAMES,
+                                   lod=lod)
+            # A CORRIDOR OF PEOPLE ALL AT FRAME 0 IS A DRILL SQUAD. Unlike the
+            # idle clip, whose phase is inside the clip, a walk cycle's phase
+            # IS the frame -- so it is picked per resident here, deterministic
+            # on the id like everything else in this module.
+            frame = int(_u("walk_phase", npc_id) * WALK_FRAMES) % WALK_FRAMES
         else:
             clip = _anim.idle_clip(species, npc_id, g_ms2, frames=8, lod=lod)
-        _w, mats = clip.pose(rg.skel, 0)
+        _w, mats = clip.pose(rg.skel, frame)
         parts = _anim.apply_pose(rg, mats)
+        if kind == "walk":
+            # THE STRIDE ADVANCE COMES OFF; THE BOB AND THE SWAY DO NOT.
+            # `walk_clip`'s root moves in all three axes and they are not the
+            # same kind of motion. Forward (z) is the stride -- a body posed at
+            # frame 6 would otherwise arrive 0.88 m down the corridor from
+            # where the placement put it, because the placement owns the
+            # position and the clip owns the attitude. But root Y is the
+            # PELVIS BOB and root X is the lateral sway, and both are the walk
+            # itself: measured, the raw pose has its planted foot at y = 0.011
+            # at every one of the eight frames, and subtracting the root lifted
+            # all eight to 0.104-0.143 m. Eighty people hovering 12 cm over the
+            # deck, from taking "remove the root translation" as one idea
+            # instead of three.
+            _rx, _ry, rz = clip.root[frame % clip.frames]
+            parts = [(n, [(x, y, z - rz) for x, y, z in vv], t)
+                     for n, vv, t in parts]
     except Exception:                                           # noqa: BLE001
         # A species with no skeleton -- Kosh's column plan has no legs and
         # `animation.py` says so out loud rather than inventing a gait -- keeps
@@ -888,6 +1068,155 @@ def populate(place_key, room_v, room_t, room_g, w_m, l_m, hour=13.0,
     return v, t, g, stats
 
 
+def populate_corridor(deck_id, radius_m, half_w_m, arc_deg, start_deg, z_m,
+                      served=(), hour=None, seed=None, lod=None):
+    """People walking the ring corridor of one deck. Returns (v, t, g, stats).
+
+    THE SPACE THE PLAYER IS ACTUALLY IN, and it had nobody in it. Every other
+    entry point here fills a ROOM; a player walked 126 m of assembled corridor
+    and met not one person on a station of 250,000.
+
+    Emitted in the RING'S OWN WORLD FRAME rather than a room's local one, and
+    that is deliberate: a corridor is not a box that gets placed, it is the
+    place. `deck.py` hands over the same `(radius_m, half_w_m, arc_deg,
+    start_deg, z_m)` it built the arc from -- `collision.py`'s `collision_meta`
+    -- so a deck that moves takes its people with it, and there is no second
+    description of where the floor is.
+
+    Everyone is walking, because that is what a corridor is for: `walk_clip`
+    at a per-resident phase, which is the first thing in this project to use
+    the Froude gait ladder for anything. Half go each way round the ring, so
+    the traffic has two directions rather than a procession.
+    """
+    hour = _R_STATION_HOUR() if hour is None else hour
+    seed = seed or f"corridor/{deck_id}"
+    circ = 2.0 * math.pi * radius_m * (arc_deg / 360.0)
+    area = circ * 2.0 * half_w_m
+    n = corridor_headcount(served, area, hour)
+    if lod is None:
+        lod = corridor_lod(radius_m, 2.0 * half_w_m)
+    g_ms2 = float(_it_gravity(radius_m))
+
+    v, t, g, actors = [], [], [], []
+    stats = {"wanted": n, "placed": 0, "area_m2": area, "lod": lod,
+             "per_100m2": (n / area * 100.0) if area > 0 else 0.0,
+             "sight_m": corridor_sight_m(radius_m, 2.0 * half_w_m)}
+    if n <= 0:
+        stats["actors"] = actors
+        stats["triangles"] = 0
+        return v, t, g, stats
+
+    mix = _sector_mix_for_radius(radius_m)
+    for i in range(n):
+        # Along the arc, jittered off an even spacing so the file does not
+        # read as a fence. Across it, anywhere clear of both walls.
+        frac = (i + 0.5) / n + (_u(seed, "jit", i) - 0.5) / n
+        ang = (start_deg + (frac % 1.0) * arc_deg) % 360.0
+        sp = _species_from_mix(mix, seed, i)
+        npc_id = f"{STATION_SEED}/{seed}/{i}"
+        who = _res.resident(npc_id, sp)
+        mesh = _pose_mesh(sp, npc_id, lod, "walk", g_ms2)
+        # THIS BODY'S OWN HALF-WIDTH, measured, not `BODY_R_M`. That constant
+        # is a nominal human's 0.32 m and this station has fifteen species and
+        # a per-individual build, so a Narn's shoulder put people 0.10 m
+        # through the corridor's end wall -- which the gate below caught. The
+        # mesh is already in hand; asking it costs nothing.
+        bhw = max((abs(q[0]) for q in mesh[0]), default=BODY_R_M)
+        lateral = (_u(seed, "lat", i) - 0.5) * 2.0 * max(
+            0.0, half_w_m - bhw)
+
+        # Half the traffic each way. `+1` walks with increasing angle.
+        way = 1.0 if _u(seed, "way", i) < 0.5 else -1.0
+        a = math.radians(ang)
+        # The corridor's own frame: +x radially outward (which is DOWN under
+        # spin), +z along the station axis, tangential is the direction of
+        # travel. A body is built +Y up and facing +Z, so it is turned to face
+        # tangentially and then stood on the ring.
+        r = radius_m + lateral * 0.0          # lateral is tangential-normal
+        cx, cy = r * math.cos(a), r * math.sin(a)
+        tang = (-math.sin(a), math.cos(a))
+        px = cx + tang[0] * 0.0
+        py = cy + tang[1] * 0.0
+        pz = z_m + lateral
+        _place_ring_body(v, t, g, mesh, px, py, pz, radius_m, a, way,
+                         f"corridor_{i}", actors, _who(who, hour, deck_id))
+        stats["placed"] += 1
+    stats["actors"] = actors
+    stats["triangles"] = len(t)
+    return v, t, g, stats
+
+
+def _place_ring_body(v, t, g, mesh, px, py, pz, radius_m, ang_rad, way,
+                     group, actors, who):
+    """One body standing on the INSIDE of a spun ring, at world (px, py, pz).
+
+    UP IS INWARD. The floor of a ring corridor is its outer wall, so a body's
+    head points at the spin axis and its feet at the hull -- which means the
+    body's local +Y maps to `-radial`, not to world +Y. Getting that wrong lays
+    everybody on their side, which is exactly what the first corridor render
+    showed and is why this is a separate function from `_place_body`: a room is
+    handed to `deck.py` in a local frame and wrapped onto the ring afterwards,
+    and a corridor is authored on the ring in the first place.
+
+    The body's local +Z (its facing) maps to the TANGENT, so a person walks
+    round the ring rather than into the wall. `way` picks which way round.
+    """
+    bv, bt, bg = mesh
+    ca, sa = math.cos(ang_rad), math.sin(ang_rad)
+    # Down (radially outward), up (inward), and the tangent.
+    ux, uy = -ca, -sa                       # local +Y  -> inward
+    fx, fy = -sa * way, ca * way            # local +Z  -> tangent
+    n0 = len(v)
+    for (bx, by, bz) in bv:
+        # local x is the remaining axis: the station axis, so it moves z.
+        v.append((px + ux * by + fx * bz,
+                  py + uy * by + fy * bz,
+                  pz + bx))
+    t0 = len(t)
+    t.extend((a + n0, b + n0, c + n0) for a, b, c in bt)
+    g.append((f"{group}_npc_body", t0, len(t)))
+    for nm, lo, hi in bg:
+        g.append((f"{group}_{nm}", t0 + lo, t0 + hi))
+    if actors is not None:
+        actors.append({"group": group, "who": who, "x": px, "y": py, "z": pz,
+                       # The yaw `npc.gd` needs is measured in the ring's own
+                       # frame, where 0 faces the station axis (+Z). A body
+                       # facing the tangent is a quarter turn off that, and
+                       # `way` decides which quarter.
+                       "yaw": math.pi / 2.0 * way, "pose": "walking"})
+
+
+def _R_STATION_HOUR():
+    import rooms as _R                                          # noqa: PLC0415
+    return _R.STATION_HOUR
+
+
+def _it_gravity(radius_m):
+    import interior as _it                                      # noqa: PLC0415
+    schema, _profile = _it.load()
+    return float(_it.gravity_at(schema, radius_m)) * G0_MS2
+
+
+def _sector_mix_for_radius(radius_m):
+    """Species mix for a corridor. The station's own, until a deck says
+    otherwise: `SECTOR_MIX` is keyed by sector and a corridor spans one deck of
+    one sector, so this is where a per-sector corridor mix will hang. For now
+    it is `schedule.STATION_MIX`, which is the calibrated 250,000-person mix
+    and is right for a corridor by construction -- a corridor is where the
+    whole station passes through."""
+    return dict(_sched.STATION_MIX)
+
+
+def _species_from_mix(mix, seed, i):
+    x = _u(seed, "sp", i)
+    acc = 0.0
+    for sp, w in sorted(mix.items()):
+        acc += w
+        if x <= acc:
+            return sp
+    return "human"
+
+
 def _selftest():
     ok = fail = 0
 
@@ -1003,6 +1332,61 @@ def _selftest():
           src.get("drum", 0) >= 10
           and abs(place_gravity("the_garden") / G0_MS2 - 1.0) < 1e-6,
           f"drum-sourced {src.get('drum', 0)}")
+
+    # -- THE CORRIDOR HAS PEOPLE IN IT -------------------------------------
+    # Every entry point above fills a ROOM. A player walked 126 m of assembled
+    # corridor and met nobody.
+    R_BLUE, HW_BLUE = 211.478, 1.3
+    cv, ct, cg, cs = populate_corridor(
+        "test/blue_0_0", R_BLUE, HW_BLUE, 344.0, 8.0, 7121.3,
+        served=("customs_north", "arrival_concourse", "customs_south"),
+        hour=13.0)
+    check("a ring corridor is populated at all", cs["placed"] > 20, str(
+        {k: v for k, v in cs.items() if k != "actors"}))
+    check(f"...at the derived density, {CORRIDOR_PER_100M2:.2f} people per "
+          "100 m2 station-wide, scaled by what the deck serves",
+          1.5 < cs["per_100m2"] < 4.0,
+          f"{cs['per_100m2']:.2f} on a deck serving three busy places")
+    # THE BODIES STAND ON THE FLOOR, and on a ring the floor is the OUTER wall.
+    rad = [math.hypot(x, y) for x, y, _z in cv]
+    check("their feet are on the deck and their heads point at the spin axis",
+          abs(max(rad) - R_BLUE) < 0.05
+          and 1.5 < (R_BLUE - min(rad)) < 2.6,
+          f"feet at r={max(rad):.3f} of {R_BLUE}, tallest head "
+          f"{R_BLUE - min(rad):.2f} m clear")
+    check("...and they are inside the corridor, not through its end walls",
+          all(abs(z - 7121.3) <= HW_BLUE + 0.01 for _x, _y, z in cv),
+          f"z spread {min(z for _x, _y, z in cv):.2f}.."
+          f"{max(z for _x, _y, z in cv):.2f}")
+    # BREAK: the root translation of a walk cycle is THREE motions and only one
+    # of them is a displacement. Taking all three off lifts everybody.
+    _wf = [_pose_mesh("human", f"walkprobe/{f}", 4, "walk")[0]
+           for f in range(3)]
+    check("BREAK: a walking body's planted foot is on the deck at every phase "
+          "-- the pelvis bob is the walk, not a displacement to remove",
+          all(abs(min(q[1] for q in m)) < 0.03 for m in _wf),
+          str([round(min(q[1] for q in m), 4) for m in _wf]))
+    # AND THE PHASES DIFFER, or eighty people are a drill squad.
+    _p0 = _pose_mesh("human", "walkprobe/a", 4, "walk")[0]
+    _p1 = _pose_mesh("human", "walkprobe/b", 4, "walk")[0]
+    check("...and two walkers are at different points in their stride",
+          max(abs(a[2] - b[2]) for a, b in zip(_p0, _p1)) > 0.05,
+          f"max z difference {max(abs(a[2] - b[2]) for a, b in zip(_p0, _p1)):.3f} m")
+    # THE LOD IS CHOSEN BY THE SIGHT LINE, not by a constant.
+    check("BREAK: a wider ring sees further down its own corridor, so the LOD "
+          "the people are baked at is a function of the deck",
+          corridor_sight_m(560.0, 2.6) > corridor_sight_m(211.0, 2.6) * 1.5,
+          f"grey {corridor_sight_m(560.0, 2.6):.0f} m vs blue "
+          f"{corridor_sight_m(211.0, 2.6):.0f} m")
+    check("...and the corridor's triangle cost is a small share of a deck",
+          cs["triangles"] < 60_000,
+          f"{cs['triangles']:,} for {cs['placed']} people at lod {cs['lod']}")
+    # A DECK THAT SERVES NOTHING IS QUIET, NOT EMPTY.
+    _, _, _, qs = populate_corridor("test/quiet", R_BLUE, HW_BLUE, 344.0, 8.0,
+                                    7121.3, served=(), hour=3.0)
+    check("a deck serving nothing is quiet rather than abandoned",
+          0 < qs["placed"] < cs["placed"] / 4,
+          f"{qs['placed']} against {cs['placed']} on the busy deck")
     # COVERAGE, NOT A SUM -- a person's own group contains their body parts,
     # so the spans nest and legitimately sum to more than the mesh.
     _cov = set()
