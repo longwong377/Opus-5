@@ -863,6 +863,65 @@ def aperture_clearance(schema, profile, sector, z_span=None):
 
 
 # ---------------------------------------------------------------------------
+# MOTION, and the thing this module builds does not go far enough
+#
+# Session 3z. This file had `HUB_LEN_M` and `LATTICE_LEN_M` and nothing about
+# movement at all, which is how a transit spine ended up with a diameter and no
+# speed. The physics is `transit.py`'s; what belongs here is the question only
+# this module can answer -- **is there tube where the shuttle is supposed to
+# run?** -- and the answer turns out to be no.
+#
+# `tube_span()` builds from one drum cap to the other plus an overhang. The
+# service `LOCATIONS.md` section 9 describes runs **Blue to Grey**, which is
+# 4,650 m, and the tube covers 2,763 m of it. The uncovered 41% is forward
+# through Red and Blue and aft through the rest of Grey -- exactly the run the
+# Security Manual sectional schematic draws and this module's own docstring
+# quotes ("running the whole length of the drum **and on forward through Red
+# and Blue**"). The geometry was built for the drum because the drum is what
+# `interior.py` had; nobody came back for the rest.
+#
+# `tube_coverage()` measures it and the self-test asserts the built part is
+# contiguous and contains the whole drum. It deliberately does NOT assert the
+# gap away: a gate that passes because the missing 41% was excused is the
+# defect this project keeps catching.
+# ---------------------------------------------------------------------------
+
+def shuttle_line(schema, profile):
+    """The core shuttle's timetable: 13 stops, Grey to Blue, from transit.py."""
+    import transit as tr                                      # noqa: PLC0415
+    line = tr.core_shuttle_line(schema, profile)
+    return line, tr.line_report(schema, line)
+
+
+def tube_coverage(schema, profile, sector=None, z_span=None):
+    """How much of the shuttle's declared run has tube built for it.
+
+    Two spans compared: what `tube_span()` emits, and what the service needs.
+    Reported as a fraction so the number moves if either end moves, rather
+    than as a boolean that would read the same at 99% and at 1%.
+    """
+    sector = sector or it.drum_sector(schema, profile)
+    t0, t1 = z_span if z_span else tube_span(schema, profile, sector)
+    line, _rep = shuttle_line(schema, profile)
+    s0, s1 = line["z0"], line["z1"]
+    lo, hi = max(t0, s0), min(t1, s1)
+    built = max(0.0, hi - lo)
+    ex = schema["sectors"]["extents_m"][sector]
+    return {
+        "tube_z": (t0, t1),
+        "service_z": (s0, s1),
+        "service_len_m": s1 - s0,
+        "built_len_m": built,
+        "fraction": built / (s1 - s0),
+        "missing_fore_m": max(0.0, s1 - t1),
+        "missing_aft_m": max(0.0, t0 - s0),
+        "covers_drum": t0 <= float(ex["z0"]) and t1 >= float(ex["z1"]),
+        "stops_with_tube": sum(1 for z in line["stops_z"] if t0 <= z <= t1),
+        "stops": line["stops"],
+    }
+
+
+# ---------------------------------------------------------------------------
 # Self-test
 # ---------------------------------------------------------------------------
 
@@ -1130,6 +1189,52 @@ def _selftest():
     # visible from everywhere in the drum, so it all counts at once.
     check("axis fits the drum's visible-set headroom", len(at) < 30_000,
           f"{len(at):,} triangles")
+
+    # --- the service, and what is missing under it -------------------------
+    line, rep = shuttle_line(schema, profile)
+    cov = tube_coverage(schema, profile, sector)
+
+    check("the shuttle is the fastest thing on the station",
+          rep["peak_speed_m_s"] > 15.0, f"{rep['peak_speed_m_s']:.1f} m/s")
+    check("its stops are spaced for a station, not a metro platform",
+          200.0 < rep["spacing_m"] < 600.0, f"{rep['spacing_m']:.0f} m")
+    # A car has to fit down the bore this module lathes. The tube's radius is
+    # 19.5 m and a shuttle car hangs beneath a truss inside it, so the useful
+    # thing to assert is that the bore is not the binding constraint on a
+    # vehicle the size of the drum tram.
+    import tram as _tram                                      # noqa: PLC0415
+    check("the bore is wide enough for a car of the drum tram's section",
+          2.0 * CORE_TUBE_R_M > 2.0 * _tram.CAR_WIDTH_M,
+          f"{2 * CORE_TUBE_R_M:.1f} m bore against a "
+          f"{_tram.CAR_WIDTH_M:.1f} m car")
+
+    # THE GAP. Asserted as facts that can fail in both directions: the tube
+    # must cover the whole drum (it does, and that is real work), and the
+    # coverage fraction is reported rather than excused. If somebody extends
+    # the tube through Red and Blue, the second check fires and tells them to
+    # come back here -- which is the point of writing it as a bound rather
+    # than as a comment.
+    check("the tube covers the whole drum", cov["covers_drum"],
+          f"tube {cov['tube_z'][0]:.0f}..{cov['tube_z'][1]:.0f}")
+    check("tube and service agree about the drum's stops",
+          cov["stops_with_tube"] >= 6,
+          f"{cov['stops_with_tube']} of {cov['stops']} stops have tube")
+    check("KNOWN GAP: the tube does not yet reach the shuttle's termini",
+          cov["fraction"] < 1.0 and cov["missing_fore_m"] > 0.0,
+          f"covered {cov['fraction'] * 100:.0f}% of "
+          f"{cov['service_len_m']:,.0f} m; missing "
+          f"{cov['missing_fore_m']:,.0f} m fore and "
+          f"{cov['missing_aft_m']:,.0f} m aft -- if this now fails, the tube "
+          f"was extended and this check should become an equality")
+    print(f"      core shuttle: {rep['stops']} stops, "
+          f"{rep['spacing_m']:.0f} m apart, peak "
+          f"{rep['peak_speed_m_s']:.1f} m/s, end to end "
+          f"{rep['end_to_end_s'] / 60:.1f} min, headway "
+          f"{rep['headway_s'] / 60:.1f} min")
+    print(f"      tube covers {cov['fraction'] * 100:.0f}% of the run "
+          f"({cov['built_len_m']:,.0f} m of {cov['service_len_m']:,.0f} m); "
+          f"{cov['missing_fore_m']:,.0f} m missing fore, "
+          f"{cov['missing_aft_m']:,.0f} m aft")
 
     print(f"{ok}/{ok + fail} passed")
     return 1 if fail else 0

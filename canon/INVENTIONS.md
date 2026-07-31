@@ -3219,3 +3219,227 @@ reader.
 **What would overturn it.** Any figure for how many quarters aboard have a galley, or any scene
 establishing that station quarters have no cooking facilities at all — which would push this
 toward 1.0 and is a real possibility on a station with centralised life support.
+
+---
+
+## INV-094 — Passenger jerk limit: 0.6 m/s³, and the anchor is the ramp time
+
+`station/transit.py`, `JERK_M_S3`.
+
+**What.** Every vehicle on the station ramps its acceleration at no more than 0.6 m/s³, so the
+1.2 m/s² cruise acceleration takes **2.0 seconds** to arrive and 2.0 seconds to release.
+
+**Why necessary.** The project had a cruise *acceleration* (`physics/core_shuttle.AxialShuttle`,
+1.2 m/s²) and a *lateral* comfort bound (0.12 g) and no statement about how quickly either is
+applied. Without a jerk limit the motion profile is two straight ramps meeting at a corner, which
+is an infinite jerk at the midpoint of every journey — the thing that throws a standing passenger,
+as distinct from the acceleration itself, which they can lean into.
+
+**What constrained it.** The anchor is the **ramp time, not the figure**. A standing passenger who
+feels a car move completes a voluntary stance shift in roughly a second; requiring the ramp to
+occupy 2.0 s puts a full stance shift plus the same again of margin inside it. 1.2 / 2.0 = 0.6,
+which lands in the middle of the 0.3–1.0 m/s³ band transit engineering uses, so the derivation and
+the practice agree without either being fitted to the other. It is also the *only* new comfort
+bound introduced: 0.12 g and 1.2 m/s² are both read back out of the modules that already own them,
+and `transit._selftest` asserts the agreement through `inspect.signature`.
+
+**What it changes.** It makes every ride longer, and that is the test that it is not decoration:
+the guideway tram's 646.5 m leg takes 48.5 s against 46.4 s for a jerk-free profile. `transit.py`
+asserts the jerk-limited profile is the *slower* of the two, so a regression that dropped the term
+would fail rather than quietly speed the station up.
+
+**What would overturn it.** A Season 2–3 frame of a passenger standing unsupported in a moving car
+— whether grab poles are in use at the moment a car starts is direct evidence about this number.
+`35a` shows stanchions but the car is not visibly accelerating.
+
+---
+
+## INV-095 — The guideway tram's five stops, and why five is forced
+
+`station/transit.py`, `guideway_line()` / `stop_rule()`; `station/tram.py`, `service()`.
+
+**What.** The drum guideway tram stops **five** times, evenly, at z = 3839, 4485.5, 5132, 5778.5
+and 6425 — 646.5 m apart. Peak speed 26.68 m/s (96 km/h), leg 48.5 s, end to end 4 m 14 s.
+
+**Why necessary.** `station/tram.py` built a 96 m vehicle, placed six of them on three guideways,
+and said nothing about where they stop or how fast they go. `npc/navigation.py` models the *ground*
+tram, the core shuttle and the spoke lifts and does not know this line exists — its docstring
+asserts "the guideway tram runs along the axis where Coriolis is exactly zero and is fast" and
+never gives it a number. A vehicle with no timetable is a prop.
+
+**What constrained it — four things, and together they leave one answer.**
+
+1. **Both termini are structural.** `interior.guideway_truss` runs the drum sector's full extent,
+   so the line starts and ends at the end caps. Not a choice.
+2. **A stop must land on the spoke crossing.** `interior.drum_spokes` puts its spokes at the
+   sector's mid-z, and that is the only place in the drum where this line can interchange with the
+   radial tubes or the core shuttle. With even spacing and both ends fixed, this forces an **odd**
+   stop count.
+3. **The catchment.** A stop is useful if you will walk to it, and five minutes is the standard
+   planning figure. Stated as a *time*, it converts through the local gravity: at the drum floor's
+   1.000 g the project's own `navigation.walk_speed` gives 1.494 m/s, so the reach is 448 m.
+4. **Fewest stops that satisfy 1–3.** Three stops put 1,293 m between them, a 646 m walk, which
+   fails the catchment. Five put 646.5 m between them, a 323 m walk, which passes.
+
+Four stops would pass the catchment (862 m spacing, 431 m walk) and **miss the spoke crossing** —
+which is exactly why constraint 2 is written down. `transit._selftest` runs both rejections: it
+asserts three fails the catchment and that four does not contain mid-z. A rule whose rejections are
+not run is not a rule.
+
+**The speed is an output, not an input.** Nothing picks 26.68 m/s. Given 646.5 m, 1.2 m/s² and
+INV-094's jerk limit, the fastest comfortable run accelerates until it must brake, and 26.68 m/s is
+where that gets to. **Coriolis imposes no cap on this line at all**, because the motion is parallel
+to the spin axis and ω × v is then identically zero — which is the whole reason an axial tram is
+8.5× faster than the ring tram beside it.
+
+**Cross-check that it is not absurd.** At 26.68 m/s a 7.2 × 8 m car section meets about 10.0 kN of
+aerodynamic drag in the drum's air, or 268 kW at cruise — a normal tram motor. A metro runs 80–100
+km/h between stops of this spacing.
+
+**What would overturn it.** Any frame showing a tram stop, a platform, or a car stationary against
+the drum's landscape; or a Season 2–3 line of dialogue giving a journey time inside the Garden.
+
+---
+
+## INV-096 — The ground tram's three stops are set by interchange, not by walking
+
+`station/transit.py`, `ground_line()`.
+
+**What.** The second, ground-level drum tram is a **ring** line at the floor radius with three
+stops, one under each guideway, 582.9 m apart. Capped at 3.13 m/s.
+
+**Why necessary.** `LOCATIONS.md` §9 records the ground tram as authority 1 (`29a` shows a
+green-and-yellow car on an elevated track with its own canopy, sharing nothing with the white and
+maroon guideway tram) and nothing else about it was ever specified.
+
+**What constrained it.** Not the catchment — three stops on a 1,749 m ring give a 291 m walk, well
+inside the 448 m reach, so catchment does not bind. What binds is **interchange**: the point of a
+second system is to serve what the first cannot, so it must meet the first. `interior.SPOKE_COUNT`
+is 3 and the guideways sit in the spoke planes, so there are exactly three places to meet, and the
+stop count is read out of that constant rather than chosen.
+
+**Its speed is not a choice either, and it is the interesting one.** This line runs *across* the
+spin, so its Coriolis is radial and it changes what a passenger **weighs**. Holding that inside the
+project's 0.12 g bound caps it at 3.13 m/s — 11.3 km/h, barely twice walking pace. That is why the
+drum needs two tram systems rather than one fast one, and it is a consequence of the geometry, not
+a design decision anybody made.
+
+**What a passenger actually feels, and it is the best physics in the station.** At the cap, riding
+**spinward** they weigh **1.1236 g** and riding **anti-spinward 0.8836 g** — a **0.2400 g swing,
+27.2% heavier one way than the other, on the same seat in the same vehicle**. The swing is exactly
+2× the Coriolis bound; the small `u²/r` term (0.0036 g) adds to *both* directions and so cancels
+out of the difference. Is that uncomfortable? A ±12% weight change is roughly a normal lift on
+Earth, so it is noticeable rather than unpleasant — but the *reason* it is only that is that the
+cap was set to make it so, and a ring tram at 12 m/s would be at 0.46 g of Coriolis, which is not
+survivable as a commute. So the answer to "is it uncomfortable" is: it is comfortable **because**
+it is slow, and it is slow **because** it must be comfortable.
+
+**AN OPEN QUESTION ABOUT THE BOUND ITSELF, recorded rather than resolved.** The 0.12 g figure was
+set in `physics/core_shuttle.comfortable_duration` for a **lift**, where Coriolis is *tangential* —
+an unexplained sideways shove, which is the least tolerable kind of acceleration. On this line the
+same 0.12 g appears as a *weight change*, which humans tolerate far better; a lift on Earth does
+0.12 g routinely and nobody notices. Applying one bound to both is therefore **over-conservative
+for the ring tram**, possibly by 2–3×, and it is why this line is only twice walking pace. It is
+not changed here, because `npc/navigation.py` applies the same bound to the same line and a
+unilateral change would put two modules into disagreement about the same vehicle. **What would
+settle it:** a decision to split the bound into a tangential (push) limit and a radial (weight)
+limit, which is a one-line change in `core_shuttle` and a re-derivation here. Flagged for the
+owner; it would roughly double the ground tram's speed and change no other system.
+
+**What would overturn it.** Any frame showing the ground tram's track running lengthwise down the
+drum rather than around it, which would make it a second axial line and remove the cap entirely.
+
+---
+
+## INV-097 — The core shuttle's stop spacing, and the tube stops 1,888 m short of it
+
+`station/transit.py`, `core_shuttle_line()`; `station/core_tube.py`, `tube_coverage()`.
+
+**What.** The core shuttle's **13 stops** are spread evenly over the run from Grey's aft face
+(z 3397) to Blue's fore face (z 8047) — 4,650 m, so **387.5 m apart**. Peak speed 20.40 m/s
+(73 km/h), leg 38.0 s, end to end 11 m 16 s, headway 3 m 52 s on six cars.
+
+**What is sourced and what is not.** The stop *count* and the Blue-to-Grey run are authority 4 —
+the fan source cited in `LOCATIONS.md` §9, already carried by `npc/navigation.CORE_SHUTTLE_STOPS`.
+The **spacing is ours**: it is the run divided by twelve. The termini are read off the sector
+extents rather than stated, so if C-003/C-004 ever move a sector face the line moves with it.
+
+**What constrained the spacing.** Nothing but the two sourced numbers, which is why this entry is
+separate from INV-095 — there the spacing is derived from a catchment and here it is arithmetic on
+someone else's figure. Checked rather than assumed: every register place inside the run is within
+half a spacing (194 m) of a stop, asserted in `transit._selftest` with a negative control that
+thins the stop list and confirms the coverage check fires.
+
+**THE GAP THIS FOUND, and it is a real one.** `core_tube.tube_span()` builds from one drum cap to
+the other plus a 40 m overhang — z 3750.5 to 6513.5. The service runs 3397 to 8047. **The tube
+covers 59% of the run**: 1,534 m is missing forward through Red and Blue and 354 m aft through
+Grey. That is exactly the run `core_tube.py`'s own docstring quotes from the Security Manual
+sectional schematic — "running the whole length of the drum *and on forward through Red and Blue*".
+The geometry was built for the drum because the drum is what `interior.py` had, and nobody came
+back for the rest. `tube_coverage()` measures it and the self-test asserts the built part contains
+the whole drum while reporting the shortfall, deliberately without excusing it.
+
+**And the aft half of the station has no transit at all.** The shuttle's aft terminus is Grey, so
+Yellow's 3,397 m — 42% of the station's length — must be walked, which is 51 minutes at its 0.559 g
+walking speed and is why an end-to-end trip is 1 h 07 m rather than the 20 minutes the shuttle
+alone would suggest.
+
+**What would overturn it.** Any frame or source establishing the shuttle's actual termini, a stop
+count from a car display, or a wayfinding sign listing the line's stops. A shuttle-car display
+would also close C-004, which is why `LOCATIONS.md` calls a lift display the single highest-value
+missing reference in the project.
+
+---
+
+## INV-098 — Headway is derived from car count, and one of the four numbers is embarrassing
+
+`station/transit.py`, `line_report()`.
+
+**What.** Every line's headway is its **round trip divided by the cars on it**, and the mean wait
+for a passenger who does not consult a timetable is half that. Guideway tram 4 m 34 s (2 cars per
+guideway); core shuttle 3 m 52 s (6 cars); ground tram 2 m 38 s (4 cars); **spoke lifts 5 m 13 s
+(one car per shaft)**.
+
+**Why necessary.** A transit time that ignores headway is a lie: on the Blue-bays-to-Zocalo trip
+the wait is 1 m 56 s against a 1 m 36 s ride, so omitting it would have understated the journey by
+more than the riding takes.
+
+**What constrained it.** The car counts are not invented here. `tram.CARS_ON_A_GUIDEWAY` is
+`drum_trams`'s own `per_guideway` default — `transit._selftest` reads it back out of the signature
+so the vehicle module and the timetable cannot disagree about how many cars exist — and the other
+three are `navigation.CORE_SHUTTLE_CARS` / `GROUND_TRAM_CARS` / `SPOKE_LIFT_CARS`. The round trip
+is the ride plus a `TRANSIT_DWELL_S` at each intermediate stop and two at the terminus.
+
+**The finding, reported rather than tuned away.** One car per spoke gives a **5 m 13 s headway on
+the only route between the drum floor and the axis**, so the mean wait to leave the Garden by spoke
+is 2 m 37 s on top of a 2 m 17 s ride. That is the worst wait on the station and it is a statement
+about how many cars the spokes need, not about the physics. The self-test asserts the spoke lift
+*is* the worst wait and that it exceeds two minutes, so the number cannot be quietly improved
+without the assertion noticing.
+
+**What would overturn it.** Any frame showing more than one car in a spoke, or a queue at a lift
+door long enough to imply a headway.
+
+---
+
+## INV-099 — Walking distance on the rim is Manhattan, not great-circle
+
+`station/transit.py`, `walk_leg()` / `_sector_walk()`.
+
+**What.** The distance between two places on the rim is the **axial run plus the arc**, and the
+walk is timed sector by sector at each sector's own gravity rather than at one average speed.
+
+**Why necessary.** Every journey time in the table rests on it, and both halves change the answer:
+the hypotenuse would have understated C&C-to-Medlab by 26.5%, and a single 1.4 m/s walking speed
+gives 95.8 minutes end to end against the 103.6 the station's own gravities produce.
+
+**What constrained it.** Corridors in a concentrically decked cylinder run either along the axis
+or around a ring — that is what `interior_kit` builds and what `central corridor.webp` shows — so a
+diagonal is not walkable and the hypotenuse is not available. Speed comes from
+`navigation.walk_speed`, which is the project's existing Froude-number relation, imported rather
+than restated. Gravity varies from Yellow's 0.559 g to Grey's 1.693 g, a 3.0× range that changes
+walking speed by 1.74×, so a single figure is wrong by minutes over a station-length walk.
+
+**What would overturn it.** A deck plan showing diagonal or spiral circulation, which would make
+the Manhattan figure an overestimate. It is deliberately the conservative reading: it can only
+overstate a journey, never understate one.
