@@ -384,6 +384,61 @@ def door_leaves(radius_m, angle_deg, z_m, key, open_fraction=0.0):
     return out
 
 
+def _runs(per_tri):
+    """Per-triangle group names -> (name, lo, hi) spans.
+
+    Two conventions for "which material owns this triangle" live in this
+    project and both are load-bearing: `interior_kit` records SPANS because its
+    tags nest, and `signage`/`dressing` record one name PER TRIANGLE because
+    theirs do not. Converting at the boundary is cheaper than making either
+    side change, and doing it in one named place is what stops a third
+    convention appearing.
+    """
+    out = []
+    for i, nm in enumerate(per_tri):
+        if out and out[-1][0] == nm and out[-1][2] == i:
+            out[-1] = (nm, out[-1][1], i + 1)
+        else:
+            out.append((nm, i, i + 1))
+    return out
+
+
+def door_sign(radius_m, angle_deg, z_m, side, place, gap_m=0.10):
+    """The plaque beside one door: what this place is, and where you are.
+
+    118 places have carried a name, a sector, a ring, a deck and a bearing in
+    `directory.py` for sessions and no player could read a word of it.
+    judge-3w's finding at a doorway was "no room name, no bay number" and it
+    was true of every door on the station.
+
+    THE PLAQUE'S FRAME IS THE ROOM'S FRAME, which is why this is four lines.
+    `signage.door_plaque` authors +x across, +y up, +z out of the face, and
+    `_place_local` maps exactly that onto a ring -- x becomes arc, y becomes
+    radius inward, z becomes the station axis. A door is in a wall of constant
+    z, so a plaque on that wall faces along the axis and needs no rotation at
+    all... on one side.
+
+    `side` IS NOT DECORATION. A door on the far wall of the corridor faces the
+    other way, and a plaque placed with the same numbers would read backwards
+    from inside the corridor and face into the room. Turning it is a HALF TURN
+    ABOUT THE VERTICAL AXIS -- (x, y, z) -> (-x, y, -z) -- which is a rotation
+    and therefore preserves winding. Mirroring in z alone would point it the
+    right way with every face inside-out, which is the defect this project
+    found in `dressing._cyl` and would not see in a render, because an
+    inside-out surface and a missing one both show the background.
+    """
+    import signage as S                                        # noqa: PLC0415
+    v, t, g = S.door_plaque(place)
+    dx = (K.PROVISIONAL["door_width_m"] + S.PLAQUE_W_M) / 2.0 + gap_m
+    # Beside the door on the side the arc runs, lifted to reading height. `y`
+    # is measured up from the deck because `_place_local` subtracts it from the
+    # radius, so 1.55 m here is 1.55 m above the floor a body stands on.
+    local = [(x + dx, y + S.PLAQUE_CENTRE_H_M, z) for x, y, z in v]
+    if side > 0:
+        local = [(-x, y, -z) for x, y, z in local]
+    return _place_local(local, radius_m, angle_deg, z_m), t, g
+
+
 def vestibule_render(radius_m, angle_deg, z_from, z_to, width_m, height_m,
                      floor_y=0.022, wall_t=0.12):
     """The vestibule a player can SEE, as distinct from the one they stand on.
@@ -498,6 +553,30 @@ def build_deck(schema, profile, sector, ring, deck, with_rooms=True,
             T.extend((a + off, b + off, c + off) for a, b, c in lt)
             G.append((name, t0, len(T)))
             stats["leaf_tris"] = stats.get("leaf_tris", 0) + len(lt)
+
+        # ...and a plaque saying what is behind it. The wall the sign hangs on
+        # is the RENDER wall, not the collision plane -- the same distinction
+        # the vestibule below gets wrong-way-round if you take the measured
+        # `half_w` for it, which put every passage 0.219 m inside the corridor.
+        # `side` IS THE SIGN OF THE OFFSET, not its opposite, and getting that
+        # backwards put every plaque on the FAR wall of the corridor -- 2.6 m
+        # from the door it labels, facing away from it. The doors report
+        # `side=-1` with `z_m` BELOW `cz`, so the wall is `cz + side*half`.
+        # Caught by measuring where the geometry landed rather than by reading
+        # the render, because at 2.6 m a plaque on the wrong wall still looks
+        # like a plaque on a wall.
+        sv, st, sg = door_sign(
+            radius, door["angle_deg"],
+            cz + door["side"] * K.PROVISIONAL["corridor_width_m"] / 2.0,
+            door["side"], q)
+        off, t0 = len(V), len(T)
+        V.extend(sv)
+        T.extend((a + off, b + off, c + off) for a, b, c in st)
+        # Prefixed with the place, exactly as its props and people are, so a
+        # room's whole contribution to the deck is addressable by one string.
+        for nm, lo_, hi_ in _runs(sg):
+            G.append((f"{q['key']}__{nm}", lo_ + t0, hi_ + t0))
+        stats["sign_tris"] = stats.get("sign_tris", 0) + len(st)
 
     # THE SPAWN COMES FROM THE COLLISION SHELL, which is the only mesh that
     # knows where the floor a body rests on actually is. Two earlier versions of
@@ -843,7 +922,35 @@ def _selftest():
     # purpose, so a name is no way to find them, and a probe built by passing
     # the right plane in is an assertion that cannot fail.
     wall_z = cz - K.PROVISIONAL["corridor_width_m"] / 2.0
-    fv, ft, _fg, fs = build_deck(schema, profile, "blue", 0, 0)
+    fv, ft, fg, fs = build_deck(schema, profile, "blue", 0, 0)
+
+    # --- SIGNAGE IS A DECAL, AND THAT IS DECLARED RATHER THAN ASSUMED -------
+    # Session 3x closed every open boundary edge on this deck, and then hung a
+    # readable plaque beside all six doors. Lettering is FLUSH single-sided
+    # quads -- which is what the reference shows, an emissive display panel
+    # whose glyphs have no thickness -- so it reintroduces 3,984 edges used by
+    # one triangle. A later session re-measuring closure would find that and
+    # reasonably conclude something regressed.
+    #
+    # It did not, and the difference is checkable rather than a matter of
+    # opinion. A decal cannot be a hole you see the background through if the
+    # thing behind it is closed and it does not stick out past it. Both halves
+    # are asserted: the deck LESS the lettering is still watertight, and every
+    # letter lies inside its own plaque (`signage._selftest`). Exempting a
+    # group by name without those two would be an exemption that rots.
+    solid = [ft[i] for nm, lo, hi in fg if "sign_text" not in nm
+             for i in range(lo, hi)]
+    s_open, _s_non = K.boundary_edges(fv, solid)
+    check("the deck is watertight once the lettering is set aside",
+          not s_open, f"{len(s_open)} open edges in the solid geometry")
+    all_open, _ = K.boundary_edges(fv, ft)
+    lettering = [nm for nm, _l, _h in fg if "sign_text" in nm]
+    check("...and every open edge that remains belongs to lettering",
+          len(all_open) > 0 and lettering,
+          f"{len(all_open)} open edges over {len(lettering)} lettering spans")
+    print(f"  signage: {fs.get('sign_tris', 0):,} triangles over "
+          f"{len(lettering)} lettering spans; {len(all_open)} flush-decal "
+          f"edges, {len(s_open)} in the solid")
     deepest = max((fv[i][2] for lo_, hi_ in fs.get("vestibule_spans", ())
                    for tri in ft[lo_:hi_] for i in tri), default=wall_z)
     check("no vestibule stands proud of the corridor wall",

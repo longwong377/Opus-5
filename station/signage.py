@@ -602,8 +602,14 @@ def door_plaque(place):
     hw, hh = PLAQUE_W_M / 2.0, PLAQUE_H_M / 2.0
     b = 0.012
     m.box(-hw, hw, -hh, hh, 0.0, PLAQUE_T_M * 0.45, "sign_frame")
+    # `sign_field`, NOT `sign_face`. The two are different signs in the show
+    # and both are authority 1: `sign_face` is the customs hall's large backlit
+    # BLUE information board, and `sign_field` is the black-fielded display
+    # panel this module's palette was measured off. A door plaque has no
+    # reference of its own -- INV-086 says so -- and takes the black, because
+    # the black is the half of the reference our corridor does not have.
     m.box(-hw + b, hw - b, -hh + b, hh - b, PLAQUE_T_M * 0.45, PLAQUE_T_M,
-          "sign_face")
+          "sign_field")
     lines = door_text(place)
     # Every NAME line takes the large face and the trailing address line does
     # not, so a two-line name does not have its second line demoted to small

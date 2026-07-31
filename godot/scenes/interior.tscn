@@ -1,4 +1,4 @@
-[gd_scene load_steps=112 format=3]
+[gd_scene load_steps=114 format=3]
 
 ; A room, from the inside.
 ;
@@ -145,6 +145,8 @@
 [ext_resource type="Material" path="res://materials/light_deck_grating.tres" id="m_light_deck_grating"]
 [ext_resource type="Material" path="res://materials/npc_hair.tres" id="m_npc_hair"]
 [ext_resource type="Material" path="res://materials/npc_skin.tres" id="m_npc_skin"]
+[ext_resource type="Material" path="res://materials/sign_lit_field.tres" id="m_sign_lit_field"]
+[ext_resource type="Material" path="res://materials/sign_text_lit.tres" id="m_sign_text_lit"]
 
 [sub_resource type="Environment" id="Env"]
 ; Flat colour, not a sky. Near-black rather than pure black for the reason the
@@ -537,8 +539,11 @@ material_rules = {
 "research_wall": ExtResource("m_shell_wall_clinical"),
 "reveal": ExtResource("m_kit_reveal"),
 "sign_face": ExtResource("m_signage_panel"),
+"sign_field": ExtResource("m_sign_lit_field"),
 "sign_frame": ExtResource("m_sign_mount_dark"),
 "sign_post": ExtResource("m_sign_mount_dark"),
+"sign_text": ExtResource("m_sign_text_lit"),
+"sign_text_head": ExtResource("m_sign_text_lit"),
 "signage_neon": ExtResource("m_emissive_signage"),
 "signage_panel": ExtResource("m_signage_panel"),
 "skirt": ExtResource("m_kit_skirt"),

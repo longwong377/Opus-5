@@ -1245,7 +1245,7 @@ def _build():
     a(Material(
         "sign_text_lit", "Sign Lettering — the amber a station sign is written in",
         albedo=(0.180, 0.174, 0.112), roughness=0.30, metallic=0.0,
-        specular=0.30, emission=(1.000, 0.970, 0.620), emission_energy=3.4,
+        specular=0.30, emission=(1.000, 0.970, 0.620), emission_energy=0.90,
         binds=("sign_text", "sign_text_head"), scenes=("interior",),
         source="babylon 5 welcome sign, instructions, and hub.jpg (authority 1). "
                "TWO independent regions agreeing: the header at "
@@ -1256,11 +1256,22 @@ def _build():
                "(1.000,0.964,0.588) -- 1% apart in G, 6% in B -- so the mean "
                "(1.000,0.970,0.620) is one source seen twice rather than an "
                "average of two guesses. Peak luminance 0.445 p95.",
-        extrapolated="emission_energy 3.4 and the albedo. Energy is set so the "
-                     "lettering lands near the measured 0.445 peak against this "
-                     "project's corridor exposure rather than by eye, and it "
-                     "sits below `emissive_signage`'s 4.5 because that is a "
-                     "neon glyph and this is a backlit legend. The albedo is "
+        extrapolated="emission_energy 0.90 and the albedo. THE FIRST VALUE WAS "
+                     "3.4 AND IT WAS ARITHMETICALLY WRONG, which a render "
+                     "showed immediately: (1.000,0.970,0.620) x 3.4 is "
+                     "(3.4,3.3,2.1), every channel over 1.0, so the amber "
+                     "clipped to PURE WHITE and the plaque read as a blank "
+                     "lightbox. It came from taking the show's text-to-wall "
+                     "ratio of 21x literally against a corridor whose wall "
+                     "renders about 12x brighter than the show's -- the ratio "
+                     "is right and the denominator is wrong, so the sign was "
+                     "asked to make up the corridor's error. 0.90 keeps every "
+                     "channel under 1.0 and the hue readable. THIS IS "
+                     "PROVISIONAL and the target is stated so it can be "
+                     "re-derived rather than re-guessed: lettering should peak "
+                     "at 21x the luminance of the structure around it (linear "
+                     "0.445 against 0.021) once the deck renders under its "
+                     "shipped fixtures rather than an ad-hoc rig. The albedo is "
                      "the emission at 18%, the value an unpowered amber "
                      "diffuser reads at -- the same argument "
                      "`light_pilaster_strip` makes at 0.85 for a white one."))
