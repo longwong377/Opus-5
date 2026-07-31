@@ -1805,9 +1805,18 @@ SOFT_FILL_RANGE_M = 3.0 * SOFT_FILL_HEIGHT_M
 SOFT_FILL_ANGLE_ATTENUATION = 4.0
 # How much of the axial value the corridor's WORST-LIT corner may lose to the
 # cone. The cone half-angle is then solved from it rather than chosen -- see
-# `_soft_fill_light` -- so a corridor of another width or a different mount
+# `soft_fill_cone_deg` -- so a corridor of another width or a different mount
 # height re-derives its own cone instead of inheriting this one's.
 SOFT_FILL_CORNER_FLOOR = 0.90
+# How far past the corridor wall the cone may land, in metres. A shadowless
+# source cannot be stopped by a wall, so the fill reaches the floor of whatever
+# room is on the other side; this is the bound on how much of it. 2.0 m is one
+# door width (`interior_kit.PROVISIONAL["door_width_m"]` is 1.50) plus its
+# frame, i.e. the fill may not throw further into a room than an open door
+# does. It is an ASSERTED bound and not a description: the self-test fails the
+# build if the solved cone exceeds it, which is what stops the cone quietly
+# opening up when some other constant moves.
+SOFT_FILL_MAX_SPILL_M = 2.0
 # THE CONE IS SIZED TO THE WALL PLATE AND NOT TO THE WALKABLE WIDTH.
 # `collision_meta["half_w_m"]` is 1.0806 m on blue/0/0 and it is the NARROWEST
 # clearance a body has over its own height -- measured between pilasters, which
@@ -1862,18 +1871,56 @@ SOFT_FILL_LADDER_BOXES = {
 }
 
 SOFT_FILL_CALIBRATION = """
-Set on `--shot deck --deck blue/0/0 --at docking_bays` at 1280x720, the framing
-docs/engine-deck-corridor.png is taken at, measured with SOFT_FILL_LADDER_BOXES
-against docs/reference-values.md section 1's ladder. Ratios to the lit wall
-plate; the SHOW column is that section's rungs 2/3 and 16.
+Set on `--shot deck --deck blue/0/0 --at docking_bays` at 1280x720 -- the
+framing docs/engine-deck-corridor.png is taken at -- measured with
+SOFT_FILL_LADDER_BOXES against docs/reference-values.md section 1's ladder.
+Ratios are to the lit wall plate; the SHOW row is that section's rungs 2/3
+and 16. Frame median is `tools/measure_frame.py --against
+"reference/10-interiors-generic-kit/grey level 1.webp"`.
 
-  fill energy   deck field   soffit    frame median vs the reference
-  ------------------------------------------------------------------
-   0 (before)      x0.65      x0.23     x0.91   p5 x0.77 FAIL
-   4              x1.37      x0.21     x1.00   (not gated)
-  10              x2.29      x0.20     x1.07   whole distribution PASS
-  12 (shipped)    see STATE  see STATE
-  SHOW            x2.49      x0.23-0.32
+  fill energy   deck field   soffit      frame median   distribution gate
+  ---------------------------------------------------------------------------
+   0 (before)      x0.65      x0.23         x0.91        FAIL -- p5 x0.77
+   4               x1.37      x0.21         x1.00        (not gated)
+  10               x2.29      x0.20         x1.07        PASS, every band
+  12 (SHIPPED)     x2.59      x0.20         x1.09        PASS, every band
+  SHOW             x2.49      x0.23-0.32
+
+`--shot interior --room corridor` moves the same way and does not regress: deck
+x0.62 -> x2.59, and it passed the whole distribution before and after (median
+x1.09 -> x1.43, against a x1.40 +/-25% window).
+
+12.0 overshoots the deck rung by 4% and is kept there rather than shaved to
+11.5, because the two frames disagree by more than that between themselves and
+tuning inside the disagreement is fitting noise.
+
+THE ONE RUNG THAT DID NOT GO THE RIGHT WAY IS THE SOFFIT, x0.23 -> x0.20
+against a show band of 0.23-0.32, and it is a real cost rather than noise. The
+fill does reach the wall -- that is the whole point of the cone rule -- so the
+wall rises and everything measured against it falls. Recovering it needs the
+wall to rise WITHOUT the soffit staying put, which an isotropic ambient cannot
+do; the honest fix is a soffit that is darker in its own right, i.e. geometry
+or occlusion, not a light.
+
+THE FRAMES ARE COMMITTED, which is the point of EXPOSURE_FRAMES' complaint that
+"nine of the eleven ROOM_EXPOSURE values have no committed frame at all":
+
+  docs/engine-deck-corridor.png            BEFORE. `--soft-fill 0` reproduces
+                                           it BYTE FOR BYTE, 0 pixels differing
+                                           of 921,600, which is what makes the
+                                           flag a usable negative control.
+  docs/engine-deck-corridor-softfill.png   AFTER, the shipped defaults.
+  docs/engine-corridor-softfill.png        AFTER, `--shot interior --room
+                                           corridor`, the anchor frame.
+  docs/engine-deck-corridor-softfill-alone.png
+                                           THE FILL ON ITS OWN, rendered with
+                                           `--ambient 0 --fixture-energy 0`. It
+                                           is the diagnostic that found the
+                                           third cone bug and it is worth
+                                           re-taking after any change here: an
+                                           even deck, dim walls and a black
+                                           overhead is what the fill is for,
+                                           and a row of pools is not.
 """
 
 
@@ -1910,6 +1957,32 @@ AMBIENT_BY_ARCHETYPE = {
 # interior.tscn's ambient_light_energy, calibrated in session 3n against the
 # residential corridor -- which is the AMBIENT_RATIO 0.300 row. Every other
 # space scales off that one measured point rather than off a guess.
+#
+# RE-DERIVED ONCE THE SOFT FILL EXISTED, because it was calibrated in 3n with
+# the corridor's lenses blown -- about 40% of that frame was halo -- so it was
+# stale by construction and had to be re-taken AFTER the missing key was built
+# rather than before. Its own definition is the value that puts the corridor
+# anchor's frame at x1.40 of `grey level 1.webp`'s median, so it was swept.
+# `--shot interior --room corridor`, 1280x720, soft fill at 12.0:
+#
+#   ambient   median vs the reference   distribution
+#   ------------------------------------------------
+#     1.00            x1.16             FAIL -- p5 x1.44 against a x1.29 band
+#     1.30            x1.43             PASS, every band
+#     1.60            x1.72             PASS, at the top of the level window
+#
+# d(ln median)/d(ln ambient) = 0.84 over that range, so unlike the EXPOSURE
+# derivation this file records as invalid, the median really does track the
+# ambient here and the sweep can be inverted. It inverts to 1.25-1.27 -- the
+# recorded 1.30 is 3% high, which is inside any tolerance this project uses and
+# is left alone rather than churned.
+#
+# THE INTERESTING ROW IS 1.00, and it is the same pathology as the exposure
+# finding rather than a different one: LOWERING the ambient makes p5 go UP, from
+# x0.80 to x1.44, because the frame's crushed fraction goes 1.80% -> 5.84% and
+# the pixels leaving the measurable set leave from the BOTTOM. Turning the fill
+# down to make room for a lower ambient does not darken the shadows, it deletes
+# them.
 AMBIENT_CALIBRATED_ENERGY = 1.30
 AMBIENT_CALIBRATED_RATIO = 0.300
 
@@ -2597,11 +2670,17 @@ def fixture_lights(verts, tris, spans, energy, rng, shadow_n=2, eye=None,
     return out
 
 
-def soft_fill_cone_deg(half_w_m, ceil_h_m, height_m=SOFT_FILL_HEIGHT_M,
-                       pitch_m=SOFT_FILL_PITCH_M,
-                       k=SOFT_FILL_ANGLE_ATTENUATION,
-                       floor_=SOFT_FILL_CORNER_FLOOR):
+def soft_fill_cone_deg(half_w_m, ceil_h_m, height_m=None, pitch_m=None,
+                       k=None, floor_=None):
     """The cone that holds a whole BAY of corridor in its flat top, in degrees.
+
+    THE FOUR CONSTANTS ARE READ IN THE BODY AND NOT IN THE SIGNATURE, and that
+    is not a style preference. Python binds a default argument once, at import,
+    so `height_m=SOFT_FILL_HEIGHT_M` freezes a copy: editing the constant would
+    move the lamps and leave the cone at the old geometry, silently. The
+    negative-control harness caught exactly that -- widening the pitch fired the
+    corner check not because the cone was wrong for the new pitch but because
+    the cone had not noticed the new pitch at all.
 
     SOLVED, NOT CHOSEN, and the thing being solved for is the worst-lit point of
     the volume one source is responsible for: the top corner of its own bay --
@@ -2642,6 +2721,10 @@ def soft_fill_cone_deg(half_w_m, ceil_h_m, height_m=SOFT_FILL_HEIGHT_M,
     cost 706 shadow maps a deck on a CPU rasteriser, and the measurement says
     `shadow: false`.
     """
+    height_m = SOFT_FILL_HEIGHT_M if height_m is None else height_m
+    pitch_m = SOFT_FILL_PITCH_M if pitch_m is None else pitch_m
+    k = SOFT_FILL_ANGLE_ATTENUATION if k is None else k
+    floor_ = SOFT_FILL_CORNER_FLOOR if floor_ is None else floor_
     corner = math.atan2(math.hypot(half_w_m, pitch_m / 2.0),
                         max(height_m - ceil_h_m, 1e-3))
     want = (1.0 - math.cos(corner)) / (1.0 - floor_) ** (1.0 / k)
@@ -4177,18 +4260,25 @@ def _selftest():
         rim = (1.0 - math.cos(a)) / (1.0 - math.cos(_cone))
         return 1.0 - min(rim, 1.0) ** SOFT_FILL_ANGLE_ATTENUATION
 
-    check(_ang(_corner) >= SOFT_FILL_CORNER_FLOOR - 1e-9,
+    # THE BAR IS A LITERAL AND NOT `SOFT_FILL_CORNER_FLOOR`, deliberately.
+    # Comparing the outcome against the constant the cone was SOLVED from is
+    # the both-sides-move-together defect this file's own light-placement gate
+    # was rewritten to remove: set the constant to 0 and the cone collapses onto
+    # the corner, the corner keeps 0.000 of the axial value, and `>= 0 - 1e-9`
+    # still passes. 0.85 sits below the 0.90 the design asks for and above the
+    # 0.29 that the shipped 0.6 attenuation would leave.
+    check(_ang(_corner) >= 0.85,
           f"the bay's far top corner keeps {_ang(_corner):.3f} of the axial "
-          f"value, against a floor of {SOFT_FILL_CORNER_FLOOR}")
-    # NEGATIVE CONTROL: the cone set to the corner itself, which is version 2
-    # of the bug. Godot's angular term is ZERO at the rim.
-    _tight = _corner
-    check(1.0 - (((1.0 - math.cos(_corner)) / (1.0 - math.cos(_tight)))
-                 ** SOFT_FILL_ANGLE_ATTENUATION) < 0.01,
-          "a cone sized to the corner leaves the corner unlit, which is why "
-          "the cone is solved from the attenuation curve and not from the "
-          "geometry alone")
-    # And version 1: the cone sized to the wall FOOT misses the wall TOP.
+          f"value (design floor {SOFT_FILL_CORNER_FLOOR}, gate 0.85)")
+    # AND IT IS BOUNDED. A cone can always be widened until nothing fails, and
+    # widening it is free in the corridor and expensive in the rooms next door,
+    # so the spill is asserted rather than described.
+    _spill = SOFT_FILL_HEIGHT_M * math.tan(_cone) - _hw
+    check(0.0 < _spill <= SOFT_FILL_MAX_SPILL_M,
+          f"the fill lands {_spill:.2f} m past the corridor wall, inside the "
+          f"{SOFT_FILL_MAX_SPILL_M} m bound")
+    # And version 1 of the bug: the cone sized to the wall FOOT misses the wall
+    # TOP, because every point of a wall above its foot is at a larger angle.
     _foot = math.atan2(_hw, SOFT_FILL_HEIGHT_M)
     check(_corner > _foot * 1.2,
           f"the bay corner ({math.degrees(_corner):.1f} deg) is well outside "
