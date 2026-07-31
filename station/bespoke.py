@@ -332,8 +332,18 @@ def _selftest():
               abs(max(zs) - ah) < 1e-6, f"{max(zs):.4f} against {ah:.4f}")
         check(f"{q['key']}: the room extends AWAY from the corridor",
               min(zs) < ah - 1e-6, f"z runs {min(zs):.2f}..{max(zs):.2f}")
-        check(f"{q['key']}: the floor is at y = 0",
-              abs(min(ys)) < 1e-6, f"{min(ys):.4f}")
+        # THE MEASURED FLOOR at y = 0, not the bounding box. The first version
+        # of this asserted `min(ys) == 0` and passed trivially, because the
+        # adapter was forcing exactly that -- an assertion checking its own
+        # input. It also hid a real defect: `command_control`'s walkable
+        # surface sits 1.90 m above its lowest vertex, so a player placed by
+        # the bounding box spawns under the deck.
+        check(f"{q['key']}: the walkable floor is at y = 0",
+              abs(floor_y(v, t, _g, mod)) < 1e-6,
+              f"floor band at {floor_y(v, t, _g, mod):.3f}, "
+              f"bbox bottom {min(ys):.3f}")
+        check(f"{q['key']}: nothing floats above the shell's own ceiling",
+              max(ys) > 2.0, f"{max(ys):.2f} m tall")
         check(f"{q['key']}: centred across the corridor",
               abs(min(xs) + max(xs)) < 1e-6, f"{min(xs):.3f}..{max(xs):.3f}")
         # THE FLIP MUST NOT INVERT THE ROOM. `min_z` modules are turned by a
@@ -456,6 +466,71 @@ NEAR_END_UNKNOWN = {
 # orientation a module had, which is the question it is entitled to ask.
 
 
+def floor_y(verts, tris, groups=None, module=None):
+    """The height a person actually stands at, measured off the geometry.
+
+    NOT THE BOTTOM OF THE MODEL, and the difference is not small. `room_shell`
+    first aligned each shell's minimum y to zero, which is right for
+    `docking_bay` (floor band at 0.00, 5,886 m2) and wrong for
+    `command_control`, whose dominant up-facing surface sits **1.90 m** above
+    its lowest vertex -- a player placed by the bounding box would spawn under
+    the deck. `customs` is out by 0.20 and `hospitality` by 0.14, both being
+    the thickness of a deck slab the module models and `rooms.build` does not.
+
+    Found the same way `export_scene.open_standpoint` finds it: histogram
+    near-horizontal, UP-FACING triangle area by height and take the band with
+    the most of it. Area rather than count, because a floor is a few large
+    triangles and a stair is many small ones.
+
+    `WALK_SURFACE` overrides where a module has already said which group is its
+    walkable skeleton -- `plant`'s catwalk is 8 m of steel over a tank farm
+    whose floor is far larger, so the biggest band there is the wrong answer
+    and the module knows it. Asking beats inferring, the same rule `light_`
+    tagging follows.
+    """
+    import collections                                          # noqa: PLC0415
+    want = WALK_SURFACE.get(module or "")
+    keep = None
+    if want and groups:
+        keep = set()
+        for name, lo, hi in _spans(groups, len(tris)):
+            if any(f in name for f in want):
+                keep.update(range(lo, hi))
+    by = collections.Counter()
+    for i, (a, b, c) in enumerate(tris):
+        if keep is not None and i not in keep:
+            continue
+        p0, p1, p2 = verts[a], verts[b], verts[c]
+        u = [p1[k] - p0[k] for k in range(3)]
+        w = [p2[k] - p0[k] for k in range(3)]
+        n = (u[1] * w[2] - u[2] * w[1], u[2] * w[0] - u[0] * w[2],
+             u[0] * w[1] - u[1] * w[0])
+        ln = math.sqrt(sum(x * x for x in n))
+        if ln < 1e-12 or n[1] / ln < 0.85:
+            continue
+        by[round((p0[1] + p1[1] + p2[1]) / 3.0, 2)] += ln / 2.0
+    if not by:
+        return min(p[1] for p in verts)
+    return by.most_common(1)[0][0]
+
+
+def _spans(groups, n):
+    """Normalise a module's groups to (name, lo, hi), whichever shape it used."""
+    if not groups:
+        return []
+    if isinstance(groups[0], (tuple, list)) and len(groups[0]) == 3 \
+            and isinstance(groups[0][1], int):
+        return list(groups)
+    out, i = [], 0
+    while i < len(groups):
+        j = i
+        while j < len(groups) and groups[j] == groups[i]:
+            j += 1
+        out.append((groups[i], i, j))
+        i = j
+    return out
+
+
 def room_shell(schema, profile, place, axial_half_m):
     """Bespoke geometry recentred into `rooms.build`'s frame.
 
@@ -499,7 +574,8 @@ def room_shell(schema, profile, place, axial_half_m):
     # defect `dressing._cyl` shipped for sessions because neither a render nor
     # a triangle count can see it.
     cx = (min(xs) + max(xs)) / 2.0
-    y0 = min(ys)
+    # THE MEASURED FLOOR, not the bottom of the bounding box. See `floor_y`.
+    y0 = floor_y(v, t, g, mod)
     if end == "max_z":
         out = [(x - cx, y - y0, z - max(zs) + axial_half_m) for x, y, z in v]
     else:
