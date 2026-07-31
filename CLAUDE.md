@@ -91,16 +91,25 @@ absence.
 |---|---|---|---|
 | **W1** | **Stand up** | Collision on the station mesh, a character controller, per-deck gravity. A player spawns in the corridor kit and walks. Asserted headlessly | **DONE** (3v) |
 | **W2** | **Go somewhere** | Two named locations joined by real walkable geometry; the player walks between them without leaving the floor | **DONE** (3v) — 126 m of corridor walked, `offfloor=0/1800`, and a body walks through a door into a named room |
-| **W3** | **A furnished room** | ONE location at true prop density -- the reference is the owner's Starfield frames, not our own past work -- with a stated props/m2 | `dressing.py` built (3u) |
-| **W4** | **A populated room** | NPCs standing, sitting and walking in it. `station/npc/` already has twelve tested modules with zero importers; wire them | `populace.py` built (3u) |
-| **W5** | **The loop** | Spawn -> walk -> use something -> an NPC reacts. The smallest complete experience | |
-| **W6+** | **Breadth** | Roll W3-W5 outward by generator across the 118, in the order a player meets them | **STARTED** (3v) — `deck.py --sweep`: 66/66 ring decks assemble, 87 rooms, every one with a door, 0 floor holes. Collision: **35,746** across the ring decks + **573,440** in the drum's ground at lod0 = **609,186** for the walkable station (3x) |
+| **W3** | **A furnished room** | ONE location at true prop density -- the reference is the owner's Starfield frames, not our own past work -- with a stated props/m2 | **DONE** (3z) -- and on every room, not one: `dressing.py` measures **4.00 props/m2** in an office and quarters, **6.68** in commerce, **6.37** in hospitality. 3u measured the station at **4.5 prop instances per room** total |
+| **W4** | **A populated room** | NPCs standing, sitting and walking in it. `station/npc/` already has twelve tested modules with zero importers; wire them | **DONE** (3z) -- all three poses, and they are POSES: `npc/animation.py` finally has an importer, so a sitter is `sit_clip` on the seat's own measured height rather than a standing body dropped 0.42 m, and a corridor walker is `walk_clip` at a per-resident phase. **963 walking in corridors, 449 in rooms** across the sweep |
+| **W5** | **The loop** | Spawn -> walk -> use something -> an NPC reacts. The smallest complete experience | **DONE** (3z) -- and `walkable.py --deck blue/0/0` reports all four in one line: *"a body spawns in the corridor and WALKS INTO docking_bays (6.3 m -> 0.04 m), never leaving the floor, **7 of the room look up** (123 deg turned, 4 deg off)"*, with the control *"with the doors inert the body is stopped 5.26 m short"* |
+| **W6+** | **Breadth** | Roll W3-W5 outward by generator across the 128, in the order a player meets them | **THE WHOLE STATION** (3z) -- `deck.py --sweep`: **90 z-clusters assemble, 0 fail, 128 of 128 locations on an assembled cluster, 128 with a door or on ground, 0 floor holes.** 58,660 collision triangles across the ring decks + 573,440 in the drum's ground = **632,100** for the walkable station. What remains is DEPTH: 49 module-owned places still assemble as generic bays, 18 with a builder that exists |
 
 **`python3 station/deck.py --sweep` is the answer to "how much of the station can I walk in".**
 It is the only gate here that asks a whole-station question; every other one measures a part.
-Run it before claiming coverage. **99 of 118 locations** are on a walkable surface: 87 on
-assembled ring decks and 12 on the drum's collision ground. What it does NOT cover: the
-secondary z-clusters, 19 locations on decks whose *busiest* cluster is the one that gets built.
+Run it before claiming coverage. As of 3z it is **128 of 128** — every location in the register
+is on an assembled cluster and every one has a door or stands on the drum's ground. It also
+reports **how many people are in the corridors** (963, against 449 in the rooms), which is the
+only place the derived crowd density can be checked against the 250,000 it comes from.
+
+The two things that used to make this number a lie are both closed and worth remembering. It
+once read **99 of 118** because it built `z_clusters(...)[0]` alone — a "deck" in the gazetteer
+is not a z-slice, and Blue ring 0 deck 0 holds sixteen locations over 1,100 m of axis. And in 3z
+every **single-room** cluster on the station turned out to be sealed: `deck_plan` stopped its
+phase sweep at the first arrangement with no unopened room, which on a one-room cluster is the
+first one tried, leaving the door up to 1.33 m off centre where a body walking straight at it
+meets the jamb. The sweep said 118/118 throughout. **A coverage count is not a walk test.**
 
 **THE DRUM INVERTS THE COLLISION RULE, and that is not an exception to it.** A corridor needs a
 *smooth* shell because its 66 mm channel and 22 mm tiles are decoration a foot should not feel.
