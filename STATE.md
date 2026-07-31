@@ -1,6 +1,137 @@
-**Last updated:** 2026-07-31 · **Session 3y** — **the generic-bay substitution is measured and declared: do NOT swap, compose** · **3x** — the doors close, 1,572 open edges → 0, signage a player can read · **3w** — the frame budget measured for real · **3v** — W1/W2 done, 66/66 decks assemble# Project State
+# Project State
 
-**Last updated:** 2026-07-31 · **Session 3x** — **the doors close. 1,572 open boundary edges on an assembled deck → 0, every vestibule out of the corridor, every collision shell tied to the tolerance it is certified at** · **3w** — the frame budget measured for real · **3v** — W1 and W2 DONE, 66/66 ring decks assemble · **3u** — the plan is vertical now; walkability is a gate
+**Last updated:** 2026-07-31 · **Session 3z** — **the register is routable, a lift is a vehicle, people are POSED, and the docking bays have an outside** · **3y** — the generic-bay substitution is measured and declared: do NOT swap, compose · **3x** — the doors close, 1,572 open edges → 0 · **3w** — the frame budget measured for real · **3v** — W1/W2 done, 66/66 decks assemble
+
+## Session 3z (last) — FOUR THINGS THE STATION COULD NOT DO, AND NOW CAN
+
+### 1. TWO VOCABULARIES DESCRIBED ONE STATION AND ONLY ONE COULD BE ROUTED TO
+
+`navigation.place_nodes` walked `schedule.PLACES` — 25 crowd regions, of which 17 are also
+register keys — so **101 of `directory.PLACES`' 118 rows had no node in the navigation graph
+at all**. A resident's `home` and `job` are register keys (`npc/resident.py` resolves them by
+function), so for most of the station "walk to work" had no destination to walk to.
+
+**Nothing caught it and nothing could.** The island report was clean throughout, because a node
+that was never added cannot be stranded. `register_nodes` attaches all 118 at their own
+`(sector, ring, deck, angle_deg, z_m)` — which is also a strictly better address than
+`place_nodes`' `_u("nav/place", key) * 360.0`, a deterministic but arbitrary bearing it has to
+invent because a schedule entry carries no angle.
+
+118/118 register places now have a node. The gate has a negative control that computes what the
+schedule vocabulary alone would give: **101 missing**.
+
+### 2. A LIFT IS A VEHICLE, NOT A STAIRCASE — and this was the expensive one
+
+Every scheduled line joined **adjacent stops directly**, and `add_transit` charges one wait and
+one dwell per link. So the router made a passenger **get out, queue and get back in at every
+intermediate stop**. Grey's shaft has 105 decks: **72.9 minutes to ride 382 m that takes 3.0.**
+
+Nothing was wrong with any speed, distance or headway in the module — the ride times were right
+the whole time. What was wrong is that the graph **had no way to express being aboard**.
+
+`_car_layer` gives each line a parallel chain of nodes that live inside the car. `add_board`
+joins platform to car for **half a wait and half a dwell in each direction**; `add_ride` joins
+car to car for **ride time alone**. Any one-way journey traverses the boarding link exactly
+twice, so it pays one whole wait and one whole dwell however many stops it passes.
+
+The half-and-half split is arithmetic, not a fudge: it is the only division that leaves a
+**one-stop hop costing exactly what it cost before**, so the change cannot be a general speed-up
+hiding a modelling error. And `lift_ride_s` is linear in distance (1.5·dr/v_cap), so summing
+per-deck rides along the chain equals one express ride **exactly**.
+
+Applied to all four lines: radial shafts, core shuttle, guideway trams, ground trams.
+
+**Commutes over 120 sampled residents, home to work:**
+
+| | before | after |
+|---|---|---|
+| median | 44.1 min | **13.5 min** |
+| p95 | 107.6 min | **23.9 min** |
+| worst | 110.5 min | **24.8 min** (4.7 km, Blue quarters → zero-g maintenance) |
+
+INV-100 records the derived lift fleet — round trip / two dwells, so Grey's 382 m shaft gets 10
+cars and Green's 29 m gets 2, and the mean wait lands at 17–20 s everywhere. INV-101 records the
+car layer.
+
+### 3. A SEATED PERSON WAS A STANDING BODY DROPPED 0.42 m
+
+`npc/animation.py` is 2,400 lines — a skeleton, a Froude-number gait ladder, walk/idle/sit/glide
+clips — and CLAUDE.md names it among the twelve tested modules with **zero importers**. What
+reached a frame was `body.build`'s bind pose for everybody, translated down for sitters. A
+1.829 m figure with its feet 0.42 m through the deck and its knees inside the chair.
+
+`populace._posed` is that importer. Seated → `sit_clip`, handed the seat's **own measured
+height**: hips on the pan, feet at y = 0.011, figure 1.332 m against 1.829 standing, origin at
+deck level like every other placement. A 0.62 m stool seats the same person exactly 0.22 m
+higher than a 0.40 m bench. Standing → `idle_clip`, which carries a per-resident phase, so a room
+of twelve is twelve weights and twelve breaths rather than a chorus line.
+
+`docs/npc-seated-pose.png` is the side-on silhouette: hips at 90°, thighs horizontal, shins
+vertical, feet flat, arms along the thighs.
+
+**And the deck's gravity reaches the pose.** `place_gravity_at` resolves all 118 places —
+**105 from a deck, 12 from the drum floor, 1 from the spine core**, 0.234 g to 1.693 g. It
+returns its **source**, because a silent fallback is indistinguishable from a correct answer:
+the drum floor is 278.3 m, which is 1.0000 g to ten figures, so twelve drum places came back at
+Earth gravity and looked perfectly resolved while nothing had resolved them.
+
+**INV-102 — a figure has a measured minimum standing gravity.** `idle_clip`'s sway scales by
+`G0/g` with **no lower bound at all**; at 0.04 g it leans a human 0.52 m off centre and lifts
+their feet off the deck. The bound is where the sway equals the **base of support** — hip offset
+and outermost foot vertex, both read off the rig, never written down — which is 0.075 g for a
+nominal human. Below it the figure glides, using the clip Kosh already needed. One place is
+below it: the Mainstage power node, in the 18.3 m spine at z = 3000, at 0.022 g.
+
+### 4. THE DOCKING BAYS HAVE AN OUTSIDE (agent, merged)
+
+24 apertures cut into the hull **lathe** rather than subtracted afterwards, at the bays'
+**fore-facing** mouths — which is a finding, not a choice: aft, the hull at the mouth plane is
+already inboard of the whole bay band. 608 open edges, **every one on a bay rim**, 0 stray,
+24/24 rims closed, 0 non-manifold, three negative controls that all fire, and
+`--no-apertures` reproducing the old hull **byte for byte**. INV-103. Exterior 381,210 tri
+(95.3% of budget), 41 draw calls.
+
+### 5. MATERIALS ARE 100% FOR THE FIRST TIME
+
+Interior coverage **353/368 → 368/368**, and `materials.py` **1467/1467**.
+
+- `npc_suit*` had **no material at all** — every Vorlon rendered on the fallback. Value imported
+  from `costume.PAKMARA_COWL_ANCHOR`, the one measured large rigid non-human shell in the corpus.
+- The per-person wrapper span is renamed `<person>_npc_body`, and **the resolver is why**:
+  fragments match by substring and longest wins, so binding the bare `npc_seated` would have been
+  10 characters against `npc_hair`'s 8 and **every seated person's hair would have resolved to
+  skin**. The gate caught exactly that — 18 competing claims.
+- `prop_locker`, `prop_weapons_locker` → `furn_casework`, where `qtr_locker` already lives.
+- `materials.py --export` was run. Without it the bindings exist in Python and the engine renders
+  the glTF fallback, which is the trap this file records twice.
+
+### 6. THE CORRIDOR SOFT FILL (agent, merged)
+
+The corridor's key light had been **measured six sessions ago and never built**. A run of
+shadowless spots on the deck's own centreline at 10 m, one every 1.8 m of arc, aimed radially
+outward. The deck field goes **×0.65 → ×2.59** of the lit wall against the show's **×2.49**.
+Six negative controls, all fire. Two of them did not fire on the first pass and both were real
+defects in the gates. `docs/engine-deck-corridor.png` was **two content commits stale** — it
+showed a blown-lens state that no longer reproduces — and is refreshed.
+
+### What is next, in order
+
+1. **W5, the loop.** Routing exists and is gated; poses exist. What does not: nobody **moves**.
+   The bodies are baked into the merged mesh and `npc.gd` transforms them rigidly about their own
+   pivot, so translation along a route is available today; the legs need the clips sampled at more
+   than frame 0 and pushed to the engine as data.
+2. **`bespoke.compose` for the remaining module places.** 39 of 106 ring-deck places are owned by
+   a bespoke module and assembled as generic bays; 4 compose today.
+3. **`directory.py`'s `docking_bays` footprint.** The register puts a 140 m bay at z 7115 and the
+   sphere is only wide enough for a 254.2 m deck over **58 m of that**. Either the bay is 140 m
+   and mis-addressed or INV-022 is wrong. `docking_bay._selftest` ratchets it at ≥40% so it
+   cannot get worse. **A real fork, not mine to rule on.**
+4. **Props are still not solid.** `dressing.py` puts 82,362 triangles of furniture on the station
+   and none of it is in the collision shells, so a player walks through tables.
+5. **The ionization vanes.** Three support rings measured off `other map 4.jpg` (z 1620/1907/2198,
+   agreeing to 1.4% in spacing); the six vanes do not resolve in any frame. The agent recorded the
+   measurement and did **not** build them, because the counts live only in `00-MASTER.md` §1.3 and
+   writing them as literals would put a canon count in a second place.
 
 ## Session 3x (last) — EVERY DOORWAY ON THE STATION WAS AN OPEN SURFACE, AND NOW NONE IS
 

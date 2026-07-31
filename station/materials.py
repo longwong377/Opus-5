@@ -5515,7 +5515,16 @@ NOT_GENERATORS = {"materials.py", "directory.py", "rooms.py",
                   # names, and the scanner cannot tell them apart. Adding a
                   # measurement module to the list of things that emit geometry
                   # is the error here, not the strings.
-                  "density.py", "walkable.py", "budget.py", "lod.py"}
+                  "density.py", "walkable.py", "budget.py", "lod.py",
+                  # A TIMETABLE, NOT A SURFACE. `transit.py` computes journey
+                  # times over the four scheduled lines and its literals are
+                  # LINE keys -- "core_shuttle", "ground_tram",
+                  # "guideway_tram", "spoke_lift" -- which are also place keys
+                  # in the register, for the same reason and with the same
+                  # answer: a specification names things, a generator names
+                  # surfaces. The cars themselves are built by `tram.py` and
+                  # `core_tube.py`, both of which ARE scanned.
+                  "transit.py"}
 
 # Literals that match the group prefixes but are not group names: manifest
 # statistics, and prefixes used in a `startswith` test. Kept explicit rather
@@ -5523,6 +5532,12 @@ NOT_GENERATORS = {"materials.py", "directory.py", "rooms.py",
 # than a regex that quietly widened. If one of these ever becomes a real group,
 # deleting the line is what makes the coverage gate start caring about it.
 NOT_GROUPS = {
+    # A MANIFEST STATISTIC. `deck.py` reads `dm["drum_lod0_triangles"]` out of
+    # drum_walk's report to size a budget; it is a triangle count, not a
+    # surface. The two modules that define and consume it are both already
+    # excluded as non-generators and deck.py is not, which is why this one
+    # name needs saying rather than the whole file.
+    "drum_lod0_triangles",
     "greeble_assemblies", "greeble_detail", "greeble_instances",
     "greeble_instances_by_kind", "greeble_triangles",
     # interior.py's riser assertion: `g.startswith("drum_riser")`. The groups
