@@ -1265,6 +1265,41 @@ def _selftest():
     check("the arc-pitch guard accepts the schema's own layout",
           cobra_bay_ring(cobra, profile) is not None)
 
+    # -- THE COBRA BAYS DO NOT NEED AN APERTURE, and here is the measurement --
+    #
+    # Session 3z cut 24 mouths in the hull for the docking bays, because
+    # `docs/volume-audit.md` §5.1 found a bay you can stand in behind a hull
+    # with no hole in it. The obvious next question is whether the 28 cobra
+    # bays have the same defect. They have the OPPOSITE one, and the two
+    # measurements below are what say so rather than an argument:
+    #
+    #   1. The well is a CLOSED RECESS whose floor stands COBRA_FLOOR_CLEAR_M
+    #      above the hull datum -- a modelled pocket, not a hole. The docking
+    #      bays had no recess at all.
+    #   2. `cobra_bays` declares `module="components"`, so THIS FILE is its
+    #      whole implementation. There is no interior volume behind it to vent
+    #      to space, and cutting its floor would open onto unmodelled hull --
+    #      a black hole in every frame, which is worse than what is there.
+    #
+    # Assertion 2 is the live one: the day somebody builds a cobra bay
+    # interior and points the register at it, this fires and says the floor
+    # now needs cutting. Authority-1 `01-station-exterior/Cobra Bays with
+    # starfurries.webp` shows a well with a stowed launch arm lying in it and
+    # no opening in its floor, so until then the closed floor is the sourced
+    # reading and the hole would be the invention.
+    import directory as _dir                                  # noqa: PLC0415
+    well_v, well_t = groups["cobra_bay_well"]
+    check("the cobra bay well is a closed recess, not a hole in the hull",
+          not boundary_edges(well_t) and signed_volume(well_v, well_t) > 0.0,
+          f"{len(boundary_edges(well_t))} boundary edges")
+    check("the well floor stands above the hull it sits on",
+          COBRA_FLOOR_CLEAR_M > 0.0, f"{COBRA_FLOOR_CLEAR_M} m")
+    check("cobra_bays is exterior-only, so there is nothing behind it to open",
+          _dir.by_key("cobra_bays")["module"] == "components",
+          f"module is now {_dir.by_key('cobra_bays')['module']!r} -- an "
+          f"interior exists, so the well floor needs an aperture the way "
+          f"station/aperture.py gives the docking bays one")
+
     # -- build_all's contract ------------------------------------------------
     check("build_all still keys single-group builders by component id",
           all(c["id"] in parts for c in specs),

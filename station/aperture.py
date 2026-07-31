@@ -76,6 +76,15 @@ resolution is 5.625 deg and a bay's arc is 9.4667 deg, so the aperture edges do
 not fall on lathe columns. They are INSERTED -- 48 extra angles, live only
 between z 7178 and z 7275 -- and the two rings where the refined set meets the
 base set are stitched by an angle merge rather than by a quad strip.
+
+WHAT IT LOOKS LIKE. `docs/engine-docking-bay-mouths.png` (eye 900,500,7700 ->
+0,0,7215, fov 40) is the ring of 24 from a kilometre out, interleaved with the
+cobra bays' blisters around the same shoulder;
+`docs/engine-docking-bay-mouth-close.png` (eye 470,120,7480 -> 243,0,7215,
+fov 38) is three of them at the rubric's half distance, with the chevron lip on
+the rim and the throat receding behind it. The standing orbit shot
+`--orbit 9200,18,214` shows nothing: a 42 m mouth at 9.2 km is a third of a
+pixel, and that is the right answer rather than a defect.
 """
 import math
 import os
