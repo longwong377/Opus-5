@@ -1813,7 +1813,10 @@ def _build():
         albedo=(0.145, 0.143, 0.145), roughness=0.3, metallic=0,
         specular=0.5,
         emission=(1.000, 0.330, 0.250), emission_energy=0.25,
-        binds=("prop_identicard_reader", "prop_credit_terminal", "prop_exchange_terminal", "prop_manifest_terminal", "prop_lift_call", "prop_intercom", "qtr_babcom", "alien_mask_dispenser"), scenes=("interior",),
+        binds=("prop_identicard_reader", "prop_credit_terminal", "prop_exchange_terminal", "prop_manifest_terminal", "prop_lift_call", "prop_intercom", "qtr_babcom", "alien_mask_dispenser",
+               # A comms channel is a wall panel with a keypad, the same shell
+               # as an intercom next to it.
+               "prop_comms_channel"), scenes=("interior",),
         source="11-props-and-technology/credit chit.jpg (authority 1), grey-world gains 0.919/1.003/1.093. The counter-mounted card reader clusters 41.4% at V 0.121 against the same frame's counter top at V 0.393; its red LED bar clusters at rgb(0.317, 0.100, 0.128) H 352 S 0.683. Second indicator measurement from 11-props-and-technology/Identicard reader.webp: the amber lens stack (0.196,0.375)-(0.245,0.56) balances rgb(0.269, 0.094, 0.028) H 16 S 0.897. Object identity from reference/00-INDEX.md, which reads the credit-chit reader as 'a small black wedge plinth with a top slot and a red LED line on its front face'.",
         extrapolated="The absolute level via ALBEDO_ANCHOR (ratio 0.121/0.393 = 0.308 x 0.46 = 0.142), and emission_energy, which is FLOORED rather than measured — see reasoning."))
 
@@ -2447,7 +2450,13 @@ def _build():
         "door_blast_plate", "Blast Door — heavy pressure plate, bay and isolation",
         albedo=(0.320, 0.320, 0.325), roughness=0.48, metallic=0.3,
         specular=0.5, texture="deck_plate", uv_scale=1.0 / 3,
-        binds=("prop_blast_door", "prop_bay_door", "prop_isolation_door"), scenes=("interior",),
+        binds=("prop_blast_door", "prop_bay_door", "prop_isolation_door",
+               # An EVA lock's outer door is a blast plate: `rooms.PROPS`
+               # has no `airlock_door` bind at all, and 33 of its 99 entries
+               # are in the same position. Requested by the interiors agent
+               # so `eva_lock_blue` can declare its honest `airlock_door`
+               # instead of substituting a name that happened to resolve.
+               "prop_airlock_door"), scenes=("interior",),
         source="No frame shows a blast, bay or isolation door leaf — the same gap reference/00-INDEX.md records for every door in the set. What the frames DO establish is the aperture these close: reference/03-sector-blue/dock.webp shows the bay mouth as a very wide, low, flat-topped opening, and reference/03-sector-blue/Minbari Flyer 969 in docking bay 17.webp shows the bay built as stepped plate ledges (both authority 1, per reference/00-INDEX.md). Sizes are from station/rooms.py PROPS: bay_door 6.00 x 0.60 x 5.00 m, blast_door 2.60 x 0.45 x 2.60 m, isolation_door 1.90 x 0.35 x 2.35 m — 0.35-0.60 m of thickness against the ordinary leaf's 0.20-0.22 m. The value is placed on the library's own ladder, not measured.",
         extrapolated="The value, the metallic, and the 3 m repeat. Value 0.320 sits between the painted leaf (0.385) and the gantry steel (0.264): a pressure door is bare or minimally coated plate rather than a finished panel, so it is darker than the leaf, but it is an internal fitting kept clean rather than plant, so it is lighter than the machinery. Repeat: deck_plate is 4x3 plates per repeat, so 3.0 m gives 0.75 m plate courses — a 2.6 m blast door reads as three and a half plates across and a 6 m bay door as eight, which is the build a plate-armoured door actually has and is why deck_plate (large flat plates with recessed seams) is the sheet rather than the finer wall_plate. Overturned by: a frame showing any of these three leaves."))
 
@@ -2531,7 +2540,10 @@ def _build():
         "grab_rail_bare", "Grab Rail — polished bare tube, micro-gravity handhold",
         albedo=(0.560, 0.565, 0.580), roughness=0.22, metallic=0.9,
         specular=0.65,
-        binds=("prop_handhold", "cc_rail", "cc_console_leg", "alien_bar", "bar_footrail", "plant_rail"), scenes=("interior",),
+        binds=("prop_handhold", "cc_rail", "cc_console_leg", "alien_bar", "bar_footrail", "plant_rail",
+               # A ladder and a standpipe are bare steel tube, the same as a
+               # handhold and a footrail. `coolant_gallery` needs the first.
+               "prop_service_ladder", "prop_standpipe"), scenes=("interior",),
         source="reference/03-sector-blue/Babylon_5_2-22_35a.jpg (authority 1), balanced 0.913/1.090/1.013 — the tram saloon's vertical stanchions, the only object in the whole reference set that is a metal pole a person grips. station/materials.py already carries that reading as `tram_saloon_post` (0.560, 0.565, 0.580), whose source line records that the poles read as bare metal against the painted panels and shows a specular roll-off along their length. The value is reproduced here rather than re-derived. station/rooms.py sizes prop_handhold at 0.60 x 0.10 x 0.10 m, wall-mounted, and station/directory.py places it only in `lowg_bays`, `zerog_maint` and `micro_g_bays` — every one a microgravity_handling or repair volume.",
         extrapolated="metallic 0.90 and roughness 0.22, both raised from `tram_saloon_post`'s 0.75 and 0.28. The 0.75 is itself declared an extrapolation in station/materials.py ('the frame shows a specular roll-off along the pole, which fixes the kind but not the value'), and the physical rule is that bare metal is 0.9-1.0 and an intermediate value needs a worn-coating argument this object cannot make — it has no coating. Roughness drops to 0.22 on a specific argument: this is the only object in the station gripped by every occupant of a zero-g bay on every transit, and a handrail polished by constant use is smoother than a tram stanchion held occasionally. Overturned by: a frame showing a micro-g handhold, which the set does not contain."))
 
@@ -3942,7 +3954,10 @@ def _build():
         albedo=(0.085, 0.095, 0.085), roughness=0.28, metallic=0.0,
         specular=0.30,
         emission=(0.220, 1.000, 0.380), emission_energy=5.0,
-        binds=("alien_status_lamp",), scenes=("interior",),
+        binds=("alien_status_lamp",
+               # An EVA lock says whether the far side holds, in exactly the
+               # way an alien-sector atmosphere seal does. Same lamp.
+               "prop_atmosphere_status_lamp"), scenes=("interior",),
         source="alien_sector.py builds one green status lamp per lock -- the "
                "state indicator on an atmosphere seal. NO FRAME SHOWS A LOCK, "
                "and that has not changed. What the layer-4 pass did find is "

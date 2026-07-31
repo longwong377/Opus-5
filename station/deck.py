@@ -271,14 +271,43 @@ def deck_plan(schema, profile, sector, ring, deck, z_m=None, max_rooms=None):
     # sweep it and keep the phase that opens the most rooms. Extending `span` by
     # the same amount keeps every room covered. This is what an architect does
     # with a structural grid: slide it until the doors land where the rooms are.
+    def rank(rooms_):
+        """More rooms opened first, then doors nearest their room's centre.
+
+        THE SECOND TERM IS NOT A REFINEMENT, and leaving it out sealed every
+        single-room z-cluster on the station. The fit test above asks only
+        whether the leaf lands inside the room's WALL -- which a door 1.33 m
+        off centre does in a 7 m room -- so on a one-room cluster the FIRST
+        phase tried already opened it, `if not unopened: break` ended the sweep
+        immediately, and the door stayed wherever the bay division happened to
+        put it.
+
+        A body steering straight at the room from the corridor then crosses the
+        corridor wall 0.14 m along that line and meets the jamb.
+        `walkable.py --deck` measures **0.70-0.74 m of progress** into every
+        such cluster -- corridor half-width 1.0806 less the capsule radius --
+        including `grey/0/24 -> thieves_guild`, which STATE.md records PASSING
+        in session 3v. It was a silent regression on everything except
+        `blue/0/0`, whose goto target happens to sit at dx = 0.00.
+
+        Scoring all 24 phases costs 24 door placements a cluster and puts max
+        |dx| at 0.00 m on twelve of thirteen clusters measured, 0.18 m on the
+        thirteenth, and improves `blue/0/0` from 1.11 m to 0.07 m. No room is
+        lost and `unopened` stays 0.
+
+        Found by the interiors agent, session 3z, on its own new room -- and
+        then reproduced on untouched geometry, which is what turned "my room is
+        broken" into "the station is".
+        """
+        return (-len(rooms_),
+                round(sum(abs(dx) for _q, _d, dx in rooms_), 6))
+
     best = None
     for k in range(24):
         off = 2.5 * k / 24.0
         rooms, unopened = score(lo - off, min(360.0, span + off))
-        if best is None or len(rooms) > len(best[0]):
+        if best is None or rank(rooms) < rank(best[0]):
             best = (rooms, unopened, lo - off, min(360.0, span + off))
-        if not unopened:
-            break
     rooms, unopened, lo, span = best
     return {"plan": plan, "radius": radius, "z_m": z_m, "here": here,
             "lo": lo, "span": span, "cz": cz, "rooms": rooms,
