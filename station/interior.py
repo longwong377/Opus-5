@@ -1221,21 +1221,16 @@ def boundary_edges(verts, tris, tol=4):
     make, because a hole in geometry shows the background through it and the
     background is black.
 
-    Vertices are keyed on rounded coordinates rather than on index, so
-    coincident-but-duplicated vertices weld -- which is what the generators
-    actually emit, and what makes an index-based check useless here.
+    MOVED INTO `interior_kit` and re-exported here, so the module that builds
+    the pieces can gate their closure. It was defined here and the kit could not
+    import it without a cycle, which is why `interior_kit._selftest` checked
+    closure by casting rays overhead -- a test that cannot see an open edge in a
+    door frame, and did not, for as long as every door on the station had 176 of
+    them. Returns `(open, non-manifold)`; note that it is a PAIR, and calling
+    `len()` on the result is a mistake this session made and caught with a
+    negative control.
     """
-    from collections import Counter
-
-    def key(v):
-        return (round(v[0], tol), round(v[1], tol), round(v[2], tol))
-
-    counts = Counter()
-    for a, b, c in tris:
-        for i, j in ((a, b), (b, c), (c, a)):
-            counts[tuple(sorted((key(verts[i]), key(verts[j]))))] += 1
-    return ([e for e, n in counts.items() if n == 1],
-            [e for e, n in counts.items() if n > 2])
+    return kit.boundary_edges(verts, tris, tol=tol)
 
 
 def _inward_fraction(verts, tris):
