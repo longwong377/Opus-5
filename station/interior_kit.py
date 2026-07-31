@@ -980,12 +980,28 @@ def door_assembly(p=None, open_fraction=0.0, mechanism=None,
     """
     p = p or PROVISIONAL
     verts, tris = [], []
+    # TAGGED, AND THEY WERE NOT UNTIL SESSION 3x. Every other piece in this kit
+    # emits inside a `tag()` block; the three pieces of a door did not, so a
+    # corridor with six doors carried 1,248 triangles -- six gaps of 208 -- that
+    # no material rule could see and no light could reach. `deck.write_obj`
+    # emitted them as `deck_untagged` and Godot gave them the glTF fallback, so
+    # the reveal a player looks straight at while walking through a doorway was
+    # the one surface in the corridor with no material on it.
+    #
+    # The material rules were already waiting: `bulkhead` binds to
+    # `kit_wall_plate`, `door_frame` to `kit_pilaster`, `door_leaf` through
+    # GROUP_ALIASES. Nothing had to be authored -- the geometry simply never said
+    # what it was. `station/budget.py` found this by asking a question no gate
+    # here asked: not "is every span valid" but "is every TRIANGLE in one".
     if section is not None:
-        _merge(verts, tris, *bulkhead(section, p, depth=depth))
-    _merge(verts, tris, *door_frame(p))
+        with tag('bulkhead'):
+            _merge(verts, tris, *bulkhead(section, p, depth=depth))
+    with tag('door_frame'):
+        _merge(verts, tris, *door_frame(p))
     if leaves:
-        _merge(verts, tris, *door_leaf(p, open_fraction=open_fraction,
-                                       mechanism=mechanism))
+        with tag('door_leaf'):
+            _merge(verts, tris, *door_leaf(p, open_fraction=open_fraction,
+                                           mechanism=mechanism))
     return verts, tris
 
 
@@ -1305,10 +1321,25 @@ def write_obj(path, verts, tris, spans=None, default_group="structure"):
                     f.write(f"f {a + 1} {b + 1} {c + 1}\n")
 
 
-def _tag_coverage(length=21.6):
-    """(total tris, untagged tris, {group: tris}) for one corridor section."""
+def _tag_coverage(length=21.6, doors=()):
+    """(total tris, untagged tris, {group: tris}) for one corridor section.
+
+    `doors` DEFAULTED TO NOTHING AND THAT IS HOW A REAL DEFECT SURVIVED. The
+    assertion below has always been right -- every triangle carries a tag -- and
+    it ran only on a corridor with no doors in it, so for as long as the door
+    pieces were the untagged ones the gate was green and 1,248 triangles a deck
+    took the glTF fallback material at exactly the place a player walks through.
+    A coverage check that never builds the case with the gap is a coverage check
+    of the easy half. The selftest now runs it with a wall door and a bulkhead
+    door as well.
+
+    Counting per TRIANGLE, not per span, is the other half. Spans nest --
+    `wall_assembly` wraps `wall_panel` and its mullions -- so `sum(hi - lo)`
+    against `len(t)` is not a coverage proxy, it is a number that happens to be
+    larger. `owner` is last-span-wins, the same rule `write_obj` applies.
+    """
     reset_tags()
-    v, t = corridor_section(length)
+    v, t = corridor_section(length, doors=doors)
     owner = ["structure"] * len(t)
     for name, lo, hi in tagged_spans(t):
         for i in range(lo, min(hi, len(t))):
@@ -1460,15 +1491,31 @@ def _selftest():
     # This is the gate that stops it recurring. It is deliberately a HARD zero
     # rather than a threshold: an untagged triangle is a surface the material
     # library cannot see, and "mostly tagged" is how it got to 80%.
-    total, untagged, counts = _tag_coverage()
-    print(f"tag coverage: {total - untagged}/{total} tris tagged, "
-          f"{len(counts)} groups")
-    assert untagged == 0, (
-        f"{untagged} of {total} corridor triangles carry no tag: "
-        f"{sorted(counts)}")
-    # And a floor on the count, because one giant tag would satisfy the above
-    # while losing exactly the distinction the tags exist to make.
-    assert len(counts) >= 12, f"only {len(counts)} groups: {sorted(counts)}"
+    # EVERY CONFIGURATION, not just the empty one. A door is the piece of this
+    # kit a player passes closest to and it was the untagged one; see
+    # `_tag_coverage`. `(7.0, 1)` opens through the right-hand wall, `(14.0, 0)`
+    # closes the corridor across.
+    for lbl, doors in (("plain", ()), ("wall door", ((7.0, 1),)),
+                       ("bulkhead", ((14.0, 0),)),
+                       ("both", ((7.0, 1), (14.0, 0)))):
+        total, untagged, counts = _tag_coverage(doors=doors)
+        print(f"tag coverage {lbl:10s} {total - untagged}/{total} tris tagged, "
+              f"{len(counts)} groups")
+        assert untagged == 0, (
+            f"{untagged} of {total} corridor triangles carry no tag with "
+            f"{lbl}: {sorted(counts)}")
+        # And a floor on the count, because one giant tag would satisfy the
+        # above while losing exactly the distinction the tags exist to make.
+        assert len(counts) >= 12, f"only {len(counts)} groups: {sorted(counts)}"
+        if doors:
+            # THE DOOR'S OWN PIECES ARE PRESENT AND NAMED. Coverage alone would
+            # be satisfied by wrapping the whole section in one tag; this asks
+            # that the pieces a door is made of are distinguishable, because
+            # `bulkhead` and `door_frame` bind to different materials.
+            want = {"bulkhead", "door_frame"}
+            assert want <= set(counts), (
+                f"{lbl}: door built but {sorted(want - set(counts))} tagged "
+                f"nothing -- the pieces are there and unnamed")
 
     print("selftest OK")
 
