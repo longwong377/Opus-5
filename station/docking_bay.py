@@ -52,6 +52,7 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
+import directory as _directory                                  # noqa: E402
 import interior as it                                        # noqa: E402
 import rooms as _rooms                                          # noqa: E402
 
@@ -293,8 +294,36 @@ def bay_angle_deg(index):
     return (index % BAY_COUNT) * bay_pitch_deg()
 
 
-def place_bay(index, schema=None, profile=None):
+def mouth_z_m():
+    """Where the bay's mouth is in STATION coordinates, and which way it faces.
+
+    `docking_bay()` authors the bay in its own frame with the mouth at local
+    z = 0 and +Z running into it. That says where the mouth is relative to the
+    back wall and nothing about where it is on the station, and until session
+    3z nothing said the second thing at all -- which is how the bays came to
+    have no exterior (`docs/volume-audit.md` §5.1).
+
+    The register puts the bays at z = 7115 with a 140 m footprint, so the bay
+    occupies z 7045-7185. The mouth is at the FORE end, 7185, and that is a
+    finding rather than a choice -- see INV-100. Fore, the docking sphere's
+    taper falls through the mouth's radial band and the prism swept out of the
+    mouth leaves the hull through it. Aft, the hull at z 7045 is already
+    166.2 m, well inside the 232-254 m the mouth spans, so a mouth facing that
+    way opens onto nothing: there is no hull left to make a hole in.
+
+    So placing a bay in station coordinates is z_station = mouth_z_m() - z_local.
+    """
+    place = _directory.by_key("docking_bays")
+    return place["z_m"] + place["footprint"][1] / 2.0
+
+
+def place_bay(index, schema=None, profile=None, station_z=False):
     """One bay placed in station coordinates, at its own angle.
+
+    `station_z` maps the bay's local z onto the station's, mouth fore -- see
+    `mouth_z_m`. It defaults off because `bespoke.py` and `density.py` both
+    consume this module's LOCAL frame and both have assertions about which way
+    round it is.
 
     Up in the bay becomes radially INWARD, and +Z stays axial. The bay deck sits
     at `bay_radius()`, so a person standing in a bay is standing on the inside
@@ -321,7 +350,8 @@ def place_bay(index, schema=None, profile=None):
         # bay sits nose-down relative to one parked along it.
         r = r0 - y
         aa = a + x / r0
-        out.append((r * math.cos(aa), r * math.sin(aa), z))
+        zz = (mouth_z_m() - z) if station_z else z
+        out.append((r * math.cos(aa), r * math.sin(aa), zz))
     return out, t, g
 
 
@@ -473,6 +503,52 @@ def _selftest():
           BAY_COUNT != sum(c["count"] for c in schema["components"]
                            if c["id"] == "cobra_bay"),
           "24 bays and 28 launch tubes -- see C-002")
+
+    # --- THE BAY HAS AN OUTSIDE ------------------------------------------
+    # `docs/volume-audit.md` §5.1: "the 24 docking bays get nothing ... an
+    # interior with no exterior". This module could build a perfect bay behind
+    # a hull with no hole in it, and every assertion above would still pass --
+    # which is exactly what happened for four sessions. These three are the
+    # ones that could not.
+    import aperture as _ap                                    # noqa: PLC0415
+    aps = _ap.docking_bay_apertures(schema, profile)
+    check("every bay has an aperture in the hull", len(aps) == BAY_COUNT,
+          f"{len(aps)} mouths for {BAY_COUNT} bays")
+    a0 = aps[0]
+    check("the aperture is the bay's own mouth, not a hole near it",
+          abs((a0.a1 - a0.a0) * a0.r_out - BAY_W_M) < 1e-9
+          and abs(a0.r_out - r0) < 1e-9
+          and abs((a0.r_out - a0.r_in) - (BAY_H_M + BAY_W_M * 0.10)) < 1e-9,
+          f"{(a0.a1 - a0.a0) * a0.r_out:.2f} x "
+          f"{a0.r_out - a0.r_in:.2f} m at r={a0.r_out:.1f}")
+    check("the mouth is at the fore end, where the hull can be cut",
+          abs(a0.z_mouth - mouth_z_m()) < 1e-9
+          and a0.z_mouth < a0.z_out < a0.z_in,
+          f"mouth {a0.z_mouth:.0f}, hull crossed at {a0.z_out:.1f} "
+          f"and {a0.z_in:.1f}")
+
+    # --- AND MOST OF IT IS STILL OUTSIDE THAT HULL -----------------------
+    # A ratchet, not a pass. The register addresses a 140 m bay at z 7115 and
+    # the docking sphere is only wide enough to contain a 254.2 m deck over
+    # 58 m of that. This is `tools/cutaway.py`'s "14 of 118 locations are
+    # addressed OUTSIDE THE HULL" on this location, measured. The fix belongs
+    # to whoever owns directory.py -- shorten the footprint or move z -- and
+    # until then this asserts the number does not get WORSE, and prints it so
+    # it cannot be forgotten.
+    prof = profile["profile"] if isinstance(profile, dict) else profile
+    place = _directory.by_key("docking_bays")
+    z_lo = place["z_m"] - place["footprint"][1] / 2.0
+    inside = [s for s in prof
+              if z_lo <= s["z_m"] <= mouth_z_m()
+              and s["radius_m"] >= r0 + it.HULL_SKIN_M]
+    total = [s for s in prof if z_lo <= s["z_m"] <= mouth_z_m()]
+    frac = len(inside) / len(total)
+    check("the addressed bay is no further outside the hull than it was",
+          frac >= 0.40,
+          f"{frac * 100:.1f}% of the bay's {place['footprint'][1]:.0f} m is "
+          f"inside a hull wide enough for a {r0:.1f} m deck "
+          f"({len(inside)} of {len(total)} profile samples) -- KNOWN DEFECT, "
+          f"see the directory.py note in station/aperture.py")
 
     print(f"{ok}/{ok + fail} passed")
     return 1 if fail else 0

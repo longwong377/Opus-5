@@ -3443,3 +3443,69 @@ walking speed by 1.74×, so a single figure is wrong by minutes over a station-l
 **What would overturn it.** A deck plan showing diagonal or spiral circulation, which would make
 the Manhattan figure an overestimate. It is deliberately the conservative reading: it can only
 overstate a journey, never understate one.
+
+---
+
+## INV-100 — The docking bay mouths face FORE, and the hull is cut where they leave it
+
+`station/aperture.py`, `station/docking_bay.py::mouth_z_m`, `station/generate_hull.py::build`.
+
+**What.** Each of the 24 docking bays opens through a **42.0 m × 22.2 m rectangular aperture in
+the docking sphere's forward taper**, at the bay's own angle, spanning z 7,207.7 – 7,245.1 m. The
+mouth plane itself is at **z = 7,185 m**, so the hull overhangs the mouth by 22.7 m at the deck
+and 60.1 m at the roof, and the opening is reached down a throat of that depth.
+
+**Why necessary.** `docs/volume-audit.md` §5.1 found that `generate_hull` lathed a closed surface
+and the bays therefore had **no exterior at all** — hard rule 4 running the other way. A bay you
+can stand in behind a hull with no hole in it is the same defect as hand-authored hull geometry,
+and it is worse for being invisible: every gate in the project was green.
+
+**What constrained it, and this is a derivation rather than a choice.** The bay's mouth is
+**perpendicular to the station axis** — `docking_bay.docking_bay()` authors +Z running into the
+bay from a mouth at local z = 0, and `place_bay` maps local up to radially inward. A rectangle
+perpendicular to the axis cannot be a hole in a cylinder parallel to it, so the aperture is not
+where the bay is; it is where the bay's mouth *points*. Fore or aft is then decided by the hull:
+
+| mouth faces | hull at the mouth plane | does the swept prism ever meet the hull? |
+|---|---|---|
+| **fore**, z 7,185 | 266.4 m, outboard of the mouth's 232.0–254.2 m band | **yes** — the taper falls through 254.2 m at z 7,207.7 and 232.0 m at z 7,245.1 |
+| aft, z 7,045 | 166.2 m, already inboard of the whole band | **no** — the bay's aft end is in vacuum before it starts |
+
+Only one of the two produces an aperture, so the mouths face fore. Everything else is read from
+somewhere that already held it: the count and pitch from `docking_bay.BAY_COUNT`, the width from
+`BAY_W_M` (42 m, itself INV-022), the radial band from the deck radius `bay_radius()` minus the
+arched ceiling `BAY_H_M + 0.1 × BAY_W_M`, the mouth's z from
+`directory.PLACES["docking_bays"]`'s own footprint, and the crossings from
+`station/schema/radius_profile.json`. Nothing here is a literal.
+
+It also agrees with the traffic model that was already written down:
+`docs/gazetteer/TRAFFIC-AND-CUSTOMS.md` §4.4 has C&C, inside Observation Dome 1 at z 7,000–7,240,
+looking *"out along the approach vector for the docking bays"* (authority 4) — which is the
+direction these mouths face, from a dome that sits directly over them.
+
+**Two things it does NOT settle, stated because they are live:**
+
+- `reference/03-sector-blue/dock.webp` (authority 1) shows *"the far side of the station visible
+  beyond"* the mouth, which reads more like an enclosed cavity than open space. The fore-facing
+  mouth looks out at the deflector spike's root, 200 m away and 40 m across the opening, which is
+  *a* reading of that frame but not the only one. **Overturned by** any frame showing what is
+  actually outside a bay mouth, or any exterior frame of the docking section with the bays visible.
+- A ship leaving a bay along the axis at radius 232–237 m re-enters the hull at z 7,367–7,416 m,
+  where the deflector spike's root swells back out to 237.2 m. The outer 17 m of the mouth
+  (r 237–254) is clear; the inner 5 m is not. That is a **flight-path** finding, not a geometry
+  one, and it belongs to whoever writes the approach corridors.
+
+**A second, smaller extrapolation inside the same build.** The mouth surround —
+`docking_bay_lip` — is **one girder deep, 2.4 m**, taken from `docking_bay.GIRDER_D_M` rather than
+chosen, on the reasoning that the member framing a mouth is the member that spans the bay.
+`dock.webp` puts a yellow-and-black chevron on every deck edge in the bay at authority 1, and this
+band is where that material lands on the exterior. **Overturned by** any frame showing the outside
+of a bay mouth's surround.
+
+**And the band the mouths cut through carries no plate seams.** `hull_plating` moves every hull
+vertex radially by up to ±1.3 m and steps between plate rows, so across one row boundary the hull
+can move 2.6 m — while the forward taper only falls about 1.4 m per ring. Measured: at
+z 7,224.7 → 7,228.8 the profile falls 244.7 → 243.3 m and the *plated* hull rises 243.723 →
+244.100 m, which folded 24 throat walls back on themselves. So z 7,207.7 – 7,245.1 is lathed
+smooth: an opening is a machined collar, and a collar is not plate. **Overturned by** any frame
+showing plate seams running through a bay mouth.
