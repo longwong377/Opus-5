@@ -794,7 +794,14 @@ def drum_collision():
 # floor against -- INV-085) took every corridor shell to a coarser angular step
 # and the station to 35,746, a 53% cut for no change a foot can feel. The shell
 # lip rose 0.72 mm -> 1.85 mm against a 5 mm bar, and the deck still walks.
-RING_DECK_COLLISION_TRIS = 35_746
+# DRIFTED AGAIN, ON PURPOSE, AND THE GATE CAUGHT IT AGAIN. 35,746 was the
+# sweep building ONE z-cluster a deck -- the busiest -- which is 66 corridors.
+# Session 3y builds every cluster, 80 of them, because a deck in the gazetteer
+# is not a z-slice and the clusters the sweep skipped held C&C, both customs
+# halls, the arrival concourse, the cobra bays, Medlab Green, hydroponics and
+# both observation domes. 14 more corridors is 19,336 more collision triangles
+# and 19 more locations a player can reach.
+RING_DECK_COLLISION_TRIS = 55_082
 
 
 def main(argv=None):

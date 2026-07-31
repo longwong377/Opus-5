@@ -1064,8 +1064,14 @@ def _sweep():
     """
     schema, profile = it.load()
     decks = sorted({(q["sector"], q["ring"], q["deck"]) for q in dr.PLACES})
-    ok, failed, deferred, holes, unopened, served = [], [], [], [], [], 0
-    drum, dw_lod0, generic = [], 0, []
+    ok, failed, deferred, holes, unopened = [], [], [], [], []
+    # A SET OF KEYS, not a running total. Clusters are 40 m apart and a
+    # place within `Z_CLUSTER_M` of two corridors is legitimately served by
+    # both, so summing per-cluster room counts reported 130 locations on a
+    # station that has 118. A coverage number that can exceed its own
+    # denominator is not a coverage number.
+    served, withdoor = set(), set()
+    drum, dw_lod0, generic, clusters = [], 0, [], 0
     for s, r, dk in decks:
         if (s, r) in NOT_RING_DECKS:
             # NOT DEFERRED ANY MORE, COUNTED. The drum is a different KIND of
@@ -1078,27 +1084,44 @@ def _sweep():
             dv, dt, _dg, dm = DW.build(key=rows[0]["key"])
             if DW.holes(dv, dt, dm, n_a=8, n_z=8):
                 holes.append((s, r, dk))
-            served += len(rows)
+            served.update(x["key"] for x in rows)
+            withdoor.update(x["key"] for x in rows)
             drum.append((s, r, dk, len(rows), len(dt)))
             dw_lod0 = max(dw_lod0, int(dm["drum_lod0_triangles"]))
             continue
-        try:
-            v, t, m = build_collision(schema, profile, s, r, dk)
-        except Exception as e:                                  # noqa: BLE001
-            failed.append((s, r, dk, str(e)[:70]))
-            continue
-        if C.floor_holes(v, t, m):
-            holes.append((s, r, dk))
-        try:
-            _v2, _t2, _g2, st2 = build_deck(schema, profile, s, r, dk)
-            generic += st2.get("generic_for_module", [])
-        except Exception:                                   # noqa: BLE001
-            pass
-        unopened += [(s, r, dk) + u for u in m["unopened"]]
-        served += len(m["rooms"]) + len(m["unopened"])
-        ok.append((s, r, dk, len(m["rooms"]), len(t)))
+        # EVERY Z-CLUSTER, NOT JUST THE BUSIEST, and that one word was the
+        # difference between 99 and 118 locations. A "deck" in the gazetteer is
+        # not a z-slice -- Blue ring 0 deck 0 holds sixteen locations spread
+        # over 1,100 m of the station's axis in six clusters -- and a ring
+        # corridor serves the cluster at ITS z, so a deck needs one corridor
+        # per cluster. The sweep built `z_clusters(...)[0]` alone and reported
+        # the rest as simply absent, which quietly wrote off **C&C, both
+        # customs halls, the arrival concourse, the cobra bays, Medlab Green,
+        # hydroponics and both observation domes** -- nineteen locations, and
+        # not the unimportant nineteen.
+        for zi, zc in enumerate(z_clusters(s, r, dk) or [None]):
+            try:
+                v, t, m = build_collision(schema, profile, s, r, dk, z_m=zc)
+            except Exception as e:                              # noqa: BLE001
+                failed.append((s, r, dk, f"z={zc}: {str(e)[:60]}"))
+                continue
+            if C.floor_holes(v, t, m):
+                holes.append((s, r, dk, zc))
+            try:
+                _v2, _t2, _g2, st2 = build_deck(schema, profile, s, r, dk,
+                                                z_m=zc)
+                generic += st2.get("generic_for_module", [])
+            except Exception:                                   # noqa: BLE001
+                pass
+            unopened += [(s, r, dk) + u for u in m["unopened"]]
+            served.update(x["key"] for x in m["rooms"])
+            withdoor.update(x["key"] for x in m["rooms"])
+            served.update(u[0] for u in m["unopened"])
+            ok.append((s, r, dk, len(m["rooms"]), len(t)))
+            clusters += 1
 
-    print(f"{len(decks)} decks in the gazetteer")
+    print(f"{len(decks)} decks in the gazetteer, {clusters} z-clusters "
+          f"assembled across them")
     print(f"  {len(ok)} assemble, {len(failed)} fail, "
           f"{len(deferred)} deferred, {len(drum)} on heightfield ground")
     for s, r, dk in deferred:
@@ -1108,8 +1131,10 @@ def _sweep():
               f"{n_tri:,} triangles a tile -- {NOT_RING_DECKS[(s, r)][:44]}...")
     for f in failed:
         print(f"     FAIL {f[0]}/{f[1]}/{f[2]}: {f[3]}")
-    print(f"  {served} locations on an assembled cluster, "
-          f"{sum(x[3] for x in ok)} with a door, {len(unopened)} without")
+    print(f"  {len(served)} of {len(dr.PLACES)} locations on an assembled "
+          f"cluster, "
+          f"{len(withdoor)} with a door or on ground, "
+          f"{len(served - withdoor)} without")
     for u in unopened[:10]:
         print(f"     no door: {u}")
     print(f"  {len(holes)} decks with a hole in the floor  {holes[:5]}")
@@ -1137,7 +1162,16 @@ def _sweep():
           f"decks, {sum(x[4] for x in drum):,} more in the drum's ground per "
           f"tile ({dw_lod0:,} for the whole drum at lod0) -- the walkable "
           f"station is {sum(x[4] for x in ok) + dw_lod0:,}")
-    bad = len(failed) + len(holes) + len(unopened)
+    # COVERAGE IS A GATE NOW, not a line of prose. The sweep is the only thing
+    # here that asks a whole-station question, and it spent sessions reporting
+    # 99 of 118 as though the other nineteen were a known limitation rather
+    # than one unasked-for `[0]`. A number that only ever gets read by a human
+    # is a number that drifts.
+    if len(served) < len(dr.PLACES):
+        miss = sorted({q["key"] for q in dr.PLACES} - served)
+        print(f"  {len(miss)} locations on NO assembled cluster: {miss[:8]}")
+    bad = (len(failed) + len(holes) + len(unopened)
+           + (len(dr.PLACES) - len(served)))
     if bad:
         print("A deck that does not assemble is a deck nobody can be on.")
     return 1 if bad else 0

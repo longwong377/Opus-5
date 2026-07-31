@@ -151,7 +151,7 @@ def room_target(meta, place):
 
 
 def walk_deck(sector, ring, deck, godot, timeout=1800, traverse=None,
-              goto_key=None, no_doors=False):
+              goto_key=None, no_doors=False, z_m=None):
     """Assemble a deck, put a body on it, and walk it.
 
     The render mesh and the collision shell are exported separately and BOTH are
@@ -172,14 +172,18 @@ def walk_deck(sector, ring, deck, godot, timeout=1800, traverse=None,
     schema, profile = it.load()
     out = os.path.join(ROOT, "station/generated/scene/deck")
     os.makedirs(out, exist_ok=True)
-    stem = f"{sector}_{ring}_{deck}"
-    v, t, g, s = D.build_deck(schema, profile, sector, ring, deck)
+    # Z IN THE FILENAME, because a deck now has up to six walkable clusters
+    # and they are different places. Without it the second cluster overwrote
+    # the first's mesh and the walk measured whichever ran last.
+    stem = (f"{sector}_{ring}_{deck}" if z_m is None
+            else f"{sector}_{ring}_{deck}_z{int(z_m)}")
+    v, t, g, s = D.build_deck(schema, profile, sector, ring, deck, z_m=z_m)
     D.write_obj(os.path.join(out, f"{stem}.obj"), v, t, g)
     # PROPS ON. This is a body being put in the room, so the furniture has to be
     # there: a route that only exists because you can walk through a table is
     # not a route.
     cv, ct, cm = D.build_collision(schema, profile, sector, ring, deck,
-                                   props=True)
+                                   z_m=z_m, props=True)
     C.write_obj(os.path.join(out, f"{stem}_col.obj"), cv, ct,
                 cm.get("groups"))
     # THE CAST LIST, beside the mesh. A body is baked into the merged geometry,
@@ -312,6 +316,10 @@ def main():
     ap.add_argument("--no-doors", action="store_true",
                     help="negative control: leave the doors inert, so the "
                          "closed panels stay solid and the body must NOT get in")
+    ap.add_argument("--z", type=float, default=None,
+                    help="which z-cluster of the deck to walk. A deck is not "
+                         "a z-slice: blue/0/0 has six clusters over 1,100 m "
+                         "and they are six different places")
     ap.add_argument("--traverse", type=int, default=None,
                     help="physics frames of continuous walking on the deck")
     a = ap.parse_args()
@@ -324,7 +332,7 @@ def main():
     if a.deck or a.deck_only:
         sector, ring, deck = (a.deck or "blue/0/0").split("/")
         d = walk_deck(sector, int(ring), int(deck), godot,
-                      traverse=a.traverse, no_doors=a.no_doors)
+                      traverse=a.traverse, no_doors=a.no_doors, z_m=a.z)
         drum = (sector, int(ring)) in D.NOT_RING_DECKS
         if drum:
             import drum_walk as DW                              # noqa: PLC0415
