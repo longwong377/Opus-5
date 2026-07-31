@@ -90,11 +90,21 @@ absence.
 | # | Milestone | Done when | Status |
 |---|---|---|---|
 | **W1** | **Stand up** | Collision on the station mesh, a character controller, per-deck gravity. A player spawns in the corridor kit and walks. Asserted headlessly | **DONE** (3v) |
-| **W2** | **Go somewhere** | Two named locations joined by real walkable geometry; the player walks between them without leaving the floor | **HALF** — 126 m of ring corridor walked, `offfloor=0/1800`; **no door into any room** |
+| **W2** | **Go somewhere** | Two named locations joined by real walkable geometry; the player walks between them without leaving the floor | **DONE** (3v) — 126 m of corridor walked, `offfloor=0/1800`, and a body walks through a door into a named room |
 | **W3** | **A furnished room** | ONE location at true prop density -- the reference is the owner's Starfield frames, not our own past work -- with a stated props/m2 | `dressing.py` built (3u) |
 | **W4** | **A populated room** | NPCs standing, sitting and walking in it. `station/npc/` already has twelve tested modules with zero importers; wire them | `populace.py` built (3u) |
 | **W5** | **The loop** | Spawn -> walk -> use something -> an NPC reacts. The smallest complete experience | |
-| **W6+** | **Breadth** | Roll W3-W5 outward by generator across the 118, in the order a player meets them | |
+| **W6+** | **Breadth** | Roll W3-W5 outward by generator across the 118, in the order a player meets them | **STARTED** (3v) — `deck.py --sweep`: 66/66 ring decks assemble, 87 rooms, every one with a door, 0 floor holes, 74,044 collision triangles for the whole station |
+
+**`python3 station/deck.py --sweep` is the answer to "how much of the station can I walk in".**
+It is the only gate here that asks a whole-station question; every other one measures a part.
+Run it before claiming coverage. What it does NOT yet cover: the drum (`green/1`, an open barrel
+whose floor is `drum_ground`'s heightfield), and the secondary z-clusters — 87 of the 106
+non-drum locations are on an assembled cluster.
+
+**Props are not solid.** `dressing.py` puts 82,362 triangles of furniture on the station and none
+of it is in the collision shells, so a player walks through tables. That is the next thing a
+person would notice after the doors.
 
 ### COLLISION IS NOT RENDER GEOMETRY, and that rule was learned expensively
 
