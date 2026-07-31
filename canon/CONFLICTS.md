@@ -1649,3 +1649,56 @@ in-era — and keep `sleeping-in-light-05.jpg` for architecture only.
 ### What is built while it stays open
 
 The geometry stands. The exposure is marked suspect and must not be cited as measured-in-era.
+
+---
+
+## C-010 — the docking bay is 140 m long and the hull holds 77 m of it · **OPEN, NON-BLOCKING for the exterior, BLOCKING for the bay's interior geometry**
+
+Raised by the hull-aperture work in session 3z, which found it while cutting the mouths and
+correctly declined to rule on it. Measured here rather than argued.
+
+### The two numbers, and both are sourced
+
+- `docking_bay.BAY_LEN_M = 140.0` — **INV-022**. `directory.PLACES["docking_bays"]` carries the
+  same 140 m as its footprint length, so the register and the generator agree with each other.
+- The **deck radius the bay is built at is 254.2 m**, and the hull envelope reaches that radius
+  over exactly **one run: z 7132 to 7208, which is 77 m** (sampled every 0.5 m over z 7000–7300).
+  The register puts the bay at z 7115 ± 70, i.e. **7045 to 7185**, of which only 7132–7185 — 53 m,
+  **38%** — is inside a hull wide enough to hold its deck.
+
+At z 7045 the envelope is **166.2 m**: 88 m short of the deck the bay is built at. That end of the
+bay is in vacuum.
+
+### What is actually wrong, and it is not obviously the length
+
+The **pressure hull** at those z values is 229.3 m throughout — flat. The 254.2 m the bay needs
+exists only in the **envelope**, and the difference is the docking sphere: a pressurised protrusion
+that `core_hull_profile` strips by design, because its job is to strip radiator roots and cobra
+blisters. So a docking bay is the one kind of place that legitimately lives *outside* the pressure
+hull profile, and `validate.py`'s containment gate is measuring it against the wrong surface.
+
+That leaves three readings and the evidence does not choose between them:
+
+1. **The bay is mis-addressed.** Move it to the centre of the run the hull provides — z 7170 — and
+   the deck fits over 77 m. Then INV-022's 140 m is wrong and needs a source.
+2. **The bay is 140 m and its deck TAPERS.** `docking_bay.docking_bay()` builds a constant-radius
+   deck; a real bay inside a sphere would follow the sphere. Then both numbers stand and the
+   geometry is what is wrong. `dock.webp` shows a bay whose far end is visibly narrower, which is
+   consistent, but a fan-scan frame is not a measurement.
+3. **The docking sphere's profile is wrong.** `radius_profile.json` is extracted from a schematic;
+   if the sphere is under-measured by 25 m the conflict evaporates.
+
+### What would close it
+
+A frame or schematic that resolves the docking sphere's outside diameter against a known feature —
+the bay mouths are 42 m of arc each and there are 24 of them, so a single wide shot showing the
+mouth ring in full gives the sphere's circumference directly. `tools/measure_schematic.py` is the
+tool for it.
+
+### What is blocked and what is not
+
+- **NOT blocked:** the hull, the apertures, the register, walkability. The 24 mouths are cut, closed
+  and gated (INV-103), and `deck.py --sweep` reaches `docking_bays` and walks into it.
+- **BLOCKED:** any claim that the bay's *interior* is canon-accurate in length, and any attempt to
+  make `validate.py`'s hull containment cover it. `docking_bay._selftest` ratchets the fraction at
+  >= 40% so it cannot silently get worse.
