@@ -1361,6 +1361,134 @@ EXTENDED_SAMPLE_CAP = 24
 # over, and that hand-off IS the rhythm the reference frames show.
 INTERIOR_LIGHT_RANGE_M = 7.0
 
+# ---------------------------------------------------------------------------
+# A MEASURED POOL EXTENT IS NOT A CULLING RADIUS, and conflating them is why
+# every room in the station is lit by a flat ambient
+# ---------------------------------------------------------------------------
+# Session 4b. Every `range_m` in FIXTURE_LIGHTING below was read off a
+# reference frame as "how far the visible pool extends" -- cc_wall_course 3.5 m,
+# light_downlight 1.2 m, zoc_stall_light 2.5 m. Godot's `omni_range` is not
+# that number. It is a HARD CUTOFF: `get_omni_attenuation` multiplies the
+# 1/d falloff by `(1 - (d/r)^4)^2`, which is exactly 0 at d = r and is already
+# down to 0.35 at d = 0.8r. So a fitting whose pool "measures" 3.5 m across
+# was being told to deliver ZERO light past 3.5 m, in a room 9.4 m tall.
+#
+# The consequence is structural rather than cosmetic and it runs through the
+# whole of layer 4. With the fittings unable to reach the far wall, the only
+# term left to carry a room's level is `ambient_energy` -- and an ambient is
+# an irradiance that is the same whichever way a surface faces, so NOTHING IN
+# THE ROOM IS IN SHADOW. That is what a p5 two stops hot is, and every one of
+# the six p5-bright failures in `--gate-frames` is a room whose light is
+# mostly ambient. Measured on council_chamber at 640x360, `--fixture-energy`
+# 3.0 -> 0 moves the frame median 0.12924 -> 0.09134 (the fittings supply 29%)
+# while `--ambient` 2.951 -> 0 moves it 0.12924 -> 0.04037 (the flat term
+# supplies the rest).
+#
+# THE CORRIDOR ANCHOR IS THE ONE ROOM THAT DOES NOT HAVE THE DEFECT, and it
+# says so in its own numbers rather than by assertion. `--gate-lighting`
+# measures, per room, the fraction of its working plane inside SOME source's
+# range and the 95th percentile of d/r over that plane:
+#
+#   corridor          100.0%   d/r p95 0.31    <- the anchor, WITH its soft fill
+#   cnc                 0.0%           2.18    <- not one square metre
+#   qtr_command        10.3%           3.59
+#   plant_zone         11.3%           7.03
+#   customs_north      16.9%           4.73
+#   alien_sector       30.6%           2.89
+#   hydroponics        33.9%           2.61
+#   ... eleven rooms at 100%
+#
+# The corridor is covered because session 3n gave it an off-camera KEY -- the
+# soft fill, range 30 m -- after finding that "the missing light was never a
+# quantity of ambient, it was a direction". No room got one: `SOFT_FILL_SPACES`
+# is ("corridor", "junction") and the block above it says why the other two
+# measured fills were left unbuilt. So the corridor has a general-service
+# source and 118 rooms have accents.
+#
+# WHERE 1/3 COMES FROM, and it is this project's own arithmetic rather than a
+# new number. `SOFT_FILL_RANGE_M = 3.0 * SOFT_FILL_HEIGHT_M`, and the reason
+# recorded there is exactly this one: "Godot's range is a CULLING WINDOW, not a
+# falloff -- and at d/r = 1/3 it costs 2.4%". A source whose furthest lit
+# surface sits at a third of its range has an INVISIBLE cutoff; one whose
+# surface sits at 0.72 of it (sanctuary_blue) has lost half its light to the
+# window before the surface is reached. So the scale a room needs is
+# `3 * p95(d/r)`, clamped at 1.0 below -- a measured range is never SHORTENED,
+# because shortening one would be inventing a dimmer luminaire, while
+# lengthening one is undoing a unit error.
+REACH_TARGET_D_OVER_R = 1.0 / 3.0
+# AND CAPPED AT THE SAME 3.0, which is not a coincidence and is the honest
+# boundary of what this correction can fix. A fitting stretched to three times
+# its measured extent is at the limit of being the fitting that was measured;
+# past that the room does not have enough sources, or has them in the wrong
+# place, and no range can fix either. Nine rooms hit the cap and `--gate-lighting`
+# names every one of them with the count it would need -- see LIGHTING_COVERAGE
+# for what each of them actually wants, which is a `station/rooms.py` and
+# bespoke-module change rather than a lighting one.
+REACH_CAP = 3.0
+# None means "compute it per room". A float overrides every room at once and
+# is what `--fixture-reach` sets; 1.0 is THE NEGATIVE CONTROL and reproduces
+# the pre-4b rig exactly.
+FIXTURE_REACH = None
+# The height a horizontal illuminance is judged at. 0.85 m is the standard
+# working plane and is also, to 0.04 m, where `light_downlight` is mounted in
+# the corridor -- so the anchor's own fittings are measured against the plane
+# they sit in, which is the conservative reading.
+WORKING_PLANE_M = 0.85
+
+LIGHTING_COVERAGE = """
+WHAT THE FOUR ROOMS THE REACH CANNOT FIX ACTUALLY NEED, and it is content in
+`station/rooms.py` and in three bespoke modules rather than anything in this
+file. Recorded here because `--gate-lighting` is what finds it and a finding
+with no address gets rediscovered.
+
+THE COUNT A ROOM NEEDS IS DERIVABLE and needs no new constant. A luminaire of
+range r whose emitter sits y above the working plane can reach a disc of
+radius R = sqrt(r^2 - (y - 0.85)^2) on that plane; a square lattice whose
+diagonal is 2R tiles the plane with cells of area 2R^2, so
+
+    n  >=  floor area / (2 R^2)
+
+which is the ordinary spacing-equals-root-two-times-the-covered-radius rule.
+Measured over the twenty-one rooms with a committed frame (`need.py`, run
+2026-07-31), the four that cannot be closed by reach:
+
+  room             r     mount y   floor A   have   need   what is actually wrong
+  ---------------------------------------------------------------------------
+  cnc            3.5    4.36/5.56    185 m2    36     --    MOUNTED OUT OF ITS OWN
+                                                            RANGE. The working plane
+                                                            is 3.51 m and 4.71 m
+                                                            below the strips and the
+                                                            strip throws 3.5 m, so
+                                                            R is IMAGINARY and no
+                                                            count of them reaches
+                                                            the floor. Coverage 0.0%.
+  customs_north  3.5      2.38      599 m2    15     30    all fifteen on ONE wall,
+                                                            at x -8.5 of a hall that
+                                                            runs -8.8..+8.8
+  alien_sector   4.0      3.62      423 m2     7     25    all seven on the
+                                                            centreline x = 0.0 of a
+                                                            hall 14.0 m wide
+  plant_zone    30.0      ~16       40805 m2   7     33    all seven at one z, in a
+                                                            442 m hall. Left alone --
+                                                            see BESPOKE_EXPOSURE
+
+AND `rooms.py` LAYS EVERY FITTING DOWN ONE AXIS. `_lay`'s own docstring says
+"Repeat one fitting down the z axis", and the two callers that could have
+supplied the other axis do not: a "ceiling" fitting gets exactly TWO rows, at
+`chan_c +/- (chan_hi - chan_lo) / 4`, and a "course" gets the two walls at
+x = +/-hw. So `LIGHT_PITCH_M`'s measured spacing is honoured along z and
+replaced by a geometric fraction of the room along x. In a room WIDER than it
+is long every fitting therefore lands on the short axis -- `qtr_command` is
+29.6 x 7.5 m and its six downlights sit at a single z, covering 10.3% of the
+unit.
+
+The fix in `rooms.py` is one line of intent and several of arithmetic: lay a
+ceiling fitting on a LATTICE at `light_pitch_m` in both axes rather than two
+rows down z, and let `_lay`'s free-interval search run over x as well. That
+is a layer-2 shaped change (it moves geometry) made for a layer-4 reason, so
+it wants its own pass and its own render, and it is NOT done here.
+"""
+
 # WHICH FITTINGS ACTUALLY EMIT LIGHT, measured off the reference frames in
 # session 3n and recorded in docs/layer4-lighting/corridor_kit.json.
 #
@@ -1979,6 +2107,99 @@ AMBIENT_BY_ARCHETYPE = {
     "office": 0.230,         # war_room
     "generic": 0.300,        # corridor_residential
 }
+
+# ---------------------------------------------------------------------------
+# AND IT IS THE WRONG STATISTIC, WHICH CLAUDE.md HAS SAID SINCE LAYER 4 OPENED
+# ---------------------------------------------------------------------------
+# "docs/layer4-lighting/*.json records a per-space `ambient.ratio` taken from
+# two hand-picked regions of a balanced frame, and a whole-frame percentile of
+# the same frame gives a different number (0.300 vs 0.086 on `grey level
+# 1.webp`). Tuning a render against the wrong one of those lands it two and a
+# half stops hot." Every value in the table above is from that family, and the
+# ratio BETWEEN two of them is a ratio between two pairs of hand-drawn boxes in
+# two different frames, which is not a ratio between the two spaces' darkness.
+#
+# THE STATISTIC AN AMBIENT ACTUALLY CONTROLS IS p5, and this project measured
+# that before it had a use for it: "fixture energy is INERT (0 -> 2.0 moves p5
+# by x1.0000), the soft fill nearly so (6 -> 24 moves it x1.11), and AMBIENT
+# OWNS p5 (1.30 -> 2.60 moves it x2.35)". An ambient is a constant irradiance
+# whichever way a surface faces, so nothing lit only by it is in shadow, and
+# p5 is where the shadows are counted. The exponent that measurement gives is
+# d(ln p5)/d(ln ambient) = 1.22, against d(ln median)/d(ln ambient) = 0.84
+# recorded on AMBIENT_CALIBRATED_ENERGY, so the SHAPE p5/median goes as
+# ambient^0.38 -- which is the sensitivity every row below is stepped by.
+#
+# AND THE EXPOSURE MUST STOP SCALING IT, which is the structural half of this
+# change. `ambient_energy` multiplied by `room_exposure`, so the two terms
+# moved together and a room's level and its contrast could not be set apart at
+# all -- push the level down and the shadows come down with it, in exactly the
+# proportion that was already wrong. The reason recorded for the coupling was
+# real when it was written: "in those three rooms the fittings contribute
+# almost nothing to the frame ... an exposure that cannot move the dominant
+# term is not an exposure". THE REACH FIX REMOVED THAT REASON. With the
+# fittings able to reach the floor (INV-243) the exposure moves the dominant
+# term by itself, so the ambient can be an absolute value again -- and each row
+# below is that absolute value, expressed as the ratio that reproduces it.
+#
+# `mod:` PREFIXES A BESPOKE MODULE because `place["module"] or archetype` is
+# not an injection: "hospitality" is both a rooms.py archetype (mess_hall) and
+# a module (fresh_air), and their ambients differ by x11.5. One dict keyed by
+# the bare name silently keeps whichever was written last.
+#
+# A row absent here falls back to the table above times the exposure, i.e. to
+# the pre-4b behaviour, so an unsolved room is visible rather than averaged.
+#
+# ---------------------------------------------------------------------------
+# THREE ROWS, OUT OF ELEVEN SOLVED, AND THE EIGHT ABSENCES ARE THE RESULT
+# ---------------------------------------------------------------------------
+# The pass was run on every room whose p5 failed: cut the ambient by
+# `(1.10 / p5) ** (1/0.38)`, then put the level back with the fitting energy,
+# three iterations, verdict by re-render. Only these four came out strictly
+# better, and the seven that did not all failed the SAME way -- the ambient cut
+# fixed p5 and the fittings could not make the level up, so the frame either
+# left the level window or its black fraction ran away past the x11.42 band:
+#
+#   medical     p5 x1.45 -> x0.90   crushed  x1.2 -> x16.23
+#   research    p5 x1.78 -> ~x0.9   crushed       -> x18.20
+#   office      p5 x1.39 -> x1.70 at the in-window gain (x0.88 at the gain
+#                                  that passes, which is out of window)
+#   worship     p5 x1.48 -> x1.61 at the in-window gain
+#   generic     p5 x0.66 needed MORE ambient; x4.3 overshot to median x3.44
+#
+# That is not a tuning failure, it is the fitting count showing through: a room
+# whose sources cannot carry its level has only the flat term to carry it, and
+# taking the flat term away leaves a hole rather than a shadow. Every one of
+# the seven is named in LIGHTING_COVERAGE or is a room whose fittings sit at
+# 0.9 of their range from the far wall, where the culling window has already
+# taken most of the light. The remedy is sources, in `station/rooms.py` and in
+# the modules -- see LIGHTING_COVERAGE's `n >= A / (2 R^2)`.
+AMBIENT_SOLVED = {
+    # archetype / mod:module      ambient   what it did
+    "detention": 0.0080,          # 0.0346   the solved cell wanted exposure
+                                  #          0.078 and the self-test's runaway
+                                  #          guard is right to refuse it, so
+                                  #          the ambient is taken and the
+                                  #          exposure is held at the guard's
+                                  #          own floor -- see ROOM_EXPOSURE
+    "generic": 0.4620,            # 2.0020   NOT a cut: generic went p5 x0.66
+                                  #          and crushed x25.63 when the
+                                  #          exposure dragged its ambient down
+                                  #          with it, so this is the 4a value
+                                  #          held ABSOLUTE, which is the whole
+                                  #          point of decoupling the two
+    "industrial": 0.0906,         # 0.3928   p5 x1.33 -> x0.97; only p99 x0.31
+                                  #          is left, and p99 was already
+                                  #          failing at x0.30 before this
+                                  #          session -- it is the missing
+                                  #          bright population, not the fill
+    "mod:command_control": 0.0469,  # 0.2034 p5 x2.20 -> PASS at median x1.05.
+                                  #          The room that measured 0.0% floor
+                                  #          coverage
+    "mod:council_chamber": 0.0909,  # 0.3940 p5 x2.20 -> x1.25, PASS at median
+                                  #          x1.59. The largest p5 miss on the
+                                  #          station, closed
+}
+
 # interior.tscn's ambient_light_energy, calibrated in session 3n against the
 # residential corridor -- which is the AMBIENT_RATIO 0.300 row. Every other
 # space scales off that one measured point rather than off a guess.
@@ -2113,19 +2334,47 @@ AMBIENT_CALIBRATED_RATIO = 0.300
 #   crushed (3): zocalo x0.12 and customs (too little black), alien_sector
 #     x36.9 (too much), plant outside the show's own envelope entirely.
 #   industrial: p5 and p99 together.
+#
+# ---------------------------------------------------------------------------
+# RE-DERIVED IN SESSION 4b BECAUSE THE FITTINGS CAN NOW REACH THE FLOOR
+# ---------------------------------------------------------------------------
+# `room_reach` lengthened every room's fitting ranges to where the culling
+# window stops being visible (INV-243), so the same exposure delivers more
+# light -- measured on the committed frames, the twenty rooms moved from a
+# median of x0.56..x1.74 of their references to x0.56..x4.12. An exposure
+# calibrated against a rig that could not light the room is not an exposure
+# for one that can, so every row here is re-solved.
+#
+# THE STEP IS `(1.40 / measured) ** (1 / 0.85)` and the 0.85 is the corridor
+# anchor's own `d(ln median)/d(ln ambient)`, recorded above
+# AMBIENT_CALIBRATED_ENERGY. It is a first-order step and not a solve, for the
+# reason this file has recorded twice: the censored median is monotone in gain
+# on only 15 of 21 of our own rooms, so an inversion of it can move the
+# exposure the WRONG WAY. What makes the step safe is that the verdict is a
+# re-render rather than the arithmetic -- `--gate-frames --rerender` re-takes
+# every frame and prints what actually happened, which is the whole point of
+# session 4a's third field.
 ROOM_EXPOSURE = {
-    # value        was    gain   what the frame at this value measures
-    "industrial": 4.03,  # 1.30  x3.10  median x1.74  p5 x1.37  FAIL p5, p99
-    "store": 3.02,       # 1.42  x2.13  median x1.37  p5 x1.04  PASS
-    "transit": 0.62,     # 0.75  x0.83  median x1.45  p5 x0.95  PASS
-    "hospitality": 0.60,  # 1.20 x0.50  median x1.24  p5 x0.98  PASS
-    "worship": 2.29,     # 2.25  x1.02  median x1.39  p5 x1.62  FAIL p5
-    "medical": 0.19,     # 0.14  x1.38  median x1.18  p5 x1.24  PASS
-    "research": 0.23,    # 0.14  x1.67  median x1.41  p5 x1.66  FAIL p5
-    "detention": 0.40,   # 0.53  x0.75  median x1.53  p5 x1.01  PASS
-    "commerce": 0.62,    # 0.51  x1.21  median x1.40  p5 x1.09  PASS
-    "office": 0.38,      # 0.14  x2.70  median x1.15  p5 x1.04  PASS
-    "generic": 1.54,     # 1.67  x0.92  median x1.65  p5 x0.83  PASS
+    # value          was    at the reach fix, before this row moved
+    "industrial": 3.51,  # 4.03 -> 2.49 -> here; ambient in AMBIENT_SOLVED
+    "store": 3.02,       # 3.02  median x1.38  PASS -- unchanged, in window
+    "transit": 0.62,     # 0.62  median x1.43  PASS -- unchanged, in window
+    "hospitality": 0.88,  # 0.60 median x1.01  below the window
+    "worship": 1.53,     # 2.29  median x1.97  p5 x2.41  crushed x0.08
+    "medical": 0.18,     # 0.19  median x1.48  p5 x1.51
+    "research": 0.18,    # 0.23  median x1.70  p5 x2.06
+    "detention": 0.10,   # 0.28. Its solved cell wanted 0.078 and the shape
+                         # pass found ambient 0.0346 with the fittings at
+                         # 0.235 energy passing every band at median x1.38,
+                         # and that is exposure 0.078 -- under the 0.1 the
+                         # self-test calls a runaway. The guard is right to
+                         # fire and its band is stated for an exposure that
+                         # scaled the ambient too, so it needs re-deriving
+                         # before the cell can be taken. Widening it to make
+                         # a row go green is what it exists to stop.
+    "commerce": 0.62,    # 0.62  median x1.44  PASS -- unchanged, in window
+    "office": 0.18,      # 0.38  median x2.70  p5 x2.36
+    "generic": 0.50,     # 1.54 -> 0.87 -> here; ambient in AMBIENT_SOLVED
 }
 
 
@@ -2186,8 +2435,18 @@ ROOM_EXPOSURE = {
 # room's geometry; the cause is quantisation. Its value here is the darkest
 # sampled gain that keeps the frame inside the show's crushed envelope, and it
 # does not: 0.22 is chosen as the best of a bad set and the row is failing.
+#
+# RE-STEPPED IN SESSION 4b for the reason recorded above ROOM_EXPOSURE: the
+# reach fix means the same exposure delivers more light, so a value calibrated
+# against the old rig is not a value for the new one. Four rows are held --
+# `docking_bay` and `quarters` because they PASS at the reach fix and moving a
+# passing row to chase a decimal is churn, `alien_sector` because its failure
+# is crushed x43 and no exposure reaches that, and `plant` because it is a
+# lighting-design problem with a number attached and this session does not
+# chase it.
 BESPOKE_EXPOSURE = {
-    "zocalo": 0.84,          # UNCHANGED, and now swept: x0.35/x0.5/x0.8/x1/x2
+    "zocalo": 0.52,          # 0.84, at the reach fix median x2.11 p5 x2.93
+                             # UNCHANGED IN 4a, and now swept: x0.35/x0.5/x0.8/x1/x2
                              # all measured, x1.00 is the only one inside the
                              # level window. median x1.19, p5 x1.19, FAIL
                              # crushed x0.12 -- we hold 8x less black than the
@@ -2195,9 +2454,13 @@ BESPOKE_EXPOSURE = {
                              # frame passes 7/7 and reads as a dim hall, and
                              # its deck strip is blown at every gain (see the
                              # emission finding below).
-    "hospitality": 2.07,     # 1.34 x1.55. vs reference/04-sector-red/
-                             # Doug's Dugout.webp
-    "command_control": 0.89,  # 1.10 x0.80. vs 03-sector-blue/comand and
+    "hospitality": 1.88,     # 2.07, at the reach fix median x1.52 p5 x2.14.
+                             # vs reference/04-sector-red/Doug's Dugout.webp
+    "command_control": 4.08,  # 0.65, and its ambient is in AMBIENT_SOLVED: the
+                             # whole level now comes from the strips instead of
+                             # from the flat term, which is why the number is
+                             # ten times what it was and the frame is not.
+                             # vs 03-sector-blue/comand and
                              # contorl.webp. median x1.40, p5 x2.19, p95 x0.34
                              # -- FAIL p5 and p5/p95, and the two failures are
                              # ONE defect: this frame's distribution is
@@ -2222,17 +2485,31 @@ BESPOKE_EXPOSURE = {
                              # wrong exposure: brightening it to x1.25 takes
                              # the crushed ratio only to x36.9 from x43.8 and
                              # pushes the level to x1.67, out of window.
-    "customs": 0.31,         # 0.62 x0.50. vs 11-props-and-technology/babylon 5
-                             # welcome sign, instructions, and hub.jpg.
-                             # median x1.36, p5 x1.02, PASS. At 0.62 it read
-                             # p5 x1.56 and crushed x0.05.
+    "customs": 0.17,         # 0.31, and NON-INVERTIBLE in both directions:
+                             # at 0.31 the frame reads median x2.34, at 0.17
+                             # x4.45 and at 0.62 x2.20, so LOWERING the
+                             # exposure brightens it. 0.17 is kept because
+                             # it is the only one of the three that passes
+                             # the distribution -- 0.62 fails p5 x1.64 and
+                             # crushed x0.05. The room is at the reach cap
+                             # with 59.7% floor coverage, i.e. its ambient
+                             # still dominates. At the reach fix the level
+                             # with the
+                             # distribution already OK. vs
+                             # 11-props-and-technology/babylon 5 welcome sign,
+                             # instructions, and hub.jpg.
     "quarters": 1.17,        # 1.12 x1.04. vs reference/07-sector-grey/
                              # grey level 1.webp, the residential corridor a
                              # unit opens off. median x1.41, p5 x0.76 -- FAIL
                              # p5, and in the DARK direction for once, with
                              # p95 x0.48 beside it. A unit with too little of
                              # everything at the top.
-    "council_chamber": 2.27,  # UNCHANGED, swept x0.5/x0.85/x1/x2. median
+    "council_chamber": 0.92,  # 0.76, ambient in AMBIENT_SOLVED. Was 2.27 at
+                             # the start of 4b, and the biggest step there: at
+                             # the reach fix its twelve 18 m coves reach the
+                             # whole floor and the frame went to median x4.12,
+                             # with p5 x2.20 -> x1.43 on the way.
+                             # WAS UNCHANGED IN 4a, swept x0.5/x0.85/x1/x2. median
                              # x1.40 at x1.00 -- the shipped value was right
                              # on the level and this is the first sweep that
                              # could say so. FAIL p5 x2.20, the largest p5
@@ -2551,6 +2828,44 @@ def gate_frames(mf=None, rerender=False):
     return npass, nfail, nskip
 
 
+def gate_lighting(rooms=None):
+    """Can each room's own fittings reach its own floor? -- see plane_coverage.
+
+    Prints one line a room and returns (n_covered, n_total). It is a REPORT
+    rather than a build break for the same reason `gate_frames` is: the rooms
+    that fail need sources added or moved in `station/rooms.py` and in the
+    bespoke modules, which is content work, and a command that always exits
+    non-zero is a command nobody runs. What it must never do is stay silent --
+    command and control sat at 0.0% through three sessions of "p5 bright".
+    """
+    rows = rooms or [shot[0]
+                     for fam in ("ANCHOR", "ROOM_EXPOSURE", "BESPOKE_EXPOSURE")
+                     for _k, (_f, _r, shot) in
+                     sorted(EXPOSURE_FRAMES[fam].items()) if shot]
+    print(f"{'room':<18}{'lights':>7}{'cover%':>8}{'d/r p95':>9}"
+          f"{'reach':>7}{'after%':>8}  fittings")
+    covered = 0
+    for room in rows:
+        v, t, spans, _ext = interior_geometry(room)
+        base = fixture_lights(v, t, spans, 1.0, INTERIOR_LIGHT_RANGE_M,
+                              shadow_n=0)
+        if room in SOFT_FILL_SPACES:
+            base = base + soft_fill_run(v, t, spans)
+        cov, p95 = plane_coverage(v, base)
+        s = room_reach(room)
+        after = base
+        if s != 1.0:
+            after = [dict(lt, range=lt["range"] * s) for lt in base]
+        cov2, _p2 = plane_coverage(v, after)
+        covered += cov2 >= 0.999
+        names = sorted({fixture_key(lt["group"]) or lt["group"]
+                        for lt in base})
+        print(f"{room:<18}{len(base):7d}{100 * cov:8.1f}{p95:9.2f}"
+              f"{s:7.2f}{100 * cov2:8.1f}  {', '.join(names)}")
+    print(f"\n{covered} of {len(rows)} rooms can light their own working plane")
+    return covered, len(rows)
+
+
 def room_exposure(room):
     """Exposure multiplier for one room. See ROOM_EXPOSURE."""
     if room in ("corridor", "junction"):
@@ -2582,6 +2897,13 @@ def ambient_energy(room):
     # measures one, for the reason recorded on BESPOKE_EXPOSURE: an archetype
     # inferred from a place's `functions` is a rooms.py number and rooms.py
     # did not build this room.
+    fam = (f"mod:{place['module']}" if place["module"]
+           else R.archetype(place))
+    ratio = AMBIENT_SOLVED.get(fam)
+    if ratio is not None:
+        # SOLVED, and therefore ABSOLUTE -- see AMBIENT_SOLVED for why the
+        # exposure no longer multiplies it.
+        return AMBIENT_CALIBRATED_ENERGY * ratio / AMBIENT_CALIBRATED_RATIO
     ratio = (AMBIENT_CALIBRATED_RATIO if place["module"]
              else AMBIENT_BY_ARCHETYPE.get(R.archetype(place),
                                            AMBIENT_CALIBRATED_RATIO))
@@ -2725,7 +3047,7 @@ def sample_body(verts, tris, body, pitch, cap=EXTENDED_SAMPLE_CAP):
 
 
 def fixture_lights(verts, tris, spans, energy, rng, shadow_n=2, eye=None,
-                   down=None, exposure=None):
+                   down=None, exposure=None, reach_of=1.0):
     """One light per tagged light fitting, at its centroid, IN ITS OWN COLOUR.
 
     CONSISTENCY BY CONSTRUCTION -- CLAUDE.md's fourth hard rule, applied to
@@ -2815,7 +3137,8 @@ def fixture_lights(verts, tris, spans, energy, rng, shadow_n=2, eye=None,
             # assumed; see FIXTURE_LIGHTING.
             continue
         spec = FIXTURE_LIGHTING[key]
-        reach = spec.get("range_m") or rng
+        reach = ((spec.get("range_m") or rng)
+                 * (reach_of(name) if callable(reach_of) else reach_of))
         gain = energy * (exposure(name) if exposure else 1.0)
         for body in fitting_bodies(verts, tris, lo, hi):
             bidx = {i for k in body for i in tris[k]}
@@ -2919,6 +3242,106 @@ def fixture_lights(verts, tris, spans, energy, rng, shadow_n=2, eye=None,
         for i in castable[:shadow_n]:
             out[i]["shadow"] = True
     return out
+
+
+# ---------------------------------------------------------------------------
+# CAN THE ROOM'S OWN FITTINGS REACH ITS OWN FLOOR? -- the gate layer 4 never had
+# ---------------------------------------------------------------------------
+# Every measurement in layer 4 up to now has been of a FRAME: a median, a p5, a
+# crushed fraction. A frame conflates the rig with the camera, the materials
+# and the shot, and it cannot say WHY a number is what it is -- which is why
+# ten rows of `--gate-frames` have sat failing across three sessions with
+# "p5 bright" against them and no diagnosis.
+#
+# This measures the RIG, on its own, with no render at all: a point outside
+# every source's `omni_range` receives EXACTLY zero fitting light, because
+# Godot's attenuation window `(1-(d/r)^4)^2` is identically 0 at d = r. So the
+# fraction of a room's working plane inside some source's range is an upper
+# bound on how much of that room its fittings can light, and 1 minus it is the
+# fraction that can only ever be the flat ambient.
+#
+# WHAT IT FOUND, and it is the finding this whole section exists for: command
+# and control is at 0.0%. Not one square metre of the station's bridge is
+# inside a light. `--fixture-energy 6 -> 20` had already been measured as inert
+# there and blamed on the shot; it is inert because the sources deliver nothing
+# to the floor at any energy. The corridor anchor, the one room whose lighting
+# passes every band, is at 100%.
+def plane_coverage(verts, lights, plane_m=WORKING_PLANE_M, n=120):
+    """(fraction of the working plane inside some source's range, p95 of d/r).
+
+    The plane is the room's bounding box in x and z at `plane_m` above its
+    lowest vertex. That over-states the area for an L-shaped or multi-level
+    volume, which biases the answer PESSIMISTIC -- it counts floor the room
+    does not have -- so the p95 is reported rather than the max, and a room
+    that passes on this measure passes on any tighter one.
+    """
+    import numpy as np                                            # noqa: PLC0415
+
+    if not lights:
+        return 0.0, float("inf")
+    a = np.asarray(verts, dtype=float)
+    lo, hi = a.min(axis=0), a.max(axis=0)
+    gx, gz = np.meshgrid(np.linspace(lo[0], hi[0], n),
+                         np.linspace(lo[2], hi[2], n), indexing="ij")
+    p = np.stack([gx, np.full_like(gx, lo[1] + plane_m), gz], axis=-1)
+    best = np.full(gx.shape, np.inf)
+    for lt in lights:
+        c = np.asarray(lt["pos"], dtype=float)
+        best = np.minimum(best, np.linalg.norm(p - c, axis=-1) / lt["range"])
+    return float((best <= 1.0).mean()), float(np.percentile(best, 95.0))
+
+
+_REACH_CACHE = {}
+
+
+def room_reach(room):
+    """The factor this room's fitting ranges need, from the room's own mesh.
+
+    `3 * p95(d/r)`, clamped to [1.0, REACH_CAP]. See REACH_TARGET_D_OVER_R for
+    where the 3 comes from -- it is `SOFT_FILL_RANGE_M`'s own derivation, not a
+    new number -- and REACH_CAP for what the upper clamp means.
+
+    MEMOISED BY ROOM KEY because the deck shot asks for the same answer once
+    per tagged span, and because the answer has to be THE SAME NUMBER in the
+    deck shot and the interior shot or the two frames describe different rigs.
+    That is CLAUDE.md's fourth hard rule applied to a third artefact: the reach
+    is computed from the room, never written down beside it.
+    """
+    if FIXTURE_REACH is not None:
+        return FIXTURE_REACH
+    if room in _REACH_CACHE:
+        return _REACH_CACHE[room]
+    try:
+        v, t, spans, _ext = interior_geometry(room)
+    except (SystemExit, KeyError, ValueError):
+        # A DECK CARRIES ROOMS THE INTERIOR SHOT CANNOT ASSEMBLE -- the drum-
+        # and exterior-scene modules, which `interior_geometry` refuses by
+        # design. Their fittings keep their measured range, which is the
+        # pre-4b behaviour, rather than taking the deck render down with them.
+        _REACH_CACHE[room] = 1.0
+        return 1.0
+    lights = fixture_lights(v, t, spans, 1.0, INTERIOR_LIGHT_RANGE_M,
+                            shadow_n=0)
+    if room in SOFT_FILL_SPACES:
+        # The corridor's general service is its off-camera key, not its
+        # downlights, and leaving it out would ask the accents to do a job the
+        # rig already does -- which is exactly the mistake this function is
+        # correcting elsewhere, in reverse.
+        lights = lights + soft_fill_run(v, t, spans)
+    _cov, p95 = plane_coverage(v, lights)
+    s = min(REACH_CAP, max(1.0, p95 / REACH_TARGET_D_OVER_R))
+    _REACH_CACHE[room] = s
+    return s
+
+
+def deck_fixture_reach(name):
+    """`room_reach` for one tagged span on an assembled deck.
+
+    The address rule is `deck_fixture_exposure`'s, verbatim: no `__` means the
+    corridor kit's own fitting, which takes the anchor.
+    """
+    return room_reach("corridor" if "__" not in name
+                      else name.rsplit("__", 1)[0])
 
 
 def soft_fill_cone_deg(half_w_m, ceil_h_m, height_m=None, pitch_m=None,
@@ -3475,17 +3898,22 @@ def build_interior(args, out_dir):
 
     rng = (args.light_range if args.light_range != 1100.0
            else INTERIOR_LIGHT_RANGE_M)
+    reach = room_reach(room)
     lights = fixture_lights(verts, tris, spans,
                             args.fixture_energy * room_exposure(room), rng,
                             shadow_n=(INTERIOR_SHADOW_LIGHTS
                                       if args.shadow_lights is None
-                                      else args.shadow_lights), eye=eye)
+                                      else args.shadow_lights), eye=eye,
+                            reach_of=reach)
     fill = (soft_fill_run(verts, tris, spans,
                           args.soft_fill * room_exposure(room))
             if args.soft_fill > 0.0 and room in SOFT_FILL_SPACES else [])
     lights = lights + fill
+    cov, p95 = plane_coverage(verts, lights)
     print(f"interior {room}: {len(lights) - len(fill)} fitting light(s), "
-          f"{len(fill)} soft fill at energy {args.soft_fill}")
+          f"{len(fill)} soft fill at energy {args.soft_fill}, "
+          f"reach x{reach:.2f}, {100 * cov:.1f}% of the working plane "
+          f"inside a source (d/r p95 {p95:.2f})")
     return {
         "shot": "interior",
         "scene": "res://scenes/interior.tscn",
@@ -3790,7 +4218,8 @@ def build_deck_shot(args, out_dir):
         verts, tris, spans, args.fixture_energy, rng,
         shadow_n=(INTERIOR_SHADOW_LIGHTS if args.shadow_lights is None
                   else args.shadow_lights),
-        eye=eye, down=radial_aim, exposure=deck_fixture_exposure)
+        eye=eye, down=radial_aim, exposure=deck_fixture_exposure,
+        reach_of=deck_fixture_reach)
     # The corridor's off-camera key. A deck is 76% corridor, and until this
     # existed the whole assembly was lit by a flat ambient -- see SOFT_FILL.
     fill = (soft_fill_ring(stats["collision_meta"],
@@ -4140,6 +4569,43 @@ def _selftest():
               f"{n}: a spot has a cone under 90 degrees")
         check(0.0 < spec["energy_rel"] <= 1.0, f"{n}: energy_rel in (0, 1]")
         check(spec.get("range_m", 1.0) > 0.0, f"{n}: a positive range")
+
+    # -- can a room's fittings reach its own floor? -- see plane_coverage ----
+    # THE ANCHOR IS THE ASSERTION. `room_reach` changes every fitting's Godot
+    # range, so the one thing it must never do is move the corridor -- that
+    # frame is what RENDER_OFFSET 1.40 and AMBIENT_CALIBRATED_ENERGY 1.30 are
+    # DEFINED against, and a rig change there redefines the unit every other
+    # measurement in this file is expressed in rather than improving anything.
+    # It comes out at 1.00 because the corridor's own soft fill already covers
+    # it three times over (d/r p95 0.31 against a 1/3 target), which is a
+    # measurement and not an exemption.
+    _kv, _kt, _ks, _ = interior_geometry("corridor")
+    _kl = fixture_lights(_kv, _kt, _ks, 1.0, INTERIOR_LIGHT_RANGE_M,
+                         shadow_n=0) + soft_fill_run(_kv, _kt, _ks)
+    _kcov, _kp95 = plane_coverage(_kv, _kl)
+    check(room_reach("corridor") == 1.0,
+          f"the corridor anchor's fitting reach is untouched "
+          f"(x{room_reach('corridor'):.3f})")
+    check(_kcov >= 0.999 and _kp95 <= REACH_TARGET_D_OVER_R,
+          f"the anchor covers its own working plane inside the d/r target "
+          f"({100 * _kcov:.1f}%, p95 {_kp95:.2f} vs "
+          f"{REACH_TARGET_D_OVER_R:.2f})")
+    # AND THE NEGATIVE CONTROL, run rather than described: with the fill taken
+    # out, the corridor's twelve 1.2 m downlights cover HALF its floor and it
+    # would ask for the cap. This is the assertion above being able to fail,
+    # and it is also the whole finding in one line -- what the corridor has
+    # that no room has is a general-service source, not more lamps.
+    _ncov, _np95 = plane_coverage(
+        _kv, fixture_lights(_kv, _kt, _ks, 1.0, INTERIOR_LIGHT_RANGE_M,
+                            shadow_n=0))
+    check(_ncov < 0.6 and _np95 > 1.0,
+          f"NEGATIVE CONTROL: without its soft fill the anchor covers "
+          f"{100 * _ncov:.1f}% of its own plane at d/r p95 {_np95:.2f}")
+    for _r in (_shot[0] for _fam in ("ROOM_EXPOSURE", "BESPOKE_EXPOSURE")
+               for _k2, (_f2, _r2, _shot) in EXPOSURE_FRAMES[_fam].items()
+               if _shot):
+        check(1.0 <= room_reach(_r) <= REACH_CAP,
+              f"{_r}: reach x{room_reach(_r):.2f} inside [1, {REACH_CAP}]")
     # The exposure is an EXPOSURE, not a rescue: a value that has run away by
     # more than an order of magnitude either side means a fitting's own energy
     # or range is wrong and is being papered over here.
@@ -5884,6 +6350,11 @@ def main():
                          "Without this the gate measures a cache and cannot "
                          "tell a wrong frame from an OLD one -- which is what "
                          "eleven of the fourteen distribution failures were")
+    ap.add_argument("--gate-lighting", nargs="*", default=None, metavar="ROOM",
+                    help="per room, the fraction of its working plane inside "
+                         "SOME source's Godot range -- the measurement that "
+                         "says WHY a room's level has to come from the flat "
+                         "ambient. No render. See plane_coverage")
     ap.add_argument("--lights-per-run", type=int, default=10)
     ap.add_argument("--light-range", type=float, default=1100.0)
     # THE DIRECTIONALITY KNOBS, and they exist so that LIGHT_DIRECTIONALITY's
@@ -5947,7 +6418,26 @@ def main():
                          f"arc and the axis (default {DECK_FACE_M[0]},"
                          f"{DECK_FACE_M[1]})")
     ap.add_argument("--fixture-energy", type=float, default=3.0,
-                    help="interior shot: energy per tagged light fitting")
+                    help="interior shot: energy per tagged light fitting. IT "
+                         "IS MULTIPLIED BY room_exposure() AND `--ambient` IS "
+                         "NOT -- `build_interior` passes "
+                         "`args.fixture_energy * room_exposure(room)` to the "
+                         "rig while `--ambient` replaces the computed value "
+                         "outright. The two flags are therefore NOT the same "
+                         "kind of override, and a sweep that treats them alike "
+                         "squares the exposure into the fitting term. Session "
+                         "4b lost a solve round to exactly that: four rooms' "
+                         "cells were reported at `--fixture-energy F` and the "
+                         "rig delivered `F * room_exposure`, so converting the "
+                         "cell back to an exposure needed `F * "
+                         "room_exposure_at_the_time / 3.0`, not `F / 3.0`. "
+                         "`--gate-frames --rerender` is what caught it, by "
+                         "disagreeing with the solver on the same inputs")
+    ap.add_argument("--fixture-reach", type=float, default=None,
+                    help=f"scale every fitting's Godot omni/spot range by this "
+                         f"(default {FIXTURE_REACH}). 1.0 IS THE NEGATIVE "
+                         f"CONTROL and reproduces the pre-4b rig -- see "
+                         f"FIXTURE_REACH")
     ap.add_argument("--ambient", type=float, default=None,
                     help="interior shot: override the room's ambient energy. "
                          "Exists so the anchor in AMBIENT_CALIBRATED_ENERGY "
@@ -5974,12 +6464,18 @@ def main():
     ap.add_argument("--saturation", type=float, default=None)
     ap.add_argument("--brightness", type=float, default=None)
     a = ap.parse_args()
+    if a.fixture_reach is not None:
+        globals()["FIXTURE_REACH"] = a.fixture_reach
 
     if a.gate_exterior is not None:
         sys.exit(0 if run_exterior_gates(*a.gate_exterior) else 1)
 
     if a.gate_drum:
         sys.exit(0 if run_drum_gates() else 1)
+
+    if a.gate_lighting is not None:
+        gate_lighting(a.gate_lighting or None)
+        sys.exit(0)
 
     if a.gate_frames:
         _p, _f, _s = gate_frames(rerender=a.rerender)
