@@ -77,6 +77,24 @@ CEIL_BY_ARCHETYPE = {
 }
 CEIL_HEADROOM_M = 0.35     # clearance above the tallest prop
 
+# An archetype's height is right for the kind of room and wrong for a few
+# named ones, and the coolant gallery is the case that forced this. It is
+# `industrial` because its shell, materials and fittings are a plant room's --
+# and `industrial` is 7.5 m, which is a foundry. `docs/volume-audit.md` §4
+# describes it as *"0.173 g on the spine -- a crawlway, not a corridor"*, and a
+# crawlway wrapping a reactor at 48.3 m radius is not seven and a half metres
+# tall. 3.20 m is a service gallery: standing height plus the pipe run over it.
+#
+# THE MEASURED CONSEQUENCE, stated because it also moves a gate. `_selftest`
+# holds multi-deck rooms under 40% of the generator's remit -- "a small, named
+# minority rather than the generator quietly inflating everything" -- and with
+# the gallery at 7.5 m that count is 32 of 78, which FAILS. It is 31 of 78 with
+# the gallery at its right height. The threshold was NOT touched: 39.7% against
+# a 40% bar is one room of margin, and the next tall room added here will fail
+# it. That is the gate working, and the fix then is a look at the ceilings, not
+# at the number.
+PLACE_CEILING = {"coolant_gallery": 3.20}
+
 
 def ceiling_m(place):
     """Room height: the archetype's nominal, raised to hold its own props.
@@ -85,7 +103,8 @@ def ceiling_m(place):
     `docking_bay.py` and spans many decks; pretending every volume fits in one
     3.6 m pitch is what produced a 5 m door in a 2.9 m room.
     """
-    base = CEIL_BY_ARCHETYPE.get(archetype(place), 2.9)
+    base = PLACE_CEILING.get(place["key"],
+                             CEIL_BY_ARCHETYPE.get(archetype(place), 2.9))
     tallest = max((PROPS[k][2] for k in place["interacts"] if k in PROPS),
                   default=0.0)
     return max(base, tallest + CEIL_HEADROOM_M)
@@ -224,12 +243,33 @@ ARCHETYPES = (
     ("worship", ("worship", "contemplation")),
     ("industrial", ("fabrication", "industry", "repair", "power_distribution",
                     "waste_processing", "water_reclamation", "air_handling",
-                    "water_storage", "cooling", "rotation")),
+                    "water_storage", "cooling", "rotation",
+                    # The volume audit's plant rooms (session 3z). A reactor
+                    # hall, a generator hall, a heat-exchanger hall and a
+                    # coolant gallery are all the same KIND of volume -- tall,
+                    # oxide-ribbed, high-bay lit, plate floor -- and differ in
+                    # the machinery standing in them, which is PLACE_FIXTURES'
+                    # job rather than the archetype's.
+                    #
+                    # `power_generation` is deliberately NOT here. It would
+                    # take `fusion_core` from `generic` to `industrial` -- an
+                    # improvement, but a silent change to a place this session
+                    # was not asked to move, and its 360 deg x 800 m footprint
+                    # is not a room this generator should be re-proportioning
+                    # as a side effect. Recorded rather than done.
+                    "reactor_control", "heat_rejection", "coolant_loop")),
     ("research", ("research", "monitoring", "variable_gravity")),
     ("store", ("storage", "hazardous_storage", "fuel_storage",
                "cargo_handling", "atmosphere_feedstock",
-               "microgravity_handling")),
-    ("transit", ("transit",)),
+               "microgravity_handling", "fuel_transfer", "manifest")),
+    # AN AIRLOCK IS A PLACE YOU PASS THROUGH, and that is why the two
+    # pressure-boundary rooms are transit and not store. The shell is what the
+    # archetype decides -- 3.4 m clear, nosed deck edges, pooled deck lighting,
+    # painted rather than plate wall -- and every one of those is right for a
+    # lock chamber and wrong for a 6.5 m cargo hall. `ship_mooring` is NOT
+    # here: `mooring_clamps` declares it and is a hull component, not a room.
+    ("transit", ("transit", "eva_egress", "suit_service",
+                 "umbilical_service")),
     ("hospitality", ("hospitality", "food_service", "catering", "gambling")),
     ("commerce", ("commerce", "retail", "currency_exchange", "black_market",
                   "mail", "issue_stores", "logistics")),
@@ -237,7 +277,13 @@ ARCHETYPES = (
                 "meeting", "briefing", "adjudication", "law_enforcement",
                 "surveillance", "political_policing", "station_ops",
                 "traffic_control", "control", "psi_corps",
-                "military_liaison", "ceremony", "hire")),
+                "military_liaison", "ceremony", "hire",
+                # A watch floor is an office with racks in it. `communications`
+                # and `defence_command` are deliberately absent: `comms_grid`
+                # declares the first and is a hull pylon, and `cnc`/`war_room`
+                # already resolve here on their own functions, so adding either
+                # would move a place without changing an outcome.
+                "fire_control", "signal_ops")),
 )
 
 # Prop density per archetype: how much of the floor may be furniture. A store
@@ -300,6 +346,139 @@ FIXTURES = {
                    ("service_duct", 0.55, 0.55, 0.40, "over")),
 }
 FIXTURE_PITCH_M = 4.5      # spacing of repeated fixtures along the room
+
+# ---------------------------------------------------------------------------
+# PLACE_FIXTURES -- machinery for the rooms that are one of a kind
+# ---------------------------------------------------------------------------
+# An ARCHETYPE describes a kind of room and there are eleven of them for 128
+# places, which is the right ratio for a medlab or a store and the wrong one
+# for the only fusion reactor on the station. `FIXTURES` above says what an
+# industrial room contains *in general* -- a furnace stack, a plant column, a
+# service duct -- and a reactor hall furnished from it is CLAUDE.md's
+# "Fabrication furnaces" defect one level up: a plant room standing in for a
+# named machine.
+#
+# So a place may override its archetype's scenery entirely. The archetype still
+# decides the SHELL -- height, density, wall and deck material, light fittings
+# -- because that is genuinely shared; only the machinery is per place.
+#
+# WHY THE NAMES ARE COMPOUND, and it is a real constraint rather than a style.
+# `materials.resolve` matches a group name against bind FRAGMENTS, longest
+# match wins, and `station/test_materials_layer3.py` asserts that every group
+# this generator emits resolves. `station/materials.py` is not this session's
+# file, so a fixture called `fix_containment_vessel` would ship 10 rooms of
+# unmaterialled surface and take that gate down with it -- verified: all eight
+# natural names resolve to None today.
+#
+# The rule adopted instead: **the bound fragment names the MATERIAL and the
+# qualifier names the OBJECT.** `fix_reactor_plant_tank` is a clad pressure
+# vessel (`clad_services`, the plant tankage material), `fix_shield_plant_frame`
+# is oxide steel structure (`steel_gantry_oxide`), `fix_busbar_plant_conduit`
+# is the conduit metal. Those are the surfaces these objects genuinely have,
+# and the vocabulary is `station/plant.py`'s own, so the names are honest even
+# though they read backwards. The materials.py delta that would let them be
+# renamed is reported to whoever owns that file.
+#
+# Dimensions are (name, width_along_z, depth_across_x, height, kind). Height
+# 0.00 means full height, exactly as in FIXTURES. Everything here is
+# extrapolation -- INV-100 -- constrained by three things the self-test
+# measures rather than asserts in prose: the piece must fit under its room's
+# ceiling, the room must still be crossable by a 0.9 m walker, and no two
+# solids may occupy the same cubic metre.
+#
+# AND ONE ARITHMETIC CONSTRAINT WORTH STATING, because it is not obvious and it
+# fires as an interpenetration failure a long way from its cause. `build`
+# repeats a fixture `nz = int(room_len / FIXTURE_PITCH_M)` times in slots of
+# `room_len / nz`, and `bay_span_m` grows the room to hold the widest of them.
+# A piece wider than about 4.2 m along z therefore ends up in a slot narrower
+# than itself and overlaps its own next instance. Nothing here exceeds 4.0 m
+# along z for that reason; depth across x is unconstrained and is where these
+# machines get their bulk.
+PLACE_FIXTURES = {
+    # --- Yellow: the power train ------------------------------------------
+    # A fusion containment drum, the biological shield either side of it, and
+    # the refuelling crane that has to reach the head of the vessel. 4 m across
+    # is the smallest drum that reads as a reactor at a 7.5 m ceiling; it runs
+    # full height because a containment vessel penetrates the deck above.
+    # 6.20 m, NOT full height, and the self-test is why: an `over` run is
+    # centred on the free channel and a `spine` sits on the centreline, so a
+    # full-height vessel and the crane that serves it are the same cubic metre.
+    # Which is also true of the real object -- a crane has to reach OVER the
+    # head of the vessel it refuels -- so the arithmetic and the machine agree.
+    "reactor_hall": (
+        ("reactor_plant_tank",     4.00, 4.00, 6.20, "spine"),
+        ("shield_plant_frame",     3.20, 1.60, 0.00, "flank"),
+        ("refuel_crane",           1.10, 1.10, 0.90, "over"),
+    ),
+    # The generator torus in section, its switchgear cubicles against one
+    # flank, and the bus duct that carries the output away overhead. Height
+    # 3.40 rather than full: a machine you look down on across a hall reads as
+    # a machine; one that touches the ceiling reads as a wall.
+    "generator_hall": (
+        ("generator_plant_tank",   3.60, 3.20, 3.40, "spine"),
+        ("switchgear_plant_frame", 2.40, 1.10, 2.30, "flank"),
+        ("busbar_plant_conduit",   0.60, 0.60, 0.55, "over"),
+    ),
+    # Exchanger drums on the centreline, the coolant headers that feed them
+    # standing full height against a flank, and the condensate main overhead.
+    "heat_exchanger_hall": (
+        ("exchanger_plant_tank",   3.00, 2.60, 6.40, "spine"),
+        ("header_plant_pipe",      2.40, 0.90, 0.00, "flank"),
+        ("condensate_plant_pipe",  0.80, 0.80, 0.70, "over"),
+    ),
+    # NO SPINE, and that is the room. A gallery at 0.173 g is a crawlway you
+    # move along beside the pipework, not a hall you cross: both flanks carry
+    # machinery and the centre is the only floor there is.
+    "coolant_gallery": (
+        ("manifold_plant_pipe",    2.60, 0.85, 0.00, "flank"),
+        ("pump_plant_frame",       2.00, 1.10, 1.40, "flank"),
+        ("return_plant_pipe",      0.70, 0.70, 0.60, "over"),
+    ),
+    # Slush tanks against both flanks with a bund kerb round their feet, and a
+    # transfer crane over the aisle. `00-MASTER.md` Sec.2 item 1.
+    "fuel_bunkerage": (
+        ("bunker_plant_tank",      3.20, 2.20, 0.00, "flank"),
+        ("bund_plant_frame",       3.20, 0.60, 0.45, "flank"),
+        ("transfer_crane",         0.90, 0.90, 0.70, "over"),
+    ),
+
+    # --- Green: under the dorsal cargo rail --------------------------------
+    # Racking down one flank, the rail's transfer carriage frame down the
+    # other, and the hoist that moves a container between them.
+    "cargo_transfer_deck": (
+        ("racking_run",            1.10, 2.60, 4.20, "flank"),
+        ("transfer_plant_frame",   3.00, 1.20, 2.40, "flank"),
+        ("hoist_crane",            0.70, 0.70, 0.60, "over"),
+    ),
+
+    # --- Blue: the pressure boundary ---------------------------------------
+    # A suit rack bank and the charging manifold that services it, either side
+    # of the lane a suited person walks down to the lock.
+    "eva_lock_blue": (
+        ("suit_plant_frame",       2.20, 0.85, 2.30, "flank"),
+        ("charging_plant_pipe",    2.20, 0.45, 1.90, "flank"),
+        ("lock_plant_conduit",     0.45, 0.45, 0.35, "over"),
+    ),
+    # Umbilical reels on one flank, the clamp actuator housings on the other.
+    "mooring_gallery": (
+        ("umbilical_plant_pipe",   1.60, 1.10, 1.80, "flank"),
+        ("clamp_plant_frame",      2.20, 0.90, 1.60, "flank"),
+        ("gallery_plant_conduit",  0.50, 0.50, 0.40, "over"),
+    ),
+    # A plot table on the centreline with the fire-control racks behind it.
+    "gunnery_control": (
+        ("plot_plant_frame",       2.40, 1.40, 1.05, "spine"),
+        ("rack_plant_frame",       2.00, 0.80, 2.10, "flank"),
+        ("tray_plant_conduit",     0.40, 0.40, 0.30, "over"),
+    ),
+    # Signal racks and patch panels on both flanks, and the waveguide run that
+    # leaves the room for the pylon overhead.
+    "comms_operations": (
+        ("rack_plant_frame",       2.00, 0.80, 2.10, "flank"),
+        ("patch_plant_conduit",    2.00, 0.35, 1.90, "flank"),
+        ("waveguide_plant_pipe",   0.55, 0.55, 0.45, "over"),
+    ),
+}
 
 # ---------------------------------------------------------------------------
 # Light fittings: the reason a room is not black
@@ -554,16 +733,49 @@ def rib_pitch_m(place):
 
 
 def fixtures_for(place):
-    """Scenery for one room: archetype set, height 0.00 meaning full height."""
+    """Scenery for one room: its own set if it has one, else its archetype's.
+
+    Height 0.00 means full height, resolved against this room's ceiling rather
+    than the archetype's nominal, so a full-height piece in a 3.4 m lock is
+    3.4 m and the same declaration in a 7.5 m reactor hall is 7.5 m.
+    """
+    fx = PLACE_FIXTURES.get(place["key"]) or FIXTURES.get(archetype(place), ())
     out = []
-    for name, w, d, h, kind in FIXTURES.get(archetype(place), ()):
+    for name, w, d, h, kind in fx:
         out.append((name, w, d, ceiling_m(place) if h == 0.0 else h, kind))
     return tuple(out)
 
 
+# A ROOM'S OWN FITTINGS, for the same reason it may have its own scenery.
+# Measured, not guessed: the first render of `coolant_gallery` (industrial, and
+# so lit by `light_highbay`) came back with the entire ceiling clipped white.
+# `light_highbay` is `bay_flood`, measured at an **18 m mount** in a docking
+# bay, and `LIGHT_PITCH_RATIO` scales its SPACING with ceiling height but
+# nothing scales its ENERGY -- so in a 3.20 m gallery it lands floods 1.95 m
+# apart, two metres over a person's head, and the room is a lightbox.
+#
+# The replacement is not new: `light_ceiling_batten` is the fitting `medical`
+# and `research` already use at a 3.6 m pitch, which is what a 3.2 m service
+# gallery has. It keeps the industrial `light_service_tube` course, so the room
+# still reads as plant rather than as a ward.
+#
+# ONLY EXISTING FITTING NAMES ARE ALLOWED HERE, and that is a hard constraint
+# rather than a preference: `tools/export_scene.py` asserts that every `light_`
+# group rooms.py emits is either a measured source in FIXTURE_LIGHTING or one
+# of four measured emissive-only fittings, and that file is not editable from
+# this session. A new lamp name would take that gate down. Asserted below.
+PLACE_LIGHTS = {
+    "coolant_gallery": (
+        ("light_ceiling_batten", 1.80, 0.34, 0.12, "ceiling", 0.0),
+        ("light_service_tube", 0.11, 0.13, 1.43, "course", 0.95)),
+}
+
+
 def lights_for(place):
-    """Light fittings for one room: archetype set, verbatim from LIGHTS."""
-    return LIGHTS.get(archetype(place), LIGHTS["generic"])
+    """Light fittings for one room: its own set if it has one, else its
+    archetype's, verbatim from LIGHTS."""
+    return (PLACE_LIGHTS.get(place["key"])
+            or LIGHTS.get(archetype(place), LIGHTS["generic"]))
 
 
 def light_pitch_m(name, place):
@@ -1615,8 +1827,101 @@ def _selftest():
     # A fixture's whole point is being present WITHOUT being interactable. If
     # one ever gets a PROPS entry the two systems have merged and the honesty
     # check above ("no prop geometry nothing declares") stops meaning anything.
-    dual = sorted({n for a in FIXTURES for n, *_ in FIXTURES[a]} & set(PROPS))
+    _allfix = ({n for a in FIXTURES for n, *_ in FIXTURES[a]}
+               | {n for k in PLACE_FIXTURES for n, *_ in PLACE_FIXTURES[k]})
+    dual = sorted(_allfix & set(PROPS))
     check("no fixture is also a prop", not dual, f"{dual}")
+
+    # --- PLACE_FIXTURES: the per-place machinery --------------------------
+    # Four properties, and every one of them is a way this table can be wrong
+    # while every other gate stays green.
+    #
+    # 1. A key that names no place is scenery nothing will ever build -- the
+    #    same class as a light fitting nobody emits. It reads as covered and
+    #    is not.
+    _keys = {q["key"] for q in dr.PLACES}
+    ghost_fx = sorted(set(PLACE_FIXTURES) - _keys)
+    check("every PLACE_FIXTURES key is a real place",
+          not ghost_fx, f"{ghost_fx}")
+    ghost_ce = sorted(set(PLACE_CEILING) - _keys)
+    check("every PLACE_CEILING key is a real place", not ghost_ce,
+          f"{ghost_ce}")
+    # 2. AND THE OVERRIDE MUST ACTUALLY OVERRIDE. `fixtures_for` could fall
+    #    back to the archetype through a typo in the lookup and every room
+    #    would still build, furnished, walkable and lit -- with a furnace in
+    #    the reactor hall. This asserts the swap happened.
+    _sub = [k for k in PLACE_FIXTURES
+            if {n for n, *_ in fixtures_for(dr.by_key(k))}
+            != {n for n, *_ in PLACE_FIXTURES[k]}]
+    check("a place with its own fixtures gets them, not its archetype's",
+          not _sub, f"{_sub}")
+    check("...and a place without them still gets its archetype's",
+          {n for n, *_ in fixtures_for(dr.by_key("fabrication"))}
+          == {n for n, *_ in FIXTURES["industrial"]})
+    # NEGATIVE CONTROL, run rather than described: hand the resolver a place
+    # whose key is in neither table and confirm it falls back, and hand it one
+    # that is in both and confirm it does not.
+    _probe = dict(dr.by_key("reactor_hall"))
+    _probe["key"] = "__not_in_place_fixtures__"
+    check("the override test can fail",
+          {n for n, *_ in fixtures_for(_probe)}
+          == {n for n, *_ in FIXTURES[archetype(_probe)]}
+          and ceiling_m(_probe) == CEIL_BY_ARCHETYPE[archetype(_probe)],
+          "a place NOT in the tables still took an override")
+    # 3. EVERY GROUP THIS TABLE EMITS MUST CARRY A MATERIAL. `materials.py` is
+    #    not editable from here, `resolve` matches by longest bind FRAGMENT,
+    #    and the natural names for these objects (`fix_containment_vessel`,
+    #    `fix_suit_locker_bank`) resolve to None -- which would ship ten rooms
+    #    of unmaterialled machinery and take station/test_materials_layer3.py
+    #    down with them. So the naming rule is asserted where it is used.
+    import materials as _mat                                    # noqa: PLC0415
+    unpainted = sorted(f"fix_{n}" for k in PLACE_FIXTURES
+                       for n, *_ in PLACE_FIXTURES[k]
+                       if _mat.resolve_any(f"fix_{n}", "interior") is None)
+    check("every per-place fixture resolves to a material",
+          not unpainted, f"{len(unpainted)}: {unpainted[:6]}")
+    check("the material check can fail -- the natural names do NOT resolve",
+          _mat.resolve_any("fix_containment_vessel", "interior") is None
+          and _mat.resolve_any("fix_suit_locker_bank", "interior") is None,
+          "materials.py has grown these binds -- rename the fixtures and "
+          "delete this control")
+    # 4. A PIECE WIDER THAN ITS OWN SLOT OVERLAPS ITS NEXT INSTANCE, and that
+    #    surfaces as an interpenetration failure a long way from its cause.
+    #    `build` repeats a fixture `int(ln / FIXTURE_PITCH_M)` times in slots
+    #    of `ln / nz`, so the widest safe piece is FIXTURE_PITCH_M less a
+    #    working gap. Asserted on the declaration rather than waiting for the
+    #    clash, because the clash names two fixtures and not the rule.
+    wide = sorted((k, n, w) for k in PLACE_FIXTURES
+                  for n, w, _d, _h, _kd in PLACE_FIXTURES[k]
+                  if w > FIXTURE_PITCH_M - 0.3)
+    check("no per-place fixture is wider along z than its own repeat slot",
+          not wide, f"{wide[:4]}")
+
+    # --- PLACE_LIGHTS: a room may relamp, but only from the measured set ---
+    ghost_li = sorted(set(PLACE_LIGHTS) - _keys)
+    check("every PLACE_LIGHTS key is a real place", not ghost_li,
+          f"{ghost_li}")
+    _known = {n for a in LIGHTS for n, *_ in LIGHTS[a]}
+    _new = sorted({n for k in PLACE_LIGHTS for n, *_ in PLACE_LIGHTS[k]}
+                  - _known)
+    check("a per-place light set uses only fittings LIGHTS already declares",
+          not _new,
+          f"{_new} -- export_scene.py asserts every fitting is a measured "
+          f"source or a measured emissive, and it is not editable from here")
+    _sub = [k for k in PLACE_LIGHTS
+            if {n for n, *_ in lights_for(dr.by_key(k))}
+            != {n for n, *_ in PLACE_LIGHTS[k]}]
+    check("a place with its own light set gets it, not its archetype's",
+          not _sub, f"{_sub}")
+    # The defect this exists for, asserted as a RELATION rather than a name:
+    # the fitting it replaced is the one whose spacing scales with mount height
+    # and whose energy does not, so in a low room it packs floods overhead.
+    check("the relamped gallery is off the height-scaled flood",
+          all(n not in LIGHT_PITCH_RATIO
+              for n, *_ in lights_for(dr.by_key("coolant_gallery")))
+          and any(n in LIGHT_PITCH_RATIO
+                  for n, *_ in LIGHTS[archetype(dr.by_key("coolant_gallery"))]),
+          "coolant_gallery is 3.20 m and its archetype lamps a 7.5 m hall")
 
     # --- lights: the room is not black ------------------------------------
     # LAYER 4's floor. `export_scene.fixture_lights` makes one source per
