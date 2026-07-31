@@ -1050,6 +1050,33 @@ def _selftest():                                                # noqa: C901
           tuple(k for k, _v, _s in identicard(
               resident("probe", "human"))) != perm)
 
+    # THE RENDERER REPRODUCES THE ONE AUTHORITY-1 CARD, EXACTLY. Every value in
+    # `LYTA` is transcribed from `identicard readout.webp`; this builds a record
+    # carrying them and asserts the emitted card is that frame, field for field,
+    # value for value, and with the same three fields in the prop's empty state.
+    # It is the difference between "we wrote nine labels down" and "we can print
+    # the card the show printed".
+    lyta = Resident(
+        npc_id="lyta", species="human", surname="Alexander", forename="Lyta",
+        origin="EARTH", atmos_class=sched.ATMOS_STANDARD, atmos_code="02",
+        sex="FEMALE", dob=(2225, 10, 12), dob_card="12/10/25", phys_chr="",
+        medical=MEDICAL_NULL, licensed_psi=False, visas="",
+        role="visitor", job="", home="qtr_transient", idles_at="qtr_transient",
+        eats_at="", shops_at="zocalo", plays_at="casino", prays_at="sanctuaries",
+        commutes_via="central_corridor", stature_m=1.70, breather="none")
+    got = tuple((k, v) for k, v, _s in identicard(lyta))
+    check("the renderer reproduces the authority-1 identicard exactly",
+          got == tuple(LYTA.items()),
+          str([p for p in got if p not in LYTA.items()]))
+    check("...and the three fields the prop leaves red come back empty",
+          [k for k, _v, s in identicard(lyta) if s == EMPTY]
+          == ["PHYS CHR", "LICENSED PSI", "VISAS"])
+    # NEGATIVE CONTROL: one field wrong and the comparison must fail, or it is
+    # not comparing anything.
+    off = tuple((k, ("EARTH-2" if k == "ORIGIN" else v)) for k, v in got)
+    check("...and one wrong field fails that comparison",
+          off != tuple(LYTA.items()))
+
     # The prop leaves three of its nine fields empty, so the renderer must be
     # able to produce an empty field. A module that always fills every field
     # could not reproduce the one authority-1 example that exists.
