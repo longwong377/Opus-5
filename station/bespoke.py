@@ -141,6 +141,102 @@ def unroll_to_local(verts):
 
 
 
+# A single room's furniture may not exceed this. `budget.CELLS['cell_tris']`
+# is 60,000 for a whole 20-degree streaming cell -- corridor, rooms, props
+# and people together -- so a third of it for one room's furniture is
+# generous and still an order of magnitude under what a flat density puts
+# in a docking bay.
+MAX_DRESS_TRIS = 20_000
+
+
+def compose(schema, profile, place, axial_half_m, density=1.0, report=None):
+    """A bespoke room's true shape, furnished. Returns (verts, tris, spans).
+
+    THE ANSWER `compare` POINTED AT. Neither "swap to bespoke" nor "leave the
+    generic bay": the module gives a place its real shape, scale and identity,
+    and `dressing.dress()` -- which takes a room's dimensions and not a
+    `rooms.build` internal, so it composes without either side changing --
+    fills it. A docking bay stops being a 12 m store bay AND stops being an
+    empty 141 m shed.
+
+    The dressing lands on the shell's own measured floor band, inset from its
+    walls, at the shell's own centre. `dress` builds about the origin, so it is
+    translated onto that centre rather than the bounding box's, which for a
+    docking bay is 67 m away from where the floor actually is.
+    """
+    import dressing as _dress                                   # noqa: PLC0415
+    import rooms as _R                                          # noqa: PLC0415
+    v, t, g = room_shell(schema, profile, place, axial_half_m)
+    spans = _spans(g, len(t))
+    ext = dressable_extent(v, t, g, place.get("module"))
+    if ext is None:
+        if report is not None:
+            report["dressed"] = 0
+        return v, t, spans
+    w, ln, cx, cz = ext
+    arch = _R.archetype(place)
+    # INSET FROM THE WALLS. `dress` treats its w/l as the room's INTERIOR, and
+    # a bespoke shell's floor band runs to the inside face of its own walls, so
+    # handing the full extent puts a crate through a bulkhead.
+    inset = 2.0 * _R.WALL_T_M
+    ceil = max(2.2, max(p[1] for p in v) - min(p[1] for p in v))
+
+    # DENSITY FALLS UNTIL THE ROOM FITS ITS BUDGET, which is `rooms.build`'s own
+    # idiom applied to a different binding constraint. `rooms.build` falls
+    # through `DRESS_DENSITIES` until a body can still cross the room; here the
+    # room is 5,880 m2 and crossing was never in doubt -- what binds is cost.
+    #
+    # AT A FLAT DENSITY 1.0 THE DOCKING BAY DRESSED TO 348,876 TRIANGLES. That
+    # is what "uniform furniture over 42 x 140 m" means: 65x the area of a
+    # generic bay, so 65x the furniture, and both a budget failure (a habitat
+    # cell affords 60,000) and wrong content -- a docking bay is an open volume
+    # with equipment round its edges, not an office the size of a football
+    # pitch. Falling density is a blunt instrument for that and it is the
+    # honest one available: it keeps the room affordable and says so. A large
+    # volume wanting a PERIMETER dressing scheme rather than a field one is a
+    # real content decision and is recorded rather than faked.
+    for dens in (density,) + tuple(d for d in _R.DRESS_DENSITIES
+                                   if d < density):
+        dv, dt, dg, dc = _dress.dress(
+            place["key"], max(1.0, w - inset), max(1.0, ln - inset), ceil,
+            arch, seed=place["key"], density=dens)
+        if len(dt) <= MAX_DRESS_TRIS or dens == 0.0:
+            break
+    base, t0 = len(v), len(t)
+    v.extend((x + cx, y, z + cz) for x, y, z in dv)
+    t.extend((a + base, b + base, c + base) for a, b, c in dt)
+    spans.extend((n, lo + t0, hi + t0) for n, lo, hi in dg)
+    # AND THE PEOPLE, which the first version left out and the walk gate caught
+    # within one run: "reached customs_north and NOBODY noticed -- 0.0 deg
+    # turned". `rooms.build` runs `dressing` AND `populace`, and composing only
+    # the first gives a room with furniture and no inhabitants -- which is
+    # exactly the diorama CLAUDE.md's scope says the station must not be.
+    #
+    # LAST, and after the dressing, for the reason `rooms.build` states: people
+    # are placed against the furniture that is actually there, so somebody ends
+    # up ON a chair rather than near one.
+    import populace as _pop                                     # noqa: PLC0415
+    pv, pt, pg, ps = _pop.populate(
+        place["key"], v, t, spans, max(1.0, w - inset), max(1.0, ln - inset),
+        hour=_R.STATION_HOUR, arch=arch, seed=place["key"])
+    if pt:
+        base, t0 = len(v), len(t)
+        # `populate` works in the room's own centred frame, the same one
+        # `dress` uses, so it takes the same translation onto the shell's
+        # measured floor centre.
+        v.extend((x + cx, y, z + cz) for x, y, z in pv)
+        t.extend((a + base, b + base, c + base) for a, b, c in pt)
+        spans.extend((n, lo + t0, hi + t0) for n, lo, hi in pg)
+    if report is not None:
+        report["dressed"] = len(dt)
+        report["density"] = dens
+        report["extent"] = ext
+        report["counts"] = dc
+        report["people"] = len(ps.get("actors", []))
+        report["actors"] = ps.get("actors", [])
+    return v, t, spans
+
+
 # ---------------------------------------------------------------------------
 # What a swap would actually cost, measured
 # ---------------------------------------------------------------------------
@@ -529,6 +625,45 @@ def _spans(groups, n):
         out.append((groups[i], i, j))
         i = j
     return out
+
+
+def dressable_extent(verts, tris, groups=None, module=None, tol=0.05):
+    """(width, length, cx, cz) of the floor a person can be furnished onto.
+
+    NOT THE BOUNDING BOX, and on a docking bay the difference is 42 x 141 m
+    against a bay whose walls are nowhere near either number. The dressable
+    area is the extent of the DOMINANT floor band -- the same band `floor_y`
+    picks -- because that is the surface a table can stand on and a person can
+    walk across. A mezzanine 18 m up is floor and is not this floor.
+
+    This is what lets a bespoke room be composed rather than swapped.
+    `bespoke.compare` measured the swap at x0.54 -- the modules are shells,
+    3,740 triangles for a docking bay against the generic bay's 38,728, because
+    `rooms.build` runs `dressing` and `populace` inside itself and the bespoke
+    modules run neither. Handing `dressing.dress()` this extent gives the room
+    its true shape AND its furniture, which is the only version of this that is
+    an improvement in both directions.
+    """
+    fy = floor_y(verts, tris, groups, module)
+    xs, zs = [], []
+    for a, b, c in tris:
+        p0, p1, p2 = verts[a], verts[b], verts[c]
+        u = [p1[k] - p0[k] for k in range(3)]
+        w = [p2[k] - p0[k] for k in range(3)]
+        n = (u[1] * w[2] - u[2] * w[1], u[2] * w[0] - u[0] * w[2],
+             u[0] * w[1] - u[1] * w[0])
+        ln = math.sqrt(sum(q * q for q in n))
+        if ln < 1e-12 or n[1] / ln < 0.85:
+            continue
+        if abs((p0[1] + p1[1] + p2[1]) / 3.0 - fy) > tol:
+            continue
+        for q in (p0, p1, p2):
+            xs.append(q[0])
+            zs.append(q[2])
+    if not xs:
+        return None
+    return (max(xs) - min(xs), max(zs) - min(zs),
+            (min(xs) + max(xs)) / 2.0, (min(zs) + max(zs)) / 2.0)
 
 
 def room_shell(schema, profile, place, axial_half_m):

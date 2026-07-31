@@ -385,6 +385,38 @@ def door_leaves(radius_m, angle_deg, z_m, key, open_fraction=0.0):
     return out
 
 
+def _mouth_clear(verts, tris, dx, w=None, h=None, eps=0.12):
+    """Is the doorway into this room actually open?
+
+    A composed room is built by a module that knows nothing about the corridor,
+    so the face the vestibule arrives at may be solid. Cast a short ray STRAIGHT
+    IN along the axis at door height, across the door's width, and ask whether
+    anything is in the way. Cheaper and more decisive than reasoning about which
+    wall a module built where.
+
+    Returns True when the aperture is clear, which is when a body can get in.
+    """
+    w = w or K.PROVISIONAL["door_width_m"]
+    h = h or K.PROVISIONAL["door_height_m"]
+    zmax = max(p[2] for p in verts)
+    hits = 0
+    for i in range(-2, 3):
+        px = dx + i * (w * 0.4 / 2.0)
+        for fy in (0.35, 0.6, 0.85):
+            py = h * fy
+            for a, b, c in tris:
+                p0, p1, p2 = verts[a], verts[b], verts[c]
+                if min(p0[2], p1[2], p2[2]) < zmax - 1.2:
+                    continue
+                if (min(p0[0], p1[0], p2[0]) - eps <= px
+                        <= max(p0[0], p1[0], p2[0]) + eps
+                        and min(p0[1], p1[1], p2[1]) - eps <= py
+                        <= max(p0[1], p1[1], p2[1]) + eps):
+                    hits += 1
+                    break
+    return hits < 8
+
+
 def _runs(per_tri):
     """Per-triangle group names -> (name, lo, hi) spans.
 
@@ -610,15 +642,54 @@ def build_deck(schema, profile, sector, ring, deck, with_rooms=True,
     # is what their collision shell also is.
     opened = {q["key"]: dx for q, _d, dx in dp["rooms"]}
     for q in here:
+        used = "generic"
+        why = ""
         try:
             dx = opened.get(q["key"])
             rep = {}
-            rv, rt, rg = R.build(
-                schema, profile, q,
-                door_at=None if dx is None else
-                (dx, K.PROVISIONAL["door_width_m"],
-                 K.PROVISIONAL["door_height_m"]),
-                report=rep)
+            # THE ROOM'S OWN MODULE, WHERE ONE EXISTS AND ITS FRAME IS KNOWN.
+            # `bespoke.compare` measured a straight swap at x0.54 -- the modules
+            # are shells and `rooms.build` runs `dressing` and `populace`
+            # inside itself -- so this composes instead: the module's true
+            # shape and scale, filled by the same dressing a generic bay gets.
+            # A docking bay stops being a 12 m store bay AND stops being an
+            # empty 141 m shed.
+            mod = q.get("module")
+            if mod in BSP.NEAR_END:
+                brep = {}
+                bv, bt, bg = BSP.compose(
+                    schema, profile, q,
+                    room_axial_half_m(schema, profile, q), report=brep)
+                # A COMPOSED ROOM STILL HAS TO BE ENTERABLE. No bespoke builder
+                # takes `door_at`, so the aperture the corridor opens onto is
+                # whatever the module happened to build there. Measured rather
+                # than assumed: if the vestibule's mouth is walled, the room is
+                # unreachable and the generic bay -- which IS cut for its door
+                # -- is the better build however much less like the place it
+                # looks. Falling back loudly beats shipping a sealed room.
+                if dx is None or _mouth_clear(bv, bt, dx):
+                    rv, rt, rg = bv, bt, bg
+                    # THE CAST LIST HAS TO COME WITH IT. `deck.py` reads
+                    # `rep["actors"]` to write `<deck>_actors.json`, which is
+                    # the only way `godot/scripts/npc.gd` learns who is where
+                    # and which way they face. Composed people left in a
+                    # separate dict are people the engine cannot find, and the
+                    # walk gate says so in as many words: "reached
+                    # customs_north and NOBODY noticed".
+                    rep["actors"] = brep.get("actors", [])
+                    used, why = "bespoke", (
+                        f"{brep.get('dressed', 0)} dressed at "
+                        f"{brep.get('density', 0):.2f}, "
+                        f"{brep.get('people', 0)} people")
+                else:
+                    why = "composed room is walled at the doorway"
+            if used == "generic":
+                rv, rt, rg = R.build(
+                    schema, profile, q,
+                    door_at=None if dx is None else
+                    (dx, K.PROVISIONAL["door_width_m"],
+                     K.PROVISIONAL["door_height_m"]),
+                    report=rep)
         except Exception as e:                                  # noqa: BLE001
             stats["skipped"].append((q["key"], str(e)[:60]))
             continue
@@ -653,12 +724,15 @@ def build_deck(schema, profile, sector, ring, deck, with_rooms=True,
         # The right answer is bespoke shell PLUS generic dressing, and it is
         # the next increment. Until then this records the substitution with the
         # reason, because a defect nothing prints is a defect nobody fixes.
-        mod = q.get("module")
-        if mod:
-            stats.setdefault("generic_for_module", []).append(
-                (q["key"], mod, len(rt),
-                 "has a builder" if mod in BSP.BESPOKE_GEOMETRY
-                 else "no builder in bespoke.BESPOKE_GEOMETRY"))
+        if q.get("module"):
+            stats.setdefault("module_places", []).append(
+                (q["key"], q["module"], used, len(rt), why))
+            if used == "generic":
+                stats.setdefault("generic_for_module", []).append(
+                    (q["key"], q["module"], len(rt),
+                     why or ("has a builder"
+                             if q["module"] in BSP.BESPOKE_GEOMETRY
+                             else "no builder in bespoke.BESPOKE_GEOMETRY")))
 
         # THE PEOPLE, IN THE RING'S FRAME AND UNDER THE NAME THE ENGINE SEES.
         # `build_deck` prefixes a room's groups with its key, so the mesh the
@@ -998,9 +1072,21 @@ def _selftest():
           f"{len(gen)} reported against {len(owned)} module-owned places")
     check("...each with a module name and a stated reason",
           all(m and w for _k, m, _n, w in gen), str(gen[:2]))
-    check("...and the reason distinguishes 'has a builder' from 'has none'",
-          all((w == "has a builder") == (m in BSP.BESPOKE_GEOMETRY)
-              for _k, m, _n, w in gen),
+    # THREE REASONS NOW, NOT TWO. This asserted that the reason is exactly
+    # "has a builder" or "has none", which was true while the assembler never
+    # tried. It tries now, and a third outcome appeared immediately: a composed
+    # room that is WALLED AT ITS DOORWAY. `docking_bay`'s crew end is a
+    # bulkhead -- correct for a bay whose other end is vacuum -- and no bespoke
+    # builder takes `door_at`, so the aperture is whatever the module put
+    # there. The gate has to admit the reason the build actually gives.
+    ok_reasons = ("has a builder", "no builder in bespoke.BESPOKE_GEOMETRY",
+                  "composed room is walled at the doorway")
+    check("...and every reason is one the assembler can actually give",
+          all(w in ok_reasons for _k, _m, _n, w in gen),
+          str([(m, w) for _k, m, _n, w in gen]))
+    check("...and 'no builder' is said only of modules that have none",
+          all((w != "no builder in bespoke.BESPOKE_GEOMETRY")
+              == (m in BSP.BESPOKE_GEOMETRY) for _k, m, _n, w in gen),
           str([(m, w) for _k, m, _n, w in gen]))
     withb = [r for r in gen if r[3] == "has a builder"]
     print(f"  module-owned: {len(gen)} assembled generically, "
