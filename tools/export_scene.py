@@ -1638,6 +1638,245 @@ def fixture_key(name):
 # flooded the first interior render and destroyed exactly the contrast the
 # reference frames are made of.
 
+# ---------------------------------------------------------------------------
+# THE SOFT FILL -- the key a corridor has and its fittings do not
+# ---------------------------------------------------------------------------
+# docs/layer4-lighting/corridor_kit.json, `corridor_soft_fill`, and its own
+# reasoning field says what it is:
+#
+#   "THIS IS THE MOST IMPORTANT ENTRY IN THE SET AND IT IS THE ONE THE KIT DOES
+#    NOT HAVE ... The light therefore is not in the fittings ... Build the room
+#    this way round and it reads as the show; build it from the fittings and it
+#    will be a dark corridor with three bright dots."
+#
+# It sat in that file unimplemented for six sessions, because `FIXTURE_LIGHTING`
+# has no `directional` kind and `fixture_lights` derives a light's position from
+# a TAGGED SPAN -- and a soft fill has no fitting to hang on. The measurement
+# says so itself: "Not a fitting. A broad soft source, above and slightly ahead
+# of the viewer."
+#
+# MEASURED BEFORE IT WAS BUILT, and this is the evidence that the corridor could
+# not be fixed from the fitting table. On the assembled deck, blue/0/0:
+#
+#   --fixture-energy 3.0 -> 0.3   frame median moves 6%, p5 not at all
+#   --ambient 1.30 -> 0.40        frame median moves 70%
+#
+# The corridor was lit essentially entirely by a FLAT AMBIENT, and a flat
+# ambient gives every surface the same irradiance whichever way it faces. That
+# is exactly the shape of the defect: measured on `docs/engine-deck-corridor.png`
+# the deck sat at x0.57 of the lit wall and the soffit at x0.89, where the show
+# is at x2.49 and x0.23-0.32. Everything was pulled toward the wall because
+# nothing in the scene knew which way was down.
+#
+# ---------------------------------------------------------------------------
+# WHY A RING OF SPOTS AND NOT A DirectionalLight3D
+# ---------------------------------------------------------------------------
+# ON A SPUN RING "DOWN" IS RADIALLY OUTWARD from the spin axis -- `player.gd`'s
+# `gravity_dir()` is the authority and returns `(x, y, 0)` normalised. A ring
+# corridor covers up to 344 degrees, so "down" ROTATES THROUGH 344 DEGREES along
+# it. A Godot DirectionalLight3D is one direction for the whole world, so a
+# single one is right at one angle of the ring, grazing 90 degrees away and
+# UNDER the deck 180 degrees away. Twelve of them aimed at twelve radial
+# directions do not fix it either: a directional lights the whole scene, so
+# twelve of them is twelve overlapping washes, which is an ambient term again --
+# the very thing this replaces.
+#
+# The precedent is already in FIXTURE_LIGHTING and it was the right call there
+# too: `light_house_cove` is "measured as DIRECTIONAL -- a broad soft wash --
+# and emitted here as a ring of omnis, because the rig derives a light from a
+# piece of geometry and a cove is a real object at a real place while a
+# directional light is a direction with no position."
+#
+# So: a run of SHADOWLESS SPOTS on the corridor's own centreline, mounted
+# `SOFT_FILL_HEIGHT_M` above the deck -- above the ceiling, out of shot, which is
+# what "off-camera key" means -- and aimed radially outward by `radial_aim`, the
+# same function every deck spot already uses. Three consequences, all wanted:
+#
+#   * a spot's cone can be sized to the corridor and therefore CANNOT SPILL into
+#     the rooms opening off it, which have their own measured fill. An omni at
+#     the same place would light all 87 of them.
+#   * the ceiling's visible face points radially OUTWARD, i.e. away from a source
+#     that is inward of it, so the fill does not touch the soffit. That is the
+#     x0.23-0.32 rung, and it comes from the geometry rather than from a number.
+#   * shadow is False, which is the measurement ("shadow": false) and is also
+#     what lets the source sit outside the corridor shell at all.
+#
+# THE PLACEMENT IS DERIVED FROM THE COLLISION META -- the same dict the shell a
+# player stands on is built from (`floor_r_m`, `half_w_m`, `z_m`, `arc_deg`,
+# `start_deg`). CLAUDE.md's fourth hard rule applied to light: the key cannot
+# drift off the floor it is keying, because it is computed from that floor.
+#
+# ---------------------------------------------------------------------------
+# THE TWO NUMBERS, AND WHERE EACH COMES FROM
+# ---------------------------------------------------------------------------
+# ---------------------------------------------------------------------------
+# THE AMBIENT DOES NOT COME DOWN, AND THE DERIVATION THAT SAID IT SHOULD IS
+# RECORDED HERE BECAUSE IT WAS OVERTURNED BY A RENDER
+# ---------------------------------------------------------------------------
+# Take the show's own ladder in docs/reference-values.md section 1, divide out
+# the albedos materials.py already holds, and a split falls out in one line.
+# Write A for the isotropic ambient irradiance and F for the fill's irradiance
+# on an up-facing surface:
+#
+#   deck   faces the fill        E = A + F
+#   wall   vertical, sees part   E = A + f*F
+#   soffit faces away            E = A
+#
+#   soffit / wall, luminance  0.228-0.321 (rungs 2 and 3)
+#   deck   / wall, luminance  2.486       (rung 16)
+#   albedos: kit_wall_plate 0.460, kit_deck 0.400, kit_soffit 0.2526
+#
+#   E_soffit/E_wall = 0.27 / (0.2526/0.460) = 0.49
+#   E_deck  /E_wall = 2.486 / (0.400/0.460) = 2.86
+#
+# Two equations, two unknowns (A/F and f), and they are consistent:
+#
+#   A / (A + f*F) = 0.49  ->  A ~= f*F
+#   (A + F) / (A + f*F) = 2.86, with A = f*F  ->  (1+f)/(2f) = 2.86
+#                                             ->  f = 0.212
+#
+# That says the ambient should come down to 0.49 of what it is, because the
+# soffit sees the isotropic term AND NOTHING ELSE, so soffit-over-wall IS the
+# ambient's share of the wall.
+#
+# IT IS WRONG HERE, AND THE FRAME SAYS SO. Its premise is that the only thing
+# darkening a soffit is that it faces away from the key. Measured on our own
+# corridor, with the boxes recorded in SOFT_FILL_LADDER_BOXES:
+#
+#   docs/engine-deck-corridor.png, BEFORE any of this   soffit x0.23 of the wall
+#   the show                                            soffit x0.23-0.32
+#
+# The soffit rung was ALREADY IN BAND. It is dark because it is a recessed
+# coffer under 2.2-intensity SSAO, not because the key misses it -- and the
+# show's soffit is a recessed coffer too, so the same mechanism is probably what
+# put it at 0.23-0.32 there. Halving the ambient took ours to x0.19 and then
+# x0.15, i.e. it broke a rung that was right in order to satisfy a model of why
+# it was right.
+#
+# So the fill is ADDITIVE and the ambient is untouched. Two checks that this is
+# not just convenient: `--soft-fill 0` then reproduces the committed baseline
+# exactly, which is what makes it a usable negative control; and the corridor's
+# LEVEL was never too high to begin with -- the baseline sits at x0.91 of the
+# reference against a x1.40 +/-25% window, i.e. BELOW range. The missing light
+# was never a quantity of ambient, it was a direction.
+#
+# `SOFT_FILL_ENERGY` and `SOFT_FILL_HEIGHT_M` COULD NOT BE DERIVED and were
+# measured the way ROOM_EXPOSURE was: render, measure the ladder, scale. The
+# algebra above fixes the RATIO f = 0.212 that the height has to deliver, and a
+# point source on the centreline at height H over a corridor of half-width 1.3 m
+# gives f = 1.3*H^2 / (1.3^2 + (H-1.5)^2)^1.5 at mid-wall, which solves to
+# H ~ 10 m. That model ignores the pilaster strips, the portal heads, the
+# downlights, ambient occlusion and the fact that the source is a run and not a
+# point, all of which the render has, so the value below is the RENDERED one and
+# the derivation stands only as the reason the number is near 10 and not near 3.
+# See SOFT_FILL_CALIBRATION for the frames that set it.
+SOFT_FILL = {
+    # Every field here is `corridor_soft_fill` verbatim except `range_m` and
+    # `angle_deg`, which the record does not carry (a directional has neither)
+    # and which are derived below from the corridor's own dimensions.
+    "colour": (0.738, 0.955, 1.000),   # linear, from the unfitted right wall
+    "energy_rel": 2.5,                 # fill / brightest fitting, on the wall
+    "shadow": False,
+}
+# Above the DECK, not above the ceiling: the deck is what the collision meta
+# gives and what the fill is aimed at. The corridor's ceiling is 2.81 m, so the
+# source sits 7 m clear of it and is never in shot.
+#
+# 10 m IS THE `f = 0.212` THE LADDER ASKED FOR, and it is the same answer from
+# two different falloff laws, which is why it is trusted. Godot's spot decays as
+# `d^-attenuation` with attenuation 1.0, so for a source on the centreline at
+# height H the wall-to-deck irradiance ratio is `hw*H / (hw^2 + (H-h)^2)`, and
+# the anchor wall course sits at h = 2.20 m -- read off `grey level 1.webp`,
+# whose deck images at y 0.785 and whose wall top images at y 0.075, putting the
+# ALBEDO_ANCHOR box's centre at 0.732 of a 3.0 m wall. That solves to H = 10.0.
+# Under inverse square it solves to H = 10 as well. Six metres, the first value
+# tried, gives f = 0.48 -- and f > 1/2.86 makes the deck rung UNREACHABLE at any
+# energy, because deck/wall tops out at 1/f.
+SOFT_FILL_HEIGHT_M = 10.0
+# Three times the mount height. Godot's range is a CULLING WINDOW, not a
+# falloff -- see `_soft_fill_light` -- and at d/r = 1/3 it costs 2.4%.
+SOFT_FILL_RANGE_M = 3.0 * SOFT_FILL_HEIGHT_M
+# Godot's spot angular term is `1 - rim^k`, rim running 0 on the axis to 1 at
+# the cone edge. render_shot.gd's 0.6 is the measured `concourse_deck_spot` --
+# "these pools have edges, and they are not razors" -- and it is a curve that
+# starts falling immediately: at rim 0.5 it is already down to 0.34. A fill is
+# not a pool. k = 4 holds 0.99 out to rim 0.56 and then drops, which is the
+# flat-topped cone a broad source needs.
+SOFT_FILL_ANGLE_ATTENUATION = 4.0
+# How much of the axial value the corridor's WORST-LIT corner may lose to the
+# cone. The cone half-angle is then solved from it rather than chosen -- see
+# `_soft_fill_light` -- so a corridor of another width or a different mount
+# height re-derives its own cone instead of inheriting this one's.
+SOFT_FILL_CORNER_FLOOR = 0.90
+# THE CONE IS SIZED TO THE WALL PLATE AND NOT TO THE WALKABLE WIDTH.
+# `collision_meta["half_w_m"]` is 1.0806 m on blue/0/0 and it is the NARROWEST
+# clearance a body has over its own height -- measured between pilasters, which
+# project 0.17 m into the corridor. The surface the fill has to reach is the
+# wall plate behind them, at `corridor_width_m / 2` = 1.30 m. Sizing the cone to
+# the shell would under-reach the wall by 0.22 m at exactly the place the ladder
+# is anchored.
+def _corridor_half_w_m(meta):
+    import interior_kit as kit                                  # noqa: PLC0415
+    return max(meta["half_w_m"], kit.PROVISIONAL["corridor_width_m"] / 2.0)
+# HALF a corridor bay -- `interior_kit.PROVISIONAL["portal_spacing_m"] / 2`,
+# and the halving is the wall's doing. The cone has to hold the far top corner
+# of a whole BAY, so its half-angle grows with the pitch, and its footprint on
+# the deck grows with it: at the 3.6 m bay the cone is 22.9 degrees and spills
+# 2.9 m past each wall into the rooms, at 1.8 m it is 16.5 degrees and spills
+# 1.7 m. Halving the pitch buys back most of the spill for 353 more lights on a
+# deck, which the clustered renderer absorbs -- measured below.
+SOFT_FILL_PITCH_M = 1.8
+# The one free scalar, set by rendering. See SOFT_FILL_CALIBRATION.
+SOFT_FILL_ENERGY = 12.0
+
+# WHICH SPACES HAVE ONE, and the answer is only the one that was measured.
+# corridor_kit.json records `concourse_soft_fill` (energy_rel 0.35) and
+# `service_soft_fill` (0.20) as well, and both are real measurements -- but the
+# ambient share above is derived from the RESIDENTIAL corridor's ladder and the
+# concourse and service classes sit at ambient ratios 0.12 and 0.06 against its
+# 0.30. Applying one share to all three would be the mistake BESPOKE_EXPOSURE is
+# written to warn about, so the other two stay unbuilt and are named here rather
+# than left to be rediscovered.
+SOFT_FILL_SPACES = ("corridor", "junction")
+
+# THE LADDER'S BOXES, as data. docs/reference-values.md section 6.4 measured the
+# same comparison and recorded its boxes nowhere, so the one number this whole
+# module exists to move -- the deck against the lit wall -- could not be
+# recomputed by anyone who came after. These are fractions of the frame, picked
+# once by drawing them on `docs/engine-deck-corridor.png` and LOOKING, and they
+# land on the same elements in the deck shot and in `--shot interior --room
+# corridor` because the two frame the corridor the same way.
+#
+# One of them was wrong for two renders and the failure is instructive: the
+# first "soffit" box, at (0.230,0.120)-(0.320,0.200), landed on a near-field
+# PILASTER FACE rather than on the overhead, and read x0.89 -- which reproduced
+# section 6.4's own "ceiling / soffit ... OURS 1.12" and so looked corroborated.
+# The overhead was in band the whole time. A box picked off a number instead of
+# off the picture is a measurement of nothing.
+SOFT_FILL_LADDER_BOXES = {
+    "lit wall plate (ANCHOR)": (0.320, 0.355, 0.400, 0.430),
+    "lit wall plate, right":   (0.610, 0.355, 0.690, 0.430),
+    "soffit / ceiling":        (0.400, 0.115, 0.600, 0.190),
+    "deck field":              (0.430, 0.800, 0.570, 0.900),
+    "deck beside the wall":    (0.330, 0.745, 0.410, 0.770),
+}
+
+SOFT_FILL_CALIBRATION = """
+Set on `--shot deck --deck blue/0/0 --at docking_bays` at 1280x720, the framing
+docs/engine-deck-corridor.png is taken at, measured with SOFT_FILL_LADDER_BOXES
+against docs/reference-values.md section 1's ladder. Ratios to the lit wall
+plate; the SHOW column is that section's rungs 2/3 and 16.
+
+  fill energy   deck field   soffit    frame median vs the reference
+  ------------------------------------------------------------------
+   0 (before)      x0.65      x0.23     x0.91   p5 x0.77 FAIL
+   4              x1.37      x0.21     x1.00   (not gated)
+  10              x2.29      x0.20     x1.07   whole distribution PASS
+  12 (shipped)    see STATE  see STATE
+  SHOW            x2.49      x0.23-0.32
+"""
+
+
 # Darkest measurable surface / brightest lit surface, balanced, per space.
 # THIS TABLE WAS DEAD FOR A SESSION: it was measured, committed, and read by
 # nothing, while interior.tscn carried one hand-calibrated ambient_light_energy
@@ -2358,6 +2597,152 @@ def fixture_lights(verts, tris, spans, energy, rng, shadow_n=2, eye=None,
     return out
 
 
+def soft_fill_cone_deg(half_w_m, ceil_h_m, height_m=SOFT_FILL_HEIGHT_M,
+                       pitch_m=SOFT_FILL_PITCH_M,
+                       k=SOFT_FILL_ANGLE_ATTENUATION,
+                       floor_=SOFT_FILL_CORNER_FLOOR):
+    """The cone that holds a whole BAY of corridor in its flat top, in degrees.
+
+    SOLVED, NOT CHOSEN, and the thing being solved for is the worst-lit point of
+    the volume one source is responsible for: the top corner of its own bay --
+    `half_w` sideways, `pitch/2` along the corridor, and only `H - ceiling`
+    below. Godot's angular term is `1 - rim^k` with
+    `rim = (1 - cos a) / (1 - cos a_max)`, so requiring that corner to keep
+    `floor_` of the axial value inverts to
+
+        1 - cos(a_max)  >=  (1 - cos(a_corner)) / (1 - floor_)^(1/k)
+
+    THREE VERSIONS OF THIS WERE WRONG AND EACH FAILED DIFFERENTLY. They are kept
+    because the shape of the mistake is the same each time -- a cone sized to
+    a smaller set of points than the fill is responsible for -- and because each
+    one produced a frame that looked like a different bug.
+
+      1. `atan(half_w / H)`, the ray to the wall FOOT. Every point of a wall
+         above its foot is at a LARGER angle from a source above it, so the cone
+         lit the deck and none of the wall. With the ambient cut to make room
+         for the fill, the frame came back 75.7% below the measurable floor.
+      2. The far top corner exactly. Godot's `1 - rim^k` is ZERO at the rim, and
+         at the shipped k = 0.6 a wall at rim 0.74 keeps 17%: the wall rung did
+         not move between two renders 130x apart in delivered energy, which
+         reads as an energy problem and is a cone problem.
+      3. The far top corner with the flat top, but IN CROSS-SECTION ONLY. That
+         covers a wall point from the one source directly abreast of it and
+         from no other, so a wall was lit over 0.9 m in every 3.6 m and dark in
+         between -- and the median over a wall box, which is what the ladder
+         measures, showed the fill delivering EXACTLY nothing: probed at two
+         energies 2.5x apart, six wall boxes all moved by a factor of 1.000.
+         The frame that settled it is the fill rendered ALONE, `--ambient 0
+         --fixture-energy 0`: a perfectly even deck and black walls.
+
+    The cone comes out WIDER than the corridor and that is the price of a
+    shadowless source: the overspill lands on a room's floor along its corridor
+    wall, about 1.7 m of it either side at the 10 m mount and the 1.8 m pitch.
+    Stated rather than designed out -- it is a strip barely wider than a
+    doorway, and light through a doorway is not a defect. Shadows instead would
+    cost 706 shadow maps a deck on a CPU rasteriser, and the measurement says
+    `shadow: false`.
+    """
+    corner = math.atan2(math.hypot(half_w_m, pitch_m / 2.0),
+                        max(height_m - ceil_h_m, 1e-3))
+    want = (1.0 - math.cos(corner)) / (1.0 - floor_) ** (1.0 / k)
+    return math.degrees(math.acos(max(-1.0, 1.0 - want)))
+
+
+def _soft_fill_light(pos, aim, half_w_m, ceil_h_m, energy):
+    """One source of the run.
+
+    `range` IS A CUTOFF AND NOT A FALLOFF, and that cost a render. Godot's
+    attenuation is `max(1 - (d/r)^4, 0)^2 * d^-decay`: the first factor is a
+    window that exists so the renderer can cull the light, and it is 0.0078 at
+    d/r = 0.98. Sized to the far bottom corner -- 6.14 m for a deck 6.00 m below
+    -- it multiplied the whole fill by 1/130, and the frame came back with the
+    ladder unmoved and everything 2.5x darker, which reads exactly like an
+    energy that is too low. `SOFT_FILL_RANGE_M` puts the working distance at a
+    third of range, where the window costs 2.4% and the falloff over the
+    corridor is the inverse-power term alone. Nothing lies beyond the deck for
+    the extra reach to find: the deck is the outermost surface of the ring and
+    the cone points away from the axis.
+    """
+    return {"pos": list(pos), "kind": "spot", "aim": list(aim),
+            "angle": soft_fill_cone_deg(half_w_m, ceil_h_m),
+            "angle_attenuation": SOFT_FILL_ANGLE_ATTENUATION,
+            "range": SOFT_FILL_RANGE_M,
+            "energy": energy, "colour": list(SOFT_FILL["colour"]),
+            "attenuation": 1.0, "group": "corridor_soft_fill"}
+
+
+def soft_fill_ring(meta, energy=SOFT_FILL_ENERGY, pitch_m=SOFT_FILL_PITCH_M):
+    """The corridor's off-camera key, on a spun ring, from the collision meta.
+
+    `meta` is `stats["collision_meta"]` -- the description of the surface a
+    player actually stands on. Deriving the key from it rather than from the
+    render mesh or from a written-down radius is the fourth hard rule applied to
+    light: a deck that moves takes its key with it.
+
+    One source per `pitch_m` of ARC LENGTH, so the pitch is metric down the
+    corridor rather than angular, and a ring at r 210 m and a ring at r 300 m
+    get the same spacing between lamps instead of the same number of them.
+    """
+    r_floor, hw = meta["floor_r_m"], _corridor_half_w_m(meta)
+    ceil_h = r_floor - meta["ceil_r_m"]
+    if SOFT_FILL_HEIGHT_M <= ceil_h:
+        raise ValueError(f"soft_fill_ring: the key must sit clear of the "
+                         f"corridor it keys -- mount {SOFT_FILL_HEIGHT_M} m "
+                         f"against a {ceil_h:.2f} m ceiling")
+    r_light = r_floor - SOFT_FILL_HEIGHT_M
+    if r_light <= 0.0:
+        raise ValueError(f"soft_fill_ring: floor radius {r_floor} m is inside "
+                         f"the {SOFT_FILL_HEIGHT_M} m mount height")
+    a0 = math.radians(meta["start_deg"])
+    arc = math.radians(meta["arc_deg"])
+    n = max(1, int(round(arc * r_floor / pitch_m)))
+    out = []
+    for i in range(n):
+        a = a0 + arc * (i + 0.5) / n
+        p = (r_light * math.cos(a), r_light * math.sin(a), meta["z_m"])
+        out.append(_soft_fill_light(p, radial_aim(p), hw, ceil_h, energy))
+    return out
+
+
+def soft_fill_run(verts, tris, spans, energy=SOFT_FILL_ENERGY,
+                  pitch_m=SOFT_FILL_PITCH_M):
+    """The same key in a single room's LOCAL frame, where down really is -Y.
+
+    `--shot interior` builds one room on its own, Y up, the corridor running
+    along +Z. There is no ring and no radial anything, so the run is a straight
+    line over the centreline and the aim is (0, -1, 0) -- which is what
+    `fixture_lights` already assumes when no `down` is passed, so the two paths
+    agree about which way the floor is.
+
+    The extent comes off the DECK PANELS' own vertices rather than off
+    `interior_kit.PROVISIONAL`, for the same reason `collision.py` ray-casts its
+    shell profile instead of writing it down: a corridor built to another
+    profile keys itself correctly and the two cannot disagree. It is also not
+    the mesh's bounding box -- that includes the wall build-up either side, and
+    a cone sized to it would throw light at the walls' outer faces.
+    """
+    idx = {i for name, lo, hi in spans if name.startswith("deck")
+           for k in range(lo, hi) for i in tris[k]}
+    if not idx:
+        raise ValueError("soft_fill_run: no `deck*` span in this room -- the "
+                         "fill has no floor to key and would be aimed at "
+                         "nothing")
+    xs = [verts[i][0] for i in idx]
+    ys = [verts[i][1] for i in idx]
+    zs = [verts[i][2] for i in idx]
+    x_mid = (min(xs) + max(xs)) / 2.0
+    hw = (max(xs) - min(xs)) / 2.0
+    deck_y = max(ys)
+    ceil_h = max(q[1] for q in verts) - deck_y
+    n = max(1, int(round((max(zs) - min(zs)) / pitch_m)))
+    out = []
+    for i in range(n):
+        z = min(zs) + (max(zs) - min(zs)) * (i + 0.5) / n
+        out.append(_soft_fill_light((x_mid, deck_y + SOFT_FILL_HEIGHT_M, z),
+                                    (0.0, -1.0, 0.0), hw, ceil_h, energy))
+    return out
+
+
 def per_triangle(spans, n_tris, default="structure"):
     """(name, lo, hi) spans -> one name per triangle.
 
@@ -2756,6 +3141,12 @@ def build_interior(args, out_dir):
                             shadow_n=(INTERIOR_SHADOW_LIGHTS
                                       if args.shadow_lights is None
                                       else args.shadow_lights), eye=eye)
+    fill = (soft_fill_run(verts, tris, spans,
+                          args.soft_fill * room_exposure(room))
+            if args.soft_fill > 0.0 and room in SOFT_FILL_SPACES else [])
+    lights = lights + fill
+    print(f"interior {room}: {len(lights) - len(fill)} fitting light(s), "
+          f"{len(fill)} soft fill at energy {args.soft_fill}")
     return {
         "shot": "interior",
         "scene": "res://scenes/interior.tscn",
@@ -2768,6 +3159,9 @@ def build_interior(args, out_dir):
         # is the residential corridor's; a brig and a chapel are not lit to the
         # same fill and AMBIENT_RATIO has said so, in a table nothing read,
         # since it was measured.
+        #
+        # UNCHANGED BY THE SOFT FILL, which is a measurement and not an
+        # oversight -- see the block above SOFT_FILL.
         "ambient": (args.ambient if args.ambient is not None
                     else ambient_energy(room)),
         # Near plane at 60 mm: indoors the camera can stand against a wall, and
@@ -3050,6 +3444,12 @@ def build_deck_shot(args, out_dir):
         shadow_n=(INTERIOR_SHADOW_LIGHTS if args.shadow_lights is None
                   else args.shadow_lights),
         eye=eye, down=radial_aim, exposure=deck_fixture_exposure)
+    # The corridor's off-camera key. A deck is 76% corridor, and until this
+    # existed the whole assembly was lit by a flat ambient -- see SOFT_FILL.
+    fill = (soft_fill_ring(stats["collision_meta"],
+                           args.soft_fill * DECK_EXPOSURE)
+            if args.soft_fill > 0.0 else [])
+    lights = lights + fill
 
     # REPORTED AT EXPORT, not only in the self-test. A deck whose fittings light
     # a wall instead of its floor still produces a plausible PNG, and the number
@@ -3060,6 +3460,7 @@ def build_deck_shot(args, out_dir):
     print(f"deck {sector}/{ring}/{deck}: {stats['rooms']} rooms, "
           f"{len(tris)} triangles, {len(lights)} lights "
           f"({n_spot} spot, {n_lit} of them on the floor beneath them), "
+          f"{len(fill)} of them soft fill, "
           f"exposure {DECK_EXPOSURE} (inherited from the corridor anchor)")
     if misses:
         print(f"  {len(misses)} spot(s) light nothing beneath them: "
@@ -3090,6 +3491,14 @@ def build_deck_shot(args, out_dir):
         # 76% corridor takes. One ambient per SCENE is a Godot property, so the
         # rooms cannot each have their own here the way a single-room shot does
         # -- recorded rather than papered over.
+        #
+        # UNCHANGED BY THE SOFT FILL. The fill is additive; see the block above
+        # SOFT_FILL for the derivation that said it should not be and the frame
+        # that overturned it. One consequence worth stating anyway: the fill's
+        # cone is bounded, so it lifts the CORRIDOR's deck and reaches about
+        # 1.7 m into a room past its corridor wall and no further. A deck's 87
+        # rooms still have only their own tagged fittings and one scene ambient
+        # between them, and a per-room fill needs a light per room.
         "ambient": (args.ambient if args.ambient is not None
                     else ambient_energy("corridor") * DECK_EXPOSURE),
         "camera": {"eye": list(eye), "target": list(aim), "up": list(up),
@@ -3721,6 +4130,102 @@ def _selftest():
           f"a room's fittings take that room's exposure "
           f"({deck_fixture_exposure('docking_bays__light_highbay')} vs the "
           f"anchor's {DECK_EXPOSURE})")
+
+    # -- the soft fill ----------------------------------------------------
+    # THE OFF-CAMERA KEY, and every gate here is written against a defect that
+    # actually happened during the build. See SOFT_FILL.
+    _fill = soft_fill_ring(_dmeta, SOFT_FILL_ENERGY)
+    # THE PITCH IS METRIC, NOT ANGULAR -- a ring at 211 m and a ring at 300 m
+    # get the same spacing between lamps and not the same number of them, which
+    # a count-based check would let drift.
+    # It is measured where the light LANDS -- one deck radius out -- because
+    # that is the spacing the corridor sees; the sources themselves sit 10 m
+    # nearer the axis and are correspondingly closer together.
+    _da = abs(math.atan2(_fill[1]["pos"][1], _fill[1]["pos"][0])
+              - math.atan2(_fill[0]["pos"][1], _fill[0]["pos"][0]))
+    _gap = _da * _dmeta["floor_r_m"]
+    check(abs(_gap - SOFT_FILL_PITCH_M) < 0.05,
+          f"consecutive fill footprints sit one bay-half apart on the deck "
+          f"({_gap:.3f} m vs {SOFT_FILL_PITCH_M} m)")
+
+    # 1. IT FOLLOWS THE RING'S OWN DOWN. This is the one a DirectionalLight3D
+    #    cannot do, and the check is the same one the fittings get.
+    _nf, _fl, _fm = spots_lighting_the_floor(_fill, _dmeta["floor_r_m"])
+    check(_nf == len(_fill) and _fl == _nf,
+          f"every soft-fill source lights the deck beneath it "
+          f"({_fl}/{_nf}, misses {_fm[:2]})")
+    # NEGATIVE CONTROL: the same run with the world -Y a directional light
+    # would impose. On a 344 degree arc that is right at two angles and wrong
+    # everywhere else, and the count says how wrong.
+    _flat = [dict(x, aim=[0.0, -1.0, 0.0]) for x in _fill]
+    _n2, _l2, _m2 = spots_lighting_the_floor(_flat, _dmeta["floor_r_m"])
+    check(_l2 < _nf * 0.05,
+          f"one world-space DOWN cannot serve a 344 degree corridor: "
+          f"{_l2}/{_n2} sources would still light their own deck")
+
+    # 2. THE CONE HOLDS THE WHOLE BAY. Three earlier versions did not, and the
+    #    one that mattered most held the deck and missed the walls, which the
+    #    frame reported as the fill delivering exactly nothing to a wall.
+    _hw = _corridor_half_w_m(_dmeta)
+    _ch = _dmeta["floor_r_m"] - _dmeta["ceil_r_m"]
+    _cone = math.radians(soft_fill_cone_deg(_hw, _ch))
+    _corner = math.atan2(math.hypot(_hw, SOFT_FILL_PITCH_M / 2.0),
+                         SOFT_FILL_HEIGHT_M - _ch)
+
+    def _ang(a):
+        """Godot's `1 - rim^k` at an angle off the cone axis."""
+        rim = (1.0 - math.cos(a)) / (1.0 - math.cos(_cone))
+        return 1.0 - min(rim, 1.0) ** SOFT_FILL_ANGLE_ATTENUATION
+
+    check(_ang(_corner) >= SOFT_FILL_CORNER_FLOOR - 1e-9,
+          f"the bay's far top corner keeps {_ang(_corner):.3f} of the axial "
+          f"value, against a floor of {SOFT_FILL_CORNER_FLOOR}")
+    # NEGATIVE CONTROL: the cone set to the corner itself, which is version 2
+    # of the bug. Godot's angular term is ZERO at the rim.
+    _tight = _corner
+    check(1.0 - (((1.0 - math.cos(_corner)) / (1.0 - math.cos(_tight)))
+                 ** SOFT_FILL_ANGLE_ATTENUATION) < 0.01,
+          "a cone sized to the corner leaves the corner unlit, which is why "
+          "the cone is solved from the attenuation curve and not from the "
+          "geometry alone")
+    # And version 1: the cone sized to the wall FOOT misses the wall TOP.
+    _foot = math.atan2(_hw, SOFT_FILL_HEIGHT_M)
+    check(_corner > _foot * 1.2,
+          f"the bay corner ({math.degrees(_corner):.1f} deg) is well outside "
+          f"the wall foot ({math.degrees(_foot):.1f} deg), so a cone sized to "
+          f"the deck cannot light a wall")
+
+    # 3. RANGE IS A CUTOFF. Godot's window is 0.0078 at d/r = 0.98, and a range
+    #    sized to the far corner cost a whole render.
+    def _win(d, r):
+        return max(1.0 - (d / r) ** 4, 0.0) ** 2
+
+    check(_win(SOFT_FILL_HEIGHT_M, SOFT_FILL_RANGE_M) > 0.95,
+          f"the deck sits in the flat part of the distance window "
+          f"({_win(SOFT_FILL_HEIGHT_M, SOFT_FILL_RANGE_M):.3f})")
+    check(_win(SOFT_FILL_HEIGHT_M,
+               math.hypot(SOFT_FILL_HEIGHT_M, _hw)) < 0.05,
+          "a range sized to the corridor's own far corner would multiply the "
+          "whole fill by under 1/20 -- this is the control that says the "
+          "window is real and not a rounding detail")
+
+    # 4. IT DOES NOT TOUCH THE SOFFIT, which is what makes the ceiling rung a
+    #    property of the geometry rather than of a number. Every source sits
+    #    INWARD of the ceiling, and the ceiling's visible face points outward.
+    check(all(math.hypot(x["pos"][0], x["pos"][1])
+              < _dmeta["ceil_r_m"] - 1.0 for x in _fill),
+          "every fill source is clear of the corridor's ceiling, so the soffit "
+          "faces away from it")
+
+    # 5. THE PLACEMENT IS THE FLOOR'S, NOT A NUMBER'S. Move the meta and the
+    #    key moves with it -- hard rule 4 applied to light.
+    _moved = soft_fill_ring(dict(_dmeta, floor_r_m=_dmeta["floor_r_m"] + 25.0,
+                                 ceil_r_m=_dmeta["ceil_r_m"] + 25.0),
+                            SOFT_FILL_ENERGY)
+    check(abs(math.hypot(_moved[0]["pos"][0], _moved[0]["pos"][1])
+              - math.hypot(_fill[0]["pos"][0], _fill[0]["pos"][1]) - 25.0)
+          < 1e-6,
+          "a deck at another radius takes its key with it")
 
     # THE CAMERA STANDS ON THE CORRIDOR FLOOR AND ITS HEAD POINTS AT THE AXIS.
     # Both are ring properties with no analogue in a room shot, and both are
@@ -5040,6 +5545,12 @@ def main():
                          "Exists so the anchor in AMBIENT_CALIBRATED_ENERGY "
                          "can be found by rendering and measuring rather than "
                          "by taste -- see tools/measure_frame.py")
+    ap.add_argument("--soft-fill", type=float, default=SOFT_FILL_ENERGY,
+                    help=f"energy of the corridor's off-camera key (default "
+                         f"{SOFT_FILL_ENERGY}). ZERO IS THE NEGATIVE CONTROL "
+                         f"and it also restores the flat ambient, so "
+                         f"`--soft-fill 0` renders the pre-fill corridor "
+                         f"exactly -- see SOFT_FILL")
     a = ap.parse_args()
 
     if a.gate_exterior is not None:
