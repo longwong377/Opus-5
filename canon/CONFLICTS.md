@@ -1702,3 +1702,37 @@ tool for it.
 - **BLOCKED:** any claim that the bay's *interior* is canon-accurate in length, and any attempt to
   make `validate.py`'s hull containment cover it. `docking_bay._selftest` ratchets the fraction at
   >= 40% so it cannot silently get worse.
+
+---
+
+## C-011 — `LAW-CRIME-DOWNBELOW.md` §2.5 gives two roving-patrol counts, one line apart
+
+**Status:** open, **NOT blocking**. `station/npc/security.py` derives the count and prints the gap
+rather than choosing.
+
+**The two readings, both in the same table:**
+
+| row | text |
+|---|---|
+| Roving patrols | *"**~35 pairs** across the four pressurised sectors"* |
+| the same row's reasoning cell | *"The remaining **90**"* |
+
+Ninety officers is **forty-five** pairs, not thirty-five. The table's own arithmetic — 150 on duty
+less ~60 on fixed posts — gives 90, so the "90" is the number the rest of the table is consistent
+with and "35" is the one with no derivation behind it. That is evidence, not proof: "35 pairs"
+could equally be a deliberate allowance for officers who are on duty but not on a beat — turnout,
+custody, report writing, the watch floor — in which case both are right and the file is missing the
+sentence that says so.
+
+**What the code does.** `security.roving_pairs(hour)` computes `(on_duty(hour) - posted_officers())
+// 2` from `schedule.role_on_duty`, which is the project's own three-shift rotation, and
+`security.report()` prints both gazetteer figures beside it. At 18:00 it comes to **56 pairs**,
+because `role_on_duty` returns 169 rather than the gazetteer's round ~150.
+
+**What would close it.** A sentence in §2.5 stating whether the 60-officer fixed-post figure is the
+whole of the non-roving establishment or only the standing posts. It is a documentation question,
+not a canon one — no source establishes either number.
+
+**What is blocked:** nothing. Both readings give the same felt result, because the difference
+between 35 and 45 pairs spread over 753 outer-ring cells is invisible from a corridor. Recorded so
+that the next reader does not have to rediscover the inconsistency and does not silently pick one.

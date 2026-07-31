@@ -1171,6 +1171,29 @@ def populate(place_key, room_v, room_t, room_g, w_m, l_m, hour=13.0,
     actors = []
     area = max(w_m * l_m, 1e-6)
     n = occupancy(place_key, area, hour, arch)
+    # ------------------------------------------------------------------
+    # A POST IS MANNED WHETHER OR NOT THE ROOM IS BUSY
+    # ------------------------------------------------------------------
+    # `occupancy` is a crowd DENSITY -- people per square metre at an hour --
+    # and it knows nothing about duty. The brig at 18:00 comes back with ONE
+    # person in it, so folding a four-officer watch into that headcount left
+    # room for zero officers and the render proved it: one League civilian and
+    # no uniform, in a detention block.
+    #
+    # So the split is: the FIXED post is ADDED to the headcount, because those
+    # officers are there because they are rostered there; the ROVING share is
+    # drawn from the ambient crowd, because a patrol passing through IS part of
+    # the traffic. `docs/gazetteer/LAW-CRIME-DOWNBELOW.md` 2.4-2.5 makes the
+    # same distinction and this is it in arithmetic.
+    stats_fixed = stats_roving = 0
+    try:
+        from npc import security as _sec                       # noqa: PLC0415
+        _pres = _sec.presence_at(place_key, hour)
+        stats_fixed = int(_pres["fixed"])
+        stats_roving = int(round(_pres["roving"]))
+    except Exception:                                          # noqa: BLE001
+        _sec = None
+    n += stats_fixed
     if max_people is not None:
         n = min(n, max_people)
     hw, hl = w_m / 2.0, l_m / 2.0
@@ -1198,6 +1221,13 @@ def populate(place_key, room_v, room_t, room_g, w_m, l_m, hour=13.0,
     # once per body, because the pool is a property of the place and re-casting
     # it per occupant is exactly the defect `crowd._pool_capacity` documents.
     slots = [species_for(place_key, i, seed) for i in range(n)]
+    # The 500 are part of the 6,500 EarthForce complement (FACTIONS.md 2.2),
+    # so an officer is human. `slots` decides which BODY is built and `people`
+    # decides whose costume and id it wears, so these have to agree or the
+    # room gets a Narn in a human officer's uniform -- the silent-mismatch
+    # class this project keeps paying for.
+    for i in range(min(stats_fixed, len(slots))):
+        slots[i] = "human"
     # `pool_id` already carries the place, so folding the default seed -- which
     # IS the place key -- back in gave ids reading `res:b5:docking_bays:
     # docking_bays:vree:60`. Only a caller-supplied seed adds anything.
@@ -1217,6 +1247,26 @@ def populate(place_key, room_v, room_t, room_g, w_m, l_m, hour=13.0,
         # this project has paid for a room that emptied without a gate noticing.
         people.append(q.pop(0) if q else _res.resident(
             _res.pool_id(place_key, sp, len(people), pool_seed), sp))
+    # ------------------------------------------------------------------
+    # THE UNIFORM IN THE ROOM, and no roster could ever have put it there
+    # ------------------------------------------------------------------
+    # `_res.roster` casts a place's REGULARS, resolved from each resident's
+    # `job`. That is right for a merchant and wrong for a police officer: an
+    # officer standing the Zocalo post has `job == "patrol"`, so the Zocalo's
+    # roster comes back merchants, financiers, visitors and service staff and
+    # **not one officer** -- in the space `docs/gazetteer/LAW-CRIME-DOWNBELOW.md`
+    # 2.4 calls "the most-policed civilian space on the station".
+    stats["officers"] = 0
+    stats["officers_wanted"] = stats_fixed + stats_roving
+    if _sec is not None and stats["officers_wanted"] > 0 and people:
+        want_off = stats["officers_wanted"]
+        force = _sec.officer_pool(hour, max(2, want_off * 2 + 8))
+        human_slots = [i for i, sp in enumerate(slots) if sp == "human"]
+        k = min(want_off, len(human_slots), len(force), len(people))
+        for j in range(k):
+            people[human_slots[j]] = force[j]
+        stats["officers"] = k
+
     stats["scheduled"] = sum(1 for r in people
                              if _res.where_at(r, hour) == place_key)
     stats["named"] = sum(1 for r in people if r.name)
@@ -2161,6 +2211,45 @@ def _selftest():
     check("...and Yellow Sector, measured at 0.95 human, still is",
           yellow.count("human") >= 50,
           f"{yellow.count('human')}/60 human")
+
+    # ------------------------------------------------------------------
+    # THE UNIFORM IN THE ROOM. See the block in `populate`.
+    # ------------------------------------------------------------------
+    import dressing as _D                                       # noqa: PLC0415
+    from npc import security as _sec                            # noqa: PLC0415
+
+    def _room(key, arch, w=14.0, l=10.0):
+        v, t, g, _c = _D.dress(key, w, l, 3.0, arch)
+        return populate(key, v, t, g, w, l, hour=18.0, arch=arch,
+                        max_people=40)
+
+    _v, _t, _g, zs = _room("zocalo", "commerce")
+    check("the Zocalo post reaches the crowd -- officers in the room",
+          zs.get("officers", 0) >= 4,
+          f"{zs.get('officers', 0)} of {zs['wanted']} wanted")
+    _v, _t, _g, ds = _room("downbelow", "generic")
+    check("...and Downbelow has none, which the gazetteer states by design",
+          ds.get("officers", 0) == 0, f"{ds.get('officers', 0)}")
+    # NEGATIVE CONTROL: strip the Zocalo's post and the same room must come
+    # back with no uniform in it. Without this the check above passes on any
+    # room that happens to roster an officer by chance.
+    keep = _sec.POSTS
+    try:
+        _sec.POSTS = tuple(q for q in _sec.POSTS if q[0] != "zocalo")
+        _v, _t, _g, zs2 = _room("zocalo", "commerce")
+        # It does NOT go to zero, and that is correct rather than a weak
+        # control: the Zocalo is still on a patrolled outer ring, so it keeps
+        # its share of the roving pairs. What the post supplies is the FIXED
+        # eight, and that is exactly what the drop removes.
+        print(f"  control: drop the Zocalo post -> "
+              f"{zs2.get('officers', 0)} officers in the room "
+              f"(was {zs.get('officers', 0)}, the roving share survives) -- "
+              f"{'FIRES' if zs2.get('officers', 0) < zs.get('officers', 0) else 'DOES NOT FIRE'}")
+        check("the officer gate fires when the post is removed",
+              zs2.get("officers", 0) < zs.get("officers", 0),
+              f"{zs2.get('officers', 0)} vs {zs.get('officers', 0)}")
+    finally:
+        _sec.POSTS = keep
 
     print(f"{ok}/{ok + fail} passed")
     return 1 if fail else 0

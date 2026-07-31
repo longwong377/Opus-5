@@ -4404,3 +4404,130 @@ ladder is used, because the crowd covers the same distance whatever level it is 
 `crowd_travel_m` reads 5,966 m either way. `deck_verdict` fails a run whose walkers are all on one
 rung, and it **did** fail while the parse was wrong, on a working ladder: the rungs are separated
 by `/` and the nearest-distance field by `,`.
+
+---
+
+## INV-240 — The security force's posts, and how an officer gets into a room
+
+`station/npc/security.py` (`POSTS`, `NO_POST`, `officer_pool`, `presence_at`, `patrol`);
+`station/populace.py` (`populate`, the fixed/roving split).
+
+**What.** Where the 500-officer force physically stands, how many of them stand there, and the
+arithmetic that decides whether a room gets a uniform in it. Authority 5 for the split; everything
+around it is derived or sourced.
+
+**Why necessary.** `docs/gazetteer/LAW-CRIME-DOWNBELOW.md` is 1,181 lines of sourced material and
+**nothing in the project read it** — `grep -rl LAW-CRIME-DOWNBELOW station/ tools/` returned
+nothing while the other three gazetteer files had 23 readers between them. The owner's scope brief
+names "law enforcement, crime, the black market, Downbelow's underclass"; those were written down
+and wired to nothing.
+
+### The split, and the three constraints that stop it being ten free numbers
+
+| post | pairs | officers | confidence | auth |
+|---|---|---|---|---|
+| `security_central` | 4 | 8 | STATED | 3 |
+| `security_posts` | 6 | 12 | STATED (that they exist) / PROPOSED (where) | 4 |
+| `customs_north` | 3 | 6 | STATED | 1 |
+| `customs_south` | 3 | 6 | STATED | 1 |
+| `zocalo` | 4 | 8 | PROPOSED (D-03) | 5 |
+| `council_chamber` | 2 | 4 | PROPOSED (D-03) | 5 |
+| `bay_elevators` | 2 | 4 | PROPOSED (D-03) | 5 |
+| `docking_bays` | 2 | 4 | PROPOSED (D-03) | 5 |
+| `brig` | 2 | 4 | DERIVED | 5 |
+| **total** | **28** | **56** | against §2.5's "~60 of the 150" — **×0.93** | |
+
+1. **A post is manned in PAIRS.** §2.5's "2 officers, always" is a force rule, not a patrol rule:
+   it exists so the Nightwatch split is visible in any glance, and a post of one destroys that
+   exactly as a lone patrol does.
+2. **A post is manned CONTINUOUSLY**, so its cost is charged per shift against the on-duty figure,
+   never against the 500.
+3. **Every key is a `directory.PLACES` key**, so a post is a place on the station rather than a
+   name in a document, and a post whose register row disappears **fails the gate** instead of
+   silently vanishing.
+
+`NO_POST` names six places — Downbelow, its arch, the black market, the thieves' guild,
+`happy_daze` and `welded_shut` — because §2.4's last row is a *positive design decision*
+("Downbelow: **No permanent post**"), and a future session adding one should have to delete a line
+with a reason on it rather than merely fail to think of it.
+
+### The fixed/roving arithmetic, and the render that forced it
+
+`populate` adds the **fixed** post to the room's headcount and draws the **roving** share from the
+ambient crowd. That is not tidiness: `occupancy` is a crowd density and knows nothing about duty,
+so folding a four-officer watch into the brig's headcount left room for **zero** officers — the
+brig at 18:00 comes back with **one** person in it. The render proved it: one League civilian, in a
+detention block, with no uniform. After the split the same room exports four
+`npc_cloth__ef_security_twill` bodies, one of them carrying
+`npc_cloth_trim__nightwatch_black`. `docs/engine-brig-security.png`.
+
+### The officer pool is a SEARCH, and the ratio is why
+
+`resident.roster` casts a place's regulars from each resident's `job`, and it does that well — ask
+for twelve at `security_central` and seven come back `role == "security"`. **Ask at the Zocalo and
+none do**, because an officer standing that post has `job == "patrol"`, and no amount of rostering
+will put them there. Asking deeper does not help: a place has a capacity, so
+`roster(security_central, ..., 300)` still returns four officers.
+
+So `officer_pool` searches the id space on `schedule.role_for`, which draws a role by hash against
+FACTIONS.md's apportionment. Security is 500 of 155,000 humans — **0.32%, one officer in ~270 ids**
+— and `role_for` is the cheap half of `resident()`: **120 officers out of 32,406 candidate ids in
+0.06 s**, measured, against building 32,406 residents. `OFFICER_SEARCH_CAP = 200,000` bounds it.
+
+### The armband is DELEGATED, and that is the correction worth keeping
+
+The first version of `wears_armband` rolled `_u("security/nightwatch", id) < NIGHTWATCH_SHARE` and
+**passed every test in the module** — while `costume.py` was independently rolling
+`_u(seed, "nw") < NIGHTWATCH_SECURITY_RATE` to decide whether to hang the armband decal on the
+sleeve. Two descriptions of one fact, agreeing only by luck, and **the render is driven by the
+other one**: a player would have seen the band on a different officer from the one this module
+called banded. Hard rule 4 applied to a boolean. `wears_armband` now asks
+`costume.costume_for(...).nightwatch`, which also gets the era right for free —
+`era_active("nightwatch_visible")` means no armband exists before *The Fall of Night*, which a bare
+hash could not know. The negative control patches **`costume.NIGHTWATCH_SECURITY_RATE`**, a
+constant this module does not own, and both the share gate and the one-band-one-sleeve gate move
+with it. That is what proves the delegation is live rather than decorative.
+
+Realised share over 300 officers: **36%**, inside FACTIONS.md §5.2's stated 150–200 of 500.
+
+**What would overturn it.** Any frame or source establishing an actual post strength — a wide shot
+of the Zocalo with a countable number of uniforms in it would settle that row directly, and the
+Zocalo is the row the whole "twenty minutes with no uniform, then four in one glance" effect hangs
+on. A source giving Security Central's watch size would settle the first row. Nothing here is
+canon; all of it is arithmetic over two sourced numbers (500 officers, ~150 on duty) and a stated
+list of post *types*.
+
+---
+
+## INV-241 — Three numbers the gazetteer states that the built station no longer agrees with
+
+`station/npc/security.py` (`GAZETTEER_CLAIMS`, `beat`, `beat_report`, `response`).
+
+**What.** `LAW-CRIME-DOWNBELOW.md` §2.5 and §2.6 compute a patrol beat and a response time. Both
+were derived correctly from the station as it stood when they were written. Three of their inputs
+have since moved, and this module recomputes rather than repeats. Recorded as an invention because
+the *replacement* numbers are now what the simulation uses.
+
+| | gazetteer | recomputed | why |
+|---|---|---|---|
+| Grey outermost ring radius | 402.2 m | **471.2 m** | the addresses became hull-correct (`interior.rings_fitting_at`, session 3z); the station moved under the number |
+| its circumference | 2,527 m | **2,961 m** (×1.17) | follows |
+| beat walk speed | 1.3 m/s, flat | **1.94 m/s** in Grey, **1.12 m/s** in Yellow | `navigation.walk_speed(g)` is a Froude gait model, v ∝ √(gL). The **heavy** ring is walked **faster** |
+| a 75 kg officer's weight there | 108 kgf | **127 kgf** | 1.69 g, not 1.44 g |
+| response to a distant outer ring | 12–20 min | **22.3 min** worst (`atmos_monitor`, Grey) | §2.6 priced three vehicle legs and added the walk in prose; this routes the whole journey on the same graph a resident commutes on, lift waits and dwells included |
+
+**The two speed effects point opposite ways and both are real.** The gazetteer's instinct — that
+foot patrol in the heavy outer rings is punishing — is correct, and the recomputation says the
+penalty is in the officer's **weight**, not in the clock. A beat there is *faster* and *harder*.
+
+**§2.6's headline survives the recomputation, which is the point of doing it.** *"Realistic
+security response to the outer ring of a distant sector is 12–20 minutes. To the Zocalo, from the
+standing post already there, it is seconds."* Computed: the Zocalo answers **0 s** because it has
+its own post, and Grey's `atmos_monitor` is **22.3 min** from the nearest one — which is the Green
+council post, not Security Central, because Green is the sector adjacent to Grey on the axis. The
+dramatic geometry is not a design choice; it falls out of an 8 km station.
+
+**What would overturn it.** A re-address of the rings that moves Grey's outermost floor radius
+back toward 402 m — in which case the module's staleness assertion (`ratio > 1.10`) fires, which is
+deliberate: it is written as a bound rather than an equality so that closing the gap gets looked
+at instead of passing silently.
