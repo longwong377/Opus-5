@@ -212,12 +212,12 @@ grown to make a number go green.
 | **0** | **Engine path** | A materialled, lit frame comes out of Godot + lavapipe and can be scored against `docs/AAA-STANDARD.md`. Infrastructure, not per-location | **DONE** |
 | **1** | **Addressed** | All have `(sector, ring, deck, angle, z)`, footprints that do not collide, declared functions and interactions | **118 / 118 COMPLETE** |
 | **2a** | **Geometry — topology** | Every addressed location has mesh, closed, correctly wound, inside its own footprint | **118 / 118 COMPLETE** |
-| **2b** | **Geometry — articulation** | Visible line density at or above its floor, derived from budget / Nyquist / the show's own frames — `station/density.py`, INV-070. **This is the layer the register now reports** | **16 / 118 — CURRENT** |
-| **3** | **Materials** | Every mesh carries PBR materials from `materials.py`. No flat colour anywhere | **16 / 118** — materials are done on all 118, but a place cannot be at layer 3 while it fails 2b |
-| **4a** | **Lighting — level** | Every location has a rig and a measured exposure, median-matched to its reference | **16 / 118** — done on all 118, gated behind 2b for the same reason |
-| **4b** | **Lighting — mood** | Every location matches its reference's *distribution*, not just its median — p5, p95, crushed, clipped | **1 / 17 measurable — see below** |
-| **5** | **Props & function** | The declared interactable types exist and do what `directory.py` says they do | 0 |
-| **6** | **Inhabitants** | NPCs placed, scheduled and animated in every location, at real density | 0 |
+| **2b** | **Geometry — articulation** | Visible line density at or above its floor, derived from budget / Nyquist / the show's own frames — `station/density.py`, INV-070. **This is the layer the register now reports** | **123 / 128** (3z). And a whole-location gate hides a flat surface inside its own average, which is how every machine in the station stayed a box while 123 passed — `density.py --machinery` scores `fix_*`/`prop_*` alone against the room's OWN shell and reads **74 / 78** |
+| **3** | **Materials** | Every mesh carries PBR materials from `materials.py`. No flat colour anywhere | **COMPLETE** — `test_materials_layer3.py` reads **503 / 503 interior groups**, including the 53-material wardrobe imported from `npc/costume.py` |
+| **4a** | **Lighting — level** | Every location has a rig and a measured exposure, median-matched to its reference | **20 / 21** in window (3z). The one that cannot be put in window is `plant`, and the cause is **quantisation, not geometry**: 85% of its frame sits at sRGB byte 0–1, under the eight-bit floor |
+| **4b** | **Lighting — mood** | Every location matches its reference's *distribution*, not just its median — p5, p95, crushed, clipped | **13 / 23, 0 unverifiable** (3z, was 3 / 11 with 9 unverifiable). **Eleven of the fourteen failures were STALE FRAMES rather than lighting defects** — see below |
+| **5** | **Props & function** | The declared interactable types exist and do what `directory.py` says they do | Substantially done as a side effect: `rooms.PROPS`, `PLACE_FIXTURES` and `dressing.py` build the declared types, and `density.py --machinery` gates their articulation at 74/78 |
+| **6** | **Inhabitants** | NPCs placed, scheduled and animated in every location, at real density | **963 walking in the corridors and 1,065 in the rooms** (3z), each a named resident with a home, a job and a schedule, posed from `npc/animation.py`'s clips and DRESSED from `npc/costume.py`'s measured wardrobe. Not animated at runtime: the corridor crowd moves (5,966 m measured over a walk test), the room occupants do not |
 | **7** | **Audio** | Ambience and event audio per location | 0 |
 | **8** | **Judged** | Every location scored against the rubric in an engine frame, and passing | 0 |
 
@@ -293,10 +293,32 @@ band = p95 of |ln(a/b)|. Validated by running the gate on the show against itsel
 combined pass 77.4%, stated rather than tuned to look better. `--derive` recomputes every band from
 the corpus and fails if a recorded value has drifted.
 
-**The result: 17 of 17 exposures pass the median test. 1 of 17 passes the distribution test.**
-`p5` is the discriminator and fails 13 of 17, bright on 11 — **including the corridor anchor that
-defines 1.00 for the entire project** (p5 x1.64). Two rooms fail the opposite way, crushing far
-*more* than their references (`quarters` x38.1, `alien_sector` x29.5).
+**The result when this was written: 17 of 17 passed the median test and 1 of 17 the distribution
+test.** `p5` was the discriminator, failing 13 of 17, bright on 11 — including the corridor anchor
+that defines 1.00 for the entire project (p5 x1.64).
+
+**AND ELEVEN OF THOSE FOURTEEN FAILURES WERE STALE FRAMES, NOT LIGHTING DEFECTS.** Session 3z.
+Every failing frame had been committed on 07-29 or 07-30; every frame committed on 07-31 passed;
+the lens fix and the corridor soft fill landed in between and **nobody re-took the older ones**.
+`--gate-frames` re-measured a committed PNG, so it could say whether the **file** passed and never
+whether the file still described the **code**.
+
+The anchor was the worst case, and it is the frame `RENDER_OFFSET = 1.40` is *defined* against.
+Re-rendered from its own recorded command, nothing else changed:
+
+| | committed | re-rendered | show |
+|---|---|---|---|
+| p5 (band x1.29) | **x1.64 FAIL** | **x0.80 PASS** | — |
+| soffit / wall | **x1.82** | **x0.214** | 0.23–0.32 |
+| deck / wall | **x0.29** | **x2.59** | 2.49 |
+
+The committed frame had the show's own ladder **upside down**, and this file's headline for the
+layer was measured on it. **13 of 23 pass now, with 0 unverifiable.** `EXPOSURE_FRAMES` carries the
+shot per row and `--gate-frames --rerender` re-takes it, so a frame cannot go stale silently again.
+
+**A GATE THAT READS A COMMITTED ARTEFACT MUST BE ABLE TO REBUILD IT.** That is the general form,
+and it is the same defect as `budget.py`'s cached collision total — which at least printed loudly
+when it drifted, because a cache that can go stale silently is a second copy of a computed number.
 
 Two negative results worth keeping: `p95` (band x3.27) and `p5/p95` (x3.38) are nearly inert. The
 ratio is the statistic that *sounds* like it measures mood and measures least, because it inherits
@@ -313,7 +335,26 @@ at 1.59x either way") and blamed that room's geometry. It is a property of the s
 verifiable in either direction. They were set by rendering, measuring, and not keeping the render.
 
 **Layer 4 is therefore split.** 4a — a rig and a measured level — is genuinely complete and the work
-is real. 4b is the bar that was missing, and it is 1/17 on the frames that exist.
+is real; 20 of 21 rooms are in window, and the one that is not (`plant`) fails on **quantisation**
+rather than geometry: 85% of its frame sits at sRGB byte 0–1, under the eight-bit floor, so its
+level is not derivable from a PNG at all. 4b is the bar that was missing and stands at **13 / 23**.
+
+**`ROOM_EXPOSURE` is re-derived from `level_p25`**, the *uncensored* 25th percentile, and the
+reason is the one recorded above: over our own 21 rooms at three gains, the censored median is
+monotonic in exposure on only **15 of 21** and goes DOWN when the lights go up on six of them,
+while `level_p25` is monotonic on **20 of 21**. It responds because its population is fixed —
+censoring at `FLOOR` recruits sub-floor pixels into the set as gain rises, and they arrive at the
+bottom. It is the **control variable, not the target**: `p25_ours/p25_ref` is dominated by black
+fraction, and solving against it directly gave gains of 0.15 on four rooms. The target is still the
+censored median at x1.40.
+
+**What the shadows actually are, measured rather than argued:** fixture energy is **inert** (0 → 2.0
+moves p5 by x1.0000), the soft fill nearly so (6 → 24 moves it x1.11), and **ambient owns p5**
+(1.30 → 2.60 moves it x2.35). The tonemapper is **not** the cause of the flatness — AgX gives the
+*lowest* p5 of the five available, so that hypothesis is refuted. And **the blown pools and vitrines
+are EMISSION**: over x5.7 of gain the lit wall moved x3.48 and a deck light strip moved **x1.007**,
+because `room_exposure` scales fittings and ambient while `emission_energy` is a material property
+neither touches.
 
 **Layer 4's older lesson still stands, and it is about MEASUREMENT, not
 light: `docs/layer4-lighting/*.json` records a per-space `ambient.ratio` taken from two hand-picked
