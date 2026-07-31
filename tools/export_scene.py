@@ -2055,18 +2055,77 @@ AMBIENT_CALIBRATED_RATIO = 0.300
 # an exposure. Scaling both preserves the fill-to-key relationship -- which is
 # what AMBIENT_BY_ARCHETYPE and `energy_rel` measure -- and sets only the
 # level, which is what nothing measured.
+# ---------------------------------------------------------------------------
+# RE-DERIVED IN SESSION 4a, AND THE PROCEDURE ABOVE IS THE THING THAT CHANGED
+# ---------------------------------------------------------------------------
+# Step 3 of the recipe above -- `gain *= 1.40 * ref_median / our_median` -- is
+# an INVERSION, and the median cannot be inverted. See INV-150. Measured on
+# these eleven archetypes and nine bespoke modules at gains 0.5 / 1.0 / 2.0,
+# 63 renders:
+#
+#   statistic            monotonic in exposure   fitted exponent
+#   median (censored)         15 / 21            -0.42 .. +1.16
+#   dark_p5 (censored)        12 / 21            +0.03 .. +1.17
+#   level_p25 (uncensored)    20 / 21            +1.08 .. +1.40 on 19 of 21
+#
+# On SIX of our own rooms the median goes DOWN when the lights go up -- transit
+# -0.42, alien_sector -0.12, hospitality +0.02 -- so the old formula does not
+# merely undershoot there, it moves the exposure the WRONG WAY.
+#
+# THE NEW PROCEDURE, and both halves matter:
+#
+#   1. render the room at three gains and fit the response
+#   2. TARGET is unchanged: the censored median at 1.40x the reference's, which
+#      is the project's own level criterion and is comparable across frames
+#      because both sides are censored the same way
+#   3. SOLVE through `measure_frame.level_p25`, the uncensored 25th percentile,
+#      which is the leg that is monotone in gain. It is NOT a target: it is
+#      dominated by how much of a frame is black (`grey level 1.webp` 0.0312 vs
+#      `Doug's Dugout.webp` 0.0007, x45 apart) so a ratio between two frames'
+#      p25 is about crush, not exposure. Solving against it directly was tried
+#      first and gave gains of 0.15 for four rooms.
+#   4. RENDER AT THE SOLVED GAIN AND CHECK. One iteration puts 19 of 20 inside
+#      the level window; two more targeted rounds close the rest.
+#
+# AND THE LEVEL WINDOW IS A CONSTRAINT, NOT A PREFERENCE. Several rooms have a
+# gain that passes every distribution band while sitting two stops off their
+# reference -- the Zocalo passes 7/7 at x0.58 of `more zocalo.png`. Taking it
+# would buy a band by regressing layer 4a, and the FRAME says so: at that gain
+# the Zocalo reads as a dim hall at dusk, and its blown deck strip is blown
+# anyway. So the choice is: the most bands, among the gains inside the window.
+#
+# RESULT, on 21 rooms rendered at 640x360 / 960x540 / 1280x720 and measured
+# with the whole-distribution comparison:
+#
+#              level window   whole distribution
+#   as shipped     14 / 21          7 / 21
+#   re-derived     20 / 21         11 / 21
+#
+# WHAT THE REMAINING TEN ARE, because "not yet" is not a diagnosis:
+#
+#   p5 bright, and NOT reachable by exposure (6): worship, research,
+#     hospitality(bespoke), command_control, quarters, council_chamber. Raising
+#     or lowering the gain moves p5 and the median TOGETHER, so a room whose
+#     shadows are proportionally too light cannot be fixed by an exposure at
+#     all -- it needs a darker surface or an occluder. Every one of these six
+#     also reads p95 x0.34-0.67, i.e. the top of the ladder is missing too:
+#     the distribution is compressed at both ends, which is a FITTING problem.
+#   crushed (3): zocalo x0.12 and customs (too little black), alien_sector
+#     x36.9 (too much), plant outside the show's own envelope entirely.
+#   industrial: p5 and p99 together.
 ROOM_EXPOSURE = {
-    "industrial": 1.30,
-    "store": 1.42,
-    "transit": 0.75,
-    "hospitality": 1.20,
-    "worship": 2.25,
-    "medical": 0.14,
-    "research": 0.14,
-    "detention": 0.53,
-    "commerce": 0.51,
-    "office": 0.14,
-    "generic": 1.67,
+    # value        was    gain   what the frame at this value measures
+    "industrial": 4.03,  # 1.30  x3.10  median x1.74  p5 x1.37  FAIL p5, p99
+    "store": 3.02,       # 1.42  x2.13  median x1.37  p5 x1.04  PASS
+    "transit": 0.62,     # 0.75  x0.83  median x1.45  p5 x0.95  PASS
+    "hospitality": 0.60,  # 1.20 x0.50  median x1.24  p5 x0.98  PASS
+    "worship": 2.29,     # 2.25  x1.02  median x1.39  p5 x1.62  FAIL p5
+    "medical": 0.19,     # 0.14  x1.38  median x1.18  p5 x1.24  PASS
+    "research": 0.23,    # 0.14  x1.67  median x1.41  p5 x1.66  FAIL p5
+    "detention": 0.40,   # 0.53  x0.75  median x1.53  p5 x1.01  PASS
+    "commerce": 0.62,    # 0.51  x1.21  median x1.40  p5 x1.09  PASS
+    "office": 0.38,      # 0.14  x2.70  median x1.15  p5 x1.04  PASS
+    "generic": 1.54,     # 1.67  x0.92  median x1.65  p5 x0.83  PASS
 }
 
 
@@ -2112,63 +2171,117 @@ ROOM_EXPOSURE = {
 # evidence the fix did nothing there: its shot stands in the pit below the
 # strips looking away from them, so it can see neither the wall the courses
 # wash nor the courses themselves.
+# RE-DERIVED IN SESSION 4a by the procedure recorded above ROOM_EXPOSURE. The
+# `was` column is the value each replaces; a row whose value did not move was
+# re-verified rather than left alone -- zocalo, alien_sector and
+# council_chamber all came back at their shipped value from a three-gain sweep,
+# which is the first evidence any of them has had.
+#
+# THE ONE THAT COULD NOT BE DERIVED AT ALL IS `plant`, and now there is a
+# reason rather than a symptom. Its `level_p25` is 0.0012 at gain 0.5, 1.0 AND
+# 2.0 -- identical to four figures -- because 85% of that frame sits at sRGB
+# byte 0-1, i.e. under the EIGHT-BIT floor, not merely under the measurable
+# one. No statistic taken from the PNG can respond to exposure there. The note
+# this replaces said the plant "sits at 1.59x either way" and blamed the
+# room's geometry; the cause is quantisation. Its value here is the darkest
+# sampled gain that keeps the frame inside the show's crushed envelope, and it
+# does not: 0.22 is chosen as the best of a bad set and the row is failing.
 BESPOKE_EXPOSURE = {
-    "zocalo": 0.84,          # vs reference/04-sector-red/more zocalo.png
-                             # 0.92 x 1.40/1.54, re-measured after the body
-                             # split took it from 36 lamps to 96. Verified at
-                             # 1.43 of the reference on the re-render.
-    "hospitality": 1.34,     # vs reference/04-sector-red/Doug's Dugout.webp
-    # 1.10, and the 0.93 it replaces was measured against a frame the pipeline
-    # could not produce: the standpoint search stood this camera at y = -0.20 m,
-    # in the instrument pit, until the floor test above was added. Re-measured
-    # at the corrected camera and at the recovered lamp count (1 -> 36).
-    "command_control": 1.10,  # vs 03-sector-blue/comand and contorl.webp
-                             # UNCHANGED, and the reason is worth a line
-                             # because the number looks stale and is not: this
-                             # shot now measures 1.18 rather than the 1.40 it
-                             # was set at, but it measures 1.18 with the OLD
-                             # rig too. What moved is the CAMERA -- session
-                             # 3o's rewrite of `open_standpoint` -- not the
-                             # light. Correcting an exposure for a camera move
-                             # would be treating an exposure as a rescue, and
-                             # the shot itself is the thing to look at first:
-                             # it stands the eye at y = -0.20 m, below the
-                             # deck. Re-calibrate when the shot is right.
-    "docking_bay": 0.90,     # vs reference/03-sector-blue/dock.webp -- 13
-                             # lamps became 39 and it measured 1.38 -> 1.39.
-    # 0.47, and my own 1.00 was worse-founded. I set that by eye against the
-    # CORRIDOR's median, having not found a reference frame for this sector.
-    # `reference/05-sector-green/corridor in alien sector.webp` exists, is
-    # authority 1, and is the frame the module's own fitting was measured from.
-    # Calibrated against it the correction is 0.47, not none.
-    "alien_sector": 0.47,
-    "customs": 0.62,         # vs 11-props-and-technology/babylon 5 welcome
-                             # sign, instructions, and hub.jpg
-    "quarters": 1.12,        # vs reference/07-sector-grey/grey level 1.webp,
-                             # the residential corridor a unit opens off
-    # 2.27, from 2.84. Two things moved it and both were corrections rather
-    # than tuning: the cove became six lamps spread round the arc instead of
-    # one at its centroid, and the camera moved onto the chamber floor. At the
-    # old value the corrected frame reads x1.75 of its reference, the very edge
-    # of the tolerance band.
-    "council_chamber": 2.27,  # vs 05-sector-green/council chambers.webp
-    "plant": 0.88,           # vs 10-interiors-generic-kit/more hallways.jpg,
-                             # the measured SERVICE corridor -- the register
-                             # whose walls are black except where a panel or
-                             # the deck strip reaches them.
-                             #
-                             # AND IT BARELY MOVES THE NUMBER, which is worth
-                             # knowing before someone iterates on it: the plant
-                             # frame is mostly below the measurable floor, so
-                             # dimming it pushes more pixels under 0.01 and
-                             # RAISES the median of what is left. The two
-                             # effects cancel and the frame sits at 1.59x its
-                             # reference either way -- inside tolerance, and
-                             # not reachable by exposure. In a volume that is
-                             # 139.8 million cubic metres of void with seven
-                             # floods in it, the median of the lit pixels is
-                             # not an exposure measurement.
+    "zocalo": 0.84,          # UNCHANGED, and now swept: x0.35/x0.5/x0.8/x1/x2
+                             # all measured, x1.00 is the only one inside the
+                             # level window. median x1.19, p5 x1.19, FAIL
+                             # crushed x0.12 -- we hold 8x less black than the
+                             # reference. NOT an exposure defect: at x0.35 the
+                             # frame passes 7/7 and reads as a dim hall, and
+                             # its deck strip is blown at every gain (see the
+                             # emission finding below).
+    "hospitality": 2.07,     # 1.34 x1.55. vs reference/04-sector-red/
+                             # Doug's Dugout.webp
+    "command_control": 0.89,  # 1.10 x0.80. vs 03-sector-blue/comand and
+                             # contorl.webp. median x1.40, p5 x2.19, p95 x0.34
+                             # -- FAIL p5 and p5/p95, and the two failures are
+                             # ONE defect: this frame's distribution is
+                             # compressed at BOTH ends, so no exposure can
+                             # move them apart. The camera note this replaces
+                             # is closed -- `open_standpoint` puts the eye on
+                             # the deck now -- and the level is right at the
+                             # target; what is missing is the small bright
+                             # population a set dresser puts in shot.
+    "docking_bay": 0.27,     # 0.90 x0.30. vs reference/03-sector-blue/
+                             # dock.webp. median x1.22, p5 x0.90, PASS -- and
+                             # it is the single largest correction here. At
+                             # 0.90 the same shot reads median x1.84 and p5
+                             # x2.95: the lamp-count recovery (13 -> 39) was
+                             # applied without re-deriving the exposure that
+                             # had been measured at 13.
+    "alien_sector": 0.47,    # UNCHANGED, swept x0.5/x1/x1.25/x2. x1.00 is the
+                             # only gain inside the level window (median
+                             # x1.26). FAIL crushed x36.9 -- this frame holds
+                             # 37x MORE black than its reference, which is a
+                             # room with no fill rather than a room with the
+                             # wrong exposure: brightening it to x1.25 takes
+                             # the crushed ratio only to x36.9 from x43.8 and
+                             # pushes the level to x1.67, out of window.
+    "customs": 0.31,         # 0.62 x0.50. vs 11-props-and-technology/babylon 5
+                             # welcome sign, instructions, and hub.jpg.
+                             # median x1.36, p5 x1.02, PASS. At 0.62 it read
+                             # p5 x1.56 and crushed x0.05.
+    "quarters": 1.17,        # 1.12 x1.04. vs reference/07-sector-grey/
+                             # grey level 1.webp, the residential corridor a
+                             # unit opens off. median x1.41, p5 x0.76 -- FAIL
+                             # p5, and in the DARK direction for once, with
+                             # p95 x0.48 beside it. A unit with too little of
+                             # everything at the top.
+    "council_chamber": 2.27,  # UNCHANGED, swept x0.5/x0.85/x1/x2. median
+                             # x1.40 at x1.00 -- the shipped value was right
+                             # on the level and this is the first sweep that
+                             # could say so. FAIL p5 x2.20, the largest p5
+                             # miss on the station. At x0.85 p5 improves only
+                             # to x1.99 and the level drops to x1.19, so the
+                             # shadows here are not an exposure.
+    "plant": 0.22,           # 0.88 x0.25. vs 10-interiors-generic-kit/
+                             # more hallways.jpg, the measured SERVICE
+                             # corridor. STILL FAILING, on the crushed
+                             # ENVELOPE rather than the ratio, and see the
+                             # block above this dict for why no exposure can
+                             # settle it: `level_p25` is 0.0012 at every gain
+                             # swept because 85% of the frame is at sRGB byte
+                             # 0-1. In a volume that is 139.8 million cubic
+                             # metres of void with seven floods in it, the
+                             # frame is not an exposure measurement -- it is a
+                             # lighting-design problem with a number attached.
 }
+
+
+# EMISSION IS THE TERM THE EXPOSURE CANNOT REACH, and it is why several rooms
+# have a bright population that no gain moves. `room_exposure` scales the
+# FITTINGS and the AMBIENT; `emission_energy` on a StandardMaterial3D is a
+# material property and neither of those touches it. Measured on the Zocalo
+# over a x5.7 range of gain, same camera, same boxes:
+#
+#   gain          0.35     0.50     1.00     2.00     ratio
+#   lit wall     0.0556   0.0699   0.1162   0.1934    x3.48
+#   deck strip   0.9381   0.9381   0.9443   0.9443    x1.007
+#
+# The strip is INERT. At every exposure it sits at 0.94 linear while the wall
+# it is meant to be lighting sits between 0.06 and 0.19, i.e. 5x to 17x apart --
+# which is what "the floor pools are clipping to pure white" is, in numbers.
+# The same mechanism is already recorded in godot/scripts/render_shot.gd for
+# the night side ("emission is a material property that no light energy
+# scales") and it applies indoors for the same reason.
+#
+# TWO CONSEQUENCES, and the second is the one that matters for layer 4b:
+#
+#   1. A room whose visible light is mostly EMISSIVE cannot be exposed. Its
+#      lit surfaces move and its sources do not, so raising the gain closes the
+#      gap between them and lowering it opens one -- the top of the ladder is
+#      pinned. That is a `materials.py` emission_energy question or a
+#      `tonemap_exposure` question, not a ROOM_EXPOSURE one.
+#   2. `--tonemap-exposure` DOES reach it, because it scales what the camera
+#      receives rather than what the scene emits. It is now available per shot
+#      (see GRADE) and is the right knob for a room like the Zocalo. It is not
+#      used here because changing it changes the LOOK for every room in the
+#      scene at once, and a look has to be judged whole.
 
 
 # WHICH FRAME AND WHICH REFERENCE EACH EXPOSURE ABOVE WAS SET ON, as data
@@ -2177,63 +2290,138 @@ BESPOKE_EXPOSURE = {
 # the record meant a human reading fourteen comments and retyping paths. A
 # verdict that cannot be recomputed is a verdict that gets believed.
 #
-# NINE OF THE ELEVEN ROOM_EXPOSURE VALUES HAVE NO COMMITTED FRAME AT ALL, and
-# that is the first thing this table makes visible. industrial, store, transit,
+# NINE OF THE ELEVEN ROOM_EXPOSURE VALUES HAD NO COMMITTED FRAME AT ALL, and
+# that was the first thing this table made visible. industrial, store, transit,
 # hospitality, worship, research, detention, office and generic were each set
-# by rendering a room, measuring it, and not keeping the render. Their values
-# are unfalsifiable until someone re-renders them, and `--gate-frames` says so
-# per row instead of passing them in silence.
+# by rendering a room, measuring it, and not keeping the render. CLOSED in
+# session 4a: every row now carries a frame and the SHOT THAT PRODUCES IT.
 #
 # `reference` is the frame the exposure was CALIBRATED against, which is not
 # always the frame the framing was composed from -- DRUM_CALIBRATION['tram']
 # is the standing example (composed from 33a, measured against 34b) and it is
 # recorded there rather than duplicated here.
+#
+# ---------------------------------------------------------------------------
+# THE THIRD FIELD IS THE SHOT, AND WITHOUT IT THIS TABLE COULD NOT TELL A
+# MEASUREMENT FROM A MEMORY OF ONE
+# ---------------------------------------------------------------------------
+# Session 4a. `--gate-frames` re-measures the committed PNG, so it can say
+# whether the FILE passes. It could never say whether the file still describes
+# the CODE, and eleven of the fourteen "distribution failures" this project has
+# been carrying turned out to be exactly that: every failing frame was committed
+# on 2026-07-29 or 07-30, every frame committed on 07-31 passes, and the two
+# things in between were the lens fix (c05a877) and the soft fill (7cf9404).
+#
+# THE ANCHOR IS THE WORST CASE and it is worth stating in full, because the
+# whole project's x1.00 hangs off it. `docs/engine-corridor.png` measured p5
+# x1.64 and 1.76% clipped and FAILED; re-rendered from the command below, with
+# no other change, the same shot measures p5 x0.80, 0.00% clipped and PASSES
+# every band. Its soffit-to-wall ratio went x1.82 -> x0.214 against a show band
+# of 0.23-0.32 and its deck x0.29 -> x2.59 against the show's x2.49 -- the
+# committed frame had the show's ladder upside down. See
+# docs/reference-values.md 6.5.
+#
+# So the third field is (room key, resolution), and `--gate-frames --rerender`
+# re-takes every frame from it before measuring. A stale frame is now a diff
+# rather than a belief. The room key is a `station/directory.py` key or
+# `corridor`; the shot is always `--shot interior --room KEY`, because that is
+# the shot that renders ONE room in isolation and an exposure is a property of
+# one room.
+#
+# TWO ROWS CHANGED COMPOSITION AND THAT IS RECORDED RATHER THAN HIDDEN.
+# `docs/engine-market.png` and `docs/engine-dugout.png` were rendered before
+# session 3o rewrote `open_standpoint`, and no current room key reproduces
+# either framing: rendering all five commerce candidates and all five
+# hospitality candidates and correlating edge maps against the committed frame
+# gives |r| < 0.04 in every one of the ten. Their replacements are new frames of
+# a named room, not re-takes, and the before/after for those two rows compares
+# two different pictures.
 EXPOSURE_FRAMES = {
     "ROOM_EXPOSURE": {
-        "industrial": (None, "reference/10-interiors-generic-kit/"
-                             "more hallways.jpg"),
-        "store": (None, "reference/03-sector-blue/dock.webp"),
-        "transit": (None, "reference/10-interiors-generic-kit/"
-                          "more hallway.jpg"),
-        "hospitality": (None, "reference/04-sector-red/Doug's Dugout.webp"),
-        "worship": (None, "reference/05-sector-green/council chambers.webp"),
+        # (frame, reference, (room key, resolution)).  The room key is the one
+        # this archetype is rendered FROM: an archetype has 2-17 members and an
+        # exposure has to be measured on one of them, so which one is data.
+        # Where the reference frame depicts a specific room -- `war room.webp`
+        # for office -- that room is chosen, so the comparison is against the
+        # place itself rather than against a cousin.
+        "industrial": ("docs/engine-4a-industrial.png",
+                       "reference/10-interiors-generic-kit/more hallways.jpg",
+                       ("fabrication", "960x540")),
+        "store": ("docs/engine-4a-store.png",
+                  "reference/03-sector-blue/dock.webp",
+                  ("cargo_bays", "960x540")),
+        "transit": ("docs/engine-4a-transit.png",
+                    "reference/10-interiors-generic-kit/more hallway.jpg",
+                    ("transfer_systems", "960x540")),
+        "hospitality": ("docs/engine-4a-hospitality.png",
+                        "reference/04-sector-red/Doug's Dugout.webp",
+                        ("mess_hall", "960x540")),
+        "worship": ("docs/engine-4a-worship.png",
+                    "reference/05-sector-green/council chambers.webp",
+                    ("sanctuary_blue", "960x540")),
         "medical": ("docs/engine-medlab.png",
-                    "reference/03-sector-blue/war room.webp"),
-        "research": (None, "reference/03-sector-blue/war room.webp"),
-        "detention": (None, "reference/03-sector-blue/comand and contorl.webp"),
-        "commerce": ("docs/engine-market.png",
-                     "reference/04-sector-red/more zocalo.png"),
-        "office": (None, "reference/03-sector-blue/war room.webp"),
-        "generic": (None, "reference/07-sector-grey/grey level 1.webp"),
+                    "reference/03-sector-blue/war room.webp",
+                    ("medlab_one", "960x540")),
+        "research": ("docs/engine-4a-research.png",
+                     "reference/03-sector-blue/war room.webp",
+                     ("research_labs", "960x540")),
+        "detention": ("docs/engine-4a-detention.png",
+                      "reference/03-sector-blue/comand and contorl.webp",
+                      ("brig", "960x540")),
+        # NOT a re-take of docs/engine-market.png -- see the note above. That
+        # frame's camera no longer exists and no commerce key reproduces it.
+        "commerce": ("docs/engine-4a-commerce.png",
+                     "reference/04-sector-red/more zocalo.png",
+                     ("business_center", "960x540")),
+        "office": ("docs/engine-4a-office.png",
+                   "reference/03-sector-blue/war room.webp",
+                   ("war_room", "960x540")),
+        "generic": ("docs/engine-4a-generic.png",
+                    "reference/07-sector-grey/grey level 1.webp",
+                    ("hydroponics", "960x540")),
     },
     "BESPOKE_EXPOSURE": {
         "zocalo": ("docs/engine-zocalo.png",
-                   "reference/04-sector-red/more zocalo.png"),
-        "hospitality": ("docs/engine-dugout.png",
-                        "reference/04-sector-red/Doug's Dugout.webp"),
+                   "reference/04-sector-red/more zocalo.png",
+                   ("zocalo", "640x360")),
+        # NOT a re-take of docs/engine-dugout.png -- same reason as commerce.
+        # All five hospitality keys render byte-identically at this camera, so
+        # the choice among them is arbitrary and `fresh_air` is taken because
+        # docs/layer4-lighting/ measures a space of that name.
+        "hospitality": ("docs/engine-4a-bespoke-hospitality.png",
+                        "reference/04-sector-red/Doug's Dugout.webp",
+                        ("fresh_air", "640x360")),
         "command_control": ("docs/engine-cnc.png",
-                            "reference/03-sector-blue/comand and contorl.webp"),
+                            "reference/03-sector-blue/comand and contorl.webp",
+                            ("cnc", "640x360")),
         "docking_bay": ("docs/engine-docking-bay.png",
-                        "reference/03-sector-blue/dock.webp"),
+                        "reference/03-sector-blue/dock.webp",
+                        ("docking_bays", "640x360")),
         "alien_sector": ("docs/engine-alien-sector.png",
                          "reference/05-sector-green/"
-                         "corridor in alien sector.webp"),
+                         "corridor in alien sector.webp",
+                         ("alien_sector", "640x360")),
         "customs": ("docs/engine-customs.png",
                     "reference/11-props-and-technology/babylon 5 welcome "
-                    "sign, instructions, and hub.jpg"),
+                    "sign, instructions, and hub.jpg",
+                    ("customs_north", "640x360")),
         "quarters": ("docs/engine-quarters.png",
-                     "reference/07-sector-grey/grey level 1.webp"),
+                     "reference/07-sector-grey/grey level 1.webp",
+                     ("qtr_command", "640x360")),
         "council_chamber": ("docs/engine-council.png",
-                            "reference/05-sector-green/council chambers.webp"),
+                            "reference/05-sector-green/council chambers.webp",
+                            ("council_chamber", "640x360")),
         "plant": ("docs/engine-plant.png",
-                  "reference/10-interiors-generic-kit/more hallways.jpg"),
+                  "reference/10-interiors-generic-kit/more hallways.jpg",
+                  ("plant_zone", "640x360")),
     },
     # THE ANCHOR. `room_exposure` returns 1.0 for the corridor because 1.0 is
     # what the corridor's own frame over `grey level 1.webp` DEFINES, so it
     # belongs in this table more than anything else does.
     "ANCHOR": {
         "corridor": ("docs/engine-corridor.png",
-                     "reference/07-sector-grey/grey level 1.webp"),
+                     "reference/07-sector-grey/grey level 1.webp",
+                     ("corridor", "1280x720")),
     },
     # THE ASSEMBLED BUILD, measured against the same reference as the anchor,
     # because it is 76% the same geometry. These two are the first frames of the
@@ -2268,11 +2456,19 @@ EXPOSURE_FRAMES = {
     #    disagree, on one frame, in opposite directions. That is worth more than
     #    either verdict: it is a case where matching the show's contrast and
     #    matching the corridor's own offset are not the same requirement.
+    #
+    # THE SHOT FIELD IS None FOR BOTH, and that is a real gap rather than an
+    # omission. These are `--shot deck`, not `--shot interior --room KEY`, so
+    # they cannot be expressed in the (room, res) form the other rows use and
+    # `--rerender` skips them. Their commands are in tools/render_godot.sh's
+    # header. Widening the field to a full argv would make it re-takeable; it
+    # is not done here because a deck render is 38 s against an interior
+    # render's 5 s and nothing in this session needed it.
     "DECK": {
         "deck_corridor": ("docs/engine-deck-corridor.png",
-                          "reference/07-sector-grey/grey level 1.webp"),
+                          "reference/07-sector-grey/grey level 1.webp", None),
         "deck_door": ("docs/engine-deck-door.png",
-                      "reference/07-sector-grey/grey level 1.webp"),
+                      "reference/07-sector-grey/grey level 1.webp", None),
     },
 }
 # The re-verification of all of it, run 2026-07-30 with the distribution
@@ -2282,19 +2478,49 @@ EXPOSURE_FRAMES = {
 EXPOSURE_DISTRIBUTION_DEBT = True
 
 
-def gate_frames(mf=None):
+def rerender_frame(frame, shot):
+    """Re-take one EXPOSURE_FRAMES row from its recorded shot.
+
+    Returns True if a PNG was written. This is what makes the table's third
+    field load-bearing rather than documentation: a frame nobody can re-take is
+    a frame nobody can tell is stale, and eleven of the fourteen distribution
+    failures this project carried were stale frames.
+    """
+    import subprocess                                            # noqa: PLC0415
+    if shot is None:
+        return False
+    room, res = shot
+    out = os.path.join(ROOT, frame)
+    r = subprocess.run(
+        [os.path.join(ROOT, "tools", "render_godot.sh"),
+         "--shot", "interior", "--room", room, "--res", res, "--out", out],
+        capture_output=True, text=True, cwd=ROOT)
+    if not os.path.exists(out):
+        print(f"  RENDER FAILED for {frame}:\n{r.stdout[-1500:]}")
+        return False
+    return True
+
+
+def gate_frames(mf=None, rerender=False):
     """Every exposure with a committed frame, on the new comparison.
 
     Reports, and returns (n_pass, n_fail, n_unverifiable). It does not exit
     non-zero on a distribution failure the way `--gate-drum` does, because
-    fifteen of these are known-failing debt and a command that always fails is
+    several of these are known-failing debt and a command that always fails is
     a command nobody runs. It DOES count the rows that cannot be checked at
-    all, which is the number that should be zero first.
+    all, which is the number that should be zero first -- and as of session 4a
+    it IS zero.
+
+    `rerender=True` re-takes every row that records a shot before measuring it.
+    That is the only way this gate can tell a frame that is wrong from a frame
+    that is merely OLD, and the difference has been worth eleven verdicts.
     """
     mf = mf or _measure_frame()
     npass = nfail = nskip = 0
     for fam in ("ANCHOR", "DECK", "ROOM_EXPOSURE", "BESPOKE_EXPOSURE"):
-        for key, (frame, ref) in sorted(EXPOSURE_FRAMES[fam].items()):
+        for key, (frame, ref, shot) in sorted(EXPOSURE_FRAMES[fam].items()):
+            if rerender and frame is not None and shot is not None:
+                rerender_frame(frame, shot)
             if frame is None:
                 print(f"{fam:16s} {key:16s} NO COMMITTED FRAME -- this "
                       f"exposure cannot be verified against "
@@ -3638,10 +3864,37 @@ def build(args):
     os.makedirs(out_dir, exist_ok=True)
     scene = SHOTS[args.shot](args, out_dir)
     scene["out_png"] = args.out
+    apply_grade(scene, args)
     path = os.path.join(out_dir, "scene.json")
     with open(path, "w") as f:
         json.dump(scene, f, indent=1)
     scene["scene_json"] = path
+    return scene
+
+
+# ---------------------------------------------------------------------------
+# THE TONE CURVE, and why it is a shot property at all
+# ---------------------------------------------------------------------------
+# Everything here is written into scene.json and read by
+# `render_shot.gd::_apply_grade`. Absent keys leave the .tscn's own values
+# alone, so a shot that asks for nothing renders exactly as it did before this
+# existed -- which is the negative control, and `_selftest` runs it.
+#
+# THIS IS NOT A SECOND EXPOSURE KNOB. `ROOM_EXPOSURE` scales the LIGHT IN THE
+# ROOM -- fittings and ambient together -- and moves the whole distribution one
+# way. The tone curve changes the SHAPE of what the camera does with that
+# light, and the two are not interchangeable: see GRADE below for the frames
+# that separate them.
+GRADE_KEYS = ("tonemap", "tonemap-exposure", "tonemap-white",
+              "contrast", "saturation", "brightness")
+
+
+def apply_grade(scene, args):
+    """Copy any grade override off `args` into the shot dict."""
+    for k in GRADE_KEYS:
+        v = getattr(args, k.replace("-", "_"), None)
+        if v is not None:
+            scene[k] = v
     return scene
 
 
@@ -4638,18 +4891,39 @@ def _selftest():
           f"against ({sorted(set(BESPOKE_EXPOSURE) ^ set(EXPOSURE_FRAMES['BESPOKE_EXPOSURE']))})")
     _missing = [f"{fam}/{k}: {p}"
                 for fam, tab in EXPOSURE_FRAMES.items()
-                for k, pair in tab.items() for p in pair
+                for k, row in tab.items() for p in row[:2]
                 if p is not None and not os.path.exists(os.path.join(ROOT, p))]
     check(not _missing,
           f"every frame and reference EXPOSURE_FRAMES names exists ({_missing})")
-    # A NULL FRAME IS NOT A PASS. Nine ROOM_EXPOSURE values have no committed
-    # render, so they cannot be verified by anything; the count is asserted so
-    # it can only go DOWN, and so that quietly deleting a frame to dodge a
-    # failing distribution verdict shows up here instead of nowhere.
+    # A NULL FRAME IS NOT A PASS. Nine ROOM_EXPOSURE values had no committed
+    # render and could not be verified by anything. Session 4a rendered all
+    # nine, so the count is now ZERO and the assertion is that it stays there --
+    # quietly deleting a frame to dodge a failing distribution verdict shows up
+    # here instead of nowhere.
     _unver = sorted(f"{fam}/{k}" for fam, tab in EXPOSURE_FRAMES.items()
-                    for k, (f_, _r) in tab.items() if f_ is None)
-    check(len(_unver) <= 9,
-          f"no MORE exposures have become unverifiable ({len(_unver)}: {_unver})")
+                    for k, row in tab.items() if row[0] is None)
+    check(not _unver,
+          f"no exposure is unverifiable ({len(_unver)}: {_unver})")
+    # AND A FRAME MUST BE RE-TAKEABLE, which is the defect behind eleven of the
+    # fourteen distribution failures: a committed PNG is a cache of a
+    # measurement and nothing could tell a stale cache from a fresh one. Every
+    # interior row records the shot that produces it; the two DECK rows do not,
+    # because they are `--shot deck` and this field cannot express one.
+    _noshot = sorted(f"{fam}/{k}" for fam, tab in EXPOSURE_FRAMES.items()
+                     for k, row in tab.items() if row[2] is None)
+    check(_noshot == ["DECK/deck_corridor", "DECK/deck_door"],
+          f"every row but the two deck shots records how to re-take its frame "
+          f"({_noshot})")
+    # ...and the shot has to name a room that exists, or `--rerender` fails at
+    # render time with a stack trace instead of here with a name.
+    import directory as _dr                                      # noqa: PLC0415
+    _badroom = sorted(
+        f"{fam}/{k}={row[2][0]}" for fam, tab in EXPOSURE_FRAMES.items()
+        for k, row in tab.items()
+        if row[2] is not None and row[2][0] not in ("corridor", "junction")
+        and not any(p["key"] == row[2][0] for p in _dr.PLACES))
+    check(not _badroom,
+          f"every recorded shot names a real directory place ({_badroom})")
     # THE PREDICATE IS STILL DRIVEN BY THE MEASUREMENT, and this is the check
     # that keeps it so. With three framings the union of what they show is now
     # every part the drum builds, so there is no part left sitting below the
@@ -5604,6 +5878,12 @@ def main():
                          "tools/measure_frame.py's whole-distribution "
                          "comparison, and report which exposures have no "
                          "committed frame to verify against at all")
+    ap.add_argument("--rerender", action="store_true",
+                    help="with --gate-frames: RE-TAKE every frame from the "
+                         "shot EXPOSURE_FRAMES records before measuring it. "
+                         "Without this the gate measures a cache and cannot "
+                         "tell a wrong frame from an OLD one -- which is what "
+                         "eleven of the fourteen distribution failures were")
     ap.add_argument("--lights-per-run", type=int, default=10)
     ap.add_argument("--light-range", type=float, default=1100.0)
     # THE DIRECTIONALITY KNOBS, and they exist so that LIGHT_DIRECTIONALITY's
@@ -5679,6 +5959,20 @@ def main():
                          f"and it also restores the flat ambient, so "
                          f"`--soft-fill 0` renders the pre-fill corridor "
                          f"exactly -- see SOFT_FILL")
+    ap.add_argument("--tonemap", type=int, default=None, metavar="MODE",
+                    help="override the scene's tone curve: 0 linear, "
+                         "1 Reinhardt, 2 filmic, 3 ACES, 4 AgX. All three "
+                         "scenes ship 4. THIS IS A CONTRAST CONTROL, not an "
+                         "exposure -- see GRADE")
+    ap.add_argument("--tonemap-exposure", type=float, default=None)
+    ap.add_argument("--tonemap-white", type=float, default=None,
+                    help="INERT UNDER AgX; drum.tscn records the same")
+    ap.add_argument("--contrast", type=float, default=None,
+                    help="post-tonemap trim, 1.0 is identity. Enabling any of "
+                         "contrast/saturation/brightness turns Godot's "
+                         "adjustment stage on, which is off by default")
+    ap.add_argument("--saturation", type=float, default=None)
+    ap.add_argument("--brightness", type=float, default=None)
     a = ap.parse_args()
 
     if a.gate_exterior is not None:
@@ -5688,7 +5982,7 @@ def main():
         sys.exit(0 if run_drum_gates() else 1)
 
     if a.gate_frames:
-        _p, _f, _s = gate_frames()
+        _p, _f, _s = gate_frames(rerender=a.rerender)
         # Non-zero only when a recorded FILE is missing, which is a broken
         # record; the distribution failures are recorded debt, not a build
         # break, and EXPOSURE_DISTRIBUTION_DEBT says so.

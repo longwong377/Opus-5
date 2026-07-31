@@ -163,6 +163,40 @@ WHAT THE CORPUS SAYS, and two of the five results are negative:
                            the 4% overexposure threshold this file already
                            carried, which was set from our own lamp geometry.
 
+TWO STATISTICS PROPOSED IN SESSION 4a AND REFUTED BY THE CORPUS, recorded so
+they are not re-derived. `docs/engine-zocalo-inside.png` was committed with the
+honest craft read "the stall vitrines and the floor pools are clipping to pure
+white". Measured, that frame is 0.00% CLIPPED at this file's threshold -- its
+maximum luminance is 0.921 -- so whatever the eye is seeing, `clipped` cannot
+see it. Two candidate statistics were built to catch it and BOTH FAIL AGAINST
+THE SHOW:
+
+  * `bright_tail`, the fraction of the frame above x8 its own median. Ours is
+    3.39% against `more zocalo.png`'s 0.54%, x6.3, which looked decisive
+    against ONE reference. Over the whole 33-frame corpus the show spans
+    0.00%-7.50% with a median of 2.31%, so 3.39% is an utterly ordinary show
+    value, and the pairwise band at matched median comes out at x15.47 -- wider
+    than `crushed`'s x11.42 and therefore even more inert. `conference
+    aerea.webp` is 7.50% and `zocalo.webp` 7.02%.
+  * `hi_sat`, the mean saturation of the top 1% by luminance -- "are our
+    highlights colourless?". Ours is 0.105 against 0.406 for `more zocalo.png`.
+    The corpus spans 0.025 to 0.891 with a p5 of 0.078, and `Doug's
+    Dugout.webp` -- one of OUR OWN calibration references -- is 0.088, LOWER
+    than the frame the statistic was invented to fail. A gate at the corpus's
+    p5 would admit us and reject the show.
+
+THIS IS THE THIRD TIME THIS PROJECT HAS MADE THE SAME MISTAKE and the third
+time the corpus has caught it: the crushed-fraction finding in session 3n and
+the `grey level 1.webp` p5 outlier in docs/reference-values.md 7.3 are the
+other two. RUN A NEW STATISTIC AGAINST ALL 33 FRAMES BEFORE BELIEVING IT
+AGAINST ONE.
+
+What IS measurable about that frame is LOCAL and this tool cannot express it:
+its floor pool has 42.2% of its pixels within 2% of its own maximum and a
+saturation of 0.046 -- a flat white plateau where a lit floor should have a
+falloff. A gate for that needs REGIONS, and picking regions by eye is the
+practice the head of this docstring exists to warn against.
+
 AND A WARNING THAT BELONGS WITH THE MEDIAN, not with any of the above. The
 median of the MEASURABLE pixels is not proportional to exposure and on some
 frames is not even monotonic in it, because raising exposure recruits
@@ -258,6 +292,42 @@ def measure(path, clip=CLIP, floor=FLOOR, gain=1.0, box=None):
         # and nothing was looking at p99 at all.
         "bright_p99": float(np.percentile(lit, 99.0)),
         "median": float(np.median(lit)),
+        # THE UNCENSORED LEVEL, and it exists because `median` CANNOT BE
+        # INVERTED and every exposure in this project was set by inverting it.
+        #
+        # `median` is taken over `lit`, i.e. over the pixels between `floor`
+        # and `clip`, and that population CHANGES WITH EXPOSURE. Raise the gain
+        # and sub-floor pixels are recruited into the set; they arrive at the
+        # bottom and drag the median down against the gain that lifted them.
+        # That is why the module docstring can report d(ln median)/d(ln gain)
+        # anywhere from 0.97 to 0.01 and NEGATIVE on seven of the corpus's 33
+        # frames, and it is why `gain *= 1.40 * ref/ours` -- which assumes that
+        # exponent is exactly 1 -- is not a derivation.
+        #
+        # This is the 25th percentile of the WHOLE frame, censored by nothing.
+        # Its population is every pixel, always, so it can only move because the
+        # light moved. Measured on the corridor anchor over a x6 sweep of the
+        # ambient (0.4333 -> 0.65 -> 1.30 -> 2.60), the exponents are:
+        #
+        #   statistic            0.433    0.650    1.300    2.600   exponents
+        #   median (censored)   0.0296   0.0421   0.0755   0.1421   +0.86 +0.84 +0.91
+        #   dark_p5 (censored)  0.0126   0.0192   0.0160   0.0377   +1.04 -0.26 +1.23
+        #   level_p25           0.0157   0.0251   0.0554   0.1158   +1.15 +1.14 +1.06
+        #   p50 uncensored      0.0279   0.0394   0.0746   0.1415   +0.85 +0.92 +0.92
+        #   p90 uncensored      0.1272   0.1352   0.1594   0.2077   +0.15 +0.24 +0.38
+        #
+        # p5 GOES DOWN between 0.65 and 1.30 -- the discriminator the whole
+        # distribution verdict rests on is not monotonic in exposure, so it
+        # cannot be solved for either. p25 is monotonic, and its exponent sits
+        # within 15% of proportional over the whole range.
+        #
+        # WHY p25 AND NOT p50: p50 is monotonic too (+0.85..+0.92) but it sits
+        # further up the tone curve, where AgX's shoulder is already bending;
+        # p90 is ON the shoulder and is nearly inert (+0.15). p25 sits in the
+        # shadow-to-midtone region where the transfer is still close to linear,
+        # which is why its exponent is the flattest of the five. It is a
+        # DERIVATION INSTRUMENT, not a verdict: nothing is scored against it.
+        "level_p25": float(np.percentile(y, 25.0)),
         "clipped": float((y >= clip).sum() / n),
         "crushed": float((y < floor).sum() / n),
         "measurable": float(lit.size / n),
@@ -733,7 +803,40 @@ def _selftest():
             check("...and that check FAILS when a band is moved", not bad)
         finally:
             DIST_BAND["dark_p5"] = saved
-    # 8. THE BOX. It has to actually select, or every crop comparison in
+    # 8. `level_p25` IS MONOTONE IN GAIN WHERE THE MEDIAN IS NOT, and this is
+    #    the assertion INV-150 rests on, built as the case with the defect IN
+    #    it rather than the case without. The frame is show-like: a large black
+    #    field under the measurable floor, a lit body, a bright end. Raising
+    #    the exposure RECRUITS that black field into the measurable set from
+    #    the bottom, which is what drags the censored median down against the
+    #    light that lifted it.
+    #
+    #    Built to fire: the black field sits just under FLOOR, so a modest gain
+    #    lifts a large population across it all at once.
+    recruit = np.full((n, n), 0.30)
+    recruit[:150] = 0.0085          # 75% of the frame, just under the 0.010 floor
+    recruit[150:180] = 0.40
+    rp_ = save(recruit, "recruit.png")
+    m10 = measure(rp_, gain=1.0)
+    m14 = measure(rp_, gain=1.4)
+    check("the censored median goes DOWN when the gain goes UP",
+          m14["median"] < m10["median"],
+          f"{m10['median']:.4f} -> {m14['median']:.4f}")
+    check("...and level_p25 goes up, which is why it is what an exposure is "
+          "solved from", m14["level_p25"] > m10["level_p25"],
+          f"{m10['level_p25']:.4f} -> {m14['level_p25']:.4f}")
+    # ...AND THE CONTROL FOR THE CONTROL. On a frame with no sub-floor
+    # population to recruit there is nothing for the censoring to do, and BOTH
+    # statistics track the gain. If this case also showed the median falling,
+    # the one above would be measuring the synthesis rather than the effect.
+    plain = np.full((n, n), 0.30)
+    plain[:60] = 0.10
+    pp_ = save(plain, "plain.png")
+    q10, q14 = measure(pp_, gain=1.0), measure(pp_, gain=1.4)
+    check("with nothing under the floor the median tracks the gain too",
+          q14["median"] > q10["median"] and q14["level_p25"] > q10["level_p25"],
+          f"median {q10['median']:.4f} -> {q14['median']:.4f}")
+    # 9. THE BOX. It has to actually select, or every crop comparison in
     #    export_scene is measuring the whole sheet and saying it is a crop.
     top = measure(ref_p, box=(0.0, 0.0, 1.0, 0.35))
     check("a box measures only its box",

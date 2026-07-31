@@ -4052,3 +4052,105 @@ dressing yields **1 solid against 41**, and the gate names it as sealing the roo
 `dress_*` would miss it and the room would go back to being furnished only by what `compose` adds.
 `bespoke.compose` runs `dressing` itself, so today every composed room has some; a module that
 built its own fittings inline would need them tagged.
+
+---
+
+## INV-150 — `level_p25`: the statistic an exposure can be solved from
+
+`tools/measure_frame.py`, `measure()`.
+
+**What.** The 25th percentile of a frame's linear luminance, **uncensored** — taken over every
+pixel, not over the `[FLOOR, CLIP)` set every other statistic in that file uses. It is a
+**derivation instrument** and nothing is scored against it.
+
+**Why necessary.** Every exposure in `export_scene.ROOM_EXPOSURE` and `BESPOKE_EXPOSURE` was set by
+`gain *= 1.40 * ref_median / our_median`, which assumes `d(ln median)/d(ln gain) = 1`. That formula
+is an inversion, and the median cannot be inverted, because its **population changes with the
+thing being solved for**: raise the gain and sub-floor pixels are recruited into the measurable set,
+where they arrive at the bottom and drag the median *down* against the light that lifted them.
+`measure_frame.py`'s docstring already recorded the exponent ranging 0.97 to 0.01 over the show's
+33 frames. **Measured on our own 21 rooms at gains 0.5 / 1.0 / 2.0:**
+
+| statistic | monotonic in exposure | fitted exponent |
+|---|---|---|
+| `median`, censored | **15 / 21** | **−0.42 … +1.16** |
+| `dark_p5`, censored | 12 / 21 | +0.03 … +1.17 |
+| `level_p25`, uncensored | **20 / 21** | +0.04 … +1.40, and **1.08–1.40 on 19 of 21** |
+
+On six of our rooms the median goes **DOWN when the lights go up** — `transit` −0.42,
+`alien_sector` −0.12, `hospitality` +0.02 — so the old formula does not merely undershoot there,
+it moves the exposure the wrong way.
+
+**What constrained the choice of p25 specifically.** Four uncensored candidates were fitted on the
+corridor anchor over a ×6 ambient sweep: p25 +1.15/+1.14/+1.06, p50 +0.85/+0.92/+0.92, the whole-
+frame mean +0.43/+0.58/+0.72, p90 +0.15/+0.24/+0.38. p90 sits **on AgX's shoulder** and is nearly
+inert; the mean is dragged there by the bright tail; p25 sits in the shadow-to-midtone region where
+the transfer is still close to linear, which is why its exponent is the flattest of the four.
+
+**What it is NOT, and this cost one wrong derivation before it was caught.** `level_p25` is **not
+comparable between frames**, so `p25_ours / p25_ref` is not a level criterion. It is dominated by
+how much of a frame is black: `grey level 1.webp` is 0.0312 and `Doug's Dugout.webp` is 0.0007, a
+factor of 45, and that ratio is about crush, not exposure. Solving against it gave gains of 0.15
+for four rooms. **The target stays the censored median at ×1.40; p25 only supplies the invertible
+leg between a wanted change in median and a change in gain.**
+
+**Negative control, run:** `plant_zone` returns `level_p25` = 0.0012 at gain 0.5, 1.0 **and** 2.0 —
+identical to four figures, because 85% of that frame sits at sRGB byte 0–1 and no gain in the swept
+range lifts it off the 8-bit floor. The derivation refuses it with "FLAT — no response to invert"
+instead of producing a number. That independently explains the note already standing on
+`BESPOKE_EXPOSURE["plant"]` ("sits at 1.59× either way"): the cause is quantisation, not geometry.
+
+**What would overturn it.** A tone curve with a lifted toe — ACES, filmic and Reinhardt all lift it
+more than AgX does — would move p25 up onto a bend and flatten its exponent. Re-fit after any
+change to `tonemap_mode`.
+
+---
+
+## INV-151 — An exposure record must carry the shot that produces its frame
+
+`tools/export_scene.py`, `EXPOSURE_FRAMES`, third field; `--gate-frames --rerender`.
+
+**What.** Every row of `EXPOSURE_FRAMES` gains a `(room key, resolution)` shot, and the gate can
+re-take the frame before measuring it.
+
+**Why necessary.** `--gate-frames` re-measured a committed PNG, so it could say whether the FILE
+passed. It could never say whether the file still described the CODE. **Eleven of the fourteen
+distribution failures this project has been carrying were stale frames.** Every failing frame was
+committed 2026-07-29 or 07-30; every frame committed on 07-31 passes; and the two things that
+landed in between were the lens fix (c05a877) and the soft fill (7cf9404).
+
+**The anchor is the worst case and it is the reason this is an INV rather than a tidy-up.**
+`docs/engine-corridor.png` is the frame `RENDER_OFFSET = 1.40` is defined against, i.e. the origin
+of every other exposure on the station. Measured it read p5 ×1.64 and 1.76% clipped and FAILED.
+Re-rendered from its own recorded command, with no other change:
+
+| | committed | re-rendered | show |
+|---|---|---|---|
+| p5 (band ×1.29) | **×1.64 FAIL** | **×0.80 PASS** | — |
+| clipped | 1.76% | 0.00% | — |
+| soffit ÷ wall | **×1.82** | **×0.214** | 0.23–0.32 |
+| deck ÷ wall | **×0.29** | **×2.59** | 2.49 |
+
+The committed frame had the show's own ladder **upside down** — a bright ceiling over a dark floor.
+CLAUDE.md's headline for layer 4b, *"p5 … fails 13 of 17, bright on 11 — including the corridor
+anchor that defines 1.00 for the entire project (p5 ×1.64)"*, was measured on that file and is a
+description of code that no longer exists.
+
+**What constrained the form.** The field is `(room, res)` rather than a full argv because every
+interior exposure is a property of ONE ROOM and `--shot interior --room KEY` is the shot that
+renders one room in isolation. The two `DECK` rows are `--shot deck` and cannot be expressed in it;
+they carry `None` and the self-test asserts that **exactly those two** do, so the exemption cannot
+quietly grow.
+
+**Negative control, run:** setting a row's shot to a room key that is not in `directory.PLACES`
+fails `export_scene._selftest` by name rather than at render time with a traceback; and the
+unverifiable-row assertion was `<= 9` and is now `== 0`, so deleting a frame to dodge a failing
+verdict fails the suite.
+
+**What would overturn it.** Two rows — `commerce` and `BESPOKE hospitality` — are NOT re-takes of
+what they replace. `docs/engine-market.png` and `docs/engine-dugout.png` were rendered before
+session 3o rewrote `open_standpoint`, and **no current room key reproduces either framing**: all
+five commerce candidates and all five hospitality candidates were rendered and edge-correlated
+against the committed frames and every one of the ten gives |r| < 0.04. Their before/after compares
+two different pictures, and if the old cameras are ever recovered those two rows should be re-taken
+rather than trusted.

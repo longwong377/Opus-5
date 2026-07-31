@@ -143,6 +143,7 @@ func _ready() -> void:
 		var env := ($WorldEnvironment as WorldEnvironment).environment
 		env.ssao_enabled = false
 		env.ssil_enabled = false
+	_apply_grade(args)
 	# Per-shot ambient. The .tscn owns the LOOK and keeps its calibrated value
 	# as the default; what the shot may override is HOW MUCH FILL THIS ROOM
 	# HAS, which is a measured property of the room and not of the look. A brig
@@ -203,6 +204,69 @@ func _apply_lighting(condition: String) -> bool:
 	print("render_shot: night environment mounted, %d light(s) dark: %s"
 		% [night_lights_off.size(), ", ".join(night_lights_off)])
 	return true
+
+
+## Override the mounted Environment's TONE CURVE from the command line.
+##
+## WHY THIS EXISTS, and it is a diagnostic before it is a knob. Every scene in
+## this project renders through `tonemap_mode = 4`, which is AgX, and AgX is a
+## contrast transform as much as it is a range compressor: it lifts the toe and
+## rolls the shoulder off toward white, and Godot ships the BASE transform with
+## no "look" stage on top, so a frame comes out of it flatter and less saturated
+## than the light in the scene. tools/measure_frame.py's distribution verdict
+## fails our frames in exactly that shape -- p5 bright AND p95 dim on the same
+## frame, which no amount of exposure can fix because exposure moves both ends
+## the same way. Without a way to change the curve from outside the scene file
+## that hypothesis could not be tested at all, only asserted.
+##
+## THREE OF THE FOUR ARE NOT SEPARATE KNOBS AND MUST NOT BE TREATED AS SUCH.
+## `tonemap_white` is inert under AgX -- drum.tscn already records that -- and
+## `adjustment_*` is a post-tonemap trim, so a frame graded with contrast is not
+## the same frame lit differently. Anything set here has to be recorded with the
+## frame it produced, which is what `export_scene.GRADE` is for.
+##
+## Everything is optional and anything absent leaves the scene's own value
+## alone, so a render with none of these flags is byte-identical to one from
+## before this function existed. That is the negative control and it is checked.
+func _apply_grade(args: Dictionary) -> void:
+	var env := ($WorldEnvironment as WorldEnvironment).environment
+	var touched := PackedStringArray()
+	# The shot's own values first, then the command line, so a flag always wins
+	# over the JSON and the JSON always wins over the scene file.
+	var src := {}
+	for k in ["tonemap", "tonemap-exposure", "tonemap-white", "contrast",
+			"saturation", "brightness"]:
+		if _shot.has(k):
+			src[k] = _shot[k]
+	for k in src.keys():
+		if not args.has(k):
+			args[k] = src[k]
+	if args.has("tonemap"):
+		env.tonemap_mode = int(args["tonemap"]) as Environment.ToneMapper
+		touched.append("mode=%d" % env.tonemap_mode)
+	if args.has("tonemap-exposure"):
+		env.tonemap_exposure = float(args["tonemap-exposure"])
+		touched.append("exposure=%.3f" % env.tonemap_exposure)
+	if args.has("tonemap-white"):
+		env.tonemap_white = float(args["tonemap-white"])
+		touched.append("white=%.2f" % env.tonemap_white)
+	# Godot gates every adjustment behind one flag, so setting contrast without
+	# it is a silent no-op -- the class of failure this file carries three scars
+	# from. Enable it whenever any of the three is asked for, and set the other
+	# two to their identity so a partial request cannot pick up a stale value.
+	if args.has("contrast") or args.has("saturation") or args.has("brightness"):
+		env.adjustment_enabled = true
+		env.adjustment_contrast = float(args.get("contrast",
+			env.adjustment_contrast))
+		env.adjustment_saturation = float(args.get("saturation",
+			env.adjustment_saturation))
+		env.adjustment_brightness = float(args.get("brightness",
+			env.adjustment_brightness))
+		touched.append("contrast=%.3f sat=%.3f brightness=%.3f"
+			% [env.adjustment_contrast, env.adjustment_saturation,
+				env.adjustment_brightness])
+	if touched.size() > 0:
+		print("render_shot: grade override -- %s" % ", ".join(touched))
 
 
 ## `godot ... -- --scene-json=/path --out=/path` . Everything after the bare
