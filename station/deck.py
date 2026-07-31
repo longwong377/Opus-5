@@ -1399,8 +1399,16 @@ def _sweep():
                 cp = st2.get("corridor_people") or {}
                 walkers += int(cp.get("placed", 0))
                 walk_area += float(cp.get("area_m2", 0.0))
-                room_people += len(st2.get("actors", [])) - int(
-                    cp.get("placed", 0))
+                # COUNTED BY PLACE, NOT BY SUBTRACTION. This was
+                # `len(actors) - placed`, which assumed the corridor's walkers
+                # are in the cast list. They are not, and must not be: an
+                # instanced walker has no baked mesh, so `npc.gd::collect`
+                # would search for parts that do not exist. The subtraction
+                # therefore removed the walker count from a list that never
+                # held them and reported 90 people in the station's rooms
+                # where there are 1,053 -- exactly 1,053 - 963.
+                room_people += sum(1 for a in st2.get("actors", ())
+                                   if a.get("place") != "corridor")
             except Exception:                                   # noqa: BLE001
                 pass
             unopened += [(s, r, dk) + u for u in m["unopened"]]
