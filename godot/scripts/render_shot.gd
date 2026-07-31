@@ -379,7 +379,16 @@ func _spawn_lights() -> void:
 			# is a falloff exponent rather than a blend width, so what is
 			# carried across is the qualitative finding: these pools have
 			# edges, and they are not razors.
-			s.spot_angle_attenuation = 0.6
+			#
+			# PER LIGHT, because a fill is not a pool. `1 - rim^k` at k = 0.6 is
+			# already down to 0.34 halfway to the cone edge, which is right for
+			# a 1.57 m disc on a deck and wrong for a broad overhead wash: it
+			# held the corridor's walls at 17% of the axial value across two
+			# renders 130x apart in delivered energy, so the wall rung did not
+			# move at all and the cause read as an energy problem. The soft fill
+			# asks for k = 4 -- a flat top with a real edge. The DEFAULT is
+			# unchanged, so every spot already in the project renders as it did.
+			s.spot_angle_attenuation = float(l.get("angle_attenuation", 0.6))
 			o = s
 			spots += 1
 		else:
