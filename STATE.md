@@ -2,6 +2,56 @@
 
 **Last updated:** 2026-07-31 · **Session 3v** — **W1 and W2 DONE. 66 of 66 ring decks assemble, 87 rooms with doors, a body walks into any of them** · **3u** — the plan is vertical now; walkability is a gate · **3t** — shadow coverage measured · **3s** — layers 1-4 all 118/118 · **3r** — layer 2 is 16/118
 
+## Session 3v (last) — the furniture is solid, and HALF THE STATION IS STARVED OF IT
+
+**Props and fixtures now collide.** `collision.prop_boxes` derives the boxes from the
+room's own emitted mesh — connected components of shared vertices are the primitives
+`_box`/`_cyl` wrote, and primitives that touch are one object, so a chair's seat, back
+and legs merge into a chair. `docking_bays`: **1,632 primitives → 10 objects**, largest
+6.25 m. Not a second list recorded by the builders: this project has been bitten twice
+by two descriptions of one thing drifting apart, so it reads the mesh.
+
+`rooms.is_solid` is now the **one** definition of "a thing standing in the room, as
+opposed to the room" — used by `build`'s density trial *and* by the collision builder.
+They were different sets for as long as it took to notice: collision took only `dress_`
+furniture, so a player walked through every **fixture** — a bar's till, a medlab's
+scanner — while the walkability guarantee had been computed as though they were solid.
+55 boxes → **88**. A guarantee computed against a different world than the one that
+ships is not a guarantee.
+
+### THE FINDING, and it is a content finding, not a bug
+
+`rooms.build` picks the highest dressing density at which a body can still cross the
+room, falling 1.0 → 0.75 → 0.5 → 0.3 → 0.15 → 0.0. Measured over all 87 walkable rooms
+for the first time (`build(..., report=)`):
+
+| density | rooms |
+|---|---|
+| **1.0** | 43 |
+| 0.75 | 16 |
+| 0.5 | 15 |
+| 0.3 | 7 |
+| 0.15 | 3 |
+| **0.0 — empty** | 3 |
+
+**44 of 87 rooms are furniture-starved, and the worst of them are the ones that should
+be fullest:** `mess_hall`, `happy_daze` and `bar_unnamed` at **0.15**, `casino` and
+`brig` at **0.3**. `bay_elevators`, `fuel_stores` and `hazard_tanks` come out **empty** —
+and not because dressing has nothing for them: `dressing.stats` offers `bay_elevators`
+**533 objects at 21.2 per m²**. The trial rejects every density and falls to zero.
+
+**The diagnosis, and it is two rules disagreeing.** `bay_span_m` sizes a bay from *the
+props ranked along its walls* — that is its whole design, "a bay is exactly the room its
+contents need". The walkability trial then *removes* props until a path exists. So the
+sizing says "this room holds N things" and the trial says "then nobody can walk in it",
+and the loser is the furniture. A bar at 15% density is the exact gap the owner named
+when they sent the Starfield frames.
+
+The fix is not to lower the walkability bar — a room you cannot cross is worse. It is
+that **`bay_span_m` must size for its contents *plus* a lane**, so full density passes by
+construction. That is the next thing, and it is worth more than any other single change
+to how the station reads: it is 44 rooms.
+
 ## Session 3v (later) — the station, not a deck
 
 ```

@@ -562,7 +562,7 @@ def floor_steps(verts, tris, meta, samples=240, lanes=9):
     return worst
 
 
-def prop_boxes(verts, tris, groups, prefix="dress_", min_m=0.18, gap=0.04):
+def prop_boxes(verts, tris, groups, solid=None, min_m=0.18, gap=0.04):
     """Collision boxes for a room's furniture, DERIVED from its own geometry.
 
     `dressing.py` puts 82,362 triangles of furniture on this station and none of
@@ -581,13 +581,24 @@ def prop_boxes(verts, tris, groups, prefix="dress_", min_m=0.18, gap=0.04):
     `min_m` drops anything smaller than a fist in every dimension -- a stapler
     on a desk is not something a body walks into, and 9 items per square metre
     of tabletop is a lot of collision to carry for nothing.
+
+    `solid` decides what counts as an object, and it defaults to `rooms.is_solid`
+    ON PURPOSE: that is the same predicate `rooms.build`'s density trial uses to
+    ask whether a body can still cross the room. The first version took only the
+    `dress_` furniture, so a player walked straight through every FIXTURE -- a
+    bar's till, a medlab's scanner -- while the walkability guarantee had been
+    computed as though they were solid. A guarantee computed against a different
+    world than the one that ships is not a guarantee.
     """
+    if solid is None:
+        import rooms as _R                                       # noqa: PLC0415
+        solid = _R.is_solid
     per = [None] * len(tris)
     for name, lo, hi in groups:
         for i in range(lo, min(hi, len(tris))):
             per[i] = name
     keep = [tri for i, tri in enumerate(tris)
-            if per[i] and per[i].startswith(prefix)]
+            if per[i] and solid(per[i])]
     if not keep:
         return []
 

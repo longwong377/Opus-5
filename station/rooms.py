@@ -480,6 +480,24 @@ STATION_HOUR = 13.0
 DRESS_DENSITIES = (1.0, 0.75, 0.5, 0.3, 0.15, 0.0)
 _TRIM_SUFFIXES = ("_skirt", "_dado", "_rail", "_cornice", "_deck_joint",
                   "_soffit_tee", "_conduit", "_panel", "_mullion")
+# The shell of a room, as opposed to the things standing in it. Anything not
+# ending in one of these is an OBJECT: a workbench, a till, a shelf run, a chair.
+_SHELL_SUFFIXES = ("_deck", "_soffit", "_wall", "_rib") + _TRIM_SUFFIXES
+
+
+def is_solid(name):
+    """Is this group something a body walks into, rather than the room itself?
+
+    ONE DEFINITION, USED TWICE, and that is the whole point of its existing.
+    `build`'s density trial asks "can a body still cross this room" of one set of
+    groups, and `collision.prop_boxes` builds what the body actually collides
+    with. Those were different sets for exactly as long as it took to notice:
+    collision took only the `dress_` furniture, so a player walked through every
+    fixture -- a bar's till, a medlab's scanner -- while the walkability
+    guarantee had been computed as though they were solid. A guarantee computed
+    against a different world than the one that ships is not a guarantee.
+    """
+    return not name.endswith(_SHELL_SUFFIXES)
 TRIM_MAX_PROUD_M = 0.10          # a step you do not trip on
 TRIM_HEAD_M = 2.0
 MULLIONS_PER_BAY = 6
@@ -860,7 +878,8 @@ def _end_wall_with_door(v, t, g, arch, ow, ceil, hl, ol, door_at):
         _box(v, t, g, f"{arch}_wall", (x0, h, hl), (x1, ceil, ol))
 
 
-def build(schema, profile, place, max_span_m=None, door_at=None):
+def build(schema, profile, place, max_span_m=None, door_at=None,
+          report=None):
     """Geometry for one representative bay of a location.
 
     A 300 m storage run is a corridor of identical bays; emitting all of it
@@ -1184,11 +1203,16 @@ def build(schema, profile, place, max_span_m=None, door_at=None):
         trial_g = list(g) + [(n, lo + len(t), hi + len(t))
                              for n, lo, hi in dg]
         if _dens == 0.0 or walkable(
-                _boxes(trial_v, trial_t, trial_g,
-                       lambda n: not n.endswith(
-                           ("_deck", "_soffit", "_wall", "_rib")
-                           + _TRIM_SUFFIXES)), bw, bl):
+                _boxes(trial_v, trial_t, trial_g, is_solid), bw, bl):
             v, t, g = trial_v, trial_t, trial_g
+            # WHICH DENSITY IT SETTLED ON. Without this the only way to know how
+            # much furniture a room actually got is to re-run the trial from
+            # outside, which is a second copy of the rule that decides it -- and
+            # every time this project has kept two copies of one decision they
+            # have drifted. `report` is how a caller asks the thing that decided.
+            if report is not None:
+                report["density"] = _dens
+                report["dress_tris"] = len(dt)
             break
 
 
