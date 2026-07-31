@@ -4404,3 +4404,86 @@ ladder is used, because the crowd covers the same distance whatever level it is 
 `crowd_travel_m` reads 5,966 m either way. `deck_verdict` fails a run whose walkers are all on one
 rung, and it **did** fail while the parse was wrong, on a working ladder: the rungs are separated
 by `/` and the nearest-distance field by `,`.
+
+## INV-231 — A fitting's Godot range is a culling radius, and it was set to the pool's visible extent
+
+`tools/export_scene.py` (`plane_coverage`, `room_reach`, `deck_fixture_reach`, `gate_lighting`,
+`REACH_TARGET_D_OVER_R`, `REACH_CAP`, `WORKING_PLANE_M`, `FIXTURE_REACH`, `LIGHTING_COVERAGE`,
+`AMBIENT_SOLVED`, and `--gate-lighting` / `--fixture-reach`).
+
+**What.** Every `range_m` in `FIXTURE_LIGHTING` was read off a reference frame as *how far the
+visible pool extends* — `cc_wall_course` 3.5 m, `light_downlight` 1.2 m, `zoc_stall_light` 2.5 m.
+Godot's `omni_range` is not that quantity. It is a hard cutoff: `get_omni_attenuation` multiplies
+the falloff by `(1 - (d/r)^4)^2`, which is exactly 0 at `d = r` and already down to 0.35 at
+`d = 0.8 r`. A fitting whose pool measures 3.5 m across was being told to deliver **zero** light
+past 3.5 m, in a room 9.4 m tall.
+
+Each room's fitting ranges are now scaled by `3 × p95(d/r)` over its own working plane, clamped
+to `[1, 3]` — computed from the room's own mesh and its own fittings, memoised, and shared by the
+interior shot and the deck shot so the two cannot describe different rigs.
+
+**Why it is that value.** The 3 is not new. `SOFT_FILL_RANGE_M = 3.0 * SOFT_FILL_HEIGHT_M`
+already records the reason: *"Godot's range is a CULLING WINDOW, not a falloff — and at d/r = 1/3
+it costs 2.4%"*. A source whose furthest lit surface sits at a third of its range has an
+**invisible** cutoff; one whose surface sits at 0.72 of it — `sanctuary_blue` — has lost half its
+light to the window before the surface is reached. The clamp at 1.0 below is a rule and not a
+convenience: a measured range is never **shortened**, because shortening one invents a dimmer
+luminaire, while lengthening one undoes a unit error.
+
+**What constrained it — the corridor anchor, measured rather than exempted.** `--gate-lighting`
+reports, per room, the fraction of the working plane inside some source's range:
+
+| room | covered | d/r p95 |
+|---|---|---|
+| corridor (the anchor, **with** its soft fill) | **100.0%** | 0.31 |
+| cnc | **0.0%** | 2.18 |
+| qtr_command | 10.3% | 3.59 |
+| plant_zone | 11.3% | 7.03 |
+| customs_north | 16.9% | 4.73 |
+| alien_sector | 30.6% | 2.89 |
+| hydroponics | 33.9% | 2.61 |
+| eleven others | 100% | 0.34–0.92 |
+
+The anchor comes out at scale 1.00 because it is already covered three times over, so the change
+cannot move the frame that `RENDER_OFFSET = 1.40` and `AMBIENT_CALIBRATED_ENERGY = 1.30` are
+defined against. That is a measurement, not an exemption — and the **negative control**, which the
+self-test runs, is the whole finding in one line: with the soft fill taken out, the corridor covers
+**54.4%** of its own plane at d/r p95 **1.59**. What the corridor has that no room has is a
+general-service source, not more lamps. Session 3n gave it one and no room ever got one.
+
+**What it explains.** `command_control`'s `cc_light_strip` throws 3.5 m and is mounted 4.36 m and
+5.56 m above the deck, so the working plane is 3.51 m and 4.71 m below a 3.5 m luminaire and the
+disc it can reach is imaginary. `--fixture-energy 6 → 20` had been measured as inert there and
+blamed on the camera; it is inert because the sources deliver nothing to the floor at any energy.
+
+**The A/B that says the cutoff and not the fitting count is what binds**, `sanctuary_blue` at
+960×540 against `council chambers.webp`:
+
+| | median | verdict |
+|---|---|---|
+| `--ambient 0.4 --fixture-energy 90` (30× the shipped energy) | **x0.89** | FAIL, clipping |
+| `--fixture-reach 3.0 --ambient 0.4` (shipped energy) | **x1.25** | PASS, every band |
+
+Thirty times the energy cannot reach the level. Three times the reach does at the default energy.
+
+**What would overturn it.** A measurement of a fitting's falloff rather than of its pool — a frame
+in which one luminaire's contribution can be traced to where it vanishes — would replace the p95
+rule with the real cutoff. So would a Godot release in which `omni_range` stops being a hard
+window. And a room that reaches the `REACH_CAP` of 3.0 is telling you it has too few sources or
+has them in the wrong place: `LIGHTING_COVERAGE` records the four that do, the count each needs
+from `n >= A / (2 R^2)` with `R = sqrt(r^2 - (y - 0.85)^2)`, and the `station/rooms.py` defect
+behind three of them — `_lay` repeats a fitting down the z axis only, and a "ceiling" fitting gets
+exactly two rows at `chan_c ± (chan_hi - chan_lo)/4`, so `LIGHT_PITCH_M`'s measured spacing is
+honoured along one axis and replaced by a geometric fraction along the other. `qtr_command` is
+29.6 × 7.5 m and its six downlights sit at a **single z**.
+
+**And the ambient is solved against the black fraction, because that is the statistic it
+controls.** `AMBIENT_BY_ARCHETYPE`'s values are the per-space `ambient.ratio` from
+`docs/layer4-lighting/*.json`, which CLAUDE.md has flagged since layer 4 opened as *two hand-picked
+regions of a balanced frame* — 0.300 against a whole-frame 0.086 on the same image. An ambient is a
+constant irradiance whichever way a surface faces, so it is exactly the light in the places nothing
+else reaches, and `crushed` is that population by definition. `AMBIENT_SOLVED` therefore holds a
+per-family ratio obtained by rendering against the reference's own crushed fraction, measured by
+the same code, alternating with the fitting energy against the median — two knobs that are
+orthogonal where `room_exposure` is not, since it scales both together and so cannot separate a
+room's level from its contrast at all.
