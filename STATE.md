@@ -4585,3 +4585,176 @@ range. It prints when it fires, because that means a fitting has changed shape.
 * **Whether the doors read.** `door.gd` runs, but the shot is taken from the spawn and no door
   is in frame.
 * **The p5 debt.** Inherited from the corridor anchor and not re-derived here.
+
+## Agent report — budget
+
+**Session 3x. `station/budget.py` now measures the frame a player renders, and five of its
+bounds are RED.** Judge-3w finding 6 ("nothing gates the deck") is closed. `budget.py` returns
+1, so **the `Performance budgets` step in CI will go red on the next push** — that is the
+intended outcome of the brief ("if the content is over budget, SAY SO and leave it failing"),
+and every red line prints what would make it green. Nothing was tuned in either direction.
+
+Files touched: **`station/budget.py`**, **`canon/INVENTIONS.md`** (INV-082..INV-085 appended),
+this section. Nothing else.
+
+### What it measures now
+
+`blue/0/0` **assembled** by `deck.build_deck` — 6 rooms over 344 deg at r = 211.55 m, 597,418
+render triangles, 286 groups, 9,588 collision triangles — with a real frustum swept over
+**48 stations x 24 headings = 1,152 standing poses**, worst case gated. Camera: eye **1.70 m
+above the collision floor**, **70 deg vertical / 102.4 deg horizontal at 16:9**, `near = 0.15`,
+`far = 12000` — near, far and eye height are *read out of `godot/scripts/player.gd` at run time*
+by `budget.shipped_camera()` so they cannot drift. Cost: **62 s** (13 s build, 26 s sweep, the
+rest collision and the drum tile). `--no-deck` skips it and says so loudly; `--station` adds a
+`deck.py --sweep` (+60 s); `--prove` feeds every new bound the regression it exists to catch.
+
+### The numbers
+
+| bound | measured | limit | | derivation |
+|---|---|---|---|---|
+| frustum **structure** | **99,716 tri** | 60,000 | **FAIL 166%** | the limit is UNCHANGED; only the measurement moved |
+| structure share of frame | **8.3%** | 5% | **FAIL 166%** | same quantity, as a share of 1.2 M |
+| frustum, **everything** | 155,018 tri | 300,000 | PASS 52% | the drum's own 25% frame share, as a ceiling |
+| frustum draw calls | 139 | 1,041 | PASS 13% | CPU: 16.67 ms x 0.25 / 4 us (INV-084) |
+| draw calls, whole frame | 325 | 1,041 | PASS 31% | 286 interior resident + 39 exterior |
+| **resident triangles** | **597,418 tri** | 180,000 | **FAIL 332%** | this file's own three-cell resident budget |
+| **shipped camera not wider** | **75 deg** | 70 deg | **FAIL** | `player.gd` sets no fov (INV-083) |
+| **corridor shell tessellation** | **2.236x** | 1.000x | **FAIL 224%** | `MAX_SAG_M` vs `STEP_TOLERANCE_M` (INV-085) |
+| drum tile stride | 1 | 1 | PASS | `collision_stride()`'s own derivation |
+| station collision resident | 649,082 tri | 800,000 | PASS 81% | 130 MB at 200 B/tri, 1% of 16 GB |
+
+`17/22 within budget` on a plain run; `18/23` with `--prove`.
+
+### Seven things nothing was measuring
+
+1. **The judge's 82,478 was one camera at 55 deg.** Swept at the budgeted 70 deg the worst
+   standing pose is **155,018 triangles total, 99,716 of them structure**, at 324.8 deg looking
+   back down the arc into two dressed rooms. The synthetic estimate this replaces read **30,941**
+   — it was not conservative, it was **3.2x wrong**, and it printed 51.6%.
+2. **`deck.py --sweep`'s headline collision figure omits the drum.** It prints *"75,642 collision
+   triangles for the whole walkable station"* and sums ring decks only (`sum(x[4] for x in ok)`,
+   and the drum takes the `continue` above it). The drum's ground at lod0 is **573,440
+   triangles — 88% of the station's real total of 649,082.**
+3. **The corridor collision shell is 2.24x finer than the project's own certified tolerance.**
+   `MAX_SAG_M = 1 mm` sizes its angular step; `STEP_TOLERANCE_M = 5 mm` is what `floor_steps`
+   certifies a floor against, and sag scales as the square of the step. 977 steps built, **437
+   needed. 4,325 triangles a deck** bought at a tolerance five times tighter than anything asserts
+   — while the props next to them are 114 axis-aligned boxes.
+4. **`FRAME_TRIANGLES` contradicts the same file by 16.7x.** `BUDGETS`' comment derives the
+   exterior's 400,000 as *"2% of frame budget"*, which implies a **20 M** frame; `FRAME_TRIANGLES`
+   says **1.2 M**, against which that same 400,000 is **33%** of frame. `docs/AAA-STANDARD.md`
+   quotes the 2% sentence approvingly, so it is wrong in two documents. **Neither number was
+   changed** — everything is gated against the tighter one. INV-082. One frame capture on target
+   settles it, and if 20 M is right, three of the five reds become passes.
+5. **The group spans are not a partition.** On `blue/0/0` they cover **882,134 triangle-slots over
+   597,418 triangles** (`wall_assembly` wraps `wall_panel`, `wall_reveal` and the mullions) and
+   leave **1,248 triangles with no span at all**, which `deck.write_obj` emits as `deck_untagged`.
+   Last-span-wins gives **286 distinct owning names = 286 draw calls**, not the 188 judge-3w
+   recorded — that number predates 9da90c8, which gave the corridor its 14 material spans back.
+6. **Looking up costs 1.61x.** Level gaze 155,018; **+45 deg pitch is 249,856 — 83% of the
+   allowance** — because a ring corridor with no occlusion culling puts the far side of the ring
+   in the frustum. `godot/` contains no `OccluderInstance3D` and no `use_occlusion_culling`.
+   Pitch is printed in full and deliberately **not** gated: the remedy is a system, not content,
+   and a content budget that fails for a missing system points at the wrong thing.
+7. **Godot's `Camera3D` default is 75 deg and it is VERTICAL** — verified against the engine
+   (Godot 4.4 double, headless, `Camera3D.new()` prints `fov=75.0 keep_aspect=1`,
+   `KEEP_HEIGHT == 1`), not remembered. `player.gd` sets no fov, so **a player renders wider than
+   this budget measures**: 161,792 triangles at the same pose, +6,774.
+
+### What was REMOVED, so the removal is auditable
+
+* **`visible_set_tris` as a synthetic estimate** — per-metre rate x sight line + two junctions.
+  It read `30,941 / 60,000 (51.6%)`. Replaced by the frustum measurement above.
+* **The `junction` bound** — it read `1,400 / 2,000 (70.0%)` and gated `interior_kit.junction`,
+  which appears in **no walkable geometry anywhere**: `interior.ring_arc` sweeps a continuous arc
+  with door apertures and never places a crossing. Only `interior_kit`'s own self-test builds one.
+* Kept: **`corridor_tris_per_m`** (285/400), because `ring_arc` builds every walkable metre of the
+  station from that exact call, so it is shipped geometry rather than a proxy for it.
+
+### EXACT CHANGES I NEED APPLIED, in files I do not own
+
+**(a) `godot/scripts/player.gd`** — one line, immediately after `_cam.near = 0.15` (~line 49):
+
+```gdscript
+	# 70 deg VERTICAL, 102.4 deg horizontal at 16:9. Godot's default is 75, which
+	# is wider than station/budget.py measures -- INV-083. If this changes, the
+	# budget's DECK["fov_v_deg"] changes with it, and `budget.py` fails until it does.
+	_cam.fov = 70.0
+```
+
+That turns `shipped camera not wider` green. The alternative is to move
+`DECK["fov_v_deg"]` to 75.0 and re-measure — the budget then rises to ~161,792 in the worst pose
+and `frustum structure` gets worse, not better. Either is defensible; guessing is not.
+
+**(b) `station/collision.py`** — `MAX_SAG_M = 0.001` -> `0.005`, and the comment updated:
+
+```python
+# How much a facet of the swept shell may sag inside the true cylinder. THE SAME
+# TOLERANCE THE FLOOR IS CERTIFIED AGAINST -- `STEP_TOLERANCE_M` below -- because
+# a shell tessellated finer than the gate that certifies it is triangles nobody
+# can feel. At 1 mm this shell was 977 steps where 437 suffice, 2.24x
+# (station/budget.py, INV-085).
+MAX_SAG_M = STEP_TOLERANCE_M
+```
+
+(`STEP_TOLERANCE_M` has to move above it.) Corridor shell 7,824 -> ~3,500 triangles a deck.
+**Re-run `collision.py --selftest` and `walkable.py --deck` afterwards** — `floor_steps` is
+sampled at 240 points over 344 deg, which is coarser than either step count, so it should be
+unchanged, but a collision change that is not re-walked is a collision change nobody checked.
+
+**(c) `station/deck.py`** — `_sweep`'s headline line is wrong by 8.6x on the station total:
+
+```python
+    print(f"  {sum(x[4] for x in ok):,} collision triangles across the ring "
+          f"decks, {sum(x[4] for x in drum):,} more in the drum's ground per "
+          f"tile ({DW_LOD0:,} for the whole drum at lod0) -- the walkable "
+          f"station is {sum(x[4] for x in ok) + DW_LOD0:,}")
+```
+
+where `DW_LOD0` is `dm["drum_lod0_triangles"]` off the tile it already builds. `budget.py` caches
+the ring-deck figure as `RING_DECK_COLLISION_TRIS = 75_642` and `--station` rebuilds and fails on
+any drift, so the two cannot silently diverge.
+
+**(d) `.github/workflows/validate.yml`** — the `Performance budgets` step already runs
+`python3 station/budget.py` and will now **fail**. It also now costs 62 s rather than 2 s. Leave
+it failing until the content moves; if the build has to be green for an unrelated reason, the
+honest lever is `--no-deck`, which prints a banner saying the only gate that measures what a
+player renders was skipped. Do **not** raise a limit to clear it. Consider adding, separately:
+
+```yaml
+      - name: Whole-station collision total has not drifted
+        run: python3 station/budget.py --station --no-deck
+```
+
+**(e) `station/interior.py` / `station/interior_kit.py`** — 1,248 triangles on `blue/0/0` are
+inside `ring_arc`'s returned range and outside every span it returns, in **six gaps of 208, one
+at each door**. They export as `deck_untagged`, match no material rule and take no light. This
+is the same class of defect as judge-3w's headline and the last 0.2% of it.
+
+### What I could not verify, stated bluntly
+
+* **Framerate: nothing.** No GPU, no target hardware. Every number here is a proxy and
+  `docs/AAA-STANDARD.md` says so first.
+* **Three of the four new constants are declared, not measured.** `per_draw_us = 4.0` and
+  `render_thread_share = 0.25` (INV-084) and `bytes_per_tri = 200` (INV-085) come from struct
+  arithmetic and planning convention. The draw-call figure has a genuine independent cross-check
+  — the break-even batch it implies, 4,800 triangles, lands within 30% of this file's own
+  exterior ratio of 6,250 — and `bytes_per_tri` has none. One RSS reading and one frame capture
+  on target close all three.
+* **`FRAME_TRIANGLES` is inherited and self-contradicting.** See finding 4. Every interior
+  percentage in this file rests on it.
+* **One deck of sixty-six.** `blue/0/0` is measured because it is the deck judge-3w judged and
+  the deck `walkable.py --deck` walks. The worst deck on the station may be worse; the sweep
+  costs 62 s a deck, so measuring all 66 is an hour and was not done.
+* **No occluders, no LOD, no streaming in the count, because there are none in the build.**
+  Established by grep over `godot/` (`OccluderInstance3D`, `use_occlusion_culling`: no hits) and
+  by `walk.gd` loading one `.glb` whole. If occlusion culling is added, every frustum number
+  here falls and the gate should be re-derived, not re-tuned.
+* **The frustum test is conservative and its error is measured, not assumed.** Sphere-bound
+  sweep over-accepts **0.34%** against the exact per-vertex test at the same pose; the
+  half-resolution lattice finds 147,416 against 155,552, so the **lattice's own sampling error is
+  5.2%**. Both are printed every run.
+* **A concurrent session was committing to this repository while these numbers were taken.**
+  Everything above is at **9f13dbf**. An earlier build in the same session produced a different
+  group set because `9f13dbf` (npc skin/hair groups) landed between two runs — that is not a
+  determinism bug: three consecutive builds at 9f13dbf are md5-identical.

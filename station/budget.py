@@ -335,8 +335,10 @@ def shipped_camera():
     build ships another understates by whatever the difference is, and the only
     way that cannot drift is to read the shipped value. `player.gd` sets `near`
     and `far` explicitly and sets no `fov`, so the fov is Godot 4's Camera3D
-    default of 75 degrees -- vertical, because `keep_aspect` defaults to
-    KEEP_HEIGHT. That is WIDER than this file budgets for and it is reported.
+    default. VERIFIED AGAINST THE ENGINE rather than remembered -- Godot 4.4
+    double, headless, `Camera3D.new()` prints `fov=75.0 keep_aspect=1`, and
+    keep_aspect 1 is KEEP_HEIGHT, so 75 degrees is VERTICAL. That is wider than
+    this file budgets for and the difference is gated, not just reported.
     """
     path = os.path.join(ROOT, "godot/scripts/player.gd")
     out = {"fov_deg": 75.0, "fov_src": "Godot 4 Camera3D default (player.gd "
@@ -931,10 +933,12 @@ def main(argv=None):
                 check("resident set (3 cells)", tris * 3,
                       CELLS["resident_tris"], " tri",
                       "the cell you are in plus both neighbours")
+        against = (f"{per_m / per_m_straight - 1:+.0%} against the straight "
+                   f"kit's {per_m_straight:.0f} tri/m" if per_m_straight
+                   else "the straight kit did not measure, so there is nothing "
+                        "to compare against")
         check("bent corridor rate", per_m, CELLS["bent_tris_per_m"], " tri/m",
-              f"{per_m / max(per_m_straight, 1e-9) - 1:+.0%} against the "
-              f"straight kit's {per_m_straight:.0f} tri/m -- each bent section "
-              f"carries its own end caps")
+              f"{against} -- each bent section carries its own end caps")
     except Exception as exc:
         check("streaming cells measurable", 1, 0, "", f"could not measure: {exc}")
 

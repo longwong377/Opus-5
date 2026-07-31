@@ -2864,10 +2864,12 @@ assembled deck. The frustum needs a field of view and the shipped build does not
 Pixel count changes shading cost, not the triangle set.
 
 **What is declared: 70.0 degrees, VERTICAL.** Godot's `Camera3D.fov` is the vertical field of view
-when `keep_aspect` is its default `KEEP_HEIGHT`, so a vertical figure is the one that can be pasted
-straight into the engine. At 16:9 it is **102.4 degrees horizontal**, the top of the range PC
-first-person games ship, and it is deliberately at the wide end: a budget measured at a narrow view
-understates by exactly the geometry the wider view adds.
+when `keep_aspect` is `KEEP_HEIGHT`, so a vertical figure is the one that can be pasted straight
+into the engine. **Verified against the engine rather than remembered** — Godot 4.4 double,
+headless, `Camera3D.new()` prints `fov=75.0 keep_aspect=1`, and `Camera3D.KEEP_HEIGHT` is 1. At 16:9,
+70 degrees vertical is **102.4 degrees horizontal**, the top of the range PC first-person games ship,
+and it is deliberately at the wide end: a budget measured at a narrow view understates by exactly
+the geometry the wider view adds.
 
 **What constrained it.** The lower bound is the judge's camera — `docs/judge-3w.md` rendered at 55
 degrees vertical, and gating there would flatter the content by 40% (93,618 triangles against
