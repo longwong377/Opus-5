@@ -348,6 +348,186 @@ FIXTURES = {
 FIXTURE_PITCH_M = 4.5      # spacing of repeated fixtures along the room
 
 # ---------------------------------------------------------------------------
+# WHAT SHAPE EACH FIXTURE ACTUALLY IS -- INV-130
+# ---------------------------------------------------------------------------
+# Every one of the 45 fixture names above used to be emitted as a single call
+# to `_box`, so a "fusion containment vessel" was a rectangular pier and a
+# "fabrication furnace" was a slab. `docs/AAA-STANDARD.md` defines CRAFT 1 as
+# *"a box primitive standing in for a named object"*; `docs/aaa-scorecard.json`
+# scores `generated_rooms` at exactly that, over 58% of the station.
+#
+# `dressing.MACHINES` supplies fifteen parametric machines. This table says
+# which one each fixture is, and it is the whole of the mapping -- there is no
+# per-room special case, because the same table has to move all 78 rooms at
+# once or it is the wrong architecture (`dressing.py` docstring, session 3u).
+#
+# THE KIND IS CHOSEN FROM WHAT THE OBJECT IS, NOT FROM ITS NAME. A "coolant
+# manifold" and a "charging manifold" are both banks of pipe on brackets; a
+# "switchgear cubicle", a "signal rack", a "patch panel" and a "suit locker
+# bank" are all cabinet line-ups with doors; a bund kerb and a dais are both
+# low platforms and get the cheapest machine in the kit, because no
+# articulation finer than the step itself would read on a 0.45 m object.
+#
+# `_selftest` asserts this table covers every name in FIXTURES and
+# PLACE_FIXTURES in both directions, so a fixture added without a shape is a
+# build failure rather than a box that quietly comes back.
+MACHINE_KIND = {
+    # --- archetype scenery ---------------------------------------------
+    "furnace_stack": "furnace",       # body, charge door, lifting gear, flue
+    "plant_column": "vessel",
+    "service_duct": "duct",
+    "service_riser": "vessel",
+    "racking_run": "rack",
+    "gantry_rail": "duct",
+    "equipment_gantry": "gantry",
+    "fume_column": "cabinet",
+    "cell_divider": "screen",
+    "platform_edge": "kerb",
+    "catenary_run": "duct",
+    "back_shelving": "rack",
+    "dais": "kerb",
+    "screen_panel": "screen",
+    "stall_frame": "screen",
+    "awning_rail": "duct",
+    "partition_screen": "screen",
+    # --- the named machines --------------------------------------------
+    "reactor_plant_tank": "vessel",
+    "shield_plant_frame": "block",     # a biological shield is a mass, not a machine
+    "refuel_crane": "crane",
+    "generator_plant_tank": "drum",    # "the generator torus IN SECTION" -- on its side
+    "switchgear_plant_frame": "cabinet",
+    "busbar_plant_conduit": "duct",
+    "exchanger_plant_tank": "vessel",
+    "header_plant_pipe": "pipe_bank",
+    "condensate_plant_pipe": "duct",
+    "manifold_plant_pipe": "pipe_bank",
+    "pump_plant_frame": "skid",
+    "return_plant_pipe": "duct",
+    "bunker_plant_tank": "vessel",
+    "bund_plant_frame": "kerb",
+    "transfer_crane": "crane",
+    "transfer_plant_frame": "rack",
+    "hoist_crane": "crane",
+    "suit_plant_frame": "cabinet",
+    "charging_plant_pipe": "pipe_bank",
+    "lock_plant_conduit": "duct",
+    "umbilical_plant_pipe": "reel",
+    "clamp_plant_frame": "skid",
+    "gallery_plant_conduit": "duct",
+    "plot_plant_frame": "console",
+    "rack_plant_frame": "cabinet",
+    "tray_plant_conduit": "duct",
+    "patch_plant_conduit": "cabinet",
+    "waveguide_plant_pipe": "duct",
+}
+
+# ---------------------------------------------------------------------------
+# AND THE DECLARED PROPS ARE BOXES TOO -- INV-131
+# ---------------------------------------------------------------------------
+# `PROPS` above states it outright: *"(width, depth, height, mount)"* -- a prop
+# IS a box, and `dressing.py`'s own docstring says the same thing about the old
+# furniture. The machinery gate found it: with every FIXTURE articulated, the
+# medlab still measured its machinery at 0.51x its own shell, because a medlab
+# is a gantry (built) plus a diagnostic bed, a medcabinet, an isolation door
+# and a monitor wall (four slabs). `interacts` is what a player can USE, so
+# these are the objects a player is standing closest to when they use them.
+#
+# Same fifteen builders, same nine part names, prefix inherited so
+# `budget.klass_of` still counts them as props rather than as fixtures.
+PROP_KIND = {
+    # seating and surfaces
+    "table": "counter", "seat": "seat", "bench": "seat", "pew": "seat",
+    "stool": "seat", "desk": "counter", "workbench": "counter",
+    "lab_bench": "counter", "counter": "counter", "issue_counter": "counter",
+    "serving_counter": "counter", "bar_counter": "counter",
+    "duty_desk": "counter", "stall": "screen", "gaming_table": "counter",
+    "cafe_table": "counter", "customs_desk": "counter",
+    "reception": "counter", "delegate_bench": "seat",
+    "speaking_position": "console", "market_stall": "screen",
+    "public_gallery": "counter", "tray_dispenser": "cabinet",
+    # sleeping and storage
+    "bunk": "bed", "locker": "cabinet", "weapons_locker": "cabinet",
+    "medcabinet": "cabinet", "parcel_locker": "cabinet",
+    "tool_rack": "rack", "container": "crate", "cold_drawer": "bed",
+    "cryo_pod": "bed", "grow_rack": "rack", "shower": "cabinet",
+    "breather_dispenser": "cabinet", "planter": "crate",
+    # terminals and controls -- a wall terminal is a bezel and a screen
+    "babcom_terminal": "wallpanel", "console": "console",
+    "reactor_console": "console", "furnace_control": "console",
+    "irrigation_control": "wallpanel", "monitor_wall": "wallpanel",
+    "tactical_display": "wallpanel", "credit_terminal": "console",
+    "exchange_terminal": "console", "manifest_terminal": "console",
+    "identicard_reader": "wallpanel", "intercom": "wallpanel",
+    "breaker_lever": "wallpanel", "tank_gauge": "wallpanel",
+    "valve": "wallpanel", "lift_call": "wallpanel",
+    "level_plaque": "wallpanel", "neon_sign": "wallpanel",
+    "menu_display": "wallpanel", "info_board": "wallpanel",
+    "comms_channel": "wallpanel", "station_schematic_screen": "wallpanel",
+    "welcome_board": "wallpanel", "dartboard": "wallpanel",
+    "atmosphere_status_lamp": "wallpanel", "shrine": "cabinet",
+    "shopfront": "screen", "barred_screen": "screen",
+    "gallery_rail": "screen",
+    # medical
+    "diagnostic_bed": "bed",
+    # doors and apertures -- fifteen slabs, and a door is what you stand at
+    "door": "leaf", "office_door": "leaf", "cell_door": "leaf",
+    "isolation_door": "leaf", "blast_door": "leaf", "welded_door": "leaf",
+    "makeshift_door": "leaf", "lift_door": "leaf", "tram_door": "leaf",
+    "bay_door": "leaf", "airlock_door": "leaf", "shuttle_door": "leaf",
+    "gallery_door": "leaf", "building_door": "leaf", "viewport": "wallpanel",
+    "barrier": "screen",
+    # heavy plant and handling
+    "cargo_crane": "crane", "crane": "crane", "catwalk": "kerb",
+    "docking_clamp": "skid", "clamp": "skid", "handhold": "post",
+    "path": "kerb", "pool_edge": "kerb", "deck_marking": "kerb",
+    "bollard": "post", "standpipe": "post", "service_ladder": "screen",
+    "brazier": "post", "launch_tube": "vessel", "pendant_lamp": "post",
+    "bay_control_booth": "cabinet", "baggage_scanner": "gantry",
+}
+
+# Below this, a machine has no room to be one. `platform_edge` is declared with
+# ZERO depth across x, which `_box` renders as twelve degenerate triangles and
+# which no builder can articulate; anything that thin falls back to the box it
+# already was rather than emitting slivers. Stated rather than silently
+# handled, and counted by `_selftest`.
+MACHINE_MIN_M = 0.05
+# The infix that marks a nested machine part. Imported from the module that
+# creates it rather than spelled twice -- two copies of one decision is the
+# defect this repository keeps rediscovering.
+_MACH = "_mp_"
+
+
+def _fixture(v, t, g, name, lo, hi, seed, prefix="fix_", report=None):
+    """Emit one fixture or prop instance as an articulated machine.
+
+    Falls back to `_box` only for a declared dimension too small to hold one --
+    `platform_edge` is 0.00 m across x and `deck_marking` is 0.01 m tall, and
+    a builder given a zero extent emits slivers rather than detail.
+
+    `report["machines"]` records (group, tri_lo, tri_hi, declared_lo,
+    declared_hi) for every instance, because the containment invariant needs
+    the box that was ASKED FOR and only this function knows it. Deriving it
+    again in the self-test would be a second copy of the placement arithmetic,
+    which is the failure mode this repository keeps rediscovering.
+    """
+    import dressing as _dress                                   # noqa: PLC0415
+    table = PROP_KIND if prefix == "prop_" else MACHINE_KIND
+    kind = table.get(name)
+    t0 = len(t)
+    if kind is None or min(hi[i] - lo[i] for i in range(3)) < MACHINE_MIN_M:
+        _box(v, t, g, f"{prefix}{name}", lo, hi)
+        built = False
+    else:
+        _dress.machine(v, t, g, kind, f"{prefix}{name}", lo, hi,
+                       f"{seed}-{name}")
+        built = True
+    if report is not None:
+        report.setdefault("machines", []).append(
+            (f"{prefix}{name}", kind if built else None, t0, len(t),
+             tuple(lo), tuple(hi)))
+    return built
+
+# ---------------------------------------------------------------------------
 # PLACE_FIXTURES -- machinery for the rooms that are one of a kind
 # ---------------------------------------------------------------------------
 # An ARCHETYPE describes a kind of room and there are eleven of them for 128
@@ -1201,15 +1381,17 @@ def build(schema, profile, place, max_span_m=None, door_at=None,
     for name, fw, fd, fh, kind in fx:
         if kind == "spine":
             spine_d = max(spine_d, fd)
-            for zc in _zs(fw):
-                _box(v, t, g, f"fix_{name}", (-fd / 2, 0.0, zc),
-                     (fd / 2, min(fh, ceil - 0.1), zc + fw))
+            for i, zc in enumerate(_zs(fw)):
+                _fixture(v, t, g, name, (-fd / 2, 0.0, zc),
+                         (fd / 2, min(fh, ceil - 0.1), zc + fw),
+                         (place["key"], i), report=report)
         elif kind == "flank":
             s = flank_side
             x0 = (-hw + inset[s]) if s == 0 else (hw - inset[s] - fd)
-            for zc in _zs(fw):
-                _box(v, t, g, f"fix_{name}", (x0, 0.0, zc),
-                     (x0 + fd, min(fh, ceil), zc + fw))
+            for i, zc in enumerate(_zs(fw)):
+                _fixture(v, t, g, name, (x0, 0.0, zc),
+                         (x0 + fd, min(fh, ceil), zc + fw),
+                         (place["key"], i), report=report)
             inset[s] += fd
             flank_side = 1 - flank_side
 
@@ -1223,9 +1405,10 @@ def build(schema, profile, place, max_span_m=None, door_at=None,
         if kind != "over":
             continue
         over_h = max(over_h, fh)
-        for zc in _zs(fw):
-            _box(v, t, g, f"fix_{name}", (chan_c - fd / 2, ceil - fh, zc),
-                 (chan_c + fd / 2, ceil, zc + fw))
+        for i, zc in enumerate(_zs(fw)):
+            _fixture(v, t, g, name, (chan_c - fd / 2, ceil - fh, zc),
+                     (chan_c + fd / 2, ceil, zc + fw), (place["key"], i),
+                     report=report)
 
     # DRESSING -- station/dressing.py. The generator that fills every room, as
     # against the 311 hand-declared prop instances that covered the whole
@@ -1258,7 +1441,8 @@ def build(schema, profile, place, max_span_m=None, door_at=None,
               else (hw - inset[1] - 0.05 - pd))
         if abs(x0) < spine_d / 2.0 + 0.1:            # would sit in the spine
             break
-        _box(v, t, g, f"prop_{key}", (x0, 0.0, z0), (x0 + pd, ph, z0 + pw))
+        _fixture(v, t, g, key, (x0, 0.0, z0), (x0 + pd, ph, z0 + pw),
+                 (place["key"], i), "prop_", report)
         cursor[0 if s < 0 else 1] = z0 + pw + 0.45
         used += pw * pd
         side = -side
@@ -1287,15 +1471,16 @@ def build(schema, profile, place, max_span_m=None, door_at=None,
         if wi >= len(walls):
             break                      # room is out of wall; sized by bay_span
         sill = 0.0 if ph > 2.0 else 1.05
+        sd = (place["key"], walls[wi][0], round(cur, 2))
         if walls[wi][0] == "side":
-            _box(v, t, g, f"prop_{key}", (-hw, sill, cur),
-                 (-hw + pd, sill + ph, cur + pw))
+            _fixture(v, t, g, key, (-hw, sill, cur),
+                     (-hw + pd, sill + ph, cur + pw), sd, "prop_", report)
         elif walls[wi][0] == "near":
-            _box(v, t, g, f"prop_{key}", (cur, sill, -hl),
-                 (cur + pw, sill + ph, -hl + pd))
+            _fixture(v, t, g, key, (cur, sill, -hl),
+                     (cur + pw, sill + ph, -hl + pd), sd, "prop_", report)
         else:
-            _box(v, t, g, f"prop_{key}", (cur, sill, hl - pd),
-                 (cur + pw, sill + ph, hl))
+            _fixture(v, t, g, key, (cur, sill, hl - pd),
+                     (cur + pw, sill + ph, hl), sd, "prop_", report)
         cur += pw + 0.35
     for i, key in enumerate(ceil_props):
         pw, pd, ph, _m = PROPS.get(key, (1.0, 1.0, 0.5, "ceiling"))
@@ -1306,8 +1491,9 @@ def build(schema, profile, place, max_span_m=None, door_at=None,
         top = ceil - over_h
         xc = min(max(chan_c, chan_lo + pd / 2), chan_hi - pd / 2)
         z0 = min(max(-hl + 2.0 + i * 3.0, -hl), hl - pw)
-        _box(v, t, g, f"prop_{key}",
-             (xc - pd / 2, top - ph, z0), (xc + pd / 2, top, z0 + pw))
+        _fixture(v, t, g, key, (xc - pd / 2, top - ph, z0),
+                 (xc + pd / 2, top, z0 + pw), (place["key"], i), "prop_",
+                 report)
 
     # ------------------------------------------------------------------
     # Light fittings. See LIGHTS. Emitted LAST and tested against what is
@@ -1479,6 +1665,32 @@ def build(schema, profile, place, max_span_m=None, door_at=None,
     return v, t, g
 
 
+def machine_escapes(v, t, report, tol=0.0):
+    """Every machine part that left the box its fixture declared.
+
+    Returns [(group, kind, metres outside)] and is empty when the invariant
+    holds. `report` is what `build(..., report=...)` filled in; the boxes come
+    from `_fixture`, which is the only place that knows what was asked for.
+
+    WHY THIS IS THE GATE THE CHANGE NEEDS. Since INV-130 `_solid_boxes` skips
+    the nested part spans, so the interpenetration check cannot see inside a
+    machine -- correctly, because a flange inside its own vessel is one solid.
+    That leaves exactly one thing between an articulated fixture and a room it
+    silently makes impassable: parts staying where the box was. Everything
+    downstream -- `walkable`, `standpoint`, `collision.prop_boxes`, the
+    interpenetration check -- reads that box and nothing else.
+    """
+    import dressing as _dress                                   # noqa: PLC0415
+    out = []
+    for nm, kind, t0, t1, lo, hi in report.get("machines", ()):
+        if kind is None:
+            continue
+        d = _dress.machine_bounds_ok(v, t[t0:t1], 0, lo, hi, tol)
+        if d > 1e-9:
+            out.append((nm, kind, round(d, 4)))
+    return out
+
+
 def _boxes(v, t, g, pred):
     """AABBs of the groups whose name satisfies `pred`."""
     out = []
@@ -1500,8 +1712,25 @@ def _solid_boxes(v, t, g):
     prop legitimately stands in front of one. Light fittings are excluded for
     the same reason and one more: a deck channel is 20 mm proud and a wall
     course is 130 mm proud, neither of which a walker collides with.
+
+    AND MACHINE PARTS ARE EXCLUDED, because they are not separate objects.
+    Since INV-130 a fixture emits an OUTER span covering the whole machine and
+    then part spans NESTED inside it -- a vessel's flanges, legs, stubs and
+    ladder. Counting a part as a solid in its own right would report a flange
+    interpenetrating the vessel it is a flange of, which is not two solids in
+    one place; it is one solid. The outer span still owns the AABB, so every
+    rule that reads this function -- the interpenetration gate, the walkability
+    trial, `standpoint`, `collision.prop_boxes` -- sees exactly the box the
+    fixture occupied before.
+
+    The invariant that makes that safe is `dressing.machine_bounds_ok`: no part
+    may leave its parent's box. `_selftest` measures it on every location, and
+    the negative control -- a machine deliberately built oversize -- is there
+    too, because a containment rule nobody has watched fail is a rule nobody
+    has tested.
     """
-    return _boxes(v, t, g, lambda n: n.startswith(("prop_", "fix_")))
+    return _boxes(v, t, g, lambda n: n.startswith(("prop_", "fix_"))
+                  and _MACH not in n)
 
 
 def _overlaps(a, b, eps=1e-6):
@@ -1702,7 +1931,8 @@ def _selftest():
     # --- geometry ---------------------------------------------------------
     total = 0
     for p in places:
-        v, t, g = build(schema, profile, p)
+        rep = {}
+        v, t, g = build(schema, profile, p, report=rep)
         total += len(t)
         check(f"{p['key']}: builds", len(t) > 40, f"{len(t)} tri")
         # COVERAGE, NOT A SUM. Groups NEST: a person's `npc_standing_3`
@@ -1743,6 +1973,23 @@ def _selftest():
                  for b in boxes[i + 1:] if _overlaps(a[1], b[1])]
         check(f"{p['key']}: no two solids occupy the same space",
               not clash, f"{len(clash)}: {clash[:3]}")
+
+        # --- EVERY MACHINE PART STAYS IN THE BOX ITS FIXTURE DECLARED -----
+        # INV-130's load-bearing invariant. `_solid_boxes` skips the nested
+        # part spans, so the interpenetration check above no longer sees a
+        # flange inside its own vessel -- correct, and it means the ONLY thing
+        # standing between an articulated machine and a room it quietly makes
+        # impassable is this. Measured against the box `_fixture` asked for,
+        # which is why `report["machines"]` exists.
+        #
+        # It has fired twice on real content and neither case was visible in
+        # the probe boxes the builders were developed against: a 0.70 m `over`
+        # crane whose hoist block hung 56 mm below its own rail, and a
+        # patch-panel cabinet that ran its cable way 0.29 m sideways out of a
+        # 0.35 m deep footprint and through the console in front of it.
+        esc = machine_escapes(v, t, rep)
+        check(f"{p['key']}: no machine part leaves the box it replaced",
+              not esc, f"{len(esc)}: {esc[:3]}")
 
         # Walkability, measured rather than assumed. The old form subtracted a
         # hardcoded 0.9 m of prop depth per side; once fixtures started eating
@@ -1820,6 +2067,36 @@ def _selftest():
     bare = [a for a, _ in ARCHETYPES if not FIXTURES.get(a)]
     check("no archetype builds a bare box", not bare and bool(FIXTURES.get(
         "generic")), f"no fixtures for {bare}")
+
+    # --- AND NO FIXTURE IS ONE -- INV-130 ---------------------------------
+    # `MACHINE_KIND` must cover every declared fixture in both directions, so
+    # a fixture added without a shape is a build failure rather than a box that
+    # quietly comes back. The negative control is one line: delete an entry and
+    # this fires naming it.
+    import dressing as _dress                                   # noqa: PLC0415
+    fx_names = set()
+    for _fx in list(FIXTURES.values()) + list(PLACE_FIXTURES.values()):
+        fx_names.update(n for n, *_r in _fx)
+    check("every fixture has a machine shape",
+          not (fx_names - set(MACHINE_KIND)),
+          f"box-only: {sorted(fx_names - set(MACHINE_KIND))}")
+    check("no machine shape is declared for a fixture that does not exist",
+          not (set(MACHINE_KIND) - fx_names),
+          f"orphans: {sorted(set(MACHINE_KIND) - fx_names)}")
+    check("every machine kind named here is one `dressing.py` can build",
+          not (set(MACHINE_KIND.values()) | set(PROP_KIND.values()))
+          - set(_dress.MACHINES),
+          f"unknown: {sorted((set(MACHINE_KIND.values()) | set(PROP_KIND.values())) - set(_dress.MACHINES))}")
+    # PROPS are allowed to be unmapped only where a machine cannot be built --
+    # `platform_edge` is 0.00 m across and `deck_marking` is 10 mm tall. The
+    # list is PRINTED rather than silently tolerated, so it cannot grow.
+    prop_box_only = sorted(k for k in PROPS if k not in PROP_KIND)
+    check("every declared prop has a machine shape or a stated reason",
+          not prop_box_only, f"box-only: {prop_box_only}")
+    tiny = sorted(k for k, s in PROPS.items()
+                  if min(s[0], s[1], s[2]) < MACHINE_MIN_M)
+    print(f"  props still emitted as a plain box because a declared dimension "
+          f"is under {MACHINE_MIN_M} m: {tiny}")
     unscened = [p["key"] for p in places
                 if not any(n.startswith("fix_") for n, _l, _h
                            in build(schema, profile, p)[2])]

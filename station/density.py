@@ -1433,8 +1433,44 @@ def _selftest(verbose=True):
     except Exception as _e:                                     # noqa: BLE001
         check("the drum registries can be compared at all", False, str(_e))
 
-    check("every one of the 118 places was measured",
-          len(rows) == 118, f"{len(rows)} rows")
+    # THE DENOMINATOR IS THE REGISTER'S, NOT A NUMBER WRITTEN HERE. This read
+    # `== 118` and had been red since the gazetteer grew to 128 places, which
+    # is a gate failing for the one reason that is not a defect -- and a gate
+    # that is red for a stale reason is a gate nobody reads. `directory.PLACES`
+    # is the register; asking it cannot go stale.
+    import directory as _D                                      # noqa: PLC0415
+    check("every place in the register was measured",
+          len(rows) == len(_D.PLACES), f"{len(rows)} of {len(_D.PLACES)} rows")
+
+    # --- THE MACHINERY GATE, INV-130, AND ITS NEGATIVE CONTROL ------------
+    # The whole-location number above passes 123 of 128 with every machine in
+    # the station a box, so this gate exists to measure the object rather than
+    # the room. It has to be able to say no, and the control is exact: empty
+    # `rooms.MACHINE_KIND` and `rooms.PROP_KIND` and every fixture and prop
+    # falls back to the single `_box` it was before INV-130.
+    import rooms as _R                                          # noqa: PLC0415
+    probe_keys = ["fabrication", "reactor_hall", "medlab_one",
+                  "business_center"]
+    live = machinery_rows(schema, profile, keys=probe_keys)
+    saved = _R.MACHINE_KIND, _R.PROP_KIND
+    try:
+        _R.MACHINE_KIND, _R.PROP_KIND = {}, {}
+        boxed = machinery_rows(schema, profile, keys=probe_keys)
+    finally:
+        _R.MACHINE_KIND, _R.PROP_KIND = saved
+    check("the machinery gate FAILS when every machine is a box",
+          all(not r["passes"] for r in boxed),
+          f"{sum(1 for r in boxed if r['passes'])} of {len(boxed)} still pass; "
+          f"ratios {[round(r['ratio'], 2) for r in boxed]}")
+    check("...and passes on the machines as shipped",
+          all(r["passes"] for r in live),
+          f"{[(r['key'], round(r['ratio'], 2)) for r in live if not r['passes']]}")
+    lift = (sum(r["lam"] for r in live)
+            / max(sum(r["lam"] for r in boxed), 1e-9))
+    check("the articulated machines carry more line than the boxes did",
+          lift > 2.0, f"{lift:.2f}x over {len(live)} locations")
+    print(f"  machinery line density, articulated / boxed, over "
+          f"{len(live)} locations: {lift:.2f}x")
     check("no location is measured with zero surface area",
           all(r["area"] > 0 for r in rows),
           str([r["key"] for r in rows if r["area"] <= 0][:4]))
@@ -1529,9 +1565,147 @@ def _print_report(rows):
     return len(rows) - len(good)
 
 
+# ---------------------------------------------------------------------------
+# THE MACHINERY GATE -- the half of a room this file could not see
+# ---------------------------------------------------------------------------
+# `report()` above scores a WHOLE LOCATION and 123 of 128 pass it. Every one of
+# those rooms had a "containment vessel" that was a rectangular pier and a
+# "fabrication furnace" that was a slab, so the whole-room number cannot be
+# what says whether the machinery is built. Measured on the pre-INV-130 mesh:
+#
+#     location          room lambda   machinery lambda   machinery normals
+#     fabrication           4.23            1.04               5.95
+#     reactor_hall          4.02            0.66               5.83
+#     medlab_one            5.76            1.89               5.84
+#     business_center       6.20            2.19               5.07
+#
+# THE ARITHMETIC OF WHY THE AVERAGE HIDES IT. `rooms.build` emits 95%+ of a
+# room's surface as SHELL -- deck, soffit, walls, ribs, bands, mullions,
+# panels, deck joints -- and the shell was articulated in session 3s. The
+# machinery is a few percent of the area, so a machine at a sixth of the
+# shell's line density moves the room average by less than the gate's own
+# margin. This is `CLAUDE.md`'s "every gate measured the case without the
+# defect in it", one level down: the gate measured the room and the defect was
+# in the object.
+#
+# THE FLOOR IS THE ROOM'S OWN SHELL, and it is derived rather than chosen for
+# the same reason the three bounds above are:
+#
+#     lambda_machinery  >=  lambda_shell   of the same location
+#
+# In words: *the machine may not be less articulated than the wall behind it.*
+# Nothing is picked -- the bar is whatever that room's own architecture already
+# carries, so a coarse hall gets a coarse bar and a tight office a tight one,
+# and no constant can go stale. It is a floor, not a target: a machine SHOULD
+# beat its shell, because a machine is the thing a player walks up to.
+#
+# `normals` and `octaves` are printed and NOT gated, exactly as in the report
+# above and for the same stated reason: their floors would have to be picked.
+# They are diagnostic, and the one worth reading is `normals` -- density.py's
+# own docstring says a box reads ~6 whatever its tessellation, and every row of
+# the table above sits at 5.1 to 6.0.
+SHELL_SUFFIXES = None            # resolved from rooms.py at call time
+
+
+def _owner_names(tris_n, spans):
+    """Per-triangle group name, LAST SPAN WINS.
+
+    The same rule `export_scene.per_triangle`, `budget.Frustum` and
+    `collision.prop_boxes` all use. It has to be the same rule: since INV-130 a
+    fixture's span CONTAINS its parts' spans, so a rule that took the first
+    owner would score every machine as its outer name and see none of the
+    parts -- and a rule that disagreed with the exporter would be scoring a
+    different mesh than the one that renders.
+    """
+    own = [None] * tris_n
+    for name, lo, hi in spans:
+        for i in range(lo, min(hi, tris_n)):
+            own[i] = name
+    return own
+
+
+def machinery_split(v, t, g):
+    """(machinery triangles, shell triangles) for one built room.
+
+    SHELL is `rooms`' own definition -- the suffixes `is_solid` uses to decide
+    what is the room itself as opposed to a thing standing in it -- so the two
+    modules cannot drift about what a wall is.
+    """
+    import rooms as R                                           # noqa: PLC0415
+    own = _owner_names(len(t), g)
+    mach, shell = [], []
+    for i, tri in enumerate(t):
+        n = own[i]
+        if n is None:
+            continue
+        if n.startswith(("fix_", "prop_")):
+            mach.append(tri)
+        elif n.endswith(R._SHELL_SUFFIXES):
+            shell.append(tri)
+    return mach, shell
+
+
+def machinery_rows(schema=None, profile=None, keys=None):
+    """Score the machinery of every procedural location against its own shell."""
+    import rooms as R                                           # noqa: PLC0415
+    if schema is None:
+        schema, profile = it.load()
+    places = R.unbuilt(schema, profile)
+    if keys:
+        want = set(keys)
+        places = [p for p in places if p["key"] in want]
+    out = []
+    for p in places:
+        v, t, g = R.build(schema, profile, p)
+        mach, shell = machinery_split(v, t, g)
+        am = analyse(v, mach, min_facet_m=0.0)
+        ash = analyse(v, shell, min_facet_m=0.0)
+        n_inst = sum(1 for n, _l, _h in g
+                     if n.startswith(("fix_", "prop_"))
+                     and R._MACH not in n)
+        out.append({
+            "key": p["key"], "name": p["name"], "arch": R.archetype(p),
+            "tris": len(t), "mach_tris": len(mach), "shell_tris": len(shell),
+            "instances": n_inst,
+            "lam": am["lam"], "floor": ash["lam"], "area": am["area"],
+            "normals": am["normals"], "octaves": am["octaves"],
+            "ratio": (am["lam"] / ash["lam"]) if ash["lam"] > 0 else 0.0,
+            "passes": am["lam"] >= ash["lam"],
+        })
+    return out
+
+
+def _print_machinery(rows):
+    print("\nMACHINERY DETAIL GATE -- is the machine as built as the wall "
+          "behind it?\n")
+    print(f"    {'location':34s} {'arch':12s} {'inst':>4s} {'mach tri':>8s} "
+          f"{'area m2':>8s} {'lam':>7s} {'shell':>7s} {'x':>6s} "
+          f"{'norm':>6s} {'oct':>5s}")
+    print("-" * 116)
+    for r in sorted(rows, key=lambda x: x["ratio"]):
+        print(f"{'PASS' if r['passes'] else 'FAIL'}"
+              f"{r['name'][:34]:34s} {r['arch']:12s} {r['instances']:4d} "
+              f"{r['mach_tris']:8,d} {r['area']:8,.0f} {r['lam']:7.3f} "
+              f"{r['floor']:7.3f} {r['ratio']:6.2f} {r['normals']:6.2f} "
+              f"{r['octaves']:5.2f}")
+    bad = [r for r in rows if not r["passes"]]
+    print(f"\n{len(rows) - len(bad)}/{len(rows)} locations have machinery at "
+          f"or above their own shell's line density")
+    print("x     = machinery line density / shell line density. The gate is "
+          ">= 1.00.\nnorm  = effective distinct facing directions, area "
+          "weighted. A BOX READS ~6\n        whatever its tessellation "
+          "(see `analyse`), so a column of 5-6 across a\n        whole room is "
+          "this gate's signature failure and is not itself gated.")
+    return len(bad)
+
+
 def _cli(argv):
     if "--selftest" in argv:
         return _selftest()
+    if "--machinery" in argv:
+        i = argv.index("--machinery")
+        keys = [a for a in argv[i + 1:] if not a.startswith("-")]
+        return 1 if _print_machinery(machinery_rows(keys=keys or None)) else 0
     schema, profile = it.load()
     rows = report(schema, profile)
     if "--json" in argv:

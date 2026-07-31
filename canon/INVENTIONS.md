@@ -3668,3 +3668,121 @@ recognisable hull section would move `comms_operations` (or confirm it); a resol
 level numbering would replace every deck index here; and a decision on the `decks_in_ring`
 z-clipping that volume-audit.md §7.1 proposes would change every floor radius, because these are
 the outermost decks the hull leaves and they are the first ones such a clip would touch.
+
+---
+
+## INV-130 — Fifteen machines, so that a named object is not a box primitive
+
+`station/dressing.py` (the MACHINERY section: `_tube`, `_dome`, `_perim_band`, `_face_strip`,
+`_Parts`, the fifteen `_m_*` builders, `machine`, `machine_bounds_ok`), `station/rooms.py`
+(`MACHINE_KIND`, `_fixture`, `machine_escapes`), `station/density.py` (`machinery_rows`,
+`--machinery`).
+
+**What.** Every one of the 45 fixture names in `rooms.FIXTURES` and `rooms.PLACE_FIXTURES` is
+now built by one of fifteen parametric machines — vessel, furnace, drum, rack, cabinet,
+pipe_bank, duct, crane, screen, gantry, console, skid, reel, block, kerb — instead of by a single
+call to `_box`. A vessel is a lathe barrel with a domed head, girth flanges, lagging strakes, a
+standoff skirt on legs, a bolted manway, radial pipe stubs turning down through elbows, a valve,
+a gauge plate, a ladder, an access platform and a hazard band. Every proportion is a RATIO of the
+box the fixture already declared, so the same machine in a 3.4 m lock and in a 7.5 m reactor hall
+is one object at two sizes rather than two objects. Nothing here traces to a source: the
+reference set holds no view of a Babylon 5 machine space at all
+(`reference/08-sector-yellow-engineering/` is empty, and INV-104 says the same in its own words).
+
+**Why necessary.** `docs/aaa-scorecard.json` scored `generated_rooms` at CRAFT 1, whose written
+descriptor is *"a box primitive standing in for a named object"*, across 58% of the station's
+locations. It was literally accurate: a "fusion containment vessel" was a rectangular pier 4 m
+across and a "fabrication furnace" was a 2.4 x 2.4 x 4.6 m slab. This is the same defect
+CLAUDE.md records under "LAYER 2 WAS UNDER-SPECIFIED", one object smaller — and it survived the
+fix for that one, because `density.py` scores a WHOLE LOCATION and 123 of 128 locations passed it
+with every machine in the station still a box.
+
+**What constrained it.**
+* **The box the fixture already declared.** No part may leave it. That is not tidiness: every
+  walkability, collision and interpenetration rule in `rooms.py` reads the fixture's AABB
+  (`walkable`, `standpoint`, `_solid_boxes`, `collision.prop_boxes`), so a machine that stays
+  inside it cannot make a walkable room impassable. `rooms.machine_escapes` asserts it on every
+  instance in every location; `dressing._selftest` asserts it per kind at the SMALLEST declared
+  size that uses it. It fired four times on real content after passing on probe boxes.
+* **Closed, manifold and outward-wound.** A hole and an inside-out face both render as the
+  background. Each kind is measured with `interior_kit.boundary_edges` and signed volume. Three
+  defects came out of that: a domed head whose last latitude ring collapsed onto the pole
+  (30 non-manifold edges a vessel), a perimeter band whose four members shared their corner posts
+  (36 a block), and a stacked-course construction that buried 622.7 m2 of surface inside a mass
+  whose outside is 82 m2.
+* **Line density has to be spent where it can be SEEN.** A proud band built as one slab spanning
+  a body's full depth carries ten times the surface for the same visible line, so bands are four
+  thin members (`_perim_band`) and joints are single-face strips (`_face_strip`). This is session
+  3x's `portal_frame` finding — *"coincident faces are geometry nobody can see"* — with the trade
+  the other way round: four times the triangles for a tenth of the area.
+* **The group names are constrained by material coverage, exactly as INV-104's were.** The bound
+  fragment names the MATERIAL and the `_mp_` infix marks a machine part, so `fix_mp_plant_frame`
+  takes `plant_frame` -> `steel_gantry_oxide` with no edit to `materials.py`. Nine part names and
+  no more: each distinct name is a draw call in `budget.py`'s `draw calls, whole frame`, which is
+  already over at 1,303 of 1,041.
+* **The vessel barrel is 72% of its declared footprint, not 93%.** The remaining quarter is the
+  plumbing. A vessel drawn to the edge of its own box has nowhere to put a stub, a ladder or a
+  platform, and the first version pushed all three 0.75 m outside it. The declared 4.00 m
+  footprint is the machine PLUS its pipework, which is what a real one's footprint is.
+
+**What would overturn it.** Any frame or print source showing a Babylon 5 plant room, reactor
+hall, foundry, medlab equipment gantry or market stall frame — none is held. More narrowly: a
+frame establishing whether station machinery is CLAD (lagged, banded, smooth) or EXPOSED (open
+frames, visible mechanism) would decide the vessel and the cabinet at once, and they are the two
+kinds that carry most of the station's fixture instances.
+
+---
+
+## INV-131 — And the declared props are boxes too
+
+`station/rooms.py` (`PROP_KIND`, `_fixture`'s `prefix` argument).
+
+**What.** 92 of the 96 entries in `rooms.PROPS` are routed through the same fifteen machines: a
+counter has a kick recess, a nosed top and a panelled front; a door leaf has a reveal built as
+four members, a kick plate, a vision panel, a handle and ribs; a bed has a base, a sectioned
+deck, side rails and a head unit; a wall terminal has a housing, a bezel, a screen and a keypad.
+Four are still a plain box and the list is printed by `rooms._selftest` rather than tolerated
+silently: `deck_marking` (10 mm tall), `level_plaque` (30 mm), `path` (40 mm) and anything else
+whose smallest declared dimension is under `MACHINE_MIN_M`.
+
+**Why necessary.** With every FIXTURE articulated, `density.py --machinery` still failed the
+medlab at 0.75 of its own shell, because a medlab is one gantry (built) plus a diagnostic bed, a
+medcabinet, an isolation door and a monitor wall (four slabs). `rooms.PROPS`' own comment says it
+outright — *"(width, depth, height, mount)"* — a prop IS a box. `interacts` is what a player can
+USE, so these are the objects a player is standing closest to at the moment they use them.
+
+**What constrained it.** The same three as INV-130, plus the prefix: a machine part inherits
+`prop_` from its parent because `budget.klass_of` splits its report on exactly that prefix, and a
+part of a prop counted as a fixture would move a budget line that is already failing.
+
+**What would overturn it.** The same frames. Additionally, `docs/MASTER-PLAN.md` §3.2 argues
+props should be placed against what the simulation needs rather than guessed; when the verb set
+exists, a prop's SHAPE may have to follow its behaviour, and this table is the thing that changes.
+
+---
+
+## INV-132 — The furniture goes through the same kit as the machinery
+
+`station/dressing.py` (`_table`, `_locker`, `_console`, `_shelf`, `_crate` now call `machine`).
+
+**What.** The five furniture builders that stand up and read at a distance are the machine kit's
+counter, cabinet, console, rack and crate. `_chair`, `_bin` and `_drum_can` are NOT routed: they
+are already legs-and-a-back rather than boxes, and a hospitality room carries four chairs per ten
+metres of wall, so a cabinet's triangle count on each would buy a silhouette nobody sees.
+
+**Why necessary.** Measured, not assumed. A ray cast across the medlab's half-distance frame
+after INV-130 lands on `dress_top` — the locker body — 27 times out of 119, more than any other
+group and more than the articulated gantry standing beside it. The fixtures and the declared
+props had been raised and the FURNITURE was still the flattest thing in the room.
+
+**What constrained it.** Two invariants inside `dressing.py` had to change because spans now
+NEST, and both changes are the correction `rooms._selftest` already carries: "every triangle is
+grouped" became a coverage test rather than a sum, and `_surfaces_of` skips part spans, because
+the outer span already sees every horizontal face and counting the parts as well puts two mugs on
+every shelf. The cabinet additionally gained corner posts and bands on all four faces: the doors
+are on one face chosen per instance, and a cabinet articulated on one face only is a slab from
+the other three — which is what the medlab frame showed.
+
+**What would overturn it.** A frame establishing what Babylon 5 station furniture actually looks
+like. `reference/10-interiors-generic-kit/` shows corridors and a garden terrace, not a room's
+casework.
