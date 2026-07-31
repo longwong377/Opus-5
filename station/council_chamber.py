@@ -39,6 +39,7 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 import interior as it                                        # noqa: E402
+import interior_kit as it_kit                                # noqa: E402
 
 # --- the bench -------------------------------------------------------------
 # Proportioned against the seated delegates: the slab top sits at about chest
@@ -62,14 +63,20 @@ FIN_COUNT = 22                  # the radiating fan behind the bench
 FIN_R0_M = 2.2
 FIN_R1_M = 7.4
 FIN_W_M = 0.30
+FIN_D_M = 0.10                  # how thick the fin is -- INV-171
 FIN_TILT_DEG = 16.0
 
 MEDALLION_R_M = 1.35
 MEDALLION_SPOKES = 24
 MEDALLION_RINGS = 3
+MEDALLION_D_M = 0.03            # the backing disc's body -- INV-171
+MEDALLION_RELIEF_M = 0.02       # how far a spoke or ring stands off it
 
 FLOOR_R_M = 11.0
 FLOOR_TILES = 96                # irregular polygons, not a grid
+FLOOR_BED_SEGS = 96             # the bed the mosaic is laid on
+FLOOR_BED_T_M = 0.10            # its body -- INV-171
+TILE_RISE_M = 0.008             # how far a tile stands proud of the grout
 WALL_H_M = 7.0
 
 # ---------------------------------------------------------------------------
@@ -134,8 +141,112 @@ class _M:
             pts = pts[::-1]
         self.quad(pts[0], pts[1], pts[2], pts[3], group)
 
+    # --- the closed primitives ---------------------------------------------
+    # EVERY GROUP IN THIS ROOM WAS A ZERO-THICKNESS PLATE, and the sum was
+    # 1,592 open boundary edges -- the largest single hole in the station and
+    # 43% of the whole composed-shell debt measured in session 4a. `quad` and
+    # `up_quad` above are honest about winding and say nothing about closure,
+    # so a bench top, a fin, a chair seat, a medallion spoke and 168 floor
+    # tiles were all one-sided surfaces standing in for solids.
+    #
+    # A render cannot see this: from in front the plate is there, from behind
+    # it shows the background and the background is black. What it costs a
+    # PLAYER is that every one of those objects vanishes when walked round.
+    #
+    # `plate` and `arc_solid` are the two shapes this room is actually made of.
+
+    def plate(self, a, b, c, d, thick, group, back=None):
+        """A quad given the thickness it physically has: a closed solid.
+
+        Extruded along the quad's own normal, so the caller keeps authoring in
+        the plane it was already thinking in. `back` names the four faces that
+        are not the front, where the material pass wants them separated;
+        by default the whole solid is one group, which is what a fin or a
+        seat pan wants.
+        """
+        pv, pt = it_kit.plate_solid([a, b, c, d], thick)
+        i = len(self.v)
+        self.v.extend(pv)
+        self.t.extend([(x + i, y + i, z + i) for x, y, z in pt])
+        # The face is the first two triangles; everything after it is the back
+        # and the rim, which is where `back` separates the material.
+        self.g.extend([group, group] + [(back or group)] * (len(pt) - 2))
+
+    def arc_solid(self, profile, groups, a0, a1, segs, cy=0.0):
+        """Sweep a closed (r, y) profile through an arc into a closed solid.
+
+        THE BENCH AND THE COVE ARE BOTH LATHES AND BOTH SHIPPED AS RIBBONS.
+        A ribbon of quads is closed nowhere: 40 segments of bench left 42 open
+        edges on the plinth alone, one along the bottom of every segment plus
+        the two ends, and the same count again on each of three more bands.
+
+        `profile` is a closed loop of (r, y) in the chamber's own polar frame;
+        `groups[i]` names the band swept from edge i -> i+1, so the material
+        pass keeps every name it had. The two ends are capped by ear clipping,
+        because the bench profile is NOT convex -- it carries the recess the
+        lit mesh sits in, and a fan triangulation would tile straight across
+        the notch and out through the front of the bench.
+        """
+        n = len(profile)
+        if _shoelace(profile) < 0.0:
+            # Reversing a loop shifts the edge names by one: new edge i runs
+            # new[i] -> new[i+1] = old[n-1-i] -> old[n-2-i], which is OLD edge
+            # n-2-i. Getting this wrong rotates every material in the bench by
+            # one band and nothing but a render would show it.
+            rev = list(groups)[::-1]
+            profile, groups = profile[::-1], rev[1:] + rev[:1]
+        base = len(self.v)
+        for k in range(segs + 1):
+            th = a0 + (a1 - a0) * k / segs
+            ct, st = math.cos(th), math.sin(th)
+            for r, y in profile:
+                self.v.append((r * ct, cy + y, r * st))
+        for k in range(segs):
+            r0, r1 = base + k * n, base + (k + 1) * n
+            for i in range(n):
+                j = (i + 1) % n
+                # Quad (P[k,i], P[k,j], P[k+1,j], P[k+1,i]). Sweeping about +Y
+                # with a CCW (r, y) profile, edge x tangent is the OUTWARD
+                # normal, so the profile edge has to come first; the other
+                # order builds the whole lathe inside-out.
+                self.t += [(r0 + i, r0 + j, r1 + j), (r0 + i, r1 + j, r1 + i)]
+                self.g.extend([groups[i]] * 2)
+        cap = _ear_clip(profile)
+        end = base + segs * n
+        for tri in cap:                                   # the a1 end, outward
+            self.t.append((end + tri[0], end + tri[1], end + tri[2]))
+        for tri in cap:                                   # the a0 end, outward
+            self.t.append((base + tri[0], base + tri[2], base + tri[1]))
+        self.g.extend([groups[0]] * 2 * len(cap))
+
     def as_tuple(self):
         return self.v, self.t, self.g
+
+
+# Both live in the kit, because `docking_bay`'s cross-section needs the same
+# triangulator and two copies of an ear clip is two chances to fix one of them.
+_shoelace = it_kit.shoelace
+_ear_clip = it_kit.ear_clip
+
+
+def _signed_volume(verts, tris):
+    """Six times the enclosed volume. Positive iff the surface faces outward.
+
+    The whole-object counterpart to `interior_kit._selftest`'s centroid test,
+    and the right one for a room: a chamber's centroid is inside the walls, so
+    "does this face point away from the centre" is meaningless for the walls
+    and exactly right for the furniture. Volume is the statistic that works for
+    both, because it is a property of the SURFACE rather than of a viewpoint.
+    """
+    s = 0.0
+    for a, b, c in tris:
+        p, q, r = verts[a], verts[b], verts[c]
+        s += (p[0] * (q[1] * r[2] - q[2] * r[1])
+              - p[1] * (q[0] * r[2] - q[2] * r[0])
+              + p[2] * (q[0] * r[1] - q[1] * r[0]))
+    return s / 6.0
+
+
 
 
 def _u(seed, *parts):
@@ -146,58 +257,77 @@ def _u(seed, *parts):
     return int.from_bytes(h, "big") / float(1 << 64)
 
 
+def bench_profile():
+    """The bench's cross-section, as a closed (r, y) loop, and its band names.
+
+    ONE PLACE where the bench's shape is stated, because the ribbon version
+    stated it four times -- once per band -- and the four disagreed. The lit
+    mesh ran to BENCH_TOP_H - 0.06 = 1.06 m while the top slab's OUTER edge sat
+    at BENCH_TOP_H - drop = 0.971 m, so the panel poked 89 mm out through the
+    desk it is supposed to sit under. Nothing could catch that while the two
+    surfaces were authored in separate loops; a single profile cannot express
+    it at all.
+
+    Read anticlockwise from the inner foot. The notch between `rp` and `r_out`
+    is the recess -- INV-025's 55 mm -- and it is what makes this loop
+    non-convex and forces the ear-clip cap.
+    """
+    r_out, r_in = BENCH_R_M, BENCH_R_M - BENCH_TOP_D_M
+    rp = r_out - BENCH_PANEL_INSET_M
+    y_lip = BENCH_TOP_H_M - BENCH_TOP_D_M * math.sin(
+        math.radians(BENCH_TOP_TILT_DEG))          # the top slab's outer edge
+    y_m0 = BENCH_PLINTH_H_M + 0.05                 # under the lower frame lip
+    y_m1 = y_lip - 0.06                            # under the upper frame lip
+    loop = [(r_in, 0.0), (r_out, 0.0),
+            (r_out, BENCH_PLINTH_H_M), (r_out, y_m0),
+            (rp, y_m0), (rp, y_m1), (r_out, y_m1), (r_out, y_lip),
+            (r_in, BENCH_TOP_H_M)]
+    # One name per EDGE i -> i+1. The face a delegate sees is the plinth, then
+    # the frame's lower lip, the recess, the lit mesh, the recess again, the
+    # upper lip, and the angled slab.
+    names = ["council_plinth",                     # the underside, on the deck
+             "council_plinth",                     # the plinth face
+             "council_frame",                      # lower frame lip
+             "council_frame",                      # the return into the recess
+             "council_mesh",                       # THE LIGHT SOURCE
+             "council_frame",                      # the return back out
+             "council_frame",                      # upper frame lip
+             "council_top",                        # the angled slab
+             "council_plinth"]                     # the back, facing the wall
+    return loop, names
+
+
 def bench(m):
     """The curved bench: plinth, lit mesh panel, and an angled slab top."""
     seg = 40
     a0 = math.radians(-BENCH_ARC_DEG / 2.0)
     a1 = math.radians(BENCH_ARC_DEG / 2.0)
     r_out, r_in = BENCH_R_M, BENCH_R_M - BENCH_TOP_D_M
+    loop, names = bench_profile()
+    m.arc_solid(loop, names, a0, a1, seg)
+
+    # The speaking-position fan, laid on the top at the bench's centre. Inlaid
+    # panels have a thickness: a 4 mm proud plate is what catches the grazing
+    # light off the bench, and a plate with no edge is a hole.
     tilt = math.radians(BENCH_TOP_TILT_DEG)
     drop = BENCH_TOP_D_M * math.sin(tilt)
 
-    for k in range(seg):
-        t0 = a0 + (a1 - a0) * k / seg
-        t1 = a0 + (a1 - a0) * (k + 1) / seg
-        c0, s0 = math.cos(t0), math.sin(t0)
-        c1, s1 = math.cos(t1), math.sin(t1)
+    def top_y(r):
+        """The slab's own height at radius r, so the inlay lies ON it."""
+        f = (r_out - r) / (r_out - r_in)
+        return BENCH_TOP_H_M - drop * (1.0 - f)
 
-        # plinth
-        m.box(0, 0, 0, 0, 0, 0, "council_plinth") if False else None
-        m.quad((r_out * c0, 0.0, r_out * s0), (r_out * c1, 0.0, r_out * s1),
-               (r_out * c1, BENCH_PLINTH_H_M, r_out * s1),
-               (r_out * c0, BENCH_PLINTH_H_M, r_out * s0), "council_plinth")
-
-        # the lit mesh, recessed behind the face plane
-        rp = r_out - BENCH_PANEL_INSET_M
-        m.quad((rp * c0, BENCH_PLINTH_H_M, rp * s0),
-               (rp * c1, BENCH_PLINTH_H_M, rp * s1),
-               (rp * c1, BENCH_TOP_H_M - 0.06, rp * s1),
-               (rp * c0, BENCH_TOP_H_M - 0.06, rp * s0), "council_mesh")
-
-        # the frame the mesh sits behind: a lip top and bottom
-        for y0, y1 in ((BENCH_PLINTH_H_M, BENCH_PLINTH_H_M + 0.05),
-                       (BENCH_TOP_H_M - 0.10, BENCH_TOP_H_M - 0.06)):
-            m.quad((r_out * c0, y0, r_out * s0), (r_out * c1, y0, r_out * s1),
-                   (r_out * c1, y1, r_out * s1), (r_out * c0, y1, r_out * s0),
-                   "council_frame")
-
-        # the angled slab top: falls away from the delegates toward the floor
-        m.up_quad((r_out * c0, BENCH_TOP_H_M - drop, r_out * s0),
-                  (r_out * c1, BENCH_TOP_H_M - drop, r_out * s1),
-                  (r_in * c1, BENCH_TOP_H_M, r_in * s1),
-                  (r_in * c0, BENCH_TOP_H_M, r_in * s0), "council_top")
-
-    # The speaking-position fan, laid on the top at the bench's centre.
     for k in range(13):
         f = (k - 6) / 6.0
         a = f * math.radians(26.0)
         ca, sa = math.cos(a), math.sin(a)
         w = 0.022
-        m.up_quad((r_in * ca - w * sa, BENCH_TOP_H_M + 0.004, r_in * sa + w * ca),
-                  (r_out * ca - w * sa, BENCH_TOP_H_M + 0.004, r_out * sa + w * ca),
-                  (r_out * ca + w * sa, BENCH_TOP_H_M + 0.004, r_out * sa - w * ca),
-                  (r_in * ca + w * sa, BENCH_TOP_H_M + 0.004, r_in * sa - w * ca),
-                  "council_speak_fan")
+        yi, yo = top_y(r_in) + 0.004, top_y(r_out) + 0.004
+        m.plate((r_in * ca - w * sa, yi, r_in * sa + w * ca),
+                (r_out * ca - w * sa, yo, r_out * sa + w * ca),
+                (r_out * ca + w * sa, yo, r_out * sa - w * ca),
+                (r_in * ca + w * sa, yi, r_in * sa - w * ca),
+                0.004, "council_speak_fan")
 
 
 def chair(m, angle_deg, r):
@@ -210,10 +340,11 @@ def chair(m, angle_deg, r):
     def at(dx, dy, dz):
         return (cx + dx * ca - dz * sa, dy, cz + dx * sa + dz * ca)
 
-    # seat pan
-    m.up_quad(at(-hw, CHAIR_SEAT_H_M, -0.26), at(hw, CHAIR_SEAT_H_M, -0.26),
-              at(hw, CHAIR_SEAT_H_M, 0.26), at(-hw, CHAIR_SEAT_H_M, 0.26),
-              "council_chair_seat")
+    # Seat pan. A cushion, not a sheet of paper -- 60 mm of pan is what the
+    # frame shows and a plate with no edge is four open boundary edges a chair.
+    m.plate(at(-hw, CHAIR_SEAT_H_M, 0.26), at(hw, CHAIR_SEAT_H_M, 0.26),
+            at(hw, CHAIR_SEAT_H_M, -0.26), at(-hw, CHAIR_SEAT_H_M, -0.26),
+            0.06, "council_chair_seat")
     for sx in (-1, 1):
         p = at(sx * hw * 0.9, 0.0, 0.20)
         m.box(p[0] - 0.03, p[0] + 0.03, 0.0, CHAIR_SEAT_H_M,
@@ -245,13 +376,16 @@ def fin_wall(m):
         a = math.pi * (k + 0.5) / FIN_COUNT
         ca, sa = math.cos(a), math.sin(a)
         hw = FIN_W_M / 2.0
-        # Each fin is a slab standing off the wall, splaying from a hub.
+        # Each fin is a slab standing off the wall, splaying from a hub -- and
+        # it is a SLAB. As one quad it was a fin you could only see from one
+        # side of the room; the fan is 22 of them and they read as a fan
+        # because they catch the cove light on an edge.
         for r0, r1 in ((FIN_R0_M, FIN_R1_M),):
-            m.quad((r0 * ca - hw * sa, r0 * sa, -0.30),
-                   (r1 * ca - hw * sa, r1 * sa, -0.30),
-                   (r1 * ca + hw * sa, r1 * sa, -0.30 - math.sin(tilt) * 0.5),
-                   (r0 * ca + hw * sa, r0 * sa, -0.30 - math.sin(tilt) * 0.5),
-                   "council_fin")
+            m.plate((r0 * ca - hw * sa, r0 * sa, -0.30),
+                    (r1 * ca - hw * sa, r1 * sa, -0.30),
+                    (r1 * ca + hw * sa, r1 * sa, -0.30 - math.sin(tilt) * 0.5),
+                    (r0 * ca + hw * sa, r0 * sa, -0.30 - math.sin(tilt) * 0.5),
+                    FIN_D_M, "council_fin")
 
 
 def medallion(m, cy, z):
@@ -261,15 +395,24 @@ def medallion(m, cy, z):
     gives a +Z normal, which faces the wall.
     """
     seg = 44
+    # The backing disc is a DISC, not a circle: 30 mm of body, so the spokes
+    # and rings stand on something and the edge of the plate catches light.
+    # As a bare fan it was 44 open edges round its rim and no back at all.
     i0 = len(m.v)
-    m.v.append((0.0, cy, z))
+    for zz in (z, z + MEDALLION_D_M):
+        m.v.append((0.0, cy, zz))
+        for k in range(seg):
+            a = 2.0 * math.pi * k / seg
+            m.v.append((MEDALLION_R_M * math.cos(a),
+                        cy + MEDALLION_R_M * math.sin(a), zz))
+    j0 = i0 + seg + 1
     for k in range(seg):
-        a = 2.0 * math.pi * k / seg
-        m.v.append((MEDALLION_R_M * math.cos(a),
-                    cy + MEDALLION_R_M * math.sin(a), z))
-    for k in range(seg):
-        m.t.append((i0, i0 + 1 + (k + 1) % seg, i0 + 1 + k))
-    m.g.extend(["council_medallion"] * seg)
+        k2 = (k + 1) % seg
+        m.t.append((i0, i0 + 1 + k2, i0 + 1 + k))              # into the room
+        m.t.append((j0, j0 + 1 + k, j0 + 1 + k2))              # into the wall
+        m.t.append((i0 + 1 + k, i0 + 1 + k2, j0 + 1 + k2))     # the rim
+        m.t.append((i0 + 1 + k, j0 + 1 + k2, j0 + 1 + k))
+    m.g.extend(["council_medallion"] * 4 * seg)
 
     hub = MEDALLION_R_M * 0.16
     for k in range(MEDALLION_SPOKES):
@@ -281,25 +424,41 @@ def medallion(m, cy, z):
         # that were facing the wall were the RINGS, whose winding runs the other
         # way round because their quads go tangentially first. Two orientations
         # in one function, and assuming they shared one cost a round trip.
-        m.quad((hub * ca - w * sa, cy + hub * sa + w * ca, z - 0.02),
-               (MEDALLION_R_M * ca - w * sa,
-                cy + MEDALLION_R_M * sa + w * ca, z - 0.02),
-               (MEDALLION_R_M * ca + w * sa,
-                cy + MEDALLION_R_M * sa - w * ca, z - 0.02),
-               (hub * ca + w * sa, cy + hub * sa - w * ca, z - 0.02),
-               "council_medallion_spoke")
+        m.plate((hub * ca - w * sa, cy + hub * sa + w * ca, z - 0.02),
+                (MEDALLION_R_M * ca - w * sa,
+                 cy + MEDALLION_R_M * sa + w * ca, z - 0.02),
+                (MEDALLION_R_M * ca + w * sa,
+                 cy + MEDALLION_R_M * sa - w * ca, z - 0.02),
+                (hub * ca + w * sa, cy + hub * sa - w * ca, z - 0.02),
+                MEDALLION_RELIEF_M, "council_medallion_spoke")
 
+    # The rings are RIBS, swept round as closed solids. Emitted as quads they
+    # were the single largest leak in the room -- 264 open edges, 17% of the
+    # chamber's total, on three bands nobody could see the section of.
     for ri in range(1, MEDALLION_RINGS + 1):
         rr = MEDALLION_R_M * ri / (MEDALLION_RINGS + 1)
         w = 0.022
+        z0, z1 = z - 0.03, z          # z0 toward the room, z1 flush on the disc
+        i0 = len(m.v)
         for k in range(seg):
-            a0 = 2.0 * math.pi * k / seg
-            a1 = 2.0 * math.pi * (k + 1) / seg
-            m.quad(((rr - w) * math.cos(a1), cy + (rr - w) * math.sin(a1), z - 0.03),
-                   ((rr + w) * math.cos(a1), cy + (rr + w) * math.sin(a1), z - 0.03),
-                   ((rr + w) * math.cos(a0), cy + (rr + w) * math.sin(a0), z - 0.03),
-                   ((rr - w) * math.cos(a0), cy + (rr - w) * math.sin(a0), z - 0.03),
-                   "council_medallion_ring")
+            a = 2.0 * math.pi * k / seg
+            ca, sa = math.cos(a), math.sin(a)
+            for rad in (rr - w, rr + w):
+                for zz in (z0, z1):
+                    m.v.append((rad * ca, cy + rad * sa, zz))
+        for k in range(seg):
+            b = i0 + 4 * k
+            n = i0 + 4 * ((k + 1) % seg)
+            # (b+0, b+1, b+2, b+3) = (in/z0, in/z1, out/z0, out/z1). The
+            # section is traversed CLOCKWISE in (radial, z) -- the opposite
+            # hand to `arc_solid`'s profile, because this lathe turns about +Z
+            # and that one turns about +Y. Assuming the two shared a handedness
+            # is exactly the mistake the spokes-versus-rings comment above
+            # records costing a round trip.
+            for p, q in ((0, 1), (1, 3), (3, 2), (2, 0)):
+                m.t.append((b + p, b + q, n + q))
+                m.t.append((b + p, n + q, n + p))
+        m.g.extend(["council_medallion_ring"] * 8 * seg)
 
 
 def mosaic_floor(m, seed="council"):
@@ -308,8 +467,31 @@ def mosaic_floor(m, seed="council"):
     Built as a deterministic Voronoi-ish fan: tiles radiate from the centre with
     jittered angular and radial boundaries. The frame shows irregular polygons
     of varying size, and a square grid reads as a bathroom.
+
+    A MOSAIC IS TILES ON A BED, and building it as 168 floating quads was wrong
+    twice. Every tile was four open boundary edges -- 672 of them, the single
+    biggest leak in the station -- and because the jitter leaves a grout gap
+    between neighbours, **there was nothing under the gaps**. A player standing
+    on this floor was looking through it into the background, which is black,
+    at every joint. The bed is now a closed slab and each tile a closed pad
+    laid TILE_RISE_M proud of it, which is what puts a grout line in the frame.
     """
     rings = 6
+    # The bed. Its top is the grout plane; the tiles sit on it.
+    bed = [(FLOOR_R_M * math.cos(math.tau * i / FLOOR_BED_SEGS),
+            FLOOR_R_M * math.sin(math.tau * i / FLOOR_BED_SEGS))
+           for i in range(FLOOR_BED_SEGS)]
+    bv, bt = it_kit.deck_pad(bed, -FLOOR_BED_T_M, 0.0)
+    i0 = len(m.v)
+    m.v.extend(bv)
+    m.t.extend([(a + i0, b + i0, c + i0) for a, b, c in bt])
+    # `council_floor_2` rather than a new name. It is the group
+    # `materials.council_floor_dark` binds -- the mosaic's DARK tile -- which is
+    # what a grout bed under pale tiles is. A new group name would resolve to
+    # the glTF fallback, the defect session 3x found on 1,248 door triangles,
+    # and `test_materials_layer3` catches it: it failed on this exact line.
+    m.g.extend(["council_floor_2"] * len(bt))
+
     for ri in range(rings):
         r0 = FLOOR_R_M * ri / rings
         r1 = FLOOR_R_M * (ri + 1) / rings
@@ -322,11 +504,16 @@ def mosaic_floor(m, seed="council"):
             g0 = r0 + (r1 - r0) * 0.06 * _u(seed, "r", ri, k)
             g1 = r1 - (r1 - r0) * 0.06 * _u(seed, "r", ri, k, 1)
             shade = int(_u(seed, "s", ri, k) * 3)
-            m.up_quad((g0 * math.cos(a0), 0.0, g0 * math.sin(a0)),
-                      (g1 * math.cos(a0), 0.0, g1 * math.sin(a0)),
-                      (g1 * math.cos(a1), 0.0, g1 * math.sin(a1)),
-                      (g0 * math.cos(a1), 0.0, g0 * math.sin(a1)),
-                      f"council_floor_{shade}")
+            tv, tt = it_kit.deck_pad(
+                [(g0 * math.cos(a0), g0 * math.sin(a0)),
+                 (g1 * math.cos(a0), g1 * math.sin(a0)),
+                 (g1 * math.cos(a1), g1 * math.sin(a1)),
+                 (g0 * math.cos(a1), g0 * math.sin(a1))],
+                0.0, TILE_RISE_M)
+            j = len(m.v)
+            m.v.extend(tv)
+            m.t.extend([(a + j, b + j, c + j) for a, b, c in tt])
+            m.g.extend([f"council_floor_{shade}"] * len(tt))
 
 
 def house_cove(m):
@@ -335,19 +522,23 @@ def house_cove(m):
     Segments of an arc at COVE_Y_M, standing COVE_D_M off the wall over the
     same half of the chamber the fin fan occupies -- the wall the camera faces
     and the wall the measurement watched brighten.
+
+    A HOUSING, not a stripe. The whole point of this fitting is that you see
+    the glow and never the lamp, which needs a body for the lamp to be behind;
+    as a single ribbon of quads it was a painted band with 26 open edges and
+    nothing to conceal anything.
     """
     r = FLOOR_R_M - COVE_D_M
-    for k in range(COVE_SEGS):
-        a0 = math.pi * k / COVE_SEGS
-        a1 = math.pi * (k + 1) / COVE_SEGS
-        c0, s0 = math.cos(a0), math.sin(a0)
-        c1, s1 = math.cos(a1), math.sin(a1)
-        # A lit strip facing INTO the room, its housing hidden behind the lip.
-        m.quad((r * c0, COVE_Y_M, r * s0),
-               (r * c1, COVE_Y_M, r * s1),
-               (r * c1, COVE_Y_M + COVE_H_M, r * s1),
-               (r * c0, COVE_Y_M + COVE_H_M, r * s0),
-               "light_house_cove")
+    # (r, y) section: the lit face inboard, the housing behind it against the
+    # wall. Convex, so the ear clip degenerates to a fan and still checks out.
+    m.arc_solid([(r, COVE_Y_M), (FLOOR_R_M, COVE_Y_M),
+                 (FLOOR_R_M, COVE_Y_M + COVE_H_M), (r, COVE_Y_M + COVE_H_M)],
+                # The housing is `council_frame`, a bound name: it is the same
+                # metalwork as the bench's lit-panel surround and the same job,
+                # a body you never see holding a face you always do.
+                ["council_frame", "council_frame",
+                 "council_frame", "light_house_cove"],
+                0.0, math.pi, COVE_SEGS)
 
 
 def council_chamber(seats=SEATS):
@@ -390,9 +581,15 @@ def _selftest():
     mr = [math.hypot(v[i][0], v[i][2]) for k in mesh for i in t[k]]
     fr = [math.hypot(v[i][0], v[i][2]) for k in range(len(t))
           if g[k] == "council_frame" for i in t[k]]
+    # Against the frame's OUTERMOST radius, not its innermost. The frame now
+    # wraps into the recess -- the two returns either side of the panel are
+    # frame, and they are at the panel's own radius by construction -- so
+    # `min(fr)` is the bottom of the notch and comparing against it asks
+    # whether the panel is behind itself. What the reference establishes is
+    # that the lit face sits behind the FACE of the bench.
     check("the mesh is recessed behind its frame, not coplanar",
-          max(mr) < min(fr) - 1e-9,
-          f"mesh out to {max(mr):.3f}, frame at {min(fr):.3f}")
+          max(mr) < max(fr) - BENCH_PANEL_INSET_M + 1e-9,
+          f"mesh out to {max(mr):.3f}, frame face at {max(fr):.3f}")
 
     # --- seats -------------------------------------------------------------
     # Five delegations can be counted in the frame and the arc runs past both
@@ -416,42 +613,128 @@ def _selftest():
     check("the bench arc leaves the speaker a place to stand",
           BENCH_ARC_DEG < 200.0, f"{BENCH_ARC_DEG} deg")
 
-    # --- flat things face up ------------------------------------------------
-    for grp in ("council_top", "council_speak_fan", "council_chair_seat"):
+    # --- THE ROOM IS CLOSED -------------------------------------------------
+    # 1,592 open boundary edges shipped for four sessions and nothing here
+    # could see them, because every gate in this file measured which way a
+    # surface FACED. A surface that is not there faces nowhere, so a facing
+    # test passes vacuously on the half of a plate that does not exist. This
+    # is the measurement that catches it, and it is first now.
+    op, nm = it_kit.boundary_edges(v, t)
+    check("the chamber is a closed surface", not op,
+          f"{len(op)} open boundary edges, first at {op[:1]}")
+    check("...and no edge carries more than two faces", not nm,
+          f"{len(nm)} non-manifold edges, first at {nm[:1]}")
+    check("the chamber encloses a positive volume, so it is not inside-out",
+          _signed_volume(v, t) > 0.0, f"{_signed_volume(v, t):.1f} m3")
+
+    # NEGATIVE CONTROL -- one triangle removed has to fire the closure gate.
+    check("...and dropping ONE triangle fires that gate",
+          len(it_kit.boundary_edges(v, t[1:])[0]) == 3,
+          f"{len(it_kit.boundary_edges(v, t[1:])[0])} open with a hole in it")
+
+    # --- flat things face up, MEASURED ON THE FACE YOU CAN SEE --------------
+    # These groups are solids now, so their undersides face down and must.
+    # The honest question is whether the TOP of each object faces up, so the
+    # test is restricted to triangles lying in the object's own highest plane
+    # -- which is also the only plane a standing player ever sees.
+    def top_face_bad(pick, tol=1e-6):
+        ks = [k for k in range(len(t)) if pick(g[k])]
+        if not ks:
+            return None
+        ytop = max(v[i][1] for k in ks for i in t[k])
         bad = 0
-        for k, tri in enumerate(t):
-            if g[k] != grp:
+        for k in ks:
+            if any(abs(v[i][1] - ytop) > tol for i in t[k]):
                 continue
-            p0, p1, p2 = (v[i] for i in tri)
+            p0, p1, p2 = (v[i] for i in t[k])
             u = tuple(p1[i] - p0[i] for i in range(3))
             w = tuple(p2[i] - p0[i] for i in range(3))
             if u[2] * w[0] - u[0] * w[2] <= 0:
                 bad += 1
-        check(f"{grp} faces up", bad == 0, f"{bad} downward")
+        return bad
+
+    for grp in ("council_speak_fan", "council_chair_seat"):
+        bad = top_face_bad(lambda n, grp=grp: n == grp)
+        check(f"{grp}'s top face faces up", bad == 0, f"{bad} downward")
     floor_groups = [grp for grp in set(g) if grp.startswith("council_floor")]
+    bad = top_face_bad(lambda n: n in floor_groups)
+    check("the mosaic's tile faces face up", bad == 0, f"{bad} downward")
+    check("the tiles stand proud of the bed they are laid on",
+          TILE_RISE_M > 0.0 and FLOOR_BED_T_M > 0.0,
+          "a mosaic with no bed shows the background through every joint")
+
+    # The bench top is a tilted slab, so it has no single horizontal plane.
+    # What it must not do is face away from the room: every triangle of the
+    # slab group has a POSITIVE y normal component.
     bad = 0
     for k, tri in enumerate(t):
-        if g[k] not in floor_groups:
+        if g[k] != "council_top":
             continue
         p0, p1, p2 = (v[i] for i in tri)
         u = tuple(p1[i] - p0[i] for i in range(3))
         w = tuple(p2[i] - p0[i] for i in range(3))
         if u[2] * w[0] - u[0] * w[2] <= 0:
             bad += 1
-    check("the mosaic floor faces up", bad == 0, f"{bad} downward")
+    check("council_top faces up", bad == 0, f"{bad} downward")
 
     # --- the medallion faces the room --------------------------------------
+    # Same correction: the disc, the spokes and the rings all have backs now,
+    # and a back facing the wall is the point of having one. The face a
+    # delegate sees is the one at the lowest z, which is toward the room.
+    ks = [k for k in range(len(t)) if g[k].startswith("council_medallion")]
+    zfront = min(v[i][2] for k in ks for i in t[k])
     bad = 0
-    for k, tri in enumerate(t):
-        if not g[k].startswith("council_medallion"):
+    for k in ks:
+        if any(abs(v[i][2] - zfront) > 1e-6 for i in t[k]):
             continue
-        p0, p1, p2 = (v[i] for i in tri)
+        p0, p1, p2 = (v[i] for i in t[k])
         u = tuple(p1[i] - p0[i] for i in range(3))
         w = tuple(p2[i] - p0[i] for i in range(3))
         if u[0] * w[1] - u[1] * w[0] >= 0:
             bad += 1
-    check("the medallion faces into the room", bad == 0,
+    check("the medallion's front face faces into the room", bad == 0,
           f"{bad} triangles facing the wall")
+
+    # --- the primitives, on the hard case -----------------------------------
+    # `arc_solid`'s end cap is the piece with a real chance of being wrong, so
+    # it is tested on the NON-CONVEX profile the bench actually uses rather
+    # than on a rectangle. A fan triangulation tiles straight across the
+    # panel recess, and the way that shows up is AREA: a cap that spills
+    # outside its outline covers more than the outline does.
+    loop, names = bench_profile()
+    tri = _ear_clip(loop)
+    area = sum(abs((loop[b][0] - loop[a][0]) * (loop[c][1] - loop[a][1])
+                   - (loop[c][0] - loop[a][0]) * (loop[b][1] - loop[a][1])) / 2.0
+               for a, b, c in tri)
+    shoe = abs(_shoelace(loop)) / 2.0
+    check("the bench end cap tiles its profile without spilling outside it",
+          abs(area - shoe) < 1e-12, f"cap {area:.9f} m2 vs profile {shoe:.9f} m2")
+    check("...and the profile really is the non-convex case",
+          any(((loop[i - 1][0] - loop[i - 2][0]) * (loop[i][1] - loop[i - 2][1])
+               - (loop[i - 1][1] - loop[i - 2][1]) * (loop[i][0] - loop[i - 2][0]))
+              < 0 for i in range(len(loop))),
+          "a convex profile would let a fan pass and the gate would be inert")
+    # NEGATIVE CONTROL -- the fan this replaced, on the same profile.
+    fan_area = sum(abs((loop[i][0] - loop[0][0]) * (loop[i + 1][1] - loop[0][1])
+                       - (loop[i + 1][0] - loop[0][0]) * (loop[i][1] - loop[0][1]))
+                   / 2.0 for i in range(1, len(loop) - 1))
+    check("...and a fan triangulation of it FAILS that test",
+          abs(fan_area - shoe) > 1e-6,
+          f"a fan covers {fan_area:.6f} m2 against the profile's {shoe:.6f}")
+
+    for what, mm in (("plate", _M()), ("arc_solid", _M())):
+        if what == "plate":
+            mm.plate((0.0, 0.0, 0.0), (1.0, 0.0, 0.0), (1.0, 0.0, -1.0),
+                     (0.0, 0.0, -1.0), 0.05, "probe")
+        else:
+            mm.arc_solid(loop, names, -0.4, 0.4, 5)
+        pv, pt, _pg = mm.as_tuple()
+        pop, pnm = it_kit.boundary_edges(pv, pt)
+        check(f"{what} alone is a closed solid", not pop and not pnm,
+              f"{len(pop)} open, {len(pnm)} non-manifold")
+        check(f"{what} alone is outward-facing", _signed_volume(pv, pt) > 0.0,
+              f"signed volume {_signed_volume(pv, pt):.6f} m3 -- negative is "
+              f"a solid built inside-out, which indoors you see through")
 
     # --- the mosaic is a mosaic, not a grid ---------------------------------
     check("the floor uses more than one tile shade",

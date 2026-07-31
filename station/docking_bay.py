@@ -54,6 +54,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 import directory as _directory                                  # noqa: E402
 import interior as it                                        # noqa: E402
+import interior_kit as _kit                                     # noqa: E402
 import rooms as _rooms                                          # noqa: E402
 import bespoke as _bsp                                          # noqa: E402
 
@@ -114,6 +115,13 @@ LEDGE_COURSES = 3
 LEDGE_RISE_M = 2.2
 LEDGE_RUN_M = 3.4
 CHEVRON_W_M = 0.9       # the nosing band on every step
+DECK_PAINT_M = 0.004    # a painted marking's own film -- INV-171
+
+# Touching faces, not holes: `rooms.articulate` lays proud dado, rail, skirt
+# and cornice bands whose edges land on the surface behind them, and `rooms.py`
+# is not this module's to edit. Measured, so the gate still fires the moment
+# this file introduces one of its own.
+_INHERITED_NON_MANIFOLD = 30
 
 # The overhead steel. Deep box girders across the bay, a lattice between them,
 # and floodlights pendant from the lattice.
@@ -171,21 +179,96 @@ class _M:
 
 
 def _disc(m, cx, cz, r, y, group, seg=28):
-    """A flat painted marking on the deck, wound to face UP.
+    """A painted marking on the deck: a closed PAD, not a circle.
 
     Ascending angle in the XZ plane with +Y up gives a DOWNWARD normal, so the
     fan is reversed. That mistake has now been made three times in this project
     and each time the geometry was simply invisible, so it is asserted rather
     than remembered.
+
+    AND IT HAD NO RIM. The disc and the emblem inside it were 56 of this bay's
+    151 open boundary edges -- `dressing._cyl`'s defect in a second costume,
+    lying flat in the middle of the deck a player walks across. `deck_pad`
+    gives it the millimetre of paint film it physically has, closing it and
+    putting an edge on the marking that catches the floods at the grazing
+    angles a 140 m bay is mostly seen at.
     """
+    pv, pt = _kit.deck_pad(
+        [(cx + r * math.cos(math.tau * k / seg),
+          cz + r * math.sin(math.tau * k / seg)) for k in range(seg)],
+        y - DECK_PAINT_M, y)
     i = len(m.v)
-    m.v.append((cx, y, cz))
-    for k in range(seg):
-        a = 2.0 * math.pi * k / seg
-        m.v.append((cx + r * math.cos(a), y, cz + r * math.sin(a)))
-    for k in range(seg):
-        m.t.append((i, i + 1 + (k + 1) % seg, i + 1 + k))
-    m.g.extend([group] * seg)
+    m.v.extend(pv)
+    m.t.extend([(a + i, b + i, c + i) for a, b, c in pt])
+    m.g.extend([group] * len(pt))
+
+
+CEIL_SEGS = 16
+CEIL_SAG_M = BAY_W_M * 0.10
+
+
+def ceil_y(t):
+    """The ceiling's height across the bay, t = 0 at -x, 1 at +x.
+
+    A shallow arc rather than a flat soffit. The bay is cut into a rotating
+    hull, so its roof is a section of that hull and curves across the width.
+    """
+    return BAY_H_M + CEIL_SAG_M * (1.0 - (2.0 * t - 1.0) ** 2)
+
+
+def clear_half_m():
+    """Half the width of the clear deck, between the two stepped ledges."""
+    return BAY_W_M / 2.0 - LEDGE_COURSES * LEDGE_RUN_M
+
+
+def section():
+    """The bay's cross-section as a closed (x, y) loop, and one group name per
+    edge. THE ONE PLACE the bay's shape is stated.
+
+    Wound CLOCKWISE in (x, y), so a sweep along +Z faces INTO the bay -- which
+    is the convention `bay_deck` and `bay_ceiling` already followed and which
+    the self-test asserts. Read from the left ceiling springing, down the left
+    wall, down the left ledge to the clear deck, up the right ledge, up the
+    right wall, then back across the ceiling arc.
+
+    THE LEDGES CLIMB TOWARD THE WALL, and until session 4a they did not. The
+    treads were emitted at (c + 1) x RISE while marching INWARD from the hull,
+    so the highest step stood 6.6 m tall in the middle of the bay and each
+    riser's foot hung 2.2 m above the surface below it -- twelve edges running
+    the full 140 m with nothing under them. `boundary_edges` is what found it;
+    no render could, because a step with no riser under it still reads as a
+    step from every angle a floodlight is pointed from. Reversing the course
+    order is the whole fix and it is also what the reference describes:
+    "stepped side ledges ... service gantries and handling equipment stand on
+    them" is a stair up out of the bay, not a ziggurat in the middle of it.
+    See INV-170.
+    """
+    hw = BAY_W_M / 2.0
+    top = LEDGE_COURSES * LEDGE_RISE_M
+    pts, names = [(-hw, ceil_y(0.0))], []
+
+    def go(p, name):
+        pts.append(p)
+        names.append(name)
+
+    go((-hw, top), "bay_panel")                       # left wall, down
+    for c in range(LEDGE_COURSES):                    # left ledge, descending
+        y = (LEDGE_COURSES - c) * LEDGE_RISE_M
+        go((-hw + (c + 1) * LEDGE_RUN_M, y), "bay_ledge")            # tread
+        go((-hw + (c + 1) * LEDGE_RUN_M, y - LEDGE_RISE_M), "bay_ledge")
+    go((hw - LEDGE_COURSES * LEDGE_RUN_M, 0.0), "bay_deck")
+    for c in range(LEDGE_COURSES):                    # right ledge, climbing
+        y = (c + 1) * LEDGE_RISE_M
+        go((hw - (LEDGE_COURSES - c) * LEDGE_RUN_M, y), "bay_ledge")  # riser
+        go((hw - (LEDGE_COURSES - 1 - c) * LEDGE_RUN_M, y), "bay_ledge")
+    go((hw, ceil_y(1.0)), "bay_panel")                # right wall, up
+    for k in range(CEIL_SEGS - 1, 0, -1):             # the ceiling arc, back
+        go((-hw + BAY_W_M * k / CEIL_SEGS, ceil_y(k / CEIL_SEGS)),
+           "bay_ceiling")
+    names.append("bay_ceiling")                       # the closing edge
+    if _kit.shoelace(pts) > 0.0:
+        pts, names = pts[::-1], (names[::-1][1:] + names[::-1][:1])
+    return pts, names
 
 
 def docking_bay(index=0, schema=None, profile=None):
@@ -198,51 +281,65 @@ def docking_bay(index=0, schema=None, profile=None):
     """
     m = _M()
     hw, H, L = BAY_W_M / 2.0, BAY_H_M, BAY_LEN_M
+    loop, names = section()
 
-    # --- deck ---------------------------------------------------------------
-    m.quad((-hw, 0.0, 0.0), (-hw, 0.0, L), (hw, 0.0, L), (hw, 0.0, 0.0),
-           "bay_deck")
+    # --- the shell, SWEPT FROM ONE CROSS-SECTION ---------------------------
+    # Deck, ledges and ceiling used to be five independent ribbons of quads and
+    # they did not join up: 12 open edges where a riser's foot hung over bare
+    # deck, 37 where the back wall's four corners met a stepped-and-curved
+    # profile it knew nothing about, and 34 at the mouth. Swept from a single
+    # closed profile they cannot disagree, and the only surviving boundary is
+    # the mouth -- which is correct, and is asserted to be exactly that.
+    n = len(loop)
+    base = len(m.v)
+    for z in (0.0, L):
+        for x, y in loop:
+            m.v.append((x, y, z))
+    for i in range(n):
+        j = (i + 1) % n
+        # Quad (P[i]@0, Q[j]@0, Q[j]@L, P[i]@L). With the profile wound
+        # CLOCKWISE in (x, y) this faces INTO the bay, which is the convention
+        # every other surface in this module already follows.
+        m.t += [(base + i, base + j, base + n + j),
+                (base + i, base + n + j, base + n + i)]
+        m.g.extend([names[i]] * 2)
+
+    # --- the crew end is a bulkhead; the mouth is not --------------------
+    for tri in _kit.ear_clip(loop):
+        m.t.append((base + n + tri[0], base + n + tri[2], base + n + tri[1]))
+    m.g.extend(["bay_backwall"] * len(_kit.ear_clip(loop)))
 
     # The red disc with its white emblem, at the measured 10.6 m, set where the
-    # frame puts it: off the bay's centreline, on the walking side.
-    _disc(m, -hw * 0.30, L * 0.42, DECK_DISC_D_M / 2.0, 0.02, "bay_disc")
-    _disc(m, -hw * 0.30, L * 0.42, DECK_DISC_D_M * 0.22, 0.03, "bay_emblem")
+    # frame puts it: off the bay's centreline, on the walking side. Placed
+    # against the CLEAR deck's half-width rather than the bay's, because the
+    # ledges now occupy the outer 10.2 m either side and a marking painted at
+    # 0.30 x 21 m ran 0.8 m up the first tread.
+    disc_x = -clear_half_m() * 0.30
+    _disc(m, disc_x, L * 0.42, DECK_DISC_D_M / 2.0, 0.02, "bay_disc")
+    _disc(m, disc_x, L * 0.42, DECK_DISC_D_M * 0.22, 0.03, "bay_emblem")
 
-    # --- stepped side ledges, chevron on every nosing ------------------------
+    # --- chevron nosing on every tread --------------------------------------
+    # A band of paint on the nosing, laid as a closed pad for the same reason
+    # the deck disc is: six flat quads were 24 open edges, twelve of them
+    # running the whole 140 m length of the bay.
     for side in (-1, 1):
-        x = side * hw
         for c in range(LEDGE_COURSES):
-            y0, y1 = c * LEDGE_RISE_M, (c + 1) * LEDGE_RISE_M
-            inner = abs(x) - (c + 1) * LEDGE_RUN_M
-            outer = abs(x) - c * LEDGE_RUN_M
-            xi, xo = side * inner, side * outer
-            # tread
-            a, b = min(xi, xo), max(xi, xo)
-            m.quad((a, y1, 0.0), (a, y1, L), (b, y1, L), (b, y1, 0.0),
-                   "bay_ledge")
-            # riser
-            m.quad((xi, y0, 0.0), (xi, y1, 0.0), (xi, y1, L), (xi, y0, L),
-                   "bay_ledge") if side > 0 else m.quad(
-                (xi, y0, L), (xi, y1, L), (xi, y1, 0.0), (xi, y0, 0.0),
-                "bay_ledge")
-            # chevron nosing band on the tread edge
-            cx0 = xi - side * CHEVRON_W_M
-            m.quad((min(xi, cx0), y1 + 0.01, 0.0), (min(xi, cx0), y1 + 0.01, L),
-                   (max(xi, cx0), y1 + 0.01, L), (max(xi, cx0), y1 + 0.01, 0.0),
-                   "bay_chevron")
-
-    # --- the curving ribbed ceiling: the drum's inner wall -------------------
-    # A shallow arc rather than a flat soffit. The bay is cut into a rotating
-    # hull, so its roof is a section of that hull and curves across the width.
-    seg = 16
-    sag = BAY_W_M * 0.10
-    def ceil_y(t):
-        return H + sag * (1.0 - (2.0 * t - 1.0) ** 2)
-    for k in range(seg):
-        t0, t1 = k / seg, (k + 1) / seg
-        x0, x1 = -hw + BAY_W_M * t0, -hw + BAY_W_M * t1
-        m.quad((x0, ceil_y(t0), 0.0), (x1, ceil_y(t1), 0.0),
-               (x1, ceil_y(t1), L), (x0, ceil_y(t0), L), "bay_ceiling")
+            y = (c + 1) * LEDGE_RISE_M
+            # The NOSING is the tread's inboard edge -- the one a foot catches
+            # -- so the band runs outward from it. Laid a millimetre proud of
+            # the tread rather than flush: coplanar with it, the pad's own
+            # boundary lands on the tread's boundary and every one of those
+            # edges carries four faces instead of two.
+            xn = side * (hw - (LEDGE_COURSES - c) * LEDGE_RUN_M)
+            xb = xn + side * CHEVRON_W_M
+            pv, pt = _kit.deck_pad(
+                [(min(xn, xb), 0.0), (max(xn, xb), 0.0),
+                 (max(xn, xb), L), (min(xn, xb), L)],
+                y + 0.001, y + 0.001 + DECK_PAINT_M)
+            i = len(m.v)
+            m.v.extend(pv)
+            m.t.extend([(a + i, b + i, c2 + i) for a, b, c2 in pt])
+            m.g.extend(["bay_chevron"] * len(pt))
 
     # --- overhead steel: box girders, lattice, pendant floodlights -----------
     n_g = max(1, int(L / GIRDER_PITCH_M))
@@ -256,39 +353,29 @@ def docking_bay(index=0, schema=None, profile=None):
                   H - GIRDER_D_M - LAMP_DROP_M, H - GIRDER_D_M,
                   z - LAMP_R_M, z + LAMP_R_M, "bay_lamp")
 
-    # --- back wall, and the mouth left open ---------------------------------
-    # THE CREW END IS A BULKHEAD AND IT HAS NO HATCH, WHICH IS WHY THIS BAY IS
-    # STILL ASSEMBLED AS A GENERIC 12 m STORE BAY. Session 4a cut the doorway
-    # here -- three plates round an INV-110 aperture, exactly as `hospitality`
-    # and `zocalo` now carry -- `deck._mouth_clear` accepted it, and the deck
-    # `_selftest` immediately failed:
+    # --- the back wall is the cap on the sweep, above; the mouth stays open --
+    # SESSION 4a's DIAGNOSIS, KEPT because the shape of it is the lesson. A
+    # doorway was cut into the crew end, `deck._mouth_clear` accepted it, and
+    # `deck --selftest` failed with 160 open edges. The doorway was not the
+    # cause: this module read 151 open edges BEFORE the change and 160 after,
+    # and 117 of them were nowhere near the crew end. 56 lay mid-bay on the
+    # deck emblem (an unrimmed `_disc`), 12 ran the full 140 m under ledge
+    # risers that hung over bare deck, 24 were the chevrons' own perimeters,
+    # 37 were the back wall's four corners meeting a stepped-and-curved
+    # profile it was drawn as a plain rectangle across, and 34 were the mouth.
     #
-    #     FAIL  the deck is watertight once the lettering is set aside
-    #           -- 160 open edges in the solid geometry
+    # The rectangle is the piece worth remembering. A back wall drawn as
+    # `(-hw, 0) .. (hw, ceil_y(0.5))` cannot close a bay whose floor is
+    # stepped and whose roof is an arc, and NOTHING in this module could say
+    # so, because every gate here measured which way a surface faced. It is
+    # now the ear-clipped cap on the same cross-section the shell is swept
+    # from, so the two cannot disagree by construction -- hard rule 4.
     #
-    # The doorway was not the cause. `interior_kit.boundary_edges` puts this
-    # module at **151 open edges before the change and 160 after**, and they are
-    # not at the mouth: 80 lie mid-bay on the deck emblem (`_disc` lays a flat
-    # disc at y = 0.02 with no rim -- `dressing._cyl`'s defect in a second
-    # costume), 37 at the back wall's own unwelded perimeter and 34 at the
-    # mouth, which is the only one of the three that is correct content.
-    #
-    # So composing this bay puts 160 holes into a deck, and every one of them
-    # shows the background, and the background is black. `bespoke.py`'s own
-    # audit table predicted it in as many words -- *"seven of nine bespoke
-    # modules are open surfaces ... nothing has ever gated that"* -- and the
-    # reason nothing caught it before is that `deck._selftest` builds
-    # `blue/0/0`'s FIRST z-cluster, where this bay was already generic.
-    #
-    # The doorway is therefore reverted rather than shipped: a room a player can
-    # enter through a wall full of holes is worse than one they cannot enter.
-    # WHAT UNBLOCKS IT, in order: rim `_disc`, weld the back wall to the deck
-    # and ledges, and decide what the mouth is -- open to vacuum is honest
-    # content and the deck gate cannot express it, so either the gate grows a
-    # principled exemption or the mouth grows the atmosphere-retention surface
-    # the show implies and this project has never sourced.
-    m.quad((-hw, 0.0, L), (-hw, ceil_y(0.5), L), (hw, ceil_y(0.5), L),
-           (hw, 0.0, L), "bay_backwall")
+    # AND THE MOUTH IS DELIBERATELY OPEN. It opens on vacuum; the bay is
+    # entered by flying into it. `_selftest` asserts that every remaining open
+    # edge lies in the plane z = 0 and that they form ONE closed loop with
+    # every vertex of degree exactly 2 -- `aperture.py`'s rule, which is the
+    # difference between an opening and a hole.
 
     # ARTICULATION -- rooms.articulate(), INV-073. 38.2% of its detail floor:
     # a 140 m hangar whose walls were flat plate. Conduit off -- a bay this tall
@@ -436,18 +523,89 @@ def _selftest():
     # Flat painted markings and treads must face UP. Three separate subsystems
     # in this project have shipped flat geometry facing down, and it is
     # invisible every time.
+    # `bay_disc`, `bay_emblem` and `bay_chevron` are closed PADS now -- paint
+    # has a film and a film has an edge -- so their undersides face down and
+    # must. The honest question is whether the face you can SEE faces up, so
+    # each is measured in its own topmost plane.
     for grp in ("bay_deck", "bay_disc", "bay_emblem", "bay_chevron"):
+        ks = [i for i in range(len(t)) if g[i] == grp]
+        ytop = max(v[i][1] for k in ks for i in t[k])
         bad = 0
-        for i, tri in enumerate(t):
-            if g[i] != grp:
+        for k in ks:
+            if any(abs(v[i][1] - ytop) > 1e-9 for i in t[k]):
                 continue
-            p0, p1, p2 = (v[k] for k in tri)
-            u = tuple(p1[k] - p0[k] for k in range(3))
-            w = tuple(p2[k] - p0[k] for k in range(3))
-            ny = u[2] * w[0] - u[0] * w[2]
-            if ny <= 0:
+            p0, p1, p2 = (v[i] for i in t[k])
+            u = tuple(p1[i] - p0[i] for i in range(3))
+            w = tuple(p2[i] - p0[i] for i in range(3))
+            if u[2] * w[0] - u[0] * w[2] <= 0:
                 bad += 1
-        check(f"{grp} faces up", bad == 0, f"{bad} downward triangles")
+        check(f"{grp}'s visible face faces up", bad == 0,
+              f"{bad} downward triangles")
+
+    # --- THE BAY IS CLOSED EXCEPT AT ITS MOUTH, WHICH IS CORRECT -----------
+    # 151 open boundary edges shipped for four sessions and this module's own
+    # comment names all three causes; what it did not have was a gate. The
+    # rule is `aperture.py`'s: an OPENING is a single closed loop whose every
+    # vertex has degree exactly 2. A HOLE is anything else. Stating "the mouth
+    # is meant to be open" without that test is how 117 edges that were
+    # nowhere near the mouth stayed invisible.
+    op, nm = _kit.boundary_edges(v, t)
+    stray = [e for e in op
+             if not (abs(e[0][2]) < 1e-6 and abs(e[1][2]) < 1e-6)]
+    check("every open edge lies in the plane of the mouth", not stray,
+          f"{len(stray)} elsewhere, first at {stray[:1]}")
+    deg = {}
+    for a, b in op:
+        deg[a] = deg.get(a, 0) + 1
+        deg[b] = deg.get(b, 0) + 1
+    check("...and the mouth is one closed loop, every vertex of degree 2",
+          bool(op) and all(d == 2 for d in deg.values()),
+          f"degrees {sorted(set(deg.values()))} over {len(deg)} vertices")
+    # One loop, not several: walk it and check the walk covers every edge.
+    adj = {}
+    for a, b in op:
+        adj.setdefault(a, []).append(b)
+        adj.setdefault(b, []).append(a)
+    start = op[0][0]
+    seen, cur, prev = {start}, adj[start][0], start
+    while cur != start:
+        seen.add(cur)
+        nxt = adj[cur][0] if adj[cur][0] != prev else adj[cur][1]
+        prev, cur = cur, nxt
+    check("...and it is ONE loop, not two openings that happen to be coplanar",
+          len(seen) == len(deg), f"{len(seen)} of {len(deg)} vertices reached")
+    check("the mouth's loop is the bay's own cross-section",
+          len(op) == len(section()[0]),
+          f"{len(op)} open edges against a {len(section()[0])}-point section")
+    check("nothing but rooms.articulate's proud bands is non-manifold",
+          len(nm) == _INHERITED_NON_MANIFOLD,
+          f"{len(nm)} against {_INHERITED_NON_MANIFOLD}")
+
+    # NEGATIVE CONTROL -- take one triangle out of the crew-end bulkhead and
+    # the mouth gate has to fire, because a hole in a wall is not a mouth.
+    _cap = next(k for k in range(len(t)) if g[k] == "bay_backwall")
+    _holed = [tri for k, tri in enumerate(t) if k != _cap]
+    _stray = [e for e in _kit.boundary_edges(v, _holed)[0]
+              if not (abs(e[0][2]) < 1e-6 and abs(e[1][2]) < 1e-6)]
+    check("...and one triangle out of the back wall fires it",
+          len(_stray) == 3,
+          f"{len(_stray)} stray edges with a hole in the bulkhead, expected 3")
+
+    # And the ledges must actually be a stair: every riser's foot on the
+    # surface below it. This is the property that was false for four sessions.
+    loop = section()[0]
+    ys = sorted({round(y, 6) for _x, y in loop if y <= LEDGE_COURSES
+                 * LEDGE_RISE_M + 1e-9})
+    check("the ledge courses are one rise apart with none skipped",
+          ys == [round(c * LEDGE_RISE_M, 6)
+                 for c in range(LEDGE_COURSES + 1)],
+          f"{ys}")
+    floor = [(x, y) for x, y in loop
+             if y <= LEDGE_COURSES * LEDGE_RISE_M + 1e-9]
+    check("the ledges climb toward the hull, not toward the bay's middle",
+          max(y for x, y in floor if abs(x) > BAY_W_M / 2.0 - 1e-9)
+          > max(y for x, y in floor if abs(x) < clear_half_m() + 1e-9),
+          "the tallest step must be against the wall, and the clear deck flat")
 
     # The ceiling curves, because it is a section of a rotating hull.
     ceil = [v[i][1] for tri in

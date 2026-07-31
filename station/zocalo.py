@@ -166,6 +166,14 @@ TILE_M = DECK_PITCH_M / 8.0             # 0.45, inside the measured range
 # inside opaque structure is invisible and leaves every shell manifold.
 WELD_M = 0.002
 
+# The deck's own body and the soffit's. Both were zero, which is the same
+# statement as "this surface has a boundary" -- see `tiled_deck` and the
+# soffit call in `zocalo_bay`. 0.14 m matches the end-cap slabs `zocalo_run`
+# already lays at the two ends of a capped run, so the deck does not change
+# thickness where it meets its own bulkhead. INV-171.
+DECK_SLAB_M = 0.14
+SOFFIT_T_M = 0.14
+
 # The provisional table. A better frame or a resolved C-004 should change values
 # here, never the code that reads them.
 PROVISIONAL = {
@@ -571,6 +579,38 @@ def tiled_deck(p, index=0, seed="zocalo"):
             # Faces UP: (x0,z0) -> (x0,z1) -> (x1,z1) is the order that gives
             # +Y. Ascending angle in XZ with +Y up gives a DOWNWARD normal.
             m.quad((x0, 0.0, z0), (x0, 0.0, z1), (x1, 0.0, z1), (x1, 0.0, z0), g)
+
+    # --- AND THE FIELD IS A SLAB, NOT A SHEET -----------------------------
+    # Adjacent tiles weld to each other -- they are laid on an exact grid, so
+    # their shared edges have identical coordinates -- but the field's own
+    # PERIMETER was open all the way round: 240 edges on a three-bay run, the
+    # largest remaining hole in the Zocalo once the downlight pools were
+    # rimmed. `_selftest` had declared them, which is honest bookkeeping and
+    # not closure: a declared hole is still a hole in the deck this room
+    # composes onto, and the deck asserts watertightness.
+    #
+    # The skirt is subdivided at the TILE JOINTS, because that is where the
+    # field's boundary vertices already are; a plain rectangle round it would
+    # leave a T-junction at every joint and close nothing. The underside is a
+    # fan from one centre point, which needs no interior lattice -- nobody
+    # ever sees it -- but must carry every perimeter vertex, or the skirt has
+    # nothing to meet at its foot.
+    ring = ([(-w / 2 + ix * tile, 0.0) for ix in range(nx)]
+            + [(w / 2, iz * tile) for iz in range(nz)]
+            + [(w / 2 - ix * tile, l) for ix in range(nx)]
+            + [(-w / 2, l - iz * tile) for iz in range(nz)])
+    base = len(m.v)
+    for x, z in ring:
+        m.v.append((x, 0.0, z))
+        m.v.append((x, -DECK_SLAB_M, z))
+    hub = len(m.v)
+    m.v.append((0.0, -DECK_SLAB_M, l / 2.0))
+    t0 = len(m.t)
+    for k in range(len(ring)):
+        a, b = base + 2 * k, base + 2 * ((k + 1) % len(ring))
+        m.t += [(a, a + 1, b + 1), (a, b + 1, b)]              # skirt, outward
+        m.t.append((hub, b + 1, a + 1))                        # underside
+    m.g.extend(["zoc_deck_tile"] * (len(m.t) - t0))
     return m
 
 
@@ -1030,8 +1070,12 @@ def zocalo_bay(p=None, index=0, seed="zocalo", stair_side=None,
     # pass, which left the gallery's upper storey open to the background: a
     # magenta render put 27% of the frame through the hole, and against the
     # black the render is meant to be judged on it read as unlit ceiling.
-    m.quad((-hw, ceil, 0.0), (hw, ceil, 0.0), (hw, ceil, l),
-           (-hw, ceil, l), "zoc_soffit")
+    # ...and it is a SLAB. As one quad its two long edges at x = +-hw were
+    # open, 8 on a three-bay run: the ceiling did not meet the side walls, and
+    # a ceiling with no thickness has no soffit line where it does. The seam
+    # weld drops its z faces between bays exactly as it does for every other
+    # longitudinal member here, so a run stays one continuous solid.
+    m.slab(-hw, hw, ceil, ceil + SOFFIT_T_M, 0.0, l, "zoc_soffit")
     # Longitudinal purlins spanning rib to rib. A 233 m2 ceiling with nothing on
     # it reads as a lid, and the reference shows structure overhead in every
     # frame of this set. Five shallow beams, 60 triangles, and the soffit stops
@@ -1366,17 +1410,28 @@ def budget_report(p=None, seed="zocalo", out=print):
 # ---------------------------------------------------------------------------
 # Measurements no render can make
 # ---------------------------------------------------------------------------
-def facing_fraction(verts, tris, groups, prefix, axis):
+def facing_fraction(verts, tris, groups, prefix, axis, plane=None):
     """Fraction of a group's triangles whose normal points along `axis`.
 
     The deck, the soffit and every flat element here have exactly one correct
     facing and are invisible if it is wrong -- and invisible reads as a badly
     placed camera, not as a bug. This is a count, not a look.
+
+    `plane` restricts the count to triangles lying at that height, which is
+    what the question means once these surfaces are solids rather than sheets.
+    `None` means the group's own topmost plane -- right for a pad, whose rise
+    is a property of the primitive rather than something this file knows.
     """
     ax, ay, az = axis
+    ks = [i for i in range(len(tris)) if groups[i].startswith(prefix)]
+    if plane is None and ks:
+        plane = max(verts[i][1] for k in ks for i in tris[k])
     good = total = 0
     for i, (a, b, c) in enumerate(tris):
         if not groups[i].startswith(prefix):
+            continue
+        if plane is not None and any(abs(verts[j][1] - plane) > 1e-9
+                                     for j in (a, b, c)):
             continue
         p0, p1, p2 = verts[a], verts[b], verts[c]
         u = (p1[0] - p0[0], p1[1] - p0[1], p1[2] - p0[2])
@@ -1690,11 +1745,19 @@ def _selftest():
           all(0 <= i < len(v) for tri in t for i in tri))
     check("no degenerate triangles", all(len(set(tri)) == 3 for tri in t))
 
-    for prefix, axis, what in (("zoc_deck_", (0, 1, 0), "the tiled deck"),
-                               ("zoc_downlight", (0, 1, 0), "the downlights"),
-                               ("zoc_soffit", (0, -1, 0), "the soffit"),
-                               ("zoc_rib_cap", (0, -1, 0), "the rib springings")):
-        frac, n = facing_fraction(v, t, g, prefix, axis)
+    # MEASURED ON THE FACE YOU CAN SEE. Every one of these is a closed solid
+    # now -- the deck a slab, the pools and the lit strip `deck_pad`s, the
+    # soffit a slab -- so their undersides face the other way and must. The
+    # question worth asking is whether the surface a player looks at faces
+    # them, so each is restricted to its own visible plane; measured over the
+    # whole solid the test says "89% of the deck faces up", which is a true
+    # statement about a correct deck and a useless one.
+    for prefix, axis, what, plane in (
+            ("zoc_deck_", (0, 1, 0), "the tiled deck", 0.0),
+            ("zoc_downlight", (0, 1, 0), "the downlights", None),
+            ("zoc_soffit", (0, -1, 0), "the soffit", p["ceiling_height_m"]),
+            ("zoc_rib_cap", (0, -1, 0), "the rib springings", None)):
+        frac, n = facing_fraction(v, t, g, prefix, axis, plane=plane)
         check(f"{what} faces the right way ({n} tri)", frac > 0.999,
               f"{frac:.3f} of {n}")
 
@@ -1752,18 +1815,28 @@ def _selftest():
     nx = int(round(p["bay_width_m"] / p["tile_m"]))
     nz = int(round(p["bay_length_m"] / p["tile_m"]))
     n_down = p["downlights_per_bay"]
-    declared = (2 * (nx + nz)                      # tiled deck perimeter
-                + 4                                # the lit deck strip
-                + n_down * len(kit.downlight_pool()[0][1:])   # each pool's rim
-                + 4)                               # the soffit
-    check("open edges are exactly the declared surface perimeters",
-          len(bnd) == declared, f"{len(bnd)} vs {declared} declared")
-    stray = [e for e in bnd
-             if not (abs(e[0][1]) < 0.05 and abs(e[1][1]) < 0.05)
-             and not (abs(e[0][1] - p["ceiling_height_m"]) < 0.02
-                      and abs(e[1][1] - p["ceiling_height_m"]) < 0.02)]
-    check("every open edge lies on the deck plane or on the soffit",
-          not stray, f"{len(stray)} elsewhere, first at {stray[:1]}")
+    # WHAT THIS USED TO DECLARE, and why declaring it was not enough. The bay
+    # carried 2*(nx+nz) edges round the tiled deck, 4 round the lit strip,
+    # 20 round every one of the eight downlight pools and 4 on the soffit --
+    # 464 in all, every one of them reconciled against a written list and every
+    # one of them still a hole in whatever deck this room is composed onto. A
+    # declared hole shows the background exactly as an undeclared one does.
+    #
+    # The list is kept as the negative control: strip the deck slab's skirt and
+    # underside back off and the count has to come back to the perimeter.
+    check("the bay is a closed surface", not bnd,
+          f"{len(bnd)} open edges, first at {bnd[:1]}")
+    bare = [tri for k, tri in enumerate(t)
+            if not (g[k] == "zoc_deck_tile"
+                    and min(v[i][1] for i in tri) < -1e-6)]
+    check("...and taking the deck slab's skirt away brings the hole back",
+          len(it.boundary_edges(v, bare)[0]) == 2 * (nx + nz),
+          f"{len(it.boundary_edges(v, bare)[0])} open with the skirt removed, "
+          f"against the {2 * (nx + nz)} tile joints round the field")
+    check("...and the pools and the strip are closed too, not just declared",
+          len(kit.boundary_edges(*kit.downlight_pool())[0]) == 0
+          and len(kit.boundary_edges(*kit.deck_strip(0.9, 10.0))[0]) == 0,
+          f"they used to contribute {n_down * 20 + 4} of the 464")
     # Non-manifold edges in the assembled bay must be exactly the ones the KIT
     # brings with it. wall_assembly lays proud plates whose edges coincide with
     # the substrate's, and interior_kit.py is not this module's to edit -- so
@@ -1841,8 +1914,15 @@ def _selftest():
     steps = [bounds[i + 1] - bounds[i] for i in range(3)]
     check("each added bay costs the same boundary, so seams are uniform",
           len(set(steps)) == 1, str(steps))
+    # A standalone bay used to have two open ends, so joining two retired one
+    # from each and the marginal cost of a bay was strictly less than a bay on
+    # its own. Both numbers are ZERO now -- the bay is a closed solid and a run
+    # of them is one closed solid -- so the strict inequality has nothing left
+    # to say and the property worth asserting is the stronger one it was a
+    # proxy for: a run of any length is closed, and adding a bay keeps it that
+    # way. `steps` above already asserts uniformity.
     check("joining bays closes boundary rather than opening it",
-          steps[0] < bounds[0], f"{steps[0]} per added bay vs {bounds[0]} alone")
+          bounds == [0, 0, 0, 0], f"open edges for 1..4 bays: {bounds}")
 
     print(f"{ok}/{ok + fail} passed")
     return 1 if fail else 0

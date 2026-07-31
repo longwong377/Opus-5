@@ -51,6 +51,7 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 import interior as it                                        # noqa: E402
+import interior_kit as it_kit                                # noqa: E402
 import rooms as _rooms                                          # noqa: E402
 
 # --- measured --------------------------------------------------------------
@@ -68,6 +69,7 @@ DOME_H_M = 34.0
 WINDOW_MULLIONS = 16            # radial spokes
 WINDOW_RING_FRAC = 0.62         # where the concentric band crosses them
 WINDOW_MULLION_W_M = 0.10
+WINDOW_MULLION_D_M = 0.06       # how far a bar stands off the glass -- INV-171
 WINDOW_RING_W_M = 0.16
 
 DAIS_D_M = 4.6                  # the officer's stance and the console arc
@@ -80,6 +82,22 @@ CONSOLE_ARC_DEG = 150.0
 CONSOLE_W_M = 1.15
 CONSOLE_D_M = 0.62
 CONSOLE_H_M = 1.02              # a standing console, which is what the frame shows
+CONSOLE_BODY_M = 0.14           # the wedge under the lit face -- INV-171
+
+# TOUCHING FACES, WHICH ARE NOT HOLES. Two sources, both measured rather than
+# assumed, and the gate below is a ratchet on the total:
+#
+#   * 40 from `rooms.articulate`, which lays proud dado, rail, skirt and
+#     cornice bands whose edges land on the surface behind them. `rooms.py` is
+#     not this module's to edit.
+#   * 8 where this module's own boxes meet at a corner -- `cc_pit_face` against
+#     `cc_bulkhead`, and against the pit's two new side walls. Two axis-aligned
+#     boxes sharing a corner ALWAYS share the edge at it, and the pattern
+#     predates this session (`cc_bulkhead+cc_pit` and `cc_pit+cc_pit_face`
+#     were both in the 3z baseline). It is a collinear contact between two
+#     closed solids, not an opening: `boundary_edges`' OPEN count, which is
+#     the one that matters for a deck's watertightness, stays at zero.
+_INHERITED_NON_MANIFOLD = 48
 CONSOLE_TILT_DEG = 22.0
 
 FLOOR_W_M = 14.0                # the upper floor the dais sits on
@@ -112,18 +130,84 @@ class _M:
         self.t.extend([(i, i + 1, i + 2), (i, i + 2, i + 3)])
         self.g.extend([group, group])
 
-    def disc(self, cx, cz, r, y, group, seg=32):
-        """Flat, wound to face UP. Reversed fan -- see the note in signage.py."""
+    def merge(self, verts, tris, group):
+        i = len(self.v)
+        self.v.extend(verts)
+        self.t.extend([(a + i, b + i, c + i) for a, b, c in tris])
+        self.g.extend([group] * len(tris))
+
+    def plate(self, a, b, c, d, thick, group):
+        """A quad given the thickness it physically has -- kit.plate_solid.
+
+        THE ROOM WAS BUILT OUT OF `quad` AND IT LEAKED FROM EVERY ONE OF THEM.
+        16 mullions, 5 console faces and the window's ring band were single
+        one-sided quads: 148 open boundary edges on the three surfaces a player
+        standing on the dais looks straight at.
+        """
+        self.merge(*it_kit.plate_solid([a, b, c, d], thick), group)
+
+    def disc(self, cx, cz, r, y, group, seg=32, down=False):
+        """Flat, wound to face UP. Reversed fan -- see the note in signage.py.
+
+        `down` flips it, for the underside of a solid that stands on the deck.
+        """
         i = len(self.v)
         self.v.append((cx, y, cz))
         for k in range(seg):
             a = 2.0 * math.pi * k / seg
             self.v.append((cx + r * math.cos(a), y, cz + r * math.sin(a)))
         for k in range(seg):
-            self.t.append((i, i + 1 + (k + 1) % seg, i + 1 + k))
+            a0, b0 = i + 1 + k, i + 1 + (k + 1) % seg
+            self.t.append((i, a0, b0) if down else (i, b0, a0))
         self.g.extend([group] * seg)
 
-    def vdisc(self, cx, cy, z, r, group, seg=48):
+    def annulus(self, cx, cz, r0, r1, y, group, seg=36, down=False):
+        """A flat ring from r0 to r1 at height y.
+
+        WHAT A STEPPED DAIS IS ACTUALLY MADE OF. Each tread was emitted as a
+        FULL disc, so the riser above it landed in the middle of a fan and had
+        nothing to weld its foot to -- 36 open edges a step, 108 for the dais.
+        An annulus puts an edge exactly where the next riser stands.
+        """
+        i = len(self.v)
+        for k in range(seg):
+            a = 2.0 * math.pi * k / seg
+            ca, sa = math.cos(a), math.sin(a)
+            self.v.append((cx + r0 * ca, y, cz + r0 * sa))
+            self.v.append((cx + r1 * ca, y, cz + r1 * sa))
+        for k in range(seg):
+            a0, b0 = i + 2 * k, i + 2 * ((k + 1) % seg)
+            if down:
+                self.t += [(a0, a0 + 1, b0 + 1), (a0, b0 + 1, b0)]
+            else:
+                self.t += [(a0, b0, b0 + 1), (a0, b0 + 1, a0 + 1)]
+        self.g.extend([group] * 2 * seg)
+
+    def band(self, cx, cy, z0, z1, r0, r1, group, seg=40):
+        """A concentric ring band standing off a vertical bulkhead: a closed
+        square-section torus in the XY plane, swept about +Z.
+
+        The window's ring band was 40 flat quads and 80 open edges. It is a
+        physical band bolted over the glazing and it has a section.
+        """
+        i = len(self.v)
+        for k in range(seg):
+            a = 2.0 * math.pi * k / seg
+            ca, sa = math.cos(a), math.sin(a)
+            for rad in (r0, r1):
+                for zz in (z0, z1):
+                    self.v.append((cx + rad * ca, cy + rad * sa, zz))
+        for k in range(seg):
+            b = i + 4 * k
+            n = i + 4 * ((k + 1) % seg)
+            # CLOCKWISE in (radial, z) -- a lathe about +Z is the opposite
+            # hand to one about +Y. See council_chamber.arc_solid.
+            for p, q in ((0, 1), (1, 3), (3, 2), (2, 0)):
+                self.t.append((b + p, b + q, n + q))
+                self.t.append((b + p, n + q, n + p))
+        self.g.extend([group] * 8 * seg)
+
+    def vdisc(self, cx, cy, z, r, group, seg=48, thick=0.02):
         """A VERTICAL disc in the XY plane at depth z, facing -Z (into the room).
 
         Distinct from `disc`, which lies in XZ at a height. Calling `disc` for
@@ -132,20 +216,20 @@ class _M:
         was on the ceiling. Caught by asserting the two share a plane rather
         than by looking, because from most angles the flat disc was simply out
         of frame.
+
+        `thick` is the body behind that face. Glass has a thickness and the
+        hub is a plate: as bare fans they were 68 open edges in the middle of
+        the one thing this room is built around.
         """
-        i = len(self.v)
-        self.v.append((cx, cy, z))
-        for k in range(seg):
-            a = 2.0 * math.pi * k / seg
-            self.v.append((cx + r * math.cos(a), cy + r * math.sin(a), z))
         # Wound to face -Z, INTO the room. Ascending angle in the XY plane
         # gives a +Z normal, which points out through the bulkhead and is
         # backface-culled from the only side anyone stands on. Fourth instance
         # of this family in the project, so it is asserted below rather than
         # remembered.
-        for k in range(seg):
-            self.t.append((i, i + 1 + (k + 1) % seg, i + 1 + k))
-        self.g.extend([group] * seg)
+        loop = [(cx + r * math.cos(2.0 * math.pi * k / seg),
+                 cy + r * math.sin(2.0 * math.pi * k / seg), z)
+                for k in range(seg)][::-1]
+        self.merge(*it_kit.plate_solid(loop, thick), group)
 
     def as_tuple(self):
         return self.v, self.t, self.g
@@ -173,23 +257,16 @@ def window(m, z, cy):
         a = 2.0 * math.pi * k / WINDOW_MULLIONS
         ca, sa = math.cos(a), math.sin(a)
         nx, ny = -sa * hw, ca * hw
-        m.quad((r0 * ca + nx, cy + r0 * sa + ny, z),
-               (r * ca + nx, cy + r * sa + ny, z),
-               (r * ca - nx, cy + r * sa - ny, z),
-               (r0 * ca - nx, cy + r0 * sa - ny, z), "cc_mullion")
-    m.vdisc(0.0, cy, z, r0, "cc_hub", seg=20)
+        m.plate((r0 * ca + nx, cy + r0 * sa + ny, z),
+                (r * ca + nx, cy + r * sa + ny, z),
+                (r * ca - nx, cy + r * sa - ny, z),
+                (r0 * ca - nx, cy + r0 * sa - ny, z),
+                WINDOW_MULLION_D_M, "cc_mullion")
+    m.vdisc(0.0, cy, z, r0, "cc_hub", seg=20, thick=WINDOW_MULLION_D_M)
 
-    # The concentric ring band.
+    # The concentric ring band -- a section, not a stripe.
     rr, w = r * WINDOW_RING_FRAC, WINDOW_RING_W_M / 2.0
-    seg = 40
-    for k in range(seg):
-        a0 = 2.0 * math.pi * k / seg
-        a1 = 2.0 * math.pi * (k + 1) / seg
-        m.quad(((rr - w) * math.cos(a0), cy + (rr - w) * math.sin(a0), z),
-               ((rr + w) * math.cos(a0), cy + (rr + w) * math.sin(a0), z),
-               ((rr + w) * math.cos(a1), cy + (rr + w) * math.sin(a1), z),
-               ((rr - w) * math.cos(a1), cy + (rr - w) * math.sin(a1), z),
-               "cc_ring")
+    m.band(0.0, cy, z - WINDOW_MULLION_D_M, z, rr - w, rr + w, "cc_ring")
 
 
 def command_control():
@@ -203,21 +280,46 @@ def command_control():
     m.quad((-hw, -PIT_DROP_M, L * 0.45), (-hw, -PIT_DROP_M, L * 0.70),
            (hw, -PIT_DROP_M, L * 0.70), (hw, -PIT_DROP_M, L * 0.45), "cc_pit")
     m.box(-hw, hw, -PIT_DROP_M, 0.0, L * 0.45, L * 0.45 + 0.16, "cc_pit_face")
+    # ...and the pit's own SIDE walls. It had a back face and a floor and
+    # nothing at x = +-hw, so a player standing in the pit -- which is one of
+    # the room's two occupied levels -- was looking sideways at the background
+    # through a 1.9 m x 4.6 m gap either side, and the floor's two long edges
+    # were the last open edges in the room.
+    for sx in (-1, 1):
+        m.box(sx * hw, sx * (hw + 0.16), -PIT_DROP_M, 0.0,
+              L * 0.45, L * 0.70, "cc_pit_face")
 
-    # The stepped dais.
-    for s in range(DAIS_STEPS):
-        r = DAIS_D_M / 2.0 + (DAIS_STEPS - 1 - s) * DAIS_TREAD_M
-        m.disc(0.0, 0.0, r, (s + 1) * DAIS_RISE_M, "cc_dais", seg=36)
-        # riser
-        seg = 36
+    # The stepped dais, as a CLOSED stepped solid.
+    #
+    # It used to be three full discs with three ribbons of riser quads round
+    # them, and the ribbons had nothing to stand on: a riser's foot landed in
+    # the middle of the fan below it, where there is no edge to weld to. 108
+    # open edges, one per segment per step, on the object at the centre of the
+    # room. Each tread is now the ANNULUS between its own riser and the next
+    # one up, so the two share an edge by construction; the top tread is the
+    # only full disc and the base closes it underneath.
+    seg = 36
+    radii = [DAIS_D_M / 2.0 + (DAIS_STEPS - 1 - s) * DAIS_TREAD_M
+             for s in range(DAIS_STEPS)]
+    m.disc(0.0, 0.0, radii[0], 0.0, "cc_dais", seg=seg, down=True)
+    for s, r in enumerate(radii):
         y0, y1 = s * DAIS_RISE_M, (s + 1) * DAIS_RISE_M
         for k in range(seg):
             a0 = 2.0 * math.pi * k / seg
             a1 = 2.0 * math.pi * (k + 1) / seg
+            # Vertical edge FIRST. Tangential-then-vertical gives a normal
+            # pointing at the axis, so every riser on the dais faced inward --
+            # a step you see through, standing under the officer the room is
+            # arranged around. Nothing caught it because the facing gate ran
+            # on `cc_floor`, `cc_pit` and `cc_dais` and not on the risers.
             m.quad((r * math.cos(a0), y0, r * math.sin(a0)),
-                   (r * math.cos(a1), y0, r * math.sin(a1)),
+                   (r * math.cos(a0), y1, r * math.sin(a0)),
                    (r * math.cos(a1), y1, r * math.sin(a1)),
-                   (r * math.cos(a0), y1, r * math.sin(a0)), "cc_dais_riser")
+                   (r * math.cos(a1), y0, r * math.sin(a1)), "cc_dais_riser")
+        if s + 1 < DAIS_STEPS:
+            m.annulus(0.0, 0.0, radii[s + 1], r, y1, "cc_dais", seg=seg)
+        else:
+            m.disc(0.0, 0.0, r, y1, "cc_dais", seg=seg)
 
     # Wedge consoles in an arc on the dais, tilted toward the operator.
     top = DAIS_STEPS * DAIS_RISE_M
@@ -242,7 +344,11 @@ def command_control():
             px = cx + sx * hwc * ca - sz * hd * sa
             pz = cz + sx * hwc * sa + sz * hd * ca
             corners.append((px, yy, pz))
-        m.quad(corners[0], corners[1], corners[2], corners[3], "cc_console_face")
+        # A console is a wedge with a lit top, not a sheet of light floating on
+        # two legs. CONSOLE_BODY_M of body under the face, which is also what
+        # gives it a silhouette from the side of the dais.
+        m.plate(corners[0], corners[1], corners[2], corners[3],
+                CONSOLE_BODY_M, "cc_console_face")
 
     # The window, in the forward bulkhead.
     zw = L * 0.70
@@ -356,18 +462,68 @@ def _selftest():
           any(abs(q[1] + PIT_DROP_M) < 0.3 for k, tri in enumerate(t)
               if g[k] == "cc_stair" for q in [v[i] for i in tri]))
 
-    # --- flat surfaces face up ---------------------------------------------
+    # --- THE ROOM IS CLOSED -------------------------------------------------
+    # 342 open boundary edges shipped for four sessions, and every gate in this
+    # file measured which way a surface FACED. A surface that is not there
+    # faces nowhere, so those tests passed vacuously on the missing half of
+    # every plate: the mullions, the glazing, the hub, the ring band, the
+    # console faces and every riser on the dais.
+    op, nm = it_kit.boundary_edges(v, t)
+    check("C&C is a closed surface", not op,
+          f"{len(op)} open boundary edges, first at {op[:1]}")
+    check("...and none of these non-manifold edges is this module's",
+          len(nm) == _INHERITED_NON_MANIFOLD,
+          f"{len(nm)} against the {_INHERITED_NON_MANIFOLD} rooms.articulate "
+          f"brings in with its proud dado, rail and skirt bands")
+    # NEGATIVE CONTROL -- one triangle out has to fire it. Asserted as "more
+    # than none" rather than "exactly three", because a dropped triangle whose
+    # edges were touching faces relieves a non-manifold edge instead of opening
+    # one, and the number then depends on WHICH triangle -- which is a fact
+    # about `rooms.articulate`, not about this gate.
+    _holed = len(it_kit.boundary_edges(v, t[1:])[0])
+    check("...and dropping ONE triangle fires that gate", _holed > len(op),
+          f"{_holed} open with a hole in it, against {len(op)} without")
+
+    # --- flat surfaces face up, MEASURED ON THE FACE YOU CAN SEE -----------
+    # `cc_dais` is a closed stepped solid now, so its underside faces down and
+    # must. The question worth asking is whether every TREAD faces up, so the
+    # test runs per horizontal plane and skips the base.
     for grp in ("cc_floor", "cc_pit", "cc_dais"):
         bad = 0
         for k, tri in enumerate(t):
             if g[k] != grp:
                 continue
+            ys = [v[i][1] for i in tri]
+            if grp == "cc_dais" and max(ys) <= 1e-9:
+                continue                                # the base, facing down
             p0, p1, p2 = (v[i] for i in tri)
             u = tuple(p1[i] - p0[i] for i in range(3))
             w = tuple(p2[i] - p0[i] for i in range(3))
             if u[2] * w[0] - u[0] * w[2] <= 0:
                 bad += 1
         check(f"{grp} faces up", bad == 0, f"{bad} downward")
+    # ...and the base is there, facing DOWN, which is what closes the dais.
+    base = [k for k, tri in enumerate(t) if g[k] == "cc_dais"
+            and all(abs(v[i][1]) < 1e-9 for i in tri)]
+    check("the dais stands on a closed base", bool(base),
+          "a stepped solid with no underside is 36 open edges a step")
+    # Every riser must face OUTWARD, away from the axis -- the defect that
+    # survived because the loop above never named `cc_dais_riser`.
+    bad = 0
+    for k, tri in enumerate(t):
+        if g[k] != "cc_dais_riser":
+            continue
+        p0, p1, p2 = (v[i] for i in tri)
+        u = tuple(p1[i] - p0[i] for i in range(3))
+        w = tuple(p2[i] - p0[i] for i in range(3))
+        n = (u[1] * w[2] - u[2] * w[1], u[2] * w[0] - u[0] * w[2],
+             u[0] * w[1] - u[1] * w[0])
+        cxx = sum(v[i][0] for i in tri) / 3.0
+        czz = sum(v[i][2] for i in tri) / 3.0
+        if n[0] * cxx + n[2] * czz <= 0:
+            bad += 1
+    check("the dais risers face outward, not at the axis", bad == 0,
+          f"{bad} of the risers face the middle of the room")
 
     # --- the dais is a dais, not a step ------------------------------------
     check("the dais is stepped, not a kerb",
@@ -404,9 +560,13 @@ def _selftest():
           f"{len(glaz)} / {len(mull)} / {len(ring)} triangles")
     gz = [v[i][2] for k in glaz for i in t[k]]
     mz = [v[i][2] for k in mull for i in t[k]]
-    check("the glazing stands in the bulkhead, not flat",
-          max(gz) - min(gz) < 1e-6,
-          f"glazing spans {max(gz) - min(gz):.3f} m in z; it should be planar")
+    # The glass has a THICKNESS -- it is a pane, not a decal -- so the test is
+    # that it is no deeper than a pane, not that it is planar. Asserting
+    # planarity is what a one-sided quad passes, and a one-sided quad is 48
+    # open boundary edges in the middle of the room's only window.
+    check("the glazing is a pane in the bulkhead, not a slab of it",
+          max(gz) - min(gz) <= WINDOW_MULLION_D_M + 1e-9,
+          f"glazing spans {max(gz) - min(gz):.3f} m in z")
     # The glazing must be visible from the room, i.e. in front of the bulkhead's
     # near face rather than sealed inside it.
     bulk = [v[i][2] for k, tri in enumerate(t) if g[k] == "cc_bulkhead"
@@ -417,17 +577,22 @@ def _selftest():
     # correctly glazed window.
     gr = max(math.hypot(v[i][0], v[i][1] - (WINDOW_D_M / 2.0 + 0.9))
              for k, tri in enumerate(t) if g[k] == "cc_glazing" for i in tri)
+    # Both are panes now, so the back and the rim legitimately do not face the
+    # room. What must face the room is the pane's own FRONT -- the triangles in
+    # its lowest-z plane, which is the surface a standing officer sees.
     for grp in ("cc_glazing", "cc_hub"):
+        ks = [k for k in range(len(t)) if g[k] == grp]
+        zf = min(v[i][2] for k in ks for i in t[k])
         bad = 0
-        for k, tri in enumerate(t):
-            if g[k] != grp:
+        for k in ks:
+            if any(abs(v[i][2] - zf) > 1e-9 for i in t[k]):
                 continue
-            p0, p1, p2 = (v[i] for i in tri)
+            p0, p1, p2 = (v[i] for i in t[k])
             u = tuple(p1[i] - p0[i] for i in range(3))
             w = tuple(p2[i] - p0[i] for i in range(3))
             if u[0] * w[1] - u[1] * w[0] >= 0:      # +Z normal = out of the room
                 bad += 1
-        check(f"{grp} faces into the room", bad == 0,
+        check(f"{grp}'s front face faces into the room", bad == 0,
               f"{bad} triangles facing out through the bulkhead")
 
     check("the glazing fits the aperture cut for it",
@@ -444,9 +609,14 @@ def _selftest():
                  for k, tri in enumerate(t) if g[k] == "cc_bulkhead")
     check("the bulkhead has an aperture where the window is", not covers)
 
+    # FACE against FACE. Both are solids now, so `max(mz)` is the back of the
+    # mullion and `min(gz)` is the front of the glass, and comparing those two
+    # asks whether the bar's back is in front of the glass's front -- which is
+    # not the question. The bar reads as proud when its FRONT is nearer the
+    # room than the glass's front.
     check("mullions stand proud of the glazing, not coplanar with it",
-          max(mz) < min(gz) - 1e-9,
-          f"mullion z {max(mz):.3f} vs glazing {min(gz):.3f}")
+          min(mz) < min(gz) - 1e-9,
+          f"mullion face z {min(mz):.3f} vs glazing face {min(gz):.3f}")
 
     print(f"{ok}/{ok + fail} passed")
     return 1 if fail else 0

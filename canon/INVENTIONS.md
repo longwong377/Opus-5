@@ -4154,3 +4154,88 @@ five commerce candidates and all five hospitality candidates were rendered and e
 against the committed frames and every one of the ten gives |r| < 0.04. Their before/after compares
 two different pictures, and if the old cameras are ever recovered those two rows should be re-taken
 rather than trusted.
+## INV-170 — A docking bay's stepped side ledges climb toward the hull, not toward the bay's middle
+
+`station/docking_bay.py` (`section`, `docking_bay`, `_selftest`).
+
+**What.** The three ledge courses either side of a bay are laid so that the highest tread stands
+against the hull at 6.6 m and the lowest steps up 2.2 m from the clear deck, leaving 21.6 m of
+flat deck down the middle of a 42 m bay. Until session 4a they were laid the other way: the tread
+heights ran `(c + 1) × LEDGE_RISE_M` while the tread spans marched **inward** from the hull, so
+the tallest step stood 6.6 m tall in the middle of the bay with a 6.6 m cliff facing the
+centreline, and the shortest sat against the wall.
+
+**Why necessary.** It is not a preference; the old arrangement was **not a closed solid and could
+not be made into one**. Each course's riser was emitted at its tread's inboard edge, spanning one
+rise, and with the courses marching inward the surface below that riser's foot was 2.2 m lower
+than the riser reached. Twelve boundary edges — six risers' feet and six treads' outboard noses —
+ran the entire 140 m length of the bay with nothing under them. Reversing the course order is the
+whole fix: every riser's foot then lands exactly on the outboard edge of the tread below it, and
+the innermost riser's foot lands on the deck.
+
+**What constrained it.** `reference/03-sector-blue/Minbari Flyer 969 in docking bay 17.webp`
+(authority 1) is the only frame of the ledges and this module's own docstring reads it as
+*"stepped side ledges, with chevron nosings on every step ... service gantries and handling
+equipment stand on them"*. Gear standing on a ledge is gear standing clear of the flight deck,
+which puts the ledge against the hull; a stepped mass in the middle of a 42 m bay is an
+obstruction in the one place a Starfury has to be. The dimensions are unchanged — `LEDGE_COURSES`
+3, `LEDGE_RISE_M` 2.2, `LEDGE_RUN_M` 3.4 are all INV-022's and none of them moved. Only the order
+of the courses did.
+
+**What this cost elsewhere, stated because it is a real consequence.** The clear deck is now
+`BAY_W_M/2 − LEDGE_COURSES × LEDGE_RUN_M` = 10.8 m either side of the centreline rather than the
+full 21 m. The 10.6 m red deck disc was placed at `−hw × 0.30` = −6.3 m, whose left edge at
+−11.6 m now runs 0.8 m up the first tread, so it is placed against the clear deck's half-width
+instead: −3.24 m, still off the centreline and still on the walking side, which is all the
+reference establishes about its position. Its measured 10.6 m diameter is untouched.
+
+**Negative control, run.** `docking_bay._selftest` asserts the courses are one rise apart with
+none skipped, and that the tallest floor point at |x| = hw exceeds the tallest at |x| ≤ the clear
+half-width. On the pre-4a arrangement the second of those is false by construction.
+
+**What would overturn it.** Any frame showing a bay's cross-section, or a frame showing handling
+equipment standing on a ledge inboard of the parked craft rather than outboard of them.
+
+## INV-171 — Nine thicknesses, because a surface with no thickness is a surface with a hole
+
+`station/interior_kit.py` (`deck_pad`, `plate_solid`), `station/council_chamber.py`
+(`FIN_D_M`, `MEDALLION_D_M`, `MEDALLION_RELIEF_M`, `FLOOR_BED_T_M`, `TILE_RISE_M`),
+`station/command_control.py` (`WINDOW_MULLION_D_M`, `CONSOLE_BODY_M`),
+`station/hospitality.py` (`SHADE_T_M`, `DART_T_M`), `station/docking_bay.py` (`DECK_PAINT_M`),
+`station/zocalo.py` (`DECK_SLAB_M`, `SOFFIT_T_M`).
+
+**What.** Twelve declared dimensions, each the body of an object that was previously authored as a
+zero-thickness plate:
+
+| value | object | reasoning |
+|---|---|---|
+| `FIN_D_M` 0.10 | a council chamber wall fin | a 5.2 m architectural fin in sheet metal, deep enough to catch the cove light on an edge and read as a fan |
+| `MEDALLION_D_M` 0.03 / `MEDALLION_RELIEF_M` 0.02 | the medallion's backing disc, and how far its spokes and rings stand off it | the frame shows spokes and rings reading in relief against the disc; 20 mm is the smallest relief that shadows at a chamber's light levels |
+| `FLOOR_BED_T_M` 0.10 / `TILE_RISE_M` 0.008 | the bed under the mosaic, and the tiles' proud face | a screed bed and an 8 mm tile; the rise is what puts a grout line in the frame |
+| `WINDOW_MULLION_D_M` 0.06 | how far a window bar stands off the glass | the module's own docstring already required the bars to "read in front of" the glazing and had no dimension for it |
+| `CONSOLE_BODY_M` 0.14 | the wedge under a console's lit face | a console face on two slim legs with nothing behind it has no silhouette from the side of the dais |
+| `SHADE_T_M` 0.012 | a pendant shade's material | sheet, so the shade has an underside for the lamp to bounce off |
+| `DART_T_M` 0.038 | a dartboard | a regulation board is 38 mm of sisal, which is sourced in the same sentence as its 451 mm diameter |
+| `DECK_PAINT_M` 0.004 | a painted deck marking's film | thick enough to catch a highlight at the grazing angles a 140 m bay is lit at, thin enough not to trip on |
+| `DECK_SLAB_M` 0.14 / `SOFFIT_T_M` 0.14 | the Zocalo's deck and soffit | matched to the end-cap slabs `zocalo_run` already lays, so the deck does not change thickness where it meets its own bulkhead |
+
+**Why necessary.** Not for looks. **3,693 open boundary edges across eight composed shells**, and
+every one of these objects contributed some of them. A surface authored in the plane it is seen in
+is a surface whose thickness is invisible, so nobody misses it — and a plate with no thickness is
+a plate with a *boundary*, which is a hole in whatever mesh it is merged into. Since session 3z
+`deck.build_deck` composes eight of these modules onto a ring deck that asserts watertightness, so
+these were holes in the station.
+
+**What constrained them.** Every value is the smallest that makes the object physically coherent
+at the distance a player meets it, and none is load-bearing on any measurement: doubling or
+halving any of them changes no assertion in this project, because the thing being fixed is the
+existence of the surface and not its depth. That is stated plainly rather than dressed up — these
+are authority 5 throughout.
+
+**What this is really an instance of.** Two defects this project had already fixed once. A flat
+thing with no edge is `interior_kit.downlight_pool`'s missing rim, and a lathe open at one end is
+`dressing._cyl`'s missing bottom cap (session 3x). Both reappeared in six new private copies
+because each module had written its own primitive. `deck_pad` and `plate_solid` now live in the
+kit, once each, with closure gates and negative controls that fire.
+
+**What would overturn it.** Any authority-1 frame giving one of these objects a measurable depth.
