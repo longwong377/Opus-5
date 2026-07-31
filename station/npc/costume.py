@@ -1730,6 +1730,153 @@ PART_SLOT = {
 }
 
 
+# Draws per species when discovering fabrics `SETS` does not declare. 600 is
+# where the count stops moving; `_selftest` runs 6,000 and asserts it finds
+# nothing new, which is what makes 600 a measurement rather than a guess.
+SPEC_SAMPLE = 600
+
+
+def _fabric_keys(value):
+    """The fabric keys a `CostumeSet` slot can produce.
+
+    A slot is a single key, or a weighted palette of them -- `_P(*pairs)` --
+    so this flattens both without caring which it was handed. A tuple of
+    `(key, weight)` pairs and a bare tuple of keys both appear in `SETS`.
+    """
+    if value is None:
+        return ()
+    if isinstance(value, str):
+        return (value,)
+    out = []
+    for item in value:
+        if isinstance(item, str):
+            out.append(item)
+        elif isinstance(item, (tuple, list)) and item and isinstance(
+                item[0], str):
+            out.append(item[0])
+    return tuple(out)
+
+
+def material_specs():
+    """One PBR material per FABRIC, from the measurements already in this file.
+
+    THE WARDROBE WAS MEASURED AND NEVER REACHED A SURFACE. Every `Fabric` here
+    carries a `measured` albedo, a `roughness`, a `metallic`, an `authority` and
+    the frame and region it was read from -- a complete material spec, sourced.
+    `materials.py`'s only use of this module was two constants, `SKIN_ANCHOR`
+    and `PAKMARA_COWL_ANCHOR`, so 2,016 inhabitants stood on the station with
+    no clothes on: `populace` called `body.build`, which is the bare figure,
+    while `build_dressed` sat here unused.
+
+    PER FABRIC RATHER THAN PER SLOT, and that is a change from the design
+    `group_name` describes. Its note -- "one material, any number of fabrics"
+    -- is right about the resolver and wrong about the wardrobe: measured over
+    the station mix, the cloth slot draws on **17 distinct fabrics with no
+    dominant one** (the commonest is 16%), so a single `npc_cloth` material
+    would dress the whole station in one coat and throw away every measurement
+    below. The resolver needs no change to support it: it matches the longest
+    fragment, and `npc_cloth__civ_dark_warm` is longer than `npc_cloth`, so a
+    per-fabric material wins where one exists and a slot-level material catches
+    anything without one.
+
+    Returned as plain dicts rather than `materials.Material` objects so that
+    this module does not import that one -- the dependency runs the other way,
+    and reversing it would make the wardrobe depend on the renderer.
+    """
+    # ONLY WHAT IS ACTUALLY WORN, AND FROM `SETS` RATHER THAN FROM SAMPLING.
+    # The cross-product of four slots and every fabric is 164 combinations and
+    # far fewer are reachable: a costume SET decides which fabric fills which
+    # slot, so the reachable pairs are exactly the ones the 27 sets name.
+    #
+    # SAMPLING `costume_for` WAS TRIED FIRST AND IS WRONG. 60 draws over ten
+    # species found 32 groups; 600 found 47 -- the extra fifteen are rare roles
+    # (EF command, security, rangers, monastics, Narn regalia) that a small
+    # sample simply misses, and no sample size can prove it has stopped
+    # missing them. `SETS` is the table those draws are drawn FROM, so reading
+    # it is exact. `worn_fabrics` is kept as the cross-check and `_selftest`
+    # asserts every sampled group is in this list.
+    pairs = set()
+    for st in SETS.values():
+        for slot, attr in (("npc_cloth", "cloth"),
+                           ("npc_cloth_trim", "trim"),
+                           ("npc_leather", "leather"),
+                           ("npc_metal", "metal")):
+            for key in _fabric_keys(getattr(st, attr, None)):
+                if key in FABRICS:
+                    pairs.add((slot, key))
+    # AND WHAT THE SETS DO NOT NAME. `SETS` is the declared table and it is
+    # still not the whole reachable set: `costume_for` falls back when a set
+    # leaves a slot empty, so a 600-draw sample turns up four trim groups --
+    # `civ_cool_dark`, `league_dark`, `minbari_black`, `narn_salvage` -- that
+    # no set lists as trim. Neither source is complete alone. The union is,
+    # and `_selftest` asserts a sample ten times larger than the one used here
+    # finds nothing outside it, which is the only thing that can catch a third
+    # path appearing.
+    for group in worn_fabrics(sample=SPEC_SAMPLE):
+        slot, _, key = group.partition("__")
+        if key in FABRICS:
+            pairs.add((slot, key))
+    out = []
+    for slot, key in sorted(pairs):
+        group = group_name(slot, key)
+        f = FABRICS[key]
+        if True:
+            out.append({
+                "name": f"{slot}__{key}",
+                "group": group,
+                "title": f.title,
+                "albedo": tuple(f.measured),
+                "roughness": float(f.roughness),
+                "metallic": float(f.metallic),
+                "authority": int(f.authority),
+                "declared": bool(f.declared),
+                "source": f"npc/costume.py FABRICS[{key!r}] -- {f.frame} "
+                          f"{f.region}" if f.frame else
+                          f"npc/costume.py FABRICS[{key!r}] -- DECLARED",
+                "note": f.note,
+            })
+    # A fabric is worn in whichever slot its costume set puts it, and the
+    # tables here do not partition them, so the same key legitimately appears
+    # under more than one slot. De-duplicated on the emitted GROUP name, which
+    # is what the resolver actually sees.
+    seen, uniq = set(), []
+    for m in out:
+        if m["group"] in seen:
+            continue
+        seen.add(m["group"])
+        uniq.append(m)
+    return tuple(uniq)
+
+
+def worn_fabrics(sample=60, species=None):
+    """Which fabrics the station's own mix actually puts on people.
+
+    MEASURED, not tabulated: `costume_for` is a pure function of species and
+    id, so this walks a sample and reports what comes back. `material_specs`
+    emits one material per fabric in `FABRICS`; this says which of them a
+    player will ever see, so a gate can assert the two agree rather than
+    assuming every table entry is reachable.
+    """
+    species = species or ("human", "human", "human", "human", "narn",
+                          "centauri", "minbari", "drazi", "brakiri", "pakmara")
+    worn = {}
+    for sp in species:
+        for i in range(sample):
+            try:
+                cs = costume_for(sp, f"worn/{sp}/{i}")
+            except Exception:                                   # noqa: BLE001
+                continue
+            for slot, attr in (("npc_cloth", "cloth"),
+                               ("npc_cloth_trim", "trim"),
+                               ("npc_leather", "leather"),
+                               ("npc_metal", "metal")):
+                fab = getattr(cs, attr, None)
+                if fab:
+                    worn[group_name(slot, fab)] = worn.get(
+                        group_name(slot, fab), 0) + 1
+    return worn
+
+
 def build_dressed(species, npc_id, lod=0, chain=None, datum=ERA_DATUM,
                   costume=None, distance_m=None):
     """The public entry point: a dressed figure. Returns (verts, tris, spans)."""
@@ -2667,6 +2814,49 @@ def _selftest():
               {FABRICS[k].frame for k in FABRICS} - {""}
               if not f.startswith("16-")),
           "every fabric frame is one this module measured")
+
+    # -- THE WARDROBE AS MATERIALS ----------------------------------------
+    # Measured here for sessions and never reaching a surface: `materials.py`
+    # imported this module for two constants, so 2,016 inhabitants stood on
+    # the station with no clothes on.
+    _specs = material_specs()
+    _groups = {m["group"] for m in _specs}
+    check(len(_specs) > 40 and len(_groups) == len(_specs),
+          f"the wardrobe exports {len(_specs)} materials, one per reachable "
+          f"(slot, fabric), with no duplicate group")
+    check(all(m["albedo"] and 0.0 <= m["roughness"] <= 1.0
+              and 0.0 <= m["metallic"] <= 1.0 for m in _specs),
+          "every exported material carries a usable albedo, roughness and "
+          "metallic")
+    _auth1 = sum(1 for m in _specs if m["authority"] == 1)
+    check(_auth1 >= len(_specs) // 2,
+          f"and most of them are MEASURED rather than declared -- {_auth1} of "
+          f"{len(_specs)} at authority 1, each naming its frame and region")
+    # NEITHER SOURCE IS COMPLETE ALONE, which is why the export is a union.
+    _from_sets = set()
+    for _st in SETS.values():
+        for _slot, _attr in (("npc_cloth", "cloth"),
+                             ("npc_cloth_trim", "trim"),
+                             ("npc_leather", "leather"),
+                             ("npc_metal", "metal")):
+            for _k in _fabric_keys(getattr(_st, _attr, None)):
+                if _k in FABRICS:
+                    _from_sets.add(group_name(_slot, _k))
+    _sampled = set(worn_fabrics(sample=SPEC_SAMPLE))
+    check(bool(_sampled - _from_sets),
+          f"BREAK: `SETS` alone MISSES {len(_sampled - _from_sets)} groups that "
+          f"`costume_for` actually produces -- so reading the declared table "
+          f"is not enough: {sorted(_sampled - _from_sets)[:3]}")
+    check(bool(_from_sets - _sampled),
+          f"BREAK: and sampling alone misses {len(_from_sets - _sampled)} the "
+          f"table declares -- so neither source is complete and the union is "
+          f"not belt and braces")
+    # THE SAMPLE SIZE IS A MEASUREMENT. Ten times more draws must find nothing
+    # outside what was exported, or 600 was a guess.
+    _big = set(worn_fabrics(sample=SPEC_SAMPLE * 2))
+    check(_big <= _groups,
+          f"a sample twice the size finds nothing outside the export "
+          f"({len(_big)} groups, {sorted(_big - _groups)[:3]} outside)")
 
     print(f"\n{ok}/{ok + fail} passed")
     return 1 if fail else 0

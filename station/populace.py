@@ -579,6 +579,49 @@ def _place_body(v, t, g, mesh, x, y, z, yaw, group, actors=None, who=None):
                        "r_m": r_m, "h_m": h_m})
 
 
+# WHETHER PEOPLE ARE DRESSED. `npc/costume.py` is 2,800 lines with a measured
+# wardrobe -- 53 reachable (slot, fabric) materials, 32 of them read off
+# authority-1 show frames -- and `build_dressed` has produced a clothed figure
+# the whole time. Nothing called it: `materials.py` imported the module for two
+# constants and this one built `body.build`, the bare figure. So 2,016
+# inhabitants stood on the station with no clothes on, which
+# `docs/engine-zocalo-inside.png` shows as a hall full of pale mannequins.
+#
+# GATED ON THE MATERIALS EXISTING, and that is not timidity. A dressed body
+# emits `npc_cloth__civ_dark_warm` and friends; until `materials.py` binds
+# them every garment renders on the magenta fallback, which is worse than
+# nude. `_dressed_ok()` asks the library rather than trusting a flag, so this
+# turns itself on the moment the materials land and cannot be left half-wired.
+DRESSED = True
+
+
+@_lru_cache(maxsize=1)
+def _dressed_ok():
+    """Does the material library bind what a dressed body emits?
+
+    Checked, not assumed. `costume.material_specs()` is the list the library
+    has to cover; if a single group resolves to nothing this returns False and
+    everybody stays in the bind pose's bare skin, because a magenta figure is a
+    worse error than an undressed one and a silent one is worse than both --
+    `report()` prints which groups are missing.
+    """
+    if not DRESSED:
+        return False
+    try:
+        import costume as _cos                                  # noqa: PLC0415
+        sys.path.insert(0, HERE)
+        import materials as _mat                                # noqa: PLC0415
+        missing = [m["group"] for m in _cos.material_specs()
+                   if _mat.resolve(m["group"], "interior") is None]
+        _dressed_missing.extend(missing)
+        return not missing
+    except Exception:                                           # noqa: BLE001
+        return False
+
+
+_dressed_missing = []
+
+
 @_lru_cache(maxsize=4096)
 def _mesh_for(species, npc_id, lod):
     """This individual's body. Cached, because a room asks for it once.
@@ -592,6 +635,12 @@ def _mesh_for(species, npc_id, lod):
     dropping the person: a missing inhabitant is invisible to every gate here
     and a wrong-species one is not.
     """
+    if _dressed_ok():
+        try:
+            import costume as _cos                              # noqa: PLC0415
+            return _cos.build_dressed(species, npc_id, lod=lod)[:3]
+        except Exception:                                       # noqa: BLE001
+            pass
     try:
         return _body.build(species, npc_id, lod=lod)[:3]
     except Exception:                                           # noqa: BLE001
@@ -1674,6 +1723,37 @@ def _selftest():
     check("...and the corridor's triangle cost is a small share of a deck",
           cs["triangles"] < 60_000,
           f"{cs['triangles']:,} for {cs['placed']} people at lod {cs['lod']}")
+    # -- THE WARDROBE ------------------------------------------------------
+    # `costume.py` measured 53 reachable (slot, fabric) materials, 32 off
+    # authority-1 show frames, and nothing had ever put one on anybody.
+    import costume as _cos_t                                    # noqa: PLC0415
+    _specs = _cos_t.material_specs()
+    _dr_ok = _dressed_ok()
+    _miss = sorted(set(_dressed_missing))
+    check(DRESSED, "the wardrobe is switched on")
+    check(len(_specs) > 40,
+          f"...and it has {len(_specs)} materials to bind", str(_specs[:1]))
+    if _dr_ok:
+        _dm = _mesh_for("human", "wardrobe/probe", ROOM_LOD)
+        _gn = {n for n, _l, _h in _dm[2]}
+        check(any(n.startswith("npc_cloth") for n in _gn),
+              "a person is DRESSED: the mesh carries cloth groups",
+              str(sorted(_gn)))
+        check(not any(n.startswith("npc_skin_torso") for n in _gn),
+              "...and the cloth REPLACES the skin it covers rather than "
+              "floating over it", str(sorted(_gn)))
+    else:
+        # NOT A SKIP, A REPORTED BLOCK. The geometry is wired and gated; what
+        # is missing is the library binding, which lives in `materials.py`.
+        # `_dressed_ok` asks the library rather than trusting a flag, so this
+        # flips the moment those materials land -- and says so until they do.
+        check(bool(_miss),
+              f"the wardrobe is BLOCKED on {len(_miss)} material bindings and "
+              f"says so rather than rendering magenta: {_miss[:3]}")
+        check(_mesh_for("human", "wardrobe/probe", ROOM_LOD)[1],
+              "...and everybody stays in skin meanwhile, which is wrong but "
+              "not broken")
+
     # -- THE CROWD LIBRARY: shared bodies, instanced ----------------------
     lib_v, lib_t, lib_g = station_crowd_library(4)
     bodies = [n for n, _lo, _hi in lib_g if n.endswith("_npc_body")]
