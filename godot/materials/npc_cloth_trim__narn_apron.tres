@@ -9,7 +9,7 @@
 
 [resource]
 resource_name = "Narn apron panel -- deep pebbled reptile hide"
-albedo_color = Color(0.251, 0.071, 0.024, 1)
+albedo_color = Color(0.1446, 0.0409, 0.03, 1)
 metallic = 0
 metallic_specular = 0.4
 roughness = 0.72

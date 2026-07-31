@@ -9,7 +9,7 @@
 
 [resource]
 resource_name = "League delegate cowl -- bone/cream quilted"
-albedo_color = Color(0.38, 0.35, 0.329, 1)
+albedo_color = Color(0.46, 0.4237, 0.3983, 1)
 metallic = 0
 metallic_specular = 0.4
 roughness = 0.9

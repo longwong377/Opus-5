@@ -9,7 +9,7 @@
 
 [resource]
 resource_name = "EarthForce security twill -- cool near-neutral grey"
-albedo_color = Color(0.391, 0.462, 0.518, 1)
+albedo_color = Color(0.1798, 0.2124, 0.2382, 1)
 metallic = 0
 metallic_specular = 0.4
 roughness = 0.86

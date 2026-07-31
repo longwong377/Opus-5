@@ -9,7 +9,7 @@
 
 [resource]
 resource_name = "Civilian -- dark warm layer"
-albedo_color = Color(0.092, 0.071, 0.071, 1)
+albedo_color = Color(0.1048, 0.0809, 0.0809, 1)
 metallic = 0
 metallic_specular = 0.4
 roughness = 0.9

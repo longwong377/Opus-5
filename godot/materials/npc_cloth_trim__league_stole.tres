@@ -9,7 +9,7 @@
 
 [resource]
 resource_name = "League delegate stole -- magenta/rose"
-albedo_color = Color(0.31, 0.235, 0.258, 1)
+albedo_color = Color(0.3753, 0.2845, 0.3123, 1)
 metallic = 0
 metallic_specular = 0.4
 roughness = 0.66

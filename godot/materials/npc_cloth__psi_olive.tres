@@ -9,7 +9,7 @@
 
 [resource]
 resource_name = "Psi Corps suit -- dark olive-green/black"
-albedo_color = Color(0.139, 0.121, 0.088, 1)
+albedo_color = Color(0.0643, 0.056, 0.0407, 1)
 metallic = 0
 metallic_specular = 0.4
 roughness = 0.72

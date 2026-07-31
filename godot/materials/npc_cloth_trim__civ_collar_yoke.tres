@@ -9,7 +9,7 @@
 
 [resource]
 resource_name = "Civilian -- collar and shoulder yoke"
-albedo_color = Color(0.169, 0.138, 0.127, 1)
+albedo_color = Color(0.1925, 0.1572, 0.1447, 1)
 metallic = 0
 metallic_specular = 0.4
 roughness = 0.86

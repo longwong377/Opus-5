@@ -9,7 +9,7 @@
 
 [resource]
 resource_name = "Centauri stole/drape"
-albedo_color = Color(0.073, 0.049, 0.048, 1)
+albedo_color = Color(0.0832, 0.0558, 0.0547, 1)
 metallic = 0
 metallic_specular = 0.4
 roughness = 0.7

@@ -9,7 +9,7 @@
 
 [resource]
 resource_name = "Worker -- drab coverall"
-albedo_color = Color(0.156, 0.144, 0.13, 1)
+albedo_color = Color(0.2135, 0.1971, 0.1779, 1)
 metallic = 0
 metallic_specular = 0.4
 roughness = 0.94

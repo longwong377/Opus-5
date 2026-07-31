@@ -9,7 +9,7 @@
 
 [resource]
 resource_name = "Narn shoulder yoke -- studded quilted pauldron"
-albedo_color = Color(0.455, 0.247, 0.086, 1)
+albedo_color = Color(0.2621, 0.1423, 0.0495, 1)
 metallic = 0
 metallic_specular = 0.4
 roughness = 0.66

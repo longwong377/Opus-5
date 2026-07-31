@@ -9,7 +9,7 @@
 
 [resource]
 resource_name = "EarthForce command plastron -- brown leather"
-albedo_color = Color(0.25, 0.209, 0.193, 1)
+albedo_color = Color(0.1145, 0.0957, 0.0884, 1)
 metallic = 0
 metallic_specular = 0.4
 roughness = 0.42

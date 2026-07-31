@@ -9,7 +9,7 @@
 
 [resource]
 resource_name = "Minbari black robe -- the second group"
-albedo_color = Color(0.03, 0.028, 0.032, 1)
+albedo_color = Color(0.03, 0.03, 0.032, 1)
 metallic = 0
 metallic_specular = 0.4
 roughness = 0.7

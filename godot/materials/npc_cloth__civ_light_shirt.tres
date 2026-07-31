@@ -9,7 +9,7 @@
 
 [resource]
 resource_name = "Civilian -- light shirt, the tail of the distribution"
-albedo_color = Color(0.384, 0.395, 0.41, 1)
+albedo_color = Color(0.5256, 0.5407, 0.5612, 1)
 metallic = 0
 metallic_specular = 0.4
 roughness = 0.88

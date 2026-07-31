@@ -9,7 +9,7 @@
 
 [resource]
 resource_name = "EarthForce command wool -- slate blue-grey"
-albedo_color = Color(0.407, 0.454, 0.548, 1)
+albedo_color = Color(0.1864, 0.2079, 0.251, 1)
 metallic = 0
 metallic_specular = 0.4
 roughness = 0.82

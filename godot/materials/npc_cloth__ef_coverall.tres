@@ -9,7 +9,7 @@
 
 [resource]
 resource_name = "EarthForce technical coverall"
-albedo_color = Color(0.127, 0.169, 0.229, 1)
+albedo_color = Color(0.1337, 0.1779, 0.2411, 1)
 metallic = 0
 metallic_specular = 0.4
 roughness = 0.9

@@ -1833,7 +1833,15 @@ def material_specs():
                 "name": f"{slot}__{key}",
                 "group": group,
                 "title": f.title,
-                "albedo": tuple(f.measured),
+                # `Fabric.albedo`, NOT `Fabric.measured`. The first is the
+                # second put on the station's own ladder -- multiplied by the
+                # frame's grey-world gain and clamped to `ALBEDO_FLOOR` /
+                # `ALBEDO_CEIL` -- and the second is a raw balanced pixel value
+                # from a photograph. Exporting the raw value is the trap
+                # CLAUDE.md names in as many words: "Balanced-V vs linear
+                # luminance units". It also skips the declared-vs-measured
+                # branch entirely, so a declared fabric got no clamp at all.
+                "albedo": tuple(f.albedo),
                 "roughness": float(f.roughness),
                 "metallic": float(f.metallic),
                 "authority": int(f.authority),
@@ -2900,6 +2908,25 @@ def _selftest():
               and 0.0 <= m["metallic"] <= 1.0 for m in _specs),
           "every exported material carries a usable albedo, roughness and "
           "metallic")
+    # THE ALBEDO, NOT THE RAW MEASUREMENT. `Fabric.albedo` puts the measured
+    # pixel value on the station's ladder -- frame gain, then the floor and
+    # ceiling clamp -- and exporting `measured` instead is the balanced-vs-
+    # linear trap CLAUDE.md names. It also skips the declared branch, so a
+    # declared fabric would ship unclamped.
+    _byname = {f"{sl}__{k}": FABRICS[k]
+               for sl in MATERIAL_SLOTS for k in FABRICS}
+    check(all(tuple(m["albedo"]) == tuple(_byname[m["group"]].albedo)
+              for m in _specs if m["group"] in _byname),
+          "every exported albedo is the fabric's ALBEDO, not its raw measured "
+          "value")
+    _raw = [m["group"] for m in _specs
+            if m["group"] in _byname
+            and tuple(_byname[m["group"]].measured)
+            != tuple(_byname[m["group"]].albedo)]
+    check(bool(_raw),
+          f"BREAK: and the two genuinely differ on {len(_raw)} fabrics, so "
+          f"that check is not comparing a number with itself: "
+          f"{_raw[:2]}")
     _auth1 = sum(1 for m in _specs if m["authority"] == 1)
     check(_auth1 >= len(_specs) // 2,
           f"and most of them are MEASURED rather than declared -- {_auth1} of "

@@ -9,7 +9,7 @@
 
 [resource]
 resource_name = "Centauri court coat -- heavy dark brocade"
-albedo_color = Color(0.048, 0.031, 0.037, 1)
+albedo_color = Color(0.0547, 0.0353, 0.0422, 1)
 metallic = 0
 metallic_specular = 0.4
 roughness = 0.62
