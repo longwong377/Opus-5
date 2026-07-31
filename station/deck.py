@@ -286,7 +286,7 @@ def deck_plan(schema, profile, sector, ring, deck, z_m=None, max_rooms=None):
 
 
 def build_collision(schema, profile, sector, ring, deck, z_m=None,
-                    max_rooms=None):
+                    max_rooms=None, props=False):
     """The deck's COLLISION geometry -- what a body stands on, not what it sees.
 
     See `station/collision.py` for why these are different meshes. In short: the
@@ -328,6 +328,23 @@ def build_collision(schema, profile, sector, ring, deck, z_m=None,
             meta["rooms"].append({"key": q["key"],
                                   "door_deg": door["angle_deg"],
                                   "vestibule_m": round(near - inner, 3)})
+        # SOLID FURNITURE. Off by default because it costs a room build apiece
+        # and `--sweep` asks a structural question of 66 decks; on wherever a
+        # body is actually going to be put on this deck. A room whose tables a
+        # player walks through is a backdrop, not a place.
+        if props:
+            try:
+                rv, rt, rg = R.build(schema, profile, q)
+                boxes = C.prop_boxes(rv, rt, rg)
+                pieces.append(C.boxes_mesh(
+                    boxes, lambda pts, qq=q: _place_local(
+                        pts, d["radius"], qq["angle_deg"], qq["z_m"])))
+                meta.setdefault("prop_boxes", 0)
+                meta["prop_boxes"] += len(boxes)
+            except Exception as e:                              # noqa: BLE001
+                meta.setdefault("prop_errors", []).append(
+                    (q["key"], str(e)[:60]))
+
         for vv, tt in pieces:
             off = len(v)
             v.extend(vv)
@@ -698,6 +715,24 @@ def _selftest():
     print(f"  {len(cm['rooms'])} doors, vestibules "
           f"{min(r['vestibule_m'] for r in cm['rooms']):.2f}-"
           f"{max(r['vestibule_m'] for r in cm['rooms']):.2f} m")
+
+    # THE FURNITURE IS SOLID, and it has to stay solid AND stay out of the way.
+    # Both directions can fail: no boxes at all is a player walking through
+    # tables, and boxes that merge across a room's circulation lane is a room
+    # nobody can cross. `dressing.blocks_lane` guarantees the second for
+    # individual pieces; merging is what could break it, so it is asserted here
+    # rather than assumed.
+    pv, pt, pm = build_collision(schema, profile, "blue", 0, 0, props=True)
+    check("the furniture in a room is solid",
+          pm.get("prop_boxes", 0) > 0 and len(pt) > len(ct),
+          f"{pm.get('prop_boxes', 0)} boxes, {len(pt) - len(ct)} triangles")
+    check("no prop collision errors", not pm.get("prop_errors"),
+          str(pm.get("prop_errors"))[:120])
+    holes2 = C.floor_holes(pv, pt, pm)
+    check("solid furniture does not take the floor away",
+          not holes2, f"{len(holes2)} points, first {holes2[:3]}")
+    print(f"  {pm.get('prop_boxes', 0)} furniture boxes, "
+          f"{len(pt) - len(ct):,} collision triangles for them")
 
     print(f"{ok}/{ok + fail} passed")
     return 1 if fail else 0

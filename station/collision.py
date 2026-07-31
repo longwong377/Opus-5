@@ -562,6 +562,117 @@ def floor_steps(verts, tris, meta, samples=240, lanes=9):
     return worst
 
 
+def prop_boxes(verts, tris, groups, prefix="dress_", min_m=0.18, gap=0.04):
+    """Collision boxes for a room's furniture, DERIVED from its own geometry.
+
+    `dressing.py` puts 82,362 triangles of furniture on this station and none of
+    it was solid, so a player walked through tables. That is the thing a person
+    notices first once the doors work, and it is not a detail: a room you can
+    walk through the middle of is a backdrop, not a place.
+
+    NOT A SECOND LIST. The obvious approach is to have every prop builder record
+    the box it just placed, and this project has now been bitten twice by two
+    descriptions of one thing drifting apart -- the door decision made in the
+    render and again in the shell, the corridor profile written down instead of
+    measured. So this reads the emitted mesh: connected components of shared
+    vertices are the individual boxes `_box`/`_cyl` wrote, and boxes that touch
+    are one object. A chair's seat, back and legs merge into a chair.
+
+    `min_m` drops anything smaller than a fist in every dimension -- a stapler
+    on a desk is not something a body walks into, and 9 items per square metre
+    of tabletop is a lot of collision to carry for nothing.
+    """
+    per = [None] * len(tris)
+    for name, lo, hi in groups:
+        for i in range(lo, min(hi, len(tris))):
+            per[i] = name
+    keep = [tri for i, tri in enumerate(tris)
+            if per[i] and per[i].startswith(prefix)]
+    if not keep:
+        return []
+
+    # Connected components over shared vertices: one per emitted primitive.
+    parent = {}
+
+    def find(a):
+        while parent.get(a, a) != a:
+            parent[a] = parent.get(parent[a], parent[a])
+            a = parent[a]
+        return a
+
+    def union(a, b):
+        ra, rb = find(a), find(b)
+        if ra != rb:
+            parent[ra] = rb
+
+    for tri in keep:
+        for j in tri:
+            parent.setdefault(j, j)
+        union(tri[0], tri[1])
+        union(tri[1], tri[2])
+
+    comp = {}
+    for tri in keep:
+        r = find(tri[0])
+        b = comp.get(r)
+        for j in tri:
+            p = verts[j]
+            if b is None:
+                b = [p[0], p[1], p[2], p[0], p[1], p[2]]
+            else:
+                for k in range(3):
+                    b[k] = min(b[k], p[k])
+                    b[k + 3] = max(b[k + 3], p[k])
+        comp[r] = b
+    boxes = list(comp.values())
+
+    # Merge whatever touches. Repeated until nothing changes, because a chair is
+    # a chain -- legs touch the seat, the seat touches the back.
+    changed = True
+    while changed:
+        changed = False
+        out = []
+        for b in boxes:
+            for o in out:
+                if all(b[k] - gap <= o[k + 3] and o[k] - gap <= b[k + 3]
+                       for k in range(3)):
+                    for k in range(3):
+                        o[k] = min(o[k], b[k])
+                        o[k + 3] = max(o[k + 3], b[k + 3])
+                    changed = True
+                    break
+            else:
+                out.append(list(b))
+        boxes = out
+    return [b for b in boxes
+            if max(b[k + 3] - b[k] for k in range(3)) >= min_m]
+
+
+def boxes_mesh(boxes, place_fn):
+    """Boxes -> a closed collision mesh, each face turned to face outward.
+
+    `place_fn` maps a room-local point into world space, so the same boxes work
+    on a ring deck, on the drum, or anywhere else a room gets put.
+    """
+    verts, tris = [], []
+    for x0, y0, z0, x1, y1, z1 in boxes:
+        c = ((x0 + x1) / 2.0, (y0 + y1) / 2.0, (z0 + z1) / 2.0)
+        wc = place_fn([c])[0]
+        for face in (
+            [(x0, y0, z0), (x0, y0, z1), (x0, y1, z1), (x0, y1, z0)],
+            [(x1, y0, z0), (x1, y1, z0), (x1, y1, z1), (x1, y0, z1)],
+            [(x0, y0, z0), (x1, y0, z0), (x1, y0, z1), (x0, y0, z1)],
+            [(x0, y1, z0), (x0, y1, z1), (x1, y1, z1), (x1, y1, z0)],
+            [(x0, y0, z0), (x0, y1, z0), (x1, y1, z0), (x1, y0, z0)],
+            [(x0, y0, z1), (x1, y0, z1), (x1, y1, z1), (x0, y1, z1)],
+        ):
+            pts = place_fn(face)
+            mid = [sum(p[k] for p in pts) / 4.0 for k in range(3)]
+            want = [mid[k] - wc[k] for k in range(3)]
+            _quad(verts, tris, pts, want)
+    return verts, tris
+
+
 def floor_holes(verts, tris, meta, along_m=0.35, samples=90):
     """Places on a route from the corridor into each room where there is no
     floor. Returns a list of (room_key, z, angle_deg).

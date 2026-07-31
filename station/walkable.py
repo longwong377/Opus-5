@@ -160,7 +160,11 @@ def walk_deck(sector, ring, deck, godot, timeout=1800, traverse=None,
     stem = f"{sector}_{ring}_{deck}"
     v, t, g, s = D.build_deck(schema, profile, sector, ring, deck)
     D.write_obj(os.path.join(out, f"{stem}.obj"), v, t, g)
-    cv, ct, cm = D.build_collision(schema, profile, sector, ring, deck)
+    # PROPS ON. This is a body being put in the room, so the furniture has to be
+    # there: a route that only exists because you can walk through a table is
+    # not a route.
+    cv, ct, cm = D.build_collision(schema, profile, sector, ring, deck,
+                                   props=True)
     C.write_obj(os.path.join(out, f"{stem}_col.obj"), cv, ct)
     _glb(os.path.join(out, f"{stem}.obj"), os.path.join(out, f"{stem}.glb"))
     _glb(os.path.join(out, f"{stem}_col.obj"),
