@@ -602,16 +602,18 @@ def deck_section(args):
           f"{resident['fixtures']:,}  ({fr.untagged:,} triangles carry no "
           f"group and export as `deck_untagged`)\n")
 
+    over = n_struct - INTERIOR["visible_set_tris"]
     check("frustum structure", n_struct, INTERIOR["visible_set_tris"], " tri",
-          f"was 30,941 from the kit in isolation",
-          when=f"{n_struct - INTERIOR['visible_set_tris']:,} tri, "
-               f"{n_struct/INTERIOR['visible_set_tris']:.2f}x. The synthetic "
-               f"estimate this replaces read 51.6% of the same allowance")
+          "was 30,941 from the kit in isolation",
+          when=(f"{over:,} tri, {n_struct/INTERIOR['visible_set_tris']:.2f}x. "
+                f"The synthetic estimate this replaces read 51.6% of the same "
+                f"allowance" if over > 0 else
+                f"{-over:,} more triangles of structure in one standing view"))
     check("structure share of frame", n_struct / FRAME_TRIANGLES * 100,
           INTERIOR_FRAME_SHARE * 100, "%",
           "structure only, on the assembled deck",
-          when=f"{n_struct/FRAME_TRIANGLES*100 - INTERIOR_FRAME_SHARE*100:.1f} "
-               f"points of a 1.2 M frame")
+          when=f"{abs(n_struct/FRAME_TRIANGLES*100 - INTERIOR_FRAME_SHARE*100):.1f}"
+               f" points of a 1.2 M frame")
     hdr = DECK["visible_all_tris"] / max(n_all, 1)
     prop_x = ((DECK["visible_all_tris"] - n_all + seen["props"])
               / max(seen["props"], 1))
@@ -643,7 +645,7 @@ def deck_section(args):
                f"{draws_resident + ext_draws - DRAW['max_per_frame']} draws")
     check("resident triangles", len(tris), CELLS["resident_tris"], " tri",
           "walk.gd loads one .glb whole -- there is no streaming and no LOD",
-          when=f"{len(tris) - CELLS['resident_tris']:,} tri, "
+          when=f"{abs(len(tris) - CELLS['resident_tris']):,} tri, "
                f"{len(tris)/CELLS['resident_tris']:.2f}x this file's own "
                f"three-cell resident budget")
 
@@ -910,7 +912,16 @@ def main(argv=None):
                     if cur is None or plan["cell_length_m"] > cur[1]["cell_length_m"]:
                         worst[deck["use"]] = (sec, plan, di)
 
-        print("\nStreaming cells -- a full ring corridor is not emittable\n")
+        # HONEST LABEL, ADDED IN 3x. Everything below gates `interior.deck_cell`,
+        # which is the streaming unit this project INTENDS. Nothing loads it:
+        # `walk.gd` loads one whole `.glb` per deck and `deck.build_deck` does
+        # not cut cells. So this section measures a design, not a frame -- which
+        # is the same class of thing as the estimate removed above, and it stays
+        # only because the design is real and its numbers are the target the
+        # runtime has to reach. The RESIDENT SET A PLAYER ACTUALLY LOADS is
+        # gated in the standing-frame section, against `resident_tris` below,
+        # and it is 3.32x over.
+        print("\nStreaming cells -- the unit the runtime does not yet load\n")
         for use in ("habitat", "plant"):
             if worst[use] is None:
                 continue

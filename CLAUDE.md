@@ -466,6 +466,15 @@ This project runs partly on a **6-hourly trigger** (`trig_01JS1VWf6yada5x6maPMAz
    `exterior.tscn` collide even though their file lists look separate. Have the second report
    what to apply and apply it at integration.
 
+   **DISJOINT SOURCE FILES ARE NOT DISJOINT ARTEFACTS.** Session 3w: two agents and the main
+   agent all had separate source files and all three ran `station/walkable.py`, which rebuilds
+   `station/generated/scene/deck/*` before every run. They stomped each other's meshes
+   mid-test. One run **timed out at 1800 s** and another failed on a half-written `populace.py`
+   — neither was a defect in anything being tested, and the first looked exactly like a
+   performance regression from the change that had just landed. Measured alone the same gate
+   takes **38 s**. Before believing a slow or failing gate, check whether something else is
+   writing its inputs; an agent that needs to run a build should do it in `git worktree`.
+
    **Their work is not done when they return it.** In three runs: one agent's output was left
    uncommitted at a session boundary, one wrote entries into a module that did nothing until
    four lines were added to `export_scene`, and one shipped gates that had to be replaced.
