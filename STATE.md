@@ -1,4 +1,4 @@
-# Project State
+**Last updated:** 2026-07-31 · **Session 3y** — **the generic-bay substitution is measured and declared: do NOT swap, compose** · **3x** — the doors close, 1,572 open edges → 0, signage a player can read · **3w** — the frame budget measured for real · **3v** — W1/W2 done, 66/66 decks assemble# Project State
 
 **Last updated:** 2026-07-31 · **Session 3x** — **the doors close. 1,572 open boundary edges on an assembled deck → 0, every vestibule out of the corridor, every collision shell tied to the tolerance it is certified at** · **3w** — the frame budget measured for real · **3v** — W1 and W2 DONE, 66/66 ring decks assemble · **3u** — the plan is vertical now; walkability is a gate
 
@@ -211,17 +211,57 @@ dark horizontals in the show are **shielded recesses, not dark paint** — an af
 `materials.PROVENANCE` is balanced-V, and a render matches in **linear luminance**. `kit_deck`'s
 recorded "1.6× the wall" is **2.49×** in luminance. Convert before acting.
 
-### 3. THE BIGGEST FIDELITY FINDING OF THE SESSION, and it is not a bug
+### 3. THE MODULE-OWNED PLACES — MEASURED IN 3y, AND THE ANSWER IS *COMPOSE*, NOT SWAP
 
-`deck.build_deck` calls `rooms.build(...)` for **every** room and never consults
-`place["module"]`. So **39 of the 106 ring-deck places are module-owned and are assembled as
-generic `rooms.py` bays.** On `blue/0/0` that means the docking bays a player actually walks into
-is a generic store bay standing in for `docking_bay.py` — 18 m, 39 measured floods — and
-`mooring_clamps` is another standing in for `components.py`.
+3x recorded that `deck.build_deck` never consults `place["module"]`, so module-owned places are
+assembled as generic `rooms.py` bays, and called it the largest fidelity gap on the station. 3y set
+out to wire the dispatch. **Measuring first inverted the conclusion twice.**
 
-**A player walks in `rooms.py` geometry wherever a bespoke module owns the place.** Every craft
-score taken on an assembled deck has been scoring the generic bay. This is the single largest
-thing `--shot deck` made visible and it belongs in `deck.py`, near `BESPOKE_GEOMETRY`.
+**The first comparison was against the wrong thing.** Bespoke extent against `rooms.bay_span_m`
+says not one of the 25 fits — `plant` is 92 × 442 m against a 13.5 × 9.6 bay. Meaningless:
+`bay_span_m` sizes a representative *generic* bay and is not a constraint the ring imposes. The
+ring's real constraint is the arc between consecutive doors, and on `blue/0/0` those are 480, 185,
+295, 148, 74 and 148 m against a widest bespoke width of 42 m. **Zero collisions.**
+
+**The second comparison is the one that decides.** Built both ways for all 25 places with a
+builder: **generic 390,432 triangles against bespoke 210,702 — ×0.54.**
+
+**THE BESPOKE MODULES ARE SHELLS.** `rooms.build` runs `dressing` and `populace` inside itself, so
+a generic bay arrives furnished and inhabited; `docking_bay.docking_bay` is 3,740 triangles of bay
+and *nothing in it*, against the generic 38,728. **A wholesale swap would take 46% of the station's
+detail off.** The 3x finding is right about shape and identity and wrong about richness.
+
+It is not uniform, which is the useful part:
+
+| bespoke is RICHER | ratio | bespoke is POORER | ratio |
+|---|---|---|---|
+| `alien_sector` | ×3.69 | `docking_bay` | ×0.10 |
+| `zocalo` / `shops_kiosks` | ×1.45 | `command_control` | ×0.12 |
+| `customs` | ×0.94–1.41 | `council_chamber` | ×0.12 |
+| `plant` / `air_compressors` | ×1.13 | `hospitality` | ×0.19 |
+
+**THE NEXT INCREMENT, and it is now a decision with numbers behind it: bespoke shell PLUS generic
+dressing.** The module gives a place its true shape, scale and identity; `dressing.dress()` and
+`populace` fill it. Both already take a room's dimensions rather than a `rooms.build` internal, so
+the composition is available without restructuring either.
+
+Two facts a builder will need and should not have to rediscover:
+
+* **The frames differ.** `rooms.build` centres a room on its origin (x ±5.96, z ±4.06 for
+  `docking_bays`) with the floor at y = −0.14. `docking_bay.docking_bay` puts its floor at y = 0
+  and runs z from −0.75 to +140.75. Bespoke geometry must be recentred before placement or the room
+  lands 70 m up the station's axis.
+* **`R.build(door_at=)` is what connects a room to the corridor**, and no bespoke builder takes it.
+  A composed room needs its near face opened by the assembler, not by the module.
+
+**What 3y actually landed:** the registry moved from `tools/export_scene.py` to
+`station/bespoke.py` (unchanged; export_scene imports it, 233/233 still green) because `station/`
+may not import from `tools/`. It gains `compare()` — the measurement above, kept runnable — and
+nine assertions. And **the substitution is no longer silent**: `--sweep` prints *"27 module-owned
+places assembled as GENERIC bays (21 of them have a bespoke builder that was not used)"*, and
+`deck._selftest` asserts the reporting is present with a stated reason. Negative control: dropping
+the record fails with *"0 reported against 2 module-owned places"*. Geometry is byte-identical —
+591,352 triangles, same vertex hash. This changed what the build says about itself, not what it is.
 
 ### 4. Still open from judge-3w, unchanged
 
