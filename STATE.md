@@ -105,6 +105,83 @@ flat value, which is craft 3's own wording.
 
 Cost: 1,206,552 → **1,607,208** triangles over the 78 rooms (+33%).
 
+### 4b. THE PORT, AND THE STATION'S OWN VOICE
+
+`docs/gazetteer/TRAFFIC-AND-CUSTOMS.md` is 910 lines including a section titled *"THE PORT AS A
+LIVING SYSTEM — what to actually simulate"*, and **one file read it** — `station/aperture.py`, for
+a hull cut. `station/traffic.py` now does. **27/27, and both negative controls caught a real bug in
+my own gates before they fired.**
+
+**The one thing that is not extrapolation.** 24 docking bays (authority 3, read from the schema and
+not restated) × 24 h ÷ a 10 h mean occupancy = **57.6 movements a day**, against an unrelated
+authority-4 source's *"over 50 to 60 ships"*. Two sources that know nothing about each other,
+agreeing to within a couple of percent on a quantity neither was computed to match. The control
+moves the turnaround to 24 h, gets 24.0, and the band gate **fires** — the agreement is evidence,
+not an identity.
+
+**Three things the arrival stream did not have**, measured against `schedule.arrival_times`, which
+is what the crowd actually uses:
+
+1. **It was flat.** 52 arrivals spread uniformly; §5.4 gives peak-to-trough **3:1**. `day_curve`
+   measures **3.12:1** off the section's own stated intervals rather than a curve fitted to the
+   words "about 3:1".
+2. **It had one peak and the day has two.** `schedule.wave_pulse` reads 1.0 at 10:00 and **0.0 at
+   18:00**. The evening peak is the outbound one — *"the Zócalo is busiest at station-evening and
+   the port empties into it"*.
+3. **There was no liner.** *"The liner is the event … build the day around it."* Measured: **689
+   aboard at 10.8 h, 8.5 people a minute through one hall against a 0.28/min background.** That
+   contrast is the crowdedness-and-isolation axis the owner named and a uniform stream cannot make
+   it.
+
+**AND THE PROJECT DISAGREES WITH ITSELF BY 3.6× ON SOULS A DAY — C-012.** `schedule.py` says 52 × 120
+= **6,240**; the gazetteer's own manifest computes **1,739**. Neither is canon, and the sourced
+figure constrains *movements*, not souls — both sit inside it there. The whole disagreement is
+souls per arrival, 120 against 32, and a manifest whose commonest row is a freighter with 6–15 crew
+cannot average 120. The transient-population cross-check **does not settle it in the expected
+direction**: at a 9-day stay the manifest gives 15,651 against `FACTIONS.md`'s 45,000 and
+`schedule.py` gives 56,160, so the manifest is *low* on that test. Recorded, not picked.
+
+**Two bugs the controls found in my own gates**, both worth keeping:
+`movements_per_day(berth_h=MEAN_BERTH_HOURS)` bound the default **at def time**, so the control
+could set the module global to 24.0 and the function went on returning 57.6 — it printed **DOES NOT
+FIRE** and was right to. And the flat-day control compared raw counts over two four-hour windows on
+a 55-arrival sample, which is noise; it compares the ratio's collapse now, 3.50 shaped against 1.22
+flat.
+
+### 4c. THE INFORMATION LAYER — derived from the simulation, not written
+
+CLAUDE.md's scope asks for *"an information layer the player can use — comms, ISN, propaganda,
+signage, announcements"*. **Four of those five did not exist.** `station/broadcast.py`, **27/27**.
+
+**An announcement is a view of a simulation, not a line of dialogue.** An arrival call names the
+ship `traffic.py` actually berthed, in the tier it berthed in, at the hour it berthed, with the
+passenger count it carried. A customs advisory fires a quarter-hour ahead of a liner and names its
+real 689 passengers — **and a day with no liner gets no advisory, which is the control for it.** A
+watch call names how many security `schedule.role_on_duty` says are on. **A different day says
+different things**, asserted, because there is no script to drift from.
+
+**The era lock is the sharpest part.** Every ISN bulletin and Ministry of Peace notice is tied to an
+event in `costume.ERA_EVENTS`, so the same station renders three ways:
+
+| datum | ISN bulletins | MiniPax notices |
+|---|---|---|
+| S2E01 | **0** | **0** |
+| S2E22 (*The Fall of Night*) | 3 | 3 |
+| S3E05, the datum | **4** | **3** |
+
+`FACTIONS.md` §5.1 says *"any armband before The Fall of Night is an error"*; a Ministry of Peace
+poster in a Season 1 customs hall is the same mistake, and it is now impossible. The era check
+**delegates** to `costume.era_active` for the reason INV-240 records about the armband — a second
+era clock is a second description of one fact, and the one that reaches a frame wins.
+
+Written to `FACTIONS.md` §11.5's own build note, quoted in the docstring: the propaganda *"should
+read as OFFICIAL AND REASONABLE … because that is what makes them sinister. Do not make them look
+like villain posters."* Asserted: no exclamation marks, no villain vocabulary, and the tuning fork
+is the authority-1 customs board carried verbatim. **And the tannoy does not reach your quarters**,
+asserted — a station-wide public address is one a player cannot get away from.
+
+118 timed announcements a day, 7 standing surfaces.
+
 ### 5. Gates, after the merge and the security work
 
 `bespoke` 149/149 · `deck --selftest` 32/32 · `rooms` 755/755 · `test_materials_layer3` 34/34 ·
