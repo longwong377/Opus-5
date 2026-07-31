@@ -10,11 +10,39 @@ hardware is not present.
 
 Budgets derive from the target in CLAUDE.md: RTX 4070 / RX 7800 XT class,
 1440p60, 12 GB VRAM. Exceeding one is a build failure, not a warning.
+
+WHAT SESSION 3w FOUND, AND IT IS THE P1 DESCRIPTOR VERBATIM. This file printed
+`PASS  visible structure set  30,941 tri / 60,000 tri (51.6%)` and that quantity
+was never rendered by anybody. It came from `interior_kit.corridor_section()`
+measured IN ISOLATION -- a marginal triangles-per-metre rate multiplied by a
+sight line, plus two `junction()` crossings. The walkable station has no
+junctions anywhere (`interior.ring_arc` never places one) and no player has ever
+stood in a bare kit section. Measured in the frustum of a standing camera on the
+assembled deck the same quantity is 97,321 triangles -- 162% of the allowance
+the gate was reporting as half spent. `docs/judge-3w.md` scored PERFORMANCE 1:
+"a gate exists and does not measure the thing it names. Worse than 0, because it
+prints PASS."
+
+SO THE INTERIOR IS NOW GATED ON AN ASSEMBLED DECK, built by `deck.build_deck`,
+counted inside a real frustum from a standing eye, swept over every position and
+heading a player can take. It costs about 40 seconds and it is the only honest
+way to answer the question. Three of its bounds are RED as this is written and
+they are left red: the numbers below are not tuned to fit the content, and the
+content is not thinned to fit the numbers.
+
+The three new bounds asked for in session 3x -- a frame the player actually
+renders, a DRAW CALL budget, a COLLISION triangle budget -- are derived in
+`DRAW` and `COLLISION` below and logged as INV-082..INV-085. Every one of them
+prints how far the current content is from failing it, in units of the content,
+so no bound in this file is a bound that cannot fail.
 """
+import argparse
 import json
 import math
 import os
+import re
 import sys
+import time
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 MANIFEST = os.path.join(ROOT, "station/generated/hull_manifest.json")
@@ -35,21 +63,31 @@ BUDGETS = {
 # Totalling the interior is meaningless: the concentric-ring topology gives ring
 # 1 alone a circumference of 2*pi*278.3 = 1,749 m per sector, and with five
 # rings across six sectors the built total runs to millions of triangles that
-# are never simultaneously in frame. Occlusion culling means the cost that
-# matters is the current cell plus whatever is visible through its portals.
+# are never simultaneously in frame.
 #
-# The visible-set estimate below is deliberately pessimistic: a straight run
-# with a crossing at each end and both of those crossings' near arms partly in
-# view. A curved ring corridor sees less than this, not more.
+# WHAT IS LEFT HERE IS THE MARGINAL RATE AND NOTHING ELSE. `corridor_tris_per_m`
+# is a property of geometry that actually ships: `interior.ring_arc` calls
+# `interior_kit.corridor_section`, so every metre of walkable station is built
+# at this rate and a regression in it is a regression everywhere.
+#
+# REMOVED IN 3x, and both removals are the point of this session:
+#   * `visible_set_tris` as a SYNTHETIC ESTIMATE -- per-metre rate x sight line
+#     + two junctions. The number now comes from a frustum on an assembled deck.
+#     The estimate said 30,941. The frustum says 97,321 for the same class of
+#     content. The estimate was not conservative, it was wrong.
+#   * `junction_tris` / `junctions_in_view` -- a bound on `interior_kit.junction`,
+#     which appears in NO walkable geometry. `ring_arc` sweeps a continuous arc
+#     with door apertures cut in it and never places a crossing. Gating a
+#     corridor's frame cost on two crossings that are not there is measuring a
+#     part of the kit nobody renders, which is the defect this file had.
+#     Recorded so the removal is auditable: it read 1,400 / 2,000 tri (70.0%).
 INTERIOR = {
     "corridor_tris_per_m": 400,      # marginal rate along a run
-    "junction_tris": 2_000,          # one crossing, all arms
-    "visible_set_tris": 60_000,      # structure only -- see below
-    "junctions_in_view": 2,
-    # Fallback only. The real figure is DERIVED from the station's curvature by
-    # interior.sight_line() -- see the note below -- and this value is used only
-    # if that import fails.
-    "sight_line_m": 50.0,
+    # Structure alone in the standing frustum. UNCHANGED from the value this
+    # gate has always carried -- what changed is that it is now measured on the
+    # assembled deck instead of on the kit in isolation, and at that it FAILS.
+    # Raising it to fit would be the whole disease.
+    "visible_set_tris": 60_000,
 }
 
 # 60,000 is structure only. At 1440p60 on the target card the whole frame
@@ -57,6 +95,22 @@ INTERIOR = {
 # than ~5% of it: the same view has to carry props, fittings, signage, NPCs and
 # whatever is through the windows. If structure alone reaches 60 k the kit has
 # become too expensive to dress.
+#
+# THIS FILE CONTRADICTS ITSELF ON THE FRAME FIGURE AND ALWAYS HAS. `BUDGETS`
+# above says "a 4070 sustains roughly 20-30 M triangles/frame at 1440p60" and
+# derives the exterior's 400,000 as "2% of frame budget", which implies a
+# 20,000,000-triangle frame. `FRAME_TRIANGLES` says 1,200,000 -- 16.7x smaller,
+# against which the exterior's own 400,000 is 33% of frame, not 2%.
+# `docs/AAA-STANDARD.md` quotes the 2% sentence approvingly, so the
+# contradiction is load-bearing in two documents.
+#
+# NEITHER NUMBER IS CHANGED HERE. Session 3x's brief was to measure honestly,
+# and moving a frame budget is how a gate is made green without content
+# improving. Everything below is gated against the SMALLER, tighter figure,
+# because a budget's job is to be the binding constraint. If the 20 M reading is
+# the right one then every interior bound in this file has 16x more headroom
+# than it claims -- and that is a question for a frame capture on the target
+# card, which is the only thing that can settle it. Recorded as INV-082.
 INTERIOR_FRAME_SHARE = 0.05
 FRAME_TRIANGLES = 1_200_000
 
@@ -94,13 +148,167 @@ DRUM = {
     "surface_tris_per_m2": 0.5,
 }
 
+# ---------------------------------------------------------------------------
+# THE STANDING FRAME. What a player actually renders, on an assembled deck.
+# ---------------------------------------------------------------------------
+#
+# THE CAMERA IS NOT A CHOICE, IT IS READ OFF THE SHIPPED ONE where the shipped
+# one states a value. `godot/scripts/player.gd` sets `near = 0.15` and
+# `far = 12000.0` on the camera it creates, and puts the eye `eye_height_m = 1.7`
+# above the body origin. Those three are copied here and `shipped_camera()`
+# re-reads them at run time so they cannot drift.
+#
+# FIELD OF VIEW IS THE ONE NUMBER THIS FILE SPECIFIES RATHER THAN COPIES, and
+# it is 70 degrees VERTICAL because Godot's `Camera3D.fov` is vertical when
+# `keep_aspect` is its default `KEEP_HEIGHT`. At 16:9 that is 102.5 degrees
+# horizontal, the top of the range PC first-person games ship. `player.gd` sets
+# no `fov` at all, so the camera a player is given today is Godot 4's default
+# 75 degrees -- WIDER than the budget, and therefore rendering MORE than the
+# budget measures. `deck_section` checks that and fails until they agree; the
+# fix is one line in `player.gd`, which this session does not own. INV-083.
+#
+# ASPECT COMES FROM THE TARGET, NOT FROM THE WINDOW. CLAUDE.md's target is
+# 1440p, so 2560 x 1440 and 16:9. `godot/project.godot` opens a 1920 x 1080
+# window, which is the same aspect and therefore the same frustum; pixel count
+# changes shading cost, not the triangle set.
+#
+# THE SWEEP IS THE GATE. AAA-STANDARD scores a single convenient camera as
+# PERFORMANCE 2 and a swept worst case as 3, so this sweeps: every station on a
+# lattice around the built arc, every heading on a lattice at each station. The
+# lattice is stated rather than tuned -- 48 x 24 -- and its own sampling error is
+# printed, measured by re-running at half resolution.
+DECK = {
+    "sector": "blue", "ring": 0, "deck": 0,
+    "eye_m": 1.70,                # above the COLLISION floor -- see deck_camera
+    "fov_v_deg": 70.0,            # vertical, 16:9 -> 102.5 deg horizontal
+    "aspect": 16.0 / 9.0,         # 2560 x 1440
+    "near_m": 0.15,               # player.gd
+    "far_m": 12_000.0,            # player.gd
+    "stations": 48,               # sweep lattice around the arc
+    "headings": 24,               # sweep lattice in yaw, 15 deg apart
+    # Everything in the frame, not just structure: props, fittings, doors and
+    # people are what the player is looking at. The allowance is the frame share
+    # already committed in this file to the widest-open view the project has --
+    # the drum's 25% -- on the argument that a corridor interior, which is a
+    # closed box with a wall a metre from each shoulder, cannot be worth MORE
+    # frame than standing in the Garden with 4.5 million square metres in view.
+    # It is a ceiling taken from an existing number, not a new one.
+    "visible_all_tris": int(FRAME_TRIANGLES * DRUM["frame_share"]),
+}
+
+# ---------------------------------------------------------------------------
+# DRAW CALLS. There was no interior draw-call budget in existence before 3x --
+# `exterior_draw_calls: 64` was the only one on the station, and it gates a
+# manifest, not a frame.
+# ---------------------------------------------------------------------------
+#
+# DERIVED FROM CPU TIME, WHICH IS WHAT A DRAW CALL COSTS. A draw call is not
+# GPU work, it is a submission: state validation, descriptor binding and a
+# command-buffer write on the render thread. So the bound is
+#
+#     draws <= frame_ms * render_thread_share / per_draw_ms
+#
+# and all three inputs are stated:
+#
+#   frame_ms            16.667   1440p60 is the target in CLAUDE.md. Not a
+#                                choice.
+#   render_thread_share 0.25     the render thread also culls, clusters lights,
+#                                builds shadow lists and drives the RHI. A
+#                                quarter of it for submission is the planning
+#                                split; it is an extrapolation (INV-084).
+#   per_draw_us         4.0      Vulkan, one uniform set per surface, no
+#                                GPU-driven pipeline. Godot 4's Forward+ renderer
+#                                is not bindless. 4 us is an extrapolation
+#                                (INV-084) and it is the weakest number here.
+#
+# CROSS-CHECKED AGAINST THIS FILE'S OWN EXTERIOR BUDGET, which was set years of
+# sessions ago on a completely different argument: 400,000 triangles in 64 draws
+# is 6,250 triangles a draw. The break-even batch implied by the numbers above --
+# the batch at which the GPU work of a draw exceeds the CPU cost of submitting
+# it, at the 1.2 G tri/s the `BUDGETS` comment's own "20-30 M tri/frame" figure
+# implies -- is 4,800 triangles. Two independent derivations, 30% apart. That
+# agreement is the reason to trust 4 us at all, and it is printed every run.
+#
+# THE CAP IS PER FRAME, NOT PER SUBSYSTEM. Exterior, interior, NPCs and effects
+# all submit into the same 4.17 ms, so `deck_section` prints the combined figure
+# as well as the interior's own.
+DRAW = {
+    "frame_ms": 1000.0 / 60.0,
+    "render_thread_share": 0.25,
+    "per_draw_us": 4.0,
+    "gpu_tri_per_s": 1.2e9,       # from BUDGETS' own "20-30 M tri/frame @ 60"
+}
+DRAW["max_per_frame"] = int(DRAW["frame_ms"] * DRAW["render_thread_share"]
+                            * 1000.0 / DRAW["per_draw_us"])
+DRAW["break_even_batch"] = int(DRAW["gpu_tri_per_s"] * DRAW["per_draw_us"] / 1e6)
+
+# ---------------------------------------------------------------------------
+# COLLISION. There was no collision budget at all, on any deck, before 3x.
+# ---------------------------------------------------------------------------
+#
+# TWO BOUNDS, BECAUSE TWO DIFFERENT THINGS CONSTRAIN IT.
+#
+# (1) TESSELLATION AGAINST TOLERANCE. A collision surface exists to be walked
+#     on, and the only correctness requirement on it is that it represent the
+#     surface to within the tolerance the walk gate certifies. Triangles spent
+#     finer than that buy nothing a player can feel and cost memory, BVH build
+#     time and streaming latency. Both collision generators in this project
+#     already claim to derive their density this way, so the bound is theirs:
+#
+#       corridor  `collision.corridor_shell` sizes its angular step from
+#                 `MAX_SAG_M`, the sag of a facet inside the true cylinder.
+#                 The tolerance a floor is CERTIFIED against is
+#                 `collision.STEP_TOLERANCE_M`. Sag scales as the square of the
+#                 step, so the allowance is the step count at STEP_TOLERANCE_M.
+#       drum      `drum_walk.collision_stride` already picks the coarsest LOD
+#                 stride whose height error stays under `drum_walk.STEP_M`.
+#                 The bound is that the tile was BUILT at that stride.
+#
+#     Nothing here is invented: STEP_TOLERANCE_M and STEP_M are the repository's
+#     own constants and the ratio is arithmetic.
+#
+# (2) RESIDENT MEMORY. Godot's `ConcavePolygonShape3D` keeps its faces and BVH
+#     in system RAM, and this engine is built `precision=double`, so a Vector3
+#     is 24 bytes. Per triangle: 3 vertices x 24 B = 72 B of face array, plus a
+#     BVH of about 2N nodes each holding an AABB (2 x Vector3 = 48 B) and three
+#     ints, ~64 B a node = ~128 B. About 200 B a triangle. An extrapolation
+#     (INV-085); one RSS measurement on target settles it.
+#
+#     The share is 1% of a 16 GB machine -- 160 MB. 16 GB is the companion
+#     figure to CLAUDE.md's stated 12 GB VRAM card and is itself declared.
+#     WHAT THIS BOUND IS ACTUALLY FOR is the regression this project has already
+#     made once: handing the render mesh to the physics engine. One deck's
+#     render mesh is 597,418 triangles -- 119 MB, three quarters of the whole
+#     station's allowance, for one deck.
+COLLISION = {
+    "bytes_per_tri": 200,
+    "ram_bytes": 16 * 1024**3,
+    "ram_share": 0.01,
+    "tessellation_ratio": 1.0,
+}
+COLLISION["max_resident_tris"] = int(COLLISION["ram_bytes"]
+                                     * COLLISION["ram_share"]
+                                     / COLLISION["bytes_per_tri"])
+
 results = []
+FAILED = []
 
 
-def check(name, value, limit, unit="", note=""):
+def check(name, value, limit, unit="", note="", when=""):
+    """One bound. `when` says what it takes to fail, in units of the content.
+
+    EVERY BOUND HAS TO BE ABLE TO FAIL, and a bound sitting at 12% of its
+    allowance looks decorative unless the distance to failure is stated in
+    something a person can picture -- "4.4x today's prop density", not "88%
+    headroom". CLAUDE.md's rule 2 for layer exits is the same rule at gate
+    scale: a criterion that cannot fail on the current content is measuring the
+    wrong thing.
+    """
     ok = value <= limit
     results.append(ok)
-    pct = value / limit * 100
+    if not ok:
+        FAILED.append(name)
+    pct = value / limit * 100 if limit else float("inf")
     bar = "#" * int(pct / 5) + "." * (20 - int(min(pct, 100) / 5))
     # Densities are fractions per square metre; rounding them to integers
     # printed "0 / 0" for a gate that was doing real work.
@@ -108,6 +316,8 @@ def check(name, value, limit, unit="", note=""):
     print(f"{'PASS' if ok else 'FAIL'}  {name:26s} [{bar}] "
           f"{value:>10{fmt}}{unit} / {limit:{fmt}}{unit}  ({pct:.1f}%)"
           + (f"  {note}" if note else ""))
+    if when:
+        print(f"{'':32s}{'goes red at' if ok else 'over by'}: {when}")
     return ok
 
 

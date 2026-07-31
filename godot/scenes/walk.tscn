@@ -3,7 +3,16 @@
 ; THE WALKABLE BUILD. Deliberately minimal: geometry is loaded at RUNTIME from a
 ; .glb by scripts/walk.gd, exactly as render_shot.gd does, so this scene never
 ; goes stale against regenerated meshes and no 30 MB binary enters the project.
-; The look lives in the render scenes; this one exists to be STOOD IN.
+;
+; THE LOOK IS NOT DUPLICATED HERE, it is BORROWED. Until session 3w the line
+; above ended "the look lives in the render scenes; this one exists to be STOOD
+; IN", and the consequence was that the only scene a player could stand in had
+; no materials and no lights at all. scripts/dress_scene.gd now reads
+; scenes/interior.tscn's material_rules and Environment and
+; tools/export_scene.py's FIXTURE_LIGHTING at load, so there is still exactly
+; ONE description of the look and this scene is inside it. Nothing about the
+; look belongs in this file -- adding an Environment or a material rule here
+; would recreate the split it exists to close.
 
 [ext_resource type="Script" path="res://scripts/walk.gd" id="1_walk"]
 

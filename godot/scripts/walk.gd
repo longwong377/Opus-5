@@ -119,6 +119,7 @@ func _load_level() -> bool:
 	if scene == null:
 		return false
 	add_child(scene)
+	_dress_level(scene)
 
 	# WHICH MESH IS THE FLOOR. With a collision mesh supplied, the visible one
 	# gets no colliders at all and the proxy is invisible -- that separation is
@@ -147,6 +148,57 @@ func _load_level() -> bool:
 		n += 1
 	print("walk: %d mesh instances given trimesh collision" % n)
 	return n > 0
+
+
+## Bind the materials and light the fittings -- see `scripts/dress_scene.gd`.
+##
+## BEST EFFORT, LOUDLY. Dressing must never be able to fail a walk test: this
+## scene's first job is to answer "can a player stand up in this station", and
+## that answer does not depend on what colour the wall is. But a look that
+## quietly stops working is this project's most-repeated defect -- the render
+## path rotted for eleven sessions and every gate stayed green -- so failure
+## prints `dress: FAILED` and the reason, and the summary line is printed on
+## EVERY run, including the headless one CI reads.
+##
+## `--no-dress` is the control. With it the build is what it was before session
+## 3w: grey geometry under a flat ambient, no sources. If a render with dressing
+## and a render without it look the same, this file is doing nothing.
+func _dress_level(scene: Node) -> void:
+	if _args().has("no-dress"):
+		print("walk: dressing DISABLED (control) -- no materials, no lights")
+		return
+	_dress = Node.new()
+	_dress.name = "Dress"
+	_dress.set_script(load("res://scripts/dress_scene.gd"))
+	add_child(_dress)
+	if not _dress.prepare():
+		push_error("walk: dress FAILED -- " + ", ".join(_dress.problems))
+		print("dress: FAILED -- %s" % ", ".join(_dress.problems))
+	var m: Dictionary = _dress.bind(scene)
+	_dress.release()
+	var un: PackedStringArray = m["unmatched"]
+	print("dress: %d/%d meshes on a material rule, %d group(s) on the glTF "
+		% [m["bound"], m["meshes"], un.size()]
+		+ "fallback%s" % ("" if un.is_empty() else ": " + ", ".join(un)))
+
+	_lights = Node3D.new()
+	_lights.name = "Fittings"
+	add_child(_lights)
+	var energy: float = _dress.consts.get("fixture_energy", 3.0)
+	var lit: Dictionary = _dress.light(scene, _lights, energy, spawn)
+	print("dress: %d light sources at energy %.2f from %s, %d casting shadows"
+		% [lit["lights"], energy, str(lit["by_fitting"]), lit["shadows"]])
+	var eo: PackedStringArray = lit["emissive_only"]
+	# Only claim "measured" when the measurements actually loaded. With the
+	# table empty EVERY fitting looks emissive-only, and printing the reassuring
+	# sentence over a failed parse is how a broken step reads as a working one.
+	if not eo.is_empty() and not _dress.spec.is_empty():
+		# Not a warning. Absence from FIXTURE_LIGHTING is a MEASUREMENT -- the
+		# pilaster strip is the brightest thing on the wall and lights nothing.
+		print("dress: emissive-only (measured, not missing): %s" % ", ".join(eo))
+	var ext: PackedStringArray = lit["extended"]
+	if not ext.is_empty():
+		print("dress: sampled as extended fittings: %s" % ", ".join(ext))
 
 
 ## Give the deck its doors. `--no-doors` leaves them out, which is the NEGATIVE
@@ -223,14 +275,28 @@ func _spawn_player() -> void:
 	_player.position = spawn
 	add_child(_player)
 
+	# THE LOOK COMES FROM interior.tscn, not from here. What used to be in this
+	# spot was a hand-written Environment with ambient 0.6 and no tonemapping --
+	# a fill three stops off the measured one, applied to geometry that had no
+	# materials, so nothing about it could be judged. `interior.tscn`'s `Env` is
+	# the calibrated interior look: ACES, exposure 1.0, white point 4.0, ambient
+	# 1.30 (`AMBIENT_CALIBRATED_ENERGY`, measured in session 3n against the
+	# residential corridor), SSAO at 0.6 m, low glow. A second set of numbers
+	# here would be a second look, judged against nothing.
 	var env := WorldEnvironment.new()
-	var e := Environment.new()
-	e.background_mode = Environment.BG_COLOR
-	e.background_color = Color(0.02, 0.02, 0.03)
-	e.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
-	e.ambient_light_color = Color(0.6, 0.6, 0.62)
-	e.ambient_light_energy = 0.6
-	env.environment = e
+	env.name = "WorldEnvironment"
+	if _dress != null and _dress.environment() != null:
+		env.environment = _dress.environment()
+	else:
+		# Only reachable with `--no-dress` or a broken interior.tscn. Kept as
+		# the pre-3w flat fill so the control renders something.
+		var e := Environment.new()
+		e.background_mode = Environment.BG_COLOR
+		e.background_color = Color(0.02, 0.02, 0.03)
+		e.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
+		e.ambient_light_color = Color(0.6, 0.6, 0.62)
+		e.ambient_light_energy = 0.6
+		env.environment = e
 	add_child(env)
 
 
@@ -253,6 +319,76 @@ func _run_walk_test(args: Dictionary) -> void:
 	_testing = true
 	set_physics_process(true)
 
+
+## THE PLAYABLE BUILD, PHOTOGRAPHED THROUGH THE PLAYER'S OWN EYE.
+##
+## Not a second camera rig, and that is the point. `player.gd` already carries a
+## Camera3D at `eye_height_m` -- 1.7 m, the stature `drum_ground.stand_on_ground`
+## and INV-071's reference ladders use -- parented to the body and oriented by
+## the body's own basis. A frame taken through it is what a standing person
+## sees, from where the physics actually put them, and it cannot disagree with
+## where a player would be. Every other camera in this project flies through
+## walls.
+##
+## THE BODY IS SETTLED FIRST, for the reason the walk test settles it: a spawn
+## is a CLAIM ("a person can stand here"), and a camera placed at the claim
+## instead of at the result photographs a point in mid-air. The eye is reported
+## with the drop from the spawn, so the frame says where it was taken.
+##
+## Yaw defaults to 90 degrees because a RING deck runs tangentially: at the
+## spawn's ring angle the body's zero yaw faces along the station's +Z spine,
+## i.e. straight into the end wall 1.5 m away, and the corridor is +/-90 off it.
+## Same finding the walk test's heading sweep exists for.
+func _run_shot(args: Dictionary) -> void:
+	_shot_png = String(args["shot"])
+	_shot_settle = int(args.get("settle", "120"))
+	_shot_warmup = int(args.get("warmup", "8"))
+	_shot_yaw = float(args.get("yaw", "90"))
+	_shot_fov = float(args.get("fov", "55"))
+	_shooting = true
+	set_physics_process(true)
+
+
+func _grab() -> void:
+	_player.set_yaw(deg_to_rad(_shot_yaw))
+	_player.step(1.0 / 60.0, Vector2.ZERO, false, false)
+	var cam := _player.get_node_or_null("Camera3D") as Camera3D
+	if cam == null:
+		push_error("walk: the player has no camera")
+		get_tree().quit(2)
+		return
+	cam.fov = _shot_fov
+	# interior.tscn's near plane, not the player's 0.15: indoors the eye stands
+	# against a wall and 0.15 clips the thing it is looking at.
+	cam.near = 0.06
+	cam.current = true
+	var p := _player.global_position
+	print("shot: eye %.3f,%.3f,%.3f (r=%.3f, %.3f m below spawn), yaw %.0f deg, "
+		% [cam.global_position.x, cam.global_position.y, cam.global_position.z,
+			sqrt(p.x * p.x + p.y * p.y), spawn.distance_to(p), _shot_yaw]
+		+ "fov %.0f, on_floor=%s" % [_shot_fov,
+			str(_player.is_on_floor()).to_lower()])
+	# NoiseTexture2D generates on a worker thread, so a capture taken on the
+	# first frame gets flat placeholder albedo instead of the weathering --
+	# render_shot.gd's own scar, and this scene loads the same materials.
+	for i in _shot_warmup:
+		await RenderingServer.frame_post_draw
+	var img := get_viewport().get_texture().get_image()
+	DirAccess.make_dir_recursive_absolute(_shot_png.get_base_dir())
+	if img.save_png(_shot_png) != OK:
+		push_error("walk: save_png failed for %s" % _shot_png)
+		get_tree().quit(2)
+		return
+	print("captured %s  %dx%d" % [_shot_png, img.get_width(), img.get_height()])
+	get_tree().quit(0)
+
+
+var _shooting := false
+var _shot_png := ""
+var _shot_settle := 120
+var _shot_warmup := 8
+var _shot_yaw := 90.0
+var _shot_fov := 55.0
 
 var _testing := false
 var _frame := 0
@@ -298,6 +434,16 @@ func _trace_line(tag: String) -> void:
 ## direction to fail but still a lie about what the build does. Godot integrates
 ## motion between physics frames; a controller test has to let them happen.
 func _physics_process(delta: float) -> void:
+	# The shot phase: settle the body on the floor, then take the picture from
+	# where it ended up. No wish vector -- a photograph is of somebody standing.
+	if _shooting:
+		_frame += 1
+		_player.step(delta, Vector2.ZERO, false, false)
+		if _frame >= _shot_settle:
+			_shooting = false
+			set_physics_process(false)
+			_grab()
+		return
 	if not _testing:
 		return
 	_frame += 1
