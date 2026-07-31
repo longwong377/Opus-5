@@ -3506,3 +3506,32 @@ stated as such.
 **What would overturn it.** A show reference to lift or shuttle journeys being slower than
 end-to-end ride time, which would mean intermediate dwells are charged to the through passenger and
 would add ~20 s per intervening stop.
+
+---
+
+## INV-102 — A figure has a minimum standing gravity, measured off its own feet
+
+`station/populace.py`, `_stand_min_g()`.
+
+**What.** Below **0.075 g** for a nominal human, a body is posed with `glide_clip` rather than
+`idle_clip` or `sit_clip`. The threshold is not a constant: it is computed per figure as
+`sway_amp_f · lx · G0 / foot_x`, where `lx` is the hip's own x offset and `foot_x` the outermost
+vertex of the feet, both read off `animation.rig()`.
+
+**Why necessary.** `animation.idle_clip` scales its lateral sway by `G0 / g` and has **no lower
+bound at all** — nothing had ever asked it for a pose in low gravity. At 0.04 g it leans a human
+0.52 m off centre and lifts the feet 25 mm clear of the deck: not a stance, a person falling over.
+One register place is below the bound (`mainstage_node`, in the 18.3 m spine at z = 3000, where the
+spin gives 0.022 g), and every crewman standing in it would have read as mid-collapse.
+
+**What constrained it.** A standing pose is holdable exactly while the centre of mass stays inside
+the **base of support**, and for a standing figure that is the outermost point of its own feet.
+Setting the sway equal to it is the definition of the boundary, not a tolerance chosen around it.
+Both terms are measured off the rig rather than tabulated, so a broad-stanced individual stays on
+their feet in lower gravity than a narrow one — which is also true of people. The clip used below
+the bound is not invented either: `glide_clip` already existed because Kosh's column plan has no
+legs.
+
+**What would overturn it.** A frame showing crew standing normally in the spine or in a docking
+bay's zero-g section, which would mean magnetic boots or handrails are doing the work and the pose
+should be a braced stand rather than a drift.

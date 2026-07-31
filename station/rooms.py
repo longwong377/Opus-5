@@ -1250,7 +1250,8 @@ def build(schema, profile, place, max_span_m=None, door_at=None,
     import populace as _pop                                     # noqa: PLC0415
     pv, pt, pg, _ps = _pop.populate(
         place["key"], v, t, g, w - 2 * WALL_T_M, ln - 2 * WALL_T_M,
-        hour=STATION_HOUR, arch=arch, seed=place["key"])
+        hour=STATION_HOUR, arch=arch, seed=place["key"],
+        g_ms2=_pop.place_gravity(place["key"]))
     if report is not None:
         # WHO IS IN THIS ROOM AND WHICH WAY THEY ARE FACING. A body is baked
         # into the merged mesh, so nothing downstream can recover its yaw by

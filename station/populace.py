@@ -62,6 +62,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 sys.path.insert(0, os.path.join(HERE, "npc"))
 
+import animation as _anim                                       # noqa: E402
 import body as _body                                            # noqa: E402
 import dressing as _dress                                       # noqa: E402
 import resident as _res                                         # noqa: E402
@@ -376,6 +377,181 @@ def _mesh_for(species, npc_id, lod):
         return _body.build("human", npc_id, lod=lod)[:3]
 
 
+# Earth surface gravity, for a room whose caller does not say where it is. The
+# station's own decks run 0.559 g to 1.693 g and a pose reads that: `sit_clip`
+# and `idle_clip` widen their sway in low g, and `gait()` shortens the stride.
+G0_MS2 = 9.80665
+# Seat height is quantised to a centimetre for the pose cache. A pose does not
+# resolve finer than that and an unquantised key caches every seat separately.
+SEAT_QUANTUM_M = 0.01
+
+
+@_lru_cache(maxsize=256)
+def _stand_min_g(species, npc_id, lod):
+    """The gravity below which this figure cannot hold a standing pose, m/s^2.
+
+    MEASURED OFF THE RIG, never written down -- hard rule 4 applied to a pose.
+    `idle_clip`'s lateral sway is `sway_amp_f * lx * (G0 / g)` with `lx` the
+    hip's own x offset, and it has **no lower bound at all**: at 0.04 g it
+    leans a human 0.52 m off centre and lifts their feet 25 mm off the deck.
+    That is not a stance, it is somebody falling over, and `animation.py` has no
+    guard for it because nothing had ever asked it for a pose in low gravity.
+
+    A standing pose is holdable while the sway stays inside the BASE OF
+    SUPPORT, which for a standing figure is the outermost point of the feet --
+    read off `rig.parts` rather than assumed. Setting sway equal to it gives
+    `g_min = sway_amp_f * lx * G0 / foot_x`, which is 0.075 g for a nominal
+    human. Below it this module uses `glide_clip` instead: in 0.075 g you do
+    not stand, you push off and drift, and `animation.py` already has the clip
+    because Kosh needed it.
+
+    Per figure rather than per species: `lx` and the foot come from
+    `body.individual`, so a broad-stanced person stays on their feet in lower
+    gravity than a narrow one, which is also true.
+    """
+    try:
+        rg = _anim.rig(species, npc_id, lod)
+        lx = abs(rg.skel.head("hip_r")[0])
+        fx = max((abs(v[0]) for nm, vv, _t in rg.parts if nm == "foot"
+                  for v in vv), default=0.0)
+        if fx <= 1e-6 or lx <= 1e-9:
+            return 0.0
+        return _anim.IDLE["sway_amp_f"] * lx * G0_MS2 / fx
+    except Exception:                                           # noqa: BLE001
+        return 0.0
+
+
+@_lru_cache(maxsize=4096)
+def _posed(species, npc_id, lod, kind, g_ms2, seat_h_m):
+    """This individual, in this pose, as `body.build` would have returned them.
+
+    THE FIRST IMPORTER `npc/animation.py` HAS EVER HAD. It is 2,400 lines with
+    a skeleton, a Froude-number gait ladder, walk, idle, sit and glide clips and
+    some hundreds of passing assertions, and CLAUDE.md names it in the list of
+    twelve tested modules with zero importers outside their own directory. What
+    reached a frame instead was `body.build`'s bind pose for everybody.
+
+    WHAT THAT COST, and it is visible rather than theoretical. A seated person
+    was a STANDING body dropped 0.42 m: a figure 1.829 m tall with its feet
+    0.42 m through the deck and its knees inside the chair it was sitting on.
+    The 0.42 was a guess standing in for a pose. `sit_clip` needs no guess --
+    handed the seat's own measured height it puts the hips on the pan, the feet
+    on the floor and the figure at 1.341 m, and the body's origin stays at deck
+    level where every other placement in this module already puts it.
+
+    Standing people get `idle_clip` rather than the bind pose, and that matters
+    for a different reason: the bind pose is arms-down symmetric and every
+    person in a room struck it identically. `idle_clip` carries a per-resident
+    phase (`_u(id, "idle_phase")`), so a room of twelve is twelve weights and
+    twelve breaths rather than a chorus line -- which `animation.py`'s own
+    comment calls "the single most visible crowd failure there is".
+
+    Frame 0 of a loop, deliberately: this module emits static geometry, and a
+    clip's phase is already per-resident, so sampling elsewhere in the loop
+    would be a second arbitrary number for no gain. When the runtime animates
+    these bodies it will play the same clips from the same call.
+    """
+    try:
+        rg = _anim.rig(species, npc_id, lod)
+        if g_ms2 < _stand_min_g(species, npc_id, lod):
+            # BELOW THIS GRAVITY NOBODY STANDS. See `_stand_min_g`.
+            clip = _anim.glide_clip(species, npc_id, g_ms2, frames=8, lod=lod)
+        elif kind == "sit":
+            clip = _anim.sit_clip(species, npc_id, g_ms2,
+                                  seat_h_m=seat_h_m or None, frames=8, lod=lod)
+        else:
+            clip = _anim.idle_clip(species, npc_id, g_ms2, frames=8, lod=lod)
+        _w, mats = clip.pose(rg.skel, 0)
+        parts = _anim.apply_pose(rg, mats)
+    except Exception:                                           # noqa: BLE001
+        # A species with no skeleton -- Kosh's column plan has no legs and
+        # `animation.py` says so out loud rather than inventing a gait -- keeps
+        # the bind pose. Dropping the person instead would be invisible here
+        # and wrong in the frame.
+        return _mesh_for(species, npc_id, lod)
+
+    # Flatten back into `body.build`'s (verts, tris, spans) shape. The material
+    # group per part is `rig.groups`, which is the same tuple `body.build` puts
+    # in its spans and in the same order -- asserted in `_selftest` by posing
+    # the bind pose and comparing vertex for vertex.
+    verts, tris, spans = [], [], []
+    for (_name, pv, pt), grp in zip(parts, rg.groups):
+        base, lo = len(verts), len(tris)
+        verts.extend(pv)
+        tris.extend((a + base, b + base, c + base) for a, b, c in pt)
+        spans.append((grp, lo, len(tris)))
+    return verts, tris, spans
+
+
+def _pose_mesh(species, npc_id, lod, kind, g_ms2=G0_MS2, seat_h_m=0.0):
+    """`_posed` with the seat height quantised, so the cache key is stable."""
+    q = round(float(seat_h_m) / SEAT_QUANTUM_M) * SEAT_QUANTUM_M
+    return _posed(species, npc_id, lod, kind, round(float(g_ms2), 4), q)
+
+
+@_lru_cache(maxsize=512)
+def place_gravity_at(place_key):
+    """`(gravity in m/s^2, where the number came from)` for a register place.
+
+    NOT A CONSTANT, and that is the point: this station spins, so gravity is a
+    function of radius and runs from 0.234 g on Yellow's innermost addressed
+    deck to 1.693 g deep in Grey. `animation.py` reads it -- an idle sway widens
+    by G0/g and a stride shortens with the Froude number -- so a room that does
+    not say where it is gets a body that stands as if it were on Earth.
+
+    THE SOURCE IS RETURNED BECAUSE A SILENT FALLBACK IS INDISTINGUISHABLE FROM
+    A CORRECT ANSWER. The drum's floor sits at 278.3 m, which is 1.0000 g to
+    ten figures -- the radius was chosen for exactly that -- so twelve drum
+    places came back at Earth gravity and looked perfectly resolved while the
+    code had in fact failed to find them a deck at all. `_selftest` asserts the
+    count of each source, which is the only way that can fail.
+
+    Resolved from the register's own `(sector, ring, deck, z_m)` through
+    `interior.decks_in_ring`, so it cannot disagree with the deck the room was
+    built on.
+    """
+    try:
+        import directory as _dir                                # noqa: PLC0415
+        import interior as _it                                  # noqa: PLC0415
+        import drum_ground as _dg                               # noqa: PLC0415
+        q = next(p for p in _dir.PLACES if p["key"] == place_key)
+        schema, profile = _it.load()
+        decks = _it.decks_in_ring(schema, profile, q["sector"],
+                                  q.get("ring", 0), z_m=q.get("z_m"))
+        if decks:
+            i = max(0, min(int(q.get("deck", 0)), len(decks) - 1))
+            # `floor_g` is in EARTH GRAVITIES, not m/s^2 -- as is `gravity_at`,
+            # which returns 0.359 at r = 100 m. Reading it as m/s^2 put the
+            # whole station between 0.024 g and 0.17 g, a moon rather than a
+            # habitat, and every pose would have swayed like it.
+            return float(decks[i]["floor_g"]) * G0_MS2, "deck"
+        # The drum has no deck ring: its floor IS the rotating ground, and
+        # `drum_ground.FLOOR_R` is where a person stands on it.
+        if q["sector"] == _it.drum_sector(schema, profile):
+            return float(_it.gravity_at(schema, _dg.FLOOR_R)) * G0_MS2, "drum"
+        # A place in the SPINE. `rings_fitting_at` returns a bare core where the
+        # hull is too narrow for a deck stack -- at z = 3000 the hull is 18.3 m
+        # and the Mainstage power node runs along it -- and a core is not a deck
+        # stack, so `decks_in_ring` correctly gives nothing. The gravity there is
+        # real and nearly absent: 18 m of radius at this station's omega is
+        # 0.04 g, which is why `_stand_min_g` exists and why that node's crew
+        # are drifting rather than standing.
+        rings = _it.rings_fitting_at(schema, profile, q["sector"],
+                                     q.get("z_m", 0.0))
+        core = [r for r in rings if r.get("kind") == "core"]
+        if core:
+            return float(_it.gravity_at(schema, core[0]["r_mid"])) * G0_MS2, \
+                "core"
+        return G0_MS2, "fallback"
+    except Exception:                                           # noqa: BLE001
+        return G0_MS2, "fallback"
+
+
+def place_gravity(place_key):
+    """The gravity a body in `place_key` stands in, m/s^2."""
+    return place_gravity_at(place_key)[0]
+
+
 def _who(res, hour, place_key):
     """The person, as the actor record carries them out to the engine.
 
@@ -417,13 +593,20 @@ def _who(res, hour, place_key):
 
 
 def populate(place_key, room_v, room_t, room_g, w_m, l_m, hour=13.0,
-             arch="generic", seed=None, lod=ROOM_LOD, max_people=None):
+             arch="generic", seed=None, lod=ROOM_LOD, max_people=None,
+             g_ms2=G0_MS2):
     """Put the hour's population into one room. Returns (v, t, g, stats).
 
     `room_*` is the finished room, and it is an INPUT rather than something this
     module rebuilds: people are placed against the furniture that is actually
     there, which is the only way a person ends up on a chair rather than near
     one.
+
+    `g_ms2` is the deck's own gravity and it reaches the POSE: this station runs
+    0.559 g in Yellow to 1.693 g in Grey, and `animation.py` widens an idle sway
+    by `G0 / g` and shortens a stride by the Froude number. A caller that does
+    not know where the room is gets Earth, which is what every caller got
+    implicitly before the poses existed.
     """
     seed = seed or place_key
     v, t, g = [], [], []
@@ -622,7 +805,10 @@ def populate(place_key, room_v, room_t, room_g, w_m, l_m, hour=13.0,
         # npc_id)` for SEX and PHYS CHR, so the card described a body nobody was
         # standing in. Same id on both sides, and `resident._selftest` asserts
         # the two agree.
-        mesh = _mesh_for(sp, who.npc_id, lod)
+        # POSED, not the bind pose. `mesh` here is the standing figure; a
+        # sitter is rebuilt below against the height of the seat they take,
+        # because `sit_clip` derives the whole pose from it.
+        mesh = _pose_mesh(sp, who.npc_id, lod, "idle", g_ms2)
         who_rec = _who(who, hour, place_key)
 
         # A SEAT THAT DOES NOT WORK OUT MEANS THE PERSON STANDS, not that the
@@ -637,9 +823,15 @@ def populate(place_key, room_v, room_t, room_g, w_m, l_m, hour=13.0,
         if i < len(seats):
             sx, sy, sz, _a = seats[i]
             if _clear(sx, sz) and _inside(sx, sz):
-                # The body's origin drops to the seat pan, and it faces the
-                # room rather than the wall it is against.
-                _place_body(v, t, g, mesh, sx, sy - 0.42, sz,
+                # A SEATED PERSON IS A SEATED POSE, not a standing one dropped
+                # 0.42 m. That constant put a 1.829 m figure's feet 0.42 m
+                # through the deck and its knees inside the chair; `sit_clip`
+                # takes the seat's own measured height `sy` and puts the hips
+                # on the pan and the feet on the floor, so the body's origin
+                # stays at deck level like every other placement here.
+                _place_body(v, t, g,
+                            _pose_mesh(sp, who.npc_id, lod, "sit", g_ms2, sy),
+                            sx, 0.0, sz,
                             math.atan2(-sx, -sz), f"npc_seated_{i}",
                             actors, who_rec)
                 used.append((sx, sz))
@@ -706,6 +898,103 @@ def _selftest():
     check("an office at 1300 has people in it", s["placed"] > 0, str(s))
     check("...and some of them are sitting on the furniture",
           s["seated"] > 0, str(s))
+
+    # -- THE POSES ARE REAL POSES ------------------------------------------
+    # `animation.py` had no importer at all until this module got one, and the
+    # visible cost was that a "seated" person was a STANDING body dropped
+    # 0.42 m -- feet through the deck, knees inside the chair.
+    _rest = _mesh_for("human", "pose/probe", ROOM_LOD)[0]
+    _idle = _pose_mesh("human", "pose/probe", ROOM_LOD, "idle")[0]
+    _sit = _pose_mesh("human", "pose/probe", ROOM_LOD, "sit",
+                      seat_h_m=0.45)[0]
+    check("the poser returns a body of the same size it was handed",
+          len(_rest) == len(_idle) == len(_sit),
+          f"{len(_rest)} / {len(_idle)} / {len(_sit)} vertices")
+    h_rest = max(q[1] for q in _rest) - min(q[1] for q in _rest)
+    h_sit = max(q[1] for q in _sit) - min(q[1] for q in _sit)
+    check("a SEATED figure is shorter than a standing one -- the pose is doing "
+          "the sitting, not a translation",
+          0.60 < h_sit / h_rest < 0.85,
+          f"{h_sit:.3f} m seated vs {h_rest:.3f} m standing "
+          f"({h_sit / h_rest:.2f}x)")
+    check("...and its feet are ON the deck rather than through it: the 0.42 m "
+          "drop is gone", abs(min(q[1] for q in _sit)) < 0.05,
+          f"lowest vertex at y={min(q[1] for q in _sit):+.3f} m")
+    # THE HIPS ARE ON THE PAN, which is the claim `sit_clip` exists to make and
+    # the reason the seat's own height is passed in rather than assumed.
+    _sit40 = _pose_mesh("human", "pose/probe", ROOM_LOD, "sit",
+                        seat_h_m=0.40)[0]
+    _sit62 = _pose_mesh("human", "pose/probe", ROOM_LOD, "sit",
+                        seat_h_m=0.62)[0]
+    d_h = (max(q[1] for q in _sit62) - max(q[1] for q in _sit40))
+    check("BREAK: a stool 0.22 m higher than a bench seats the same person "
+          "0.22 m higher -- so the seat height reaches the pose and is not "
+          "decoration", abs(d_h - 0.22) < 0.06, f"head rose {d_h:+.3f} m")
+    # NEGATIVE CONTROL: an idle pose is NOT the bind pose. If it were, this
+    # whole exercise would be a no-op that every check above still passes.
+    check("BREAK: the idle pose actually moves the body off the bind pose",
+          max(abs(a[0] - b[0]) + abs(a[1] - b[1]) + abs(a[2] - b[2])
+              for a, b in zip(_rest, _idle)) > 0.01,
+          f"max vertex move "
+          f"{max(abs(a[0] - b[0]) + abs(a[1] - b[1]) + abs(a[2] - b[2]) for a, b in zip(_rest, _idle)):.4f} m")
+    # AND IT IS PER-PERSON. Two residents in one room must not strike the same
+    # attitude; `idle_clip`'s phase is seeded on the id.
+    _idle2 = _pose_mesh("human", "pose/probe-2", ROOM_LOD, "idle")[0]
+    check("...and two residents do not stand identically -- no chorus line",
+          any(abs(a[0] - b[0]) > 1e-4 for a, b in zip(_idle, _idle2)))
+    # GRAVITY REACHES THE POSE. Yellow is 0.559 g and Grey is 1.693 g; a sway
+    # widens by G0/g, so the same person stands differently on the two decks.
+    _lo_g = _pose_mesh("human", "pose/probe", ROOM_LOD, "idle", 0.559 * 9.80665)
+    _hi_g = _pose_mesh("human", "pose/probe", ROOM_LOD, "idle", 1.693 * 9.80665)
+    check("BREAK: the DECK'S GRAVITY reaches the pose -- 0.559 g and 1.693 g "
+          "are not the same stance",
+          any(abs(a[0] - b[0]) > 1e-4 for a, b in zip(_lo_g[0], _hi_g[0])))
+
+    # -- AND EVERY PLACE KNOWS ITS OWN GRAVITY -----------------------------
+    import directory as _dirg                                   # noqa: PLC0415
+    src = {}
+    gs = []
+    for _q in _dirg.PLACES:
+        _g, _s = place_gravity_at(_q["key"])
+        src[_s] = src.get(_s, 0) + 1
+        gs.append(_g / G0_MS2)
+    check("every register place resolves a real deck, the drum floor or the "
+          "spine core -- none falls back to Earth",
+          src.get("fallback", 0) == 0,
+          f"{src} over {len(gs)} places")
+    # A STANDING POSE HAS A LOWER BOUND AND `animation.py` DOES NOT ENFORCE IT.
+    gmin = _stand_min_g("human", "pose/probe", ROOM_LOD)
+    check("a figure has a measured minimum standing gravity, read off its own "
+          f"feet: {gmin / G0_MS2:.4f} g",
+          0.02 < gmin / G0_MS2 < 0.25, f"{gmin:.3f} m/s^2")
+    _drift = _pose_mesh("human", "pose/probe", ROOM_LOD, "idle", 0.04 * G0_MS2)
+    _dx = max(q[0] for q in _drift[0]) - min(q[0] for q in _drift[0])
+    check("BREAK: at 0.04 g the idle sway would lean a body 0.64 m wide and "
+          "lift its feet off the deck; below the bound the figure glides "
+          "instead and comes back inside its own shoulders",
+          _dx < 0.58 and min(q[1] for q in _drift[0]) < 0.03,
+          f"width {_dx:.3f} m, lowest vertex "
+          f"{min(q[1] for q in _drift[0]):+.3f} m")
+    check("...and the bound does not fire on any deck a person works on: "
+          "only the Mainstage spine node is below it",
+          sum(1 for _q in _dirg.PLACES
+              if place_gravity(_q["key"]) < gmin) == 1,
+          str([_q["key"] for _q in _dirg.PLACES
+               if place_gravity(_q["key"]) < gmin]))
+    check("...and the range is the station's, not a constant: "
+          f"{min(gs):.3f} g to {max(gs):.3f} g",
+          min(gs) < 0.5 and max(gs) > 1.5,
+          f"spread {max(gs) / max(1e-9, min(gs)):.1f}x")
+    # BREAK: the drum answer must come from the DRUM, not from the fallback
+    # happening to be right. `drum_ground.FLOOR_R` is 278.3 m, which is 1.0000 g
+    # to ten figures, so twelve places looked resolved while nothing had
+    # resolved them.
+    check("BREAK: the drum's dozen places are answered by the drum floor, and "
+          "the fact that it is 1.0000 g is a consequence rather than a "
+          "coincidence the fallback got away with",
+          src.get("drum", 0) >= 10
+          and abs(place_gravity("the_garden") / G0_MS2 - 1.0) < 1e-6,
+          f"drum-sourced {src.get('drum', 0)}")
     # COVERAGE, NOT A SUM -- a person's own group contains their body parts,
     # so the spans nest and legitimately sum to more than the mesh.
     _cov = set()
@@ -803,7 +1092,13 @@ def _selftest():
         lo, hi = spans[a["group"]]
         idx = {i for tri in zt[lo:hi] for i in tri}
         got = sorted(round(zv[i][1], 6) for i in idx)
-        bv, _bt, _bg = _mesh_for(a["who"]["species"], a["who"]["id"], ROOM_LOD)
+        # Against the POSED mesh, because that is what was placed. The pose is
+        # a pure function of (species, id, lod, kind, g), and `idle_clip`
+        # carries a per-resident phase, so the fingerprint is strictly MORE
+        # discriminating than the bind pose was -- two people of identical
+        # stature now differ by their own sway as well as by their build.
+        bv, _bt, _bg = _pose_mesh(a["who"]["species"], a["who"]["id"],
+                                  ROOM_LOD, "idle")
         want = sorted(round(q[1], 6) for q in bv)
         if got != want:
             mism.append(a["who"]["id"])
@@ -815,8 +1110,8 @@ def _selftest():
     lo, hi = spans[a0["group"]]
     idx = {i for tri in zt[lo:hi] for i in tri}
     got = sorted(round(zv[i][1], 6) for i in idx)
-    other = _mesh_for(a0["who"]["species"], a0["who"]["id"] + "-not-me",
-                      ROOM_LOD)[0]
+    other = _pose_mesh(a0["who"]["species"], a0["who"]["id"] + "-not-me",
+                       ROOM_LOD, "idle")[0]
     check("...and the same comparison rejects somebody else's body",
           got != sorted(round(q[1], 6) for q in other))
 

@@ -218,7 +218,8 @@ def compose(schema, profile, place, axial_half_m, density=1.0, report=None):
     import populace as _pop                                     # noqa: PLC0415
     pv, pt, pg, ps = _pop.populate(
         place["key"], v, t, spans, max(1.0, w - inset), max(1.0, ln - inset),
-        hour=_R.STATION_HOUR, arch=arch, seed=place["key"])
+        hour=_R.STATION_HOUR, arch=arch, seed=place["key"],
+        g_ms2=_pop.place_gravity(place["key"]))
     if pt:
         base, t0 = len(v), len(t)
         # `populate` works in the room's own centred frame, the same one
