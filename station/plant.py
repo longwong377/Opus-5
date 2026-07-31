@@ -192,8 +192,16 @@ RESERVE_M3 = 397_500.0
 
 
 def _cyl(verts, tris, groups, name, cx, cy, z0, z1, r, seg=TANK_SEG,
-         cap_lo=True, cap_hi=True, face_out=True):
+         cap_lo=True, cap_hi=True, face_out=True, cap_rise=TANK_CAP_RISE):
     """A cylinder with its axis along +Z, optionally capped.
+
+    `cap_rise` IS A FLAT CAP AT 0.0, and a pipe wants one. A domed head is a
+    pressure vessel's end and a tank has two of them; a pipe that runs on into
+    the next cell is cut off square where the cell ends. The module's own
+    `_selftest` is what said so: capping the pipes to close 192 open edges put
+    a 0.157 m dome 0.157 m PAST z1, and "the bay stays inside the sector
+    longitudinally" fired on the overshoot -- a gate written for a different
+    reason catching a change nobody thought touched it.
 
     `face_out` exists because this module builds both containers seen from
     outside (tanks) and nothing seen from inside, so getting it wrong is a
@@ -216,7 +224,7 @@ def _cyl(verts, tris, groups, name, cx, cy, z0, z1, r, seg=TANK_SEG,
         if not cap:
             continue
         c = len(verts)
-        verts.append((cx, cy, zc + (TANK_CAP_RISE * r if up else -TANK_CAP_RISE * r)))
+        verts.append((cx, cy, zc + (cap_rise * r if up else -cap_rise * r)))
         for k in range(seg):
             a = n0 + 2 * k + (1 if up else 0)
             b = n0 + 2 * ((k + 1) % seg) + (1 if up else 0)
@@ -450,9 +458,28 @@ def room_cell(schema, profile, place):
     # bay's outer face -- the two coincide here and the expression is written
     # against the walkway anyway, because that is the surface the width has to
     # be right on and a future bay choice may separate them again.
-    arc_deg = math.degrees(2.0 * half_w / r_walk)
+    # BUILT TO THE INSIDE OF ITS OWN EDGE MEMBERS, because the pieces at a
+    # cell's boundary are CENTRED on it. An edge frame is FRAME_WIDTH_M across,
+    # so half of it (0.55 m) hangs outside on each side; the far-side service
+    # tube stands TUBE_PROUD_M past the rail line and is TUBE_W_M across, so
+    # 0.175 m of it hangs past the far face. Both are outside the collision
+    # shell `deck.room_shell_for` sizes from `bay_span_m` -- geometry a body
+    # has to walk through a wall to reach -- and `_selftest` measures it.
+    #
+    # Only the FAR z face is pulled in: `room_shell` translates the mesh so its
+    # maximum z lands on the assembler's plane, so shrinking the near face
+    # would not make the room smaller, it would move it and leave the walkway
+    # short of the doorway.
+    # ...and the frame's half width has to be measured AFTER the unroll, not
+    # before it. `bespoke.unroll_to_local` maps angle to arc length at the
+    # geometry's LARGEST radius, and a radial frame spans the bay's whole 18 m
+    # of depth -- so its inner end, drawn 0.55 m across at r_inner, comes out
+    # 0.55 * r_outer / r_inner wide. 22 mm a side, and the fit gate is at 20.
+    edge_x = FRAME_WIDTH_M / 2.0 * bay["r_outer"] / bay["r_inner"]
+    edge_z = TUBE_PROUD_M + TUBE_W_M / 2.0
+    arc_deg = math.degrees(2.0 * (half_w - edge_x) / r_walk)
     start_deg = place["angle_deg"] - arc_deg / 2.0
-    z0, z1 = place["z_m"] - half_l, place["z_m"] + half_l
+    z0, z1 = place["z_m"] - half_l + edge_z, place["z_m"] + half_l
 
     # HOW MANY TANKS FIT, derived from the cell rather than chosen. A tank is
     # `2 * TANK_R_M + TANK_CLEAR_M` on centres, and `plant_bay` additionally
@@ -460,14 +487,47 @@ def room_cell(schema, profile, place):
     # holds exactly one along the axis and asking for the exterior's two puts
     # both of them outside the window and builds none at all. That is how the
     # reclamation facility came out empty even with the farm anchored on it.
-    # AND WHETHER ONE FITS AT ALL, which is a real answer and not a failure.
-    # `downbelow_arch`'s cell is 7.7 m across and a tank is 9.0 m, so anchoring
-    # a farm on it put 0.65 m of tank through each side wall -- outside the
-    # collision shell the arc was just matched to. `air_compressors`' cell is
-    # 6.0 m along the axis against the 9.0 m `plant_bay` needs to seat one, and
-    # it gets none: an air compressor is a compressor, not a reservoir.
+    # AND WHETHER ONE FITS AT ALL, WHICH IS A REAL ANSWER AND IS *NO*.
+    #
+    # THE RENDER IS WHAT SETTLED THIS and no assertion would have. The first
+    # version asked only whether the tank's 9.0 m diameter fitted inside the
+    # cell, which `plant_zone` and `water_reclamation` pass at 13.56 x 9.65 m --
+    # and `docs/x-plant-inside.png`, taken from the player camera standing in
+    # the middle of the composed room, is the inside of a tank wall filling the
+    # frame. A tank that fits a room is not the same claim as a room you can
+    # walk round a tank in.
+    #
+    # So the test is FIT PLUS AISLE, and the aisle is `rooms.WALK_M` -- this
+    # project's own clear-path constant, the one `rooms.build` falls through
+    # `DRESS_DENSITIES` to protect. A tank needs `2 * TANK_R_M + 2 * WALK_M` =
+    # 10.8 m in both directions.
+    #
+    # Measured across all five plant places, NOT ONE PASSES:
+    #
+    #     plant_zone         13.56 x  9.65   depth 1.15 m short
+    #     downbelow          10.15 x 11.55   width 0.65 m short
+    #     downbelow_arch      7.72 x 10.80   width 3.08 m short
+    #     water_reclamation  13.56 x  9.65   depth 1.15 m short
+    #     air_compressors     9.91 x  5.70   both short
+    #
+    # That is not a failure and it is not a number to soften. TANK_R_M is a
+    # BAY-scale object -- INV-028 sizes it against an 18 m bay -- and the five
+    # addressed places are DECK-scale rooms, because `rooms.bay_span_m` clamps
+    # each of them to one representative bay. The gazetteer already says what
+    # goes in the rest: "the plant zone is predominantly structure, tankage and
+    # void", and "life support does not need 34 decks, it needs about one". A
+    # room-sized cell of it is structure. The tank farms are the same bay, past
+    # the frames, and a cell that happens to be sited on one is what `farm_at =
+    # None` still builds for every streaming cell in the outer stack.
+    #
+    # The mechanism stays because it is what MEASURES this rather than what
+    # asserts it: widen a place's footprint or raise `bay_span_m` and a room
+    # that can hold a tank gets one, here, without anything else changing.
+    import rooms as _RW                                          # noqa: PLC0415
     step = 2 * TANK_R_M + TANK_CLEAR_M
-    n_a = int(2.0 * half_w / (2 * TANK_R_M))
+    need = 2 * TANK_R_M + 2 * _RW.WALK_M
+    fits = (2.0 * half_w >= need) and ((z1 - z0) >= need)
+    n_a = int(2.0 * half_w / (2 * TANK_R_M)) if fits else 0
     n_z = max(1, int(max(0.0, (z1 - z0) - 2 * TANK_R_M) / step) or 1)
     farm_at = [place["angle_deg"]] if n_a >= 1 else []
     return plant_bay(schema, profile, bay, arc_deg, start_deg=start_deg,
@@ -483,6 +543,10 @@ def room_cell(schema, profile, place):
                      # corridor. An addressed machine room is a room.
                      walk_r=r_walk, walk_w=(z1 - z0),
                      walk_z=(z0 + z1) / 2.0,
+                     # THE FRAMES ARE THE ROOM'S SIDE WALLS. One frame in the
+                     # middle of a 13.5 m room is an 18 m column where the
+                     # furniture and the people go.
+                     frame_at=[start_deg, start_deg + arc_deg],
                      # ...and the rail and the service tubes go on the FAR side
                      # only: the near side is the wall the corridor's door is
                      # in, and a tube stands TUBE_PROUD_M past the rail line.
@@ -491,7 +555,8 @@ def room_cell(schema, profile, place):
 
 def plant_bay(schema, profile, bay, arc_deg, start_deg=0.0, z_span=None,
               sector=None, walk_z=None, walk_w=None, walk_r=None,
-              walk_sides=(-1, 1), farm_at=None, farm_tanks=None):
+              walk_sides=(-1, 1), farm_at=None, farm_tanks=None,
+              frame_at=None):
     """One bay of plant over an arc: frames, tankage, catwalk and pipe runs.
 
     THE FOUR `walk_*` ARGUMENTS ARE THE PLACEMENT DECISION, and they exist
@@ -549,9 +614,20 @@ def plant_bay(schema, profile, bay, arc_deg, start_deg=0.0, z_span=None,
     # --- deep frames ------------------------------------------------------
     # Radial members at FRAME_PITCH_DEG round, tied by circumferential rings at
     # FRAME_PITCH_Z_M along. These are the 1.7 g load path.
-    n_rad = max(1, int(arc_deg / FRAME_PITCH_DEG))
-    for i in range(n_rad):
-        a = start_deg + (i + 0.5) * arc_deg / n_rad
+    # `frame_at` PUTS THE FRAMES ON THE CELL'S EDGES, and the default puts them
+    # on its lattice. A streaming cell is an arbitrary slice of a continuous
+    # annulus, so its frames belong at FRAME_PITCH_DEG intervals inside it and
+    # a cell narrower than one pitch gets a single frame at its middle. A ROOM
+    # is not an arbitrary slice: its two ends are its side walls, and a 1.1 m
+    # by 18 m column standing in the middle of a 13.5 m room is the one place
+    # nothing should be. `docs/x-plant-inside.png` was taken from the player
+    # camera at the place's own angle and is the inside of that column.
+    if frame_at is not None:
+        angles = list(frame_at)
+    else:
+        n_rad = max(1, int(arc_deg / FRAME_PITCH_DEG))
+        angles = [start_deg + (i + 0.5) * arc_deg / n_rad for i in range(n_rad)]
+    for a in angles:
         local, lt, lg = [], [], []
         _box(local, lt, lg, "plant_frame",
              (-FRAME_WIDTH_M / 2, r_in, z0), (FRAME_WIDTH_M / 2, r_out, z1))
@@ -725,7 +801,7 @@ def plant_bay(schema, profile, bay, arc_deg, start_deg=0.0, z_span=None,
         rr = r_in + (k + 1) * (r_out - r_in) / (PIPES_PER_FRAME + 1)
         local, lt, lg = [], [], []
         _cyl(local, lt, lg, "plant_pipe", 0.0, rr, z0, z1, PIPE_R_M,
-             seg=PIPE_SEG)
+             seg=PIPE_SEG, cap_rise=0.0)
         _absorb(verts, tris, groups,
                 _place(local, start_deg + arc_deg / 2), lt, lg, flip=True)
 
@@ -744,7 +820,7 @@ def plant_bay(schema, profile, bay, arc_deg, start_deg=0.0, z_span=None,
             local, lt, lg = [], [], []
             _cyl(local, lt, lg, "plant_conduit",
                  side * SERVICE_OFFSET_M, rr, z0, z1, CONDUIT_R_M,
-                 seg=6)
+                 seg=6, cap_rise=0.0)
             _absorb(verts, tris, groups,
                     _place(local, start_deg + arc_deg / 2), lt, lg, flip=True)
     # Cable tray beside them: a channel section is four long lines.
@@ -1050,6 +1126,86 @@ def _selftest():
           zone < 62_273_664 * 0.5,
           f"{zone:,} tri vs the manifest's 62,273,664 placeholder "
           f"({zone / 62_273_664:.1%})")
+
+    # --- THE ROOM CELL, which is a different thing from a streaming cell ---
+    # A gate belongs in the module that builds the thing (CLAUDE.md, 3x), and
+    # `room_cell` is what session 4b added. It must build the HARD case, so it
+    # runs on all five addressed places rather than on one bay.
+    import directory as _dr                                     # noqa: PLC0415
+    import interior_kit as _K                                   # noqa: PLC0415
+    import rooms as _R                                          # noqa: PLC0415
+    import bespoke as _B                                        # noqa: PLC0415
+    qs = [q for q in _dr.PLACES if q.get("module") == "plant"]
+    check("the register still owns five plant places", len(qs) == 5, str(len(qs)))
+    leaks, offdeck, oversize, tanked = [], [], [], []
+    for q in qs:
+        v, t, g = room_cell(schema, profile, q)
+        op, _nm = _K.boundary_edges(v, t)
+        if op:
+            leaks.append((q["key"], len(op)))
+        # THE WALKWAY IS AT THE ADDRESSED DECK'S FLOOR. Measured off the
+        # geometry through the same unroll `bespoke` uses, not read back off
+        # the argument that set it -- an assertion that checks its own input is
+        # the failure mode this project has already paid for twice.
+        fl = _B.unroll_to_local(v)
+        r_ref = max(math.hypot(p[0], p[1]) for p in v)
+        walk = r_ref - _B.floor_y(fl, t, g, "plant")
+        want = _R.room_extent_m(schema, profile, q)[2]
+        if abs(walk - want) > 0.10:
+            offdeck.append((q["key"], round(walk, 2), round(want, 2)))
+        # ...and the cell is no wider or deeper than the collision shell a
+        # player is actually inside. `deck.room_shell_for` sizes that from
+        # `bay_span_m` and never looks at this mesh, so render geometry outside
+        # it is geometry a body walks through a wall to reach.
+        w_full, l_full, _r = _R.room_extent_m(schema, profile, q)
+        bw, bl = _R.bay_span_m(q)
+        xs = [p[0] for p in fl]
+        zs = [p[2] for p in fl]
+        if (max(xs) - min(xs) > min(w_full, bw) + 0.02
+                or max(zs) - min(zs) > min(l_full, bl) + 0.02):
+            oversize.append((q["key"], round(max(xs) - min(xs), 2),
+                             round(max(zs) - min(zs), 2),
+                             round(min(w_full, bw), 2), round(min(l_full, bl), 2)))
+        if any("tank" in n for n, _lo, _hi in _B._spans(g, len(t))):
+            tanked.append(q["key"])
+    check("every composed plant cell is closed", not leaks, str(leaks))
+    check("...and its walkway is the addressed deck's own floor radius",
+          not offdeck, f"{offdeck} -- a step between a corridor and the room "
+                       f"it serves is what deck.build_deck forbids")
+    check("...and it fits inside the collision shell a body is in",
+          not oversize, str(oversize))
+    # NOT ONE OF THE FIVE HOLDS A TANK, and that is asserted rather than left
+    # to be rediscovered: TANK_R_M is a bay-scale object and `bay_span_m`
+    # clamps every one of these places to a deck-scale room, so `2*TANK_R_M +
+    # 2*WALK_M` = 10.8 m does not fit in any of them. Widen a footprint and
+    # this fires, which is the direction it should fire in.
+    check("no deck-scale plant room pretends to hold a bay-scale tank",
+          not tanked,
+          f"{tanked} got a tank in a room too small to walk round one -- "
+          f"needs {2 * TANK_R_M + 2 * _R.WALK_M:.1f} m each way")
+
+    # NEGATIVE CONTROL -- uncap one pipe and the closure gate has to fire. The
+    # 192 open edges this session closed were exactly this, so the control is
+    # the defect itself rather than an analogue of it.
+    _real = globals()["_cyl"]
+
+    def _open_pipe(verts, tris, groups, name, *a, **kw):
+        if name == "plant_pipe":
+            kw["cap_lo"] = kw["cap_hi"] = False
+        return _real(verts, tris, groups, name, *a, **kw)
+
+    globals()["_cyl"] = _open_pipe
+    try:
+        cv, ct, _cg = room_cell(schema, profile, qs[0])
+        cop, _cnm = _K.boundary_edges(cv, ct)
+    finally:
+        globals()["_cyl"] = _real
+    check("...and uncapping one pipe run re-opens it",
+          len(cop) > 0,
+          f"{qs[0]['key']} stayed closed with its pipes open at both ends -- "
+          f"the closure gate is not measuring the pipes")
+    print(f"  room cells: {len(qs)} places, 0 open edges, walkway on the "
+          f"addressed deck; control reopens {len(cop)} edges")
 
     print(f"\nplant zone: {len(bs)} bays over {len(decks)} decks, "
           f"{bs[-1]['r_inner']:.1f}-{bs[0]['r_outer']:.1f} m, "
