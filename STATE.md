@@ -1,6 +1,6 @@
 # Project State
 
-**Last updated:** 2026-07-31 · **Session 3z** — **the register is routable, a lift is a vehicle, the corridors have people walking in them, and every single-room cluster was sealed** · **3y** — the generic-bay substitution is measured and declared: do NOT swap, compose · **3x** — the doors close, 1,572 open edges → 0 · **3w** — the frame budget measured for real · **3v** — W1/W2 done, 66/66 decks assemble
+**Last updated:** 2026-07-31 · **Session 3z** — **the register is routable, a lift is a vehicle, the corridors have people in them, 23 more places assemble as themselves, and the machinery stopped being boxes** · **3y** — the generic-bay substitution is measured and declared: do NOT swap, compose · **3x** — the doors close, 1,572 open edges → 0 · **3w** — the frame budget measured for real · **3v** — W1/W2 done, 66/66 decks assemble
 
 ## Session 3z (last) — FOUR THINGS THE STATION COULD NOT DO, AND NOW CAN
 
@@ -259,11 +259,63 @@ does, and room occupants keep their unique meshes. The work is in `populace` (em
 instance references rather than baked triangles), `export_gltf` (nodes sharing a mesh index) and
 `npc.gd` (advance along the ring, swap the phase).
 
+### 11. THE WALK GATE IS 80x SLOWER THAN CLAUDE.md RECORDS, AND IT IS NOT THE CROWD
+
+Measured this session, cleanly, one Godot process at a time, on `blue/0/0`:
+
+| | 120 physics frames |
+|---|---|
+| bare deck, no people | **10.2 s** (startup 8.2 s, so **0.017 s/frame** — 1,800 frames is 30 s, which matches CLAUDE.md's 38 s) |
+| `--no-people` | **10.2 s** |
+| `--no-npc-collision` | **> 200 s** |
+| people on | **> 200 s** |
+
+So the cost is **`npc.gd::_physics_process`**, which writes `m.global_transform`
+for every part of every person every frame — and it is **not** the capsules (disabling them
+changes nothing) and **not** the instanced crowd (the A/B timed out identically with the crowd
+off). I attributed it to the crowd earlier in the session and that was wrong.
+
+It has been there since `npc.gd` was written; CLAUDE.md's 38 s predates decks having people on
+them. **This is the first thing to fix**, because a gate that takes half an hour stops being run,
+and CI runs it on every push. The obvious shape: only transform a person whose yaw actually
+changed — `notice_m` is 6 m, so on a 134-person deck that is a handful, not all of them.
+
+### 12. WHAT THE TWO AGENTS LANDED
+
+**23 more module-owned places assemble as themselves** — 49 generic bays → **26**, and people in
+rooms **449 → 1,053**. Three causes, none of them what the reason string said: furniture in the
+doorway rather than the wall; `room_shell` centring on the **bounding box** so `alien_sector`'s
+door had **no floor under it at all** (and `_mouth_clear` called that OPEN, because nothing
+obstructs a probe cast into a void); and three modules with no doorway at all. INV-110–112.
+
+**The machinery stopped being boxes** — `density.py --machinery`, the gate that was missing,
+reads **0/78 → 74/78** locations at or above their own shell's line density, machinery λ
+**1.669 → 7.012**, for **+0.3%** on the deck. `density.py` scored a whole location and 123 of 128
+passed with every machine a box, because the shell is 95% of the surface. INV-130–132.
+
+**Two closure ledgers are now on the record and ratcheted, and both should shrink:**
+`bespoke.SHELL_OPEN_EDGES` — **3,693 open edges across 8 composed shells** (council_chamber 1,592,
+hospitality 824, zocalo 736, command_control 342, docking_bay 151, customs 48). `docking_bay` was
+attempted and **reverted rather than ship 160 holes**, 80 of them mid-bay on a deck emblem laid
+with no rim — `dressing._cyl`'s defect in a second costume.
+
+**And the correctness note that will bite next:** *collision does not follow the composition*.
+`build_collision` still builds a generic box shell and derives solid props from `rooms.build`, so
+a player now **sees** the Zocalo and **stands in** a generic bay. Every `walkable.py` PASS is real
+but is testing the generic shell; the bespoke geometry is render-only.
+
 ### What is next, in order
 
-1. **The shared phase-mesh crowd — see §10 above, which specifies it completely.** This is the
-   whole of "make the station feel alive" and the arithmetic is already done.
-2. ~~**W5, the loop**~~ — **DONE**, and `walkable.py --deck blue/0/0` has been reporting all four
+1. **The walk gate's 80x regression — see §11.** `npc.gd::_physics_process` transforms every part
+   of every person every frame. CI runs this on every push. Fix before anything else.
+2. **Collision must follow the composition — see §12.** A player sees the Zocalo and stands in a
+   generic box. `build_collision` and `deck.py`, both of which the composition agent did not own.
+3. **The shared phase-mesh crowd is BUILT and its Python side is gated (populace 58/58); its
+   runtime is unverified.** `deck.py` emits instances, `walkable.py` writes the library and the
+   placements, `npc.gd` builds a MultiMesh per (species, lod, phase). What has never returned a
+   clean number is whether they move — blocked behind §11, since every run that would measure it
+   times out on the people loop.
+4. ~~**W5, the loop**~~ — **DONE**, and `walkable.py --deck blue/0/0` has been reporting all four
    steps for a while. Routing exists and is gated (118/118 places,
    every sampled resident's home and job mutually reachable). Poses exist and reach a frame,
    including a walk cycle. What does not exist: nobody **moves**. `npc.gd` already transforms each
@@ -271,22 +323,24 @@ instance references rather than baked triangles), `export_gltf` (nodes sharing a
    available today** — what it lacks is the route in the actor JSON and the clip sampled at more
    than one frame. Emit `route` (a list of world points from `NavGraph.path`) and the eight
    `walk_clip` phases per person, and the corridor walks.
-2. **Runtime LOD for people.** `corridor_lod` bakes at the mean viewing distance because a static
+5. **Runtime LOD for people.** `corridor_lod` bakes at the mean viewing distance because a static
    mesh has no other option; the near figure in `docs/engine-corridor-populated.png` is 484
    triangles at 6 m where `NPC_BUDGET` would give it 8,000. `npc.gd` holds each person's parts
    already; swapping them by distance is the fix.
-3. **`bespoke.compose` for the remaining module places.** The sweep now says **49** module-owned
-   places are assembled as generic bays, 18 of them with a builder that exists and was not used.
-4. **`directory.py`'s `docking_bays` footprint.** The register puts a 140 m bay at z 7115 and the
+6. **`bespoke.compose` for the last 26.** 20 have no builder at all (`components` x14,
+   `interior_kit` x3, `core_tube` x2, `interior` x1); of the 6 that do, 5 are `plant` — whose
+   walkable band is 82.2 x 1.80 m against a 92 x 442 m bay, so it needs a placement decision
+   rather than a near-end declaration — and 1 is `docking_bay`, blocked on its 151 open edges.
+7. **`directory.py`'s `docking_bays` footprint — now C-010.** The register puts a 140 m bay at z 7115 and the
    sphere is only wide enough for a 254.2 m deck over **58 m of that**. Either the bay is 140 m
    and mis-addressed or INV-022 is wrong. `docking_bay._selftest` ratchets it at ≥40% so it
    cannot get worse. **A real fork, not mine to rule on.**
-5. ~~**Props are still not solid.**~~ **WRONG — they have been solid since 3v.**
+8. ~~**Props are still not solid.**~~ **WRONG — they have been solid since 3v.**
    `collision.prop_boxes` derives them from the room's own emitted mesh and `deck.py --selftest`
    prints *"114 furniture boxes, 1,368 collision triangles for them"*. This entry was inherited
    from an older list and is left here struck through rather than deleted, because a next-session
    list that quietly loses items is how a real one gets distrusted.
-6. **The ionization vanes.** Three support rings measured off `other map 4.jpg` (z 1620/1907/2198,
+9. **The ionization vanes.** Three support rings measured off `other map 4.jpg` (z 1620/1907/2198,
    agreeing to 1.4% in spacing); the six vanes do not resolve in any frame. The agent recorded the
    measurement and did **not** build them, because the counts live only in `00-MASTER.md` §1.3 and
    writing them as literals would put a canon count in a second place.
