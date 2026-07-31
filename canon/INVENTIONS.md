@@ -4239,3 +4239,120 @@ because each module had written its own primitive. `deck_pad` and `plate_solid` 
 kit, once each, with closure gates and negative controls that fire.
 
 **What would overturn it.** Any authority-1 frame giving one of these objects a measurable depth.
+
+---
+
+## INV-210 — The room shell is built to the corridor's plate module, because it was not built to any
+
+`station/rooms.py` (`kit_plate_module`, `_plate_field`, `_plate_deck`, `SHADOW_GAP_M`,
+`DECK_TILE_M`, `NOSING_PROUD_M`, `NOSING_H_M`, the wall/deck/soffit sections of `articulate`, and
+`articulate`'s `plates` and `near_end` parameters), `station/density.py` (`SHELL_SURFACES`,
+`KIT_SURFACES`, `kit_surface_floor`, `kit_like_floor`, `shell_split`, `shell_rows`, `--shell`,
+and `analyse`'s `facet_p50_m` / `facet_max_m`).
+
+**What.** Every wall, deck and soffit `rooms.articulate` builds is now plated: proud plates with
+recessed seams, in courses, with a lip at the bottom of each course, and the module is the
+corridor kit's own. Nothing here is a new dimension. Every one is `interior_kit.PROVISIONAL`,
+whose wall build-up is measured off `grey level 1.webp`:
+
+| value | m | where it comes from |
+|---|---|---|
+| plate length | 1.150 | `wall_plate_l_m`, unchanged |
+| course height | 0.446 | **solved**, not copied — see below |
+| seam | 0.038 | `wall_seam_m` |
+| plate proud | 0.045 | `wall_plate_proud_m` = `PANEL_D_M`, which already agreed |
+| nosing proud | 0.055 | `wall_rail_proud_m` − `wall_plate_proud_m`: the corridor's one rail stands this far proud of the plates it interrupts |
+| nosing height | 0.094 | half `wall_rail_frac` × the corridor's wall height, halved because this repeats every course where the corridor's happens once |
+| deck tile | 0.620 | `interior_kit.deck_grid`'s own default |
+| soffit pan | 1.500 | `deck_panel_l_m` — a soffit is a deck seen from below |
+| vertical member | 3.600 | `portal_spacing_m`, snapped to the nearest plate seam |
+| skirt shadow gap | 0.060 | the only free number here; see below |
+
+**THE COURSE HEIGHT IS SOLVED AND THAT IS THE ONE PIECE OF ARITHMETIC WORTH READING.**
+`PROVISIONAL` states `wall_plate_courses = 3`, but 3 is a **count over the corridor's own upper
+field**, not a property of a plate. Reproducing the corridor's build-up — `wall_h = 3.0 − 0.5`,
+skirt `× 0.05`, dado `× 0.34`, rail `× 0.075` — gives a field of 1.337 m, and 1.337 / 3 = 0.446 m
+is the size of one plate. Laid as many times as the room is tall, that is right in a 2.9 m office
+and in a 7.5 m foundry. Copying the COUNT is measurably wrong: `interior_kit.wall_assembly(12.8,
+7.5)` — the kit's own code at foundry scale — divides that wall into three 2 m courses and reads
+**λ 1.93**, against λ 3.42 at its designed 3.6 × 3.0 m. The kit is right at its own size and
+degrades at any other; solving the height is what carries it.
+
+**Why necessary.** `docs/aaa-scorecard.json` had carried the words for two sessions — *"the War
+Room's wall is one unbroken pale panel across 4 m with a scribed line and no joint, no fitting, no
+wear"*, craft 2 — and no gate in this repository could produce them as a number.
+`docs/shell/before-office-half.png` is that wall at the rubric's half distance: 2 × 1.5 m pale
+rectangles joined by hairline scribes, nothing inside any of them. The cause was one line:
+`articulate` emitted the whole field between two ribs as a **single box**, `PANEL_D_M` proud, and
+called it a panel.
+
+Three things followed from that one box and all three were measured:
+
+* **The mullions were buried.** `MULLION_D_M` is 0.035 and `PANEL_D_M` is 0.045, so every mullion
+  above the panel's bottom edge stood *inside* it — 288 triangles a room of geometry nobody could
+  see, and the reason the wall in the frame has vertical division below 1.2 m and none above it.
+* **The deck had the construction inverted.** `interior_kit.deck_grid` lays proud tiles over a
+  substrate, so the tiles are the surface; `articulate` laid proud ribs across a continuous plane,
+  so the plane was the surface. It looked tiled and measured as one 7.25 m facet.
+* **The end walls were never panelled at all**, on two walls out of four — and the end wall is the
+  one a player walks in facing.
+
+**What constrained it.**
+
+* **The corridor kit, measured this run rather than written down.** `density.kit_surface_floor`
+  builds `interior_kit.corridor_section` and measures it, so a change to the kit moves the floor
+  with it. The same rule as `collision.corridor_profile` ray-casting the kit instead of restating
+  its section.
+* **`test_materials_layer3` — no new group names.** The construction reuses `_panel`, `_rail`,
+  `_mullion`, `_deck_joint`, `_soffit` and `_conduit`, all of which `materials.py` already binds
+  by exact name. Coverage is 495/495 before and after. A new name would have needed an edit to a
+  file this work does not own, and would have rendered on the glTF fallback until it got one.
+* **The walking surface may not move.** Plate tops sit exactly on y = 0 for a deck and on `ceil`
+  for a soffit; the substrate is set back behind them. Every height in every room is what it was,
+  and `collision.room_shell` — which builds its own smooth floor and never reads this mesh — is
+  untouched.
+* **`TRIM_MAX_PROUD_M`, which is 0.10 and is asserted.** The deepest thing this adds is the course
+  nosing at 0.100 m from the wall face, which is the limit exactly, and `rooms._selftest`'s trim
+  check measures every band on twelve locations against it.
+* **THE DOORWAY, and this is the constraint that cost the most.** `articulate` is shared with nine
+  bespoke modules that cut their doorway in their *own* geometry, later and elsewhere, and hand
+  this function nothing to skip. A continuous plate field walls them up: `bespoke.py` went
+  **149/149 → 142/149**, *"walled at the doorway"* on eleven rooms, *"narrowest doorway on the
+  station: bar_unnamed at 0.00 m"*. `near_end` is the fix and it is a statement about ownership
+  rather than about style — `rooms.build` cuts its own aperture and passes it as `door_at`, so it
+  may plate the near (maximum-z) face and anything below door height; a caller that has not said
+  where its door is gets the wall it had before. INV-112 already established that a bespoke room's
+  near face is where the way in is.
+
+**The one free number is `SHADOW_GAP_M` = 0.06**, the bare strip of substrate between the skirt
+and the plate field. It is authority 5. What constrains it: `docs/reference-values.md` §1 fits the
+reference's dark horizontals across seven x-bins and finds the affine fit beats the multiplicative
+one by ≈3× on both the reveal and the dado — *"no albedo produces a ratio that varies with the
+light"* — so the band has to be **geometrically shielded**, and 60 mm is the smallest gap the
+field's own 10 mm overhang shades at the grazing incidence these rooms are lit at. Doubling it to
+0.12 changes no assertion in this project; it would move the skirt's apparent height, which no
+frame establishes.
+
+**What it is worth, measured.** `station/density.py --shell`, whose floor is the kit's own
+construction at each room's dimensions:
+
+| | wall facet p50 | deck facet p50 | wall λ |
+|---|---|---|---|
+| before | 3.94 – 9.51 m | 5.26 – 12.80 m | 2.98 – 5.64 |
+| after | 0.83 – 1.47 m | 0.58 – 0.76 m | 4.16 – 5.38 |
+| the corridor as built | 0.99 m | 0.57 m | 3.62 |
+
+**What it costs.** 1,206,552 → 1,596,204 triangles over the 78 procedural rooms, +32%: deck
++155,736, wall +208,344, soffit +25,572. On the assembled deck `budget.py`'s `frustum structure`
+goes 98,919 → 118,863 against a 60,000 allowance, and `resident triangles` 593,824 → 632,980
+against 180,000. **Both readings were already failing before this work** — 165% and 330% — and
+`budget.py` names the cause itself: *"walk.gd loads one .glb whole — there is no streaming and no
+LOD"*. `station/lod.py` exists and has no importer in the deck path. No gate changed verdict:
+18/21 within budget before and after, the same three over.
+
+**What would overturn it.** Any authority-1 frame of a Babylon 5 room — as opposed to a corridor —
+showing a wall built to a different module. One specifically: `more hallways.jpg` shows a
+Downbelow floor of **large plates roughly 1.5–2 m with recessed joints and an inner recessed panel
+in each**, not the corridor's fine 0.62 m tile. If that is the industrial floor rather than a
+Downbelow one, `DECK_TILE_M` should become archetype-dependent, and it would take about a third of
+the deck's triangles back.
