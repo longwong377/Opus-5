@@ -452,15 +452,23 @@ def place_doors(r, n, seg_len, degrees, start_deg, z_mid, doors):
         placed.append({
             "angle_deg": math.degrees(start_rad + delta * i + c / r),
             "side": side,
-            # The door plane is the wall face: kit x = side * w/2, and the remap
-            # sends kit x straight to world z.
-            "z_m": z_mid + side * kit.PROVISIONAL["corridor_width_m"] / 2.0,
+            # WHERE THE DOOR ACTUALLY IS, which is not the wall face.
+            # `corridor_section` sets its assembly back by `fd/2 - 0.06` so the
+            # frame's front face stands a little proud of the wall rather than
+            # half of it hanging in the corridor. Reporting the wall face
+            # instead put the separately-placed moving leaves 0.16 m out of
+            # their own frame -- close enough to look right in a wide shot and
+            # wrong at the distance a player opens a door from.
+            "z_m": z_mid + side * (
+                kit.PROVISIONAL["corridor_width_m"] / 2.0
+                + kit.PROVISIONAL["door_frame_depth_m"] * 0.5 - 0.06),
         })
     return per_section, placed
 
 
 def ring_arc(schema, profile, sector, ring_index, degrees=30.0,
-             start_deg=0.0, z_offset=None, radius_m=None, doors=()):
+             start_deg=0.0, z_offset=None, radius_m=None, doors=(),
+             door_leaves=True):
     """One arc of one ring deck: a corridor run bent around the station axis.
 
     The corridor kit is authored straight, along +Z. Here it is bent: each
@@ -511,7 +519,8 @@ def ring_arc(schema, profile, sector, ring_index, degrees=30.0,
     for i in range(n):
         a = math.radians(start_deg + degrees * (i + 0.5) / n)
         here = per_section.get(i, ())
-        v, t = kit.corridor_section(seg_len, doors=here)
+        v, t = kit.corridor_section(seg_len, doors=here,
+                                    door_leaves=door_leaves)
         ca, sa = math.cos(a), math.sin(a)
 
         # The kit's +Z becomes the tangential direction; its +Y (up) becomes

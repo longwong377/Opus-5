@@ -883,8 +883,14 @@ def door_frame(p=None, width=None, height=None):
     return verts, tris
 
 
-def door_leaf(p=None, width=None, height=None, open_fraction=0.0, mechanism=None):
+def door_leaf(p=None, width=None, height=None, open_fraction=0.0,
+              mechanism=None, which=None):
     """The moving leaves of a pressure door, at a given open fraction.
+
+    `which` returns ONE leaf instead of both. A door that opens at runtime needs
+    each leaf as its own mesh, because they travel in opposite directions -- and
+    splitting a merged pair back apart in the engine means guessing from vertex
+    positions what the generator already knew. The generator says which.
 
     **The mechanism is invented; the aperture is not.** No frame in the
     reference set shows a door leaf at all, open, closed or moving -- see
@@ -920,6 +926,8 @@ def door_leaf(p=None, width=None, height=None, open_fraction=0.0, mechanism=None
             f"rectangular aperture, so only bi_parting and horizontal_split exist")
 
     verts, tris = [], []
+    if which is not None:
+        cuts = [cuts[which % len(cuts)]]
     for nx, ny, c, (dx, dy), travel in cuts:
         leaf = _clip_polygon(aperture, nx, ny, c)
         if len(leaf) < 3:
@@ -962,15 +970,22 @@ def bulkhead(section, p=None, depth=None, width=None, height=None):
 
 
 def door_assembly(p=None, open_fraction=0.0, mechanism=None,
-                  section=None, depth=None):
-    """Frame, leaves and -- where the door closes an opening -- its bulkhead."""
+                  section=None, depth=None, leaves=True):
+    """Frame, leaves and -- where the door closes an opening -- its bulkhead.
+
+    `leaves=False` emits the fixed parts only. A door that OPENS has to have its
+    moving parts as their own meshes in the scene, so an assembler that intends
+    to animate them places them itself; baking them into the corridor makes a
+    door a picture of a door.
+    """
     p = p or PROVISIONAL
     verts, tris = [], []
     if section is not None:
         _merge(verts, tris, *bulkhead(section, p, depth=depth))
     _merge(verts, tris, *door_frame(p))
-    _merge(verts, tris, *door_leaf(p, open_fraction=open_fraction,
-                                   mechanism=mechanism))
+    if leaves:
+        _merge(verts, tris, *door_leaf(p, open_fraction=open_fraction,
+                                       mechanism=mechanism))
     return verts, tris
 
 
@@ -1106,7 +1121,8 @@ def wall_door_snap(length, dz, p=None):
     return i, min(max(dz, lo), hi)
 
 
-def corridor_section(length, p=None, doors=(), start_portal=True):
+def corridor_section(length, p=None, doors=(), start_portal=True,
+                     door_leaves=True):
     """One length of corridor: portal frames, walls, deck, soffit and doors.
 
     Corridor frame: +Z runs along the corridor, +X is across, +Y is up, and the
@@ -1223,7 +1239,8 @@ def corridor_section(length, p=None, doors=(), start_portal=True):
         # leaves two big faces a few centimetres apart, which the preview's
         # depth sort renders as torn corners.
         setback = fd * 0.5 - 0.06
-        v, t = door_assembly(p, section=rect, depth=(-setback, th - setback))
+        v, t = door_assembly(p, section=rect, depth=(-setback, th - setback),
+                             leaves=door_leaves)
         _merge(verts, tris, v, t, _rot_y(90.0 * side),
                (side * (w / 2.0 + setback), 0.0, c))
 

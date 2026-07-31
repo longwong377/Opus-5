@@ -27,6 +27,12 @@ extends Node3D
 @export var spawn: Vector3 = Vector3.ZERO
 @export var gravity_mode: String = "deck"
 @export var gravity_m_s2: float = 9.81
+## How far each pressure door leaf travels when it opens, in metres -- half the
+## aperture width, since two leaves part on the centreline. From
+## `interior_kit.PROVISIONAL["door_width_m"]`, passed in rather than repeated.
+@export var door_travel_m: float = 0.75
+
+var _doors: Node3D
 
 var _player: CharacterBody3D
 var _static: StaticBody3D
@@ -44,12 +50,16 @@ func _ready() -> void:
 		gravity_mode = args["gravity-mode"]
 	if args.has("gravity"):
 		gravity_m_s2 = float(args["gravity"])
+	if args.has("door-travel"):
+		door_travel_m = float(args["door-travel"])
 
 	if not _load_level():
 		push_error("walk: could not load %s" % glb_path)
 		get_tree().quit(2)
 		return
 	_spawn_player()
+	if _doors != null:
+		_doors.watch(_player)
 
 	if args.has("walk-test"):
 		_run_walk_test(args)
@@ -106,6 +116,7 @@ func _load_level() -> bool:
 			c += 1
 		print("walk: %d collision meshes (proxy), %d visual meshes (no collision)"
 			% [c, _all_meshes(scene).size()])
+		_wire_doors(scene, col)
 		return c > 0
 
 	var n := 0
@@ -114,6 +125,22 @@ func _load_level() -> bool:
 		n += 1
 	print("walk: %d mesh instances given trimesh collision" % n)
 	return n > 0
+
+
+## Give the deck its doors. `--no-doors` leaves them out, which is the NEGATIVE
+## CONTROL for the walk test: with the doors inert the closed panels stay solid
+## and a body must NOT be able to reach the room. A test that only ever runs the
+## working configuration cannot tell a door that opens from a hole in a wall.
+func _wire_doors(scene: Node, col: Node) -> void:
+	if _args().has("no-doors"):
+		print("walk: doors DISABLED (negative control)")
+		return
+	_doors = Node3D.new()
+	_doors.name = "Doors"
+	_doors.set_script(load("res://scripts/door.gd"))
+	add_child(_doors)
+	var n: int = _doors.collect(scene, col, door_travel_m)
+	print("walk: %d doors wired" % n)
 
 
 func _load_glb(path: String) -> Node:
@@ -177,6 +204,7 @@ func _run_walk_test(args: Dictionary) -> void:
 	if args.has("goto"):
 		_goto = _vec(args["goto"])
 		_have_goto = true
+	_door_key = String(args.get("door-key", ""))
 	_trace = int(args.get("trace", "0"))
 	_testing = true
 	set_physics_process(true)
@@ -310,6 +338,8 @@ func _physics_process(delta: float) -> void:
 		if _have_goto:
 			goto_s = " goto_start_m=%.2f goto_best_m=%.2f goto_end_m=%.2f" % [
 				_traverse_from.distance_to(_goto), _goto_best, gd]
+			if _doors != null:
+				goto_s += " door_open=%.2f" % _doors.openness(_door_key)
 		print(("WALKTEST rest=%.3f,%.3f,%.3f on_floor=%s fell=%s moved_1s=%.3f "
 			+ "drop=%.3f legs=%.2f/%.2f/%.2f/%.2f traverse_m=%.2f net_m=%.2f "
 			+ "offfloor=%d/%d%s") % [
@@ -336,3 +366,4 @@ var _off_floor := 0
 var _goto := Vector3.ZERO
 var _have_goto := false
 var _goto_best := 1e30
+var _door_key := ""

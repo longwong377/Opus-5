@@ -117,8 +117,55 @@ has **343 of 640 cells free**; it was getting nobody.
 **278 of 320 placed, every room occupied.** The 42 short are people for whom no clear spot
 remained after the others took theirs, which is a room being full rather than a bug.
 
+### The doors open — the first thing on this station a player uses
+
+```
+PASS  deck blue/0/0 -- a body spawns in the corridor and WALKS INTO docking_bays
+      (6.3 m -> 0.04 m), never leaving the floor
+      control: with the doors inert the body is stopped 5.26 m short.
+               The door is what opens the way.
+```
+
+Until now a pressure door was a **picture of a door**: the collision shell cut a permanent
+hole at every doorway — which is what let a body walk from the corridor into a room — and
+the leaves the player could see were a shut slab baked into the corridor mesh. So you
+walked through a closed door. Same defect as the vestibule with no floor and the room wall
+with no aperture, arriving a third time: **physics and pixels disagreeing about whether
+there is a wall.**
+
+| piece | what it is |
+|---|---|
+| `doorleaf_<key>_0/_1` | the two moving leaves, each its **own** mesh, because they travel in opposite directions. `kit.door_leaf(which=)` |
+| `doorpanel_<key>` | the solid a closed door **is**, its own group in the collision shell so exactly it can be switched off |
+| `godot/scripts/door.gd` | opens on proximity, slides the leaves, disables the panel once they have actually started moving |
+
+**Which way a leaf travels is read off the geometry** — away from the midpoint of the pair,
+flattened onto the plane the door stands in. Nothing has to say "left" and "right", so
+nothing can say it wrong.
+
+**THE NEGATIVE CONTROL IS THE POINT.** A body reaching the room proves the route is open;
+it does **not** prove the door opened it, because a door-shaped hole gives the same number.
+`walkable.py --deck` now runs the same walk twice — once with the doors live, once with
+them inert — and **fails if both pass**. Doors live: 0.04 m. Doors inert: stopped 5.26 m
+short.
+
+Two things fixed on the way, both found by measuring rather than looking:
+
+* `place_doors` reported the door plane as the **wall face**, but `corridor_section` sets
+  its assembly back by `fd/2 − 0.06` so the frame stands proud of the wall. The
+  separately-placed leaves were therefore **0.16 m out of their own frame** — close enough
+  to look right in a wide shot and wrong at the distance you open a door from.
+* The verdict line assembled `door_open` and then **overwrote it** with `=` instead of
+  appending, so the number never printed.
+
+Frame: `scratchpad/door_open.png` — the leaves parted into the jambs, three people standing
+in the bay beyond.
+
 ### Still open
 
+* **W5 is half.** "Spawn → walk → **use something** → an NPC reacts": the door is the
+  something, and no NPC reacts to anything yet. `directory.interacts` declares the verbs
+  for all 118 locations and none of them do anything.
 * **The drum is not walkable** — `green/1`, an open 8 km barrel whose floor is
   `drum_ground`'s heightfield. Deferred by name in `deck.NOT_RING_DECKS`, not forgotten.
 * **19 of 106 non-drum locations are in secondary z-clusters** and are not on an assembled

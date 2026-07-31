@@ -56,6 +56,7 @@ import collision as C                                           # noqa: E402
 import deck as D                                                # noqa: E402
 import directory as dr                                          # noqa: E402
 import interior as it                                           # noqa: E402
+import interior_kit as K                                        # noqa: E402
 import rooms as R                                               # noqa: E402
 
 # A body that walks for a second at 4.2 m/s covers 4.2 m in the open. Rooms are
@@ -146,7 +147,7 @@ def room_target(meta, place):
 
 
 def walk_deck(sector, ring, deck, godot, timeout=1800, traverse=None,
-              goto_key=None):
+              goto_key=None, no_doors=False):
     """Assemble a deck, put a body on it, and walk it.
 
     The render mesh and the collision shell are exported separately and BOTH are
@@ -165,7 +166,8 @@ def walk_deck(sector, ring, deck, godot, timeout=1800, traverse=None,
     # not a route.
     cv, ct, cm = D.build_collision(schema, profile, sector, ring, deck,
                                    props=True)
-    C.write_obj(os.path.join(out, f"{stem}_col.obj"), cv, ct)
+    C.write_obj(os.path.join(out, f"{stem}_col.obj"), cv, ct,
+                cm.get("groups"))
     _glb(os.path.join(out, f"{stem}.obj"), os.path.join(out, f"{stem}.glb"))
     _glb(os.path.join(out, f"{stem}_col.obj"),
          os.path.join(out, f"{stem}_col.glb"))
@@ -185,7 +187,10 @@ def walk_deck(sector, ring, deck, godot, timeout=1800, traverse=None,
     # a path, and there is no pathfinder yet.
     goto = goto_key or s["spawn_at"]
     tx, ty, tz = room_target(cm, dr.by_key(goto))
-    cmd += [f"--goto={tx},{ty},{tz}"]
+    cmd += [f"--goto={tx},{ty},{tz}", f"--door-key={goto}",
+            f"--door-travel={K.PROVISIONAL['door_width_m'] / 2.0}"]
+    if no_doors:
+        cmd += ["--no-doors"]
     try:
         res = subprocess.run(cmd, capture_output=True, text=True,
                              timeout=timeout).stdout
@@ -265,6 +270,9 @@ def main():
                     help="also walk an assembled deck, as sector/ring/deck "
                          "(e.g. blue/0/0)")
     ap.add_argument("--deck-only", action="store_true")
+    ap.add_argument("--no-doors", action="store_true",
+                    help="negative control: leave the doors inert, so the "
+                         "closed panels stay solid and the body must NOT get in")
     ap.add_argument("--traverse", type=int, default=None,
                     help="physics frames of continuous walking on the deck")
     a = ap.parse_args()
@@ -277,10 +285,30 @@ def main():
     if a.deck or a.deck_only:
         sector, ring, deck = (a.deck or "blue/0/0").split("/")
         d = walk_deck(sector, int(ring), int(deck), godot,
-                      traverse=a.traverse)
+                      traverse=a.traverse, no_doors=a.no_doors)
         good, why = deck_verdict(d)
         print(f"  {'PASS' if good else 'FAIL'}  deck {sector}/{ring}/{deck}"
               f"  {why}")
+
+        # THE NEGATIVE CONTROL, and it is the whole reason the door claim means
+        # anything. A body that reaches the room proves the route is open; it
+        # does not prove the DOOR opened it, because a door-shaped hole in the
+        # wall gives exactly the same number. So the same run is repeated with
+        # the doors inert: the closed panels stay solid and the body must NOT
+        # get in. If both runs pass, the doors are scenery.
+        if good and not a.no_doors:
+            n = walk_deck(sector, int(ring), int(deck), godot,
+                          traverse=a.traverse, no_doors=True)
+            blocked, _w = deck_verdict(n)
+            near = float(n.get("goto_best_m", 0.0))
+            if blocked:
+                print(f"  FAIL  the doors are scenery -- with them inert the "
+                      f"body still reached {d['goto']} ({near:.2f} m)")
+                good = False
+            else:
+                print(f"        control: with the doors inert the body is "
+                      f"stopped {near:.2f} m short. The door is what opens "
+                      f"the way.")
         if good:
             print(f"        {d['render_tris']:,} render triangles, "
                   f"{d['collision_tris']:,} collision "

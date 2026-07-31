@@ -316,6 +316,7 @@ def build_collision(schema, profile, sector, ring, deck, z_m=None,
     # opening where there is a door and sealed where there is not.
     meta["rooms"] = []
     meta["unopened"] = d["unopened"]
+    meta["groups"] = []
     opened = {q["key"]: door for q, door, _dx in d["rooms"]}
     for q in d["here"]:
         door = opened.get(q["key"])
@@ -328,6 +329,13 @@ def build_collision(schema, profile, sector, ring, deck, z_m=None,
             meta["rooms"].append({"key": q["key"],
                                   "door_deg": door["angle_deg"],
                                   "vestibule_m": round(near - inner, 3)})
+            # The closed door itself, as its own group so the runtime can
+            # switch exactly this off when it opens.
+            pv, pt = C.door_panel(meta, door["angle_deg"], door["z_m"])
+            off, t0 = len(v), len(t)
+            v.extend(pv)
+            t.extend((a + off, b + off, c + off) for a, b, c in pt)
+            meta["groups"].append((f"doorpanel_{q['key']}", t0, len(t)))
         # SOLID FURNITURE. Off by default because it costs a room build apiece
         # and `--sweep` asks a structural question of 66 decks; on wherever a
         # body is actually going to be put on this deck. A room whose tables a
@@ -351,6 +359,29 @@ def build_collision(schema, profile, sector, ring, deck, z_m=None,
             t.extend((a + off, b + off, c + off) for a, b, c in tt)
     meta["triangles"] = len(t)
     return v, t, meta
+
+
+def door_leaves(radius_m, angle_deg, z_m, key, open_fraction=0.0):
+    """The two moving leaves of one pressure door, each as its own group.
+
+    A DOOR THAT DOES NOT OPEN IS A PICTURE OF A DOOR, and until now the leaves
+    were baked into the corridor's single mesh -- so the player walked through a
+    shut door, because the collision aperture was permanently open and the thing
+    they could see was not connected to anything. These come out as
+    `doorleaf_<key>_0` and `_1`, which is what lets `godot/scripts/door.gd` find
+    them and slide them.
+
+    The leaf is authored across x, up y, thick in z, which is exactly the frame
+    `_place_local` maps onto a ring: x becomes arc, y becomes radius, z becomes
+    the station axis. The same mapping a room uses, because it is the same
+    relationship to the deck.
+    """
+    out = []
+    for i in (0, 1):
+        lv, lt = K.door_leaf(open_fraction=open_fraction, which=i)
+        placed = _place_local(lv, radius_m, angle_deg, z_m)
+        out.append((f"doorleaf_{key}_{i}", placed, lt))
+    return out
 
 
 def vestibule_render(radius_m, angle_deg, z_from, z_to, width_m, height_m,
@@ -438,9 +469,12 @@ def build_deck(schema, profile, sector, ring, deck, with_rooms=True,
     here, lo, span, cz = dp["here"], dp["lo"], dp["span"], dp["cz"]
     stats["corridor_z"] = cz
     stats["unopened"] = dp["unopened"]
+    # WITHOUT THE MOVING LEAVES -- `door_leaves` places them per door, as their
+    # own meshes, so they can open. See that function.
     cv, ct, cm = it.ring_arc(schema, profile, sector, ring,
                              degrees=span, start_deg=lo, radius_m=radius,
-                             z_offset=cz, doors=dp["doors"])
+                             z_offset=cz, doors=dp["doors"],
+                             door_leaves=False)
     V.extend(cv)
     T.extend(ct)
     # NAMED, and it was not. `ring_arc` returns no groups, so 458,160 corridor
@@ -450,6 +484,16 @@ def build_deck(schema, profile, sector, ring, deck, with_rooms=True,
     G.append(("corridor", 0, len(ct)))
     stats["corridor_tris"] = len(ct)
     stats["doors"] = cm["doors_at"]
+
+    # One group per leaf, so the engine can move each independently.
+    for q, door, _dx in dp["rooms"]:
+        for name, lv, lt in door_leaves(radius, door["angle_deg"],
+                                        door["z_m"], q["key"]):
+            off, t0 = len(V), len(T)
+            V.extend(lv)
+            T.extend((a + off, b + off, c + off) for a, b, c in lt)
+            G.append((name, t0, len(T)))
+            stats["leaf_tris"] = stats.get("leaf_tris", 0) + len(lt)
 
     # THE SPAWN COMES FROM THE COLLISION SHELL, which is the only mesh that
     # knows where the floor a body rests on actually is. Two earlier versions of
@@ -829,8 +873,8 @@ def main():
         print(f"  wrote {a.obj}")
     if a.collision_obj:
         cv, ct, cm = build_collision(schema, profile, a.sector, a.ring, a.deck,
-                                     max_rooms=a.max_rooms)
-        C.write_obj(a.collision_obj, cv, ct)
+                                     max_rooms=a.max_rooms, props=True)
+        C.write_obj(a.collision_obj, cv, ct, cm.get("groups"))
         print(f"  wrote {a.collision_obj}: {len(ct):,} collision triangles "
               f"({len(ct) / max(1, s['corridor_tris']) * 100:.1f}% of the "
               f"corridor's render mesh), clear width {cm['half_w_m'] * 2:.3f} m")

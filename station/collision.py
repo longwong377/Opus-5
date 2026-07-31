@@ -738,12 +738,61 @@ def floor_holes(verts, tris, meta, along_m=0.35, samples=90):
     return out
 
 
-def write_obj(path, verts, tris, name="collision"):
+def door_panel(meta, angle_deg, z_m, thick_m=0.12):
+    """The solid a CLOSED door is, filling its aperture.
+
+    The shell cuts a permanent hole at every doorway, which is what let a body
+    walk from the corridor into a room -- and also what let it walk through a
+    door that was visibly shut. A door has to be solid when closed or it is
+    scenery. This is the piece the runtime disables when the door opens, so it
+    is emitted as its own group and nothing else in the shell moves.
+
+    A little wider and taller than the visible aperture, because a collider that
+    exactly matches an opening leaves a hairline a capsule can catch on.
+    """
+    r = meta["floor_r_m"]
+    hw = meta["door_w_m"] / 2.0 + 0.02
+    a0 = math.radians(angle_deg)
+    verts, tris = [], []
+    lo_r, hi_r = r + 0.02, r - meta["door_h_m"] - 0.02
+    for za, zb in ((z_m - thick_m / 2.0, z_m + thick_m / 2.0),):
+        corners = []
+        for rad in (lo_r, hi_r):
+            for da in (-hw / r, hw / r):
+                corners.append((rad, a0 + da))
+        # (r_lo,-), (r_lo,+), (r_hi,-), (r_hi,+)
+        p = [(rad * math.cos(a), rad * math.sin(a), z)
+             for rad, a in corners for z in (za, zb)]
+        # p is indexed [corner*2 + zside]
+        c = ((corners[0][0] + corners[2][0]) / 2.0 * math.cos(a0),
+             (corners[0][0] + corners[2][0]) / 2.0 * math.sin(a0),
+             (za + zb) / 2.0)
+        faces = ((0, 2, 6, 4), (1, 5, 7, 3), (0, 1, 3, 2),
+                 (4, 6, 7, 5), (0, 4, 5, 1), (2, 3, 7, 6))
+        for f in faces:
+            pts = [p[i] for i in f]
+            mid = [sum(q[k] for q in pts) / 4.0 for k in range(3)]
+            _quad(verts, tris, pts, [mid[k] - c[k] for k in range(3)])
+    return verts, tris
+
+
+def write_obj(path, verts, tris, groups=None, name="collision"):
+    """Emit an OBJ. `groups` makes each named span its own mesh in the glTF,
+    which is how the runtime gets a door panel it can switch off without
+    touching the rest of the shell."""
+    per = [None] * len(tris)
+    for gname, lo, hi in (groups or ()):
+        for i in range(lo, min(hi, len(tris))):
+            per[i] = gname
     with open(path, "w") as f:
-        f.write(f"g {name}\n")
         for x, y, z in verts:
             f.write(f"v {x:.5f} {y:.5f} {z:.5f}\n")
-        for a, b, c in tris:
+        cur = None
+        for i, (a, b, c) in enumerate(tris):
+            nm = per[i] or name
+            if nm != cur:
+                cur = nm
+                f.write(f"g {nm}\n")
             f.write(f"f {a + 1} {b + 1} {c + 1}\n")
 
 
