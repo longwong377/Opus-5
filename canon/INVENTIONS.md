@@ -2988,3 +2988,64 @@ survives.
 `bytes_per_tri`. A machine specification in CLAUDE.md settles the 16 GB. A different character
 controller with a different step tolerance moves bound 1, which is the point of deriving it from a
 constant rather than choosing it.
+
+---
+
+## INV-086 — The station's signage face: a 5×7 blocky lattice standing in for a serif
+
+**Authority 5 — declared extrapolation. Session 3x.**
+
+`station/signage.py` has held authority-1 transcriptions of the customs boards since session 2q and
+had no way to draw them: its own docstring said "a texture generator will later render
+`BOARDS[...]['lines']` onto the panel. It does not exist yet and that is fine: the words are the
+part that can be lost." The words survived. This is what draws them, and two things about it are
+invented.
+
+**What is sourced.** Everything about proportion and colour, measured off
+`reference/11-props-and-technology/babylon 5 welcome sign, instructions, and hub.jpg` (authority 1),
+linear and sRGB-decoded, regions in normalised coordinates so every figure can be re-measured:
+
+| what | region | measured |
+|---|---|---|
+| black field | (.320,.250)-(.590,.265) | linear (0.0033, 0.0032, 0.0052), **L 0.0034** |
+| gold header | (.345,.275)-(.575,.300) | top-5% (0.594, 0.580, 0.388), L 0.445 p95 |
+| notice gold | (.345,.455)-(.580,.500) | top-5% (0.561, 0.541, 0.330), L 0.448 p95 |
+| blue bar | (.470,.335)-(.487,.352) | linear (0.1068, 0.1049, 0.6378), L 0.1438 |
+| architecture | three independent patches | L 0.031 / 0.0086 / 0.0222 |
+
+The two gold readings normalise to (1.000, 0.976, 0.653) and (1.000, 0.964, 0.588) — **1% apart in
+G and 6% in B** — so the mean (1.000, 0.970, 0.620) is one source seen twice rather than an average
+of two guesses. Typography likewise: on the 203 px panel the notice caps are 9 px at a 17.5 px line
+pitch, so **line pitch is 1.94× cap height**, and the header caps are 13 px, **1.44× the notice
+caps**. Both ratios are used verbatim.
+
+**The finding those numbers establish, which is the reason the module exists in this form:** a lit
+sign is simultaneously the **brightest and the darkest thing in the frame**. Its text peaks at
+**21×** the luminance of the structure around it (0.445 against a 0.021 mean of three patches)
+while its own field sits at **6× darker than the wall** (0.0034 against 0.021). Contrast inside one
+sign is about **130:1**. An engine frame of our walkable deck measured against the show's corridor
+anchor reads p5 ×11.09 against a ×1.29 band with **zero crushed pixels**; signage is the one piece
+of content on this station that is black by construction.
+
+**What is invented, and it is one thing: the letterforms.** The show's *display* face is
+unmistakably a **serif** — "WELCOME TO" and "BABYLON 5" carry bracketed serifs in the reference
+frame — and a 5×7 lattice cannot express a serif at any size. What a 5×7 lattice *can* express is
+the coarse bitmap face **the same panel** uses for its notice block ("REMEMBER / Smoking permitted
+in designated areas only"), which is visibly a low-resolution face. So the notice face is
+substituted for the display face, at the display face's measured proportions. The alternative was
+no lettering at all.
+
+Two smaller declared choices ride along. **Tracking** is 0.25 of a 5-wide cell, because the
+reference's notice face is tightly set and one cell column is the natural unit of a lattice; it is
+not measured, because the frame is too soft at that scale to count inter-letter pixels. **The
+address format** `SECTOR RING-DECK BEARING` is derived rather than sourced: it is the coordinate
+every other module in this project already addresses a place by, so a player reading a sign and an
+agent reading `directory.py` are reading the same thing. A station whose signage used a private
+numbering would be one where a sign could not be checked against anything.
+
+**What would overturn it.** Any Season 2–3 frame showing a *corridor* sign at legible resolution —
+the reference set has exactly one legible signage frame and it is a customs-hall display board, not
+a door plaque, so the door plaque's size, mounting height and layout are all extrapolated from it.
+A frame showing an Earth Alliance face at high resolution would replace the letterforms outright.
+And a frame showing that door signage on B5 is *engraved* rather than lit would overturn the whole
+premise, taking the 130:1 with it.

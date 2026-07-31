@@ -1209,6 +1209,62 @@ def _build():
         binds=("signage_neon",), scenes=("interior",),
         source="zocalo.webp neon glyph, balanced (0.444, 1.000, 0.939); Zocalo neon signage in background.jpg"))
 
+    # ---- signage that carries LETTERING ------------------------------------
+    # `signage_panel` below is a backlit BLANK. `station/signage.py` now builds
+    # readable text as geometry -- nothing in this project has UVs, so an atlas
+    # is not available and each lit stroke is a quad -- and those quads need
+    # their own two materials: the field they sit on and the light they are.
+    #
+    # Both are measured off `reference/11-props-and-technology/babylon 5
+    # welcome sign, instructions, and hub.jpg` (authority 1), linear and
+    # sRGB-decoded, with the regions recorded so they can be re-measured.
+    #
+    # THE FINDING THESE TWO EXIST TO REPRODUCE: a lit sign is simultaneously
+    # the BRIGHTEST and the DARKEST thing in a Babylon 5 frame. Its text peaks
+    # at linear 0.445 against a 0.021 mean over three independent patches of
+    # surrounding structure -- 21x -- while its own field sits at 0.0034, which
+    # is 6x DARKER than the wall it hangs on. Contrast inside one sign is about
+    # 130:1. Our corridor currently measures p5 x11.09 against the show's
+    # corridor anchor with ZERO crushed pixels; signage is the one piece of
+    # content on this station that is black by construction.
+    a(Material(
+        "sign_lit_field", "Sign Field — the black a lit sign is printed on",
+        albedo=(0.0033, 0.0032, 0.0052), roughness=0.34, metallic=0.0,
+        specular=0.18,
+        binds=("sign_field",), scenes=("interior",),
+        source="babylon 5 welcome sign, instructions, and hub.jpg (authority 1), "
+               "region (0.320,0.250)-(0.590,0.265) read linear: mean rgb "
+               "(0.0033,0.0032,0.0052), luminance 0.0034, p5 0.0015, p95 0.0081. "
+               "Three independent patches of the surrounding structure in the "
+               "same frame read 0.031 / 0.0086 / 0.0222, so the field is about "
+               "6x darker than the architecture around it.",
+        note=("Not emissive and deliberately so. This is the substrate the "
+              "lettering is lit against; making it glow is what turns a sign "
+              "into a lightbox and destroys the 130:1 the reference has.")))
+
+    a(Material(
+        "sign_text_lit", "Sign Lettering — the amber a station sign is written in",
+        albedo=(0.180, 0.174, 0.112), roughness=0.30, metallic=0.0,
+        specular=0.30, emission=(1.000, 0.970, 0.620), emission_energy=3.4,
+        binds=("sign_text", "sign_text_head"), scenes=("interior",),
+        source="babylon 5 welcome sign, instructions, and hub.jpg (authority 1). "
+               "TWO independent regions agreeing: the header at "
+               "(0.345,0.275)-(0.575,0.300) reads top-5% linear "
+               "(0.594,0.580,0.388) and the notice block at "
+               "(0.345,0.455)-(0.580,0.500) reads (0.561,0.541,0.330). "
+               "Normalised to R=1 those are (1.000,0.976,0.653) and "
+               "(1.000,0.964,0.588) -- 1% apart in G, 6% in B -- so the mean "
+               "(1.000,0.970,0.620) is one source seen twice rather than an "
+               "average of two guesses. Peak luminance 0.445 p95.",
+        extrapolated="emission_energy 3.4 and the albedo. Energy is set so the "
+                     "lettering lands near the measured 0.445 peak against this "
+                     "project's corridor exposure rather than by eye, and it "
+                     "sits below `emissive_signage`'s 4.5 because that is a "
+                     "neon glyph and this is a backlit legend. The albedo is "
+                     "the emission at 18%, the value an unpowered amber "
+                     "diffuser reads at -- the same argument "
+                     "`light_pilaster_strip` makes at 0.85 for a white one."))
+
     a(Material(
         "signage_panel", "Signage Panel — backlit blue with neutral lettering",
         albedo=(0.060, 0.062, 0.140), roughness=0.30, metallic=0.0,
@@ -3108,6 +3164,9 @@ def _build():
         albedo=(0.103, 0.100, 0.099),
         roughness=0.7, metallic=0,
         specular=0.35,
+        # A door plaque's frame is the same dark matte painted steel the
+        # customs boards hang in, so `signage.door_plaque` emits `sign_frame`
+        # rather than a name of its own. One surface, one value.
         binds=("sign_frame", "sign_post"), scenes=("interior",),
         source="reference/01-station-exterior/welcome to babylon 5.webp (authority 1, 1000x750; reference/00-INDEX.md files it as 'misfiled — this is signage, not exterior' and calls it 'two backlit blue information boards in the customs hall'). MEASURED RAW, NOT BALANCED — see extrapolated. POST, clear of both boa",
         extrapolated="THE LEVEL, and the decision to measure this frame raw. Both are declared in full. (1) GREY-WORLD FAILS ON THIS FRAME, and I checked rather than assumed. Its gains are (1.262, 1.276, 0.702), and its balanced mid-tone population (0.15 < V < 0.85) has median saturation 0.299 and p90 0.469 against the a"))
