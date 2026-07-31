@@ -3443,3 +3443,66 @@ walking speed by 1.74×, so a single figure is wrong by minutes over a station-l
 **What would overturn it.** A deck plan showing diagonal or spiral circulation, which would make
 the Manhattan figure an overestimate. It is deliberately the conservative reading: it can only
 overstate a journey, never understate one.
+
+---
+
+## INV-100 — A radial lift shaft runs a bank of cars, sized to a two-dwell headway
+
+`station/npc/navigation.py`, `shaft_cars()` / `SHAFT_TARGET_HEADWAY_S`.
+
+**What.** Each of the three radial shafts in a sector runs **`round_trip / (2 × TRANSIT_DWELL_S)`
+cars**, rounded to an integer and never fewer than one. That falls out per sector rather than being
+tabulated: Grey's shaft spans 382 m and gets **10**, Red's 213 m gets **6**, Blue's 167 m gets **5**,
+Yellow's 122 m gets **4**, Green's 29 m gets **2**. Mean wait lands between 16.9 s and 20.3 s
+everywhere.
+
+**Why necessary.** The graph had to price a wait for a lift and could not: `SPOKE_LIFT_CARS = 1`
+covers the drum spokes, and nothing covered the sector shafts. Without a fleet the wait is one
+car's whole round trip — 203 s in Grey, so a resident crossing three decks would spend three and a
+half minutes at the doors of a shaft that 105 decks depend on.
+
+**What constrained it.** `TRANSIT_DWELL_S = 20 s` is already this project's measure of how long a
+door stands open with people moving through it, so a headway of two dwells is exactly the point at
+which **boarding rather than waiting becomes the cost of using the thing** — tighten it further and
+the queue at the door, not the timetable, is what you are waiting for. It is a ratio against a
+number already in the file rather than a second invented constant, and it is the only such target
+available: nothing in the show counts lift cars. The round trip itself is not invented —
+`_lift_headway_s` is 2 × `lift_ride_s(span)` + 2 × dwell, and `lift_ride_s` is the Coriolis-capped
+smoothstep that `physics/core_shuttle.comfortable_duration()` independently reproduces.
+
+**What would overturn it.** Any frame showing a lift lobby, because **the number of doors in it IS
+the bank**. A single-door lobby on a main deck would put the figure back to one or two and roughly
+double every radial wait in the station.
+
+---
+
+## INV-101 — A vehicle is ridden through its intermediate stops, not re-boarded at each
+
+`station/npc/navigation.py`, `_car_layer()` / `NavGraph.add_board()` / `NavGraph.add_ride()`.
+
+**What.** Every scheduled line — the radial shafts, the core shuttle, the drum guideway trams and
+the two circumferential ground trams — carries a parallel chain of nodes that live **inside the
+car**. Boarding costs **half a wait and half a dwell in each direction**; riding between adjacent
+stops costs **ride time alone**. A one-way journey traverses the boarding link exactly twice, so it
+pays one whole wait and one whole dwell however many stops it passes through.
+
+**Why necessary.** It is not a refinement, it is a defect fix, and the defect was large. Adjacent
+stops were joined directly, so each carried its own wait and its own dwell and the router made a
+passenger get out and queue again at every intermediate stop. Measured on Grey's shaft: **72.9
+minutes to ride 382 m that takes 3.0 minutes**, a factor of 24. Over a sample of 120 residents the
+median home-to-work commute was **44.1 minutes and the worst 110.5**; with the car layer they are
+**13.5 and 24.8**. Nothing was wrong with any speed, distance or headway in the module — the ride
+times were right the whole time. What was wrong was that the graph had no way to express *being
+aboard*.
+
+**What constrained it.** The half-and-half split is arithmetic rather than a fudge: it is the only
+division that leaves a **one-stop hop costing exactly what it cost before**, so the change cannot
+be a general speed-up hiding a modelling error. `lift_ride_s` is linear in distance
+(1.5·dr/v_cap), so summing per-deck rides along the car chain equals one express ride **exactly** —
+segmenting the layer introduces no approximation at all. The model is a non-stop express: a car
+that halts for another passenger is not charged to this one, which is the optimistic reading and is
+stated as such.
+
+**What would overturn it.** A show reference to lift or shuttle journeys being slower than
+end-to-end ride time, which would mean intermediate dwells are charged to the through passenger and
+would add ~20 s per intervening stop.

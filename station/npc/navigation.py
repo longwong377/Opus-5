@@ -414,6 +414,11 @@ CORE_SHUTTLE_CARS = 6
 GROUND_TRAM_CARS = 4
 SPOKE_LIFT_CARS = 1
 
+# Service target for a radial lift shaft: a car every two dwells. `shaft_cars`
+# turns it into a fleet per sector. See that function -- the target is derived
+# from TRANSIT_DWELL_S rather than chosen alongside it.
+SHAFT_TARGET_HEADWAY_S = 2.0 * TRANSIT_DWELL_S
+
 
 def omega(schema) -> float:
     return schema["station"]["rotation"]["omega_rad_s"]["value"]
@@ -1117,6 +1122,26 @@ class NavGraph:
         self._link(a, b, kind, distance_m, rise_m, g,
                    ride_s + wait_s + TRANSIT_DWELL_S, 0.0)
 
+    def add_board(self, cell, car, wait_s, kind, g=0.0):
+        """Step between a platform and the vehicle standing at it.
+
+        HALF the wait and HALF the dwell, in BOTH directions, and that is
+        arithmetic rather than a fudge: any one-way ride traverses this link
+        exactly twice -- once boarding, once alighting -- so a rider pays one
+        whole wait and one whole dwell per journey however many stops the
+        vehicle passes through in between. A one-stop hop therefore costs
+        precisely what it cost when the shaft was a chain of hops, while a
+        ninety-six-stop ride stops paying ninety-six waits for one lift.
+        """
+        self._link(cell, car, kind, 0.0, 0.0, g,
+                   (wait_s + TRANSIT_DWELL_S) / 2.0, 0.0)
+
+    def add_ride(self, a, b, kind, distance_m, ride_s, rise_m=0.0, g=0.0):
+        """A leg travelled INSIDE a vehicle: ride time alone. No wait, because
+        the rider is already aboard; no dwell, because a car that stops for
+        somebody else does not restart the journey."""
+        self._link(a, b, kind, distance_m, rise_m, g, ride_s, 0.0)
+
     def _link(self, a, b, kind, distance_m, rise_m, g, t, e):
         if a not in self.nodes or b not in self.nodes:
             raise KeyError(f"link {a} -> {b}: node missing")
@@ -1279,15 +1304,38 @@ def build_graph(schema=None, profile=None, ground=True, interior=True,
                     ci = int((ang % 360.0) // d["cell_deg"]) % d["cells"]
                     chain.append((d, f"cell:{d['id']}.c{ci}"))
                 shafts[(sector, ang)] = chain
+                if len(chain) < 2:
+                    continue
+                # A LIFT IS A VEHICLE, NOT A STAIRCASE, and modelling it as a
+                # chain of deck-to-deck hops charged a fresh wait at every
+                # floor. Measured: one hop is 2.4 s of ride and 22.4 s of
+                # wait, so a resident crossing Grey's 105 decks paid 96 waits
+                # -- 69.7 minutes, of which 67 were standing at lift doors.
+                # Nobody rides a lift like that; you board once and press a
+                # button. So the shaft gets a CAR LAYER: `lift:` nodes riding
+                # inside the shaft, boarding pays the wait once, and the ride
+                # between adjacent decks costs ride time alone. `lift_ride_s`
+                # is linear in distance (1.5*dr/v_cap), so summing per-deck
+                # rides equals one express ride EXACTLY -- no approximation is
+                # introduced by keeping the layer segmented.
+                span = chain[0][0]["floor_r_m"] - chain[-1][0]["floor_r_m"]
+                wait = _headway_wait(_shaft_headway_s(schema, span))
+                car = [f"lift:{sector}.{int(round(ang))}.{i}"
+                       for i in range(len(chain))]
+                for i, (d, cell) in enumerate(chain):
+                    G.add_node(NavNode(car[i], "lift", G.nodes[cell].pos,
+                                       d["floor_g"], 0.0,
+                                       {"sector": sector, "angle_deg": ang,
+                                        "deck": d["id"]}))
+                    G.add_board(cell, car[i], wait, LIFT, g=d["floor_g"])
                 for i in range(len(chain) - 1):
-                    (da, na), (db, nb) = chain[i], chain[i + 1]
+                    (da, _), (db, _) = chain[i], chain[i + 1]
                     dr = da["floor_r_m"] - db["floor_r_m"]
                     if dr <= 0.0:
                         continue
-                    G.add_transit(na, nb, LIFT, dr,
-                                  lift_ride_s(schema, dr),
-                                  _headway_wait(_lift_headway_s(schema, dr)),
-                                  rise_m=dr, g=(da["floor_g"] + db["floor_g"]) / 2)
+                    G.add_ride(car[i], car[i + 1], LIFT, dr,
+                               lift_ride_s(schema, dr), rise_m=dr,
+                               g=(da["floor_g"] + db["floor_g"]) / 2)
 
     # -- 7c. sector to sector, longitudinally -------------------------------
     # Sectors are longitudinal bands and a deck is a ring at the band's mid-z,
@@ -1367,8 +1415,8 @@ def build_graph(schema=None, profile=None, ground=True, interior=True,
             axis_ids.append(nid)
             G.add_node(NavNode(nid, "axis", (0.0, 0.0, z), 0.0, 0.0,
                                {"z_m": z, "stop": i}))
-        for i in range(CORE_SHUTTLE_STOPS - 1):
-            G.add_transit(axis_ids[i], axis_ids[i + 1], SHUTTLE, leg, ride, wait)
+        _car_layer(G, "shuttlecar", SHUTTLE, axis_ids,
+                   [(leg, ride)] * (CORE_SHUTTLE_STOPS - 1), wait)
 
         # Each stop reaches the rim through the sector it lands in, on the
         # shaft chain's innermost deck. Without this the shuttle is a line
@@ -1446,18 +1494,20 @@ def build_graph(schema=None, profile=None, ground=True, interior=True,
                     G.add_transit(gid, nid, LIFT, dr, lift_ride_s(schema, dr),
                                   _headway_wait(_lift_headway_s(schema, dr)),
                                   rise_m=-dr, g=g_ground / 2.0)
-            for j in range(len(plat) - 1):
-                d = abs(plat[j + 1][1] - plat[j][1])
-                ride = axial_ride_s(d)
-                rt = 2 * (2 * ride + 3 * TRANSIT_DWELL_S)
+            if len(plat) > 1:
+                legs = [(abs(plat[j + 1][1] - plat[j][1]),
+                         axial_ride_s(abs(plat[j + 1][1] - plat[j][1])))
+                        for j in range(len(plat) - 1)]
+                rt = 2 * (sum(r for _d, r in legs)
+                          + len(plat) * TRANSIT_DWELL_S)
                 try:
                     import tram                               # noqa: PLC0415
-                    cars = 2
                     cars = int(tram.drum_trams.__defaults__[0])
                 except Exception:                             # noqa: BLE001
                     cars = 2
-                G.add_transit(plat[j][0], plat[j + 1][0], TRAM, d, ride,
-                              _headway_wait(rt / max(1, cars)))
+                _car_layer(G, f"tramcar{k}", TRAM, [p[0] for p in plat],
+                           legs, _headway_wait(rt / max(1, cars)),
+                           gs=[g_ground] * len(plat))
 
         # The ground tram: two circumferential loops, one on each rim ring
         # road, with a stop at every land-use band boundary. Both the roads and
@@ -1487,13 +1537,11 @@ def build_graph(schema=None, profile=None, ground=True, interior=True,
             rt = sum(ground_tram_ride_s(schema, a) for a in legs) \
                 + len(stops) * TRANSIT_DWELL_S
             wait = _headway_wait(rt / GROUND_TRAM_CARS) if legs else 0.0
-            for i in range(len(stops)):
-                j = (i + 1) % len(stops)
-                if j == i:
-                    continue
-                arc = legs[i]
-                G.add_transit(stops[i][0], stops[j][0], GROUND_TRAM, arc,
-                              ground_tram_ride_s(schema, arc), wait)
+            if len(stops) > 1:
+                _car_layer(G, f"gtramcar{loop}", GROUND_TRAM,
+                           [s[0] for s in stops],
+                           [(a, ground_tram_ride_s(schema, a)) for a in legs],
+                           wait, gs=[g_ground] * len(stops), closed=True)
 
         # The Garden's floor has to reach the decks under it. The only nine
         # points where built structure crosses the ground plane are the three
@@ -1528,23 +1576,64 @@ def build_graph(schema=None, profile=None, ground=True, interior=True,
                            0.0, r["g"], kind=DOOR)
 
     # -- 7h. named places ---------------------------------------------------
+    #
+    # TWO VOCABULARIES, ONE STATION. `schedule.PLACES` names 25 crowd regions;
+    # `directory.PLACES` is the 118-row register a resident's home and job are
+    # drawn from. Only the first was ever in the graph, so 101 register places
+    # had no node and most residents had nowhere to walk to. Both go in, and
+    # where a key is in both, the REGISTER's address wins: it carries a real
+    # `(sector, ring, deck, angle_deg, z_m)` where a schedule entry has no
+    # angle at all and `place_nodes` has to invent a deterministic bearing.
     if interior:
-        for p in place_nodes(schema, profile, G, gn, decks):
-            G.add_node(NavNode(p["id"], "place", p["pos"], p["g"],
-                               p["area_m2"], p))
-            if p["host"] and p["host"] in G.nodes:
-                if p["sealed"]:
-                    # The Markab quarter is sealed. It gets a node, a floor and
-                    # a door frame, and NO traversable link -- the datum's
-                    # cost made visible as a graph property. `island_report`
-                    # expects it and every other island is a defect.
-                    continue
-                G.add_walk(p["id"], p["host"],
-                           ik.PROVISIONAL["door_frame_depth_m"], 0.0, p["g"],
-                           kind=DOOR)
+        reg = {p["id"]: p for p in register_nodes(schema, profile, G, decks)}
+        rows = list(place_nodes(schema, profile, G, gn, decks))
+        for p in rows:
+            r = reg.pop(p["id"], None)
+            if r is not None and r["host"] and not p["sealed"]:
+                p = dict(p, host=r["host"], pos=r["pos"], g=r["g"],
+                         area_m2=p["area_m2"] or r["area_m2"])
+            _add_place(G, p)
+        for r in sorted(reg.values(), key=lambda r: r["id"]):
+            _add_place(G, r)
 
     _GRAPH_CACHE[key] = G
     return G
+
+
+def _car_layer(G, prefix, kind, plats, legs, wait_s, gs=None, closed=False):
+    """Put a RIDEABLE VEHICLE on a line of platforms, instead of charging a
+    fresh fare at every stop.
+
+    Every scheduled line in this graph was built the same wrong way: adjacent
+    stops joined by a transit link that carries one wait and one dwell, so the
+    router made a passenger get out, wait for the next car and get back in at
+    every intermediate stop. Riding the core shuttle end to end cost twelve
+    waits and thirteen dwells -- 39 minutes for an 11-minute journey -- and the
+    radial shafts were worse, because Grey has 105 decks on one shaft.
+
+    So each line gets a parallel chain of `prefix:i` nodes that live INSIDE the
+    car. `add_board` joins platform to car for half a wait and half a dwell in
+    each direction, which totals exactly one of each over any journey however
+    many stops it passes; `add_ride` joins car to car for ride time alone.
+
+    `closed` wraps the last stop to the first: a loop line, which the drum's
+    circumferential trams are and the linear ones are not.
+    """
+    ids = [f"{prefix}:{i}" for i in range(len(plats))]
+    for i, pid in enumerate(plats):
+        g = (gs[i] if gs else 0.0)
+        G.add_node(NavNode(ids[i], "car", G.nodes[pid].pos, g, 0.0,
+                           {"line": prefix, "stop": i, "platform": pid}))
+        G.add_board(pid, ids[i], wait_s, kind, g=g)
+    n = len(plats) - (0 if closed else 1)
+    for i in range(n):
+        j = (i + 1) % len(plats)
+        if j == i:
+            continue
+        dist_m, ride = legs[i]
+        G.add_ride(ids[i], ids[j], kind, dist_m, ride,
+                   g=(gs[i] if gs else 0.0))
+    return ids
 
 
 def _headway_wait(headway_s: float) -> float:
@@ -1556,6 +1645,30 @@ def _headway_wait(headway_s: float) -> float:
 def _lift_headway_s(schema, dr_m: float) -> float:
     """Round trip of a single lift car over `dr_m`, both ways plus two dwells."""
     return 2.0 * lift_ride_s(schema, dr_m) + 2.0 * TRANSIT_DWELL_S
+
+
+def shaft_cars(schema, span_m: float) -> int:
+    """How many cars a radial shaft runs. DERIVED, and INV-078 records it.
+
+    Sized so the mean wait is about one dwell -- a car turns up roughly as
+    often as it takes to load one -- which is the only self-consistent target
+    available: `TRANSIT_DWELL_S` is already this project's measure of how long
+    a door stands open, so a headway of two dwells is the point past which
+    boarding, not waiting, becomes the cost of using the thing. Nothing in the
+    show counts lift cars; what would overturn this is any frame showing a
+    lift lobby, since the number of doors in it IS the bank.
+
+    It falls out per sector rather than being tabulated: Grey's shaft spans
+    382 m and gets 10 cars, Green's spans 29 m and gets 2. A long shaft needs
+    more cars for the same service, which is why one constant could not have
+    been right for all five.
+    """
+    return max(1, int(round(_lift_headway_s(schema, span_m)
+                            / SHAFT_TARGET_HEADWAY_S)))
+
+
+def _shaft_headway_s(schema, span_m: float) -> float:
+    return _lift_headway_s(schema, span_m) / shaft_cars(schema, span_m)
 
 
 def _spoke_headway_s(schema, dr_m: float) -> float:
@@ -1689,6 +1802,21 @@ def room_nav(schema=None, profile=None):
 RING_CLASS_INDEX = {"outer": 0, "middle": 1, "inner": 2, "axis": 3, "": 0}
 
 
+def _add_place(G, p):
+    """A place node and the door that reaches it. One place, one node, one edge.
+
+    A **sealed** place gets the node, the floor and the door frame and NO
+    traversable link -- the Markab quarter's quarantine made visible as a graph
+    property rather than a comment. `island_report` expects exactly that one
+    island; every other island is a defect.
+    """
+    G.add_node(NavNode(p["id"], "place", p["pos"], p["g"], p["area_m2"], p))
+    if p["host"] and p["host"] in G.nodes and not p["sealed"]:
+        # A door is a step over a sill, not a journey; its length is the frame.
+        G.add_walk(p["id"], p["host"], ik.PROVISIONAL["door_frame_depth_m"],
+                   0.0, p["g"], kind=DOOR)
+
+
 def place_nodes(schema, profile, G, gn, decks):
     """Every `schedule.PLACES` entry, attached to a host cell or ground cell."""
     try:
@@ -1750,6 +1878,63 @@ def place_nodes(schema, profile, G, gn, decks):
             "pos": pos, "g": g, "area_m2": area,
             "sector": pc.sector, "ring_class": pc.ring_class,
             "sealed": bool(pc.sealed),
+        })
+    return out
+
+
+def register_nodes(schema, profile, G, decks):
+    """Every `directory.PLACES` entry, attached at its OWN address.
+
+    TWO VOCABULARIES DESCRIBED ONE STATION AND ONLY ONE OF THEM COULD BE
+    ROUTED TO. `place_nodes` above walks `schedule.PLACES` -- 25 entries, of
+    which 17 are also register keys -- so **101 of the register's 118 places
+    had no node in the navigation graph at all**. A resident's `home` and `job`
+    come from `directory.PLACES` (`npc/resident.py` resolves them by function),
+    so for most of the station "walk to work" had no destination to walk to.
+
+    It is also strictly better attached. A `schedule.PLACES` entry carries no
+    angle, so `place_nodes` puts it at `_u("nav/place", key) * 360.0` -- a
+    deterministic but arbitrary bearing. A register entry carries
+    `(sector, ring, deck, angle_deg, z_m)`, so it lands in the cell it is
+    actually addressed to, and those addresses are hull-correct as of this
+    session (`interior.rings_fitting_at`).
+
+    The eight schedule-only names -- `business_district`, `crew_country`,
+    `customs_halls`, `dock_workers_quarters`, `fresh_air_restaurant`,
+    `industrial_grey`, `markab_quarter`, `yellow_maintenance` -- are crowd
+    REGIONS rather than rooms and keep their existing nodes. Nothing is
+    removed; this adds what was missing.
+    """
+    import directory as _dr                                    # noqa: PLC0415
+
+    by_sector = {}
+    for d in decks:
+        by_sector.setdefault(d["sector"], []).append(d)
+
+    out = []
+    for q in _dr.PLACES:
+        sec = q.get("sector")
+        cand = by_sector.get(sec) or []
+        if not cand:
+            continue
+        # The deck whose ring index and z best match the address. Ring first,
+        # because a ring is a radius and getting that wrong puts a person on
+        # the wrong floor of the station; z second, to pick within the ring.
+        ri = q.get("ring", 0)
+        same = [d for d in cand if d["ring_index"] == ri] or cand
+        d = min(same, key=lambda d: abs(d["z_mid"] - q.get("z_m", 0.0)))
+        ang = q.get("angle_deg", 0.0) % 360.0
+        ci = int(ang // d["cell_deg"]) % d["cells"]
+        host = f"cell:{d['id']}.c{ci}"
+        if host not in G.nodes:
+            continue
+        pos, g = G.nodes[host].pos, G.nodes[host].g
+        out.append({
+            "id": f"place:{q['key']}", "place": q["key"], "host": host,
+            "pos": pos, "g": g,
+            "area_m2": float(q["footprint"][0]) / 360.0
+            * 2.0 * math.pi * d["floor_r_m"] * float(q["footprint"][1]),
+            "sector": sec, "ring_class": None, "sealed": False,
         })
     return out
 
@@ -2377,6 +2562,80 @@ def _selftest():
     check(len(rooms_n) >= 27,
           "24 docking bays plus C&C, the Council Chamber and a Zocalo bay are "
           "all in the graph", str(len(rooms_n)))
+
+    # -- THE REGISTER IS IN THE GRAPH --------------------------------------
+    # The gate that would have caught a station where 101 of 118 places had no
+    # node. A resident's home and job are register keys, so a register key
+    # with no node is a person with nowhere to go, and nothing else here
+    # notices: the island report was clean throughout, because a node that was
+    # never added cannot be stranded.
+    import directory as _dr                                    # noqa: PLC0415
+    reg_ids = {"place:" + q["key"] for q in _dr.PLACES}
+    have = set(places)
+    check(reg_ids <= have,
+          f"all {len(reg_ids)} register places have a navigation node",
+          f"missing {sorted(reg_ids - have)[:6]}")
+    sched_only = {p["id"] for p in place_nodes(schema, profile, G, gn, decks)}
+    check(len(reg_ids - sched_only) > 90,
+          "BREAK: the schedule vocabulary ALONE leaves 90+ register places "
+          "with no node -- so the check above passes on `register_nodes` "
+          "rather than on what the graph already had",
+          f"{len(reg_ids - sched_only)} of {len(reg_ids)} would be missing")
+
+    # -- COMMUTES: can a resident actually get to work? --------------------
+    # The product question, and the only one that composes the register, the
+    # resident generator and the graph. Not "is the graph connected" -- it was
+    # connected while most of it was unaddressable.
+    import resident as _rs                                     # noqa: PLC0415
+    spec = ("human", "human", "human", "narn", "centauri", "minbari")
+    trips, unroutable = [], []
+    for i in range(120):
+        res = _rs.resident(f"navgate/{i}", spec[i % len(spec)])
+        if not res.job:
+            continue
+        rp = G.path("place:" + res.home, "place:" + res.job, metric="time")
+        (trips if rp else unroutable).append(rp or (res.home, res.job))
+    check(not unroutable and len(trips) > 50,
+          f"every one of {len(trips)} sampled residents can walk from home to "
+          "work", f"unroutable {unroutable[:4]}")
+    tsec = sorted(t["time_s"] for t in trips)
+    med, p95 = tsec[len(tsec) // 2], tsec[int(len(tsec) * 0.95)]
+    check(med < 20 * 60.0 and p95 < 45 * 60.0,
+          "and the commute is a commute rather than an expedition: median "
+          f"{med / 60:.1f} min, p95 {p95 / 60:.1f} min on a station 8 km long",
+          f"max {tsec[-1] / 60:.1f} min")
+
+    # -- A LIFT IS A VEHICLE, NOT A STAIRCASE ------------------------------
+    # Grey's shaft has 105 decks. Riding it end to end must cost ONE wait.
+    grey = sorted((d for d in decks if d["sector"] == "grey"),
+                  key=lambda d: -d["floor_r_m"])
+    car0 = "lift:grey.0.0"
+    carN = f"lift:grey.0.{len(grey) - 1}"
+    if car0 in G.nodes and carN in G.nodes:
+        span = grey[0]["floor_r_m"] - grey[-1]["floor_r_m"]
+        ride = G.path(car0, carN, metric="time")
+        pure = lift_ride_s(schema, span)
+        check(ride is not None and abs(ride["time_s"] - pure) < 1.0,
+              f"riding Grey's whole {span:.0f} m shaft costs its ride time "
+              f"and nothing else -- {pure:.0f} s over {len(grey)} decks",
+              f"{ride['time_s'] if ride else None:.1f} s in "
+              f"{ride['hops'] if ride else 0} hops")
+        # And the door-to-door version pays exactly one wait plus one dwell.
+        door = G.path(grey[0]["id"] and f"cell:{grey[0]['id']}.c0", carN,
+                      metric="time")
+        wait1 = _headway_wait(_shaft_headway_s(schema, span))
+        # BREAK: the pre-fix model charged a wait and a dwell at every deck.
+        staircase = (len(grey) - 1) * (wait1 + TRANSIT_DWELL_S) + pure
+        check(ride is not None and ride["time_s"] < staircase / 10.0,
+              "BREAK: charging a fresh wait and dwell at every deck -- which "
+              f"is what this graph did until now -- costs {staircase / 60:.1f} "
+              f"min for the same shaft, {staircase / max(1e-9, pure):.0f}x the "
+              "ride", f"express {pure / 60:.1f} min")
+        check(door is not None
+              and abs(door["time_s"] - (pure + (wait1 + TRANSIT_DWELL_S) / 2))
+              < 1.0 + grey[0]["cell_length_m"],
+              "and boarding at a deck adds half a wait and half a dwell, so a "
+              "round trip pays one of each", f"{door['time_s']:.1f} s")
 
     # -- pathing: the three reasons a route is not the shortest ------------
     # 1. transit beats walking over distance, and loses over a short hop.
