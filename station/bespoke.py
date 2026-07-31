@@ -50,10 +50,15 @@ BESPOKE_GEOMETRY = {
     "docking_bay": lambda s, p, q: __import__("docking_bay").docking_bay(
         0, s, p),
     "hospitality": lambda s, p, q: __import__("hospitality").room(),
-    # The bay a place lands in is the first one; plant.bays() partitions the
-    # deck by arc and every bay is the same construction.
-    "plant": lambda s, p, q: __import__("plant").plant_bay(
-        s, p, __import__("plant").bays(s, p)[0], 10.0),
+    # THE PLACE'S OWN CELL, not a 10-degree slice of the whole grey sector.
+    # This used to read `plant_bay(s, p, bays(s, p)[0], 10.0)` -- outermost bay
+    # for all five places regardless of which deck the register puts them on,
+    # and no `z_span`, so it defaulted to the sector's own 442 m. That is the
+    # entire reason `plant` sat in NEAR_END_UNKNOWN: the measured 82.2 x 1.80 m
+    # walkable band inside a 92 x 442 m bay is what you get when you ask a bay
+    # generator for the size of a sector. `plant.room_cell` asks for the size
+    # of the room and the numbers come off the register. INV-231.
+    "plant": lambda s, p, q: __import__("plant").room_cell(s, p, q),
     # THE CLASS COMES FROM THE PLACE. A lurker's berth and a command cabin are
     # different geometry, and rendering one class seven times would be seven
     # frames of one room. See QUARTERS_CLASS.
@@ -110,6 +115,26 @@ UNROLL = {"plant"}
 # Asking beats inferring, exactly as `light_` tagging beats guessing which
 # material glows.
 WALK_SURFACE = {"plant": ("plant_catwalk",)}
+
+# HEADROOM, where the bounding box does not give it. Same shape of fact as
+# WALK_SURFACE and for the same reason: the module knows and the box does not.
+#
+# `compose` takes a room's ceiling as `max(y) - min(y)` over the shell, which
+# is right for every module that builds a room and wrong for the one that
+# builds a slice of the outer stack. A plant cell is 18 m tall and its walkway
+# hangs 15.6 m up it, so the box says 18 m of headroom where `plant`'s own
+# `CATWALK_CLEAR_M` says 2.4 -- and `dressing.dress` hangs its ceiling-mounted
+# props at whatever it is told, which would put every conduit drop and light
+# in that room 15 m above a body's head and 8 m below the tanks.
+#
+# Read from the module's own constant rather than repeated here, so it cannot
+# drift from the clearance the geometry is actually built with.
+def _plant_headroom():
+    import plant as _p                                          # noqa: PLC0415
+    return _p.CATWALK_CLEAR_M
+
+
+CEILING_M = {"plant": _plant_headroom}
 
 
 def unroll_to_local(verts):
@@ -252,6 +277,12 @@ NEAR_BAND_M = 1.2
 SHELL_OPEN_EDGES = {
     "alien_sector": 0,
     "quarters": 0,
+    # 192 -> 0 in session 4b, and they were `dressing._cyl`'s session-3x defect
+    # in a third costume: `plant_pipe` and `plant_conduit` were lathed with
+    # `cap_lo=False, cap_hi=False` on the reasoning that a cell's ends face the
+    # next cell. Composing a room-sized cell puts those ends on a wall a player
+    # walks up to. See the note in `plant.plant_bay`.
+    "plant": 0,
     "customs": 0,
     "command_control": 0,
     "zocalo": 0,
@@ -509,6 +540,8 @@ def compose(schema, profile, place, axial_half_m, density=1.0, report=None,
     # handing the full extent puts a crate through a bulkhead.
     inset = 2.0 * _R.WALL_T_M
     ceil = max(2.2, max(p[1] for p in v) - min(p[1] for p in v))
+    if place.get("module") in CEILING_M:
+        ceil = max(2.2, CEILING_M[place["module"]]())
 
     # DENSITY FALLS UNTIL THE ROOM FITS ITS BUDGET, which is `rooms.build`'s own
     # idiom applied to a different binding constraint. `rooms.build` falls
@@ -1129,6 +1162,14 @@ NEAR_END = {
     # decision made in one place rather than two that can disagree.
     "zocalo": ("min_z", "zocalo_run(cap_ends=True) cuts its doorway in the "
                         "minimum-z bulkhead; the maximum-z cap is solid"),
+    # DECIDED BY THE WALKWAY, exactly as the Zocalo's is decided by its cap.
+    # `plant.room_cell` puts the catwalk hard against the cell's MAXIMUM z and
+    # rails only its open side, so the maximum-z face is the one a body can
+    # step through and the minimum-z face is 8 m of tank farm. The declaration
+    # and the geometry are one decision made in one place.
+    "plant": ("max_z", "plant.room_cell puts the catwalk's near edge at z1 "
+                       "with walk_sides=(-1,), so the maximum-z face is the "
+                       "only one with floor at the doorway"),
 }
 
 # DECLARED, AND STILL NOT COMPOSED. A separate list from the one below because
@@ -1158,17 +1199,29 @@ NOT_COMPOSED = {
 # The one that is NOT declared, and why it is genuinely undecidable from what
 # the module says about itself. Recorded so the next reader does not repeat the
 # search rather than as an apology.
-NEAR_END_UNKNOWN = {
-    "plant": "plant builds in STATION coordinates at radius 447-471 and is "
-             "unrolled for rendering; its walkable surface is a catwalk "
-             "(WALK_SURFACE), not a floor, and a corridor joining it is a "
-             "different connection from a door in a wall. Measured in session "
-             "4a: the catwalk's floor band is 82.2 m across the arc by 1.80 m "
-             "along the axis, and the bay it belongs to is 92 x 442 m -- so "
-             "recentring it onto a ring deck would lay 442 m of tank farm "
-             "along the station's axis, through every other z-cluster on that "
-             "deck. It needs a placement decision, not a near-end declaration.",
-}
+#
+# EMPTY AS OF SESSION 4b, AND THE ENTRY THAT WAS HERE IS WORTH KEEPING BECAUSE
+# IT WAS RIGHT ABOUT THE MEASUREMENT AND WRONG ABOUT THE CAUSE. It read:
+#
+#     "plant builds in STATION coordinates at radius 447-471 and is unrolled
+#      for rendering; its walkable surface is a catwalk (WALK_SURFACE), not a
+#      floor... Measured in session 4a: the catwalk's floor band is
+#      82.2 m across the arc by 1.80 m along the axis, and the bay it belongs
+#      to is 92 x 442 m -- so recentring it onto a ring deck would lay 442 m of
+#      tank farm along the station's axis, through every other z-cluster on
+#      that deck. It needs a placement decision, not a near-end declaration."
+#
+# Every number in that is correct and the conclusion drawn from it was not.
+# 92 x 442 m is not a property of `plant`; it is what `plant_bay` returns when
+# it is handed `arc_deg=10.0` and no `z_span`, because the default z_span is
+# the GREY SECTOR'S OWN EXTENT. The registry entry above was asking a bay
+# generator for a sector and then reading the answer as the module's nature.
+#
+# The lesson generalises past this module: a measurement taken through a call
+# describes the CALL. Two of the three numbers here -- 92 m and 442 m -- were
+# arguments, and the one that was really the module's (1.80 m, CATWALK_W_M) is
+# the one that turned out not to be the obstacle.
+NEAR_END_UNKNOWN = {}
 
 
 # WHAT THE NINE MODULES LOOK LIKE AS SURFACES, audited when the adapter's
