@@ -1,4 +1,4 @@
-[gd_scene load_steps=110 format=3]
+[gd_scene load_steps=112 format=3]
 
 ; A room, from the inside.
 ;
@@ -143,6 +143,8 @@
 [ext_resource type="Material" path="res://materials/light_alien_lattice.tres" id="m_light_alien_lattice"]
 [ext_resource type="Material" path="res://materials/light_arrival_strip.tres" id="m_light_arrival_strip"]
 [ext_resource type="Material" path="res://materials/light_deck_grating.tres" id="m_light_deck_grating"]
+[ext_resource type="Material" path="res://materials/npc_hair.tres" id="m_npc_hair"]
+[ext_resource type="Material" path="res://materials/npc_skin.tres" id="m_npc_skin"]
 
 [sub_resource type="Environment" id="Env"]
 ; Flat colour, not a sky. Near-black rather than pure black for the reason the
@@ -415,8 +417,12 @@ material_rules = {
 "medical_rib": ExtResource("m_shell_rib_painted"),
 "medical_skirt": ExtResource("m_shell_wall_panel"),
 "medical_wall": ExtResource("m_shell_wall_clinical"),
-"npc_seated": ExtResource("m_plant_valve_metal"),
-"npc_standing": ExtResource("m_plant_valve_metal"),
+"npc_brow": ExtResource("m_npc_skin"),
+"npc_crest": ExtResource("m_npc_hair"),
+"npc_foot": ExtResource("m_npc_skin"),
+"npc_hair": ExtResource("m_npc_hair"),
+"npc_hand": ExtResource("m_npc_skin"),
+"npc_skin": ExtResource("m_npc_skin"),
 "office_conduit": ExtResource("m_plant_valve_metal"),
 "office_cornice": ExtResource("m_shell_wall_panel"),
 "office_dado": ExtResource("m_shell_wall_panel"),

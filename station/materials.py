@@ -110,7 +110,21 @@ MATERIAL_DIR = os.path.join(ROOT, "godot", "materials")
 TEXTURE_DIR = os.path.join(MATERIAL_DIR, "textures")
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                                "npc"))
 import interior as _it                                         # noqa: E402
+import costume as _costume                                     # noqa: E402
+
+# THE PEOPLE'S SKIN, IMPORTED RATHER THAN RESTATED, for the same reason
+# DECK_PITCH_M below is. `npc/costume.py` measured it: SKIN_ANCHOR is the
+# balanced albedo of key-lit facial skin, taken by the same p75-of-a-hand-
+# placed-box method as every garment in the wardrobe, so a change to the anchor
+# moves the people and their clothes together.
+SKIN_V = _costume.SKIN_ANCHOR
+# Hair sits at the bottom of the measured human range rather than at black: a
+# head of hair that clips to zero is the same crush that binding people to a
+# metallic valve caused.
+HAIR_V = max(_costume.ALBEDO_FLOOR * 2.2, SKIN_V * 0.18)
 
 # Imported, not restated. The window sheet's row pitch IS the deck pitch --
 # CLAUDE.md hard rule 4, inside and outside from the same schema -- and a copy
@@ -1704,16 +1718,52 @@ def _build():
         # OVERTURN IT: any engineering-space frame. If station valves turn out
         # to be painted bodies with a coloured handwheel, this becomes two
         # surfaces and metallic drops to 0.0 for the body.
+    # THE PEOPLE. 278 inhabitants stood on this station bound to a metallic
+    # valve, which in a scene with reflections disabled renders black. Skin is
+    # the one surface on a body that is neither cloth nor metal, and this
+    # project already measured it: `npc/costume.py` carries SKIN_ANCHOR = 0.36,
+    # the balanced albedo of key-lit facial skin, derived by the same p75-of-a-
+    # hand-placed-box method the whole wardrobe is, and NARN_SKIN_ANCHOR = 0.42
+    # for G'Kar's crown. Those are IMPORTED, not restated, so moving the anchor
+    # moves the people with the clothes -- the property ALBEDO_ANCHOR exists to
+    # have.
+    #
+    # Neutral in hue because the anchors are VALUES, not colours: costume.py
+    # measures a balanced luminance and this project does not have a measured
+    # skin chromaticity. That is a declared limit, not an oversight -- a warm
+    # tint here would be a number nobody measured, and INV-008's rule applies:
+    # extrapolate in style and say so, rather than leave a hole or fake a
+    # source. Roughness 0.65: skin is matte, rougher than the 0.42 leather in
+    # costume.py and smoother than the 0.86 twill.
+    a(Material(
+        "npc_skin", "Skin — the one surface on a body that is not cloth",
+        albedo=(SKIN_V, SKIN_V, SKIN_V), roughness=0.65, metallic=0.0,
+        specular=0.4,
+        binds=("npc_skin", "npc_brow", "npc_hand", "npc_foot"),
+        scenes=("interior",), source="npc/costume.py SKIN_ANCHOR"))
+    # Hair reads darker than skin in every reference frame this project holds;
+    # costume.py's darkest measured garment is `ef_black_leather` at 0.043 and
+    # its lightest civilian cloth is well above that, so hair is placed at the
+    # bottom of the human-surface range rather than at black -- a head of hair
+    # that clips to zero is the same crush the valve binding caused.
+    a(Material(
+        "npc_hair", "Hair — matte, at the bottom of the measured human range",
+        albedo=(HAIR_V, HAIR_V * 0.96, HAIR_V * 0.92), roughness=0.78,
+        metallic=0.0, specular=0.3,
+        binds=("npc_hair", "npc_crest",), scenes=("interior",),
+        source="npc/costume.py, darkest measured human surface"))
     a(Material(
         "plant_valve_metal", "Valve — bare metal handwheel and stem, worn by use",
         albedo=(0.545, 0.540, 0.528), roughness=0.42, metallic=0.95,
         specular=0.5,
         binds=("prop_valve", "customs_conduit", "bar_conduit", "qtr_conduit",
-               # Session 3u population. Bodies carry no material of their own
-               # yet -- npc/costume.py has Fabric and Decal per role and is the
-               # right source -- so they take a neutral surface rather than the
-               # magenta fallback. Wiring costume.py is the next NPC job.
-               "npc_seated", "npc_standing",
+               # NO LONGER THE PEOPLE. Session 3u bound `npc_seated` and
+               # `npc_standing` here as a stand-in for the magenta fallback, and
+               # this material is metallic 0.95: in a scene with reflections
+               # disabled a metal has almost no diffuse, so all 278 inhabitants
+               # of the station rendered as BLACK SILHOUETTES. An AAA-rubric
+               # judgement measured the conversational-range frame at 43.6%
+               # crushed. Skin is skin -- see `npc_skin` below.
                "dress_metal", "dress_conduit", "dress_band",
                "dress_wallbox",
                "alien_conduit", "plant_conduit", "plant_tray",

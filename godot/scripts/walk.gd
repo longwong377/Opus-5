@@ -13,6 +13,16 @@ extends Node3D
 ## a verdict `station/walkable.py` parses. A player controller nobody can test
 ## is one that silently stops working, which is how the render path rotted
 ## between sessions 2j and 3k.
+##
+## AND IT IS DRESSED. Until session 3w this scene applied no materials and made
+## no lights: it loaded a .glb, collided it, and stood a body on it under a flat
+## grey ambient, while `tools/export_scene.py` carried 429 material rules and
+## sixteen measured fittings used only for screenshots. `scripts/dress_scene.gd`
+## binds the same table and lights the same fittings HERE, so the build a player
+## walks in and the build the renders are taken from are one build. Dressing
+## runs in the headless walk test too, on purpose: a step that only ever runs in
+## the configuration nobody checks is a step that rots, and this file has that
+## exact scar twice already. `--no-dress` is the control.
 
 @export var glb_path: String = ""
 ## A separate, simplified mesh to collide against. See `station/collision.py`:
@@ -36,6 +46,8 @@ var _doors: Node3D
 ## The cast list written beside the deck mesh -- see `station/walkable.py`.
 @export var actors_path: String = ""
 var _people: Node3D
+var _dress: Node
+var _lights: Node3D
 
 var _player: CharacterBody3D
 var _static: StaticBody3D
@@ -70,6 +82,8 @@ func _ready() -> void:
 
 	if args.has("walk-test"):
 		_run_walk_test(args)
+	elif args.has("shot"):
+		_run_shot(args)
 
 
 func _args() -> Dictionary:

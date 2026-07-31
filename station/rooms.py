@@ -1492,8 +1492,18 @@ def _selftest():
         v, t, g = build(schema, profile, p)
         total += len(t)
         check(f"{p['key']}: builds", len(t) > 40, f"{len(t)} tri")
+        # COVERAGE, NOT A SUM. Groups NEST: a person's `npc_standing_3`
+        # span contains their eight `..._npc_skin_*` parts, exactly as the
+        # corridor kit's `wall_assembly` contains its skirt and rail band. The
+        # sum was a proxy that held only while nothing nested, and it fired on
+        # correct data the moment bodies carried their own part names through.
+        covered = set()
+        for _n, lo, hi in g:
+            covered.update(range(lo, hi))
         check(f"{p['key']}: every triangle grouped",
-              sum(hi - lo for _n, lo, hi in g) == len(t))
+              len(covered) == len(t) and all(0 <= lo <= hi <= len(t)
+                                             for _n, lo, hi in g),
+              f"{len(covered)} of {len(t)} covered")
         w_f, l_f, _r = room_extent_m(schema, profile, p)
         bw, bl = bay_span_m(p)
         w, ln = min(w_f, bw), min(l_f, bl)

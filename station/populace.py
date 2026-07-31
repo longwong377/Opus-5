@@ -194,14 +194,26 @@ def _place_body(v, t, g, mesh, x, y, z, yaw, group, actors=None, who=None):
     geometry to give it back later is guessing at what was already known, which
     is how the door leaves ended up 0.16 m out of their own frame.
     """
-    bv, bt, _bg = mesh
+    bv, bt, bg = mesh
     n0 = len(v)
     ca, sa = math.cos(yaw), math.sin(yaw)
     for (px, py, pz) in bv:
         v.append((x + px * ca - pz * sa, y + py, z + px * sa + pz * ca))
     t0 = len(t)
     t.extend((a + n0, b + n0, c + n0) for a, b, c in bt)
+    # THE BODY'S OWN PART NAMES, CARRIED THROUGH. `npc/body.py` tags what it
+    # builds -- `npc_skin_head`, `npc_skin_torso`, `npc_hair`, eight names on a
+    # human -- and wrapping the lot in one group threw all of them away. That is
+    # the same mistake `deck.py` made with the corridor, where one flat name
+    # replaced fourteen real ones and cost 77% of a deck its materials: a body
+    # with one group can only ever be ONE surface, so 278 people took whatever
+    # single material matched and rendered as silhouettes.
+    #
+    # The person's own group is emitted too, as a PREFIX of the parts, because
+    # `npc.gd` addresses a person and `rooms.is_solid` keys off `npc_`.
     g.append((group, t0, len(t)))
+    for nm, lo, hi in bg:
+        g.append((f"{group}_{nm}", t0 + lo, t0 + hi))
     if actors is not None:
         actors.append({"group": group, "who": who, "x": x, "y": y, "z": z,
                        "yaw": yaw, "pose": "seated" if "seated" in group
@@ -466,8 +478,15 @@ def _selftest():
     check("an office at 1300 has people in it", s["placed"] > 0, str(s))
     check("...and some of them are sitting on the furniture",
           s["seated"] > 0, str(s))
+    # COVERAGE, NOT A SUM -- a person's own group contains their body parts,
+    # so the spans nest and legitimately sum to more than the mesh.
+    _cov = set()
+    for _n, _lo, _hi in g:
+        _cov.update(range(_lo, _hi))
     check("every triangle is grouped",
-          sum(hi - lo for _n, lo, hi in g) == len(t))
+          len(_cov) == len(t) and all(0 <= lo <= hi <= len(t)
+                                      for _n, lo, hi in g),
+          f"{len(_cov)} of {len(t)} covered")
 
     # THE HOUR IS REAL. A place with dead hours must empty out, or the schedule
     # this reads is decoration.

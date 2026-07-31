@@ -36,7 +36,7 @@ var _body: Node3D
 
 class Person:
 	var group: String
-	var mesh: MeshInstance3D
+	var parts: Array = []            # every mesh this body is made of
 	var pivot := Vector3.ZERO
 	var up := Vector3.UP
 	var rest_yaw: float = 0.0        # the yaw the generator baked in
@@ -46,16 +46,34 @@ class Person:
 
 ## Wire the cast list to the meshes it describes.
 func collect(visual: Node, actors: Array) -> int:
-	var by_name := {}
+	# A PERSON IS SEVERAL MESHES. `npc/body.py` tags what it builds -- skin
+	# head, torso, arms, hands, feet, hair -- and `populace` now carries those
+	# names through so each binds to its own material, which is what stopped all
+	# 278 inhabitants rendering as one surface. The consequence here is that the
+	# person's OWN group ends up with no faces of its own: the OBJ writer gives
+	# each triangle to the last group covering it, and the parts are written
+	# after the whole. Matching the exact name found nothing at all.
+	var parts := {}
 	for m in _meshes(visual):
-		by_name[String(m.name)] = m
+		var n := String(m.name)
+		for a2 in actors:
+			var g2 := String(a2.get("group", ""))
+			# EXACT, OR THE GROUP FOLLOWED BY AN UNDERSCORE. A bare prefix
+			# test makes `..._standing_1` swallow `..._standing_10`'s parts,
+			# which is invisible in a room of five and wrong in a room of
+			# twelve.
+			if g2 != "" and (n == g2 or n.begins_with(g2 + "_")):
+				if not parts.has(g2):
+					parts[g2] = []
+				parts[g2].append(m)
+				break
 	for a in actors:
 		var g := String(a.get("group", ""))
-		if not by_name.has(g):
+		if not parts.has(g) or parts[g].is_empty():
 			continue
 		var p := Person.new()
 		p.group = g
-		p.mesh = by_name[g]
+		p.parts = parts[g]
 		p.pivot = Vector3(float(a.get("x", 0.0)), float(a.get("y", 0.0)),
 			float(a.get("z", 0.0)))
 		# Up is INWARD on a spun ring: the floor is the outer wall, so a
@@ -116,7 +134,9 @@ func _physics_process(delta: float) -> void:
 		p.yaw += clampf(diff, -step, step)
 		p.noticed = p.noticed or d <= notice_m
 		var b := Basis(p.up, p.yaw - p.rest_yaw)
-		p.mesh.global_transform = Transform3D(b, p.pivot - b * p.pivot)
+		var xf := Transform3D(b, p.pivot - b * p.pivot)
+		for m in p.parts:
+			m.global_transform = xf
 
 
 ## For the headless test: how far the nearest person has turned from the pose
