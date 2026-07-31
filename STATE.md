@@ -1,6 +1,6 @@
 # Project State
 
-**Last updated:** 2026-07-31 · **Session 3z** — **the register is routable, a lift is a vehicle, the corridors have people in them, 23 more places assemble as themselves, and the machinery stopped being boxes** · **3y** — the generic-bay substitution is measured and declared: do NOT swap, compose · **3x** — the doors close, 1,572 open edges → 0 · **3w** — the frame budget measured for real · **3v** — W1/W2 done, 66/66 decks assemble
+**Last updated:** 2026-07-31 · **Session 3z** — **the corridors have people WALKING in them (5,966 m measured), a lift is a vehicle, the register is routable, 23 more places assemble as themselves, and the machinery stopped being boxes** · **3y** — the generic-bay substitution is measured and declared: do NOT swap, compose · **3x** — the doors close, 1,572 open edges → 0 · **3w** — the frame budget measured for real · **3v** — W1/W2 done, 66/66 decks assemble
 
 ## Session 3z (last) — FOUR THINGS THE STATION COULD NOT DO, AND NOW CAN
 
@@ -259,7 +259,37 @@ does, and room occupants keep their unique meshes. The work is in `populace` (em
 instance references rather than baked triangles), `export_gltf` (nodes sharing a mesh index) and
 `npc.gd` (advance along the ring, swap the phase).
 
-### 11. THE WALK GATE IS 80x SLOWER THAN CLAUDE.md RECORDS, AND IT IS NOT THE CROWD
+### 11. THE CROWD WORKS, AND THE 80x REGRESSION WAS A TYPO
+
+**Verified end to end.** `walkable.py --deck blue/0/0` now reports, in one line:
+
+> *134 walkers instanced from the shared crowd library and they WALK: **5,966 m** covered between
+> them, 0 triangles of their own in the deck*
+
+The derivation predicted 5,800 m — 134 walkers at their own gaits' 1.45 m/s over 1,800 frames.
+Measured 5,966. Confirmed to 3%. `docs/engine-crowd-instanced.png` is the frame.
+
+**And the 80x regression was not what I said it was, three times.** The gate had gone from 10.2 s
+to over 200 s for 120 physics frames. Blamed in order — the instanced crowd (an A/B timed out
+identically with the crowd **off**), the collision capsules (`--no-npc-collision` changed nothing),
+and `npc.gd`'s per-frame transform loop (an early-out changed nothing). All three wrong.
+
+It was a **parse error**. `for w in _walkers` over an untyped `Array` makes `w` a Variant, so
+`var d := w.omega * delta` could not infer its type, the whole script failed to load, and every
+call from `walk.gd` threw — **23,933 stack traces to stdout**. With `_walkers: Array[Walker]` the
+gate is **10.2 s with people on, identical to people off**; the full two-pass run is 110 s.
+
+Found by running Godot **unbuffered to a file** instead of capturing its output. Three rounds of
+guessing against one look at what it actually printed. That is the lesson worth keeping.
+
+**THE GATE THAT LET IT HIDE, and this is the reusable half.** Every NPC assertion in
+`deck_verdict` was guarded by `if "noticed" in d`. When `npc.gd` stopped loading, the tokens
+simply stopped appearing and **every deck went on passing** — for six runs, while nobody on the
+station existed at runtime. *A gate that disappears when the thing it tests is broken is worse
+than no gate, because it prints PASS.* It now fails, and its control runs at unit level in a
+second rather than through a Godot session the defect itself makes too slow to finish. INV-133.
+
+### 11b. (superseded — kept because the measurement is still true)
 
 Measured this session, cleanly, one Godot process at a time, on `blue/0/0`:
 
@@ -306,15 +336,12 @@ but is testing the generic shell; the bespoke geometry is render-only.
 
 ### What is next, in order
 
-1. **The walk gate's 80x regression — see §11.** `npc.gd::_physics_process` transforms every part
-   of every person every frame. CI runs this on every push. Fix before anything else.
+1. ~~**The walk gate's 80x regression**~~ — **FIXED (§11): a parse error, not the people loop.**
+   10.2 s with people on, the same as off. The crowd is verified at 5,966 m.
 2. **Collision must follow the composition — see §12.** A player sees the Zocalo and stands in a
    generic box. `build_collision` and `deck.py`, both of which the composition agent did not own.
-3. **The shared phase-mesh crowd is BUILT and its Python side is gated (populace 58/58); its
-   runtime is unverified.** `deck.py` emits instances, `walkable.py` writes the library and the
-   placements, `npc.gd` builds a MultiMesh per (species, lod, phase). What has never returned a
-   clean number is whether they move — blocked behind §11, since every run that would measure it
-   times out on the people loop.
+3. ~~**The shared phase-mesh crowd**~~ — **DONE and verified (§11).** 5,966 m covered, 0
+   triangles of their own in the deck, 112 shared bodies for the whole station.
 4. ~~**W5, the loop**~~ — **DONE**, and `walkable.py --deck blue/0/0` has been reporting all four
    steps for a while. Routing exists and is gated (118/118 places,
    every sampled resident's home and job mutually reachable). Poses exist and reach a frame,
