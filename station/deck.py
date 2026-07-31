@@ -828,6 +828,42 @@ def build_deck(schema, profile, sector, ring, deck, with_rooms=True,
         # corridor it opens off. Nothing could ask "does any vestibule poke
         # through the wall" until the answer was recorded here.
         stats.setdefault("vestibule_spans", []).append((t0, len(T)))
+
+    # -- AND PEOPLE IN THE CORRIDOR ITSELF ---------------------------------
+    # Every inhabitant this file placed was inside a ROOM. A player spawned in
+    # the corridor, walked its 126 m and met **nobody** -- on a station of
+    # 250,000, in the one space the scope names twice.
+    #
+    # Placed from `cmeta`, which is the collision shell's OWN measurement of
+    # where the floor is -- `floor_r_m`, `half_w_m`, `arc_deg`, `start_deg`,
+    # `z_m` -- so the people stand on the surface the walk gate certifies and
+    # a deck that moves takes them with it. Hard rule 4, applied to a crowd.
+    #
+    # `served` is what the deck opens onto, and it sets the density:
+    # `populace.corridor_headcount` weights the station-wide 1.07 per 100 m2 by
+    # the occupancy of those places at this hour, so the concourse outside
+    # customs is busy at 1300 and an outer plant deck has four people on it at
+    # any hour.
+    try:
+        import populace as _pop                                 # noqa: PLC0415
+        pv, pt, pg, pstat = _pop.populate_corridor(
+            f"{sector}/{ring}/{deck}", cmeta["floor_r_m"], cmeta["half_w_m"],
+            cmeta["arc_deg"], cmeta["start_deg"], cmeta["z_m"],
+            served=tuple(q["key"] for q, _d, _x in dp["rooms"]))
+    except Exception as e:                                      # noqa: BLE001
+        pv, pt, pg, pstat = [], [], [], {"error": str(e)[:80]}
+    if pt:
+        off, t0 = len(V), len(T)
+        # ALREADY IN THE RING'S WORLD FRAME. `populate_corridor` authors on the
+        # ring rather than in a room's local box, so unlike every other block
+        # in this function it takes no `_place_local`.
+        V.extend(pv)
+        T.extend((a + off, b + off, c + off) for a, b, c in pt)
+        G.extend((n, lo_ + t0, hi_ + t0) for n, lo_, hi_ in pg)
+        for act in pstat.get("actors", ()):
+            stats.setdefault("actors", []).append(dict(act, place="corridor"))
+    stats["corridor_people"] = pstat
+
     stats["triangles"] = len(T)
     return V, T, G, stats
 
@@ -1168,6 +1204,11 @@ def _modcount(rows):
     return out
 
 
+def _pop_per_100m2():
+    import populace as _pop                                     # noqa: PLC0415
+    return _pop.CORRIDOR_PER_100M2
+
+
 def _sweep():
     """Assemble every deck on the station, and say what does not.
 
@@ -1186,6 +1227,8 @@ def _sweep():
     # station that has 118. A coverage number that can exceed its own
     # denominator is not a coverage number.
     served, withdoor = set(), set()
+    walkers = room_people = 0
+    walk_area = 0.0
     drum, dw_lod0, generic, clusters = [], 0, [], 0
     for s, r, dk in decks:
         if (s, r) in NOT_RING_DECKS:
@@ -1226,6 +1269,18 @@ def _sweep():
                 _v2, _t2, _g2, st2 = build_deck(schema, profile, s, r, dk,
                                                 z_m=zc)
                 generic += st2.get("generic_for_module", [])
+                # HOW MANY PEOPLE ARE IN THE CORRIDORS. The only place the
+                # whole-station total can be checked against the derivation it
+                # comes from -- 250,000 residents x 50.8 min a day of walking
+                # over 825,066 m2 of corridor is 8,812 at any instant, and
+                # `populace.corridor_headcount` distributes exactly that by
+                # what each deck serves. A per-deck number cannot show whether
+                # the distribution conserves the total; this can.
+                cp = st2.get("corridor_people") or {}
+                walkers += int(cp.get("placed", 0))
+                walk_area += float(cp.get("area_m2", 0.0))
+                room_people += len(st2.get("actors", [])) - int(
+                    cp.get("placed", 0))
             except Exception:                                   # noqa: BLE001
                 pass
             unopened += [(s, r, dk) + u for u in m["unopened"]]
@@ -1253,6 +1308,19 @@ def _sweep():
     for u in unopened[:10]:
         print(f"     no door: {u}")
     print(f"  {len(holes)} decks with a hole in the floor  {holes[:5]}")
+    if walk_area > 0.0:
+        # THE ASSEMBLED CORRIDORS ARE BUSIER THAN THE STATION AVERAGE AND THAT
+        # IS THE DISTRIBUTION WORKING. The 1.07 per 100 m2 is 8,812 walkers
+        # over all 825,066 m2 of ring corridor, most of it in the 105 Grey
+        # plant decks nobody lives on. What assembles here is the 90 clusters
+        # that HAVE places on them, so a factor of about two is expected --
+        # read a figure BELOW the derivation as the defect, not one above it.
+        print(f"  {walkers:,} people walking in the corridors and "
+              f"{room_people:,} in the rooms, over {walk_area:,.0f} m2 of "
+              f"assembled corridor: {walkers / walk_area * 100.0:.2f} per "
+              f"100 m2 against the station-wide {_pop_per_100m2():.2f} the "
+              f"250,000-resident derivation gives. Assembled clusters are the "
+              f"ones with rooms on them, so above the average is right")
     # WHOSE GEOMETRY A PLAYER IS ACTUALLY STANDING IN. `build_deck` calls
     # `rooms.build` for every room and never consults `place["module"]`, so a
     # module-owned place is assembled as a generic bay -- and nothing said so
