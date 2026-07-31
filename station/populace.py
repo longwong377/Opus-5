@@ -322,6 +322,98 @@ def _faces_in_band(v, t, g, lo_h, hi_h, min_area=0.12, only=None):
     return out
 
 
+# ===========================================================================
+#  THE CROWD LIBRARY -- one body per species and phase, instanced many times
+# ===========================================================================
+# WHY THE WALKERS CANNOT KEEP THEIR OWN BODIES, in three measurements:
+#
+#   1. A rigid per-part transform CANNOT WALK. `npc.gd` already transforms each
+#      person's parts every physics frame, so the obvious extension is to drive
+#      the twelve parts from a clip. `animation.whole_part_error` measures the
+#      result at **145 mm** out at the knee, because `npc_skin_leg` is ONE part
+#      spanning hip to ankle and a rigid body does not bend in the middle.
+#   2. `animation.rigid_track` closes that to **14 mm** by splitting each part
+#      at its dominant bone -- in **19 pieces**.
+#   3. But 19 pieces a person does not ship. At TWELVE it was already 1,262
+#      primitives on one deck (INV-105), so 19 is worse than the state
+#      `_by_material` just fixed.
+#
+# So the answer is not more pieces, it is INSTANCING, and the arithmetic is
+# favourable rather than a compromise. Emit the eight walk phases ONCE per
+# (species, lod) as shared meshes, and make each walker a reference to one:
+#
+#   walker geometry    134 unique x 484 tri = 64,856  ->  8 phases x ~6 species
+#                                                          x 484 = ~23,000 SHARED
+#   walker primitives  134                            ->  ~48, instanced
+#   animation          none                           ->  free: swap the index
+#
+# A net triangle saving, a primitive saving, and it moves. What it costs is
+# that a WALKER is their species' nominal body rather than their own -- which
+# is what every real crowd system does, and which room occupants do not pay:
+# they keep `body.individual` and their own identicard either way. A walker
+# still has a name, a job and a home; what they share is a silhouette.
+CROWD_PHASES = 8
+
+
+@_lru_cache(maxsize=64)
+def crowd_body(species, lod, phase):
+    """The shared walking body for `(species, lod, phase)`. Nominal, not an
+    individual -- see the section note above for why, and for what it costs."""
+    return _posed(species, _anim.NOMINAL, lod, "walk", G0_MS2, 0.0, phase)
+
+
+def crowd_library(species_lods):
+    """`(verts, tris, spans)` holding every shared body a deck's crowd needs.
+
+    One mesh per `(species, lod, phase)`, laid out end to end with a span
+    naming each, so `deck.py` can write it as its own OBJ and the runtime can
+    address a body by name. The bodies stand at the origin in their own local
+    frame; every instance supplies its own transform.
+    """
+    v, t, g = [], [], []
+    for sp, lod in sorted(set(species_lods)):
+        for ph in range(CROWD_PHASES):
+            try:
+                bv, bt, bg = crowd_body(sp, lod, ph)
+            except Exception:                                   # noqa: BLE001
+                continue
+            base, t0 = len(v), len(t)
+            v.extend(bv)
+            t.extend((a + base, b + base, c + base) for a, b, c in bt)
+            key = f"crowd_{sp}_{lod}_{ph}"
+            g.append((f"{key}_npc_body", t0, len(t)))
+            for nm, lo, hi in _by_material(bg):
+                g.append((f"{key}_{nm}", t0 + lo, t0 + hi))
+    return v, t, g
+
+
+def crowd_key(species, lod, phase):
+    return f"crowd_{species}_{lod}_{phase % CROWD_PHASES}"
+
+
+@_lru_cache(maxsize=8)
+def station_crowd_library(lod):
+    """The crowd library for the WHOLE STATION at one LOD, built once.
+
+    PER DECK IT IS A LOSS AND PER STATION IT IS A ROUT, which is worth stating
+    because the first version built it per deck and measured WORSE than baking:
+    67 walkers drawing on 10 species need 80 shared bodies, and 80 > 67. The
+    library's size is a function of the SPECIES MIX, not of how many people are
+    walking, so it pays for itself the moment the same bodies are reused --
+    which is exactly what happens across 90 z-clusters.
+
+    Station-wide, `deck.py --sweep` walks 963 people. Baked at 484 triangles
+    each that is 466,092. This library is 14 species x 8 phases = 112 bodies,
+    ~54,000 triangles, ONCE. An 88% saving, and it is the same 112 meshes a
+    runtime can drive as 112 MultiMeshes -- which is 112 draw calls for every
+    walking person on the station, against 963.
+
+    Keyed on LOD alone so the cache is a cache: a deck asks for the library it
+    needs and gets the one that already exists.
+    """
+    return crowd_library([(sp, lod) for sp in sorted(_sched.STATION_MIX)])
+
+
 def body_capsule(mesh):
     """`(radius_m, height_m)` a body occupies, MEASURED off the mesh in hand.
 
@@ -475,8 +567,10 @@ SEAT_QUANTUM_M = 0.01
 # Frames in a baked walk cycle. Only the phase is used -- this module emits
 # static geometry -- so the number sets how finely two passers-by can differ.
 # 8 puts them a sixteenth of a stride apart at worst, under the 22 mm grid tile
-# a foot lands on.
-WALK_FRAMES = 8
+# a foot lands on. `CROWD_PHASES` above is the same number and is asserted
+# equal in `_selftest`: the shared crowd library holds one body per phase, so
+# the two describing different counts would silently drop or duplicate one.
+WALK_FRAMES = CROWD_PHASES
 
 # ===========================================================================
 #  THE CORRIDOR IS NOT A ROOM, AND UNTIL NOW IT HAD NOBODY IN IT AT ALL
@@ -665,7 +759,7 @@ def _stand_min_g(species, npc_id, lod):
 
 
 @_lru_cache(maxsize=4096)
-def _posed(species, npc_id, lod, kind, g_ms2, seat_h_m):
+def _posed(species, npc_id, lod, kind, g_ms2, seat_h_m, phase=-1):
     """This individual, in this pose, as `body.build` would have returned them.
 
     THE FIRST IMPORTER `npc/animation.py` HAS EVER HAD. It is 2,400 lines with
@@ -709,8 +803,12 @@ def _posed(species, npc_id, lod, kind, g_ms2, seat_h_m):
             # A CORRIDOR OF PEOPLE ALL AT FRAME 0 IS A DRILL SQUAD. Unlike the
             # idle clip, whose phase is inside the clip, a walk cycle's phase
             # IS the frame -- so it is picked per resident here, deterministic
-            # on the id like everything else in this module.
-            frame = int(_u("walk_phase", npc_id) * WALK_FRAMES) % WALK_FRAMES
+            # on the id like everything else in this module. `phase >= 0`
+            # overrides it, which is how the shared crowd library asks for one
+            # body at each of the eight phases rather than eight bodies at
+            # whatever phase their ids happened to hash to.
+            frame = (int(_u("walk_phase", npc_id) * WALK_FRAMES)
+                     if phase < 0 else int(phase)) % WALK_FRAMES
         else:
             clip = _anim.idle_clip(species, npc_id, g_ms2, frames=8, lod=lod)
         _w, mats = clip.pose(rg.skel, frame)
@@ -751,10 +849,12 @@ def _posed(species, npc_id, lod, kind, g_ms2, seat_h_m):
     return verts, tris, spans
 
 
-def _pose_mesh(species, npc_id, lod, kind, g_ms2=G0_MS2, seat_h_m=0.0):
+def _pose_mesh(species, npc_id, lod, kind, g_ms2=G0_MS2, seat_h_m=0.0,
+               phase=-1):
     """`_posed` with the seat height quantised, so the cache key is stable."""
     q = round(float(seat_h_m) / SEAT_QUANTUM_M) * SEAT_QUANTUM_M
-    return _posed(species, npc_id, lod, kind, round(float(g_ms2), 4), q)
+    return _posed(species, npc_id, lod, kind, round(float(g_ms2), 4), q,
+                  phase)
 
 
 @_lru_cache(maxsize=512)
@@ -1149,7 +1249,8 @@ def populate(place_key, room_v, room_t, room_g, w_m, l_m, hour=13.0,
 
 
 def populate_corridor(deck_id, radius_m, half_w_m, arc_deg, start_deg, z_m,
-                      served=(), hour=None, seed=None, lod=None):
+                      served=(), hour=None, seed=None, lod=None,
+                      instanced=False):
     """People walking the ring corridor of one deck. Returns (v, t, g, stats).
 
     THE SPACE THE PLAYER IS ACTUALLY IN, and it had nobody in it. Every other
@@ -1178,11 +1279,13 @@ def populate_corridor(deck_id, radius_m, half_w_m, arc_deg, start_deg, z_m,
     g_ms2 = float(_it_gravity(radius_m))
 
     v, t, g, actors = [], [], [], []
+    instances = []
     stats = {"wanted": n, "placed": 0, "area_m2": area, "lod": lod,
              "per_100m2": (n / area * 100.0) if area > 0 else 0.0,
              "sight_m": corridor_sight_m(radius_m, 2.0 * half_w_m)}
     if n <= 0:
         stats["actors"] = actors
+        stats["instances"] = instances
         stats["triangles"] = 0
         return v, t, g, stats
 
@@ -1195,7 +1298,12 @@ def populate_corridor(deck_id, radius_m, half_w_m, arc_deg, start_deg, z_m,
         sp = _species_from_mix(mix, seed, i)
         npc_id = f"{STATION_SEED}/{seed}/{i}"
         who = _res.resident(npc_id, sp)
-        mesh = _pose_mesh(sp, npc_id, lod, "walk", g_ms2)
+        # INSTANCED walkers share their species' nominal body at one of eight
+        # phases; baked ones get their own. See the crowd-library note above
+        # for the three measurements that decided it.
+        phase = int(_u(seed, "phase", i) * CROWD_PHASES) % CROWD_PHASES
+        mesh = (crowd_body(sp, lod, phase) if instanced
+                else _pose_mesh(sp, npc_id, lod, "walk", g_ms2))
         # THIS BODY'S OWN HALF-WIDTH, measured, not `BODY_R_M`. That constant
         # is a nominal human's 0.32 m and this station has fifteen species and
         # a per-individual build, so a Narn's shoulder put people 0.10 m
@@ -1218,12 +1326,74 @@ def populate_corridor(deck_id, radius_m, half_w_m, arc_deg, start_deg, z_m,
         px = cx + tang[0] * 0.0
         py = cy + tang[1] * 0.0
         pz = z_m + lateral
+        rec = _who(who, hour, deck_id)
+        if instanced:
+            # NO TRIANGLES. The body is in the shared library; what is emitted
+            # here is where to put it and which phase to start on. The basis is
+            # written out in full rather than as a yaw, because on a spun ring
+            # "up" is a different direction at every angle and a single angle
+            # cannot express it -- the same trap `_place_ring_body` documents.
+            ca2, sa2 = math.cos(a), math.sin(a)
+            r_m, h_m = body_capsule(mesh)
+            instances.append({
+                "group": f"corridor_{i}", "who": rec,
+                "mesh": crowd_key(sp, lod, phase),
+                "species": sp, "lod": lod, "phase": phase, "way": way,
+                "x": px, "y": py, "z": pz,
+                "up": [-ca2, -sa2, 0.0],
+                "fwd": [-sa2 * way, ca2 * way, 0.0],
+                "r_m": r_m, "h_m": h_m, "pose": "walking",
+                "yaw": math.pi / 2.0 * way,
+                # HOW FAST THEY GO ROUND, in radians a second, so the runtime
+                # advances them along the ring rather than through the wall.
+                # Their own gait's speed, not a constant: `walk_clip` derives
+                # it from this individual's leg length and this deck's gravity.
+                "omega": _walk_speed(sp, lod, g_ms2) / max(1e-6, radius_m)
+                * way,
+                "cycle_s": _walk_cycle_s(sp, lod, g_ms2),
+            })
+            stats["placed"] += 1
+            continue
         _place_ring_body(v, t, g, mesh, px, py, pz, radius_m, a, way,
-                         f"corridor_{i}", actors, _who(who, hour, deck_id))
+                         f"corridor_{i}", actors, rec)
         stats["placed"] += 1
-    stats["actors"] = actors
+    stats["actors"] = actors if not instanced else [
+        {k: r[k] for k in ("group", "who", "x", "y", "z", "yaw", "pose",
+                           "r_m", "h_m")} for r in instances]
+    stats["instances"] = instances
+    stats["species_lods"] = sorted({(r["species"], r["lod"])
+                                    for r in instances})
     stats["triangles"] = len(t)
     return v, t, g, stats
+
+
+@_lru_cache(maxsize=128)
+def _walk_speed(species, lod, g_ms2):
+    """This species' self-selected walking speed on this deck, m/s.
+
+    From `animation.walk_clip`'s own gait, so the speed a body is ANIMATED at
+    and the speed it TRAVELS at are one number. Two numbers here is how a
+    walk cycle ends up sliding, which is the single most obvious tell there
+    is that a crowd is not real.
+    """
+    try:
+        c = _anim.walk_clip(species, _anim.NOMINAL, g_ms2,
+                            frames=CROWD_PHASES, lod=lod)
+        return float(c.meta["speed_ms"])
+    except Exception:                                           # noqa: BLE001
+        return 1.4
+
+
+@_lru_cache(maxsize=128)
+def _walk_cycle_s(species, lod, g_ms2):
+    """Seconds for one full stride cycle -- the clip's own duration, so the
+    runtime plays the eight phases over exactly the distance the gait covers."""
+    try:
+        c = _anim.walk_clip(species, _anim.NOMINAL, g_ms2,
+                            frames=CROWD_PHASES, lod=lod)
+        return float(c.duration_s)
+    except Exception:                                           # noqa: BLE001
+        return 1.08
 
 
 def _place_ring_body(v, t, g, mesh, px, py, pz, radius_m, ang_rad, way,
@@ -1463,6 +1633,65 @@ def _selftest():
     check("...and the corridor's triangle cost is a small share of a deck",
           cs["triangles"] < 60_000,
           f"{cs['triangles']:,} for {cs['placed']} people at lod {cs['lod']}")
+    # -- THE CROWD LIBRARY: shared bodies, instanced ----------------------
+    lib_v, lib_t, lib_g = station_crowd_library(4)
+    bodies = [n for n, _lo, _hi in lib_g if n.endswith("_npc_body")]
+    check(f"the station crowd library is {len(bodies)} shared bodies -- "
+          f"{len(_sched.STATION_MIX)} species x {CROWD_PHASES} phases",
+          len(bodies) == len(_sched.STATION_MIX) * CROWD_PHASES,
+          f"{len(bodies)} bodies, {len(lib_t):,} triangles")
+    check("...and it is 8x smaller than baking the station's 963 walkers "
+          f"individually ({len(lib_t):,} against {963 * 484:,})",
+          len(lib_t) < 963 * 484 / 5.0,
+          f"{100 * (1 - len(lib_t) / (963 * 484)):.0f}% saved")
+    # THE EIGHT PHASES ARE EIGHT DIFFERENT BODIES. A library of one pose
+    # repeated eight times animates nothing and every gate above still passes.
+    _p0 = crowd_body("human", 4, 0)[0]
+    _spread = [max(abs(a[0] - b[0]) + abs(a[1] - b[1]) + abs(a[2] - b[2])
+                   for a, b in zip(_p0, crowd_body("human", 4, ph)[0]))
+               for ph in range(1, CROWD_PHASES)]
+    check("BREAK: every phase in the library is a DIFFERENT pose -- a library "
+          "of one pose repeated animates nothing",
+          min(_spread) > 0.05,
+          f"nearest other phase differs by {min(_spread):.3f} m, furthest by "
+          f"{max(_spread):.3f} m")
+    # AND EVERY ONE STANDS ON THE DECK. A phase whose planted foot is off the
+    # floor is a body that hovers for an eighth of every stride.
+    check("...and every phase has its planted foot on the deck",
+          all(abs(min(q[1] for q in crowd_body("human", 4, ph)[0])) < 0.03
+              for ph in range(CROWD_PHASES)),
+          str([round(min(q[1] for q in crowd_body("human", 4, ph)[0]), 4)
+               for ph in range(CROWD_PHASES)]))
+    iv, it2, ig, ist = populate_corridor(
+        "test/inst", R_BLUE, HW_BLUE, 344.0, 8.0, 7121.3,
+        served=("customs_north", "arrival_concourse", "customs_south"),
+        hour=13.0, instanced=True)
+    check("an instanced corridor emits NO triangles of its own",
+          not it2 and ist["placed"] > 20,
+          f"{len(it2)} triangles, {ist['placed']} instances")
+    check("...and every instance names a body the library actually holds",
+          all(r["mesh"] + "_npc_body" in bodies for r in ist["instances"]),
+          str(sorted({r["mesh"] for r in ist["instances"]}
+                     - {b[:-len('_npc_body')] for b in bodies})[:4]))
+    # THE SPEED THEY TRAVEL AT IS THE SPEED THEY ARE ANIMATED AT. Two numbers
+    # here is exactly how a walk cycle ends up sliding.
+    _r = ist["instances"][0]
+    _v = abs(_r["omega"]) * R_BLUE
+    _gait = _walk_speed(_r["species"], _r["lod"], G0_MS2)
+    check("a walker travels at their OWN gait's speed, not a constant -- "
+          "two numbers here is how a walk cycle ends up sliding",
+          abs(_v - _gait) < 0.2,
+          f"{_v:.2f} m/s round the ring against {_gait:.2f} m/s of gait")
+    # AND UP IS INWARD, per instance, because on a ring it is a different
+    # direction at every angle.
+    import math as _m
+    check("every instance's up points at the spin axis",
+          all(abs(_m.hypot(r['up'][0], r['up'][1]) - 1.0) < 1e-6
+              and r['up'][0] * r['x'] + r['up'][1] * r['y'] < 0
+              for r in ist["instances"]),
+          "an up that is world +Y lays every body on its side, and a walk "
+          "test reads that as 'the corridor is clear'")
+
     # A DECK THAT SERVES NOTHING IS QUIET, NOT EMPTY.
     _, _, _, qs = populate_corridor("test/quiet", R_BLUE, HW_BLUE, 344.0, 8.0,
                                     7121.3, served=(), hour=3.0)
