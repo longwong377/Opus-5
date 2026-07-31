@@ -322,6 +322,51 @@ def _faces_in_band(v, t, g, lo_h, hi_h, min_area=0.12, only=None):
     return out
 
 
+def _material_family(part_name):
+    """The material fragment a body part binds through: `npc_skin_torso` ->
+    `npc_skin`, `npc_suit_robe` -> `npc_suit`, `npc_hair` -> `npc_hair`.
+
+    Taken off `body.py`'s OWN naming rather than from `materials.py`'s bind
+    table, which this module must not import: the first two tokens of every
+    part name in that file ARE the bind fragment, and reading them back is the
+    same rule as measuring a seat height off the mesh rather than tabulating
+    it. If the two ever disagree, `test_materials_layer3.py`'s coverage gate
+    fails -- it resolves every emitted group name.
+    """
+    parts = part_name.split("_")
+    return "_".join(parts[:2]) if len(parts) >= 2 else part_name
+
+
+def _by_material(spans):
+    """Merge a body's part spans into one span per RUN of the same material.
+
+    A DRAW CALL IS A PRIMITIVE, AND ONE PERSON WAS TWELVE OF THEM. `export_gltf`
+    emits one mesh, one node and one primitive per OBJ group, so a deck of 134
+    corridor walkers and 13 room occupants shipped **1,262 primitives, 1,052 of
+    them people** -- against `schedule.NPC_BUDGET["max_draw_calls"] = 32, and
+    against a `budget.py` draw-call gate that read 41 of 64 because it counts
+    FEATURE GROUPS and not what the exporter actually writes.
+
+    The twelve part names exist so each binds its own material -- that is what
+    stopped 278 inhabitants rendering as one surface -- and the materials are
+    only ever two or three: skin, hair or crest, suit. Merging the RUNS keeps
+    every material distinction and drops a human at lod 4 from twelve spans to
+    **one**, a Minbari to two.
+
+    Runs rather than families, so a species whose parts interleave gets a
+    correct result instead of a reordered mesh: the merge only ever joins spans
+    that are already adjacent in the triangle list, so no triangle moves.
+    """
+    out = []
+    for nm, lo, hi in spans:
+        fam = _material_family(nm)
+        if out and out[-1][0] == fam and out[-1][2] == lo:
+            out[-1] = (fam, out[-1][1], hi)
+        else:
+            out.append((fam, lo, hi))
+    return [tuple(r) for r in out]
+
+
 def _place_body(v, t, g, mesh, x, y, z, yaw, group, actors=None, who=None):
     """One body, baked into the room's mesh at a position and a yaw.
 
@@ -358,7 +403,7 @@ def _place_body(v, t, g, mesh, x, y, z, yaw, group, actors=None, who=None):
     # each part still hits only its own fragment. `npc.gd`'s prefix match is
     # unaffected: it tests `name.begins_with(group + "_")`, which this passes.
     g.append((f"{group}_npc_body", t0, len(t)))
-    for nm, lo, hi in bg:
+    for nm, lo, hi in _by_material(bg):
         g.append((f"{group}_{nm}", t0 + lo, t0 + hi))
     if actors is not None:
         actors.append({"group": group, "who": who, "x": x, "y": y, "z": z,
@@ -1175,7 +1220,7 @@ def _place_ring_body(v, t, g, mesh, px, py, pz, radius_m, ang_rad, way,
     t0 = len(t)
     t.extend((a + n0, b + n0, c + n0) for a, b, c in bt)
     g.append((f"{group}_npc_body", t0, len(t)))
-    for nm, lo, hi in bg:
+    for nm, lo, hi in _by_material(bg):
         g.append((f"{group}_{nm}", t0 + lo, t0 + hi))
     if actors is not None:
         actors.append({"group": group, "who": who, "x": px, "y": py, "z": pz,

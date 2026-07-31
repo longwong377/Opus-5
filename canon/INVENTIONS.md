@@ -3668,3 +3668,44 @@ recognisable hull section would move `comms_operations` (or confirm it); a resol
 level numbering would replace every deck index here; and a decision on the `decks_in_ring`
 z-clipping that volume-audit.md §7.1 proposes would change every floor radius, because these are
 the outermost decks the hull leaves and they are the first ones such a clip would touch.
+
+---
+
+## INV-105 — A deck's shipped primitive count, and why it is a regression bound
+
+`station/budget.py`, `BUDGETS["deck_primitives"] = 600`, and `populace._by_material`.
+
+**What.** An assembled deck's `.glb` must contain no more than **600 primitives**, measured by
+parsing the shipped file rather than by counting anything on the Python side.
+
+**Why necessary.** The draw-call gate that existed measured the **wrong artefact** and had done
+since it was written: it counts feature groups in the hull manifest — 41 of 64 — which is right
+for the exterior, where a feature group is a lathe or a component. It is not what the exporter
+writes. `export_gltf` emits **one mesh, one node and one primitive per OBJ group**, so the number
+a renderer sees is the shipped file's group count. Measured on `blue/0/0` the first time anyone
+looked: **1,262 primitives, 1,052 of them people** — twelve per inhabitant, because `body.py` tags
+twelve parts. `schedule.NPC_BUDGET["max_draw_calls"]` is 32.
+
+**What constrained it, and what did not.** It is **not** a frame draw-call limit and does not
+pretend to be. A deck `.glb` is the whole 345° ring and `walk.gd` loads it whole, but a corridor's
+sight line is bounded at 66 m (`populace.corridor_sight_m`), which on a 211 m radius is 18° — about
+5% of the ring in frame at once, plus what shows through the doors. The in-frame figure is an order
+below this. What 600 **is**: above the merged measurement of 376 with room for the station to grow
+busier, and far below the 1,262 that was wrong. `check`'s `when=` states the distance in units of
+the content — about 250 more inhabitants on one deck, or a body emitting its parts unmerged again.
+
+The fix that made 376 possible is `populace._by_material`: the twelve part names exist so each
+binds its own material, and the materials are only ever two or three (skin, hair or crest, suit).
+Merging **runs** of the same material family — never reordering, so no triangle moves — drops a
+human at lod 4 from twelve spans to one and a Minbari to two, with every material distinction
+intact. The family is read off `body.py`'s own naming (the first two tokens of a part name **are**
+the bind fragment) rather than from `materials.py`'s table, so the two cannot drift; if they ever
+did, `test_materials_layer3.py`'s coverage gate fails, because it resolves every emitted group.
+
+**Negative control, run:** with the merge patched out and the deck rebuilt, the gate reads
+**1,262 / 600 FAIL**; restored, **376 / 600 PASS**. `walkable.py --deck blue/0/0` passes either
+way and the inhabitants still turn to look, so the merge costs no behaviour.
+
+**What would overturn it.** A MultiMesh or skinned-crowd pipeline, which would make per-person
+primitives the wrong unit entirely — a thousand instances of one mesh is one draw call, and this
+bound would then be measuring something that no longer costs anything.

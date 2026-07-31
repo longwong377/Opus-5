@@ -57,6 +57,25 @@ BUDGETS = {
     "exterior_draw_calls": 64,
     "glb_size_mb": 64.0,
     "vertex_bandwidth_mb": 32.0,
+    # PRIMITIVES IN A SHIPPED DECK, and this one is a REGRESSION BOUND rather
+    # than a hardware limit -- said plainly, because a bound that pretends to
+    # be derived when it is not is the disease this file exists to treat.
+    #
+    # What it is not: a frame draw-call limit. A deck .glb is the whole 345
+    # degree ring and `walk.gd` loads it whole, but a corridor's sight line is
+    # bounded at 66 m (see `populace.corridor_sight_m`), which on a 211 m
+    # radius is 18 degrees -- about 5% of the ring in frame at once, plus what
+    # shows through the doors. The in-frame figure is therefore an order below
+    # this and is not what is being gated.
+    #
+    # What it IS: the number that catches a body emitting its parts unmerged.
+    # That regression was measured at 1,262 primitives on `blue/0/0` with 1,052
+    # of them people -- twelve per inhabitant, because `body.py` tags twelve
+    # parts and `export_gltf` writes one primitive per OBJ group. Merged by
+    # material (`populace._by_material`) the same deck is 376. 600 sits above
+    # the good number with room for the station to grow busier and far below
+    # the bad one, and `check`'s `when=` states the distance in inhabitants.
+    "deck_primitives": 600,
 }
 
 # Interior is gated on what can be SEEN AT ONCE, not on total built geometry.
@@ -292,6 +311,38 @@ COLLISION["max_resident_tris"] = int(COLLISION["ram_bytes"]
 
 results = []
 FAILED = []
+
+
+def _glb_primitives(path):
+    """`(primitives, of which people)` in a shipped .glb.
+
+    Parses the JSON chunk directly rather than through a library, for the same
+    reason every other measurement here is taken off the artefact: a count
+    derived from the generator is a second copy of a number, and this gate
+    exists precisely because the generator-side count (41 feature groups) and
+    the shipped count (1,262 primitives) disagreed by a factor of thirty.
+    """
+    import struct                                             # noqa: PLC0415
+    import json as _json                                      # noqa: PLC0415
+    with open(path, "rb") as f:
+        data = f.read()
+    _magic, _ver, total = struct.unpack("<III", data[:12])
+    off = 12
+    doc = None
+    while off < total:
+        clen, ctype = struct.unpack("<II", data[off:off + 8])
+        if ctype == 0x4E4F534A:                               # 'JSON'
+            doc = _json.loads(data[off + 8:off + 8 + clen])
+            break
+        off += 8 + clen
+    if doc is None:
+        raise ValueError("no JSON chunk")
+    meshes = doc.get("meshes", [])
+    prims = sum(len(m.get("primitives", [])) for m in meshes)
+    npc = sum(len(m.get("primitives", [])) for m in meshes
+              if "npc_" in m.get("name", "")
+              or m.get("name", "").startswith("corridor_"))
+    return prims, npc
 
 
 def check(name, value, limit, unit="", note="", when=""):
@@ -1010,6 +1061,40 @@ def main(argv=None):
               f"The ground is a heightfield, not objects.")
     except Exception as exc:
         check("drum measurable", 1, 0, "", f"could not measure: {exc}")
+
+    # --- WHAT THE ENGINE IS ACTUALLY HANDED -------------------------------
+    # THE DRAW-CALL GATE ABOVE MEASURES THE WRONG ARTEFACT and had done since
+    # it was written. It counts FEATURE GROUPS in the hull manifest -- 41 of 64
+    # -- which is a fine number for the exterior, where a feature group is a
+    # lathe or a component. It is not what the exporter writes: `export_gltf`
+    # emits one mesh, one node and **one primitive per OBJ group**, so the
+    # number a renderer sees is the group count of the shipped file.
+    #
+    # Measured on an assembled deck the first time anybody looked: **1,262
+    # primitives, 1,052 of them people**, against `schedule.NPC_BUDGET`'s
+    # `max_draw_calls` of 32. Every inhabitant was twelve primitives because
+    # `body.py` tags twelve parts -- which exists so each part binds its own
+    # material, and the materials are only ever two or three.
+    # `populace._by_material` merges the runs: 376 primitives, 166 of them
+    # people, with every material distinction intact.
+    #
+    # This reads the .glb rather than any Python-side count, because the whole
+    # point is that the two disagreed.
+    _glb = os.path.join(ROOT, "station/generated/scene/deck/blue_0_0.glb")
+    if os.path.exists(_glb):
+        try:
+            _prims, _npc = _glb_primitives(_glb)
+            check("deck primitives shipped", _prims,
+                  BUDGETS["deck_primitives"], "",
+                  f"{_npc:,} of them people -- one mesh, one node and one "
+                  f"primitive per OBJ group is what `export_gltf` writes, and "
+                  f"it is the only draw-call number a renderer ever sees",
+                  when="about 250 more inhabitants on one deck, or a body "
+                       "emitting its parts unmerged again (that alone was "
+                       "1,262)")
+        except Exception as exc:                              # noqa: BLE001
+            check("deck primitives measurable", 1, 0, "",
+                  f"could not read {os.path.basename(_glb)}: {exc}")
 
     # --- whole-station collision, opt-in because it costs a minute -----------
     if a.station:
