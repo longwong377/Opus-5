@@ -192,6 +192,30 @@ func _physics_process(delta: float) -> void:
 	var here := _body.global_position
 	for p in _people:
 		var d := here.distance_to(p.pivot)
+		# NOBODY IS NEAR AND NOBODY IS TURNING: SKIP THEM ENTIRELY.
+		#
+		# An optimisation, and worth having on its own terms -- `notice_m` is
+		# 6 m, so on a deck of a hundred-odd people the number turning at any
+		# instant is a handful and the rest were having a transform computed
+		# and written to every part of them for nothing.
+		#
+		# IT IS NOT WHAT FIXED THE WALK GATE, and that is written down because
+		# the wrong answer was believed twice. The gate had gone from 10.2 s to
+		# over 200 s for 120 frames, and the cause was neither this loop, nor
+		# the collision capsules, nor the instanced crowd -- all three were
+		# blamed in turn. It was a PARSE ERROR in this file: `for w in
+		# _walkers` over an untyped Array makes `w` a Variant, so `var d :=
+		# w.omega * delta` could not infer, the whole script failed to load,
+		# and every call from `walk.gd` threw. 23,933 stack traces to stdout.
+		# With the script parsing, people on costs the same 10.2 s as people
+		# off. See `_walkers: Array[Walker]`.
+		#
+		# The early-out is on TWO conditions and both are needed: far away AND
+		# already at rest. Testing distance alone would freeze somebody who
+		# walked out of range mid-turn, leaving them staring at where the
+		# player used to be -- which is a worse artefact than the cost.
+		if d > notice_m and absf(wrapf(p.yaw - p.rest_yaw, -PI, PI)) < 1e-4:
+			continue
 		var want: float = (_yaw_towards(p, here) if d <= notice_m
 			else p.rest_yaw)
 		# Shortest way round, so nobody spins 350 degrees to look 10 to their
@@ -284,7 +308,7 @@ class Walker:
 	var h_m: float = 0.0
 
 
-var _walkers: Array = []
+var _walkers: Array[Walker] = []
 var _mm: Dictionary = {}          # "crowd_human_4_3" -> MultiMeshInstance3D
 var _mm_rows: Dictionary = {}     # the same key -> Array[Walker] this frame
 
@@ -453,7 +477,7 @@ func advance_crowd(delta: float) -> void:
 	delta = _crowd_dt
 	_crowd_dt = 0.0
 	for w in _walkers:
-		var d := w.omega * delta
+		var d: float = w.omega * delta
 		w.angle += d
 		_crowd_travel_m += absf(d) * w.radius
 		w.t += delta

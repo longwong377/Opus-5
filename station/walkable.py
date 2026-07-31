@@ -268,6 +268,7 @@ def walk_deck(sector, ring, deck, godot, timeout=1800, traverse=None,
          "render_tris": len(t), "collision_tris": len(ct),
          "arc_deg": cm["arc_deg"], "goto": goto,
          "doors": len(cm.get("rooms", ()))}
+    d["actors_expected"] = bool(s.get("actors"))
     if bumped is not None:
         d["bumped"] = bumped["group"]
         d["bump_r_m"] = float(bumped["r_m"])
@@ -336,6 +337,19 @@ def deck_verdict(d):
         # wrong yaw convention turns just as far as one rotated correctly and
         # reports the same number. This asks whether they are looking AT you.
         note = ""
+        # THE ASSERTION BELOW USED TO VANISH WHEN ITS SUBJECT BROKE. Every NPC
+        # check here is guarded by `if "noticed" in d`, and `noticed` is only
+        # printed when `walk.gd` has a live `_people` node -- so when
+        # `npc.gd` failed to parse and every call to it threw, the tokens
+        # simply stopped appearing and the deck went on PASSING. A gate that
+        # disappears when the thing it tests is broken is worse than no gate,
+        # because it prints PASS.
+        #
+        # Actors were written beside the mesh, so they must be reported.
+        if d.get("actors_expected") and "noticed" not in d:
+            return False, ("the cast list was passed and the verdict carries "
+                           "no `noticed` -- godot/scripts/npc.gd did not load, "
+                           "so nobody on this deck exists at runtime")
         if "noticed" in d:
             err = float(d.get("facing_err_deg", -1.0))
             if int(d["noticed"]) < 1:

@@ -3974,3 +3974,43 @@ the other three — which is what the medlab frame showed.
 **What would overturn it.** A frame establishing what Babylon 5 station furniture actually looks
 like. `reference/10-interiors-generic-kit/` shows corridors and a garden terrace, not a room's
 casework.
+
+---
+
+## INV-133 — The crowd update rate, and the walk gate's real cost
+
+`godot/scripts/npc.gd`, `crowd_hz = 10.0`; `station/walkable.py`, `CROWD_TRAVEL_MIN_M = 500`.
+
+**What.** The corridor crowd's transforms are rewritten at **10 Hz**, not on every physics frame.
+And `deck_verdict` requires a deck with a cast list to report `noticed` — a run that does not is a
+failure, not a pass.
+
+**Why necessary.** At 60 Hz every rewrite re-uploads each MultiMesh's whole instance buffer. At
+10 Hz a walker moves **0.145 m** between updates — under the 0.22 m grid tile they are stepping on,
+and a tenth of the 1.45 m stride the pose is showing — so nothing a player can resolve is dropped.
+
+**And the measurement that made the whole thing legible, because three wrong answers were believed
+first.** The walk gate had gone from **10.2 s to over 200 s** for 120 physics frames. Blamed in
+turn, and all three wrong: the instanced crowd (an A/B timed out identically with it off), the
+collision capsules (`--no-npc-collision` changed nothing), and `npc.gd`'s per-frame transform loop
+(an early-out changed nothing). The cause was a **parse error**: `for w in _walkers` over an
+untyped `Array` makes `w` a Variant, so `var d := w.omega * delta` could not infer its type, the
+script failed to load, and every call from `walk.gd` threw — **23,933 stack traces to stdout**.
+With `_walkers: Array[Walker]` the gate is **10.2 s with people on, the same as with them off**.
+
+**What constrained the travel bar.** 134 walkers at their own gaits' 1.45 m/s over 1,800 frames at
+1/60 s predicts **5,800 m** between them. Measured: **5,966 m** — a derivation confirmed by
+measurement to 3%. The bar sits at 500, a tenth of it, so only a crowd that has genuinely stopped
+can fail it.
+
+**What would overturn it.** A profile on the target card showing the buffer upload is cheap enough
+to run at frame rate, which would let the crowd move at 60 Hz and remove one approximation.
+
+---
+
+**And the process finding, which is the reusable half.** The NPC assertions in `deck_verdict` were
+all guarded by `if "noticed" in d`. When `npc.gd` stopped loading, the tokens simply stopped
+appearing and **every deck went on passing** — for six runs, while nobody on the station existed at
+runtime. *A gate that disappears when the thing it tests is broken is worse than no gate, because
+it prints PASS.* It now fails, and its negative control is run at unit level in one second rather
+than through a Godot session that the very defect makes too slow to finish.
