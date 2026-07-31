@@ -4861,3 +4861,78 @@ resolved at call time now. A control that reports honestly is worth more than on
 **What would overturn it.** A canon figure for arrivals or passengers. The souls-per-day figure is
 already in conflict with `npc/schedule.py` by 3.6× — see **C-012**, which this module exists to make
 visible and does not resolve.
+
+---
+
+## INV-245 — Friction as a distance, and the crowd that shows it
+
+`station/npc/friction.py` (`SEVERITY`, `PAIRS`, `LEAGUE`, `separation_m`, `contact_per_hour`,
+`will_share_table`); `station/populace.py` (`_clear`).
+
+**What.** How far apart two species stand, as a number a crowd placer uses.
+
+**Why necessary.** CLAUDE.md's scope names *"every major faction present, with the friction between
+them visible in a corridor"*. `docs/gazetteer/FACTIONS.md` §12 is fourteen sourced rows answering
+exactly that, each with a severity and a described behaviour — and **nothing read it**. Worse,
+`populace._clear` kept every body **0.45 m** from every other body regardless of who they were:
+one radius for a Narn and a Centauri and for two humans queuing at the same stall. The friction was
+invisible **by construction**.
+
+### The rule this is built on, and it is §12's own
+
+> *"Friction should be expressed **95% as avoidance and 5% as contact**. A station where hostile
+> species brawl on sight is a cheaper and less believable place than one where two crowds move
+> through the same concourse and never once intersect. **Build the avoidance first**; the fights are
+> set dressing on top of it."*
+
+So the module produces **distance**, not violence.
+
+### What is sourced and what is declared
+
+§12 states the split and this keeps it: *"Authority for the **fact** of the antagonism is given; the
+**behaviours** are authority 5 and are the design."* Every row carries the antagonism's authority
+(1 for the Narn/Centauri surrender terms, 1 for the pak'ma'ra, 2+1 for the armband split, 4 for the
+Minbari castes); the metres are authority 5 and are here.
+
+**The base is not a new number.** `BASE_SEPARATION_M = 0.45` is `populace._clear`'s own personal
+space, and every severity is a **multiple** of it — so changing personal space moves the whole
+ladder and the ratios survive. Hard rule 4 applied to a distance.
+
+| severity | × base | contact/h | example |
+|---|---|---|---|
+| ceremonial | **6.0** | 0.00 | *"when Kosh moves, the corridor clears without being told to"* |
+| highest | 4.0 | **0.02** | Narn ↔ Centauri |
+| high | 3.0 | 0.08 | the Nightwatch chill; a telepath's empty chair |
+| medium-high | 2.4 | 0.05 | warrior-caste Minbari ↔ humans |
+| episodic | 2.2 | 0.00 | Drazi ↔ Drazi |
+| medium | 1.9 | 0.04 | pak'ma'ra ↔ everyone; lurkers in commerce |
+| low | 1.3 | 0.01 | the League ↔ the great powers |
+| latent | 1.0 | 0.00 | dockers ↔ management |
+
+**`highest` is the RAREST, not the commonest**, and that inversion is §12's, stated outright: *"the
+surrender terms (500 executions for one Centauri death) are why restraint is the ambient state."*
+Asserted.
+
+**Ceremonial is the LARGEST distance and has zero contact.** A Vorlon is not dangerous; the corridor
+simply empties.
+
+### Three things the gates caught
+
+1. **`*` must not match itself.** `("pakmara", "*")` is pak'ma'ra against everyone — not against
+   each other, who share their own eating area perfectly happily. Asserted both ways.
+2. **The Nightwatch row swallows the League row on any human pair**, and that is correct rather
+   than a bug: §12's Nightwatch behaviour is *"a human talking with **aliens**"*, which does not
+   care which alien. So the League's own friction is only observable between a League species and a
+   **non-human** great power, and the control that proves the row is the Nightwatch one is that it
+   **disappears at S2E01** — `era_active("nightwatch_visible")`, the same clock as the armband.
+3. **`r` is a floor, not an override.** `populace` places a walker with `r=0.7` for walking
+   clearance; taking that *instead of* the pair's separation put a Narn **0.96 m** from a Centauri
+   where the table says 1.80. **The crowd gate fired and printed the number.** The two constraints
+   are about different things — one is about walking, one is about who is walking — so both apply.
+
+**Measured on placed bodies**, 112 actors in a 26 × 20 m Zocalo: human/human **0.50 m**,
+narn/centauri **2.87 m** against a required 1.80.
+
+**What would overturn it.** Any frame that shows two of these species at a measurable distance in
+the same shot. The ratios are the claim, not the metres: a frame showing a Narn and a Centauri
+passing at a metre would halve the whole ladder without changing its shape.

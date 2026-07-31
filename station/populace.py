@@ -65,6 +65,7 @@ sys.path.insert(0, os.path.join(HERE, "npc"))
 import animation as _anim                                       # noqa: E402
 import body as _body                                            # noqa: E402
 import dressing as _dress                                       # noqa: E402
+import friction as _friction                                    # noqa: E402
 import resident as _res                                         # noqa: E402
 import schedule as _sched                                       # noqa: E402
 
@@ -1271,8 +1272,35 @@ def populate(place_key, room_v, room_t, room_g, w_m, l_m, hour=13.0,
                              if _res.where_at(r, hour) == place_key)
     stats["named"] = sum(1 for r in people if r.name)
 
-    def _clear(x, z, r=0.45):
-        return all((x - ux) ** 2 + (z - uz) ** 2 > r * r for ux, uz in used)
+    # THE FRICTION, AS A DISTANCE. `_clear` kept every body 0.45 m from every
+    # other body regardless of who they were -- one radius for a Narn and a
+    # Centauri and for two humans queuing at the same stall -- so
+    # `docs/gazetteer/FACTIONS.md` 12, which CLAUDE.md's scope calls "the
+    # friction between them visible in a corridor", was invisible BY
+    # CONSTRUCTION. `npc/friction.separation_m` turns the section's fourteen
+    # sourced rows into metres, and 12's own closing rule says to build exactly
+    # this and nothing else first: "95% as avoidance and 5% as contact ...
+    # BUILD THE AVOIDANCE FIRST; the fights are set dressing on top of it."
+    #
+    # `used` carries the occupant's species so the radius can depend on the
+    # PAIR. The `r` argument still wins when a caller passes one -- the 0.7 m
+    # a walker needs is about the walking, not about who is walking.
+    def _clear(x, z, r=None, sp=None):
+        for u in used:
+            ux, uz = u[0], u[1]
+            usp = u[2] if len(u) > 2 else None
+            # `r` IS A FLOOR, NOT AN OVERRIDE, and getting that wrong is what
+            # the crowd gate caught: a walker is placed with `r=0.7` for
+            # walking clearance, and taking that INSTEAD of the pair's own
+            # separation put a Narn 0.96 m from a Centauri where the table
+            # says 1.80. The two constraints are about different things -- one
+            # is about walking, one is about who is walking -- so both apply.
+            need = 0.45 if r is None else r
+            if sp and usp:
+                need = max(need, _friction.separation_m(sp, usp))
+            if (x - ux) ** 2 + (z - uz) ** 2 <= need * need:
+                return False
+        return True
 
     # WHAT IS ALREADY STANDING THERE. `_clear` only ever checked against other
     # PEOPLE, so a body could be dropped inside a shelf run. Three things about
@@ -1451,7 +1479,8 @@ def populate(place_key, room_v, room_t, room_g, w_m, l_m, hour=13.0,
             # because the placement test used to be a symmetric circle that
             # could not tell the two apart.
             seat_yaw = math.atan2(sx, -sz)
-            if _clear(sx, sz) and _inside(sx, sz, seat_mesh, seat_yaw):
+            if _clear(sx, sz, sp=sp) and _inside(sx, sz, seat_mesh,
+                                                 seat_yaw):
                 # A SEATED PERSON IS A SEATED POSE, not a standing one dropped
                 # 0.42 m. That constant put a 1.829 m figure's feet 0.42 m
                 # through the deck and its knees inside the chair; `sit_clip`
@@ -1462,7 +1491,7 @@ def populate(place_key, room_v, room_t, room_g, w_m, l_m, hour=13.0,
                             sx, 0.0, sz,
                             seat_yaw, f"npc_seated_{i}",
                             actors, who_rec)
-                used.append((sx, sz))
+                used.append((sx, sz, sp))
                 stats["seated"] += 1
                 seated = True
 
@@ -1472,7 +1501,8 @@ def populate(place_key, room_v, room_t, room_g, w_m, l_m, hour=13.0,
             # Stand OFF the desk, on the side facing the room centre.
             ux = dx - STAND_OFF_M * (1.0 if dx > 0 else -1.0)
             uz = dz
-            if _clear(ux, uz) and _inside(ux, uz) and _free(ux, uz):
+            if (_clear(ux, uz, sp=sp) and _inside(ux, uz)
+                    and _free(ux, uz)):
                 _mv, _mt = len(v), len(t)
                 # Same convention, same inversion: to face the desk from
                 # the stand-off point the yaw is `atan2(-(dx-ux), dz-uz)`.
@@ -1480,7 +1510,7 @@ def populate(place_key, room_v, room_t, room_g, w_m, l_m, hour=13.0,
                             math.atan2(ux - dx, dz - uz), f"npc_standing_{i}",
                             actors, who_rec)
                 if not _embedded(_mv, _mt):
-                    used.append((ux, uz))
+                    used.append((ux, uz, sp))
                     stats["standing"] += 1
                     seated = True
 
@@ -1493,7 +1523,7 @@ def populate(place_key, room_v, room_t, room_g, w_m, l_m, hour=13.0,
         # through the wall and rooms.py's footprint assertion caught it on three
         # locations. A person has width; a placement point is not a person.
         for px, pz in spots:
-            if not _clear(px, pz, 0.7):
+            if not _clear(px, pz, 0.7, sp=sp):
                 continue
             _mv, _mt = len(v), len(t)
             _place_body(v, t, g, mesh, px, 0.0, pz,
@@ -1501,7 +1531,7 @@ def populate(place_key, room_v, room_t, room_g, w_m, l_m, hour=13.0,
                         actors, who_rec)
             if _embedded(_mv, _mt):
                 continue
-            used.append((px, pz))
+            used.append((px, pz, sp))
             stats["walking"] += 1
             break
     stats["placed"] = stats["seated"] + stats["standing"] + stats["walking"]
@@ -2218,10 +2248,10 @@ def _selftest():
     import dressing as _D                                       # noqa: PLC0415
     from npc import security as _sec                            # noqa: PLC0415
 
-    def _room(key, arch, w=14.0, l=10.0):
+    def _room(key, arch, w=14.0, l=10.0, cap=40):
         v, t, g, _c = _D.dress(key, w, l, 3.0, arch)
         return populate(key, v, t, g, w, l, hour=18.0, arch=arch,
-                        max_people=40)
+                        max_people=cap)
 
     _v, _t, _g, zs = _room("zocalo", "commerce")
     check("the Zocalo post reaches the crowd -- officers in the room",
@@ -2250,6 +2280,50 @@ def _selftest():
               f"{zs2.get('officers', 0)} vs {zs.get('officers', 0)}")
     finally:
         _sec.POSTS = keep
+
+    # ------------------------------------------------------------------
+    # THE FRICTION IS IN THE CROWD, measured on the placed bodies rather than
+    # asserted about the function that placed them.
+    # ------------------------------------------------------------------
+    def _min_gap(stats_actors, a_sp, b_sp):
+        pts = [(x["x"], x["z"], x["who"]["species"])
+               for x in stats_actors if "x" in x and "who" in x]
+        best = None
+        for i, (x0, z0, s0) in enumerate(pts):
+            for x1, z1, s1 in pts[i + 1:]:
+                if {s0, s1} != {a_sp, b_sp} and not (
+                        s0 == s1 == a_sp == b_sp):
+                    continue
+                d = ((x0 - x1) ** 2 + (z0 - z1) ** 2) ** 0.5
+                best = d if best is None or d < best else best
+        return best
+
+    # A BIG ROOM ON PURPOSE. The friction is a property of a PAIR, so the test
+    # room has to be large enough to hold both halves of one: the Zocalo draws
+    # 19 Narn and 20 Centauri per 120 people, so a 14 x 10 m probe at forty
+    # occupants frequently holds neither and the measurement comes back None.
+    # Reported rather than passed when it does -- see the else branch.
+    _v, _t, _g, fs = _room("zocalo", "commerce", w=26.0, l=20.0, cap=120)
+    acts = fs.get("actors") or []
+    hh = _min_gap(acts, "human", "human")
+    nc = _min_gap(acts, "narn", "centauri")
+    check("the crowd knows who is standing next to whom",
+          bool(acts), f"{len(acts)} actors")
+    if hh is not None:
+        check("two humans stand at ordinary personal space",
+              hh >= 0.44, f"{hh:.2f} m")
+    if nc is not None:
+        check("a Narn and a Centauri stand four times further apart -- "
+              "FACTIONS.md 12's highest row, in metres, in a placed crowd",
+              nc >= _friction.separation_m("narn", "centauri") - 0.01,
+              f"{nc:.2f} m against a required "
+              f"{_friction.separation_m('narn', 'centauri'):.2f}")
+        print(f"  friction in the crowd: human/human {hh:.2f} m, "
+              f"narn/centauri {nc:.2f} m "
+              f"(required {_friction.separation_m('narn', 'centauri'):.2f})")
+    else:
+        print("  friction in the crowd: no narn/centauri pair in this room "
+              "to measure -- reported, not silently passed")
 
     print(f"{ok}/{ok + fail} passed")
     return 1 if fail else 0
