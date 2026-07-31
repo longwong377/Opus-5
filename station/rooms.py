@@ -496,8 +496,17 @@ def is_solid(name):
     fixture -- a bar's till, a medlab's scanner -- while the walkability
     guarantee had been computed as though they were solid. A guarantee computed
     against a different world than the one that ships is not a guarantee.
+
+    PEOPLE ARE NOT FURNITURE. `npc_` groups are excluded, and the first version
+    of this did not exclude them -- which baked all 134 inhabitants into the
+    station's static collision as immovable obstacles. A person you bump into
+    and who never moves is worse than one you walk through: it is a statue where
+    a resident should be, and it is permanent, because static collision is
+    generated once. NPCs get their own capsules when they get their own
+    movement. Measured with them solid, `mess_hall` and `happy_daze` read
+    unwalkable; they are not, and the rooms were never the problem.
     """
-    return not name.endswith(_SHELL_SUFFIXES)
+    return not name.endswith(_SHELL_SUFFIXES) and not name.startswith("npc_")
 TRIM_MAX_PROUD_M = 0.10          # a step you do not trip on
 TRIM_HEAD_M = 2.0
 MULLIONS_PER_BAY = 6

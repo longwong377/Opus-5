@@ -731,6 +731,16 @@ def _selftest():
     holes2 = C.floor_holes(pv, pt, pm)
     check("solid furniture does not take the floor away",
           not holes2, f"{len(holes2)} points, first {holes2[:3]}")
+
+    # PEOPLE ARE NOT BAKED INTO THE WALLS. `is_solid` briefly counted `npc_`
+    # groups, which put all 134 inhabitants into the station's static collision
+    # as immovable obstacles -- a statue where a resident should be, and
+    # permanent, because static collision is generated once. A gate, because
+    # the failure is invisible: everything still assembles, walks and renders.
+    check("no NPC is part of the station's static collision",
+          not R.is_solid("npc_standing") and not R.is_solid("npc_seated")
+          and R.is_solid("store_shelf") and R.is_solid("dress_crate"),
+          "is_solid disagrees about what a body walks into")
     print(f"  {pm.get('prop_boxes', 0)} furniture boxes, "
           f"{len(pt) - len(ct):,} collision triangles for them")
 

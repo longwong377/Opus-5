@@ -19,6 +19,16 @@ scanner — while the walkability guarantee had been computed as though they wer
 55 boxes → **88**. A guarantee computed against a different world than the one that
 ships is not a guarantee.
 
+**And people are not furniture.** The first version of `is_solid` counted `npc_` groups,
+which baked all 134 inhabitants into the station's **static** collision as immovable
+obstacles. A person you bump into and who never moves is worse than one you walk
+through: it is a statue where a resident should be, and it is *permanent*, because
+static collision is generated once. Measured with them solid, `mess_hall` and
+`happy_daze` read **unwalkable** — they are not, and the rooms were never the problem.
+Excluding them also *raised* the box count 88 → 97, because bodies had been merging with
+nearby furniture into single blobs. Gated, because the failure is invisible: everything
+still assembles, walks and renders.
+
 ### THE FINDING, and it is a content finding, not a bug
 
 `rooms.build` picks the highest dressing density at which a body can still cross the
