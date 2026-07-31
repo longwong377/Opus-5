@@ -652,6 +652,163 @@ PLACES = (
        (12.0, 30.0), auth=4, functions=("medical", "triage"),
        interacts=("diagnostic_bed", "medcabinet"),
        note="X-6: medical distributed across Red, Green and Blue."),
+
+    # ======================================================================
+    # THE VOLUME AUDIT'S MISSING INTERIORS -- session 3z
+    # ----------------------------------------------------------------------
+    # `docs/volume-audit.md` matched all 28 `exterior_systems` against the
+    # interior each implies and found **7 matched, 21 not**: eleven with no
+    # interior at all, five addressed hundreds or thousands of metres from the
+    # geometry the same schema builds, five with a function somewhere in the
+    # register and nothing placed against the system. A reactor on the hull
+    # with no reactor hall behind it is the facade the owner's session-3y
+    # question was about -- "everything on the outside has a function on the
+    # inside ... it can't be a facade".
+    #
+    # These ten are the audit's Sec.4 rows, RE-VERIFIED rather than copied,
+    # and four of them moved as a result. What the re-check found:
+    #
+    #  * `coolant_gallery` was proposed at yellow ring 3, z 450-950, and
+    #    **ring 3 does not exist anywhere in that band.** The hull waists to a
+    #    48.9 m core radius at z 435 and carries ONE deck stack from 435 to
+    #    475; four stacks -- the condition for a ring index of 3 to mean the
+    #    28.0-59.1 m shell -- exist only at z 35-305, 1265-2755 and 3120-3397.
+    #    Moved to z 170, which is where the manifolds wrap the reactor anyway.
+    #  * `generator_hall`, `comms_operations` and `gunnery_control` each
+    #    STRADDLED a boundary where the hull closes a ring. `ring_radii(z_m=)`
+    #    drops a ring the hull has closed, so "ring 1" was the 93.3-127.5 m
+    #    shell at one end of the room and the 59.1-93.3 m shell at the other.
+    #    Shrunk or shifted so each sits in one ring set.
+    #  * `heat_exchanger_hall` was proposed on yellow ring 0 **deck 3**, a deck
+    #    number that ring does not currently carry. `deck.deck_index` ranks the
+    #    distinct deck numbers on a ring when they exceed the stack depth, so a
+    #    NEW number re-ranks every existing place on that ring -- it would have
+    #    moved `spinal_cargo`, `hazard_tanks`, `rotation_drivers`,
+    #    `core_shuttle` and `shuttle_car` one deck each. Deck 4 is an existing
+    #    label at 141.1 m and 0.507 g and disturbs nothing.
+    #
+    # Every row below was checked at 401 samples across its own footprint span
+    # for: the ring set constant across the span, the ring and deck indices
+    # unclamped, the UNCUT floor radius -- the one `rooms.room_extent_m` and
+    # `interior.ring_cells` actually build at, because neither takes z_m --
+    # inside `core_hull_profile(z) - HULL_SKIN_M`, and no collision under
+    # `collisions()`'s own arc/z test. Margins are quoted per row.
+    #
+    # auth=5 throughout: these are extrapolations under hard rule 1, logged as
+    # INV-104. No source gives a room dimension for a reactor hall.
+
+    # --- Yellow: the power train the hull has and the register did not -----
+    _P("reactor_hall", "Primary reactor hall and control room", "yellow", 0, 0,
+       20.0, 240.0, (60.0, 120.0), auth=5,
+       functions=("power_generation", "reactor_control", "radiation_boundary"),
+       interacts=("reactor_console", "blast_door", "breaker_lever", "catwalk"),
+       adjacent=("fuel_bunkerage", "coolant_gallery"), within="fusion_core",
+       note="`primary_fusion_reactor` is z 39-331 of hull and held ZERO "
+            "addressed places -- `fusion_core` covers the z and declares only "
+            "`power_generation`. 155.4 m floor, 0.559 g, 18.8 m clear of the "
+            "pressure hull across z 180-300. INV-104."),
+    _P("fuel_bunkerage", "Core fuel housing and transfer gallery", "yellow", 0,
+       2, 200.0, 150.0, (60.0, 220.0), auth=5,
+       functions=("fuel_storage", "hazardous_storage", "fuel_transfer"),
+       interacts=("valve", "tank_gauge", "blast_door", "cargo_crane"),
+       adjacent=("reactor_hall",), within="fusion_core",
+       note="00-MASTER.md Sec.2 item 1, the aft terminus. `fuel_stores` is "
+            "SHIP fuel at the docks 7 km fore. 148.2 m, 0.533 g, 30.8 m "
+            "clear. INV-104."),
+    _P("coolant_gallery", "Coolant manifold gallery", "yellow", 3, 3, 120.0,
+       170.0, (90.0, 240.0), auth=5,
+       functions=("cooling", "coolant_transfer", "maintenance_access"),
+       interacts=("valve", "tank_gauge", "catwalk", "handhold"),
+       adjacent=("reactor_hall",),
+       note="The 8 coolant manifolds of 00-MASTER.md Sec.2 item 2, wrapping "
+            "the reactor at 48.3 m and 0.173 g -- a crawlway, not a corridor. "
+            "MOVED from the audit's z 700: yellow carries one deck stack from "
+            "z 435 to 475 and ring 3 does not exist there. 130 m clear. "
+            "INV-104."),
+    _P("generator_hall", "Generator torus hall", "yellow", 1, 4, 250.0, 1185.0,
+       (60.0, 150.0), auth=5,
+       functions=("power_generation", "power_distribution"),
+       interacts=("console", "breaker_lever", "catwalk", "blast_door"),
+       note="`generator_torus_housing` is z 1095-1295, 0.0176 km^3 of hull, "
+            "zero addressed places. 113.1 m, 0.406 g, 1.0 m clear -- the "
+            "tightest row here, and the outermost deck the hull leaves at that "
+            "z. Span shrunk to 1110-1260 so the ring set does not change "
+            "under it. INV-104."),
+    _P("heat_exchanger_hall", "Heat exchanger hall", "yellow", 0, 4, 60.0,
+       2300.0, (60.0, 400.0), auth=5,
+       functions=("heat_rejection", "cooling", "coolant_loop",
+                  "emergency_power"),
+       interacts=("valve", "tank_gauge", "catwalk", "console"),
+       note="Behind the 12 heat exchange / emergency solar arrays, z "
+            "2020-2537. ~1.9 GW of rejected heat (LIFE-SUPPORT-AND-INDUSTRY.md "
+            "L-01) and NO place on the station carried a thermal function. "
+            "141.1 m, 0.507 g, 6.4 m clear. INV-104."),
+    _P("comms_operations", "Deep space comms operations", "yellow", 1, 5,
+       300.0, 2600.0, (24.0, 100.0), auth=5,
+       functions=("communications", "signal_ops"),
+       interacts=("console", "monitor_wall", "babcom_terminal"),
+       note="At the root of `comms_grid_pylon` AS BUILT (z 2515-2988). The "
+            "register's `comms_grid` is at z 7900 -- 5,148 m from the pylons "
+            "that carry it -- with an empty interacts tuple. Position "
+            "contested: volume-audit.md Sec.6 has three sources giving three "
+            "answers. 109.5 m, 0.393 g, 49.3 m clear. INV-104."),
+
+    # --- Green: behind 1,140 m of magnetic cargo rail ----------------------
+    _P("cargo_transfer_deck", "Cargo transfer deck", "green", 0, 5, 90.0,
+       5400.0, (30.0, 900.0), auth=5,
+       functions=("cargo_handling", "storage", "manifest"),
+       interacts=("cargo_crane", "container", "manifest_terminal", "bay_door",
+                  "docking_clamp"),
+       adjacent=("subfloor_stack",),
+       note="Under the six dorsal cargo modules (schema components."
+            "cargo_module, z 4870-6010, 0.3601 km^3) -- 1,140 m of magnetic "
+            "rail outside with no hold, no handling deck and no manifest "
+            "office behind it. On the drum's sub-floor stack at 299.9 m and "
+            "1.078 g; 1.4 m clear of the hull, the thinnest margin of the "
+            "ten. INV-104."),
+
+    # --- Blue: the pressure boundary, and the defence grid -----------------
+    _P("mooring_gallery", "Mooring clamp gallery", "blue", 0, 2, 180.0, 7250.0,
+       (20.0, 60.0), auth=5,
+       functions=("ship_mooring", "umbilical_service"),
+       interacts=("docking_clamp", "console", "blast_door", "handhold"),
+       adjacent=("docking_bays", "mooring_clamps"),
+       note="Behind 00-MASTER.md Sec.2 item 23. `mooring_clamps` is a label "
+            "with one interact and no geometry. 204.3 m, 0.734 g, 5.3 m "
+            "clear. INV-104."),
+    _P("eva_lock_blue", "EVA airlock and suit room, Blue", "blue", 0, 1, 100.0,
+       7230.0, (10.0, 30.0), auth=5,
+       functions=("eva_egress", "suit_service"),
+       interacts=("blast_door", "tool_rack", "handhold", "console",
+                  "intercom"),
+       adjacent=("docking_bays",),
+       note="FACTIONS.md rosters 630 EarthForce crew in 'maintenance, repair, "
+            "EVA' and the station has no airlock, inside or out -- "
+            "`airlock_door` appears in exactly two places' interacts, both of "
+            "them Alien Sector atmosphere locks. 207.9 m, 0.747 g, 15.4 m "
+            "clear. INV-104.\n"
+            "THE INTERACTS ARE CONSTRAINED BY MATERIAL COVERAGE, and it is "
+            "worth saying so rather than leaving it to look like a choice. "
+            "The lock's outer door is `blast_door` and not `airlock_door`, and "
+            "the suit stowage is `tool_rack` and not `locker`, because 33 of "
+            "the 99 entries in `rooms.PROPS` -- including `airlock_door`, "
+            "`locker`, `service_ladder`, `comms_channel` and "
+            "`atmosphere_status_lamp` -- have NO bind in materials.py, which "
+            "is not this session's file. Emitting one would ship "
+            "unmaterialled geometry and worsen "
+            "station/test_materials_layer3.py. The suit RACK is present as a "
+            "fixture (`fix_suit_plant_frame`); what is missing is the thing a "
+            "player opens. The binds needed are reported with the session."),
+    _P("gunnery_control", "Defence grid fire control", "blue", 1, 4, 340.0,
+       7100.0, (14.0, 40.0), auth=5,
+       functions=("defence_command", "fire_control"),
+       interacts=("console", "tactical_display", "blast_door"),
+       adjacent=("cnc", "war_room"),
+       note="00-MASTER.md Sec.1 lists anti-fighter pulse cannons at AUTHORITY "
+            "1 and four documents state the era lock as 'defence grid "
+            "installed'; `pulse cannon` and `defence grid` appear in no .py, "
+            "no .yaml and no exterior_systems entry. At the cobra bays' own z "
+            "(7026-7204). 159.1 m, 0.572 g, 59.4 m clear. INV-104."),
 )
 
 

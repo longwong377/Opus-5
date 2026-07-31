@@ -3598,3 +3598,73 @@ z 7,224.7 → 7,228.8 the profile falls 244.7 → 243.3 m and the *plated* hull 
 244.100 m, which folded 24 throat walls back on themselves. So z 7,207.7 – 7,245.1 is lathed
 smooth: an opening is a machined collar, and a collar is not plate. **Overturned by** any frame
 showing plate seams running through a bay mouth.
+## INV-104 — Ten interiors for exterior systems that had none
+
+`station/directory.py` (ten new PLACES rows), `station/rooms.py` (`PLACE_FIXTURES`,
+`PLACE_CEILING`, `PLACE_LIGHTS`), `docs/gazetteer/LOCATIONS.md` (ten new rows).
+
+**What.** Ten rooms, each placed behind an exterior system the schema builds and the register
+had left with nothing inside it: a reactor hall and a fuel bunkerage inside `primary_fusion_reactor`,
+a coolant manifold gallery wrapping it, a generator torus hall, a heat exchanger hall, a deep
+space comms operations room at the pylon root, a cargo transfer deck under the six dorsal cargo
+modules, a mooring clamp gallery, an EVA airlock and suit room, and a defence grid fire control.
+Every dimension in them — footprint, floor radius, ceiling, and the size of every piece of
+machinery — is extrapolation.
+
+**Why necessary.** `docs/volume-audit.md` matched all 28 `exterior_systems` against the interior
+each implies and found **7 matched, 21 not**: eleven with no interior at all, five addressed
+hundreds or thousands of metres from the geometry the same schema builds, five with a function
+somewhere in the register and nothing placed against the system. The owner's session-3y
+instruction is that *"everything on the outside has a function on the inside … it can't be a
+facade"*, and a 0.0299 km³ reactor feature holding zero addressed places is exactly a facade.
+Hard rule 1 forbids leaving the hole: the answer is to extrapolate in style, mark it authority 5,
+and say what would overturn it.
+
+**What constrained it.** Not much fixes these, and the ones that do are stated per room in
+`directory.py`'s notes. The constraints that applied to all ten:
+
+* **The z came from the schema, not from the register.** Each room sits inside the z extent of
+  the component or longitudinal feature it explains — `components.build_all` for the built ones,
+  `longitudinal.features` for the lathed ones. `comms_operations` is at the pylon root **as the
+  schema builds it** (z 2,515–2,988) rather than at the register's `comms_grid`, which is 5,148 m
+  away; that position is contested three ways and volume-audit.md §6 says so.
+* **The radius is the outermost deck the pressure hull leaves at that z.** Verified at 401
+  samples across each footprint span against `core_hull_profile(z) − HULL_SKIN_M`, on the UNCUT
+  deck stack — the one `rooms.room_extent_m` and `interior.ring_cells` actually build at, because
+  neither takes `z_m`. Margins run from **+1.0 m** (`generator_hall`) to **+130 m**
+  (`coolant_gallery`); `cargo_transfer_deck` at +1.4 m is the thinnest of the wide ones.
+* **The ring index had to mean one shell along the whole room.** `ring_radii(z_m=)` drops a ring
+  the hull has closed, so "ring 1" is the 93.3–127.5 m shell where four stacks survive and the
+  59.1–93.3 m shell where three do. Four of the audit's rows straddled such a boundary and were
+  shrunk or moved. `coolant_gallery` moved furthest: at the audit's z 450–950 yellow carries
+  **one** deck stack and ring 3 does not exist at all.
+* **The deck NUMBER had to be one its ring already carries.** `deck.deck_index` ranks the
+  distinct deck numbers on a ring when they exceed the stack depth, so a new number silently
+  re-ranks every existing place on that ring. `heat_exchanger_hall` took deck 4 rather than the
+  audit's deck 3 for that reason alone.
+* **Machinery size is bounded by three things the self-test measures rather than asserts in
+  prose:** each piece must fit under its room's ceiling, the room must stay crossable by a 0.9 m
+  walker, and no two solids may share a cubic metre. A fourth is arithmetic: `rooms.build`
+  repeats a fixture in slots of `room_len / int(room_len / FIXTURE_PITCH_M)`, so nothing may be
+  wider than about 4.2 m along the room or it overlaps its own next instance.
+* **The fixture NAMES are constrained by material coverage, not by taste.** `materials.resolve`
+  matches longest bind fragment, `test_materials_layer3.py` asserts every emitted group resolves,
+  and materials.py was not this session's file — so the natural names (`fix_containment_vessel`,
+  `fix_suit_locker_bank`) resolve to None and cannot ship. The rule adopted: the bound fragment
+  names the MATERIAL, the qualifier names the OBJECT, and the vocabulary is `station/plant.py`'s
+  own. The same constraint decided two `interacts`: 33 of the 99 entries in `rooms.PROPS` have no
+  bind, including `airlock_door` and `locker`, so the EVA lock's outer door is a `blast_door`.
+* **The coolant gallery's 3.20 m ceiling is a correction, not a choice.** It is `industrial` for
+  its shell and materials, and `industrial` is 7.5 m, which is a foundry. The audit calls the
+  gallery *"a crawlway, not a corridor"* at 0.173 g. The same render that showed the height wrong
+  showed the lamps wrong with it: `light_highbay` is measured at an **18 m mount** and its energy
+  does not scale with the room, so a 3.2 m gallery came back with the whole ceiling clipped
+  white. It is relamped to `light_ceiling_batten`, which is already the 3.6 m-pitch fitting.
+
+**What would overturn it.** Any frame or print source showing a Babylon 5 reactor hall, coolant
+gallery, generator hall, heat exchanger hall, cargo transfer deck, mooring gallery, EVA lock or
+gunnery control — none is held. Three sharper ones: a frame of the comms pylons against a
+recognisable hull section would move `comms_operations` (or confirm it); a resolution of C-004's
+level numbering would replace every deck index here; and a decision on the `decks_in_ring`
+z-clipping that volume-audit.md §7.1 proposes would change every floor radius, because these are
+the outermost decks the hull leaves and they are the first ones such a clip would touch.
