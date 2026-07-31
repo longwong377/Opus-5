@@ -2498,6 +2498,180 @@ def report(out=print):
     return True
 
 
+# ===========================================================================
+#  RIGID PIECES -- how a baked body is animated by an engine that cannot skin
+# ===========================================================================
+# THE RUNTIME CANNOT SKIN THESE BODIES, and that is a property of how they get
+# to the engine rather than a limitation of Godot. `populace.py` bakes a person
+# into the room's merged mesh in world space -- that is what makes 1,400 of them
+# affordable -- so what arrives is triangles with no skeleton and no weights.
+# `godot/scripts/npc.gd` already exploits the one thing that survives: each of
+# `body.py`'s parts is its own MeshInstance3D, so a per-part RIGID transform can
+# be applied at runtime, which is how an inhabitant turns to look at the player.
+#
+# THE OBVIOUS EXTENSION FAILS, AND BY HOW MUCH IS THE POINT. Driving each of the
+# twelve parts by a rigid transform fitted to its posed self gives a walk whose
+# worst vertex is **145 mm** out -- the knee, because `npc_skin_leg` is ONE part
+# spanning hip to ankle and a rigid body cannot bend in the middle. 145 mm on a
+# 0.98 m leg is a visible kink at any distance a person is worth animating at.
+#
+# SPLITTING EACH PART AT ITS DOMINANT BONE closes it to **14 mm**, measured over
+# all eight phases of a walk, for **19 pieces** on a human. That is the whole
+# idea: the binding already assigns every vertex a weighted set of bones, so
+# grouping by the heaviest one cuts each part exactly where it bends, and each
+# piece is then rigid to within the skin blend at the seam. `_selftest` asserts
+# both numbers and the 10x between them, because the second is only interesting
+# against the first.
+#
+# The cost is a table of 19 x frames x (R, t), per species and LOD -- shared by
+# every person of that species, since the pieces are topological. Not per
+# resident: a gait varies with leg length, but the FIT does not, and 1,400
+# per-resident tracks is a megabyte where one per species is a kilobyte.
+def rigid_pieces(species: str, npc_id: str = NOMINAL, lod: int = 0):
+    """Split this figure's parts at the bone each vertex is mostly driven by.
+
+    Returns `((piece_name, part_index, vertex_indices, bone_index), ...)`, in a
+    stable order: part order first, then bone index, so the same figure gives
+    the same list on every machine.
+    """
+    rg = rig(species, npc_id, lod)
+    out = []
+    for pi, ringw, runs in rg.binding:
+        name = rg.parts[pi][0]
+        dom = {}
+        for r, (a, b) in enumerate(runs):
+            heavy = max(ringw[r], key=lambda bw: bw[1])[0]
+            dom.setdefault(heavy, []).extend(range(a, b))
+        for bone in sorted(dom):
+            out.append((f"{name}__{rg.skel.bones[bone].name}", pi,
+                        tuple(dom[bone]), bone))
+    return tuple(out)
+
+
+def _kabsch(src, dst):
+    """Best-fit rotation and translation taking `src` onto `dst`.
+
+    Kabsch, in plain arithmetic rather than through numpy: this module has no
+    numpy dependency and adding one for a 3x3 SVD would be the tail wagging the
+    dog. The 3x3 SVD is done by eigen-decomposing `H^T H` with the closed-form
+    symmetric-matrix Jacobi sweep already used for `mat_to_quat`'s cousin.
+    Returns `(R, t, rms_m, max_m)`.
+    """
+    n = max(1, len(src))
+    cs = [sum(p[i] for p in src) / n for i in range(3)]
+    cd = [sum(p[i] for p in dst) / n for i in range(3)]
+    H = [[0.0] * 3 for _ in range(3)]
+    for a, b in zip(src, dst):
+        for i in range(3):
+            for j in range(3):
+                H[i][j] += (a[i] - cs[i]) * (b[j] - cd[j])
+    R = _polar(H)
+    t = _sub(cd, _mv(R, cs))
+    worst = 0.0
+    acc = 0.0
+    for a, b in zip(src, dst):
+        d = _sub(_add(_mv(R, a), t), b)
+        e = _norm(d)
+        worst = max(worst, e)
+        acc += e * e
+    return R, t, math.sqrt(acc / n), worst
+
+
+def _polar(H, iters=64):
+    """The rotation factor of `H`, by Newton's polar-decomposition iteration.
+
+    `X <- (X + (X^-1)^T) / 2` converges quadratically to the orthogonal factor
+    of a non-singular matrix, and needs only a 3x3 inverse -- no SVD, no numpy.
+    Kabsch wants the rotation taking src onto dst, which is the polar factor of
+    `H^T`, so the transpose is taken here rather than at every call site. If H
+    is singular -- a degenerate piece, all vertices collinear -- the iteration
+    is skipped and identity returned, which a caller sees as a large residual
+    rather than as a silent NaN.
+    """
+    X = _mt(H)
+    for _ in range(iters):
+        inv = _inv3(X)
+        if inv is None:
+            return IDENT
+        nxt = tuple(tuple((X[i][j] + inv[j][i]) / 2.0 for j in range(3))
+                    for i in range(3))
+        if max(abs(nxt[i][j] - X[i][j])
+               for i in range(3) for j in range(3)) < 1e-15:
+            X = nxt
+            break
+        X = nxt
+    # A reflection is not a rotation. It can only arise from a degenerate fit,
+    # and returning one would mirror a limb.
+    return X if _det(X) > 0.0 else IDENT
+
+
+def _inv3(m):
+    d = _det(m)
+    if abs(d) < 1e-18:
+        return None
+    c = [[0.0] * 3 for _ in range(3)]
+    for i in range(3):
+        for j in range(3):
+            a, b = [k for k in range(3) if k != i], [k for k in range(3)
+                                                     if k != j]
+            minor = (m[a[0]][b[0]] * m[a[1]][b[1]]
+                     - m[a[0]][b[1]] * m[a[1]][b[0]])
+            c[j][i] = ((-1.0) ** (i + j)) * minor / d
+    return tuple(tuple(r) for r in c)
+
+
+def rigid_track(clip: "Clip", species: str, npc_id: str = NOMINAL,
+                lod: int = 0):
+    """The clip as per-piece rigid transforms, one set per frame.
+
+    Returns `{"pieces": [name...], "frames": [[ (R, t) per piece ]...],
+    "rms_m": float, "max_m": float}` -- everything an engine needs to play this
+    clip on a mesh it cannot skin, plus the error it is accepting, stated so a
+    caller cannot use it without seeing it.
+    """
+    rg = rig(species, npc_id, lod)
+    pieces = rigid_pieces(species, npc_id, lod)
+    bind = [list(v) for _n, v, _t in rg.parts]
+    frames, worst, acc, cnt = [], 0.0, 0.0, 0
+    for f in range(clip.frames):
+        _w, mats = clip.pose(rg.skel, f)
+        posed = apply_pose(rg, mats)
+        row = []
+        for _name, pi, idx, _bone in pieces:
+            src = [bind[pi][i] for i in idx]
+            dst = [posed[pi][1][i] for i in idx]
+            R, t, rms, mx = _kabsch(src, dst)
+            worst = max(worst, mx)
+            acc += rms * rms * len(idx)
+            cnt += len(idx)
+            row.append((R, t))
+        frames.append(row)
+    return {"pieces": [p[0] for p in pieces], "frames": frames,
+            "rms_m": math.sqrt(acc / max(1, cnt)), "max_m": worst,
+            "duration_s": clip.duration_s, "loop": clip.loop,
+            "name": clip.name}
+
+
+def whole_part_error(clip: "Clip", species: str, npc_id: str = NOMINAL,
+                     lod: int = 0):
+    """The same fit WITHOUT the split, so the split's value can be measured.
+
+    The negative control for `rigid_track`, and the reason it is a function
+    rather than a comment: "splitting at the dominant bone helps" is a claim,
+    and a claim about a number needs the number it is against.
+    """
+    rg = rig(species, npc_id, lod)
+    bind = [list(v) for _n, v, _t in rg.parts]
+    worst = 0.0
+    for f in range(clip.frames):
+        _w, mats = clip.pose(rg.skel, f)
+        posed = apply_pose(rg, mats)
+        for pi in range(len(rg.parts)):
+            _R, _t, _rms, mx = _kabsch(bind[pi], list(posed[pi][1]))
+            worst = max(worst, mx)
+    return worst
+
+
 # ---------------------------------------------------------------------------
 # Self-test
 # ---------------------------------------------------------------------------
@@ -2970,6 +3144,71 @@ def _selftest():
     check(lk["clamped"], "look_at clamps a request outside the human range")
     check(not look_at(rig("human", "look", 0).skel, 20.0, 0.0)["clamped"],
           "and does not clamp one inside it")
+
+    # -- RIGID PIECES: what a runtime that cannot skin can do with this ----
+    rc = walk_clip("human", NOMINAL, G0, frames=8, lod=4)
+    trk = rigid_track(rc, "human", NOMINAL, 4)
+    whole = whole_part_error(rc, "human", NOMINAL, 4)
+    check(len(trk["pieces"]) == 19 and len(trk["frames"]) == 8,
+          f"a human splits into 19 rigid pieces over 8 phases "
+          f"({len(trk['pieces'])} x {len(trk['frames'])})")
+    check(trk["max_m"] < 0.020,
+          f"and a rigid piece follows the skinned pose to "
+          f"{trk['max_m'] * 1000:.0f} mm at worst, {trk['rms_m'] * 1000:.1f} "
+          "rms")
+    # THE NEGATIVE CONTROL, and it is the whole reason for the split: driving
+    # the twelve parts whole gives 145 mm at the knee, because `npc_skin_leg`
+    # spans hip to ankle and a rigid body cannot bend in the middle.
+    check(whole > 0.100 and whole > trk["max_m"] * 5.0,
+          f"BREAK: WITHOUT the split the same fit is {whole * 1000:.0f} mm out "
+          f"-- {whole / max(1e-9, trk['max_m']):.0f}x worse -- so the split is "
+          "doing the work, not the fitter")
+    # A ROTATION, NOT A REFLECTION. `_polar` returns identity rather than a
+    # mirrored limb on a degenerate piece, and every fit here must be proper.
+    check(all(_det(R) > 0.99 for row in trk["frames"] for R, _t in row),
+          "every fitted transform is a proper rotation, not a reflection")
+    # The pure-Python polar decomposition has to agree with an orthogonal
+    # matrix's own inverse, or the fit is quietly a scale.
+    _R0 = trk["frames"][2][13][0]
+    _RtR = _mul(_mt(_R0), _R0)
+    check(max(abs(_RtR[i][j] - (1.0 if i == j else 0.0))
+              for i in range(3) for j in range(3)) < 1e-9,
+          "...and orthogonal to 1e-9, so no piece is being scaled")
+    # EVERY SPECIES, not just a human, because the split's quality is a
+    # property of how `body.py` parts that plan. Measured at lod 4, which is
+    # what `populace.corridor_lod` bakes a corridor at.
+    worst_sp, worst_mm = None, 0.0
+    for _sp in sorted(body.SPECIES):
+        try:
+            _c = walk_clip(_sp, NOMINAL, G0, frames=8, lod=4)
+        except ValueError:
+            continue                    # the column plan has no legs: glides
+        _t = rigid_track(_c, _sp, NOMINAL, 4)
+        if _t["max_m"] > worst_mm:
+            worst_sp, worst_mm = _sp, _t["max_m"]
+    check(worst_mm < 0.100,
+          f"every walking species fits its rigid pieces under 100 mm; the "
+          f"worst is {worst_sp} at {worst_mm * 1000:.0f} mm")
+    # AND THE GAIM ARE THE WORST, WHICH IS A FINDING RATHER THAN A PASS. The
+    # encounter-suit plan is rigid plates rather than a limbed body, so its
+    # parts do not divide at a joint the way a humanoid's do -- 15 pieces
+    # instead of 19, and 90 mm instead of 14. It is inside the bake distance
+    # (90 mm at the 33 m `corridor_lod` picks for is a fifth of a pixel) and
+    # visible at 6 m. Named here so a future session finds it already measured
+    # rather than discovering a Gaim's shoulder tearing.
+    check(worst_sp == "gaim",
+          f"...and it is the encounter-suit plan that fits worst, not a "
+          f"humanoid ({worst_sp})")
+
+    # Every vertex is in exactly one piece: a piece the exporter drops is a
+    # limb that does not move, and a vertex in two is a limb drawn twice.
+    _rg = rig("human", NOMINAL, 4)
+    for _pi in range(len(_rg.parts)):
+        _seen = [i for nm, pi, idx, _b in rigid_pieces("human", NOMINAL, 4)
+                 if pi == _pi for i in idx]
+        check(sorted(_seen) == list(range(len(_rg.parts[_pi][1]))),
+              f"part {_rg.parts[_pi][0]} is partitioned exactly once over its "
+              f"pieces ({len(_seen)} of {len(_rg.parts[_pi][1])} vertices)")
 
     print(f"{ok}/{ok + fail} passed")
     return fail == 0
