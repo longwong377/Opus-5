@@ -204,10 +204,14 @@ def rings_for(walk_m):
 
 
 def walk_distance_m():
-    """What the walk gate asks for, read off the gate rather than restated."""
+    """How far the walk gate will ask a body to go, in metres.
+
+    READ OFF THE GATE, not restated: `walkable.TRAVERSE_FRAMES` is the number of
+    physics frames the traverse runs for and 4.2 m/s is `player.gd`'s walking
+    speed. A tile sized against a copy of those numbers would stop being big
+    enough the moment either moved, and the failure would look like terrain.
+    """
     import walkable as W                                        # noqa: PLC0415
-    import importlib.util                                       # noqa: PLC0415
-    _ = importlib.util
     return W.TRAVERSE_FRAMES / 60.0 * 4.2
 
 
@@ -302,7 +306,7 @@ def stand_at_patch(meta, above_m=SPAWN_ABOVE_M):
     return stand_at(u * 360.0, dg.Z0 + w * (dg.Z1 - dg.Z0), above_m)
 
 
-def stand_at(angle_deg, z_m, above_m=SPAWN_ABOVE_M):
+def stand_at(angle_deg, z_m, above_m=SPAWN_ABOVE_M, surface=None):
     """Where to put a body's FEET so it starts on the drum ground.
 
     Not `drum_ground.stand_on_ground`, which returns an EYE at 1.7 m: `walk.gd`
@@ -311,14 +315,28 @@ def stand_at(angle_deg, z_m, above_m=SPAWN_ABOVE_M):
     -- a drop the walk gate correctly calls a floor that is not where the shell
     says it is.
 
+    `surface` IS THE MESH THE BODY WILL ACTUALLY STAND ON, and passing it is the
+    difference between a spawn that is right and one that is nearly right. The
+    terrain FUNCTION and the emitted MESH are not the same surface between
+    lattice points: a facet is a chord and the field is a curve, so at the
+    Garden's own angle the field says r = 276.2441 and the triangle a foot rests
+    on is at 276.2049 -- 39 mm apart, four times the curvature sagitta, because
+    the heightfield bends inside a cell as well. Spawning off the function puts
+    a body up to that far into or over its own floor, and on the wrong side of
+    it the body starts embedded. Cast, as a foot does.
+
     UP IS INWARD, so standing 50 mm clear of the ground is 50 mm of SMALLER
     radius. This station spins.
     """
-    u = (angle_deg / 360.0) % 1.0
-    w = min(max((z_m - dg.Z0) / (dg.Z1 - dg.Z0), 0.0), 1.0)
-    h, _kind = dg.sample(u, w)
-    r = dg.FLOOR_R - h - above_m
     a = math.radians(angle_deg)
+    r = None
+    if surface is not None:
+        r = _Caster(*surface[:2]).radius_at(angle_deg, z_m)
+    if r is None:
+        u = (angle_deg / 360.0) % 1.0
+        w = min(max((z_m - dg.Z0) / (dg.Z1 - dg.Z0), 0.0), 1.0)
+        r = dg.FLOOR_R - dg.sample(u, w)[0]
+    r -= above_m
     return (r * math.cos(a), r * math.sin(a), z_m)
 
 
@@ -494,34 +512,65 @@ def deviation(verts, tris, meta, other=None, **kw):
             "rms_m": round(math.sqrt(sq / max(n, 1)), 4), "missed": miss}
 
 
-def seam_gaps(pa, pz, stride=None):
-    """The largest distance between two collision patches' shared edge vertices.
+def _point_segment_m(p, a, b):
+    ab = [b[k] - a[k] for k in range(3)]
+    ll = sum(x * x for x in ab)
+    if ll < 1e-18:
+        return math.dist(p, a)
+    tpar = max(0.0, min(1.0, sum((p[k] - a[k]) * ab[k]
+                                 for k in range(3)) / ll))
+    return math.dist(p, [a[k] + ab[k] * tpar for k in range(3)])
+
+
+def _patch_edge(v, stride, side):
+    """One border polyline of a `ground_patch`, in its own emitted order.
+
+    `ground_patch` fills its grid `ka`-major, `kz`-minor and appends in that
+    order, so vertex (ka, kz) is at `ka * (nz + 1) + kz`. Reading it back rather
+    than rebuilding it is the point: the seam test has to see the vertices that
+    actually shipped.
+    """
+    na, nz = dg.PATCH_A // stride, dg.PATCH_Z // stride
+    if side == "a+":
+        return [v[na * (nz + 1) + k] for k in range(nz + 1)]
+    if side == "a-":
+        return [v[0 * (nz + 1) + k] for k in range(nz + 1)]
+    if side == "z+":
+        return [v[k * (nz + 1) + nz] for k in range(na + 1)]
+    return [v[k * (nz + 1) + 0] for k in range(na + 1)]
+
+
+def seam_gaps(pa, pz, stride=None, nb_stride=None):
+    """The largest hole along the seam between two collision patches, in metres.
 
     THIS IS WHAT THE RENDER GROUND NEEDS `clamp_edge` FOR AND COLLISION MUST
     NOT. `drum_ground.ground_patch` repairs T-junctions where a fine patch meets
     a coarse one; collision is uniform, so the repair should be unnecessary and
-    the seam exactly zero. Asserting it rather than reasoning about it is the
-    difference between the two ways this project has previously discovered a
-    hole -- by argument, and by a body falling 30 km.
+    the seam exactly zero.
+
+    MEASURED AS POINT-TO-EDGE, NOT VERTEX-TO-VERTEX, and the first version got
+    that wrong in a way that looked like a pass. A coarse patch's border
+    vertices are a SUBSET of a fine one's -- every fourth vertex of a stride-4
+    edge is exactly a stride-1 vertex -- so comparing matched vertices reports
+    zero for a seam full of holes. The hole is the fine vertex sitting off the
+    coarse patch's straight edge SEGMENT, which is the definition of a
+    T-junction. Comparing the things that coincide is how a crack test passes on
+    a cracked mesh.
     """
     stride = stride or collision_stride()[0]
-    va, _ta, _ga, _ma = dg.ground_patch(pa, pz, stride)
-    vb, _tb, _gb, _mb = dg.ground_patch((pa + 1) % dg.PATCHES_A, pz, stride)
-    vc, _tc, _gc, _mc = dg.ground_patch(pa, pz + 1, stride)
-    n = dg.PATCH_A // stride
-    m = dg.PATCH_Z // stride
-
-    def col(v, ka, nz):
-        return [v[ka * (nz + 1) + k] for k in range(nz + 1)]
-
-    def row(v, kz, na, nz):
-        return [v[k * (nz + 1) + kz] for k in range(na + 1)]
-
+    nb_stride = nb_stride or stride
+    va, _t, _g, _m = dg.ground_patch(pa, pz, stride)
     gap = 0.0
-    for p, q in zip(col(va, n, m), col(vb, 0, m)):
-        gap = max(gap, math.dist(p, q))
-    for p, q in zip(row(va, m, n, m), row(vc, 0, n, m)):
-        gap = max(gap, math.dist(p, q))
+    for side, other, nb in (("a+", ((pa + 1) % dg.PATCHES_A, pz), "a-"),
+                            ("z+", (pa, pz + 1), "z-")):
+        if other[1] >= dg.PATCHES_Z:
+            continue
+        vb, _t, _g, _m = dg.ground_patch(other[0], other[1], nb_stride)
+        mine = _patch_edge(va, stride, side)
+        theirs = _patch_edge(vb, nb_stride, nb)
+        for p in mine:
+            gap = max(gap, min(_point_segment_m(p, theirs[i], theirs[i + 1])
+                               for i in range(len(theirs) - 1)))
     return gap
 
 
@@ -653,7 +702,7 @@ def build(key=None, angle_deg=None, z_m=None, rings=None, schema=None,
                         min(max((z_m - dg.Z0) / (dg.Z1 - dg.Z0), 0.0), 1.0))
     meta.update({
         "key": key, "angle_deg": angle_deg, "z_m": z_m,
-        "spawn": stand_at(angle_deg, z_m),
+        "spawn": stand_at(angle_deg, z_m, surface=(v, t)),
         "spawn_kind": kind, "spawn_height_m": round(h, 3),
         "gravity_m_s2": round(gravity_m_s2(schema), 4),
         "drum_lod0_triangles": dg.PATCHES_A * dg.PATCHES_Z * 2
@@ -779,7 +828,61 @@ def walk_verdict(d):
 # Self-test
 # ---------------------------------------------------------------------------
 
-def _selftest(full=False):
+SABOTAGE = {
+    "stride": "build the collision ground at stride 4 instead of the derived 1",
+    "winding": "reverse every triangle, so the floor faces the void",
+    "lift": "raise the collision ground 0.5 m off the ground you can see",
+    "cliff": "put a 6 m step in the tile, one lattice cell wide",
+    "tiny": "build one ring of patches instead of the derived two",
+}
+
+
+def _sabotage(kind, v, t, g, meta):
+    """Break the tile on purpose, so the gates can be seen to bite.
+
+    EVERY GATE IN THIS MODULE HAS TO BE ABLE TO FAIL ON REAL CONTENT, and this
+    project has shipped at least four that could not -- an `x == x` determinism
+    check, a `hasattr` on a name nothing sets, a density ceiling that forbade
+    detail, a walk test that asked whether a body moved and not how far. Three
+    of the checks below are written as inverted assertions on real geometry (the
+    band shell, a coarse tile, a mixed seam) and that covers the criteria. This
+    covers the RIG: same suite, same thresholds, a tile with a known defect in
+    it, and a nonzero exit code.
+    """
+    if kind == "stride":
+        pa, pz = meta["centre_patch"]
+        v2, t2, g2, m2 = ground_shell(pa, pz, rings=meta["rings"], stride=4)
+        return v2, t2, g2, {**meta, **m2}
+    if kind == "winding":
+        return v, [(a, c, b) for a, b, c in t], g, meta
+    if kind == "lift":
+        out = []
+        for x, y, z in v:
+            rr = math.hypot(x, y) or 1.0
+            k = (rr - 0.5) / rr
+            out.append((x * k, y * k, z))
+        return out, t, g, meta
+    if kind == "cliff":
+        # One lattice column dropped 6 m -- the exact thing `drum_ground`'s
+        # step rule ("every step is a ramp at least one stride-8 cell wide")
+        # exists to prevent, and the thing a slope gate is for.
+        out = []
+        for x, y, z in v:
+            a = math.atan2(y, x) % (2.0 * math.pi)
+            rr = math.hypot(x, y)
+            if int(a / (2.0 * math.pi) * dg.CELLS_A) % 8 == 0:
+                rr += 6.0
+            out.append((rr * math.cos(a), rr * math.sin(a), z))
+        return out, t, g, meta
+    if kind == "tiny":
+        pa, pz = meta["centre_patch"]
+        v2, t2, g2, m2 = ground_shell(pa, pz, rings=1)
+        return v2, t2, g2, {**meta, **m2}
+    raise SystemExit(f"--sabotage: no such defect {kind}; have "
+                     f"{sorted(SABOTAGE)}")
+
+
+def _selftest(full=False, sabotage=None):
     ok = fail = 0
 
     def check(name, cond, detail=""):
@@ -820,6 +923,12 @@ def _selftest(full=False):
     # --- the ground itself --------------------------------------------------
     pa, pz = patch_of(60.0, 5100.0)                 # the_garden
     v, t, g, meta = build(key="the_garden")
+    if sabotage:
+        print(f"SABOTAGE `{sabotage}`: {SABOTAGE[sabotage]}. Every FAIL below "
+              f"is this suite working.")
+        v, t, g, meta = _sabotage(sabotage, v, t, g, meta)
+        meta = dict(meta)
+        meta["spawn"] = stand_at(60.0, 5100.0, surface=(v, t))
     check("a collision tile is emitted", len(t) > 0, str(meta)[:120])
     a_m, z_m = patch_span_m()
     print(f"tile: {len(meta['patches'])} patches "
@@ -879,6 +988,27 @@ def _selftest(full=False):
           dev["missed"] == 0 and abs(dev["max_m"]) <= STEP_M,
           f"{dev['max_m']:+.3f} m at {dev['at']}, {dev['missed']} missed")
 
+    # AND THE STRONG FORM, which is the one that says the two meshes are the
+    # SAME surface rather than merely a compatible one. The number above is
+    # dominated by the RENDER's own LOD: `drum_ground.lod_table` switches to
+    # lod1 at 198 m and the tile reaches 250 m, so its outer ring is drawn at
+    # stride 2 while collision is uniform stride 1. Inside the lod0 radius the
+    # two are built from identical lattice calls and must agree to nothing.
+    lod0_m = dg.lod_table()[1]["switch_distance_m"]
+    eye = stand_at_patch(meta)
+    near = [(a, z) for a, z in _tile_samples(meta, n_a=18, n_z=18)
+            if math.dist((dg.FLOOR_R * math.cos(math.radians(a)),
+                          dg.FLOOR_R * math.sin(math.radians(a)), z), eye)
+            < lod0_m]
+    cm, cr = _Caster(v, t), _Caster(rv, rt)
+    worst = max((abs((cr.radius_at(a, z) or 0.0) - (cm.radius_at(a, z) or 0.0))
+                 for a, z in near), default=1e9)
+    check("and inside the lod0 radius they are the identical surface",
+          worst < 1e-9,
+          f"{worst * 1000:.4f} mm over {len(near)} casts within {lod0_m:.0f} m")
+    print(f"   within the render's own lod0 radius ({lod0_m:.0f} m, "
+          f"{len(near)} casts): {worst * 1e6:.3f} um")
+
     # And the same measure fails on a tile built too coarse, which is what
     # makes the number above mean something.
     cv, ctt, _cg, cmeta = ground_shell(pa, pz, rings=1, stride=4)
@@ -894,20 +1024,14 @@ def _selftest(full=False):
     gap = seam_gaps(pa, pz)
     check("neighbouring collision patches share their edge exactly",
           gap < 1e-9, f"largest seam gap {gap * 1000:.3f} mm")
-    mixed = 0.0
-    va, _t, _g, _m = dg.ground_patch(pa, pz, 1)
-    vb, _t, _g, _m = dg.ground_patch((pa + 1) % dg.PATCHES_A, pz, 4)
-    n, m_ = dg.PATCH_A, dg.PATCH_Z
-    for k in range(0, m_ + 1, 4):
-        p = va[n * (m_ + 1) + k]
-        q = vb[0 * (m_ // 4 + 1) + k // 4]
-        mixed = max(mixed, math.dist(p, q))
+    mixed = seam_gaps(pa, pz, stride=1, nb_stride=4)
     check("and mixed strides do NOT -- which is why collision is uniform",
-          mixed > 1e-6,
-          f"a stride-1 patch beside a stride-4 one differs by "
-          f"{mixed * 1000:.1f} mm on the shared edge")
+          mixed > STEP_M,
+          f"a stride-1 patch beside an unclamped stride-4 one leaves "
+          f"{mixed * 1000:.1f} mm of T-junction; under a step means the "
+          f"terrain has flattened and the seam no longer proves anything")
     print(f"   seam: uniform {gap * 1000:.4f} mm, "
-          f"mixed strides {mixed * 1000:.1f} mm")
+          f"stride 1 against unclamped stride 4 {mixed * 1000:.1f} mm")
 
     # --- the tile is big enough for the gate that will run ------------------
     want = walk_distance_m()
@@ -922,17 +1046,22 @@ def _selftest(full=False):
     sp = meta["spawn"]
     r = math.hypot(sp[0], sp[1])
     h, _k = dg.sample(60.0 / 360.0, (5100.0 - dg.Z0) / (dg.Z1 - dg.Z0))
-    check("the spawn stands on the terrain, 50 mm clear of it",
-          abs(r - (dg.FLOOR_R - h - SPAWN_ABOVE_M)) < 1e-9,
-          f"spawn r={r:.4f}, ground r={dg.FLOOR_R - h:.4f}")
     cast = _Caster(v, t)
     under = cast.radius_at(60.0, 5100.0)
-    check("and there is collision directly under it",
-          under is not None and abs(under - (dg.FLOOR_R - h)) < 0.01,
-          f"cast finds r={under}, terrain says {dg.FLOOR_R - h:.4f}")
+    check("the spawn stands on the MESH, 50 mm clear of it",
+          under is not None
+          and abs(r - (under - SPAWN_ABOVE_M)) < 1e-9,
+          f"spawn r={r:.4f}, the triangle under it is at r={under}")
+    # And say how far that is from the field, because it is not zero and the
+    # difference is the whole reason the spawn is cast rather than computed.
+    print(f"   spawn: mesh r={under:.4f}, field r={dg.FLOOR_R - h:.4f}, "
+          f"{(dg.FLOOR_R - h - under) * 1000:+.1f} mm apart -- the spawn "
+          f"follows the mesh")
+    check("and it is above the ground, not inside it",
+          r < under, f"spawn r={r:.4f} against surface r={under:.4f}")
     check("up is INWARD on the drum -- this station spins",
-          stand_at(60.0, 5100.0, 2.0)[0] ** 2
-          + stand_at(60.0, 5100.0, 2.0)[1] ** 2
+          stand_at(60.0, 5100.0, 2.0, surface=(v, t))[0] ** 2
+          + stand_at(60.0, 5100.0, 2.0, surface=(v, t))[1] ** 2
           < sp[0] ** 2 + sp[1] ** 2,
           "a body's head is at a smaller radius than its feet")
     check("gravity is the schema's, not 9.81 written down",
@@ -993,6 +1122,11 @@ def main():
     ap.add_argument("--selftest", action="store_true")
     ap.add_argument("--full", action="store_true",
                     help="with --selftest, also sweep the whole drum (~70 s)")
+    ap.add_argument("--sabotage", default=None, choices=sorted(SABOTAGE),
+                    help="with --selftest, break the tile on purpose and show "
+                         "the gates fire. A gate that cannot fail is not a "
+                         "gate; this is how that is demonstrated rather than "
+                         "claimed")
     ap.add_argument("--terrain", action="store_true",
                     help="slope survey of the whole heightfield")
     ap.add_argument("--places", action="store_true")
@@ -1002,7 +1136,7 @@ def main():
     a = ap.parse_args()
 
     if a.selftest:
-        return _selftest(full=a.full)
+        return _selftest(full=a.full, sabotage=a.sabotage)
 
     drum()
     if a.terrain:

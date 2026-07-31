@@ -3890,3 +3890,280 @@ Then, in the order they were found:
    0.50→0.86 of wall height and measures 0.56→0.75, ~1.9× too long with cells 1.5× too small.
 4. **The exterior rig still has no night side** (blocking, the arrival shot); **the magenta
    guideway runs** in the drum.
+
+---
+
+## Agent report — drum walkable
+
+**Session 3w, agent task: "make the habitat drum walkable, and nothing else."**
+
+**IT WALKS.** A body spawns on the drum ground and covers **126.0 m in thirty seconds at 4.20 m/s,
+`offfloor=0/1800`**, in the real engine, headless. Four locations, four different land uses:
+
+```
+PASS  drum the_garden    spawns on hedge,      walks 126.0 m over 25 ground patches, offfloor=0/1800
+PASS  drum garden_town   spawns on settlement, walks 125.8 m over 25 ground patches, offfloor=0/1800
+PASS  drum zen_garden    spawns on shore,      walks 125.9 m over 25 ground patches, offfloor=0/1800
+PASS  drum drum_endcaps  spawns on parkland,   walks 125.9 m over 20 ground patches, offfloor=0/1800
+```
+
+All four legs at full speed (`legs 4.20/4.20/4.20/4.20`), so nothing snags in any heading. The last
+one is the tile that touches the aft end cap and is therefore clamped to 20 patches instead of 25.
+
+New file: **`station/drum_walk.py`**. `python3 station/drum_walk.py --selftest` is **24/24**
+(23 without `--full`). Existing suites re-run and green: `station/interior.py --selftest` **449/449**,
+`station/rooms.py` **581/581**. Nothing outside `station/drum_walk.py` and `canon/INVENTIONS.md`
+(new **INV-081**) was touched.
+
+### The design, and the one sentence that matters
+
+`collision.py`'s rule survives and **inverts**. The corridor needed a *smooth* shell because its
+render deck's 66 mm channel and 22 mm tiles are decoration a foot should not feel. **On the drum a
+smooth shell would be the bug**: the relief is the content, and flattening a 7 m settlement podium
+onto a 4 m lake bed would leave a player hovering over the fields and buried in the town — the same
+error that put session 2u's first drum camera five metres underground. So:
+
+> the corridor's collision floor must be FLAT where the render mesh is not;
+> the drum's collision ground must be the SAME SHAPE the render ground is, cheaper, and free of
+> anything a capsule can catch on.
+
+This module therefore authors **no terrain**. It calls `drum_ground.ground_patch` — the function the
+*render* ground is built from — on the same lattice, at a stride it derives. Not "measured off the
+kit by ray casting" as the corridor profile is: one step stronger, the same source function, so
+there is nothing to drift.
+
+### THE GATE IS SLOPE, NOT LIP, and that is the substantive change
+
+`collision.floor_steps` reports the largest step between neighbouring samples. That is exactly right
+on a corridor, where the deck is flat by design and any lip is a defect. **Run it on terrain and a
+correct hill fails it** — the drum rises 0.24 m between adjacent lattice points in places, which is
+3.5 degrees, which is a field. What a character controller actually tests is rise over run against
+its own `floor_max_angle`, so that is what `slope_report` measures: per emitted triangle, against
+the inward radial at its own centroid, on the mesh rather than on whatever produced it.
+
+### Numbers
+
+| | value | where from |
+|---|---|---|
+| collision stride | **1** (3.90 m cell) | derived: the coarsest whose measured error stays inside a step. **Stride 2 measures 0.193 m against a 0.100 m step** and fails |
+| step tolerance | 0.100 m | `rooms.TRIM_MAX_PROUD_M`, imported not restated — one definition of a step on this station |
+| floor angle | 45.0 deg | Godot `CharacterBody3D.floor_max_angle` default, an engine fact |
+| tile | **5 x 5 patches, 51,200 tri** | derived: the walk gate asks 126 m (1800 frames x 4.2 m/s), a patch is 124.9 x 129.4 m, a spawn can sit on a corner, so 2 rings. **One ring reaches 125 m and fails by a metre** |
+| nearest tile edge | 250 m | |
+| slope over the Garden's tile | max **12.70 deg**, 0 of 51,200 triangles over 45 | |
+| slope over the **whole drum** | circumferential max **16.61 deg** (a lake shore at 146.25 deg), axial max **10.90 deg** (a cap ring road), **0 of 286,720 lattice steps over 45 deg** | `--terrain`, ~70 s |
+| height range | -3.90 .. +8.90 m about the datum | |
+| collision vs the render tile | max **-97.8 mm**, rms 20.5 mm | and that is the RENDER's own LOD: `lod_table` switches to lod1 at 198 m and the tile reaches 250 m |
+| collision vs render **inside the lod0 radius** | **0.000 um over 92 casts** | identical lattice calls, so identical surface |
+| patch seam, uniform stride | **0.0000 mm** | |
+| patch seam, stride 1 against unclamped stride 4 | **266.6 mm** | why collision is uniform and needs no `clamp_edge` |
+| spawn | cast against the MESH, not the field | at the Garden they are **39.2 mm apart** — four times the curvature sagitta, because the heightfield bends inside a cell too |
+| render tile | 38,912 tri | **cheaper than its own collision**, because the render coarsens with distance and collision cannot |
+
+### The whole-drum answer
+
+Union of the 12 locations' tiles: **105 of 280 patches, 37.5% of the drum, 215,040 collision
+triangles.** Whole drum at stride 1 would be 573,440. The rest of the walkable station is 74,044
+between 66 decks, so the drum is expensive *in the right way* — it is 4.5 million m2 of open
+country against a 2.6 m tube, and the tile is the streaming unit that difference forces.
+
+The twelve locations, with the ground each stands on (`--places`):
+
+```
+drum_spokes      0.0 deg z=5200 h=+2.87 patch (0,10)  road
+radial_tubes    20.0 deg z=5200 h=+2.08 patch (0,10)  arable0
+the_garden      60.0 deg z=5100 h=+2.06 patch (2, 9)  hedge
+garden_town    112.0 deg z=4900 h=+6.07 patch (4, 8)  settlement
+earharts       120.0 deg z=4800 h=+7.28 patch (4, 7)  verge
+fresh_air      128.0 deg z=4800 h=+6.64 patch (4, 7)  avenue
+garden_terrace 130.0 deg z=4900 h=+6.71 patch (5, 8)  verge
+zen_garden     150.0 deg z=5000 h=-1.79 patch (5, 8)  shore
+water_rec      175.0 deg z=5100 h=-1.02 patch (6, 9)  shore
+ground_tram    210.0 deg z=5000 h=+1.13 patch (8, 8)  hedge
+drum_tram      240.0 deg z=5000 h=+0.05 patch (9, 8)  arable3
+drum_endcaps   340.0 deg z=4000 h=+2.59 patch (13,1)  parkland
+```
+
+Every one has ground under it and none stands on `water_surface` — `zen_garden` and `water_rec` are
+both on `shore`, at the water's edge, which is where they should be. The tiles *contain* water and
+the collision follows the render exactly there, so **a body can walk out onto the lake**. That is a
+content gap, not a collision one, and it is stated rather than gated.
+
+### THE GATES CAN FAIL, and here they are failing
+
+Three of the checks are inverted assertions on real geometry, in the style of
+`collision._selftest`'s "and the render floor is NOT smooth" — if any stops failing, the thing it
+argues about has gone away:
+
+* **`interior.drum_interior`'s band shell is NOT a floor.** Over the same ground it has
+  **10,820 of 15,700 triangles steeper than 45 deg** (max 179.7 — faces wound outward) and sits
+  **+3.64 m** from the heightfield, rms 1.28 m. That is the drum's ground as it was before the
+  heightfield, and it is a perfectly good thing to look at from 500 m.
+* **A stride-4 tile sits +0.402 m off the render ground**, so the deviation criterion bites.
+* **Stride 1 against an unclamped stride 4 leaves 266.6 mm of T-junction**, so the seam criterion
+  bites.
+
+And `--sabotage` runs the *same suite* against a tile with a known defect, so the rig is
+demonstrated rather than claimed. All five produce real FAIL lines and a nonzero exit:
+
+```
+--sabotage lift     (raise the collision 0.5 m off what you can see)
+  FAIL  a body stands on the ground it can see  -- +0.581 m at (22.95, 5313.2)
+  FAIL  and inside the lod0 radius they are the identical surface  -- 499.9986 mm
+  21/23
+--sabotage winding  (reverse every triangle)
+  FAIL  every collision triangle faces the player, not the void  -- worst 180.0 deg
+  FAIL  the ground is walkable at the controller's own floor angle  -- 51200 triangles over 45
+  21/23
+--sabotage cliff    (a 6 m step one lattice cell wide)
+  FAIL  the ground is walkable at the controller's own floor angle  -- 13130 triangles over 45
+  FAIL  a body stands on the ground it can see  -- -3.040 m
+  FAIL  and inside the lod0 radius they are the identical surface  -- 2264.5 mm
+  20/23
+--sabotage tiny     (one ring of patches instead of the derived two)
+  FAIL  the tile is bigger than the walk the gate asks for  -- nearest edge 125 m against a 126 m walk
+  22/23
+--sabotage stride   (stride 4 instead of the derived 1)
+  FAIL  a body stands on the ground it can see  -- -0.402 m
+  FAIL  and inside the lod0 radius they are the identical surface  -- 345.1 mm
+  21/23
+```
+
+### Two defects found in my own measurements, both of which looked like passes
+
+Recording them because they are the same species this repository keeps catching:
+
+1. **The seam test compared the things that coincide.** A coarse patch's border vertices are a
+   *subset* of a fine patch's — every fourth vertex of a stride-4 edge is exactly a stride-1 vertex
+   — so vertex-to-vertex comparison reported **0.0 mm for a seam full of holes**. The hole is the
+   fine vertex sitting off the coarse patch's straight edge *segment*, which is what a T-junction
+   is. Measured point-to-segment it is 266.6 mm. A crack test that passes on a cracked mesh is the
+   `x == x` determinism check in a new costume.
+2. **The spawn was computed from the terrain function and the body stands on the mesh.** They are
+   not the same surface between lattice points: at the Garden the field says r = 276.2441 and the
+   triangle a foot rests on is at 276.2049, **39.2 mm apart** — more than the 6.8 mm curvature
+   sagitta, because the heightfield bends inside a cell as well. It happened to land on the safe
+   side; with the sign the other way a body spawns embedded in its own floor. `stand_at` now casts,
+   as a foot does.
+
+### Verified visually
+
+`tools/preview_render.py`, read directly, against **magenta** so a hole shows as magenta rather than
+as black:
+
+* From a standing eye (1.7 m) at the Garden looking down the axis: an unbroken ground plane curving
+  up and away on both sides. No magenta inside the surface — magenta appears only past the tile's
+  own angular edge, which is where the tile ends.
+* From 176 m "up" (r = 110 m), the collision tile and the render tile from the identical camera are
+  **visually indistinguishable** — the same folds, the same road and hedge lines, the same
+  curvature. That is the claim ("the collision ground is the same shape as the render ground")
+  shown rather than asserted. Difference is in the far field, where the render is at lod1.
+* Frames: `scratchpad/drum_eye_col.png`, `drum_wide_col.png`, `drum_wide_ren.png`. These are
+  **structural** evidence from the flat-shaded rasteriser, not craft evidence — no craft claim is
+  made here.
+
+### WHAT DOES NOT WORK, precisely
+
+1. **`walkable.py --deck green/1/0` still raises.** It calls `deck.build_deck`, which calls
+   `deck._ring_cells`, which raises `ValueError: green ring 1 is not a ring deck` by design. Wiring
+   it needs edits to two files this task did not own — the exact patch is below.
+2. **Nothing on the drum is solid except the ground.** `garden.townscape()` puts 22,620 triangles
+   of civic landmark, blocks, trees, hedges, benches and planters at 112 deg / z 4900 and a body
+   walks through all of it. I tested the obvious fix — `collision.prop_boxes` with a garden-specific
+   solid predicate — and **it is not safe to ship**: 18 boxes, and the largest is **58.15 m** across
+   against a real block building's 9–22 m, because a townscape's buildings share a paved podium and
+   the touch-merge chains them together. Rooms merge correctly (a chair's legs, seat and back are
+   one chair); a town does not. That needs per-instance boxes from `townscape`'s own placement loop,
+   which is a change to `garden.py`, and it is the next thing a person would notice.
+3. **The tile has open edges.** Walk past 250 m and there is no ground. The tile has to follow the
+   player, which is streaming and is not built. `drum_endcaps`' tile also has an **open axial edge**
+   (`meta["open_axial_edge"]`) because it is clamped at `pz = 0`: past the aft cap there is no
+   ground, and `interior.drum_end_cap`'s dish is not in the collision.
+4. **A body can walk out onto the lake.** 6.4% of the drum lattice is `water_surface` and the
+   collision follows the render exactly there. Correct behaviour for a collision module, wrong
+   behaviour for a habitat.
+5. **The player can walk up the wall of the barrel.** `player.gd`'s drum gravity is the radial
+   direction at the body's own position with no speed condition, so a body walking circumferentially
+   is pinned to the inside of the barrel at any speed. That is the existing controller, not
+   something this module introduced, and the walk gate cannot see it because the body is genuinely
+   on the floor the whole time.
+6. **Not in CI.** `drum_walk.py --selftest` should run there; `deck.py --selftest` and `--sweep` are
+   not there either.
+
+### EXACT CHANGES I NEED APPLIED, in files I do not own
+
+**(a) `station/walkable.py`** — route the drum to `drum_walk`. Two lines, at the top of
+`walk_deck` (currently line ~158, immediately after the docstring, before `schema, profile = it.load()`):
+
+```python
+    # THE DRUM IS NOT A RING DECK. `deck.build_deck` raises on green/1 by name,
+    # and the drum's floor is a heightfield rather than a corridor -- see
+    # `station/drum_walk.py`.
+    if (sector, ring) in D.NOT_RING_DECKS:
+        import drum_walk as DW
+        return DW.walk(key=goto_key or "the_garden", traverse=traverse,
+                       timeout=timeout, godot=godot)
+```
+
+and in `main()`, where the verdict is taken (currently `good, why = deck_verdict(d)`):
+
+```python
+        if (sector, int(ring)) in D.NOT_RING_DECKS:
+            import drum_walk as DW
+            good, why = DW.walk_verdict(d)
+        else:
+            good, why = deck_verdict(d)
+```
+
+The negative-control block that follows must be skipped for the drum: there are no doors on it, so
+`--no-doors` is not a control there. Guard it with the same `NOT_RING_DECKS` test.
+
+`drum_walk.walk_verdict` imports `walkable`'s own `MIN_TRAVERSE_M`, `MAX_DECK_DROP_M` and
+`MIN_WALK_M` rather than restating them, so the drum cannot be certified against an easier bar than
+the corridor.
+
+**(b) `station/deck.py`** — make `--sweep` count the drum instead of only deferring it. In `_sweep`,
+replace the `continue` in the `NOT_RING_DECKS` branch with a call into `drum_walk`, so the
+whole-station number includes it:
+
+```python
+        if (s, r) in NOT_RING_DECKS:
+            import drum_walk as DW
+            n = 0
+            for row in DW.places():
+                v, t, g, m = DW.build(key=row["key"])
+                if DW.holes(v, t, m, n_a=8, n_z=8):
+                    holes.append((s, r, dk))
+                n += len(t)
+            deferred.append((s, r, dk))
+            print(f"     drum: {len(DW.places())} locations on collision "
+                  f"ground, {n:,} triangles")
+            continue
+```
+
+That is 12 tile builds and about a minute; if that is too slow for a sweep, build one tile and
+report the union figure (105 of 280 patches, 215,040 triangles) instead.
+
+**(c) `.github/workflows/validate.yml`** — add, next to the other self-tests:
+
+```yaml
+      - name: The habitat drum is walkable
+        run: python3 station/drum_walk.py --selftest
+```
+
+`--full` adds the whole-drum slope sweep and costs ~70 s; the 23 checks without it cover the tile,
+the derivation, the seams, the controls and all twelve locations.
+
+### Anything I could not verify, stated bluntly
+
+* **Framerate: nothing.** 51,200 triangles of trimesh collision per tile is 6.6x the corridor
+  shell's 7,816 and there is no GPU here. `budget.py` has no gate for collision cost at all, on any
+  deck, so this number is unbudgeted rather than under budget.
+* **The walk is 126 m in a straight line from four spawns.** It is not a traversal of the drum, and
+  no pathfinder or streaming exists, so "the drum is walkable" means "a body stands and walks
+  anywhere within 250 m of one of twelve points".
+* **No craft claim.** Every frame here is the flat-shaded rasteriser, which is honest about
+  silhouette and geometry and says nothing about material, light or mood. The drum's engine frames
+  and their scores are session 3t/3u's and are untouched.
+* **`drum_ground.py --selftest` was not re-run** — nothing in it was modified, and it is already in
+  CI at line 82.

@@ -2753,3 +2753,60 @@ sessions earlier: no exposure and no shadow scheme puts foliage in a frame. See
 throwing a *visibly bounded* pool rather than a wash, which would make the fittings directional
 after all; or a measurement showing that lavapipe's shadow attenuation differs materially from a
 hardware Vulkan driver's, which would make every number above a software artefact.
+
+---
+
+## INV-081 — The drum's walkable surface: the stride, the step tolerance and the tile
+
+**Status:** extrapolation, authority 5, session 3w. Engineering, not canon: the show establishes
+that people walk in the Garden and constrains nothing about how a simulation gives them a floor.
+
+**Invented:** `drum_walk.STEP_M`'s use as the collision-vs-render tolerance; the rule that the
+drum's collision ground is built at the coarsest LOD stride whose *already-measured* error stays
+inside that tolerance; and the tile as the unit of drum collision, sized from the walk gate.
+
+**What is sourced, and it is most of it.** No dimension here is new. The floor radius is canon's
+278.3 m. The lattice, the patch grid, the LOD strides and their measured errors are
+`station/drum_ground.py`'s and were derived in an earlier session from a 1.5-pixel screen-error
+budget. The heightfield itself is INV-020/INV-072's terrain. `FLOOR_MAX_DEG = 45.0` is Godot's
+`CharacterBody3D.floor_max_angle` default of 0.785398 rad — an engine fact, cited rather than
+chosen, and the number `is_on_floor()` actually decides against. What is invented is only how those
+existing measurements are *combined* into a decision about what a body stands on.
+
+**The step tolerance, and why it is not a new number.** `rooms.TRIM_MAX_PROUD_M = 0.10 m` already
+carries this project's definition of a step — "a step you do not trip on" — and it is imported
+rather than restated, so the station has one definition of a step. A disagreement between the ground
+a player sees and the ground their feet rest on *is* a step: positive and they hover, negative and
+they are shin-deep in a field.
+
+**The stride, derived.** `drum_ground.lod_error_report` already measures, per stride, how far a
+decimated lattice departs from the true field — over whole patches at full resolution, one per
+land-use band, so a terrace riser is sampled rather than stepped over. That measurement was made to
+answer a rendering question and answers this one unchanged:
+
+| stride | cell | measured error | verdict |
+|---|---|---|---|
+| **1** | 3.90 m | **0.007 m** | usable |
+| 2 | 7.81 m | 0.193 m | too coarse |
+| 4 | 15.61 m | 0.538 m | too coarse |
+| 8 | 31.23 m | 1.048 m | too coarse |
+| 16 | 62.45 m | 4.459 m | too coarse |
+
+So stride 1, and that is not a formality — the criterion fails on the very next level, which is what
+makes it a criterion rather than a label.
+
+**The tile, derived.** `walkable.TRAVERSE_FRAMES` (1800 frames = 30 s) and `player.gd`'s 4.2 m/s
+mean the walk gate asks a body to cover **126 m** in a straight line. A ground patch is
+124.9 x 129.4 m, and a spawn can sit on a patch corner, so the nearest tile edge must be at least
+`ceil(126 / 124.9) = 2` whole patches away. Two rings is 5 x 5 patches, **51,200 triangles**. One
+ring reaches 125 m and fails by a metre — asserted, and demonstrated failing.
+
+**Why not the whole drum.** 573,440 triangles at stride 1, against a station whose entire other
+66 walkable decks carry 74,044 between them. The drum is 4.5 million m2 of open country and a ring
+deck is a 2.6 m tube; the tile is the streaming unit that difference forces.
+
+**What would overturn it.** A character controller with a different `floor_max_angle`, or a
+walk gate that asks for a longer traverse — both change a derived number rather than a chosen one,
+which is the point. A terrain change that flattened the field below 0.10 m of stride-2 error would
+make stride 2 legal and halve the cost; the self-test asserts that it currently does *not*, so such
+a change cannot happen silently.
