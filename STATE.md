@@ -93,14 +93,38 @@ cast down through a table hits the table. Standing on a table is not falling thr
 deck. It now reports a hole only for **nothing underfoot, or something below the floor**.
 Verified still able to fail: 70 holes with the vestibules deliberately broken.
 
+### The people, fixed: 96 → 278 placed, 32 empty rooms → 0
+
+`occupancy` wanted **320** people across the 87 walkable rooms at 1300 and **96** arrived,
+with 32 rooms holding nobody. Two causes, and the first one hid the second:
+
+**A seat that did not work out deleted the person.** Every failure path in the seat and
+desk branches was a bare `continue`, so an occupant whose assigned seat was taken or out of
+bounds was dropped rather than falling through to stand somewhere. Once the bays were sized
+to hold their furniture there were seats everywhere, so most people were *assigned* one —
+and the standing placement underneath was never reached at all. **Assignment is a
+preference, not a filter.**
+
+**Sample-and-reject cannot find a small target.** The standing placement drew random points
+and tested them, which works in an empty room and stops working when the room is full: a
+room with machinery down its spine has its clear floor in two narrow strips, and a dart is
+a poor way to find a strip. Adding tries did not help and neither did biasing the draw,
+because the problem was never where the darts landed. `_free_spots` now **enumerates** the
+free floor the way `rooms.walkable` finds a path — grid the room, keep the cells a body's
+width clear of everything solid, order by hash with the reserved lane first. `lowg_bays`
+has **343 of 640 cells free**; it was getting nobody.
+
+**278 of 320 placed, every room occupied.** The 42 short are people for whom no clear spot
+remained after the others took theirs, which is a room being full rather than a bug.
+
 ### Still open
 
-**32 of 87 rooms have nobody in them**, and `occupancy` says all 87 should have someone at
-1300 — so that is placement failing, not the schedule. 96 people placed. The wander
-placement tries the reserved circulation lane first and the full width after, and still
-cannot find a spot in rooms whose machinery runs down the middle (`brig`, `lowg_bays`).
-The rooms are genuinely much fuller now; the placement needs to read the free floor rather
-than sample and reject.
+* **The drum is not walkable** — `green/1`, an open 8 km barrel whose floor is
+  `drum_ground`'s heightfield. Deferred by name in `deck.NOT_RING_DECKS`, not forgotten.
+* **19 of 106 non-drum locations are in secondary z-clusters** and are not on an assembled
+  deck. `build_deck` takes a `z_m`; the sweep only walks the busiest cluster per deck.
+* **W5, the loop** — nothing is interactable and no NPC reacts. `directory.interacts`
+  declares the verbs; none of them do anything.
 
 **44 of 87 rooms are furniture-starved, and the worst of them are the ones that should
 be fullest:** `mess_hall`, `happy_daze` and `bar_unnamed` at **0.15**, `casino` and

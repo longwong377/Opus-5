@@ -50,6 +50,9 @@ DESK_BAND = (0.68, 1.15)
 STAND_OFF_M = 0.55
 # Half the shoulder width of a standing body, from npc/body.py's own build.
 BODY_R_M = 0.32
+# Grid pitch for enumerating where a body can stand. Under the shoulder width,
+# so a gap a person fits through is never missed between two samples.
+SPOT_CELL_M = 0.30
 # The group `dressing._chair` gives a seat pan. Seating is a kind of object,
 # not a height band.
 SEAT_GROUP = "dress_soft"
@@ -229,23 +232,21 @@ def populate(place_key, room_v, room_t, room_g, w_m, l_m, hour=13.0,
         return all((x - ux) ** 2 + (z - uz) ** 2 > r * r for ux, uz in used)
 
     # WHAT IS ALREADY STANDING THERE. `_clear` only ever checked against other
-    # PEOPLE, so a body could be dropped inside a shelf run -- which is what
-    # happened the moment bays were sized generously enough to hold their
-    # furniture, because there was then furniture where the wander placement
-    # liked to put people. Same predicate as the collision builder and the
-    # walkability trial, so all three agree about what occupies a room.
-    # FROM `room_*`, WHICH IS THE ROOM. `v, t, g` are the bodies being built --
-    # empty at this point -- so reading them gave an empty obstacle list and a
-    # check that could not reject anything. It looked exactly like a working
-    # guard and was a no-op, which is this project's most-repeated defect and
-    # the reason the counter-check in `rooms.py` exists at all: it kept failing
-    # while the guard "passed".
-    # EXACTLY THE SET `rooms.py` ASSERTS ON: fittings and furniture, but not the
-    # clutter standing on top of them. A mug on a desk is at chest height and is
-    # not something a person can be "inside" -- counting it emptied a staffed
-    # medlab, because every clear spot in a working room is beside something
-    # with objects on it. The invariant being enforced here is the one being
-    # checked over there, so it is measured on the same boxes.
+    # PEOPLE, so a body could be dropped inside a shelf run. Three things about
+    # this list are deliberate and each was got wrong once:
+    #
+    #  * it is read from `room_*`, WHICH IS THE ROOM. `v, t, g` are the bodies
+    #    being built and are empty here, so reading them gave an obstacle list
+    #    that could never reject anything -- a guard that looked exactly like a
+    #    working guard and was a no-op;
+    #  * it is EXACTLY THE SET `rooms.py` ASSERTS ON, fittings and furniture but
+    #    not the clutter standing on top of them. A mug on a desk is at chest
+    #    height and is not something a person can be inside; counting it emptied
+    #    a staffed medlab, because every clear spot in a working room is beside
+    #    something with objects on it;
+    #  * the invariant enforced here is the one checked over there, measured on
+    #    the same boxes, because a guard computed against a different world than
+    #    the one that ships is not a guard.
     import rooms as _R                                          # noqa: PLC0415
     _solid = [b for _n, b in _R._boxes(
         room_v, room_t, room_g,
@@ -266,6 +267,48 @@ def populate(place_key, room_v, room_t, room_g, w_m, l_m, hour=13.0,
                     and z0 - BODY_R_M < z < z1 + BODY_R_M):
                 return False
         return True
+
+    def _free_spots():
+        """Every place in this room a body can actually stand, off the floor.
+
+        SAMPLE-AND-REJECT CANNOT FIND A SMALL TARGET. The wander placement drew
+        random points and tested them, which works in an empty room and stops
+        working the moment the room is full: once bays were sized to hold their
+        furniture, **32 of 87 rooms came out with nobody in them** while
+        `occupancy` said every one of them should have somebody at 1300. Adding
+        tries did not help and neither did biasing the draw, because the problem
+        is not where the darts land -- it is that a room with machinery down its
+        spine has its clear floor in two narrow strips and a dart is a poor way
+        to find a strip.
+
+        So the free floor is ENUMERATED, the same way `rooms.walkable` finds a
+        path: grid the room, keep the cells a body's width clear of everything
+        solid, and pick from those. A room with one clear square metre gets its
+        one occupant; a room with none gets nobody and means it.
+
+        Ordered by hash so the choice is deterministic and scattered rather than
+        sorted into a corner, and the reserved circulation lane comes first --
+        that band is where a person standing in a room actually is.
+        """
+        nx = max(1, int(2 * hw / SPOT_CELL_M))
+        nz = max(1, int(2 * hl / SPOT_CELL_M))
+        lane = min(_dress.LANE_M / 2.0, max(0.35, hw - 0.9))
+        out = []
+        for i in range(nx):
+            x = -hw + (i + 0.5) * (2 * hw / nx)
+            if abs(x) + BODY_R_M > hw:
+                continue
+            for j in range(nz):
+                z = -hl + (j + 0.5) * (2 * hl / nz)
+                if abs(z) + BODY_R_M > hl:
+                    continue
+                if _free(x, z):
+                    out.append((0 if abs(x) <= lane else 1,
+                                _u(seed, "spot", i, j), x, z))
+        out.sort()
+        return [(x, z) for _lane, _h, x, z in out]
+
+    spots = _free_spots()
 
     def _embedded(mark_v, mark_t):
         """Did the body just placed end up inside a fitting?
@@ -316,73 +359,60 @@ def populate(place_key, room_v, room_t, room_g, w_m, l_m, hour=13.0,
                 cache[key] = _body.build("human", f"{seed}-{i}", lod=lod)[:3]
         mesh = cache[key]
 
+        # A SEAT THAT DOES NOT WORK OUT MEANS THE PERSON STANDS, not that the
+        # person ceases to exist. Every failure below used to be a bare
+        # `continue`, which dropped that occupant entirely -- and once the rooms
+        # were furnished properly there were seats everywhere, so most people
+        # were ASSIGNED a seat, and any that did not take left a hole in the
+        # population. 320 people were wanted across the station and 96 arrived,
+        # with 32 rooms empty; the wander placement underneath was never even
+        # reached. Assignment is a preference, not a filter.
+        seated = False
         if i < len(seats):
             sx, sy, sz, _a = seats[i]
-            if not _clear(sx, sz) or not _inside(sx, sz):
-                continue
-            # Seated: the body's origin drops to the seat pan, and it faces the
-            # room rather than the wall it is against.
-            _place_body(v, t, g, mesh, sx, sy - 0.42, sz,
-                        math.atan2(-sx, -sz), "npc_seated")
-            used.append((sx, sz))
-            stats["seated"] += 1
-            continue
+            if _clear(sx, sz) and _inside(sx, sz):
+                # The body's origin drops to the seat pan, and it faces the
+                # room rather than the wall it is against.
+                _place_body(v, t, g, mesh, sx, sy - 0.42, sz,
+                            math.atan2(-sx, -sz), "npc_seated")
+                used.append((sx, sz))
+                stats["seated"] += 1
+                seated = True
 
         j = i - len(seats)
-        if j < len(desks):
+        if not seated and 0 <= j < len(desks):
             dx, dy, dz, _a = desks[j]
             # Stand OFF the desk, on the side facing the room centre.
             ux = dx - STAND_OFF_M * (1.0 if dx > 0 else -1.0)
             uz = dz
-            if (not _clear(ux, uz) or not _inside(ux, uz)
-                    or not _free(ux, uz)):
-                continue
-            _mv, _mt = len(v), len(t)
-            _place_body(v, t, g, mesh, ux, 0.0, uz,
-                        math.atan2(dx - ux, dz - uz), "npc_standing")
-            if _embedded(_mv, _mt):
-                continue
-            used.append((ux, uz))
-            stats["standing"] += 1
+            if _clear(ux, uz) and _inside(ux, uz) and _free(ux, uz):
+                _mv, _mt = len(v), len(t)
+                _place_body(v, t, g, mesh, ux, 0.0, uz,
+                            math.atan2(dx - ux, dz - uz), "npc_standing")
+                if not _embedded(_mv, _mt):
+                    used.append((ux, uz))
+                    stats["standing"] += 1
+                    seated = True
+
+        if seated:
             continue
 
-        # Everyone else is in the room, in the circulation lane, spaced out.
-        # BODY_R_M off every wall. The first version inset by 0.6 m from a
+        # Everyone else stands somewhere the room actually has room for them.
+        # BODY_R_M off every wall -- the first version inset by 0.6 m from a
         # half-span it had been handed as the OUTER extent, so a shoulder poked
         # through the wall and rooms.py's footprint assertion caught it on three
         # locations. A person has width; a placement point is not a person.
-        # MORE THAN EIGHT TRIES. A furnished room has fewer clear spots than an
-        # empty one, and eight random draws in a room that is now genuinely full
-        # left a staffed medlab with nobody in it. The cost is arithmetic.
-        for _try in range(40):
-            # IN THE LANE. `dressing.blocks_lane` reserves a band down the long
-            # axis and rejects any furniture that would intrude on it -- that
-            # band is the one part of the room guaranteed to be clear, and it is
-            # also where a person standing or walking in a room actually is.
-            # Sampling the full width instead put most of the draws inside the
-            # furniture the bays are now big enough to hold, and left 32 rooms
-            # with nobody in them. The clear floor was always there; the
-            # placement was not looking at it.
-            # LANE FIRST, THEN ANYWHERE. Half the tries sample the reserved
-            # band; the rest sample the full width, because a room with a SPINE
-            # fixture has its machinery down the middle and its clear floor at
-            # the sides -- `brig` and `lowg_bays` are exactly that, and lane-only
-            # sampling left them with nobody.
-            _lane = min(_dress.LANE_M / 2.0, max(0.35, hw - 0.9))
-            _half = (_lane - BODY_R_M * 0.5 if _try < 20
-                     else hw - BODY_R_M - 0.15)
-            px = (_u(seed, "px", i, _try) - 0.5) * 2.0 * max(0.0, _half)
-            pz = (_u(seed, "pz", i, _try) - 0.5) * max(
-                0.0, 2 * hl - 2 * BODY_R_M - 0.3)
-            if _clear(px, pz, 0.7) and _free(px, pz):
-                _mv, _mt = len(v), len(t)
-                _place_body(v, t, g, mesh, px, 0.0, pz,
-                            _u(seed, "yaw", i) * math.tau, "npc_standing")
-                if _embedded(_mv, _mt):
-                    continue
-                used.append((px, pz))
-                stats["walking"] += 1
-                break
+        for px, pz in spots:
+            if not _clear(px, pz, 0.7):
+                continue
+            _mv, _mt = len(v), len(t)
+            _place_body(v, t, g, mesh, px, 0.0, pz,
+                        _u(seed, "yaw", i) * math.tau, "npc_standing")
+            if _embedded(_mv, _mt):
+                continue
+            used.append((px, pz))
+            stats["walking"] += 1
+            break
     stats["placed"] = stats["seated"] + stats["standing"] + stats["walking"]
     stats["triangles"] = len(t)
     return v, t, g, stats
