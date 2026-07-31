@@ -74,7 +74,10 @@ def _places():
     for q in dr.PLACES:
         sec = q.get("sector")
         try:
-            rr = it.ring_radii(schema, profile, sec)
+            # AT THE PLACE'S OWN Z. Without it "ring 0" resolves against the
+            # sector's widest cylinder and 14 of 118 places landed outside the
+            # hull -- `cnc` by 94.7 m. See `interior.rings_fitting_at`.
+            rr = it.ring_radii(schema, profile, sec, z_m=q.get("z_m"))
         except Exception:                                      # noqa: BLE001
             continue
         ri = q.get("ring")
@@ -83,7 +86,8 @@ def _places():
         r = rr[ri]["r_mid"]
         # If the deck stack resolves, use the deck's own floor radius.
         try:
-            decks = it.decks_in_ring(schema, profile, sec, ri) or []
+            decks = it.decks_in_ring(schema, profile, sec, ri,
+                                     z_m=q.get("z_m")) or []
             lab = sorted({p["deck"] for p in dr.PLACES
                           if p.get("sector") == sec and p.get("ring") == ri})
             di = (q["deck"] if lab and max(lab) < len(decks)

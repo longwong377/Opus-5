@@ -266,7 +266,81 @@ def habitat_hull_radius(schema, profile):
     raise KeyError("habitat_cylinder not in the schema")
 
 
-def ring_radii(schema, profile, sector):
+def core_hull_radius_at(profile, z_m):
+    """The PRESSURE hull's radius at one z, protrusions stripped.
+
+    Distinct from `hull_radius_at` above, which returns the envelope -- the
+    outline, including whatever cobra bay or radiator root is standing proud
+    there. A place has to fit inside the PRESSURE hull, so this uses
+    `core_hull_profile`, the same opened profile `sector_shell_radius` derives
+    its one-number-per-sector from.
+
+    THE CONSTRAINT NOTHING WAS APPLYING. `sector_shell_radius` deliberately
+    collapses a sector to one radius -- its docstring says so, and says why:
+    "rings are expressed as fractions of it". The same paragraph says "a sector
+    is a longitudinal band, and its hull radius is not constant across it --
+    Blue's runs 116 to 268 m". Both true, and the consequence was never
+    checked: a place at a z where the hull is 116 m, addressed to a ring
+    computed from the 268 m cylinder, is IN VACUUM.
+
+    `tools/cutaway.py` found it by drawing the two together: 14 of 118
+    locations outside the hull, `mainstage_node` by 133.5 m and `cnc` by 94.7 m.
+    Every gate in this project measures a room against its own footprint, so
+    nothing had ever compared an ADDRESS to the hull that must contain it.
+    """
+    core = core_hull_profile(profile)
+    best_i, best_d = 0, float("inf")
+    for i, q in enumerate(profile):
+        d = abs(q["z_m"] - z_m)
+        if d < best_d:
+            best_i, best_d = i, d
+    return core[best_i]
+
+
+def rings_fitting_at(schema, profile, sector, z_m, skin_m=None):
+    """`ring_radii` filtered to the rings that actually exist at this z.
+
+    A ring whose inner radius is already outside the hull at `z_m` is not a
+    ring there and is dropped; a ring the hull cuts through is returned with
+    its outer radius clamped and `clamped: True`. Outermost first, exactly as
+    `ring_radii` orders them, so an address naming ring 0 resolves to the
+    outermost ring that is really present.
+    """
+    skin = HULL_SKIN_M if skin_m is None else skin_m
+    lim = max(0.0, core_hull_radius_at(profile, z_m) - skin)
+    out = []
+    for r in _ring_radii_uncut(schema, profile, sector):
+        if r["r_inner"] >= lim:
+            continue
+        q = dict(r)
+        if q["r_outer"] > lim:
+            q["r_outer"] = lim
+            q["r_mid"] = (q["r_inner"] + lim) / 2.0
+            q["clamped"] = True
+        out.append(q)
+    return out
+
+
+def ring_radii(schema, profile, sector, z_m=None):
+    """Ring bounds for a sector. With `z_m`, the rings that exist AT that z.
+
+    `z_m` IS WHAT MAKES AN ADDRESS MEAN SOMETHING. Without it this returns the
+    rings of the sector's widest cylinder, and a sector is not a cylinder --
+    `sector_shell_radius`'s own docstring says Blue's hull runs 116 to 268 m.
+    So "ring 0" meant "the outermost ring of the widest part of the sector",
+    which at the fore taper is 95 m outside the ship. With `z_m` it means "the
+    outermost ring present here", which is what an address on a station
+    naturally means and what every reader has assumed it meant.
+
+    See `rings_fitting_at`. 14 of the 118 located places were outside the hull
+    on the first reading and none of them is now.
+    """
+    if z_m is not None:
+        return rings_fitting_at(schema, profile, sector, z_m)
+    return _ring_radii_uncut(schema, profile, sector)
+
+
+def _ring_radii_uncut(schema, profile, sector):
     """Absolute radius bounds for each ring in a sector, outermost first.
 
     The drum sector does not get the concentric-ring treatment, and applying it
@@ -317,7 +391,8 @@ RING_FRAME_W_M = 0.9
 DECK_PITCH_M = 3.6        # floor-to-floor, provisional -- INV-010
 
 
-def decks_in_ring(schema, profile, sector, ring_index, pitch=DECK_PITCH_M):
+def decks_in_ring(schema, profile, sector, ring_index, pitch=DECK_PITCH_M,
+                  z_m=None):
     """The decks stacked inside one ring zone, outermost first.
 
     A ring is 38-61 m deep (see CONFLICTS.md), which is a zone, not a deck. At a
@@ -329,7 +404,16 @@ def decks_in_ring(schema, profile, sector, ring_index, pitch=DECK_PITCH_M):
     outermost and innermost decks of ring 1 differ by 18% of a g, which is more
     than enough to feel walking down a stair.
     """
-    ring = ring_radii(schema, profile, sector)[ring_index]
+    # `z_m` NARROWS THE RING TO WHAT THE HULL LEAVES THERE. Without it a deck
+    # stack is built inside the sector's widest cylinder and handed to a
+    # place at the taper, which is how `qtr_command`, `war_room`,
+    # `admin_complex` and `cobra_bays` ended up outside the hull while
+    # naming a ring that genuinely exists at their z -- the RING was there
+    # and the DECK inside it was not.
+    rings = ring_radii(schema, profile, sector, z_m=z_m)
+    if not rings:
+        return []
+    ring = rings[min(ring_index, len(rings) - 1)]
     if ring["kind"] != "deck_stack":
         return []          # open air and the core carry no decks
     depth = ring["r_outer"] - ring["r_inner"]

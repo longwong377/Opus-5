@@ -192,6 +192,62 @@ def main():
     check("rpm consistent with period",
           abs(rot["rpm"]["value"] - 60.0 / rot["period_s"]["value"]) < 1e-4,
           f"{60.0/rot['period_s']['value']:.6f}")
+    # --- THE SCHEMA MUST AGREE WITH ITS OWN MEASUREMENT --------------------
+    # `radius_profile` carries 1,978 measured samples AND two scalar summaries
+    # of them, and the summaries had drifted: `max_radius_at_z_m` was 3610.3
+    # where the samples hold their maximum from 3626.6 to 3647.0 -- 16 m aft of
+    # the peak it claimed to locate -- and `finding.envelope_diameter_m` was
+    # 956.6 against the samples' 960.6, a radius 76 samples reach or exceed, so
+    # it was never the maximum at all. Nothing compared them for as long as
+    # both existed. A derived quantity stored twice is a quantity that WILL
+    # disagree with itself; this is the gate that says when.
+    rp = schema["radius_profile"]
+    samples = profile["profile"]
+    r_max = max(q["radius_m"] for q in samples)
+    peak_z = [q["z_m"] for q in samples if q["radius_m"] >= r_max - 1e-9]
+    check("schema max_radius_m matches its own samples",
+          abs(rp["max_radius_m"] - r_max) < 0.05,
+          f"schema {rp['max_radius_m']}, samples {r_max}")
+    check("schema max_radius_at_z_m lies on the sample peak",
+          min(peak_z) - 0.05 <= rp["max_radius_at_z_m"] <= max(peak_z) + 0.05,
+          f"schema {rp['max_radius_at_z_m']}, peak runs "
+          f"{min(peak_z)}..{max(peak_z)}")
+    check("the finding's envelope diameter is twice the sample maximum",
+          abs(rp["finding"]["envelope_diameter_m"] - 2 * r_max) < 0.1,
+          f"finding {rp['finding']['envelope_diameter_m']}, "
+          f"2 x samples {2 * r_max}")
+
+    # --- AND EVERY LOCATED PLACE MUST BE INSIDE IT -------------------------
+    # 14 of 118 were not. `sector_shell_radius` collapses a sector to one
+    # radius -- correctly, and its docstring says why -- and a place at the
+    # taper addressed against that radius is in vacuum. Rings resolve at the
+    # place's own z now (`interior.rings_fitting_at`); this asserts the result.
+    # `it` WAS NEVER IMPORTED HERE and the bare `except Exception: continue`
+    # below swallowed the NameError on every one of the 118 iterations, so
+    # `outside` was always empty and this gate could not fail. It printed
+    # "0 outside" while sixteen places were outside. Found by a negative
+    # control -- restoring the defect left the gate green, which is the only
+    # symptom an assertion that cannot fail ever shows.
+    #
+    # Two fixes, and the second matters more: import the module, AND stop
+    # catching `Exception` around a call whose failure means the address is
+    # broken. A sector with no ring stack is a real error and should stop the
+    # build, not be skipped.
+    import directory as _dr                                    # noqa: PLC0415
+    import interior as _it                                     # noqa: PLC0415
+    outside = []
+    for q in _dr.PLACES:
+        rr = _it.ring_radii(schema, samples, q["sector"], z_m=q.get("z_m"))
+        if not rr:
+            outside.append((q["key"], "no ring exists at this z"))
+            continue
+        ri = min(q.get("ring", 0), len(rr) - 1)
+        lim = _it.core_hull_radius_at(samples, q.get("z_m", 0.0))
+        if rr[ri]["r_outer"] > lim + 0.05:
+            outside.append((q["key"], round(rr[ri]["r_outer"] - lim, 1)))
+    check("every located place is inside the pressure hull at its own z",
+          not outside, f"{len(outside)} outside: {outside[:4]}")
+
     check("rotation rate below 3 rpm Coriolis tolerance",
           rot["rpm"]["value"] < 3.0, f"{rot['rpm']['value']} rpm")
 

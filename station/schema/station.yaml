@@ -317,7 +317,14 @@ radius_profile:
   samples: 1978
   spacing_m: 4.07
   max_radius_m: 480.3
-  max_radius_at_z_m: 3610.3
+  # 3626.6, NOT 3610.3. The samples hold their maximum of 480.3 m over six
+  # consecutive points from z=3626.6 to z=3647.0, and 3610.3 is not in that run
+  # -- it sat 16 m aft of the peak it claimed to locate. A summary of a
+  # measurement that disagrees with the measurement is a second copy, and this
+  # project has been bitten by that twice before. `station/validate.py` now
+  # asserts both scalars against `radius_profile.json` so they cannot drift
+  # apart again. Found by `tools/cutaway.py`, which drew them together.
+  max_radius_at_z_m: 3626.6
   extraction:
     method: "Horizontal run-length filter (MIN_RUN=5 px) strips the ~26 label leader
              lines, which per-column outlier rejection cannot -- across wide stretches
@@ -335,8 +342,13 @@ radius_profile:
            the envelope includes protrusions the pressure-hull figures exclude."
   finding:
     widest_structure: aft_hull_block
-    envelope_diameter_m: 956.6
-    at_z_m: 3600
+    # 960.6 = 2 x 480.3, the samples' own maximum. 956.6 implies a radius of
+    # 478.3 m, which 76 samples reach or exceed across z=3602.2 to z=3907.5 --
+    # so it was never the maximum, it was a value somewhere on the broad
+    # plateau. The FINDING this block records is unaffected and still stands:
+    # the widest structure is the aft hull block, not the Red Section.
+    envelope_diameter_m: 960.6
+    at_z_m: 3626.6
     note: "The widest part of the station is the aft hull block, which Miller's table
            does not name at all. Larger than Red, Green or Blue. Any assumption that
            the Red Section is the station's widest point is wrong."
