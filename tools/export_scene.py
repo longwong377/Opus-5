@@ -2422,113 +2422,14 @@ def to_spans(groups, n_tris):
 # cases, and had NEVER BEEN RENDERED FROM THE INSIDE. Layer 4's whole method is
 # to look at a frame and measure it, and there was no frame to look at.
 #
-# The entry points are NOT uniform and were established by reading each
-# module's own _selftest, which is its canonical usage. They are recorded here
-# so nobody has to rediscover them a third time -- test_materials_layer3 had
-# already found them once for the coverage gate. Each takes (schema, profile,
-# place) and returns whatever its module returns; `to_spans` normalises.
-#
-# `signage` is absent deliberately: it builds a sign board, which is a prop
-# that stands in other rooms rather than a room you can stand in.
-BESPOKE_GEOMETRY = {
-    "alien_sector": lambda s, p, q: __import__("alien_sector").gallery(s, p),
-    "command_control":
-        lambda s, p, q: __import__("command_control").command_control(),
-    "council_chamber":
-        lambda s, p, q: __import__("council_chamber").council_chamber(),
-    "customs": lambda s, p, q: __import__("customs").hall(s, p),
-    "docking_bay": lambda s, p, q: __import__("docking_bay").docking_bay(
-        0, s, p),
-    "hospitality": lambda s, p, q: __import__("hospitality").room(),
-    # The bay a place lands in is the first one; plant.bays() partitions the
-    # deck by arc and every bay is the same construction.
-    "plant": lambda s, p, q: __import__("plant").plant_bay(
-        s, p, __import__("plant").bays(s, p)[0], 10.0),
-    # THE CLASS COMES FROM THE PLACE. A lurker's berth and a command cabin are
-    # different geometry, and rendering one class seven times would be seven
-    # frames of one room. See QUARTERS_CLASS.
-    "quarters": lambda s, p, q: __import__("quarters").run(
-        s, p, __import__("quarters").class_by_key(QUARTERS_CLASS[q["key"]])),
-    "zocalo": lambda s, p, q: __import__("zocalo").zocalo_run(
-        3, cap_ends=True),
-}
-
-
-# Directory key -> quarters class key. Four of the seven differ, and they
-# differ for a reason rather than by accident: the directory names a PLACE ON
-# THE STATION and quarters.py names a HOUSING CLASS, and the ambassadorial
-# suites and the League delegations are two places drawing on one class. A
-# `key.removeprefix("qtr_")` would have produced three KeyErrors and no hint
-# that the two vocabularies are different things.
-#
-# Asserted against both vocabularies in the self-test, so a new place or a
-# renamed class fails here rather than rendering the wrong room.
-QUARTERS_CLASS = {
-    "qtr_command": "command",
-    "qtr_personnel": "personnel",
-    "qtr_civilian": "civilian",
-    "qtr_transient": "transient",
-    "ambassadorial_suites": "diplomatic",
-    "league_delegations": "diplomatic",
-    "alien_resident_qtr": "alien_resident",
-}
-
-
-# Modules that build in STATION coordinates rather than in a local Y-up frame,
-# and therefore have to be unrolled before a person can be stood in them.
-#
-# Eight of the nine interior modules build a room the way you would model one:
-# origin at the floor, +Y up, walk down +Z. `plant` does not, and it is right
-# not to -- it builds an arc of the outer deck stack in place, at radius 447 to
-# 471 m, because its whole subject is a bay that spans five decks of a spinning
-# ring and it has to know where those decks are.
-#
-# The consequence for a RENDER is that "up" there is radially INWARD, toward
-# the spin axis, and every other part of this shot -- the camera's up vector,
-# `open_standpoint`'s eye height, a spot light's downward aim -- assumes +Y.
-# The first plant frame is what showed it: the camera stood in a tangential
-# direction and looked at two tanks side-on from outside them.
-UNROLL = {"plant"}
-
-# Group-name fragments whose triangles are THE SURFACE PEOPLE STAND ON, for
-# modules where that is not the bottom of the model.
-#
-# `open_standpoint` finds candidate floors by histogramming near-horizontal
-# triangle area, and in a plant bay that picks the tank-farm floor and the tank
-# tops -- both far larger than the walkway. But plant.py's own docstring calls
-# the catwalk "the walkable skeleton", and the module knows which group it is.
-# Asking beats inferring, exactly as `light_` tagging beats guessing which
-# material glows.
-WALK_SURFACE = {"plant": ("plant_catwalk",)}
-
-
-def unroll_to_local(verts):
-    """Station coordinates -> a standing frame, by unrolling the cylinder.
-
-    +X is along the arc, +Y is UP (which is radially inward, because down is
-    outward under spin), +Z is along the station's axis. The mid-point of the
-    geometry becomes the origin.
-
-    Unrolling rather than projecting, because the arc is what a walker
-    experiences: a plant bay spans about 20 degrees at 460 m, which is 160 m of
-    catwalk and 8 m of sagitta. Flattening it makes the catwalk straight, which
-    is what it feels like at 1.7 g, and costs nothing this shot can see.
-    """
-    import numpy as np
-
-    a = np.asarray(verts, dtype=np.float64)
-    r = np.hypot(a[:, 0], a[:, 1])
-    ang = np.arctan2(a[:, 1], a[:, 0])
-    # Unwrap about the mean angle so a bay straddling +/-pi does not tear.
-    mid = np.arctan2(np.sin(ang).mean(), np.cos(ang).mean())
-    d = (ang - mid + math.pi) % (2 * math.pi) - math.pi
-    r_ref = float(r.max())              # the floor: the largest radius is down
-    x = d * r_ref
-    y = r_ref - r
-    z = a[:, 2] - a[:, 2].mean()
-    return [(float(x[i]), float(y[i]), float(z[i])) for i in range(len(a))]
-
-
+# THE REGISTRY MOVED to `station/bespoke.py` so that `station/deck.py` can
+# assemble a deck out of the same builders this shot renders a room from,
+# instead of the two drifting apart. Imported rather than re-declared:
+# `BESPOKE_GEOMETRY`, `QUARTERS_CLASS`, `UNROLL`, `WALK_SURFACE` and
+# `unroll_to_local` are the same objects this file used to define, and every
+# use site below is unchanged.
+from bespoke import (BESPOKE_GEOMETRY, QUARTERS_CLASS,   # noqa: E402,F401
+                     UNROLL, WALK_SURFACE, unroll_to_local)
 def interior_geometry(room):
     """(verts, tris, spans, extent) for a room key, or the corridor kit.
 

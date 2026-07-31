@@ -27,6 +27,7 @@ import sys
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 
+import bespoke as BSP                                           # noqa: E402
 import collision as C                                           # noqa: E402
 import directory as dr                                          # noqa: E402
 import interior as it                                           # noqa: E402
@@ -633,6 +634,32 @@ def build_deck(schema, profile, sector, ring, deck, with_rooms=True,
         stats["rooms"] += 1
         stats["room_tris"] += len(rt)
 
+        # A MODULE-OWNED PLACE ASSEMBLED GENERICALLY IS NOW SAID OUT LOUD.
+        # `build_deck` has always called `rooms.build` unconditionally and
+        # never looked at `place["module"]`, so 39 of the 106 ring-deck places
+        # are owned by a bespoke module and assembled as generic bays -- and
+        # nothing anywhere reported it, so every craft score taken on an
+        # assembled deck has been scoring the generic bay without saying so.
+        #
+        # NOT SWAPPED, and the measurement is why. `station/bespoke.compare`
+        # builds both for all 25 places that have a builder: generic 390,432
+        # triangles against bespoke 210,702, **x0.54**. The bespoke modules are
+        # SHELLS -- `rooms.build` runs `dressing` and `populace` inside itself,
+        # so a generic bay arrives furnished and inhabited, while
+        # `docking_bay.docking_bay` is 3,740 triangles of bay and nothing in
+        # it against the generic 38,728. Swapping wholesale would take 46% of
+        # the detail OFF the station.
+        #
+        # The right answer is bespoke shell PLUS generic dressing, and it is
+        # the next increment. Until then this records the substitution with the
+        # reason, because a defect nothing prints is a defect nobody fixes.
+        mod = q.get("module")
+        if mod:
+            stats.setdefault("generic_for_module", []).append(
+                (q["key"], mod, len(rt),
+                 "has a builder" if mod in BSP.BESPOKE_GEOMETRY
+                 else "no builder in bespoke.BESPOKE_GEOMETRY"))
+
         # THE PEOPLE, IN THE RING'S FRAME AND UNDER THE NAME THE ENGINE SEES.
         # `build_deck` prefixes a room's groups with its key, so the mesh the
         # runtime finds is `<key>__npc_standing_3`; the actor record has to
@@ -951,6 +978,34 @@ def _selftest():
     print(f"  signage: {fs.get('sign_tris', 0):,} triangles over "
           f"{len(lettering)} lettering spans; {len(all_open)} flush-decal "
           f"edges, {len(s_open)} in the solid")
+
+    # --- WHOSE GEOMETRY IS A PLAYER STANDING IN --------------------------
+    # `build_deck` calls `rooms.build` for every room and has never consulted
+    # `place["module"]`. That is a real substitution and it was SILENT, which
+    # is the part that mattered: every craft score taken on an assembled deck
+    # has been scoring a generic bay wherever a bespoke module owns the place,
+    # and no output anywhere said so.
+    #
+    # This does not assert that the substitution is absent -- it is present, on
+    # purpose, because `bespoke.compare` measures the swap as x0.54 and a
+    # wholesale swap would take 46% of the station's detail off. It asserts the
+    # substitution is REPORTED, with a module name and a reason, so it cannot
+    # go quiet again. A defect nothing prints is a defect nobody fixes.
+    gen = fs.get("generic_for_module", [])
+    owned = [q for q in here_all if q.get("module")]
+    check("every module-owned place on this deck is reported as generic",
+          len(gen) == len(owned),
+          f"{len(gen)} reported against {len(owned)} module-owned places")
+    check("...each with a module name and a stated reason",
+          all(m and w for _k, m, _n, w in gen), str(gen[:2]))
+    check("...and the reason distinguishes 'has a builder' from 'has none'",
+          all((w == "has a builder") == (m in BSP.BESPOKE_GEOMETRY)
+              for _k, m, _n, w in gen),
+          str([(m, w) for _k, m, _n, w in gen]))
+    withb = [r for r in gen if r[3] == "has a builder"]
+    print(f"  module-owned: {len(gen)} assembled generically, "
+          f"{len(withb)} of them have an unused builder "
+          f"({', '.join(sorted({r[1] for r in withb})) or 'none'})")
     deepest = max((fv[i][2] for lo_, hi_ in fs.get("vestibule_spans", ())
                    for tri in ft[lo_:hi_] for i in tri), default=wall_z)
     check("no vestibule stands proud of the corridor wall",
@@ -991,6 +1046,13 @@ def _selftest():
     return 1 if fail else 0
 
 
+def _modcount(rows):
+    out = {}
+    for _k, mod, _n, _why in rows:
+        out[mod] = out.get(mod, 0) + 1
+    return out
+
+
 def _sweep():
     """Assemble every deck on the station, and say what does not.
 
@@ -1003,7 +1065,7 @@ def _sweep():
     schema, profile = it.load()
     decks = sorted({(q["sector"], q["ring"], q["deck"]) for q in dr.PLACES})
     ok, failed, deferred, holes, unopened, served = [], [], [], [], [], 0
-    drum, dw_lod0 = [], 0
+    drum, dw_lod0, generic = [], 0, []
     for s, r, dk in decks:
         if (s, r) in NOT_RING_DECKS:
             # NOT DEFERRED ANY MORE, COUNTED. The drum is a different KIND of
@@ -1027,6 +1089,11 @@ def _sweep():
             continue
         if C.floor_holes(v, t, m):
             holes.append((s, r, dk))
+        try:
+            _v2, _t2, _g2, st2 = build_deck(schema, profile, s, r, dk)
+            generic += st2.get("generic_for_module", [])
+        except Exception:                                   # noqa: BLE001
+            pass
         unopened += [(s, r, dk) + u for u in m["unopened"]]
         served += len(m["rooms"]) + len(m["unopened"])
         ok.append((s, r, dk, len(m["rooms"]), len(t)))
@@ -1046,6 +1113,18 @@ def _sweep():
     for u in unopened[:10]:
         print(f"     no door: {u}")
     print(f"  {len(holes)} decks with a hole in the floor  {holes[:5]}")
+    # WHOSE GEOMETRY A PLAYER IS ACTUALLY STANDING IN. `build_deck` calls
+    # `rooms.build` for every room and never consults `place["module"]`, so a
+    # module-owned place is assembled as a generic bay -- and nothing said so
+    # until now, which meant every craft score taken on an assembled deck was
+    # scoring the generic bay silently. Printed here because this is the only
+    # gate that asks a whole-station question.
+    if generic:
+        withb = sum(1 for r in generic if r[3] == "has a builder")
+        print(f"  {len(generic)} module-owned places assembled as GENERIC bays "
+              f"({withb} of them have a bespoke builder that was not used)")
+        for m, n in sorted(_modcount(generic).items(), key=lambda kv: -kv[1]):
+            print(f"     {n:3d}x {m}")
     # THE HEADLINE USED TO SUM `ok` ALONE AND CALL THAT THE STATION. It is the
     # ring decks only -- the drum takes the `continue` above and never reaches
     # this sum -- so the number printed 75,642 when the walkable station is
