@@ -299,7 +299,8 @@ def analyse(verts, tris, min_facet_m=0.0, crease_deg=None):
     crease_deg = CREASE_DEG if crease_deg is None else crease_deg
     if not tris:
         return dict(tris=0, area=0.0, line_m=0.0, lam=0.0, facets=0,
-                    octaves=0.0, normals=0.0, proj_ratio=4.0, size_m=0.0)
+                    octaves=0.0, normals=0.0, facet_max_m=0.0,
+                    facet_p50_m=0.0, proj_ratio=4.0, size_m=0.0)
 
     widx, _nv = _weld(verts)
     areas, normals, total = _tri_geometry(verts, tris)
@@ -330,6 +331,27 @@ def analyse(verts, tris, min_facet_m=0.0, crease_deg=None):
         facet_area[r] = facet_area.get(r, 0.0) + areas[fi]
     facet_of = [dsu.find(fi) for fi in range(len(tris))]
     facet_extent = {k: math.sqrt(a) for k, a in facet_area.items()}
+
+    # HOW BIG IS THE BIGGEST UNBROKEN PIECE. `lam` says how much line-work a
+    # surface carries; it does NOT say whether that line-work is spread over
+    # the surface or bunched into a trim ladder with a flat field beside it. A
+    # wall with a dense mullion run and one 4 m unbroken panel scores well on
+    # `lam` and is exactly what `docs/engine-4a-office.png` shows. So the facet
+    # sizes come out too -- see THE SHELL GATE at the foot of this file.
+    #
+    # SUBDIVISION CANNOT MOVE THESE EITHER, for the same reason it cannot move
+    # `lam`: a coplanar split has a zero dihedral, so the two halves are unioned
+    # back into one facet. The only way to shrink a facet is a real crease, and
+    # a real crease is a reveal, a joint or a step -- construction, not
+    # tessellation. `_selftest` asserts it against `_subdivided_box`.
+    _fx = sorted(facet_extent.values())                     # small -> large
+    facet_max = _fx[-1] if _fx else 0.0
+    _acc, facet_p50 = 0.0, facet_max
+    for k in sorted(facet_area, key=lambda q: facet_extent[q]):
+        _acc += facet_area[k]
+        if _acc >= 0.5 * total:
+            facet_p50 = facet_extent[k]
+            break
 
     # --- lines --------------------------------------------------------------
     # A welded position pair; its length is the same however many faces meet.
@@ -409,6 +431,7 @@ def analyse(verts, tris, min_facet_m=0.0, crease_deg=None):
     return dict(tris=len(tris), area=total, line_m=line_m,
                 lam=line_m / total if total > 0 else 0.0,
                 facets=len(facet_area), octaves=octaves, normals=n_normals,
+                facet_max_m=facet_max, facet_p50_m=facet_p50,
                 proj_ratio=(total / proj) if proj > 1e-12 else 4.0,
                 size_m=size)
 
@@ -1471,6 +1494,83 @@ def _selftest(verbose=True):
           lift > 2.0, f"{lift:.2f}x over {len(live)} locations")
     print(f"  machinery line density, articulated / boxed, over "
           f"{len(live)} locations: {lift:.2f}x")
+    # --- THE SHELL GATE, INV-210, AND ITS NEGATIVE CONTROLS ---------------
+    # The machinery gate above measures the objects in the room; this one
+    # measures the room. Its control is exact in the same way `--no-apertures`
+    # is for the hull: `rooms.articulate(plates=False)` rebuilds the whole
+    # pre-INV-210 shell, and the first assertion here is that the rebuild IS
+    # the old shell rather than an approximation of it.
+    shell_keys = ["war_room", "cargo_bays", "fabrication", "transfer_systems"]
+    kit_std = kit_surface_floor()
+    live_s = shell_rows(schema, profile, keys=shell_keys)
+    old_s = []
+    for r in live_s:
+        p = _D.by_key(r["key"])
+        v, t, g = _R.build(schema, profile, p, plates=False)
+        bw, bl = _R.bay_span_m(p)
+        w_f, l_f, _rr = _R.room_extent_m(schema, profile, p)
+        same = kit_like_floor(min(w_f, bw), min(l_f, bl), _R.ceiling_m(p))
+        surfs = {}
+        for surf, tris in shell_split(v, t, g).items():
+            a = analyse(v, tris, min_facet_m=0.0)
+            surfs[surf] = {
+                "lam_x": a["lam"] / same[surf]["lam"],
+                "facet_x": same[surf]["facet_p50_m"] / a["facet_p50_m"],
+                "facet_p50": a["facet_p50_m"],
+            }
+        old_s.append({"key": r["key"], "surfaces": surfs,
+                      "passes": all(s["lam_x"] >= 1.0 and s["facet_x"] >= 1.0
+                                    for s in surfs.values())})
+    check("the shell gate FAILS on the pre-INV-210 shell",
+          all(not r["passes"] for r in old_s),
+          f"{sum(1 for r in old_s if r['passes'])} of {len(old_s)} still pass")
+    check("...and it is the WALL and the DECK that fail there, which is what "
+          "the frames show",
+          all(not r["surfaces"]["wall"]["passes"] if "passes" in
+              r["surfaces"]["wall"] else r["surfaces"]["wall"]["facet_x"] < 1.0
+              for r in old_s)
+          and all(r["surfaces"]["deck"]["facet_x"] < 1.0 for r in old_s),
+          str([(r["key"], round(r["surfaces"]["wall"]["facet_p50"], 2))
+               for r in old_s]))
+    check("...and passes on the shell as shipped",
+          all(r["passes"] for r in live_s),
+          f"{[(r['key'], round(r['worst'], 2)) for r in live_s if not r['passes']]}")
+    shrink = (sum(r["surfaces"]["wall"]["facet_p50"] for r in old_s)
+              / max(sum(r["surfaces"]["wall"]["facet_p50"]
+                        for r in live_s), 1e-9))
+    check("the plated wall is broken into far smaller pieces than the boxed "
+          "one", shrink > 3.0, f"{shrink:.2f}x")
+    print(f"  wall facet p50, boxed / plated, over {len(live_s)} locations: "
+          f"{shrink:.2f}x smaller")
+    # AND THE FLOOR CANNOT BE LOWERED BY EDITING THE KIT. The corridor's own
+    # measured wall facet has to stay inside the plate module `PROVISIONAL`
+    # declares, so widening the kit's plates to make the rooms pass would have
+    # to move a number sourced to `grey level 1.webp`.
+    import interior_kit as _ik                                  # noqa: PLC0415
+    check("the corridor's measured wall facet is bounded by its own declared "
+          "plate module",
+          kit_std["wall"]["facet_p50_m"] <= _ik.PROVISIONAL["wall_plate_l_m"],
+          f"{kit_std['wall']['facet_p50_m']:.3f} m against a declared "
+          f"{_ik.PROVISIONAL['wall_plate_l_m']:.3f} m plate")
+    # SUBDIVISION CANNOT MOVE THE FACET EITHER -- the property that stops the
+    # gate being answered with a tessellation flag instead of construction.
+    # `subd` is `plain` split 8 x 8 per face, from section 1 above, so this is
+    # the same box measured twice rather than two boxes compared -- which is
+    # what the first draft of this check did, and it duly reported a 4 x 3 x 5
+    # box as "the subdivision of" a 10 x 3 x 10 one and failed.
+    check("a coplanar split does not move the facet size",
+          abs(subd["facet_p50_m"] - plain["facet_p50_m"]) < 1e-9
+          and abs(subd["facet_max_m"] - plain["facet_max_m"]) < 1e-9,
+          f"plain p50 {plain['facet_p50_m']:.4f} / max "
+          f"{plain['facet_max_m']:.4f} vs subdivided "
+          f"{subd['facet_p50_m']:.4f} / {subd['facet_max_m']:.4f}")
+    relief_facet = analyse(*_relief_box((0, 0, 0), (10, 3, 10), 0.5,
+                                        0.06))["facet_p50_m"]
+    probe("a REAL crease DOES move the facet -- so the check above can fire",
+          relief_facet < plain["facet_p50_m"] * 0.5,
+          f"relief at 0.5 m pitch reads {relief_facet:.3f} m against the "
+          f"plain box's {plain['facet_p50_m']:.3f} m")
+
     check("no location is measured with zero surface area",
           all(r["area"] > 0 for r in rows),
           str([r["key"] for r in rows if r["area"] <= 0][:4]))
@@ -1699,9 +1799,314 @@ def _print_machinery(rows):
     return len(bad)
 
 
+# ---------------------------------------------------------------------------
+# THE SHELL GATE -- the mirror of the machinery gate, and the half BOTH of the
+# gates above are blind to
+# ---------------------------------------------------------------------------
+# `report()` scores a WHOLE LOCATION; `machinery_rows()` scores the objects in
+# it against the shell they stand in front of. Between them they left the
+# largest surface in the station -- the shell itself -- measured only inside an
+# average. Measured here, before anything was changed:
+#
+#     location      surface   area m2   lam    facet p50   the frame
+#     war_room      wall        306    5.48      4.33 m    one pale panel
+#     cargo_bays    wall        671    3.48      6.43 m    the same, bigger
+#     fabrication   wall      1,251    2.98      9.51 m    the same, bigger still
+#     the kit       wall        664    3.62      0.99 m    plate courses
+#
+# `docs/shell/before-office-half.png` is what those numbers look like: a wall
+# divided by four dark lines into 2.5 x 2 m rectangles, and inside each
+# rectangle nothing at all. `docs/aaa-scorecard.json` had already written the
+# words -- *"one unbroken pale panel across 4 m with a scribed line and no
+# joint"* -- and no gate in this repository could produce them as a number.
+#
+# WHY `lam` ALONE CANNOT SAY IT, which is the reusable half. Line density is
+# metres of line over square metres of surface, and it does not care WHERE the
+# line is. `rooms.articulate` runs a skirt, a dado, a rail, a cornice, six
+# mullions a bay and four conduits down every wall on the station: continuous
+# elements, enormous line, negligible area. They carry the wall's `lam` to
+# x1.51 of the corridor's while the field between them stays one 4 m rectangle.
+# The average hid the machinery in `report()`; here the TRIM hides the FIELD.
+# Same defect, one level further in.
+#
+# So the shell is scored on two numbers and both are floored by the SAME
+# reference:
+#
+#     lam        >=  the corridor kit's own, surface for surface
+#     facet p50  <=  the corridor kit's own, surface for surface
+#
+# in words: *a room's wall may be neither less line-worked NOR more coarsely
+# divided than the corridor wall outside its door.* The second is the one that
+# fails today, and it is the one a player sees.
+#
+# THE FLOOR IS THE CORRIDOR KIT, and it is derived rather than chosen for three
+# reasons. It is measured: every proportion in `interior_kit.PROVISIONAL`'s
+# wall build-up is read off `grey level 1.webp`, the authority-1 frame that
+# defines 1.00 for this project, and `docs/reference-values.md` §1 measures the
+# same wall's tonal ladder rung by rung. It is the same station: `articulate()`
+# already argues in its own docstring that "there is no reason a bar, a
+# quarters unit or a customs hall should be articulated differently -- they are
+# the same station, built by the same people". And it cannot go stale, because
+# it is recomputed from the kit on every run rather than written down here.
+#
+# IT IS A FLOOR AND NOT A TARGET. The kit is itself at 29% of what
+# `measure_reference()` reads off a Babylon 5 set (the `%show` column in
+# `report()`), so a room that exactly matches the corridor is not finished --
+# it has merely stopped being coarser than the surface it opens onto.
+#
+# AND THE FLOOR CANNOT BE LOWERED BY EDITING THE KIT. `_selftest` asserts the
+# kit's own measured wall facet against `PROVISIONAL["wall_plate_l_m"]`, which
+# is the sourced plate module; widening the kit's plates to make the rooms pass
+# would have to move a number that traces to the frame.
+#
+# WHAT IS PRINTED AND NOT GATED: `facet max`, `normals`, `octaves`. Same reason
+# as everywhere else in this file -- their floors would have to be picked.
+# `facet max` is the single biggest unbroken piece and it is the more dramatic
+# number, but one legitimately large service panel would fail a location on it,
+# whereas `facet p50` says *half this surface is in pieces at least this big*,
+# which is what a frame shows and what the complaint was about.
+
+# A room's shell, split into the three surfaces a player can actually see.
+# The suffixes are `rooms._TRIM_SUFFIXES` and `rooms._SHELL_SUFFIXES` sorted
+# onto the surface each element belongs to -- a mullion is part of the wall it
+# stands on, a soffit tee part of the ceiling it divides -- because the
+# question "is this wall flat" is about the wall AND everything applied to it.
+# Scoring the bare `_wall` box alone would be scoring a box and would say
+# nothing about whether the room was articulated.
+SHELL_SURFACES = {
+    "deck": ("_deck", "_deck_joint"),
+    "soffit": ("_soffit", "_soffit_tee"),
+    "wall": ("_wall", "_rib", "_panel", "_mullion", "_skirt", "_dado",
+             "_rail", "_cornice", "_conduit"),
+}
+# The corridor kit's own tags, surface for surface. These are exact names, not
+# suffixes: `interior_kit` tags by piece rather than by suffix.
+KIT_SURFACES = {
+    "deck": ("deck_panel", "deck_grid"),
+    "soffit": ("ceiling_slab",),
+    "wall": ("wall_panel", "wall_assembly", "rail_band", "skirt",
+             "wall_reveal", "pilaster", "portal_frame"),
+}
+_KIT_FLOOR = {}
+
+
+def kit_surface_floor(length_m=21.6, force=False):
+    """Measure the corridor kit's deck, soffit and wall. Cached.
+
+    The kit is built here rather than imported as numbers, so a change to
+    `interior_kit` moves the floor with it and the two cannot drift -- the same
+    reason `collision.corridor_profile` ray-casts the kit instead of writing
+    its section down.
+    """
+    if _KIT_FLOOR and not force:
+        return _KIT_FLOOR
+    import interior_kit as ik                                  # noqa: PLC0415
+    ik.reset_tags()
+    v, t = ik.corridor_section(length_m)
+    spans = ik.tagged_spans(t)
+    own = _owner_names(len(t), spans)
+    parts = {k: [] for k in KIT_SURFACES}
+    for i, tri in enumerate(t):
+        n = own[i]
+        for surf, names in KIT_SURFACES.items():
+            if n in names:
+                parts[surf].append(tri)
+                break
+    _KIT_FLOOR.clear()
+    for surf, tris in parts.items():
+        _KIT_FLOOR[surf] = analyse(v, tris, min_facet_m=0.0)
+    return _KIT_FLOOR
+
+
+# THE FLOOR HAS TO BE SIZE-MATCHED, AND THAT IS A MEASURED FINDING RATHER THAN
+# A CONCESSION. `analyse` counts hidden surface -- the module docstring says so
+# under WHAT THIS MEASURE IS NOT HONEST ABOUT -- and a plated wall's substrate
+# is hidden behind its own plates. The substrate is ONE slab however long the
+# run is, so its facet grows with the run while the plates do not. Measured on
+# `interior_kit.wall_assembly` itself, the same construction at four sizes:
+#
+#     wall_assembly( 3.6 x 3.0)   lam 3.42   facet p50 0.99 m
+#     wall_assembly( 7.2 x 3.0)   lam 3.27   facet p50 1.41 m
+#     wall_assembly(12.8 x 3.0)   lam 3.21   facet p50 2.02 m
+#     wall_assembly(12.8 x 7.5)   lam 1.93   facet p50 2.12 m
+#
+# Nothing about the construction changed across those four rows. So gating a
+# 12.8 m foundry wall against the 3.6 m corridor's 0.99 m would fail it for
+# being 12.8 m long, which is a fact about the room and not about how it was
+# built -- and a gate that cannot be passed by correct construction is a
+# target, not a floor.
+#
+# The gate is therefore the kit's own construction at THIS ROOM'S dimensions,
+# and the corridor as built is reported beside it as the standard. Both are
+# printed; only the size-matched one is gated. It still fails hard on the
+# pre-INV-210 content -- 9.51 m against 2.12 -- which is the property that
+# matters.
+#
+# Note the fourth row, because it is the reason this is a floor and not a
+# ceiling: at 7.5 m the KIT ITSELF drops to lam 1.93, because
+# `wall_plate_courses` is a fixed count of 3 and a 7.5 m wall divided into 3
+# gives 2 m courses. `rooms.kit_plate_module` solves the course HEIGHT out of
+# that same table instead of copying the count, so a room built to this
+# vocabulary now beats a naive scaling of the kit on a tall wall. Where that
+# happens it is stated in the report rather than being quietly enjoyed.
+def kit_like_floor(w_m, l_m, ceil_m):
+    """The kit's own construction, built at one room's width, length, height."""
+    import interior_kit as ik                                  # noqa: PLC0415
+    p = ik.PROVISIONAL
+    out = {}
+    # WALL -- the longest run the room actually has, which is the hardest case
+    # and so the strictest floor the size-matching rule allows.
+    ik.reset_tags()
+    v, t = ik.wall_assembly(max(w_m, l_m), ceil_m, p)
+    out["wall"] = analyse(v, t, min_facet_m=0.0)
+    # DECK -- `corridor_section`'s own two calls: substrate panels every
+    # `deck_panel_l_m`, then the tile grid over them.
+    ik.reset_tags()
+    v, t = [], []
+    n = max(1, int(round(l_m / p["deck_panel_l_m"])))
+    for i in range(n):
+        pv, pt = ik.deck_panel(l_m / n, w_m)
+        ik._merge(v, t, pv, pt, lambda x, y, z: (y, z, x),
+                  (0.0, -0.12, l_m * (i + 0.5) / n))
+    ik._merge(v, t, *ik.deck_grid(l_m, w_m, p))
+    out["deck"] = analyse(v, t, min_facet_m=0.0)
+    # SOFFIT -- the kit's ceiling slab, which is a plain plate and is therefore
+    # the loosest of the three floors. Said plainly rather than hidden: the
+    # corridor's ceiling IS flat, and `docs/reference-values.md` §1 rung 1-3
+    # measures it as one of the darkest surfaces in the frame.
+    ik.reset_tags()
+    v, t = [], []
+    ik._slab(v, t, -w_m / 2, w_m / 2, ceil_m, ceil_m + p["ceiling_slab_m"],
+             0.0, l_m)
+    out["soffit"] = analyse(v, t, min_facet_m=0.0)
+    return out
+
+
+def shell_split(v, t, g):
+    """{surface: [triangles]} for one built room, by `SHELL_SURFACES`.
+
+    LAST SPAN WINS, exactly as `machinery_split` does and for the same stated
+    reason: a rule that disagreed with `export_scene.per_triangle` would be
+    scoring a different mesh than the one that renders.
+    """
+    own = _owner_names(len(t), g)
+    out = {k: [] for k in SHELL_SURFACES}
+    for i, tri in enumerate(t):
+        n = own[i]
+        if n is None:
+            continue
+        for surf, sufs in SHELL_SURFACES.items():
+            if n.endswith(sufs):
+                out[surf].append(tri)
+                break
+    return out
+
+
+def shell_rows(schema=None, profile=None, keys=None, floor=None):
+    """Score every procedural location's shell, surface by surface."""
+    import rooms as R                                           # noqa: PLC0415
+    if schema is None:
+        schema, profile = it.load()
+    kit = floor or kit_surface_floor()
+    places = R.unbuilt(schema, profile)
+    if keys:
+        want = set(keys)
+        places = [p for p in places if p["key"] in want]
+    out = []
+    for p in places:
+        v, t, g = R.build(schema, profile, p)
+        bw, bl = R.bay_span_m(p)
+        w_f, l_f, _r = R.room_extent_m(schema, profile, p)
+        same = kit_like_floor(min(w_f, bw), min(l_f, bl), R.ceiling_m(p))
+        row = {"key": p["key"], "name": p["name"], "arch": R.archetype(p),
+               "tris": len(t), "surfaces": {}}
+        worst = 1.0
+        for surf, tris in shell_split(v, t, g).items():
+            a = analyse(v, tris, min_facet_m=0.0)
+            k, s = kit[surf], same[surf]
+            lam_x = (a["lam"] / s["lam"]) if s["lam"] > 0 else 0.0
+            # Facet is a CEILING, so its "how well are we doing" number is the
+            # floor over the measurement, not the other way round.
+            fac_x = (s["facet_p50_m"] / a["facet_p50_m"]
+                     if a["facet_p50_m"] > 0 else 0.0)
+            row["surfaces"][surf] = {
+                "tris": a["tris"], "area": a["area"], "lam": a["lam"],
+                "lam_floor": s["lam"], "lam_x": lam_x,
+                "facet_p50": a["facet_p50_m"], "facet_max": a["facet_max_m"],
+                "facet_floor": s["facet_p50_m"], "facet_x": fac_x,
+                # The corridor AS BUILT -- reported, never gated. See the
+                # comment above `kit_like_floor`.
+                "kit_lam_x": (a["lam"] / k["lam"]) if k["lam"] > 0 else 0.0,
+                "kit_facet_x": (k["facet_p50_m"] / a["facet_p50_m"]
+                                if a["facet_p50_m"] > 0 else 0.0),
+                "normals": a["normals"], "octaves": a["octaves"],
+                "passes": lam_x >= 1.0 and fac_x >= 1.0,
+            }
+            worst = min(worst, lam_x, fac_x)
+        row["worst"] = worst
+        row["passes"] = all(s["passes"] for s in row["surfaces"].values())
+        out.append(row)
+    return out
+
+
+def _print_shell(rows, kit=None):
+    kit = kit or kit_surface_floor()
+    print("\nSHELL DETAIL GATE -- is the room's own wall as built as the "
+          "corridor wall outside its door?\n")
+    print("  the floor, measured off interior_kit.corridor_section this run:")
+    for surf in ("deck", "soffit", "wall"):
+        k = kit[surf]
+        print(f"    {surf:7s} {k['area']:8,.1f} m2   lam {k['lam']:6.3f} /m   "
+              f"facet p50 {k['facet_p50_m']:5.2f} m   max "
+              f"{k['facet_max_m']:5.2f} m")
+    print()
+    print(f"    {'location':30s} {'arch':11s} {'surface':7s} {'area m2':>9s} "
+          f"{'lam':>6s} {'x':>5s} {'p50 m':>6s} {'x':>5s} {'xkit':>5s} "
+          f"{'max m':>6s} {'norm':>5s}")
+    print("-" * 114)
+    for r in sorted(rows, key=lambda x: x["worst"]):
+        for surf in ("wall", "deck", "soffit"):
+            s = r["surfaces"][surf]
+            print(f"{'PASS' if s['passes'] else 'FAIL'}"
+                  f"{r['name'][:30]:30s} {r['arch']:11s} {surf:7s} "
+                  f"{s['area']:9,.0f} {s['lam']:6.2f} {s['lam_x']:5.2f} "
+                  f"{s['facet_p50']:6.2f} {s['facet_x']:5.2f} "
+                  f"{s['kit_facet_x']:5.2f} "
+                  f"{s['facet_max']:6.2f} {s['normals']:5.2f}")
+    bad = [r for r in rows if not r["passes"]]
+    n_surf = sum(1 for r in rows for s in r["surfaces"].values())
+    n_good = sum(1 for r in rows for s in r["surfaces"].values()
+                 if s["passes"])
+    print(f"\n{len(rows) - len(bad)}/{len(rows)} locations have a shell at or "
+          f"above the corridor's on every surface\n"
+          f"{n_good}/{n_surf} surfaces pass")
+    for surf in ("wall", "deck", "soffit"):
+        ok = sum(1 for r in rows if r["surfaces"][surf]["passes"])
+        lo = min(r["surfaces"][surf]["facet_p50"] for r in rows)
+        hi = max(r["surfaces"][surf]["facet_p50"] for r in rows)
+        kx = [r["surfaces"][surf]["kit_facet_x"] for r in rows]
+        print(f"  {surf:7s} {ok:3d}/{len(rows)}   facet p50 {lo:5.2f}-"
+              f"{hi:5.2f} m   against the corridor AS BUILT "
+              f"({kit[surf]['facet_p50_m']:.2f} m): "
+              f"x{min(kx):.2f}-{max(kx):.2f}, "
+              f"{sum(1 for q in kx if q >= 1.0)}/{len(rows)} at or better")
+    print("\nlam x, p50 x = against the KIT'S OWN CONSTRUCTION AT THIS ROOM'S "
+          "SIZE, and both\ngate at >= 1.00. xkit = the same facet against the "
+          "corridor AS BUILT, which is\nreported and NOT gated: the same kit "
+          "construction measures 0.99 m at a 3.6 m bay\nand 2.02 m at 12.8 m, "
+          "so that column is partly a fact about room size. See the\nblock "
+          "above `kit_like_floor`. `max` and `norm` are printed, not gated. "
+          "A BOX\nREADS ~6 NORMALS whatever its tessellation.")
+    return len(bad)
+
+
 def _cli(argv):
     if "--selftest" in argv:
         return _selftest()
+    if "--shell" in argv:
+        i = argv.index("--shell")
+        keys = [a for a in argv[i + 1:] if not a.startswith("-")]
+        return 1 if _print_shell(shell_rows(keys=keys or None)) else 0
     if "--machinery" in argv:
         i = argv.index("--machinery")
         keys = [a for a in argv[i + 1:] if not a.startswith("-")]

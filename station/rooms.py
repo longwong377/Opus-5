@@ -832,6 +832,192 @@ TEE_D_M = 0.04
 CONDUITS = 4
 CONDUIT_R_M = 0.055
 PANEL_D_M = 0.045
+
+# ---------------------------------------------------------------------------
+# THE PLATE MODULE -- imported from the corridor kit, never restated. INV-210.
+# ---------------------------------------------------------------------------
+# `articulate()`'s own docstring already argues that "there is no reason a bar,
+# a quarters unit or a customs hall should be articulated differently -- they
+# are the same station, built by the same people". The same argument applies
+# one level up: there is no reason a room's wall should be built to a different
+# module than the corridor wall outside its door, and until now it was.
+#
+# WHAT WAS WRONG, measured rather than asserted. `station/density.py --shell`
+# scores each shell surface against the corridor kit's own:
+#
+#     surface        room lam      kit lam    room facet p50   kit facet p50
+#     war_room wall     5.48         3.62         4.33 m          0.99 m
+#     cargo    wall     3.48         3.62         6.43 m          0.99 m
+#     fabric.  wall     2.98         3.62         9.51 m          0.99 m
+#     war_room deck     6.70         4.12         7.25 m          0.57 m
+#
+# The rooms were AT OR ABOVE the corridor on line density and four to ten times
+# coarser on facet size, and that pair is the whole finding: `articulate` ran a
+# skirt, a dado, a rail, a cornice, six mullions a bay and four conduits round
+# every wall -- continuous elements, enormous line, negligible area -- and left
+# the field between them a single box. `docs/shell/before-office-half.png` is
+# what that is: 2 x 1.5 m pale rectangles joined by hairline scribes, nothing
+# inside any of them. `docs/aaa-scorecard.json` had written the words for two
+# sessions -- *"one unbroken pale panel across 4 m with a scribed line and no
+# joint"* -- and no gate could produce them as a number.
+#
+# The corridor kit was already right. `interior_kit.wall_assembly` has plated
+# both its fields since it was written: "Every course is plated with recessed
+# seams -- the exterior hull's plating language seen from the other side, which
+# it has to be, being the same plate." The room generator simply never picked
+# the vocabulary up.
+#
+# So the module comes from `interior_kit.PROVISIONAL`, whose wall build-up is
+# read off `grey level 1.webp` -- the authority-1 frame that defines 1.00 for
+# this project, and the one `docs/reference-values.md` §1 measures rung by rung.
+# Nothing here is a new number: `wall_plate_l_m`, `wall_seam_m`,
+# `wall_plate_proud_m`, `wall_plate_courses` and `deck_panel_l_m` are the kit's,
+# and the COURSE HEIGHT is solved from them rather than picked -- see below.
+SHADOW_GAP_M = 0.06        # the skirt's dark line: bare substrate under an
+                           # overhanging field. `docs/reference-values.md` §1
+                           # measures the reference's dark horizontals at 5%
+                           # of the key the wall beside them gets and concludes
+                           # they are "a deep, narrow reveal with an occluding
+                           # lip, not a 20 mm groove". The lip is the field's
+                           # own PANEL_D_M standing 10 mm proud of the skirt.
+DECK_TILE_M = 0.62         # interior_kit.deck_grid's own tile, and the same
+                           # relationship: proud tiles, recessed joints.
+# The lip at the bottom of each plate course. Proportioned off the kit's own
+# rail band rather than picked: `wall_rail_proud_m` is 0.10 and
+# `wall_plate_proud_m` is 0.045, so the corridor's one nosing stands 55 mm
+# proud of the plates it interrupts, and the height is `wall_rail_frac` of the
+# corridor's wall (0.075 x 2.5 m = 0.19 m) halved, because this repeats every
+# course where the corridor's happens once.
+NOSING_PROUD_M = (ik.PROVISIONAL["wall_rail_proud_m"]
+                  - ik.PROVISIONAL["wall_plate_proud_m"])
+NOSING_H_M = 0.5 * ik.PROVISIONAL["wall_rail_frac"] * (
+    ik.PROVISIONAL["ceiling_height_m"] - ik.PROVISIONAL["wall_chamfer_m"])
+
+
+def kit_plate_module(scale=1.0):
+    """(plate length, course height, seam, proud) for a room wall.
+
+    THE COURSE HEIGHT IS SOLVED, NOT COPIED, and that is what makes this work
+    on a 7.5 m foundry wall as well as on a 2.9 m office one. `PROVISIONAL`
+    states `wall_plate_courses = 3`, but 3 is a count over the corridor's own
+    upper field, not a property of a plate. Reproducing the corridor's build-up
+    arithmetic gives the field height that count divides, and the quotient is
+    the size of one plate -- 0.446 m -- which is then laid as many times as the
+    room is tall. A fixed count would stretch a plate to 2 m in a foundry,
+    which is the mistake this whole module exists to stop making.
+
+    `scale` is `articulate`'s existing coarsener and multiplies both pitches,
+    so a 3 m quarters unit is not given a 12 m ward's plate count.
+    """
+    p = ik.PROVISIONAL
+    wall_h = p["ceiling_height_m"] - p["wall_chamfer_m"]
+    sk = wall_h * p["wall_skirt_frac"]
+    dado_top = sk + wall_h * p["wall_dado_frac"]
+    rail_top = dado_top + wall_h * p["wall_rail_frac"]
+    course = (wall_h - rail_top) / p["wall_plate_courses"]
+    return (p["wall_plate_l_m"] * scale, course * scale,
+            p["wall_seam_m"], p["wall_plate_proud_m"])
+
+
+def _plate_field(v, t, g, name, axis, face, sign, a0, a1, y0, y1,
+                 plate_l, course_h, seam, proud, skip=None, nosing=None):
+    """A field of proud plates with recessed seams between them.
+
+    `interior_kit.wall_assembly.plated()`, generalised to either wall axis and
+    to a field of any height. `axis` is "x" for a side wall (`face` is the x of
+    its inner surface and the field runs along z between `a0` and `a1`) or "z"
+    for an end wall. `sign` is which way the plate stands proud of `face`.
+
+    WHY A PLATE AND NOT A SCRIBED LINE. A line drawn on a wall does not divide
+    the wall: the surface behind it is still one plane, so `density.analyse`
+    unions it back into one facet and, more to the point, so does the eye at
+    half distance. A plate is a separate piece of surface with a real crease
+    round it. That is why this is 12 triangles a plate and not a texture.
+
+    `skip(lo, hi)` -- the door. A plate that would cross an aperture is not
+    emitted, for the same reason `articulate`'s bands split round one: a hole
+    in a wall is a hole in everything that wall carries.
+
+    `nosing` -- (group name, proud, height). A COURSE NEEDS A LIP OR ITS JOINT
+    IS A HAIRLINE, and the first after-frame said so: with every plate at the
+    same 45 mm and a 38 mm seam, the horizontal joints rendered as scribed
+    lines rather than as the deep dark bands the reference carries.
+    `docs/reference-values.md` §1 measures both halves of what is missing --
+    rung 14, *"rail nosing, proud lit edge"* at x1.309 of the wall, and rung 5,
+    *"rail band, dark reveal"* at x0.298 -- and its §1 fit says plainly that no
+    albedo reproduces the second, because the ratio varies with the light. The
+    nosing is the occluder that makes it vary: one strip per course, running
+    the field's length, standing proud of the plates so the joint under it is
+    shielded. Twelve triangles a course, against twelve a plate.
+    """
+    span, hgt = a1 - a0, y1 - y0
+    if span <= 2.2 * seam or hgt <= 2.2 * seam:
+        return
+    n_a = max(1, int(round(span / plate_l)))
+    n_c = max(1, int(round(hgt / course_h)))
+
+    def emit(p0, p1, cy0, cy1, depth, nm):
+        lo = (face - sign * depth, cy0, p0)
+        hi = (face, cy1, p1)
+        if axis == "z":
+            lo = (p0, cy0, face - sign * depth)
+            hi = (p1, cy1, face)
+        lo, hi = (tuple(min(a, b) for a, b in zip(lo, hi)),
+                  tuple(max(a, b) for a, b in zip(lo, hi)))
+        if skip is not None and skip(lo, hi):
+            return
+        _box(v, t, g, nm, lo, hi)
+
+    for c in range(n_c):
+        cy0 = y0 + hgt * c / n_c
+        cy1 = y0 + hgt * (c + 1) / n_c
+        for i in range(n_a):
+            p0 = a0 + span * i / n_a
+            p1 = a0 + span * (i + 1) / n_a
+            emit(p0 + seam, p1 - seam, cy0 + seam, cy1 - seam, proud, name)
+        if nosing is not None and cy1 - cy0 > 4.0 * nosing[2]:
+            nm, nproud, nh = nosing
+            emit(a0, a1, cy0 + seam, cy0 + seam + nh, nproud, nm)
+
+
+def _plate_deck(v, t, g, name, y_face, sign, x0, x1, z0, z1, tile, seam,
+                proud):
+    """The same construction laid flat: proud tiles, recessed joints.
+
+    THE ROOM DECK HAD IT INVERTED, and that is why it measured as one 7 m
+    facet while looking tiled. `articulate` laid *proud ribs on a continuous
+    plane*, so the plane was the surface and the ribs were applied to it;
+    `interior_kit.deck_grid` lays *proud tiles over a substrate*, so the tiles
+    are the surface and the substrate shows only in the joints. The second is
+    what both corridor references show, and it is also the kinder of the two to
+    a character capsule -- `station/collision.py` exists because 22 mm proud
+    ribs wedged one.
+
+    The walking surface does not move: the tile tops sit exactly on `y_face`
+    (y = 0 for a deck, y = ceil for a soffit) and the substrate is set back
+    behind them, so every height in the room is what it was.
+
+    `ceil`, NOT `round`, and it is worth one line of why. A tile module is a
+    CEILING on coarseness -- it is the size the gate measures against -- so
+    rounding the count DOWN makes the tile bigger than the module it came from.
+    `density.py --shell` caught exactly that on four decks: `lake_pool` at
+    0.85 m against a 0.62 m tile, and three more at 0.59-0.60 m missing their
+    floor by 2%. Rounding up can only make a tile smaller than the reference,
+    which is a direction the floor does not care about.
+    """
+    nx = max(1, int(math.ceil((x1 - x0) / tile - 1e-9)))
+    nz = max(1, int(math.ceil((z1 - z0) / tile - 1e-9)))
+    for i in range(nx):
+        px0 = x0 + (x1 - x0) * i / nx
+        px1 = x0 + (x1 - x0) * (i + 1) / nx
+        for j in range(nz):
+            pz0 = z0 + (z1 - z0) * j / nz
+            pz1 = z0 + (z1 - z0) * (j + 1) / nz
+            _box(v, t, g, name,
+                 (px0 + seam, min(y_face, y_face - sign * proud), pz0 + seam),
+                 (px1 - seam, max(y_face, y_face - sign * proud), pz1 - seam))
+
+
 # The hour the whole station is generated at. 1300 is a working day, which is
 # what the reference frames show. `populace` reads each place's own busy and
 # dead windows off `npc/schedule.py`, so this one number moves all 118.
@@ -1081,7 +1267,8 @@ def bays_in(schema, profile, place):
 def articulate(v, t, g, prefix, hw, hl, ceil, nrib=None, ln=None,
                ow=None, ol=None, z_off=0.0, x_off=0.0, scale=1.0,
                soffit=True, conduit=True, bands=True,
-               mullions=True, deck=True, door_at=None):
+               mullions=True, deck=True, door_at=None, plates=True,
+               owns_box=False):
     """Bands, grids, mullions, panels and conduit for a box-shaped interior.
 
     Extracted from `build()` so the BESPOKE modules can carry the same
@@ -1094,6 +1281,42 @@ def articulate(v, t, g, prefix, hw, hl, ceil, nrib=None, ln=None,
     material bindings stay that module's own. Everything else is the room's own
     box. See INV-073 for the proportions and for why LENGTH, not triangle
     count, is what earns line density.
+
+    `plates=False` REBUILDS THE PRE-INV-210 SHELL -- one panel box a rib bay,
+    proud deck ribs on a flat plane, a bare soffit, mullions on their own
+    lattice. It exists so `density.py --shell`'s negative control can be run on
+    the geometry the gate was written against instead of on a description of
+    it, which is the same reason `generate_hull` keeps `--no-apertures`. It is
+    not a mode anything ships; `_selftest` asserts the gate fails on it.
+
+    `owns_box` IS NOT A STYLE FLAG -- IT IS WHO OWNS THE VOLUME, and everything
+    INV-210 added is behind it. It defaults OFF, so `articulate()` on its own
+    emits exactly the geometry it emitted before INV-210; only a caller that
+    says it owns the box gets the plated shell. `rooms.build` is that caller
+    and is currently the only one.
+
+    Two measured reasons, both of them findings rather than caution:
+
+    1. **THE DOORWAY.** The MAXIMUM-z face is the near face:
+       `bespoke.near_face_opening` measures the widest way in across `zmax`,
+       and `deck._place_local` maps a room's local x = 0 onto the bearing the
+       corridor's door is at (INV-112). `rooms.build` cuts its own aperture in
+       that wall and passes it here as `door_at`, so it can be plated round.
+       A BESPOKE MODULE CUTS ITS DOORWAY IN ITS OWN GEOMETRY, LATER AND
+       ELSEWHERE, and hands this function nothing to skip -- so a continuous
+       field across `+hl` walls the room up. `bespoke.py` went 149/149 to
+       142/149 with *"walled at the doorway"* on eleven rooms and *"narrowest
+       doorway on the station: bar_unnamed at 0.00 m"*.
+    2. **THE DECK AND THE SOFFIT DO NOT TOUCH A DOORWAY, AND STILL BELONG
+       BEHIND IT.** Plating those alone on the bespoke callers took the
+       whole-station gate from 122/128 to 120/128 -- `bar_unnamed` and
+       `eclipse_cafe` to 95.7% of their floor, `council_chamber` to 93.7%.
+       `density.report` filters a line out when either facet meeting at it is
+       finer than one screen pixel AT THAT LOCATION'S COMPOSING DISTANCE, and
+       a 38 mm seam in a room composed from across a concourse is under it: the
+       area counts and the line does not, so lambda falls. Those modules are
+       not this one's to change, they have their own composing distances, and
+       each can opt in with one keyword when somebody measures it there.
     """
     # `scale` coarsens every pitch. A 3 m quarters unit given the same 0.40 m
     # deck bay as a 12 m ward comes out at 334% of its floor and 44,640
@@ -1128,10 +1351,23 @@ def articulate(v, t, g, prefix, hw, hl, ceil, nrib=None, ln=None,
     # relief grid, which is the construction the budget bound is derived from,
     # yields 0.17. Bands first, then grids, then panels.
     per = 2 * (2 * ow + 2 * ol)                      # noqa: F841  (documented)
+    #
+    # THE SKIRT'S SHADOW GAP, and it is a construction rather than a paint.
+    # `docs/reference-values.md` §1 fits the reference's dark horizontals seven
+    # x-bins at a time and finds the affine fit beats the multiplicative one by
+    # 3x on both the reveal and the dado -- "no albedo produces a ratio that
+    # varies with the light" -- so the band has to be geometrically shielded.
+    # The old build-up ran two proud skirt bands with no gap between them and
+    # got a scribe. What replaces it is a plinth to SKIRT_H_M, then bare
+    # substrate for SHADOW_GAP_M, then the plate field standing PANEL_D_M
+    # proud, which overhangs that gap by 10 mm and shields it. The lip is the
+    # field's own bottom course; nothing extra is emitted for it.
     for y, h_, d_, nm in (() if not bands else
-                          ((0.0, SKIRT_H_M, SKIRT_D_M, "skirt"),
-                          (SKIRT_H_M + 0.02, 0.05, SKIRT_D_M * 0.6, "skirt"),
-                          (DADO_H_M, BAND_H_M, BAND_D_M, "dado"),
+                          (((0.0, SKIRT_H_M, SKIRT_D_M, "skirt"),) if plates
+                           else ((0.0, SKIRT_H_M, SKIRT_D_M, "skirt"),
+                                 (SKIRT_H_M + 0.02, 0.05, SKIRT_D_M * 0.6,
+                                  "skirt"))) +
+                          ((DADO_H_M, BAND_H_M, BAND_D_M, "dado"),
                           (DADO_H_M + BAND_H_M + 0.06, 0.05, BAND_D_M * 0.7,
                            "dado"),
                           (ceil - CORNICE_DROP_M, BAND_H_M, BAND_D_M, "rail"),
@@ -1159,17 +1395,47 @@ def articulate(v, t, g, prefix, hw, hl, ceil, nrib=None, ln=None,
             else:
                 _box(v, t, g, f"{arch}_{nm}",
                      (-hw, y, s * (hl - d_)), (hw, y + h_, s * hl))
-    # Deck bay joints, both ways. The floor is the largest single surface in
-    # any room and a flat plane carries no line at any triangle count -- that
-    # is what held the Garden at 80.9% until its paving was jointed.
-    for i in range(1, max(2, int(2 * hw / deck_bay)) if deck else 1):
-        x = -hw + (2 * hw) * i / max(2, int(2 * hw / deck_bay))
-        _box(v, t, g, f"{arch}_deck_joint",
-             (x - JOINT_W_M / 2, -0.01, -hl), (x + JOINT_W_M / 2, 0.012, hl))
-    for i in range(1, max(2, int(2 * hl / deck_bay)) if deck else 1):
-        z = -hl + (2 * hl) * i / max(2, int(2 * hl / deck_bay))
-        _box(v, t, g, f"{arch}_deck_joint",
-             (-hw, -0.01, z - JOINT_W_M / 2), (hw, 0.012, z + JOINT_W_M / 2))
+    # THE DECK: PROUD TILES, RECESSED JOINTS -- the way round the kit builds it
+    # and the reverse of what this generator used to do. See `_plate_deck`. The
+    # old construction laid proud ribs across a continuous plane every 0.40 m;
+    # it read as a tiled floor and MEASURED as one 7 m facet, because the plane
+    # was still the surface. `density.py --shell` puts the room deck at 7.25 to
+    # 12.80 m against the corridor's 0.57.
+    #
+    # Tile at `interior_kit.deck_grid`'s own 0.62 m, and the bay joint every
+    # `deck_panel_l_m` on top of it: the kit has both scales and so does every
+    # corridor frame -- a fine tile field crossed by the structural panel
+    # division. `deck_bay` is retained as the coarse pitch it always was.
+    _pl, _course, _seam, _proud = kit_plate_module(scale)
+    if deck and plates and owns_box:
+        _plate_deck(v, t, g, f"{arch}_deck_joint", 0.0, 1, -hw, hw, -hl, hl,
+                    DECK_TILE_M * scale, _seam * 0.5, 0.022)
+        for i in range(1, max(2, int(2 * hw / deck_bay))):
+            x = -hw + (2 * hw) * i / max(2, int(2 * hw / deck_bay))
+            _box(v, t, g, f"{arch}_deck_joint",
+                 (x - JOINT_W_M / 2, -0.03, -hl), (x + JOINT_W_M / 2, 0.0, hl))
+        for i in range(1, max(2, int(2 * hl / deck_bay))):
+            z = -hl + (2 * hl) * i / max(2, int(2 * hl / deck_bay))
+            _box(v, t, g, f"{arch}_deck_joint",
+                 (-hw, -0.03, z - JOINT_W_M / 2), (hw, 0.0, z + JOINT_W_M / 2))
+    elif deck:                                   # the pre-INV-210 deck
+        for i in range(1, max(2, int(2 * hw / deck_bay))):
+            x = -hw + (2 * hw) * i / max(2, int(2 * hw / deck_bay))
+            _box(v, t, g, f"{arch}_deck_joint",
+                 (x - JOINT_W_M / 2, -0.01, -hl), (x + JOINT_W_M / 2, 0.012, hl))
+        for i in range(1, max(2, int(2 * hl / deck_bay))):
+            z = -hl + (2 * hl) * i / max(2, int(2 * hl / deck_bay))
+            _box(v, t, g, f"{arch}_deck_joint",
+                 (-hw, -0.01, z - JOINT_W_M / 2), (hw, 0.012, z + JOINT_W_M / 2))
+    # THE SOFFIT IS A DECK SEEN FROM BELOW, and it is plated to the same module
+    # for the same reason hard rule 4 exists: two descriptions of one plate
+    # drift. Pans at `deck_panel_l_m`, hung 30 mm below the slab, so the
+    # ceiling plane a player sees is broken into panels instead of being one
+    # 12 m sheet with a tee grid drawn on it. The ceiling height does not move:
+    # the pan faces sit exactly on `ceil`, and the slab is set back behind them.
+    if soffit and plates and owns_box:
+        _plate_deck(v, t, g, f"{arch}_soffit", ceil, -1, -hw, hw, -hl, hl,
+                    ik.PROVISIONAL["deck_panel_l_m"] * scale, _seam, 0.03)
     # Soffit service grid: the T-bar every serviced ceiling has, and the run it
     # conceals. Both are continuous, which is why they are affordable.
     for i in range(1, max(2, int(2 * hl / soffit_bay)) if soffit else 1):
@@ -1202,23 +1468,68 @@ def articulate(v, t, g, prefix, hw, hl, ceil, nrib=None, ln=None,
         _box(v, t, g, f"{arch}_soffit_tee",
              (x - TEE_W_M / 2, ceil - TEE_D_M, -hl),
              (x + TEE_W_M / 2, ceil, hl))
-    # Vertical mullions dividing each wall bay, dado to cornice. A bay of bare
-    # wall between two ribs is the flat field the owner reads as a placeholder.
-    mtop = min(ceil - CORNICE_H_M - 0.05, ceil - 0.3)
-    for i in range(nrib if mullions else 0):
-        z0 = -hl + i * (ln / nrib) + RIB_W_M
-        z1 = -hl + (i + 1) * (ln / nrib) - RIB_W_M
-        if z1 - z0 < 0.6:
-            continue
-        for k in range(1, n_mull + 1):
-            zc = z0 + (z1 - z0) * k / (n_mull + 1)
-            for s in (-1, 1):
-                _box(v, t, g, f"{arch}_mullion",
-                     (s * (hw - MULLION_D_M), SKIRT_H_M, zc - MULLION_W_M / 2),
-                     (s * hw, mtop, zc + MULLION_W_M / 2))
-    # Recessed panels in the wall field between ribs, above the dado.
+    # THE WALL FIELD. Two plated fields -- dado and upper -- on all four walls,
+    # at the corridor's own plate module. This replaces one box per rib bay,
+    # which is the defect `docs/shell/before-office-half.png` shows and
+    # `density.py --shell` measures. See `_plate_field` and INV-210.
+    #
+    # ALL FOUR WALLS, where the old panel ran on two. A room is entered through
+    # an end wall and the first thing a player sees is the wall opposite; the
+    # 2 x 1.5 m rectangles in the office frame are an END wall, which carried
+    # bands and nothing else.
     ptop = min(ceil - CORNICE_H_M - 0.30, ceil - 0.5)
-    if ptop > DADO_H_M + 0.4:
+    gap_top = SKIRT_H_M + SHADOW_GAP_M
+    field_bot = DADO_H_M + BAND_H_M + 0.16
+    dx0 = dx1 = dh = 0.0
+    if door_at is not None:
+        dx0, dx1 = door_at[0] - door_at[1] / 2.0, door_at[0] + door_at[1] / 2.0
+        dh = door_at[2]
+
+    def _door_skip(lo, hi):
+        """Does this plate cross the aperture in the +z wall, or its jamb?
+
+        0.08 m of margin either side, so a plate edge does not land on the
+        reveal a player walks through. `_end_wall_with_door` cuts the hole at
+        exactly dx0..dx1 and the frame stands in front of it.
+        """
+        return (door_at is not None and hi[2] > hl - 1e-6
+                and hi[0] > dx0 - 0.08 and lo[0] < dx1 + 0.08
+                and lo[1] < dh + 0.08)
+
+    # THE PLATE FIELD IS FOR A CALLER THAT OWNS ITS OWN APERTURES, and the
+    # reason is measured rather than cautious. `articulate` is shared with nine
+    # bespoke modules that cut their doorway in their own geometry, later and
+    # elsewhere; a continuous field 45 mm proud runs straight up to a jamb this
+    # function cannot see. `bespoke.py` fell 149/149 -> 142/149 with
+    # *"walled at the doorway"* on eleven rooms, and the last 0.09 m of it was
+    # exactly two plate faces: `alien_sector` and `kosh_quarters` measured a
+    # 1.41 m aperture against the corridor's 1.50 m leaf. So a caller that has
+    # not declared its aperture gets the wall it had before -- one panel a rib
+    # bay, with the rib gaps the old construction left, which is where those
+    # doorways were passing.
+    if bands and plates and owns_box:
+        # THE DADO FIELD IS ONE COURSE and the upper field is as many as it
+        # takes. That is the kit's own division, not a saving:
+        # `wall_assembly` calls `plated(0.0, sk_h, dado_top - reveal)` with
+        # the default `courses=1` for the field below the rail and
+        # `courses=wall_plate_courses` for the field above it. The reference
+        # shows the same -- one tall dado panel, a stack of plate courses over.
+        for s in (-1, 1):
+            for a, b, nc in ((gap_top, DADO_H_M - 0.02, 1),
+                             (field_bot, ptop, 0)):
+                if b - a < 0.18:
+                    continue
+                ch = (b - a) if nc == 1 else _course
+                nose = (f"{arch}_rail", PANEL_D_M + NOSING_PROUD_M,
+                        NOSING_H_M)
+                _plate_field(v, t, g, f"{arch}_panel", "x", s * hw, s,
+                             -hl, hl, a, b, _pl, ch, _seam, PANEL_D_M,
+                             nosing=nose)
+                _plate_field(v, t, g, f"{arch}_panel", "z", s * hl, s,
+                             -hw, hw, a, b, _pl, ch, _seam, PANEL_D_M,
+                             skip=_door_skip if s > 0 else None,
+                             nosing=nose)
+    elif bands and ptop > DADO_H_M + 0.4:    # the pre-INV-210 wall field
         for i in range(nrib):
             z0 = -hl + i * (ln / nrib) + RIB_W_M
             z1 = -hl + (i + 1) * (ln / nrib) - RIB_W_M
@@ -1228,6 +1539,84 @@ def articulate(v, t, g, prefix, hw, hl, ceil, nrib=None, ln=None,
                 _box(v, t, g, f"{arch}_panel",
                      (s * (hw - PANEL_D_M), DADO_H_M + 0.25, z0),
                      (s * hw, ptop, z1))
+    # Vertical members dividing the plate field, and they now land ON A PLATE
+    # SEAM rather than on a lattice of their own. Six mullions a rib bay and a
+    # 1.15 m plate module are two unrelated grids, and two unrelated grids on
+    # one wall read as neither -- which is the moire in the "before" frame.
+    #
+    # AND THEY STAND PROUD OF THE PLATES. `MULLION_D_M` is 0.035 and
+    # `PANEL_D_M` is 0.045, so every mullion above the old panel's bottom edge
+    # was BURIED INSIDE IT: 288 triangles a room of geometry nobody could see,
+    # and the reason the upper wall in the frame has no vertical division at
+    # all while the lower wall does.
+    #
+    # ONE EVERY `portal_spacing_m`, NOT ONE EVERY PLATE, and this is the first
+    # after-frame's own finding. `docs/shell/after-office-half.png` at the
+    # first attempt put a 0.06 x 0.08 m member on every 1.15 m seam, which is a
+    # ROD at that proportion and read as pipework strapped to the wall rather
+    # than as the wall's own structure. `grey level 1.webp`'s right wall
+    # settles both questions: the field between two pilasters carries only the
+    # plate seams, and the strong verticals are the portal columns at
+    # `portal_spacing_m` -- 3.6 m, the kit's own number. Widened to a flat
+    # strap over the seam it stands on, because 60 mm proud of 60 mm wide is a
+    # bar and 60 mm proud of 190 mm wide is a member.
+    mtop = min(ceil - CORNICE_H_M - 0.05, ceil - 0.3)
+    m_pitch = ik.PROVISIONAL["portal_spacing_m"] * scale
+    m_w = MULLION_W_M * 3.2                       # 0.19 m: a strap, not a rod
+    m_d = PANEL_D_M + MULLION_D_M * 0.5           # 20 mm proud of the plates
+    if mullions and not (plates and owns_box):   # the pre-INV-210 lattice
+        for i in range(nrib):
+            z0 = -hl + i * (ln / nrib) + RIB_W_M
+            z1 = -hl + (i + 1) * (ln / nrib) - RIB_W_M
+            if z1 - z0 < 0.6:
+                continue
+            for k in range(1, n_mull + 1):
+                zc = z0 + (z1 - z0) * k / (n_mull + 1)
+                for s in (-1, 1):
+                    _box(v, t, g, f"{arch}_mullion",
+                         (s * (hw - MULLION_D_M), SKIRT_H_M,
+                          zc - MULLION_W_M / 2),
+                         (s * hw, mtop, zc + MULLION_W_M / 2))
+    elif mullions and mtop > gap_top + 0.3:
+        # SNAPPED TO A PLATE SEAM. A member standing mid-plate is a strap over
+        # nothing; on the seam it is the cover strip that joint would need.
+        n_m = max(1, int(round(2 * hl / m_pitch)))
+        n_p = max(1, int(round(2 * hl / _pl)))
+        for k in range(1, n_m):
+            zc = -hl + (2 * hl) * round(n_p * k / n_m) / n_p
+            for s in (-1, 1):
+                _box(v, t, g, f"{arch}_mullion",
+                     (s * (hw - m_d), SKIRT_H_M, zc - m_w / 2),
+                     (s * hw, mtop, zc + m_w / 2))
+        n_m = max(1, int(round(2 * hw / m_pitch)))
+        n_p = max(1, int(round(2 * hw / _pl)))
+        for k in range(1, n_m):
+            xc = -hw + (2 * hw) * round(n_p * k / n_m) / n_p
+            for s in (-1, 1):
+                if (door_at is not None and s > 0
+                        and dx0 - 0.08 - m_w / 2 < xc < dx1 + 0.08 + m_w / 2):
+                    continue
+                _box(v, t, g, f"{arch}_mullion",
+                     (xc - m_w / 2, SKIRT_H_M, s * (hl - m_d)),
+                     (xc + m_w / 2, mtop, s * hl))
+    # SERVICE RISERS. The four high-level conduit runs above have to get down
+    # to the deck somewhere, and until now they ran round the room and vanished
+    # into the corner. A riser beside each rib is the fitting that has to be
+    # there -- `docs/AAA-STANDARD.md`'s craft 4 is "a fitting is where a fitting
+    # would be needed" -- and it is the only full-height vertical element on
+    # the wall, which is what a field of horizontal courses needs against it.
+    # `owns_box` guards it for the same reason the dado field is guarded: a
+    # riser runs deck to cornice, so it is an obstruction at every height a
+    # doorway probe looks at.
+    if conduit and plates and owns_box and ceil > TRIM_HEAD_M + 0.4:
+        for i in range(nrib):
+            zc = -hl + (i + 0.5) * (ln / nrib)
+            for s in (-1, 1):
+                _box(v, t, g, f"{arch}_conduit",
+                     (s * (hw - RIB_D_M - CONDUIT_R_M * 1.6), 0.0,
+                      zc + RIB_W_M * 0.5 + 0.05),
+                     (s * (hw - RIB_D_M), ceil - CORNICE_H_M - 0.22,
+                      zc + RIB_W_M * 0.5 + 0.05 + CONDUIT_R_M * 1.6))
     if z_off or x_off:
         for i in range(mark, len(v)):
             x, y, z = v[i]
@@ -1293,7 +1682,7 @@ def _end_wall_with_door(v, t, g, arch, ow, ceil, hl, ol, door_at):
 
 
 def build(schema, profile, place, max_span_m=None, door_at=None,
-          report=None):
+          report=None, plates=True):
     """Geometry for one representative bay of a location.
 
     A 300 m storage run is a corridor of identical bays; emitting all of it
@@ -1351,8 +1740,14 @@ def build(schema, profile, place, max_span_m=None, door_at=None,
 
     # ARTICULATION -- see `articulate()` and INV-073. One vocabulary for every
     # box-shaped interior on the station, procedural and bespoke alike.
+    # `owns_box=True` because THIS function owns the whole volume: it emitted
+    # the deck, the soffit and all four walls above, and cut the aperture in
+    # the +z one through `_end_wall_with_door`, so `articulate` can plate them
+    # and knows where the hole is. A bespoke module cannot say either of those
+    # things and does not. See the `owns_box` paragraph in `articulate`'s
+    # docstring for the two measurements that put everything behind it.
     articulate(v, t, g, arch, hw, hl, ceil, nrib=nrib, ln=ln, ow=ow, ol=ol,
-               door_at=door_at)
+               door_at=door_at, plates=plates, owns_box=True)
 
     # Fixtures: the machinery the room is named for. See FIXTURES.
     # `inset` records the depth each side loses to flanking scenery, and
