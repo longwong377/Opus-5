@@ -528,11 +528,13 @@ def build_deck(schema, profile, sector, ring, deck, with_rooms=True,
     for q in here:
         try:
             dx = opened.get(q["key"])
+            rep = {}
             rv, rt, rg = R.build(
                 schema, profile, q,
                 door_at=None if dx is None else
                 (dx, K.PROVISIONAL["door_width_m"],
-                 K.PROVISIONAL["door_height_m"]))
+                 K.PROVISIONAL["door_height_m"]),
+                report=rep)
         except Exception as e:                                  # noqa: BLE001
             stats["skipped"].append((q["key"], str(e)[:60]))
             continue
@@ -547,6 +549,31 @@ def build_deck(schema, profile, sector, ring, deck, with_rooms=True,
         G.extend((f"{q['key']}__{n}", lo_ + t0, hi_ + t0) for n, lo_, hi_ in rg)
         stats["rooms"] += 1
         stats["room_tris"] += len(rt)
+
+        # THE PEOPLE, IN THE RING'S FRAME AND UNDER THE NAME THE ENGINE SEES.
+        # `build_deck` prefixes a room's groups with its key, so the mesh the
+        # runtime finds is `<key>__npc_standing_3`; the actor record has to
+        # carry that same name or the two cannot be matched. And the yaw needs
+        # the room's own angular position added, because the room is rotated
+        # onto the ring and the person is rotated with it.
+        for act in rep.get("actors", ()):
+            wx, wy, wz = _place_local(
+                [(act["x"], act["y"], act["z"])], radius,
+                q["angle_deg"], q["z_m"])[0]
+            stats.setdefault("actors", []).append({
+                "group": f"{q['key']}__{act['group']}",
+                "place": q["key"], "who": act["who"], "pose": act["pose"],
+                "x": wx, "y": wy, "z": wz,
+                # THE YAW IS UNCHANGED BY THE WRAP, and adding the room's angle
+                # to it -- which is what this line did first -- turned every
+                # inhabitant by however far round the ring their room sits.
+                # `_place_local` is not a rotation in the room's (x, z) plane:
+                # it wraps room x onto an arc and leaves room z as the station
+                # axis. So a body's heading relative to (axial, tangential) is
+                # preserved, and `npc.gd` derives those two directions from the
+                # body's OWN position, which is where the ring angle enters.
+                "yaw": act["yaw"],
+            })
 
         # And the passage joining it to the corridor, so the doorway frames a
         # floor rather than the black the preview renders empty space as. Only

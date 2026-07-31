@@ -163,9 +163,56 @@ in the bay beyond.
 
 ### Still open
 
-* **W5 is half.** "Spawn → walk → **use something** → an NPC reacts": the door is the
-  something, and no NPC reacts to anything yet. `directory.interacts` declares the verbs
-  for all 118 locations and none of them do anything.
+### W5 — THE LOOP CLOSES. Spawn → walk → the door opens → five people look up
+
+```
+PASS  deck blue/0/0 -- a body spawns in the corridor and WALKS INTO docking_bays
+      (6.3 m -> 0.04 m), never leaving the floor,
+      5 of the room look up (123 deg turned, 4 deg off)
+      control: with the doors inert the body is stopped 5.26 m short.
+```
+
+278 people stood in 87 rooms and not one knew a player existed: they were geometry baked
+into the merged room mesh, the same reason a pressure door was a picture of a door. A room
+whose people never react is a diorama.
+
+| piece | what it does |
+|---|---|
+| `populace._place_body(actors=)` | **records the yaw it baked**, per person, with species and pose |
+| `<deck>_actors.json` | the cast list, written beside the mesh by `walkable.py` |
+| `godot/scripts/npc.gd` | turns each body about **its own axis** toward the player inside 6 m, at 2.2 rad/s |
+
+**Why a sidecar and not the geometry.** A body is baked into world-space triangles, so
+nothing downstream can recover which way somebody faces by looking at them — and a person
+who turns towards you has to be turned *from* somewhere. Asking the geometry to give back
+what the generator already knew is how the door leaves ended up 0.16 m out of their frame.
+
+**"Did they turn" is not the question, and asking it would have shipped a bug.** A body
+rotated by a *wrong* yaw convention turns exactly as far as one rotated correctly and
+reports the same number. So the gate reports **`facing_err_deg`** — the angle between where
+the nearest inhabitant ends up looking and the direction to the player. It reads **3.8°**.
+
+And it caught one on the way: `deck.py` first added the room's angle to each actor's yaw,
+which would have turned every inhabitant by however far round the ring their room sits.
+`_place_local` is **not** a rotation in the room's (x, z) plane — it wraps room x onto an
+arc and leaves room z as the station axis, so a body's heading relative to
+(axial, tangential) is preserved and the ring angle enters through `npc.gd` deriving those
+two directions from the body's own position.
+
+Turning about the body's own axis needs `translate(pivot) · rotate · translate(−pivot)`,
+because the vertices are already at world positions — a plain node rotation swings the
+person round the station's axis instead of their heels.
+
+Frame: `scratchpad/w5b.png`, the bay from where the player arrives — three figures, one
+visibly non-human, which is `npc/body.py`'s species mix reaching a frame for the first
+time. **The turn itself is measured, not pictured:** the preview bakes the generated pose,
+so the evidence for it is the headless number.
+
+### Still open
+
+* **Nothing else is interactable.** `directory.interacts` declares verbs for all 118
+  locations — `bay_door`, `cargo_crane`, `till`, `comms_channel` — and the door is the only
+  one that does anything.
 * **The drum is not walkable** — `green/1`, an open 8 km barrel whose floor is
   `drum_ground`'s heightfield. Deferred by name in `deck.NOT_RING_DECKS`, not forgotten.
 * **19 of 106 non-drum locations are in secondary z-clusters** and are not on an assembled

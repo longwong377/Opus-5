@@ -78,6 +78,10 @@ ARRIVED_M = 1.5
 # The deck spawns a body 50 mm above its floor, so a drop of more than a step
 # means it is not where the shell says the floor is.
 MAX_DECK_DROP_M = 0.30
+# How close to actually facing the player the nearest inhabitant has to end up.
+# Generous: they turn at a human rate and the walk ends when the player arrives,
+# so a few degrees of lag is a person still turning, not a person facing wrong.
+FACING_TOL_DEG = 25.0
 
 
 def godot_binary():
@@ -168,6 +172,12 @@ def walk_deck(sector, ring, deck, godot, timeout=1800, traverse=None,
                                    props=True)
     C.write_obj(os.path.join(out, f"{stem}_col.obj"), cv, ct,
                 cm.get("groups"))
+    # THE CAST LIST, beside the mesh. A body is baked into the merged geometry,
+    # so the engine cannot recover who is where or which way they face by
+    # looking at it. The generator knows; it writes it down.
+    import json as _json
+    with open(os.path.join(out, f"{stem}_actors.json"), "w") as f:
+        _json.dump(s.get("actors", []), f)
     _glb(os.path.join(out, f"{stem}.obj"), os.path.join(out, f"{stem}.glb"))
     _glb(os.path.join(out, f"{stem}_col.obj"),
          os.path.join(out, f"{stem}_col.glb"))
@@ -187,7 +197,8 @@ def walk_deck(sector, ring, deck, godot, timeout=1800, traverse=None,
     # a path, and there is no pathfinder yet.
     goto = goto_key or s["spawn_at"]
     tx, ty, tz = room_target(cm, dr.by_key(goto))
-    cmd += [f"--goto={tx},{ty},{tz}", f"--door-key={goto}",
+    cmd += [f"--actors={os.path.join(out, stem + '_actors.json')}",
+            f"--goto={tx},{ty},{tz}", f"--door-key={goto}",
             f"--door-travel={K.PROVISIONAL['door_width_m'] / 2.0}"]
     if no_doors:
         cmd += ["--no-doors"]
@@ -230,11 +241,29 @@ def deck_verdict(d):
             return False, (f"got within {near:.2f} m of {d['goto']} from "
                            f"{float(d['goto_start_m']):.1f} m away -- the way "
                            f"in is blocked")
+        # AND SOMEBODY LOOKED UP. `facing_err_deg` is the angle between where
+        # the nearest inhabitant ended up facing and the direction to the
+        # player. "Did they turn" is not the question -- a body rotated by a
+        # wrong yaw convention turns just as far as one rotated correctly and
+        # reports the same number. This asks whether they are looking AT you.
+        note = ""
+        if "noticed" in d:
+            err = float(d.get("facing_err_deg", -1.0))
+            if int(d["noticed"]) < 1:
+                return False, (f"reached {d['goto']} and NOBODY noticed -- "
+                               f"{d.get('turned_deg')} deg turned")
+            if err < 0 or err > FACING_TOL_DEG:
+                return False, (f"reached {d['goto']}; {d['noticed']} noticed "
+                               f"but the nearest is {err:.0f} deg off facing "
+                               f"the player -- the yaw convention is wrong")
+            note = (f", {d['noticed']} of the room look up "
+                    f"({float(d['turned_deg']):.0f} deg turned, {err:.0f} deg "
+                    f"off)")
         return True, (f"{d['rooms']} rooms over {float(d['arc_deg']):.0f} deg, "
                       f"{d['doors']} doors; a body spawns in the corridor and "
                       f"WALKS INTO {d['goto']} "
                       f"({float(d['goto_start_m']):.1f} m -> {near:.2f} m), "
-                      f"never leaving the floor")
+                      f"never leaving the floor{note}")
     got = float(d.get("traverse_m", 0))
     if got < MIN_TRAVERSE_M:
         return False, (f"covered {got:.1f} m of corridor, under the "

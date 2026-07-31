@@ -184,7 +184,16 @@ def _faces_in_band(v, t, g, lo_h, hi_h, min_area=0.12, only=None):
     return out
 
 
-def _place_body(v, t, g, mesh, x, y, z, yaw, group):
+def _place_body(v, t, g, mesh, x, y, z, yaw, group, actors=None, who=None):
+    """One body, baked into the room's mesh at a position and a yaw.
+
+    `actors` RECORDS WHAT WAS BAKED. A person is geometry in a merged mesh, so
+    nothing downstream can tell which way they are facing by looking at them --
+    and an inhabitant who is going to turn and look at the player has to be
+    turned FROM somewhere. The generator knows the yaw it used; asking the
+    geometry to give it back later is guessing at what was already known, which
+    is how the door leaves ended up 0.16 m out of their own frame.
+    """
     bv, bt, _bg = mesh
     n0 = len(v)
     ca, sa = math.cos(yaw), math.sin(yaw)
@@ -193,6 +202,10 @@ def _place_body(v, t, g, mesh, x, y, z, yaw, group):
     t0 = len(t)
     t.extend((a + n0, b + n0, c + n0) for a, b, c in bt)
     g.append((group, t0, len(t)))
+    if actors is not None:
+        actors.append({"group": group, "who": who, "x": x, "y": y, "z": z,
+                       "yaw": yaw, "pose": "seated" if "seated" in group
+                       else "standing"})
 
 
 def populate(place_key, room_v, room_t, room_g, w_m, l_m, hour=13.0,
@@ -206,6 +219,12 @@ def populate(place_key, room_v, room_t, room_g, w_m, l_m, hour=13.0,
     """
     seed = seed or place_key
     v, t, g = [], [], []
+    # ONE GROUP PER PERSON. They all shared `npc_standing`, so the exporter
+    # merged every inhabitant of a room into a single mesh and nothing could
+    # address one of them -- the same reason the door leaves had to come out of
+    # the corridor. A resident who reacts has to be a thing, not a region of a
+    # thing.
+    actors = []
     area = max(w_m * l_m, 1e-6)
     n = occupancy(place_key, area, hour, arch)
     if max_people is not None:
@@ -334,6 +353,13 @@ def populate(place_key, room_v, room_t, room_g, w_m, l_m, hour=13.0,
                 del t[mark_t:]
                 while g and g[-1][1] >= mark_t:
                     g.pop()
+                # And the record of them. A body rolled out of the geometry but
+                # left in the actor list is an inhabitant the runtime would look
+                # for and never find -- a ghost, which is worse than a missing
+                # person because it looks like a loading bug.
+                while actors and actors[-1]["group"] not in {
+                        n for n, _l, _h in g}:
+                    actors.pop()
                 return True
         return False
 
@@ -374,7 +400,8 @@ def populate(place_key, room_v, room_t, room_g, w_m, l_m, hour=13.0,
                 # The body's origin drops to the seat pan, and it faces the
                 # room rather than the wall it is against.
                 _place_body(v, t, g, mesh, sx, sy - 0.42, sz,
-                            math.atan2(-sx, -sz), "npc_seated")
+                            math.atan2(-sx, -sz), f"npc_seated_{i}",
+                            actors, sp)
                 used.append((sx, sz))
                 stats["seated"] += 1
                 seated = True
@@ -388,7 +415,8 @@ def populate(place_key, room_v, room_t, room_g, w_m, l_m, hour=13.0,
             if _clear(ux, uz) and _inside(ux, uz) and _free(ux, uz):
                 _mv, _mt = len(v), len(t)
                 _place_body(v, t, g, mesh, ux, 0.0, uz,
-                            math.atan2(dx - ux, dz - uz), "npc_standing")
+                            math.atan2(dx - ux, dz - uz), f"npc_standing_{i}",
+                            actors, sp)
                 if not _embedded(_mv, _mt):
                     used.append((ux, uz))
                     stats["standing"] += 1
@@ -407,7 +435,8 @@ def populate(place_key, room_v, room_t, room_g, w_m, l_m, hour=13.0,
                 continue
             _mv, _mt = len(v), len(t)
             _place_body(v, t, g, mesh, px, 0.0, pz,
-                        _u(seed, "yaw", i) * math.tau, "npc_standing")
+                        _u(seed, "yaw", i) * math.tau, f"npc_standing_{i}",
+                        actors, sp)
             if _embedded(_mv, _mt):
                 continue
             used.append((px, pz))
@@ -415,6 +444,7 @@ def populate(place_key, room_v, room_t, room_g, w_m, l_m, hour=13.0,
             break
     stats["placed"] = stats["seated"] + stats["standing"] + stats["walking"]
     stats["triangles"] = len(t)
+    stats["actors"] = actors
     return v, t, g, stats
 
 

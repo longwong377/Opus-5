@@ -33,6 +33,9 @@ extends Node3D
 @export var door_travel_m: float = 0.75
 
 var _doors: Node3D
+## The cast list written beside the deck mesh -- see `station/walkable.py`.
+@export var actors_path: String = ""
+var _people: Node3D
 
 var _player: CharacterBody3D
 var _static: StaticBody3D
@@ -52,6 +55,8 @@ func _ready() -> void:
 		gravity_m_s2 = float(args["gravity"])
 	if args.has("door-travel"):
 		door_travel_m = float(args["door-travel"])
+	if args.has("actors"):
+		actors_path = args["actors"]
 
 	if not _load_level():
 		push_error("walk: could not load %s" % glb_path)
@@ -60,6 +65,8 @@ func _ready() -> void:
 	_spawn_player()
 	if _doors != null:
 		_doors.watch(_player)
+	if _people != null:
+		_people.watch(_player)
 
 	if args.has("walk-test"):
 		_run_walk_test(args)
@@ -117,6 +124,7 @@ func _load_level() -> bool:
 		print("walk: %d collision meshes (proxy), %d visual meshes (no collision)"
 			% [c, _all_meshes(scene).size()])
 		_wire_doors(scene, col)
+		_wire_people(scene)
 		return c > 0
 
 	var n := 0
@@ -141,6 +149,28 @@ func _wire_doors(scene: Node, col: Node) -> void:
 	add_child(_doors)
 	var n: int = _doors.collect(scene, col, door_travel_m)
 	print("walk: %d doors wired" % n)
+
+
+## Give the deck its inhabitants. `--no-people` leaves them inert, which is the
+## negative control: with nobody reacting the turn must read ZERO. A reaction
+## test that only runs the working configuration cannot tell a person who turns
+## from a statue that happened to be facing the right way.
+func _wire_people(scene: Node) -> void:
+	if actors_path == "" or not FileAccess.file_exists(actors_path):
+		return
+	if _args().has("no-people"):
+		print("walk: people DISABLED (negative control)")
+		return
+	var f := FileAccess.open(actors_path, FileAccess.READ)
+	var actors = JSON.parse_string(f.get_as_text())
+	if typeof(actors) != TYPE_ARRAY:
+		return
+	_people = Node3D.new()
+	_people.name = "People"
+	_people.set_script(load("res://scripts/npc.gd"))
+	add_child(_people)
+	var n: int = _people.collect(scene, actors)
+	print("walk: %d people wired of %d in the cast list" % [n, actors.size()])
 
 
 func _load_glb(path: String) -> Node:
@@ -340,6 +370,10 @@ func _physics_process(delta: float) -> void:
 				_traverse_from.distance_to(_goto), _goto_best, gd]
 			if _doors != null:
 				goto_s += " door_open=%.2f" % _doors.openness(_door_key)
+			if _people != null:
+				goto_s += " turned_deg=%.1f noticed=%d facing_err_deg=%.1f" % [
+					_people.turned_deg(), _people.noticed_count(),
+					_people.facing_error_deg(p)]
 		print(("WALKTEST rest=%.3f,%.3f,%.3f on_floor=%s fell=%s moved_1s=%.3f "
 			+ "drop=%.3f legs=%.2f/%.2f/%.2f/%.2f traverse_m=%.2f net_m=%.2f "
 			+ "offfloor=%d/%d%s") % [
