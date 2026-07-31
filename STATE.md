@@ -154,55 +154,76 @@ door on the station had 176 of them.
 come from looking at `docs/judge3x-door-2m2.png`, and the second is the whole of what is
 left at that subject.
 
-### 1. THE VALUES ARE ALL THE SAME, and it is measured, not an impression
+### 1. THE ALBEDOS ARE NOT THE DEFECT — I REPORTED THIS WRONG AND IT IS CORRECTED
 
-At a doorway, everything is near-white:
+Earlier in this session I recorded that the door frame sitting 2% from the wall it is set into
+was the craft problem. **It is the show's own number.** `docs/reference-values.md` measures
+`grey level 1.webp`'s pilaster face at **×1.016 of its wall plate**, so `materials.kit_pilaster`
+is right and copying it was right.
 
-| part | material | albedo |
+What separates a door from its wall in the show is a **profile, not a pigment**. Cut across the
+corridor's own jamb at y 0.400–0.460 the assembly runs shadow groove **×0.64** → proud nosing
+**×1.27** → bullnose **×1.22** → deep reveal **×0.27** — a **×4.7 spread inside 0.077 of frame
+width at flat albedo**. `Vorlon and captain.webp`, the only frame in the set that shows a door
+leaf in a wall, gives the same shape harder: pale frame band ×2.43–2.47, jamb edge ×2.68–2.82,
+reveals ×0.16–0.32, **local contrast ×8.5–17** — while the leaf itself is only ×1.30–1.76 of its
+wall and most of that is the room's light gradient.
+
+**So the work is relief and shadow, not repainting.** A frame band at ~9.5% of leaf width and a
+reveal deep enough to go dark is what makes a door read.
+
+### 2. THE p5 ×11.09 FIGURE WAS MY RIG, NOT THE BUILD — ALSO CORRECTED
+
+I reported the walkable corridor as "too bright, no shadow, p5 ×11.09 against a ×1.29 band, zero
+crushed pixels", with a caveat that the frame was lit by a hand-written rig. **The caveat was the
+whole story.** Two independent measurements:
+
+| frame | rig | p5 |
 |---|---|---|
-| corridor wall | `kit_wall_plate` | **0.460** |
-| door frame | `kit_pilaster` | **0.469** |
-| bulkhead | `kit_wall_plate` | 0.460 |
-| door leaf | `door_leaf_painted` | 0.385 |
+| `docs/judge3x-corridor-5m.png` | ad-hoc, 4 omnis + ambient 0.34 | **×11.09 FAIL** |
+| `docs/engine-deck-corridor.png` | the deck's own 850 fittings | **×1.45** |
+| `docs/judge3w-corridor-wall-1m.png` | shipped fittings | **×1.03, passes every band** |
 
-**The frame is 2% different from the wall it sits in.** The leaf is 16% darker, which is
-why judge-3w called the door *"a pale slab in the wall with a thin seam"*. Do **not**
-simply darken the door to make it read — these are derived values and CLAUDE.md hard rule
-1 applies. The question to answer first is whether the reference shows a door separating
-from its wall by *value* or by *fitting* (chevrons, a bay number, a recessed handle,
-signage), and `reference/10-interiors-generic-kit/grey level 1.webp` is the frame to
-measure it in.
+**The rig was 7.6× hot in the shadows.** `tools/export_scene.py --shot deck` now exists, so the
+walkable build can be rendered under its own fixtures and this cannot happen again by accident.
 
-### 2. THE WHOLE FRAME IS TOO BRIGHT AND HAS NO SHADOW — measured against the show
+What IS still wrong, measured on the shipped-rig frame: **4.64% clipped against a 3.69% cap**, and
+p5 ×1.45 against a ×1.29 band. Both real, both small, both the opposite sign from what I said.
 
-`tools/measure_frame.py --against "reference/10-interiors-generic-kit/grey level 1.webp"
-docs/judge3x-corridor-5m.png`:
+### 2b. The ladder, which is the real craft gap and is measured
 
-```
-FAIL p5          0.2080 vs 0.0188   x11.09   band x1.29
-FAIL p95         0.8274 vs 0.2261   x 3.66   band x3.27
- OK  p5/p95      0.2514 vs 0.0830   x 3.03   band x3.38
-FAIL crushed     0.0000 vs 0.0052   OURS IS EMPTY and the reference is not
-FAIL clipped      3.93%             max 3.69%
-```
+`docs/reference-values.md` §6.4, ratios to each frame's own lit wall plate:
 
-**p5 at 11.09× against a 1.29× band, and zero crushed pixels anywhere.** The reference has
-deep black in the ceiling, a dark rail band at waist height, ochre panel inserts and a
-checkerboard floor; our corridor is one value from deck to soffit.
+| element | SHOW × wall | OURS × wall |
+|---|---|---|
+| ceiling / soffit | 0.23 – 0.32 | **1.12** |
+| dark horizontal band | 0.23 – 0.30 | **0.86 – 1.05** |
+| floor field | **2.49** | **0.69** |
+| wall light fitting | **4.70** | 1.30 |
+| ceiling light strip | **7.72** | 1.46 |
 
-**CAVEAT, AND IT MATTERS: that frame was lit by an ad-hoc rig** — four omni lights at
-energy 5.0 and ambient 0.34, written into a scratch shot JSON — **not by the shipped
-corridor fixtures**, because `export_scene`'s interior path renders a *room*, not an
-assembled deck. So the number measures the rig, not the build. What it does establish
-regardless of rig is the **shape** of the gap: an ambient floor that high cannot produce a
-crushed pixel at any exposure. Re-measure with the shipped rig before acting on the
-magnitude. Building `export_scene --shot deck` is probably the prerequisite.
+**Four rungs wrong in a consistent direction: ceiling ~4× too bright, dark bands ~4× too bright,
+floor ~3.6× too dark, fittings ~3.6–5× too dim. Everything is pulled toward the wall.** And the
+dark horizontals in the show are **shielded recesses, not dark paint** — an affine fit
+`Y = 0.054·wall + 0.0054` beats a through-origin fit 2.8×, so the recess takes about 5% of the key.
 
-This is **layer 4b**, which CLAUDE.md records at **1 of 17**, and p5 is exactly the
-statistic it records as the discriminator (*"fails 13 of 17, bright on 11"*). It is the
-same finding, now reproduced on the walkable build.
+**THE UNITS TRAP, and it invalidates a comparison anyone would make next:** every ratio in
+`materials.PROVENANCE` is balanced-V, and a render matches in **linear luminance**. `kit_deck`'s
+recorded "1.6× the wall" is **2.49×** in luminance. Convert before acting.
 
-### 3. Still open from judge-3w, unchanged
+### 3. THE BIGGEST FIDELITY FINDING OF THE SESSION, and it is not a bug
+
+`deck.build_deck` calls `rooms.build(...)` for **every** room and never consults
+`place["module"]`. So **39 of the 106 ring-deck places are module-owned and are assembled as
+generic `rooms.py` bays.** On `blue/0/0` that means the docking bays a player actually walks into
+is a generic store bay standing in for `docking_bay.py` — 18 m, 39 measured floods — and
+`mooring_clamps` is another standing in for `components.py`.
+
+**A player walks in `rooms.py` geometry wherever a bespoke module owns the place.** Every craft
+score taken on an assembled deck has been scoring the generic bay. This is the single largest
+thing `--shot deck` made visible and it belongs in `deck.py`, near `BESPOKE_GEOMETRY`.
+
+### 4. Still open from judge-3w, unchanged
 
 * `fixture_lights` cannot see `<room>__`-prefixed fittings and aims every spot at world
   −Y. On a spun ring −Y is not down.
@@ -216,7 +237,7 @@ same finding, now reproduced on the walkable build.
 * 19 of 118 locations sit in secondary z-clusters the sweep does not build.
 * **Nothing is interactable except the door.**
 
-### 4. Where the walkable station stands
+### 5. Where the walkable station stands
 
 `python3 station/deck.py --sweep`:
 
