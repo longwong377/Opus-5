@@ -294,10 +294,12 @@ PLACES = (
        note="PROPOSED. Contested between Blue on screen and Green in print."),
     _P("bay_elevators", "Bay elevators (2)", "blue", 0, 0, 300.0, 7115.0,
        (8.0, 24.0), auth=3, functions=("transit", "cargo_handling"),
-       interacts=("lift_call", "lift_door"), adjacent=("docking_bays",)),
+       interacts=("lift_call", "lift_door"), adjacent=("docking_bays",),
+       within="docking_bays"),
     _P("lowg_bays", "Low-g / zero-g docking bays", "blue", 0, 0, 130.0, 7115.0,
        (16.0, 60.0), auth=3, functions=("ship_arrival", "microgravity_handling"),
-       interacts=("bay_door", "docking_clamp", "handhold")),
+       interacts=("bay_door", "docking_clamp", "handhold"),
+       within="docking_bays"),
     _P("cobra_bays", "Cobra bays (28)", "blue", 0, 0, 0.0, 6900.0,
        (360.0, 120.0), module="components", auth=3,
        functions=("starfury_launch", "fighter_maintenance"),
@@ -322,7 +324,8 @@ PLACES = (
     _P("plantroom_bay", "A docking bay dressed as a plant room", "blue", 0, 0,
        260.0, 7115.0, (10.0, 40.0), auth=1,
        functions=("plant", "cargo_handling"),
-       interacts=("valve", "catwalk", "bay_door")),
+       interacts=("valve", "catwalk", "bay_door"),
+       within="docking_bays"),
     _P("proximity_arrays", "Space traffic proximity arrays (4)", "blue", 0, 0,
        200.0, 7900.0, (30.0, 60.0), module="components", auth=3,
        functions=("traffic_control", "sensors"), interacts=()),
@@ -332,7 +335,7 @@ PLACES = (
     _P("vorlon_berth", "The Vorlon transport berth", "blue", 0, 0, 320.0,
        7115.0, (10.0, 40.0), auth=4,
        functions=("ship_arrival", "diplomatic_privilege"),
-       interacts=("bay_door", "docking_clamp"),
+       interacts=("bay_door", "docking_clamp"), within="docking_bays",
        note="Kept clear for the Vorlon transport; a privilege made physical."),
     _P("infirmary", "The infirmary", "blue", 0, 1, 116.0, 7300.0, (8.0, 20.0),
        auth=4, functions=("medical", "triage"),
@@ -531,8 +534,21 @@ PLACES = (
     _P("disconnect_point", "Explosive disconnect point", "yellow", 0, 0, 40.0,
        2680.0, (30.0, 60.0), auth=3, functions=("structure", "emergency"),
        interacts=("blast_door",)),
+    # z 925 +/- 125, i.e. 800-1050, NOT 900 +/- 150 = 750-1050. The reactor
+    # (`fusion_core`) runs 0-800 and this ran 750-1050, so the two
+    # interpenetrated by 50 m -- and `collisions()` could not see it, because
+    # a 360-degree footprint collapsed to a point in `_arc_overlap`. Both were
+    # invisible together for as long as both existed.
+    #
+    # The fore end is unchanged; only the aft end moves, to where the reactor
+    # actually ends. `canon/00-MASTER.md` Sec.2 orders these aft to fore --
+    # reactor housing, then purge vents, fuel delivery, cooling fins -- so the
+    # transfer core beginning where the reactor stops is the arrangement the
+    # source describes. Nothing in the register or the reference fixes either
+    # boundary to the metre, so this is the smaller of the two possible edits
+    # and it is declared rather than silent.
     _P("power_transfer", "Power transfer core + 12 cooling fins", "yellow", 0,
-       0, 90.0, 900.0, (60.0, 300.0), module="components", auth=3,
+       0, 90.0, 925.0, (60.0, 250.0), module="components", auth=3,
        functions=("power_distribution", "cooling"), interacts=("console",)),
     _P("mainstage_node", "Mainstage power distribution node", "yellow", 0, 2,
        140.0, 3000.0, (20.0, 100.0), auth=3, functions=("power_distribution",),
@@ -716,7 +732,25 @@ def gravity_of(schema, profile, place):
 
 
 def _arc_overlap(a0, span0, a1, span1):
-    """Do two angular spans overlap on a circle?"""
+    """Do two angular spans overlap on a circle?
+
+    A FULL CIRCLE OVERLAPS EVERYTHING, and this said it overlapped almost
+    nothing. `norm(a - 180)` and `norm(a + 180)` are the SAME NUMBER, so a
+    360-degree footprint collapsed to a single point and
+    `_arc_overlap(0, 360, 90, 10)` returned False. Four places carry a
+    full-circle footprint -- `docking_bays`, `plant_zone`, `fusion_core`,
+    `cobra_bays` -- so every collision involving one of them was invisible.
+    `collisions()` returned an empty list, which reads as "no location on this
+    station overlaps another" and really meant "the check cannot see the four
+    largest footprints on the station".
+
+    Found by the volume audit, which asked what the exterior implies the
+    interior must contain and noticed the register was claiming no overlaps at
+    all.
+    """
+    if span0 >= 360.0 or span1 >= 360.0:
+        return True
+
     def norm(x):
         return x % 360.0
     s0, e0 = norm(a0 - span0 / 2), norm(a0 + span0 / 2)
