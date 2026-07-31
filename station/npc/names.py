@@ -93,13 +93,18 @@ def _minbari(seed):
 # Earth Alliance is explicitly multinational, so a single Anglo name pool would
 # be wrong. Surnames are drawn from several real-world traditions in rough
 # proportion to how the station's human population is depicted.
+# TWO SURNAMES WERE IN THE FORENAME POOL and the station was full of people
+# called "Ericsson Sinclair" and "Ramirez Duval". Both are family names on
+# screen, not given names, and a card reading `SINCLAIR, ERICSSON` is the one
+# place that shows. Moved to where they belong; the two replacements keep the
+# multinational rationale below and the pool the same size.
 HUMAN_GIVEN = ("Jeffrey", "Susan", "Michael", "Stephen", "Elizabeth", "Zack", "Warren",
-               "Lianna", "Marcus", "David", "Amis", "Neeoma", "Tessa", "Ericsson",
-               "Ko", "Ramirez", "Anna", "Bo", "Nadia", "Piotr", "Yuki", "Ade")
+               "Lianna", "Marcus", "David", "Amis", "Neeoma", "Tessa", "Mateo",
+               "Ko", "Aisha", "Anna", "Bo", "Nadia", "Piotr", "Yuki", "Ade")
 HUMAN_SURNAME = ("Sinclair", "Ivanova", "Garibaldi", "Franklin", "Allan", "Keffer",
                  "Cole", "Corwin", "Connally", "Winters", "Alexander", "Redway",
                  "Okoro", "Nakamura", "Silva", "Haddad", "Novak", "Lindqvist",
-                 "Mbeki", "Rossi", "Duval", "Chowdhury")
+                 "Mbeki", "Rossi", "Duval", "Chowdhury", "Ericsson", "Ramirez")
 
 
 def _human(seed):

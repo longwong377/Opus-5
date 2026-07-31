@@ -3049,3 +3049,173 @@ a door plaque, so the door plaque's size, mounting height and layout are all ext
 A frame showing an Earth Alliance face at high resolution would replace the letterforms outright.
 And a frame showing that door signage on B5 is *engraved* rather than lit would overturn the whole
 premise, taking the 130:1 with it.
+
+---
+
+## INV-087 — ORIGIN on the identicard: three attested worlds and twelve polity names
+
+`station/npc/resident.py`, `ORIGIN`.
+
+**What.** Every resident's identicard carries an `ORIGIN`. The prop reads `EARTH` for a human
+(authority 1, `reference/11-props-and-technology/identicard readout.webp`). The other fourteen
+species aboard need one and the reference set names almost no worlds.
+
+**Why it is not simply looked up.** The homeworld names of Babylon 5's species are well known
+outside this repository and are exactly the kind of fact hard rule 1 forbids being written from
+memory. What this repository actually attests is three: **EARTH** at authority 1 from the prop,
+**NARN** at authority 4 (`docs/gazetteer/FACTIONS.md` §6.1 — "the homeworld was bombed; Narn is a
+Centauri protectorate"), and **MINBAR** at authority 4 (§10.1 — Sinclair leads the Rangers "from
+Minbar").
+
+**What constrained it.** ORIGIN on a customs record is a *jurisdiction*, not an address — which is
+why `EARTH` and not a city. So where no world is attested, the field takes the **polity name from
+FACTIONS.md's own section headings** (`CENTAURI REPUBLIC`, §7) or the **species designation as
+§9.2 lists it** (`DRAZI`, `BRAKIRI`, `PAK'MA'RA` — the last at authority 3, the only spelling the
+reference set holds, from the licensed trading card). Every string therefore traces to a line in
+this repository. The tail bucket reads `LEAGUE — UNCLASSIFIED`, because §9.2's "other" is not a
+species and cannot have a world.
+
+**A consequence worth stating:** all 155,000 humans read `EARTH`. Earth Alliance colonies exist and
+this repository names none of them, so a colonial origin would be unmarked invention. §2.4's
+argument for the human share is that the station is EA sovereign territory, which makes `EARTH` the
+jurisdiction whether or not the holder was born there.
+
+**What would overturn it.** Any frame showing a second identicard, or any in-repo source naming a
+world. A single non-human card would replace up to twelve of these rows at once.
+
+---
+
+## INV-088 — `02` numbers the atmosphere, not the species
+
+`station/npc/resident.py`, `ATMOS_NUMBER`.
+
+**What.** The prop reads `DES/ATMOS: HUMAN/02` and `canon/00-MASTER.md` §1.4 records it as "Human
+atmosphere designation **02**". This module reads the field as *designation / atmosphere number*,
+so **every species breathing the standard oxygen mix gets `/02`** — a Narn card reads `NARN/02`.
+
+**What constrained it.** The customs board establishes six standing atmospheres and
+`station/npc/schedule.py` already refuses to number the other five, for the stated reason that
+nothing numbers them and a wrong number printed on a wall is worse than a blank. That refusal is
+kept: `ATMOS_HUMID`, `ATMOS_METHANE` and `ATMOS_UNDISCLOSED` render with **no number at all**. The
+only question this entry settles is whether `02` travels with the *species* or with the *mix*, and
+the alternative reading — a human-only code — would leave fourteen species with no atmosphere
+number, which makes the field useless as the customs check `FACTIONS.md` §3.4 describes it as.
+
+**What would overturn it.** One frame of an identicard for a non-human oxygen breather. If it reads
+anything other than `/02`, the field is a species code and this is wrong.
+
+---
+
+## INV-089 — The local bias: 0.70 of leisure is taken in a sector you already belong to
+
+`station/npc/resident.py`, `LOCAL_BIAS`.
+
+**What.** A resident's bar, restaurant, market and place of worship are resolved once, at creation,
+and 0.70 of the time from the sectors they already live or work in.
+
+**What constrained it.** Both ends, and neither is free. At 1.00 the station is five villages that
+never mix, which contradicts `FACTIONS.md` §12's whole friction layer — the Zocalo and the customs
+halls are where species meet. At 0.00 everybody crosses 8 km for a drink and the sectors have no
+character. 0.70 is the value at which a Red Sector bar is mostly Red Sector's people and roughly
+one in three faces is from somewhere else.
+
+**Why it is a property of the person and not of the evening.** A resident who picks a different bar
+each night is a random walk wearing a name; a regular is somebody the player can meet twice.
+
+**What would overturn it.** Anything measuring how far residents travel aboard — a transit
+frequency, a stated commute, a scene establishing that a named character drinks somewhere outside
+their own sector as a matter of course.
+
+---
+
+## INV-090 — The identicard's date format is DD/MM/YY over a 22xx century
+
+`station/npc/resident.py`, `_dob`.
+
+**What.** The prop reads `DOB: 12/10/25`. Two digits of year, and under the 2260 datum that is
+2225 — Lyta Alexander at 35. The day/month order is **ambiguous in the only sample**: 12/10 reads
+either way.
+
+**What constrained it.** Nothing in the sample. DD/MM is chosen because the field is 2 digits of
+each and every other reading is equally unsupported; the choice is recorded here rather than
+absorbed so that it can be reversed in one line.
+
+**A consequence the format itself creates, and it is kept:** a two-digit year cannot represent a
+Hyach born 240 years before the datum without wrapping. The record therefore stores a full year and
+the *card* renders two digits, which is what an Earth Alliance form designed around human lifespans
+would actually do to a long-lived species. That is a story about the bureaucracy, not a bug.
+
+**What would overturn it.** One identicard whose first field exceeds 12.
+
+---
+
+## INV-091 — Adult age bands, and the two species that get a longer one
+
+`station/npc/resident.py`, `AGE_BAND`, `AGE_SKEW`.
+
+**What.** Humans are drawn from 18–68 with the mode early; Hyach from 30–240; Minbari from 25–130;
+everybody else takes the human band. `AGE_SKEW = 1.64` is **derived, not chosen**: it is
+`ln((34−18)/50) / ln(0.5)`, the exponent that puts the median at 34 in an 18–68 band.
+
+**What constrained it.** Exactly one claim in this repository bears on alien lifespan —
+`FACTIONS.md` §9.2 calls the Hyach "long-lived" at authority 4. Minbari take a longer band on the
+same footing. **Everything else deliberately takes the human band**, because inventing thirteen
+lifespans would be thirteen unsourced numbers where one honest default does the same work. The
+skew exists because `schedule.ROLE_WEIGHTS` is an apportionment of *jobs*: a working population is
+not uniform over its adult range. The first version used an exponent of 3.0 by eye and produced a
+median of 24, which is a station staffed entirely by graduates — that is why the exponent is now
+derived from the median rather than picked.
+
+**Children.** Only the three roles with no work hours can be a minor, and only 8% of them:
+`FACTIONS.md` §11.2 (Downbelow) and §6.2 (13,000 Narn refugees) both describe populations that
+plainly contain children, and a visiting family is ordinary. A station of 250,000 adults would be a
+garrison.
+
+**What would overturn it.** Any stated lifespan or age for any species.
+
+---
+
+## INV-092 — One conditional status in twelve is expired
+
+`station/npc/resident.py`, `VISA_EXPIRED_P`, `_visa`.
+
+**What.** The `VISAS` field is filled only for somebody whose right to be aboard is conditional —
+`TRANSIT nD` for a visitor, `SANCTUARY` for a refugee, `NO STATUS` for a lurker — and 1 in 12 of
+the first two reads `EXPIRED`.
+
+**What constrained it.** `FACTIONS.md` §3.4, on this exact field: "**visa fraud, forged identicards
+and expired status are the station's most ordinary crimes**, and the reason lurkers avoid readers."
+That sentence bounds it from both sides. *Most ordinary crime* cannot be rare, so a rate of 1 in
+1,000 would make the customs layer decoration. It is still a crime, so it cannot be most people —
+at 1 in 3 the station is not administered at all. 1 in 12 puts several expired cards in any large
+room and makes a reader check a real event. The visitor's stay length comes from §2.3's stated mean
+of seven days, drawn over twice that.
+
+**What would overturn it.** Any figure for customs enforcement volume or detention numbers.
+`FACTIONS.md` §2.3's ~12,600 transactions/day is the right shape of source; it gives throughput but
+not a failure rate.
+
+---
+
+## INV-093 — 0.35 of residents eat out
+
+`station/npc/resident.py`, `EAT_OUT_P`.
+
+**What.** `schedule.Activity.EAT` sent every resident to a public eating place. 0.35 of them now
+do; the rest eat at home, or in the mess where they work if the meal falls inside their shift.
+
+**Why it exists at all.** The first cast list this module printed put **all 28 of Downbelow's Narn
+regulars in Earhart's at 13:00** — because 13:00 is a Narn meal hour in `schedule.RHYTHMS` and the
+station's restaurants were the only place a meal could be taken. A quarter of a million people
+cannot lunch out; the restaurants would have to seat all of them three times a day.
+
+**What constrained it.** `FACTIONS.md` §2.5 gives the Fresh Air Restaurant, Earhart's, the Eclipse
+Café and the Zocalo real peak densities and busy meal windows, so the fraction cannot be near zero
+or those windows never fill. Quarters must not be empty at meal times, so it cannot be near one.
+It is a property of the person rather than of the meal, for INV-089's reason. Lurkers and refugees
+are excluded outright: §3.4 says expired status is why they avoid readers, and a restaurant is a
+reader.
+
+**What would overturn it.** Any figure for how many quarters aboard have a galley, or any scene
+establishing that station quarters have no cooking facilities at all — which would push this
+toward 1.0 and is a real possibility on a station with centralised life support.
