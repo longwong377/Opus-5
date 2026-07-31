@@ -150,3 +150,52 @@ metre before they can move.
    between them is 21.6 m wide where it used to be the full 42 m; the walk gate
    reports metres traversed and will say whether that matters.
 4. `python3 station/bespoke.py` — the closure debt line must still read 31.
+
+---
+
+## Session 4b: the code above was RUN, and its controls fire
+
+The write-up was prose when it was written. It has now been executed against the real
+`docking_bay.docking_bay(0, schema, profile)` mesh — `_declared_apertures` exactly as
+printed above, with the `SHELL_APERTURES` entry exactly as printed above:
+
+```
+docking_bay: 0 unexplained open edges, declared [('the bay mouth, on vacuum', 31)]
+  control (holes punched in the ceiling): 32 unexplained, declared []
+  control (module not in the registry): 31 unexplained, declared []
+```
+
+Both controls are the ones that matter and both fire:
+
+* **A hole is not absorbed.** Punching holes in `bay_ceiling` leaves 32 edges unexplained
+  and the mouth is not described at all — the loop test refuses the whole set rather than
+  explaining away the part of it that happens to be coplanar. That is the behaviour the
+  "what the exemption must NOT be" section demands, and it is stronger than the section
+  claimed: the exemption does not merely fail to cover the roof hole, it stops covering
+  the mouth as well until the roof is closed.
+* **The exemption cannot leak.** Asking for a module that has no `SHELL_APERTURES` entry
+  returns all 31 edges unexplained. It is keyed on the module, not on the plane.
+
+So the only thing still outstanding is the part this document already identifies as the
+hard half: `plane_fn` has to be evaluated **in the composed frame**. `bespoke.room_shell`
+applies `end == "max_z"` to `docking_bay`, which is `z -> z - max(zs) + axial_half_m`, so
+the mouth's plane in the composed frame is `z == axial_half_m - (max_z - 0)`; a predicate
+built at composition time from that same translation is the cheapest correct form, as
+stated.
+
+`SHELL_APERTURES` is still deliberately **not** in `station/bespoke.py`, for the reason
+this document gives — a registry with no consumer. Add it in the same change that teaches
+`deck.py` to read it; the verification above means that change does not have to re-derive
+whether the idea works.
+
+The reproduction script is trivial and is not committed: import `docking_bay`, paste
+`_declared_apertures` and `SHELL_APERTURES` from this file, and call it on
+`docking_bay(0, schema, profile)`.
+
+## And `SHELL_OPEN_EDGES["docking_bay"]` is still 31, unchanged
+
+`python3 station/bespoke.py --selftest` reads *"closure debt: 31 open edges across 9
+composed shells -- docking_bay 31"* at session 4b's HEAD, and `python3
+station/docking_bay.py` is **36/36** (it was 34/35 at `4c5efc5` — see that commit; the
+failure was a pegged non-manifold count that had gone stale in the direction of an
+improvement, and it is now a property test with its own control).

@@ -50,10 +50,15 @@ BESPOKE_GEOMETRY = {
     "docking_bay": lambda s, p, q: __import__("docking_bay").docking_bay(
         0, s, p),
     "hospitality": lambda s, p, q: __import__("hospitality").room(),
-    # The bay a place lands in is the first one; plant.bays() partitions the
-    # deck by arc and every bay is the same construction.
-    "plant": lambda s, p, q: __import__("plant").plant_bay(
-        s, p, __import__("plant").bays(s, p)[0], 10.0),
+    # THE PLACE'S OWN CELL, not a 10-degree slice of the whole grey sector.
+    # This used to read `plant_bay(s, p, bays(s, p)[0], 10.0)` -- outermost bay
+    # for all five places regardless of which deck the register puts them on,
+    # and no `z_span`, so it defaulted to the sector's own 442 m. That is the
+    # entire reason `plant` sat in NEAR_END_UNKNOWN: the measured 82.2 x 1.80 m
+    # walkable band inside a 92 x 442 m bay is what you get when you ask a bay
+    # generator for the size of a sector. `plant.room_cell` asks for the size
+    # of the room and the numbers come off the register. INV-231.
+    "plant": lambda s, p, q: __import__("plant").room_cell(s, p, q),
     # THE CLASS COMES FROM THE PLACE. A lurker's berth and a command cabin are
     # different geometry, and rendering one class seven times would be seven
     # frames of one room. See QUARTERS_CLASS.
@@ -110,6 +115,16 @@ UNROLL = {"plant"}
 # Asking beats inferring, exactly as `light_` tagging beats guessing which
 # material glows.
 WALK_SURFACE = {"plant": ("plant_catwalk",)}
+
+# NO PER-MODULE CEILING OVERRIDE, AND THE ONE THAT WAS HERE IS WORTH A NOTE.
+# `compose` takes a room's ceiling as `max(y) - min(y)` over the shell, and the
+# first version of the plant composition needed that overridden to
+# `plant.CATWALK_CLEAR_M` -- because a gantry hung 15.6 m up an 18 m bay has
+# 2.4 m of headroom and a bounding box cannot see it. Putting the walkway on
+# the bay's own FLOOR instead made the box right again: the room really is 18 m
+# tall, `dressing`'s conduit riser really does run all 18 m of the wall, and it
+# is the correct content for a machine hall. Recorded because "the fix removed
+# the need for the mechanism" is the outcome to prefer over a second registry.
 
 
 def unroll_to_local(verts):
@@ -252,6 +267,12 @@ NEAR_BAND_M = 1.2
 SHELL_OPEN_EDGES = {
     "alien_sector": 0,
     "quarters": 0,
+    # 192 -> 0 in session 4b, and they were `dressing._cyl`'s session-3x defect
+    # in a third costume: `plant_pipe` and `plant_conduit` were lathed with
+    # `cap_lo=False, cap_hi=False` on the reasoning that a cell's ends face the
+    # next cell. Composing a room-sized cell puts those ends on a wall a player
+    # walks up to. See the note in `plant.plant_bay`.
+    "plant": 0,
     "customs": 0,
     "command_control": 0,
     "zocalo": 0,
@@ -1129,6 +1150,14 @@ NEAR_END = {
     # decision made in one place rather than two that can disagree.
     "zocalo": ("min_z", "zocalo_run(cap_ends=True) cuts its doorway in the "
                         "minimum-z bulkhead; the maximum-z cap is solid"),
+    # DECIDED BY THE WALKWAY, exactly as the Zocalo's is decided by its cap.
+    # `plant.room_cell` puts the catwalk hard against the cell's MAXIMUM z and
+    # rails only its open side, so the maximum-z face is the one a body can
+    # step through and the minimum-z face is 8 m of tank farm. The declaration
+    # and the geometry are one decision made in one place.
+    "plant": ("max_z", "plant.room_cell puts the catwalk's near edge at z1 "
+                       "with walk_sides=(-1,), so the maximum-z face is the "
+                       "only one with floor at the doorway"),
 }
 
 # DECLARED, AND STILL NOT COMPOSED. A separate list from the one below because
@@ -1158,17 +1187,131 @@ NOT_COMPOSED = {
 # The one that is NOT declared, and why it is genuinely undecidable from what
 # the module says about itself. Recorded so the next reader does not repeat the
 # search rather than as an apology.
-NEAR_END_UNKNOWN = {
-    "plant": "plant builds in STATION coordinates at radius 447-471 and is "
-             "unrolled for rendering; its walkable surface is a catwalk "
-             "(WALK_SURFACE), not a floor, and a corridor joining it is a "
-             "different connection from a door in a wall. Measured in session "
-             "4a: the catwalk's floor band is 82.2 m across the arc by 1.80 m "
-             "along the axis, and the bay it belongs to is 92 x 442 m -- so "
-             "recentring it onto a ring deck would lay 442 m of tank farm "
-             "along the station's axis, through every other z-cluster on that "
-             "deck. It needs a placement decision, not a near-end declaration.",
-}
+#
+# EMPTY AS OF SESSION 4b, AND THE ENTRY THAT WAS HERE IS WORTH KEEPING BECAUSE
+# IT WAS RIGHT ABOUT THE MEASUREMENT AND WRONG ABOUT THE CAUSE. It read:
+#
+#     "plant builds in STATION coordinates at radius 447-471 and is unrolled
+#      for rendering; its walkable surface is a catwalk (WALK_SURFACE), not a
+#      floor... Measured in session 4a: the catwalk's floor band is
+#      82.2 m across the arc by 1.80 m along the axis, and the bay it belongs
+#      to is 92 x 442 m -- so recentring it onto a ring deck would lay 442 m of
+#      tank farm along the station's axis, through every other z-cluster on
+#      that deck. It needs a placement decision, not a near-end declaration."
+#
+# Every number in that is correct and the conclusion drawn from it was not.
+# 92 x 442 m is not a property of `plant`; it is what `plant_bay` returns when
+# it is handed `arc_deg=10.0` and no `z_span`, because the default z_span is
+# the GREY SECTOR'S OWN EXTENT. The registry entry above was asking a bay
+# generator for a sector and then reading the answer as the module's nature.
+#
+# The lesson generalises past this module: a measurement taken through a call
+# describes the CALL. Two of the three numbers here -- 92 m and 442 m -- were
+# arguments, and the one that was really the module's (1.80 m, CATWALK_W_M) is
+# the one that turned out not to be the obstacle.
+NEAR_END_UNKNOWN = {}
+
+
+# THE MODULES THAT OWN A PLACE AND HAVE NO BUILDER HERE, AND WHY EACH IS A
+# DELIBERATE "NO" RATHER THAN A GAP. Session 4b, and it is written down because
+# the question ("compose the 20 places with no builder") is the obvious next
+# one and the answer is mostly no -- so the next context should spend its time
+# on the three that are worth building instead of re-deriving these fourteen.
+#
+# `deck.py --sweep` counts per (cluster, place), so a place near a cluster
+# boundary is served by two corridors and counted twice. The 26 generic
+# assemblies at the head of session 4b were 20 distinct places.
+#
+# --- components x14 (9 places) -------------------------------------------
+#
+# `components.py` BUILDS THE EXTERIOR. Its docstring's first line is "generate
+# the station's non-axisymmetric components... built here as parametric
+# primitives placed against the longitudinal framework", every builder emits a
+# RING of instances in station coordinates, and the decisive measurement is one
+# line: standing under an `observation_dome` at its own base plane, **0 of its
+# 192 triangles face the viewer**. Every surface points out. A player inside
+# one sees the background, and the background is black.
+#
+# `dome_mesh` says so itself -- "the base sits inside the hull and the hole
+# faces away from every camera", and the base disc is "wound the other way --
+# it faces into the hull". These are blisters ON a hull, not rooms under one.
+#
+#   obs_dome_1  x3  } WORTH BUILDING, and the only three that are. Dome 1 IS
+#   obs_dome_2  x3  } Command & Control's dome and `03-sector-blue/comand and
+#   obs_rotundas x1 } contorl.webp` is authority 1 seen FROM INSIDE it;
+#                     `05-sector-green/rotunda.webp` is authority 1 of a
+#                     rotunda's interior and is the richest single reference in
+#                     00-INDEX. What is missing is not a composition, it is an
+#                     INTERIOR: a floor, a window ring, and a dome shell with
+#                     thickness so its inner surface exists. Spec at the bottom
+#                     of this block.
+#   cobra_bays  x1    Exterior launch tubes. 84 triangles of well liner for a
+#                     42 m bay, 31% of them facing a viewer standing in it --
+#                     a blockout of a volume a Starfury is thrown out of, with
+#                     no floor at a person's scale and no pressurised side.
+#   proximity_arrays x1  `swept_fins`. Sensor blades. `interacts` is EMPTY.
+#   comms_grid  x1    `deep_space_comms_grid` has no row in `schema.components`
+#                     at all; only its 1,060 m SUPPORT PYLON is built.
+#                     `interacts` is EMPTY.
+#   power_transfer x1  "Power transfer core + 12 cooling fins". The fins are
+#                     `planar_blades`, 470 m of exterior blade; the core has no
+#                     builder. Its one `interacts` is a console, which is a
+#                     control room `rooms.py` can build and `components` cannot.
+#   mooring_clamps x1  NO BUILDER ANYWHERE: `hard_docking_mooring_clamp` is in
+#   nav_beacon  x2     `schema.exterior_systems` and not in `schema.components`,
+#                      as is `primary_navigation_beacon`. Nothing to compose.
+#
+# --- core_tube x2 --------------------------------------------------------
+#
+# `core_shuttle` and `shuttle_car`. REFUSED BY THE MODULE ITSELF, which is the
+# cleanest possible answer: `core_tube._guard` raises unless **100%** of the
+# envelope's faces point AWAY from the spin axis, because "this geometry is
+# seen from outside, because the viewer is out in the drum looking in at the
+# axis". A module that asserts it cannot be seen from inside cannot be an
+# interior. `shuttle_car` is a car interior and no module builds one; both are
+# addressed to deck 30, the axis, not a ring deck.
+#
+# --- interior_kit x3 (2 places) ------------------------------------------
+#
+# `standard_corridor` is THE KIT -- its own register note reads "The kit. 3,414
+# streaming cells of it across 251 decks" -- so composing it would build a
+# corridor inside the corridor `deck.build_deck` has already laid. The generic
+# bay standing in for it is the correct outcome and the register row is a label
+# for something already built. `central_corridor` is different and is real
+# work: "Two-level public concourse; exposed hull ribs", which is not the
+# standard kit and which `interior_kit` has no builder for.
+#
+# --- interior x1 ---------------------------------------------------------
+#
+# `subfloor_stack`, "the sub-floor deck stack under the Garden" -- services,
+# informal residence, storage, with catwalk/door/valve interactions.
+# `interior.py` builds ring arcs, spokes, end caps and the drum shell and has
+# no builder for a service stack. Its four sibling `interior` places
+# (`drum_endcaps`, `drum_spokes`, `the_garden`, `radial_tubes`) do not appear
+# in this count at all: they are on the drum cluster, which `--sweep` counts as
+# heightfield ground rather than as a ring deck.
+#
+# --- SO THE THREE WORTH BUILDING, and what each needs ---------------------
+#
+# An observation room is a FLOOR, a WINDOW RING and a DOME WITH THICKNESS, and
+# the last is the only hard part: `dome_mesh` is a closed half-ellipsoid whose
+# every face points out, so an interior needs it called twice -- outer at r,
+# inner at r - t with its winding reversed -- and a base annulus rimming the
+# two, exactly the `interior_kit.plate_solid` shape that closed six modules in
+# session 4a. `_dome_fittings` already builds mullions, a ring band and a base
+# collar and would need its `grow` term negated to stand them proud INSIDE.
+# `DOME_MULLIONS = 16` was measured off the inside view and `rotunda.webp`
+# independently counts "at least eight columns across the far arc... a closed
+# ring at that spacing implies roughly sixteen bays", which is the same number
+# from a second frame.
+#
+# ONE THING THAT WILL BITE, and it is general rather than about domes:
+# `dressable_extent` returns the BOUNDING BOX of the floor band, which is right
+# for every module composed so far because all of them are rectangular in plan
+# and is wrong for a circle -- a 2R x 2R dressing rectangle puts its corners at
+# 1.41 R, through the window ring. The general fix is the largest axis-aligned
+# rectangle inscribed in the floor band, which equals the bounding box on a
+# rectangular plan and so changes nothing already composed.
 
 
 # WHAT THE NINE MODULES LOOK LIKE AS SURFACES, audited when the adapter's

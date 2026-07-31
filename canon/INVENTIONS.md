@@ -4407,6 +4407,101 @@ by `/` and the nearest-distance field by `,`.
 
 ---
 
+## INV-231 — A plant cell the size of the room the register addresses
+
+`station/plant.py`, `room_cell()`, `bay_for_deck()` and the four `walk_*` / two `farm_*` /
+one `frame_at` arguments to `plant_bay()`; `station/bespoke.py`, `BESPOKE_GEOMETRY["plant"]`
+and `NEAR_END["plant"]`.
+
+**What.** The five plant places in `docs/gazetteer/LOCATIONS.md` — `plant_zone`, `downbelow`,
+`downbelow_arch`, `water_reclamation`, `air_compressors` — are built as **room-sized cells of the
+outer stack**, composed onto their own ring decks, instead of being assembled as generic bays.
+Three numbers set the cell and none of them is chosen:
+
+| | value | where it comes from |
+|---|---|---|
+| arc | `2 * (half_w − edge_x) / r_walk` rad | `half_w` is `min(room_extent_m, bay_span_m)/2`, which is what `deck.room_shell_for` sizes the **collision shell** from |
+| axis | `min(l_full, bay_l)` about the place's own `z_m` | the same expression `deck.room_interior_half_m` uses |
+| walkway radius | `bay["r_outer"]` | which for all five places IS the addressed deck's floor radius to within 50 mm |
+
+**Why necessary.** `bespoke.NEAR_END_UNKNOWN` held `plant` back on a measurement that was correct
+and a conclusion that was not: *"the catwalk's floor band is 82.2 m across the arc by 1.80 m along
+the axis, and the bay it belongs to is 92 x 442 m"*. 92 × 442 m is not a property of `plant.py`.
+It is what `plant_bay` returns when it is handed `arc_deg=10.0` and **no `z_span`**, because the
+default z-span is the grey sector's own extent. The registry was asking a bay generator for the
+size of a sector and reading the answer as the module's nature. **A measurement taken through a
+call describes the call.**
+
+**What constrained each of the placement choices, and each was forced by a measurement:**
+
+* **The walkway is the addressed deck's floor**, not the module's gantry at `r_inner +
+  CATWALK_CLEAR_M`. `bespoke.room_shell` puts the walkable floor at y = 0 and `deck._place_local`
+  puts y = 0 at the **corridor's** radius, so a gantry 15.6 m inboard of the bay's outer face
+  lands the bay's other 15.6 m *outboard* of the corridor floor — and `plant_zone` and `downbelow`
+  are addressed to deck 0, whose floor is the outermost radius in the whole stack. Their tank farm
+  would have hung through the pressure hull. It is also `deck.build_deck`'s own stated rule: *"a
+  step between a corridor and a room is a trip hazard the walk test would find and a player would
+  feel."*
+* **The floor is the whole cell**, not a 1.8 m catwalk. 1.8 m of gantry down the middle of a
+  9.96 m cell leaves `bespoke.near_face_opening` no floor within `APPROACH_DEPTH_M` of the door,
+  so the room is not enterable; and `dressing.dress` handed a 1.8 × 14 m strip furnishes a
+  corridor.
+* **The rail and the service tubes go on the far side only.** A 1.05 m rail across the aperture is
+  what `deck._mouth_clear`'s 0.735 m probe calls a wall, and a tube stands `TUBE_PROUD_M` past the
+  rail line — 0.12 m outside the plane `room_shell` recentres on, which does not fail, it silently
+  moves the whole room up the axis.
+* **The frames are the room's side walls.** One frame at the cell's centre — which is what
+  `max(1, int(arc_deg / FRAME_PITCH_DEG))` gives a 1.7° cell — is a 1.1 × 18 m column standing
+  where the furniture and the people go. The first frame of the room was taken from inside it;
+  `docs/engine-4b-plant-room.png` is the same room after the frames moved to its edges.
+* **The farm is on the place, not on the station lattice.** `FARM_PITCH_DEG` is 30° and anchored
+  to absolute angle, deliberately, so two neighbouring streaming cells cannot each put a farm just
+  inside their shared seam. A 1.7° room-sized cell therefore lands between farms about 94 times in
+  a hundred, and the water reclamation facility contained no tank — `rooms.FIXTURES`' lesson in a
+  new costume.
+
+**AND THEN NOT ONE OF THE FIVE CAN HOLD A TANK, which is a finding rather than a shortfall.**
+`TANK_R_M = 4.5` (INV-028) is sized against an 18 m bay; `rooms.bay_span_m` clamps every one of
+these places to one representative deck-scale bay. A tank needs `2·TANK_R_M + 2·rooms.WALK_M` =
+**10.8 m** each way to be walked round, and the five measure 13.56×9.65, 10.15×11.55, 7.72×10.80,
+13.56×9.65 and 9.91×5.70. All five are short in at least one direction. The gazetteer already says
+what fills the rest: *"the plant zone is predominantly structure, tankage and void"*, and *"life
+support does not need 34 decks, it needs about one"*. The tank farms are the same bay, past the
+frames, and `farm_at = None` still builds them for every streaming cell in the outer stack.
+
+**The render is what settled that**, and no assertion would have. The first version asked only
+whether 9.0 m of tank fitted inside a 13.56 × 9.65 m cell, which it does; the frame taken from the
+player camera at the room's centre was the inside of the tank wall filling it edge to edge.
+*"It fits"* is not *"you can walk round it"*.
+
+That frame is **not committed and cannot be, because the fix removed the tank it showed** — the
+same session both took it and made it un-retakeable. Recorded properly instead: the command was
+
+```
+tools/render_godot.sh --shot deck --deck grey/0/5 --at water_reclamation \
+    --at-offset 0,-7 --face water_reclamation --face-offset 4,-9 \
+    --ambient 2.2 --res 640x360 --out docs/engine-4b-plant-grey05.png
+```
+
+and it reproduces the defect from any tree in which the `fits` test in `plant.room_cell` is forced
+`True`. `docs/engine-4b-plant-grey05.png` is that same shot **after** the fix, and
+`docs/engine-4b-plant-room.png` is `plant_zone` from inside — a grated deck, the edge frames
+standing as side walls, pipe runs, racks and two residents. `docs/engine-4b-plant-door.png` is the
+corridor side: a closed pressure door under a lit sign reading THE PLANT ZONE.
+
+**What would overturn it.** A wider footprint or a larger `bay_span_m` for any of the five — the
+tank rule is a measurement, so a room that can hold one gets one with nothing else changing, and
+the `_selftest` assertion fires the other way. A canon frame of a Babylon 5 plant space showing a
+gantry over tankage rather than a floor among it would move the walkway back to `r_inner`, and
+would then need the register to address these places to the innermost deck of their bay rather
+than the outermost.
+
+**Negative control, run:** uncapping one `plant_pipe` run reopens **48** boundary edges, which is
+exactly the defect the same change closed (`plant_pipe` 48 + `plant_conduit` 144 = all 192 of
+`plant`'s open edges, `cap_lo=False, cap_hi=False` in both). `station/plant.py` 30/30.
+
+---
+
 ## INV-240 — The security force's posts, and how an officer gets into a room
 
 `station/npc/security.py` (`POSTS`, `NO_POST`, `officer_pool`, `presence_at`, `patrol`);

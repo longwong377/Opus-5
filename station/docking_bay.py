@@ -119,8 +119,14 @@ DECK_PAINT_M = 0.004    # a painted marking's own film -- INV-171
 
 # Touching faces, not holes: `rooms.articulate` lays proud dado, rail, skirt
 # and cornice bands whose edges land on the surface behind them, and `rooms.py`
-# is not this module's to edit. Measured, so the gate still fires the moment
-# this file introduces one of its own.
+# is not this module's to edit.
+#
+# KEPT ONLY AS A HISTORICAL READING. The gate that used it asserted EQUALITY
+# with this number and failed when the wall-articulation merge improved the
+# bands to 26 -- a pegged copy of a computed number, which goes stale in the
+# direction of an improvement just as readily as in the direction of a
+# regression. The gate now asserts the property the sentence above describes
+# and needs no constant; this is left so the drift is on the record.
 _INHERITED_NON_MANIFOLD = 30
 
 # The overhead steel. Deep box girders across the bay, a lattice between them,
@@ -577,9 +583,70 @@ def _selftest():
     check("the mouth's loop is the bay's own cross-section",
           len(op) == len(section()[0]),
           f"{len(op)} open edges against a {len(section()[0])}-point section")
+    # THE PROPERTY, NOT THE COUNT -- which is the lesson this module's own
+    # mouth test records having learned in session 4a, applied one assertion
+    # further down. This read `len(nm) == _INHERITED_NON_MANIFOLD` with the
+    # constant pegged at 30, and it FAILED at 26: the wall-articulation merge
+    # improved `rooms.articulate`'s proud bands and nobody re-pegged a number
+    # that lives in a file the change did not touch. A second copy of a
+    # computed number goes stale in the direction of an improvement just as
+    # readily as in the direction of a regression.
+    #
+    # What the test is actually named for is "this module introduces none of
+    # its own", and that is measurable without a constant: attribute every
+    # non-manifold edge to the groups whose triangles use it, and require every
+    # one of them to be an `articulate` band. A band introduced HERE fails it
+    # the moment it appears, at any count, and an improvement upstream cannot.
+    _av, _at, _aspans = [], [], []
+    _rooms.articulate(_av, _at, _aspans, "bay", BAY_W_M / 2.0,
+                      BAY_LEN_M / 2.0, BAY_H_M, z_off=BAY_LEN_M / 2.0,
+                      conduit=False, deck=False, scale=5.5)
+    _artic = {_n for _n, _lo, _hi in _aspans}
+
+    def _key(pt):
+        return (round(pt[0], 4), round(pt[1], 4), round(pt[2], 4))
+
+    _owner = {}
+    for _i, (_a, _b, _c) in enumerate(t):
+        for _p, _q in ((_a, _b), (_b, _c), (_c, _a)):
+            _owner.setdefault(
+                tuple(sorted((_key(v[_p]), _key(v[_q])))), set()).add(g[_i])
+    #
+    # AT LEAST ONE BAND PER EDGE, not every owner a band -- and the first
+    # version of this got that wrong and said so, which is the test working. A
+    # proud band's edge is non-manifold precisely BECAUSE it lands on the
+    # surface behind it, so `bay_ceiling` is a legitimate co-owner of every
+    # cornice edge. What would be this module's own defect is an edge with no
+    # band on it at all: two pieces of bay interpenetrating.
+    _bad = [e for e in nm
+            if not (_owner.get(e, set()) & _artic)]
+    _seen = {o for e in nm for o in _owner.get(e, {"UNATTRIBUTED"})}
     check("nothing but rooms.articulate's proud bands is non-manifold",
-          len(nm) == _INHERITED_NON_MANIFOLD,
-          f"{len(nm)} against {_INHERITED_NON_MANIFOLD}")
+          not _bad,
+          f"{len(_bad)} of {len(nm)} non-manifold edges have no articulate "
+          f"band on them -- two pieces of this module interpenetrating. "
+          f"Groups involved: {sorted(_seen)}")
+    print(f"  non-manifold: {len(nm)} edges, every one of them a "
+          f"rooms.articulate band landing on the surface behind it "
+          f"({len(_seen)} groups; the constant this used to be pegged to "
+          f"said {_INHERITED_NON_MANIFOLD})")
+
+    # NEGATIVE CONTROL -- interpenetrate two of the bay's OWN pieces and the
+    # property has to fire. Duplicating the back wall in place gives every one
+    # of its edges a second, band-free user, which is exactly the defect the
+    # count-based version could not distinguish from an upstream improvement.
+    _dupe = [tri for k, tri in enumerate(t) if g[k] == "bay_backwall"]
+    _nm2 = _kit.boundary_edges(v, list(t) + _dupe)[1]
+    _g2 = list(g) + ["bay_backwall"] * len(_dupe)
+    _own2 = {}
+    for _i, (_a, _b, _c) in enumerate(list(t) + _dupe):
+        for _q1, _q2 in ((_a, _b), (_b, _c), (_c, _a)):
+            _own2.setdefault(
+                tuple(sorted((_key(v[_q1]), _key(v[_q2])))), set()).add(_g2[_i])
+    check("...and interpenetrating two of the bay's own pieces fires it",
+          any(not (_own2.get(e, set()) & _artic) for e in _nm2),
+          f"a duplicated back wall left every non-manifold edge on a band -- "
+          f"the property is not measuring this module's own geometry")
 
     # NEGATIVE CONTROL -- take one triangle out of the crew-end bulkhead and
     # the mouth gate has to fire, because a hole in a wall is not a mouth.
