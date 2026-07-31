@@ -130,6 +130,12 @@ BOLLARD_R_M = 0.55
 BOLLARD_H_M = 1.15
 BOLLARD_SEG = 12
 
+# Touching faces, not holes: `rooms.articulate`'s proud dado, rail, skirt and
+# cornice bands and `signage`'s board frames all lay plates whose edges land on
+# the surface behind them, and neither module is this one's to edit. Measured,
+# so the gate still fires the moment this file introduces one of its own.
+_INHERITED_NON_MANIFOLD = 54
+
 # ---------------------------------------------------------------------------
 # The gate wall's light course -- THE ROOM'S ONE CAST SOURCE
 # ---------------------------------------------------------------------------
@@ -404,6 +410,20 @@ def hall(schema, profile, sector="blue", with_crowd_clearance=True):
                 a = n0 + 2 * k + 1
                 b = n0 + 2 * ((k + 1) % BOLLARD_SEG) + 1
                 t.append((c, a, b))
+            # ...AND A BOTTOM. Capped at the top only, the four bollards were
+            # every one of this hall's 48 open boundary edges -- 12 a bollard,
+            # one per segment, round the foot of the one object in the room a
+            # player physically walks between. It is `dressing._cyl`'s defect
+            # (session 3x) in a third copy, and the reasoning that leaves it
+            # out is always the same: the foot is on the deck and nobody sees
+            # it. Nobody sees a hole either; the deck this hall composes onto
+            # still asserts watertightness.
+            c0 = len(v)
+            v.append((cx, 0.0, zc))
+            for k in range(BOLLARD_SEG):
+                a = n0 + 2 * k
+                b = n0 + 2 * ((k + 1) % BOLLARD_SEG)
+                t.append((c0, b, a))
             g.append(("customs_bollard", t0, len(t)))
 
     # --- the gate wall's light course -------------------------------------
@@ -643,6 +663,32 @@ def _selftest():
     det = -(-1.0)          # expanding the 3x3 of that permutation
     check("the signage remap preserves handedness", det > 0,
           "determinant +1, so the boards are not mirrored")
+
+    # --- CLOSURE, which winding says nothing about -------------------------
+    # This file asserted winding on a PROBE BOX from the day it was written --
+    # the case with no defect in it -- and never on the hall. `_signed_volume`
+    # of a bollard with no bottom is still positive, because a missing cap
+    # contributes nothing either way, so 48 open boundary edges sat under a
+    # green gate for four sessions.
+    import interior_kit as _k                                # noqa: PLC0415
+    op, nm = _k.boundary_edges(v, t)
+    check("the hall is a closed surface", not op,
+          f"{len(op)} open boundary edges, first at {op[:1]}")
+    check("...and its non-manifold count is only the trim it inherits",
+          len(nm) == _INHERITED_NON_MANIFOLD,
+          f"{len(nm)} against {_INHERITED_NON_MANIFOLD} from "
+          f"rooms.articulate's proud bands and signage's frames")
+    # NEGATIVE CONTROL -- take one bollard's floor away again. The bottom cap
+    # is the LAST BOLLARD_SEG triangles of a bollard's span, by construction
+    # above, so the control is derived from the group table rather than from a
+    # remembered index.
+    span = next(s for s in g if s[0] == "customs_bollard")
+    holed = [tri for k, tri in enumerate(t)
+             if not (span[2] - BOLLARD_SEG <= k < span[2])]
+    check("...and removing ONE bollard's bottom cap fires it",
+          len(_k.boundary_edges(v, holed)[0]) == BOLLARD_SEG,
+          f"{len(_k.boundary_edges(v, holed)[0])} open with one foot removed, "
+          f"expected {BOLLARD_SEG}")
 
     print(f"\ncustoms hall: {HALL_LEN_M:.0f} x {HALL_W_M:.0f} x {HALL_H_M:.1f} m, "
           f"{len(t):,} triangles, {gee:.3f} g")

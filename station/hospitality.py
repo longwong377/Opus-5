@@ -91,6 +91,7 @@ TABLES_Z = 3
 # shade, so each table is its own pool of light.
 SHADE_R_M = 0.32           # ~0.64 m across
 SHADE_DROP_M = 0.16        # shallow -- a cone, not a dome
+SHADE_T_M = 0.012          # the shade's own material thickness -- INV-171
 STEM_R_M = 0.022
 PENDANT_H_M = 1.62         # underside of the shade above the deck
 LAMP_R_M = 0.10            # the bright rim inside the shade
@@ -115,7 +116,16 @@ MATRIX_CELLS_Y = 7
 MATRIX_CELL_M = 0.085
 MATRIX_GAP_M = 0.025
 
+# Non-manifold edges this module does NOT own. `rooms.articulate` lays the
+# dado, rail, skirt and cornice bands as proud plates whose edges coincide with
+# the wall behind them, and `rooms.py` is not this module's to edit -- so the
+# assertion is against the measured inherited count, exactly as `zocalo._selftest`
+# does for `interior_kit.wall_assembly`. It still fails the moment this file
+# introduces one of its own.
+_INHERITED_NON_MANIFOLD = 58
+
 DART_R_M = 0.2255          # a regulation board is 451 mm across
+DART_T_M = 0.038           # and 38 mm deep -- INV-171
 DART_SEGS = 20
 DART_RING_R = (0.0159, 0.0318, 0.1070, 0.1150, 0.1620, 0.1700)  # regulation
 DISPLAY_W_M = 0.42         # the amber alphanumeric reading 209
@@ -147,7 +157,25 @@ def _box(v, t, g, name, lo, hi):
     return v, t, g
 
 
-def _cyl(v, t, g, name, cx, cz, y0, y1, r, seg=TABLE_SEG, cap=True):
+def _cyl(v, t, g, name, cx, cz, y0, y1, r, seg=TABLE_SEG):
+    """An upright cylinder, CAPPED AT BOTH ENDS.
+
+    IT USED TO BE CAPPED AT THE TOP ONLY, and two call sites passed
+    `cap=False` and got no caps at all. That is `dressing._cyl`'s defect --
+    fixed there in session 3x -- alive in a second copy in this file, and it
+    was the single biggest hole in the bar: 288 open boundary edges under 36
+    stools, 108 round the tables, 72 under the table stems, 108 on the pendant
+    stems and 48 on the neon tube. 624 of the room's 824, all of them the same
+    missing six triangles an end.
+
+    THE `cap=False` CALLERS WERE THE WORST OF IT and the reasoning that
+    produced them is worth recording, because it is plausible and wrong: a
+    pendant stem runs INTO the ceiling and a neon tube segment butts against
+    the next one, so an end cap there is never seen. True -- and a cap you
+    cannot see costs six triangles, while a hole you cannot see is still a
+    hole in the deck this room is composed onto, and the deck asserts
+    watertightness. Closure is not a visibility argument.
+    """
     n0 = len(v)
     for k in range(seg):
         a = math.tau * k / seg
@@ -159,13 +187,14 @@ def _cyl(v, t, g, name, cx, cz, y0, y1, r, seg=TABLE_SEG, cap=True):
         a0 = n0 + 2 * k
         b0 = n0 + 2 * ((k + 1) % seg)
         t += [(a0, b0, b0 + 1), (a0, b0 + 1, a0 + 1)]
-    if cap:
-        c = len(v)
-        v.append((cx, y1, cz))
-        for k in range(seg):
-            a = n0 + 2 * k + 1
-            b = n0 + 2 * ((k + 1) % seg) + 1
-            t.append((c, a, b))
+    top = len(v)
+    v.append((cx, y1, cz))
+    for k in range(seg):
+        t.append((top, n0 + 2 * k + 1, n0 + 2 * ((k + 1) % seg) + 1))
+    bot = len(v)
+    v.append((cx, y0, cz))
+    for k in range(seg):
+        t.append((bot, n0 + 2 * ((k + 1) % seg), n0 + 2 * k))
     g.append((name, t0, len(t)))
     return v, t, g
 
@@ -179,20 +208,34 @@ def pendant(v, t, g, cx, cz):
     """
     y = PENDANT_H_M
     _cyl(v, t, g, "bar_pendant_stem", cx, cz, y + SHADE_DROP_M, ROOM_H_M,
-         STEM_R_M, seg=6, cap=False)
-    # Shallow cone: a ring at the rim, apex above.
+         STEM_R_M, seg=6)
+    # Shallow cone: a ring at the rim, apex above -- and it is a SHELL, with
+    # an inner cone and a rim band, because a shade is a thing with a
+    # thickness. As a single cone it was open all the way round its rim, 12
+    # edges a pendant, and the underside -- the surface the lamp actually
+    # bounces off and the only part of the shade a seated drinker sees -- did
+    # not exist at all. Capping the rim instead would have closed it and put a
+    # lid on the lamp.
     n0 = len(v)
+    ri = SHADE_R_M - SHADE_T_M
     for k in range(TABLE_SEG):
         a = math.tau * k / TABLE_SEG
-        v.append((cx + SHADE_R_M * math.cos(a), y,
-                  cz + SHADE_R_M * math.sin(a)))
-    apex = len(v)
+        ca, sa = math.cos(a), math.sin(a)
+        v.append((cx + SHADE_R_M * ca, y, cz + SHADE_R_M * sa))
+        v.append((cx + ri * ca, y + SHADE_DROP_M * SHADE_T_M / SHADE_R_M,
+                  cz + ri * sa))
+    apex_o = len(v)
     v.append((cx, y + SHADE_DROP_M, cz))
+    apex_i = len(v)
+    v.append((cx, y + SHADE_DROP_M - SHADE_T_M, cz))
     t0 = len(t)
     for k in range(TABLE_SEG):
-        a0 = n0 + k
-        b0 = n0 + (k + 1) % TABLE_SEG
-        t.append((apex, b0, a0))
+        a0 = n0 + 2 * k
+        b0 = n0 + 2 * ((k + 1) % TABLE_SEG)
+        t.append((apex_o, b0, a0))                       # the outside, upward
+        t.append((apex_i, a0 + 1, b0 + 1))               # the underside, lit
+        t.append((a0, b0, b0 + 1))                       # the rim band
+        t.append((a0, b0 + 1, a0 + 1))
     g.append(("bar_pendant_shade", t0, len(t)))
     # The bright rim inside the shade -- the actual source.
     _cyl(v, t, g, "bar_pendant_lamp", cx, cz, y + 0.01, y + 0.05, LAMP_R_M,
@@ -207,13 +250,24 @@ def dartboard(v, t, g, cx, cy, z):
     than assumed -- see DART_SEQUENCE.
     """
     n0 = len(v)
-    v.append((cx, cy, z))
-    for k in range(DART_SEGS):
-        a = math.tau * (k - 0.5) / DART_SEGS + math.tau / 4
-        v.append((cx + DART_R_M * math.cos(a), cy + DART_R_M * math.sin(a), z))
+    # A board is 38 mm of sisal on a backing plate, and it hangs on a wall a
+    # player walks past 0.6 m from -- so it gets a rim and a back. As a bare
+    # fan it was 20 open edges at exactly the distance the rubric calls half
+    # distance, and you could see the wall through the edge of it.
+    for zz in (z, z + DART_T_M):
+        v.append((cx, cy, zz))
+        for k in range(DART_SEGS):
+            a = math.tau * (k - 0.5) / DART_SEGS + math.tau / 4
+            v.append((cx + DART_R_M * math.cos(a),
+                      cy + DART_R_M * math.sin(a), zz))
     t0 = len(t)
+    back = n0 + DART_SEGS + 1
     for k in range(DART_SEGS):
-        t.append((n0, n0 + 1 + k, n0 + 1 + (k + 1) % DART_SEGS))
+        k2 = (k + 1) % DART_SEGS
+        t.append((n0, n0 + 1 + k, n0 + 1 + k2))            # the playing face
+        t.append((back, back + 1 + k2, back + 1 + k))      # against the wall
+        t.append((n0 + 1 + k, back + 1 + k, back + 1 + k2))
+        t.append((n0 + 1 + k, back + 1 + k2, n0 + 1 + k2))
     g.append(("bar_dartboard", t0, len(t)))
     return v, t, g
 
@@ -310,7 +364,7 @@ def room():
     for k in range(NEON_TUBE_SEGS):
         y0 = 1.05 + k * (seg_h + 0.05)
         _cyl(v, t, g, "bar_neon_tube", -hw + 0.06, -hl + 0.75,
-             y0, y0 + seg_h, NEON_TUBE_R_M, seg=6, cap=False)
+             y0, y0 + seg_h, NEON_TUBE_R_M, seg=6)
         if k < NEON_CLAMPS:
             _box(v, t, g, "bar_neon_clamp",
                  (-hw, y0 + seg_h, -hl + 0.75 - 0.06),
@@ -464,6 +518,33 @@ def _selftest():
     check("primitives are wound outward", _signed_volume(bv, bt) > 0)
     check("the winding test can fail",
           _signed_volume(bv, [(a, c, b) for a, b, c in bt]) < 0)
+
+    # --- CLOSURE, which winding says nothing about -------------------------
+    # This file asserted winding from the day it was written and never
+    # closure, and the two are independent: `_signed_volume` on a cylinder
+    # with no bottom is still positive, because the missing cap contributes
+    # nothing either way. 824 open boundary edges shipped under that gate --
+    # 36 stools, 9 tables, 9 stems, 9 pendants, 4 neon segments and the
+    # dartboard, every one of them a lathe or a disc open at one end.
+    #
+    # It runs on the WHOLE ROOM rather than on a probe, because the probe is
+    # the case with no defect in it.
+    import interior_kit as _k                                # noqa: PLC0415
+    op, nm = _k.boundary_edges(v, t)
+    check("the bar is a closed surface", not op,
+          f"{len(op)} open boundary edges, first at {op[:1]}")
+
+    # NEGATIVE CONTROL -- put one cylinder's caps back the way they were.
+    cv, ct, cg = [], [], []
+    _cyl(cv, ct, cg, "probe", 0.0, 0.0, 0.0, 1.0, 0.3, seg=8)
+    check("...and the gate fires on a cylinder with no bottom cap",
+          len(_k.boundary_edges(cv, ct[:-8])[0]) == 8,
+          f"{len(_k.boundary_edges(cv, ct[:-8])[0])} open with the floor of "
+          f"an 8-sided cylinder removed -- expected 8")
+    check("...and none of these non-manifold edges is this module's",
+          len(nm) == _INHERITED_NON_MANIFOLD,
+          f"{len(nm)} against the {_INHERITED_NON_MANIFOLD} that "
+          f"rooms.articulate brings in with the dado, rail and skirt bands")
 
     print(f"\nbar: {ROOM_L_M} x {ROOM_W_M} x {ROOM_H_M} m, "
           f"{n_tables} tables each under its own pendant, {len(t):,} triangles")

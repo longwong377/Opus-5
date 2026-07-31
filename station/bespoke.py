@@ -206,31 +206,67 @@ NEAR_BAND_M = 1.2
 # HOW LEAKY EACH COMPOSED SHELL IS, MEASURED, AND IT MAY NOT GET WORSE.
 #
 # A number nobody wrote down until it cost something. The audit further down
-# this file has recorded since session 3y that seven of the nine bespoke modules
-# are open surfaces; what changed is that `deck.build_deck` now composes eight
-# of them, and a composed shell's open edges become the DECK's open edges --
-# which `deck._selftest` asserts are zero. `docking_bay` was cut a doorway this
-# session, passed `_mouth_clear`, and failed that assertion with 160 open edges
-# it had carried all along.
+# this file had recorded since session 3y that seven of the nine bespoke
+# modules were open surfaces; what changed in 3z is that `deck.build_deck`
+# composes eight of them, and a composed shell's open edges become the DECK's
+# open edges -- which `deck._selftest` asserts are zero.
 #
-# So this is a DEBT LEDGER, not a pass mark. It cannot fail on today's content
-# and is not meant to; it fixes the number so the debt is visible and can only
-# be paid down. The gate fires when a module gets leakier, and its negative
-# control -- dropping one triangle from `quarters`, the only closed one -- fires
-# in `_selftest`.
+# It began as a DEBT LEDGER that could not fail on its own content: 3,693 open
+# edges across eight shells, fixed so the number could only be paid down.
+# **It is paid.** Session 4a took every one of the six leaking modules to zero
+# and the whole ledger now reads 31, all of them `docking_bay`'s mouth, which
+# opens on vacuum.
 #
-# `docking_bay` is the reason this exists and is the first one to pay: 80 of its
-# 151 edges are the unrimmed deck emblem, 37 the back wall's own perimeter and
-# only 34 the mouth, which is the one place open is correct.
+# WHAT THE 3,693 ACTUALLY WERE, because the shape of it is the finding: two
+# defects, both already fixed once in this project, in six new costumes.
+#
+#   A FLAT THING WITH NO EDGE -- 1,592 of council_chamber's floor tiles, bench,
+#   fins, medallion and cove; 480 on the Zocalo's downlight pools; 342 across
+#   C&C's mullions, glazing, hub, ring band, console faces and dais risers; 56
+#   on the docking bay's deck emblem. Every one of them a surface authored in
+#   the plane it is SEEN in, which is the plane in which its thickness is
+#   invisible -- and a plate with no thickness is a plate with a boundary.
+#   `interior_kit.deck_pad` and `interior_kit.plate_solid` are the two shapes
+#   it takes and they now live in the kit, once each.
+#
+#   A LATHE OPEN AT ONE END -- 624 of hospitality's stools, tables, stems,
+#   pendants and neon; 48 on customs' bollards. This is `dressing._cyl`'s
+#   session-3x defect, alive in two more private copies, and both carried the
+#   same reasoning in the same shape: the end is against the deck or inside the
+#   ceiling, so nobody sees it. Nobody sees a hole either.
+#
+# The rest was structural: 240 round the Zocalo's tiled deck field, 12 under
+# docking bay ledge risers that hung 2.2 m above the surface they were drawn
+# to stand on, 37 where a back wall drawn as a rectangle met a stepped and
+# curved cross-section.
+#
+# AND THE REASON NONE OF IT WAS CAUGHT IS ONE SENTENCE, which is the same one
+# session 3x wrote about the doorway: **every gate in those six modules
+# measured which way a surface FACED.** A surface that is not there faces
+# nowhere, so a facing test passes vacuously on the missing half of every
+# plate. Each of the six now carries its own closure gate with its own negative
+# control, in the module that builds the thing.
+#
+# The gate below fires when a module gets leakier, and its own negative control
+# -- dropping one triangle from `quarters` -- fires in `_selftest`.
 SHELL_OPEN_EDGES = {
     "alien_sector": 0,
     "quarters": 0,
-    "customs": 48,
-    "docking_bay": 151,
-    "command_control": 342,
-    "zocalo": 736,
-    "hospitality": 824,
-    "council_chamber": 1592,
+    "customs": 0,
+    "command_control": 0,
+    "zocalo": 0,
+    "hospitality": 0,
+    "council_chamber": 0,
+    # THE ONE PLACE OPEN IS CORRECT, and it is not an exemption written to make
+    # a number go green -- it is the bay's mouth, which opens on vacuum and is
+    # how a Starfury gets in. `docking_bay._selftest` asserts the property
+    # rather than the count: every open edge lies in the plane z = 0, they form
+    # ONE closed loop, every vertex of that loop has degree exactly 2, and the
+    # loop has as many edges as the bay's cross-section has points. That is
+    # `aperture.py`'s rule and it is the difference between an opening and a
+    # hole. Its negative control takes one triangle out of the crew-end
+    # bulkhead and reports three stray edges.
+    "docking_bay": 31,
 }
 
 
@@ -951,17 +987,34 @@ def _selftest():
         _H._bsp.doorway_wall = real_dw
 
     # AND THE ONE THAT WAS HELD BACK IS STILL HELD BACK, for the reason stated
-    # rather than by having quietly grown a door. `docking_bay`'s crew bulkhead
-    # is one plate; if somebody pierces it, this fires and points at the closure
-    # debt that has to be paid first.
+    # rather than by having quietly grown a door.
+    #
+    # THE REASON CHANGED IN SESSION 4a AND THE TEST HAD TO CHANGE WITH IT.
+    # It used to count triangles -- "the crew bulkhead is one plate, and one
+    # plate is 2" -- which was true only while the bulkhead was drawn as a
+    # rectangle, and drawing it as a rectangle was itself the defect: a
+    # rectangle cannot close a bay whose floor is stepped and whose roof is an
+    # arc, and 37 of that module's open edges were exactly that mismatch. The
+    # cap is now the ear-clipped cross-section, 29 triangles, and counting
+    # triangles would either fail on a correct wall or have to be re-pegged
+    # every time the section gains a vertex.
+    #
+    # So the test is the PROPERTY: the crew end is unpierced -- every open edge
+    # in the module lies in the plane of the mouth -- and it is still held
+    # back. If somebody cuts a door in the bulkhead, the first half fires and
+    # points at what has to happen first, which is now a change in `deck.py`
+    # rather than a change here. `docs/deck-mouth-exemption.md` has the text.
     import docking_bay as _DB                                   # noqa: PLC0415
-    _bv, _bt, bg = _DB.docking_bay(0, schema, profile)
-    back = [i for i, nm in enumerate(bg) if nm == "bay_backwall"]
-    check("the docking bay's crew bulkhead is still one solid plate",
-          len(back) == 2 and "docking_bay" in NOT_COMPOSED,
-          f"{len(back)} back-wall triangles -- one plate is 2. Piercing it "
-          f"composes a shell with {SHELL_OPEN_EDGES['docking_bay']} open edges "
-          f"onto a deck that asserts watertightness")
+    _bv, _bt, _bg = _DB.docking_bay(0, schema, profile)
+    _bop, _ = _it_kit.boundary_edges(_bv, _bt)
+    pierced = [e for e in _bop
+               if not (abs(e[0][2]) < 1e-6 and abs(e[1][2]) < 1e-6)]
+    check("the docking bay's crew bulkhead is unpierced, and it is held back",
+          not pierced and "docking_bay" in NOT_COMPOSED,
+          f"{len(pierced)} open edges away from the mouth. Piercing the crew "
+          f"end composes a shell with {SHELL_OPEN_EDGES['docking_bay']} open "
+          f"edges -- all of them the MOUTH, which opens on vacuum -- onto a "
+          f"deck that asserts watertightness and cannot yet say so")
     # --- CLOSURE, WHICH COMPOSING A SHELL PUTS ON A DECK ------------------
     # The audit table above has recorded since session 3y that seven of the
     # nine bespoke modules are open surfaces and that nothing gates it. Now
@@ -1083,11 +1136,17 @@ NEAR_END = {
 # takes the generic bay and says why -- which is the outcome this list exists to
 # produce deliberately rather than by omission.
 NOT_COMPOSED = {
-    "docking_bay": "near end is max_z and known; the shell carries 151 open "
-                   "boundary edges (80 of them the unrimmed deck emblem) and "
-                   "composing it failed deck._selftest's watertightness "
-                   "assertion with 160 open edges on blue/0/0. See the comment "
-                   "in docking_bay.docking_bay for what unblocks it.",
+    "docking_bay": "near end is max_z and known, and the shell is now CLOSED "
+                   "except at its mouth -- 151 open edges down to 31, all of "
+                   "them one closed degree-2 loop in the plane z = 0, "
+                   "asserted in docking_bay._selftest. What is left is not a "
+                   "defect in this module: a bay's mouth opens on VACUUM, and "
+                   "deck._selftest's watertightness assertion has no way to "
+                   "say so, so composing it would fail on 31 edges that are "
+                   "correct content. The exact change deck.py needs is in "
+                   "docs/deck-mouth-exemption.md -- an exemption keyed on a "
+                   "declared aperture, tested the way aperture.py tests one, "
+                   "rather than a tolerance.",
 }
 
 # The one that is NOT declared, and why it is genuinely undecidable from what

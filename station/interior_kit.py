@@ -225,22 +225,161 @@ def rib_arch(width, height, p=None, depth=0.55, thickness=0.42, segments=26):
     return verts, tris
 
 
+def deck_pad(loop, y0=0.0, y1=0.012):
+    """A flat thing lying on a deck, given the thickness it physically has.
+
+    `loop` is an (x, z) outline; the pad is the closed solid between y0 and y1
+    -- top face, skirt, bottom face -- returned as (verts, tris) in the loop's
+    own frame for the caller to merge. Winding is normalised from the loop's
+    own signed area rather than trusted, because at least four call sites in
+    this project have got the XZ case backwards: **ascending angle in XZ with
+    +Y up gives a DOWNWARD normal**, so the intuitive order is the wrong one.
+
+    THIS IS `dressing._cyl`'s DEFECT IN A THIRD COSTUME, and the costume is why
+    it survived. `_cyl` was open at the bottom and that read as a missing cap.
+    Here the same hole reads as "it is a decal, decals are flat" -- and a decal
+    that is flat is a surface with a boundary, which is a hole in whatever it
+    is merged into. Measured in session 4a: the eight downlight pools in a
+    Zocalo bay contributed **480 of that room's 736 open edges**, more than the
+    deck perimeter, the lit strip and the soffit put together, and every one of
+    them sat mid-floor where a player walks over it.
+
+    A pad is not free -- it triples a disc's triangle count, 20 -> 60 -- and it
+    is worth it twice over. It closes the surface, and 12 mm of rim is what
+    stops a lit pool reading as a painted circle at grazing incidence, which is
+    the angle a standing player sees the deck from.
+    """
+    n = len(loop)
+    if n < 3:
+        return [], []
+    # Signed area in (x, z). Positive here means the fan (0, i, i+1) would face
+    # DOWN, so the loop is reversed -- see the docstring.
+    a2 = sum(loop[i][0] * loop[(i + 1) % n][1] - loop[(i + 1) % n][0] * loop[i][1]
+             for i in range(n))
+    if a2 > 0.0:
+        loop = loop[::-1]
+    verts = [(x, y1, z) for x, z in loop] + [(x, y0, z) for x, z in loop]
+    tris = []
+    for i in range(1, n - 1):                                   # top, facing up
+        tris.append((0, i, i + 1))
+    for i in range(1, n - 1):                                   # bottom, down
+        tris.append((n, n + i + 1, n + i))
+    for i in range(n):                                          # skirt, outward
+        j = (i + 1) % n
+        tris.append((i, n + i, n + j))
+        tris.append((i, n + j, j))
+    return verts, tris
+
+
+def shoelace(poly):
+    """Twice the signed area of a 2-D loop. Positive is counter-clockwise."""
+    n = len(poly)
+    return sum(poly[i][0] * poly[(i + 1) % n][1]
+               - poly[(i + 1) % n][0] * poly[i][1] for i in range(n))
+
+
+def _point_in_tri(p, a, b, c):
+    def side(u, v):
+        return (v[0] - u[0]) * (p[1] - u[1]) - (v[1] - u[1]) * (p[0] - u[0])
+    s = (side(a, b), side(b, c), side(c, a))
+    return all(x >= -1e-15 for x in s) or all(x <= 1e-15 for x in s)
+
+
+def ear_clip(poly):
+    """Triangulate a simple 2-D loop, convex or NOT, as index triples wound CCW.
+
+    THE GENERAL CASE `_prism` AND `plate_solid` CANNOT DO. Both fan from vertex
+    0, which tiles straight across any notch: `council_chamber`'s bench profile
+    has the recess its lit panel sits in, and `docking_bay`'s cross-section has
+    three stepped ledges either side. A fan cap on the bay puts the back wall
+    through the ledges it is supposed to close against.
+
+    The measurement that catches a bad cap is AREA -- a triangulation that
+    spills outside its outline covers more than the outline does -- and that is
+    what `_selftest` asserts, with the fan as its negative control.
+    """
+    idx = list(range(len(poly)))
+    if shoelace(poly) < 0.0:
+        idx.reverse()
+    out, guard = [], 0
+    while len(idx) > 3 and guard < 4 * len(poly) ** 2:
+        guard += 1
+        for k in range(len(idx)):
+            a, b, c = idx[k - 1], idx[k], idx[(k + 1) % len(idx)]
+            pa, pb, pc = poly[a], poly[b], poly[c]
+            cross = ((pb[0] - pa[0]) * (pc[1] - pa[1])
+                     - (pb[1] - pa[1]) * (pc[0] - pa[0]))
+            if cross <= 1e-15:
+                continue                                   # reflex or straight
+            if any(_point_in_tri(poly[m], pa, pb, pc)
+                   for m in idx if m not in (a, b, c)):
+                continue
+            out.append((a, b, c))
+            idx.pop(k)
+            break
+        else:
+            break
+    if len(idx) == 3:
+        out.append(tuple(idx))
+    return out
+
+
+def plate_solid(loop, thick):
+    """A planar loop given the thickness it physically has: a closed solid.
+
+    `loop` is a CONVEX list of 3-D points lying in one plane, wound so its own
+    normal points the way the visible face should; the body goes BEHIND that
+    face, so a caller converting a one-sided quad does not have to move
+    anything. Returns (verts, tris) for the caller to merge and name.
+
+    THE GENERAL FORM OF THE DEFECT `deck_pad` FIXES FOR HORIZONTAL SURFACES,
+    and it is the same defect: a mullion, a pane of glass, a console face, a
+    fin, a medallion spoke and a dartboard are all objects with a back, and
+    all six shipped as a single quad or a single fan. Measured in session 4a
+    across four modules: 1,100-odd open boundary edges on things whose only
+    fault was being authored in the plane they are seen in.
+
+    Convexity is a contract, not a check -- fan triangulation from vertex 0
+    tiles outside a concave loop. `council_chamber._ear_clip` is the general
+    case and lives there because the bench profile is the only concave one in
+    the project.
+    """
+    n = len(loop)
+    if n < 3:
+        return [], []
+    u = [loop[1][i] - loop[0][i] for i in range(3)]
+    w = [loop[2][i] - loop[0][i] for i in range(3)]
+    nv = (u[1] * w[2] - u[2] * w[1], u[2] * w[0] - u[0] * w[2],
+          u[0] * w[1] - u[1] * w[0])
+    ln = math.sqrt(sum(x * x for x in nv))
+    if ln < 1e-15:
+        return [], []
+    d = [-x / ln * thick for x in nv]
+    verts = [tuple(p) for p in loop] + \
+            [tuple(p[i] + d[i] for i in range(3)) for p in loop]
+    tris = []
+    for i in range(1, n - 1):
+        tris.append((0, i, i + 1))                              # the face
+        tris.append((n, n + i + 1, n + i))                      # the back
+    for i in range(n):
+        j = (i + 1) % n
+        tris.append((i, n + i, n + j))                          # the rim
+        tris.append((i, n + j, j))
+    return verts, tris
+
+
 def downlight_pool(radius=DOWNLIGHT_POOL_M / 2.0, segments=20, rise=0.012):
     """A circular lit disc set into the deck.
 
     Measured off `more hallway.jpg` against a standing officer: 1.57 m across.
     Sits a few millimetres proud so it catches a highlight at grazing angles
-    rather than z-fighting with the deck it lies on.
+    rather than z-fighting with the deck it lies on -- and that proud edge is
+    now MODELLED rather than implied, because a disc with no rim is a hole.
+    See `deck_pad`.
     """
-    verts = [(0.0, rise, 0.0)]
-    for i in range(segments):
-        t = math.tau * i / segments
-        verts.append((radius * math.cos(t), rise, radius * math.sin(t)))
-    # Wound to face UP. Ascending angle in the XZ plane with +Y up gives a
-    # downward normal, so the fan is reversed -- caught by rendering it and
-    # seeing 836 of 2,100 triangles survive backface culling.
-    tris = [(0, 1 + (i + 1) % segments, 1 + i) for i in range(segments)]
-    return verts, tris
+    return deck_pad([(radius * math.cos(math.tau * i / segments),
+                      radius * math.sin(math.tau * i / segments))
+                     for i in range(segments)], 0.0, rise)
 
 
 def deck_strip(width, length, rise=0.01):
@@ -253,9 +392,8 @@ def deck_strip(width, length, rise=0.01):
     than its size suggests.
     """
     hw = width / 2.0
-    verts = [(-hw, rise, 0.0), (hw, rise, 0.0), (hw, rise, length),
-             (-hw, rise, length)]
-    return verts, [(0, 2, 1), (0, 3, 2)]
+    return deck_pad([(-hw, 0.0), (hw, 0.0), (hw, length), (-hw, length)],
+                    0.0, rise)
 
 
 # Provisional dimensions. NOT canon -- see docs/interior-kit-spec.md section 6.
@@ -1672,18 +1810,79 @@ def _selftest():
     assert outward(rv, rt) is None or True
 
     # --- lit deck elements, which is where the winding bug was --------------
-    # downlight_pool and deck_strip lie flat and must face UP. Ascending angle
-    # in the XZ plane with +Y up gives a DOWNWARD normal, so both need
-    # reversing, and both were wrong the first time. A flat patch facing down
-    # is invisible from the only place it is ever seen.
+    # downlight_pool and deck_strip lie flat and their TOP must face UP.
+    # Ascending angle in the XZ plane with +Y up gives a DOWNWARD normal, so
+    # both need reversing, and both were wrong the first time. A flat patch
+    # facing down is invisible from the only place it is ever seen.
+    #
+    # AND THEY MUST BE CLOSED. Until session 4a this loop asserted only the
+    # winding, on geometry that was a single unrimmed face -- so it was a gate
+    # that measured the case without the defect in it, exactly as the tag
+    # gate ran on a corridor with no doors. Both are now `deck_pad` solids and
+    # the assertion is closure first, winding second.
+    for name, (fv, ft) in (("downlight_pool", downlight_pool()),
+                           ("deck_strip", deck_strip(0.9, 10.0)),
+                           # A concave loop, which the fan triangulation does
+                           # NOT handle and the caller must not hand it. This
+                           # one is convex on purpose: an L would tile outside
+                           # itself, and asserting the convex contract here is
+                           # what documents it.
+                           ("deck_pad tri", deck_pad([(0.0, 0.0), (1.0, 0.0),
+                                                      (0.0, 1.0)])),
+                           # A vertical pane, the case four modules got wrong.
+                           ("plate_solid quad", plate_solid(
+                               [(-1.0, 0.0, 0.0), (1.0, 0.0, 0.0),
+                                (1.0, 2.0, 0.0), (-1.0, 2.0, 0.0)], 0.06)),
+                           # ...and a disc, which is the same call with more
+                           # points and is how a window and a dartboard close.
+                           ("plate_solid disc", plate_solid(
+                               [(math.cos(math.tau * i / 16),
+                                 math.sin(math.tau * i / 16), 0.0)
+                                for i in range(16)], 0.04))):
+        op, nm = boundary_edges(fv, ft)
+        assert not op and not nm, \
+            f"{name} is not a closed solid: {len(op)} open, {len(nm)} n-m"
+        assert outward(fv, ft) == 0, \
+            f"{name}: {outward(fv, ft)} of {len(ft)} faces point inward"
+
+    # ...and the two that LIE FLAT must face up, which closure does not imply:
+    # a pad built upside down is closed, outward-facing and invisible.
     for name, (fv, ft) in (("downlight_pool", downlight_pool()),
                            ("deck_strip", deck_strip(0.9, 10.0))):
-        for a, b, c in ft:
+        ytop = max(q[1] for q in fv)
+        top = [(a, b, c) for a, b, c in ft
+               if all(abs(fv[i][1] - ytop) < 1e-12 for i in (a, b, c))]
+        assert top, f"{name} has no top face"
+        for a, b, c in top:
             p0, p1, p2 = fv[a], fv[b], fv[c]
             u = tuple(p1[i] - p0[i] for i in range(3))
             w = tuple(p2[i] - p0[i] for i in range(3))
-            ny = u[2] * w[0] - u[0] * w[2]
-            assert ny > 0, f"{name} has a downward-facing triangle"
+            assert u[2] * w[0] - u[0] * w[2] > 0, \
+                f"{name}'s top face points down"
+    # ...and the control for THAT, which is the winding bug this loop was
+    # written for in the first place: a pad whose loop runs the other way.
+    _up_v, _up_t = deck_pad([(0.0, 0.0), (0.0, 1.0), (1.0, 1.0), (1.0, 0.0)])
+    _flip_t = [(a, c, b) for a, b, c in _up_t]
+    _ytop = max(q[1] for q in _up_v)
+    _bad = [1 for a, b, c in _flip_t
+            if all(abs(_up_v[i][1] - _ytop) < 1e-12 for i in (a, b, c))
+            and (_up_v[b][2] - _up_v[a][2]) * (_up_v[c][0] - _up_v[a][0])
+            - (_up_v[b][0] - _up_v[a][0]) * (_up_v[c][2] - _up_v[a][2]) > 0]
+    assert not _bad, \
+        "an inverted pad passes the up-facing test -- the gate is inert"
+
+    # NEGATIVE CONTROL -- the unrimmed disc this replaced. If `deck_pad`'s
+    # skirt and floor were removed the gate above has to fire, and this is the
+    # number it fires with: 20 segments of rim, open all the way round.
+    _seg = 20
+    _bare_v = [(0.0, 0.012, 0.0)] + [
+        (math.cos(math.tau * i / _seg), 0.012, math.sin(math.tau * i / _seg))
+        for i in range(_seg)]
+    _bare_t = [(0, 1 + (i + 1) % _seg, 1 + i) for i in range(_seg)]
+    _bare_op = boundary_edges(_bare_v, _bare_t)[0]
+    assert len(_bare_op) == _seg, \
+        (f"the pre-rim downlight disc should read {_seg} open edges, read "
+         f"{len(_bare_op)} -- the control does not fire and the gate is inert")
 
     pool_r = max(math.hypot(v[0], v[2]) for v in downlight_pool()[0])
     assert abs(pool_r * 2 - DOWNLIGHT_POOL_M) < 1e-6, \
