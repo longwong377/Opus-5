@@ -411,6 +411,54 @@ def streaming_cell_deg(r_floor, corridor_width, margin=1.5):
     return math.degrees(sight_line(r_floor, corridor_width) * margin / r_floor)
 
 
+def arc_sections(schema, profile, sector, ring_index, degrees=30.0,
+                 radius_m=None):
+    """How a ring arc divides into kit sections: (radius, count, section length).
+
+    Pulled out so a caller can ask WHERE THE DOORS WILL GO without building
+    458,000 triangles of corridor to find out. `deck.py` has to know that before
+    it builds anything, because a door that lands outside the room it serves
+    must not be cut in the corridor either -- and discovering that from the
+    finished mesh means throwing the mesh away.
+    """
+    rings = ring_radii(schema, profile, sector)
+    r = rings[ring_index]["r_mid"] if radius_m is None else radius_m
+    total = arc_length(r, degrees)
+    n = max(1, int(round(degrees / 2.5)))
+    return r, n, total / n
+
+
+def place_doors(r, n, seg_len, degrees, start_deg, z_mid, doors):
+    """Where each asked-for door lands: (per-section lists, placements).
+
+    Under `ring_arc`'s remap a vertex at kit z sits at world angle
+    `start + delta*i + z/r`, with delta = seg_len/r the angular width of one
+    section -- so the arithmetic inverts exactly and a door's angle converts to
+    a section and an offset with nothing approximated.
+    """
+    start_rad = math.radians(start_deg)
+    delta = seg_len / r
+    per_section, placed = {}, []
+    for ang_deg, side in doors:
+        # Wrap into the arc: an arc may start at -12 degrees and hold a door at
+        # 332, which is the same place approached the other way round.
+        phi = (math.radians(ang_deg) - start_rad) % (2.0 * math.pi)
+        if phi > math.radians(degrees) + 1e-9:
+            continue                            # not on this arc at all
+        i = min(n - 1, max(0, int(phi / delta)))
+        dz = (phi - delta * i) * r
+        per_section.setdefault(i, []).append((dz, side))
+        _ib, c = kit.wall_door_snap(seg_len, dz, None)
+        placed.append({
+            "angle_deg": math.degrees(start_rad + delta * i + c / r),
+            "side": side,
+            # The door plane is the wall face: kit x = side * w/2, and the remap
+            # sends kit x straight to world z.
+            "z_m": z_mid + side * kit.PROVISIONAL["corridor_width_m"] / 2.0,
+        })
+    return per_section, placed
+
+
 def ring_arc(schema, profile, sector, ring_index, degrees=30.0,
              start_deg=0.0, z_offset=None, radius_m=None, doors=()):
     """One arc of one ring deck: a corridor run bent around the station axis.
@@ -455,41 +503,15 @@ def ring_arc(schema, profile, sector, ring_index, degrees=30.0,
     n = max(1, int(round(degrees / step_deg)))
     seg_len = total / n
 
-    # Which section each door falls in, and where along it. Under the remap
-    # below a vertex at kit z sits at world angle `start + delta*i + z/r`, with
-    # delta = seg_len/r the angular width of one section -- so the arithmetic
-    # inverts exactly and a door's angle converts to a section and an offset
-    # with nothing approximated.
-    start_rad = math.radians(start_deg)
-    delta = seg_len / r
-    per_section, asked = {}, []
-    for ang_deg, side in doors:
-        phi = math.radians(ang_deg) - start_rad
-        # Wrap into the arc: an arc may start at -12 degrees and hold a door
-        # at 332, which is the same place approached the other way round.
-        phi = phi % (2.0 * math.pi)
-        if phi > math.radians(degrees) + 1e-9:
-            continue                            # not on this arc at all
-        i = min(n - 1, max(0, int(phi / delta)))
-        per_section.setdefault(i, []).append(((phi - delta * i) * r, side))
-        asked.append((i, ang_deg, side))
+    per_section, placed = place_doors(r, n, seg_len, degrees, start_deg,
+                                      z_mid, doors)
 
     verts, tris = [], []
     kit.reset_tags()
-    placed = []
     for i in range(n):
         a = math.radians(start_deg + degrees * (i + 0.5) / n)
         here = per_section.get(i, ())
         v, t = kit.corridor_section(seg_len, doors=here)
-        for dz, side in here:
-            _ib, c = kit.wall_door_snap(seg_len, dz, None)
-            placed.append({
-                "angle_deg": math.degrees(start_rad + delta * i + c / r),
-                "side": side,
-                # The door plane is the wall face: kit x = side * w/2, and the
-                # remap sends kit x straight to world z.
-                "z_m": z_mid + side * kit.PROVISIONAL["corridor_width_m"] / 2.0,
-            })
         ca, sa = math.cos(a), math.sin(a)
 
         # The kit's +Z becomes the tangential direction; its +Y (up) becomes

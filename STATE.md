@@ -1,6 +1,69 @@
 # Project State
 
-**Last updated:** 2026-07-30 · **Session 3v** — **a player walks 126 m of the station.** W1 done, W2 half · **3u** — the plan is vertical now; walkability is a gate · **3t** — shadow coverage measured · **3s** — layers 1-4 all 118/118 · **3r** — layer 2 is 16/118
+**Last updated:** 2026-07-31 · **Session 3v** — **W1 and W2 DONE. 66 of 66 ring decks assemble, 87 rooms with doors, a body walks into any of them** · **3u** — the plan is vertical now; walkability is a gate · **3t** — shadow coverage measured · **3s** — layers 1-4 all 118/118 · **3r** — layer 2 is 16/118
+
+## Session 3v (later) — the station, not a deck
+
+```
+python3 station/deck.py --sweep
+  67 decks in the gazetteer
+  66 assemble, 0 fail, 1 deferred
+     deferred green/1/0: the habitat drum -- an open 8 km barrel, not a corridor
+     deck; its walkable surface is drum_ground's heightfield
+  87 locations on an assembled cluster, 87 with a door, 0 without
+  0 decks with a hole in the floor
+  74,044 collision triangles for the whole walkable station
+```
+
+Verified in the engine on a deck never tested before, in another sector at another
+radius: `PASS deck grey/0/24 -- a body spawns in the corridor and WALKS INTO thieves_guild
+(4.3 m -> 0.05 m), never leaving the floor`.
+
+### Three bugs between "one deck works" and "the station works"
+
+**1. A deck NUMBER is not a deck INDEX.** 14 of 67 decks died on `IndexError`. Grey
+Sector's locations carry the deck numbers the show uses — 40, 55, **80** — and the
+generated stack for Grey ring 0 has 23 decks; Yellow reaches deck 30 with 7. Same
+mistake as placing a corridor at a z-cluster's bucket label: **a name used as an
+index.** `deck_index` decides per ring — if every number the gazetteer uses is a valid
+index they *are* the indices (Blue, Red, Green ring 0), otherwise the distinct numbers
+are ranked and the rank is the index, which preserves which deck is above which.
+
+**2. Green ring 1 is not a failure, it is the drum.** The Garden, the townscape, the
+tram, the spokes. `NOT_RING_DECKS` names it and says why, so the sweep's numbers stay
+honest instead of counting it as broken.
+
+**3. The corridor's phase decided who got a door, and it was set by accident.** A door
+takes over a whole bay and must clear the portal frames at both ends, so it can only sit
+in the middle ~1.0 m of a 3.07 m bay. 16 rooms came out **sealed** — and the offending
+offset was **identically 1.32 m on unrelated decks**, which is what gave it away: an arc
+of `angle ± 12°` divided into 2.5° sections puts every room *exactly on a section
+boundary*, so every door was shoved to the same edge of its window. `lifts` is 3.0 m
+across; 1.32 m is further than the room is wide.
+
+The arc's start is padding, not a measurement — a free choice. `deck_plan` now sweeps
+the phase and keeps the one that opens the most rooms, extending the span to keep
+coverage. **16 sealed rooms → 0.** That is what an architect does with a structural
+grid: slide it until the doors land where the rooms are.
+
+### And one design rule the five broken decks taught
+
+**A door decision cannot be made twice.** It is made from the corridor's bay division,
+and a door that does not fit has to be left out of the corridor, the vestibule, the
+room's aperture *and* the collision opening together. Made separately in two places it
+went one way in the render and the other in the shell: five decks had a room whose
+collision carried a doorway and a vestibule out in the wall next door, and whose render
+was a sealed box. `deck_plan` decides once and both assemblies read it.
+
+`interior.arc_sections`/`place_doors` exist so that decision can be made **without
+building 458,000 triangles of corridor to find out where the doors would go.**
+
+### Scale, honestly
+
+87 locations sit on an assembled cluster. The gazetteer has 118, of which 12 are the
+drum's. The rest are in **secondary z-clusters** on decks whose primary cluster is what
+gets assembled — reachable by passing `z_m`, not yet swept. So: the walkable station is
+87 rooms across 66 decks, not 118.
 
 ## Session 3v — the body walks, and what stopped it was millimetres
 

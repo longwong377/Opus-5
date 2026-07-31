@@ -50,6 +50,54 @@ ARC_PAD_DEG = 12.0
 Z_CLUSTER_M = 40.0
 
 
+# Rings that are not ring-corridor decks at all, and why. Not a failure list:
+# these are places the assembler is the wrong tool for, and saying so is how a
+# sweep's numbers stay honest.
+NOT_RING_DECKS = {
+    ("green", 1): "the habitat drum -- the Garden, the townscape, the tram and "
+                  "the spokes. An open 8 km barrel, not a corridor deck; its "
+                  "walkable surface is drum_ground's heightfield",
+}
+
+
+def deck_index(schema, profile, sector, ring, deck_label):
+    """The gazetteer's `deck` turned into an index into the built deck stack.
+
+    THESE ARE NOT THE SAME NUMBER IN EVERY SECTOR, and assuming they were is
+    what stopped 14 of 67 decks assembling with `IndexError`. Grey Sector's
+    locations carry the deck numbers the show uses -- 40, 55, 80 -- while the
+    generated stack for Grey ring 0 has 23 decks; Yellow reaches deck 30 with 7.
+    A show-facing deck NUMBER is a name, and using a name as an index is the
+    same mistake as placing a corridor at a z-cluster's bucket label.
+
+    Decided per ring rather than per location, so the mapping is monotonic and
+    stable: if every deck number the gazetteer uses on this ring is a valid
+    index, they ARE the indices and are used unchanged (Blue, Red, Green ring 0);
+    otherwise the distinct numbers are ranked in order and the rank is the index,
+    which preserves which deck is above which and is the only thing the stack
+    ordering has to get right.
+    """
+    decks = it.decks_in_ring(schema, profile, sector, ring)
+    if not decks:
+        raise ValueError(f"{sector} ring {ring} carries no deck stack")
+    labels = sorted({q["deck"] for q in dr.PLACES
+                     if q.get("sector") == sector and q.get("ring") == ring})
+    if labels and max(labels) < len(decks):
+        return deck_label
+    if deck_label not in labels:
+        raise ValueError(f"{sector} ring {ring} has no deck {deck_label}")
+    return labels.index(deck_label)
+
+
+def _ring_cells(schema, profile, sector, ring, deck):
+    """`interior.ring_cells` with the gazetteer's deck number translated."""
+    if (sector, ring) in NOT_RING_DECKS:
+        raise ValueError(f"{sector} ring {ring} is not a ring deck: "
+                         f"{NOT_RING_DECKS[(sector, ring)]}")
+    return it.ring_cells(schema, profile, sector, ring,
+                         deck_index(schema, profile, sector, ring, deck))
+
+
 def places_on(sector, ring, deck, z_m=None):
     """Gazetteer locations on one deck, in angular order.
 
@@ -156,6 +204,87 @@ def deck_arc(sector, ring, deck, z_m, max_rooms=None):
     return here, lo, min(360.0, hi - lo)
 
 
+def room_half_w_m(schema, profile, place):
+    """Half a built room's width across the ring, as `rooms.build` sizes it."""
+    w_full, _l, _r = R.room_extent_m(schema, profile, place)
+    bw, _bl = R.bay_span_m(place)
+    return min(w_full, bw) / 2.0
+
+
+def deck_plan(schema, profile, sector, ring, deck, z_m=None, max_rooms=None):
+    """Everything the render and the collision assemblies both need, DECIDED
+    ONCE: the arc, the corridor's z, and which rooms get a door and where.
+
+    THE DOOR DECISION CANNOT BE MADE TWICE. It is made from the corridor's bay
+    division, and a door that does not fit its room has to be left out of the
+    corridor, the vestibule, the room's aperture and the collision opening
+    together. Made separately in two places it went one way in the render and
+    the other in the shell: five decks ended up with a room whose collision
+    carried a doorway and a vestibule out in the wall next door, and whose
+    render was a sealed box -- 68 sample points over nothing apiece.
+
+    A door fits when its whole leaf lands inside the room's wall. `lifts` is
+    3.0 m across and the corridor's bays are 3.07 m, so its door can miss even
+    after being clamped into its bay; those rooms are reported in `unopened`
+    rather than silently skipped, because a room you cannot enter is a real
+    state of the build and not a rounding detail.
+    """
+    plan = _ring_cells(schema, profile, sector, ring, deck)
+    if plan is None:
+        raise ValueError(f"{sector} ring {ring} carries no deck {deck}")
+    if z_m is None:
+        z_m = (z_clusters(sector, ring, deck) or [None])[0]
+    here, lo, span = deck_arc(sector, ring, deck, z_m, max_rooms)
+    cz = corridor_z_m(schema, profile, here)
+    radius = plan["radius_m"]
+
+    door_w = K.PROVISIONAL["door_width_m"]
+    want = [(q["angle_deg"], -1) for q in here]
+
+    def score(start_deg, arc_deg):
+        """How many rooms get a usable door if the arc starts here."""
+        r, n, seg = it.arc_sections(schema, profile, sector, ring,
+                                    degrees=arc_deg, radius_m=radius)
+        _ps, placed = it.place_doors(r, n, seg, arc_deg, start_deg, cz, want)
+        rooms, unopened = [], []
+        for q, d in zip(here, placed):
+            dx = math.radians(d["angle_deg"] - q["angle_deg"]) * radius
+            hw = room_half_w_m(schema, profile, q)
+            if abs(dx) + door_w / 2.0 < hw - R.WALL_T_M:
+                rooms.append((q, d, dx))
+            else:
+                unopened.append((q["key"], round(dx, 2), round(hw, 2)))
+        return rooms, unopened
+
+    # THE CORRIDOR'S PHASE IS A FREE CHOICE, AND IT DECIDES WHO GETS A DOOR.
+    # A door takes over a whole bay and must clear the portal frames at both
+    # ends, so it can only sit in the middle ~1.0 m of a 3.07 m bay. Where a
+    # room's angle lands on a section boundary the door is shoved to the edge of
+    # that window -- systematically 1.32 m, which is further than a 3.0 m room
+    # is wide, so `lifts`, `standard_corridor` and fourteen others came out
+    # sealed. The offsets were IDENTICAL across unrelated decks, which is what
+    # gave it away: an arc of `angle +/- 12 deg` divided into 2.5 deg sections
+    # puts every room exactly on a boundary.
+    #
+    # The arc's start is arbitrary -- it is padding, not a measurement -- so
+    # sweep it and keep the phase that opens the most rooms. Extending `span` by
+    # the same amount keeps every room covered. This is what an architect does
+    # with a structural grid: slide it until the doors land where the rooms are.
+    best = None
+    for k in range(24):
+        off = 2.5 * k / 24.0
+        rooms, unopened = score(lo - off, min(360.0, span + off))
+        if best is None or len(rooms) > len(best[0]):
+            best = (rooms, unopened, lo - off, min(360.0, span + off))
+        if not unopened:
+            break
+    rooms, unopened, lo, span = best
+    return {"plan": plan, "radius": radius, "z_m": z_m, "here": here,
+            "lo": lo, "span": span, "cz": cz, "rooms": rooms,
+            "unopened": unopened,
+            "doors": [(q["angle_deg"], -1) for q, _d, _x in rooms]}
+
+
 def build_collision(schema, profile, sector, ring, deck, z_m=None,
                     max_rooms=None):
     """The deck's COLLISION geometry -- what a body stands on, not what it sees.
@@ -165,49 +294,44 @@ def build_collision(schema, profile, sector, ring, deck, z_m=None,
     tiles, and a capsule dropped on it stands still forever while reporting that
     it is on the floor.
     """
-    plan = it.ring_cells(schema, profile, sector, ring, deck)
-    if plan is None:
-        raise ValueError(f"{sector} ring {ring} carries no deck {deck}")
-    if z_m is None:
-        z_m = (z_clusters(sector, ring, deck) or [None])[0]
-    here, lo, span = deck_arc(sector, ring, deck, z_m, max_rooms)
-    cz = corridor_z_m(schema, profile, here)
+    d = deck_plan(schema, profile, sector, ring, deck, z_m, max_rooms)
 
-    # The doors have to come from the RENDER corridor, not be recomputed here.
-    # A wall door snaps to the nearest bay centre, by up to 1.5 m of arc; a
-    # shell that cut its holes at the asked-for angles would give the player a
-    # door they can see and cannot enter, and a stretch of wall they can walk
-    # through. `ring_arc` reports where they landed and this uses that.
-    _rv, _rt, rmeta = it.ring_arc(schema, profile, sector, ring, degrees=span,
-                                  start_deg=lo, radius_m=plan["radius_m"],
-                                  z_offset=cz,
-                                  doors=[(q["angle_deg"], -1) for q in here])
-    doors = rmeta["doors_at"]
-    v, t, meta = C.corridor_shell(schema, profile, sector, ring, degrees=span,
-                                  start_deg=lo, radius_m=plan["radius_m"],
-                                  z_offset=cz, doors=doors)
+    # The shell's holes come from the SAME door decision the corridor is cut
+    # with -- `deck_plan` makes it once. Recomputing it here is what gave five
+    # decks a room whose collision had a doorway and whose render was a sealed
+    # box.
+    v, t, meta = C.corridor_shell(schema, profile, sector, ring,
+                                  degrees=d["span"], start_deg=d["lo"],
+                                  radius_m=d["radius"], z_offset=d["cz"],
+                                  doors=[x[1] for x in d["rooms"]])
     # THE VESTIBULE JOINS TWO INTERIOR FACES, and getting either end wrong is a
     # hole in the floor. The first version ran from the room's OUTER face to the
     # kit's nominal half width (1.30 m) while the shell's floor edge is at its
     # MEASURED clear half width (1.0806 m) -- a 0.219 m gap in the deck at every
     # doorway, and a body that walked into one fell through and accelerated
-    # outward under spin gravity for 30 km. `plantroom_bay` got no vestibule at
-    # all, because outer-face-to-nominal computed as zero length.
-    near = cz - meta["half_w_m"]
+    # outward under spin gravity for 30 km.
+    near = d["cz"] - meta["half_w_m"]
 
-    # A vestibule per room, then the room's own shell with a hole in the end the
-    # vestibule arrives at.
+    # A vestibule per room that has a door, then every room's shell -- with an
+    # opening where there is a door and sealed where there is not.
     meta["rooms"] = []
-    for q, d in zip(here, doors):
+    meta["unopened"] = d["unopened"]
+    opened = {q["key"]: door for q, door, _dx in d["rooms"]}
+    for q in d["here"]:
+        door = opened.get(q["key"])
         inner = q["z_m"] + room_interior_half_m(schema, profile, q)
-        for vv, tt in (C.vestibule_shell(meta, d["angle_deg"], inner, near),
-                       room_shell_for(schema, profile, meta, q,
-                                      d["angle_deg"])):
+        pieces = [room_shell_for(schema, profile, meta, q,
+                                 door["angle_deg"] if door else None)]
+        if door is not None:
+            pieces.append(C.vestibule_shell(meta, door["angle_deg"], inner,
+                                            near))
+            meta["rooms"].append({"key": q["key"],
+                                  "door_deg": door["angle_deg"],
+                                  "vestibule_m": round(near - inner, 3)})
+        for vv, tt in pieces:
             off = len(v)
             v.extend(vv)
             t.extend((a + off, b + off, c + off) for a, b, c in tt)
-        meta["rooms"].append({"key": q["key"], "door_deg": d["angle_deg"],
-                              "vestibule_m": round(near - inner, 3)})
     meta["triangles"] = len(t)
     return v, t, meta
 
@@ -279,7 +403,7 @@ def build_deck(schema, profile, sector, ring, deck, with_rooms=True,
     V, T, G = [], [], []
     stats = {"rooms": 0, "skipped": [], "corridor_tris": 0, "room_tris": 0}
 
-    plan = it.ring_cells(schema, profile, sector, ring, deck)
+    plan = _ring_cells(schema, profile, sector, ring, deck)
     if plan is None:
         raise ValueError(f"{sector} ring {ring} carries no deck {deck}")
     radius = plan["radius_m"]
@@ -288,17 +412,18 @@ def build_deck(schema, profile, sector, ring, deck, with_rooms=True,
         z_m = (z_clusters(sector, ring, deck) or [None])[0]
     # The corridor runs over the arc the rooms actually occupy plus a margin, so
     # a player can walk past the last door rather than stopping at it.
-    here, lo, span = deck_arc(sector, ring, deck, z_m, max_rooms)
-    # AT A z DERIVED FROM THE ROOMS, not at the cluster's label -- see
-    # `corridor_z_m`. Placing it at the label put the corridor through the far
-    # end of every room on the deck; placing it at the deck's nominal z, before
-    # clustering existed, made a body fall 263 m through empty space.
-    cz = corridor_z_m(schema, profile, here)
+    # ONE DOOR DECISION, shared with the collision assembly -- see `deck_plan`.
+    # AT A z DERIVED FROM THE ROOMS, not at the cluster's label: placing the
+    # corridor at the label put it through the far end of every room on the
+    # deck; placing it at the deck's nominal z, before clustering existed, made
+    # a body fall 263 m through empty space.
+    dp = deck_plan(schema, profile, sector, ring, deck, z_m, max_rooms)
+    here, lo, span, cz = dp["here"], dp["lo"], dp["span"], dp["cz"]
     stats["corridor_z"] = cz
+    stats["unopened"] = dp["unopened"]
     cv, ct, cm = it.ring_arc(schema, profile, sector, ring,
                              degrees=span, start_deg=lo, radius_m=radius,
-                             z_offset=cz,
-                             doors=[(q["angle_deg"], -1) for q in here])
+                             z_offset=cz, doors=dp["doors"])
     V.extend(cv)
     T.extend(ct)
     # NAMED, and it was not. `ring_arc` returns no groups, so 458,160 corridor
@@ -334,17 +459,19 @@ def build_deck(schema, profile, sector, ring, deck, with_rooms=True,
     if not with_rooms:
         return V, T, G, stats
 
-    by_key = {d["angle_deg"]: d for d in cm["doors_at"]}
-    for q, door in zip(here, cm["doors_at"]):
+    # The door's angle in the ROOM's frame: the room's local x is arc length
+    # from its own centre, so `dx` is however far the corridor's bay division
+    # moved the door. Rooms with no door in `deck_plan` are built sealed, which
+    # is what their collision shell also is.
+    opened = {q["key"]: dx for q, _d, dx in dp["rooms"]}
+    for q in here:
         try:
-            # The door's angle in the ROOM's frame: the room's local x is arc
-            # length from its own centre, so the offset is however far the
-            # corridor's bay snapping moved the door.
-            dx = math.radians(door["angle_deg"] - q["angle_deg"]) * radius
+            dx = opened.get(q["key"])
             rv, rt, rg = R.build(
                 schema, profile, q,
-                door_at=(dx, K.PROVISIONAL["door_width_m"],
-                         K.PROVISIONAL["door_height_m"]))
+                door_at=None if dx is None else
+                (dx, K.PROVISIONAL["door_width_m"],
+                 K.PROVISIONAL["door_height_m"]))
         except Exception as e:                                  # noqa: BLE001
             stats["skipped"].append((q["key"], str(e)[:60]))
             continue
@@ -361,10 +488,13 @@ def build_deck(schema, profile, sector, ring, deck, with_rooms=True,
         stats["room_tris"] += len(rt)
 
         # And the passage joining it to the corridor, so the doorway frames a
-        # floor rather than the black the preview renders empty space as.
+        # floor rather than the black the preview renders empty space as. Only
+        # where there IS a doorway: a sealed room gets no passage to nowhere.
+        if dx is None:
+            continue
         inner = q["z_m"] + room_interior_half_m(schema, profile, q)
         vv, vt, vg = vestibule_render(
-            radius, door["angle_deg"], inner,
+            radius, q["angle_deg"] + math.degrees(dx / radius), inner,
             cz - C.corridor_profile()["half_w"],
             K.PROVISIONAL["door_width_m"], K.PROVISIONAL["door_height_m"])
         off, t0 = len(V), len(T)
@@ -573,6 +703,53 @@ def _selftest():
     return 1 if fail else 0
 
 
+def _sweep():
+    """Assemble every deck on the station, and say what does not.
+
+    THE NUMBER THIS PROJECT KEPT NOT HAVING. Every gate here measured one thing
+    at a time -- one room's density, one frame's exposure, one deck's walk --
+    and the question the owner actually asks is "how much of the station can I
+    walk in". This answers it, over the whole gazetteer, in about a minute, and
+    it fails if any deck stops assembling or grows a hole in its floor.
+    """
+    schema, profile = it.load()
+    decks = sorted({(q["sector"], q["ring"], q["deck"]) for q in dr.PLACES})
+    ok, failed, deferred, holes, unopened, served = [], [], [], [], [], 0
+    for s, r, dk in decks:
+        if (s, r) in NOT_RING_DECKS:
+            deferred.append((s, r, dk))
+            continue
+        try:
+            v, t, m = build_collision(schema, profile, s, r, dk)
+        except Exception as e:                                  # noqa: BLE001
+            failed.append((s, r, dk, str(e)[:70]))
+            continue
+        if C.floor_holes(v, t, m):
+            holes.append((s, r, dk))
+        unopened += [(s, r, dk) + u for u in m["unopened"]]
+        served += len(m["rooms"]) + len(m["unopened"])
+        ok.append((s, r, dk, len(m["rooms"]), len(t)))
+
+    print(f"{len(decks)} decks in the gazetteer")
+    print(f"  {len(ok)} assemble, {len(failed)} fail, "
+          f"{len(deferred)} deferred")
+    for s, r, dk in deferred:
+        print(f"     deferred {s}/{r}/{dk}: {NOT_RING_DECKS[(s, r)]}")
+    for f in failed:
+        print(f"     FAIL {f[0]}/{f[1]}/{f[2]}: {f[3]}")
+    print(f"  {served} locations on an assembled cluster, "
+          f"{sum(x[3] for x in ok)} with a door, {len(unopened)} without")
+    for u in unopened[:10]:
+        print(f"     no door: {u}")
+    print(f"  {len(holes)} decks with a hole in the floor  {holes[:5]}")
+    print(f"  {sum(x[4] for x in ok):,} collision triangles for the whole "
+          f"walkable station")
+    bad = len(failed) + len(holes) + len(unopened)
+    if bad:
+        print("A deck that does not assemble is a deck nobody can be on.")
+    return 1 if bad else 0
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--sector", default="blue")
@@ -584,9 +761,13 @@ def main():
                     help="where to write the collision shell -- the mesh a "
                          "body stands on, which is not the one it looks at")
     ap.add_argument("--selftest", action="store_true")
+    ap.add_argument("--sweep", action="store_true",
+                    help="assemble every deck on the station and report")
     a = ap.parse_args()
     if a.selftest:
         return _selftest()
+    if a.sweep:
+        return _sweep()
 
     schema, profile = it.load()
     v, t, g, s = build_deck(schema, profile, a.sector, a.ring, a.deck,

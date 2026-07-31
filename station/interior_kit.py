@@ -1078,10 +1078,32 @@ def corridor_bays(length, p=None):
 
 
 def wall_door_snap(length, dz, p=None):
-    """Where a wall door asked for at `dz` will actually be put: (bay, centre)."""
-    n, _bay, centres = corridor_bays(length, p)
-    i = min(range(n), key=lambda k: abs(centres[k] - dz))
-    return i, centres[i]
+    """Where a wall door asked for at `dz` will actually be put: (bay, z).
+
+    IT IS NOT THE BAY CENTRE, and it was. A door takes over a whole bay -- the
+    wall run is omitted there and a bulkhead fills it -- so the bay is what a
+    door must not straddle, and the older rule of putting it dead centre moved
+    it by up to half a bay, 1.53 m at this pitch. That is further than some
+    rooms are wide: `lifts` is 3.0 m across, so its door landed outside the room
+    it was for, and the aperture, the vestibule and the collision opening all
+    followed it into the wall next door.
+
+    So: choose the bay it falls in, then leave it where it was asked for,
+    clamped only to keep the leaf and its frame clear of the portal frames at
+    either end of that bay. The remaining error is at most the distance from the
+    asked-for point to that clear span, and is zero whenever the door already
+    fits -- which is most of the time.
+    """
+    p = p or PROVISIONAL
+    n, bay, centres = corridor_bays(length, p)
+    i = max(0, min(n - 1, int(dz // bay)))
+    inner = p["portal_depth_m"] / 2.0
+    half = p["door_width_m"] / 2.0 + p["door_frame_m"]
+    lo = bay * i + inner + half
+    hi = bay * (i + 1) - inner - half
+    if hi <= lo:                       # bay too short for the leaf: centre it
+        return i, centres[i]
+    return i, min(max(dz, lo), hi)
 
 
 def corridor_section(length, p=None, doors=(), start_portal=True):
@@ -1186,9 +1208,15 @@ def corridor_section(length, p=None, doors=(), start_portal=True):
             _merge(verts, tris, *door_assembly(p, section=chamfered_arch(w, h, chamf)),
                    offset=(0.0, 0.0, dz))
             continue
-        i, _c = wall_door_snap(length, dz, p)
-        span = bay - 2 * inner
-        rect = [(-span / 2, 0.0), (span / 2, 0.0), (span / 2, wall_h), (-span / 2, wall_h)]
+        i, c = wall_door_snap(length, dz, p)
+        # THE BULKHEAD FILLS THE BAY; THE APERTURE SITS WHERE IT WAS ASKED FOR.
+        # These were the same point while a door could only go at a bay centre.
+        # Now that it can sit anywhere clear of the portals, the closure has to
+        # be described relative to the door rather than to the bay -- otherwise
+        # moving the leaf drags the bulkhead off the bay it is closing and opens
+        # a slot to space at one end.
+        z0, z1 = bay * i + inner, bay * (i + 1) - inner
+        rect = [(z0 - c, 0.0), (z1 - c, 0.0), (z1 - c, wall_h), (z0 - c, wall_h)]
         # Setback puts the frame's front face a little proud of the wall face
         # rather than half of it hanging in the corridor, and makes the closure
         # occupy exactly the wall thickness it stands in for. Getting this wrong
@@ -1197,7 +1225,7 @@ def corridor_section(length, p=None, doors=(), start_portal=True):
         setback = fd * 0.5 - 0.06
         v, t = door_assembly(p, section=rect, depth=(-setback, th - setback))
         _merge(verts, tris, v, t, _rot_y(90.0 * side),
-               (side * (w / 2.0 + setback), 0.0, bay_centre[i]))
+               (side * (w / 2.0 + setback), 0.0, c))
 
     # Bullnose pilasters flanking each portal, carrying the vertical light
     # strips. They are what the wall runs die into, so the plate courses never
