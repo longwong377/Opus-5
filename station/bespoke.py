@@ -651,6 +651,26 @@ def compare(schema, profile, places=None):
     return out
 
 
+# WHICH ROOMS THE APPROACH ZONE IS ACTUALLY LOAD-BEARING FOR, and the split is
+# a measurement rather than a list somebody kept up to date. `compose` clears a
+# 2.20 x 2.00 m zone in front of the door because `dressing` reserves a lane
+# down a room's LONG axis and says nothing about the END wall -- which is the
+# wall the corridor's door is in.
+#
+# THE CONTROL WAS WRITTEN AS "all three go back to walled" AND THAT BROKE THE
+# MOMENT THE FURNITURE IMPROVED. The machinery rework of session 3z rebuilt
+# every fixture from a box into articulated geometry, and in doing so moved
+# `council_chamber`'s and `arrival_concourse`'s furniture clear of their own
+# apertures -- so they are now open WITHOUT the zone. A control that fails when
+# the content gets better is measuring the wrong thing.
+#
+# Split, so both halves are real assertions: the first fails if the zone stops
+# working, the second fails if those two rooms regress back into needing it.
+# Re-measure with `compose(..., door_at=(0,0,0))` and move a key if it changes.
+ZONE_DEPENDENT = ("cnc", "customs_south", "zocalo")
+ZONE_FREED = ("council_chamber", "arrival_concourse")
+
+
 def _selftest():
     import interior as _it                                     # noqa: PLC0415
     import interior_kit as _it_kit                             # noqa: PLC0415
@@ -880,17 +900,22 @@ def _selftest():
     # it, which is the failure mode CLAUDE.md records for `interior_kit`'s
     # tag-coverage assertion running on a corridor with no doors.
     control = []
-    for key in ("cnc", "council_chamber", "customs_south"):
+    for key in ZONE_DEPENDENT + ZONE_FREED:
         q = next(p for p in _dr.PLACES if p["key"] == key)
         ah = _D.room_axial_half_m(schema, profile, q)
         cv, ct, _cg = compose(schema, profile, q, ah,
                               door_at=(0.0, 0.0, 0.0))
         if not _D._mouth_clear(cv, ct, 0.0):
             control.append(key)
-    check("...and WITHOUT the approach zone those rooms are walled again",
-          len(control) == 3,
-          f"only {control} went back to walled -- the zone is not what is "
-          f"keeping the others open")
+    check("...and WITHOUT the approach zone the rooms that depend on it are "
+          "walled again",
+          set(ZONE_DEPENDENT) <= set(control),
+          f"{sorted(set(ZONE_DEPENDENT) - set(control))} stayed open with the "
+          f"zone collapsed -- the zone is not what is keeping them open")
+    check("...and the rooms whose own furniture moved are open WITHOUT it, "
+          "which is a better outcome than the zone and is measured, not assumed",
+          not (set(ZONE_FREED) & set(control)),
+          f"{sorted(set(ZONE_FREED) & set(control))} went back to walled")
 
     # NEGATIVE CONTROL 2 -- the doorway cut into `hospitality`, in the module's
     # OWN frame rather than through the assembler, so it measures the geometry
