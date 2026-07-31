@@ -50,6 +50,11 @@ var _doors: Node3D
 ## things -- an actor is baked into the deck mesh, a walker is an instance.
 @export var crowd_path: String = ""
 @export var crowd_glb: String = ""
+## The LOD ladder for the crowd: `max_m:lod` pairs nearest-first, and one glb
+## per rung. A baked walker had one LOD because a static mesh has no other
+## option; an instanced one is a transform, so the runtime picks per person.
+@export var crowd_ladder: String = ""
+@export var crowd_glbs: String = ""
 var _people: Node3D
 var _dress: Node
 var _lights: Node3D
@@ -78,6 +83,10 @@ func _ready() -> void:
 		crowd_path = args["crowd"]
 	if args.has("crowd-glb"):
 		crowd_glb = args["crowd-glb"]
+	if args.has("crowd-ladder"):
+		crowd_ladder = args["crowd-ladder"]
+	if args.has("crowd-glbs"):
+		crowd_glbs = args["crowd-glbs"]
 
 	if not _load_level():
 		push_error("walk: could not load %s" % glb_path)
@@ -265,24 +274,38 @@ func _wire_people(scene: Node) -> void:
 ## come from `crowd_lod<N>.glb`, 112 shared meshes for the whole station, and
 ## this list says where each one is and which phase they are on.
 func _wire_crowd() -> void:
-	if crowd_path == "" or crowd_glb == "":
+	if crowd_path == "" or (crowd_glb == "" and crowd_glbs == ""):
 		return
 	if _args().has("no-crowd"):
 		print("walk: crowd DISABLED (negative control)")
 		return
-	if not FileAccess.file_exists(crowd_path) \
-			or not FileAccess.file_exists(crowd_glb):
+	if not FileAccess.file_exists(crowd_path):
 		return
 	var f2 := FileAccess.open(crowd_path, FileAccess.READ)
 	var rows = JSON.parse_string(f2.get_as_text())
 	if typeof(rows) != TYPE_ARRAY or rows.is_empty():
 		return
-	var lib := _load_glb(crowd_glb)
-	if lib == null:
-		push_error("walk: could not load crowd library %s" % crowd_glb)
+	# One library per rung of the ladder. `crowd_glbs` is the new form and
+	# `crowd_glb` the single-rung one it replaces; both are accepted so a
+	# command written before the ladder existed still runs.
+	var paths: Array = ([] if crowd_glbs == ""
+		else Array(crowd_glbs.split(",")))
+	if paths.is_empty() and crowd_glb != "":
+		paths = [crowd_glb]
+	var libs: Array = []
+	for pth in paths:
+		if not FileAccess.file_exists(String(pth)):
+			continue
+		var l := _load_glb(String(pth))
+		if l != null:
+			libs.append(l)
+	if libs.is_empty():
+		push_error("walk: could not load any crowd library")
 		return
-	var n2: int = _people.build_crowd(lib, rows)
-	print("walk: %d walkers instanced from the shared crowd library" % n2)
+	_people.set_crowd_ladder(crowd_ladder)
+	var n2: int = _people.build_crowd_multi(libs, rows)
+	print("walk: %d walkers instanced across %d LOD libraries"
+		% [n2, libs.size()])
 
 
 func _load_glb(path: String) -> Node:
@@ -588,8 +611,9 @@ func _physics_process(delta: float) -> void:
 					_people.turned_deg(), _people.noticed_count(),
 					_people.facing_error_deg(p)]
 		if _people != null and _people.crowd_count() > 0:
-			goto_s += " walkers=%d crowd_travel_m=%.1f" % [
-				_people.crowd_count(), _people.crowd_travel_m()]
+			goto_s += " walkers=%d crowd_travel_m=%.1f crowd_lods=%s" % [
+				_people.crowd_count(), _people.crowd_travel_m(),
+				_people.crowd_lod_report().replace(" ", ",")]
 		print(("WALKTEST rest=%.3f,%.3f,%.3f on_floor=%s fell=%s moved_1s=%.3f "
 			+ "drop=%.3f legs=%.2f/%.2f/%.2f/%.2f traverse_m=%.2f net_m=%.2f "
 			+ "offfloor=%d/%d%s") % [

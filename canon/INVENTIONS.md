@@ -4239,3 +4239,43 @@ because each module had written its own primitive. `deck_pad` and `plate_solid` 
 kit, once each, with closure gates and negative controls that fire.
 
 **What would overturn it.** Any authority-1 frame giving one of these objects a measurable depth.
+
+---
+
+## INV-230 — The crowd's LOD ladder, and why its near rung is capped
+
+`station/populace.py`, `crowd_ladder()`; `godot/scripts/npc.gd`, `_lod_at()`.
+
+**What.** Corridor walkers are drawn at **three** levels chosen by distance —
+`(18 m → chain lod 2, 45 m → lod 4, 400 m → lod 8)` — instead of the single level the bake picked.
+The libraries are 235,808 + 55,168 + 16,480 = **307,456 triangles**, shared by the whole station.
+
+**Why necessary.** A baked walker has one LOD because a static mesh has no other option:
+`corridor_lod` picks for the **mean** distance down a 66 m sight line, so the person two metres in
+front of you was a 484-triangle body where `schedule.NPC_BUDGET` allows 2,000. An **instanced**
+walker is a transform, so the only thing between us and the right answer was a second library.
+Measured on `blue/0/0`: **3 walkers on the near rung, 5 on the middle, 126 on the far**, nearest at
+6.2 m — so the figure a player is actually looking at gained **4.3×** its triangles and the other
+126 got cheaper.
+
+**What constrained the rungs.** Each is the chain level whose **measured** triangle count is
+nearest that band's allowance in `NPC_BUDGET["lod"]` — the same rule `corridor_lod` applies to a
+single distance. The two ladders are not indexed alike, and assuming they were is how a body ends
+up eight times coarser than its budget.
+
+**THE NEAR BAND IS CAPPED AND THAT IS A STATED COMPROMISE, NOT A DERIVATION.** `NPC_BUDGET`'s
+0–6 m band allows 8,000 triangles, which is chain level 0 at 4,560. But the crowd is instanced
+against a **shared** library, so shipping level 0 means 14 species × 8 phases × 4,560 = **510,720
+triangles resident** to draw the four agents that band ever holds. The runtime cannot build a body
+on demand, so the choice is between half a megatriangle for four figures and letting the nearest
+band share the 6–18 m level. It shares.
+
+**What would overturn it.** A runtime that can skin a body per frame, which would make the library
+unnecessary altogether — or per-species libraries built on demand, which would make level 0
+affordable for the one or two species a given corridor's near set actually contains.
+
+**Negative control, in the walk gate and run:** the histogram is the only thing that can show the
+ladder is used, because the crowd covers the same distance whatever level it is drawn at —
+`crowd_travel_m` reads 5,966 m either way. `deck_verdict` fails a run whose walkers are all on one
+rung, and it **did** fail while the parse was wrong, on a working ladder: the rungs are separated
+by `/` and the nearest-distance field by `,`.

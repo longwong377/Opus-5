@@ -815,6 +815,46 @@ def corridor_sight_m(radius_m, width_m):
     return math.sqrt(8.0 * max(1e-9, radius_m) * max(1e-9, width_m))
 
 
+@_lru_cache(maxsize=1)
+def crowd_ladder():
+    """`((max_distance_m, chain_lod), ...)` for the shipped crowd, nearest first.
+
+    DERIVED FROM `schedule.NPC_BUDGET["lod"]`, which gives a distance band and
+    a triangle allowance per level; the chain level is the one whose MEASURED
+    triangle count is nearest that allowance, the same rule `corridor_lod` uses
+    for a single distance. The two ladders are not indexed alike and assuming
+    they were is how a body ends up eight times coarser than its budget.
+
+    THE NEAR BAND IS CAPPED, AND THAT IS A STATED COMPROMISE RATHER THAN A
+    DERIVATION. `NPC_BUDGET`'s 0-6 m band allows 8,000 triangles, which is
+    chain level 0 at 4,560 -- but the crowd is INSTANCED against a shared
+    library, so shipping level 0 means 14 species x 8 phases x 4,560 =
+    **510,720 triangles resident** in order to draw the four agents that band
+    ever holds. The runtime cannot build a body on demand, so the choice is
+    between paying half a megatriangle for four figures or letting the nearest
+    band share the 6-18 m level. It shares. What would overturn it: a runtime
+    that can skin a body per frame, which would make the library unnecessary
+    altogether.
+    """
+    counts = _lod_triangles()
+    out = []
+    for _name, _lo, hi, tri, _n in _sched.NPC_BUDGET["lod"]:
+        lod = min(range(len(counts)), key=lambda i: abs(counts[i] - tri))
+        out.append((float(hi), lod))
+    # Collapse the near band into the next one out -- see the note above -- and
+    # drop any band that resolves to the same level as its neighbour, so the
+    # ladder has no rung that costs a MultiMesh set and draws the same mesh.
+    if len(out) > 1:
+        out = out[1:]
+    dedup = []
+    for hi, lod in out:
+        if dedup and dedup[-1][1] == lod:
+            dedup[-1] = (hi, lod)
+        else:
+            dedup.append((hi, lod))
+    return tuple(dedup)
+
+
 def corridor_lod(radius_m, width_m):
     """The LOD to bake a corridor's people at, chosen by that sight line.
 

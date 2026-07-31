@@ -203,8 +203,15 @@ def walk_deck(sector, ring, deck, godot, timeout=1800, traverse=None,
     with open(os.path.join(out, f"{stem}_crowd.json"), "w") as f:
         _json.dump(crowd, f)
     if crowd:
+        # EVERY RUNG OF THE LADDER, not just the one the bake chose. A baked
+        # walker had a single LOD because a static mesh has no other option;
+        # an INSTANCED one is a transform, so the runtime can pick per person
+        # per frame -- and `populace.crowd_ladder` says which level each
+        # distance band gets, derived from `schedule.NPC_BUDGET`'s own
+        # allowances. Written once per level rather than once per deck: the
+        # library is a function of the species mix, not of who is walking.
         import populace as _pop                                 # noqa: PLC0415
-        for lod in sorted({int(r["lod"]) for r in crowd}):
+        for _hi, lod in _pop.crowd_ladder():
             lib = os.path.join(out, f"crowd_lod{lod}.obj")
             if not os.path.exists(lib):
                 cv2, ct2, cg2 = _pop.station_crowd_library(lod)
@@ -245,10 +252,18 @@ def walk_deck(sector, ring, deck, godot, timeout=1800, traverse=None,
             bumped = min(cand, key=lambda a: (a["x"] - px) ** 2
                          + (a["y"] - py) ** 2 + (a["z"] - pz) ** 2)
             tx, ty, tz = bumped["x"], bumped["y"], bumped["z"]
-    _lods = sorted({int(r["lod"]) for r in crowd}) if crowd else []
-    if _lods:
+    if crowd:
+        import populace as _pop2                                # noqa: PLC0415
+        _lad = _pop2.crowd_ladder()
         cmd += [f"--crowd={os.path.join(out, stem + '_crowd.json')}",
-                f"--crowd-glb={os.path.join(out, f'crowd_lod{_lods[0]}.glb')}"]
+                # The whole ladder, as `max_m:lod` pairs and one glb each, so
+                # the runtime knows both which mesh to use at which distance
+                # and where to find it.
+                "--crowd-ladder=" + ",".join(
+                    f"{hi:g}:{lod}" for hi, lod in _lad),
+                "--crowd-glbs=" + ",".join(
+                    os.path.join(out, f"crowd_lod{lod}.glb")
+                    for _hi, lod in _lad)]
     cmd += [f"--actors={os.path.join(out, stem + '_actors.json')}",
             f"--goto={tx},{ty},{tz}", f"--door-key={goto}",
             f"--door-travel={K.PROVISIONAL['door_width_m'] / 2.0}"]
@@ -325,6 +340,23 @@ def deck_verdict(d):
             return False, (f"{d['walkers']} walkers were instanced and the "
                            f"crowd covered {travelled:.0f} m between them -- "
                            f"they are statues wearing a walk pose")
+        # AND THE LOD LADDER IS USED. The crowd covers the same distance
+        # whatever level it is drawn at, so `crowd_travel_m` cannot tell a
+        # working ladder from a dead one -- only the histogram can. More than
+        # one rung in use is the claim; a single rung means every walker is
+        # being drawn at the bake's one level again, which is the state this
+        # replaced.
+        lods = d.get("crowd_lods", "")
+        if lods:
+            # `2:3/4:5/8:126,nearest=6.2` -- rungs are separated by `/` and
+            # the nearest-distance field by `,`. Splitting on the comma found
+            # one "rung" and failed a working ladder.
+            rungs = [p for p in lods.split(",")[0].split("/") if ":" in p]
+            if len(rungs) < 2:
+                return False, (f"{d['walkers']} walkers are all on one LOD "
+                               f"rung ({lods}) -- the ladder is not being "
+                               f"used, so the near figure is as coarse as the "
+                               f"far one")
     if "goto_best_m" in d:
         near = float(d["goto_best_m"])
         if near > ARRIVED_M:
@@ -456,10 +488,12 @@ def main():
                       f"stopped {near:.2f} m short. The door is what opens "
                       f"the way.")
         if good and int(d.get("walkers", 0)) > 0:
+            _lods = d.get("crowd_lods", "").replace(",", " ")
             print(f"        {d['walkers']} walkers instanced from the shared "
                   f"crowd library and they WALK: "
                   f"{float(d['crowd_travel_m']):,.0f} m covered between them, "
-                  f"0 triangles of their own in the deck")
+                  f"0 triangles of their own in the deck"
+                  + (f"; LOD {_lods}" if _lods else ""))
         if good:
             print(f"        {d['render_tris']:,} render triangles, "
                   f"{d['collision_tris']:,} collision "

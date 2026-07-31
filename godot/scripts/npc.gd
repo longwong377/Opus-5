@@ -313,6 +313,46 @@ var _mm: Dictionary = {}          # "crowd_human_4_3" -> MultiMeshInstance3D
 var _mm_rows: Dictionary = {}     # the same key -> Array[Walker] this frame
 
 
+## The LOD ladder, as `max_m:lod` pairs nearest-first. Parsed from the string
+## `station/populace.crowd_ladder()` produced, so the runtime and the generator
+## cannot disagree about which mesh belongs at which distance.
+var _ladder: Array = []
+
+
+func set_crowd_ladder(spec: String) -> void:
+	_ladder.clear()
+	for part in spec.split(","):
+		var kv := String(part).split(":")
+		if kv.size() == 2:
+			_ladder.append([float(kv[0]), int(kv[1])])
+	_ladder.sort_custom(func(a, b): return a[0] < b[0])
+
+
+## Which chain LOD a walker at `d` metres should be drawn at.
+##
+## A BAKED WALKER HAD ONE LOD BECAUSE A STATIC MESH HAS NO OTHER OPTION -- the
+## generator picks for the mean distance down the corridor's 66 m sight line
+## and everybody pays it, so the person two metres in front of you is a
+## 484-triangle body where `schedule.NPC_BUDGET` allows 2,000. An INSTANCED
+## walker is a transform, so the only thing standing between us and the right
+## answer was a second library.
+func _lod_at(d: float) -> int:
+	if _ladder.is_empty():
+		return 4
+	for rung in _ladder:
+		if d <= float(rung[0]):
+			return int(rung[1])
+	return int(_ladder[_ladder.size() - 1][1])
+
+
+## Build the crowd from several LOD libraries and one placement list.
+func build_crowd_multi(libraries: Array, rows: Array) -> int:
+	var n := 0
+	for lib in libraries:
+		n = build_crowd(lib, rows if n == 0 else [])
+	return _walkers.size()
+
+
 ## Build the crowd from the library scene and the placement list.
 func build_crowd(library: Node, rows: Array) -> int:
 	var meshes := {}
@@ -366,12 +406,24 @@ func build_crowd(library: Node, rows: Array) -> int:
 	var per_species := {}
 	for w in _walkers:
 		per_species[w.species] = int(per_species.get(w.species, 0)) + 1
+	# EVERY RUNG, not just the one the bake chose. A walker's LOD now changes
+	# with their distance to the player, so a bucket has to exist for each
+	# level the ladder can put them at -- keyed the same way, so `_place_crowd`
+	# needs no change at all. Sizing is per rung and worst-case: in the limit
+	# every walker of a species is at one distance band and one phase.
+	var lods := []
+	for rung in _ladder:
+		if not lods.has(int(rung[1])):
+			lods.append(int(rung[1]))
+	if lods.is_empty():
+		lods = [4]
 	var counts := {}
 	for w in _walkers:
-		for ph in range(8):
-			var k := "crowd_%s_%d_%d" % [w.species, w.lod, ph]
-			counts[k] = maxi(4, int(ceil(
-				float(per_species[w.species]) / 8.0 * 3.0)))
+		for lod in lods:
+			for ph in range(8):
+				var k := "crowd_%s_%d_%d" % [w.species, lod, ph]
+				counts[k] = maxi(4, int(ceil(
+					float(per_species[w.species]) / 8.0 * 3.0)))
 	for k in counts.keys():
 		if not meshes.has(k):
 			continue
@@ -456,6 +508,27 @@ func crowd_count() -> int:
 	return _walkers.size()
 
 
+## How many walkers ended up on each rung, and the nearest one's distance.
+## THE ONLY THING THAT CAN SHOW THE LADDER IS USED: the crowd covers the same
+## distance whatever LOD it is drawn at, so `crowd_travel_m` cannot tell a
+## working ladder from a dead one. This can.
+func crowd_lod_report() -> String:
+	var by := {}
+	var nearest := 1e9
+	var eye := (_body.global_position if _body != null else Vector3.ZERO)
+	for w in _walkers:
+		by[w.lod] = int(by.get(w.lod, 0)) + 1
+		if _body != null:
+			nearest = minf(nearest,
+				eye.distance_to(_walker_xform(w).origin))
+	var keys := by.keys()
+	keys.sort()
+	var parts := []
+	for k in keys:
+		parts.append("%d:%d" % [k, by[k]])
+	return "%s nearest=%.1f" % ["/".join(parts), nearest]
+
+
 ## How often the crowd's transforms are rewritten, in hertz. NOT every physics
 ## frame, and the reason is measured: each rewrite re-uploads every MultiMesh's
 ## whole instance buffer, so at 60 Hz a deck's crowd cost more than the rest of
@@ -476,11 +549,17 @@ func advance_crowd(delta: float) -> void:
 		return
 	delta = _crowd_dt
 	_crowd_dt = 0.0
+	var eye := (_body.global_position if _body != null else Vector3.ZERO)
 	for w in _walkers:
 		var d: float = w.omega * delta
 		w.angle += d
 		_crowd_travel_m += absf(d) * w.radius
 		w.t += delta
+		# THE RUNG THEY BELONG ON. Recomputed here rather than at build time
+		# because it is a function of where the player is, and `_place_crowd`
+		# buckets on `w.lod` already -- so choosing it is the whole change.
+		if _body != null:
+			w.lod = _lod_at(eye.distance_to(_walker_xform(w).origin))
 		# Eight phases over one stride cycle. `cycle_s` and `omega` come from
 		# the SAME `walk_clip`, so the feet land where the body has moved to.
 		w.phase = int(floor(w.t / w.cycle_s * 8.0)) % 8
