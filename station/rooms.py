@@ -646,13 +646,26 @@ def bay_span_m(place):
     fx_width, _i0, _i1 = lateral_stack(place)
     fx_len = max(spine_l + 1.2, FIXTURE_PITCH_M + 1.2) if fx else 0.0
 
+    # AND THE FURNITURE THAT IS GOING TO BE PUT IN IT. `dressing.py` dresses
+    # every wall of every room, and this derivation never allowed for it: the
+    # bay was sized for its declared props and its fixtures, dressing added a
+    # second layer on top, and `build`'s walkability trial then threw that layer
+    # away again to keep the room crossable -- 44 of 87 rooms below full density
+    # and three of them empty. A fixture and a shelf stand on the same floor, so
+    # their needs ADD; taking the larger of the two is what made the room too
+    # small for both. `wall_band_m` is asked of the module that does the
+    # placing, so the two cannot drift.
+    import dressing as _dress                                   # noqa: PLC0415
+    band = _dress.wall_band_m(archetype(place))
+    dressed = fx_width + 2.0 * band + max(WALK_M, 1.2)
+
     if not floor:
         # A room with nothing standing on its floor is small by nature -- a
         # micro-g bay you float through, a sealed section, a checkpoint. A
         # 6 x 8 m minimum made those read as empty halls, which is the same
         # picked-not-derived mistake one size down. Size to the wall props.
         wide = max((PROPS[k][0] for k in wall), default=1.6)
-        return (max(wide + 1.2, fx_width, 3.0),
+        return (max(wide + 1.2, fx_width, dressed, 3.0),
                 max(wide + 1.6, fx_len, 4.0))
     # Ranked alternately down two walls, so each wall takes half of them.
     per_side = [PROPS[k] for k in floor] * 2
@@ -662,7 +675,7 @@ def bay_span_m(place):
     # Wall props run along z, so the bay must be long enough to hang the
     # widest of them -- a 6 m bay door needs 6 m of wall.
     widest_wall = max((PROPS[k][0] for k in wall), default=0.0)
-    return (max(width, fx_width, 4.0),
+    return (max(width, fx_width, dressed, 4.0),
             max(run, widest_wall + 1.2, fx_len, 6.0))
 
 

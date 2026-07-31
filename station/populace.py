@@ -37,6 +37,7 @@ sys.path.insert(0, HERE)
 sys.path.insert(0, os.path.join(HERE, "npc"))
 
 import body as _body                                            # noqa: E402
+import dressing as _dress                                       # noqa: E402
 import schedule as _sched                                       # noqa: E402
 
 # Seat and desk heights, in metres. A face inside SEAT_BAND is something you sit
@@ -227,6 +228,72 @@ def populate(place_key, room_v, room_t, room_g, w_m, l_m, hour=13.0,
     def _clear(x, z, r=0.45):
         return all((x - ux) ** 2 + (z - uz) ** 2 > r * r for ux, uz in used)
 
+    # WHAT IS ALREADY STANDING THERE. `_clear` only ever checked against other
+    # PEOPLE, so a body could be dropped inside a shelf run -- which is what
+    # happened the moment bays were sized generously enough to hold their
+    # furniture, because there was then furniture where the wander placement
+    # liked to put people. Same predicate as the collision builder and the
+    # walkability trial, so all three agree about what occupies a room.
+    # FROM `room_*`, WHICH IS THE ROOM. `v, t, g` are the bodies being built --
+    # empty at this point -- so reading them gave an empty obstacle list and a
+    # check that could not reject anything. It looked exactly like a working
+    # guard and was a no-op, which is this project's most-repeated defect and
+    # the reason the counter-check in `rooms.py` exists at all: it kept failing
+    # while the guard "passed".
+    # EXACTLY THE SET `rooms.py` ASSERTS ON: fittings and furniture, but not the
+    # clutter standing on top of them. A mug on a desk is at chest height and is
+    # not something a person can be "inside" -- counting it emptied a staffed
+    # medlab, because every clear spot in a working room is beside something
+    # with objects on it. The invariant being enforced here is the one being
+    # checked over there, so it is measured on the same boxes.
+    import rooms as _R                                          # noqa: PLC0415
+    _solid = [b for _n, b in _R._boxes(
+        room_v, room_t, room_g,
+        lambda n: n.startswith(("fix_", "dress_"))
+        and not n.startswith("dress_clutter"))]
+
+    def _free(x, z):
+        """Is this point clear of the room's furniture, for a body's width?
+
+        Ignores anything below the ankle or above the head, exactly as
+        `rooms.walkable` does: a deck joint is stepped over and a soffit tee is
+        walked under, and a person standing on one or beneath the other is fine.
+        """
+        for x0, y0, z0, x1, y1, z1 in _solid:
+            if y1 <= 0.05 or y0 > 1.9:
+                continue
+            if (x0 - BODY_R_M < x < x1 + BODY_R_M
+                    and z0 - BODY_R_M < z < z1 + BODY_R_M):
+                return False
+        return True
+
+    def _embedded(mark_v, mark_t):
+        """Did the body just placed end up inside a fitting?
+
+        CHECKED ON THE MESH THAT WAS EMITTED, not on the point it was asked for.
+        Guarding the placement point was not enough: a standing figure's
+        bounding box is not centred on its origin -- an arm reaches, a stance is
+        offset -- so a body cleared at (x, z) can come to rest with its centre
+        0.2 m away and inside a table. `rooms.py`'s assertion measures the
+        body's box, so this measures the body's box; anything else is answering
+        a different question from the one being asked.
+        """
+        pts = v[mark_v:]
+        if not pts:
+            return False
+        cx = (min(p[0] for p in pts) + max(p[0] for p in pts)) / 2.0
+        cz = (min(p[2] for p in pts) + max(p[2] for p in pts)) / 2.0
+        for x0, y0, z0, x1, y1, z1 in _solid:
+            if y1 <= 0.8:
+                continue
+            if x0 + 0.10 < cx < x1 - 0.10 and z0 + 0.10 < cz < z1 - 0.10:
+                del v[mark_v:]
+                del t[mark_t:]
+                while g and g[-1][1] >= mark_t:
+                    g.pop()
+                return True
+        return False
+
     def _inside(x, z):
         """A whole body fits within the room, not just its centre point.
 
@@ -267,10 +334,14 @@ def populate(place_key, room_v, room_t, room_g, w_m, l_m, hour=13.0,
             # Stand OFF the desk, on the side facing the room centre.
             ux = dx - STAND_OFF_M * (1.0 if dx > 0 else -1.0)
             uz = dz
-            if not _clear(ux, uz) or not _inside(ux, uz):
+            if (not _clear(ux, uz) or not _inside(ux, uz)
+                    or not _free(ux, uz)):
                 continue
+            _mv, _mt = len(v), len(t)
             _place_body(v, t, g, mesh, ux, 0.0, uz,
                         math.atan2(dx - ux, dz - uz), "npc_standing")
+            if _embedded(_mv, _mt):
+                continue
             used.append((ux, uz))
             stats["standing"] += 1
             continue
@@ -280,14 +351,35 @@ def populate(place_key, room_v, room_t, room_g, w_m, l_m, hour=13.0,
         # half-span it had been handed as the OUTER extent, so a shoulder poked
         # through the wall and rooms.py's footprint assertion caught it on three
         # locations. A person has width; a placement point is not a person.
-        for _try in range(8):
-            px = (_u(seed, "px", i, _try) - 0.5) * max(
-                0.0, 2 * hw - 2 * BODY_R_M - 0.3)
+        # MORE THAN EIGHT TRIES. A furnished room has fewer clear spots than an
+        # empty one, and eight random draws in a room that is now genuinely full
+        # left a staffed medlab with nobody in it. The cost is arithmetic.
+        for _try in range(40):
+            # IN THE LANE. `dressing.blocks_lane` reserves a band down the long
+            # axis and rejects any furniture that would intrude on it -- that
+            # band is the one part of the room guaranteed to be clear, and it is
+            # also where a person standing or walking in a room actually is.
+            # Sampling the full width instead put most of the draws inside the
+            # furniture the bays are now big enough to hold, and left 32 rooms
+            # with nobody in them. The clear floor was always there; the
+            # placement was not looking at it.
+            # LANE FIRST, THEN ANYWHERE. Half the tries sample the reserved
+            # band; the rest sample the full width, because a room with a SPINE
+            # fixture has its machinery down the middle and its clear floor at
+            # the sides -- `brig` and `lowg_bays` are exactly that, and lane-only
+            # sampling left them with nobody.
+            _lane = min(_dress.LANE_M / 2.0, max(0.35, hw - 0.9))
+            _half = (_lane - BODY_R_M * 0.5 if _try < 20
+                     else hw - BODY_R_M - 0.15)
+            px = (_u(seed, "px", i, _try) - 0.5) * 2.0 * max(0.0, _half)
             pz = (_u(seed, "pz", i, _try) - 0.5) * max(
                 0.0, 2 * hl - 2 * BODY_R_M - 0.3)
-            if _clear(px, pz, 0.7):
+            if _clear(px, pz, 0.7) and _free(px, pz):
+                _mv, _mt = len(v), len(t)
                 _place_body(v, t, g, mesh, px, 0.0, pz,
                             _u(seed, "yaw", i) * math.tau, "npc_standing")
+                if _embedded(_mv, _mt):
+                    continue
                 used.append((px, pz))
                 stats["walking"] += 1
                 break

@@ -225,6 +225,21 @@ FLOOR_CLUTTER_PER_M = 0.55
 LANE_M = 1.6         # anything smaller carries nothing
 
 
+def wall_band_m(arch):
+    """How deep a band this archetype's furniture takes off each wall.
+
+    So a bay can be SIZED for the furniture that is going to be put in it.
+    `rooms.bay_span_m` derives a bay from the props ranked along its walls and
+    the fixtures it holds, and then this module adds a whole second layer of
+    furniture that the sizing never allowed for -- which is why 44 of 87 rooms
+    have to throw some of it away again to stay crossable. The two rules have to
+    agree about how wide the room is, and the only way they can is for the
+    sizing to ask the thing that does the placing.
+    """
+    return max((d for _b, _w, d, _h, _n in SCHEMES.get(arch, SCHEMES["generic"])),
+               default=0.0)
+
+
 def _surfaces_of(v, t, g, mark):
     """Upward-facing faces added since `mark`, as (y, x0, x1, z0, z1, area).
 

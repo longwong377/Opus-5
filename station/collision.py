@@ -725,7 +725,14 @@ def floor_holes(verts, tris, meta, along_m=0.35, samples=90):
                              verts[tri[2]])
                 if h is not None and (hit is None or h < hit):
                     hit = h
-            if hit is None or abs(top + hit - meta["floor_r_m"]) > 0.05:
+            # A HOLE IS NOTHING UNDERFOOT, OR SOMETHING BELOW THE FLOOR -- not
+            # something ABOVE it. The first version demanded the first surface
+            # be the floor itself, which was fine until the furniture became
+            # solid: a ray cast down through a table hits the table, and the
+            # gate called five tabletops in `mooring_clamps` a hole in the deck.
+            # Standing on a table is not falling through the deck. Up is inward
+            # on a spun ring, so "above the floor" is a SMALLER radius.
+            if hit is None or top + hit > meta["floor_r_m"] + 0.05:
                 out.append((room["key"], round(z, 3),
                             round(room["door_deg"], 2)))
     return out

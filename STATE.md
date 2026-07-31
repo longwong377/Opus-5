@@ -57,6 +57,51 @@ reach zero** — the same defect this module's own comment had already caught on
 
 The station now carries **109,200 triangles of furniture**.
 
+### And then the real fix: bays sized for the furniture that goes in them
+
+`bay_span_m` derived a bay from the props ranked along its walls and took the **larger** of
+that and the fixture width. A fixture and a shelf stand on the same floor, so their needs
+**add**. It now asks `dressing.wall_band_m(arch)` — the module that does the placing — for
+the depth its scheme takes off each wall, and sizes for `fixtures + 2 × band + a lane`.
+
+| density | before | services fix | **bays sized for furniture** |
+|---|---|---|---|
+| **1.0** | 43 | 43 | **71** |
+| 0.75 | 16 | 16 | 9 |
+| 0.5 | 15 | 15 | 7 |
+| 0.3 | 7 | 10 | 0 |
+| 0.15 | 3 | 3 | 0 |
+| 0.0 | 3 | 0 | 0 |
+
+**43 → 71 of 87 rooms at full density, and 109,200 → 363,354 triangles of furniture.** The
+blast radius is bounded because `build` clamps to `w = min(w_full, bay)`: a bay can only
+grow into the footprint the gazetteer already gave it. `budget` 15/15, `directory` 747/747.
+
+### Which broke two things, and both were caught rather than noticed
+
+**`_solid` was reading the wrong list, and looked exactly like a working guard.** The new
+"is this NPC standing inside a fitting" check read `v, t, g` — which in `populate` are the
+**bodies being built**, empty at that point — instead of `room_v, room_t, room_g`. An
+obstacle list that is always empty rejects nothing. This is the project's most-repeated
+defect and the reason `rooms.py`'s counter-check exists: it kept failing while the guard
+"passed". Placement is now also verified **on the emitted body**, not on the point it was
+asked for, because a standing figure's bounding box is not centred on its origin.
+
+**`floor_holes` called five tabletops a hole in the deck.** It demanded the first surface
+under a ray be the floor itself, which was fine until the furniture became solid — a ray
+cast down through a table hits the table. Standing on a table is not falling through the
+deck. It now reports a hole only for **nothing underfoot, or something below the floor**.
+Verified still able to fail: 70 holes with the vestibules deliberately broken.
+
+### Still open
+
+**32 of 87 rooms have nobody in them**, and `occupancy` says all 87 should have someone at
+1300 — so that is placement failing, not the schedule. 96 people placed. The wander
+placement tries the reserved circulation lane first and the full width after, and still
+cannot find a spot in rooms whose machinery runs down the middle (`brig`, `lowg_bays`).
+The rooms are genuinely much fuller now; the placement needs to read the free floor rather
+than sample and reject.
+
 **44 of 87 rooms are furniture-starved, and the worst of them are the ones that should
 be fullest:** `mess_hall`, `happy_daze` and `bar_unnamed` at **0.15**, `casino` and
 `brig` at **0.3**. `bay_elevators`, `fuel_stores` and `hazard_tanks` come out **empty** —
