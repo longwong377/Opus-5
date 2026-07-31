@@ -492,10 +492,16 @@ def room_cell(schema, profile, place):
     # THE RENDER IS WHAT SETTLED THIS and no assertion would have. The first
     # version asked only whether the tank's 9.0 m diameter fitted inside the
     # cell, which `plant_zone` and `water_reclamation` pass at 13.56 x 9.65 m --
-    # and `docs/x-plant-inside.png`, taken from the player camera standing in
-    # the middle of the composed room, is the inside of a tank wall filling the
-    # frame. A tank that fits a room is not the same claim as a room you can
-    # walk round a tank in.
+    # and the frame taken from the player camera standing in the middle of the
+    # composed room is the inside of a tank wall filling it edge to edge. A
+    # tank that FITS a room is not the same claim as a room you can walk round
+    # a tank in.
+    #
+    # That frame is not committed and cannot be, because this fix removed the
+    # tank it showed -- the same session both took it and made it un-retakeable.
+    # The command is recorded in INV-231 and reproduces the defect from any tree
+    # in which `fits` below is forced True; `docs/engine-4b-plant-grey05.png` is
+    # the same shot after the fix.
     #
     # So the test is FIT PLUS AISLE, and the aisle is `rooms.WALK_M` -- this
     # project's own clear-path constant, the one `rooms.build` falls through
@@ -620,8 +626,9 @@ def plant_bay(schema, profile, bay, arc_deg, start_deg=0.0, z_span=None,
     # a cell narrower than one pitch gets a single frame at its middle. A ROOM
     # is not an arbitrary slice: its two ends are its side walls, and a 1.1 m
     # by 18 m column standing in the middle of a 13.5 m room is the one place
-    # nothing should be. `docs/x-plant-inside.png` was taken from the player
-    # camera at the place's own angle and is the inside of that column.
+    # nothing should be. The first frame of the room was taken from the player
+    # camera at the place's own angle and is the inside of that column;
+    # `docs/engine-4b-plant-room.png` is the same room after the frames moved.
     if frame_at is not None:
         angles = list(frame_at)
     else:

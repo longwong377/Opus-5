@@ -4450,7 +4450,8 @@ call describes the call.**
   moves the whole room up the axis.
 * **The frames are the room's side walls.** One frame at the cell's centre — which is what
   `max(1, int(arc_deg / FRAME_PITCH_DEG))` gives a 1.7° cell — is a 1.1 × 18 m column standing
-  where the furniture and the people go. `docs/x-plant-inside.png` was first taken from inside it.
+  where the furniture and the people go. The first frame of the room was taken from inside it;
+  `docs/engine-4b-plant-room.png` is the same room after the frames moved to its edges.
 * **The farm is on the place, not on the station lattice.** `FARM_PITCH_DEG` is 30° and anchored
   to absolute angle, deliberately, so two neighbouring streaming cells cannot each put a farm just
   inside their shared seam. A 1.7° room-sized cell therefore lands between farms about 94 times in
@@ -4467,9 +4468,24 @@ support does not need 34 decks, it needs about one"*. The tank farms are the sam
 frames, and `farm_at = None` still builds them for every streaming cell in the outer stack.
 
 **The render is what settled that**, and no assertion would have. The first version asked only
-whether 9.0 m of tank fitted inside a 13.56 × 9.65 m cell, which it does; `docs/x-plant-inside.png`
-from the player camera at the room's centre was the inside of the tank wall filling the frame.
+whether 9.0 m of tank fitted inside a 13.56 × 9.65 m cell, which it does; the frame taken from the
+player camera at the room's centre was the inside of the tank wall filling it edge to edge.
 *"It fits"* is not *"you can walk round it"*.
+
+That frame is **not committed and cannot be, because the fix removed the tank it showed** — the
+same session both took it and made it un-retakeable. Recorded properly instead: the command was
+
+```
+tools/render_godot.sh --shot deck --deck grey/0/5 --at water_reclamation \
+    --at-offset 0,-7 --face water_reclamation --face-offset 4,-9 \
+    --ambient 2.2 --res 640x360 --out docs/engine-4b-plant-grey05.png
+```
+
+and it reproduces the defect from any tree in which the `fits` test in `plant.room_cell` is forced
+`True`. `docs/engine-4b-plant-grey05.png` is that same shot **after** the fix, and
+`docs/engine-4b-plant-room.png` is `plant_zone` from inside — a grated deck, the edge frames
+standing as side walls, pipe runs, racks and two residents. `docs/engine-4b-plant-door.png` is the
+corridor side: a closed pressure door under a lit sign reading THE PLANT ZONE.
 
 **What would overturn it.** A wider footprint or a larger `bay_span_m` for any of the five — the
 tank rule is a measurement, so a room that can hold one gets one with nothing else changing, and
