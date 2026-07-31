@@ -247,6 +247,16 @@ def measure(path, clip=CLIP, floor=FLOOR, gain=1.0, box=None):
         "ratio": lo / hi if hi > 0 else 0.0,
         "dark_p5": lo,
         "bright_p95": hi,
+        # THE TOP OF THE LADDER, which p95 cannot see. `bright_p95` is this
+        # file's own admitted weak statistic -- its band is x3.27 and the
+        # docstring calls it "nearly inert" -- because p95 lands on ordinary
+        # practical light and every interior has some. What distinguishes a
+        # show frame from ours is the SMALL BRIGHT POPULATION above that: a lit
+        # hatch at 11x the wall, a ceiling strip at 7.7x, a fitting at 4.7x.
+        # Measured on our own corridor against the anchor, p95 is 0.48x the
+        # show's -- which the x3.27 band happily admits -- while p99 is 0.16x,
+        # and nothing was looking at p99 at all.
+        "bright_p99": float(np.percentile(lit, 99.0)),
         "median": float(np.median(lit)),
         "clipped": float((y >= clip).sum() / n),
         "crushed": float((y < floor).sum() / n),
@@ -294,6 +304,30 @@ DIST_QUANTILE = 0.95
 DIST_BAND = {
     "dark_p5": 0.2548,      # x1.290
     "bright_p95": 1.1837,   # x3.266
+    # p99 IS THE TIGHTER STATISTIC AND NOTHING WAS MEASURING IT. Derived from
+    # the same 124 pairs by the same rule, it comes out at x2.581 -- the show
+    # agrees with ITSELF more closely at p99 than at p95, which is the opposite
+    # of what "further into the tail is noisier" would predict, and it is the
+    # reason p95 is inert. p95 lands on ordinary practical light and every
+    # interior has some; the small bright population above it is what a set
+    # dresser put there, and it is consistent across the corpus.
+    #
+    # WHAT IT DOES NOT DO, stated because the first version of this comment
+    # claimed it and the claim was false. `docs/reference-values.md` finds our
+    # corridor's p99 at 0.16x the show's NORMALISED TO THE LIT WALL, which
+    # would be |ln| = 1.83 against this band. That is a different measurement
+    # from the one here: this file compares absolute p99 against the reference
+    # re-exposed to our offset, exactly as it does p95, and on that convention
+    # our two committed corridor frames come out at x2.17 (ad-hoc rig) and
+    # x1.83 (shipped fittings) -- both INSIDE the band. So this row does not
+    # currently fire on anything we have shipped.
+    #
+    # It earns its place anyway: same corpus, same pairs, same rule, and a
+    # band 21% tighter than p95's, so it is strictly the more discriminating of
+    # the two on the convention this file uses. A wall-normalised comparison is
+    # a real gap and belongs here eventually, but it needs a wall to normalise
+    # to, which means a region this tool does not currently take.
+    "bright_p99": 0.9481,   # x2.581
     "ratio": 1.2172,        # x3.378
     "crushed": 2.4350,      # x11.42
 }
@@ -313,8 +347,8 @@ CRUSHED_ENVELOPE = (0.0022, 0.6392)   # 0.22% .. 63.92%
 # our own lamp geometry -- two independent routes to the same number.
 CLIPPED_CAP = 0.0369      # 3.69%
 
-DIST_LABEL = {"dark_p5": "p5", "bright_p95": "p95", "ratio": "p5/p95",
-              "crushed": "crushed"}
+DIST_LABEL = {"dark_p5": "p5", "bright_p95": "p95", "bright_p99": "p99",
+              "ratio": "p5/p95", "crushed": "crushed"}
 
 
 def at_offset(ref_path, offset=RENDER_OFFSET, box=None):
@@ -347,7 +381,7 @@ def distribution(m, ref):
     """
     rows = []
     ok = True
-    for k in ("dark_p5", "bright_p95", "ratio", "crushed"):
+    for k in ("dark_p5", "bright_p95", "bright_p99", "ratio", "crushed"):
         a, b = m[k], ref[k]
         if b <= 0.0:
             # The REFERENCE has no population, so there is no ratio to take
@@ -487,7 +521,7 @@ def derive(corpus_json=CORPUS_JSON, root=None):
              if max(a["median"], b["median"])
              / min(a["median"], b["median"]) <= 1.0 + TOL]
     disp, bands = {}, {}
-    for k in ("dark_p5", "bright_p95", "ratio", "crushed"):
+    for k in ("dark_p5", "bright_p95", "bright_p99", "ratio", "crushed"):
         d = sorted(abs(math.log(max(a[k], 1e-5) / max(b[k], 1e-5)))
                    for a, b in pairs)
         disp[k] = {"n": len(d), "p50": _quantile(d, 0.50),
@@ -506,11 +540,12 @@ def derive(corpus_json=CORPUS_JSON, root=None):
         "measurements": {m["file"]: {
             "class": m["class"], "size": m["size"],
             "median": m["median"], "dark_p5": m["dark_p5"],
-            "bright_p95": m["bright_p95"], "ratio": m["ratio"],
+            "bright_p95": m["bright_p95"], "bright_p99": m["bright_p99"],
+            "ratio": m["ratio"],
             "crushed": m["crushed"], "clipped": m["clipped"],
             "at_offset": {k: gs[m["file"]][k] for k in
-                          ("median", "dark_p5", "bright_p95", "ratio",
-                           "crushed", "clipped")}} for m in ms},
+                          ("median", "dark_p5", "bright_p95", "bright_p99",
+                           "ratio", "crushed", "clipped")}} for m in ms},
     }
 
 
