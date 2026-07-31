@@ -25,6 +25,15 @@
 #   tools/render_godot.sh --shot drum --stand 20,4700 --look 20,6300 \
 #       --res 1280x720 --out docs/engine-drum.png
 #
+#   # THE BUILD A PLAYER STANDS IN: one assembled deck, lit by its own tagged
+#   # fittings, from the shipped player camera. `--at` is a gazetteer place key
+#   # and the eye stands at its angle on the corridor floor; `--face` aims at
+#   # another one. There are no world coordinates in a deck command.
+#   tools/render_godot.sh --shot deck --deck blue/0/0 --at docking_bays \
+#       --res 1280x720 --out docs/engine-deck-corridor.png
+#   tools/render_godot.sh --shot deck --at docking_bays --at-offset 6,0 \
+#       --face docking_bays --res 1280x720 --out docs/engine-deck-door.png
+#
 # Everything after --shot is passed through to tools/export_scene.py, which
 # decides what geometry the shot contains and where the lights go. Run
 # `python3 tools/export_scene.py --help` for the full set.
@@ -130,8 +139,41 @@ USER_ARGS=("--scene-json=$SCENE_JSON" "--out=$OUT")
 # not "does it look right".
 [ "$QUALITY" = "low" ] && USER_ARGS+=("--no-ssao")
 
-echo "--- render $SHOT $RES -> $OUT ---"
 export VK_ICD_FILENAMES=/usr/share/vulkan/icd.d/lvp_icd.json
+
+# A CLEAN CHECKOUT RENDERS A DIFFERENT PICTURE, AND RETURNS 0. This is F-13 in
+# docs/craft-review-3t.md, closed here. `godot/.godot/` is gitignored, so on a
+# fresh clone or a fresh `git worktree` the TEXTURE IMPORT CACHE is absent;
+# every Texture2D ext_resource fails, every .tres that references one fails with
+# it, and Godot reports "Parse Error: [ext_resource] referenced non-existent
+# resource". It then renders the scene with those groups on the fallback
+# material and writes a perfectly good PNG. Measured in this worktree: the deck
+# shot came back with the corridor's wall plate, deck plate and every textured
+# surface flat -- a frame anyone would have scored, and not the frame.
+#
+# THE REPAIR HAS A TRAP IN IT and that is why this is eight lines rather than
+# one. `godot --path godot --import` REWRITES project.godot, replacing its
+# header -- the three lines recording that the engine must be the
+# double-precision build, with the ADR reference -- with Godot's own
+# boilerplate: 16 insertions, 27 deletions, silently. So the file is saved and
+# put back. Verified by `git diff --stat godot/project.godot` returning empty
+# afterwards.
+if [ ! -d "$ROOT/godot/.godot/imported" ]; then
+  echo "--- warming the texture import cache (first render in this checkout) ---"
+  SAVED_PROJECT="$(mktemp)"
+  cp "$ROOT/godot/project.godot" "$SAVED_PROJECT"
+  xvfb-run -a --server-args="-screen 0 640x360x24" \
+    "$GODOT" --path "$ROOT/godot" --import >/dev/null 2>&1 || true
+  cp "$SAVED_PROJECT" "$ROOT/godot/project.godot"
+  rm -f "$SAVED_PROJECT"
+  if [ ! -d "$ROOT/godot/.godot/imported" ]; then
+    echo "IMPORT PASS PRODUCED NO CACHE -- every textured material would render" >&2
+    echo "on the fallback and the frame would look merely disappointing." >&2
+    exit 4
+  fi
+fi
+
+echo "--- render $SHOT $RES -> $OUT ---"
 # Software rasterisation of a 250k-triangle scene with shadow maps is memory
 # hungry and llvmpipe defaults its thread count to nproc; leaving it alone has
 # been fine, but the frame budget is time, not framerate, so nothing here is
@@ -171,5 +213,21 @@ if grep -qE '^(SHADER ERROR|ERROR: Shader compilation failed)' "$LOGFILE"; then
   echo "material you meant. Do not score this frame." >&2
   grep -E '^(SHADER ERROR|ERROR: Shader compilation failed)' "$LOGFILE" >&2
   exit 3
+fi
+
+# AND THE SAME OUTCOME BY THE OTHER ROUTE. The two checks above exist because
+# "the frame looks merely disappointing rather than broken" and the
+# disappointment gets blamed on the material. A .tres that PARSES but whose
+# textures failed to import produces exactly that, and neither check sees it:
+# the file's first byte is "[", and no shader is involved. The warm-up above
+# handles the empty-cache case; this catches a cache that is present and STALE,
+# which is what a newly generated texture looks like until the next import.
+if grep -q 'Parse Error: \[ext_resource\]' "$LOGFILE"; then
+  echo "MATERIALS FAILED TO LOAD -- their textures are not imported, so those" >&2
+  echo "surfaces rendered on the fallback. The PNG is not the frame. Fix with" >&2
+  echo "  rm -rf godot/.godot/imported   # then re-run; this script re-imports" >&2
+  echo "and note that a bare 'godot --import' REWRITES godot/project.godot." >&2
+  grep 'Parse Error: \[ext_resource\]' "$LOGFILE" | head -5 >&2
+  exit 4
 fi
 ls -l "$OUT"

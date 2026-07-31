@@ -1543,6 +1543,50 @@ FIXTURE_LIGHTING = {
     "light_house_cove": {"kind": "omni", "colour": (1.000, 0.966, 0.944),
                          "energy_rel": 0.35, "range_m": 18.0, "shadow": False},
 }
+
+# WHERE A ROOM IS ON THE STATION IS NOT PART OF ITS FITTING'S NAME, and the
+# table above is an EXACT-NAME lookup, so until this function existed every
+# fitting inside every room of an assembled deck was invisible to the light rig.
+#
+# `deck.build_deck` prefixes each room's own group names with the place key and
+# a double underscore -- `docking_bays__light_highbay` -- so the engine can
+# address one room's meshes among six rooms' worth in a single mesh, and so a
+# door leaf can be found and slid. That prefix is an ADDRESS. The fitting is
+# still `light_highbay` and is still the thing the measurement in the table was
+# taken of.
+#
+# Measured on blue/0/0, the first deck `station/walkable.py` walks: 822 corridor
+# spans matched (the kit's, which carry no prefix) and 28 room spans across six
+# rooms matched NOTHING -- every high bay, every deck channel, every downlight
+# inside a room. The deck rendered with its corridor lit and its rooms black,
+# and no assertion could fire, because "a room with no tagged fitting comes back
+# BLACK, which is correct and legible" is the documented behaviour of the rig
+# and is indistinguishable from this.
+#
+# FIXED AT THE LOOKUP AND NOT IN THE TABLE, deliberately. Pre-expanding 87 rooms
+# x N fittings into FIXTURE_LIGHTING would be a second copy of something
+# `deck.py` computes, and it would go stale the first time a room moved decks --
+# the same defect as a table of hand-placed lamp positions, which is what
+# `fixture_lights`' own docstring exists to argue against.
+#
+# `materials.py`'s rules already work this way and always have: `render_shot.gd`
+# matches a mesh name by SUBSTRING, so `docking_bays__light_highbay` takes the
+# high bay's material without anything being told about docking bays. The light
+# rig was the one place on the path that asked for an exact string.
+def fixture_key(name):
+    """The FIXTURE_LIGHTING entry a tagged span's name refers to, or None.
+
+    An exact name wins outright; otherwise the address is stripped from the
+    front. Split on the LAST `__` rather than the first, because the address is
+    a prefix and the fitting name is the tail -- and `rsplit` on a name with no
+    `__` returns the name unchanged, so the two cases need no branch.
+    """
+    if name in FIXTURE_LIGHTING:
+        return name
+    base = name.rsplit("__", 1)[-1]
+    return base if base in FIXTURE_LIGHTING else None
+
+
 # THE CUSTOMS COFFER IS DELIBERATELY ABSENT AND THE WALL BAND IS NOT. What
 # follows was written when neither was in the table. It is still right about
 # the COFFER, which is the fitting it is about; `customs_light_strip` was added
@@ -1830,6 +1874,45 @@ EXPOSURE_FRAMES = {
         "corridor": ("docs/engine-corridor.png",
                      "reference/07-sector-grey/grey level 1.webp"),
     },
+    # THE ASSEMBLED BUILD, measured against the same reference as the anchor,
+    # because it is 76% the same geometry. These two are the first frames of the
+    # WALKABLE station that came out of the shipped rig -- see DECK_EXPOSURE.
+    #
+    # Both are committed, which is the point of them. Nine ROOM_EXPOSURE rows
+    # above have no frame and cannot be checked in either direction; a shot that
+    # produced its evidence and then threw it away would be the tenth.
+    #
+    # WHAT THEY MEASURE, run 2026-07-31 at 1280x720:
+    #
+    #   frame              median   p5      distribution
+    #   deck corridor      x1.52    x1.45   FAIL -- p5 bright, 4.64% clipped
+    #   deck door          x0.98    x1.23   PASS -- all six checks
+    #   engine-corridor    x1.39    x1.64   FAIL -- p5 bright  (the anchor)
+    #
+    # THREE THINGS THEY SETTLE, and none of them was knowable before the shot
+    # existed:
+    #
+    # 1. THE AD-HOC RIG WAS THE PROBLEM, NOT THE BUILD. The only previous engine
+    #    frames of the walkable deck were lit by four hand-placed omnis and an
+    #    ambient of 0.34 written into a scratch JSON, and they read p5 x11.09.
+    #    The shipped fittings read x1.45 in the same corridor. The ad-hoc rig was
+    #    7.6x hot in the shadows and essentially all of that number was the rig.
+    # 2. THE DECK IS NOT WORSE-LIT THAN THE ROOM. The assembled corridor's p5
+    #    (x1.45) is CLOSER to the reference than the single-room anchor's
+    #    (x1.64) at the same exposure, the same fittings and the same materials.
+    #    What differs is what else is in frame.
+    # 3. THE DOOR FRAME PASSES THE DISTRIBUTION TEST, which 16 of the 17
+    #    exposures measured in session 3r do not -- and it FAILS the level test
+    #    while doing it (x0.98 against the x1.05-1.75 window). The two criteria
+    #    disagree, on one frame, in opposite directions. That is worth more than
+    #    either verdict: it is a case where matching the show's contrast and
+    #    matching the corridor's own offset are not the same requirement.
+    "DECK": {
+        "deck_corridor": ("docs/engine-deck-corridor.png",
+                          "reference/07-sector-grey/grey level 1.webp"),
+        "deck_door": ("docs/engine-deck-door.png",
+                      "reference/07-sector-grey/grey level 1.webp"),
+    },
 }
 # The re-verification of all of it, run 2026-07-30 with the distribution
 # comparison and recorded in docs/layer4-lighting/frame_distribution.json:
@@ -1849,7 +1932,7 @@ def gate_frames(mf=None):
     """
     mf = mf or _measure_frame()
     npass = nfail = nskip = 0
-    for fam in ("ANCHOR", "ROOM_EXPOSURE", "BESPOKE_EXPOSURE"):
+    for fam in ("ANCHOR", "DECK", "ROOM_EXPOSURE", "BESPOKE_EXPOSURE"):
         for key, (frame, ref) in sorted(EXPOSURE_FRAMES[fam].items()):
             if frame is None:
                 print(f"{fam:16s} {key:16s} NO COMMITTED FRAME -- this "
@@ -2054,7 +2137,8 @@ def sample_body(verts, tris, body, pitch, cap=EXTENDED_SAMPLE_CAP):
     return out
 
 
-def fixture_lights(verts, tris, spans, energy, rng, shadow_n=2, eye=None):
+def fixture_lights(verts, tris, spans, energy, rng, shadow_n=2, eye=None,
+                   down=None, exposure=None):
     """One light per tagged light fitting, at its centroid, IN ITS OWN COLOUR.
 
     CONSISTENCY BY CONSTRUCTION -- CLAUDE.md's fourth hard rule, applied to
@@ -2090,6 +2174,25 @@ def fixture_lights(verts, tris, spans, energy, rng, shadow_n=2, eye=None):
     body is a whole fitting and gets a fitting's energy, so more bodies is more
     light; samples are one fitting seen in several places and share its energy
     between them, so more samples is the same light better spread.
+
+    `down` IS WHICH WAY THE FLOOR IS, and it is a function of position rather
+    than a constant because on this station it is one. Every spot in the table
+    is a ceiling or soffit fitting aimed at the deck beneath it; in a
+    cylindrical section that deck is at -Y, and inside a spun ring it is
+    radially OUTWARD from the spin axis. Default None keeps -Y, so every
+    existing single-room shot renders exactly as it did. See `radial_aim` and
+    `godot/scripts/player.gd`'s `gravity_dir()`, which is the authority on the
+    convention and agrees with it: gravity is `(x, y, 0)` normalised, the spin
+    axis being +Z.
+
+    `exposure` is a per-span multiplier, for a shot that contains more than one
+    room. A single-room shot scales `energy` on the way in and passes None here;
+    an assembled deck cannot, because `ROOM_EXPOSURE` is per-archetype and a
+    deck carries six archetypes at once. Passing the fitting's own room's value
+    is the direct generalisation of what `build_interior` already does, and the
+    alternative -- one number for all of them -- is the mistake BESPOKE_EXPOSURE
+    is written to warn about: "an exposure measured on one generator's geometry
+    says nothing about another's".
     """
     import materials as mats
 
@@ -2115,13 +2218,18 @@ def fixture_lights(verts, tris, spans, energy, rng, shadow_n=2, eye=None):
         # survives where it means something: interior_kit and rooms.py still
         # tag `light_*`, the self-test asserts it, and `directory._lit_keys`
         # still counts by it for the generated rooms.
-        if name not in FIXTURE_LIGHTING:
+        #
+        # THE NAME MAY CARRY AN ADDRESS. `fixture_key` strips it; see there for
+        # what it cost while the lookup was a bare `in`.
+        key = fixture_key(name)
+        if key is None:
             # Emissive only. The material still glows -- that is what makes the
             # trim read -- but it casts nothing. Measured per fitting, not
             # assumed; see FIXTURE_LIGHTING.
             continue
-        spec = FIXTURE_LIGHTING[name]
+        spec = FIXTURE_LIGHTING[key]
         reach = spec.get("range_m") or rng
+        gain = energy * (exposure(name) if exposure else 1.0)
         for body in fitting_bodies(verts, tris, lo, hi):
             bidx = {i for k in body for i in tris[k]}
             if not bidx:
@@ -2151,7 +2259,7 @@ def fixture_lights(verts, tris, spans, energy, rng, shadow_n=2, eye=None):
                       # several places and `share` sums to 1 across them.
                       # Bodies are not -- each is its own fitting and carries a
                       # fitting's energy.
-                      "energy": energy * spec["energy_rel"] * share,
+                      "energy": gain * spec["energy_rel"] * share,
                       "colour": list(spec["colour"]),
                       "range": reach, "attenuation": 1.0,
                       "group": name, "_shadow": spec["shadow"],
@@ -2164,9 +2272,15 @@ def fixture_lights(verts, tris, spans, energy, rng, shadow_n=2, eye=None):
                     # direction is a property of the room command and control
                     # is, and rooms.py builds the same bay in eleven archetypes
                     # with no aft.
+                    #
+                    # DOWN IS NOT -Y ON A RING, and `[0, -1, 0]` was hard-coded
+                    # here. A spot in a ring corridor aimed at world -Y points
+                    # ALONG the ring -- it grazes the deck at two angles a lap
+                    # and at every other angle throws its cone down the corridor
+                    # at a wall. See the `down` parameter.
                     lt["kind"] = "spot"
                     lt["angle"] = spec["angle_deg"]
-                    lt["aim"] = [0.0, -1.0, 0.0]
+                    lt["aim"] = list(down(c)) if down else [0.0, -1.0, 0.0]
                 raw.append(lt)
 
     # ONE FITTING, ONE LIGHT. A pilaster strip is SEVEN tagged bars with gaps
@@ -2739,8 +2853,324 @@ def build_interior(args, out_dir):
     }
 
 
+# ---------------------------------------------------------------------------
+# The deck shot -- the assembled build, as a player stands in it
+# ---------------------------------------------------------------------------
+# THE ONE THING THIS FILE COULD NOT RENDER WAS THE BUILD. `--shot interior`
+# renders ONE ROOM, on its own, in a local Y-up frame with a camera the exporter
+# invents. `station/deck.py` assembles the thing a player is actually put into
+# -- a ring corridor with its rooms opening off it, its doors, its vestibules,
+# its furniture and its inhabitants, at its real radius seven kilometres down
+# the station -- and `station/walkable.py` walks a body through it. Between
+# those two there was no way to LOOK at it.
+#
+# What filled the gap was an ad-hoc rig hand-written into a scratch JSON: four
+# omni lights and an ambient of 0.34. Measured against the corridor anchor that
+# frame read p5 x11.09 against a x1.29 band with zero crushed pixels, and the
+# number was worthless in both directions, because nobody could say how much of
+# it was the build and how much was the four lights somebody chose. A frame from
+# a rig that does not ship measures the rig.
+#
+# So this shot places NOTHING by hand. Every source is a fitting the deck's own
+# generators tagged, found by `fixture_lights` exactly as in a room shot; the
+# scene is `interior.tscn`, which has no lights in it at all; the exposure is
+# stated below and inherited rather than invented; and the camera is the SHIPPED
+# player camera, read out of `godot/scripts/player.gd`.
+
+PLAYER_GD = os.path.join(ROOT, "godot", "scripts", "player.gd")
+
+
+def player_camera(path=PLAYER_GD):
+    """The shipped player camera, read off `player.gd` rather than restated.
+
+    A frame that claims to show what a player sees has to be taken through the
+    lens a player has. Godot's `Camera3D` defaults to 75 degrees and this
+    project's render shots default to 46, and `player.gd` sets 70 for a reason
+    it writes down -- `station/budget.py` counts the frustum at 70. Three
+    numbers, and the only one that is the answer to "what does the player see"
+    is the one in the player.
+
+    Parsed, for the same reason `scene_material_rules` parses the .tscn instead
+    of keeping a Python copy of the material rules: two copies of a number
+    drift, and this one would drift silently, because a frame at the wrong fov
+    looks like a frame.
+
+    Also returns the gravity convention, which is what a ring shot's `up` and
+    its spot aims are derived from. It is checked rather than read: if
+    `gravity_dir()` stops being "radial about +Z", every aim and every up vector
+    in this shot is wrong and the render still looks like a render.
+    """
+    with open(path) as f:
+        text = f.read()
+
+    def num(pattern, what):
+        m = re.search(pattern, text)
+        if not m:
+            raise ValueError(
+                f"{os.path.relpath(path, ROOT)}: cannot find {what}. The deck "
+                f"shot reads the shipped player camera out of this file so "
+                f"that the two cannot disagree; if it has been restructured, "
+                f"fix the pattern here rather than hard-coding the number.")
+        return float(m.group(1))
+
+    radial = re.search(
+        r"gravity_dir\(\).*?Vector3\(\s*global_position\.x\s*,\s*"
+        r"global_position\.y\s*,\s*0\.0\s*\)", text, re.S)
+    if not radial:
+        raise ValueError(
+            f"{os.path.relpath(path, ROOT)}: gravity_dir() no longer derives "
+            f"'down' as the radial direction about +Z. The deck shot aims "
+            f"every spot and orients the camera from that convention.")
+    return {"fov": num(r"_cam\.fov\s*=\s*([0-9.]+)", "the camera fov"),
+            "eye_height_m": num(
+                r"var\s+eye_height_m\s*:\s*float\s*=\s*([0-9.]+)",
+                "eye_height_m"),
+            "spin_axis": "z"}
+
+
+# THE DECK'S EXPOSURE IS INHERITED FROM THE CORRIDOR ANCHOR AND IS NOT DERIVED,
+# and saying so is the whole of the claim.
+#
+# The block around ROOM_EXPOSURE records at length why it cannot be derived the
+# way those eleven values were: `gain *= 1.40 * ref_median / our_median` assumes
+# the median scales with exposure, and measured over the reference corpus
+# d(ln median)/d(ln gain) runs from 0.97 to 0.01 and goes NEGATIVE on four
+# frames. Producing a twelfth number by the same arithmetic would add a twelfth
+# unfalsifiable row to a table that already carries nine.
+#
+# What can be said honestly is what the deck IS. Measured on blue/0/0, the first
+# deck `walkable.py` walks: 450,096 of 589,216 triangles -- 76.4% -- are
+# `interior.ring_arc`, which is `interior_kit`'s corridor section swept round
+# the ring. That is the same geometry, the same fittings and the same materials
+# as `docs/engine-corridor.png`, the frame that DEFINES 1.00 for this project
+# against `reference/07-sector-grey/grey level 1.webp`. The dominant surface in
+# a deck frame is the surface the anchor was measured on, so the anchor is what
+# it takes, and the rooms' own fittings keep their own archetype's value through
+# `deck_fixture_exposure` below.
+#
+# WHAT WOULD REPLACE IT: a deck frame measured against `grey level 1.webp` with
+# `tools/measure_frame.py --against`, by the same code every other exposure in
+# this file was set by. That is a measurement this shot now makes possible and
+# did not exist before it. The first one is recorded in EXPOSURE_FRAMES below;
+# it is evidence about the RIG, and changing this constant to chase its median
+# would be doing the invalid thing again.
+DECK_EXPOSURE = 1.0
+
+# Which deck the shot assembles when nothing says otherwise. blue/0/0 is the one
+# `station/walkable.py` walks and the one milestone W2 was closed on, so it is
+# the deck with a walk verdict to put beside a frame.
+DEFAULT_DECK = "blue/0/0"
+
+# How far ahead the camera looks when it is not aimed at a named place: metres
+# along the corridor arc, and metres along the station axis. 14 m is four bays
+# of the kit's 3.07 m division, which is the run the reference corridor frames
+# show before the perspective closes.
+DECK_FACE_M = (14.0, 0.0)
+
+
+def parse_deck(s):
+    """`sector/ring/deck` -> (str, int, int)."""
+    parts = str(s).split("/")
+    if len(parts) != 3:
+        raise SystemExit(f"--deck wants sector/ring/deck, got {s!r} "
+                         f"(e.g. {DEFAULT_DECK})")
+    return parts[0], int(parts[1]), int(parts[2])
+
+
+def deck_fixture_exposure(name):
+    """Exposure for one tagged span on an assembled deck, by which room it is in.
+
+    The corridor kit's own fittings carry no address and take the anchor, which
+    is what the anchor IS. A room's fittings carry `<place_key>__` and take that
+    place's own `room_exposure`, which is the value the interior shot would give
+    them if the room were rendered alone.
+
+    STRICT ON PURPOSE: an address that is not a place key raises, because on a
+    deck the only thing that produces one is `deck.build_deck`, and a change to
+    how it names a room's groups is a change this shot has to know about.
+    """
+    if "__" not in name:
+        return DECK_EXPOSURE
+    return room_exposure(name.rsplit("__", 1)[0])
+
+
+def spots_lighting_the_floor(lights, floor_r_m):
+    """Which spot fittings actually put light on the floor beneath them.
+
+    Returns (n_spots, n_lit, misses). THE REGRESSION THIS EXISTS TO CATCH is a
+    spot on a ring aimed at world -Y, which is what `fixture_lights` did for
+    every shot before the deck one: inside a spun ring "down" is radially
+    outward, so a -Y aim points ALONG the ring and the cone lands on a wall
+    forty metres away instead of on the deck under the fitting.
+
+    IT HAS TO BE A GEOMETRIC TEST AND NOT A COMPARISON OF AIM VECTORS. At ring
+    angle 270 the outward radial IS (0, -1, 0), so a -Y aim is accidentally
+    correct there and a gate that checked "is the aim radial" would pass on a
+    deck that happened to sit at the right angle. This asks the question the
+    fitting exists to answer -- is the deck directly beneath it inside this
+    lamp's cone and within its reach -- which is false at every angle but two.
+
+    The floor point is the fitting's own position pushed out to the shell's
+    floor radius, so `q - p` is exactly `radial_aim(p) * (floor_r - r)` and the
+    angle between the aim and it is one dot product.
+    """
+    misses, lit = [], 0
+    spots = [lt for lt in lights if lt.get("kind") == "spot"]
+    for lt in spots:
+        p = lt["pos"]
+        r = math.hypot(p[0], p[1])
+        drop = floor_r_m - r
+        if drop <= 0.0:
+            misses.append((lt["group"], "at or below the floor radius"))
+            continue
+        if drop > lt["range"]:
+            misses.append((lt["group"],
+                           f"floor {drop:.2f} m below, range {lt['range']} m"))
+            continue
+        out = radial_aim(p)
+        aim = lt["aim"]
+        n = math.dist(aim, (0.0, 0.0, 0.0)) or 1.0
+        cos = sum(aim[k] * out[k] for k in range(3)) / n
+        off = math.degrees(math.acos(max(-1.0, min(1.0, cos))))
+        if off > lt["angle"]:
+            misses.append((lt["group"],
+                           f"aimed {off:.1f} deg off the floor beneath it, "
+                           f"cone {lt['angle']} deg"))
+            continue
+        lit += 1
+    return len(spots), lit, misses
+
+
+def deck_camera(args, stats, cam):
+    """Where the eye stands on an assembled deck, and what it looks at.
+
+    THE DECK KNOWS WHERE THINGS ARE, so nothing here is a world coordinate typed
+    in by hand. `--at` is a gazetteer place key and the eye stands at that
+    place's own angle on the corridor floor; `--at-offset` moves it in metres
+    along the arc and along the station axis, which are the two directions a
+    person can walk. `--face` aims at another place. The alternative -- raw
+    `--eye x,y,z --target x,y,z` at a radius of 211.528 and a z of 7121.305 --
+    is how the ad-hoc rig was written, and it is unreadable and unre-derivable.
+
+    UP IS INWARD. On a spun ring the floor is the inside of a barrel, so a
+    standing person's head points AT the spin axis. `render_shot.gd` takes the
+    up vector from the shot for exactly this reason and warns that getting it
+    wrong "puts the ground on the ceiling in a frame symmetric enough to hide
+    the mistake" -- which on a corridor, whose section is very nearly
+    symmetrical top to bottom, it genuinely is.
+    """
+    import directory as dr                                       # noqa: PLC0415
+
+    meta = stats["collision_meta"]
+    floor_r, cz = meta["floor_r_m"], meta["z_m"]
+    eye_h = args.eye_height if args.eye_height != 1.7 else cam["eye_height_m"]
+
+    at = args.at or stats["spawn_at"]
+    a0 = math.radians(dr.by_key(at)["angle_deg"])
+    da, dz = args.at_offset if args.at_offset else (0.0, 0.0)
+    # The eye's radius, not the floor's: up is inward, so a standing eye is
+    # `eye_h` CLOSER to the axis than the deck it stands on.
+    r_eye = floor_r - eye_h
+    a_eye = a0 + da / floor_r
+    eye = (r_eye * math.cos(a_eye), r_eye * math.sin(a_eye), cz + dz)
+
+    if args.face:
+        q = dr.by_key(args.face)
+        a_t, z_t = math.radians(q["angle_deg"]), q["z_m"]
+    else:
+        fa, fz = args.face_offset if args.face_offset else DECK_FACE_M
+        a_t, z_t = a_eye + fa / floor_r, eye[2] + fz
+    aim = (r_eye * math.cos(a_t), r_eye * math.sin(a_t), z_t)
+    up = (-math.cos(a_eye), -math.sin(a_eye), 0.0)
+    return eye, aim, up
+
+
+def build_deck_shot(args, out_dir):
+    """One assembled deck, lit by its own fittings, from standing height."""
+    import deck as D                                             # noqa: PLC0415
+
+    sector, ring, deck = parse_deck(args.deck)
+    cam = player_camera()
+    schema, profile = it.load()
+    verts, tris, groups, stats = D.build_deck(
+        schema, profile, sector, ring, deck, z_m=args.deck_z,
+        max_rooms=args.max_rooms)
+    spans = to_spans(groups, len(tris))
+
+    if args.eye and args.target:
+        eye, aim = tuple(args.eye), tuple(args.target)
+        r = math.hypot(eye[0], eye[1]) or 1.0
+        up = (-eye[0] / r, -eye[1] / r, 0.0)
+    else:
+        eye, aim, up = deck_camera(args, stats, cam)
+
+    stem = f"shot_{sector}_{ring}_{deck}"
+    obj = os.path.join(out_dir, f"{stem}.obj")
+    write_obj(obj, verts, tris, per_triangle(spans, len(tris)))
+    glb = to_glb(obj, os.path.join(out_dir, f"{stem}.glb"))
+    n, names = glb_triangles(glb)
+    if n != len(tris):
+        raise ValueError(f"{stem}: glb has {n} triangles, source has "
+                         f"{len(tris)}")
+
+    rng = (args.light_range if args.light_range != 1100.0
+           else INTERIOR_LIGHT_RANGE_M)
+    lights = fixture_lights(
+        verts, tris, spans, args.fixture_energy, rng,
+        shadow_n=(INTERIOR_SHADOW_LIGHTS if args.shadow_lights is None
+                  else args.shadow_lights),
+        eye=eye, down=radial_aim, exposure=deck_fixture_exposure)
+
+    # REPORTED AT EXPORT, not only in the self-test. A deck whose fittings light
+    # a wall instead of its floor still produces a plausible PNG, and the number
+    # that says otherwise has to be in front of whoever runs the render.
+    n_spot, n_lit, misses = spots_lighting_the_floor(lights,
+                                                     stats["collision_meta"]
+                                                     ["floor_r_m"])
+    print(f"deck {sector}/{ring}/{deck}: {stats['rooms']} rooms, "
+          f"{len(tris)} triangles, {len(lights)} lights "
+          f"({n_spot} spot, {n_lit} of them on the floor beneath them), "
+          f"exposure {DECK_EXPOSURE} (inherited from the corridor anchor)")
+    if misses:
+        print(f"  {len(misses)} spot(s) light nothing beneath them: "
+              f"{misses[:3]}")
+    if stats["unopened"]:
+        print(f"  rooms with no door: {stats['unopened']}")
+    if stats["skipped"]:
+        print(f"  rooms that did not build: {stats['skipped']}")
+
+    return {
+        "shot": "deck",
+        # THE INTERIOR SCENE, and not one of its own. interior.tscn declares no
+        # lights at all and carries the 434 material rules `materials.py
+        # --export` writes; a deck is interiors, so a second scene file would be
+        # a second copy of that block and would stop matching the library the
+        # first time a material was added.
+        "scene": "res://scenes/interior.tscn",
+        "glb": [glb],
+        "triangles": n,
+        "groups": sorted(set(names)),
+        "lights": lights,
+        "deck": f"{sector}/{ring}/{deck}",
+        "room": args.at or stats["spawn_at"],
+        "rooms": stats["rooms"],
+        "actors": len(stats.get("actors", ())),
+        "exposure": DECK_EXPOSURE,
+        # The residential corridor's measured fill, which is what the deck's
+        # 76% corridor takes. One ambient per SCENE is a Godot property, so the
+        # rooms cannot each have their own here the way a single-room shot does
+        # -- recorded rather than papered over.
+        "ambient": (args.ambient if args.ambient is not None
+                    else ambient_energy("corridor") * DECK_EXPOSURE),
+        "camera": {"eye": list(eye), "target": list(aim), "up": list(up),
+                   "fov": (args.fov if args.fov != 46.0 else cam["fov"]),
+                   "near": 0.06, "far": 400.0},
+        "sun_from": None,
+    }
+
+
 SHOTS = {"exterior": build_exterior, "drum": build_drum,
-         "interior": build_interior}
+         "interior": build_interior, "deck": build_deck_shot}
 
 
 def build(args):
@@ -3251,6 +3681,148 @@ def _selftest():
     check(set(BESPOKE_GEOMETRY) <= owning,
           f"no entry builds a module that owns no place "
           f"({sorted(set(BESPOKE_GEOMETRY) - owning)})")
+
+    # -- the deck shot: the assembled build ---------------------------------
+    # EVERY ASSERTION HERE IS RUN AGAINST THE CASE THAT HAS THE DEFECT IN IT,
+    # which is the lesson session 3x paid for: `interior_kit`'s tag-coverage gate
+    # ran on a corridor with no doors, so four defects lived in the doorway for a
+    # session. Both defects this section exists for are properties of an
+    # ASSEMBLED deck and neither can appear in a single-room shot -- a room shot
+    # has no addressed group names and no ring -- so the fixture is a real deck.
+    #
+    # `max_rooms=1` for cost: one room, a 24 degree arc, 66,340 triangles and a
+    # few seconds, and it still carries an addressed fitting AND a spot on a
+    # ring, which is everything under test. Anything cheaper would be a fixture
+    # that cannot express either defect.
+    import deck as _D                                            # noqa: PLC0415
+
+    # The shipped player camera, read rather than restated.
+    _cam = player_camera()
+    check(_cam["fov"] > 0.0 and _cam["eye_height_m"] > 0.0
+          and _cam["spin_axis"] == "z",
+          f"player.gd's camera and gravity convention parse ({_cam})")
+    # NEGATIVE CONTROL: it must not fall back to a default when the file it is
+    # reading stops saying what it is reading. A silent default here renders
+    # every deck frame at the wrong fov, which looks exactly like a frame.
+    try:
+        player_camera(os.path.abspath(__file__))
+        check(False, "player_camera refuses a file that is not player.gd")
+    except ValueError:
+        check(True, "player_camera refuses a file that is not player.gd")
+
+    # `fixture_key`, against all four cases. An exact name wins; an addressed
+    # name resolves to its fitting; a name that is neither is emissive-only.
+    check(fixture_key("light_downlight") == "light_downlight",
+          "fixture_key passes an exact fitting name through")
+    check(fixture_key("docking_bays__light_highbay") == "light_highbay",
+          "fixture_key strips a room's address off its fitting")
+    check(fixture_key("kit_wall_plate") is None,
+          "fixture_key does not invent a fitting for a plain group")
+    check(fixture_key("docking_bays__prop_deck_marking") is None,
+          "fixture_key does not invent a fitting for an addressed non-fitting")
+
+    _dv, _dt, _dg, _ds = _D.build_deck(schema, profile, "blue", 0, 0,
+                                       max_rooms=1)
+    _dspans = to_spans(_dg, len(_dt))
+    _dmeta = _ds["collision_meta"]
+
+    # THE FIXTURE HAS TO HAVE THE DEFECT AVAILABLE TO IT. If `deck.build_deck`
+    # ever stops addressing a room's groups, the lookup gate below passes for the
+    # wrong reason and this is the line that says so.
+    _addressed = [n for n, _l, _h in _dspans
+                  if "__" in n and fixture_key(n) is not None]
+    check(_addressed,
+          "the deck fixture carries an ADDRESSED fitting, so the lookup gate "
+          "is measuring the case with the defect in it")
+
+    _dl = fixture_lights(_dv, _dt, _dspans, 3.0, INTERIOR_LIGHT_RANGE_M,
+                         eye=_ds["spawn"], down=radial_aim,
+                         exposure=deck_fixture_exposure)
+    # THE ROOMS ARE LIT. Before `fixture_key`, FIXTURE_LIGHTING was an
+    # exact-name table and every fitting inside every room of a deck matched
+    # nothing: measured on the full blue/0/0, 822 corridor spans became lamps and
+    # 28 room spans became none. The deck rendered with a lit corridor and black
+    # rooms, and no gate could fire, because a room with no tagged fitting coming
+    # back black IS the documented behaviour of this rig.
+    _inroom = [x for x in _dl if "__" in x["group"]]
+    check(_inroom, f"the fittings inside a deck's rooms cast light "
+                   f"({len(_inroom)} of {len(_dl)} lamps)")
+
+    # SPOTS AIM AT THE FLOOR, AND ON A RING THE FLOOR IS NOT AT -Y.
+    _n_spot, _lit, _miss = spots_lighting_the_floor(_dl, _dmeta["floor_r_m"])
+    check(_n_spot > 0,
+          f"the deck fixture contains a spot at all, so the aim gate is not "
+          f"vacuously true ({_n_spot} spots)")
+    check(_n_spot and _lit == _n_spot,
+          f"every spot on the ring lights the floor beneath it "
+          f"({_lit}/{_n_spot}, misses {_miss[:2]})")
+    # NEGATIVE CONTROL, and it is the regression itself rather than a mutation
+    # of the result: the same fittings, the same deck, `down` left at the -Y
+    # default every other shot uses. Measured on this fixture the four high bays
+    # come out 89.2 degrees off a 35 degree cone.
+    _dl_y = fixture_lights(_dv, _dt, _dspans, 3.0, INTERIOR_LIGHT_RANGE_M,
+                           eye=_ds["spawn"], exposure=deck_fixture_exposure)
+    _ny, _lity, _missy = spots_lighting_the_floor(_dl_y, _dmeta["floor_r_m"])
+    check(_ny == _n_spot and _lity == 0,
+          f"a spot aimed at world -Y on a ring lights NOTHING beneath it "
+          f"({_lity}/{_ny} still on the floor -- this gate cannot fail)")
+
+    # NO LAMP IN MID-AIR. `render_shot.gd` records that a light positioned
+    # before it is parented silently stays at the origin, which inside this
+    # station is on the spin axis lighting nothing. A bounding-box test is weak
+    # in general -- the light-placement gate above says why -- but the origin is
+    # 211 m outside this box in the radial direction and 7 km along the axis, so
+    # it is exactly the question worth asking here.
+    _blo = [min(q[j] for q in _dv) for j in range(3)]
+    _bhi = [max(q[j] for q in _dv) for j in range(3)]
+    _out = [x["group"] for x in _dl
+            if not all(_blo[j] - 0.5 <= x["pos"][j] <= _bhi[j] + 0.5
+                       for j in range(3))]
+    check(not _out, f"every deck lamp is inside the deck ({_out[:3]})")
+
+    # EACH ROOM'S FITTINGS TAKE THEIR OWN ROOM'S EXPOSURE, and the corridor kit
+    # takes the anchor. One number for a whole deck would apply an exposure
+    # measured on one generator's geometry to another's, which is the mistake
+    # BESPOKE_EXPOSURE is written to warn about.
+    check(deck_fixture_exposure("light_downlight") == DECK_EXPOSURE,
+          "the corridor kit's own fittings take the anchor")
+    check(deck_fixture_exposure("docking_bays__light_highbay")
+          == room_exposure("docking_bays") != DECK_EXPOSURE,
+          f"a room's fittings take that room's exposure "
+          f"({deck_fixture_exposure('docking_bays__light_highbay')} vs the "
+          f"anchor's {DECK_EXPOSURE})")
+
+    # THE CAMERA STANDS ON THE CORRIDOR FLOOR AND ITS HEAD POINTS AT THE AXIS.
+    # Both are ring properties with no analogue in a room shot, and both are
+    # invisible in a still: a corridor section is nearly symmetrical top to
+    # bottom, so an inverted frame reads as a corridor.
+    class _A:                                       # the shot's own defaults
+        at = face = ""
+        at_offset = face_offset = None
+        eye_height = 1.7
+    _eye, _aim, _up = deck_camera(_A(), _ds, _cam)
+    _r = math.hypot(_eye[0], _eye[1])
+    check(_dmeta["ceil_r_m"] < _r < _dmeta["floor_r_m"],
+          f"the eye is between the deck and the soffit "
+          f"({_r:.3f} in {_dmeta['ceil_r_m']:.3f}..{_dmeta['floor_r_m']:.3f})")
+    check(abs(_dmeta["floor_r_m"] - _r - _cam["eye_height_m"]) < 1e-6,
+          f"the eye is a shipped standing height above the deck "
+          f"({_dmeta['floor_r_m'] - _r:.3f} m vs {_cam['eye_height_m']} m)")
+    check(abs(_eye[2] - _dmeta["z_m"]) <= _dmeta["half_w_m"],
+          f"the eye is inside the corridor's width, not in a wall "
+          f"({_eye[2] - _dmeta['z_m']:.3f} m of +/-{_dmeta['half_w_m']:.3f})")
+    _outward = radial_aim(_eye)
+    check(sum(_up[k] * _outward[k] for k in range(3)) < -0.999,
+          f"the camera's up points AT the spin axis, which is where a standing "
+          f"head is on a spun ring ({_up})")
+    # And it is a place key that put it there, not a coordinate.
+    check(_ds["spawn_at"] in {q["key"] for q in dr.PLACES},
+          f"the deck's default standpoint is a gazetteer place "
+          f"({_ds['spawn_at']})")
+
+    check(parse_deck("blue/0/0") == ("blue", 0, 0), "parse_deck reads a deck")
+    check("deck" in SHOTS and SHOTS["deck"] is build_deck_shot,
+          "the deck shot is registered, so render_godot.sh --shot deck works")
 
     # -- glb integrity ----------------------------------------------------
     # Only if something has already been exported; a bare checkout has not.
@@ -4486,6 +5058,33 @@ def main():
     ap.add_argument("--room", default="",
                     help="interior shot: a directory place key, or `corridor` "
                          "/ `junction` for the kit itself")
+    # --- the deck shot -----------------------------------------------------
+    # A PLACE KEY AND AN OFFSET, not world coordinates. See `deck_camera`.
+    ap.add_argument("--deck", default=DEFAULT_DECK, metavar="SECTOR/RING/DECK",
+                    help=f"deck shot: which deck to assemble "
+                         f"(default {DEFAULT_DECK})")
+    ap.add_argument("--deck-z", type=float, default=None, metavar="Z",
+                    help="deck shot: which z cluster on that deck. Default is "
+                         "the busiest, which is what deck.py and walkable.py "
+                         "both build")
+    ap.add_argument("--max-rooms", type=int, default=None,
+                    help="deck shot: assemble only the first N rooms of the "
+                         "cluster, which shortens the arc. A cost lever for "
+                         "iteration, not a look decision")
+    ap.add_argument("--at", default="", metavar="KEY",
+                    help="deck shot: stand at this place's angle on the "
+                         "corridor. Default is the deck's own spawn place")
+    ap.add_argument("--at-offset", type=_pair, default=None, metavar="ARC,Z",
+                    help="deck shot: metres from --at along the corridor arc "
+                         "and along the station axis")
+    ap.add_argument("--face", default="", metavar="KEY",
+                    help="deck shot: look at this place -- its door, from the "
+                         "corridor")
+    ap.add_argument("--face-offset", type=_pair, default=None,
+                    metavar="ARC,Z",
+                    help=f"deck shot: with no --face, look this far along the "
+                         f"arc and the axis (default {DECK_FACE_M[0]},"
+                         f"{DECK_FACE_M[1]})")
     ap.add_argument("--fixture-energy", type=float, default=3.0,
                     help="interior shot: energy per tagged light fitting")
     ap.add_argument("--ambient", type=float, default=None,
