@@ -4058,9 +4058,24 @@ as black:
   **visually indistinguishable** — the same folds, the same road and hedge lines, the same
   curvature. That is the claim ("the collision ground is the same shape as the render ground")
   shown rather than asserted. Difference is in the far field, where the render is at lod1.
-* Frames: `scratchpad/drum_eye_col.png`, `drum_wide_col.png`, `drum_wide_ren.png`. These are
-  **structural** evidence from the flat-shaded rasteriser, not craft evidence — no craft claim is
-  made here.
+* The frames were written to a session scratchpad and are not committed; the commands that make
+  them again are, which is the more useful artefact:
+
+  ```bash
+  python3 station/drum_walk.py --at the_garden \
+      --obj /tmp/drum_col.obj --render-obj /tmp/drum_ren.obj
+  # standing eye, looking down the axis
+  python3 tools/preview_render.py /tmp/drum_col.obj --out /tmp/eye.png \
+      --eye 137.2721 237.7622 5100 --target 137.2721 237.7622 5350 \
+      --up -0.5 -0.866 0 --fov 55 --headlamp --fog 400
+  # 176 m up, against MAGENTA so a hole is not black -- run for both OBJs
+  python3 tools/preview_render.py /tmp/drum_col.obj --out /tmp/wide.png \
+      --eye 55.0 95.2628 4780 --target 138.077 239.157 5150 \
+      --up -0.5 -0.866 0 --fov 62 --light -0.35 -0.55 0.6 --bg 255 0 255
+  ```
+
+  These are **structural** evidence from the flat-shaded rasteriser, not craft evidence — no craft
+  claim is made here.
 
 ### WHAT DOES NOT WORK, precisely
 
