@@ -67,10 +67,25 @@ def _box(v, t, g, name, lo, hi):
     for a, b, c, d in ((0, 3, 2, 1), (4, 5, 6, 7), (0, 1, 5, 4),
                        (2, 3, 7, 6), (1, 2, 6, 5), (0, 4, 7, 3)):
         t += [(n + a, n + b, n + c), (n + a, n + c, n + d)]
-    g.append((name, t0, len(t)))
+    _tag(g, name, t0, len(t))
 
 
-def _cyl(v, t, g, name, cx, cz, y0, y1, r, seg=6):
+def _tag(g, name, lo, hi):
+    """Record a span, or do not, if the caller asked for no span.
+
+    `g=None` means "this geometry belongs to whatever group already owns it".
+    The MACHINERY builders below need that: a vessel's shell, its domed head and
+    its flanges are all the same clad surface as the fixture they replace, so
+    they are covered by the fixture's own outer span and must NOT be recorded
+    again. A second span over the same triangles would be a second AABB in
+    `rooms._solid_boxes` overlapping the first, and the interpenetration gate --
+    correctly -- would call that two solids in one place.
+    """
+    if g is not None and hi > lo:
+        g.append((name, lo, hi))
+
+
+def _cyl(v, t, g, name, cx, cz, y0, y1, r, seg=6, phase=0.0):
     """An upright capped cylinder: conduit drops, pipe bands, bollards.
 
     THIS PRIMITIVE WAS INSIDE-OUT AND OPEN, and both were found by the same
@@ -90,7 +105,7 @@ def _cyl(v, t, g, name, cx, cz, y0, y1, r, seg=6):
     """
     n0 = len(v)
     for k in range(seg):
-        a = math.tau * k / seg
+        a = math.tau * k / seg + phase
         dx, dz = r * math.cos(a), r * math.sin(a)
         v.append((cx + dx, y0, cz + dz))
         v.append((cx + dx, y1, cz + dz))
@@ -107,7 +122,7 @@ def _cyl(v, t, g, name, cx, cz, y0, y1, r, seg=6):
     v.append((cx, y0, cz))
     for k in range(seg):
         t.append((c0, n0 + 2 * k, n0 + 2 * ((k + 1) % seg)))
-    g.append((name, t0, len(t)))
+    _tag(g, name, t0, len(t))
 
 
 # --- the kit ---------------------------------------------------------------
@@ -115,18 +130,26 @@ def _cyl(v, t, g, name, cx, cz, y0, y1, r, seg=6):
 # its base at y, centred on (x, z). Dimensions are the archetype's, so a builder
 # can be swapped for another of the same footprint without moving anything.
 
+# THE FURNITURE GOES THROUGH THE SAME KIT AS THE MACHINERY -- INV-132.
+# Measured rather than assumed: a ray cast across the medlab's half-distance
+# frame after INV-130 lands on `dress_top` 27 times of 119 -- more than any
+# other group and more than the articulated gantry it was standing next to.
+# The fixtures and the declared props were raised and the FURNITURE was still
+# the flattest thing in the room, which is the same finding one object down.
+#
+# Only the five that stand up and read at a distance are routed. A chair, a bin
+# and a drum can are already legs-and-a-back rather than boxes, and there are
+# four chairs per ten metres of wall in a hospitality room -- spending a
+# cabinet's triangle count on each would buy a silhouette nobody sees and cost
+# the frame budget a rack.
+def _mach(v, t, g, kind, name, x, y, z, w, d, h, seed):
+    machine(v, t, g, kind, name, (x - w / 2, y, z - d / 2),
+            (x + w / 2, y + h, z + d / 2), seed)
+
+
 def _crate(v, t, g, x, y, z, w, d, h, seed):
-    """A shipping case: body, proud lid, and corner irons."""
-    _box(v, t, g, "dress_crate", (x - w / 2, y, z - d / 2),
-         (x + w / 2, y + h * 0.88, z + d / 2))
-    _box(v, t, g, "dress_crate_lid",
-         (x - w / 2 - 0.02, y + h * 0.88, z - d / 2 - 0.02),
-         (x + w / 2 + 0.02, y + h, z + d / 2 + 0.02))
-    for sx in (-1, 1):
-        for sz in (-1, 1):
-            _box(v, t, g, "dress_metal",
-                 (x + sx * w / 2 - 0.05, y, z + sz * d / 2 - 0.05),
-                 (x + sx * w / 2 + 0.05, y + h * 0.88, z + sz * d / 2 + 0.05))
+    """A shipping case: body, proud lid, corner irons and banding."""
+    _mach(v, t, g, "crate", "dress_crate", x, y, z, w, d, h, seed)
 
 
 def _chair(v, t, g, x, y, z, w, d, h, seed):
@@ -145,52 +168,23 @@ def _chair(v, t, g, x, y, z, w, d, h, seed):
 
 
 def _table(v, t, g, x, y, z, w, d, h, seed):
-    """Top, apron and legs."""
-    _box(v, t, g, "dress_top", (x - w / 2, y + h - 0.05, z - d / 2),
-         (x + w / 2, y + h, z + d / 2))
-    _box(v, t, g, "dress_metal", (x - w / 2 + 0.06, y + h - 0.14, z - d / 2 + 0.06),
-         (x + w / 2 - 0.06, y + h - 0.05, z + d / 2 - 0.06))
-    for sx in (-1, 1):
-        for sz in (-1, 1):
-            _box(v, t, g, "dress_metal",
-                 (x + sx * (w / 2 - 0.09), y, z + sz * (d / 2 - 0.09)),
-                 (x + sx * (w / 2 - 0.09) + 0.05, y + h - 0.14,
-                  z + sz * (d / 2 - 0.09) + 0.05))
+    """Kick recess, apron, nosed top and a front broken into panels."""
+    _mach(v, t, g, "counter", "dress_top", x, y, z, w, d, h, seed)
 
 
 def _locker(v, t, g, x, y, z, w, d, h, seed):
-    """A cabinet with expressed doors and handles."""
-    _box(v, t, g, "dress_top", (x - w / 2, y, z - d / 2),
-         (x + w / 2, y + h, z + d / 2))
-    n = max(1, int(w / 0.45))
-    for i in range(n):
-        dx = -w / 2 + w * (i + 0.5) / n
-        _box(v, t, g, "dress_door",
-             (dx - w / (2 * n) + 0.02, y + 0.05, z + d / 2),
-             (dx + w / (2 * n) - 0.02, y + h - 0.05, z + d / 2 + 0.02))
-        _box(v, t, g, "dress_metal",
-             (dx + w / (2 * n) - 0.10, y + h * 0.5, z + d / 2 + 0.02),
-             (dx + w / (2 * n) - 0.05, y + h * 0.62, z + d / 2 + 0.05))
+    """A cubicle line-up: plinth, doors with reveals, louvres and handles."""
+    _mach(v, t, g, "cabinet", "dress_top", x, y, z, w, d, h, seed)
 
 
 def _console(v, t, g, x, y, z, w, d, h, seed):
-    """A pedestal with a raked screen and a lit face."""
-    _box(v, t, g, "dress_top", (x - w / 2, y, z - d / 2),
-         (x + w / 2, y + h * 0.78, z + d / 2))
-    _box(v, t, g, "dress_screen", (x - w / 2 + 0.05, y + h * 0.78, z - d / 4),
-         (x + w / 2 - 0.05, y + h, z + d / 4))
+    """A raked face, a bezel, a screen, a knee recess and a vent row."""
+    _mach(v, t, g, "console", "dress_top", x, y, z, w, d, h, seed)
 
 
 def _shelf(v, t, g, x, y, z, w, d, h, seed):
-    """Uprights and shelves -- a surface machine, four tops for six boxes."""
-    for sx in (-1, 1):
-        _box(v, t, g, "dress_metal", (x + sx * w / 2 - 0.04, y, z - d / 2),
-             (x + sx * w / 2, y + h, z + d / 2))
-    n = max(2, int(h / 0.45))
-    for i in range(1, n + 1):
-        yy = y + h * i / n
-        _box(v, t, g, "dress_top", (x - w / 2, yy - 0.03, z - d / 2),
-             (x + w / 2, yy, z + d / 2))
+    """Uprights, rails, shelves with edge lips -- and STOCK on the shelves."""
+    _mach(v, t, g, "rack", "dress_top", x, y, z, w, d, h, seed)
 
 
 def _bin(v, t, g, x, y, z, w, d, h, seed):
@@ -271,7 +265,11 @@ def _surfaces_of(v, t, g, mark):
     """
     out = []
     for name, lo, hi in g:
-        if lo < mark:
+        if lo < mark or MACHINE_MARK in name:
+            # SPANS NEST since INV-132: a piece of furniture emits one outer
+            # span covering all its triangles and then part spans inside it.
+            # The outer span already sees every horizontal face, so counting
+            # the parts as well would put two mugs on every shelf.
             continue
         for tri in t[lo:hi]:
             p = [v[i] for i in tri]
@@ -437,6 +435,1431 @@ def stats(place, w_m, l_m, ceil_m, arch, inset=(0.0, 0.0)):
             "per_m2": sum(c.values()) / max(area, 1e-9), **c}
 
 
+# ===========================================================================
+# MACHINERY -- the object a room is NAMED FOR, and it was a single box
+# ===========================================================================
+# `docs/aaa-scorecard.json` scores `generated_rooms` at CRAFT 1 -- the rubric's
+# own words for that score are *"a box primitive standing in for a named
+# object"* -- across 58% of the station's locations. The measurement behind it
+# is in `rooms.FIXTURES`: every fixture instance was one call to `_box`, so a
+# "fusion containment vessel" was a rectangular pier 4 m across and a
+# "fabrication furnace" was a 2.4 x 2.4 x 4.6 m slab.
+#
+# WHY NO GATE CAUGHT IT, which is the part worth carrying forward.
+# `station/density.py` measures visible line density over a WHOLE ROOM and the
+# rooms PASS it -- 123 of 128 locations were at or above their derived floor
+# with every machine still a box. Measured per group on the pre-change build:
+#
+#     room             room lambda   machinery lambda   machinery normals
+#     fabrication          4.23           1.04                5.95
+#     reactor_hall         4.02           0.66                5.83
+#     medlab_one           5.76           1.89                5.84
+#     business_center      6.20           2.19                5.07
+#
+# The shell's articulation -- ribs, bands, mullions, panels, deck grid -- is
+# 99% of the room's surface, so it carries the room's average over the floor
+# while the machinery sits at a sixth of it. `density.machinery_report()` is
+# the gate that separates the two, and `normals ~ 6` is a box's signature
+# whatever its tessellation (density.py's own docstring says so).
+#
+# WHAT A MACHINE IS MADE OF HERE
+# ------------------------------
+# One PRIMARY form, SECONDARY structure that carries or feeds it, and TERTIARY
+# fittings that say what it does -- which is the size hierarchy
+# `docs/AAA-STANDARD.md` names as the difference between CRAFT 1 and CRAFT 3.
+# A vessel is a lathe with a domed head, flanges, standoff legs, a bolted
+# manway, radial pipe stubs with elbows, a gauge plate, a ladder and a hazard
+# band at its foot. A rack is uprights, rails, shelves and stock ON the
+# shelves. A console has a raked face, a bezel, a screen and a knee recess.
+#
+# EVERY PART STAYS INSIDE THE BOX IT REPLACES. That is not tidiness, it is what
+# makes the change safe: `rooms.walkable`, `rooms._solid_boxes` and
+# `collision.prop_boxes` all read the fixture's own AABB, so a machine that
+# never leaves it cannot make a walkable room unwalkable or a solid clash.
+# `machine_bounds_ok` asserts it and `rooms._selftest` runs it.
+#
+# GROUP NAMES: THE BOUND FRAGMENT NAMES THE MATERIAL, and the `_mp_` infix
+# marks a machine part. Both are load-bearing:
+#
+#   * `materials.resolve` matches a fragment as a SUBSTRING, longest wins, so
+#     `fix_mp_plant_frame` takes `plant_frame` -> `steel_gantry_oxide` with no
+#     edit to `materials.py` (which this session does not own). The convention
+#     is `rooms.PLACE_FIXTURES`' own, adopted there for the same reason.
+#   * `_mp_` is what `rooms._solid_boxes` skips. A machine part nests INSIDE
+#     its fixture's span -- `per_triangle` resolves last-span-wins, so the part
+#     takes its own material and the fixture's outer span still owns the AABB
+#     every walkability and collision rule reads. Without the marker the
+#     interpenetration gate would see a flange inside its own vessel and call
+#     it two solids in one place, which it is not.
+#   * The prefix is INHERITED from the parent (`fix_` or `prop_`), because
+#     `budget.klass_of` splits its report on exactly that prefix. A machine
+#     part of a fixture must be counted as a fixture.
+#
+# Everything here is extrapolation -- INV-130 -- constrained by: the part must
+# fit inside the box the fixture already occupied, the assembly must be closed
+# and manifold (a hole and an inside-out face both render as the background),
+# and no dimension may be finer than the mesh can carry at the distance the
+# room is composed from.
+MACHINE_MARK = "_mp_"
+
+# Proportions. Every one is a RATIO of the box the fixture declares, so a
+# machine in a 3.4 m lock and the same machine in a 7.5 m reactor hall are the
+# same object at two sizes rather than two objects.
+SEG_BODY = 14              # facets round a vessel: 25.7 deg, 0.9 m chord at r=2
+SEG_PIPE = 8
+SEG_BOLT = 5
+LEG_FRAC = 0.075           # standoff under a vessel, as a fraction of height
+LEG_MIN_M = 0.16
+LEG_MAX_M = 0.55
+DOME_FRAC = 0.34           # domed head rise / body radius
+FLANGE_PROUD = 0.055       # flange radius over body radius, fraction
+FLANGE_T_M = 0.07
+HAZARD_H_M = 0.22
+RAIL_H_M = 1.05
+RUNG_PITCH_M = 0.30
+GAUGE_Y_M = 1.45           # instruments at the height a standing person reads
+MIN_PART_M = 0.012         # below this a part is sub-pixel at any indoor range
+MACH_PROUD_M = 0.045       # plan inset, so proud bands have room to be proud
+
+
+def _cross(a, b):
+    return (a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2],
+            a[0] * b[1] - a[1] * b[0])
+
+
+def _tube(v, t, g, name, p0, p1, r, seg=SEG_PIPE, phase=0.0):
+    """A capped cylinder between two arbitrary points.
+
+    `_cyl` above is upright only, which is enough for a bollard and useless for
+    a pipe stub leaving a vessel sideways, a hanger rod, a handrail or a crane
+    rope. Winding is derived from `_cyl`'s rather than guessed: with the local
+    basis (e1, e2, axis) satisfying e1 x e2 = -axis -- which `uy = e1 x axis`
+    gives -- the same triangle order faces outward. `_selftest` measures it on
+    all three axes and on a diagonal, because "I checked one case" is how this
+    project shipped a 0/24 inside-out cylinder.
+    """
+    ax = [p1[i] - p0[i] for i in range(3)]
+    ln = math.sqrt(sum(c * c for c in ax))
+    if ln < 1e-9 or r <= 0.0:
+        return
+    ax = [c / ln for c in ax]
+    seed_up = (0.0, 0.0, 1.0) if abs(ax[2]) < 0.9 else (1.0, 0.0, 0.0)
+    ux = _cross(seed_up, ax)
+    m = math.sqrt(sum(c * c for c in ux))
+    ux = [c / m for c in ux]
+    uy = _cross(ux, ax)
+    n0 = len(v)
+    for k in range(seg):
+        a = math.tau * k / seg + phase
+        ca, sa = r * math.cos(a), r * math.sin(a)
+        d = [ca * ux[i] + sa * uy[i] for i in range(3)]
+        v.append(tuple(p0[i] + d[i] for i in range(3)))
+        v.append(tuple(p1[i] + d[i] for i in range(3)))
+    t0 = len(t)
+    for k in range(seg):
+        a0 = n0 + 2 * k
+        b0 = n0 + 2 * ((k + 1) % seg)
+        t += [(a0, b0 + 1, b0), (a0, a0 + 1, b0 + 1)]
+    c = len(v)
+    v.append(tuple(p1))
+    for k in range(seg):
+        t.append((c, n0 + 2 * ((k + 1) % seg) + 1, n0 + 2 * k + 1))
+    c0 = len(v)
+    v.append(tuple(p0))
+    for k in range(seg):
+        t.append((c0, n0 + 2 * k, n0 + 2 * ((k + 1) % seg)))
+    _tag(g, name, t0, len(t))
+
+
+def _dome(v, t, g, name, cx, cz, y_base, r, rise, seg=SEG_BODY, rings=3,
+          up=True, phase=0.0):
+    """A domed head: latitude rings to an apex, closed with its own base cap.
+
+    CLOSED ON ITS OWN rather than welded to the barrel under it. Sharing the
+    barrel's top ring would give every edge on that circle four faces, which is
+    a non-manifold edge -- the defect `portal_frame` carried 828 times a deck in
+    session 3x and which renders perfectly. Overlapping closed solids are how
+    `_crate` and `_locker` already work and they measure zero of both.
+
+    THE LAST RING STOPS SHORT OF THE POLE, and that is not cosmetic. The first
+    version ran the latitude to phi = pi/2, where cos(phi) = 0 and all `seg`
+    vertices of the top ring collapse onto one point -- so the band below it
+    became `seg` degenerate triangles sharing the same zero-length edges, and
+    `boundary_edges` measured 30 NON-MANIFOLD edges per vessel. A dome and a
+    dome with a collapsed ring render identically.
+    """
+    n0 = len(v)
+    for j in range(rings):
+        phi = (math.pi / 2.0) * j / rings
+        rr, yy = r * math.cos(phi), rise * math.sin(phi)
+        for k in range(seg):
+            a = math.tau * k / seg + phase
+            v.append((cx + rr * math.cos(a),
+                      y_base + (yy if up else -yy),
+                      cz + rr * math.sin(a)))
+    t0 = len(t)
+    for j in range(rings - 1):
+        for k in range(seg):
+            a0 = n0 + j * seg + k
+            b0 = n0 + j * seg + (k + 1) % seg
+            a1, b1 = a0 + seg, b0 + seg
+            if up:
+                t += [(a0, b1, b0), (a0, a1, b1)]
+            else:
+                t += [(a0, b0, b1), (a0, b1, a1)]
+    c = len(v)
+    v.append((cx, y_base + (rise if up else -rise), cz))
+    top = n0 + (rings - 1) * seg
+    for k in range(seg):
+        a0, b0 = top + k, top + (k + 1) % seg
+        t.append((c, b0, a0) if up else (c, a0, b0))
+    c0 = len(v)
+    v.append((cx, y_base, cz))
+    for k in range(seg):
+        a0, b0 = n0 + k, n0 + (k + 1) % seg
+        t.append((c0, a0, b0) if up else (c0, b0, a0))
+    _tag(g, name, t0, len(t))
+
+
+class _Parts:
+    """The nine surfaces a machine is built out of, for one parent prefix.
+
+    Nine and not ninety: every extra distinct group name is another draw call
+    in `budget.py`'s `draw calls, whole frame`, which is ALREADY over at
+    1,303 of 1,041. A fixed vocabulary keeps the cost per room bounded by the
+    vocabulary rather than by the instance count.
+    """
+
+    def __init__(self, prefix):
+        p = prefix + "mp_"
+        self.frame = p + "plant_frame"        # steel_gantry_oxide
+        self.pipe = p + "plant_pipe"          # clad_services
+        self.conduit = p + "plant_conduit"    # plant_valve_metal, non-solid
+        self.tread = p + "plant_catwalk"      # steel_catwalk_tread
+        self.rail = p + "plant_rail"          # grab_rail_bare, non-solid
+        self.gauge = p + "prop_tank_gauge"    # plant_switchgear
+        self.hazard = p + "hazard_frame"      # accent_warning
+        self.screen = p + "dress_screen"      # device_screen_glass
+        self.panel = p + "prop_locker"        # furn_casework
+
+    def all(self):
+        return (self.frame, self.pipe, self.conduit, self.tread, self.rail,
+                self.gauge, self.hazard, self.screen, self.panel)
+
+
+def _gauges(v, t, g, P, x, y, z, nx, nz, w, seed):
+    """A plate of instruments on a face: bezel, dials and a small screen.
+
+    (nx, nz) is the outward face normal and is axis-aligned, so `abs(nx)` and
+    `abs(nz)` select which of the two horizontal axes the plate runs along.
+    """
+    d = 0.05
+    _box(v, t, g, P.panel,
+         (x - w / 2 * abs(nz) - d * abs(nx), y - 0.16,
+          z - w / 2 * abs(nx) - d * abs(nz)),
+         (x + w / 2 * abs(nz) + d * abs(nx), y + 0.16,
+          z + w / 2 * abs(nx) + d * abs(nz)))
+    for i in (-1, 1):
+        cx = x + i * w * 0.24 * abs(nz)
+        cz = z + i * w * 0.24 * abs(nx)
+        _tube(v, t, g, P.gauge,
+              (cx + nx * d, y, cz + nz * d),
+              (cx + nx * (d + 0.035), y, cz + nz * (d + 0.035)),
+              0.055, SEG_PIPE)
+    _box(v, t, g, P.screen,
+         (x + nx * d - 0.09 * abs(nz), y - 0.09, z + nz * d - 0.09 * abs(nx)),
+         (x + nx * (d + 0.02) + 0.09 * abs(nz), y + 0.09,
+          z + nz * (d + 0.02) + 0.09 * abs(nx)))
+
+
+def _perim_band(v, t, g, name, x0, z0, x1, z1, y0, y1, proud=0.014):
+    """A band round the outside of a rectangular body, as FOUR THIN MEMBERS.
+
+    NOT A SLAB, and the difference is most of this module's line-density
+    budget. A course band built as one box spanning the body's full depth
+    carries 11 m2 of surface of which 0.4 m2 is visible -- the rest is buried
+    inside the body it wraps -- and `density.py --machinery` measures line over
+    TOTAL area, so a band built that way LOWERS the number it was added to
+    raise. Measured on the reactor hall's shield: 622.7 m2 of machinery surface
+    for a mass whose outside is 82 m2, at 2.05 m^-1.
+
+    It is also the same finding session 3x recorded on `portal_frame`: 8,832
+    fewer triangles, "because coincident faces are geometry nobody can see".
+    Here it is 4x the triangles and a tenth of the area, which is the trade the
+    right way round.
+    """
+    # THE FOUR MEMBERS OVERLAP AT THE CORNERS rather than abutting. Butting
+    # them left the side members' inner faces coplanar with the end members'
+    # cut faces, which is an edge with four faces on it -- 36 non-manifold
+    # edges on the shield block, and it renders perfectly.
+    # THE PROUD IS CAPPED THE SAME WAY `machine` INSETS. A 0.06 m deep
+    # platform edge cannot carry a 28 mm proud band and stay in its own
+    # footprint, and `_selftest` found it by building each machine at the
+    # SMALLEST declared size that uses it rather than at a probe size.
+    proud = min(proud, (x1 - x0) * 0.12, (z1 - z0) * 0.12)
+    b = min(proud * 3.0, (x1 - x0) * 0.30, (z1 - z0) * 0.30)
+    q = proud * 0.22                    # so the four corner posts do not share
+    for a, c, d, e in ((x0 - proud, z0 - proud, x1 + proud, z0 + b),
+                       (x0 - proud, z1 - b, x1 + proud, z1 + proud),
+                       (x0 - proud, z0 - proud + q, x0 + b, z1 + proud - q),
+                       (x1 - b, z0 - proud + q, x1 + proud, z1 + proud - q)):
+        if d - a <= 1e-6 or e - c <= 1e-6:
+            continue
+        _box(v, t, g, name, (a, y0, c), (d, y1, e))
+
+
+def _face_strip(v, t, g, name, box, axis, side, u0, u1, y0, y1, proud=0.012):
+    """A strip on ONE face of a body, and nothing behind it.
+
+    A drawer line, a panel joint, a stack joint. The counter's first version
+    ran its drawer lines round the whole 0.74 m depth for a 24 mm show, which
+    is 5.5 m2 of surface an eye never meets -- the same defect as a slab band,
+    one object smaller.
+    """
+    x0, y0b, z0, x1, y1b, z1 = box
+    proud = min(proud, (x1 - x0) * 0.12, (z1 - z0) * 0.12)
+    if axis == "x":
+        fx = x0 if side < 0 else x1
+        _box(v, t, g, name, (min(fx, fx - side * proud), y0, u0),
+             (max(fx, fx - side * proud), y1, u1))
+    else:
+        fz = z0 if side < 0 else z1
+        _box(v, t, g, name, (u0, y0, min(fz, fz - side * proud)),
+             (u1, y1, max(fz, fz - side * proud)))
+
+
+def _ladder(v, t, g, P, x, z, y0, y1, nx, nz, w=0.34):
+    """Two stiles and rungs, on the face pointed at by (nx, nz)."""
+    if y1 - y0 < 0.8:
+        return
+    for s in (-1, 1):
+        sx = x + s * w / 2 * abs(nz)
+        sz = z + s * w / 2 * abs(nx)
+        _tube(v, t, g, P.frame, (sx + nx * 0.09, y0, sz + nz * 0.09),
+              (sx + nx * 0.09, y1, sz + nz * 0.09), 0.028, SEG_BOLT)
+    n = max(2, int((y1 - y0) / RUNG_PITCH_M))
+    for i in range(1, n):
+        yy = y0 + (y1 - y0) * i / n
+        _tube(v, t, g, P.frame,
+              (x - w / 2 * abs(nz) + nx * 0.09, yy, z - w / 2 * abs(nx) + nz * 0.09),
+              (x + w / 2 * abs(nz) + nx * 0.09, yy, z + w / 2 * abs(nx) + nz * 0.09),
+              0.018, SEG_BOLT)
+
+
+def _railing(v, t, g, P, x0, z0, x1, z1, y, h=RAIL_H_M):
+    """A top rail, a knee rail and posts along a straight run."""
+    ln = math.dist((x0, z0), (x1, z1))
+    if ln < 0.4:
+        return
+    n = max(2, int(ln / 1.3) + 1)
+    for i in range(n):
+        f = i / (n - 1)
+        px, pz = x0 + (x1 - x0) * f, z0 + (z1 - z0) * f
+        _tube(v, t, g, P.rail, (px, y, pz), (px, y + h, pz), 0.026, SEG_BOLT)
+    for k in (0.52, 1.0):
+        _tube(v, t, g, P.rail, (x0, y + h * k, z0), (x1, y + h * k, z1),
+              0.024, SEG_BOLT)
+
+
+# --- the twelve machines ---------------------------------------------------
+# Each takes (v, t, g, box, P, seed) where `box` is (x0, y0, z0, x1, y1, z1) --
+# exactly the box `rooms.build` used to emit -- and puts an articulated machine
+# inside it. Geometry that carries the FIXTURE'S OWN material passes `None` for
+# the group and is covered by the fixture's outer span; anything that is a
+# genuinely different surface takes one of `_Parts`' nine names.
+
+def _m_vessel(v, t, g, box, P, seed, furnace=False, horizontal=False):
+    """A clad pressure vessel: the thing a "containment drum" actually is.
+
+    Primary: a lathe barrel with a domed head. Secondary: a standoff skirt on
+    legs, girth flanges, and a ladder. Tertiary: a bolted manway, radial pipe
+    stubs turning down to the deck through elbows, a valve on the top stub, a
+    gauge plate at reading height and a hazard band round the foot.
+
+    `horizontal` lays the barrel on its side on saddles, which is what the
+    generator hall's machine "in section" is; `furnace` swaps the manway for a
+    charge door and adds a flue rising out of the top.
+    """
+    x0, y0, z0, x1, y1, z1 = box
+    cx, cz = (x0 + x1) / 2.0, (z0 + z1) / 2.0
+    h = y1 - y0
+    if horizontal:
+        return _m_drum(v, t, g, box, P, seed)
+    hx, hz = (x1 - x0) / 2.0, (z1 - z0) / 2.0
+    # THE BARREL IS 72% OF THE BOX, NOT 93%, and the remaining quarter is the
+    # plumbing. A vessel drawn to the edge of its own declared footprint has
+    # nowhere to put a stub, a ladder or an access platform, and the first
+    # version pushed all three 0.75 m outside the box the walkability rules
+    # read. The declared 4.00 m footprint is the machine PLUS its pipework,
+    # which is what the footprint of a real one is.
+    r = min(hx, hz) * 0.72
+    if r < 0.12 or h < 0.5:
+        _box(v, t, g, P.frame, (x0, y0, z0), (x1, y1, z1))
+        return
+    leg = min(LEG_MAX_M, max(LEG_MIN_M, h * LEG_FRAC))
+    rise = min(r * DOME_FRAC, h * 0.16)
+    body0, body1 = y0 + leg, y1 - rise
+    ph = _u(seed, "phase") * math.tau / SEG_BODY
+
+    # --- standoff: four legs, a base ring and the skirt they carry ---------
+    for k in range(4):
+        a = math.tau * (k + 0.5) / 4.0 + ph
+        lx, lz = cx + r * 0.72 * math.cos(a), cz + r * 0.72 * math.sin(a)
+        _tube(v, t, g, P.frame, (lx, y0, lz), (lx, body0 + 0.06, lz),
+              max(MIN_PART_M, r * 0.085), SEG_PIPE)
+        _box(v, t, g, P.frame, (lx - r * 0.13, y0, lz - r * 0.13),
+             (lx + r * 0.13, y0 + 0.05, lz + r * 0.13))
+    _cyl(v, t, g, P.frame, cx, cz, body0 - 0.09, body0 + 0.02, r * 0.99,
+         SEG_BODY, ph)
+
+    # --- primary: barrel, domed head, dished bottom ------------------------
+    _cyl(v, t, None, "", cx, cz, body0, body1, r, SEG_BODY, ph)
+    _dome(v, t, None, "", cx, cz, body1 - 0.02, r, rise + 0.02, SEG_BODY,
+          3, True, ph)
+    _dome(v, t, None, "", cx, cz, body0 + 0.02, r, min(rise, leg * 0.8),
+          SEG_BODY, 2, False, ph)
+
+    # --- girth flanges: the lines that say this was built in courses -------
+    n_f = max(1, int((body1 - body0) / 1.25))
+    for i in range(n_f):
+        fy = body0 + (body1 - body0) * (i + 1) / (n_f + 1)
+        _cyl(v, t, None, "", cx, cz, fy - FLANGE_T_M / 2, fy + FLANGE_T_M / 2,
+             r * (1.0 + FLANGE_PROUD), SEG_BODY, ph)
+    # --- lagging strakes: the cheapest line on the station -----------------
+    # A 40 mm proud x 30 mm strake adds four silhouette edges per metre of run
+    # and about 0.11 m2 of surface, so it lifts line density by an order more
+    # than it costs. It is also what a clad vessel HAS -- the strap that holds
+    # the insulation on. Without them the barrel is 3.2 m^-1 against a 4.4 m^-1
+    # shell, which is `density.py --machinery`'s way of saying the machine is
+    # smoother than the wall behind it.
+    n_s = max(6, SEG_BODY)
+    for k in range(n_s):
+        a = math.tau * k / n_s + ph
+        sx, sz = cx + r * 0.995 * math.cos(a), cz + r * 0.995 * math.sin(a)
+        _tube(v, t, None, "", (sx, body0 + 0.10, sz), (sx, body1 - 0.08, sz),
+              max(MIN_PART_M * 2, r * 0.028), SEG_BOLT)
+
+    # --- hazard band at the foot, where a person's shin is -----------------
+    _cyl(v, t, g, P.hazard, cx, cz, body0 + 0.04,
+         min(body0 + 0.04 + HAZARD_H_M, body1), r * 1.008, SEG_BODY, ph)
+
+    # --- manway or charge door, on the -z face -----------------------------
+    face_z = cz - r
+    if furnace:
+        dw, dh = min(r * 1.1, (x1 - x0) * 0.45), min(1.5, (body1 - body0) * 0.5)
+        dy = body0 + 0.35
+        _box(v, t, g, P.frame, (cx - dw, dy, face_z - 0.10),
+             (cx + dw, dy + dh, face_z + 0.06))
+        _box(v, t, g, P.hazard, (cx - dw * 0.86, dy + dh * 0.12,
+                                 face_z - 0.15),
+             (cx + dw * 0.86, dy + dh * 0.86, face_z - 0.07))
+        for s in (-1, 1):                      # lifting gear either side
+            _tube(v, t, g, P.frame, (cx + s * dw, dy, face_z - 0.05),
+                  (cx + s * dw, dy + dh + 0.55, face_z - 0.05), 0.05, SEG_BOLT)
+        _tube(v, t, g, P.frame, (cx - dw, dy + dh + 0.5, face_z - 0.05),
+              (cx + dw, dy + dh + 0.5, face_z - 0.05), 0.04, SEG_BOLT)
+        # the flue: what a furnace has and a slab does not
+        fr = max(0.12, r * 0.26)
+        _tube(v, t, g, P.pipe, (cx, y1 - rise * 0.4, cz),
+              (cx, y1 - 0.01, cz), fr, SEG_PIPE)
+        _cyl(v, t, g, P.frame, cx, cz, y1 - rise * 0.4 - 0.05,
+             y1 - rise * 0.4 + 0.05, fr * 1.35, SEG_PIPE)
+    else:
+        # THE MANWAY PROTRUDES INTO WHAT IS LEFT, and not a fixed 0.25 m. A
+        # 0.70 m service riser has 0.086 m between its barrel and its own
+        # footprint, and a nozzle sized off the barrel put the bolt circle
+        # 0.12 m outside it -- found by `rooms.machine_escapes` on the real
+        # content, not by the probe box this builder was written against.
+        room = max(0.0, min(hx, hz) - r)
+        mp = min(0.16, room * 0.62)
+        mr = min(r * 0.42, 0.42)
+        my = body0 + max(0.9, (body1 - body0) * 0.28)
+        _tube(v, t, None, "", (cx, my, face_z + 0.05),
+              (cx, my, face_z - mp), mr, SEG_PIPE)
+        _tube(v, t, g, P.frame, (cx, my, face_z - mp),
+              (cx, my, face_z - mp - room * 0.14), mr * 1.22, SEG_PIPE)
+        nb = 8
+        for k in range(nb):
+            a = math.tau * k / nb
+            bx, by = cx + mr * 1.08 * math.cos(a), my + mr * 1.08 * math.sin(a)
+            _tube(v, t, g, P.frame, (bx, by, face_z - mp * 0.7),
+                  (bx, by, face_z - min(mp + room * 0.34, room * 0.95)),
+                  0.028, SEG_BOLT)
+
+    # --- pipe stubs: a vessel is a thing that is PLUMBED --------------------
+    nst = 3 if (body1 - body0) > 1.6 else 2
+    for i in range(nst):
+        a = math.tau * (i + 0.35) / nst + ph
+        sy = body0 + (body1 - body0) * (0.30 + 0.52 * i / max(1, nst - 1))
+        sy = min(sy, body1 - 0.15)
+        pr = max(MIN_PART_M * 3, r * (0.16 if i == 0 else 0.11))
+        ex = min(r + min(0.65, r * 0.55), min(hx, hz) - pr * 1.5)
+        px0 = (cx + r * 0.86 * math.cos(a), sy, cz + r * 0.86 * math.sin(a))
+        px1 = (cx + ex * math.cos(a), sy, cz + ex * math.sin(a))
+        _tube(v, t, g, P.pipe, px0, px1, pr, SEG_PIPE)
+        _tube(v, t, g, P.frame, px1,
+              (px1[0] + 0.05 * math.cos(a), sy, px1[2] + 0.05 * math.sin(a)),
+              pr * 1.4, SEG_PIPE)
+        drop = y0 + 0.08 if i % 2 == 0 else y1 - 0.05
+        _tube(v, t, g, P.pipe, (px1[0], sy, px1[2]), (px1[0], drop, px1[2]),
+              pr, SEG_PIPE)
+        if i == 0:                              # a valve you could turn
+            _cyl(v, t, g, P.conduit, px1[0], px1[2], sy + pr,
+                 sy + pr + 0.10, pr * 0.7, SEG_PIPE)
+            _cyl(v, t, g, P.conduit, px1[0], px1[2], sy + pr + 0.10,
+                 sy + pr + 0.14, pr * 1.9, SEG_PIPE)
+
+    # --- instruments and access -------------------------------------------
+    gy = min(max(GAUGE_Y_M, body0 + 0.4), body1 - 0.3)
+    _gauges(v, t, g, P, cx + r * 0.55, gy, cz - r * 0.80, 0.0, -1.0,
+            min(0.8, r * 0.8), seed)
+    lz = min(cz + r, cz + hz - 0.14)
+    _ladder(v, t, g, P, cx, lz, body0, min(body1, y1 - 0.05), 0.0, 1.0)
+    if (body1 - body0) > 2.6 and hz - r > 0.35:
+        py = body0 + (body1 - body0) * 0.62
+        pf = min(hx, r * 1.15)
+        pz = cz + hz - 0.02
+        _box(v, t, g, P.tread, (cx - pf, py - 0.05, cz + r * 0.5),
+             (cx + pf, py, pz))
+        _railing(v, t, g, P, cx - pf, pz - 0.04, cx + pf, pz - 0.04, py)
+
+
+def _m_drum(v, t, g, box, P, seed):
+    """A vessel lying on its side on saddles -- a heat drum, a generator case."""
+    x0, y0, z0, x1, y1, z1 = box
+    cx, cy = (x0 + x1) / 2.0, (y0 + y1) / 2.0
+    r = min(x1 - x0, y1 - y0) / 2.0 * 0.90
+    sad = min(0.35, (y1 - y0) * 0.16)
+    cy = y0 + sad + r
+    if r < 0.15:
+        _box(v, t, g, P.frame, (x0, y0, z0), (x1, y1, z1))
+        return
+    for s in (-1, 1):                           # saddles
+        sz = (z0 + z1) / 2.0 + s * (z1 - z0) * 0.30
+        _box(v, t, g, P.frame, (cx - r * 0.95, y0, sz - 0.12),
+             (cx + r * 0.95, y0 + sad + r * 0.35, sz + 0.12))
+    _tube(v, t, None, "", (cx, cy, z0 + 0.10), (cx, cy, z1 - 0.10), r,
+          SEG_BODY)
+    # `_dome` is upright-only, so a horizontal drum gets BOLTED HEADS instead:
+    # a flanged collar at each end, which is what a drum you can open has and
+    # what the flat cap `_tube` already closes it with reads as.
+    for zz in (z0 + 0.12, z1 - 0.12):
+        _tube(v, t, g, P.frame, (cx, cy, zz - 0.04), (cx, cy, zz + 0.04),
+              r * (1.0 + FLANGE_PROUD * 1.6), SEG_BODY)
+    nf = max(1, int((z1 - z0) / 1.4))
+    for i in range(nf):
+        fz = z0 + (z1 - z0) * (i + 1) / (nf + 1)
+        _tube(v, t, None, "", (cx, cy, fz - FLANGE_T_M / 2),
+              (cx, cy, fz + FLANGE_T_M / 2), r * (1.0 + FLANGE_PROUD),
+              SEG_BODY)
+    for k in range(SEG_BODY // 2):               # lagging strakes along the run
+        a = math.tau * k / (SEG_BODY // 2)
+        sy, sx = cy + r * 0.995 * math.sin(a), cx + r * 0.995 * math.cos(a)
+        _tube(v, t, None, "", (sx, sy, z0 + 0.18), (sx, sy, z1 - 0.18),
+              max(MIN_PART_M * 2, r * 0.028), SEG_BOLT)
+    # a top-mounted terminal box and the conduit that leaves it
+    _box(v, t, g, P.panel, (cx - r * 0.35, cy + r * 0.86, (z0 + z1) / 2 - 0.35),
+         (cx + r * 0.35, cy + r * 1.05, (z0 + z1) / 2 + 0.35))
+    _tube(v, t, g, P.conduit, (cx, cy + r * 1.05, (z0 + z1) / 2),
+          (cx, y1 - 0.03, (z0 + z1) / 2), 0.06, SEG_PIPE)
+    _gauges(v, t, g, P, cx, min(GAUGE_Y_M, cy), z0 + 0.05, 0.0, -1.0, 0.7, seed)
+    # an access platform down one side, which is how a drum is maintained and
+    # what tells the eye how big it is
+    pw = min(0.55, (x1 - x0) * 0.5 - r * 0.92)
+    if pw > 0.20:
+        py = min(cy, y1 - 0.5)
+        _box(v, t, g, P.tread, (x1 - pw, py - 0.05, z0 + 0.25),
+             (x1, py, z1 - 0.25))
+        _railing(v, t, g, P, x1 - 0.05, z0 + 0.25, x1 - 0.05, z1 - 0.25, py,
+                 min(RAIL_H_M, y1 - py - 0.05))
+    for s in (-1, 1):                           # coolant nozzles
+        nz_ = (z0 + z1) / 2.0 + s * (z1 - z0) * 0.18
+        _tube(v, t, g, P.pipe, (cx, cy - r * 0.9, nz_),
+              (cx, y0 + 0.06, nz_), max(MIN_PART_M * 3, r * 0.14), SEG_PIPE)
+
+
+def _m_rack(v, t, g, box, P, seed):
+    """Uprights, rails, shelves -- and STOCK on the shelves.
+
+    The stock is the point. A rack with nothing in it is a frame, and the thing
+    that makes a store read as a store is what is stacked in it.
+    """
+    x0, y0, z0, x1, y1, z1 = box
+    w, d, h = x1 - x0, z1 - z0, y1 - y0
+    up = min(0.09, min(w, d) * 0.22)
+    n_bay = max(1, int((z1 - z0) / 2.4))
+    n_lev = max(2, int(h / 1.15))
+    for i in range(n_bay + 1):
+        zz = z0 + (z1 - z0) * i / n_bay
+        zz = min(max(zz, z0 + up), z1 - up)
+        for xx in (x0 + up, x1 - up):
+            _box(v, t, g, P.frame, (xx - up, y0, zz - up), (xx + up, y1, zz + up))
+        # diagonal bracing on the back plane
+        if i < n_bay:
+            zn = z0 + (z1 - z0) * (i + 1) / n_bay
+            _tube(v, t, g, P.frame, (x0 + up, y0 + 0.1, zz),
+                  (x0 + up, y1 - 0.1, zn), 0.028, SEG_BOLT)
+    for j in range(n_lev + 1):
+        yy = min(max(y0 + h * j / n_lev, y0 + 0.08), y1 - 0.05)
+        _box(v, t, g, P.tread, (x0, yy, z0), (x1, yy + 0.045, z1))
+        for s_ in (-1, 1):                      # front and back edge lips
+            _face_strip(v, t, g, P.frame, box, "x", s_, z0 + 0.02, z1 - 0.02,
+                        yy - 0.055, min(yy + 0.052, y1), 0.016)
+        for xx in (x0 + up, x1 - up):           # the rail the shelf sits on
+            # Overlapping, and inset in z: flush against the shelf plate gave
+            # 8 non-manifold edges a rack, which renders perfectly.
+            _box(v, t, g, P.frame,
+                 (max(xx - up * 1.3, x0), yy - 0.07, z0 + 0.006),
+                 (min(xx + up * 1.3, x1), yy + 0.018, z1 - 0.006))
+    for j in range(n_lev):                      # stock
+        yy = y0 + h * j / n_lev + 0.045
+        lvl = h / n_lev - 0.12
+        for i in range(max(1, int((z1 - z0) / 0.85))):
+            if _u(seed, "stock", j, i) < 0.28:
+                continue
+            cw = (z1 - z0) / max(1, int((z1 - z0) / 0.85))
+            zc = z0 + cw * (i + 0.5)
+            bw = cw * (0.55 + 0.35 * _u(seed, "sw", j, i))
+            bh = lvl * (0.5 + 0.45 * _u(seed, "sh", j, i))
+            _box(v, t, g, P.panel, (x0 + 0.05, yy, zc - bw / 2),
+                 (x1 - 0.05, yy + bh, zc + bw / 2))
+            _perim_band(v, t, g, P.conduit, x0 + 0.05, zc - bw / 2,
+                        x1 - 0.05, zc + bw / 2, yy + bh * 0.62,
+                        yy + bh * 0.72, 0.008)
+            _box(v, t, g, P.hazard, (x0 + 0.036, yy + bh * 0.24, zc - bw * 0.30),
+                 (x0 + 0.052, yy + bh * 0.44, zc + bw * 0.30))
+
+
+def _m_cabinet(v, t, g, box, P, seed, louvre=True):
+    """A cubicle line-up: plinth, doors, louvres, handles and a cable way.
+
+    Switchgear, signal racks, patch panels and suit lockers are all this
+    object. It is the one machine in the kit whose FRONT is the whole read, so
+    everything spent goes on the door face.
+    """
+    x0, y0, z0, x1, y1, z1 = box
+    w, d, h = x1 - x0, z1 - z0, y1 - y0
+    front_x = x1 if _u(seed, "face") < 0.5 else x0
+    sgn = 1.0 if front_x == x1 else -1.0
+    # NO TWO SOLIDS HERE SHARE A PLANE. The first version gave the plinth, the
+    # body and the capping the same x0/x1/z0/z1, so three pairs of coincident
+    # faces met along the same edges and `boundary_edges` measured 5
+    # non-manifold edges a cabinet -- an edge with four faces on it, which is a
+    # modelling error that renders perfectly (AAA-STANDARD, Geometry).
+    pl = min(0.12, h * 0.06)
+    _box(v, t, g, P.frame, (x0, y0, z0), (x1, y0 + pl, z1))
+    _box(v, t, None, "", (x0 + 0.018, y0 + pl * 0.4, z0 + 0.018),
+         (x1 - 0.018, y1 - 0.06, z1 - 0.018))
+    _perim_band(v, t, g, P.frame, x0, z0, x1, z1, y1 - 0.09, y1, 0.012)
+    _perim_band(v, t, g, P.frame, x0, z0, x1, z1, y0 + pl * 0.55, y0 + pl,
+                0.010)
+    # CORNER POSTS AND A MID BAND, ON ALL FOUR FACES. The doors are on one
+    # face, chosen per instance, and a cabinet articulated on one face only is
+    # a slab from the other three -- which is what the medlab's half-distance
+    # frame showed: a locker with its back to the camera reading as one pale
+    # rectangle 40% of frame width. The carcass has to read from any angle.
+    cp = min(0.045, w * 0.18, d * 0.18)
+    for ax_ in (x0, x1 - cp):
+        for az in (z0, z1 - cp):
+            _box(v, t, g, P.frame, (ax_ - 0.010, y0 + pl, az - 0.010),
+                 (ax_ + cp + 0.010, y1 - 0.085, az + cp + 0.010))
+    _perim_band(v, t, g, P.conduit, x0, z0, x1, z1, y0 + h * 0.56,
+                y0 + h * 0.585, 0.008)
+    n = max(1, int((z1 - z0) / 0.85))
+    # THE DOOR FACE IS THE BOX FACE and everything proud is measured INWARD
+    # from it. Building the door proud of `front_x` put the handle 35 mm
+    # outside the fixture's own AABB -- into the aisle, which is exactly the
+    # direction that matters.
+    fo = front_x
+    for i in range(n):
+        zc = z0 + (z1 - z0) * (i + 0.5) / n
+        cw = (z1 - z0) / n
+        _box(v, t, g, P.panel,
+             (min(fo, fo - sgn * 0.030), y0 + 0.14, zc - cw / 2 + 0.02),
+             (max(fo, fo - sgn * 0.030), y1 - 0.13, zc + cw / 2 - 0.02))
+        if louvre:
+            for k in range(3):
+                yy = y0 + h * (0.60 + 0.09 * k)
+                if yy > y1 - 0.20:
+                    break
+                _box(v, t, g, P.conduit,
+                     (min(fo, fo - sgn * 0.055), yy, zc - cw * 0.32),
+                     (max(fo, fo - sgn * 0.055), yy + 0.035, zc + cw * 0.32))
+        _tube(v, t, g, P.frame, (fo - sgn * 0.026, y0 + h * 0.46, zc + cw * 0.34),
+              (fo - sgn * 0.026, y0 + h * 0.54, zc + cw * 0.34), 0.022, SEG_BOLT)
+        # the door's own reveal, as strips on the face and nothing behind it
+        for yy in (y0 + 0.141, y1 - 0.1455):
+            _face_strip(v, t, g, P.frame, box, "x", 1 if sgn > 0 else -1,
+                        zc - cw / 2 + 0.021, zc + cw / 2 - 0.021, yy,
+                        yy + 0.016, 0.038)
+        for zz in (zc - cw / 2 + 0.022, zc + cw / 2 - 0.038):
+            _face_strip(v, t, g, P.frame, box, "x", 1 if sgn > 0 else -1,
+                        zz, zz + 0.016, y0 + 0.142, y1 - 0.132, 0.036)
+        if _u(seed, "inst", i) < 0.55:
+            _gauges(v, t, g, P, fo - sgn * 0.10, min(GAUGE_Y_M, y1 - 0.35), zc,
+                    sgn, 0.0, min(0.55, cw * 0.7), seed)
+    # `w` and NOT `d`: the cable way runs back over the cabinet's DEPTH, and
+    # `d` in this builder is the line-up's LENGTH along z. With `d` a 2.00 m
+    # patch-panel run put its trunking 0.29 m outside its own footprint and
+    # through the console standing in front of it -- caught by the
+    # interpenetration gate three rooms away from the cause.
+    _tube(v, t, g, P.conduit, (front_x - sgn * w * 0.3, y1 - 0.075, z0),
+          (front_x - sgn * w * 0.3, y1 - 0.075, z1), 0.045, SEG_PIPE)
+
+
+def _m_pipe_bank(v, t, g, box, P, seed):
+    """A bank of large pipes on brackets, with flanged joints and valves."""
+    x0, y0, z0, x1, y1, z1 = box
+    w, d, h = x1 - x0, z1 - z0, y1 - y0
+    vertical = h > (z1 - z0)
+    n = max(2, min(4, int(max(w, d) / 0.55)))
+    span = (z1 - z0) if vertical else (y1 - y0)
+    for i in range(n):
+        f = (i + 0.5) / n
+        pr = min(w, 0.9) * (0.16 + 0.07 * ((i * 7) % 3)) / 1.0
+        # 0.33 and not 0.42: a joint collar is 1.35x the pipe, so the collar is
+        # what has to fit the box, not the pipe.
+        pr = max(MIN_PART_M * 4, min(pr, min(w, d) * 0.33))
+        if vertical:
+            pz = z0 + (z1 - z0) * f
+            px = (x0 + x1) / 2.0
+            _tube(v, t, g, P.pipe, (px, y0 + 0.05, pz), (px, y1 - 0.05, pz),
+                  pr, SEG_PIPE)
+            nj = max(1, int(h / 2.0))
+            for j in range(nj):
+                jy = y0 + h * (j + 1) / (nj + 1)
+                _cyl(v, t, g, P.frame, px, pz, jy - 0.05, jy + 0.05, pr * 1.35,
+                     SEG_PIPE)
+            for j in range(max(1, int(h / 1.8))):     # wall brackets
+                by = y0 + h * (j + 0.5) / max(1, int(h / 1.8))
+                _box(v, t, g, P.frame, (x0, by - 0.06, pz - pr * 1.2),
+                     (px, by + 0.06, pz + pr * 1.2))
+            if i == 0:
+                vy = min(max(GAUGE_Y_M, y0 + 0.5), y1 - 0.5)
+                _cyl(v, t, g, P.conduit, px, pz, vy - 0.12, vy + 0.12,
+                     pr * 1.5, SEG_PIPE)
+                hx_ = min(px + w * 0.42, x1 - pr * 1.1)
+                _tube(v, t, g, P.conduit, (px, vy, pz), (hx_, vy, pz),
+                      0.035, SEG_BOLT)
+                _cyl(v, t, g, P.conduit, hx_, pz, vy - 0.02, vy + 0.02,
+                     pr * 1.1, SEG_PIPE)
+        else:
+            py = y0 + (y1 - y0) * f * 0.86 + 0.10
+            px = (x0 + x1) / 2.0
+            _tube(v, t, g, P.pipe, (px, py, z0 + 0.05), (px, py, z1 - 0.05),
+                  pr, SEG_PIPE)
+            nj = max(1, int((z1 - z0) / 2.4))
+            for j in range(nj):
+                jz = z0 + (z1 - z0) * (j + 1) / (nj + 1)
+                _tube(v, t, g, P.frame, (px, py, jz - 0.05), (px, py, jz + 0.05),
+                      pr * 1.35, SEG_PIPE)
+    ns = max(2, int((z1 - z0) / 2.6)) if not vertical else 0
+    for j in range(ns):                          # saddle stands
+        sz = z0 + (z1 - z0) * (j + 0.5) / ns
+        _box(v, t, g, P.frame, ((x0 + x1) / 2 - 0.07, y0, sz - 0.07),
+             ((x0 + x1) / 2 + 0.07, y1 - 0.08, sz + 0.07))
+        _box(v, t, g, P.frame, (x0 + 0.02, y1 - 0.10, sz - 0.09),
+             (x1 - 0.02, y1 - 0.02, sz + 0.09))
+
+
+def _m_duct(v, t, g, box, P, seed):
+    """An overhead run: a trunk in flanged sections, hangers, and a cable tray.
+
+    The `over` fixtures are the geometry a player looks at while walking, and
+    every one of them was a single extruded box.
+    """
+    x0, y0, z0, x1, y1, z1 = box
+    w, d, h = x1 - x0, y1 - y0, z1 - z0
+    ty = y1 - max(0.06, d * 0.22)
+    _box(v, t, None, "", (x0, y0 + d * 0.10, z0), (x1, ty, z1))
+    nj = max(1, int((z1 - z0) / 1.3))
+    for j in range(nj + 1):
+        jz = z0 + (z1 - z0) * j / max(1, nj)
+        jz = min(max(jz, z0 + 0.03), z1 - 0.03)
+        _box(v, t, g, P.frame, (x0 - 0.035, y0 + d * 0.05, jz - 0.030),
+             (x1 + 0.035, ty + 0.035, jz + 0.030))
+    nh = max(2, int((z1 - z0) / 1.9))
+    for j in range(nh):                          # hanger rods to the soffit
+        hz = z0 + (z1 - z0) * (j + 0.5) / nh
+        for s in (-1, 1):
+            hx = (x0 + x1) / 2.0 + s * w * 0.40
+            _tube(v, t, g, P.frame, (hx, ty, hz), (hx, y1, hz), 0.022, SEG_BOLT)
+        _box(v, t, g, P.frame, ((x0 + x1) / 2 - w * 0.46, y1 - 0.05, hz - 0.03),
+             ((x0 + x1) / 2 + w * 0.46, y1, hz + 0.03))
+    # a cable tray running alongside, and the conduit dropping off it
+    _box(v, t, g, P.conduit, (x1 - w * 0.20, y0 + d * 0.02, z0),
+         (x1 + 0.02, y0 + d * 0.14, z1))
+    for j in range(max(1, int((z1 - z0) / 2.6))):
+        cz = z0 + (z1 - z0) * (j + 0.6) / max(1, int((z1 - z0) / 2.6))
+        _tube(v, t, g, P.conduit, (x1 - w * 0.10, y0 + d * 0.30, cz),
+              (x1 - w * 0.10, y0, cz), 0.030, SEG_BOLT)
+
+
+def _m_crane(v, t, g, box, P, seed):
+    """A bridge crane: girder, end trucks, a crab, a hoist block and a hook."""
+    x0, y0, z0, x1, y1, z1 = box
+    w, d = x1 - x0, y1 - y0
+    gy = y1 - max(0.05, d * 0.28)
+    _box(v, t, None, "", (x0, gy, z0), (x1, y1, z1))
+    for s, zz in ((-1, z0), (1, z1)):            # end trucks on the rail
+        _box(v, t, g, P.frame, (x0 - 0.04, gy - 0.10, zz - 0.16 if s > 0 else zz),
+             (x1 + 0.04, y1, zz if s > 0 else zz + 0.16))
+    _box(v, t, g, P.frame, (x0 + 0.02, gy - 0.06, z0), (x1 - 0.02, gy, z1))
+    cz = (z0 + z1) / 2.0 + (z1 - z0) * 0.12
+    _box(v, t, g, P.frame, (x0 + w * 0.18, gy - min(0.30, d), cz - 0.18),
+         (x1 - w * 0.18, gy, cz + 0.18))
+    hy = gy - min(0.30, d)
+    # THE WHOLE HOIST STAYS IN THE BOX, block and hook included. A block
+    # hanging below the rail is what a crane does and it is also outside the
+    # AABB every walkability and collision rule reads. The first version
+    # clamped only the ROPE, and on a 0.70 m `over` fixture -- which is what
+    # `transfer_crane` and `hoist_crane` actually are, against the 0.90 m the
+    # probe used -- the block and hook still hung 56 mm below the box and the
+    # interpenetration gate caught it against the cargo crane below. A probe
+    # box is not the content.
+    avail = max(0.0, hy - y0)
+    bl = min(0.12, avail * 0.42)
+    hk = min(0.14, avail * 0.34)
+    drop = max(0.0, min(0.55, avail - bl - hk - 0.02))
+    for s in (-1, 1):                            # the two falls of rope
+        rx = (x0 + x1) / 2.0 + s * w * 0.12
+        _tube(v, t, g, P.rail, (rx, hy, cz), (rx, hy - drop, cz), 0.012,
+              SEG_BOLT)
+    _box(v, t, g, P.frame, ((x0 + x1) / 2 - w * 0.20, hy - drop - bl, cz - 0.13),
+         ((x0 + x1) / 2 + w * 0.20, hy - drop, cz + 0.13))
+    _tube(v, t, g, P.hazard, ((x0 + x1) / 2, hy - drop - bl, cz),
+          ((x0 + x1) / 2, hy - drop - bl - hk, cz), 0.035, SEG_BOLT)
+    _tube(v, t, g, P.conduit, (x0 + w * 0.5, gy - 0.02, z0 + 0.05),
+          (x0 + w * 0.5, gy - 0.02, z1 - 0.05), 0.020, SEG_BOLT)
+
+
+def _m_screen(v, t, g, box, P, seed):
+    """Posts, head and foot rails, and infill -- a partition, not a slab."""
+    x0, y0, z0, x1, y1, z1 = box
+    w, h = x1 - x0, y1 - y0
+    post = min(0.06, w * 0.45)
+    n = max(2, int((z1 - z0) / 1.6) + 1)
+    for i in range(n):
+        zz = z0 + (z1 - z0) * i / (n - 1)
+        zz = min(max(zz, z0 + post), z1 - post)
+        _box(v, t, g, P.frame, ((x0 + x1) / 2 - post, y0, zz - post),
+             ((x0 + x1) / 2 + post, y1, zz + post))
+        _box(v, t, g, P.frame,
+             (max((x0 + x1) / 2 - post * 2.2, x0), y0,
+              max(zz - post * 2.2, z0)),
+             (min((x0 + x1) / 2 + post * 2.2, x1), y0 + 0.035,
+              min(zz + post * 2.2, z1)))
+    for k in (0.0, 0.52, 1.0):
+        yy = min(y0 + h * k, y1 - 0.05)
+        _box(v, t, g, P.frame, ((x0 + x1) / 2 - post * 0.8, yy, z0),
+             ((x0 + x1) / 2 + post * 0.8, yy + 0.05, z1))
+    for i in range(n - 1):                       # infill panels between posts
+        za = z0 + (z1 - z0) * i / (n - 1) + post * 1.4
+        zb = z0 + (z1 - z0) * (i + 1) / (n - 1) - post * 1.4
+        if zb - za < 0.15:
+            continue
+        _box(v, t, None, "", (x0 + w * 0.28, y0 + 0.06, za),
+             (x1 - w * 0.28, y0 + h * 0.50, zb))
+        _box(v, t, g, P.screen, (x0 + w * 0.34, y0 + h * 0.56, za),
+             (x1 - w * 0.34, min(y0 + h * 0.96, y1 - 0.06), zb))
+
+
+def _m_gantry(v, t, g, box, P, seed):
+    """A column, a swung arm, a head with a lens, and a control pad.
+
+    The medical and research flank fixture. A "diagnostic gantry" that is a
+    2.3 m slab is the medlab's version of the reactor's rectangular pier.
+    """
+    x0, y0, z0, x1, y1, z1 = box
+    w, d, h = x1 - x0, z1 - z0, y1 - y0
+    # THE COLUMN IS ROUND, so its radius comes off the SMALLER plan dimension.
+    # Sizing it off `w` alone put a 0.36 m column in a 0.46 m deep footprint --
+    # 0.18 m outside it, in the eight medlabs.
+    s = min(w, d)
+    cx, cz = (x0 + x1) / 2.0, (z0 + z1) / 2.0
+    _box(v, t, g, P.frame, (cx - w * 0.34, y0, cz - min(0.24, d * 0.34)),
+         (cx + w * 0.34, y0 + 0.07, cz + min(0.24, d * 0.34)))
+    _tube(v, t, None, "", (cx, y0 + 0.05, cz), (cx, y1 - 0.22, cz),
+          max(0.04, s * 0.24), SEG_PIPE)
+    n = max(1, int(h / 1.5))
+    for i in range(n):
+        jy = y0 + h * (i + 1) / (n + 1)
+        _cyl(v, t, g, P.frame, cx, cz, jy - 0.035, jy + 0.035,
+             min(max(0.055, s * 0.30), s * 0.46), SEG_PIPE)
+    ay = y1 - 0.25
+    reach = max(0.0, min(1.0, d * 0.5 - s * 0.34))
+    _tube(v, t, g, P.frame, (cx, ay, cz), (cx, ay, cz - reach),
+          max(0.030, s * 0.15), SEG_PIPE)
+    _box(v, t, None, "", (cx - w * 0.30, ay - 0.24,
+                          max(z0, cz - reach - s * 0.30)),
+         (cx + w * 0.30, ay + 0.10, min(z1, cz - reach + s * 0.20)))
+    _tube(v, t, g, P.screen, (cx, ay - 0.24, cz - reach),
+          (cx, ay - 0.34, cz - reach), max(0.04, s * 0.22), SEG_PIPE)
+    py = min(GAUGE_Y_M, y1 - 0.5)
+    _box(v, t, g, P.panel, (cx - w * 0.30, py - 0.02, z0),
+         (cx + w * 0.30, py + 0.30, z0 + d * 0.28))
+    _box(v, t, g, P.screen, (cx - w * 0.22, py + 0.04, z0 - 0.0),
+         (cx + w * 0.22, py + 0.24, z0 + 0.02))
+    _tube(v, t, g, P.conduit, (cx + w * 0.20, y1 - 0.30, cz),
+          (cx + w * 0.20, y1, cz), 0.028, SEG_BOLT)
+
+
+def _m_console(v, t, g, box, P, seed):
+    """Raked face, bezel, screen, knee recess -- and side cheeks under it."""
+    x0, y0, z0, x1, y1, z1 = box
+    w, d, h = x1 - x0, z1 - z0, y1 - y0
+    face = x0 if _u(seed, "cf") < 0.5 else x1
+    sgn = -1.0 if face == x0 else 1.0
+    # the knee recess IS the articulation: the body is set back off the floor
+    ch = min(0.07, d * 0.3)
+    _box(v, t, g, P.frame, (x0, y0, z0), (x1, y0 + 0.09, z1))
+    _box(v, t, None, "", (x0 + (w * 0.22 if sgn > 0 else 0.008), y0 + 0.06,
+                          z0 + ch * 0.5),
+         (x1 - (w * 0.22 if sgn < 0 else 0.008), y0 + h * 0.44, z1 - ch * 0.5))
+    for zz in (z0, z1 - ch):                     # cheeks reaching the floor
+        _box(v, t, None, "", (x0 + 0.004, y0 + 0.085, zz),
+             (x1 - 0.004, y0 + h * 0.66, zz + ch))
+    _box(v, t, None, "", (x0, y0 + h * 0.40, z0 + ch * 0.25),
+         (x1, y0 + h * 0.665, z1 - ch * 0.25))
+    # raked top: a shallow wedge, expressed as two steps rather than a bevel
+    _box(v, t, g, P.panel, (x0, y0 + h * 0.66, z0), (x1, y0 + h * 0.76, z1))
+    b = w * 0.16
+    _box(v, t, g, P.frame,
+         (x0 + (b if sgn > 0 else 0.0), y0 + h * 0.74,
+          z0 + min(0.05, d * 0.2)),
+         (x1 - (b if sgn < 0 else 0.0), y0 + h * 0.88,
+          z1 - min(0.05, d * 0.2)))
+    _box(v, t, g, P.screen,
+         (x0 + (b * 1.5 if sgn > 0 else 0.03), y0 + h * 0.78,
+          z0 + min(0.10, d * 0.28)),
+         (x1 - (b * 1.5 if sgn < 0 else 0.03), y0 + h * 0.86,
+          z1 - min(0.10, d * 0.28)))
+    # a rail along the operator edge, and a lit strip under the nose
+    ex = face - sgn * 0.02
+    _tube(v, t, g, P.rail, (ex, y0 + h * 0.70, z0 + 0.06),
+          (ex, y0 + h * 0.70, z1 - 0.06), 0.022, SEG_BOLT)
+    _box(v, t, g, P.conduit, (min(ex, ex - sgn * 0.04),
+                              y0 + h * 0.62, z0 + 0.10),
+         (max(ex, ex - sgn * 0.04), y0 + h * 0.66, z1 - 0.10))
+    # Panel joints down the operator face and the back, which is what turns a
+    # cabinet-shaped body into a console built out of modules.
+    nz = max(2, int(d / 0.70))
+    for j in range(1, nz):
+        jz = z0 + d * j / nz
+        for s_ in (-1, 1):
+            _face_strip(v, t, g, P.conduit, box, "x", s_, jz - 0.014,
+                        jz + 0.014, y0 + 0.12, y0 + h * 0.62, 0.012)
+    _perim_band(v, t, g, P.frame, x0, z0, x1, z1, y0 + h * 0.36,
+                y0 + h * 0.42, 0.012)
+    _perim_band(v, t, g, P.conduit, x0, z0, x1, z1, y0 + h * 0.665,
+                y0 + h * 0.695, 0.010)
+    # a vent grille row under the working face -- a console is a machine that
+    # has to breathe, and three slats is three lines
+    for k in range(3):
+        yy = y0 + h * (0.20 + 0.07 * k)
+        _face_strip(v, t, g, P.conduit, box, "x", -1 if sgn > 0 else 1,
+                    z0 + d * 0.18, z1 - d * 0.18, yy, yy + h * 0.030, 0.010)
+
+
+def _m_skid(v, t, g, box, P, seed, reel=False):
+    """A pump skid, or a hose reel: a baseplate carrying a rotating machine.
+
+    Both are "a frame with a cylinder on it and pipework leaving it", which is
+    a silhouette no other machine in the kit has.
+    """
+    x0, y0, z0, x1, y1, z1 = box
+    w, d, h = x1 - x0, z1 - z0, y1 - y0
+    cx, cz = (x0 + x1) / 2.0, (z0 + z1) / 2.0
+    _box(v, t, g, P.frame, (x0, y0, z0), (x1, y0 + min(0.14, h * 0.14), z1))
+    by = y0 + min(0.14, h * 0.14)
+    r = min(min(w, d) * 0.34, (y1 - by) * 0.36)
+    ax_y = by + r + min(0.18, h * 0.10)
+    if reel:
+        rr = min(r * 1.5, (y1 - by) * 0.42, d * 0.42)
+        ax_y = by + rr * 1.35
+        _tube(v, t, None, "", (x0 + w * 0.18, ax_y, cz), (x1 - w * 0.18, ax_y, cz),
+              rr, SEG_PIPE)
+        for s in (-1, 1):                        # cheek plates
+            _tube(v, t, g, P.frame,
+                  (cx + s * w * 0.20, ax_y, cz), (cx + s * w * 0.26, ax_y, cz),
+                  min(rr * 1.32, ax_y - by, d * 0.48), SEG_BODY)
+        _tube(v, t, g, P.conduit, (cx, ax_y - rr, cz),
+              (cx, by + 0.02, cz), rr * 0.30, SEG_PIPE)
+    else:
+        vx = x1 - max(w * 0.16, r * 1.25)
+        _tube(v, t, None, "", (x0 + w * 0.10, ax_y, cz), (cx + w * 0.06, ax_y, cz),
+              r, SEG_PIPE)                                     # motor
+        for i in range(4):                                     # cooling fins
+            fx = x0 + w * (0.16 + 0.14 * i)
+            _tube(v, t, g, P.frame, (fx, ax_y, cz), (fx + 0.02, ax_y, cz),
+                  r * 1.16, SEG_PIPE)
+        _tube(v, t, g, P.conduit, (cx + w * 0.06, ax_y, cz),
+              (cx + w * 0.16, ax_y, cz), r * 0.55, SEG_PIPE)   # coupling guard
+        _cyl(v, t, None, "", vx, cz, by, min(ax_y + r * 0.9, y1 - 0.05),
+             r * 1.15, SEG_PIPE)                               # volute
+        _tube(v, t, g, P.pipe, (vx, ax_y, cz), (vx, ax_y, z0 + 0.02),
+              r * 0.5, SEG_PIPE)
+        _tube(v, t, g, P.pipe, (vx, min(ax_y + r * 0.9, y1 - 0.05), cz),
+              (vx, y1 - 0.03, cz), r * 0.45, SEG_PIPE)
+    gy = min(GAUGE_Y_M, y1 - 0.35)
+    gw = min(0.5, d * 0.7, w * 0.6)
+    gx = min(max(x0 + w * 0.18, x0 + gw / 2 + 0.06), x1 - gw / 2 - 0.06)
+    _box(v, t, g, P.panel, (gx - gw * 0.7, gy, z1 - min(0.10, d * 0.24)),
+         (gx + gw * 0.7, gy + 0.34, z1))
+    _gauges(v, t, g, P, gx, gy + 0.17, z1 - 0.06, 0.0, 1.0, gw, seed)
+
+
+def _m_block(v, t, g, box, P, seed):
+    """A massive block in expressed courses: a shield wall, a bund, a plinth.
+
+    Not everything in a plant room is a machine. What makes a solid mass read
+    as built rather than as a primitive is the joint pattern, a chamfered top
+    course, corner armour and the one thing set INTO it -- here a plug hatch.
+    """
+    x0, y0, z0, x1, y1, z1 = box
+    w, d, h = x1 - x0, z1 - z0, y1 - y0
+    # COURSES AND A PANEL FIELD. Courses alone left the block at 1.52 m^-1 of
+    # line -- one line every 0.66 m over a 7.5 m wall, which is a wall with
+    # stripes on it. What makes a mass read as BUILT is the block joint: a
+    # course band horizontally AND a stack joint vertically, so the eye reads a
+    # unit size rather than a stripe pitch.
+    # ONE BODY, then bands and joints ON its faces. The first version stacked
+    # `n` full-depth boxes and wrapped each in a full-depth band: 622.7 m2 of
+    # surface for a mass whose outside is 82, and 2.05 m^-1 of line on it.
+    _box(v, t, None, "", (x0, y0, z0), (x1, y1, z1))
+    n = max(2, int(h / 0.78))
+    nz = max(2, int((z1 - z0) / 0.95))
+    for i in range(n):
+        ya = y0 + h * i / n
+        yb = y0 + h * (i + 1) / n
+        if i < n - 1:
+            _perim_band(v, t, g, P.frame, x0, z0, x1, z1, yb - 0.045, yb)
+        # stack joints, staggered course by course like real blockwork, and on
+        # the two long faces only -- the ends are 1.6 m of nothing
+        for j in range(nz):
+            jz = z0 + (z1 - z0) * (j + (0.5 if i % 2 else 0.0)) / nz
+            if jz <= z0 + 0.06 or jz >= z1 - 0.06:
+                continue
+            for side in (-1, 1):
+                _face_strip(v, t, g, P.frame, box, "x", side,
+                            jz - 0.025, jz + 0.025, ya + 0.03, yb - 0.06)
+    ca = min(0.07, w * 0.2, d * 0.2)             # corner armour
+    for ax_ in (x0, x1 - ca):
+        for az in (z0, z1 - ca):
+            _box(v, t, g, P.frame, (ax_ - 0.01, y0, az - 0.01),
+                 (ax_ + ca + 0.01, y0 + min(0.9, h * 0.5), az + ca + 0.01))
+    px, pz = (x0 + x1) / 2.0, (z0 + z1) / 2.0
+    pr = min(0.55, min(w, d) * 0.6, h * 0.22)
+    py = min(max(1.3, y0 + h * 0.35), y1 - pr - 0.2)
+    face = z0 if _u(seed, "bf") < 0.5 else z1
+    sg = -1.0 if face == z0 else 1.0
+    _tube(v, t, g, P.frame, (px, py, face - sg * 0.10),
+          (px, py, face + sg * 0.035), pr, SEG_PIPE)
+    for k in range(6):
+        a = math.tau * k / 6
+        bx = px + pr * 1.15 * math.cos(a)
+        by_ = py + pr * 1.15 * math.sin(a)
+        _tube(v, t, g, P.frame, (bx, by_, face - sg * 0.02),
+              (bx, by_, face + sg * 0.03), 0.026, SEG_BOLT)
+    _perim_band(v, t, g, P.hazard, x0, z0, x1, z1, y0 + 0.05,
+                y0 + 0.05 + min(HAZARD_H_M, h * 0.12), 0.008)
+    # PENETRATIONS AND LIFTING LUGS. A shield is a thing services pass through
+    # and a thing that was craned into place; both are lines, and both are the
+    # reason it reads as built rather than poured.
+    nsl = max(2, int((z1 - z0) / 1.1))
+    for j in range(nsl):
+        pz2 = z0 + (z1 - z0) * (j + 0.5) / nsl
+        _tube(v, t, g, P.conduit,
+              (x0 + 0.02, min(2.35, y0 + h * 0.62), pz2),
+              (x1 - 0.02, min(2.35, y0 + h * 0.62), pz2), 0.045, SEG_BOLT)
+    for j in range(max(2, int((z1 - z0) / 1.6))):
+        lz = z0 + (z1 - z0) * (j + 0.5) / max(2, int((z1 - z0) / 1.6))
+        _box(v, t, g, P.frame, ((x0 + x1) / 2 - 0.06, y1 - 0.22, lz - 0.14),
+             ((x0 + x1) / 2 + 0.06, y1, lz + 0.14))
+
+
+def _m_kerb(v, t, g, box, P, seed):
+    """A low platform: nosing, a riser course and a tread lip.
+
+    `platform_edge` and `dais` are 0.22 and 0.35 m tall and no articulation
+    finer than the step itself will read on them, so this is deliberately the
+    cheapest machine in the kit. Spending a vessel's triangle count on a kerb
+    would be detail nobody can see, which the standard calls waste rather than
+    craft.
+    """
+    x0, y0, z0, x1, y1, z1 = box
+    h = max(y1 - y0, 0.06)
+    _box(v, t, None, "", (x0, y0, z0), (x1, y1, z1))
+    _perim_band(v, t, g, P.frame, x0, z0, x1, z1, y1 - h * 0.30, y1, 0.022)
+    _perim_band(v, t, g, P.hazard, x0, z0, x1, z1, y1 - h * 0.62,
+                y1 - h * 0.36, 0.028)
+    n = max(2, int(max(x1 - x0, z1 - z0) / 1.4))
+    long_z = (z1 - z0) >= (x1 - x0)
+    for i in range(n):                            # stringers under the tread
+        if long_z:
+            zz = z0 + (z1 - z0) * (i + 0.5) / n
+            _box(v, t, g, P.frame, (x0 - 0.005, y0, zz - 0.05),
+                 (x1 + 0.005, y0 + h * 0.30, zz + 0.05))
+        else:
+            xx = x0 + (x1 - x0) * (i + 0.5) / n
+            _box(v, t, g, P.frame, (xx - 0.05, y0, z0 - 0.005),
+                 (xx + 0.05, y0 + h * 0.30, z1 + 0.005))
+
+
+def _m_counter(v, t, g, box, P, seed):
+    """A counter, desk, bench or table: kick recess, apron, nosed top, front.
+
+    The declared props are as boxy as the fixtures were -- `prop_counter` is a
+    2.40 x 0.60 x 1.05 m slab and `rooms.PROPS`' comment says so outright: "a
+    prop IS a box". The three lines that make a counter read are the KICK
+    RECESS at the floor, the NOSING proud of the top, and a front broken into
+    panels; all three are what the eye uses to tell a counter from a plinth.
+    """
+    x0, y0, z0, x1, y1, z1 = box
+    w, d, h = x1 - x0, z1 - z0, y1 - y0
+    kick = min(0.11, h * 0.14)
+    top = min(0.05, h * 0.09)
+    _box(v, t, g, P.frame, (x0 + w * 0.10, y0, z0 + d * 0.10),
+         (x1 - w * 0.10, y0 + kick, z1 - d * 0.10))
+    long_z = d >= w
+    _box(v, t, None, "", (x0 + 0.006, y0 + kick, z0 + 0.006),
+         (x1 - 0.006, y1 - top * 0.5, z1 - 0.006))
+    _box(v, t, g, P.panel, (x0, y1 - top, z0), (x1, y1, z1))
+    _perim_band(v, t, g, P.panel, x0, z0, x1, z1, y1 - top * 0.55, y1 - 0.004,
+                0.014)
+    n = max(1, int(max(w, d) / 0.85))
+    for i in range(n):                            # front panels
+        f0 = (z0 if long_z else x0) + (d if long_z else w) * (i + 0.10) / n
+        f1 = (z0 if long_z else x0) + (d if long_z else w) * (i + 0.90) / n
+        if long_z:
+            _box(v, t, g, P.panel, (x0 - 0.010, y0 + kick + 0.05, f0),
+                 (x0 + 0.004, y1 - top - 0.06, f1))
+        else:
+            _box(v, t, g, P.panel, (f0, y0 + kick + 0.05, z0 - 0.010),
+                 (f1, y1 - top - 0.06, z0 + 0.004))
+    # an under-shelf, which is where the things behind a counter live
+    _box(v, t, g, P.tread, (x0 + w * 0.14, y0 + h * 0.46, z0 + d * 0.14),
+         (x1 - w * 0.14, y0 + h * 0.50, z1 - d * 0.14))
+    # drawer lines under the top and a foot rail at the kick: the two features
+    # that separate a counter from a plinth at half distance
+    for k in (0.72, 0.86):
+        if y0 + h * k > y1 - top - 0.02:
+            continue
+        if long_z:
+            _face_strip(v, t, g, P.conduit, box, "x", -1,
+                        z0 + d * 0.05, z1 - d * 0.05,
+                        y0 + h * k, y0 + h * (k + 0.022))
+        else:
+            _face_strip(v, t, g, P.conduit, box, "z", -1,
+                        x0 + w * 0.05, x1 - w * 0.05,
+                        y0 + h * k, y0 + h * (k + 0.022))
+    if long_z:
+        _tube(v, t, g, P.rail, (x0 - 0.02, y0 + kick * 1.6, z0 + d * 0.06),
+              (x0 - 0.02, y0 + kick * 1.6, z1 - d * 0.06),
+              min(0.020, w * 0.06), SEG_BOLT)
+    else:
+        _tube(v, t, g, P.rail, (x0 + w * 0.06, y0 + kick * 1.6, z0 - 0.02),
+              (x1 - w * 0.06, y0 + kick * 1.6, z0 - 0.02),
+              min(0.020, d * 0.06), SEG_BOLT)
+    if h > 0.85 and min(w, d) > 0.30:             # a till face in the counter
+        cx, cz = (x0 + x1) / 2.0, z0 + d * 0.30
+        _box(v, t, g, P.screen,
+             (x0 - 0.014, y1 - top - 0.30, cz - min(0.16, d * 0.24)),
+             (x0 + 0.002, y1 - top - 0.06, cz + min(0.16, d * 0.24)))
+
+
+def _m_bed(v, t, g, box, P, seed):
+    """A bed, bunk, pod or drawer: base, deck, side rails and a head unit."""
+    x0, y0, z0, x1, y1, z1 = box
+    w, d, h = x1 - x0, z1 - z0, y1 - y0
+    long_z = d >= w
+    ln = max(w, d)
+    base = min(0.16, h * 0.30)
+    # THE DECK IS 72% OF THE BOX so the head unit and the side rails have
+    # somewhere to be. The first version put both ABOVE the declared height and
+    # the bed left its own AABB by 0.22 m.
+    deck = y0 + (y1 - y0) * 0.70
+    _box(v, t, g, P.frame, (x0 + w * 0.12, y0, z0 + d * 0.12),
+         (x1 - w * 0.12, y0 + base, z1 - d * 0.12))
+    _box(v, t, None, "", (x0 + 0.004, y0 + base * 0.5, z0 + 0.004),
+         (x1 - 0.004, deck - 0.03, z1 - 0.004))
+    _box(v, t, g, P.panel, (x0 + w * 0.03, deck - 0.04, z0 + d * 0.03),
+         (x1 - w * 0.03, deck, z1 - d * 0.03))
+    # the mattress deck is SECTIONED -- a bed articulates, and the sections are
+    # the only lines a flat pallet has
+    for k in (0.34, 0.62):
+        if long_z:
+            _perim_band(v, t, g, P.conduit, x0 + w * 0.03, z0 + d * k,
+                        x1 - w * 0.03, z0 + d * (k + 0.03), deck - 0.045,
+                        deck + 0.004, 0.008)
+        else:
+            _perim_band(v, t, g, P.conduit, x0 + w * k, z0 + d * 0.03,
+                        x0 + w * (k + 0.03), z1 - d * 0.03, deck - 0.045,
+                        deck + 0.004, 0.008)
+    _box(v, t, g, P.tread, (x0 + w * 0.14, y0 + base, z0 + d * 0.16),
+         (x1 - w * 0.14, y0 + base + 0.035, z1 - d * 0.16))
+    for s in (-1, 1):                              # side rails
+        if long_z:
+            xx = (x0 + x1) / 2.0 + s * (w / 2 - 0.03)
+            _tube(v, t, g, P.rail, (xx, deck + 0.02, z0 + ln * 0.20),
+                  (xx, deck + 0.02, z1 - ln * 0.20), 0.020, SEG_BOLT)
+        else:
+            zz = (z0 + z1) / 2.0 + s * (d / 2 - 0.03)
+            _tube(v, t, g, P.rail, (x0 + ln * 0.20, deck + 0.02, zz),
+                  (x1 - ln * 0.20, deck + 0.02, zz), 0.020, SEG_BOLT)
+    # head unit: the thing that makes a bed a DIAGNOSTIC bed
+    if long_z:
+        _box(v, t, g, P.panel, (x0 + w * 0.10, y0 + base, z0),
+             (x1 - w * 0.10, y1, z0 + d * 0.14))
+        _box(v, t, g, P.screen, (x0 + w * 0.20, deck + 0.05, z0 - 0.004),
+             (x1 - w * 0.20, y1 - 0.02, z0 + 0.004))
+    else:
+        _box(v, t, g, P.panel, (x0, y0 + base, z0 + d * 0.10),
+             (x0 + w * 0.14, y1, z1 - d * 0.10))
+        _box(v, t, g, P.screen, (x0 - 0.004, deck + 0.05, z0 + d * 0.20),
+             (x0 + 0.004, y1 - 0.02, z1 - d * 0.20))
+
+
+def _m_seat(v, t, g, box, P, seed):
+    """Legs, a seat pan and a back. `dressing._chair`'s form at prop scale."""
+    x0, y0, z0, x1, y1, z1 = box
+    w, d, h = x1 - x0, z1 - z0, y1 - y0
+    lw = min(0.045, min(w, d) * 0.16)
+    sy = y0 + h * (0.62 if h > 0.6 else 0.80)
+    for sx in (-1, 1):
+        for sz in (-1, 1):
+            px = (x0 + x1) / 2.0 + sx * (w / 2 - lw)
+            pz = (z0 + z1) / 2.0 + sz * (d / 2 - lw)
+            _tube(v, t, g, P.frame, (px, y0, pz), (px, sy, pz), lw, SEG_BOLT)
+    pan = min(0.09, h * 0.16)
+    _box(v, t, None, "", (x0, sy, z0), (x1, sy + pan, z1))
+    if h > 0.6:
+        # overlapping the pan, not sitting on it: flush left one non-manifold
+        # edge along the seat's back lip on a 0.38 m stool
+        _box(v, t, g, P.panel, (x0 + 0.004, sy + pan * 0.55, z1 - d * 0.18),
+             (x1 - 0.004, y1, z1 - 0.003))
+    _tube(v, t, g, P.rail, (x0 + lw, sy - 0.03, z0 + lw),
+          (x1 - lw, sy - 0.03, z0 + lw), lw * 0.55, SEG_BOLT)
+
+
+def _m_leaf(v, t, g, box, P, seed):
+    """A door leaf in its frame: reveal, leaf, kick plate, vision slot, handle.
+
+    Fifteen of `rooms.PROPS`' entries are doors and every one was a slab. A
+    door is the object a player stands closest to (`CLAUDE.md`, session 3x).
+    """
+    x0, y0, z0, x1, y1, z1 = box
+    w, d, h = x1 - x0, z1 - z0, y1 - y0
+    thin_x = w <= d
+    tt = min(w, d)
+    # THE REVEAL IS FOUR MEMBERS, NOT A SLAB. Built as a full box it buried
+    # both leaf faces -- 21 to 36 m2 of surface on a door at 1.9 to 2.4 m^-1,
+    # the least articulated object in three of the six rooms measured.
+    jamb = min(0.10, max(w, d) * 0.10)
+    if thin_x:
+        for zz in (z0, z1 - jamb):
+            _box(v, t, g, P.frame, (x0, y0, zz), (x1, y1, zz + jamb))
+        _box(v, t, g, P.frame, (x0 + 0.003, y1 - jamb, z0 + 0.003),
+             (x1 - 0.003, y1, z1 - 0.003))
+    else:
+        for xx in (x0, x1 - jamb):
+            _box(v, t, g, P.frame, (xx, y0, z0), (xx + jamb, y1, z1))
+        _box(v, t, g, P.frame, (x0 + 0.003, y1 - jamb, z0 + 0.003),
+             (x1 - 0.003, y1, z1 - 0.003))
+    if thin_x:
+        _box(v, t, None, "", (x0 + tt * 0.18, y0, z0 + d * 0.06),
+             (x1 - tt * 0.18, y1 - h * 0.04, z1 - d * 0.06))
+        _box(v, t, g, P.frame, (x0 + tt * 0.10, y0, z0 + d * 0.08),
+             (x1 - tt * 0.10, y0 + min(0.22, h * 0.12), z1 - d * 0.08))
+        _box(v, t, g, P.screen, (x0 + tt * 0.06, y0 + h * 0.62, z0 + d * 0.22),
+             (x1 - tt * 0.06, y0 + h * 0.82, z1 - d * 0.22))
+        _tube(v, t, g, P.rail, (x0, y0 + h * 0.47, z1 - d * 0.22),
+              (x1, y0 + h * 0.47, z1 - d * 0.22), min(0.028, tt * 0.4),
+              SEG_BOLT)
+        _box(v, t, g, P.panel, (x0 - 0.006, y0 + h * 0.42, z0 - 0.006),
+             (x1 + 0.006, y0 + h * 0.56, z0 + d * 0.10))
+    else:
+        _box(v, t, None, "", (x0 + w * 0.06, y0, z0 + tt * 0.18),
+             (x1 - w * 0.06, y1 - h * 0.04, z1 - tt * 0.18))
+        _box(v, t, g, P.frame, (x0 + w * 0.08, y0, z0 + tt * 0.10),
+             (x1 - w * 0.08, y0 + min(0.22, h * 0.12), z1 - tt * 0.10))
+        _box(v, t, g, P.screen, (x0 + w * 0.22, y0 + h * 0.62, z0 + tt * 0.06),
+             (x1 - w * 0.22, y0 + h * 0.82, z1 - tt * 0.06))
+        _tube(v, t, g, P.rail, (x1 - w * 0.22, y0 + h * 0.47, z0),
+              (x1 - w * 0.22, y0 + h * 0.47, z1), min(0.028, tt * 0.4),
+              SEG_BOLT)
+        _box(v, t, g, P.panel, (x0 - 0.006, y0 + h * 0.42, z0 - 0.006),
+             (x0 + w * 0.10, y0 + h * 0.56, z1 + 0.006))
+    # LEAF RIBS. A B5 door leaf is a ribbed plate, and without them the leaf is
+    # the flattest object in three of the six rooms measured (2.4 m^-1).
+    for k in (0.24, 0.36, 0.90):
+        yy = y0 + h * k
+        for side in (-1, 1):
+            if thin_x:
+                _face_strip(v, t, g, P.conduit, box, "x", side,
+                            z0 + d * 0.14, z1 - d * 0.14, yy, yy + h * 0.022,
+                            tt * 0.16)
+            else:
+                _face_strip(v, t, g, P.conduit, box, "z", side,
+                            x0 + w * 0.14, x1 - w * 0.14, yy, yy + h * 0.022,
+                            tt * 0.16)
+
+
+def _m_wallpanel(v, t, g, box, P, seed):
+    """A wall terminal: housing, bezel, screen, keypad and a mounting plate."""
+    x0, y0, z0, x1, y1, z1 = box
+    w, d, h = x1 - x0, z1 - z0, y1 - y0
+    thin_x = w <= d
+    tt = min(w, d)
+    if thin_x:
+        _box(v, t, g, P.frame, (x0 + tt * 0.55, y0 + h * 0.06, z0 + d * 0.06),
+             (x1, y1 - h * 0.06, z1 - d * 0.06))
+        _box(v, t, None, "", (x0 + tt * 0.20, y0, z0), (x1, y1, z1))
+        _box(v, t, g, P.screen, (x0, y0 + h * 0.30, z0 + d * 0.12),
+             (x0 + tt * 0.24, y1 - h * 0.10, z1 - d * 0.12))
+        _box(v, t, g, P.panel, (x0 + tt * 0.10, y0 + h * 0.06, z0 + d * 0.22),
+             (x0 + tt * 0.30, y0 + h * 0.24, z1 - d * 0.22))
+    else:
+        _box(v, t, g, P.frame, (x0 + w * 0.06, y0 + h * 0.06, z0 + tt * 0.55),
+             (x1 - w * 0.06, y1 - h * 0.06, z1))
+        _box(v, t, None, "", (x0, y0, z0 + tt * 0.20), (x1, y1, z1))
+        _box(v, t, g, P.screen, (x0 + w * 0.12, y0 + h * 0.30, z0),
+             (x1 - w * 0.12, y1 - h * 0.10, z0 + tt * 0.24))
+        _box(v, t, g, P.panel, (x0 + w * 0.22, y0 + h * 0.06, z0 + tt * 0.10),
+             (x1 - w * 0.22, y0 + h * 0.24, z0 + tt * 0.30))
+
+
+def _m_crate(v, t, g, box, P, seed):
+    """A shipping container: proud lid, corner castings and a banding line."""
+    x0, y0, z0, x1, y1, z1 = box
+    w, d, h = x1 - x0, z1 - z0, y1 - y0
+    _box(v, t, None, "", (x0, y0, z0), (x1, y1, z1))
+    _perim_band(v, t, g, P.frame, x0, z0, x1, z1, y1 - h * 0.10, y1, 0.014)
+    c = min(0.09, min(w, d) * 0.16)
+    for sx in (x0, x1 - c):
+        for sz in (z0, z1 - c):
+            _box(v, t, g, P.frame, (sx - 0.008, y0, sz - 0.008),
+                 (sx + c + 0.008, y1 - h * 0.10, sz + c + 0.008))
+    for k in (0.30, 0.52, 0.74):                  # corrugation, and a placard
+        _perim_band(v, t, g, P.conduit, x0, z0, x1, z1, y0 + h * k,
+                    y0 + h * (k + 0.035), 0.010)
+    _box(v, t, g, P.hazard, (x0 - 0.012, y0 + h * 0.42, z0 + d * 0.30),
+         (x0 + 0.002, y0 + h * 0.62, z0 + d * 0.70))
+
+
+def _m_post(v, t, g, box, P, seed):
+    """A bollard, standpipe or handhold: base, shaft, collar and a cap."""
+    x0, y0, z0, x1, y1, z1 = box
+    w, d, h = x1 - x0, z1 - z0, y1 - y0
+    if h < max(w, d) * 0.9:                        # lying down: a grab rail
+        long_z = d >= w
+        r = max(MIN_PART_M, min(h, min(w, d)) * 0.36)
+        if long_z:
+            a = ((x0 + x1) / 2, (y0 + y1) / 2, z0 + r)
+            b = ((x0 + x1) / 2, (y0 + y1) / 2, z1 - r)
+        else:
+            a = (x0 + r, (y0 + y1) / 2, (z0 + z1) / 2)
+            b = (x1 - r, (y0 + y1) / 2, (z0 + z1) / 2)
+        _tube(v, t, g, P.rail, a, b, r, SEG_PIPE)
+        for p in (a, b):                           # the feet it is bolted on
+            _box(v, t, g, P.frame, (p[0] - r * 1.4, p[1] - r * 1.4, p[2] - r * 1.4),
+                 (p[0] + r * 1.4, p[1] + r * 1.4, p[2] + r * 1.4))
+        return
+    cx, cz = (x0 + x1) / 2.0, (z0 + z1) / 2.0
+    r = min(w, d) / 2.0 * 0.80
+    _cyl(v, t, g, P.frame, cx, cz, y0, y0 + min(0.05, h * 0.08), r * 1.22,
+         SEG_PIPE)
+    _cyl(v, t, None, "", cx, cz, y0 + min(0.04, h * 0.06), y1 - h * 0.06, r,
+         SEG_PIPE)
+    _cyl(v, t, g, P.hazard, cx, cz, y0 + h * 0.62, y0 + h * 0.74, r * 1.06,
+         SEG_PIPE)
+    _dome(v, t, g, P.frame, cx, cz, y1 - h * 0.08, r, h * 0.08, SEG_PIPE, 2)
+
+
+MACHINES = {
+    "vessel": _m_vessel,
+    "counter": _m_counter,
+    "bed": _m_bed,
+    "seat": _m_seat,
+    "leaf": _m_leaf,
+    "wallpanel": _m_wallpanel,
+    "crate": _m_crate,
+    "post": _m_post,
+    "furnace": lambda *a, **k: _m_vessel(*a, furnace=True, **k),
+    "drum": _m_drum,
+    "rack": _m_rack,
+    "cabinet": _m_cabinet,
+    "pipe_bank": _m_pipe_bank,
+    "duct": _m_duct,
+    "crane": _m_crane,
+    "screen": _m_screen,
+    "gantry": _m_gantry,
+    "console": _m_console,
+    "skid": _m_skid,
+    "reel": lambda *a, **k: _m_skid(*a, reel=True, **k),
+    "block": _m_block,
+    "kerb": _m_kerb,
+}
+
+
+def machine(v, t, g, kind, name, lo, hi, seed):
+    """Build `kind` into the box (lo, hi) that `name` used to be.
+
+    The outer span is appended FIRST and covers every triangle, so the fixture
+    still owns one AABB for `rooms._solid_boxes`, `rooms.walkable` and
+    `collision.prop_boxes`. The part spans follow and override the material,
+    because `export_scene.per_triangle` resolves last-span-wins -- the same
+    nesting `populace.py` already uses for a body's eight skin parts inside its
+    `npc_standing_3` span.
+
+    Returns the number of triangles the machine cost.
+    """
+    build = MACHINES.get(kind)
+    if build is None:
+        raise ValueError(f"{name}: no machine kind {kind!r}; have "
+                         f"{sorted(MACHINES)}")
+    prefix = ("prop_" if name.startswith("prop_")
+              else "dress_" if name.startswith("dress_") else "fix_")
+    P = _Parts(prefix)
+    t0 = len(t)
+    parts = []
+    # THE BUILDERS WORK IN A BOX INSET IN PLAN, so that the things which are
+    # SUPPOSED to stand proud -- a girth flange, a course band, a step nosing,
+    # corner armour -- have somewhere to be proud into. Without it every one of
+    # them left the fixture's AABB by 15 to 45 mm and `machine_bounds_ok` was a
+    # gate that fired on correct geometry. The inset is in x and z only: a
+    # full-height fixture has to reach the deck and the soffit, and taking it
+    # off y would leave a visible gap at both.
+    m = min(MACH_PROUD_M, (hi[0] - lo[0]) * 0.12, (hi[2] - lo[2]) * 0.12)
+    build(v, t, parts, (lo[0] + m, lo[1], lo[2] + m,
+                        hi[0] - m, hi[1], hi[2] - m), P, seed)
+    if len(t) == t0:                     # a machine that built nothing is a bug
+        raise ValueError(f"{name}: {kind} emitted no geometry in "
+                         f"{tuple(round(hi[i] - lo[i], 3) for i in range(3))}")
+    g.append((name, t0, len(t)))
+    g.extend(parts)
+    return len(t) - t0
+
+
+def machine_bounds_ok(v, t, t0, lo, hi, tol=0.0):
+    """Did the machine stay inside the box it replaced?
+
+    THE INVARIANT THE WHOLE CHANGE RESTS ON. Every walkability, collision and
+    interpenetration rule in `rooms.py` reads the fixture's AABB, so as long as
+    a machine never leaves the box the box already occupied, none of them can
+    be made wrong by it -- and if one does leave, a room can silently become
+    impassable in a way only a walk test would find. Returns the worst
+    excursion in metres, which is 0.0 when it is inside.
+    """
+    worst = 0.0
+    idx = {i for tri in t[t0:] for i in tri}
+    for i in idx:
+        p = v[i]
+        for j in range(3):
+            worst = max(worst, lo[j] - p[j] - tol, p[j] - hi[j] - tol)
+    return max(0.0, worst)
+
+
 def _selftest():
     ok = fail = 0
 
@@ -452,8 +1875,18 @@ def _selftest():
     check("an office gets furniture", c["furniture"] > 4, str(c))
     check("...and clutter on it", c["clutter"] > 10, str(c))
     check("...and services", c["service"] > 2, str(c))
+    # COVERAGE, NOT A SUM -- the same correction `rooms._selftest` records.
+    # Spans NEST since INV-132: a locker's outer `dress_top` span contains its
+    # door, louvre and handle parts, exactly as a body's `npc_standing_3` span
+    # contains its eight skin parts. The sum was a proxy that held only while
+    # nothing nested and it fires on correct data the moment something does.
+    covered = set()
+    for _n, lo, hi in g:
+        covered.update(range(lo, hi))
     check("every triangle is grouped",
-          sum(hi - lo for _n, lo, hi in g) == len(t))
+          len(covered) == len(t) and all(0 <= lo <= hi <= len(t)
+                                         for _n, lo, hi in g),
+          f"{len(covered)} of {len(t)}")
 
     # --- CLOSED, AND FACING THE RIGHT WAY -----------------------------------
     # Neither of these could be seen in a render, and both were shipped: `_cyl`
@@ -513,6 +1946,103 @@ def _selftest():
     lows = [q[1] for q in v]
     check("nothing is below the deck", min(lows) > -1e-6, f"{min(lows):.3f}")
     check("nothing is above the soffit", max(lows) < 2.9, f"{max(lows):.3f}")
+
+    # --- THE MACHINERY KIT, INV-130 ---------------------------------------
+    # A gate belongs in the module that builds the thing, and it must build the
+    # HARD case (CLAUDE.md, session 3x). Every one of the fifteen machines is
+    # built at a real fixture's declared size and measured for the four
+    # properties a render cannot see: closure, manifoldness, winding, and
+    # staying inside the box it replaced. Two of these fired on real content
+    # after passing on probe boxes -- an `over` crane at 0.70 m rather than the
+    # probe's 0.90, and a cabinet 0.35 m deep rather than 1.10 -- so the sizes
+    # below are taken FROM `rooms.FIXTURES` and `rooms.PROPS` rather than
+    # chosen here.
+    import rooms as _R                                          # noqa: PLC0415
+    import materials as _M                                      # noqa: PLC0415
+
+    hard = {}
+    for fx in list(_R.FIXTURES.values()) + list(_R.PLACE_FIXTURES.values()):
+        for nm, fw, fd, fh, kind in fx:
+            k = _R.MACHINE_KIND.get(nm)
+            if k is None:
+                continue
+            h = fh if fh > 0.0 else 7.5
+            box = (0.0, 0.0, 0.0, max(fd, 0.06), h, max(fw, 0.06))
+            # the smallest declared instance of each kind is the hard case
+            if k not in hard or (box[3] * box[4] * box[5]
+                                 < hard[k][0][3] * hard[k][0][4] * hard[k][0][5]):
+                hard[k] = (box, nm)
+    for nm, (pw, pd, phh, _m) in _R.PROPS.items():
+        k = _R.PROP_KIND.get(nm)
+        if k is None:
+            continue
+        box = (0.0, 0.0, 0.0, max(pd, 0.06), max(phh, 0.06), max(pw, 0.06))
+        if k not in hard or (box[3] * box[4] * box[5]
+                             < hard[k][0][3] * hard[k][0][4] * hard[k][0][5]):
+            hard[k] = (box, nm)
+    check("every machine kind has a real fixture or prop that uses it",
+          set(hard) == set(MACHINES),
+          f"unused: {sorted(set(MACHINES) - set(hard))}")
+
+    part_names = set()
+    for kind in sorted(MACHINES):
+        box, src = hard[kind]
+        mv, mt, mg = [], [], []
+        n = machine(mv, mt, mg, kind, "fix_probe", box[:3], box[3:], "s")
+        part_names.update(nm for nm, _l, _h in mg if MACHINE_MARK in nm)
+        opn, non = _K.boundary_edges(mv, mt)
+        sv = 0.0
+        for a, b, c in mt:
+            p0, p1, p2 = mv[a], mv[b], mv[c]
+            sv += (p0[0] * (p1[1] * p2[2] - p1[2] * p2[1])
+                   - p0[1] * (p1[0] * p2[2] - p1[2] * p2[0])
+                   + p0[2] * (p1[0] * p2[1] - p1[1] * p2[0]))
+        check(f"machine {kind} ({src}) is closed", not opn,
+              f"{len(opn)} open edges over {n} triangles")
+        check(f"machine {kind} ({src}) is manifold", not non,
+              f"{len(non)} non-manifold edges")
+        check(f"machine {kind} ({src}) encloses positive volume", sv / 6.0 > 0,
+              f"{sv / 6.0:.4f} m3")
+        check(f"machine {kind} ({src}) stays inside the box it replaced",
+              machine_bounds_ok(mv, mt, 0, box[:3], box[3:]) <= 1e-9,
+              f"{machine_bounds_ok(mv, mt, 0, box[:3], box[3:]):.4f} m outside")
+        check(f"machine {kind} ({src}) is not a box",
+              n > 40, f"{n} triangles")
+    # ...and the negative control on the closure test, run rather than claimed.
+    hv, ht, hg = [], [], []
+    machine(hv, ht, hg, "vessel", "fix_probe", (-2, 0, -2), (2, 6.2, 2), "s")
+    check("the closure test fires on a machine with a hole in it",
+          len(_K.boundary_edges(hv, [q for i, q in enumerate(ht)
+                                     if i % 37])[0]) > 0)
+
+    # EVERY PART NAME MUST RESOLVE TO A MATERIAL, and to ONE material. The
+    # bound fragment names the material and `materials.resolve` matches it as a
+    # substring with longest-wins, so a part name that happened to contain two
+    # unrelated fragments would take whichever is longer -- a decision made by
+    # spelling rather than by anyone's intent. `test_materials_layer3.py`
+    # checks this for the groups `rooms.py` emits; it is here as well because
+    # this is the module that invents the names.
+    for pre in ("fix_", "prop_"):
+        part_names.update(_Parts(pre).all())
+    unres = sorted(g_ for g_ in part_names
+                   if _M.resolve_any(g_, "interior") is None)
+    check("every machine part name resolves to an interior material",
+          not unres, str(unres))
+    ambiguous = []
+    for g_ in sorted(part_names):
+        hits = set()
+        for m in _M.MATERIALS:
+            if "interior" not in m.scenes:
+                continue
+            for f in m.binds:
+                if f in g_:
+                    hits.add(f)
+        for a in hits:
+            for b in hits:
+                if a != b and a not in b and b not in a:
+                    ambiguous.append((g_, a, b))
+    check("no machine part name is claimed by two unrelated fragments",
+          not ambiguous, str(ambiguous[:3]))
 
     # Surfaces are read back off geometry, so a builder with no top gets none.
     # A 0.4 m bin lid is 0.13 m2 and is CORRECTLY below SURFACE_MIN_M2 -- you

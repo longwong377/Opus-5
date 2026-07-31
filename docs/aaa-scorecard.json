@@ -609,6 +609,59 @@
        "text": "These 68 rooms are 58% of the station's 118 locations. Each is the archetype kit with a few fixtures dropped in, so the room is named for a function it does not contain. Largest craft deficit in the project by location count."
       }
      ]
+    },
+    {
+     "round": 2,
+     "reviewer": "machinery agent, session 4a -- INV-130/131/132, scored from frames at THREE distances",
+     "date": "2026-07-31",
+     "scores": {
+      "craft": 3,
+      "fidelity": 2,
+      "performance": 4,
+      "robustness": 4
+     },
+     "evidence": {
+      "craft": "docs/craft-machinery/{before,after}-{fabrication,reactor_hall,medlab_one,business_center}-{normal,half,arm}.png -- twelve pairs at identical cameras, only the mesh changed. after-fabrication-normal.png is a foundry: two furnace stacks on standoff legs with hazard bands, charge doors, lifting frames and flues, against before-fabrication-normal.png which is two black boxes. after-reactor_hall-half.png is a clad barrel with girth flanges, a bolted manway, a ladder and a platform bracket, against a flat grey pier.",
+      "performance": "station/budget.py: the assembled deck goes 656,540 -> 658,272 triangles (+0.3%) for 6,156 -> 192,680 triangles of machinery across the 78 rooms; frustum-everything 168,188 (56.1%) -> 167,940 (56.0%); frustum structure UNCHANGED at 112,820 because machine parts inherit their parent's fix_/prop_ prefix and budget.klass_of splits on it; collision deck 5,162 -> 5,270; station collision resident unchanged at 632,100.",
+      "robustness": "four negative controls RUN, not claimed. (1) density.py --selftest empties rooms.MACHINE_KIND/PROP_KIND and asserts the machinery gate fails: 4/4 probe locations fail at ratio 0.15-0.41, 0/4 as shipped; station-wide 0/78 pass boxed against 74/78 built. (2) an oversize vessel outrigger makes rooms.machine_escapes report 2 escapes of 0.205 m against 0 as shipped. (3) cutting 1 triangle in 37 out of a vessel takes interior_kit.boundary_edges from 0 open edges to 174; reversing the winding takes signed volume from +40.4 to -40.4 m3. (4) deleting one MACHINE_KIND entry makes rooms._selftest name it. rooms 755/755, dressing 132/132, density 54/54, test_materials_layer3 34/34, materials 1467/1467, walkable.py --deck blue/0/0 PASS on all four rooms, deck.py --sweep 128/128 with 0 floor holes."
+     },
+     "broke_assertions": true,
+     "findings": [
+      {
+       "severity": "major",
+       "dimension": "craft",
+       "descriptor": "C3",
+       "where": "docs/craft-machinery/after-fabrication-arm.png",
+       "text": "Holds at normal and half distance and falls apart at arm's length. The furnace charge door at 1.0 m is a flat orange plate with no bolt pattern, no wear and no scale to it, and after-reactor_hall-arm.png is a plain plate between two flange lines. C3's own second clause is the one that bites: the tertiary tier is generic and materials carry one flat value each. C4 needs wear, grime and lighting response varying across the surface, which is a layer-3 property this pass did not touch."
+      },
+      {
+       "severity": "major",
+       "dimension": "craft",
+       "descriptor": "C3",
+       "where": "station/density.py --machinery",
+       "text": "4 of 78 locations still have machinery below their own shell's line density: lowg_bays 0.88, law_courts 0.89, plantroom_bay 0.94, mooring_gallery 1.00. The store archetype's racking and the office archetype's partition screens carry the shortfall."
+      },
+      {
+       "severity": "major",
+       "dimension": "fidelity",
+       "descriptor": "F2",
+       "where": "canon/INVENTIONS.md INV-130",
+       "text": "Every proportion of all fifteen machines is extrapolation. The reference set holds no view of a Babylon 5 machine space at all -- reference/08-sector-yellow-engineering/ is empty -- so nothing here is sourced from a drawing. Logged with all four fields; unchanged from round 1's score for the same reason."
+      },
+      {
+       "severity": "minor",
+       "dimension": "performance",
+       "descriptor": "P4",
+       "where": "station/budget.py, draw calls whole frame",
+       "text": "The nine part names per prefix add 79 distinct groups to the assembled deck, taking an ALREADY FAILING gate from 1,303 to 1,382 of 1,041. Culled it is 353 -> 392 of 1,041, still 2.7x headroom. The vocabulary is fixed at nine per prefix precisely so the cost is bounded by the vocabulary rather than by the instance count."
+      },
+      {
+       "severity": "note",
+       "dimension": "craft",
+       "where": "station/dressing.py",
+       "text": "_chair, _bin and _drum_can are deliberately not routed through the kit -- already legs-and-a-back rather than boxes, and four chairs per ten metres of wall would spend a cabinet's triangles on a silhouette nobody sees."
+      }
+     ]
     }
    ]
   },
