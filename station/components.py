@@ -1087,6 +1087,41 @@ BUILDERS = {
 DETAIL = 1.0
 
 
+# --- the ionization vanes: MEASURED, NOT BUILT ------------------------------
+#
+# `docs/volume-audit.md` §5.1 lists "Ionization vane support rings (3) and
+# fusion reactor ionization vanes (6)" as canon with no builder:
+# `00-MASTER.md` §1.3 counts both at authority 4, and
+# `schema.longitudinal.features[main_truss_spine].contains` names both, and
+# grep for `ionization`/`vane` in `station/` returns only Starfury geometry.
+#
+# THE RINGS ARE ON THE DRAWING AND THEY HAVE BEEN MEASURED. `other map 4.jpg`
+# at the profile extractor's own calibration (TAIL_PX 71, 4.0703 m/px, from
+# `station/extract_radius_profile.py`) shows three heavy transverse ribs
+# crossing the truss spine, read as ink density in the upper rail band
+# (rows AXIS_PY-40 .. AXIS_PY-8):
+#
+#     rib   peak px    z (m)     spacing
+#     1     465-474    1,604-1,640, centre ~1,620
+#     2     537-542    1,897-1,917, centre ~1,907      287 m
+#     3     610-612    2,194-2,202, centre ~2,198      291 m
+#
+# Three ribs, evenly spaced to within 1.4%, inside `main_truss_spine`
+# (z 1295-2680) whose `contains` names exactly three support rings. Their
+# radial extent reaches the spine's own lathed radius (164.8 m) and no further,
+# so they are flush bands rather than protruding fins. Nothing in the frame
+# resolves the six VANES; two per ring is the reading "support ring" implies
+# and it is a reading, not a measurement.
+#
+# WHY THERE IS NO BUILDER HERE. A component needs a spec in
+# `station.yaml::components`, which is the only machine-readable home for one,
+# and the counts 3 and 6 live only in `canon/00-MASTER.md` §1.3 as a table.
+# Writing them as literals in this file would put a canon count in a second
+# place -- the exact defect `docking_bay._schema_bay_width_m` was rewritten to
+# remove, and `tools/mutation_sweep.py` found that one by perturbing a literal
+# nothing was tied to. The spec belongs in the schema. Proposed text is in the
+# session report; whoever owns `station.yaml` adds it and `radial_band` or a
+# `bands` builder consumes it, with the z values above rather than a formula.
 def _ribs(n):
     """Rib count at the current detail level. Zero is a valid answer."""
     return max(0, int(round(n * DETAIL)))
@@ -1264,6 +1299,41 @@ def _selftest():
     # ever says no.
     check("the arc-pitch guard accepts the schema's own layout",
           cobra_bay_ring(cobra, profile) is not None)
+
+    # -- THE COBRA BAYS DO NOT NEED AN APERTURE, and here is the measurement --
+    #
+    # Session 3z cut 24 mouths in the hull for the docking bays, because
+    # `docs/volume-audit.md` §5.1 found a bay you can stand in behind a hull
+    # with no hole in it. The obvious next question is whether the 28 cobra
+    # bays have the same defect. They have the OPPOSITE one, and the two
+    # measurements below are what say so rather than an argument:
+    #
+    #   1. The well is a CLOSED RECESS whose floor stands COBRA_FLOOR_CLEAR_M
+    #      above the hull datum -- a modelled pocket, not a hole. The docking
+    #      bays had no recess at all.
+    #   2. `cobra_bays` declares `module="components"`, so THIS FILE is its
+    #      whole implementation. There is no interior volume behind it to vent
+    #      to space, and cutting its floor would open onto unmodelled hull --
+    #      a black hole in every frame, which is worse than what is there.
+    #
+    # Assertion 2 is the live one: the day somebody builds a cobra bay
+    # interior and points the register at it, this fires and says the floor
+    # now needs cutting. Authority-1 `01-station-exterior/Cobra Bays with
+    # starfurries.webp` shows a well with a stowed launch arm lying in it and
+    # no opening in its floor, so until then the closed floor is the sourced
+    # reading and the hole would be the invention.
+    import directory as _dir                                  # noqa: PLC0415
+    well_v, well_t = groups["cobra_bay_well"]
+    check("the cobra bay well is a closed recess, not a hole in the hull",
+          not boundary_edges(well_t) and signed_volume(well_v, well_t) > 0.0,
+          f"{len(boundary_edges(well_t))} boundary edges")
+    check("the well floor stands above the hull it sits on",
+          COBRA_FLOOR_CLEAR_M > 0.0, f"{COBRA_FLOOR_CLEAR_M} m")
+    check("cobra_bays is exterior-only, so there is nothing behind it to open",
+          _dir.by_key("cobra_bays")["module"] == "components",
+          f"module is now {_dir.by_key('cobra_bays')['module']!r} -- an "
+          f"interior exists, so the well floor needs an aperture the way "
+          f"station/aperture.py gives the docking bays one")
 
     # -- build_all's contract ------------------------------------------------
     check("build_all still keys single-group builders by component id",
