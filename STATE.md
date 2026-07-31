@@ -1,6 +1,137 @@
 # Project State
 
-**Last updated:** 2026-07-31 · **Session 3z** — **the corridors have people WALKING in them (5,966 m measured), a lift is a vehicle, the register is routable, 23 more places assemble as themselves, and the machinery stopped being boxes** · **3y** — the generic-bay substitution is measured and declared: do NOT swap, compose · **3x** — the doors close, 1,572 open edges → 0 · **3w** — the frame budget measured for real · **3v** — W1/W2 done, 66/66 decks assemble
+**Last updated:** 2026-07-31 · **Session 4b** — **the station has a POLICE FORCE, and the walls stopped being one flat panel** · **3z** — the corridors have people WALKING in them (5,966 m measured), a lift is a vehicle, the register is routable, 23 more places assemble as themselves, and the machinery stopped being boxes · **3y** — the generic-bay substitution is measured and declared: do NOT swap, compose · **3x** — the doors close, 1,572 open edges → 0 · **3w** — the frame budget measured for real · **3v** — W1/W2 done, 66/66 decks assemble
+
+## Session 4b — THE STATION HAS A POLICE FORCE, AND THE WALL STOPPED BEING ONE FLAT PANEL
+
+### 1. A 1,181-LINE GAZETTEER FILE HAD ZERO READERS
+
+`grep -rl LAW-CRIME-DOWNBELOW station/ tools/` returned **nothing**, while `FACTIONS.md`,
+`LIFE-SUPPORT-AND-INDUSTRY.md` and `TRAFFIC-AND-CUSTOMS.md` had 23 readers between them. The file
+holds the force's size and shape, what an officer wears and carries, where the posts are, patrol
+patterns, response times, the escalation ladder, the brig, law, the black market and Downbelow —
+and the owner's scope brief names *"customs and immigration, law enforcement, crime, the black
+market, Downbelow's underclass"* in the same breath as the NPCs.
+
+`station/npc/security.py` — **43/43**, every negative control run and printed.
+
+**It is deliberately not a second copy of the gazetteer.** Every number the gazetteer asserts about
+geometry or timing is **recomputed from the built station**, and three came out different — INV-241:
+
+| | gazetteer | recomputed | why |
+|---|---|---|---|
+| Grey outermost ring | r 402.2 m, 2,527 m round | **r 471.2 m, 2,961 m** (×1.17) | the addresses became hull-correct in 3z; the station moved under the number |
+| beat walk speed | 1.3 m/s flat | **1.94 m/s** Grey, **1.12** Yellow | `walk_speed(g)` is a Froude gait model, v ∝ √(gL) |
+| a 75 kg officer there | 108 kgf | **127 kgf** | 1.69 g, not 1.44 |
+| response to a distant outer ring | 12–20 min | **22.3 min** worst | §2.6 priced three vehicle legs and added the walk in prose; this routes the whole journey on the same graph a resident commutes on |
+
+**The two speed effects point opposite ways and both are real.** The gazetteer's instinct — foot
+patrol in the heavy outer rings is punishing — is right, and the recomputation says the penalty is
+in the officer's **weight**, not the clock. A Grey beat is *faster* and *harder*.
+
+**§2.6's headline SURVIVES the recomputation, which is the point of doing it.** *"Response to the
+outer ring of a distant sector is 12–20 minutes. To the Zócalo, from the standing post already
+there, it is seconds."* Computed: the Zócalo answers **0 s** from its own post; Grey's
+`atmos_monitor` is **22.3 min** from the nearest — which is **Green's council post**, not Security
+Central, because Green is the sector adjacent to Grey on the axis.
+
+**And the gazetteer contradicts itself one line apart** — §2.5 says *"~35 pairs"* and, in the same
+row, *"the remaining 90"*, which is 45. **C-011**: `roving_pairs()` derives it and `report()` prints
+the gap rather than picking the convenient reading.
+
+### 2. NO ROSTER COULD EVER HAVE PUT A UNIFORM IN THE ZÓCALO
+
+`resident.roster` casts a place's regulars from each resident's job, and it does that well — ask for
+twelve at `security_central` and **seven** come back `role == "security"`; at `customs_north`,
+**six** customs officers. **Ask at the Zócalo and none do** — merchants, financiers, visitors,
+service — because an officer standing that post is employed *on patrol*, not *at the Zócalo*. In the
+space the gazetteer calls "the most-policed civilian space on the station".
+
+Asking deeper does not help: a place has a capacity, so `roster(security_central, ..., 300)` still
+returns four. So `officer_pool` **searches the id space** on `schedule.role_for` — security is 500
+of 155,000 humans, **one officer in ~270 ids** — and `role_for` is the cheap half of `resident()`:
+**120 officers out of 32,406 candidate ids in 0.06 s**, measured.
+
+**The fixed/roving split was forced by a render.** `populate` adds the **fixed** post to the
+headcount and draws the **roving** share from the ambient crowd. `occupancy` is a crowd density and
+knows nothing about duty, so folding a four-officer watch into the brig's headcount left room for
+**zero** — the brig at 18:00 holds one person. The render proved it: **one League civilian, in a
+detention block, no uniform.** After the split the same room exports four
+`npc_cloth__ef_security_twill` bodies, one carrying `npc_cloth_trim__nightwatch_black`.
+`docs/engine-brig-security.png` — grey twill, black leather standing collar and yoke, exactly the
+service dress the two authority-1/2 reference frames describe.
+
+### 3. THE ARMBAND WAS DECIDED TWICE AND THE RENDER USED THE OTHER ONE
+
+`wears_armband` rolled `_u("security/nightwatch", id) < NIGHTWATCH_SHARE` and **passed every test in
+the module** — while `costume.py` was independently rolling `_u(seed, "nw") <
+NIGHTWATCH_SECURITY_RATE` to decide whether to hang the decal on the sleeve. Two descriptions of one
+fact, agreeing only by luck, and **the render is driven by the other one**: a player would have seen
+the band on a different officer from the one this module called banded. Hard rule 4, applied to a
+boolean.
+
+It now delegates to `costume.costume_for(...).nightwatch`, which gets the era right for free
+(`era_active("nightwatch_visible")` — no armband before *The Fall of Night*). **The negative control
+patches `costume.NIGHTWATCH_SECURITY_RATE`, a constant this module does not own**, and both the
+share gate and the one-band-one-sleeve gate move with it — which is what proves the delegation is
+live rather than decorative. Realised share over 300 officers: **36%**, inside FACTIONS.md §5.2's
+150–200 of 500.
+
+### 4. THE WALL WAS ONE 4 m PANEL AND NO GATE COULD SAY SO (merged from a background agent)
+
+`density.py --shell` is the mirror of the machinery gate: it splits a room's shell into
+**deck / soffit / wall** and scores each on **two** numbers — λ, and the **area-weighted median
+unbroken run of surface** (`facet p50`) — both floored by the corridor kit built and measured on
+every run.
+
+**λ alone cannot say it, and that is the finding.** `articulate` ran a skirt, dado, rail, cornice,
+six mullions a bay and four conduits round every wall — continuous elements, enormous line,
+negligible area — carrying the wall to **×1.51 of the corridor's λ** while the field between them
+stayed one 4 m rectangle. The *trim* hid the *field*.
+
+| | wall facet p50 | deck facet p50 |
+|---|---|---|
+| before | 3.94 – 9.51 m | 5.26 – 12.80 m |
+| after, all 78 | **0.83 – 1.21 m** | **0.53 – 0.85 m** |
+| corridor as built | 0.99 m | 0.57 m |
+
+**77/78 locations, 233/234 surfaces.** `density.py`'s old whole-station gate went **122/128 →
+122/128** and an A/B moved no location by more than 0.5% of its bar — the gate that has been green
+throughout is blind to this change, which is exactly why the new one exists. Three defects the
+single panel box was hiding: the mullions were **buried** (0.035 inside a 0.045 panel), the deck had
+the construction **inverted**, and the **end walls were never panelled at all** — and the end wall is
+the one you walk in facing. INV-210. Craft **2 → 3**, honestly not 4: every plate still carries one
+flat value, which is craft 3's own wording.
+
+Cost: 1,206,552 → **1,607,208** triangles over the 78 rooms (+33%).
+
+### 5. Gates, after the merge and the security work
+
+`bespoke` 149/149 · `deck --selftest` 32/32 · `rooms` 755/755 · `test_materials_layer3` 34/34 ·
+`interior_kit` OK · `density --shell` 77/78 · `populace` 67/67 · `resident` 44/44 · `costume` 90/90 ·
+`security` 43/43.
+
+### 6. WHAT IS STILL WRONG, MEASURED THIS SESSION
+
+**`--gate-frames` is 13 pass / 10 fail / 0 unverifiable, and the frames are NOT stale** — every one
+was re-rendered in `54534d7`. Six fail `p5` (shadows too bright), one the other way, three on
+`crushed`. Measured here before handing it to an agent:
+
+* **`glow_bloom` is INERT and is not the cause.** A/B on four rooms, 0.05 vs 0.0: p5 moved ≤5% and
+  **twice in the wrong direction**. The obvious hypothesis is dead; recorded so nobody re-runs it.
+* **A room is lit by a flat ambient, not by its fittings.** On `council_chamber`,
+  `--fixture-energy 3.0 → 0` moves the median 0.129 → 0.091 (the fittings supply **29%**);
+  `--ambient 2.951 → 0` moves it 0.129 → 0.040. A flat ambient gives every surface the same
+  irradiance whichever way it faces, so **nothing in the room is in shadow**.
+* **The rooms have almost no light fittings.** Counted from the exporter's own line:
+  `brig` 4, `medlab_one` 4, `cargo_bays` 4, `transfer_systems` 4, `fabrication` 6 (28,472 tri),
+  `mess_hall` 8 (25,236 tri) … against the assembled corridor deck's **850**. Independently,
+  `docs/reference-values.md` §6.4 says our fittings are 3.6–5× too dim and the show's ceiling strip
+  is 7.72× its wall where ours is 1.46×. **Two routes to the same conclusion.**
+* **It does not generalise room to room.** The same 2-D grid on `cnc` behaves oppositely — raising
+  the ambient *lowers* the median, because pixels recruited from below the floor arrive at the
+  bottom of the measurable set. That is the non-invertible-median pathology `export_scene` already
+  documents.
 
 ## Session 3z (last) — FOUR THINGS THE STATION COULD NOT DO, AND NOW CAN
 
