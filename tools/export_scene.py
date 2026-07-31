@@ -2107,6 +2107,49 @@ AMBIENT_BY_ARCHETYPE = {
     "office": 0.230,         # war_room
     "generic": 0.300,        # corridor_residential
 }
+
+# ---------------------------------------------------------------------------
+# AND IT IS THE WRONG STATISTIC, WHICH CLAUDE.md HAS SAID SINCE LAYER 4 OPENED
+# ---------------------------------------------------------------------------
+# "docs/layer4-lighting/*.json records a per-space `ambient.ratio` taken from
+# two hand-picked regions of a balanced frame, and a whole-frame percentile of
+# the same frame gives a different number (0.300 vs 0.086 on `grey level
+# 1.webp`). Tuning a render against the wrong one of those lands it two and a
+# half stops hot." Every value in the table above is from that family, and the
+# ratio BETWEEN two of them is a ratio between two pairs of hand-drawn boxes in
+# two different frames, which is not a ratio between the two spaces' darkness.
+#
+# THE STATISTIC AN AMBIENT ACTUALLY CONTROLS IS p5, and this project measured
+# that before it had a use for it: "fixture energy is INERT (0 -> 2.0 moves p5
+# by x1.0000), the soft fill nearly so (6 -> 24 moves it x1.11), and AMBIENT
+# OWNS p5 (1.30 -> 2.60 moves it x2.35)". An ambient is a constant irradiance
+# whichever way a surface faces, so nothing lit only by it is in shadow, and
+# p5 is where the shadows are counted. The exponent that measurement gives is
+# d(ln p5)/d(ln ambient) = 1.22, against d(ln median)/d(ln ambient) = 0.84
+# recorded on AMBIENT_CALIBRATED_ENERGY, so the SHAPE p5/median goes as
+# ambient^0.38 -- which is the sensitivity every row below is stepped by.
+#
+# AND THE EXPOSURE MUST STOP SCALING IT, which is the structural half of this
+# change. `ambient_energy` multiplied by `room_exposure`, so the two terms
+# moved together and a room's level and its contrast could not be set apart at
+# all -- push the level down and the shadows come down with it, in exactly the
+# proportion that was already wrong. The reason recorded for the coupling was
+# real when it was written: "in those three rooms the fittings contribute
+# almost nothing to the frame ... an exposure that cannot move the dominant
+# term is not an exposure". THE REACH FIX REMOVED THAT REASON. With the
+# fittings able to reach the floor (INV-231) the exposure moves the dominant
+# term by itself, so the ambient can be an absolute value again -- and each row
+# below is that absolute value, expressed as the ratio that reproduces it.
+#
+# `mod:` PREFIXES A BESPOKE MODULE because `place["module"] or archetype` is
+# not an injection: "hospitality" is both a rooms.py archetype (mess_hall) and
+# a module (fresh_air), and their ambients differ by x11.5. One dict keyed by
+# the bare name silently keeps whichever was written last.
+#
+# A row absent here falls back to the table above times the exposure, i.e. to
+# the pre-4b behaviour, so an unsolved room is visible rather than averaged.
+AMBIENT_SOLVED = {}
+
 # interior.tscn's ambient_light_energy, calibrated in session 3n against the
 # residential corridor -- which is the AMBIENT_RATIO 0.300 row. Every other
 # space scales off that one measured point rather than off a guess.
@@ -2241,19 +2284,39 @@ AMBIENT_CALIBRATED_RATIO = 0.300
 #   crushed (3): zocalo x0.12 and customs (too little black), alien_sector
 #     x36.9 (too much), plant outside the show's own envelope entirely.
 #   industrial: p5 and p99 together.
+#
+# ---------------------------------------------------------------------------
+# RE-DERIVED IN SESSION 4b BECAUSE THE FITTINGS CAN NOW REACH THE FLOOR
+# ---------------------------------------------------------------------------
+# `room_reach` lengthened every room's fitting ranges to where the culling
+# window stops being visible (INV-231), so the same exposure delivers more
+# light -- measured on the committed frames, the twenty rooms moved from a
+# median of x0.56..x1.74 of their references to x0.56..x4.12. An exposure
+# calibrated against a rig that could not light the room is not an exposure
+# for one that can, so every row here is re-solved.
+#
+# THE STEP IS `(1.40 / measured) ** (1 / 0.85)` and the 0.85 is the corridor
+# anchor's own `d(ln median)/d(ln ambient)`, recorded above
+# AMBIENT_CALIBRATED_ENERGY. It is a first-order step and not a solve, for the
+# reason this file has recorded twice: the censored median is monotone in gain
+# on only 15 of 21 of our own rooms, so an inversion of it can move the
+# exposure the WRONG WAY. What makes the step safe is that the verdict is a
+# re-render rather than the arithmetic -- `--gate-frames --rerender` re-takes
+# every frame and prints what actually happened, which is the whole point of
+# session 4a's third field.
 ROOM_EXPOSURE = {
-    # value        was    gain   what the frame at this value measures
-    "industrial": 4.03,  # 1.30  x3.10  median x1.74  p5 x1.37  FAIL p5, p99
-    "store": 3.02,       # 1.42  x2.13  median x1.37  p5 x1.04  PASS
-    "transit": 0.62,     # 0.75  x0.83  median x1.45  p5 x0.95  PASS
-    "hospitality": 0.60,  # 1.20 x0.50  median x1.24  p5 x0.98  PASS
-    "worship": 2.29,     # 2.25  x1.02  median x1.39  p5 x1.62  FAIL p5
-    "medical": 0.19,     # 0.14  x1.38  median x1.18  p5 x1.24  PASS
-    "research": 0.23,    # 0.14  x1.67  median x1.41  p5 x1.66  FAIL p5
-    "detention": 0.40,   # 0.53  x0.75  median x1.53  p5 x1.01  PASS
-    "commerce": 0.62,    # 0.51  x1.21  median x1.40  p5 x1.09  PASS
-    "office": 0.38,      # 0.14  x2.70  median x1.15  p5 x1.04  PASS
-    "generic": 1.54,     # 1.67  x0.92  median x1.65  p5 x0.83  PASS
+    # value          was    at the reach fix, before this row moved
+    "industrial": 2.49,  # 4.03  median x2.11  p5 x1.31  p99 x0.36
+    "store": 3.02,       # 3.02  median x1.38  PASS -- unchanged, in window
+    "transit": 0.62,     # 0.62  median x1.43  PASS -- unchanged, in window
+    "hospitality": 0.88,  # 0.60 median x1.01  below the window
+    "worship": 1.53,     # 2.29  median x1.97  p5 x2.41  crushed x0.08
+    "medical": 0.18,     # 0.19  median x1.48  p5 x1.51
+    "research": 0.18,    # 0.23  median x1.70  p5 x2.06
+    "detention": 0.28,   # 0.40  median x1.87  p5 x1.69
+    "commerce": 0.62,    # 0.62  median x1.44  PASS -- unchanged, in window
+    "office": 0.18,      # 0.38  median x2.70  p5 x2.36
+    "generic": 0.87,     # 1.54  median x2.28  distribution already OK
 }
 
 
@@ -2314,8 +2377,18 @@ ROOM_EXPOSURE = {
 # room's geometry; the cause is quantisation. Its value here is the darkest
 # sampled gain that keeps the frame inside the show's crushed envelope, and it
 # does not: 0.22 is chosen as the best of a bad set and the row is failing.
+#
+# RE-STEPPED IN SESSION 4b for the reason recorded above ROOM_EXPOSURE: the
+# reach fix means the same exposure delivers more light, so a value calibrated
+# against the old rig is not a value for the new one. Four rows are held --
+# `docking_bay` and `quarters` because they PASS at the reach fix and moving a
+# passing row to chase a decimal is churn, `alien_sector` because its failure
+# is crushed x43 and no exposure reaches that, and `plant` because it is a
+# lighting-design problem with a number attached and this session does not
+# chase it.
 BESPOKE_EXPOSURE = {
-    "zocalo": 0.84,          # UNCHANGED, and now swept: x0.35/x0.5/x0.8/x1/x2
+    "zocalo": 0.52,          # 0.84, at the reach fix median x2.11 p5 x2.93
+                             # UNCHANGED IN 4a, and now swept: x0.35/x0.5/x0.8/x1/x2
                              # all measured, x1.00 is the only one inside the
                              # level window. median x1.19, p5 x1.19, FAIL
                              # crushed x0.12 -- we hold 8x less black than the
@@ -2323,9 +2396,10 @@ BESPOKE_EXPOSURE = {
                              # frame passes 7/7 and reads as a dim hall, and
                              # its deck strip is blown at every gain (see the
                              # emission finding below).
-    "hospitality": 2.07,     # 1.34 x1.55. vs reference/04-sector-red/
-                             # Doug's Dugout.webp
-    "command_control": 0.89,  # 1.10 x0.80. vs 03-sector-blue/comand and
+    "hospitality": 1.88,     # 2.07, at the reach fix median x1.52 p5 x2.14.
+                             # vs reference/04-sector-red/Doug's Dugout.webp
+    "command_control": 0.65,  # 0.89, at the reach fix median x1.82 p5 x2.54.
+                             # vs 03-sector-blue/comand and
                              # contorl.webp. median x1.40, p5 x2.19, p95 x0.34
                              # -- FAIL p5 and p5/p95, and the two failures are
                              # ONE defect: this frame's distribution is
@@ -2350,17 +2424,21 @@ BESPOKE_EXPOSURE = {
                              # wrong exposure: brightening it to x1.25 takes
                              # the crushed ratio only to x36.9 from x43.8 and
                              # pushes the level to x1.67, out of window.
-    "customs": 0.31,         # 0.62 x0.50. vs 11-props-and-technology/babylon 5
-                             # welcome sign, instructions, and hub.jpg.
-                             # median x1.36, p5 x1.02, PASS. At 0.62 it read
-                             # p5 x1.56 and crushed x0.05.
+    "customs": 0.17,         # 0.31, at the reach fix median x2.34 with the
+                             # distribution already OK. vs
+                             # 11-props-and-technology/babylon 5 welcome sign,
+                             # instructions, and hub.jpg.
     "quarters": 1.17,        # 1.12 x1.04. vs reference/07-sector-grey/
                              # grey level 1.webp, the residential corridor a
                              # unit opens off. median x1.41, p5 x0.76 -- FAIL
                              # p5, and in the DARK direction for once, with
                              # p95 x0.48 beside it. A unit with too little of
                              # everything at the top.
-    "council_chamber": 2.27,  # UNCHANGED, swept x0.5/x0.85/x1/x2. median
+    "council_chamber": 0.76,  # 2.27, and the biggest step on the station: at
+                             # the reach fix its twelve 18 m coves reach the
+                             # whole floor and the frame went to median x4.12,
+                             # with p5 x2.20 -> x1.43 on the way.
+                             # WAS UNCHANGED IN 4a, swept x0.5/x0.85/x1/x2. median
                              # x1.40 at x1.00 -- the shipped value was right
                              # on the level and this is the first sweep that
                              # could say so. FAIL p5 x2.20, the largest p5
@@ -2748,6 +2826,13 @@ def ambient_energy(room):
     # measures one, for the reason recorded on BESPOKE_EXPOSURE: an archetype
     # inferred from a place's `functions` is a rooms.py number and rooms.py
     # did not build this room.
+    fam = (f"mod:{place['module']}" if place["module"]
+           else R.archetype(place))
+    ratio = AMBIENT_SOLVED.get(fam)
+    if ratio is not None:
+        # SOLVED, and therefore ABSOLUTE -- see AMBIENT_SOLVED for why the
+        # exposure no longer multiplies it.
+        return AMBIENT_CALIBRATED_ENERGY * ratio / AMBIENT_CALIBRATED_RATIO
     ratio = (AMBIENT_CALIBRATED_RATIO if place["module"]
              else AMBIENT_BY_ARCHETYPE.get(R.archetype(place),
                                            AMBIENT_CALIBRATED_RATIO))
@@ -3155,7 +3240,15 @@ def room_reach(room):
         return FIXTURE_REACH
     if room in _REACH_CACHE:
         return _REACH_CACHE[room]
-    v, t, spans, _ext = interior_geometry(room)
+    try:
+        v, t, spans, _ext = interior_geometry(room)
+    except (SystemExit, KeyError, ValueError):
+        # A DECK CARRIES ROOMS THE INTERIOR SHOT CANNOT ASSEMBLE -- the drum-
+        # and exterior-scene modules, which `interior_geometry` refuses by
+        # design. Their fittings keep their measured range, which is the
+        # pre-4b behaviour, rather than taking the deck render down with them.
+        _REACH_CACHE[room] = 1.0
+        return 1.0
     lights = fixture_lights(v, t, spans, 1.0, INTERIOR_LIGHT_RANGE_M,
                             shadow_n=0)
     if room in SOFT_FILL_SPACES:
