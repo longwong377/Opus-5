@@ -282,7 +282,7 @@ DRAW["break_even_batch"] = int(DRAW["gpu_tri_per_s"] * DRAW["per_draw_us"] / 1e6
 #     station's allowance, for one deck.
 COLLISION = {
     "bytes_per_tri": 200,
-    "ram_bytes": 16 * 1024**3,
+    "ram_bytes": 16_000_000_000,
     "ram_share": 0.01,
     "tessellation_ratio": 1.0,
 }
@@ -308,8 +308,11 @@ def check(name, value, limit, unit="", note="", when=""):
     results.append(ok)
     if not ok:
         FAILED.append(name)
-    pct = value / limit * 100 if limit else float("inf")
-    bar = "#" * int(pct / 5) + "." * (20 - int(min(pct, 100) / 5))
+    # A limit of zero is a legitimate bound -- "this must not drift at all" --
+    # and it used to divide by zero here, which made the one gate that can only
+    # ever be exact the one gate that could not print.
+    pct = (value / limit * 100) if limit else (0.0 if value <= 0 else 1000.0)
+    bar = "#" * min(66, int(pct / 5)) + "." * (20 - int(min(pct, 100) / 5))
     # Densities are fractions per square metre; rounding them to integers
     # printed "0 / 0" for a gate that was doing real work.
     fmt = ",.3f" if (limit < 10 and unit != "%") else ",.0f"
@@ -321,7 +324,483 @@ def check(name, value, limit, unit="", note="", when=""):
     return ok
 
 
-def main():
+# ---------------------------------------------------------------------------
+# The standing frame, measured
+# ---------------------------------------------------------------------------
+
+def shipped_camera():
+    """The camera `godot/scripts/player.gd` actually creates, read off the file.
+
+    NOT COPIED INTO A CONSTANT. A budget measured at one field of view while the
+    build ships another understates by whatever the difference is, and the only
+    way that cannot drift is to read the shipped value. `player.gd` sets `near`
+    and `far` explicitly and sets no `fov`, so the fov is Godot 4's Camera3D
+    default of 75 degrees -- vertical, because `keep_aspect` defaults to
+    KEEP_HEIGHT. That is WIDER than this file budgets for and it is reported.
+    """
+    path = os.path.join(ROOT, "godot/scripts/player.gd")
+    out = {"fov_deg": 75.0, "fov_src": "Godot 4 Camera3D default (player.gd "
+                                       "sets no fov)",
+           "near_m": None, "far_m": None, "eye_m": None, "file": path}
+    try:
+        src = open(path).read()
+    except OSError as exc:                                    # noqa: BLE001
+        out["fov_src"] = f"could not read player.gd: {exc}"
+        return out
+    for key, pat in (("fov_deg", r"_cam\.fov\s*=\s*([0-9.]+)"),
+                     ("near_m", r"_cam\.near\s*=\s*([0-9.]+)"),
+                     ("far_m", r"_cam\.far\s*=\s*([0-9.]+)"),
+                     ("eye_m", r"eye_height_m\s*:\s*float\s*=\s*([0-9.]+)")):
+        m = re.search(pat, src)
+        if m:
+            out[key] = float(m.group(1))
+            if key == "fov_deg":
+                out["fov_src"] = "player.gd"
+    return out
+
+
+def _frustum(eye, fwd, up, fov_v_deg, aspect, near, far):
+    """The six inward-facing planes of a perspective frustum.
+
+    Camera space is x right, y up, z forward. A point is inside when
+    |x| <= th*z, |y| <= tv*z and near <= z <= far, which is six half-spaces.
+    """
+    import numpy as np                                        # noqa: PLC0415
+    f = np.asarray(fwd, float); f = f / np.linalg.norm(f)
+    u = np.asarray(up, float); u = u - f * float(u @ f); u = u / np.linalg.norm(u)
+    r = np.cross(u, f)
+    tv = math.tan(math.radians(fov_v_deg) / 2.0)
+    th = tv * aspect
+    e = np.asarray(eye, float)
+    out = []
+    for n, off in ((f, -near), (-f, far), (r + th * f, 0.0), (-r + th * f, 0.0),
+                   (u + tv * f, 0.0), (-u + tv * f, 0.0)):
+        n = np.asarray(n, float)
+        n = n / np.linalg.norm(n)
+        out.append((n, -float(n @ e) + off))
+    return out
+
+
+class Frustum:
+    """Counts triangles of one mesh inside a frustum, over many cameras.
+
+    TWO TESTS, AND THE DIFFERENCE BETWEEN THEM IS REPORTED rather than assumed:
+
+      sphere   conservative -- a triangle survives if its bounding sphere is
+               inside every plane. Never rejects a visible triangle, may keep an
+               invisible one. Cheap enough to sweep a thousand cameras.
+      exact    a triangle survives if, for every plane, at least one of its
+               three vertices is inside. This is the standard conservative
+               triangle-frustum test and it is what the renderer effectively
+               submits.
+
+    The sweep runs `sphere` and the winner is re-counted `exact`. Measured on
+    the assembled deck the two differ by 0.2%, which is printed.
+
+    NO OCCLUSION IS APPLIED, AND THAT IS NOT AN APPROXIMATION -- it is what
+    ships. `godot/` contains no `OccluderInstance3D` and no
+    `use_occlusion_culling`, and `walk.gd` loads one `.glb` whole. Everything
+    inside the frustum is submitted, vertex-shaded and rasterised whether a wall
+    is in front of it or not. On a ring corridor that matters: the far side of
+    the ring is inside the frustum from most standing positions.
+    """
+
+    def __init__(self, verts, tris, groups):
+        import numpy as np                                    # noqa: PLC0415
+        self.np = np
+        V = np.asarray(verts, float)
+        T = np.asarray(tris, np.int32)
+        self.V, self.T = V, T
+        P = V[T]
+        C = P.mean(axis=1)
+        self.cx = np.ascontiguousarray(C[:, 0])
+        self.cy = np.ascontiguousarray(C[:, 1])
+        self.cz = np.ascontiguousarray(C[:, 2])
+        self.rad = np.linalg.norm(P - C[:, None, :], axis=2).max(axis=1)
+        self._buf = np.empty(len(T))
+        self._m = np.empty(len(T), bool)
+        # Group ownership, LAST SPAN WINS -- `deck.write_obj` resolves
+        # overlapping spans the same way, and `export_gltf.load_obj_groups`
+        # then merges by name, so distinct owning names IS the draw-call count.
+        # The spans are not a partition: on blue/0/0 they cover 882,134
+        # triangle-slots over 597,418 triangles (`wall_assembly` wraps
+        # `wall_panel`, `wall_reveal` and the mullions) and leave 1,248
+        # uncovered, which the exporter emits as `deck_untagged`.
+        self.names = []
+        idx = {}
+        gid = np.full(len(T), -1, np.int32)
+        for n, a, b in groups:
+            if n not in idx:
+                idx[n] = len(self.names)
+                self.names.append(n)
+            gid[a:b] = idx[n]
+        self.gid = gid
+        self.untagged = int((gid < 0).sum())
+
+    def sphere(self, planes):
+        np = self.np
+        keep = None
+        for n, d in planes:
+            np.multiply(self.cx, n[0], out=self._buf)
+            self._buf += self.cy * n[1]
+            self._buf += self.cz * n[2]
+            self._buf += d + 0.0
+            self._buf += self.rad
+            np.greater_equal(self._buf, 0.0, out=self._m)
+            keep = self._m.copy() if keep is None else (keep & self._m)
+        return keep
+
+    def exact(self, planes):
+        np = self.np
+        keep = np.ones(len(self.T), bool)
+        for n, d in planes:
+            keep &= ((self.V @ n + d)[self.T] >= 0.0).any(axis=1)
+        return keep
+
+    def draws(self, mask):
+        """Draw calls for a selection: distinct group names owning a triangle."""
+        return len(set(self.gid[mask].tolist()))
+
+
+def deck_camera(meta, angle_deg, heading_deg, pitch_deg=0.0, eye_m=1.70):
+    """A standing eye on a ring deck, and where it is looking.
+
+    UP IS INWARD. On a spun ring the floor is the inside of a barrel, so a
+    body's up is the direction of the axis -- the same sign `player.gd`'s
+    `gravity_dir()` uses and the same one `interior.drum_interior` guards. Eye
+    height is measured from the COLLISION floor radius, because that is the
+    surface a body actually rests on. The shipped spawn is 50 mm proud of it
+    (`collision.stand_at`), so a shipped eye is 1.75 m rather than 1.70 m above
+    the floor; at these distances that is under a tenth of a percent of the
+    count and it is not worth a second lattice.
+    """
+    import numpy as np                                        # noqa: PLC0415
+    a = math.radians(angle_deg)
+    rad = meta["floor_r_m"] - eye_m
+    eye = np.array([rad * math.cos(a), rad * math.sin(a), meta["z_m"]])
+    up = np.array([-math.cos(a), -math.sin(a), 0.0])
+    tang = np.array([-math.sin(a), math.cos(a), 0.0])
+    axial = np.array([0.0, 0.0, 1.0])
+    h, p = math.radians(heading_deg), math.radians(pitch_deg)
+    fwd = ((tang * math.cos(h) + axial * math.sin(h)) * math.cos(p)
+           + up * math.sin(p))
+    return eye, fwd, up
+
+
+def klass_of(name):
+    """structure / fixtures / props / people, from the group name.
+
+    The 60,000 bound has always said "structure only -- props, NPCs and signage
+    come out of the rest", and nothing ever measured either half. These are the
+    prefixes the generators emit: `dressing.py` writes `dress_*`, `rooms.py`
+    writes `prop_*` and `fix_*`, `populace.py` writes `npc_*`. `deck.build_deck`
+    prefixes a room's groups with `<key>__`, so the tail is what identifies it.
+    Light fittings count as structure because `corridor_section` builds them and
+    the 60,000 figure was derived from that same section.
+    """
+    tail = (name or "untagged").split("__", 1)[-1]
+    if tail.startswith(("dress_", "prop_")):
+        return "props"
+    if tail.startswith("npc_"):
+        return "people"
+    if tail.startswith("fix_"):
+        return "fixtures"
+    return "structure"
+
+
+def deck_section(args):
+    """The interior gate: an assembled deck, from a standing eye.
+
+    Returns a dict of the measurements, so `--prove` can re-run the bounds
+    against a regression without rebuilding.
+    """
+    import numpy as np                                        # noqa: PLC0415
+    sys.path.insert(0, os.path.join(ROOT, "station"))
+    import collision as C                                     # noqa: PLC0415
+    import deck as D                                          # noqa: PLC0415
+    import interior as it                                     # noqa: PLC0415
+
+    sec, ring, dk = DECK["sector"], DECK["ring"], DECK["deck"]
+    t0 = time.time()
+    schema, profile = it.load()
+    verts, tris, groups, stats = D.build_deck(schema, profile, sec, ring, dk)
+    meta = stats["collision_meta"]
+    build_s = time.time() - t0
+
+    fr = Frustum(verts, tris, groups)
+    kls = np.array([klass_of(n) for n in fr.names] + ["structure"])
+    KL = kls[np.where(fr.gid >= 0, fr.gid, len(fr.names))]
+    resident = {k: int((KL == k).sum())
+                for k in ("structure", "fixtures", "props", "people")}
+
+    lo, arc = meta["start_deg"], meta["arc_deg"]
+    fov, asp = DECK["fov_v_deg"], DECK["aspect"]
+    near, far, eye_m = DECK["near_m"], DECK["far_m"], DECK["eye_m"]
+
+    def planes_at(a, h, p=0.0, f=None):
+        return _frustum(*deck_camera(meta, a, h, p, eye_m), f or fov,
+                        asp, near, far)
+
+    # ONE PASS, THREE ANSWERS. The worst pose for everything and the worst pose
+    # for structure alone are not the same pose -- a view down the arc into two
+    # dressed rooms beats one along bare corridor -- so both are tracked. The
+    # half-resolution lattice is the SAME sweep sampled every other station and
+    # heading, which makes the sampling-error figure free and exact rather than
+    # a second run.
+    n_st, n_hd = DECK["stations"], DECK["headings"]
+    is_struct = (KL == "structure")
+    t1 = time.time()
+    all_best = st_best = half = None
+    for i in range(n_st):
+        a = lo + arc * i / n_st
+        for j in range(n_hd):
+            h = 360.0 * j / n_hd
+            k = fr.sphere(planes_at(a, h))
+            v = int(k.sum())
+            vs = int((k & is_struct).sum())
+            if all_best is None or v > all_best[0]:
+                all_best = (v, a, h)
+            if st_best is None or vs > st_best[0]:
+                st_best = (vs, a, h)
+            if not (i % 2 or j % 2) and (half is None or v > half[0]):
+                half = (v, a, h)
+    sweep_s = time.time() - t1
+
+    k_all = fr.exact(planes_at(all_best[1], all_best[2]))
+    k_st = fr.exact(planes_at(st_best[1], st_best[2]))
+    n_all = int(k_all.sum())
+    n_struct = int((KL[k_st] == "structure").sum())
+    seen = {k: int((KL[k_all] == k).sum())
+            for k in ("structure", "fixtures", "props", "people")}
+    draws_frustum = fr.draws(k_all)
+    draws_resident = len(set(fr.gid.tolist()))
+
+    cam = shipped_camera()
+
+    print("\nThe standing frame -- one ASSEMBLED deck, not the kit in isolation\n")
+    print(f"  subject   {sec}/{ring}/{dk}: {stats['rooms']} rooms over "
+          f"{arc:.0f} deg at r = {meta['radius_m']:.2f} m, "
+          f"{len(tris):,} triangles, {draws_resident} groups, built in "
+          f"{build_s:.0f} s")
+    print(f"  camera    eye {eye_m:.2f} m above the collision floor, "
+          f"{fov:.0f} deg vertical / "
+          f"{2*math.degrees(math.atan(math.tan(math.radians(fov)/2)*asp)):.1f}"
+          f" deg horizontal at {asp:.3f}, near {near}, far {far:.0f}")
+    print(f"  sweep     {DECK['stations']} stations x {DECK['headings']} "
+          f"headings = {DECK['stations']*DECK['headings']:,} poses in "
+          f"{sweep_s:.0f} s; worst total at {all_best[1]:.1f} deg heading "
+          f"{all_best[2]:.0f}, worst structure at {st_best[1]:.1f} deg "
+          f"heading {st_best[2]:.0f}")
+    print(f"  sampling  half-resolution lattice finds {half[0]:,} against "
+          f"{all_best[0]:,} -- {abs(half[0]-all_best[0])/all_best[0]*100:.1f}% "
+          f"lattice error; sphere test over-accepts "
+          f"{(all_best[0]-n_all)/max(n_all,1)*100:.2f}% against exact")
+    print(f"  resident  structure {resident['structure']:,}  props "
+          f"{resident['props']:,}  people {resident['people']:,}  fixtures "
+          f"{resident['fixtures']:,}  ({fr.untagged:,} triangles carry no "
+          f"group and export as `deck_untagged`)\n")
+
+    check("frustum structure", n_struct, INTERIOR["visible_set_tris"], " tri",
+          f"was 30,941 from the kit in isolation",
+          when=f"{n_struct - INTERIOR['visible_set_tris']:,} tri, "
+               f"{n_struct/INTERIOR['visible_set_tris']:.2f}x. The synthetic "
+               f"estimate this replaces read 51.6% of the same allowance")
+    check("structure share of frame", n_struct / FRAME_TRIANGLES * 100,
+          INTERIOR_FRAME_SHARE * 100, "%",
+          "structure only, on the assembled deck",
+          when=f"{n_struct/FRAME_TRIANGLES*100 - INTERIOR_FRAME_SHARE*100:.1f} "
+               f"points of a 1.2 M frame")
+    hdr = DECK["visible_all_tris"] / max(n_all, 1)
+    prop_x = ((DECK["visible_all_tris"] - n_all + seen["props"])
+              / max(seen["props"], 1))
+    check("frustum, everything", n_all, DECK["visible_all_tris"], " tri",
+          f"structure {seen['structure']:,} + props {seen['props']:,} + people "
+          f"{seen['people']:,} + fixtures {seen['fixtures']:,}",
+          when=f"{hdr:.2f}x today's content in view; props are "
+               f"{seen['props']/max(n_all,1)*100:.0f}% of the frame, so at "
+               f"today's structure it goes red at {prop_x:.1f}x the prop "
+               f"density -- 19.1 primitives/m2 today (docs/judge-3w.md)"
+               if n_all <= DECK["visible_all_tris"] else
+               f"{n_all - DECK['visible_all_tris']:,} tri")
+    check("frustum draw calls", draws_frustum, DRAW["max_per_frame"], "",
+          f"{n_all/max(draws_frustum,1):,.0f} tri a draw against a "
+          f"{DRAW['break_even_batch']:,} break-even batch",
+          when=f"{DRAW['max_per_frame']/max(draws_frustum,1):.1f}x today's "
+               f"group count in view"
+               if draws_frustum <= DRAW["max_per_frame"] else
+               f"{draws_frustum - DRAW['max_per_frame']} draws")
+    ext_draws = args.get("exterior_draws", 0)
+    check("draw calls, whole frame", draws_resident + ext_draws,
+          DRAW["max_per_frame"], "",
+          f"{draws_resident} interior resident + {ext_draws} exterior; "
+          f"culling takes the interior to {draws_frustum}",
+          when=f"{DRAW['max_per_frame']/(draws_resident+ext_draws):.1f}x, ie "
+               f"{DRAW['max_per_frame']//max(draws_resident,1)} decks resident "
+               f"at once"
+               if draws_resident + ext_draws <= DRAW["max_per_frame"] else
+               f"{draws_resident + ext_draws - DRAW['max_per_frame']} draws")
+    check("resident triangles", len(tris), CELLS["resident_tris"], " tri",
+          "walk.gd loads one .glb whole -- there is no streaming and no LOD",
+          when=f"{len(tris) - CELLS['resident_tris']:,} tri, "
+               f"{len(tris)/CELLS['resident_tris']:.2f}x this file's own "
+               f"three-cell resident budget")
+
+    # PITCH IS NOT GATED AND THE REASON IS WORTH STATING. The sweep is at level
+    # gaze, which is the pose eye height is defined for and the pose
+    # `docs/judge-3w.md` measured, so the two numbers are comparable. But a ring
+    # corridor with no occlusion culling puts THE FAR SIDE OF THE RING in the
+    # frustum the moment a player tilts their head up, and the cost of that is a
+    # property of the missing culling rather than of the content. Gating on it
+    # would make a content budget fail for a systems reason. It is printed
+    # instead, in full, because the worst of these is what actually has to hold
+    # 60 fps.
+    worst_pitch = (0, n_all)
+    print("\n  what looking up costs, from the worst standing position "
+          "(godot/ contains no occluders):")
+    for p in (-30, -15, 0, 15, 30, 45, 60, 90):
+        n = int(fr.exact(planes_at(all_best[1], all_best[2], p)).sum())
+        if n > worst_pitch[1]:
+            worst_pitch = (p, n)
+        print(f"     pitch {p:+3d} deg  {n:>9,} tri"
+              + ("   <- the gated pose" if p == 0 else "")
+              + ("   OVER the allowance" if n > DECK["visible_all_tris"] else ""))
+    print(f"     worst {worst_pitch[0]:+d} deg at {worst_pitch[1]:,} tri -- "
+          f"{worst_pitch[1]/max(n_all,1):.2f}x the gated pose, "
+          f"{worst_pitch[1]/DECK['visible_all_tris']*100:.0f}% of the "
+          f"allowance. What closes this is an occluder on the corridor's own "
+          f"walls, not fewer props.")
+    n_ship = int(fr.exact(planes_at(all_best[1], all_best[2], 0.0,
+                                    cam["fov_deg"])).sum())
+    check("shipped camera not wider", cam["fov_deg"], DECK["fov_v_deg"], " deg",
+          f"{cam['fov_src']}; at that fov the same pose renders {n_ship:,} tri, "
+          f"{n_ship - n_all:+,} against the budgeted camera",
+          when=f"any fov above {DECK['fov_v_deg']:.0f} deg vertical"
+               if cam["fov_deg"] <= DECK["fov_v_deg"] else
+               f"{cam['fov_deg'] - DECK['fov_v_deg']:.0f} deg -- set "
+               f"`_cam.fov = {DECK['fov_v_deg']:.1f}` in player.gd, or move "
+               f"DECK['fov_v_deg'] to {cam['fov_deg']:.0f} and re-measure")
+
+    # --- collision -----------------------------------------------------------
+    t2 = time.time()
+    _cv, ct, _cm = D.build_collision(schema, profile, sec, ring, dk, props=True)
+    _sv, st, sm = C.corridor_shell(schema, profile, sec, ring, degrees=arc,
+                                   start_deg=lo, radius_m=meta["radius_m"],
+                                   z_offset=meta["z_m"],
+                                   doors=meta.get("doors", ()))
+    r = meta["radius_m"]
+
+    def steps_for(tol):
+        dt = 2.0 * math.acos(max(-1.0, 1.0 - tol / max(r, 1e-9)))
+        return max(4, int(math.ceil(math.radians(arc) / dt)))
+
+    steps_now = sm["steps"]
+    steps_allowed = steps_for(C.STEP_TOLERANCE_M)
+    ratio = steps_now / steps_allowed
+    arc_len = math.radians(arc) * r
+    area = arc_len * meta["half_w_m"] * 2.0
+
+    print("\nCollision -- the mesh a body stands on, which is not the one it "
+          "looks at\n")
+    print(f"  deck      {len(ct):,} triangles ({len(st):,} corridor shell + "
+          f"{len(ct)-len(st):,} rooms, vestibules, door panels and prop boxes) "
+          f"for {arc_len:,.0f} m of walkable arc, {area:,.0f} m2 of floor, in "
+          f"{time.time()-t2:.0f} s")
+    print(f"  tolerance MAX_SAG_M = {C.MAX_SAG_M*1000:.0f} mm sizes the shell's "
+          f"angular step; STEP_TOLERANCE_M = {C.STEP_TOLERANCE_M*1000:.0f} mm "
+          f"is what `floor_steps` certifies a floor against")
+    check("corridor shell tessellation", ratio,
+          COLLISION["tessellation_ratio"], "x",
+          f"{steps_now} steps built, {steps_allowed} needed at "
+          f"{C.STEP_TOLERANCE_M*1000:.0f} mm -- sag scales as the square of the "
+          f"step",
+          when=f"{len(st) - int(len(st)*steps_allowed/steps_now):,} triangles a "
+               f"deck bought at a tolerance 5x finer than the one the walk gate "
+               f"asserts. Fix: collision.MAX_SAG_M = "
+               f"{C.STEP_TOLERANCE_M}" if ratio > 1.0 else
+               "any step finer than the certified floor tolerance")
+
+    drum = drum_collision()
+    if drum:
+        check("drum tile stride", drum["stride_built"], drum["stride_needed"],
+              "x", f"tile of {drum['patches']} patches, {drum['tile_tris']:,} "
+                   f"tri, {drum['tile_tris']/drum['area']:.4f} tri/m2 -- the "
+                   f"next stride up errs {drum['next_err']:.3f} m against a "
+                   f"{drum['step_m']:.2f} m step, so stride "
+                   f"{drum['stride_needed']} is the coarsest that fits",
+              when=f"any tile built finer than the stride "
+                   f"`collision_stride()` derives")
+        station = drum["drum_lod0"] + drum["ring_decks"]
+        check("station collision resident", station,
+              COLLISION["max_resident_tris"], " tri",
+              f"{drum['ring_decks']:,} ring decks + {drum['drum_lod0']:,} drum "
+              f"ground at lod0 = {station*COLLISION['bytes_per_tri']/1e6:.0f} MB "
+              f"at {COLLISION['bytes_per_tri']} B/tri",
+              when=f"{COLLISION['max_resident_tris']/max(station,1):.2f}x -- one "
+                   f"deck's RENDER mesh handed to the physics engine is "
+                   f"{len(tris):,} tri, "
+                   f"{len(tris)/COLLISION['max_resident_tris']*100:.0f}% of this "
+                   f"allowance on its own")
+        print(f"  NOT IN `deck.py --sweep`'s headline figure: the drum. The "
+              f"sweep prints {drum['ring_decks']:,} 'for the whole walkable "
+              f"station' and sums ring decks only -- the drum's ground is "
+              f"{drum['drum_lod0']:,} triangles at lod0, "
+              f"{drum['drum_lod0']/max(station,1)*100:.0f}% of the real total.")
+
+    return {
+        "frustum_all": n_all, "frustum_structure": n_struct,
+        "draws_frustum": draws_frustum, "draws_resident": draws_resident,
+        "resident": len(tris), "collision_deck": len(ct),
+        "shell_ratio": ratio, "drum": drum, "shell": len(st),
+        "corridor_render_tris": stats["corridor_tris"],
+    }
+
+
+def drum_collision():
+    """The drum's collision ground, which the ring-deck sweep does not count."""
+    try:
+        sys.path.insert(0, os.path.join(ROOT, "station"))
+        import drum_walk as DW                                # noqa: PLC0415
+        stride, ladder = DW.collision_stride()
+        rows = DW.places()
+        _v, t, _g, m = DW.build(key=rows[0]["key"])
+        pa, pz = DW.patch_span_m()
+        nxt = next((r for r in ladder if r["stride"] == stride * 2), None)
+        # `deck.py --sweep` prints this and it is ring decks only.
+        return {
+            "stride_built": m["stride"], "stride_needed": stride,
+            "patches": len(m["patches"]), "tile_tris": len(t),
+            "area": len(m["patches"]) * pa * pz,
+            "drum_lod0": m["drum_lod0_triangles"],
+            "next_err": nxt["error_m"] if nxt else float("nan"),
+            "step_m": DW.STEP_M,
+            "ring_decks": RING_DECK_COLLISION_TRIS,
+        }
+    except Exception as exc:                                  # noqa: BLE001
+        check("drum collision measurable", 1, 0, "", f"could not measure: {exc}")
+        return None
+
+
+# `python3 station/deck.py --sweep`, run at 9f13dbf. Sixty-six ring decks, and
+# building them all takes ~60 s, which is why it is not rebuilt on every budget
+# run -- `--station` does rebuild it and fails if this number has drifted.
+RING_DECK_COLLISION_TRIS = 75_642
+
+
+def main(argv=None):
+    ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    ap.add_argument("--no-deck", action="store_true",
+                    help="skip the assembled-deck frame (~40 s). It is the "
+                         "only gate here that measures what a player renders, "
+                         "so skipping it is a debugging convenience and not a "
+                         "shorter way to be green.")
+    ap.add_argument("--station", action="store_true",
+                    help="rebuild every ring deck's collision (~60 s) and fail "
+                         "if RING_DECK_COLLISION_TRIS has drifted")
+    ap.add_argument("--prove", action="store_true",
+                    help="feed each new bound the regression it exists to "
+                         "catch and require it to go red")
+    a = ap.parse_args(argv)
+
     if not os.path.exists(MANIFEST):
         print("no manifest -- run station/generate_hull.py first")
         return 1
@@ -356,57 +835,48 @@ def main():
     print(f"\nheadroom: {BUDGETS['exterior_triangles'] - tris:,} triangles, "
           f"{BUDGETS['exterior_draw_calls'] - draws} draw calls")
 
-    # --- interior -----------------------------------------------------------
+    # --- interior: the marginal rate, and then a real frame ------------------
+    per_m_straight = None
     try:
         sys.path.insert(0, os.path.join(ROOT, "station"))
         import interior_kit as ik
 
         # Marginal rate, not total: a corridor's fixed end caps would otherwise
         # make a short sample look far more expensive per metre than a long run.
+        # THE ONE KIT MEASUREMENT LEFT IN THIS FILE, and it survives because
+        # `interior.ring_arc` builds every walkable metre of the station from
+        # this exact call, so it is a property of shipped geometry rather than a
+        # proxy for one. The visible-set estimate that used to sit beside it is
+        # gone; see the frame measured on an assembled deck below.
         t1 = len(ik.corridor_section(1.0)[1])
         t20 = len(ik.corridor_section(20.0)[1])
         per_m = (t20 - t1) / 19.0
         per_m_straight = per_m
-        cross = len(ik.junction()[1])
-        tee = len(ik.junction(arms=(0, 1, 3))[1])
 
-        # The 50 m sight line was an assumption for as long as this gate has
-        # existed. It does not need to be: a ring corridor is occluded by its
-        # own curvature, and the distance is 2*sqrt(r_o^2 - r_i^2). Taking the
-        # WORST case over every ring in every sector gives 91.3 m at Grey's
-        # outermost ring -- 1.8x the assumed figure, so the gate was being
-        # measured against a view shorter than the station actually affords.
-        sight, where = INTERIOR["sight_line_m"], "assumed"
-        try:
-            import interior as it
-            schema, profile = it.load()
-            worst = max(
-                (it.sight_line(r["r_outer"], ik.PROVISIONAL["corridor_width_m"]),
-                 f"{sec} {r['id']}")
-                for sec in schema["sectors"]["extents_m"]
-                for r in it.ring_radii(schema, profile, sec)
-                if r["kind"] == "deck_stack")
-            sight, where = worst[0], f"worst case, {worst[1]}"
-        except Exception:
-            pass
-
-        visible = (per_m * sight
-                   + max(cross, tee) * INTERIOR["junctions_in_view"])
-
-        print("\nInterior, gated on what is visible at once rather than on total built\n")
+        print("\nInterior kit -- the marginal rate every walkable metre is "
+              "built at\n")
         check("corridor rate", per_m, INTERIOR["corridor_tris_per_m"], " tri/m",
-              "marginal along a run")
-        check("junction", max(cross, tee), INTERIOR["junction_tris"], " tri",
-              f"crossing {cross:,}, tee {tee:,}")
-        check("visible structure set", visible, INTERIOR["visible_set_tris"], " tri",
-              f"{sight:.0f} m sight line ({where}) + "
-              f"{INTERIOR['junctions_in_view']} crossings")
-        share = visible / FRAME_TRIANGLES
-        check("interior share of frame", share * 100,
-              INTERIOR_FRAME_SHARE * 100, "%",
-              "structure only -- props, NPCs and signage come out of the rest")
-    except Exception as exc:
+              "marginal along a run, interior_kit.corridor_section",
+              when=f"{INTERIOR['corridor_tris_per_m']/per_m:.2f}x today's "
+                   f"section: 1,270 m of arc x {per_m:.0f} tri/m is "
+                   f"{per_m*1270:,.0f} triangles of corridor a deck")
+    except Exception as exc:                                  # noqa: BLE001
         check("interior kit measurable", 1, 0, "", f"could not measure: {exc}")
+
+    # --- the standing frame on an assembled deck -----------------------------
+    deck_m = None
+    if a.no_deck:
+        print("\n--no-deck: the assembled-deck frame was NOT measured. Every "
+              "interior number\nbelow this line is about a part in isolation, "
+              "which is the defect this file had.")
+    else:
+        try:
+            deck_m = deck_section({"exterior_draws": draws})
+        except Exception as exc:                              # noqa: BLE001
+            import traceback
+            traceback.print_exc()
+            check("assembled deck measurable", 1, 0, "",
+                  f"could not measure: {exc}")
 
     # --- streaming cells ----------------------------------------------------
     try:
@@ -504,12 +974,91 @@ def main():
               f"The ground is a heightfield, not objects.")
     except Exception as exc:
         check("drum measurable", 1, 0, "", f"could not measure: {exc}")
+
+    # --- whole-station collision, opt-in because it costs a minute -----------
+    if a.station:
+        print("\nWhole-station collision, rebuilt\n")
+        import subprocess                                     # noqa: PLC0415
+        out = subprocess.run(
+            [sys.executable, os.path.join(ROOT, "station/deck.py"), "--sweep"],
+            capture_output=True, text=True, check=False).stdout
+        m = re.search(r"([\d,]+) collision triangles for the whole", out)
+        got = int(m.group(1).replace(",", "")) if m else -1
+        check("ring-deck collision total", abs(got - RING_DECK_COLLISION_TRIS),
+              0, " tri",
+              f"deck.py --sweep says {got:,}, this file records "
+              f"{RING_DECK_COLLISION_TRIS:,}",
+              when="any drift at all -- the recorded figure is a cache of a "
+                   "60 s sweep and a cache that can go stale silently is a "
+                   "second copy of a computed number")
+
     print("Note: these gate the numbers framerate is a function of. They say nothing\n"
           "about actual framerate, which needs the target hardware.")
 
+    if a.prove:
+        prove(deck_m)
+
     failed = results.count(False)
     print(f"\n{len(results) - failed}/{len(results)} within budget")
+    if failed:
+        print("over: " + ", ".join(FAILED))
     return 1 if failed else 0
+
+
+def prove(m):
+    """Feed each new bound the regression it exists to catch. AAA-STANDARD P5.
+
+    "5 -- as 4, plus the gate has been proven to fail. Someone introduced the
+    regression and watched the build go red."
+
+    Three of the new bounds are red on the content as it stands, which is the
+    strongest form of this proof and needs no help. The rest are green, and a
+    green bound is worth exactly as much as the evidence that it can go red. So
+    each is re-evaluated against a NAMED regression drawn from real numbers in
+    this repository rather than an arbitrary multiplier, and this function fails
+    if any of them survives it.
+    """
+    if not m:
+        print("\n--prove needs the deck measurement; do not pass --no-deck")
+        return
+    print("\nProving the bounds can fail -- each fed the regression it exists "
+          "to catch\n")
+    drum = m["drum"] or {"drum_lod0": 0}
+    cases = [
+        ("frustum, everything", m["resident"], DECK["visible_all_tris"],
+         "frustum culling switched off: the resident set, which is what "
+         "walk.gd hands the renderer before culling"),
+        ("frustum draw calls", m["draws_frustum"] * 12, DRAW["max_per_frame"],
+         "the corridor's 14 material spans split per bay instead of merged -- "
+         "414 identical 3.07 m bays (docs/judge-3w.md), nothing instanced"),
+        ("draw calls, whole frame", m["draws_resident"] * 66,
+         DRAW["max_per_frame"],
+         "all 66 ring decks resident at once, which is what no streaming means"),
+        ("station collision resident",
+         m["resident"] * 66 + drum["drum_lod0"],
+         COLLISION["max_resident_tris"],
+         "render meshes handed to the physics engine station-wide -- the "
+         "policy behind the regression session 3v made"),
+        ("corridor shell tessellation", m["corridor_render_tris"] / m["shell"],
+         COLLISION["tessellation_ratio"],
+         "the corridor's RENDER mesh used as its collision shell -- session "
+         "3v's regression on one deck, which is the case the resident-memory "
+         "bound is too loose to catch"),
+        ("corridor shell tessellation", 5.0, COLLISION["tessellation_ratio"],
+         "MAX_SAG_M dropped to 0.04 mm, a 5x finer shell"),
+    ]
+    bad = 0
+    for name, value, limit, why in cases:
+        red = value > limit
+        bad += 0 if red else 1
+        print(f"  {'RED ' if red else 'GREEN'}  {name:26s} "
+              f"{value:>10,.0f} / {limit:,.0f}   {why}")
+    if bad:
+        print(f"  {bad} bound(s) survived their own regression -- that is a "
+              f"bound that cannot fail")
+    results.append(bad == 0)
+    if bad:
+        FAILED.append("prove")
 
 
 if __name__ == "__main__":

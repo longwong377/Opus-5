@@ -2810,3 +2810,161 @@ walk gate that asks for a longer traverse — both change a derived number rathe
 which is the point. A terrain change that flattened the field below 0.10 m of stride-2 error would
 make stride 2 legal and halve the cost; the self-test asserts that it currently does *not*, so such
 a change cannot happen silently.
+
+---
+
+## INV-082 — The frame triangle budget contradicts itself, and this records the contradiction rather than resolving it
+
+**Authority 5 — declared extrapolation. Session 3x.**
+
+`station/budget.py` carries two mutually exclusive figures for how many triangles the target card
+affords in one frame at 1440p60, and both are load-bearing:
+
+| where | figure | how it is used |
+|---|---|---|
+| `BUDGETS` comment | *"a 4070 sustains roughly 20-30 M triangles/frame at 1440p60"* | the exterior's 400,000 is derived as **"2% of frame budget"**, which implies a 20,000,000-triangle frame |
+| `FRAME_TRIANGLES` | **1,200,000** | every interior and drum share is a percentage of this |
+
+They differ by **16.7x**. Against `FRAME_TRIANGLES` the exterior's own 400,000 is **33% of frame,
+not 2%**. `docs/AAA-STANDARD.md`'s PERFORMANCE-5 descriptor quotes the 2% sentence approvingly as an
+example of a budget number defended against the frame it comes out of, so the contradiction is
+written into the rubric as well as the gate.
+
+**What constrained the resolution.** Nothing here settles it, deliberately. Session 3x's brief was to
+measure what a player renders; moving a frame budget is the single cheapest way to make a gate green
+without any content improving, and CLAUDE.md's "the triangle budget is a TARGET, not a ceiling"
+warns against the mirror-image error. So **every interior bound is gated against the smaller,
+tighter figure (1,200,000)**, because a budget's job is to be the binding constraint, and the
+discrepancy is recorded here instead of averaged away.
+
+**What is genuinely known.** Neither number is measured. 1.2 M is conservative for the class of card
+(published AAA titles submit several million triangles a frame at 1440p on this hardware); 20 M is
+optimistic (it implies a sustained 1.2 G tri/s, which is near the ceiling of what a five-GPC Ada
+part reaches with a trivial vertex shader and nothing else running).
+
+**What would overturn it.** One frame capture on an RTX 4070 / RX 7800 XT running the real build at
+1440p, reading submitted primitives and frame time. That single measurement replaces both numbers.
+If 20 M turns out to be the right reading, every interior bound in `budget.py` has 16x more headroom
+than it currently claims and three of the five bounds now failing become comfortable passes — which
+is exactly why the question is worth one capture.
+
+---
+
+## INV-083 — The budgeted camera: 70 degrees vertical at 16:9, and the shipped camera is wider
+
+**Authority 5 — declared extrapolation. Session 3x.**
+
+`station/budget.py` measures what a player renders by counting triangles inside a real frustum on an
+assembled deck. The frustum needs a field of view and the shipped build does not state one.
+
+**What is sourced from the build, not invented.** `godot/scripts/player.gd` sets `_cam.near = 0.15`,
+`_cam.far = 12000.0` and `eye_height_m = 1.7`; all three are read out of that file at run time by
+`budget.shipped_camera()` rather than copied, so they cannot drift. `godot/project.godot` opens at
+1920x1080 and CLAUDE.md's target is 1440p — the same 16:9, and aspect is what shapes a frustum.
+Pixel count changes shading cost, not the triangle set.
+
+**What is declared: 70.0 degrees, VERTICAL.** Godot's `Camera3D.fov` is the vertical field of view
+when `keep_aspect` is its default `KEEP_HEIGHT`, so a vertical figure is the one that can be pasted
+straight into the engine. At 16:9 it is **102.4 degrees horizontal**, the top of the range PC
+first-person games ship, and it is deliberately at the wide end: a budget measured at a narrow view
+understates by exactly the geometry the wider view adds.
+
+**What constrained it.** The lower bound is the judge's camera — `docs/judge-3w.md` rendered at 55
+degrees vertical, and gating there would flatter the content by 40% (93,618 triangles against
+155,018 at the same pose). The upper bound is the shipped camera: `player.gd` sets **no** `fov`, so
+a player is given Godot 4's Camera3D default of **75 degrees vertical**, and at that fov the same
+pose renders **161,792 triangles, 6,774 more than the budget measures**. `budget.py` therefore gates
+that the shipped camera is not wider than the budgeted one, and **that check is red today**.
+
+**What would overturn it.** A decision to ship a different fov. The fix either way is one line —
+`_cam.fov = 70.0` in `player.gd`, or move `DECK["fov_v_deg"]` to 75 and re-measure — and the gate
+names both. A `fov` slider in options, which most PC games have, turns this into a bound that must
+be measured at the widest setting the slider allows.
+
+---
+
+## INV-084 — The interior draw-call budget: 1,041 a frame, from CPU time
+
+**Authority 5 — declared extrapolation. Session 3x.**
+
+Before this there was no interior draw-call budget in existence. `BUDGETS["exterior_draw_calls"] =
+64` was the only draw-call number on the station and it gates a manifest, not a frame.
+
+**Derived from what a draw call actually costs, which is CPU.** A draw is a submission — state
+validation, descriptor binding, a command-buffer write on the render thread — not GPU work. So
+
+    draws <= frame_ms * render_thread_share / per_draw_ms
+           = 16.667 * 0.25 / 0.004  =  1,041 draws a frame
+
+| input | value | basis |
+|---|---|---|
+| `frame_ms` | 16.667 | 1440p**60** is CLAUDE.md's target. Not a choice. |
+| `render_thread_share` | 0.25 | the render thread also culls, clusters lights, builds shadow lists and drives the RHI. A quarter of it for submission is the planning split. **Declared.** |
+| `per_draw_us` | 4.0 | Vulkan, one uniform set per surface, no GPU-driven pipeline; Godot 4 Forward+ is not bindless. **Declared, and the weakest number here.** |
+
+**The cross-check is the reason to believe 4 us at all.** The break-even batch — the triangle count
+at which a draw's GPU work exceeds the CPU cost of submitting it, at the 1.2 G tri/s the
+`BUDGETS` comment's own "20-30 M tri/frame at 60" implies — is `1.2e9 * 4e-6` = **4,800 triangles**.
+This file's exterior budget, set sessions earlier on a completely unrelated argument, allows 400,000
+triangles in 64 draws: **6,250 triangles a draw**. Two independent derivations, 30% apart. That
+agreement is printed on every run.
+
+**The cap is per frame, not per subsystem.** Exterior, interior, NPCs and effects submit into the
+same 4.17 ms, so the gate reports the combined figure (325 today: 286 interior resident + 39
+exterior) as well as the interior's own (139 after frustum culling).
+
+**What would overturn it.** A frame capture on target reading submission time per draw. A move to
+`MultiMesh` or GPU-driven submission changes `per_draw_us` by an order of magnitude and makes this
+bound irrelevant — which would be a good outcome, since the corridor is 414 identical bays and
+instances none of them.
+
+---
+
+## INV-085 — The collision triangle budget: tolerance for density, memory for total
+
+**Authority 5 — declared extrapolation. Session 3x.**
+
+There was no collision budget at all, on any deck, before this. The station carries 75,642 collision
+triangles across 66 ring decks (`deck.py --sweep`) and 573,440 more in the drum's ground at lod0,
+and none of it was measured against anything.
+
+**Bound 1 — tessellation against tolerance, and it invents nothing.** The only correctness
+requirement on a collision surface is that it represent the surface to within the tolerance the walk
+gate certifies. Triangles finer than that buy nothing a player can feel and cost memory, BVH build
+time and streaming latency. Both generators already claim to derive their density this way, so the
+bound is theirs:
+
+* **corridor** — `collision.corridor_shell` sizes its angular step from `MAX_SAG_M = 1 mm`, the sag
+  of a facet inside the true cylinder, and its own comment says 1 mm "is far below anything a
+  character controller reacts to". The tolerance a floor is *certified* against is
+  `collision.STEP_TOLERANCE_M = 5 mm`. Sag scales as the square of the step, so 5 mm allows
+  `sqrt(5)` times fewer steps: **437 against the 977 built. The shell is 2.24x the size the
+  project's own certified tolerance requires** — 4,325 triangles a deck, and this bound is red.
+* **drum** — `drum_walk.collision_stride` already picks the coarsest LOD stride whose height error
+  stays under `drum_walk.STEP_M` (0.10 m, itself `rooms.TRIM_MAX_PROUD_M`). Stride 1 at 0.007 m is
+  legal, stride 2 at 0.193 m is not, so the bound is that the tile was *built* at stride 1. It was.
+
+Nothing in bound 1 is a new number: `STEP_TOLERANCE_M`, `MAX_SAG_M` and `STEP_M` are all the
+repository's own, and the rest is arithmetic.
+
+**Bound 2 — resident memory, and this one does invent.** Godot's `ConcavePolygonShape3D` keeps its
+faces and BVH in system RAM, and this engine is built `precision=double`, so a `Vector3` is 24
+bytes. Per triangle: 3 vertices x 24 B = **72 B** of face array, plus a BVH of about 2N nodes each
+holding an AABB (2 x Vector3 = 48 B) and three ints, ~64 B a node = **128 B**. **About 200 B a
+triangle.** The allowance is **1% of a 16 GB machine = 160 MB = 800,000 triangles**; 16 GB is the
+companion figure to CLAUDE.md's stated 12 GB VRAM card and is itself declared. Measured: 649,082
+triangles resident if the whole station were loaded at once — **130 MB, 81% of the allowance, and
+88% of it is the drum**.
+
+**What this bound is actually for, stated because it is not obvious from the number.** The
+regression this project has already made once is handing the render mesh to the physics engine
+(session 3v: a body wedged on a 66 mm lighting channel). Applied station-wide that is 40.0 M
+triangles and this bound goes red by 50x. Applied to **one** deck it is 597,418 triangles — 75% of
+the allowance, and this bound does **not** catch it. Bound 1 does, at 59x. Both are exercised by
+`budget.py --prove`, which feeds every bound the regression it exists to catch and fails if one
+survives.
+
+**What would overturn it.** One RSS measurement on target with and without the shapes loaded settles
+`bytes_per_tri`. A machine specification in CLAUDE.md settles the 16 GB. A different character
+controller with a different step tolerance moves bound 1, which is the point of deriving it from a
+constant rather than choosing it.

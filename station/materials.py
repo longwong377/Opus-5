@@ -2174,7 +2174,15 @@ def _build():
         "door_leaf_painted", "Door Leaf — painted panel: leaves, gallery front, checkpoint barrier",
         albedo=(0.385, 0.385, 0.385), roughness=0.42, metallic=0,
         specular=0.45, texture="wall_plate", uv_scale=1.0 / 4,
-        binds=("prop_door", "prop_office_door", "prop_lift_door", "prop_tram_door", "prop_cell_door", "prop_public_gallery", "prop_barrier"), scenes=("interior",),
+        binds=("prop_door", "prop_office_door", "prop_lift_door", "prop_tram_door", "prop_cell_door", "prop_public_gallery", "prop_barrier",
+               # THE DOORS A PLAYER ACTUALLY WALKS UP TO. `deck.door_leaves`
+               # emits the moving leaves as `doorleaf_<place>_<0|1>` so the
+               # runtime can slide them, and not one of the `prop_*` fragments
+               # above is a substring of that -- so the twelve leaves on an
+               # assembled deck rendered untextured white, which an AAA-rubric
+               # judgement found by looking at the one object in the corridor a
+               # player is guaranteed to stand in front of.
+               "doorleaf"), scenes=("interior",),
         source="NO FRAME IN THE SET SHOWS A DOOR LEAF — open, closed or moving. reference/00-INDEX.md states this explicitly against reference/07-sector-grey/grey level 1.webp and records that the leaf mechanism is therefore invented (canon/INVENTIONS.md INV-008). The colour is NOT invented free, though: it is `lit(0.247)` = 0.3852, the balanced value of that frame's DADO PANEL at (0.019,0.563)-(0.134,0.731), run through station/materials.py's single ALBEDO_ANCHOR. The dado is the corridor's set-back flat panel and is the closest measured analogue in the whole reference set to a flat panel standing in a wall build-up. Neutral because NEGATIVE_RESULTS shows that frame's warm dado reading is the downlights, not the paint.",
         extrapolated="That a door leaf takes the dado's albedo rather than the wall's or the frame's. Constrained by: it must read as a SEPARATE PLANE from the `kit_pilaster` jamb it sits inside (0.469) under one light, and 0.385 is 0.82x that — the smallest step that separates two coplanar-ish surfaces without inventing contrast the reference denies. It must not be darker than the reveal (0.140), which is the wall's deliberate shadow gap and the only thing in the build-up meant to read as a hole. The 4 m repeat is NOT extrapolated: it is `kit_wall_plate`'s own repeat, so the leaf's plate courses land on the same 0.67 m pitch as the wall around it, which is what a kit-built station does. Overturned by: any frame showing a leaf, which would replace the value outright."))
 

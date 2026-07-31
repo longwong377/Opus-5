@@ -323,6 +323,7 @@ material_rules = {
 "detention_wall": ExtResource("m_shell_wall_panel"),
 "door_frame": ExtResource("m_kit_pilaster"),
 "door_leaf": ExtResource("m_kit_pilaster"),
+"doorleaf": ExtResource("m_door_leaf_painted"),
 "dress_band": ExtResource("m_plant_valve_metal"),
 "dress_clutter": ExtResource("m_shell_wall_panel"),
 "dress_conduit": ExtResource("m_plant_valve_metal"),
