@@ -414,6 +414,47 @@ def station_crowd_library(lod):
     return crowd_library([(sp, lod) for sp in sorted(_sched.STATION_MIX)])
 
 
+def bake_instances(instances, lod=None):
+    """Turn a crowd instance list back into triangles, for the RENDER path.
+
+    ONE LIST, TWO CONSUMERS, and that is the whole reason this exists rather
+    than a second call to `populate_corridor`. The shipped deck carries the
+    crowd as instances -- 88% fewer triangles station-wide, and the only form
+    that can move. A still frame has no runtime to instance them, so the
+    renderer needs geometry. Both come from the SAME placements, so a body in
+    a render is where the body in the build is, which two independent
+    placements could not guarantee and this project has been bitten by twice.
+
+    The bodies are the shared library's, so a rendered walker is their
+    species' nominal figure -- exactly what the runtime shows.
+    """
+    v, t, g = [], [], []
+    for r in instances:
+        try:
+            bv, bt, bg = crowd_body(r["species"], int(r.get("lod", lod or 4)),
+                                    int(r.get("phase", 0)))
+        except Exception:                                       # noqa: BLE001
+            continue
+        ux, uy, _uz = r["up"]
+        fx, fy, _fz = r["fwd"]
+        px, py, pz = r["x"], r["y"], r["z"]
+        n0 = len(v)
+        # The same mapping `_place_ring_body` uses, from the basis the
+        # instance carries rather than recomputed -- so if one is wrong they
+        # are wrong together and the gate that catches one catches both.
+        for (bx, by, bz) in bv:
+            v.append((px + ux * by + fx * bz,
+                      py + uy * by + fy * bz,
+                      pz + bx))
+        t0 = len(t)
+        t.extend((a + n0, b + n0, c + n0) for a, b, c in bt)
+        grp = r["group"]
+        g.append((f"{grp}_npc_body", t0, len(t)))
+        for nm, lo, hi in _by_material(bg):
+            g.append((f"{grp}_{nm}", t0 + lo, t0 + hi))
+    return v, t, g
+
+
 def body_capsule(mesh):
     """`(radius_m, height_m)` a body occupies, MEASURED off the mesh in hand.
 

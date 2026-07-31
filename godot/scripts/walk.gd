@@ -45,6 +45,11 @@ extends Node3D
 var _doors: Node3D
 ## The cast list written beside the deck mesh -- see `station/walkable.py`.
 @export var actors_path: String = ""
+## The corridor crowd: placements against the shared body library, and the
+## library itself. Separate from `actors_path` because they are different
+## things -- an actor is baked into the deck mesh, a walker is an instance.
+@export var crowd_path: String = ""
+@export var crowd_glb: String = ""
 var _people: Node3D
 var _dress: Node
 var _lights: Node3D
@@ -69,6 +74,10 @@ func _ready() -> void:
 		door_travel_m = float(args["door-travel"])
 	if args.has("actors"):
 		actors_path = args["actors"]
+	if args.has("crowd"):
+		crowd_path = args["crowd"]
+	if args.has("crowd-glb"):
+		crowd_glb = args["crowd-glb"]
 
 	if not _load_level():
 		push_error("walk: could not load %s" % glb_path)
@@ -249,6 +258,31 @@ func _wire_people(scene: Node) -> void:
 	add_child(_people)
 	var n: int = _people.collect(scene, actors)
 	print("walk: %d people wired of %d in the cast list" % [n, actors.size()])
+	_wire_crowd()
+
+
+## The corridor's walkers. They are not in the deck mesh at all -- their bodies
+## come from `crowd_lod<N>.glb`, 112 shared meshes for the whole station, and
+## this list says where each one is and which phase they are on.
+func _wire_crowd() -> void:
+	if crowd_path == "" or crowd_glb == "":
+		return
+	if _args().has("no-crowd"):
+		print("walk: crowd DISABLED (negative control)")
+		return
+	if not FileAccess.file_exists(crowd_path) \
+			or not FileAccess.file_exists(crowd_glb):
+		return
+	var f2 := FileAccess.open(crowd_path, FileAccess.READ)
+	var rows = JSON.parse_string(f2.get_as_text())
+	if typeof(rows) != TYPE_ARRAY or rows.is_empty():
+		return
+	var lib := _load_glb(crowd_glb)
+	if lib == null:
+		push_error("walk: could not load crowd library %s" % crowd_glb)
+		return
+	var n2: int = _people.build_crowd(lib, rows)
+	print("walk: %d walkers instanced from the shared crowd library" % n2)
 
 
 func _load_glb(path: String) -> Node:
@@ -446,6 +480,13 @@ func _trace_line(tag: String) -> void:
 ## direction to fail but still a lie about what the build does. Godot integrates
 ## motion between physics frames; a controller test has to let them happen.
 func _physics_process(delta: float) -> void:
+	# THE CROWD WALKS WHETHER OR NOT THE TEST IS RUNNING, and before the early
+	# returns below, because a corridor whose people only move during a walk
+	# test is a corridor whose people do not move. It is also what makes the
+	# shot phase worth taking: a photograph of a station with somebody
+	# mid-stride in it is the whole point of the exercise.
+	if _people != null:
+		_people.advance_crowd(delta)
 	# The shot phase: settle the body on the floor, then take the picture from
 	# where it ended up. No wish vector -- a photograph is of somebody standing.
 	if _shooting:
@@ -546,6 +587,9 @@ func _physics_process(delta: float) -> void:
 				goto_s += " turned_deg=%.1f noticed=%d facing_err_deg=%.1f" % [
 					_people.turned_deg(), _people.noticed_count(),
 					_people.facing_error_deg(p)]
+		if _people != null and _people.crowd_count() > 0:
+			goto_s += " walkers=%d crowd_travel_m=%.1f" % [
+				_people.crowd_count(), _people.crowd_travel_m()]
 		print(("WALKTEST rest=%.3f,%.3f,%.3f on_floor=%s fell=%s moved_1s=%.3f "
 			+ "drop=%.3f legs=%.2f/%.2f/%.2f/%.2f traverse_m=%.2f net_m=%.2f "
 			+ "offfloor=%d/%d%s") % [

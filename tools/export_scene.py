@@ -3531,7 +3531,15 @@ def build_deck_shot(args, out_dir):
     schema, profile = it.load()
     verts, tris, groups, stats = D.build_deck(
         schema, profile, sector, ring, deck, z_m=args.deck_z,
-        max_rooms=args.max_rooms)
+        max_rooms=args.max_rooms,
+        # THE CORRIDOR'S WALKERS, AS GEOMETRY. The shipped deck carries them as
+        # instances against `populace.station_crowd_library` -- 88% fewer
+        # triangles station-wide, and the only form that can move -- but a
+        # still frame has no runtime to instance them, so the renderer bakes
+        # the SAME placements. One list, two consumers: a body in a render
+        # stands where the body in the build stands, which two independent
+        # placements could not guarantee.
+        bake_crowd=True)
     spans = to_spans(groups, len(tris))
 
     if args.eye and args.target:

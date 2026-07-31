@@ -193,6 +193,23 @@ def walk_deck(sector, ring, deck, godot, timeout=1800, traverse=None,
     import json as _json
     with open(os.path.join(out, f"{stem}_actors.json"), "w") as f:
         _json.dump(s.get("actors", []), f)
+    # THE CROWD, which is a different thing from the cast list and has to be.
+    # An actor is a body baked into the deck mesh at a fixed pose; a crowd
+    # instance is a PLACEMENT against `populace.station_crowd_library`'s 112
+    # shared bodies. The library is written once per LOD rather than per deck
+    # -- it is a function of the species mix, not of who is walking -- and the
+    # instance list is what the runtime rewrites to make them move.
+    crowd = s.get("crowd", [])
+    with open(os.path.join(out, f"{stem}_crowd.json"), "w") as f:
+        _json.dump(crowd, f)
+    if crowd:
+        import populace as _pop                                 # noqa: PLC0415
+        for lod in sorted({int(r["lod"]) for r in crowd}):
+            lib = os.path.join(out, f"crowd_lod{lod}.obj")
+            if not os.path.exists(lib):
+                cv2, ct2, cg2 = _pop.station_crowd_library(lod)
+                D.write_obj(lib, cv2, ct2, cg2)
+                _glb(lib, lib[:-4] + ".glb")
     _glb(os.path.join(out, f"{stem}.obj"), os.path.join(out, f"{stem}.glb"))
     _glb(os.path.join(out, f"{stem}_col.obj"),
          os.path.join(out, f"{stem}_col.glb"))
@@ -228,6 +245,10 @@ def walk_deck(sector, ring, deck, godot, timeout=1800, traverse=None,
             bumped = min(cand, key=lambda a: (a["x"] - px) ** 2
                          + (a["y"] - py) ** 2 + (a["z"] - pz) ** 2)
             tx, ty, tz = bumped["x"], bumped["y"], bumped["z"]
+    _lods = sorted({int(r["lod"]) for r in crowd}) if crowd else []
+    if _lods:
+        cmd += [f"--crowd={os.path.join(out, stem + '_crowd.json')}",
+                f"--crowd-glb={os.path.join(out, f'crowd_lod{_lods[0]}.glb')}"]
     cmd += [f"--actors={os.path.join(out, stem + '_actors.json')}",
             f"--goto={tx},{ty},{tz}", f"--door-key={goto}",
             f"--door-travel={K.PROVISIONAL['door_width_m'] / 2.0}"]
@@ -268,6 +289,15 @@ def walk_deck(sector, ring, deck, godot, timeout=1800, traverse=None,
 BUMP_MARGIN_M = 0.25
 
 
+# How far the corridor's crowd must travel over a walk test for "they walk" to
+# be a claim rather than a hope. DERIVED: `populate_corridor` gives every
+# walker their own gait's speed -- 1.4-1.5 m/s for a human at 1 g -- and the
+# test runs `TRAVERSE_FRAMES` at 1/60 s, so 134 people over 1,800 frames should
+# cover 134 x 1.45 x 30 = 5,800 m between them. A tenth of that is a bar only
+# a crowd that has genuinely stopped can fail.
+CROWD_TRAVEL_MIN_M = 500.0
+
+
 def deck_verdict(d):
     """Pass/fail for a deck, in the terms milestone W2 is written in."""
     if "error" in d:
@@ -283,6 +313,17 @@ def deck_verdict(d):
     if int(off) > 0:
         return False, (f"left the floor for {off} of {tot} frames -- it walked "
                        f"off the deck")
+    # -- AND THE CORRIDOR'S CROWD IS WALKING -------------------------------
+    # They are instances against the shared crowd library, not geometry in the
+    # deck, so the only thing that can tell whether they MOVE is a physics run.
+    # A crowd that stands still is a crowd of statues wearing a walk pose,
+    # which reads worse than statues.
+    if int(d.get("walkers", 0)) > 0:
+        travelled = float(d.get("crowd_travel_m", 0.0))
+        if travelled < CROWD_TRAVEL_MIN_M:
+            return False, (f"{d['walkers']} walkers were instanced and the "
+                           f"crowd covered {travelled:.0f} m between them -- "
+                           f"they are statues wearing a walk pose")
     if "goto_best_m" in d:
         near = float(d["goto_best_m"])
         if near > ARRIVED_M:
@@ -400,6 +441,11 @@ def main():
                 print(f"        control: with the doors inert the body is "
                       f"stopped {near:.2f} m short. The door is what opens "
                       f"the way.")
+        if good and int(d.get("walkers", 0)) > 0:
+            print(f"        {d['walkers']} walkers instanced from the shared "
+                  f"crowd library and they WALK: "
+                  f"{float(d['crowd_travel_m']):,.0f} m covered between them, "
+                  f"0 triangles of their own in the deck")
         if good:
             print(f"        {d['render_tris']:,} render triangles, "
                   f"{d['collision_tris']:,} collision "

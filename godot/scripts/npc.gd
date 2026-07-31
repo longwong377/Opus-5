@@ -246,3 +246,222 @@ func facing_error_deg(target: Vector3) -> float:
 			err = absf(rad_to_deg(wrapf(_yaw_towards(p, target) - p.yaw,
 				-PI, PI)))
 	return err
+
+
+# ===========================================================================
+#  THE CROWD -- shared bodies, instanced, and they WALK
+# ===========================================================================
+# WHY THIS IS NOT `collect()` WITH MORE PEOPLE IN IT. Everything above binds a
+# person to the meshes they were BAKED as, which is right for a room occupant:
+# they are an individual, `body.individual` built them, and their identicard
+# describes that mesh. It is wrong for a corridor, for three measured reasons
+# recorded in `station/populace.py`: a rigid per-part transform is 145 mm out
+# at the knee, splitting each part at its dominant bone needs 19 pieces, and
+# TWELVE pieces was already 1,262 primitives on one deck.
+#
+# So a walker is a PLACEMENT against `populace.station_crowd_library` -- 112
+# shared bodies, 14 species by 8 walk phases, 54,816 triangles for the whole
+# station against 466,092 baked. Every walker of one species at one phase goes
+# into one MultiMesh, so the station's entire crowd is **112 draw calls**
+# rather than 963, and moving somebody is writing one transform into a buffer.
+#
+# The phase is chosen by TIME rather than by distance travelled, and the two
+# agree because `populace` gives each walker `cycle_s` from the same
+# `walk_clip` its `omega` came from. A crowd whose feet slide is a crowd
+# animated at one speed and moved at another.
+class Walker:
+	var species: String
+	var lod: int
+	var phase: int
+	var angle: float          # radians round the ring
+	var radius: float
+	var z: float
+	var omega: float          # radians a second, signed by direction
+	var cycle_s: float
+	var t: float = 0.0
+	var body: StaticBody3D = null
+	var r_m: float = 0.0
+	var h_m: float = 0.0
+
+
+var _walkers: Array = []
+var _mm: Dictionary = {}          # "crowd_human_4_3" -> MultiMeshInstance3D
+var _mm_rows: Dictionary = {}     # the same key -> Array[Walker] this frame
+
+
+## Build the crowd from the library scene and the placement list.
+func build_crowd(library: Node, rows: Array) -> int:
+	var meshes := {}
+	for m in _meshes(library):
+		# The library's mesh names are `crowd_<species>_<lod>_<phase>_npc_skin`
+		# and friends; the body key is everything before the material suffix.
+		var n := String(m.name)
+		var cut := n.find("_npc_")
+		if cut > 0:
+			var key := n.substr(0, cut)
+			if not meshes.has(key):
+				meshes[key] = []
+			# THE SOURCE NODE'S NAME TRAVELS WITH THE MESH, because material
+			# binding is by name: `materials.resolve` matches the longest
+			# fragment IN the group name, so a MultiMesh called
+			# `crowd_human_4_3_0` resolves to nothing while
+			# `crowd_human_4_3_npc_skin` resolves to skin. Naming a node after
+			# its index instead of after what it is renders the whole crowd on
+			# the magenta fallback.
+			meshes[key].append([m.mesh, n])
+	for r in rows:
+		var w := Walker.new()
+		w.species = String(r.get("species", "human"))
+		w.lod = int(r.get("lod", 4))
+		w.phase = int(r.get("phase", 0))
+		var x := float(r.get("x", 0.0))
+		var y := float(r.get("y", 0.0))
+		w.z = float(r.get("z", 0.0))
+		w.radius = sqrt(x * x + y * y)
+		w.angle = atan2(y, x)
+		w.omega = float(r.get("omega", 0.0))
+		w.cycle_s = maxf(0.1, float(r.get("cycle_s", 1.0)))
+		w.r_m = float(r.get("r_m", 0.0))
+		w.h_m = float(r.get("h_m", 0.0))
+		# Start each walker at their own point in the cycle, so 134 people are
+		# not marching. The generator already picked it; this reproduces it.
+		w.t = w.cycle_s * float(w.phase) / 8.0
+		_walkers.append(w)
+	# One MultiMesh per (species, lod, phase). Sized to the worst case -- every
+	# walker of that species at that phase at once -- because a MultiMesh's
+	# instance_count cannot grow without reallocating.
+	# SIZED TO WHAT CAN ACTUALLY BE IN THE BUCKET, not to the species. A
+	# MultiMesh uploads `instance_count` transforms whenever it is touched, not
+	# `visible_instance_count`, so sizing every one of a species' eight phase
+	# buckets to the whole species uploads eight times the crowd every frame --
+	# 7,304 transforms a frame on a deck with 134 walkers, which is what made
+	# the first version of this take minutes where the walk gate takes 38 s.
+	# Walkers spread over eight phases, so a bucket holds about an eighth;
+	# three times that plus a floor of four is slack no realistic clustering
+	# exceeds, and `_place_crowd` clamps to the count anyway.
+	var per_species := {}
+	for w in _walkers:
+		per_species[w.species] = int(per_species.get(w.species, 0)) + 1
+	var counts := {}
+	for w in _walkers:
+		for ph in range(8):
+			var k := "crowd_%s_%d_%d" % [w.species, w.lod, ph]
+			counts[k] = maxi(4, int(ceil(
+				float(per_species[w.species]) / 8.0 * 3.0)))
+	for k in counts.keys():
+		if not meshes.has(k):
+			continue
+		for surf in meshes[k]:
+			var mmi := MultiMeshInstance3D.new()
+			var mm := MultiMesh.new()
+			mm.transform_format = MultiMesh.TRANSFORM_3D
+			mm.mesh = surf[0]
+			mm.instance_count = int(counts[k])
+			mm.visible_instance_count = 0
+			mmi.multimesh = mm
+			mmi.name = String(surf[1])
+			add_child(mmi)
+			if not _mm.has(k):
+				_mm[k] = []
+			_mm[k].append(mmi)
+	if not _args().has("no-npc-collision"):
+		for w in _walkers:
+			_give_walker_body(w)
+	_place_crowd()
+	return _walkers.size()
+
+
+func _give_walker_body(w: Walker) -> void:
+	if w.r_m <= 0.0 or w.h_m <= 0.0:
+		return
+	var sb := StaticBody3D.new()
+	var cs := CollisionShape3D.new()
+	var cap := CapsuleShape3D.new()
+	cap.radius = w.r_m
+	cap.height = maxf(w.h_m, 2.0 * w.r_m + 0.01)
+	cs.shape = cap
+	sb.add_child(cs)
+	add_child(sb)
+	w.body = sb
+
+
+## Where a walker is, and which way is up for them. Up is INWARD on a spun
+## ring, so it is a different direction at every angle -- which is why the
+## generator writes a basis per instance and why this recomputes one rather
+## than carrying a yaw.
+func _walker_xform(w: Walker) -> Transform3D:
+	var ca := cos(w.angle)
+	var sa := sin(w.angle)
+	var up := Vector3(-ca, -sa, 0.0)
+	var fwd := Vector3(-sa, ca, 0.0) * signf(w.omega if w.omega != 0.0 else 1.0)
+	var right := fwd.cross(up).normalized()
+	return Transform3D(Basis(right, up, fwd),
+		Vector3(w.radius * ca, w.radius * sa, w.z))
+
+
+## Refill every MultiMesh from the walkers' current phase. A walker moves
+## between MultiMeshes as their phase advances, which is a bucket sort of a
+## few hundred items and costs nothing.
+func _place_crowd() -> void:
+	for k in _mm.keys():
+		_mm_rows[k] = []
+	for w in _walkers:
+		var k := "crowd_%s_%d_%d" % [w.species, w.lod, w.phase]
+		if _mm_rows.has(k):
+			_mm_rows[k].append(w)
+	for k in _mm.keys():
+		var rows: Array = _mm_rows[k]
+		for mmi in _mm[k]:
+			var mm: MultiMesh = mmi.multimesh
+			mm.visible_instance_count = mini(rows.size(), mm.instance_count)
+			for i in range(mm.visible_instance_count):
+				mm.set_instance_transform(i, _walker_xform(rows[i]))
+
+
+## How far round the ring the crowd has travelled, in metres, summed. The
+## headless walk test reads it: a crowd that does not move is a crowd of
+## statues wearing a walk pose, which is worse than statues.
+var _crowd_travel_m: float = 0.0
+
+
+func crowd_travel_m() -> float:
+	return _crowd_travel_m
+
+
+func crowd_count() -> int:
+	return _walkers.size()
+
+
+## How often the crowd's transforms are rewritten, in hertz. NOT every physics
+## frame, and the reason is measured: each rewrite re-uploads every MultiMesh's
+## whole instance buffer, so at 60 Hz a deck's crowd cost more than the rest of
+## the walk gate put together. At 10 Hz a walker moves 0.145 m between updates
+## -- under the 0.22 m tile they are stepping on, and a tenth of the 1.45 m
+## stride the pose is showing -- so nothing a player can see is dropped.
+@export var crowd_hz: float = 10.0
+
+var _crowd_dt: float = 0.0
+
+
+func advance_crowd(delta: float) -> void:
+	if _walkers.is_empty():
+		return
+	_crowd_dt += delta
+	var step := 1.0 / maxf(1.0, crowd_hz)
+	if _crowd_dt < step:
+		return
+	delta = _crowd_dt
+	_crowd_dt = 0.0
+	for w in _walkers:
+		var d := w.omega * delta
+		w.angle += d
+		_crowd_travel_m += absf(d) * w.radius
+		w.t += delta
+		# Eight phases over one stride cycle. `cycle_s` and `omega` come from
+		# the SAME `walk_clip`, so the feet land where the body has moved to.
+		w.phase = int(floor(w.t / w.cycle_s * 8.0)) % 8
+		if w.body != null:
+			var xf := _walker_xform(w)
+			w.body.global_transform = Transform3D(xf.basis,
+				xf.origin + xf.basis.y * (maxf(w.h_m, 2.0 * w.r_m + 0.01) * 0.5))
+	_place_crowd()

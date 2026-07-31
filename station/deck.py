@@ -562,7 +562,15 @@ def room_shell_for(schema, profile, meta, place, door_angle_deg):
                         door_angle_deg=door_angle_deg)
 
 
+# Whether a corridor's walkers are INSTANCED against the shared crowd library
+# or baked into the deck mesh. Instanced is the shipping form -- 88% fewer
+# triangles station-wide and the only form that can move -- and the flag exists
+# so the two can be measured against each other rather than argued about.
+CORRIDOR_INSTANCED = True
+
+
 def build_deck(schema, profile, sector, ring, deck, with_rooms=True,
+               bake_crowd=False,
                max_rooms=None, z_m=None):
     """One deck as a single mesh. Returns (verts, tris, groups, stats)."""
     V, T, G = [], [], []
@@ -849,7 +857,15 @@ def build_deck(schema, profile, sector, ring, deck, with_rooms=True,
         pv, pt, pg, pstat = _pop.populate_corridor(
             f"{sector}/{ring}/{deck}", cmeta["floor_r_m"], cmeta["half_w_m"],
             cmeta["arc_deg"], cmeta["start_deg"], cmeta["z_m"],
-            served=tuple(q["key"] for q, _d, _x in dp["rooms"]))
+            served=tuple(q["key"] for q, _d, _x in dp["rooms"]),
+            # INSTANCED. The walkers' bodies live in
+            # `populace.station_crowd_library` -- 112 shared meshes for the
+            # whole station against 466,092 triangles of unique ones -- and
+            # what comes back here is placements, not geometry. It is also the
+            # only form they can MOVE in: an instance is a transform the
+            # runtime rewrites, where a baked body is triangles welded to the
+            # deck. Room occupants stay baked and stay individuals.
+            instanced=CORRIDOR_INSTANCED)
     except Exception as e:                                      # noqa: BLE001
         pv, pt, pg, pstat = [], [], [], {"error": str(e)[:80]}
     if pt:
@@ -863,6 +879,21 @@ def build_deck(schema, profile, sector, ring, deck, with_rooms=True,
         for act in pstat.get("actors", ()):
             stats.setdefault("actors", []).append(dict(act, place="corridor"))
     stats["corridor_people"] = pstat
+    stats["crowd"] = pstat.get("instances", [])
+    # THE RENDER PATH HAS NO RUNTIME TO INSTANCE THEM. A still frame needs
+    # triangles, so `bake_crowd` writes the same placements out as geometry --
+    # the SAME list, so a body in a render stands where the body in the build
+    # stands. `tools/export_scene.py` passes it; the shipped deck does not.
+    if bake_crowd and stats["crowd"]:
+        bv2, bt2, bg2 = _pop.bake_instances(stats["crowd"])
+        if bt2:
+            off, t0 = len(V), len(T)
+            V.extend(bv2)
+            T.extend((a + off, b + off, c + off) for a, b, c in bt2)
+            G.extend((n, lo_ + t0, hi_ + t0) for n, lo_, hi_ in bg2)
+            stats["crowd_baked_tris"] = len(bt2)
+    stats["crowd_lods"] = sorted({(r["species"], r["lod"])
+                                  for r in stats["crowd"]})
 
     stats["triangles"] = len(T)
     return V, T, G, stats
