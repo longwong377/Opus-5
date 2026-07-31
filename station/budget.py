@@ -801,7 +801,14 @@ def drum_collision():
 # halls, the arrival concourse, the cobra bays, Medlab Green, hydroponics and
 # both observation domes. 14 more corridors is 19,336 more collision triangles
 # and 19 more locations a player can reach.
-RING_DECK_COLLISION_TRIS = 55_082
+# AND AGAIN IN 3z, for the third time, which is the gate doing exactly its job.
+# The interiors agent added ten locations -- reactor hall, fuel bunkerage,
+# coolant gallery, generator hall, heat exchanger hall, comms operations, cargo
+# transfer deck, mooring gallery, EVA lock, gunnery control -- and the register
+# went 118 -> 128 places over 80 -> 90 z-clusters. Ten more corridors is 3,578
+# more collision triangles. NOT a regression: every one of them is floor a
+# player can stand on, and the sweep reports 128 of 128 locations reachable.
+RING_DECK_COLLISION_TRIS = 58_660
 
 
 def main(argv=None):
