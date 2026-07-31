@@ -1736,3 +1736,44 @@ not a canon one — no source establishes either number.
 **What is blocked:** nothing. Both readings give the same felt result, because the difference
 between 35 and 45 pairs spread over 753 outer-ring cells is invisible from a corridor. Recorded so
 that the next reader does not have to rediscover the inconsistency and does not silently pick one.
+
+---
+
+## C-012 — Two parts of this project disagree by 3.6× on how many people land a day
+
+**Status:** open, **NOT blocking**. `station/traffic.py` computes both and `report()` prints the gap.
+
+| source | figure | how it is reached |
+|---|---|---|
+| `station/npc/schedule.py` | **6,240/day** | `ARRIVALS_PER_DAY = 52` × `SOULS_PER_ARRIVAL = 120` |
+| `docs/gazetteer/TRAFFIC-AND-CUSTOMS.md` §5.3 | **~1,500/day** (this module computes **1,739** from the §5.2 manifest's own midpoints) | 14 transports × ~50 + 12 shuttles × ~10 + 0.5 liners × ~600 + freighter and warship crew ashore ~300 + diplomatic and EarthForce ~100 |
+
+**Neither is canon.** The only sourced number in the neighbourhood is *"over 50 to 60 ships used it
+as a waypoint"* (authority 4), which constrains **movements**, not **souls**. Both figures sit
+inside it on movements: 52 and 55.
+
+**The disagreement is entirely in souls per arrival — 120 against ~32.** A manifest whose commonest
+row is a bay-class freighter with 6–15 crew cannot average 120; `schedule.py`'s 120 looks like a
+figure chosen for a *passenger transport*, applied to every movement including freighters and
+shuttles.
+
+**The cross-check that discriminates.** `FACTIONS.md` §2.2 puts transients in port at **~45,000**,
+and §5.3 of the traffic file derives the same quantity as arrivals × mean stay:
+
+| souls/day | at a 9-day mean stay | against FACTIONS.md's 45,000 |
+|---|---|---|
+| 1,739 (manifest) | **15,651** | ×0.35 |
+| 6,240 (schedule) | **56,160** | ×1.25 |
+
+So **the manifest is low and `schedule.py` is close** on this test — which is the opposite of what
+the manifest's own internal reasoning suggests, and is why this is recorded as a conflict rather
+than resolved by picking. Either the mean stay is longer than 9 days (26 days closes the manifest's
+gap), or the manifest under-counts the crew who come ashore, or FACTIONS.md's 45,000 is high.
+
+**What would close it.** A canon figure for passengers or transients. Failing that, a decision on
+mean stay — it is the one free parameter that moves the manifest's answer by a factor of three, and
+it is authority 5 in both files.
+
+**What is blocked:** nothing. The crowd system keeps `schedule.py`'s figure; `traffic.py` is a
+second description that can be compared with it, and the comparison is the deliverable. What must
+not happen is a third module quietly adopting whichever number is convenient.

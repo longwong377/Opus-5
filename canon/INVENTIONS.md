@@ -4790,3 +4790,74 @@ and the fittings could not make the level up, so the frame either left the level
 black fraction ran past the x11.42 band (`medical` crushed x16.2, `research` x18.2). That is the
 fitting count showing through — a room whose sources cannot carry its level has only the flat term
 to carry it, and taking the flat term away leaves a hole rather than a shadow.
+
+---
+
+## INV-244 — The port's day: a manifest, a curve with two peaks, and the liner
+
+`station/traffic.py` (`MANIFEST`, `BERTH_TIERS`, `DAY_BANDS`, `day_curve`, `rate_per_hour`,
+`arrivals`, `liner_today`, `berths_in_use`, `hall_rate`, `cross_check`).
+
+**What.** What arrives at Babylon 5, when, where it berths, and how many people it lands — as
+functions rather than as a table in a document.
+
+**Why necessary.** `docs/gazetteer/TRAFFIC-AND-CUSTOMS.md` is 910 lines including a section titled
+*"THE PORT AS A LIVING SYSTEM — what to actually simulate"*, and until this module existed **one
+file read it** (`station/aperture.py`, for a hull cut). CLAUDE.md's scope names *"transports and
+visitors arriving and departing continuously; the jump gate working"* and *"customs and
+immigration"*.
+
+### The one thing that is not extrapolation
+
+**Berths × turnaround against the sourced movement rate.** 24 docking bays (authority 3, the
+Security Manual, read from `schema["docking"]["docking_bay"]["count"]` and not restated here) ×
+24 hours ÷ a 10-hour mean occupancy = **57.6 movements a day**, against an unrelated authority-4
+source's *"over 50 to 60 ships"*. Two numbers from sources that know nothing about each other,
+agreeing to within a couple of percent on a quantity neither was computed to match. The negative
+control moves the turnaround to 24 h, gets 24.0, and the band gate **fires** — so the agreement is
+evidence rather than an identity.
+
+### Three things the arrival stream did not have
+
+Measured against `schedule.arrival_times`, which is what the crowd actually uses:
+
+1. **It was flat.** 52 arrivals spread essentially uniformly. §5.4 gives peak-to-trough **3:1**;
+   `day_curve` measures **3.12:1** off `DAY_BANDS`, which are the section's own stated intervals
+   (a movement every 25 min at night against one every 8 min at the morning peak *is* 3.1:1)
+   rather than a curve fitted to the words "about 3:1".
+2. **It had one peak and the day has two.** `schedule.wave_pulse` reads 1.0 at 10:00 and **0.0 at
+   18:00**. §5.4's second peak is 17:00–21:00 and it is the interesting one — *"departures; the
+   Zocalo is busiest at station-evening and the port empties into it."* Asserted directly.
+3. **There was no liner.** §5.2: *"the liner is the event … build the day around it."* Measured
+   here: a liner lands **689 aboard at 10.8 h** on day 0 and puts **8.5 people a minute through one
+   hall** against a 0.28–0.88/min background — the crowdedness-and-isolation axis the owner named,
+   and a uniform stream cannot produce it.
+
+`rate_per_hour` normalises the curve **over the whole day** rather than by scaling its peak, so
+shaping the day cannot silently change how many ships come; that is asserted (the curve integrates
+to 55.0 ± 1).
+
+### Declared, and what constrains each
+
+* **`MANIFEST`** — §5.2's table, authority 5 (T-05), reasoned there to hit 55 arrivals, the 95/5
+  civilian split and §3.3's size tiers. Its arrival-weighted mean stay comes out at **12.2 h**
+  against the 10 h the tempo assumes, and `_selftest` bounds that agreement so the two halves
+  cannot drift apart.
+* **`BERTH_TIERS`** — §3.3, and the ~100 m bay limit is PROPOSED (T-03). Three tiers because the
+  station has three kinds of berth for one physical reason: a bay-class hull fits a bay elevator, a
+  standoff-class hull does not but can still make hull contact, and a 1,600 m hull cannot contact an
+  8,047 m station without becoming a structural load case.
+* **`BAND_RAMP_H = 0.75`** — authority 5 and deliberately small. It removes the discontinuity
+  between bands so a ship does not appear at 07:59 at the night rate and at 08:01 at three times it.
+  Cosmetic; the bands are the measurement.
+* **`CREW_STAYS_ABOARD`** — a warship lands nobody through customs (§5.2: *"crew stays aboard;
+  liberty parties by shuttle"*), and those liberty parties are already counted as shuttle movements.
+
+**A bug this found in its own gate, worth keeping.** `movements_per_day(berth_h=MEAN_BERTH_HOURS)`
+bound the default **at def time**, so the negative control could set the module global to 24.0 and
+the function went on returning 57.6. The control printed **DOES NOT FIRE** and was right to. It is
+resolved at call time now. A control that reports honestly is worth more than one that passes.
+
+**What would overturn it.** A canon figure for arrivals or passengers. The souls-per-day figure is
+already in conflict with `npc/schedule.py` by 3.6× — see **C-012**, which this module exists to make
+visible and does not resolve.
