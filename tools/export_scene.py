@@ -1778,6 +1778,18 @@ SOFT_FILL = {
     "energy_rel": 2.5,                 # fill / brightest fitting, on the wall
     "shadow": False,
 }
+# AND `energy_rel` IS RECORDED HERE AND DELIBERATELY NOT USED, which is worth
+# saying because every other entry in FIXTURE_LIGHTING does use its own. 2.5 is
+# a ratio of DELIVERED IRRADIANCE ON A WALL between the fill and the brightest
+# fitting -- "the fill delivers L 0.27 and the brightest fitting adds at most
+# +0.11 at its own peak". `light_downlight` throws that +0.11 from 0.37 m at a
+# 1.2 m range; the fill throws from 10 m at an 18 m range through a different
+# falloff and a cone. Multiplying a Godot energy by 2.5 would be treating two
+# incomparable numbers as one, which is the mistake BESPOKE_EXPOSURE exists to
+# warn about. What transfers is the measurement's SHAPE -- colour, direction,
+# and that the fill dominates the fittings -- and the fittings-versus-fill test
+# above confirms the last of those from our own render: dropping
+# `--fixture-energy` by 10x moves the frame's median 6%.
 # Above the DECK, not above the ceiling: the deck is what the collision meta
 # gives and what the fill is aimed at. The corridor's ceiling is 2.81 m, so the
 # source sits 7 m clear of it and is never in shot.
@@ -2751,6 +2763,11 @@ def _soft_fill_light(pos, aim, half_w_m, ceil_h_m, energy):
             "angle_attenuation": SOFT_FILL_ANGLE_ATTENUATION,
             "range": SOFT_FILL_RANGE_M,
             "energy": energy, "colour": list(SOFT_FILL["colour"]),
+            # From the record, not from the default. `render_shot.gd` defaults
+            # this to false anyway, so writing it changes no pixel -- but a
+            # measured field that the emitter does not read is a field nobody
+            # can tell has stopped mattering.
+            "shadow": SOFT_FILL["shadow"],
             "attenuation": 1.0, "group": "corridor_soft_fill"}
 
 
