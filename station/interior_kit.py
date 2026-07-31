@@ -1558,7 +1558,13 @@ def _selftest():
             ("portal_frame", portal_frame(2.6, 3.0)),
             ("door_leaf", door_leaf(open_fraction=0.35)),
             ("wall_assembly", wall_assembly(3.05, 3.0)),
-            ("deck_grid", deck_grid(3.6, 2.6))):
+            ("deck_grid", deck_grid(3.6, 2.6)),
+            # The two `_shell_from_pieces` users. `portal_frame` above went
+            # through this construction in 3x and its winding is derived from
+            # the piece being CCW rather than written down, so it is exactly the
+            # kind of thing that is right until an input has the other handedness.
+            ("door_frame", door_frame()),
+            ("bulkhead", bulkhead(chamfered_arch(2.6, 3.0, 0.5)))):
         assert signed_volume(*piece) > 0.0, f"{name} is inside-out"
     for mech in ("bi_parting", "horizontal_split"):
         for f in (0.0, 0.5, 1.0):

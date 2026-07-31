@@ -71,6 +71,23 @@ def _box(v, t, g, name, lo, hi):
 
 
 def _cyl(v, t, g, name, cx, cz, y0, y1, r, seg=6):
+    """An upright capped cylinder: conduit drops, pipe bands, bollards.
+
+    THIS PRIMITIVE WAS INSIDE-OUT AND OPEN, and both were found by the same
+    measurement in session 3x. `_box` beside it is 12/12 outward-facing and
+    `interior_kit._prism` is 12/12; this was **0/24**. Every face of every
+    cylinder in the station's furniture pointed into its own body, which with
+    backface culling on is an object you look straight through -- the exact
+    failure CLAUDE.md records `_box` having had for several sessions of exterior
+    work, where it only changed the shading, repeated indoors where it does not.
+
+    It was also capped at the top only, which is where all 102 of an assembled
+    deck's remaining boundary edges lived -- six an object over seventeen
+    objects. Six triangles an end is what closure costs.
+
+    Neither defect could be seen in a render: an inward-facing surface and a
+    missing one both show the background, and the background is black.
+    """
     n0 = len(v)
     for k in range(seg):
         a = math.tau * k / seg
@@ -81,11 +98,15 @@ def _cyl(v, t, g, name, cx, cz, y0, y1, r, seg=6):
     for k in range(seg):
         a0 = n0 + 2 * k
         b0 = n0 + 2 * ((k + 1) % seg)
-        t += [(a0, b0, b0 + 1), (a0, b0 + 1, a0 + 1)]
+        t += [(a0, b0 + 1, b0), (a0, a0 + 1, b0 + 1)]
     c = len(v)
     v.append((cx, y1, cz))
     for k in range(seg):
-        t.append((c, n0 + 2 * k + 1, n0 + 2 * ((k + 1) % seg) + 1))
+        t.append((c, n0 + 2 * ((k + 1) % seg) + 1, n0 + 2 * k + 1))
+    c0 = len(v)
+    v.append((cx, y0, cz))
+    for k in range(seg):
+        t.append((c0, n0 + 2 * k, n0 + 2 * ((k + 1) % seg)))
     g.append((name, t0, len(t)))
 
 
@@ -433,6 +454,48 @@ def _selftest():
     check("...and services", c["service"] > 2, str(c))
     check("every triangle is grouped",
           sum(hi - lo for _n, lo, hi in g) == len(t))
+
+    # --- CLOSED, AND FACING THE RIGHT WAY -----------------------------------
+    # Neither of these could be seen in a render, and both were shipped: `_cyl`
+    # capped its top only (102 open edges on an assembled deck, the last ones
+    # anywhere on it) and wound every one of its 24 faces INWARD, which with
+    # backface culling on is an object you look straight through. A hole and an
+    # inside-out surface both show the background, and the background is black.
+    # `_box` beside it has always been 12/12; that is why this is a gate on the
+    # primitives rather than a note about one of them.
+    import interior_kit as _K                                  # noqa: PLC0415
+
+    def _outward(pv, pt, ctr):
+        good = 0
+        for tri in pt:
+            p0, p1, p2 = (pv[i] for i in tri)
+            u = [p1[k] - p0[k] for k in range(3)]
+            w = [p2[k] - p0[k] for k in range(3)]
+            nn = (u[1] * w[2] - u[2] * w[1], u[2] * w[0] - u[0] * w[2],
+                  u[0] * w[1] - u[1] * w[0])
+            cc = [sum(pv[i][k] for i in tri) / 3.0 - ctr[k] for k in range(3)]
+            if sum(nn[k] * cc[k] for k in range(3)) > 0:
+                good += 1
+        return good
+
+    for nm, build, ctr in (
+            ("_box", lambda pv, pt, pg: _box(pv, pt, pg, "b", (-1, -1, -1),
+                                             (1, 1, 1)), (0.0, 0.0, 0.0)),
+            ("_cyl", lambda pv, pt, pg: _cyl(pv, pt, pg, "c", 0, 0, 0.0, 1.0,
+                                             0.2), (0.0, 0.5, 0.0))):
+        pv, pt, pg = [], [], []
+        build(pv, pt, pg)
+        opn, non = _K.boundary_edges(pv, pt)
+        check(f"{nm} is a closed solid", not opn, f"{len(opn)} open edges")
+        check(f"{nm} is manifold", not non, f"{len(non)} non-manifold edges")
+        check(f"{nm} faces outward",
+              _outward(pv, pt, ctr) == len(pt),
+              f"{_outward(pv, pt, ctr)}/{len(pt)} outward")
+    # And over a whole dressed room, because a primitive can be closed and an
+    # assembly of them still leak.
+    ropn, _rn = _K.boundary_edges(v, t)
+    check("a dressed room has no open edges", not ropn,
+          f"{len(ropn)} open edges over {len(t):,} triangles")
 
     # Determinism, which is what `_u` is for.
     v2, t2, _g2, _c2 = dress("test", 6.0, 9.0, 2.9, "office")
