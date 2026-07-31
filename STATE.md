@@ -1,8 +1,242 @@
 # Project State
 
-**Last updated:** 2026-07-31 · **Session 3v** — **W1 and W2 DONE. 66 of 66 ring decks assemble, 87 rooms with doors, a body walks into any of them** · **3u** — the plan is vertical now; walkability is a gate · **3t** — shadow coverage measured · **3s** — layers 1-4 all 118/118 · **3r** — layer 2 is 16/118
+**Last updated:** 2026-07-31 · **Session 3x** — **the doors close. 1,572 open boundary edges on an assembled deck → 0, every vestibule out of the corridor, every collision shell tied to the tolerance it is certified at** · **3w** — the frame budget measured for real · **3v** — W1 and W2 DONE, 66/66 ring decks assemble · **3u** — the plan is vertical now; walkability is a gate
 
-## Session 3v (last) — the furniture is solid, and HALF THE STATION IS STARVED OF IT
+## Session 3x (last) — EVERY DOORWAY ON THE STATION WAS AN OPEN SURFACE, AND NOW NONE IS
+
+`judge-3w` measured **1,470 open boundary edges in the corridor** of `blue/0/0`, 245 at
+each of six doorways, and called every door aperture an unclosed cut. It was right about
+the count. The cause turned out to be four separate defects stacked at the same place,
+and finding them needed one thing done first.
+
+### 0. The tagging, which is what made the rest findable
+
+`door_assembly` merged `bulkhead`, `door_frame` and `door_leaf` with **no `tag()` block**
+while every other piece in `interior_kit` has had one for sessions. So 1,248 triangles a
+deck — six gaps of 208 — were inside `ring_arc`'s returned range and outside every span
+it returned. They exported as `deck_untagged`, matched no material rule, took no light,
+and Godot gave them the glTF fallback: **the surface a player looks straight at while
+walking through a doorway was the one surface in the corridor with no material on it.**
+
+Nothing had to be authored. `materials.py` already binds `bulkhead` → `kit_wall_plate`
+and `door_frame` → `kit_pilaster`. The geometry simply never said what it was.
+**Whole-deck coverage: 1,248 untagged → 0.** And with the pieces named, the open edges
+attribute cleanly — `door_frame` 1,056, `bulkhead` 414 — instead of vanishing into an
+anonymous `corridor` blob.
+
+**Why no gate caught it, which is the more useful half.** `interior_kit._selftest` has
+always asserted that every triangle carries a tag, and it asserted it against
+`corridor_section(21.6)` — **no doors**. A coverage check that never builds the case with
+the gap is a coverage check of the easy half. It now runs four configurations: plain,
+wall door, bulkhead door, both.
+
+### 1. `_plate_with_hole` rimmed the wrong loops
+
+The caps come from `_polygon_difference`, which peels the outline one aperture edge at a
+time and lands split points partway along an outline edge. The rims were built from the
+loops the **caller** passed in, which know nothing about those splits, and two short
+edges do not weld to one long one at any tolerance.
+
+It now **rims from the pieces' own boundary** — an edge walked backwards by the piece
+beside it is interior and gets no wall; an edge used once is real silhouette wherever it
+came from — so the rim inherits whatever subdivision the peel produced. That also closes
+the slivers the peel drops for being under 4 mm²: their neighbours' edges become boundary
+and get rimmed, leaving a notch rather than a hole.
+
+`_insert_collinear` is the second half and it does **not** affect closure — measured both
+ways, not reasoned about. Disabling it leaves `door_frame` at 0 open edges and **16
+non-manifold** ones. Non-manifold is a face buried in the solid or two faces coincident,
+which is a depth-sort coin toss, which is judge-3w's "ragged sawtooths" and the
+parallelogram it photographed floating in front of a wall.
+
+### 2. `portal_frame` was five prisms sharing coincident faces
+
+Found **by the new gate, immediately**, which is how you know the gate is real. Adjacent
+prisms share a quad: 16 edges with four faces on them per frame, **828 on one deck**, at
+the corner a player walks past 414 times a lap. Rebuilt through the same machinery, now
+factored out as `_shell_from_pieces`: 16 → 0, **and 8,832 fewer triangles**, because the
+coincident faces were geometry nobody could ever see.
+
+### 3. `dressing._cyl` was open at the bottom AND inside-out
+
+The last 102 open edges on the deck were all here — conduit drops, pipe bands, bollards,
+six an object over seventeen objects. Measuring that found the worse one beside it:
+**`_cyl` wound every one of its 24 faces INWARD.** `_box` next to it is 12/12 outward and
+`interior_kit._prism` is 12/12; this was **0/24**. With backface culling on that is an
+object you look straight through — the failure CLAUDE.md records `_box` having had for
+several sessions of exterior work, where it only changed the shading, now found indoors
+where it does not.
+
+### 4. Every vestibule stood 0.219 m proud inside the corridor
+
+The other half of judge-3w's door finding: *"the dark jamb pieces are the neighbouring
+room's wall panelling standing proud through the corridor's white wall."* Literally what
+it is. `build_deck` ended each **render** vestibule at the **measured collision** plane
+(1.0806 m) while the corridor's **render** wall is at `corridor_width_m / 2` = 1.30 m, so
+a 2.1 m passage projected 0.219 m into a 3.0 m corridor at all six doors, showing its top
+face and both flanks. Same 0.219 m as the collision hole earlier in the session,
+**inherited**: the shell was correctly moved onto the measured plane and this expression
+was copied along with it.
+
+**The render passage stops at the render wall; the collision passage stops at the
+collision wall.** They are different planes and one number cannot serve both.
+
+### The score
+
+| | judge-3w | now |
+|---|---|---|
+| open boundary edges, `blue/0/0` | **1,572** | **0** |
+| untagged triangles | 1,248 | **0** |
+| `portal_frame` non-manifold edges | 16 each, 828 a deck | **0** |
+| deck render triangles | 597,418 | **589,216** (−1.4%) |
+| ring-deck collision, whole station | 75,642 | **35,746** (−53%) |
+
+### The gates, and every one has a negative control that fires
+
+* `interior_kit._selftest` — closure **and** manifoldness on `door_frame`, `door_leaf`,
+  both bulkhead sections, `portal_frame`; tag coverage in four door configurations;
+  `door_frame` and `bulkhead` added to the signed-volume winding list. Control: disabling
+  `_insert_collinear` → *"door_frame has 16 non-manifold edges against a bar of 0"*.
+* `dressing._selftest` — `_box` and `_cyl` each closed, manifold, 100% outward, plus a
+  whole dressed room with no open edges. Control: restoring the shipped cylinder fails
+  three of them — *6 open edges, 0/18 outward, 24 open edges over the room*.
+* `deck._selftest` — no vestibule stands proud of the corridor wall, measured on the
+  **shipped mesh** via a new `stats["vestibule_spans"]`. The first version of this gate
+  built a probe by passing the correct plane in, which is an assertion that cannot fail;
+  a vestibule cannot be found by group name either, because its groups are the corridor
+  kit's own **on purpose** — that is what makes it take the same materials. Control:
+  restoring the shipped plane → *"a vestibule reaches z=7120.224, 0.219 m past the render
+  wall face"*.
+
+`boundary_edges` **moved from `interior` into `interior_kit`** and is re-exported. It had
+to: the kit builds the pieces and `interior` imports the kit, so the module that could
+measure closure was the one that could not be called from the module that needed it.
+That is why the kit's closure gate was a **ray cast upward** — a test that cannot see an
+open edge in a vertical surface beside the corridor, and did not, for as long as every
+door on the station had 176 of them.
+
+### The budget work from 3w, integrated
+
+* `player.gd` sets `_cam.fov = 70.0`. Godot's default is 75 **vertical** (verified against
+  the engine), so the build was rendering 5° more than anything measured it — 6,774
+  triangles the budget never saw. **INV-083 closed.**
+* `collision.MAX_SAG_M = STEP_TOLERANCE_M`. The shell sized its angular step from a 1 mm
+  sag while `floor_steps` certifies a floor at 5 mm, and sag scales as the square of the
+  step: 977 steps built where 437 suffice. Tying the constants together means nobody can
+  edit one and leave the other. **Ring decks 75,642 → 35,746 collision triangles, −53%,
+  and the deck re-walks to the same numbers** — `traverse_m 125.94`, `offfloor 0/1800`.
+  The shell's floor lip rose 0.72 mm → 1.85 mm against a 5 mm bar. **INV-085 updated.**
+* `deck.py --sweep`'s headline said *"75,642 collision triangles for the whole walkable
+  station"* and summed ring decks only — the drum takes the `continue` above that sum.
+  **Wrong by 8.6×.** It now prints per-tile, lod0 and the station: 35,746 + 573,440 =
+  **609,186**, and the drum is 94% of it.
+* `budget.py`'s cached `RING_DECK_COLLISION_TRIS` drifted **by design** and its
+  `--station` gate caught it, which is what a cached number is for. The regex that reads
+  the sweep's prose also broke on the new wording, and a parse failure was reporting as an
+  off-by-one drift; the two now print differently.
+* CI gets a **separate always-green step** for the drift check. `Performance budgets` is
+  **expected red** until the content moves — three content bounds went over the moment
+  3w measured them honestly — and a step that must stay green cannot share a run with one
+  that must not.
+
+### The frames, rendered through Godot + lavapipe on the assembled deck and READ
+
+| frame | what it shows |
+|---|---|
+| `docs/judge3x-door-2m2.png` | the doorway at the rubric's **half** distance, judge-3w's own subject. The aperture reads as one continuous chamfered pressure-door reveal, two leaves with a centre seam, a control plate that is now a single clean box rather than two slivers |
+| `docs/judge3x-door-4m-vestibule-proud.png` | the vestibule defect, **before** |
+| `docs/judge3x-door-4m.png` | the same camera, **after** |
+| `docs/judge3x-corridor-5m.png` | the corridor down the arc: portal rhythm, pilaster strips, downlights, deck grid, chamfered soffit. It reads as a Babylon 5 corridor |
+
+## NEXT SESSION — START HERE
+
+**The geometry at a doorway is now correct and the CRAFT there is not.** Both statements
+come from looking at `docs/judge3x-door-2m2.png`, and the second is the whole of what is
+left at that subject.
+
+### 1. THE VALUES ARE ALL THE SAME, and it is measured, not an impression
+
+At a doorway, everything is near-white:
+
+| part | material | albedo |
+|---|---|---|
+| corridor wall | `kit_wall_plate` | **0.460** |
+| door frame | `kit_pilaster` | **0.469** |
+| bulkhead | `kit_wall_plate` | 0.460 |
+| door leaf | `door_leaf_painted` | 0.385 |
+
+**The frame is 2% different from the wall it sits in.** The leaf is 16% darker, which is
+why judge-3w called the door *"a pale slab in the wall with a thin seam"*. Do **not**
+simply darken the door to make it read — these are derived values and CLAUDE.md hard rule
+1 applies. The question to answer first is whether the reference shows a door separating
+from its wall by *value* or by *fitting* (chevrons, a bay number, a recessed handle,
+signage), and `reference/10-interiors-generic-kit/grey level 1.webp` is the frame to
+measure it in.
+
+### 2. THE WHOLE FRAME IS TOO BRIGHT AND HAS NO SHADOW — measured against the show
+
+`tools/measure_frame.py --against "reference/10-interiors-generic-kit/grey level 1.webp"
+docs/judge3x-corridor-5m.png`:
+
+```
+FAIL p5          0.2080 vs 0.0188   x11.09   band x1.29
+FAIL p95         0.8274 vs 0.2261   x 3.66   band x3.27
+ OK  p5/p95      0.2514 vs 0.0830   x 3.03   band x3.38
+FAIL crushed     0.0000 vs 0.0052   OURS IS EMPTY and the reference is not
+FAIL clipped      3.93%             max 3.69%
+```
+
+**p5 at 11.09× against a 1.29× band, and zero crushed pixels anywhere.** The reference has
+deep black in the ceiling, a dark rail band at waist height, ochre panel inserts and a
+checkerboard floor; our corridor is one value from deck to soffit.
+
+**CAVEAT, AND IT MATTERS: that frame was lit by an ad-hoc rig** — four omni lights at
+energy 5.0 and ambient 0.34, written into a scratch shot JSON — **not by the shipped
+corridor fixtures**, because `export_scene`'s interior path renders a *room*, not an
+assembled deck. So the number measures the rig, not the build. What it does establish
+regardless of rig is the **shape** of the gap: an ambient floor that high cannot produce a
+crushed pixel at any exposure. Re-measure with the shipped rig before acting on the
+magnitude. Building `export_scene --shot deck` is probably the prerequisite.
+
+This is **layer 4b**, which CLAUDE.md records at **1 of 17**, and p5 is exactly the
+statistic it records as the discriminator (*"fails 13 of 17, bright on 11"*). It is the
+same finding, now reproduced on the walkable build.
+
+### 3. Still open from judge-3w, unchanged
+
+* `fixture_lights` cannot see `<room>__`-prefixed fittings and aims every spot at world
+  −Y. On a spun ring −Y is not down.
+* `docking_bays__prop_bay_control_booth` and `docking_bays__prop_deck_marking` match no
+  material rule — the last two fallback groups on the deck. 13 more unresolved names are
+  `<room>__npc_standing_N`, the person's **own** group, which ends with zero faces after
+  the part split and is therefore harmless.
+* `godot/.godot/` is gitignored, so a fresh clone renders the fallback material.
+* The drum mounts the interior environment inside a 556 m cavity.
+* One corridor class on 66/66 decks — `concourse` at 9.0 m is never asked for.
+* 19 of 118 locations sit in secondary z-clusters the sweep does not build.
+* **Nothing is interactable except the door.**
+
+### 4. Where the walkable station stands
+
+`python3 station/deck.py --sweep`:
+
+```
+66 assemble, 0 fail, 1 on heightfield ground
+99 locations on an assembled cluster, 87 with a door, 0 without
+0 decks with a hole in the floor
+35,746 collision triangles across the ring decks, 51,200 more in the drum's ground
+per tile (573,440 for the whole drum at lod0) -- the walkable station is 609,186
+```
+
+`20/23` performance budgets within bound. The three reds — frustum structure, structure
+share of frame, resident triangles — are **content**, and the remedy is to move the
+content, not the limit. `resident triangles` at 327% is one `.glb` loaded whole: there is
+no streaming, no LOD and no occlusion culling in `godot/` at all, and that is a system,
+not a texture.
+
+---
+
+## Session 3v — the furniture is solid, and HALF THE STATION IS STARVED OF IT
 
 **Props and fixtures now collide.** `collision.prop_boxes` derives the boxes from the
 room's own emitted mesh — connected components of shared vertices are the primitives

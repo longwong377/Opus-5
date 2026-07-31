@@ -94,7 +94,7 @@ absence.
 | **W3** | **A furnished room** | ONE location at true prop density -- the reference is the owner's Starfield frames, not our own past work -- with a stated props/m2 | `dressing.py` built (3u) |
 | **W4** | **A populated room** | NPCs standing, sitting and walking in it. `station/npc/` already has twelve tested modules with zero importers; wire them | `populace.py` built (3u) |
 | **W5** | **The loop** | Spawn -> walk -> use something -> an NPC reacts. The smallest complete experience | |
-| **W6+** | **Breadth** | Roll W3-W5 outward by generator across the 118, in the order a player meets them | **STARTED** (3v) — `deck.py --sweep`: 66/66 ring decks assemble, 87 rooms, every one with a door, 0 floor holes, 74,044 collision triangles for the whole station |
+| **W6+** | **Breadth** | Roll W3-W5 outward by generator across the 118, in the order a player meets them | **STARTED** (3v) — `deck.py --sweep`: 66/66 ring decks assemble, 87 rooms, every one with a door, 0 floor holes. Collision: **35,746** across the ring decks + **573,440** in the drum's ground at lod0 = **609,186** for the walkable station (3x) |
 
 **`python3 station/deck.py --sweep` is the answer to "how much of the station can I walk in".**
 It is the only gate here that asks a whole-station question; every other one measures a part.
@@ -112,9 +112,35 @@ SLOPE, not lip** — `collision.floor_steps` is right on a flat corridor and wou
 hill, because the drum rises 0.24 m between lattice points, which is 3.5°, which is a field.
 What a character controller actually tests is rise over run against `floor_max_angle`.
 
-**Props are not solid.** `dressing.py` puts 82,362 triangles of furniture on the station and none
-of it is in the collision shells, so a player walks through tables. That is the next thing a
-person would notice after the doors.
+**Props are solid** as of 3v — `collision.prop_boxes` derives them from the room's own emitted
+mesh, so there is no second list to drift. A player no longer walks through tables.
+
+**A DOORWAY IS THE PLACE A PLAYER LOOKS CLOSEST, AND IT CARRIED FOUR DEFECTS AT ONCE.** Session
+3x, and the pattern is worth more than the fix. `judge-3w` measured 1,470 open boundary edges in
+one deck's corridor and called every door aperture an unclosed cut; it was right about the count
+and the cause was four things stacked:
+
+1. `door_assembly` merged its three pieces with **no `tag()` block**, so 1,248 triangles a deck
+   matched no material rule and took no light — the surface you look straight at, unmaterialled.
+2. `_plate_with_hole` rimmed the **loops the caller passed in**, which know nothing about the
+   split points `_polygon_difference` lands partway along an edge. It now rims from the pieces'
+   own boundary, so the rim inherits whatever subdivision the peel produced.
+3. `portal_frame` was five prisms **sharing coincident faces** — 828 non-manifold edges a deck,
+   at the corner a player passes 414 times a lap. Rebuilt through the same machinery: 8,832
+   *fewer* triangles, because coincident faces are geometry nobody can see.
+4. `dressing._cyl` was open at the bottom **and wound 0/24 outward** — an object you look
+   straight through.
+
+**Deck open edges: 1,572 → 0.** Every fix has a negative control that fires.
+
+**And the reason none of it was caught is one sentence: every gate measured the case without the
+defect in it.** `interior_kit`'s tag-coverage assertion ran on a corridor with **no doors**. Its
+closure gate **cast rays upward**, which cannot see a hole in a vertical surface beside the
+corridor. `boundary_edges` — the only measurement that finds this at all, because a hole shows
+the background and the background is black — lived in `interior`, which *imports* the kit, so the
+module that builds the pieces had no way to measure them. It now lives in `interior_kit`.
+
+**A gate belongs in the module that builds the thing, and it must build the hard case.**
 
 ### COLLISION IS NOT RENDER GEOMETRY, and that rule was learned expensively
 
