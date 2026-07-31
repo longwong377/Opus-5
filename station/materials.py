@@ -125,6 +125,11 @@ SKIN_V = _costume.SKIN_ANCHOR
 # head of hair that clips to zero is the same crush that binding people to a
 # metallic valve caused.
 HAIR_V = max(_costume.ALBEDO_FLOOR * 2.2, SKIN_V * 0.18)
+# An encounter suit's shell. Imported for the same reason: the ONE measured
+# large rigid non-human surface this project holds is the Pak'ma'ra bone cowl,
+# and a Vorlon suit stands in on it until somebody measures a box on one. See
+# `npc_suit_lacquer` for why that substitution is the honest one.
+SUIT_V = _costume.PAKMARA_COWL_ANCHOR
 
 # Imported, not restated. The window sheet's row pitch IS the deck pitch --
 # CLAUDE.md hard rule 4, inside and outside from the same schema -- and a copy
@@ -1927,13 +1932,62 @@ def _build():
         "npc_skin", "Skin — the one surface on a body that is not cloth",
         albedo=(SKIN_V, SKIN_V, SKIN_V), roughness=0.65, metallic=0.0,
         specular=0.4,
-        binds=("npc_skin", "npc_brow", "npc_hand", "npc_foot"),
+        # `npc_body` is the PER-PERSON WRAPPER span `populace._place_body`
+        # opens around each figure. As `npc.gd` records, the OBJ writer gives
+        # every triangle to the LAST group covering it and the parts are
+        # written after the whole, so the wrapper normally ends up with no
+        # faces at all -- which is why nothing rendered magenta and why the
+        # layer-3 gate found it unresolved anyway. Bound rather than exempted:
+        # skin is what a body is if its parts ever do land in the wrapper, and
+        # an exemption would be a hole in the one gate that measures material
+        # coverage. It is named `npc_body` rather than left as the bare
+        # `npc_seated_2` for a reason the resolver forces: fragments here match
+        # by SUBSTRING and longest wins, so a bind on `npc_seated` would have
+        # been 10 characters against `npc_hair`'s 8 and every seated person's
+        # HAIR would have resolved to skin.
+        binds=("npc_skin", "npc_brow", "npc_hand", "npc_foot", "npc_body"),
         scenes=("interior",), source="npc/costume.py SKIN_ANCHOR"))
     # Hair reads darker than skin in every reference frame this project holds;
     # costume.py's darkest measured garment is `ef_black_leather` at 0.043 and
     # its lightest civilian cloth is well above that, so hair is placed at the
     # bottom of the human-surface range rather than at black -- a head of hair
     # that clips to zero is the same crush the valve binding caused.
+    # ENCOUNTER SUITS. `body.py` builds four groups of them -- `npc_suit`,
+    # `npc_suit_robe`, `npc_suit_shell`, `npc_suit_tube` -- and none of them
+    # had a material, so a Vorlon rendered on the fallback. A suit is not a
+    # body and it is not cloth either: `_S_VORLON` describes "cellular:
+    # rounded cells in a dark net, high-gloss lacquer" at authority 2 off
+    # `vorlon.webp`, and `_S_GAIM` describes "rigid plate, matte" at
+    # authority 5.
+    #
+    # VALUE IS IMPORTED, NOT CHOSEN. This project has no measured box on a
+    # Vorlon suit, and `costume.py`'s method needs one -- albedo =
+    # SKIN_ANCHOR * V_garment / V_face. What it does hold is
+    # PAKMARA_COWL_ANCHOR = 0.46, measured on the bone cowl in `Pak'ma'ra.webp`
+    # and the closest thing in the corpus: a large rigid non-human shell,
+    # photographed under the same practical lighting. It stands in until a
+    # Vorlon box is measured, which is INV-008's rule applied rather than a
+    # hole left open. Neutral in hue for the reason `npc_skin` is: the anchors
+    # are VALUES. The "mottled tan/olive/amber" of the surface record is a
+    # texture job, and baking it into a flat albedo would fossilise one frame's
+    # magenta key light -- which `body.py`'s own note at _S_VORLON warns about
+    # in as many words.
+    #
+    # ROUGHNESS IS THE PART THAT DISTINGUISHES THEM and it is extrapolated.
+    # 0.16 puts the lacquer just rougher than `dome_glazing`'s 0.10, which is
+    # this file's smoothest surface and is literal glass; "wet gloss" is the
+    # glossiest description anywhere in the surface records and belongs beside
+    # it rather than beside costume.py's 0.42 leather. The Gaim plate at 0.72
+    # sits between that leather and the 0.86 twill: manufactured, matte, not
+    # fabric.
+    a(Material(
+        "npc_suit_lacquer",
+        "Encounter suit — Vorlon shell, cellular under a high-gloss lacquer",
+        albedo=(SUIT_V, SUIT_V, SUIT_V), roughness=0.16, metallic=0.0,
+        specular=0.7,
+        binds=("npc_suit", "npc_suit_robe", "npc_suit_shell", "npc_suit_tube"),
+        scenes=("interior",),
+        source="npc/costume.py PAKMARA_COWL_ANCHOR; npc/body.py _S_VORLON"))
     a(Material(
         "npc_hair", "Hair — matte, at the bottom of the measured human range",
         albedo=(HAIR_V, HAIR_V * 0.96, HAIR_V * 0.92), roughness=0.78,
@@ -2531,9 +2585,9 @@ def _build():
         "furn_casework", "Furniture Casework — painted steel desk, counter and locker bodies",
         albedo=(0.400, 0.396, 0.388), roughness=0.45, metallic=0,
         specular=0.5,
-        binds=("prop_desk", "prop_duty_desk", "prop_counter", "prop_issue_counter", "prop_parcel_locker", "prop_lab_bench", "fix_fume_column", "council_top", "council_frame", "council_plinth", "customs_bollard", "customs_desk", "qtr_desk", "qtr_locker", "bar_servery", "bar_backbar", "bar_table"), scenes=("interior",),
-        source="05-sector-green/council chambers.webp, balanced (gains 0.998/1.082/0.932): the council bench's plain grey frame (0.160,0.560)-(0.195,0.680) rgb(0.258,0.272,0.267) S 0.063, and the same bench's lit slab top (0.460,0.420)-(0.600,0.450) rgb(0.630,0.649,0.672) S 0.065. That bench is the only piece of station casework in the whole reference set measured square-on under a mild cast, and 00-INDEX.md reads its construction directly — 'a grey slab top with a chamfered edge', 'set in a plain grey frame with a bottom kick rail', 'a recessed plinth'. NO FRAME EXISTS of an office desk, a post-office counter, a quartermaster's issue counter, a parcel locker, a lab bench or a fume column.",
-        extrapolated="The level, and the extension from one ceremonial bench to seven working units. The council bench brackets rather than fixes it — 0.63 lit against 0.27 in shadow — because 00-INDEX.md records that chamber as deliberately lit asymmetrically ('the fan-and-medallion side is bright, the opposite wall ... almost no fill'), so neither end is the albedo. 0.400 is chosen as one rung below ALBEDO_ANCHOR and it is inside the corridor kit's own measured ladder: the kit's darkest lit element, the dado, is lit(0.247) = 0.385, and its wall is 0.460. Overturned by any frame of a working office or issue counter, or by a frame containing a reflectance standard."))
+        binds=("prop_desk", "prop_duty_desk", "prop_counter", "prop_issue_counter", "prop_parcel_locker", "prop_locker", "prop_weapons_locker", "prop_lab_bench", "fix_fume_column", "council_top", "council_frame", "council_plinth", "customs_bollard", "customs_desk", "qtr_desk", "qtr_locker", "bar_servery", "bar_backbar", "bar_table"), scenes=("interior",),
+        source="05-sector-green/council chambers.webp, balanced (gains 0.998/1.082/0.932): the council bench's plain grey frame (0.160,0.560)-(0.195,0.680) rgb(0.258,0.272,0.267) S 0.063, and the same bench's lit slab top (0.460,0.420)-(0.600,0.450) rgb(0.630,0.649,0.672) S 0.065. That bench is the only piece of station casework in the whole reference set measured square-on under a mild cast, and 00-INDEX.md reads its construction directly — 'a grey slab top with a chamfered edge', 'set in a plain grey frame with a bottom kick rail', 'a recessed plinth'. NO FRAME EXISTS of an office desk, a post-office counter, a quartermaster's issue counter, a parcel locker, a quarters or security locker, a lab bench or a fume column.",
+        extrapolated="The level, and the extension from one ceremonial bench to nine working units. The council bench brackets rather than fixes it — 0.63 lit against 0.27 in shadow — because 00-INDEX.md records that chamber as deliberately lit asymmetrically ('the fan-and-medallion side is bright, the opposite wall ... almost no fill'), so neither end is the albedo. 0.400 is chosen as one rung below ALBEDO_ANCHOR and it is inside the corridor kit's own measured ladder: the kit's darkest lit element, the dado, is lit(0.247) = 0.385, and its wall is 0.460. Overturned by any frame of a working office or issue counter, or by a frame containing a reflectance standard."))
 
         # The thing that nearly went wrong here is worth recording. In more
         # zocalo.png the furniture reads plainly blue-white and the ratio test

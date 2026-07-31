@@ -347,9 +347,17 @@ def _place_body(v, t, g, mesh, x, y, z, yaw, group, actors=None, who=None):
     # with one group can only ever be ONE surface, so 278 people took whatever
     # single material matched and rendered as silhouettes.
     #
-    # The person's own group is emitted too, as a PREFIX of the parts, because
+    # The person's own span is emitted too, as a PREFIX of the parts, because
     # `npc.gd` addresses a person and `rooms.is_solid` keys off `npc_`.
-    g.append((group, t0, len(t)))
+    #
+    # `_npc_body` ON THE END, and it is the material resolver that forces it.
+    # `materials.resolve` matches by SUBSTRING and the longest fragment wins,
+    # so a bind on the bare `npc_seated` would be 10 characters against
+    # `npc_hair`'s 8 -- and every seated person's hair would have resolved to
+    # skin. With the suffix, the wrapper hits `npc_body` and nothing else, and
+    # each part still hits only its own fragment. `npc.gd`'s prefix match is
+    # unaffected: it tests `name.begins_with(group + "_")`, which this passes.
+    g.append((f"{group}_npc_body", t0, len(t)))
     for nm, lo, hi in bg:
         g.append((f"{group}_{nm}", t0 + lo, t0 + hi))
     if actors is not None:
@@ -1087,9 +1095,9 @@ def _selftest():
     spans = {nm: (lo, hi) for nm, lo, hi in zg}
     mism = []
     for a in acts:
-        if a["pose"] != "standing" or a["group"] not in spans:
+        if a["pose"] != "standing" or a["group"] + "_npc_body" not in spans:
             continue
-        lo, hi = spans[a["group"]]
+        lo, hi = spans[a["group"] + "_npc_body"]
         idx = {i for tri in zt[lo:hi] for i in tri}
         got = sorted(round(zv[i][1], 6) for i in idx)
         # Against the POSED mesh, because that is what was placed. The pose is
@@ -1107,7 +1115,7 @@ def _selftest():
     # NEGATIVE CONTROL: the same comparison against a DIFFERENT person's body
     # must fail, or the fingerprint is not a fingerprint.
     a0 = next(a for a in acts if a["pose"] == "standing")
-    lo, hi = spans[a0["group"]]
+    lo, hi = spans[a0["group"] + "_npc_body"]
     idx = {i for tri in zt[lo:hi] for i in tri}
     got = sorted(round(zv[i][1], 6) for i in idx)
     other = _pose_mesh(a0["who"]["species"], a0["who"]["id"] + "-not-me",

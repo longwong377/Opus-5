@@ -69,6 +69,14 @@ jobs:
       - name: Canon assertions
         run: python3 station/validate.py
 
+      # The hull apertures. `generate_hull.py` already runs `check_closure` on
+      # every build, so the closure PROPERTY is gated -- but the three negative
+      # controls that prove the check can fail live only in this self-test, and
+      # a closure assertion nobody can break is the pattern this project has
+      # been bitten by twice.
+      - name: Hull apertures and their closure
+        run: python3 station/aperture.py
+
       # The kit's gates assert two things a render cannot be trusted to show:
       # that primitives face outward, and that a corridor is closed overhead.
       # Both have already been wrong in committed geometry, and both looked
