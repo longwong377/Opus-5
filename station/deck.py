@@ -585,15 +585,40 @@ def build_deck(schema, profile, sector, ring, deck, with_rooms=True,
         if dx is None:
             continue
         inner = q["z_m"] + room_interior_half_m(schema, profile, q)
+        # THE RENDER PASSAGE STOPS AT THE RENDER WALL. THE COLLISION ONE STOPS
+        # AT THE COLLISION WALL. They are different planes and using one number
+        # for both is wrong in whichever direction you pick it.
+        #
+        # This ended at `cz - corridor_profile()["half_w"]`, the MEASURED
+        # collision plane at 1.0806 m, and the corridor's render wall is at
+        # `corridor_width_m / 2` = 1.30 m. So every vestibule on the station
+        # projected 0.219 m into the corridor -- a 2.1 m box standing proud
+        # inside a 3.0 m space, showing its top face and both flanks through the
+        # wall. judge-3w photographed it at 2.5 m from a door and described "the
+        # dark jamb pieces are the neighbouring room's wall panelling standing
+        # proud through the corridor's white wall"; docs/judge3x-door-4m.png is
+        # the same defect after the apertures were closed.
+        #
+        # It is the same 0.219 m as the collision bug earlier in this session,
+        # inherited: the shell was correctly moved onto the measured plane and
+        # this expression was copied along with it. The corridor's own
+        # `deck_panel` spans the full width, so the render floor already covers
+        # from this plane inward and the two abut with nothing between them.
         vv, vt, vg = vestibule_render(
             radius, q["angle_deg"] + math.degrees(dx / radius), inner,
-            cz - C.corridor_profile()["half_w"],
+            cz - K.PROVISIONAL["corridor_width_m"] / 2.0,
             K.PROVISIONAL["door_width_m"], K.PROVISIONAL["door_height_m"])
         off, t0 = len(V), len(T)
         V.extend(vv)
         T.extend((a + off, b + off, c + off) for a, b, c in vt)
         G.extend((n, lo_ + t0, hi_ + t0) for n, lo_, hi_ in vg)
         stats["vestibule_tris"] = stats.get("vestibule_tris", 0) + len(vt)
+        # WHERE they went, so a gate can find them. Their group names are the
+        # corridor kit's own, deliberately -- that is what makes them take the
+        # same materials -- which means a name cannot tell a vestibule from the
+        # corridor it opens off. Nothing could ask "does any vestibule poke
+        # through the wall" until the answer was recorded here.
+        stats.setdefault("vestibule_spans", []).append((t0, len(T)))
     stats["triangles"] = len(T)
     return V, T, G, stats
 
@@ -803,6 +828,29 @@ def _selftest():
     print(f"  {len(cm['rooms'])} doors, vestibules "
           f"{min(r['vestibule_m'] for r in cm['rooms']):.2f}-"
           f"{max(r['vestibule_m'] for r in cm['rooms']):.2f} m")
+
+    # AND NO VESTIBULE POKES INTO THE CORRIDOR. The opposite failure to the one
+    # above and it was shipped: the render passage ended on the MEASURED
+    # collision plane (1.0806 m) while the corridor's render wall is at
+    # `corridor_width_m / 2` (1.30 m), so a 2.1 m box stood 0.219 m proud inside
+    # a 3.0 m space at all six doors, showing its top face and both flanks
+    # through the wall. Measured on the built mesh rather than on the argument,
+    # because the argument is exactly what was wrong.
+    #
+    # ON THE SHIPPED MESH, not on a probe. `build_deck` records where it put
+    # each vestibule's triangles (`stats["vestibule_spans"]`) precisely so this
+    # can address them: they carry the corridor kit's own group names on
+    # purpose, so a name is no way to find them, and a probe built by passing
+    # the right plane in is an assertion that cannot fail.
+    wall_z = cz - K.PROVISIONAL["corridor_width_m"] / 2.0
+    fv, ft, _fg, fs = build_deck(schema, profile, "blue", 0, 0)
+    deepest = max((fv[i][2] for lo_, hi_ in fs.get("vestibule_spans", ())
+                   for tri in ft[lo_:hi_] for i in tri), default=wall_z)
+    check("no vestibule stands proud of the corridor wall",
+          deepest <= wall_z + 1e-6,
+          f"a vestibule reaches z={deepest:.3f}, {deepest - wall_z:.3f} m past "
+          f"the render wall face at {wall_z:.3f} -- it will show its top face "
+          f"and both flanks through the corridor wall")
 
     # THE FURNITURE IS SOLID, and it has to stay solid AND stay out of the way.
     # Both directions can fail: no boxes at all is a player walking through
