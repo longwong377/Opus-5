@@ -141,6 +141,40 @@ USER_ARGS=("--scene-json=$SCENE_JSON" "--out=$OUT")
 
 export VK_ICD_FILENAMES=/usr/share/vulkan/icd.d/lvp_icd.json
 
+# THE SILENT FALLBACK THAT INVALIDATED A WHOLE SESSION'S VISUAL WORK.
+#
+# Session 4e ran in a container with NO `/usr/share/vulkan/icd.d` at all --
+# `mesa-vulkan-drivers` is not in the base image and nothing installs it. Godot
+# does not stop for that. It prints
+#
+#     ERROR: Required extension VK_KHR_surface not found.
+#     WARNING: Your video card drivers seem not to support the required Vulkan
+#              version, switching to OpenGL 3.
+#
+# in the middle of several hundred lines of ALSA noise, renders in **OpenGL 3
+# Compatibility**, and exits 0 with a PNG. Compatibility has no Forward+: no
+# SSAO, no glow, no SSIL, no volumetric fog, no adjustment. So every frame
+# looked flat and grey, and A/B tests of ssil_enabled and
+# volumetric_fog_enabled came back BYTE-IDENTICAL -- which was recorded as
+# "lavapipe does not run it" and was nothing of the kind. The features were not
+# off; the renderer was.
+#
+# So the ICD is checked BEFORE the run, and the fallback warning is treated as
+# fatal AFTER it. A render that quietly changes renderer is worse than a render
+# that fails, because it produces evidence.
+if [ ! -r "$VK_ICD_FILENAMES" ]; then
+  cat >&2 <<EOF
+render_godot.sh: no Vulkan ICD at $VK_ICD_FILENAMES
+
+  Godot would fall back to OpenGL 3 Compatibility, which has NO Forward+ --
+  no SSAO, glow, SSIL, volumetric fog or colour adjustment -- render a flat
+  grey frame, and exit 0. Every craft judgement taken from it would be wrong.
+
+  Fix:  apt-get update && apt-get install -y mesa-vulkan-drivers
+EOF
+  exit 2
+fi
+
 # A CLEAN CHECKOUT RENDERS A DIFFERENT PICTURE, AND RETURNS 0. This is F-13 in
 # docs/craft-review-3t.md, closed here. `godot/.godot/` is gitignored, so on a
 # fresh clone or a fresh `git worktree` the TEXTURE IMPORT CACHE is absent;
@@ -193,6 +227,26 @@ timeout "$TIMEOUT" xvfb-run -a --server-args="-screen 0 ${RES}x24" \
 RC=${PIPESTATUS[0]}
 set -e
 echo "--- ${SHOT} finished in $(( $(date +%s) - START ))s (exit ${RC}) ---"
+
+# ...AND THE SAME CHECK FROM THE OTHER END. The ICD can be present and Godot
+# can still fall back -- a broken driver, a missing extension, an ICD for
+# hardware that is not here. The only authority on which renderer ran is what
+# Godot itself printed, so that is what is read. Session 4e drew every one of
+# its visual conclusions from ten frames carrying this warning.
+if grep -q "switching to OpenGL 3" "$LOGFILE"; then
+  echo >&2
+  echo "RENDERER FELL BACK TO OPENGL 3 COMPATIBILITY -- this frame is NOT" >&2
+  echo "evidence about craft. Compatibility has no Forward+: no SSAO, glow," >&2
+  echo "SSIL, volumetric fog or colour adjustment. Godot said:" >&2
+  grep -E "Required extension|switching to OpenGL 3" "$LOGFILE" | sed 's/^/  /' >&2
+  echo "  fix: apt-get install -y mesa-vulkan-drivers" >&2
+  rm -f "$OUT"
+  exit 3
+fi
+# And the positive form, so a passing run SAYS which renderer it used rather
+# than leaving it to be inferred from an absence.
+grep -m1 -E "Vulkan [0-9.]+ - Forward\+" "$LOGFILE" | sed 's/^/renderer: /' \
+  || { echo "renderer: could not confirm Forward+ from the log" >&2; exit 3; }
 
 if [ ! -f "$OUT" ]; then
   echo "NO PNG WRITTEN -- the render failed. Do not report a render." >&2
