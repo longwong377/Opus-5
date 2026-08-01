@@ -2,6 +2,116 @@
 
 **Last updated:** 2026-08-01 · **Sessions 4e–4f** — **READ §14 FIRST. The renderer was wrong all session; layer 7 exists; the Starfury flies; 34 of 41 CI gates had not run for thirty pushes** · **4d** — **READ §8 FIRST: the owner asked what actually works and the answer was mostly no. Direction changed.** Also: 357/357 interactables, and the 60-minute engine tax is over · **4c** — the station is INTERACTABLE, the port is on a wall, and the 24-minute suites were one bad cache key · **4b** — a police force, friction in metres, the plated shell, the fitting-reach fix
 
+## Session 4g — THE STATION IS 90 ROOMS, NOT A PLACE, AND NOW THERE IS A CORRIDOR BETWEEN THEM
+
+### 18. READ THIS FIRST — what "128 of 128" actually meant, and the gate that never existed
+
+The owner asked **"how much of the station is playable right now"**, and the honest answer is not
+the one this repository has been printing.
+
+| what | number |
+|---|---|
+| locations you can stand in | **128 of 128** — `deck.py --sweep` |
+| continuous walkable station | **one z-cluster** |
+| the full loop, proven | **1 cluster** — `walkable.py --deck blue/0/0` |
+| of the station's declared footprint | **0.17%** (§13) |
+| built to depth vs generic bay | **79 / 49** |
+
+**A z-cluster is a 40 m slice of the axis** (`Z_CLUSTER_M`), exported as its own `.glb`. `walk.gd`
+takes ONE `--glb` and loads it whole. So what a player can walk is one 40 m slice of one deck at
+one radius. Reach the end and there is nothing, because the next file was never loaded.
+
+**Why it happened, and it is this file's own disease one level up.** Every W-milestone was written
+as *"a player can walk HERE"* — stand up, go somewhere, a furnished room, a populated room, the
+loop — and W6 was *"roll W3–W5 outward across the 128"*. Rolling outward BY LOCATION is the
+horizontal-slice mistake again: 128 places, each individually walkable, none of them joined. And
+`deck.py --sweep` asks *is every location on an assembled cluster* — a per-cluster question, 128/128
+— so **no gate in this repository has ever asked whether you can walk from cluster A to cluster B.**
+Nothing could fail for the absence of streaming. `walk.gd` takes one glb because the render tools
+needed to shoot one deck; it was never the thing that had to be a game.
+
+*A coverage count is not a walk test* was learned in 3z about single rooms. It is true again about
+the seams between them.
+
+### 18.1 LANDED — `interior.axial_run` and `collision.axial_shell` (commit `2115b88`)
+
+Every corridor on this station was a `ring_arc`: a run at **constant z**, bent around the axis. A
+deck's locations are spread **along** the axis — `blue/0/0` carries six clusters over 1,120 m, the
+docking bays at 7120 and the customs halls at 7440. `build_deck_clusters` put both in one scene and
+said plainly that it did not join them. That was right when nothing was on either side of the gap
+and stopped being right once both ends existed.
+
+* **`interior.axial_run` is the kit UNBENT.** `interior_kit` authors a corridor straight along +Z
+  and `ring_arc` bends it; this places it as authored, +Y turned radially inward, +X tangential.
+  Same sections, doors, tags and light fittings. 320 m = 35 sections, 114,456 tri, **0 open edges**.
+* **`collision.axial_shell` is the ring shell with its two long directions swapped** — a ring
+  corridor runs in ANGLE and is bounded in z by its walls; an axial one runs in Z and is bounded in
+  angle. Floor and ceiling are the same cylindrical bands, from the same `corridor_profile` cast, so
+  **a player crossing from one into the other never changes surface.** 644 tri = **0.56%** of the
+  render mesh, a floor under all 270 probes, flat to **1 mm over 320 m**.
+* Four checks in `collision._selftest`, **15/15**, with a negative control that fires: with the
+  doors omitted the same ray through the aperture is stopped by wall.
+* 18,676 non-manifold edges where consecutive sections butt — the same class as the portal frames
+  in 3x, not yet chased.
+
+### 18.2 WIRED — `build_deck_clusters(join=True)` puts 341 m of corridor between them
+
+`deck_plan(extra_doors=)` → `build_deck(extra_doors=)` → `build_deck_clusters(join=True)`. A
+junction door is **not** a room door: a room's door may be declined by the fitting rule, and
+declining a junction door leaves the axial run walled off at the end, which is worse than no
+corridor.
+
+    join arc shared: (26.33, 232.0) -> join_deg 129.167
+    JOIN 7120 -> 7440: 341.0 m, 37 sections, 120,472 tri at 129.167 deg
+
+**THE ANGLE IS DERIVED AND THE FIRST VERSION PASSED IT, AND THAT VERSION BUILT A CORRIDOR INTO A
+WALL.** A cluster's corridor covers the arc its own rooms occupy — the docking bays sweep
+−12.83 to 332.00 degrees, the customs halls 26.33 to 232.00. A join at 0 degrees gets a door in the
+first and **nothing** in the second, because `deck_plan` only cuts doors inside its own arc and
+`ring_arc` silently drops one it cannot place. Measured: `snapped junction door in the mesh: []`.
+It now takes the middle of the arc every cluster shares, and **looks the aperture up in the built
+mesh's own `doors_at` afterwards**, raising if it is absent — the ask is not the evidence.
+
+**What is NOT done: `build_collision` does not yet build the join's shell**, so the join is
+walkable-*looking* and not yet walkable. That is the next commit and it is small.
+
+### 18.3 IN PROGRESS — `station/occluders.py`, self-test RED at 6/7, not in CI
+
+`budget.py` has been red for four sessions at 2.05x its structure allowance, and its own docstring
+says why: *"NO OCCLUSION IS APPLIED... the far side of the ring is inside the frustum from most
+standing positions"* and *"what closes this is an occluder on the corridor's own walls."*
+
+The module is the **exact dual of `collision.py`**: a collision shell takes the narrowest, highest,
+nearest surface so a body cannot pass through what it sees; an occluder takes the widest, lowest,
+farthest so nothing it sees is hidden. Same kit, same casts, opposite reducer — `occluder_shell` IS
+`corridor_shell` handed a deep profile. 68 tri against the kit's 7,176, blocking 95.3% of the sphere.
+
+**Three bugs found by its own containment test, and the third is the interesting one:**
+
+1. counting a ray that misses the kit as a breach — an arc is a 6° slice, so a ray down the corridor
+   leaves through a cut end that on the real deck is more corridor;
+2. the profile measured on a section **with no doors in it**, so the coffer a door head is let into
+   did not exist — `interior_kit`'s tag-gate lesson repeated exactly;
+3. **an axis-aligned lattice cannot see an undercut.** The soffit's light box has a rim at 3.000 m
+   with the coffer behind it at 3.065 m. A ray cast straight up stops on the rim. Refining the
+   lattice from 130 mm to 22 mm changed nothing, because **the pitch was never the problem — the
+   direction was.** The fix under test is a spherical sweep: eyes through the void, rays over the
+   whole sphere, and the profile is the bounding box of every point that answers.
+
+**A by-product worth acting on:** at 22 mm pitch the same sideways cast finds `half_w` **1.0611 m**
+against `collision.corridor_profile`'s **1.0806 m** — 19.5 mm of pinch its own 186 mm lattice steps
+over. That is 19.5 mm of wall a shoulder can enter. Not this module's to change; recorded here
+because this is where it became visible.
+
+### 18.4 NEXT, in order
+
+1. `build_collision` builds the join's shell; then `walkable.py --join` walks a body from the
+   docking bays into customs and **fails if it stops**. That gate is the one that never existed.
+2. Finish `occluders.py` to green, then the Hi-Z pass in `budget.py` — and the gate must **read
+   `godot/` for `use_occlusion_culling` and an `OccluderInstance3D` before it is allowed to apply
+   the discount**, or it is a gate measuring a fantasy.
+3. Streaming (§13). One cluster resident is the ceiling on everything above.
+
 ## Sessions 4e–4f — WHAT LANDED, WHAT IS OPEN, AND THE THREE THINGS I GOT WRONG
 
 ### 14. READ THIS FIRST — the state of the build

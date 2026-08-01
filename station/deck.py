@@ -212,7 +212,8 @@ def room_half_w_m(schema, profile, place):
     return min(w_full, bw) / 2.0
 
 
-def deck_plan(schema, profile, sector, ring, deck, z_m=None, max_rooms=None):
+def deck_plan(schema, profile, sector, ring, deck, z_m=None, max_rooms=None,
+              extra_doors=()):
     """Everything the render and the collision assemblies both need, DECIDED
     ONCE: the arc, the corridor's z, and which rooms get a door and where.
 
@@ -312,7 +313,14 @@ def deck_plan(schema, profile, sector, ring, deck, z_m=None, max_rooms=None):
     return {"plan": plan, "radius": radius, "z_m": z_m, "here": here,
             "lo": lo, "span": span, "cz": cz, "rooms": rooms,
             "unopened": unopened,
-            "doors": [(q["angle_deg"], -1) for q, _d, _x in rooms]}
+            # EXTRA DOORS ARE NOT ROOM DOORS. A room's door is placed by the
+            # fitting rule above and may be declined; a junction door is where
+            # an axial corridor meets this ring one, and declining it would
+            # leave the axial run walled off at the end -- a corridor to
+            # nowhere, which is worse than no corridor. They are appended
+            # after the rooms so `ring_arc`'s snapping treats them the same.
+            "doors": ([(q["angle_deg"], -1) for q, _d, _x in rooms]
+                      + [(float(a), int(sd)) for a, sd in extra_doors])}
 
 
 def _dress_solid(name):
@@ -714,7 +722,7 @@ CORRIDOR_INSTANCED = True
 
 def build_deck(schema, profile, sector, ring, deck, with_rooms=True,
                bake_crowd=False,
-               max_rooms=None, z_m=None):
+               max_rooms=None, z_m=None, extra_doors=()):
     """One deck as a single mesh. Returns (verts, tris, groups, stats)."""
     V, T, G = [], [], []
     stats = {"rooms": 0, "skipped": [], "corridor_tris": 0, "room_tris": 0}
@@ -733,7 +741,8 @@ def build_deck(schema, profile, sector, ring, deck, with_rooms=True,
     # corridor at the label put it through the far end of every room on the
     # deck; placing it at the deck's nominal z, before clustering existed, made
     # a body fall 263 m through empty space.
-    dp = deck_plan(schema, profile, sector, ring, deck, z_m, max_rooms)
+    dp = deck_plan(schema, profile, sector, ring, deck, z_m, max_rooms,
+                   extra_doors=extra_doors)
     here, lo, span, cz = dp["here"], dp["lo"], dp["span"], dp["cz"]
     stats["corridor_z"] = cz
     stats["unopened"] = dp["unopened"]
@@ -1102,8 +1111,19 @@ def clusters_for(sector, ring, deck, keys):
     return sorted(out)
 
 
+# How much arc two clusters must share before a corridor can be run between
+# them. A doorway is 1.50 m, which at the ring radii here is well under a
+# degree; 2 degrees leaves room for `ring_arc` to snap the aperture to a bay
+# centre at either end without it falling off the arc.
+JOIN_MIN_ARC_DEG = 2.0
+# How far a snapped junction door may land from where it was asked for before it
+# counts as a different door. `ring_arc` snaps to the nearest bay centre and the
+# bays are ~3.07 m, which at 192 m radius is 0.92 degrees.
+JOIN_SNAP_TOL_DEG = 1.5
+
+
 def build_deck_clusters(schema, profile, sector, ring, deck, n=None,
-                        keys=None, **kw):
+                        keys=None, join=False, join_deg=None, **kw):
     """Several of a deck's z-clusters in ONE mesh. Returns (V, T, G, stats).
 
     THE THING THAT STOPPED THE ARRIVAL LOOP BEING ONE PLACE. `build_deck`
@@ -1156,22 +1176,107 @@ def build_deck_clusters(schema, profile, sector, ring, deck, n=None,
             zs = zs[:max(1, n)]
     V, T, G = [], [], []
     stats = {"clusters": [], "z": list(zs), "rooms": 0, "corridor_tris": 0,
-             "room_tris": 0, "skipped": []}
+             "room_tris": 0, "skipped": [], "joins": []}
+
+    # THE JOINS, DECIDED BEFORE THE CLUSTERS ARE BUILT, because each end needs a
+    # door in its own ring corridor and a door has to be in the plan before the
+    # corridor is swept. `join_deg` is the angle the axial runs stand at; it is
+    # one angle for the whole deck so the runs form a single spine rather than a
+    # zigzag, and it is checked against every cluster's arc below.
+    axial = sorted(zs)
+    at_deg = {}
+    if join and len(axial) > 1:
+        # THE ANGLE IS DERIVED, NOT PASSED, and the first version passed it.
+        # A cluster's corridor covers the arc its own rooms occupy: the docking
+        # bays sweep -12.8 to 332.0 degrees and the customs halls 26.3 to 232.0.
+        # A join at 0 degrees gets a door in the first and NOTHING in the second
+        # -- `deck_plan` only cuts doors inside its own arc, so the aperture was
+        # silently absent and the corridor would have arrived at a wall. Take
+        # the middle of the arc EVERY cluster covers, or decline to build.
+        plans = {z: deck_plan(schema, profile, sector, ring, deck, z,
+                              kw.get("max_rooms")) for z in axial}
+        a_lo = max(pl["lo"] for pl in plans.values())
+        a_hi = min(pl["lo"] + pl["span"] for pl in plans.values())
+        if a_hi - a_lo < JOIN_MIN_ARC_DEG:
+            stats["joins"].append(
+                {"built": False, "from": axial[0], "to": axial[-1],
+                 "why": f"the clusters' arcs share only {a_hi - a_lo:.1f} deg, "
+                        f"under the {JOIN_MIN_ARC_DEG:.0f} deg a doorway needs"})
+        else:
+            if join_deg is None:
+                join_deg = a_lo + (a_hi - a_lo) / 2.0
+            stats["join_deg"] = join_deg
+            stats["join_arc"] = (round(a_lo, 2), round(a_hi, 2))
+            for i, z in enumerate(axial):
+                hands = []
+                if i:
+                    hands.append(-1)        # a run arriving from lower z
+                if i < len(axial) - 1:
+                    hands.append(1)         # a run leaving toward higher z
+                at_deg[z] = tuple((join_deg, h) for h in hands)
+
     for z in zs:
         v, t, g, st = build_deck(schema, profile, sector, ring, deck,
-                                 z_m=z, **kw)
+                                 z_m=z, extra_doors=at_deg.get(z, ()), **kw)
         base, t0 = len(V), len(T)
         V.extend(v)
         T.extend((a + base, b + base, c + base) for a, b, c in t)
         pre = f"z{int(round(z))}__"
         G.extend((pre + nm, lo + t0, hi + t0) for nm, lo, hi in g)
+        cmz = st.get("collision_meta") or {}
         stats["clusters"].append({"z": z, "tris": len(t),
                                   "rooms": st.get("rooms", 0),
                                   "spawn": st.get("spawn"),
-                                  "spawn_at": st.get("spawn_at")})
+                                  "spawn_at": st.get("spawn_at"),
+                                  "corridor_z": st.get("corridor_z", z),
+                                  "half_w_m": cmz.get("half_w_m", 1.0806),
+                                  "radius_m": cmz.get("radius_m")})
         for k in ("rooms", "corridor_tris", "room_tris"):
             stats[k] += st.get(k, 0)
         stats["skipped"] += st.get("skipped", [])
+
+        # A JUNCTION DOOR THAT DID NOT SURVIVE IS A CORRIDOR INTO A WALL, and it
+        # is silent: `ring_arc` snaps a door to the nearest bay centre and drops
+        # one it cannot place, and `deck_plan` never cuts one outside its own
+        # arc. So the aperture is looked for in the mesh's own `doors_at` rather
+        # than assumed from what was asked.
+        for want_a, want_s in at_deg.get(z, ()):
+            if not any(abs(d["angle_deg"] - want_a) < JOIN_SNAP_TOL_DEG
+                       and int(d["side"]) == want_s
+                       for d in (st.get("doors") or ())):
+                raise ValueError(
+                    f"{sector}/{ring}/{deck} z={z:.0f}: the junction door at "
+                    f"{want_a:.3f} deg side {want_s:+d} is not in the built "
+                    f"corridor -- an axial run to it would arrive at a wall")
+    # --- and now the corridor BETWEEN them ---------------------------------
+    # Each run spans from one ring corridor's far wall to the next one's near
+    # wall, so the two ends land exactly on the apertures cut for them above.
+    # The half-width comes from the cluster's own collision meta rather than
+    # being recomputed -- hard rule 4, the same reason the corridor clutter
+    # reads it from there.
+    for a, b in zip(axial, axial[1:]) if join and len(axial) > 1 else ():
+        ca = next(c for c in stats["clusters"] if c["z"] == a)
+        cb = next(c for c in stats["clusters"] if c["z"] == b)
+        za = ca["corridor_z"] + ca["half_w_m"]
+        zb = cb["corridor_z"] - cb["half_w_m"]
+        if zb - za < 1.0:
+            stats["joins"].append({"from": a, "to": b, "built": False,
+                                   "why": f"only {zb - za:.2f} m between them"})
+            continue
+        jv, jt, jm = it.axial_run(schema, profile, sector, ring, za, zb,
+                                  angle_deg=join_deg, radius_m=ca["radius_m"],
+                                  door_leaves=False)
+        base, t0 = len(V), len(T)
+        V.extend(jv)
+        T.extend((x + base, y + base, c + base) for x, y, c in jt)
+        pre = f"join{int(round(a))}_{int(round(b))}__"
+        G.extend((pre + nm, lo_ + t0, hi_ + t0) for nm, lo_, hi_ in jm["groups"])
+        jm["built"] = True
+        jm["from"] = a
+        jm["to"] = b
+        stats["joins"].append(jm)
+        stats["corridor_tris"] += len(jt)
+
     stats["tris"] = len(T)
     return V, T, G, stats
 
