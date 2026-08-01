@@ -38,10 +38,10 @@ word of it** — the same sentence, structurally, as layer 2's topological crite
 | module | before | after | ×  | what the increase bought |
 |---|---:|---:|---:|---|
 | `command_control` | 2,064 | **5,664** | 2.74 | nine articulated consoles, a key light, a balustrade, a working pit |
-| `council_chamber` | 5,950 | **10,686** | 1.80 | a perforated lit panel, five delegate stations, an enclosure with pilasters |
+| `council_chamber` | 5,950 | **11,382** | 1.91 | a perforated lit panel, five delegate stations, an enclosure with pilasters |
 | `customs` (one hall) | 7,296 | **22,988** | 3.15 | three framed screens with legible text, two lettered boards, four counters, a schematic |
 | `docking_bay` (one bay) | 3,943 | **13,347** | 3.39 | thirteen lattice trusses, 39 flood fittings, ledge equipment, a bollard row |
-| **total** | **19,253** | **52,685** | 2.74 | |
+| **total** | **19,253** | **53,381** | 2.77 | |
 
 **Two thirds of the customs increase is lettering, and it is the expensive kind on purpose.**
 `signage.letter_mesh` emits single-sided decal quads — 4,824 triangles for the five surfaces in
@@ -67,7 +67,30 @@ deck**, not on any single room. Three of the four modules land on that deck and 
   `bespoke.NOT_COMPOSED` and it is stated here because it bounds what the frames below prove.
 - `council_chamber` is on a different deck entirely (Green, z 4,100).
 
-Measured delta on the deck is in the table at the end of this file.
+**Measured: `station/budget.py` is byte-for-byte unchanged by this session, and the reason is a
+limitation of the gate rather than a property of the work.**
+
+```
+before: subject blue/0/0: 6 rooms over 345 deg, 736,412 triangles, 386 groups
+after : subject blue/0/0: 6 rooms over 345 deg, 736,412 triangles, 386 groups
+        FAIL frustum structure   123,279 / 60,000   (205.5%)   <- identical
+        FAIL resident triangles  736,412 / 180,000  (409.1%)   <- identical
+        18/21 within budget, over: frustum structure, structure share, resident
+```
+
+`deck.z_clusters("blue", 0, 0)` returns **six** clusters — 6880, 7120, 7440, 7920, 7960, 8000 —
+and `budget.py`'s standing frame builds the first one it is given. That cluster is z ≈ 7120: the
+docking bays and their neighbours, where `docking_bays` composes **generic**. `cnc` is on the
+7960 cluster and the three `customs` places on 7440, and **`budget.py` measures neither**. This
+is the same shape of limitation CLAUDE.md already records against `deck.py --sweep`
+(*"it once read 99 of 118 because it built `z_clusters(...)[0]` alone"*), still live in the
+budget gate.
+
+So the honest figures are arithmetic rather than a measurement, and they are stated as such:
+the 7440 cluster gains **3 × 15,692 = 47,076** triangles (customs is instanced as
+`customs_north`, `customs_south` and `arrival_concourse`, all `module=customs`) and the 7960
+cluster gains **3,600**. Against blue/0/0's own 736,412-triangle resident set those are +6.4%
+and +0.5%. Neither is measured by a gate today and neither is claimed to be free.
 
 ---
 
@@ -236,7 +259,9 @@ mosaic's rim, both inside the room's existing extent, so the fan stops radiating
 added ~410 m² of blank wall and `density.py` took the chamber from **93.7% of its floor to 85.2%**
 — it was already the one location of these four that FAILS layer 2b, and a bare wall made the
 number worse while making the frame better. That is exactly the trade the criterion exists to
-refuse. Pilasters at 1.85 m, a cornice and a skirt.
+refuse. Pilasters at 1.85 m, a cornice, a dado, a skirt and a 100 mm mid-bay reveal took it to
+**108.8% — the chamber now PASSES layer 2b for the first time.** The reveal is the cheapest line
+on the station: 372 triangles across both walls, and it is the difference between 96.9 and 108.8.
 
 **Honest craft score: 3 at the bench, 2 elsewhere, so 2 for the room.** Score to the lowest
 descriptor that is fully true: the fins are flat slabs at half distance, the bench top is an
@@ -288,11 +313,16 @@ ungated comparison against a Babylon 5 set.
 | Command & Control | 170.9 PASS | **213.0 PASS** | 12.6 | **15.7** |
 | Customs hall, north / south | 108.7 PASS | **112.7 PASS** | 12.9 | **13.4** |
 | Docking bays (24) | 155.3 PASS | **179.8 PASS** | 15.0 | **17.4** |
-| Council chamber | 93.7 FAIL | *see below* | 9.5 | *see below* |
+| Council chamber | **93.7 FAIL** | **108.8 PASS** | 9.5 | **11.0** |
+
+The council chamber is a gate that **flips from FAIL to PASS**, and it flipped twice on the way:
+93.7 FAIL → 85.2 FAIL when the bare enclosure went in → 96.9 FAIL with pilasters, cornice and
+skirt → 108.8 PASS with a mid-bay panel joint. The whole-station line now reads
+**123/128 at or above the floor, with all five remaining failures in the drum.**
 
 The judge's point about `%show` stands and this session does not close it: **the median location
 still carries about a seventh of a Babylon 5 set's line density**, the gate binds on a triangle
-budget rather than on the reference, and three rooms going from 12–15% to 13–17% does not change
+budget rather than on the reference, and four rooms going from 9–15% to 11–17% does not change
 that. It is the next under-specified criterion and it is already written down.
 
 ---
