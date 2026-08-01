@@ -643,6 +643,90 @@ def ring_arc(schema, profile, sector, ring_index, degrees=30.0,
     }
 
 
+# How long a section of axial corridor is. THE SAME 9.205 m the collision shell
+# and the occluder profile are both measured at, so the three agree by
+# construction rather than by three people picking a similar number.
+AXIAL_SECTION_M = 9.205
+
+
+def axial_run(schema, profile, sector, ring_index, z0, z1, angle_deg=0.0,
+              radius_m=None, doors=(), door_leaves=True):
+    """A corridor along the STATION AXIS, joining two z-clusters of one deck.
+
+    WHY THIS DID NOT EXIST UNTIL NOW, AND WHAT ITS ABSENCE MEANT. Every corridor
+    in this station is a `ring_arc`: a run at CONSTANT z, bent around the axis.
+    A deck's locations, though, are spread along the axis -- `blue/0/0` carries
+    six z-clusters over 1,120 m, the docking bays at 7120 and the customs halls
+    at 7440 -- and `deck.build_deck_clusters` says so in as many words:
+
+        This does not join them with geometry and does not pretend to: there is
+        no floor between 7120 and 7440 and inventing one would be worse than the
+        gap.
+
+    That was right when it was written, because what it declined to invent was a
+    floor with nothing on either side of it. It stopped being right once both
+    clusters were in one scene: the two ends now exist, the 320 m between them
+    is the only thing missing, and a station whose locations cannot be walked
+    between is 90 rooms rather than a place.
+
+    IT IS THE KIT UNBENT, which is why it is thirty lines. `interior_kit`
+    authors a corridor STRAIGHT along +Z and `ring_arc` bends it; here it is
+    placed as authored, with its +Y (up) turned radially inward and its +X
+    (across) turned tangential. Same sections, same doors, same tags, same
+    lighting -- so an axial corridor cannot drift from a ring one, and neither
+    can its collision shell (`collision.axial_shell`) or its occluder.
+
+    `doors` is a sequence of (z, side) in WORLD z, matching the kit's own door
+    convention rather than `ring_arc`'s angles, because along a straight run a
+    door's position is a length and not an angle.
+    """
+    rings = ring_radii(schema, profile, sector)
+    ring = rings[ring_index]
+    r = ring["r_mid"] if radius_m is None else radius_m
+    a0 = math.radians(angle_deg)
+
+    lo, hi = (z0, z1) if z1 >= z0 else (z1, z0)
+    length = hi - lo
+    n = max(1, int(round(length / AXIAL_SECTION_M)))
+    seg = length / n
+
+    verts, tris = [], []
+    kit.reset_tags()
+    placed = []
+    for i in range(n):
+        base = lo + i * seg
+        here = tuple((d[0] - base, d[1]) for d in doors
+                     if base <= d[0] < base + seg)
+        for dz, side in here:
+            placed.append({"z_m": base + dz, "side": side})
+        v, t = kit.corridor_section(seg, doors=here, door_leaves=door_leaves)
+
+        def remap(x, y, z, base=base):
+            rad = r - y
+            a = a0 + x / r
+            return (rad * math.cos(a), rad * math.sin(a), base + z)
+
+        kit._merge(verts, tris, v, t, remap)
+
+    return verts, tris, {
+        "sector": sector,
+        "ring": ring["id"],
+        "ring_index": ring_index,
+        "radius_m": round(r, 1),
+        "gravity_g": round(gravity_at(schema, r), 3),
+        "angle_deg": angle_deg,
+        "z0_m": lo,
+        "z1_m": hi,
+        "length_m": round(length, 1),
+        "sections": n,
+        "section_m": round(seg, 4),
+        "triangles": len(tris),
+        "doors_at": placed,
+        "doors_asked": len(doors),
+        "groups": kit.tagged_spans(tris),
+    }
+
+
 # The Green rosette draws three spokes at 120 degrees. Everything radial in
 # the drum keys off this: the spokes themselves, and the guideway trusses, which
 # are 2.6 km long and can only be held up where they cross one.

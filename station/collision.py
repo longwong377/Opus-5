@@ -305,6 +305,113 @@ def corridor_shell(schema, profile, sector, ring_index, degrees=30.0,
     }
 
 
+def axial_shell(schema, profile, sector, ring_index, z0, z1, angle_deg=0.0,
+                radius_m=None, p=None, prof=None, doors=()):
+    """The collision shell for `interior.axial_run` -- a corridor along the axis.
+
+    THE RING SHELL WITH ITS TWO LONG DIRECTIONS SWAPPED, and nothing else. A
+    ring corridor runs in ANGLE at constant z and is bounded in z by its two
+    walls; an axial corridor runs in Z at constant angle and is bounded in angle
+    by its two walls. Floor and ceiling are the same cylindrical bands they
+    always were. The profile comes from the same `corridor_profile` cast, so the
+    smooth shell a body walks on is the same shell in both directions and a
+    player crossing from one into the other never changes surface.
+
+    THE ENDS ARE OPEN BY CONSTRUCTION. This shell exists to be walked out of --
+    it is what joins two z-clusters -- so capping it would seal the thing it was
+    built to open. `corridor_shell` is open at its ends for the same reason.
+
+    `doors` is a sequence of (z_m, side) in world z. Side -1 and +1 are the two
+    hands; the aperture is a gap in that wall from the floor to the door head,
+    with the header above it, exactly as the ring shell cuts one.
+    """
+    rings = it.ring_radii(schema, profile, sector)
+    ring = rings[ring_index]
+    r = ring["r_mid"] if radius_m is None else radius_m
+    q = prof or corridor_profile(p)
+
+    floor_r = r - q["floor_y"]
+    ceil_r = r - q["ceil_y"]
+    hw = q["half_w"]
+    a0 = math.radians(angle_deg)
+    da = hw / floor_r
+
+    lo, hi = (z0, z1) if z1 >= z0 else (z1, z0)
+    # A straight run needs no subdivision to stay inside its own tolerance --
+    # it is flat along z -- so the step is set by the DOORS, which have to land
+    # on a boundary between two z ranges. 4 m keeps the quad count trivial and
+    # the aperture placement exact.
+    step = 4.0
+    nz = max(1, int(math.ceil((hi - lo) / step)))
+
+    def zs(a, b):
+        n = max(1, int(math.ceil((b - a) / step)))
+        return [a + (b - a) * i / n for i in range(n + 1)]
+
+    def band(rad, ang, zz):
+        return [(rad * math.cos(ang), rad * math.sin(ang), z) for z in zz]
+
+    verts, tris = [], []
+    inward = (-math.cos(a0), -math.sin(a0), 0.0)
+    outward = (math.cos(a0), math.sin(a0), 0.0)
+    allz = zs(lo, hi)
+
+    _strip(verts, tris, band(floor_r, a0 - da, allz),
+           band(floor_r, a0 + da, allz), lambda i: inward)
+    _strip(verts, tris, band(ceil_r, a0 - da, allz),
+           band(ceil_r, a0 + da, allz), lambda i: outward)
+
+    # The tangential normal at a0. The wall on the +1 hand faces back toward
+    # decreasing angle and vice versa.
+    tang = (-math.sin(a0), math.cos(a0), 0.0)
+    door_w = (p or K.PROVISIONAL)["door_width_m"]
+    door_h = (p or K.PROVISIONAL)["door_height_m"]
+    head_r = r - door_h
+    for side in (-1.0, 1.0):
+        ang = a0 + side * da
+        face = tuple(-side * c for c in tang)
+        cuts = sorted((d[0] - door_w / 2.0, d[0] + door_w / 2.0)
+                      for d in doors if float(d[1]) == side)
+        at = lo
+        for c0, c1 in cuts:
+            c0, c1 = max(c0, lo), min(c1, hi)
+            if c1 <= at:
+                continue
+            if c0 > at:
+                zz = zs(at, c0)
+                _strip(verts, tris, band(floor_r, ang, zz),
+                       band(ceil_r, ang, zz), lambda i, f=face: f)
+            zz = zs(c0, c1)
+            _strip(verts, tris, band(head_r, ang, zz),
+                   band(ceil_r, ang, zz), lambda i, f=face: f)
+            at = c1
+        if at < hi:
+            zz = zs(at, hi)
+            _strip(verts, tris, band(floor_r, ang, zz),
+                   band(ceil_r, ang, zz), lambda i, f=face: f)
+
+    return verts, tris, {
+        "doors": list(doors),
+        "door_w_m": door_w,
+        "door_h_m": door_h,
+        "sector": sector,
+        "ring_index": ring_index,
+        "radius_m": round(r, 3),
+        "floor_r_m": round(floor_r, 4),
+        "ceil_r_m": round(ceil_r, 4),
+        "half_w_m": round(hw, 4),
+        "angle_deg": angle_deg,
+        "half_angle_deg": math.degrees(da),
+        "z0_m": lo,
+        "z1_m": hi,
+        "length_m": round(hi - lo, 2),
+        "steps": nz,
+        "triangles": len(tris),
+        "profile": q,
+        "axial": True,
+    }
+
+
 def _quad(verts, tris, pts, want):
     """One quad, wound so its faces point the way `want` says.
 
@@ -896,6 +1003,69 @@ def _selftest():
     check("a stand point is on the floor, just above it",
           abs(math.hypot(sp[0], sp[1]) - m["floor_r_m"] + 0.05) < 1e-6,
           f"r={math.hypot(sp[0], sp[1]):.4f} floor={m['floor_r_m']}")
+
+    # --- the axial shell: the same corridor with its long axis swapped -------
+    r0 = it.ring_radii(schema, profile, "blue")[0]["r_mid"]
+    za, zb = 7120.0, 7440.0
+    av, at, am = axial_shell(schema, profile, "blue", 0, za, zb,
+                             angle_deg=12.0, radius_m=r0,
+                             doors=((7200.0, -1), (7300.0, 1)))
+    print(f"axial shell: {am['length_m']:.0f} m at {am['angle_deg']:.0f} deg, "
+          f"{len(at):,} tri, half-angle {am['half_angle_deg']:.4f} deg")
+    # THE OFFSETS, NOT THE RADII. The two shells sit on different rings here, so
+    # comparing `floor_r_m` compares the rings and not the profile -- the first
+    # version of this check did exactly that and failed on 192 against 211.
+    check("the axial shell inherits the ring shell's profile exactly",
+          abs((r0 - am["floor_r_m"]) - q["floor_y"]) < 1e-4
+          and abs((r0 - am["ceil_r_m"]) - q["ceil_y"]) < 1e-4
+          and am["half_w_m"] == round(q["half_w"], 4),
+          f"floor_y {r0 - am['floor_r_m']:.4f} vs {q['floor_y']:.4f}, "
+          f"half_w {am['half_w_m']} vs {q['half_w']:.4f}")
+
+    # A FLOOR UNDER EVERY STEP OF THE RUN, in three lanes, cast the way a body
+    # falls -- outward, because up is inward on a spun ring. This is the check
+    # the whole axial run exists to pass: it is what "walk from the docking bays
+    # to customs" reduces to.
+    drops, holes = [], 0
+    for i in range(90):
+        z = za + (zb - za) * i / 89.0
+        for lane in (-0.6, 0.0, 0.6):
+            aa = math.radians(am["angle_deg"]) + lane / am["floor_r_m"]
+            top = am["floor_r_m"] - 1.9
+            h = cast((top * math.cos(aa), top * math.sin(aa), z),
+                     (-math.cos(aa), -math.sin(aa), 0.0), av, at)
+            if h is None:
+                holes += 1
+            else:
+                drops.append(h)
+    check("there is a floor under every step of the axial run",
+          holes == 0 and drops, f"{holes} of 270 probes found nothing")
+    check("and it is flat to under the step tolerance",
+          bool(drops) and max(drops) - min(drops) < STEP_TOLERANCE_M,
+          f"{(max(drops) - min(drops)) * 1000:.1f} mm over "
+          f"{am['length_m']:.0f} m" if drops else "no probes landed")
+
+    # NEGATIVE CONTROL, and it has to fire: a shell built with the doors
+    # omitted has a wall where the aperture should be, so a ray through the
+    # doorway stops. The same lattice that certifies the floor certifies the
+    # holes are holes.
+    def through_door(vv, tt, z_m, side):
+        aa = math.radians(am["angle_deg"])
+        rr = am["floor_r_m"] - 1.0
+        o = (rr * math.cos(aa), rr * math.sin(aa), z_m)
+        tang = (-math.sin(aa), math.cos(aa), 0.0)
+        return cast(o, tuple(side * c for c in tang), vv, tt)
+
+    sv, st_, _sm = axial_shell(schema, profile, "blue", 0, za, zb,
+                               angle_deg=12.0, radius_m=r0)
+    open_hit = through_door(av, at, 7200.0, -1.0)
+    seal_hit = through_door(sv, st_, 7200.0, -1.0)
+    check("a door in the axial wall is a hole a body can cross",
+          open_hit is None,
+          f"the aperture stopped a ray at {open_hit} m")
+    check("and with the doors omitted the same ray is stopped",
+          seal_hit is not None and seal_hit < 1.5,
+          f"sealed wall let the ray through at {seal_hit}")
 
     print(f"{ok}/{ok + fail} passed")
     return 1 if fail else 0
