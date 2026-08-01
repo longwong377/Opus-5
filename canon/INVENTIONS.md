@@ -5065,3 +5065,109 @@ content.
 **What would overturn it.** Any authority-1 frame of a Babylon 5 crew cabin showing lamps on one
 wall only. `grey level 1.webp` is a corridor, not a cabin; the transfer here is from the kit a unit
 is built out of, and a cabin shot would replace that inference with a measurement.
+
+---
+
+## INV-248 — The arriving species mix, and who the player turns out to be
+
+**Invented:** that the species mix of people arriving at Babylon 5 equals the species mix of people
+already living on it — `station/player.py::ARRIVING_MIX`, which is a copy of `schedule.STATION_MIX`
+less the Vorlon.
+
+**Why necessary:** `station/player.py::random_player` has to draw a species from somewhere, and the
+only alternatives are worse. A hard-coded four-species list would make "random" mean "one of the
+four we have art for"; a second, hand-weighted arrival table would be a rival census that drifts
+from the one `schedule.STATION_COUNTS` states a reason for row by row.
+
+**Constrained by:** `TRAFFIC-AND-CUSTOMS.md` §5.3 and FACTIONS.md 2.3 between them. The transient
+population is resupplied entirely by arrivals and turns over on a seven-day mean stay, so at steady
+state the two mixes must agree *on whoever stays*. That is a real constraint and it is only half of
+one: it says nothing about through-traffic, which is exactly where this is most likely to be wrong.
+A Drazi freighter crew ashore for eight hours is over-represented at the gate and absent from the
+census.
+
+**Kosh is excluded and that is not a rounding decision.** `schedule.VORLON_SINGLETON` already
+records why one person cannot be a proportion — 1/250,000 rounds to zero or one depending on the
+sample size. A player who rolled him would be a second Vorlon aboard.
+
+**What would overturn it:** any figure for the species composition of *arrivals* as opposed to
+residents. It is deliberately a separate constant from `PLAYABLE_MIX` so that overturning it is one
+edit and does not disturb the census.
+
+---
+
+## INV-249 — What an arrival lands with, SOLVED against the leak that makes Downbelow
+
+**Invented:** the credit distribution a new arrival carries —
+`station/player.py::CREDIT_MIN = 0`, `CREDIT_MAX = 5000`, `PASSAGE_HOME_CR = 250` — and the shape
+parameter `CREDIT_SKEW`.
+
+**Why necessary:** a player needs money for the economy to touch them at all, and more than that,
+`TRAFFIC-AND-CUSTOMS.md` §6.6 makes *running out of it* the mechanism that produces the station's
+underclass: people came for a better life, did not find it, and **could not afford a ticket home**.
+Without a distribution that has a left tail, that paragraph is a story rather than a system.
+
+**Constrained by, and this is the point:** §6.6 states the only per-arrival rate the whole document
+gives — about **1%** of arrivals fall out of the bottom, ~15 a day, ~5,500 a year, which it
+cross-checks against a 250,000-person station. That is a constraint on the left tail, so the skew
+is not chosen, it is **solved** for it:
+
+```
+credits = MIN + (MAX - MIN) * u ** SKEW
+P(credits < PASSAGE) = ((PASSAGE - MIN) / (MAX - MIN)) ** (1 / SKEW) = LEAK_RATE
+SKEW = ln(0.05) / ln(0.01) = 0.6506
+```
+
+Three inputs at authority 5; the OUTPUT is the sourced number, which is the right way round.
+
+**How it is gated:** `player.py::_selftest` measures the realised share over 4,000 draws and fails
+outside 1% ± 0.5%; it measures **0.80%**. The negative control replaces the skew with a flat draw
+and the share goes to **4.4%**, 4.4× the target, which fires the gate. A flat draw would have passed
+any test that only asked "do people have different amounts of money".
+
+**What would overturn it:** any figure for the cost of outbound passage, or any figure for arrival
+wealth. Either one replaces a solved parameter with a measured one.
+
+---
+
+## INV-250 — Three things the port needed a name for: hulls, berths, and the customs areas
+
+**Invented:** in `station/arrival.py` — hull names (`EA_HULL_NAMES`, and alien hulls through
+`npc/names.py`'s existing grammars), the berth letter (`BAY_BERTHS = ("A", "B")`), the numbering of
+the customs areas (`area_for`), the contraband detection rate (`CONTRABAND_P = 0.01`), and the
+quarters unit label (`UNITS_PER_BLOCK = 60`).
+
+**Why necessary:** `station/traffic.py` gives a ship a type, an hour, a berth tier, a passenger
+count and a stay, and no name. TRAFFIC-AND-CUSTOMS §4.4 makes a name compulsory rather than
+decorative: comms discipline is that a hull is addressed **by name and type** — "Transport Von
+Braun", "Narn cargo ship Tal'Quith" — never by registry alone, and D-11's public announcement, which
+is the first line of dialogue a player hears, has a slot for it.
+
+**Constrained by:**
+
+- **Hull names.** Two attested examples, and both fit the rule taken from them. *Von Braun* is a
+  twentieth-century rocket engineer, so EA civil hulls are named for explorers and scientists —
+  which is also how Earth has actually named ships for four centuries. *Tal'Quith* is Narn-shaped
+  and `npc/names.py`'s Narn grammar, fitted to attested names, already produces strings of that
+  shape; alien hulls therefore go through the species grammars rather than a new list. Only the five
+  species with grammars can name a hull, for INV-004's reason: a grammar fitted to zero examples is
+  invention dressed as inference.
+- **The berth letter.** D-2 has both "Bay 7" and "Docking Bay 12B", so a bay sometimes carries a
+  letter and the show never says what it distinguishes. D-9 gives a bay a **landing pad and a
+  parking level below it** — two places a hull can be — so the letter is modelled as which of the
+  two: A on the pad, B below.
+- **The customs areas.** "…disembark through customs area 7" is authority 4 and constrains only
+  that a seventh area exists across the pair of halls. `customs.DESKS` gives the built hall four
+  processing positions, so eight across the pair against §T-X1's reasoned seven.
+  `arrival.py::area_cross_check()` **prints that gap rather than resolving it**, because neither
+  number is canon and area 7 is reachable under both readings.
+- **The contraband rate.** §6.5 names Dust and concealed weapons at authority 4 and says outright
+  that each item *"wants a detection probability"* and that the document does not supply one.
+  Constrained from below by the same section calling the discretionary search *"the power that makes
+  customs a CHARACTER"* — a rate near zero makes station 9 of the process set dressing — and from
+  above by it being a crime rather than the norm. Deliberately the same order as §6.6's leak, and a
+  separate constant so overturning one does not move the other.
+
+**What would overturn it:** any list of B5-era civilian hull names; any line using a bay letter
+beyond B or using one for something else; any on-screen count of customs areas; any figure for
+customs seizure volume; any on-screen quarters numbering.

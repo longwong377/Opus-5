@@ -1,0 +1,35 @@
+[gd_scene load_steps=2 format=3]
+
+; THE PLAYER'S FIRST TEN MINUTES. Deliberately as empty as scenes/walk.tscn and
+; for the same reason: the geometry, the materials, the lights and the sequence
+; are all loaded at RUNTIME, so this file cannot go stale against regenerated
+; meshes and no binary enters the project.
+;
+; scripts/arrival.gd EXTENDS scripts/walk.gd. Everything about loading a deck,
+; colliding it, dressing it from scenes/interior.tscn's material rules, wiring
+; the doors and the crowd and the interactables, and standing a player.gd body
+; on the floor happens there and is not repeated -- so the build a player
+; arrives into IS the walkable build, not a lookalike of it. Nothing about the
+; look belongs in this file; adding an Environment or a material rule here would
+; recreate the split walk.tscn's header exists to warn about.
+;
+; Build the world and the sequence it reads:
+;
+;   python3 station/arrival.py --build
+;
+; Then play it, or drive it headlessly:
+;
+;   godot --path godot res://scenes/arrival.tscn -- \
+;       --glb=station/generated/scene/deck/blue_0_0_z7440.glb \
+;       --collision=station/generated/scene/deck/blue_0_0_z7440_col.glb \
+;       --interact=station/generated/scene/deck/blue_0_0_z7440_interact.json \
+;       --spawn=<x,y,z> --gravity-mode=drum
+;
+;   ... --arrival-test --no-hud        # headless; prints one ARRIVAL line
+;   ... --arrival-test --no-interact   # CONTROL: nothing to present the card to
+;   ... --arrival-test --no-doors      # CONTROL: the hall is sealed
+
+[ext_resource type="Script" path="res://scripts/arrival.gd" id="1_arrival"]
+
+[node name="Arrival" type="Node3D"]
+script = ExtResource("1_arrival")
