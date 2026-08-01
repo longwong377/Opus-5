@@ -508,17 +508,30 @@ def docking_bay(index=0, schema=None, profile=None):
             m.t.extend([(a + i, b + i, c2 + i) for a, b, c2 in pt])
             m.g.extend(["bay_chevron"] * len(pt))
 
-    # --- overhead steel: box girders, lattice, pendant floodlights -----------
+    # --- overhead steel: TRUSS girders, a lattice, pendant floodlights -------
     n_g = max(1, int(L / GIRDER_PITCH_M))
     for i in range(n_g + 1):
         z = L * i / n_g
-        m.box(-hw, hw, H - GIRDER_D_M, H, z - GIRDER_W_M / 2.0,
-              z + GIRDER_W_M / 2.0, "bay_girder")
+        girder(m, z, hw, H)
         for j in range(LAMPS_PER_BAY_GIRDER):
             lx = -hw + BAY_W_M * (j + 0.5) / LAMPS_PER_BAY_GIRDER
-            m.box(lx - LAMP_R_M, lx + LAMP_R_M,
-                  H - GIRDER_D_M - LAMP_DROP_M, H - GIRDER_D_M,
-                  z - LAMP_R_M, z + LAMP_R_M, "bay_lamp")
+            floodlight(m, lx, H - GIRDER_D_M, z)
+    # the longitudinal lattice the girders carry, at the top chord
+    for j in range(int(BAY_W_M / RUNNER_PITCH_M) + 1):
+        rx = -hw + BAY_W_M * j / max(1, int(BAY_W_M / RUNNER_PITCH_M))
+        rx = min(max(rx, -hw + 0.5), hw - 0.5)
+        m.box(rx - 0.16, rx + 0.16, H - GIRDER_CHORD_M - 0.34,
+              H - GIRDER_CHORD_M - 0.02, 0.0, L, "bay_girder")
+
+    # --- what stands on the ledges, and what edges the lane -----------------
+    ledge_kit(m, hw, L)
+    bv, bt, bs = [], [], []
+    for i in range(BOLLARD_N):
+        bz = 8.0 + i * (L - 20.0) / max(1, BOLLARD_N - 1)
+        bx = -clear_half_m() + 0.9
+        _dress._tube(bv, bt, bs, "prop_bollard", (bx, 0.0, bz),
+                     (bx, BOLLARD_H_M, bz), BOLLARD_R_M, _dress.SEG_PIPE)
+    m.merge_spans(bv, bt, bs)
 
     # --- the back wall is the cap on the sweep, above; the mouth stays open --
     # SESSION 4a's DIAGNOSIS, KEPT because the shape of it is the lesson. A
