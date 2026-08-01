@@ -188,6 +188,31 @@ module that builds the pieces had no way to measure them. It now lives in `inter
 
 **A gate belongs in the module that builds the thing, and it must build the hard case.**
 
+**A NAME BUILT BY STRING INTERPOLATION IS INVISIBLE TO A REGEX OVER SOURCE.** Session 4f, and it is
+mine. `materials._scan_generator_groups` finds every mesh group a builder emits by scanning source
+for string LITERALS -- which works for the 68 generic rooms and misses anything named at run time.
+`station/corridor_dressing.py` names its clutter `f"dress_{kind}"` from `SCHEMES` x
+`dressing.MACHINES`, so **45 groups were on the fallback material and the coverage scan could not
+see one of them**: 19 of the 22 `dressing.MACHINES` kinds had no bind at all, plus 26 of
+`rooms.PROPS`' 99 names, reachable only since 4d let bespoke rooms place their declared props.
+
+The fix is not a better regex. `check_material_coverage()` now runs in `export_scene.build()` --
+**one call site every shot passes through** -- and also against a 193-name vocabulary DERIVED from
+`rooms.FIXTURES`/`PLACE_FIXTURES`/`PROPS` x `dressing.MACHINES`, so it can fail without a built
+deck. A gate that needs `scene/deck/*` would be a gate reading an artefact it cannot rebuild.
+
+**AND THE FRAME THE DEFECT WAS FOUND IN DID NOT SHOW IT.** At the judge's own `--at docking_bays`
+camera the before/after is **0.000% different** -- `render_shot.gd` reports every group in the
+SCENE, not the SHOT, and the nearest affected cluster was 7.4 m behind that eye. Which is exactly
+why the gate has to be about the group list and not about a picture.
+
+**A DEFAULT NOBODY CHOSE IS NOT THE SAME AS A DEFECT, and the reviewer got one of these wrong.**
+judge-4e reported 9 hull groups rendering as "smooth plastic". Binding them produced a
+**byte-identical** exterior frame -- md5 unchanged -- because `exterior.tscn` sets
+`fallback_material = m_hull`. The real fault was subtler and still worth fixing: nine surfaces
+followed a default nobody had chosen, and `materials._selftest` asserted that default AS a
+decision (`hull_exterior.binds == ()`), so the check could only fail if somebody fixed it.
+
 **A GATE THAT DOES NOT RUN IS NOT A GATE, AND A RED BUILD CAN HIDE THIRTY-FOUR OF THEM.** Session
 4e's judge found it: `.github/workflows/validate.yml` was 41 sequential steps with no
 `continue-on-error` anywhere, and step 4 -- `Performance budgets` -- fails BY DESIGN, because
