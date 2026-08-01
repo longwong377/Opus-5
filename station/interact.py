@@ -153,7 +153,13 @@ _HEAD_VERB = {
     "drawer":    "store",     # cold_drawer is a `bed` by shape and is not one
     "table":     "sit",       # counter by shape; you sit at a table
     "gallery":   "sit",       # public_gallery -- you sit in it
-    "lamp":      "read",      # pendant_lamp is a `post` by shape
+    # `lamp` HAD A ROW HERE AND THE MINIMALITY ASSERTION DELETED IT. It read
+    # `"lamp": "read"  # pendant_lamp is a post by shape`, and it was carrying
+    # two tokens at once: `atmosphere_status_lamp`, which is a `wallpanel` and
+    # gets `read` from the shape rule anyway, and `pendant_lamp`, for which
+    # `read` was simply wrong. Once `_TOKEN_VERB` took the pendant, the head
+    # row decided nothing -- and `_check_minimal` said so on the next run.
+    # That is the assertion doing the job it was written for.
     "shrine":    "rest",      # cabinet by shape
     "brazier":   "rest",      # post by shape
 }
@@ -179,13 +185,51 @@ def tokens():
     return sorted({i for p in dr.PLACES for i in (p.get("interacts") or ())})
 
 
+# ---------------------------------------------------------------------------
+# THE PER-TOKEN OVERRIDE, and why the head noun could not carry these
+# ---------------------------------------------------------------------------
+# `_HEAD_VERB` is keyed on the register's own last field, and that is right for
+# almost everything: a `valve` is turned whatever it is a valve of. It cannot
+# be right when two tokens share a head noun and are DIFFERENT THINGS, and
+# `head_collisions()` has reported exactly that since it was written -- five
+# heads where one override cannot serve both.
+#
+# Three of those five produced a verb that is wrong at the prompt, and they
+# only became visible when INV-248/249 made the bespoke rooms' objects resolve
+# at all. A player looking at a pendant lamp over a bar table was offered
+# "[E]  read the pendant lamp".
+#
+# THE OTHER TWO ARE HARMLESS AND ARE LEFT ALONE, which is the point of fixing
+# these by token rather than by loosening the collision report: `control` and
+# `terminal` collide on SHAPE -- `furnace_control` is a console and
+# `irrigation_control` a wallpanel -- and both members still get `operate`,
+# which is right for both. A collision is not a defect; a wrong verb is.
+_TOKEN_VERB = {
+    # `counter` by shape, which gives `serve` -- "you are talking to whoever is
+    # behind it". Nobody is behind a lab bench and nobody is served across one;
+    # it is a work surface with equipment on it.
+    "lab_bench": "operate",
+    # `_HEAD_VERB["lamp"] = "read"` is exactly right for
+    # `atmosphere_status_lamp` -- you read a status -- and says nothing about a
+    # light over a table. `post` by shape would give `tread`, which is worse.
+    "pendant_lamp": "operate",
+    # `screen` by shape gives `read`, right for `station_schematic_screen` and
+    # wrong here: the barred screen in the alien sector is a grille you go
+    # round, which is the case `_HEAD_VERB["barrier"] = "tread"` already covers
+    # under a different name.
+    "barred_screen": "tread",
+}
+
+
 def head_noun(token):
     """The register's own word for what the thing is: the last field."""
     return token.rsplit("_", 1)[-1]
 
 
 def verb_of(token):
-    """The verb for one declared interactable. Name beats shape."""
+    """The verb for one declared interactable. Token beats name beats shape."""
+    if token in _TOKEN_VERB:
+        return _TOKEN_VERB[token]
     h = head_noun(token)
     if h in _HEAD_VERB:
         return _HEAD_VERB[h]
@@ -519,6 +563,21 @@ def _check_minimal():
         if not changed:
             bad.append(f"_HEAD_VERB[{h!r}] = {keep!r} is redundant -- the shape "
                        f"rule already gives every token that verb")
+    # THE SAME MINIMALITY RULE, applied to the per-token table. Without it
+    # `_TOKEN_VERB` is a place to write opinions: a row that changes nothing
+    # costs nothing to add and reads like a decision.
+    for t in sorted(_TOKEN_VERB):
+        if t not in set(tokens()):
+            bad.append(f"_TOKEN_VERB[{t!r}] names a token no place declares")
+            continue
+        keep = _TOKEN_VERB.pop(t)
+        try:
+            same = verb_of(t) == keep
+        finally:
+            _TOKEN_VERB[t] = keep
+        if same:
+            bad.append(f"_TOKEN_VERB[{t!r}] = {keep!r} is redundant -- the "
+                       f"head-noun or shape rule already gives that verb")
     for k in sorted(_KIND_VERB):
         if k not in set(R.PROP_KIND.values()):
             bad.append(f"_KIND_VERB[{k!r}] names a rooms.PROP_KIND nothing uses")
@@ -544,6 +603,31 @@ def head_collisions():
         kinds = {R.PROP_KIND[t] for t in ts}
         if len(kinds) > 1:
             out[h] = tuple(sorted(ts))
+    return out
+
+
+def shared_verb_collisions():
+    """Head-noun collisions where ONE verb is still serving different shapes.
+
+    THE REPORT POINTS THE OTHER WAY FROM WHAT YOU EXPECT, and getting that
+    round the right way is the whole value of it. After `_TOKEN_VERB`, members
+    of a colliding head ending on DIFFERENT verbs is the CORRECT state --
+    `lab_bench` is not a `bench` and should not share its verb. What is worth
+    looking at is the opposite: a head whose members are different SHAPES and
+    yet still come out with a single verb, because that is one override doing
+    duty for two things and is where the next wrong prompt will come from.
+
+    Two survive and both were checked by hand: `control`
+    (`furnace_control` console / `irrigation_control` wallpanel) and `terminal`
+    (`babcom_terminal` wallpanel / three consoles). Every member of both is
+    correctly `operate` -- you work a control and you work a terminal whatever
+    it is mounted in.
+    """
+    out = {}
+    for h, ts in head_collisions().items():
+        vs = {t: verb_of(t) for t in ts}
+        if len(set(vs.values())) == 1:
+            out[h] = vs
     return out
 
 
@@ -664,10 +748,15 @@ def _selftest():
           f"{sum(1 for p in dr.PLACES if p.get('interacts'))} places, "
           f"{len(verb_set())} verbs, {len(_HEAD_VERB)} name overrides")
     coll = head_collisions()
+    shared = shared_verb_collisions()
     if coll:
-        print(f"          {len(coll)} head-noun collisions (one override "
-              f"cannot be right for both): "
-              + "; ".join(f"{h}: {'/'.join(v)}" for h, v in coll.items()))
+        print(f"          {len(coll)} head-noun collisions, of which "
+              f"{len(shared)} still have ONE verb serving different shapes "
+              f"(both checked by hand, see `shared_verb_collisions`): "
+              + "; ".join(f"{h}={next(iter(v.values()))}"
+                          for h, v in shared.items())
+              + f"; the other {len(coll) - len(shared)} correctly end on "
+              f"different verbs")
     if fails:
         for f in fails:
             print("  FAIL " + f)

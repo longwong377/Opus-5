@@ -5196,3 +5196,56 @@ rule underneath is no better — `pendant_lamp` is `PROP_KIND` `post`, which giv
 resolution because a downstream verb is wrong would hide the defect instead of exposing it. The
 collision is pre-existing and was reported before this change; what is new is that it now reaches a
 player. Fixing it needs a per-token override, which `_HEAD_VERB` does not have.
+
+---
+
+## INV-250 — A per-token verb override, and the head row it made redundant
+
+`station/interact.py` (`_TOKEN_VERB`, `verb_of`, `_check_minimal`, `shared_verb_collisions`).
+
+**What.** Three declared interactables whose prompt was wrong, and the mechanism that lets a token
+override its head noun.
+
+**Why necessary.** `interact.verb_of` resolved **name beats shape** — `_HEAD_VERB` keyed on the
+register's own last field, then `rooms.PROP_KIND`. That is right for almost everything: a `valve`
+is turned whatever it is a valve of. It cannot be right when two tokens share a head noun and are
+**different things**, and `head_collisions()` has reported exactly that since it was written. Three
+of the five produced a verb that is wrong **at the prompt**, and they only became visible when
+INV-248/249 made the bespoke rooms' objects resolve at all.
+
+| token | was | prompt it produced | now | why |
+|---|---|---|---|---|
+| `pendant_lamp` | `read` | *"[E] read the pendant lamp"* | **operate** | `_HEAD_VERB["lamp"]` is right for a status lamp and says nothing about a light over a table. `post` by shape would give `tread`, worse |
+| `lab_bench` | `serve` | *"[E] serve the lab bench"* | **operate** | `counter` by shape — *"you are talking to whoever is behind it"*. Nobody is behind a lab bench |
+| `barred_screen` | `read` | *"[E] read the barred screen"* | **tread** | `screen` by shape gives `read`, right for `station_schematic_screen`. A grille you go round is the case `_HEAD_VERB["barrier"] = "tread"` already covers under another name |
+
+**Two collisions are left alone deliberately**, and that is the point of fixing these by token
+rather than by loosening the report: `control` (`furnace_control` console, `irrigation_control`
+wallpanel) and `terminal` (`babcom_terminal` wallpanel, three consoles) collide on **shape**, and
+every member still correctly gets `operate`. **A collision is not a defect; a wrong verb is.**
+
+### The assertion deleted a row, which is the best thing that happened here
+
+`_check_minimal` was extended to the new table — a `_TOKEN_VERB` row that changes nothing fails,
+exactly as a `_HEAD_VERB` row does. On the first run after the fix it fired **in the other
+direction**:
+
+> `FAIL _HEAD_VERB['lamp'] = 'read' is redundant -- the shape rule already gives every token that
+> verb`
+
+`_HEAD_VERB["lamp"]` had been carrying two tokens at once. `atmosphere_status_lamp` is a
+`wallpanel`, which the **shape rule already resolves to `read`**; the row existed for
+`pendant_lamp`, and for `pendant_lamp` it was wrong. Once `_TOKEN_VERB` took the pendant, the head
+row decided nothing, and the gate said so on the next run. **21 name overrides, was 22.**
+
+### The report now points the other way, and that is deliberate
+
+`shared_verb_collisions()` replaces the raw collision count in the self-test output. After
+`_TOKEN_VERB`, members of a colliding head ending on **different** verbs is the CORRECT state —
+`lab_bench` is not a `bench` and should not share its verb. What is worth watching is the opposite:
+a head whose members are different shapes and **still** come out with one verb, because that is one
+override doing duty for two things and is where the next wrong prompt comes from. Two survive, both
+checked by hand and named in the docstring.
+
+**What would overturn it.** A frame showing one of these three in use. `lab_bench` is the weakest:
+`operate` assumes equipment on the bench, and a bare bench would be `store` or nothing at all.
