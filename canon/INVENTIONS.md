@@ -5196,3 +5196,120 @@ rule underneath is no better — `pendant_lamp` is `PROP_KIND` `post`, which giv
 resolution because a downstream verb is wrong would hide the defect instead of exposing it. The
 collision is pre-existing and was reported before this change; what is new is that it now reaches a
 player. Fixing it needs a per-token override, which `_HEAD_VERB` does not have.
+
+---
+
+## INV-232 — The inside of a glazed blister, and the two numbers the frames cannot give
+
+`station/dome.py` in full; `station/components.py`, `dome_mesh`'s `base_disc` / `th0` / `phis` /
+`flip` keywords and `_dome_fittings`' `side` / `grow`; `station/bespoke.py`,
+`BESPOKE_GEOMETRY["components"]`, `NEAR_END["components"]`, `builds()` and `dressable_extent`.
+
+**What.** The interiors of `obs_dome_1`, `obs_dome_2` and `obs_rotundas` — the three places in
+`directory.py` that carry `module="components"` and are rooms rather than exterior hardware.
+
+**Why necessary, and it is a measurement rather than an opinion.** Standing at an
+`observation_dome`'s own base-plane centre, **0 of its 192 triangles face the viewer**
+(`components._selftest`, session 4f; `dome._selftest` keeps it as a live negative control). The
+blister is closed and correctly wound and every surface points *out*, which is right for a bump on
+a hull and useless as a room: a player who walked into Observation Dome 1 — which **is** Command
+and Control, `directory.py` puts `cnc` `within="obs_dome_1"` — saw the background, and the
+background is black. `dome_mesh`'s own docstring says so: *"the base sits inside the hull and the
+hole faces away from every camera"*, base disc *"wound the other way — it faces into the hull"*.
+
+### What is sourced
+
+Both frames are authority 1 and both were read at 3–6× with `tools/refzoom.py`. The pixel figures
+are in `dome.py`'s docstring; the short version:
+
+| | source | value |
+|---|---|---|
+| bay count | `comand and contorl.webp` 8–9 panes across the upper arc; `rotunda.webp` "at least eight columns across the far arc" | 16, and it was already `components.DOME_MULLIONS` |
+| glazed band, command order | `command_control.WINDOW_D_M`, the depth-corrected fit of the C&C window's visible arc | 5.50 m |
+| ring band across the glazing | `command_control.WINDOW_RING_FRAC` (INV-024) | 0.62 of the band |
+| rotunda band ratios | `rotunda.webp` 3× crop at the far arc: wall 350 px, window 205 px, corbel 165 px | 1.00 : 0.586 : 0.471 |
+| rotunda sill | 318 px at the 74.3 px/m the figures at the foot of the steps give | **≥ 4.30 m** |
+| slat band | 1.32–2.13 m at the same scale | measured |
+| collars | counted: three, at 450–500 px of a 250–700 px shaft | 3, at 0.54 |
+| shaft width | 75 px shaft against a 240 px pitch, **both at the same depth** | 0.3125 of a bay |
+| radius, height | `interior.load()["components"]`, Contract 5, authority 3 | per component |
+
+### EXTRAPOLATION 1 — the radius is clipped by the register's own footprint
+
+**What.** `radius = min(schema radius_m, half the place's declared arc footprint)`, and the height
+is always `radius × height_m / radius_m` so the *profile* is never anything but the schema's.
+
+| | schema 2R | register arc (`rooms.room_extent_m`) | built R |
+|---|---|---|---|
+| `obs_dome_1` | 92.0 m | 96.0 m | **46.00 m** — the schema |
+| `obs_dome_2` | 92.0 m | 73.8 m | **36.92 m** |
+| `obs_rotundas` | 124.0 m | 59.0 m | **29.52 m** |
+
+**What constrained it.** Hard rule 4 says the inside and the outside come from one model, so the
+shape has to be the schema's. But `directory.py`'s footprints are the only statement anywhere that
+two named places do not overlap, and on the rotundas the two authorities are 2.1× apart. The next
+place along `green/0/0` is `domed_rotunda` at 12°, which is **59.0 m** at that deck's radius: a
+124 m room would be built straight through it. Dome 1 is the corroboration rather than the
+exception — 26° at r = 211.55 m is 96.0 m against Contract 5's 92 m, agreement to 4% from two
+sources that did not consult each other, because that footprint was written to hold that dome.
+
+**What would overturn it.** A ruling that a blister holds exactly one place, or a register
+footprint revised to Contract 5's diameter. Either makes the `min` a no-op, which is the point of
+writing it as a `min` rather than as three numbers.
+
+### EXTRAPOLATION 2 — the sill of the command order is set by the DOORWAY, not by the frame
+
+**What.** 2.60 m, which is `bespoke.DOOR_H_M` plus 0.20 m of head. The C&C frame's own window
+comes down to about console height, roughly a metre.
+
+**What constrained it.** The opaque podium below the sill is the only band of this room a doorway
+can be cut in without cutting the shell, and the shell is a lathe — cutting it means an unrimmed
+aperture in the one surface a player looks straight at, which is the four-defect doorway of session
+3x. A sill under 2.40 m puts the corridor's aperture halfway up a pane of glass, and
+`deck._mouth_clear` probes to 1.785 m. So the room's proportions are set by the way in, and that is
+stated rather than hidden: **the frame is a 5.5 m round window in a flat bulkhead and this is a
+289 m glazed ring.** They are not the same object and the frame cannot be scaled onto it.
+
+**What would overturn it.** A way of cutting a rimmed aperture in a lathe — `interior_kit`'s
+`_plate_with_hole` does it for a plane and nothing does it for a surface of revolution. That is
+real work and it would let the sill drop to the frame's own value.
+
+### Also extrapolated, each with its reason
+
+* **Shell thickness 0.45 m.** Twice `interior_kit.PROVISIONAL["wall_thickness_m"]`, on the argument
+  that a pressure shell carrying a hull blister is heavier than an internal partition. Nothing
+  depends on the value except the reveal a player stands at.
+* **The bay pitch, and the frames' sixteen kept as the PRIMARY order.** Sixteen bays on a 92 m dome
+  is an 18 m pane, which is a wall with a hole in it rather than glazing. `segs` is the multiple of
+  sixteen whose pitch lands nearest 4.5 m (64 / 48 / 48), and every `segs // 16`th seam carries the
+  heavy spoke or the column while the rest carry light bars. The counted number survives exactly;
+  what is invented is the secondary order between them. Overturned by any frame that shows the
+  glazing of a full-size dome rather than of a set window.
+* **The house cove in the rotunda.** `materials.py` derives `light_house_cove` from
+  `05-sector-green/council chambers.webp` — the closest sibling there is — as *"concealed
+  high-level house lighting, fitting never in frame"*, and `rotunda.webp` shows an evenly lit dome
+  with no visible fitting. Added because the room measured **70.2%** of its working plane inside a
+  source (61.4% of the floor it actually has) with only its slat band; with the cove and the altar
+  it is **100.0%** on both measures.
+
+### AND THE PREVIOUS SESSION'S NOTE ABOUT `dressable_extent` WAS HALF WRONG
+
+It read: *"the largest axis-aligned rectangle inscribed in the floor band ... equals the bounding
+box on a rectangular plan and so changes nothing already composed."* The first half is right and
+the second is wrong on **four of the nine** composed modules, which is the finding:
+
+| module | bounding box | inscribed | what the floor actually is |
+|---|---|---|---|
+| `council_chamber` | 22.00 × 22.00 | **15.58 × 15.58** | **A DISC.** 22/√2 = 15.56. The chamber has been dressed and populated 22 m square inside a 22 m round room since it was composed — the predicted dome defect, already shipped |
+| `alien_sector` | 7.50 × 30.00 | **4.22 × 30.00** | a 4.2 m gallery with airlock pads off its left wall; the box spanned the empty air between them |
+| `command_control` | 14.16 × 12.60 | **14.01 × 9.71** | the forward pit is 1.9 m down and the box dressed across it |
+| `quarters` | 29.26 × 7.38 | **4.57 × 7.38** | six disjoint sealed cells |
+
+The other five are rectangles and are unchanged to the bit. `quarters` is a **reduction rather than
+a correction** and is recorded as one: neither the old value (furniture through five party walls)
+nor the new one (one cell furnished, five bare) is right, and the real fix is a per-cell dressing
+pass in `quarters.py`. A gap beats a defect, and the gap is now visible.
+
+`bespoke.DRESSABLE_BASELINE` fixes all nine so a change shows up as a failing gate rather than as a
+crate in a wall three sessions later. Its negative control is a 20 m disc of deck, which must
+measure 14.14 × 14.14 and not 20 × 20.

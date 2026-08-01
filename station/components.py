@@ -884,7 +884,8 @@ def domes(spec, profile):
 
 
 def _dome_fittings(verts, tris, centre, out, rad, hgt, segs, side=1.0,
-                   th0=0.0, phi_hi=None, rib_w=None, rib_t=None, collar=True):
+                   th0=0.0, phi_hi=None, rib_w=None, rib_t=None, collar=True,
+                   grow=None):
     """Mullions, the concentric ring band and the base collar for one dome.
 
     `side = -1.0` STANDS THEM PROUD ON THE INSIDE, which is the whole of what
@@ -910,7 +911,16 @@ def _dome_fittings(verts, tris, centre, out, rad, hgt, segs, side=1.0,
     # Fittings sit on a slightly larger similar ellipsoid so that a straight
     # chord between two of their nodes still clears the curved shell between
     # them. Sagitta over a 30 deg chord is 0.034 r; 0.05 covers it with room.
-    d = side * 0.05 * max(rad, hgt)
+    #
+    # AND ON THE INSIDE THAT MARGIN IS WHAT MAKES A RIB FLOAT. Outside, a bar
+    # riding 0.05 r proud is a bar standing on the hull -- the shell is behind
+    # it and nobody can see the gap. Inside, the shell is behind it in the
+    # other direction, so the same 0.05 r is 1.45 m of daylight between the rib
+    # and the surface it is meant to be a rib OF, and the first engine frame
+    # showed exactly that. `grow` lets the caller pass the sagitta it actually
+    # needs -- r(1 - cos(pi/segs)) -- instead of a constant sized for the worst
+    # case. The default is unchanged, so the exterior is unchanged.
+    d = side * (0.05 * max(rad, hgt) if grow is None else abs(grow))
 
     def surf(phi, th, grow=0.0):
         rr = (rad + grow) * math.cos(phi)

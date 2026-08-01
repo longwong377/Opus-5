@@ -163,6 +163,12 @@ ROT_COLLARS = 3
 ROT_COLLAR_AT = 0.54
 ROT_STEPS = 10                          # "a flight of about ten pale steps"
 ROT_BANNERS = 4                         # "four hanging banners"
+# A shaft's width as a fraction of its own bay's pitch. Measured on the 3x crop
+# at the far arc, where the columns are seen face on: shaft 75 px against a
+# 240 px pitch. Depth-independent, which is the whole reason it is usable --
+# both numbers are at the same distance from the lens, which is exactly the
+# trap `command_control.py` records for everything else in these frames.
+COLUMN_OF_BAY = 75.0 / 240.0            # 0.3125
 
 # The command order takes its window band from the frame's own window: 5.5 m,
 # `command_control.WINDOW_D_M`, which is the depth-corrected fit of the visible
@@ -636,13 +642,24 @@ def _wall_light(m, order, r_in, segs, th0, sill, ent):
                 w = 2.0 * math.pi * r_in / segs / per * 0.34
                 _tangent_plate(m, g["strip"], r_in - 0.02, a, w, lo, hi)
         return
-    y = min(_cc.STRIP_Y_M[0], sill - 0.30)
-    for k in range(segs):
-        if k == ent:
-            continue
-        a0 = th0 + 2.0 * math.pi * k / segs
-        a1 = th0 + 2.0 * math.pi * (k + 1) / segs
-        _chord_plate(m, g["strip"], r_in - 0.02, a0, a1, y, y + _cc.STRIP_H_M)
+    # TWO COURSES, WHICH IS WHAT THE FRAME SAYS. 00-INDEX on `comand and
+    # contorl.webp`: "two courses of long horizontal cyan-white light strips at
+    # high and mid level, separated by dark panel bands", and
+    # `command_control.STRIP_Y_M` measures them at 2.35 and 3.55 m in a room
+    # whose ceiling is about 4.5 m -- 0.52 and 0.79 of the wall. A 2.60 m
+    # podium cannot hold the absolute heights, so it takes the RATIOS, which is
+    # the transferable half of that measurement; the first engine frame had one
+    # course and read as a strip light rather than as the room's whole scheme.
+    ceil = _cc.STRIP_Y_M[1] / 0.79
+    for f in (_cc.STRIP_Y_M[0] / ceil, _cc.STRIP_Y_M[1] / ceil):
+        y = f * sill
+        for k in range(segs):
+            if k == ent:
+                continue
+            a0 = th0 + 2.0 * math.pi * k / segs
+            a1 = th0 + 2.0 * math.pi * (k + 1) / segs
+            _chord_plate(m, g["strip"], r_in - 0.02, a0, a1,
+                         y - _cc.STRIP_H_M / 2.0, y + _cc.STRIP_H_M / 2.0)
 
 
 def _tangent_plate(m, group, r, a, half_w, y0, y1):
@@ -713,7 +730,14 @@ def _colonnade(m, r_in, segs, th0, sill, head, corn, entry_th):
     ent = _entry_facet(segs)
     primary = max(1, segs // _comp.DOME_MULLIONS)
     hcol = head - sill
-    rc = 0.055 * hcol                            # shaft radius
+    # SHAFT WIDTH FROM THE BAY, NOT FROM THE BAND HEIGHT, and the first engine
+    # frame is what said so: at 0.055 of a 2.52 m band the columns were 0.28 m
+    # poles that vanished against the glazing. The frame gives the ratio
+    # directly and it is depth-independent, because a column's width and its
+    # neighbour's spacing are at the same distance from the lens: on the 3x
+    # crop of `rotunda.webp` the far-arc shafts read 75 px against a 240 px
+    # pitch, so a shaft is 0.31 of its bay.
+    rc = 0.5 * COLUMN_OF_BAY * 2.0 * math.pi * (r_in - 1.0) / segs
     prof = [(0.0, sill), (rc * 1.22, sill), (rc * 1.22, sill + 0.10 * hcol),
             (rc * 1.02, sill + 0.16 * hcol)]
     y = sill + (ROT_COLLAR_AT - 0.06) * hcol
@@ -725,16 +749,29 @@ def _colonnade(m, r_in, segs, th0, sill, head, corn, entry_th):
              (rc * 1.28, head - 0.05 * hcol), (rc * 1.46, head - 0.04 * hcol),
              (rc * 1.46, head), (0.0, head)]
     prof.sort(key=lambda p: p[1])
+    # The secondary shaft: the same order without the collars or the flare.
+    plain = [(0.0, sill), (rc * 1.10, sill), (rc * 1.10, sill + 0.08 * hcol),
+             (rc * 0.88, sill + 0.13 * hcol),
+             (rc * 0.84, head - 0.13 * hcol), (rc * 1.06, head - 0.07 * hcol),
+             (rc * 1.06, head), (0.0, head)]
+    # A COLUMN AT EVERY SEAM, and the first engine frame is why. At every third
+    # seam the ring carried sixteen columns 11 m apart, and eleven metres of
+    # glazing between two shafts is not a colonnade -- `docs/engine-4f-*` shows
+    # five poles in front of a black band. The frame's colonnade is DENSE: its
+    # shaft is 0.305 of its own bay and its bays are 2.5 times as tall as they
+    # are wide, so what transfers from a 17 m ring to a 176 m one is the BAY,
+    # not the count. Sixteen survives as the count of the PRIMARY order -- the
+    # columns that carry the three collars and the flared capital -- and the
+    # seams between them carry the plainer shafts, which is what an order with
+    # a secondary rhythm is. Same argument as `BAY_PITCH_TARGET_M`, applied to
+    # the same frame's other measurement.
     for k in range(segs):
         a = th0 + 2.0 * math.pi * k / segs
         if k == ent or (k + 1) % segs == ent:
             continue
-        if k % primary == 0:
-            m.lathe(g["rib"], prof, 10,
-                    cx=-(r_in - rc * 1.5) * math.cos(a),
-                    cz=(r_in - rc * 1.5) * math.sin(a))
-        else:
-            _tangent_plate(m, g["ring"], r_in - 0.10, a, rc * 0.42, sill, head)
+        m.lathe(g["rib"], prof if k % primary == 0 else plain, 10,
+                cx=-(r_in - rc * 1.5) * math.cos(a),
+                cz=(r_in - rc * 1.5) * math.sin(a))
     # The corbel course.
     for k in range(segs):
         if k == ent:
@@ -749,7 +786,54 @@ def _colonnade(m, r_in, segs, th0, sill, head, corn, entry_th):
             _chord_plate(m, g["cornice"], r_in - inset,
                          a0 + (a1 - a0) * f, a1 - (a1 - a0) * f, lo, hi)
             del am
+        # THE HOUSE WASH, AND THE ROTUNDA HAD NONE. `--gate-lighting`'s own
+        # measure put this room at 70.2% of its working plane inside a source
+        # against the domes' 100%, and the cause was that its only fitting was
+        # the podium's slat band -- 188 short-range sources round a 59 m wall,
+        # none of which can reach the middle of the floor. Restricted to the
+        # floor the room ACTUALLY has it was 61.4%.
+        #
+        # SOURCED, not added to make a number go green. `materials.py` derives
+        # `light_house_cove` from `05-sector-green/council chambers.webp` --
+        # the closest possible sibling, a Green-sector ceremonial chamber --
+        # and describes it as "concealed high-level house lighting, fitting
+        # never in frame; a broad soft near-neutral wash over the whole
+        # chamber". `rotunda.webp` shows a brightly and evenly lit dome with no
+        # visible fitting anywhere, which is that description exactly.
+        _chord_plate(m, g["cove"], r_in - 1.15,
+                     a0 + (a1 - a0) * 0.10, a1 - (a1 - a0) * 0.10,
+                     head + 0.30 * (corn - head), head + 0.62 * (corn - head))
+    _altar(m, r_in)
     _banners(m, r_in, segs, th0, sill, ent)
+
+
+def _altar(m, r_in):
+    """The blue illuminated altar table, and it is in the frame.
+
+    00-INDEX on `rotunda.webp`: "a blue illuminated altar table", and the
+    re-examination adds "a dark plinth lectern with a sloping cyan-glowing
+    top, the glow divided by dark bars into a symmetrical chevron figure".
+    `materials.py` measured `furn_shrine_lit` off that very slab -- "(0.243,
+    0.321, 0.981) and ACCENTS['cool_blue'] is (0.240, 0.320, 1.000), the altar
+    IS the cool_blue register, to three decimals, from a frame that register
+    was not derived from" -- so `prop_shrine` here is the same object under the
+    same material.
+
+    It also puts a source in the MIDDLE of the floor, which is where the house
+    cove is weakest, and that is why it is here rather than left to `dressing`.
+    """
+    # TWO PIECES, AND ONLY ONE OF THEM GLOWS. `materials.py` records the
+    # compromise it had to make because `rooms.build` emits the whole shrine as
+    # ONE box -- "whatever I set applies to the body as well as the slab, and a
+    # clipping value would turn a shrine into a lightbox" -- and the frame is
+    # explicit that they are different surfaces: the slab clips at (0.243,
+    # 0.321, 0.981) and "the body below it reads rgb(0.003, 0.009, 0.142):
+    # near-black with only its own light on it". Splitting them here is what
+    # lets the slab be the source the frame says it is.
+    w, d, h = 1.10, 0.60, 1.70          # rooms.PROPS' own shrine box
+    m.box("worship_rib_plinth", (-w / 2, 0.0, -d / 2), (w / 2, h * 0.72, d / 2))
+    m.box("prop_shrine", (-w / 2 - 0.10, h * 0.72, -d / 2 - 0.06),
+          (w / 2 + 0.10, h * 0.78, d / 2 + 0.06))
 
 
 def _banners(m, r_in, segs, th0, sill, ent):
@@ -868,13 +952,22 @@ def _dome_ribs(m, rad, hgt, segs, th0, corn, order):
     r_i, h_i = rad - SHELL_T_M, hgt - SHELL_T_M
     phi_lo = math.asin(min(0.999, corn / h_i))
     n = _comp.DOME_MULLIONS
+    # THE SAGITTA THIS RIB ACTUALLY NEEDS, not the constant the exterior uses.
+    # `_dome_fittings` rides its bars 0.05 * max(rad, hgt) off the shell so a
+    # straight chord between two nodes clears the curve between them; outside
+    # that is a bar standing proud on a hull, and inside it is 1.45 m of
+    # daylight between a rib and the dome it is a rib of. The first engine
+    # frame showed the ribs floating. The chord here spans one of `n` bays over
+    # `DOME_RIB_SEGMENTS` lengths, so the real clearance is
+    # r(1 - cos(pi / n)) with a little over.
+    sag = r_i * (1.0 - math.cos(math.pi / n)) * 1.35
     v, t = [], []
     _comp._dome_fittings(
         v, t, (0.0, 0.0, 0.0), (0.0, 1.0, 0.0), r_i, h_i, n,
         side=-1.0, th0=th0, phi_hi=phi_lo + 0.62 * (math.pi / 2.0 - phi_lo),
         rib_w=(0.030 if order == "rotunda" else 0.016) * r_i,
-        rib_t=(0.022 if order == "rotunda" else 0.012) * r_i,
-        collar=False)
+        rib_t=sag + (0.022 if order == "rotunda" else 0.012) * r_i,
+        collar=False, grow=sag)
     m.merge(v, t, g["rib"])
 
 
