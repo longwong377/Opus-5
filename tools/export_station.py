@@ -152,8 +152,25 @@ def main(argv=None):
 
     os.makedirs(OUT, exist_ok=True)
     schema, profile = it.load()
-    man = {"decks": [], "columns": [], "started": time.time()}
+    # THE MANIFEST ACCUMULATES. A run with `--sector` used to overwrite the
+    # whole-station record with nine rows, so the file said the station was
+    # nine decks. It is a record of what EXISTS, not of what this invocation
+    # did; rows are keyed and replaced.
     mpath = os.path.join(OUT, "station_manifest.json")
+    man = {"decks": [], "columns": [], "started": time.time()}
+    if os.path.exists(mpath):
+        try:
+            with open(mpath) as f:
+                old = json.load(f)
+            man["decks"] = list(old.get("decks", ()))
+            man["columns"] = list(old.get("columns", ()))
+        except (OSError, ValueError):
+            pass
+
+    def _put(bucket, row):
+        keep = [r for r in man[bucket] if r.get("key") != row.get("key")]
+        keep.append(row)
+        man[bucket] = keep
 
     def flush():
         man["elapsed_s"] = round(time.time() - man["started"], 1)
@@ -197,7 +214,7 @@ def main(argv=None):
                    "seconds": round(time.time() - t0, 1)}
             print(f"  [{n}/{len(order)}] {stem}: FAILED -- {row['why'][:100]}"
                   f"\n        {row['at']}")
-        man["decks"].append(row)
+        _put("decks", row)
         flush()
 
     # --- the transit columns -------------------------------------------------
@@ -230,7 +247,7 @@ def main(argv=None):
                    "seconds": round(time.time() - t0, 1)}
             print(f"  column {sec}: FAILED -- {row['why'][:100]}"
                   f"\n        {row['at']}")
-        man["columns"].append(row)
+        _put("columns", row)
         flush()
 
     good = [d for d in man["decks"] if d.get("ok")]
