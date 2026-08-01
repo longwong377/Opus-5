@@ -836,7 +836,11 @@ def _topic_era(sp, li, w, reg):
     if not rows:
         return None
     ev, who, why = rows[int(_u(sp.npc_id, "era") * len(rows))]
-    sal = PERSONAL["era"] + (0.8 if who != "*" else 0.0)
+    # AN ERA THAT HAPPENED TO YOU OUTRANKS ONE THAT HAPPENED. `narn_surrender`
+    # on a Narn is the largest fact about that person; `markab_extinct` is true
+    # of everybody aboard and would otherwise put the same sentence in three
+    # mouths in one room, which is what it did before this line existed.
+    sal = PERSONAL["era"] + (0.8 if who != "*" else -0.3)
     return {"key": "era", "salience": sal,
             "fact": {"event": ev, "who": who,
                      "refugee": sp.role == "refugee",
@@ -1399,11 +1403,27 @@ def report(out=print):                                          # noqa: C901
         _show(speak(r, "zocalo", w), out)
         out("")
 
+    out("THE COMPETITION -- every topic that applied, and what scored it")
+    one = res.roster("customs_north", 10.0, "human", 1)
+    if one:
+        ld0 = next((n for n in range(8) if tf.liner_today(n)), 0)
+        la0 = next((a for a in tf.arrivals(ld0) if a["type"] == "liner"), None)
+        ww0 = World(hour=(la0["hour"] + 0.2) if la0 else 10.0, day=ld0)
+        s0 = _speaker(one[0], "customs_north")
+        for t in rank(s0, Listener(), ww0):
+            out(f"  {t['salience']:6.2f}  {t['key']:8s} {t['source'][:88]}")
+        out(f"  -> drew [{speak(one[0], 'customs_north', ww0).topic}]")
+    out("")
+
     out("THE SAME PERSON, TWO ERAS -- nothing else changed")
-    narn = res.roster("zocalo", w.hour, "narn", 1)
+    # A Narn at the refugee reception, because 6.2's 13,000 are the population
+    # the surrender created and the era row lands on them hardest.
+    narn = (res.roster("refugee_reception", w.hour, "narn", 1)
+            or res.roster("zocalo", w.hour, "narn", 1))
     if narn:
         for dm, label in (((2, 1), "S2E01"), ((3, 5), "S3E05, the datum")):
-            ex = speak(narn[0], "zocalo", World(hour=w.hour, datum=dm))
+            ex = speak(narn[0], "refugee_reception",
+                       World(hour=w.hour, datum=dm))
             out(f"  {label}: {ex.text()}")
     out("")
 

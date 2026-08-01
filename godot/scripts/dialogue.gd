@@ -529,8 +529,8 @@ class Plate extends Control:
 		var key := 24.0 * s
 		var total: float = key + pad + vw + pad + 1.0 + pad + lw
 		var x := cx - total * 0.5
-		_scrim(Rect2(x - 50.0 * s, y - 26.0 * s, total + 100.0 * s, 60.0 * s),
-			0.52 * a, Vector2(0.32, 0.32), Vector2(0.30, 0.34))
+		_scrim(Rect2(x - 60.0 * s, y - 30.0 * s, total + 120.0 * s, 74.0 * s),
+			0.62 * a, Vector2(0.28, 0.28), Vector2(0.28, 0.30))
 		_key(Vector2(x, y), "T", s, a)
 		var tx := x + key + pad
 		_tracked(Vector2(tx, y + px * 0.36), verb, px,
@@ -556,10 +556,18 @@ class Plate extends Control:
 		var p = d._open
 		var w: float = minf(sz.x * 0.78, 980.0 * s)
 		var x := (sz.x - w) * 0.5
-		var h := 150.0 * s
-		var y := sz.y - h - 54.0 * s
-		_scrim(Rect2(x - 40.0 * s, y - 34.0 * s, w + 80.0 * s, h + 68.0 * s),
-			0.62 * a, Vector2(0.16, 0.16), Vector2(0.26, 0.26))
+		var h := 104.0 * s
+		var y := sz.y - h - 76.0 * s
+		# TWO WASHES, NOT ONE. A single soft plate at the alpha `hud.gd` uses
+		# for a corner readout disappeared against a lit corridor wall -- the
+		# first frame of this had amber text floating on bare geometry. The
+		# wide one seats the block in the frame; the tight one under the line
+		# itself is what makes the text legible against a wall with a light
+		# fitting on it.
+		_scrim(Rect2(x - 56.0 * s, y - 40.0 * s, w + 112.0 * s, h + 92.0 * s),
+			0.66 * a, Vector2(0.16, 0.16), Vector2(0.24, 0.22))
+		_scrim(Rect2(x - 22.0 * s, y - 16.0 * s, w + 44.0 * s, h + 34.0 * s),
+			0.52 * a, Vector2(0.10, 0.10), Vector2(0.14, 0.14))
 
 		# The speaker. Tracked capitals in cyan, with the L-bracket every B5
 		# console panel is edged with.
@@ -571,9 +579,9 @@ class Plate extends Control:
 			3.0 * s)
 		var sub := "%s   %s   %s" % [p.species.to_upper(), p.role.to_upper(),
 			p.place.replace("_", " ").to_upper()]
-		var spx := int(roundf(9.0 * s))
-		_tracked(Vector2(x + nw + 18.0 * s, y - 1.0 * s), sub, spx,
-			Color(d.CYAN, 0.52 * a), 1.2 * s)
+		var spx := int(roundf(10.0 * s))
+		_tracked(Vector2(x + nw + 20.0 * s, y - 1.0 * s), sub, spx,
+			Color(d.CYAN, 0.80 * a), 1.4 * s)
 		_hair(Vector2(x, y + 9.0 * s), Vector2(x + w, y + 9.0 * s),
 			Color(d.CYAN, 0.40 * a), s)
 
@@ -593,10 +601,10 @@ class Plate extends Control:
 		var lpx := int(roundf(16.0 * s))
 		var col: Color = (Color(d.AMBER, 0.96 * a) if speech
 			else Color(d.CYAN, 0.72 * a))
-		var ly := y + 40.0 * s
+		var ly := y + 42.0 * s
 		for row in _wrap(txt, w, lpx, 1.2 * s):
 			_tracked(Vector2(x, ly), row, lpx, col, 1.2 * s)
-			ly += 22.0 * s
+			ly += 24.0 * s
 
 		# Where you are in the exchange, and the key that moves it on.
 		var ny := y + h + 6.0 * s
@@ -709,6 +717,12 @@ func _run_shot(args: Dictionary) -> void:
 		% [who.name, who.species, who.role, who.topic, _at + 1,
 			who.lines.size()])
 	_shot_out = String(args.get("dialogue-shot", ""))
+	# THE SHUTTER IS NOT THE SIMULATION. `_physics_process` re-runs the scan
+	# every frame, and with no level and no body near anybody it correctly
+	# returns nothing -- so an `--offer` shot came out as the backdrop with no
+	# prompt on it, byte-identical to the file it was drawn over. The frame
+	# poses the interface; the scan is proved by the harness above.
+	set_physics_process(false)
 	set_process(true)
 
 
