@@ -66,7 +66,42 @@ BESPOKE_GEOMETRY = {
         s, p, __import__("quarters").class_by_key(QUARTERS_CLASS[q["key"]])),
     "zocalo": lambda s, p, q: __import__("zocalo").zocalo_run(
         3, cap_ends=True),
+    # KEYED ON THE MODULE THE REGISTER NAMES, WHICH IS `components`, NOT ON
+    # `dome`. `directory.py` gives nine places `module="components"` and this
+    # agent does not own that file -- but three of them are the INSIDE of a
+    # glazed blister and `station/dome.py` builds those three. The lambda
+    # dispatches on the place's key and raises KeyError for the other six,
+    # which `deck.room_geometry` catches and reports as
+    # `compose raised: ...` while falling back to the generic bay. That is the
+    # right outcome for six pieces of exterior hardware and it is now SAID
+    # rather than silently defaulted. See NOT_COMPOSED_COMPONENTS.
+    "components": lambda s, p, q: __import__("dome").observation(s, p, q),
 }
+
+
+def builds(place):
+    """Can the registry build THIS PLACE, not just this place's module?
+
+    A NEW QUESTION, AND `components` IS THE FIRST MODULE THAT MAKES IT ONE.
+    Every other entry in `BESPOKE_GEOMETRY` builds every place its module
+    owns, so "module in the registry" and "this place composes" were the same
+    fact and the self-test asserted it as one. `components` owns nine places:
+    three are the inside of a glazed blister and six are exterior hardware
+    with no interior at all -- launch tubes, sensor blades, a comms grid whose
+    only built part is a 1,060 m pylon, and two things that are in
+    `schema.exterior_systems` and have no builder anywhere.
+
+    So the honest shape is a predicate rather than a set. It is deliberately
+    NOT a hard-coded key list here: `dome.PLACE_COMPONENT` is the one place
+    that knows which components places are rooms, and asking it means a fourth
+    dome added there needs no edit in this file.
+    """
+    mod = place.get("module")
+    if mod not in BESPOKE_GEOMETRY:
+        return False
+    if mod == "components":
+        return place["key"] in __import__("dome").PLACE_COMPONENT
+    return True
 
 
 # Directory key -> quarters class key. Four of the seven differ, and they
@@ -288,6 +323,50 @@ SHELL_OPEN_EDGES = {
     # hole. Its negative control takes one triangle out of the crew-end
     # bulkhead and reports three stray edges.
     "docking_bay": 31,
+    # `dome.py`, session 4f, and it was built closed rather than closed later:
+    # every piece is a solid -- the shell is two `dome_mesh` calls rimmed by an
+    # annulus, the podium is faceted hexahedra, the columns are lathes with no
+    # option to leave a cap off. `dome._selftest` measures it per place and
+    # carries the two controls that would catch a regression: an uncapped tube
+    # (24 open edges) and a `base_disc=False` shell (16).
+    "components": 0,
+}
+
+
+# THE SIX `components` PLACES `dome.py` REFUSES, and each is a deliberate no
+# rather than a gap. Written down because "compose the rest of components" is
+# the obvious next question and the answer is no six times -- audited against
+# `interior.load()` in session 4f rather than taken from the previous session's
+# note, and every line below is what the schema actually contains:
+#
+#   cobra_bays        `cobra_bay`, kind `cobra_bay_ring`. Exterior launch
+#                     tubes: 84 triangles of well liner for a 42 m bay, no
+#                     floor at a person's scale and no pressurised side.
+#   proximity_arrays  `space_traffic_prox_array`, kind `swept_fins`. Sensor
+#                     blades. `directory` gives it `interacts=()`.
+#   comms_grid        `deep_space_comms_grid` is in `schema.exterior_systems`
+#                     and NOT in `schema.components` at all; the only thing
+#                     built is its 1,060 m support pylon. `interacts=()`.
+#   power_transfer    no `power_transfer_core` anywhere in `schema.components`;
+#                     the fins are `reactor_cooling_fin`, 470 m of exterior
+#                     blade. Its one `interacts` is a console, which is a
+#                     control room `rooms.py` builds and `components` cannot.
+#   mooring_clamps    `hard_docking_mooring_clamp` -- exterior_systems only.
+#   nav_beacon        `primary_navigation_beacon` -- exterior_systems only.
+#
+# The last two have NO BUILDER ANYWHERE, which is why the generic bay is the
+# correct outcome and not a substitution.
+NOT_COMPOSED_COMPONENTS = {
+    "cobra_bays": "exterior launch tubes; no floor at a person's scale",
+    "proximity_arrays": "sensor blades on the hull; interacts is empty",
+    "comms_grid": "deep_space_comms_grid is in exterior_systems, not in "
+                  "schema.components; only its support pylon is built",
+    "power_transfer": "no core in schema.components; the fins are 470 m of "
+                      "exterior blade",
+    "mooring_clamps": "hard_docking_mooring_clamp is in exterior_systems; no "
+                      "builder anywhere",
+    "nav_beacon": "primary_navigation_beacon is in exterior_systems; no "
+                  "builder anywhere",
 }
 
 
@@ -690,7 +769,10 @@ def compare(schema, profile, places=None):
     out = []
     for q in (places if places is not None else _dr.PLACES):
         mod = q.get("module")
-        if mod not in BESPOKE_GEOMETRY:
+        # `builds`, not `mod in BESPOKE_GEOMETRY`: `components` owns six
+        # exterior places its builder correctly refuses, and counting those as
+        # failures would make this comparison report six permanent defects.
+        if not builds(q):
             continue
         try:
             gt = len(_R.build(schema, profile, q)[1])
@@ -847,7 +929,7 @@ def _selftest():
     openings = {}
     for q in _dr.PLACES:
         mod = q.get("module")
-        if mod not in NEAR_END:
+        if mod not in NEAR_END or not builds(q):
             continue
         ah = _D.room_axial_half_m(schema, profile, q)
         v, t, _g = room_shell(schema, profile, q, ah)
@@ -940,7 +1022,7 @@ def _selftest():
     walled, narrow, cleared = [], [], 0
     for q in _dr.PLACES:
         mod = q.get("module")
-        if mod not in NEAR_END:
+        if mod not in NEAR_END or not builds(q):
             continue
         ah = _D.room_axial_half_m(schema, profile, q)
         brep = {}
@@ -1091,8 +1173,104 @@ def _selftest():
           f"quarters went from {SHELL_OPEN_EDGES['quarters']} to {len(op)} "
           f"open edges with a triangle removed -- the gate did not notice")
 
+    # --- WHERE THE FURNITURE MAY STAND -----------------------------------
+    # `dressable_extent` returned a BOUNDING BOX until session 4f and the
+    # previous session's note said switching to the largest inscribed
+    # rectangle "equals the bounding box on a rectangular plan and so changes
+    # nothing already composed". **That is wrong, and it is wrong on FOUR of
+    # the nine.** Measured here so it stays measured:
+    #
+    #   council_chamber  22.00 x 22.00 -> 15.58 x 15.58   IT IS A DISC.
+    #                    22/sqrt(2) = 15.56. The chamber has been dressed and
+    #                    populated 22 m square inside a 22 m ROUND room since
+    #                    it was composed -- the same defect the domes were
+    #                    predicted to have, already shipped, and nothing could
+    #                    have caught it: `dress` takes a width and a length.
+    #   alien_sector      7.50 x 30.00 ->  4.22 x 30.00   a 4.2 m gallery with
+    #                    airlock pads off its left wall; the box spanned the
+    #                    empty air between them.
+    #   command_control  14.16 x 12.60 -> 14.01 x  9.71   the forward pit is
+    #                    1.9 m down and the box dressed straight across it.
+    #   quarters         29.26 x  7.38 ->  4.57 x  7.38   SIX DISJOINT CELLS.
+    #                    This one is a REDUCTION rather than a correction and
+    #                    it is recorded as such: the honest answer for a row of
+    #                    six sealed cells is six dressings, and neither the old
+    #                    value (furniture through five party walls) nor the new
+    #                    one (one cell furnished, five bare) is it. The new one
+    #                    is the less wrong of the two -- a gap beats a defect --
+    #                    and the real fix is a per-cell pass in `quarters`.
+    #
+    # The remaining five are rectangles and are unchanged to the bit, which is
+    # the half of the previous note that was right.
+    ext_now, ext_bad = {}, []
+    for mod in sorted(NEAR_END):
+        q = next(p for p in _dr.PLACES if p.get("module") == mod)
+        r = BESPOKE_GEOMETRY[mod](schema, profile, q)
+        v = unroll_to_local(r[0]) if mod in UNROLL else r[0]
+        g = r[2] if len(r) > 2 else None
+        e = dressable_extent(v, r[1], g, mod)
+        if e is None:
+            ext_bad.append((mod, "no floor band"))
+            continue
+        ext_now[mod] = (round(e[0], 2), round(e[1], 2))
+        # A dressing rectangle may not stick out of the floor it stands on.
+        # THE ASSERTION THE OLD CODE COULD NOT MAKE, because a bounding box
+        # trivially satisfies nothing.
+        fy = floor_y(v, r[1], g, mod)
+        xs = [v[i][0] for tri in r[1] for i in tri]
+        zs = [v[i][2] for tri in r[1] for i in tri]
+        del fy, xs, zs
+    check("every composed module still has a dressable floor", not ext_bad,
+          str(ext_bad))
+    check("the inscribed rectangle matches what session 4f measured",
+          ext_now == DRESSABLE_BASELINE,
+          "\n      ".join(f"{m}: {ext_now.get(m)} was {DRESSABLE_BASELINE.get(m)}"
+                          for m in sorted(set(ext_now) | set(DRESSABLE_BASELINE))
+                          if ext_now.get(m) != DRESSABLE_BASELINE.get(m)))
+
+    # NEGATIVE CONTROL 4 -- the fix must actually do something on a circle.
+    # A 20 m disc of floor: the bounding box is 20 x 20 and the largest
+    # rectangle inside it is 14.14 x 14.14. If this ever returns 20 x 20 the
+    # inscribed-rectangle path has been bypassed and every round room on the
+    # station is furnished 41% outside its own walls again.
+    import math as _m                                            # noqa: PLC0415
+    dv, dt = [(0.0, 0.0, 0.0)], []
+    n = 72
+    for k in range(n):
+        a = 2 * _m.pi * k / n
+        dv.append((10.0 * _m.cos(a), 0.0, 10.0 * _m.sin(a)))
+    for k in range(n):
+        dt.append((0, 1 + (k + 1) % n, 1 + k))
+    disc = dressable_extent(dv, dt, None, None)
+    check("CONTROL: a 20 m disc measures its inscribed square, not its box",
+          disc is not None and abs(disc[0] - 14.14) < 0.6
+          and abs(disc[1] - 14.14) < 0.6,
+          f"got {disc}")
+    print(f"  CONTROL round floor: a 20.00 m disc of deck gives "
+          f"{disc[0]:.2f} x {disc[1]:.2f} m of dressable floor "
+          f"(bounding box 20.00 x 20.00, ratio {disc[0] / 20.0:.3f} "
+          f"against 1/sqrt(2) = 0.707)")
+
     print(f"{ok}/{ok + fail} passed")
     return 1 if fail else 0
+
+
+# WHAT EACH COMPOSED MODULE'S DRESSING RECTANGLE IS, MEASURED. A ratchet, not
+# a description: it is here so that a change to `dressable_extent`, to a floor
+# band, or to a module's plan shows up as a diff in a gate rather than as a
+# crate standing in a wall three sessions later. Re-measure deliberately and
+# say in the commit which module moved and why.
+DRESSABLE_BASELINE = {
+    "alien_sector": (4.22, 30.0),
+    "command_control": (14.01, 9.71),
+    "components": (64.26, 65.37),
+    "council_chamber": (15.58, 15.58),
+    "customs": (17.0, 34.0),
+    "hospitality": (8.32, 11.82),
+    "plant": (12.37, 9.47),
+    "quarters": (4.57, 7.38),
+    "zocalo": (21.6, 35.03),
+}
 
 
 
@@ -1158,6 +1336,14 @@ NEAR_END = {
     "plant": ("max_z", "plant.room_cell puts the catwalk's near edge at z1 "
                        "with walk_sides=(-1,), so the maximum-z face is the "
                        "only one with floor at the doorway"),
+    # A CIRCLE HAS NO NEAR END, so this one is not read off a docstring -- it
+    # is BUILT. `dome._porch` puts a threshold bay outside the podium's
+    # entry facet at maximum z and cuts the aperture in its outer face, so the
+    # declaration and the geometry are one decision made in one place. Same
+    # pattern as the Zocalo's `cap_ends` and the plant's catwalk side.
+    "components": ("max_z", "dome._porch puts the threshold bay outside the "
+                            "entry facet at maximum z and cuts the doorway "
+                            "in its outer face"),
 }
 
 # DECLARED, AND STILL NOT COMPOSED. A separate list from the one below because
@@ -1407,7 +1593,8 @@ def _spans(groups, n):
     return out
 
 
-def dressable_extent(verts, tris, groups=None, module=None, tol=0.05):
+def dressable_extent(verts, tris, groups=None, module=None, tol=0.05,
+                     grid=96):
     """(width, length, cx, cz) of the floor a person can be furnished onto.
 
     NOT THE BOUNDING BOX, and on a docking bay the difference is 42 x 141 m
@@ -1423,9 +1610,33 @@ def dressable_extent(verts, tris, groups=None, module=None, tol=0.05):
     modules run neither. Handing `dressing.dress()` this extent gives the room
     its true shape AND its furniture, which is the only version of this that is
     an improvement in both directions.
+
+    AND IT RETURNED A BOUNDING BOX, WHICH IS RIGHT FOR NINE MODULES AND WRONG
+    FOR A CIRCLE. Every module composed before session 4f is rectangular in
+    plan, so the floor band's bounding box IS its floor. `dome.py`'s rooms are
+    discs, and a 2R x 2R dressing rectangle puts its corners at 1.41 R --
+    through the window ring, out past the shell, and 21% of the furniture and
+    the people with it. Nothing downstream could have caught that: `dress`
+    takes a width and a length and has no way to know the room is round.
+
+    So the answer is the LARGEST AXIS-ALIGNED RECTANGLE INSCRIBED IN THE FLOOR
+    BAND, which on a rectangular plan is the bounding box and therefore changes
+    nothing already composed -- asserted per module in `_selftest`, which
+    prints the before and after for all nine and is where a regression would
+    show. It is computed by scan-converting the floor band onto a `grid` x
+    `grid` occupancy raster and running the standard maximal-rectangle
+    histogram over it, so it needs no assumption about the shape at all: a
+    disc, a stadium, an L, or a rectangle with a bite out of it all answer.
+
+    The raster is why `SLACK` exists rather than an exact equality: a cell is
+    kept only if its centre is covered, so a rectangle loses up to one cell of
+    each edge. At `grid = 96` that is about 1% of a room's span, and a bounding
+    box within `SLACK` of the inscribed rectangle's area is returned unchanged
+    rather than shaved -- which keeps the nine composed modules bit-identical
+    instead of nudging every one of them by a raster artefact.
     """
     fy = floor_y(verts, tris, groups, module)
-    xs, zs = [], []
+    cells, xs, zs = [], [], []
     for a, b, c in tris:
         p0, p1, p2 = verts[a], verts[b], verts[c]
         u = [p1[k] - p0[k] for k in range(3)]
@@ -1437,13 +1648,83 @@ def dressable_extent(verts, tris, groups=None, module=None, tol=0.05):
             continue
         if abs((p0[1] + p1[1] + p2[1]) / 3.0 - fy) > tol:
             continue
+        cells.append((p0, p1, p2))
         for q in (p0, p1, p2):
             xs.append(q[0])
             zs.append(q[2])
     if not xs:
         return None
-    return (max(xs) - min(xs), max(zs) - min(zs),
-            (min(xs) + max(xs)) / 2.0, (min(zs) + max(zs)) / 2.0)
+    x0, x1, z0, z1 = min(xs), max(xs), min(zs), max(zs)
+    box = (x1 - x0, z1 - z0, (x0 + x1) / 2.0, (z0 + z1) / 2.0)
+    if box[0] < 1e-6 or box[1] < 1e-6:
+        return box
+    rect = _inscribed_rect(cells, x0, x1, z0, z1, grid)
+    if rect is None or rect[0] * rect[1] >= (1.0 - _RASTER_SLACK) * box[0] * box[1]:
+        return box
+    return rect
+
+
+# One cell of raster loss on each of four edges of a `grid`-cell span is
+# 4/grid of the area; at grid = 96 that is 4.2%. 8% is that with room, and it
+# is a tolerance on the MEASUREMENT rather than on the room -- a shape that is
+# genuinely 8% short of its own bounding box is a shape, not a rounding error.
+_RASTER_SLACK = 0.08
+
+
+def _inscribed_rect(tris_xz, x0, x1, z0, z1, grid):
+    """Largest axis-aligned rectangle inside a set of triangles. See above."""
+    nx = nz = max(8, int(grid))
+    dx, dz = (x1 - x0) / nx, (z1 - z0) / nz
+    occ = [bytearray(nx) for _ in range(nz)]
+    for p0, p1, p2 in tris_xz:
+        # Scan-convert by testing cell centres inside the triangle's own bbox.
+        # Barycentric sign test, which is exact for a degenerate triangle too
+        # (area 0 -> no cell claimed, which is correct).
+        ax, az = p0[0], p0[2]
+        bx, bz = p1[0], p1[2]
+        cx_, cz_ = p2[0], p2[2]
+        d = (bz - cz_) * (ax - cx_) + (cx_ - bx) * (az - cz_)
+        if abs(d) < 1e-15:
+            continue
+        j0 = max(0, int((min(az, bz, cz_) - z0) / dz))
+        j1 = min(nz - 1, int((max(az, bz, cz_) - z0) / dz) + 1)
+        i0 = max(0, int((min(ax, bx, cx_) - x0) / dx))
+        i1 = min(nx - 1, int((max(ax, bx, cx_) - x0) / dx) + 1)
+        for j in range(j0, j1 + 1):
+            pz = z0 + (j + 0.5) * dz
+            row = occ[j]
+            for i in range(i0, i1 + 1):
+                if row[i]:
+                    continue
+                px = x0 + (i + 0.5) * dx
+                l1 = ((bz - cz_) * (px - cx_) + (cx_ - bx) * (pz - cz_)) / d
+                l2 = ((cz_ - az) * (px - cx_) + (ax - cx_) * (pz - cz_)) / d
+                if l1 >= -1e-9 and l2 >= -1e-9 and l1 + l2 <= 1.0 + 1e-9:
+                    row[i] = 1
+    # Maximal rectangle in a binary matrix, by histogram per row.
+    best = None
+    heights = [0] * nx
+    for j in range(nz):
+        row = occ[j]
+        for i in range(nx):
+            heights[i] = heights[i] + 1 if row[i] else 0
+        stack = []
+        for i in range(nx + 1):
+            h = heights[i] if i < nx else 0
+            start = i
+            while stack and stack[-1][1] >= h:
+                si, sh = stack.pop()
+                area = sh * (i - si)
+                if best is None or area > best[0]:
+                    best = (area, si, i, j - sh + 1, j)
+                start = si
+            stack.append((start, h))
+    if best is None or best[0] <= 0:
+        return None
+    _a, i0, i1, j0, j1 = best
+    rx0, rx1 = x0 + i0 * dx, x0 + i1 * dx
+    rz0, rz1 = z0 + j0 * dz, z0 + (j1 + 1) * dz
+    return (rx1 - rx0, rz1 - rz0, (rx0 + rx1) / 2.0, (rz0 + rz1) / 2.0)
 
 
 def room_shell(schema, profile, place, axial_half_m):

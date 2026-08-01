@@ -711,7 +711,8 @@ def dome_frame(out):
                           ox * ay - oy * ax)
 
 
-def dome_mesh(verts, tris, cx, cy, cz, out, radius, height, rings=6, segs=14):
+def dome_mesh(verts, tris, cx, cy, cz, out, radius, height, rings=6, segs=14,
+              base_disc=True, th0=0.0, phis=None, flip=False):
     """Half-ellipsoid bulging along an arbitrary outward direction. CLOSED.
 
     It was not closed, and no render could have said so: the base sits inside
@@ -725,6 +726,34 @@ def dome_mesh(verts, tris, cx, cy, cz, out, radius, height, rings=6, segs=14):
     one vertex with a fan under it (2*segs triangles become segs), and the
     base gets a disc fan (segs triangles). greeble.py's blisters call this too
     and get the same repair for the same count.
+
+    FOUR KEYWORDS, ALL DEFAULTING TO WHAT THE EXTERIOR ALREADY DID, and they
+    exist so that `station/dome.py` can build the INSIDE of these blisters
+    from this same function rather than from a second lathe of its own. Hard
+    rule 4: "inside and outside come from the same schema", and a second lathe
+    is a second description of one surface.
+
+    The measurement that forced it: standing at an `observation_dome`'s own
+    base-plane centre, **0 of its 192 triangles face the viewer** (session 4f,
+    `_selftest`). Every surface points out, which is correct for a blister on
+    a hull and useless as a room.
+
+      `base_disc`  emit the closing fan at phi = 0. False leaves the base ring
+                   open, for a caller that is going to rim it against a second
+                   shell -- which is the only way a shell gets THICKNESS, and
+                   thickness is the only way its inner surface exists.
+      `th0`        phase of the first meridian. `pi/segs` puts a FACET, not a
+                   vertex, on the frame's first axis -- which is how a room
+                   gets a flat wall to cut a doorway in. The exterior takes
+                   0.0 and is unchanged to the bit.
+      `phis`       explicit ascending latitudes in place of the uniform ramp,
+                   so a caller can land a row exactly on a sill, a head or a
+                   cornice line instead of near one.
+      `flip`       reverse every triangle. An inner surface faces the room.
+
+    Returns the index of the base ring's first vertex, so a caller that asked
+    for `base_disc=False` can find the ring it has to rim. Every existing
+    caller ignores the return value.
     """
     (ax, ay, az), (bx, by, bz) = dome_frame(out)
     ox, oy, oz = out
@@ -736,15 +765,22 @@ def dome_mesh(verts, tris, cx, cy, cz, out, radius, height, rings=6, segs=14):
                 cy + ay * c + by * sn + oy * hh,
                 cz + az * c + bz * sn + oz * hh)
 
+    lat = list(phis) if phis is not None else [
+        (math.pi / 2) * r / rings for r in range(rings)]
+    rings = len(lat)
+
+    def emit(tri):
+        tris.append((tri[0], tri[2], tri[1]) if flip else tri)
+
     base = len(verts)
-    for r in range(rings):                       # latitude bands, base upward
-        phi = (math.pi / 2) * r / rings
+    for phi in lat:                              # latitude bands, base upward
         for sgm in range(segs):
-            verts.append(place(phi, 2 * math.pi * sgm / segs))
+            verts.append(place(phi, th0 + 2 * math.pi * sgm / segs))
     pole = len(verts)
     verts.append((cx + ox * height, cy + oy * height, cz + oz * height))
-    centre = len(verts)
-    verts.append((cx, cy, cz))
+    if base_disc:
+        centre = len(verts)
+        verts.append((cx, cy, cz))
 
     for r in range(rings - 1):
         for sgm in range(segs):
@@ -752,13 +788,15 @@ def dome_mesh(verts, tris, cx, cy, cz, out, radius, height, rings=6, segs=14):
             b = base + r * segs + (sgm + 1) % segs
             c = base + (r + 1) * segs + (sgm + 1) % segs
             d = base + (r + 1) * segs + sgm
-            tris.append((a, b, c))
-            tris.append((a, c, d))
+            emit((a, b, c))
+            emit((a, c, d))
     top = base + (rings - 1) * segs
     for sgm in range(segs):
-        tris.append((top + sgm, top + (sgm + 1) % segs, pole))
-        # Base disc, wound the other way -- it faces into the hull.
-        tris.append((centre, base + (sgm + 1) % segs, base + sgm))
+        emit((top + sgm, top + (sgm + 1) % segs, pole))
+        if base_disc:
+            # Base disc, wound the other way -- it faces into the hull.
+            emit((centre, base + (sgm + 1) % segs, base + sgm))
+    return base
 
 
 def _ribbon(verts, tris, p0, p1, across, width, thick, out_hint):
@@ -845,15 +883,44 @@ def domes(spec, profile):
     return {spec["id"]: (verts, tris), spec["id"] + "_frame": (fv, ft)}
 
 
-def _dome_fittings(verts, tris, centre, out, rad, hgt, segs):
-    """Mullions, the concentric ring band and the base collar for one dome."""
+def _dome_fittings(verts, tris, centre, out, rad, hgt, segs, side=1.0,
+                   th0=0.0, phi_hi=None, rib_w=None, rib_t=None, collar=True,
+                   grow=None):
+    """Mullions, the concentric ring band and the base collar for one dome.
+
+    `side = -1.0` STANDS THEM PROUD ON THE INSIDE, which is the whole of what
+    an interior needs from this function -- the glazing bars a player in
+    Observation Dome 1 looks up at are the same bars the hull shows, on the
+    other face of the same shell. Two things have to flip together and only
+    flipping one is the classic error: the fittings' offset from the shell
+    (`d`, which rides a slightly LARGER similar ellipsoid outside and a
+    slightly SMALLER one inside), and `_ribbon`'s `out_hint`, which decides
+    which way the bar's thickness goes. `_ribbon` flips `across` rather than
+    the normal precisely so that flipping the hint cannot invert a winding.
+
+    `th0`, `phi_hi`, `rib_w`, `rib_t` and `collar` are the other things an
+    interior needs to say and the exterior never had to: which meridian the
+    first mullion sits on (so a bar lands on a shell seam and not across one),
+    where the glazed band stops, how heavy a bar is, and whether the base
+    collar belongs here at all -- inside, the collar's job is done by the
+    cornice the dome springs from. Every default reproduces the exterior.
+    """
     (ax, ay, az), (bx, by, bz) = dome_frame(out)
     cx, cy, cz = centre
 
     # Fittings sit on a slightly larger similar ellipsoid so that a straight
     # chord between two of their nodes still clears the curved shell between
     # them. Sagitta over a 30 deg chord is 0.034 r; 0.05 covers it with room.
-    d = 0.05 * max(rad, hgt)
+    #
+    # AND ON THE INSIDE THAT MARGIN IS WHAT MAKES A RIB FLOAT. Outside, a bar
+    # riding 0.05 r proud is a bar standing on the hull -- the shell is behind
+    # it and nobody can see the gap. Inside, the shell is behind it in the
+    # other direction, so the same 0.05 r is 1.45 m of daylight between the rib
+    # and the surface it is meant to be a rib OF, and the first engine frame
+    # showed exactly that. `grow` lets the caller pass the sagitta it actually
+    # needs -- r(1 - cos(pi/segs)) -- instead of a constant sized for the worst
+    # case. The default is unchanged, so the exterior is unchanged.
+    d = side * (0.05 * max(rad, hgt) if grow is None else abs(grow))
 
     def surf(phi, th, grow=0.0):
         rr = (rad + grow) * math.cos(phi)
@@ -883,9 +950,18 @@ def _dome_fittings(verts, tris, centre, out, rad, hgt, segs):
                 az * s * math.cos(th) + bz * s * math.sin(th) + out[2] * c)
 
     half = math.pi / 2.0
-    rib_w, rib_t = 0.055 * rad, 0.045 * rad
+    rib_w = 0.055 * rad if rib_w is None else rib_w
+    rib_t = 0.045 * rad if rib_t is None else rib_t
+    # THE HINT IS THE THING THAT HAS TO FLIP WITH `side`. `_ribbon` orients the
+    # bar's thickness to agree with `out_hint`, so a hint that still points
+    # outward would drive an interior bar THROUGH the shell it is meant to
+    # stand proud of -- visible from outside, invisible from the only place
+    # anyone is standing.
+    def _hint(p):
+        return tuple(side * (p[j] - centre[j]) for j in range(3))
+
     for sgm in range(segs):
-        th = 2 * math.pi * sgm / segs
+        th = th0 + 2 * math.pi * sgm / segs
         # Mullion: up the meridian in DOME_RIB_SEGMENTS straight lengths.
         # `across` is the AZIMUTH, not the base-plane radial. The first version
         # passed the radial, which near the base is all but parallel to the
@@ -893,27 +969,27 @@ def _dome_fittings(verts, tris, centre, out, rad, hgt, segs):
         # sixteen 4.8 m structural bars rendered as sixteen hairlines. It is
         # the failure mode `_ribbon` is degenerate under and the only cue was
         # the picture.
-        top = half * DOME_BAND_PHI
+        top = half * DOME_BAND_PHI if phi_hi is None else phi_hi
         for k in range(DOME_RIB_SEGMENTS):
             p0 = surf(top * k / DOME_RIB_SEGMENTS, th, d)
             p1 = surf(top * (k + 1) / DOME_RIB_SEGMENTS, th, d)
-            _ribbon(verts, tris, p0, p1, azimuth(th), rib_w, rib_t,
-                    tuple(p0[j] - centre[j] for j in range(3)))
+            _ribbon(verts, tris, p0, p1, azimuth(th), rib_w, rib_t, _hint(p0))
         # Concentric ring band, and the base collar the dome stands on. Both
         # run round the dome, so their width is across the run: up the meridian
         # for the band, along the dome's axis for the collar, which is what the
         # base of a blister on a hull actually is.
-        th1 = 2 * math.pi * (sgm + 1) / segs
+        th1 = th + 2 * math.pi / segs
         mid = (th + th1) / 2.0
-        band_phi = half * DOME_BAND_PHI
-        for phi, across, wide, thick, grow in (
-                (band_phi, meridian(band_phi, mid), 0.16 * hgt, 0.05 * rad, d),
-                (0.0, out, 0.16 * hgt, 0.10 * rad, 0.0)):
+        band_phi = half * DOME_BAND_PHI if phi_hi is None else phi_hi
+        runs = [(band_phi, meridian(band_phi, mid), 0.16 * hgt, 0.05 * rad, d)]
+        if collar:
+            runs.append((0.0, out, 0.16 * hgt, 0.10 * rad, 0.0))
+        for phi, across, wide, thick, grow in runs:
             q0, q1 = surf(phi, th, grow), surf(phi, th1, grow)
             qm = surf(phi, mid, grow)
-            hint = (tuple(qm[j] - centre[j] for j in range(3))
-                    if phi > 0.0 else radial(mid))
-            _ribbon(verts, tris, q0, q1, across, wide, thick, hint)
+            ht = (_hint(qm) if phi > 0.0
+                  else tuple(side * c for c in radial(mid)))
+            _ribbon(verts, tris, q0, q1, across, wide, thick, ht)
 
 
 def swept_fins(spec, profile):

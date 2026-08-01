@@ -1402,10 +1402,28 @@ def _selftest():
     # bulkhead -- correct for a bay whose other end is vacuum -- and no bespoke
     # builder takes `door_at`, so the aperture is whatever the module put
     # there. The gate has to admit the reason the build actually gives.
+    # FOUR REASONS NOW, and the fourth arrived the same way the third did.
+    # Session 4f: `station/dome.py` builds the INSIDE of the three glazed
+    # blisters that have an authority-1 frame taken from within them, and it is
+    # registered under the module the register names, which is `components`.
+    # That module owns nine places and six of them are exterior hardware --
+    # launch tubes, sensor blades, two things that are in
+    # `schema.exterior_systems` and have no builder anywhere. `dome.observation`
+    # refuses those six with a KeyError naming the three it does build, and
+    # `room_geometry` catches it and records `compose raised: ...`.
+    #
+    # That is the assembler saying something TRUE and specific, and it is a
+    # better answer than the two it could give before: "has a builder" would
+    # claim a mooring clamp has an unused interior, and "no builder" would be
+    # false of the module. Matched on the prefix rather than the whole string
+    # because the tail is the exception's own message, which is where the
+    # useful half is. See `bespoke.NOT_COMPOSED_COMPONENTS`.
     ok_reasons = ("has a builder", "no builder in bespoke.BESPOKE_GEOMETRY",
-                  "composed room is walled at the doorway")
+                  "composed room is walled at the doorway",
+                  "compose raised")
     check("...and every reason is one the assembler can actually give",
-          all(w in ok_reasons for _k, _m, _n, w in gen),
+          all(any(w.startswith(r) for r in ok_reasons)
+              for _k, _m, _n, w in gen),
           str([(m, w) for _k, m, _n, w in gen]))
     check("...and 'no builder' is said only of modules that have none",
           all((w != "no builder in bespoke.BESPOKE_GEOMETRY")
