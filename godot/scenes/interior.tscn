@@ -235,6 +235,79 @@ glow_bloom = 0.05
 glow_hdr_threshold = 1.1
 glow_blend_mode = 1
 
+; --- SESSION 4e: the three things that were missing, and why they dominate ---
+; The A/B in docs/engine-4e-pilaster-ab.png put eight new texture sheets onto
+; 131 previously untextured materials and the frame stayed FLAT. That is the
+; measurement that says the bottleneck is not material: this Environment
+; carried SSAO and glow and nothing else, so every shadowed surface in the
+; station was lit by a single flat ambient term and rendered as dead grey.
+;
+;;; MEASURED INERT IN THIS RENDERER, AND KEPT ANYWAY. Rendered with
+;;; ssil_enabled true and false, same camera, same lights: the two PNGs are
+;;; BYTE-IDENTICAL. Mesa lavapipe does not run it. So is volumetric fog below.
+;;; They stay enabled because they are correct for the TARGET hardware (RTX
+;;; 4070 class, the budget this project is written against) and because
+;;; deleting them would mean rediscovering the same thing later -- but NO
+;;; visual claim in this repository may rest on either of them, because our
+;;; only verification path cannot see them.
+;;;
+;;; The consequence is the useful part: in software the ONLY levers that move a
+;;; pixel are the lights themselves, ambient, SSAO, glow and the adjustment
+;;; block. Light in a shadow has to be put there by a light or by ambient; it
+;;; cannot be bounced.
+;
+; SSIL -- screen-space indirect light. SSAO only DARKENS creases; nothing in
+; this scene ever put bounced light back into them. A corridor is a white-ish
+; tube with 725 spot sources in it and almost all of its light should be
+; second-bounce.
+ssil_enabled = true
+; 3 m: a corridor is 2.6 m across the clear width, so the radius has to reach
+; the opposite wall or the bounce is confined to the crease it started in.
+ssil_radius = 3.0
+ssil_intensity = 0.9
+ssil_sharpness = 0.98
+ssil_normal_rejection = 1.0
+
+; VOLUMETRIC FOG. Also measured BYTE-IDENTICAL on/off here -- see above. On the
+; target hardware this is what makes 725 spot sources read as light in air
+; instead of as bright patches on a wall. Density is deliberately low: a
+; pressurised habitat is clean air, and a shaft should be perceptible rather
+; than smoky. Note that shafts additionally need SHADOW-CASTING lights and this
+; deck has 2 of 1557, so even on a GPU this would give haze and not beams until
+; that changes.
+volumetric_fog_enabled = true
+volumetric_fog_density = 0.014
+volumetric_fog_albedo = Color(0.78, 0.81, 0.88, 1)
+volumetric_fog_emission = Color(0, 0, 0, 1)
+volumetric_fog_emission_energy = 0.0
+; GI injection is what lets the fog pick up the room's own bounce rather than
+; only its direct sources, so the shafts sit in a lit volume instead of hanging
+; in black.
+volumetric_fog_gi_inject = 0.7
+; Forward scatter: a shaft brightens when you look towards its source, which is
+; the whole reason a beam reads as a beam.
+volumetric_fog_anisotropy = 0.35
+volumetric_fog_length = 72.0
+volumetric_fog_detail_spread = 2.0
+volumetric_fog_ambient_inject = 0.25
+volumetric_fog_sky_affect = 0.0
+
+; GRADING. The frame measures almost perfectly neutral, which is why it reads
+; as a greybox even where the materials are correct: the warm fittings and the
+; cool ambient are both present and neither is allowed to say so. Saturation is
+; the term that matters; contrast is nudged rather than pushed because layer
+; 4b's distribution gate is measured on these frames.
+adjustment_enabled = true
+adjustment_brightness = 1.0
+; 1.00, NOT 1.06. Contrast pivots about mid grey, so on a frame whose median
+; luminance is 0.05 it does almost nothing to the highlights and crushes the
+; shadows: measured, 1.06 took p5 from 0.0089 to 0.0056 and the crushed
+; fraction from 2.2% to 3.2%. This frame does not need more contrast, it needs
+; more light in the dark half, and that is a lighting change rather than a
+; grading one.
+adjustment_contrast = 1.0
+adjustment_saturation = 1.22
+
 [node name="InteriorShot" type="Node3D"]
 script = ExtResource("1")
 warmup_frames = 8
