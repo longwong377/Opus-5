@@ -1,6 +1,79 @@
 # Project State
 
-**Last updated:** 2026-08-01 · **Sessions 4e–4f** — **READ §14 FIRST. The renderer was wrong all session; layer 7 exists; the Starfury flies; 34 of 41 CI gates had not run for thirty pushes** · **4d** — **READ §8 FIRST: the owner asked what actually works and the answer was mostly no. Direction changed.** Also: 357/357 interactables, and the 60-minute engine tax is over · **4c** — the station is INTERACTABLE, the port is on a wall, and the 24-minute suites were one bad cache key · **4b** — a police force, friction in metres, the plated shell, the fitting-reach fix
+**Last updated:** 2026-08-01 · **Session 4g** — **THE STATION IS ONE WALKABLE PIECE. READ §19 FIRST: components 96 → 1, the lift exists, the whole station is built, and four green numbers were lies** · **Sessions 4e–4f** — **READ §14 FIRST. The renderer was wrong all session; layer 7 exists; the Starfury flies; 34 of 41 CI gates had not run for thirty pushes** · **4d** — **READ §8 FIRST: the owner asked what actually works and the answer was mostly no. Direction changed.** Also: 357/357 interactables, and the 60-minute engine tax is over · **4c** — the station is INTERACTABLE, the port is on a wall, and the 24-minute suites were one bad cache key · **4b** — a police force, friction in metres, the plated shell, the fitting-reach fix
+
+## Session 4g — THE STATION IS ONE WALKABLE PIECE
+
+### 19. READ THIS FIRST — what changed, and the number that replaced the headline
+
+**`station/routes.py` is the gate this project never had, and it answers the only question that
+matters: can you get from here to there.** Every other coverage number counts things that exist.
+
+    128 locations in 96 z-clusters over 71 decks and 5 sectors
+
+    FOOT-CONNECTED COMPONENTS   96 -> 91 -> 71 -> 8 -> 1
+
+| what closed it | what it was |
+|---|---|
+| `interior.axial_run` | the first corridor on this station that runs ALONG the ship. Every corridor before it was a `ring_arc` at FIXED z, so a deck spanning 1,120 m of axis was served by 40 m of corridor |
+| `deck_arc(must_cover=)` | a corridor was run over the arc its ROOMS occupy, so two clusters on one deck could sit on opposite sides of the ring with no arc in common. **71 of 96 clusters could not reach their own deck's spine; now 0** |
+| `station/lift.py` | the vertical connection that had never existed. `transit.py` costed the ride, `navigation.py` routed NPCs through it, and there was nothing to walk into. 251 decks, zero vertical links |
+| `station/spoke_way.py` | the radial passage between rings. **A radial passage IS a lift shaft that does not stop at the ring boundary** — `shaft_geometry(stack=)`, so there is no second radial generator |
+| `godot/scripts/stream.gd` | cells load and free by player position. 140 m walked across two boundaries, `offfloor=0/2000`, every cell resident 36.9 m before the body reached it |
+| `tools/export_station.py` | **the whole station built** — 71 decks, every one with its spine, its junction doors and its ring's column |
+
+### 19.1 FOUR TIMES A GREEN NUMBER WAS A LIE THIS SESSION, AND HOW EACH WAS CAUGHT
+
+This is the section worth reading. Every one was caught by asking a gate what it was **assuming**,
+not by reading its answer.
+
+1. **The union-find ran over place nodes only** and skipped every edge ending on a spine or column,
+   so it read 96 however many edges were built. *A graph measured over half its own vertices always
+   says the same thing, which is what made it look like a real answer.*
+2. **`routes.py` wrote 2.5 degrees as a "cheap proxy"** for `deck.ARC_PAD_DEG` — five times too
+   tight. *A proxy for a number the owning module exports is not a proxy, it is a second copy.*
+3. **I reported 1 component and it was 8.** The graph put ONE transit column per SECTOR, quietly
+   granting a shaft from ring 0 to ring 3. `lift.py` spans the decks of ONE ring. Caught by printing
+   what each column was assumed to serve: *"column ('column','red') is assumed to serve rings
+   [0,1,2,3]"*. Same for the trunk — the five sectors' transit angles are 140, 100, 150, 90 and 0,
+   and an axial corridor cannot change angle.
+4. **A control that could not move.** The axial control disabled a self-loop and read 71 both ways.
+   *A control that cannot move is not a control.*
+
+### 19.2 AND TWO GATES THAT BUILT THE EASY CASE
+
+* **`lift.py`'s self-test built 2, 3 and 4 landings.** The shaft opens at exactly **6** and stays at
+  6 open edges. Every ring on this station except blue ring 0 carries **12 to 28 decks** — so the
+  shaft as gated was the case that does not ship. `interior_kit`'s tag gate on a doorless corridor,
+  again. Fixed; 54/54, and the sweep is now in the gate.
+* **`tools/export_station.py` had no test on its own output and built 0 of 71 decks.** Every deck
+  assembled correctly and every one was discarded at the write, reporting `IndexError: list index
+  out of range` 142 times. **Two writers with near-identical names and incompatible arguments** —
+  `deck.write_obj` takes spans `(name, lo, hi)`, `interior.write_grouped_obj` takes a per-triangle
+  list of names. The write is asserted now, and the manifest records the frame and the full
+  traceback: *a manifest is a record of what happened, not a record that something did.*
+
+### 19.3 THE METRIC LESSON FROM THE STREAMING WORK, AND IT GENERALISES
+
+The streaming control run reported a **path length of 11,712 m — because the body was falling.**
+A gate reporting "metres travelled" would have scored a completely broken build as walking eleven
+kilometres. What separates them is `floor_m`: 140.00 against 37.61.
+
+**Report distance ON THE FLOOR, never distance travelled.** Session 3v already learned "report
+distance covered, not did-it-move"; this is the next turn of the same screw.
+
+### 19.4 OPEN
+
+1. `godot/` streamed cells do not wire doors, NPCs, crowd or interactables — those run once over a
+   monolithic scene, so **pressure doors are solid in a streamed build**.
+2. No LOD for structure. `budget.py`'s `when=` string ("there is no streaming") is now false, and it
+   gates `len(tris)` where it should gate the worst **resident set** — 390,824 at the heavy cell.
+3. The built cluster is **5.9x longer than the walk that tests it**: 204.9 deg = 759 m of corridor,
+   and `walkable.TRAVERSE_FRAMES=1800` walks the same 126 m from the same spawn every time. 83% has
+   never had a body on it.
+4. `interior_kit.door_leaf` shut is non-manifold — 4 edges on **every shut door on the station**.
+   3x's `portal_frame` defect surviving in the one piece 3x did not touch.
+5. `routes.py`'s docstring restates numbers it computes and went stale twice inside one session.
 
 ## Session 4g — THE STATION IS 90 ROOMS, NOT A PLACE, AND NOW THERE IS A CORRIDOR BETWEEN THEM
 
