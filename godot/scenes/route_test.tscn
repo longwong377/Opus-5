@@ -1,0 +1,13 @@
+[gd_scene load_steps=2 format=3]
+
+; G2 ROUTE WALKED. Same shape as scenes/walk.tscn and scenes/transit.tscn and for
+; the same reason: every mesh is loaded at RUNTIME from the .glb files
+; station/route_walk.py writes, so this scene cannot go stale against regenerated
+; geometry and no binary enters the project. Which route, which decks, which
+; landings, how long the ride takes and where every waypoint is all arrive in the
+; manifest that build writes; nothing about the station is described here.
+
+[ext_resource type="Script" path="res://scripts/route_test.gd" id="1_route"]
+
+[node name="RouteTest" type="Node3D"]
+script = ExtResource("1_route")
