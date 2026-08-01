@@ -1,6 +1,86 @@
 # Project State
 
-**Last updated:** 2026-08-01 · **Session 4d** — **READ §8 FIRST: the owner asked what actually works and the answer was mostly no. Direction changed.** Also: 357/357 interactables, and the 60-minute engine tax is over · **4c** — the station is INTERACTABLE, the port is on a wall, and the 24-minute suites were one bad cache key · **4b** — a police force, friction in metres, the plated shell, the fitting-reach fix
+**Last updated:** 2026-08-01 · **Sessions 4e–4f** — **READ §14 FIRST. The renderer was wrong all session; layer 7 exists; the Starfury flies; 34 of 41 CI gates had not run for thirty pushes** · **4d** — **READ §8 FIRST: the owner asked what actually works and the answer was mostly no. Direction changed.** Also: 357/357 interactables, and the 60-minute engine tax is over · **4c** — the station is INTERACTABLE, the port is on a wall, and the 24-minute suites were one bad cache key · **4b** — a police force, friction in metres, the plated shell, the fitting-reach fix
+
+## Sessions 4e–4f — WHAT LANDED, WHAT IS OPEN, AND THE THREE THINGS I GOT WRONG
+
+### 14. READ THIS FIRST — the state of the build
+
+**The owner's verdict at the start of 4e was that this is a world generator and not a game, and
+that is recorded at the top of CLAUDE.md as a standing ruling.** 85,940 lines of Python against
+3,291 of GDScript. Everything below is what was done about it.
+
+**LANDED, all pushed, all with their own gates green:**
+
+| | |
+|---|---|
+| Engine binary | **vendored** in `vendor/godot/`. A fresh container unpacks a working double-precision Godot in SECONDS instead of a 38-minute build. This was the largest fixed cost in the project |
+| Textures | 48/234 materials → **179/234**. Eight procedural PBR sheets. The 55 that stay bare are declared with a reason and an assertion fails if a new one goes flat silently |
+| Interactables | **357/357** (`interact.py --audit`) |
+| Corridor clutter | `station/corridor_dressing.py` 39/39 — the corridor had NOTHING in it |
+| NPC bodies | face, hair, hands, silhouette. `body 636/636`, `animation 552/552` |
+| HUD | `godot/scripts/hud.gd` — the first user interface in the project's history |
+| Arrival + player | `player.py` 28/28, `arrival.py` 44/44. The player is a `Resident`, housed by the same function that houses the other 250,000 |
+| **Audio (layer 7, was 0)** | `station/audio.py` 100/100, seven derived layers, 13 WAVs, 5.7 MB. Zocalo 62.1 → 67.6 dBA between 03:00 and 13:00; reactor hall +0.05 is the control |
+| **Dialogue (did not exist)** | `station/dialogue.py` 37/37 + `dialogue.gd`. `interact.RESPONDS` gained `serve` |
+| **Starfury (never wired)** | flies. Launch exit velocity agrees with `rotating_frame.py` to **3.6e-14**. `STARFURY GATE: PASS` |
+| **Runtime life (property C)** | `npc/life.py`. 12,646 on foot at 08:00 against 5,092 at 03:00 |
+| Layer 8 (was 0) | first judgement ever: `docs/judge-4e.md`, 21 frames, all Forward+ |
+| CI | **34 of 41 gates now run.** They had not, for thirty pushes |
+
+### 15. THE THREE THINGS I GOT WRONG, AND THE PATTERN
+
+Each was a null result I EXPLAINED instead of investigating. Written out because the pattern is
+the lesson, not the individual errors.
+
+1. **"SSIL and volumetric fog are inert in lavapipe."** They were byte-identical on/off because
+   the container had no Vulkan ICD at all and Godot had silently fallen back to **OpenGL 3
+   Compatibility**, which has no Forward+ and therefore none of SSAO, glow, SSIL, fog or grading.
+   On the real renderer SSIL moves **86% of pixels**. Ten frames and two sent to the owner were
+   judged through that. `render_godot.sh` now refuses to start without an ICD and DELETES the PNG
+   if Godot reports the fallback.
+2. **"There is nothing in the corridor to cast a shadow of."** The 2-vs-18 shadow sweep was
+   byte-identical because `FIXTURE_LIGHTING["light_downlight"]` — the only corridor fitting that
+   emits — carried `"shadow": False`, so `shadow_n` had an empty list to ration. Flipped: **33.64%
+   of pixels**, and p95 falls 26%, which is the pools being occluded and is a craft judgement the
+   next judge round should rule on.
+3. **The materials scan could not see 45 groups** because `corridor_dressing.run` — a module I
+   added the same session — names its clutter `f"dress_{kind}"` at run time, and
+   `_scan_generator_groups` is a regex over source LITERALS.
+
+*A null result is a question, not an answer.*
+
+### 16. WHAT IS OPEN — in priority order for the next context
+
+1. **The craft agent may not have finished.** `command_control` 43/43, `customs` 51/51,
+   `council_chamber` 39/39, `docking_bay` 36/36 are committed and green; its final report was not
+   received. Check `docs/craft-4f.md` and the `engine-4f-*` frames.
+2. **`budget.py` is 205% over and it is honest.** It is the gate that was blinding the other 34.
+   Now that they run, the real triangle problem is visible and unaddressed.
+3. **The station is built at 0.17% of its declared footprint** — §13. 73,635 bays wanted, 128
+   built. `docking_bays` is 140 m long and a player walks 15.5 m. This is a STREAMING problem;
+   the specification is in §13 and it must not be solved by building 73,635 bays.
+4. **judge-4e's remaining "green in a gate, bad in a frame" list**: `density.py` passes 122/128
+   while printing that the median location carries 27.9% of a B5 set; `--machinery` prints its own
+   failure signature ungated with 44 of 50 boxes passing; `measure_frame` passes the Zocalo at
+   2.11% clipped where those pixels are one contiguous blown strip; `tools/aaa_gate.py` appears
+   zero times in CI and the standard says of it "nothing below is advisory".
+5. **Layer 5's criterion is structurally layer 2's.** "The declared interactable types exist" is
+   passed by a 12-triangle box, exactly as "mesh, closed, correctly wound" was passed by a cube.
+   357/357 is true and it is not a statement about craft.
+6. **Not judged at all**: 116 of 128 locations, and all audio.
+
+### 17. PROCESS, EARNED THE HARD WAY THIS SESSION
+
+* **`git add -A` is not disjoint.** It swept 25 of the judge agent's untracked files into an
+  unrelated commit mid-write. Stage the paths you changed.
+* **Disjoint source files are not disjoint IMPORTS.** A render taken while the NPC agent was
+  mid-edit came back with 913 mesh instances down to 62, every room failing on
+  `name '_hand' is not defined`, because `rooms.build` reaches `npc/body.py` through `populace`.
+* **The frame a defect is found in may not show it.** At the judge's own camera the unbound-material
+  A/B is 0.000% different; the affected cluster was 7.4 m behind the eye.
+* **A memo blinds every negative control that patches a global the memoised function reads.**
+  `traffic.arrivals` gained an `@lru_cache` and the day-curve control immediately stopped firing.
 
 ## Session 4d — 84 MISSING PROPS WERE NOT 84 JOBS. READ THE SHAPE OF A FAILING NUMBER.
 
