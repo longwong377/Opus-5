@@ -603,8 +603,23 @@ def ring_arc(schema, profile, sector, ring_index, degrees=30.0,
     for i in range(n):
         a = math.radians(start_deg + degrees * (i + 0.5) / n)
         here = per_section.get(i, ())
+        # ONLY THE FIRST SECTION BRINGS ITS OWN START PORTAL. `corridor_section`
+        # closes both ends of the length it is given, so a run of them repeated
+        # the joint: a portal frame, its head light, two pilasters and fourteen
+        # light-strip bars, built TWICE at every section boundary. Measured on a
+        # 12.5 degree arc before this line existed: **1,120 exact duplicate
+        # triangles and 1,760 non-manifold edges**, and 720 of the duplicates
+        # are emissive -- roughly 165 coincident duplicate LIGHT SOURCES per
+        # 30 degrees of corridor, on every ring deck of the station.
+        #
+        # `start_portal` has been a parameter of `corridor_section` since it was
+        # written and no caller ever passed it. Nothing could fail for it:
+        # coincident duplicate geometry is closed, correctly wound, inside its
+        # own footprint and invisible to every gate this project has -- it reads
+        # as a depth-sort coin toss and a doubled light, not as a hole.
         v, t = kit.corridor_section(seg_len, doors=here,
-                                    door_leaves=door_leaves)
+                                    door_leaves=door_leaves,
+                                    start_portal=(i == 0))
         ca, sa = math.cos(a), math.sin(a)
 
         # The kit's +Z becomes the tangential direction; its +Y (up) becomes
@@ -699,7 +714,11 @@ def axial_run(schema, profile, sector, ring_index, z0, z1, angle_deg=0.0,
                      if base <= d[0] < base + seg)
         for dz, side in here:
             placed.append({"z_m": base + dz, "side": side})
-        v, t = kit.corridor_section(seg, doors=here, door_leaves=door_leaves)
+        # SAME RULE AS `ring_arc`, and this function shipped without it this
+        # very session -- an axial run is the same kit repeated along a line and
+        # it doubled the same joint.
+        v, t = kit.corridor_section(seg, doors=here, door_leaves=door_leaves,
+                                    start_portal=(i == 0))
 
         def remap(x, y, z, base=base):
             rad = r - y
