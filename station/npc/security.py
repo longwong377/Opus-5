@@ -243,12 +243,23 @@ def outermost_decks(schema=None, profile=None) -> dict:
     streaming cells in it. It is also the heaviest place on the station, which
     is the whole of why foot patrol there is a real cost.
     """
-    if schema is None:
-        schema, profile = it.load()
-    key = (id(schema), id(profile))
+    # KEYED ON "THE STATION" AND NOT ON id(schema), and the difference cost
+    # twenty-four minutes a suite. `interior.load()` reads and parses the
+    # schema afresh on every call -- `load()[0] is load()[0]` is False -- so an
+    # id-keyed memo missed EVERY TIME, and `populace.populate` calls
+    # `presence_at` once per room. Profiled on one generic room build:
+    # 11.2 seconds of 11.3 were `outermost_decks -> cell_plan`, which is why
+    # `station/rooms.py` went from about two minutes to twenty-four.
+    #
+    # There is exactly one station, so the default path gets ONE slot. An
+    # explicitly-passed schema still gets its own, because a caller that hands
+    # in a modified schema means it.
+    key = None if schema is None else (id(schema), id(profile))
     hit = _OUTERMOST.get(key)
     if hit is not None:
         return hit
+    if schema is None:
+        schema, profile = it.load()
     decks, _cells = nav.cell_plan(schema, profile)
     out = {}
     for d in decks:
