@@ -545,7 +545,7 @@ func _initialize() -> void:
 	var args := OS.get_cmdline_user_args()
 	var mode := "test"
 	var deck := "/home/user/Opus-5/station/generated/scene/deck/blue_0_0_z7440_actors.json"
-	var glb := "/home/user/Opus-5/station/generated/scene/deck/shot_blue_0_0.glb"
+	var glb := "/home/user/Opus-5/station/generated/scene/deck/blue_0_0_z7440.glb"
 	var hour := 13.0
 	var out := ""
 	var at := "customs_north"
@@ -642,7 +642,7 @@ func _run_shot(glb_path: String, actors_path: String, at: String,
 	# UP IS TOWARDS THE AXIS. A ring deck's gravity is centrifugal, so "down"
 	# is outwards and the eye sits at a SMALLER radius than the floor.
 	var radial := Vector3(cos(bearing), sin(bearing), 0.0)
-	var eye := radial * (r_floor - 1.70) + Vector3(0.0, 0.0, z0 - 6.0)
+	var eye := radial * (r_floor - 1.70) + Vector3(0.0, 0.0, z0 - 13.0)
 	var look := radial * (r_floor - 1.70) + Vector3(0.0, 0.0, z1)
 
 	var cam := Camera3D.new()
@@ -650,8 +650,10 @@ func _run_shot(glb_path: String, actors_path: String, at: String,
 	cam.near = 0.05
 	cam.far = 20000.0
 	root.add_child(cam)
-	cam.global_position = eye
-	cam.look_at(look, -radial)
+	# `look_at_from_position`, not `look_at`: during `_initialize` the window's
+	# children are not yet considered inside the tree, and `look_at` reads the
+	# global transform to get there. It fails loudly and then aims at nothing.
+	cam.look_at_from_position(eye, look, -radial)
 
 	var env := WorldEnvironment.new()
 	var e := Environment.new()
@@ -659,14 +661,18 @@ func _run_shot(glb_path: String, actors_path: String, at: String,
 	e.background_color = Color(0.02, 0.02, 0.03)
 	e.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
 	e.ambient_light_color = Color(0.55, 0.58, 0.66)
-	e.ambient_light_energy = 1.0
+	e.ambient_light_energy = 0.30
+	# Filmic, and the reason is the same one `tools/measure_frame.py` records
+	# about our own frames: an untonemapped clay render of white default
+	# material clips to paper at any exposure that lets you see the ceiling.
+	e.tonemap_mode = Environment.TONE_MAPPER_FILMIC
+	e.tonemap_exposure = 0.9
 	env.environment = e
 	root.add_child(env)
 	var key := DirectionalLight3D.new()
 	root.add_child(key)
-	key.global_position = eye
-	key.look_at(look + radial * 4.0, -radial)
-	key.light_energy = 1.6
+	key.look_at_from_position(eye, look + radial * 4.0, -radial)
+	key.light_energy = 1.1
 
 	_shot_out = out
 	_shot_wait = 8
@@ -888,8 +894,8 @@ func _run_test(actors_path: String) -> void:
 	var budget_us := 0.19 * 16667.0
 	_check(worst < budget_us,
 		"2,000 bodies update inside the crowd's borrowed frame share",
-		"%.0f us worst of 24 hours against %.0f us -- %.2f us a body, so the "
-		"73 on the loaded deck cost %.0f us"
+		("%.0f us worst of 24 hours against %.0f us -- %.2f us a body, so"
+		+ " the 73 on the loaded deck cost %.0f us")
 		% [worst, budget_us, worst / 2000.0, worst * 73.0 / 2000.0])
 
 	print("\n" + "=".repeat(74))
