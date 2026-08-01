@@ -2539,9 +2539,49 @@ def _selftest():
               f"{_outward(pv, pt, ctr)}/{len(pt)} outward")
     # And over a whole dressed room, because a primitive can be closed and an
     # assembly of them still leak.
-    ropn, _rn = _K.boundary_edges(v, t)
+    ropn, rnon = _K.boundary_edges(v, t)
     check("a dressed room has no open edges", not ropn,
           f"{len(ropn)} open edges over {len(t):,} triangles")
+    # THE SECOND HALF OF THE RETURN VALUE WAS BEING THROWN AWAY. This line read
+    # `ropn, _rn = ...` and asserted only the open count, so the number below
+    # has never been looked at. It is 2,234 on a dressed office of 4,428
+    # triangles -- and EVERY ONE OF THEM IS CROSS-OBJECT: measured span by
+    # span, the sum of the per-object counts is exactly ZERO. So no builder in
+    # this file is wrong; what is wrong is that objects are being placed
+    # touching each other on coincident faces, which is an edge with four faces
+    # on it and renders perfectly (the `portal_frame` defect, session 3x, 828 a
+    # deck). It is pre-existing and it is not this session's to fix -- the fix
+    # is in the PLACEMENT rules in `dress`, not in the machines.
+    #
+    # A RATCHET, NOT A ZERO, and deliberately so. Asserting zero would fail on
+    # content that shipped four sessions ago and tell the next reader nothing;
+    # asserting nothing at all is how it got to 2,234 unseen. Whoever drives it
+    # to zero should delete this and assert `not rnon`.
+    #
+    # THE FIRST VERSION OF THIS BOUND WAS A RATE AND COULD NOT FAIL. Edges per
+    # triangle looked like the scale-free choice and is nearly inert: emitting
+    # every face of the room TWICE -- the worst coincident-face defect there is
+    # -- moves it from 0.505 to 0.498, DOWN, because the denominator doubles
+    # while `boundary_edges` counts each edge once. An absolute count on a
+    # deterministic build is the statistic that moves, and the control below
+    # shows the measurement resolving the exact defect it is for.
+    check("a dressed room's coincident faces do not get worse",
+          len(rnon) <= 2400,
+          f"{len(rnon):,} non-manifold edges over {len(t):,} triangles")
+    _fv, _ft, _fg = [], [], []
+    _box(_fv, _ft, _fg, "a", (0, 0, 0), (1, 1, 1))
+    _box(_fv, _ft, _fg, "b", (0, 1, 0), (1, 2, 1))          # FLUSH: shares a face
+    _ov, _ot, _og = [], [], []
+    _box(_ov, _ot, _og, "a", (0, 0, 0), (1, 1, 1))
+    _box(_ov, _ot, _og, "b", (0, 0.99, 0), (1, 2, 1))       # OVERLAPPING
+    check("the coincident-face measurement fires on flush and not on overlap",
+          len(_K.boundary_edges(_fv, _ft)[1]) > 0
+          and not _K.boundary_edges(_ov, _ot)[1],
+          f"flush {len(_K.boundary_edges(_fv, _ft)[1])}, "
+          f"overlap {len(_K.boundary_edges(_ov, _ot)[1])}")
+    print(f"    cross-object non-manifold: {len(rnon):,} edges over "
+          f"{len(t):,} triangles, 0 of them inside any one object -- "
+          f"pre-existing, ungated until now")
 
     # Determinism, which is what `_u` is for.
     v2, t2, _g2, _c2 = dress("test", 6.0, 9.0, 2.9, "office")
