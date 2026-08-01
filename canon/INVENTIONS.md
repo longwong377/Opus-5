@@ -5249,3 +5249,76 @@ checked by hand and named in the docstring.
 
 **What would overturn it.** A frame showing one of these three in use. `lab_bench` is the weakest:
 `operate` assumes equipment on the bench, and a bare bench would be `store` or nothing at all.
+
+---
+
+## INV-251 — The Babcom terminal, built rather than painted
+
+`station/quarters.py` (`_babcom`, `BABCOM_CONTROL_FRAC`, `BABCOM_CONTROL_PROUD_M`);
+`station/materials.py` (`device_screen_glass` binds `qtr_babcom_face`).
+
+**What.** The terminal in every crew cabin, as a framed device with a recessed screen instead of one
+box.
+
+**Why necessary.** INV-248 made it *usable* — a player walks up and is offered *"[E] operate the
+babcom terminal"* — and the render that proved it showed a **flat coloured rectangle**: no bezel, no
+recess, no relief, six faces. Usable and not built.
+
+### The proportions are `signage.board()`'s, which is what makes this an extrapolation and not an invention
+
+`signage.py` builds the station's authority-1 backlit boards, transcribed from
+`reference/01-station-exterior/welcome to babylon 5.webp`, as a frame with the lit face **set back
+inside it** — and its docstring says why: *"that is what makes a backlit sign read as backlit at a
+glancing angle: the frame casts a shadow onto the face, and a decal cannot."* A cabin terminal is
+the same family at a smaller size, so it takes the same two ratios rather than two new numbers:
+
+| | derived from | value |
+|---|---|---|
+| bezel width | `BOARD_FRAME_M / BOARD_W_M` | 6.8% of width |
+| face recess | `BOARD_INSET_M` | 0.035 m absolute |
+
+Only the **control surface** is new — authority 5, `BABCOM_CONTROL_FRAC = 0.22` of aperture height.
+A board is *read*; a terminal is *worked*, which is the verb `interact.py` gives it. It is a
+fraction rather than a height so it survives the terminal being resized.
+
+### It shipped the logged mistake once, and the log caught it
+
+The first version built the bezel as **four rails**. `interior.boundary_edges` read **5
+non-manifold edges** against a plain box's 0 — rails that BUTT share vertex positions, and a shared
+position is a shared edge. That is the `portal_frame` defect session 3x paid to remove (*"five
+prisms sharing coincident faces, 828 non-manifold edges a deck"*), and
+`interior_kit._plate_with_hole` exists **because of it**, its own docstring saying the tiled
+construction *"is the obvious construction and it is wrong."*
+
+Rebuilt through `_plate_with_hole` it went 5 → **1**, because the control shelf and the face still
+ended exactly on the same plane. **A shared plane is a shared plane whether it is two rails or two
+panels.** Overlapping them by a quarter of the frame width takes it to **0** — and the overlap is
+invisible, because `boundary_edges` pairs edges by vertex POSITION, so two solids that merely
+interpenetrate share nothing and cost nothing.
+
+**72 triangles, `open=0`, `non_manifold=0`** — the same cost as the four-rail version with none of
+the defect.
+
+### And the screen blows out, measured
+
+`qtr_babcom_face` is bound to `device_screen_glass` — *"Screen Glass — dark panel with lit
+content"*, albedo **(0.052, 0.054, 0.062)**, emission (0.930, 1.000, 0.915) at energy 0.8, sourced
+from the authority-1 welcome-sign frame. Measured on `docs/engine-4f-babcom-built.png`:
+
+| | sRGB | V |
+|---|---|---|
+| screen face | (0.713, 0.693, 0.658) | **0.713** |
+| bezel | (0.569, 0.222, 0.153) | 0.569 |
+| wall beside it | (0.515, 0.333, 0.320) | 0.515 |
+
+**The face is ×1.77 the wall.** A panel whose albedo is near-black and whose own name is *"dark
+panel with lit content"* should be **darker** than the wall except where content glows. This is the
+emission behaviour `tools/export_scene.py` already documents at length — *"emission is a material
+property that no light energy scales"* — and it is **not fixed here** because
+`device_screen_glass` has **seven binds** (`prop_babcom_terminal`, `prop_monitor_wall`,
+`prop_tactical_display`, `customs_screen`, `bar_display`, `dress_screen`, and now this), so moving
+its energy is a station-wide look change that needs its own verification round.
+
+**What would overturn it.** An authority-1 frame of a Babylon 5 cabin terminal. There is none in
+`reference/`; the nearest is `identicard readout.webp`, which is a screen's CONTENT at full frame
+and says nothing about the housing.

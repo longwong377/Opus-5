@@ -565,6 +565,7 @@ material_rules = {
 "prop_welded_door": ExtResource("m_door_scrap_welded"),
 "prop_workbench": ExtResource("m_furn_shop_steel"),
 "qtr_babcom": ExtResource("m_device_reader_shell"),
+"qtr_babcom_face": ExtResource("m_device_screen_glass"),
 "qtr_bed": ExtResource("m_furn_upholstery"),
 "qtr_conduit": ExtResource("m_plant_valve_metal"),
 "qtr_cornice": ExtResource("m_shell_wall_panel"),

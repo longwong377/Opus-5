@@ -213,6 +213,97 @@ def _box(v, t, g, name, lo, hi):
     return v, t, g
 
 
+# ---------------------------------------------------------------------------
+# The Babcom terminal
+# ---------------------------------------------------------------------------
+# IT WAS ONE BOX. `interact.py` made it usable in session 4d -- a player walks
+# up to it and is offered "[E]  operate the babcom terminal" -- and the render
+# that proved it (`docs/engine-4c-quarters-interactables.png`) showed a FLAT
+# COLOURED RECTANGLE on the wall: no bezel, no recess, no relief, six faces.
+# Usable and not built.
+#
+# THE PROPORTIONS ARE `signage.board()`'s, NOT NEW ONES, and that is the whole
+# of what makes this an extrapolation rather than an invention. That module
+# builds the station's authority-1 backlit boards -- transcribed from
+# `reference/01-station-exterior/welcome to babylon 5.webp` -- as a frame of
+# FOUR RAILS with the lit face set back inside them, and its own docstring says
+# why: "that is what makes a backlit sign read as backlit at a glancing angle:
+# the frame casts a shadow onto the face, and a decal cannot". A terminal in a
+# cabin is the same family of object at a smaller size, so it takes the same
+# two ratios rather than two new numbers:
+#
+#   bezel width  = BOARD_FRAME_M / BOARD_W_M = 0.075 / 1.10 = 6.8% of width
+#   face recess  = BOARD_INSET_M            = 0.035 m, absolute
+#
+# The one thing a board does not have is a CONTROL SURFACE. A board is read; a
+# terminal is worked, which is the verb `interact.py` gives it. So the lower
+# band of the aperture is a proud shelf rather than more lit face -- authority
+# 5, `BABCOM_CONTROL_FRAC` below, and the reason it is a fraction rather than a
+# height is that it has to survive the terminal being resized.
+BABCOM_CONTROL_FRAC = 0.22     # of aperture height, the worked surface
+BABCOM_CONTROL_PROUD_M = 0.018  # it stands out where the face is set back
+
+
+def _babcom(v, t, g, d):
+    """The Babcom terminal on the far wall, built rather than painted.
+
+    Every piece is tagged `qtr_babcom` so the object stays ONE thing:
+    `interact.PROVIDES` maps that name to the register's `babcom_terminal`,
+    and `collision.prop_boxes` finds solids by connected component. Splitting
+    it into `qtr_babcom_bezel` and `qtr_babcom_face` would silently drop the
+    interactable and hand a player two boxes to walk into.
+    """
+    import signage as S                                        # noqa: PLC0415
+    import interior_kit as K                                   # noqa: PLC0415
+    hw = SCREEN_W_M / 2.0
+    y0, y1 = 1.25, 1.25 + SCREEN_H_M
+    z1, z0 = d, d - SCREEN_T_M
+    fr = SCREEN_W_M * (S.BOARD_FRAME_M / S.BOARD_W_M)
+    inset = S.BOARD_INSET_M
+    ap0, ap1 = y0 + fr, y1 - fr
+    ctl = ap0 + (ap1 - ap0) * BABCOM_CONTROL_FRAC
+
+    # ONE CLOSED SHELL, NOT FOUR RAILS. The first version of this built the
+    # bezel as four boxes round the aperture, and `interior.boundary_edges`
+    # read **5 non-manifold edges** against a plain box's 0: rails that BUTT
+    # share vertex positions, and a shared position is a shared edge. That is
+    # the `portal_frame` defect session 3x paid to remove -- "five prisms
+    # sharing coincident faces, 828 non-manifold edges a deck" -- and
+    # `interior_kit._plate_with_hole` exists because of it. Its own docstring
+    # says the tiled construction "is the obvious construction and it is
+    # wrong". Reading that before shipping the second copy of a logged mistake
+    # is the entire value of writing them down.
+    bv, bt = [], []
+    K._plate_with_hole(
+        bv, bt,
+        [(-hw, y0), (hw, y0), (hw, y1), (-hw, y1)],
+        [(-hw + fr, ap0), (hw - fr, ap0), (hw - fr, ap1), (-hw + fr, ap1)],
+        z0, z1)
+    n = len(v)
+    v.extend(bv)
+    t0 = len(t)
+    t.extend((a + n, b + n, c + n) for a, b, c in bt)
+    g.append(("qtr_babcom", t0, len(t)))
+
+    # THE FACE AND THE CONTROL SIT BEHIND THE PLATE AND OVERLAP IT, rather
+    # than filling the hole exactly. `boundary_edges` pairs edges by VERTEX
+    # POSITION, so two solids that merely interpenetrate share nothing and
+    # cost nothing; two that meet flush share a whole face. Overlapping by the
+    # frame width is invisible -- the plate is in front of it -- and it is what
+    # keeps this at zero.
+    # ...and the shelf overlaps the FACE too, for the same reason. The first
+    # rebuild ended them both exactly on `ctl` and `boundary_edges` still read
+    # 1: a shared plane is a shared plane whether it is two rails or two
+    # panels. Overlapping by a quarter of the frame width takes it to 0, and
+    # the shelf is proud of the face so the overlap is behind it and unseen.
+    _box(v, t, g, "qtr_babcom", (-hw + fr / 2, ap0 - fr / 2, z0),
+         (hw - fr / 2, ctl + fr / 4, z1 - inset + BABCOM_CONTROL_PROUD_M))
+    # The lit face, recessed. Tagged separately ONLY for its material -- it is
+    # the one surface here that emits, and `materials.py` binds by name.
+    _box(v, t, g, "qtr_babcom_face", (-hw + fr / 2, ctl, z0),
+         (hw - fr / 2, ap1 + fr / 2, z1 - inset))
+
+
 def unit(cls):
     """One quarters unit, authored with the door wall at z = 0.
 
@@ -291,9 +382,7 @@ def unit(cls):
     if "screen" in f:
         # A Babcom terminal in every quarters -- LOCATIONS.md line 371: "how
         # news and propaganda physically reach people".
-        _box(v, t, g, "qtr_babcom",
-             (-SCREEN_W_M / 2, 1.25, d - SCREEN_T_M),
-             (SCREEN_W_M / 2, 1.25 + SCREEN_H_M, d))
+        _babcom(v, t, g, d)
     if "shower" in f:
         # The class marker. Water is rationed; this is a privilege of rank.
         _box(v, t, g, "qtr_shower",
