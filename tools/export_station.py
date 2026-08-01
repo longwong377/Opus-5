@@ -189,17 +189,30 @@ def main(argv=None):
                 schema, profile, sec, ring, dk, join=True,
                 must_cover=ang[sec])
             ob, gb = _write(stem, V, T, G)
+            # AND ITS COLLISION, WHICH THE FIRST 70-DECK BUILD DID NOT WRITE.
+            # 2.3 GB of render mesh with nothing to stand on is a station a body
+            # walks through. The shell is ~0.5% of the render and is what makes
+            # the difference between geometry and a place.
+            cv, ct, cmeta = D.build_collision_clusters(
+                schema, profile, sec, ring, dk, join=True,
+                must_cover=ang[sec])
+            cgroups = [("collision", 0, len(ct))]
+            _ob, cgb = _write(stem + "_collision", cv, ct, cgroups)
             joins = [j for j in st.get("joins", ()) if j.get("built")]
             row = {"key": stem, "clusters": len(st["clusters"]),
                    "rooms": st.get("rooms", 0), "tris": len(T),
                    "groups": len(G), "joins": len(joins),
                    "join_m": round(sum(j.get("length_m", 0) for j in joins), 1),
+                   "collision_tris": len(ct),
+                   "collision_joins": len(cmeta["joins"]),
+                   "collision_mb": round(cgb / 1e6, 2),
                    "obj_mb": round(ob / 1e6, 2), "glb_mb": round(gb / 1e6, 2),
                    "seconds": round(time.time() - t0, 1), "ok": True}
             print(f"  [{n}/{len(order)}] {stem}: {len(st['clusters'])} cluster(s), "
                   f"{st.get('rooms', 0)} rooms, {len(T):,} tri, "
                   f"{len(joins)} join(s) {row['join_m']:.0f} m, "
-                  f"{row['glb_mb']:.1f} MB, {row['seconds']:.0f} s")
+                  f"{row['glb_mb']:.1f} MB + {len(ct):,} collision tri, "
+                  f"{row['seconds']:.0f} s")
         except Exception as e:                                  # noqa: BLE001
             # THE WHOLE TRACEBACK, NOT THE MESSAGE. The first run of this file
             # recorded "IndexError: list index out of range" 142 times, which

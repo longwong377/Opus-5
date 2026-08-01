@@ -408,7 +408,8 @@ def room_geometry(schema, profile, q, dx=None, report=None):
 
 
 def build_collision(schema, profile, sector, ring, deck, z_m=None,
-                    max_rooms=None, props=False):
+                    max_rooms=None, props=False, extra_doors=(),
+                    must_cover=None):
     """The deck's COLLISION geometry -- what a body stands on, not what it sees.
 
     See `station/collision.py` for why these are different meshes. In short: the
@@ -416,16 +417,30 @@ def build_collision(schema, profile, sector, ring, deck, z_m=None,
     tiles, and a capsule dropped on it stands still forever while reporting that
     it is on the floor.
     """
-    d = deck_plan(schema, profile, sector, ring, deck, z_m, max_rooms)
+    d = deck_plan(schema, profile, sector, ring, deck, z_m, max_rooms,
+                  extra_doors=extra_doors, must_cover=must_cover)
 
     # The shell's holes come from the SAME door decision the corridor is cut
     # with -- `deck_plan` makes it once. Recomputing it here is what gave five
     # decks a room whose collision had a doorway and whose render was a sealed
     # box.
+    #
+    # AND THE JUNCTION DOORS ARE PART OF THAT DECISION. `build_deck_clusters`
+    # cuts a junction aperture in the RENDER through `deck_plan(extra_doors=)`;
+    # this function had no such argument, so the collision shell carried a WALL
+    # where the render carries a doorway -- a body walking the axial spine is
+    # stopped at 1.0 m by a surface that is not there. Nothing noticed because
+    # NO COLLISION HAD EVER BEEN BUILT FOR A JOINED DECK: `tools/export_station.py`
+    # wrote render meshes only. Same defect class as the five decks that once had
+    # "a room whose collision carried a doorway and whose render was a sealed
+    # box", one level out -- made once for the rooms and twice for the junctions.
     v, t, meta = C.corridor_shell(schema, profile, sector, ring,
                                   degrees=d["span"], start_deg=d["lo"],
                                   radius_m=d["radius"], z_offset=d["cz"],
-                                  doors=[x[1] for x in d["rooms"]])
+                                  doors=([x[1] for x in d["rooms"]]
+                                         + [{"angle_deg": float(a),
+                                             "side": float(sd)}
+                                            for a, sd in extra_doors]))
     # THE VESTIBULE JOINS TWO INTERIOR FACES, and getting either end wrong is a
     # hole in the floor. The first version ran from the room's OUTER face to the
     # kit's nominal half width (1.30 m) while the shell's floor edge is at its
@@ -1335,6 +1350,78 @@ def build_deck_clusters(schema, profile, sector, ring, deck, n=None,
 
     stats["tris"] = len(T)
     return V, T, G, stats
+
+
+def build_collision_clusters(schema, profile, sector, ring, deck, n=None,
+                             keys=None, join=False, join_deg=None,
+                             must_cover=None, **kw):
+    """The COLLISION for a joined deck -- every cluster's shell plus the axial
+    spine that connects them. Returns (V, T, meta).
+
+    THE MIRROR OF `build_deck_clusters`, AND IT DID NOT EXIST. That function
+    assembles the render mesh for a deck's clusters and runs an axial corridor
+    between them; `tools/export_station.py` wrote 70 decks and 2.3 GB of it. No
+    collision was ever built for any of them, so the whole exported station was
+    geometry a body could walk through -- and the defect that hid inside that
+    absence was `build_collision` having no `extra_doors`, which put a WALL in
+    the shell where the render has a junction doorway.
+
+    Every decision here is READ FROM THE SAME `deck_plan` CALL the render used,
+    not recomputed: the arc, the phase, the room doors and the junction doors.
+    Two copies of that arithmetic is what once gave five decks a room whose
+    collision carried a doorway and whose render was a sealed box.
+    """
+    zs = (clusters_for(sector, ring, deck, keys) if keys
+          else z_clusters(sector, ring, deck))
+    if not zs:
+        raise ValueError(f"{sector}/{ring}/{deck} carries no located cluster")
+    if n is not None and not keys:
+        zs = zs[:max(1, n)]
+    axial = sorted(zs)
+    at_deg = {}
+    if join and len(axial) > 1:
+        plans = {z: deck_plan(schema, profile, sector, ring, deck, z,
+                              kw.get("max_rooms"), must_cover=must_cover)
+                 for z in axial}
+        a_lo = max(pl["lo"] for pl in plans.values())
+        a_hi = min(pl["lo"] + pl["span"] for pl in plans.values())
+        if a_hi - a_lo >= JOIN_MIN_ARC_DEG:
+            if join_deg is None:
+                join_deg = a_lo + (a_hi - a_lo) / 2.0
+            for i, z in enumerate(axial):
+                hands = ([-1] if i else []) + ([1] if i < len(axial) - 1 else [])
+                at_deg[z] = tuple((join_deg, h) for h in hands)
+
+    V, T = [], []
+    metas, cz = [], {}
+    for z in zs:
+        v, t, m = build_collision(schema, profile, sector, ring, deck, z_m=z,
+                                  extra_doors=at_deg.get(z, ()),
+                                  must_cover=must_cover, **kw)
+        base = len(V)
+        V.extend(v)
+        T.extend((a + base, b + base, c + base) for a, b, c in t)
+        metas.append(m)
+        cz[z] = m
+
+    joins = []
+    for a, b in zip(axial, axial[1:]) if at_deg else ():
+        ma, mb = cz[a], cz[b]
+        za = ma["z_m"] + ma["half_w_m"]
+        zb = mb["z_m"] - mb["half_w_m"]
+        if zb - za < 1.0:
+            continue
+        jv, jt, jm = C.axial_shell(schema, profile, sector, ring, za, zb,
+                                   angle_deg=join_deg,
+                                   radius_m=ma["radius_m"])
+        base = len(V)
+        V.extend(jv)
+        T.extend((x + base, y + base, c + base) for x, y, c in jt)
+        joins.append(jm)
+
+    return V, T, {"clusters": metas, "joins": joins, "join_deg": join_deg,
+                  "triangles": len(T), "z": list(zs),
+                  "spawn_meta": metas[0]}
 
 
 def build_column(schema, profile, sector, ring, angle_deg, z_m, decks=None,
