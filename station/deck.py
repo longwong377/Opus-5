@@ -852,6 +852,40 @@ def build_deck(schema, profile, sector, ring, deck, with_rooms=True,
     stats["spawn"] = C.stand_at(cmeta, here[0]["angle_deg"])
     stats["spawn_at"] = here[0]["key"]
 
+    # THINGS STANDING IN THE CORRIDOR. Session 4e, and the reason is measured
+    # rather than aesthetic: eight new texture sheets landed on 131 materials
+    # and the corridor frame stayed flat, so the look was chased through SSIL,
+    # volumetric fog and shadow count -- all three byte-identical on/off. The
+    # third is the one that explains it. Eighteen shadow casters change nothing
+    # because a corridor is a smooth tube with 20 mm of relief and there is
+    # NOTHING IN IT to cast a shadow of. `dressing.dress()` fills the 78 rooms
+    # and has never been offered a corridor.
+    #
+    # FROM cmeta, NOT RECOMPUTED. `floor_r_m` and `half_w_m` are the collision
+    # shell's own measured profile, so the clutter cannot stand at a different
+    # floor from the one a body walks on -- hard rule 4.
+    import corridor_dressing as CD                              # noqa: PLC0415
+    _dr_doors = tuple(
+        (d["angle_deg"] if isinstance(d, dict) else float(d[0])
+         if isinstance(d, (tuple, list)) else float(d))
+        for d in (stats.get("doors") or ()))
+    dv, dt, dg, drep = CD.run(
+        schema, profile, sector, ring, span, lo, radius, cz,
+        cmeta["floor_r_m"], cmeta["half_w_m"], doors=_dr_doors,
+        places=here, seed=f"{sector}/{ring}/{deck}")
+    if dt:
+        _base, _t0 = len(V), len(T)
+        V.extend(dv)
+        T.extend((a + _base, b + _base, c + _base) for a, b, c in dt)
+        G.extend((n, a + _t0, b + _t0) for n, a, b in dg)
+    stats["clutter"] = drep
+    # NOT SOLID, AND SAID SO. `build_collision` sweeps the corridor shell and
+    # the room shells; it does not read this mesh, so a player walks through
+    # these. They sit outside the walking lane by construction, so nothing a
+    # body would meet head-on -- but it IS a gap and naming it here is cheaper
+    # than the next context rediscovering it from a render.
+    stats["clutter_solid"] = False
+
     if not with_rooms:
         return V, T, G, stats
 

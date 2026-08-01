@@ -595,6 +595,16 @@ This project runs partly on a **6-hourly trigger** (`trig_01JS1VWf6yada5x6maPMAz
    `exterior.tscn` collide even though their file lists look separate. Have the second report
    what to apply and apply it at integration.
 
+   **DISJOINT SOURCE FILES ARE NOT DISJOINT IMPORTS EITHER.** Session 4e: the NPC agent owned
+   `station/npc/body.py` and the main agent owned `station/deck.py` — genuinely disjoint. Then a
+   render came back with **913 mesh instances down to 62** and every room reporting
+   `name '_hand' is not defined`, because `rooms.build` imports `populace`, which imports
+   `npc/body.py`, and the agent had written the CALL before the function. Nothing was broken;
+   the frame was taken against a file mid-edit. **Before believing a render taken while an agent
+   is running, check whether it imports anything that agent owns.** The cheap fix is to render
+   from a `git worktree` at your own HEAD, and the cheap tell is a mesh-instance count that has
+   collapsed.
+
    **DISJOINT SOURCE FILES ARE NOT DISJOINT ARTEFACTS.** Session 3w: two agents and the main
    agent all had separate source files and all three ran `station/walkable.py`, which rebuilds
    `station/generated/scene/deck/*` before every run. They stomped each other's meshes
