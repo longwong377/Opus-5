@@ -250,6 +250,113 @@ edges. A closed solid keeps its signed volume whatever it shares with its neighb
 faces are open-edge-free by construction. The measurement was already in the file; only half its
 return value is ever read.
 
+### 2.5 `_shell_from_pieces` leaves an unwelded 42 nm crack — on EVERY door on the station
+
+Found by building the case the first version of the gate did not: six landings instead of three.
+
+```
+blue ring 1, 140 deg, z 6880, interior.boundary_edges open count
+   2 landings  0      5 landings  0
+   3 landings  0      6 landings  6   <- appears here
+   4 landings  0      7..12       6   <- and never grows
+```
+
+Not accumulation, and **not a hole**. The surface is closed; it is not welded. Two vertices stand
+where there should be one, 4.2e-8 m apart:
+
+```
+local (0.9840000000, 1.8969260000)     <- exactly round(x, 7)
+local (0.9840000000, 1.8969259736)     <- the real value
+```
+
+**Cause, exactly.** `interior_kit._shell_from_pieces` builds its T-junction point set as
+
+```python
+    pts = {_pkey(p) for q in pieces for p in q}      # _pkey rounds to 7 decimals
+    pts |= {_pkey(p) for p in extra_points}
+    pieces = [_insert_collinear(q, pts) for q in pieces]
+```
+
+— coordinates **rounded to 7 decimals** — and `_insert_collinear` appends them **verbatim** into
+loops whose own vertices are not rounded, guarded only by
+
+```python
+    if math.dist(out[-1], q) > 1e-9:
+        out.append(q)
+```
+
+`_pkey`'s granularity is 5e-8; that guard is 1e-9. **Fifty times tighter.** So any vertex further
+than 1e-9 from its own 7-decimal rounding is inserted a second time, and the neighbouring piece
+carries the rounded twin where this one carries the real value.
+
+**Why it looked intermittent, and this is the part worth keeping.** `interior.boundary_edges` keys
+on coordinates rounded to **4 decimals** — a deliberate weld, so that "coincident-but-duplicated
+vertices" do not read as holes. A 42 nm pair therefore reads as a hole only when it straddles a
+0.1 mm grid line, which depends on **where in the station the geometry sits and on nothing else.**
+Measured, same code, same landing counts, unwelded:
+
+| position | near-duplicate pairs | open edges |
+|---|---|---|
+| blue ring 1, 140°, z 6880 | 2,464 | **6, at heights 6–12** |
+| grey ring 1, 40°, z 3618 | 2,464 | **0, at every height** |
+
+Identical cracks; different answers. **A closure gate that answers differently for the same code
+depending on position is worse than one that fails**, because it cannot be believed in either
+direction.
+
+**How widespread.** Near-duplicate vertices, measured per piece:
+
+| piece | near-duplicate vertices |
+|---|---|
+| `bulkhead(any section)` | 16 |
+| `door_frame()` | 16 |
+| `corridor_section(21.6, 2 doors)` | 56 |
+| one lift landing | 102 |
+
+Every door on the station has it. It is invisible today because `boundary_edges` welds at 0.1 mm
+and float32 export welds harder still — but it splits smoothing groups, and it is why the only
+closure measurement this project has cannot be trusted at a new position.
+
+**What `station/lift.py` does about it:** `weld()` merges vertices closer than `WELD_TOL_M = 1e-6`
+in the shaft's own local frame, before the rigid map to world. One micrometre is 24× the 4.2e-8
+divergence and 38,000× smaller than `wall_seam_m`, the smallest real feature in the kit — and the
+gate is not the tolerance but the consequence: **the weld must drop zero triangles.** Merging two
+genuinely distinct vertices has to collapse a triangle, so a dropped triangle is the tolerance
+being too big, said by the data. Over the 2..28 sweep it drops none and merges 102 vertices a
+landing.
+
+Snapping to the first vertex within tolerance, not rounding: rounding has the identical failure one
+decimal down.
+
+### 2.6 `at_deck` is not a key once a shaft crosses a ring — six of eighteen landings
+
+Found by building the coordinator's `stack=` case rather than by reading it. `deck_index` restarts
+at 0 in every ring, so a column over blue rings 0 and 1 has eighteen landings numbered
+
+```
+[0, 1, 2, 3, 4, 5,  0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]
+ ring 0 (6 decks)   ring 1 (12 decks)
+```
+
+`_landing` returned the first match. **Six of eighteen landings were unaddressable, and the car
+parked 21.6 m from where it was asked to** — silently, and no gate could fail for it, because a car
+at the wrong landing is a perfectly good car at a perfectly good landing. Measured: 12 of 18
+landings had a floor under the car; the other 6 had the shaft.
+
+**Fixed in `station/lift.py`,** and it is not a raise, because raising would have broken
+`spoke_way.py`'s `at_deck=0` mid-build. A shaft's address space is its **landings**; a deck number
+is only a *name* for one, and it stops being a name when it repeats. So `_landing` resolves:
+
+* a landing dict from `g["landings"]` — always unambiguous, and what to pass across a ring;
+* an int while `g["deck_keys_unique"]` — the deck number, **unchanged** for every caller that
+  predates `stack=`, gated as a bijection on a single-ring shaft;
+* an int when it is not — the landing `index` from the bottom, which is the only naming left.
+
+`g["deck_keys_unique"]` states which reading is in force **before** the call and both builders
+report `meta["at_landing"]` after it. `spoke_way.py` needed no change: `at_deck=0` still resolves to
+the bottom landing, and its other seventeen now resolve to seventeen distinct landings instead of
+eleven.
+
 ### 2.3 `corridor_section` turns its two wall doors opposite ways
 
 Read while working out how to place `door_assembly` in a shaft wall, and not verified by rendering,
@@ -318,7 +425,55 @@ the meeting one, and a patch I cannot test is worse than a described one.
 
 It fails today on the first four, which is the point.
 
-### 3.2 `station/collision.py` — nothing
+### 3.2 `station/interior_kit.py` — close the 42 nm crack at the source
+
+`station/lift.py` welds its own output, so it no longer carries §2.5. Every other door on the
+station still does. The fix is one line, in `_shell_from_pieces`: put the loops on the same grid as
+the point set they are being merged against, instead of only the point set.
+
+```python
+     pieces = [_ensure_ccw(q) for q in pieces]
++    # THE LOOPS GO ON THE SAME GRID AS THE POINTS INSERTED INTO THEM. `pts` is
++    # built with `_pkey`, i.e. rounded to 7 decimals, and `_insert_collinear`
++    # appends those rounded coordinates into loops whose own vertices are not
++    # rounded -- so a vertex further than the dedupe guard (1e-9) from its own
++    # rounding (5e-8) lands twice, 4.2e-8 apart, and the two pieces either side
++    # of that seam stop sharing an edge. 16 such pairs in every `bulkhead` and
++    # every `door_frame` on the station.
++    pieces = [[_pkey(pt) for pt in q] for q in pieces]
+     pts = {_pkey(p) for q in pieces for p in q}
+-    pts |= {_pkey(p) for p in extra_points}
++    pts |= {_pkey(p) for p in extra_points}
+```
+
+Equivalently, widen `_insert_collinear`'s guard from `1e-9` to `_pkey`'s own granularity — but
+snapping the loops is the version that cannot drift, because it makes the two sources of a vertex
+literally the same number rather than merely close.
+
+**The test to add**, which fails today and passes after:
+
+```python
+    # NO TWO VERTICES OF ONE PIECE MAY STAND 42 nm APART PRETENDING TO BE ONE.
+    # `boundary_edges` welds at 4 decimals, so it reports this as a hole only
+    # when the pair straddles its grid -- which depends on where in the station
+    # the geometry sits. Asked here in the piece's own frame, where the answer
+    # does not depend on position.
+    for name, piece in (("bulkhead", bulkhead(chamfered_arch(2.6, 3.0, 0.5))),
+                        ("door_frame", door_frame()),
+                        ("corridor_section", corridor_section(21.6,
+                                                              doors=((5.0, -1),)))):
+        v = piece[0]
+        seen, bad = {}, 0
+        for pt in v:
+            k = tuple(round(c, 4) for c in pt)
+            if k in seen and 1e-12 < math.dist(pt, seen[k]) < 1e-4:
+                bad += 1
+            else:
+                seen.setdefault(k, pt)
+        assert not bad, f"{name} has {bad} near-duplicate vertices"
+```
+
+### 3.3 `station/collision.py` — nothing
 
 `corridor_profile`, `cast`, `write_obj` and `STEP_TOLERANCE_M` were all sufficient through the
 public surface. `_quad` was **copied with attribution** rather than imported, so `collision.py`
@@ -340,6 +495,8 @@ needs no change and owes this module no promise.
   are owned elsewhere.
 - **The car does not move.** It is emitted parked at a named landing and its travel axis is
   reported in `meta["travel_axis"]`; there is no runtime.
+- **The kit's crack is closed here and not at the source.** `station/lift.py` welds; every other
+  door on the station still carries §2.5. §3.2 has the one-line patch.
 - **`density.py` has not scored it.** The shaft is 2,360 triangles over roughly 113 m² of visible
   surface; whether that clears layer 2b's line-density floor is not something this agent measured.
 - **No stair.** `routes.py`'s `lift` edge kind is served; a stair is a different generator and a

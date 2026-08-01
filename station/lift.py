@@ -1718,8 +1718,8 @@ def _selftest():
           f"{len(g['landings'])} agree")
 
     # Now the invariants, on the two-ring shaft, with the boundary storey in it.
-    v2, t2, m2 = lift_shaft(schema, profile, "blue", 0,
-                            tuple(range(len(two))), 140.0, z2, g=g2)
+    v2, t2, _m2 = lift_shaft(schema, profile, "blue", 0,
+                             tuple(range(len(two))), 140.0, z2, g=g2)
     o2, n2 = it.boundary_edges(v2, t2)
     check("the two-ring shaft is closed",
           not o2 and len(n2) == 4 * len(g2["landings"]),
