@@ -525,6 +525,85 @@ def board_lit(key, with_post=True):
 
 
 # ---------------------------------------------------------------------------
+# The arrivals board: a sign that says what is actually happening
+# ---------------------------------------------------------------------------
+# EVERY OTHER BOARD IN THIS MODULE IS A TRANSCRIPTION and every plaque below is
+# a view of the register -- both are static text. This one reads
+# `station/traffic.py`, so the words on it change with the hour and with the
+# day, and they name the ship that actually berthed.
+#
+# It is also the one thing that puts the port INTO the station. `traffic.py`
+# models 55 movements a day, a two-peaked EMT curve and the liner event, and
+# until this existed **nothing rendered any of it** -- no ship arrives in
+# geometry, no bay fills, and the only reader was `broadcast.py`, which itself
+# had no importer. A board is the cheapest possible surface for a simulation
+# nobody can otherwise see, and the show gives us the surface at authority 1:
+# `reference/11-props-and-technology/babylon 5 welcome sign, instructions, and
+# hub.jpg` puts a wall monitor in the customs area, and the customs boards
+# beside it establish the voice.
+#
+# THE REGISTER OF SHIP NAMES IS NOT HERE. `broadcast.SHIP_CALL` already maps a
+# manifest row to what a tannoy calls it, and a board that spelled them a second
+# way would be two descriptions of one thing -- the failure this project has
+# paid for repeatedly. The board says what the tannoy says.
+ARRIVALS_ROWS = 6          # how many movements fit the face at legible caps
+ARRIVALS_WINDOW_H = 6.0    # how far ahead it looks
+
+
+def arrivals_lines(hour=None, day=0, rows=ARRIVALS_ROWS):
+    """The board's text, from `traffic.arrivals` rather than from a table.
+
+    Returns a list of lines, header first. `hour` defaults to the station's own
+    working hour so a caller that does not care gets something sensible.
+    """
+    import traffic as _tf                                       # noqa: PLC0415
+    import broadcast as _bc                                     # noqa: PLC0415
+    if hour is None:
+        hour = 10.0
+    out = ["ARRIVALS", "EARTH MEAN TIME"]
+    up = []
+    for a in _tf.arrivals(day):
+        d = (a["hour"] - hour) % 24.0
+        if d <= ARRIVALS_WINDOW_H:
+            up.append((d, a))
+    up.sort()
+    for _d, a in up[:rows]:
+        h = int(a["hour"])
+        m = int(round((a["hour"] - h) * 60.0)) % 60
+        what = _bc.SHIP_CALL.get(a["type"], a["type"]).upper()
+        berth = {"bay": "BAY", "standoff": "PORT",
+                 "moored": "STANDING OFF"}[a["berth"]]
+        out.append(f"{h:02d}{m:02d}  {what[:22]:22s} {berth}")
+    if len(out) == 2:
+        out.append("NO MOVEMENTS SCHEDULED")
+    return out
+
+
+def arrivals_board(hour=None, day=0, with_post=True):
+    """A lit board whose words are this station-day's actual port traffic.
+
+    Same construction as `board_lit` -- the frame, the recessed face and the
+    lettering proud of it are the board, and only the source of the text
+    differs. That is deliberate: an arrivals board that looked different from
+    the customs boards beside it would read as a different prop, and the
+    authority-1 frame shows one visual family in that hall.
+    """
+    lines = arrivals_lines(hour, day)
+    v, t, g = board(with_post=with_post)
+    face_w = BOARD_W_M - 2 * BOARD_FRAME_M
+    face_h = BOARD_H_M - 2 * BOARD_FRAME_M
+    lv, lt, lg = letter_mesh(
+        lines, face_w, face_h, header=1,
+        z=BOARD_T_M - BOARD_INSET_M + 0.004,
+        cy=MOUNT_H_M + BOARD_H_M / 2.0)
+    base = len(v)
+    v.extend(lv)
+    t.extend([(a + base, c + base, d + base) for a, c, d in lt])
+    g.extend(lg)
+    return v, t, g
+
+
+# ---------------------------------------------------------------------------
 # Door plaques: 118 places that could not say what they were
 # ---------------------------------------------------------------------------
 # judge-3w at a doorway: "no handle, no control plate, no emergency release, no

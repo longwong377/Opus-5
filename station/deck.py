@@ -578,6 +578,46 @@ def door_sign(radius_m, angle_deg, z_m, side, place, gap_m=0.10):
     return _place_local(local, radius_m, angle_deg, z_m), t, g
 
 
+# WHICH PLACES CARRY AN ARRIVALS BOARD, and it is the port's own list rather
+# than a new one: `broadcast.PA_PLACES` is where a port announcement is FOR, and
+# a board is the same announcement with a longer memory. Filtered to the four
+# where a passenger stands and waits -- a cargo bay has traffic and nobody
+# reading about it.
+ARRIVALS_BOARD_PLACES = ("arrival_concourse", "customs_north", "customs_south",
+                         "bay_elevators")
+
+
+def arrivals_sign(radius_m, angle_deg, z_m, side, hour=10.0, day=0,
+                  gap_m=0.10):
+    """The arrivals board beside one door, mapped onto the ring.
+
+    THE SAME FOUR LINES AS `door_sign` AND FOR THE SAME REASONS -- `signage`
+    authors +x across, +y up, +z out of the face; `_place_local` maps that onto
+    a ring; and `side` is a HALF TURN about the vertical, not a mirror, because
+    a mirror would point it the right way with every face inside-out and
+    neither a render nor a closure check would see it.
+
+    What differs is only the offset: the plaque sits beside the door at
+    `door_width/2 + plaque_width/2 + gap`, and this sits beyond it, so the two
+    do not overlap on the same wall.
+    """
+    import signage as S                                        # noqa: PLC0415
+    v, t, g = S.arrivals_board(hour, day, with_post=False)
+    dx = (K.PROVISIONAL["door_width_m"] / 2.0 + S.PLAQUE_W_M
+          + S.BOARD_W_M / 2.0 + 2.0 * gap_m)
+    # NO HEIGHT OFFSET, and that is the difference from `door_sign`.
+    # `signage.board()` builds with "deck at y = 0" and its own frame already
+    # starting at `MOUNT_H_M`, while `door_plaque` builds centred on zero and
+    # needs `PLAQUE_CENTRE_H_M` added. Adding `MOUNT_H_M` here as well hung the
+    # board at 2.70 m with its top at 4.18 -- above the soffit line, over
+    # everyone's head. Caught by RENDERING IT AND LOOKING, not by an assertion:
+    # a board on a wall at the wrong height still looks like a board on a wall.
+    local = [(x + dx, y, z) for x, y, z in v]
+    if side > 0:
+        local = [(-x, y, -z) for x, y, z in local]
+    return _place_local(local, radius_m, angle_deg, z_m), t, g
+
+
 def vestibule_render(radius_m, angle_deg, z_from, z_to, width_m, height_m,
                      floor_y=0.022, wall_t=0.12):
     """The vestibule a player can SEE, as distinct from the one they stand on.
@@ -724,6 +764,26 @@ def build_deck(schema, profile, sector, ring, deck, with_rooms=True,
         for nm, lo_, hi_ in _runs(sg):
             G.append((f"{q['key']}__{nm}", lo_ + t0, hi_ + t0))
         stats["sign_tris"] = stats.get("sign_tris", 0) + len(st)
+
+        # THE PORT, ON A SURFACE. `station/traffic.py` models 55 movements a
+        # day, a two-peaked EMT curve and the liner event, and until this call
+        # existed NOTHING RENDERED ANY OF IT -- no ship arrives in geometry, no
+        # bay fills, and its only reader was `broadcast.py`, which had no
+        # importer at all. A board is the cheapest surface a simulation nobody
+        # can otherwise see can reach, and the text is `traffic.arrivals`
+        # itself, so the board cannot say something the port is not doing.
+        if q["key"] in ARRIVALS_BOARD_PLACES:
+            av, at, ag = arrivals_sign(
+                radius, door["angle_deg"],
+                cz + door["side"] * K.PROVISIONAL["corridor_width_m"] / 2.0,
+                door["side"])
+            off, t0 = len(V), len(T)
+            V.extend(av)
+            T.extend((a + off, b + off, c + off) for a, b, c in at)
+            for nm, lo_, hi_ in _runs(ag):
+                G.append((f"{q['key']}__{nm}", lo_ + t0, hi_ + t0))
+            stats["arrivals_tris"] = (stats.get("arrivals_tris", 0)
+                                      + len(at))
 
     # THE SPAWN COMES FROM THE COLLISION SHELL, which is the only mesh that
     # knows where the floor a body rests on actually is. Two earlier versions of
@@ -1195,6 +1255,40 @@ def _selftest():
     print(f"  signage: {fs.get('sign_tris', 0):,} triangles over "
           f"{len(lettering)} lettering spans; {len(all_open)} flush-decal "
           f"edges, {len(s_open)} in the solid")
+
+    # --- THE PORT IS ON A SURFACE ----------------------------------------
+    # `station/traffic.py` models 55 movements a day and until the arrivals
+    # board existed NOTHING RENDERED ANY OF IT. This asserts the board is in
+    # the deck and, more importantly, that its TEXT TRACKS THE PORT -- a board
+    # showing a fixed list would look identical in a render and be worthless.
+    import signage as _S                                        # noqa: PLC0415
+    n_board = fs.get("arrivals_tris", 0)
+    check("the arrivals board is in the assembled deck",
+          n_board > 0, f"{n_board} triangles")
+    early = _S.arrivals_lines(4.0, 0)
+    late = _S.arrivals_lines(10.0, 0)
+    check("...and it says different things at different hours, because the "
+          "text comes from traffic.arrivals and not from a table",
+          early != late,
+          f"04h {early[2][:24]!r} against 10h {late[2][:24]!r}")
+    check("...and a different day is different again",
+          _S.arrivals_lines(10.0, 1) != late)
+    # The one row a player would actually notice, and it is the manifest's
+    # own event: a liner day puts a liner on the board.
+    import traffic as _tf                                       # noqa: PLC0415
+    lday = next((d for d in range(8) if _tf.liner_today(d)), None)
+    la = (next((a for a in _tf.arrivals(lday) if a["type"] == "liner"), None)
+          if lday is not None else None)
+    if la is not None:
+        board = _S.arrivals_lines(la["hour"] - 0.5, lday)
+        check("...and a liner day puts the liner on the board",
+              any("LINER" in ln for ln in board),
+              f"day {lday} at {la['hour']:.1f} h: "
+              f"{[ln for ln in board if 'LINER' in ln]}")
+    print(f"  arrivals board: {n_board:,} triangles, "
+          f"{len(late) - 2} movements listed at 10h; "
+          f"04h lists {early[2].split()[0] if len(early) > 2 else '--'}, "
+          f"10h lists {late[2].split()[0] if len(late) > 2 else '--'}")
 
     # --- WHOSE GEOMETRY IS A PLAYER STANDING IN --------------------------
     # `build_deck` calls `rooms.build` for every room and has never consulted
