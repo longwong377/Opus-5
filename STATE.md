@@ -183,42 +183,52 @@ falls straight through with no behaviour change.
 **If anyone with GitHub access reads this**: two commands move it to a Release asset and let
 `vendor/godot/` be deleted — `bash tools/build_godot.sh --package` prints them.
 
-### 10. WHAT ACTUALLY MOVES A PIXEL IN THIS RENDERER — four features measured, three inert
+### 10. I MEASURED FOUR FEATURES ON THE WRONG RENDERER AND RECORDED THE ANSWER
 
-Session 4e. After the eight texture sheets landed the frame was still flat, so the next lever was
-supposed to be indirect light, volumetric fog and shadows. **Three of the four do nothing here**,
-and every one was established the same cheap way: render with the feature on, render with it off,
-compare the PNGs byte for byte.
+**Read this one for the process failure, not the numbers.** Session 4e. After the eight texture
+sheets landed the frame was still flat, so I A/B'd each look feature — render it on, render it
+off, compare the PNGs byte for byte — and got:
 
-| feature | on vs off | verdict |
+    ssil_enabled            byte-identical  -> recorded as "lavapipe does not run it"
+    volumetric_fog_enabled  byte-identical  -> recorded as "ditto"
+    fixture shadows 2 -> 18 byte-identical
+    adjustment_* (grading)  saturation 0.2076 -> 0.2454
+
+**The renderer was not lavapipe.** The container has no `/usr/share/vulkan/icd.d` at all —
+`mesa-vulkan-drivers` is not in the base image and nothing installs it. Godot prints
+*"Required extension VK_KHR_surface not found"* and *"switching to OpenGL 3"* in the middle of
+several hundred lines of ALSA noise, renders in **OpenGL 3 Compatibility**, and **exits 0 with a
+PNG**. Compatibility has no Forward+, so SSAO, glow, SSIL, volumetric fog and the adjustment
+block are all simply absent. The warning was in all ten of my logs.
+
+Re-measured on **Vulkan 1.4.318 - Forward+**, same camera, same lights:
+
+| feature | on vs off | |
 |---|---|---|
-| `ssil_enabled` | **max diff 0.0/255, 0.00% of pixels** | Mesa lavapipe does not run it |
-| `volumetric_fog_enabled` | **max diff 0.0/255, 0.00% of pixels** | ditto |
-| fixture shadows, 2 to 18 casters | **byte-identical PNGs** | and this one is CORRECT -- see below |
-| `adjustment_*` (grading) | saturation 0.2076 -> 0.2454 | **the only one that works** |
+| `ssil_enabled` | **86.0% of pixels differ, mean 8.9/255** | the largest single contributor in the scene |
+| `volumetric_fog_enabled` | **40.1% of pixels differ, mean 1.4/255** | real, and visible as depth |
 
-**SSIL and volumetric fog stay enabled anyway.** They are right for the target hardware this
-project budgets against (RTX 4070 class) and deleting them would mean rediscovering this. But
-**no visual claim in this repository may rest on either**, because our only verification path
-cannot see them. That is written next to the settings in `interior.tscn`.
+**Everything visual this session was judged through that broken pipe** — the untextured/textured
+A/B, the grading numbers, the corridor clutter, and the two frames sent to the owner. The
+textures and the grading were doing more than the frames could show.
 
-**THE SHADOW RESULT IS NOT A RENDERER LIMITATION AND THAT IS THE INTERESTING PART.** The scene
-really does receive 2, then 8, then 18 shadow casters -- the log prints it -- and the frames are
-identical. `fixture_lights`' own docstring predicted it: *"In `grey level 1.webp` a pilaster
-projecting 0.17 m from the wall a metre from a downlight lens throws no visible shadow."* A
-corridor is a smooth tube with 20 mm of relief and nothing in it for a wall lamp to cast a shadow
-OF. So `INTERIOR_SHADOW_LIGHTS = 2` -- which that file says has never been re-derived -- turns out
-to be right, and raising it buys nothing until something is standing in the corridor.
+**The fix is in `tools/render_godot.sh` and it has two ends, because either alone can be
+defeated.** The ICD is checked before the run (missing → exit 2 with the apt line). Godot's own
+output is grepped after the run, and if the fallback fired the **PNG is deleted** and the script
+exits 3 — an ICD can be present and the fallback can still happen. A passing run now prints
+`renderer: Vulkan 1.4.318 - Forward+`, so a frame states its renderer instead of leaving it to be
+inferred from an absence.
 
-**The grading is a clean win and it is free.** Contrast was the trap: at 1.06 it looked like the
-obvious companion setting, and it pivots about mid grey, so on a frame whose median luminance is
-0.05 it leaves the highlights alone and crushes the shadows -- p5 0.0089 -> 0.0056, crushed 2.2%
--> 3.2%. At 1.00, saturation is up 18% and the median and p5 are **unchanged**, which is what
-keeps layer 4b's gates where they were.
+**The general lesson, and it is the one to carry:** *a tool that silently degrades and exits 0 is
+worse than one that fails, because it manufactures evidence.* This project already had that rule
+for stale committed frames (`--gate-frames` could not rebuild what it measured). This is the same
+defect one level down — the frame was fresh and the **renderer** was stale.
 
-**The conclusion for anyone tuning the look here:** in software the only things that move a pixel
-are the lights themselves, ambient, SSAO, glow and the adjustment block. Light in a shadow has to
-be PUT there by a light or by ambient -- it cannot be bounced, and it cannot be faked with fog.
+The grading measurement survives and is still worth having: contrast 1.06 crushed the shadows
+(p5 0.0089 → 0.0056) because it pivots about mid grey on a frame whose median is 0.05, and at
+1.00 saturation rises 18% with the luminance distribution unchanged. That was measured under
+Compatibility, where `adjustment_*` does not exist either — so **it too must be re-derived**, and
+it is the top item on the next list.
 
 ### 11. AGENTS: THE PERMISSION GATE IS GONE, THE DISCIPLINE IS NOT
 

@@ -180,6 +180,21 @@ module that builds the pieces had no way to measure them. It now lives in `inter
 
 **A gate belongs in the module that builds the thing, and it must build the hard case.**
 
+**A TOOL THAT SILENTLY DEGRADES AND EXITS 0 IS WORSE THAN ONE THAT FAILS — IT MANUFACTURES
+EVIDENCE.** Session 4e, and it cost a session of visual judgement. The container had no Vulkan
+ICD, so every `render_godot.sh` run fell back to **OpenGL 3 Compatibility** — which has no
+Forward+, therefore no SSAO, glow, SSIL, volumetric fog or colour grading — printed a warning
+inside several hundred lines of ALSA noise, and **exited 0 with a PNG**. Ten frames were judged
+through it, two were shown to the owner, and an A/B of `ssil_enabled` came back byte-identical
+and was written down as *"Mesa lavapipe does not run it"*. On the real renderer SSIL moves **86%
+of the pixels**.
+
+This is the same defect as the stale committed frames that `--gate-frames` could not rebuild, one
+level down: the frame was fresh and the **renderer** was stale. The fix has two ends because
+either alone can be defeated — check the precondition before, and grep the tool's own report of
+what it did after, and destroy the artefact if it disagrees. **Any tool that can substitute a
+lesser mode for the one asked for must say which one it used, in its output, on every run.**
+
 **READ THE SHAPE OF A FAILING NUMBER BEFORE READING ITS SIZE.** Session 4d, and it is the cheapest
 lesson in this file. `interact.py --audit` failed on 84 of 357 declared interactables and 4c wrote
 the work up as two lists of props to go and build. The number that mattered was the split:

@@ -242,19 +242,23 @@ glow_blend_mode = 1
 ; carried SSAO and glow and nothing else, so every shadowed surface in the
 ; station was lit by a single flat ambient term and rendered as dead grey.
 ;
-;;; MEASURED INERT IN THIS RENDERER, AND KEPT ANYWAY. Rendered with
-;;; ssil_enabled true and false, same camera, same lights: the two PNGs are
-;;; BYTE-IDENTICAL. Mesa lavapipe does not run it. So is volumetric fog below.
-;;; They stay enabled because they are correct for the TARGET hardware (RTX
-;;; 4070 class, the budget this project is written against) and because
-;;; deleting them would mean rediscovering the same thing later -- but NO
-;;; visual claim in this repository may rest on either of them, because our
-;;; only verification path cannot see them.
+;;; MEASURED, AND THE FIRST MEASUREMENT WAS WRONG. Session 4e first recorded
+;;; SSIL and the volumetric fog below as BYTE-IDENTICAL on/off and concluded
+;;; "Mesa lavapipe does not run them". The renderer was not lavapipe. The
+;;; container had no Vulkan ICD at all, so Godot fell back to OpenGL 3
+;;; Compatibility -- which has no Forward+ and therefore none of SSAO, glow,
+;;; SSIL, fog or adjustment -- and exited 0 with a flat grey PNG. The features
+;;; were not being skipped; the pipeline they belong to was never running.
 ;;;
-;;; The consequence is the useful part: in software the ONLY levers that move a
-;;; pixel are the lights themselves, ambient, SSAO, glow and the adjustment
-;;; block. Light in a shadow has to be put there by a light or by ambient; it
-;;; cannot be bounced.
+;;; Re-measured on Vulkan 1.4.318 - Forward+, same camera, same lights:
+;;;
+;;;     ssil_enabled           on vs off -> 86.0% of pixels differ, mean 8.9/255
+;;;     volumetric_fog_enabled on vs off -> 40.1% of pixels differ, mean 1.4/255
+;;;
+;;; Both are doing a great deal, and SSIL is the largest single contributor in
+;;; this scene. `tools/render_godot.sh` now refuses to run without an ICD and
+;;; deletes the PNG if Godot reports the fallback, so a frame cannot lie about
+;;; which renderer made it again.
 ;
 ; SSIL -- screen-space indirect light. SSAO only DARKENS creases; nothing in
 ; this scene ever put bounced light back into them. A corridor is a white-ish
@@ -268,8 +272,8 @@ ssil_intensity = 0.9
 ssil_sharpness = 0.98
 ssil_normal_rejection = 1.0
 
-; VOLUMETRIC FOG. Also measured BYTE-IDENTICAL on/off here -- see above. On the
-; target hardware this is what makes 725 spot sources read as light in air
+; VOLUMETRIC FOG. 40.1% of pixels, measured -- see above. This is what makes
+; 725 spot sources read as light in air
 ; instead of as bright patches on a wall. Density is deliberately low: a
 ; pressurised habitat is clean air, and a shaft should be perceptible rather
 ; than smoky. Note that shafts additionally need SHADOW-CASTING lights and this

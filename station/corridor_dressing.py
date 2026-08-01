@@ -6,11 +6,16 @@ eight new PBR sheets onto 131 previously untextured materials and the corridor
 frame stayed flat. Chasing that produced three more measurements, each an A/B
 of one feature on against off:
 
-    ssil_enabled            byte-identical PNGs -- lavapipe does not run it
-    volumetric_fog_enabled  byte-identical PNGs -- ditto
-    fixture shadows 2 -> 18 byte-identical PNGs -- and CORRECT
+    fixture shadows 2 -> 18  byte-identical PNGs
 
-The third is the one that explains the frame. `export_scene.fixture_lights`
+(Two other A/Bs in that batch -- ssil and volumetric fog -- ALSO came back
+byte-identical and were wrong: the container had no Vulkan ICD, so Godot had
+silently fallen back to OpenGL 3 Compatibility, which has no Forward+ at all.
+Re-measured on Vulkan they move 86% and 40% of pixels. The shadow result is
+re-checked separately; what follows stands on its own regardless, because an
+empty corridor is empty under any renderer.)
+
+The shadow one is the one that explains the frame. `export_scene.fixture_lights`
 already said why in its own docstring: *"a pilaster projecting 0.17 m from the
 wall a metre from a downlight lens throws no visible shadow"*. Eighteen shadow
 casters change nothing because **a corridor is a smooth tube with 20 mm of
