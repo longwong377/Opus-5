@@ -271,6 +271,50 @@ single build. The agent reported that as 6 of 11 steps rather than hiding it.
 *CLAUDE.md's rule that a builder may decline a finding with evidence is what this section is. The
 agent did good work and this one claim did not hold; both halves of that are worth writing down.*
 
+### 13. THE STATION IS BUILT AT 0.17% OF ITS OWN DECLARED FOOTPRINT
+
+Measured in 4e, and it reframes this repository's headline claim. CLAUDE.md says **"128 of 128
+locations on an assembled cluster"** and that is true. What it does not say is how much of each
+location is there.
+
+`rooms.bay_span_m` derives the size of ONE REPRESENTATIVE BAY from what the room holds -- and its
+docstring ends *"the full location is then that bay instanced along its footprint."* `bays_in()`
+computes how many bays that is. **Nothing instances them.** `bays_in` has two callers and both
+put the number in a report dict.
+
+    128 places, every one wants more than one bay
+    total bays wanted: 73,635        bays built: 128
+
+| place | bays wanted | deep x across | real length | one bay |
+|---|---|---|---|---|
+| `fusion_core` | 18,753 | 133 x 141 | 800 m | 6.00 m |
+| `plant_zone` | 9,855 | 45 x 219 | 442 m | 9.65 m |
+| `downbelow` | 5,548 | 38 x 146 | 442 m | 11.55 m |
+| `core_shuttle` | 4,000 | 500 x 8 | 3,000 m | 6.00 m |
+| `docking_bays` | 2,052 | 18 x 114 | 140 m | 7.75 m |
+
+**Read the two axes differently, because they are different problems.** The ACROSS count is the
+ring direction and is largely handled: a player walks along the ring corridor and meets the next
+location, so a 219-bay-wide plant is the sector, not a room. **The DEEP count is the real gap** --
+`docking_bays` is 140 m along the axis in the gazetteer and a player walks **15.5 m** of it before
+meeting the far wall. That wall is drawn as well as felt, so nothing looks broken; the room is
+simply one eighteenth of itself.
+
+**This is why the arrival agent thought there was no collision floor.** It walked into a room,
+stopped, and reasoned backwards to a missing floor. The floor is there (section 12); the room ends.
+
+**It is a streaming problem and must not be solved by building 73,635 bays.** What is wanted is
+the near field at full depth and the far field instanced or absent -- which is exactly what
+`CORRIDOR_INSTANCED` already does for the crowd, and what `navigation.cell_plan`'s 3,414 streaming
+cells were built for. The specification is: tile the bay along Z to the location's real length,
+dress only the bays within sight, and state the cap loudly, because CLAUDE.md's own rule is that a
+silent cap reads as coverage.
+
+**NOT ATTEMPTED IN 4e, deliberately.** `bay_span_m` is correctly derived and raising it would be
+picking a size instead of deriving one -- the exact defect its docstring records. Tiling touches
+collision, doors, lights, actors and the walk gate at once, and half of it would leave the build
+unwalkable. It is specified here rather than started badly.
+
 ### 11. AGENTS: THE PERMISSION GATE IS GONE, THE DISCIPLINE IS NOT
 
 Set by the owner in session 4e: *"you dont have to ask about agents anymore but just use them

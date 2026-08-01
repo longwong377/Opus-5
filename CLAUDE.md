@@ -125,6 +125,14 @@ absence.
 | **W5** | **The loop** | Spawn -> walk -> use something -> an NPC reacts. The smallest complete experience | **DONE** (3z) -- and `walkable.py --deck blue/0/0` reports all four in one line: *"a body spawns in the corridor and WALKS INTO docking_bays (6.3 m -> 0.04 m), never leaving the floor, **7 of the room look up** (123 deg turned, 4 deg off)"*, with the control *"with the doors inert the body is stopped 5.26 m short"* |
 | **W6+** | **Breadth** | Roll W3-W5 outward by generator across the 128, in the order a player meets them | **THE WHOLE STATION** (3z) -- `deck.py --sweep`: **90 z-clusters assemble, 0 fail, 128 of 128 locations on an assembled cluster, 128 with a door or on ground, 0 floor holes.** 58,660 collision triangles across the ring decks + 573,440 in the drum's ground = **632,100** for the walkable station. What remains is DEPTH: 49 module-owned places still assemble as generic bays, 18 with a builder that exists |
 
+**AND IT ANSWERS IT PER LOCATION, NOT PER SQUARE METRE.** Session 4e measured the other half:
+`rooms.bay_span_m` builds ONE REPRESENTATIVE BAY and its own docstring says *"the full location is
+then that bay instanced along its footprint"* -- and **nothing instances it**. `bays_in()` computes
+the count and both its callers put it in a report dict. **73,635 bays wanted across the 128 places;
+128 built.** `docking_bays` is 140 m long in the gazetteer and a player walks 15.5 m of it. The
+sweep's 128 of 128 is true and it is a count of locations REACHED, not of location BUILT. See
+STATE.md section 13.
+
 **`python3 station/deck.py --sweep` is the answer to "how much of the station can I walk in".**
 It is the only gate here that asks a whole-station question; every other one measures a part.
 Run it before claiming coverage. As of 3z it is **128 of 128** — every location in the register
