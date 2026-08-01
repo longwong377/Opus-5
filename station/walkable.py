@@ -737,7 +737,15 @@ def main():
 
     godot = godot_binary()
     if godot is None:
-        print("no double-precision Godot binary; see docs/godot-binary.md")
+        # NAME THE COMMAND, not the document. Since session 4d the binary is
+        # vendored in the repository and this is a seconds-long unpack, not the
+        # hour it used to imply -- a reader who has to go and find that out is
+        # the reader who assumes the gate is unrunnable and skips it.
+        print("no double-precision Godot binary.\n"
+              "  run:  bash tools/build_godot.sh\n"
+              "  (unpacks vendor/godot/ in seconds; builds from source only if\n"
+              "   this container has neither a vendored copy nor a URL)\n"
+              "  see docs/godot-binary.md")
         return 1
 
     if a.deck or a.deck_only:

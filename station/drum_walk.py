@@ -753,7 +753,8 @@ def walk(key="the_garden", traverse=None, timeout=1800, rings=None,
     import walkable as W                                        # noqa: PLC0415
     godot = godot or W.godot_binary()
     if godot is None:
-        return {"key": key, "error": "no double-precision Godot binary"}
+        return {"key": key, "error": "no double-precision Godot binary -- "
+                "run `bash tools/build_godot.sh` (see docs/godot-binary.md)"}
     traverse = W.TRAVERSE_FRAMES if traverse is None else traverse
 
     schema, profile, sector = drum()
