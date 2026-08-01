@@ -4195,7 +4195,14 @@ def _bind_textures():
     return n
 
 
-BOUND_4E = _bind_textures()
+# THE CONTROL SWITCH, and it exists because the first render of the bound
+# library came back WORSE than the unbound one and there was no way to tell
+# which change did it. `MATERIALS_NO_4E=1` exports the same library with the 4e
+# sheets unbound and nothing else different, so the two frames differ in
+# exactly one thing. Comparing against a committed frame taken in another
+# session is not an A/B -- the lighting, the exposure and the camera have all
+# moved since.
+BOUND_4E = 0 if os.environ.get("MATERIALS_NO_4E") else _bind_textures()
 
 SCENES = ("exterior", "drum", "interior")
 
@@ -5096,7 +5103,7 @@ def gen_skin_sheet(size, seed, base_rough=0.62):
 
 
 def gen_paint_sheet(size, seed, base_rough=0.48, base_metal=0.0,
-                    chip=0.30, scratches=220):
+                    chip=0.10, scratches=220):
     """Painted metal, chipped back to the substrate at the edges.
 
     The station's single commonest surface family and it shipped as flat
@@ -5120,18 +5127,26 @@ def gen_paint_sheet(size, seed, base_rough=0.48, base_metal=0.0,
     d, _e, idx = _cells(size, (seed, "chip"), 44, jitter=0.95)
     gate = _cell_value(idx, (seed, "gate"), 2.0)
     ragged = d + (_fbm(size, (seed, "ragged"), octaves=4, base=64) - 0.5) * 0.5
-    flake = np.clip((0.40 - ragged) / 0.06, 0.0, 1.0) \
+    flake = np.clip((0.26 - ragged) / 0.05, 0.0, 1.0) \
         * (gate > (2.0 - chip * 2.0))
     scr = _scratches(size, (seed, "scr"), scratches, 0.55, length=0.22)
     grime = _fbm(size, (seed, "grime"), octaves=3, base=3)
 
-    height = (peel - 0.5) * 0.18 - flake * 0.35 - scr * 0.10
-    value = np.clip(0.98 + (peel - 0.5) * 0.10 - flake * 0.30
-                    - scr * 0.12 - (grime - 0.5) * 0.16, 0.05, 1.6)
-    rough = np.clip(base_rough + flake * 0.28 + scr * 0.20
-                    + (grime - 0.5) * 0.14, 0.05, 1.0)
+    # TUNED ON A LIT SURFACE AT DISTANCE, NOT ON A WHITE SWATCH. The first
+    # version's numbers looked right magnified and flat; rendered on a corridor
+    # pilaster at 4 m they read as MOULD -- flat dark spatter 5 to 15 cm across
+    # with no relief, because a 0.30 value drop is an enormous contrast step on
+    # a mid-grey surface and 30% of cells chipping is a derelict, not a public
+    # corridor. Most of these 21 materials are architectural trim. The film's
+    # orange peel and its scuffing carry the surface now, and a chip is a small
+    # incident rather than the pattern.
+    height = (peel - 0.5) * 0.26 - flake * 0.35 - scr * 0.10
+    value = np.clip(0.98 + (peel - 0.5) * 0.10 - flake * 0.11
+                    - scr * 0.09 - (grime - 0.5) * 0.12, 0.05, 1.6)
+    rough = np.clip(base_rough + flake * 0.14 + scr * 0.18
+                    + (grime - 0.5) * 0.12, 0.05, 1.0)
     metal = np.clip(base_metal + flake * 0.75 + scr * 0.25, 0.0, 1.0)
-    ao = np.clip(1.0 - flake * 0.35 - scr * 0.10, 0.0, 1.0)
+    ao = np.clip(1.0 - flake * 0.14 - scr * 0.08, 0.0, 1.0)
     return value, rough, metal, ao, height
 
 

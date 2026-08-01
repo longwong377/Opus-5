@@ -1,7 +1,73 @@
 # MASTER PLAN — Babylon 5, 1:1, living
 
-**Status:** authoritative. Supersedes the phase plan and extends the layer plan in `CLAUDE.md`.
-**Written:** session 3k, after an audit of the layer plan found it structurally incomplete.
+**Status:** §0.5 below is authoritative and supersedes §3 and §7. The rest is the session-3k
+audit, which remains the best analysis in the repository and was correct — and was then not
+followed for eleven sessions.
+**Written:** session 3k. **Superseded in part:** session 4e, by the owner.
+
+---
+
+## 0.5 THE OWNER'S RULING, SESSION 4e — TWO DAYS, AND IT IS NOT A COVERAGE PROBLEM
+
+**Read this before anything below it.**
+
+### What the owner said, and it is all true
+
+*"bare and colorless and undetailed and the npcs just being undetailed featureless blobs"* ·
+*"I would bet that it looks nothing like a starfield AAA game"* · *"it seems like nothing has been
+actually done other than surface level work"* · *"we keep going down the same road over and over
+taking forever and making unusable garbage"* · **and: there are two days.**
+
+### The verdict on §0's four properties, honestly
+
+§0 says the plan *"delivers A and B and does not deliver C or D"*. **That was too generous, and
+the error is the whole story.** B — *it is beautiful* — is not delivered either:
+
+- **186 of 234 materials had no texture at all** until session 4e: a flat albedo colour, a
+  roughness number, nothing else. 79% of every surface in shot was an untextured constant.
+- The 68 procedural rooms — **58% of the station** — score **craft 1** on this project's own
+  rubric, and layer 8 (judged) has always been **0**.
+- There is no audio, no UI, no dialogue, no player role, no arrival, no flight.
+
+### Why it went this way, mechanically
+
+**85,940 lines of Python against 3,291 of GDScript.** Rendering here is software, minutes a frame,
+so the pixel loop was almost never run — and every gate that runs in seconds counts something.
+The project optimised what was cheap to measure and reported the counts as progress. Session 4e's
+own first increment (357/357 interactables) is that pattern exactly.
+
+*Look is roughly 80% material and light and 20% form. This project spent 95% of its effort on
+form.* That single sentence explains every screenshot.
+
+### What should have happened, recorded so it is not repeated
+
+**One corridor taken to final quality — textured, lit, graded, with people in it — before a second
+location existed.** Then replicate by generator. Instead it went breadth-first across 128
+locations at blockout quality, and blockout × 128 is still blockout.
+
+### The two-day scope. Everything else is out.
+
+| | | why it is first |
+|---|---|---|
+| **1** | **Engine binary stops costing an hour** | **DONE, 4e.** Vendored in `vendor/godot/`; a fresh container unpacks it in seconds. Nothing visual can be checked without it |
+| **2** | **Texture the untextured** | **DONE, 4e.** 48/234 → 179/234. The remaining 55 are declared bare with a reason |
+| **3** | **Environment and post** | SSIL, volumetric fog and light shafts, contact shadows, grading. Changes every pixel of every frame for a few hours' work |
+| **4** | **The people stop being blobs** | Skin, cloth and hair maps are in; what is left is silhouette — heads, hands, hair as geometry |
+| **5** | **A HUD** | The only UI in the project is the text `[E] operate the …`. Without one it does not read as a game at all |
+
+**Explicitly NOT in the two days**, and saying so is the point: the arrival sequence, a player
+residence, dialogue, runtime NPC schedules, a flyable Starfury, audio, and layers 5–8. They are
+the right work and they do not fit. §1–§4 of this document remain the plan for after.
+
+### The process rules that replace the layer rule
+
+1. **Every visual claim cites a frame rendered THIS session.** Comparing against a committed frame
+   from another session is not an A/B — the lighting, exposure and camera have all moved.
+2. **Every visual change ships with a control render.** `MATERIALS_NO_4E=1` exists because the
+   first bound render came back *worse* and nothing could say which change did it.
+3. **Tune on a lit surface at viewing distance, never on a magnified swatch.** The paint sheet's
+   first numbers looked right flat and rendered as mould on a pilaster at 4 m.
+4. **No new coverage gates, no new layer numbers.** Keep the existing ones green.
 
 ---
 

@@ -15,13 +15,13 @@ dest_files=["res://.godot/imported/cloth_weave_orm.png-909887806547e6305d6001871
 
 [params]
 
-compress/mode=0
+compress/mode=2
 compress/high_quality=false
 compress/lossy_quality=0.7
 compress/hdr_compression=1
 compress/normal_map=0
-compress/channel_pack=0
-mipmaps/generate=false
+compress/channel_pack=1
+mipmaps/generate=true
 mipmaps/limit=-1
 roughness/mode=0
 roughness/src_normal=""
