@@ -25,6 +25,13 @@ extends Node3D
 ## exact scar twice already. `--no-dress` is the control.
 
 @export var glb_path: String = ""
+## THE STATION IS BIGGER THAN ONE FILE. With a cell manifest the level is not
+## loaded at all -- `scripts/stream.gd` keeps a derived number of cells resident
+## around the body and frees the rest, and `--glb` is unused. See that file for
+## where the residency radius and the triangle ceiling come from; neither is
+## written down in either file.
+@export var cells_path: String = ""
+var _stream: Node3D = null
 ## A separate, simplified mesh to collide against. See `station/collision.py`:
 ## the render corridor carries a 66 mm lighting channel down its centreline and
 ## 22 mm grid tiles either side of it, and a capsule dropped on that stands
@@ -82,6 +89,15 @@ var _static: StaticBody3D
 
 func _ready() -> void:
 	var args := _args()
+	# BAKE CELLS. Offline, in the engine, because the split has to produce
+	# resources `ResourceLoader` can load on a worker thread and nothing outside
+	# Godot writes those. See `scripts/stream.gd::bake`.
+	if args.has("bake-cells"):
+		var bk := Node3D.new()
+		bk.set_script(load("res://scripts/stream.gd"))
+		add_child(bk)
+		get_tree().quit(bk.bake(args))
+		return
 	if args.has("glb"):
 		glb_path = args["glb"]
 	if args.has("collision"):
@@ -109,13 +125,21 @@ func _ready() -> void:
 
 	if args.has("interact"):
 		interact_path = args["interact"]
+	if args.has("cells"):
+		cells_path = args["cells"]
 	_use_group = String(args.get("use-group", ""))
 
-	if not _load_level():
+	if cells_path != "":
+		if not _load_streamed(args):
+			get_tree().quit(2)
+			return
+	elif not _load_level():
 		push_error("walk: could not load %s" % glb_path)
 		get_tree().quit(2)
 		return
 	_spawn_player()
+	if _stream != null:
+		_stream.set_player(_player)
 	if _doors != null:
 		_doors.watch(_player)
 	if _people != null:
@@ -134,7 +158,9 @@ func _ready() -> void:
 
 	_wire_hud()
 
-	if args.has("walk-test"):
+	if args.has("stream-test"):
+		_run_stream_test(args)
+	elif args.has("walk-test"):
 		_run_walk_test(args)
 	elif args.has("shot"):
 		_run_shot(args)
@@ -218,10 +244,15 @@ func _load_level() -> bool:
 ## `--no-dress` is the control. With it the build is what it was before session
 ## 3w: grey geometry under a flat ambient, no sources. If a render with dressing
 ## and a render without it look the same, this file is doing nothing.
-func _dress_level(scene: Node) -> void:
+## Build the dresser and load the material table. Split out of `_dress_level`
+## because a STREAMED build needs it alive across many cells -- one cell arrives
+## every few seconds and each one has to be bound out of the same table -- while
+## the monolithic path binds once and releases immediately. Returns false when
+## `--no-dress` turned it off, which is the control on both paths.
+func _prepare_dress() -> bool:
 	if _args().has("no-dress"):
 		print("walk: dressing DISABLED (control) -- no materials, no lights")
-		return
+		return false
 	_dress = Node.new()
 	_dress.name = "Dress"
 	_dress.set_script(load("res://scripts/dress_scene.gd"))
@@ -229,6 +260,12 @@ func _dress_level(scene: Node) -> void:
 	if not _dress.prepare():
 		push_error("walk: dress FAILED -- " + ", ".join(_dress.problems))
 		print("dress: FAILED -- %s" % ", ".join(_dress.problems))
+	return true
+
+
+func _dress_level(scene: Node) -> void:
+	if not _prepare_dress():
+		return
 	var m: Dictionary = _dress.bind(scene)
 	_dress.release()
 	var un: PackedStringArray = m["unmatched"]
@@ -266,6 +303,60 @@ func _dress_level(scene: Node) -> void:
 	var ext: PackedStringArray = lit["extended"]
 	if not ext.is_empty():
 		print("dress: sampled as extended fittings: %s" % ", ".join(ext))
+
+
+## THE LEVEL IS NOT LOADED. It arrives, cell by cell, around the body.
+##
+## Nothing after this point in the file knows the difference: the body is spawned
+## by the same `_spawn_player`, stepped by the same `player.gd`, and stands on
+## trimesh colliders made by the same `create_trimesh_collision` -- they are just
+## made when the cell arrives instead of at start-up. See `scripts/stream.gd`.
+##
+## THE FIRST CELL IS PRIMED SYNCHRONOUSLY and that is deliberate. A level's first
+## cell is a load screen, not a stream; spawning a body into a cell that has not
+## arrived makes it fall for a hundred frames and the verdict then blames
+## streaming for a start-up ordering mistake.
+func _load_streamed(args: Dictionary) -> bool:
+	_prepare_dress()
+	_stream = Node3D.new()
+	_stream.name = "Stream"
+	_stream.set_script(load("res://scripts/stream.gd"))
+	add_child(_stream)
+	var energy := 3.0
+	if _dress != null:
+		energy = _dress.consts.get("fixture_energy", 3.0)
+	_stream.lag_frames = int(args.get("stream-lag", "0"))
+	if not _stream.configure(cells_path, _dress, energy, args.has("no-stream")):
+		push_error("walk: " + ", ".join(_stream.problems))
+		return false
+	_start_cell = int(args.get("start-cell", "-1"))
+	if _start_cell < 0:
+		_start_cell = int(_stream.cells[0]["index"])
+	var c: Dictionary = _stream.cell_by_index(_start_cell)
+	if c.is_empty():
+		push_error("walk: no cell with index %d in %s"
+			% [_start_cell, cells_path])
+		return false
+	if not args.has("spawn"):
+		spawn = Vector3(c["spawn"][0], c["spawn"][1], c["spawn"][2])
+	# WHERE THE CORRIDOR IS, AND HOW FAR AHEAD TO AIM -- both off the manifest,
+	# both measured. The corridor radius and z come from `stream.bake`'s scan of
+	# the collision shell. The steering lookahead is `sqrt(r * w)`, which is the
+	# length whose chord sags exactly w/8 off the arc (sag = L^2/8r): aim further
+	# and a body walking a curved corridor walks the chord and grinds the inner
+	# wall; aim shorter and the heading is noise.
+	var corr: Dictionary = _stream.plan.get("corridor", {})
+	_s_r = float(corr.get("r_floor_m", 0.0))
+	_s_z = float(corr.get("z_mid", spawn.z))
+	_s_w = float(corr.get("width_m", 2.5))
+	_s_lookahead = sqrt(maxf(_s_r * _s_w, 1.0))
+	_prime_ms = _stream.prime(_start_cell)
+	print("walk: STREAMED level -- start cell %d, primed in %d ms, spawn "
+		% [_start_cell, _prime_ms]
+		+ "%.2f,%.2f,%.2f, corridor r=%.2f z=%.2f w=%.2f, lookahead %.1f m "
+		% [spawn.x, spawn.y, spawn.z, _s_r, _s_z, _s_w, _s_lookahead]
+		+ "(chord sag %.2f m)" % (_s_lookahead * _s_lookahead / (8.0 * _s_r)))
+	return true
 
 
 ## Give the deck its doors. `--no-doors` leaves them out, which is the NEGATIVE
@@ -428,7 +519,7 @@ func _wire_dialogue(actors: Array) -> void:
 
 func _wire_hud() -> void:
 	var args := _args()
-	if args.has("walk-test"):
+	if args.has("walk-test") or args.has("stream-test"):
 		return
 	if args.has("no-hud"):
 		print("hud: DISABLED (control) -- no interface on this frame")
@@ -522,6 +613,177 @@ func _run_walk_test(args: Dictionary) -> void:
 	_trace = int(args.get("trace", "0"))
 	_testing = true
 	set_physics_process(true)
+
+
+## THE STREAMING GATE. A body walks from one cell into the next, the next cell is
+## resident BEFORE the body reaches it, and the body never leaves the floor.
+##
+## WHY THE THIRD CLAUSE IS THE WHOLE TEST. Everything else in this project can be
+## satisfied by a cell that arrives eventually: a coverage count says the cell
+## exists, a triangle budget says it is affordable, a render says it looks right.
+## None of them can fail for "it turned up after the player walked into the hole
+## where it should have been". So the number this prints is a LEAD -- how far
+## away the body still was at the frame the cell became resident -- and it is
+## measured from OUTSIDE `stream.gd`, by watching its resident set change, so a
+## streamer that lied about its own state could not make it pass.
+##
+## AND IT REPORTS METRES, NOT "DID IT MOVE", for the reason `station/collision.py`
+## learned the hard way: four one-second nudges prove a body is not wedged and
+## prove nothing about whether you can go anywhere. `floor_m` -- distance covered
+## WHILE ON THE FLOOR -- is the honest one, because a body that walks off the end
+## of a cell keeps travelling and a plain path length would score falling as
+## progress.
+##
+## THE CONTROL IS `--no-stream`, and it must fail. With it the start cell is
+## primed and nothing else is ever requested: the body walks to the cell boundary
+## and off the end of the world. If both runs pass, this test is measuring
+## nothing. `--turnaround=N` is the second control, for the other requirement --
+## reverse the walk mid-load and no cell may be requested twice.
+func _run_stream_test(args: Dictionary) -> void:
+	if _stream == null:
+		push_error("walk: --stream-test needs --cells=<cells.json>")
+		get_tree().quit(2)
+		return
+	_t_settle = int(args.get("settle", "120"))
+	_t_traverse = int(args.get("traverse", "2400"))
+	_s_dir = (-1.0 if String(args.get("dir", "+1")).begins_with("-") else 1.0)
+	_s_turnaround = int(args.get("turnaround", "0"))
+	_streaming = true
+	set_physics_process(true)
+
+
+func _stream_frame(delta: float) -> void:
+	_frame += 1
+	if _frame <= _t_settle:
+		_player.step(delta, Vector2.ZERO, false, false)
+		_stream.update(_player.global_position)
+		_note_residency()
+		if _frame == _t_settle:
+			_rest = _player.global_position
+			_on_floor = _player.is_on_floor()
+			_traverse_from = _rest
+			_traverse_prev = _rest
+			_s_here = _stream.cell_at(_rest)
+			_s_entered.append(_s_here)
+			print("walk: settled at %.2f,%.2f,%.2f (drop %.3f m), on_floor=%s, "
+				% [_rest.x, _rest.y, _rest.z, spawn.distance_to(_rest),
+					str(_on_floor).to_lower()]
+				+ "in cell %d, walking %s" % [_s_here,
+					("+angle" if _s_dir > 0.0 else "-angle")])
+		return
+
+	# THE PLAYER TURNS ROUND MID-LOAD. Not a flourish: `ResourceLoader` has no
+	# cancel, so a request issued for a cell the body then walks away from WILL
+	# complete, and the only two wrong answers are to instance it anyway or to
+	# re-request it when the body turns back. Both are counted in the verdict.
+	if _s_turnaround > 0 and _frame == _t_settle + _s_turnaround:
+		_s_dir = -_s_dir
+		print("walk: TURNED ROUND at frame %d, %d cell(s) in flight"
+			% [_frame, _stream.inflight_count()])
+
+	var p := _player.global_position
+	var a := atan2(p.y, p.x) + _s_dir * (_s_lookahead / maxf(_s_r, 1.0))
+	var tgt := Vector3(_s_r * cos(a), _s_r * sin(a), _s_z)
+	_player.step(delta, Vector2.ZERO, false, false, tgt - p)
+	_stream.update(_player.global_position)
+	_note_residency()
+
+	var q := _player.global_position
+	var d := q.distance_to(_traverse_prev)
+	_path_m += d
+	if _player.is_on_floor():
+		_s_floor_m += d
+	else:
+		_off_floor += 1
+	_traverse_prev = q
+
+	var here: int = _stream.cell_at(q)
+	if here >= 0 and here != _s_here:
+		_s_here = here
+		_s_entered.append(here)
+		var id := String(_stream.cell_by_index(here)["id"])
+		if not _stream.is_resident(id):
+			_s_late += 1
+			print("walk: ENTERED %s AND IT WAS NOT RESIDENT -- the body is "
+				% id + "standing where the floor has not arrived")
+		else:
+			_s_min_lead_m = minf(_s_min_lead_m,
+				float(_stream.lead_m.get(id, INF)))
+			_s_min_lead_f = mini(_s_min_lead_f,
+				_frame - int(_s_ready_frame.get(id, _frame)))
+	if _frame >= _t_settle + _t_traverse:
+		_print_stream_verdict()
+		get_tree().quit(0)
+
+
+## Watch the streamer's resident set from outside and note the frame each cell
+## first appeared in it. Deliberately not a callback: a gate that asks the thing
+## under test to report its own timing is a gate that cannot catch it lying.
+func _note_residency() -> void:
+	for id in _stream.resident_ids():
+		if not _s_ready_frame.has(id):
+			_s_ready_frame[id] = _frame
+
+
+func _print_stream_verdict() -> void:
+	var crossings: int = maxi(_s_entered.size() - 1, 0)
+	var ent := PackedStringArray()
+	for i in _s_entered:
+		ent.append(str(i))
+	var mode := ("nostream" if _stream.disabled else "stream")
+	# WHAT MAKES IT A PASS, stated as the conjunction it is. `late` and
+	# `double_loads` are the two requirements; `crossings` is the reason to
+	# believe the run exercised them at all -- a test that never left its start
+	# cell would otherwise report a flawless zero on both.
+	var ok: bool = (crossings >= 1 and _s_late == 0 and _off_floor == 0
+		and int(_stream.double_loads) == 0 and not bool(_stream.disabled))
+	var why := PackedStringArray()
+	if crossings < 1:
+		why.append("no cell boundary was crossed")
+	if _s_late > 0:
+		why.append("%d cell(s) entered before resident" % _s_late)
+	if _off_floor > 0:
+		why.append("%d frame(s) off the floor" % _off_floor)
+	if _stream.double_loads > 0:
+		why.append("%d double load(s)" % _stream.double_loads)
+	if _stream.disabled:
+		why.append("streaming disabled (this is the control and MUST fail)")
+	# `inf` rather than a sentinel when nothing streamed in during the run: every
+	# cell entered was resident before the walk began, which is an infinite lead
+	# and not a missing measurement. A negative number here would read as the
+	# failure this gate exists to catch. `-1` is reserved for the control, where
+	# a cell really was entered with no lead at all.
+	var lead := ("inf" if _s_min_lead_m > 1e29 and _s_late == 0
+		else ("-1" if _s_min_lead_m > 1e29 else "%.2f" % _s_min_lead_m))
+	print(("STREAMTEST mode=%s ok=%s start=%d dir=%s prime_ms=%d "
+		+ "traverse_m=%.2f floor_m=%.2f net_m=%.2f offfloor=%d/%d "
+		+ "crossings=%d entered=%s late=%d min_lead_m=%s min_lead_frames=%d "
+		+ "%s why=%s") % [
+		mode, str(ok).to_lower(), _start_cell,
+		("+1" if _s_dir > 0.0 else "-1"), _prime_ms,
+		_path_m, _s_floor_m, _traverse_from.distance_to(_traverse_prev),
+		_off_floor, _t_traverse, crossings, ",".join(ent), _s_late, lead,
+		(-1 if _s_min_lead_f > 1 << 29 else _s_min_lead_f),
+		_stream.report(),
+		("-" if why.is_empty() else ";".join(why).replace(" ", "_"))])
+
+
+var _streaming := false
+var _start_cell := 0
+var _prime_ms := 0
+var _s_dir := 1.0
+var _s_r := 0.0
+var _s_z := 0.0
+var _s_w := 0.0
+var _s_lookahead := 20.0
+var _s_turnaround := 0
+var _s_here := -1
+var _s_entered: Array[int] = []
+var _s_late := 0
+var _s_floor_m := 0.0
+var _s_min_lead_m := 1e30
+var _s_min_lead_f := 1 << 30
+var _s_ready_frame := {}
 
 
 ## THE PLAYABLE BUILD, PHOTOGRAPHED THROUGH THE PLAYER'S OWN EYE.
@@ -645,6 +907,12 @@ func _physics_process(delta: float) -> void:
 	# mid-stride in it is the whole point of the exercise.
 	if _people != null:
 		_people.advance_crowd(delta)
+	# THE STREAMING GATE runs its own frame: residency has to be updated from the
+	# body's position every physics step, not from a timer, because the claim
+	# being tested is about where the body IS when a cell arrives.
+	if _streaming:
+		_stream_frame(delta)
+		return
 	# The shot phase: settle the body on the floor, then take the picture from
 	# where it ended up. No wish vector -- a photograph is of somebody standing.
 	if _shooting:
