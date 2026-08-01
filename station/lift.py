@@ -815,13 +815,20 @@ def lift_car(schema, profile, sector=None, ring_index=None, decks=None,
     else:
         back_map = (lambda x, y, z: (x, z, -y))     # +y -> -z, +z -> up
         back_x = -(hw - ret)
-    K._merge(verts, tris, *K.handrail(2.0 * (hw - ret)), back_map,
-             (back_x, 0.0, -ls * (hd - 0.03)))
-    for sx, smap in ((-1.0, lambda x, y, z: (y, z, x)),
-                     (1.0, lambda x, y, z: (-y, z, -x))):
-        rv, rt = K.handrail(2.0 * (hd - ret))
-        K._merge(verts, tris, rv, rt, smap,
-                 (sx * (hw - 0.03), 0.0, sx * (hd - ret)))
+    # TAGGED, AND IT WAS NOT. Three `handrail` merges with no `tag()` block put
+    # **144 of the car's 812 triangles** -- 17.7% of the surface a rider stands
+    # inside -- on no material at all, so they exported with the glTF fallback.
+    # That is session 3x's `door_assembly` defect through a third door, and 4f's
+    # lesson underneath it: a group nobody names is a group no scan over source
+    # can see. `handrail` is a bound name in `materials.py`; using it is free.
+    with K.tag('handrail'):
+        K._merge(verts, tris, *K.handrail(2.0 * (hw - ret)), back_map,
+                 (back_x, 0.0, -ls * (hd - 0.03)))
+        for sx, smap in ((-1.0, lambda x, y, z: (y, z, x)),
+                         (1.0, lambda x, y, z: (-y, z, -x))):
+            rv, rt = K.handrail(2.0 * (hd - ret))
+            K._merge(verts, tris, rv, rt, smap,
+                     (sx * (hw - 0.03), 0.0, sx * (hd - ret)))
 
     # Ceiling light. `light_downlight` is a bound material; a new name would
     # take the glTF fallback and no scan over source would see it (session 4f).
@@ -1246,17 +1253,23 @@ def _selftest():
     check("everything this module builds is manifold",
           len(nl_nm) == 0,
           f"{len(nl_nm)} non-manifold edges with the kit's leaves omitted")
-    check("and the residue with leaves is exactly the kit's own shut-leaf "
-          "defect, four edges a door",
-          len(nonman) == len(g["landings"]) * len(leaf_nm)
-          and len(leaf_nm) == 4,
+    # WRITTEN TO DETECT A DEFECT, NOW CERTIFYING ITS ABSENCE. This check used
+    # to assert `len(leaf_nm) == 4` -- the four non-manifold edges every SHUT
+    # door on the station carried, because `interior_kit.door_leaf`'s two
+    # leaves met on an exactly coincident face. It was 3x's `portal_frame`
+    # defect surviving in the one piece 3x did not touch. The kit was fixed in
+    # 4g and this fired, correctly, for being TRUE -- an inverted change
+    # detector doing its job. Flipped to the state that is right, so it now
+    # fails if the defect ever comes back.
+    check("the kit's shut leaves are manifold, and the shaft inherits that",
+          len(leaf_nm) == 0 and len(nonman) == 0,
           f"shaft {len(nonman)}, {len(g['landings'])} doors x "
           f"{len(leaf_nm)} from interior_kit.door_leaf(0.0)")
     # ... and the control that identifies the cause: crack the leaves open and
     # the coincident face is gone. A finding without a control is a guess.
     _ao, ajar_nm = it.boundary_edges(*K.door_leaf(open_fraction=0.25))
-    check("and it is the SHUT leaves that do it -- ajar, the defect is gone",
-          len(ajar_nm) == 0 and len(leaf_nm) > 0,
+    check("and a leaf is manifold shut or ajar -- the case that used to differ",
+          len(ajar_nm) == 0 and len(leaf_nm) == 0,
           f"door_leaf(0.0) {len(leaf_nm)}, door_leaf(0.25) {len(ajar_nm)}")
 
     # The car, closed on the same test.
@@ -1721,10 +1734,10 @@ def _selftest():
     v2, t2, _m2 = lift_shaft(schema, profile, "blue", 0,
                              tuple(range(len(two))), 140.0, z2, g=g2)
     o2, n2 = it.boundary_edges(v2, t2)
-    check("the two-ring shaft is closed",
-          not o2 and len(n2) == 4 * len(g2["landings"]),
-          f"{len(o2)} open, {len(n2)} non-manifold against "
-          f"{4 * len(g2['landings'])} shut leaves")
+    check("the two-ring shaft is closed and manifold",
+          not o2 and not n2,
+          f"{len(o2)} open, {len(n2)} non-manifold over "
+          f"{len(g2['landings'])} landings")
     check("and nothing stands in its car's 63 m path",
           swept_intruders(g2, v2) == 0,
           f"{swept_intruders(g2, v2)} vertices")
