@@ -1,51 +1,143 @@
-# SHIP PLAN — one slice, played end to end
+# THE CONNECTED STATION — the plan that replaces every plan in this repository
 
-**Written session 4g, on the owner's instruction to override every plan in this repository, audit
-them, and replace them.** This document supersedes the eight-layer plan in `CLAUDE.md`, the W-track
-in `CLAUDE.md`, and `docs/MASTER-PLAN.md` §3's M0–M11 as the **ordering rule**. Those documents
-remain as vocabulary and as the post-ship backlog. They are no longer what decides what to work on.
+**Session 4g. Written on the owner's instruction to override every plan here, audit them, and
+replace them — then corrected by the owner's second instruction, which was right and which this
+document now takes as its objective:**
+
+> *"a 1:1 babylon 5 station, not the intro to a game that takes place all in one hallway … I feel
+> like we should have made the entire goddamn ship walkable by now with every deck and everything
+> already built and I just don't understand why I can't walk the whole ship yet."*
+
+The first draft of this document scoped down to a twenty-minute slice. That was wrong for this
+project and it is struck. **The objective is the whole ship, walkable.** What follows is why it
+isn't, what it costs from here, and the order.
 
 ---
 
-## PART 1 — THE AUDIT
+## PART 1 — THE NUMBER THAT SHOULD HAVE BEEN THE HEADLINE ALL ALONG
 
-### 1.0 The one fact that decides everything
+    128 locations  ->  96 foot-connected components
+       74 components hold exactly ONE location
+       the largest walkable piece of Babylon 5 holds SIX
 
-    godot/project.godot:  run/main_scene = "res://scenes/exterior.tscn"
-    exterior.tscn ext_resources:  render_shot.gd  +  9 materials  +  1 shader
+That is the honest replacement for *"128 of 128 locations"*. Both are computed from the same data.
+One of them is what a player experiences.
 
-`render_shot.gd` is a screenshot tool. **Every game script in the project — `walk.gd`,
-`player.gd`, `hud.gd`, `dialogue.gd`, `npc.gd`, `interact.gd`, `door.gd`, `life.gd`, `ambience.gd`,
-`arrival.gd`, `starfury.gd`, 7,534 lines — is unreachable from the scene the project ships.**
-There is no build to hand anybody. Everything playable is launched by a developer typing a
-`--glb=` path.
+**A component is a set of places you can walk between.** Today a component is exactly one
+z-cluster — one 40 m slice of one deck of one ring of one sector — because nothing joins two of
+them. 251 decks exist. 96 islands.
 
-Not one of the four plan documents mentions this. That is the measure of how far the plans have
-drifted from the thing being built.
+### Why. Four mechanical reasons, in order of cost.
 
-### 1.1 There are four live plans and they contradict each other
+**1. Every corridor on this station was a run at FIXED z.** `interior.ring_arc` sweeps a corridor
+around the axis at one z and that is the only corridor generator this project had. A deck spans
+1,120 m of axis — `blue/0/0` carries six clusters over that span — and its ring serves one 40 m
+slice. **`interior.axial_run`, the first corridor that runs along the ship, was written this
+session.** Until today there was no geometry in the project capable of connecting two clusters, and
+`build_deck_clusters` said so in as many words.
 
-| | plan | status |
+**2. There is no lift, stair or shaft anywhere in the project.** Not one. Meanwhile:
+
+* `station/transit.py` computes how long a lift ride takes;
+* `station/npc/navigation.py` derives the lift ride, the axial ride and the dwell for pathfinding;
+* `station/core_tube.py` and `station/tram.py` build a transit tube and a tram car **with no motion
+  in them at all**.
+
+**The simulation has lift rides and the station has no lift you can walk into.** A ring is a dozen
+decks stacked in radius; there is no way between two of them.
+
+**3. `walk.gd` loads one `.glb` whole, and nothing ever asked it to load two.** No streaming, no
+cell residency, no hand-off.
+
+**4. No gate could ever fail for any of the above.** `directory.py` counts places. `deck.py
+--sweep` counts places-on-clusters. `walkable.py` walks *within* one build. **There is no object in
+this codebase that represents "you can get from here to there."** Every plan document in `docs/`
+has a table of places; not one has a table of connections. The gazetteer is a list of
+*destinations*, the plans were organised around it, and the *routes* were never anybody's job.
+
+### The reframe that makes this tractable
+
+**"Walk the whole ship" is not "furnish 73,635 bays." It is "the circulation network is complete
+and streamed."**
+
+A station is mostly corridor. Corridors are procedural and this project generates them well and
+cheaply — 400 tri/m, a collision shell at 0.56–1.5% of that. The expensive content is the *rooms*,
+and rooms are behind doors. **You can walk the whole ship the moment the corridors join and the
+doors lead somewhere**, with the 128 built locations opening off them and the rest opening onto
+generic bays. Furnishing continues behind that, forever, along the routes people actually walk.
+
+This is why the 0.17%-of-footprint number, while true, is not the blocker it looks like. It is a
+statement about *interiors*. Connectivity is a statement about *corridors*.
+
+---
+
+## PART 2 — THE OBJECTIVE, AND THE ONE NUMBER IT IS MEASURED BY
+
+> **One continuous walkable station. Any point to any other point, on foot, without a loading
+> screen.**
+
+    FOOT-CONNECTED COMPONENTS:  96  ->  1
+
+That is the gate. It is cheap to compute, it cannot be gamed by coverage, it fails today, and it
+reaches 1 only when the ship is genuinely one place. **It replaces `deck.py --sweep`'s 128/128 as
+this project's headline number**, and `--sweep` stays as a report.
+
+### The R-track. Each milestone is a drop in that number.
+
+| R | Milestone | Done when | Components |
+|---|---|---|---|
+| **R0** | **The number exists** | `station/routes.py` builds the station's circulation graph and reports components; it runs in CI and it is red | **96**, baseline |
+| **R1** | **A deck is one place** | every z-cluster of a deck joined by an axial spine. The generator landed this session; this is rolling it over all 251 decks | ~96 → ~70 |
+| **R2** | **A ring is one place** | decks within a ring joined vertically. **This needs a generator that does not exist: a lift shaft, its car, its landing doors, and its collision** | ~70 → ~30 |
+| **R3** | **A sector is one place** | rings joined radially through the spokes. `interior.spoke` already builds the structure and `spoke_portal` already cuts an opening for the tram — a walkable passage goes in the same gauge | ~30 → 5 |
+| **R4** | **The station is one place** | sectors joined along the axis; the drum reached through its spoke transit | 5 → **1** |
+| **R5** | **And you can actually walk it** | streaming: cells load and free by player position, `walk.gd` holds more than one file, no loading screen | **1, continuously** |
+| **R6** | **At frame rate** | LOD and occlusion so a streamed world holds 60 fps. Occlusion is half built (`occluders.py`); LOD exists for the crowd and not for structure | 1, at 60 |
+
+**R5 and R6 are not "after" — they run alongside from R2 onward**, because a station that is one
+component and cannot be loaded is the same lie in a different denominator.
+
+### What each R actually costs, honestly
+
+| R | Work | Exists already | Estimate |
+|---|---|---|---|
+| R0 | the graph + the gate | nothing — but it is a graph over `directory.PLACES`, not geometry | **2 hours** |
+| R1 | batch the axial spine over 251 decks; handle decks whose cluster arcs do not overlap | `interior.axial_run`, `collision.axial_shell`, `build_deck_clusters(join=True)` — all landed today | **half a day** |
+| R2 | lift shaft + car + landing doors + collision + the deck apertures | nothing. `DECK_PITCH_M` sets the rise; `transit.py` already owns the ride time | **a day** |
+| R3 | walkable passage inside the spokes | `interior.spoke`, `spoke_portal`, `GUIDEWAY_GAUGE_*` | **half a day** |
+| R4 | axial trunks across sector boundaries | same generator as R1 | **2 hours** |
+| R5 | cell residency in GDScript; export every cell | `walk.gd` already loads a glb at runtime; `navigation` already has a cell notion | **a day**, plus hours of machine time |
+| R6 | finish `occluders.py`; structure LOD | occluders red at 6/7 with the diagnosis written; crowd LOD ships | **a day** |
+
+**That is four to five days of focused work, not two.** Saying so is the point of an estimate. The
+ordering below is arranged so that whatever lands is the most valuable subset, and so that the
+component count drops every single day.
+
+---
+
+## PART 3 — WHAT IS *NOT* DROPPED, AND HOW IT RUNS ALONGSIDE
+
+The first draft of this plan cut the station down to one slice. That was the wrong instinct and the
+owner overruled it. The 1:1 station **is** the project. But the ordering rule changes:
+
+> **A room nobody can walk to is a screenshot. Connect first; furnish along the route.**
+
+So the craft, materials, props, NPC and audio work all continue — **ordered by the routes**, not by
+the gazetteer's index. A location gets its craft pass when it is on a walkable route, in the order
+a player would meet it. That is the same instinct as the show's own ranked list and it replaces
+"iterate the 128 in order".
+
+**The three tracks, running together:**
+
+| track | what it is | ordering rule |
 |---|---|---|
-| 1 | `CLAUDE.md` — layers 0–8, "one layer across all 118 before the next begins" | **demoted twice** (session 3u's W-track, session 4d's owner ruling) and still ~40% of `CLAUDE.md`, still reported on, still attracting work |
-| 2 | `CLAUDE.md` — the W-track, W1–W6 | **W6 marked "THE WHOLE STATION"** on a coverage count that means 90 disconnected 40 m slices. Falsely green |
-| 3 | `MASTER-PLAN` §3 — three tracks, M0–M11 | ordering **contradicts** plan 1, and `CLAUDE.md` records the contradiction as *"OPEN DECISION — the owner has not ruled"*. Never ruled. Both were followed at different times |
-| 4 | `MASTER-PLAN` §0.5 — the two-day scope, five items | items **3 (environment & post) and 4 (NPC silhouette) not done**; and everything it explicitly excluded — arrival, dialogue, NPC schedules, Starfury, audio — **was built instead** |
+| **R — routes** | the circulation network, streamed, at frame rate | the component count, 96 → 1 |
+| **C — craft** | materials, lighting, props, density, judged frames | **along the routes**, authority-1 first |
+| **L — life** | the clock, crowds, dialogue, interaction, audio, the player | **whatever the player meets on the routes** |
 
-A plan that is contradicted by the work done under it is not steering. It is commentary written
-after the fact.
+### And the L-track has a debt to pay off first, which is nearly free
 
-### 1.2 Eight defects, each with its measurement
-
-**D1 — Every plan is a list of SUBSYSTEMS. None is a list of PLAYER MINUTES.**
-Layers 0–8, W1–W6, M0–M11, the five-item two-day scope: all of them say *build X*. Not one says
-*the player does A, then B, then C, for N minutes*. This is the root cause of D2 and D3 — nothing
-in any plan ever required a path from a launch to a thing.
-
-**D2 — There is no entry point.** §1.0. Two days from a deadline, the project cannot be started.
-
-**D3 — "Done" has never meant "connected."** 2,630 of 8,113 GDScript lines have zero inbound
-references from anywhere:
+**2,630 lines of finished, tested GDScript are unreachable from anything.**
 
 | script | lines | what it is | referenced by |
 |---|---|---|---|
@@ -53,160 +145,81 @@ references from anywhere:
 | `ambience.gd` | 437 | all of layer 7's audio, 13 loop-exact WAVs, `audio.py` 100/100 | nothing |
 | `starfury.gd` | 1,276 | the flyable Starfury | its own scene, which nothing references |
 
-This is the **third** recurrence of a failure this repository has already written up twice —
-`station/npc/`'s twelve modules with zero importers, and `npc/animation.py` with no importer. It
-keeps happening because **every gate in the project is a module self-test, and a module self-test
-passes whether or not anything calls it.**
+And `project.godot` ships `main_scene = exterior.tscn`, a scene whose only script is
+`render_shot.gd` — **a screenshot tool. Every game script in the project, 7,534 lines, is
+unreachable from the scene it ships.** There is no build to hand anybody; everything playable is
+launched by a developer typing a `--glb=` path.
 
-**D4 — Coverage counts are the project's currency and every one is denominated wrong.**
+This is the **third** recurrence of a failure already written up twice in this repository
+(`station/npc/`'s twelve modules with zero importers; `npc/animation.py` with no importer). It
+survives because **every gate here is a module self-test, and a module self-test passes whether or
+not anything calls it.**
 
-| the number reported | what it actually means |
-|---|---|
-| 128 of 128 locations | 90 disconnected 40 m z-clusters; no build contains two of them |
-| layer 2b: 123 / 128 | `--machinery` on the same content reads **74 / 78** |
-| the station is walkable | one 40 m slice at a time, launched by command line |
-| 250,000 residents | **2,028 bodies placed**; 250,000 is a density used to derive crowd counts |
-| the whole station | **0.17%** of its own declared footprint — 73,635 bays wanted, 128 built |
-
-Every one of those is technically true. Not one is the number a player experiences.
-
-**D5 — The scope is arithmetically impossible and no document says so.** One 70-minute agent
-session raised four landmarks from craft 1 to craft 2–3. At that rate the 12 "hero" locations of
-`MASTER-PLAN` §3.4 alone are three sessions, the 30 "featured" are eight more, and 128 locations is
-not a number that closes. The tiering in §3.4 is the only honest attempt at this arithmetic in the
-repository and it still assumes all 126 get finished.
-
-**D6 — Performance is planned LAST and is already failing.** `budget.py` is red at 2.05× its
-structure allowance. The three remedies — occlusion culling, LOD, streaming — appear in **no
-milestone of any plan**. M11 says *"performance measured on target hardware"* and it is the last
-milestone. The plan discovers it cannot run on the final day.
-
-**D7 — There is more prose about this project than there is game.** 100,349 lines of Python,
-18,557 lines of markdown in `docs/` and `canon/`, **8,113 lines of GDScript**. The documentation is
-2.3× the game code. The plan documents have themselves become a workload.
-
-**D8 — Nothing anywhere defines what the player DOES.** `MASTER-PLAN` §4.11 is titled
-*"The thing nobody plans for: what does the player DO?"* — a section that names the gap instead of
-closing it, and has been in the document unanswered ever since.
-
-### 1.3 What the audit does NOT say
-
-The work is not bad and most of it is not wasted. The generators, the canon discipline, the
-measured-not-authored rule, the negative controls, the material library, the audio derivation, the
-NPC wardrobe — all of it is real and much of it is excellent. **The defect is entirely in the
-ordering.** A very large amount of high-quality machinery has been built behind a door that was
-never opened.
+Wiring these is hours, not days, and it turns the station's clock, its crowds and its sound on.
 
 ---
 
-## PART 2 — THE NEW COURSE
+## PART 4 — THE ORDER OF WORK
 
-### 2.1 The deliverable, and it is the only one
+Arranged so the component count falls every day and nothing already built stays dark.
 
-> **"First Night on Babylon 5" — one continuous playable slice, about twenty minutes, launched
-> from a title screen with no command line.**
+**Day 1 — make the failure visible, then halve it.**
+* **R0** `station/routes.py`: the circulation graph, the component count, in CI, red at 96.
+* **R1** roll the axial spine over every multi-cluster deck.
+* **L-debt** wire `life.gd` (recast from `SceneTree` to a runtime node) and `ambience.gd`; give the
+  project a `main_scene` that is a game and not a screenshot tool. A few hours, and the station
+  gains a clock, a moving crowd and sound.
 
-Chosen for one reason: **every beat of it already exists as a module.** The work is joining, not
-building. It is the smallest number of moves that converts this repository from the owner's own
-verdict — *"a world generator and not yet a game"* — into a game.
+**Day 2 — the missing generator.**
+* **R2** the lift: shaft, car, landing doors, collision, deck apertures. This is the single largest
+  hole in the station and the one nothing else can route around. A ring becomes one place.
 
-### 2.2 The slice, beat by beat
+**Day 3 — close the graph.**
+* **R3** walkable spoke passages; **R4** axial trunks across sectors and the drum's spoke transit.
+* **Components reach 1.** At the end of this day the answer to *"can I walk the whole ship"* is yes
+  in geometry, and no in the engine, and the gate says which.
 
-| # | Beat | What already exists | What is missing |
+**Day 4 — make the engine able to hold it.**
+* **R5** streaming: cell residency in `walk.gd`, export every cell.
+* **R6** finish `occluders.py`, structure LOD.
+* This is where *"walk the whole ship"* becomes literally true.
+
+**Continuously, alongside, never blocking the above:**
+* **C-track** craft passes along the routes, authority-1 first.
+* **L-track** dialogue, interaction and NPC behaviour on what the routes pass through.
+
+---
+
+## PART 5 — THE GATES
+
+Four new gates. Every one **fails today**, which is the test of whether a gate is real.
+
+| | gate | asserts | fails today |
 |---|---|---|---|
-| **1** | Title → New Game | nothing | a main scene, ~60 lines |
-| **2** | Arrival: the transport approaches, docks, you are processed at customs | `arrival.gd` 592 lines, `arrival.tscn`, `customs.py` 51/51, craft 3 | reachable from beat 1 |
-| **3** | Walk the concourse into the Zocalo | `walk.gd` 832, `player.gd`, `interior.axial_run` + `collision.axial_shell` (4g), Zocalo at craft 3 | one continuous mesh along the path |
-| **4** | The station is alive: clock runs, crowds move on their schedules | `life.gd` 917 lines, `populace`, `schedule` | **wire it** — it is a headless tool today |
-| **5** | You can hear it | `ambience.gd` 437, 13 WAVs, `audio.py` 100/100, seven derived layers | **wire it** — zero references today |
-| **6** | Someone talks back | `dialogue.gd` 912, already wired to `walk.gd` | dialogue content for the slice's cast |
-| **7** | Use something that responds | `interact.gd` 574, **357/357** interactables resolve, 5 verbs respond | nothing |
-| **8** | Your quarters — a door with your name on it | `rooms.py` quarters, `populace` residents with homes | a residence assignment for the player |
-| **S** | *Stretch:* fly out of the bay you arrived in | `starfury.gd` 1,276 | a hand-off from walking to flight |
+| **G1 CONNECTED** | `routes.py` | the station's circulation graph; components must reach 1 | **96 components, 74 of them singletons** |
+| **G2 ROUTE WALKED** | `walkable.py --route A B` | a body walks from A to B, metres covered, frames off-floor, and **fails if it stops** | no route between any two clusters exists to walk |
+| **G3 NOTHING UNREACHABLE** | static reachability over `godot/scripts/*.gd` from `main_scene` | any game script with zero inbound references fails | **11 scripts, 7,534 lines** |
+| **G4 THE FRAME ON A ROUTE** | budget measured at the eye positions a route actually visits, with streaming residency | never measured | — |
 
-Beats 1–8 are the ship target. **S ships only if 1–8 are done and gated.**
+**This deliberately overrides session 4d's "no new gates" ruling, and here is why that ruling was
+right and this still overrides it:** 4d was refusing *coverage* gates — more things counted. These
+four are *integration* gates. They exist precisely because 36 green module self-tests sit on a
+station in 96 pieces that cannot be started.
 
-### 2.3 Four new gates — and why this overrides "no new gates"
+---
 
-Session 4d's ruling was **"keep the existing gates green, do not grow them"**, and it was right,
-because the gates being added then were *coverage* gates — counting things that exist. These four
-are **integration** gates: they measure whether the parts are joined. They exist precisely because
-36 module self-tests are green on a build nobody can start.
+## PART 6 — WHAT THIS SUPERSEDES
 
-Every one of them **fails today**, which is the test of whether a gate is real.
-
-| | gate | asserts | fails today because |
-|---|---|---|---|
-| **G1** | **COLD START** | launch the shipped `main_scene` with no arguments; a player is standing, in-game, with a HUD, inside N seconds | there is no main scene — `exterior.tscn` is a screenshot tool |
-| **G2** | **THE SLICE RUNS** | a scripted headless playthrough executes all eight beats and asserts each one landed | it stops at beat 1 |
-| **G3** | **NOTHING IS UNREACHABLE** | static reachability over `godot/scripts/*.gd` from `main_scene`; any game script with zero inbound references fails the gate | **11 scripts, 7,534 lines** |
-| **G4** | **THE SLICE'S FRAME** | triangles, draw calls and instance counts measured at the eye positions the slice actually visits | never measured; `budget.py` sweeps a synthetic lattice on a deck the slice does not walk |
-
-`budget.py`'s existing sweep stays, as a **report**. G4 is the gate.
-
-### 2.4 The order of work, by risk
-
-**Day 1, first half — the front door, and the resurrection of 1,354 dead lines.**
-G1 and G3. A title scene; New Game; hand off to `arrival.gd`; hand off to `walk.gd`. Wire `life.gd`
-(re-cast from `SceneTree` to a runtime node) and `ambience.gd`. **This is the highest value per hour
-available anywhere in the project**: the station acquires a clock, a crowd that moves, and sound,
-all of it already built and tested, and the project acquires a front door.
-
-**Day 1, second half — G2: the slice runs end to end, headless.**
-Beats 2, 3, 6, 7, 8. Where a beat cannot be made to run, **cut the beat and say which** — do not
-fake it. A twenty-minute slice with six honest beats beats eight beats where two are a cutscene.
-
-**Day 2, first half — the look, which is what the owner actually complained about.**
-This is items 3 and 4 of the two-day scope that were written and never done:
-* **Environment and post**, re-derived on the real renderer. The previous grading was tuned under
-  OpenGL 3 Compatibility, where `adjustment_*`, SSIL, volumetric fog and glow **do not exist**.
-  Every one of those numbers is unvalidated.
-* **The people stop being blobs.** Heads, hands and hair as geometry. Skin, cloth and hair maps are
-  already in; the failure is silhouette.
-
-Scoped to the slice's path only. Nothing else is lit or dressed.
-
-**Day 2, second half — G4, then the build.**
-Occlusion is the lever and it is half built (`station/occluders.py`, red at 6/7, diagnosis in
-`STATE.md` §18.3). **Two hours, hard stop.** If it does not close, cut the draw distance along the
-slice instead and record that that is what was done. Then package, one final playthrough, record it.
-
-### 2.5 What is explicitly OUT, in writing
-
-Naming this is half the plan, because everything below is what has consumed the last ten sessions.
-
-* streaming, and therefore the 8 km walk
-* the ~120 locations the slice does not walk through
-* layers 5–8 as coverage exercises; milestones M4, M6, M7, M9, M10, M11
-* 250,000 NPCs; the economy; law and crime; ISN; the black market; the factions acting
-* the drum, the garden, the alien sector, the Starfury's combat envelope
-* every craft score on a location the slice does not visit
-* `budget.py`'s whole-station red — it stays red, it is honest, and G4 replaces it as the gate
-
-### 2.6 What will be true at the deadline — stated now so it cannot be spun later
-
-* **A single build, launched from a title screen**, in which a player arrives on Babylon 5, is
-  processed through customs, walks a corridor into the Zocalo, hears the station around them, talks
-  to someone who answers, uses something that responds, and finds the door to their own quarters.
-  About twenty minutes.
-* **It will be one sector and one deck.** Not 8 km. Not 128 locations.
-* **Craft will be 3 on the Zocalo and 2–3 along the path.** The rest of the station will be exactly
-  as it is now.
-* **The frame will be inside budget along the slice's path only**, measured by G4, and the
-  whole-station number will still be red.
-
-That is a demo, not a game, and it is the largest true thing available in the time. Everything else
-in this repository is groundwork for the version after it.
-
-### 2.7 The five permanent changes to how this project plans
-
-1. **The eight-layer plan is struck as an ordering rule.** Its layer *definitions* survive as
-   vocabulary for describing one location's state. The table of counts does not.
-2. **The W-track is closed, and W6 is marked FALSE.** "Roll W3–W5 outward across the 128" was
-   satisfied by a coverage count and is not true.
-3. **`MASTER-PLAN` M0–M11 becomes the post-ship backlog.** It is a good document about the eventual
-   game. It is not a two-day plan and pretending otherwise is what produced four contradictory plans.
-4. **A plan item is a player minute, not a subsystem.** Anything phrased *"build X"* is rewritten as
-   *"the player does Y"* or it does not go in the plan.
-5. **A module is not done until something reachable from `main_scene` calls it.** G3 enforces this,
-   and it is the single rule that would have prevented D3 all three times it has now happened.
+1. **The eight-layer plan is struck as an ordering rule.** Demoted twice already and still steering
+   work. Its layer *definitions* survive as vocabulary for describing one location's state; the
+   table of counts does not.
+2. **The W-track is closed and W6 is marked FALSE.** *"Roll W3–W5 outward across the 128"* was
+   satisfied by a coverage count over a station in 96 pieces.
+3. **`MASTER-PLAN` M0–M11 becomes the post-connection backlog.** It is a good document about the
+   eventual game and it is not an ordering rule.
+4. **`SHIP-PLAN`'s own first draft — the twenty-minute slice — is struck.** The slice is a useful
+   *proof* of R5 and it is not the product.
+5. **A plan item is a player minute or a route, never a subsystem.** *"Build X"* gets rewritten as
+   *"the player can get from A to B"* or *"the player does Y"*, or it is not in the plan.
+6. **A module is not done until something reachable from `main_scene` calls it.** G3 enforces it —
+   the one rule that would have prevented the 2,630 dead lines all three times it has happened.
