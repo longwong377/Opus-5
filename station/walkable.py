@@ -84,6 +84,18 @@ MAX_DECK_DROP_M = 0.30
 # so a few degrees of lag is a person still turning, not a person facing wrong.
 FACING_TOL_DEG = 25.0
 
+# WHERE A PERSON STARTS. Blue Sector ring 0 deck 0 is the cluster milestone W5
+# closes on -- `--deck blue/0/0 --use` is the run that reports a body spawning
+# in the corridor, walking into the docking bays, seven of the room looking up,
+# and a bay door opened by pressing a key. It is the densest thing on the
+# station that has all four, so it is what a person is handed first.
+DEFAULT_PLAY_DECK = "blue/0/0"
+# The playable build's manifest, read by `walk.gd` when nothing is passed on the
+# command line. It lives under `godot/` so `res://play.json` reaches it: Godot
+# will not resolve a path that escapes the project directory, and the point of
+# the file is that pressing Play with no arguments works.
+PLAY_MANIFEST = os.path.join(ROOT, "godot", "play.json")
+
 
 def godot_binary():
     for cand in (
@@ -276,9 +288,53 @@ def pick_interactable(rows, target, place=None, responds=True):
     return best
 
 
+def engine_args(out, stem, crowd, gravity="drum", spawn=None):
+    """The command line that makes the engine BE this piece of the station.
+
+    ONE LIST, SHARED BY THE TEST AND BY A PERSON PLAYING IT. The headless gate
+    and `tools/play.sh` launch the same scene with the same mesh, the same
+    collision shell, the same cast, the same crowd ladder and the same
+    interactables -- because a build a player walks in that is assembled
+    differently from the build the gate measures is a build the gate does not
+    measure. This is hard rule 4 applied to a command line: one description of
+    the thing, not two.
+
+    What is NOT here is everything test-only -- `--walk-test`, `--goto`,
+    `--traverse`, `--no-doors`. A player is not steered at a target and does not
+    stop after 1,800 frames.
+    """
+    a = [f"--glb={os.path.join(out, stem + '.glb')}",
+         f"--collision={os.path.join(out, stem + '_col.glb')}",
+         f"--gravity-mode={gravity}"]
+    if spawn is not None:
+        a.append("--spawn={:.6f},{:.6f},{:.6f}".format(*spawn))
+    if crowd:
+        import populace as _pop                                   # noqa: PLC0415
+        lad = _pop.crowd_ladder()
+        a += [f"--crowd={os.path.join(out, stem + '_crowd.json')}",
+              # The whole ladder, as `max_m:lod` pairs and one glb each, so
+              # the runtime knows both which mesh to use at which distance
+              # and where to find it.
+              "--crowd-ladder=" + ",".join(f"{hi:g}:{lod}" for hi, lod in lad),
+              "--crowd-glbs=" + ",".join(
+                  os.path.join(out, f"crowd_lod{lod}.glb")
+                  for _hi, lod in lad)]
+    # THE SIDECARS THAT WERE ACTUALLY WRITTEN. The drum has no cast list and no
+    # interactables -- it is a heightfield, not a room -- and naming a file that
+    # is not there makes the engine complain about a thing nobody asked for.
+    for flag, suffix in (("actors", "_actors.json"),
+                         ("interact", "_interact.json")):
+        p = os.path.join(out, stem + suffix)
+        if os.path.exists(p):
+            a.append(f"--{flag}={p}")
+    a.append(f"--door-travel={K.PROVISIONAL['door_width_m'] / 2.0}")
+    return a
+
+
 def walk_deck(sector, ring, deck, godot, timeout=1800, traverse=None,
               goto_key=None, no_doors=False, z_m=None, bump=False,
-              no_npc_collision=False, use=False, strip=None):
+              no_npc_collision=False, use=False, strip=None,
+              build_only=False):
     """Assemble a deck, put a body on it, and walk it.
 
     The render mesh and the collision shell are exported separately and BOTH are
@@ -294,7 +350,7 @@ def walk_deck(sector, ring, deck, godot, timeout=1800, traverse=None,
     if (sector, ring) in D.NOT_RING_DECKS:
         import drum_walk as DW                                  # noqa: PLC0415
         return DW.walk(key=goto_key or "the_garden", traverse=traverse,
-                       timeout=timeout, godot=godot)
+                       timeout=timeout, godot=godot, build_only=build_only)
 
     schema, profile = it.load()
     out = os.path.join(ROOT, "station/generated/scene/deck")
@@ -384,12 +440,24 @@ def walk_deck(sector, ring, deck, godot, timeout=1800, traverse=None,
          os.path.join(out, f"{stem}_col.glb"))
 
     sx, sy, sz = s["spawn"]
+    # -- STOP HERE IF SOMEBODY IS GOING TO PLAY IT ------------------------
+    # `tools/play.sh` needs the deck built and the arguments that describe it;
+    # it does not need a walk test run first. Returning the manifest rather
+    # than writing a second assembler is the point: there is exactly one piece
+    # of code that knows how a deck becomes something you can stand in, and
+    # both the gate and the human launch go through it.
+    if build_only:
+        return {"stem": stem, "out": out, "spawn": [sx, sy, sz],
+                "rooms": s["rooms"], "spawn_at": s["spawn_at"],
+                "render_tris": len(t), "collision_tris": len(ct),
+                "arc_deg": cm["arc_deg"], "actors": len(s.get("actors", ())),
+                "crowd": len(crowd), "interact_rows": len(rows),
+                "args": engine_args(out, stem, crowd, spawn=(sx, sy, sz))}
     cmd = [godot, "--headless", "--path", os.path.join(ROOT, "godot"),
-           "res://scenes/walk.tscn", "--",
-           f"--glb={os.path.join(out, stem + '.glb')}",
-           f"--collision={os.path.join(out, stem + '_col.glb')}",
-           f"--spawn={sx},{sy},{sz}", "--gravity-mode=drum", "--walk-test",
-           f"--traverse={traverse if traverse is not None else TRAVERSE_FRAMES}"]
+           "res://scenes/walk.tscn", "--"]
+    cmd += engine_args(out, stem, crowd, spawn=(sx, sy, sz))
+    cmd += ["--walk-test",
+            f"--traverse={traverse if traverse is not None else TRAVERSE_FRAMES}"]
     # Walking INTO a named place is the claim W2 actually makes, and it is a
     # strictly harder question than "did the body move": it fails when the route
     # is blocked, not only when the body is wedged. The body steers straight at
@@ -422,22 +490,7 @@ def walk_deck(sector, ring, deck, godot, timeout=1800, traverse=None,
             bumped = min(cand, key=lambda a: (a["x"] - px) ** 2
                          + (a["y"] - py) ** 2 + (a["z"] - pz) ** 2)
             tx, ty, tz = bumped["x"], bumped["y"], bumped["z"]
-    if crowd:
-        import populace as _pop2                                # noqa: PLC0415
-        _lad = _pop2.crowd_ladder()
-        cmd += [f"--crowd={os.path.join(out, stem + '_crowd.json')}",
-                # The whole ladder, as `max_m:lod` pairs and one glb each, so
-                # the runtime knows both which mesh to use at which distance
-                # and where to find it.
-                "--crowd-ladder=" + ",".join(
-                    f"{hi:g}:{lod}" for hi, lod in _lad),
-                "--crowd-glbs=" + ",".join(
-                    os.path.join(out, f"crowd_lod{lod}.glb")
-                    for _hi, lod in _lad)]
-    cmd += [f"--actors={os.path.join(out, stem + '_actors.json')}",
-            f"--interact={os.path.join(out, stem + '_interact.json')}",
-            f"--goto={tx},{ty},{tz}", f"--door-key={goto}",
-            f"--door-travel={K.PROVISIONAL['door_width_m'] / 2.0}"]
+    cmd += [f"--goto={tx},{ty},{tz}", f"--door-key={goto}"]
     if chosen is not None:
         cmd += [f"--use-group={chosen['group']}"]
     if no_doors:
@@ -729,7 +782,33 @@ def main():
                     help="walk up to a declared interactable, be prompted, and "
                          "use it. The control strips that object out of the "
                          "render mesh and walks the identical route again")
+    ap.add_argument("--build-only", action="store_true",
+                    help="assemble the deck and write godot/play.json, then "
+                         "stop. This is what tools/play.sh runs before handing "
+                         "the station to a person instead of to a test")
     a = ap.parse_args()
+
+    # -- BUILD IT FOR SOMEBODY TO PLAY, and do not run a test -----------------
+    # No Godot binary is needed to assemble a deck, and requiring one here would
+    # mean the content pipeline could not run without the engine.
+    if a.build_only:
+        sector, ring, deck = (a.deck or DEFAULT_PLAY_DECK).split("/")
+        man = walk_deck(sector, int(ring), int(deck), None, z_m=a.z,
+                        goto_key=(a.keys.split(",")[0] if a.keys else None),
+                        build_only=True)
+        man["deck"] = f"{sector}/{ring}/{deck}"
+        with open(PLAY_MANIFEST, "w") as f:
+            json.dump(man, f, indent=1)
+        if a.json:
+            print(json.dumps(man))
+        else:
+            print(f"built {man['deck']}: {man['render_tris']:,} render "
+                  f"triangles, {man['collision_tris']:,} collision, "
+                  f"{man['rooms']} room(s), {man['actors']} actors, "
+                  f"{man['crowd']} in the crowd, {man['interact_rows']} "
+                  f"interactables. Spawn {man['spawn_at']}.")
+            print(f"  manifest {PLAY_MANIFEST}")
+        return 0
 
     godot = godot_binary()
     if godot is None:

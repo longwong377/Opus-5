@@ -72,8 +72,22 @@ var _player: CharacterBody3D
 var _static: StaticBody3D
 
 
+## The manifest `station/walkable.py --build-only` writes. Under `godot/` rather
+## than beside the meshes because Godot will not resolve a `res://` path that
+## escapes the project directory, and the whole point of the file is that
+## pressing Play with nothing on the command line works.
+const PLAY_MANIFEST := "res://play.json"
+
+
 func _ready() -> void:
 	var args := _args()
+	# A PERSON LAUNCHED THIS. Until session 4d the only way into the walkable
+	# build was the headless gate's command line -- `run/main_scene` pointed at
+	# the exterior screenshot scene, and `godot --path godot` with no arguments
+	# loaded "" and quit. The station was walkable and not playable, and the
+	# difference was entirely this.
+	if not args.has("glb"):
+		args = _play_manifest(args)
 	if args.has("glb"):
 		glb_path = args["glb"]
 	if args.has("collision"):
@@ -126,11 +140,17 @@ func _ready() -> void:
 		_run_walk_test(args)
 	elif args.has("shot"):
 		_run_shot(args)
+	else:
+		_run_play()
 
 
 func _args() -> Dictionary:
+	return _flags(OS.get_cmdline_user_args())
+
+
+func _flags(list) -> Dictionary:
 	var out := {}
-	for a in OS.get_cmdline_user_args():
+	for a in list:
 		var s := String(a)
 		if s.begins_with("--"):
 			var body := s.substr(2)
@@ -139,6 +159,40 @@ func _args() -> Dictionary:
 				out[body.substr(0, eq)] = body.substr(eq + 1)
 			else:
 				out[body] = "1"
+	return out
+
+
+## Read the playable build's manifest and turn it into the same flags the gate
+## passes on the command line.
+##
+## NOT A SECOND DESCRIPTION OF THE DECK. The file's `args` array IS the list
+## `walkable.engine_args` hands the headless run, written out verbatim -- so a
+## person and the gate load the same mesh, the same collision shell, the same
+## cast, the same crowd ladder and the same interactables, and there is no way
+## for one to drift from the other. Hard rule 4, applied to a command line.
+##
+## Anything actually typed on the command line WINS, so `--no-dress`,
+## `--no-doors` and a hand-picked `--glb` still work as controls.
+func _play_manifest(args: Dictionary) -> Dictionary:
+	if not FileAccess.file_exists(PLAY_MANIFEST):
+		push_error("walk: no %s -- run `python3 station/walkable.py "
+			% PLAY_MANIFEST + "--build-only` or use tools/play.sh")
+		print("walk: NOTHING TO PLAY. There is no %s. Build a deck first:"
+			% PLAY_MANIFEST)
+		print("      tools/play.sh            # blue/0/0, the docking bays")
+		print("      tools/play.sh red/1/0    # somewhere else")
+		return args
+	var man = JSON.parse_string(FileAccess.get_file_as_string(PLAY_MANIFEST))
+	if typeof(man) != TYPE_DICTIONARY or not man.has("args"):
+		push_error("walk: %s is not a manifest" % PLAY_MANIFEST)
+		return args
+	var out := _flags(man["args"])
+	out.merge(args, true)
+	print("walk: PLAYING %s -- %s, %d room(s), %d actors, %d in the crowd, "
+		% [String(man.get("deck", "?")), String(man.get("spawn_at", "?")),
+			int(man.get("rooms", 0)), int(man.get("actors", 0)),
+			int(man.get("crowd", 0))]
+		+ "%d interactables" % int(man.get("interact_rows", 0)))
 	return out
 
 
@@ -183,6 +237,7 @@ func _load_level() -> bool:
 		_wire_doors(scene, col)
 		_wire_people(scene)
 		_wire_interact(scene)
+		_dress_late()
 		return c > 0
 
 	var n := 0
@@ -190,7 +245,29 @@ func _load_level() -> bool:
 		m.create_trimesh_collision()
 		n += 1
 	print("walk: %d mesh instances given trimesh collision" % n)
+	_dress_late()
 	return n > 0
+
+
+## MATERIAL THE THINGS THAT DID NOT EXIST WHEN THE LEVEL WAS DRESSED.
+##
+## The corridor crowd is 134 instances against a shared library loaded AFTER
+## `_dress_level` ran, so it was never offered to the material table at all --
+## and the run said "382/382 meshes MATERIALLED" the whole time, because that
+## was true of the deck. The first frame ever taken from the playable build has
+## a white mannequin a metre from the eye. A summary that is true about the part
+## it measured is exactly how this project has hidden every defect it has had.
+func _dress_late() -> void:
+	if _dress == null:
+		return
+	if _people != null:
+		var m: Dictionary = _dress.bind(_people)
+		if int(m["meshes"]) > 0:
+			var un: PackedStringArray = m["unmatched"]
+			print("dress: crowd %d/%d MATERIALLED, %d on the glTF fallback%s"
+				% [m["bound"], m["meshes"], un.size(),
+					("" if un.is_empty() else ": " + ", ".join(un))])
+	_dress.release()
 
 
 ## Bind the materials and light the fittings -- see `scripts/dress_scene.gd`.
@@ -218,7 +295,11 @@ func _dress_level(scene: Node) -> void:
 		push_error("walk: dress FAILED -- " + ", ".join(_dress.problems))
 		print("dress: FAILED -- %s" % ", ".join(_dress.problems))
 	var m: Dictionary = _dress.bind(scene)
-	_dress.release()
+	# NOT RELEASED HERE. The crowd does not exist yet -- `_wire_people` loads its
+	# libraries and builds its MultiMeshes after this returns -- and releasing
+	# the material library now is what left 134 people on the glTF fallback for
+	# five sessions while this line printed "382/382 MATERIALLED". `_dress_late`
+	# binds them and releases afterwards.
 	var un: PackedStringArray = m["unmatched"]
 	print("dress: %d/%d meshes MATERIALLED, %d group(s) on the glTF fallback%s"
 		% [m["bound"], m["meshes"], un.size(),
@@ -431,6 +512,69 @@ func _spawn_player() -> void:
 ##   walked    -- pushing forward for a second actually moved it
 ##   on_floor  -- it is standing on geometry, not hovering or wedged
 ##   blocked   -- walking into a wall stops it, so the level is solid both ways
+## A PERSON IS PLAYING IT. No target, no traverse count, no verdict -- the body
+## is driven by `player.gd::_physics_process` from the keyboard and the mouse,
+## and it stops when they stop.
+##
+## THE ONE LINE THAT MATTERS HERE IS `set_physics_process(true)`. This node's
+## `_physics_process` advances the corridor crowd, and it is OFF unless
+## something turns it on -- the only two things that ever did were the headless
+## test and the screenshot grab. So the single configuration with a human in it
+## was the one configuration where the 134 people in the corridor stood
+## perfectly still. A crowd that moves for the gate and freezes for the player
+## is the same class of defect as a render path that only runs in CI.
+func _run_play() -> void:
+	_playing = true
+	set_physics_process(true)
+	if not Engine.is_editor_hint():
+		Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
+	print("walk: PLAYABLE. WASD or arrows to walk, mouse to look, "
+		+ "Shift to run, Space to jump, E to use, Esc to free the mouse.")
+
+
+var _playing := false
+## How often the playable build says where it is, in physics frames. Two seconds
+## at 60 Hz -- often enough that `tools/play.sh --verify` gets several samples
+## out of a short run, rare enough that a person playing is not reading a wall.
+const PLAY_REPORT_FRAMES := 120
+
+
+## WHAT THE PLAYABLE BUILD IS DOING, in the terms that can fail.
+##
+## A launch that prints "PLAYABLE" and nothing else proves the scene loaded, not
+## that anybody is standing in it -- the same gap as a coverage count that is
+## not a walk test. This says where the body ended up, whether it is on a floor,
+## how far the crowd has actually travelled, and what the player is being
+## offered. `tools/play.sh --verify` asserts on all four, with no command-line
+## arguments at all, which is exactly what pressing Play does.
+func _play_report() -> void:
+	var p := _player.global_position
+	var crowd := 0
+	var travel := 0.0
+	var yielded := 0
+	if _people != null:
+		crowd = _people.crowd_count()
+		travel = _people.crowd_travel_m()
+		yielded = _people.yielding_count()
+	var prompt := "-"
+	if _interact != null and String(_interact.prompt_text()) != "":
+		prompt = String(_interact.prompt_text()).replace(" ", "_")
+	# `global_position` is the body's origin -- its FEET -- not the eye. The
+	# camera rides 1.7 m above it. Labelling this "eye" would put every reported
+	# position a storey below where the picture was taken from.
+	# SPEED IS PART OF "STANDING". A body that is on a floor and moving at a
+	# metre a second is not standing on it, it is sliding along it, and the
+	# on_floor flag alone cannot tell the two apart -- which is exactly how a
+	# creep of 0.2 m/s went unseen: the walk gate drives the body on purpose, so
+	# every frame it measured was one where moving was correct.
+	var fn := _player.get_floor_normal()
+	print("PLAY frame=%d feet=%.3f,%.3f,%.3f r=%.3f on_floor=%s speed=%.3f "
+		% [_frame, p.x, p.y, p.z, sqrt(p.x * p.x + p.y * p.y),
+			str(_player.is_on_floor()).to_lower(), _player.velocity.length()]
+		+ "fn=%.2f,%.2f,%.2f crowd=%d travel_m=%.0f yielding=%d prompt=%s"
+		% [fn.x, fn.y, fn.z, crowd, travel, yielded, prompt])
+
+
 func _run_walk_test(args: Dictionary) -> void:
 	_t_settle = int(args.get("settle", "150"))
 	_t_walk = int(args.get("steps", "120"))
@@ -565,6 +709,13 @@ func _physics_process(delta: float) -> void:
 	# mid-stride in it is the whole point of the exercise.
 	if _people != null:
 		_people.advance_crowd(delta)
+	# A person is playing. Nothing to drive -- `player.gd` reads the keyboard --
+	# so this is only the heartbeat that says the build is alive and standing.
+	if _playing:
+		_frame += 1
+		if _frame % PLAY_REPORT_FRAMES == 0:
+			_play_report()
+		return
 	# The shot phase: settle the body on the floor, then take the picture from
 	# where it ended up. No wish vector -- a photograph is of somebody standing.
 	if _shooting:

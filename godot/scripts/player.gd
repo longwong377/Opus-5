@@ -95,6 +95,11 @@ func _unhandled_input(event: InputEvent) -> void:
 			-1.4, 1.4)
 	elif event is InputEventKey and event.pressed and event.keycode == KEY_ESCAPE:
 		Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+	# AND A WAY BACK IN. Escape released the mouse and nothing recaptured it, so
+	# the first press ended looking around for the rest of the session.
+	elif (event is InputEventMouseButton and event.pressed
+			and Input.mouse_mode == Input.MOUSE_MODE_VISIBLE):
+		Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
 
 
 ## One step of walking. Split out from `_physics_process` so the headless test in
@@ -171,10 +176,32 @@ func step(delta: float, wish: Vector2, jump: bool, sprint: bool,
 		_cam.transform.basis = Basis(Vector3.RIGHT, -_pitch)
 
 
-func _physics_process(delta: float) -> void:
-	var wish := Vector2(
+## WASD AS WELL AS THE ARROWS, and by PHYSICAL keycode.
+##
+## The built-in `ui_*` actions are the arrow keys and a gamepad stick, which is
+## what this read for three sessions -- correct, and not what anybody reaches
+## for. `is_physical_key_pressed` asks for the key in the W position rather than
+## the key that emits "w", so the same four keys are under the same four fingers
+## on AZERTY and Dvorak. Done here rather than by redefining `ui_up` in
+## project.godot because overriding a built-in action REPLACES its defaults --
+## the arrows and the stick would have had to be re-listed by hand, in a
+## serialised resource format, to add a letter.
+func _wish() -> Vector2:
+	var v := Vector2(
 		Input.get_action_strength("ui_right") - Input.get_action_strength("ui_left"),
 		Input.get_action_strength("ui_up") - Input.get_action_strength("ui_down"))
-	step(delta, wish,
-		Input.is_key_pressed(KEY_SPACE),
-		Input.is_key_pressed(KEY_SHIFT))
+	if Input.is_physical_key_pressed(KEY_D):
+		v.x += 1.0
+	if Input.is_physical_key_pressed(KEY_A):
+		v.x -= 1.0
+	if Input.is_physical_key_pressed(KEY_W):
+		v.y += 1.0
+	if Input.is_physical_key_pressed(KEY_S):
+		v.y -= 1.0
+	return v.limit_length(1.0)
+
+
+func _physics_process(delta: float) -> void:
+	step(delta, _wish(),
+		Input.is_physical_key_pressed(KEY_SPACE),
+		Input.is_physical_key_pressed(KEY_SHIFT))

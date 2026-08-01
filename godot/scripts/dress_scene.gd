@@ -275,6 +275,35 @@ func bind(root: Node) -> Dictionary:
 			empty[key] = true
 		if not hit:
 			missed[key] = true
+	# -- AND THE INSTANCED CROWD -------------------------------------------
+	# A MultiMeshInstance3D is NOT a MeshInstance3D, so the loop above walks
+	# straight past 134 people. That is why the first frame of the playable
+	# build had a corridor full of featureless white mannequins while the same
+	# run reported "382/382 meshes MATERIALLED" -- the summary was true and was
+	# about the deck. `npc.gd::build_crowd` names each MultiMesh after the
+	# library mesh it came from, in as many words "because material binding is
+	# by name"; nothing had ever bound them.
+	#
+	# `material_override` rather than a surface override: a MultiMesh carries
+	# ONE mesh for every instance, and the crowd library is already split one
+	# MultiMesh per (species, lod, phase, material), so there is exactly one
+	# material per instance node.
+	for mmi in _multimesh_instances(root):
+		meshes += 1
+		var key := String(mmi.name)
+		var mat: Material = _owner._material_for(key)
+		var hit := false
+		for frag in rules:
+			if key.contains(String(frag)):
+				hit = true
+				break
+		if mat != null:
+			bound += 1
+			mmi.material_override = mat
+		elif hit:
+			empty[key] = true
+		if not hit:
+			missed[key] = true
 	return {"meshes": meshes, "bound": bound,
 		"unmatched": PackedStringArray(missed.keys()),
 		"ruled_but_null": PackedStringArray(empty.keys())}
@@ -496,4 +525,13 @@ func _mesh_instances(n: Node, out: Array[MeshInstance3D] = []) -> Array[MeshInst
 		out.append(n)
 	for c in n.get_children():
 		_mesh_instances(c, out)
+	return out
+
+
+func _multimesh_instances(n: Node,
+		out: Array[MultiMeshInstance3D] = []) -> Array[MultiMeshInstance3D]:
+	if n is MultiMeshInstance3D and (n as MultiMeshInstance3D).multimesh != null:
+		out.append(n)
+	for c in n.get_children():
+		_multimesh_instances(c, out)
 	return out

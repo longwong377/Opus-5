@@ -7,10 +7,19 @@ config_version=5
 [application]
 config/name="Babylon 5"
 config/description="1:1 simulation of the Babylon 5 station. 8,047 m."
-; The default scene. tools/render_godot.sh passes an explicit scene path as a
-; positional argument, so this only decides what a bare `godot --path godot`
-; opens; every shot names its own scene through station/generated/scene/*/scene.json.
-run/main_scene="res://scenes/exterior.tscn"
+; PRESSING PLAY PUTS YOU IN THE STATION. Until session 4d this said
+; `exterior.tscn` -- a screenshot rig with a flying camera and no body -- so the
+; one thing a person does first gave them a photograph of the outside of a
+; building they could not enter. The walkable build was reachable only from the
+; headless gate's command line, with six arguments. That is the whole distance
+; between "walkable" and "playable".
+;
+; walk.tscn loads its deck from `res://play.json`, written by
+; `python3 station/walkable.py --build-only` (tools/play.sh does both).
+; tools/render_godot.sh passes an explicit scene path as a positional argument,
+; so every shot still names its own scene through
+; station/generated/scene/*/scene.json and is unaffected.
+run/main_scene="res://scenes/walk.tscn"
 config/features=PackedStringArray("4.4", "Double Precision", "Forward Plus")
 
 [display]

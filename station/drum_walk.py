@@ -730,7 +730,7 @@ def _glb(obj_path, glb_path):
 
 
 def walk(key="the_garden", traverse=None, timeout=1800, rings=None,
-         godot=None):
+         godot=None, build_only=False):
     """Put a body on the drum and walk it, headless, in the real engine.
 
     Deliberately the same shape as `walkable.walk_deck` -- write the render
@@ -752,7 +752,7 @@ def walk(key="the_garden", traverse=None, timeout=1800, rings=None,
     """
     import walkable as W                                        # noqa: PLC0415
     godot = godot or W.godot_binary()
-    if godot is None:
+    if godot is None and not build_only:
         return {"key": key, "error": "no double-precision Godot binary"}
     traverse = W.TRAVERSE_FRAMES if traverse is None else traverse
 
@@ -771,13 +771,20 @@ def walk(key="the_garden", traverse=None, timeout=1800, rings=None,
          os.path.join(out, f"{stem}_col.glb"))
 
     sx, sy, sz = meta["spawn"]
+    # The drum's own gravity, which is a property of the drum and not 9.81.
+    # `engine_args` carries the shared half; this is the one flag that is the
+    # drum's alone, so it is added here rather than parameterised into a
+    # function that has no business knowing about spin.
+    args = W.engine_args(out, stem, crowd=(), spawn=(sx, sy, sz)) \
+        + [f"--gravity={meta['gravity_m_s2']}"]
+    if build_only:
+        return {"stem": stem, "out": out, "spawn": [sx, sy, sz],
+                "rooms": [key], "spawn_at": key, "render_tris": len(rt),
+                "collision_tris": len(ct), "actors": 0, "crowd": 0,
+                "interact_rows": 0, "args": args}
     cmd = [godot, "--headless", "--path", os.path.join(ROOT, "godot"),
-           "res://scenes/walk.tscn", "--",
-           f"--glb={os.path.join(out, stem + '.glb')}",
-           f"--collision={os.path.join(out, stem + '_col.glb')}",
-           f"--spawn={sx},{sy},{sz}", "--gravity-mode=drum",
-           f"--gravity={meta['gravity_m_s2']}",
-           "--walk-test", f"--traverse={traverse}"]
+           "res://scenes/walk.tscn", "--"] + args \
+        + ["--walk-test", f"--traverse={traverse}"]
     try:
         res = subprocess.run(cmd, capture_output=True, text=True,
                              timeout=timeout).stdout

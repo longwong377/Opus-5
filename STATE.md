@@ -1,6 +1,123 @@
 # Project State
 
-**Last updated:** 2026-08-01 · **Session 4g** — **the Babcom terminal is a built device, and it shipped a logged mistake once before the log caught it** · **4f** — a per-token verb override · **4e** — **the naming-mismatch class is CLOSED: built-but-misnamed 26 → 0, resolving 302/357** · **4d** — **the bespoke rooms' interactables were never unbuilt, they were unnamed: 259/357 → 284/357** · **4c** — **the station is INTERACTABLE, the port is on a wall, and the 24-minute suites were one bad cache key** · **4b** — a police force, friction in metres, the plated shell, the fitting-reach fix
+**Last updated:** 2026-08-01 · **Session 4h** — **IT IS PLAYABLE: press Play and you are standing in Blue Sector** · **4g** — **the Babcom terminal is a built device, and it shipped a logged mistake once before the log caught it** · **4f** — a per-token verb override · **4e** — **the naming-mismatch class is CLOSED: built-but-misnamed 26 → 0, resolving 302/357** · **4d** — **the bespoke rooms' interactables were never unbuilt, they were unnamed: 259/357 → 284/357** · **4c** — **the station is INTERACTABLE, the port is on a wall, and the 24-minute suites were one bad cache key** · **4b** — a police force, friction in metres, the plated shell, the fitting-reach fix
+
+## Session 4h — READ THIS FIRST: IT IS PLAYABLE. PRESS PLAY AND YOU ARE STANDING IN BLUE SECTOR
+
+```
+tools/play.sh            # build blue/0/0 and stand in it
+tools/play.sh --verify   # the gate, with its negative control
+tools/play.sh --shot p.png   # a frame through the player's own eye
+```
+
+`docs/engine-playable-eye.png` is the first frame ever taken from this project's playable build:
+the residential corridor at eye height, deck lights running to the vanishing point, and a person
+stopped a metre in front of the camera because the player is standing in their way.
+
+### 1. WALKABLE WAS NOT PLAYABLE, AND THE WHOLE DISTANCE WAS THREE THINGS
+
+The station has been walkable since 3v and 128/128 since 3z. It was not playable, and nothing in
+the repository could say so, because **every route into the walkable build went through the
+headless gate's command line**:
+
+1. `godot/project.godot` had `run/main_scene="res://scenes/exterior.tscn"` — a screenshot rig with
+   a flying camera and no body. Pressing Play gave a photograph of the outside of a building you
+   could not enter.
+2. `walk.gd`'s five paths (`glb`, `collision`, `actors`, `crowd`, `interact`) all defaulted to `""`.
+   They only ever arrived as six command-line arguments written by `station/walkable.py`.
+3. `station/generated/scene/` is gitignored, so a fresh clone has **no deck data at all**.
+
+Closed by:
+
+- **`walkable.py --build-only`** — assembles a cluster and writes `godot/play.json`, then stops.
+  No Godot binary needed, so the content pipeline does not require the engine.
+- **`walkable.engine_args()`** — ONE list of flags, shared by the headless gate and the human
+  launch. Hard rule 4 applied to a command line: the build a person walks in and the build the gate
+  measures cannot be assembled differently, because there is one function that assembles them.
+  `drum_walk.walk` uses it too and adds only `--gravity`, which is the drum's alone.
+- **`walk.gd::_play_manifest`** — reads `res://play.json` when nothing is on the command line. The
+  file's `args` array IS `engine_args`'s output, verbatim. Anything actually typed WINS, so
+  `--no-dress` and `--no-doors` still work as controls.
+- **`run/main_scene = "res://scenes/walk.tscn"`**, and `_run_play()` as the third branch beside
+  `--walk-test` and `--shot`.
+- **WASD**, by *physical* keycode in `player.gd::_wish()`, so the same four keys sit under the same
+  four fingers on AZERTY and Dvorak. Not by redefining `ui_up` in project.godot: overriding a
+  built-in action REPLACES its defaults, so the arrows and the gamepad stick would have had to be
+  re-listed by hand in a serialised resource format to add a letter. Click recaptures the mouse
+  after Esc — before this, the first Esc ended looking around for the rest of the session.
+
+### 2. THE GATE FAILED ON ITS FIRST RUN AND FOUND SOMETHING NO EXISTING GATE COULD
+
+`tools/play.sh --verify` launches with **no arguments at all** — the configuration a person is
+actually in — and reads `walk.gd::_play_report`'s heartbeat. First run:
+
+```
+  FAIL  the body is NOT on a floor at frame 12240 -- it is falling or wedged
+  FAIL  it is 66294.115 m from the spawn the generator claimed (bar 0.3 m)
+```
+
+**The player was bulldozed 66 km out of the station by the crowd.** A walker's path is a fixed
+circular orbit and their capsule is a `StaticBody3D` teleported onto it every step, so a body
+standing on that orbit is shoved along at a walking pace, 0.6 m at a time, eventually through the
+trimesh floor and into permanent free fall.
+
+**Why 3z's walk gate reported `offfloor=0/1800` throughout: it runs 30 seconds and DRIVES the
+body.** Every frame it measures is one where being moved is correct. **Standing still is the case
+nothing tested** — and standing still is most of what a person does.
+
+Fixed in `npc.gd::advance_crowd`: **the crowd yields.** A walker whose next step would put them
+within `r + 0.35 + 0.15` m of the player does not take it, and their stride freezes with them, so
+the pose is a person halted mid-step rather than moonwalking. Stopping rather than steering around
+is both the smaller change and the more honest one — a person whose way you are standing in stops.
+11 of 134 were stopped at the busiest moment of the passing verify run.
+
+`play_verdict.py` now asserts on **every** report, not the last: the failure was intermittent
+(shoved off, fall, land, shoved again), so a body sampled at the wrong instant looks fine. It also
+asserts **peak speed with nobody at the keyboard** ≤ 0.05 m/s — "on the floor" cannot tell standing
+from sliding.
+
+### 3. 728 CROWD INSTANCES WERE ON THE glTF FALLBACK AND THE RUN SAID `382/382 MATERIALLED`
+
+Found by **looking at the frame**, not by a gate. The first playable shot had a featureless white
+mannequin a metre from the eye.
+
+`dress_scene.bind()` walked `MeshInstance3D` only, and a **`MultiMeshInstance3D` is not one**, so
+it stepped straight past the entire crowd. Worse, `walk.gd::_dress_level` called `_dress.release()`
+immediately after binding the deck — and `_wire_people` loads the crowd libraries *after that*, so
+the material table was already freed by the time the people existed. `npc.gd::build_crowd` names
+each MultiMesh after its source mesh in as many words *"because material binding is by name"*.
+Nothing had ever bound them.
+
+Now: `bind()` handles `MultiMeshInstance3D` via `material_override`, `_dress_late()` binds the crowd
+after it is wired and releases afterwards. **`dress: crowd 728/728 MATERIALLED, 0 on the glTF
+fallback`**, and the near figure is in dark EarthForce twill with pale hands instead of white.
+
+**The summary was true about the part it measured.** That is the shape of every defect this project
+has hidden, and it is now three for three: a tag-coverage assertion that ran on a corridor with no
+doors (3x), a coverage count that was not a walk test (3z), and a materialled count that was about
+the deck while the people were blank.
+
+### 4. GATES, ALL GREEN AFTER THE CHANGES
+
+| gate | result |
+|---|---|
+| `tools/play.sh --verify` | **PLAYABLE** — stood for all 50 reports to frame 6000 (100 s), never further than **0.043 m** from the spawn, peak speed **0.000 m/s**, 15,611 m covered by the crowd |
+| control: manifest removed | fires — *"with no manifest there is nothing to play and no body"* |
+| `walkable.py --deck blue/0/0` | **PASS** — walks into `docking_bays` 6.3 m → 0.04 m, 9 of the room look up, 5,965 m of crowd travel |
+| control: `--no-doors` | fires — stopped 5.26 m short |
+| `walkable.py --deck blue/0/0 --use` | **PASS** — *"[E] operate the docking clamp"*, used from 1.26 m, the object moved 4.0 mm |
+| control: clamp stripped | fires — 14 interactables instead of 15, prompt `-`, `use_count` 0 |
+
+### 5. NEXT
+
+- **The heads are bare.** The crowd is dressed but the faces are untextured skin — no features, no
+  hair. At a metre from the eye that is the most visible thing in the frame.
+- **`tools/play.sh` only builds one cluster.** Walking off the end of `blue/0/0` walks off the
+  built world; there is no streaming and no way to travel between clusters in the playable build.
+- **Nothing carried over from earlier sessions is closed by this one**: `device_screen_glass` blows
+  out on 7 binds, no screen has content, `--gate-frames` is 14/9, `dressable_extent` is wrong on 4
+  of 9 composed places, the OBJ carries **0 `vn` lines** so every curved surface is flat-shaded, and
+  `dress()` emits 2,234 non-manifold edges on a 4,428-triangle office.
 
 ## Session 4b — THE STATION HAS A POLICE FORCE, AND THE WALL STOPPED BEING ONE FLAT PANEL
 

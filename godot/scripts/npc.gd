@@ -30,8 +30,22 @@ extends Node3D
 ## is not a turret.
 @export var turn_rate: float = 2.2
 
+## The player capsule's radius, from `walk.gd::_spawn_player`. Passed nowhere:
+## it is the same 0.35 m in both files and this is the second copy, which is a
+## thing to fix when a third appears rather than by threading a setter through
+## three call sites for one float.
+const PLAYER_R_M := 0.35
+## How much clear air a walker leaves before they stop. A shoulder's width of
+## slack: enough that a person halts in front of you rather than in you, small
+## enough that the corridor does not part like a crowd around royalty.
+const YIELD_MARGIN_M := 0.15
+
 var _people: Array = []
 var _body: Node3D
+## How many of the crowd stopped for the player on the last step. Reported, not
+## just tracked -- it is the only thing that can say the yield is running, and a
+## behaviour nothing measures is one that silently stops working.
+var _yielding: int = 0
 
 
 class Person:
@@ -508,6 +522,11 @@ func crowd_count() -> int:
 	return _walkers.size()
 
 
+## How many of the crowd stopped for the player on the last step.
+func yielding_count() -> int:
+	return _yielding
+
+
 ## How many walkers ended up on each rung, and the nearest one's distance.
 ## THE ONLY THING THAT CAN SHOW THE LADDER IS USED: the crowd covers the same
 ## distance whatever LOD it is drawn at, so `crowd_travel_m` cannot tell a
@@ -550,8 +569,33 @@ func advance_crowd(delta: float) -> void:
 	delta = _crowd_dt
 	_crowd_dt = 0.0
 	var eye := (_body.global_position if _body != null else Vector3.ZERO)
+	_yielding = 0
 	for w in _walkers:
 		var d: float = w.omega * delta
+		# -- THEY STOP RATHER THAN WALK THROUGH YOU ------------------------
+		# A walker's path is a fixed circular orbit and their capsule is a
+		# StaticBody3D teleported onto it every step, so anything standing on
+		# that orbit is BULLDOZED. Measured over a 204 s launch with nobody
+		# touching the keyboard: the player was carried along at a walking pace
+		# in 0.6 m shoves, pushed through the trimesh floor, and ended 66 km
+		# outside the station in free fall.
+		#
+		# THE WALK GATE COULD NOT SEE IT. It runs 30 s and DRIVES the body, so
+		# every frame it measures is one where being moved is correct, and it
+		# never stands still. `on_floor=true` was reported throughout, because
+		# it was true -- right up to the frame it was not.
+		#
+		# Stopping rather than steering around is the smaller change and the
+		# more honest one: a person whose way you are standing in stops. Their
+		# stride freezes with them (`w.t` does not advance), so the pose is a
+		# person halted mid-step and not a person moonwalking on the spot.
+		if w.body != null and _body != null and d != 0.0:
+			var ahead := w.angle + d
+			var p := Vector3(w.radius * cos(ahead), w.radius * sin(ahead), w.z)
+			var clear := w.r_m + PLAYER_R_M + YIELD_MARGIN_M
+			if p.distance_squared_to(eye) < clear * clear:
+				_yielding += 1
+				continue
 		w.angle += d
 		_crowd_travel_m += absf(d) * w.radius
 		w.t += delta

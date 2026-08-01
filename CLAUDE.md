@@ -94,6 +94,7 @@ absence.
 | **W3** | **A furnished room** | ONE location at true prop density -- the reference is the owner's Starfield frames, not our own past work -- with a stated props/m2 | **DONE** (3z) -- and on every room, not one: `dressing.py` measures **4.00 props/m2** in an office and quarters, **6.68** in commerce, **6.37** in hospitality. 3u measured the station at **4.5 prop instances per room** total |
 | **W4** | **A populated room** | NPCs standing, sitting and walking in it. `station/npc/` already has twelve tested modules with zero importers; wire them | **DONE** (3z) -- all three poses, and they are POSES: `npc/animation.py` finally has an importer, so a sitter is `sit_clip` on the seat's own measured height rather than a standing body dropped 0.42 m, and a corridor walker is `walk_clip` at a per-resident phase. **963 walking in corridors, 449 in rooms** across the sweep |
 | **W5** | **The loop** | Spawn -> walk -> use something -> an NPC reacts. The smallest complete experience | **DONE** (3z) -- and `walkable.py --deck blue/0/0` reports all four in one line: *"a body spawns in the corridor and WALKS INTO docking_bays (6.3 m -> 0.04 m), never leaving the floor, **7 of the room look up** (123 deg turned, 4 deg off)"*, with the control *"with the doors inert the body is stopped 5.26 m short"* |
+| **W0** | **Press Play** | A person launches the build with no arguments and is standing in the station. `tools/play.sh` | **DONE** (4h) — `run/main_scene` is `walk.tscn`, `walkable.py --build-only` writes the manifest it reads, and `tools/play.sh --verify` asserts a body stood for 100 s, never more than **0.043 m** from its spawn, at peak speed **0.000 m/s**, with the control firing when the manifest is taken away |
 | **W6+** | **Breadth** | Roll W3-W5 outward by generator across the 128, in the order a player meets them | **THE WHOLE STATION** (3z) -- `deck.py --sweep`: **90 z-clusters assemble, 0 fail, 128 of 128 locations on an assembled cluster, 128 with a door or on ground, 0 floor holes.** 58,660 collision triangles across the ring decks + 573,440 in the drum's ground = **632,100** for the walkable station. What remains is DEPTH: 49 module-owned places still assemble as generic bays, 18 with a builder that exists |
 
 **`python3 station/deck.py --sweep` is the answer to "how much of the station can I walk in".**
@@ -150,6 +151,29 @@ the background and the background is black — lived in `interior`, which *impor
 module that builds the pieces had no way to measure them. It now lives in `interior_kit`.
 
 **A gate belongs in the module that builds the thing, and it must build the hard case.**
+
+### A GATE THAT DRIVES THE BODY NEVER TESTS STANDING STILL
+
+Session 4h, and it is the W-track's third instance of the same shape. `walkable.py --deck` reported
+`offfloor=0/1800` on blue/0/0 for four sessions. The first launch of the **playable** build — no
+arguments, nobody at the keyboard — ended with the player **66,294 m outside the station in free
+fall**. The crowd had shoved them through the floor: a walker's path is a fixed circular orbit and
+their capsule is a `StaticBody3D` teleported onto it every step, so a body standing on that orbit is
+carried along 0.6 m at a time.
+
+**The walk gate could not see it because it runs 30 seconds and DRIVES the body.** Every frame it
+measures is one where being moved is correct. Standing still is most of what a person does and it
+was the case nothing tested. `tools/play.sh --verify` now launches with **no command-line arguments
+at all** — the configuration a person is in, and the only one every other gate avoids — and asserts
+on *every* heartbeat rather than the last, because the failure was intermittent. It also asserts
+**peak speed ≤ 0.05 m/s with nobody at the keyboard**: `on_floor` cannot tell standing from sliding.
+
+The same session found **728 crowd instances on the glTF fallback** while the run printed
+`382/382 meshes MATERIALLED` — true, and about the deck. `dress_scene.bind()` walked
+`MeshInstance3D` and a `MultiMeshInstance3D` is not one. **Found by looking at the frame.** Three
+for three now: a tag-coverage assertion that ran on a corridor with no doors (3x), a coverage count
+that was not a walk test (3z), a materialled count that was about the deck while the people were
+blank (4h). **Read what the number is ABOUT, not what it says.**
 
 ### COLLISION IS NOT RENDER GEOMETRY, and that rule was learned expensively
 

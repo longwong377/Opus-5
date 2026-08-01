@@ -30,3 +30,9 @@ __pycache__/
 # infrastructure, not content, and committing it would put a second copy of the
 # whole project inside the project.
 .claude/worktrees/
+
+# The playable build's manifest, written by `station/walkable.py --build-only`
+# and read by `walk.gd` when nothing is on the command line. It names absolute
+# paths into `station/generated/scene/`, which is itself gitignored -- a
+# committed one would point at another machine's disk.
+godot/play.json
