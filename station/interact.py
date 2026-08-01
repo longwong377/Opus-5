@@ -1,0 +1,683 @@
+#!/usr/bin/env python3
+"""What a player can USE, derived from the register instead of invented.
+
+THE DATA WAS ALREADY THERE AND NOTHING READ IT. `station/directory.py` has given
+every one of the 128 register places an `interacts` field since layer 1 -- it is
+literally the column headed *what a player can use in this room* -- and
+`STATE.md`'s open-findings list still says "Nothing is interactable except the
+door." Both are true at once because `interacts` had exactly two consumers:
+`rooms.lateral_stack`, which reads it to decide how much WALL a room needs, and
+`rooms.build`, which reads it to decide where to STAND a box. Neither of those is
+a player using anything.
+
+So this module does the one thing that turns a declared list into a mechanic:
+
+  1. it derives a BOUNDED VERB SET from the register's own strings,
+  2. it says which emitted mesh group provides each declared interactable, and
+  3. it asserts that every declared interactable resolves to a group that some
+     room actually emits -- and that assertion FAILS TODAY on 96 of the 357
+     declarations, which is the finding, not a defect in the gate.
+
+WHY THE VERB SET IS DERIVED AND NOT CHOSEN. `docs/MASTER-PLAN.md` §3.2 is blunt
+about the cost of getting this backwards -- *"Building 71 prop behaviours before
+knowing the verb set is how you build the wrong 71."* A verb set written from
+imagination would be a fourth vocabulary in a project that already has three
+(the register's `interacts`, `rooms.PROPS`, `rooms.PROP_KIND`), and a fourth
+vocabulary is a fourth thing to drift. So both tables below are keyed on
+something this repository already computes:
+
+  `_KIND_VERB`   16 entries, one per value of `rooms.PROP_KIND` -- the project's
+                 own classification of the same 99 tokens, written for
+                 `dressing.machine()`. It says what SHAPE the thing is.
+  `_HEAD_VERB`   22 entries, keyed on the token's HEAD NOUN -- the last
+                 underscore field, which is the register's own word for what the
+                 object IS. It overrides the shape where the two disagree: a
+                 `valve` is a `wallpanel` by shape and a control by name.
+
+Both are asserted TOTAL (every one of the 99 tokens resolves) and MINIMAL
+(deleting any single override changes at least one token's verb, so a dead or
+redundant entry cannot accumulate). That pair of assertions is what stops the
+tables becoming a place to write opinions: an entry has to earn its row.
+
+WHAT THE HEAD-NOUN COLLISIONS SAY. Four head nouns are shared by tokens the
+shape rule classifies differently -- `bench` covers a `bench` you sit on and a
+`lab_bench` you work at; `lamp` covers a status lamp you read and a pendant lamp
+you switch. `--verbs` prints them. They are the places where one override cannot
+be right for both tokens, and they are reported rather than smoothed over,
+because a vocabulary that needs a per-token exception is telling you something.
+
+Run: python3 station/interact.py --verbs        # the verb set and its derivation
+     python3 station/interact.py --audit        # does every declared use RESOLVE
+     python3 station/interact.py --selftest     # with negative controls
+"""
+import argparse
+import json
+import os
+import sys
+
+HERE = os.path.dirname(os.path.abspath(__file__))
+ROOT = os.path.dirname(HERE)
+sys.path.insert(0, HERE)
+
+import directory as dr                                           # noqa: E402
+import rooms as R                                                # noqa: E402
+
+# ---------------------------------------------------------------------------
+# The verb set
+# ---------------------------------------------------------------------------
+# Eight verbs, each a different thing a pair of hands does. The count is an
+# OUTPUT of the two tables below, not an input to them -- `verb_set()` derives
+# it -- and `VERBS` exists to give each one a written definition, because a verb
+# named and not defined is how `read` quietly grows to mean everything.
+#
+# `tread` is the honest bucket and it is stated as such: a catwalk, a path, a
+# handhold and a kerb are things you get about ON, not things you press. They
+# are in the register's `interacts` because the register is a list of what a
+# player MEETS, and it would be a lie to give them a prompt and a keypress.
+VERBS = {
+    "open":    "a leaf parts and you pass through it",
+    "operate": "work a control, and something in the world changes",
+    "read":    "look at it and it tells you something",
+    "sit":     "take a seat at it",
+    "rest":    "stop and stay a while -- a bunk, a shrine, a brazier",
+    "store":   "open it, and take something out or put something in",
+    "serve":   "be served across it; you are talking to whoever is behind it",
+    "tread":   "underfoot or in the hand -- you walk on it, climb it or hold "
+               "it. NO KEYPRESS: this verb deliberately has no prompt",
+}
+
+# Verbs a player actually presses a key for. `tread` is excluded on purpose --
+# see above -- and the split is data the runtime reads, so a prompt cannot
+# appear on a floor marking without this line changing.
+PRESSABLE = tuple(v for v in VERBS if v != "tread")
+
+# Verbs where the OBJECT is what responds, so a keypress has somewhere to go
+# with the geometry that exists today. A door leaf parts, a lever throws, a
+# drawer runs out, a screen changes -- all of them are the prop moving or
+# changing, and the prop is built.
+#
+# `sit`, `rest` and `serve` are deliberately NOT here, and the reason is worth
+# keeping: what responds to those is a BODY, not a prop. Sitting needs the
+# player's own animation (`npc/animation.py` has `sit_clip` and the player has
+# no rig); being served needs whoever is behind the counter to turn round and
+# talk, which needs dialogue. Listing them as responding would make `use()`
+# return true and nothing happen, which is the failure that looks like success
+# -- so the runtime reads this and reports `response=none` for them instead.
+RESPONDS = ("open", "operate", "read", "store")
+
+# The SHAPE rule. One row per distinct value of `rooms.PROP_KIND`, which is the
+# classification `dressing.machine()` already builds these objects from.
+_KIND_VERB = {
+    "leaf":      "open",
+    "seat":      "sit",
+    "bed":       "rest",
+    "cabinet":   "store",
+    "crate":     "store",
+    "rack":      "store",
+    "counter":   "serve",
+    "console":   "operate",
+    "crane":     "operate",
+    "skid":      "operate",
+    "gantry":    "operate",
+    "vessel":    "operate",
+    "wallpanel": "read",
+    "screen":    "read",
+    "kerb":      "tread",
+    "post":      "tread",
+}
+
+# The NAME rule, and it wins. Keyed on the head noun -- the last underscore
+# field of the register's own token -- for the cases where what a thing is
+# called settles what you do with it and what shape it is does not.
+#
+# Every row here is justified by a token the shape rule gets wrong, and
+# `_check_minimal` proves it: delete any single row and at least one of the 99
+# tokens changes verb. The comment on each row names that token.
+_HEAD_VERB = {
+    "valve":     "operate",   # wallpanel by shape; you turn it
+    "lever":     "operate",   # breaker_lever
+    "call":      "operate",   # lift_call -- a button, not a sign
+    "control":   "operate",   # irrigation_control is a wallpanel by shape
+    "reader":    "operate",   # identicard_reader -- you present a card
+    "intercom":  "operate",   # you speak into it
+    "terminal":  "operate",   # babcom_terminal is a wallpanel by shape
+    "dartboard": "operate",   # wallpanel by shape; it is a game
+    "shower":    "operate",   # cabinet by shape
+    "standpipe": "operate",   # post by shape; it is a water outlet
+    "stall":     "serve",     # market_stall is a `screen` by shape
+    "shopfront": "serve",     # screen by shape
+    "booth":     "serve",     # bay_control_booth -- somebody is inside it
+    "ladder":    "tread",     # service_ladder is a `screen` by shape
+    "rail":      "tread",     # gallery_rail -- you lean on it
+    "barrier":   "tread",     # screen by shape; you go round it
+    "drawer":    "store",     # cold_drawer is a `bed` by shape and is not one
+    "table":     "sit",       # counter by shape; you sit at a table
+    "gallery":   "sit",       # public_gallery -- you sit in it
+    "lamp":      "read",      # pendant_lamp is a `post` by shape
+    "shrine":    "rest",      # cabinet by shape
+    "brazier":   "rest",      # post by shape
+}
+
+# The two prefixes `rooms._fixture` emits under. `prop_` is a declared
+# interactable placed from `place["interacts"]`; `fix_` is a fixture the room is
+# NAMED for, from `rooms.FIXTURES` / `PLACE_FIXTURES`. Both can provide a
+# declared use and both are searched.
+PREFIXES = ("prop_", "fix_")
+
+# `rooms._MACH` marks a nested machine PART -- `prop_mp_plant_rail` is a rail
+# inside a machine, not an interactable called `mp_plant_rail`. Imported rather
+# than spelled again.
+_PART = R._MACH.lstrip("_")
+
+# The separator `deck.build_deck` puts between a place key and the room's own
+# group name in an assembled deck: `docking_bays__prop_bay_door`.
+PLACE_SEP = "__"
+
+
+def tokens():
+    """Every distinct interactable the register declares, sorted."""
+    return sorted({i for p in dr.PLACES for i in (p.get("interacts") or ())})
+
+
+def head_noun(token):
+    """The register's own word for what the thing is: the last field."""
+    return token.rsplit("_", 1)[-1]
+
+
+def verb_of(token):
+    """The verb for one declared interactable. Name beats shape."""
+    h = head_noun(token)
+    if h in _HEAD_VERB:
+        return _HEAD_VERB[h]
+    kind = R.PROP_KIND.get(token)
+    if kind is None:
+        raise KeyError(f"{token!r} has no rooms.PROP_KIND and no head-noun rule")
+    if kind not in _KIND_VERB:
+        raise KeyError(f"PROP_KIND {kind!r} ({token}) has no verb")
+    return _KIND_VERB[kind]
+
+
+def verb_set():
+    """The verbs actually reached by the 99 tokens, in VERBS order.
+
+    DERIVED, not declared. If a row of `VERBS` is never reached it is a verb
+    nobody can perform, and `_selftest` fails for it.
+    """
+    used = {verb_of(t) for t in tokens()}
+    return tuple(v for v in VERBS if v in used)
+
+
+def by_verb():
+    """verb -> the tokens that carry it."""
+    out = {v: [] for v in VERBS}
+    for t in tokens():
+        out[verb_of(t)].append(t)
+    return {k: v for k, v in out.items() if v}
+
+
+def groups_for(token):
+    """The mesh group names that would provide this interactable.
+
+    A ROOM'S OWN FRAME, not the deck's. `rooms._fixture` emits
+    `prop_<token>` or `fix_<token>`; `deck.build_deck` later prefixes the place
+    key and `PLACE_SEP`. Both forms are recognised by `provides`.
+    """
+    return tuple(p + token for p in PREFIXES)
+
+
+def provides(group):
+    """(place_key, token, verb) for a mesh group, or None if it is not one.
+
+    Accepts both the room's own `prop_<token>` and the deck's
+    `<place>__prop_<token>`. A machine PART -- `prop_mp_plant_rail` -- is not an
+    interactable and returns None, which is why `_PART` is imported from
+    `rooms` rather than written here.
+    """
+    place = ""
+    body = group
+    if PLACE_SEP in group:
+        place, _, body = group.partition(PLACE_SEP)
+    for p in PREFIXES:
+        if not body.startswith(p):
+            continue
+        tok = body[len(p):]
+        if tok.startswith(_PART):
+            return None
+        if tok in _TOKENS:
+            return place, tok, verb_of(tok)
+    return None
+
+
+# ---------------------------------------------------------------------------
+# Does a declared use RESOLVE to something a room emits?
+# ---------------------------------------------------------------------------
+def emitted_tokens(names):
+    """The interactables a set of emitted group names actually provides."""
+    out = set()
+    for n in names:
+        r = provides(n)
+        if r is not None:
+            out.add(r[1])
+    return out
+
+
+def _segments(name):
+    return tuple(s for s in name.split("_") if s)
+
+
+def near_miss(token, names):
+    """Group names that are PROBABLY this interactable under another name.
+
+    Reported separately from a plain miss because the two need different fixes.
+    `customs_north` is composed by `customs.py`, which emits `customs_desk` for
+    the declared `customs_desk` and `customs_screen_schematic` for the declared
+    `station_schematic_screen` -- the first is the same word in the same order
+    and the second is the same words in a different one. A count that lumps
+    those together says "the module built nothing", which is false and would
+    send the next context to rewrite a module that is already right.
+
+    The test is on underscore SEGMENTS, never substrings: `npc_seated_4`
+    contains the letters of `seat` and is a person.
+    """
+    seg = set(_segments(token))
+    if not seg:
+        return ()
+    out = []
+    for n in names:
+        s = set(_segments(n))
+        if seg <= s:
+            out.append(n)
+    return tuple(sorted(out))
+
+
+def resolve_place(schema, profile, place, geom=None):
+    """Which of one place's declared interactables its own mesh provides.
+
+    Builds through `deck.room_geometry`, which is the SAME entry point the
+    assembler and the collision builder use -- so this cannot report on a room
+    that is not the one that ships. Calling `rooms.build` directly here would
+    have said the Zocalo emits nothing, which is true of `rooms.build` and not
+    of the Zocalo.
+    """
+    import deck as D                                             # noqa: PLC0415
+    want = tuple(place.get("interacts") or ())
+    if geom is None:
+        v, t, g, used = D.room_geometry(schema, profile, place)
+    else:
+        v, t, g, used = geom
+    names = sorted({n for n, _lo, _hi in g})
+    have = emitted_tokens(names)
+    hit = tuple(k for k in want if k in have)
+    miss = tuple(k for k in want if k not in have)
+    return {
+        "key": place["key"],
+        "module": place.get("module") or "",
+        "built": used,
+        "declared": want,
+        "resolved": hit,
+        "unresolved": miss,
+        "near": {k: near_miss(k, names)[:3] for k in miss
+                 if near_miss(k, names)},
+        "groups": len(names),
+    }
+
+
+def audit(keys=None, progress=None):
+    """Resolve every declared interactable on every place. Slow and honest."""
+    import interior as it                                        # noqa: PLC0415
+    schema, profile = it.load()
+    rows = []
+    places = [p for p in dr.PLACES
+              if keys is None or p["key"] in keys]
+    for i, p in enumerate(places):
+        try:
+            rows.append(resolve_place(schema, profile, p))
+        except Exception as e:                                   # noqa: BLE001
+            rows.append({"key": p["key"], "module": p.get("module") or "",
+                         "built": "ERROR", "declared":
+                         tuple(p.get("interacts") or ()), "resolved": (),
+                         "unresolved": tuple(p.get("interacts") or ()),
+                         "near": {}, "groups": 0,
+                         "error": f"{type(e).__name__}: {str(e)[:90]}"})
+        if progress:
+            progress(i + 1, len(places), rows[-1])
+    return rows
+
+
+CACHE = os.path.join(ROOT, "docs", "interact-audit.json")
+
+# What the audit read when it was last rebuilt, and what CI holds the line at.
+# 259 of 357 declared interactables resolve; every one of the 98 that do not is
+# on a BESPOKE-composed place, and every one of the 259 that do is on a generic
+# room. `--gate` fails if either number moves the wrong way.
+#
+# THE BASELINE IS NOT THE BAR. It is a ratchet: the bar is 357/357 and the
+# repository is 98 short of it. Recording the shortfall as a number CI can watch
+# is how it stays visible instead of becoming a paragraph in STATE.md that nobody
+# recomputes -- and `--gate --rebuild` re-runs the whole audit, because a gate
+# that reads a committed artefact and cannot rebuild it can only say whether the
+# FILE passes, never whether the file still describes the code.
+BASELINE = {"declared": 357, "resolved": 259, "places_all": 99,
+            "places_none": 26}
+
+
+def load_audit(path=CACHE):
+    if not os.path.exists(path):
+        return None
+    with open(path) as f:
+        return json.load(f)
+
+
+def tally(rows):
+    """The four numbers `BASELINE` holds, plus the near/absent split."""
+    near = absent = 0
+    for r in rows:
+        for k in r["unresolved"]:
+            if (r.get("near") or {}).get(k):
+                near += 1
+            else:
+                absent += 1
+    have = [r for r in rows if r["declared"]]
+    return {
+        "declared": sum(len(r["declared"]) for r in rows),
+        "resolved": sum(len(r["resolved"]) for r in rows),
+        "places_all": sum(1 for r in have if not r["unresolved"]),
+        "places_none": sum(1 for r in have if not r["resolved"]),
+        "near": near, "absent": absent, "places": len(have),
+    }
+
+
+# ---------------------------------------------------------------------------
+# The sidecar the runtime reads
+# ---------------------------------------------------------------------------
+def sidecar(names):
+    """`godot/scripts/interact.gd`'s half of the contract, as plain data.
+
+    ONE SOURCE FOR THE VERB. The alternative is a copy of the two tables above
+    in GDScript, which is the exact defect this repository has now paid for
+    three times -- the door decision made in the render and again in the shell,
+    the corridor profile written down instead of measured. The engine gets a
+    list of `{group, place, token, verb, pressable}` derived here and reads no
+    tables of its own.
+    """
+    out = []
+    for n in sorted(set(names)):
+        r = provides(n)
+        if r is None:
+            continue
+        place, tok, verb = r
+        out.append({"group": n, "place": place, "token": tok, "verb": verb,
+                    "pressable": verb in PRESSABLE,
+                    "responds": verb in RESPONDS,
+                    "label": tok.replace("_", " ")})
+    return out
+
+
+# ---------------------------------------------------------------------------
+_TOKENS = frozenset(tokens())
+
+
+def _check_total():
+    """Every declared interactable gets a verb, through a named rule."""
+    bad = []
+    for t in tokens():
+        try:
+            v = verb_of(t)
+        except KeyError as e:
+            bad.append(f"{t}: {e}")
+            continue
+        if v not in VERBS:
+            bad.append(f"{t}: verb {v!r} is not in VERBS")
+    return bad
+
+
+def _check_minimal():
+    """No override may be redundant, and none may be dead.
+
+    THE ASSERTION THAT KEEPS THE TABLE HONEST. Without it `_HEAD_VERB` is a
+    place to write opinions: an entry that changes nothing costs nothing to add
+    and reads like a decision. With it, an entry has to change at least one of
+    the 99 tokens' verbs or the self-test names it.
+    """
+    bad = []
+    base = {t: verb_of(t) for t in tokens()}
+    heads = {head_noun(t) for t in tokens()}
+    for h in sorted(_HEAD_VERB):
+        if h not in heads:
+            bad.append(f"_HEAD_VERB[{h!r}] names a head noun no place declares")
+            continue
+        keep = _HEAD_VERB.pop(h)
+        try:
+            changed = [t for t in tokens() if verb_of(t) != base[t]]
+        finally:
+            _HEAD_VERB[h] = keep
+        if not changed:
+            bad.append(f"_HEAD_VERB[{h!r}] = {keep!r} is redundant -- the shape "
+                       f"rule already gives every token that verb")
+    for k in sorted(_KIND_VERB):
+        if k not in set(R.PROP_KIND.values()):
+            bad.append(f"_KIND_VERB[{k!r}] names a rooms.PROP_KIND nothing uses")
+    for k in sorted(set(R.PROP_KIND[t] for t in tokens())):
+        if k not in _KIND_VERB:
+            bad.append(f"rooms.PROP_KIND {k!r} has no row in _KIND_VERB")
+    return bad
+
+
+def head_collisions():
+    """Head nouns whose tokens the SHAPE rule classifies differently.
+
+    These are the places one override cannot be right for both tokens: `bench`
+    is a `seat` on a `bench` and a `counter` on a `lab_bench`. Reported rather
+    than resolved, because the register's vocabulary is the thing being
+    described and smoothing it over would hide that.
+    """
+    by_head = {}
+    for t in tokens():
+        by_head.setdefault(head_noun(t), []).append(t)
+    out = {}
+    for h, ts in sorted(by_head.items()):
+        kinds = {R.PROP_KIND[t] for t in ts}
+        if len(kinds) > 1:
+            out[h] = tuple(sorted(ts))
+    return out
+
+
+def _selftest():
+    fails = []
+
+    fails += _check_total()
+    fails += _check_minimal()
+
+    # Every verb in VERBS is reached by at least one token. A verb nobody can
+    # perform is a row of documentation pretending to be a mechanic.
+    reached = set(verb_set())
+    for v in VERBS:
+        if v not in reached:
+            fails.append(f"VERBS[{v!r}] is reached by none of the 99 tokens")
+
+    # -- `provides` round-trips, and REJECTS the things it must -------------
+    for t in tokens():
+        for g in groups_for(t):
+            r = provides(g)
+            if r is None or r[1] != t:
+                fails.append(f"provides({g!r}) did not round-trip to {t!r}")
+            r2 = provides(f"docking_bays{PLACE_SEP}{g}")
+            if r2 is None or r2 != ("docking_bays", t, verb_of(t)):
+                fails.append(f"provides on the deck form of {g!r} failed")
+
+    # NEGATIVE CONTROLS, each one a thing that has actually appeared in an
+    # emitted group list. If any of these returns an interactable the runtime
+    # would put a prompt on a person, a light or a machine part.
+    for bad in ("docking_bays__npc_seated_4_npc_skin",
+                "docking_bays__prop_mp_plant_rail",
+                "docking_bays__fix_mp_hazard_frame",
+                "bay_elevators__light_deck_channel",
+                "customs_north__customs_desk",
+                "cc_console_face",
+                "prop_", "fix_", "", "prop_not_a_thing"):
+        if provides(bad) is not None:
+            fails.append(f"provides({bad!r}) returned an interactable and must "
+                         f"not -- the runtime would prompt on it")
+    # ... and the last of those is the control ON the control: a name that
+    # SHOULD resolve must, or the loop above is passing because nothing does.
+    if provides("docking_bays__prop_bay_door") is None:
+        fails.append("provides() rejects a real interactable -- the negative "
+                     "controls above prove nothing")
+
+    # -- `near_miss` matches on SEGMENTS, not substrings --------------------
+    if near_miss("seat", ["npc_seated_4_npc_skin"]):
+        fails.append("near_miss matched `seat` inside `seated` -- it is "
+                     "substring matching and will report people as furniture")
+    if not near_miss("customs_desk", ["customs_desk"]):
+        fails.append("near_miss missed an exact segment match")
+    if not near_miss("console", ["cc_console_face"]):
+        fails.append("near_miss missed `console` inside `cc_console_face`")
+
+    # -- the sidecar carries every pressable verb and no unpressable one ----
+    side = sidecar([f"docking_bays{PLACE_SEP}prop_{t}" for t in tokens()])
+    if len(side) != len(tokens()):
+        fails.append(f"sidecar dropped {len(tokens()) - len(side)} tokens")
+    for row in side:
+        if row["pressable"] != (row["verb"] in PRESSABLE):
+            fails.append(f"sidecar pressable disagrees for {row['token']}")
+        if row["verb"] == "tread" and row["pressable"]:
+            fails.append("a `tread` row is pressable -- a floor marking would "
+                         "get a prompt")
+        if row["responds"] and not row["pressable"]:
+            fails.append(f"{row['token']} responds and is not pressable -- "
+                         f"nothing could ever trigger it")
+    for v in RESPONDS:
+        if v not in VERBS:
+            fails.append(f"RESPONDS names {v!r}, which is not a verb")
+        if v not in PRESSABLE:
+            fails.append(f"RESPONDS names {v!r}, which nobody can press")
+
+    print(f"interact: {len(tokens())} declared interactables over "
+          f"{sum(1 for p in dr.PLACES if p.get('interacts'))} places, "
+          f"{len(verb_set())} verbs, {len(_HEAD_VERB)} name overrides")
+    coll = head_collisions()
+    if coll:
+        print(f"          {len(coll)} head-noun collisions (one override "
+              f"cannot be right for both): "
+              + "; ".join(f"{h}: {'/'.join(v)}" for h, v in coll.items()))
+    if fails:
+        for f in fails:
+            print("  FAIL " + f)
+        return 1
+    print("          totality, minimality and the negative controls all hold")
+    return 0
+
+
+def _cli(argv):
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--verbs", action="store_true",
+                    help="the verb set, its derivation and its collisions")
+    ap.add_argument("--audit", action="store_true",
+                    help="build every place and report which declared "
+                         "interactables resolve to a group it emits (slow)")
+    ap.add_argument("--keys", default="",
+                    help="comma-separated place keys, for --audit")
+    ap.add_argument("--write", action="store_true",
+                    help="write the audit to docs/interact-audit.json")
+    ap.add_argument("--gate", action="store_true",
+                    help="hold the line at BASELINE, from the committed audit")
+    ap.add_argument("--rebuild", action="store_true",
+                    help="with --gate: re-run the audit instead of reading the "
+                         "committed one, so the gate cannot go stale")
+    ap.add_argument("--selftest", action="store_true")
+    a = ap.parse_args(argv)
+
+    if a.gate:
+        if a.rebuild:
+            rows = audit()
+            with open(CACHE, "w") as f:
+                json.dump(rows, f, indent=1)
+        else:
+            rows = load_audit()
+            if rows is None:
+                print(f"FAIL  no {CACHE} -- run --audit --write")
+                return 1
+        got = tally(rows)
+        bad = []
+        for k, want in BASELINE.items():
+            have = got[k]
+            worse = have < want if k in ("resolved", "places_all") \
+                else have > want
+            if have != want:
+                bad.append(f"{k}: {have} vs baseline {want}"
+                           + ("  WORSE" if worse else "  better -- update "
+                              "BASELINE"))
+        print(f"interact --gate: {got['resolved']}/{got['declared']} declared "
+              f"interactables resolve; {got['places_all']}/{got['places']} "
+              f"places resolve all of theirs, {got['places_none']} none")
+        print(f"                 of the {got['declared'] - got['resolved']} "
+              f"that do not, {got['near']} are built under the module's own "
+              f"prefix and {got['absent']} were never built at all")
+        if not a.rebuild:
+            print("                 (read from the committed audit; "
+                  "--rebuild re-runs it)")
+        for b in bad:
+            print("  FAIL " + b)
+        return 1 if bad else 0
+
+    if a.verbs:
+        print(f"{len(tokens())} declared interactables -> {len(verb_set())} "
+              f"verbs\n")
+        for v, ts in by_verb().items():
+            print(f"  {v:8s} {VERBS[v]}")
+            print(f"           {len(ts):2d}: " + ", ".join(ts))
+        coll = head_collisions()
+        print(f"\n  {len(coll)} head nouns whose tokens differ in shape:")
+        for h, ts in coll.items():
+            print(f"    {h:10s} " + ", ".join(
+                f"{t} ({R.PROP_KIND[t]} -> {verb_of(t)})" for t in ts))
+        return 0
+
+    if a.audit:
+        keys = set(a.keys.split(",")) if a.keys else None
+
+        def prog(i, n, row):
+            u = len(row["unresolved"])
+            print(f"  [{i:3d}/{n}] {row['key']:26s} {row['built']:8s} "
+                  f"{len(row['resolved'])}/{len(row['declared'])} resolved"
+                  + (f"  MISSING {', '.join(row['unresolved'])}" if u else ""),
+                  flush=True)
+
+        rows = audit(keys, progress=prog)
+        got = tally(rows)
+        print(f"\n{got['resolved']}/{got['declared']} declared interactables "
+              f"resolve to a group the place actually emits")
+        print(f"{got['places_all']}/{got['places']} places resolve ALL of "
+              f"theirs; {got['places_none']} resolve NONE of theirs")
+        print(f"of the {got['declared'] - got['resolved']} that do not, "
+              f"{got['near']} ARE built and carry the module's own name "
+              f"instead of the register's, and {got['absent']} were never "
+              f"built")
+        byb = {}
+        for r in rows:
+            byb.setdefault(r["built"], [0, 0])
+            byb[r["built"]][0] += len(r["resolved"])
+            byb[r["built"]][1] += len(r["declared"])
+        for b, (g, d) in sorted(byb.items()):
+            print(f"  built {b:8s} {g:3d}/{d:3d}")
+        if a.write:
+            os.makedirs(os.path.dirname(CACHE), exist_ok=True)
+            with open(CACHE, "w") as f:
+                json.dump(rows, f, indent=1)
+            print(f"wrote {CACHE}")
+        # THE ASSERTION, AND IT FAILS. `--audit` is the honest form of the
+        # question -- does every declared use resolve -- and the answer today is
+        # no, on 98 of 357. `--gate` is the form CI can hold green while that is
+        # true; this one is meant to go red until the shortfall is built.
+        if got["resolved"] < got["declared"]:
+            print(f"\nFAIL  {got['declared'] - got['resolved']} declared "
+                  f"interactables resolve to nothing a room emits. A player "
+                  f"cannot use what the register says is there.")
+            return 1
+        return 0
+
+    return _selftest()
+
+
+if __name__ == "__main__":
+    sys.exit(_cli(sys.argv[1:]))

@@ -4790,3 +4790,74 @@ and the fittings could not make the level up, so the frame either left the level
 black fraction ran past the x11.42 band (`medical` crushed x16.2, `research` x18.2). That is the
 fitting count showing through — a room whose sources cannot carry its level has only the flat term
 to carry it, and taking the flat term away leaves a hole rather than a shadow.
+
+---
+
+## INV-244 — The verb set a player uses the station with, and the four numbers behind a prompt
+
+**Invented:** the eight verbs in `station/interact.py::VERBS`, the rule that assigns one to each of
+the 99 declared interactables, and the four constants that decide when a prompt appears and what a
+press does — `interact.gd::reach_m = 2.4 m`, `look_half_deg = 35°`, `press_travel_m = 4 mm`,
+`press_frames = 12`.
+
+**Why necessary:** `station/directory.py` has given every one of the 128 register places an
+`interacts` field since layer 1 — the column headed *what a player can use in this room* — and
+`STATE.md`'s open findings still read "Nothing is interactable except the door." Both were true.
+`interacts` had exactly two readers: `rooms.lateral_stack`, which uses it to decide how much WALL a
+room needs, and `rooms.build`, which uses it to decide where to stand a box. Neither is a player
+using anything. 357 declarations, 0 verbs. `docs/MASTER-PLAN.md` §3.2 says why the verb set has to
+come first — *"Building 71 prop behaviours before knowing the verb set is how you build the wrong
+71."*
+
+**Constrained by — the verbs.** Nothing here is chosen from a blank page; both tables are keyed on
+something this repository already computes, because a fourth vocabulary alongside `interacts`,
+`rooms.PROPS` and `rooms.PROP_KIND` is a fourth thing to drift.
+
+- `_KIND_VERB` has one row per value of `rooms.PROP_KIND` — sixteen — which is the classification
+  `dressing.machine()` already builds these objects from. It says what SHAPE a thing is.
+- `_HEAD_VERB` has twenty-two rows keyed on the token's HEAD NOUN, the last underscore field, which
+  is the register's own word for what the object IS. It overrides the shape where the two disagree:
+  a `valve` is a `wallpanel` by shape and a control by name.
+
+Both are asserted **total** (all 99 tokens resolve) and **minimal** (delete any single override and
+at least one token changes verb), so a row that decides nothing cannot accumulate. The eight verbs
+are an *output* of those tables, not an input: `verb_set()` derives them and the self-test fails a
+row of `VERBS` no token reaches. `tread` is the honest bucket and is declared unpressable — a
+catwalk, a path, a handhold and a kerb are things you get about ON, and giving them a keypress would
+be a lie about what is built.
+
+**Constrained by — the numbers.** Each is derived from something already in the repository:
+
+| | value | derived from |
+|---|---|---|
+| `look_half_deg` | **35°** | exactly half `player.gd::_cam.fov = 70.0`, which is vertical and is the figure `station/budget.py` counts the frustum at (INV-083). The cone is therefore *"inside the field of view without turning your head"* rather than a number |
+| `reach_m` | **2.4 m** | measured to the object's CENTRE, which is what `scan()` compares. The deepest responding prop a player stands at is `baggage_scanner`, 2.2 m deep, so touching it puts the eye 1.10 m from its centre; the player capsule is r = 0.35 m (`walk.gd::_spawn_player`), giving 1.45 m against the object. One step back is `rooms.WALK_M = 0.9`, the clear path a body needs. 1.45 + 0.9 = 2.35 → **2.4**. Checked from above: it must stay under `door.gd::open_range_m = 2.6`, or a door would react before you were told you could use its controls |
+| `press_travel_m` | **4 mm** | the acknowledgement a momentary control gives. Bounded below by visibility — a 70° vertical FOV over 1080 px subtends **1.297 mm per pixel at 1 m**, so 4 mm is about three pixels at the distance you use something from. Bounded above by the thinnest responding prop in `rooms.PROPS`, `level_plaque` at 0.03 m: a travel over about a third of that would push an object through its own back face |
+| `press_frames` | **12** | 0.2 s at the 60 Hz `station/walkable.py` drives physics at — the dwell of a momentary contact, long enough that a frame taken during a press catches it |
+
+**What is NOT claimed.** `RESPONDS` lists only the four verbs the OBJECT answers — `open`,
+`operate`, `read`, `store`. `sit`, `rest` and `serve` are excluded on purpose and the runtime reports
+`response=none` for them, because what answers those is a BODY: sitting needs the player's own rig,
+which does not exist (`npc/animation.py` has `sit_clip` and only NPCs use it), and being served
+needs whoever is behind the counter to turn round and talk. Listing them as responding would make
+`use()` return true and nothing happen, which is the failure that looks like success. The gate
+prefers a responding verb for exactly this reason: its first run chose a `bay_control_booth`, whose
+verb is `serve`, and the pass read "it was used and nothing happened".
+
+**Overturned by:** a show frame in which somebody operates one of these objects — the Zocalo's
+babcom terminals and C&C's consoles are on screen repeatedly — would replace a derived verb with an
+observed one, and would settle the five head-noun collisions `--verbs` prints (`bench` covers a
+`bench` you sit on and a `lab_bench` you work at; `lamp` covers a status lamp you read and a pendant
+lamp you switch). A player rig with a sit animation moves `sit` and `rest` into `RESPONDS`. And any
+of the four numbers is overturned by the thing it was derived from changing: a different camera FOV
+moves the cone, a deeper prop moves the reach, a different render height moves the press.
+
+**Measured against the build, not asserted.** `python3 station/interact.py --audit` builds all 128
+places through `deck.room_geometry` — the same entry point the assembler and the collision builder
+use — and asks whether each declared interactable resolves to a group the place actually emits.
+**259 of 357 do.** Every one of the 259 is on a generic room and **every one of the 98 that do not
+is on a bespoke-composed place**: `built generic 259/259, built bespoke 0/98`. Of the 98, twenty-six
+ARE built and carry the module's own name instead of the register's (`bar_stool` for `stool`,
+`qtr_locker` for `locker`, `cc_console_face` for `console`, `customs_desk` for `customs_desk`,
+`plant_catwalk` for `catwalk`) and seventy-two were never built at all — `babcom_terminal` is
+declared in nine of those places and built in none of them, `door` in seven, `bunk` in six.
