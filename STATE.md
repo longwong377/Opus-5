@@ -230,6 +230,47 @@ The grading measurement survives and is still worth having: contrast 1.06 crushe
 Compatibility, where `adjustment_*` does not exist either — so **it too must be re-derived**, and
 it is the top item on the next list.
 
+### 12. "NO ROOM HAS A COLLISION FLOOR" — I CHECKED, AND IT IS NOT WHAT I MEASURED
+
+The arrival agent reported two findings blocking the loop. The first is real and useful. The
+second is the most serious claim anyone made this session — *"No room interior has a collision
+floor... the body spawns, stands, opens the customs door, walks through, and stops 6 m in at the
+vestibule's far edge"* — and **it does not survive an independent check**, so it is recorded as a
+disagreement rather than adopted.
+
+Ray-cast down the radial from 1.2 m above the deck, into `build_collision`'s actual mesh for
+blue/0/0, at increasing depth past the corridor face:
+
+| place | interior half | floor found to | wall at |
+|---|---|---|---|
+| `docking_bays` | 5.5 m | **10 m** | 12 m |
+| `lowg_bays` | 3.60 m | **8 m** | 10 m |
+| `mooring_clamps` | 3.00 m | **8 m** | 10 m |
+| `plantroom_bay` | 4.82 m | **10 m** | 12 m |
+
+Every one returns floor at exactly 1.20 m below the probe — the same radius as the corridor's, so
+there is no step at the join either. The floor is present, it is continuous with the vestibule,
+and it runs to the room's full built depth.
+
+**WHAT IS TRUE, AND IT IS PROBABLY WHAT THE AGENT MET:** a room is ONE REPRESENTATIVE BAY.
+`room_interior_half_m` reads `bay_span_m`, not the gazetteer footprint, deliberately — *"a
+location's stored footprint is its FULL extent (`docking_bays` is 360 degrees by 140 m), and what
+gets built is one representative bay"*. So walking into a room gets you 8-11 m and then a wall,
+because that is how much room exists. A body stopping is not a body falling.
+
+**The honest open question is therefore a different one and it is worth more:** the render mesh is
+also one bay, so the wall a player meets is drawn as well as felt — but `docking_bays` is a 140 m
+volume in the gazetteer and a player walks 11 m of it. That is a fidelity gap, not a collision
+bug, and it is the streaming system's job (`bays_in()` says how many the runtime instances, and
+nothing instances them yet).
+
+**Finding 1 IS adopted:** the bays and the customs halls are one deck and TWO z-clusters (7120 vs
+7440), and `build_deck` assembles one, so the arrival walk from ramp to queue is not walkable in a
+single build. The agent reported that as 6 of 11 steps rather than hiding it.
+
+*CLAUDE.md's rule that a builder may decline a finding with evidence is what this section is. The
+agent did good work and this one claim did not hold; both halves of that are worth writing down.*
+
 ### 11. AGENTS: THE PERMISSION GATE IS GONE, THE DISCIPLINE IS NOT
 
 Set by the owner in session 4e: *"you dont have to ask about agents anymore but just use them

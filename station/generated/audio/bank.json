@@ -1,0 +1,377 @@
+{
+ "bits": 16,
+ "emitter_cap": 24,
+ "emitter_ref_dba": 60.0,
+ "emitters": [
+  {
+   "db": -3.0,
+   "layer": "air",
+   "match": "fix_service_duct",
+   "range_m": 7.0,
+   "stream": "air_duct"
+  },
+  {
+   "db": -6.0,
+   "layer": "air",
+   "match": "fix_service_riser",
+   "range_m": 6.0,
+   "stream": "air_duct"
+  },
+  {
+   "db": 0.0,
+   "layer": "air",
+   "match": "fix_fume_column",
+   "range_m": 9.0,
+   "stream": "air_duct"
+  },
+  {
+   "db": -1.0,
+   "layer": "machinery",
+   "match": "fix_plant_column",
+   "range_m": 14.0,
+   "stream": "plant_beat"
+  },
+  {
+   "db": 3.0,
+   "layer": "machinery",
+   "match": "fix_furnace_stack",
+   "range_m": 20.0,
+   "stream": "plant_beat"
+  },
+  {
+   "db": -8.0,
+   "layer": "machinery",
+   "match": "fix_equipment_gantry",
+   "range_m": 5.0,
+   "stream": "machine_hum"
+  },
+  {
+   "db": -6.0,
+   "layer": "machinery",
+   "match": "fix_catenary_run",
+   "range_m": 10.0,
+   "stream": "dock_machinery"
+  },
+  {
+   "db": -9.0,
+   "layer": "machinery",
+   "match": "fix_platform_edge",
+   "range_m": 8.0,
+   "stream": "dock_machinery"
+  },
+  {
+   "db": -2.0,
+   "layer": "water",
+   "match": "prop_standpipe",
+   "range_m": 6.0,
+   "stream": "water_run"
+  },
+  {
+   "db": -4.0,
+   "layer": "water",
+   "match": "prop_shower",
+   "range_m": 4.0,
+   "stream": "water_run"
+  },
+  {
+   "db": 1.0,
+   "layer": "water",
+   "match": "prop_pool_edge",
+   "range_m": 16.0,
+   "stream": "water_pool"
+  },
+  {
+   "db": -12.0,
+   "layer": "water",
+   "match": "prop_planter",
+   "range_m": 3.5,
+   "stream": "water_pool"
+  },
+  {
+   "db": -10.0,
+   "layer": "pa",
+   "match": "prop_intercom",
+   "range_m": 6.0,
+   "stream": "pa_horn"
+  },
+  {
+   "db": -14.0,
+   "layer": "pa",
+   "match": "prop_info_board",
+   "range_m": 5.0,
+   "stream": "pa_horn"
+  },
+  {
+   "db": -6.0,
+   "layer": "machinery",
+   "match": "prop_reactor_console",
+   "range_m": 4.0,
+   "stream": "machine_hum"
+  },
+  {
+   "db": -14.0,
+   "layer": "machinery",
+   "match": "prop_tank_gauge",
+   "range_m": 3.0,
+   "stream": "machine_hum"
+  },
+  {
+   "db": -8.0,
+   "layer": "machinery",
+   "match": "prop_lift_door",
+   "range_m": 6.0,
+   "stream": "dock_machinery"
+  },
+  {
+   "db": -2.0,
+   "layer": "traffic",
+   "match": "prop_bay_door",
+   "range_m": 18.0,
+   "stream": "dock_machinery"
+  }
+ ],
+ "fallback_place": "central_corridor",
+ "layers": [
+  "air",
+  "structure",
+  "machinery",
+  "crowd",
+  "water",
+  "traffic",
+  "pa"
+ ],
+ "loudest": [
+  "waste_red",
+  "15"
+ ],
+ "loudest_bed_dba": 79.67,
+ "master_trim_db": 8.33,
+ "peak_dbfs": -1.0,
+ "rate": 32000,
+ "ref_dba_at_0dbfs": 94.0,
+ "streams": {
+  "air_alien": {
+   "band": [
+    1500.0,
+    4000.0
+   ],
+   "bytes": 384044,
+   "centroid_hz": 1714.8,
+   "file": "air_alien.wav",
+   "level_trim_db": 0.0,
+   "peak_dbfs": -6.73,
+   "rms_dbfs": -20.0,
+   "samples": 192000,
+   "seam_ratio": 0.0212,
+   "seam_ratio_d2": 0.2718,
+   "seconds": 6.0,
+   "why": "LIFE-SUPPORT-AND-INDUSTRY.md 2.3: 'crossing into the Alien Sector should change the ambience track ... before any sign says so'. Brighter, faster, and a different gas"
+  },
+  "air_duct": {
+   "band": [
+    700.0,
+    2400.0
+   ],
+   "bytes": 384044,
+   "centroid_hz": 1339.4,
+   "file": "air_duct.wav",
+   "level_trim_db": 0.0,
+   "peak_dbfs": -6.79,
+   "rms_dbfs": -20.0,
+   "samples": 192000,
+   "seam_ratio": 0.3043,
+   "seam_ratio_d2": 0.1005,
+   "seconds": 6.0,
+   "why": "pink noise, 120 Hz-6 kHz, breathing at 0.19 Hz -- a supply duct close to its diffuser"
+  },
+  "air_plenum": {
+   "band": [
+    90.0,
+    700.0
+   ],
+   "bytes": 384044,
+   "centroid_hz": 128.4,
+   "file": "air_plenum.wav",
+   "level_trim_db": 0.0,
+   "peak_dbfs": -7.57,
+   "rms_dbfs": -20.0,
+   "samples": 192000,
+   "seam_ratio": 0.363,
+   "seam_ratio_d2": 0.2484,
+   "seconds": 6.0,
+   "why": "brown noise rolled off at 900 Hz -- the same air two rooms away, which is what a dwelling gets (INV-248's living class)"
+  },
+  "crowd_babble": {
+   "band": [
+    450.0,
+    1200.0
+   ],
+   "bytes": 512044,
+   "centroid_hz": 599.0,
+   "file": "crowd_babble.wav",
+   "level_trim_db": 0.0,
+   "peak_dbfs": -5.71,
+   "rms_dbfs": -20.0,
+   "samples": 256000,
+   "seam_ratio": 0.1169,
+   "seam_ratio_d2": 0.2144,
+   "seconds": 8.0,
+   "why": "speech-band noise under five incommensurate syllable rates -- a murmur, which is what more than 12 voices in a room actually is"
+  },
+  "crowd_sparse": {
+   "band": [
+    450.0,
+    1900.0
+   ],
+   "bytes": 512044,
+   "centroid_hz": 963.6,
+   "file": "crowd_sparse.wav",
+   "level_trim_db": 16.86,
+   "peak_dbfs": -1.0,
+   "rms_dbfs": -36.86,
+   "samples": 256000,
+   "seam_ratio": 0.3987,
+   "seam_ratio_d2": 0.7586,
+   "seconds": 8.0,
+   "why": "the same band, gated hard. Below the babble threshold you hear PEOPLE rather than a crowd, and the gaps are the isolation the owner's brief asks for"
+  },
+  "dock_machinery": {
+   "band": [
+    60.0,
+    600.0
+   ],
+   "bytes": 512044,
+   "centroid_hz": 164.1,
+   "file": "dock_machinery.wav",
+   "level_trim_db": 8.05,
+   "peak_dbfs": -1.0,
+   "rms_dbfs": -28.05,
+   "samples": 256000,
+   "seam_ratio": 0.071,
+   "seam_ratio_d2": 0.0319,
+   "seconds": 8.0,
+   "why": "low broadband under clamp and crane transients. The bay is not steady: things land in it"
+  },
+  "machine_hum": {
+   "band": [
+    90.0,
+    900.0
+   ],
+   "bytes": 384044,
+   "centroid_hz": 113.3,
+   "file": "machine_hum.wav",
+   "level_trim_db": 0.0,
+   "peak_dbfs": -15.3,
+   "rms_dbfs": -20.0,
+   "samples": 192000,
+   "seam_ratio": 0.3303,
+   "seam_ratio_d2": 0.3142,
+   "seconds": 6.0,
+   "why": "100 Hz and harmonics -- fittings, fans and cabinets. The sound of a room with equipment in it and no plant"
+  },
+  "pa_chime": {
+   "band": [
+    500.0,
+    1800.0
+   ],
+   "bytes": 128044,
+   "centroid_hz": 1029.0,
+   "file": "pa_chime.wav",
+   "level_trim_db": -0.0,
+   "peak_dbfs": -8.41,
+   "rms_dbfs": -20.0,
+   "samples": 64000,
+   "seam_ratio": 0.0,
+   "seam_ratio_d2": 0.0,
+   "seconds": 2.0,
+   "why": "two tones, A5 and D6, envelopes wholly inside the buffer so the one-shot starts and ends at silence"
+  },
+  "pa_horn": {
+   "band": [
+    400.0,
+    4000.0
+   ],
+   "bytes": 256044,
+   "centroid_hz": 2988.1,
+   "file": "pa_horn.wav",
+   "level_trim_db": -0.0,
+   "peak_dbfs": -6.7,
+   "rms_dbfs": -20.0,
+   "samples": 128000,
+   "seam_ratio": 0.2106,
+   "seam_ratio_d2": 0.2954,
+   "seconds": 4.0,
+   "why": "the horn's own hiss. A live tannoy is never silent, and a player who notices it has noticed the station is talking to them"
+  },
+  "plant_beat": {
+   "band": [
+    35.0,
+    260.0
+   ],
+   "bytes": 512044,
+   "centroid_hz": 73.2,
+   "file": "plant_beat.wav",
+   "level_trim_db": 0.0,
+   "peak_dbfs": -14.72,
+   "rms_dbfs": -20.0,
+   "samples": 256000,
+   "seam_ratio": 0.7375,
+   "seam_ratio_d2": 0.3034,
+   "seconds": 8.0,
+   "why": "INV-250's 0.75 Hz beat over a 58 Hz shaft line and its harmonics. 8.000 s is exactly 6 strokes"
+  },
+  "structure_hull": {
+   "band": [
+    18.0,
+    120.0
+   ],
+   "bytes": 714104,
+   "centroid_hz": 26.7,
+   "file": "structure_hull.wav",
+   "level_trim_db": 0.0,
+   "peak_dbfs": -10.1,
+   "rms_dbfs": -20.0,
+   "samples": 357030,
+   "seam_ratio": 0.3645,
+   "seam_ratio_d2": 0.3165,
+   "seconds": 11.157187,
+   "why": "INV-249. Loop length is one spoke-pass period exactly (11.157 s = 357030 samples), so the swell is whole and the rotation is present as MODULATION, never as a tone"
+  },
+  "water_pool": {
+   "band": [
+    700.0,
+    5000.0
+   ],
+   "bytes": 384044,
+   "centroid_hz": 2228.2,
+   "file": "water_pool.wav",
+   "level_trim_db": 11.74,
+   "peak_dbfs": -1.0,
+   "rms_dbfs": -31.74,
+   "samples": 192000,
+   "seam_ratio": 0.0071,
+   "seam_ratio_d2": 0.0908,
+   "seconds": 6.0,
+   "why": "broader noise plus forty drips -- the Garden's reflecting pool and waterfall, authority 1 (garden.png), which 3.3 calls conspicuous consumption"
+  },
+  "water_run": {
+   "band": [
+    2200.0,
+    5500.0
+   ],
+   "bytes": 384044,
+   "centroid_hz": 3344.7,
+   "file": "water_run.wav",
+   "level_trim_db": 0.0,
+   "peak_dbfs": -6.2,
+   "rms_dbfs": -20.0,
+   "samples": 192000,
+   "seam_ratio": 0.2487,
+   "seam_ratio_d2": 0.2578,
+   "seconds": 6.0,
+   "why": "high band-limited noise, gently modulated -- a standpipe, and LIFE-SUPPORT-AND-INDUSTRY.md 3.3's queue for it"
+  }
+ },
+ "target_rms_dbfs": -20.0,
+ "total_bytes": 5450632
+}
