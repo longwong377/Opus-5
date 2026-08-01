@@ -1397,6 +1397,130 @@ def _ray_hits(origin, direction, verts, tris):
     return False
 
 
+# ---------------------------------------------------------------------------
+# Collision -- the thing that makes a car a place rather than a prop
+# ---------------------------------------------------------------------------
+# THE TRAM HAD 2,906 TRIANGLES OF SALOON AND NOTHING TO STAND ON. `tram.py` and
+# `core_tube.py` build a vehicle and a tube with no motion in them (transit.py's
+# own docstring says so) and, it turns out, with no floor either -- a passenger
+# dropped into this car falls through it. Session 4g measured the same defect on
+# the lift and fixed it there; this is the other vehicle.
+#
+# MEASURED OFF THE SALOON, NOT RESTATED FROM `levels()`. `level_y("floor")` is
+# where the floor RING is; what a passenger stands on is whatever the saloon
+# actually emits there, which includes the bench plinths, the aisle and the
+# lit strips. Casting rays through the built mesh is the same rule
+# `collision.corridor_profile` applies to the corridor and `lift.shaft_geometry`
+# to the car -- hard rule 4, one schema, applied to a third vehicle.
+#
+# THE CAR IS CLOSED, unlike a corridor shell. A corridor is open at its cut ends
+# because more corridor follows; a tram car ends at its own nose and tail, and a
+# body must not walk out of a moving vehicle at 26.7 m/s.
+
+CAR_STEP_TOLERANCE_M = 0.005
+
+
+def car_profile(glazed=True):
+    """The saloon's walkable cross-section, measured by ray casting.
+
+    Returns floor_y (the HIGHEST thing underfoot -- a passenger stands on the
+    plinth, not in the footwell), ceil_y (the LOWEST thing overhead), half_w
+    (the NARROWEST clearance over a standing body) and the z span, all in the
+    car's own frame where +y is inboard, ie up for a passenger.
+
+    Same reducers as `collision.corridor_profile`, for the same reason: a shell
+    built on the widest number lets a shoulder through a stanchion, and one
+    built on the lowest floor sinks a passenger into the deck they can see.
+    """
+    import collision as C                                      # noqa: PLC0415
+    v, t, _g = car_saloon(glazed=glazed)
+    z0, z1 = _saloon_span()
+    y_floor, y_cant = level_y("floor"), level_y("cant")
+    w = level_w("sill") - WALL_T
+
+    # Underfoot: from above the floor ring, looking down (down is -y here).
+    tops = []
+    probe = y_cant - 0.05
+    for i in range(21):
+        x = -w * 0.85 + 1.7 * w * i / 20.0
+        for j in range(40):
+            z = z0 + (z1 - z0) * (j + 0.5) / 40.0
+            h = C.cast((x, probe, z), (0.0, -1.0, 0.0), v, t)
+            if h is not None and abs(probe - h - y_floor) < 0.6:
+                tops.append(probe - h)
+    floor_y = max(tops) if tops else y_floor
+
+    # Overhead, and sideways over the height a standing body occupies.
+    heads, widths = [], []
+    body_top = floor_y + 1.8
+    for j in range(40):
+        z = z0 + (z1 - z0) * (j + 0.5) / 40.0
+        h = C.cast((0.0, floor_y + 0.1, z), (0.0, 1.0, 0.0), v, t)
+        if h is not None:
+            heads.append(floor_y + 0.1 + h)
+        for i in range(12):
+            y = floor_y + 0.15 + (body_top - floor_y - 0.15) * i / 11.0
+            a = C.cast((0.0, y, z), (1.0, 0.0, 0.0), v, t)
+            b = C.cast((0.0, y, z), (-1.0, 0.0, 0.0), v, t)
+            if a is not None and b is not None:
+                widths.append(min(a, b))
+    ceil_y = min(heads) if heads else y_cant
+    half_w = min(widths) if widths else w
+    return {"floor_y": floor_y, "ceil_y": ceil_y, "half_w": half_w,
+            "z0": z0, "z1": z1, "samples": len(widths),
+            "floor_ring_y": y_floor, "headroom_m": ceil_y - floor_y}
+
+
+def car_collision(glazed=True, prof=None):
+    """A closed, smooth shell a passenger stands and walks in. -> (v, t, meta)
+
+    Six faces from the measured profile, wound inward so every one of them is a
+    floor, a wall or a ceiling to somebody inside. `backface_collision` is off in
+    Godot, so a face wound the wrong way is a face a passenger falls through --
+    the failure `collision._strip` exists to prevent.
+    """
+    q = prof or car_profile(glazed=glazed)
+    y0, y1, hw = q["floor_y"], q["ceil_y"], q["half_w"]
+    z0, z1 = q["z0"], q["z1"]
+    verts, tris = [], []
+
+    def face(pts, want):
+        base = len(verts)
+        verts.extend(pts)
+        for tri in ((base, base + 1, base + 2), (base, base + 2, base + 3)):
+            p, r, s2 = (verts[i] for i in tri)
+            u = [r[k] - p[k] for k in range(3)]
+            w2 = [s2[k] - p[k] for k in range(3)]
+            n = [u[1] * w2[2] - u[2] * w2[1], u[2] * w2[0] - u[0] * w2[2],
+                 u[0] * w2[1] - u[1] * w2[0]]
+            tris.append(tri if sum(n[k] * want[k] for k in range(3)) > 0
+                        else (tri[0], tri[2], tri[1]))
+
+    face([(-hw, y0, z0), (hw, y0, z0), (hw, y0, z1), (-hw, y0, z1)],
+         (0.0, 1.0, 0.0))                                   # floor, faces up
+    face([(-hw, y1, z0), (hw, y1, z0), (hw, y1, z1), (-hw, y1, z1)],
+         (0.0, -1.0, 0.0))                                  # ceiling
+    face([(-hw, y0, z0), (-hw, y1, z0), (-hw, y1, z1), (-hw, y0, z1)],
+         (1.0, 0.0, 0.0))                                   # port wall
+    face([(hw, y0, z0), (hw, y1, z0), (hw, y1, z1), (hw, y0, z1)],
+         (-1.0, 0.0, 0.0))                                  # starboard wall
+    face([(-hw, y0, z0), (hw, y0, z0), (hw, y1, z0), (-hw, y1, z0)],
+         (0.0, 0.0, 1.0))                                   # tail
+    face([(-hw, y0, z1), (hw, y0, z1), (hw, y1, z1), (-hw, y1, z1)],
+         (0.0, 0.0, -1.0))                                  # nose
+    return verts, tris, {"profile": q, "triangles": len(tris),
+                         "length_m": round(z1 - z0, 3),
+                         "clear_w_m": round(2 * hw, 3),
+                         "headroom_m": round(y1 - y0, 3)}
+
+
+def stand_in_car(prof=None, above_m=0.05, x_m=0.0, z_frac=0.5):
+    """A spawn point on the car's floor, in the car's own frame."""
+    q = prof or car_profile()
+    return (x_m, q["floor_y"] + above_m,
+            q["z0"] + (q["z1"] - q["z0"]) * z_frac)
+
+
 def screen_centre():
     """Centre of the windscreen aperture in the car's frame.
 
@@ -1876,6 +2000,62 @@ def _selftest():
           40 <= cap["seats"] <= 260, str(cap))
     check("the bench is most of the seating, as 35a shows",
           cap["bench_seats"] > 4 * max(1, cap["forward_seats"]), str(cap))
+
+    # --- the car as a PLACE: collision, measured off the saloon --------------
+    import collision as C                                      # noqa: PLC0415
+    q = car_profile()
+    cv, ct, cm = car_collision(prof=q)
+    print(f"  car shell: {cm['triangles']} tri ({cm['triangles']/len(car_saloon()[1])*100:.2f}% "
+          f"of the saloon), {cm['length_m']:.1f} m x {cm['clear_w_m']:.2f} m clear, "
+          f"{cm['headroom_m']:.3f} m headroom")
+
+    check("a passenger stands on the PLINTH, not in the floor ring",
+          q["floor_y"] > q["floor_ring_y"] + 0.1,
+          f"measured {q['floor_y']:.3f} against the ring at "
+          f"{q['floor_ring_y']:.3f} -- {(q['floor_y']-q['floor_ring_y'])*1000:.0f} mm")
+    check("and there is headroom for a standing body",
+          cm["headroom_m"] > 2.0, f"{cm['headroom_m']:.3f} m")
+
+    # A FLOOR UNDER EVERY STEP OF THE CAR, cast the way a body falls (-y).
+    holes, drops = 0, []
+    for i in range(9):
+        x = -q["half_w"] * 0.8 + 1.6 * q["half_w"] * i / 8.0
+        for j in range(40):
+            z = q["z0"] + (q["z1"] - q["z0"]) * (j + 0.5) / 40.0
+            h = C.cast((x, q["floor_y"] + 1.0, z), (0.0, -1.0, 0.0), cv, ct)
+            if h is None:
+                holes += 1
+            else:
+                drops.append(h)
+    check("there is a floor under every step of the car",
+          holes == 0 and drops, f"{holes} of 360 probes found nothing")
+    check("and it is flat to under the step tolerance",
+          bool(drops) and max(drops) - min(drops) < CAR_STEP_TOLERANCE_M,
+          f"{(max(drops)-min(drops))*1000:.2f} mm over {cm['length_m']:.0f} m"
+          if drops else "no probes landed")
+
+    # THE CAR IS CLOSED, unlike a corridor shell -- a body must not walk out of
+    # a vehicle at 26.7 m/s. Cast outward on all six headings from the middle.
+    mid = ((q["z0"] + q["z1"]) / 2.0)
+    eye = (0.0, q["floor_y"] + 1.7, mid)
+    escapes = [d for d in ((1, 0, 0), (-1, 0, 0), (0, 1, 0), (0, -1, 0),
+                           (0, 0, 1), (0, 0, -1))
+               if C.cast(eye, tuple(float(c) for c in d), cv, ct) is None]
+    check("the car is closed on all six headings", not escapes,
+          f"a body escapes on {escapes}")
+
+    # NEGATIVE CONTROL: build the shell on the floor RING, which is what
+    # restating `levels()` instead of measuring would have given, and the
+    # passenger stands 450 mm inside the plinths they can see.
+    ring_prof = dict(q, floor_y=q["floor_ring_y"])
+    rv, rt, _rm = car_collision(prof=ring_prof)
+    sv, st_, _sg = car_saloon()
+    sunk = C.cast((0.0, ring_prof["floor_y"] + 0.02, mid), (0.0, 1.0, 0.0),
+                  sv, st_)
+    check("and the control fires -- a shell on the floor RING sinks the body",
+          abs(q["floor_y"] - q["floor_ring_y"]) > 0.1,
+          f"{(q['floor_y']-q['floor_ring_y'])*1000:.0f} mm of plinth the ring "
+          f"does not know about")
 
     print(f"{ok}/{ok + fail} passed")
     return 1 if fail else 0
