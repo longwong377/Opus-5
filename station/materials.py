@@ -4021,6 +4021,182 @@ def _build():
 MATERIALS = _build()
 BY_NAME = {m.name: m for m in MATERIALS}
 
+# ---------------------------------------------------------------------------
+# SESSION 4e: binding the 186 materials that had no texture at all
+# ---------------------------------------------------------------------------
+# Applied here rather than written into 186 constructor calls, and that is a
+# deliberate choice with one strong reason: the binding is a statement about
+# what KIND of surface something is, and it is far easier to review as thirty
+# lines of rule than as 186 edits scattered through 4,000 lines of provenance.
+# A rule that stops matching anything is also something the self-test can
+# catch, which 186 hand edits are not.
+#
+# `uv_scale` is metres per repeat and every value here is a real-world size,
+# not a number picked to look right: a 190-thread weave sheet at 0.55 m gives
+# roughly 3 mm yarn, a face at 0.30 m puts pores at a millimetre, farmland
+# repeats every 12 m. Triplanar is already on for everything, so none of this
+# needs UVs -- which the meshes do not have.
+#
+# ORDER MATTERS: first match wins, so the specific prefixes come before the
+# general ones. `npc_cloth_trim__ef_black_leather` is leather and must not take
+# the cloth rule that its `npc_cloth` prefix would otherwise give it.
+TEXTURE_BINDINGS = (
+    # -- people. The owner's "featureless blobs", and 57 of the 186 ---------
+    ("npc_skin",                   "skin",            0.30),
+    ("npc_hair",                   "cloth_weave",     0.06),
+    ("npc_leather__",              "composite_matte", 0.12),
+    ("npc_cloth_trim__ef_black_leather",   "composite_matte", 0.12),
+    ("npc_cloth_trim__ef_command_leather", "composite_matte", 0.12),
+    ("npc_cloth_trim__narn_apron",         "composite_matte", 0.12),
+    ("npc_cloth_trim__psi_black_panel",    "composite_matte", 0.10),
+    ("npc_cloth_trim__narn_iridescent",    "metal_grain",     0.10),
+    ("npc_metal__",                "metal_grain",     0.10),
+    ("npc_suit_lacquer",           "metal_grain",     0.20),
+    ("npc_cloth",                  "cloth_weave",     0.55),
+    # -- soft furnishing ---------------------------------------------------
+    ("furn_upholstery",            "cloth_weave",     0.70),
+    ("furn_gaming_baize",          "cloth_weave",     0.45),
+    ("furn_stall_canvas",          "cloth_weave",     1.10),
+    ("zoc_stall_canvas",           "cloth_weave",     1.10),
+    ("garden_pennant",             "cloth_weave",     0.80),
+    ("tram_saloon_seat",           "cloth_weave",     0.60),
+    # -- mineral. Both of these close a gap this file already names --------
+    ("furn_dark_stone",            "stone_agg",       1.60),
+    ("furn_worship_stone",         "stone_agg",       1.80),
+    ("garden_civic_render",        "stone_agg",       2.40),
+    ("garden_coping_stone",        "stone_agg",       1.20),
+    ("garden_terracotta",          "stone_agg",       0.90),
+    ("garden_town_block",          "stone_agg",       2.00),
+    ("garden_loggia_recess",       "stone_agg",       2.00),
+    ("endcap_course_wall",         "stone_agg",       3.00),
+    # -- ground. Eleven materials rendering farmland as flat brown ---------
+    ("ground_arable",              "soil_clod",      12.00),
+    ("ground_shore",               "soil_clod",       8.00),
+    ("ground_road",                "soil_clod",       6.00),
+    ("ground_settlement",          "stone_agg",       6.00),
+    ("garden_bank_planting",       "soil_clod",       4.00),
+    # -- perforation and mesh ----------------------------------------------
+    ("bar_cell_matrix",            "mesh_perf",       0.45),
+    ("council_lit_mesh",           "mesh_perf",       0.55),
+    ("light_deck_grating",         "mesh_perf",       0.40),
+    ("radiator",                   "mesh_perf",       0.90),
+    ("swept_array",                "mesh_perf",       1.40),
+    # -- bare and brushed metal --------------------------------------------
+    ("grab_rail_bare",             "metal_grain",     0.35),
+    ("zoc_service_chrome",         "metal_grain",     0.45),
+    ("zoc_rail",                   "metal_grain",     0.40),
+    ("plant_valve_metal",          "metal_grain",     0.50),
+    ("furn_service_steel",         "metal_grain",     0.70),
+    ("garden_bronze_joinery",      "metal_grain",     0.45),
+    ("core_collar",                "metal_grain",     1.60),
+    ("tram_band",                  "metal_grain",     0.80),
+    ("bar_pendant_stem",           "metal_grain",     0.25),
+    ("device_reader_shell",        "metal_grain",     0.30),
+    # -- moulded composite and casework ------------------------------------
+    ("furn_casework",              "composite_matte", 1.10),
+    ("furn_clinical",              "composite_matte", 1.00),
+    ("furn_pale_composite",        "composite_matte", 1.10),
+    ("furn_screen_panel",          "composite_matte", 0.80),
+    ("device_console_bed",         "composite_matte", 0.70),
+    ("zoc_cafe_table",             "composite_matte", 0.90),
+    ("zoc_chair_seat",             "composite_matte", 0.60),
+    ("zoc_table_edge",             "composite_matte", 0.50),
+    ("zoc_five_panel",             "composite_matte", 1.20),
+    ("zoc_screen",                 "composite_matte", 0.90),
+    ("tram_saloon_wall",           "composite_matte", 1.20),
+    ("tram_saloon_post",           "composite_matte", 0.40),
+    ("sign_mount_dark",            "composite_matte", 0.50),
+    ("bar_pendant_shade",          "composite_matte", 0.40),
+    ("bar_dartboard",              "composite_matte", 0.35),
+    # -- painted metal: the commonest hard surface on the station ----------
+    ("kit_",                       "paint_chip",      1.60),
+    ("shell_",                     "paint_chip",      1.80),
+    ("endcap_rib",                 "paint_chip",      2.00),
+    ("zoc_armature",               "paint_chip",      1.60),
+    ("zoc_structure",              "paint_chip",      2.20),
+    ("zoc_stall_post",             "paint_chip",      0.50),
+    ("zoc_stall_counter",          "paint_chip",      1.00),
+    ("tram_body",                  "paint_chip",      2.00),
+    ("plant_switchgear",           "paint_chip",      1.20),
+    ("core_band",                  "paint_chip",      2.40),
+    ("hull_banding_red",           "paint_chip",      3.00),
+    ("bay_deck_marking",           "paint_chip",      2.00),
+    ("bay_deck_emblem",            "paint_chip",      2.00),
+    ("accent_warning",             "paint_chip",      1.20),
+    ("garden_mast",                "paint_chip",      1.40),
+    ("furn_stall_frame",           "paint_chip",      0.80),
+    ("council_speak_inlay",        "metal_grain",     0.60),
+    ("sign_deck_plaque",           "metal_grain",     0.40),
+)
+
+# Materials deliberately left untextured, each with the reason. Asserted
+# complete by `_selftest`: every material with no texture must either match a
+# rule above or appear here, so a NEW material cannot quietly join the 186.
+#
+# The rule is one sentence: a surface that is its own light source, or is
+# perfectly smooth, has no microstructure to show. Putting a weave on a lamp
+# lens or a stone tooth on a window is the failure this list exists to prevent.
+UNTEXTURED_BY_DESIGN = {
+    "glass": ("device_screen_glass", "dome_glazing", "viewport_glazing",
+              "tram_glass", "garden_glass", "garden_town_window",
+              "garden_pool_water", "garden_falling_water", "ground_water"),
+    "emitters": ("emissive_signage", "sign_lit_field", "sign_text_lit",
+                 "sign_neon_venue", "zoc_neon_face", "zoc_neon_back",
+                 "zoc_deck_light", "zoc_rib_lamp", "zoc_stall_light",
+                 "zoc_stall_sign", "bar_pendant_lamp", "bay_floodlight",
+                 "truss_lamp", "core_hub_lamp", "core_band_warm",
+                 "marker_light_red", "marker_light_white",
+                 "alien_status_lamp", "endcap_rimlight", "furn_shrine_lit",
+                 "tram_headlight", "tram_saloon_strip", "light_indicator_red"),
+    "foliage": ("garden_foliage", "garden_mown_grass", "ground_hedge",
+                "ground_parkland", "garden_bark",
+                # A LEAF IS NOT A TRIM SHEET. Foliage wants an alpha-cut card
+                # with a leaf shape on it, which is a different pipeline from
+                # every sheet here, and giving it stone or cloth would be worse
+                # than leaving it flat. Named as the next texture job.
+                ),
+    # Every `light_*` fitting. A luminaire's visible face is the source, and a
+    # microstructure map on an emitter does nothing but modulate the thing that
+    # is meant to read as uniform light. 16 materials.
+    "fittings": ("light_",),
+    "unbound": ("unbound",),
+}
+
+# Flattened once. Entries ending in `_` are prefixes, everything else is exact.
+_BY_DESIGN = tuple(n for v in UNTEXTURED_BY_DESIGN.values() for n in v)
+
+
+def _by_design(name):
+    return any(name == n or (n.endswith("_") and name.startswith(n))
+               for n in _BY_DESIGN)
+
+
+def _bind_textures():
+    """Attach the 4e sheets to the materials that had none. Returns the count.
+
+    Skips anything already textured, so the eight original sheets and every
+    scalar tuned against them are untouched.
+    """
+    n = 0
+    for m in MATERIALS:
+        # BY DESIGN WINS OVER THE PATTERNS, and it has to: `core_band_warm` is
+        # an emitter whose name starts with `core_band`, so the paint rule
+        # claimed it and put chipped enamel on a light source. Checking the
+        # exclusion first is what stops a prefix rule reaching past its family.
+        if m.texture or _by_design(m.name):
+            continue
+        for pat, sheet, scale in TEXTURE_BINDINGS:
+            if m.name.startswith(pat):
+                m.texture = sheet
+                m.uv_scale = 1.0 / scale
+                m.triplanar = True
+                n += 1
+                break
+    return n
+
+
+BOUND_4E = _bind_textures()
+
 SCENES = ("exterior", "drum", "interior")
 
 
@@ -4180,6 +4356,19 @@ TEX_SIZE = {
     "hazard_chevron": 512,   # two colours and a diagonal
     "signage_panel": 512,
     "hull_window": 2048,     # read at 3 km as a lit band and at 20 m as glass
+    # --- session 4e: the eight that cover the 186 untextured materials ------
+    # Sized by the distance the surface is READ at, which is the same rule the
+    # eight above use. A garment and a face are looked at from a metre and are
+    # the two the owner named; a farmed field is seen from the drum axis.
+    "cloth_weave": 2048,     # 57 npc_cloth__* materials, read at 1 m
+    "skin": 1024,            # faces and hands, read at 1 m, low relief
+    "paint_chip": 2048,      # the commonest hard surface on the station
+    "composite_matte": 1024, # casework, clinical, kiosk panels
+    "metal_grain": 1024,     # fittings, rails, valve bodies, trim
+    "stone_agg": 2048,       # architectural render and flagstone -- named as
+                             # missing in two provenance entries in this file
+    "soil_clod": 1024,       # the drum's arable floor, seen from far away
+    "mesh_perf": 1024,       # cell fronts, catwalk mesh, guards
 }
 
 TEXTURE_MAPS = ("albedo", "normal", "orm")
@@ -4202,6 +4391,19 @@ TEX_SLOPE = {
     "hazard_chevron": 0.06,   # paint on plate; the pattern is not relief
     "signage_panel": 0.20,    # the bezel, and nothing else
     "hull_window": 0.16,      # a shallow rebate; relief must die with distance
+    # --- session 4e ---------------------------------------------------------
+    # These are statements about the SURFACE, not the resolution. Cloth's
+    # interlacing is steep for its size, which is exactly why a weave catches a
+    # grazing light; skin is nearly flat and must stay so or a face turns to
+    # orange peel; a perforation is a hole and is the steepest thing here.
+    "cloth_weave": 0.42,
+    "skin": 0.08,
+    "paint_chip": 0.14,       # film thickness and flake edges, not structure
+    "composite_matte": 0.06,  # moulded plastic has almost no relief
+    "metal_grain": 0.10,
+    "stone_agg": 0.30,
+    "soil_clod": 0.55,        # clods and furrows; the roughest surface here
+    "mesh_perf": 0.70,        # a hole, and it should read as one
 }
 
 # An albedo map multiplies `albedo_color`, so it has to average to a known
@@ -4684,9 +4886,503 @@ def gen_signage_sheet(size, seed):
     return col, rough, metal, ao, height
 
 
+# ---------------------------------------------------------------------------
+# THE EIGHT SHEETS THAT WERE MISSING, AND WHY THEY ARE THE WHOLE VISUAL PROBLEM
+# ---------------------------------------------------------------------------
+# Measured in session 4e, on the library rather than on a frame: **186 of 234
+# materials carried no texture at all** -- a flat albedo colour, a roughness
+# number and nothing else. Eight sheets covered the other 48. That single fact
+# is what the owner was looking at when they said the renders are "bare and
+# colorless and undetailed" and the people are "featureless blobs": 79% of every
+# surface in shot is an untextured constant.
+#
+# It was never a geometry problem. The station carries 1.6M triangles of
+# panelling. Look is overwhelmingly MATERIAL and LIGHT, and the project spent
+# its effort on form.
+#
+# TWO THINGS MADE THIS CHEAP TO FIX AND BOTH ARE ALREADY HERE:
+#
+#   * the meshes have NO UVs at all and every material is `triplanar=True`, so a
+#     new sheet lands on every existing surface with no unwrapping work; and
+#   * a sheet's `value` is a WEAR MULTIPLIER over the material's own measured
+#     albedo, not a colour (except `COLOUR_SHEETS`). So ONE cloth sheet serves
+#     all 57 `npc_cloth__*` materials while each keeps the distinct colour
+#     `npc/costume.py` measured for it. Eight sheets cover 186 materials.
+#
+# The module's own docstrings had already written down what was missing and what
+# would close it -- `garden_civic_render` says "none of the eight sheets in
+# materials.TEX_SIZE is an architectural render" and `garden_terrace_paving`
+# says "Overturned by: a stucco/flagstone sheet being added to
+# materials.TEX_SIZE, at which point this rebinds." These are those sheets.
+#
+# CC0 LIBRARIES WERE TRIED FIRST AND ARE UNREACHABLE. `api.polyhaven.com` and
+# `ambientcg.com` both fail to connect through the agent proxy (curl exit code
+# 000, not a 403 -- no route at all). Downloading a ready-made PBR set would
+# have been hours rather than a session; it is not available, so they are
+# generated, which is how the first eight were made.
+
+
+def _aniso(size, seed, along, octaves=5, base=4):
+    """fBm stretched along one axis: brushing, weave, grain, furrows.
+
+    A directional surface is not noise with a filter over it -- it is noise
+    whose CELLS are long in one axis. Squashing the sample grid is how you get
+    that and keep the sheet tileable, which a post-blur does not.
+    """
+    np = _np()
+    n = _fbm(size, seed, octaves=octaves, base=base)
+    if along <= 1:
+        return n
+    # Average `along` consecutive rows, wrapping, so features smear along u.
+    acc = np.zeros_like(n)
+    for k in range(along):
+        acc += np.roll(n, k - along // 2, axis=0)
+    return acc / float(along)
+
+
+def _scratches(size, seed, count, strength, length=0.35):
+    """Fine directional scratches, tileable, as a 0..1 mask.
+
+    Vectorised per scratch rather than per texel -- `_streaks` walks a Python
+    loop over every texel of every streak, which is fine for 40 grime runs and
+    is 200x too slow for the few hundred scratches a worn painted panel wants.
+    """
+    np = _np()
+    out = np.zeros((size, size), dtype=np.float32)
+    t = np.arange(size, dtype=np.float32)
+    for k in range(count):
+        x0 = h01(seed, "sx", k) * size
+        y0 = h01(seed, "sy", k) * size
+        ang = h01(seed, "sa", k) * math.tau
+        ln = max(4.0, length * size * (0.15 + h01(seed, "sl", k)))
+        s = strength * (0.3 + 0.7 * h01(seed, "ss", k))
+        steps = int(ln)
+        if steps < 2:
+            continue
+        u = t[:steps]
+        xs = ((x0 + u * math.cos(ang)) % size).astype(np.int32)
+        ys = ((y0 + u * math.sin(ang)) % size).astype(np.int32)
+        # Taper both ends so a scratch does not start and stop abruptly.
+        fade = np.sin(np.linspace(0.0, math.pi, steps, dtype=np.float32))
+        np.add.at(out, (ys, xs), s * fade)
+    return np.clip(out, 0.0, 1.0)
+
+
+def _cells(size, seed, n, jitter=0.75):
+    """Worley/Voronoi, tileable. Returns (F1, F2 - F1, cell index).
+
+    The one pattern family the existing sheets have no version of, and the one
+    that reads as MINERAL. A plate lattice is manufactured; stone is cellular.
+
+    NINE NEIGHBOURS, NOT EVERY POINT. The first version compared every texel
+    against all n*n feature points, which is O(n^2) passes over the whole sheet
+    -- 81 points took 32 seconds at 2048 and the aggregate needed 784. It is
+    also unnecessary: the nearest feature point to a texel is always in its own
+    cell or one of the eight around it. Fixed nine passes, any n.
+
+    F2 - F1 is the EDGE distance, and it is what makes stone read as stone. F1
+    alone gives a field that is flat in the middle of each cell and creases
+    between them, which renders as polygonal plates -- exactly what the first
+    aggregate and soil sheets came out looking like.
+    """
+    np = _np()
+    t = (np.arange(size, dtype=np.float32) + 0.5) / size * n
+    U = np.broadcast_to(t[None, :], (size, size))
+    V = np.broadcast_to(t[:, None], (size, size))
+    iu = np.floor(U).astype(np.int32)
+    iv = np.floor(V).astype(np.int32)
+    # Feature point per cell, in cell-local coordinates.
+    fx = np.array([[0.5 + (h01(seed, "cx", i, j) - 0.5) * jitter
+                    for i in range(n)] for j in range(n)], dtype=np.float32)
+    fy = np.array([[0.5 + (h01(seed, "cy", i, j) - 0.5) * jitter
+                    for i in range(n)] for j in range(n)], dtype=np.float32)
+    f1 = np.full((size, size), 1e9, dtype=np.float32)
+    f2 = np.full((size, size), 1e9, dtype=np.float32)
+    idx = np.zeros((size, size), dtype=np.int32)
+    for dj in (-1, 0, 1):
+        for di in (-1, 0, 1):
+            cu = (iu + di) % n
+            cv = (iv + dj) % n
+            d = np.hypot(U - (iu + di + fx[cv, cu]),
+                         V - (iv + dj + fy[cv, cu]))
+            closer = d < f1
+            f2 = np.where(closer, f1, np.minimum(f2, d))
+            idx = np.where(closer, cv * n + cu, idx)
+            f1 = np.where(closer, d, f1)
+    return f1, f2 - f1, idx
+
+
+def _cell_value(idx, seed, spread):
+    """A per-cell random value, for pebbles that differ from one another."""
+    np = _np()
+    lut = np.array([1.0 - spread * 0.5 + spread * h01(seed, "cv", k)
+                    for k in range(int(idx.max()) + 1)], dtype=np.float32)
+    return lut[idx]
+
+
+def gen_weave_sheet(size, seed, threads, twill=2, fuzz=0.55, base_rough=0.86):
+    """Woven cloth. THE SHEET 57 NPC MATERIALS WERE WAITING FOR.
+
+    `npc/costume.py` measured a 53-material wardrobe -- Centauri brocade,
+    Earthforce twill, Minbari robe, civilian shirting -- and every one of them
+    rendered as a flat colour, which is exactly why the crowd reads as
+    featureless blobs regardless of how well the colours were derived.
+
+    A weave is warp over weft on a repeating offset: `twill=1` is a plain
+    over-under, `twill=2` is the 2/1 diagonal of a service uniform, `twill=3`
+    gives the coarser diagonal of a heavy robe. The height field is the
+    interlacing itself, so the normal map produces real cloth microshadow
+    rather than noise, and that is what makes a garment read as woven at the
+    half-distance the rubric asks for.
+
+    `fuzz` is fibre haze: cloth's roughness is high AND varies at a much finer
+    scale than its weave, which is what stops a uniform looking like painted
+    rubber.
+    """
+    np = _np()
+    t = (np.arange(size, dtype=np.float32) + 0.5) / size * threads
+    U = np.broadcast_to(t[None, :], (size, size))
+    V = np.broadcast_to(t[:, None], (size, size))
+    iu = np.floor(U).astype(np.int32)
+    iv = np.floor(V).astype(np.int32)
+    fu, fv = U - iu, V - iv
+    # Round yarn cross-sections: bright along the crown, dark in the valley.
+    warp = np.sin(fu * math.pi) ** 0.7
+    weft = np.sin(fv * math.pi) ** 0.7
+    # Which yarn is on top, on a twill diagonal.
+    over = ((iu + iv * twill) % (twill + 1)) == 0
+    height = np.where(over, warp * 0.9 + weft * 0.15,
+                      weft * 0.9 + warp * 0.15)
+    # Slub: real yarn varies in thickness along its length, per direction.
+    slub = (_aniso(size, (seed, "slubu"), along=max(2, size // 64), base=8)
+            + _aniso(size, (seed, "slubv"), along=1, base=8)) * 0.5
+    height = height * (0.85 + 0.30 * slub)
+
+    haze = _fbm(size, (seed, "fuzz"), octaves=6, base=32)
+    wear = _fbm(size, (seed, "wear"), octaves=3, base=2)
+    # Cloth albedo varies little; what varies is how much light the crown of a
+    # yarn returns. Keep the value swing modest or it reads as printed pattern.
+    value = np.clip(0.80 + height * 0.30 - (1.0 - over) * 0.04
+                    + (wear - 0.5) * 0.14, 0.05, 1.6)
+    rough = np.clip(base_rough + (haze - 0.5) * fuzz * 0.5
+                    - height * 0.10, 0.30, 1.0)
+    metal = np.zeros_like(value)
+    ao = np.clip(0.72 + height * 0.28, 0.0, 1.0)
+    return value, rough, metal, ao, height
+
+
+def gen_skin_sheet(size, seed, base_rough=0.62):
+    """Skin: pores, fine creases and a slow mottle. Not metal, never shiny.
+
+    The crowd's faces and hands are the other half of "featureless blobs" and
+    they carry no map at all. This is deliberately SUBTLE -- three octaves of
+    pore at a scale a person reads at 1 m, a slow blotch for colour variation,
+    and a roughness that falls slightly on the crowns so a cheek catches a
+    highlight the way skin does and a painted mannequin does not.
+    """
+    np = _np()
+    pore = _fbm(size, (seed, "pore"), octaves=3, base=96)
+    fine = _fbm(size, (seed, "fine"), octaves=2, base=192)
+    mottle = _fbm(size, (seed, "mottle"), octaves=3, base=3)
+    crease = _aniso(size, (seed, "crease"), along=max(2, size // 128), base=24)
+    height = (pore - 0.5) * 0.55 + (fine - 0.5) * 0.25 + (crease - 0.5) * 0.30
+    value = np.clip(0.94 + (mottle - 0.5) * 0.18 + (pore - 0.5) * 0.10,
+                    0.05, 1.6)
+    rough = np.clip(base_rough + (pore - 0.5) * 0.16
+                    + (mottle - 0.5) * 0.10, 0.25, 1.0)
+    metal = np.zeros_like(value)
+    ao = np.clip(0.88 + height * 0.12, 0.0, 1.0)
+    return value, rough, metal, ao, height
+
+
+def gen_paint_sheet(size, seed, base_rough=0.48, base_metal=0.0,
+                    chip=0.30, scratches=220):
+    """Painted metal, chipped back to the substrate at the edges.
+
+    The station's single commonest surface family and it shipped as flat
+    enamel. Three things are happening and all three are visible at a metre:
+    orange peel in the film, chips where the paint has come off and the metal
+    under it shows (metallic UP, value DOWN), and directional scuffing.
+
+    The chip mask gates on a cell field rather than plain noise, because paint
+    fails in FLAKES with edges, not in soft clouds.
+    """
+    np = _np()
+    peel = _fbm(size, (seed, "peel"), octaves=4, base=24)
+    # A CHIP IS A PATCH THAT CAME OFF, WITH A HARD EDGE. Two earlier versions
+    # were both wrong and both wrong visibly: gating on `d > 0.55` left
+    # metallic averaging 0.012 (paint that never chips), and a smoothstepped
+    # blob at 16 cells rendered as two enormous soft CRATERS. Real paint loss
+    # is many small patches whose edges are sharp and whose outline is broken
+    # by the substrate's own grain -- so: 44 cells, a hard threshold rather
+    # than a ramp, and the noise added to the distance so the outline is
+    # ragged instead of round.
+    d, _e, idx = _cells(size, (seed, "chip"), 44, jitter=0.95)
+    gate = _cell_value(idx, (seed, "gate"), 2.0)
+    ragged = d + (_fbm(size, (seed, "ragged"), octaves=4, base=64) - 0.5) * 0.5
+    flake = np.clip((0.40 - ragged) / 0.06, 0.0, 1.0) \
+        * (gate > (2.0 - chip * 2.0))
+    scr = _scratches(size, (seed, "scr"), scratches, 0.55, length=0.22)
+    grime = _fbm(size, (seed, "grime"), octaves=3, base=3)
+
+    height = (peel - 0.5) * 0.18 - flake * 0.35 - scr * 0.10
+    value = np.clip(0.98 + (peel - 0.5) * 0.10 - flake * 0.30
+                    - scr * 0.12 - (grime - 0.5) * 0.16, 0.05, 1.6)
+    rough = np.clip(base_rough + flake * 0.28 + scr * 0.20
+                    + (grime - 0.5) * 0.14, 0.05, 1.0)
+    metal = np.clip(base_metal + flake * 0.75 + scr * 0.25, 0.0, 1.0)
+    ao = np.clip(1.0 - flake * 0.35 - scr * 0.10, 0.0, 1.0)
+    return value, rough, metal, ao, height
+
+
+def gen_matte_sheet(size, seed, base_rough=0.66, speck=0.10):
+    """Moulded composite: casework, clinical surfaces, kiosk panels.
+
+    What distinguishes moulded plastic from painted metal at close range is
+    that it has NO seams and NO chips, and instead a very fine isotropic
+    speckle from the filler in it plus a soft sheen that varies slowly. Getting
+    this wrong in the other direction -- giving furniture the paint sheet --
+    would put chipped steel on a medlab counter.
+    """
+    np = _np()
+    # THE FIRST VERSION RENDERED BLANK. Its whole structure sat at base 128 and
+    # 256 -- one and two texels at 1024 -- which the normal map's own
+    # percentile normalisation then flattened into nothing. Moulded composite
+    # DOES have very little relief, but what it has is a pebbled mould tooth at
+    # roughly a millimetre, which is a visible scale on a counter you stand at.
+    grain = _fbm(size, (seed, "grain"), octaves=4, base=48)
+    filler = _fbm(size, (seed, "fill"), octaves=3, base=128)
+    _pd, edge, _pi = _cells(size, (seed, "peb"), 90, jitter=1.0)
+    pebble = np.clip(1.0 - edge / 0.22, 0.0, 1.0)
+    sheen = _fbm(size, (seed, "sheen"), octaves=3, base=4)
+    scuff = _scratches(size, (seed, "scuff"), 90, 0.30, length=0.14)
+    height = (grain - 0.5) * 0.45 + (filler - 0.5) * 0.25 \
+        - pebble * 0.30 - scuff * 0.05
+    value = np.clip(1.0 + (grain - 0.5) * 0.10 + (filler - 0.5) * speck
+                    - pebble * 0.05 - scuff * 0.06, 0.05, 1.6)
+    rough = np.clip(base_rough + (sheen - 0.5) * 0.18 + scuff * 0.14
+                    + pebble * 0.06, 0.15, 1.0)
+    metal = np.zeros_like(value)
+    ao = np.clip(0.96 - scuff * 0.10, 0.0, 1.0)
+    return value, rough, metal, ao, height
+
+
+def gen_grain_sheet(size, seed, base_rough=0.34, base_metal=0.85):
+    """Brushed and anodised metal: fittings, rails, valve bodies, trim.
+
+    Anisotropic by construction -- the grain runs along u, and the roughness
+    varies WITH the grain rather than across it, which is the whole reason
+    brushed metal looks like brushed metal under a moving light.
+    """
+    np = _np()
+    grain = _aniso(size, (seed, "brush"), along=max(4, size // 24), base=64)
+    fine = _aniso(size, (seed, "fine"), along=max(8, size // 12), base=192)
+    dirt = _fbm(size, (seed, "dirt"), octaves=3, base=4)
+    scr = _scratches(size, (seed, "scr"), 140, 0.35, length=0.30)
+    height = (grain - 0.5) * 0.30 + (fine - 0.5) * 0.22 - scr * 0.12
+    value = np.clip(1.0 + (grain - 0.5) * 0.16 + (fine - 0.5) * 0.08
+                    - (dirt - 0.5) * 0.12, 0.05, 1.6)
+    rough = np.clip(base_rough + (grain - 0.5) * 0.22 + scr * 0.18
+                    + (dirt - 0.5) * 0.10, 0.04, 1.0)
+    metal = np.clip(base_metal - (dirt - 0.5) * 0.20, 0.0, 1.0)
+    ao = np.clip(1.0 - scr * 0.08, 0.0, 1.0)
+    return value, rough, metal, ao, height
+
+
+def gen_stone_sheet(size, seed, cells=34, base_rough=0.74):
+    """Architectural render, cast stone, flagstone, terrazzo aggregate.
+
+    Named as missing in this module's own provenance twice --
+    `garden_civic_render` ("none of the eight sheets ... is an architectural
+    render") and `garden_terrace_paving` ("Overturned by: a stucco/flagstone
+    sheet being added"). Both rebind to this.
+
+    Aggregate cells at two scales over a fine stucco tooth, with staining that
+    pools in the joints. Mineral surfaces are cellular; a plate lattice is not.
+    """
+    np = _np()
+    # AGGREGATE IS SMALL AND ITS EDGES ARE WHAT YOU SEE. The first version used
+    # 9 cells of F1 distance and rendered as huge polygonal plates with a dark
+    # pit at each seed point -- F1 is flat mid-cell and creases at the border,
+    # which is a plate lattice by another route. `edge` (F2 - F1) is high
+    # everywhere EXCEPT at a border, so it draws the stone-to-stone joint and
+    # nothing else, and the grain count goes up by 5x.
+    d, edge, idx = _cells(size, (seed, "agg"), cells, jitter=0.95)
+    dv = _cell_value(idx, (seed, "aggv"), 0.45)
+    _d2, edge2, idx2 = _cells(size, (seed, "fine"), cells * 3, jitter=1.0)
+    dv2 = _cell_value(idx2, (seed, "finev"), 0.30)
+    tooth = _fbm(size, (seed, "tooth"), octaves=5, base=48)
+    stain = _fbm(size, (seed, "stain"), octaves=3, base=3)
+    joint = np.clip(1.0 - edge / 0.07, 0.0, 1.0) ** 2
+    joint2 = np.clip(1.0 - edge2 / 0.16, 0.0, 1.0)
+
+    height = (dv - 1.0) * 0.30 + (dv2 - 1.0) * 0.22 \
+        + (tooth - 0.5) * 0.45 - joint * 0.70 - joint2 * 0.20
+    value = np.clip(dv * 0.55 + dv2 * 0.45 + (tooth - 0.5) * 0.16
+                    - joint * 0.26 - joint2 * 0.08
+                    - (stain - 0.5) * 0.16, 0.05, 1.6)
+    rough = np.clip(base_rough + (tooth - 0.5) * 0.16 + joint * 0.12
+                    + (stain - 0.5) * 0.10, 0.20, 1.0)
+    metal = np.zeros_like(value)
+    ao = np.clip(1.0 - joint * 0.55, 0.0, 1.0)
+    return value, rough, metal, ao, height
+
+
+def gen_soil_sheet(size, seed, base_rough=0.92):
+    """Tilled ground: clods, stones and furrows. The drum's arable floor.
+
+    Eleven `ground_*` materials render the Garden's farmland as flat brown.
+    Furrows run along u, which is how a ploughed field reads from the axis, and
+    the clods are cellular over them.
+    """
+    np = _np()
+    # SOIL IS NOT CRACKED MUD. The first version leaned on F1 cells and came out
+    # as flat polygonal plates with hard creases -- a dried lakebed, not a
+    # ploughed field. Clods are now cellular only in their EDGES (F2 - F1),
+    # broken by three octaves of fbm at a coarser scale than the grit, with the
+    # furrow running along u and carrying most of the relief.
+    d, edge, idx = _cells(size, (seed, "clod"), 18, jitter=1.0)
+    cv = _cell_value(idx, (seed, "clodv"), 0.45)
+    # The cell EDGE is a hairline between clods, not a crack. At 0.30 it read
+    # as dried mud; the relief has to come from the fbm and the furrow, which
+    # is what a harrowed surface actually is.
+    clod = np.clip(1.0 - edge / 0.12, 0.0, 1.0)
+    lump = _fbm(size, (seed, "lump"), octaves=4, base=10)
+    # F1, NOT F2 - F1. A pebble is high at its CENTRE, and `edge` is zero at
+    # the border and large in the middle -- so the first version drew every
+    # stone inside-out, as an angular outline with a hole in it. That is what
+    # the swatch showed and it is why they read as chips of shell rather than
+    # as grit.
+    sf1, _sedge, sidx = _cells(size, (seed, "stone"), 70, jitter=1.0)
+    stone = np.clip(1.0 - sf1 / 0.32, 0.0, 1.0) \
+        * (_cell_value(sidx, (seed, "sg"), 2.0) > 1.62)
+    stone = stone * stone * (3 - 2 * stone)
+    furrow = _aniso(size, (seed, "furrow"), along=max(4, size // 10), base=6)
+    grit = _fbm(size, (seed, "grit"), octaves=4, base=96)
+
+    # AMPLITUDE DOES NOT DECIDE WHAT A NORMAL MAP SHOWS -- GRADIENT DOES, and
+    # this cost two passes to see. `_normal_from_height` scales the whole map
+    # so the steepest 0.5% hits `TEX_SLOPE`. A hairline cell edge is the
+    # steepest thing in any field it appears in, so it SETS that percentile and
+    # everything broader is divided down to nothing. Dropping the clod edge
+    # from 0.30 to 0.10 changed the render not at all; removing it from the
+    # height entirely is what a ploughed field needed. It still carries albedo
+    # and AO, where a thin dark line between clods is exactly right.
+    height = (cv - 1.0) * 0.16 + (lump - 0.5) * 1.05 \
+        + (furrow - 0.5) * 1.10 \
+        + (grit - 0.5) * 0.30 + stone * 0.25
+    value = np.clip(0.92 + (cv - 1.0) * 0.22 + (lump - 0.5) * 0.20
+                    + (furrow - 0.5) * 0.24 - clod * 0.10
+                    + (grit - 0.5) * 0.14 + stone * 0.18, 0.05, 1.6)
+    rough = np.clip(base_rough + (grit - 0.5) * 0.10 - stone * 0.22,
+                    0.35, 1.0)
+    metal = np.zeros_like(value)
+    ao = np.clip(0.92 + (cv - 1.0) * 0.16 - clod * 0.10, 0.0, 1.0)
+    return value, rough, metal, ao, height
+
+
+def gen_mesh_sheet(size, seed, n=24, hole=0.62, base_rough=0.44,
+                   base_metal=0.80):
+    """Perforated sheet and woven grille: cell fronts, catwalk mesh, guards.
+
+    The holes are HEIGHT and AO, not albedo. Painting a dark dot on a flat
+    plate is what a grille looks like when it is faked, and it is the thing
+    that most obviously reads as a texture rather than a surface.
+    """
+    np = _np()
+    t = (np.arange(size, dtype=np.float32) + 0.5) / size * n
+    fu = np.abs((t % 1.0) - 0.5) * 2.0
+    FU = np.broadcast_to(fu[None, :], (size, size))
+    FV = np.broadcast_to(fu[:, None], (size, size))
+    r = np.sqrt(FU * FU + FV * FV)
+    open_ = np.clip((hole - r) / 0.22, 0.0, 1.0)
+    open_ = open_ * open_ * (3 - 2 * open_)
+    grain = _fbm(size, (seed, "g"), octaves=3, base=48)
+    dirt = _fbm(size, (seed, "d"), octaves=3, base=4)
+    height = -open_ * 1.0 + (grain - 0.5) * 0.10
+    value = np.clip(1.0 - open_ * 0.72 + (grain - 0.5) * 0.10
+                    - (dirt - 0.5) * 0.14, 0.05, 1.6)
+    rough = np.clip(base_rough + open_ * 0.25 + (dirt - 0.5) * 0.12,
+                    0.05, 1.0)
+    metal = np.clip(base_metal * (1.0 - open_ * 0.6), 0.0, 1.0)
+    ao = np.clip(1.0 - open_ * 0.85, 0.0, 1.0)
+    return value, rough, metal, ao, height
+
+
+# The eight added in session 4e. They differ from the original eight in one
+# way that matters at bind time: their roughness and metallic channels are
+# renormalised to mean 1.0, so they are variation multipliers over a measured
+# scalar rather than replacements for it. See the end of `build_texture`.
+NEW_SHEETS_4E = ("cloth_weave", "skin", "paint_chip", "composite_matte",
+                 "metal_grain", "stone_agg", "soil_clod", "mesh_perf")
+
+# A SHEET'S ALBEDO MEAN IS A PROPERTY OF THE SHEET, NOT OF THE LIBRARY, and
+# binding the 4e sheets is what proved it. `emitted_albedo` pre-divides a
+# material's measured colour by the mean so the product renders at the measured
+# value -- and it CLIPS at 1.0, so any material brighter than the mean silently
+# loses its colour. `npc_metal__psi_chrome` measures 0.75/0.76/0.78 and came
+# back 0.72/0.72/0.72: chrome rendered as mid grey. The round-trip assertion
+# caught all three cases, which is the assertion working exactly as intended.
+#
+# TEX_MEAN is 0.72 because the original eight are WEAR sheets and need 39% of
+# headroom above the mean for rivet crowns and rubbed edges. The 4e sheets are
+# structure, not wear: a weave crown or a mould tooth is a few percent, so they
+# sit at 0.92 and every material up to that brightness keeps its colour. The
+# brightest bound material is 0.78.
+SHEET_MEAN = {n: 0.92 for n in NEW_SHEETS_4E}
+
+
+def sheet_mean(name):
+    """The albedo multiplier's mean for one sheet."""
+    return SHEET_MEAN.get(name, TEX_MEAN)
+
+
+def _unit_mean(a, lo, hi):
+    """Rescale a channel to mean 1.0 and clamp, so it multiplies neutrally.
+
+    A flat or near-zero channel returns ones: the sheet is then saying nothing
+    about that property and the material's own measured value survives.
+    """
+    np = _np()
+    mn = float(a.mean())
+    if mn < 1e-3 or float(a.std()) < 1e-4:
+        return np.ones_like(a)
+    return np.clip(a / mn, lo, hi)
+
+
+def _metal_mult(a, gain=1.2, cap=2.4):
+    """Metallic as NEUTRAL-PLUS-EXPOSURE, which mean-normalising cannot be.
+
+    Metallic is not a property that varies smoothly about an average -- a
+    painted panel is 0 everywhere and then, where a flake has come off, it is
+    metal. Dividing by the mean makes the intact 97% of that sheet a 0.30
+    multiplier, which quietly darkens the metallic of every material bound to
+    it by 70%; dividing by the mean of a cloth sheet, which is 0 everywhere,
+    does the same for no reason at all.
+
+    So the bulk of the sheet -- everything at or below its 60th percentile --
+    multiplies by exactly 1.0 and changes nothing, and only the exposed tail
+    rises above it. A material whose metallic is 0 stays 0, which is honest:
+    a multiplicative map cannot conjure metal out of paint, and a chip on a
+    non-metal reads as a darker, rougher patch instead.
+    """
+    np = _np()
+    base = float(np.percentile(a, 60))
+    spread = float(a.max()) - base
+    if spread < 1e-4:
+        return np.ones_like(a)
+    return np.clip(1.0 + (a - base) / spread * gain, 1.0, cap)
+
+
+_WHITE = None            # set on first use; numpy is imported lazily here
+
+
 def build_texture(name):
     """(albedo HxWx3, orm HxWx3, normal HxWx3) for one trim sheet."""
     np = _np()
+    global _WHITE
+    if _WHITE is None:
+        _WHITE = np.ones(3, dtype=np.float32)
     size = TEX_SIZE[name]
     if name == "hull_plate":
         # 48 m repeat over 2048 texels = 43 texels/m; 16 plates across the
@@ -4740,6 +5436,39 @@ def build_texture(name):
     elif name == "hull_window":
         v, r, m, ao, h, _e = gen_window_sheet(size, "window")
         base = np.array([1.0, 0.99, 0.975], dtype=np.float32)
+    # --- session 4e ---------------------------------------------------------
+    # WHITE BASE, EVERY ONE OF THEM, and that is the point rather than an
+    # omission. These eight are wear-and-structure multipliers over whatever
+    # `albedo_color` the material already carries, so one cloth sheet serves
+    # all 57 `npc_cloth__*` materials and each keeps the colour `costume.py`
+    # measured for it. Baking a colour in here would throw that away and put
+    # the whole crowd in one uniform.
+    elif name == "cloth_weave":
+        # 2/1 twill at 190 threads across the repeat. The repeat is bound at a
+        # uv_scale that puts it at garment scale, not at the sheet's scale.
+        v, r, m, ao, h = gen_weave_sheet(size, "cloth", 190, twill=2)
+        base = _WHITE
+    elif name == "skin":
+        v, r, m, ao, h = gen_skin_sheet(size, "skin")
+        base = _WHITE
+    elif name == "paint_chip":
+        v, r, m, ao, h = gen_paint_sheet(size, "paint")
+        base = _WHITE
+    elif name == "composite_matte":
+        v, r, m, ao, h = gen_matte_sheet(size, "matte")
+        base = _WHITE
+    elif name == "metal_grain":
+        v, r, m, ao, h = gen_grain_sheet(size, "grain")
+        base = _WHITE
+    elif name == "stone_agg":
+        v, r, m, ao, h = gen_stone_sheet(size, "stone")
+        base = _WHITE
+    elif name == "soil_clod":
+        v, r, m, ao, h = gen_soil_sheet(size, "soil")
+        base = _WHITE
+    elif name == "mesh_perf":
+        v, r, m, ao, h = gen_mesh_sheet(size, "mesh")
+        base = _WHITE
     else:
         raise KeyError(name)
 
@@ -4752,9 +5481,36 @@ def build_texture(name):
     # its mean to 0.72 would lift the glass until unlit windows read as pale
     # panels, which is the derelict-hull failure with extra steps.
     if name != "hull_window":
-        v = v / max(float(v.mean()), 1e-6) * TEX_MEAN
+        v = v / max(float(v.mean()), 1e-6) * sheet_mean(name)
     albedo = np.clip(v[:, :, None] * base[None, None, :], 0.0, 1.0)
     nrm = _normal_from_height(h, TEX_SLOPE[name])
+
+    # ROUGHNESS AND METALLIC MAPS MULTIPLY IN GODOT, THEY DO NOT REPLACE.
+    # `tres` writes `roughness = <measured>` AND `roughness_texture`, and
+    # StandardMaterial3D multiplies the two -- same for metallic. So a sheet
+    # whose roughness averages 0.79 does not give the surface a roughness of
+    # 0.79, it MULTIPLIES every material bound to it by 0.79, and a sheet whose
+    # metal channel averages 0 zeroes the metallic of everything it touches.
+    #
+    # Every roughness and metallic value in this library was derived from a
+    # measured frame, with the derivation written into its provenance. Binding
+    # a sheet must add spatial VARIATION without moving those numbers, so the
+    # two channels are renormalised to mean 1.0 -- exactly what TEX_MEAN does
+    # for albedo, for exactly the same reason.
+    #
+    # Where a channel's mean is ~0 (cloth is never metallic) it is written flat
+    # at 1.0: the sheet then says nothing about metallic and the material's own
+    # value survives untouched. The honest consequence is that `paint_chip`
+    # cannot make a chip metallic on a material whose metallic is 0 -- a chip
+    # there reads as a darker, rougher patch of substrate, which is most of
+    # what it looks like anyway.
+    #
+    # The eight sheets that predate this are NOT renormalised, because their
+    # bound materials' scalars were tuned against them as they are, and
+    # changing that would move 48 surfaces nobody asked to change.
+    if name in NEW_SHEETS_4E:
+        r = _unit_mean(r, lo=0.45, hi=1.9)
+        m = _metal_mult(m)
     return albedo, _pack(ao, r, m), nrm
 
 
@@ -4864,7 +5620,8 @@ def emitted_albedo(m):
         return m.albedo
     if m.texture in COLOUR_SHEETS:
         return (1.0, 1.0, 1.0)
-    return tuple(min(1.0, round(c / TEX_MEAN, 4)) for c in m.albedo)
+    return tuple(min(1.0, round(c / sheet_mean(m.texture), 4))
+                 for c in m.albedo)
 
 
 def _c(t, alpha=1):
@@ -5884,6 +6641,34 @@ def _selftest():
           all(m.texture in TEX_SIZE for m in MATERIALS if m.texture),
           str([m.texture for m in MATERIALS
                if m.texture and m.texture not in TEX_SIZE]))
+
+    # -- SESSION 4e: NO MATERIAL MAY BE FLAT BY ACCIDENT ---------------------
+    # 186 of 234 materials carried no texture at all, which is what the renders
+    # looked like. The number is now 55 and every one of them is in
+    # UNTEXTURED_BY_DESIGN with a stated reason -- glass, emitters, foliage,
+    # luminaires. This assertion is what stops it drifting back: a new material
+    # with no texture fails here until somebody either binds it or writes down
+    # why it is bare. Without it the count silently regrows, which is exactly
+    # how it got to 186.
+    _bare = [m.name for m in MATERIALS if not m.texture]
+    _undeclared = [n for n in _bare if not _by_design(n)]
+    check(f"every untextured material is declared as such "
+          f"({len(MATERIALS) - len(_bare)}/{len(MATERIALS)} textured, "
+          f"{len(_bare)} bare by design)",
+          not _undeclared, str(_undeclared))
+    # ... and the control on it: a name nothing declares must NOT pass.
+    check("the by-design list can fail",
+          not _by_design("zoc_armature") and _by_design("light_downlight"),
+          "the exclusion matches everything or nothing")
+    # Every rule must bind something. A pattern that matches nothing is a
+    # statement about a material that has been renamed or deleted, and it
+    # should be noticed rather than sit there looking like coverage.
+    _dead = [p for p, _s, _u in TEXTURE_BINDINGS
+             if not any(m.name.startswith(p) for m in MATERIALS)]
+    check("no TEXTURE_BINDINGS rule is dead", not _dead, str(_dead))
+    # And the sheets they name have to be sheets that get baked.
+    _ghost = sorted({s for _p, s, _u in TEXTURE_BINDINGS if s not in TEX_SIZE})
+    check("every bound sheet is in TEX_SIZE", not _ghost, str(_ghost))
     # EVERY COMMITTED TEXTURE MUST ACTUALLY DECODE, and one of them did not.
     # `deck_stud_orm.png` was in the repository at 196,673 bytes against the
     # 613,211 it regenerates to -- truncated, and PIL refuses to load it. It is
@@ -5971,10 +6756,28 @@ def _selftest():
             check(f"{m.name} leaves the tint white (its sheet carries colour)",
                   e == (1.0, 1.0, 1.0))
         else:
-            back = tuple(round(c * TEX_MEAN, 3) for c in e)
+            # THE SHEET'S OWN MEAN, not the library constant. The 4e sheets
+            # sit at 0.92 rather than 0.72 so that a material brighter than
+            # 0.72 does not clip -- see SHEET_MEAN -- and a round-trip check
+            # hard-coded to TEX_MEAN reports every one of them as broken while
+            # the render is correct. That is the gate measuring the wrong
+            # constant, not the library being wrong.
+            # WITHIN ONE ROUNDING STEP, not exactly equal. `emitted_albedo`
+            # quantises the pre-divided tint to 4 decimal places -- that is
+            # what gets written into the .tres -- so multiplying back and
+            # rounding to 3 cannot be exact when the measured value sits on a
+            # boundary. Five materials landed there (`0.192` against `0.193`).
+            # The tolerance is exactly the last place being compared, so a
+            # genuine mis-division, which is 28% on these sheets, still fails
+            # by a factor of 170. The bound is 0.0015 rather than 0.001 because
+            # `abs(0.192 - 0.193)` is 0.0010000000000000009 in binary floating
+            # point, which is the kind of thing that makes a correct gate fail.
+            back = tuple(round(c * sheet_mean(m.texture), 3) for c in e)
             want = tuple(round(c, 3) for c in m.albedo)
-            check(f"{m.name}'s emitted tint times TEX_MEAN is the measured albedo",
-                  back == want, f"{back} vs {want}")
+            check(f"{m.name}'s emitted tint times its sheet mean is the "
+                  f"measured albedo",
+                  all(abs(b - w) <= 0.0015 for b, w in zip(back, want)),
+                  f"{back} vs {want}")
     check("the signage panel is the only non-triplanar textured material",
           [m.name for m in MATERIALS if m.texture and not m.triplanar]
           == ["signage_panel"])
@@ -6168,8 +6971,15 @@ def _selftest():
     check("every measured sheet is still in the library",
           set(MEASURED_VRAM_SHEETS) <= set(TEX_SIZE),
           str(sorted(set(MEASURED_VRAM_SHEETS) - set(TEX_SIZE))))
+    # The 4e sheets have not been through an editor import, so they are named
+    # here rather than folded into the measured set -- the model above is
+    # calibrated against sheets whose real compressed size was read off a Godot
+    # import, and quietly adding eight unmeasured sheets to it would turn a
+    # measurement into an estimate wearing a measurement's name. The budget
+    # gate below still covers them, because it uses the formula for every sheet.
     check("sheets added since the measurement are named, not hidden",
-          set(TEX_SIZE) - set(MEASURED_VRAM_SHEETS) == {"hull_window"},
+          set(TEX_SIZE) - set(MEASURED_VRAM_SHEETS)
+          == {"hull_window"} | set(NEW_SHEETS_4E),
           str(sorted(set(TEX_SIZE) - set(MEASURED_VRAM_SHEETS))))
     check("resident texture memory is inside the texture budget",
           tm["compressed_mb"] <= tm["budget_mb"],
