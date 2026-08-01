@@ -1,6 +1,6 @@
 # Project State
 
-**Last updated:** 2026-08-01 · **Session 4e** — **the naming-mismatch class is CLOSED: built-but-misnamed 26 → 0, resolving 302/357** · **4d** — **the bespoke rooms' interactables were never unbuilt, they were unnamed: 259/357 → 284/357** · **4c** — **the station is INTERACTABLE, the port is on a wall, and the 24-minute suites were one bad cache key** · **4b** — a police force, friction in metres, the plated shell, the fitting-reach fix
+**Last updated:** 2026-08-01 · **Session 4g** — **the Babcom terminal is a built device, and it shipped a logged mistake once before the log caught it** · **4f** — a per-token verb override · **4e** — **the naming-mismatch class is CLOSED: built-but-misnamed 26 → 0, resolving 302/357** · **4d** — **the bespoke rooms' interactables were never unbuilt, they were unnamed: 259/357 → 284/357** · **4c** — **the station is INTERACTABLE, the port is on a wall, and the 24-minute suites were one bad cache key** · **4b** — a police force, friction in metres, the plated shell, the fitting-reach fix
 
 ## Session 4b — THE STATION HAS A POLICE FORCE, AND THE WALL STOPPED BEING ONE FLAT PANEL
 
@@ -167,22 +167,40 @@ mapping it would move the audit number **on a guess**. `council_chair_seat` → 
 module builds a **chair** where the register declares a **bench** — that disagreement belongs to
 whoever owns the register. INV-249.
 
+### 8. THE TERMINAL IS BUILT, AND THE LOG CAUGHT ME SHIPPING A LOGGED MISTAKE
+
+INV-248 made the Babcom terminal usable; the render showed a **flat coloured rectangle**. It is now
+a framed device with a recessed screen and a control shelf, on `signage.board()`'s own measured
+ratios (bezel 6.8% of width, recess 0.035 m) rather than two new numbers.
+
+**The first version built the bezel as four rails and `boundary_edges` read 5 non-manifold against
+a plain box's 0.** That is the `portal_frame` defect session 3x paid to remove, and
+`interior_kit._plate_with_hole` exists because of it — its docstring says the tiled construction
+*"is the obvious construction and it is wrong"*. Rebuilt through it: 5 → **1**, because the shelf
+and the face still ended on the same plane. **A shared plane is a shared plane whether it is two
+rails or two panels.** Overlapping them → **0**, at no cost, because `boundary_edges` pairs edges by
+vertex POSITION and interpenetrating solids share nothing. **72 triangles, open 0, non-manifold 0.**
+
+**The screen blows out and it is measured, not felt:** the face is **×1.77 the wall beside it**
+(V 0.713 against 0.515) on a material whose albedo is (0.052, 0.054, 0.062) and whose own name is
+*"dark panel with lit content"*. `device_screen_glass` has **seven binds**, so its energy is a
+station-wide change and is left for its own round. INV-251.
+
 ### NEXT SESSION — in priority order
 
-1. **`_HEAD_VERB` has no per-token override, and a player can now see it.**
-   `bar_pendant_lamp` resolves and its verb is `read` — the prompt reads **"[E] read the pendant
-   lamp"**. `_HEAD_VERB["lamp"] = "read"` is right for `atmosphere_status_lamp` and wrong for
-   `pendant_lamp`; the shape rule underneath gives `tread`, no better. `interact._selftest` has
-   reported this collision since it was written and there are **five** of them (`bench`, `control`,
-   `lamp`, `screen`, `terminal`). Smallest fix: let `_HEAD_VERB` take a full token as well as a
-   head noun, keeping the minimality assertion. Cheapest remaining work, and it is user-visible.
-2. **THE CRAFT OF THE THINGS NOW USABLE.** `docs/engine-4c-quarters-interactables.png`: the BabCom
-   terminal is a **flat coloured rectangle** — no bezel, no screen, no relief. It is usable and it
-   is not built. `signage.py` already has the construction that would fix it (frame, recessed lit
-   face, letterforms) and `reference/11-props-and-technology/identicard readout.webp` is authority 1
-   for what a station screen looks like: 4:3, portrait panel left at ~48% of width, ruled data field
-   right, blue values, magenta for flagged fields — and `resident.identicard()` already produces
-   every one of those fields.
+1. **`device_screen_glass` blows out, on seven binds.** Measured in 4g: a cabin terminal's face is
+   **×1.77 the wall beside it** where its own albedo (0.052, 0.054, 0.062) and its own name — *"dark
+   panel with lit content"* — say it should be darker. It binds `prop_babcom_terminal`,
+   `prop_monitor_wall`, `prop_tactical_display`, `customs_screen`, `bar_display`, `dress_screen` and
+   `qtr_babcom_face`, so every screen on the station reads as a white slab. One value, seven places,
+   and it needs a render round per family — which is why 4g measured it and stopped.
+2. **NO SCREEN ON THE STATION HAS CONTENT.** The terminal is a lit blank.
+   `reference/11-props-and-technology/identicard readout.webp` is authority 1 for what a station
+   screen looks like — 4:3, portrait panel left at ~48% of width, ruled data field right, blue
+   values, magenta for flagged fields — and `resident.identicard()` **already produces every one of
+   those fields**. `signage.letter_mesh` already draws letterforms. The parts exist; nothing joins
+   them. Note the format bridge: `signage` emits per-TRIANGLE group names and the room modules emit
+   `(name, lo, hi)` spans — `deck._runs` is the existing converter.
 3. **`walkable.py --deck blue/0/2 --use` FAILS**, and it is new information rather than a
    regression: before session 4d the runtime saw zero interactables in a crew cabin so there was
    nothing to fail on. The body ends **2.20 m from `qtr_command__qtr_locker`** and the eye ray finds
