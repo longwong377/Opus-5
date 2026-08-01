@@ -168,7 +168,8 @@ def _to_world(g, verts):
 # ---------------------------------------------------------------------------
 
 def shaft_geometry(schema, profile, sector, ring_index, decks, angle_deg, z_m,
-                   landing_side=1, p=None, prof=None, relief_m=None):
+                   landing_side=1, p=None, prof=None, relief_m=None,
+                   stack=None):
     """Every dimension of one lift, DERIVED, in one dict.
 
     ONE DICT AND NOT THREE FUNCTIONS' WORTH OF ARITHMETIC. `lift_shaft`,
@@ -198,7 +199,14 @@ def shaft_geometry(schema, profile, sector, ring_index, decks, angle_deg, z_m,
     q = prof or C.corridor_profile(None if p is K.PROVISIONAL else p)
     relief = RUN_CLEARANCE_M if relief_m is None else relief_m
 
-    stack = it.decks_in_ring(schema, profile, sector, ring_index, z_m=z_m)
+    # `stack` OVERRIDES WHICH LANDINGS EXIST, and it is what lets one shaft
+    # cross a ring boundary. A ring is a nested shell; `decks_in_ring` knows
+    # only its own. `station/spoke_way.py` hands in two rings' decks sorted by
+    # radius so a single column serves both, which is the difference between a
+    # station in 8 pieces and a station in 1. Everything downstream reads
+    # `floor_r_m` off these dicts and never asks which ring they came from.
+    stack = (it.decks_in_ring(schema, profile, sector, ring_index, z_m=z_m)
+             if stack is None else list(stack))
     if not stack:
         raise ValueError(f"{sector} ring {ring_index} carries no decks at "
                          f"z={z_m}: nothing for a lift to join")
@@ -354,7 +362,7 @@ def car_fit(g):
 
 def lift_shaft(schema, profile, sector, ring_index, decks, angle_deg, z_m,
                landing_side=1, p=None, prof=None, relief_m=None, g=None,
-               door_leaves=True, landings=True):
+               door_leaves=True, landings=True, stack=None):
     """The shaft and its landings, spanning `decks`. -> (verts, tris, meta)
 
     Same argument shape as `interior.ring_arc` / `interior.axial_run`,
@@ -385,7 +393,7 @@ def lift_shaft(schema, profile, sector, ring_index, decks, angle_deg, z_m,
     if g is None:
         g = shaft_geometry(schema, profile, sector, ring_index, decks,
                            angle_deg, z_m, landing_side=landing_side, p=p,
-                           prof=prof, relief_m=relief_m)
+                           prof=prof, relief_m=relief_m, stack=stack)
     p = g["p"]
     sh, door = g["shaft"], g["door"]
     ls = g["landing_side"]
@@ -546,7 +554,7 @@ def lift_shaft(schema, profile, sector, ring_index, decks, angle_deg, z_m,
 def lift_car(schema, profile, sector=None, ring_index=None, decks=None,
              angle_deg=None, z_m=None, g=None, at_deck=None,
              open_fraction=0.0, p=None, prof=None, relief_m=None,
-             landing_side=1):
+             landing_side=1, stack=None):
     """The car, as its own group so the engine can move it.
 
     ITS OWN MESH, ON PURPOSE, and for the reason `collision.door_panel` states:
@@ -562,7 +570,7 @@ def lift_car(schema, profile, sector=None, ring_index=None, decks=None,
     if g is None:
         g = shaft_geometry(schema, profile, sector, ring_index, decks,
                            angle_deg, z_m, landing_side=landing_side, p=p,
-                           prof=prof, relief_m=relief_m)
+                           prof=prof, relief_m=relief_m, stack=stack)
     p = g["p"]
     car, sh, door = g["car"], g["shaft"], g["door"]
     ls = g["landing_side"]
@@ -699,7 +707,7 @@ def _landing(g, at_deck):
 def lift_collision(schema, profile, sector=None, ring_index=None, decks=None,
                    angle_deg=None, z_m=None, g=None, at_deck=None,
                    landings=True, car=True, p=None, prof=None, relief_m=None,
-                   landing_side=1):
+                   landing_side=1, stack=None):
     """The smooth shell a body stands in. -> (verts, tris, meta)
 
     COLLISION IS NOT RENDER GEOMETRY -- `station/collision.py`'s whole subject,
@@ -726,7 +734,7 @@ def lift_collision(schema, profile, sector=None, ring_index=None, decks=None,
     if g is None:
         g = shaft_geometry(schema, profile, sector, ring_index, decks,
                            angle_deg, z_m, landing_side=landing_side, p=p,
-                           prof=prof, relief_m=relief_m)
+                           prof=prof, relief_m=relief_m, stack=stack)
     sh, cr, door = g["shaft"], g["car"], g["door"]
     ls = g["landing_side"]
     hw, hd = sh["bore_hw"], sh["bore_hd"]

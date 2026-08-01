@@ -91,6 +91,7 @@ TRUNK_GAP_M = 400.0
 # `station/lift.py` lands, 38 edges change state and the component count moves
 # without anyone editing this line.
 _LIFT_EXISTS = os.path.exists(os.path.join(HERE, "lift.py"))
+_SPOKE_WAY_EXISTS = os.path.exists(os.path.join(HERE, "spoke_way.py"))
 
 
 def clusters():
@@ -258,10 +259,17 @@ def edges(nodes, schema, full_ring=False):
             "why": "interior.axial_run, written this session",
         })
 
-    # --- lift: every deck spine meets its sector's transit column ------------
+    # --- lift: every deck spine meets its RING's transit column --------------
+    # ONE COLUMN PER RING, NOT PER SECTOR, and the first version of this graph
+    # had it per sector -- which reported the station as ONE piece by assuming a
+    # shaft that runs from ring 0 to ring 3. `station/lift.py` spans the decks
+    # of ONE ring; a ring is a nested shell and crossing from one to the next is
+    # a radial move through the ring boundary, which is the spoke. Blue and
+    # green carry two rings, yellow three, red four. The per-sector column
+    # quietly granted eight connections nothing can build.
     for sp in spines:
         out.append({
-            "a": sp, "b": ("column", sp[1]), "kind": "lift",
+            "a": sp, "b": ("column", sp[1], sp[2]), "kind": "lift",
             "built": _LIFT_EXISTS, "length_m": 0.0,
             "why": ("station/lift.py" if _LIFT_EXISTS else
                     "no lift, stair or shaft exists anywhere in the project -- "
@@ -269,17 +277,41 @@ def edges(nodes, schema, full_ring=False):
                     "through it, and there is nothing to walk into"),
         })
 
+    # --- spoke: one ring's column to the next, radially ----------------------
+    for sec in sectors:
+        rings = sorted({k[1] for k in keys if k[0] == sec})
+        for r0, r1 in zip(rings, rings[1:]):
+            out.append({
+                "a": ("column", sec, r0), "b": ("column", sec, r1),
+                "kind": "spoke", "built": _SPOKE_WAY_EXISTS, "length_m": 0.0,
+                "why": ("station/spoke_way.py" if _SPOKE_WAY_EXISTS else
+                        "interior.spoke builds the structure and spoke_portal "
+                        "cuts an opening for the tram; there is no walkable "
+                        "passage in the gauge"),
+            })
+
     # --- trunk: one sector's column to the next, along the axis --------------
     zs = {s: _sector_z(schema, s) for s in sectors
           if s in schema["sectors"]["extents_m"]}
     order = sorted(zs, key=lambda s: zs[s][0])
     for s0, s1 in zip(order, order[1:]):
         gap = zs[s1][0] - zs[s0][1]
+        r0 = min(k[1] for k in keys if k[0] == s0)
+        r1 = min(k[1] for k in keys if k[0] == s1)
+        # THE TWO SECTORS DO NOT STAND AT THE SAME ANGLE. Blue's transit angle
+        # is 140 deg and red's is 90, and an axial corridor cannot change angle
+        # -- so a trunk is an axial run PLUS an arc of ring corridor to carry
+        # the 50 degree jog. Both generators exist (`interior.axial_run`,
+        # `interior.ring_arc`), which is why this is buildable; saying so is the
+        # difference between a connection and an assumption. The first version
+        # of this edge silently assumed the columns were coaxial.
+        jog = abs(((ang[s1] - ang[s0]) + 180.0) % 360.0 - 180.0)
         out.append({
-            "a": ("column", s0), "b": ("column", s1), "kind": "trunk",
+            "a": ("column", s0, r0), "b": ("column", s1, r1), "kind": "trunk",
             "built": abs(gap) <= TRUNK_GAP_M,
             "length_m": abs(gap),
-            "why": (f"sectors abut within {gap:.0f} m"
+            "why": (f"sectors abut within {gap:.0f} m; axial_run plus "
+                    f"{jog:.0f} deg of ring_arc to carry the angle jog"
                     if abs(gap) <= TRUNK_GAP_M else
                     f"{gap:.0f} m of unbuilt axis between the sectors"),
         })
