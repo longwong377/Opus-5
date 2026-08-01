@@ -4936,3 +4936,63 @@ narn/centauri **2.87 m** against a required 1.80.
 **What would overturn it.** Any frame that shows two of these species at a measurable distance in
 the same shot. The ratios are the claim, not the metres: a frame showing a Narn and a Centauri
 passing at a metre would halve the whole ladder without changing its shape.
+
+---
+
+## INV-246 — A unit lights both its walls, because the kit it inherits from does
+
+`station/quarters.py` (the downlight block in the unit builder);
+`tools/export_scene.py` (`AMBIENT_SOLVED["mod:quarters"]`).
+
+**What.** Two corrections to how a residential unit is lit, and a re-solved fill to go with them.
+
+**Why necessary.** `tools/export_scene.py --gate-lighting` measured `qtr_command` at **10.3% of its
+own working plane inside any light source**, d/r p95 **3.59** — the worst room on the station bar
+the customs hall, and it stayed at 81.2% even after INV-243's per-room reach fix tripled every
+range. One wall of practicals cannot light a room wider than twice what they reach, and no amount
+of energy changes that, because `omni_range` is a hard cutoff.
+
+**Neither correction invents anything.** The block above the fix already declares that a unit
+*"opens off a corridor and is built from the corridor's kit, so it takes the corridor's own MEASURED
+fittings … and takes the split with them"*. It was taking half of it:
+
+1. **Both walls.** `interior_kit.corridor_section` loops `for side in (-1, 1)` and calls
+   `wall_assembly` with `downlights=True` on **each face** — so the residential kit's measured
+   behaviour is a lamp column per wall at the measured 3.6 m spacing. A corridor gets away with
+   reading like one column because it is 2.6 m across; a 4.9 m unit does not. The −x wall carries
+   the bed (0.55 m, passes under a 0.98 m lamp) and the locker (**2.05 m**, which would swallow one
+   whole) — so the locker gets the same guard the shower already had on the +x wall, and for the
+   same reason.
+2. **As many as fit at the measured spacing**, which is what a measured spacing means.
+   `int(run / pitch)` truncates, and on a 7.5 m unit it turned **1.9 into one lamp for the whole
+   depth** — half the fittings the 3.6 m measurement calls for, in the deepest units on the station.
+   The form is now `rooms._lay`'s own: a fitting at each end plus as many gaps as fit between.
+
+**6 → 14 fittings, 10.3% → 100.0% coverage**, d/r p95 3.59 → 0.75. Station-wide the lighting gate
+goes **18 of 21 → 19 of 21**. Cost: **1,224 triangles** across all five quarters places.
+
+### And it blew the blacks out, which is the interesting half
+
+`--gate-frames --rerender` went **14 pass → 13**: `quarters` held its level at median ×1.66 and its
+`crushed` fraction collapsed to **0.02% against the show's 0.52% — ×0.03, outside the envelope**.
+More light, no shadow.
+
+The fill is what absorbs that, and the sweep is the evidence rather than a choice. Ambient 1.521
+(shipped) → 0.150, `qtr_command` at 640×360 against `grey level 1.webp`:
+
+| ambient | p5 | crushed | median | verdict |
+|---|---|---|---|---|
+| 1.521 | ×1.11 | 0.02% (×0.03) | ×1.66 | level OK, **no blacks** |
+| **1.050** | **×0.78** | **0.45% (×0.87)** | **×1.15** | **every band OK, level OK** |
+| 0.900 | ×0.72 | 1.81% (×3.47) | ×0.98 | blacks back, **level lost** |
+| 0.550 | ×0.77 | 7.75% (×14.86) | ×0.66 | both gone |
+
+**1.050 is the only cell that passes both**, and it is 69% of the shipped fill. That is the whole
+sequence `AMBIENT_SOLVED` exists for: fittings that can carry the level are what let the flat
+ambient come down, and a flat ambient coming down is what puts the shadows back.
+`--gate-frames --rerender` returns to **14 pass / 9 fail** with `quarters` passing on the new
+content.
+
+**What would overturn it.** Any authority-1 frame of a Babylon 5 crew cabin showing lamps on one
+wall only. `grey level 1.webp` is a corridor, not a cabin; the transfer here is from the kit a unit
+is built out of, and a cabin shot would replace that inference with a measurement.

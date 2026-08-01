@@ -2198,6 +2198,24 @@ AMBIENT_SOLVED = {
     "mod:council_chamber": 0.0909,  # 0.3940 p5 x2.20 -> x1.25, PASS at median
                                   #          x1.59. The largest p5 miss on the
                                   #          station, closed
+    "mod:quarters": 0.2423,       # 1.0500   THE ONE SOLVED AFTER THE FITTINGS
+                                  #          CHANGED, and it is the sequence
+                                  #          this table exists for. A unit lit
+                                  #          one wall of practicals covered
+                                  #          10.3% of its own floor; lighting
+                                  #          BOTH walls at the measured pitch
+                                  #          (INV-246) took it to 100% and blew
+                                  #          the blacks out with it -- crushed
+                                  #          x0.03 against the show, outside the
+                                  #          envelope. Swept 1.521 -> 0.150:
+                                  #          0.900 restores the blacks and
+                                  #          drops the level to x0.98, 1.521
+                                  #          holds the level and has no blacks,
+                                  #          and 1.050 is the only cell that
+                                  #          passes BOTH -- crushed x0.87,
+                                  #          median x1.15, every band OK. More
+                                  #          fittings carrying the level is
+                                  #          what lets the flat fill come down
 }
 
 # interior.tscn's ambient_light_energy, calibrated in session 3n against the

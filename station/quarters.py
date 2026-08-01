@@ -306,17 +306,53 @@ def unit(cls):
     # invention the first hard rule forbids. What DOES differ is how many
     # fittings a unit gets, because the spacing is fixed and the unit sizes are
     # not -- which is the class marker doing its own work.
+    # BOTH WALLS, because that is what the kit this unit says it inherits from
+    # actually does. `interior_kit.corridor_section` loops `for side in (-1, 1)`
+    # and calls `wall_assembly` with `downlights=True` on each face, so the
+    # residential kit's measured behaviour is a lamp column PER WALL at the
+    # measured 3.6 m spacing -- and a corridor gets away with one column only
+    # because it is 2.6 m across.
+    #
+    # A unit is not. `tools/export_scene.py --gate-lighting` measured
+    # `qtr_command` at **10.3% of its own working plane inside a source**, with
+    # d/r p95 at 3.59, and it stayed at 81.2% even after the per-room reach fix
+    # (INV-243) tripled every range -- the worst room on the station bar the
+    # customs hall. One wall of practicals cannot light a room wider than twice
+    # what they reach, and no amount of energy changes that, because
+    # `omni_range` is a hard cutoff.
+    #
+    # This is a CORRECTION TO MATCH THE SOURCE rather than a new invention: the
+    # block above already declares "it takes the corridor's own MEASURED
+    # fittings ... and takes the split with them", and taking one column of two
+    # was taking half of it. Nothing here adds a fitting type, a spacing, a
+    # height or an energy that was not already measured.
     lit_y = DOWNLIGHT_FRAC * UNIT_H_M
-    n_dl = max(1, int((d - 0.6) / DOWNLIGHT_PITCH_M))
+    # AS MANY AS FIT AT THE MEASURED SPACING, which is what a measured spacing
+    # means. `int(run / pitch)` truncates, and on a 7.5 m unit it turns 1.9
+    # into ONE lamp for the whole depth -- half the fittings the 3.6 m
+    # measurement calls for, in the deepest units on the station. The form
+    # here is `rooms._lay`'s own: a fitting at each end plus as many gaps as
+    # fit between them.
+    run = d - 0.6
+    n_dl = max(1, int((run - DOWNLIGHT_W_M) / DOWNLIGHT_PITCH_M) + 1)
     for i in range(n_dl):
-        zc = 0.6 + (i + 0.5) * (d - 0.6) / n_dl - DOWNLIGHT_W_M / 2
-        # The shower is a full-height box on this wall. A lamp inside it lights
-        # the inside of the shower.
-        if "shower" in f and zc + DOWNLIGHT_W_M > d - SHOWER_M - 0.15:
+        zc = 0.6 + (i + 0.5) * run / n_dl - DOWNLIGHT_W_M / 2
+        # The shower is a full-height box on the +x wall. A lamp inside it
+        # lights the inside of the shower.
+        if not ("shower" in f and zc + DOWNLIGHT_W_M > d - SHOWER_M - 0.15):
+            _box(v, t, g, "light_downlight",
+                 (hw - DOWNLIGHT_D_M, lit_y, zc),
+                 (hw, lit_y + DOWNLIGHT_H_M, zc + DOWNLIGHT_W_M))
+        # The -x wall carries the bed and the locker. The bed is 0.55 m and
+        # passes under a lamp at 0.98 m; the LOCKER is 2.05 m and would swallow
+        # one whole, which is the same "a lamp inside a solid lights the inside
+        # of the solid" case the shower guard above exists for.
+        if "locker" in f and not (zc + DOWNLIGHT_W_M < LOCKER_Z0_M
+                                  or zc > LOCKER_Z0_M + LOCKER_D_M):
             continue
         _box(v, t, g, "light_downlight",
-             (hw - DOWNLIGHT_D_M, lit_y, zc),
-             (hw, lit_y + DOWNLIGHT_H_M, zc + DOWNLIGHT_W_M))
+             (-hw, lit_y, zc),
+             (-hw + DOWNLIGHT_D_M, lit_y + DOWNLIGHT_H_M, zc + DOWNLIGHT_W_M))
     # Portal head: in the soffit of the open door wall, 0.64 of the aperture.
     ph = w * PORTAL_HEAD_FRAC
     _box(v, t, g, "light_portal_head",
