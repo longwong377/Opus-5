@@ -890,6 +890,7 @@ def build_deck(schema, profile, sector, ring, deck, with_rooms=True,
         schema, profile, sector, ring, degrees=span, start_deg=lo,
         radius_m=radius, z_offset=cz)
     stats["collision_meta"] = cmeta
+    stats["radius_m"] = radius
     stats["spawn"] = C.stand_at(cmeta, here[0]["angle_deg"])
     stats["spawn_at"] = here[0]["key"]
 
@@ -1264,7 +1265,17 @@ def build_deck_clusters(schema, profile, sector, ring, deck, n=None,
                                   "spawn_at": st.get("spawn_at"),
                                   "corridor_z": st.get("corridor_z", z),
                                   "half_w_m": cmz.get("half_w_m", 1.0806),
-                                  "radius_m": cmz.get("radius_m")})
+                                  # RADIUS OR NOTHING, AND `None` IS NOT
+                                  # NOTHING. `collision_meta` is absent on a
+                                  # deck whose collision assembly was skipped,
+                                  # and `cmz.get("radius_m")` then handed None
+                                  # to `axial_run`, which put it through
+                                  # `round(gravity_at(schema, None))`. Four of
+                                  # the station's 71 decks failed that way in
+                                  # the first whole-station build, with a
+                                  # TypeError two frames from the cause.
+                                  "radius_m": (cmz.get("radius_m")
+                                               or st.get("radius_m"))})
         for k in ("rooms", "corridor_tris", "room_tris"):
             stats[k] += st.get(k, 0)
         stats["skipped"] += st.get("skipped", [])
@@ -1288,7 +1299,18 @@ def build_deck_clusters(schema, profile, sector, ring, deck, n=None,
     # The half-width comes from the cluster's own collision meta rather than
     # being recomputed -- hard rule 4, the same reason the corridor clutter
     # reads it from there.
-    for a, b in zip(axial, axial[1:]) if join and len(axial) > 1 else ():
+    # DECLINING TO BUILD HAS TO ACTUALLY DECLINE. When two clusters' arcs share
+    # under JOIN_MIN_ARC_DEG the block above records a `joins` entry saying so
+    # and leaves `join_deg` unset -- and this loop then ran anyway and put None
+    # through `math.radians`. Four of the station's 71 decks failed that way in
+    # the first whole-station build, with a TypeError two frames from the cause
+    # and a manifest entry that read like a geometry problem.
+    #
+    # A refusal that is recorded but not obeyed is worse than no refusal: it
+    # produces a report saying the right thing and a crash saying nothing.
+    _joinable = (join and len(axial) > 1
+                 and stats.get("join_deg") is not None)
+    for a, b in zip(axial, axial[1:]) if _joinable else ():
         ca = next(c for c in stats["clusters"] if c["z"] == a)
         cb = next(c for c in stats["clusters"] if c["z"] == b)
         za = ca["corridor_z"] + ca["half_w_m"]
