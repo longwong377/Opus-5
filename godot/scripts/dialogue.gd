@@ -1,0 +1,898 @@
+extends Node3D
+## Someone talks back.
+##
+## WHAT THIS EXISTS TO END. `station/interact.py` names eight verbs and then
+## excludes three of them from `RESPONDS`, and its comment says why: *"being
+## served needs whoever is behind the counter to turn round and TALK, WHICH
+## NEEDS DIALOGUE."* There was none. `npc.gd` turns 2,028 heads towards the
+## player and that was the entire consequence of every name, job, home,
+## schedule, costume and identicard the generator builds.
+##
+## NOT ONE WORD OF IT IS DECIDED HERE. `station/dialogue.py` derives the whole
+## exchange -- who says what, in which register, about which of today's events
+## -- from `npc/resident.py`, `npc/schedule.py`, `npc/friction.py`,
+## `npc/security.py`, `traffic.py`, `broadcast.py` and `npc/costume.py`'s era
+## lock, and writes it beside the deck mesh as `<deck>_dialogue.json`. This file
+## reads that sidecar and holds no line, no topic rule and no register table.
+## It is `interact.gd`'s relationship to `interact.py`, for the same reason:
+## a second copy of a decision is the defect this repository has paid for three
+## times.
+##
+## THE PROMPT KEY IS `T` AND NOT `E`. `interact.gd` owns `E` and scans props;
+## this scans PEOPLE. Two systems on one key would make "use the console" and
+## "talk to the clerk" race each other in front of a manned counter, which is
+## precisely where both are true at once.
+##
+## THE LOOK IS HUD.GD'S, AND IT IS LOADED RATHER THAN COPIED. The palette, the
+## fade and the tracked-capitals treatment are read off `scripts/hud.gd`'s own
+## constants at runtime, so the interface stays one design. A second set of
+## colour literals in this file would drift the first time the HUD was retuned.
+
+## How close you have to be for a conversation to be offered. Nearer than
+## `npc.gd`'s `notice_m` of 6.0 on purpose: being noticed across a room and
+## being close enough to speak are different distances, and the person turning
+## their head at 6 m is what tells you the nearer prompt is coming.
+@export var talk_m: float = 3.0
+## Half-angle of the "am I looking at them" cone, in degrees. Wider than
+## `interact.gd`'s 35 deg because a person is a metre wide and a wall panel is
+## not, and because you can address someone you are not staring straight at.
+@export var look_half_deg: float = 45.0
+## How long the panel takes to arrive and to leave, in seconds. Read off
+## `hud.gd::FADE_S` so the two surfaces move together.
+var fade_s: float = 0.10
+
+const HUD_SCRIPT := "res://scripts/hud.gd"
+
+# The palette, LOADED. See the header: these are `hud.gd`'s own constants,
+# sampled from `reference/03-sector-blue/comand and contorl.webp`.
+var CYAN := Color(0.494, 0.812, 0.882)
+var AMBER := Color(1.0, 0.702, 0.290)
+var INK := Color(0.016, 0.031, 0.047)
+var _palette_from := "fallback literals"
+
+
+class Person:
+	var group: String = ""
+	var id: String = ""
+	var name: String = ""
+	var species: String = ""
+	var role: String = ""
+	var place: String = ""
+	var topic: String = ""
+	var band: String = ""
+	var lines: Array = []          # [{who, kind, text}]
+	var pos := Vector3.ZERO
+	var talked: int = 0
+
+
+var _people: Array[Person] = []
+var _player: Node3D
+var _cam: Camera3D
+var _near: Person = null           # who the prompt is offering
+var _open: Person = null           # who you are actually talking to
+var _at: int = -1                  # which of their lines is showing
+var _panel: CanvasLayer = null
+var _face = null
+var _hot: float = 0.0
+var _spoken: int = 0               # lines a player has actually been shown
+var _opened: int = 0
+var _last_report := ""
+
+
+# ===========================================================================
+#  Binding
+# ===========================================================================
+
+## Wire the derived exchanges to the bodies they belong to.
+##
+## TWO SIDECARS, JOINED ON `group`, AND NEITHER IS A SECOND POPULATION.
+## `<deck>_actors.json` is what `populace.py` baked and where each body stands;
+## `<deck>_dialogue.json` is what `station/dialogue.py` derived for those same
+## rows. The join key is the mesh group, which is the only name both files and
+## the .glb agree on.
+func collect(actors: Array, rows: Array) -> int:
+	var where := {}
+	for a in actors:
+		if typeof(a) != TYPE_DICTIONARY:
+			continue
+		var g := String(a.get("group", ""))
+		if g == "":
+			continue
+		where[g] = Vector3(float(a.get("x", 0.0)), float(a.get("y", 0.0)),
+			float(a.get("z", 0.0)))
+	var n := 0
+	var unplaced := 0
+	for r in rows:
+		if typeof(r) != TYPE_DICTIONARY:
+			continue
+		var g2 := String(r.get("group", ""))
+		if not where.has(g2):
+			unplaced += 1
+			continue
+		var p := Person.new()
+		p.group = g2
+		p.id = String(r.get("id", ""))
+		p.name = String(r.get("name", ""))
+		p.species = String(r.get("species", ""))
+		p.role = String(r.get("role", ""))
+		p.place = String(r.get("place", ""))
+		p.topic = String(r.get("topic", ""))
+		p.band = String(r.get("band", ""))
+		var ls = r.get("lines", [])
+		if typeof(ls) == TYPE_ARRAY:
+			p.lines = ls
+		# A PERSON WITH NO LINES IS NOT A PERSON YOU CAN TALK TO, and saying so
+		# here is better than offering a prompt that opens an empty panel --
+		# the failure that looks like success.
+		if p.lines.is_empty():
+			continue
+		p.pos = where[g2]
+		_people.append(p)
+		n += 1
+	if unplaced > 0:
+		print("dialogue: %d exchange(s) name a group with no body in the cast "
+			% unplaced + "list -- the two sidecars were built from different "
+			+ "populations")
+	return n
+
+
+func watch(body: Node3D) -> void:
+	_player = body
+	if _player != null:
+		_cam = _player.get_node_or_null("Camera3D") as Camera3D
+	_load_palette()
+	_build_panel()
+
+
+func _load_palette() -> void:
+	var s = load(HUD_SCRIPT)
+	if s == null:
+		push_warning("dialogue: could not load %s -- the panel is drawing on "
+			% HUD_SCRIPT + "its own colour literals, which can drift from the "
+			+ "HUD")
+		return
+	CYAN = s.CYAN
+	AMBER = s.AMBER
+	INK = s.INK
+	fade_s = float(s.FADE_S)
+	_palette_from = HUD_SCRIPT
+
+
+# ===========================================================================
+#  Who you are looking at
+# ===========================================================================
+
+## The nearest person inside reach and inside the cone, by ANGLE then distance.
+##
+## THE SAME TEST `interact.gd` USES, and deliberately so: a player should not
+## have to learn two aiming rules. The one difference is the line-of-sight ray,
+## which is cast only when there is a physics world to cast it in -- the
+## headless harness at the bottom of this file has bodies and no level, and a
+## test that silently required a bulkhead to be present would be measuring the
+## level rather than this file.
+func scan() -> Person:
+	if _player == null:
+		return null
+	var eye: Vector3 = _player.global_position
+	var fwd := -_player.global_transform.basis.z
+	if _cam != null:
+		eye = _cam.global_position
+		fwd = -_cam.global_transform.basis.z
+	if fwd.length_squared() < 1e-9:
+		return null
+	fwd = fwd.normalized()
+	var cos_lim := cos(deg_to_rad(look_half_deg))
+	var best: Person = null
+	var best_cos := -2.0
+	var best_d := INF
+	for p in _people:
+		# AT THE HEAD, NOT AT THE FEET. `populace` records where a body STANDS,
+		# and a standing eye at 1.70 m looking level passes 1.70 m over an
+		# ankle: measured against the foot position, a person two metres in
+		# front of you is 40 degrees below the view axis and outside any
+		# sensible cone.
+		var at: Vector3 = p.pos + _up_at(p.pos) * 1.55
+		var to: Vector3 = at - eye
+		var d: float = to.length()
+		if d > talk_m or d < 1e-4:
+			continue
+		var c: float = to.normalized().dot(fwd)
+		if c < cos_lim:
+			continue
+		if c < best_cos - 0.001 or (absf(c - best_cos) <= 0.001 and d >= best_d):
+			continue
+		best = p
+		best_cos = c
+		best_d = d
+	return best
+
+
+## Which way is up where somebody is standing. INWARD on a spun ring -- the
+## floor is the outer wall -- so it is a different direction at every angle.
+## `npc.gd` derives it the same way from the same position.
+func _up_at(at: Vector3) -> Vector3:
+	var radial := Vector3(at.x, at.y, 0.0)
+	if radial.length() < 0.001:
+		return Vector3.UP
+	return -radial.normalized()
+
+
+var _scanned_frame: int = -1
+
+
+## Re-take the look-at test, at most once per physics frame. Frame-guarded and
+## callable from outside for `interact.gd::refresh()`'s reason: this node is a
+## sibling of the player's driver and whichever runs first, the other would
+## otherwise read a state computed before the body moved.
+func refresh() -> Person:
+	var f := Engine.get_physics_frames()
+	if f == _scanned_frame:
+		return _near
+	_scanned_frame = f
+	# WHILE A CONVERSATION IS OPEN THE SCAN IS FROZEN. Turning your head
+	# mid-sentence must not hand the conversation to the person behind you.
+	if _open != null:
+		_near = _open
+		return _near
+	_near = scan()
+	return _near
+
+
+# ===========================================================================
+#  Talking
+# ===========================================================================
+
+## Open a conversation, or advance the one that is open. Returns true if
+## anything happened.
+##
+## THE KEYPRESS AND THE HEADLESS TEST CALL THIS, not two paths that can
+## diverge, which is the rule `interact.gd::use()` states and this file
+## inherits.
+func talk() -> bool:
+	if _open == null:
+		var p := refresh()
+		if p == null:
+			return false
+		_open = p
+		_at = 0
+		_opened += 1
+		p.talked += 1
+		_spoken += 1
+		print("TALK open %s id=%s species=%s role=%s place=%s topic=%s band=%s "
+			% [p.group, p.id, p.species, p.role, p.place, p.topic, p.band]
+			+ "lines=%d" % p.lines.size())
+		print("TALK line 1/%d %s" % [p.lines.size(), _line_text(0)])
+		return true
+	_at += 1
+	if _at >= _open.lines.size():
+		close()
+		return true
+	_spoken += 1
+	print("TALK line %d/%d %s" % [_at + 1, _open.lines.size(),
+		_line_text(_at)])
+	return true
+
+
+func close() -> void:
+	if _open != null:
+		print("TALK close %s after %d line(s)" % [_open.group,
+			_open.lines.size()])
+	_open = null
+	_at = -1
+
+
+func _line_text(i: int) -> String:
+	if _open == null and _near == null:
+		return ""
+	var p: Person = (_open if _open != null else _near)
+	if i < 0 or i >= p.lines.size():
+		return ""
+	var ln: Dictionary = p.lines[i]
+	var kind := String(ln.get("kind", "speech"))
+	var who := String(ln.get("who", "npc"))
+	var txt := String(ln.get("text", ""))
+	# AN ACTION IS A STAGE DIRECTION AND IT IS NOT ALWAYS THEIRS. FACTIONS.md
+	# 12's rows are symmetric and written from the human side -- "a human
+	# talking with aliens lowers his voice when an armband passes" describes
+	# the PLAYER. `station/dialogue.py` records which side in `who`; both are
+	# rendered as a description of the moment rather than as a voice, because
+	# neither of them said anything.
+	if kind == "action":
+		return "(%s%s)" % [("" if who == "npc" else "> "), txt]
+	return "\"%s\"" % txt
+
+
+func _unhandled_input(event: InputEvent) -> void:
+	if event is InputEventKey and event.pressed and not event.echo:
+		if event.keycode == KEY_T:
+			talk()
+		elif event.keycode == KEY_ESCAPE and _open != null:
+			close()
+
+
+func _physics_process(delta: float) -> void:
+	refresh()
+	_hot = move_toward(_hot, (1.0 if (_near != null or _open != null) else 0.0),
+		delta / maxf(fade_s, 0.001))
+	if _face != null:
+		_face.queue_redraw()
+	var line := report()
+	if line != _last_report:
+		_last_report = line
+		print("dialogue: %s" % line)
+
+
+## One line for the log, printed on change. What a shot run says was on screen
+## when the shutter opened.
+func report() -> String:
+	if _open != null:
+		return "talking to %s (%s/%s) line %d/%d topic=%s" % [
+			_open.name, _open.species, _open.role, _at + 1,
+			_open.lines.size(), _open.topic]
+	if _near != null:
+		return "prompt=talk/%s %.2fm topic=%s" % [_near.name,
+			_player.global_position.distance_to(_near.pos), _near.topic]
+	return "prompt=-"
+
+
+# -- what the headless test reads -------------------------------------------
+
+func count() -> int:
+	return _people.size()
+
+
+func opened() -> int:
+	return _opened
+
+
+func lines_shown() -> int:
+	return _spoken
+
+
+func prompt_name() -> String:
+	return (_near.name if _near != null else "")
+
+
+func palette_source() -> String:
+	return _palette_from
+
+
+func nearest_m() -> float:
+	if _player == null or _people.is_empty():
+		return -1.0
+	var best := INF
+	for p in _people:
+		best = minf(best, _player.global_position.distance_to(p.pos))
+	return best
+
+
+## Every distinct line of speech across the whole cast. THE ONE MEASUREMENT
+## THIS FILE CAN MAKE THAT THE GENERATOR CANNOT: whether the deck a player
+## walks in actually says many things, after the join, the placement and the
+## group matching have all had their chance to collapse it.
+func distinct_lines() -> int:
+	var seen := {}
+	for p in _people:
+		for ln in p.lines:
+			if String(ln.get("kind", "speech")) == "speech":
+				seen[String(ln.get("text", ""))] = true
+	return seen.size()
+
+
+func total_lines() -> int:
+	var n := 0
+	for p in _people:
+		n += p.lines.size()
+	return n
+
+
+# ===========================================================================
+#  THE PANEL
+# ===========================================================================
+# Drawn rather than assembled from Control nodes, for `hud.gd`'s stated reason:
+# the whole interface is hairlines, ticks and small tracked capitals, none of
+# which a StyleBox can express without a texture, and a texture is a binary
+# resource this project has a standing rule against.
+
+func _build_panel() -> void:
+	if _args().has("no-dialogue-ui") or _args().has("walk-test"):
+		return
+	_panel = CanvasLayer.new()
+	_panel.name = "DialogueUI"
+	_panel.layer = 9
+	add_child(_panel)
+	_face = Plate.new()
+	_face.d = self
+	_face.name = "DialogueFace"
+	_face.set_anchors_preset(Control.PRESET_FULL_RECT)
+	_face.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_panel.add_child(_face)
+
+
+func _args() -> Dictionary:
+	var out := {}
+	for a in OS.get_cmdline_user_args():
+		var s := String(a)
+		if s.begins_with("--"):
+			var b := s.substr(2)
+			var eq := b.find("=")
+			if eq >= 0:
+				out[b.substr(0, eq)] = b.substr(eq + 1)
+			else:
+				out[b] = "1"
+	return out
+
+
+## NOT CALLED `Panel`. That was the first name and it is a NATIVE GODOT CLASS,
+## so the whole file failed to parse -- `Class "Panel" hides a native class` --
+## and every call into it threw. It is the same defect CLAUDE.md records
+## costing a session in `npc.gd`, and the headless harness at the bottom of
+## this file caught it on its first run, which is the entire argument for the
+## harness existing.
+class Plate extends Control:
+	var d                                  # the node that owns this face
+	var _font: Font = ThemeDB.fallback_font
+
+	func _draw() -> void:
+		if d == null or _font == null:
+			return
+		var sz := size
+		var s: float = maxf(sz.y / 720.0, 0.35)
+		if d._backdrop != null:
+			draw_texture_rect(d._backdrop, Rect2(Vector2.ZERO, sz), false)
+		if d._open != null:
+			_exchange(sz, s)
+		elif d._near != null:
+			_offer(sz, s)
+
+	# -- primitives, the same three hud.gd draws with ----------------------
+
+	func _hair(a: Vector2, b: Vector2, c: Color, s: float, w := 1.0) -> void:
+		draw_line(a, b, c, maxf(1.0, roundf(w * s)), false)
+
+	func _scrim(r: Rect2, a: float, fx: Vector2, fy := Vector2.ZERO) -> void:
+		var xs := [r.position.x, r.position.x + r.size.x * fx.x,
+			r.end.x - r.size.x * fx.y, r.end.x]
+		var ys := [r.position.y, r.position.y + r.size.y * fy.x,
+			r.end.y - r.size.y * fy.y, r.end.y]
+		var ax := [(0.0 if fx.x > 0.0 else 1.0), 1.0, 1.0,
+			(0.0 if fx.y > 0.0 else 1.0)]
+		var ay := [(0.0 if fy.x > 0.0 else 1.0), 1.0, 1.0,
+			(0.0 if fy.y > 0.0 else 1.0)]
+		for i in 3:
+			if xs[i + 1] - xs[i] < 0.5:
+				continue
+			for j in 3:
+				if ys[j + 1] - ys[j] < 0.5:
+					continue
+				draw_polygon(PackedVector2Array([
+						Vector2(xs[i], ys[j]), Vector2(xs[i + 1], ys[j]),
+						Vector2(xs[i + 1], ys[j + 1]),
+						Vector2(xs[i], ys[j + 1])]),
+					PackedColorArray([
+						Color(d.INK, a * ax[i] * ay[j]),
+						Color(d.INK, a * ax[i + 1] * ay[j]),
+						Color(d.INK, a * ax[i + 1] * ay[j + 1]),
+						Color(d.INK, a * ax[i] * ay[j + 1])]))
+
+	func _tracked(pos: Vector2, text: String, px: int, c: Color,
+			track: float) -> float:
+		var x := pos.x
+		for i in text.length():
+			var ch := text[i]
+			draw_char(_font, Vector2(x, pos.y), ch, px, c)
+			x += _font.get_char_size(ch.unicode_at(0), px).x + track
+		return x - pos.x
+
+	func _tracked_width(text: String, px: int, track: float) -> float:
+		var w := 0.0
+		for i in text.length():
+			w += _font.get_char_size(text[i].unicode_at(0), px).x + track
+		return maxf(w - track, 0.0)
+
+	func _bracket(at: Vector2, dx: float, dy: float, c: Color,
+			s: float) -> void:
+		_hair(at, at + Vector2(dx, 0), c, s)
+		_hair(at, at + Vector2(0, dy), c, s)
+
+	## The key glyph: a square outline with a letter in it. Square, because
+	## there is not a rounded corner anywhere in Command and Control.
+	func _key(at: Vector2, letter: String, s: float, a: float) -> float:
+		var k := 24.0 * s
+		var kr := Rect2(at.x, at.y - k * 0.5, k, k)
+		draw_rect(kr, Color(d.INK, 0.60 * a), true)
+		draw_rect(kr, Color(d.AMBER, 0.85 * a), false, maxf(1.0, roundf(s)))
+		var kpx := int(roundf(13.0 * s))
+		var kw := _font.get_char_size(letter.unicode_at(0), kpx).x
+		draw_char(_font, Vector2(kr.position.x + (k - kw) * 0.5,
+			at.y + kpx * 0.36), letter, kpx, Color(d.AMBER, 0.95 * a))
+		return k
+
+	# -- the offer ---------------------------------------------------------
+
+	## `[T] TALK TO ...`, in the HUD prompt's own place and idiom, one line
+	## below where `interact.gd`'s prompt sits so both can be true at a manned
+	## counter without overlapping.
+	func _offer(sz: Vector2, s: float) -> void:
+		var a: float = d._hot
+		if a <= 0.01:
+			return
+		var p = d._near
+		var cx := sz.x * 0.5
+		var y: float = sz.y * 0.5 + 148.0 * s + (1.0 - a) * 8.0 * s
+		var px := int(roundf(15.0 * s))
+		var who: String = (p.name if p.name != "" else p.species).to_upper()
+		var verb := "TALK TO"
+		var vw := _tracked_width(verb, px, 2.6 * s)
+		var lw := _tracked_width(who, px, 2.6 * s)
+		var pad := 15.0 * s
+		var key := 24.0 * s
+		var total: float = key + pad + vw + pad + 1.0 + pad + lw
+		var x := cx - total * 0.5
+		_scrim(Rect2(x - 50.0 * s, y - 26.0 * s, total + 100.0 * s, 60.0 * s),
+			0.52 * a, Vector2(0.32, 0.32), Vector2(0.30, 0.34))
+		_key(Vector2(x, y), "T", s, a)
+		var tx := x + key + pad
+		_tracked(Vector2(tx, y + px * 0.36), verb, px,
+			Color(d.AMBER, 0.95 * a), 2.6 * s)
+		tx += vw + pad
+		_hair(Vector2(tx, y - 8.0 * s), Vector2(tx, y + 8.0 * s),
+			Color(d.CYAN, 0.35 * a), s)
+		tx += pad
+		_tracked(Vector2(tx, y + px * 0.36), who, px, Color(d.CYAN, 0.92 * a),
+			2.6 * s)
+		# Who they are, under it, small. The species and the job are what the
+		# generator knows about them and the player cannot read off a face.
+		var sub := "%s   %s" % [p.species.to_upper(), p.role.to_upper()]
+		var spx := int(roundf(9.0 * s))
+		var sw := _tracked_width(sub, spx, 1.2 * s)
+		_tracked(Vector2(cx - sw * 0.5, y + 30.0 * s), sub, spx,
+			Color(d.CYAN, 0.55 * a), 1.2 * s)
+
+	# -- the conversation --------------------------------------------------
+
+	func _exchange(sz: Vector2, s: float) -> void:
+		var a: float = d._hot
+		var p = d._open
+		var w: float = minf(sz.x * 0.78, 980.0 * s)
+		var x := (sz.x - w) * 0.5
+		var h := 150.0 * s
+		var y := sz.y - h - 54.0 * s
+		_scrim(Rect2(x - 40.0 * s, y - 34.0 * s, w + 80.0 * s, h + 68.0 * s),
+			0.62 * a, Vector2(0.16, 0.16), Vector2(0.26, 0.26))
+
+		# The speaker. Tracked capitals in cyan, with the L-bracket every B5
+		# console panel is edged with.
+		var npx := int(roundf(17.0 * s))
+		var who: String = (p.name if p.name != "" else p.species).to_upper()
+		_bracket(Vector2(x - 12.0 * s, y - 16.0 * s), 16.0 * s, 20.0 * s,
+			Color(d.CYAN, 0.70 * a), s)
+		var nw := _tracked(Vector2(x, y), who, npx, Color(d.CYAN, 0.98 * a),
+			3.0 * s)
+		var sub := "%s   %s   %s" % [p.species.to_upper(), p.role.to_upper(),
+			p.place.replace("_", " ").to_upper()]
+		var spx := int(roundf(9.0 * s))
+		_tracked(Vector2(x + nw + 18.0 * s, y - 1.0 * s), sub, spx,
+			Color(d.CYAN, 0.52 * a), 1.2 * s)
+		_hair(Vector2(x, y + 9.0 * s), Vector2(x + w, y + 9.0 * s),
+			Color(d.CYAN, 0.40 * a), s)
+
+		# The line. Speech in the warm console amber -- it is the thing being
+		# said to you -- and an ACTION in cyan and parentheses, because a
+		# stage direction is not a voice. `station/dialogue.py` marks the
+		# difference; nothing here decides it.
+		var ln: Dictionary = ({} if d._at < 0 or d._at >= p.lines.size()
+			else p.lines[d._at])
+		var kind := String(ln.get("kind", "speech"))
+		var txt := String(ln.get("text", ""))
+		var speech := kind != "action"
+		if not speech:
+			txt = "( " + txt + " )"
+		else:
+			txt = "“" + txt + "”"
+		var lpx := int(roundf(16.0 * s))
+		var col: Color = (Color(d.AMBER, 0.96 * a) if speech
+			else Color(d.CYAN, 0.72 * a))
+		var ly := y + 40.0 * s
+		for row in _wrap(txt, w, lpx, 1.2 * s):
+			_tracked(Vector2(x, ly), row, lpx, col, 1.2 * s)
+			ly += 22.0 * s
+
+		# Where you are in the exchange, and the key that moves it on.
+		var ny := y + h + 6.0 * s
+		var tick := "%d / %d" % [d._at + 1, p.lines.size()]
+		_tracked(Vector2(x, ny), tick, int(roundf(9.0 * s)),
+			Color(d.CYAN, 0.55 * a), 1.4 * s)
+		var last: bool = d._at >= p.lines.size() - 1
+		var word := ("END" if last else "MORE")
+		var kx := x + w - 24.0 * s - 12.0 * s \
+			- _tracked_width(word, int(roundf(11.0 * s)), 1.6 * s)
+		_key(Vector2(kx, ny - 4.0 * s), "T", s, a)
+		_tracked(Vector2(kx + 24.0 * s + 12.0 * s, ny), word,
+			int(roundf(11.0 * s)), Color(d.AMBER, 0.88 * a), 1.6 * s)
+
+	## Break a line at word boundaries to fit `w` pixels. Measured with the
+	## same tracking it is drawn with, or the last word runs off the plate.
+	func _wrap(text: String, w: float, px: int, track: float) -> Array:
+		var out := []
+		var cur := ""
+		for word in text.split(" "):
+			var t: String = (word if cur == "" else cur + " " + word)
+			if _tracked_width(t, px, track) > w and cur != "":
+				out.append(cur)
+				cur = word
+			else:
+				cur = t
+		if cur != "":
+			out.append(cur)
+		return out
+
+
+# ===========================================================================
+#  THE HEADLESS HARNESS
+# ===========================================================================
+# WHY THERE IS ONE AT ALL. Every other runtime file in this project is driven
+# by `walk.gd`, and `walk.gd` is not this session's to edit -- so without this,
+# the only thing that could be said about this file is that it parses. The
+# parse is worth checking (CLAUDE.md records a session lost to a GDScript parse
+# error that took every call from `walk.gd` down with it), and it is nowhere
+# near enough: a scan cone, a join on `group` and a line pointer are all things
+# that can be wrong while the file compiles perfectly.
+#
+# So `--dialogue-test` builds the smallest world the feature needs -- the real
+# actor positions, the real derived exchanges, a body and a camera -- walks the
+# body in, and prints a verdict `station/dialogue.py --runtime-test` parses.
+# There is no level in it and that is stated rather than hidden: this measures
+# the conversation, not the corridor.
+
+func _ready() -> void:
+	var args := _args()
+	if args.has("dialogue-shot"):
+		_run_shot(args)
+		return
+	if not args.has("dialogue-test"):
+		return
+	_run_test(args)
+
+
+# -- the frame ---------------------------------------------------------------
+# WHAT THIS IS AND WHAT IT IS NOT, stated before the code because a frame that
+# is described loosely is a frame that gets over-claimed -- this repository has
+# a whole section in CLAUDE.md about a renderer that quietly substituted a
+# lesser mode and manufactured a session of evidence.
+#
+# The panel below is drawn BY GODOT, by this file, through the same
+# `CanvasItem` calls a player would see, at the shipped resolution, over a
+# backdrop that is a real engine frame of the deck. It is a COMPOSITE: nothing
+# in the shipped scene tree builds this node, because `godot/scripts/walk.gd`
+# is not this session's file to edit, so the panel could not be in the deck
+# render itself. It is evidence about the interface and about nothing else.
+var _shot_out := ""
+var _shot_frames := 0
+var _backdrop: Texture2D = null
+
+
+func _run_shot(args: Dictionary) -> void:
+	var actors: Array = _read_array(String(args.get("actors", "")))
+	var rows: Array = _read_array(String(args.get("dialogue", "")))
+	collect(actors, rows)
+	var body := Node3D.new()
+	add_child(body)
+	watch(body)
+	var bd := String(args.get("backdrop", ""))
+	if bd != "" and FileAccess.file_exists(bd):
+		var img := Image.new()
+		if img.load(bd) == OK:
+			_backdrop = ImageTexture.create_from_image(img)
+	# WHICH EXCHANGE. `--topic=` picks the first person whose derived topic is
+	# that one, so the frame can show the officer's beat rather than whoever
+	# happens to be first -- and if nothing matches, it says so instead of
+	# quietly showing something else.
+	var want := String(args.get("topic", ""))
+	var who: Person = null
+	for p in _people:
+		if want == "" or p.topic == want:
+			who = p
+			break
+	if who == null:
+		print("dialogue: no exchange with topic=%s" % want)
+		get_tree().quit(1)
+		return
+	_hot = 1.0
+	if args.has("offer"):
+		_near = who
+	else:
+		_open = who
+		_at = int(args.get("line", "1"))
+		_at = clampi(_at, 0, who.lines.size() - 1)
+	print("dialogue: shot of %s (%s/%s) topic=%s line %d/%d"
+		% [who.name, who.species, who.role, who.topic, _at + 1,
+			who.lines.size()])
+	_shot_out = String(args.get("dialogue-shot", ""))
+	set_process(true)
+
+
+func _process(_delta: float) -> void:
+	if _shot_out == "":
+		return
+	if _face != null:
+		_face.queue_redraw()
+	_shot_frames += 1
+	# A FEW FRAMES BEFORE THE SHUTTER. The first frame of a Godot window has no
+	# drawn CanvasItems in it yet, and a blank PNG is exactly the artefact that
+	# looks like a working tool.
+	if _shot_frames < 6:
+		return
+	await RenderingServer.frame_post_draw
+	var img := get_viewport().get_texture().get_image()
+	img.save_png(_shot_out)
+	print("dialogue: wrote %s (%dx%d)" % [_shot_out, img.get_width(),
+		img.get_height()])
+	_shot_out = ""
+	get_tree().quit(0)
+
+
+func _run_test(args: Dictionary) -> void:
+	var actors: Array = _read_array(String(args.get("actors", "")))
+	var rows: Array = _read_array(String(args.get("dialogue", "")))
+	# THE CONTROL, and it is the same shape as `walk.gd`'s `--no-people`: with
+	# the exchanges withheld, everything downstream must report zero. A test
+	# that only ever runs the working configuration cannot tell a working scan
+	# from one that offers a prompt for anybody who happens to be nearby.
+	if args.has("no-dialogue"):
+		rows = []
+		print("dialogue: exchanges WITHHELD (negative control)")
+	var n := collect(actors, rows)
+
+	var body := Node3D.new()
+	body.name = "TestBody"
+	add_child(body)
+	var cam := Camera3D.new()
+	cam.name = "Camera3D"
+	body.add_child(cam)
+	# THE EYE IS 1.70 m UP THE BODY'S OWN UP, which on a spun ring points at
+	# the axis. `player.gd` puts the camera there and `interact.gd` measures
+	# its reach from it; a harness that measured from the feet would report
+	# distances no player ever stands at.
+	watch(body)
+
+	if n == 0:
+		print("DIALOGUETEST people=0 opened=0 lines=0 shown=0 distinct=0 "
+			+ "prompt_m=-1.00 palette=%s" % palette_source())
+		get_tree().quit(0)
+		return
+
+	# WALK IN ON THE MOST ISOLATED PERSON ON THE DECK, and the first version of
+	# this took `_people[0]` instead. That looked like two failures of this
+	# file -- a prompt at 12 m and a prompt with the body facing away -- and
+	# was neither: the customs halls hold 73 people over a few metres, so the
+	# approach path passed inside `talk_m` of somebody else the whole way. The
+	# scan was right and the harness was measuring the crowd.
+	#
+	# So: pick the person furthest from their nearest neighbour, and measure
+	# the range and cone tests against THAT PERSON while separately asserting
+	# the invariant on whoever is offered -- which is the property that
+	# actually matters and holds in a crowd.
+	var target: Person = _most_isolated()
+	var up := _up_at(target.pos)
+	var toward := Vector3(0, 0, 1)
+	if absf(toward.dot(up)) > 0.9:
+		toward = Vector3(1, 0, 0)
+	toward = (toward - up * toward.dot(up)).normalized()
+	var head: Vector3 = target.pos + up * 1.55
+
+	var first_m := -1.0
+	var far_prompt := false
+	var bad_range := 0
+	var bad_cone := 0
+	var d := 12.0
+	while d > 0.4:
+		body.global_position = target.pos + toward * d
+		_aim(body, cam, up, head)
+		_scanned_frame = -1
+		var p := refresh()
+		if p != null:
+			# THE INVARIANT, on whoever was offered: inside the range and
+			# inside the cone. This is what the scan promises, and it has to
+			# hold in a crowd where the person offered is often not `target`.
+			if not _within(p):
+				bad_range += 1
+			if not _in_cone(p):
+				bad_cone += 1
+		if p == target and first_m < 0.0:
+			first_m = d
+		if p == target and d > talk_m + 0.6:
+			far_prompt = true
+		d -= 0.25
+
+	# And with the body facing the other way at touching distance, which is
+	# the control on the CONE rather than on the range.
+	# AWAY IS `+toward` AND NOT `-toward`. The body stands at `+1.2 * toward`
+	# from them, so aiming at `target.pos - toward * 40` looks straight THROUGH
+	# the person -- the first version of this control reported a prompt with
+	# the body "facing away" and was aiming at them.
+	body.global_position = target.pos + toward * 1.2
+	_aim(body, cam, up, target.pos + toward * 40.0)
+	_scanned_frame = -1
+	var behind: bool = refresh() == target
+
+	# Now stand in front of them and hold the conversation.
+	_aim(body, cam, up, head)
+	_scanned_frame = -1
+	refresh()
+	# ONE CONVERSATION, ALL THE WAY THROUGH. The loop exits when `talk()` has
+	# run off the end and closed it -- not on a call count, because a bound
+	# that happens to equal the line count cannot tell a working line pointer
+	# from one that never advances.
+	var guard := 0
+	talk()
+	while _open != null and guard < 64:
+		_scanned_frame = -1
+		talk()
+		guard += 1
+	print("DIALOGUETEST people=%d opened=%d deck_lines=%d open_lines=%d "
+		% [count(), opened(), total_lines(), target.lines.size()]
+		+ "shown=%d distinct=%d prompt_m=%.2f far_prompt=%s behind=%s "
+		% [lines_shown(), distinct_lines(), first_m, str(far_prompt),
+			str(behind)]
+		+ "bad_range=%d bad_cone=%d palette=%s topic=%s name=%s"
+		% [bad_range, bad_cone, palette_source(), target.topic,
+			target.name.replace(" ", "_")])
+	get_tree().quit(0)
+
+
+## Whoever is offered must be inside `talk_m` of the eye.
+func _within(p: Person) -> bool:
+	var eye: Vector3 = (_cam.global_position if _cam != null
+		else _player.global_position)
+	return eye.distance_to(p.pos + _up_at(p.pos) * 1.55) <= talk_m + 0.01
+
+
+## ...and inside the cone.
+func _in_cone(p: Person) -> bool:
+	var eye: Vector3 = (_cam.global_position if _cam != null
+		else _player.global_position)
+	var fwd: Vector3 = (-_cam.global_transform.basis.z if _cam != null
+		else -_player.global_transform.basis.z).normalized()
+	var to: Vector3 = (p.pos + _up_at(p.pos) * 1.55) - eye
+	if to.length() < 1e-4:
+		return true
+	return to.normalized().dot(fwd) >= cos(deg_to_rad(look_half_deg)) - 0.001
+
+
+## The person furthest from their nearest neighbour. A walk-in test needs
+## somebody you can approach without passing through a queue.
+func _most_isolated() -> Person:
+	var best: Person = _people[0]
+	var best_gap := -1.0
+	for p in _people:
+		var gap := INF
+		for q in _people:
+			if q == p:
+				continue
+			gap = minf(gap, p.pos.distance_to(q.pos))
+		if gap > best_gap:
+			best_gap = gap
+			best = p
+	return best
+
+
+## Point the body and its camera at `at`, upright in the ring's own frame.
+func _aim(body: Node3D, cam: Camera3D, up: Vector3, at: Vector3) -> void:
+	var fwd: Vector3 = at - body.global_position
+	fwd = fwd - up * fwd.dot(up)
+	if fwd.length() < 0.001:
+		fwd = Vector3(0, 0, 1)
+	fwd = fwd.normalized()
+	var right: Vector3 = fwd.cross(up).normalized()
+	body.global_transform = Transform3D(Basis(right, up, -fwd),
+		body.global_position)
+	cam.transform = Transform3D(Basis(), Vector3(0, 1.70, 0))
+
+
+func _read_array(path: String) -> Array:
+	if path == "" or not FileAccess.file_exists(path):
+		return []
+	var f := FileAccess.open(path, FileAccess.READ)
+	var v = JSON.parse_string(f.get_as_text())
+	return (v if typeof(v) == TYPE_ARRAY else [])
