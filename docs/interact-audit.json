@@ -9,19 +9,15 @@
    "tactical_display",
    "blast_door"
   ],
-  "resolved": [],
+  "resolved": [
+   "console"
+  ],
   "unresolved": [
-   "console",
    "comms_channel",
    "tactical_display",
    "blast_door"
   ],
-  "near": {
-   "console": [
-    "cc_console_face",
-    "cc_console_leg"
-   ]
-  },
+  "near": {},
   "groups": 92
  },
  {
@@ -62,7 +58,7 @@
     "customs_desk"
    ]
   },
-  "groups": 169
+  "groups": 166
  },
  {
   "key": "customs_south",
@@ -84,7 +80,7 @@
     "customs_desk"
    ]
   },
-  "groups": 165
+  "groups": 162
  },
  {
   "key": "arrival_concourse",
@@ -143,23 +139,16 @@
    "shower",
    "bunk"
   ],
-  "resolved": [],
-  "unresolved": [
-   "door",
+  "resolved": [
    "babcom_terminal",
    "locker",
    "shower",
    "bunk"
   ],
-  "near": {
-   "locker": [
-    "dress_mp_prop_locker",
-    "qtr_locker"
-   ],
-   "shower": [
-    "qtr_shower"
-   ]
-  },
+  "unresolved": [
+   "door"
+  ],
+  "near": {},
   "groups": 64
  },
  {
@@ -172,19 +161,15 @@
    "locker",
    "bunk"
   ],
-  "resolved": [],
-  "unresolved": [
-   "door",
+  "resolved": [
    "babcom_terminal",
    "locker",
    "bunk"
   ],
-  "near": {
-   "locker": [
-    "dress_mp_prop_locker",
-    "qtr_locker"
-   ]
-  },
+  "unresolved": [
+   "door"
+  ],
+  "near": {},
   "groups": 41
  },
  {
@@ -415,19 +400,15 @@
    "locker",
    "bunk"
   ],
-  "resolved": [],
-  "unresolved": [
-   "door",
+  "resolved": [
    "babcom_terminal",
    "locker",
    "bunk"
   ],
-  "near": {
-   "locker": [
-    "dress_mp_prop_locker",
-    "qtr_locker"
-   ]
-  },
+  "unresolved": [
+   "door"
+  ],
+  "near": {},
   "groups": 42
  },
  {
@@ -439,17 +420,14 @@
    "locker",
    "bunk"
   ],
-  "resolved": [],
-  "unresolved": [
-   "door",
+  "resolved": [
    "locker",
    "bunk"
   ],
-  "near": {
-   "locker": [
-    "qtr_locker"
-   ]
-  },
+  "unresolved": [
+   "door"
+  ],
+  "near": {},
   "groups": 23
  },
  {
@@ -481,19 +459,16 @@
    "bunk",
    "reception"
   ],
-  "resolved": [],
-  "unresolved": [
-   "door",
+  "resolved": [
    "babcom_terminal",
    "shower",
-   "bunk",
+   "bunk"
+  ],
+  "unresolved": [
+   "door",
    "reception"
   ],
-  "near": {
-   "shower": [
-    "qtr_shower"
-   ]
-  },
+  "near": {},
   "groups": 49
  },
  {
@@ -506,10 +481,11 @@
    "barred_screen",
    "atmosphere_status_lamp"
   ],
-  "resolved": [],
+  "resolved": [
+   "breather_dispenser"
+  ],
   "unresolved": [
    "airlock_door",
-   "breather_dispenser",
    "barred_screen",
    "atmosphere_status_lamp"
   ],
@@ -580,19 +556,15 @@
    "tank_gauge",
    "service_ladder"
   ],
-  "resolved": [],
+  "resolved": [
+   "catwalk"
+  ],
   "unresolved": [
-   "catwalk",
    "valve",
    "tank_gauge",
    "service_ladder"
   ],
-  "near": {
-   "catwalk": [
-    "dress_mp_plant_catwalk",
-    "plant_catwalk"
-   ]
-  },
+  "near": {},
   "groups": 37
  },
  {
@@ -605,19 +577,15 @@
    "makeshift_door",
    "brazier"
   ],
-  "resolved": [],
+  "resolved": [
+   "catwalk"
+  ],
   "unresolved": [
-   "catwalk",
    "standpipe",
    "makeshift_door",
    "brazier"
   ],
-  "near": {
-   "catwalk": [
-    "dress_mp_plant_catwalk",
-    "plant_catwalk"
-   ]
-  },
+  "near": {},
   "groups": 50
  },
  {
@@ -1010,7 +978,7 @@
    "credit_terminal"
   ],
   "near": {},
-  "groups": 589
+  "groups": 594
  },
  {
   "key": "ceremonial_rooms",
@@ -1181,10 +1149,11 @@
    "babcom_terminal",
    "reception"
   ],
-  "resolved": [],
+  "resolved": [
+   "babcom_terminal"
+  ],
   "unresolved": [
    "door",
-   "babcom_terminal",
    "reception"
   ],
   "near": {},
@@ -1625,19 +1594,15 @@
    "makeshift_door",
    "brazier"
   ],
-  "resolved": [],
+  "resolved": [
+   "catwalk"
+  ],
   "unresolved": [
-   "catwalk",
    "makeshift_door",
    "brazier"
   ],
-  "near": {
-   "catwalk": [
-    "dress_mp_plant_catwalk",
-    "plant_catwalk"
-   ]
-  },
-  "groups": 51
+  "near": {},
+  "groups": 46
  },
  {
   "key": "black_market",
@@ -1692,18 +1657,14 @@
    "tank_gauge",
    "catwalk"
   ],
-  "resolved": [],
-  "unresolved": [
-   "valve",
-   "tank_gauge",
+  "resolved": [
    "catwalk"
   ],
-  "near": {
-   "catwalk": [
-    "dress_mp_plant_catwalk",
-    "plant_catwalk"
-   ]
-  },
+  "unresolved": [
+   "valve",
+   "tank_gauge"
+  ],
+  "near": {},
   "groups": 37
  },
  {
@@ -1858,19 +1819,15 @@
    "locker",
    "bunk"
   ],
-  "resolved": [],
-  "unresolved": [
-   "door",
+  "resolved": [
    "babcom_terminal",
    "locker",
    "bunk"
   ],
-  "near": {
-   "locker": [
-    "dress_mp_prop_locker",
-    "qtr_locker"
-   ]
-  },
+  "unresolved": [
+   "door"
+  ],
+  "near": {},
   "groups": 43
  },
  {

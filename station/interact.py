@@ -225,13 +225,49 @@ def groups_for(token):
     return tuple(p + token for p in PREFIXES)
 
 
-def provides(group):
+# ---------------------------------------------------------------------------
+# A BESPOKE MODULE NAMES ITS SPANS ITS OWN WAY, AND THE SPLIT WAS TOTAL
+# ---------------------------------------------------------------------------
+# `--audit` read `built generic 259/259, built bespoke 0/98`. A ratio that
+# clean is never per-object -- it is a convention. `rooms._fixture` writes
+# `prop_<token>`, and `quarters.py` writes `qtr_locker`, `customs.py` writes
+# `customs_desk`, `command_control.py` writes `cc_console_face`. The object is
+# there; the name has no `prop_` in it, so `provides` returned None for every
+# span on every composed place.
+#
+# THE CURE IS NOT A PREFIX RULE. Stripping `qtr_` off everything would make
+# `qtr_wall` a `wall` a player can press, and `alien_ring` a `ring`. Each
+# module DECLARES what it provides, in a `PROVIDES` dict that lives in the
+# module -- CLAUDE.md's own rule that a gate belongs where the thing is built
+# -- and `_selftest` asserts every key is a span the module actually emits and
+# every value is a token the register uses. A row that names nothing fails
+# loudly instead of resolving nothing quietly.
+_PROVIDES_CACHE = {}
+
+
+def module_provides(module):
+    """`{span name: register token}` declared by one bespoke module."""
+    if not module:
+        return {}
+    if module in _PROVIDES_CACHE:
+        return _PROVIDES_CACHE[module]
+    try:
+        m = __import__(module)
+        out = dict(getattr(m, "PROVIDES", {}) or {})
+    except Exception:                                            # noqa: BLE001
+        out = {}
+    _PROVIDES_CACHE[module] = out
+    return out
+
+
+def provides(group, module=None):
     """(place_key, token, verb) for a mesh group, or None if it is not one.
 
-    Accepts both the room's own `prop_<token>` and the deck's
-    `<place>__prop_<token>`. A machine PART -- `prop_mp_plant_rail` -- is not an
-    interactable and returns None, which is why `_PART` is imported from
-    `rooms` rather than written here.
+    Accepts the room's own `prop_<token>`, the deck's `<place>__prop_<token>`,
+    and -- when `module` is given -- that module's own declared span names. A
+    machine PART -- `prop_mp_plant_rail` -- is not an interactable and returns
+    None, which is why `_PART` is imported from `rooms` rather than written
+    here.
     """
     place = ""
     body = group
@@ -245,17 +281,20 @@ def provides(group):
             return None
         if tok in _TOKENS:
             return place, tok, verb_of(tok)
+    tok = module_provides(module).get(body)
+    if tok is not None and tok in _TOKENS:
+        return place, tok, verb_of(tok)
     return None
 
 
 # ---------------------------------------------------------------------------
 # Does a declared use RESOLVE to something a room emits?
 # ---------------------------------------------------------------------------
-def emitted_tokens(names):
+def emitted_tokens(names, module=None):
     """The interactables a set of emitted group names actually provides."""
     out = set()
     for n in names:
-        r = provides(n)
+        r = provides(n, module)
         if r is not None:
             out.add(r[1])
     return out
@@ -306,7 +345,7 @@ def resolve_place(schema, profile, place, geom=None):
     else:
         v, t, g, used = geom
     names = sorted({n for n, _lo, _hi in g})
-    have = emitted_tokens(names)
+    have = emitted_tokens(names, place.get("module"))
     hit = tuple(k for k in want if k in have)
     miss = tuple(k for k in want if k not in have)
     return {
@@ -347,9 +386,11 @@ def audit(keys=None, progress=None):
 CACHE = os.path.join(ROOT, "docs", "interact-audit.json")
 
 # What the audit read when it was last rebuilt, and what CI holds the line at.
-# 259 of 357 declared interactables resolve; every one of the 98 that do not is
-# on a BESPOKE-composed place, and every one of the 259 that do is on a generic
-# room. `--gate` fails if either number moves the wrong way.
+# 284 of 357 declared interactables resolve. The split WAS total -- `built
+# generic 259/259, built bespoke 0/98` -- and a ratio that clean is never
+# per-object; it was a naming convention, and `module_provides` above is the
+# fix. Bespoke is now 25/98 and the places that resolve NONE of theirs went
+# 26 -> 13. `--gate` fails if either number moves the wrong way.
 #
 # THE BASELINE IS NOT THE BAR. It is a ratchet: the bar is 357/357 and the
 # repository is 98 short of it. Recording the shortfall as a number CI can watch
@@ -357,8 +398,8 @@ CACHE = os.path.join(ROOT, "docs", "interact-audit.json")
 # recomputes -- and `--gate --rebuild` re-runs the whole audit, because a gate
 # that reads a committed artefact and cannot rebuild it can only say whether the
 # FILE passes, never whether the file still describes the code.
-BASELINE = {"declared": 357, "resolved": 259, "places_all": 99,
-            "places_none": 26}
+BASELINE = {"declared": 357, "resolved": 284, "places_all": 99,
+            "places_none": 13}
 
 
 def load_audit(path=CACHE):
@@ -390,6 +431,17 @@ def tally(rows):
 # ---------------------------------------------------------------------------
 # The sidecar the runtime reads
 # ---------------------------------------------------------------------------
+def _module_of(group):
+    """The bespoke module that owns a deck group name, or "" ."""
+    if PLACE_SEP not in group:
+        return ""
+    place = group.partition(PLACE_SEP)[0]
+    try:
+        return dr.by_key(place).get("module") or ""
+    except Exception:                                            # noqa: BLE001
+        return ""
+
+
 def sidecar(names):
     """`godot/scripts/interact.gd`'s half of the contract, as plain data.
 
@@ -402,7 +454,13 @@ def sidecar(names):
     """
     out = []
     for n in sorted(set(names)):
-        r = provides(n)
+        # THE MODULE COMES FROM THE NAME, so no caller has to know about it.
+        # A deck group is `<place>__<span>` and a place knows its module, so
+        # `sidecar` can ask `module_provides` for the composed rooms without
+        # `walkable.interact_rows` -- or anything else -- growing a parameter.
+        # Without this the audit saw four interactables in a crew cabin and the
+        # ENGINE saw none, which is the two-descriptions failure one layer out.
+        r = provides(n, _module_of(n))
         if r is None:
             continue
         place, tok, verb = r
@@ -551,6 +609,49 @@ def _selftest():
             fails.append(f"RESPONDS names {v!r}, which is not a verb")
         if v not in PRESSABLE:
             fails.append(f"RESPONDS names {v!r}, which nobody can press")
+
+    # ------------------------------------------------------------------
+    # THE MODULE TABLES. A row that names a span the module does not emit is
+    # a typo that would resolve nothing and say nothing -- so it fails here,
+    # loudly, against the module's OWN geometry rather than against a list.
+    # ------------------------------------------------------------------
+    import interior as _it                                       # noqa: PLC0415
+    import deck as _D                                            # noqa: PLC0415
+    _schema, _profile = _it.load()
+    _rep = {}
+    for _p in dr.PLACES:
+        _m = _p.get("module")
+        if _m and _m not in _rep and module_provides(_m):
+            _rep[_m] = _p
+    _n_rows = 0
+    for _m, _p in sorted(_rep.items()):
+        _tab = module_provides(_m)
+        _n_rows += len(_tab)
+        _v, _t, _g, _u = _D.room_geometry(_schema, _profile, _p)
+        _names = {n.partition(PLACE_SEP)[2] if PLACE_SEP in n else n
+                  for n, _a, _b in _g}
+        for _span, _tok in sorted(_tab.items()):
+            if _span not in _names:
+                fails.append(f"{_m}.PROVIDES names {_span!r}, which "
+                             f"{_p['key']} does not emit")
+            if _tok not in _TOKENS:
+                fails.append(f"{_m}.PROVIDES maps to {_tok!r}, which no "
+                             f"place declares")
+    # NEGATIVE CONTROL, run: a made-up span must be caught by the check above.
+    _ctl = dict(module_provides("quarters"))
+    _PROVIDES_CACHE["quarters"] = dict(_ctl, qtr_not_a_thing="locker")
+    _p = next(x for x in dr.PLACES if x.get("module") == "quarters")
+    _v, _t, _g, _u = _D.room_geometry(_schema, _profile, _p)
+    _names = {n.partition(PLACE_SEP)[2] if PLACE_SEP in n else n
+              for n, _a, _b in _g}
+    _fired = "qtr_not_a_thing" not in _names
+    _PROVIDES_CACHE["quarters"] = _ctl
+    if not _fired:
+        fails.append("the PROVIDES span check does not fire on a made-up span")
+    print(f"          {_n_rows} module PROVIDES rows over {len(_rep)} "
+          f"modules, every span verified against the module's own mesh; "
+          f"control: an invented span "
+          f"{'FIRES' if _fired else 'DOES NOT FIRE'}")
 
     print(f"interact: {len(tokens())} declared interactables over "
           f"{sum(1 for p in dr.PLACES if p.get('interacts'))} places, "

@@ -61,6 +61,12 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 import interior as it                                          # noqa: E402
 
+# See `quarters.PROVIDES`. `catwalk` is declared by four plant places and the
+# span name is literal.
+PROVIDES = {
+    "plant_catwalk": "catwalk",
+}
+
 # ---------------------------------------------------------------------------
 # The bay
 # ---------------------------------------------------------------------------

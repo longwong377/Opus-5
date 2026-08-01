@@ -54,6 +54,12 @@ import interior as it                                        # noqa: E402
 import interior_kit as it_kit                                # noqa: E402
 import rooms as _rooms                                          # noqa: E402
 
+# See `quarters.PROVIDES`. The console is the thing an officer stands at; its
+# FACE is the surface, and `cc_console_leg` is structure rather than a control.
+PROVIDES = {
+    "cc_console_face": "console",
+}
+
 # --- measured --------------------------------------------------------------
 REF_PX_PER_M = 100.0
 WINDOW_D_M = 5.5                # fitted arc, depth-corrected -- see above

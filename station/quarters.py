@@ -80,6 +80,28 @@ import rooms as _rooms                                          # noqa: E402
 import interior_kit as kit                                     # noqa: E402
 
 # ---------------------------------------------------------------------------
+# WHAT THIS MODULE PROVIDES, in the register's vocabulary
+# ---------------------------------------------------------------------------
+# `directory.PLACES["interacts"]` names what a player can use in a room, and
+# `station/interact.py` resolves those tokens against the mesh group names a
+# room emits. It recognises the GENERIC convention -- `rooms._fixture` writes
+# `prop_<token>` -- and a bespoke module names its spans by its own prefix, so
+# `interact.py --audit` read `built bespoke 0/98`: not one declared use on any
+# composed place resolved, and the split was TOTAL rather than per-object,
+# which is the signature of a naming convention rather than missing content.
+#
+# The cure is not a fuzzy prefix rule -- `qtr_wall` must not become a `wall`
+# you can press. It is this table, and it lives HERE because CLAUDE.md's rule
+# is that a gate belongs in the module that builds the thing. Every row is
+# verified against this file's own comment on the span it names.
+PROVIDES = {
+    "qtr_babcom": "babcom_terminal",   # "A Babcom terminal in every quarters"
+    "qtr_bed": "bunk",                 # "Bed along the far wall"
+    "qtr_locker": "locker",            # "opposite wall. It clears the bed"
+    "qtr_shower": "shower",            # "The class marker. Water is rationed"
+}
+
+# ---------------------------------------------------------------------------
 # The classes
 # ---------------------------------------------------------------------------
 # rank: 0 is the top of the social order. `area_m2` and `fittings` are INV-032;

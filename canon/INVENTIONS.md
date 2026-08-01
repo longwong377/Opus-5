@@ -5065,3 +5065,67 @@ content.
 **What would overturn it.** Any authority-1 frame of a Babylon 5 crew cabin showing lamps on one
 wall only. `grey level 1.webp` is a corridor, not a cabin; the transfer here is from the kit a unit
 is built out of, and a cabin shot would replace that inference with a measurement.
+
+---
+
+## INV-248 — A bespoke module declares what it provides, because the split was total
+
+`station/interact.py` (`module_provides`, `_module_of`, `provides(group, module)`,
+`emitted_tokens(names, module)`, `sidecar`, `BASELINE`); `PROVIDES` tables in `station/quarters.py`,
+`station/alien_sector.py`, `station/command_control.py`, `station/plant.py`.
+
+**What.** How a register token like `locker` finds the mesh group a bespoke module actually emits
+for it.
+
+**Why necessary.** `interact.py --audit` read **`built generic 259/259, built bespoke 0/98`**. A
+ratio that clean is never per-object — it is a convention. `rooms._fixture` writes `prop_<token>`
+and `provides()` recognises only that; `quarters.py` writes `qtr_locker`, `customs.py` writes
+`customs_desk`, `command_control.py` writes `cc_console_face`. **The objects were there and the
+names had no `prop_` in them**, so every declared use on every composed place resolved to nothing.
+
+**The cure is not a prefix rule**, and that is the whole design decision. Stripping `qtr_` off
+everything would make `qtr_wall` a `wall` a player can press and `alien_ring` a `ring`. Each module
+**declares** what it provides, and the table lives **in the module** — CLAUDE.md's rule that a gate
+belongs where the thing is built.
+
+**Every row is verified against the module's own comment on the span it names**, which is what keeps
+this from being a synonym list:
+
+| module | span | token | the module's own words |
+|---|---|---|---|
+| `quarters` | `qtr_babcom` | `babcom_terminal` | *"A Babcom terminal in every quarters"* |
+| `quarters` | `qtr_bed` | `bunk` | *"Bed along the far wall"* |
+| `quarters` | `qtr_locker` | `locker` | *"opposite wall. It clears the bed"* |
+| `quarters` | `qtr_shower` | `shower` | *"The class marker. Water is rationed"* |
+| `alien_sector` | `alien_mask_dispenser` | `breather_dispenser` | *"breather-mask dispenser beside the outer door"* |
+| `command_control` | `cc_console_face` | `console` | the face is the surface; `cc_console_leg` is structure |
+| `plant` | `plant_catwalk` | `catwalk` | literal |
+
+**Asserted against geometry, not against a list.** `_selftest` builds one representative place per
+module through `deck.room_geometry` and fails if a `PROVIDES` key names a span that place does not
+emit, or a value no place declares. **Negative control, run: an invented span `qtr_not_a_thing`
+fires it.**
+
+| | before | after |
+|---|---|---|
+| declared uses resolving | 259 / 357 | **284 / 357** |
+| `built bespoke` | **0 / 98** | **25 / 98** |
+| places resolving NONE of theirs | 26 | **13** |
+
+**And the runtime had to be wired separately, which is the failure this nearly repeated.**
+`sidecar()` took only names, so the audit saw four interactables in a crew cabin and **the engine
+saw none** — two descriptions of one fact, one layer further out than the one this table fixes.
+`_module_of` derives the module from the deck group's own `<place>__` prefix, so no caller grew a
+parameter. Verified: `sidecar` returns `babcom_terminal`, `bunk`, `locker`, `shower` for
+`qtr_command` and **rejects `qtr_wall` and `light_downlight`**.
+
+**Two corrections to STATE.md's own next-list**, both found by doing this:
+
+1. *"`babcom_terminal` … declared in nine places and built in none"* is **wrong**. `quarters.py`
+   emits `qtr_babcom` in every unit. It was built and unnamed, not absent.
+2. The audit's near/absent split moves with the tables: what was *"26 built under another name, 72
+   never built"* is now **14 and 59**, because 12 of the 26 have been claimed.
+
+**What would overturn it.** A module renaming one of these spans. The `_selftest` check fires
+immediately in that case, which is the point of asserting against the mesh rather than against a
+written list.

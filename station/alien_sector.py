@@ -69,6 +69,13 @@ import interior_kit as kit                                     # noqa: E402
 import signage as sg                                           # noqa: E402
 import schedule as sched                                       # noqa: E402
 
+# See `quarters.PROVIDES` for why this table exists and why it is not a prefix
+# rule. Each row is verified against this file's own comment on the span.
+PROVIDES = {
+    "alien_mask_dispenser": "breather_dispenser",   # "breather-mask dispenser
+                                                    #  beside the outer door"
+}
+
 # ---------------------------------------------------------------------------
 # The gallery: a corridor with quarter entrances off it
 # ---------------------------------------------------------------------------
