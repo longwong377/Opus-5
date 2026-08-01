@@ -95,8 +95,28 @@ farthest so nothing it sees is hidden. Same kit, same casts, opposite reducer �
 3. **an axis-aligned lattice cannot see an undercut.** The soffit's light box has a rim at 3.000 m
    with the coffer behind it at 3.065 m. A ray cast straight up stops on the rim. Refining the
    lattice from 130 mm to 22 mm changed nothing, because **the pitch was never the problem — the
-   direction was.** The fix under test is a spherical sweep: eyes through the void, rays over the
-   whole sphere, and the profile is the bounding box of every point that answers.
+   direction was.** A spherical sweep replaced it: eyes through the void, rays over the whole
+   sphere, and the profile is the bounding box of every point that answers.
+4. **the two section variants were combined with the wrong reducer, at the wrong level.** `sweep`
+   took `min` per ray across the door-less and door-bearing sections before the profile's own `max`
+   ever saw them — so the door-less section's solid ceiling at 3.000 m threw away the coffer at
+   3.065 m, which is the exact surface the second variant had been added to find. The variants are
+   *samples of one corridor*; they join the same pool everything else does.
+
+**WHERE IT STANDS AND WHY IT IS STILL RED: 241 breaches, worst 144.4 mm, and the number is now
+IDENTICAL across all three controls.** Widen the aperture, seal it, use the collision profile — 241
+every time. A control that stops discriminating is telling you the failure has moved somewhere none
+of the controls touch, and here it has: every remaining breach is the ceiling at 3.000 against kit
+geometry at 3.065.
+
+**The diagnosis, and it is a measurement-frame problem rather than a lattice problem.** The profile
+is measured on ONE 9.205 m straight kit section; the containment test runs on a **bent 6-degree
+arc**. A ray that grazes in under the coffer's rim needs metres of run to reach the coffer back,
+and in a single section it leaves through the cut end first. **The occluder must be bounded by what
+is visible *in situ*, so the sweep has to run against the geometry that ships** — either a
+multi-section straight run or `ring_arc`'s own output. That is the next thing to try and it was not
+attempted because each run of this measurement costs four to six minutes and the session was out of
+room to spend one on a guess.
 
 **A by-product worth acting on:** at 22 mm pitch the same sideways cast finds `half_w` **1.0611 m**
 against `collision.corridor_profile`'s **1.0806 m** — 19.5 mm of pinch its own 186 mm lattice steps
