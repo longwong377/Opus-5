@@ -1524,7 +1524,7 @@ it wants its own pass and its own render, and it is NOT done here.
 FIXTURE_LIGHTING = {
     # --- the corridor kit -------------------------------------------------
     "light_downlight": {"kind": "omni", "colour": (1.000, 0.420, 0.133),
-                        "energy_rel": 1.00, "range_m": 1.2, "shadow": False},
+                        "energy_rel": 1.00, "range_m": 1.2, "shadow": True},
     # --- rooms.py, industrial and store -----------------------------------
     # bay_flood: measured range 30 m at a 13.0 m emitting height in an 18 m
     # bay. Scaled to the tallest room archetype's 7.5 m ceiling -- 30 x 7.5/18
