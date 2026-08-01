@@ -27,6 +27,8 @@ jobs:
           python3 generate_hull.py
 
       - name: Export glTF and verify it is well-formed
+        id: sexport_gltf_and_verify_it_is_well_formed
+        continue-on-error: true
         run: |
           python3 station/export_gltf.py
           python3 - <<'PY'
@@ -56,6 +58,8 @@ jobs:
       # skipped. It also now costs ~62 s rather than 2 s, because measuring a
       # frame means building one.
       - name: Performance budgets
+        id: sperformance_budgets
+        continue-on-error: true
         run: python3 station/budget.py
 
       # SEPARATE, because it asks a different question and must stay green.
@@ -64,9 +68,13 @@ jobs:
       # `--no-deck` keeps this step to the drift check rather than re-running the
       # frame budget above.
       - name: Whole-station collision total has not drifted
+        id: swhole_station_collision_total_has_not_dr
+        continue-on-error: true
         run: python3 station/budget.py --station --no-deck
 
       - name: Canon assertions
+        id: scanon_assertions
+        continue-on-error: true
         run: python3 station/validate.py
 
       # The hull apertures. `generate_hull.py` already runs `check_closure` on
@@ -75,6 +83,8 @@ jobs:
       # a closure assertion nobody can break is the pattern this project has
       # been bitten by twice.
       - name: Hull apertures and their closure
+        id: shull_apertures_and_their_closure
+        continue-on-error: true
         run: python3 station/aperture.py
 
       # The kit's gates assert two things a render cannot be trusted to show:
@@ -82,6 +92,8 @@ jobs:
       # Both have already been wrong in committed geometry, and both looked
       # like shading against a black background rather than like holes.
       - name: Interior kit self-test
+        id: sinterior_kit_self_test
+        continue-on-error: true
         run: |
           cd station
           python3 interior_kit.py
@@ -91,6 +103,8 @@ jobs:
       # project seen from its concave side, so the hull's convention is wrong
       # there, and getting it wrong renders black rather than erroring.
       - name: Interior topology and drum self-test
+        id: sinterior_topology_and_drum_self_test
+        continue-on-error: true
         run: |
           cd station
           python3 interior.py
@@ -102,6 +116,8 @@ jobs:
       # was wired into anything when it landed, so nothing would have noticed
       # them breaking.
       - name: Drum ground, tram and core tube
+        id: sdrum_ground_tram_and_core_tube
+        continue-on-error: true
         run: |
           cd station
           python3 drum_ground.py
@@ -111,6 +127,8 @@ jobs:
       # Interiors that are places rather than kit: the station's social centre
       # and the room the launch-and-dock requirement lands in.
       - name: Zocalo and docking bay
+        id: szocalo_and_docking_bay
+        continue-on-error: true
         run: |
           cd station
           python3 zocalo.py
@@ -136,12 +154,16 @@ jobs:
       # `directory.py` runs after it because its layer-2 counter asks the
       # generator what it built.
       - name: Generated rooms, and the layer register
+        id: sgenerated_rooms_and_the_layer_register
+        continue-on-error: true
         run: |
           cd station
           python3 rooms.py
           python3 directory.py
 
       - name: Streaming cell manifest
+        id: sstreaming_cell_manifest
+        continue-on-error: true
         run: |
           cd station
           python3 -c "import interior as I; s,p=I.load(); m=I.write_cell_manifest('generated/cell_manifest.json',s,p); print(m['decks'],'decks',m['cells'],'cells')"
@@ -155,6 +177,8 @@ jobs:
       # exterior scene for longer. Nothing was gating on it because this file
       # never ran materials.py at all.
       - name: Materials, and that the scenes still agree with them
+        id: smaterials_and_that_the_scenes_still_agre
+        continue-on-error: true
         run: python3 station/materials.py
 
       # Layer 3's completion counter and its plausibility rules. Separate from
@@ -171,6 +195,8 @@ jobs:
       # fail, the one defect this project most wants to avoid, sitting in the
       # file that is supposed to catch them. It exits 0 on its own now.
       - name: Layer 3 coverage and material plausibility
+        id: slayer_3_coverage_and_material_plausibili
+        continue-on-error: true
         run: python3 station/test_materials_layer3.py
 
       # NEVER RAN IN CI AT ALL. 41 checks over the exterior component library --
@@ -182,6 +208,8 @@ jobs:
       # the bare `density.py` report exits 1 BY DESIGN until the content is
       # rebuilt, and a gate that is red on purpose must not block the branch.
       - name: Geometric detail metric
+        id: sgeometric_detail_metric
+        continue-on-error: true
         run: python3 station/density.py --selftest
 
       # THE GATE EVERY OTHER GATE HERE WAS MISSING: can a player stand up and
@@ -189,6 +217,8 @@ jobs:
       # nothing failed for the station having no floor. Launches Godot headless
       # and drives a real body over real physics frames.
       - name: The station is walkable
+        id: sthe_station_is_walkable
+        continue-on-error: true
         run: python3 station/walkable.py --rooms 6
 
       # AND A PERSON IS SOMETHING YOU BUMP INTO. `rooms.is_solid` keeps every
@@ -199,12 +229,16 @@ jobs:
       # gets, against a control run with their capsule off that walks through
       # them. Both runs, every time: a solid claim needs the control.
       - name: The inhabitants are solid
+        id: sthe_inhabitants_are_solid
+        continue-on-error: true
         run: python3 station/walkable.py --deck blue/0/0 --deck-only --bump
 
       # AND THE WHOLE STATION, not six rooms of it. `--sweep` is the only gate
       # here that asks a whole-station question: every deck assembles, every
       # room has a door, and no doorway has a hole in the floor.
       - name: How much of the station can be walked in
+        id: show_much_of_the_station_can_be_walked_in
+        continue-on-error: true
         run: python3 station/deck.py --sweep
 
       # The drum is a different KIND of walkable surface -- a heightfield, not a
@@ -212,15 +246,21 @@ jobs:
       # a smooth shell, and its gate measures SLOPE rather than lip. See
       # station/drum_walk.py; `--full` adds the whole-drum survey at ~70 s.
       - name: The habitat drum is walkable
+        id: sthe_habitat_drum_is_walkable
+        continue-on-error: true
         run: python3 station/drum_walk.py --selftest
 
       - name: Exterior components
+        id: sexterior_components
+        continue-on-error: true
         run: python3 station/components.py
 
       # Also never ran. The LOD chain is what the exterior shot actually
       # renders: export_scene reads hull_lod0.obj, not hull.obj, and nothing
       # else in the pipeline regenerates it.
       - name: LOD chain
+        id: slod_chain
+        continue-on-error: true
         run: python3 station/lod.py
 
       # Layer 4 infrastructure. The interior scene has more materials than the
@@ -229,6 +269,8 @@ jobs:
       # it exports the scene, which is what catches a generator whose group
       # shape changed or a room that stopped building.
       - name: Interior shot exports
+        id: sinterior_shot_exports
+        continue-on-error: true
         run: |
           python3 tools/export_scene.py --shot interior --room corridor --out /tmp/i.png >/dev/null
           python3 tools/export_scene.py --shot interior --room junction --out /tmp/j.png >/dev/null
@@ -254,6 +296,8 @@ jobs:
       # in STATION coordinates, so it is the only one exercising
       # `unroll_to_local` and the declared-walkway standpoint.
       - name: Bespoke interior shot exports
+        id: sbespoke_interior_shot_exports
+        continue-on-error: true
         run: |
           for r in zocalo cnc customs_north bar_unnamed council_chamber \
                    docking_bays qtr_command alien_sector plant_zone; do
@@ -268,6 +312,8 @@ jobs:
       # source or a measured emissive rather than falling into the
       # emissive-only default by being forgotten.
       - name: Scene assembly and the interior light rig
+        id: sscene_assembly_and_the_interior_light_ri
+        continue-on-error: true
         run: python3 tools/export_scene.py
 
       # The frame statistic the room exposures were calibrated with. It has a
@@ -281,38 +327,58 @@ jobs:
       # authority-1 frames and fails if a recorded value has moved. NOT
       # --gate-drum, which exits 1 by design until the exposures are addressed.
       - name: Frame distribution tolerances still match their corpus
+        id: sframe_distribution_tolerances_still_matc
+        continue-on-error: true
         run: python3 tools/measure_frame.py --derive
 
       - name: Frame luminance measurement
+        id: sframe_luminance_measurement
+        continue-on-error: true
         run: python3 tools/measure_frame.py
 
       - name: Rotating-frame physics
+        id: srotating_frame_physics
+        continue-on-error: true
         run: python3 station/physics/test_rotating_frame.py
 
       - name: Precision and floating origin
+        id: sprecision_and_floating_origin
+        continue-on-error: true
         run: python3 station/physics/test_floating_origin.py
 
       - name: Starfury flight model
+        id: sstarfury_flight_model
+        continue-on-error: true
         run: python3 station/physics/test_starfury.py
 
       # The mesh and the flight model hold separate copies of the thruster
       # layout so that editing one and not the other fails loudly. That gate is
       # worthless unless it runs, and it only runs here.
       - name: Starfury airframe, and that it still agrees with the flight model
+        id: sstarfury_airframe_and_that_it_still_agre
+        continue-on-error: true
         run: |
           python3 station/starfury_geometry.py
           python3 station/test_starfury_geometry.py
 
       - name: Docking
+        id: sdocking
+        continue-on-error: true
         run: python3 station/physics/test_docking.py
 
       - name: Core shuttle and radial transit
+        id: score_shuttle_and_radial_transit
+        continue-on-error: true
         run: python3 station/physics/test_core_shuttle.py
 
       - name: NPC names
+        id: snpc_names
+        continue-on-error: true
         run: python3 station/npc/test_names.py
 
       - name: NPC schedules
+        id: snpc_schedules
+        continue-on-error: true
         run: python3 station/npc/test_schedule.py
 
       # Bodies, costume and crowd. `body.py` carries its own closure gates --
@@ -321,6 +387,8 @@ jobs:
       # existing gate could see it. Those gates only protect anything if they
       # run here.
       - name: NPC bodies, costume and crowd
+        id: snpc_bodies_costume_and_crowd
+        continue-on-error: true
         run: |
           cd station/npc
           python3 body.py
@@ -331,12 +399,16 @@ jobs:
       # they are the two a schema change can silently break. Slowest gates in
       # the project at ~24 s and ~77 s; both are worth it.
       - name: NPC animation and navigation
+        id: snpc_animation_and_navigation
+        continue-on-error: true
         run: |
           cd station/npc
           python3 animation.py
           python3 navigation.py
 
       - name: Confirm the schema still parses and is fully sourced
+        id: sconfirm_the_schema_still_parses_and_is_f
+        continue-on-error: true
         run: |
           python3 - <<'PY'
           import sys, yaml
@@ -362,3 +434,103 @@ jobs:
               print("missing invention entries:", missing); sys.exit(1)
           print("schema parses; invention log intact")
           PY
+
+      # ---------------------------------------------------------------
+      # EVERY GATE RUNS, AND THE BUILD STILL FAILS IF ANY OF THEM DID.
+      #
+      # Before session 4e this workflow was 41 sequential steps with no
+      # `continue-on-error` anywhere, and step 4 -- `Performance budgets`
+      # -- fails BY DESIGN, because `budget.py` is honestly over. So the
+      # 34 steps after it never executed. Among them: `The station is
+      # walkable`, `How much of the station can be walked in`, `The
+      # habitat drum is walkable`, `Canon assertions`, `NPC bodies`.
+      #
+      # CLAUDE.md says walkable.py "runs in CI". It did not, and had not
+      # for THIRTY consecutive pushes -- all 30 most recent runs red, none
+      # green. A red build that stops at the first failure tells you one
+      # thing; this one was hiding thirty-four.
+      #
+      # The fix is not to make `budget.py` pass. It is that ONE failing
+      # gate must not blind every gate after it. Each step now runs and
+      # records its own outcome, and this step fails the job if any of
+      # them failed -- so the build is exactly as red as before and the
+      # other 34 answers are visible.
+      - name: Every gate ran -- did any of them fail?
+        if: always()
+        run: |
+          fail=0
+          if [ "${{ steps.sexport_gltf_and_verify_it_is_well_formed.outcome }}" != "success" ]; then
+            echo "FAILED: sexport_gltf_and_verify_it_is_well_formed"; fail=1; fi
+          if [ "${{ steps.sperformance_budgets.outcome }}" != "success" ]; then
+            echo "FAILED: sperformance_budgets"; fail=1; fi
+          if [ "${{ steps.swhole_station_collision_total_has_not_dr.outcome }}" != "success" ]; then
+            echo "FAILED: swhole_station_collision_total_has_not_dr"; fail=1; fi
+          if [ "${{ steps.scanon_assertions.outcome }}" != "success" ]; then
+            echo "FAILED: scanon_assertions"; fail=1; fi
+          if [ "${{ steps.shull_apertures_and_their_closure.outcome }}" != "success" ]; then
+            echo "FAILED: shull_apertures_and_their_closure"; fail=1; fi
+          if [ "${{ steps.sinterior_kit_self_test.outcome }}" != "success" ]; then
+            echo "FAILED: sinterior_kit_self_test"; fail=1; fi
+          if [ "${{ steps.sinterior_topology_and_drum_self_test.outcome }}" != "success" ]; then
+            echo "FAILED: sinterior_topology_and_drum_self_test"; fail=1; fi
+          if [ "${{ steps.sdrum_ground_tram_and_core_tube.outcome }}" != "success" ]; then
+            echo "FAILED: sdrum_ground_tram_and_core_tube"; fail=1; fi
+          if [ "${{ steps.szocalo_and_docking_bay.outcome }}" != "success" ]; then
+            echo "FAILED: szocalo_and_docking_bay"; fail=1; fi
+          if [ "${{ steps.sgenerated_rooms_and_the_layer_register.outcome }}" != "success" ]; then
+            echo "FAILED: sgenerated_rooms_and_the_layer_register"; fail=1; fi
+          if [ "${{ steps.sstreaming_cell_manifest.outcome }}" != "success" ]; then
+            echo "FAILED: sstreaming_cell_manifest"; fail=1; fi
+          if [ "${{ steps.smaterials_and_that_the_scenes_still_agre.outcome }}" != "success" ]; then
+            echo "FAILED: smaterials_and_that_the_scenes_still_agre"; fail=1; fi
+          if [ "${{ steps.slayer_3_coverage_and_material_plausibili.outcome }}" != "success" ]; then
+            echo "FAILED: slayer_3_coverage_and_material_plausibili"; fail=1; fi
+          if [ "${{ steps.sgeometric_detail_metric.outcome }}" != "success" ]; then
+            echo "FAILED: sgeometric_detail_metric"; fail=1; fi
+          if [ "${{ steps.sthe_station_is_walkable.outcome }}" != "success" ]; then
+            echo "FAILED: sthe_station_is_walkable"; fail=1; fi
+          if [ "${{ steps.sthe_inhabitants_are_solid.outcome }}" != "success" ]; then
+            echo "FAILED: sthe_inhabitants_are_solid"; fail=1; fi
+          if [ "${{ steps.show_much_of_the_station_can_be_walked_in.outcome }}" != "success" ]; then
+            echo "FAILED: show_much_of_the_station_can_be_walked_in"; fail=1; fi
+          if [ "${{ steps.sthe_habitat_drum_is_walkable.outcome }}" != "success" ]; then
+            echo "FAILED: sthe_habitat_drum_is_walkable"; fail=1; fi
+          if [ "${{ steps.sexterior_components.outcome }}" != "success" ]; then
+            echo "FAILED: sexterior_components"; fail=1; fi
+          if [ "${{ steps.slod_chain.outcome }}" != "success" ]; then
+            echo "FAILED: slod_chain"; fail=1; fi
+          if [ "${{ steps.sinterior_shot_exports.outcome }}" != "success" ]; then
+            echo "FAILED: sinterior_shot_exports"; fail=1; fi
+          if [ "${{ steps.sbespoke_interior_shot_exports.outcome }}" != "success" ]; then
+            echo "FAILED: sbespoke_interior_shot_exports"; fail=1; fi
+          if [ "${{ steps.sscene_assembly_and_the_interior_light_ri.outcome }}" != "success" ]; then
+            echo "FAILED: sscene_assembly_and_the_interior_light_ri"; fail=1; fi
+          if [ "${{ steps.sframe_distribution_tolerances_still_matc.outcome }}" != "success" ]; then
+            echo "FAILED: sframe_distribution_tolerances_still_matc"; fail=1; fi
+          if [ "${{ steps.sframe_luminance_measurement.outcome }}" != "success" ]; then
+            echo "FAILED: sframe_luminance_measurement"; fail=1; fi
+          if [ "${{ steps.srotating_frame_physics.outcome }}" != "success" ]; then
+            echo "FAILED: srotating_frame_physics"; fail=1; fi
+          if [ "${{ steps.sprecision_and_floating_origin.outcome }}" != "success" ]; then
+            echo "FAILED: sprecision_and_floating_origin"; fail=1; fi
+          if [ "${{ steps.sstarfury_flight_model.outcome }}" != "success" ]; then
+            echo "FAILED: sstarfury_flight_model"; fail=1; fi
+          if [ "${{ steps.sstarfury_airframe_and_that_it_still_agre.outcome }}" != "success" ]; then
+            echo "FAILED: sstarfury_airframe_and_that_it_still_agre"; fail=1; fi
+          if [ "${{ steps.sdocking.outcome }}" != "success" ]; then
+            echo "FAILED: sdocking"; fail=1; fi
+          if [ "${{ steps.score_shuttle_and_radial_transit.outcome }}" != "success" ]; then
+            echo "FAILED: score_shuttle_and_radial_transit"; fail=1; fi
+          if [ "${{ steps.snpc_names.outcome }}" != "success" ]; then
+            echo "FAILED: snpc_names"; fail=1; fi
+          if [ "${{ steps.snpc_schedules.outcome }}" != "success" ]; then
+            echo "FAILED: snpc_schedules"; fail=1; fi
+          if [ "${{ steps.snpc_bodies_costume_and_crowd.outcome }}" != "success" ]; then
+            echo "FAILED: snpc_bodies_costume_and_crowd"; fail=1; fi
+          if [ "${{ steps.snpc_animation_and_navigation.outcome }}" != "success" ]; then
+            echo "FAILED: snpc_animation_and_navigation"; fail=1; fi
+          if [ "${{ steps.sconfirm_the_schema_still_parses_and_is_f.outcome }}" != "success" ]; then
+            echo "FAILED: sconfirm_the_schema_still_parses_and_is_f"; fail=1; fi
+          if [ "$fail" != "0" ]; then
+            echo; echo "One or more gates failed -- see above."; exit 1; fi
+          echo "all 36 gates green" 

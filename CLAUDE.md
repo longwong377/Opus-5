@@ -188,6 +188,25 @@ module that builds the pieces had no way to measure them. It now lives in `inter
 
 **A gate belongs in the module that builds the thing, and it must build the hard case.**
 
+**A GATE THAT DOES NOT RUN IS NOT A GATE, AND A RED BUILD CAN HIDE THIRTY-FOUR OF THEM.** Session
+4e's judge found it: `.github/workflows/validate.yml` was 41 sequential steps with no
+`continue-on-error` anywhere, and step 4 -- `Performance budgets` -- fails BY DESIGN, because
+`budget.py` is honestly over budget. **So the 34 steps after it never executed**, including *The
+station is walkable*, *How much of the station can be walked in*, *The habitat drum is walkable*,
+*Canon assertions* and *NPC bodies*. All 30 most recent runs were red and none had ever reported
+those answers. This file said `walkable.py` "runs in CI"; it had not, for thirty pushes.
+
+The fix is NOT to make the failing gate pass -- that is picking the convenient reading. It is that
+one failing gate must not blind every gate behind it: each step records its own outcome and a
+final step fails the job if any did. The build stays exactly as red and the other 34 answers
+become visible. **When a suite is a chain, its length is a liability; check what your CI actually
+executed, not what it contains.**
+
+**A REVIEWER MUST OWN ITS OWN FILES, AND `git add -A` IS NOT DISJOINT.** The same session: while a
+judge agent was working, the main agent ran `git add -A` and swept all 25 of its untracked files
+into an unrelated commit mid-write -- including a scorecard that still had four gate errors. File
+lists were disjoint; the staging command was not. **Stage the paths you changed.**
+
 **A TOOL THAT SILENTLY DEGRADES AND EXITS 0 IS WORSE THAN ONE THAT FAILS — IT MANUFACTURES
 EVIDENCE.** Session 4e, and it cost a session of visual judgement. The container had no Vulkan
 ICD, so every `render_godot.sh` run fell back to **OpenGL 3 Compatibility** — which has no
