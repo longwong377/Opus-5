@@ -33,6 +33,7 @@ extends Node3D
 ##
 ## MODES
 ##   --selftest [--drift=aero|nogyro]   replay the Python vectors; print the table
+##   --pilot-test                       fly it from a scripted key sequence
 ##   --mission  [--flight-out=PATH]     fly the cobra bay launch, write flight.json
 ##   --out=PNG  [--frame=NAME]          fly it and photograph it
 ##   (none)                             fly it yourself; see _read_pilot_input
@@ -49,6 +50,9 @@ extends Node3D
 ## R/F are the lateral and vertical RCS, arrows and Q/E are attitude. There is
 ## no roll key because THE MODEL HAS NO ROLL AUTHORITY -- see the finding in
 ## `_autopilot`.
+## Ceiling on the attitude keys, rad/s. 60 deg/s puts a 180 degree flip at
+## three seconds, which is about what the show's fighters look like.
+const PILOT_RATE := 1.047
 const KEY_HELP := "W/S main  A/D lateral  R/F vertical  arrows pitch/yaw  " \
 	+ "SPACE kill rotation  X kill velocity  TAB chase/cockpit"
 
@@ -289,6 +293,10 @@ func _ready() -> void:
 			set(String(pair[1]), String(args[String(pair[0])]))
 	_out_path = String(args.get("out", ""))
 
+	if args.has("pilot-test"):
+		get_tree().quit(0 if _pilot_test() else 1)
+		return
+
 	if args.has("selftest"):
 		get_tree().quit(0 if _selftest(String(args.get("drift", ""))) else 1)
 		return
@@ -316,7 +324,8 @@ func _ready() -> void:
 	_spawn_ship()
 
 	if _out_path != "":
-		await _photograph(String(args.get("frame", "lookback")))
+		await _photograph(String(args.get("frame",
+			_shot.get("frame", "lookback"))))
 		return
 	_start_interactive()
 
@@ -550,6 +559,21 @@ func _fly_mission() -> Dictionary:
 	var t := 0.0
 	var samples := []
 
+	# HOW LONG THE FIGHTER RIDES THE BAY BEFORE THE CLAMPS LET GO, and it is
+	# derived rather than picked. The bay comes round once every 33.47 s, and
+	# on most of that lap it is on the anti-sun side, where a fighter leaving
+	# it is a black shape against a black hull -- the first launch frame taken
+	# here was exactly that. So the ride lasts until the bay's own outward
+	# radial swings into the sun, which is a number this scene already has:
+	# the key's position. With no sun in the shot (the headless `--mission`
+	# run) it falls back to RIDE_S, and the launch physics is identical either
+	# way -- this only chooses WHEN in the lap it happens.
+	var ride_s := RIDE_S
+	if _shot.has("sun_from"):
+		var sun := _v3(_shot["sun_from"]) - centre
+		var want := atan2(sun.y, sun.x)
+		ride_s = fposmod(want - phase, TAU) / omega
+
 	# --- riding the bay ----------------------------------------------------
 	# The craft is not flying yet: it is a point on a rotating hull, and its
 	# position is a function of time and nothing else. Attitude is nose-out
@@ -557,7 +581,7 @@ func _fly_mission() -> Dictionary:
 	# arguable -- the tube points outward.
 	var prev := Vector3.ZERO
 	var nose_worst := 0.0
-	while t < RIDE_S:
+	while t < ride_s:
 		var a := phase + omega * t
 		prev = m.position
 		m.position = Vector3(r * cos(a), r * sin(a), z)
@@ -760,7 +784,7 @@ func _look_quat(fwd: Vector3, up: Vector3) -> Quaternion:
 ## whatever attitude the flight ends in. Astern and above is a chase view; the
 ## lateral offset is what stops the fighter from sitting exactly on top of the
 ## thing it was flown out to photograph.
-const CHASE := Vector3(16.0, 12.0, -55.0)
+const CHASE := Vector3(9.0, 7.0, -46.0)
 
 
 func _chase_eye(m: FlightModel) -> Vector3:
@@ -947,9 +971,13 @@ func _photograph(which: String) -> void:
 	var flight := _fly_mission()
 	var pick: Dictionary = flight["final"]
 	if which == "release":
-		pick = _pick_sample(flight, "coast")
+		# The FIRST coast sample, a twelfth of a second after the clamps let
+		# go: the fighter is still in the bay's mouth and the hull it is
+		# leaving is the frame. The last one is six seconds and 150 m later,
+		# by which time the station is a wall behind it and the launch is over.
+		pick = _pick_sample(flight, "coast", true)
 	elif which == "ride":
-		pick = _pick_sample(flight, "ride")
+		pick = _pick_sample(flight, "ride", true)
 	model.position = _v3(pick["position"])
 	model.velocity = _v3(pick["velocity"])
 	var q = pick["orientation"]
@@ -958,16 +986,32 @@ func _photograph(which: String) -> void:
 	_chase = true
 	_sync_transforms()
 	if which != "lookback":
-		# Close in for the launch beat. At 55 m astern with the nose pointing
-		# radially out into empty space, the frame is a fighter and nothing
-		# else; what makes it a launch is the hull it just left, so the camera
-		# comes in tight on the ship and aims back along the radius at the
-		# station's axis.
+		# THE LAUNCH BEAT NEEDS A DIFFERENT CAMERA, and the reason is where the
+		# fighter is pointing. A cobra bay tube points radially OUT, so at
+		# release the nose is aimed at empty space and the station is directly
+		# behind the craft: a chase camera astern of it is inside the hull. The
+		# camera therefore stands OUTBOARD of the fighter, up the radius, and
+		# looks back down it -- which puts the fighter in the near field and
+		# the 8 km hull it just left filling everything under it.
+		#
+		# `up` is the outward radial, so "down" in this frame is toward the
+		# spin axis. That is the only up there is here and it is the one the
+		# pilot has.
+		var outward := Vector3(model.position.x, model.position.y,
+			0.0).normalized()
+		# AIM STRAIGHT DOWN THE RADIUS, at the hull directly under the bay.
+		# The first three attempts aimed along the axis as well, and the
+		# fighter came out clipped by the bottom of the frame every time. The
+		# reason is worth the line: with `up` set to the outward radial, a
+		# camera offset along +Z and an aim point offset along -Z put the
+		# fighter FURTHER inboard than the aim axis, which is screen-down.
+		# Aiming perpendicular to the axis removes that term entirely and the
+		# fighter sits about ten degrees above centre.
+		var inboard := Vector3(0.0, 0.0, model.position.z)
 		_cam.fov = 60.0
-		_cam.global_position = _place(model.position
-			+ model.body_to_world(Vector3(11.0, 4.5, -26.0)))
-		_cam.look_at(_place(Vector3(0.0, 0.0, model.position.z - 900.0)),
-			Vector3(0.0, 0.0, 1.0))
+		_cam.global_position = _place(model.position + outward * 52.0
+			+ Vector3(0.0, 0.0, 10.0))
+		_cam.look_at(_place(model.position.lerp(inboard, 0.6)), outward)
 	print("starfury: camera at %s, ship at %s (%s)"
 		% [_cam.global_position + _origin, model.position, which])
 	for i in 10:
@@ -982,12 +1026,18 @@ func _photograph(which: String) -> void:
 	get_tree().quit(0)
 
 
-func _pick_sample(flight: Dictionary, phase: String) -> Dictionary:
-	var last: Dictionary = flight["final"]
+func _pick_sample(flight: Dictionary, phase: String,
+		first: bool = false) -> Dictionary:
+	var hit: Dictionary = flight["final"]
+	var found := false
 	for s in flight["samples"]:
-		if String(s["phase"]) == phase:
-			last = s
-	return last
+		if String(s["phase"]) != phase:
+			continue
+		if first and found:
+			continue
+		hit = s
+		found = true
+	return hit
 
 
 # ===========================================================================
@@ -1025,36 +1075,138 @@ func _start_interactive() -> void:
 ## retrograde and burns, which is what a pilot does and takes as long as it
 ## takes.
 func _read_pilot_input() -> Dictionary:
+	var keys := {}
+	for k in [KEY_W, KEY_S, KEY_A, KEY_D, KEY_R, KEY_F, KEY_UP, KEY_DOWN,
+			KEY_LEFT, KEY_RIGHT, KEY_SPACE, KEY_X]:
+		if Input.is_key_pressed(k):
+			keys[k] = true
+	return _command_from_keys(keys)
+
+
+## THE MAPPING ITSELF, SPLIT OUT SO IT CAN BE TESTED. `Input.is_key_pressed`
+## cannot be driven headlessly, and a control scheme nobody can test is one
+## that silently stops working -- exactly the scar `scripts/walk.gd`'s header
+## records. `--pilot-test` drives this with a scripted key sequence.
+func _command_from_keys(keys: Dictionary) -> Dictionary:
 	var trans := Vector3.ZERO
 	var rot := Vector3.ZERO
-	if Input.is_key_pressed(KEY_W):
+	if keys.has(KEY_W):
 		trans.z += 1.0
-	if Input.is_key_pressed(KEY_S):
+	if keys.has(KEY_S):
 		trans.z -= 1.0
-	if Input.is_key_pressed(KEY_D):
+	if keys.has(KEY_D):
 		trans.x += 1.0
-	if Input.is_key_pressed(KEY_A):
+	if keys.has(KEY_A):
 		trans.x -= 1.0
-	if Input.is_key_pressed(KEY_R):
+	if keys.has(KEY_R):
 		trans.y += 1.0
-	if Input.is_key_pressed(KEY_F):
+	if keys.has(KEY_F):
 		trans.y -= 1.0
-	if Input.is_key_pressed(KEY_UP):
-		rot.x += 1.0
-	if Input.is_key_pressed(KEY_DOWN):
-		rot.x -= 1.0
-	if Input.is_key_pressed(KEY_LEFT):
-		rot.y += 1.0
-	if Input.is_key_pressed(KEY_RIGHT):
-		rot.y -= 1.0
-	if Input.is_key_pressed(KEY_SPACE):
-		rot -= model.angular_velocity * 3.0
-	if Input.is_key_pressed(KEY_X) and model.speed() > 0.5:
+	# THE ATTITUDE KEYS COMMAND A RATE, NOT A TORQUE, and that is a
+	# playability decision with a measured reason. Wired straight to torque,
+	# two seconds on the yaw key spun the craft to 720 deg/s -- correct for a
+	# layout whose four mains have 3.4 m of leverage each, and unflyable. A
+	# rate command with a 60 deg/s ceiling is what every space sim does and it
+	# changes NOTHING about the physics: the demand still goes through
+	# `allocate`, the thrusters still saturate, and the craft still has to
+	# fight its own inertia to get there.
+	#
+	# WITH NO ATTITUDE KEY HELD THE DEMAND IS ZERO, not "damp to zero". Taking
+	# your hands off leaves the craft rotating at whatever rate it had, because
+	# nothing in vacuum stops it. SPACE is the key that stops it, and it is a
+	# manoeuvre like any other.
+	var rate := Vector3.ZERO
+	var attitude_held := false
+	for pair in [[KEY_UP, Vector3(1.0, 0.0, 0.0)], [KEY_DOWN, Vector3(-1.0, 0.0, 0.0)],
+			[KEY_LEFT, Vector3(0.0, 1.0, 0.0)], [KEY_RIGHT, Vector3(0.0, -1.0, 0.0)]]:
+		if keys.has(pair[0]):
+			rate += (pair[1] as Vector3) * PILOT_RATE
+			attitude_held = true
+	if attitude_held:
+		rot = (rate - model.angular_velocity) * 1.2
+	elif keys.has(KEY_SPACE):
+		rot = -model.angular_velocity * 3.0
+	if keys.has(KEY_X) and model.speed() > 0.5:
 		return _autopilot(model, -model.velocity.normalized(), 1.0)
 	rot.z = 0.0
 	if rot.length() > 1.0:
 		rot = rot.normalized()
 	return model.allocate(trans, rot)
+
+
+## Fly the ship from a scripted key sequence and report what a pilot got.
+##
+## THE ASSERTION IS DISTANCE COVERED AND DECOUPLING, not "did it move".
+## `station/walkable.py` learned that four one-second nudges prove a body is
+## not wedged and prove nothing about whether you can go anywhere; the same
+## applies here, with a second question a walk test does not have -- whether
+## turning the nose moved the velocity, which is the whole premise of the
+## craft. Both are printed as numbers and both have a stated floor.
+func _pilot_test() -> bool:
+	model = FlightModel.new()
+	var dt := 1.0 / 60.0
+	var script := [
+		[3.0, {KEY_W: true}, "mains ahead"],
+		[2.0, {KEY_LEFT: true}, "yaw left, no thrust"],
+		[2.0, {}, "hands off"],
+		[2.0, {KEY_D: true}, "lateral RCS, starboard"],
+		[2.0, {KEY_R: true}, "vertical RCS, up"],
+		[2.0, {KEY_SPACE: true}, "kill rotation"],
+		[16.0, {KEY_X: true}, "kill velocity"],
+	]
+	var travelled := 0.0
+	var ok := true
+	var v_before_turn := Vector3.ZERO
+	var turn_drift := 0.0
+	var swept := 0.0
+	for leg in script:
+		var secs: float = leg[0]
+		var keys: Dictionary = leg[1]
+		var v0 := model.velocity
+		var p0 := model.position
+		var f0 := model.forward()
+		var prev := model.forward()
+		var steps := int(secs / dt)
+		for i in steps:
+			model.step(dt, _command_from_keys(keys))
+			var d := prev.dot(model.forward())
+			swept += rad_to_deg(acos(clampf(d, -1.0, 1.0)))
+			prev = model.forward()
+		travelled += (model.position - p0).length()
+		if String(leg[2]).begins_with("yaw"):
+			v_before_turn = v0
+			turn_drift = (model.velocity - v0).length()
+		print("  %-24s  speed %7.2f m/s  spin %6.2f deg/s  nose %6.1f deg "
+			% [String(leg[2]), model.speed(),
+				rad_to_deg(model.angular_velocity.length()),
+				rad_to_deg(acos(clampf(f0.dot(model.forward()), -1.0, 1.0)))]
+			+ "off velocity %6.1f"
+			% [rad_to_deg(model.velocity.normalized().angle_to(model.forward()))
+				if model.speed() > 0.01 else 0.0])
+	print("  nose swept %.0f deg in total; travelled %.0f m" % [swept, travelled])
+	# 1. A pilot can go somewhere. Three seconds of mains at 18.4 m/s^2 is
+	#    83 m before anything else happens; the whole run must beat 300 m or
+	#    the controls are not connected to the craft.
+	if travelled < 300.0:
+		print("  FAIL  travelled only %.0f m -- the controls move nothing"
+			% travelled)
+		ok = false
+	# 2. Turning does not steer. The yaw leg commands attitude and no
+	#    translation, so the velocity may change ONLY by the thrust the four
+	#    mains unavoidably produce while torquing (see _autopilot) -- which is
+	#    along the nose, not toward it. An aeroplane-shaped controller would
+	#    move it by tens of m/s.
+	if turn_drift > 25.0:
+		print("  FAIL  yawing moved the velocity by %.1f m/s" % turn_drift)
+		ok = false
+	# 3. And it can stop, which in vacuum is a manoeuvre rather than a brake.
+	if model.speed() > 2.0:
+		print("  FAIL  kill-velocity left %.2f m/s" % model.speed())
+		ok = false
+	print("  yaw leg moved the velocity %.2f m/s (from %.2f m/s), final speed "
+		% [turn_drift, v_before_turn.length()] + "%.3f m/s" % model.speed())
+	print("PILOT TEST: " + ("PASS" if ok else "FAIL"))
+	return ok
 
 
 func _unhandled_input(event: InputEvent) -> void:

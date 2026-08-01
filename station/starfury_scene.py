@@ -495,6 +495,12 @@ def write_bundle(out_dir=OUT_DIR):
     # `glb` list for the same reason.
     scene = {
         "scene": "res://scenes/starfury.tscn",
+        # WHICH BEAT OF THE MISSION THE FRAME IS TAKEN AT. It lives in the shot
+        # rather than on the command line because `tools/render_godot.sh`
+        # forwards nothing but `--scene-json` and `--out` to a `--no-export`
+        # run: anything else it is handed goes to the exporter, which is not
+        # running. A flag that silently reaches nobody is worse than no flag.
+        "frame": "release",
         "glb": [],                     # the flyable scene loads its own
         "hull_glb": os.path.join(STATION, "generated/scene/exterior/hull.glb"),
         "fury_glb": glb,
@@ -536,10 +542,17 @@ def compose_lookback(flight_path, out_png, out_dir=OUT_DIR, res="1280x720"):
     posed = pose_airframe(ship["position"], ship["orientation"], out_dir)
 
     ext = os.path.join(STATION, "generated", "scene", "exterior")
+    # A LEADING SPACE ON A NEGATIVE TRIPLE. argparse reads `-7200,...` as an
+    # option flag and dies; every worked example in `tools/export_scene.py`'s
+    # own docstring quotes such arguments with a space in front, so that is
+    # what is emitted here rather than rediscovered.
+    def _trip(v):
+        s = ",".join(f"{c:.4f}" for c in v)
+        return " " + s if s.startswith("-") else s
+
     cmd = [sys.executable, os.path.join(ROOT, "tools/export_scene.py"),
-           "--shot", "exterior", "--res", res, "--out", out_png,
-           "--eye", ",".join(f"{c:.4f}" for c in cam["eye"]),
-           "--target", ",".join(f"{c:.4f}" for c in cam["target"]),
+           "--shot", "exterior", "--out", out_png,
+           "--eye", _trip(cam["eye"]), "--target", _trip(cam["target"]),
            "--fov", str(cam.get("fov", 46.0))]
     subprocess.run(cmd, check=True, cwd=ROOT)
     shot = json.load(open(os.path.join(ext, "scene.json")))
@@ -550,7 +563,14 @@ def compose_lookback(flight_path, out_png, out_dir=OUT_DIR, res="1280x720"):
     # 0.5 m, which is still 18,400x the far plane's 200 km and well inside what
     # a 24-bit depth buffer carries.
     shot["camera"]["near"] = 0.5
-    dst = os.path.join(out_dir, "lookback.json")
+    # ITS OWN SHOT DIRECTORY, because `tools/render_godot.sh --shot NAME`
+    # resolves `station/generated/scene/NAME/scene.json` and nothing else.
+    # Writing it beside the exterior's would overwrite a shot other work is
+    # using -- and generated scene directories are exactly the shared artefact
+    # CLAUDE.md's "disjoint source files are not disjoint artefacts" is about.
+    ldir = os.path.join(STATION, "generated", "scene", "starfury_lookback")
+    os.makedirs(ldir, exist_ok=True)
+    dst = os.path.join(ldir, "scene.json")
     shot["scene_json"] = dst
     with open(dst, "w") as f:
         json.dump(shot, f, indent=1)
@@ -617,9 +637,73 @@ def check_flight(flight_path, perturb=0.0, quiet=False):
     return ok
 
 
+def godot_binary():
+    """The same search `station/walkable.py` does, and the same message."""
+    for c in [os.environ.get("GODOT", ""),
+              "/home/user/godot-build/godot-4.4-stable/bin/"
+              "godot.linuxbsd.editor.double.x86_64"]:
+        if c and os.path.isfile(c) and os.access(c, os.X_OK):
+            return c
+    import glob
+    for c in glob.glob("/home/user/godot-build/*/bin/godot.linuxbsd.*.double.*"):
+        if os.access(c, os.X_OK):
+            return c
+    return None
+
+
+def gate(out_dir=OUT_DIR):
+    """Everything that can be checked without a render, in one command.
+
+    The port against its source, both negative controls, the flight, and the
+    launch against `rotating_frame`. Not wired into CI: session 4d's ruling says
+    keep the existing gates green and do not GROW them, and this is a test of
+    one port rather than a new scored dimension. It is here so that the claim
+    "the Starfury flies and its physics is the tested physics" is one command
+    away from being re-checked rather than a paragraph in a commit message.
+    """
+    godot = godot_binary()
+    if godot is None:
+        raise SystemExit("no double-precision Godot -- bash tools/build_godot.sh")
+    scene = os.path.join(out_dir, "scene.json")
+    base = [godot, "--headless", "--path", os.path.join(ROOT, "godot"),
+            "res://scenes/starfury.tscn", "--", f"--scene-json={scene}"]
+
+    def run(extra, label):
+        r = subprocess.run(base + extra, capture_output=True, text=True,
+                           timeout=600)
+        keep = [ln for ln in r.stdout.splitlines()
+                if ln.startswith(("  ", "---", "CONTROL", "NEGATIVE",
+                                  "starfury:")) or " of " in ln]
+        print(f"--- {label} (exit {r.returncode}) ---")
+        print("\n".join(keep))
+        return r.returncode
+
+    ok = run(["--selftest"], "the port against station/physics/starfury.py") == 0
+    for d in ("aero", "nogyro"):
+        # INVERTED: the drifted port MUST fail. `_selftest` already inverts its
+        # own verdict, so a zero here means the control fired.
+        ok = ok and run([f"--selftest", f"--drift={d}"],
+                        f"negative control drift={d}") == 0
+    ok = ok and run(["--pilot-test"],
+                    "the pilot's controls, from a scripted key sequence") == 0
+    ok = ok and run(["--mission"], "the mission") == 0
+    print("--- the launch against rotating_frame.py ---")
+    ok = check_flight(os.path.join(out_dir, "flight.json")) and ok
+    bad = check_flight(os.path.join(out_dir, "flight.json"), perturb=0.01,
+                       quiet=True)
+    print("  control " + ("FIRES (good)" if not bad else "DID NOT FIRE"))
+    ok = ok and not bad
+    print("\nSTARFURY GATE: " + ("PASS" if ok else "FAIL"))
+    return ok
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument("--gate", action="store_true",
+                    help="build, replay the vectors in the engine, fire both "
+                         "negative controls, fly the mission and check the "
+                         "launch against rotating_frame.py")
     ap.add_argument("--build", action="store_true",
                     help="write the airframe, launch.json, vectors.json and "
                          "the flyable scene's scene.json")
@@ -633,6 +717,10 @@ def main():
     ap.add_argument("--res", default="1280x720")
     a = ap.parse_args()
     did = False
+
+    if a.gate:
+        did = True
+        a.build = True
 
     if a.build:
         did = True
@@ -665,6 +753,9 @@ def main():
               f"{launch['airframe']['length_m']} m long")
         print(f"wrote {os.path.relpath(OUT_DIR, ROOT)}/"
               "{starfury.glb,launch.json,vectors.json,scene.json}")
+
+    if a.gate:
+        raise SystemExit(0 if gate() else 1)
 
     if a.report:
         did = True
