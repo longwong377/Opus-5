@@ -17,6 +17,18 @@ Three things it deliberately does NOT do:
   `godot/materials/README.md`), because a material is a look and a look belongs
   with the lighting it was judged under. What it DOES do is assert that every
   group it emits has a rule, so nothing lands on the fallback by accident.
+
+  THAT SENTENCE WAS TRUE OF TWO SHOTS OUT OF FOUR AND READ AS ALL FOUR, which
+  is judge-4e F-2. `unmatched_groups()` was called on `drum` (asserted) and on
+  `exterior` (printed as a note); the `deck` shot -- the one this file calls
+  "the build", the one a player's camera actually uses -- reached neither, and
+  every deck frame ever taken carried 2 groups and 2,208 triangles on no
+  material at all. Not on a grey fallback: `interior.tscn` declares no
+  `fallback_material`, so an unbound interior group keeps the glTF default and
+  renders as white plastic. As of 4f `build_deck_shot` and `build_interior`
+  both check their own shot at export and RAISE, the exterior note is a check,
+  and `_selftest` runs the same question against a vocabulary derived from
+  `rooms`/`dressing`/`corridor_dressing` so it can fail without a deck on disk.
 * It does not place lights by hand. The drum's illumination is the light runs
   on the guideway trusses (authority 1: `Babylon_5_2-22_34b.jpg` shows the
   tubes alongside the truss, `33a` the fixtures on its underside), so the light
@@ -4310,6 +4322,7 @@ def build(args):
     out_dir = os.path.join(SCENE_DIR, args.shot)
     os.makedirs(out_dir, exist_ok=True)
     scene = SHOTS[args.shot](args, out_dir)
+    check_material_coverage(scene, strict=not args.allow_unbound)
     scene["out_png"] = args.out
     apply_grade(scene, args)
     path = os.path.join(out_dir, "scene.json")
@@ -4317,6 +4330,60 @@ def build(args):
         json.dump(scene, f, indent=1)
     scene["scene_json"] = path
     return scene
+
+
+# ---------------------------------------------------------------------------
+# THE COVERAGE CHECK, AND WHY IT LIVES HERE AND NOT IN A SHOT BUILDER
+# ---------------------------------------------------------------------------
+# Line 19 of this file has claimed since 3k that it asserts every group it emits
+# has a rule. It did that for `drum` (in `_selftest`) and printed a note for
+# `exterior`, and the two shots that matter most to a player -- `interior` and
+# `deck` -- reached neither. judge-4e measured the cost: 2 groups and 2,208
+# triangles on NO MATERIAL in every deck frame, on the surface of a corridor
+# that is 77% of a ring deck.
+#
+# It is here, in `build`, rather than in the four shot builders, because the
+# defect was never "somebody wrote the wrong check" -- it was "three of four
+# call sites do not have one". A per-builder check is three chances to forget
+# and a fourth the next time a shot is added. Every shot passes through this
+# function and every shot names its own `.tscn`, so the question is asked of
+# whatever a shot turns out to be.
+def check_material_coverage(scene, strict=True):
+    """Every group in a shot must match a rule in the shot's own scene file.
+
+    Returns the unbound groups. Raises when `strict` and there are any.
+
+    THE FALLBACK IS NOT AN ANSWER. `exterior.tscn` sets
+    `fallback_material = m_hull` and `drum.tscn` sets a deliberately impossible
+    magenta, so an unbound group in either renders as *something*. But
+    `interior.tscn` sets NO fallback, and `render_shot.gd` then hands the mesh a
+    null override -- which leaves the glTF's own default material, white
+    plastic. So the same missing rule is invisible on one shot, loud on
+    another, and unbound-ness is the only thing worth measuring.
+    """
+    res = scene.get("scene", "")
+    if not res.startswith("res://"):
+        return []
+    tscn = os.path.join(ROOT, "godot", res[len("res://"):])
+    if not os.path.exists(tscn):
+        return []
+    rules = scene_material_rules(tscn)
+    if not rules:
+        return []
+    missing = unmatched_groups(scene.get("groups", ()), rules)
+    if missing:
+        msg = (f"{scene.get('shot')}: {len(missing)} of "
+               f"{len(scene.get('groups', ()))} emitted group(s) match no rule "
+               f"in {os.path.relpath(tscn, ROOT)} and will render on the "
+               f"fallback -- which for interior.tscn is no material at all: "
+               f"{', '.join(missing[:8])}"
+               + ("..." if len(missing) > 8 else "")
+               + ". Add a bind in station/materials.py and re-run "
+                 "`python3 station/materials.py --export`.")
+        if strict:
+            raise ValueError(msg)
+        print(f"note: {msg}")
+    return missing
 
 
 # ---------------------------------------------------------------------------
@@ -4504,6 +4571,76 @@ def _selftest():
           f"(unbound: {missing[:6]})")
     check(len(rules) > 20,
           f"drum scene's rule table actually parsed ({len(rules)} rules)")
+
+    # -- THE SAME QUESTION, ASKED OF THE SHOT A PLAYER STANDS IN ----------
+    #
+    # The drum check above is the one that existed. It is real and it passes,
+    # and for three sessions it was the whole of what line 19 promised, because
+    # the `deck` and `interior` shots had no equivalent -- judge-4e F-2.
+    #
+    # `check_material_coverage` now runs on every shot at export. It cannot run
+    # HERE, because building a deck is minutes of CPU and a self-test that
+    # needs `station/generated/scene/deck/*` on disk is a gate that reads an
+    # artefact it cannot rebuild -- the defect CLAUDE.md records against
+    # `--gate-frames`. So the self-test asks the question of a DERIVED
+    # vocabulary instead: every name a room or a corridor can put in a deck,
+    # taken from the tables the generators themselves iterate.
+    #
+    # This is the half that a source-literal scan cannot do.
+    # `corridor_dressing.run` names its clutter `f"dress_{kind}"` at run time
+    # out of `SCHEMES` x `dressing.MACHINES`, so no regex over the source can
+    # see `dress_post` -- and `dress_post` was one of the two groups on no
+    # material in every deck frame this project has taken.
+    import rooms as _R                                          # noqa: PLC0415
+    import dressing as _D                                       # noqa: PLC0415
+    import corridor_dressing as _CD                             # noqa: PLC0415
+
+    int_rules = scene_material_rules(
+        os.path.join(ROOT, "godot/scenes/interior.tscn"))
+    check(len(int_rules) > 400,
+          f"interior scene's rule table actually parsed "
+          f"({len(int_rules)} rules)")
+
+    deck_vocab = {f"dress_{k}" for k in _D.MACHINES}
+    for _tbl in (_R.FIXTURES, _R.PLACE_FIXTURES):
+        for _items in _tbl.values():
+            for _i in _items:
+                deck_vocab.add(
+                    f"fix_{_i[0] if isinstance(_i, (tuple, list)) else _i}")
+    deck_vocab |= {f"prop_{n}" for n in _R.PROPS}
+    for _pre in ("dress_", "fix_", "prop_"):
+        deck_vocab |= set(_D._Parts(_pre).all())
+    check(len(deck_vocab) > 150,
+          f"the derived deck vocabulary is non-trivial ({len(deck_vocab)} "
+          f"names), so the check below can fail")
+    _kinds = {k for sch in _CD.SCHEMES.values() for k, *_r in sch}
+    check(_kinds <= set(_D.MACHINES),
+          f"every corridor dressing scheme names a machine that exists "
+          f"({sorted(_kinds - set(_D.MACHINES))})")
+    deck_missing = unmatched_groups(deck_vocab, int_rules)
+    check(not deck_missing,
+          f"deck/interior: every group a room or corridor can emit has a "
+          f"material rule ({len(deck_missing)} unbound: {deck_missing[:6]})")
+
+    # AND THE CHECK ITSELF, run against a rule table with the corridor's
+    # clutter taken out of it. Without this the assertion above is only as good
+    # as the vocabulary, and a vocabulary that happened to be empty would pass.
+    _blinded = [r for r in int_rules if not r.startswith("dress_")]
+    check(unmatched_groups(deck_vocab, _blinded),
+          "the deck coverage check can fail: removing the dress_* rules leaves "
+          "unbound groups")
+    check(check_material_coverage(
+              {"shot": "probe", "scene": "res://scenes/interior.tscn",
+               "groups": ["a_group_no_rule_can_match_zzz"]},
+              strict=False) == ["a_group_no_rule_can_match_zzz"],
+          "check_material_coverage reports an unbindable group")
+    try:
+        check_material_coverage(
+            {"shot": "probe", "scene": "res://scenes/interior.tscn",
+             "groups": ["a_group_no_rule_can_match_zzz"]}, strict=True)
+        check(False, "check_material_coverage RAISES in strict mode")
+    except ValueError:
+        check(True, "check_material_coverage RAISES in strict mode")
 
     # -- the shell and the ground are the same surface --------------------
     # `interior.drum_interior()` and `drum_ground` both draw the drum floor at
@@ -5156,29 +5293,41 @@ def _selftest():
     else:
         print("note: no exported scene to check; run --shot drum first")
 
-    # -- exterior material coverage, reported not gated --------------------
-    # The drum's coverage is asserted above. The EXTERIOR's never was, and it is
-    # worse: 21 of the hull's 32 groups match no rule in exterior.tscn, so every
-    # greeble group and the drum's own `green_section` render on the fallback.
-    # That is why a re-render of `docs/engine-exterior.png` at its own committed
-    # camera does not reproduce it (8.69% speckled pixels against 5.72%): the
-    # surfaces are not the ones the frame was judged on.
+    # -- exterior material coverage, NOW GATED -----------------------------
+    # This was a note for three sessions, and the note said what would end it:
+    # "It should BECOME a check the moment the .tscn binds them -- a note that
+    # nobody promotes is how this stayed invisible for two sessions." It was
+    # three when judge-4e counted, and the count had gone 21 of 32 unbound to 9
+    # of 41 without anyone deciding anything, because the number moved when
+    # other work happened to bind a group.
     #
-    # Printed rather than checked, deliberately. `godot/scenes/exterior.tscn` is
-    # not this file's to edit, and a hard check here turns
-    # tools/build_and_render.sh red for every other agent until someone else's
-    # file changes. It should BECOME a check the moment the .tscn binds them --
-    # a note that nobody promotes is how this stayed invisible for two sessions.
+    # `station/materials.py` now binds the eight plated longitudinal sections
+    # to `hull_exterior` and the aperture throat to `bay_well`, so this passes
+    # and can go red the next time the hull grows a section.
+    #
+    # WHAT IT DOES NOT MEAN: judge-4e read these nine as "smooth untextured
+    # plastic". They were not. `exterior.tscn` sets
+    # `fallback_material = m_hull`, which IS `hull_exterior`, so they already
+    # rendered as textured hull -- and the A/B in docs/materials-4f.md is
+    # byte-identical, which is the control. What was actually wrong is what
+    # this check is about: nine surfaces on an 8 km hull had no binding anyone
+    # had chosen, and would have followed `fallback_material` anywhere it went.
     hull_man = os.path.join(GENERATED, "hull_manifest.json")
     ext_tscn = os.path.join(ROOT, "godot/scenes/exterior.tscn")
     if os.path.exists(hull_man) and os.path.exists(ext_tscn):
         ext_rules = scene_material_rules(ext_tscn)
         hull_groups = sorted(json.load(open(hull_man))["groups"])
         unbound = unmatched_groups(hull_groups, ext_rules)
-        if unbound:
-            print(f"note: exterior.tscn binds {len(ext_rules)} rules and leaves "
-                  f"{len(unbound)} of {len(hull_groups)} hull groups on the "
-                  f"fallback material: {', '.join(unbound[:6])}...")
+        check(len(ext_rules) > 20,
+              f"exterior scene's rule table actually parsed "
+              f"({len(ext_rules)} rules)")
+        check(not unbound,
+              f"exterior: every one of the {len(hull_groups)} hull manifest "
+              f"groups has a material rule of its own, rather than relying on "
+              f"fallback_material ({len(unbound)} unbound: {unbound[:6]})")
+    else:
+        print("note: no hull manifest; run station/generate_hull.py to check "
+              "exterior material coverage")
 
     # -- hull LOD selection ------------------------------------------------
     # The chain is derived in station/lod.py and flattened into the manifest;
@@ -6338,6 +6487,15 @@ def main():
     ap.add_argument("--fov", type=float, default=None,
                     help="vertical field of view (default 46; the deck shot "
                          "takes player.gd's)")
+    # THE ESCAPE HATCH, AND IT IS NARROW ON PURPOSE. A builder mid-change may
+    # legitimately want to LOOK at a shot whose new group has no material yet.
+    # Off by default so that an unbound group stops an export instead of
+    # producing a frame nobody can tell is wrong, and named so it shows up in
+    # the command a frame is recorded against -- `docs/judge-4e-frames.json`
+    # stores the exact `render_godot.sh` line, so a frame taken with this flag
+    # says so forever.
+    ap.add_argument("--allow-unbound", action="store_true",
+                    help="downgrade the material-coverage check to a note")
     ap.add_argument("--sun-az", type=float, default=168.0)
     ap.add_argument("--sun-elev", type=float, default=34.0)
     ap.add_argument("--lighting", choices=("day", "night"), default="day",

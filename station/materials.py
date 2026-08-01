@@ -616,9 +616,36 @@ def _build():
         albedo=(0.600, 0.582, 0.564), roughness=0.72, metallic=0.34,
         specular=0.45, texture="hull_plate", uv_scale=1.0 / 48.0,
         normal_scale=1.3,
-        binds=(), scenes=("exterior",),
+        # THE EIGHT UNWINDOWED LONGITUDINAL SECTIONS, AND THEY HAD NO RULE FOR
+        # THREE SESSIONS. `binds` was empty here because `exterior.tscn` sets
+        # `fallback_material = m_hull`, so every section with no rule of its own
+        # arrived at this material anyway and no frame could show the gap.
+        # `export_scene.py`'s own note said so and asked to be promoted: "It
+        # should BECOME a check the moment the .tscn binds them." This is that
+        # moment, and it is worth being precise about what was and was not
+        # wrong, because judge-4e called these nine "smooth untextured plastic"
+        # and that half of the finding does not survive the A/B: rendered
+        # before and after this line the exterior is BYTE-IDENTICAL (docs/
+        # materials-4f.md), because the fallback was already this material.
+        # What WAS wrong is that the coverage question had no answer -- nine of
+        # 41 groups relied on a default rather than on a rule, and the day
+        # anyone changes `fallback_material` the nose, the waist and the aft
+        # terminus change with it silently.
+        #
+        # The ids are `longitudinal.features[*].id` from station/schema/
+        # station.yaml, restricted to the sections whose `kind` is hull, cone,
+        # neck, flare, spike or terminus -- i.e. plating. The truss sections
+        # (reactor_spine, main_truss_spine, explosive_disconnect_neck) are
+        # structural_truss's, and the four windowed ones (green_section,
+        # red_section, aft_hull_block, habitat_cylinder) are habitat_windows'.
+        binds=("aft_terminus", "primary_fusion_reactor",
+               "generator_torus_housing", "hull_flare_aft", "forward_taper",
+               "forward_waist", "docking_sphere", "forward_deflector_spike"),
+        scenes=("exterior",),
         source="exterior more.jpg drum side view; Cobra Bays with starfurries.webp",
-        note="Fallback for the exterior scene: most of the model is hull.",
+        note="Also the fallback for the exterior scene: most of the model is "
+             "hull. The eight plated sections are bound explicitly as well, so "
+             "the binding is a decision rather than a default.",
         extrapolated="the 6% warm bias; the 48 m texture repeat"))
 
     a(Material(
@@ -894,7 +921,14 @@ def _build():
         albedo=(0.260, 0.255, 0.248), roughness=0.66, metallic=0.30,
         specular=0.40, texture="truss_steel", uv_scale=1.0 / 10.0,
         normal_scale=1.0,
-        binds=("cobra_bay_well",), scenes=("exterior",),
+        # `docking_bay_throat` is the same surface under a different generator:
+        # `aperture.py` cuts the six docking mouths and lines them with a
+        # throat, which is unpainted structural metal inside a hole in the
+        # hull -- exactly what the cobra well is. Bound here rather than given a
+        # material of its own because there is no second measurement to make.
+        # Its lip already resolves: `docking_bay_lip` matches hazard_chevron's
+        # `bay_lip` fragment.
+        binds=("cobra_bay_well", "docking_bay_throat"), scenes=("exterior",),
         source="Albedo adopted from `structural_truss`, measured on exterior more.jpg "
                "at V 0.204 against hull 0.44. Cobra Bays with starfurries.webp shows "
                "at least three stepped deck levels inside the bay volume.",
@@ -1412,7 +1446,16 @@ def _build():
         # module. Session 3l's bespoke pass re-measured the frame independently
         # and landed on the same albedo to three places, so this is one surface
         # with one value, not two materials that happen to agree.
-        binds=("signage_panel", "sign_face"), scenes=("interior",),
+        binds=("signage_panel", "sign_face",
+               # THE CUSTOMS BOARDS, and judge-4e F-4 is only half closed by
+               # this. The three boards in the arrival hall were 12-triangle
+               # slabs on NO MATERIAL -- `interior.tscn` declares no
+               # `fallback_material`, so an unbound interior group renders on
+               # the glTF default, which is white plastic. They are now the
+               # backlit signage panel the room is about. What this does NOT
+               # do is put the authority-1 TEXT on them: that is geometry and
+               # it lives in `station/customs.py` and `station/signage.py`.
+               "prop_info_board", "prop_welcome_board"), scenes=("interior",),
         source="welcome to babylon 5.webp panel field (0.02,0.32)-(0.52,0.95): field rgb(0.151,0.156,0.434), B-R constant at 0.28 through the letters",
         note=("The one non-triplanar material. A sign has an orientation and a "
               "reading direction; projecting it three ways would mirror the "
@@ -1744,7 +1787,11 @@ def _build():
         albedo=(0.212, 0.212, 0.214), roughness=0.35, metallic=0,
         specular=0.5,
         emission=(1.000, 0.612, 0.353), emission_energy=0.5,
-        binds=("prop_console", "prop_reactor_console", "prop_furnace_control", "prop_irrigation_control", "cc_console_face"), scenes=("interior",),
+        binds=("prop_console", "prop_reactor_console", "prop_furnace_control", "prop_irrigation_control", "cc_console_face",
+               # The console machine's desk mass, in the corridor and in the
+               # Council chamber. `prop_console` -- the same kind -- is already
+               # here; a speaking position is a console you stand at.
+               "dress_console", "prop_speaking_position"), scenes=("interior",),
         source="03-sector-blue/war room.webp (authority 1), balanced with the gains already in materials.GREY_WORLD_GAINS (1.088/1.062/0.877). 6-cluster over the console assembly (0.55,0.60)-(1.00,1.00): V 0.596 at 4.0%, 0.390 at 13.1%, 0.286 at 23.8%, 0.210 at 28.2%, 0.136 at 28.0% — area-weighted mean V 0.240. Same frame, the console's own pale capping rail (0.625,0.634)-(0.719,0.662) reads V 0.529 S 0.051, and its dark control face (0.79,0.79)-(0.87,0.85) V 0.290 S 0.028. Emission colour corroborated on 03-sector-blue/comand and contorl.webp: the two lit control beds, luminance-weighted mean of everything above L 0.30, balanced, rgb(0.640, 0.478, 0.317) H 30 S 0.505, normalised (1.000, 0.747, 0.495).",
         extrapolated="The absolute level, via ALBEDO_ANCHOR. The frame gives a RATIO (assembly 0.240 / the console's own pale case 0.529 = 0.454); the case is the same painted panel work as the walls, so the anchor 0.46 x 0.454 = 0.209 sets the level. Also extrapolated: emission_energy 0.5 by flux-matching (see reasoning), and the decision to give one box a uniform emission at all."))
 
@@ -1777,7 +1824,12 @@ def _build():
         albedo=(0.052, 0.054, 0.062), roughness=0.12, metallic=0,
         specular=0.65,
         emission=(0.930, 1.000, 0.915), emission_energy=0.8,
-        binds=("prop_babcom_terminal", "prop_monitor_wall", "prop_tactical_display", "customs_screen", "bar_display", "dress_screen"), scenes=("interior",),
+        binds=("prop_babcom_terminal", "prop_monitor_wall", "prop_tactical_display", "customs_screen", "bar_display", "dress_screen",
+               # Two more lit panels that resolved nowhere. A station
+               # schematic is `prop_monitor_wall` in the customs hall -- the
+               # same `wallpanel` machine -- and a menu display is
+               # `bar_display` on a wall.
+               "prop_station_schematic_screen", "prop_menu_display"), scenes=("interior",),
         source="11-props-and-technology/babylon 5 welcome sign, instructions, and hub.jpg (authority 1), grey-world gains 1.046/1.065/0.905. Unlit screen field (0.32,0.19)-(0.56,0.235) balanced rgb(0.053, 0.054, 0.082); whole-panel dominant clusters 49.3% at V 0.037 (centre screen) and 45.9% at V 0.051 (right screen); bezel V 0.092. Content registers in the same frame: green wireframe H 121-141, blue title bar rgb(0.145,0.154,0.627) H 239 S 0.768, yellow caps H 60-75. Fourth panel from 03-sector-blue/war room.webp, the backlit galactic map, lit content luminance-weighted mean normalised (0.858, 0.918, 1.000).",
         extrapolated="The blue channel trimmed from the measured 0.082 to 0.062, and emission_energy 0.8 by flux-matching. The single emission colour is a real average across four measured panels rather than a colour any one screen has."))
 
@@ -2360,7 +2412,25 @@ def _build():
         "steel_gantry_oxide", "Gantry Steel — oxide-primed heavy structure, handling and plant",
         albedo=(0.300, 0.255, 0.242), roughness=0.52, metallic=0.3,
         specular=0.45, texture="truss_steel", uv_scale=1.0 / 4,
-        binds=("fix_gantry_rail", "fix_racking_run", "fix_catenary_run", "crane", "prop_docking_clamp", "bay_girder", "plant_frame", "plant_frame_ring"), scenes=("interior",),
+        binds=("fix_gantry_rail", "fix_racking_run", "fix_catenary_run", "crane", "prop_docking_clamp", "bay_girder", "plant_frame", "plant_frame_ring",
+               # THE BODY OF A MACHINE, and the reason this block exists at all.
+               # `dressing.machine` appends the OUTER span first and lets the
+               # part spans override it, so whatever a builder leaves un-parted
+               # -- the post's shaft, the skid's motor and volute, the gantry's
+               # column, the block's mass -- keeps the outer name. For a room
+               # fixture that name is `fix_x`/`prop_x` and resolves. For the
+               # CORRIDOR it is `dress_<kind>`, built by string interpolation in
+               # `corridor_dressing.run`, and no bind and no source-literal scan
+               # had ever seen one. Each of the four below takes the material
+               # its OWN machine already gives the parts bolted to it: `_m_post`
+               # frames its base collar and dome cap in this material, `_m_skid`
+               # its baseplate and cooling fins, `_m_gantry` its legs, `_m_block`
+               # its courses. `dress_crane` already resolved through `crane`.
+               "dress_post", "dress_skid", "dress_gantry", "dress_block",
+               # `prop_clamp` is `prop_docking_clamp` at a smaller size -- the
+               # same machine kind (`skid`) declared under a shorter name in
+               # `components`.
+               "prop_clamp"), scenes=("interior",),
         source="reference/03-sector-blue/dock.webp (authority 1), grey-world gains 0.968/1.027/1.006. The overhead heavy steel — deep box girders and a lattice gantry, which is exactly this family — clusters over (0.02,0.02)-(0.50,0.30) at 27.2% rgb(0.095,0.054,0.040) H 15.0 S 0.577, 20.1% rgb(0.055,0.026,0.015) H 17.1 S 0.729, 14.9% rgb(0.140,0.083,0.067) H 13.1 S 0.520; box girder lit top face (0.300,0.020)-(0.520,0.045) rgb 0.110,0.052,0.036 H 13.5; lattice top chord (0.238,0.133)-(0.423,0.154) rgb 0.068,0.036,0.024 H 16.9. Corroborated in reference/09-garden-core-and-transit/central corridor.webp (gains 1.045/1.086/0.891): ring rib (0.036,0.330)-(0.058,0.405) rgb 0.139,0.077,0.098 H 340 S 0.450, rib clusters H 3.5 S 0.209 and H 345 S 0.110. THE FRAMES DO NOT ESTABLISH THE LEVEL — dock.webp's steel sits at V 0.055-0.140 and is not under the key, so no ratio to a co-lit neutral exists; the value here is set by argument, not measured.",
         extrapolated="The albedo LEVEL (0.300 max channel) and the SATURATION (0.193 against a measured 0.11-0.58). Level: reference/03-sector-blue/dock.webp and station/materials.py's `structural_truss` source line agree that structural steel is the darkest large thing in frame; the library's two existing structural-steel values are 0.260 and 0.204, and painted steel indoors sits just above bare steel outdoors, so 0.300 — 0.65x the corridor wall's 0.46. Saturation: the two frames bracket S 0.11-0.58 and the value sits at the bottom of that bracket because a non-accented surface in this library is capped at 0.20; the remaining chroma belongs to the warm practicals in layer 4. Also extrapolated: the 4 m texture repeat (truss_steel is 5x5 plates per repeat, so 0.80 m plate faces — a girder web's stiffener pitch). Overturned by: any frame showing this steel under a measurable key beside a co-lit neutral, which would fix both the level and the saturation at once."))
 
@@ -2383,7 +2453,16 @@ def _build():
         "clad_services", "Clad Services — sheet-metal duct, riser and plant column",
         albedo=(0.520, 0.525, 0.530), roughness=0.52, metallic=0.9,
         specular=0.55, texture="wall_plate", uv_scale=1.0 / 7.2,
-        binds=("fix_service_duct", "fix_service_riser", "fix_plant_column", "plant_pipe", "plant_tank"), scenes=("interior",),
+        binds=("fix_service_duct", "fix_service_riser", "fix_plant_column", "plant_pipe", "plant_tank",
+               # Sheet-metal bodies. Every room object of these four machine
+               # kinds already lands here -- `fix_service_duct` (duct),
+               # `fix_generator_plant_tank` (drum), `fix_*_plant_pipe`
+               # (pipe_bank), `fix_umbilical_plant_pipe` (reel),
+               # `fix_*_plant_tank` and `fix_plant_column` (vessel) -- so the
+               # corridor's copies take the same surface. `prop_launch_tube` is
+               # a vessel too and had no bind at all.
+               "dress_duct", "dress_drum", "dress_pipe_bank", "dress_reel",
+               "dress_vessel", "prop_launch_tube"), scenes=("interior",),
         source="NO FRAME IN THE REFERENCE SET SHOWS A STATION PLANT ROOM, A SERVICE DUCT OR A RISER. reference/08-sector-yellow-engineering/ is empty (only .gitkeep) and reference/00-INDEX.md carries no engineering-interior entry. What IS sourced is what these objects are for: station/rooms.py FIXTURES gives service_duct as an overhead run (0.90/0.60/0.55 m square) in industrial, medical, research and generic rooms, service_riser as a full-height 0.70 m flank in generic rooms, and plant_column as a full-height 1.10 m flank in industrial rooms; station/directory.py places them in air_handling, water_reclamation, waste_processing and power locations. The albedo is a bare-metal F0, not a diffuse reflectance, and is declared invented.",
         extrapolated="Everything: colour, roughness, metallic, and the 7.2 m repeat. Constrained by three things. (1) It must be the PALE element in an industrial room — station/rooms.py puts a 4.6 m furnace stack on the centreline of the same room, and if the flank and the overhead run were also dark the room would have no read at all; contrast between the machine and its services is most of what makes a plant room legible. (2) A metal's albedo is its F0, not a diffuse value, so it sits ABOVE ALBEDO_ANCHOR (0.52 against 0.46) rather than below it — bare steel and zinc F0 are around 0.52-0.58, which is also where `tram_saloon_post` (0.560/0.565/0.580, measured off Babylon_5_2-22_35a.jpg) already sits. (3) 7.2 m repeat: wall_plate is 6 courses per repeat, so 7.2 m gives 1.2 m sections — one flange line per duct length. Overturned by: any frame of a B5 plant room or service riser, which would replace all four numbers at once."))
 
@@ -2403,7 +2482,12 @@ def _build():
         "steel_furnace_scorched", "Furnace Stack — heat-scorched steel shell",
         albedo=(0.215, 0.198, 0.190), roughness=0.78, metallic=0,
         specular=0.35, texture="truss_steel", uv_scale=1.0 / 2.4,
-        binds=("fix_furnace_stack",), scenes=("interior",),
+        binds=("fix_furnace_stack",
+               # `dress_furnace` is the same machine (`_m_vessel(furnace=True)`)
+               # under the corridor's name, and its stack shell is what the
+               # builder leaves un-parted. A brazier is a fire in a drum: the
+               # only heat-scorched surface the library measures.
+               "dress_furnace", "prop_brazier"), scenes=("interior",),
         source="NO FRAME SHOWS A FURNACE OR ANY B5 industrial plant interior — reference/08-sector-yellow-engineering/ is empty. The object is sourced from station/rooms.py FIXTURES: a 2.40 x 2.40 x 4.60 m spine fixture repeated at 4.5 m centres down the centreline of every industrial room, standing in 13 locations including fabrication, waste_red, waste_green and alpha_substation per station/directory.py. The value is placed against two MEASURED library anchors rather than invented free: station/materials.py `truss_steel` at (0.204,0.200,0.181), sampled off Babylon_5_2-22_34b.jpg, and `structural_truss` at (0.260,0.255,0.248), whose source line records it as the darkest thing on the station.",
         extrapolated="The whole surface. Set at luminance 0.201, level with `truss_steel` — the darkest rung of the library's existing value ladder — because a furnace shell is heat-scorched and is the one object in the room that should be darker than the room's own steelwork. It has to be darker than `steel_gantry_oxide` (0.264) or the spine fixture and the flanking racking read as one mass, and it has to be lighter than nothing, because at layer 3 there is no light in the room yet and a value below 0.18 is indistinguishable from an unlit hole. Hue is carried at S 0.116 — half the gantry's — on the argument that a scorched shell keeps some of the warm cast of the steel it is made from but loses saturation to the oxide. Overturned by: any B5 engineering-interior frame at all; this material has the weakest evidence in the family and should be the first thing re-measured if one arrives."))
 
@@ -2459,7 +2543,13 @@ def _build():
                # assembled deck rendered untextured white, which an AAA-rubric
                # judgement found by looking at the one object in the corridor a
                # player is guaranteed to stand in front of.
-               "doorleaf"), scenes=("interior",),
+               "doorleaf",
+               # `dress_leaf` is the leaf machine's slab under the corridor's
+               # name; `prop_door` is the same object in a room. A garden
+               # building door and the Council's gallery door are both painted
+               # panel leaves -- neither is a blast plate and neither is
+               # welded scrap.
+               "dress_leaf", "prop_building_door", "prop_gallery_door"), scenes=("interior",),
         source="NO FRAME IN THE SET SHOWS A DOOR LEAF — open, closed or moving. reference/00-INDEX.md states this explicitly against reference/07-sector-grey/grey level 1.webp and records that the leaf mechanism is therefore invented (canon/INVENTIONS.md INV-008). The colour is NOT invented free, though: it is `lit(0.247)` = 0.3852, the balanced value of that frame's DADO PANEL at (0.019,0.563)-(0.134,0.731), run through station/materials.py's single ALBEDO_ANCHOR. The dado is the corridor's set-back flat panel and is the closest measured analogue in the whole reference set to a flat panel standing in a wall build-up. Neutral because NEGATIVE_RESULTS shows that frame's warm dado reading is the downlights, not the paint.",
         extrapolated="That a door leaf takes the dado's albedo rather than the wall's or the frame's. Constrained by: it must read as a SEPARATE PLANE from the `kit_pilaster` jamb it sits inside (0.469) under one light, and 0.385 is 0.82x that — the smallest step that separates two coplanar-ish surfaces without inventing contrast the reference denies. It must not be darker than the reveal (0.140), which is the wall's deliberate shadow gap and the only thing in the build-up meant to read as a hole. The 4 m repeat is NOT extrapolated: it is `kit_wall_plate`'s own repeat, so the leaf's plate courses land on the same 0.67 m pitch as the wall around it, which is what a kit-built station does. Overturned by: any frame showing a leaf, which would replace the value outright."))
 
@@ -2482,6 +2572,9 @@ def _build():
         albedo=(0.320, 0.320, 0.325), roughness=0.48, metallic=0.3,
         specular=0.5, texture="deck_plate", uv_scale=1.0 / 3,
         binds=("prop_blast_door", "prop_bay_door", "prop_isolation_door",
+               # The core tube's shuttle door is a pressure door on a bore
+               # open to vacuum, which is `prop_airlock_door`'s case exactly.
+               "prop_shuttle_door",
                # An EVA lock's outer door is a blast plate: `rooms.PROPS`
                # has no `airlock_door` bind at all, and 33 of its 99 entries
                # are in the same position. Requested by the interiors agent
@@ -2572,6 +2665,12 @@ def _build():
         albedo=(0.560, 0.565, 0.580), roughness=0.22, metallic=0.9,
         specular=0.65,
         binds=("prop_handhold", "cc_rail", "cc_console_leg", "alien_bar", "bar_footrail", "plant_rail",
+               # A gallery balustrade is bare tube, like `cc_rail` and
+               # `bar_footrail`. NOT `zoc_rail`: that is the Zocalo's own
+               # oxide-red handrail, and `gallery_rail` is declared in
+               # `interior_kit` as well, so binding it to a room-specific
+               # accent would paint every gallery on the station Zocalo red.
+               "prop_gallery_rail",
                # A ladder and a standpipe are bare steel tube, the same as a
                # handhold and a footrail. `coolant_gallery` needs the first.
                "prop_service_ladder", "prop_standpipe"), scenes=("interior",),
@@ -2600,7 +2699,13 @@ def _build():
         "edge_chevron_nosing", "Edge Nosing — yellow/black chevron on the platform drop",
         albedo=(0.900, 0.720, 0.060), roughness=0.62, metallic=0.05,
         specular=0.4, texture="hazard_chevron", uv_scale=1.0 / 2.4,
-        binds=("fix_platform_edge", "bay_chevron"), scenes=("interior",),
+        binds=("fix_platform_edge", "bay_chevron",
+               # The corridor `works` scheme's barrier. `_m_kerb` already
+               # parts 48 of its 132 triangles into `accent_warning` hazard
+               # bands, so the body being chevroned is the machine's own
+               # reading of what it is -- a temporary barrier, not a kerb of
+               # stone. `fix_platform_edge` is the same machine kind.
+               "dress_kerb"), scenes=("interior",),
         source="reference/03-sector-blue/Minbari Flyer 969 in docking bay 17.webp (authority 1): the bay wall is a stepped ziggurat of ledges and EVERY STEP NOSING CARRIES YELLOW/BLACK HAZARD CHEVRONS — reference/00-INDEX.md records this and draws the consequence explicitly, that the chevron is applied by rule to all step edges and is therefore a generator rule rather than a decal placement. Corroborated by reference/03-sector-blue/dock.webp, which shows the same marking on the ramp edges of the bay deck, and by reference/01-station-exterior/Cobra Bays with starfurries.webp on the bay lip. The albedo is ACCENTS['hazard_yellow'] (0.900, 0.720, 0.060), the value station/materials.py already measured off dock.webp's deck chevrons; this is the same register, not a second one.",
         extrapolated="The stripe pitch, and that a tram platform edge is a step edge in the sense the rule means. Pitch: a Fourier scan along dock.webp's lower ramp chevron run, source pixels (248,505) to (315,556), puts the stripe peaks at k = 6-8 over a 67 px horizontal extent; at the scale reference/00-INDEX.md measures in that frame (the red deck disc, 156 px = 9.4 m, so 16.6 px/m) that run is 4.0 m and the cycle is 0.50-0.67 m. uv_scale 1/2.4 gives 4 cycles per repeat = 0.60 m, inside that bracket, against the exterior sibling's declared-invented 0.75 m. So this measurement also CORROBORATES the exterior material's guess. Overturned by: a frame showing a station transit platform, of which the set holds none."))
 
@@ -2628,7 +2733,25 @@ def _build():
         "furn_casework", "Furniture Casework — painted steel desk, counter and locker bodies",
         albedo=(0.400, 0.396, 0.388), roughness=0.45, metallic=0,
         specular=0.5,
-        binds=("prop_desk", "prop_duty_desk", "prop_counter", "prop_issue_counter", "prop_parcel_locker", "prop_locker", "prop_weapons_locker", "prop_lab_bench", "fix_fume_column", "council_top", "council_frame", "council_plinth", "customs_bollard", "customs_desk", "qtr_desk", "qtr_locker", "bar_servery", "bar_backbar", "bar_table"), scenes=("interior",),
+        binds=("prop_desk", "prop_duty_desk", "prop_counter", "prop_issue_counter", "prop_parcel_locker", "prop_locker", "prop_weapons_locker", "prop_lab_bench", "fix_fume_column", "council_top", "council_frame", "council_plinth", "customs_bollard", "customs_desk", "qtr_desk", "qtr_locker", "bar_servery", "bar_backbar", "bar_table",
+               # The corridor's cased furniture, by the same rule as
+               # steel_gantry_oxide's block above: `dress_cabinet` is the
+               # carcase `_m_cabinet` leaves un-parted, `dress_counter` the
+               # counter's, and `dress_wallpanel` the painted enclosure behind
+               # the bezel and the screen `_m_wallpanel` does part out. Every
+               # room object of those three machine kinds is already here --
+               # prop_locker, prop_counter, prop_desk -- so this is the corridor
+               # taking the material the room's copy of the object takes.
+               "dress_cabinet", "dress_counter", "dress_wallpanel",
+               # And four declared interactables that resolved nowhere. Each
+               # follows the library's own nearest measurement rather than a new
+               # one: `customs_bollard` is already here and `prop_bollard` is
+               # the same object in the same hall; `prop_reception` is
+               # `prop_counter` at a lobby; `prop_delegate_bench` is the
+               # council's own `council_top`/`council_frame` casework; a
+               # breather dispenser is a wall cabinet.
+               "prop_bollard", "prop_reception", "prop_delegate_bench",
+               "prop_breather_dispenser"), scenes=("interior",),
         source="05-sector-green/council chambers.webp, balanced (gains 0.998/1.082/0.932): the council bench's plain grey frame (0.160,0.560)-(0.195,0.680) rgb(0.258,0.272,0.267) S 0.063, and the same bench's lit slab top (0.460,0.420)-(0.600,0.450) rgb(0.630,0.649,0.672) S 0.065. That bench is the only piece of station casework in the whole reference set measured square-on under a mild cast, and 00-INDEX.md reads its construction directly — 'a grey slab top with a chamfered edge', 'set in a plain grey frame with a bottom kick rail', 'a recessed plinth'. NO FRAME EXISTS of an office desk, a post-office counter, a quartermaster's issue counter, a parcel locker, a quarters or security locker, a lab bench or a fume column.",
         extrapolated="The level, and the extension from one ceremonial bench to nine working units. The council bench brackets rather than fixes it — 0.63 lit against 0.27 in shadow — because 00-INDEX.md records that chamber as deliberately lit asymmetrically ('the fan-and-medallion side is bright, the opposite wall ... almost no fill'), so neither end is the albedo. 0.400 is chosen as one rung below ALBEDO_ANCHOR and it is inside the corridor kit's own measured ladder: the kit's darkest lit element, the dado, is lit(0.247) = 0.385, and its wall is 0.460. Overturned by any frame of a working office or issue counter, or by a frame containing a reflectance standard."))
 
@@ -2658,7 +2781,11 @@ def _build():
         "furn_pale_composite", "Moulded Composite Furniture — café tables, chairs and slab benches",
         albedo=(0.402, 0.412, 0.432), roughness=0.4, metallic=0,
         specular=0.5,
-        binds=("prop_table", "prop_bench"), scenes=("interior",),
+        binds=("prop_table", "prop_bench",
+               # A corridor bench is `prop_bench` in a corridor -- the same
+               # `seat` machine and the same moulded slab. This material's own
+               # title names cafe tables, which is what `prop_cafe_table` is.
+               "dress_seat", "prop_cafe_table"), scenes=("interior",),
         source="Three frames, three independent anchors. (a) 04-sector-red/more zocalo.png, raw: the pedestal café table's top (0.515,0.706)-(0.580,0.731) reads 0.592/0.600/0.718 and the concourse deck tile beside it (0.237,0.652)-(0.287,0.712) reads 0.596/0.573/0.690 — two up-facing surfaces equal in value to within 4%, so against `kit_deck_plate`'s 0.360 the furniture is 0.375. (b) 04-sector-red/Casino.webp, balanced: a small round café table (0.524,0.547)-(0.579,0.575) rgb(0.410,0.441,0.425) S 0.092, scaled by that frame's mural-wall anchor (balanced 0.491 -> ALBEDO_ANCHOR) gives 0.413. (c) 09-garden-core-and-transit/garden.png, raw: a 'low white slab bench' (0.495,0.936)-(0.635,0.962) 0.624/0.643/0.686, scaled x0.667 by the lawn anchor gives 0.416/0.429/0.458. Mean of the three, 0.415. The cool bias is measured, not styled: in garden.png the bench slab runs B-R +0.063 while the paving two metres away under the same key runs B-R -0.041, a 0.104 swing between two surfaces in one light.",
         extrapolated="Only the reconciliation. The three anchors span 0.375 to 0.458, a 22% spread, and 0.432 sits inside it; one frame containing a reflectance standard collapses the spread. Also extrapolated: that the Zocalo's café furniture, the Casino's round tables and the Garden's slab benches are one material. They are three sets in three sectors; what ties them is that all three measure pale, near-neutral and slightly cool, and that the modelled objects are the same objects."))
 
@@ -2684,7 +2811,13 @@ def _build():
         "furn_dark_stone", "Dark Polished Stone — bar counters, back fittings and pool copings",
         albedo=(0.094, 0.092, 0.093), roughness=0.24, metallic=0,
         specular=0.6,
-        binds=("prop_bar_counter", "fix_back_shelving", "prop_pool_edge"), scenes=("interior",),
+        binds=("prop_bar_counter", "fix_back_shelving", "prop_pool_edge",
+               # A concourse planter is a stone trough, which is this
+               # material's own "pool copings" at a different plan. NOT
+               # `garden_coping_stone`, which measures the same surface and is
+               # scoped to the drum scene, so it cannot serve an interior
+               # group at all.
+               "prop_planter"), scenes=("interior",),
         source="Both objects are called dark stone by the index and both measure near-black. (a) 11-props-and-technology/Zocalo neon signage in background.jpg — 00-INDEX.md: 'a dark stone bar counter inlaid with small pale rectangles'. Balanced, an 8-way cluster over the counter band (0.0,0.80)-(1.0,1.0) gives 29.3% at V 0.082, 28.9% at V 0.060, 16.2% at V 0.034, with the pale inlays at V 0.127-0.389. (b) 09-garden-core-and-transit/garden.png — 00-INDEX.md: 'rectangular reflecting pool with a dark stone coping'. Raw (0.535,0.850)-(0.579,0.868) 0.129/0.078/0.086; removing that frame's measured additive warm key (the paving holds R-B at +0.041 and +0.039 across a 1.63x value range, so it is additive) leaves 0.088/0.074/0.086, and the lawn anchor x0.667 leaves 0.059/0.049/0.057. (c) Cross-check, 04-sector-red/Casino.webp balanced: the bar's front face (0.300,0.430)-(0.500,0.450) V 0.197, the brightest of the three and under green spill.",
         extrapolated="The single level for three groups. The evidence spans 0.055 (garden coping, corrected) to 0.197 (Casino bar face under spill), and 0.094 sits inside it. The coping figure is a lower bound because the measured strip includes the coping's own shadowed return face, which no albedo should carry. Also extrapolated: that a bar's back fitting is the same surface as its counter — no frame shows a back fitting clear of bottles and glassware; both frames that show one show it dark."))
 
@@ -2708,7 +2841,12 @@ def _build():
         "furn_upholstery", "Soft Goods — maroon seat and bunk upholstery",
         albedo=(0.375, 0.237, 0.225), roughness=0.9, metallic=0,
         specular=0.25,
-        binds=("prop_seat", "prop_bunk", "qtr_bed", "qtr_seat", "bar_stool"), scenes=("interior",),
+        binds=("prop_seat", "prop_bunk", "qtr_bed", "qtr_seat", "bar_stool",
+               # `dress_bed` is the mattress slab `_m_bed` leaves un-parted,
+               # and `prop_bunk` -- the same machine kind, the same object in a
+               # room -- is already here. `prop_stool` follows `bar_stool`,
+               # which is the stool this material was bound for.
+               "dress_bed", "prop_stool"), scenes=("interior",),
         source="03-sector-blue/Babylon_5_2-22_35a.jpg, authority 1, already measured and already in this library: the lit cushion cluster, balanced (gains 0.913/1.090/1.013), rgb(0.375,0.237,0.225) H 5 S 0.401, 10.4% of the saloon. 00-INDEX.md reads that frame as 'bench and individual seating in red-maroon upholstery on moulded grey bases'. Five of the seven locations that declare `prop_seat` — ground_tram, drum_tram, core_shuttle, shuttle_car — ARE that vehicle, so for most of its uses this is not an analogy, it is the same seat. No frame shows a bunk.",
         extrapolated="That a bunk mattress and blanket take the seat's cloth. What constrains it: the station's only measured soft goods are this maroon set, quarters are fitted out by the same authority that fits out the transit cars, and a second invented colour for bedding would be unmarked invention where a sourced one exists. Overturned by any frame of crew or civilian quarters."))
 
@@ -2756,7 +2894,12 @@ def _build():
         "furn_shop_steel", "Utility Steel — benches, racks and cell dividers, unpainted",
         albedo=(0.470, 0.466, 0.458), roughness=0.58, metallic=0.95,
         specular=0.5, texture="truss_steel", uv_scale=1.0 / 1.2,
-        binds=("prop_workbench", "prop_tool_rack", "prop_grow_rack", "fix_cell_divider", "bar_table_stem", "bar_neon_clamp"), scenes=("interior",),
+        binds=("prop_workbench", "prop_tool_rack", "prop_grow_rack", "fix_cell_divider", "bar_table_stem", "bar_neon_clamp",
+               # `dress_rack` follows `prop_tool_rack`, the same machine kind.
+               # `prop_barred_screen` follows `fix_cell_divider`: bars over an
+               # opening in the alien sector are the same unpainted steel as
+               # bars across a cell, and both are the `screen` machine.
+               "dress_rack", "prop_barred_screen"), scenes=("interior",),
         source="NO FRAME SHOWS A WORKSHOP BENCH, TOOL RACK, GROW RACK OR BRIG DIVIDER. Bracketed against the library's own measured steel registers, which come from authority-1 exterior and drum frames: `truss_steel` 0.204/0.200/0.181 (34b lattice), `greeble_fitting` 0.310/0.306/0.300 (exterior more.jpg dorsal fittings), `tram_saloon_post` 0.560/0.565/0.580 (35a poles). Those are painted or coated structure; unpainted mill and galvanised steel sits above them.",
         extrapolated="The whole surface. What constrains it: these four objects are the station's unpainted utility steelwork — a bench top scarred back to bare metal, an open tool rack, a wet galvanised grow rack, a heavy brig divider — and the painted register already exists next door in `furn_casework`, so anything that would be sprayed goes there and only what would not comes here. 0.470 is below the servery's 0.560 because scuffed and oxidised steel loses reflectance, and roughness 0.58 is twice the servery's because a workshop surface is abraded in every direction. Overturned by any frame of maintenance, hydroponics or the brig."))
 
@@ -2780,7 +2923,12 @@ def _build():
         "furn_clinical", "Clinical Fit-out — beds, cabinets, pods and equipment gantries",
         albedo=(0.500, 0.512, 0.535), roughness=0.33, metallic=0,
         specular=0.55,
-        binds=("prop_diagnostic_bed", "prop_medcabinet", "prop_cryo_pod", "fix_equipment_gantry", "qtr_shower"), scenes=("interior",),
+        binds=("prop_diagnostic_bed", "prop_medcabinet", "prop_cryo_pod", "fix_equipment_gantry", "qtr_shower",
+               # `prop_baggage_scanner` is `fix_equipment_gantry` at a customs
+               # checkpoint -- the same `gantry` machine, and this material's
+               # own title says "equipment gantries". `prop_shower` follows
+               # `qtr_shower`, which is the shower this material was bound for.
+               "prop_baggage_scanner", "prop_shower"), scenes=("interior",),
         source="THERE IS NO MEDICAL INTERIOR ANYWHERE IN reference/. 03-sector-blue/ holds command and control, the war room, a docking bay, a Minbari flyer and four drum CGI plates; no medlab, no infirmary, no morgue, no cryo bay, and no other folder holds one either. Nothing here is measured. The one thing borrowed from a measurement is the SHAPE of the tint: 03-sector-blue/Babylon_5_2-22_35a.jpg's saloon panelling, balanced rgb(0.486,0.486,0.546), is the library's only near-neutral surface that measures cool rather than warm-neutral (B/R 1.12), and this uses the same 1.07 ratio at a lower strength.",
         extrapolated="All four numbers, and I am marking this the weakest material in the family. What constrains it: it must sit near ALBEDO_ANCHOR to belong to the same station (0.535 is 1.16x the wall, the only surface in my family placed ABOVE the wall); it must be wipe-clean, which fixes roughness low and forbids a texture; it must not be white, because nothing in a lived-in station stays at 0.8 and a white medlab is the Star Trek reading the brief rules out; and the cool bias must be small enough to stay inside the neutral band at S 0.065. ONE MEDLAB FRAME OVERTURNS ALL OF IT, and this is the single highest-value reference gap in the furnishing family — six medlabs, a morgue and cryo storage depend on it."))
 
@@ -2825,7 +2973,10 @@ def _build():
         "furn_stall_canvas", "Stall Canvas — awning fabric and stacked goods",
         albedo=(0.380, 0.345, 0.312), roughness=0.92, metallic=0,
         specular=0.3,
-        binds=("prop_stall",), scenes=("interior",),
+        binds=("prop_stall",
+               # `prop_market_stall` is `prop_stall` under the gazetteer's
+               # longer name -- the same `screen` machine in the same room.
+               "prop_market_stall"), scenes=("interior",),
         source="04-sector-red/more zocalo.png, the stall canopy at (0.625,0.122)-(0.670,0.143) and a second panel at (0.730,0.115)-(0.775,0.136): raw 0.212/0.137/0.137 and 0.197/0.129/0.137, H 20-23. 00-INDEX.md on the same frame: 'Market stalls with fabric awnings, string lighting and hanging goods'; 'Stall canopies are fabric on radiating spars, parasol-fashion'; and on the lighting, 'warm practicals at stall level, cyan neon accents above, low ambient fill'.",
         extrapolated="The level, and most of the warmth. The measured patches sit ABOVE the stall practicals in the frame's dim ceiling zone, so their V 0.20 is a lighting floor, not an albedo — carrying it through the frame's x0.522 deck anchor would give 0.111, which is a black awning, and that is plainly not what the frame shows. 0.380 is a tan canvas raised to the level a fabric under a practical would need to read as the frames do. The hue is kept but pulled back to S 0.179, just inside the neutral band, because the index says the light at stall level is warm and an unknown share of the measured H 20-23 is that light rather than the cloth. Overturned by a frame of a stall canopy lit from the front."))
 
@@ -3169,7 +3320,11 @@ def _build():
         albedo=(0.055, 0.060, 0.075), roughness=0.22, metallic=0,
         specular=0.45,
         emission=(0.388, 0.723, 1.000), emission_energy=2.6,
-        binds=("zoc_screen",), scenes=("interior",),
+        binds=("zoc_screen",
+               # This material is named for the object: the declared
+               # interactable `shopfront` is the colonnade shopfront the
+               # measurement was taken on, and it had no bind.
+               "prop_shopfront"), scenes=("interior",),
         source="reference/04-sector-red/more zocalo.png (authority 1). A source, so measured raw as well as balanced, per the treatment station/materials.py gives the rotunda altar. The lit shopfront at (0.462,0.278)-(0.512,0.372) k-means (balanced, gains already in materials.GREY_WORLD_GAINS 0.936/1.137/0.951) gives its bright field at rgb(0.350,0.653,0.903) H 207 S 0.613 (38.2%), a second lit band at (0.269,0.484,0.759) H 214 (18.2%), a third at (0.207,0.332,0.496) H 214 (14.5%) and its mullion grid at (0.149,0.155,0.180) (29.1%) — three lit bands at a constant H 207-214 across a 1.8x range of value, which is a source and not a lit surface. Normalised to its peak channel that is (0.388, 0.723, 1.000). The hue sits between materials.ACCENTS['cyan_neon'] and ACCENTS['cool_blue'], both Zocalo-adjacent registers. A SECOND colour is attested in the same colonnade in the same frame: the shopfront at (0.281,0.312)-(0.303,0.352) reads balanced 0.514/0.314/0.254 H 13 S 0.492 — a warm-red backlit panel. reference/10-interiors-generic-kit/more hallway.jpg shows the identical blue-lit mullioned panel at (0.680,0.530)-(0.840,0.680).",
         extrapolated="The albedo, the roughness/specular, the energy, and the choice of ONE colour for a group the frame shows in two. Albedo is set near black because what is modelled is a 0.06 m proud panel that is a light, and a pale substrate under an emission double-counts it; roughness 0.22 is a diffuser behind glazing, kept above 0.15 because it is not glass. Energy 2.6 is between signage_panel's 3.0 and sign_neon_venue's 1.3: this is a lit shop window 1.5 m from a walking crowd, brighter than a wall plaque and dimmer than a wordmark. The blue is chosen over the red because it is the larger and brighter population in the frame and because zocalo_bay() emits four of these a bay in a fixed pattern; splitting the group by variant, as vendor_stall already does, would let both colours ship and is the obvious next edit."))
 
@@ -3895,7 +4050,13 @@ def _build():
         "bar_pendant_shade", "Pendant Shade -- shallow polished cone over each table",
         albedo=(0.520, 0.512, 0.498), roughness=0.22, metallic=0.55,
         specular=0.55,
-        binds=("bar_pendant_shade",), scenes=("interior",),
+        binds=("bar_pendant_shade",
+               # The declared interactable `pendant_lamp` is this object.
+               # Bound to the SHADE and not to `bar_pendant_lamp`, which is
+               # the source inside it at emission_energy 9.0: the shade is
+               # what a player sees, the source is a separate group, and
+               # binding the body to the source would light the room twice.
+               "prop_pendant_lamp"), scenes=("interior",),
         source="Doug's Dugout.webp establishes the FORM and the count -- shallow "
                "polished shades on slim stems, one per table, hung below "
                "standing eye height so they pool rather than light the room. "
@@ -3965,7 +4126,11 @@ def _build():
         "bar_dartboard", "Dartboard -- regulation board, dark ground",
         albedo=(0.115, 0.108, 0.098), roughness=0.72, metallic=0.0,
         specular=0.25,
-        binds=("bar_dartboard",), scenes=("interior",),
+        binds=("bar_dartboard",
+               # Same object, declared name. `hospitality` builds
+               # `bar_dartboard`; `directory` declares `dartboard`, which
+               # `rooms.place_interacts` emits as `prop_dartboard`.
+               "prop_dartboard"), scenes=("interior",),
         source="Doug's Dugout.webp shows a regulation 20-segment board. "
                "hospitality.py carries the real geometry -- DART_R_M 0.2255 "
                "for a 451 mm board, DART_SEQUENCE the regulation clockwise "
@@ -4275,6 +4440,23 @@ KNOWN_GROUPS = tuple(sorted(set(
        "observation_dome", "observation_dome_frame",
        "observation_rotunda", "observation_rotunda_frame",
        "docking_port", "docking_port_frame")
+    # The hull's own longitudinal sections, and they were missing for the same
+    # backwards reason the components above were: `exterior.tscn` sets
+    # `fallback_material = m_hull`, so a section with no rule still rendered as
+    # hull and nothing could report it. `generate_hull.feature_at` names every
+    # triangle after the `longitudinal.features` id that contains its z, so
+    # these ARE the hull -- 9 of the manifest's 41 groups, and the only ones
+    # `export_scene.py` has been printing an unpromoted note about since 3k.
+    # The four windowed sections (green_section, red_section, aft_hull_block,
+    # habitat_cylinder) and the three truss ones are already covered above.
+    + ("aft_terminus", "primary_fusion_reactor", "generator_torus_housing",
+       "hull_flare_aft", "forward_taper", "forward_waist", "docking_sphere",
+       "forward_deflector_spike",
+       # `aperture.GROUP_THROAT` and its lip: the six docking mouths cut
+       # through that hull.
+       "docking_bay_throat", "docking_bay_lip",
+       "green_section", "red_section", "aft_hull_block", "habitat_cylinder",
+       "hazard_stripe_cobra")
     # drum shell and caps
     + tuple(f"drum_{n}" for n in _LAND_USE_NAMES)
     + tuple(f"drum_riser_{n}" for n in _LAND_USE_NAMES)
@@ -6365,6 +6547,17 @@ NOT_GROUPS = {
     # lod.py manifest statistic: the count of greeble pieces standing off the
     # hull. A number in a report, never a surface.
     "greeble_off_hull_pieces",
+    # A DIRECTORY PLACE KEY, arriving through a module the scan does treat as a
+    # generator. `populace.py` emits `npc_*` groups -- none of which the prefix
+    # regex can see -- and also reasons about WHERE people are, so it names
+    # places: `occupancy("drum_office", ...)` and `_is_residence("drum_office")`
+    # are the office-hours regression test. The comment above NOT_GENERATORS
+    # already draws this line ("a SPECIFICATION names places and props, a
+    # GENERATOR names surfaces") and lists this exact string as its example; it
+    # is excluded by name rather than by excluding populace.py, because that
+    # file IS a generator and one day may emit a `light_` group the scan should
+    # see.
+    "drum_office",
 }
 
 
@@ -6477,10 +6670,76 @@ def _selftest():
           "the prefix scan has started matching room groups -- widen "
           "test_materials_layer3.py's BESPOKE_BUILDERS instead")
 
-    check("the exterior hull material is deliberately unbound (it is the fallback)",
-          BY_NAME["hull_exterior"].binds == ())
+    # WAS "deliberately unbound (it is the fallback)", AND THAT WAS THE HOLE.
+    # An exterior group with no rule reached this material through
+    # `exterior.tscn`'s `fallback_material`, so the assertion recorded a
+    # DEFAULT as a decision and the nine plated sections had no binding anyone
+    # had made. It is still the fallback -- that is the safety net -- and it now
+    # also claims the sections by name, so `unmatched_groups()` on the exterior
+    # can be a check rather than a note.
+    check("the exterior hull material binds the plated sections by name",
+          set(BY_NAME["hull_exterior"].binds) >= {
+              "aft_terminus", "forward_taper", "forward_deflector_spike"},
+          str(BY_NAME["hull_exterior"].binds))
     check("hull_banding_red stays unbound until components.py grows a strip",
           BY_NAME["hull_banding_red"].binds == ())
+
+    # -- THE VOCABULARY A SOURCE SCAN CANNOT SEE --------------------------
+    #
+    # `_scan_generator_groups` reads group-name LITERALS out of the sibling
+    # modules. `corridor_dressing.run` does not write one: it calls
+    # `dressing.machine(..., f"dress_{kind}", ...)`, so the corridor's clutter
+    # names itself at run time out of `SCHEMES` x `MACHINES` and no regex over
+    # the source can find it. That is exactly how `dress_post` and `dress_skid`
+    # rendered on NO MATERIAL in every deck frame this project has ever taken
+    # -- `interior.tscn` declares no `fallback_material`, so an unbound interior
+    # group keeps the glTF default, which is white plastic.
+    #
+    # So this derives the vocabulary the way the generators derive it, from the
+    # tables themselves, and it fails when a table grows a row rather than when
+    # somebody remembers to add a literal. Three families:
+    #
+    #   dress_<kind>  every `dressing.MACHINES` kind, because `SCHEMES` may name
+    #                 any of them and adding one must not be able to produce an
+    #                 unbound group
+    #   fix_<name>    every `rooms.FIXTURES` and `rooms.PLACE_FIXTURES` entry
+    #   prop_<name>   every `rooms.PROPS` entry -- and it is `place_interacts`
+    #                 that made this reachable everywhere: before session 4d the
+    #                 bespoke rooms placed no props at all, so 26 of these had
+    #                 never been emitted and never been missed
+    #
+    # Imported inside the function, like `export_scene._selftest` does, because
+    # `rooms` imports this module.
+    import dressing as _dress                                  # noqa: PLC0415
+    import rooms as _rooms                                     # noqa: PLC0415
+    import corridor_dressing as _cd                            # noqa: PLC0415
+
+    vocab = {f"dress_{k}" for k in _dress.MACHINES}
+    for _table in (_rooms.FIXTURES, _rooms.PLACE_FIXTURES):
+        for _items in _table.values():
+            for _it_ in _items:
+                _n = _it_[0] if isinstance(_it_, (tuple, list)) else _it_
+                vocab.add(f"fix_{_n}")
+    vocab |= {f"prop_{n}" for n in _rooms.PROPS}
+    for _pre in ("dress_", "fix_", "prop_"):
+        vocab |= set(_dress._Parts(_pre).all())
+
+    # The scheme table must be a subset of the machine table, or a corridor
+    # names a kind that cannot be built -- and then the vocabulary above is
+    # measuring something the corridor does not emit.
+    _kinds = {k for sch in _cd.SCHEMES.values() for k, *_r in sch}
+    check("every corridor dressing scheme names a machine that exists",
+          _kinds <= set(_dress.MACHINES),
+          str(sorted(_kinds - set(_dress.MACHINES))))
+    check("the derived vocabulary is non-trivial, so the check below can fail",
+          len(vocab) > 150, f"{len(vocab)} names")
+
+    _unbound = sorted(g for g in vocab if resolve_any(g, "interior") is None)
+    check("every group a room or a corridor can emit resolves to a material",
+          not _unbound, f"{len(_unbound)} unbound: {_unbound[:8]}")
+    _untabled = sorted(g for g in vocab if table_hit(g) is None)
+    check("and the EXPORTED interior rules table covers every one of them",
+          not _untabled, f"{len(_untabled)} uncovered: {_untabled[:8]}")
 
     # -- the measured palette ---------------------------------------------
     # The headline finding, asserted so a later edit cannot quietly reverse it.
