@@ -226,7 +226,12 @@ func _process(delta: float) -> void:
 		prompt_verb = String(it.verb).to_upper()
 		prompt_label = String(it.label).to_upper()
 		prompt_place = _pretty(String(it.place))
-		prompt_m = p.distance_to(it.centre)
+		# FROM THE EYE, because `interact.gd::scan` measures its reach from the
+		# eye. Measured from the body's origin instead, a bay door 2.5 m up
+		# reads 3.09 m on a HUD whose prompt only appears inside 2.40 m -- a
+		# number that contradicts the thing it is printed next to.
+		var from: Vector3 = (_cam.global_position if _cam != null else p)
+		prompt_m = from.distance_to(it.centre)
 	hot = move_toward(hot, (1.0 if it != null else 0.0),
 		delta / maxf(FADE_S, 0.001))
 	if _face != null:
@@ -316,6 +321,62 @@ class Face extends Control:
 	func _hair(a: Vector2, b: Vector2, c: Color, s: float, w := 1.0) -> void:
 		draw_line(a, b, c, maxf(1.0, roundf(w * s)), false)
 
+	## A hairline that survives a white background: the same line laid twice,
+	## once thick in the near-black and once thin in its own colour.
+	##
+	## THIS IS AN OUTLINE, NOT A DROP SHADOW, and the difference is the whole
+	## point. A shadow is offset and soft and reads as a mobile-game overlay; a
+	## concentric dark keyline is what a lit legend on a console has, and it is
+	## the only way a cyan hairline stays legible against both the near-black
+	## corridor and the white cargo the docking bay is full of. Measured on
+	## `docs/engine-4e-hud-idle.png`: without it the reticle disappears against
+	## crates.
+	func _hair2(a: Vector2, b: Vector2, c: Color, s: float) -> void:
+		draw_line(a, b, Color(INK, c.a * 0.85), maxf(3.0, roundf(3.0 * s)),
+			false)
+		draw_line(a, b, c, maxf(1.0, roundf(s)), false)
+
+	## A wash of the near-black the show's panels are cut from, faded out at one
+	## or both ends so it reads as a lit plate rather than as a box. Drawn in
+	## strips because a CanvasItem gradient needs a texture, and a texture is a
+	## binary resource this project does not commit.
+	func _scrim(r: Rect2, a: float, fx: Vector2, fy := Vector2.ZERO) -> void:
+		# fx/fy are (fade at the low edge, fade at the high edge) as fractions
+		# of the rect. Zero means a hard edge, which is right where the rect
+		# runs off the side of the frame and wrong everywhere else -- a wash
+		# with four hard edges is a panel, and a panel is not what B5 does.
+		#
+		# NINE QUADS WITH VERTEX COLOURS, not a stack of translucent strips.
+		# The strip version of this was visible as a GRID at magnification --
+		# each cell was drawn one pixel oversize to avoid seams, so every
+		# overlap doubled the alpha and the wash read as graph paper. Rendering
+		# it at the rubric's half distance is what found it, which is the rule
+		# `docs/AAA-STANDARD.md` has always carried and this project keeps
+		# relearning. Shared vertices cannot seam and cannot double.
+		var xs := [r.position.x, r.position.x + r.size.x * fx.x,
+			r.end.x - r.size.x * fx.y, r.end.x]
+		var ys := [r.position.y, r.position.y + r.size.y * fy.x,
+			r.end.y - r.size.y * fy.y, r.end.y]
+		var ax := [(0.0 if fx.x > 0.0 else 1.0), 1.0, 1.0,
+			(0.0 if fx.y > 0.0 else 1.0)]
+		var ay := [(0.0 if fy.x > 0.0 else 1.0), 1.0, 1.0,
+			(0.0 if fy.y > 0.0 else 1.0)]
+		for i in 3:
+			if xs[i + 1] - xs[i] < 0.5:
+				continue
+			for j in 3:
+				if ys[j + 1] - ys[j] < 0.5:
+					continue
+				draw_polygon(PackedVector2Array([
+						Vector2(xs[i], ys[j]), Vector2(xs[i + 1], ys[j]),
+						Vector2(xs[i + 1], ys[j + 1]),
+						Vector2(xs[i], ys[j + 1])]),
+					PackedColorArray([
+						Color(INK, a * ax[i] * ay[j]),
+						Color(INK, a * ax[i + 1] * ay[j]),
+						Color(INK, a * ax[i + 1] * ay[j + 1]),
+						Color(INK, a * ax[i] * ay[j + 1])]))
+
 	## Small capitals with the letters pushed apart. The show's signage and its
 	## console legends are both tracked, and untracked default-font capitals
 	## read as a debug overlay, which is what this file exists to stop being.
@@ -358,6 +419,9 @@ class Face extends Control:
 		var ppd := half / TAPE_SPAN_DEG
 		var hdg: float = h.heading_deg
 
+		_scrim(Rect2(cx - half - 30.0 * s, y - 36.0 * s, (half + 30.0 * s) * 2.0,
+			76.0 * s), 0.50, Vector2(0.30, 0.30), Vector2(0.22, 0.34))
+
 		# The baseline, faded out at both ends so the tape reads as a window on
 		# something continuous rather than as a bar with hard stops.
 		var segs := 48
@@ -380,17 +444,17 @@ class Face extends Control:
 			var dd := int(fposmod(float(d), 360.0))
 			var major := (dd % 15) == 0
 			_hair(Vector2(x, y), Vector2(x, y + (9.0 if major else 4.0) * s),
-				Color(CYAN, (0.70 if major else 0.34) * fade), s)
+				Color(CYAN, (0.85 if major else 0.45) * fade), s)
 			if not major:
 				continue
 			var lab := _cardinal(dd)
 			var px := int(roundf(11.0 * s))
-			var col := Color(CYAN, 0.80 * fade)
+			var col := Color(CYAN, 0.95 * fade)
 			if lab == "":
 				if dd % 30 != 0:
 					continue
 				lab = "%03d" % dd
-				col = Color(CYAN, 0.45 * fade)
+				col = Color(CYAN, 0.62 * fade)
 			var w := _tracked_width(lab, px, 1.2 * s)
 			_tracked(Vector2(x - w * 0.5, y + 22.0 * s), lab, px, col, 1.2 * s)
 
@@ -417,27 +481,31 @@ class Face extends Control:
 	func _location(sz: Vector2, s: float) -> void:
 		var x := 34.0 * s
 		var y := 40.0 * s
-		_bracket(Vector2(x - 12.0 * s, y - 20.0 * s), 16.0 * s, 22.0 * s,
-			Color(CYAN, 0.55), s)
-
 		var px := int(roundf(21.0 * s))
 		var here: String = h.place_name
-		var w := _tracked(Vector2(x, y), here, px, Color(CYAN, 0.95), 3.0 * s)
-
-		var rule_w: float = maxf(w, 196.0 * s)
-		_hair(Vector2(x, y + 9.0 * s), Vector2(x + rule_w, y + 9.0 * s),
-			Color(CYAN, 0.30), s)
-
-		var px2 := int(roundf(11.0 * s))
 		var addr := "SECTOR %s   RING %s   DECK %s" % [h.sector, h.ring, h.deck]
-		_tracked(Vector2(x, y + 26.0 * s), addr, px2, Color(CYAN, 0.55),
-			1.6 * s)
-
 		var third := "R %.1f M   PHI %05.1f" % [h.radius_m, h.ring_deg]
 		if not h.place_inside and h.near_name != "":
 			third = "%s  %.0f M   %s" % [h.near_name, h.near_m, third]
+
+		var wide: float = maxf(maxf(_tracked_width(here, px, 3.0 * s),
+			_tracked_width(addr, int(roundf(11.0 * s)), 1.6 * s)),
+			_tracked_width(third, int(roundf(10.0 * s)), 1.4 * s))
+		_scrim(Rect2(0.0, 0.0, x + wide + 74.0 * s, y + 62.0 * s), 0.54,
+			Vector2(0.0, 0.36), Vector2(0.0, 0.34))
+
+		_bracket(Vector2(x - 12.0 * s, y - 20.0 * s), 16.0 * s, 22.0 * s,
+			Color(CYAN, 0.70), s)
+		var w := _tracked(Vector2(x, y), here, px, Color(CYAN, 0.98), 3.0 * s)
+
+		var rule_w: float = maxf(w, 196.0 * s)
+		_hair(Vector2(x, y + 9.0 * s), Vector2(x + rule_w, y + 9.0 * s),
+			Color(CYAN, 0.42), s)
+
+		_tracked(Vector2(x, y + 26.0 * s), addr, int(roundf(11.0 * s)),
+			Color(CYAN, 0.74), 1.6 * s)
 		_tracked(Vector2(x, y + 42.0 * s), third, int(roundf(10.0 * s)),
-			Color(CYAN, 0.34), 1.4 * s)
+			Color(CYAN, 0.52), 1.4 * s)
 
 	# -- the reticle --------------------------------------------------------
 
@@ -460,10 +528,13 @@ class Face extends Control:
 		for i in 4:
 			var a: float = rot + float(i) * PI * 0.5
 			var d := Vector2(cos(a), sin(a))
-			_hair(c + d * gap, c + d * (gap + ln), col, s)
-		draw_circle(c, maxf(1.0, 1.1 * s), Color(col, lerpf(0.7, 1.0, hotf)))
+			_hair2(c + d * gap, c + d * (gap + ln), col, s)
+		draw_circle(c, maxf(2.0, 2.2 * s), Color(INK, 0.8))
+		draw_circle(c, maxf(1.0, 1.1 * s), Color(col, lerpf(0.85, 1.0, hotf)))
 		if hotf > 0.01:
-			draw_arc(c, 15.0 * s, 0.0, TAU, 48, Color(AMBER, 0.28 * hotf),
+			draw_arc(c, 15.0 * s, 0.0, TAU, 48, Color(INK, 0.55 * hotf),
+				maxf(3.0, roundf(3.0 * s)), false)
+			draw_arc(c, 15.0 * s, 0.0, TAU, 48, Color(AMBER, 0.40 * hotf),
 				maxf(1.0, roundf(s)), false)
 
 	# -- what you can do ----------------------------------------------------
@@ -483,9 +554,11 @@ class Face extends Control:
 		var label: String = h.prompt_label
 		var vw := _tracked_width(verb, px, 2.6 * s)
 		var lw := _tracked_width(label, px, 2.6 * s)
-		var pad := 12.0 * s
+		var pad := 15.0 * s
 		var total: float = key + pad + vw + pad + 1.0 + pad + lw
 		var x := cx - total * 0.5
+		_scrim(Rect2(x - 50.0 * s, y - 26.0 * s, total + 100.0 * s, 64.0 * s),
+			0.52 * a, Vector2(0.32, 0.32), Vector2(0.30, 0.34))
 
 		# The key glyph: a square outline with the letter in it. Square, not
 		# rounded -- there is not a rounded corner anywhere in Command and
@@ -517,16 +590,19 @@ class Face extends Control:
 		var spx := int(roundf(9.0 * s))
 		var sw := _tracked_width(sub, spx, 1.2 * s)
 		_tracked(Vector2(x + total - sw, uy + 12.0 * s), sub, spx,
-			Color(CYAN, 0.40 * a), 1.2 * s)
+			Color(CYAN, 0.60 * a), 1.2 * s)
 
 	# -- the body's own state ----------------------------------------------
 
 	func _systems(sz: Vector2, s: float) -> void:
 		var x := 34.0 * s
 		var y := sz.y - 34.0 * s
-		_hair(Vector2(x - 10.0 * s, y - 10.0 * s),
-			Vector2(x - 10.0 * s, y + 3.0 * s), Color(AMBER, 0.55), s)
 		var txt := "%s FIELD   %.2f M/S2   %.1f M/S" % [
 			h.field, h.gravity_m_s2, h.speed_m_s]
-		_tracked(Vector2(x, y), txt, int(roundf(10.0 * s)), Color(CYAN, 0.42),
+		var w := _tracked_width(txt, int(roundf(10.0 * s)), 1.4 * s)
+		_scrim(Rect2(0.0, y - 24.0 * s, x + w + 64.0 * s, sz.y - y + 24.0 * s),
+			0.54, Vector2(0.0, 0.36), Vector2(0.34, 0.0))
+		_hair(Vector2(x - 10.0 * s, y - 10.0 * s),
+			Vector2(x - 10.0 * s, y + 3.0 * s), Color(AMBER, 0.75), s)
+		_tracked(Vector2(x, y), txt, int(roundf(10.0 * s)), Color(CYAN, 0.62),
 			1.4 * s)
