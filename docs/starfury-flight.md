@@ -267,3 +267,67 @@ and not grow them, and this is one port's own test rather than a new scored dime
 * **The readout is a debug readout**, not a HUD: eight lines of text with position,
   velocity, speed, nose-off-velocity, spin rate, range to the station, and the floating
   origin's rebase count with the float32 spacing it is buying.
+
+---
+
+## Docking: not built, and the reason is a hard number
+
+Two guidance laws were written against `station/physics/docking.py`'s own `DockingBay`,
+and neither converged. Both settled into the same stable limit cycle — roughly 690 m off
+the approach point at 129 m/s relative, **with the throttle pinned at 1.00 for the whole
+run**. Pinned at 1.00 is the tell. The craft was not being flown badly. It was out of
+thrust.
+
+A body holding station at radius R off a hub turning at ω is accelerated inward at ω²R for
+as long as it stays there. That is not a manoeuvre with a delta-v; it is a *continuous*
+acceleration, and `station/starfury_scene.py --docking-envelope` says what fraction of the
+airframe it eats:
+
+```
+Starfury max linear accel         18.38 m/s^2
+cobra bay radius                 293.78 m
+holding station at the habitat FLOOR costs 9.81 m/s^2 -- which is 1.000 g,
+by construction, because that is what the spin is set to make
+
+ standoff   radius   station-keeping   centripetal   fraction of   can a
+      (m)      (m)       speed (m/s)      (m/s^2)     max thrust   Starfury?
+        0    293.8             55.15         10.35          56.3%   yes
+       25    318.8             59.84         11.23          61.1%   yes
+       50    343.8             64.53         12.11          65.9%   yes
+      100    393.8             73.92         13.88          75.5%   yes
+      200    493.8             92.69         17.40          94.7%   yes
+      227    520.8             97.76         18.35          99.9%   yes
+      300    593.8            111.46         20.92         113.8%   NO
+
+THE CEILING: 521.6 m of radius, i.e. 227.8 m of standoff.
+```
+
+Three things follow.
+
+**Sitting still next to a cobra bay costs 56% of full thrust, forever.** Docking here is
+not "fly there and stop" — there is no stopped. Station-keeping off a spinning hull is a
+burn you never end, and `docking.spin_match_velocity`'s docstring said so in words
+("station-keeping is not zero velocity, it is a continuously turning velocity of 50+ m/s")
+before this put a percentage on it.
+
+**Beyond 228 m of standoff it is not a guidance problem, it is arithmetic.** ω²R exceeds
+the airframe's maximum and no controller helps. The first attempt parked at a 250 m
+standoff, which needs 19.16 m/s² against 18.38 available — it was asking the craft to do
+something impossible and the limit cycle was the craft saying so. *A saturated actuator is
+a physical statement, not a tuning failure.*
+
+**And the habitat floor line is the cross-check that says the arithmetic is right.**
+Holding formation alongside the drum's floor costs exactly 9.81 m/s² — 1.000 g — because
+that is the number `station.yaml`'s ω was *derived* to produce (INV-002). Two independent
+paths, `rotating_frame.gravity_at` and `starfury.max_linear_accel`, agreeing on a value
+neither was fitted to.
+
+What a real docking approach would therefore have to do, and what the next increment
+should build: match the bay's *rotation* first — enter the powered circular path at the
+bay's own radius and phase, which is what `docking.py` calls spin-match — and only then
+close radially at ≤ 2 m/s into `contact_is_safe`'s window (closing ≤ 2 m/s, lateral drift
+≤ 0.5 m/s, misalignment ≤ 8°). Approaching an orbiting target from outside as though it
+were a fixed point cannot work, and now there is a table saying why.
+
+`--docking-envelope` is also `station/physics/docking.py`'s **first importer outside its
+own test file.**
