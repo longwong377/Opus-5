@@ -367,6 +367,13 @@ PART_CHAINS = {
     "neck": ("neck", "head"),
     "head": ("head",),
     "hair": ("head",), "brow": ("head",),
+    # THE FACE AND THE THUMB, session 4e. `body.py` grew a nose, a pair of ears
+    # and a thumb, and `_bind` refuses to skin a part with no chain here -- by
+    # design, and it fired on the first build. A nose and an ear are rigid to
+    # the skull, so they take the head bone exactly as the hair and the brow
+    # do; a thumb belongs to the wrist for the same reason the hand does.
+    "nose": ("head",), "ear": ("head",),
+    "thumb": ("wrist_%s",),
     "centauri_crest": ("head",), "minbari_crest": ("head",),
     "pakmara_keel": ("head",), "pakmara_tendrils": ("head",),
     "abbai_fin": ("head",),
@@ -3135,10 +3142,27 @@ def _selftest():
           and ip["worse_than_rest"]["foot_in_leg"] <= 2,
           f"the walk adds no interpenetration the bind pose does not have "
           f"({ip['worse_than_rest']})")
-    check(ip["rest"]["hand_in_leg"] > 0,
-          "and the measurement can see interpenetration at all: body.py's bind "
-          f"pose already has {ip['rest']['hand_in_leg']} hand vertices in a "
-          f"thigh")
+    # THE CONTROL USED TO BE THE DEFECT ITSELF, AND THE DEFECT GOT FIXED.
+    # It read `ip["rest"]["hand_in_leg"] > 0` -- "the measurement can see
+    # interpenetration at all, because body.py's bind pose already has hand
+    # vertices in a thigh". That was true: the old three-ring mitt was widest
+    # across X, palms facing forward, and 22% of it was inside the thigh at
+    # rest. Session 4e turned the hand the right way round -- a hanging hand's
+    # broad axis is fore-aft -- and the hand came 4 mm CLEAR of the leg, so a
+    # control that depended on the bug started failing when the bug went away.
+    # A negative control has to CONSTRUCT its defect, so this one does: the
+    # hands are pushed 25 mm inboard and the same measurement is re-run.
+    _pen = rig("human", "pen", 0)
+    _in = replace(_pen, parts=tuple(
+        (n, [(x - math.copysign(0.025, x), y, z) for x, y, z in v], t)
+        if n == "hand" else (n, v, t) for n, v, t in _pen.parts))
+    check(interpenetration(_in)["rest"]["hand_in_leg"] > 0,
+          f"CONTROL: pushing the hands 25 mm inboard puts "
+          f"{interpenetration(_in)['rest']['hand_in_leg']} vertices in a thigh "
+          f"-- the measurement can see interpenetration at all")
+    check(ip["rest"]["hand_in_leg"] == 0,
+          f"and the shipped bind pose has none, which it did not before the "
+          f"hand was reoriented ({ip['rest']['hand_in_leg']})")
 
     # -- sitting -----------------------------------------------------------
     sh = seat_height("human")
@@ -3254,9 +3278,18 @@ def _selftest():
     rc = walk_clip("human", NOMINAL, G0, frames=8, lod=4)
     trk = rigid_track(rc, "human", NOMINAL, 4)
     whole = whole_part_error(rc, "human", NOMINAL, 4)
-    check(len(trk["pieces"]) == 19 and len(trk["frames"]) == 8,
-          f"a human splits into 19 rigid pieces over 8 phases "
-          f"({len(trk['pieces'])} x {len(trk['frames'])})")
+    # DERIVED, not typed. This read `== 19` and session 4e broke it by giving
+    # the crowd's own LOD a haircut -- one more part, one more piece, and a
+    # failure that said nothing about whether the split was right. The number
+    # that matters is that the track covers EVERY piece the figure has and
+    # every phase of the clip, so it is asked of `rigid_pieces` directly.
+    _want = rigid_pieces("human", NOMINAL, 4)
+    check(len(trk["pieces"]) == len(_want) >= 19 and len(trk["frames"]) == 8,
+          f"a human splits into every one of its {len(_want)} rigid pieces over "
+          f"8 phases ({len(trk['pieces'])} x {len(trk['frames'])})")
+    check(any(p.startswith("hair__") for p in trk["pieces"]),
+          f"and the pieces include the hair, because the level the corridor "
+          f"crowd is baked at carries one ({[p for p in trk['pieces']][:4]}...)")
     check(trk["max_m"] < 0.020,
           f"and a rigid piece follows the skinned pose to "
           f"{trk['max_m'] * 1000:.0f} mm at worst, {trk['rms_m'] * 1000:.1f} "

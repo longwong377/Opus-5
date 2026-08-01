@@ -1062,13 +1062,26 @@ def _torso_profile(ind: Individual, sp: SpeciesBody):
     sw = _shoulder_half(ind)
     hip_y, lx, r_th, _r_an = _leg_params(ind, sp)
     # Wide enough to CONTAIN both leg roots, not merely to look about right.
-    # The sex factor is applied INSIDE the max(), so widening or narrowing a
-    # pelvis can never take it below the width its own leg roots need -- the
-    # containment margin is the floor, and `contains()` gates it per species.
-    hw = max(FIGURE["hip_w"] * 0.5 * b * (1.09 if f else 1.0),
-             (lx + r_th) * 1.12)
+    #
+    # AND THE CONTAINMENT FLOOR IS WHAT BINDS, ON EVERY FIGURE THIS MODULE HAS
+    # EVER BUILT. Measured while writing the dimorphism assertion below:
+    # `FIGURE["hip_w"] * 0.5` is 0.0900 of stature and `(lx + r_th) * 1.12` is
+    # 0.1092, so the second term wins for every species at every build, and
+    # `FIGURE["hip_w"]` -- which is marked EXTRAPOLATED in the table -- has
+    # never been the hip width of anything. The real pelvis is 0.38 m across at
+    # human stature, set by where the legs are and how thick they are, which is
+    # within a few centimetres of adult bi-iliac breadth and is why nothing ever
+    # looked wrong. It is written down here because a parameter that drives
+    # nothing is a parameter the next context will try to tune.
+    #
+    # The sex factor therefore multiplies the RESOLVED width rather than one of
+    # the two candidates, or it would have been invisible for the same reason.
+    # It only ever widens (women x1.09, men x1.00), so it can never take a
+    # pelvis below the width its own leg roots need.
+    hw0 = max(FIGURE["hip_w"] * 0.5 * b, (lx + r_th) * 1.12)
+    hw = hw0 * (1.09 if f else 1.0)
     cd = FIGURE["chest_d"] * 0.5 * b
-    waist_k = 0.82 if f else 0.88
+    waist_k = 0.80 if f else 0.88
     # Pectoral / breast: same place on the ring, different amplitude and arc.
     bust = _mirror(66.0, 22.0, 0.16) if f else _mirror(62.0, 30.0, 0.055)
     # The hip's DEPTH has to cover the leg circle too, not only its width. The
@@ -1084,7 +1097,7 @@ def _torso_profile(ind: Individual, sp: SpeciesBody):
     # species, and at every LOD.
     return [
         ("hip",          hip_y - 0.035,                   hw * 1.00, cd_hip,
-         {"power": 2.4, "squash_back": 0.98,
+         {"power": 2.1, "squash_back": 0.98,
           "lobes": ((270.0, 60.0, 0.10 if f else 0.05),)}),
         # Placed BETWEEN the hip and the waist rather than a fixed 0.030 above
         # the hip: with a fixed offset, a species with long legs (Minbari at
@@ -1095,11 +1108,17 @@ def _torso_profile(ind: Individual, sp: SpeciesBody):
         # was 0.25 m wide at that height.
         ("pelvis",       hip_y + 0.55 * (FIGURE["waist"] - hip_y),
                                                           hw * 1.00, cd_hip,
-         {"power": 2.4, "squash_back": 0.99,
+         {"power": 2.1, "squash_back": 0.99,
           "lobes": ((270.0, 55.0, 0.06 if f else 0.03),)}),
-        ("waist",        FIGURE["waist"],             hw * waist_k, cd * 0.80,
+        # The waist and the ribcage hang off `hw0`, the pelvis's width BEFORE
+        # the sex factor, and that is not a detail. Deriving them from the
+        # widened hip makes a woman's waist wider in the same proportion, so
+        # the shoulder-to-waist-to-hip ratio -- the entire content of the
+        # dimorphism -- comes out unchanged. The assertion in `_selftest`
+        # caught exactly that and it is the reason these two read `hw0`.
+        ("waist",        FIGURE["waist"],            hw0 * waist_k, cd * 0.80,
          {"power": 2.3}),
-        ("lower_chest",  0.615,                           hw * 0.98, cd * 0.94,
+        ("lower_chest",  0.615,                          hw0 * 0.98, cd * 0.94,
          {"power": 2.5, "squash_front": 1.04}),
         ("chest",        FIGURE["chest"],                 sw * 0.86, cd * 1.00,
          {"power": 2.6, "squash_back": 0.94, "lobes": bust}),
@@ -1324,7 +1343,16 @@ def build_humanoid(ind: Individual, sp: SpeciesBody, seg=16, ring_stride=1,
     # Rooting the arm at the shoulder's own half-width put its top cap level
     # with the torso's side, which reads as a lit disc floating at the shoulder
     # and which `contains()` reports as 9 of 8 root vertices outside the solid.
-    ax_in, ax = sw_h * 0.44, sw_h * 0.96
+    #
+    # The WRIST end moved from 0.96 to 1.02 of the biacromial half-width in
+    # session 4e, and it was forced by a measurement rather than chosen. The
+    # pelvis's width is pinned by its leg roots at 0.1134 of stature and the
+    # hanging wrist sat at 0.1136 -- the forearm hung exactly ON the hip, which
+    # is why `costume.py`'s Nightwatch armband gate (at least 40% of the band
+    # clear of the coat, FACTIONS 5.4's political signal) was the first thing
+    # to fail when the pelvis section stopped being an ellipse. At 1.02 the
+    # band reads 50% clear against 46% before any of this session's work.
+    ax_in, ax = sw_h * 0.44, sw_h * 1.02
     r_up, r_wr = 0.028 * H * b, 0.022 * H * b
     lseg = max(4, seg // 2)
     for side in (-1, 1):
@@ -1527,11 +1555,22 @@ def _f_hair(m, ind, sp, seg, chin_y, head_h, hw, hd):
     # A five-ring stack: buried root, hairline, side, parietal, crown. Fewer
     # than five and the cap cannot both hug the skull at the temple and stand
     # proud at the crown, which is the whole shape of a haircut.
-    rings = [ring_at(lo, 0.90),
-             ring_at(lo + 0.10, vol, (pull,)),
-             ring_at(max(lo + 0.22, 0.70), vol * 1.01, (pull,), dz=-0.004),
-             ring_at(0.88, vol * 0.99, dz=-0.006),
-             ring_at(1.0 + st["crown"] / max(ch, 1e-6), 0.52 * vol, dz=-0.008)]
+    #
+    # EVERY RING ABOVE THE ROOT FOLLOWS `_head_at`'s OWN TAPER, offset outward
+    # by `vol` and never crossing it. The first version scaled the top ring to
+    # 0.52 of the skull, which put the cap's crown INSIDE the head while its
+    # parietal ring was outside -- the two surfaces crossed somewhere over the
+    # top of the skull, and a crossing between two nearly parallel surfaces is
+    # the one thing a renderer cannot resolve cleanly. It showed as a comb of
+    # slivers across the crown in `tools/preview_render.py`, which sorts
+    # triangles by mean depth and has no z-buffer at all, so it renders that
+    # case at its worst. Only the ROOT is deliberately inside, and it is 14%
+    # inside over 5% of head height, which is a steep crossing and a short one.
+    rings = [ring_at(lo, 0.86),
+             ring_at(lo + 0.05, vol, (pull,)),
+             ring_at(max(lo + 0.20, 0.70), vol * 1.02, (pull,), dz=-0.004),
+             ring_at(0.88, vol * 1.02, dz=-0.006),
+             ring_at(1.0 + st["crown"] / max(ch, 1e-6), vol * 1.04, dz=-0.008)]
     m.add(*_loft(rings), "npc_hair", "hair")
 
     if st["nape"] > 0.0:
@@ -1595,19 +1634,29 @@ def _face(m, ind, sp, seg, chin_y, head_h, hw, hd, ch):
     small = plan == "flat"
 
     # --- nose --------------------------------------------------------------
-    # t values are the head profile's own: 0.28 is under the nose, 0.34 is the
-    # cheek ring (the tip), 0.46 the eye line (the bridge), 0.57 the brow.
+    # t values are the head profile's own: 0.27 is under the nose, 0.34 is the
+    # cheek ring (the tip), 0.46 the eye line (the bridge), 0.58 the brow.
+    #
+    # THE NOSE IS DEEPLY BURIED AND THAT IS THE WHOLE OF ITS CONSTRUCTION. Its
+    # z-radius is 0.33 of the head's own depth -- 69 mm on a human -- against a
+    # PROJECTION past the face plane of 27 mm, so two thirds of the solid is
+    # inside the skull. A shallow blob laid on the face crosses it at a grazing
+    # angle over the blob's whole footprint, which is the case no renderer sorts
+    # well; a deeply buried one crosses along a short steep curve. The first and
+    # last rings are entirely inside the head, so the nose EMERGES between
+    # t = 0.28 and t = 0.50 and has no visible seam at either end -- the same
+    # trick the head's own t = -0.07 ring and the arm root use.
     nw = hw * (0.17 if not small else 0.12)
-    nz = hd * (0.90 if not small else 0.82)
-    proj = (0.17 if not small else 0.10)
+    small_k = 0.62 if small else 1.0
     rings = []
-    for t, rx_k, rz_k, dz in ((0.27, 0.85, 0.55, -0.04),
-                              (0.34, 1.00, 1.00, +0.00),
-                              (0.46, 0.68, 0.70, -0.03),
-                              (0.57, 0.62, 0.52, -0.08)):
+    for t, rx_k, cz, rz in ((0.24, 0.55, 0.50, 0.16),
+                            (0.31, 0.95, 0.74, 0.33),
+                            (0.39, 0.85, 0.72, 0.33),
+                            (0.49, 0.60, 0.60, 0.26),
+                            (0.58, 0.50, 0.45, 0.20)):
         rings.append(_ring(0.0, chin_y + head_h * ch * t,
-                           nz + hd * dz,
-                           nw * rx_k, hd * proj * rz_k, fseg, power=2.3))
+                           hd * cz * (1.0 if not small else 0.94),
+                           nw * rx_k, hd * rz * small_k, fseg, power=2.3))
     m.add(*_loft(rings), "npc_%s_nose" % sp.surface.kind, "nose")
 
     if plan != "humanoid":
@@ -2179,13 +2228,69 @@ def _rings_of(verts, seg, name):
     return [verts[i * seg:(i + 1) * seg] for i in range(len(verts) // seg)]
 
 
+def _box_of(verts):
+    xs = [v[0] for v in verts]
+    ys = [v[1] for v in verts]
+    zs = [v[2] for v in verts]
+    return (min(xs), min(ys), min(zs), max(xs), max(ys), max(zs))
+
+
+def _dist_to_box(p, box):
+    """Distance from a point to an axis-aligned box; 0 inside it."""
+    dx = max(box[0] - p[0], 0.0, p[0] - box[3])
+    dy = max(box[1] - p[1], 0.0, p[1] - box[4])
+    dz = max(box[2] - p[2], 0.0, p[2] - box[5])
+    return math.sqrt(dx * dx + dy * dy + dz * dz)
+
+
+def _cull_standoff(full, culled):
+    """How far the geometry a cull REMOVES stood outside what it leaves.
+
+    THE FIGURE'S OWN BOUNDING BOX CANNOT SEE MOST OF A CULL, and that is the
+    finding session 4e paid for. The figure's extremes in every axis are the
+    crown, the soles and the fingertips; a nose, an ear, a thumb and a haircut
+    all live strictly INSIDE that box, so removing every one of them moved the
+    old measurement by exactly 0.00000 m and the schedule concluded they were
+    free to drop at zero metres. `lod_chain()` duly built a chain in which the
+    `all` feature level was never used at any distance -- a face that existed in
+    the code and appeared in no frame. Same defect as layer 2's "mesh, closed,
+    correctly wound": a criterion a defective case passes perfectly.
+
+    So the cull is priced against the geometry that SURVIVES it. For every part
+    the cull deletes, this measures how far its vertices lie outside the
+    bounding boxes of the parts that remain, and takes the worst. Point-to-box
+    rather than point-to-surface because a box is a superset of its part, which
+    makes this a LOWER bound on the true silhouette movement -- stated because a
+    conservative bound in the cheap direction is a thing a reader has to know.
+    It is enough to separate a 20 mm nose from a 0 mm one, which is the entire
+    job.
+    """
+    kept = {n for n, _v, _t in culled.parts}
+    boxes = [_box_of(v) for n, v, _t in culled.parts if v]
+    if not boxes:
+        return 0.0
+    worst = 0.0
+    for name, verts, _t in full.parts:
+        if name in kept:
+            continue
+        for p in verts:
+            worst = max(worst, min(_dist_to_box(p, b) for b in boxes))
+    return worst
+
+
 def feature_schedule(seg=16):
     """Attachment culling. Error is how far the SILHOUETTE moves, MEASURED.
 
-    Measured as the growth of the figure's bounding box between the culled and
-    the full build, per species, quoted for the worst. That is a bound on the
-    outline movement rather than an estimate of it, and it is the same shape of
-    measurement as `lod.py`'s greeble relief.
+    TWO measurements, maxed, because one of them is blind to half the culls:
+
+      * the growth of the figure's bounding box, which prices the crests, the
+        tendrils and the mantle -- everything that changes the outline; and
+      * `_cull_standoff`, which prices what the box cannot see because it
+        happens inside the box: the nose, the ears, the thumbs, the hair.
+
+    Quoted per species for the worst. Both are bounds on outline movement rather
+    than estimates of it, and it is the same shape of measurement as `lod.py`'s
+    greeble relief.
 
     The result is uncomfortable and is the reason to measure rather than assume:
     the identifying features -- the crest, the tendrils, the mantle -- are large
@@ -2193,19 +2298,21 @@ def feature_schedule(seg=16):
     mesh at all. So this schedule has exactly one useful step, and the module
     says so instead of shipping five levels that buy nothing.
     """
-    ref = {}
+    ref, refm = {}, {}
     for key, sp in SPECIES.items():
         ind = individual(key, "lod-probe")
-        ref[key] = _PLANS[sp.plan](ind, sp, seg=seg, ring_stride=1,
-                                   features="all").bbox()
+        refm[key] = _PLANS[sp.plan](ind, sp, seg=seg, ring_stride=1,
+                                    features="all")
+        ref[key] = refm[key].bbox()
     out = []
     for level in FEATURE_STEPS:
         worst, where = 0.0, None
         for key, sp in SPECIES.items():
             ind = individual(key, "lod-probe")
-            bb = _PLANS[sp.plan](ind, sp, seg=seg, ring_stride=1,
-                                 features=level).bbox()
-            e = max(abs(a - b) for a, b in zip(ref[key], bb))
+            mm = _PLANS[sp.plan](ind, sp, seg=seg, ring_stride=1,
+                                 features=level)
+            e = max(max(abs(a - b) for a, b in zip(ref[key], mm.bbox())),
+                    _cull_standoff(refm[key], mm))
             if e > worst:
                 worst, where = e, key
         worst = round(worst, 5)
@@ -2213,8 +2320,9 @@ def feature_schedule(seg=16):
             "features": level,
             "error_m": worst,
             "error_baseline": "the full attachment set",
-            "error_source": ("largest bounding-box movement this cull causes, "
-                             "over every species"
+            "error_source": ("the larger of the figure's bounding-box movement "
+                             "and the stand-off of the removed geometry from "
+                             "the parts that survive, over every species"
                              + (f", worst on {where}" if where else "")),
             "honest_from_m": round(honest_from_m(worst), 2),
             "feature_m": worst,
@@ -2968,6 +3076,147 @@ def _selftest():
           f"(got {chord_error(bulged, 2):.6f})")
     check(fea[0]["error_m"] == 0.0,
           "the full feature set is its own baseline")
+
+    # THE FEATURE SCHEDULE MUST BE ABLE TO SEE A CULL THAT HAPPENS INSIDE THE
+    # BOUNDING BOX. This is the assertion session 4e's face and hair would have
+    # needed and did not have: `no_detail` removes the nose, the ears, the brow
+    # and the thumbs, every one of which lies strictly inside the figure's own
+    # extremes, and the whole-figure bbox measurement scores that cull at
+    # exactly zero -- so the chain never used the `all` level at any distance
+    # and the face existed only in the source. Both halves are checked: the
+    # combined measurement is non-zero, and the old bbox-only one is shown to
+    # be the thing that was blind.
+    _fs = individual("human", "lod-probe")
+    _full = build_humanoid(_fs, SPECIES["human"], seg=16, features="all")
+    _cut = build_humanoid(_fs, SPECIES["human"], seg=16, features="no_detail")
+    _bbox_only = max(abs(a - b) for a, b in zip(_full.bbox(), _cut.bbox()))
+    _stand = _cull_standoff(_full, _cut)
+    check(_bbox_only < 1e-9,
+          f"CONTROL: dropping the face and the thumbs moves the figure's "
+          f"bounding box by {_bbox_only:.6f} m -- the old measurement, and the "
+          f"reason the `all` level was unreachable")
+    check(_stand > 0.010,
+          f"but the removed geometry stood {_stand * 1000:.1f} mm outside what "
+          f"remains, which is what `_cull_standoff` prices")
+    check(fea[1]["error_m"] > 0.010 and fea[1]["honest_from_m"] > 5.0,
+          f"so `no_detail` is honest only from {fea[1]['honest_from_m']:.1f} m "
+          f"(error {fea[1]['error_m']:.5f} m), and the chain has a level that "
+          f"carries a face")
+    check(any(lv["features"] == "all" for lv in chain),
+          "the chain USES the full feature level at some distance -- it did "
+          "not, for as long as the bbox was the only instrument")
+    # And the standoff measurement must return zero when nothing is removed,
+    # or it is measuring the mesh rather than the cull.
+    check(_cull_standoff(_full, _full) == 0.0,
+          "MUTATION: a cull that removes nothing measures zero stand-off")
+    check(_dist_to_box((0.0, 0.0, 0.0), (-1, -1, -1, 1, 1, 1)) == 0.0
+          and abs(_dist_to_box((4.0, 0.0, 5.0), (-1, -1, -1, 1, 1, 1))
+                  - 5.0) < 1e-12,
+          "point-to-box is zero inside and Pythagorean outside the face "
+          f"(got {_dist_to_box((4.0, 0.0, 5.0), (-1, -1, -1, 1, 1, 1)):.6f})")
+
+    # -- the body has the parts a body has --------------------------------
+    # Named, at lod0, because "undetailed featureless blobs" (owner, session 4e)
+    # is a statement about which parts exist and these are the ones that did
+    # not. Asserted on the DEFAULT chain level a room occupant is baked at as
+    # well, because a part that exists only at lod0 is a part nobody sees.
+    for lvl, want in ((0, ("head", "nose", "ear", "hair", "hand", "thumb")),
+                      (1, ("head", "nose", "ear", "hair", "hand", "thumb")),
+                      (4, ("head", "hair", "hand"))):
+        mp = _PLANS["humanoid"](
+            individual("human", "parts-probe"), SPECIES["human"],
+            seg=chain[lvl]["radial_segments"],
+            ring_stride=chain[lvl]["ring_stride"],
+            features=chain[lvl]["features"])
+        have = {n for n, _v, _t in mp.parts}
+        check(all(w in have for w in want),
+              f"a human at {chain[lvl]['name']} has {want} "
+              f"(missing {[w for w in want if w not in have]})")
+    # The corridor crowd is baked at whatever level is nearest 600 triangles --
+    # `populace.corridor_lod` -- and that level MUST carry hair, because until
+    # session 4e it did not and every walker on the station was bald.
+    _counts = [len(build("human", "bake-probe", i, chain)[1])
+               for i in range(len(chain))]
+    _bake = min(range(len(_counts)), key=lambda i: abs(_counts[i] - 600))
+    _bm = _PLANS["humanoid"](individual("human", "bake-probe"),
+                             SPECIES["human"],
+                             seg=chain[_bake]["radial_segments"],
+                             ring_stride=chain[_bake]["ring_stride"],
+                             features=chain[_bake]["features"])
+    check("hair" in {n for n, _v, _t in _bm.parts},
+          f"the level the corridor crowd is baked at ({chain[_bake]['name']}, "
+          f"{_counts[_bake]} triangles) carries hair")
+    check(_counts[_bake] <= 640,
+          f"and it is still inside the 600-triangle allowance "
+          f"schedule.NPC_BUDGET gives its distance band ({_counts[_bake]})")
+
+    # -- residents differ from one another, visibly ------------------------
+    # A crowd of one haircut is a crowd of clones. Drawn from the same hash as
+    # the name and the schedule, so this is a property of the id.
+    styles = {}
+    for i in range(400):
+        styles[hair_style_for(f"human:h{i}", "m" if i % 2 else "f")] = 1
+    check(len(styles) >= 6,
+          f"the wardrobe of haircuts is actually drawn from "
+          f"({sorted(styles)})")
+    check(all(s in HAIR_STYLES for s in styles),
+          f"and every style drawn is a real one ({sorted(styles)})")
+    check(nominal("human").hair_style in HAIR_STYLES,
+          "the nominal figure's haircut is a real one too")
+    check(individual("human", "hx-1").hair_style
+          == individual("human", "hx-1").hair_style
+          and individual("human", "hx-1") != individual("human", "hx-2"),
+          "a resident's haircut is a pure function of their id")
+    check(individual("grome", "hx-1").hair_style == "",
+          "a species with no hair feature is given no style, not a hidden one")
+    # Sexual dimorphism is a SHAPE, and it has to be present in the mesh rather
+    # than in the parameter table. Same id, same stature, sex flipped.
+    _base = individual("human", "dimorph-probe")
+
+    def _sexed(s):
+        ii = Individual(_base.species, _base.npc_id, HUMAN_STATURE_M, 1.0, 1.0,
+                        1.0, SPECIES["human"].cranium, 1.0, 0.0, s, 0, 0,
+                        SPECIES["human"].features, "crop")
+        pr = _torso_profile(ii, SPECIES["human"])
+        return {n: (w, d) for n, _f, w, d, _s in pr}
+    _m, _f2 = _sexed("m"), _sexed("f")
+    check(_f2["hip"][0] > _m["hip"][0] and _f2["shoulder"][0] < _m["shoulder"][0]
+          and _f2["waist"][0] / _f2["shoulder"][0]
+          < _m["waist"][0] / _m["shoulder"][0],
+          f"a woman is built to a different shoulder-to-hip ratio than a man "
+          f"(hip {_f2['hip'][0]:.4f} vs {_m['hip'][0]:.4f}, shoulder "
+          f"{_f2['shoulder'][0]:.4f} vs {_m['shoulder'][0]:.4f})")
+
+    # -- the ring sections are doing work ----------------------------------
+    # A superellipse and a lobe cost NOTHING, which is the whole reason they
+    # are the first tool reached for -- so the assertion is that they changed
+    # the geometry and not the count. Built against the same ring as an
+    # ellipse with no lobes.
+    _plain = _ring(0.0, 0.0, 0.0, 1.0, 1.0, 64)
+    _sq = _ring(0.0, 0.0, 0.0, 1.0, 1.0, 64, power=2.6)
+    _lob = _ring(0.0, 0.0, 0.0, 1.0, 1.0, 64, lobes=((90.0, 30.0, 0.20),))
+    check(len(_plain) == len(_sq) == len(_lob) == 64,
+          "shaping a ring does not change its vertex count")
+    check(max(math.hypot(a[0], a[2]) for a in _sq) > 1.05,
+          f"a superellipse section is fatter off-axis than an ellipse "
+          f"({max(math.hypot(a[0], a[2]) for a in _sq):.4f} against 1.0)")
+    check(abs(max(a[2] for a in _lob) - 1.20) < 1e-9
+          and abs(max(a[0] for a in _lob) - 1.0) < 1e-9,
+          "a lobe at 90 degrees raises the FRONT radius by its amount and "
+          "leaves the sides alone")
+    check(all(abs(_ring(0, 0, 0, 1, 1, 16, power=2.0)[i][j]
+                  - _plain[i * 4][j]) < 1e-12
+              for i in range(16) for j in range(3)),
+          "power 2.0 is the ellipse this function used to be, exactly")
+    # The shaping must survive decimation, or the chain pops instead of
+    # simplifying: a coarse ring's vertices are still a strict subset.
+    _c8 = _ring(0.0, 0.0, 0.0, 1.0, 1.0, 8, power=2.6,
+                lobes=((90.0, 30.0, 0.20),))
+    _f64 = {tuple(round(c, 12) for c in v) for v in
+            _ring(0.0, 0.0, 0.0, 1.0, 1.0, 64, power=2.6,
+                  lobes=((90.0, 30.0, 0.20),))}
+    check(all(tuple(round(c, 12) for c in v) in _f64 for v in _c8),
+          "a shaped ring's 8 vertices are still a strict subset of its 64")
 
     # The measurement must be doing work: the sagitta at 4 segments has to be
     # hundreds of times the sagitta at 32, or the schedule is a constant with
