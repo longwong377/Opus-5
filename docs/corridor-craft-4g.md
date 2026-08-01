@@ -104,7 +104,35 @@ Every row is an A/B: the same camera, the same lights, the same deck, one variab
 committed before-frame with *0.0000% of pixels differing, max channel delta 0*, so the harness is
 not measuring its own noise.
 
-*(A/B table — filled from the final matrix, see §3.9)*
+Sixteen renders, one variable each. Diffed against the all-on frame at the **half** camera unless
+the row says otherwise.
+
+| part | what it is | % of pixels | mean Δ/255 | max Δ |
+|---|---|---:|---:|---:|
+| **all** | the corridor exactly as 4f left it | **75.645%** | 11.609 | 218 |
+| `draft` | bevelled plates and deck tiles (§3.1) | 37.069% | 0.803 | 103 |
+| `stations` | the four wall fittings (§3.6) | 36.488% | 4.009 | 180 |
+| `channel` | the floor light, and its recessed lens (§3.2) | 28.578% | 5.110 | 199 |
+| `deckjoin` | one deck panel per run (§4.2) | 18.839% | 0.425 | 106 |
+| `soffit` | the lost chamfer tag (§3.3) | 14.904% | 2.059 | 57 |
+| `bands` | 3 mm lap between wall bands (§4.3) | 14.753% | 0.256 | 88 |
+| `plaque` | the amber legend plate (§3.4) | 11.155% | 0.440 | 180 |
+| `services` | the clamped pipe bank (§3.5) | 8.532% | 0.486 | 90 |
+| `seam` | the 6 mm door-leaf seal (§6.1) | **0.000%** | 0.000 | 0 |
+| **all**, *door camera* | | **79.573%** | 14.825 | 213 |
+| `kerb`, *door camera* | hazard nosing on the threshold (§3.7) | 0.654% | 0.024 | 119 |
+| `seam`, *door camera* | | 0.127% | 0.0007 | **5** |
+
+**Two rows read 0.000% and both are real negatives, not passes.** `kerb` and `seam` are both
+attached to a doorway and there is no doorway in the half frame, so at that camera the control
+cannot move — which is exactly the failure mode `CLAUDE.md` records as *"a diff of two failed runs
+is not a pass"*, one level up. Both were therefore re-run at a camera where the thing exists, and
+the honest reading is in the last two rows: the hazard nosing moves 0.654% of pixels by up to 119
+levels, and **the door seam moves 0.127% of pixels by at most 5** — it is a manifold fix that
+happens to add a shadow line, not a craft change, and §6.1 says so.
+
+**Two rows I predicted would be byte-identical are not, and the reason is better than the
+prediction.** See §4.2 and §4.3.
 
 ### 3.1 `draft` — a bevelled plate costs the same as a square one
 
@@ -200,10 +228,28 @@ decoration.
 
 ### 3.8 `seam` — the shut door, which is defect 1 (see §6)
 
-### 3.9 `deckjoin` and `bands` — invisible by construction, and the A/B must prove it
+### 3.9 `deckjoin` and `bands` — I predicted byte-identical and I was wrong
 
-Both are pure coincident-face removals (§4.2, §4.3) and both must render **byte-identical**. If
-either moves a pixel the reasoning is wrong.
+Both are pure coincident-face removals that move no visible surface, so I wrote down that both
+must render byte-identical and that a moved pixel would mean the reasoning was wrong. `deckjoin`
+moves **18.839%** of pixels and `bands` **14.753%**.
+
+The reasoning was not wrong; the prediction was, and the difference maps say why. **A coincident
+face is not invisible — it is a depth-sort coin toss, and the toss draws a line.** Removing it
+removes the line.
+
+* `deckjoin`'s difference is confined to the **deck**, and it is a grid of hairlines: one across
+  the deck at each of the thirteen panel joints, plus banding down the central lit strip where the
+  emissive lens had an end cap at every joint facing straight up the corridor at the camera.
+* `bands`' difference is thin bright lines along **every boundary of the wall build-up** — skirt
+  to dado, dado to reveal, reveal to rail band, rail band to upper course — running the whole
+  length of the corridor, plus the 20 mm strip under the chamfer (§4.4).
+
+So the correct statement is not "invisible by construction". It is: **these two changes delete
+visible z-fighting seams that had been drawn down the entire length of every corridor on the
+station, and one of them also saves 30.3 tri/m.** The prediction is left in this document rather
+than quietly corrected, because being wrong in this direction is the whole argument for rendering
+the control.
 
 ---
 
@@ -223,14 +269,21 @@ any angle — the deck's visible articulation comes entirely from `deck_grid`'s 
 are laid on their own pitch and know nothing about that loop.
 
 What the subdivision *did* produce was **468 wasted triangles and 184 of the 271 non-manifold
-edges in an assembled section**. One panel for the run: −30.3 tri/m, −208 non-manifold, and a
-frame that must not change.
+edges in an assembled section**. One panel for the run: **−30.3 tri/m** (324.2 → 293.9) and
+**−208 non-manifold**.
+
+And it is not invisible, which I got wrong (§3.9): it deletes a hairline across the deck at each
+of the thirteen joints and the transverse banding down the lit strip where the emissive lens had
+an end cap at every one of them.
 
 ### 4.3 the wall build-up butted its own bands
 
 Skirt against dado substrate, substrate against reveal, reveal against rail band, rail band
 against the upper substrate: **55 more non-manifold edges**. Every band extends back to `-th`,
-inside the wall, so 3 mm of lap is invisible by construction and costs nothing.
+inside the wall, so 3 mm of lap moves no visible surface and costs **0 tri/m** (293.9 either way).
+
+It is not invisible either (§3.9): it deletes a z-fighting hairline at every band boundary, down
+the whole length of the run.
 
 ### 4.4 the chamfer was coplanar with the plate substrate
 
@@ -295,6 +348,54 @@ default `seed=0` is what is shipped today, so applying the patch is strictly add
 A caller that wants the arc's absolute position rather than the section index — better, because
 two arcs of the same deck would otherwise repeat each other — can pass
 `seed=int(start_deg * 4) + i`.
+
+### 5.1b `station/interior.py` — every ring corridor draws 6.3% of itself twice
+
+**The largest single finding of this session, and it is not in a file I own.** `ring_arc` sweeps an
+arc as *n* abutting calls to `corridor_section`, and never passes `start_portal`. That parameter
+exists, and its docstring in `interior_kit` says exactly why:
+
+> *"`start_portal=False` hands the portal at z = 0 to whatever the run butts onto. A junction
+> already frames its own arm mouths, and two frames in the same plane is both wasted geometry and
+> a visible double edge."*
+
+Every section builds a portal at z = 0 **and** at z = length, so at each of the *n* − 1 joints a
+portal frame, its head light, two pilasters and their fourteen light-strip bars are built **twice,
+at exactly the same coordinates**. Measured on a 12.5° arc of blue ring 0 (5 sections, 4 joints):
+
+| | as `ring_arc` is | with `start_portal=(i == 0)` |
+|---|---:|---:|
+| triangles | 17,640 | **16,520** (−6.3%) |
+| **exact-duplicate triangles** | **1,120** | **0** |
+| non-manifold edges | 1,760 | **80** (−95%) |
+| open edges | 0 | 0 |
+
+The 1,120 break down as `light_pilaster_strip` 672, `pilaster` 224, `portal_frame` 176,
+`light_portal_head` 48 — i.e. **280 triangles per joint**, and 720 of them are emissive.
+
+**And it is not only geometry.** `export_scene.fixture_lights` makes *"one light per tagged light
+fitting, at its centroid"*. The duplicated spans are duplicated fittings: **14 pilaster-strip spans
+and one portal-head span per joint**, so a 30° arc (12 sections, 11 joints) carries roughly **165
+coincident duplicate light sources**. Two lights at one point is twice the illuminance, at every
+section boundary, all the way round every ring on the station.
+
+```diff
+@@ interior.ring_arc @@
+     for i in range(n):
+         a = math.radians(start_deg + degrees * (i + 0.5) / n)
+         here = per_section.get(i, ())
+         v, t = kit.corridor_section(seg_len, doors=here,
+-                                    door_leaves=door_leaves)
++                                    door_leaves=door_leaves,
++                                    start_portal=(i == 0),
++                                    seed=i)
+```
+
+`axial_run` should take the same treatment. Verified by rebuilding the arc both ways through
+`ring_arc`'s own remap: closure is unchanged at 0 open edges either way, so this removes geometry
+without opening the surface. **Not landed here** for the same reason as §5.4 — it changes the
+triangle count and the light count of every deck on the station, and this session cannot run
+`walkable.py` or `deck.py --sweep` to confirm it.
 
 ### 5.2 `tools/export_scene.py` — the corridor anchor's exposure was derived against the wrong soffit
 
@@ -392,9 +493,12 @@ leaves**, which a player can see the far side of within ±11° of straight on �
 was a coincident face. 3 mm a side is used instead: a 6 mm seam, see-through only within ±2°,
 which is what a door seam is.
 
-**And the fix is a craft gain, not just a topology one.** Each leaf carries a 100 mm flat border
-around its raised centre panel, so two shut leaves presented a **200 mm flat band down the middle
-of the door with no line in it** — a shut door read as one slab. It now closes on a shadow line.
+**The craft gain is real and it is small, and the A/B is what says so.** Each leaf carries a
+100 mm flat border around its raised centre panel, so two shut leaves presented a **200 mm flat
+band down the middle of the door with no line in it** — a shut door read as one slab. It now
+closes on a shadow line. Measured at the door camera, that shadow line moves **0.127% of pixels by
+at most 5 of 255**. So this is a manifold fix that happens to be slightly prettier, and claiming
+more would be claiming more than the frame shows.
 
 The proposed `_selftest` block from `lift-4g.md` §3.1 is in, widened: the bar is zero for eleven
 pieces with no exemptions, plus the assembled section, plus a control.
@@ -437,10 +541,16 @@ the thing at the scale it ships at.** A corridor never ships as one 3 m piece.
 
 * **The pattern repeats every 9.205 m** until §5.1 is applied. That is the gap between CRAFT 4 and
   a candidate 5, and it is one line in a file this session does not own.
+* **Every ring corridor draws 6.3% of itself twice** (§5.1b). Verified, one line, not landed.
 * **The pilaster is rotated 90°** (§5.4). Verified, patch written, not landed, because it moves
   `half_w` and `lift.py`'s car mid-session.
 * **`light_deck_channel`'s energy is unmeasured in a corridor** (§5.3), and **the corridor
   anchor's exposure needs re-deriving** now the soffit is right (§5.2).
+* **The kit's new wall fittings are not solid either**, for the same reason the clutter is not:
+  `collision.corridor_shell` sweeps a smooth profile and does not read them. Nothing is in the
+  walking lane — `_selftest` asserts every fitting projects less far than the pilaster, which is
+  the pinch `half_w` is measured at — so a player never meets one head-on, but they can be walked
+  through.
 * **The corridor's clutter is still not solid.** `station/deck.py` records
   `stats["clutter_solid"] = False`; `collision.prop_boxes` derives room props from the room's own
   mesh and does not read `corridor_dressing`'s output. A player walks through the crates. Not this
