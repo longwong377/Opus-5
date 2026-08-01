@@ -67,7 +67,7 @@ DOOR_CLEAR_M = 2.4
 
 # Metres of arc between placement attempts. Not every attempt places something
 # -- see `SCHEMES` -- so this is the sampling pitch, not the prop pitch.
-PITCH_M = 4.5
+PITCH_M = 3.2
 
 # (kind, width_along_arc, depth_across, height, share) per scheme.
 #
@@ -85,10 +85,11 @@ PITCH_M = 4.5
 # already carries, and a bin is a bin.
 SCHEMES = {
     # Freight waiting on a mover. Docking and cargo decks.
-    "freight": (("crate", 1.20, 0.44, 0.95, 0.40),
-                ("crate", 0.80, 0.38, 0.70, 0.30),
-                ("skid", 1.60, 0.42, 0.28, 0.14),
-                ("post", 0.16, 0.16, 1.05, 0.16)),
+    "freight": (("crate", 1.60, 0.44, 1.35, 0.34),
+                ("crate", 1.10, 0.40, 0.95, 0.26),
+                ("rack", 1.80, 0.42, 1.95, 0.22),
+                ("skid", 1.60, 0.42, 0.30, 0.10),
+                ("post", 0.16, 0.16, 1.05, 0.08)),
     # Service plant that had to go somewhere. Industrial and plant decks.
     "service": (("duct", 0.90, 0.40, 1.90, 0.34),
                 ("drum", 0.44, 0.44, 0.88, 0.26),
@@ -96,15 +97,17 @@ SCHEMES = {
                 ("wallpanel", 0.70, 0.14, 0.55, 0.18)),
     # A clean public route: bins, a bench, a wayfinding post. Habitat, medical,
     # administrative -- the decks a visitor sees.
-    "public": (("cabinet", 0.62, 0.40, 1.05, 0.34),
-               ("seat", 1.40, 0.42, 0.46, 0.26),
-               ("post", 0.18, 0.18, 1.15, 0.22),
-               ("wallpanel", 0.85, 0.12, 0.62, 0.18)),
+    "public": (("cabinet", 0.80, 0.40, 1.35, 0.30),
+               ("seat", 1.80, 0.42, 0.46, 0.26),
+               ("screen", 1.10, 0.14, 1.30, 0.20),
+               ("post", 0.18, 0.18, 1.15, 0.14),
+               ("wallpanel", 0.85, 0.12, 0.62, 0.10)),
     # Somebody's belongings, where nobody moves them on. Downbelow.
-    "lurker": (("crate", 0.70, 0.40, 0.60, 0.34),
-               ("block", 0.90, 0.44, 0.42, 0.26),
-               ("reel", 0.44, 0.44, 0.55, 0.22),
-               ("rack", 0.90, 0.34, 1.55, 0.18)),
+    "lurker": (("crate", 0.90, 0.40, 0.75, 0.30),
+               ("block", 1.30, 0.44, 0.52, 0.24),
+               ("rack", 1.20, 0.34, 1.75, 0.22),
+               ("reel", 0.44, 0.44, 0.55, 0.14),
+               ("seat", 1.20, 0.42, 0.44, 0.10)),
     # A job in progress: barriers and a trolley. Any deck, sparingly.
     "works": (("kerb", 1.30, 0.30, 0.95, 0.42),
               ("skid", 1.20, 0.42, 0.30, 0.30),
@@ -118,8 +121,14 @@ SCHEMES = {
 # `lurker` is denser because that IS the content: Downbelow's corridors are
 # lived in, and the gazetteer's whole point about them is that the station's
 # circulation has been colonised.
-DENSITY = {"freight": 0.42, "service": 0.38, "public": 0.26,
-           "lurker": 0.62, "works": 0.20}
+# RAISED AFTER LOOKING. At the first values a 66 m sight line down blue/0/0
+# showed exactly ONE piece: 115 pieces sound like a lot until they are spread
+# over 480 m of arc that curves out of sight in 18 degrees, and until you
+# notice that half the table is 0.16 m posts and 0.12 m wall panels. The pitch
+# also drops to 3.2 m, because a piece every 4.5 m on a curving corridor is
+# further apart than it sounds.
+DENSITY = {"freight": 0.62, "service": 0.58, "public": 0.40,
+           "lurker": 0.78, "works": 0.32}
 
 # Which scheme a deck gets, by the archetype of the places on it. Read from the
 # register rather than written per deck -- a new industrial place gets service
@@ -259,6 +268,16 @@ def run(schema, profile, sector, ring, degrees, start_deg, radius, z_offset,
         lv, lt, lg = [], [], []
         _dress.machine(lv, lt, lg, kind, f"dress_{kind}", lo, hi,
                        (seed, "corr", i))
+        # STAND IT ON THE FLOOR, whatever the machine did inside its box.
+        # `dressing.MACHINES` are authored for rooms, and some put a foot or a
+        # plinth below the box they were given -- measured, `rack` goes 51 mm
+        # under. In a room that is invisible; on a ring it is a piece sunk into
+        # a deck a body walks on. Lifting by the mesh's own minimum is the only
+        # version of this that cannot drift from what the machine actually did.
+        if lv:
+            ymin = min(y for _x, y, _z in lv)
+            if ymin < 0.0:
+                lv = [(x, y - ymin, z) for x, y, z in lv]
         a = math.radians(a_deg)
         ca, sa = math.cos(a), math.sin(a)
         base, t0 = len(v), len(t)
