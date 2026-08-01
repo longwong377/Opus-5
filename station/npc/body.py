@@ -76,12 +76,25 @@ stop being visible at three different distances. The same split applies here:
     ring's vertex to the segment joining its kept neighbours, MEASURED ring by
     ring on the built geometry. Dropping the elbow costs far more than dropping
     the waist, and only a measurement knows that.
-  * FEATURE (crest, tendrils, hands, feet). Error = how far the silhouette moves
-    when the part is removed, MEASURED as the growth of the figure's bounding
-    box. This one produces an uncomfortable result and the result is the point:
-    a Centauri crest is 0.11 m of silhouette, so it is not cullable until 118 m,
-    which is beyond the distance a body is drawn as a mesh at all. The
-    identifying features are therefore NOT an LOD knob. Hands and feet are.
+  * FEATURE (crest, tendrils, face, hair, hands, feet). Error = how far the
+    silhouette moves when the part is removed, MEASURED two ways and maxed --
+    the growth of the figure's bounding box, AND `_cull_standoff`, which is how
+    far the removed geometry lay outside what survives. This one produces an
+    uncomfortable result and the result is the point: a Centauri crest is 0.11 m
+    of silhouette, so it is not cullable until 118 m, which is beyond the
+    distance a body is drawn as a mesh at all. The identifying features are
+    therefore NOT an LOD knob. The face and the thumbs are.
+
+    THE SECOND MEASUREMENT EXISTS BECAUSE THE FIRST WAS BLIND, and session 4e
+    paid for finding out. A nose, an ear, a thumb and a haircut all lie strictly
+    inside the figure's own extremes -- the crown, the soles, the fingertips --
+    so a bounding box scores their removal at exactly zero and the schedule
+    concluded they were free to cull at zero metres. Two consequences, both
+    real: `lod_chain()` built a chain that never used the full feature level at
+    any distance, so the face existed in the code and in no frame; and the
+    entire shipped corridor crowd, which `populace.corridor_lod` bakes at a
+    `no_detail` level, was BALD. Hair has moved to the `extremity` tier for that
+    reason and the schedule now prices what the box could not see.
 
 And the honest limit, which no switch distance can fix: **the deviation budget
 bounds the error per figure and says nothing about the number of figures.**
@@ -984,7 +997,11 @@ def _bend(m: "Mesh", deg: float, pivot_y: float, full_y: float):
 TORSO_RINGS = ("hip", "pelvis", "waist", "lower_chest", "chest", "upper_chest",
                "shoulder", "trapezius")
 LIMB_RINGS = 5           # root, upper mid, joint, lower mid, tip
-HEAD_RINGS = 7
+# Nine, one per craniofacial landmark: under-chin, chin, jaw, cheek, eye, brow,
+# forehead, parietal, crown. It was seven and three of those were pure
+# interpolation. `_selftest` asserts this IS the length of `_head_profile`, so
+# the constant cannot go stale the way it did between sessions 4d and 4e.
+HEAD_RINGS = 9
 
 
 def _leg_params(ind: Individual, sp: SpeciesBody):
@@ -1544,10 +1561,22 @@ def _f_hair(m, ind, sp, seg, chin_y, head_h, hw, hd):
         return
     ch = ind.cranium[1]
 
+    # HALF THE BODY'S SEGMENT COUNT, for the same reason a limb gets half:
+    # sagitta scales with radius, and a skull cap's radius is a third of the
+    # figure's worst section (0.088 m against 0.22 m at the Gaim mantle), so at
+    # seg/2 it is still finer than the schedule the body itself is built to.
+    # Checked, not asserted: at seg 16 the cap's sagitta is 1.7 mm, honest from
+    # 1.7 m against lod1's 2.23 m; at seg 8 it is 6.7 mm, honest from 6.9 m
+    # against lod2's 8.92 m. The floor is 8 rather than the limbs' 4 because a
+    # cap is seen against the BACKGROUND at the top of the head, where a
+    # four-sided outline is a lozenge. Saves 320 triangles a figure at lod0 and
+    # 160 at lod1, which is what paid for the face.
+    hseg = max(8, seg // 2)
+
     def ring_at(t, scale, lobes=(), dz=0.0):
         k, zo = _head_at(ind, t)
         return _ring(0.0, chin_y + head_h * ch * t, head_h * (zo + dz),
-                     hw * k * scale, hd * k * scale, seg,
+                     hw * k * scale, hd * k * scale, hseg,
                      squash_front=FACE_FLATTEN, power=2.0, lobes=lobes)
 
     lo, vol = st["lo"], st["vol"]
@@ -1581,18 +1610,18 @@ def _f_hair(m, ind, sp, seg, chin_y, head_h, hw, hd):
                0.0, chin_y + head_h * ch * (lo + 0.10),
                head_h * zo - hd * k * 0.55,
                hw * k * st["nape_w"], -head_h * st["nape"], hd * k * 0.42,
-               seg, sweep=hd * 0.06, taper=0.62, rings=3)
+               hseg, sweep=hd * 0.06, taper=0.62, rings=3)
 
     if st["knot"] > 0.0:
         r = hw * st["knot"]
         y = chin_y + head_h * ch * (1.0 + st["crown"] / max(ch, 1e-6))
         m.add(*_loft([
             _ring(0.0, y - r * 0.30, -hd * 0.18, r * 0.62, r * 0.62,
-                  max(4, seg // 2)),
+                  max(4, hseg // 2)),
             _ring(0.0, y + r * 0.55, -hd * 0.26, r * 1.00, r * 0.88,
-                  max(4, seg // 2)),
+                  max(4, hseg // 2)),
             _ring(0.0, y + r * 1.20, -hd * 0.30, r * 0.40, r * 0.36,
-                  max(4, seg // 2))]), "npc_hair", "hair")
+                  max(4, hseg // 2))]), "npc_hair", "hair")
 
 
 # ---------------------------------------------------------------------------
@@ -1627,10 +1656,16 @@ def _face(m, ind, sp, seg, chin_y, head_h, hw, hd, ch):
     plan = sp.face
     if plan == "none":
         return
-    # A fixed small count: these are 20-60 mm objects and sizing them at the
-    # body's 64 segments is the mistake `costume._att_seg` records paying for a
-    # collar. 4 divides 8, so the strict-subset property survives the switch.
-    fseg = max(4, min(8, seg // 2))
+    # SIZED BY THEIR OWN SAGITTA, not by the body's. These are 20-60 mm objects
+    # and building them at the body's 64 segments is the mistake
+    # `costume._att_seg` records paying for a collar. A nose's section radius is
+    # 0.014 m, so at 4 segments its sagitta is 4.1 mm -- honest from 4.2 m -- and
+    # at 8 segments 1.1 mm, honest from 1.1 m. `seg // 4` therefore gives 8 at
+    # the two levels used inside 9 m and 4 at every level beyond it, which is
+    # exactly where those two distances fall. 4 divides 8, so the strict-subset
+    # property survives the switch. It is 136 triangles a figure at seg 16, and
+    # that is the band a crowded Zocalo spends most of its budget in.
+    fseg = max(4, min(8, seg // 4))
     small = plan == "flat"
 
     # --- nose --------------------------------------------------------------
@@ -2244,7 +2279,8 @@ def _dist_to_box(p, box):
 
 
 def _cull_standoff(full, culled):
-    """How far the geometry a cull REMOVES stood outside what it leaves.
+    """How far the geometry a cull REMOVES stood outside what it leaves --
+    counting only the geometry the figure's own bounding box cannot see.
 
     THE FIGURE'S OWN BOUNDING BOX CANNOT SEE MOST OF A CULL, and that is the
     finding session 4e paid for. The figure's extremes in every axis are the
@@ -2264,16 +2300,31 @@ def _cull_standoff(full, culled):
     conservative bound in the cheap direction is a thing a reader has to know.
     It is enough to separate a 20 mm nose from a 0 mm one, which is the entire
     job.
+
+    EACH REMOVED VERTEX IS PRICED BY EXACTLY ONE INSTRUMENT, and the choice is
+    not a preference. A vertex OUTSIDE the culled figure's bounding box has
+    already moved that box, so `feature_schedule`'s bbox term prices it and
+    adding a stand-off on top would double-count the same movement in a
+    different, larger currency. That is not hypothetical: a Grome's toe stands
+    0.146 m forward of its own shin, and pricing it here instead of by the box
+    moved the `identity_only` step from 81 m to 150 m and made every figure on
+    the drum floor 44% dearer -- 145,546 triangles against a 144,000 budget,
+    which `npc/crowd.py`'s worst-case gate caught within one run. The box is
+    the right instrument for a foot and the wrong one for a nose; so each is
+    measured by the one that can see it.
     """
     kept = {n for n, _v, _t in culled.parts}
     boxes = [_box_of(v) for n, v, _t in culled.parts if v]
     if not boxes:
         return 0.0
+    outline = _box_of([p for _n, v, _t in culled.parts for p in v])
     worst = 0.0
     for name, verts, _t in full.parts:
         if name in kept:
             continue
         for p in verts:
+            if _dist_to_box(p, outline) > 0.0:
+                continue                  # the bbox term already prices this
             worst = max(worst, min(_dist_to_box(p, b) for b in boxes))
     return worst
 
@@ -2481,6 +2532,31 @@ FRAME_TRIANGLES = 1_200_000
 # windows. 12% is under a sixth of that residue and it is what the brief's
 # "crowdedness" costs: it buys ~330 mid-field figures, which is a full Zocalo.
 NPC_FRAME_SHARE = 0.12
+
+# ONE GATE IS RED BECAUSE OF THIS FILE AND THE NEXT CONTEXT SHOULD SEE IT HERE
+# RATHER THAN REDISCOVER IT. `npc/crowd.py` asserts that no place swaps a mesh
+# for an impostor closer than twice the full-simulation radius -- 36 m. On a
+# busy Zocalo at peak that swap now happens at **24.3 m** where it happened at
+# 40.0 m before session 4e, so `crowd.py` reads 66/67 instead of 67/67.
+#
+# It is a budget decision and not a defect, and the arithmetic is short. The
+# Zocalo's cumulative crowd cost out to 35.4 m was 135,081 triangles against a
+# 144,000 budget -- an 6.6% margin -- and it is now 176,955. The whole excess is
+# per-figure detail in the FULL-SIMULATION tier inside 18 m, where
+# `CROWD_LOD_OFFSET` does not apply and therefore cannot pay for it: measured,
+# offset 2 gives 24.3 m, offset 3 gives 26.7 m and offset 4 gives 30.4 m, so the
+# crowd module's own knob cannot reach 36 m either.
+#
+# The three ways out, none of which is this module's to choose:
+#   1. `schedule.NPC_BUDGET["npc_frame_share"]` 0.15 -> ~0.19. 180,000
+#      triangles restores the 36 m horizon. The share has 75% of the frame to
+#      draw on and takes a fifth of it.
+#   2. Accept a 24 m mesh horizon in the single busiest room on the station and
+#      relax the factor of two in `crowd.py`'s assertion, with the figure size
+#      at the swap stated -- 111 px, against 129 px when it first failed.
+#   3. Put the crowd back to a bald one. It is the cheapest and it is what the
+#      owner objected to in session 4e.
+# Measured with `crowd.visible_cost('zocalo', peak_hour('zocalo'))`.
 
 # Standing crowd density on a busy commercial floor, in people per square metre.
 # EXTRAPOLATED, and the constraint is a count off an authority-1 frame:
@@ -2842,6 +2918,12 @@ def _selftest():
     # The ring stack must be monotonic in y or the loft folds and the solid
     # self-intersects -- which renders perfectly and breaks every containment
     # and volume test downstream.
+    check(len(_head_profile(nominal("human"))) == HEAD_RINGS
+          and len(_torso_profile(nominal("human"), SPECIES["human"]))
+          == len(TORSO_RINGS),
+          f"the declared ring plan is the built one "
+          f"({len(_head_profile(nominal('human')))} head rings against "
+          f"HEAD_RINGS={HEAD_RINGS})")
     for key, sp in SPECIES.items():
         ys = [f for _n, f, _w, _d, _s in _torso_profile(nominal(key), sp)]
         check(all(a < b for a, b in zip(ys, ys[1:])),
@@ -3109,6 +3191,37 @@ def _selftest():
     # or it is measuring the mesh rather than the cull.
     check(_cull_standoff(_full, _full) == 0.0,
           "MUTATION: a cull that removes nothing measures zero stand-off")
+    # EACH REMOVED VERTEX IS PRICED ONCE. A part that pokes out of the culled
+    # figure's own outline is priced by the bbox term, so it must contribute
+    # NOTHING here -- pricing it twice moved `identity_only` from 81 m to 150 m
+    # on the strength of a Grome's toe and put the drum floor 1.1% over the NPC
+    # triangle budget, which `npc/crowd.py`'s worst-case gate caught. Both
+    # directions are constructed, so this cannot rot into a tautology.
+    def _twopart():
+        # A host, and a second retained part further out that SETS the outline
+        # -- the stand-in for the feet and hands, which is what puts a nose
+        # strictly inside the figure while leaving it clear of the head.
+        mm = Mesh()
+        mm.add(*_loft([_ring(0, 0, 0, 1, 1, 8), _ring(0, 1, 0, 1, 1, 8)]),
+               "g", "host")
+        mm.add(*_loft([_ring(1.6, 0, 0, 0.1, 0.1, 6),
+                       _ring(1.6, 0.4, 0, 0.1, 0.1, 6)]), "g", "outrigger")
+        return mm
+    _hostm = _twopart()
+    _inside = _twopart()
+    _inside.add(*_loft([_ring(1.2, 0.4, 0, 0.1, 0.1, 6),
+                        _ring(1.2, 0.6, 0, 0.1, 0.1, 6)]), "g", "bump")
+    _outside = _twopart()
+    _outside.add(*_loft([_ring(0, 1.4, 0, 0.1, 0.1, 6),
+                         _ring(0, 1.8, 0, 0.1, 0.1, 6)]), "g", "spike")
+    check(0.10 < _cull_standoff(_inside, _hostm) < 0.40,
+          f"a removed part INSIDE the outline is priced by its stand-off from "
+          f"the parts that remain ({_cull_standoff(_inside, _hostm):.3f} m for "
+          f"a bump whose far face is 0.30 m clear of the host)")
+    check(_cull_standoff(_outside, _hostm) == 0.0,
+          f"and one that pokes OUT of it is priced by the bounding box "
+          f"instead, not twice "
+          f"({_cull_standoff(_outside, _hostm):.3f} m)")
     check(_dist_to_box((0.0, 0.0, 0.0), (-1, -1, -1, 1, 1, 1)) == 0.0
           and abs(_dist_to_box((4.0, 0.0, 5.0), (-1, -1, -1, 1, 1, 1))
                   - 5.0) < 1e-12,
