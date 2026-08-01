@@ -194,11 +194,18 @@ func _vec(s: String) -> Vector3:
 ## bounces off the outside of. `create_trimesh_collision` is the only correct
 ## choice here and it is also the expensive one; that is a runtime streaming
 ## problem, not a reason to use the wrong shape.
+## The loaded level's root, kept so anything that needs to ask the GEOMETRY a
+## question -- which room is this point in -- can ask the geometry rather than
+## infer it from a sidecar. See `scripts/places.gd`.
+var _visual: Node = null
+
+
 func _load_level() -> bool:
 	var scene := _load_glb(glb_path)
 	if scene == null:
 		return false
 	add_child(scene)
+	_visual = scene
 	_dress_level(scene)
 
 	# WHICH MESH IS THE FLOOR. With a collision mesh supplied, the visible one
@@ -531,7 +538,7 @@ func _wire_hud() -> void:
 	_hud.layer = 8
 	_hud.set_script(load("res://scripts/hud.gd"))
 	add_child(_hud)
-	_hud.bind(_player, _interact, glb_path, interact_path)
+	_hud.bind(_player, _interact, glb_path, interact_path, _visual)
 
 
 func _load_glb(path: String) -> Node:

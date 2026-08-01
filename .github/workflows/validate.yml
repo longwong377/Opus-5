@@ -57,6 +57,16 @@ jobs:
       # banner saying the one gate that measures what a player renders was
       # skipped. It also now costs ~62 s rather than 2 s, because measuring a
       # frame means building one.
+      - name: Nothing unreachable (no engine needed)
+        id: sreachable
+        continue-on-error: true
+        run: python3 station/coldstart.py --g3
+
+      - name: Can anybody start it
+        id: scoldstart
+        continue-on-error: true
+        run: python3 station/coldstart.py
+
       - name: The circulation network -- can you get from here to there
         id: scirculation
         continue-on-error: true
@@ -466,6 +476,10 @@ jobs:
           fail=0
           if [ "${{ steps.sexport_gltf_and_verify_it_is_well_formed.outcome }}" != "success" ]; then
             echo "FAILED: sexport_gltf_and_verify_it_is_well_formed"; fail=1; fi
+          if [ "${{ steps.sreachable.outcome }}" != "success" ]; then
+            echo "FAILED: sreachable"; fail=1; fi
+          if [ "${{ steps.scoldstart.outcome }}" != "success" ]; then
+            echo "FAILED: scoldstart"; fail=1; fi
           if [ "${{ steps.scirculation.outcome }}" != "success" ]; then
             echo "FAILED: scirculation"; fail=1; fi
           if [ "${{ steps.sperformance_budgets.outcome }}" != "success" ]; then

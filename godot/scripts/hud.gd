@@ -79,6 +79,14 @@ var _interact
 var _face
 ## place key -> [lo, hi] world box, unioned over that place's interactables.
 var _boxes := {}
+## `{place: AABB}` from the level's own mesh names -- see `scripts/places.gd`.
+var _place_boxes := {}
+## PRELOADED, NOT `class_name`. A global class name is resolved from the
+## project's script-class list, which a fresh headless run has not scanned --
+## so `Places.boxes()` parsed as an unknown identifier, `set_script` failed, and
+## the cold-start gate came back `hud=0, audio_layers=0`: the whole boot broken
+## by a name lookup. A preload is a file path and always resolves.
+const _Places = preload("res://scripts/places.gd")
 var _last_report := ""
 
 
@@ -91,7 +99,7 @@ var _last_report := ""
 ## `dress_scene.gd` uses to stay inside one description of the look -- the
 ## generator already decided, so nothing here decides again.
 func bind(player: Node3D, interact: Node, glb: String,
-		interact_json: String) -> void:
+		interact_json: String, visual: Node = null) -> void:
 	_player = player
 	if _player != null:
 		_cam = _player.get_node_or_null("Camera3D") as Camera3D
@@ -99,7 +107,19 @@ func bind(player: Node3D, interact: Node, glb: String,
 		field = String(_player.gravity_mode).to_upper()
 	_interact = interact
 	_address(glb)
-	_places(interact_json)
+	# THE GEOMETRY FIRST, THE SIDECAR ONLY IF THERE IS NO GEOMETRY. This HUD used
+	# to derive a room's extent from the bounding box of its INTERACTABLES,
+	# padded 1.5 m, and its own comment admitted "a room is bigger than its
+	# furniture". Measured against `ambience.gd`, which reads the same rooms'
+	# actual meshes, the two disagreed by **31.6 m**: the HUD said
+	# `CORRIDOR (near CUSTOMS NORTH 31.6 m)` while the audio played
+	# `place=customs_north`. You were told you were in the corridor while
+	# hearing the room. `scripts/places.gd` is now the single answer and both
+	# read it.
+	if visual != null:
+		_place_boxes = _Places.boxes(visual)
+	if _place_boxes.is_empty():
+		_places(interact_json)
 
 	# ONE PROMPT, NOT TWO. `interact.gd` carries a bare debug Label from the
 	# session that introduced the verb table, and `walk.gd` still reads its text
@@ -249,9 +269,20 @@ func _where(p: Vector3) -> void:
 	place_name = ""
 	near_name = ""
 	near_m = 0.0
+	if not _place_boxes.is_empty():
+		var k := _Places.at(_place_boxes, p)
+		if k != "":
+			place_inside = true
+			place_name = _pretty(k)
+			return
+		var n: Array = _Places.nearest(_place_boxes, p)
+		near_name = _pretty(String(n[0]))
+		near_m = float(n[1])
+		place_name = "CORRIDOR"
+		return
 	var best := INF
-	for k in _boxes:
-		var b: Array = _boxes[k]
+	for k2 in _boxes:
+		var b: Array = _boxes[k2]
 		var lo: Vector3 = b[0]
 		var hi: Vector3 = b[1]
 		# 1.5 m of slack, because a place's extent here is the extent of the
@@ -260,14 +291,14 @@ func _where(p: Vector3) -> void:
 				and p.y >= lo.y - 1.5 and p.y <= hi.y + 1.5 \
 				and p.z >= lo.z - 1.5 and p.z <= hi.z + 1.5:
 			place_inside = true
-			place_name = _pretty(String(k))
+			place_name = _pretty(String(k2))
 			return
 		var q := Vector3(clampf(p.x, lo.x, hi.x), clampf(p.y, lo.y, hi.y),
 			clampf(p.z, lo.z, hi.z))
 		var d := p.distance_to(q)
 		if d < best:
 			best = d
-			near_name = _pretty(String(k))
+			near_name = _pretty(String(k2))
 			near_m = d
 	# Between rooms is not nowhere: on a ring deck it is the corridor, which is
 	# a place a player spends most of their time.
