@@ -1,6 +1,6 @@
 # Project State
 
-**Last updated:** 2026-08-01 · **Session 4c** — **the station is INTERACTABLE, the port is on a wall, and the 24-minute suites were one bad cache key** · **4b** — a police force, friction in metres, the plated shell, the fitting-reach fix
+**Last updated:** 2026-08-01 · **Session 4d** — **the bespoke rooms' interactables were never unbuilt, they were unnamed: 259/357 → 284/357** · **4c** — **the station is INTERACTABLE, the port is on a wall, and the 24-minute suites were one bad cache key** · **4b** — a police force, friction in metres, the plated shell, the fitting-reach fix
 
 ## Session 4b — THE STATION HAS A POLICE FORCE, AND THE WALL STOPPED BEING ONE FLAT PANEL
 
@@ -106,20 +106,67 @@ It blew the blacks out (`crushed` ×0.03) and the fill absorbed it: swept 1.521 
 the only value that passes both** level and shape. `--gate-frames` back to **14 pass / 9 fail**.
 INV-246.
 
+### 6. THE BESPOKE INTERACTABLES WERE NEVER UNBUILT — THEY WERE UNNAMED
+
+`--audit` read **`built generic 259/259, built bespoke 0/98`**. A ratio that clean is never
+per-object; it is a convention. `rooms._fixture` writes `prop_<token>` and `provides()` recognised
+only that, while `quarters.py` writes `qtr_locker`, `customs.py` writes `customs_desk`,
+`command_control.py` writes `cc_console_face`. **The objects were there and the names had no
+`prop_` in them.**
+
+**The cure is not a prefix rule**, and that is the design decision: stripping `qtr_` off everything
+makes `qtr_wall` a `wall` a player can press. Each module **declares** what it provides, in a table
+that lives in the module, and **every row is verified against the module's own comment on the span
+it names** — *"A Babcom terminal in every quarters"*, *"breather-mask dispenser beside the outer
+door"*. `_selftest` builds one representative place per module through `deck.room_geometry` and
+fails if a row names a span that place does not emit; **the control, an invented `qtr_not_a_thing`,
+fires.**
+
+| | before | after |
+|---|---|---|
+| declared uses resolving | 259 / 357 | **284 / 357** |
+| `built bespoke` | **0 / 98** | **25 / 98** |
+| places resolving NONE | 26 | **13** |
+
+**The runtime had to be wired separately and nearly was not.** `sidecar()` took only names, so the
+audit saw four interactables in a crew cabin and **the engine saw none** — the same
+two-descriptions failure one layer further out. `_module_of` derives the module from the deck
+group's own `<place>__` prefix. Verified: the sidecar returns `babcom_terminal`, `bunk`, `locker`,
+`shower` for `qtr_command` and **rejects `qtr_wall` and `light_downlight`**. INV-248.
+
+**Two corrections to this file's own next-list, both found by doing the work.** *"`babcom_terminal`
+declared in nine places and built in none"* was **wrong** — `quarters.py` emits `qtr_babcom` in
+every unit. And the near/absent split moves with the tables: *"26 built under another name, 72 never
+built"* is now **14 and 59**.
+
 ### NEXT SESSION — in priority order
 
-1. **The 72 declared interactables that were never built.** `interact.py --audit` names every one.
-   `babcom_terminal` in nine places is the single biggest row and `broadcast.BABCOM_PLACES` already
-   says where it goes.
-2. **The 26 built under the module's own name.** Not missing content — a naming mismatch between
-   the register's token and the module's span name. Cheapest 26 of the 98.
-3. **The three observation dome interiors.** `station/bespoke.py` carries a full spec written by a
+1. **The remaining 14 built under another name.** `interact.py --audit` names them and the pattern
+   is now established — add a `PROVIDES` row to the owning module and verify it against that
+   module's own comment on the span. `customs` (`customs_desk`, `bollard`), `hospitality`
+   (`stool`, `dartboard`, `pendant_lamp`, `table`) and `council_chamber` are what is left. Cheapest
+   remaining work by a distance.
+2. **THE CRAFT OF THE THINGS NOW USABLE.** `docs/engine-4c-quarters-interactables.png`: the BabCom
+   terminal is a **flat coloured rectangle** — no bezel, no screen, no relief. It is usable and it
+   is not built. `signage.py` already has the construction that would fix it (frame, recessed lit
+   face, letterforms) and `reference/11-props-and-technology/identicard readout.webp` is authority 1
+   for what a station screen looks like: 4:3, portrait panel left at ~48% of width, ruled data field
+   right, blue values, magenta for flagged fields — and `resident.identicard()` already produces
+   every one of those fields.
+3. **`walkable.py --deck blue/0/2 --use` FAILS**, and it is new information rather than a
+   regression: before session 4d the runtime saw zero interactables in a crew cabin so there was
+   nothing to fail on. The body ends **2.20 m from `qtr_command__qtr_locker`** and the eye ray finds
+   nothing — almost certainly because the locker is inside a cabin and the body is in the corridor.
+   `--deck blue/0/0 --use` still passes with its control.
+4. **The 59 genuinely never built.** The long tail: `door` (7 places), `bunk` outside quarters,
+   `valve`, `tank_gauge`, `identicard_reader`, `baggage_scanner`.
+5. **The three observation dome interiors.** `station/bespoke.py` carries a full spec written by a
    previous agent, including the trap: `dressable_extent` returns a bounding box, which is right for
    every rectangular plan and **wrong for a circle** (corners at 1.41 R, through the window ring).
    Dome 1 **is** C&C's dome and `comand and contorl.webp` is authority 1 **from inside it**.
-4. **`--gate-frames` 14/9.** `zocalo` (`crushed` ×0.01) and bespoke `hospitality` (p5 ×1.88) are the
+6. **`--gate-frames` 14/9.** `zocalo` (`crushed` ×0.01) and bespoke `hospitality` (p5 ×1.88) are the
    two closest. `plant` is a lighting-design problem, not an exposure one — leave it.
-5. **`customs_north` at 59.7% floor coverage is NOT a defect** — `customs.py` asserts its own state
+7. **`customs_north` at 59.7% floor coverage is NOT a defect** — `customs.py` asserts its own state
    and records the withdrawn experiment (*"210 coffers given lights put the frame at 18.9× its
    reference"*). The gate and the module disagree and someone has to rule.
 
