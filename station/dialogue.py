@@ -1704,11 +1704,25 @@ def _selftest(out=print):                                       # noqa: C901
           "and somebody is behind most of them, by name",
           f"{len(manned)}/14")
     n += 1
+    # THIS ASSERTION WAS WRITTEN INVERTED, ON PURPOSE, AND HAS NOW FLIPPED.
+    # `interact.RESPONDS` excluded `serve` because "being served needs whoever
+    # is behind the counter to turn round and talk, which needs dialogue", and
+    # this module could not edit that file. So it asserted the EXCLUSION -- a
+    # change detector, so the day somebody wired it up the gate would say so
+    # rather than the two files drifting apart in silence.
+    #
+    # It said so. Session 4e added `serve` at integration and this fired on the
+    # next run. It now asserts the other direction: `serve` responds, and what
+    # responds to it is THIS module.
     import interact as _it
-    check("serve" not in _it.RESPONDS,
-          "interact.RESPONDS still excludes `serve` -- this module is what "
-          "would earn it, and that one word is in a file this session does "
-          "not own")
+    check("serve" in _it.RESPONDS,
+          "interact.RESPONDS lists `serve` -- and `serve_response()` is what "
+          "answers it")
+    n += 1
+    check(_it.verb_of("bar_counter") == "serve"
+          and "serve" in _it.PRESSABLE,
+          "...and a counter still resolves to it, pressably",
+          f"{_it.verb_of('bar_counter')}")
 
     # -- the Vorlon -------------------------------------------------------
     n += 1
