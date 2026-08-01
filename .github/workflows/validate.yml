@@ -57,6 +57,11 @@ jobs:
       # banner saying the one gate that measures what a player renders was
       # skipped. It also now costs ~62 s rather than 2 s, because measuring a
       # frame means building one.
+      - name: The circulation network -- can you get from here to there
+        id: scirculation
+        continue-on-error: true
+        run: python3 station/routes.py --selftest
+
       - name: Performance budgets
         id: sperformance_budgets
         continue-on-error: true
@@ -461,6 +466,8 @@ jobs:
           fail=0
           if [ "${{ steps.sexport_gltf_and_verify_it_is_well_formed.outcome }}" != "success" ]; then
             echo "FAILED: sexport_gltf_and_verify_it_is_well_formed"; fail=1; fi
+          if [ "${{ steps.scirculation.outcome }}" != "success" ]; then
+            echo "FAILED: scirculation"; fail=1; fi
           if [ "${{ steps.sperformance_budgets.outcome }}" != "success" ]; then
             echo "FAILED: sperformance_budgets"; fail=1; fi
           if [ "${{ steps.swhole_station_collision_total_has_not_dr.outcome }}" != "success" ]; then
