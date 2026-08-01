@@ -1,5 +1,46 @@
 # THE CONNECTED STATION — the plan that replaces every plan in this repository
 
+---
+
+## SESSION 4g — WHAT WILL EXIST WHEN THIS SESSION ENDS
+
+Set by the owner: *"I want the entire station built and walkable and connected with working
+transport … all the decks and all the levels and all the transports and all the locations,
+actually built in Godot not theoretical."* This is the commitment, and each line is a thing that
+either exists or does not — no partial credit, no coverage percentage.
+
+| # | Deliverable | Gate that proves it | Owner |
+|---|---|---|---|
+| **1** | **`routes.py` components 85 → 1.** The station is ONE walkable piece | `routes.py --selftest` goes green | main |
+| **2** | **The corridor arc comes from the RING, not from where the rooms happen to be** — this alone unblocks 18 of the 25 axial joins | axial buildable 7/25 → ~25/25 | main |
+| **3** | **Transit nodes.** The graph gets nodes on decks that carry no location, because a route passes through places nobody lives | components with every edge 23 → 1 | main |
+| **4** | **`station/lift.py`** — shaft, car, landing doors, collision. The vertical connection that has never existed in this project. 38 missing edges | 0 open edges; a floor in the car at every deck; landing aperture crossable, with the sealed control firing | agent |
+| **5** | **Walkable spoke passages** — the radial connection between rings, inside the gauge `spoke_portal` already cuts | spoke buildable 0/7 → 7/7 | main |
+| **6** | **Axial trunks between sectors** | trunk 4/4, and the sectors are one component | main |
+| **7** | **Streaming in `walk.gd`** — cells load and free by player position, no loading screen | a body walks across a cell boundary, metres traversed reported, `offfloor=0`, and a control with streaming off that FAILS at the boundary | agent |
+| **8** | **Transport that moves and can be ridden** — the guideway tram and the core shuttle. `tram.guideway_cars` already takes a `phase` that walks the train along the run; `transit.py` already owns every ride time. What is missing is motion at runtime and a floor to stand on inside the car | a body boards, rides, and alights in a different cluster without leaving the floor | main |
+| **9** | **The whole station exported** — every deck, every cluster, as streamable cells | the count of cells written, against the 251 decks the schema declares | main |
+| **10** | **AAA on the surfaces you see everywhere** — the corridor kit, the lift interior, the transit car interior | craft scored at the rubric's HALF distance in a Vulkan Forward+ frame | main |
+
+### Why 10 is the honest lever on "it must not look like bare garbage"
+
+**Every one of the 251 decks is built from ONE corridor kit.** A craft pass on
+`interior_kit.corridor_section` is a craft pass on the entire station at once — the same is true of
+the lift interior and the transit car, which is what a player looks at for most of any journey.
+That is where the craft budget buys the most surface per hour by an enormous margin, and it is why
+it is on this list rather than a per-location sweep.
+
+### Stated plainly, because pretending otherwise is what this project keeps being punished for
+
+**Bespoke craft on all 128 locations is not a one-session job and will not be claimed as one.** The
+measured rate is four landmarks raised from craft 1 to craft 2–3 in one 70-minute agent session.
+What this session delivers is a station you can walk end to end, with working transport, whose
+*shared* surfaces are at the standard; the per-location passes continue after it, ordered by the
+routes, exactly as PART 3 sets out. Any other claim would be another coverage number that means
+nothing to a player.
+
+---
+
 **Session 4g. Written on the owner's instruction to override every plan here, audit them, and
 replace them — then corrected by the owner's second instruction, which was right and which this
 document now takes as its objective:**
