@@ -77,6 +77,15 @@ import rooms as _rooms                                          # noqa: E402
 import interior_kit as kit                                     # noqa: E402
 import signage as sg                                           # noqa: E402
 
+# See `quarters.PROVIDES` for why this table exists and why it is not a prefix
+# rule. Each row is verified against this file's own code for the span.
+PROVIDES = {
+    # `customs_desk` is the register's token EXACTLY -- the only thing
+    # separating them was the missing `prop_` prefix `provides()` looks for.
+    "customs_desk": "customs_desk",
+    "customs_bollard": "bollard",
+}
+
 # ---------------------------------------------------------------------------
 # The room
 # ---------------------------------------------------------------------------

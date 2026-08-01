@@ -5129,3 +5129,70 @@ parameter. Verified: `sidecar` returns `babcom_terminal`, `bunk`, `locker`, `sho
 **What would overturn it.** A module renaming one of these spans. The `_selftest` check fires
 immediately in that case, which is the point of asserting against the mesh rather than against a
 written list.
+
+---
+
+## INV-249 — The naming-mismatch class, closed: near-miss 26 → 0
+
+`PROVIDES` tables in `station/customs.py` and `station/hospitality.py`, joining the four added by
+INV-248.
+
+**What.** The last six span-to-token mappings on the station where a bespoke module builds the thing
+the register declares and calls it something else.
+
+| module | span | token | why this row is safe |
+|---|---|---|---|
+| `customs` | `customs_desk` | `customs_desk` | **the register's token exactly** — the only thing separating them was the missing `prop_` prefix |
+| `customs` | `customs_bollard` | `bollard` | literal |
+| `hospitality` | `bar_table` | `table` | the TOP, laid at `TABLE_H_M − TABLE_TOP_M`; `bar_table_stem` is the column under it and is no more usable than `cc_console_leg` |
+| `hospitality` | `bar_stool` | `stool` | literal |
+| `hospitality` | `bar_dartboard` | `dartboard` | *"Dartboard … on the far wall"* |
+| `hospitality` | `bar_pendant_lamp` | `pendant_lamp` | *"The bright rim inside the shade — the actual source"* |
+| `hospitality` | `bar_servery` | `bar_counter` | **the module states the identity itself** |
+
+**The last row is the one a mechanical search could not have proposed**, and it is worth keeping
+because it shows the limit of `near_miss`. `bar_servery` and `bar_counter` share no underscore
+segment, so the segment test never suggested it. The module's own comment does:
+
+> *"`bar_servery`, not `bar_counter`: `rooms.py` emits `prop_bar_counter` for the procedural bars,
+> and `bar_counter` is a SUFFIX of it."*
+
+The rename was deliberate, to dodge a prefix collision, and the identity was written down at the
+time. Reading the module beat searching it.
+
+### The number that closes the class
+
+| | 4c | 4d | now |
+|---|---|---|---|
+| declared uses resolving | 259 / 357 | 284 / 357 | **302 / 357** |
+| `built bespoke` | 0 / 98 | 25 / 98 | **43 / 98** |
+| places resolving NONE | 26 | 13 | **5** |
+| **built but misnamed (`near`)** | **26** | 14 | **0** |
+
+**`near` reaching zero is the finding.** Every one of the 55 declared uses still unresolved is
+**genuinely absent** rather than merely misnamed — a different and far more expensive kind of work.
+`--gate` now fails if that number comes back.
+
+### Two things deliberately NOT mapped, and the reasons are the point
+
+* **`bar_display` → `menu_display`.** The module calls it *"the amber display, on the far wall"*,
+  beside the dartboard. A wall display next to a dartboard is as likely to be a scoreboard as a
+  menu. Mapping it would make the audit number go up **on a guess**, which is the one thing this
+  table must never do.
+* **`council_chair_seat` → `delegate_bench`.** The module builds a **chair** — *"Seat pan. A
+  cushion, not a sheet of paper"* — where the register declares a **bench**. Same function,
+  different furniture. The disagreement is between the register and the module and belongs to
+  whoever owns the register, not to an alias table.
+
+### A defect this made visible rather than caused
+
+`bar_pendant_lamp` now resolves, and its verb is **`read`** — so the runtime prompt is
+*"[E] read the pendant lamp"*. The cause is the head-noun collision `interact._selftest` has
+reported since it was written: `_HEAD_VERB["lamp"] = "read"` is right for `atmosphere_status_lamp`
+and wrong for `pendant_lamp`, and one override per head noun cannot be right for both. The shape
+rule underneath is no better — `pendant_lamp` is `PROP_KIND` `post`, which gives `tread`.
+
+**Mapping it anyway is deliberate.** The object identification is correct; withholding a correct
+resolution because a downstream verb is wrong would hide the defect instead of exposing it. The
+collision is pre-existing and was reported before this change; what is new is that it now reaches a
+player. Fixing it needs a per-token override, which `_HEAD_VERB` does not have.

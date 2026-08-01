@@ -45,19 +45,16 @@
    "babcom_terminal",
    "baggage_scanner"
   ],
-  "resolved": [],
+  "resolved": [
+   "customs_desk"
+  ],
   "unresolved": [
    "identicard_reader",
-   "customs_desk",
    "info_board",
    "babcom_terminal",
    "baggage_scanner"
   ],
-  "near": {
-   "customs_desk": [
-    "customs_desk"
-   ]
-  },
+  "near": {},
   "groups": 166
  },
  {
@@ -69,17 +66,14 @@
    "customs_desk",
    "info_board"
   ],
-  "resolved": [],
+  "resolved": [
+   "customs_desk"
+  ],
   "unresolved": [
    "identicard_reader",
-   "customs_desk",
    "info_board"
   ],
-  "near": {
-   "customs_desk": [
-    "customs_desk"
-   ]
-  },
+  "near": {},
   "groups": 162
  },
  {
@@ -92,18 +86,15 @@
    "welcome_board",
    "bollard"
   ],
-  "resolved": [],
+  "resolved": [
+   "bollard"
+  ],
   "unresolved": [
    "babcom_terminal",
    "station_schematic_screen",
-   "welcome_board",
-   "bollard"
+   "welcome_board"
   ],
-  "near": {
-   "bollard": [
-    "customs_bollard"
-   ]
-  },
+  "near": {},
   "groups": 136
  },
  {
@@ -266,30 +257,17 @@
    "pendant_lamp",
    "menu_display"
   ],
-  "resolved": [],
-  "unresolved": [
+  "resolved": [
    "bar_counter",
    "table",
    "stool",
    "dartboard",
-   "pendant_lamp",
+   "pendant_lamp"
+  ],
+  "unresolved": [
    "menu_display"
   ],
-  "near": {
-   "table": [
-    "bar_table",
-    "bar_table_stem"
-   ],
-   "stool": [
-    "bar_stool"
-   ],
-   "dartboard": [
-    "bar_dartboard"
-   ],
-   "pendant_lamp": [
-    "bar_pendant_lamp"
-   ]
-  },
+  "near": {},
   "groups": 94
  },
  {
@@ -945,21 +923,13 @@
    "table",
    "stool"
   ],
-  "resolved": [],
-  "unresolved": [
+  "resolved": [
    "bar_counter",
    "table",
    "stool"
   ],
-  "near": {
-   "table": [
-    "bar_table",
-    "bar_table_stem"
-   ],
-   "stool": [
-    "bar_stool"
-   ]
-  },
+  "unresolved": [],
+  "near": {},
   "groups": 99
  },
  {
@@ -1840,22 +1810,15 @@
    "stool",
    "menu_display"
   ],
-  "resolved": [],
-  "unresolved": [
+  "resolved": [
    "bar_counter",
    "table",
-   "stool",
+   "stool"
+  ],
+  "unresolved": [
    "menu_display"
   ],
-  "near": {
-   "table": [
-    "bar_table",
-    "bar_table_stem"
-   ],
-   "stool": [
-    "bar_stool"
-   ]
-  },
+  "near": {},
   "groups": 44
  },
  {
@@ -1867,18 +1830,14 @@
    "seat",
    "menu_display"
   ],
-  "resolved": [],
+  "resolved": [
+   "table"
+  ],
   "unresolved": [
-   "table",
    "seat",
    "menu_display"
   ],
-  "near": {
-   "table": [
-    "bar_table",
-    "bar_table_stem"
-   ]
-  },
+  "near": {},
   "groups": 94
  },
  {
@@ -1890,21 +1849,13 @@
    "table",
    "stool"
   ],
-  "resolved": [],
-  "unresolved": [
+  "resolved": [
    "bar_counter",
    "table",
    "stool"
   ],
-  "near": {
-   "table": [
-    "bar_table",
-    "bar_table_stem"
-   ],
-   "stool": [
-    "bar_stool"
-   ]
-  },
+  "unresolved": [],
+  "near": {},
   "groups": 93
  },
  {

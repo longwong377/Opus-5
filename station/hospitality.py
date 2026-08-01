@@ -68,6 +68,30 @@ import rooms as _rooms                                          # noqa: E402
 import interior_kit as kit                                     # noqa: E402
 import bespoke as _bsp                                         # noqa: E402
 
+# See `quarters.PROVIDES` for why this table exists and why it is not a prefix
+# rule. Each row is verified against this file's own code for the span.
+PROVIDES = {
+    # THE SURFACE, NOT THE STRUCTURE. `bar_table` is the top, laid at
+    # `TABLE_H_M - TABLE_TOP_M`; `bar_table_stem` is the column under it and
+    # is no more usable than `cc_console_leg` is.
+    "bar_table": "table",
+    "bar_stool": "stool",
+    "bar_dartboard": "dartboard",       # "Dartboard ... on the far wall"
+    "bar_pendant_lamp": "pendant_lamp",  # "The bright rim inside the shade"
+    # THE MODULE ALREADY EXPLAINS THIS ONE, and it is why the near-miss
+    # search never found it: the comment above the span says "`bar_servery`,
+    # not `bar_counter`: rooms.py emits `prop_bar_counter` for the procedural
+    # bars, and `bar_counter` is a SUFFIX of it". The rename was deliberate,
+    # the identity is stated, and the two names share no segment -- so this
+    # row is the one the mechanical search could not have proposed.
+    "bar_servery": "bar_counter",
+}
+# NOT MAPPED, and the reason is the point of writing it down: `bar_display` is
+# "the amber display, on the far wall" beside the dartboard, and the register
+# declares `menu_display`. A wall display next to a dartboard is as likely to
+# be a scoreboard as a menu. Mapping it would make the audit number go up on a
+# guess, which is the one thing this table must never do.
+
 # ---------------------------------------------------------------------------
 # The room. Small and low -- that is the point of it.
 # ---------------------------------------------------------------------------

@@ -386,11 +386,18 @@ def audit(keys=None, progress=None):
 CACHE = os.path.join(ROOT, "docs", "interact-audit.json")
 
 # What the audit read when it was last rebuilt, and what CI holds the line at.
-# 284 of 357 declared interactables resolve. The split WAS total -- `built
+# 302 of 357 declared interactables resolve. The split WAS total -- `built
 # generic 259/259, built bespoke 0/98` -- and a ratio that clean is never
 # per-object; it was a naming convention, and `module_provides` above is the
-# fix. Bespoke is now 25/98 and the places that resolve NONE of theirs went
-# 26 -> 13. `--gate` fails if either number moves the wrong way.
+# fix. Bespoke is now 43/98 and the places that resolve NONE of theirs went
+# 26 -> 5.
+#
+# AND THE NEAR-MISS CATEGORY IS EMPTY. `tally`'s `near` count -- declared uses
+# whose room emits something that is obviously the same object under another
+# name -- went 26 -> 14 -> **0**. Every one of the 55 still unresolved is
+# GENUINELY ABSENT rather than merely misnamed, which is a different and much
+# more expensive kind of work. That number reaching zero is what closes this
+# class of defect; `--gate` fails if it comes back.
 #
 # THE BASELINE IS NOT THE BAR. It is a ratchet: the bar is 357/357 and the
 # repository is 98 short of it. Recording the shortfall as a number CI can watch
@@ -398,8 +405,8 @@ CACHE = os.path.join(ROOT, "docs", "interact-audit.json")
 # recomputes -- and `--gate --rebuild` re-runs the whole audit, because a gate
 # that reads a committed artefact and cannot rebuild it can only say whether the
 # FILE passes, never whether the file still describes the code.
-BASELINE = {"declared": 357, "resolved": 284, "places_all": 99,
-            "places_none": 13}
+BASELINE = {"declared": 357, "resolved": 302, "places_all": 101,
+            "places_none": 5}
 
 
 def load_audit(path=CACHE):
