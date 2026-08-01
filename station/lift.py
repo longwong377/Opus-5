@@ -1155,7 +1155,8 @@ def _selftest():
         sealed.append(_cast(o, out, sv, st_))
     check("every landing aperture is a hole a body can cross",
           all(h is None for h in crossed),
-          f"a ray through a landing was stopped at {crossed}")
+          f"{sum(h is None for h in crossed)}/{len(crossed)} rays crossed; "
+          f"hits {crossed}")
     check("and with the landings suppressed the same rays are stopped",
           all(h is not None and h < g["shaft"]["bore_hd"] + 0.01
               for h in sealed),
@@ -1171,7 +1172,7 @@ def _selftest():
     r_open = _cast(o, out, ov_, ot_)
     r_blind = _cast(o, out, bv, bt)
     check("the rendered aperture is open where the shell's is",
-          r_open is None, f"the rendered landing stopped a ray at {r_open}")
+          r_open is None, f"{r_open} (None = crossed)")
     check("and a blind storey in the render stops it",
           r_blind is not None, f"the blind wall let a ray through: {r_blind}")
 
@@ -1273,7 +1274,7 @@ def _selftest():
           len(lo_) == 0 and len(hi_) == 0,
           f"{len(lo_)} open, {len(hi_)} non-manifold")
     check("and its landings open the other way",
-          hL is None, f"the -1 landing stopped a ray at {hL}")
+          hL is None, f"ray through the -1 landing: {hL} (None = crossed)")
     check("and nothing on that hand stands in the car's path either",
           swept_intruders(gL, lv) == 0,
           f"{swept_intruders(gL, lv)} vertices in the car's path")
@@ -1296,13 +1297,15 @@ def _selftest():
     do, dn = it.boundary_edges(dv, dt)
     check("and a drum shaft is closed as well",
           len(do) == 0 and len(dn) == 0, f"{len(do)} open, {len(dn)} nonman")
-    check("and the drum's car has a floor at both its landings",
-          all(_cast(place(gd, [(0.0, lg["y_m"] + 1.0, 0.0)])[0],
+    d_hits = [_cast(place(gd, [(0.0, lg["y_m"] + 1.0, 0.0)])[0],
                     tuple(-c for c in _basis(30.0)[1]),
                     *lift_collision(schema, profile, g=gd,
-                                    at_deck=lg["deck"])[:2]) is not None
-              for lg in gd["landings"]),
-          "a probe in the drum shaft found nothing underfoot")
+                                    at_deck=lg["deck"])[:2])
+              for lg in gd["landings"]]
+    check("and the drum's car has a floor at both its landings",
+          all(h is not None and abs(h - 1.0) < 0.02 for h in d_hits),
+          f"drops {[None if h is None else round(h, 4) for h in d_hits]} m "
+          f"from a 1.0 m probe")
 
     # --- winding, which decides floor from hole ---------------------------
     kv2, kt2, km2 = lift_collision(schema, profile, g=g, at_deck=0)
