@@ -1085,6 +1085,97 @@ def build_deck(schema, profile, sector, ring, deck, with_rooms=True,
     return V, T, G, stats
 
 
+def clusters_for(sector, ring, deck, keys):
+    """The z-clusters that carry the named places, in axial order.
+
+    BUSIEST-FIRST IS THE WRONG SELECTOR WHEN YOU KNOW WHAT YOU WANT. `blue/0/0`
+    holds six clusters, and its two busiest are the docking bays at 7120 and
+    C&C at 7960 -- so asking for "the top two" to stage the arrival sequence
+    returns the bays and the command deck, and the customs halls at 7440 are
+    not in the build at all. Ask for the places instead.
+    """
+    want = set(keys)
+    out = {}
+    for q in places_on(sector, ring, deck):
+        if q["key"] in want:
+            out[round(q.get("z_m", 0.0) / Z_CLUSTER_M) * Z_CLUSTER_M] = True
+    return sorted(out)
+
+
+def build_deck_clusters(schema, profile, sector, ring, deck, n=None,
+                        keys=None, **kw):
+    """Several of a deck's z-clusters in ONE mesh. Returns (V, T, G, stats).
+
+    THE THING THAT STOPPED THE ARRIVAL LOOP BEING ONE PLACE. `build_deck`
+    assembles a single z-cluster, and that is correct -- `interior.ring_arc`
+    sweeps a corridor at a FIXED z, so a ring serves the locations at its own z
+    and not the ones 300 m up the station. Assembling a whole deck onto one
+    ring once put rooms hundreds of metres from the floor meant to serve them,
+    which the walk test found as a body falling 263 m. `Z_CLUSTER_M` and this
+    module's cluster rule exist because of that.
+
+    But "one cluster per build" is not the same statement, and it is the one
+    that bit. Measured: **13 decks carry more than one z-cluster**, and
+    `blue/0/0` carries SIX over 1,120 m of axis. The docking bays sit at
+    z 7120 and the customs halls at 7440, one deck and two clusters -- so the
+    arrival sequence's walk from ramp to queue could not exist in a single
+    build, and the arrival agent reported it as 6 steps of 11 rather than
+    hiding it.
+
+    This does not join them with geometry and does not pretend to: there is no
+    floor between 7120 and 7440 and inventing one would be worse than the gap.
+    What it does is put both in ONE SCENE, so a transition between them is a
+    transition inside a build rather than across a build boundary -- which is
+    what a transport tube actually is on this station, and what
+    `arrival.py` already models.
+
+    A WRAPPER, NOT A REWRITE, and deliberately. `build_deck` is 370 lines that
+    end in one `return`, with the collision meta, the spawn, the doors and the
+    clutter all bound to a single cluster's `cz`. Threading a loop through it
+    would put every one of those decisions in question at once. Calling it per
+    cluster and merging costs a little geometry and risks nothing that is
+    already tested.
+
+    `keys=` names the PLACES that must be in the build and takes the clusters
+    that carry them, which is almost always what a caller means; `n=` takes the
+    busiest N; `n=None` takes every cluster the deck has. Groups are prefixed
+    `zNNNN__` so
+    a caller can tell which cluster a span came from -- and so two clusters'
+    identically-named corridor spans do not merge into one material group.
+    """
+    if keys:
+        zs = clusters_for(sector, ring, deck, keys)
+        if not zs:
+            raise ValueError(f"{sector}/{ring}/{deck} carries none of {keys}")
+    else:
+        zs = z_clusters(sector, ring, deck)
+        if not zs:
+            raise ValueError(f"{sector}/{ring}/{deck} carries no located "
+                             f"cluster")
+        if n is not None:
+            zs = zs[:max(1, n)]
+    V, T, G = [], [], []
+    stats = {"clusters": [], "z": list(zs), "rooms": 0, "corridor_tris": 0,
+             "room_tris": 0, "skipped": []}
+    for z in zs:
+        v, t, g, st = build_deck(schema, profile, sector, ring, deck,
+                                 z_m=z, **kw)
+        base, t0 = len(V), len(T)
+        V.extend(v)
+        T.extend((a + base, b + base, c + base) for a, b, c in t)
+        pre = f"z{int(round(z))}__"
+        G.extend((pre + nm, lo + t0, hi + t0) for nm, lo, hi in g)
+        stats["clusters"].append({"z": z, "tris": len(t),
+                                  "rooms": st.get("rooms", 0),
+                                  "spawn": st.get("spawn"),
+                                  "spawn_at": st.get("spawn_at")})
+        for k in ("rooms", "corridor_tris", "room_tris"):
+            stats[k] += st.get(k, 0)
+        stats["skipped"] += st.get("skipped", [])
+    stats["tris"] = len(T)
+    return V, T, G, stats
+
+
 def floor_radius(verts, tris, quantum=0.001, near_m=0.30, min_share=0.02):
     """The radius of the surface a boot rests on, read off an emitted mesh.
 
@@ -1513,6 +1604,33 @@ def _selftest():
         check("...and the two callers get the same room, by construction",
               gused == zused and len(gt2) == len(zt),
               f"{gused}/{len(gt2)} against {zused}/{len(zt)}")
+
+    # -- MULTI-CLUSTER ASSEMBLY: the arrival route in one build --------------
+    # `blue/0/0` carries six z-clusters over 1,120 m and `build_deck` assembles
+    # ONE, so the walk from the docking ramp to the customs queue could not
+    # exist in a single build. These three places are the arrival sequence's
+    # first half and they must come back in one mesh.
+    _route = ("docking_bays", "customs_north", "arrival_concourse")
+    _zc = clusters_for("blue", 0, 0, _route)
+    check("the arrival route spans more than one z-cluster, which is the "
+          "reason build_deck_clusters exists",
+          len(_zc) > 1, f"clusters {_zc}")
+    _rv, _rt, _rg, _rst = build_deck_clusters(
+        schema, profile, "blue", 0, 0, keys=_route, with_rooms=True)
+    _missing = [k for k in _route
+                if not any(k in n for n, _a, _b in _rg)]
+    check("...and one build holds every place on it",
+          not _missing, f"missing {_missing}")
+    check("...each cluster keeping its own group namespace",
+          len({n.split("__")[0] for n, _a, _b in _rg}) == len(_zc),
+          str(sorted({n.split("__")[0] for n, _a, _b in _rg})))
+    # THE CONTROL: the busiest-first selector does NOT contain the route, which
+    # is what makes `keys=` load-bearing rather than a convenience. blue/0/0's
+    # two busiest are the bays at 7120 and C&C at 7960; customs is at 7440.
+    _busy = z_clusters("blue", 0, 0)[:2]
+    check("...and busiest-first would have MISSED customs, which is why "
+          "`keys=` exists",
+          _zc != sorted(_busy), f"busiest {sorted(_busy)} vs route {_zc}")
 
     print(f"{ok}/{ok + fail} passed")
     return 1 if fail else 0
