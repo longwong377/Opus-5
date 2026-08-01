@@ -1,6 +1,6 @@
 # Project State
 
-**Last updated:** 2026-08-01 · **Session 4d** — **every declared interactable now exists, and the 84 that did not were ONE function with one caller** · **4c** — the station is INTERACTABLE, the port is on a wall, and the 24-minute suites were one bad cache key · **4b** — a police force, friction in metres, the plated shell, the fitting-reach fix
+**Last updated:** 2026-08-01 · **Session 4d** — **READ §8 FIRST: the owner asked what actually works and the answer was mostly no. Direction changed.** Also: 357/357 interactables, and the 60-minute engine tax is over · **4c** — the station is INTERACTABLE, the port is on a wall, and the 24-minute suites were one bad cache key · **4b** — a police force, friction in metres, the plated shell, the fitting-reach fix
 
 ## Session 4d — 84 MISSING PROPS WERE NOT 84 JOBS. READ THE SHAPE OF A FAILING NUMBER.
 
@@ -118,7 +118,77 @@ readers be‖## Session 4c …"* … 116 lines later … *"tween them. The file"
 which is the thing that survives a context reset, had a section boundary inside a word. Unspliced;
 4c now sits above 4b where it belongs.
 
+### 8. THE OWNER READ THE STATE OF THE BUILD AND THE ANSWER WAS MOSTLY "NO"
+
+Recorded verbatim in substance, because it is the most important thing in this file and a
+future context will otherwise repeat the mistake. Asked what actually works, the honest tally:
+
+| | |
+|---|---|
+| NPCs have lives, jobs, species-specific sleep and meals | **yes, as DATA** — ~19,600 lines |
+| any of it runs at runtime | **no** — one baked snapshot at a fixed station hour |
+| talk to anyone | **no** — there is no dialogue system anywhere in the repository |
+| any simulation running in the engine | **no** — traffic, security, broadcast, economy all bake offline |
+| HUD, menu, map, inventory — any UI | **no** — the only UI is the text `[E] operate the …` |
+| fly a Starfury | **no** — zero references to it in any `.gd` or `.tscn` |
+| playable roles, command, a residence | **no** |
+| arrival-by-transport intro, character creation | **no** |
+| ambience or any audio | **no** — not one line |
+| 250,000 unique NPCs | **no** — ~2,028 bodies placed; 250,000 is a DENSITY used to derive crowd counts |
+| factions act | **no** — they decide who is in a room and what they wear |
+| locations "built to perfection" | **no** — the 68 procedural rooms score craft **1**; layer 8 is 0 |
+
+**The one number that explains all of it: 85,940 lines of Python against 3,291 of GDScript.**
+26:1. This is not shallow work — it is very deep work in one dimension. The project has been
+optimising what can be counted, because counts go green, and the game cannot be expressed as a
+count. Session 4d's own first increment (357/357 interactables) is exactly that pattern.
+
+**The owner's ruling on what to do about it: fix the engine binary first, and keep the existing
+gates green without growing them.** No new coverage gates, no new layer numbers.
+
+### 9. THE 60-MINUTE ENGINE TAX, AND THE 8-SECOND BUG THAT HID IT
+
+`docs/adr/0001-engine-choice.md` said at the outset: *"Build once, publish as a GitHub Release
+asset, pull in seconds thereafter."* It never happened, so every container has paid an hour to
+look at anything — and this session's container **restarted mid-session and lost a build in
+progress**, which is the argument in one line.
+
+Three things were measured rather than assumed:
+
+1. **`build_godot.sh` died 8 seconds into a 60-minute job and said nothing.** A fresh container
+   has no apt package lists, so `apt-get install` exits 100 before fetching a byte. The install
+   was `>/dev/null 2>&1` with its status unchecked, so the only evidence was `exit 100`.
+2. **Downloading a release asset through the agent proxy WORKS** — HTTP 200, 102 MB fetched via
+   `release-assets.githubusercontent.com`. The old note that GitHub downloads are proxy-blocked
+   is true of **archive and codeload** paths only. So the fetch half of ADR 0001's plan is
+   proven.
+3. **Nothing in a session can create a release.** `api.github.com` is 403, there is no `gh`
+   CLI, and the GitHub MCP server's release calls (`get_latest_release`, `get_release_by_tag`,
+   `list_releases`) are all reads. The git remote IS writable — it is how every commit leaves.
+
+So the artifact is **vendored in the repository** at `vendor/godot/`, and step 2 of the script
+unpacks it. The container clones this repo at session start, so the binary arrives with the
+code: no download, no URL, no token, no manual step. `--vendor` is the command that puts it
+there.
+
+**The cost is stated, not glossed: ~50 MB in git history, permanently.** `docs/godot-binary.md`
+used to argue against exactly this and it was right about the cost and wrong about the
+comparison — the alternative is an hour of compute per container, forever, on the one artefact
+without which no craft claim in this project can be checked.
+
+Three cases run, two of them controls: vendored + good checksum unpacks in seconds; vendored +
+**wrong** checksum prints the mismatch and falls through to the build; no vendored archive
+falls straight through with no behaviour change.
+
+**If anyone with GitHub access reads this**: two commands move it to a Release asset and let
+`vendor/godot/` be deleted — `bash tools/build_godot.sh --package` prints them.
+
 ### NEXT SESSION — in priority order
+
+**The owner has ruled on direction: the player's experience, not more coverage. Do not add
+gates or layer numbers.** After the engine binary lands, the ranked list below is the PLACES
+track and is explicitly lower priority than the player-facing work the owner named — arrival
+and processing, a residence, a HUD, someone who talks back, ambient sound, a flyable Starfury.
 
 1. **The three observation dome interiors.** Now the top item, and `station/bespoke.py` already
    carries a full spec: an observation room is a FLOOR, a WINDOW RING and a DOME WITH THICKNESS —

@@ -39,6 +39,35 @@ into four scored dimensions with written descriptors — **craft, fidelity, perf
 robustness** — and defines the bar. Nothing is "done" because it was built; it is done when it
 clears the bar and stops regressing.
 
+## THE OWNER'S RULING, SESSION 4d — IT IS A WORLD GENERATOR AND NOT YET A GAME
+
+**Read this before the plan below. It changes what to work on.**
+
+The owner asked what actually works. The answer, measured rather than summarised: NPCs have
+lives, jobs and species-specific sleep and meals **as data** and none of it runs at runtime;
+there is **no dialogue system anywhere**; **no HUD, menu, map or inventory** — the only UI in
+the project is the text `[E] operate the …`; **no flyable Starfury** (zero references in any
+`.gd` or `.tscn`, though a flight model and a mesh both exist); **no audio at all**; no player
+residence, no arrival sequence, no character creation; factions decide who is in a room and
+what they wear and otherwise do not act. There are **~2,028 bodies** placed, not 250,000 —
+that figure is a *density* used to derive crowd counts.
+
+**One number explains it: 85,940 lines of Python against 3,291 of GDScript.** 26:1. This is not
+shallow work, it is very deep work in one dimension. **The project has been optimising what can
+be counted, because counts go green and a game cannot be expressed as a count.** Every gate in
+this file measures coverage of a thing that already exists; none of them can fail for "there is
+no reason to be here".
+
+**The ruling:**
+
+1. **Build the player's experience, not more coverage.** Arrival and processing, a residence, a
+   HUD, someone who talks back, ambient sound, a flyable Starfury. In that spirit, not that
+   exact order.
+2. **Keep the existing gates green. Do not grow them.** No new coverage gates, no new layer
+   numbers, no new scored dimensions. The ones that exist stay passing so nothing rots.
+3. The layer table and the W-track below remain accurate descriptions of the shell. They are
+   **no longer the priority ordering.**
+
 ## THE PLAN — A PLAYABLE BUILD AT ALL TIMES
 
 **Set by the owner, session 3u, and it REPLACES the layer plan below as the ordering rule.**
