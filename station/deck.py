@@ -618,6 +618,32 @@ def arrivals_sign(radius_m, angle_deg, z_m, side, hour=10.0, day=0,
     return _place_local(local, radius_m, angle_deg, z_m), t, g
 
 
+# The standing surfaces, and the list is `broadcast.MINIPAX_PLACES` -- where
+# people queue and are processed. FACTIONS.md 13 proposes public reporting
+# terminals "in the Zocalo and both customs halls" and a notice belongs
+# wherever the terminal does.
+NOTICE_BOARD_PLACES = ("customs_north", "customs_south", "arrival_concourse",
+                       "bay_elevators")
+
+
+def notice_sign(radius_m, angle_deg, z_m, side, kind="minipax", gap_m=0.10):
+    """A Ministry of Peace or ISN board beside one door.
+
+    On the OPPOSITE side of the door from the arrivals board, so a passenger
+    reading when the next ship berths is not reading a recruitment notice at
+    the same time -- and so the two boards do not intersect, which is the sort
+    of thing a render shows and an assertion does not.
+    """
+    import signage as S                                        # noqa: PLC0415
+    v, t, g = S.notice_board(kind, with_post=False)
+    dx = (K.PROVISIONAL["door_width_m"] / 2.0 + S.PLAQUE_W_M
+          + S.BOARD_W_M / 2.0 + 2.0 * gap_m)
+    local = [(x - dx, y, z) for x, y, z in v]
+    if side > 0:
+        local = [(-x, y, -z) for x, y, z in local]
+    return _place_local(local, radius_m, angle_deg, z_m), t, g
+
+
 def vestibule_render(radius_m, angle_deg, z_from, z_to, width_m, height_m,
                      floor_y=0.022, wall_t=0.12):
     """The vestibule a player can SEE, as distinct from the one they stand on.
@@ -784,6 +810,25 @@ def build_deck(schema, profile, sector, ring, deck, with_rooms=True,
                 G.append((f"{q['key']}__{nm}", lo_ + t0, hi_ + t0))
             stats["arrivals_tris"] = (stats.get("arrivals_tris", 0)
                                       + len(at))
+
+        # THE STANDING SURFACES. `broadcast.py` had zero importers; its ISN
+        # bulletins and Ministry of Peace notices are era-locked to
+        # `costume.ERA_EVENTS`, so this is the one surface on the station whose
+        # CONTENT changes if the datum moves -- render the same deck at S2E01
+        # and the Ministry of Peace is not on it, exactly as the armband is not
+        # on a sleeve. FACTIONS.md 5.1's rule, applied to a wall.
+        if q["key"] in NOTICE_BOARD_PLACES:
+            nv, nt, ng = notice_sign(
+                radius, door["angle_deg"],
+                cz + door["side"] * K.PROVISIONAL["corridor_width_m"] / 2.0,
+                door["side"],
+                "minipax" if q["key"].startswith("customs") else "isn")
+            off, t0 = len(V), len(T)
+            V.extend(nv)
+            T.extend((a + off, b + off, c + off) for a, b, c in nt)
+            for nm, lo_, hi_ in _runs(ng):
+                G.append((f"{q['key']}__{nm}", lo_ + t0, hi_ + t0))
+            stats["notice_tris"] = stats.get("notice_tris", 0) + len(nt)
 
     # THE SPAWN COMES FROM THE COLLISION SHELL, which is the only mesh that
     # knows where the floor a body rests on actually is. Two earlier versions of
@@ -1289,6 +1334,34 @@ def _selftest():
           f"{len(late) - 2} movements listed at 10h; "
           f"04h lists {early[2].split()[0] if len(early) > 2 else '--'}, "
           f"10h lists {late[2].split()[0] if len(late) > 2 else '--'}")
+
+    # --- THE ERA IS ON THE WALL ------------------------------------------
+    # The sharpest assertion available on this deck, because it is about
+    # CONTENT and not geometry: render the same corridor at S2E01 and the
+    # Ministry of Peace is not on it, exactly as the armband is not on a
+    # sleeve. FACTIONS.md 5.1 -- "any armband before The Fall of Night is an
+    # error" -- applied to a board.
+    n_notice = fs.get("notice_tris", 0)
+    check("the standing notice board is in the assembled deck",
+          n_notice > 0, f"{n_notice} triangles")
+    now = _S.notice_lines("minipax", (3, 5))
+    before = _S.notice_lines("minipax", (2, 1))
+    check("...and at the S3E05 datum it carries the Ministry of Peace",
+          any("NIGHTWATCH" in ln or "REPORT" in ln for ln in now),
+          f"{now[2:4]}")
+    check("...and BEFORE The Fall of Night it does not -- the board's content "
+          "is era-locked at source, so the same deck renders differently at "
+          "S2E01",
+          not any("NIGHTWATCH" in ln for ln in before)
+          and before != now,
+          f"S2E01 {before[2:]!r}")
+    check("...and it is not BLANK either -- a dark lit panel in a customs "
+          "hall reads as a broken prop, so it falls back to the "
+          "authority-1 civic text",
+          len(before) > 2 and before[2],
+          f"{before[2] if len(before) > 2 else '(empty)'!r}")
+    print(f"  notice board: {n_notice:,} triangles; at S3E05 "
+          f"{now[2][:30]!r}, at S2E01 {before[2][:30]!r}")
 
     # --- WHOSE GEOMETRY IS A PLAYER STANDING IN --------------------------
     # `build_deck` calls `rooms.build` for every room and has never consulted

@@ -603,6 +603,60 @@ def arrivals_board(hour=None, day=0, with_post=True):
     return v, t, g
 
 
+def notice_lines(kind="minipax", datum=None, rows=4):
+    """A standing surface's text, from `broadcast` rather than from a table.
+
+    `kind` is `"minipax"` or `"isn"`. Both are ERA-LOCKED at source --
+    `broadcast.minipax_notices` returns nothing before *The Fall of Night*, so
+    a Season 1 render of this board comes back with the fallback line and no
+    Ministry of Peace on it at all. FACTIONS.md 5.1 states the rule for the
+    armband and it is the same rule: "any armband before The Fall of Night is
+    an error."
+    """
+    import broadcast as _bc                                     # noqa: PLC0415
+    items = (_bc.minipax_notices(datum) if kind == "minipax"
+             else _bc.isn_bulletins(datum))
+    head = ("MINISTRY OF PEACE" if kind == "minipax"
+            else "INTERSTELLAR NETWORK NEWS")
+    out = [head, "EARTH ALLIANCE"]
+    if not items:
+        # NOT an empty board. A blank lit panel in a customs hall reads as a
+        # broken prop; the station's standing civic text is what is there when
+        # there is no notice, and it is authority 1.
+        out.append(BOARDS["customs_procedures"]["title"])
+        return out
+    for a in items[:rows]:
+        body = a["text"].split(". ", 1)[-1] if ". " in a["text"] else a["text"]
+        for ln in wrap(body.upper(), 34)[:2]:
+            out.append(ln)
+    return out
+
+
+def notice_board(kind="minipax", datum=None, with_post=True):
+    """A lit board carrying `broadcast`'s standing surfaces.
+
+    THE BUILD NOTE GOVERNS THE LOOK AND IT IS FACTIONS.md 11.5's: the
+    propaganda "should read as OFFICIAL AND REASONABLE -- clean typography in
+    the same register as the customs boards -- because that is what makes them
+    sinister. Do not make them look like villain posters." So this is the same
+    board, the same frame, the same letterforms as the authority-1 customs
+    transcription hanging beside it. The register IS the design.
+    """
+    lines = notice_lines(kind, datum)
+    v, t, g = board(with_post=with_post)
+    face_w = BOARD_W_M - 2 * BOARD_FRAME_M
+    face_h = BOARD_H_M - 2 * BOARD_FRAME_M
+    lv, lt, lg = letter_mesh(
+        lines, face_w, face_h, header=1,
+        z=BOARD_T_M - BOARD_INSET_M + 0.004,
+        cy=MOUNT_H_M + BOARD_H_M / 2.0)
+    base = len(v)
+    v.extend(lv)
+    t.extend([(a + base, c + base, d + base) for a, c, d in lt])
+    g.extend(lg)
+    return v, t, g
+
+
 # ---------------------------------------------------------------------------
 # Door plaques: 118 places that could not say what they were
 # ---------------------------------------------------------------------------
