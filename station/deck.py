@@ -187,13 +187,32 @@ def corridor_z_m(schema, profile, here):
     return far + K.PROVISIONAL["corridor_width_m"] / 2.0
 
 
-def deck_arc(sector, ring, deck, z_m, max_rooms=None):
+def deck_arc(sector, ring, deck, z_m, max_rooms=None, must_cover=None):
     """The angular span of corridor a cluster needs, and the places on it.
 
     Pulled out of `build_deck` so the render mesh and the collision shell are
     laid over EXACTLY the same arc rather than each recomputing it -- two copies
     of this arithmetic is one copy too many for geometry that has to agree about
     where the floor is.
+
+    `must_cover` IS THE FIX FOR 79 OF 96 CLUSTERS BEING UNREACHABLE. Session 4g
+    built `station/routes.py`, which asks the question this project had never
+    asked -- can you get from here to there -- and answered 91 separate pieces.
+    The largest single cause was this function: **a corridor was run over the
+    arc its own ROOMS occupy**, so two clusters on one deck could sit on
+    opposite sides of the ring with no arc in common, and a deck's axial spine
+    had nothing to attach to.
+
+    A corridor is not a fitting for the rooms on it. It is the deck's
+    circulation, and it has to reach the deck's spine whether or not anybody
+    lives at that angle. `must_cover` is that angle -- `routes.transit_angle`,
+    one per sector -- and passing it takes the network from 91 pieces to 71
+    with no other change.
+
+    Extending to the angle rather than sweeping the full ring is deliberate: a
+    full 360 degrees is 1,210 m of corridor a deck at r = 192 m, and the
+    connectivity that is actually missing costs the shortest arc that reaches
+    the spine.
     """
     here = places_on(sector, ring, deck, z_m)
     if max_rooms is not None:
@@ -202,6 +221,17 @@ def deck_arc(sector, ring, deck, z_m, max_rooms=None):
         raise ValueError(f"no gazetteer location on {sector}/{ring}/{deck}")
     lo = min(q["angle_deg"] for q in here) - ARC_PAD_DEG
     hi = max(q["angle_deg"] for q in here) + ARC_PAD_DEG
+    if must_cover is not None:
+        a = float(must_cover)
+        # Reach it the short way round. A corridor that grew the long way round
+        # to meet an angle 10 degrees off its end would sweep 350 degrees of
+        # ring to close a 10 degree gap.
+        while a < lo - 180.0:
+            a += 360.0
+        while a > hi + 180.0:
+            a -= 360.0
+        lo = min(lo, a - ARC_PAD_DEG)
+        hi = max(hi, a + ARC_PAD_DEG)
     return here, lo, min(360.0, hi - lo)
 
 
@@ -213,7 +243,7 @@ def room_half_w_m(schema, profile, place):
 
 
 def deck_plan(schema, profile, sector, ring, deck, z_m=None, max_rooms=None,
-              extra_doors=()):
+              extra_doors=(), must_cover=None):
     """Everything the render and the collision assemblies both need, DECIDED
     ONCE: the arc, the corridor's z, and which rooms get a door and where.
 
@@ -236,7 +266,8 @@ def deck_plan(schema, profile, sector, ring, deck, z_m=None, max_rooms=None,
         raise ValueError(f"{sector} ring {ring} carries no deck {deck}")
     if z_m is None:
         z_m = (z_clusters(sector, ring, deck) or [None])[0]
-    here, lo, span = deck_arc(sector, ring, deck, z_m, max_rooms)
+    here, lo, span = deck_arc(sector, ring, deck, z_m, max_rooms,
+                              must_cover=must_cover)
     cz = corridor_z_m(schema, profile, here)
     radius = plan["radius_m"]
 
@@ -722,7 +753,8 @@ CORRIDOR_INSTANCED = True
 
 def build_deck(schema, profile, sector, ring, deck, with_rooms=True,
                bake_crowd=False,
-               max_rooms=None, z_m=None, extra_doors=()):
+               max_rooms=None, z_m=None, extra_doors=(),
+               must_cover=None):
     """One deck as a single mesh. Returns (verts, tris, groups, stats)."""
     V, T, G = [], [], []
     stats = {"rooms": 0, "skipped": [], "corridor_tris": 0, "room_tris": 0}
@@ -742,7 +774,7 @@ def build_deck(schema, profile, sector, ring, deck, with_rooms=True,
     # deck; placing it at the deck's nominal z, before clustering existed, made
     # a body fall 263 m through empty space.
     dp = deck_plan(schema, profile, sector, ring, deck, z_m, max_rooms,
-                   extra_doors=extra_doors)
+                   extra_doors=extra_doors, must_cover=must_cover)
     here, lo, span, cz = dp["here"], dp["lo"], dp["span"], dp["cz"]
     stats["corridor_z"] = cz
     stats["unopened"] = dp["unopened"]
@@ -1123,7 +1155,7 @@ JOIN_SNAP_TOL_DEG = 1.5
 
 
 def build_deck_clusters(schema, profile, sector, ring, deck, n=None,
-                        keys=None, join=False, join_deg=None, **kw):
+                        keys=None, join=False, join_deg=None, must_cover=None, **kw):
     """Several of a deck's z-clusters in ONE mesh. Returns (V, T, G, stats).
 
     THE THING THAT STOPPED THE ARRIVAL LOOP BEING ONE PLACE. `build_deck`
@@ -1194,7 +1226,8 @@ def build_deck_clusters(schema, profile, sector, ring, deck, n=None,
         # silently absent and the corridor would have arrived at a wall. Take
         # the middle of the arc EVERY cluster covers, or decline to build.
         plans = {z: deck_plan(schema, profile, sector, ring, deck, z,
-                              kw.get("max_rooms")) for z in axial}
+                              kw.get("max_rooms"), must_cover=must_cover)
+                 for z in axial}
         a_lo = max(pl["lo"] for pl in plans.values())
         a_hi = min(pl["lo"] + pl["span"] for pl in plans.values())
         if a_hi - a_lo < JOIN_MIN_ARC_DEG:
@@ -1217,7 +1250,8 @@ def build_deck_clusters(schema, profile, sector, ring, deck, n=None,
 
     for z in zs:
         v, t, g, st = build_deck(schema, profile, sector, ring, deck,
-                                 z_m=z, extra_doors=at_deg.get(z, ()), **kw)
+                                 z_m=z, extra_doors=at_deg.get(z, ()),
+                                 must_cover=must_cover, **kw)
         base, t0 = len(V), len(T)
         V.extend(v)
         T.extend((a + base, b + base, c + base) for a, b, c in t)

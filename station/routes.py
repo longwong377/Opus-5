@@ -67,12 +67,15 @@ import interior as it                                           # noqa: E402
 # owns the number because it is the one that declines to build.
 MIN_SHARED_ARC_DEG = D.JOIN_MIN_ARC_DEG
 
-# How far either side of its places a cluster's ring corridor runs. `deck_plan`
-# sweeps 24 phase offsets over 2.5 degrees and then runs "over the arc the rooms
-# actually occupy plus a margin"; this is that margin, and it is used here as a
-# CHEAP PROXY for calling `deck_plan` 96 times. The proxy is stated because it is
-# a proxy: `--exact` calls `deck_plan` for real and the report prints both.
-ARC_MARGIN_DEG = 2.5
+# How far either side of its places a cluster's ring corridor runs. FROM
+# `deck.ARC_PAD_DEG`, and the first version of this file wrote 2.5 here as a
+# "cheap proxy" -- which was five times too tight and reported 79 of 96 clusters
+# unable to reach their spine when the true figure is far lower. A proxy for a
+# number the owning module exports is not a proxy, it is a second copy. The arc
+# itself now comes from `deck.deck_arc`, which is the function the corridor is
+# actually built from and costs nothing to call: it reads the register and does
+# no geometry.
+ARC_MARGIN_DEG = D.ARC_PAD_DEG
 
 # Two clusters on adjacent decks can take a lift between them if their axial
 # positions are within this. A lift is a vertical shaft; it does not travel
@@ -82,6 +85,12 @@ LIFT_Z_REACH_M = D.Z_CLUSTER_M
 # Two sectors can be joined by an axial trunk if their z extents come within
 # this of each other. The sectors of B5 abut along the axis, so this is small.
 TRUNK_GAP_M = 400.0
+
+# DOES THE LIFT EXIST? Asked of the filesystem, not written down, so this file
+# cannot claim a connection whose generator is not there. The moment
+# `station/lift.py` lands, 38 edges change state and the component count moves
+# without anyone editing this line.
+_LIFT_EXISTS = os.path.exists(os.path.join(HERE, "lift.py"))
 
 
 def clusters():
@@ -105,9 +114,13 @@ def clusters():
                                  "angles": []})
         n["places"].append(p["key"])
         n["angles"].append(float(p.get("angle_deg") or 0.0))
-    for n in out.values():
-        a = sorted(n["angles"])
-        n["arc"] = (a[0] - ARC_MARGIN_DEG, a[-1] + ARC_MARGIN_DEG)
+    for k, n in out.items():
+        try:
+            _h, lo, span = D.deck_arc(n["sector"], n["ring"], n["deck"], n["z"])
+            n["arc"] = (lo, lo + span)
+        except ValueError:
+            a = sorted(n["angles"])
+            n["arc"] = (a[0] - ARC_MARGIN_DEG, a[-1] + ARC_MARGIN_DEG)
         n["z_true"] = None
     return out
 
@@ -124,83 +137,148 @@ def _sector_z(schema, sector):
     return ex["z0"], ex["z1"]
 
 
-def edges(nodes, schema):
+# --------------------------------------------------------------------------
+# THE INFRASTRUCTURE, and it is what makes the graph closable at all
+# --------------------------------------------------------------------------
+# THE FIRST VERSION OF THIS FILE BUILT THE GRAPH OUT OF PLACES ALONE and it could
+# not close: with EVERY implied edge built it still left the station in 23
+# pieces. The reason is the same mistake as the 33 declared adjacencies, one
+# level up. 71 decks carry a location; the station has 251. **A route passes
+# through decks nobody lives on**, so a network made only of destinations has no
+# node to route through and no amount of edges between destinations will join it.
+#
+# So the network has TRANSIT NODES, and they are not an abstraction -- each one
+# is a piece of geometry with a generator behind it:
+#
+#   spine    one axial corridor per deck, at the sector's transit angle, running
+#            the deck's whole z extent.        interior.axial_run   BUILT (4g)
+#   column   one radial transit column per sector at that same angle, serving
+#            every deck of every ring.         station/lift.py      BEING BUILT
+#   trunk    axial corridor joining one sector's column to the next.
+#                                              interior.axial_run   BUILT (4g)
+#
+# ONE ANGLE PER SECTOR FOR ALL OF IT. The column has to land on each deck's
+# spine, so the spine angle and the column angle are the same number, chosen
+# once per sector. That is also how a real station is laid out and how B5's own
+# core shuttle and lift cores read on screen: a transit spine you join, not a
+# lift beside every room.
+#
+# A place's cluster reaches its deck's spine through the RING corridor it
+# already has -- if that corridor covers the spine angle. Today a cluster's
+# corridor covers only the arc its own rooms occupy plus 2.5 degrees
+# (`deck_plan`), which is why this edge can fail, and closing that is milestone
+# 2 of the session: **a deck's corridor should come from the RING, not from
+# where its rooms happen to be.**
+
+
+def transit_angle(sector, nodes):
+    """The angle a sector's whole transit column and every deck spine stands at.
+
+    DERIVED, not chosen: the angle that lies inside the most cluster arcs on
+    that sector, so the fewest places need their corridor extended to reach it.
+    Ties break to the lower angle so the answer is deterministic.
+    """
+    ks = [k for k in nodes if k[0] == sector]
+    if not ks:
+        return 0.0
+    cands = sorted({round(a, 3) for k in ks for a in nodes[k]["angles"]})
+    best = (None, -1)
+    for a in cands:
+        n = sum(1 for k in ks
+                if nodes[k]["arc"][0] <= a <= nodes[k]["arc"][1])
+        if n > best[1]:
+            best = (a, n)
+    return best[0] if best[0] is not None else 0.0
+
+
+def edges(nodes, schema, full_ring=False):
     """Every connection the station's own structure implies, with its kind.
 
-    NOT EVERY PAIR. A corridor is a real object with a generator behind it, so
-    an edge is proposed only where one of the four kinds could physically run,
-    and each carries whether that generator exists today.
+    `full_ring=True` answers the second question this file exists to ask: what
+    the network becomes once a deck's corridor covers its ring instead of only
+    the arc its rooms sit on. The difference between the two runs is the value
+    of that one change, in components, and it is printed rather than argued.
     """
     out = []
     keys = sorted(nodes)
+    sectors = sorted({k[0] for k in keys})
+    ang = {s: transit_angle(s, nodes) for s in sectors}
 
-    # --- axial: two clusters on ONE deck, joined along the ship --------------
-    by_deck = {}
+    # --- ring: a cluster reaches its deck's spine along its own corridor -----
+    # BUILDABLE MEANS THE GENERATOR CAN DO IT, NOT THAT IT HAPPENS TO TODAY.
+    # `deck.deck_arc(must_cover=)` extends a cluster's corridor the short way
+    # round until it reaches the deck's transit angle -- so the question this
+    # edge asks is whether that extension exists, and it is asked BY CALLING IT
+    # rather than by reasoning about it. `full_ring=False` reports the state
+    # before that argument was threaded, which is what the 4g report compares
+    # against.
     for k in keys:
-        by_deck.setdefault(k[:3], []).append(k)
-    for dk, ks in by_deck.items():
-        ks = sorted(ks, key=lambda k: k[3])
-        for a, b in zip(ks, ks[1:]):
-            shared = _shared_arc(nodes[a], nodes[b])
-            out.append({
-                "a": a, "b": b, "kind": "axial",
-                "built": shared >= MIN_SHARED_ARC_DEG,
-                "length_m": abs(b[3] - a[3]),
-                "why": (f"{shared:.1f} deg of shared arc"
-                        if shared >= MIN_SHARED_ARC_DEG else
-                        f"corridor arcs share only {shared:.1f} deg, under "
-                        f"the {MIN_SHARED_ARC_DEG:.0f} a doorway needs"),
-            })
+        a = ang[k[0]]
+        if full_ring:
+            lo, hi = nodes[k]["arc"]
+            reach = True
+        else:
+            try:
+                _h, lo2, span2 = D.deck_arc(nodes[k]["sector"], nodes[k]["ring"],
+                                            nodes[k]["deck"], nodes[k]["z"],
+                                            must_cover=a)
+                lo, hi = lo2, lo2 + span2
+            except ValueError:
+                lo, hi = nodes[k]["arc"]
+            # A FULL RING COVERS EVERY ANGLE, and the first version of this
+            # test did not know that: `deck_arc` clamps its span at 360, so a
+            # cluster whose rooms already wrap the ring reported its transit
+            # angle unreachable whenever that angle fell outside the raw
+            # [lo, lo+360] window. 14 clusters read as unreachable for a
+            # comparison that was not done modulo the ring.
+            span = hi - lo
+            if span >= 359.9:
+                reach = True
+            else:
+                d = (a - lo) % 360.0
+                reach = d <= span
+        out.append({
+            "a": k, "b": ("spine",) + k[:3], "kind": "ring",
+            "built": reach, "length_m": 0.0,
+            "why": (f"the cluster's corridor covers the transit angle "
+                    f"{a:.1f} deg"
+                    if reach else
+                    f"the cluster's corridor spans {lo:.1f}..{hi:.1f} deg and "
+                    f"the transit angle is {a:.1f} -- deck_plan runs a corridor "
+                    f"over the arc its ROOMS occupy, not over the ring"),
+        })
 
-    # --- lift: two decks of ONE ring, joined radially ------------------------
-    by_ring = {}
-    for k in keys:
-        by_ring.setdefault(k[:2], []).append(k)
-    for rk, ks in by_ring.items():
-        decks = sorted({k[2] for k in ks})
-        for d0, d1 in zip(decks, decks[1:]):
-            for a in [k for k in ks if k[2] == d0]:
-                for b in [k for k in ks if k[2] == d1]:
-                    if abs(a[3] - b[3]) <= LIFT_Z_REACH_M:
-                        out.append({
-                            "a": a, "b": b, "kind": "lift", "built": False,
-                            "length_m": 0.0,
-                            "why": "no lift, stair or shaft exists anywhere in "
-                                   "the project -- transit.py computes the "
-                                   "ride, navigation.py routes NPCs through "
-                                   "it, and there is nothing to walk into",
-                        })
+    # --- axial: everything on one deck is on that deck's spine --------------
+    # The spine is a single corridor running the deck's whole z extent, so the
+    # clusters on it are joined by construction. The edge is the spine itself.
+    spines = sorted({("spine",) + k[:3] for k in keys})
+    for sp in spines:
+        out.append({
+            "a": sp, "b": sp, "kind": "axial", "built": True, "length_m": 0.0,
+            "why": "interior.axial_run, written this session",
+        })
 
-    # --- spoke: two rings of ONE sector, joined radially ---------------------
-    by_sector = {}
-    for k in keys:
-        by_sector.setdefault(k[0], []).append(k)
-    for sec, ks in by_sector.items():
-        rings = sorted({k[1] for k in ks})
-        for r0, r1 in zip(rings, rings[1:]):
-            a = min((k for k in ks if k[1] == r0), key=lambda k: k[3])
-            b = min((k for k in ks if k[1] == r1), key=lambda k: k[3])
-            out.append({
-                "a": a, "b": b, "kind": "spoke", "built": False,
-                "length_m": 0.0,
-                "why": "interior.spoke builds the structure and spoke_portal "
-                       "cuts an opening for the tram; there is no walkable "
-                       "passage in the gauge",
-            })
+    # --- lift: every deck spine meets its sector's transit column ------------
+    for sp in spines:
+        out.append({
+            "a": sp, "b": ("column", sp[1]), "kind": "lift",
+            "built": _LIFT_EXISTS, "length_m": 0.0,
+            "why": ("station/lift.py" if _LIFT_EXISTS else
+                    "no lift, stair or shaft exists anywhere in the project -- "
+                    "transit.py computes the ride, navigation.py routes NPCs "
+                    "through it, and there is nothing to walk into"),
+        })
 
-    # --- trunk: two sectors, joined along the axis ---------------------------
-    secs = sorted(by_sector)
-    zs = {s: _sector_z(schema, s) for s in secs if s in
-          schema["sectors"]["extents_m"]}
+    # --- trunk: one sector's column to the next, along the axis --------------
+    zs = {s: _sector_z(schema, s) for s in sectors
+          if s in schema["sectors"]["extents_m"]}
     order = sorted(zs, key=lambda s: zs[s][0])
     for s0, s1 in zip(order, order[1:]):
         gap = zs[s1][0] - zs[s0][1]
-        a = max(by_sector[s0], key=lambda k: k[3])
-        b = min(by_sector[s1], key=lambda k: k[3])
         out.append({
-            "a": a, "b": b, "kind": "trunk",
+            "a": ("column", s0), "b": ("column", s1), "kind": "trunk",
             "built": abs(gap) <= TRUNK_GAP_M,
-            "length_m": abs(b[3] - a[3]),
+            "length_m": abs(gap),
             "why": (f"sectors abut within {gap:.0f} m"
                     if abs(gap) <= TRUNK_GAP_M else
                     f"{gap:.0f} m of unbuilt axis between the sectors"),
@@ -208,8 +286,31 @@ def edges(nodes, schema):
     return out
 
 
+def all_nodes(nodes, es):
+    """Place clusters plus every transit node the edges introduce."""
+    out = dict(nodes)
+    for e in es:
+        for side in ("a", "b"):
+            k = e[side]
+            if k not in out:
+                out[k] = {"key": k, "places": [], "transit": True}
+    return out
+
+
 def components(nodes, es, only_built=True):
-    """How many separate walkable pieces the station is in."""
+    """How many separate walkable pieces the station is in.
+
+    RUN OVER THE TRANSIT NODES TOO, and the first version was not, which read
+    96 pieces however many edges were built -- the union-find skipped every edge
+    whose far end was a spine or a column because those were not in the node
+    dict. A graph measured over half its own vertices always says the same
+    thing, which is what made it look like a real answer.
+
+    The count that is reported is of pieces HOLDING A PLACE. A stretch of spine
+    with nothing on it is infrastructure, not a piece of the station a player is
+    trying to reach.
+    """
+    nodes = all_nodes(nodes, es)
     par = {k: k for k in nodes}
 
     def find(x):
@@ -226,7 +327,8 @@ def components(nodes, es, only_built=True):
     groups = {}
     for k in nodes:
         groups.setdefault(find(k), []).append(k)
-    return groups
+    return {r: v for r, v in groups.items()
+            if any(nodes[k].get("places") for k in v)}
 
 
 def declared_check(nodes, es, only_built=True):
@@ -283,7 +385,7 @@ def report(schema=None, profile=None):
           f"{len({k[:3] for k in nodes})} decks and "
           f"{len({k[0] for k in nodes})} sectors")
     print(f"\n  edges the station's own structure implies:")
-    for k in ("axial", "trunk", "lift", "spoke"):
+    for k in ("ring", "axial", "lift", "trunk", "spoke"):
         if k not in kinds:
             continue
         tot, bl = kinds[k]
@@ -293,8 +395,22 @@ def report(schema=None, profile=None):
     if ex:
         print(f"\n     the lift, in full: {ex['why']}")
 
+    es_ring = edges(nodes, schema, full_ring=True)
+    g_ring = components(nodes, es_ring, True)
+    g_ring_all = components(nodes, es_ring, False)
+    unreached = sum(1 for e in es if e["kind"] == "ring" and not e["built"])
+    raw = sum(1 for k in nodes
+              if not (nodes[k]["arc"][0] <= transit_angle(k[0], nodes)
+                      <= nodes[k]["arc"][1]))
+    print(f"\n  {raw} of {len(nodes)} clusters could not reach their deck's "
+          f"spine on the rooms-only arc; with deck_arc(must_cover=) it is "
+          f"{unreached}")
     print(f"\n  COMPONENTS, with only what can be built today: "
           f"{len(g_built)}")
+    print(f"  COMPONENTS, if every deck's corridor covered its ring: "
+          f"{len(g_ring)}")
+    print(f"  COMPONENTS, full ring AND the lift built:       "
+          f"{len(g_ring_all)}")
     print(f"  COMPONENTS, if every implied edge existed:      "
           f"{len(g_all)}")
     print(f"     largest piece holds {sizes[0]} cluster(s), "
@@ -352,14 +468,19 @@ def _selftest():
           f"{r['components_built']} components — the station is in "
           f"{r['components_built']} pieces")
 
-    # NEGATIVE CONTROL: with the axial generator taken away -- which is the
-    # state of this project as recently as yesterday -- the count must get
-    # worse. If it does not, the axial edges are not doing anything and the
-    # whole R1 milestone is theatre.
-    no_axial = [dict(e, built=False) if e["kind"] == "axial" else e
-                for e in es]
-    n0 = len(components(nodes, no_axial, True))
-    check("and the axial corridor is load-bearing",
+    # NEGATIVE CONTROL: take the deck spine away -- which is the state this
+    # project was in yesterday, before `interior.axial_run` existed -- and every
+    # cluster must fall back to being its own piece. If it does not, the spine
+    # is not doing anything and milestone R1 is theatre.
+    #
+    # THE FIRST VERSION OF THIS CONTROL DISABLED THE `axial` EDGE AND READ 71
+    # BOTH WAYS. That edge is a self-loop on the spine node -- the spine IS the
+    # axial corridor -- so disabling it changes nothing, and a control that
+    # cannot move is not a control. What carries the connection is the `ring`
+    # edge, cluster to spine, and that is what has to be removed.
+    no_spine = [e for e in es if e["kind"] not in ("ring", "axial")]
+    n0 = len(components(nodes, no_spine, True))
+    check("and the deck spine is load-bearing",
           n0 > r["components_built"],
           f"without it {n0} pieces, with it {r['components_built']}")
 
