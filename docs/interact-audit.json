@@ -1,0 +1,2357 @@
+[
+ {
+  "key": "cnc",
+  "module": "command_control",
+  "built": "bespoke",
+  "declared": [
+   "console",
+   "comms_channel",
+   "tactical_display",
+   "blast_door"
+  ],
+  "resolved": [],
+  "unresolved": [
+   "console",
+   "comms_channel",
+   "tactical_display",
+   "blast_door"
+  ],
+  "near": {
+   "console": [
+    "cc_console_face",
+    "cc_console_leg"
+   ]
+  },
+  "groups": 92
+ },
+ {
+  "key": "obs_dome_1",
+  "module": "components",
+  "built": "generic",
+  "declared": [
+   "viewport"
+  ],
+  "resolved": [
+   "viewport"
+  ],
+  "unresolved": [],
+  "near": {},
+  "groups": 36
+ },
+ {
+  "key": "customs_north",
+  "module": "customs",
+  "built": "bespoke",
+  "declared": [
+   "identicard_reader",
+   "customs_desk",
+   "info_board",
+   "babcom_terminal",
+   "baggage_scanner"
+  ],
+  "resolved": [],
+  "unresolved": [
+   "identicard_reader",
+   "customs_desk",
+   "info_board",
+   "babcom_terminal",
+   "baggage_scanner"
+  ],
+  "near": {
+   "customs_desk": [
+    "customs_desk"
+   ]
+  },
+  "groups": 169
+ },
+ {
+  "key": "customs_south",
+  "module": "customs",
+  "built": "bespoke",
+  "declared": [
+   "identicard_reader",
+   "customs_desk",
+   "info_board"
+  ],
+  "resolved": [],
+  "unresolved": [
+   "identicard_reader",
+   "customs_desk",
+   "info_board"
+  ],
+  "near": {
+   "customs_desk": [
+    "customs_desk"
+   ]
+  },
+  "groups": 165
+ },
+ {
+  "key": "arrival_concourse",
+  "module": "customs",
+  "built": "bespoke",
+  "declared": [
+   "babcom_terminal",
+   "station_schematic_screen",
+   "welcome_board",
+   "bollard"
+  ],
+  "resolved": [],
+  "unresolved": [
+   "babcom_terminal",
+   "station_schematic_screen",
+   "welcome_board",
+   "bollard"
+  ],
+  "near": {
+   "bollard": [
+    "customs_bollard"
+   ]
+  },
+  "groups": 136
+ },
+ {
+  "key": "docking_bays",
+  "module": "docking_bay",
+  "built": "generic",
+  "declared": [
+   "bay_door",
+   "docking_clamp",
+   "deck_marking",
+   "cargo_crane",
+   "bay_control_booth"
+  ],
+  "resolved": [
+   "bay_door",
+   "docking_clamp",
+   "deck_marking",
+   "cargo_crane",
+   "bay_control_booth"
+  ],
+  "unresolved": [],
+  "near": {},
+  "groups": 92
+ },
+ {
+  "key": "qtr_command",
+  "module": "quarters",
+  "built": "bespoke",
+  "declared": [
+   "door",
+   "babcom_terminal",
+   "locker",
+   "shower",
+   "bunk"
+  ],
+  "resolved": [],
+  "unresolved": [
+   "door",
+   "babcom_terminal",
+   "locker",
+   "shower",
+   "bunk"
+  ],
+  "near": {
+   "locker": [
+    "dress_mp_prop_locker",
+    "qtr_locker"
+   ],
+   "shower": [
+    "qtr_shower"
+   ]
+  },
+  "groups": 64
+ },
+ {
+  "key": "qtr_personnel",
+  "module": "quarters",
+  "built": "bespoke",
+  "declared": [
+   "door",
+   "babcom_terminal",
+   "locker",
+   "bunk"
+  ],
+  "resolved": [],
+  "unresolved": [
+   "door",
+   "babcom_terminal",
+   "locker",
+   "bunk"
+  ],
+  "near": {
+   "locker": [
+    "dress_mp_prop_locker",
+    "qtr_locker"
+   ]
+  },
+  "groups": 41
+ },
+ {
+  "key": "medlab_one",
+  "module": "",
+  "built": "generic",
+  "declared": [
+   "diagnostic_bed",
+   "medcabinet",
+   "isolation_door",
+   "babcom_terminal"
+  ],
+  "resolved": [
+   "diagnostic_bed",
+   "medcabinet",
+   "isolation_door",
+   "babcom_terminal"
+  ],
+  "unresolved": [],
+  "near": {},
+  "groups": 56
+ },
+ {
+  "key": "mess_hall",
+  "module": "",
+  "built": "generic",
+  "declared": [
+   "serving_counter",
+   "table",
+   "tray_dispenser"
+  ],
+  "resolved": [
+   "serving_counter",
+   "table",
+   "tray_dispenser"
+  ],
+  "unresolved": [],
+  "near": {},
+  "groups": 82
+ },
+ {
+  "key": "zocalo",
+  "module": "zocalo",
+  "built": "bespoke",
+  "declared": [
+   "market_stall",
+   "shopfront",
+   "cafe_table",
+   "planter",
+   "neon_sign",
+   "babcom_terminal",
+   "gallery_rail"
+  ],
+  "resolved": [],
+  "unresolved": [
+   "market_stall",
+   "shopfront",
+   "cafe_table",
+   "planter",
+   "neon_sign",
+   "babcom_terminal",
+   "gallery_rail"
+  ],
+  "near": {},
+  "groups": 814
+ },
+ {
+  "key": "business_center",
+  "module": "",
+  "built": "generic",
+  "declared": [
+   "exchange_terminal",
+   "office_door",
+   "babcom_terminal"
+  ],
+  "resolved": [
+   "exchange_terminal",
+   "office_door",
+   "babcom_terminal"
+  ],
+  "unresolved": [],
+  "near": {},
+  "groups": 67
+ },
+ {
+  "key": "bar_unnamed",
+  "module": "hospitality",
+  "built": "bespoke",
+  "declared": [
+   "bar_counter",
+   "table",
+   "stool",
+   "dartboard",
+   "pendant_lamp",
+   "menu_display"
+  ],
+  "resolved": [],
+  "unresolved": [
+   "bar_counter",
+   "table",
+   "stool",
+   "dartboard",
+   "pendant_lamp",
+   "menu_display"
+  ],
+  "near": {
+   "table": [
+    "bar_table",
+    "bar_table_stem"
+   ],
+   "stool": [
+    "bar_stool"
+   ],
+   "dartboard": [
+    "bar_dartboard"
+   ],
+   "pendant_lamp": [
+    "bar_pendant_lamp"
+   ]
+  },
+  "groups": 94
+ },
+ {
+  "key": "dark_star",
+  "module": "",
+  "built": "generic",
+  "declared": [
+   "bar_counter",
+   "table",
+   "neon_sign",
+   "door"
+  ],
+  "resolved": [
+   "bar_counter",
+   "table",
+   "neon_sign",
+   "door"
+  ],
+  "unresolved": [],
+  "near": {},
+  "groups": 47
+ },
+ {
+  "key": "casino",
+  "module": "",
+  "built": "generic",
+  "declared": [
+   "gaming_table",
+   "credit_terminal",
+   "bar_counter",
+   "door"
+  ],
+  "resolved": [
+   "gaming_table",
+   "credit_terminal",
+   "bar_counter",
+   "door"
+  ],
+  "unresolved": [],
+  "near": {},
+  "groups": 77
+ },
+ {
+  "key": "security_central",
+  "module": "",
+  "built": "generic",
+  "declared": [
+   "duty_desk",
+   "monitor_wall",
+   "weapons_locker",
+   "cell_door",
+   "babcom_terminal"
+  ],
+  "resolved": [
+   "duty_desk",
+   "monitor_wall",
+   "weapons_locker",
+   "cell_door",
+   "babcom_terminal"
+  ],
+  "unresolved": [],
+  "near": {},
+  "groups": 91
+ },
+ {
+  "key": "brig",
+  "module": "",
+  "built": "generic",
+  "declared": [
+   "cell_door",
+   "bunk",
+   "intercom"
+  ],
+  "resolved": [
+   "cell_door",
+   "bunk",
+   "intercom"
+  ],
+  "unresolved": [],
+  "near": {},
+  "groups": 55
+ },
+ {
+  "key": "law_courts",
+  "module": "",
+  "built": "generic",
+  "declared": [
+   "bench",
+   "public_gallery",
+   "door"
+  ],
+  "resolved": [
+   "bench",
+   "public_gallery",
+   "door"
+  ],
+  "unresolved": [],
+  "near": {},
+  "groups": 62
+ },
+ {
+  "key": "qtr_civilian",
+  "module": "quarters",
+  "built": "bespoke",
+  "declared": [
+   "door",
+   "babcom_terminal",
+   "locker",
+   "bunk"
+  ],
+  "resolved": [],
+  "unresolved": [
+   "door",
+   "babcom_terminal",
+   "locker",
+   "bunk"
+  ],
+  "near": {
+   "locker": [
+    "dress_mp_prop_locker",
+    "qtr_locker"
+   ]
+  },
+  "groups": 42
+ },
+ {
+  "key": "qtr_transient",
+  "module": "quarters",
+  "built": "bespoke",
+  "declared": [
+   "door",
+   "locker",
+   "bunk"
+  ],
+  "resolved": [],
+  "unresolved": [
+   "door",
+   "locker",
+   "bunk"
+  ],
+  "near": {
+   "locker": [
+    "qtr_locker"
+   ]
+  },
+  "groups": 23
+ },
+ {
+  "key": "council_chamber",
+  "module": "council_chamber",
+  "built": "bespoke",
+  "declared": [
+   "delegate_bench",
+   "speaking_position",
+   "gallery_door"
+  ],
+  "resolved": [],
+  "unresolved": [
+   "delegate_bench",
+   "speaking_position",
+   "gallery_door"
+  ],
+  "near": {},
+  "groups": 394
+ },
+ {
+  "key": "ambassadorial_suites",
+  "module": "quarters",
+  "built": "bespoke",
+  "declared": [
+   "door",
+   "babcom_terminal",
+   "shower",
+   "bunk",
+   "reception"
+  ],
+  "resolved": [],
+  "unresolved": [
+   "door",
+   "babcom_terminal",
+   "shower",
+   "bunk",
+   "reception"
+  ],
+  "near": {
+   "shower": [
+    "qtr_shower"
+   ]
+  },
+  "groups": 49
+ },
+ {
+  "key": "alien_sector",
+  "module": "alien_sector",
+  "built": "bespoke",
+  "declared": [
+   "airlock_door",
+   "breather_dispenser",
+   "barred_screen",
+   "atmosphere_status_lamp"
+  ],
+  "resolved": [],
+  "unresolved": [
+   "airlock_door",
+   "breather_dispenser",
+   "barred_screen",
+   "atmosphere_status_lamp"
+  ],
+  "near": {},
+  "groups": 67
+ },
+ {
+  "key": "kosh_quarters",
+  "module": "alien_sector",
+  "built": "bespoke",
+  "declared": [
+   "airlock_door",
+   "atmosphere_status_lamp"
+  ],
+  "resolved": [],
+  "unresolved": [
+   "airlock_door",
+   "atmosphere_status_lamp"
+  ],
+  "near": {},
+  "groups": 79
+ },
+ {
+  "key": "garden_town",
+  "module": "garden",
+  "built": "generic",
+  "declared": [
+   "building_door",
+   "bench",
+   "pool_edge",
+   "path"
+  ],
+  "resolved": [
+   "building_door",
+   "bench",
+   "pool_edge",
+   "path"
+  ],
+  "unresolved": [],
+  "near": {},
+  "groups": 65
+ },
+ {
+  "key": "hydroponics",
+  "module": "",
+  "built": "generic",
+  "declared": [
+   "grow_rack",
+   "irrigation_control",
+   "door"
+  ],
+  "resolved": [
+   "grow_rack",
+   "irrigation_control",
+   "door"
+  ],
+  "unresolved": [],
+  "near": {},
+  "groups": 40
+ },
+ {
+  "key": "plant_zone",
+  "module": "plant",
+  "built": "bespoke",
+  "declared": [
+   "catwalk",
+   "valve",
+   "tank_gauge",
+   "service_ladder"
+  ],
+  "resolved": [],
+  "unresolved": [
+   "catwalk",
+   "valve",
+   "tank_gauge",
+   "service_ladder"
+  ],
+  "near": {
+   "catwalk": [
+    "dress_mp_plant_catwalk",
+    "plant_catwalk"
+   ]
+  },
+  "groups": 37
+ },
+ {
+  "key": "downbelow",
+  "module": "plant",
+  "built": "bespoke",
+  "declared": [
+   "catwalk",
+   "standpipe",
+   "makeshift_door",
+   "brazier"
+  ],
+  "resolved": [],
+  "unresolved": [
+   "catwalk",
+   "standpipe",
+   "makeshift_door",
+   "brazier"
+  ],
+  "near": {
+   "catwalk": [
+    "dress_mp_plant_catwalk",
+    "plant_catwalk"
+   ]
+  },
+  "groups": 50
+ },
+ {
+  "key": "fusion_core",
+  "module": "",
+  "built": "generic",
+  "declared": [
+   "reactor_console",
+   "blast_door"
+  ],
+  "resolved": [
+   "reactor_console",
+   "blast_door"
+  ],
+  "unresolved": [],
+  "near": {},
+  "groups": 43
+ },
+ {
+  "key": "obs_dome_2",
+  "module": "components",
+  "built": "generic",
+  "declared": [
+   "viewport"
+  ],
+  "resolved": [
+   "viewport"
+  ],
+  "unresolved": [],
+  "near": {},
+  "groups": 36
+ },
+ {
+  "key": "war_room",
+  "module": "",
+  "built": "generic",
+  "declared": [
+   "tactical_display",
+   "console",
+   "blast_door"
+  ],
+  "resolved": [
+   "tactical_display",
+   "console",
+   "blast_door"
+  ],
+  "unresolved": [],
+  "near": {},
+  "groups": 50
+ },
+ {
+  "key": "admin_complex",
+  "module": "",
+  "built": "generic",
+  "declared": [
+   "desk",
+   "babcom_terminal",
+   "door"
+  ],
+  "resolved": [
+   "desk",
+   "babcom_terminal",
+   "door"
+  ],
+  "unresolved": [],
+  "near": {},
+  "groups": 52
+ },
+ {
+  "key": "bay_elevators",
+  "module": "",
+  "built": "generic",
+  "declared": [
+   "lift_call",
+   "lift_door"
+  ],
+  "resolved": [
+   "lift_call",
+   "lift_door"
+  ],
+  "unresolved": [],
+  "near": {},
+  "groups": 64
+ },
+ {
+  "key": "lowg_bays",
+  "module": "",
+  "built": "generic",
+  "declared": [
+   "bay_door",
+   "docking_clamp",
+   "handhold"
+  ],
+  "resolved": [
+   "bay_door",
+   "docking_clamp",
+   "handhold"
+  ],
+  "unresolved": [],
+  "near": {},
+  "groups": 47
+ },
+ {
+  "key": "cobra_bays",
+  "module": "components",
+  "built": "generic",
+  "declared": [
+   "launch_tube",
+   "clamp"
+  ],
+  "resolved": [
+   "launch_tube",
+   "clamp"
+  ],
+  "unresolved": [],
+  "near": {},
+  "groups": 55
+ },
+ {
+  "key": "cargo_bays",
+  "module": "",
+  "built": "generic",
+  "declared": [
+   "cargo_crane",
+   "container",
+   "manifest_terminal"
+  ],
+  "resolved": [
+   "cargo_crane",
+   "container",
+   "manifest_terminal"
+  ],
+  "unresolved": [],
+  "near": {},
+  "groups": 45
+ },
+ {
+  "key": "quartermaster",
+  "module": "",
+  "built": "generic",
+  "declared": [
+   "issue_counter",
+   "manifest_terminal",
+   "locker"
+  ],
+  "resolved": [
+   "issue_counter",
+   "manifest_terminal",
+   "locker"
+  ],
+  "unresolved": [],
+  "near": {},
+  "groups": 70
+ },
+ {
+  "key": "post_office",
+  "module": "",
+  "built": "generic",
+  "declared": [
+   "counter",
+   "parcel_locker",
+   "babcom_terminal"
+  ],
+  "resolved": [
+   "counter",
+   "parcel_locker",
+   "babcom_terminal"
+  ],
+  "unresolved": [],
+  "near": {},
+  "groups": 69
+ },
+ {
+  "key": "fuel_stores",
+  "module": "",
+  "built": "generic",
+  "declared": [
+   "valve",
+   "tank_gauge",
+   "blast_door"
+  ],
+  "resolved": [
+   "valve",
+   "tank_gauge",
+   "blast_door"
+  ],
+  "unresolved": [],
+  "near": {},
+  "groups": 45
+ },
+ {
+  "key": "mooring_clamps",
+  "module": "components",
+  "built": "generic",
+  "declared": [
+   "docking_clamp"
+  ],
+  "resolved": [
+   "docking_clamp"
+  ],
+  "unresolved": [],
+  "near": {},
+  "groups": 48
+ },
+ {
+  "key": "plantroom_bay",
+  "module": "",
+  "built": "generic",
+  "declared": [
+   "valve",
+   "catwalk",
+   "bay_door"
+  ],
+  "resolved": [
+   "valve",
+   "catwalk",
+   "bay_door"
+  ],
+  "unresolved": [],
+  "near": {},
+  "groups": 53
+ },
+ {
+  "key": "proximity_arrays",
+  "module": "components",
+  "built": "generic",
+  "declared": [],
+  "resolved": [],
+  "unresolved": [],
+  "near": {},
+  "groups": 37
+ },
+ {
+  "key": "nav_beacon",
+  "module": "components",
+  "built": "generic",
+  "declared": [],
+  "resolved": [],
+  "unresolved": [],
+  "near": {},
+  "groups": 32
+ },
+ {
+  "key": "vorlon_berth",
+  "module": "",
+  "built": "generic",
+  "declared": [
+   "bay_door",
+   "docking_clamp"
+  ],
+  "resolved": [
+   "bay_door",
+   "docking_clamp"
+  ],
+  "unresolved": [],
+  "near": {},
+  "groups": 50
+ },
+ {
+  "key": "infirmary",
+  "module": "",
+  "built": "generic",
+  "declared": [
+   "diagnostic_bed",
+   "medcabinet"
+  ],
+  "resolved": [
+   "diagnostic_bed",
+   "medcabinet"
+  ],
+  "unresolved": [],
+  "near": {},
+  "groups": 51
+ },
+ {
+  "key": "isolab",
+  "module": "",
+  "built": "generic",
+  "declared": [
+   "isolation_door",
+   "diagnostic_bed",
+   "medcabinet"
+  ],
+  "resolved": [
+   "isolation_door",
+   "diagnostic_bed",
+   "medcabinet"
+  ],
+  "unresolved": [],
+  "near": {},
+  "groups": 53
+ },
+ {
+  "key": "morgue",
+  "module": "",
+  "built": "generic",
+  "declared": [
+   "cold_drawer",
+   "door"
+  ],
+  "resolved": [
+   "cold_drawer",
+   "door"
+  ],
+  "unresolved": [],
+  "near": {},
+  "groups": 53
+ },
+ {
+  "key": "cryo_storage",
+  "module": "",
+  "built": "generic",
+  "declared": [
+   "cryo_pod",
+   "console"
+  ],
+  "resolved": [
+   "cryo_pod",
+   "console"
+  ],
+  "unresolved": [],
+  "near": {},
+  "groups": 52
+ },
+ {
+  "key": "sanctuary_blue",
+  "module": "",
+  "built": "generic",
+  "declared": [
+   "pew",
+   "door"
+  ],
+  "resolved": [
+   "pew",
+   "door"
+  ],
+  "unresolved": [],
+  "near": {},
+  "groups": 39
+ },
+ {
+  "key": "comms_grid",
+  "module": "components",
+  "built": "generic",
+  "declared": [],
+  "resolved": [],
+  "unresolved": [],
+  "near": {},
+  "groups": 31
+ },
+ {
+  "key": "eclipse_cafe",
+  "module": "hospitality",
+  "built": "bespoke",
+  "declared": [
+   "bar_counter",
+   "table",
+   "stool"
+  ],
+  "resolved": [],
+  "unresolved": [
+   "bar_counter",
+   "table",
+   "stool"
+  ],
+  "near": {
+   "table": [
+    "bar_table",
+    "bar_table_stem"
+   ],
+   "stool": [
+    "bar_stool"
+   ]
+  },
+  "groups": 99
+ },
+ {
+  "key": "shops_kiosks",
+  "module": "zocalo",
+  "built": "bespoke",
+  "declared": [
+   "market_stall",
+   "shopfront",
+   "credit_terminal"
+  ],
+  "resolved": [],
+  "unresolved": [
+   "market_stall",
+   "shopfront",
+   "credit_terminal"
+  ],
+  "near": {},
+  "groups": 589
+ },
+ {
+  "key": "ceremonial_rooms",
+  "module": "",
+  "built": "generic",
+  "declared": [
+   "door",
+   "table"
+  ],
+  "resolved": [
+   "door",
+   "table"
+  ],
+  "unresolved": [],
+  "near": {},
+  "groups": 51
+ },
+ {
+  "key": "water_storage",
+  "module": "",
+  "built": "generic",
+  "declared": [
+   "tank_gauge",
+   "valve",
+   "catwalk"
+  ],
+  "resolved": [
+   "tank_gauge",
+   "valve",
+   "catwalk"
+  ],
+  "unresolved": [],
+  "near": {},
+  "groups": 62
+ },
+ {
+  "key": "waste_red",
+  "module": "",
+  "built": "generic",
+  "declared": [
+   "valve",
+   "catwalk",
+   "tank_gauge"
+  ],
+  "resolved": [
+   "valve",
+   "catwalk",
+   "tank_gauge"
+  ],
+  "unresolved": [],
+  "near": {},
+  "groups": 60
+ },
+ {
+  "key": "central_corridor",
+  "module": "interior_kit",
+  "built": "generic",
+  "declared": [
+   "babcom_terminal",
+   "gallery_rail",
+   "door"
+  ],
+  "resolved": [
+   "babcom_terminal",
+   "gallery_rail",
+   "door"
+  ],
+  "unresolved": [],
+  "near": {},
+  "groups": 40
+ },
+ {
+  "key": "medlab_red",
+  "module": "",
+  "built": "generic",
+  "declared": [
+   "diagnostic_bed",
+   "medcabinet"
+  ],
+  "resolved": [
+   "diagnostic_bed",
+   "medcabinet"
+  ],
+  "unresolved": [],
+  "near": {},
+  "groups": 52
+ },
+ {
+  "key": "outdoor_rec",
+  "module": "",
+  "built": "generic",
+  "declared": [
+   "pool_edge",
+   "bench",
+   "path"
+  ],
+  "resolved": [
+   "pool_edge",
+   "bench",
+   "path"
+  ],
+  "unresolved": [],
+  "near": {},
+  "groups": 60
+ },
+ {
+  "key": "conference_5",
+  "module": "",
+  "built": "generic",
+  "declared": [
+   "table",
+   "seat",
+   "door"
+  ],
+  "resolved": [
+   "table",
+   "seat",
+   "door"
+  ],
+  "unresolved": [],
+  "near": {},
+  "groups": 49
+ },
+ {
+  "key": "conference_rooms",
+  "module": "",
+  "built": "generic",
+  "declared": [
+   "table",
+   "seat",
+   "babcom_terminal",
+   "door"
+  ],
+  "resolved": [
+   "table",
+   "seat",
+   "babcom_terminal",
+   "door"
+  ],
+  "unresolved": [],
+  "near": {},
+  "groups": 53
+ },
+ {
+  "key": "earthforce_office",
+  "module": "",
+  "built": "generic",
+  "declared": [
+   "desk",
+   "babcom_terminal",
+   "door"
+  ],
+  "resolved": [
+   "desk",
+   "babcom_terminal",
+   "door"
+  ],
+  "unresolved": [],
+  "near": {},
+  "groups": 49
+ },
+ {
+  "key": "league_delegations",
+  "module": "quarters",
+  "built": "bespoke",
+  "declared": [
+   "door",
+   "babcom_terminal",
+   "reception"
+  ],
+  "resolved": [],
+  "unresolved": [
+   "door",
+   "babcom_terminal",
+   "reception"
+  ],
+  "near": {},
+  "groups": 77
+ },
+ {
+  "key": "domed_rotunda",
+  "module": "",
+  "built": "generic",
+  "declared": [
+   "viewport",
+   "bench"
+  ],
+  "resolved": [
+   "viewport",
+   "bench"
+  ],
+  "unresolved": [],
+  "near": {},
+  "groups": 42
+ },
+ {
+  "key": "obs_rotundas",
+  "module": "components",
+  "built": "generic",
+  "declared": [
+   "viewport",
+   "bench"
+  ],
+  "resolved": [
+   "viewport",
+   "bench"
+  ],
+  "unresolved": [],
+  "near": {},
+  "groups": 42
+ },
+ {
+  "key": "drum_office",
+  "module": "",
+  "built": "generic",
+  "declared": [
+   "desk",
+   "viewport",
+   "babcom_terminal"
+  ],
+  "resolved": [
+   "desk",
+   "viewport",
+   "babcom_terminal"
+  ],
+  "unresolved": [],
+  "near": {},
+  "groups": 51
+ },
+ {
+  "key": "telepath_office",
+  "module": "",
+  "built": "generic",
+  "declared": [
+   "desk",
+   "babcom_terminal"
+  ],
+  "resolved": [
+   "desk",
+   "babcom_terminal"
+  ],
+  "unresolved": [],
+  "near": {},
+  "groups": 51
+ },
+ {
+  "key": "zen_garden",
+  "module": "garden",
+  "built": "generic",
+  "declared": [
+   "path",
+   "bench"
+  ],
+  "resolved": [
+   "path",
+   "bench"
+  ],
+  "unresolved": [],
+  "near": {},
+  "groups": 26
+ },
+ {
+  "key": "garden_terrace",
+  "module": "garden",
+  "built": "generic",
+  "declared": [
+   "path",
+   "bench",
+   "pool_edge"
+  ],
+  "resolved": [
+   "path",
+   "bench",
+   "pool_edge"
+  ],
+  "unresolved": [],
+  "near": {},
+  "groups": 60
+ },
+ {
+  "key": "water_rec",
+  "module": "garden",
+  "built": "generic",
+  "declared": [
+   "pool_edge",
+   "bench"
+  ],
+  "resolved": [
+   "pool_edge",
+   "bench"
+  ],
+  "unresolved": [],
+  "near": {},
+  "groups": 46
+ },
+ {
+  "key": "drum_endcaps",
+  "module": "interior",
+  "built": "generic",
+  "declared": [
+   "service_ladder"
+  ],
+  "resolved": [
+   "service_ladder"
+  ],
+  "unresolved": [],
+  "near": {},
+  "groups": 35
+ },
+ {
+  "key": "drum_spokes",
+  "module": "interior",
+  "built": "generic",
+  "declared": [
+   "lift_call",
+   "lift_door"
+  ],
+  "resolved": [
+   "lift_call",
+   "lift_door"
+  ],
+  "unresolved": [],
+  "near": {},
+  "groups": 39
+ },
+ {
+  "key": "subfloor_stack",
+  "module": "interior",
+  "built": "generic",
+  "declared": [
+   "catwalk",
+   "door",
+   "valve"
+  ],
+  "resolved": [
+   "catwalk",
+   "door",
+   "valve"
+  ],
+  "unresolved": [],
+  "near": {},
+  "groups": 53
+ },
+ {
+  "key": "ground_tram",
+  "module": "",
+  "built": "generic",
+  "declared": [
+   "tram_door",
+   "seat"
+  ],
+  "resolved": [
+   "tram_door",
+   "seat"
+  ],
+  "unresolved": [],
+  "near": {},
+  "groups": 44
+ },
+ {
+  "key": "drum_tram",
+  "module": "tram",
+  "built": "generic",
+  "declared": [
+   "tram_door",
+   "seat",
+   "handhold"
+  ],
+  "resolved": [
+   "tram_door",
+   "seat",
+   "handhold"
+  ],
+  "unresolved": [],
+  "near": {},
+  "groups": 45
+ },
+ {
+  "key": "alien_worship",
+  "module": "",
+  "built": "generic",
+  "declared": [
+   "door",
+   "shrine"
+  ],
+  "resolved": [
+   "door",
+   "shrine"
+  ],
+  "unresolved": [],
+  "near": {},
+  "groups": 40
+ },
+ {
+  "key": "waste_green",
+  "module": "",
+  "built": "generic",
+  "declared": [
+   "valve",
+   "catwalk"
+  ],
+  "resolved": [
+   "valve",
+   "catwalk"
+  ],
+  "unresolved": [],
+  "near": {},
+  "groups": 60
+ },
+ {
+  "key": "medlab_green",
+  "module": "",
+  "built": "generic",
+  "declared": [
+   "diagnostic_bed",
+   "medcabinet"
+  ],
+  "resolved": [
+   "diagnostic_bed",
+   "medcabinet"
+  ],
+  "unresolved": [],
+  "near": {},
+  "groups": 54
+ },
+ {
+  "key": "ngrath",
+  "module": "",
+  "built": "generic",
+  "declared": [
+   "door",
+   "credit_terminal"
+  ],
+  "resolved": [
+   "door",
+   "credit_terminal"
+  ],
+  "unresolved": [],
+  "near": {},
+  "groups": 66
+ },
+ {
+  "key": "alpha_substation",
+  "module": "",
+  "built": "generic",
+  "declared": [
+   "reactor_console",
+   "blast_door"
+  ],
+  "resolved": [
+   "reactor_console",
+   "blast_door"
+  ],
+  "unresolved": [],
+  "near": {},
+  "groups": 51
+ },
+ {
+  "key": "primary_breaker",
+  "module": "",
+  "built": "generic",
+  "declared": [
+   "breaker_lever",
+   "console"
+  ],
+  "resolved": [
+   "breaker_lever",
+   "console"
+  ],
+  "unresolved": [],
+  "near": {},
+  "groups": 45
+ },
+ {
+  "key": "fabrication",
+  "module": "",
+  "built": "generic",
+  "declared": [
+   "furnace_control",
+   "crane",
+   "catwalk"
+  ],
+  "resolved": [
+   "furnace_control",
+   "crane",
+   "catwalk"
+  ],
+  "unresolved": [],
+  "near": {},
+  "groups": 66
+ },
+ {
+  "key": "maintenance",
+  "module": "",
+  "built": "generic",
+  "declared": [
+   "workbench",
+   "tool_rack",
+   "crane"
+  ],
+  "resolved": [
+   "workbench",
+   "tool_rack",
+   "crane"
+  ],
+  "unresolved": [],
+  "near": {},
+  "groups": 54
+ },
+ {
+  "key": "research_labs",
+  "module": "",
+  "built": "generic",
+  "declared": [
+   "lab_bench",
+   "console",
+   "door"
+  ],
+  "resolved": [
+   "lab_bench",
+   "console",
+   "door"
+  ],
+  "unresolved": [],
+  "near": {},
+  "groups": 50
+ },
+ {
+  "key": "gravity_torus",
+  "module": "",
+  "built": "generic",
+  "declared": [
+   "console",
+   "door"
+  ],
+  "resolved": [
+   "console",
+   "door"
+  ],
+  "unresolved": [],
+  "near": {},
+  "groups": 48
+ },
+ {
+  "key": "zerog_maint",
+  "module": "",
+  "built": "generic",
+  "declared": [
+   "handhold",
+   "tool_rack"
+  ],
+  "resolved": [
+   "handhold",
+   "tool_rack"
+  ],
+  "unresolved": [],
+  "near": {},
+  "groups": 50
+ },
+ {
+  "key": "atmos_monitor",
+  "module": "",
+  "built": "generic",
+  "declared": [
+   "console",
+   "tank_gauge"
+  ],
+  "resolved": [
+   "console",
+   "tank_gauge"
+  ],
+  "unresolved": [],
+  "near": {},
+  "groups": 51
+ },
+ {
+  "key": "raw_material",
+  "module": "",
+  "built": "generic",
+  "declared": [
+   "container",
+   "crane"
+  ],
+  "resolved": [
+   "container",
+   "crane"
+  ],
+  "unresolved": [],
+  "near": {},
+  "groups": 43
+ },
+ {
+  "key": "micro_g_bays",
+  "module": "",
+  "built": "generic",
+  "declared": [
+   "handhold"
+  ],
+  "resolved": [
+   "handhold"
+  ],
+  "unresolved": [],
+  "near": {},
+  "groups": 40
+ },
+ {
+  "key": "downbelow_arch",
+  "module": "plant",
+  "built": "bespoke",
+  "declared": [
+   "catwalk",
+   "makeshift_door",
+   "brazier"
+  ],
+  "resolved": [],
+  "unresolved": [
+   "catwalk",
+   "makeshift_door",
+   "brazier"
+  ],
+  "near": {
+   "catwalk": [
+    "dress_mp_plant_catwalk",
+    "plant_catwalk"
+   ]
+  },
+  "groups": 51
+ },
+ {
+  "key": "black_market",
+  "module": "",
+  "built": "generic",
+  "declared": [
+   "stall",
+   "credit_terminal"
+  ],
+  "resolved": [
+   "stall",
+   "credit_terminal"
+  ],
+  "unresolved": [],
+  "near": {},
+  "groups": 68
+ },
+ {
+  "key": "thieves_guild",
+  "module": "",
+  "built": "generic",
+  "declared": [
+   "makeshift_door"
+  ],
+  "resolved": [
+   "makeshift_door"
+  ],
+  "unresolved": [],
+  "near": {},
+  "groups": 38
+ },
+ {
+  "key": "welded_shut",
+  "module": "",
+  "built": "generic",
+  "declared": [
+   "welded_door"
+  ],
+  "resolved": [
+   "welded_door"
+  ],
+  "unresolved": [],
+  "near": {},
+  "groups": 38
+ },
+ {
+  "key": "water_reclamation",
+  "module": "plant",
+  "built": "bespoke",
+  "declared": [
+   "valve",
+   "tank_gauge",
+   "catwalk"
+  ],
+  "resolved": [],
+  "unresolved": [
+   "valve",
+   "tank_gauge",
+   "catwalk"
+  ],
+  "near": {
+   "catwalk": [
+    "dress_mp_plant_catwalk",
+    "plant_catwalk"
+   ]
+  },
+  "groups": 37
+ },
+ {
+  "key": "waste_control",
+  "module": "",
+  "built": "generic",
+  "declared": [
+   "console",
+   "valve"
+  ],
+  "resolved": [
+   "console",
+   "valve"
+  ],
+  "unresolved": [],
+  "near": {},
+  "groups": 51
+ },
+ {
+  "key": "air_compressors",
+  "module": "plant",
+  "built": "bespoke",
+  "declared": [
+   "valve",
+   "tank_gauge"
+  ],
+  "resolved": [],
+  "unresolved": [
+   "valve",
+   "tank_gauge"
+  ],
+  "near": {},
+  "groups": 21
+ },
+ {
+  "key": "disconnect_point",
+  "module": "",
+  "built": "generic",
+  "declared": [
+   "blast_door"
+  ],
+  "resolved": [
+   "blast_door"
+  ],
+  "unresolved": [],
+  "near": {},
+  "groups": 38
+ },
+ {
+  "key": "power_transfer",
+  "module": "components",
+  "built": "generic",
+  "declared": [
+   "console"
+  ],
+  "resolved": [
+   "console"
+  ],
+  "unresolved": [],
+  "near": {},
+  "groups": 50
+ },
+ {
+  "key": "mainstage_node",
+  "module": "",
+  "built": "generic",
+  "declared": [
+   "console",
+   "breaker_lever"
+  ],
+  "resolved": [
+   "console",
+   "breaker_lever"
+  ],
+  "unresolved": [],
+  "near": {},
+  "groups": 51
+ },
+ {
+  "key": "spinal_cargo",
+  "module": "",
+  "built": "generic",
+  "declared": [
+   "cargo_crane",
+   "container"
+  ],
+  "resolved": [
+   "cargo_crane",
+   "container"
+  ],
+  "unresolved": [],
+  "near": {},
+  "groups": 43
+ },
+ {
+  "key": "hazard_tanks",
+  "module": "",
+  "built": "generic",
+  "declared": [
+   "valve",
+   "tank_gauge",
+   "blast_door"
+  ],
+  "resolved": [
+   "valve",
+   "tank_gauge",
+   "blast_door"
+  ],
+  "unresolved": [],
+  "near": {},
+  "groups": 45
+ },
+ {
+  "key": "rotation_drivers",
+  "module": "",
+  "built": "generic",
+  "declared": [
+   "console"
+  ],
+  "resolved": [
+   "console"
+  ],
+  "unresolved": [],
+  "near": {},
+  "groups": 50
+ },
+ {
+  "key": "core_shuttle",
+  "module": "core_tube",
+  "built": "generic",
+  "declared": [
+   "shuttle_door",
+   "seat",
+   "handhold"
+  ],
+  "resolved": [
+   "shuttle_door",
+   "seat",
+   "handhold"
+  ],
+  "unresolved": [],
+  "near": {},
+  "groups": 45
+ },
+ {
+  "key": "alien_resident_qtr",
+  "module": "quarters",
+  "built": "bespoke",
+  "declared": [
+   "door",
+   "babcom_terminal",
+   "locker",
+   "bunk"
+  ],
+  "resolved": [],
+  "unresolved": [
+   "door",
+   "babcom_terminal",
+   "locker",
+   "bunk"
+  ],
+  "near": {
+   "locker": [
+    "dress_mp_prop_locker",
+    "qtr_locker"
+   ]
+  },
+  "groups": 43
+ },
+ {
+  "key": "earharts",
+  "module": "hospitality",
+  "built": "bespoke",
+  "declared": [
+   "bar_counter",
+   "table",
+   "stool",
+   "menu_display"
+  ],
+  "resolved": [],
+  "unresolved": [
+   "bar_counter",
+   "table",
+   "stool",
+   "menu_display"
+  ],
+  "near": {
+   "table": [
+    "bar_table",
+    "bar_table_stem"
+   ],
+   "stool": [
+    "bar_stool"
+   ]
+  },
+  "groups": 44
+ },
+ {
+  "key": "fresh_air",
+  "module": "hospitality",
+  "built": "bespoke",
+  "declared": [
+   "table",
+   "seat",
+   "menu_display"
+  ],
+  "resolved": [],
+  "unresolved": [
+   "table",
+   "seat",
+   "menu_display"
+  ],
+  "near": {
+   "table": [
+    "bar_table",
+    "bar_table_stem"
+   ]
+  },
+  "groups": 94
+ },
+ {
+  "key": "happy_daze",
+  "module": "hospitality",
+  "built": "bespoke",
+  "declared": [
+   "bar_counter",
+   "table",
+   "stool"
+  ],
+  "resolved": [],
+  "unresolved": [
+   "bar_counter",
+   "table",
+   "stool"
+  ],
+  "near": {
+   "table": [
+    "bar_table",
+    "bar_table_stem"
+   ],
+   "stool": [
+    "bar_stool"
+   ]
+  },
+  "groups": 93
+ },
+ {
+  "key": "security_posts",
+  "module": "",
+  "built": "generic",
+  "declared": [
+   "duty_desk",
+   "identicard_reader",
+   "barrier"
+  ],
+  "resolved": [
+   "duty_desk",
+   "identicard_reader",
+   "barrier"
+  ],
+  "unresolved": [],
+  "near": {},
+  "groups": 100
+ },
+ {
+  "key": "nightwatch",
+  "module": "",
+  "built": "generic",
+  "declared": [
+   "duty_desk",
+   "babcom_terminal"
+  ],
+  "resolved": [
+   "duty_desk",
+   "babcom_terminal"
+  ],
+  "unresolved": [],
+  "near": {},
+  "groups": 51
+ },
+ {
+  "key": "minipax",
+  "module": "",
+  "built": "generic",
+  "declared": [
+   "desk",
+   "babcom_terminal"
+  ],
+  "resolved": [
+   "desk",
+   "babcom_terminal"
+  ],
+  "unresolved": [],
+  "near": {},
+  "groups": 51
+ },
+ {
+  "key": "the_garden",
+  "module": "interior",
+  "built": "generic",
+  "declared": [
+   "path",
+   "bench"
+  ],
+  "resolved": [
+   "path",
+   "bench"
+  ],
+  "unresolved": [],
+  "near": {},
+  "groups": 50
+ },
+ {
+  "key": "sanctuaries",
+  "module": "",
+  "built": "generic",
+  "declared": [
+   "pew",
+   "door",
+   "shrine"
+  ],
+  "resolved": [
+   "pew",
+   "door",
+   "shrine"
+  ],
+  "unresolved": [],
+  "near": {},
+  "groups": 41
+ },
+ {
+  "key": "interfaith_chapel",
+  "module": "",
+  "built": "generic",
+  "declared": [
+   "pew",
+   "door"
+  ],
+  "resolved": [
+   "pew",
+   "door"
+  ],
+  "unresolved": [],
+  "near": {},
+  "groups": 39
+ },
+ {
+  "key": "shuttle_car",
+  "module": "core_tube",
+  "built": "generic",
+  "declared": [
+   "seat",
+   "handhold",
+   "shuttle_door"
+  ],
+  "resolved": [
+   "seat",
+   "handhold",
+   "shuttle_door"
+  ],
+  "unresolved": [],
+  "near": {},
+  "groups": 45
+ },
+ {
+  "key": "radial_tubes",
+  "module": "interior",
+  "built": "generic",
+  "declared": [
+   "lift_call",
+   "lift_door",
+   "handhold"
+  ],
+  "resolved": [
+   "lift_call",
+   "lift_door",
+   "handhold"
+  ],
+  "unresolved": [],
+  "near": {},
+  "groups": 40
+ },
+ {
+  "key": "transfer_systems",
+  "module": "",
+  "built": "generic",
+  "declared": [
+   "lift_call",
+   "lift_door"
+  ],
+  "resolved": [
+   "lift_call",
+   "lift_door"
+  ],
+  "unresolved": [],
+  "near": {},
+  "groups": 39
+ },
+ {
+  "key": "lifts",
+  "module": "",
+  "built": "generic",
+  "declared": [
+   "lift_call",
+   "lift_door",
+   "level_plaque"
+  ],
+  "resolved": [
+   "lift_call",
+   "lift_door",
+   "level_plaque"
+  ],
+  "unresolved": [],
+  "near": {},
+  "groups": 40
+ },
+ {
+  "key": "standard_corridor",
+  "module": "interior_kit",
+  "built": "generic",
+  "declared": [
+   "door",
+   "babcom_terminal",
+   "level_plaque"
+  ],
+  "resolved": [
+   "door",
+   "babcom_terminal",
+   "level_plaque"
+  ],
+  "unresolved": [],
+  "near": {},
+  "groups": 39
+ },
+ {
+  "key": "medlab_others",
+  "module": "",
+  "built": "generic",
+  "declared": [
+   "diagnostic_bed",
+   "medcabinet"
+  ],
+  "resolved": [
+   "diagnostic_bed",
+   "medcabinet"
+  ],
+  "unresolved": [],
+  "near": {},
+  "groups": 52
+ },
+ {
+  "key": "reactor_hall",
+  "module": "",
+  "built": "generic",
+  "declared": [
+   "reactor_console",
+   "blast_door",
+   "breaker_lever",
+   "catwalk"
+  ],
+  "resolved": [
+   "reactor_console",
+   "blast_door",
+   "breaker_lever",
+   "catwalk"
+  ],
+  "unresolved": [],
+  "near": {},
+  "groups": 75
+ },
+ {
+  "key": "fuel_bunkerage",
+  "module": "",
+  "built": "generic",
+  "declared": [
+   "valve",
+   "tank_gauge",
+   "blast_door",
+   "cargo_crane"
+  ],
+  "resolved": [
+   "valve",
+   "tank_gauge",
+   "blast_door",
+   "cargo_crane"
+  ],
+  "unresolved": [],
+  "near": {},
+  "groups": 52
+ },
+ {
+  "key": "coolant_gallery",
+  "module": "",
+  "built": "generic",
+  "declared": [
+   "valve",
+   "tank_gauge",
+   "catwalk",
+   "handhold"
+  ],
+  "resolved": [
+   "valve",
+   "tank_gauge",
+   "catwalk",
+   "handhold"
+  ],
+  "unresolved": [],
+  "near": {},
+  "groups": 61
+ },
+ {
+  "key": "generator_hall",
+  "module": "",
+  "built": "generic",
+  "declared": [
+   "console",
+   "breaker_lever",
+   "catwalk",
+   "blast_door"
+  ],
+  "resolved": [
+   "console",
+   "breaker_lever",
+   "catwalk",
+   "blast_door"
+  ],
+  "unresolved": [],
+  "near": {},
+  "groups": 74
+ },
+ {
+  "key": "heat_exchanger_hall",
+  "module": "",
+  "built": "generic",
+  "declared": [
+   "valve",
+   "tank_gauge",
+   "catwalk",
+   "console"
+  ],
+  "resolved": [
+   "valve",
+   "tank_gauge",
+   "catwalk",
+   "console"
+  ],
+  "unresolved": [],
+  "near": {},
+  "groups": 70
+ },
+ {
+  "key": "comms_operations",
+  "module": "",
+  "built": "generic",
+  "declared": [
+   "console",
+   "monitor_wall",
+   "babcom_terminal"
+  ],
+  "resolved": [
+   "console",
+   "monitor_wall",
+   "babcom_terminal"
+  ],
+  "unresolved": [],
+  "near": {},
+  "groups": 56
+ },
+ {
+  "key": "cargo_transfer_deck",
+  "module": "",
+  "built": "generic",
+  "declared": [
+   "cargo_crane",
+   "container",
+   "manifest_terminal",
+   "bay_door",
+   "docking_clamp"
+  ],
+  "resolved": [
+   "cargo_crane",
+   "container",
+   "manifest_terminal",
+   "bay_door",
+   "docking_clamp"
+  ],
+  "unresolved": [],
+  "near": {},
+  "groups": 57
+ },
+ {
+  "key": "mooring_gallery",
+  "module": "",
+  "built": "generic",
+  "declared": [
+   "docking_clamp",
+   "console",
+   "blast_door",
+   "handhold"
+  ],
+  "resolved": [
+   "docking_clamp",
+   "console",
+   "blast_door",
+   "handhold"
+  ],
+  "unresolved": [],
+  "near": {},
+  "groups": 68
+ },
+ {
+  "key": "eva_lock_blue",
+  "module": "",
+  "built": "generic",
+  "declared": [
+   "blast_door",
+   "tool_rack",
+   "handhold",
+   "console",
+   "intercom"
+  ],
+  "resolved": [
+   "blast_door",
+   "tool_rack",
+   "handhold",
+   "console",
+   "intercom"
+  ],
+  "unresolved": [],
+  "near": {},
+  "groups": 63
+ },
+ {
+  "key": "gunnery_control",
+  "module": "",
+  "built": "generic",
+  "declared": [
+   "console",
+   "tactical_display",
+   "blast_door"
+  ],
+  "resolved": [
+   "console",
+   "tactical_display",
+   "blast_door"
+  ],
+  "unresolved": [],
+  "near": {},
+  "groups": 63
+ }
+]

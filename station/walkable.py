@@ -55,6 +55,7 @@ sys.path.insert(0, HERE)
 import collision as C                                           # noqa: E402
 import deck as D                                                # noqa: E402
 import directory as dr                                          # noqa: E402
+import interact as IX                                           # noqa: E402
 import interior as it                                           # noqa: E402
 import interior_kit as K                                        # noqa: E402
 import rooms as R                                               # noqa: E402
@@ -150,9 +151,134 @@ def room_target(meta, place):
     return (r * math.cos(a), r * math.sin(a), place["z_m"])
 
 
+# How close to the object the body has to end up for "you walked up to it" to
+# mean anything. `interact.gd`'s reach is 2.4 m (INV-232); this is the bar on
+# the WALK, and it is set at the reach so a body that stops outside arm's length
+# fails even if a generous cone happened to prompt it.
+USE_RANGE_M = 2.4
+
+
+def group_aabb(verts, tris, groups, name):
+    """The world box of one emitted group, FROM ITS TRIANGLE SPAN.
+
+    THE SPAN, NOT THE OBJ. `dressing.machine` appends the object's outer span
+    covering every triangle it built and then appends the `_mp_` part spans
+    inside it, because `export_scene.per_triangle` resolves last-span-wins and
+    that is how a part gets its own material. `deck.write_obj` resolves the same
+    way -- so in the OBJ, and therefore in the glb, `prop_bay_door` keeps only
+    the 12 faces no part claimed, and the other 1,600 are in `prop_mp_plant_*`
+    groups shared with every other machine in the room. A box measured in the
+    engine off the mesh that still carries the name is a box measured off the
+    leftovers.
+
+    Here the spans are still intact, so this is the object. It goes in the
+    sidecar for the same reason `_actors.json` carries the yaw the generator
+    used: the engine cannot recover it by looking, and asking the geometry to
+    give back what the generator already knew is how the door leaves ended up
+    0.16 m out of their own frame.
+    """
+    lo = [float("inf")] * 3
+    hi = [float("-inf")] * 3
+    n = 0
+    for nm, a, b in groups:
+        if nm != name:
+            continue
+        for i in range(a, min(b, len(tris))):
+            n += 1
+            for j in tris[i]:
+                p = verts[j]
+                for k in range(3):
+                    lo[k] = min(lo[k], p[k])
+                    hi[k] = max(hi[k], p[k])
+    if n == 0:
+        return None
+    return lo, hi, n
+
+
+def interact_rows(verts, tris, groups):
+    """The sidecar `godot/scripts/interact.gd` reads, with a measured box each.
+
+    `station/interact.py` says WHICH groups are declared interactables and what
+    verb each carries; this adds where it is and how big, measured off the same
+    mesh that is about to be written.
+    """
+    rows = IX.sidecar({nm for nm, _a, _b in groups})
+    out = []
+    for r in rows:
+        box = group_aabb(verts, tris, groups, r["group"])
+        if box is None:
+            continue
+        lo, hi, n = box
+        r["centre"] = [(lo[k] + hi[k]) / 2.0 for k in range(3)]
+        r["half"] = [max((hi[k] - lo[k]) / 2.0, 0.0) for k in range(3)]
+        r["tris"] = n
+        out.append(r)
+    return out
+
+
+def strip_group(verts, tris, groups, name):
+    """Remove one object from the mesh entirely -- THE NEGATIVE CONTROL.
+
+    Drops the triangles of every span called `name`. That is the object AND its
+    articulated parts, because `dressing.machine`'s outer span covers all of
+    them; dropping only the triangles the OBJ writer would label `name` would
+    leave 1,600 of the door standing and delete twelve.
+
+    Returns `(tris, groups, dropped)` over the SAME vertex list -- an unused
+    vertex costs nothing and re-indexing them would be a second thing to get
+    wrong in the control rather than in the subject.
+    """
+    kill = set()
+    for nm, a, b in groups:
+        if nm == name:
+            kill.update(range(a, min(b, len(tris))))
+    if not kill:
+        return tris, groups, 0
+    keep = [i for i in range(len(tris)) if i not in kill]
+    remap = {old: new for new, old in enumerate(keep)}
+    out_t = [tris[i] for i in keep]
+    out_g = []
+    for nm, a, b in groups:
+        idx = [remap[i] for i in range(a, min(b, len(tris))) if i in remap]
+        if idx:
+            out_g.append((nm, idx[0], idx[-1] + 1))
+    return out_t, out_g, len(kill)
+
+
+def pick_interactable(rows, target, place=None, responds=True):
+    """Which object the use test walks up to, chosen by DATA not by hand.
+
+    The interactable nearest the point the body was already walking to.
+    Deterministic, so the gate measures the same object every run, and it keeps
+    the route the same as the plain deck walk -- a use test that also changes
+    where the body goes cannot tell a broken prompt from a blocked route.
+
+    TWO FILTERS AND BOTH ARE THE MODULE'S OWN DATA. `pressable` excludes
+    `tread`: a deck marking is something you walk on and giving it a keypress
+    would be a lie. `responds` prefers a verb the OBJECT answers -- a lever, a
+    door, a drawer -- over one that needs a body this project has not rigged, so
+    the gate exercises the strongest claim the build can actually make. The
+    first run of this gate chose a `bay_control_booth`, whose verb is `serve`,
+    and the pass was "it was used and nothing happened".
+    """
+    best, bd = None, float("inf")
+    for r in rows:
+        if not r.get("pressable"):
+            continue
+        if responds and not r.get("responds"):
+            continue
+        if place is not None and r.get("place") != place:
+            continue
+        c = r["centre"]
+        d = sum((c[k] - target[k]) ** 2 for k in range(3))
+        if d < bd:
+            best, bd = r, d
+    return best
+
+
 def walk_deck(sector, ring, deck, godot, timeout=1800, traverse=None,
               goto_key=None, no_doors=False, z_m=None, bump=False,
-              no_npc_collision=False):
+              no_npc_collision=False, use=False, strip=None):
     """Assemble a deck, put a body on it, and walk it.
 
     The render mesh and the collision shell are exported separately and BOTH are
@@ -178,8 +304,12 @@ def walk_deck(sector, ring, deck, godot, timeout=1800, traverse=None,
     # the first's mesh and the walk measured whichever ran last.
     stem = (f"{sector}_{ring}_{deck}" if z_m is None
             else f"{sector}_{ring}_{deck}_z{int(z_m)}")
+    # A STRIPPED BUILD GETS ITS OWN FILES. Writing the control's mutilated mesh
+    # over the deck's would leave the next `--deck` run measuring a station with
+    # a docking clamp missing, and it would pass.
+    if strip:
+        stem += "_nouse"
     v, t, g, s = D.build_deck(schema, profile, sector, ring, deck, z_m=z_m)
-    D.write_obj(os.path.join(out, f"{stem}.obj"), v, t, g)
     # PROPS ON. This is a body being put in the room, so the furniture has to be
     # there: a route that only exists because you can walk through a table is
     # not a route.
@@ -187,6 +317,38 @@ def walk_deck(sector, ring, deck, godot, timeout=1800, traverse=None,
                                    z_m=z_m, props=True)
     C.write_obj(os.path.join(out, f"{stem}_col.obj"), cv, ct,
                 cm.get("groups"))
+
+    # -- WHAT A PLAYER CAN USE, and where it is -----------------------------
+    # Chosen BEFORE the mesh is written, because the control has to walk to the
+    # same object the subject did. `strip` names it directly; otherwise it is
+    # the pressable interactable nearest the point the body was already going.
+    goto = goto_key or s["spawn_at"]
+    rtgt = room_target(cm, dr.by_key(goto))
+    rows = interact_rows(v, t, g)
+    chosen, stripped = None, 0
+    if strip:
+        chosen = next((r for r in rows if r["group"] == strip), None)
+    elif use:
+        # In the room the body was already going to, with a response behind it;
+        # then in that room at all; then anywhere on the deck. Each fallback is
+        # a weaker claim and the verdict says which one it got.
+        chosen = (pick_interactable(rows, rtgt, place=goto)
+                  or pick_interactable(rows, rtgt, place=goto, responds=False)
+                  or pick_interactable(rows, rtgt)
+                  or pick_interactable(rows, rtgt, responds=False))
+    if strip:
+        # REMOVED FROM THE WORLD THE INTERACTION LAYER READS, and from nothing
+        # else. The collision shell still carries the object's box, so the body
+        # ends up in exactly the same place with exactly the same route; the
+        # ONLY difference between the two runs is whether there is anything
+        # there to look at. A control that also moves the body would confound
+        # "the prompt is broken" with "it never got near".
+        t, g, stripped = strip_group(v, t, g, strip)
+        rows = interact_rows(v, t, g)
+    D.write_obj(os.path.join(out, f"{stem}.obj"), v, t, g)
+    with open(os.path.join(out, f"{stem}_interact.json"), "w") as f:
+        json.dump(rows, f)
+
     # THE CAST LIST, beside the mesh. A body is baked into the merged geometry,
     # so the engine cannot recover who is where or which way they face by
     # looking at it. The generator knows; it writes it down.
@@ -234,8 +396,16 @@ def walk_deck(sector, ring, deck, godot, timeout=1800, traverse=None,
     # the target, so the target has to be one it can reach without navigating --
     # the room the spawn is standing outside. Reaching one across the ring needs
     # a path, and there is no pathfinder yet.
-    goto = goto_key or s["spawn_at"]
-    tx, ty, tz = room_target(cm, dr.by_key(goto))
+    tx, ty, tz = rtgt
+    # -- WALK UP TO A THING AND USE IT -------------------------------------
+    # The route is the same one the plain deck walk takes -- the object is the
+    # pressable interactable nearest the room target -- so a failure here is a
+    # failure of the PROMPT, not of the way in. The body is steered at the
+    # object's own centre rather than the room's, and `player.step` flattens the
+    # direction onto the floor, so a bay door 2.5 m up is walked TO and not
+    # walked AT.
+    if chosen is not None:
+        tx, ty, tz = chosen["centre"]
     # -- IS A PERSON SOMETHING YOU BUMP INTO? ------------------------------
     # `rooms.is_solid` keeps every `npc_` group OUT of the static collision on
     # purpose -- static collision is generated once, so an inhabitant baked
@@ -265,8 +435,11 @@ def walk_deck(sector, ring, deck, godot, timeout=1800, traverse=None,
                     os.path.join(out, f"crowd_lod{lod}.glb")
                     for _hi, lod in _lad)]
     cmd += [f"--actors={os.path.join(out, stem + '_actors.json')}",
+            f"--interact={os.path.join(out, stem + '_interact.json')}",
             f"--goto={tx},{ty},{tz}", f"--door-key={goto}",
             f"--door-travel={K.PROVISIONAL['door_width_m'] / 2.0}"]
+    if chosen is not None:
+        cmd += [f"--use-group={chosen['group']}"]
     if no_doors:
         cmd += ["--no-doors"]
     if no_npc_collision:
@@ -284,6 +457,21 @@ def walk_deck(sector, ring, deck, godot, timeout=1800, traverse=None,
          "arc_deg": cm["arc_deg"], "goto": goto,
          "doors": len(cm.get("rooms", ()))}
     d["actors_expected"] = bool(s.get("actors"))
+    # THE PYTHON SIDE KNOWS WHAT IT ASKED FOR, and that is what makes the
+    # assertions in `use_verdict` unguardable: if `interact.gd` fails to load,
+    # every `use*` token vanishes from the verdict and the check fires on the
+    # ABSENCE, exactly the way the NPC checks did not for six runs.
+    d["interact_expected"] = bool(rows)
+    d["interact_rows"] = len(rows)
+    if chosen is not None:
+        d["use_want"] = chosen["group"]
+        d["use_want_verb"] = chosen["verb"]
+        d["use_want_label"] = chosen["label"]
+        d["use_want_place"] = chosen["place"]
+        d["use_want_tris"] = chosen["tris"]
+    if strip:
+        d["stripped"] = strip
+        d["stripped_tris"] = stripped
     if bumped is not None:
         d["bumped"] = bumped["group"]
         d["bump_r_m"] = float(bumped["r_m"])
@@ -408,6 +596,97 @@ def deck_verdict(d):
                   f"never leaves the floor")
 
 
+def use_verdict(d):
+    """Did a player walk up to a declared interactable and USE it?
+
+    THE SMALLEST COMPLETE LOOP THAT WAS STILL MISSING. W5 closed spawn -> walk
+    -> a door opens -> an NPC reacts, and a door is the one thing on the station
+    that works by walking at it. `directory.PLACES["interacts"]` declares 357
+    other things a player can use and until now not one of them could be.
+
+    Four claims, in the order a player meets them, and every one of them is a
+    token this function requires rather than tolerates:
+
+      interactables  the build has things to use at all
+      want_present   the specific object is in the world
+      prompt         the eye found it -- looking at it says what it is
+      used           the key press landed on it, and it responded
+    """
+    if "error" in d:
+        return False, d["error"]
+    # THE ABSENCE OF A TOKEN IS A FAILURE, NOT A SKIP. `interact_expected` is
+    # set from the sidecar this process wrote, so a verdict with no `used` in it
+    # means `godot/scripts/interact.gd` did not load -- which is exactly how the
+    # NPC assertions silently vanished for six runs while the deck printed PASS.
+    if d.get("interact_expected") and "interactables" not in d:
+        return False, (f"a sidecar of {d.get('interact_rows')} interactables "
+                       f"was passed and the verdict carries no "
+                       f"`interactables` -- godot/scripts/interact.gd did not "
+                       f"load, so nothing on this deck can be used")
+    if "use_want" not in d:
+        return False, ("no pressable interactable was found to walk to -- "
+                       "every declared use in this room resolves to nothing")
+    for tok in ("prompt", "used", "use_count", "prompt_frames", "want_present",
+                "use_travel_mm", "used_verb", "want_range_m", "used_responds",
+                "used_prompt", "no_mesh"):
+        if tok not in d:
+            return False, f"the verdict carries no `{tok}`"
+    want = d["use_want"]
+    if int(d.get("interactables", 0)) < 1:
+        return False, (f"{d['interact_rows']} interactables were written "
+                       f"beside the mesh and the engine wired 0 -- the group "
+                       f"names in the sidecar are not the names in the glb")
+    if d["want_present"] != "true":
+        return False, (f"{want} is not among the {d['interactables']} "
+                       f"interactables the engine wired")
+    if int(d["prompt_frames"]) < 1:
+        return False, (f"the body ended {float(d['want_range_m']):.2f} m from "
+                       f"{want} and was never prompted for anything at all "
+                       f"-- the eye ray finds nothing")
+    # THE PROMPT IS ASSERTED AT THE MOMENT OF USE, NOT AT THE END OF THE RUN.
+    # The first version of this checked the LIVE prompt in the verdict and
+    # failed a run that had worked: the body walks at 4.2 m/s, it is prompted
+    # for six frames on the approach, presses the key, and keeps going -- so by
+    # the last frame the eye is past the thing and the prompt is empty. That
+    # tested where the body finished, not whether the player was ever told what
+    # they were about to use. `used_prompt` is the sentence that was on screen
+    # when the key went down.
+    if d["used"] != want:
+        return False, (f"a prompt appeared on {d['prompt_frames']} frames and "
+                       f"{want} was never used (used={d['used']}, "
+                       f"use_count={d['use_count']}) -- the eye found "
+                       f"something else")
+    if d["used_prompt"] in ("", "-"):
+        return False, (f"{want} was used with NO prompt on screen -- a player "
+                       f"would have pressed a key at nothing")
+    rng = float(d["want_range_m"])
+    if rng > USE_RANGE_M:
+        return False, (f"used {want} from {rng:.2f} m, past the "
+                       f"{USE_RANGE_M:.1f} m reach -- the prompt is firing "
+                       f"across the room")
+    # AND IT RESPONDED. A `use()` that returns true and moves nothing looks
+    # identical to one that works, so the claim is the object's own measured
+    # travel. `sit`, `rest` and `serve` have no press behind them yet and say so
+    # rather than pretending -- see `station/interact.py::RESPONDS`.
+    moved = float(d["use_travel_mm"])
+    resp = f", and the object moved {moved:.1f} mm"
+    if d["used_responds"] == "true":
+        if moved <= 0.0:
+            return False, (f"used {want} ({d['used_verb']}) and the object did "
+                           f"not move -- `use()` returned true and nothing "
+                           f"happened")
+    else:
+        resp = (f" (verb `{d['used_verb']}` has no response behind it yet: "
+                f"what answers a `{d['used_verb']}` is a body, not a prop)")
+    return True, (f"a body walks up to the {d['use_want_label']} in "
+                  f"{d['use_want_place']}, is told "
+                  f"\"{d['used_prompt'].replace('_', ' ')}\" and USES it: "
+                  f"`{d['used_verb']}` from {rng:.2f} m after "
+                  f"{d['prompt_frames']} prompted frames{resp}. "
+                  f"{d['interactables']} interactables wired on this deck, "
+                  f"{d.get('pressable')} pressable ({d.get('verbs')})")
+
+
 def verdict(d):
     """Pass/fail for one room, with the reason a player would give."""
     if "error" in d:
@@ -446,6 +725,10 @@ def main():
     ap.add_argument("--bump", action="store_true",
                     help="steer at the nearest INHABITANT instead of a room, "
                          "and check they are something you bump into")
+    ap.add_argument("--use", action="store_true",
+                    help="walk up to a declared interactable, be prompted, and "
+                         "use it. The control strips that object out of the "
+                         "render mesh and walks the identical route again")
     a = ap.parse_args()
 
     godot = godot_binary()
@@ -529,6 +812,44 @@ def main():
                       f"(r {r:.2f} m) the body is stopped {stop:.2f} m away; "
                       f"control: with their capsule off it reaches "
                       f"{walk_through:.2f} m and walks through them.")
+        # -- AND SOMETHING IN IT IS USABLE ---------------------------------
+        # `directory.PLACES["interacts"]` has declared what a player can use in
+        # every room since layer 1 and nothing has ever read it as a mechanic.
+        # This walks a body up to one of them and presses the key.
+        if a.use and not drum:
+            u = walk_deck(sector, int(ring), int(deck), godot,
+                          traverse=a.traverse, z_m=a.z, use=True)
+            uok, uwhy = use_verdict(u)
+            print(f"  {'PASS' if uok else 'FAIL'}  use  {uwhy}")
+            if not uok:
+                good = False
+            else:
+                # THE NEGATIVE CONTROL, and it is a control on the CONTENT
+                # rather than on this file's own switch. `--no-interact` would
+                # only prove that turning the feature off turns it off. This
+                # deletes the object's triangles from the render mesh -- all of
+                # them, parts included, because `dressing.machine`'s outer span
+                # covers the parts -- and leaves everything else identical,
+                # including the collision box, so the body walks the same route
+                # to the same place and there is simply nothing there.
+                n = walk_deck(sector, int(ring), int(deck), godot,
+                              traverse=a.traverse, z_m=a.z,
+                              strip=u["use_want"])
+                nok, _nwhy = use_verdict(n)
+                if nok:
+                    print(f"  FAIL  the prompt is not reading the mesh -- with "
+                          f"{u['use_want']} deleted from it the body was still "
+                          f"prompted and still used it")
+                    good = False
+                else:
+                    print(f"        control: with {n.get('stripped_tris')} "
+                          f"triangles of {u['use_want']} deleted from the "
+                          f"render mesh the engine wires "
+                          f"{n.get('interactables', '?')} interactables "
+                          f"instead of {u['interactables']}, the prompt reads "
+                          f"`{n.get('prompt', '?')}` and use_count is "
+                          f"{n.get('use_count', '?')}. What you look at is "
+                          f"what is there.")
         if a.deck_only:
             return 0 if good else 1
         if not good:

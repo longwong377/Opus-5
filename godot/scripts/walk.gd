@@ -56,6 +56,15 @@ var _doors: Node3D
 @export var crowd_ladder: String = ""
 @export var crowd_glbs: String = ""
 var _people: Node3D
+## The interactables sidecar written beside the deck mesh -- see
+## `station/interact.py`. `{group, place, token, verb, pressable, label}` per
+## declared interactable, derived from `directory.PLACES["interacts"]`. The verb
+## table lives in Python and is NOT repeated here.
+@export var interact_path: String = ""
+var _interact: Node3D
+## The group the headless test is to walk up to and use, and whether it has.
+var _use_group := ""
+var _used_ok := false
 var _dress: Node
 var _lights: Node3D
 
@@ -88,6 +97,10 @@ func _ready() -> void:
 	if args.has("crowd-glbs"):
 		crowd_glbs = args["crowd-glbs"]
 
+	if args.has("interact"):
+		interact_path = args["interact"]
+	_use_group = String(args.get("use-group", ""))
+
 	if not _load_level():
 		push_error("walk: could not load %s" % glb_path)
 		get_tree().quit(2)
@@ -97,6 +110,17 @@ func _ready() -> void:
 		_doors.watch(_player)
 	if _people != null:
 		_people.watch(_player)
+	if _interact != null:
+		_interact.watch(_player)
+		_interact.doors(_doors)
+		print("walk: %d interactables wired, %d pressable (%s)"
+			% [_interact.count(), _interact.pressable_count(),
+				_interact.verb_report()])
+		var miss: Array[String] = _interact.missing()
+		if not miss.is_empty():
+			print("walk: %d declared interactable(s) have a span in the "
+				% miss.size() + "generator and NO MESH in the glb -- their "
+				+ "parts claimed every triangle: " + ", ".join(miss))
 
 	if args.has("walk-test"):
 		_run_walk_test(args)
@@ -158,6 +182,7 @@ func _load_level() -> bool:
 			% [c, _all_meshes(scene).size()])
 		_wire_doors(scene, col)
 		_wire_people(scene)
+		_wire_interact(scene)
 		return c > 0
 
 	var n := 0
@@ -306,6 +331,36 @@ func _wire_crowd() -> void:
 	var n2: int = _people.build_crowd_multi(libs, rows)
 	print("walk: %d walkers instanced across %d LOD libraries"
 		% [n2, libs.size()])
+
+
+## Give the deck the things a player can USE. `--no-interact` leaves them out,
+## which is a control on this file; the control on the CONTENT is stronger and
+## lives in `station/walkable.py --use`, which strips the target object's
+## triangles out of the render mesh and re-runs the identical walk.
+##
+## THE VERB TABLE IS NOT HERE. `station/interact.py` derives it from
+## `directory.PLACES["interacts"]` and `rooms.PROP_KIND` and writes the sidecar;
+## this reads it. A copy of those tables in GDScript would be a second
+## description of one decision, which is hard rule 4's failure mode.
+func _wire_interact(scene: Node) -> void:
+	if interact_path == "" or not FileAccess.file_exists(interact_path):
+		return
+	if _args().has("no-interact"):
+		print("walk: interactables DISABLED (control) -- nothing to use")
+		return
+	var f := FileAccess.open(interact_path, FileAccess.READ)
+	var rows = JSON.parse_string(f.get_as_text())
+	if typeof(rows) != TYPE_ARRAY:
+		push_error("walk: %s is not a JSON array" % interact_path)
+		return
+	_interact = Node3D.new()
+	_interact.name = "Interactables"
+	_interact.set_script(load("res://scripts/interact.gd"))
+	add_child(_interact)
+	var n: int = _interact.collect(scene, rows)
+	if n == 0:
+		push_error("walk: the interact sidecar has %d rows and NONE of them "
+			% rows.size() + "matched a mesh in this build")
 
 
 func _load_glb(path: String) -> Node:
@@ -588,6 +643,7 @@ func _physics_process(delta: float) -> void:
 			_goto - _player.global_position)
 	else:
 		_player.step(delta, Vector2(0, 1), false, false)
+	_try_use()
 	var p := _player.global_position
 	var gd := p.distance_to(_goto)
 	if gd < _goto_best:
@@ -614,6 +670,40 @@ func _physics_process(delta: float) -> void:
 			goto_s += " walkers=%d crowd_travel_m=%.1f crowd_lods=%s" % [
 				_people.crowd_count(), _people.crowd_travel_m(),
 				_people.crowd_lod_report().replace(" ", ",")]
+		# -- WHAT A PLAYER CAN USE ------------------------------------------
+		# Printed UNCONDITIONALLY once this node exists, and every field on one
+		# line, because the alternative is the defect that let the NPC
+		# assertions vanish for six runs: `walkable.py` guarded them on the
+		# presence of the very token they asserted, so when `npc.gd` stopped
+		# parsing the tokens disappeared and the deck went on printing PASS. A
+		# gate that vanishes with its subject is worse than no gate.
+		if _interact != null:
+			goto_s += (" interactables=%d pressable=%d verbs=%s"
+				+ " prompt_frames=%d prompt=%s used=%s used_verb=%s"
+				+ " use_count=%d use_travel_mm=%.2f use_range_m=%.2f"
+				+ " want_use=%s want_present=%s want_range_m=%.2f") % [
+				_interact.count(), _interact.pressable_count(),
+				("-" if _interact.verb_report() == ""
+					else _interact.verb_report()),
+				_interact.prompt_frames(),
+				("-" if String(_interact.prompt_group()) == ""
+					else _interact.prompt_group()),
+				("-" if String(_interact.used_group()) == ""
+					else _interact.used_group()),
+				("-" if String(_interact.used_verb()) == ""
+					else _interact.used_verb()),
+				_interact.use_count(), _interact.used_travel_mm(),
+				_interact.used_range_m(),
+				("-" if _use_group == "" else _use_group),
+				str(_use_group != "" and _interact.has_group(_use_group)
+					).to_lower(),
+				(-1.0 if _use_group == "" else _interact.range_to(_use_group))]
+			goto_s += " used_responds=%s no_mesh=%d used_prompt=%s" % [
+				str(_interact.used_responds()).to_lower(),
+				_interact.missing().size(),
+				(("-" if String(_interact.used_prompt()) == ""
+					else String(_interact.used_prompt()))
+					.replace(" ", "_"))]
 		print(("WALKTEST rest=%.3f,%.3f,%.3f on_floor=%s fell=%s moved_1s=%.3f "
 			+ "drop=%.3f legs=%.2f/%.2f/%.2f/%.2f traverse_m=%.2f net_m=%.2f "
 			+ "offfloor=%d/%d%s") % [
@@ -623,6 +713,25 @@ func _physics_process(delta: float) -> void:
 			_path_m, _traverse_from.distance_to(p), _off_floor, _t_traverse,
 			goto_s])
 		get_tree().quit(0)
+
+
+## PRESS THE KEY. There is no keyboard here, so the test calls the SAME `use()`
+## an `InputEventKey` calls -- not a second path that can diverge from the one a
+## player takes. It fires once, on the first frame the prompt names the object
+## the run was told to go and use: that is exactly the moment a player would
+## press E, and firing every frame would turn "can you use it" into "did you
+## ever stand near it".
+##
+## THE PROMPT IS RE-TAKEN FIRST. `_interact` is a sibling node, so its own
+## `_physics_process` may not have run since the body moved; `refresh()` is
+## frame-guarded and idempotent.
+func _try_use() -> void:
+	if _interact == null or _use_group == "" or _used_ok:
+		return
+	_interact.refresh()
+	if String(_interact.prompt_group()) != _use_group:
+		return
+	_used_ok = _interact.use()
 
 
 var _moved_1s := 0.0
