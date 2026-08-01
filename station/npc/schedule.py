@@ -1288,9 +1288,18 @@ def crowd_headcount(place_key: str, hour: float, area_m2: float) -> dict:
 # MEMORY. 500 full agents x 512 B + 2,000 crowd agents x 64 B + the cached
 # census (15 species x 24 h x ~26 counters) is under 0.5 MB. The population
 # itself is a function, and functions are free.
+def _body_frame_share():
+    """`body.NPC_FRAME_SHARE`, imported at need to avoid an import cycle."""
+    from npc import body as _b                                  # noqa: PLC0415
+    return _b.NPC_FRAME_SHARE
+
+
 NPC_BUDGET = {
     "frame_triangles": 1_200_000,
-    "npc_frame_share": 0.15,
+    # ONE NUMBER, and it lives in `body.NPC_FRAME_SHARE`. This was 0.15 while
+    # body.py said 0.12 -- `crowd.py`'s finding (b), two budgets for one frame.
+    # Imported rather than repeated so the two cannot drift again.
+    "npc_frame_share": _body_frame_share(),
     "lod": (
         # (name, near_m, far_m, triangles, max_instances)
         ("lod0", 0.0, 6.0, 8_000, 4),

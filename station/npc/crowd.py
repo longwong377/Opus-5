@@ -2075,7 +2075,8 @@ def _selftest():
           f"a 1.75 m figure is {zb['px_at_mesh_horizon']:.0f} px at the "
           f"Zocalo's {zb['mesh_horizon_m']:.0f} m mesh horizon -- the swap is a "
           f"representation change at a fixed position, never a spawn, and it "
-          f"is the honest price of a 12% frame share")
+          f"is the honest price of a "
+          f"{sched.NPC_BUDGET['npc_frame_share'] * 100:.0f}% frame share")
 
     # =====================================================================
     # 9. GEOMETRY -- winding, closure, and whether it renders at all

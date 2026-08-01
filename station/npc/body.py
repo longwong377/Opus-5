@@ -2524,14 +2524,32 @@ def _mix_mean(per_species):
 # re-derived from it at runtime when it is importable so the two cannot drift,
 # and these are the fallbacks.
 FRAME_TRIANGLES = 1_200_000
-# NPCs get 12% of the frame. Defended rather than asserted: interior structure
+# NPCs get 19% of the frame. Defended rather than asserted: interior structure
 # takes 5% (budget.INTERIOR_FRAME_SHARE) and the habitat drum takes 25%
 # (budget.DRUM["frame_share"]), and those two are never both in view -- a
 # corridor is not the drum. So the worst simultaneous structural load is 25%,
 # leaving 75% for people, props, signage, effects and whatever is through the
-# windows. 12% is under a sixth of that residue and it is what the brief's
-# "crowdedness" costs: it buys ~330 mid-field figures, which is a full Zocalo.
-NPC_FRAME_SHARE = 0.12
+# windows. 19% is a quarter of that residue.
+#
+# RAISED FROM 0.12 IN SESSION 4e, AND IT CLOSES TWO THINGS AT ONCE.
+#
+# First, this file said 0.12 and `schedule.NPC_BUDGET["npc_frame_share"]` said
+# 0.15 -- two committed modules, two budgets, one frame. `crowd.py` recorded
+# that as finding (b) and bound at the tighter of the two on the principle that
+# a budget disagreeing with itself should bind at its tightest. It is now ONE
+# number in both places.
+#
+# Second, giving the crowd hair, a face and hands cost the corridor bake
+# 484 -> 608 triangles, and at 0.15 a busy Zocalo swapped to impostor cards at
+# **24.3 m** against an assertion of 36 m. `CROWD_LOD_OFFSET` cannot reach it:
+# offsets 2/3/4 give 24.3/26.7/30.4 m because the whole excess is inside 18 m
+# where the offset does not apply. The three options were to raise this, to
+# relax the factor of two, or to go back to a bald crowd -- and a bald crowd is
+# the defect that was just fixed, so the frame pays for the hair.
+#
+# What it buys, in the terms `crowd.py` uses: the Zocalo at 20:00 needs 17.4%
+# of the frame to hold meshes across the whole room, and it now has 19%.
+NPC_FRAME_SHARE = 0.19
 
 # ONE GATE IS RED BECAUSE OF THIS FILE AND THE NEXT CONTEXT SHOULD SEE IT HERE
 # RATHER THAN REDISCOVER IT. `npc/crowd.py` asserts that no place swaps a mesh
