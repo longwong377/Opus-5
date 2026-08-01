@@ -126,6 +126,102 @@ pieces. Now 0.
    3x's `portal_frame` defect surviving in the one piece 3x did not touch.
 5. `routes.py`'s docstring restates numbers it computes and went stale twice inside one session.
 
+## Session 4g — WHAT LANDED
+
+### 20. THE STATION IS ONE PLACE, IT HAS A FRONT DOOR, AND IT IS BUILT
+
+    FOOT-CONNECTED COMPONENTS   96 -> 1      (74 of the 96 held one location)
+    BUILT                       70 decks + 5 transit columns
+                                27,894,332 triangles, 2.30 GB, in 8 minutes
+    ring 96/96   axial 71/71   lift 71/71   trunk 4/4   spoke 7/7
+
+    godot --path godot   ->  before: "render_shot: --scene-json is required", exit 2
+                             after:  a player standing in Blue 0 deck 0, HUD up,
+                                     clock running, 73 residents keeping a day,
+                                     the station audible, in 6.3 s
+
+**New this session:** `station/routes.py` (the circulation graph and its gate),
+`station/lift.py` (54/54), `station/spoke_way.py`, `station/transit_runtime.py`
+(the lift that moves), `station/occluders.py`, `station/coldstart.py`,
+`station/boot.py`, `godot/scripts/stream.gd`, `transit.gd`, `main.gd`,
+`places.gd`, `tools/export_station.py`. Roughly 9,000 lines.
+
+**Proven by a body, not by a graph:** a deck walked (126 m, `offfloor=0/1800`),
+140 m across two streamed cell boundaries with every cell resident 36.9 m ahead,
+and a lift ride deck 3 -> deck 0 covering **10.834 m of radius on the floor**
+with 0 of 311 frames off it. G2 -- walking from one DECK to another -- was still
+running when this was written.
+
+### 20.1 THE DEFECTS THAT REACHED FURTHEST
+
+**Every ring corridor built its section joint twice, on every deck, in every
+frame this project has ever rendered.** `corridor_section` closes both ends of
+the length it is given and `ring_arc` never passed `start_portal` -- a parameter
+of that function since it was written that no caller ever set. On a 12.5 degree
+arc: 1,120 exact duplicate triangles, 1,760 non-manifold edges, and 720 of the
+duplicates emissive -- roughly **165 coincident duplicate light sources per 30
+degrees of corridor**. Nothing could fail for it: coincident duplicate geometry
+is closed, correctly wound, inside its own footprint, and identical under every
+measurement this repository has. Found by looking at a frame.
+
+**The audio gate sampled a fader mid-fade, and every audio number published this
+session was wrong.** Layers rise from 20 dB below silence on a 2.5 s constant --
+crowd audible at 0.84 s, air at 2.09 s, structure at **5.65 s** -- and the gate
+read once at 3.0 s. It reported 3 layers where the bed has 5, the crowd 21 dB
+light, `structure` and `pa` missing. A gate that reads a settling value is
+measuring its own timing.
+
+**`materials._selftest`'s derived vocabulary was `rooms` x `dressing` -- all
+interior.** It could only ever fail for something inside the pressure hull,
+which is why 16 unmaterialled Starfury groups sat there invisibly.
+
+**`interior_kit._selftest` recorded `door_leaf`'s four non-manifold edges as
+`max_nm = 4`** -- an assertion that could only fail if somebody FIXED the
+defect. Second recurrence of 4f's `materials._selftest` lesson: *a default
+nobody chose, asserted as a decision.*
+
+**The HUD and the audio disagreed by 31.6 m about where the player was standing**
+-- the HUD inferring a room's extent from the bounding box of its furniture,
+the audio reading the room's own meshes. `godot/scripts/places.gd` is the single
+answer both read now.
+
+### 20.2 GATES THAT LIED, AND WHAT THEY TEACH
+
+Four numbers went green this session and were wrong, each caught by asking the
+gate what it was ASSUMING rather than reading its answer:
+
+1. `routes.py` reported **1 component** while putting one transit column per
+   SECTOR -- granting a shaft from ring 0 to ring 3 that `lift.py` cannot build.
+   Honest answer 8, then 1 once `spoke_way.py` existed.
+2. The whole-station build reported **0 of 71 decks** because every assembled
+   deck was thrown away at the write: two writers with near-identical names and
+   incompatible group formats. It had no test on its own output.
+3. `lift.py`'s shaft opened at **6 landings** and its self-test built 4. Every
+   ring on this station except blue ring 0 carries 12 to 28 decks.
+4. The union-find in `routes.py` ran over place nodes only and skipped every
+   edge ending on a spine, so it read the same number however many edges were
+   built.
+
+**And one I reported to the owner as reproducible and was not.** I read a
+truncated tail of `coldstart.py`'s output and took a CONTROL's failure for G1's.
+The suite was green. Read the whole output before calling a gate red.
+
+### 20.3 OPEN
+
+* the tram has a collision shell now but no runtime motion (`transit_runtime.py`
+  covers the lift only); the guideway peaks at 26.679 m/s = 444.6 mm a frame
+  against `floor_snap_length`'s 100 mm, so it will need the explicit carry the
+  lift does not
+* streamed cells do not wire doors, NPCs or interactables -- **pressure doors
+  are solid in a streamed build**
+* no structure LOD; `budget.py` honestly over
+* `boundary_edges` welds at 4 decimals, so every "0 open edges" claim in this
+  repository is position-dependent until that is fixed at the kit
+* no crowd WALKS on the boot deck: all 73 baked actors are `standing` and there
+  is no `_crowd.json` beside it
+* `hud.gd` prints on every report change and a falling body changes it every
+  frame -- ~150 lines of noise around the one interesting line
+
 ## Session 4g — THE STATION IS 90 ROOMS, NOT A PLACE, AND NOW THERE IS A CORRIDOR BETWEEN THEM
 
 ### 18. READ THIS FIRST — what "128 of 128" actually meant, and the gate that never existed
