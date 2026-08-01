@@ -220,6 +220,24 @@ keeps layer 4b's gates where they were.
 are the lights themselves, ambient, SSAO, glow and the adjustment block. Light in a shadow has to
 be PUT there by a light or by ambient -- it cannot be bounced, and it cannot be faked with fog.
 
+### 11. AGENTS: THE PERMISSION GATE IS GONE, THE DISCIPLINE IS NOT
+
+Set by the owner in session 4e: *"you dont have to ask about agents anymore but just use them
+smartly"*. This replaces session 3q's standing "ASK THE OWNER BEFORE STARTING ANY AGENT", which
+had been read literally in 4e and cost most of a session of parallel work before the owner asked
+*"why have we not used agents to build?"*
+
+**The gate was standing in for four rules. Those rules stay, and they are the whole of "smartly":**
+
+1. **2-3 agents, and it is the HARDWARE.** `nproc` is 4 and the workflow runtime caps concurrency
+   at `min(16, nproc - 2)`, so two run and the rest queue.
+2. **Disjoint file lists, and check for hidden artefact collisions.** Separate source files are
+   not separate artefacts: three actors all running `walkable.py` stomp the same generated meshes.
+3. **The main agent stays off the cores.** `deck.py --sweep`, `walkable.py`, `rooms.py` and
+   `--gate-frames --rerender` are minutes of 100% CPU each and are exactly what an agent needs to
+   verify itself. While they run, do cheap work: read, write, profile one unit.
+4. **Their work is not done when they return it.** Verify against the gates, render, integrate.
+
 ### NEXT SESSION — in priority order
 
 **The owner has ruled on direction: the player's experience, not more coverage. Do not add

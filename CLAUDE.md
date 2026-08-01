@@ -566,9 +566,17 @@ This project runs partly on a **6-hourly trigger** (`trig_01JS1VWf6yada5x6maPMAz
    costs roughly its agent count times a normal turn. Five agents to build five independent
    subsystems is worth it; five agents to write one file is not.
 
-   **ASK THE OWNER BEFORE STARTING ANY AGENT.** Set in session 3q and standing. Not "ask before
-   a big fan-out" — ask before setting any of them in motion, and propose the pairing so it can
-   be chosen.
+   **DO NOT ASK BEFORE LAUNCHING AGENTS. Use them, and use them smartly.** Set by the owner in
+   session 4e and it REPLACES session 3q's "ask before setting any of them in motion". The 3q
+   rule existed because a 12-agent fan-out had just burned an hour writing nothing; the cure for
+   that is the width cap and the discipline below, not a permission gate. Waiting to be asked
+   cost session 4e most of a session of parallel work — the owner's words were *"why have we not
+   used agents to build?"*
+
+   **"Smartly" is the four rules that follow, and they are what the permission gate was standing
+   in for.** Width is capped by the hardware. File lists must be disjoint, and checked for
+   hidden artefact collisions. The main agent must stay off the cores while they run. And their
+   output is not done until it has been verified and integrated.
 
    **Cap: 2–3 agents, and that is the HARDWARE, not a preference.** The owner set 2–3 in session
    3q and it matches the machine exactly: `nproc` is 4, the workflow runtime caps concurrency at
