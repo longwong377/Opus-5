@@ -275,6 +275,9 @@ class SpeciesBody:
     features: tuple          # attachment meshes, in emission order
     surface: Surface
     plan: str = "humanoid"   # humanoid | encounter_suit | column
+    # Which face the head carries: see FACE_PLANS. A row rather than a branch,
+    # so the sixteenth species is still a row.
+    face: str = "humanoid"
     note: str = ""
     authority: int = 5
     source: str = ""
@@ -335,9 +338,25 @@ _S_GENERIC = Surface("skin", ("EXTRAPOLATED",), "plain",
 # --- feature keys ------------------------------------------------------------
 # Ordered so a cull removes the cheapest silhouette first. `FEATURE_TIER` is
 # what the LOD feature schedule actually keys on.
+#
+# HAIR MOVED OUT OF `detail` IN SESSION 4e, AND THE REASON IS A MEASUREMENT
+# BEING THE WRONG INSTRUMENT RATHER THAN A PREFERENCE. `feature_schedule()`
+# prices a cull as the growth of the figure's BOUNDING BOX, and a skull cap
+# barely moves one -- 20 mm at the crown -- so the schedule said hair was free
+# to drop at 4.41 m and the whole shipped crowd, which `populace.corridor_lod`
+# bakes at a `no_detail` level, was **bald to a person**. That is exactly the
+# defect CLAUDE.md records for layer 2: a criterion that a defective case
+# passes. A bounding box cannot see that a cull changes the MATERIAL over a
+# third of the head, or that it removes the only thing distinguishing one
+# resident's head from another's. Hair is therefore priced with the hands and
+# the feet, and the honest statement of the cost is in `report()`.
 FEATURE_TIER = {
-    "hair":            "detail",
     "brow":            "detail",
+    # The nose and the ears. 20-60 mm of relief, genuinely cullable, and the
+    # tier says so.
+    "face":            "detail",
+    "thumbs":          "detail",
+    "hair":            "extremity",
     "hands":           "extremity",
     "feet":            "extremity",
     "centauri_crest":  "identity",
@@ -374,7 +393,7 @@ SPECIES = {
         # at the jaw -- so jaw/cranium = 0.70 against the human 0.78, and the
         # braincase carries visibly more mass above the eye than a human's.
         (1.12, 1.02, 1.22), 0.70, 0.90, 0.0,
-        ("brow", "hands", "feet"), _S_NARN,
+        ("brow", "hands", "feet"), _S_NARN, face="ridged",
         note="Head proportions MEASURED off G'Kar more.jpg (authority 2). "
              "Stature and build EXTRAPOLATED: depicted as physically imposing "
              "and the actor is tall; bounded by the door-height assertion.",
@@ -405,7 +424,7 @@ SPECIES = {
     "drazi": SpeciesBody(
         "drazi", 1.72, 0.060, 1.26, 1.12, 0.94, 0.98, 1.04,
         (1.06, 0.96, 1.18), 0.86, 0.55, 2.0,
-        ("brow", "hands", "feet"), _S_GENERIC,
+        ("brow", "hands", "feet"), _S_GENERIC, face="ridged",
         note="EXTRAPOLATED. FACTIONS 9.2 (authority 4): 'physically robust, "
              "blunt', the League species most often doing the physical work. "
              "Built as the heaviest humanoid: short neck, wide shoulders, "
@@ -433,6 +452,7 @@ SPECIES = {
         "pakmara", 1.80, 0.070, 1.18, 1.05, 0.96, 0.98, 1.16,
         (1.10, 1.14, 1.42), 0.62, 0.35, 26.0,
         ("pakmara_keel", "pakmara_tendrils", "hands", "feet"), _S_PAKMARA,
+        face="none",
         note="MEASURED off more Pak'ma'ra.webp (authority 2): only 165 px of "
              "a 465 px head stands above the shoulder line, so the head is "
              "carried very low -- the SHORTEST neck of any species here at "
@@ -447,7 +467,7 @@ SPECIES = {
     "vree": SpeciesBody(
         "vree", 1.50, 0.050, 0.72, 0.84, 0.92, 1.06, 1.22,
         (1.20, 1.10, 1.10), 0.58, 0.80, 0.0,
-        ("hands", "feet"), _S_GENERIC,
+        ("hands", "feet"), _S_GENERIC, face="flat",
         note="EXTRAPOLATED and WEAK. FACTIONS 9.2 gives only 'traders; saucer "
              "craft'. Built small and large-headed so the tail of the crowd "
              "has a small silhouette in it; nothing constrains this but the "
@@ -503,7 +523,7 @@ SPECIES = {
     "grome": SpeciesBody(
         "grome", 1.93, 0.070, 1.34, 1.16, 1.00, 0.96, 1.00,
         (1.04, 0.94, 1.20), 0.88, 0.60, 3.0,
-        ("hands", "feet"), _S_GENERIC,
+        ("hands", "feet"), _S_GENERIC, face="ridged",
         note="EXTRAPOLATED. FACTIONS 9.2 gives no character at all beyond "
              "'League members', and 9.2's placement is Hydroponics and labour. "
              "Built as the largest humanoid; the door assertion is what stops "
@@ -580,6 +600,12 @@ class Individual:
     tone_index: int
     pattern_seed: int
     features: tuple
+    # APPENDED, with a default, and deliberately so: `animation.rig` and
+    # `_selftest` both construct an Individual positionally to suppress the
+    # stoop, and a field inserted anywhere but the end silently reassigns those
+    # arguments. "" means no hair mesh at all, which is what every species
+    # without "hair" in its feature list gets.
+    hair_style: str = ""
 
 
 def individual(species: str, npc_id: str) -> Individual:
@@ -628,30 +654,77 @@ def individual(species: str, npc_id: str) -> Individual:
                          if f not in ("centauri_crest", "hair"))
 
     stoop = sp.stoop_deg + _gauss(seed, "stoop", 2.5)
+    # Drawn even for a species with no hair feature, so the digest stream does
+    # not shift when a species gains or loses one -- the same reason `crest` is
+    # drawn for every individual and used by one species.
+    hair = hair_style_for(seed, sex) if "hair" in features else ""
     return Individual(species, npc_id, stature, build, shoulder, head, cran,
                       max(0.4, crest), max(0.0, stoop), sex,
                       int(_u(seed, "tone") * len(sp.surface.tones)),
-                      int(_u(seed, "pat") * (1 << 24)), features)
+                      int(_u(seed, "pat") * (1 << 24)), features, hair)
 
 
 # ---------------------------------------------------------------------------
 # Primitives. Y is up, +Z is facing -- the same frame as interior_kit, whose
 # decks lie in XZ with `ceiling_height_m` along Y.
 # ---------------------------------------------------------------------------
-def _ring(cx, cy, cz, rx, rz, seg, squash_front=1.0):
+def _ring(cx, cy, cz, rx, rz, seg, squash_front=1.0, squash_back=1.0,
+          power=2.0, lobes=()):
     """One closed loop of `seg` points in the XZ plane at height cy.
 
     `squash_front` scales +Z only, which is how a chest gets a flatter back than
-    front without a second radius parameter.
+    front without a second radius parameter; `squash_back` does the same for -Z.
+
+    ANGLE CONVENTION, stated once because every lobe below depends on it: the
+    parameter runs x = cos(t), z = sin(t), so **t = 0 is the figure's LEFT
+    (+X), t = 90 deg is the FACE (+Z), t = 180 deg is the right, t = 270 deg is
+    the back**. Everything a body needs to stop being a solid of revolution is
+    a function of that angle, and that is the whole point of the two arguments
+    below:
+
+    `power` is the exponent of a superellipse |x/a|^p + |z/b|^p = 1. p = 2 is
+    the ellipse this function used to be and is still the default. A TORSO IS
+    NOT AN ELLIPSE IN SECTION -- a chest is nearly flat across the front and
+    turns hard at the flank -- and p ~ 2.6 is the difference between a barrel
+    and a ribcage. It costs ZERO triangles, which is why it is the first tool
+    reached for here: session 3r's lesson was that articulation is what layer 2
+    was missing, and articulation that moves vertices instead of adding them
+    survives every level of the LOD chain unchanged.
+
+    `lobes` is a tuple of `(theta_deg, half_width_deg, amount)` radial bumps.
+    A deltoid, a brow ridge, a chin, an occiput and a cheekbone are all "the
+    radius is 12% larger over a 40 degree arc centred here", and a raised
+    cosine window keeps the ring smooth and strictly convex-ish so the loft
+    cannot fold. Amounts are additive so two lobes may overlap.
+
+    BOTH ARE PURE FUNCTIONS OF t, WHICH IS WHAT KEEPS THE LOD CHAIN HONEST.
+    `SILHOUETTE_STEPS` are powers of two so a coarse ring's vertices are a
+    strict SUBSET of a fine one's; that property survives any per-angle
+    shaping, and would not survive shaping that depended on `seg`.
     """
+    e = 2.0 / max(power, 1e-6)
     out = []
     for i in range(seg):
         t = math.tau * i / seg
-        z = rz * math.sin(t)
-        if z > 0:
-            z *= squash_front
-        out.append((cx + rx * math.cos(t), cy, cz + z))
+        c, s = math.cos(t), math.sin(t)
+        if abs(power - 2.0) > 1e-9:
+            c = math.copysign(abs(c) ** e, c)
+            s = math.copysign(abs(s) ** e, s)
+        k = 1.0
+        for th, half, amt in lobes:
+            d = (math.degrees(t) - th + 180.0) % 360.0 - 180.0
+            if abs(d) < half:
+                k += amt * math.cos(math.pi * 0.5 * d / half) ** 2
+        x, z = rx * c * k, rz * s * k
+        z *= squash_front if z > 0 else squash_back
+        out.append((cx + x, cy, cz + z))
     return out
+
+
+def _mirror(theta_deg, half, amt):
+    """A left/right symmetric pair of lobes. A body is bilateral; typing the
+    two entries by hand is how one of them ends up 5 degrees out."""
+    return ((theta_deg, half, amt), (180.0 - theta_deg, half, amt))
 
 
 def _loft(rings, cap_lo=True, cap_hi=True):
@@ -933,14 +1006,71 @@ def _leg_params(ind: Individual, sp: SpeciesBody):
             0.026 * b)
 
 
+def _shoulder_half(ind: Individual) -> float:
+    """Biacromial half-width as a fraction of stature, for one individual.
+
+    ONE function, because two call sites need it and they must not disagree:
+    `_torso_profile` sizes the shoulder ring with it and `build_humanoid` roots
+    the arms with it. The sex factor was applied in the first and not the second
+    for exactly as long as it took to write this note, and the symptom would
+    have been a woman's arms hanging 5% outside her own shoulders.
+    """
+    return (FIGURE["shoulder_w"] * ind.shoulder_k * 0.5
+            * (0.95 if ind.sex == "f" else 1.0))
+
+
 def _torso_profile(ind: Individual, sp: SpeciesBody):
-    """(name, height_fraction, half_width, half_depth) per torso ring."""
+    """(name, height_fraction, half_width, half_depth, section) per torso ring.
+
+    `section` is the keyword block handed to `_ring` -- superellipse exponent,
+    front/back squash and radial lobes -- and it is where a stack of rings stops
+    being a stack of cylinders. NONE OF IT COSTS A TRIANGLE, which is the reason
+    it is done this way round: a shape carried by vertex positions rather than
+    by vertex counts is present at every level of the LOD chain, including the
+    484-triangle level the corridor crowd is actually baked at, where there is
+    no room to add anything.
+
+    What each section is, and why:
+
+      * hip / pelvis  -- squarer than an ellipse (p 2.4) with the buttock as a
+        lobe at the back. A pelvis is a bucket, not a barrel.
+      * waist         -- the narrowest ring, and the only one with no lobes.
+      * lower_chest   -- the ribcage. p 2.5 and the deepest section after the
+        hip, because ribs turn hard at the flank.
+      * chest         -- pectoral lobes either side of the midline, and for
+        women a breast lobe at the same place with more amplitude and a
+        narrower arc. `ind.sex` HAS EXISTED SINCE THIS MODULE WAS WRITTEN AND
+        DROVE NOTHING BUT THE CENTAURI CREST; half the station was built to
+        one silhouette.
+      * upper_chest / shoulder -- p 2.9, the squarest sections on the figure.
+        A square section is what makes a shoulder read as a shelf rather than
+        as the top of a bottle. There is no deltoid lobe here on purpose: the
+        deltoid belongs to the ARM, whose own bulge already carries it, and a
+        lobe here would swallow the arm root instead.
+      * trapezius     -- back to nearly round, sloping into the neck.
+
+    SEXUAL DIMORPHISM IS A RATIO, NOT A SIZE. `shoulder_k` and stature are
+    already jittered per individual, so what is applied here is only the part
+    that is a SHAPE: shoulder-to-hip. The values (women +9% hip, -5% shoulder,
+    -6% waist against the same stature) are EXTRAPOLATED, authority 5; what
+    constrains them is that the reference set is 24 shoulder-framed portraits
+    and establishes nothing about waists at all. What would overturn them is
+    any full-figure frame of a woman in the S2-3 uniform.
+    """
     b = ind.build
-    sw = FIGURE["shoulder_w"] * ind.shoulder_k * 0.5
+    f = ind.sex == "f"
+    sw = _shoulder_half(ind)
     hip_y, lx, r_th, _r_an = _leg_params(ind, sp)
     # Wide enough to CONTAIN both leg roots, not merely to look about right.
-    hw = max(FIGURE["hip_w"] * 0.5 * b, (lx + r_th) * 1.12)
+    # The sex factor is applied INSIDE the max(), so widening or narrowing a
+    # pelvis can never take it below the width its own leg roots need -- the
+    # containment margin is the floor, and `contains()` gates it per species.
+    hw = max(FIGURE["hip_w"] * 0.5 * b * (1.09 if f else 1.0),
+             (lx + r_th) * 1.12)
     cd = FIGURE["chest_d"] * 0.5 * b
+    waist_k = 0.82 if f else 0.88
+    # Pectoral / breast: same place on the ring, different amplitude and arc.
+    bust = _mirror(66.0, 22.0, 0.16) if f else _mirror(62.0, 30.0, 0.055)
     # The hip's DEPTH has to cover the leg circle too, not only its width. The
     # heaviest builds (Grome at 1.34) failed on exactly two vertices per leg --
     # the ones at 90 degrees, where the ellipse is shallowest relative to a
@@ -953,7 +1083,9 @@ def _torso_profile(ind: Individual, sp: SpeciesBody):
     # lineup render showed as magenta across the pelvis, but measured, per
     # species, and at every LOD.
     return [
-        ("hip",          hip_y - 0.035,                   hw * 1.00, cd_hip),
+        ("hip",          hip_y - 0.035,                   hw * 1.00, cd_hip,
+         {"power": 2.4, "squash_back": 0.98,
+          "lobes": ((270.0, 60.0, 0.10 if f else 0.05),)}),
         # Placed BETWEEN the hip and the waist rather than a fixed 0.030 above
         # the hip: with a fixed offset, a species with long legs (Minbari at
         # leg_k 1.03) pushes the pelvis ring ABOVE the waist ring, the stack
@@ -962,23 +1094,42 @@ def _torso_profile(ind: Individual, sp: SpeciesBody):
         # how this was found, as two leg-root vertices "outside" a torso that
         # was 0.25 m wide at that height.
         ("pelvis",       hip_y + 0.55 * (FIGURE["waist"] - hip_y),
-                                                          hw * 1.00, cd_hip),
-        ("waist",        FIGURE["waist"],                 hw * 0.88, cd * 0.80),
-        ("lower_chest",  0.615,                           hw * 0.98, cd * 0.94),
-        ("chest",        FIGURE["chest"],                 sw * 0.86, cd * 1.00),
-        ("upper_chest",  0.772,                           sw * 0.96, cd * 0.96),
-        ("shoulder",     FIGURE["acromion"],              sw * 1.00, cd * 0.86),
+                                                          hw * 1.00, cd_hip,
+         {"power": 2.4, "squash_back": 0.99,
+          "lobes": ((270.0, 55.0, 0.06 if f else 0.03),)}),
+        ("waist",        FIGURE["waist"],             hw * waist_k, cd * 0.80,
+         {"power": 2.3}),
+        ("lower_chest",  0.615,                           hw * 0.98, cd * 0.94,
+         {"power": 2.5, "squash_front": 1.04}),
+        ("chest",        FIGURE["chest"],                 sw * 0.86, cd * 1.00,
+         {"power": 2.6, "squash_back": 0.94, "lobes": bust}),
+        ("upper_chest",  0.772,                           sw * 0.96, cd * 0.96,
+         {"power": 2.8, "squash_back": 0.92,
+          "lobes": _mirror(62.0, 26.0, 0.04)}),
+        ("shoulder",     FIGURE["acromion"],              sw * 1.00, cd * 0.86,
+         {"power": 2.9, "squash_back": 0.94}),
         # The torso used to end on the acromion ring, and the render showed
         # exactly what that is: a flat elliptical disc across the top of the
         # shoulders, lit like a table. A body closes with the trapezius sloping
         # up to the neck, so the last ring is small and high and the shoulder
         # becomes an edge rather than a lid.
-        ("trapezius",    FIGURE["acromion"] + 0.024,      sw * 0.40, cd * 0.52),
+        # The lobes are the two trapezius ridges running from the neck out over
+        # the clavicle: at this height they are what tells a viewer where the
+        # neck ends, and they are 40 degrees wide because that is the arc the
+        # muscle covers between the spine of the scapula and the throat.
+        ("trapezius",    FIGURE["acromion"] + 0.024,      sw * 0.40, cd * 0.52,
+         {"power": 2.2, "lobes": _mirror(20.0, 40.0, 0.10)}),
     ]
 
 
+# How much the +Z half of every head ring is flattened. A face is a PLANE and
+# the back of a skull is a dome; without this the head is a solid of revolution
+# at every distance where its profile reads at all.
+FACE_FLATTEN = 0.88
+
+
 def _head_profile(ind: Individual):
-    """(t, radius_scale, z offset in head heights) from below the chin to crown.
+    """(t, radius_scale, z offset in head heights, section) chin to crown.
 
     A head is not an ellipsoid, and the first version of this table was one --
     the render showed an egg with no jaw and no face plane. Three things make it
@@ -993,23 +1144,85 @@ def _head_profile(ind: Individual):
     t = -0.07 rather than 0.0 at the bottom: the lowest ring is buried inside
     the neck. Coplanar caps read as a step, and at conversation distance a step
     under the chin is the first thing the eye finds.
+
+    SEVEN RINGS OF ELLIPSE IS STILL A BLOCK, and the owner said so in session 4e
+    -- "undetailed featureless blobs". Three of those seven were doing nothing
+    but interpolating between the other four, and none of them carried a single
+    landmark. So the stack is now NINE rings, one on each of the landmarks a
+    human head actually has, and each ring carries a `section` block that says
+    what shape it is rather than how big:
+
+        chin      a point, forward, narrow           lobe at the face
+        jaw       the gonial angles                  lobes rear of the sides
+        cheek     the zygomatic arch                 lobes forward of the sides
+        eye       the temples, which go IN           negative lobes at the sides
+        brow      the supraorbital ridge             lobe at the face
+        forehead  slopes back                        squash_front
+        parietal  the widest ring, occiput behind    lobe at the back
+        crown     small, and set back
+
+    The temple lobes being NEGATIVE is the whole argument for having a signed
+    amplitude: a head narrows above the cheekbone and widens again above the
+    ear, and a profile that can only add is a profile that can only make heads
+    rounder. Two rings and eight lobes are the difference between a face and an
+    egg, and both cost the same: nothing. The two extra rings cost 4 x seg
+    triangles -- 32 at the level the corridor crowd is baked at.
+
+    Every number is EXTRAPOLATED (authority 5) except the widths, which inherit
+    `jaw_k`'s measurement. The constraint is standard adult craniofacial
+    proportion -- the eyes sit at half the head height, the widest point is the
+    parietal at ~0.6, the chin is ~0.6 of the parietal width -- and what would
+    overturn any of it is one square-on portrait at a stated scale, which
+    `reference/15-races-and-makeup/` has for G'Kar and for nobody else.
     """
-    return ((-0.07, 0.50, +0.020), (0.06, 0.66, +0.018), (0.20, 0.86, +0.008),
-            (0.40, 0.99, -0.012), (0.58, 1.00, -0.028), (0.80, 0.88, -0.044),
-            (1.00, 0.44, -0.052))
+    ff = FACE_FLATTEN
+    return (
+        (-0.07, 0.50, +0.020, {"power": 2.0, "squash_front": ff}),
+        # The chin: narrow, forward, and with a point on it.
+        (0.06, 0.63, +0.030, {"power": 2.2, "squash_front": ff * 1.06,
+                              "squash_back": 0.92,
+                              "lobes": ((90.0, 34.0, 0.10),)}),
+        # The jaw line. The gonial angle sits BEHIND the widest point of the
+        # face, which is why these lobes are at 18 degrees off the side and not
+        # on it.
+        (0.20, 0.83, +0.012, {"power": 2.3, "squash_front": ff,
+                              "lobes": _mirror(18.0, 30.0, 0.05)}),
+        # The cheekbone, forward of the side.
+        (0.34, 0.94, +0.002, {"power": 2.2, "squash_front": ff * 1.02,
+                              "lobes": _mirror(52.0, 24.0, 0.07)}),
+        # The eye line, where the temple goes IN.
+        (0.46, 0.99, -0.008, {"power": 2.1, "squash_front": ff,
+                              "lobes": _mirror(2.0, 28.0, -0.045)}),
+        # The brow ridge.
+        (0.57, 1.00, -0.018, {"power": 2.1, "squash_front": ff,
+                              "lobes": ((90.0, 46.0, 0.055),)}),
+        # The forehead, sloping back.
+        (0.70, 0.98, -0.030, {"power": 2.0, "squash_front": ff * 0.94}),
+        # The parietal and the occiput behind it.
+        (0.86, 0.90, -0.042, {"power": 2.0, "squash_front": ff * 0.90,
+                              "lobes": ((270.0, 55.0, 0.055),)}),
+        (1.00, 0.46, -0.052, {"power": 2.0, "squash_front": ff * 0.90}),
+    )
 
 
-def _limb(p0, p1, r0, r1, seg, bulge=1.12, bulge_at=0.5, rings=LIMB_RINGS):
+def _limb(p0, p1, r0, r1, seg, bulge=1.12, bulge_at=0.5, rings=LIMB_RINGS,
+          section=None, depth_k=1.0):
     """A tapered limb from p0 to p1 as a loft of `rings` rings.
 
     `bulge` puts a muscle belly at `bulge_at` so an arm is not a cone. The
     joint ring is pinned at bulge_at, which is what makes the PROFILE LOD
     schedule interesting: dropping the joint ring on a limb with a 12% bulge is
     a measurable silhouette error and dropping a mid-shaft ring is not.
+
+    `depth_k` scales the +/-Z radius against the +/-X one, and `section` is the
+    shaping block from `_ring`. A limb was a solid of revolution here and a limb
+    is not one: an upper arm is flattened front to back, a calf is deeper than
+    it is wide and its mass sits at the BACK. Both cost nothing.
     """
     out = []
     ax, ay, az = p0
     bx, by, bz = p1
+    sec = dict(section or {})
     for k in range(rings):
         t = k / (rings - 1)
         r = r0 + (r1 - r0) * t
@@ -1018,7 +1231,7 @@ def _limb(p0, p1, r0, r1, seg, bulge=1.12, bulge_at=0.5, rings=LIMB_RINGS):
                                             math.pi * (1.0 - (t - bulge_at)
                                                        / max(1e-6, 1.0 - bulge_at)))
         out.append(_ring(ax + (bx - ax) * t, ay + (by - ay) * t,
-                         az + (bz - az) * t, r, r, seg))
+                         az + (bz - az) * t, r, r * depth_k, seg, **sec))
     return out
 
 
@@ -1046,9 +1259,16 @@ def build_humanoid(ind: Individual, sp: SpeciesBody, seg=16, ring_stride=1,
     keep = _feature_filter(features)
 
     # --- torso ------------------------------------------------------------
+    # The section block comes from the profile; `squash_front` is the torso-wide
+    # 1.08 unless the ring names its own, and the two MULTIPLY rather than one
+    # replacing the other -- a ribcage is 4% deeper in front than the rest of
+    # the trunk AND the whole trunk is deeper in front than behind.
     prof = _torso_profile(ind, sp)
-    rings = [_ring(0.0, f * H, 0.0, w * H, d * H, seg, squash_front=1.08)
-             for _n, f, w, d in prof]
+    rings = []
+    for _n, fy, w, d, sec in prof:
+        sec = dict(sec)
+        sec["squash_front"] = 1.08 * sec.get("squash_front", 1.0)
+        rings.append(_ring(0.0, fy * H, 0.0, w * H, d * H, seg, **sec))
     rings = _stride(rings, ring_stride)
     m.add(*_loft(rings), "npc_%s_torso" % sp.surface.kind, "torso")
 
@@ -1075,14 +1295,22 @@ def build_humanoid(ind: Individual, sp: SpeciesBody, seg=16, ring_stride=1,
     hw = head_h * 0.36 * cw          # half-width at the widest ring
     hd = head_h * 0.36 * cd
     hrings = []
-    for t, k, zo in _head_profile(ind):
+    for t, k, zo, sec in _head_profile(ind):
         jk = sp.jaw_k + (1.0 - sp.jaw_k) * min(1.0, max(0.0, t) / 0.34)
-        # squash_front < 1 flattens the +Z half only: the face is a plane and
+        # `squash_front` < 1 flattens the +Z half only: the face is a plane and
         # the back of the skull is a dome, which is what separates a head from
-        # a solid of revolution at any distance where the profile reads.
+        # a solid of revolution at any distance where the profile reads. The
+        # per-ring landmark shaping rides on top of it -- see `_head_profile`.
         hrings.append(_ring(0.0, chin_y + head_h * ch * t, head_h * zo,
-                            hw * k * jk, hd * k * jk, seg, squash_front=0.88))
+                            hw * k * jk, hd * k * jk, seg, **sec))
     m.add(*_loft(hrings), "npc_%s_head" % sp.surface.kind, "head")
+
+    # The face. Built here rather than as a species attachment because every
+    # humanoid has one and `FACE_PLANS` says what KIND -- a Narn has no external
+    # ear and a pak'ma'ra has no nose at all, and both of those are a row in a
+    # table rather than a branch.
+    if "face" in keep:
+        _face(m, ind, sp, seg, chin_y, head_h, hw, hd, ch)
 
     # --- arms -------------------------------------------------------------
     # +0.005 rather than -0.02: the arm's root ring now sits INSIDE the torso
@@ -1091,7 +1319,7 @@ def build_humanoid(ind: Individual, sp: SpeciesBody, seg=16, ring_stride=1,
     arm_top = FIGURE["acromion"] + 0.005
     arm_bot = FIGURE["fingertip"] + 0.030      # wrist; the hand carries the rest
     span = (arm_top - arm_bot) * sp.arm_k
-    sw_h = FIGURE["shoulder_w"] * ind.shoulder_k * 0.5 * H
+    sw_h = _shoulder_half(ind) * H
     # The root is INBOARD and NARROW; the deltoid is the bulge just below it.
     # Rooting the arm at the shoulder's own half-width put its top cap level
     # with the torso's side, which reads as a lit disc floating at the shoulder
@@ -1100,20 +1328,19 @@ def build_humanoid(ind: Individual, sp: SpeciesBody, seg=16, ring_stride=1,
     r_up, r_wr = 0.028 * H * b, 0.022 * H * b
     lseg = max(4, seg // 2)
     for side in (-1, 1):
+        # An arm is not a cone of revolution either: the section is wider across
+        # the deltoid than it is deep, and squarer at the elbow than at the
+        # wrist. `_limb`'s `section` rides the same free mechanism the torso and
+        # head use, and the flattening is what stops a sleeve reading as a pipe.
         arm = _limb((side * ax_in, arm_top * H, 0.0),
                     (side * ax, (arm_top - span) * H, 0.0),
-                    r_up, r_wr, lseg, bulge=1.30, bulge_at=0.16)
+                    r_up, r_wr, lseg, bulge=1.30, bulge_at=0.16,
+                    section={"power": 2.3, "squash_front": 0.94},
+                    depth_k=0.90)
         arm = _stride(arm, ring_stride)
         m.add(*_loft(arm), "npc_%s_arm" % sp.surface.kind, "arm")
         if "hands" in keep and "hands" in ind.features:
-            hy = (arm_top - span) * H
-            m.add(*_loft([
-                _ring(side * ax, hy, 0.0, r_wr, r_wr * 0.8, lseg),
-                _ring(side * ax * 1.01, hy - 0.055 * H, 0.02 * H,
-                      r_wr * 1.35, r_wr * 0.85, lseg),
-                _ring(side * ax * 1.01, hy - 0.098 * H, 0.015 * H,
-                      r_wr * 0.55, r_wr * 0.45, lseg)]),
-                "npc_%s_hand" % sp.surface.kind, "hand")
+            _hand(m, ind, sp, side, ax, (arm_top - span) * H, r_wr, lseg, keep)
 
     # --- legs -------------------------------------------------------------
     # Rooted a little ABOVE the torso's lowest ring so the two solids overlap.
@@ -1125,16 +1352,26 @@ def build_humanoid(ind: Individual, sp: SpeciesBody, seg=16, ring_stride=1,
     lx = lx_f * H
     r_th, r_an = rth_f * H, ran_f * H
     for side in (-1, 1):
+        # The calf lobe sits at 270 degrees, which is the BACK. A leg whose
+        # mass is centred is a table leg; the gastrocnemius is the reason a
+        # standing figure reads as standing rather than as propped up.
         leg = _limb((side * lx, hip_y * H, 0.0), (side * lx, ank_y * H, 0.0),
-                    r_th, r_an, lseg, bulge=1.10, bulge_at=0.55)
+                    r_th, r_an, lseg, bulge=1.10, bulge_at=0.55,
+                    section={"power": 2.2, "lobes": ((270.0, 70.0, 0.10),)},
+                    depth_k=1.06)
         leg = _stride(leg, ring_stride)
         m.add(*_loft(leg), "npc_%s_leg" % sp.surface.kind, "leg")
         if "feet" in keep and "feet" in ind.features:
-            foot = [_ring(side * lx, ank_y * H, 0.0, r_an, r_an, lseg),
+            # A foot is narrow at the heel, widest across the ball, and its
+            # toe box is a wedge rather than a cone -- so the forward rings are
+            # squarer AND offset forward, which is what puts the instep in.
+            foot = [_ring(side * lx, ank_y * H, 0.0, r_an, r_an, lseg,
+                          power=2.2),
                     _ring(side * lx, 0.012 * H, 0.020 * H, r_an * 1.05,
-                          r_an * 1.9, lseg),
+                          r_an * 1.9, lseg, power=2.5,
+                          lobes=((90.0, 60.0, 0.06),)),
                     _ring(side * lx, 0.006 * H, 0.045 * H, r_an * 0.9,
-                          r_an * 2.4, lseg)]
+                          r_an * 2.4, lseg, power=3.0)]
             m.add(*_loft(foot), "npc_%s_foot" % sp.surface.kind, "foot")
 
     # --- species attachments ----------------------------------------------
@@ -1177,13 +1414,259 @@ def _blade(m, group, part, cx, cy, cz, half_w, height, thick, seg,
     m.add(*_loft(out), group, part)
 
 
+def _head_at(ind, t):
+    """(radius scale, z offset) of the SKULL at head-height fraction `t`.
+
+    Linear interpolation of `_head_profile`'s own table, clamped at both ends.
+    Hair and ears are placed with it, so they follow whatever the skull does --
+    including a Narn's heavier braincase and a pak'ma'ra's deeper one -- instead
+    of carrying a second copy of the head's shape that goes stale the first time
+    the profile is edited. Hard rule 4, at the scale of a haircut.
+    """
+    prof = _head_profile(ind)
+    if t <= prof[0][0]:
+        return prof[0][1], prof[0][2]
+    for (t0, k0, z0, _s0), (t1, k1, z1, _s1) in zip(prof, prof[1:]):
+        if t <= t1:
+            f = (t - t0) / max(t1 - t0, 1e-9)
+            return k0 + (k1 - k0) * f, z0 + (z1 - z0) * f
+    return prof[-1][1], prof[-1][2]
+
+
+# ---------------------------------------------------------------------------
+# Hair
+# ---------------------------------------------------------------------------
+# WHY THIS IS A TABLE AND NOT A CAP. The previous `_f_hair` was three rings of
+# skull cap, identical on every resident who had hair at all, and `no_detail`
+# -- the feature level everything past 4.4 m uses -- dropped it, so the corridor
+# crowd the owner was looking at in session 4e was **bald, to a person**. Both
+# halves of that are fixed here: the tier moves (see FEATURE_TIER) and the cap
+# becomes eight styles chosen from the resident's own hash.
+#
+# Fields, all in fractions of head height / skull radius:
+#   lo      where the hair's lowest ring sits on the skull, in head-height t
+#   vol     radial multiplier on the skull at every ring above the first
+#   crown   extra height above the crown
+#   pull    how far the front of the cap is pulled BACK off the face; this is
+#           the hairline, and it is negative amplitude on a lobe at 90 degrees
+#   nape    length of the mass hanging behind, 0 for none
+#   nape_w  its half-width as a fraction of the skull's
+#   knot    radius of a gathered knot above the crown, 0 for none
+#
+# EXTRAPOLATED, authority 5, and the constraint is the era rather than anatomy:
+# `reference/14-characters-and-uniforms/` is Season 2-3, where EarthForce
+# personnel are uniformly short-cropped and civilians in the Zocalo frames carry
+# everything from shaved to shoulder-length. The distribution below is weighted
+# to that -- most of the station is crew -- and what would overturn it is a
+# frame-by-frame count of a Zocalo crowd, which no reference here supports.
+HAIR_STYLES = {
+    "shaved":   dict(lo=0.52, vol=1.010, crown=0.005, pull=0.05, nape=0.0,
+                     nape_w=0.0, knot=0.0),
+    "crop":     dict(lo=0.50, vol=1.045, crown=0.020, pull=0.10, nape=0.0,
+                     nape_w=0.0, knot=0.0),
+    "short":    dict(lo=0.44, vol=1.070, crown=0.035, pull=0.14, nape=0.0,
+                     nape_w=0.0, knot=0.0),
+    "swept":    dict(lo=0.44, vol=1.090, crown=0.070, pull=0.20, nape=0.0,
+                     nape_w=0.0, knot=0.0),
+    "receding": dict(lo=0.46, vol=1.040, crown=0.010, pull=0.34, nape=0.0,
+                     nape_w=0.0, knot=0.0),
+    "bob":      dict(lo=0.26, vol=1.110, crown=0.030, pull=0.16, nape=0.10,
+                     nape_w=0.85, knot=0.0),
+    "long":     dict(lo=0.24, vol=1.120, crown=0.035, pull=0.14, nape=0.62,
+                     nape_w=0.80, knot=0.0),
+    "up":       dict(lo=0.46, vol=1.060, crown=0.020, pull=0.12, nape=0.0,
+                     nape_w=0.0, knot=0.30),
+}
+
+# Weighted draws, by sex. Weights rather than a flat list because a flat list
+# puts one resident in eight in a topknot, and the S2-3 frames do not.
+HAIR_BY_SEX = {
+    "m": (("crop", 34), ("short", 26), ("swept", 14), ("receding", 12),
+          ("shaved", 10), ("long", 4)),
+    "f": (("short", 22), ("bob", 22), ("long", 20), ("up", 16), ("swept", 12),
+          ("crop", 8)),
+}
+
+
+def hair_style_for(seed: str, sex: str) -> str:
+    """One resident's haircut. A pure function of their hash, like everything
+    else about them -- `_pick` is uniform, so the weights are expanded here."""
+    table = HAIR_BY_SEX.get(sex, HAIR_BY_SEX["m"])
+    total = sum(w for _k, w in table)
+    x = _u(seed, "hair") * total
+    for k, w in table:
+        x -= w
+        if x <= 0.0:
+            return k
+    return table[0][0]
+
+
 def _f_hair(m, ind, sp, seg, chin_y, head_h, hw, hd):
-    """A skull cap. Cheap, and the difference between a person and a mannequin."""
-    top = chin_y + head_h * ind.cranium[1]
-    rings = [_ring(0.0, chin_y + head_h * 0.60, 0.0, hw * 1.02, hd * 1.02, seg),
-             _ring(0.0, chin_y + head_h * 0.86, -hd * 0.04, hw * 0.90, hd * 0.94, seg),
-             _ring(0.0, top + head_h * 0.02, -hd * 0.05, hw * 0.42, hd * 0.44, seg)]
+    """The resident's own haircut: a cap that follows the skull, a hairline
+    pulled back off the face, and optionally a mass behind or a knot above.
+
+    The bottom ring is deliberately INSIDE the skull (`vol` is not applied to
+    it) so the cap has no visible bottom rim: the same trick the head itself
+    uses at t = -0.07 and the arm root uses at the shoulder. Without it a bowl
+    of hair sits on the head with a lit disc of an edge all the way round, which
+    is what "hat" looks like and what "hair" does not.
+    """
+    st = HAIR_STYLES.get(ind.hair_style)
+    if st is None:
+        return
+    ch = ind.cranium[1]
+
+    def ring_at(t, scale, lobes=(), dz=0.0):
+        k, zo = _head_at(ind, t)
+        return _ring(0.0, chin_y + head_h * ch * t, head_h * (zo + dz),
+                     hw * k * scale, hd * k * scale, seg,
+                     squash_front=FACE_FLATTEN, power=2.0, lobes=lobes)
+
+    lo, vol = st["lo"], st["vol"]
+    pull = (90.0, 70.0, -st["pull"])
+    # A five-ring stack: buried root, hairline, side, parietal, crown. Fewer
+    # than five and the cap cannot both hug the skull at the temple and stand
+    # proud at the crown, which is the whole shape of a haircut.
+    rings = [ring_at(lo, 0.90),
+             ring_at(lo + 0.10, vol, (pull,)),
+             ring_at(max(lo + 0.22, 0.70), vol * 1.01, (pull,), dz=-0.004),
+             ring_at(0.88, vol * 0.99, dz=-0.006),
+             ring_at(1.0 + st["crown"] / max(ch, 1e-6), 0.52 * vol, dz=-0.008)]
     m.add(*_loft(rings), "npc_hair", "hair")
+
+    if st["nape"] > 0.0:
+        # The mass behind: a blade hanging off the occiput. Built with the same
+        # `_blade` the crests use, so it inherits their closure and winding.
+        k, zo = _head_at(ind, lo + 0.06)
+        _blade(m, "npc_hair", "hair",
+               0.0, chin_y + head_h * ch * (lo + 0.10),
+               head_h * zo - hd * k * 0.55,
+               hw * k * st["nape_w"], -head_h * st["nape"], hd * k * 0.42,
+               seg, sweep=hd * 0.06, taper=0.62, rings=3)
+
+    if st["knot"] > 0.0:
+        r = hw * st["knot"]
+        y = chin_y + head_h * ch * (1.0 + st["crown"] / max(ch, 1e-6))
+        m.add(*_loft([
+            _ring(0.0, y - r * 0.30, -hd * 0.18, r * 0.62, r * 0.62,
+                  max(4, seg // 2)),
+            _ring(0.0, y + r * 0.55, -hd * 0.26, r * 1.00, r * 0.88,
+                  max(4, seg // 2)),
+            _ring(0.0, y + r * 1.20, -hd * 0.30, r * 0.40, r * 0.36,
+                  max(4, seg // 2))]), "npc_hair", "hair")
+
+
+# ---------------------------------------------------------------------------
+# The face
+# ---------------------------------------------------------------------------
+# WHICH FEATURES A SPECIES' FACE HAS. A row, not a branch -- the same shape of
+# solution the rest of the module uses, so the sixteenth species is a row too.
+#   "humanoid" nose and external ears
+#   "ridged"   nose, no external ear (the Narn crown is a reticulated dome in
+#              `G'Kar more.jpg` and carries no pinna; the brow attachment
+#              already models what that face DOES have)
+#   "flat"     a small nose only -- the Vree is built large-craniumed and
+#              small-featured
+#   "none"     no nose at all: the pak'ma'ra face is four tendrils and a maw
+FACE_PLANS = ("humanoid", "ridged", "flat", "none")
+
+
+def _face(m, ind, sp, seg, chin_y, head_h, hw, hd, ch):
+    """A nose and a pair of ears, placed off the skull's own interpolated shape.
+
+    THIS IS THE PART THE OWNER WAS LOOKING AT. A head with a brow, a jaw and a
+    chin is still a mannequin if there is nothing on the front of it, and at
+    conversation distance -- which is where `lod0`'s 64-segment ring exists at
+    all -- the nose is the single feature that says the figure has a front.
+
+    Both are small: the nose stands 20 mm proud of the face plane and an ear is
+    60 mm tall. `feature_schedule` will therefore measure them as nearly free to
+    cull, and they ARE -- which is why the whole face carries the `detail` tier
+    and is gone past 4.4 m. What is NOT free to cull is the hair, and that is
+    the correction this session makes to the tier table.
+    """
+    plan = sp.face
+    if plan == "none":
+        return
+    # A fixed small count: these are 20-60 mm objects and sizing them at the
+    # body's 64 segments is the mistake `costume._att_seg` records paying for a
+    # collar. 4 divides 8, so the strict-subset property survives the switch.
+    fseg = max(4, min(8, seg // 2))
+    small = plan == "flat"
+
+    # --- nose --------------------------------------------------------------
+    # t values are the head profile's own: 0.28 is under the nose, 0.34 is the
+    # cheek ring (the tip), 0.46 the eye line (the bridge), 0.57 the brow.
+    nw = hw * (0.17 if not small else 0.12)
+    nz = hd * (0.90 if not small else 0.82)
+    proj = (0.17 if not small else 0.10)
+    rings = []
+    for t, rx_k, rz_k, dz in ((0.27, 0.85, 0.55, -0.04),
+                              (0.34, 1.00, 1.00, +0.00),
+                              (0.46, 0.68, 0.70, -0.03),
+                              (0.57, 0.62, 0.52, -0.08)):
+        rings.append(_ring(0.0, chin_y + head_h * ch * t,
+                           nz + hd * dz,
+                           nw * rx_k, hd * proj * rz_k, fseg, power=2.3))
+    m.add(*_loft(rings), "npc_%s_nose" % sp.surface.kind, "nose")
+
+    if plan != "humanoid":
+        return
+    # --- ears --------------------------------------------------------------
+    # Behind the widest point of the head and set slightly back, which is where
+    # a pinna is; thin across x, broad fore-aft, and swept out at the top.
+    for side in (-1, 1):
+        rings = []
+        for t, xk, rxk, rzk, zk in ((0.34, 0.90, 0.05, 0.09, -0.10),
+                                    (0.44, 1.00, 0.075, 0.17, -0.12),
+                                    (0.55, 0.93, 0.05, 0.11, -0.15)):
+            k, zo = _head_at(ind, t)
+            rings.append(_ring(side * hw * k * xk,
+                               chin_y + head_h * ch * t,
+                               head_h * zo + hd * zk,
+                               hw * rxk, hd * rzk, fseg, power=2.4))
+        m.add(*_loft(rings), "npc_%s_ear" % sp.surface.kind, "ear")
+
+
+# ---------------------------------------------------------------------------
+# Hands
+# ---------------------------------------------------------------------------
+def _hand(m, ind, sp, side, ax, hy, r_wr, lseg, keep):
+    """A hand: four rings of palm and fingers, plus a thumb.
+
+    IT WAS THREE RINGS OF NOTHING AND IT WAS ORIENTED WRONG. The old mitt was
+    widest across X -- palms facing forward, which is a posture nobody stands
+    in. A hand hanging at rest has its palm facing the thigh, so the broad axis
+    is fore-aft (Z) and the thin axis is lateral (X), and the thumb points
+    FORWARD. Getting that round the right way costs nothing and is most of why
+    the old arm ended in a paddle.
+
+    The thumb is `detail`-tier: it is 20 mm of silhouette, which
+    `feature_schedule` will price honestly, and it exists so that a figure the
+    player is talking to has a hand instead of a mitten.
+    """
+    H = ind.stature_m
+    x = side * ax
+    # (dy in stature, rx, rz, power, dz in stature)
+    plan = ((0.000, 0.72, 0.86, 2.0, 0.000),      # wrist
+            (0.030, 0.78, 1.20, 2.6, 0.004),      # knuckles -- the widest ring
+            (0.070, 0.66, 1.10, 2.8, 0.006),      # mid-phalanx
+            (0.100, 0.40, 0.62, 2.2, 0.004))      # fingertips
+    rings = [_ring(x, hy - dy * H, dz * H, r_wr * rx, r_wr * rz, lseg,
+                   power=p)
+             for dy, rx, rz, p, dz in plan]
+    m.add(*_loft(rings), "npc_%s_hand" % sp.surface.kind, "hand")
+
+    if "thumbs" not in keep:
+        return
+    tseg = max(4, min(8, lseg))
+    tr = r_wr * 0.36
+    rings = []
+    for dy, rk, dz in ((0.020, 1.00, 0.60), (0.044, 0.90, 1.05),
+                       (0.066, 0.55, 1.30)):
+        rings.append(_ring(x - side * r_wr * 0.40, hy - dy * H,
+                           r_wr * dz, tr * rk, tr * rk, tseg))
+    m.add(*_loft(rings), "npc_%s_thumb" % sp.surface.kind, "thumb")
 
 
 def _f_brow(m, ind, sp, seg, chin_y, head_h, hw, hd):
@@ -2030,7 +2513,11 @@ def nominal(species: str) -> Individual:
     sp = SPECIES[species]
     return Individual(species, "nominal", sp.stature_m, sp.build, sp.shoulder_k,
                       sp.head_k, sp.cranium, 1.0, sp.stoop_deg,
-                      "m", 0, 0, sp.features)
+                      "m", 0, 0, sp.features,
+                      # The commonest male cut, so the nominal figure is the
+                      # modal resident rather than a draw. `_selftest` asserts
+                      # this is a real key.
+                      "crop" if "hair" in sp.features else "")
 
 
 def lineup(species=None, lod=0, spacing=0.95, npc_id="lineup", nominal_bodies=False):
@@ -2248,7 +2735,7 @@ def _selftest():
     # self-intersects -- which renders perfectly and breaks every containment
     # and volume test downstream.
     for key, sp in SPECIES.items():
-        ys = [f for _n, f, _w, _d in _torso_profile(nominal(key), sp)]
+        ys = [f for _n, f, _w, _d, _s in _torso_profile(nominal(key), sp)]
         check(all(a < b for a, b in zip(ys, ys[1:])),
               f"{key}: torso ring heights strictly increase "
               f"({[round(y, 3) for y in ys]})")

@@ -67,6 +67,9 @@ var _use_group := ""
 var _used_ok := false
 var _dress: Node
 var _lights: Node3D
+## The interface -- see `scripts/hud.gd`. Built after the player, because it is
+## the player's own readout, and NOT built in the headless walk test.
+var _hud
 
 var _player: CharacterBody3D
 var _static: StaticBody3D
@@ -121,6 +124,8 @@ func _ready() -> void:
 			print("walk: %d declared interactable(s) have a span in the "
 				% miss.size() + "generator and NO MESH in the glb -- their "
 				+ "parts claimed every triangle: " + ", ".join(miss))
+
+	_wire_hud()
 
 	if args.has("walk-test"):
 		_run_walk_test(args)
@@ -361,6 +366,38 @@ func _wire_interact(scene: Node) -> void:
 	if n == 0:
 		push_error("walk: the interact sidecar has %d rows and NONE of them "
 			% rows.size() + "matched a mesh in this build")
+
+
+## Give the player an INTERFACE. See `scripts/hud.gd`.
+##
+## NOT IN THE WALK TEST, and that is the constraint this whole node is built
+## around. `station/walkable.py` matches `WALKTEST (.+)` and reads nothing else;
+## the headless run has a null rendering driver, so a Control tree there draws
+## nothing and can only add ways for the gate to fail. It is built for a shot
+## and for a person at a keyboard, which is the configuration it is for.
+##
+## `--no-hud` is the control, and it is deliberately the SAME flag `interact.gd`
+## reads: with it a frame carries no interface at all, not merely a different
+## one, so the A/B says whether this file does anything.
+##
+## Wired AFTER the player and the interactables because it reads both -- the
+## body for where it is and which way it faces, `interact.gd` for what is in
+## reach. It holds no second look-at test and no second verb table.
+func _wire_hud() -> void:
+	var args := _args()
+	if args.has("walk-test"):
+		return
+	if args.has("no-hud"):
+		print("hud: DISABLED (control) -- no interface on this frame")
+		return
+	if _player == null:
+		return
+	_hud = CanvasLayer.new()
+	_hud.name = "HUD"
+	_hud.layer = 8
+	_hud.set_script(load("res://scripts/hud.gd"))
+	add_child(_hud)
+	_hud.bind(_player, _interact, glb_path, interact_path)
 
 
 func _load_glb(path: String) -> Node:
