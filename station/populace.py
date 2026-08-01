@@ -128,9 +128,79 @@ def occupancy(place_key, area_m2, hour, arch="generic"):
         return max(STAFFED_MINIMUM.get(arch, MIN_PRESENT),
                    int(round(peak * f)))
     rate = FALLBACK_PER_100M2.get(arch, 4.0)
-    day = 0.25 + 0.75 * max(0.0, math.sin(math.pi * (hour - 6.0) / 14.0))
+    # A BEDROOM IS NOT AN OFFICE, AND A THIRD OF THE STATION WAS ON AN OFFICE'S
+    # CLOCK. The curve below peaks at hour 13 -- it is a working day -- and it
+    # was applied to every archetype without a `PlaceCrowd`, which is all seven
+    # residences: they archetype as `generic`, so `qtr_command`,
+    # `qtr_civilian`, `qtr_transient`, `ambassadorial_suites`,
+    # `alien_resident_qtr`, `league_delegations` and `kosh_quarters` filled up
+    # at lunchtime and emptied overnight.
+    #
+    # Found by `npc/life.py` in session 4e, which correlated its own routed
+    # day against this hour by hour: **six of the seven residences came back
+    # anti-correlated, -0.80 to -0.56**, against +0.42 everywhere else. It
+    # asserted the defect rather than patching it, because populace.py was not
+    # its file. It is this file's.
+    #
+    # The residence curve is DERIVED, not inverted by hand: a home is occupied
+    # by the people who are asleep in it, so it is `1 - awake_fraction` over
+    # the station's own species mix, which already carries fifteen different
+    # sleep blocks including the Brakiri's inverted one. Normalised so its own
+    # daily mean matches the working curve's, because this changes WHEN a
+    # residence is full and must not change how many people the station holds.
     floor = STAFFED_MINIMUM.get(arch, MIN_PRESENT)
+    day = (_residence_factor(hour) if _is_residence(place_key)
+           else 0.25 + 0.75 * max(0.0, math.sin(math.pi * (hour - 6.0) / 14.0)))
     return max(floor, int(round(rate * area_m2 / 100.0 * day)))
+
+
+# The register's own residences. Keyed on the place rather than the archetype
+# because the archetype does not distinguish them -- all seven come back
+# `generic` -- and inventing a `residence` archetype would change what
+# `rooms.FIXTURES`, `DENSITY` and `LIGHTS` give them, which is a much larger
+# change than the one this defect needs.
+RESIDENCE_KEYS = frozenset((
+    "qtr_command", "qtr_personnel", "qtr_civilian", "qtr_transient",
+    "ambassadorial_suites", "alien_resident_qtr", "league_delegations",
+    "kosh_quarters",
+))
+
+
+def _is_residence(place_key):
+    return place_key in RESIDENCE_KEYS
+
+
+_RESIDENCE_CURVE = None
+
+
+def _residence_factor(hour):
+    """How full a home is at this hour: the fraction of people asleep in it.
+
+    `schedule.awake_fraction` over the station's own species mix, inverted and
+    normalised to the same daily mean as the working curve -- so this moves
+    WHEN a residence is full without changing how many people the station has.
+    """
+    global _RESIDENCE_CURVE
+    if _RESIDENCE_CURVE is None:
+        mix = getattr(_sched, "STATION_COUNTS", None)
+        if callable(mix):
+            mix = mix()
+        if not isinstance(mix, dict) or not mix:
+            mix = {"human": 1.0}
+        tot = float(sum(mix.values())) or 1.0
+        raw = []
+        for h in range(24):
+            awake = sum(_sched.awake_fraction(sp, float(h)) * n
+                        for sp, n in mix.items()) / tot
+            raw.append(1.0 - awake)
+        work = [0.25 + 0.75 * max(0.0, math.sin(math.pi * (h - 6.0) / 14.0))
+                for h in range(24)]
+        k = (sum(work) / 24.0) / max(sum(raw) / 24.0, 1e-9)
+        _RESIDENCE_CURVE = [max(0.05, v * k) for v in raw]
+    h0 = int(hour) % 24
+    h1 = (h0 + 1) % 24
+    f = hour - int(hour)
+    return _RESIDENCE_CURVE[h0] * (1 - f) + _RESIDENCE_CURVE[h1] * f
 
 
 # Peak occupancy per 100 m2 for places with no `PlaceCrowd` entry of their own.
@@ -2324,6 +2394,45 @@ def _selftest():
     else:
         print("  friction in the crowd: no narn/centauri pair in this room "
               "to measure -- reported, not silently passed")
+
+    # -- A BEDROOM IS NOT AN OFFICE ----------------------------------------
+    # The fallback curve peaks at 13:00 because it is a working day, and it was
+    # applied to all seven residences, which archetype as `generic`. `life.py`
+    # found it by correlating its own routed day against this hour by hour: six
+    # of the seven came back ANTI-correlated, -0.80 to -0.56.
+    _rescur = [occupancy("qtr_civilian", 1000.0, float(h)) for h in range(24)]
+    _off = [occupancy("drum_office", 1000.0, float(h)) for h in range(24)]
+    check("a residence is fullest at night",
+          _rescur.index(max(_rescur)) in tuple(range(21, 24)) + tuple(range(0, 7)),
+          f"peaks at {_rescur.index(max(_rescur))}:00")
+    check("...and emptiest in the working day",
+          _rescur.index(min(_rescur)) in range(9, 19),
+          f"empties at {_rescur.index(min(_rescur))}:00")
+    check("...while an office still does the opposite",
+          _off.index(max(_off)) in range(9, 19),
+          f"office peaks at {_off.index(max(_off))}:00")
+    # THE CORRELATION, which is the shape `life.py` measured and the number
+    # that was negative. A home and an office must be anti-correlated with each
+    # other; if they are not, one of the two curves is not doing its job.
+    _mr = sum(_rescur) / 24.0
+    _mo = sum(_off) / 24.0
+    _cov = sum((a - _mr) * (b - _mo) for a, b in zip(_rescur, _off))
+    _sr = sum((a - _mr) ** 2 for a in _rescur) ** 0.5
+    _so = sum((b - _mo) ** 2 for b in _off) ** 0.5
+    _r = _cov / max(_sr * _so, 1e-9)
+    check("...and the two are strongly anti-correlated over the day",
+          _r < -0.5, f"r = {_r:+.2f}")
+    # AND THE HEADCOUNT IS UNCHANGED. This moves WHEN a residence is full, not
+    # how many people the station holds -- the curve is normalised to the
+    # working curve's own daily mean. Without this a "fix" to the shape is a
+    # silent change to the population.
+    check("...and the station's daily mean occupancy is unmoved by the change",
+          abs(_mr - _mo) / max(_mo, 1e-9) < 0.15,
+          f"residence mean {_mr:.1f} against office {_mo:.1f}")
+    # The control: a place that is NOT a residence must not take the curve.
+    check("the residence curve applies to residences only",
+          not _is_residence("drum_office") and _is_residence("qtr_command"),
+          "the residence test matches everything or nothing")
 
     print(f"{ok}/{ok + fail} passed")
     return 1 if fail else 0

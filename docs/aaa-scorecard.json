@@ -1,959 +1,1408 @@
 {
- "version": 1,
- "notes": "SEED, NOT A REVIEW. Round 1 for every subsystem was scored by the author of docs/AAA-STANDARD.md from facts already recorded in STATE.md, so that the gate has real data to run against. No adversarial review round has produced these numbers. Treat every score as provisional until a reviewer other than the builder has scored it. The scores are deliberately conservative: where STATE.md records a defect, the descriptor it matches is the score.  SESSION 3r: first scores taken from CLOSE frames rather than wide ones. AAA-STANDARD.md's craft section has always required judging 'at three distances: the distance the player normally sees it from, half that, and the distance at which it is one pixel of silhouette.' Only the first was ever rendered, which is how 118 locations of blockout passed three layers. The standard did not fail here -- applying it did.  SESSION 3w: first judgement of the WALKABLE build -- an assembled ring deck rather than a single room -- at all three distances, through Godot + lavapipe. Two new subsystems, `walkable_deck` and `npc_bodies`. Full report and every frame in docs/judge-3w.md. NOTE that this file does NOT pass its own gate: `python3 tools/aaa_gate.py docs/aaa-scorecard.json` reports 52 structural errors, ALL of them in rounds written before 3w (severity 'resolved' is not a valid severity; evidence keyed by 'frames'/'path'/'shader' instead of by dimension; dimensions below the bar with no finding). They are left as found. Rewriting past rounds to make a gate green is the exact failure this file exists to catch; the 3w entries below are gate-clean and can be checked in isolation.  SESSION 4a (layer 4b, lighting mood): the first thing this pass found is that ELEVEN OF THE FOURTEEN distribution failures were STALE FRAMES, not lighting defects. Every failing frame was committed 2026-07-29/30, every frame committed 07-31 passed, and the lens fix (c05a877) and the soft fill (7cf9404) landed in between. The ANCHOR -- docs/engine-corridor.png, the frame RENDER_OFFSET=1.40 is defined against -- read p5 x1.64 and had the show's own ladder UPSIDE DOWN (soffit x1.82 over deck x0.29, against the show's 0.23-0.32 over 2.49); re-rendered from its own command it reads x0.214 and x2.59 and passes every band. A committed PNG is a CACHE OF A MEASUREMENT and no gate here could tell a stale cache from a fresh one. export_scene.EXPOSURE_FRAMES now records the shot that produces each frame and --gate-frames --rerender re-takes it. Exposure gate: 3 pass / 11 fail / 9 UNVERIFIABLE -> 13 pass / 10 fail / 0 unverifiable.",
- "bar": {
-  "min_score": 4,
-  "clean_rounds_required": 2,
-  "max_rounds": 4
- },
- "subsystems": {
-  "drum_ground": {
-   "status": "active",
-   "rounds": [
-    {
-     "round": 1,
-     "reviewer": "seed from STATE.md session 2x/2y",
-     "date": "2026-07-27",
-     "scores": {
-      "craft": 3,
-      "fidelity": 3,
-      "performance": 1,
-      "robustness": 0
-     },
-     "evidence": {},
-     "broke_assertions": false,
-     "findings": [
-      {
-       "severity": "blocking",
-       "dimension": "robustness",
-       "descriptor": "R0",
-       "where": "station/drum_ground.py",
-       "text": "The periodicity assertion compares sample(0.0, w) against sample(1.0, w), but every consumer applies u % 1.0 first, so it is a value compared against itself. Monkeypatching a 3.295 m seam cliff still scored 0.000 and passed."
-      },
-      {
-       "severity": "blocking",
-       "dimension": "performance",
-       "descriptor": "P1",
-       "where": "station/budget.py",
-       "text": "The ground-density gate measures the old flat shell at 0.005 tri/m2 and will keep printing PASS whatever the ground costs. Worst visible set is 105,920 triangles and is ungated."
-      },
-      {
-       "severity": "major",
-       "dimension": "fidelity",
-       "descriptor": "F3",
-       "text": "Ground tagging widths are bound to the LOD ramp width, so avenues render 31.2 m and trunk roads 51 m against an intended 20 m, and the settlement band comes out 62% street. INV-016 is single-source with no cross-check."
-      },
-      {
-       "severity": "major",
-       "dimension": "craft",
-       "descriptor": "C3",
-       "text": "Ground does not meet the end caps: a 1.2 m axial mismatch where the cap's outermost course stands proud of the terrain."
-      }
-     ]
-    }
-   ]
+  "bar": {
+    "clean_rounds_required": 2,
+    "max_rounds": 4,
+    "min_score": 4
   },
-  "exterior_components": {
-   "status": "active",
-   "rounds": [
-    {
-     "round": 1,
-     "reviewer": "seed from STATE.md sessions 2b/2d/2o/2t",
-     "date": "2026-07-27",
-     "scores": {
-      "craft": 1,
-      "fidelity": 3,
-      "performance": 4,
-      "robustness": 2
-     },
-     "evidence": {
-      "performance": "budget.py: 2,616 component triangles inside the 400,000 exterior allowance; 23 draw calls of 64"
-     },
-     "broke_assertions": false,
-     "findings": [
-      {
-       "severity": "blocking",
-       "dimension": "craft",
-       "descriptor": "C1",
-       "where": "station/components.py",
-       "text": "Cobra bays, docking ports, observation domes and rotundas are box primitives placed by rule. Correct positions, placeholder shapes."
-      },
-      {
-       "severity": "major",
-       "dimension": "fidelity",
-       "descriptor": "F3",
-       "text": "Radiators and the forward comms plate are reference-corrected and cross-checked; the remaining component types are placed from callout position alone with no second source."
-      },
-      {
-       "severity": "major",
-       "dimension": "robustness",
-       "descriptor": "R2",
-       "text": "validate.py asserts each component produced geometry and stayed inside the radius envelope. Nothing asserts a component is closed, and no assertion has been deliberately broken."
-      }
-     ]
-    }
-   ]
-  },
-  "habitat_drum_shell": {
-   "status": "active",
-   "rounds": [
-    {
-     "round": 1,
-     "reviewer": "seed from STATE.md sessions 2u/2v/2y",
-     "date": "2026-07-27",
-     "scores": {
-      "craft": 3,
-      "fidelity": 4,
-      "performance": 4,
-      "robustness": 3
-     },
-     "evidence": {
-      "fidelity": "Hub cone measured at ~20% of cap radius against the schema's 0.18 read off an unrelated authority-3 print diagram: two independent sources 2% apart, asserted to stay within 0.03. Lighting from truss light runs sourced to 34b and 33a, authority 1.",
-      "performance": "budget.py drum gate: 51,128 of 300,000 triangles (17%), 4% of a 1.2 M frame against a 25% allowance"
-     },
-     "broke_assertions": false,
-     "findings": [
-      {
-       "severity": "major",
-       "dimension": "craft",
-       "descriptor": "C3",
-       "text": "Land-use bands are flat surfaces with riser walls. The shell reads at drum scale and has no tertiary detail at walking distance."
-      },
-      {
-       "severity": "major",
-       "dimension": "robustness",
-       "descriptor": "R3",
-       "where": "station/interior.py",
-       "text": "boundary_edges() and _inward_fraction() are genuine class-level assertions and three of the six new ones were verified by deliberate breakage. Not all of them were, and ROBUSTNESS 4 requires every assertion to have been broken and observed to fail."
-      },
-      {
-       "severity": "minor",
-       "dimension": "craft",
-       "descriptor": "C4",
-       "text": "Checker plating became a material group rather than 0.35 m of relief, which is correct, but no material has been authored to carry it yet."
-      }
-     ]
-    }
-   ]
-  },
-  "hull_exterior": {
-   "status": "active",
-   "rounds": [
-    {
-     "round": 1,
-     "reviewer": "seed from STATE.md sessions 1/2/2e/2n",
-     "date": "2026-07-27",
-     "scores": {
-      "craft": 3,
-      "fidelity": 4,
-      "performance": 4,
-      "robustness": 3
-     },
-     "evidence": {
-      "fidelity": "Miller's tabulated diameters against the independently traced radius profile agree to 5.7% (Red) and 3.9% (Green); hull length 8,046.9 m against canon 8,047. Two derivations that could not have copied each other.",
-      "performance": "budget.py: 256,232 of 400,000 triangles (64%), 23 of 64 draw calls, 18 of 32 MB vertex bandwidth; LOD switch distances derived from silhouette sagitta r(1-cos(pi/n))"
-     },
-     "broke_assertions": false,
-     "findings": [
-      {
-       "severity": "major",
-       "dimension": "craft",
-       "descriptor": "C3",
-       "text": "Plating and greebles give a size hierarchy that reads at 200 m and at 20 km, but the tertiary tier is generic: the same panel, hatch and blister repeated without regard to what the part does."
-      },
-      {
-       "severity": "major",
-       "dimension": "robustness",
-       "descriptor": "R3",
-       "where": "station/validate.py",
-       "text": "28 canon assertions and byte-for-byte determinism across two PYTHONHASHSEED values. The hull has no boundary_edges() closure assertion -- 'closed at both ends' is not the same measurement -- and the assertions have not been deliberately broken."
-      }
-     ]
-    }
-   ]
-  },
-  "interior_kit": {
-   "status": "active",
-   "rounds": [
-    {
-     "round": 1,
-     "reviewer": "seed from STATE.md sessions 2l/2p/2w",
-     "date": "2026-07-27",
-     "scores": {
-      "craft": 3,
-      "fidelity": 3,
-      "performance": 4,
-      "robustness": 3
-     },
-     "evidence": {
-      "performance": "budget.py: 28,791 of 60,000 visible structure triangles (48%) against a 91.3 m sight line DERIVED from ring curvature, 285 tri/m marginal against 400; cell seam asserted vertex for vertex including wrap-around"
-     },
-     "broke_assertions": false,
-     "findings": [
-      {
-       "severity": "major",
-       "dimension": "fidelity",
-       "descriptor": "F3",
-       "text": "INV-007's chamfered corridor section is inferred, not observed. 'corridor in alien sector.webp' shows a chamfered aperture; nothing establishes the passage behind it has that profile, and 'grey level 1.webp' shows a rectangular portal header. Single source, no cross-check."
-      },
-      {
-       "severity": "major",
-       "dimension": "craft",
-       "descriptor": "C3",
-       "text": "A door bay has no wall build-up: corridor_section passes courses=False for the bay a wall door takes over, so skirt, dado, rail band and plate courses stop dead at the door. grey level 1.webp shows the build-up running continuously past portals."
-      },
-      {
-       "severity": "major",
-       "dimension": "robustness",
-       "descriptor": "R3",
-       "text": "Every primitive is now gated on signed volume and a corridor is asserted closed overhead, both class-level. Assertions have been broken and observed to fail for the closure test only, not for the rest."
-      },
-      {
-       "severity": "minor",
-       "dimension": "craft",
-       "descriptor": "C4",
-       "text": "Junction cross-corridor deck tile pitch is 0.57 m against the arms' 0.605 m, and the grid is not driven from a shared origin, so there is a visible seam at each crossing mouth."
-      }
-     ]
-    }
-   ]
-  },
-  "npc_foundation": {
-   "status": "active",
-   "rounds": [
-    {
-     "round": 1,
-     "reviewer": "seed from STATE.md session 2m",
-     "date": "2026-07-27",
-     "scores": {
-      "craft": 3,
-      "fidelity": 4,
-      "performance": 0,
-      "robustness": 3
-     },
-     "evidence": {
-      "fidelity": "Per-species grammars fitted to names spoken on screen with the evidence recorded beside each pattern; Centauri house names established by Londo and Carn sharing Mollari; Vorlon kept a closed list because two attested names cannot support a generator, and a test asserts it stays closed."
-     },
-     "broke_assertions": false,
-     "findings": [
-      {
-       "severity": "blocking",
-       "dimension": "performance",
-       "descriptor": "P0",
-       "where": "station/budget.py",
-       "text": "NPC density is not gated anywhere. Interior structure is already allowed only 5% of a 1.2 M triangle frame and NPCs come out of the same frame; nothing measures what a populated corridor costs."
-      },
-      {
-       "severity": "major",
-       "dimension": "craft",
-       "descriptor": "C3",
-       "text": "Names, roles and schedules exist; there is no body, no animation and no crowd behaviour, so nothing yet reads as a person at any distance."
-      },
-      {
-       "severity": "major",
-       "dimension": "robustness",
-       "descriptor": "R3",
-       "text": "38 tests covering the two design bugs found (unshifted sleep rhythm, species mix summing to 0.94). Determinism of NPC identity against iteration order is not asserted, and no assertion has been deliberately broken."
-      }
-     ]
-    }
-   ]
-  },
-  "tram": {
-   "status": "active",
-   "rounds": [
-    {
-     "round": 1,
-     "reviewer": "seed from STATE.md sessions 2x/2y",
-     "date": "2026-07-27",
-     "scores": {
-      "craft": 3,
-      "fidelity": 2,
-      "performance": 2,
-      "robustness": 0
-     },
-     "evidence": {},
-     "broke_assertions": false,
-     "findings": [
-      {
-       "severity": "blocking",
-       "dimension": "robustness",
-       "descriptor": "R0",
-       "where": "station/tram.py",
-       "text": "The 'measured proportion' assertions are algebraic identities that never touch the built geometry. They hold for CAR_BAYS = -3.0 and CAR_DEPTH_FRAC = 99.0. Separately, tram cars pass through the radial spokes: 168 of 3,144 car vertices sit 6.43 m inside, confirmed independently by point-in-box and by rendering, and no assertion exists between the two modules."
-      },
-      {
-       "severity": "blocking",
-       "dimension": "fidelity",
-       "descriptor": "F2",
-       "text": "Car length is disputed between two authority-1 frames -- 34b's rectification gives 3.9 bays (96 m), 33a shows ~5 window bays at a length:height near 1.8:1 against the model's 21 bays and ~9:1, i.e. 3-4x shorter. This is unresolved and unrecorded as a conflict."
-      },
-      {
-       "severity": "major",
-       "dimension": "performance",
-       "descriptor": "P2",
-       "text": "1,252 triangles exterior and 4,158 with the saloon, measured once for one car. No worst-case sweep over a full guideway of cars, and no entry in budget.py."
-      },
-      {
-       "severity": "major",
-       "dimension": "craft",
-       "descriptor": "C3",
-       "text": "Exterior car and saloon read as the intended object at guideway distance. Being literal about 35a's continuous bench cushions made it 2.5x cheaper, but there is no tertiary detail and no material differentiation."
-      }
-     ]
-    }
-   ]
-  },
-  "exterior_approach": {
-   "status": "active",
-   "rounds": [
-    {
-     "round": 1,
-     "reviewer": "builder, session 3k -- FIRST ENGINE-RENDERED SCORE IN THE PROJECT",
-     "date": "2026-07-29",
-     "scores": {
-      "craft": 3,
-      "fidelity": 4,
-      "performance": 3,
-      "robustness": 4
-     },
-     "evidence": {
-      "engine": "Godot 4.4 double + Mesa lavapipe, Forward+, 1280x720",
-      "frames": [
-       "docs/engine-approach-far.png (14 km, 34 s)",
-       "docs/engine-approach-near.png (3.4 km, 27 s)"
+  "notes": "SEED, NOT A REVIEW. Round 1 for every subsystem was scored by the author of docs/AAA-STANDARD.md from facts already recorded in STATE.md, so that the gate has real data to run against. No adversarial review round has produced these numbers. Treat every score as provisional until a reviewer other than the builder has scored it. The scores are deliberately conservative: where STATE.md records a defect, the descriptor it matches is the score.  SESSION 3r: first scores taken from CLOSE frames rather than wide ones. AAA-STANDARD.md's craft section has always required judging 'at three distances: the distance the player normally sees it from, half that, and the distance at which it is one pixel of silhouette.' Only the first was ever rendered, which is how 118 locations of blockout passed three layers. The standard did not fail here -- applying it did.  SESSION 3w: first judgement of the WALKABLE build -- an assembled ring deck rather than a single room -- at all three distances, through Godot + lavapipe. Two new subsystems, `walkable_deck` and `npc_bodies`. Full report and every frame in docs/judge-3w.md. NOTE that this file does NOT pass its own gate: `python3 tools/aaa_gate.py docs/aaa-scorecard.json` reports 52 structural errors, ALL of them in rounds written before 3w (severity 'resolved' is not a valid severity; evidence keyed by 'frames'/'path'/'shader' instead of by dimension; dimensions below the bar with no finding). They are left as found. Rewriting past rounds to make a gate green is the exact failure this file exists to catch; the 3w entries below are gate-clean and can be checked in isolation.  SESSION 4a (layer 4b, lighting mood): the first thing this pass found is that ELEVEN OF THE FOURTEEN distribution failures were STALE FRAMES, not lighting defects. Every failing frame was committed 2026-07-29/30, every frame committed 07-31 passed, and the lens fix (c05a877) and the soft fill (7cf9404) landed in between. The ANCHOR -- docs/engine-corridor.png, the frame RENDER_OFFSET=1.40 is defined against -- read p5 x1.64 and had the show's own ladder UPSIDE DOWN (soffit x1.82 over deck x0.29, against the show's 0.23-0.32 over 2.49); re-rendered from its own command it reads x0.214 and x2.59 and passes every band. A committed PNG is a CACHE OF A MEASUREMENT and no gate here could tell a stale cache from a fresh one. export_scene.EXPOSURE_FRAMES now records the shot that produces each frame and --gate-frames --rerender re-takes it. Exposure gate: 3 pass / 11 fail / 9 UNVERIFIABLE -> 13 pass / 10 fail / 0 unverifiable.",
+  "subsystems": {
+    "command_control": {
+      "rounds": [
+        {
+          "broke_assertions": false,
+          "date": "2026-08-01",
+          "evidence": {},
+          "findings": [
+            {
+              "descriptor": "C1",
+              "dimension": "craft",
+              "severity": "major",
+              "text": "docs/judge-4e-cnc-half.png: the console -- the object the most-seen room on the show exists for -- is one uniform orange polygon on four black sticks. No screens, no keys, no bezel, no material break, no second detail tier. cc_console_leg is 120 tri over 5 instances = 24 triangles an instance; cc_console_face is 60; cc_floor and cc_pit are 2 each; the whole room is 2,064 tri for 941 m2. C1 verbatim: 'a box primitive standing in for a named object.' The forward pit's red-lit consoles, which the authority-1 frame leads with, are absent entirely.",
+              "where": "station/bespoke.py command_control"
+            },
+            {
+              "descriptor": "F2",
+              "dimension": "fidelity",
+              "severity": "major",
+              "text": "Built from the nouns of the authority-1 description rather than from measurement: the raised circular dais on a stepped plinth, the lower pit, the stairs and the two courses of horizontal cyan-white light strips are all present and correctly placed, and no dimension in the room is traced to a calibration. F2: 'Everything traces; nothing is measured.'",
+              "where": "station/bespoke.py command_control"
+            },
+            {
+              "descriptor": "P2",
+              "dimension": "performance",
+              "severity": "major",
+              "text": "No gate addresses this room. It is inside the class budget only because it is 2,064 triangles, which is the craft finding restated.",
+              "where": "station/budget.py"
+            },
+            {
+              "descriptor": "R2",
+              "dimension": "robustness",
+              "severity": "major",
+              "text": "interact.py --audit reports cnc 4/4 resolved and resolve_place reports alias {'console': 'cc_console_leg'} -- the declared interactable resolves to a 24-triangle box and the audit is right to say so, because it tests existence. density.py scores the room PASS at 170.9% of its floor while the same row's %show column reads 12.6% of a Babylon 5 set, and %show is not gated. Three green gates over a flat plate.",
+              "where": "station/interact.py"
+            }
+          ],
+          "reviewer": "judging agent, session 4e -- LAYER 8 ROUND 1. First frames of this station scored against docs/AAA-STANDARD.md. 21 engine frames, every one confirmed Vulkan 1.4.318 Forward+ in its own log (docs/judge-4e-frames.json). Builder of none of it. Full report: docs/judge-4e.md",
+          "round": 1,
+          "scores": {
+            "craft": 1,
+            "fidelity": 2,
+            "performance": 2,
+            "robustness": 2
+          }
+        }
       ],
-      "triangles": 200754,
-      "note": "Every previous render in this project came from tools/preview_render.py, the flat-shaded rasteriser, which CLAUDE.md says judges structure and not craft. This is the first frame ever scored on craft."
-     },
-     "broke_assertions": false,
-     "findings": [
-      {
-       "severity": "blocking",
-       "dimension": "craft",
-       "descriptor": "C2",
-       "where": "godot/materials/, exterior",
-       "text": "NO EMISSIVE WINDOWS ANYWHERE. A station housing 250,000 people is rendered completely unlit from within. At any approach distance this is the single largest failure: it reads as a derelict, not a city. The owner's opening beat is the station coming into view -- and what comes into view has nobody home."
-      },
-      {
-       "severity": "major",
-       "dimension": "craft",
-       "descriptor": "C3",
-       "where": "godot/materials/",
-       "text": "The whole hull is one pale beige note. No material variation between metal, composite and glazing; no per-sector identity. The 2.23x gravity gradient and five distinct sectors are invisible from outside."
-      },
-      {
-       "severity": "major",
-       "dimension": "craft",
-       "descriptor": "C3",
-       "where": "godot/scenes/exterior.tscn",
-       "text": "Single hard key light, no fill and no bounce. The shadow side is pure black, which flattens an 8 km object into a cutout. No bloom, no lens response, no exposure adaptation."
-      },
-      {
-       "severity": "major",
-       "dimension": "craft",
-       "descriptor": "C3",
-       "where": "exterior",
-       "text": "Scale does not read. Nothing in frame gives size -- no traffic, no Starfury, no transport, no lit windows to count. An 8,047 m object photographs like a 2 m model."
-      },
-      {
-       "severity": "minor",
-       "dimension": "craft",
-       "descriptor": "C4",
-       "where": "components.py solar/heat-exchange arrays",
-       "text": "Swept arrays read as flat grey cards. No specular response, so they do not read as panels."
-      },
-      {
-       "severity": "minor",
-       "dimension": "performance",
-       "descriptor": "P3",
-       "where": "whole path",
-       "text": "27-34 s per 720p frame on lavapipe. Adequate for judging, says nothing about framerate. No measurement on target hardware exists anywhere in the project."
-      }
-     ],
-     "what_is_good": [
-      "Silhouette is unmistakably Babylon 5 at both 14 km and 3.4 km.",
-      "Hull plating, greebling, panel lines and clamped conduit runs all read at 3.4 km and resolve away cleanly at 14 km -- the LOD and greeble-relief work from sessions 2n and 3k is paying off.",
-      "Orange-red marker lights scattered over the hull are the only thing currently giving the station life, and they work.",
-      "Structural banding breaks the drum's mass convincingly."
-     ]
+      "status": "active"
     },
-    {
-     "round": 2,
-     "reviewer": "builder, session 3k -- NOT an independent review; the round-1 blocking finding was raised by this same author and this round records that it is answered, not that the subsystem is good.",
-     "date": "2026-07-29",
-     "scores": {
-      "craft": 4,
-      "fidelity": 4,
-      "performance": 3,
-      "robustness": 4
-     },
-     "evidence": {
-      "frames": [
-       "docs/engine-windows-nightside.png (3.4 km, anti-sun, 40 s)",
-       "docs/engine-windows-near.png (3.4 km, sunlit, 35 s)"
+    "council_chamber": {
+      "rounds": [
+        {
+          "broke_assertions": false,
+          "date": "2026-08-01",
+          "evidence": {},
+          "findings": [
+            {
+              "descriptor": "C1",
+              "dimension": "craft",
+              "severity": "major",
+              "text": "docs/judge-4e-council-normal.png: the radiating fin fan, the spoked medallion, the curved bench, the lattice chair backs and the stepped floor are all present and the silhouette reads -- and every one of them is an untextured grey or white primitive standing in an unenclosed black void. 54.05% of the frame is below the measurable floor. The reference's defining feature is 'a perforated gold mesh front panel lit from within -- THE FURNITURE IS THE LIGHT SOURCE'; council_mesh is 80 triangles and is lit from outside.",
+              "where": "station/bespoke.py council_chamber"
+            },
+            {
+              "descriptor": "F2",
+              "dimension": "fidelity",
+              "severity": "major",
+              "text": "Built from the authority-1 frame's nouns and none of its values. Absent: the gold perforated mesh lit from within; the 'pale blue-green polygonal mosaic' floor (grey here); the 'deep blue' field behind the medallion (black here); the 'fan of blue-and-white radiating panels' marking the speaking position. Only 2-3 delegation chairs are in frame against one per delegation.",
+              "where": "station/bespoke.py council_chamber"
+            },
+            {
+              "descriptor": "P2",
+              "dimension": "performance",
+              "severity": "major",
+              "text": "5,950 tri for 1,683 m2. No gate addresses the room individually; it is one of six locations that FAIL layer 2b, at 93.7% of its derived floor and 9.5% of a Babylon 5 set.",
+              "where": "station/density.py"
+            },
+            {
+              "descriptor": "R2",
+              "dimension": "robustness",
+              "severity": "major",
+              "text": "0 open boundary edges and 0 non-manifold edges on council_chamber.obj under both welded and unwelded counts -- the cleanest mesh in the sample. But the room has no enclosing shell at all: the closed solids do not form a room, and nothing asserts that a location a player can stand in is enclosed.",
+              "where": "station/bespoke.py council_chamber"
+            }
+          ],
+          "reviewer": "judging agent, session 4e -- LAYER 8 ROUND 1. First frames of this station scored against docs/AAA-STANDARD.md. 21 engine frames, every one confirmed Vulkan 1.4.318 Forward+ in its own log (docs/judge-4e-frames.json). Builder of none of it. Full report: docs/judge-4e.md",
+          "round": 1,
+          "scores": {
+            "craft": 1,
+            "fidelity": 2,
+            "performance": 2,
+            "robustness": 2
+          }
+        }
       ],
-      "path": "Godot 4.4 double + Mesa lavapipe, Forward+, 1280x720",
-      "materials": "station/materials.py 600 assertions; habitat_windows bound to green_section, red_section, aft_hull_block, habitat_cylinder, observation_rotunda"
-     },
-     "broke_assertions": false,
-     "findings": [
-      {
-       "severity": "resolved",
-       "dimension": "craft",
-       "descriptor": "C4",
-       "where": "station/materials.py habitat_windows, INV-036",
-       "text": "ROUND 1'S BLOCKING FINDING IS ANSWERED. The anti-sun frame shows warm window bands running the length of both habitat sections with a scatter of marker lights: the station reads as inhabited rather than as a derelict. The sunlit frame correctly shows the bands as texture and not as light, which is what a lit hull does."
-      },
-      {
-       "severity": "major",
-       "dimension": "craft",
-       "descriptor": "C3",
-       "where": "godot/materials/habitat_windows.tres",
-       "text": "Triplanar cross-projection. World triplanar samples the sheet on two axes across the drum's barrel and the second projection shows as a faint crosshatch over the window rows. Visible in engine-windows-nightside.png as a regular lattice on the cylinder. Fix needs either cylindrical UVs on the drum mesh or a shader that projects about the spin axis; neither is a material change, which is why it is not fixed here."
-      },
-      {
-       "severity": "major",
-       "dimension": "craft",
-       "descriptor": "C3",
-       "where": "station/materials.py WINDOW_BANDS",
-       "text": "The band pattern tiles visibly. One 28.8 m repeat over a 1,209 m drum is 42 identical courses, and at 3.4 km the regularity reads as ladder rungs. Wants a second, much longer-period variation -- blocks of dark hull where a section has no quarters behind it."
-      },
-      {
-       "severity": "minor",
-       "dimension": "craft",
-       "descriptor": "C4",
-       "where": "station/materials.py habitat_windows albedo",
-       "text": "The habitat sections now sit darker than the rest of the hull, so they read as a different material rather than as the same hull with windows in it. The sheet's albedo is exempt from TEX_MEAN renormalisation for a good reason; the plate value between windows should still match hull_exterior's 0.60."
-      },
-      {
-       "severity": "blocking",
-       "dimension": "robustness",
-       "descriptor": "R2",
-       "where": "godot/scenes/*.tscn",
-       "text": "RESOLVED THIS ROUND, recorded because the failure mode is general. Material rules were emitted to a .txt for a human to paste into the scene files. habitat_windows exported cleanly, passed 594 assertions and did not reach the render; two other materials had been missing from the exterior scene for longer. patch_scene_rules now writes the block and a gate asserts the file matches the library. Proven able to fail by deleting a rule."
-      }
-     ]
+      "status": "active"
     },
-    {
-     "round": 3,
-     "reviewer": "builder, session 3k -- rework of round 2's two majors and one minor. Still not an independent review.",
-     "date": "2026-07-29",
-     "scores": {
-      "craft": 4,
-      "fidelity": 4,
-      "performance": 3,
-      "robustness": 4
-     },
-     "evidence": {
-      "frames": [
-       "docs/engine-windows-nightside.png (3.4 km, anti-sun, --light-gain 0.04)",
-       "docs/engine-windows-near.png (3.4 km, sunlit)",
-       "close 900 m frame used to verify the mapping, not kept"
+    "customs_arrival": {
+      "rounds": [
+        {
+          "broke_assertions": false,
+          "date": "2026-08-01",
+          "evidence": {},
+          "findings": [
+            {
+              "descriptor": "C1",
+              "dimension": "craft",
+              "severity": "major",
+              "text": "docs/judge-4e-customs-normal.png, the player's first room. The three hanging information boards -- the authority-1 signage that IS the room's purpose -- are featureless pale rectangles. customs_screen_welcome, customs_screen_schematic and customs_screen_head are 12 triangles each, which is exactly a cuboid; customs_desk is 48. 53.01% of the frame is below the measurable floor. There is not one person in it.",
+              "where": "station/customs.py"
+            },
+            {
+              "descriptor": "F2",
+              "dimension": "fidelity",
+              "severity": "major",
+              "text": "The board text EXISTS in the repository -- signage.py:48-68 carries 'ATMOSPHERE CAUTION', 'SIX DIFFERENT ATMOSPHERES ARE CURRENTLY AVAILABLE ON B-5.' and 'TIME ON B-5 IS EARTH MEAN TIME (EMT)' as data, and customs.py imports signage -- and the corridor eight metres away renders legible signage in the same engine frame. The capability is built, the content is authored, and the room that most needs it has three blank boxes.",
+              "where": "station/signage.py"
+            },
+            {
+              "descriptor": "P2",
+              "dimension": "performance",
+              "severity": "major",
+              "text": "7,296 tri for 6,041 m2. Passes layer 2b at 108.7% of its floor and carries 12.9% of a Babylon 5 set's line density.",
+              "where": "station/density.py"
+            },
+            {
+              "descriptor": "R2",
+              "dimension": "robustness",
+              "severity": "major",
+              "text": "interact.py --audit reports customs_north 5/5 resolved, info_board included, against three 12-triangle blanks. Existence is all the audit claims and all layer 5 asks for.",
+              "where": "station/interact.py"
+            }
+          ],
+          "reviewer": "judging agent, session 4e -- LAYER 8 ROUND 1. First frames of this station scored against docs/AAA-STANDARD.md. 21 engine frames, every one confirmed Vulkan 1.4.318 Forward+ in its own log (docs/judge-4e-frames.json). Builder of none of it. Full report: docs/judge-4e.md",
+          "round": 1,
+          "scores": {
+            "craft": 1,
+            "fidelity": 2,
+            "performance": 2,
+            "robustness": 2
+          }
+        }
       ],
-      "path": "Godot 4.4 double + Mesa lavapipe, Forward+, 1280x720",
-      "shader": "godot/materials/hull_window.gdshader, cylindrical about world +Z"
-     },
-     "broke_assertions": false,
-     "findings": [
-      {
-       "severity": "resolved",
-       "dimension": "craft",
-       "descriptor": "C4",
-       "where": "godot/materials/hull_window.gdshader",
-       "text": "TRIPLANAR CROSSHATCH GONE. The habitat hull has no UVs -- export_gltf.py writes POSITION and NORMAL only -- so every material relies on world triplanar, which blends two grids across the drum's barrel. Replaced with a cylindrical mapping about the spin axis. The seam closes because the repeat count around the circumference is snapped to a whole number at a reference radius, and mip selection uses derivatives taken from the smooth tangent frame rather than from the discontinuous uv."
-      },
-      {
-       "severity": "resolved",
-       "dimension": "craft",
-       "descriptor": "C4",
-       "where": "hull_window.gdshader dark_block_fraction",
-       "text": "BAND TILING BROKEN UP. 28% of blocks, five repeats square, have no lit windows -- a section with no quarters behind it. Clearly visible in the anti-sun frame as unlit segments along the barrel. Sized in repeats so a block boundary never cuts a window in half."
-      },
-      {
-       "severity": "resolved",
-       "dimension": "craft",
-       "descriptor": "C4",
-       "where": "station/materials.py habitat_windows albedo",
-       "text": "PLATE VALUE NOW MATCHES THE HULL. Was rendering at 0.15 against hull_exterior's 0.60 -- four times darker -- so the habitat sections read as a bolted-on material. Asserted numerically from the values that ship rather than judged by eye."
-      },
-      {
-       "severity": "blocking",
-       "dimension": "craft",
-       "descriptor": "C2",
-       "where": "tools/export_scene.py, the three-point rig",
-       "text": "THE LIGHTING RIG HAS NO NIGHT SIDE, and the owner's opening beat is the station coming into view. The rim kicker sits at sun_az + 175 and the fill is mirrored through the camera axis, so whatever azimuth the camera takes, the camera-facing edge is lit. That rig is correct for showing a model's silhouette and wrong for a city at night: the anti-sun frame here needed --light-gain 0.04 to show the windows at all. LAYER 4 work -- the rig is a lighting judgement, not a material -- but it is recorded as blocking because until it changes, the shot the opening is built on cannot be composed."
-      },
-      {
-       "severity": "major",
-       "dimension": "robustness",
-       "descriptor": "R2",
-       "where": "godot/scripts/render_shot.gd, tools/render_godot.sh",
-       "text": "RESOLVED THIS ROUND, both general failure modes. (1) --light-gain scaled only the lights carried in the shot JSON; the exterior shot has \"lights\": 0 because its key, fill and rim are nodes in exterior.tscn, so the flag did nothing and two renders an order of magnitude apart in gain came back BYTE-IDENTICAL. (2) A shader that fails to compile still renders -- Godot falls back and hands out a valid PNG of the wrong thing at exit 0. A redefinition of the built-in TAU cost one round exactly that way. render_godot.sh now exits 3 on SHADER ERROR."
-      }
-     ]
-    }
-   ]
-  },
-  "drum_interior_engine": {
-   "status": "active",
-   "rounds": [
-    {
-     "round": 1,
-     "reviewer": "builder, session 3k -- M0 interior path proof",
-     "date": "2026-07-29",
-     "scores": {
-      "craft": 2,
-      "fidelity": 3,
-      "performance": 4,
-      "robustness": 3
-     },
-     "evidence": {
-      "engine": "Godot 4.4 double + lavapipe, Forward+, 1000x560, 15 s",
-      "frames": [
-       "docs/engine-m0-interior.png"
-      ]
-     },
-     "broke_assertions": false,
-     "findings": [
-      {
-       "severity": "blocking",
-       "dimension": "craft",
-       "descriptor": "C2",
-       "where": "godot/materials/, guideway light runs",
-       "text": "THE HABITAT'S LIGHT RUNS RENDER MAGENTA ON ONE SIDE AND WHITE ON THE OTHER. These are the drum's ONLY light source and are authority 1 (Babylon_5_2-22_33a/34b). Half of them are falling back to an unassigned material. Invisible to every assertion in the project and invisible in the preview rasteriser, which does not do materials at all."
-      },
-      {
-       "severity": "major",
-       "dimension": "craft",
-       "descriptor": "C3",
-       "where": "drum ground",
-       "text": "The ground reads as flat olive and tan blocks with hard edges between land-use bands. No texture, no transition, no detail at any distance."
-      },
-      {
-       "severity": "major",
-       "dimension": "craft",
-       "descriptor": "C3",
-       "where": "drum",
-       "text": "No atmospheric perspective. A 2.6 km volume with 556 m of air overhead shows no haze, so the far end cap reads at the same contrast as the near ground and the volume collapses."
-      }
-     ],
-     "what_is_good": [
-      "The payoff view works: ground curves up and away, the far side arches overhead.",
-      "Guideway trusses recede correctly and read as structure.",
-      "Core tube, hub and spokes read at the vanishing point.",
-      "15 s per frame -- the interior path is FASTER than the exterior, so iteration is cheap."
-     ]
-    }
-   ]
-  },
-  "zocalo_interior": {
-   "status": "active",
-   "rounds": [
-    {
-     "round": 1,
-     "reviewer": "main agent, session 3r -- first scores taken from CLOSE frames",
-     "date": "2026-07-30",
-     "scores": {
-      "craft": 3,
-      "fidelity": 3,
-      "performance": 3,
-      "robustness": 3
-     },
-     "evidence": {
-      "craft": "docs/engine-zocalo-close.png -- ribbed arches, a gallery with railings, stall canopies, tables and stools, floor tiling, warm/cool separation. Reads as the intended place at its normal distance, which is C3."
-     },
-     "broke_assertions": false,
-     "findings": [
-      {
-       "severity": "major",
-       "dimension": "craft",
-       "descriptor": "C3",
-       "where": "station/zocalo.py",
-       "text": "Falls apart at half distance, which is the C3 descriptor exactly. The arches are undifferentiated white surfaces with no panel breaks, joints or wear. No signage anywhere in a market concourse. No people."
-      },
-      {
-       "severity": "major",
-       "dimension": "craft",
-       "descriptor": "C3",
-       "where": "tools/export_scene.py fixture lighting",
-       "text": "Floor light pools blow to pure white discs. Clipped highlights read as a rendering error rather than as lighting."
-      }
-     ]
+      "status": "active"
     },
-    {
-     "round": 2,
-     "reviewer": "layer-4b agent, session 4a -- lighting only, geometry not re-scored",
-     "date": "2026-07-31",
-     "scores": {
-      "craft": 3,
-      "fidelity": 3,
-      "performance": 4,
-      "robustness": 4
-     },
-     "evidence": {
-      "craft": "docs/engine-zocalo.png re-rendered at the swept exposure, and docs/engine-zocalo-inside.png (the composed deck shot). The round-1 finding 'floor light pools blow to pure white discs' is CONFIRMED and its stated CAUSE IS WRONG. It is filed against 'tools/export_scene.py fixture lighting'; measured over a x5.7 range of ROOM_EXPOSURE at the same camera and the same boxes, the lit wall plate moves 0.0556 -> 0.1934 (x3.48) and the deck strip moves 0.9381 -> 0.9443 (x1.007). The strip is INERT to the exposure because it is an EMISSIVE MATERIAL at fixed emission_energy, and room_exposure scales fittings and ambient, neither of which touches emission. No value of ROOM_EXPOSURE or BESPOKE_EXPOSURE can close it.",
-      "fidelity": "The Zocalo now passes 6 of 7 distribution checks against reference/04-sector-red/more zocalo.png at median x1.19. It fails `crushed` x0.03 -- it holds 33x less black than its reference. A gain of x0.35 passes 7/7 and puts the level at x0.58, which is outside layer 4a's window and reads in the frame as a dim hall at dusk WITH THE DECK STRIP STILL BLOWN. Level kept, distribution debt recorded.",
-      "performance": "Not re-measured this pass -- no geometry, materials or lights changed, only BESPOKE_EXPOSURE['zocalo'], which is a scalar on existing lights. Carried at 4 from station/budget.py rather than re-scored.",
-      "robustness": "tools/export_scene.py --gate-frames --rerender re-renders this row from its recorded shot and measures it, so the verdict is reproducible rather than cached; measure_frame 28/28; export_scene 236/237 (the one failure pre-existing, identical with these changes stashed)."
-     },
-     "broke_assertions": false,
-     "findings": [
-      {
-       "severity": "major",
-       "dimension": "craft",
-       "descriptor": "C3",
-       "where": "station/materials.py emission_energy, or godot/scenes/interior.tscn tonemap_exposure",
-       "text": "THE BLOWN POOLS AND VITRINES ARE EMISSION, NOT EXPOSURE, and the measurement is in the evidence field. Two routes reach them and neither is ROOM_EXPOSURE: lowering emission_energy on the emissive materials, or tonemap_exposure on the Environment, which scales what the CAMERA receives and so moves emissives and lit surfaces together. export_scene.GRADE / --tonemap-exposure now exposes the second per shot. Not applied here because it changes the look for every room in the scene at once and a look has to be judged whole."
-      },
-      {
-       "severity": "major",
-       "dimension": "fidelity",
-       "descriptor": "F3",
-       "where": "tools/measure_frame.py",
-       "text": "NO STATISTIC IN THE GATE CAN SEE THIS, and two candidates were derived and REFUTED by the corpus. `bright_tail` (share of the frame above x8 its own median): ours 3.39%, and the 33-frame corpus spans 0.00-7.50% with a median of 2.31%, so ours is an ordinary show value; the pairwise band comes out at x15.47, wider than crushed's x11.42. `hi_sat` (mean saturation of the top 1%): ours 0.105 against more zocalo.png's 0.406 -- but the corpus p5 is 0.078 and Doug's Dugout.webp, one of our own references, is 0.088. A gate there would reject the show. What IS measurable is LOCAL: the floor pool holds 42.2% of its pixels within 2% of its own maximum at saturation 0.046. A gate for that needs regions."
-      }
-     ]
-    }
-   ]
-  },
-  "generated_rooms": {
-   "status": "active",
-   "rounds": [
-    {
-     "round": 1,
-     "reviewer": "main agent, session 3r -- first scores taken from CLOSE frames",
-     "date": "2026-07-30",
-     "scores": {
-      "craft": 1,
-      "fidelity": 2,
-      "performance": 4,
-      "robustness": 3
-     },
-     "evidence": {
-      "craft": "docs/engine-casino-close.png -- flat panelled walls, four ceiling lights blown to white blobs, one dark counter slab, one blue box on the floor. A casino with no tables, no machines, no chairs."
-     },
-     "broke_assertions": false,
-     "findings": [
-      {
-       "severity": "blocking",
-       "dimension": "craft",
-       "descriptor": "C1",
-       "where": "station/rooms.py",
-       "text": "These 68 rooms are 58% of the station's 118 locations. Each is the archetype kit with a few fixtures dropped in, so the room is named for a function it does not contain. Largest craft deficit in the project by location count."
-      }
-     ]
+    "docking_bay_interior": {
+      "rounds": [
+        {
+          "broke_assertions": false,
+          "date": "2026-08-01",
+          "evidence": {},
+          "findings": [
+            {
+              "descriptor": "C1",
+              "dimension": "craft",
+              "severity": "major",
+              "text": "docs/judge-4e-dockingbay-normal.png: a grey box with white pendant lights and dark greeble either side. 63.95% of the frame is below the measurable floor -- just outside measure_frame.py's own derived CRUSHED envelope upper bound of 63.92% -- and the pendants are clipped white. The bay deck is bay_deck, 2 triangles, for a 33,289 m2 location; the whole room is 3,943 tri. None of the authority-1 description reads: no red-orange painted box girders, no lattice gantry, no yellow/black chevrons on the step nosings, no large red deck disc with a white oval emblem (bay_emblem exists at 108 tri and bay_chevron at 72, and neither is legible).",
+              "where": "station/bespoke.py docking bay"
+            },
+            {
+              "descriptor": "F2",
+              "dimension": "fidelity",
+              "severity": "major",
+              "text": "The overall form is right and is worth saying -- the reference insists the bay is 'a long low slot, not a hangar box' and the frame is a long low slot. Everything inside it traces to the description by name and nothing is measured against the two authority-1 frames, including the deck markings the gazetteer says must be sized against the eleven dock workers.",
+              "where": "station/bespoke.py docking bay"
+            },
+            {
+              "descriptor": "P2",
+              "dimension": "performance",
+              "severity": "major",
+              "text": "3,943 tri over 33,289 m2 = 0.118 tri/m2. PASSES layer 2b at 155.3% of its derived floor while carrying 15.0% of a Babylon 5 set's line density.",
+              "where": "station/density.py"
+            },
+            {
+              "descriptor": "R3",
+              "dimension": "robustness",
+              "severity": "major",
+              "text": "The one room in the sample whose open edges survive a position weld: 31 of 5,930, owned by bay_ceiling (16), bay_ledge (12), bay_panel (2) and bay_deck (1). Located, they are ALL coplanar at z = 0 spanning x -21..21 and y 0..22.2 -- the bay mouth, i.e. the declared opening, reconciled exactly as AAA-STANDARD.md's geometry checklist asks. That is R3 behaviour and it is why this is the highest robustness score in the new subsystems. What holds it below 4: nothing in the repository asserts it. There is no declared-opening list for rooms and boundary_edges() lives in interior_kit, which the bespoke room path does not use, so a NEW hole in this mesh would be found by nothing.",
+              "where": "station/bespoke.py docking bay"
+            }
+          ],
+          "reviewer": "judging agent, session 4e -- LAYER 8 ROUND 1. First frames of this station scored against docs/AAA-STANDARD.md. 21 engine frames, every one confirmed Vulkan 1.4.318 Forward+ in its own log (docs/judge-4e-frames.json). Builder of none of it. Full report: docs/judge-4e.md",
+          "round": 1,
+          "scores": {
+            "craft": 1,
+            "fidelity": 2,
+            "performance": 2,
+            "robustness": 3
+          }
+        }
+      ],
+      "status": "active"
     },
-    {
-     "round": 2,
-     "reviewer": "machinery agent, session 4a -- INV-130/131/132, scored from frames at THREE distances",
-     "date": "2026-07-31",
-     "scores": {
-      "craft": 3,
-      "fidelity": 2,
-      "performance": 4,
-      "robustness": 4
-     },
-     "evidence": {
-      "craft": "docs/craft-machinery/{before,after}-{fabrication,reactor_hall,medlab_one,business_center}-{normal,half,arm}.png -- twelve pairs at identical cameras, only the mesh changed. after-fabrication-normal.png is a foundry: two furnace stacks on standoff legs with hazard bands, charge doors, lifting frames and flues, against before-fabrication-normal.png which is two black boxes. after-reactor_hall-half.png is a clad barrel with girth flanges, a bolted manway, a ladder and a platform bracket, against a flat grey pier.",
-      "performance": "station/budget.py: the assembled deck goes 656,540 -> 658,272 triangles (+0.3%) for 6,156 -> 192,680 triangles of machinery across the 78 rooms; frustum-everything 168,188 (56.1%) -> 167,940 (56.0%); frustum structure UNCHANGED at 112,820 because machine parts inherit their parent's fix_/prop_ prefix and budget.klass_of splits on it; collision deck 5,162 -> 5,270; station collision resident unchanged at 632,100.",
-      "robustness": "four negative controls RUN, not claimed. (1) density.py --selftest empties rooms.MACHINE_KIND/PROP_KIND and asserts the machinery gate fails: 4/4 probe locations fail at ratio 0.15-0.41, 0/4 as shipped; station-wide 0/78 pass boxed against 74/78 built. (2) an oversize vessel outrigger makes rooms.machine_escapes report 2 escapes of 0.205 m against 0 as shipped. (3) cutting 1 triangle in 37 out of a vessel takes interior_kit.boundary_edges from 0 open edges to 174; reversing the winding takes signed volume from +40.4 to -40.4 m3. (4) deleting one MACHINE_KIND entry makes rooms._selftest name it. rooms 755/755, dressing 132/132, density 54/54, test_materials_layer3 34/34, materials 1467/1467, walkable.py --deck blue/0/0 PASS on all four rooms, deck.py --sweep 128/128 with 0 floor holes."
-     },
-     "broke_assertions": true,
-     "findings": [
-      {
-       "severity": "major",
-       "dimension": "craft",
-       "descriptor": "C3",
-       "where": "docs/craft-machinery/after-fabrication-arm.png",
-       "text": "Holds at normal and half distance and falls apart at arm's length. The furnace charge door at 1.0 m is a flat orange plate with no bolt pattern, no wear and no scale to it, and after-reactor_hall-arm.png is a plain plate between two flange lines. C3's own second clause is the one that bites: the tertiary tier is generic and materials carry one flat value each. C4 needs wear, grime and lighting response varying across the surface, which is a layer-3 property this pass did not touch."
-      },
-      {
-       "severity": "major",
-       "dimension": "craft",
-       "descriptor": "C3",
-       "where": "station/density.py --machinery",
-       "text": "4 of 78 locations still have machinery below their own shell's line density: lowg_bays 0.88, law_courts 0.89, plantroom_bay 0.94, mooring_gallery 1.00. The store archetype's racking and the office archetype's partition screens carry the shortfall."
-      },
-      {
-       "severity": "major",
-       "dimension": "fidelity",
-       "descriptor": "F2",
-       "where": "canon/INVENTIONS.md INV-130",
-       "text": "Every proportion of all fifteen machines is extrapolation. The reference set holds no view of a Babylon 5 machine space at all -- reference/08-sector-yellow-engineering/ is empty -- so nothing here is sourced from a drawing. Logged with all four fields; unchanged from round 1's score for the same reason."
-      },
-      {
-       "severity": "minor",
-       "dimension": "performance",
-       "descriptor": "P4",
-       "where": "station/budget.py, draw calls whole frame",
-       "text": "The nine part names per prefix add 79 distinct groups to the assembled deck, taking an ALREADY FAILING gate from 1,303 to 1,382 of 1,041. Culled it is 353 -> 392 of 1,041, still 2.7x headroom. The vocabulary is fixed at nine per prefix precisely so the cost is bounded by the vocabulary rather than by the instance count."
-      },
-      {
-       "severity": "note",
-       "dimension": "craft",
-       "where": "station/dressing.py",
-       "text": "_chair, _bin and _drum_can are deliberately not routed through the kit -- already legs-and-a-back rather than boxes, and four chairs per ten metres of wall would spend a cabinet's triangles on a silhouette nobody sees."
-      }
-     ]
+    "drum_ground": {
+      "rounds": [
+        {
+          "broke_assertions": false,
+          "date": "2026-07-27",
+          "evidence": {},
+          "findings": [
+            {
+              "descriptor": "R0",
+              "dimension": "robustness",
+              "severity": "blocking",
+              "text": "The periodicity assertion compares sample(0.0, w) against sample(1.0, w), but every consumer applies u % 1.0 first, so it is a value compared against itself. Monkeypatching a 3.295 m seam cliff still scored 0.000 and passed.",
+              "where": "station/drum_ground.py"
+            },
+            {
+              "descriptor": "P1",
+              "dimension": "performance",
+              "severity": "blocking",
+              "text": "The ground-density gate measures the old flat shell at 0.005 tri/m2 and will keep printing PASS whatever the ground costs. Worst visible set is 105,920 triangles and is ungated.",
+              "where": "station/budget.py"
+            },
+            {
+              "descriptor": "F3",
+              "dimension": "fidelity",
+              "severity": "major",
+              "text": "Ground tagging widths are bound to the LOD ramp width, so avenues render 31.2 m and trunk roads 51 m against an intended 20 m, and the settlement band comes out 62% street. INV-016 is single-source with no cross-check."
+            },
+            {
+              "descriptor": "C3",
+              "dimension": "craft",
+              "severity": "major",
+              "text": "Ground does not meet the end caps: a 1.2 m axial mismatch where the cap's outermost course stands proud of the terrain."
+            }
+          ],
+          "reviewer": "seed from STATE.md session 2x/2y",
+          "round": 1,
+          "scores": {
+            "craft": 3,
+            "fidelity": 3,
+            "performance": 1,
+            "robustness": 0
+          }
+        }
+      ],
+      "status": "active"
+    },
+    "drum_interior_engine": {
+      "rounds": [
+        {
+          "broke_assertions": false,
+          "date": "2026-07-29",
+          "evidence": {
+            "engine": "Godot 4.4 double + lavapipe, Forward+, 1000x560, 15 s",
+            "frames": [
+              "docs/engine-m0-interior.png"
+            ]
+          },
+          "findings": [
+            {
+              "descriptor": "C2",
+              "dimension": "craft",
+              "severity": "blocking",
+              "text": "THE HABITAT'S LIGHT RUNS RENDER MAGENTA ON ONE SIDE AND WHITE ON THE OTHER. These are the drum's ONLY light source and are authority 1 (Babylon_5_2-22_33a/34b). Half of them are falling back to an unassigned material. Invisible to every assertion in the project and invisible in the preview rasteriser, which does not do materials at all.",
+              "where": "godot/materials/, guideway light runs"
+            },
+            {
+              "descriptor": "C3",
+              "dimension": "craft",
+              "severity": "major",
+              "text": "The ground reads as flat olive and tan blocks with hard edges between land-use bands. No texture, no transition, no detail at any distance.",
+              "where": "drum ground"
+            },
+            {
+              "descriptor": "C3",
+              "dimension": "craft",
+              "severity": "major",
+              "text": "No atmospheric perspective. A 2.6 km volume with 556 m of air overhead shows no haze, so the far end cap reads at the same contrast as the near ground and the volume collapses.",
+              "where": "drum"
+            }
+          ],
+          "reviewer": "builder, session 3k -- M0 interior path proof",
+          "round": 1,
+          "scores": {
+            "craft": 2,
+            "fidelity": 3,
+            "performance": 4,
+            "robustness": 3
+          },
+          "what_is_good": [
+            "The payoff view works: ground curves up and away, the far side arches overhead.",
+            "Guideway trusses recede correctly and read as structure.",
+            "Core tube, hub and spokes read at the vanishing point.",
+            "15 s per frame -- the interior path is FASTER than the exterior, so iteration is cheap."
+          ]
+        }
+      ],
+      "status": "active"
+    },
+    "exterior_approach": {
+      "rounds": [
+        {
+          "broke_assertions": false,
+          "date": "2026-07-29",
+          "evidence": {
+            "engine": "Godot 4.4 double + Mesa lavapipe, Forward+, 1280x720",
+            "frames": [
+              "docs/engine-approach-far.png (14 km, 34 s)",
+              "docs/engine-approach-near.png (3.4 km, 27 s)"
+            ],
+            "note": "Every previous render in this project came from tools/preview_render.py, the flat-shaded rasteriser, which CLAUDE.md says judges structure and not craft. This is the first frame ever scored on craft.",
+            "triangles": 200754
+          },
+          "findings": [
+            {
+              "descriptor": "C2",
+              "dimension": "craft",
+              "severity": "blocking",
+              "text": "NO EMISSIVE WINDOWS ANYWHERE. A station housing 250,000 people is rendered completely unlit from within. At any approach distance this is the single largest failure: it reads as a derelict, not a city. The owner's opening beat is the station coming into view -- and what comes into view has nobody home.",
+              "where": "godot/materials/, exterior"
+            },
+            {
+              "descriptor": "C3",
+              "dimension": "craft",
+              "severity": "major",
+              "text": "The whole hull is one pale beige note. No material variation between metal, composite and glazing; no per-sector identity. The 2.23x gravity gradient and five distinct sectors are invisible from outside.",
+              "where": "godot/materials/"
+            },
+            {
+              "descriptor": "C3",
+              "dimension": "craft",
+              "severity": "major",
+              "text": "Single hard key light, no fill and no bounce. The shadow side is pure black, which flattens an 8 km object into a cutout. No bloom, no lens response, no exposure adaptation.",
+              "where": "godot/scenes/exterior.tscn"
+            },
+            {
+              "descriptor": "C3",
+              "dimension": "craft",
+              "severity": "major",
+              "text": "Scale does not read. Nothing in frame gives size -- no traffic, no Starfury, no transport, no lit windows to count. An 8,047 m object photographs like a 2 m model.",
+              "where": "exterior"
+            },
+            {
+              "descriptor": "C4",
+              "dimension": "craft",
+              "severity": "minor",
+              "text": "Swept arrays read as flat grey cards. No specular response, so they do not read as panels.",
+              "where": "components.py solar/heat-exchange arrays"
+            },
+            {
+              "descriptor": "P3",
+              "dimension": "performance",
+              "severity": "minor",
+              "text": "27-34 s per 720p frame on lavapipe. Adequate for judging, says nothing about framerate. No measurement on target hardware exists anywhere in the project.",
+              "where": "whole path"
+            }
+          ],
+          "reviewer": "builder, session 3k -- FIRST ENGINE-RENDERED SCORE IN THE PROJECT",
+          "round": 1,
+          "scores": {
+            "craft": 3,
+            "fidelity": 4,
+            "performance": 3,
+            "robustness": 4
+          },
+          "what_is_good": [
+            "Silhouette is unmistakably Babylon 5 at both 14 km and 3.4 km.",
+            "Hull plating, greebling, panel lines and clamped conduit runs all read at 3.4 km and resolve away cleanly at 14 km -- the LOD and greeble-relief work from sessions 2n and 3k is paying off.",
+            "Orange-red marker lights scattered over the hull are the only thing currently giving the station life, and they work.",
+            "Structural banding breaks the drum's mass convincingly."
+          ]
+        },
+        {
+          "broke_assertions": false,
+          "date": "2026-07-29",
+          "evidence": {
+            "frames": [
+              "docs/engine-windows-nightside.png (3.4 km, anti-sun, 40 s)",
+              "docs/engine-windows-near.png (3.4 km, sunlit, 35 s)"
+            ],
+            "materials": "station/materials.py 600 assertions; habitat_windows bound to green_section, red_section, aft_hull_block, habitat_cylinder, observation_rotunda",
+            "path": "Godot 4.4 double + Mesa lavapipe, Forward+, 1280x720"
+          },
+          "findings": [
+            {
+              "descriptor": "C4",
+              "dimension": "craft",
+              "severity": "resolved",
+              "text": "ROUND 1'S BLOCKING FINDING IS ANSWERED. The anti-sun frame shows warm window bands running the length of both habitat sections with a scatter of marker lights: the station reads as inhabited rather than as a derelict. The sunlit frame correctly shows the bands as texture and not as light, which is what a lit hull does.",
+              "where": "station/materials.py habitat_windows, INV-036"
+            },
+            {
+              "descriptor": "C3",
+              "dimension": "craft",
+              "severity": "major",
+              "text": "Triplanar cross-projection. World triplanar samples the sheet on two axes across the drum's barrel and the second projection shows as a faint crosshatch over the window rows. Visible in engine-windows-nightside.png as a regular lattice on the cylinder. Fix needs either cylindrical UVs on the drum mesh or a shader that projects about the spin axis; neither is a material change, which is why it is not fixed here.",
+              "where": "godot/materials/habitat_windows.tres"
+            },
+            {
+              "descriptor": "C3",
+              "dimension": "craft",
+              "severity": "major",
+              "text": "The band pattern tiles visibly. One 28.8 m repeat over a 1,209 m drum is 42 identical courses, and at 3.4 km the regularity reads as ladder rungs. Wants a second, much longer-period variation -- blocks of dark hull where a section has no quarters behind it.",
+              "where": "station/materials.py WINDOW_BANDS"
+            },
+            {
+              "descriptor": "C4",
+              "dimension": "craft",
+              "severity": "minor",
+              "text": "The habitat sections now sit darker than the rest of the hull, so they read as a different material rather than as the same hull with windows in it. The sheet's albedo is exempt from TEX_MEAN renormalisation for a good reason; the plate value between windows should still match hull_exterior's 0.60.",
+              "where": "station/materials.py habitat_windows albedo"
+            },
+            {
+              "descriptor": "R2",
+              "dimension": "robustness",
+              "severity": "blocking",
+              "text": "RESOLVED THIS ROUND, recorded because the failure mode is general. Material rules were emitted to a .txt for a human to paste into the scene files. habitat_windows exported cleanly, passed 594 assertions and did not reach the render; two other materials had been missing from the exterior scene for longer. patch_scene_rules now writes the block and a gate asserts the file matches the library. Proven able to fail by deleting a rule.",
+              "where": "godot/scenes/*.tscn"
+            }
+          ],
+          "reviewer": "builder, session 3k -- NOT an independent review; the round-1 blocking finding was raised by this same author and this round records that it is answered, not that the subsystem is good.",
+          "round": 2,
+          "scores": {
+            "craft": 4,
+            "fidelity": 4,
+            "performance": 3,
+            "robustness": 4
+          }
+        },
+        {
+          "broke_assertions": false,
+          "date": "2026-07-29",
+          "evidence": {
+            "frames": [
+              "docs/engine-windows-nightside.png (3.4 km, anti-sun, --light-gain 0.04)",
+              "docs/engine-windows-near.png (3.4 km, sunlit)",
+              "close 900 m frame used to verify the mapping, not kept"
+            ],
+            "path": "Godot 4.4 double + Mesa lavapipe, Forward+, 1280x720",
+            "shader": "godot/materials/hull_window.gdshader, cylindrical about world +Z"
+          },
+          "findings": [
+            {
+              "descriptor": "C4",
+              "dimension": "craft",
+              "severity": "resolved",
+              "text": "TRIPLANAR CROSSHATCH GONE. The habitat hull has no UVs -- export_gltf.py writes POSITION and NORMAL only -- so every material relies on world triplanar, which blends two grids across the drum's barrel. Replaced with a cylindrical mapping about the spin axis. The seam closes because the repeat count around the circumference is snapped to a whole number at a reference radius, and mip selection uses derivatives taken from the smooth tangent frame rather than from the discontinuous uv.",
+              "where": "godot/materials/hull_window.gdshader"
+            },
+            {
+              "descriptor": "C4",
+              "dimension": "craft",
+              "severity": "resolved",
+              "text": "BAND TILING BROKEN UP. 28% of blocks, five repeats square, have no lit windows -- a section with no quarters behind it. Clearly visible in the anti-sun frame as unlit segments along the barrel. Sized in repeats so a block boundary never cuts a window in half.",
+              "where": "hull_window.gdshader dark_block_fraction"
+            },
+            {
+              "descriptor": "C4",
+              "dimension": "craft",
+              "severity": "resolved",
+              "text": "PLATE VALUE NOW MATCHES THE HULL. Was rendering at 0.15 against hull_exterior's 0.60 -- four times darker -- so the habitat sections read as a bolted-on material. Asserted numerically from the values that ship rather than judged by eye.",
+              "where": "station/materials.py habitat_windows albedo"
+            },
+            {
+              "descriptor": "C2",
+              "dimension": "craft",
+              "severity": "blocking",
+              "text": "THE LIGHTING RIG HAS NO NIGHT SIDE, and the owner's opening beat is the station coming into view. The rim kicker sits at sun_az + 175 and the fill is mirrored through the camera axis, so whatever azimuth the camera takes, the camera-facing edge is lit. That rig is correct for showing a model's silhouette and wrong for a city at night: the anti-sun frame here needed --light-gain 0.04 to show the windows at all. LAYER 4 work -- the rig is a lighting judgement, not a material -- but it is recorded as blocking because until it changes, the shot the opening is built on cannot be composed.",
+              "where": "tools/export_scene.py, the three-point rig"
+            },
+            {
+              "descriptor": "R2",
+              "dimension": "robustness",
+              "severity": "major",
+              "text": "RESOLVED THIS ROUND, both general failure modes. (1) --light-gain scaled only the lights carried in the shot JSON; the exterior shot has \"lights\": 0 because its key, fill and rim are nodes in exterior.tscn, so the flag did nothing and two renders an order of magnitude apart in gain came back BYTE-IDENTICAL. (2) A shader that fails to compile still renders -- Godot falls back and hands out a valid PNG of the wrong thing at exit 0. A redefinition of the built-in TAU cost one round exactly that way. render_godot.sh now exits 3 on SHADER ERROR.",
+              "where": "godot/scripts/render_shot.gd, tools/render_godot.sh"
+            }
+          ],
+          "reviewer": "builder, session 3k -- rework of round 2's two majors and one minor. Still not an independent review.",
+          "round": 3,
+          "scores": {
+            "craft": 4,
+            "fidelity": 4,
+            "performance": 3,
+            "robustness": 4
+          }
+        }
+      ],
+      "status": "active"
+    },
+    "exterior_components": {
+      "rounds": [
+        {
+          "broke_assertions": false,
+          "date": "2026-07-27",
+          "evidence": {
+            "performance": "budget.py: 2,616 component triangles inside the 400,000 exterior allowance; 23 draw calls of 64"
+          },
+          "findings": [
+            {
+              "descriptor": "C1",
+              "dimension": "craft",
+              "severity": "blocking",
+              "text": "Cobra bays, docking ports, observation domes and rotundas are box primitives placed by rule. Correct positions, placeholder shapes.",
+              "where": "station/components.py"
+            },
+            {
+              "descriptor": "F3",
+              "dimension": "fidelity",
+              "severity": "major",
+              "text": "Radiators and the forward comms plate are reference-corrected and cross-checked; the remaining component types are placed from callout position alone with no second source."
+            },
+            {
+              "descriptor": "R2",
+              "dimension": "robustness",
+              "severity": "major",
+              "text": "validate.py asserts each component produced geometry and stayed inside the radius envelope. Nothing asserts a component is closed, and no assertion has been deliberately broken."
+            }
+          ],
+          "reviewer": "seed from STATE.md sessions 2b/2d/2o/2t",
+          "round": 1,
+          "scores": {
+            "craft": 1,
+            "fidelity": 3,
+            "performance": 4,
+            "robustness": 2
+          }
+        }
+      ],
+      "status": "active"
+    },
+    "garden_townscape": {
+      "rounds": [
+        {
+          "broke_assertions": false,
+          "date": "2026-07-30",
+          "evidence": {
+            "craft": "docs/engine-drum-terrace.png. garden.tree() is one box plus one cylinder; garden.block_building() is one box plus window bands and its docstring says 'Cheap by design'. The whole settlement -- 12 buildings, 10 trees, a landmark -- is 2,228 triangles."
+          },
+          "findings": [
+            {
+              "descriptor": "C1",
+              "dimension": "craft",
+              "severity": "blocking",
+              "text": "The owner's words were 'shitty little cubes' and 'sad excuse for a tree'. Both are literally accurate descriptions of the generators. C1 is correct and has been correct since the module was written.",
+              "where": "station/garden.py"
+            }
+          ],
+          "reviewer": "main agent, session 3r -- first scores taken from CLOSE frames",
+          "round": 1,
+          "scores": {
+            "craft": 1,
+            "fidelity": 2,
+            "performance": 4,
+            "robustness": 3
+          }
+        },
+        {
+          "broke_assertions": false,
+          "date": "2026-08-01",
+          "evidence": {
+            "performance": "budget.py: drum visible set 116,120/300,000 tri (38.7%), drum share of frame 10%/25%, ground surface density 0.020/0.500 tri/m2 (3.9%) over 4.5 M m2, 183,880 tri of headroom unspent."
+          },
+          "findings": [
+            {
+              "descriptor": "C1",
+              "dimension": "craft",
+              "severity": "major",
+              "text": "docs/judge-4e-drum-half.png: the habitat floor is two flat colour fields meeting along a straight-edged polygon boundary with the terrain lattice visible in the zigzag. No vegetation, no props, no people, no relief, nothing standing on 4.5 million m2. Buildings around the curve are white boxes with window-grid textures. Unchanged from round 1's craft 1, and the cause is budget.py's own number: 3.9% of the ground allowance spent. CLAUDE.md: 'the triangle budget is a TARGET, not a ceiling.'",
+              "where": "station/garden.py, station/drum_ground.py"
+            },
+            {
+              "descriptor": "F2",
+              "dimension": "fidelity",
+              "severity": "major",
+              "text": "Carried from round 1 and not re-examined: the townscape traces to four authority-1 frames by subject and nothing in it is measured against them.",
+              "where": "station/garden.py"
+            },
+            {
+              "descriptor": "R3",
+              "dimension": "robustness",
+              "severity": "major",
+              "text": "Five distinct gazetteer rows -- the drum end caps, the three radial spokes, the sub-floor deck stack, the Garden and the radial transport tubes -- report the IDENTICAL measurement (121,976 tri, 5,764,561 m2, lam 0.112, 85.2% of floor), because they all resolve to one shared drum mesh. Five rows, one number: the gate cannot fail for any one of them individually.",
+              "where": "station/density.py"
+            }
+          ],
+          "reviewer": "judging agent, session 4e -- LAYER 8 ROUND 1. First frames of this station scored against docs/AAA-STANDARD.md. 21 engine frames, every one confirmed Vulkan 1.4.318 Forward+ in its own log (docs/judge-4e-frames.json). Builder of none of it. Full report: docs/judge-4e.md",
+          "round": 2,
+          "scores": {
+            "craft": 1,
+            "fidelity": 2,
+            "performance": 4,
+            "robustness": 3
+          }
+        }
+      ],
+      "status": "active"
+    },
+    "generated_rooms": {
+      "rounds": [
+        {
+          "broke_assertions": false,
+          "date": "2026-07-30",
+          "evidence": {
+            "craft": "docs/engine-casino-close.png -- flat panelled walls, four ceiling lights blown to white blobs, one dark counter slab, one blue box on the floor. A casino with no tables, no machines, no chairs."
+          },
+          "findings": [
+            {
+              "descriptor": "C1",
+              "dimension": "craft",
+              "severity": "blocking",
+              "text": "These 68 rooms are 58% of the station's 118 locations. Each is the archetype kit with a few fixtures dropped in, so the room is named for a function it does not contain. Largest craft deficit in the project by location count.",
+              "where": "station/rooms.py"
+            }
+          ],
+          "reviewer": "main agent, session 3r -- first scores taken from CLOSE frames",
+          "round": 1,
+          "scores": {
+            "craft": 1,
+            "fidelity": 2,
+            "performance": 4,
+            "robustness": 3
+          }
+        },
+        {
+          "broke_assertions": true,
+          "date": "2026-07-31",
+          "evidence": {
+            "craft": "docs/craft-machinery/{before,after}-{fabrication,reactor_hall,medlab_one,business_center}-{normal,half,arm}.png -- twelve pairs at identical cameras, only the mesh changed. after-fabrication-normal.png is a foundry: two furnace stacks on standoff legs with hazard bands, charge doors, lifting frames and flues, against before-fabrication-normal.png which is two black boxes. after-reactor_hall-half.png is a clad barrel with girth flanges, a bolted manway, a ladder and a platform bracket, against a flat grey pier.",
+            "performance": "station/budget.py: the assembled deck goes 656,540 -> 658,272 triangles (+0.3%) for 6,156 -> 192,680 triangles of machinery across the 78 rooms; frustum-everything 168,188 (56.1%) -> 167,940 (56.0%); frustum structure UNCHANGED at 112,820 because machine parts inherit their parent's fix_/prop_ prefix and budget.klass_of splits on it; collision deck 5,162 -> 5,270; station collision resident unchanged at 632,100.",
+            "robustness": "four negative controls RUN, not claimed. (1) density.py --selftest empties rooms.MACHINE_KIND/PROP_KIND and asserts the machinery gate fails: 4/4 probe locations fail at ratio 0.15-0.41, 0/4 as shipped; station-wide 0/78 pass boxed against 74/78 built. (2) an oversize vessel outrigger makes rooms.machine_escapes report 2 escapes of 0.205 m against 0 as shipped. (3) cutting 1 triangle in 37 out of a vessel takes interior_kit.boundary_edges from 0 open edges to 174; reversing the winding takes signed volume from +40.4 to -40.4 m3. (4) deleting one MACHINE_KIND entry makes rooms._selftest name it. rooms 755/755, dressing 132/132, density 54/54, test_materials_layer3 34/34, materials 1467/1467, walkable.py --deck blue/0/0 PASS on all four rooms, deck.py --sweep 128/128 with 0 floor holes."
+          },
+          "findings": [
+            {
+              "descriptor": "C3",
+              "dimension": "craft",
+              "severity": "major",
+              "text": "Holds at normal and half distance and falls apart at arm's length. The furnace charge door at 1.0 m is a flat orange plate with no bolt pattern, no wear and no scale to it, and after-reactor_hall-arm.png is a plain plate between two flange lines. C3's own second clause is the one that bites: the tertiary tier is generic and materials carry one flat value each. C4 needs wear, grime and lighting response varying across the surface, which is a layer-3 property this pass did not touch.",
+              "where": "docs/craft-machinery/after-fabrication-arm.png"
+            },
+            {
+              "descriptor": "C3",
+              "dimension": "craft",
+              "severity": "major",
+              "text": "4 of 78 locations still have machinery below their own shell's line density: lowg_bays 0.88, law_courts 0.89, plantroom_bay 0.94, mooring_gallery 1.00. The store archetype's racking and the office archetype's partition screens carry the shortfall.",
+              "where": "station/density.py --machinery"
+            },
+            {
+              "descriptor": "F2",
+              "dimension": "fidelity",
+              "severity": "major",
+              "text": "Every proportion of all fifteen machines is extrapolation. The reference set holds no view of a Babylon 5 machine space at all -- reference/08-sector-yellow-engineering/ is empty -- so nothing here is sourced from a drawing. Logged with all four fields; unchanged from round 1's score for the same reason.",
+              "where": "canon/INVENTIONS.md INV-130"
+            },
+            {
+              "descriptor": "P4",
+              "dimension": "performance",
+              "severity": "minor",
+              "text": "The nine part names per prefix add 79 distinct groups to the assembled deck, taking an ALREADY FAILING gate from 1,303 to 1,382 of 1,041. Culled it is 353 -> 392 of 1,041, still 2.7x headroom. The vocabulary is fixed at nine per prefix precisely so the cost is bounded by the vocabulary rather than by the instance count.",
+              "where": "station/budget.py, draw calls whole frame"
+            },
+            {
+              "dimension": "craft",
+              "severity": "note",
+              "text": "_chair, _bin and _drum_can are deliberately not routed through the kit -- already legs-and-a-back rather than boxes, and four chairs per ten metres of wall would spend a cabinet's triangles on a silhouette nobody sees.",
+              "where": "station/dressing.py"
+            }
+          ],
+          "reviewer": "machinery agent, session 4a -- INV-130/131/132, scored from frames at THREE distances",
+          "round": 2,
+          "scores": {
+            "craft": 3,
+            "fidelity": 2,
+            "performance": 4,
+            "robustness": 4
+          }
+        },
+        {
+          "broke_assertions": false,
+          "date": "2026-08-01",
+          "evidence": {
+            "performance": "budget.py: worst habitat cell 39,104/60,000 tri (65.2%), 3-cell resident set 117,312/180,000 (65.2%), worst plant cell 56,000/60,000 (93.3%). Carried from round 2, not re-derived here.",
+            "robustness": "0 open boundary edges on all 8 exported room meshes (position-welded at 1e-5 m); interact.py --audit 357/357 with 0 places resolving none. Not re-examined beyond that."
+          },
+          "findings": [
+            {
+              "descriptor": "C3",
+              "dimension": "craft",
+              "severity": "major",
+              "text": "docs/judge-4e-generic-half.png (hydroponics at half distance): the wall is a low-frequency blur -- panel joints are geometry and crisp, everything else is a stretched low-resolution texture with no micro-surface response. Floor contents are literal boxes and one fully-blown emissive patch. Holds at normal distance (judge-4e-generic-normal.png), which is C3 exactly. fabrication (judge-4e-industrial-normal.png) is genuinely better and is what keeps this at 3.",
+              "where": "station/rooms.py"
+            },
+            {
+              "descriptor": "F2",
+              "dimension": "fidelity",
+              "severity": "major",
+              "text": "FIXTURES is keyed by 11 ARCHETYPES and has no key for any location. 'Hydroponics' therefore contains no growing equipment of any kind -- the frame is a plated box with three white boxes on the floor -- while interact.py reports 'hydroponics generic 3/3 resolved' and prop_irrigation_control is a 12-triangle cuboid. This is CLAUDE.md's 'Fabrication furnaces was a grey box holding two control podiums and no furnace', recurring, because the cure was archetype-wide and the disease is per-location.",
+              "where": "station/rooms.py:FIXTURES"
+            },
+            {
+              "severity": "note",
+              "text": "The audit tests EXISTENCE and is honest about it; layer 5's exit criterion is also only existence. That is the same shape as layer 2's old topological criterion, which a cube passed. Logged here rather than as a defect in interact.py, which does what it says.",
+              "where": "station/interact.py"
+            }
+          ],
+          "reviewer": "judging agent, session 4e -- LAYER 8 ROUND 1. First frames of this station scored against docs/AAA-STANDARD.md. 21 engine frames, every one confirmed Vulkan 1.4.318 Forward+ in its own log (docs/judge-4e-frames.json). Builder of none of it. Full report: docs/judge-4e.md",
+          "round": 3,
+          "scores": {
+            "craft": 3,
+            "fidelity": 2,
+            "performance": 4,
+            "robustness": 4
+          }
+        }
+      ],
+      "status": "active"
+    },
+    "habitat_drum_shell": {
+      "rounds": [
+        {
+          "broke_assertions": false,
+          "date": "2026-07-27",
+          "evidence": {
+            "fidelity": "Hub cone measured at ~20% of cap radius against the schema's 0.18 read off an unrelated authority-3 print diagram: two independent sources 2% apart, asserted to stay within 0.03. Lighting from truss light runs sourced to 34b and 33a, authority 1.",
+            "performance": "budget.py drum gate: 51,128 of 300,000 triangles (17%), 4% of a 1.2 M frame against a 25% allowance"
+          },
+          "findings": [
+            {
+              "descriptor": "C3",
+              "dimension": "craft",
+              "severity": "major",
+              "text": "Land-use bands are flat surfaces with riser walls. The shell reads at drum scale and has no tertiary detail at walking distance."
+            },
+            {
+              "descriptor": "R3",
+              "dimension": "robustness",
+              "severity": "major",
+              "text": "boundary_edges() and _inward_fraction() are genuine class-level assertions and three of the six new ones were verified by deliberate breakage. Not all of them were, and ROBUSTNESS 4 requires every assertion to have been broken and observed to fail.",
+              "where": "station/interior.py"
+            },
+            {
+              "descriptor": "C4",
+              "dimension": "craft",
+              "severity": "minor",
+              "text": "Checker plating became a material group rather than 0.35 m of relief, which is correct, but no material has been authored to carry it yet."
+            }
+          ],
+          "reviewer": "seed from STATE.md sessions 2u/2v/2y",
+          "round": 1,
+          "scores": {
+            "craft": 3,
+            "fidelity": 4,
+            "performance": 4,
+            "robustness": 3
+          }
+        }
+      ],
+      "status": "active"
+    },
+    "hull_exterior": {
+      "rounds": [
+        {
+          "broke_assertions": false,
+          "date": "2026-07-27",
+          "evidence": {
+            "fidelity": "Miller's tabulated diameters against the independently traced radius profile agree to 5.7% (Red) and 3.9% (Green); hull length 8,046.9 m against canon 8,047. Two derivations that could not have copied each other.",
+            "performance": "budget.py: 256,232 of 400,000 triangles (64%), 23 of 64 draw calls, 18 of 32 MB vertex bandwidth; LOD switch distances derived from silhouette sagitta r(1-cos(pi/n))"
+          },
+          "findings": [
+            {
+              "descriptor": "C3",
+              "dimension": "craft",
+              "severity": "major",
+              "text": "Plating and greebles give a size hierarchy that reads at 200 m and at 20 km, but the tertiary tier is generic: the same panel, hatch and blister repeated without regard to what the part does."
+            },
+            {
+              "descriptor": "R3",
+              "dimension": "robustness",
+              "severity": "major",
+              "text": "28 canon assertions and byte-for-byte determinism across two PYTHONHASHSEED values. The hull has no boundary_edges() closure assertion -- 'closed at both ends' is not the same measurement -- and the assertions have not been deliberately broken.",
+              "where": "station/validate.py"
+            }
+          ],
+          "reviewer": "seed from STATE.md sessions 1/2/2e/2n",
+          "round": 1,
+          "scores": {
+            "craft": 3,
+            "fidelity": 4,
+            "performance": 4,
+            "robustness": 3
+          }
+        },
+        {
+          "broke_assertions": false,
+          "date": "2026-08-01",
+          "evidence": {
+            "fidelity": "Carried from round 1: Miller's tabulated diameters against the independently traced envelope at 5.7% and 3.9%, the two sources unable to have copied each other. Not re-examined this round.",
+            "performance": "budget.py: 41 exterior draw calls of a 1,041 allowance inside a whole-frame 427; LOD chain switch distances derived from the silhouette sagitta and asserted. Carried, not re-derived."
+          },
+          "findings": [
+            {
+              "descriptor": "C3",
+              "dimension": "craft",
+              "severity": "major",
+              "text": "docs/judge-4e-exterior-half.png: NINE of 41 hull groups match no material rule and render on the glTF fallback -- aft_terminus, docking_bay_throat, docking_sphere, forward_deflector_spike, forward_taper, forward_waist, generator_torus_housing, hull_flare_aft, primary_fusion_reactor -- visible as smooth untextured plastic beside the greebled cylinders. And there is not one lit window, running light or beacon anywhere on an 8 km structure housing 250,000 people. The silhouette itself holds at 60 km (docs/judge-4e-exterior-onepixel.png, ~90 px across, unmistakably Babylon 5), which is why this is 3 and not lower.",
+              "where": "godot/scenes/exterior.tscn"
+            },
+            {
+              "descriptor": "R3",
+              "dimension": "robustness",
+              "severity": "major",
+              "text": "The nine unbound groups ARE measured -- unmatched_groups runs on the exterior -- and the result is PRINTED as a note rather than gated, deliberately, because the .tscn is another file's. The code's own comment: 'It should BECOME a check the moment the .tscn binds them -- a note that nobody promotes is how this stayed invisible for two sessions.' It is three sessions now.",
+              "where": "tools/export_scene.py:5162"
+            }
+          ],
+          "reviewer": "judging agent, session 4e -- LAYER 8 ROUND 1. First frames of this station scored against docs/AAA-STANDARD.md. 21 engine frames, every one confirmed Vulkan 1.4.318 Forward+ in its own log (docs/judge-4e-frames.json). Builder of none of it. Full report: docs/judge-4e.md",
+          "round": 2,
+          "scores": {
+            "craft": 3,
+            "fidelity": 4,
+            "performance": 4,
+            "robustness": 3
+          }
+        }
+      ],
+      "status": "active"
+    },
+    "interior_kit": {
+      "rounds": [
+        {
+          "broke_assertions": false,
+          "date": "2026-07-27",
+          "evidence": {
+            "performance": "budget.py: 28,791 of 60,000 visible structure triangles (48%) against a 91.3 m sight line DERIVED from ring curvature, 285 tri/m marginal against 400; cell seam asserted vertex for vertex including wrap-around"
+          },
+          "findings": [
+            {
+              "descriptor": "F3",
+              "dimension": "fidelity",
+              "severity": "major",
+              "text": "INV-007's chamfered corridor section is inferred, not observed. 'corridor in alien sector.webp' shows a chamfered aperture; nothing establishes the passage behind it has that profile, and 'grey level 1.webp' shows a rectangular portal header. Single source, no cross-check."
+            },
+            {
+              "descriptor": "C3",
+              "dimension": "craft",
+              "severity": "major",
+              "text": "A door bay has no wall build-up: corridor_section passes courses=False for the bay a wall door takes over, so skirt, dado, rail band and plate courses stop dead at the door. grey level 1.webp shows the build-up running continuously past portals."
+            },
+            {
+              "descriptor": "R3",
+              "dimension": "robustness",
+              "severity": "major",
+              "text": "Every primitive is now gated on signed volume and a corridor is asserted closed overhead, both class-level. Assertions have been broken and observed to fail for the closure test only, not for the rest."
+            },
+            {
+              "descriptor": "C4",
+              "dimension": "craft",
+              "severity": "minor",
+              "text": "Junction cross-corridor deck tile pitch is 0.57 m against the arms' 0.605 m, and the grid is not driven from a shared origin, so there is a visible seam at each crossing mouth."
+            }
+          ],
+          "reviewer": "seed from STATE.md sessions 2l/2p/2w",
+          "round": 1,
+          "scores": {
+            "craft": 3,
+            "fidelity": 3,
+            "performance": 4,
+            "robustness": 3
+          }
+        }
+      ],
+      "status": "active"
+    },
+    "interior_lighting_4b": {
+      "rounds": [
+        {
+          "broke_assertions": false,
+          "date": "2026-07-31",
+          "evidence": {
+            "craft": "docs/engine-4a-*.png -- eleven archetype frames that did not exist before, one per ROOM_EXPOSURE row, each from a shot the table now records. engine-4a-industrial.png is a foundry with glowing charge doors, a wall spot with a visible cone and a tiled deck; engine-4a-office.png (the War Room) has a coffered ceiling with real shadow and battens that fall off. Craft 2 rather than 3 because the wall PANELS behind all of it are still flat -- that is layer 2b and no exposure reaches it.",
+            "fidelity": "tools/export_scene.py --gate-frames, end to end from the tables through Godot to the gate: 13 pass, 10 fail, 0 unverifiable, against 3 / 11 / 9 before. The level window is 20 of 21 against 14 of 21. Every exposure re-derived by sweeping the gain at 0.5/1.0/2.0, fitting the response, solving, and RENDERING AT THE SOLVED GAIN to check -- 63 + 46 renders.",
+            "performance": "Measurement only; no geometry, no materials, no lights added. Triangle counts unchanged.",
+            "robustness": "Four negative controls RUN. (1) --tonemap 4, the scene's own value, reproduces the frame BYTE FOR BYTE (0 of 230,400 pixels differ) while --tonemap 3 changes all 230,400 -- so the new grade override is inert by default and reaches the Environment when asked. (2) a shot naming a room outside directory.PLACES fails export_scene._selftest by name. (3) dropping a row's frame back to None fails 'no exposure is unverifiable'. (4) dropping a row's shot fails 'every row but the two deck shots records how to re-take its frame'. measure_frame 28/28 including a synthetic frame on which the censored median FALLS as the gain rises while level_p25 rises, plus the control frame with no sub-floor population where both rise. export_scene 236/237 -- the one failure is a pre-existing missing-LOD-mesh condition, identical with these changes stashed."
+          },
+          "findings": [
+            {
+              "descriptor": "C2",
+              "dimension": "craft",
+              "severity": "major",
+              "text": "EXPOSURE IS NOW RIGHT ON 20 OF 21 ROOMS AND THE WALLS ARE STILL FLAT. docs/engine-4a-office.png at half distance: the War Room's wall is one unbroken pale panel across 4 m with a scribed line and no joint, no fitting, no wear; docs/engine-4a-store.png the same. C2 is 'a recognisable object with no articulation at half distance' and that is what these are. Lighting a flat panel correctly produces a correctly lit flat panel -- the finding layer 2b already carries, restated from the frames this pass produced, and the reason craft is 2 rather than 3 even though every measured lighting statistic improved.",
+              "where": "station/rooms.py, station/interior_kit.py -- LAYER 2b, not 4b"
+            },
+            {
+              "descriptor": "F2",
+              "dimension": "fidelity",
+              "severity": "major",
+              "text": "SIX ROOMS FAIL p5 BRIGHT AND CANNOT BE FIXED BY EXPOSURE, and the reason is structural: an exposure moves p5 and the median TOGETHER, so a room whose shadows are PROPORTIONALLY too light has no gain that helps. worship x1.62, research x1.65, bespoke hospitality x2.12, command_control x2.20, council_chamber x2.20, quarters x0.76 (dark, the other direction). Every one of the five bright ones reads p95 x0.34-0.67 beside it -- the distribution is compressed at BOTH ends. That is a fitting problem: the show's interiors carry a small bright population a set dresser put there (a lit hatch at x11 the wall, a ceiling strip at x7.7) and ours do not.",
+              "where": "station/rooms.py LIGHTS, station/*.py bespoke fittings"
+            },
+            {
+              "descriptor": "F2",
+              "dimension": "fidelity",
+              "severity": "major",
+              "text": "THE PLANT'S EXPOSURE IS NOT DERIVABLE FROM ITS FRAME AT ALL. level_p25 is 0.0012 at gain 0.5, 1.0 AND 2.0 -- identical to four figures -- because 85% of that frame sits at sRGB byte 0-1, under the EIGHT-BIT floor rather than merely under the measurable one. The standing note 'sits at 1.59x either way' blamed the room's geometry; the cause is quantisation. It is the one row of 21 whose level cannot be put in window and it needs lighting design, not a number.",
+              "where": "station/plant.py, tools/export_scene.py BESPOKE_EXPOSURE['plant']"
+            },
+            {
+              "descriptor": "C2",
+              "dimension": "craft",
+              "severity": "major",
+              "text": "Every interior frame carries a milky veil around its fittings that the reference frames do not have -- compare docs/engine-docking-bay.png with reference/03-sector-blue/dock.webp, where the show's lamps are hard points in near-black. glow_intensity 0.55 / glow_strength 0.9 over a room with 39 lamps accumulates. Not changed here: interior.tscn is one Environment for every interior shot and a look has to be judged whole.",
+              "where": "godot/scenes/interior.tscn glow_*"
+            },
+            {
+              "descriptor": "F2",
+              "dimension": "fidelity",
+              "severity": "major",
+              "text": "Two rows are NOT re-takes of what they replace. docs/engine-market.png and docs/engine-dugout.png were rendered before session 3o rewrote open_standpoint and no current room key reproduces either framing -- all ten candidates were rendered and edge-correlated against the committed frames and every one gives |r| < 0.04. Their before/after compares two different pictures.",
+              "where": "tools/export_scene.py EXPOSURE_FRAMES"
+            }
+          ],
+          "reviewer": "layer-4b agent, session 4a",
+          "round": 1,
+          "scores": {
+            "craft": 2,
+            "fidelity": 2,
+            "performance": 4,
+            "robustness": 4
+          }
+        }
+      ],
+      "status": "active"
+    },
+    "npc_bodies": {
+      "rounds": [
+        {
+          "broke_assertions": false,
+          "date": "2026-07-31",
+          "evidence": {},
+          "findings": [
+            {
+              "descriptor": "C1",
+              "dimension": "craft",
+              "severity": "blocking",
+              "text": "EVERY INHABITANT OF BABYLON 5 RENDERS AS A FEATURELESS PURE-BLACK SILHOUETTE, at every distance, with no face, hands, skin, eyes, fabric or colour. docs/judge3w-person-2m.png at conversational range is 43.59% CRUSHED -- nearly half the frame below the measurable floor; docs/judge3w-person-1m.png and docs/judge3w-room-3m.png the same. THE CAUSE IS ONE BINDING: npc_standing and npc_seated both bind to m_plant_valve_metal -- albedo 0.545, metallic 0.95, roughness 0.42, 'Valve, bare metal handwheel and stem'. At metallic 0.95 the diffuse response is scaled to about 5%, so nearly all of a person's light must return as specular, and the same scene sets reflected_light_source = 1, REFLECTION_SOURCE_DISABLED: there is no environment for a metal to reflect. A 95%-metallic material in a scene with reflections off is black by construction, and every human, Drazi and Vree on the station is wearing it. The bodies underneath are better than this -- at 1 m the outline shows head, shoulders, coat, separate legs and arms, and the Vree is a distinct non-human form. None of it is visible.",
+              "where": "godot/scenes/interior.tscn, rules npc_standing and npc_seated"
+            },
+            {
+              "descriptor": "C3",
+              "dimension": "craft",
+              "severity": "major",
+              "text": "NOBODY IS IN THE CORRIDOR. All 13 actors on the deck are inside rooms behind closed doors, so a player can walk the full 1,270 m of ring and never see a person. CLAUDE.md's scope asks for 'NPCs with quarters, jobs, schedules and events -- not crowds, residents' and for the friction between factions to be 'visible in a corridor'; the corridor is the only part of the station a player can currently traverse and it is empty. Related and worth recording: 'one pixel of silhouette' is unreachable indoors. At 55 deg vertical FOV and 720 px one pixel subtends 0.076 deg, so a 1.8 m person is one pixel at 1,350 m; the longest sight line in the build is the corridor's ~91 m, where a person would be about 13 px, and there is nobody standing in it to check.",
+              "where": "station/populace.py, station/deck.py"
+            },
+            {
+              "descriptor": "F2",
+              "dimension": "fidelity",
+              "severity": "major",
+              "text": "Species mix, names and the identicard schema are sourced and asserted (see npc_foundation), and the standing figures are placed by a real free-floor enumeration rather than by sample-and-reject. But nothing about how a person LOOKS has been compared against reference/14-characters-and-uniforms or 15-races-and-makeup at matched camera: no uniform, no rank flash, no species colour, no silhouette check against a frame. Every fidelity claim about the bodies is currently a claim about the record, not about the body.",
+              "where": "station/npc/costume.py, station/npc/crowd.py"
+            },
+            {
+              "descriptor": "P0",
+              "dimension": "performance",
+              "severity": "blocking",
+              "text": "NPC COST IS STILL NOT GATED ANYWHERE -- unchanged from npc_foundation round 1, except that now there is geometry to gate. 28,636 triangles of bodies on one deck for 13 people, about 2,200 each, inside a frame whose interior structure is already allowed only 5%. budget.py's interior line says in terms that props, NPCs and signage 'come out of the rest', and no gate for 'the rest' exists. populace.occupancy places 278 people station-wide at 1300 and nothing measures what a populated corridor costs.",
+              "where": "station/budget.py"
+            },
+            {
+              "descriptor": "R2",
+              "dimension": "robustness",
+              "severity": "major",
+              "text": "The session-3v fix that keeps npc_ groups out of STATIC collision is right and its reasoning is sound -- a person you bump into who never moves is a statue where a resident should be, and static collision is generated once. The consequence is that a player walks through all 13 people, and there is no assertion anywhere that a body is ever given dynamic collision instead, because nothing does. Placement is verified on the emitted body rather than on the point that was requested, which is a genuine class-level check; but no assertion in this module has been deliberately broken and observed to fail, which is what ROBUSTNESS 4 requires.",
+              "where": "station/rooms.py is_solid, station/deck.py build_deck"
+            }
+          ],
+          "reviewer": "judging agent, session 3w -- first judgement of NPC BODIES in situ. A different subsystem from `npc_foundation`, which scores names, schedules and the statistical layer",
+          "round": 1,
+          "scores": {
+            "craft": 1,
+            "fidelity": 2,
+            "performance": 0,
+            "robustness": 2
+          }
+        },
+        {
+          "broke_assertions": false,
+          "date": "2026-08-01",
+          "evidence": {},
+          "findings": [
+            {
+              "descriptor": "C2",
+              "dimension": "craft",
+              "severity": "major",
+              "text": "Real advance on 3w's pure-black silhouettes: dressed from the measured wardrobe, posed standing/sitting/ walking, 155 bodies on the deck within -12.3 mm to +12.5 mm of the floor radius (measured off the export; 'they float' is withdrawn). At room distance (docs/judge-4e-commerce-normal.png) there is NO FACE -- a smooth ovoid, a hair cap and a pale band where the eyes go -- hands are stumps or three-prong claws, the neck reads as a separate white cylinder, and the upper arm reads as detached from the shoulder with a visible gap (clearest on the near figure in docs/judge-4e-corridor-door.png). C2: 'a correct skeleton with a missing layer'.",
+              "where": "station/npc/body.py"
+            },
+            {
+              "descriptor": "F2",
+              "dimension": "fidelity",
+              "severity": "major",
+              "text": "Carried from round 1, not re-examined this round. Each garment reads as one flat value in frame; the wardrobe's 53 materials give distinct colours and no variation within a garment.",
+              "where": "station/npc/costume.py"
+            },
+            {
+              "descriptor": "P2",
+              "dimension": "performance",
+              "severity": "major",
+              "text": "Round 1 scored 0, 'no gate'. There is a gate now: people are 24,860 tri of budget.py's 207,685-tri frustum total and 137,368 tri (16.8%) of the resident deck. But they have no allowance of their own -- they are folded into a frame total whose structure component is already 205% over -- and the NPC checklist in AAA-STANDARD.md asks for density gated against the visible-set budget specifically.",
+              "where": "station/budget.py"
+            },
+            {
+              "descriptor": "R2",
+              "dimension": "robustness",
+              "severity": "major",
+              "text": "Carried from round 1. Determinism not re-verified here. The CI step 'NPC bodies, costume and crowd' is step 39 of 41 and has been SKIPPED on every recent run -- see walkable_deck's blocking finding.",
+              "where": "station/npc/"
+            }
+          ],
+          "reviewer": "judging agent, session 4e -- LAYER 8 ROUND 1. First frames of this station scored against docs/AAA-STANDARD.md. 21 engine frames, every one confirmed Vulkan 1.4.318 Forward+ in its own log (docs/judge-4e-frames.json). Builder of none of it. Full report: docs/judge-4e.md",
+          "round": 2,
+          "scores": {
+            "craft": 2,
+            "fidelity": 2,
+            "performance": 2,
+            "robustness": 2
+          }
+        }
+      ],
+      "status": "active"
+    },
+    "npc_foundation": {
+      "rounds": [
+        {
+          "broke_assertions": false,
+          "date": "2026-07-27",
+          "evidence": {
+            "fidelity": "Per-species grammars fitted to names spoken on screen with the evidence recorded beside each pattern; Centauri house names established by Londo and Carn sharing Mollari; Vorlon kept a closed list because two attested names cannot support a generator, and a test asserts it stays closed."
+          },
+          "findings": [
+            {
+              "descriptor": "P0",
+              "dimension": "performance",
+              "severity": "blocking",
+              "text": "NPC density is not gated anywhere. Interior structure is already allowed only 5% of a 1.2 M triangle frame and NPCs come out of the same frame; nothing measures what a populated corridor costs.",
+              "where": "station/budget.py"
+            },
+            {
+              "descriptor": "C3",
+              "dimension": "craft",
+              "severity": "major",
+              "text": "Names, roles and schedules exist; there is no body, no animation and no crowd behaviour, so nothing yet reads as a person at any distance."
+            },
+            {
+              "descriptor": "R3",
+              "dimension": "robustness",
+              "severity": "major",
+              "text": "38 tests covering the two design bugs found (unshifted sleep rhythm, species mix summing to 0.94). Determinism of NPC identity against iteration order is not asserted, and no assertion has been deliberately broken."
+            }
+          ],
+          "reviewer": "seed from STATE.md session 2m",
+          "round": 1,
+          "scores": {
+            "craft": 3,
+            "fidelity": 4,
+            "performance": 0,
+            "robustness": 3
+          }
+        }
+      ],
+      "status": "active"
+    },
+    "tram": {
+      "rounds": [
+        {
+          "broke_assertions": false,
+          "date": "2026-07-27",
+          "evidence": {},
+          "findings": [
+            {
+              "descriptor": "R0",
+              "dimension": "robustness",
+              "severity": "blocking",
+              "text": "The 'measured proportion' assertions are algebraic identities that never touch the built geometry. They hold for CAR_BAYS = -3.0 and CAR_DEPTH_FRAC = 99.0. Separately, tram cars pass through the radial spokes: 168 of 3,144 car vertices sit 6.43 m inside, confirmed independently by point-in-box and by rendering, and no assertion exists between the two modules.",
+              "where": "station/tram.py"
+            },
+            {
+              "descriptor": "F2",
+              "dimension": "fidelity",
+              "severity": "blocking",
+              "text": "Car length is disputed between two authority-1 frames -- 34b's rectification gives 3.9 bays (96 m), 33a shows ~5 window bays at a length:height near 1.8:1 against the model's 21 bays and ~9:1, i.e. 3-4x shorter. This is unresolved and unrecorded as a conflict."
+            },
+            {
+              "descriptor": "P2",
+              "dimension": "performance",
+              "severity": "major",
+              "text": "1,252 triangles exterior and 4,158 with the saloon, measured once for one car. No worst-case sweep over a full guideway of cars, and no entry in budget.py."
+            },
+            {
+              "descriptor": "C3",
+              "dimension": "craft",
+              "severity": "major",
+              "text": "Exterior car and saloon read as the intended object at guideway distance. Being literal about 35a's continuous bench cushions made it 2.5x cheaper, but there is no tertiary detail and no material differentiation."
+            }
+          ],
+          "reviewer": "seed from STATE.md sessions 2x/2y",
+          "round": 1,
+          "scores": {
+            "craft": 3,
+            "fidelity": 2,
+            "performance": 2,
+            "robustness": 0
+          }
+        }
+      ],
+      "status": "active"
+    },
+    "walkable_deck": {
+      "rounds": [
+        {
+          "broke_assertions": false,
+          "date": "2026-07-31",
+          "evidence": {},
+          "findings": [
+            {
+              "descriptor": "C1",
+              "dimension": "craft",
+              "severity": "blocking",
+              "text": "THE CORRIDOR ARRIVES IN THE ENGINE WITH NO MATERIAL AND NO LIGHT. build_deck writes G.append(('corridor', 0, len(ct))) -- 458,400 triangles, 77% of the deck, as one anonymous group. interior_kit records 14 material spans while building it (deck_grid, wall_panel, light_pilaster_strip, light_downlight, light_portal_head, skirt, dado, rail_band, portal_frame, pilaster, soffit, ceiling_slab, wall_reveal, wall_assembly) and ring_arc never returns them. Two measured consequences: interior.tscn's 429 substring rules match 'corridor' zero times and the scene declares no fallback_material, so the engine leaves the glTF default on it -- every run prints 'fallback material used by 15 group(s): corridor, doorleaf_...'; and export_scene.FIXTURE_LIGHTING is an EXACT-NAME table, so the corridor's 822 light_downlight fittings are invisible to it and deck.py's '<key>__' room prefix breaks the rooms' fittings too. THE SHIPPED DECK HAS 0 LIGHT SOURCES; 850 are available from the geometry's own tags. Frame docs/judge3w-corridor-20m.png is a flat grey tube: p5/p95 0.695 against the show's 0.083, 100% measurable, 0.01% crushed. Restoring the spans changes 99.5% of the pixels (docs/judge3w-corridor-20m-materials.png) and moves the frame from x5.77 of reference/07-sector-grey/grey level 1.webp -- level test OUT OF RANGE, 4 of 6 distribution tests FAIL -- to x1.68, level OK, 5 of 6 pass. The playable scene is worse still: godot/scripts/walk.gd applies no material rules at all and creates no lights, only ambient_light_energy 0.6.",
+              "where": "station/deck.py:484, station/interior.py:ring_arc"
+            },
+            {
+              "descriptor": "R1",
+              "dimension": "robustness",
+              "severity": "blocking",
+              "text": "EVERY DOORWAY IS AN UNCLOSED CUT AND NOTHING MEASURES IT. Welded over the whole assembled deck: 302,160 verts, 742,095 edges, 1,572 boundary edges. 1,470 are in `corridor` and every one is within 2 m of a door -- 245 at each of the six -- with ZERO at the two arc ends, which are correctly capped. Visible at 2.5 m as torn jambs, two detached fragments and a void over the head (docs/judge3w-door-2m5-shipped.png). A further 96 open edges are in dress_conduit and dress_band across four rooms. deck.py --selftest checks room separation, radius, up-is-inward and the spawn; it never counts an edge, and --sweep counts floor holes by ray cast, which cannot see a hole in a wall or a soffit. Checked and NOT wrong: a point-in-volume test over the closed-leaf box returns 0 corridor triangles at all six doors, so session 3v's leaf-placement fix held.",
+              "where": "station/deck.py:_selftest"
+            },
+            {
+              "descriptor": "R1",
+              "dimension": "robustness",
+              "severity": "blocking",
+              "text": "FOUR OF THE FIVE MODULES THAT MAKE THE STATION WALKABLE DO NOT RUN IN CI. The workflow contains no reference to deck.py, collision.py, dressing.py or populace.py, and its walk step is `python3 station/walkable.py --rooms 6` -- six isolated rooms. `--deck` never runs, so the door negative control, the distance-covered assertion and the whole-deck assembly are unguarded; `deck.py --sweep`, which CLAUDE.md calls the only whole-station gate, never runs either. CLAUDE.md states as binding: 'station/walkable.py asserts the player can spawn, stand, walk, and reach the neighbouring location. It runs in CI.' That is not true of the mode that makes the claim. Re-run by hand this session it does PASS -- deck blue/0/0, 6.3 m -> 0.04 m, doors inert stops 5.26 m short -- and generation is byte-identical across PYTHONHASHSEED 0/1/7/12345/99999. The work is real; nothing protects it.",
+              "where": ".github/workflows/validate.yml"
+            },
+            {
+              "descriptor": "P1",
+              "dimension": "performance",
+              "severity": "blocking",
+              "text": "THE GATE PRINTS PASS AND DOES NOT MEASURE WHAT SHIPS. budget.py reports 15/15 within budget, including 'visible structure set 30,941 tri / 60,000 (51.6%)' measured on the corridor kit in isolation, and 'interior share of frame 3% / 5% -- structure only, props, NPCs and signage come out of the rest', naming a budget that does not exist. Measured on the assembled deck from the standing camera of docs/judge3w-corridor-20m.png (55 deg vertical FOV, 16:9, near 0.06, far 400, a triangle counted if any vertex is inside): 82,478 triangles in the frustum -- 137% of the 60,000 allowance the same gate reports as half used. Also ungated: 597,418 triangles resident in one deck; 188 mesh groups i.e. draw calls, with no interior draw-call budget in existence (exterior_draw_calls: 64 is the only one in the file); 97,590 triangles of furniture and 28,636 of people; 9,588 collision triangles here and 75,642 station-wide. No LOD and no streaming in the walkable build -- walk.gd loads one glb whole and trimeshes the collision proxy at startup.",
+              "where": "station/budget.py"
+            },
+            {
+              "descriptor": "C3",
+              "dimension": "craft",
+              "severity": "major",
+              "text": "FALLS APART AT HALF DISTANCE, which is where a corridor player permanently lives: the walls are 1.08 m from a walking shoulder, so there is no 200 m 'normal distance' to hide behind. docs/judge3w-corridor-wall-1m.png at 1.12 m -- the panels are completely blank over a 2 m x 2 m field with no bolt, seam, vent, wear, grime or fixing; the panel joints are pure black lines rather than recesses with light in them; the downlight is a glowing white box with no lens, bezel, housing or reflector. 4.01% crushed. Separately 2.5% of the 10 m and 90 m corridor frames is CLIPPED: ceiling battens and pilaster strips render as pure white shapes, the strips' emissive pattern aliases into notched blocks at grazing angles (docs/judge3w-corridor-sightline.png), and the sight line gets BRIGHTER with distance from accumulated bloom instead of receding into dark.",
+              "where": "station/interior_kit.py wall panels and fittings"
+            },
+            {
+              "descriptor": "C3",
+              "dimension": "craft",
+              "severity": "major",
+              "text": "REPETITION IS INDEXABLE AT EVERY DISTANCE AND THE FRAME IS MIRROR-SYMMETRIC. 138 identical kit sections over 1,270 m of arc, subdivided into 3.07 m bays -- about 414 identical bays, nothing varying between any two. docs/judge3w-corridor-sightline.png is ten identical ceiling battens in a row. C5 requires that nothing in frame repeats in a way the eye can index and that nothing is symmetric that would not be built symmetric; both fail, so C3 is the ceiling until they change. Six doors over 344 degrees is one door per 210 m of walking, so the corridor has no events in it either.",
+              "where": "station/interior.py ring_arc, station/deck.py deck_plan"
+            },
+            {
+              "descriptor": "C3",
+              "dimension": "craft",
+              "severity": "major",
+              "text": "THE ROOMS DO NOT LIGHT THEMSELVES; FLAT AMBIENT DOES ALL THE WORK. interior.tscn's own header argues that a room with no tagged fitting must render BLACK because 'a room that lights itself from nowhere is what this arrangement exists to prevent'. docking_bays HAS fittings -- four light_highbay spots and four light_deck_channel runs -- and with the scene ambient at 0.05 it renders essentially black (docs/judge3w-room-6m-fittings-only.png). Adding all of them to a deck that had zero lights moves 5.9% of the frame by a mean of 0.6/255 (docs/judge3w-room-6m-shipped.png against docs/judge3w-room-6m.png). That is why no frame taken in a room has a shadow under a standing figure, a falloff, or any direction. The playable scene has no lights at all: walk.gd builds its own Environment with ambient 0.6 and nothing else.",
+              "where": "godot/scripts/walk.gd, tools/export_scene.py fixture_lights"
+            },
+            {
+              "descriptor": "C1",
+              "dimension": "craft",
+              "severity": "major",
+              "text": "THE ROOM IS STILL NAMED FOR A FUNCTION IT DOES NOT CONTAIN -- session 3r's generated_rooms C1 finding, unchanged, now with furniture in front of it. docs/judge3w-room-3m.png is a DOCKING BAY whose far wall is a flat grid of blank rectangles with faint noise-texture smudges: no bay door, no ship, no gantry, no umbilical, no clamp, no hazard striping, no bay number. The door is C1 too, and it is the ONLY thing on this station a player can use: at 1.0 m (docs/judge3w-door-1m.png) it is a blank chamfered panel with no handle, control plate, emergency release, hazard chevron, room name, bay number, gasket or rebate, and doorleaf_* matches no material rule so both leaves take the glTF default.",
+              "where": "station/rooms.py, station/interior_kit.py door_assembly"
+            },
+            {
+              "descriptor": "F1",
+              "dimension": "fidelity",
+              "severity": "major",
+              "text": "ONE CORRIDOR CLASS ON 66 OF 66 ASSEMBLED DECKS. ring_arc calls kit.corridor_section(seg_len) with no p=, so every section is the default PROVISIONAL 2.6 m x 3.0 m residential passage. interior_kit.CORRIDOR_CLASSES defines `concourse` at 9.0 m and `service` at 4.2 m, sourced in INV-840 to central corridor.webp and more hallway.jpg, and nothing on the walkable station ever asks for either -- the whole station is a service passage. Underneath that the section is a declared single-source inference that the one relevant reference contradicts; INV-007's own words: 'Carrying the chamfer from the aperture to the corridor's own section is an inference, not an observation', and 'the one frame that does show a corridor's head, grey level 1.webp, shows a RECTANGULAR portal header.' Sourced, single view, no cross-check, and the cross-check that does exist disagrees: F1 verbatim.",
+              "where": "station/interior.py ring_arc, station/interior_kit.py CORRIDOR_CLASSES, INV-007"
+            },
+            {
+              "descriptor": "F2",
+              "dimension": "fidelity",
+              "severity": "major",
+              "text": "ONE SIGNAGE GROUP, 24 TRIANGLES, ON THE ENTIRE DECK -- docking_bays__prop_deck_marking, and nothing else across 1,270 m of corridor and six rooms. reference/07-sector-grey/grey level 1.webp at matched framing carries a wall placard, a lit sign panel with lettering and painted floor markings, all within 10 m of the camera. signage.py exists, runs in CI, and puts nothing on the walkable station. CLAUDE.md's scope names 'an information layer the player can use -- comms, ISN, propaganda, signage, announcements' as part of what 'the whole station' means. Palette differs too: the show's corridor is warm sand/olive over patterned tile with an inlaid path; ours is neutral grey-white over dark plate. The warm/cool fitting relationship IS right and measured; the ground colour is not.",
+              "where": "station/signage.py, station/deck.py"
+            },
+            {
+              "descriptor": "R3",
+              "dimension": "robustness",
+              "severity": "major",
+              "text": "PROP COLLISION HAS NO STATED TOLERANCE AND IS VERY COARSE. AAA-STANDARD's interaction checklist requires collision geometry to match render geometry within a STATED tolerance, and the tolerance to be asserted; neither exists. prop_boxes merges any two boxes within 40 mm, repeatedly, so a rack and its contents become one slab. docking_bays: 26,268 triangles of solid furniture over 2,189 separate primitives become 15 axis-aligned boxes up to 7.41 m across, totalling 209 m3 in a 655 m3 room -- 32% of the room's volume is solid to the player. Deck-wide: 8,175 primitives -> 114 boxes. A player collides with air beside a crate and walks through the gap between two. NPCs are excluded from static collision deliberately and correctly, with the consequence that a player currently walks through all 13 people on the deck.",
+              "where": "station/collision.py prop_boxes"
+            },
+            {
+              "descriptor": "F3",
+              "dimension": "fidelity",
+              "severity": "major",
+              "text": "Six constants introduced by the walkable layer are unlogged. INVENTIONS.md stops at INV-081 (session 3u); nothing covers deck.ARC_PAD_DEG = 12.0, deck.Z_CLUSTER_M = 40.0, deck_index's name-or-rank rule, the corridor's arc-phase sweep, corridor_z_m, the vestibule's existence and depth, or prop_boxes' min_m = 0.18 / gap = 0.04. Each carries a reasoned inline docstring, which is why this is not scored F0, but CLAUDE.md's first hard rule asks for an entry and a reader six sessions on cannot tell these from memory.",
+              "where": "canon/INVENTIONS.md"
+            },
+            {
+              "severity": "note",
+              "text": "WHAT IS GENUINELY GOOD, so it is not lost in the above. With the material spans recovered, docs/judge3w-corridor-10m.png is the best interior frame this project has produced: warm light_downlight against cool light_pilaster_strip is a MEASURED relationship rather than a taste and it is the most Babylon-5 thing in the build, and the deck plate, skirt, dado, rail band, mullioned panels, cornice and serviced soffit all read -- session 3s's layer-2b articulation is real. The walk gate's negative control (fail if the doors-inert run also passes) is the best piece of engineering in the subsystem. deck.py --sweep re-run this session: 66 of 67 decks assemble, 0 fail, 1 deferred, 87 locations with a door, 0 floor holes, 75,642 collision triangles for the whole walkable station."
+            },
+            {
+              "severity": "note",
+              "text": "NOT JUDGEABLE HERE, stated so nobody reads silence as a pass: framerate, stutter and shader cost (no GPU, no target hardware); whether the door ANIMATION reads, since render_shot.gd does not run door.gd and every door in every frame is closed; whether the void over the door head is a hole or an unlit surface, which needs a two-background diff in a scene file this agent does not own -- the 245 open edges per door supersede the question; the habitat drum, deferred by name in deck.NOT_RING_DECKS; and 31 of the 118 gazetteer locations, which sit in secondary z-clusters and cannot be walked to at all."
+            }
+          ],
+          "reviewer": "judging agent, session 3w -- FIRST judgement of the WALKABLE build (an assembled ring deck, not a single room). Builder of none of it. Fifteen engine frames at the rubric's three distances; full report in docs/judge-3w.md",
+          "round": 1,
+          "scores": {
+            "craft": 1,
+            "fidelity": 1,
+            "performance": 1,
+            "robustness": 1
+          }
+        },
+        {
+          "broke_assertions": false,
+          "date": "2026-08-01",
+          "evidence": {},
+          "findings": [
+            {
+              "descriptor": "R2",
+              "dimension": "robustness",
+              "severity": "blocking",
+              "text": "CI run 30689612155 (2026-08-01T07:22Z, head 4895c098): step 7 'Performance budgets' FAILED and steps 8-41 were SKIPPED, including 'The station is walkable', 'How much of the station can be walked in', 'The habitat drum is walkable', 'Layer 3 coverage', 'Canon assertions' and 'NPC bodies, costume and crowd'. validate.yml has no continue-on-error anywhere. The 30 most recent runs all failed; none succeeded. CLAUDE.md says walkable.py 'runs in CI' -- it does not. R2's clause 'the module runs in CI' is the one that is false: the deck's own assertions are R3-class (boundary_edges, floor_steps, a swept collision shell) and none of them executes.",
+              "where": ".github/workflows/validate.yml:58"
+            },
+            {
+              "descriptor": "R2",
+              "dimension": "robustness",
+              "severity": "blocking",
+              "text": "tools/export_scene.py:19 claims it asserts every emitted group has a material rule; unmatched_groups() is called only for drum.tscn (asserted) and exterior.tscn (printed, not gated). The deck shot reaches neither, and every deck render logs 'fallback material used by 2 group(s): dress_post, dress_skid' = 2,208 tri. This is the R0 pattern -- a documented assertion that reports nothing on the path that matters -- inside a subsystem whose other assertions are real, which is why the dimension is scored 2 rather than 0.",
+              "where": "tools/export_scene.py:19"
+            },
+            {
+              "descriptor": "C3",
+              "dimension": "craft",
+              "severity": "major",
+              "text": "docs/judge-4e-corridor-wall.png, the eye 1.3 m from the wall: the panel is a smooth gradient with a handful of faint rivet dots and one low-contrast grime smear -- no normal-map response, no edge wear, no second detail tier. The light pilaster is the same rounded rectangle repeated 7x, indexable at a glance. C3's 'tertiary tier is generic ... repeated without regard to what the part does'. At normal distance (judge-4e-corridor-normal.png) it reads correctly, which is the rest of C3.",
+              "where": "station/interior_kit.py wall panel + light pilaster"
+            },
+            {
+              "descriptor": "C3",
+              "dimension": "craft",
+              "severity": "major",
+              "text": "No corridor light is shadow-castable. scene.json: 822 light_downlight at omni range 1.20 m and 707 corridor_soft_fill, none flagged; all 18 castable lights are inside rooms. --shadow-lights 2 vs 24 on the deck is BYTE-IDENTICAL (0.00% of pixels). Control: the same A/B in docking_bays moves 15.45% of pixels, so the pipeline works. Everything in the corridor reads pasted on and no render flag can change it.",
+              "where": "tools/export_scene.py fixture_lights"
+            },
+            {
+              "descriptor": "F2",
+              "dimension": "fidelity",
+              "severity": "major",
+              "text": "judge-3w's finding that the whole walkable station is one corridor class where the kit's taxonomy says three is not shown closed and I did not re-measure it. What did improve is signage: the deck now renders legible boards ('...ING BAYS (24) / BLUE 0 0 000') against 3w's one 24-triangle group. Scored 2, not 1, on that.",
+              "where": "station/deck.py + station/interior_kit.py"
+            },
+            {
+              "descriptor": "P2",
+              "dimension": "performance",
+              "severity": "major",
+              "text": "budget.py exits 1: frustum structure 123,279/60,000 tri (205.5%), structure share of frame 10%/5%, resident 736,412/180,000 (409.1%, 'walk.gd loads one .glb whole -- there is no streaming and no LOD'). Worst pitch +30 deg is 333,950 tri, 111% of the allowance. The GATE is now P4-class -- worst case swept over pitch, marginal rates, tolerances derived from sagitta -- and that is a real advance on 3w's P1. The CONTENT is over. Scored 2 because every descriptor from 3 up contains 'inside budget'; see the note.",
+              "where": "station/budget.py"
+            },
+            {
+              "descriptor": "C4",
+              "dimension": "craft",
+              "severity": "minor",
+              "text": "Composition of the 816,188-tri deck: architecture 81.4%, people 16.8%, fixtures 0.9%, props 0.9%. Session 3u measured 95.9/1.7/2.5 and called props and inhabitants 'most of the remaining product'. The inhabitants arrived; props+fixtures went from 4.2% to 1.8%. Eight prop groups are exactly 12 triangles, including docking_bays__prop_cargo_crane.",
+              "where": "station/generated/scene/deck"
+            },
+            {
+              "severity": "note",
+              "text": "docs/AAA-STANDARD.md's PERFORMANCE ladder has no rung for 'well measured and over budget': 2, 3, 4 and 5 all require 'inside budget', and 1 is 'a gate that does not measure the thing it names', which would misdescribe budget.py badly. Recorded rather than resolved."
+            }
+          ],
+          "reviewer": "judging agent, session 4e -- LAYER 8 ROUND 1. First frames of this station scored against docs/AAA-STANDARD.md. 21 engine frames, every one confirmed Vulkan 1.4.318 Forward+ in its own log (docs/judge-4e-frames.json). Builder of none of it. Full report: docs/judge-4e.md",
+          "round": 2,
+          "scores": {
+            "craft": 3,
+            "fidelity": 2,
+            "performance": 2,
+            "robustness": 2
+          }
+        }
+      ],
+      "status": "active"
+    },
+    "zocalo_interior": {
+      "rounds": [
+        {
+          "broke_assertions": false,
+          "date": "2026-07-30",
+          "evidence": {
+            "craft": "docs/engine-zocalo-close.png -- ribbed arches, a gallery with railings, stall canopies, tables and stools, floor tiling, warm/cool separation. Reads as the intended place at its normal distance, which is C3."
+          },
+          "findings": [
+            {
+              "descriptor": "C3",
+              "dimension": "craft",
+              "severity": "major",
+              "text": "Falls apart at half distance, which is the C3 descriptor exactly. The arches are undifferentiated white surfaces with no panel breaks, joints or wear. No signage anywhere in a market concourse. No people.",
+              "where": "station/zocalo.py"
+            },
+            {
+              "descriptor": "C3",
+              "dimension": "craft",
+              "severity": "major",
+              "text": "Floor light pools blow to pure white discs. Clipped highlights read as a rendering error rather than as lighting.",
+              "where": "tools/export_scene.py fixture lighting"
+            }
+          ],
+          "reviewer": "main agent, session 3r -- first scores taken from CLOSE frames",
+          "round": 1,
+          "scores": {
+            "craft": 3,
+            "fidelity": 3,
+            "performance": 3,
+            "robustness": 3
+          }
+        },
+        {
+          "broke_assertions": false,
+          "date": "2026-07-31",
+          "evidence": {
+            "craft": "docs/engine-zocalo.png re-rendered at the swept exposure, and docs/engine-zocalo-inside.png (the composed deck shot). The round-1 finding 'floor light pools blow to pure white discs' is CONFIRMED and its stated CAUSE IS WRONG. It is filed against 'tools/export_scene.py fixture lighting'; measured over a x5.7 range of ROOM_EXPOSURE at the same camera and the same boxes, the lit wall plate moves 0.0556 -> 0.1934 (x3.48) and the deck strip moves 0.9381 -> 0.9443 (x1.007). The strip is INERT to the exposure because it is an EMISSIVE MATERIAL at fixed emission_energy, and room_exposure scales fittings and ambient, neither of which touches emission. No value of ROOM_EXPOSURE or BESPOKE_EXPOSURE can close it.",
+            "fidelity": "The Zocalo now passes 6 of 7 distribution checks against reference/04-sector-red/more zocalo.png at median x1.19. It fails `crushed` x0.03 -- it holds 33x less black than its reference. A gain of x0.35 passes 7/7 and puts the level at x0.58, which is outside layer 4a's window and reads in the frame as a dim hall at dusk WITH THE DECK STRIP STILL BLOWN. Level kept, distribution debt recorded.",
+            "performance": "Not re-measured this pass -- no geometry, materials or lights changed, only BESPOKE_EXPOSURE['zocalo'], which is a scalar on existing lights. Carried at 4 from station/budget.py rather than re-scored.",
+            "robustness": "tools/export_scene.py --gate-frames --rerender re-renders this row from its recorded shot and measures it, so the verdict is reproducible rather than cached; measure_frame 28/28; export_scene 236/237 (the one failure pre-existing, identical with these changes stashed)."
+          },
+          "findings": [
+            {
+              "descriptor": "C3",
+              "dimension": "craft",
+              "severity": "major",
+              "text": "THE BLOWN POOLS AND VITRINES ARE EMISSION, NOT EXPOSURE, and the measurement is in the evidence field. Two routes reach them and neither is ROOM_EXPOSURE: lowering emission_energy on the emissive materials, or tonemap_exposure on the Environment, which scales what the CAMERA receives and so moves emissives and lit surfaces together. export_scene.GRADE / --tonemap-exposure now exposes the second per shot. Not applied here because it changes the look for every room in the scene at once and a look has to be judged whole.",
+              "where": "station/materials.py emission_energy, or godot/scenes/interior.tscn tonemap_exposure"
+            },
+            {
+              "descriptor": "F3",
+              "dimension": "fidelity",
+              "severity": "major",
+              "text": "NO STATISTIC IN THE GATE CAN SEE THIS, and two candidates were derived and REFUTED by the corpus. `bright_tail` (share of the frame above x8 its own median): ours 3.39%, and the 33-frame corpus spans 0.00-7.50% with a median of 2.31%, so ours is an ordinary show value; the pairwise band comes out at x15.47, wider than crushed's x11.42. `hi_sat` (mean saturation of the top 1%): ours 0.105 against more zocalo.png's 0.406 -- but the corpus p5 is 0.078 and Doug's Dugout.webp, one of our own references, is 0.088. A gate there would reject the show. What IS measurable is LOCAL: the floor pool holds 42.2% of its pixels within 2% of its own maximum at saturation 0.046. A gate for that needs regions.",
+              "where": "tools/measure_frame.py"
+            }
+          ],
+          "reviewer": "layer-4b agent, session 4a -- lighting only, geometry not re-scored",
+          "round": 2,
+          "scores": {
+            "craft": 3,
+            "fidelity": 3,
+            "performance": 4,
+            "robustness": 4
+          }
+        },
+        {
+          "broke_assertions": false,
+          "date": "2026-08-01",
+          "evidence": {
+            "performance": "46,668 tri for 8,074 m2; budget.py's habitat cell and 3-cell resident gates pass at 65.2%. Carried from round 2, not re-derived.",
+            "robustness": "0 open boundary edges position-welded at 1e-5 m (18,296 unwelded, which was duplicated seam vertices and is withdrawn -- see docs/judge-4e.md); 0 groups on the fallback material in the engine's own log."
+          },
+          "findings": [
+            {
+              "descriptor": "C3",
+              "dimension": "craft",
+              "severity": "major",
+              "text": "docs/judge-4e-zocalo-half.png: the back wall of the concourse is an undifferentiated panel grid across its whole width and height -- the largest surface in frame and there is nothing on it. A fully clipped white strip runs down the centre of the floor from camera to back wall, plus ~10 blown pools at table bases. Every stool, table and plinth is the same asset repeated ~30 times. Reads as the place at normal distance, falls apart at half: C3.",
+              "where": "station/zocalo.py"
+            },
+            {
+              "descriptor": "F3",
+              "dimension": "fidelity",
+              "severity": "major",
+              "text": "Four features named in the authority-1 description are absent or a box: the neon wordmark (zoc_neon_face, 12 triangles -- a slab, where the reference is a rounded single-stroke tube script with a dot in each 'o' and a swashed Z); the blue and red backlit shopfront panels; the live planting including a tree-scale mass of orange-red foliage; and the crowd, which the reference calls 'dense and species-mixed' and which is ZERO -- zocalo.obj contains 0 npc groups, against 23 in business_center and 15 in fabrication.",
+              "where": "station/zocalo.py"
+            },
+            {
+              "descriptor": "C4",
+              "dimension": "craft",
+              "severity": "minor",
+              "text": "The frame is 2.11% clipped against a 3.69% cap and PASSES, and the clipped pixels are one contiguous blown strip down the middle of the composition. A pixel fraction has no notion of contiguity.",
+              "where": "tools/measure_frame.py"
+            }
+          ],
+          "reviewer": "judging agent, session 4e -- LAYER 8 ROUND 1. First frames of this station scored against docs/AAA-STANDARD.md. 21 engine frames, every one confirmed Vulkan 1.4.318 Forward+ in its own log (docs/judge-4e-frames.json). Builder of none of it. Full report: docs/judge-4e.md",
+          "round": 3,
+          "scores": {
+            "craft": 3,
+            "fidelity": 3,
+            "performance": 4,
+            "robustness": 4
+          }
+        }
+      ],
+      "status": "active"
     }
-   ]
   },
-  "garden_townscape": {
-   "status": "active",
-   "rounds": [
-    {
-     "round": 1,
-     "reviewer": "main agent, session 3r -- first scores taken from CLOSE frames",
-     "date": "2026-07-30",
-     "scores": {
-      "craft": 1,
-      "fidelity": 2,
-      "performance": 4,
-      "robustness": 3
-     },
-     "evidence": {
-      "craft": "docs/engine-drum-terrace.png. garden.tree() is one box plus one cylinder; garden.block_building() is one box plus window bands and its docstring says 'Cheap by design'. The whole settlement -- 12 buildings, 10 trees, a landmark -- is 2,228 triangles."
-     },
-     "broke_assertions": false,
-     "findings": [
-      {
-       "severity": "blocking",
-       "dimension": "craft",
-       "descriptor": "C1",
-       "where": "station/garden.py",
-       "text": "The owner's words were 'shitty little cubes' and 'sad excuse for a tree'. Both are literally accurate descriptions of the generators. C1 is correct and has been correct since the module was written."
-      }
-     ]
-    }
-   ]
-  },
-  "walkable_deck": {
-   "status": "active",
-   "rounds": [
-    {
-     "round": 1,
-     "reviewer": "judging agent, session 3w -- FIRST judgement of the WALKABLE build (an assembled ring deck, not a single room). Builder of none of it. Fifteen engine frames at the rubric's three distances; full report in docs/judge-3w.md",
-     "date": "2026-07-31",
-     "scores": {
-      "craft": 1,
-      "fidelity": 1,
-      "performance": 1,
-      "robustness": 1
-     },
-     "evidence": {},
-     "broke_assertions": false,
-     "findings": [
-      {
-       "severity": "blocking",
-       "dimension": "craft",
-       "descriptor": "C1",
-       "where": "station/deck.py:484, station/interior.py:ring_arc",
-       "text": "THE CORRIDOR ARRIVES IN THE ENGINE WITH NO MATERIAL AND NO LIGHT. build_deck writes G.append(('corridor', 0, len(ct))) -- 458,400 triangles, 77% of the deck, as one anonymous group. interior_kit records 14 material spans while building it (deck_grid, wall_panel, light_pilaster_strip, light_downlight, light_portal_head, skirt, dado, rail_band, portal_frame, pilaster, soffit, ceiling_slab, wall_reveal, wall_assembly) and ring_arc never returns them. Two measured consequences: interior.tscn's 429 substring rules match 'corridor' zero times and the scene declares no fallback_material, so the engine leaves the glTF default on it -- every run prints 'fallback material used by 15 group(s): corridor, doorleaf_...'; and export_scene.FIXTURE_LIGHTING is an EXACT-NAME table, so the corridor's 822 light_downlight fittings are invisible to it and deck.py's '<key>__' room prefix breaks the rooms' fittings too. THE SHIPPED DECK HAS 0 LIGHT SOURCES; 850 are available from the geometry's own tags. Frame docs/judge3w-corridor-20m.png is a flat grey tube: p5/p95 0.695 against the show's 0.083, 100% measurable, 0.01% crushed. Restoring the spans changes 99.5% of the pixels (docs/judge3w-corridor-20m-materials.png) and moves the frame from x5.77 of reference/07-sector-grey/grey level 1.webp -- level test OUT OF RANGE, 4 of 6 distribution tests FAIL -- to x1.68, level OK, 5 of 6 pass. The playable scene is worse still: godot/scripts/walk.gd applies no material rules at all and creates no lights, only ambient_light_energy 0.6."
-      },
-      {
-       "severity": "blocking",
-       "dimension": "robustness",
-       "descriptor": "R1",
-       "where": "station/deck.py:_selftest",
-       "text": "EVERY DOORWAY IS AN UNCLOSED CUT AND NOTHING MEASURES IT. Welded over the whole assembled deck: 302,160 verts, 742,095 edges, 1,572 boundary edges. 1,470 are in `corridor` and every one is within 2 m of a door -- 245 at each of the six -- with ZERO at the two arc ends, which are correctly capped. Visible at 2.5 m as torn jambs, two detached fragments and a void over the head (docs/judge3w-door-2m5-shipped.png). A further 96 open edges are in dress_conduit and dress_band across four rooms. deck.py --selftest checks room separation, radius, up-is-inward and the spawn; it never counts an edge, and --sweep counts floor holes by ray cast, which cannot see a hole in a wall or a soffit. Checked and NOT wrong: a point-in-volume test over the closed-leaf box returns 0 corridor triangles at all six doors, so session 3v's leaf-placement fix held."
-      },
-      {
-       "severity": "blocking",
-       "dimension": "robustness",
-       "descriptor": "R1",
-       "where": ".github/workflows/validate.yml",
-       "text": "FOUR OF THE FIVE MODULES THAT MAKE THE STATION WALKABLE DO NOT RUN IN CI. The workflow contains no reference to deck.py, collision.py, dressing.py or populace.py, and its walk step is `python3 station/walkable.py --rooms 6` -- six isolated rooms. `--deck` never runs, so the door negative control, the distance-covered assertion and the whole-deck assembly are unguarded; `deck.py --sweep`, which CLAUDE.md calls the only whole-station gate, never runs either. CLAUDE.md states as binding: 'station/walkable.py asserts the player can spawn, stand, walk, and reach the neighbouring location. It runs in CI.' That is not true of the mode that makes the claim. Re-run by hand this session it does PASS -- deck blue/0/0, 6.3 m -> 0.04 m, doors inert stops 5.26 m short -- and generation is byte-identical across PYTHONHASHSEED 0/1/7/12345/99999. The work is real; nothing protects it."
-      },
-      {
-       "severity": "blocking",
-       "dimension": "performance",
-       "descriptor": "P1",
-       "where": "station/budget.py",
-       "text": "THE GATE PRINTS PASS AND DOES NOT MEASURE WHAT SHIPS. budget.py reports 15/15 within budget, including 'visible structure set 30,941 tri / 60,000 (51.6%)' measured on the corridor kit in isolation, and 'interior share of frame 3% / 5% -- structure only, props, NPCs and signage come out of the rest', naming a budget that does not exist. Measured on the assembled deck from the standing camera of docs/judge3w-corridor-20m.png (55 deg vertical FOV, 16:9, near 0.06, far 400, a triangle counted if any vertex is inside): 82,478 triangles in the frustum -- 137% of the 60,000 allowance the same gate reports as half used. Also ungated: 597,418 triangles resident in one deck; 188 mesh groups i.e. draw calls, with no interior draw-call budget in existence (exterior_draw_calls: 64 is the only one in the file); 97,590 triangles of furniture and 28,636 of people; 9,588 collision triangles here and 75,642 station-wide. No LOD and no streaming in the walkable build -- walk.gd loads one glb whole and trimeshes the collision proxy at startup."
-      },
-      {
-       "severity": "major",
-       "dimension": "craft",
-       "descriptor": "C3",
-       "where": "station/interior_kit.py wall panels and fittings",
-       "text": "FALLS APART AT HALF DISTANCE, which is where a corridor player permanently lives: the walls are 1.08 m from a walking shoulder, so there is no 200 m 'normal distance' to hide behind. docs/judge3w-corridor-wall-1m.png at 1.12 m -- the panels are completely blank over a 2 m x 2 m field with no bolt, seam, vent, wear, grime or fixing; the panel joints are pure black lines rather than recesses with light in them; the downlight is a glowing white box with no lens, bezel, housing or reflector. 4.01% crushed. Separately 2.5% of the 10 m and 90 m corridor frames is CLIPPED: ceiling battens and pilaster strips render as pure white shapes, the strips' emissive pattern aliases into notched blocks at grazing angles (docs/judge3w-corridor-sightline.png), and the sight line gets BRIGHTER with distance from accumulated bloom instead of receding into dark."
-      },
-      {
-       "severity": "major",
-       "dimension": "craft",
-       "descriptor": "C3",
-       "where": "station/interior.py ring_arc, station/deck.py deck_plan",
-       "text": "REPETITION IS INDEXABLE AT EVERY DISTANCE AND THE FRAME IS MIRROR-SYMMETRIC. 138 identical kit sections over 1,270 m of arc, subdivided into 3.07 m bays -- about 414 identical bays, nothing varying between any two. docs/judge3w-corridor-sightline.png is ten identical ceiling battens in a row. C5 requires that nothing in frame repeats in a way the eye can index and that nothing is symmetric that would not be built symmetric; both fail, so C3 is the ceiling until they change. Six doors over 344 degrees is one door per 210 m of walking, so the corridor has no events in it either."
-      },
-      {
-       "severity": "major",
-       "dimension": "craft",
-       "descriptor": "C3",
-       "where": "godot/scripts/walk.gd, tools/export_scene.py fixture_lights",
-       "text": "THE ROOMS DO NOT LIGHT THEMSELVES; FLAT AMBIENT DOES ALL THE WORK. interior.tscn's own header argues that a room with no tagged fitting must render BLACK because 'a room that lights itself from nowhere is what this arrangement exists to prevent'. docking_bays HAS fittings -- four light_highbay spots and four light_deck_channel runs -- and with the scene ambient at 0.05 it renders essentially black (docs/judge3w-room-6m-fittings-only.png). Adding all of them to a deck that had zero lights moves 5.9% of the frame by a mean of 0.6/255 (docs/judge3w-room-6m-shipped.png against docs/judge3w-room-6m.png). That is why no frame taken in a room has a shadow under a standing figure, a falloff, or any direction. The playable scene has no lights at all: walk.gd builds its own Environment with ambient 0.6 and nothing else."
-      },
-      {
-       "severity": "major",
-       "dimension": "craft",
-       "descriptor": "C1",
-       "where": "station/rooms.py, station/interior_kit.py door_assembly",
-       "text": "THE ROOM IS STILL NAMED FOR A FUNCTION IT DOES NOT CONTAIN -- session 3r's generated_rooms C1 finding, unchanged, now with furniture in front of it. docs/judge3w-room-3m.png is a DOCKING BAY whose far wall is a flat grid of blank rectangles with faint noise-texture smudges: no bay door, no ship, no gantry, no umbilical, no clamp, no hazard striping, no bay number. The door is C1 too, and it is the ONLY thing on this station a player can use: at 1.0 m (docs/judge3w-door-1m.png) it is a blank chamfered panel with no handle, control plate, emergency release, hazard chevron, room name, bay number, gasket or rebate, and doorleaf_* matches no material rule so both leaves take the glTF default."
-      },
-      {
-       "severity": "major",
-       "dimension": "fidelity",
-       "descriptor": "F1",
-       "where": "station/interior.py ring_arc, station/interior_kit.py CORRIDOR_CLASSES, INV-007",
-       "text": "ONE CORRIDOR CLASS ON 66 OF 66 ASSEMBLED DECKS. ring_arc calls kit.corridor_section(seg_len) with no p=, so every section is the default PROVISIONAL 2.6 m x 3.0 m residential passage. interior_kit.CORRIDOR_CLASSES defines `concourse` at 9.0 m and `service` at 4.2 m, sourced in INV-840 to central corridor.webp and more hallway.jpg, and nothing on the walkable station ever asks for either -- the whole station is a service passage. Underneath that the section is a declared single-source inference that the one relevant reference contradicts; INV-007's own words: 'Carrying the chamfer from the aperture to the corridor's own section is an inference, not an observation', and 'the one frame that does show a corridor's head, grey level 1.webp, shows a RECTANGULAR portal header.' Sourced, single view, no cross-check, and the cross-check that does exist disagrees: F1 verbatim."
-      },
-      {
-       "severity": "major",
-       "dimension": "fidelity",
-       "descriptor": "F2",
-       "where": "station/signage.py, station/deck.py",
-       "text": "ONE SIGNAGE GROUP, 24 TRIANGLES, ON THE ENTIRE DECK -- docking_bays__prop_deck_marking, and nothing else across 1,270 m of corridor and six rooms. reference/07-sector-grey/grey level 1.webp at matched framing carries a wall placard, a lit sign panel with lettering and painted floor markings, all within 10 m of the camera. signage.py exists, runs in CI, and puts nothing on the walkable station. CLAUDE.md's scope names 'an information layer the player can use -- comms, ISN, propaganda, signage, announcements' as part of what 'the whole station' means. Palette differs too: the show's corridor is warm sand/olive over patterned tile with an inlaid path; ours is neutral grey-white over dark plate. The warm/cool fitting relationship IS right and measured; the ground colour is not."
-      },
-      {
-       "severity": "major",
-       "dimension": "robustness",
-       "descriptor": "R3",
-       "where": "station/collision.py prop_boxes",
-       "text": "PROP COLLISION HAS NO STATED TOLERANCE AND IS VERY COARSE. AAA-STANDARD's interaction checklist requires collision geometry to match render geometry within a STATED tolerance, and the tolerance to be asserted; neither exists. prop_boxes merges any two boxes within 40 mm, repeatedly, so a rack and its contents become one slab. docking_bays: 26,268 triangles of solid furniture over 2,189 separate primitives become 15 axis-aligned boxes up to 7.41 m across, totalling 209 m3 in a 655 m3 room -- 32% of the room's volume is solid to the player. Deck-wide: 8,175 primitives -> 114 boxes. A player collides with air beside a crate and walks through the gap between two. NPCs are excluded from static collision deliberately and correctly, with the consequence that a player currently walks through all 13 people on the deck."
-      },
-      {
-       "severity": "major",
-       "dimension": "fidelity",
-       "descriptor": "F3",
-       "where": "canon/INVENTIONS.md",
-       "text": "Six constants introduced by the walkable layer are unlogged. INVENTIONS.md stops at INV-081 (session 3u); nothing covers deck.ARC_PAD_DEG = 12.0, deck.Z_CLUSTER_M = 40.0, deck_index's name-or-rank rule, the corridor's arc-phase sweep, corridor_z_m, the vestibule's existence and depth, or prop_boxes' min_m = 0.18 / gap = 0.04. Each carries a reasoned inline docstring, which is why this is not scored F0, but CLAUDE.md's first hard rule asks for an entry and a reader six sessions on cannot tell these from memory."
-      },
-      {
-       "severity": "note",
-       "text": "WHAT IS GENUINELY GOOD, so it is not lost in the above. With the material spans recovered, docs/judge3w-corridor-10m.png is the best interior frame this project has produced: warm light_downlight against cool light_pilaster_strip is a MEASURED relationship rather than a taste and it is the most Babylon-5 thing in the build, and the deck plate, skirt, dado, rail band, mullioned panels, cornice and serviced soffit all read -- session 3s's layer-2b articulation is real. The walk gate's negative control (fail if the doors-inert run also passes) is the best piece of engineering in the subsystem. deck.py --sweep re-run this session: 66 of 67 decks assemble, 0 fail, 1 deferred, 87 locations with a door, 0 floor holes, 75,642 collision triangles for the whole walkable station."
-      },
-      {
-       "severity": "note",
-       "text": "NOT JUDGEABLE HERE, stated so nobody reads silence as a pass: framerate, stutter and shader cost (no GPU, no target hardware); whether the door ANIMATION reads, since render_shot.gd does not run door.gd and every door in every frame is closed; whether the void over the door head is a hole or an unlit surface, which needs a two-background diff in a scene file this agent does not own -- the 245 open edges per door supersede the question; the habitat drum, deferred by name in deck.NOT_RING_DECKS; and 31 of the 118 gazetteer locations, which sit in secondary z-clusters and cannot be walked to at all."
-      }
-     ]
-    }
-   ]
-  },
-  "npc_bodies": {
-   "status": "active",
-   "rounds": [
-    {
-     "round": 1,
-     "reviewer": "judging agent, session 3w -- first judgement of NPC BODIES in situ. A different subsystem from `npc_foundation`, which scores names, schedules and the statistical layer",
-     "date": "2026-07-31",
-     "scores": {
-      "craft": 1,
-      "fidelity": 2,
-      "performance": 0,
-      "robustness": 2
-     },
-     "evidence": {},
-     "broke_assertions": false,
-     "findings": [
-      {
-       "severity": "blocking",
-       "dimension": "craft",
-       "descriptor": "C1",
-       "where": "godot/scenes/interior.tscn, rules npc_standing and npc_seated",
-       "text": "EVERY INHABITANT OF BABYLON 5 RENDERS AS A FEATURELESS PURE-BLACK SILHOUETTE, at every distance, with no face, hands, skin, eyes, fabric or colour. docs/judge3w-person-2m.png at conversational range is 43.59% CRUSHED -- nearly half the frame below the measurable floor; docs/judge3w-person-1m.png and docs/judge3w-room-3m.png the same. THE CAUSE IS ONE BINDING: npc_standing and npc_seated both bind to m_plant_valve_metal -- albedo 0.545, metallic 0.95, roughness 0.42, 'Valve, bare metal handwheel and stem'. At metallic 0.95 the diffuse response is scaled to about 5%, so nearly all of a person's light must return as specular, and the same scene sets reflected_light_source = 1, REFLECTION_SOURCE_DISABLED: there is no environment for a metal to reflect. A 95%-metallic material in a scene with reflections off is black by construction, and every human, Drazi and Vree on the station is wearing it. The bodies underneath are better than this -- at 1 m the outline shows head, shoulders, coat, separate legs and arms, and the Vree is a distinct non-human form. None of it is visible."
-      },
-      {
-       "severity": "major",
-       "dimension": "craft",
-       "descriptor": "C3",
-       "where": "station/populace.py, station/deck.py",
-       "text": "NOBODY IS IN THE CORRIDOR. All 13 actors on the deck are inside rooms behind closed doors, so a player can walk the full 1,270 m of ring and never see a person. CLAUDE.md's scope asks for 'NPCs with quarters, jobs, schedules and events -- not crowds, residents' and for the friction between factions to be 'visible in a corridor'; the corridor is the only part of the station a player can currently traverse and it is empty. Related and worth recording: 'one pixel of silhouette' is unreachable indoors. At 55 deg vertical FOV and 720 px one pixel subtends 0.076 deg, so a 1.8 m person is one pixel at 1,350 m; the longest sight line in the build is the corridor's ~91 m, where a person would be about 13 px, and there is nobody standing in it to check."
-      },
-      {
-       "severity": "major",
-       "dimension": "fidelity",
-       "descriptor": "F2",
-       "where": "station/npc/costume.py, station/npc/crowd.py",
-       "text": "Species mix, names and the identicard schema are sourced and asserted (see npc_foundation), and the standing figures are placed by a real free-floor enumeration rather than by sample-and-reject. But nothing about how a person LOOKS has been compared against reference/14-characters-and-uniforms or 15-races-and-makeup at matched camera: no uniform, no rank flash, no species colour, no silhouette check against a frame. Every fidelity claim about the bodies is currently a claim about the record, not about the body."
-      },
-      {
-       "severity": "blocking",
-       "dimension": "performance",
-       "descriptor": "P0",
-       "where": "station/budget.py",
-       "text": "NPC COST IS STILL NOT GATED ANYWHERE -- unchanged from npc_foundation round 1, except that now there is geometry to gate. 28,636 triangles of bodies on one deck for 13 people, about 2,200 each, inside a frame whose interior structure is already allowed only 5%. budget.py's interior line says in terms that props, NPCs and signage 'come out of the rest', and no gate for 'the rest' exists. populace.occupancy places 278 people station-wide at 1300 and nothing measures what a populated corridor costs."
-      },
-      {
-       "severity": "major",
-       "dimension": "robustness",
-       "descriptor": "R2",
-       "where": "station/rooms.py is_solid, station/deck.py build_deck",
-       "text": "The session-3v fix that keeps npc_ groups out of STATIC collision is right and its reasoning is sound -- a person you bump into who never moves is a statue where a resident should be, and static collision is generated once. The consequence is that a player walks through all 13 people, and there is no assertion anywhere that a body is ever given dynamic collision instead, because nothing does. Placement is verified on the emitted body rather than on the point that was requested, which is a genuine class-level check; but no assertion in this module has been deliberately broken and observed to fail, which is what ROBUSTNESS 4 requires."
-      }
-     ]
-    }
-   ]
-  },
-  "interior_lighting_4b": {
-   "status": "active",
-   "rounds": [
-    {
-     "round": 1,
-     "reviewer": "layer-4b agent, session 4a",
-     "date": "2026-07-31",
-     "scores": {
-      "craft": 2,
-      "fidelity": 2,
-      "performance": 4,
-      "robustness": 4
-     },
-     "evidence": {
-      "craft": "docs/engine-4a-*.png -- eleven archetype frames that did not exist before, one per ROOM_EXPOSURE row, each from a shot the table now records. engine-4a-industrial.png is a foundry with glowing charge doors, a wall spot with a visible cone and a tiled deck; engine-4a-office.png (the War Room) has a coffered ceiling with real shadow and battens that fall off. Craft 2 rather than 3 because the wall PANELS behind all of it are still flat -- that is layer 2b and no exposure reaches it.",
-      "fidelity": "tools/export_scene.py --gate-frames, end to end from the tables through Godot to the gate: 13 pass, 10 fail, 0 unverifiable, against 3 / 11 / 9 before. The level window is 20 of 21 against 14 of 21. Every exposure re-derived by sweeping the gain at 0.5/1.0/2.0, fitting the response, solving, and RENDERING AT THE SOLVED GAIN to check -- 63 + 46 renders.",
-      "performance": "Measurement only; no geometry, no materials, no lights added. Triangle counts unchanged.",
-      "robustness": "Four negative controls RUN. (1) --tonemap 4, the scene's own value, reproduces the frame BYTE FOR BYTE (0 of 230,400 pixels differ) while --tonemap 3 changes all 230,400 -- so the new grade override is inert by default and reaches the Environment when asked. (2) a shot naming a room outside directory.PLACES fails export_scene._selftest by name. (3) dropping a row's frame back to None fails 'no exposure is unverifiable'. (4) dropping a row's shot fails 'every row but the two deck shots records how to re-take its frame'. measure_frame 28/28 including a synthetic frame on which the censored median FALLS as the gain rises while level_p25 rises, plus the control frame with no sub-floor population where both rise. export_scene 236/237 -- the one failure is a pre-existing missing-LOD-mesh condition, identical with these changes stashed."
-     },
-     "broke_assertions": false,
-     "findings": [
-      {
-       "severity": "major",
-       "dimension": "craft",
-       "descriptor": "C2",
-       "where": "station/rooms.py, station/interior_kit.py -- LAYER 2b, not 4b",
-       "text": "EXPOSURE IS NOW RIGHT ON 20 OF 21 ROOMS AND THE WALLS ARE STILL FLAT. docs/engine-4a-office.png at half distance: the War Room's wall is one unbroken pale panel across 4 m with a scribed line and no joint, no fitting, no wear; docs/engine-4a-store.png the same. C2 is 'a recognisable object with no articulation at half distance' and that is what these are. Lighting a flat panel correctly produces a correctly lit flat panel -- the finding layer 2b already carries, restated from the frames this pass produced, and the reason craft is 2 rather than 3 even though every measured lighting statistic improved."
-      },
-      {
-       "severity": "major",
-       "dimension": "fidelity",
-       "descriptor": "F2",
-       "where": "station/rooms.py LIGHTS, station/*.py bespoke fittings",
-       "text": "SIX ROOMS FAIL p5 BRIGHT AND CANNOT BE FIXED BY EXPOSURE, and the reason is structural: an exposure moves p5 and the median TOGETHER, so a room whose shadows are PROPORTIONALLY too light has no gain that helps. worship x1.62, research x1.65, bespoke hospitality x2.12, command_control x2.20, council_chamber x2.20, quarters x0.76 (dark, the other direction). Every one of the five bright ones reads p95 x0.34-0.67 beside it -- the distribution is compressed at BOTH ends. That is a fitting problem: the show's interiors carry a small bright population a set dresser put there (a lit hatch at x11 the wall, a ceiling strip at x7.7) and ours do not."
-      },
-      {
-       "severity": "major",
-       "dimension": "fidelity",
-       "descriptor": "F2",
-       "where": "station/plant.py, tools/export_scene.py BESPOKE_EXPOSURE['plant']",
-       "text": "THE PLANT'S EXPOSURE IS NOT DERIVABLE FROM ITS FRAME AT ALL. level_p25 is 0.0012 at gain 0.5, 1.0 AND 2.0 -- identical to four figures -- because 85% of that frame sits at sRGB byte 0-1, under the EIGHT-BIT floor rather than merely under the measurable one. The standing note 'sits at 1.59x either way' blamed the room's geometry; the cause is quantisation. It is the one row of 21 whose level cannot be put in window and it needs lighting design, not a number."
-      },
-      {
-       "severity": "major",
-       "dimension": "craft",
-       "descriptor": "C2",
-       "where": "godot/scenes/interior.tscn glow_*",
-       "text": "Every interior frame carries a milky veil around its fittings that the reference frames do not have -- compare docs/engine-docking-bay.png with reference/03-sector-blue/dock.webp, where the show's lamps are hard points in near-black. glow_intensity 0.55 / glow_strength 0.9 over a room with 39 lamps accumulates. Not changed here: interior.tscn is one Environment for every interior shot and a look has to be judged whole."
-      },
-      {
-       "severity": "major",
-       "dimension": "fidelity",
-       "descriptor": "F2",
-       "where": "tools/export_scene.py EXPOSURE_FRAMES",
-       "text": "Two rows are NOT re-takes of what they replace. docs/engine-market.png and docs/engine-dugout.png were rendered before session 3o rewrote open_standpoint and no current room key reproduces either framing -- all ten candidates were rendered and edge-correlated against the committed frames and every one gives |r| < 0.04. Their before/after compares two different pictures."
-      }
-     ]
-    }
-   ]
-  }
- }
+  "version": 1
 }

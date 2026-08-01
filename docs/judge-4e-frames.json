@@ -1,0 +1,323 @@
+{
+ "frames": {
+  "cnc_half": {
+   "camera": "(-5.535, 1.7, -1.825) looking at (5.965, 1.7, 2.25)",
+   "command": "tools/render_godot.sh --shot interior --room cnc --fov 24.0 --res 1280x720 --out docs/judge-4e-cnc-half.png",
+   "exit": 0,
+   "fallback_groups": [],
+   "lights": 4,
+   "mesh_instances": 19,
+   "png": "docs/judge-4e-cnc-half.png",
+   "renderer": "Vulkan 1.4.318 - Forward+ - Using Device #0: Unknown - llvmpipe (LLVM 20.1.2, 256 bits)",
+   "seconds": 8.4,
+   "triangles": 2064,
+   "why": "AUTH1 rank 4 -- half distance, by lens"
+  },
+  "cnc_normal": {
+   "camera": "(-5.535, 1.7, -1.825) looking at (5.965, 1.7, 2.25)",
+   "command": "tools/render_godot.sh --shot interior --room cnc --res 1280x720 --out docs/judge-4e-cnc-normal.png",
+   "exit": 0,
+   "fallback_groups": [],
+   "lights": 4,
+   "mesh_instances": 19,
+   "png": "docs/judge-4e-cnc-normal.png",
+   "renderer": "Vulkan 1.4.318 - Forward+ - Using Device #0: Unknown - llvmpipe (LLVM 20.1.2, 256 bits)",
+   "seconds": 9.6,
+   "triangles": 2064,
+   "why": "AUTH1 rank 4 -- the most-seen room on the show"
+  },
+  "commerce_normal": {
+   "camera": "(-2.505, 1.7, -2.475) looking at (0.0, 1.7, 2.8)",
+   "command": "tools/render_godot.sh --shot interior --room business_center --res 1280x720 --out docs/judge-4e-commerce-normal.png",
+   "exit": 0,
+   "fallback_groups": [],
+   "lights": 18,
+   "mesh_instances": 58,
+   "png": "docs/judge-4e-commerce-normal.png",
+   "renderer": "Vulkan 1.4.318 - Forward+ - Using Device #0: Unknown - llvmpipe (LLVM 20.1.2, 256 bits)",
+   "seconds": 17.0,
+   "triangles": 25544,
+   "why": "AREA -- the commerce archetype, EXPOSURE_FRAMES' own member"
+  },
+  "corridor_door": {
+   "camera": "(209.743594431146, 5.95098135629697, 7121.305) looking at (209.828, 0.0, 7115.0)",
+   "command": "tools/render_godot.sh --shot deck --deck blue/0/0 --at docking_bays --at-offset 6,0 --face docking_bays --res 1280x720 --out docs/judge-4e-corridor-door.png",
+   "exit": 0,
+   "fallback_groups": [
+    "dress_post",
+    "dress_skid"
+   ],
+   "lights": 1557,
+   "mesh_instances": 897,
+   "png": "docs/judge-4e-corridor-door.png",
+   "renderer": "Vulkan 1.4.318 - Forward+ - Using Device #0: Unknown - llvmpipe (LLVM 20.1.2, 256 bits)",
+   "seconds": 47.7,
+   "triangles": 816188,
+   "why": "AREA -- the doorway, the place a player looks closest (session 3x)"
+  },
+  "corridor_half": {
+   "camera": "(209.828, 0.0, 7121.305) looking at (209.368595494253, 13.8773486215376, 7121.305)",
+   "command": "tools/render_godot.sh --shot deck --deck blue/0/0 --at docking_bays --fov 24.0 --res 1280x720 --out docs/judge-4e-corridor-half.png",
+   "exit": 0,
+   "fallback_groups": [
+    "dress_post",
+    "dress_skid"
+   ],
+   "lights": 1557,
+   "mesh_instances": 897,
+   "png": "docs/judge-4e-corridor-half.png",
+   "renderer": "Vulkan 1.4.318 - Forward+ - Using Device #0: Unknown - llvmpipe (LLVM 20.1.2, 256 bits)",
+   "seconds": 42.0,
+   "triangles": 816188,
+   "why": "AREA PRIOR walkable_deck -- half distance, by lens"
+  },
+  "corridor_normal": {
+   "camera": "(209.828, 0.0, 7121.305) looking at (209.368595494253, 13.8773486215376, 7121.305)",
+   "command": "tools/render_godot.sh --shot deck --deck blue/0/0 --at docking_bays --res 1280x720 --out docs/judge-4e-corridor-normal.png",
+   "exit": 0,
+   "fallback_groups": [
+    "dress_post",
+    "dress_skid"
+   ],
+   "lights": 1557,
+   "mesh_instances": 897,
+   "png": "docs/judge-4e-corridor-normal.png",
+   "renderer": "Vulkan 1.4.318 - Forward+ - Using Device #0: Unknown - llvmpipe (LLVM 20.1.2, 256 bits)",
+   "seconds": 45.4,
+   "triangles": 816188,
+   "why": "AREA PRIOR walkable_deck"
+  },
+  "corridor_shadow24": {
+   "camera": "(209.828, 0.0, 7121.305) looking at (209.368595494253, 13.8773486215376, 7121.305)",
+   "command": "tools/render_godot.sh --shot deck --deck blue/0/0 --at docking_bays --shadow-lights 24 --res 1280x720 --out docs/judge-4e-corridor-shadow24.png",
+   "exit": 0,
+   "fallback_groups": [
+    "dress_post",
+    "dress_skid"
+   ],
+   "lights": 1557,
+   "mesh_instances": 897,
+   "png": "docs/judge-4e-corridor-shadow24.png",
+   "renderer": "Vulkan 1.4.318 - Forward+ - Using Device #0: Unknown - llvmpipe (LLVM 20.1.2, 256 bits)",
+   "seconds": 46.6,
+   "triangles": 816188,
+   "why": "CONTROL for corridor_normal -- 2 vs 18 shadow casters"
+  },
+  "corridor_wall": {
+   "camera": "(209.828, 0.0, 7121.305) looking at (209.827624839097, 0.39678505908693, 7124.305)",
+   "command": "tools/render_godot.sh --shot deck --deck blue/0/0 --at docking_bays --face-offset 0.4,3 --res 1280x720 --out docs/judge-4e-corridor-wall.png",
+   "exit": 0,
+   "fallback_groups": [
+    "dress_post",
+    "dress_skid"
+   ],
+   "lights": 1557,
+   "mesh_instances": 897,
+   "png": "docs/judge-4e-corridor-wall.png",
+   "renderer": "Vulkan 1.4.318 - Forward+ - Using Device #0: Unknown - llvmpipe (LLVM 20.1.2, 256 bits)",
+   "seconds": 36.3,
+   "triangles": 816188,
+   "why": "AREA -- the wall at arm's length: the rubric's 1 m material test"
+  },
+  "council_normal": {
+   "camera": "(9.125, 1.7, -10.875) looking at (0.0, 1.7, 10.5)",
+   "command": "tools/render_godot.sh --shot interior --room council_chamber --res 1280x720 --out docs/judge-4e-council-normal.png",
+   "exit": 0,
+   "fallback_groups": [],
+   "lights": 12,
+   "mesh_instances": 16,
+   "png": "docs/judge-4e-council-normal.png",
+   "renderer": "Vulkan 1.4.318 - Forward+ - Using Device #0: Unknown - llvmpipe (LLVM 20.1.2, 256 bits)",
+   "seconds": 9.5,
+   "triangles": 5950,
+   "why": "AUTH1 rank 6"
+  },
+  "customs_normal": {
+   "camera": "(-0.125, 1.7, 1.125) looking at (0.0, 1.7, 33.125)",
+   "command": "tools/render_godot.sh --shot interior --room customs_north --res 1280x720 --out docs/judge-4e-customs-normal.png",
+   "exit": 0,
+   "fallback_groups": [],
+   "lights": 15,
+   "mesh_instances": 24,
+   "png": "docs/judge-4e-customs-normal.png",
+   "renderer": "Vulkan 1.4.318 - Forward+ - Using Device #0: Unknown - llvmpipe (LLVM 20.1.2, 256 bits)",
+   "seconds": 10.7,
+   "triangles": 7296,
+   "why": "AUTH1 rank 2 -- the player's first room"
+  },
+  "dockingbay_normal": {
+   "camera": "(-0.125, 1.7, 1.125) looking at (0.0, 1.7, 139.125)",
+   "command": "tools/render_godot.sh --shot interior --room docking_bays --res 1280x720 --out docs/judge-4e-dockingbay-normal.png",
+   "exit": 0,
+   "fallback_groups": [],
+   "lights": 39,
+   "mesh_instances": 16,
+   "png": "docs/judge-4e-dockingbay-normal.png",
+   "renderer": "Vulkan 1.4.318 - Forward+ - Using Device #0: Unknown - llvmpipe (LLVM 20.1.2, 256 bits)",
+   "seconds": 10.6,
+   "triangles": 3943,
+   "why": "AUTH1 rank 3"
+  },
+  "drum_half": {
+   "camera": "(262.19744920569, 95.4320670113956, 4700.0) looking at (260.152993792111, 94.6879460955684, 6300.0)",
+   "command": "tools/render_godot.sh --shot drum --stand 20,4700 --look 20,6300 --fov 24.0 --res 1280x720 --out docs/judge-4e-drum-half.png",
+   "exit": 0,
+   "fallback_groups": [],
+   "lights": 60,
+   "mesh_instances": 126,
+   "png": "docs/judge-4e-drum-half.png",
+   "renderer": "Vulkan 1.4.318 - Forward+ - Using Device #0: Unknown - llvmpipe (LLVM 20.1.2, 256 bits)",
+   "seconds": 49.1,
+   "triangles": 163168,
+   "why": "PRIOR garden_townscape craft 1 -- half distance, by lens"
+  },
+  "drum_normal": {
+   "camera": "(262.19744920569, 95.4320670113956, 4700.0) looking at (260.152993792111, 94.6879460955684, 6300.0)",
+   "command": "tools/render_godot.sh --shot drum --stand 20,4700 --look 20,6300 --res 1280x720 --out docs/judge-4e-drum-normal.png",
+   "exit": 0,
+   "fallback_groups": [],
+   "lights": 60,
+   "mesh_instances": 126,
+   "png": "docs/judge-4e-drum-normal.png",
+   "renderer": "Vulkan 1.4.318 - Forward+ - Using Device #0: Unknown - llvmpipe (LLVM 20.1.2, 256 bits)",
+   "seconds": 49.1,
+   "triangles": 163168,
+   "why": "PRIOR garden_townscape craft 1 -- the settlement at walking distance"
+  },
+  "exterior_half": {
+   "camera": "(-3626.92329390715, 1421.47817412476, 1576.60934832544) looking at (0.0, 0.0, 4023.0)",
+   "command": "tools/render_godot.sh --shot exterior --orbit 4600,18,214 --res 1280x720 --out docs/judge-4e-exterior-half.png",
+   "exit": 0,
+   "fallback_groups": [
+    "aft_terminus",
+    "docking_bay_throat",
+    "docking_sphere",
+    "forward_deflector_spike",
+    "forward_taper",
+    "forward_waist",
+    "generator_torus_housing",
+    "hull_flare_aft",
+    "primary_fusion_reactor"
+   ],
+   "lights": 0,
+   "mesh_instances": 41,
+   "png": "docs/judge-4e-exterior-half.png",
+   "renderer": "Vulkan 1.4.318 - Forward+ - Using Device #0: Unknown - llvmpipe (LLVM 20.1.2, 256 bits)",
+   "seconds": 15.5,
+   "triangles": 381210,
+   "why": "PRIOR hull_exterior -- half the orbit distance, by moving the camera"
+  },
+  "exterior_normal": {
+   "camera": "(-7253.8465878143, 2842.95634824952, -869.781303349116) looking at (0.0, 0.0, 4023.0)",
+   "command": "tools/render_godot.sh --shot exterior --orbit 9200,18,214 --res 1280x720 --out docs/judge-4e-exterior-normal.png",
+   "exit": 0,
+   "fallback_groups": [
+    "aft_terminus",
+    "docking_bay_throat",
+    "docking_sphere",
+    "forward_deflector_spike",
+    "forward_taper",
+    "forward_waist",
+    "generator_torus_housing",
+    "hull_flare_aft",
+    "primary_fusion_reactor"
+   ],
+   "lights": 0,
+   "mesh_instances": 41,
+   "png": "docs/judge-4e-exterior-normal.png",
+   "renderer": "Vulkan 1.4.318 - Forward+ - Using Device #0: Unknown - llvmpipe (LLVM 20.1.2, 256 bits)",
+   "seconds": 11.6,
+   "triangles": 381210,
+   "why": "PRIOR hull_exterior / exterior_components"
+  },
+  "exterior_onepixel": {
+   "camera": "(-47307.6951379193, 18541.0196624968, -27886.4432827116) looking at (0.0, 0.0, 4023.0)",
+   "command": "tools/render_godot.sh --shot exterior --orbit 60000,18,214 --res 1280x720 --out docs/judge-4e-exterior-onepixel.png",
+   "exit": 0,
+   "fallback_groups": [
+    "aft_terminus",
+    "docking_bay_throat",
+    "docking_sphere",
+    "forward_deflector_spike",
+    "forward_taper",
+    "forward_waist",
+    "generator_torus_housing",
+    "hull_flare_aft",
+    "primary_fusion_reactor"
+   ],
+   "lights": 0,
+   "mesh_instances": 41,
+   "png": "docs/judge-4e-exterior-onepixel.png",
+   "renderer": "Vulkan 1.4.318 - Forward+ - Using Device #0: Unknown - llvmpipe (LLVM 20.1.2, 256 bits)",
+   "seconds": 10.5,
+   "triangles": 381210,
+   "why": "PRIOR hull_exterior -- the silhouette distance, by moving the camera"
+  },
+  "generic_half": {
+   "camera": "(-1.705, 1.7, -2.475) looking at (0.0, 1.7, 2.8)",
+   "command": "tools/render_godot.sh --shot interior --room hydroponics --fov 24.0 --res 1280x720 --out docs/judge-4e-generic-half.png",
+   "exit": 0,
+   "fallback_groups": [],
+   "lights": 6,
+   "mesh_instances": 39,
+   "png": "docs/judge-4e-generic-half.png",
+   "renderer": "Vulkan 1.4.318 - Forward+ - Using Device #0: Unknown - llvmpipe (LLVM 20.1.2, 256 bits)",
+   "seconds": 11.9,
+   "triangles": 8276,
+   "why": "AREA PRIOR generated_rooms -- half distance, by lens"
+  },
+  "generic_normal": {
+   "camera": "(-1.705, 1.7, -2.475) looking at (0.0, 1.7, 2.8)",
+   "command": "tools/render_godot.sh --shot interior --room hydroponics --res 1280x720 --out docs/judge-4e-generic-normal.png",
+   "exit": 0,
+   "fallback_groups": [],
+   "lights": 6,
+   "mesh_instances": 39,
+   "png": "docs/judge-4e-generic-normal.png",
+   "renderer": "Vulkan 1.4.318 - Forward+ - Using Device #0: Unknown - llvmpipe (LLVM 20.1.2, 256 bits)",
+   "seconds": 14.3,
+   "triangles": 8276,
+   "why": "AREA PRIOR generated_rooms"
+  },
+  "industrial_normal": {
+   "camera": "(-5.335, 1.7, -5.325) looking at (0.0, 1.7, 5.65)",
+   "command": "tools/render_godot.sh --shot interior --room fabrication --res 1280x720 --out docs/judge-4e-industrial-normal.png",
+   "exit": 0,
+   "fallback_groups": [],
+   "lights": 6,
+   "mesh_instances": 60,
+   "png": "docs/judge-4e-industrial-normal.png",
+   "renderer": "Vulkan 1.4.318 - Forward+ - Using Device #0: Unknown - llvmpipe (LLVM 20.1.2, 256 bits)",
+   "seconds": 19.5,
+   "triangles": 43620,
+   "why": "AREA -- the industrial archetype, EXPOSURE_FRAMES' own member"
+  },
+  "zocalo_half": {
+   "camera": "(-0.145, 1.6, -0.815) looking at (0.0, 1.6, 31.685)",
+   "command": "tools/render_godot.sh --shot interior --room zocalo --fov 24.0 --res 1280x720 --out docs/judge-4e-zocalo-half.png",
+   "exit": 0,
+   "fallback_groups": [],
+   "lights": 96,
+   "mesh_instances": 42,
+   "png": "docs/judge-4e-zocalo-half.png",
+   "renderer": "Vulkan 1.4.318 - Forward+ - Using Device #0: Unknown - llvmpipe (LLVM 20.1.2, 256 bits)",
+   "seconds": 16.2,
+   "triangles": 46668,
+   "why": "AUTH1 rank 1 PRIOR zocalo_interior -- half distance, by lens"
+  },
+  "zocalo_normal": {
+   "camera": "(-0.145, 1.6, -0.815) looking at (0.0, 1.6, 31.685)",
+   "command": "tools/render_godot.sh --shot interior --room zocalo --res 1280x720 --out docs/judge-4e-zocalo-normal.png",
+   "exit": 0,
+   "fallback_groups": [],
+   "lights": 96,
+   "mesh_instances": 42,
+   "png": "docs/judge-4e-zocalo-normal.png",
+   "renderer": "Vulkan 1.4.318 - Forward+ - Using Device #0: Unknown - llvmpipe (LLVM 20.1.2, 256 bits)",
+   "seconds": 17.3,
+   "triangles": 46668,
+   "why": "AUTH1 rank 1 PRIOR zocalo_interior"
+  }
+ },
+ "round": "judge-4e"
+}
