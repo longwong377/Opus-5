@@ -62,6 +62,57 @@ kilometres. What separates them is `floor_m`: 140.00 against 37.61.
 **Report distance ON THE FLOOR, never distance travelled.** Session 3v already learned "report
 distance covered, not did-it-move"; this is the next turn of the same screw.
 
+### 19.5 THE WHOLE STATION, BUILT
+
+    BUILT 70 of 71 decks, 27,894,332 triangles, 2,353 MB, in 8 min
+       blue 16   green 9   grey 19   red 17   yellow 9   + 5 transit columns
+
+    column blue    rings [0,1]      18 landings over  63.6 m
+    column red     rings [0,1,2,3]  58 landings over 211.4 m
+
+The one that does not build is green ring 1 and that is a CORRECT refusal: it is
+the habitat drum, an open 8 km barrel with its own builders. Before this session
+the number of this station's decks ever assembled at the same time was **one**.
+
+### 19.6 THE CORRIDOR, 3 -> 4, AND FOUR THINGS THAT HAD NEVER EMITTED ANYTHING
+
+Craft **3 -> 4** at the rubric's half distance, in Vulkan Forward+ frames, at
+**293.9 tri/m against `budget.py`'s 400** (73.5%, +4.8%). 16 A/B renders, one
+variable each, control byte-exact at 0.0000% of pixels. Not a 5: the pattern
+still repeats every 9.205 m because `ring_arc` calls `corridor_section` with
+identical arguments.
+
+**EVERY RING CORRIDOR BUILT ITS SECTION JOINT TWICE.** `corridor_section` closes
+both ends of the length it is given and `ring_arc` never passed `start_portal` --
+a parameter of that function since it was written that no caller ever set. On a
+12.5 degree arc: **1,120 exact duplicate triangles, 1,760 non-manifold edges**,
+and 720 of the duplicates are emissive, so roughly **165 coincident duplicate
+light sources per 30 degrees of corridor** have been in every frame this project
+has ever rendered. Nothing could fail for it: coincident duplicate geometry is
+closed, correctly wound, inside its own footprint, and identical under every
+measurement this repository has. Found by looking at a frame. Fixed in both
+`ring_arc` and `axial_run` -- which shipped with the same omission the same day.
+
+Two more that had emitted nothing at all:
+
+* `deck_panel` opened `with tag('light_deck_channel')` around **`_box`** rather
+  than a `@_tagging` wrapper, so the corridor's floor light recorded **zero**
+  triangles in every corridor ever built, while `materials.py` carried the
+  material all along;
+* `soffit` lost a start-index tie to its parent tag, so 224 tris a section of
+  chamfer wore `kit_wall_plate` 0.46 instead of `kit_soffit` 0.253.
+
+**And `interior_kit._selftest` recorded `door_leaf`'s four non-manifold edges as
+`max_nm = 4`** -- an assertion that could only fail if somebody FIXED the defect.
+That is 4f's `materials._selftest` lesson exactly: *a default nobody chose,
+asserted as a decision.* Second recurrence.
+
+Correction to 19.4 item 5, from the same work: fourteen modules DO read
+`boundary_edges`' second element. The right question is not per-piece: **open
+edges close on assembly and non-manifold edges are CREATED by it** -- a plain
+section carried 271, of which 184 were abutting deck panels and only 8 were the
+pieces. Now 0.
+
 ### 19.4 OPEN
 
 1. `godot/` streamed cells do not wire doors, NPCs, crowd or interactables — those run once over a
