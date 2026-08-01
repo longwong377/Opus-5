@@ -60,6 +60,31 @@ deck's cylindrical one differ across the car's own width -- MEASURED at 2.8 mm
 against `collision.STEP_TOLERANCE_M` of 5 mm, and gated, because a step at the
 threshold is exactly what `collision.py` exists to prevent.
 
+THE FIRST VERSION OF THIS FILE GATED 2, 3 AND 4 LANDINGS, AND THE STATION HAS
+NO SUCH SHAFT. `interior.decks_in_ring` gives 7 to 28 decks a ring; only blue
+ring 0 is as short as ten. So every closure, clearance and walk gate here ran on
+the one case that does not ship, and at six landings the shaft opened -- 6 open
+edges, appearing there and never growing. That is this repository's most-repeated
+lesson arriving through a new door: `interior_kit._tag_coverage`'s `doors`
+defaulted to nothing, so its coverage assertion ran on a corridor without the
+pieces the defect was in; `interior_kit`'s closure gate cast rays UPWARD, which
+cannot see a hole in a vertical surface. **A gate must build the case that
+ships**, and `_selftest` now sweeps every landing count up to 28, the tallest
+stack the station actually has.
+
+AND THE DEFECT UNDERNEATH IT IS WORSE THAN A HOLE: IT IS A GATE THAT ANSWERS
+DIFFERENTLY FOR THE SAME CODE. The shaft was closed all along and not WELDED --
+`interior_kit._shell_from_pieces` leaves two vertices 42 nm apart where there
+should be one (see `weld`), on every `bulkhead` and every `door_frame` on the
+station, not just here. `interior.boundary_edges` keys on coordinates rounded to
+4 decimals, so that crack reads as a hole exactly when the pair straddles a
+0.1 mm grid line -- which depends on where in the station the geometry sits and
+on nothing else. Measured: the identical unwelded mesh, 2,464 near-duplicate
+pairs either way, gives 6 open edges at blue ring 1 / 140 deg / z 6880 and 0 at
+grey ring 1 / 40 deg / z 3618. `weld` closes it at the source and
+`near_duplicates` gates it in the frame the geometry was authored in, where the
+answer does not depend on position.
+
 Run: python3 station/lift.py --selftest
 """
 import argparse
@@ -159,8 +184,124 @@ def place(g, pts):
              oz + z) for x, y, z in pts]
 
 
-def _to_world(g, verts):
-    return place(g, verts)
+# How near two vertices have to be before they are the same vertex. ONE
+# MICROMETRE, and it is chosen against the two things it sits between rather
+# than picked: the divergence it has to close is 4.2e-8 m (see `weld`), and the
+# smallest real feature anywhere in this kit is `wall_seam_m` at 0.038 m. A
+# micrometre is 24x the first and 38,000x the second, so there is no value in
+# between that behaves differently. `weld`'s own gate is that it drops ZERO
+# triangles: merging two vertices that are genuinely distinct must collapse a
+# triangle, so a dropped triangle is the tolerance being too big, said by the
+# data rather than by argument.
+WELD_TOL_M = 1e-6
+
+
+def weld(verts, tris, tol=WELD_TOL_M):
+    """Merge vertices closer than `tol`. -> (verts, tris, merged, dropped)
+
+    THE FIX FOR A CRACK THIS MODULE'S CLOSURE GATE COULD NOT SEE, and the
+    defect is `interior_kit`'s rather than this file's -- see docs/lift-4g.md
+    section 2.5 for the one-line patch. In short:
+
+      `_shell_from_pieces` builds its T-junction point set as
+      `pts = {_pkey(p) ...}`, i.e. coordinates ROUNDED TO 7 DECIMALS, and hands
+      them to `_insert_collinear`, which appends them verbatim into loops whose
+      own vertices are NOT rounded, guarded only by `dist(out[-1], q) > 1e-9`.
+      `_pkey`'s granularity is 5e-8 and that guard is 1e-9 -- fifty times
+      tighter -- so any vertex further than 1e-9 from its own rounding is
+      inserted a second time, 4.2e-8 m from the first.
+
+    The surface is genuinely closed; it is not welded. Two vertices stand where
+    there should be one, so the two triangles either side of that seam do not
+    share an edge, and `interior.boundary_edges` -- which keys on coordinates
+    rounded to 4 decimals -- reports a hole exactly when the 42-nanometre pair
+    happens to straddle a 0.1 mm grid line in world space. That is why the
+    count was 0 at five landings, 6 at six, and 6 for ever after: **the geometry
+    never changed, only where in space it sat.**
+
+    A gate that answers differently for the same code depending on position is
+    worse than one that fails, so this closes it at the source rather than
+    widening the tolerance the gate measures at.
+
+    NOT ROUNDING -- snapping to the first vertex seen within `tol`, through a
+    spatial hash. Rounding has the identical failure one decimal down: two
+    points 4.2e-8 apart still land in different buckets whenever they straddle a
+    boundary, which is the whole bug. It moves no vertex more than `tol`,
+    changes no silhouette, and drops no triangle.
+
+    This is measured on 16 near-duplicate vertices in EVERY `bulkhead` on the
+    station and 16 in every `door_frame`, so it is not a lift problem; it is a
+    lift-shaped view of a station-wide one.
+    """
+    grid, out, index = {}, [], []
+    for p in verts:
+        c = (int(math.floor(p[0] / tol)), int(math.floor(p[1] / tol)),
+             int(math.floor(p[2] / tol)))
+        hit = None
+        for dx in (-1, 0, 1):
+            for dy in (-1, 0, 1):
+                for dz in (-1, 0, 1):
+                    for j in grid.get((c[0] + dx, c[1] + dy, c[2] + dz), ()):
+                        q = out[j]
+                        if ((p[0] - q[0]) ** 2 + (p[1] - q[1]) ** 2
+                                + (p[2] - q[2]) ** 2) <= tol * tol:
+                            hit = j
+                            break
+                    if hit is not None:
+                        break
+                if hit is not None:
+                    break
+            if hit is not None:
+                break
+        if hit is None:
+            hit = len(out)
+            out.append(p)
+            grid.setdefault(c, []).append(hit)
+        index.append(hit)
+    keep = []
+    for a, b, c in tris:
+        A, B, C = index[a], index[b], index[c]
+        if A == B or B == C or C == A:
+            continue
+        keep.append((A, B, C))
+    return out, keep, len(verts) - len(out), len(tris) - len(keep)
+
+
+def near_duplicates(verts, lo=1e-12, hi=1e-4):
+    """Pairs of vertices closer than `hi` and further apart than `lo`.
+
+    THE GATE THAT DOES NOT DEPEND ON WHERE THE GEOMETRY SITS.
+    `interior.boundary_edges` finds this crack only when the pair straddles its
+    own rounding grid, which is a coin toss; this asks the question directly,
+    in the frame the geometry was authored in, and fires on a two-landing shaft
+    where the open-edge count needed six.
+    """
+    grid, out = {}, []
+    cell = hi
+    for p in verts:
+        c = (int(math.floor(p[0] / cell)), int(math.floor(p[1] / cell)),
+             int(math.floor(p[2] / cell)))
+        for dx in (-1, 0, 1):
+            for dy in (-1, 0, 1):
+                for dz in (-1, 0, 1):
+                    for q in grid.get((c[0] + dx, c[1] + dy, c[2] + dz), ()):
+                        d = math.dist(p, q)
+                        if lo < d < hi:
+                            out.append((q, p, d))
+        grid.setdefault(c, []).append(p)
+    return out
+
+
+def _to_world(g, verts, tris):
+    """Weld in the frame the geometry was authored in, then place it.
+
+    THE ORDER MATTERS. Welding after placement would run the tolerance against
+    world coordinates 150 m from the axis and 6.9 km down the ship, where the
+    seam is the same 42 nm but every neighbour lookup carries the round-off of
+    a rotation. Local first, then one rigid map.
+    """
+    v, t, merged, dropped = weld(verts, tris)
+    return place(g, v), t, merged, dropped
 
 
 # ---------------------------------------------------------------------------
@@ -227,8 +368,16 @@ def shaft_geometry(schema, profile, sector, ring_index, decks, angle_deg, z_m,
     walk0 = r0 - q["floor_y"]
 
     landings = []
-    for d in served:
+    for n_, d in enumerate(served):
         landings.append({
+            # `index` IS THE ONLY UNIQUE KEY A LANDING HAS, and `deck` is not
+            # one. `deck_index` restarts at 0 in every ring, so the moment
+            # `stack=` crosses a ring boundary the deck numbers repeat: blue
+            # rings 0+1 at z=6880 gives [0..5, 0..11] over eighteen landings,
+            # six of them addressed by a key that already means something else.
+            # Counted from the BOTTOM, so it is stable under `stack=` and under
+            # the drum's inverted numbering both.
+            "index": n_,
             "deck": d["deck_index"],
             "floor_r_m": d["floor_r_m"],
             # The surface a boot rests on, which is NOT the deck datum: the grid
@@ -297,6 +446,12 @@ def shaft_geometry(schema, profile, sector, ring_index, decks, angle_deg, z_m,
     g = {
         "sector": sector,
         "ring_index": ring_index,
+        # WHETHER `at_deck` MEANS ANYTHING ON THIS SHAFT. False as soon as a
+        # `stack=` crosses a ring boundary, because `deck_index` restarts at 0
+        # in every ring; `_landing` raises rather than guessing, and a caller
+        # can read this ahead of time instead of finding out by exception.
+        "deck_keys_unique": len({d["deck_index"] for d in served})
+                            == len(served),
         "angle_deg": angle_deg,
         "z_m": z_m,
         "landing_side": 1 if landing_side >= 0 else -1,
@@ -362,7 +517,7 @@ def car_fit(g):
 
 def lift_shaft(schema, profile, sector, ring_index, decks, angle_deg, z_m,
                landing_side=1, p=None, prof=None, relief_m=None, g=None,
-               door_leaves=True, landings=True, stack=None):
+               door_leaves=True, landings=True, stack=None, weld_mesh=True):
     """The shaft and its landings, spanning `decks`. -> (verts, tris, meta)
 
     Same argument shape as `interior.ring_arc` / `interior.axial_run`,
@@ -548,7 +703,18 @@ def lift_shaft(schema, profile, sector, ring_index, decks, angle_deg, z_m,
         "groups": K.tagged_spans(tris),
         "geometry": g,
     }
-    return _to_world(g, verts), tris, meta
+    # `weld_mesh=False` IS THE NEGATIVE CONTROL, and it is a parameter rather
+    # than a test fixture because the raw output is what the kit hands back and
+    # a reader is entitled to see it. Unwelded, this mesh carries 102 pairs of
+    # vertices 42 nm apart per landing and `interior.boundary_edges` reports
+    # them as holes at some heights and not others.
+    if not weld_mesh:
+        return place(g, verts), tris, dict(meta, welded_verts=0,
+                                           welded_dropped_tris=0)
+    wv, wt, merged, dropped = _to_world(g, verts, tris)
+    meta["welded_verts"] = merged
+    meta["welded_dropped_tris"] = dropped
+    return wv, wt, meta
 
 
 def lift_car(schema, profile, sector=None, ring_index=None, decks=None,
@@ -671,10 +837,12 @@ def lift_car(schema, profile, sector=None, ring_index=None, decks=None,
                 min(ls * (hd - 0.75), ls * (hd - 0.18)),
                 max(ls * (hd - 0.75), ls * (hd - 0.18)))
 
+    _at = _landing(g, at_deck)
     meta = {
-        "at_deck": _landing(g, at_deck)["deck"],
+        "at_deck": _at["deck"],
+        "at_landing": _at["index"],
         "y_m": y_at,
-        "walk_r_m": _landing(g, at_deck)["walk_r_m"],
+        "walk_r_m": _at["walk_r_m"],
         "clear_w_m": round(car["clear_w"], 4),
         "clear_d_m": round(car["clear_d"], 4),
         "clear_h_m": round(car["clear_h"], 4),
@@ -687,17 +855,67 @@ def lift_car(schema, profile, sector=None, ring_index=None, decks=None,
     }
     # Emitted PARKED: every local y is shifted by the landing's own y before the
     # rigid map into world space.
-    return _to_world(g, [(x, y + y_at, z) for x, y, z in verts]), tris, meta
+    wv, wt, merged, dropped = _to_world(
+        g, [(x, y + y_at, z) for x, y, z in verts], tris)
+    meta["welded_verts"] = merged
+    meta["welded_dropped_tris"] = dropped
+    return wv, wt, meta
 
 
 def _landing(g, at_deck):
+    """Which landing `at_deck` means. -> a landing dict.
+
+    A SHAFT'S ADDRESS SPACE IS ITS LANDINGS, and a deck number is only a NAME
+    for one of them -- a name that stops working the moment `stack=` crosses a
+    ring boundary. `deck_index` restarts at 0 in every ring, so blue rings 0+1
+    at z=6880 gives eighteen landings numbered [0..5, 0..11] and six of them
+    share a name with a landing 21.6 m below. The first version returned
+    `hits[0]` and parked the car on the wrong floor for six of eighteen,
+    SILENTLY -- and no gate could fail for it, because a car parked at the
+    wrong landing is a perfectly good car at a perfectly good landing. It took
+    building the two-ring case to see it.
+
+    So the resolution order is: the canonical key first, the derived one only
+    while it is still a key.
+
+      * a landing dict out of `g["landings"]` -- always unambiguous, and what
+        to pass when the shaft crosses a ring;
+      * an int, while `g["deck_keys_unique"]` -- the deck number, unchanged for
+        every single-ring caller and for the drum's inverted numbering both;
+      * an int, when it is NOT -- the landing `index`, counted from the bottom,
+        because when deck numbers repeat they are not a naming of the landings
+        at all and `index` is the only naming left. This is stated rather than
+        silent: `g["deck_keys_unique"]` says which reading is in force before
+        the call, and both builders report `meta["at_landing"]` after it.
+
+    The two readings AGREE wherever deck numbers are unique, which is every
+    shaft this module built before `stack=` existed, so nothing moved under an
+    existing caller.
+    """
     if at_deck is None:
         return g["landings"][0]
+    if isinstance(at_deck, dict):
+        for lg in g["landings"]:
+            if lg["index"] == at_deck.get("index"):
+                return lg
+        raise ValueError(
+            f"landing {at_deck.get('index')} is not on this shaft "
+            f"({len(g['landings'])} landings)")
+    if g.get("deck_keys_unique", True):
+        for lg in g["landings"]:
+            if lg["deck"] == at_deck:
+                return lg
+        raise ValueError(f"deck {at_deck} is not served by this shaft "
+                         f"({[lg['deck'] for lg in g['landings']]})")
     for lg in g["landings"]:
-        if lg["deck"] == at_deck:
+        if lg["index"] == at_deck:
             return lg
-    raise ValueError(f"deck {at_deck} is not served by this shaft "
-                     f"({[l['deck'] for l in g['landings']]})")
+    raise ValueError(
+        f"landing {at_deck} is not on this shaft. Its deck numbers repeat "
+        f"({[lg['deck'] for lg in g['landings']]}) because `stack=` crosses a "
+        f"ring boundary, so an int addresses the landing INDEX here, 0 to "
+        f"{len(g['landings']) - 1} from the bottom. Pass g['landings'][i] to "
+        f"be explicit.")
 
 
 # ---------------------------------------------------------------------------
@@ -830,16 +1048,23 @@ def lift_collision(schema, profile, sector=None, ring_index=None, decks=None,
         "angle_deg": g["angle_deg"], "z_m": g["z_m"],
         "landing_side": ls,
         "at_deck": _landing(g, at_deck)["deck"] if car else None,
+        "at_landing": _landing(g, at_deck)["index"] if car else None,
         "bore_hw_m": round(hw, 4), "bore_hd_m": round(hd, 4),
         "y_pit_m": round(y0, 4), "y_top_m": round(y1, 4),
-        "landings": [{"deck": lg["deck"], "y_m": round(lg["y_m"], 4),
+        "landings": [{"index": lg["index"], "deck": lg["deck"],
+                      "y_m": round(lg["y_m"], 4),
                       "walk_r_m": round(lg["walk_r_m"], 4)}
                      for lg in g["landings"]],
         "groups": groups,
         "triangles": len(tris),
         "geometry": g,
     }
-    return _to_world(g, verts), tris, meta
+    # THE COLLISION SHELL IS NOT WELDED, and that is deliberate. It is an open
+    # surface of independent single-sided quads -- `corridor_shell` is the same
+    # -- so it has no seams to close, and welding it would join the car group
+    # to the shaft group at any vertex they happened to share, which is exactly
+    # the thing the runtime has to be able to move apart.
+    return place(g, verts), tris, meta
 
 
 def stand_in_car(g, at_deck=None, above_m=0.05, x_m=0.0, z_m=0.0):
@@ -862,10 +1087,12 @@ def ride_s(schema, g, from_deck=None, to_deck=None):
     answer against `transit.climb_leg`, which recomputes it through a code path
     that shares nothing with either.
     """
-    a = _landing(g, from_deck if from_deck is not None
-                 else g["landings"][0]["deck"])
-    b = _landing(g, to_deck if to_deck is not None
-                 else g["landings"][-1]["deck"])
+    # THE DEFAULTS PASS THE LANDING DICTS, not their deck numbers. Reading
+    # `g["landings"][0]["deck"]` and handing it back to `_landing` looks like a
+    # round trip and is not one the moment a `stack=` crosses a ring boundary
+    # and two landings share a deck number -- it would raise on its own default.
+    a = _landing(g, from_deck if from_deck is not None else g["landings"][0])
+    b = _landing(g, to_deck if to_deck is not None else g["landings"][-1])
     return NAV.lift_ride_s(schema, abs(a["walk_r_m"] - b["walk_r_m"]))
 
 
@@ -1335,6 +1562,202 @@ def _selftest():
             bad += 1
     check("every triangle of the car floor faces the player, not the void",
           bad == 0, f"{bad} wound outward -- those are holes")
+
+    # ====================================================================
+    # THE CASE THE GATES ABOVE DID NOT BUILD
+    # ====================================================================
+    # Every check above ran on 2, 3 and 4 landings. `interior.decks_in_ring`
+    # says the station's rings carry 7 to 28 decks and only blue ring 0 is as
+    # short as ten -- so the shaft as gated was the case that does not ship.
+    # That is this repository's most-repeated lesson (`interior_kit`'s tag gate
+    # ran on a corridor with no doors; `_tag_coverage`'s `doors` defaulted to
+    # nothing) arriving through a different door, and the sweep below is the
+    # cure: build the TALLEST STACK THE STATION ACTUALLY HAS, at every height
+    # up to it.
+    tall_sec, tall_ring, tall_z = "grey", 1, 3618.0
+    tall = it.decks_in_ring(schema, profile, tall_sec, tall_ring, z_m=tall_z)
+    print(f"\n  tallest stack    {tall_sec} ring {tall_ring} carries "
+          f"{len(tall)} decks over "
+          f"{tall[0]['floor_r_m'] - tall[-1]['floor_r_m']:.1f} m of radius")
+    sweep_bad, sweep_dup, sweep_drop, biggest = [], 0, 0, (0, 0)
+    for n in range(2, len(tall) + 1):
+        sv, st_, sm = lift_shaft(schema, profile, tall_sec, tall_ring,
+                                 tuple(range(n)), 40.0, tall_z)
+        so, _sn = it.boundary_edges(sv, st_)
+        if so:
+            sweep_bad.append((n, len(so)))
+        sweep_drop += sm["welded_dropped_tris"]
+        sg = sm["geometry"]
+        sweep_dup += len(near_duplicates(unplace(sg, sv)))
+        biggest = max(biggest, (len(st_), n))
+    check(f"the shaft is closed at every landing count up to "
+          f"{len(tall)}, the tallest stack on the station",
+          not sweep_bad,
+          f"open edges at {sweep_bad}" if sweep_bad else
+          f"2..{len(tall)} landings, 0 open edges throughout, biggest "
+          f"{biggest[0]:,} tri at {biggest[1]} landings")
+    check("and no two of its vertices stand 42 nm apart pretending to be one",
+          sweep_dup == 0, f"{sweep_dup} near-duplicate vertex pairs")
+    check("and the weld that closes it drops no triangle, so it merges "
+          "nothing real",
+          sweep_drop == 0, f"{sweep_drop} triangles dropped over the sweep")
+
+    # NEGATIVE CONTROL, AND IT IS THE ONE THAT MATTERS. Unwelded, the same
+    # shaft has to open up -- and it has to open up AT ONE POSITION AND NOT
+    # ANOTHER, because that is the diagnosis. `boundary_edges` keys on
+    # coordinates rounded to 4 decimals, so a 42 nm pair reads as a hole only
+    # when it straddles that 0.1 mm grid, and where it falls depends on where
+    # in the station the shaft was placed. A control that fired everywhere
+    # would mean the diagnosis was wrong.
+    #
+    # Two positions, the same code, the same landing counts:
+    #   blue ring 1 at 140 deg, z 6880  -- the reported repro
+    #   grey ring 1 at  40 deg, z 3618  -- the tallest stack, swept above
+    raw = {}
+    for lbl, (rs, rr, ra, rz) in (("blue r1 @140", ("blue", 1, 140.0, 6880.0)),
+                                  ("grey r1 @40", ("grey", 1, 40.0, 3618.0))):
+        fired, dups = [], 0
+        for n in range(2, 13):
+            rg = shaft_geometry(schema, profile, rs, rr, tuple(range(n)),
+                                ra, rz)
+            uv, ut, _um = lift_shaft(schema, profile, rs, rr, tuple(range(n)),
+                                     ra, rz, g=rg, weld_mesh=False)
+            uo, _un = it.boundary_edges(uv, ut)
+            dups += len(near_duplicates(unplace(rg, uv)))
+            if uo:
+                fired.append((n, len(uo)))
+        raw[lbl] = (fired, dups)
+    a_fired, a_dup = raw["blue r1 @140"]
+    b_fired, b_dup = raw["grey r1 @40"]
+    print(f"  unwelded         blue r1 @140: open at {a_fired[:3]}"
+          f"{'...' if len(a_fired) > 3 else ''}, {a_dup} near-dup pairs")
+    print(f"                   grey r1 @40 : open at {b_fired}, "
+          f"{b_dup} near-dup pairs")
+    check("and WITHOUT the weld the reported case opens up, from 6 landings on",
+          [n for n, _ in a_fired] == list(range(6, 13))
+          and {c for _, c in a_fired} == {6},
+          f"open edges at {a_fired}")
+    check("and the SAME unwelded code at another position does not, which is "
+          "the diagnosis: a 42 nm crack is a hole only when it straddles "
+          "boundary_edges' 0.1 mm grid",
+          not b_fired and a_dup == b_dup and a_dup > 0,
+          f"{len(a_fired)} heights open at one position and {len(b_fired)} at "
+          f"the other, on the identical {a_dup} near-duplicate pairs")
+    check("and welding removes the pairs rather than hiding them",
+          sweep_dup == 0 and a_dup > 0,
+          f"{a_dup} pairs unwelded, {sweep_dup} welded")
+
+    # ====================================================================
+    # `stack=` -- ONE SHAFT ACROSS TWO RINGS, WITH A STOREY 1.7x THE REST
+    # ====================================================================
+    # The override `spoke_way.py` uses. A ring is a nested shell and
+    # `decks_in_ring` knows only its own, so a column serving both is handed
+    # the two stacks sorted by radius. The question this section answers is
+    # whether anything here assumed a uniform storey.
+    z2 = 6880.0
+    two = sorted(it.decks_in_ring(schema, profile, "blue", 0, z_m=z2)
+                 + it.decks_in_ring(schema, profile, "blue", 1, z_m=z2),
+                 key=lambda d: -d["floor_r_m"])
+    g2 = shaft_geometry(schema, profile, "blue", 0, tuple(range(len(two))),
+                        140.0, z2, stack=two)
+    st = g2["storeys_m"]
+    print(f"\n  two rings        {len(g2['landings'])} landings over "
+          f"{g2['rise_m']:.2f} m; storeys {min(st):.2f}-{max(st):.2f} m, "
+          f"the boundary one {max(st) / min(st):.2f}x the rest")
+    check("a stack= across two rings has a storey that is not the pitch",
+          max(st) > min(st) * 1.5,
+          f"{sorted({round(s, 3) for s in st})} m")
+
+    # THE DEFECT THIS CASE FOUND, and it is the reason to build it. `deck_index`
+    # restarts at 0 in every ring, so eighteen landings are numbered
+    # [0..5, 0..11] and `at_deck` names two of them at once.
+    check("and its deck numbers are NOT unique, which the geometry says out "
+          "loud",
+          g2["deck_keys_unique"] is False
+          and len({lg["deck"] for lg in g2["landings"]})
+          < len(g2["landings"]),
+          f"{len(g2['landings'])} landings, "
+          f"{len({lg['deck'] for lg in g2['landings']})} distinct deck numbers")
+    # AND AN INT NOW ADDRESSES THE LANDING, NOT THE DECK, EXACTLY HERE.
+    # `_landing`'s two readings agree wherever deck numbers are unique -- which
+    # is every shaft this module built before `stack=` existed -- and where
+    # they are not, the deck number is not a naming of the landings at all and
+    # the index is the only one left. Asserted as a BIJECTION: eighteen ints
+    # reach eighteen distinct landings. Under the old rule six of them reached
+    # a landing that was already spoken for.
+    reached = [_landing(g2, i)["index"] for i in range(len(g2["landings"]))]
+    check("an int addresses every one of the 18 landings, one for one",
+          reached == list(range(len(g2["landings"]))),
+          f"{len(set(reached))} distinct landings reached by "
+          f"{len(g2['landings'])} ints")
+    by_deck = [next(lg["index"] for lg in g2["landings"] if lg["deck"] == i)
+               for i in range(len(g2["landings"])) if
+               any(lg["deck"] == i for lg in g2["landings"])]
+    check("and the OLD first-match-by-deck rule would have reached only 12 of "
+          "them, which is the defect this case was built to find",
+          len(set(by_deck)) < len(g2["landings"]),
+          f"first-match-by-deck reaches {len(set(by_deck))} of "
+          f"{len(g2['landings'])} landings")
+    try:
+        _landing(g2, len(g2["landings"]) + 5)
+        oor = None
+    except ValueError as e:                                     # noqa: BLE001
+        oor = str(e)
+    check("and an address off the end of the shaft still raises",
+          oor is not None and "not on this shaft" in oor,
+          (oor or "it returned a landing")[:88])
+    # THE CONTROL THAT THE FALLBACK CHANGED NOTHING FOR ANYONE ELSE: on a
+    # single-ring shaft the two readings have to give the same answer for
+    # every landing, or every caller that predates `stack=` has just moved.
+    same = all(_landing(g, d)["index"] == _landing(g, g["landings"][d])["index"]
+               for d in range(len(g["landings"])))
+    check("and on a single-ring shaft the deck reading and the index reading "
+          "are the same answer, so no existing caller moved",
+          same and g["deck_keys_unique"] is True,
+          f"deck_keys_unique={g['deck_keys_unique']}, all "
+          f"{len(g['landings'])} agree")
+
+    # Now the invariants, on the two-ring shaft, with the boundary storey in it.
+    v2, t2, m2 = lift_shaft(schema, profile, "blue", 0,
+                            tuple(range(len(two))), 140.0, z2, g=g2)
+    o2, n2 = it.boundary_edges(v2, t2)
+    check("the two-ring shaft is closed",
+          not o2 and len(n2) == 4 * len(g2["landings"]),
+          f"{len(o2)} open, {len(n2)} non-manifold against "
+          f"{4 * len(g2['landings'])} shut leaves")
+    check("and nothing stands in its car's 63 m path",
+          swept_intruders(g2, v2) == 0,
+          f"{swept_intruders(g2, v2)} vertices")
+    f2 = car_fit(g2)
+    check("car_fit still reduces over the SMALLEST storey, so the 6 m gap "
+          "cannot flatter it",
+          abs(f2["storey_headroom_m"] - (min(st) - g2["car"]["ext_h"])) < 1e-12
+          and f2["storey_headroom_m"] > 0.0,
+          f"headroom {f2['storey_headroom_m'] * 1000:.0f} mm off the "
+          f"{min(st):.2f} m storey, not the {max(st):.2f} m one")
+    d2, miss2 = [], 0
+    down2 = tuple(-c for c in _basis(140.0)[1])
+    for lg in g2["landings"]:
+        kv2_, kt2_, _ = lift_collision(schema, profile, g=g2, at_deck=lg)
+        h = _cast(place(g2, [(0.0, lg["y_m"] + 1.0, 0.0)])[0], down2,
+                  kv2_, kt2_)
+        if h is None or abs(h - 1.0) > 0.02:
+            miss2 += 1
+        else:
+            d2.append(h)
+    check("and there is a floor under the car at all "
+          f"{len(g2['landings'])} of them, the boundary landing included",
+          miss2 == 0,
+          f"{miss2} landings with nothing underfoot"
+          if miss2 else f"{len(d2)} probes, all at 1.000 m")
+    # The ride is linear in rise, so a 63.6 m column is one continuous move and
+    # the boundary storey costs exactly its own metres -- no more.
+    r2 = ride_s(schema, g2)
+    check("the ride over two rings is the rise, whatever the storeys do",
+          abs(r2 - NAV.lift_ride_s(schema, g2["rise_m"])) < 1e-9
+          and abs(r2 - sum(NAV.lift_ride_s(schema, s) for s in st)) < 1e-9,
+          f"{r2:.3f} s over {g2['rise_m']:.2f} m = the sum of "
+          f"{len(st)} per-storey rides to 1e-9")
 
     # --- what it costs ----------------------------------------------------
     kvT = sum(len(lift_collision(schema, profile, g=g, at_deck=d["deck"])[1])
