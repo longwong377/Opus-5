@@ -736,7 +736,7 @@ def gate(out_dir=OUT_DIR):
                            timeout=600)
         keep = [ln for ln in r.stdout.splitlines()
                 if ln.startswith(("  ", "---", "CONTROL", "NEGATIVE",
-                                  "starfury:")) or " of " in ln]
+                                  "PILOT", "starfury:")) or " of " in ln]
         print(f"--- {label} (exit {r.returncode}) ---")
         print("\n".join(keep))
         return r.returncode
