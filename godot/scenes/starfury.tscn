@@ -1,0 +1,26 @@
+[gd_scene load_steps=2 format=3]
+
+; THE FLYABLE STARFURY. Deliberately minimal, exactly as scenes/walk.tscn is,
+; and for the same reason: geometry is loaded at RUNTIME from .glb files by
+; scripts/starfury.gd -- the station hull that tools/export_scene.py writes and
+; the airframe that station/starfury_scene.py writes -- so this scene can never
+; go stale against regenerated meshes and no 30 MB binary enters the project.
+;
+; THE LOOK IS NOT DUPLICATED HERE, IT IS BORROWED. scenes/exterior.tscn carries
+; the exterior's whole judgement: the calibrated day exposure (0.43, measured
+; against the show's own frames at 9,200 m), the ambient, the AgX tonemapper,
+; the three-point rig with its measured energies, and 36 material rules written
+; by station/materials.py --export. scripts/starfury.gd instantiates that scene
+; WITHOUT adding it to the tree, reparents its WorldEnvironment and its three
+; lights into this one, calls its own material binder on our geometry, and frees
+; the husk. So there is still exactly ONE description of what the exterior looks
+; like, and a fighter flying past the station is inside it.
+;
+; Adding an Environment, a light or a material rule to this file would recreate
+; the split it exists to close -- the same argument scenes/walk.tscn makes, and
+; the same one that stopped the walkable build from being an unlit grey shell.
+
+[ext_resource type="Script" path="res://scripts/starfury.gd" id="1_fury"]
+
+[node name="Starfury" type="Node3D"]
+script = ExtResource("1_fury")
