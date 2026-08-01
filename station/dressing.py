@@ -685,6 +685,109 @@ def kit_module(scale=1.0):
     return _KIT_MOD(scale)
 
 
+def kit_tile():
+    """The kit's floor tile -- `rooms.DECK_TILE_M`, fetched, never copied.
+
+    The horizontal counterpart of `kit_module`, and the module for a machine's
+    horizontal surfaces: a rack shelf, a platform, a bed deck. `rooms`' own
+    comment on it reads "interior_kit.deck_grid's own tile, and the same
+    relationship: proud tiles, recessed joints".
+    """
+    import rooms as _R                                      # noqa: PLC0415
+    return _R.DECK_TILE_M
+
+
+def _face_rim(v, t, g, name, box, axis, side, width, proud):
+    """A bezel: four members round ONE face, IN THAT FACE'S OWN PLANE.
+
+    `_perim_band` is the horizontal version of this and wraps a body the way a
+    girth band wraps a vessel. It is the wrong primitive for a bezel and the
+    cost of finding that out is recorded in `_m_wallpanel`: used round an
+    upright screen its two side members came out spanning the screen's full
+    height AND its full width -- 9.099 m2 each, measured -- and took the panel
+    from 28.98 m2 to 40.67. A helper on the wrong axis is not a small mistake
+    here; it is the slab it exists to prevent.
+
+    Scale-free, unlike `_plate_face`: a bezel is a bezel on a 0.20 m lift-call
+    button and on a 3.20 m monitor wall, because it is a proportion of the
+    thing it surrounds rather than a module laid across it. The two are
+    complementary and `_m_wallpanel` uses both.
+    """
+    x0, y0, z0, x1, y1, z1 = box
+    if axis == "x":
+        u0, u1, w0, w1, fx = z0, z1, y0, y1, (x0 if side < 0 else x1)
+    elif axis == "z":
+        u0, u1, w0, w1, fx = x0, x1, y0, y1, (z0 if side < 0 else z1)
+    else:
+        u0, u1, w0, w1, fx = x0, x1, z0, z1, (y0 if side < 0 else y1)
+    # THE GUARD IS ON THE MEMBER'S WIDTH, NOT ON ITS PROUD. `MIN_PART_M` asks
+    # whether a part is sub-pixel, and a bezel 0.156 m long and 0.025 m wide is
+    # not, however shallow it stands -- the depth of a bezel on a 45 mm thick
+    # button panel is 6 mm because the panel is 45 mm thick. Guarding on the
+    # proud instead declined the rim on every small terminal on the station.
+    b = min(width, (u1 - u0) * 0.30, (w1 - w0) * 0.30)
+    if b < MIN_PART_M or proud <= 1e-4:
+        return 0
+    a, c = (fx, fx + side * proud) if side > 0 else (fx + side * proud, fx)
+    q = b * 0.22                      # so the four corners do not share an edge
+    # ...and the whole rim is held off the face's own edge by `e`, for the
+    # reason `_plate_face` records: a member drawn flush runs corner to corner
+    # of the face, so its edge IS the body's edge and that edge then has four
+    # faces on it. It measured 2 a face on the smallest wallpanel.
+    e = b * 0.10
+    u0, u1, w0, w1 = u0 + e, u1 - e, w0 + e, w1 - e
+    n = 0
+    for ua, ub, wa, wb in ((u0, u1, w0, w0 + b), (u0, u1, w1 - b, w1),
+                           (u0, u0 + b, w0 + q, w1 - q),
+                           (u1 - b, u1, w0 + q, w1 - q)):
+        if axis == "x":
+            _box(v, t, g, name, (a, wa, ua), (c, wb, ub))
+        elif axis == "z":
+            _box(v, t, g, name, (ua, wa, a), (ub, wb, c))
+        else:
+            _box(v, t, g, name, (ua, a, wa), (ub, c, wb))
+        n += 1
+    return n
+
+
+def _face_cells(box, axis, scale=1.0, margin=0.0, u_mod=None, w_mod=None,
+                inset=0.0):
+    """The cells `_plate_face` would divide a face into, as boxes.
+
+    The same lattice, handed back rather than drawn, so a caller that wants the
+    PANELS as well as the seams -- a monitor wall wants both, since its cells
+    are the monitors -- gets them off one division instead of two that can
+    disagree. Each cell keeps the box's own extent on `axis`; the caller sets
+    the depth it wants.
+    """
+    plate_l, course_h, seam, _pr = kit_module(scale)
+    u_mod = u_mod or plate_l
+    w_mod = w_mod or course_h
+    x0, y0, z0, x1, y1, z1 = box
+    u0, u1 = ((z0, z1) if axis == "x" else (x0, x1))
+    u0, u1 = u0 + margin, u1 - margin
+    w0, w1 = y0 + margin, y1 - margin
+    ncol = int(round((u1 - u0) / u_mod))
+    nrow = int(round((w1 - w0) / w_mod))
+    if ncol < 1 or nrow < 1 or ncol * nrow < 2:
+        return []
+    out = []
+    for i in range(ncol):
+        ua = u0 + (u1 - u0) * i / ncol + (seam if i else inset)
+        ub = u0 + (u1 - u0) * (i + 1) / ncol - (seam if i < ncol - 1 else inset)
+        for j in range(nrow):
+            wa = w0 + (w1 - w0) * j / nrow + (seam if j else inset)
+            wb = (w0 + (w1 - w0) * (j + 1) / nrow
+                  - (seam if j < nrow - 1 else inset))
+            if ub - ua < seam or wb - wa < seam:
+                continue
+            if axis == "x":
+                out.append((x0, wa, ua, x1, wb, ub))
+            else:
+                out.append((ua, wa, z0, ub, wb, z1))
+    return out
+
+
 def _plate_face(v, t, g, name, box, axis, side, scale=1.0, proud=None,
                 margin=0.0, u_mod=None, w_mod=None):
     """Divide ONE face of a body into the kit's plate field. Returns the count.
@@ -723,16 +826,27 @@ def _plate_face(v, t, g, name, box, axis, side, scale=1.0, proud=None,
     a small object is a box with a scratch on it.
     """
     plate_l, course_h, seam, kproud = kit_module(scale)
-    u_mod = u_mod or plate_l
-    w_mod = w_mod or course_h
     x0, y0, z0, x1, y1, z1 = box
     if axis == "x":
         u0, u1, fx = z0 + margin, z1 - margin, (x0 if side < 0 else x1)
+        w0, w1 = y0 + margin, y1 - margin
+        u_mod, w_mod = u_mod or plate_l, w_mod or course_h
     elif axis == "z":
         u0, u1, fx = x0 + margin, x1 - margin, (z0 if side < 0 else z1)
+        w0, w1 = y0 + margin, y1 - margin
+        u_mod, w_mod = u_mod or plate_l, w_mod or course_h
+    elif axis == "y":
+        # A HORIZONTAL FACE TAKES THE FLOOR TILE ON BOTH AXES, because a course
+        # height is a property of a WALL -- it is the field a wall's rail
+        # divides -- and there is no up on a table top. `kit_tile()` is
+        # `rooms.DECK_TILE_M`, and the same substitution `_m_rack`'s slatted
+        # shelves make for the same reason.
+        u0, u1, fx = x0 + margin, x1 - margin, (y0 if side < 0 else y1)
+        w0, w1 = z0 + margin, z1 - margin
+        tile = kit_tile() * scale
+        u_mod, w_mod = u_mod or tile, w_mod or tile
     else:
-        raise ValueError(f"_plate_face: {axis!r} is not a vertical face")
-    w0, w1 = y0 + margin, y1 - margin
+        raise ValueError(f"_plate_face: {axis!r} is not a face")
     ncol = int(round((u1 - u0) / u_mod))
     nrow = int(round((w1 - w0) / w_mod))
     if ncol < 1 or nrow < 1 or ncol * nrow < 2:
@@ -757,8 +871,10 @@ def _plate_face(v, t, g, name, box, axis, side, scale=1.0, proud=None,
             return
         if axis == "x":
             _box(v, t, g, name, (a, wa, ua), (b, wb, ub))
-        else:
+        elif axis == "z":
             _box(v, t, g, name, (ua, wa, a), (ub, wb, b))
+        else:
+            _box(v, t, g, name, (ua, a, wa), (ub, b, wb))
         n += 1
 
     # EVERY RIB IS A FULL RUN AND THEY CROSS RATHER THAN BUTT. The first
@@ -1232,9 +1348,24 @@ def _m_rack(v, t, g, box, P, seed):
             zn = z0 + (z1 - z0) * (i + 1) / n_bay
             _tube(v, t, g, P.frame, (x0 + up, y0 + 0.1, zz),
                   (x0 + up, y1 - 0.1, zn), 0.028, SEG_BOLT)
+    # THE SHELVES ARE SLATTED, and that is not decoration -- it is 41% of this
+    # object. Built as one plate a shelf is 2 x (w x d) of surface of which the
+    # underside is never seen and the top is under the stock, and on the 2.60 x
+    # 4.20 m `racking_run` the four shelves are 21.6 m2 of the rack's 52.6 --
+    # `_perim_band`'s "a band built as one box LOWERS the number it was added
+    # to raise", laid flat. Slatted, the same shelf costs the same area and
+    # carries 3.1x the line, because a slat's sides are surface the eye meets.
+    # It is also what rack decking IS. The pitch is `kit_tile()`, the kit's own
+    # floor tile: a shelf is a small deck, and this file invents no module.
+    slat = kit_tile()
     for j in range(n_lev + 1):
         yy = min(max(y0 + h * j / n_lev, y0 + 0.08), y1 - 0.05)
-        _box(v, t, g, P.tread, (x0, yy, z0), (x1, yy + 0.045, z1))
+        n_sl = max(1, int(round((z1 - z0) / slat)))
+        gap = min(0.035, (z1 - z0) / n_sl * 0.22)
+        for s in range(n_sl):
+            sa = z0 + (z1 - z0) * s / n_sl
+            sb = z0 + (z1 - z0) * (s + 1) / n_sl - (gap if s < n_sl - 1 else 0.0)
+            _box(v, t, g, P.tread, (x0, yy, sa), (x1, yy + 0.045, sb))
         for s_ in (-1, 1):                      # front and back edge lips
             _face_strip(v, t, g, P.frame, box, "x", s_, z0 + 0.02, z1 - 0.02,
                         yy - 0.055, min(yy + 0.052, y1), 0.016)
@@ -1434,6 +1565,13 @@ def _m_crane(v, t, g, box, P, seed):
     w, d = x1 - x0, y1 - y0
     gy = y1 - max(0.05, d * 0.28)
     _box(v, t, None, "", (x0, gy, z0), (x1, y1, z1))
+    # WEB STIFFENERS. A bridge girder is a plate girder and the stiffeners are
+    # what stop its web buckling -- so the count is set by the SPAN, which is
+    # what `_plate_face` at the kit's module gives. Undivided the girder is the
+    # whole of the crane's silhouette at 4.079 m^-1.
+    for s_ in (-1, 1):
+        _plate_face(v, t, g, P.frame, (x0, gy, z0, x1, y1, z1), "x", s_,
+                    proud=min(0.03, w * 0.05))
     for s, zz in ((-1, z0), (1, z1)):            # end trucks on the rail
         _box(v, t, g, P.frame, (x0 - 0.04, gy - 0.10, zz - 0.16 if s > 0 else zz),
              (x1 + 0.04, y1, zz if s > 0 else zz + 0.16))
@@ -1491,10 +1629,17 @@ def _m_screen(v, t, g, box, P, seed):
         zb = z0 + (z1 - z0) * (i + 1) / (n - 1) - post * 1.4
         if zb - za < 0.15:
             continue
-        _box(v, t, None, "", (x0 + w * 0.28, y0 + 0.06, za),
-             (x1 - w * 0.28, y0 + h * 0.50, zb))
-        _box(v, t, g, P.screen, (x0 + w * 0.34, y0 + h * 0.56, za),
-             (x1 - w * 0.34, min(y0 + h * 0.96, y1 - 0.06), zb))
+        lo = (x0 + w * 0.28, y0 + 0.06, za, x1 - w * 0.28, y0 + h * 0.50, zb)
+        _box(v, t, None, "", lo[:3], lo[3:])
+        hi = (x0 + w * 0.34, y0 + h * 0.56, za,
+              x1 - w * 0.34, min(y0 + h * 0.96, y1 - 0.06), zb)
+        _box(v, t, g, P.screen, hi[:3], hi[3:])
+        # Both infills divided at the kit's module, on the face a shopper is
+        # standing at. The panels are what a market stall IS, and undivided
+        # they are the whole of this machine's area at 4.145 m^-1.
+        for s_ in (-1, 1):
+            _plate_face(v, t, g, P.conduit, lo, "x", s_, proud=w * 0.05)
+            _plate_face(v, t, g, P.frame, hi, "x", s_, proud=w * 0.05)
 
 
 def _m_gantry(v, t, g, box, P, seed):
@@ -1514,11 +1659,15 @@ def _m_gantry(v, t, g, box, P, seed):
          (cx + w * 0.34, y0 + 0.07, cz + min(0.24, d * 0.34)))
     _tube(v, t, None, "", (cx, y0 + 0.05, cz), (cx, y1 - 0.22, cz),
           max(0.04, s * 0.24), SEG_PIPE)
-    n = max(1, int(h / 1.5))
+    # Collars are RINGS -- the column runs through them (see `_band`) -- and
+    # they sit at the kit's course, so the count follows the column's height
+    # instead of a fixed 1.5 m.
+    col_r = max(0.04, s * 0.24)
+    n = max(1, int(h / kit_module()[1]))
     for i in range(n):
         jy = y0 + h * (i + 1) / (n + 1)
-        _cyl(v, t, g, P.frame, cx, cz, jy - 0.035, jy + 0.035,
-             min(max(0.055, s * 0.30), s * 0.46), SEG_PIPE)
+        _ring(v, t, g, P.frame, cx, cz, jy - 0.035, jy + 0.035,
+              col_r * 0.92, min(max(0.055, s * 0.30), s * 0.46), SEG_PIPE)
     ay = y1 - 0.25
     reach = max(0.0, min(1.0, d * 0.5 - s * 0.34))
     _tube(v, t, g, P.frame, (cx, ay, cz), (cx, ay, cz - reach),
@@ -1552,10 +1701,23 @@ def _m_console(v, t, g, box, P, seed):
     for zz in (z0, z1 - ch):                     # cheeks reaching the floor
         _box(v, t, None, "", (x0 + 0.004, y0 + 0.085, zz),
              (x1 - 0.004, y0 + h * 0.66, zz + ch))
-    _box(v, t, None, "", (x0, y0 + h * 0.40, z0 + ch * 0.25),
-         (x1, y0 + h * 0.665, z1 - ch * 0.25))
+    bod = (x0, y0 + h * 0.40, z0 + ch * 0.25, x1, y0 + h * 0.665, z1 - ch * 0.25)
+    _box(v, t, None, "", bod[:3], bod[3:])
+    # THE BACK AND SIDES OF A CONSOLE ARE RACK PANELS. `_face_strip` below puts
+    # joints on the OPERATOR face only, at a fixed 0.70 m, so a 2.40 m
+    # `plot_plant_frame` presents 46.6 m2 at 4.522 m^-1 with 4.51 normals -- and
+    # the face a player walks PAST is the one that was left plain.
+    for side in (-1, 1):
+        _plate_face(v, t, g, P.conduit, bod, "z", side, proud=min(w, d) * 0.04)
     # raked top: a shallow wedge, expressed as two steps rather than a bevel
-    _box(v, t, g, P.panel, (x0, y0 + h * 0.66, z0), (x1, y0 + h * 0.76, z1))
+    top = (x0, y0 + h * 0.66, z0, x1, y0 + h * 0.76, z1)
+    _box(v, t, g, P.panel, top[:3], top[3:])
+    # AND THE TOP IS THE BIGGEST FACE ON THE OBJECT. On the 2.40 m
+    # `plot_plant_frame` the raked top alone is 6.05 m2 of the console's 46.6 --
+    # more than any wall of it -- and every joint this builder had ran on a
+    # VERTICAL face, so the surface a player looks DOWN on was the plain one. A
+    # console top is made of modules; at `kit_tile()` it is divided into them.
+    _plate_face(v, t, g, P.conduit, top, "y", 1, proud=min(0.012, h * 0.02))
     b = w * 0.16
     _box(v, t, g, P.frame,
          (x0 + (b if sgn > 0 else 0.0), y0 + h * 0.74,
@@ -1612,10 +1774,13 @@ def _m_skid(v, t, g, box, P, seed, reel=False):
         ax_y = by + rr * 1.35
         _tube(v, t, None, "", (x0 + w * 0.18, ax_y, cz), (x1 - w * 0.18, ax_y, cz),
               rr, SEG_PIPE)
+        # CHEEKS ARE RINGS: the reel drum runs THROUGH them, so a `_tube`'s two
+        # end caps are pi*r^2 of surface buried in the drum. See `_band`.
         for s in (-1, 1):                        # cheek plates
-            _tube(v, t, g, P.frame,
+            ck = min(rr * 1.32, ax_y - by, d * 0.48)
+            _band(v, t, g, P.frame,
                   (cx + s * w * 0.20, ax_y, cz), (cx + s * w * 0.26, ax_y, cz),
-                  min(rr * 1.32, ax_y - by, d * 0.48), SEG_BODY)
+                  min(rr * 0.90, ck * 0.85), ck, SEG_BODY)
         _tube(v, t, g, P.conduit, (cx, ax_y - rr, cz),
               (cx, by + 0.02, cz), rr * 0.30, SEG_PIPE)
     else:
@@ -1624,8 +1789,8 @@ def _m_skid(v, t, g, box, P, seed, reel=False):
               r, SEG_PIPE)                                     # motor
         for i in range(4):                                     # cooling fins
             fx = x0 + w * (0.16 + 0.14 * i)
-            _tube(v, t, g, P.frame, (fx, ax_y, cz), (fx + 0.02, ax_y, cz),
-                  r * 1.16, SEG_PIPE)
+            _band(v, t, g, P.frame, (fx, ax_y, cz), (fx + 0.02, ax_y, cz),
+                  r * 0.95, r * 1.16, SEG_PIPE)
         _tube(v, t, g, P.conduit, (cx + w * 0.06, ax_y, cz),
               (cx + w * 0.16, ax_y, cz), r * 0.55, SEG_PIPE)   # coupling guard
         _cyl(v, t, None, "", vx, cz, by, min(ax_y + r * 0.9, y1 - 0.05),
@@ -1755,8 +1920,17 @@ def _m_counter(v, t, g, box, P, seed):
     _box(v, t, g, P.frame, (x0 + w * 0.10, y0, z0 + d * 0.10),
          (x1 - w * 0.10, y0 + kick, z1 - d * 0.10))
     long_z = d >= w
-    _box(v, t, None, "", (x0 + 0.006, y0 + kick, z0 + 0.006),
-         (x1 - 0.006, y1 - top * 0.5, z1 - 0.006))
+    carc = (x0 + 0.006, y0 + kick, z0 + 0.006,
+            x1 - 0.006, y1 - top * 0.5, z1 - 0.006)
+    _box(v, t, None, "", carc[:3], carc[3:])
+    # THE CARCASS IS PANELLED ON ITS LONG FACES. The `public_gallery` bench is
+    # 4.00 m long and its carcass is one 4 m plate: 45.9 m2 at 4.147 m^-1, the
+    # largest single object in the Law Courts. The front panels below are a
+    # fixed 0.85 m run and stop at the front; this is the same division carried
+    # round, at the kit's module, on both long sides.
+    for side in (-1, 1):
+        _plate_face(v, t, g, P.conduit, carc, "x" if long_z else "z", side,
+                    proud=min(w, d) * 0.05)
     _box(v, t, g, P.panel, (x0, y1 - top, z0), (x1, y1, z1))
     _perim_band(v, t, g, P.panel, x0, z0, x1, z1, y1 - top * 0.55, y1 - 0.004,
                 0.014)
@@ -1814,8 +1988,16 @@ def _m_bed(v, t, g, box, P, seed):
     deck = y0 + (y1 - y0) * 0.70
     _box(v, t, g, P.frame, (x0 + w * 0.12, y0, z0 + d * 0.12),
          (x1 - w * 0.12, y0 + base, z1 - d * 0.12))
-    _box(v, t, None, "", (x0 + 0.004, y0 + base * 0.5, z0 + 0.004),
-         (x1 - 0.004, deck - 0.03, z1 - 0.004))
+    carc = (x0 + 0.004, y0 + base * 0.5, z0 + 0.004,
+            x1 - 0.004, deck - 0.03, z1 - 0.004)
+    _box(v, t, None, "", carc[:3], carc[3:])
+    # The carcass is drawered on its long sides. A `cryo_pod` is 2.20 m long
+    # and its carcass is one plate that long -- 18.4 m2 at 4.550 m^-1 -- and a
+    # pod, a bunk or a cold drawer is a stack of units, which is what the
+    # division at the kit's module says.
+    for side in (-1, 1):
+        _plate_face(v, t, g, P.conduit, carc, "x" if long_z else "z", side,
+                    proud=min(w, d) * 0.05)
     _box(v, t, g, P.panel, (x0 + w * 0.03, deck - 0.04, z0 + d * 0.03),
          (x1 - w * 0.03, deck, z1 - d * 0.03))
     # the mattress deck is SECTIONED -- a bed articulates, and the sections are
@@ -1948,27 +2130,75 @@ def _m_leaf(v, t, g, box, P, seed):
 
 
 def _m_wallpanel(v, t, g, box, P, seed):
-    """A wall terminal: housing, bezel, screen, keypad and a mounting plate."""
+    """A wall terminal: mounting plate, a bezel of four members, screen, keypad.
+
+    THE BEZEL WAS A THIRD FULL-FACE SLAB AND THE MOUNTING PLATE WAS ENTIRELY
+    INSIDE IT. Measured, before this was rewritten: the `monitor_wall` at
+    3.20 x 1.80 m read 27.9 m2 at **2.161 m^-1 with 2.49 effective normals** --
+    the flattest and by some way the boxiest object the kit builds, on a bounding
+    box whose whole surface is 12.7 m2. Three near-identical plates were stacked
+    on one another, and the first of them, the one the docstring calls the
+    mounting plate, spanned x0+0.55t..x1 inside a housing spanning x0+0.20t..x1
+    and inset 6% in both other axes -- so it was **100% buried**, 9.5 m2 of
+    surface with no visible face at all, on every one of the twenty-five props
+    that use this builder.
+
+    Rebuilt as TWO plates instead of three -- the housing, which the object has
+    to have to be a solid, and the screen -- with the third replaced by
+    `_plate_face` dividing the screen at the kit's own module, so a monitor
+    wall is a wall OF MONITORS and the count grows with the wall.
+
+    A `_perim_band` bezel was tried here and REMOVED, and the negative result is
+    worth the line: that helper wraps a body in the HORIZONTAL plane, which is
+    what a girth band on a vessel is. Round an upright screen its two side
+    members came out spanning the screen's full height AND full width --
+    9.099 m2 EACH, measured -- and it took the panel from 28.98 m2 to 40.67.
+    A helper applied on the wrong axis is not a cheap mistake here: it is
+    exactly the slab it exists to prevent.
+    """
     x0, y0, z0, x1, y1, z1 = box
     w, d, h = x1 - x0, z1 - z0, y1 - y0
     thin_x = w <= d
     tt = min(w, d)
+    ax = "x" if thin_x else "z"
     if thin_x:
-        _box(v, t, g, P.frame, (x0 + tt * 0.55, y0 + h * 0.06, z0 + d * 0.06),
-             (x1, y1 - h * 0.06, z1 - d * 0.06))
-        _box(v, t, None, "", (x0 + tt * 0.20, y0, z0), (x1, y1, z1))
-        _box(v, t, g, P.screen, (x0, y0 + h * 0.30, z0 + d * 0.12),
-             (x0 + tt * 0.24, y1 - h * 0.10, z1 - d * 0.12))
-        _box(v, t, g, P.panel, (x0 + tt * 0.10, y0 + h * 0.06, z0 + d * 0.22),
-             (x0 + tt * 0.30, y0 + h * 0.24, z1 - d * 0.22))
+        _box(v, t, None, "", (x0 + tt * 0.26, y0, z0), (x1, y1, z1))
+        scr = (x0, y0 + h * 0.12, z0 + d * 0.08,
+               x0 + tt * 0.34, y1 - h * 0.12, z1 - d * 0.08)
+        kp = (x0 + tt * 0.10, y0 + h * 0.02, z0 + d * 0.22,
+              x0 + tt * 0.30, y0 + h * 0.10, z1 - d * 0.22)
     else:
-        _box(v, t, g, P.frame, (x0 + w * 0.06, y0 + h * 0.06, z0 + tt * 0.55),
-             (x1 - w * 0.06, y1 - h * 0.06, z1))
-        _box(v, t, None, "", (x0, y0, z0 + tt * 0.20), (x1, y1, z1))
-        _box(v, t, g, P.screen, (x0 + w * 0.12, y0 + h * 0.30, z0),
-             (x1 - w * 0.12, y1 - h * 0.10, z0 + tt * 0.24))
-        _box(v, t, g, P.panel, (x0 + w * 0.22, y0 + h * 0.06, z0 + tt * 0.10),
-             (x1 - w * 0.22, y0 + h * 0.24, z0 + tt * 0.30))
+        _box(v, t, None, "", (x0, y0, z0 + tt * 0.26), (x1, y1, z1))
+        scr = (x0 + w * 0.08, y0 + h * 0.12, z0,
+               x1 - w * 0.08, y1 - h * 0.12, z0 + tt * 0.34)
+        kp = (x0 + w * 0.22, y0 + h * 0.02, z0 + tt * 0.10,
+              x1 - w * 0.22, y0 + h * 0.10, z0 + tt * 0.30)
+    # ONE SCREEN PER CELL, not one screen with lines drawn on it. Both come off
+    # the SAME division -- `_face_cells` is the lattice `_plate_face` draws,
+    # handed back instead of drawn -- so the bezels cannot land anywhere but
+    # between the monitors. On the 3.20 x 1.80 m wall it is six panels for
+    # +0.4 m2 of surface and +27 m of line against the single plate, because a
+    # plate's front and back are the same area however many pieces it is in
+    # while its edges are not.
+    cells = _face_cells(scr, ax, margin=0.0)
+    if cells:
+        for c in cells:
+            _box(v, t, g, P.screen, c[:3], c[3:])
+    else:
+        _box(v, t, g, P.screen, scr[:3], scr[3:])
+    _plate_face(v, t, g, P.conduit, scr, ax, -1, proud=tt * 0.16)
+    # The bezel is SCALE-FREE where the field is not: `_plate_face` correctly
+    # declines a 0.20 m `lift_call`, whose whole face is under two of the kit's
+    # plates, and that left the smallest wallpanel at 36 triangles -- which the
+    # selftest's "is not a box" gate caught. A terminal has a bezel at every
+    # size, so this runs at every size.
+    # The width comes off the FACE and the proud off the panel's thickness,
+    # which is the only pair that is right at both ends of the range: a bezel
+    # sized off the thickness is 7 mm wide on a lift-call button and vanishes,
+    # and one sized off the face stands 0.3 m proud of a monitor wall.
+    _face_rim(v, t, g, P.frame, scr, ax, -1,
+              min(scr[4] - scr[1], scr[5] - scr[2]) * 0.08, tt * 0.14)
+    _box(v, t, g, P.panel, kp[:3], kp[3:])
 
 
 def _m_crate(v, t, g, box, P, seed):
