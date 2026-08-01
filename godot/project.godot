@@ -7,10 +7,20 @@ config_version=5
 [application]
 config/name="Babylon 5"
 config/description="1:1 simulation of the Babylon 5 station. 8,047 m."
-; The default scene. tools/render_godot.sh passes an explicit scene path as a
-; positional argument, so this only decides what a bare `godot --path godot`
-; opens; every shot names its own scene through station/generated/scene/*/scene.json.
-run/main_scene="res://scenes/exterior.tscn"
+; THE SCENE THIS PROJECT SHIPS, and it is a game rather than a tool.
+;
+; It was res://scenes/exterior.tscn until session 4g. That scene's only script is
+; render_shot.gd -- a screenshot tool -- so `godot --path godot` with no
+; arguments printed `render_shot: --scene-json is required` and quit 2, and all
+; 9,630 lines of game script in this project were unreachable from the scene it
+; shipped. station/coldstart.py is the gate that fails for both: G1 launches this
+; line with no arguments and asserts a player is standing on a floor with a HUD
+; and a running clock; G3 walks the reference graph from here.
+;
+; tools/render_godot.sh still passes an explicit scene path as a positional
+; argument, and every shot names its own scene through
+; station/generated/scene/*/scene.json, so nothing about the render path changes.
+run/main_scene="res://scenes/main.tscn"
 config/features=PackedStringArray("4.4", "Double Precision", "Forward Plus")
 
 [display]

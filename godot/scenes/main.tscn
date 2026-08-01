@@ -1,0 +1,24 @@
+[gd_scene load_steps=2 format=3]
+
+; THE SCENE THIS PROJECT SHIPS. `project.godot` points `run/main_scene` here, so
+; `godot --path godot` with no arguments puts a player in the station.
+;
+; Until session 4g it pointed at scenes/exterior.tscn, whose only script is
+; render_shot.gd -- a screenshot tool. Launching the game printed
+; `render_shot: --scene-json is required` and quit 2, and every game script in
+; the project was unreachable from the scene it shipped. station/coldstart.py is
+; the gate that can fail for that; see scripts/main.gd's header.
+;
+; Deliberately as empty as scenes/walk.tscn and for the same reason: the world,
+; the sequence, the cast and the sound are all loaded at RUNTIME from what the
+; Python generators wrote, so this file cannot go stale against regenerated
+; meshes and no binary enters the project. Nothing about the look belongs here
+; -- scripts/main.gd instantiates scenes/walk.tscn, which borrows the whole
+; calibrated interior look from scenes/interior.tscn through
+; scripts/dress_scene.gd. An Environment or a material rule in this file would
+; recreate the split those two headers exist to warn about.
+
+[ext_resource type="Script" path="res://scripts/main.gd" id="1_main"]
+
+[node name="Main" type="Node3D"]
+script = ExtResource("1_main")

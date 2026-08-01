@@ -1,0 +1,540 @@
+extends Node3D
+## THE ENTRY POINT. Launch this project with no arguments and you are standing
+## in Babylon 5, with an interface, a clock running and the station audible.
+##
+## WHAT THIS EXISTS TO END, stated plainly because it is the third recurrence of
+## one failure. Until session 4g `project.godot` shipped
+## `run/main_scene="res://scenes/exterior.tscn"`, and the only script that scene
+## references is `render_shot.gd` -- a SCREENSHOT TOOL. Launching the game
+## printed `render_shot: --scene-json is required` and quit 2. **Every game
+## script in the project was unreachable from the scene it shipped**: 2,630
+## lines of finished, tested GDScript with zero inbound references -- the
+## station clock (`life.gd`), all of layer 7's audio (`ambience.gd`), the
+## flyable Starfury (`starfury.gd`) -- plus everything `walk.gd` builds, which
+## only a developer typing `--glb=<path>` could reach. `station/audio.py` scored
+## 100/100 and no sound had ever played.
+##
+## It survived because **every gate in this repository is a module self-test,
+## and a module self-test passes whether or not anything calls it.**
+## `station/coldstart.py` is the gate that can fail for it: G3 walks the
+## reference graph from `run/main_scene` and fails on any game script it cannot
+## reach, and G1 launches this scene with NO ARGUMENTS and asserts a player is
+## standing on a floor with a HUD and a running clock.
+##
+## THIS FILE DRIVES, IT DOES NOT DUPLICATE. Loading a deck, colliding it,
+## dressing it out of `scenes/interior.tscn`, wiring the doors, the crowd, the
+## interactables, the dialogue and the HUD, and standing a `player.gd` body on
+## the floor is all `scripts/walk.gd`'s job and none of it is repeated here --
+## this node instantiates `scenes/walk.tscn` and sets its exported properties,
+## exactly as a developer's command line does. The three things it adds are the
+## three that had no instantiator anywhere: the clock, the crowd's response to
+## it, and the sound.
+##
+## THE WORLD IT BOOTS INTO IS NOT WRITTEN DOWN HERE EITHER. `station/arrival.py
+## --build` already writes a sidecar carrying the mesh, the collision shell, the
+## interactables, the cast and a spawn point a body can stand on -- see
+## `_boot_manifest`. A spawn constant in this file would be a second description
+## of where the floor is, and the first run of `arrival.tscn` proves what that
+## costs: it was handed `--spawn=0,0,0`, which on a ring deck at radius 211 m is
+## the SPIN AXIS, and the body fell for two minutes.
+##
+##     godot --path godot                      # play it
+##     godot --path godot -- --mode=arrival    # the player's first ten minutes
+##     godot --path godot -- --mode=starfury   # fly one
+##     godot --path godot --headless           # G1: check itself and quit
+##
+## HEADLESS MEANS NOBODY IS AT THE KEYBOARD, so this scene verifies itself and
+## quits rather than sitting in a black room for ever. That is not a test mode
+## bolted on: it is the only way a container with no display can answer "can
+## this be started", and the answer had never been asked.
+
+const WALK_SCENE := "res://scenes/walk.tscn"
+const ARRIVAL_SCENE := "res://scenes/arrival.tscn"
+const STARFURY_SCENE := "res://scenes/starfury.tscn"
+const TRANSIT_SCENE := "res://scenes/transit.tscn"
+const LIFE_SCRIPT := "res://scripts/life.gd"
+const AMBIENCE_SCRIPT := "res://scripts/ambience.gd"
+
+## Station hours per real second, handed to `life.gd`'s Clock. 1/60 is a station
+## minute a second: `life.gd`'s own default, and the rate at which a player
+## standing in a corridor sees the crowd thin out over a few minutes rather than
+## over a day. `--rate=` overrides; 1.0/3600.0 is real time.
+@export var clock_rate: float = 1.0 / 60.0
+## Where the day starts. Overridden by the boot manifest's own hour, which is
+## when the player's transport docks -- the one hour in this project tied to the
+## player rather than chosen.
+@export var start_hour: float = 13.0
+## How long the body is given to settle onto the floor before the cold-start
+## check reads it, in physics frames. 120 is `arrival.gd::settle_frames`.
+@export var settle_frames: int = 120
+## Frames the clock is watched over, after settling. At 1/60 h per second and
+## 60 Hz this is a station minute, which is far more than a float can hide.
+@export var clock_frames: int = 60
+
+var _world: Node3D           # the walk.tscn (or arrival.tscn) instance
+var _life: Node3D            # life.gd's Director
+var _clock                   # life.gd's Clock
+var _audio: Node3D           # ambience.gd
+var _mode := "station"
+var _boot := {}
+var _present_0300 := -1
+var _present_1300 := -1
+
+
+func _ready() -> void:
+	var args := _args()
+	_mode = String(args.get("mode", "station"))
+	if args.has("hour"):
+		start_hour = float(args["hour"])
+	if args.has("rate"):
+		clock_rate = float(args["rate"])
+
+	_boot = _boot_manifest(args)
+	if _boot.is_empty():
+		push_error("main: no boot manifest -- run `python3 station/arrival.py "
+			+ "--build` to write one, or pass --boot=<json>")
+		get_tree().quit(2)
+		return
+	print("main: Babylon 5 -- mode=%s, boot from %s"
+		% [_mode, String(_boot.get("_source", "?"))])
+
+	match _mode:
+		"station":
+			_world = _build_station()
+		"arrival":
+			_world = _build_arrival()
+		"starfury":
+			_world = _build_starfury()
+		"transit":
+			_world = _build_transit()
+		_:
+			push_error("main: unknown --mode=%s (station, arrival, starfury, "
+				% _mode + "transit)")
+			get_tree().quit(2)
+			return
+	if _world == null:
+		get_tree().quit(2)
+		return
+
+	# THE THREE THINGS THAT HAD NO INSTANTIATOR. Only on the modes that put a
+	# body in the station: a Starfury cockpit is outside the pressure hull and
+	# has neither a corridor crowd nor a room bed.
+	#
+	# `--no-clock` and `--no-sound` are the CONTROLS, and they are the reason G1
+	# is a gate rather than a printout: `station/coldstart.py --controls` runs
+	# this same scene with each of them (and with `walk.gd`'s own `--no-hud`) and
+	# asserts the cold start FAILS on exactly the check that flag removes. A
+	# check that cannot fail is this repository's most-repeated defect.
+	if _mode in ["station", "arrival"]:
+		if args.has("no-clock"):
+			print("life: DISABLED (control) -- no clock, nobody keeps a day")
+		else:
+			_start_clock()
+		if args.has("no-sound"):
+			print("ambience: DISABLED (control) -- the station is silent")
+		else:
+			_start_ambience()
+
+	if _headless() and not _args().has("no-coldstart"):
+		_coldstart()
+
+
+# ---------------------------------------------------------------------------
+# The world
+# ---------------------------------------------------------------------------
+
+## Boot into the walkable station. Every property set here is one `walk.gd`
+## already exports and one a developer's command line already passes; the values
+## come from the manifest rather than from this file.
+func _build_station() -> Node3D:
+	var w := _instance(WALK_SCENE)
+	if w == null:
+		return null
+	_configure_walk(w)
+	add_child(w)
+	return w
+
+
+## Boot into the player's first ten minutes. `arrival.gd` EXTENDS `walk.gd` and
+## reads the same sidecar this node found, so the build a player arrives into is
+## the build they then walk in -- there is no second world here.
+func _build_arrival() -> Node3D:
+	var a := _instance(ARRIVAL_SCENE)
+	if a == null:
+		return null
+	_configure_walk(a)
+	a.set("arrival_path", String(_boot.get("_source", "")))
+	add_child(a)
+	return a
+
+
+func _configure_walk(w: Node) -> void:
+	w.set("glb_path", String(_boot.get("glb", "")))
+	w.set("collision_path", String(_boot.get("collision", "")))
+	w.set("interact_path", String(_boot.get("interact", "")))
+	w.set("actors_path", String(_boot.get("actors", "")))
+	w.set("dialogue_path", String(_boot.get("dialogue", "")))
+	w.set("crowd_path", String(_boot.get("crowd", "")))
+	w.set("spawn", _vec3(_boot.get("spawn", [])))
+	# A RING DECK IS SPUN, so "down" is away from the axis and not -Y. This is
+	# the same value `station/walkable.py --deck` passes, and `player.gd`'s
+	# header records what getting it wrong costs: a capsule lying sideways
+	# through the floor, reporting `on_floor=true`, unable to move.
+	w.set("gravity_mode", "drum")
+
+
+## The flyable Starfury. Reachable from the shipped scene rather than only from
+## its own, which is the whole of G3: 1,276 lines that nothing referenced.
+func _build_starfury() -> Node3D:
+	var f := _instance(STARFURY_SCENE)
+	if f == null:
+		return null
+	var gen := _root().path_join("station/generated/scene")
+	f.set("hull_glb", gen.path_join("exterior/hull.glb"))
+	f.set("fury_glb", gen.path_join("starfury/starfury.glb"))
+	f.set("launch_json", gen.path_join("starfury/launch.json"))
+	f.set("vectors_json", gen.path_join("starfury/vectors.json"))
+	add_child(f)
+	return f
+
+
+## The lift and the tram. `station/transit_runtime.py --build` writes the
+## manifest; until it has, this mode reports the missing file and stops, which
+## is the honest state rather than a silent empty scene.
+func _build_transit() -> Node3D:
+	var man := _root().path_join(
+		"station/generated/scene/transit/transit_manifest.json")
+	if not FileAccess.file_exists(man):
+		push_error("main: no transit manifest at %s -- run " % man
+			+ "`python3 station/transit_runtime.py --build`")
+		return null
+	var t := _instance(TRANSIT_SCENE)
+	if t == null:
+		return null
+	t.set("manifest_path", man)
+	add_child(t)
+	return t
+
+
+# ---------------------------------------------------------------------------
+# The clock
+# ---------------------------------------------------------------------------
+
+## Start the station's day and hand the cast to it.
+##
+## `life.gd` is `extends SceneTree` -- a headless harness, launched with
+## `--script`, which is why it had no importer for 917 lines. Its Director and
+## its Clock are inner classes and its own header documents exactly this call
+## sequence; what was missing was a node in a live build to make it. It is NOT
+## recast, deliberately: `--script res://scripts/life.gd -- --life-test` is the
+## purity gate (03:00 -> 08:00 -> 13:00 -> 03:00, compared transform by
+## transform against an integrating control that drifts), and rewriting the file
+## to be a Node would have taken that gate with it.
+##
+## AN INHABITANT'S STATE IS A PURE FUNCTION OF THE CLOCK -- nothing integrates,
+## so 03:00 and 13:00 are two reads of the same expression rather than two
+## states that have to be kept in step.
+func _start_clock() -> void:
+	var life := load(LIFE_SCRIPT)
+	if life == null:
+		push_error("main: could not load %s" % LIFE_SCRIPT)
+		return
+	_life = life.Director.new()
+	_life.name = "Life"
+	_clock = life.Clock.new(start_hour, clock_rate)
+	_life.clock = _clock
+	add_child(_life)
+
+	var actors := _read_array(String(_boot.get("actors", "")))
+	var n: int = _life.bind(_world, actors)
+	print("life: clock started at %05.2f EMT, %.3f station hours per real "
+		% [_clock.hour(), clock_rate] + "second; %d of %d residents bound"
+		% [n, actors.size()])
+	if n > 0:
+		# THE CLAIM, MEASURED IN THE SHIPPED BUILD RATHER THAN IN A HARNESS.
+		# `docs/MASTER-PLAN.md` §0 asks that "03:00 differs visibly from 13:00";
+		# this is that sentence evaluated on the cast actually standing in this
+		# deck, before a viewer is attached -- `Director._may_pop` holds a
+		# change back near the player's eye, which is right in front of a
+		# person and wrong for a measurement.
+		_life.apply(3.0)
+		_present_0300 = _life.visible_count()
+		_life.apply(13.0)
+		_present_1300 = _life.visible_count()
+		print("life: 03:00 -> %d present, 13:00 -> %d present, of %d bound "
+			% [_present_0300, _present_1300, n]
+			+ "(the same cast, read at two hours)")
+		_life.apply(_clock.hour())
+	# WHOSE EYES DECIDE WHAT MAY POP. Attached after the measurement above, and
+	# never before: a body may not appear or vanish inside the player's hold
+	# radius, which is what stops the crowd flickering in front of them.
+	var body := _player()
+	if body != null:
+		_life.watch(body)
+
+
+# ---------------------------------------------------------------------------
+# The sound
+# ---------------------------------------------------------------------------
+
+## Make the station audible. `station/audio.py` derives seven layers per place
+## per hour -- air, structure, machinery, crowd, traffic, PA, water -- each with
+## a level in dBA and the reason it is that level, and writes 13 loop-exact
+## WAVs. The gate reads 100/100 and **none of it had ever played**, because
+## `ambience.gd` had zero inbound references.
+##
+## Nothing about loudness is decided here. The bank and the beds are read; the
+## place the player is standing in is read off the GEOMETRY (`rooms.py` names
+## room content `<place_key>__<group>`), so there is no second table of room
+## bounds to drift from the meshes.
+func _start_ambience() -> void:
+	var dir := _root().path_join("station/generated/audio")
+	var bank := dir.path_join("bank.json")
+	if not FileAccess.file_exists(bank):
+		print("ambience: no bank at %s -- run `python3 station/audio.py "
+			% bank + "--write`; the station will be silent")
+		return
+	_audio = Node3D.new()
+	_audio.name = "Ambience"
+	_audio.set_script(load(AMBIENCE_SCRIPT))
+	add_child(_audio)
+	_audio.audio_dir = dir
+	_audio.hour = start_hour
+	if not _audio.load_bank(bank, dir.path_join("beds.json")):
+		return
+	# The whole world node: the collision proxy carries seven groups, none of
+	# them named `<place>__<group>` or matching an emitter rule, so there is
+	# nothing to exclude and no dependence on `walk.gd`'s private node names.
+	_audio.bind(_world, _player())
+
+
+## ONE CLOCK, AND THE SOUND IS ON IT. `ambience.gd` reads its own `hour`
+## property and nothing advanced it: the mixer would have held the boot hour for
+## ever while the crowd around the player thinned out, so a corridor at 03:00
+## sounded exactly like the same corridor at 13:00. `station/audio.py` derives
+## the Zocalo swinging 62.1 -> 67.6 dBA across that span and the reactor hall
+## swinging +0.05, and neither could be heard until this line existed.
+##
+## Pushed from here rather than given to `ambience.gd` as a clock reference,
+## because that file mixes and does not choose -- the same argument its own
+## header makes about levels. There is one clock in this build and this node
+## owns it.
+func _process(_delta: float) -> void:
+	if _audio != null and _clock != null:
+		_audio.hour = _clock.hour()
+
+
+# ---------------------------------------------------------------------------
+# Cold start -- G1
+# ---------------------------------------------------------------------------
+
+## Verify the shipped build and print one line `station/coldstart.py` parses.
+##
+## IT ASSERTS WHAT A PLAYER WOULD NOTICE, not what is easy to measure: a body
+## exists, it is standing on something, there is an interface, and the day is
+## moving. Every one of those was false in the shipped scene the day this was
+## written, and no gate in this repository could say so.
+func _coldstart() -> void:
+	# A COCKPIT HAS NO FLOOR AND NO ROOM BED, so the station's checks do not
+	# apply to it and are not printed as if they did. An earlier version ran the
+	# whole check on every mode and reported the Starfury as having fallen
+	# 211.478 m -- which is the deck spawn's radius measured against a fighter
+	# parked somewhere else entirely. A number that means nothing is worse than
+	# no number: it reads as a measurement.
+	if not (_mode in ["station", "arrival"]):
+		for _i in 30:
+			await get_tree().physics_frame
+		print("COLDSTART scene=%s mode=%s booted=1 boot_s=%.1f" % [
+			String(get_tree().current_scene.scene_file_path), _mode,
+			float(Time.get_ticks_msec()) / 1000.0])
+		get_tree().quit(0)
+		return
+	var spawn: Vector3 = _vec3(_boot.get("spawn", []))
+	for _i in settle_frames:
+		await get_tree().physics_frame
+	var body := _player()
+	var pos: Vector3 = body.global_position if body != null else Vector3.ZERO
+	var on_floor := body != null and body.is_on_floor()
+	# Radially, because on a spun deck "down" is outward: a body that fell
+	# through the shell has a LARGER radius, and its z and angle barely move.
+	var drop := absf(Vector2(spawn.x, spawn.y).length()
+		- Vector2(pos.x, pos.y).length())
+
+	var h0 := float(_clock.hour()) if _clock != null else -1.0
+	for _i in clock_frames:
+		await get_tree().physics_frame
+	var h1 := float(_clock.hour()) if _clock != null else -1.0
+
+	var hud = _hud()
+	var hud_place := ""
+	if hud != null:
+		print("hud: %s" % hud.report())
+		hud_place = String(hud.place_name).to_lower().replace(" ", "_")
+		hud_place = hud_place.replace(",", "")
+	var layers := 0
+	if _audio != null:
+		if _clock != null:
+			_audio.hour = h1
+		var said: String = _audio.describe()
+		print(said)
+		var cut := said.split("layers=")
+		if cut.size() > 1:
+			layers = cut[1].split(" ")[0].to_int()
+
+	print(("COLDSTART scene=%s mode=%s player=%d on_floor=%s drop_m=%.3f "
+		+ "hud=%d hud_place=%s h0=%05.2f h1=%05.2f clock_advanced=%s "
+		+ "bodies=%d present_0300=%d present_1300=%d audio_layers=%d "
+		+ "audio_place=%s boot_s=%.1f") % [
+		String(get_tree().current_scene.scene_file_path), _mode,
+		1 if body != null else 0, str(on_floor).to_lower(), drop,
+		1 if hud != null else 0, (hud_place if hud_place != "" else "-"),
+		h0, h1, str(h1 > h0).to_lower(),
+		_life.count() if _life != null else 0,
+		_present_0300, _present_1300, layers,
+		(_audio._here if _audio != null and _audio._here != "" else "-"),
+		float(Time.get_ticks_msec()) / 1000.0])
+	get_tree().quit(0)
+
+
+# ---------------------------------------------------------------------------
+# Plumbing
+# ---------------------------------------------------------------------------
+
+## The deck this build boots into, and everything that stands on it.
+##
+## READ FROM A GENERATED SIDECAR, NEVER WRITTEN HERE. `station/arrival.py
+## --build` records the mesh, the collision shell, the interactables, the cast
+## and a spawn point together, because they are one decision -- so a spawn
+## constant in this file could only ever be a copy that goes stale against
+## regenerated geometry. `--boot=<json>` takes any file of the same shape.
+func _boot_manifest(args: Dictionary) -> Dictionary:
+	var path := String(args.get("boot", ""))
+	if path == "":
+		var deck := _root().path_join("station/generated/scene/deck")
+		var d := DirAccess.open(deck)
+		if d == null:
+			return {}
+		var found: Array = []
+		for f in d.get_files():
+			if f.ends_with("_arrival.json"):
+				found.append(deck.path_join(f))
+		if found.is_empty():
+			return {}
+		found.sort()
+		path = found[0]
+	if not FileAccess.file_exists(path):
+		return {}
+	var f2 := FileAccess.open(path, FileAccess.READ)
+	var doc = JSON.parse_string(f2.get_as_text())
+	if typeof(doc) != TYPE_DICTIONARY:
+		return {}
+	var b: Dictionary = doc.get("build", {})
+	if b.is_empty() or not b.has("glb"):
+		return {}
+	var out := b.duplicate()
+	out["_source"] = path
+	# The sidecars the build block does not name are named by the mesh, which is
+	# how `station/walkable.py` and `arrival.gd` both find them.
+	var stem := String(out["glb"]).get_basename()
+	for k in [["dialogue", "_dialogue.json"], ["crowd", "_crowd.json"]]:
+		if not out.has(k[0]):
+			var p: String = stem + k[1]
+			out[k[0]] = p if FileAccess.file_exists(p) else ""
+	# The hour the player's transport docks -- the one hour in this project tied
+	# to the player rather than chosen. `--hour=` wins over it, and checking that
+	# here rather than at the assignment above is the whole of the fix: written
+	# the other way round the manifest silently overrode the flag, so `--hour=3`
+	# and `--hour=13` produced identical runs and the clock looked inert.
+	if doc.has("hour") and not args.has("hour"):
+		start_hour = float(doc["hour"])
+	print("main: deck %s, spawn %.2f,%.2f,%.2f in %s, %d rooms" % [
+		stem.get_file(), _vec3(out.get("spawn", [])).x,
+		_vec3(out.get("spawn", [])).y, _vec3(out.get("spawn", [])).z,
+		String(out.get("spawn_at", "?")), (out.get("rooms", []) as Array).size()])
+	return out
+
+
+func _instance(scene: String) -> Node3D:
+	var ps = load(scene)
+	if ps == null:
+		push_error("main: could not load %s" % scene)
+		return null
+	return ps.instantiate()
+
+
+## The body, found by TYPE rather than by reaching into `walk.gd`'s private
+## fields -- that file is not this one's to depend on the internals of.
+func _player() -> CharacterBody3D:
+	return _find(self, "CharacterBody3D") as CharacterBody3D
+
+
+## The interface: a CanvasLayer that can report what is on it. BOTH halves are
+## load-bearing and neither alone is enough. `interact.gd` carries a second
+## CanvasLayer -- the bare debug label from the session that introduced the verb
+## table, which `hud.gd::bind` hides rather than deletes because `walk.gd` still
+## reads its text back for the WALKTEST verdict -- and it is in the tree before
+## the HUD is, so a search by class finds the wrong one. `dialogue.gd` and
+## `stream.gd` both define `report()`, so a search by method finds those.
+##
+## Returned UNTYPED on purpose: a value typed `CanvasLayer` resolves its calls
+## against that class at compile time, and `report()` is on the script rather
+## than on the class -- which fails with "Nonexistent function 'report' in base
+## 'CanvasLayer'" at the one moment the gate is trying to read the HUD.
+func _hud():
+	return _find_where(self, "CanvasLayer", "report")
+
+
+func _find_where(n: Node, cls: String, method: String):
+	for c in n.get_children():
+		if c.is_class(cls) and c.has_method(method):
+			return c
+		var got = _find_where(c, cls, method)
+		if got != null:
+			return got
+	return null
+
+
+func _find(n: Node, cls: String) -> Node:
+	for c in n.get_children():
+		if c.is_class(cls):
+			return c
+		var got := _find(c, cls)
+		if got != null:
+			return got
+	return null
+
+
+func _root() -> String:
+	return ProjectSettings.globalize_path("res://").path_join("..").simplify_path()
+
+
+func _headless() -> bool:
+	return DisplayServer.get_name() == "headless"
+
+
+func _args() -> Dictionary:
+	var out := {}
+	for a in OS.get_cmdline_user_args():
+		var s := String(a)
+		if s.begins_with("--"):
+			var body := s.substr(2)
+			var eq := body.find("=")
+			if eq >= 0:
+				out[body.substr(0, eq)] = body.substr(eq + 1)
+			else:
+				out[body] = "1"
+	return out
+
+
+func _vec3(a) -> Vector3:
+	if typeof(a) == TYPE_ARRAY and (a as Array).size() == 3:
+		return Vector3(float(a[0]), float(a[1]), float(a[2]))
+	return Vector3.ZERO
+
+
+func _read_array(path: String) -> Array:
+	if path == "" or not FileAccess.file_exists(path):
+		return []
+	var f := FileAccess.open(path, FileAccess.READ)
+	var d = JSON.parse_string(f.get_as_text())
+	return d if typeof(d) == TYPE_ARRAY else []
