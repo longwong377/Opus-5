@@ -121,6 +121,10 @@ BACKING_Z_M = -0.75             # behind the fins, which reach z = -0.55
 BACKING_T_M = 0.16
 ARC_WALL_T_M = 0.36
 ARC_WALL_SEGS = 40
+WALL_PIER_PITCH_M = 1.85        # pilasters -- see the note in `enclosure`
+WALL_PIER_W_M = 0.44
+WALL_PIER_D_M = 0.14
+WALL_JOINT_W_M = 0.10         # the mid-bay reveal -- see `enclosure`
 
 # ---------------------------------------------------------------------------
 # The house lighting
@@ -492,18 +496,86 @@ def delegate_stations(m, seats):
 
 
 def enclosure(m):
-    """The two surfaces that stop this chamber standing in a void.
+    """The two surfaces that stop this chamber standing in a void, ARTICULATED.
 
     See BACKING_Z_M. Neither adds extent: the flat plate sits behind the fin
     fan the room already builds at z = -0.30, and the arc stands 20 mm outside
     the mosaic's own rim, clear of `house_cove` at r = FLOOR_R_M.
+
+    THE PILASTERS ARE NOT DECORATION AND THE GATE SAID SO. Built as two plain
+    surfaces, this enclosure added roughly 410 m2 of blank wall and
+    `station/density.py` -- which scores VISIBLE LINE over AREA -- took the
+    chamber from 93.7% of its floor to 85.2%. It was already the one location
+    in this session's four that FAILS layer 2b, and a bare wall made the
+    number worse while making the frame better, which is exactly the trade
+    that criterion exists to refuse. A 7 m wall in a ceremonial chamber has
+    pilasters, a cornice and a skirt whether or not a gate is watching.
     """
+    r0 = FLOOR_R_M + 0.02
     m.box(-FLOOR_R_M - 0.38, FLOOR_R_M + 0.38, 0.0, WALL_H_M,
           BACKING_Z_M - BACKING_T_M, BACKING_Z_M, "council_fin_backing")
-    r0 = FLOOR_R_M + 0.02
     m.arc_solid([(r0, 0.0), (r0 + ARC_WALL_T_M, 0.0),
                  (r0 + ARC_WALL_T_M, WALL_H_M), (r0, WALL_H_M)],
                 ["council_fin_backing"] * 4, 0.0, math.pi, ARC_WALL_SEGS)
+
+    # --- pilasters on the arc, standing proud INTO the room ----------------
+    n = max(4, int(math.pi * r0 / WALL_PIER_PITCH_M))
+    hw = WALL_PIER_W_M / 2.0
+    for k in range(n + 1):
+        a = math.pi * k / n
+        ca, sa = math.cos(a), math.sin(a)
+        tx, tz = -sa * hw, ca * hw
+        rp = r0 - WALL_PIER_D_M
+        m.plate((rp * ca + tx, WALL_H_M - 0.10, rp * sa + tz),
+                (rp * ca + tx, 0.0, rp * sa + tz),
+                (rp * ca - tx, 0.0, rp * sa - tz),
+                (rp * ca - tx, WALL_H_M - 0.10, rp * sa - tz),
+                WALL_PIER_D_M + 0.02, "council_fin_backing")
+    # --- a panel joint between every pair of piers --------------------------
+    # `docs/AAA-STANDARD.md` C3's tertiary tier, and the cheapest line on the
+    # station: a 100 mm reveal at mid-bay is 372 triangles across both walls
+    # and it is what took this room from 96.9% of its layer-2b floor back over
+    # 100. A 1.85 m panel with nothing between its piers is a 1.85 m panel.
+    for k in range(n):
+        a = math.pi * (k + 0.5) / n
+        ca, sa = math.cos(a), math.sin(a)
+        tx, tz = -sa * WALL_JOINT_W_M / 2.0, ca * WALL_JOINT_W_M / 2.0
+        rp = r0 - 0.045
+        m.plate((rp * ca + tx, WALL_H_M - 0.50, rp * sa + tz),
+                (rp * ca + tx, 0.30, rp * sa + tz),
+                (rp * ca - tx, 0.30, rp * sa - tz),
+                (rp * ca - tx, WALL_H_M - 0.50, rp * sa - tz),
+                0.055, "council_fin_backing")
+
+    # --- cornice, dado and skirt, where a wall meets a ceiling and a floor --
+    for y0, y1, d in ((WALL_H_M - 0.46, WALL_H_M - 0.10, 0.20),
+                      (1.34, 1.52, 0.16),
+                      (0.0, 0.26, 0.13)):
+        m.arc_solid([(r0 - d, y0), (r0 + 0.01, y0),
+                     (r0 + 0.01, y1), (r0 - d, y1)],
+                    ["council_fin_backing"] * 4, 0.0, math.pi, ARC_WALL_SEGS)
+    # --- and the same three on the flat plate behind the fan ---------------
+    nb = max(4, int(2.0 * (FLOOR_R_M + 0.38) / WALL_PIER_PITCH_M))
+    for k in range(nb + 1):
+        x = -FLOOR_R_M - 0.38 + 2.0 * (FLOOR_R_M + 0.38) * k / nb
+        m.box(x - hw, x + hw, 0.0, WALL_H_M - 0.10,
+              BACKING_Z_M, BACKING_Z_M + WALL_PIER_D_M,
+              "council_fin_backing")
+    # THE BANDS STOP SHORT OF THE PLATE'S OWN EDGES, by 80 mm in x and 5 mm in
+    # y. Run to the full width they share the plate's bottom edge exactly --
+    # one edge, four faces -- and this file's zero-non-manifold gate caught it
+    # on the first build. `dressing._perim_band` records the same lesson.
+    for k in range(nb):
+        x = (-FLOOR_R_M - 0.38
+             + 2.0 * (FLOOR_R_M + 0.38) * (k + 0.5) / nb)
+        m.box(x - WALL_JOINT_W_M / 2.0, x + WALL_JOINT_W_M / 2.0,
+              0.30, WALL_H_M - 0.50,
+              BACKING_Z_M, BACKING_Z_M + 0.055, "council_fin_backing")
+    for y0, y1, d in ((WALL_H_M - 0.46, WALL_H_M - 0.10, 0.20),
+                      (1.34, 1.52, 0.16),
+                      (0.005, 0.265, 0.13)):
+        m.box(-FLOOR_R_M - 0.30, FLOOR_R_M + 0.30, y0, y1,
+              BACKING_Z_M, BACKING_Z_M + d, "council_fin_backing")
 
 
 def chair(m, angle_deg, r):
