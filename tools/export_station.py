@@ -49,6 +49,7 @@ import json
 import os
 import sys
 import time
+import traceback
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(ROOT, "station"))
@@ -79,9 +80,30 @@ def work_list():
 
 
 def _write(stem, V, T, G):
+    """OBJ + GLB, and the group format is not a detail.
+
+    `deck.write_obj` TAKES SPANS -- `(name, lo, hi)` -- and
+    `interior.write_grouped_obj` takes a PER-TRIANGLE list of names. Two writers
+    with near-identical names and incompatible arguments; `build_deck_clusters`
+    returns spans. The first run of this file called the wrong one and threw
+    away all 71 assembled decks at the write, reporting only
+    "IndexError: list index out of range".
+
+    So the write is ASSERTED, not assumed. A build that takes minutes and is
+    discarded by its own output stage is the most expensive kind of silent
+    failure there is.
+    """
     obj = os.path.join(OUT, stem + ".obj")
     glb = os.path.join(OUT, stem + ".glb")
-    it.write_grouped_obj(obj, V, T, G)
+    D.write_obj(obj, V, T, G)
+    with open(obj) as f:
+        body = f.read()
+    nf = body.count("\nf ")
+    ng = body.count("\ng ")
+    if nf != len(T):
+        raise AssertionError(f"{stem}: wrote {nf} faces for {len(T)} triangles")
+    if ng < 1:
+        raise AssertionError(f"{stem}: wrote no groups for {len(G)} spans")
     import export_gltf                                          # noqa: PLC0415
     argv = sys.argv
     sys.argv = ["export_gltf", "--obj", obj, "--out", glb]
@@ -89,7 +111,14 @@ def _write(stem, V, T, G):
         export_gltf.main()
     finally:
         sys.argv = argv
-    return os.path.getsize(obj), os.path.getsize(glb)
+    if not os.path.exists(glb) or os.path.getsize(glb) < 1024:
+        raise AssertionError(f"{stem}: glb is missing or empty")
+    # THE OBJ IS AN INTERMEDIATE AND THE STATION IS BIG. blue/0/0 alone is
+    # 161 MB of OBJ and 309 MB of glTF; keeping both for 71 decks is a disk
+    # allowance this container does not have. The glb is the artefact.
+    ob = os.path.getsize(obj)
+    os.remove(obj)
+    return ob, os.path.getsize(glb)
 
 
 def main(argv=None):
@@ -155,9 +184,19 @@ def main(argv=None):
                   f"{len(joins)} join(s) {row['join_m']:.0f} m, "
                   f"{row['glb_mb']:.1f} MB, {row['seconds']:.0f} s")
         except Exception as e:                                  # noqa: BLE001
+            # THE WHOLE TRACEBACK, NOT THE MESSAGE. The first run of this file
+            # recorded "IndexError: list index out of range" 142 times, which
+            # names neither the file nor the line and cost a diagnosis pass. A
+            # manifest is a record of what happened; a bare exception type is a
+            # record that something did.
+            tb = traceback.format_exc()
+            where = [l.strip() for l in tb.splitlines()
+                     if l.strip().startswith("File ")]
             row = {"key": stem, "ok": False, "why": f"{type(e).__name__}: {e}",
+                   "at": where[-1] if where else "", "traceback": tb,
                    "seconds": round(time.time() - t0, 1)}
-            print(f"  [{n}/{len(order)}] {stem}: FAILED -- {row['why'][:120]}")
+            print(f"  [{n}/{len(order)}] {stem}: FAILED -- {row['why'][:100]}"
+                  f"\n        {row['at']}")
         man["decks"].append(row)
         flush()
 
@@ -183,9 +222,14 @@ def main(argv=None):
                   f"{st['landings']} landings over {st['rise_m']:.1f} m, "
                   f"{len(T):,} tri, {row['seconds']:.0f} s")
         except Exception as e:                                  # noqa: BLE001
+            tb = traceback.format_exc()
+            where = [l.strip() for l in tb.splitlines()
+                     if l.strip().startswith("File ")]
             row = {"key": stem, "ok": False, "why": f"{type(e).__name__}: {e}",
+                   "at": where[-1] if where else "", "traceback": tb,
                    "seconds": round(time.time() - t0, 1)}
-            print(f"  column {sec}: FAILED -- {row['why'][:120]}")
+            print(f"  column {sec}: FAILED -- {row['why'][:100]}"
+                  f"\n        {row['at']}")
         man["columns"].append(row)
         flush()
 
