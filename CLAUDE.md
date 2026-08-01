@@ -551,6 +551,23 @@ This project runs partly on a **6-hourly trigger** (`trig_01JS1VWf6yada5x6maPMAz
    takes **38 s**. Before believing a slow or failing gate, check whether something else is
    writing its inputs; an agent that needs to run a build should do it in `git worktree`.
 
+   **DO NOT RUN THE WHOLE-STATION GATES WHILE AGENTS ARE RUNNING.** Session 4c: two agents
+   both died at ~70 minutes, three minutes apart, with no crash signature and nothing in the
+   kernel log -- one produced zero commits and the other was cut off mid-flight. The cause was
+   contention from the MAIN agent: `rooms.py` pinned at 99% CPU for 24 minutes, plus
+   `--gate-frames --rerender` and deck renders, on a four-core box, while they were trying to run
+   `walkable.py` and `deck.py --sweep`. `deck.py --sweep`, `walkable.py`, `rooms.py` and
+   `--gate-frames --rerender` are each minutes of 100% CPU and are exactly what an agent needs to
+   verify itself. While agents run, do cheap work: read, profile one unit, write. The rule is not
+   "use fewer agents".
+
+   **A SLOW SUITE IS A BUG UNTIL PROFILED, NOT A CONTENT COST.** Same session: `rooms.py` went
+   from 2 minutes to 24 and it looked like the wall-plating merge had tripled the geometry. It was
+   one cache key -- `interior.load()` returns a fresh dict every call, so an `id(schema)`-keyed
+   memo missed every time and every room paid 11.2 s rebuilding the station's 3,414 cells.
+   Profiling ONE room build found it in a minute. Two sessions have now lost time to a slow gate
+   that read as a regression in the thing it was testing.
+
    **Their work is not done when they return it.** In three runs: one agent's output was left
    uncommitted at a session boundary, one wrote entries into a module that did nothing until
    four lines were added to `export_scene`, and one shipped gates that had to be replaced.

@@ -1,13 +1,129 @@
 # Project State
 
-**Last updated:** 2026-07-31 · **Session 4b** — **the station has a POLICE FORCE, and the walls stopped being one flat panel** · **3z** — the corridors have people WALKING in them (5,966 m measured), a lift is a vehicle, the register is routable, 23 more places assemble as themselves, and the machinery stopped being boxes · **3y** — the generic-bay substitution is measured and declared: do NOT swap, compose · **3x** — the doors close, 1,572 open edges → 0 · **3w** — the frame budget measured for real · **3v** — W1/W2 done, 66/66 decks assemble
+**Last updated:** 2026-08-01 · **Session 4c** — **the station is INTERACTABLE, the port is on a wall, and the 24-minute suites were one bad cache key** · **4b** — a police force, friction in metres, the plated shell, the fitting-reach fix
 
 ## Session 4b — THE STATION HAS A POLICE FORCE, AND THE WALL STOPPED BEING ONE FLAT PANEL
 
 ### 1. A 1,181-LINE GAZETTEER FILE HAD ZERO READERS
 
 `grep -rl LAW-CRIME-DOWNBELOW station/ tools/` returned **nothing**, while `FACTIONS.md`,
-`LIFE-SUPPORT-AND-INDUSTRY.md` and `TRAFFIC-AND-CUSTOMS.md` had 23 readers between them. The file
+`LIFE-SUPPORT-AND-INDUSTRY.md` and `TRAFFIC-AND-CUSTOMS.md` had 23 readers be## Session 4c — READ THIS FIRST: THE TIMEOUTS WERE ONE LINE, AND TWO AGENTS DIED OF ME
+
+### 1. `rooms.py` took 24 MINUTES and the cause was a cache key I wrote
+
+`interior.load()` **reads and parses the schema afresh on every call** — `load()[0] is load()[0]`
+is `False`. `security.outermost_decks` memoised on `id(schema)`, so it **missed every time**;
+`populace.populate` calls `security.presence_at` once per room; `presence_at` calls
+`outermost_decks`; and that calls `navigation.cell_plan`, which walks every sector, ring and deck to
+build the station's 3,414 streaming cells.
+
+**Profiled on one generic room build: 11.2 seconds of 11.3 were `outermost_decks → cell_plan`.**
+
+| | before | after |
+|---|---|---|
+| one room build | 4.88 s | **1.79 s first, 0.02 s after** |
+| `station/rooms.py` | **24 min** (killed at every timeout) | **61 s**, 755/755 |
+
+**And the gate I wrote for that memo passed the whole time.** It calls `presence_at` fifty times
+with the *same schema object*, so the `id` key hit; it could not see the real caller, which passes
+`None`. **A memo gate has to be exercised through the path production uses**, not through a
+convenient one. This is the same defect class as an assertion that cannot fail, one level down.
+
+If a suite in this project suddenly takes minutes instead of seconds, **profile one unit of work
+before believing anything about the content**. Two sessions have now lost time to a slow gate that
+looked like a regression in what it was testing.
+
+### 2. TWO AGENTS DIED AND IT WAS CONTENTION I CAUSED
+
+Both stopped at **00:40 and 00:43**, three minutes apart, ~70 minutes after launch. No OOM in the
+kernel log, no crash signature. The dome agent produced **0 commits**; the interaction agent
+committed once at 00:14 and was cut off mid-flight at 00:43 with 207 files touched.
+
+The cause is in CLAUDE.md already and I did it anyway: **two agents plus the main agent, all running
+the same heavy gates on four cores.** I had `rooms.py` pinned at 99% CPU for 24 minutes (see §1),
+plus full `--gate-frames --rerender` sweeps and deck renders, while they were trying to run
+`walkable.py` and `deck.py --sweep`. Their gates would have taken several times their normal
+wall-clock, and ~70 minutes of budget bought them almost nothing.
+
+**The rule, and it is not "use fewer agents":** while agents are running, **do not run the whole-
+station gates**. Do small, cheap work — reading, single-room profiling, writing — and leave the
+cores to them. `deck.py --sweep`, `walkable.py`, `rooms.py` and `--gate-frames --rerender` are all
+minutes of 100% CPU and they are exactly what an agent needs to verify itself.
+
+### 3. NOTHING IS INTERACTABLE EXCEPT THE DOOR — CLOSED
+
+Salvaged from the agent that was cut off; it was its one committed increment and it is complete.
+
+`directory.PLACES["interacts"]` has said what a player can use in every room since layer 1 — **357
+declarations over 125 places** — and had two readers, both of which used it to decide where to stand
+a box. `station/interact.py` derives a **bounded verb set from that data rather than inventing one**:
+a row per value of `rooms.PROP_KIND`, overridden on the register's own head noun where name beats
+shape. Both tables are asserted **total** (all 99 tokens resolve) and **minimal** (delete any
+override and at least one token changes verb). **Eight verbs** fall out. `tread` is declared
+unpressable — a catwalk is something you walk on.
+
+**The gate, and it is the W-track's next milestone in one line:**
+
+> **PASS use** — a body walks up to the docking clamp in `docking_bays`, is told
+> **"[E] operate the docking clamp"** and USES it: `operate` from 1.26 m after 9 prompted frames,
+> and the object moved 4.0 mm. 15 interactables wired on this deck, 13 pressable
+> (open 5 / operate 7 / serve 1 / tread 2).
+>
+> *control:* with 800 triangles of `docking_bays__prop_docking_clamp` deleted **from the render mesh
+> only** — the collision box stays, so the body walks the identical route to the identical place —
+> the engine wires 14 instead of 15, the prompt reads `-`, and `use_count` is 0.
+
+**`interact.py --audit` FAILS on current content, and that is the finding:** 259 of 357 declared
+uses resolve to a group the place actually emits, and **the split is total** —
+`built generic 259/259, built bespoke 0/98`. Of the 98, **26 are built under the module's own name**
+(`bar_stool` for `stool`, `cc_console_face` for `console`) and **72 were never built at all** —
+`babcom_terminal` is declared in nine places and built in none. INV-247.
+
+### 4. The port is on a wall, and the era is with it
+
+`traffic.py` modelled 55 movements a day and **nothing rendered any of it**. `signage.arrivals_board`
+reads `traffic.arrivals` directly, so the board cannot say something the port is not doing; at 10:00
+it lists **1048 ASIMOV-CLASS LINER BAY**, the liner the manifest actually scheduled.
+`signage.notice_board` carries `broadcast`'s ISN and Ministry of Peace surfaces.
+
+**The sharpest gate of the two sessions, because it is about CONTENT and not geometry:** render the
+same corridor at **S2E01 and the Ministry of Peace is not on it** — and it does not go blank either,
+it falls back to the authority-1 civic text, because a dark panel in a customs hall reads as a broken
+prop. `deck.py` 32/32 → **40/40**.
+
+**A defect the render caught and no assertion would have:** `signage.board()` builds with its own
+`MOUNT_H_M` already in it, and I added it a second time — the board hung at **4.18 m**, over
+everyone's head. A board on a wall at the wrong height still looks like a board on a wall.
+
+### 5. `qtr_command` could light 10.3% of its own floor
+
+`quarters.py` declared it *"takes the corridor's own MEASURED fittings … and takes the split with
+them"* and was taking half of it: `interior_kit.corridor_section` lights **both** wall faces, and a
+unit lit one. Plus `int(run / pitch)` truncated **1.9 into one lamp** for a 7.5 m depth.
+
+**6 → 14 fittings, 10.3% → 100.0%**, `--gate-lighting` **18/21 → 19/21**, 1,224 triangles.
+It blew the blacks out (`crushed` ×0.03) and the fill absorbed it: swept 1.521 → 0.150, **1.050 is
+the only value that passes both** level and shape. `--gate-frames` back to **14 pass / 9 fail**.
+INV-246.
+
+### NEXT SESSION — in priority order
+
+1. **The 72 declared interactables that were never built.** `interact.py --audit` names every one.
+   `babcom_terminal` in nine places is the single biggest row and `broadcast.BABCOM_PLACES` already
+   says where it goes.
+2. **The 26 built under the module's own name.** Not missing content — a naming mismatch between
+   the register's token and the module's span name. Cheapest 26 of the 98.
+3. **The three observation dome interiors.** `station/bespoke.py` carries a full spec written by a
+   previous agent, including the trap: `dressable_extent` returns a bounding box, which is right for
+   every rectangular plan and **wrong for a circle** (corners at 1.41 R, through the window ring).
+   Dome 1 **is** C&C's dome and `comand and contorl.webp` is authority 1 **from inside it**.
+4. **`--gate-frames` 14/9.** `zocalo` (`crushed` ×0.01) and bespoke `hospitality` (p5 ×1.88) are the
+   two closest. `plant` is a lighting-design problem, not an exposure one — leave it.
+5. **`customs_north` at 59.7% floor coverage is NOT a defect** — `customs.py` asserts its own state
+   and records the withdrawn experiment (*"210 coffers given lights put the frame at 18.9× its
+   reference"*). The gate and the module disagree and someone has to rule.
+
+tween them. The file
 holds the force's size and shape, what an officer wears and carries, where the posts are, patrol
 patterns, response times, the escalation ladder, the brig, law, the black market and Downbelow —
 and the owner's scope brief names *"customs and immigration, law enforcement, crime, the black
