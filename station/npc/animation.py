@@ -869,6 +869,41 @@ NOMINAL = "__nominal__"
 DRESSED = True
 
 
+def _groups_for_parts(parts, spans):
+    """The material group each PART lands in, resolved BY TRIANGLE OFFSET.
+
+    THE OFF-BY-ONE THAT DRESSED EVERY NPC WRONG, and it was latent for as long
+    as costumes have had trim. This used to be
+
+        groups = tuple(g for g, _lo, _hi in m.spans)
+
+    which assumes one span per part and positional correspondence between the
+    two lists. `costume._add_split` breaks both: a torso with a contrasting
+    yoke emits TWO spans for ONE part, so from that part onward every group is
+    shifted. Measured on an unmodified tree, `rig("human", "4242")` gives
+    **18 parts and 19 groups**, and the mapping read:
+
+        head -> npc_skin_neck          arm  -> npc_cloth__civ_cool_dark
+        hair -> npc_leather__civ_boot  belt -> npc_skin_hair
+
+    Boot leather on the hair, cloth on the arms, and the head wearing the neck.
+
+    A span is a TRIANGLE RANGE, so the only sound way to ask which group a part
+    belongs to is where its triangles start. Last match wins, which is the
+    convention `export_scene.per_triangle` and `dressing.machine` already use
+    for nested spans: the innermost span is appended last and overrides.
+    """
+    out, off = [], 0
+    for _n, _v, t in parts:
+        hit = ""
+        for name, lo, hi in spans:
+            if lo <= off < hi:
+                hit = name
+        out.append(hit)
+        off += len(t)
+    return tuple(out)
+
+
 def rig(species: str, npc_id: str, lod: int = 0) -> Rig:
     """Build one resident and rig it. Pure in (species, npc_id, lod)."""
     key = (species, npc_id, lod)
@@ -932,7 +967,7 @@ def rig(species: str, npc_id: str, lod: int = 0) -> Rig:
     parts0 = tuple((n, tuple(v), tuple(t)) for n, v, t in m0.parts)
     nparts0 = tuple((n, tuple(v), tuple(t)) for n, v, t in nude0.parts)
     nparts = tuple((n, tuple(v), tuple(t)) for n, v, t in nude.parts)
-    groups = tuple(g for g, _lo, _hi in m.spans)
+    groups = _groups_for_parts(parts, m.spans)
     # The skeleton is measured off the NUDE unstooped figure -- see above --
     # while the binding partitions the DRESSED one, which is the mesh that
     # actually gets skinned.

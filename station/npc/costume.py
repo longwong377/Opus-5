@@ -1722,10 +1722,22 @@ def group_name(slot, fabric):
 
 # Which costume slot each body part becomes when dressed. Exposed parts keep
 # their skin material; everything else is cloth or leather.
+# `None` means "not a clothing slot -- emit it under the species' own surface",
+# which `_dress` does as `npc_{surface.kind}_{name}`. That is right for a neck,
+# a head and a hand: they are skin, and `npc_skin_head` resolves to the
+# `npc_skin` material family by the substring rule.
+#
+# IT WAS WRONG FOR HAIR AND FOR EVERY CREST. `npc_hair` is a material in the
+# library with its own measured colour, and hair falling through this table
+# became `npc_skin_hair` -- which resolves to `npc_skin` and rendered every
+# head of hair in flesh tone. The crests are the same: a Centauri crest is
+# hair, not scalp. Session 4e; the body agent found it while giving the figures
+# hair to begin with, and it had been latent for as long as hair existed.
 PART_SLOT = {
     "torso": "npc_cloth", "arm": "npc_cloth", "leg": "npc_cloth",
     "neck": None, "head": None, "hand": None, "foot": "npc_leather",
-    "hair": None, "brow": None, "centauri_crest": None, "minbari_crest": None,
+    "hair": "npc_hair", "brow": None,
+    "centauri_crest": "npc_hair", "minbari_crest": "npc_hair",
     "pakmara_keel": None, "pakmara_tendrils": None, "abbai_fin": None,
 }
 
@@ -2004,6 +2016,14 @@ def _build_mesh(species, npc_id, lod=0, chain=None, datum=ERA_DATUM,
             _add_split(out, v, tris, pred,
                        group_name("npc_cloth", c.cloth),
                        group_name("npc_cloth_trim", c.trim), name)
+        elif slot == "npc_hair":
+            # NO FABRIC SUFFIX. `npc_hair` is ONE material in the library with
+            # its own measured colour -- hair is not a garment and does not
+            # come in the wearer's cloth. `group_name(slot, fab)` would emit
+            # `npc_hair__civ_cool_dark`, which resolves to `npc_hair` by the
+            # substring rule and so would look right while multiplying the
+            # span names by the size of the wardrobe.
+            out.add(v, tris, "npc_hair", name)
         else:
             fab = c.leather if slot == "npc_leather" else c.cloth
             out.add(v, tris, group_name(slot, fab), name)
