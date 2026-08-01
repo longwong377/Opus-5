@@ -255,15 +255,29 @@ def has_landing(schema, profile, nodes, key, z_m=None):
 
     A gate must ask whether the CONNECTION can be made, never whether a
     generator file is on disk.
+
+    AND THE DECK NUMBER IS A NAME, NOT AN INDEX. The second version of this
+    function compared the register's `deck` straight against `len(stack)` and
+    reported 24 clusters unreachable -- including all twelve of grey's, which
+    carry the deck numbers the SHOW uses: 24, 26, 30, 40 ... 80, on a ring whose
+    generated stack is 23 deep. `deck.deck_index` has existed for exactly this
+    since the session that found 14 of 67 decks failing to assemble, and says so
+    in its own docstring: *"a show-facing deck NUMBER is a name, and using a
+    name as an index is the same mistake as placing a corridor at a z-cluster's
+    bucket label."* `_ring_cells` goes through it and this did not.
     """
     sec, ring, dk, _z = key
+    try:
+        idx = D.deck_index(schema, profile, sec, ring, dk)
+    except Exception:                                          # noqa: BLE001
+        return False
     try:
         stack = it.decks_in_ring(
             schema, profile, sec, ring,
             z_m=column_z(nodes, sec) if z_m is None else z_m)
     except Exception:                                          # noqa: BLE001
         return False
-    return 0 <= dk < len(stack)
+    return 0 <= idx < len(stack)
 
 
 def edges(nodes, schema, full_ring=False, profile=None):
@@ -351,7 +365,25 @@ def edges(nodes, schema, full_ring=False, profile=None):
     # cluster z reaches every deck at the z the deck actually exists at, which
     # is also how a station this size is really laid out -- lift cores where the
     # decks are, not one shaft for eight kilometres.
+    # THE DRUM IS NOT REACHED BY A LIFT AND SHOULD NOT BE ASKED FOR ONE. Green
+    # ring 1 is the habitat drum -- an open 8 km barrel with its own ground,
+    # listed in `deck.NOT_RING_DECKS` -- so `decks_in_ring` correctly returns no
+    # stack and `has_landing` correctly says no. What reaches it is the SPOKE:
+    # `interior.drum_spokes` builds them, `radial_tubes` and `drum_tram` are
+    # register entries on it, and a body arrives on the drum's ground rather
+    # than at a landing. Modelling it as a failed lift left the station in two
+    # pieces and named the wrong cause.
     for sp in spines:
+        if (sp[1], sp[2]) in D.NOT_RING_DECKS:
+            out.append({
+                "a": sp, "b": ("column", sp[1], sp[2], zc0(nodes, sp[1])),
+                "kind": "spoke", "built": _SPOKE_WAY_EXISTS, "length_m": 0.0,
+                "why": ("the drum is reached by its spokes, not by a lift: "
+                        + D.NOT_RING_DECKS[(sp[1], sp[2])][:60]
+                        if _SPOKE_WAY_EXISTS else
+                        "no walkable spoke passage exists"),
+            })
+            continue
         for member in [k for k in keys if k[:3] == sp[1:]][:1]:
             z = column_z(nodes, sp[1])
             landed = (_LIFT_EXISTS
