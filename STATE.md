@@ -1,6 +1,6 @@
 # Project State
 
-**Last updated:** 2026-08-01 · **Session 4d** — **the bespoke rooms' interactables were never unbuilt, they were unnamed: 259/357 → 284/357** · **4c** — **the station is INTERACTABLE, the port is on a wall, and the 24-minute suites were one bad cache key** · **4b** — a police force, friction in metres, the plated shell, the fitting-reach fix
+**Last updated:** 2026-08-01 · **Session 4e** — **the naming-mismatch class is CLOSED: built-but-misnamed 26 → 0, resolving 302/357** · **4d** — **the bespoke rooms' interactables were never unbuilt, they were unnamed: 259/357 → 284/357** · **4c** — **the station is INTERACTABLE, the port is on a wall, and the 24-minute suites were one bad cache key** · **4b** — a police force, friction in metres, the plated shell, the fitting-reach fix
 
 ## Session 4b — THE STATION HAS A POLICE FORCE, AND THE WALL STOPPED BEING ONE FLAT PANEL
 
@@ -139,13 +139,43 @@ declared in nine places and built in none"* was **wrong** — `quarters.py` emit
 every unit. And the near/absent split moves with the tables: *"26 built under another name, 72 never
 built"* is now **14 and 59**.
 
+### 7. THE NAMING-MISMATCH CLASS IS CLOSED — near-miss 26 → 0
+
+Six more `PROVIDES` rows, in `customs.py` and `hospitality.py`, each verified against the module's
+own code for the span.
+
+| | 4c | 4d | **4e** |
+|---|---|---|---|
+| declared uses resolving | 259 / 357 | 284 / 357 | **302 / 357** |
+| `built bespoke` | 0 / 98 | 25 / 98 | **43 / 98** |
+| places resolving NONE | 26 | 13 | **5** |
+| **built but misnamed** | **26** | 14 | **0** |
+
+**`near` reaching zero is the finding.** Every one of the 55 declared uses still unresolved is
+**genuinely absent** rather than merely misnamed — a different and far more expensive kind of work.
+`--gate` fails if that number comes back.
+
+**The row a mechanical search could not have proposed**, and it shows `near_miss`'s limit:
+`bar_servery` → `bar_counter` share no underscore segment. The module's own comment states the
+identity — *"`bar_servery`, not `bar_counter`: `rooms.py` emits `prop_bar_counter` … and
+`bar_counter` is a SUFFIX of it"*. The rename was deliberate and written down at the time.
+**Reading the module beat searching it.**
+
+**Two deliberately NOT mapped**, and the reasons are the point. `bar_display` → `menu_display`: it
+is *"the amber display, on the far wall"* beside a dartboard, as likely a scoreboard as a menu, and
+mapping it would move the audit number **on a guess**. `council_chair_seat` → `delegate_bench`: the
+module builds a **chair** where the register declares a **bench** — that disagreement belongs to
+whoever owns the register. INV-249.
+
 ### NEXT SESSION — in priority order
 
-1. **The remaining 14 built under another name.** `interact.py --audit` names them and the pattern
-   is now established — add a `PROVIDES` row to the owning module and verify it against that
-   module's own comment on the span. `customs` (`customs_desk`, `bollard`), `hospitality`
-   (`stool`, `dartboard`, `pendant_lamp`, `table`) and `council_chamber` are what is left. Cheapest
-   remaining work by a distance.
+1. **`_HEAD_VERB` has no per-token override, and a player can now see it.**
+   `bar_pendant_lamp` resolves and its verb is `read` — the prompt reads **"[E] read the pendant
+   lamp"**. `_HEAD_VERB["lamp"] = "read"` is right for `atmosphere_status_lamp` and wrong for
+   `pendant_lamp`; the shape rule underneath gives `tread`, no better. `interact._selftest` has
+   reported this collision since it was written and there are **five** of them (`bench`, `control`,
+   `lamp`, `screen`, `terminal`). Smallest fix: let `_HEAD_VERB` take a full token as well as a
+   head noun, keeping the minimality assertion. Cheapest remaining work, and it is user-visible.
 2. **THE CRAFT OF THE THINGS NOW USABLE.** `docs/engine-4c-quarters-interactables.png`: the BabCom
    terminal is a **flat coloured rectangle** — no bezel, no screen, no relief. It is usable and it
    is not built. `signage.py` already has the construction that would fix it (frame, recessed lit
