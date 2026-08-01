@@ -5338,3 +5338,52 @@ gazetteer's sentence is true in the build.
 
 **What would overturn it:** any scene establishing that plant spaces are inaudible from the next
 compartment, or a figure for bulkhead construction.
+
+## INV-270 — the dialogue role register table
+
+**What.** `station/dialogue.py::_ROLE_REGISTER`, mapping each of `schedule.ROLES` to a speech
+register (formal / plain / blunt).
+**Why.** An exchange has to be phrased by somebody, and the alternative to a table keyed on the
+register's own roles is a fourth vocabulary. Asserted TOTAL against `schedule.ROLES` (19) and
+`ROLE_WEIGHTS` (15), and MINIMAL, so a row that changes nothing cannot accumulate.
+**Overturned by.** Any reference frame establishing how a named role actually speaks.
+**Authority 5.**
+
+## INV-271 — the personal salience floors and `DRAW_FLOOR`
+
+**What.** The floors that keep a personal topic (meal, home) reachable when a station event
+(a liner berthing, an ISN bulletin) is scoring far higher.
+**Why.** Topic selection is a competition scored off simulation numbers -- at the north hall
+twelve minutes after an Asimov-class liner berths, `port` scores 18.28 against `news` 1.40 --
+and without a floor every person on the station talks about the same thing. The control raises
+every floor above the events and the liner day and the quiet day read the same, which is what
+the floors exist to prevent.
+**Overturned by.** A better model of what people actually mention.
+**Authority 5.**
+
+## INV-272 — the species voice bands
+
+**What.** Three bands over 15 species in `_SPECIES_VOICE`.
+**Why.** Species differ in how they address a stranger and the show supports the direction
+without giving numbers. The control flattens the table and the 15 species collapse from 3 bands
+to 1, which is how the band is shown to be doing work.
+**Overturned by.** Dialogue transcripts per species.
+**Authority 5.**
+
+## INV-273 — the phrasings
+
+**What.** The sentence frames each topic is rendered through.
+**Why.** Everything inside a phrasing's braces is a number or a name this repository computes --
+"17 minutes a circuit, 174 on duty" is `security.beat('blue')` and `security.on_duty(13.0)`. The
+frame around them is written and is the invented part, stated as such.
+**Overturned by.** Scripted lines from the show for the same situation.
+**Authority 5.**
+
+## INV-274 — `talk_m` and the 45-degree cone
+
+**What.** A conversation is offered within 3.0 m and inside a 45 degree cone.
+**Why.** `interact.gd`'s reach is 2.4 m (INV-232) and talking should start slightly further out
+than touching. The cone stops a prompt appearing for somebody behind you. Measured in the
+runtime gate: first offered at 2.75 m, 0/0 range and cone violations over every offer.
+**Overturned by.** Play testing.
+**Authority 5.**

@@ -109,14 +109,21 @@ PRESSABLE = tuple(v for v in VERBS if v != "tread")
 # drawer runs out, a screen changes -- all of them are the prop moving or
 # changing, and the prop is built.
 #
-# `sit`, `rest` and `serve` are deliberately NOT here, and the reason is worth
-# keeping: what responds to those is a BODY, not a prop. Sitting needs the
-# player's own animation (`npc/animation.py` has `sit_clip` and the player has
-# no rig); being served needs whoever is behind the counter to turn round and
-# talk, which needs dialogue. Listing them as responding would make `use()`
-# return true and nothing happen, which is the failure that looks like success
-# -- so the runtime reads this and reports `response=none` for them instead.
-RESPONDS = ("open", "operate", "read", "store")
+# `sit` and `rest` are deliberately NOT here, and the reason is worth keeping:
+# what responds to those is a BODY, not a prop. Sitting needs the player's own
+# animation -- `npc/animation.py` has `sit_clip` and the player has no rig.
+# Listing them as responding would make `use()` return true and nothing happen,
+# which is the failure that looks like success, so the runtime reads this and
+# reports `response=none` for them instead.
+#
+# `serve` WAS IN THAT LIST UNTIL SESSION 4e, excluded because "being served
+# needs whoever is behind the counter to turn round and talk, which needs
+# dialogue". `station/dialogue.py` is that dialogue: `serve_response()` puts a
+# named person behind 29 counters across 27 register places, each drawn from
+# that room's own regulars, saying something derived from the hour, their
+# species rhythm, their trade and what the port is doing. So the exclusion is
+# lifted, and it is lifted because the thing it was waiting for arrived.
+RESPONDS = ("open", "operate", "read", "store", "serve")
 
 # The SHAPE rule. One row per distinct value of `rooms.PROP_KIND`, which is the
 # classification `dressing.machine()` already builds these objects from.

@@ -637,6 +637,69 @@ def check_flight(flight_path, perturb=0.0, quiet=False):
     return ok
 
 
+def docking_envelope(schema=None, bay=None):
+    """What it costs a Starfury to hold formation off a rotating cobra bay.
+
+    THIS IS A NEGATIVE RESULT AND IT IS THE USEFUL KIND. Two guidance laws were
+    written against `station/physics/docking.py`'s own `DockingBay` and neither
+    converged: velocity matching onto the moving approach point settled into a
+    stable limit cycle 690 m out at 129 m/s relative, with the throttle pinned
+    at 1.00 the whole time. Pinned at 1.00 is the tell. The craft was not being
+    flown badly; it was out of thrust.
+
+    A body holding station at radius R off a hub turning at omega is being
+    accelerated inward at omega^2 R for as long as it stays there. It is not a
+    manoeuvre with a delta-v -- it is a CONTINUOUS acceleration, and the numbers
+    below say what fraction of the airframe's total it eats. Beyond
+    `amax / omega^2` there is no fraction: the craft cannot follow the circle at
+    all, whatever it does.
+
+    Everything here comes out of the tested modules -- `rotating_frame` for the
+    frame, `docking.DockingBay` and `docking.spin_match_velocity` for the bay,
+    `starfury.max_linear_accel` for the airframe. `docking.py` had no importer
+    outside its own tests before this.
+    """
+    sys.path.insert(0, os.path.join(STATION, "physics"))
+    import docking  # noqa: E402  -- its first importer outside its own test
+
+    if schema is None:
+        schema = yaml.safe_load(open(os.path.join(STATION, "schema/station.yaml")))
+    if bay is None:
+        bay = cobra_bay_geometry(schema=schema)
+    drum = from_schema(schema)
+    ship = Starfury()
+    amax = ship.max_linear_accel()
+    w2 = drum.omega * drum.omega
+    r = bay["mouth_radius_m"]
+
+    d = docking.DockingBay(drum, r, bay["z_m"], bay["phase_rad"])
+    rows = []
+    for standoff in (0.0, 25.0, 50.0, 100.0, 200.0, 227.0, 300.0):
+        R = r + standoff
+        need = w2 * R
+        v = docking.spin_match_velocity(d, 0.0, standoff)
+        rows.append({
+            "standoff_m": standoff,
+            "radius_m": R,
+            "station_keeping_speed_m_s": norm(v),
+            "centripetal_accel_m_s2": need,
+            "fraction_of_max_thrust": need / amax,
+            "feasible": need < amax,
+        })
+    return {
+        "max_linear_accel_m_s2": amax,
+        "omega_rad_s": drum.omega,
+        "bay_radius_m": r,
+        # amax = omega^2 R at the limit. Beyond it the craft cannot hold the
+        # circle even with every thruster open and nothing left over to steer.
+        "max_formation_radius_m": amax / w2,
+        "max_standoff_m": amax / w2 - r,
+        "habitat_floor_cost_m_s2": w2 * drum.floor_radius,
+        "rows": rows,
+        "axial_alternative_m_s": docking.axial_approach_is_trivial(drum, 0.0),
+    }
+
+
 def godot_binary():
     """The same search `station/walkable.py` does, and the same message."""
     for c in [os.environ.get("GODOT", ""),
@@ -709,6 +772,9 @@ def main():
                          "the flyable scene's scene.json")
     ap.add_argument("--report", action="store_true",
                     help="print the launch the engine has to reproduce")
+    ap.add_argument("--docking-envelope", action="store_true",
+                    help="what holding formation off a rotating cobra bay "
+                         "costs a Starfury, and where it stops being possible")
     ap.add_argument("--check", metavar="FLIGHT_JSON",
                     help="compare an engine flight against the tested modules")
     ap.add_argument("--compose", metavar="FLIGHT_JSON",
@@ -756,6 +822,36 @@ def main():
 
     if a.gate:
         raise SystemExit(0 if gate() else 1)
+
+    if a.docking_envelope:
+        did = True
+        e = docking_envelope()
+        print(f"Starfury max linear accel      {e['max_linear_accel_m_s2']:8.2f} m/s^2")
+        print(f"cobra bay radius               {e['bay_radius_m']:8.2f} m")
+        print(f"holding station at the habitat FLOOR costs "
+              f"{e['habitat_floor_cost_m_s2']:.2f} m/s^2 -- which is 1.000 g, "
+              f"by construction, because that is what the spin is set to make")
+        print()
+        print(" standoff   radius   station-keeping   centripetal   "
+              "fraction of   can a")
+        print("      (m)      (m)       speed (m/s)      (m/s^2)     "
+              "max thrust   Starfury?")
+        for r in e["rows"]:
+            print(f" {r['standoff_m']:8.0f} {r['radius_m']:8.1f} "
+                  f"{r['station_keeping_speed_m_s']:17.2f} "
+                  f"{r['centripetal_accel_m_s2']:13.2f} "
+                  f"{r['fraction_of_max_thrust']:14.1%}   "
+                  f"{'yes' if r['feasible'] else 'NO'}")
+        print()
+        print(f"THE CEILING: {e['max_formation_radius_m']:.1f} m of radius, i.e. "
+              f"{e['max_standoff_m']:.1f} m of standoff. Beyond it omega^2 R "
+              f"exceeds the airframe's")
+        print("maximum and no guidance law helps -- the craft cannot follow the "
+              "circle at all.")
+        print(f"On the spin axis the tangential speed to match is "
+              f"{e['axial_alternative_m_s']:.1f} m/s, which is why "
+              f"docking.py says")
+        print("the forward docking sphere exists.")
 
     if a.report:
         did = True

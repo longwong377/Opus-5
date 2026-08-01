@@ -48,6 +48,7 @@ compared with the first, and the comparison is the deliverable.
 import math
 import os
 import sys
+from functools import lru_cache
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
 if _HERE not in sys.path:                                    # pragma: no cover
@@ -310,10 +311,29 @@ def liner_today(day: int = 0) -> bool:
     return _u("liner", day) < rate
 
 
+# One day's manifest is ~52 rows of pure arithmetic over `day`, and it is
+# recomputed by every caller that wants to know what is in port. Measured by the
+# dialogue agent: **1.7 s a call, and 31 s of a 31 s run** -- because an
+# exchange asks the port what berthed, and there are a lot of exchanges.
+#
+# It is a PURE FUNCTION OF `day`, so the memo is sound rather than a risk:
+# `_u(...)` is a blake2b of its arguments and nothing here reads the clock or a
+# mutable global. 32 days is a month of station time and about 50 kB.
+#
+# The alternative the agent shipped -- a caller-side memo in `dialogue.py` --
+# works and is in the wrong place: every other caller goes on paying. Six
+# exchanges went 7.06 s -> 0.75 s cold and 0.01 s warm on the caller-side memo
+# alone; this puts that in front of `traffic.py`'s other readers too.
+@lru_cache(maxsize=32)
 def arrivals(day: int = 0) -> list:
     """One station day's arrivals: when, what, where it berths, how many aboard.
 
     Deterministic in `day`. Returns dicts sorted by hour.
+
+    MEMOISED -- see above. The returned list is SHARED between callers, so a
+    caller that mutates it corrupts every later call. Nothing does today and
+    the self-test asserts the identity so that a caller which starts to would
+    be found by a test rather than by a wrong manifest three modules away.
     """
     n = int(round(manifest_arrivals_per_day()))
     out = []
@@ -613,6 +633,20 @@ def _selftest(out=print):                                       # noqa: C901
         DAY_BANDS = tuple((h0, h1, 1.0, w) for h0, h1, _r, w in DAY_BANDS)
         flat_pk = max(day_curve(i / 60.0) for i in range(24 * 60))
         flat_tr = min(day_curve(i / 60.0) for i in range(24 * 60))
+        # A MEMO DEFEATS EVERY CONTROL THAT PATCHES A GLOBAL THE MEMOISED
+        # FUNCTION READS, and this one caught it on the first run: with
+        # `arrivals` newly `@lru_cache`d, flattening `DAY_BANDS` and asking
+        # again returned the SHAPED day out of the cache and the gate reported
+        # "3.50 against 3.50 -- DOES NOT FIRE". The control was right and the
+        # cache made it blind.
+        #
+        # This is the same defect class CLAUDE.md already records for
+        # `movements_per_day(berth_h=MEAN_BERTH_HOURS)`, whose default bound at
+        # def time so the control could set the module global and change
+        # nothing. A cache is that, generalised: any negative control that
+        # patches state a cached function reads MUST clear the cache, and any
+        # cache added to this module must be cleared here.
+        arrivals.cache_clear()
         flat = arrivals(0)
         f_morning = sum(1 for x in flat if 8.0 <= x["hour"] < 12.0)
         f_night = sum(1 for x in flat if 0.0 <= x["hour"] < 4.0)
@@ -636,6 +670,7 @@ def _selftest(out=print):                                       # noqa: C901
               f"{flat_ratio:.2f} against {shaped_ratio:.2f}")
     finally:
         DAY_BANDS = keep
+        arrivals.cache_clear()          # and restore the real day for later gates
 
     keeph = MEAN_BERTH_HOURS
     try:
@@ -650,6 +685,30 @@ def _selftest(out=print):                                       # noqa: C901
         check(ctl_c, "the sourced-band gate fires at the wrong turnaround")
     finally:
         MEAN_BERTH_HOURS = keeph
+
+    # -- THE MEMO IS SOUND, AND THE SHARING IS THE RISK ---------------------
+    # `arrivals` is `@lru_cache`d because it cost 1.7 s a call and 31 s of a
+    # 31 s dialogue run. That is only safe while it stays a pure function of
+    # `day` AND no caller mutates what it hands back -- the list is SHARED.
+    _a0, _a1 = arrivals(0), arrivals(0)
+    check("arrivals is memoised -- the same day returns the SAME list",
+          _a0 is _a1)
+    check("...and two different days do not", arrivals(0) is not arrivals(1))
+    check("...and the memo did not change the manifest",
+          [r["hour"] for r in arrivals(3)]
+          == sorted(r["hour"] for r in arrivals(3)))
+    # The control on the sharing hazard, run rather than described: mutate the
+    # returned list and the next call sees it. That is the cost of the memo and
+    # it is stated here so a caller who starts mutating is caught by this
+    # rather than by a wrong manifest three modules away.
+    _n0 = len(arrivals(7))
+    arrivals(7).append({"__probe__": True})
+    _shared = len(arrivals(7)) != _n0
+    arrivals(7).pop()
+    check("...and a caller that MUTATES the list corrupts every later call, "
+          "which is why nothing may", _shared,
+          "the list is copied per call -- then the memo is not what this "
+          "assertion describes")
 
     if _FAILED:
         out("")

@@ -254,9 +254,8 @@ and not grow them, and this is one port's own test rather than a new scored dime
 
 ## What is not done
 
-* **Docking.** `station/physics/docking.py` has `DockingBay`, `closing_rate`,
-  `contact_is_safe` and `spin_match_velocity`, all tested, and none of it is wired. The
-  return leg is the obvious next increment and the module it needs already exists.
+* **Docking**, and the attempt produced a number worth more than a half-working
+  approach — see below.
 * **No cockpit interior.** TAB switches to a cockpit eye point derived from
   `starfury_geometry.cockpit_volume()`, but there is no instrument panel to look at —
   the canopy and its glazing are modelled and the tub is empty.

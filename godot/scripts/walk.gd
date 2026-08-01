@@ -45,6 +45,10 @@ extends Node3D
 var _doors: Node3D
 ## The cast list written beside the deck mesh -- see `station/walkable.py`.
 @export var actors_path: String = ""
+## The dialogue sidecar -- `station/dialogue.write_sidecar`'s output, one row
+## per person the deck baked, carrying what they say. Empty disables talking,
+## exactly as an empty `actors_path` disables people.
+@export var dialogue_path: String = ""
 ## The corridor crowd: placements against the shared body library, and the
 ## library itself. Separate from `actors_path` because they are different
 ## things -- an actor is baked into the deck mesh, a walker is an instance.
@@ -70,6 +74,7 @@ var _lights: Node3D
 ## The interface -- see `scripts/hud.gd`. Built after the player, because it is
 ## the player's own readout, and NOT built in the headless walk test.
 var _hud
+var _talk: Node3D = null
 
 var _player: CharacterBody3D
 var _static: StaticBody3D
@@ -91,6 +96,8 @@ func _ready() -> void:
 		door_travel_m = float(args["door-travel"])
 	if args.has("actors"):
 		actors_path = args["actors"]
+	if args.has("dialogue"):
+		dialogue_path = args["dialogue"]
 	if args.has("crowd"):
 		crowd_path = args["crowd"]
 	if args.has("crowd-glb"):
@@ -298,6 +305,7 @@ func _wire_people(scene: Node) -> void:
 	var n: int = _people.collect(scene, actors)
 	print("walk: %d people wired of %d in the cast list" % [n, actors.size()])
 	_wire_crowd()
+	_wire_dialogue(actors)
 
 
 ## The corridor's walkers. They are not in the deck mesh at all -- their bodies
@@ -383,6 +391,41 @@ func _wire_interact(scene: Node) -> void:
 ## Wired AFTER the player and the interactables because it reads both -- the
 ## body for where it is and which way it faces, `interact.gd` for what is in
 ## reach. It holds no second look-at test and no second verb table.
+## NOBODY TALKED, AND THE MODULE THAT MAKES THEM TALK HAD NO INSTANTIATOR.
+## `station/dialogue.py` derives what a named resident says from the hour, their
+## species rhythm, their role, their beat and what the port is doing -- and
+## nothing in the shipped scene tree built the node, so a player met 73 people
+## in a customs hall and none of them had a voice.
+##
+## Shaped like `_wire_people` deliberately, including the control: `--no-talk`
+## leaves the people standing there silent, which is the frame that shows the
+## dialogue is what put the words on screen.
+func _wire_dialogue(actors: Array) -> void:
+	var args := _args()
+	if args.has("walk-test"):
+		return
+	if args.has("no-talk"):
+		print("dialogue: DISABLED (control) -- nobody speaks on this frame")
+		return
+	if _player == null or dialogue_path == "":
+		return
+	if not FileAccess.file_exists(dialogue_path):
+		print("dialogue: no sidecar at %s" % dialogue_path)
+		return
+	var f := FileAccess.open(dialogue_path, FileAccess.READ)
+	var rows = JSON.parse_string(f.get_as_text())
+	if typeof(rows) != TYPE_ARRAY:
+		print("dialogue: sidecar is not an array")
+		return
+	_talk = Node3D.new()
+	_talk.name = "Dialogue"
+	_talk.set_script(load("res://scripts/dialogue.gd"))
+	add_child(_talk)
+	var n: int = _talk.collect(actors, rows)
+	_talk.watch(_player)
+	print("dialogue: %d people can speak, of %d in the cast" % [n, actors.size()])
+
+
 func _wire_hud() -> void:
 	var args := _args()
 	if args.has("walk-test"):
