@@ -1,4 +1,1720 @@
 {
+ "announcement_window_h": 0.25,
+ "announcements": [
+  {
+   "db": 68.0,
+   "hour": 0.0,
+   "kind": "watch",
+   "places": [
+    "arrival_concourse",
+    "customs_north",
+    "customs_south",
+    "docking_bays",
+    "bay_elevators",
+    "zocalo",
+    "transfer_systems",
+    "cargo_bays"
+   ],
+   "stream": "pa_chime",
+   "text": "A WATCH. All personnel report to duty stations. 167 security on watch."
+  },
+  {
+   "db": 68.0,
+   "hour": 0.079,
+   "kind": "port",
+   "places": [
+    "docking_bays",
+    "bay_elevators",
+    "cargo_bays"
+   ],
+   "stream": "pa_chime",
+   "text": "UNITED SPACEWAYS TRANSPORT DEPARTING. Bay doors closing."
+  },
+  {
+   "db": 68.0,
+   "hour": 0.2063,
+   "kind": "port",
+   "places": [
+    "docking_bays",
+    "bay_elevators",
+    "cargo_bays"
+   ],
+   "stream": "pa_chime",
+   "text": "UNITED SPACEWAYS TRANSPORT DEPARTING. Bay doors closing."
+  },
+  {
+   "db": 68.0,
+   "hour": 0.3917,
+   "kind": "port",
+   "places": [
+    "arrival_concourse",
+    "customs_north",
+    "customs_south",
+    "docking_bays",
+    "bay_elevators",
+    "zocalo",
+    "transfer_systems",
+    "cargo_bays"
+   ],
+   "stream": "pa_chime",
+   "text": "UNITED SPACEWAYS TRANSPORT NOW ARRIVING, docking bays. 57 arriving passengers to customs."
+  },
+  {
+   "db": 68.0,
+   "hour": 0.4046,
+   "kind": "port",
+   "places": [
+    "docking_bays",
+    "bay_elevators",
+    "cargo_bays"
+   ],
+   "stream": "pa_chime",
+   "text": "ACHILLES-TYPE FREIGHTER DEPARTING. Bay doors closing."
+  },
+  {
+   "db": 68.0,
+   "hour": 0.4276,
+   "kind": "port",
+   "places": [
+    "docking_bays",
+    "bay_elevators",
+    "cargo_bays"
+   ],
+   "stream": "pa_chime",
+   "text": "IN-SYSTEM SHUTTLE DEPARTING. Bay doors closing."
+  },
+  {
+   "db": 68.0,
+   "hour": 0.8621,
+   "kind": "port",
+   "places": [
+    "docking_bays",
+    "bay_elevators",
+    "cargo_bays"
+   ],
+   "stream": "pa_chime",
+   "text": "UNITED SPACEWAYS TRANSPORT DEPARTING. Bay doors closing."
+  },
+  {
+   "db": 68.0,
+   "hour": 0.8885,
+   "kind": "port",
+   "places": [
+    "docking_bays",
+    "bay_elevators",
+    "cargo_bays"
+   ],
+   "stream": "pa_chime",
+   "text": "ACHILLES-TYPE FREIGHTER DEPARTING. Bay doors closing."
+  },
+  {
+   "db": 68.0,
+   "hour": 1.325,
+   "kind": "port",
+   "places": [
+    "arrival_concourse",
+    "customs_north",
+    "customs_south",
+    "docking_bays",
+    "bay_elevators",
+    "zocalo",
+    "transfer_systems",
+    "cargo_bays"
+   ],
+   "stream": "pa_chime",
+   "text": "IN-SYSTEM SHUTTLE NOW ARRIVING, docking bays. 18 arriving passengers to customs."
+  },
+  {
+   "db": 68.0,
+   "hour": 2.2583,
+   "kind": "port",
+   "places": [
+    "arrival_concourse",
+    "customs_north",
+    "customs_south",
+    "docking_bays",
+    "bay_elevators",
+    "zocalo",
+    "transfer_systems",
+    "cargo_bays"
+   ],
+   "stream": "pa_chime",
+   "text": "ACHILLES-TYPE FREIGHTER NOW ARRIVING, docking bays. 12 arriving passengers to customs."
+  },
+  {
+   "db": 68.0,
+   "hour": 2.4246,
+   "kind": "port",
+   "places": [
+    "docking_bays",
+    "bay_elevators",
+    "cargo_bays"
+   ],
+   "stream": "pa_chime",
+   "text": "ACHILLES-TYPE FREIGHTER DEPARTING. Bay doors closing."
+  },
+  {
+   "db": 68.0,
+   "hour": 2.4783,
+   "kind": "port",
+   "places": [
+    "docking_bays",
+    "bay_elevators",
+    "cargo_bays"
+   ],
+   "stream": "pa_chime",
+   "text": "UNITED SPACEWAYS TRANSPORT DEPARTING. Bay doors closing."
+  },
+  {
+   "db": 68.0,
+   "hour": 2.6488,
+   "kind": "port",
+   "places": [
+    "docking_bays",
+    "bay_elevators",
+    "cargo_bays"
+   ],
+   "stream": "pa_chime",
+   "text": "DIPLOMATIC VESSEL DEPARTING. Bay doors closing."
+  },
+  {
+   "db": 68.0,
+   "hour": 3.1917,
+   "kind": "port",
+   "places": [
+    "arrival_concourse",
+    "customs_north",
+    "customs_south",
+    "docking_bays",
+    "bay_elevators",
+    "zocalo",
+    "transfer_systems",
+    "cargo_bays"
+   ],
+   "stream": "pa_chime",
+   "text": "IN-SYSTEM SHUTTLE NOW ARRIVING, docking bays. 11 arriving passengers to customs."
+  },
+  {
+   "db": 68.0,
+   "hour": 3.2502,
+   "kind": "port",
+   "places": [
+    "docking_bays",
+    "bay_elevators",
+    "cargo_bays"
+   ],
+   "stream": "pa_chime",
+   "text": "IN-SYSTEM SHUTTLE DEPARTING. Bay doors closing."
+  },
+  {
+   "db": 68.0,
+   "hour": 3.6509,
+   "kind": "port",
+   "places": [
+    "docking_bays",
+    "bay_elevators",
+    "cargo_bays"
+   ],
+   "stream": "pa_chime",
+   "text": "ACHILLES-TYPE FREIGHTER DEPARTING. Bay doors closing."
+  },
+  {
+   "db": 68.0,
+   "hour": 4.1333,
+   "kind": "port",
+   "places": [
+    "arrival_concourse",
+    "customs_north",
+    "customs_south",
+    "docking_bays",
+    "bay_elevators",
+    "zocalo",
+    "transfer_systems",
+    "cargo_bays"
+   ],
+   "stream": "pa_chime",
+   "text": "UNITED SPACEWAYS TRANSPORT NOW ARRIVING, docking bays. 42 arriving passengers to customs."
+  },
+  {
+   "db": 68.0,
+   "hour": 4.7356,
+   "kind": "port",
+   "places": [
+    "docking_bays",
+    "bay_elevators",
+    "cargo_bays"
+   ],
+   "stream": "pa_chime",
+   "text": "ACHILLES-TYPE FREIGHTER DEPARTING. Bay doors closing."
+  },
+  {
+   "db": 68.0,
+   "hour": 4.9333,
+   "kind": "port",
+   "places": [
+    "arrival_concourse",
+    "customs_north",
+    "customs_south",
+    "docking_bays",
+    "bay_elevators",
+    "zocalo",
+    "transfer_systems",
+    "cargo_bays"
+   ],
+   "stream": "pa_chime",
+   "text": "ACHILLES-TYPE FREIGHTER NOW ARRIVING, docking bays. 13 arriving passengers to customs."
+  },
+  {
+   "db": 68.0,
+   "hour": 5.1315,
+   "kind": "port",
+   "places": [
+    "docking_bays",
+    "bay_elevators",
+    "cargo_bays"
+   ],
+   "stream": "pa_chime",
+   "text": "ACHILLES-TYPE FREIGHTER DEPARTING. Bay doors closing."
+  },
+  {
+   "db": 68.0,
+   "hour": 5.4583,
+   "kind": "port",
+   "places": [
+    "arrival_concourse",
+    "customs_north",
+    "customs_south",
+    "docking_bays",
+    "bay_elevators",
+    "zocalo",
+    "transfer_systems",
+    "cargo_bays"
+   ],
+   "stream": "pa_chime",
+   "text": "IN-SYSTEM SHUTTLE NOW ARRIVING, docking bays. 8 arriving passengers to customs."
+  },
+  {
+   "db": 68.0,
+   "hour": 5.8381,
+   "kind": "port",
+   "places": [
+    "docking_bays",
+    "bay_elevators",
+    "cargo_bays"
+   ],
+   "stream": "pa_chime",
+   "text": "ACHILLES-TYPE FREIGHTER DEPARTING. Bay doors closing."
+  },
+  {
+   "db": 68.0,
+   "hour": 5.8917,
+   "kind": "port",
+   "places": [
+    "arrival_concourse",
+    "customs_north",
+    "customs_south",
+    "docking_bays",
+    "bay_elevators",
+    "zocalo",
+    "transfer_systems",
+    "cargo_bays"
+   ],
+   "stream": "pa_chime",
+   "text": "STANDOFF-CLASS FREIGHTER NOW ARRIVING, transfer systems. 28 arriving passengers to customs."
+  },
+  {
+   "db": 68.0,
+   "hour": 5.9402,
+   "kind": "port",
+   "places": [
+    "docking_bays",
+    "bay_elevators",
+    "cargo_bays"
+   ],
+   "stream": "pa_chime",
+   "text": "IN-SYSTEM SHUTTLE DEPARTING. Bay doors closing."
+  },
+  {
+   "db": 68.0,
+   "hour": 5.9989,
+   "kind": "port",
+   "places": [
+    "docking_bays",
+    "bay_elevators",
+    "cargo_bays"
+   ],
+   "stream": "pa_chime",
+   "text": "ACHILLES-TYPE FREIGHTER DEPARTING. Bay doors closing."
+  },
+  {
+   "db": 68.0,
+   "hour": 6.0,
+   "kind": "civic",
+   "places": [
+    "customs_north",
+    "customs_south",
+    "zocalo",
+    "arrival_concourse"
+   ],
+   "stream": "pa_chime",
+   "text": "FOLLOW ALL CUSTOMS PROCEDURES"
+  },
+  {
+   "db": 68.0,
+   "hour": 6.2581,
+   "kind": "port",
+   "places": [
+    "docking_bays",
+    "bay_elevators",
+    "cargo_bays"
+   ],
+   "stream": "pa_chime",
+   "text": "UNITED SPACEWAYS TRANSPORT DEPARTING. Bay doors closing."
+  },
+  {
+   "db": 68.0,
+   "hour": 6.3167,
+   "kind": "port",
+   "places": [
+    "arrival_concourse",
+    "customs_north",
+    "customs_south",
+    "docking_bays",
+    "bay_elevators",
+    "zocalo",
+    "transfer_systems",
+    "cargo_bays"
+   ],
+   "stream": "pa_chime",
+   "text": "ACHILLES-TYPE FREIGHTER NOW ARRIVING, docking bays. 10 arriving passengers to customs."
+  },
+  {
+   "db": 68.0,
+   "hour": 6.4112,
+   "kind": "port",
+   "places": [
+    "docking_bays",
+    "bay_elevators",
+    "cargo_bays"
+   ],
+   "stream": "pa_chime",
+   "text": "STANDOFF-CLASS FREIGHTER DEPARTING. Bay doors closing."
+  },
+  {
+   "db": 68.0,
+   "hour": 6.6519,
+   "kind": "port",
+   "places": [
+    "docking_bays",
+    "bay_elevators",
+    "cargo_bays"
+   ],
+   "stream": "pa_chime",
+   "text": "STANDOFF-CLASS FREIGHTER DEPARTING. Bay doors closing."
+  },
+  {
+   "db": 68.0,
+   "hour": 6.7417,
+   "kind": "port",
+   "places": [
+    "arrival_concourse",
+    "customs_north",
+    "customs_south",
+    "docking_bays",
+    "bay_elevators",
+    "zocalo",
+    "transfer_systems",
+    "cargo_bays"
+   ],
+   "stream": "pa_chime",
+   "text": "UNITED SPACEWAYS TRANSPORT NOW ARRIVING, docking bays. 67 arriving passengers to customs."
+  },
+  {
+   "db": 68.0,
+   "hour": 6.8869,
+   "kind": "port",
+   "places": [
+    "docking_bays",
+    "bay_elevators",
+    "cargo_bays"
+   ],
+   "stream": "pa_chime",
+   "text": "IN-SYSTEM SHUTTLE DEPARTING. Bay doors closing."
+  },
+  {
+   "db": 68.0,
+   "hour": 6.9091,
+   "kind": "port",
+   "places": [
+    "docking_bays",
+    "bay_elevators",
+    "cargo_bays"
+   ],
+   "stream": "pa_chime",
+   "text": "UNITED SPACEWAYS TRANSPORT DEPARTING. Bay doors closing."
+  },
+  {
+   "db": 68.0,
+   "hour": 7.175,
+   "kind": "port",
+   "places": [
+    "arrival_concourse",
+    "customs_north",
+    "customs_south",
+    "docking_bays",
+    "bay_elevators",
+    "zocalo",
+    "transfer_systems",
+    "cargo_bays"
+   ],
+   "stream": "pa_chime",
+   "text": "IN-SYSTEM SHUTTLE NOW ARRIVING, docking bays. 16 arriving passengers to customs."
+  },
+  {
+   "db": 68.0,
+   "hour": 7.5917,
+   "kind": "port",
+   "places": [
+    "arrival_concourse",
+    "customs_north",
+    "customs_south",
+    "docking_bays",
+    "bay_elevators",
+    "zocalo",
+    "transfer_systems",
+    "cargo_bays"
+   ],
+   "stream": "pa_chime",
+   "text": "DIPLOMATIC VESSEL NOW ARRIVING, transfer systems. 10 arriving passengers to customs."
+  },
+  {
+   "db": 68.0,
+   "hour": 7.9252,
+   "kind": "port",
+   "places": [
+    "docking_bays",
+    "bay_elevators",
+    "cargo_bays"
+   ],
+   "stream": "pa_chime",
+   "text": "DIPLOMATIC VESSEL DEPARTING. Bay doors closing."
+  },
+  {
+   "db": 68.0,
+   "hour": 7.975,
+   "kind": "port",
+   "places": [
+    "arrival_concourse",
+    "customs_north",
+    "customs_south",
+    "docking_bays",
+    "bay_elevators",
+    "zocalo",
+    "transfer_systems",
+    "cargo_bays"
+   ],
+   "stream": "pa_chime",
+   "text": "UNITED SPACEWAYS TRANSPORT NOW ARRIVING, docking bays. 55 arriving passengers to customs."
+  },
+  {
+   "db": 68.0,
+   "hour": 8.0,
+   "kind": "watch",
+   "places": [
+    "arrival_concourse",
+    "customs_north",
+    "customs_south",
+    "docking_bays",
+    "bay_elevators",
+    "zocalo",
+    "transfer_systems",
+    "cargo_bays"
+   ],
+   "stream": "pa_chime",
+   "text": "B WATCH. All personnel report to duty stations. 156 security on watch."
+  },
+  {
+   "db": 68.0,
+   "hour": 8.3083,
+   "kind": "port",
+   "places": [
+    "arrival_concourse",
+    "customs_north",
+    "customs_south",
+    "docking_bays",
+    "bay_elevators",
+    "zocalo",
+    "transfer_systems",
+    "cargo_bays"
+   ],
+   "stream": "pa_chime",
+   "text": "ACHILLES-TYPE FREIGHTER NOW ARRIVING, docking bays. 10 arriving passengers to customs."
+  },
+  {
+   "db": 68.0,
+   "hour": 8.6167,
+   "kind": "port",
+   "places": [
+    "arrival_concourse",
+    "customs_north",
+    "customs_south",
+    "docking_bays",
+    "bay_elevators",
+    "zocalo",
+    "transfer_systems",
+    "cargo_bays"
+   ],
+   "stream": "pa_chime",
+   "text": "IN-SYSTEM SHUTTLE NOW ARRIVING, docking bays. 17 arriving passengers to customs."
+  },
+  {
+   "db": 68.0,
+   "hour": 8.9167,
+   "kind": "port",
+   "places": [
+    "arrival_concourse",
+    "customs_north",
+    "customs_south",
+    "docking_bays",
+    "bay_elevators",
+    "zocalo",
+    "transfer_systems",
+    "cargo_bays"
+   ],
+   "stream": "pa_chime",
+   "text": "DIPLOMATIC VESSEL NOW ARRIVING, transfer systems. 6 arriving passengers to customs."
+  },
+  {
+   "db": 68.0,
+   "hour": 9.0834,
+   "kind": "port",
+   "places": [
+    "docking_bays",
+    "bay_elevators",
+    "cargo_bays"
+   ],
+   "stream": "pa_chime",
+   "text": "ACHILLES-TYPE FREIGHTER DEPARTING. Bay doors closing."
+  },
+  {
+   "db": 68.0,
+   "hour": 9.2167,
+   "kind": "port",
+   "places": [
+    "arrival_concourse",
+    "customs_north",
+    "customs_south",
+    "docking_bays",
+    "bay_elevators",
+    "zocalo",
+    "transfer_systems",
+    "cargo_bays"
+   ],
+   "stream": "pa_chime",
+   "text": "ACHILLES-TYPE FREIGHTER NOW ARRIVING, docking bays. 14 arriving passengers to customs."
+  },
+  {
+   "db": 68.0,
+   "hour": 9.5167,
+   "kind": "port",
+   "places": [
+    "arrival_concourse",
+    "customs_north",
+    "customs_south",
+    "docking_bays",
+    "bay_elevators",
+    "zocalo",
+    "transfer_systems",
+    "cargo_bays"
+   ],
+   "stream": "pa_chime",
+   "text": "IN-SYSTEM SHUTTLE NOW ARRIVING, docking bays. 4 arriving passengers to customs."
+  },
+  {
+   "db": 68.0,
+   "hour": 9.7936,
+   "kind": "port",
+   "places": [
+    "docking_bays",
+    "bay_elevators",
+    "cargo_bays"
+   ],
+   "stream": "pa_chime",
+   "text": "UNITED SPACEWAYS TRANSPORT DEPARTING. Bay doors closing."
+  },
+  {
+   "db": 68.0,
+   "hour": 9.8167,
+   "kind": "port",
+   "places": [
+    "arrival_concourse",
+    "customs_north",
+    "customs_south",
+    "docking_bays",
+    "bay_elevators",
+    "zocalo",
+    "transfer_systems",
+    "cargo_bays"
+   ],
+   "stream": "pa_chime",
+   "text": "UNITED SPACEWAYS TRANSPORT NOW ARRIVING, docking bays. 76 arriving passengers to customs."
+  },
+  {
+   "db": 68.0,
+   "hour": 9.9357,
+   "kind": "port",
+   "places": [
+    "docking_bays",
+    "bay_elevators",
+    "cargo_bays"
+   ],
+   "stream": "pa_chime",
+   "text": "ACHILLES-TYPE FREIGHTER DEPARTING. Bay doors closing."
+  },
+  {
+   "db": 68.0,
+   "hour": 10.1167,
+   "kind": "port",
+   "places": [
+    "arrival_concourse",
+    "customs_north",
+    "customs_south",
+    "docking_bays",
+    "bay_elevators",
+    "zocalo",
+    "transfer_systems",
+    "cargo_bays"
+   ],
+   "stream": "pa_chime",
+   "text": "EARTHFORCE PERSONNEL TRANSPORT NOW ARRIVING, docking bays. 164 arriving passengers to customs."
+  },
+  {
+   "db": 68.0,
+   "hour": 10.3136,
+   "kind": "port",
+   "places": [
+    "docking_bays",
+    "bay_elevators",
+    "cargo_bays"
+   ],
+   "stream": "pa_chime",
+   "text": "IN-SYSTEM SHUTTLE DEPARTING. Bay doors closing."
+  },
+  {
+   "db": 68.0,
+   "hour": 10.4167,
+   "kind": "port",
+   "places": [
+    "arrival_concourse",
+    "customs_north",
+    "customs_south",
+    "docking_bays",
+    "bay_elevators",
+    "zocalo",
+    "transfer_systems",
+    "cargo_bays"
+   ],
+   "stream": "pa_chime",
+   "text": "UNITED SPACEWAYS TRANSPORT NOW ARRIVING, docking bays. 69 arriving passengers to customs."
+  },
+  {
+   "db": 68.0,
+   "hour": 10.5511,
+   "kind": "port",
+   "places": [
+    "customs_north",
+    "customs_south",
+    "arrival_concourse"
+   ],
+   "stream": "pa_chime",
+   "text": "CUSTOMS ADVISORY. Asimov-class liner arriving in fifteen minutes with 689 passengers. All processing positions to be manned."
+  },
+  {
+   "db": 68.0,
+   "hour": 10.6705,
+   "kind": "port",
+   "places": [
+    "docking_bays",
+    "bay_elevators",
+    "cargo_bays"
+   ],
+   "stream": "pa_chime",
+   "text": "STANDOFF-CLASS FREIGHTER DEPARTING. Bay doors closing."
+  },
+  {
+   "db": 68.0,
+   "hour": 10.7167,
+   "kind": "port",
+   "places": [
+    "arrival_concourse",
+    "customs_north",
+    "customs_south",
+    "docking_bays",
+    "bay_elevators",
+    "zocalo",
+    "transfer_systems",
+    "cargo_bays"
+   ],
+   "stream": "pa_chime",
+   "text": "IN-SYSTEM SHUTTLE NOW ARRIVING, docking bays. 11 arriving passengers to customs."
+  },
+  {
+   "db": 68.0,
+   "hour": 10.8011,
+   "kind": "port",
+   "places": [
+    "arrival_concourse",
+    "customs_north",
+    "customs_south",
+    "docking_bays",
+    "bay_elevators",
+    "zocalo",
+    "transfer_systems",
+    "cargo_bays"
+   ],
+   "stream": "pa_chime",
+   "text": "ASIMOV-CLASS LINER NOW ARRIVING, docking bays. 689 arriving passengers to customs."
+  },
+  {
+   "db": 68.0,
+   "hour": 11.0167,
+   "kind": "port",
+   "places": [
+    "arrival_concourse",
+    "customs_north",
+    "customs_south",
+    "docking_bays",
+    "bay_elevators",
+    "zocalo",
+    "transfer_systems",
+    "cargo_bays"
+   ],
+   "stream": "pa_chime",
+   "text": "ACHILLES-TYPE FREIGHTER NOW ARRIVING, docking bays. 11 arriving passengers to customs."
+  },
+  {
+   "db": 68.0,
+   "hour": 11.1403,
+   "kind": "port",
+   "places": [
+    "docking_bays",
+    "bay_elevators",
+    "cargo_bays"
+   ],
+   "stream": "pa_chime",
+   "text": "IN-SYSTEM SHUTTLE DEPARTING. Bay doors closing."
+  },
+  {
+   "db": 68.0,
+   "hour": 11.2335,
+   "kind": "port",
+   "places": [
+    "docking_bays",
+    "bay_elevators",
+    "cargo_bays"
+   ],
+   "stream": "pa_chime",
+   "text": "IN-SYSTEM SHUTTLE DEPARTING. Bay doors closing."
+  },
+  {
+   "db": 68.0,
+   "hour": 11.3167,
+   "kind": "port",
+   "places": [
+    "arrival_concourse",
+    "customs_north",
+    "customs_south",
+    "docking_bays",
+    "bay_elevators",
+    "zocalo",
+    "transfer_systems",
+    "cargo_bays"
+   ],
+   "stream": "pa_chime",
+   "text": "ACHILLES-TYPE FREIGHTER NOW ARRIVING, docking bays. 6 arriving passengers to customs."
+  },
+  {
+   "db": 68.0,
+   "hour": 11.625,
+   "kind": "port",
+   "places": [
+    "arrival_concourse",
+    "customs_north",
+    "customs_south",
+    "docking_bays",
+    "bay_elevators",
+    "zocalo",
+    "transfer_systems",
+    "cargo_bays"
+   ],
+   "stream": "pa_chime",
+   "text": "ACHILLES-TYPE FREIGHTER NOW ARRIVING, docking bays. 7 arriving passengers to customs."
+  },
+  {
+   "db": 68.0,
+   "hour": 11.7476,
+   "kind": "port",
+   "places": [
+    "docking_bays",
+    "bay_elevators",
+    "cargo_bays"
+   ],
+   "stream": "pa_chime",
+   "text": "ACHILLES-TYPE FREIGHTER DEPARTING. Bay doors closing."
+  },
+  {
+   "db": 68.0,
+   "hour": 11.95,
+   "kind": "port",
+   "places": [
+    "arrival_concourse",
+    "customs_north",
+    "customs_south",
+    "docking_bays",
+    "bay_elevators",
+    "zocalo",
+    "transfer_systems",
+    "cargo_bays"
+   ],
+   "stream": "pa_chime",
+   "text": "ACHILLES-TYPE FREIGHTER NOW ARRIVING, docking bays. 12 arriving passengers to customs."
+  },
+  {
+   "db": 68.0,
+   "hour": 12.1023,
+   "kind": "port",
+   "places": [
+    "docking_bays",
+    "bay_elevators",
+    "cargo_bays"
+   ],
+   "stream": "pa_chime",
+   "text": "UNITED SPACEWAYS TRANSPORT DEPARTING. Bay doors closing."
+  },
+  {
+   "db": 68.0,
+   "hour": 12.3167,
+   "kind": "port",
+   "places": [
+    "arrival_concourse",
+    "customs_north",
+    "customs_south",
+    "docking_bays",
+    "bay_elevators",
+    "zocalo",
+    "transfer_systems",
+    "cargo_bays"
+   ],
+   "stream": "pa_chime",
+   "text": "UNITED SPACEWAYS TRANSPORT NOW ARRIVING, docking bays. 76 arriving passengers to customs."
+  },
+  {
+   "db": 68.0,
+   "hour": 12.7167,
+   "kind": "port",
+   "places": [
+    "arrival_concourse",
+    "customs_north",
+    "customs_south",
+    "docking_bays",
+    "bay_elevators",
+    "zocalo",
+    "transfer_systems",
+    "cargo_bays"
+   ],
+   "stream": "pa_chime",
+   "text": "EARTHFORCE PERSONNEL TRANSPORT NOW ARRIVING, docking bays. 182 arriving passengers to customs."
+  },
+  {
+   "db": 68.0,
+   "hour": 12.993,
+   "kind": "port",
+   "places": [
+    "docking_bays",
+    "bay_elevators",
+    "cargo_bays"
+   ],
+   "stream": "pa_chime",
+   "text": "UNITED SPACEWAYS TRANSPORT DEPARTING. Bay doors closing."
+  },
+  {
+   "db": 68.0,
+   "hour": 13.1333,
+   "kind": "port",
+   "places": [
+    "arrival_concourse",
+    "customs_north",
+    "customs_south",
+    "docking_bays",
+    "bay_elevators",
+    "zocalo",
+    "transfer_systems",
+    "cargo_bays"
+   ],
+   "stream": "pa_chime",
+   "text": "IN-SYSTEM SHUTTLE NOW ARRIVING, docking bays. 5 arriving passengers to customs."
+  },
+  {
+   "db": 68.0,
+   "hour": 13.4793,
+   "kind": "port",
+   "places": [
+    "docking_bays",
+    "bay_elevators",
+    "cargo_bays"
+   ],
+   "stream": "pa_chime",
+   "text": "ACHILLES-TYPE FREIGHTER DEPARTING. Bay doors closing."
+  },
+  {
+   "db": 68.0,
+   "hour": 13.55,
+   "kind": "port",
+   "places": [
+    "arrival_concourse",
+    "customs_north",
+    "customs_south",
+    "docking_bays",
+    "bay_elevators",
+    "zocalo",
+    "transfer_systems",
+    "cargo_bays"
+   ],
+   "stream": "pa_chime",
+   "text": "ACHILLES-TYPE FREIGHTER NOW ARRIVING, docking bays. 9 arriving passengers to customs."
+  },
+  {
+   "db": 68.0,
+   "hour": 13.9667,
+   "kind": "port",
+   "places": [
+    "arrival_concourse",
+    "customs_north",
+    "customs_south",
+    "docking_bays",
+    "bay_elevators",
+    "zocalo",
+    "transfer_systems",
+    "cargo_bays"
+   ],
+   "stream": "pa_chime",
+   "text": "UNITED SPACEWAYS TRANSPORT NOW ARRIVING, docking bays. 84 arriving passengers to customs."
+  },
+  {
+   "db": 68.0,
+   "hour": 14.0,
+   "kind": "civic",
+   "places": [
+    "customs_north",
+    "customs_south",
+    "zocalo",
+    "arrival_concourse"
+   ],
+   "stream": "pa_chime",
+   "text": "TIME ON B-5 IS EARTH MEAN TIME (EMT)"
+  },
+  {
+   "db": 68.0,
+   "hour": 14.1144,
+   "kind": "port",
+   "places": [
+    "docking_bays",
+    "bay_elevators",
+    "cargo_bays"
+   ],
+   "stream": "pa_chime",
+   "text": "STANDOFF-CLASS FREIGHTER DEPARTING. Bay doors closing."
+  },
+  {
+   "db": 68.0,
+   "hour": 14.2085,
+   "kind": "port",
+   "places": [
+    "docking_bays",
+    "bay_elevators",
+    "cargo_bays"
+   ],
+   "stream": "pa_chime",
+   "text": "IN-SYSTEM SHUTTLE DEPARTING. Bay doors closing."
+  },
+  {
+   "db": 68.0,
+   "hour": 14.3833,
+   "kind": "port",
+   "places": [
+    "arrival_concourse",
+    "customs_north",
+    "customs_south",
+    "docking_bays",
+    "bay_elevators",
+    "zocalo",
+    "transfer_systems",
+    "cargo_bays"
+   ],
+   "stream": "pa_chime",
+   "text": "IN-SYSTEM SHUTTLE NOW ARRIVING, docking bays. 7 arriving passengers to customs."
+  },
+  {
+   "db": 68.0,
+   "hour": 14.6278,
+   "kind": "port",
+   "places": [
+    "docking_bays",
+    "bay_elevators",
+    "cargo_bays"
+   ],
+   "stream": "pa_chime",
+   "text": "UNITED SPACEWAYS TRANSPORT DEPARTING. Bay doors closing."
+  },
+  {
+   "db": 68.0,
+   "hour": 14.8,
+   "kind": "port",
+   "places": [
+    "arrival_concourse",
+    "customs_north",
+    "customs_south",
+    "docking_bays",
+    "bay_elevators",
+    "zocalo",
+    "transfer_systems",
+    "cargo_bays"
+   ],
+   "stream": "pa_chime",
+   "text": "ACHILLES-TYPE FREIGHTER NOW ARRIVING, docking bays. 13 arriving passengers to customs."
+  },
+  {
+   "db": 68.0,
+   "hour": 15.0007,
+   "kind": "port",
+   "places": [
+    "docking_bays",
+    "bay_elevators",
+    "cargo_bays"
+   ],
+   "stream": "pa_chime",
+   "text": "ACHILLES-TYPE FREIGHTER DEPARTING. Bay doors closing."
+  },
+  {
+   "db": 68.0,
+   "hour": 15.0128,
+   "kind": "port",
+   "places": [
+    "docking_bays",
+    "bay_elevators",
+    "cargo_bays"
+   ],
+   "stream": "pa_chime",
+   "text": "IN-SYSTEM SHUTTLE DEPARTING. Bay doors closing."
+  },
+  {
+   "db": 68.0,
+   "hour": 15.2167,
+   "kind": "port",
+   "places": [
+    "arrival_concourse",
+    "customs_north",
+    "customs_south",
+    "docking_bays",
+    "bay_elevators",
+    "zocalo",
+    "transfer_systems",
+    "cargo_bays"
+   ],
+   "stream": "pa_chime",
+   "text": "ACHILLES-TYPE FREIGHTER NOW ARRIVING, docking bays. 13 arriving passengers to customs."
+  },
+  {
+   "db": 68.0,
+   "hour": 15.6333,
+   "kind": "port",
+   "places": [
+    "arrival_concourse",
+    "customs_north",
+    "customs_south",
+    "docking_bays",
+    "bay_elevators",
+    "zocalo",
+    "transfer_systems",
+    "cargo_bays"
+   ],
+   "stream": "pa_chime",
+   "text": "STANDOFF-CLASS FREIGHTER NOW ARRIVING, transfer systems. 27 arriving passengers to customs."
+  },
+  {
+   "db": 68.0,
+   "hour": 16.0,
+   "kind": "watch",
+   "places": [
+    "arrival_concourse",
+    "customs_north",
+    "customs_south",
+    "docking_bays",
+    "bay_elevators",
+    "zocalo",
+    "transfer_systems",
+    "cargo_bays"
+   ],
+   "stream": "pa_chime",
+   "text": "C WATCH. All personnel report to duty stations. 177 security on watch."
+  },
+  {
+   "db": 68.0,
+   "hour": 16.05,
+   "kind": "port",
+   "places": [
+    "arrival_concourse",
+    "customs_north",
+    "customs_south",
+    "docking_bays",
+    "bay_elevators",
+    "zocalo",
+    "transfer_systems",
+    "cargo_bays"
+   ],
+   "stream": "pa_chime",
+   "text": "ACHILLES-TYPE FREIGHTER NOW ARRIVING, docking bays. 12 arriving passengers to customs."
+  },
+  {
+   "db": 68.0,
+   "hour": 16.1055,
+   "kind": "port",
+   "places": [
+    "docking_bays",
+    "bay_elevators",
+    "cargo_bays"
+   ],
+   "stream": "pa_chime",
+   "text": "ACHILLES-TYPE FREIGHTER DEPARTING. Bay doors closing."
+  },
+  {
+   "db": 68.0,
+   "hour": 16.4667,
+   "kind": "port",
+   "places": [
+    "arrival_concourse",
+    "customs_north",
+    "customs_south",
+    "docking_bays",
+    "bay_elevators",
+    "zocalo",
+    "transfer_systems",
+    "cargo_bays"
+   ],
+   "stream": "pa_chime",
+   "text": "UNITED SPACEWAYS TRANSPORT NOW ARRIVING, docking bays. 35 arriving passengers to customs."
+  },
+  {
+   "db": 68.0,
+   "hour": 16.4705,
+   "kind": "port",
+   "places": [
+    "docking_bays",
+    "bay_elevators",
+    "cargo_bays"
+   ],
+   "stream": "pa_chime",
+   "text": "UNITED SPACEWAYS TRANSPORT DEPARTING. Bay doors closing."
+  },
+  {
+   "db": 68.0,
+   "hour": 16.8583,
+   "kind": "port",
+   "places": [
+    "arrival_concourse",
+    "customs_north",
+    "customs_south",
+    "docking_bays",
+    "bay_elevators",
+    "zocalo",
+    "transfer_systems",
+    "cargo_bays"
+   ],
+   "stream": "pa_chime",
+   "text": "STANDOFF-CLASS FREIGHTER NOW ARRIVING, transfer systems. 23 arriving passengers to customs."
+  },
+  {
+   "db": 68.0,
+   "hour": 17.2167,
+   "kind": "port",
+   "places": [
+    "arrival_concourse",
+    "customs_north",
+    "customs_south",
+    "docking_bays",
+    "bay_elevators",
+    "zocalo",
+    "transfer_systems",
+    "cargo_bays"
+   ],
+   "stream": "pa_chime",
+   "text": "UNITED SPACEWAYS TRANSPORT NOW ARRIVING, docking bays. 46 arriving passengers to customs."
+  },
+  {
+   "db": 68.0,
+   "hour": 17.2472,
+   "kind": "port",
+   "places": [
+    "docking_bays",
+    "bay_elevators",
+    "cargo_bays"
+   ],
+   "stream": "pa_chime",
+   "text": "IN-SYSTEM SHUTTLE DEPARTING. Bay doors closing."
+  },
+  {
+   "db": 68.0,
+   "hour": 17.2825,
+   "kind": "port",
+   "places": [
+    "docking_bays",
+    "bay_elevators",
+    "cargo_bays"
+   ],
+   "stream": "pa_chime",
+   "text": "DIPLOMATIC VESSEL DEPARTING. Bay doors closing."
+  },
+  {
+   "db": 68.0,
+   "hour": 17.5417,
+   "kind": "port",
+   "places": [
+    "arrival_concourse",
+    "customs_north",
+    "customs_south",
+    "docking_bays",
+    "bay_elevators",
+    "zocalo",
+    "transfer_systems",
+    "cargo_bays"
+   ],
+   "stream": "pa_chime",
+   "text": "STANDOFF-CLASS FREIGHTER NOW ARRIVING, transfer systems. 29 arriving passengers to customs."
+  },
+  {
+   "db": 68.0,
+   "hour": 17.5496,
+   "kind": "port",
+   "places": [
+    "docking_bays",
+    "bay_elevators",
+    "cargo_bays"
+   ],
+   "stream": "pa_chime",
+   "text": "ASIMOV-CLASS LINER DEPARTING. Bay doors closing."
+  },
+  {
+   "db": 68.0,
+   "hour": 17.5606,
+   "kind": "port",
+   "places": [
+    "docking_bays",
+    "bay_elevators",
+    "cargo_bays"
+   ],
+   "stream": "pa_chime",
+   "text": "ACHILLES-TYPE FREIGHTER DEPARTING. Bay doors closing."
+  },
+  {
+   "db": 68.0,
+   "hour": 17.8583,
+   "kind": "port",
+   "places": [
+    "arrival_concourse",
+    "customs_north",
+    "customs_south",
+    "docking_bays",
+    "bay_elevators",
+    "zocalo",
+    "transfer_systems",
+    "cargo_bays"
+   ],
+   "stream": "pa_chime",
+   "text": "UNITED SPACEWAYS TRANSPORT NOW ARRIVING, docking bays. 59 arriving passengers to customs."
+  },
+  {
+   "db": 68.0,
+   "hour": 18.175,
+   "kind": "port",
+   "places": [
+    "arrival_concourse",
+    "customs_north",
+    "customs_south",
+    "docking_bays",
+    "bay_elevators",
+    "zocalo",
+    "transfer_systems",
+    "cargo_bays"
+   ],
+   "stream": "pa_chime",
+   "text": "UNITED SPACEWAYS TRANSPORT NOW ARRIVING, docking bays. 31 arriving passengers to customs."
+  },
+  {
+   "db": 68.0,
+   "hour": 18.4262,
+   "kind": "port",
+   "places": [
+    "docking_bays",
+    "bay_elevators",
+    "cargo_bays"
+   ],
+   "stream": "pa_chime",
+   "text": "ACHILLES-TYPE FREIGHTER DEPARTING. Bay doors closing."
+  },
+  {
+   "db": 68.0,
+   "hour": 18.4288,
+   "kind": "port",
+   "places": [
+    "docking_bays",
+    "bay_elevators",
+    "cargo_bays"
+   ],
+   "stream": "pa_chime",
+   "text": "EARTHFORCE PERSONNEL TRANSPORT DEPARTING. Bay doors closing."
+  },
+  {
+   "db": 68.0,
+   "hour": 18.4917,
+   "kind": "port",
+   "places": [
+    "arrival_concourse",
+    "customs_north",
+    "customs_south",
+    "docking_bays",
+    "bay_elevators",
+    "zocalo",
+    "transfer_systems",
+    "cargo_bays"
+   ],
+   "stream": "pa_chime",
+   "text": "IN-SYSTEM SHUTTLE NOW ARRIVING, docking bays. 2 arriving passengers to customs."
+  },
+  {
+   "db": 68.0,
+   "hour": 18.8083,
+   "kind": "port",
+   "places": [
+    "arrival_concourse",
+    "customs_north",
+    "customs_south",
+    "docking_bays",
+    "bay_elevators",
+    "zocalo",
+    "transfer_systems",
+    "cargo_bays"
+   ],
+   "stream": "pa_chime",
+   "text": "ACHILLES-TYPE FREIGHTER NOW ARRIVING, docking bays. 12 arriving passengers to customs."
+  },
+  {
+   "db": 68.0,
+   "hour": 19.125,
+   "kind": "port",
+   "places": [
+    "arrival_concourse",
+    "customs_north",
+    "customs_south",
+    "docking_bays",
+    "bay_elevators",
+    "zocalo",
+    "transfer_systems",
+    "cargo_bays"
+   ],
+   "stream": "pa_chime",
+   "text": "STANDOFF-CLASS FREIGHTER NOW ARRIVING, transfer systems. 14 arriving passengers to customs."
+  },
+  {
+   "db": 68.0,
+   "hour": 19.4417,
+   "kind": "port",
+   "places": [
+    "arrival_concourse",
+    "customs_north",
+    "customs_south",
+    "docking_bays",
+    "bay_elevators",
+    "zocalo",
+    "transfer_systems",
+    "cargo_bays"
+   ],
+   "stream": "pa_chime",
+   "text": "DIPLOMATIC VESSEL NOW ARRIVING, transfer systems. 11 arriving passengers to customs."
+  },
+  {
+   "db": 68.0,
+   "hour": 19.75,
+   "kind": "port",
+   "places": [
+    "arrival_concourse",
+    "customs_north",
+    "customs_south",
+    "docking_bays",
+    "bay_elevators",
+    "zocalo",
+    "transfer_systems",
+    "cargo_bays"
+   ],
+   "stream": "pa_chime",
+   "text": "ACHILLES-TYPE FREIGHTER NOW ARRIVING, docking bays. 14 arriving passengers to customs."
+  },
+  {
+   "db": 68.0,
+   "hour": 19.7527,
+   "kind": "port",
+   "places": [
+    "docking_bays",
+    "bay_elevators",
+    "cargo_bays"
+   ],
+   "stream": "pa_chime",
+   "text": "STANDOFF-CLASS FREIGHTER DEPARTING. Bay doors closing."
+  },
+  {
+   "db": 68.0,
+   "hour": 20.0667,
+   "kind": "port",
+   "places": [
+    "arrival_concourse",
+    "customs_north",
+    "customs_south",
+    "docking_bays",
+    "bay_elevators",
+    "zocalo",
+    "transfer_systems",
+    "cargo_bays"
+   ],
+   "stream": "pa_chime",
+   "text": "UNITED SPACEWAYS TRANSPORT NOW ARRIVING, docking bays. 29 arriving passengers to customs."
+  },
+  {
+   "db": 68.0,
+   "hour": 20.0884,
+   "kind": "port",
+   "places": [
+    "docking_bays",
+    "bay_elevators",
+    "cargo_bays"
+   ],
+   "stream": "pa_chime",
+   "text": "EARTHFORCE PERSONNEL TRANSPORT DEPARTING. Bay doors closing."
+  },
+  {
+   "db": 68.0,
+   "hour": 20.2406,
+   "kind": "port",
+   "places": [
+    "docking_bays",
+    "bay_elevators",
+    "cargo_bays"
+   ],
+   "stream": "pa_chime",
+   "text": "UNITED SPACEWAYS TRANSPORT DEPARTING. Bay doors closing."
+  },
+  {
+   "db": 68.0,
+   "hour": 20.3833,
+   "kind": "port",
+   "places": [
+    "arrival_concourse",
+    "customs_north",
+    "customs_south",
+    "docking_bays",
+    "bay_elevators",
+    "zocalo",
+    "transfer_systems",
+    "cargo_bays"
+   ],
+   "stream": "pa_chime",
+   "text": "IN-SYSTEM SHUTTLE NOW ARRIVING, docking bays. 3 arriving passengers to customs."
+  },
+  {
+   "db": 68.0,
+   "hour": 20.5329,
+   "kind": "port",
+   "places": [
+    "docking_bays",
+    "bay_elevators",
+    "cargo_bays"
+   ],
+   "stream": "pa_chime",
+   "text": "UNITED SPACEWAYS TRANSPORT DEPARTING. Bay doors closing."
+  },
+  {
+   "db": 68.0,
+   "hour": 20.7167,
+   "kind": "port",
+   "places": [
+    "arrival_concourse",
+    "customs_north",
+    "customs_south",
+    "docking_bays",
+    "bay_elevators",
+    "zocalo",
+    "transfer_systems",
+    "cargo_bays"
+   ],
+   "stream": "pa_chime",
+   "text": "ACHILLES-TYPE FREIGHTER NOW ARRIVING, docking bays. 8 arriving passengers to customs."
+  },
+  {
+   "db": 68.0,
+   "hour": 20.8272,
+   "kind": "port",
+   "places": [
+    "docking_bays",
+    "bay_elevators",
+    "cargo_bays"
+   ],
+   "stream": "pa_chime",
+   "text": "IN-SYSTEM SHUTTLE DEPARTING. Bay doors closing."
+  },
+  {
+   "db": 68.0,
+   "hour": 21.1083,
+   "kind": "port",
+   "places": [
+    "arrival_concourse",
+    "customs_north",
+    "customs_south",
+    "docking_bays",
+    "bay_elevators",
+    "zocalo",
+    "transfer_systems",
+    "cargo_bays"
+   ],
+   "stream": "pa_chime",
+   "text": "UNITED SPACEWAYS TRANSPORT NOW ARRIVING, docking bays. 63 arriving passengers to customs."
+  },
+  {
+   "db": 68.0,
+   "hour": 21.6333,
+   "kind": "port",
+   "places": [
+    "arrival_concourse",
+    "customs_north",
+    "customs_south",
+    "docking_bays",
+    "bay_elevators",
+    "zocalo",
+    "transfer_systems",
+    "cargo_bays"
+   ],
+   "stream": "pa_chime",
+   "text": "IN-SYSTEM SHUTTLE NOW ARRIVING, docking bays. 10 arriving passengers to customs."
+  },
+  {
+   "db": 68.0,
+   "hour": 22.0169,
+   "kind": "port",
+   "places": [
+    "docking_bays",
+    "bay_elevators",
+    "cargo_bays"
+   ],
+   "stream": "pa_chime",
+   "text": "ACHILLES-TYPE FREIGHTER DEPARTING. Bay doors closing."
+  },
+  {
+   "db": 68.0,
+   "hour": 22.2333,
+   "kind": "port",
+   "places": [
+    "arrival_concourse",
+    "customs_north",
+    "customs_south",
+    "docking_bays",
+    "bay_elevators",
+    "zocalo",
+    "transfer_systems",
+    "cargo_bays"
+   ],
+   "stream": "pa_chime",
+   "text": "ACHILLES-TYPE FREIGHTER NOW ARRIVING, docking bays. 10 arriving passengers to customs."
+  },
+  {
+   "db": 68.0,
+   "hour": 22.6941,
+   "kind": "port",
+   "places": [
+    "docking_bays",
+    "bay_elevators",
+    "cargo_bays"
+   ],
+   "stream": "pa_chime",
+   "text": "UNITED SPACEWAYS TRANSPORT DEPARTING. Bay doors closing."
+  },
+  {
+   "db": 68.0,
+   "hour": 22.7644,
+   "kind": "port",
+   "places": [
+    "docking_bays",
+    "bay_elevators",
+    "cargo_bays"
+   ],
+   "stream": "pa_chime",
+   "text": "ACHILLES-TYPE FREIGHTER DEPARTING. Bay doors closing."
+  },
+  {
+   "db": 68.0,
+   "hour": 22.8333,
+   "kind": "port",
+   "places": [
+    "arrival_concourse",
+    "customs_north",
+    "customs_south",
+    "docking_bays",
+    "bay_elevators",
+    "zocalo",
+    "transfer_systems",
+    "cargo_bays"
+   ],
+   "stream": "pa_chime",
+   "text": "ACHILLES-TYPE FREIGHTER NOW ARRIVING, docking bays. 10 arriving passengers to customs."
+  },
+  {
+   "db": 68.0,
+   "hour": 23.525,
+   "kind": "port",
+   "places": [
+    "arrival_concourse",
+    "customs_north",
+    "customs_south",
+    "docking_bays",
+    "bay_elevators",
+    "zocalo",
+    "transfer_systems",
+    "cargo_bays"
+   ],
+   "stream": "pa_chime",
+   "text": "ACHILLES-TYPE FREIGHTER NOW ARRIVING, docking bays. 9 arriving passengers to customs."
+  },
+  {
+   "db": 68.0,
+   "hour": 23.5483,
+   "kind": "port",
+   "places": [
+    "docking_bays",
+    "bay_elevators",
+    "cargo_bays"
+   ],
+   "stream": "pa_chime",
+   "text": "IN-SYSTEM SHUTTLE DEPARTING. Bay doors closing."
+  },
+  {
+   "db": 68.0,
+   "hour": 23.831,
+   "kind": "port",
+   "places": [
+    "docking_bays",
+    "bay_elevators",
+    "cargo_bays"
+   ],
+   "stream": "pa_chime",
+   "text": "ACHILLES-TYPE FREIGHTER DEPARTING. Bay doors closing."
+  }
+ ],
  "bits": 16,
  "emitter_cap": 24,
  "emitter_ref_dba": 60.0,
@@ -199,7 +1915,7 @@
    "seam_ratio": 0.363,
    "seam_ratio_d2": 0.2484,
    "seconds": 6.0,
-   "why": "brown noise rolled off at 900 Hz -- the same air two rooms away, which is what a dwelling gets (INV-248's living class)"
+   "why": "brown noise rolled off at 900 Hz -- the same air two rooms away, which is what a dwelling gets (INV-260's living class)"
   },
   "crowd_babble": {
    "band": [
@@ -318,7 +2034,7 @@
    "seam_ratio": 0.7375,
    "seam_ratio_d2": 0.3034,
    "seconds": 8.0,
-   "why": "INV-250's 0.75 Hz beat over a 58 Hz shaft line and its harmonics. 8.000 s is exactly 6 strokes"
+   "why": "INV-262's 0.75 Hz beat over a 58 Hz shaft line and its harmonics. 8.000 s is exactly 6 strokes"
   },
   "structure_hull": {
    "band": [
@@ -335,7 +2051,7 @@
    "seam_ratio": 0.3645,
    "seam_ratio_d2": 0.3165,
    "seconds": 11.157187,
-   "why": "INV-249. Loop length is one spoke-pass period exactly (11.157 s = 357030 samples), so the swell is whole and the rotation is present as MODULATION, never as a tone"
+   "why": "INV-261. Loop length is one spoke-pass period exactly (11.157 s = 357030 samples), so the swell is whole and the rotation is present as MODULATION, never as a tone"
   },
   "water_pool": {
    "band": [

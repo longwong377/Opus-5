@@ -1255,13 +1255,18 @@ def beds_manifest(day=0, datum=None, hours=range(24)):
     place per hour would be a second description of the same numbers, and this
     project's whole recorded history is second descriptions drifting.
     """
+    # STEADY LAYERS ONLY. The runtime test caught the reason: an announcement
+    # occupies about 30 minutes of `broadcast`'s quarter-hour window, and an
+    # HOURLY manifest cannot say that -- so a chime that fires once landed in
+    # the bed at 03:00 and 13:00 alike and read as a tannoy that never stops.
+    # Events are a separate list with their real times, in `announcements()`.
     out = {}
     for p in dr.PLACES:
         rows = {}
         for h in hours:
             b = bed(p["key"], float(h), day, datum)
             rows[str(h)] = {x["layer"] + ":" + x["stream"]: x["db"]
-                            for x in b["layers"]}
+                            for x in b["layers"] if not x.get("event")}
         b0 = bed(p["key"], 13.0, day, datum)
         out[p["key"]] = dict(name=p["name"], archetype=b0["archetype"],
                              air_class=b0["air_class"],
@@ -1270,11 +1275,24 @@ def beds_manifest(day=0, datum=None, hours=range(24)):
     return out
 
 
+def announcements(day=0, datum=None):
+    """Every spoken call of the day, with its real time and its real text.
+
+    Straight off `broadcast.day` -- so the runtime fires the chime at the
+    minute the ship berths, and the line it carries is the era-correct one
+    `costume.ERA_EVENTS` allows at the datum. A standing surface (a screen, a
+    poster) has no hour and is not an announcement.
+    """
+    return [dict(hour=round(a["hour"], 4), db=PA_CALL_DBA, stream="pa_chime",
+                 kind=a["kind"], places=list(a["places"]), text=a["text"])
+            for a in _station_says(day, datum) if a["hour"] is not None]
+
+
 def write_all(outdir=OUT_DIR, day=0, datum=None):
     bank, streams = write_bank(outdir)
     beds = beds_manifest(day, datum)
-    peak = max(v for pl in beds.values() for hr in pl["hours"].values()
-               for v in [db_sum(list(hr.values()))] if v)
+    peak = max([v for pl in beds.values() for hr in pl["hours"].values()
+                for v in [db_sum(list(hr.values()))] if v] + [PA_CALL_DBA])
     # DERIVED, not chosen: the trim is whatever puts the loudest bed on the
     # station at the stated headroom.
     bank["master_trim_db"] = round(RUNTIME_HEADROOM_DBFS
@@ -1287,6 +1305,8 @@ def write_all(outdir=OUT_DIR, day=0, datum=None):
     bank["target_rms_dbfs"] = TARGET_RMS_DBFS
     bank["layers"] = list(LAYERS)
     bank["fallback_place"] = "central_corridor"   # what a corridor sounds like
+    bank["announcements"] = announcements(day, datum)
+    bank["announcement_window_h"] = 0.25          # broadcast.audible_at's own
     bank["loudest"] = max(
         ((db_sum(list(hr.values())), k, h)
          for k, pl in beds.items() for h, hr in pl["hours"].items()),

@@ -156,12 +156,19 @@ is what found the mortuary; see §6.
 
 ## 5. Steady and event
 
-An ambience is the steady bed. A tannoy call is an event on top of it, at 68 dBA, and
-`bed()` reports `steady_dba` and `event_dba` separately.
+An ambience is the steady bed. A tannoy call is an event on top of it, at 68 dBA.
 
-This was not a tidiness decision. With the announcement folded into one total the Zocalo's
-day/night difference read **+1.82 dB while the crowd layer itself was moving +6.3** — the gate was
-measuring whether the tannoy happened to fire in that quarter-hour.
+This was not a tidiness decision; it was found twice, by two different gates.
+
+1. **In the beds.** With the announcement folded into one total, the Zocalo's day/night
+   difference read **+1.82 dB while the crowd layer itself was moving +6.3** — the gate was
+   measuring whether the tannoy happened to fire in that quarter-hour. `bed()` now reports
+   `steady_dba` and `event_dba` separately.
+2. **In the manifest, by the runtime test.** `beds.json` is hourly; `broadcast`'s audibility
+   window is a quarter of an hour. A chime that fires once therefore appeared in the bed at
+   **03:00 and 13:00 alike** and read as a tannoy that never stops. Announcements are now a
+   separate list in `bank.json` with their real times and their real text, fired as one-shots by
+   `_speak()` — so the horn goes off at the minute the ship berths and says the era-correct thing.
 
 The PA layer inherits `broadcast.py` whole, including its isolation rule: the concourse hears
 announcements, **ordinary civilian quarters hear nothing at all**, and both are asserted.
@@ -228,8 +235,13 @@ which rounds to a whole number of cycles in the buffer.
 | pa_horn | 4.000 | −20.0 | 2988 | 400–4000 | 0.21 | +0.72 | the horn's own hiss |
 | pa_chime | 2.000 | −20.0 | 1029 | 500–1800 | 0.00 | +0.00 | two tones, A5 and D6 |
 
-**32 kHz, 16-bit, mono. 13 streams, 5.83 MB total** including both JSON manifests
-(`bank.json` 8 KiB, `beds.json` 364 KiB for 128 places × 24 hours × 7 layers).
+**32 kHz, 16-bit, mono. 13 streams, 5.86 MB total** including both JSON manifests —
+`bank.json` (the stream bank, the emitter rules, the master trim and the day's **118
+announcements** with their real times and era-locked text) and `beds.json` (128 places × 24 hours
+× up to 7 steady layers, 361 KiB).
+
+The **master trim is +8.33 dB, derived rather than chosen**: it is whatever puts the loudest
+steady bed on the station — `waste_red` at **79.7 dBA**, at 15:00 — at −6 dBFS.
 
 The structure loop is **357,030 samples = 11.157187 s**, one spoke-pass period, against the exact
 11.157200 s — a quantisation error of **12.5 µs a cycle**, which is 0.04 s over a ten-minute
@@ -280,9 +292,46 @@ least four periods of the stream's own 5th-percentile frequency, measured off it
   standpipes, the Garden's pool edge, intercoms. An emitter's level is the **direct** field at 1 m;
   the bed is the **reverberant** field, so the two do not double-count. Walk up to a duct and the
   duct gets louder while the room does not. Nearest 24 play, re-sorted twice a second.
-- `describe()` prints one parseable line — place, hour, live layers with their dBFS, emitters
-  playing — because there is no way to listen to this build and a `dbfs` that never moves between
-  two rooms is a defect only the ear or that line can catch.
+- `describe()` prints one parseable line — place, hour, live layers with their **effective** level,
+  emitters playing, last thing the tannoy said — because there is no way to listen to this build
+  and a level that never moves between two rooms is a defect only the ear or that line can catch.
+  It prints the effective level rather than the fader because a stream normalised to a lower RMS
+  carries a positive trim: printing the fader alone made the sparse night crowd look 4 dB *louder*
+  than the busy afternoon one when it is 13 dB quieter.
+
+### It has been run
+
+`godot --headless --script ambience_test.gd` against the assembled Blue 0/0 deck, in a
+`git worktree` so it could not collide with the other agents:
+
+```
+ambience: 13/13 streams, 128 places, master trim 8.33 dB
+ambience: bound 3 places, 6 emitters (cap 24)
+PLACES 3 arrival_concourse, customs_north, customs_south
+AMBIENCE place=customs_north     hour=03.00 layers=5 emitters=6
+    pa="IN-SYSTEM SHUTTLE NOW ARRIVING, docking …"
+    [air:air_duct -64.7, crowd:crowd_sparse -54.1, pa:pa_horn -79.7,
+     structure:structure_hull -77.7, traffic:crowd_babble -63.2]
+AMBIENCE place=customs_north     hour=13.00 layers=5 emitters=6
+    [air:air_duct -64.7, crowd:crowd_babble -44.4, …, traffic:crowd_babble -59.7]
+AMBIENCE place=arrival_concourse hour=03.00 layers=4 emitters=6
+AMBIENCE place=arrival_concourse hour=13.00 layers=4 emitters=6
+DISTINCT 4 of 4 — OK
+```
+
+A body **stood in each room** and `place_at` found it off the mesh names; the harness fails if it
+does not. The crowd layer moves **+9.7 dB** across the night in the customs hall and switches
+stream from `crowd_sparse` to `crowd_babble`. The concourse has no `traffic` layer and the customs
+hall does, because only one of them declares `immigration`. The tannoy fires as a one-shot and
+carries the line `broadcast.py` wrote for the ship `traffic.py` actually berthed.
+
+The arithmetic chain is verifiable end to end from that line: `pa_horn` at −79.7 dBFS is
+26 dBA − 94 (the 0 dBFS reference) + 8.33 (master trim) − 20 (the stream's own RMS).
+
+Two things it caught, both now fixed: the harness's first version did everything inside
+`_initialize`, so **nothing ever entered the scene tree** and every player refused to play; and it
+forced `_here` instead of moving a body, which bypassed the one part of this that reads the
+geometry and made four identical corridor beds look like a bug in the beds.
 
 ---
 
@@ -323,5 +372,11 @@ python3 station/audio.py --bed zocalo --hour 3
 - **No occlusion or reverb zones.** The bed is a diffuse field per room and the cross-fade stands
   in for the transition; a closed pressure door does not currently muffle the room behind it,
   although `door.gd` knows exactly when it is shut.
+- **The bed manifest is quantised to the hour** and the runtime does not interpolate between two
+  hours, so a crowd that builds over twenty minutes arrives as a step. `populace.occupancy`'s own
+  `_hour_factor` is a step function too, which is visible as the square edges in
+  `docs/audio-day.png` — the corridor drops 11 dB at 02:00 and comes back at 05:00. Both are worth
+  smoothing and neither is dishonest about what it is.
 - **The runtime is verified headlessly and has never been heard.** `describe()` proves the beds
-  reach the mixer and differ; it proves nothing about whether it sounds good.
+  reach the mixer, that `place_at` finds the room off the geometry, and that four cases give four
+  different mixes. It proves nothing about whether it sounds good.

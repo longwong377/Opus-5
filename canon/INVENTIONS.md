@@ -5171,3 +5171,170 @@ is the first line of dialogue a player hears, has a slot for it.
 **What would overturn it:** any list of B5-era civilian hull names; any line using a bay letter
 beyond B or using one for something else; any on-screen count of customs areas; any figure for
 customs seizure volume; any on-screen quarters numbering.
+
+---
+
+## INV-260 — The station's noise ladder: what a dwelling, a corridor and a plant deck are allowed to sound like
+
+**Invented:** in `station/audio.py` — `AIR_CLASS_DBA`, the four design levels the air-handling
+layer of every bed is built on: **living 35 dBA, quiet 30, circulation 45, working 60**, and
+`AIR_CLASS_BY_FUNCTION`, which reads a place's class off `directory.PLACES`' own function
+vocabulary rather than from a second list of place keys.
+
+**Why necessary:** layer 7 was zero and the owner's standard names *"the sound"* beside the
+textures and the physics. Every relative statement an ambience makes — this room is louder than
+that one, this hour is louder than that one — is a difference of levels, and a difference needs an
+origin. `reference/` contains no audio of any kind, so the origin cannot be measured and the choice
+is between extrapolating it openly and having no sound at all.
+
+**Constrained by:**
+
+- **From above, by a real standard for a real closed habitat.** NASA-STD-3001 caps *continuous*
+  noise in a crew habitable volume at **60 dBA over 24 h**. The ISS US Lab measures 60–65 dBA,
+  which is a *tolerated* outcome on a six-person research outpost, not a designed one.
+- **From below, by what the station is for.** B5 is a civil station where a quarter of a million
+  people **live**. Its design target is therefore terrestrial habitability, and the terrestrial
+  criterion for a dwelling is NC-30, about **35 dBA**. A concourse is not a bedroom: NC-40, about
+  45 dBA, is the ordinary design level for an occupied public space.
+- **By a distinction the gazetteer already draws in another medium.**
+  `LIFE-SUPPORT-AND-INDUSTRY.md` §3.1 makes water a *class* marker — running water is a privilege
+  of rank, and Downbelow lives next to reclamation because proximity to the loop is the only way to
+  get water without status. The noise ladder is the same fact arriving through the ear: a plant
+  deck is a **working** space and may run at the 60 dBA the standard permits; nobody with a choice
+  sleeps there. The two statements are independent and they agree.
+- **By the room's own ventilation load.** §2.2 derives ~7 M m³/h through ~3.4 M m³ — about two air
+  changes an hour in occupied space — so the design air rate follows the design occupancy and duct
+  noise follows the rate. `AIR_RATE_EXPONENT = 10` dB a decade of design density, ±8 dB, against a
+  circulation datum of 10 people per 100 m².
+
+**What this rules out, and it fired:** the first version of the machinery table put `service_duct`
+at 74 dB Lw as an independent source, which produced **62 dBA in the command staff's bedrooms** —
+above the working-space ceiling, in a space this entry classes at 35. The duct *is* the air
+handling; counting it twice made the second count answer to nothing. `station/audio.py`'s self-test
+now asserts that every living space's air handling is quieter than every working space's, and that
+no ventilation fixture appears in both layers.
+
+**What would overturn it:** any dialogue or production note establishing a level; any scene in
+which a named space is audibly outside its class — a Zocalo that plays as a library, or quarters
+that play as a machine room.
+
+---
+
+## INV-261 — The rotation cannot be heard, and what can be heard instead
+
+**Invented:** in `station/audio.py` — `STRUCTURE_DBA = 28.0`, `STRUCTURE_MOD_DEPTH = 0.35`, and the
+decision that the structure layer is **identical in every location on the station** except one.
+
+**Why necessary:** an 8 km rotating body is the single most distinctive acoustic fact about the
+place, and the naive treatment — a low tone at the rotation rate — is wrong by twelve octaves.
+
+**Constrained by:**
+
+- **canon/00-MASTER.md's own number.** *"period 33.4716 s, 1.7926 rpm"* is **0.0299 Hz**. The
+  bottom of human hearing is about 20 Hz. The rotation is therefore *inaudible*, and no ambience
+  should contain it as a tone. This is the load-bearing part of the entry and it is not invented at
+  all; it is arithmetic on a canon figure.
+- **`interior.SPOKE_COUNT = 3`**, the Green rosette's three spokes at 120°, imported rather than
+  retyped. A fixed point on the ring sees a spoke pass three times a revolution: **0.08963 Hz, an
+  11.157 s cycle**. What a body can perceive is the structure-borne rumble *breathing* at that
+  rate, and that slow swell is the only thing in the mix that says the floor is turning.
+  `structure_hull.wav` is exactly one spoke-pass period long — 357,030 samples at 32 kHz, a
+  quantisation error of 12.5 µs a cycle — so the swell is whole across the loop.
+- **The hull is one continuous body**, so the rumble does not change from room to room. That is the
+  point of the layer: a rumble that changed with the room would say *building*, and this is a ship.
+  The self-test asserts one distinct value across all 128 places.
+- **28 dBA** sits below INV-260's 35 dBA living floor deliberately, so it is a presence rather than
+  a noise — audible in quarters at three in the morning and nowhere else.
+- **The one exception is a bearing, not a room.** A place whose declared function is `rotation`
+  gets +8 dB because it is standing *on* the drive. Keyed on the function, so any place that
+  acquires it acquires the noise.
+
+**What would overturn it:** a canon rotation rate other than 1.7926 rpm; a spoke count other than
+three; any scene establishing that the rotation is silent, or that it is audible as a pitch.
+
+---
+
+## INV-262 — The compressor beat, at 0.75 Hz
+
+**Invented:** in `station/audio.py` — `COMPRESSOR_BEAT_HZ = 0.75`, the amplitude modulation rate of
+`plant_beat.wav` and therefore of every industrial space on the station.
+
+**Why necessary:** `LIFE-SUPPORT-AND-INDUSTRY.md` §2.3 states the effect and not the rate: *"the
+compressors are audible from Downbelow — a low beat that is the reason nobody chooses to sleep
+there."* That sentence is a specification for a sound and it is unbuildable without a number.
+
+**Constrained by the word *beat*, which bounds it from both ends:**
+
+- it must be **countable rather than pitched** — so below 20 Hz, and below the ~4 Hz flutter rate
+  above which a listener stops counting and starts hearing roughness;
+- it must be **relentless enough to keep somebody awake**, which rules out anything slower than
+  about one every two seconds.
+
+0.75 Hz — 45 strokes a minute — sits in the middle of that 0.5–4 Hz window. The 8.000 s loop is
+exactly six strokes, so the beat is whole across the join.
+
+**What would overturn it:** any depiction of the plant zone or the compressor deck with audio; any
+line establishing a machinery rate.
+
+---
+
+## INV-263 — What the station's surfaces absorb, and how far a room reaches
+
+**Invented:** in `station/audio.py` — `SURFACE_ALPHA = 0.15`, `PERSON_SABINS = 0.4`,
+`ACOUSTIC_EXTENT_M = 60.0`.
+
+**Why necessary:** the crowd and machinery layers both go through the diffuse-field result
+`Lp = Lw + 10 log10(4/R)` with `R = S·ᾱ/(1−ᾱ)`. `S` is not invented — it is
+`density.budget_area`'s own surface formula, so the room the acoustics describe and the room the
+triangle budget describes are the same room. `ᾱ` is.
+
+**Constrained by:**
+
+- **0.15 is a hard-surfaced interior**, which is what `materials.py` actually builds: there is no
+  soft surface anywhere in the corridor set. It is deliberately **live** — a station that sounded
+  like a carpeted office would be the wrong station.
+- **0.4 sabins a standing body** is the standard occupancy figure, and it is what stops the crowd
+  layer running away. A room fills, its own absorption rises, and the reverberant level saturates:
+  measured at 2,000 m², 1→3 voices gains 4.8 dB while 100→300 gains 2.1. With the term switched
+  off the same span gains 14.8 dB instead of 10.5, which is the negative control in the self-test.
+- **The 60 m horizon is the same move `density.budget_area` already makes**, for the same reason
+  and in a different sense. A diffuse field only exists inside a coupled volume; `plant_zone` is
+  360° × 442 m and `downbelow` is 101,950 m², and treating either as one room gives a reverberant
+  field over a volume no sound crosses. Beyond the horizon a place is a series of coupled volumes
+  rather than a room. It is also what makes the traffic layer honest: the station's berthed ships
+  spread over the station's berthing floor, and you hear the ones inside a 60 m patch of it — 0.24
+  of them in the bay row with a liner in, not all 24.
+
+**What would overturn it:** any measured reverberation time for a set; a set built from soft
+materials the material table does not have; a scene in which a shout crosses a bay row.
+
+---
+
+## INV-264 — 25 dB through a station bulkhead
+
+**Invented:** in `station/audio.py` — `BULKHEAD_TL_DB = 25.0`, the transmission loss applied when
+an adjacent industrial place's machinery leaks into a neighbour.
+
+**Why necessary:** `LIFE-SUPPORT-AND-INDUSTRY.md` §2.3 asserts that the compressors *are* audible
+from Downbelow. `directory.PLACES` already records `downbelow.adjacent = ('plant_zone',)` and
+`plant_zone` is an `industrial` archetype, so the geometry and the register agree that they are
+neighbours — but whether the neighbour is audible is a number, and it decides whether the
+gazetteer's sentence is true in the build.
+
+**Constrained by:**
+
+- **From above, by what an airborne rating would give.** A pressure-rated station bulkhead is a
+  heavy, sealed, double-skinned partition; terrestrial equivalents (200 mm concrete, a sealed steel
+  pressure door) sit at Rw 50–55 dB. At that figure nothing next door is ever audible.
+- **From below, by the fact that a station is coupled structurally as well as through the air.**
+  Low-frequency plant noise travels in the frame, where the airborne rating does not apply, and the
+  effective figure for a 0.75 Hz beat is much worse than the airborne one.
+- **By having to make §2.3 true.** At 25 dB, Downbelow's machinery layer reads **53.9 dBA against
+  its own air handling at 32.8** — the loudest thing in it by 21 dB, and a reason not to sleep
+  there. The control is command quarters, which are not next to the plant and have no machinery
+  layer at all. Both are asserted, and a further gate requires that **every** dwelling on the
+  station over 45 dBA of machinery is inside or beside the plant. That gate is what caught the
+  mortuary running at 58 dBA on a mis-rated fixture.
+
+**What would overturn it:** any scene establishing that plant spaces are inaudible from the next
+compartment, or a figure for bulkhead construction.
