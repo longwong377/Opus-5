@@ -3,15 +3,16 @@
 importer="texture"
 type="CompressedTexture2D"
 uid="uid://cvpxopgqwl6v5"
-path="res://.godot/imported/stone_agg_albedo.png-d367ac362f0e0d897261017da4c08f2a.ctex"
+path.s3tc="res://.godot/imported/stone_agg_albedo.png-d367ac362f0e0d897261017da4c08f2a.s3tc.ctex"
 metadata={
-"vram_texture": false
+"imported_formats": ["s3tc_bptc"],
+"vram_texture": true
 }
 
 [deps]
 
 source_file="res://materials/textures/stone_agg_albedo.png"
-dest_files=["res://.godot/imported/stone_agg_albedo.png-d367ac362f0e0d897261017da4c08f2a.ctex"]
+dest_files=["res://.godot/imported/stone_agg_albedo.png-d367ac362f0e0d897261017da4c08f2a.s3tc.ctex"]
 
 [params]
 

@@ -3,15 +3,16 @@
 importer="texture"
 type="CompressedTexture2D"
 uid="uid://cdhqq7a5e88qs"
-path="res://.godot/imported/stone_agg_orm.png-dccc32ec91ab6674aee32f38c34c7277.ctex"
+path.s3tc="res://.godot/imported/stone_agg_orm.png-dccc32ec91ab6674aee32f38c34c7277.s3tc.ctex"
 metadata={
-"vram_texture": false
+"imported_formats": ["s3tc_bptc"],
+"vram_texture": true
 }
 
 [deps]
 
 source_file="res://materials/textures/stone_agg_orm.png"
-dest_files=["res://.godot/imported/stone_agg_orm.png-dccc32ec91ab6674aee32f38c34c7277.ctex"]
+dest_files=["res://.godot/imported/stone_agg_orm.png-dccc32ec91ab6674aee32f38c34c7277.s3tc.ctex"]
 
 [params]
 

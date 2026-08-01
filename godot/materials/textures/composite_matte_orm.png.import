@@ -3,15 +3,16 @@
 importer="texture"
 type="CompressedTexture2D"
 uid="uid://bibvgcaqsha4i"
-path="res://.godot/imported/composite_matte_orm.png-fa6105aeb9ad6c081e96d4440198cc68.ctex"
+path.s3tc="res://.godot/imported/composite_matte_orm.png-fa6105aeb9ad6c081e96d4440198cc68.s3tc.ctex"
 metadata={
-"vram_texture": false
+"imported_formats": ["s3tc_bptc"],
+"vram_texture": true
 }
 
 [deps]
 
 source_file="res://materials/textures/composite_matte_orm.png"
-dest_files=["res://.godot/imported/composite_matte_orm.png-fa6105aeb9ad6c081e96d4440198cc68.ctex"]
+dest_files=["res://.godot/imported/composite_matte_orm.png-fa6105aeb9ad6c081e96d4440198cc68.s3tc.ctex"]
 
 [params]
 

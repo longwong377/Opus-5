@@ -3,15 +3,16 @@
 importer="texture"
 type="CompressedTexture2D"
 uid="uid://bcrvrswhxjjlm"
-path="res://.godot/imported/skin_normal.png-0d9e886048bcbfd8101ed8b27b50b85f.ctex"
+path.s3tc="res://.godot/imported/skin_normal.png-0d9e886048bcbfd8101ed8b27b50b85f.s3tc.ctex"
 metadata={
-"vram_texture": false
+"imported_formats": ["s3tc_bptc"],
+"vram_texture": true
 }
 
 [deps]
 
 source_file="res://materials/textures/skin_normal.png"
-dest_files=["res://.godot/imported/skin_normal.png-0d9e886048bcbfd8101ed8b27b50b85f.ctex"]
+dest_files=["res://.godot/imported/skin_normal.png-0d9e886048bcbfd8101ed8b27b50b85f.s3tc.ctex"]
 
 [params]
 

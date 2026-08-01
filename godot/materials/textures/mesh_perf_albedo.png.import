@@ -3,15 +3,16 @@
 importer="texture"
 type="CompressedTexture2D"
 uid="uid://la171nppeh6n"
-path="res://.godot/imported/mesh_perf_albedo.png-97cc9b10a0334893e0c8773750b504ed.ctex"
+path.s3tc="res://.godot/imported/mesh_perf_albedo.png-97cc9b10a0334893e0c8773750b504ed.s3tc.ctex"
 metadata={
-"vram_texture": false
+"imported_formats": ["s3tc_bptc"],
+"vram_texture": true
 }
 
 [deps]
 
 source_file="res://materials/textures/mesh_perf_albedo.png"
-dest_files=["res://.godot/imported/mesh_perf_albedo.png-97cc9b10a0334893e0c8773750b504ed.ctex"]
+dest_files=["res://.godot/imported/mesh_perf_albedo.png-97cc9b10a0334893e0c8773750b504ed.s3tc.ctex"]
 
 [params]
 

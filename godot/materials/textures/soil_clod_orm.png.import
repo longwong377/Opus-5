@@ -3,15 +3,16 @@
 importer="texture"
 type="CompressedTexture2D"
 uid="uid://dliioeq7rpg4d"
-path="res://.godot/imported/soil_clod_orm.png-ed1dbcf92e5187b101d24466e2d3589b.ctex"
+path.s3tc="res://.godot/imported/soil_clod_orm.png-ed1dbcf92e5187b101d24466e2d3589b.s3tc.ctex"
 metadata={
-"vram_texture": false
+"imported_formats": ["s3tc_bptc"],
+"vram_texture": true
 }
 
 [deps]
 
 source_file="res://materials/textures/soil_clod_orm.png"
-dest_files=["res://.godot/imported/soil_clod_orm.png-ed1dbcf92e5187b101d24466e2d3589b.ctex"]
+dest_files=["res://.godot/imported/soil_clod_orm.png-ed1dbcf92e5187b101d24466e2d3589b.s3tc.ctex"]
 
 [params]
 

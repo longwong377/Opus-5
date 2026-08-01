@@ -3,15 +3,16 @@
 importer="texture"
 type="CompressedTexture2D"
 uid="uid://dxn8p8uj5chan"
-path="res://.godot/imported/metal_grain_orm.png-5794fd69453028a83dd178ad8dea0aa8.ctex"
+path.s3tc="res://.godot/imported/metal_grain_orm.png-5794fd69453028a83dd178ad8dea0aa8.s3tc.ctex"
 metadata={
-"vram_texture": false
+"imported_formats": ["s3tc_bptc"],
+"vram_texture": true
 }
 
 [deps]
 
 source_file="res://materials/textures/metal_grain_orm.png"
-dest_files=["res://.godot/imported/metal_grain_orm.png-5794fd69453028a83dd178ad8dea0aa8.ctex"]
+dest_files=["res://.godot/imported/metal_grain_orm.png-5794fd69453028a83dd178ad8dea0aa8.s3tc.ctex"]
 
 [params]
 

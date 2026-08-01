@@ -3,15 +3,16 @@
 importer="texture"
 type="CompressedTexture2D"
 uid="uid://3iqxksfat40b"
-path="res://.godot/imported/metal_grain_albedo.png-2f86e4a72894d47fe42d0bb15318f74f.ctex"
+path.s3tc="res://.godot/imported/metal_grain_albedo.png-2f86e4a72894d47fe42d0bb15318f74f.s3tc.ctex"
 metadata={
-"vram_texture": false
+"imported_formats": ["s3tc_bptc"],
+"vram_texture": true
 }
 
 [deps]
 
 source_file="res://materials/textures/metal_grain_albedo.png"
-dest_files=["res://.godot/imported/metal_grain_albedo.png-2f86e4a72894d47fe42d0bb15318f74f.ctex"]
+dest_files=["res://.godot/imported/metal_grain_albedo.png-2f86e4a72894d47fe42d0bb15318f74f.s3tc.ctex"]
 
 [params]
 

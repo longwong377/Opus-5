@@ -3,15 +3,16 @@
 importer="texture"
 type="CompressedTexture2D"
 uid="uid://xj4xkuwlpl3s"
-path="res://.godot/imported/cloth_weave_normal.png-99f5872fcd5758cdfbfe6a52cd58fb8d.ctex"
+path.s3tc="res://.godot/imported/cloth_weave_normal.png-99f5872fcd5758cdfbfe6a52cd58fb8d.s3tc.ctex"
 metadata={
-"vram_texture": false
+"imported_formats": ["s3tc_bptc"],
+"vram_texture": true
 }
 
 [deps]
 
 source_file="res://materials/textures/cloth_weave_normal.png"
-dest_files=["res://.godot/imported/cloth_weave_normal.png-99f5872fcd5758cdfbfe6a52cd58fb8d.ctex"]
+dest_files=["res://.godot/imported/cloth_weave_normal.png-99f5872fcd5758cdfbfe6a52cd58fb8d.s3tc.ctex"]
 
 [params]
 

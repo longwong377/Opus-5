@@ -3,15 +3,16 @@
 importer="texture"
 type="CompressedTexture2D"
 uid="uid://c26wt0wci1llc"
-path="res://.godot/imported/paint_chip_orm.png-e155643f75730f95662035bbf5d8fd41.ctex"
+path.s3tc="res://.godot/imported/paint_chip_orm.png-e155643f75730f95662035bbf5d8fd41.s3tc.ctex"
 metadata={
-"vram_texture": false
+"imported_formats": ["s3tc_bptc"],
+"vram_texture": true
 }
 
 [deps]
 
 source_file="res://materials/textures/paint_chip_orm.png"
-dest_files=["res://.godot/imported/paint_chip_orm.png-e155643f75730f95662035bbf5d8fd41.ctex"]
+dest_files=["res://.godot/imported/paint_chip_orm.png-e155643f75730f95662035bbf5d8fd41.s3tc.ctex"]
 
 [params]
 

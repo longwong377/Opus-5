@@ -3,15 +3,16 @@
 importer="texture"
 type="CompressedTexture2D"
 uid="uid://cxxiyxnxrto31"
-path="res://.godot/imported/cloth_weave_albedo.png-4e67a9aa361c0cbbadb395c54bcafaac.ctex"
+path.s3tc="res://.godot/imported/cloth_weave_albedo.png-4e67a9aa361c0cbbadb395c54bcafaac.s3tc.ctex"
 metadata={
-"vram_texture": false
+"imported_formats": ["s3tc_bptc"],
+"vram_texture": true
 }
 
 [deps]
 
 source_file="res://materials/textures/cloth_weave_albedo.png"
-dest_files=["res://.godot/imported/cloth_weave_albedo.png-4e67a9aa361c0cbbadb395c54bcafaac.ctex"]
+dest_files=["res://.godot/imported/cloth_weave_albedo.png-4e67a9aa361c0cbbadb395c54bcafaac.s3tc.ctex"]
 
 [params]
 
