@@ -335,7 +335,11 @@ func _floor_r() -> float:
 # ---------------------------------------------------------------------------
 func _physics_process(delta: float) -> void:
 	super._physics_process(delta)
-	if _done or plan.is_empty() or _player == null:
+	# walk.gd's SHOT phase settles the body itself and takes the picture from
+	# where it lands. Stepping it a second time here would move the camera
+	# between the settle and the grab, which is the sort of thing that produces
+	# a frame nobody can reproduce.
+	if _shooting or _done or plan.is_empty() or _player == null:
 		return
 	if _settled < settle_frames:
 		_settled += 1
