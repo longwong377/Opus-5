@@ -37,6 +37,19 @@ extends Node3D
 ## `station/audio.seam()`, which measures both artefacts a loop can have -- a
 ## click and a pump -- and has a negative control that fires on each.
 
+## WHERE AM I is asked of one implementation, not of two. `hud.gd` and this file
+## each derived a place's extent and disagreed by 31.6 m -- the HUD said
+## `CORRIDOR (near CUSTOMS NORTH 31.6 m)` while this file said
+## `place=customs_north` -- because the HUD measured the bounding box of a room's
+## INTERACTABLES and this one measured the room's own geometry. The geometry rule
+## was the right one and it now lives in `scripts/places.gd`, where both read it.
+##
+## `preload` AND NOT `class_name`, deliberately: a global class name resolves
+## through the project's script-class list, which a fresh headless run has not
+## scanned, so the identifier does not parse, `set_script` fails, and the cold
+## start comes back `hud=0, audio_layers=0` with nothing obviously wrong.
+const Places := preload("res://scripts/places.gd")
+
 ## Written by `station/audio.py --write`.
 @export var bank_path: String = ""
 @export var beds_path: String = ""
@@ -66,6 +79,9 @@ var _body: Node3D
 var _here := ""
 var _fallback := "central_corridor"
 var _since_refresh := 0.0
+## False until the first mix has run. See `_process`: the first bed a build ever
+## learns snaps to its level; everything after it crossfades.
+var _started := false
 var _ref_dba := 94.0
 var _master_trim := 0.0
 var _emitter_ref := 60.0
@@ -187,29 +203,19 @@ func _load_wav(path: String) -> AudioStreamWAV:
 ## list of coordinates that could disagree with the geometry.
 func bind(visual: Node, body: Node3D) -> int:
 	_body = body
-	_place_aabb.clear()
 	_emitters.clear()
+	# The place boxes, including the 1.5 m doorway grow that used to be written
+	# out below -- both are `places.gd`'s now, so the HUD and the mixer cannot
+	# drift apart again.
+	_place_aabb = Places.boxes(visual)
 	var rules: Array = _bank.get("emitters", [])
-	for m in _meshes(visual):
+	for m in Places.meshes(visual):
 		var n := String(m.name)
-		var cut := n.find("__")
-		if cut > 0:
-			var key := n.substr(0, cut)
-			var box: AABB = m.global_transform * m.get_aabb()
-			if _place_aabb.has(key):
-				_place_aabb[key] = (_place_aabb[key] as AABB).merge(box)
-			else:
-				_place_aabb[key] = box
 		for r in rules:
 			var pat := String(r.get("match", ""))
 			if pat != "" and n.find(pat) >= 0:
 				_add_emitter(m, r)
 				break
-	# Grow every room's box a little: a doorway is where the beds should
-	# already be mixing, and an AABB that stops at the wall face makes the
-	# change happen one step after it should.
-	for k in _place_aabb.keys():
-		_place_aabb[k] = (_place_aabb[k] as AABB).grow(1.5)
 	print("ambience: bound %d places, %d emitters (cap %d)" % [
 		_place_aabb.size(), _emitters.size(),
 		int(_bank.get("emitter_cap", 24))])
@@ -243,15 +249,6 @@ func _trim(stream_name: String) -> float:
 	return float(meta.get("level_trim_db", 0.0))
 
 
-func _meshes(node: Node) -> Array:
-	var out := []
-	if node is MeshInstance3D and node.mesh != null:
-		out.append(node)
-	for c in node.get_children():
-		out.append_array(_meshes(c))
-	return out
-
-
 # ---------------------------------------------------------------------------
 # Which room am I in
 # ---------------------------------------------------------------------------
@@ -264,17 +261,7 @@ func _meshes(node: Node) -> Array:
 ## key (`central_corridor`), not a made-up bed -- the corridor is a location and
 ## has an entry in `beds.json` like everything else.
 func place_at(p: Vector3) -> String:
-	var best := ""
-	var best_d := INF
-	for k in _place_aabb.keys():
-		var box: AABB = _place_aabb[k]
-		if box.has_point(p):
-			# Smallest containing box wins: a bay inside a bay row is the room
-			# you are actually standing in.
-			var v := box.size.x * box.size.y * box.size.z
-			if v < best_d:
-				best_d = v
-				best = k
+	var best: String = Places.at(_place_aabb, p)
 	if best != "":
 		return best
 	return _fallback
@@ -317,15 +304,32 @@ func _process(delta: float) -> void:
 		var stream_name := parts[1]
 		if not _streams.has(stream_name):
 			continue
+		var want := (float(target[key]) - _ref_dba + _master_trim
+			+ _trim(stream_name))
 		if not _players.has(key):
+			# THE FIRST BED DOES NOT FADE IN, and this is a correctness fix
+			# rather than a preference. Every layer used to start 20 dB BELOW
+			# `silence_db` and approach its level with a 2.5 s time constant, so
+			# for the first seconds of any build the station was measurably
+			# silent. At this deck's own levels the crowd bed only crosses
+			# audibility at 0.84 s, the traffic bed at 1.64 s and the air bed at
+			# **2.09 s** -- so anything asking "is the station audible" before
+			# then gets a truthful no, and a cold-start gate became a race
+			# against a fader. It produced a false red, which costs a reader
+			# their trust in every other number the gate prints.
+			#
+			# There is also nothing to fade FROM at boot. The crossfade exists so
+			# that walking out of a bar into a corridor is smooth, and it still
+			# does exactly that: `_started` is false only on the first pass, so a
+			# bed learned later -- a room you walk into -- still arrives over
+			# `crossfade_s`. Snapping on scene entry is what a mixer does.
+			var db0 := want if not _started else silence_db - 20.0
 			var pl := AudioStreamPlayer.new()
 			pl.stream = _streams[stream_name]
-			pl.volume_db = silence_db - 20.0
+			pl.volume_db = db0
 			add_child(pl)
-			_players[key] = {"node": pl, "db": silence_db - 20.0,
-				"target": 0.0}
-		_players[key]["target"] = (float(target[key]) - _ref_dba
-			+ _master_trim + _trim(stream_name))
+			_players[key] = {"node": pl, "db": db0, "target": want}
+		_players[key]["target"] = want
 	# Approach each target exponentially. In dB, because that is how a fade
 	# sounds even: a linear ramp in amplitude spends most of its time inaudible.
 	var k := 1.0 - exp(-delta / max(crossfade_s, 0.01))
@@ -351,6 +355,10 @@ func _process(delta: float) -> void:
 	if _since_refresh >= emitter_refresh_s:
 		_since_refresh = 0.0
 		_refresh_emitters()
+	# Everything after this frame is a CHANGE rather than an arrival, so it
+	# crossfades. Set last, so the first pass through the loop above is the one
+	# that snaps.
+	_started = true
 
 
 ## Fire the tannoy if a call for this place is due, once per call per pass of

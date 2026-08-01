@@ -638,9 +638,20 @@ def _build():
         # (reactor_spine, main_truss_spine, explosive_disconnect_neck) are
         # structural_truss's, and the four windowed ones (green_section,
         # red_section, aft_hull_block, habitat_cylinder) are habitat_windows'.
+        # AND THE STARFURY'S AIRFRAME. `starfury.gd` borrows this scene's rules
+        # and calls `_apply_materials` on the fighter, so the fury's sections
+        # are exterior groups like any other -- and all sixteen of them were on
+        # the glTF fallback, which is smooth white plastic: every visible
+        # surface of the only flyable thing in the project. It went unseen
+        # because `_selftest`'s derived vocabulary is built from `rooms` and
+        # `dressing` and stops at the pressure hull; the fury is now in it too,
+        # below. The plated ones take the station's own hull plate, which is
+        # what a Starfury is: painted composite over structure, weathered.
         binds=("aft_terminus", "primary_fusion_reactor",
                "generator_torus_housing", "hull_flare_aft", "forward_taper",
-               "forward_waist", "docking_sphere", "forward_deflector_spike"),
+               "forward_waist", "docking_sphere", "forward_deflector_spike",
+               "fuselage", "dorsal_deck", "nose", "root_fairing", "boom",
+               "boom_tip", "engine_pod", "gun_pod", "rcs_sponson", "tip_vane"),
         scenes=("exterior",),
         source="exterior more.jpg drum side view; Cobra Bays with starfurries.webp",
         note="Also the fallback for the exterior scene: most of the model is "
@@ -706,8 +717,15 @@ def _build():
         albedo=(0.260, 0.255, 0.248), roughness=0.46, metallic=0.28,
         specular=0.45, texture="truss_steel", uv_scale=1.0 / 12.0,
         normal_scale=1.0,
+        # The Starfury's nozzles take this rather than the hull plate: an engine
+        # bell, a retro nozzle and an RCS nozzle are unpainted scorched metal,
+        # which is what this material is for on the station's own spine. It is
+        # the darkest thing in the exterior set (V 0.204 against hull 0.44) and
+        # a nozzle reading as bright as the airframe is the tell that a fighter
+        # was modelled as one lump.
         binds=("main_truss_spine", "reactor_spine", "explosive_disconnect_neck",
-               "comms_grid_pylon"),
+               "comms_grid_pylon", "engine_bell", "retro_nozzle",
+               "rcs_nozzle"),
         scenes=("exterior",),
         source="exterior more.jpg truss spine, V 0.204 against hull 0.44 — the darkest thing on the station",
         note="INV-010's relative reading; only differences within that sheet are trustworthy."))
@@ -767,7 +785,11 @@ def _build():
         "dome_glazing", "Dome Glazing — observation dome, rotunda and docking port glass",
         albedo=(0.045, 0.048, 0.055), roughness=0.10, metallic=0.0,
         specular=0.85,
-        binds=("observation_dome", "docking_port"), scenes=("exterior",),
+        # `cockpit_glazing` is the Starfury's canopy glass -- the same question
+        # this material already answers for the dome, and the one surface on the
+        # fighter a fallback of white plastic is most obviously wrong on.
+        binds=("observation_dome", "docking_port", "cockpit_glazing"),
+        scenes=("exterior",),
         source="03-sector-blue/comand and contorl.webp (authority 1) — Observation "
                "Dome 1 is Command and Control and its aperture is GLAZED, a large "
                "circle of panes on radial mullions, not plating. Contract 5 names "
@@ -798,8 +820,11 @@ def _build():
         albedo=(0.600, 0.582, 0.564), roughness=0.58, metallic=0.30,
         specular=0.45, texture="hull_plate", uv_scale=1.0 / 16.0,
         normal_scale=0.9,
+        # The canopy shell and its frame are the fighter's mullions: the same
+        # pale plated collar around glazing that this material already describes
+        # on the observation dome.
         binds=("observation_dome_frame", "observation_rotunda_frame",
-               "docking_port_frame"),
+               "docking_port_frame", "cockpit_canopy", "canopy_frame"),
         scenes=("exterior",),
         source="03-sector-blue/comand and contorl.webp (authority 1) — radial spoke "
                "mullions and a broad concentric ring band, pale against the glazing. "
@@ -6737,6 +6762,32 @@ def _selftest():
     _unbound = sorted(g for g in vocab if resolve_any(g, "interior") is None)
     check("every group a room or a corridor can emit resolves to a material",
           not _unbound, f"{len(_unbound)} unbound: {_unbound[:8]}")
+
+    # -- AND THE VOCABULARY STOPPED AT THE PRESSURE HULL ------------------
+    #
+    # The three families above are all `rooms` and `dressing`, so the check
+    # could only ever fail for something INSIDE the station. Meanwhile all
+    # sixteen sections of the Starfury -- fuselage, nose, canopy, booms, engine
+    # bells, gun pod, every visible surface of the only flyable thing in the
+    # project -- resolved to nothing and rendered on the glTF fallback. It was
+    # found by launching the fighter and reading `render_shot`'s own report, not
+    # by any gate, which is the same shape of miss as session 4f's 45 unbound
+    # `dress_*` groups: a coverage check is only as wide as its vocabulary, and
+    # the part of the vocabulary nobody wrote down is the part that breaks.
+    #
+    # `SECTIONS` is the airframe's own table -- the list the builder iterates --
+    # so adding a section to the fighter now fails this rather than shipping a
+    # white one. Against "exterior" because that is the scene `starfury.gd`
+    # borrows its rules from.
+    import starfury_geometry as _fury                           # noqa: PLC0415
+    _fury_vocab = {n for n, *_rest in _fury.SECTIONS}
+    check("the Starfury vocabulary is the airframe's own section table",
+          len(_fury_vocab) >= 16, f"{len(_fury_vocab)} sections")
+    _fury_unbound = sorted(g for g in _fury_vocab
+                           if resolve_any(g, "exterior") is None)
+    check("every Starfury airframe section resolves to an exterior material",
+          not _fury_unbound,
+          f"{len(_fury_unbound)} unbound: {_fury_unbound[:8]}")
     _untabled = sorted(g for g in vocab if table_hit(g) is None)
     check("and the EXPORTED interior rules table covers every one of them",
           not _untabled, f"{len(_untabled)} uncovered: {_untabled[:8]}")

@@ -70,6 +70,12 @@ const AMBIENCE_SCRIPT := "res://scripts/ambience.gd"
 ## Frames the clock is watched over, after settling. At 1/60 h per second and
 ## 60 Hz this is a station minute, which is far more than a float can hide.
 @export var clock_frames: int = 60
+## How long the cold start will wait for the mixer to report a level, in physics
+## frames. 300 is five seconds -- twice the mixer's own 2.5 s crossfade constant,
+## so it covers the old fade-in-from-silence behaviour completely even though
+## `ambience.gd` no longer does that. The check is "did the station become
+## audible", not "was it audible at frame 180".
+const AUDIO_SETTLE_FRAMES := 300
 
 var _world: Node3D           # the walk.tscn (or arrival.tscn) instance
 var _life: Node3D            # life.gd's Director
@@ -79,6 +85,9 @@ var _mode := "station"
 var _boot := {}
 var _present_0300 := -1
 var _present_1300 := -1
+## Why there is no mixer, when there is no mixer. Carried into the verdict so a
+## silent build says which silence it is.
+var _audio_why := "-"
 
 
 func _ready() -> void:
@@ -291,8 +300,9 @@ func _start_ambience() -> void:
 	var dir := _root().path_join("station/generated/audio")
 	var bank := dir.path_join("bank.json")
 	if not FileAccess.file_exists(bank):
-		print("ambience: no bank at %s -- run `python3 station/audio.py "
-			% bank + "--write`; the station will be silent")
+		_audio_why = "no bank at %s" % bank
+		print("ambience: %s -- run `python3 station/audio.py --write`; the "
+			% _audio_why + "station will be silent")
 		return
 	_audio = Node3D.new()
 	_audio.name = "Ambience"
@@ -300,7 +310,17 @@ func _start_ambience() -> void:
 	add_child(_audio)
 	_audio.audio_dir = dir
 	_audio.hour = start_hour
+	# A HALF-BUILT MIXER MUST NOT LOOK LIKE A QUIET ONE. `load_bank` returning
+	# false used to leave the node in the tree with an empty bank: `_process`
+	# bailed on the first line, `_here` stayed "", and the verdict read
+	# `audio_layers=0 audio_place=-` -- character for character what `--no-sound`
+	# prints. Two very different failures with one signature is how a reader
+	# spends an afternoon on the wrong hypothesis. It is freed, and the reason
+	# is carried into the verdict.
 	if not _audio.load_bank(bank, dir.path_join("beds.json")):
+		_audio_why = "load_bank failed for %s" % bank
+		_audio.queue_free()
+		_audio = null
 		return
 	# The whole world node: the collision proxy carries seven groups, none of
 	# them named `<place>__<group>` or matching an emitter rule, so there is
@@ -371,20 +391,37 @@ func _coldstart() -> void:
 		print("hud: %s" % hud.report())
 		hud_place = String(hud.place_name).to_lower().replace(" ", "_")
 		hud_place = hud_place.replace(",", "")
+	# THE MIXER IS POLLED UNTIL IT SETTLES, NOT SAMPLED ONCE.
+	#
+	# This used to read `describe()` at exactly `settle_frames + clock_frames`
+	# and believe whatever it said. That makes the verdict a race: a fader on a
+	# 2.5 s time constant is below `silence_db` for the first two seconds of a
+	# build, so "the station is audible" answered a question about WHEN it was
+	# asked. `ambience.gd` no longer fades in from silence at boot, which is the
+	# real cure -- but a gate that is correct only because of a property of the
+	# thing it is gating is one refactor from lying again, so it also waits for
+	# a settled answer here and REPORTS HOW LONG IT WAITED. `audio_ready_s` is
+	# the number that would have caught this on the day it was written.
 	var layers := 0
+	var ready_s := -1.0
 	if _audio != null:
-		if _clock != null:
-			_audio.hour = h1
+		var t0 := Time.get_ticks_msec()
+		for _i in AUDIO_SETTLE_FRAMES:
+			if _clock != null:
+				_audio.hour = _clock.hour()
+			layers = _layers(_audio.describe())
+			if layers > 0:
+				ready_s = float(Time.get_ticks_msec() - t0) / 1000.0
+				break
+			await get_tree().physics_frame
 		var said: String = _audio.describe()
 		print(said)
-		var cut := said.split("layers=")
-		if cut.size() > 1:
-			layers = cut[1].split(" ")[0].to_int()
+		layers = _layers(said)
 
 	print(("COLDSTART scene=%s mode=%s player=%d on_floor=%s drop_m=%.3f "
 		+ "hud=%d hud_place=%s h0=%05.2f h1=%05.2f clock_advanced=%s "
 		+ "bodies=%d present_0300=%d present_1300=%d audio_layers=%d "
-		+ "audio_place=%s boot_s=%.1f") % [
+		+ "audio_place=%s audio_ready_s=%.2f audio_why=%s boot_s=%.1f") % [
 		String(get_tree().current_scene.scene_file_path), _mode,
 		1 if body != null else 0, str(on_floor).to_lower(), drop,
 		1 if hud != null else 0, (hud_place if hud_place != "" else "-"),
@@ -392,8 +429,15 @@ func _coldstart() -> void:
 		_life.count() if _life != null else 0,
 		_present_0300, _present_1300, layers,
 		(_audio._here if _audio != null and _audio._here != "" else "-"),
+		ready_s, _audio_why.replace(" ", "_"),
 		float(Time.get_ticks_msec()) / 1000.0])
 	get_tree().quit(0)
+
+
+## The layer count out of an `AMBIENCE ...` line, or 0.
+func _layers(said: String) -> int:
+	var cut := said.split("layers=")
+	return cut[1].split(" ")[0].to_int() if cut.size() > 1 else 0
 
 
 # ---------------------------------------------------------------------------
@@ -402,13 +446,33 @@ func _coldstart() -> void:
 
 ## The deck this build boots into, and everything that stands on it.
 ##
-## READ FROM A GENERATED SIDECAR, NEVER WRITTEN HERE. `station/arrival.py
-## --build` records the mesh, the collision shell, the interactables, the cast
-## and a spawn point together, because they are one decision -- so a spawn
-## constant in this file could only ever be a copy that goes stale against
-## regenerated geometry. `--boot=<json>` takes any file of the same shape.
+## READ FROM A GENERATED MANIFEST, NEVER WRITTEN HERE. A spawn constant in this
+## file could only ever be a copy that goes stale against regenerated geometry,
+## and `arrival.tscn`'s header records what that costs: its first run was handed
+## `--spawn=0,0,0`, which on a ring deck at radius 211 m is the SPIN AXIS, and
+## the body fell for two minutes.
+##
+## Three places are tried, in this order:
+##
+##   --boot=<json>   whatever you say
+##   boot.json       `station/boot.py`'s output. THE RIGHT SOURCE: it derives
+##                   the spawn from the collision shell's own floor rather than
+##                   copying it, so it cannot disagree with the surface the body
+##                   stands on
+##   *_arrival.json  the fallback, and it is a BORROWED manifest. It is the
+##                   sidecar `arrival.py --build` writes for the player's first
+##                   ten minutes; booting the other three modes out of it made
+##                   the game's entry point a property of a narrative artefact,
+##                   and deleting an arrival sequence stopped the game starting
+##
+## The two shapes differ only in nesting -- `arrival.json` keeps its build block
+## under `build` -- so both are read here rather than one being converted.
 func _boot_manifest(args: Dictionary) -> Dictionary:
 	var path := String(args.get("boot", ""))
+	if path == "":
+		var derived := _root().path_join("station/generated/scene/boot.json")
+		if FileAccess.file_exists(derived):
+			path = derived
 	if path == "":
 		var deck := _root().path_join("station/generated/scene/deck")
 		var d := DirAccess.open(deck)
@@ -422,13 +486,15 @@ func _boot_manifest(args: Dictionary) -> Dictionary:
 			return {}
 		found.sort()
 		path = found[0]
+		print("main: no boot.json -- falling back to the arrival sidecar; "
+			+ "run `python3 station/boot.py` to write one")
 	if not FileAccess.file_exists(path):
 		return {}
 	var f2 := FileAccess.open(path, FileAccess.READ)
 	var doc = JSON.parse_string(f2.get_as_text())
 	if typeof(doc) != TYPE_DICTIONARY:
 		return {}
-	var b: Dictionary = doc.get("build", {})
+	var b: Dictionary = doc.get("build", doc)
 	if b.is_empty() or not b.has("glb"):
 		return {}
 	var out := b.duplicate()

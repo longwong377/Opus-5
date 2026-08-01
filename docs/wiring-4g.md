@@ -117,6 +117,163 @@ while the crowd thinned out around the player. `main.gd::_process` pushes
 
 ---
 
+## 2b. THE FALSE RED, AND WHAT IT WAS HIDING
+
+The coordinator caught `station/coldstart.py` reporting `audio_layers=0` in a
+full run and `audio_layers=3` in `--g1` alone, on the same code and the same
+box. **A gate that reports a false red is worse than no gate** — it trains a
+reader to disbelieve every other number it prints — so this took priority over
+everything else in this section.
+
+### What I could and could not reproduce
+
+**I could not reproduce it: 15 launches, all healthy** — 8 raw, 4 under an
+attempted CPU load, 3 more via the same `subprocess.run` path the gate uses. The
+`g3()`-runs-first correlation does not survive: `g3()` opens files read-only,
+writes nothing, touches neither `godot/.godot/` nor the import cache, and a full
+run passed on the next attempt. Saying so plainly rather than claiming a fix I
+cannot demonstrate.
+
+### What the arithmetic says, which is more useful than the repro
+
+Every ambience layer started **20 dB below `silence_db`** and approached its
+level with a 2.5 s time constant. `describe()` counts a layer only once its
+fader is above `silence_db`, so at this deck's own bed levels:
+
+| layer | target (fader dB) | crosses audibility at |
+|---|---|---|
+| crowd | −9.55 | **0.84 s** |
+| traffic | −38.44 | **1.64 s** |
+| air | −44.67 | **2.09 s** |
+| structure | −57.67 | **5.65 s** |
+
+`_coldstart()` sampled once at `settle_frames + clock_frames` = 180 physics
+frames ≈ 3.0 s. So the verdict had **0.9 s of margin on `air`** and was reporting
+a fader mid-fade as though it were a level. That is a race by construction
+whatever perturbs it, which is exactly what the coordinator said.
+
+**And it was not only a flaky gate — every audio number in §3 below was wrong.**
+Sampling mid-fade meant the build reported **3 layers when the bed has 5**, and
+the crowd layer 21 dB below its derived level. `structure` and `pa` were missing
+from every measurement this session has published. The corrected table is in §3.
+
+### Three fixes, in order of how much they matter
+
+1. **`ambience.gd` no longer fades in from silence at boot.** The crossfade
+   exists so that walking out of a bar into a corridor is smooth; at boot there
+   is nothing to fade *from*, and a mixer that is measurably silent for the
+   first two seconds of a build is wrong on its own terms. `_started` is false
+   only on the first pass, so a bed learned later — a room you walk into — still
+   arrives over `crossfade_s`. Snapping on scene entry is what a mixer does.
+2. **The gate polls until the mixer settles instead of sampling once**, with a
+   300-frame deadline, and reports `audio_ready_s`. It now reads **0.00 s**. A
+   gate that is correct only because of a property of the thing it is gating is
+   one refactor from lying again.
+3. **A half-built mixer no longer looks like a switched-off one.** `load_bank`
+   returning false used to leave the node in the tree with an empty bank:
+   `_process` bailed on its first line, `_here` stayed `""`, and the verdict read
+   `audio_layers=0 audio_place=-` — character for character what `--no-sound`
+   prints. Two very different failures with one signature is how a reader spends
+   an afternoon on the wrong hypothesis. It is freed, and `audio_why=` carries
+   the reason into the verdict.
+
+### And the gate now prints the engine's own account of a failure
+
+This is the part I would keep if I could keep only one. `g1()` printed five
+whitelisted line prefixes and dropped everything else, so a red run said
+`FAIL the station is audible` and **nothing at all** about the
+`ERROR: ambience: ...` line sitting in output it had already captured. `--verbose`
+existed; needing a second run to find out what happened is exactly the friction
+that stops anyone doing it. Any failed check now dumps the engine's `ERROR`,
+`SCRIPT ERROR`, `ambience:`, `life:` and `hud:` lines automatically — visible in
+all three control runs in §4.
+
+---
+
+## 2c. THE BOOT MANIFEST IS ITS OWN ARTEFACT NOW — `station/boot.py`
+
+`main.gd` read its world out of `<deck>_arrival.json`, the sidecar
+`station/arrival.py --build` writes for the player's first ten minutes. That made
+the game's entry point a property of a narrative artefact: change which ship the
+player arrives on and you change what `godot --path godot` opens, and deleting an
+arrival sequence stopped the game booting at all.
+
+`python3 station/boot.py` writes `station/generated/scene/boot.json`, and
+**the spawn is derived from the floor rather than copied from anywhere.** That is
+`station/collision.py`'s own rule one level up — it measures the corridor's
+walking profile off the kit by ray casting "so it cannot drift from what it
+stands in for". The shell's `collision` group is the surface a body walks on; a
+ring deck is spun, so its floor is the outermost radius in that group; the body
+stands `STAND_IN_M` inside it.
+
+    boot: blue_0_0_z7440 -- spawn -53.200,204.672,7464.120 in corridor, 3 rooms;
+          standing on 1 of 1122 floor triangles (of 4384 in the shell)
+          at r=211.550, 105 deg
+      derived   -53.200  204.672 7464.120   r=211.474
+      arrival   162.002  135.935 7464.480   r=211.478
+      they differ by 225.913 m along the corridor and 0.004 m in radius
+      ok   the two agree on where the floor is
+
+The cross-check is **evidence, not a source**: the two numbers are computed by
+different code from different inputs, so agreeing to **4 mm in radius** is
+meaningful and differing by 226 m *along* the corridor is not a disagreement —
+where along an arc you stand is a choice, and the two make it differently on
+purpose.
+
+**The first version of this put the body in space, and the gate caught it in six
+seconds.** It averaged the floor's vertices — but the centroid of an arc is
+inside the circle it bends around, so the spawn landed 214 m from any built
+floor. `coldstart.py --g1` came back `on_floor=false, drop_m=19.456` with the
+radius climbing as the body fell outward. The fix is that a point ON a triangle
+of the floor cannot be in the air, so the answer is now the real floor triangle
+nearest the middle of the built arc. `boot.py` also asserts it, so the next
+occurrence costs milliseconds instead of a build and a launch.
+
+`main.gd` tries `--boot=` → `boot.json` → `*_arrival.json`, and says out loud
+when it falls back. `station/generated/scene/` is gitignored, so **CI must run
+`python3 station/boot.py` before `coldstart.py`** — or accept the fallback, which
+still works. See §5.1.
+
+---
+
+## 2d. THE STARFURY IS NOT WHITE PLASTIC ANY MORE
+
+All 16 sections of the airframe — `fuselage`, `nose`, `cockpit_glazing`,
+`engine_bell`, every visible surface of the only flyable thing in the project —
+resolved to no material and took `exterior.tscn`'s glTF fallback.
+
+`starfury.gd` borrows `exterior.tscn`'s rules and calls its `_apply_materials` on
+the fighter, so the fury's sections are exterior groups like any other. They now
+bind to materials that already exist, rather than to new ones invented for them:
+
+| sections | material | why |
+|---|---|---|
+| fuselage, dorsal_deck, nose, root_fairing, boom, boom_tip, engine_pod, gun_pod, rcs_sponson, tip_vane | `hull_exterior` | painted composite over structure, weathered — what the station's own plate is |
+| engine_bell, retro_nozzle, rcs_nozzle | `structural_truss` | unpainted scorched metal, the darkest thing in the exterior set (V 0.204 against hull 0.44). A nozzle as bright as the airframe is the tell that a fighter was modelled as one lump |
+| cockpit_glazing | `dome_glazing` | the same question this material already answers for the observation dome |
+| cockpit_canopy, canopy_frame | `dome_structure` | the fighter's mullions: a pale plated collar around glazing |
+
+`render_shot: fallback material used by 16 group(s)` → **the line is gone.**
+
+**The structural half matters more than the binds.** `materials._selftest`'s
+derived vocabulary is built from `rooms.FIXTURES`/`PLACE_FIXTURES`/`PROPS` ×
+`dressing.MACHINES` — all interior — so it could only ever fail for something
+*inside* the pressure hull, and the fighter was invisible to it. It now also
+derives from `starfury_geometry.SECTIONS`, the airframe's own table, checked
+against the `exterior` scene:
+
+```
+check("every Starfury airframe section resolves to an exterior material", ...)
+```
+
+Adding a section to the fighter now fails that rather than shipping a white one.
+Verified with its control: all 16 resolve, and a name that does not exist
+resolves to `None`. This is the same shape of miss as session 4f's 45 unbound
+`dress_*` groups — **a coverage check is only as wide as its vocabulary, and the
+part nobody wrote down is the part that breaks.**
+
+---
+
 ## 3. WHAT YOU CAN HEAR
 
 `station/audio.py` derives seven layers per place per hour, each with a level in
@@ -124,31 +281,47 @@ dBA and the reason it is that level, and writes 13 loop-exact WAVs (5.7 MB). The
 gate reads 100/100. **None of it had ever played**, because `ambience.gd` had
 zero inbound references.
 
-Standing at the boot spawn, customs hall north, one line per hour, same build:
+Standing in the customs hall, one line per hour, same build. **These are the
+corrected numbers** — everything published earlier in this session was a fader
+caught mid-fade, three layers instead of five and the crowd 21 dB light. See
+§2b.
 
 ```
-[hour=03] layers=3 emitters=6 pa="IN-SYSTEM SHUTTLE NOW ARRIVING, docking "
-          [air:air_duct -75.3, crowd:crowd_sparse -73.0, traffic:crowd_babble -74.3]
-[hour=09] layers=3 emitters=6 pa="ACHILLES-TYPE FREIGHTER NOW ARRIVING, do"
-          [air:air_duct -75.3, crowd:crowd_sparse -67.2, traffic:crowd_babble -70.8]
-[hour=13] layers=3 emitters=6 pa="IN-SYSTEM SHUTTLE NOW ARRIVING, docking "
-          [air:air_duct -75.3, crowd:crowd_babble -61.2, traffic:crowd_babble -71.8]
-[hour=20] layers=3 emitters=6 pa="UNITED SPACEWAYS TRANSPORT NOW ARRIVING,"
-          [air:air_duct -75.3, crowd:crowd_sparse -70.2, traffic:crowd_babble -71.0]
+[hour=03] layers=5 emitters=6 pa="IN-SYSTEM SHUTTLE NOW ARRIVING, docking "
+   [air:air_duct -64.7, crowd:crowd_sparse -54.1, pa:pa_horn -79.7,
+    structure:structure_hull -77.7, traffic:crowd_babble -63.2]
+[hour=09] layers=5 emitters=6 pa="ACHILLES-TYPE FREIGHTER NOW ARRIVING, do"
+   [air:air_duct -64.7, crowd:crowd_sparse -45.8, pa:pa_horn -79.7,
+    structure:structure_hull -77.7, traffic:crowd_babble -58.2]
+[hour=13] layers=5 emitters=6 pa="IN-SYSTEM SHUTTLE NOW ARRIVING, docking "
+   [air:air_duct -64.7, crowd:crowd_babble -44.4, pa:pa_horn -79.7,
+    structure:structure_hull -77.7, traffic:crowd_babble -59.6]
+[hour=20] layers=5 emitters=6 pa="UNITED SPACEWAYS TRANSPORT NOW ARRIVING,"
+   [air:air_duct -64.7, crowd:crowd_sparse -50.0, pa:pa_horn -79.7,
+    structure:structure_hull -77.7, traffic:crowd_babble -58.4]
 ```
 
 Three things in that table are worth reading:
 
-1. **The crowd layer swings 11.8 dB** across the day, 03:00 to 13:00, and at
+1. **The crowd layer swings 9.7 dB** across the day, 03:00 to 13:00, and at
    13:00 the *stream itself changes* — the sparse night murmur becomes
    `crowd_babble`. That is the customs hall filling up, mixed from
-   `populace.occupancy` × `schedule.awake_fraction`.
-2. **`air:air_duct` is −75.3 dB at every hour.** That is the control. Air does
-   not care what time it is, and a bed that moved everything at once would be a
-   gain, not a simulation.
+   `populace.occupancy` × `schedule.awake_fraction`. Traffic swings ~5 dB with
+   it.
+2. **Three layers are flat at every hour** — `air` −64.7, `structure` −77.7,
+   `pa` −79.7. Those are the controls, and there are three of them rather than
+   the one this document claimed before. Air, hull and tannoy trim do not care
+   what time it is, and a bed that moved everything at once would be a gain
+   rather than a simulation.
 3. **The tannoy speaks a different arrival each hour**, era-locked through
    `costume.ERA_EVENTS`, fired as a one-shot inside `broadcast`'s own
    quarter-hour audibility window.
+
+Since `boot.py` moved the spawn to the middle of the built arc, a bare cold start
+now begins in the **corridor** rather than in the customs hall, and reports its
+own bed: `place=central_corridor layers=4 [air −58.9, crowd:crowd_babble −42.0,
+machinery:dock_machinery −60.8, structure −77.7]`. Different room, different mix,
+same table.
 
 Six 3D emitters are placed off the geometry (`fix_*` matches from the bank's own
 rules) and capped at the nearest 24.
@@ -263,8 +436,15 @@ and an outcome record**, exactly like the steps around them:
       - name: Can anybody start it, and is any of it dead code
         id: coldstart
         continue-on-error: true
-        run: python3 station/coldstart.py
+        run: |
+          python3 station/boot.py     # derives the spawn off the collision shell
+          python3 station/coldstart.py
 ```
+
+`station/generated/scene/` is gitignored, so `boot.json` is not in the
+repository and `boot.py` must run first. If it does not, `main.gd` falls back to
+the arrival sidecar and says so — the build still starts, on a spawn nobody
+derived.
 
 `coldstart.py` exits 1 if either gate fails and 0 otherwise. It needs the Godot
 binary the other engine steps already use; with no binary, G1 prints
@@ -314,25 +494,20 @@ Suggested text:
 
 **None of these were fixed — they are in files this session does not own.**
 
-1. **Two different answers to "which place am I standing in", and they disagree
-   by 31.6 m.** At the boot spawn, `hud.gd` says `CORRIDOR (near CUSTOMS NORTH
-   31.6 m)` and `ambience.gd` says `place=customs_north`. Neither is wrong on its
-   own terms and that is the problem: `hud.gd::_where` builds its boxes from the
-   **interact sidecar** (the extent of a place's usable props, ±1.5 m), while
-   `ambience.gd::place_at` builds them from **every mesh named `<place>__*`**
-   merged and grown 1.5 m. A customs hall's geometry reaches 30 m further than
-   its props do. A player is therefore told they are in the corridor while
-   hearing the room. One of these should derive from the other, or both from
-   `directory.PLACES`' footprints.
+1. ~~**Two different answers to "which place am I standing in", and they
+   disagree by 31.6 m.**~~ **CLOSED.** The coordinator extracted the mesh-derived
+   rule into `godot/scripts/places.gd` and wired `hud.gd` and `walk.gd` to it;
+   `ambience.gd` now reads it too, so `bind()` and `place_at()` are no longer a
+   second copy. `DOORWAY_GROW_M` and the smallest-containing-box rule live in
+   one file. Note for anyone extending it: `preload`, never `class_name` — a
+   global class name resolves through the project's script-class list, which a
+   fresh headless run has not scanned, so the identifier does not parse,
+   `set_script` fails, and the cold start comes back `hud=0, audio_layers=0`
+   with nothing obviously wrong.
 
-2. **The Starfury airframe has no materials.** `--mode=starfury` prints
-   `render_shot: fallback material used by 16 group(s): boom, boom_tip,
-   canopy_frame, cockpit_canopy, cockpit_glazing, dorsal_deck, engine_bell,
-   engine_pod, fuselage, gun_pod, nose, rcs_nozzle, rcs_sponson, retro_nozzle,
-   root_fairing, tip_vane` — every visible surface of the fighter. The station
-   hull beside it binds fine (41 instances). This is the same class of defect as
-   session 4f's 45 unbound `dress_*` groups, and `materials.check_material_
-   coverage()`'s derived vocabulary does not cover `starfury_scene.py`'s names.
+2. ~~**The Starfury airframe has no materials.**~~ **CLOSED** — see §2d. All 16
+   sections bind, and `materials._selftest`'s vocabulary now reaches outside the
+   pressure hull so it can fail for the next one.
 
 3. **`life.gd`'s `Director` and `npc.gd` compose on the same transforms, and the
    file says so.** `Director.process_priority = 100` runs it after `npc.gd` and
@@ -344,3 +519,9 @@ Suggested text:
 4. **`ObjectDB instances leaked at exit`** on every headless quit. Pre-existing —
    the same warning appears on the walk tests — and cosmetic, but it is the kind
    of line that hides a real one.
+
+5. **`hud.gd` prints a line every time its report changes, and a falling body
+   changes it every frame.** While the bad spawn was being diagnosed the log was
+   ~150 `hud:` lines of a body accelerating outward. The report-on-change rule is
+   right; a rate limit, or suppressing it while `is_on_floor()` is false, would
+   make the one interesting line findable. Not fixed — `hud.gd` is not mine.

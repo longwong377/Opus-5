@@ -407,8 +407,11 @@ def g1(timeout=None, verbose=False, budget=BOOT_BUDGET_S, extra=()):
         ("day", "03:00 and 13:00 differ (%s vs %s present)"
          % (d.get("present_0300", "?"), d.get("present_1300", "?")),
          d.get("present_0300") != d.get("present_1300")),
-        ("audio", "the station is audible (%s layers)"
-         % d.get("audio_layers", "0"), num("audio_layers") > 0),
+        ("audio", "the station is audible (%s layers, ready in %s s%s)"
+         % (d.get("audio_layers", "0"), d.get("audio_ready_s", "?"),
+            "" if d.get("audio_why", "-") == "-"
+            else ", " + d.get("audio_why", "").replace("_", " ")),
+         num("audio_layers") > 0),
         ("budget", "cold in %.1f s (budget %.0f s)" % (wall, budget),
          wall <= budget),
     ]
@@ -418,6 +421,28 @@ def g1(timeout=None, verbose=False, budget=BOOT_BUDGET_S, extra=()):
         print("    %s %s" % ("ok  " if good else "FAIL", name))
         got[key] = bool(good)
         ok = ok and good
+    if not ok:
+        # PRINT THE ENGINE'S OWN ACCOUNT OF WHY, and do it without being asked.
+        # This gate used to show five whitelisted prefixes and drop everything
+        # else, so a red run said "FAIL the station is audible" and nothing at
+        # all about the `ERROR: ambience: ...` line sitting three lines above it
+        # in the output it had already captured. A reader then has a failure
+        # with no cause and reasonably starts to disbelieve the gate -- which is
+        # worse than no gate. `--verbose` existed and needing a second run to
+        # find out what happened is exactly the friction that stops anyone
+        # doing it.
+        diag = [ln for ln in out.splitlines()
+                if ln.startswith(("ERROR", "SCRIPT ERROR", "USER ERROR",
+                                  "WARNING: ambience", "ambience:", "life:",
+                                  "hud:", "dress: FAILED"))
+                or " at: " in ln]
+        if diag:
+            print("  what the engine said, verbatim:")
+            for ln in diag[:20]:
+                print("    | " + ln[:160])
+        else:
+            print("  the engine printed no error -- rerun with --verbose for "
+                  "its full output")
     print("  G1 %s" % ("PASS" if ok else "FAIL"))
     return {"ok": ok, "wall_s": wall, "verdict": d, "checks": got}
 
