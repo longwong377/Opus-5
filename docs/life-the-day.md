@@ -74,6 +74,37 @@ and is not in a corridor**, and the corridor is the space this project has to po
 
 *Example: `qtr_civilian → business_center` is 7.7 minutes, all of it on foot.*
 
+### One person's day
+
+`python3 station/npc/life.py --day agg-human-7` — a plant technician on the evening watch:
+
+```
+agg-human-7  (human)
+  Aisha Ivanova   role industrial   home qtr_personnel   job maintenance
+  00.29-00.86  recreation garden_town
+  00.86-01.14  TRAVEL  garden_town -> qtr_personnel   (17 min, 4 on foot)
+  01.14-02.70  idle       qtr_personnel
+  02.70-03.30  eat        qtr_personnel
+  ...
+  07.06-14.45  sleep      qtr_personnel
+  14.45-14.54  TRAVEL  qtr_personnel -> post_office   (5 min, 5 on foot)
+  ...
+  15.69-16.00  TRAVEL  post_office -> maintenance     (19 min, 3 on foot)
+  16.00-20.20  work       maintenance
+  20.20-20.80  eat        maintenance
+  20.80-24.00  work       maintenance
+  24.00-00.29  TRAVEL  maintenance -> garden_town     (18 min, 3 on foot)
+  travel 109 min/day, on foot 38 min/day
+```
+
+Three things in there are the model working rather than the model being written down. Her
+shift starts at **16.00 exactly** and the 19-minute walk to it lands *before* the boundary,
+because work has hard edges. Her meal at 20.20 is taken **at work**, because
+`schedule.activity_at` resolves EAT before WORK, so a meal inside a shift is a break rather
+than an absence. And the 17-minute trip out to `garden_town` is mostly **not on foot** — the
+drum is a tram ride and a spoke lift from Blue Sector's personnel quarters, and the graph
+knows that.
+
 ---
 
 ## 2. The headline
