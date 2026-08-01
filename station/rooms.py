@@ -1681,6 +1681,209 @@ def _end_wall_with_door(v, t, g, arch, ow, ceil, hl, ol, door_at):
         _box(v, t, g, f"{arch}_wall", (x0, h, hl), (x1, ceil, ol))
 
 
+def place_interacts(v, t, g, place, hw, hl, ceil, inset=(0.0, 0.0),
+                    spine_d=0.0, chan_c=0.0, chan_lo=None, chan_hi=None,
+                    over_h=0.0, budget=None, skip=(), wall_faces=None,
+                    keep_clear=None, report=None):
+    """Stand this place's DECLARED interactables in a room. One rule, two shells.
+
+    THE SPLIT THIS FUNCTION EXISTS TO CLOSE. `directory.PLACES["interacts"]` is
+    the register's list of what a player can use, and until this was extracted
+    it was read by exactly one piece of code -- the body of `build` -- so a
+    place composed by a bespoke module got its true shape and NONE of its
+    declared uses. `interact.py --audit` measured the split and it was total:
+
+        built generic  273 / 275        built bespoke  0 / 82
+
+    Every generic room resolved essentially all of its declared interactables
+    and every bespoke room resolved none of them, which is not a coincidence
+    and is not a content gap -- it is one function that only one caller could
+    reach. So the placement moved out here and `bespoke.compose` calls it too.
+
+    THE GEOMETRY IS THE CALLER'S, THE RULE IS NOT. A generic bay knows its
+    insets, its spine and its overhead channel; a bespoke shell measures its
+    own floor band and passes that instead. Both get the same three passes:
+
+      floor   rows against the two long walls, alternating sides, the centre
+              left clear for walking
+      wall    a CURSOR along the -x side wall and then the end walls -- never a
+              fixed lattice, which used to wrap and put two props in the same
+              0.85 m of wall
+      ceiling hung under the overhead run, on the free channel
+
+    `skip` is the tokens the caller has already built under another name --
+    `earharts` builds `bar_table` for the declared `table` -- and passing them
+    is what stops a room getting two tables. `interact.resolve` computes that
+    set from the emitted mesh rather than from a written list.
+
+    `keep_clear` is `(x_lo, x_hi, z_lo)` -- the doorway's approach rectangle in
+    this frame -- and it is how a bespoke caller keeps the way in free WITHOUT
+    the drop filter that would otherwise delete a declared interactable and
+    leave it unresolvable. A prop that is never built is worse than one that is
+    moved: the register says a player can use it, the room contains nothing,
+    and no count can tell that apart from a module that forgot it.
+
+    IT IS A RECTANGLE AND NOT A DEPTH, and the difference is a whole room.
+    Bounding z alone reserves the entire near band, which in `qtr_transient` --
+    15.83 m wide and 3.79 m deep, with a 2 m approach -- is over half the
+    cabin, and the bunk it dropped was going to stand 6 m to one side of the
+    door. What a body walking in actually needs is the LANE, so only a prop
+    whose x range overlaps the lane is bound by z at all.
+
+    `wall_faces` restricts which walls the cursor may use, for the same reason:
+    the +z end wall is the one the corridor door is in.
+
+    THE FIRST PASS IGNORES THE AREA BUDGET, and that is deliberate. The budget
+    exists to stop a room filling with repeats -- the loop runs the prop list
+    three times over -- but a DECLARED interactable that is never placed is a
+    thing the register says a player can use and the room does not contain.
+    One of each is the floor; repeats are what the budget governs.
+    """
+    want = [p for p in place["interacts"] if p not in skip]
+    floor_props = [p for p in want
+                   if PROPS.get(p, (0, 0, 0, "floor"))[3] == "floor"]
+    wall_props = [p for p in want
+                  if PROPS.get(p, (0, 0, 0, "floor"))[3] == "wall"]
+    ceil_props = [p for p in want
+                  if PROPS.get(p, (0, 0, 0, "floor"))[3] == "ceiling"]
+    if chan_lo is None:
+        chan_lo = -hw + inset[0]
+    if chan_hi is None:
+        chan_hi = hw - inset[1]
+    if budget is None:
+        budget = DENSITY.get(archetype(place), 0.22) * (2 * hw) * (2 * hl)
+    placed = {"floor": 0, "wall": 0, "ceiling": 0, "dropped": [],
+              "turned": 0}
+
+    def z_limit(xa, xb):
+        """How far up the room a prop spanning x in [xa, xb] may reach."""
+        if keep_clear is None:
+            return hl
+        cx0, cx1, cz0 = keep_clear
+        return min(hl, cz0) if (xb > cx0 and xa < cx1) else hl
+
+    z_hi = z_limit(-hw, hw)             # the tightest bound, for the reports
+
+    used = 0.0
+    side, cursor = -1, [-hl + 0.6, -hl + 0.6]
+    ndist = len(floor_props)
+    free_x = 2 * hw - inset[0] - inset[1] - 0.1
+    for i, key in enumerate(floor_props * 3):
+        pw, pd, ph, _m = PROPS.get(key, (0.8, 0.6, 0.8, "floor"))
+        if i >= ndist and used + pw * pd > budget:
+            break                        # repeats are what the budget governs
+        # A PROP TURNS RATHER THAN NOT EXISTING. The default is long-side to
+        # the wall, running along z; where the room is too shallow for that it
+        # turns through 90 degrees and runs along x instead. Measured cause:
+        # three of the four quarters are 2.6 to 4.1 times wider than they are
+        # deep -- `qtr_transient` is 15.83 x 3.79 m -- so a 2.05 m bunk cannot
+        # run along the shallow axis, and it was silently dropped. A bunk
+        # standing head-to-wall across a wide, shallow cabin is also what the
+        # room actually looks like, so this is the right shape and not only the
+        # one that fits.
+        #
+        # THE SEARCH IS WIDER FOR THE FIRST OF EACH THAN FOR A REPEAT, and the
+        # asymmetry is the whole point. A declared interactable that is not in
+        # the room is a hole in what the register promises, so the first one
+        # tries both walls and both orientations; a second copy of a table is
+        # furniture, so it keeps the original rule and stops when the wall it
+        # is on runs out. Letting repeats retry too changed the furniture in
+        # four of fifteen generic rooms -- one wall's worth of props became
+        # two -- which is a content change this was not for.
+        first = i < ndist
+        pick = None
+        for s in ((side, -side) if first else (side,)):
+            z0 = cursor[0 if s < 0 else 1]
+            for j, (ax, az) in enumerate(((pd, pw), (pw, pd))
+                                         if first else ((pd, pw),)):
+                if ax > free_x:
+                    continue
+                x0 = ((-hw + inset[0] + 0.05) if s < 0
+                      else (hw - inset[1] - 0.05 - ax))
+                if abs(x0) < spine_d / 2.0 + 0.1:    # would sit in the spine
+                    pick = "spine"
+                    break
+                if z0 + az <= z_limit(x0, x0 + ax) - 0.6:
+                    pick = (s, ax, az, x0, z0, j)
+                    break
+            if pick:
+                break
+        if pick == "spine":
+            break
+        if pick is None:
+            if not first:
+                break
+            placed["dropped"].append(key)
+            continue
+        s, ax, az, x0, z0, turned = pick
+        _fixture(v, t, g, key, (x0, 0.0, z0), (x0 + ax, ph, z0 + az),
+                 (place["key"], i), "prop_", report)
+        cursor[0 if s < 0 else 1] = z0 + az + 0.45
+        used += pw * pd
+        side = -s
+        placed["floor"] += 1
+        placed["turned"] += turned
+
+    # Wall props run along a wall as a CURSOR, not on a fixed 2.1 m lattice.
+    # The lattice took `(i * 2.1) % (ln - 2.4)`, which ignores how wide each
+    # prop is and wraps back to the start: in medlab a medcabinet and a babcom
+    # terminal ended up in the same 0.85 m of wall, and in security central a
+    # 3.2 m monitor wall swallowed a cell door. Both were in the version this
+    # module was about to be committed at, and no assertion could see them --
+    # they are inside the room and the right size, which is all the old gates
+    # asked. When a wall fills, the cursor moves to the next wall; the end
+    # walls are bare and a door on one is how you would enter anyway.
+    #
+    # Walls, in order of preference: the -x side (reserved above), then the
+    # near and far end walls. Each is (origin, along-axis, usable length).
+    # The side wall's own bound, from its own x band -- a terminal hung at
+    # x = -hw is only in the doorway's way if the doorway reaches that wall.
+    walls = [("side", -hl, z_limit(-hw, -hw + 0.6)),
+             ("near", -hw + inset[0], hw - inset[1]),
+             ("far", -hw + inset[0], hw - inset[1])]
+    if wall_faces is not None:
+        walls = [w for w in walls if w[0] in wall_faces]
+    wi, cur = 0, (walls[0][1] if walls else 0.0)
+    for key in wall_props:
+        pw, pd, ph, _m = PROPS.get(key, (0.6, 0.1, 0.6, "wall"))
+        while wi < len(walls) and cur + pw > walls[wi][2]:
+            wi += 1
+            if wi < len(walls):
+                cur = walls[wi][1]
+        if wi >= len(walls):
+            placed["dropped"].append(key)
+            break                      # room is out of wall; sized by bay_span
+        sill = 0.0 if ph > 2.0 else 1.05
+        sd = (place["key"], walls[wi][0], round(cur, 2))
+        if walls[wi][0] == "side":
+            _fixture(v, t, g, key, (-hw, sill, cur),
+                     (-hw + pd, sill + ph, cur + pw), sd, "prop_", report)
+        elif walls[wi][0] == "near":
+            _fixture(v, t, g, key, (cur, sill, -hl),
+                     (cur + pw, sill + ph, -hl + pd), sd, "prop_", report)
+        else:
+            _fixture(v, t, g, key, (cur, sill, z_hi - pd),
+                     (cur + pw, sill + ph, z_hi), sd, "prop_", report)
+        cur += pw + 0.35
+        placed["wall"] += 1
+    for i, key in enumerate(ceil_props):
+        pw, pd, ph, _m = PROPS.get(key, (1.0, 1.0, 0.5, "ceiling"))
+        # A crane RIDES the gantry rail, so it hangs BELOW the overhead run
+        # rather than beside it. Placing it beside was the first attempt and it
+        # put a 3 m crane through a 0.35 m rail -- which is also what a real
+        # gantry crane does not do.
+        top = ceil - over_h
+        xc = min(max(chan_c, chan_lo + pd / 2), chan_hi - pd / 2)
+        z0 = min(max(-hl + 2.0 + i * 3.0, -hl), z_hi - pw)
+        _fixture(v, t, g, key, (xc - pd / 2, top - ph, z0),
+                 (xc + pd / 2, top, z0 + pw), (place["key"], i), "prop_",
+                 report)
+        placed["ceiling"] += 1
+    if report is not None:
+        report["interacts"] = placed
+    return placed
+
+
 def build(schema, profile, place, max_span_m=None, door_at=None,
           report=None, plates=True):
     """Geometry for one representative bay of a location.
@@ -1811,84 +2014,10 @@ def build(schema, profile, place, max_span_m=None, door_at=None,
     # objects. It runs AFTER the fixtures so it can read the free channel they
     # leave, and before the declared props so a declared prop always wins its
     # spot -- `interacts` is what a player can USE and must not be buried.
-    # Props. Floor-mounted go in rows against the long walls with the centre
-    # left clear; wall-mounted sit on the walls; ceiling-mounted hang.
-    floor_props = [p for p in place["interacts"]
-                   if PROPS.get(p, (0, 0, 0, "floor"))[3] == "floor"]
-    wall_props = [p for p in place["interacts"]
-                  if PROPS.get(p, (0, 0, 0, "floor"))[3] == "wall"]
-    ceil_props = [p for p in place["interacts"]
-                  if PROPS.get(p, (0, 0, 0, "floor"))[3] == "ceiling"]
-
-    budget = DENSITY.get(arch, 0.22) * w * ln
-    used = 0.0
-    side, cursor = -1, [-hl + 0.6, -hl + 0.6]
-    for i, key in enumerate(floor_props * 3):
-        pw, pd, ph, _m = PROPS.get(key, (0.8, 0.6, 0.8, "floor"))
-        if used + pw * pd > budget:
-            break
-        s = side
-        z0 = cursor[0 if s < 0 else 1]
-        if z0 + pw > hl - 0.6:
-            break
-        # Stand clear of whatever scenery already owns this wall.
-        x0 = ((-hw + inset[0] + 0.05) if s < 0
-              else (hw - inset[1] - 0.05 - pd))
-        if abs(x0) < spine_d / 2.0 + 0.1:            # would sit in the spine
-            break
-        _fixture(v, t, g, key, (x0, 0.0, z0), (x0 + pd, ph, z0 + pw),
-                 (place["key"], i), "prop_", report)
-        cursor[0 if s < 0 else 1] = z0 + pw + 0.45
-        used += pw * pd
-        side = -side
-
-    # Wall props run along a wall as a CURSOR, not on a fixed 2.1 m lattice.
-    # The lattice took `(i * 2.1) % (ln - 2.4)`, which ignores how wide each
-    # prop is and wraps back to the start: in medlab a medcabinet and a babcom
-    # terminal ended up in the same 0.85 m of wall, and in security central a
-    # 3.2 m monitor wall swallowed a cell door. Both were in the version this
-    # module was about to be committed at, and no assertion could see them --
-    # they are inside the room and the right size, which is all the old gates
-    # asked. When a wall fills, the cursor moves to the next wall; the end
-    # walls are bare and a door on one is how you would enter anyway.
-    #
-    # Walls, in order of preference: the -x side (reserved above), then the
-    # near and far end walls. Each is (origin, along-axis, usable length).
-    walls = [("side", -hl, hl), ("near", -hw + inset[0], hw - inset[1]),
-             ("far", -hw + inset[0], hw - inset[1])]
-    wi, cur = 0, -hl
-    for key in wall_props:
-        pw, pd, ph, _m = PROPS.get(key, (0.6, 0.1, 0.6, "wall"))
-        while wi < len(walls) and cur + pw > walls[wi][2]:
-            wi += 1
-            if wi < len(walls):
-                cur = walls[wi][1]
-        if wi >= len(walls):
-            break                      # room is out of wall; sized by bay_span
-        sill = 0.0 if ph > 2.0 else 1.05
-        sd = (place["key"], walls[wi][0], round(cur, 2))
-        if walls[wi][0] == "side":
-            _fixture(v, t, g, key, (-hw, sill, cur),
-                     (-hw + pd, sill + ph, cur + pw), sd, "prop_", report)
-        elif walls[wi][0] == "near":
-            _fixture(v, t, g, key, (cur, sill, -hl),
-                     (cur + pw, sill + ph, -hl + pd), sd, "prop_", report)
-        else:
-            _fixture(v, t, g, key, (cur, sill, hl - pd),
-                     (cur + pw, sill + ph, hl), sd, "prop_", report)
-        cur += pw + 0.35
-    for i, key in enumerate(ceil_props):
-        pw, pd, ph, _m = PROPS.get(key, (1.0, 1.0, 0.5, "ceiling"))
-        # A crane RIDES the gantry rail, so it hangs BELOW the overhead run
-        # rather than beside it. Placing it beside was the first attempt and it
-        # put a 3 m crane through a 0.35 m rail -- which is also what a real
-        # gantry crane does not do.
-        top = ceil - over_h
-        xc = min(max(chan_c, chan_lo + pd / 2), chan_hi - pd / 2)
-        z0 = min(max(-hl + 2.0 + i * 3.0, -hl), hl - pw)
-        _fixture(v, t, g, key, (xc - pd / 2, top - ph, z0),
-                 (xc + pd / 2, top, z0 + pw), (place["key"], i), "prop_",
-                 report)
+    place_interacts(v, t, g, place, hw, hl, ceil,
+                    inset=inset, spine_d=spine_d, chan_c=chan_c,
+                    chan_lo=chan_lo, chan_hi=chan_hi, over_h=over_h,
+                    budget=DENSITY.get(arch, 0.22) * w * ln, report=report)
 
     # ------------------------------------------------------------------
     # Light fittings. See LIGHTS. Emitted LAST and tested against what is
@@ -2541,6 +2670,51 @@ def _selftest():
           == {n for n, *_ in FIXTURES[archetype(_probe)]}
           and ceiling_m(_probe) == CEIL_BY_ARCHETYPE[archetype(_probe)],
           "a place NOT in the tables still took an override")
+    # --- `place_interacts`, on rooms built to make it fail -----------------
+    # THE STATION DOES NOT REACH THESE PATHS TODAY and that is exactly why
+    # they are tested here rather than left to the audit. Measured over all
+    # fourteen bespoke-composed places, `turned` is 0: once the doorway became
+    # a RECTANGLE rather than a depth, every declared prop fitted the way
+    # round it was declared. The turn and the drop are robustness for content
+    # that does not exist yet -- the observation domes are next and are round
+    # -- and an untested branch is where the transposed `pw`/`pd` in the first
+    # version of this hid.
+    def _plc(w_m, l_m, tok="bunk", **kw):
+        pr = dict(dr.by_key("qtr_civilian"))
+        pr["key"] = "__interact_probe__"
+        pr["interacts"] = [tok]
+        pv, pt, pg = [], [], []
+        got = place_interacts(pv, pt, pg, pr, w_m / 2.0, l_m / 2.0, 2.6, **kw)
+        return got, [n for n, _a, _b in pg if n == "prop_" + tok]
+
+    # A 2.05 x 0.95 m bunk in a room 16 m wide and 3.8 m deep -- the shape
+    # `qtr_transient` actually is -- cannot run along the shallow axis and has
+    # to turn. The room is deliberately shallower than the 0.6 m end margins
+    # plus the bunk's length allow.
+    _turn, _tg = _plc(16.0, 3.0)
+    check("a prop too long for a shallow room TURNS rather than vanishing",
+          _turn["turned"] == 1 and not _turn["dropped"] and _tg,
+          f"{_turn} {_tg}")
+    # ... and the control: shrink the OTHER axis too and there is nowhere to
+    # put it, so it is reported dropped rather than silently absent.
+    _drop, _dg = _plc(1.6, 2.0)
+    check("...and is REPORTED dropped when neither way round fits",
+          _drop["dropped"] == ["bunk"] and not _dg, f"{_drop} {_dg}")
+    # The doorway rectangle bounds only what is IN the lane. Same room, same
+    # bunk, with a lane down the middle: the bunk stands beside it.
+    _lane, _lg = _plc(16.0, 8.0, keep_clear=(-1.3, 1.3, -2.0))
+    check("the doorway lane does not reserve the whole near band",
+          not _lane["dropped"] and _lg, f"{_lane} {_lg}")
+    # ... and the control ON that: a lane as wide as the room DOES bound it,
+    # or the rectangle is not being applied at all.
+    _wide, _wg = _plc(16.0, 8.0, keep_clear=(-99.0, 99.0, -3.4))
+    check("...and a lane spanning the room bounds every prop in it",
+          _wide["dropped"] == ["bunk"] and not _wg, f"{_wide} {_wg}")
+    # `skip` is what stops a room getting two of the same object.
+    _skip, _sg = _plc(16.0, 8.0, skip=("bunk",))
+    check("a skipped token is not built a second time",
+          not _sg and _skip["floor"] == 0, f"{_skip} {_sg}")
+
     # 3. EVERY GROUP THIS TABLE EMITS MUST CARRY A MATERIAL. `materials.py` is
     #    not editable from here, `resolve` matches by longest bind FRAGMENT,
     #    and the natural names for these objects (`fix_containment_vessel`,

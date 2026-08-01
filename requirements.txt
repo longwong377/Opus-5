@@ -1,0 +1,30 @@
+# Everything outside the standard library that this repository imports.
+#
+# WHY THIS FILE EXISTS. Session 4d started in a fresh container and two gates
+# died on import before they measured anything: `station/bespoke.py` at
+# `unroll_to_local` (numpy) and `station/directory.py` at `density.edge_fraction`
+# (PIL). Both read like a broken module and neither is. The project loses its
+# container regularly -- CLAUDE.md's opening line is that the repository is the
+# only memory that survives a context reset -- so the dependency list has to be
+# in the repository too, or every fresh session pays the same twenty minutes.
+#
+#   pip install -r requirements.txt
+#
+# Deliberately unpinned. These three are used for stable, decades-old APIs
+# (ndarray arithmetic, `Image.open`, `safe_load`) and a pin would age worse than
+# the API does. If one ever breaks, pin it HERE with the version and the reason.
+#
+# Not listed, because they are not Python packages and cannot be: Godot 4.4
+# built with `precision=double`, and Mesa lavapipe for the Vulkan software
+# rasteriser. See CLAUDE.md's "Verification -- how to see without a GPU".
+
+# station/bespoke.py -- unroll_to_local, the ring-arc flattening adapter
+numpy
+
+# station/density.py -- edge_fraction, which reads reference frames and our own
+# renders; and tools/measure_frame.py, the whole layer-4 measurement path
+pillow
+
+# station/physics/ -- the test vectors for the Starfury, the core shuttle and
+# the rotating frame are YAML
+pyyaml

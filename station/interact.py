@@ -15,8 +15,21 @@ So this module does the one thing that turns a declared list into a mechanic:
   1. it derives a BOUNDED VERB SET from the register's own strings,
   2. it says which emitted mesh group provides each declared interactable, and
   3. it asserts that every declared interactable resolves to a group that some
-     room actually emits -- and that assertion FAILS TODAY on 96 of the 357
-     declarations, which is the finding, not a defect in the gate.
+     room actually emits.
+
+WHAT THAT ASSERTION FOUND, AND WHAT THE SHAPE OF IT MEANT. On the session it was
+written it failed on 84 of 357, and the split was TOTAL: `built generic 273/275`,
+`built bespoke 0/82`. Not a content gap and not 23 modules each forgetting the
+same thing -- ONE placement rule, living inside the body of `rooms.build`, that
+only one caller could reach. Every place composed by its own module got its true
+shape and none of its declared uses: the Zocalo, C&C, all four quarters, the
+three bars, customs, the alien sector.
+
+A number that fails evenly is a list of jobs. A number that fails 100% on one
+side of a line and 1% on the other is a structural fact, and reading it that way
+is what turned 84 separate props into one extraction (`rooms.place_interacts`)
+plus one resolution rule (`alias_for`, for the 26 that WERE built under the
+module's own name for the object).
 
 WHY THE VERB SET IS DERIVED AND NOT CHOSEN. `docs/MASTER-PLAN.md` §3.2 is blunt
 about the cost of getting this backwards -- *"Building 71 prop behaviours before
@@ -290,6 +303,115 @@ def near_miss(token, names):
     return tuple(sorted(out))
 
 
+# Segments a group name may carry that make it unusable as an alias, whatever
+# else it is called. `mp` is `rooms._MACH`'s marker for a nested machine PART --
+# `dress_mp_prop_locker` is a drawer front inside a locker, not the locker --
+# and `npc`/`light` are the two negative controls `provides` already carries: a
+# prompt on a person or on a lamp is the failure this rule could introduce.
+_ALIAS_NEVER = ("mp", "npc", "light")
+
+
+def weights(spans):
+    """group -> how many triangles carry that name. The tiebreak, measured.
+
+    A MODULE'S OBJECT AND ITS PARTS SHARE A PREFIX and the name cannot tell
+    them apart: `cnc` emits `cc_console_face` and `cc_console_leg`, both three
+    segments, both containing `console`. Ranking on the NAME picks whichever
+    word is shorter, which is a coin toss dressed as a rule.
+
+    So the tiebreak asks the mesh how big each one is, on the same principle as
+    measuring the corridor profile by ray casting rather than writing it down:
+    the thing being described is geometry, so ask the geometry. Measured on
+    `cnc`, `cc_console_leg` is 120 triangles over five instances against
+    `cc_console_face`'s 60 -- the "leg" is the console's 24-triangle BODY and
+    the "face" is a 12-triangle panel on it, so size anchors the prompt to the
+    cabinet rather than to one plate of it. What the player reads is the
+    register's own token either way (`label` is `token`, never the group name);
+    what this decides is which volume they have to be standing near.
+    """
+    out = {}
+    for n, lo, hi in spans:
+        out[n] = out.get(n, 0) + max(0, hi - lo)
+    return out
+
+
+def alias_for(token, names, claimed=(), size=None):
+    """The group a module built this interactable under, when it used its OWN
+    name for it -- or None.
+
+    26 OF THE 84 UNRESOLVED DECLARATIONS ARE NOT MISSING CONTENT. `earharts`
+    builds `bar_table` for the declared `table`, `cnc` builds `cc_console_face`
+    for `console`, `customs_north` builds `customs_desk` for `customs_desk`.
+    The object is there, articulated, materialled and lit; what is missing is
+    that `provides()` -- which knows only a name -- cannot see it, so the
+    runtime puts no prompt on it and `--audit` calls it absent.
+
+    The rule is `near_miss`'s, which is the segment-superset test this module
+    already had and already tests: a group provides a token when its underscore
+    segments CONTAIN all of the token's. That is strict enough to be safe on
+    the multi-word tokens (`bar_counter` needs both `bar` and `counter`) and it
+    is the single-word ones -- `seat`, `door`, `table` -- that do the work, so
+    the exclusions above are load-bearing rather than decorative.
+
+    WHY IT IS NOT A WRITTEN ALIAS TABLE. That would be a fourth vocabulary in a
+    module whose whole first page is about not creating one, and it would go
+    stale the first time a module renamed a span. This reads the mesh.
+
+    Ties are broken by fewest EXTRA segments, then by SIZE when `size` is given
+    -- see `weights` -- then by length and alphabetically. So `bar_table` wins
+    over `bar_table_stem` on segments, and `cc_console_face` over
+    `cc_console_leg` on triangles.
+    """
+    seg = set(_segments(token))
+    size = size or {}
+    best = None
+    for n in near_miss(token, names):
+        if n in claimed:
+            continue
+        body = n.partition(PLACE_SEP)[2] or n
+        s = _segments(body)
+        if any(x in _ALIAS_NEVER for x in s):
+            continue
+        key = (len(set(s) - seg), -size.get(n, 0), len(n), n)
+        if best is None or key < best[0]:
+            best = (key, n)
+    return None if best is None else best[1]
+
+
+def resolve(declared, names, spans=None):
+    """token -> the group that provides it, for one place's emitted mesh.
+
+    Exact first, over EVERY token, then aliases -- so a module that builds both
+    `prop_table` and `bar_table` gives the prompt to the one the register named,
+    and an alias can never steal a group an exact match already owns.
+
+    `spans` is the room's `(name, tri_lo, tri_hi)` list. Passing it is what
+    makes an alias land on the console rather than on its leg; without it the
+    tiebreak falls back to the name, which is how this got that wrong once.
+    """
+    out = {}
+    have = emitted_tokens(names)
+    for k in declared:
+        if k in have:
+            for p in PREFIXES:
+                for n in names:
+                    if n == p + k or n.endswith(PLACE_SEP + p + k):
+                        out[k] = n
+                        break
+                if k in out:
+                    break
+    claimed = set(out.values())
+    size = weights(spans) if spans else None
+    for k in declared:
+        if k in out:
+            continue
+        a = alias_for(k, names, claimed, size)
+        if a is not None:
+            out[k] = a
+            claimed.add(a)
+    return out
+
+
 def resolve_place(schema, profile, place, geom=None):
     """Which of one place's declared interactables its own mesh provides.
 
@@ -306,15 +428,21 @@ def resolve_place(schema, profile, place, geom=None):
     else:
         v, t, g, used = geom
     names = sorted({n for n, _lo, _hi in g})
-    have = emitted_tokens(names)
-    hit = tuple(k for k in want if k in have)
-    miss = tuple(k for k in want if k not in have)
+    got = resolve(want, names, g)
+    exact = emitted_tokens(names)
+    hit = tuple(k for k in want if k in got)
+    miss = tuple(k for k in want if k not in got)
     return {
         "key": place["key"],
         "module": place.get("module") or "",
         "built": used,
         "declared": want,
         "resolved": hit,
+        # HOW it resolved, not just that it did. An alias is content the module
+        # built under its own name; an exact hit is content built to the
+        # register's. Collapsing the two would hide the 26 that were only ever
+        # a naming mismatch behind the 61 that were genuinely absent.
+        "alias": {k: v for k, v in got.items() if k not in exact},
         "unresolved": miss,
         "near": {k: near_miss(k, names)[:3] for k in miss
                  if near_miss(k, names)},
@@ -347,18 +475,23 @@ def audit(keys=None, progress=None):
 CACHE = os.path.join(ROOT, "docs", "interact-audit.json")
 
 # What the audit read when it was last rebuilt, and what CI holds the line at.
-# 259 of 357 declared interactables resolve; every one of the 98 that do not is
-# on a BESPOKE-composed place, and every one of the 259 that do is on a generic
-# room. `--gate` fails if either number moves the wrong way.
 #
-# THE BASELINE IS NOT THE BAR. It is a ratchet: the bar is 357/357 and the
-# repository is 98 short of it. Recording the shortfall as a number CI can watch
-# is how it stays visible instead of becoming a paragraph in STATE.md that nobody
-# recomputes -- and `--gate --rebuild` re-runs the whole audit, because a gate
-# that reads a committed artefact and cannot rebuild it can only say whether the
-# FILE passes, never whether the file still describes the code.
-BASELINE = {"declared": 357, "resolved": 259, "places_all": 99,
-            "places_none": 26}
+# THE BASELINE IS NOW THE BAR. It was a ratchet -- 259 of 357, recorded as a
+# shortfall CI could watch so it stayed a number instead of becoming a paragraph
+# in STATE.md that nobody recomputes. In session 4d it closed: every one of the
+# 357 declared interactables resolves to a group the place actually emits, on
+# all 125 places that declare any, bespoke-composed and generic alike.
+#
+# So a drop here is a REGRESSION rather than an unfinished job, and `--audit`
+# -- the assertion that was written to fail -- passes. Keep it that way: a new
+# register row with no prop is now the only way to move this number, and it
+# should fail the moment it is added.
+#
+# `--gate --rebuild` re-runs the whole audit, because a gate that reads a
+# committed artefact and cannot rebuild it can only say whether the FILE passes,
+# never whether the file still describes the code.
+BASELINE = {"declared": 357, "resolved": 357, "places_all": 125,
+            "places_none": 0}
 
 
 def load_audit(path=CACHE):
@@ -383,6 +516,7 @@ def tally(rows):
         "resolved": sum(len(r["resolved"]) for r in rows),
         "places_all": sum(1 for r in have if not r["unresolved"]),
         "places_none": sum(1 for r in have if not r["resolved"]),
+        "alias": sum(len(r.get("alias") or {}) for r in rows),
         "near": near, "absent": absent, "places": len(have),
     }
 
@@ -390,7 +524,7 @@ def tally(rows):
 # ---------------------------------------------------------------------------
 # The sidecar the runtime reads
 # ---------------------------------------------------------------------------
-def sidecar(names):
+def sidecar(names, spans=None):
     """`godot/scripts/interact.gd`'s half of the contract, as plain data.
 
     ONE SOURCE FOR THE VERB. The alternative is a copy of the two tables above
@@ -400,16 +534,41 @@ def sidecar(names):
     list of `{group, place, token, verb, pressable}` derived here and reads no
     tables of its own.
     """
+    names = sorted(set(names))
     out = []
-    for n in sorted(set(names)):
+    seen = set()
+    for n in names:
         r = provides(n)
         if r is None:
             continue
         place, tok, verb = r
+        seen.add(n)
         out.append({"group": n, "place": place, "token": tok, "verb": verb,
                     "pressable": verb in PRESSABLE,
                     "responds": verb in RESPONDS,
                     "label": tok.replace("_", " ")})
+    # AND THE ONES THE MODULES NAMED THEMSELVES. `alias_for` needs to know what
+    # a place DECLARED, which a group name alone does not carry -- so the names
+    # are grouped by the place prefix `deck.build_deck` puts on them and the
+    # register is asked. A room's own unprefixed mesh has no place to look up
+    # and gets exact matching only, which is what `resolve_place` wants and
+    # what the self-test's round-trip asserts.
+    byplace = {}
+    for n in names:
+        if PLACE_SEP in n:
+            byplace.setdefault(n.partition(PLACE_SEP)[0], []).append(n)
+    decl = {p["key"]: tuple(p.get("interacts") or ()) for p in dr.PLACES}
+    for key, group in sorted(byplace.items()):
+        for tok, n in sorted(resolve(decl.get(key, ()), group,
+                                     spans).items()):
+            if n in seen:
+                continue
+            seen.add(n)
+            verb = verb_of(tok)
+            out.append({"group": n, "place": key, "token": tok, "verb": verb,
+                        "pressable": verb in PRESSABLE,
+                        "responds": verb in RESPONDS,
+                        "label": tok.replace("_", " ")})
     return out
 
 
@@ -524,6 +683,57 @@ def _selftest():
         fails.append("provides() rejects a real interactable -- the negative "
                      "controls above prove nothing")
 
+    # -- ALIASING: the module's own name for a declared interactable --------
+    # Each of these is a real emitted group name, and the pair of them is the
+    # whole risk: a rule loose enough to see `bar_table` as the declared
+    # `table` is loose enough to see `npc_seated` as a seat.
+    if alias_for("table", ["bar_table", "bar_table_stem"]) != "bar_table":
+        fails.append("alias_for picked the stem over the table -- the "
+                     "fewest-extra-segments rank is not working")
+    if alias_for("locker", ["dress_mp_prop_locker"]) is not None:
+        fails.append("alias_for accepted a MACHINE PART as the object -- a "
+                     "prompt would land on a drawer front inside a locker")
+    if alias_for("lamp", ["light_pendant_lamp"]) is not None:
+        fails.append("alias_for accepted a LIGHT FITTING -- the prompt would "
+                     "be on a lamp housing")
+    if alias_for("seat", ["npc_seated_4_npc_skin"]) is not None:
+        fails.append("alias_for accepted a PERSON as furniture")
+    if alias_for("catwalk", ["plant_catwalk", "dress_mp_plant_catwalk"]) \
+            != "plant_catwalk":
+        fails.append("alias_for did not prefer the real catwalk over the "
+                     "machine part of the same name")
+    # ... and the control ON those: a name that SHOULD alias must, or the four
+    # rejections above prove only that the function returns None.
+    if alias_for("customs_desk", ["customs_desk"]) != "customs_desk":
+        fails.append("alias_for rejects an exact segment match -- the "
+                     "rejections above prove nothing")
+
+    # THE SIZE TIEBREAK FIRES, and it is tested by flipping it. Two names the
+    # segment rank cannot separate: whichever carries more triangles wins, and
+    # swapping the weights swaps the answer. Without the second half this
+    # asserts only that some deterministic order exists.
+    _tie = ["cc_console_face", "cc_console_leg"]
+    _a = alias_for("console", _tie, size={"cc_console_face": 60,
+                                          "cc_console_leg": 120})
+    _b = alias_for("console", _tie, size={"cc_console_face": 200,
+                                          "cc_console_leg": 120})
+    if _a != "cc_console_leg" or _b != "cc_console_face":
+        fails.append(f"the size tiebreak does not fire: {_a} / {_b} -- an "
+                     f"alias tie is being settled by the name")
+    if weights([("a", 0, 10), ("a", 10, 30), ("b", 30, 31)]) != {"a": 30,
+                                                                 "b": 1}:
+        fails.append("weights() does not total a name's spans")
+
+    # AN ALIAS MAY NEVER STEAL A GROUP AN EXACT MATCH OWNS, and two tokens may
+    # never share one group -- either would put two prompts on one object or
+    # move a prompt off the thing the register named.
+    _r = resolve(("table", "bar_table"), ["prop_table", "bar_table"])
+    if _r.get("table") != "prop_table" or _r.get("bar_table") != "bar_table":
+        fails.append(f"resolve let an alias take an exact match's group: {_r}")
+    _r2 = resolve(("table", "stool"), ["bar_table"])
+    if len(set(_r2.values())) != len(_r2):
+        fails.append(f"resolve gave one group to two tokens: {_r2}")
+
     # -- `near_miss` matches on SEGMENTS, not substrings --------------------
     if near_miss("seat", ["npc_seated_4_npc_skin"]):
         fails.append("near_miss matched `seat` inside `seated` -- it is "
@@ -610,9 +820,12 @@ def _cli(argv):
         print(f"interact --gate: {got['resolved']}/{got['declared']} declared "
               f"interactables resolve; {got['places_all']}/{got['places']} "
               f"places resolve all of theirs, {got['places_none']} none")
-        print(f"                 of the {got['declared'] - got['resolved']} "
-              f"that do not, {got['near']} are built under the module's own "
-              f"prefix and {got['absent']} were never built at all")
+        print(f"                 {got['alias']} of them under the module's own "
+              f"name for the object rather than the register's")
+        if got["declared"] > got["resolved"]:
+            print(f"                 of the {got['declared'] - got['resolved']}"
+                  f" that do not, {got['near']} look like something the room "
+                  f"emits and {got['absent']} were never built at all")
         if not a.rebuild:
             print("                 (read from the committed audit; "
                   "--rebuild re-runs it)")

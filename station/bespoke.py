@@ -581,6 +581,45 @@ def compose(schema, profile, place, axial_half_m, density=1.0, report=None,
     v.extend((x + cx, y, z + cz) for x, y, z in dv)
     t.extend((a + base, b + base, c + base) for a, b, c in dt)
     spans.extend((n, lo + t0, hi + t0) for n, lo, hi in dg)
+
+    # AND WHAT THE PLAYER CAME HERE TO USE. `rooms.build` has stood a place's
+    # declared `interacts` in the room since layer 1 and this function never
+    # did, so the split `interact.py --audit` measured was TOTAL: 273 of 275
+    # declared interactables resolved on generic rooms and 0 of 82 on bespoke
+    # ones. Not a content gap -- one placement rule that only one caller could
+    # reach. It now lives in `rooms.place_interacts` and both call it.
+    #
+    # SKIP WHAT THE MODULE ALREADY BUILT, and ask the MESH rather than a list:
+    # `earharts` builds `bar_table` for the declared `table` and `qtr_command`
+    # builds `qtr_locker` for `locker`. `interact.resolve` reads the emitted
+    # span names and reports both the exact and the module-named forms, so a
+    # room that already has a table does not get a second one standing next to
+    # it -- and a module that renames a span tomorrow simply stops being
+    # skipped, rather than silently double-building.
+    import interact as _ia                                      # noqa: PLC0415
+    want = tuple(place.get("interacts") or ())
+    already = _ia.resolve(want, {n for n, _lo, _hi in spans})
+    # THE DOORWAY IS KEPT CLEAR BY BOUNDING WHERE A PROP MAY STAND, not by the
+    # drop filter above. A declared interactable that is built and then deleted
+    # for standing in the approach is worse than one never built: the register
+    # says a player can use it, the room contains nothing, and no count can
+    # tell that apart from a module that forgot it. `z_max` is the near end
+    # less the approach depth, in the room's own centred frame, and the +z end
+    # wall -- the one the corridor door is in -- is off the cursor's list.
+    ip = {}
+    if len(want) > len(already):
+        iv, it_, ig = [], [], []
+        _R.place_interacts(
+            iv, it_, ig, place, max(0.5, (w - inset) / 2.0),
+            max(0.5, (ln - inset) / 2.0), ceil,
+            skip=tuple(already), wall_faces=("side", "near"),
+            keep_clear=(dx - dhw - cx, dx + dhw - cx, znear - ddep - cz),
+            report=ip)
+        base, t0 = len(v), len(t)
+        v.extend((x + cx, y, z + cz) for x, y, z in iv)
+        t.extend((a + base, b + base, c + base) for a, b, c in it_)
+        spans.extend((n, lo + t0, hi + t0) for n, lo, hi in ig)
+
     # AND THE PEOPLE, which the first version left out and the walk gate caught
     # within one run: "reached customs_north and NOBODY noticed -- 0.0 deg
     # turned". `rooms.build` runs `dressing` AND `populace`, and composing only
@@ -632,6 +671,9 @@ def compose(schema, profile, place, axial_half_m, density=1.0, report=None,
         report["people"] = len(actors)
         report["actors"] = actors
         report["doorway_cleared"] = blocked
+        report["interacts"] = dict(ip.get("interacts") or {},
+                                   already=sorted(already),
+                                   declared=len(want))
     return v, t, spans
 
 
@@ -937,25 +979,75 @@ def _selftest():
     # hard case". So it is asserted here, on the composed room rather than the
     # shell, because three of the seven had an open shell and a locker across
     # the aperture.
+    import interact as _ia                                     # noqa: PLC0415
     walled, narrow, cleared = [], [], 0
+    unresolved, declared_n, alias_n = [], 0, 0
     for q in _dr.PLACES:
         mod = q.get("module")
         if mod not in NEAR_END:
             continue
         ah = _D.room_axial_half_m(schema, profile, q)
         brep = {}
-        cv, ct, _cg = compose(schema, profile, q, ah, report=brep)
+        cv, ct, cg = compose(schema, profile, q, ah, report=brep)
         cleared += brep.get("doorway_cleared", 0)
         if not _D._mouth_clear(cv, ct, 0.0):
             walled.append(q["key"])
         if openings.get(q["key"], 0.0) < _it_kit.PROVISIONAL["door_width_m"]:
             narrow.append((q["key"], round(openings.get(q["key"], 0.0), 2)))
+        # WHAT THE REGISTER SAYS A PLAYER CAN USE HERE, and whether this room
+        # contains it. Asserted in the module that composes the room, on the
+        # composed room, for the reason the doorway gate above is: a gate that
+        # lives anywhere else measures a mesh nobody assembled.
+        want = tuple(q.get("interacts") or ())
+        declared_n += len(want)
+        got = _ia.resolve(want, {n for n, _a, _b in cg}, cg)
+        alias_n += sum(1 for k in got if not got[k].startswith(("prop_",
+                                                                "fix_")))
+        for k in want:
+            if k not in got:
+                unresolved.append(f"{q['key']}/{k}")
     check("every composed bespoke room can be walked into", not walled,
           f"walled at the doorway: {walled}")
     check("...through an aperture at least as wide as the corridor's leaf",
           not narrow, f"{narrow}")
+    check("...and contains every interactable the register declares for it",
+          not unresolved, f"{len(unresolved)} missing: {unresolved[:12]}")
     print(f"  doorway: {len(openings)} composed rooms, all clear at dx = 0, "
           f"{cleared} pieces and people moved out of the approach zone")
+    print(f"  interacts: {declared_n - len(unresolved)}/{declared_n} declared "
+          f"uses resolve on the composed rooms, {alias_n} of them under the "
+          f"module's own name for the object")
+
+    # NEGATIVE CONTROL -- the placement pass itself. With `place_interacts`
+    # stubbed out, a composed room falls back to whatever its module happened
+    # to build, and the count above has to COLLAPSE. Before this pass existed
+    # it was 0 of 82, measured by `interact.py --audit`; if the control does
+    # not reproduce that, the pass is not what is putting the props there and
+    # the gate above is measuring a case with no defect in it.
+    import rooms as _Rp                                        # noqa: PLC0415
+    _keep = _Rp.place_interacts
+    _Rp.place_interacts = lambda *a, **k: {"floor": 0, "wall": 0,
+                                           "ceiling": 0, "dropped": []}
+    try:
+        ctl_res = ctl_dec = 0
+        for q in _dr.PLACES:
+            if q.get("module") not in NEAR_END:
+                continue
+            want = tuple(q.get("interacts") or ())
+            if not want:
+                continue
+            ah = _D.room_axial_half_m(schema, profile, q)
+            _cv, _ct, cg = compose(schema, profile, q, ah)
+            ctl_dec += len(want)
+            ctl_res += len(_ia.resolve(want, {n for n, _a, _b in cg}, cg))
+    finally:
+        _Rp.place_interacts = _keep
+    check("...and WITHOUT the placement pass most of them go missing again",
+          ctl_res < ctl_dec * 0.5,
+          f"the control still resolved {ctl_res}/{ctl_dec} -- the pass is not "
+          f"what is putting the declared interactables in these rooms")
+    print(f"  control: with `place_interacts` stubbed the same rooms resolve "
+          f"{ctl_res}/{ctl_dec}")
 
     # NEGATIVE CONTROL 1 -- the approach zone. Compose with the zone collapsed
     # to nothing and the rooms `dressing` fills to the aperture have to go back

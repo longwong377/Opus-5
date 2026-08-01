@@ -202,7 +202,11 @@ def interact_rows(verts, tris, groups):
     verb each carries; this adds where it is and how big, measured off the same
     mesh that is about to be written.
     """
-    rows = IX.sidecar({nm for nm, _a, _b in groups})
+    # THE SPANS, NOT JUST THE NAMES. `interact.resolve` breaks an alias tie on
+    # how many triangles carry each name -- otherwise "operate the console"
+    # points at `cc_console_leg`. Handing it the same span list the audit uses
+    # is what stops the runtime and the audit resolving differently.
+    rows = IX.sidecar({nm for nm, _a, _b in groups}, groups)
     out = []
     for r in rows:
         box = group_aabb(verts, tris, groups, r["group"])

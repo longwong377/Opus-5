@@ -151,6 +151,22 @@ module that builds the pieces had no way to measure them. It now lives in `inter
 
 **A gate belongs in the module that builds the thing, and it must build the hard case.**
 
+**READ THE SHAPE OF A FAILING NUMBER BEFORE READING ITS SIZE.** Session 4d, and it is the cheapest
+lesson in this file. `interact.py --audit` failed on 84 of 357 declared interactables and 4c wrote
+the work up as two lists of props to go and build. The number that mattered was the split:
+`built generic 273/275, built bespoke 0/82`. **Every** generic room resolved its declared
+interactables and **no** bespoke room resolved any — which is not 23 modules each forgetting the
+same thing, it is one function with one caller. Extracting `rooms.place_interacts` and adding one
+mesh-derived alias rule closed all 84, and a stub-out control decomposed it exactly: 26 of the 98
+were never missing, only misnamed.
+
+*A number that fails evenly is a list of jobs. A number that fails 100% on one side of a line and
+1% on the other is a structural fact.*
+
+**AND A DIFF OF TWO FAILED RUNS IS NOT A PASS.** The A/B that proved the extraction changed nothing
+said IDENTICAL on its first run because both halves had died on the same `IndexError` and written
+empty files. Any harness that compares two outputs must assert both were produced.
+
 ### COLLISION IS NOT RENDER GEOMETRY, and that rule was learned expensively
 
 Session 3v, and it is the W-track's equivalent of the layer-2 lesson. A body stood on the assembled
@@ -216,7 +232,7 @@ grown to make a number go green.
 | **3** | **Materials** | Every mesh carries PBR materials from `materials.py`. No flat colour anywhere | **COMPLETE** — `test_materials_layer3.py` reads **503 / 503 interior groups**, including the 53-material wardrobe imported from `npc/costume.py` |
 | **4a** | **Lighting — level** | Every location has a rig and a measured exposure, median-matched to its reference | **20 / 21** in window (3z). The one that cannot be put in window is `plant`, and the cause is **quantisation, not geometry**: 85% of its frame sits at sRGB byte 0–1, under the eight-bit floor |
 | **4b** | **Lighting — mood** | Every location matches its reference's *distribution*, not just its median — p5, p95, crushed, clipped | **13 / 23, 0 unverifiable** (3z, was 3 / 11 with 9 unverifiable). **Eleven of the fourteen failures were STALE FRAMES rather than lighting defects** — see below |
-| **5** | **Props & function** | The declared interactable types exist and do what `directory.py` says they do | Substantially done as a side effect: `rooms.PROPS`, `PLACE_FIXTURES` and `dressing.py` build the declared types, and `density.py --machinery` gates their articulation at 74/78 |
+| **5** | **Props & function** | The declared interactable types exist and do what `directory.py` says they do | **They EXIST: 357 / 357** (4d) — `interact.py --audit`. It was 273/357, and the shape of the failure was the finding: `built generic 273/275, built bespoke 0/82`, because the placement rule lived inside `rooms.build` where only one caller could reach it. `density.py --machinery` gates their articulation at 74/78. What they DO is `interact.py`'s eight verbs, four of which have a prop that responds |
 | **6** | **Inhabitants** | NPCs placed, scheduled and animated in every location, at real density | **963 walking in the corridors and 1,065 in the rooms** (3z), each a named resident with a home, a job and a schedule, posed from `npc/animation.py`'s clips and DRESSED from `npc/costume.py`'s measured wardrobe. Not animated at runtime: the corridor crowd moves (5,966 m measured over a walk test), the room occupants do not |
 | **7** | **Audio** | Ambience and event audio per location | 0 |
 | **8** | **Judged** | Every location scored against the rubric in an engine frame, and passing | 0 |

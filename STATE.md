@@ -1,13 +1,155 @@
 # Project State
 
-**Last updated:** 2026-08-01 · **Session 4c** — **the station is INTERACTABLE, the port is on a wall, and the 24-minute suites were one bad cache key** · **4b** — a police force, friction in metres, the plated shell, the fitting-reach fix
+**Last updated:** 2026-08-01 · **Session 4d** — **every declared interactable now exists, and the 84 that did not were ONE function with one caller** · **4c** — the station is INTERACTABLE, the port is on a wall, and the 24-minute suites were one bad cache key · **4b** — a police force, friction in metres, the plated shell, the fitting-reach fix
 
-## Session 4b — THE STATION HAS A POLICE FORCE, AND THE WALL STOPPED BEING ONE FLAT PANEL
+## Session 4d — 84 MISSING PROPS WERE NOT 84 JOBS. READ THE SHAPE OF A FAILING NUMBER.
 
-### 1. A 1,181-LINE GAZETTEER FILE HAD ZERO READERS
+### 1. THE SPLIT WAS TOTAL, AND THAT IS THE WHOLE FINDING
 
-`grep -rl LAW-CRIME-DOWNBELOW station/ tools/` returned **nothing**, while `FACTIONS.md`,
-`LIFE-SUPPORT-AND-INDUSTRY.md` and `TRAFFIC-AND-CUSTOMS.md` had 23 readers be## Session 4c — READ THIS FIRST: THE TIMEOUTS WERE ONE LINE, AND TWO AGENTS DIED OF ME
+4c left `interact.py --audit` failing and named the work as two lists: *"the 72 declared
+interactables that were never built"* and *"the 26 built under the module's own name"*. Re-run at
+the head of this session it read 273/357 — and the interesting number was never the 84:
+
+```
+built generic  273 / 275          built bespoke  0 / 82
+```
+
+**Every generic room resolved essentially all of its declared interactables and every bespoke room
+resolved none of them.** That is not 23 modules each forgetting the same thing. It is ONE placement
+rule — the three prop passes in the body of `rooms.build` — that only one caller could reach.
+`bespoke.compose` gives a place its true shape, its dressing and its people, and never read
+`place["interacts"]` at all. So the Zócalo, C&C, all four quarters, the three bars, customs and the
+alien sector had their identity and nothing in them a player could press.
+
+**A number that fails evenly is a list of jobs. A number that fails 100% on one side of a line and
+1% on the other is a structural fact.** Reading it the second way turned 84 props into one
+extraction and one resolution rule.
+
+| | before | after |
+|---|---|---|
+| declared interactables resolving | **273 / 357** | **357 / 357** |
+| on bespoke-composed places | **0 / 82** | **98 / 98** (`bespoke.py`, 181/181) |
+| places resolving all of theirs | 122 / 125 | **125 / 125** |
+
+### 2. `rooms.place_interacts` — one rule, two shells
+
+The three passes (floor rows against the long walls, a wall CURSOR, ceiling hung on the free
+channel) moved out of `build` into a function both callers use. A generic bay hands it its insets,
+spine and overhead channel; a bespoke shell hands it its own measured floor band.
+
+**The A/B is the evidence and it is byte-identical**: fifteen generic rooms built before and after,
+same triangle count, same vertex count, same prop multiset. The 99 rooms that were already right
+did not move.
+
+**AND THE FIRST A/B WAS A LIE THAT SAID "IDENTICAL".** It diffed two runs that had both died on
+`IndexError` — `medlab_1` is not a place key — so it compared two empty files and passed. *A diff
+of two failed runs is not a pass.* Caught by asking why a fifteen-room build had finished in
+seconds; the numbers above come from the re-run, with both exit codes checked and both bodies
+non-empty. Any A/B harness has to assert that both sides PRODUCED something before comparing them.
+
+### 3. THE 26 THAT WERE NEVER MISSING — resolve against the MESH, not a table
+
+`earharts` builds `bar_table` for the declared `table`; `cnc` builds `cc_console_face` and
+`cc_console_leg` for `console`; `customs_north` builds `customs_desk` for `customs_desk`. The
+object is there, articulated, materialled and lit, and `provides()` — which knows only a name —
+could not see it.
+
+`interact.alias_for` uses the segment-superset rule `near_miss` already had and already tested: a
+group provides a token when its underscore segments CONTAIN all of the token's. **No alias table**,
+because that would be the fourth vocabulary this module's first page exists to refuse, and it
+would go stale the first time a module renamed a span.
+
+The exclusions are load-bearing rather than decorative, and each has a control that fires:
+`dress_mp_prop_locker` is a drawer front INSIDE a locker, `light_pendant_lamp` is a lamp housing,
+`npc_seated_4_npc_skin` is a person. A rule loose enough to see `bar_table` as a table is loose
+enough to put a prompt on all three.
+
+**The tiebreak asks the mesh how big each candidate is**, and it is tested by flipping the weights
+so the answer swaps. Measured on `cnc`: `cc_console_leg` is 120 triangles over five instances
+against `cc_console_face`'s 60 — the "leg" is the console's 24-triangle body and the "face" is a
+12-triangle panel on it, so size anchors the prompt to the cabinet. What the player reads is the
+register's token either way; what this decides is where they have to stand.
+
+**The control decomposes it exactly.** With `place_interacts` stubbed out, the same 26 composed
+rooms resolve **26 of 98** — the alias rule's 26 — and with it, 98. The two halves of the fix
+account for precisely the two halves of the finding.
+
+### 4. A DOORWAY IS A LANE, NOT A DEPTH — and the difference was a whole cabin
+
+The first version kept the way in clear by bounding how far up the room a prop could stand. Three
+quarters then dropped their bunk, and the arithmetic says why: `qtr_transient` is **15.83 m wide
+and 3.79 m deep**, so a ~2 m approach zone reserves over half the cabin — and the bunk it dropped
+was going to stand **6 m to one side of the door**. `keep_clear` is now the approach RECTANGLE, so
+only a prop whose x range overlaps the lane is bound in z at all.
+
+**A declared interactable that is built and then deleted is worse than one never built**: the
+register says a player can use it, the room contains nothing, and no count can tell that apart from
+a module that forgot it. That is why this is a placement constraint and not the drop filter
+`compose` uses for its dressing.
+
+### 5. TWO PROCESS CATCHES WORTH MORE THAN THE PROPS
+
+**The retry quietly changed 99 rooms and the A/B caught it.** Letting a prop try the other wall and
+the other orientation is right for the FIRST of each — it is what the register promises — and
+applying it to REPEATS as well turned one wall's worth of props into two in four of fifteen generic
+rooms. Narrowed to the first of each; repeats keep the original rule and the A/B went back to
+identical. **The guarantee is one of each. The budget governs the rest.**
+
+**The turn is now unreachable on current content, and is tested anyway.** Once the doorway became a
+rectangle, `turned` is **0 across all 26 composed rooms** — every declared prop fits the way round
+it was declared. The branch is robustness for content that does not exist yet (the observation
+domes are next and are round), and an untested branch is exactly where the transposed `pw`/`pd` in
+the first version of it hid for two runs. `rooms._selftest` builds rooms designed to reach it: 16 ×
+3.0 m turns a 2.05 m bunk, 1.6 × 2.0 m drops it and SAYS so, a centre lane does not bound a prop 6
+m to one side, and a lane spanning the room does.
+
+### 6. A FRESH CONTAINER COULD NOT RUN TWO GATES — `requirements.txt`
+
+`station/bespoke.py` died at `unroll_to_local` (numpy) and `station/directory.py` at
+`density.edge_fraction` (PIL), both before measuring anything, both reading exactly like a broken
+module. There was no dependency list in the repository. There is now — numpy, pillow, pyyaml,
+unpinned, with the reason each is needed. CLAUDE.md's opening line is that the repository is the
+only memory that survives a context reset; the dependency list is part of that memory.
+
+### 7. STATE.md WAS SPLICED MID-WORD
+
+Session 4c's block had been pasted into the middle of session 4b's first sentence — *"had 23
+readers be‖## Session 4c …"* … 116 lines later … *"tween them. The file"*. The handoff document,
+which is the thing that survives a context reset, had a section boundary inside a word. Unspliced;
+4c now sits above 4b where it belongs.
+
+### NEXT SESSION — in priority order
+
+1. **The three observation dome interiors.** Now the top item, and `station/bespoke.py` already
+   carries a full spec: an observation room is a FLOOR, a WINDOW RING and a DOME WITH THICKNESS —
+   `dome_mesh` called twice, outer at r and inner at r − t with its winding reversed, rimmed by an
+   `interior_kit.plate_solid` annulus. `_dome_fittings` needs its `grow` term negated to stand its
+   sixteen mullions proud INSIDE. Dome 1 **is** C&C's dome and `comand and contorl.webp` is
+   authority 1 from inside it; `rotunda.webp` is authority 1 of a rotunda interior and independently
+   counts the same sixteen bays.
+   **The trap, and it now bites twice:** `dressable_extent` returns a BOUNDING BOX, which is right
+   for every rectangular plan and wrong for a circle — corners at 1.41 R, through the window ring.
+   As of this session that box also positions the declared interactables, so a round room would
+   stand its console outside the wall. The fix is the largest axis-aligned rectangle inscribed in
+   the floor band, which equals the bounding box on a rectangular plan and so changes nothing
+   already composed.
+2. **Layer 7, audio, is 0 — nothing at all.** The owner's standard names *"the sound"* in the same
+   breath as the textures and the physics, and it is the one dimension of the brief with no module,
+   no gate and no number. Everything needed to derive it exists: `populace` knows who is in a room,
+   `traffic` knows what is berthing, `broadcast` already writes the announcements, `schedule` knows
+   the hour. An ambience derived from the simulation rather than a library of loops is the same
+   move `broadcast.py` made and is the largest single missing thing in the product.
+3. **Layer 8, judged, is 0.** No interior location has ever been scored against
+   `docs/AAA-STANDARD.md` in an engine frame at the rubric's HALF distance — which is the rule that
+   would have caught the "shitty little cubes" on day one. The rooms now have props a player can
+   use standing in them, so the frames are worth taking.
+4. **`--gate-frames` 14/9.** `zocalo` (`crushed` ×0.01) and bespoke `hospitality` (p5 ×1.88) are the
+   two closest. `plant` is a lighting-design problem, not an exposure one — leave it.
+5. **`customs_north` at 59.7% floor coverage is NOT a defect** — `customs.py` asserts its own state
+   and records the withdrawn experiment (*"210 coffers given lights put the frame at 18.9× its
+   reference"*). The gate and the module disagree and someone has to rule. Still open from 4c.
+
+## Session 4c — READ THIS FIRST: THE TIMEOUTS WERE ONE LINE, AND TWO AGENTS DIED OF ME
 
 ### 1. `rooms.py` took 24 MINUTES and the cause was a cache key I wrote
 
@@ -123,7 +265,12 @@ INV-246.
    and records the withdrawn experiment (*"210 coffers given lights put the frame at 18.9× its
    reference"*). The gate and the module disagree and someone has to rule.
 
-tween them. The file
+## Session 4b — THE STATION HAS A POLICE FORCE, AND THE WALL STOPPED BEING ONE FLAT PANEL
+
+### 1. A 1,181-LINE GAZETTEER FILE HAD ZERO READERS
+
+`grep -rl LAW-CRIME-DOWNBELOW station/ tools/` returned **nothing**, while `FACTIONS.md`,
+`LIFE-SUPPORT-AND-INDUSTRY.md` and `TRAFFIC-AND-CUSTOMS.md` had 23 readers between them. The file
 holds the force's size and shape, what an officer wears and carries, where the posts are, patrol
 patterns, response times, the escalation ladder, the brig, law, the black market and Downbelow —
 and the owner's scope brief names *"customs and immigration, law enforcement, crime, the black
