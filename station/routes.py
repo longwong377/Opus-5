@@ -93,6 +93,11 @@ TRUNK_GAP_M = 400.0
 _LIFT_EXISTS = os.path.exists(os.path.join(HERE, "lift.py"))
 _SPOKE_WAY_EXISTS = os.path.exists(os.path.join(HERE, "spoke_way.py"))
 
+# The loaded schema, so `column_z` can ask how many decks a candidate z carries.
+# A one-slot cache rather than a parameter because `column_z` is called from
+# inside `why=` strings and threading it everywhere would be noise.
+_SCHEMA = [None, None]
+
 
 def clusters():
     """Every z-cluster that carries a location, with what it carries.
@@ -192,7 +197,76 @@ def transit_angle(sector, nodes):
     return best[0] if best[0] is not None else 0.0
 
 
-def edges(nodes, schema, full_ring=False):
+def column_z(nodes, sector):
+    """The axial position a sector's transit column stands at.
+
+    DERIVED FROM COVERAGE, and the first version took the sector's LOWEST
+    cluster z because that is what `tools/export_station.py` happened to pass.
+    It cost 19 of 71 decks their landing: `interior.decks_in_ring(z_m=)` returns
+    a different stack at different z -- blue ring 0 has 6 decks at z=6880 and 10
+    at z=7120 -- so a column at the low end is a column most of the sector
+    cannot reach. grey was 12 of 19 unreachable.
+
+    A column stands where it serves the most decks. Ties break to the lowest z
+    so the answer is deterministic, and `export_station` is handed this number
+    rather than choosing its own.
+    """
+    zs = sorted({k[3] for k in nodes if k[0] == sector})
+    if not zs:
+        return 0.0
+    if _SCHEMA[0] is None:
+        return zs[0]
+    schema, profile = _SCHEMA
+    best, best_n = zs[0], -1
+    for z in zs:
+        n = 0
+        for ring in sorted({k[1] for k in nodes if k[0] == sector}):
+            try:
+                stack = it.decks_in_ring(schema, profile, sector, ring, z_m=z)
+            except Exception:                                  # noqa: BLE001
+                continue
+            n += sum(1 for k in nodes
+                     if k[0] == sector and k[1] == ring and k[2] < len(stack))
+        if n > best_n:
+            best, best_n = z, n
+    return best
+
+
+def zc0(nodes, sector):
+    """The one column node a sector's decks all hang off."""
+    return column_z(nodes, sector)
+
+
+def has_landing(schema, profile, nodes, key, z_m=None):
+    """Does this deck actually have a landing on its sector's column?
+
+    THE QUESTION `_LIFT_EXISTS` WAS NOT ASKING. That flag asks the FILESYSTEM
+    whether `station/lift.py` is present, and the first version of this file
+    granted every one of the 96 clusters a lift edge on it -- so the graph
+    reported the station as ONE PIECE while **24 clusters had no landing at
+    all**. grey was 12 of 19.
+
+    The cause is real and is not in this file: a column stands at one z, and
+    `interior.decks_in_ring(z_m=)` returns a DIFFERENT NUMBER OF DECKS at
+    different z -- blue ring 0 has 6 decks at z=6880 and 10 at z=7120 -- so a
+    deck index that exists at its own cluster's z can be off the end of the
+    stack at the column's. Found by the route-walk agent when a body tried to
+    use one.
+
+    A gate must ask whether the CONNECTION can be made, never whether a
+    generator file is on disk.
+    """
+    sec, ring, dk, _z = key
+    try:
+        stack = it.decks_in_ring(
+            schema, profile, sec, ring,
+            z_m=column_z(nodes, sec) if z_m is None else z_m)
+    except Exception:                                          # noqa: BLE001
+        return False
+    return 0 <= dk < len(stack)
+
+
+def edges(nodes, schema, full_ring=False, profile=None):
     """Every connection the station's own structure implies, with its kind.
 
     `full_ring=True` answers the second question this file exists to ask: what
@@ -267,22 +341,42 @@ def edges(nodes, schema, full_ring=False):
     # a radial move through the ring boundary, which is the spoke. Blue and
     # green carry two rings, yellow three, red four. The per-sector column
     # quietly granted eight connections nothing can build.
+    # ONE COLUMN PER (SECTOR, RING, z), NOT PER SECTOR. A ring deck's radius is
+    # a function of z -- the hull tapers -- so `decks_in_ring(z_m=)` returns a
+    # different stack at different z: blue ring 0 has 6 decks at z=6880 and 10
+    # at z=7120. A single vertical shaft therefore CANNOT reach a deck that does
+    # not exist at its own z, and that is a fact about the station rather than a
+    # modelling choice. One column per sector left 19 of 71 decks with no
+    # landing; moving it to the z that serves the most left 15. A column at each
+    # cluster z reaches every deck at the z the deck actually exists at, which
+    # is also how a station this size is really laid out -- lift cores where the
+    # decks are, not one shaft for eight kilometres.
     for sp in spines:
-        out.append({
-            "a": sp, "b": ("column", sp[1], sp[2]), "kind": "lift",
-            "built": _LIFT_EXISTS, "length_m": 0.0,
-            "why": ("station/lift.py" if _LIFT_EXISTS else
-                    "no lift, stair or shaft exists anywhere in the project -- "
-                    "transit.py computes the ride, navigation.py routes NPCs "
-                    "through it, and there is nothing to walk into"),
-        })
+        for member in [k for k in keys if k[:3] == sp[1:]][:1]:
+            z = column_z(nodes, sp[1])
+            landed = (_LIFT_EXISTS
+                      and has_landing(schema, profile, nodes, member, z_m=z))
+            out.append({
+                "a": sp, "b": ("column", sp[1], sp[2], zc0(nodes, sp[1])),
+                "kind": "lift",
+                "built": landed, "length_m": 0.0,
+                "why": ("station/lift.py" if landed else
+                        f"the column at z={z:.0f} has no landing at deck "
+                        f"{sp[3]}: decks_in_ring returns a shorter stack there"
+                        if _LIFT_EXISTS else
+                        "no lift, stair or shaft exists anywhere in the "
+                        "project -- transit.py computes the ride, "
+                        "navigation.py routes NPCs through it, and there is "
+                        "nothing to walk into"),
+            })
 
     # --- spoke: one ring's column to the next, radially ----------------------
     for sec in sectors:
         rings = sorted({k[1] for k in keys if k[0] == sec})
         for r0, r1 in zip(rings, rings[1:]):
+            zc = column_z(nodes, sec)
             out.append({
-                "a": ("column", sec, r0), "b": ("column", sec, r1),
+                "a": ("column", sec, r0, zc), "b": ("column", sec, r1, zc),
                 "kind": "spoke", "built": _SPOKE_WAY_EXISTS, "length_m": 0.0,
                 "why": ("station/spoke_way.py" if _SPOKE_WAY_EXISTS else
                         "interior.spoke builds the structure and spoke_portal "
@@ -307,7 +401,8 @@ def edges(nodes, schema, full_ring=False):
         # of this edge silently assumed the columns were coaxial.
         jog = abs(((ang[s1] - ang[s0]) + 180.0) % 360.0 - 180.0)
         out.append({
-            "a": ("column", s0, r0), "b": ("column", s1, r1), "kind": "trunk",
+            "a": ("column", s0, r0, column_z(nodes, s0)),
+            "b": ("column", s1, r1, column_z(nodes, s1)), "kind": "trunk",
             "built": abs(gap) <= TRUNK_GAP_M,
             "length_m": abs(gap),
             "why": (f"sectors abut within {gap:.0f} m; axial_run plus "
@@ -398,8 +493,9 @@ def declared_check(nodes, es, only_built=True):
 def report(schema=None, profile=None):
     if schema is None:
         schema, profile = it.load()
+    _SCHEMA[0], _SCHEMA[1] = schema, profile
     nodes = clusters()
-    es = edges(nodes, schema)
+    es = edges(nodes, schema, profile=profile)
     built = [e for e in es if e["built"]]
     kinds = {}
     for e in es:
@@ -427,7 +523,7 @@ def report(schema=None, profile=None):
     if ex:
         print(f"\n     the lift, in full: {ex['why']}")
 
-    es_ring = edges(nodes, schema, full_ring=True)
+    es_ring = edges(nodes, schema, full_ring=True, profile=profile)
     g_ring = components(nodes, es_ring, True)
     g_ring_all = components(nodes, es_ring, False)
     unreached = sum(1 for e in es if e["kind"] == "ring" and not e["built"])
@@ -447,6 +543,32 @@ def report(schema=None, profile=None):
           f"{len(g_all)}")
     print(f"     largest piece holds {sizes[0]} cluster(s), "
           f"{sum(1 for s in sizes if s == 1)} pieces hold one")
+
+    # THE REGISTER AGAINST THE HULL, and nobody had ever asked. A location is
+    # addressed (sector, ring, deck, angle, z) and layer 1 was declared
+    # "118/118 COMPLETE" on that -- but a ring deck's radius is a function of z,
+    # so `interior.decks_in_ring(z_m=)` returns a SHORTER STACK at some z than
+    # the register's deck index needs. 24 of 96 clusters name a deck the hull
+    # does not carry where they stand: `blue/0/3` at z=7680 asks for deck 3 of
+    # ONE, `blue/0/8` at z=7000 for deck 8 of one. Those places have a floor --
+    # `deck.py` builds them at `_ring_cells`' z-independent radius -- and they
+    # cannot have a lift, because there is no stack there to land on.
+    orphan_decks = []
+    for k in sorted(nodes):
+        sec2, ring2, dk2, z2 = k
+        try:
+            st2 = it.decks_in_ring(schema, profile, sec2, ring2, z_m=z2)
+        except Exception:                                      # noqa: BLE001
+            st2 = []
+        if dk2 >= len(st2):
+            orphan_decks.append((k, dk2, len(st2)))
+    print(f"\n  {len(orphan_decks)} of {len(nodes)} clusters name a deck the "
+          f"hull does not carry at their own z -- addressed, built, and "
+          f"unreachable by any shaft:")
+    for k, dk2, n2 in orphan_decks[:4]:
+        print(f"     {k[0]}/{k[1]}/{k[2]} at z={k[3]:.0f}: deck {dk2} of {n2}")
+    if len(orphan_decks) > 4:
+        print(f"     ... and {len(orphan_decks) - 4} more")
 
     ok, bad, orphan, fails = declared_check(nodes, es, True)
     uniq = len({tuple(sorted((q["key"], o))) for q in DIR.PLACES
@@ -485,8 +607,9 @@ def _selftest():
               + (f"  {note}" if note else ""))
 
     schema, profile = it.load()
+    _SCHEMA[0], _SCHEMA[1] = schema, profile
     nodes = clusters()
-    es = edges(nodes, schema)
+    es = edges(nodes, schema, profile=profile)
     r = report(schema, profile)
 
     check("every located place lands in a cluster",
