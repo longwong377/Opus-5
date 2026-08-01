@@ -323,11 +323,31 @@ func _ready() -> void:
 	_build_world()
 	_spawn_ship()
 
-	if _out_path != "":
+	if _out_path != "" and not args.has("free"):
 		await _photograph(String(args.get("frame",
 			_shot.get("frame", "lookback"))))
 		return
 	_start_interactive()
+	# `--free=SECONDS` flies the REAL interactive path -- physics process, pilot
+	# input, chase camera, debug readout -- for a fixed wall time and then, if
+	# asked, photographs it. It exists because every other mode here bypasses
+	# `_physics_process`, and a build whose only tested paths are the headless
+	# ones is a build whose playable path is the untested one.
+	if args.has("free"):
+		var secs := float(args["free"])
+		await get_tree().create_timer(secs).timeout
+		print("starfury: %.1f s of free flight -- %.0f m travelled, %.1f m/s, "
+			% [secs, model.position.distance_to(_launch_origin()), model.speed()]
+			+ "%d origin rebase(s)" % _rebases)
+		if _out_path != "":
+			for i in 6:
+				await RenderingServer.frame_post_draw
+			var img := get_viewport().get_texture().get_image()
+			DirAccess.make_dir_recursive_absolute(_out_path.get_base_dir())
+			img.save_png(_out_path)
+			print("captured %s  %dx%d" % [_out_path, img.get_width(),
+				img.get_height()])
+		get_tree().quit(0)
 
 
 func _args() -> Dictionary:
@@ -816,6 +836,11 @@ func _build_world() -> void:
 		if node == null:
 			push_warning("starfury: exterior.tscn has no %s" % n)
 			continue
+		# Unset the owner first. A node reparented out of an instanced scene
+		# keeps pointing at that scene's root, and Godot warns on every one of
+		# them -- four lines of noise in a log this project greps for real
+		# errors.
+		node.owner = null
 		_proto.remove_child(node)
 		add_child(node)
 	_aim_rig()
@@ -1055,6 +1080,7 @@ func _start_interactive() -> void:
 			omega * model.position.x, 0.0)
 		model.orientation = _look_quat(Vector3(cos(ph), sin(ph), 0.0),
 			Vector3(0.0, 0.0, 1.0))
+	_spawn_world = model.position
 	var layer := CanvasLayer.new()
 	add_child(layer)
 	_readout = Label.new()
@@ -1207,6 +1233,14 @@ func _pilot_test() -> bool:
 		% [turn_drift, v_before_turn.length()] + "%.3f m/s" % model.speed())
 	print("PILOT TEST: " + ("PASS" if ok else "FAIL"))
 	return ok
+
+
+## Where the craft started, for the free-flight distance report.
+var _spawn_world: Vector3 = Vector3.ZERO
+
+
+func _launch_origin() -> Vector3:
+	return _spawn_world
 
 
 func _unhandled_input(event: InputEvent) -> void:

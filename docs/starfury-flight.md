@@ -190,6 +190,30 @@ All three through `tools/render_godot.sh`, all three confirmed
 | `docs/engine-4e-fury-station.png` | the baseline exterior at the calibrated 9,200 m / 18° / az 214 framing, unchanged, as the control |
 | `docs/engine-4e-fury-launch.png` | **the flyable scene rendering itself.** The fighter a twelfth of a second out of the bay mouth, sunlit, with the cobra bay well, its hazard lip and its marker lights beside it. Camera, ship pose and lighting all come from `scripts/starfury.gd` |
 | `docs/engine-4e-fury-lookback.png` | **the deliverable.** The whole 8,047 m station from a Starfury at 8,956 m — the fighter's own flown pose, in the foreground, at the framing `exterior.tscn`'s measured exposure was derived at |
+| `docs/engine-4e-fury-freeflight.png` | **the interactive build, running.** `--free=20` flies the real playable path — `_physics_process`, pilot input, chase camera, debug readout — for twenty seconds and photographs it |
+
+The free-flight frame is the one that proves the playable path rather than a headless one,
+and its readout is the evidence:
+
+```
+t   20.8 s
+position     31.3   1183.7   7182.4 m
+velocity    -12.3     53.8      0.0 m/s
+speed        55.1 m/s
+nose off velocity  90.0 deg   spin  0.00 deg/s
+range to station centre   3374 m
+floating origin 17,1039,7189  rebases 3  float32 spacing here 0.49 mm, after rebase 0.0153 mm
+```
+
+**`nose off velocity 90.0 deg`.** The craft left the tube pointing radially outward and is
+travelling tangentially; twenty seconds later it is still pointing where it was and still
+going where it was going, with the spin rate at exactly 0.00 deg/s because nothing has
+touched it. That is the whole craft in one line of a live build.
+
+The last line is `station/physics/floating_origin.py` doing its job with a number attached:
+at 7.2 km from the station origin, float32 spacing is **0.49 mm** — above the module's own
+1 mm jitter threshold's neighbourhood and visible on a stationary hull — and after three
+rebases the render-space coordinates are small enough that it is **0.0153 mm**.
 
 Two things about the look-back frame are deliberate. The ship is at its **flown** position,
 not a position anyone chose — the camera is `_chase_eye()` of the state the mission ended
