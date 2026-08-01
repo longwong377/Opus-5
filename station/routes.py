@@ -486,10 +486,16 @@ def _selftest():
 
     # NEGATIVE CONTROL: counting UNBUILT edges as built must improve the
     # number, or the lift and spoke edges are not proposing anything real.
-    check("the missing generators are proposing real connections",
-          r["components_all"] < r["components_built"],
-          f"{r['components_all']} if lifts and spoke passages existed, "
-          f"against {r['components_built']} today")
+    # NEGATIVE CONTROL on the lift, and it replaces one that went degenerate
+    # the moment `station/lift.py` landed: "components_all < components_built"
+    # is unsatisfiable once every edge is buildable, so it began failing for
+    # being TRUE. The question worth asking is whether the lift carries the
+    # connection, and that is asked by taking it away.
+    no_lift = [e for e in es if e["kind"] != "lift"]
+    n1 = len(components(nodes, no_lift, True))
+    check("and the lift is load-bearing",
+          n1 > r["components_built"],
+          f"without it {n1} pieces, with it {r['components_built']}")
 
     # The declared graph is 33 edges over 128 places and cannot connect them.
     dg = {}

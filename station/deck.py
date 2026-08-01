@@ -1315,6 +1315,56 @@ def build_deck_clusters(schema, profile, sector, ring, deck, n=None,
     return V, T, G, stats
 
 
+def build_column(schema, profile, sector, ring, angle_deg, z_m, decks=None,
+                 at_deck=None):
+    """A sector's TRANSIT COLUMN at one angle: the lift shaft, its car and its
+    collision, serving every deck of a ring. Returns (V, T, G, stats).
+
+    THE PIECE THAT TURNS 71 WALKABLE ISLANDS INTO ONE STATION. `routes.py`
+    measures the station's circulation graph and, before this existed, read
+    **71 components -- exactly one per deck**, because every deck was internally
+    connected by its axial spine and nothing joined one deck to the next. There
+    was no lift, stair or shaft anywhere in the project, while `transit.py`
+    costed the ride and `npc/navigation.py` routed NPCs through it.
+
+    `angle_deg` is NOT chosen here. It is the sector's transit angle --
+    `routes.transit_angle`, the angle lying inside the most cluster arcs -- and
+    it is passed in rather than computed because `routes` imports this module
+    and the dependency cannot run both ways. The same angle goes to
+    `deck_plan(must_cover=)`, which is what guarantees every cluster's corridor
+    reaches the column instead of stopping wherever its own rooms end.
+    """
+    import lift as L                                           # noqa: PLC0415
+    if decks is None:
+        decks = [d["deck_index"] for d in it.decks_in_ring(schema, profile,
+                                                           sector, ring)]
+    decks = sorted(decks)
+    at = decks[0] if at_deck is None else at_deck
+
+    V, T, G = [], [], []
+    sv, st_, smeta = L.lift_shaft(schema, profile, sector, ring, decks,
+                                  angle_deg, z_m)
+    V.extend(sv)
+    T.extend(st_)
+    G.extend(("column__" + n, a, b) for n, a, b in smeta.get("groups", ()))
+
+    cv, ct, cmeta = L.lift_car(schema, profile, sector, ring, decks,
+                               angle_deg, z_m, at_deck=at)
+    base, t0 = len(V), len(T)
+    V.extend(cv)
+    T.extend((a + base, b + base, c + base) for a, b, c in ct)
+    G.extend(("column__" + n, a + t0, b + t0)
+             for n, a, b in cmeta.get("groups", ()))
+
+    xv, xt, xmeta = L.lift_collision(schema, profile, sector, ring, decks,
+                                     angle_deg, z_m, at_deck=at)
+    return V, T, G, {"shaft": smeta, "car": cmeta,
+                     "collision": (xv, xt, xmeta),
+                     "decks": decks, "at_deck": at,
+                     "angle_deg": angle_deg, "z_m": z_m,
+                     "tris": len(T), "collision_tris": len(xt)}
+
+
 def floor_radius(verts, tris, quantum=0.001, near_m=0.30, min_share=0.02):
     """The radius of the surface a boot rests on, read off an emitted mesh.
 

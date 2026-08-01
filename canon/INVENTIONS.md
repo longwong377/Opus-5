@@ -5387,3 +5387,156 @@ than touching. The cone stops a prompt appearing for somebody behind you. Measur
 runtime gate: first offered at 2.75 m, 0/0 range and cone violations over every offer.
 **Overturned by.** Play testing.
 **Authority 5.**
+
+
+## INV-275 — The car's clear width is the corridor's, measured
+
+**Invented:** in `station/lift.py::shaft_geometry` — `clear_w = 2 * corridor_profile()['half_w']`
+= **2.1612 m**, and `clear_h = ceil_y − floor_y` = **2.8070 m**.
+
+**Why necessary:** the reference set contains **no frame of a Babylon 5 lift car interior at all**.
+`canon/00-MASTER.md` §3 says so in as many words — *"the lift-car display is still the single
+highest-value gap in the reference set"* — and what it is missing there is the LEVEL numbering, not
+the car. There is no width, no height, no plan and no photograph. The alternative to extrapolating
+is a station whose decks cannot be walked between, which `routes.py` prices at 38 broken edges.
+
+**Constrained by:** the only thing that has to be true of a lift is that it takes what reaches it.
+The corridor's clear cross-section is already MEASURED off the kit by ray casting in
+`collision.corridor_profile` — 1.0806 m half-width at the portal pinch, 2.807 m of headroom — and
+anything that fits that pinch has to fit the car, or the lift is a bottleneck a player meets by
+being unable to bring something through. Taking the same cast rather than a second number is hard
+rule 4: if the kit's walls move, the car moves with them.
+
+**What this rules out:** a car sized off a real-world lift standard. A 1.1 × 1.4 m domestic car
+would be **narrower than the corridor that feeds it**, and a station moving 250,000 people does not
+build one.
+
+**What would overturn it:** one frame of a B5 lift interior with a person in it. It would replace
+the value outright.
+
+---
+
+## INV-276 — The car is square in plan
+
+**Invented:** `clear_d = clear_w`. The car is 2.1612 m in both horizontal directions.
+
+**Why necessary:** INV-275 fixes the width from the corridor's own pinch. Nothing fixes the depth:
+the corridor constrains what can be *presented* to the door, not how deep the box behind it is.
+
+**Constrained by:** a lift lobby meets a car at 90 degrees. The longest rigid object that can be
+brought to the door is set by the corridor's clear width, and a car shallower than it is wide
+cannot accept what the corridor delivers — it fails on the diagonal. A square is the smallest plan
+that can. It is also the plan that makes the shaft's two pairs of guide faces interchangeable,
+which is why real shafts are close to square.
+
+**What this rules out:** the shallow, wide car of a passenger lift in a tower, which is optimised
+for a queue and not for freight; and the deep, narrow car of a service lift, which cannot turn a
+stretcher. `directory.py` gives the `lifts` place the functions `("transit",)` with no cargo
+qualifier, and `bay_elevators` — the only lift the sources describe at all — is explicitly a
+**cargo** lift with a stated length limit, so the general case has to pass both people and goods.
+
+**What would overturn it:** any frame showing a car's plan, or a production drawing.
+
+---
+
+## INV-277 — The car shell is two of the kit's own thicknesses
+
+**Invented:** the car's floor and roof are `PROVISIONAL['ceiling_slab_m']` = **0.18 m**; its side
+and back panels are `PROVISIONAL['door_leaf_t_m']` = **0.10 m**.
+
+**Why necessary:** the external envelope decides whether the car fits the shaft and whether its
+roof fouls the landing above, so it cannot be left unstated.
+
+**Constrained by:** the split is structural rather than stylistic. The floor and roof carry the
+car and its load and take the kit's only *slab* figure; the side panels carry nothing and take the
+kit's only figure for a **moving** panel, the door leaf. Both are already `PROVISIONAL` and both
+move if C-004 moves, so the car inherits whatever resolving that conflict does to the corridor
+rather than needing a second correction.
+
+**The consequence is checked, not assumed:** external height = 2.807 + 2 × 0.18 = **3.167 m** in a
+**3.600 m** storey, leaving **433 mm** between the car roof and the next floor. If that number went
+negative the shaft would be a one-storey lift with extra doors, and `_selftest` gates it.
+
+**What would overturn it:** C-004 resolving to a deck pitch under 3.17 m, which would force a
+lower car; or any frame of a car interior.
+
+---
+
+## INV-278 — The running clearance is the guideway's, reused
+
+**Invented:** `RUN_CLEARANCE_M = interior.GUIDEWAY_SOFFIT_RELIEF_M` = **0.15 m** between the car
+and every fixed surface of the shaft, and `SILL_GAP_M = PROVISIONAL['wall_seam_m']` = **0.038 m**
+between the car's sill and the landing's.
+
+**Why necessary:** a shaft with no stated clearance is a shaft whose car interferes with its own
+walls, and the failure is invisible until something moves.
+
+**Constrained by:** this project already states exactly one running clearance between a moving
+vehicle and the fixed structure it passes — `GUIDEWAY_SOFFIT_RELIEF_M`, which is why the guideway
+soffit sits inboard of the bottom chord's running face so *"a car meets the same surfaces inside
+the portal that it meets everywhere else on the run"* (INV-050). A lift car in a shaft is the same
+problem at a smaller scale. Taking a second figure would be two descriptions of one thing, which
+this repository has now been bitten by twice — the door decision made in the render and again in
+the shell, and the corridor profile written down instead of measured.
+
+The sill is deliberately **not** given the running clearance: a sill is the plate a foot crosses
+and is meant to run close. The kit already states how wide a gap between two plates that must not
+touch is — `wall_seam_m`, the 38 mm recess between deck tiles and between wall plates. 38 mm is
+also under `collision.floor_holes`' own 0.35 m sampling pitch, i.e. it is not a hole a body can
+fall through, and the threshold walk gate measures the actual widest unsupported run at **40 mm**.
+
+**What would overturn it:** a stated lift specification, or a frame showing the gap at a landing.
+
+---
+
+## INV-279 — The shaft is a rectangular box, and its local frame is orthonormal
+
+**Invented:** the shaft is a straight-sided box of constant section, not a radial wedge; the guide
+rails are `interior_kit.pilaster` at `pilaster_proj_m` = 0.17 m off each tangential wall.
+
+**Why necessary:** `deck._place_local` maps room-local coordinates through `a = a0 + x / radius`,
+which makes a room's walls **radial planes**. That is right for a room, whose floor follows the
+ring. Applied to a shaft 10.7 m deep in radius it would taper the section by 10.7/211 = **5.1%**,
+from 2.661 m at the bottom landing to 2.526 m at the top, and a lift car cannot run in a taper.
+
+**Constrained by:** guide rails have to be parallel — that is what a guide rail is. So `place()`
+in `lift.py` is a rigid rotation (tangential, inward-radial, axial), right-handed with determinant
++1 so every winding decision made in local coordinates survives the map into world space.
+
+**The price is stated and measured.** The car's floor is then a PLANE and the deck's is a
+CYLINDER, so they can agree at only one point. Over the car's own 2.1612 m width at r = 210.9 m the
+divergence is **2.77 mm**, against `collision.STEP_TOLERANCE_M` of **5 mm** — the tolerance the
+project certifies a floor smooth at, itself set below the 22 mm tile lip that stopped a body in
+session 3u. The tangency point is the car's centreline, which is where the doorway is, so the
+crossing itself is exact. `_selftest` gates the figure rather than asserting the argument.
+
+The rails being `pilaster` is not a shortcut: it is the kit's own vertical member standing off a
+wall, it is already a closed solid whose winding `interior_kit._selftest` asserts, and
+`materials.py` already binds both `pilaster` and `light_pilaster_strip` — so a shaft needs no new
+material and cannot land on the glTF fallback, which is session 4f's finding applied before the
+fact rather than after.
+
+**What would overturn it:** a frame showing a B5 shaft interior; a production note describing the
+tubes as bores rather than boxes.
+
+---
+
+## INV-280 — The transit column's angle
+
+**Claim (authority 5):** each sector's lift column and every deck spine on it stand at ONE angle,
+and that angle is the one lying inside the most of that sector's cluster corridor arcs.
+
+**Why necessary:** `station/routes.py` measures the station's circulation graph, and the column
+has to land on each deck's spine or it joins nothing. One angle per sector is what makes that true
+by construction rather than by 71 separate coincidences. Blue resolves to 140.0 deg.
+
+**Constrained by:** it is not free -- `deck_arc(must_cover=)` extends every cluster's corridor the
+short way round to reach it, so a badly chosen angle is paid for in corridor metres on every deck
+of the sector. Choosing the angle already inside the most arcs minimises exactly that cost.
+
+**In style because:** a station this size does not put a lift beside every room; it has transit
+spines you join. B5's core shuttle and its lift cores read that way on screen -- you go TO the
+transit, you do not find it at your door.
+
+**Overturned by:** any frame or floor plan establishing a named lift core at a fixed bearing, or
+showing two independent lift columns on one sector.
