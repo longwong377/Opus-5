@@ -571,6 +571,227 @@ def _tube(v, t, g, name, p0, p1, r, seg=SEG_PIPE, phase=0.0):
     _tag(g, name, t0, len(t))
 
 
+def _band(v, t, g, name, p0, p1, r_in, r_out, seg=SEG_BODY, phase=0.0):
+    """An annular band between two points -- a girth flange WITH ITS BORE OPEN.
+
+    THE LATHE'S VERSION OF THE SLAB BAND, and the same finding one primitive
+    down. `_perim_band` above records that a course band built as one box
+    "carries 11 m2 of surface of which 0.4 m2 is visible -- the rest is buried
+    inside the body it wraps -- and `density.py --machinery` measures line over
+    TOTAL area, so a band built that way LOWERS the number it was added to
+    raise." Every girth flange, hazard band and collar on this module's lathed
+    machines was a `_cyl`, which is a DISC: two caps of pi*r^2 buried inside
+    the barrel they ring. Measured on the reactor vessel at its declared 4.00 x
+    6.20 m, before this existed:
+
+        four girth flanges   4 x 14.5 m2 of buried cap
+        one hazard band          13.2 m2
+        the barrel's own caps    13.0 m2   (inside the two domed heads)
+                                 ------
+                                 84.2 m2 of the vessel's 218.7 m2 total
+
+    38% of a reactor vessel's measured surface was inside itself. The band
+    below is the same object with the bore taken out: 2.79 m2 against 15.2 m2
+    for one flange, and not one visible line lost.
+
+    Closed and manifold by construction -- outer wall, inner wall wound the
+    other way, and an annulus at each end. Winding is DERIVED from `_tube`'s,
+    which `_selftest` measures on four axes: the outer wall is `_tube`'s
+    lateral verbatim, the inner wall is that reversed, and each end annulus is
+    `_tube`'s end cap with the hub vertex replaced by the inner ring -- which
+    preserves orientation because the inner ring is on the same side of the
+    outer arc that the hub was. `_selftest` does not take that on trust: it
+    asserts the SIGNED VOLUME equals the analytic prism volume of the annulus,
+    which an inside-out inner wall gets wrong by 2*pi*r_in^2*L and a merely
+    "positive volume" check would pass.
+    """
+    if r_out <= r_in + 1e-6:
+        return
+    ax = [p1[i] - p0[i] for i in range(3)]
+    ln = math.sqrt(sum(c * c for c in ax))
+    if ln < 1e-9:
+        return
+    ax = [c / ln for c in ax]
+    seed_up = (0.0, 0.0, 1.0) if abs(ax[2]) < 0.9 else (1.0, 0.0, 0.0)
+    ux = _cross(seed_up, ax)
+    m = math.sqrt(sum(c * c for c in ux))
+    ux = [c / m for c in ux]
+    uy = _cross(ux, ax)
+    n0 = len(v)
+    for r in (r_out, r_in):                 # outer ring block, then inner
+        for k in range(seg):
+            a = math.tau * k / seg + phase
+            ca, sa = r * math.cos(a), r * math.sin(a)
+            d = [ca * ux[i] + sa * uy[i] for i in range(3)]
+            v.append(tuple(p0[i] + d[i] for i in range(3)))
+            v.append(tuple(p1[i] + d[i] for i in range(3)))
+    inner = n0 + 2 * seg
+    t0 = len(t)
+    for k in range(seg):
+        oa, ob = n0 + 2 * k, n0 + 2 * ((k + 1) % seg)
+        ia, ib = inner + 2 * k, inner + 2 * ((k + 1) % seg)
+        t += [(oa, ob + 1, ob), (oa, oa + 1, ob + 1)]       # outer, facing out
+        t += [(ia, ib, ib + 1), (ia, ib + 1, ia + 1)]       # inner, facing in
+        t += [(ia + 1, ob + 1, oa + 1)]                     # annulus at p1
+        t += [(ia + 1, ib + 1, ob + 1)]
+        t += [(ia, oa, ob)]                                 # annulus at p0
+        t += [(ia, ob, ib)]
+    _tag(g, name, t0, len(t))
+
+
+def _ring(v, t, g, name, cx, cz, y0, y1, r_in, r_out, seg=SEG_BODY, phase=0.0):
+    """`_band` upright, for the lathed machines that are built on `_cyl`."""
+    _band(v, t, g, name, (cx, y0, cz), (cx, y1, cz), r_in, r_out, seg, phase)
+
+
+# ---------------------------------------------------------------------------
+# THE MACHINE IS PLATED OUT OF THE SAME KIT THE WALL BEHIND IT IS
+# ---------------------------------------------------------------------------
+# `density.py --machinery`'s floor is *the room's own shell*, and its docstring
+# states the case in one line: "the machine may not be less articulated than
+# the wall behind it". Session 4e plated the walls, the floor rose, and ten
+# rooms fell out of the gate -- a player now saw a properly plated wall with a
+# plain box standing in front of it.
+#
+# The wall's answer to a big flat surface is already in this repository and is
+# already measured: `rooms.kit_plate_module()` returns the plate length, course
+# height, seam and proud that `rooms.articulate` lays a wall field on, every
+# one of them `interior_kit.PROVISIONAL`'s and read off `grey level 1.webp` --
+# the authority-1 frame that defines 1.00 for this project. NOTHING HERE IS A
+# NEW NUMBER: the module is fetched from `rooms` at call time rather than
+# copied, because a copied constant is a second copy of a computed number and
+# this file has the scars.
+#
+# WHY A FIXED FEATURE COUNT IS THE DEFECT. `_m_leaf` put three ribs on a door
+# leaf whatever its size. On the 1.90 x 2.35 m `door` that is a rib every
+# 0.78 m and the leaf measures 6.14 m^-1; on the 6.00 x 5.00 m `bay_door` the
+# same three ribs are 104 m2 of leaf at 2.59 m^-1 -- the least articulated
+# object in the station and the one a player walks through. A plate module is a
+# LENGTH, so the count grows with the object and the density does not fall.
+_KIT_MOD = None
+
+
+def kit_module(scale=1.0):
+    """(plate length, course height, seam, proud) -- `rooms`', not a copy.
+
+    Imported at call time. `rooms` imports this module inside its functions, so
+    the cycle only ever runs one way at import; `density.machinery_split` takes
+    the same route to `rooms._SHELL_SUFFIXES` and for the same reason.
+    """
+    global _KIT_MOD
+    if _KIT_MOD is None:
+        import rooms as _R                                  # noqa: PLC0415
+        _KIT_MOD = _R.kit_plate_module
+    return _KIT_MOD(scale)
+
+
+def _plate_face(v, t, g, name, box, axis, side, scale=1.0, proud=None,
+                margin=0.0, u_mod=None, w_mod=None):
+    """Divide ONE face of a body into the kit's plate field. Returns the count.
+
+    `axis`/`side` name the face the way `_face_strip` does. The field is laid
+    out at the kit's plate length across and its course height up, and the
+    division is drawn with the kit's own seam width standing at the kit's own
+    proud. Four numbers, all four `rooms.kit_plate_module()`'s and none new.
+
+    THIS BUILDS THE SEAMS, NOT THE PLATES, AND THAT IS THE WHOLE POINT --
+    `_perim_band`'s finding, one object larger. A wall can afford to build the
+    plates: its substrate is a surface the room needs anyway, so the plates'
+    buried backs are the only surface nobody sees. A MACHINE ALREADY HAS ITS
+    BODY, so a plate laid on its face DOUBLES that face -- the back of every
+    plate is buried in the body it sits on, and `--machinery` measures line
+    over TOTAL area. Measured on the 6.00 x 5.00 m bay door, both built from
+    this same module:
+
+        plates (55 boxes a face)   area 104 -> 197 m2   lambda 2.594 -> 4.061
+        seams  (16 ribs a face)    area 104 -> 127 m2   lambda 2.594 -> 7.39
+
+    The rib field is 3.4x fewer triangles and lands 1.8x higher, because a rib
+    has no buried back. It is also what the object physically IS: the leaf of a
+    blast door is a stiffened plate and the stiffeners are on the outside.
+
+    THE RIBS STAND PROUD OUTWARD, which is safe for the same reason
+    `_perim_band`'s do: `machine()` insets every builder's box by up to
+    `MACH_PROUD_M` before calling it, "so that the things which are SUPPOSED to
+    stand proud have somewhere to be proud into". The proud is capped again
+    here against the caller's own allowance, and `_selftest` measures the
+    excursion at the LARGEST declared size of every kind -- which is the only
+    place a field big enough to have a lattice in it ever appears.
+
+    RETURNS 0 AND BUILDS NOTHING when the face is under two modules across. A
+    0.6 m cell-door leaf is not a plated field, and one line down the middle of
+    a small object is a box with a scratch on it.
+    """
+    plate_l, course_h, seam, kproud = kit_module(scale)
+    u_mod = u_mod or plate_l
+    w_mod = w_mod or course_h
+    x0, y0, z0, x1, y1, z1 = box
+    if axis == "x":
+        u0, u1, fx = z0 + margin, z1 - margin, (x0 if side < 0 else x1)
+    elif axis == "z":
+        u0, u1, fx = x0 + margin, x1 - margin, (z0 if side < 0 else z1)
+    else:
+        raise ValueError(f"_plate_face: {axis!r} is not a vertical face")
+    w0, w1 = y0 + margin, y1 - margin
+    ncol = int(round((u1 - u0) / u_mod))
+    nrow = int(round((w1 - w0) / w_mod))
+    if ncol < 1 or nrow < 1 or ncol * nrow < 2:
+        return 0
+    pr = kproud if proud is None else min(kproud, proud)
+    if pr < MIN_PART_M or min(u1 - u0, w1 - w0) < 4.0 * seam:
+        return 0
+    # THE WHOLE FIELD IS HELD OFF THE BODY'S OWN EDGES BY `q`. A border rib
+    # drawn flush to the face runs from corner to corner of that face, so its
+    # inner edge is the body's edge -- literally the same two endpoints -- and
+    # that edge then has four faces on it. It measured 4 non-manifold edges a
+    # face on the bay door and is invisible in any render.
+    q = seam * 0.22
+    u0, u1, w0, w1 = u0 + q, u1 - q, w0 + q, w1 - q
+    a, b = (fx, fx + side * pr) if side > 0 else (fx + side * pr, fx)
+    hs = seam / 2.0
+    n = 0
+
+    def rib(ua, ub, wa, wb):
+        nonlocal n
+        if ub - ua < 1e-6 or wb - wa < 1e-6:
+            return
+        if axis == "x":
+            _box(v, t, g, name, (a, wa, ua), (b, wb, ub))
+        else:
+            _box(v, t, g, name, (ua, wa, a), (ub, wb, b))
+        n += 1
+
+    # EVERY RIB IS A FULL RUN AND THEY CROSS RATHER THAN BUTT. The first
+    # version stopped each stile at the rail above it, which leaves the stile's
+    # cut face coplanar with the rail's side -- an edge with four faces on it,
+    # and it measured 12 non-manifold edges on the bay door. That is the same
+    # defect `_perim_band` records ("the four members OVERLAP at the corners
+    # rather than abutting", 36 of them on the shield block) and the same one
+    # `portal_frame` carried 828 times a deck in session 3x. Two boxes that
+    # merely INTERPENETRATE share no vertex and so no edge, which is why
+    # `_crate` and `_locker` have always been built out of overlapping solids
+    # and measure zero of both.
+    for j in range(1, nrow):                       # rails, the full width
+        wc = w0 + (w1 - w0) * j / nrow
+        rib(u0, u1, wc - hs, wc + hs)
+    for i in range(1, ncol):                       # stiles, the full height
+        uc = u0 + (u1 - u0) * i / ncol
+        rib(uc - hs, uc + hs, w0, w1)
+    # The field's own border, so the outermost course reads as a course rather
+    # than as the edge of the body. THE UPRIGHTS ARE SHORTENED BY `q` AT BOTH
+    # ENDS, and that is `_perim_band`'s "so the four corner posts do not share"
+    # verbatim: two boxes meeting exactly at a corner share one whole edge,
+    # which then has four faces on it. Measured at the field's four corners --
+    # 4 non-manifold edges a face, 16 on a two-sided leaf -- and interpenetrating
+    # by `q` instead costs nothing and shares nothing.
+    if n:
+        rib(u0, u1, w0, w0 + seam)
+        rib(u0, u1, w1 - seam, w1)
+        rib(u0, u0 + seam, w0 + q, w1 - q)
+        rib(u1 - seam, u1, w0 + q, w1 - q)
+    return n
+
+
 def _dome(v, t, g, name, cx, cz, y_base, r, rise, seg=SEG_BODY, rings=3,
           up=True, phase=0.0):
     """A domed head: latitude rings to an apex, closed with its own base cap.
@@ -809,8 +1030,11 @@ def _m_vessel(v, t, g, box, P, seed, furnace=False, horizontal=False):
               max(MIN_PART_M, r * 0.085), SEG_PIPE)
         _box(v, t, g, P.frame, (lx - r * 0.13, y0, lz - r * 0.13),
              (lx + r * 0.13, y0 + 0.05, lz + r * 0.13))
-    _cyl(v, t, g, P.frame, cx, cz, body0 - 0.09, body0 + 0.02, r * 0.99,
-         SEG_BODY, ph)
+    # THE SKIRT IS A RING, NOT A DISC. See `_band`: a `_cyl` used as a band
+    # buries two pi*r^2 caps inside the body it wraps, and `--machinery`
+    # measures line over TOTAL area.
+    _ring(v, t, g, P.frame, cx, cz, body0 - 0.09, body0 + 0.02,
+          r * 0.80, r * 0.99, SEG_BODY, ph)
 
     # --- primary: barrel, domed head, dished bottom ------------------------
     _cyl(v, t, None, "", cx, cz, body0, body1, r, SEG_BODY, ph)
@@ -820,11 +1044,18 @@ def _m_vessel(v, t, g, box, P, seed, furnace=False, horizontal=False):
           SEG_BODY, 2, False, ph)
 
     # --- girth flanges: the lines that say this was built in courses -------
-    n_f = max(1, int((body1 - body0) / 1.25))
+    # AND THE PITCH IS THE KIT'S COURSE, NOT 1.25 m. A tank is welded up out of
+    # plate courses and the flange is the seam between two of them, so the
+    # spacing is the same course height `rooms.articulate` lays the wall behind
+    # it on -- see `kit_module`. At 1.25 m a 5.5 m barrel got four flanges
+    # whatever it was made of; at the kit's 0.446 m it gets twelve, and the
+    # count grows with the vessel instead of the spacing.
+    _course = kit_module()[1]
+    n_f = max(1, int((body1 - body0) / _course))
     for i in range(n_f):
         fy = body0 + (body1 - body0) * (i + 1) / (n_f + 1)
-        _cyl(v, t, None, "", cx, cz, fy - FLANGE_T_M / 2, fy + FLANGE_T_M / 2,
-             r * (1.0 + FLANGE_PROUD), SEG_BODY, ph)
+        _ring(v, t, None, "", cx, cz, fy - FLANGE_T_M / 2, fy + FLANGE_T_M / 2,
+              r * 0.97, r * (1.0 + FLANGE_PROUD), SEG_BODY, ph)
     # --- lagging strakes: the cheapest line on the station -----------------
     # A 40 mm proud x 30 mm strake adds four silhouette edges per metre of run
     # and about 0.11 m2 of surface, so it lifts line density by an order more
@@ -840,8 +1071,9 @@ def _m_vessel(v, t, g, box, P, seed, furnace=False, horizontal=False):
               max(MIN_PART_M * 2, r * 0.028), SEG_BOLT)
 
     # --- hazard band at the foot, where a person's shin is -----------------
-    _cyl(v, t, g, P.hazard, cx, cz, body0 + 0.04,
-         min(body0 + 0.04 + HAZARD_H_M, body1), r * 1.008, SEG_BODY, ph)
+    _ring(v, t, g, P.hazard, cx, cz, body0 + 0.04,
+          min(body0 + 0.04 + HAZARD_H_M, body1), r * 0.97, r * 1.008,
+          SEG_BODY, ph)
 
     # --- manway or charge door, on the -z face -----------------------------
     face_z = cz - r
@@ -944,14 +1176,15 @@ def _m_drum(v, t, g, box, P, seed):
     # a flanged collar at each end, which is what a drum you can open has and
     # what the flat cap `_tube` already closes it with reads as.
     for zz in (z0 + 0.12, z1 - 0.12):
-        _tube(v, t, g, P.frame, (cx, cy, zz - 0.04), (cx, cy, zz + 0.04),
-              r * (1.0 + FLANGE_PROUD * 1.6), SEG_BODY)
-    nf = max(1, int((z1 - z0) / 1.4))
+        _band(v, t, g, P.frame, (cx, cy, zz - 0.04), (cx, cy, zz + 0.04),
+              r * 0.97, r * (1.0 + FLANGE_PROUD * 1.6), SEG_BODY)
+    # Rings and the kit's course, for the reasons `_band` and `_m_vessel` give.
+    nf = max(1, int((z1 - z0) / kit_module()[1]))
     for i in range(nf):
         fz = z0 + (z1 - z0) * (i + 1) / (nf + 1)
-        _tube(v, t, None, "", (cx, cy, fz - FLANGE_T_M / 2),
-              (cx, cy, fz + FLANGE_T_M / 2), r * (1.0 + FLANGE_PROUD),
-              SEG_BODY)
+        _band(v, t, None, "", (cx, cy, fz - FLANGE_T_M / 2),
+              (cx, cy, fz + FLANGE_T_M / 2), r * 0.97,
+              r * (1.0 + FLANGE_PROUD), SEG_BODY)
     for k in range(SEG_BODY // 2):               # lagging strakes along the run
         a = math.tau * k / (SEG_BODY // 2)
         sy, sx = cy + r * 0.995 * math.sin(a), cx + r * 0.995 * math.cos(a)
@@ -1667,8 +1900,9 @@ def _m_leaf(v, t, g, box, P, seed):
         _box(v, t, g, P.frame, (x0 + 0.003, y1 - jamb, z0 + 0.003),
              (x1 - 0.003, y1, z1 - 0.003))
     if thin_x:
-        _box(v, t, None, "", (x0 + tt * 0.18, y0, z0 + d * 0.06),
-             (x1 - tt * 0.18, y1 - h * 0.04, z1 - d * 0.06))
+        leaf = (x0 + tt * 0.18, y0, z0 + d * 0.06,
+                x1 - tt * 0.18, y1 - h * 0.04, z1 - d * 0.06)
+        _box(v, t, None, "", leaf[:3], leaf[3:])
         _box(v, t, g, P.frame, (x0 + tt * 0.10, y0, z0 + d * 0.08),
              (x1 - tt * 0.10, y0 + min(0.22, h * 0.12), z1 - d * 0.08))
         _box(v, t, g, P.screen, (x0 + tt * 0.06, y0 + h * 0.62, z0 + d * 0.22),
@@ -1679,8 +1913,9 @@ def _m_leaf(v, t, g, box, P, seed):
         _box(v, t, g, P.panel, (x0 - 0.006, y0 + h * 0.42, z0 - 0.006),
              (x1 + 0.006, y0 + h * 0.56, z0 + d * 0.10))
     else:
-        _box(v, t, None, "", (x0 + w * 0.06, y0, z0 + tt * 0.18),
-             (x1 - w * 0.06, y1 - h * 0.04, z1 - tt * 0.18))
+        leaf = (x0 + w * 0.06, y0, z0 + tt * 0.18,
+                x1 - w * 0.06, y1 - h * 0.04, z1 - tt * 0.18)
+        _box(v, t, None, "", leaf[:3], leaf[3:])
         _box(v, t, g, P.frame, (x0 + w * 0.08, y0, z0 + tt * 0.10),
              (x1 - w * 0.08, y0 + min(0.22, h * 0.12), z1 - tt * 0.10))
         _box(v, t, g, P.screen, (x0 + w * 0.22, y0 + h * 0.62, z0 + tt * 0.06),
@@ -1690,19 +1925,26 @@ def _m_leaf(v, t, g, box, P, seed):
               SEG_BOLT)
         _box(v, t, g, P.panel, (x0 - 0.006, y0 + h * 0.42, z0 - 0.006),
              (x0 + w * 0.10, y0 + h * 0.56, z1 + 0.006))
-    # LEAF RIBS. A B5 door leaf is a ribbed plate, and without them the leaf is
-    # the flattest object in three of the six rooms measured (2.4 m^-1).
-    for k in (0.24, 0.36, 0.90):
-        yy = y0 + h * k
-        for side in (-1, 1):
-            if thin_x:
-                _face_strip(v, t, g, P.conduit, box, "x", side,
-                            z0 + d * 0.14, z1 - d * 0.14, yy, yy + h * 0.022,
-                            tt * 0.16)
-            else:
-                _face_strip(v, t, g, P.conduit, box, "z", side,
-                            x0 + w * 0.14, x1 - w * 0.14, yy, yy + h * 0.022,
-                            tt * 0.16)
+    # THE LEAF IS A PLATED FIELD, AT THE KIT'S OWN MODULE.
+    #
+    # This was three ribs at fixed fractions of the height -- 0.24, 0.36, 0.90 --
+    # and the note beside them said they existed because "without them the leaf
+    # is the flattest object in three of the six rooms measured (2.4 m^-1)".
+    # They were right about the disease and a fixed COUNT is not the cure: on
+    # the 1.90 x 2.35 m `door` three ribs is one every 0.78 m and the leaf
+    # measures 6.14 m^-1, while on the 6.00 x 5.00 m `bay_door` the same three
+    # are 104 m2 at 2.594 m^-1 -- the least articulated object in the station,
+    # and the one a player walks through. A PITCH IS A LENGTH: `kit_module()`
+    # gives the plate length and course height `rooms.articulate` lays the wall
+    # behind this door on, so the leaf gets 5 x 11 plates where the wall would
+    # get 5 x 11, and a small door still gets its own handful.
+    #
+    # `_plate_face` returns 0 on a face smaller than one module, so a 0.6 m
+    # cell-door leaf is left alone rather than given one plate and a rim.
+    lp = min(abs(leaf[0] - x0), abs(leaf[2] - z0)) * 0.9
+    for side in (-1, 1):
+        _plate_face(v, t, g, P.conduit, leaf, "x" if thin_x else "z", side,
+                    proud=lp, margin=0.0)
 
 
 def _m_wallpanel(v, t, g, box, P, seed):
