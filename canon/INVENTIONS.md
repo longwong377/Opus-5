@@ -5322,3 +5322,113 @@ its energy is a station-wide look change that needs its own verification round.
 **What would overturn it.** An authority-1 frame of a Babylon 5 cabin terminal. There is none in
 `reference/`; the nearest is `identicard readout.webp`, which is a screen's CONTENT at full frame
 and says nothing about the housing.
+
+## INV-252 — The machine is plated out of the same kit the wall behind it is
+
+`station/dressing.py`: `_band`/`_ring`, `kit_module`, `kit_tile`, `_face_rim`, `_face_cells`,
+`_plate_face`, `declared_boxes`, `_FLAT`, and the changes those made to fourteen of the
+twenty-two `_m_*` builders.
+
+**What.** A machine's large flat faces are divided at the corridor kit's own wall module, and a
+machine's lathed bands are annular rings rather than discs. Both replace a fixed feature count
+with a pitch, so the articulation of an object grows with the object.
+
+Nothing here is a new dimension. Four numbers do all the work and all four are fetched from
+`rooms.kit_plate_module()` at call time rather than copied:
+
+| number | value | where it comes from |
+|---|---|---|
+| plate length | 1.15 m | `interior_kit.PROVISIONAL["wall_plate_l_m"]`, off `grey level 1.webp` |
+| course height | 0.4458 m | solved by `rooms.kit_plate_module` from the same frame's build-up |
+| seam | 0.038 m | `PROVISIONAL["wall_seam_m"]` |
+| proud | 0.045 m | `PROVISIONAL["wall_plate_proud_m"]` |
+
+and one more for horizontal surfaces, `rooms.DECK_TILE_M` = 0.62 m, `interior_kit.deck_grid`'s
+own tile. **A course height is a property of a WALL** -- it is the field a wall's rail divides --
+so a shelf, a catwalk tread, a console top and a skid baseplate take the floor tile on both
+axes instead. That substitution is the only judgement call in the set and it is stated at each
+of the four call sites.
+
+**Why necessary.** `density.py --machinery`'s floor is *the room's own shell*, and its docstring
+puts the case in one line: *"the machine may not be less articulated than the wall behind it."*
+Session 4e plated the walls; the floor rose and the gate went **74/78 -> 68/78** without a single
+machine changing. A player was looking at a properly plated wall with a plain box standing in
+front of it. Five of the ten failures sat at `norm` 5.5-6.7, which `density.py`'s own docstring
+names as the signature of a box.
+
+**What constrained it.**
+
+* **A pitch is a LENGTH, not a count.** `_m_leaf` put three ribs on a door leaf whatever its
+  size. On the 1.90 x 2.35 m `door` that is one every 0.78 m and the leaf measures 6.14 m^-1; on
+  the 6.00 x 5.00 m `bay_door` the same three are 104 m2 at **2.594 m^-1** -- the least articulated
+  object in the station and the one a player walks through.
+* **lambda is line over TOTAL area, so buried surface is the other half of the problem.** Every
+  girth flange, hazard band and collar on the lathed machines was a `_cyl`, which is a disc: two
+  pi*r^2 caps inside the barrel they ring. On the reactor vessel that is 84.2 m2 of a measured
+  218.7 -- **38% of the object was inside itself**. This is `_perim_band`'s finding ("a band built
+  as one box LOWERS the number it was added to raise") applied to a lathe.
+* **A machine's plate field builds the SEAMS, not the plates**, and this is where it departs from
+  the wall it copies. A wall can afford proud plates because its substrate is a surface the room
+  needs anyway; a machine already has its body, so a plate laid on its face doubles that face.
+  Measured both ways on the bay door from the identical module: plates 104 -> 197 m2 at 4.061,
+  seam ribs 104 -> 126 m2 at **7.189**, at 3.4x fewer triangles.
+* **A horizontal face has no room to stand proud into.** `machine()` insets its box "in x and z
+  ONLY: a full-height fixture has to reach the deck and the soffit". A field built outward off a
+  top face leaves the AABB -- 30 mm on the reactor shield, 14 mm on the catwalk. So a `y` face is
+  **tiled inward** and the caller sets its body back by the same amount, which is
+  `rooms._plate_deck`'s rule verbatim: *"the tiles are the surface and the substrate shows only
+  in the joints ... what both corridor references show."* The walking surface does not move.
+* **Overlap, never abut.** Three separate non-manifold classes were found by measurement and none
+  is visible in a render: ribs butting (12 a leaf), border ribs sharing a corner (16), and a
+  border rib drawn flush so its edge *is* the body's edge (4 a face). All three are
+  `_perim_band`'s "the four members OVERLAP at the corners rather than abutting".
+
+**What would overturn it.** A frame showing B5 machinery whose plating module differs from the
+corridor wall's. The whole construction rests on one assumption -- that the station's machines
+were built by the same yard, out of the same plate, as its corridors -- and the only evidence for
+it is that `reference/08-sector-yellow-engineering/` is empty, which INV-104 and INV-130 both
+already record. If a machine-space frame ever surfaces, the module changes in one function
+(`kit_module`) and every builder follows.
+
+**Authority 5.** Extrapolation throughout, inheriting INV-130's basis.
+
+### The gate this was missing, and it is the finding worth more than the geometry
+
+`dressing._selftest` built every machine at its **smallest** declared size -- right for closure,
+for winding and for staying inside the box, and **the wrong end for articulation**. Ten of the
+twenty-two kinds were under their floor at the top of their range and **every one of them passed
+at the bottom**, so the file read 132/132 while `--machinery` read 68/78. Same shape as
+`interior_kit`'s tag-coverage assertion running on a corridor with no doors.
+
+`declared_boxes()` now returns both ends and every kind is built at both. That alone found three
+bounds defects the smallest case cannot reach.
+
+**The floor is computed, never written down.** Three real locations are built through
+`rooms.build`, split by `density.machinery_split` and measured by `density.analyse` -- the product
+gate's own code path -- and the strictest of the three is the bar (5.574 m^-1, `law_courts`). A
+captured constant would be a second copy of a computed number, and *this one moves*: 4e shifted it
+without touching a machine.
+
+**Negative control, run and printed:** `_FLAT` rebuilds the geometry the gate was written
+against, exactly as `articulate(plates=False)` does for `density.py --shell`. **15 of 22 kinds
+fall below the floor with it set.**
+
+### A rate can be an inert statistic, and this session shipped one for ten minutes
+
+The coincident-face ratchet added below was first written as non-manifold edges **per triangle**,
+which looks like the scale-free choice. Emitting every face of the room **twice** -- the worst
+coincident-face defect there is -- moves it from 0.505 to **0.498, downward**, because the
+denominator doubles while `boundary_edges` counts each edge once. The control was run, it did not
+fire, and the bound was replaced with an absolute count on a deterministic build, which 60
+flush-stacked boxes takes from 2,234 to 2,470. This is the same lesson `measure_frame.py` records
+about `p5/p95` -- *"the statistic that sounds like it measures mood and measures least"* -- and the
+only reason it was caught is that the control was run rather than described.
+
+### The defect this uncovered and did not fix
+
+`dressing._selftest` called `interior_kit.boundary_edges` on a dressed room and **threw the second
+half of the return value away** (`ropn, _rn = ...`), so nobody has ever looked at the non-manifold
+count. It is **2,234 on a dressed office of 4,428 triangles**, and measured span by span the sum of
+the per-object counts is **exactly zero** -- so no builder in this file is wrong. Objects are being
+placed touching each other on coincident faces, in `dress`'s placement rules. Ratcheted, printed,
+and left for whoever owns placement.
