@@ -1312,8 +1312,12 @@ func _record_visit(n: int, p: Vector3) -> void:
 	res["wired"] = _stream.is_resident(_v_id)
 	# WHY, NOT JUST WHETHER. Only computed when the claim already failed.
 	res["why"] = ("" if bool(res["prompted"]) or _interact == null
-		else ("best over the leg: eye_range=%.2f off_axis=%.0fdeg "
-			% [_v_best_eye, _v_best_axis]
+		# A LEG THAT NEVER SAW THE OBJECT HAS NO BEST. Printing the sentinel
+		# gives `eye_range=1000000000000000019884624838656.00`, which is a
+		# number nobody can read and a claim nobody made.
+		else (("never in range; " if _v_best_eye > 1e29
+			else "best over the leg: eye_range=%.2f off_axis=%.0fdeg "
+				% [_v_best_eye, _v_best_axis])
 			+ "in_sight_frames=%d; at the end: " % _v_sight_f
 			+ _interact.probe(_v_group)))
 	_v_res[n - 1] = res

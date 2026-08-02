@@ -188,11 +188,281 @@ arc leg after it walked tangentially straight into the jamb.
 
 ## 4. THE RESULT
 
-_filled in below from the run_
+**A body walks 270.48 m, every metre of it ON THE FLOOR, 0 of 16,200 frames off
+it.** It crosses six cell boundaries, walks into a cell that was not resident
+when the level started, opens a pressure door in it, is looked at by thirteen
+people in it, is told *"[E] serve the bay control booth"* and presses it — the
+object moves 4.00 mm. Then it walks 111 m away, **the cell is freed**, it walks
+back, and all three happen again.
+
+```
+walk: VISIT cell 17 (blue_0_0_c17), door 'docking_bays',
+      use 'docking_bays__prop_bay_control_booth' at 359.71 deg;
+      away is 389.99 deg (111.8 m of arc, free radius 73.8 m)
+stream: +blue_0_0_c01  30248 tri, 1 col mesh, 35 materialled, 13.3 ms, lead primed
+walk: STREAMED level -- start cell 1, primed in 18 ms, spawn 183.04,105.68,7121.25
+walk: +wired blue_0_0_c01 -- doors now 0, 0 person(s), 0 walker(s), 0 interactable(s)
+walk: +wired blue_0_0_c00 -- doors now 1, 7 person(s), 0 walker(s), 3 interactable(s)
+walk: settled at 183.18,105.76,7121.25 (drop 0.164 m), on_floor=true, in cell 1
+walk: +wired blue_0_0_c17 -- doors now 1, 6 person(s), 0 walker(s), 5 interactable(s)
+USE docking_bays__prop_bay_control_booth place=docking_bays token=bay_control_booth
+    verb=serve response=press prompt=[E]  serve the bay control booth
+walk: VISIT 1 of blue_0_0_c17 -- door 'docking_bays' opened to 1.00, got within
+      1.17 m of docking_bays__prop_bay_control_booth, 13 person(s) noticed
+      (153 deg turned, 130 deg off), prompted=true pressed=1 moved 4.00 mm
+walk: +wired blue_0_0_c01 -- doors now 1, 0 person(s), 0 walker(s), 0 interactable(s)
+walk: -unwired blue_0_0_c17 -- 2 door part(s), 6 person(s), 5 interactable(s)
+walk: +wired blue_0_0_c17 -- doors now 1, 6 person(s), 0 walker(s), 5 interactable(s)
+USE docking_bays__prop_bay_control_booth place=docking_bays token=bay_control_booth
+    verb=serve response=press prompt=[E]  serve the bay control booth
+walk: VISIT 2 of blue_0_0_c17 -- door 'docking_bays' opened to 1.00, got within
+      1.17 m of docking_bays__prop_bay_control_booth, 13 person(s) noticed
+      (153 deg turned, 130 deg off), prompted=true pressed=1 moved 4.00 mm
+```
+
+Note the two `+wired blue_0_0_c17` lines with a `-unwired` between them: **that is
+the cell being freed and walked back into**, and `doors now 1` on both sides is
+the cross-cell door being rebuilt from cell 0's panel and leaf plus cell 17's
+leaf.
+
+### The verdict, verbatim
+
+```
+STREAMTEST mode=stream ok=true start=1 dir=-1 prime_ms=18 traverse_m=270.48
+  floor_m=270.48 net_m=110.31 offfloor=0/16200 crossings=6 entered=1,0,17,0,1,0,17
+  late=0 min_lead_m=36.92 min_lead_frames=642 cells=18 resident_max=3
+  resident_tris_max=139878 budget_tris=180000 radius_m=66.1 free_m=73.8
+  loads=6 frees=4 double_loads=0 abandoned=0 over_budget_frames=0
+  max_activate_ms=27.7 lag_frames=0 wired=6 unwired=4
+  visit_cell=17 visit_id=blue_0_0_c17 door_key=docking_bays
+  use_group=docking_bays__prop_bay_control_booth
+  v1_door_open=1.00 v1_near_m=1.17 v1_noticed=13 v1_turned_deg=153.0
+  v1_face_err_deg=129.6 v1_prompted=true
+  v1_used=docking_bays__prop_bay_control_booth v1_presses=1 v1_travel_mm=4.00
+  v2_door_open=1.00 v2_near_m=1.17 v2_noticed=13 v2_turned_deg=153.1
+  v2_face_err_deg=129.9 v2_prompted=true
+  v2_used=docking_bays__prop_bay_control_booth v2_presses=1 v2_travel_mm=4.00
+  freed=true wired_cells=6 unwired_cells=4 double_wires=0
+  stale_prompt_frames=0 stale_leaves=0 stale_parts=0 why=-
+```
+
+**`floor_m`, not `traverse_m`** — they are equal here because the body never left
+the floor, and that is the point of printing both. The streaming agent's own
+`--no-stream` control walked **11,712 m** by falling off the end of the world;
+path length would have scored it as walking eleven kilometres.
+
+`v*_face_err_deg` is a report and not an assertion: it is how far the NEAREST
+person within 6 m is from facing the body at the instant the visit is recorded,
+and the body is then standing at a console with somebody mid-turn beside it. The
+assertions are `noticed` and `turned_deg`.
 
 ---
 
-## 5. Two defects in the bake, both mine, both found by something else
+## 4b. THE CONTROLS, AND ALL FIVE FIRE
+
+Every claim has a control that turns exactly it off, plus one that stands for the
+build as it shipped before this session. The `ok=` and the numbers that changed:
+
+| control | ok | what it proves |
+|---|---|---|
+| — (subject) | **true** | — |
+| `--no-cell-wiring` | **false** | the build before this session |
+| `--no-doors` | **false** | the door claim |
+| `--no-people` | **false** | the reaction claim |
+| `--no-interact` | **false** | the use claim |
+| `--no-unwire` | **false** | the free-and-re-enter claim |
+
+### `--no-cell-wiring` — THE PRE-FIX BUILD, AND THE DOOR IS A WALL
+
+This is `docs/streaming-4g.md`'s station exactly: cells stream, and nothing is
+told about them.
+
+```
+walk: streamed cells are NOT WIRED (control) -- this is the build before this
+      session: solid doors, nobody home, nothing to use
+STREAMTEST mode=stream ok=false ... floor_m=262.50 offfloor=1/16200 crossings=6
+  wired=0 unwired=0
+  v1_door_open=-1.00 v1_near_m=4.81 v1_noticed=0 v1_turned_deg=0.0
+  v1_prompted=false v1_used=- v1_presses=0 v1_travel_mm=0.00
+  v2_door_open=-1.00 v2_near_m=4.79 v2_noticed=0 ... v2_travel_mm=0.00
+  freed=true wired_cells=0 unwired_cells=0
+  stalls=leg3(through_the_door_and_use_it)_4.8m_short,
+         leg10(through_the_door_and_use_it_again)_4.8m_short
+  why=visit1:_the_pressure_door_'docking_bays'_never_opened_(-1.00)
+      --_in_a_streamed_cell_it_is_a_wall; …
+```
+
+**`door_open = -1.00` means there is no such door at all** — nothing collected
+the leaves, so nothing can disable the panel, and the panel is in the collision
+proxy. The body walks the same 262 m of corridor and is **stopped 4.81 m short of
+the console**, against the shut door, on both visits. Against the subject's
+1.17 m. Nobody notices, nothing prompts, nothing moves.
+
+### `--no-doors` — the same wall, from the other side
+
+Cells are wired; the door node is not built. Identical stop distance — **4.81 m
+short, twice** — and the diagnostic names the obstruction by its own node:
+
+```
+  v1_door_open=-1.00  v1_noticed=8  v1_turned_deg=123.7  v1_prompted=false
+  rayB=doorpanel_docking_bays_col@0.69m
+```
+
+The people still react (`8` noticed, 123.7° turned): they are on the far side of
+a shut door, 6 m away, which is the honest answer and shows the two claims are
+independent.
+
+### `--no-people` — the room is empty and everything else works
+
+```
+  v1_door_open=1.00 v1_near_m=1.17 v1_noticed=0 v1_turned_deg=0.0
+  v1_prompted=true v1_presses=1 v1_travel_mm=4.00
+  why=visit1:_0_person(s)_noticed_and_the_nearest_turned_0.0_deg; …
+```
+
+### `--no-interact` — nothing to use, and the door and the people are unaffected
+
+```
+  v1_door_open=1.00 v1_near_m=1.17 v1_noticed=13 v1_turned_deg=153.0
+  v1_prompted=false v1_used=- v1_presses=0 v1_travel_mm=0.00
+```
+
+### `--no-unwire` — the half that only the second visit can catch
+
+Wire on arrival, give nothing back. Visit 1 is **flawless** — this is the failure
+that a single-visit gate cannot see:
+
+```
+  v1_door_open=1.00 v1_near_m=1.17 v1_noticed=13 v1_prompted=true
+  v1_presses=1 v1_travel_mm=4.00
+  v2_door_open=1.00 v2_near_m=4.62 v2_noticed=13 v2_prompted=false v2_presses=0
+  double_wires=3  stale_leaves=1957  stale_parts=14446
+  rayB=doorpanel_docking_bays_col@0.37m
+  why=…;3_cell(s)_were_wired_twice_without_being_released;
+      1957_door_leaf_reference(s)_outlived_their_cell;
+      14446_inhabitant_mesh_reference(s)_outlived_their_cell
+```
+
+**3 double wires, 1,957 door-leaf references and 14,446 inhabitant-mesh
+references into cells that had been `queue_free`d** — and the visible symptom is
+that the body is stopped 4.62 m short on the way back in, by a door panel
+collider belonging to a cell that no longer exists. That is the invisible wall
+this half of the work exists to prevent, and it is exactly what a build that only
+wires would ship.
+
+### `--no-stream` — and it is why the metric is metres ON THE FLOOR
+
+The streamer's own control, unchanged from `docs/streaming-4g.md`: prime the
+start cell and never request another.
+
+```
+STREAMTEST mode=nostream ok=false  traverse_m=876827.75  floor_m=36.27
+  net_m=876797.36  offfloor=12683/16200  crossings=1  entered=1,0  late=1
+```
+
+**876,827 metres of path length. 36.27 metres on the floor.** The body walks to
+the edge of the primed cell, steps off the end of the world and falls for 211
+seconds under 7.6 m/s² of ring gravity. A gate reporting "distance travelled"
+would have scored the most broken configuration in this file as walking **876
+kilometres** — the previous session's version of this control managed 11,712 m,
+and the only difference is that this itinerary gives it longer to fall.
+
+---
+
+## 4c. THE CROWD IS WIRED, AND ITS COLLISION CAPSULES SHOVE THE PLAYER
+
+The headline run above is with the corridor crowd OFF, and that needs saying
+plainly rather than being left in a command line.
+
+The crowd **is** wired per cell — `prepare_crowd` sizes the MultiMeshes from the
+whole deck once, `add_crowd` admits each cell's walkers as it arrives,
+`release_crowd` takes them back:
+
+```
+walk: +wired blue_0_0_c01 -- doors now 0, 0 person(s), 9 walker(s), 0 interactable(s)
+walk: +wired blue_0_0_c02 -- doors now 0, 0 person(s), 8 walker(s), 0 interactable(s)
+walk: +wired blue_0_0_c00 -- doors now 1, 7 person(s), 7 walker(s), 3 interactable(s)
+```
+
+But with the crowd on, the walk itself falls apart:
+
+| | subject (no crowd) | crowd on | crowd on, `--no-npc-collision` |
+|---|---|---|---|
+| `ok` | **true** | **false** | **true** |
+| `floor_m` | 270.48 | 316.59 | **270.48** |
+| `traverse_m` | 270.48 | 370.68 | **270.48** |
+| `offfloor` | **0**/16200 | **587**/16200 | **0**/16200 |
+| cells entered | 1,0,17,0,1,0,17 | 1,0,1,2,1,0,1,0,17 | 1,0,17,0,1,0,17 |
+| visit 1 | door 1.00, 13 noticed, used | **door 0.00, 0 noticed, stopped 75 m short** | door 1.00, 13 noticed, used |
+
+**Turning off the capsules and leaving everything else on reproduces the subject
+byte for byte**, so this is not the crowd wiring and not the LOD ladder: it is
+`npc.gd::_give_walker_body`. A walker's collider is a `StaticBody3D` whose
+`global_transform` is **teleported** by `advance_crowd` at 10 Hz — 0.145 m a jump
+— and a static body teleported into a `CharacterBody3D` ejects it on the next
+`move_and_slide` rather than pushing it. Head-on, player and walker close at
+5.6 m/s, and the body is thrown sideways out of a 2.6 m corridor: 587 frames off
+the floor and a walk that oscillates between three cells instead of crossing two.
+
+I have **not** fixed it. The fix is probably `AnimatableBody3D` with
+`sync_to_physics`, which is the node Godot provides for a collider that moves and
+must push what it meets, and changing what a crowd of 963 people collides as is a
+change that wants its own before/after rather than a footnote in a streaming
+gate. It is recorded here, with the A/B that isolates it, as the next thing.
+
+---
+
+## 4d. THE TWO PATHS THAT ALREADY EXISTED DID NOT MOVE
+
+`walk.gd`'s sidecar loading and its three `_wire_*` functions were all
+restructured, so the build they already produced has to be shown intact. Same
+`.glb`, same collision proxy, same sidecars, same spawn, the **original**
+`--walk-test` — run twice, once with the scripts at HEAD in a `git worktree` and
+once with the cell wiring, so the only difference between the two processes is
+the five `.gd` files:
+
+```
+=== monolithic, scripts at HEAD (worktree)
+walk: 6 doors wired
+walk: 21 people wired of 21 in the cast list
+walk: 134 walkers instanced across 3 LOD libraries
+walk: 15 interactables wired, 13 pressable (open:5/operate:7/serve:1/tread:2)
+WALKTEST rest=211.522,-0.237,7121.424 on_floor=true fell=false moved_1s=4.246
+  drop=0.269 legs=0.59/4.25/4.20/3.83 traverse_m=125.86 net_m=5.69
+  offfloor=0/1800 goto_start_m=5.81 goto_best_m=1.20 door_open=0.00
+  turned_deg=173.2 noticed=9 facing_err_deg=2.2 walkers=134
+  crowd_travel_m=5965.7 crowd_lods=2:3/4:5/8:126,nearest=5.4 …
+  used=docking_bays__prop_bay_control_booth use_travel_mm=4.00 …
+
+=== monolithic, scripts with the cell wiring
+   … character for character identical, including crowd_travel_m=5965.7 …
+```
+
+**The two verdict lines are identical.** So are the wiring counts, the crowd
+travel and the use.
+
+And the streaming gate `docs/streaming-4g.md` shipped, on its own cluster, its own
+command, unchanged:
+
+```
+STREAMTEST mode=stream ok=true start=4 dir=+1 prime_ms=17 traverse_m=140.00
+  floor_m=140.00 offfloor=0/2000 crossings=2 entered=4,5,6 late=0
+  min_lead_m=36.92 min_lead_frames=641 resident_max=3 resident_tris_max=85676
+  loads=5 frees=2 double_loads=0 … wired=5 unwired=2 why=-
+
+… and its control:
+STREAMTEST mode=nostream ok=false traverse_m=11712.57 floor_m=37.61
+  offfloor=1463/2000 late=1 …
+```
+
+Every number matches what that document recorded — 140.00 m, 0 of 2,000 frames
+off the floor, a 36.92 m lead, 85,676 resident triangles, and the control's
+famous 11,712 m of falling — with `wired=5 unwired=2` now added, which is the
+five cells of a bare corridor being told about and the two being taken back.
+
+---
+
+## 5. Four defects found on the way, and only one of them was in this session's code
 
 ### 5a. `red_2_4` lost 138 triangles, and the conservation assertion was right
 
@@ -472,3 +742,34 @@ Two things, and the first is not optional:
    merge is a list concatenation; what it needs first is for **residency to move
    from the manifest header onto the cell**. That is a change in
    `stream.gd::configure` and `update` — mine, and not this session's job.
+
+---
+
+## 7. What is NOT done, stated
+
+* **The crowd's colliders shove the player** (4c). Wired, released, measured,
+  unfixed. It is the reason the headline run is `--no-crowd` and the A/B that
+  isolates it is above.
+* **Dialogue is not wired per cell.** `_wire_dialogue` still runs once, off the
+  monolithic path, and `dialogue.gd::collect(actors, rows)` binds against the
+  cast list rather than against meshes — so it needs the same tag treatment and a
+  decision about whether a person who has been unloaded should keep their line.
+  Nothing regressed: on a streamed build nobody could talk before this session
+  either.
+* **One cluster, one deck.** The gate walks `blue_0_0` because it is the only
+  cluster on disk with an actors sidecar AND an interactables sidecar AND a
+  reachable interactable. `tools/export_station.py` writes no sidecars at all, so
+  **no cell of the 940-cell station bake can be wired today** — the streamer will
+  load them and there will be nobody in them and nothing to use. That is the
+  single biggest thing between this and a station that streams as a place, and it
+  is a change in a file I do not own.
+* **The visit gate is not in CI.** P1 is the patch; until it is applied this is a
+  command in a document, which is the failure mode session 4e wrote up.
+* **No LOD, still.** Unchanged from `docs/streaming-4g.md`.
+* **A door that straddles a cell boundary is rebuilt whole**, but an
+  INTERACTABLE that straddles one is wired **twice** — once per cell, each with
+  the full-object box from the sidecar. `docking_bays__prop_bay_control_booth`
+  spans 8 m of tangent and is exactly this case. It costs a duplicate proxy box
+  and one redundant `_in_sight` test; it does not break the prompt (the gate
+  presses it twice over, once per visit, from two different cells' Items) and it
+  should be deduplicated by group name across tags.
