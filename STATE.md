@@ -222,6 +222,87 @@ The suite was green. Read the whole output before calling a gate red.
 * `hud.gd` prints on every report change and a falling body changes it every
   frame -- ~150 lines of noise around the one interesting line
 
+## Session 4g — THE STATION IS BUILT, CONNECTED, STREAMED AND WIRED
+
+### 20. WHAT IS ON DISK, AND WHAT PROVES IT
+
+    70 ring decks   28,347,212 triangles   2,391 MB
+      + 5 transit columns  + the drum's 280 patches (573,440 render + 573,440 collision)
+      + 143,784 tri of deck collision, all 70 decks, 14 axial join shells
+    SIDECARS  1,060 actors, 1,444 crowd, 326 interactables
+    CELLS     955, all 70 decks, 1,723 MB
+
+    FOOT-CONNECTED COMPONENTS   96 -> 1
+    ring 96/96  axial 71/71  lift 70/70  trunk 4/4  spoke 8/8
+
+Before this session the number of this station's decks ever assembled at the
+same time was **one**.
+
+**Proven by a body, not by a graph:**
+
+| gate | result |
+|---|---|
+| `route_walk` deck to deck via the lift | **491.0 m on the floor**, 0.00 m in the air, offfloor 0/7,148 |
+| streamed cell is a PLACE | **270.48 m**, offfloor 0/16,200, 6 crossings, door + 13 people + prompt + use, then freed and re-entered |
+| the lift rides | deck 3 -> 0, **10.834 m of radius on the floor**, offfloor 0/311 |
+| cold start | **6.3 s** to standing, HUD, clock, 73 residents, customs hall audible |
+| G3 reachability | 14 unreachable scripts / 9,630 dead lines -> **0** |
+
+### 21. THE LESSON THIS SESSION TAUGHT SIX TIMES
+
+**A NAME IS NOT AN INDEX, AND A GENERATOR EXISTING IS NOT A CONNECTION.**
+
+* `routes.py` granted every deck a lift edge on `built=_LIFT_EXISTS` -- a flag
+  asking THE FILESYSTEM whether `station/lift.py` was present. It reported the
+  station as one piece while 24 clusters had no landing. *A gate must ask
+  whether the CONNECTION can be made, never whether a generator file is on disk.*
+* Grey's locations carry the deck numbers THE SHOW uses -- 24 through 80 -- on a
+  ring 23 deep. `deck.deck_index` has existed for exactly this since the session
+  that found 14 of 67 decks failing to assemble. `_ring_cells` goes through it;
+  `routes.py` did not, `bake_station.py` did not. **Three call sites, one
+  translator, and each had to be found by something breaking.**
+* `build_deck_clusters` prefixes spans `z7120__...` so two clusters' corridors do
+  not merge; `interact.sidecar` resolves by the tail. Handed the prefixed names
+  it returned NOTHING and wrote 0 interactables on a five-room deck.
+* Two OBJ writers with near-identical names and incompatible group formats threw
+  away all 71 assembled decks at the write, reporting only `IndexError`.
+* `_corridor_z` measured a bucket's arc as SPREAD rather than COVERAGE, putting
+  all 18 cell spawns 3.75 m in mid-air on every deck of a 940-cell bake.
+* `ground_patch` returns per-triangle names, `write_obj` takes spans. Third time
+  in one day two group formats of the same shape cost a run.
+
+### 22. AND FOUR DEFECTS THAT HAD NEVER EMITTED ANYTHING
+
+* **Every ring corridor built its section joint TWICE.** `corridor_section`
+  closes both ends and `ring_arc` never passed `start_portal` -- a parameter no
+  caller had ever set. 1,120 duplicate triangles and 1,760 non-manifold edges on
+  a 12.5 degree arc, **720 of them emissive**, so ~165 coincident duplicate
+  light sources per 30 degrees have been in every frame this project ever
+  rendered. Nothing could fail for it: coincident duplicate geometry is closed,
+  correctly wound and inside its own footprint.
+* `deck_panel` wrapped its floor-light tag around `_box` instead of a
+  `@_tagging` wrapper, so the corridor's floor light recorded **zero triangles
+  in every corridor ever built**.
+* `build_collision` had no `extra_doors`, so the shell carried a WALL where the
+  render carries a junction doorway. Nothing noticed because **no collision had
+  ever been built for a joined deck**.
+* `interior.boundary_edges` keys edges on POSITION and `body.edge_census` on
+  VERTEX INDEX, so every humanoid's foot carried 2 non-manifold edges scored
+  CLOSED since the module was written. Kosh's yoke: 125.
+
+### 23. OPEN, IN PRIORITY ORDER
+
+1. **The NPCs are still craft 3.** `body.py` builds a person as stacked rings of
+   revolution; eyes and fingers do not fix a form that is wrong. Agent running.
+2. **The crowd's colliders shove the player** -- 587 frames off the floor with
+   crowd on, isolated by `--no-npc-collision`. Agent running.
+3. `player.gd` steps the body twice a frame; worked around in `walk.gd::_face`.
+4. No structure LOD. `budget.py` honestly over.
+5. `boundary_edges` welds at 4 decimals, so every "0 open edges" claim in this
+   repo is position-dependent until that is fixed at the kit.
+6. `export_station.py` exits 1 on the drum's CORRECT refusal, so chaining it
+   `&& bake` silently skips the bake.
+
 ## Session 4g — THE STATION IS 90 ROOMS, NOT A PLACE, AND NOW THERE IS A CORRIDOR BETWEEN THEM
 
 ### 18. READ THIS FIRST — what "128 of 128" actually meant, and the gate that never existed
