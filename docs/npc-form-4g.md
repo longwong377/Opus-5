@@ -8,7 +8,7 @@ authority 5 unless it says otherwise, and each entry says which of its numbers i
 The measurements every entry was tuned against are printed by
 
 ```bash
-python3 station/npc/body.py                 # 1,426 / 1,426
+python3 station/npc/body.py                 # 1,428 / 1,428
 python3 station/npc/body.py --silhouette    # the gate, its tables and its controls
 python3 station/npc/body.py --report        # the four LOD schedules and the chain
 ```
@@ -246,7 +246,7 @@ distances.** A lip is 13.0 mm of chord error and a deltoid roll-over is 30.7 mm.
 | step | error | honest from | dropped at | px at the drop |
 |---|---|---|---|---|
 | `face_and_body` | 0 | — | — | — |
-| `body` (face rings gone) | 13.0 mm | 13.39 m | **8.9 m** | 2.26 |
+| `body` (face rings gone) | 13.0 mm | 13.39 m | **8.9 m** | 2.25 |
 | `none` | 30.7 mm | 31.59 m | **28.1 m** | 1.69 |
 
 **Neither of the other instruments can see this cull**, and that is the finding worth
@@ -272,7 +272,7 @@ its own error is honest only from 13.4 m. Two reasons, in order:
   that "fix the overrun" can never mean "put cards on the people the player is talking
   to".
 
-Between 8.9 m and 13.4 m a figure therefore carries **2.26 px** of deviation against a
+Between 8.9 m and 13.4 m a figure therefore carries **2.25 px** of deviation against a
 1.5 px budget. `_detail_gate` part 5 (c) asserts that number against a declared 2.5 px
 ceiling **and asserts it is over the 1.5 px budget**, so the compromise cannot be
 quietly removed or quietly grown. It is the same kind of stated compromise
@@ -309,11 +309,30 @@ figure with its arms out; a head is 0.048 of a stature to the side, so on the 64
 grid the head band came out **3 to 13 columns across** and every pair score was quantised
 to about a fifth of a head. Rebuilding the face moved human-vs-Narn from 0.875 to 0.911
 in the front view and **the entire move was one pixel of a five-pixel shape** — measured
-at a span that fits a head, the same pair reads 0.881 before and 0.884 after. The head
+at a span that fits a head, the same pair reads 0.881 before and 0.885 after. The head
 band now has its own raster: `HEAD_BAND_SPAN = 0.14`, derived from the widest head band
 on the four gate species (a Narn's, at 0.1288 of its own height) with 9% of margin, and
 `_detail_gate` asserts no species touches the raster edge, because a clipped silhouette
-scores two different heads as identical at the clip.
+scores two different heads as identical at the clip. A head is **155 columns of 192**
+there.
+
+**And the ceiling that sat on top of it was loose in proportion.** `SPECIES_HEAD_IOU_MAX`
+was 0.90 with a comment claiming it was "the worst measured pair with a margin" — on a
+five-pixel raster that margin was nothing, and a mutation sweep proved it: shrinking the
+**Minbari** crest to zero leaves that pair at 0.887 and the gate stayed green. The strip
+control that would have caught it existed for the Centauri only — one instance of a
+class, which is AAA-STANDARD ROBUSTNESS 2. It now runs for every species with an identity
+attachment, and the ceiling is 0.86: the worst pair that really exists is human vs Narn at
+0.812, so 0.86 leaves 4.8 points of margin **and** sits below 0.887, which means the
+ceiling itself catches a crest that has silently gone. Which species the ceiling catches
+unaided is asserted as a **set** (`{"minbari"}`), because the ceiling can never sit below
+the worst real pair and the Centauri's bare skull reads 0.822 — that one is covered by its
+strip control and by nothing else, and saying so is better than a bound that looks
+general and is not.
+
+**Species separation is exactly preserved.** Every pair's gate metric — the view they
+differ most in, at the honest resolution — before and after: 0.623 / 0.627 / 0.812 /
+0.742 / 0.603 / 0.566.
 
 **And a third, introduced this session and caught by a render.** `costume.py`'s standing
 collar was sized by `_axis_at(torso_verts, 0.985)` because the torso's topmost ring
