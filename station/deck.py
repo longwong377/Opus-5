@@ -1224,7 +1224,16 @@ def build_deck_clusters(schema, profile, sector, ring, deck, n=None,
             zs = zs[:max(1, n)]
     V, T, G = [], [], []
     stats = {"clusters": [], "z": list(zs), "rooms": 0, "corridor_tris": 0,
-             "room_tris": 0, "skipped": [], "joins": []}
+             "room_tris": 0, "skipped": [], "joins": [],
+             # THE CAST AND THE CROWD, WHICH THIS FUNCTION USED TO DROP.
+             # `build_deck` returns `actors` and `crowd` per cluster -- who is
+             # standing where and which way they face, and the instanced walkers
+             # -- and merging clusters threw both away. `walkable.py` writes them
+             # beside a deck as `_actors.json` and `_crowd.json` and the runtime
+             # cannot recover either by looking at a merged mesh, so a deck built
+             # through this path had nobody in it that any engine could find.
+             # 940 streaming cells were baked before anyone noticed.
+             "actors": [], "crowd": [], "crowd_lods": None}
 
     # THE JOINS, DECIDED BEFORE THE CLUSTERS ARE BUILT, because each end needs a
     # door in its own ring corridor and a door has to be in the plan before the
@@ -1294,6 +1303,11 @@ def build_deck_clusters(schema, profile, sector, ring, deck, n=None,
         for k in ("rooms", "corridor_tris", "room_tris"):
             stats[k] += st.get(k, 0)
         stats["skipped"] += st.get("skipped", [])
+        # Positions are already world, so concatenation is the merge.
+        stats["actors"] += st.get("actors", [])
+        stats["crowd"] += st.get("crowd", [])
+        if st.get("crowd_lods") and stats["crowd_lods"] is None:
+            stats["crowd_lods"] = st["crowd_lods"]
 
         # A JUNCTION DOOR THAT DID NOT SURVIVE IS A CORRIDOR INTO A WALL, and it
         # is silent: `ring_arc` snaps a door to the nearest bay centre and drops

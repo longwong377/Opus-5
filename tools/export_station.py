@@ -121,6 +121,44 @@ def _write(stem, V, T, G):
     return ob, os.path.getsize(glb)
 
 
+def _sidecars(stem, V, T, G, st):
+    """The JSON `walk.gd` reads beside a deck: interactables, cast, crowd.
+
+    SHAPES BORROWED FROM `station/walkable.py`, which is the only thing that has
+    ever written them, rather than invented here -- two descriptions of one file
+    format is how this project has already lost a build today.
+    """
+    import walkable as W                                        # noqa: PLC0415
+    out = {}
+    # THE z-PREFIX HIDES EVERY INTERACTABLE. `build_deck_clusters` names a
+    # cluster's spans `z7120__docking_bays__prop_bay_control_booth` so two
+    # clusters' identically-named corridor spans do not merge into one material
+    # group -- and `interact.sidecar` resolves declared interactables by the
+    # name the generator emits, which is the tail. Handed the prefixed names it
+    # returns NOTHING, and the first run of this sidecar wrote 0 interactables
+    # on a deck with 5 rooms in it.
+    #
+    # Stripped for the interact pass only, and the ORIGINAL span order is kept
+    # so `interact.resolve`'s triangle-count tie-break still sees the same
+    # spans -- that tie-break is what stops "operate the console" pointing at
+    # `cc_console_leg`.
+    def _tail(nm):
+        parts = nm.split("__")
+        return "__".join(parts[1:]) if parts[0][:1] == "z" and \
+            parts[0][1:].isdigit() and len(parts) > 1 else nm
+
+    G2 = [(_tail(nm), a, b) for nm, a, b in G]
+    rows = W.interact_rows(V, T, G2)
+    for name, payload in (("interact", rows),
+                          ("actors", st.get("actors", [])),
+                          ("crowd", st.get("crowd", []))):
+        p = os.path.join(OUT, f"{stem}_{name}.json")
+        with open(p, "w") as f:
+            json.dump(payload, f)
+        out[name] = len(payload)
+    return out
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--sector", default="", help="one sector only")
@@ -198,12 +236,23 @@ def main(argv=None):
                 must_cover=ang[sec])
             cgroups = [("collision", 0, len(ct))]
             _ob, cgb = _write(stem + "_collision", cv, ct, cgroups)
+            # AND THE SIDECARS, WITHOUT WHICH A CELL CANNOT BE WIRED AT ALL.
+            # `walk.gd` recovers the cast, the crowd and the interactables from
+            # JSON beside the mesh, because a body baked into merged geometry
+            # cannot tell the engine who it is or which way it faces, and an
+            # interactable's box cannot be recovered from a triangle soup. This
+            # file wrote none of them, so **not one of the 940 streaming cells
+            # baked from it could be wired** -- the streamed station was a shell
+            # by construction and the wiring work had nothing to act on.
+            side = _sidecars(stem, V, T, G, st)
             joins = [j for j in st.get("joins", ()) if j.get("built")]
             row = {"key": stem, "clusters": len(st["clusters"]),
                    "rooms": st.get("rooms", 0), "tris": len(T),
                    "groups": len(G), "joins": len(joins),
                    "join_m": round(sum(j.get("length_m", 0) for j in joins), 1),
                    "collision_tris": len(ct),
+                   "interactables": side["interact"],
+                   "actors": side["actors"], "crowd": side["crowd"],
                    "collision_joins": len(cmeta["joins"]),
                    "collision_mb": round(cgb / 1e6, 2),
                    "obj_mb": round(ob / 1e6, 2), "glb_mb": round(gb / 1e6, 2),
@@ -212,7 +261,8 @@ def main(argv=None):
                   f"{st.get('rooms', 0)} rooms, {len(T):,} tri, "
                   f"{len(joins)} join(s) {row['join_m']:.0f} m, "
                   f"{row['glb_mb']:.1f} MB + {len(ct):,} collision tri, "
-                  f"{row['seconds']:.0f} s")
+                  f"{side['actors']} actors / {side['crowd']} crowd / "
+                  f"{side['interact']} interactables, {row['seconds']:.0f} s")
         except Exception as e:                                  # noqa: BLE001
             # THE WHOLE TRACEBACK, NOT THE MESSAGE. The first run of this file
             # recorded "IndexError: list index out of range" 142 times, which
