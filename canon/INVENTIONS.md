@@ -6026,3 +6026,47 @@ the shot's environment, not to geometry.
 
 **Overturned by:** any clean frame of the compartment, which would replace both the energy and the
 grid counts, and would let `tools/measure_frame.py --against` close the lighting half properly.
+
+## INV-267 — What separates two customs halls and a concourse: the desks, the gantry, the map
+
+**Invented:** in `station/customs.py` — `hall(..., place=None)`, the baggage gantry
+(`SCANNERS = 2`, 2.20 x 1.60 x 2.60 m) on `contraband_search`, and the station schematic panel
+(`SCHEMATIC_W_M = 6.40`) on `wayfinding`.
+
+**Why necessary:** `bespoke.BESPOKE_GEOMETRY["customs"]` was `lambda s, p, q: customs.hall(s, p)`,
+dropping the place, so `customs_north`, `customs_south` and `arrival_concourse` drew one hall. Two
+of them rendered **byte-identically** — same md5, 0 of 360,000 pixels different — and the concourse
+is not a customs hall at all.
+
+**Constrained by the register, which already held three different programs:**
+
+    customs_north      10 x 34   immigration identicard_check contraband_search atmosphere_assignment
+    customs_south      10 x 34   immigration identicard_check
+    arrival_concourse  12 x 34   arrival public_information wayfinding
+
+So the desks appear on `identicard_check` (the concourse has none — it is where you arrive, not
+where you are processed), the gantry on `contraband_search` (north only), the schematic on
+`wayfinding` (the concourse only), and the bollards where the register declares one.
+
+**Width is scaled, not replaced, and that is the point.** `HALL_W_M = 17.0` is INV-029 and sourced;
+the register's footprint width is 10 m for both halls and 12 for the concourse. The **ratio** is
+what the register adds and the **absolute** is what INV-029 already decided, so the halls come out
+at exactly HALL_W_M and only the concourse widens. A register footprint used raw would have
+silently overwritten a sourced number with a layout figure.
+
+**What is NOT a new description of an old object:** the gantry is `dressing.machine("gantry", ...)`
+and `rooms.PROP_KIND` already maps `baggage_scanner` onto that builder, so the bespoke room and the
+generic room describe one object — hard rule 4. The same reasoning the customs desks already
+followed. Its material follows `steel_gantry_oxide`, the station's existing handling structure.
+
+**Extrapolated:** the gantry's dimensions and the schematic panel's. No frame shows either. The arch
+is sized so a loaded trolley passes — the kit's door aperture is the constraint a bag has already
+come through — and the schematic is sized to the wall it sits on. Both authority 5.
+
+**Measured result**, against the two frames that were once identical:
+
+    north vs concourse   227,507 of 230,400 pixels differ   98.7%
+    north vs south       229,598 of 230,400 pixels differ   99.7%
+
+**Overturned by:** any frame of the south hall or the concourse, which would replace the derived
+half outright.

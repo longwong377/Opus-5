@@ -107,6 +107,21 @@ HALL_LEN_M = 34.0          # along the ring, from the gate line to the boards
 HALL_W_M = 17.0            # INV-029 -- see above
 HALL_H_M = 7.2             # two deck pitches, INV-010
 
+# The baggage gantry, on `contraband_search` only. Sized so a loaded trolley
+# passes through it: the kit's own door aperture is the constraint a bag has
+# already come through, so the arch is that plus clearance. INV-267.
+SCANNERS = 2
+SCANNER_W_M = 2.20
+SCANNER_D_M = 1.60
+SCANNER_H_M = 2.60
+
+# The station schematic on the concourse's end wall, on `wayfinding` only.
+# `station_schematic` sizes its own contents from `profile`; these are the
+# panel it draws into.
+SCHEMATIC_W_M = 6.40
+SCHEMATIC_H_M = 2.10
+SCHEMATIC_Y_M = 2.35
+
 # The suspended screen gantry. Three screens in a row, the centre one the
 # WELCOME board. Heights are set so the boards clear a standing crowd by a
 # comfortable margin and still sit below the ceiling grid.
@@ -629,50 +644,76 @@ def _lit_board_pair(gap_m=0.55):
     return v, t, g
 
 
-def hall(schema, profile, sector="blue", with_crowd_clearance=True):
+def hall(schema, profile, sector="blue", with_crowd_clearance=True,
+         place=None):
     """The whole room, authored in a local frame.
 
     x runs ACROSS the hall, y is up, z runs ALONG it -- from the gate line at
-    z=0 to the board wall at z=HALL_LEN_M. Placement onto the ring is done by
+    z=0 to the board wall at z=hall_l. Placement onto the ring is done by
     `place()`, which is the only function that touches cylindrical coordinates.
+
+    `place` IS THE ROOM'S PROGRAM. Without it this module drew one hall for all
+    three of its locations -- `customs_north`, `customs_south` and
+    `arrival_concourse` rendered byte-identically, which is what
+    `deck.py --degeneracy` fails on, and the concourse is not a customs hall at
+    all. The register already said so and nothing read it:
+
+        customs_north      10 x 34   immigration identicard_check
+                                     contraband_search atmosphere_assignment
+        customs_south      10 x 34   immigration identicard_check
+        arrival_concourse  12 x 34   arrival public_information wayfinding
+
+    So the desks appear on `identicard_check`, the baggage gantry on
+    `contraband_search`, the station schematic on `wayfinding`, and the
+    bollards where the register declares one. `place=None` builds the whole
+    thing, which is the reference hall the self-test measures. INV-267.
     """
+    fn = frozenset((place or {}).get("functions") or ())
+    inter = frozenset((place or {}).get("interacts") or ())
+    fp = (place or {}).get("footprint")
+    # WIDTH IS SCALED, NOT REPLACED. HALL_W_M is INV-029 and sourced; the
+    # register's footprint width is 10 m for both halls and 12 for the
+    # concourse, so the RATIO is what the register adds and the absolute is
+    # what INV-029 already decided. Halls come out at exactly HALL_W_M.
+    hall_w = HALL_W_M * (float(fp[0]) / 10.0) if fp else HALL_W_M
+    hall_l = float(fp[1]) if fp else HALL_LEN_M
     v, t, g = [], [], []
-    hw = HALL_W_M / 2.0
+    hw = hall_w / 2.0
 
     # --- shell ------------------------------------------------------------
     # Built as four plates around the volume rather than as a solid, so the
     # camera inside sees walls rather than the inside of a block.
-    _box(v, t, g, "customs_deck", (-hw, -0.20, 0.0), (hw, 0.0, HALL_LEN_M))
-    _box(v, t, g, "customs_wall", (-hw - 0.25, 0.0, 0.0), (-hw, HALL_H_M, HALL_LEN_M))
-    _box(v, t, g, "customs_wall", (hw, 0.0, 0.0), (hw + 0.25, HALL_H_M, HALL_LEN_M))
+    _box(v, t, g, "customs_deck", (-hw, -0.20, 0.0), (hw, 0.0, hall_l))
+    _box(v, t, g, "customs_wall", (-hw - 0.25, 0.0, 0.0), (-hw, HALL_H_M, hall_l))
+    _box(v, t, g, "customs_wall", (hw, 0.0, 0.0), (hw + 0.25, HALL_H_M, hall_l))
     _box(v, t, g, "customs_soffit",
-         (-hw, HALL_H_M, 0.0), (hw, HALL_H_M + 0.25, HALL_LEN_M))
+         (-hw, HALL_H_M, 0.0), (hw, HALL_H_M + 0.25, hall_l))
     _box(v, t, g, "customs_endwall",
-         (-hw, 0.0, HALL_LEN_M), (hw, HALL_H_M, HALL_LEN_M + 0.25))
+         (-hw, 0.0, hall_l), (hw, HALL_H_M, hall_l + 0.25))
 
     # ARTICULATION -- rooms.articulate(), INV-073. The hall was 32.3% of its
-    # detail floor. Its shell runs z 0..HALL_LEN_M, hence z_off. The soffit grid
+    # detail floor. Its shell runs z 0..hall_l, hence z_off. The soffit grid
     # is off because this hall's ceiling IS a backlit grid, built below.
-    _rooms.articulate(v, t, g, "customs", hw, HALL_LEN_M / 2.0, HALL_H_M,
-                      z_off=HALL_LEN_M / 2.0, soffit=False,
+    _rooms.articulate(v, t, g, "customs", hw, hall_l / 2.0, HALL_H_M,
+                      z_off=hall_l / 2.0, soffit=False,
                       scale=1.5)
 
     # --- the backlit ceiling grid ----------------------------------------
-    nx = max(1, int(HALL_W_M / CEIL_CELL_M))
-    nz = max(1, int(HALL_LEN_M / CEIL_CELL_M))
+    nx = max(1, int(hall_w / CEIL_CELL_M))
+    nz = max(1, int(hall_l / CEIL_CELL_M))
     for i in range(nx):
         for j in range(nz):
-            x0 = -hw + (i + 0.10) * HALL_W_M / nx
-            x1 = -hw + (i + 0.90) * HALL_W_M / nx
-            z0 = (j + 0.10) * HALL_LEN_M / nz
-            z1 = (j + 0.90) * HALL_LEN_M / nz
+            x0 = -hw + (i + 0.10) * hall_w / nx
+            x1 = -hw + (i + 0.90) * hall_w / nx
+            z0 = (j + 0.10) * hall_l / nz
+            z1 = (j + 0.90) * hall_l / nz
             _box(v, t, g, "customs_ceiling_lamp",
                  (x0, HALL_H_M - CEIL_INSET_M, z0), (x1, HALL_H_M, z1))
 
     # --- the suspended screens -------------------------------------------
     # The player arrives walking up +z, so the screens face -Z. Everything
     # inside them is `signage`'s -- see the block above screen_panel.
-    z_screen = HALL_LEN_M - 6.0
+    z_screen = hall_l - 6.0
     z_face = z_screen - SCREEN_T_M / 2
     span = 3 * SCREEN_W_M + 2 * SCREEN_GAP_M
     cy_s = SCREEN_HANG_M + SCREEN_H_M / 2.0
@@ -761,7 +802,10 @@ def hall(schema, profile, sector="blue", with_crowd_clearance=True):
               BRACKET_D_M / 2)
 
     # --- bollards flanking the approach ----------------------------------
-    for s in (-1, 1):
+    # Only `arrival_concourse` declares `bollard` in its interacts. A queue
+    # barrier in a hall nobody queues in is set dressing pretending to be a
+    # function, and `interact.py --audit` reads the same list.
+    for s in ((-1, 1) if (not inter or "bollard" in inter) else ()):
         for j, zc in enumerate((4.0, 8.5)):
             cx = s * (hw - BOLLARD_R_M - 0.5)
             n0 = len(v)
@@ -822,13 +866,40 @@ def hall(schema, profile, sector="blue", with_crowd_clearance=True):
     # describe the same object two ways. Session 4d's finding was that the
     # placement rule lived where only one caller could reach it; this is the
     # other half of it.
-    for j in range(DESKS):
-        cx = -hw + 1.4 + j * (HALL_W_M - 2.8) / max(DESKS - 1, 1)
-        zc = HALL_LEN_M - 2.6
+    # `identicard_check` is what a desk IS. The concourse does not declare it
+    # and must not have four of them: it is where you arrive, not where you are
+    # processed.
+    for j in (range(DESKS) if (not fn or "identicard_check" in fn) else ()):
+        cx = -hw + 1.4 + j * (hall_w - 2.8) / max(DESKS - 1, 1)
+        zc = hall_l - 2.6
         _dress.machine(v, t, g, "counter", "customs_desk",
                        (cx - DESK_W_M / 2, 0.0, zc - DESK_D_M / 2),
                        (cx + DESK_W_M / 2, DESK_H_M, zc + DESK_D_M / 2),
                        f"customs-desk-{j}")
+
+    # --- contraband_search: the baggage gantry ----------------------------
+    # `rooms.PROP_KIND` already maps `baggage_scanner` onto the `gantry`
+    # builder, so this is the same machine the generic path would place and
+    # not a second description of one object -- the rule the desks above
+    # follow for the same reason.
+    if "contraband_search" in fn:
+        for j in range(SCANNERS):
+            cx = -hw + hall_w * (j + 1) / (SCANNERS + 1)
+            _dress.machine(v, t, g, "gantry", "baggage_scanner",
+                           (cx - SCANNER_W_M / 2, 0.0,
+                            hall_l - 8.5 - SCANNER_D_M / 2),
+                           (cx + SCANNER_W_M / 2, SCANNER_H_M,
+                            hall_l - 8.5 + SCANNER_D_M / 2),
+                           f"baggage-scanner-{j}")
+
+    # --- wayfinding: the station's own schematic --------------------------
+    # `station_schematic` draws the station from `profile` -- the same profile
+    # the hull is generated from -- so the map on the wall cannot disagree with
+    # the thing it maps. Only `arrival_concourse` declares wayfinding and a
+    # `station_schematic_screen`.
+    if "wayfinding" in fn:
+        station_schematic(v, t, g, profile, 0.0, SCHEMATIC_Y_M,
+                          hall_l - 0.05, SCHEMATIC_W_M, SCHEMATIC_H_M)
 
     # --- the two blue boards, WITH THEIR OWN WORDS ON THEM ----------------
     # `board_pair()` is `board()` twice and `board()` is the UNLETTERED
@@ -840,7 +911,7 @@ def hall(schema, profile, sector="blue", with_crowd_clearance=True):
     # signage authors its boards standing at the origin facing -Z; set them on
     # the right-hand wall, turned to face across the hall.
     for x, y, z in bv:
-        v.append((hw - 0.35 - z, y, HALL_LEN_M - 10.0 + x))
+        v.append((hw - 0.35 - z, y, hall_l - 10.0 + x))
     # That remap has a negative determinant (x,y,z) -> (-z,y,x) is a rotation,
     # determinant +1 -- verified in the self-test rather than asserted here.
     t.extend((a + off, b + off, c + off) for a, b, c in bt)

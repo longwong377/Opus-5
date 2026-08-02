@@ -52,7 +52,10 @@ BESPOKE_GEOMETRY = {
         lambda s, p, q: __import__("command_control").command_control(),
     "council_chamber":
         lambda s, p, q: __import__("council_chamber").council_chamber(),
-    "customs": lambda s, p, q: __import__("customs").hall(s, p),
+    # THE PLACE, not the module. customs_north, customs_south and
+    # arrival_concourse rendered byte-identically -- and the concourse is not a
+    # customs hall at all. INV-267, and deck.py --degeneracy.
+    "customs": lambda s, p, q: __import__("customs").hall(s, p, place=q),
     "docking_bay": lambda s, p, q: __import__("docking_bay").docking_bay(
         0, s, p),
     # THE PLACE, not the module. Five named bars -- bar_unnamed, eclipse_cafe,

@@ -2479,6 +2479,11 @@ def _build():
         albedo=(0.300, 0.255, 0.242), roughness=0.52, metallic=0.3,
         specular=0.45, texture="truss_steel", uv_scale=1.0 / 4,
         binds=("fix_gantry_rail", "fix_racking_run", "fix_catenary_run", "crane", "prop_docking_clamp", "bay_girder", "plant_frame", "plant_frame_ring",
+               # The customs baggage arch (INV-267). `rooms.PROP_KIND` maps
+               # `baggage_scanner` onto the `gantry` machine, so it is heavy
+               # handling structure and takes the material the rest of this
+               # station's handling structure already carries.
+               "baggage_scanner",
                # THE BODY OF A MACHINE, and the reason this block exists at all.
                # `dressing.machine` appends the OUTER span first and lets the
                # part spans override it, so whatever a builder leaves un-parted

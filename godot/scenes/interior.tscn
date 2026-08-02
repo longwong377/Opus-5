@@ -346,6 +346,7 @@ material_rules = {
 "alien_status_lamp": ExtResource("m_alien_status_lamp"),
 "alien_stile": ExtResource("m_kit_pilaster"),
 "alien_wall": ExtResource("m_shell_wall_panel"),
+"baggage_scanner": ExtResource("m_steel_gantry_oxide"),
 "bar_backbar": ExtResource("m_furn_casework"),
 "bar_booth_back": ExtResource("m_furn_upholstery"),
 "bar_booth_bench": ExtResource("m_furn_upholstery"),
