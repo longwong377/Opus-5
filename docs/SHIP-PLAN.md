@@ -2,6 +2,82 @@
 
 ---
 
+## AMENDMENT, SESSION 4h — WE BUILT THE MACHINE, NOT THE STATION
+
+Set by the owner after looking at what exists:
+
+> *"how many unique things are built on the ship? … you apparently made every fucking corridor look
+> exactly the same why? … the NPCs don't even interact with each other or move or do their jobs or
+> use the transports or eat/sleep … all I see are gates and no fucking building."*
+
+Every one of those is measurably true. This section says why, and changes the plan so it stops.
+
+### The measurements
+
+| question | answer |
+|---|---|
+| distinct place builders | **16**, over 128 places |
+| places built from the GENERIC kit | **78 of 128** |
+| corridor generators on the whole station | **1**, plus 5 dressing schemes |
+| ring decks, all from that one generator | **70** |
+| verbs a player has | 8 declared, **5 that respond** |
+| dialogue written by the station build | **0** |
+| NPCs that travel, work, eat or sleep at runtime | **0** — `life.gd` shows and hides pre-baked bodies by hour, and its own comment says *"the runtime cannot create a person"* |
+| grass | a material band on a heightfield; there is no `grass()` |
+| trees | genuinely fixed — 344 tri each, articulated, INV-072 |
+
+### THE DIAGNOSIS, and it is one sentence
+
+**Every gate in this repository measures COVERAGE or CORRECTNESS, and both are perfectly
+satisfied by one generic thing repeated seventy-eight times.**
+
+A generator's virtue is generality. Generality is exactly what produces identical decks. So the
+project optimised precisely what it measured, and what it measured was never *variety* and never
+*behaviour* — because neither can be expressed as "N of M complete".
+
+The same defect on the second axis: everything is built as **geometry and data**, almost nothing as
+**behaviour**. `populace` knows every resident's job, home, species-specific meals and sleep;
+`life.gd` can only make them appear and disappear. The gap between *the data exists* and *the
+person walks to work* has never been anyone's task, for the same reason.
+
+### THE TWO NEW AXES, and they are the only new gates
+
+Both must be measurable, both must fail today, and neither is a coverage count.
+
+**V — VARIETY.** *Is this place distinguishable from that place?*
+Borrow the instrument that already works: `body.py --silhouette` measures pairwise IoU between
+species and has a control that builds four from one parameter block and expects 1.000. Do the same
+for PLACES — render or rasterise each location from its own standpoint and measure pairwise
+distinguishability. **78 generic rooms will score near 1.000 against each other, and that is the
+number this project has never once looked at.** Target: no two places a player can visit are
+indistinguishable.
+
+**A — AGENCY.** *Does anyone do anything?*
+Three counts, none of them coverage:
+* residents who execute a schedule **by moving** — walk to a job, a meal, a bunk. Today **0**.
+* verbs with a **consequence** beyond a local animation — today 5 respond, 0 change world state.
+* lines of dialogue a player can actually hear — today **0**.
+
+### WHAT THIS CHANGES ABOUT HOW WORK IS ASSIGNED
+
+1. **Stop sending agents at defects.** Defects are what gates find, so gates are what kept getting
+   fed. The last two agents produced a collider fix and a craft-3 head in two hours because that is
+   what they were pointed at. Point them at CONTENT and at BEHAVIOUR.
+2. **A generator is finished when its OUTPUT is various, not when its output is correct.** One kit
+   that passes every closure, winding, budget and material gate and makes 70 identical decks is the
+   disease, not the cure.
+3. **Per-place authorship is the work.** 78 generic rooms is not a number to be raised by making
+   the generic room better; it is 78 places that need to be different from each other. The
+   gazetteer's ranked list and `docs/AAA-STANDARD.md`'s tiering (12 hero / 30 featured / 84 generic)
+   is the right shape — what was missing is that a *generic* location still has to be
+   **unidentifiable as generic**, and nothing measured whether it was.
+4. **Behaviour before more geometry.** A station of 78 identical rooms where nobody moves is not
+   improved by an 80th room.
+
+---
+
+---
+
 ## SESSION 4g — WHAT WILL EXIST WHEN THIS SESSION ENDS
 
 Set by the owner: *"I want the entire station built and walkable and connected with working
