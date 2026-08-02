@@ -538,6 +538,140 @@ def gallery(schema, profile):
     return V, T, G
 
 
+# ---------------------------------------------------------------------------
+# KOSH'S QUARTERS -- a SEALED environment, which is not a gallery of locks
+# ---------------------------------------------------------------------------
+#
+# `bespoke.BESPOKE_GEOMETRY["alien_sector"]` was
+# `lambda s, p, q: alien_sector.gallery(s, p)` -- handed the place and dropping
+# it -- so `kosh_quarters` DREW THE PUBLIC GALLERY. A Vorlon ambassador's
+# private chamber and a row of four rented atmosphere locks were one mesh.
+# `deck.py --degeneracy` fails on it.
+#
+# The register already says they are different programs and nobody read it:
+#
+#     alien_sector     9.7 x  5.7 m   residence multi_environ atmosphere_containment
+#     kosh_quarters   10.2 x 12.0 m   residence sealed_environment
+#
+# `multi_environ` + `atmosphere_containment` is a gallery serving many species
+# behind many locks. `sealed_environment` is ONE volume behind ONE lock. Same
+# module, same vocabulary, different program.
+#
+# WHAT THE CHAMBER IS MADE OF IS SOURCED, and it is the reason this is worth
+# building rather than scaling the gallery down. `LOCATIONS.md` §238, authority
+# 1 on the environment: *"Sealed non-oxygen environment. Its wall treatment is
+# visible behind Kosh: a FROSTED GRID WALL WITH BACKLIT PANELS, in vapour."*
+# (`reference/15-races-and-makeup/more vorlon.png`.) That wall is the room's
+# whole character and it appears nowhere in the gallery, which is barred
+# screens and an overhead lattice. See INV-266.
+#
+# NOT built here, and stated rather than left to be assumed: the vapour. It is
+# a volumetric, not geometry, and belongs to the shot's environment.
+
+FROST_COLS = 7             # the grid behind Kosh, counted off the frame
+FROST_ROWS = 4
+FROST_RIB_M = 0.09         # the frame between panels
+FROST_PANEL_D_M = 0.05     # how far a lit panel sits proud of its rib
+FROST_MARGIN_M = 0.55      # clear wall round the grid
+
+
+def frosted_grid(width, height, name="alien_frost"):
+    """The backlit panel grid, authority 1. `(verts, tris, groups)`.
+
+    Ribs and panels rather than one lit plane, because the frame's wall reads
+    as a GRID -- the divisions are the thing you see. Panels sit proud of their
+    ribs so the light has an edge to catch, which is the same reason
+    `interior_kit` beads its plating.
+    """
+    v, t, g = [], [], []
+    gw = width - 2 * FROST_MARGIN_M
+    gh = height - 2 * FROST_MARGIN_M
+    if gw <= 0 or gh <= 0:
+        return v, t, g
+    cw = (gw - (FROST_COLS + 1) * FROST_RIB_M) / FROST_COLS
+    ch = (gh - (FROST_ROWS + 1) * FROST_RIB_M) / FROST_ROWS
+    if cw <= 0 or ch <= 0:
+        return v, t, g
+    x0, y0 = -gw / 2.0, FROST_MARGIN_M
+    # The rib plate behind everything, one box, so the grid has a ground.
+    _box(v, t, g, name + "_rib", (x0, y0, 0.0), (x0 + gw, y0 + gh, 0.04))
+    for i in range(FROST_COLS):
+        for j in range(FROST_ROWS):
+            px = x0 + FROST_RIB_M + i * (cw + FROST_RIB_M)
+            py = y0 + FROST_RIB_M + j * (ch + FROST_RIB_M)
+            _box(v, t, g, name + "_panel",
+                 (px, py, 0.04), (px + cw, py + ch, 0.04 + FROST_PANEL_D_M))
+    return v, t, g
+
+
+def sealed_chamber(schema, profile, place):
+    """One sealed non-oxygen compartment behind one lock. Kosh's quarters.
+
+    Authored to this module's own convention -- x across, y up, z along, z = 0
+    left OPEN because `bespoke.NEAR_END["alien_sector"]` is `min_z` and the ring
+    corridor arrives there.
+    """
+    w, l = _rooms.bay_span_m(place)
+    w, l = float(w), float(l)
+    h = GALLERY_H_M
+    hw = w / 2.0
+    V, T, G = [], [], []
+
+    _box(V, T, G, "alien_deck", (-hw, -0.18, 0.0), (hw, 0.0, l))
+    for s in (-1, 1):
+        _box(V, T, G, "alien_wall", (s * hw, 0.0, 0.0),
+             (s * (hw + 0.22), h, l))
+    _box(V, T, G, "alien_soffit", (-hw, h, 0.0), (hw, h + 0.22, l))
+    _box(V, T, G, "alien_endwall", (-hw, 0.0, l), (hw, h, l + 0.22))
+
+    _rooms.articulate(V, T, G, "alien", hw, l / 2.0, h,
+                      z_off=l / 2.0, soffit=False, scale=0.38)
+
+    cv, ct, cg = ceiling_lamps(l, w, h)
+    _absorb(V, T, G, cv, ct, cg)
+    gv, gt, gg = deck_grating(l, w)
+    _absorb(V, T, G, gv, gt, gg)
+
+    # THE LOCK, and there is exactly one. Two doors with a vestibule between
+    # them, across the near end rather than off a side wall -- a sealed
+    # compartment is entered through its own airlock, not off a public gallery.
+    depth = lock_depth_m()
+    pv, pt, pg, (pw, ph) = portal()
+    for z in (0.0, depth):
+        # Authored x-across/z-into; here the aperture already faces down z, so
+        # the portal drops in unrotated at two depths.
+        _absorb(V, T, G, [(q[0], q[1], q[2] + z) for q in pv], pt, pg)
+    for s in (-1, 1):
+        _box(V, T, G, "alien_lock_wall",
+             (s * pw / 2.0, 0.0, 0.0),
+             (s * (pw / 2.0 + PORTAL_JAMB_M), h, depth))
+    _box(V, T, G, "alien_lock_soffit",
+         (-pw / 2.0 - PORTAL_JAMB_M, ph, 0.0),
+         (pw / 2.0 + PORTAL_JAMB_M, h, depth))
+
+    # THE WALL BEHIND KOSH -- the one sourced feature, on the end wall a
+    # player faces on entering.
+    fv, ft, fg = frosted_grid(w, h)
+    _absorb(V, T, G, [(q[0], q[1], l - 0.04 - q[2]) for q in fv],
+            [(a, c, b) for a, b, c in ft], fg)      # mirrored in z: reflip
+
+    # One status lamp, outside, because the atmosphere is the interaction:
+    # LOCATIONS.md 238 -- "a player cannot enter without a suit".
+    _box(V, T, G, "alien_status_lamp",
+         (pw / 2.0 + PORTAL_JAMB_M, ph + 0.12, 0.0),
+         (pw / 2.0 + PORTAL_JAMB_M + 0.06, ph + 0.12 + 2 * GREEN_LAMP_R_M,
+          2 * GREEN_LAMP_R_M))
+    return V, T, G
+
+
+def alien_place(schema, profile, place):
+    """Which of this module's two programs a place gets, from its functions."""
+    fn = frozenset((place or {}).get("functions") or ())
+    if "sealed_environment" in fn and "multi_environ" not in fn:
+        return sealed_chamber(schema, profile, place)
+    return gallery(schema, profile)
+
+
 def _signed_volume(v, t):
     s = 0.0
     for a, b, c in t:

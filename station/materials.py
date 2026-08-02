@@ -1280,6 +1280,22 @@ def _build():
               "furn_screen_panel — an office partition — for two layers.")))
 
     a(Material(
+        "light_vorlon_frost", "Kosh's Wall — frosted grid, backlit, seen through vapour",
+        albedo=(0.140, 0.148, 0.180), roughness=0.55, metallic=0.0,
+        specular=0.18, emission=(0.691, 0.760, 1.000), emission_energy=0.55,
+        binds=("alien_frost_panel",), scenes=("interior",),
+        source="reference/15-races-and-makeup/more vorlon.png (authority 1), the frame LOCATIONS.md §238 cites for this room: 'a frosted grid wall with backlit panels, in vapour'. Measured over the left quarter of the frame (0.00,0.14)-(0.22,0.95), clear of Kosh and of the bright vapour column behind him: the lit population (L > 0.62, 720,545 px, 75.6% of the crop) averages sRGB (184,192,217), H 225.5 S 0.152 V 0.851, linear (0.479,0.527,0.694). Normalised on blue that is emission (0.691,0.760,1.000) — a COOL blue-white, and the sign of it is the finding, because every other lit surface this module owns is amber: light_alien_lattice H 39.3 and light_deck_grating H 39.6, both from the alien sector's public gallery. Kosh's compartment is lit the opposite colour to the corridor outside it, which is what makes it read as somebody else's atmosphere.",
+        extrapolated="`emission_energy` 0.55 and the housing albedo. The frame cannot give either: 75.6% of the sampled crop is above the lit threshold, so what was measured is the panel SEEN THROUGH ITS OWN VAPOUR, which raises the level and flattens the contrast against the bare panel. The colour survives that (vapour scatters roughly neutrally over this range) and the brightness does not, so the hue is sourced and the energy is bracketed: 0.55 sits between light_alien_lattice's 0.35 — a source seen at distance down a corridor — and light_deck_grating's 0.30, raised because this wall is the room's only fitting rather than one of three. Overturned by any frame of this compartment without the vapour, or by a lighting pass measuring the built room against this reference with tools/measure_frame.py --against.",
+        note=("THE RIBS ARE DELIBERATELY NOT MEASURED FROM THIS FRAME. The "
+              "dark population in the same crop is 0.1% of it (1,427 px) and "
+              "reads H 72 — green — which is sensor noise in a near-black "
+              "region, not a colour. `alien_frost_rib` therefore follows "
+              "`alien_wall`, the material the rest of this module's walls "
+              "already carry. Measuring 1,427 px of noise and writing it down "
+              "as a decision is what `light_alien_lattice`'s own source note "
+              "warns about one paragraph in.")))
+
+    a(Material(
         "light_deck_grating", "Illuminated Deck Grating — louvre bars over a light box",
         albedo=(0.150, 0.122, 0.070), roughness=0.34, metallic=0.0,
         specular=0.22, emission=(1.000, 0.839, 0.200), emission_energy=0.30,
@@ -2210,6 +2226,11 @@ def _build():
                # worked into relief.
                "customs_dado", "customs_rail", "customs_cornice",
                "customs_panel", "qtr_wall", "alien_wall", "alien_endwall", "alien_quarter_shell", "bar_wall",
+               # The frame between Kosh's backlit panels. NOT measured from the
+               # frame -- see light_vorlon_frost's note: the dark population in
+               # that crop is 0.1% of it and reads as noise. It follows
+               # `alien_wall`, which is the rest of this module's wall.
+               "alien_frost_rib",
                # Session 3s articulation (INV-073): bar and quarters trim, the
                # same painted wall plane worked into relief.
                "bar_dado", "bar_rail", "bar_cornice", "bar_panel",

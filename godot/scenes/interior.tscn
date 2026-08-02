@@ -1,4 +1,4 @@
-[gd_scene load_steps=171 format=3]
+[gd_scene load_steps=172 format=3]
 
 ; A room, from the inside.
 ;
@@ -204,6 +204,7 @@
 [ext_resource type="Material" path="res://materials/npc_metal__ranger_gold.tres" id="m_npc_metal__ranger_gold"]
 [ext_resource type="Material" path="res://materials/npc_cloth_trim__nightwatch_black.tres" id="m_npc_cloth_trim__nightwatch_black"]
 [ext_resource type="Material" path="res://materials/npc_impostor.tres" id="m_npc_impostor"]
+[ext_resource type="Material" path="res://materials/light_vorlon_frost.tres" id="m_light_vorlon_frost"]
 
 [sub_resource type="Environment" id="Env"]
 ; Flat colour, not a sky. Near-black rather than pure black for the reason the
@@ -327,6 +328,8 @@ material_rules = {
 "alien_deck_grating": ExtResource("m_light_deck_grating"),
 "alien_deck_joint": ExtResource("m_shell_wall_panel"),
 "alien_endwall": ExtResource("m_shell_wall_panel"),
+"alien_frost_panel": ExtResource("m_light_vorlon_frost"),
+"alien_frost_rib": ExtResource("m_shell_wall_panel"),
 "alien_lattice": ExtResource("m_light_alien_lattice"),
 "alien_lock_wall": ExtResource("m_shell_wall_industrial"),
 "alien_mask_dispenser": ExtResource("m_device_reader_shell"),

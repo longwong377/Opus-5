@@ -41,7 +41,13 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 # `signage` is absent deliberately: it builds a sign board, which is a prop
 # that stands in other rooms rather than a room you can stand in.
 BESPOKE_GEOMETRY = {
-    "alien_sector": lambda s, p, q: __import__("alien_sector").gallery(s, p),
+    # THE PLACE, not the module. `kosh_quarters` drew the public gallery --
+    # a Vorlon's sealed chamber and a row of four rented atmosphere locks as
+    # one mesh. `alien_place` picks the program off the declared functions:
+    # `sealed_environment` without `multi_environ` is one volume behind one
+    # lock. INV-266, and deck.py --degeneracy.
+    "alien_sector": lambda s, p, q: __import__("alien_sector").alien_place(
+        s, p, q),
     "command_control":
         lambda s, p, q: __import__("command_control").command_control(),
     "council_chamber":

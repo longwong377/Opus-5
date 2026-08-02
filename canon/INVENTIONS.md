@@ -5981,3 +5981,48 @@ palette, the fitting density and the table furniture are shared. Character is th
 `bar_stool`'s upholstery (the same seat, in the same room, from the same frame) and the shutter
 follows `prop_barred_screen`'s unpainted steel. `check_material_coverage` caught all five groups on
 the fallback the first time they were rendered, which is exactly what that gate is for.
+
+## INV-266 — Kosh's quarters is one sealed volume behind one lock, not a gallery of four
+
+**Invented:** in `station/alien_sector.py` — `sealed_chamber()` and `alien_place()`, plus the
+`frosted_grid()` part (`FROST_COLS = 7`, `FROST_ROWS = 4`) and the material
+`light_vorlon_frost`.
+
+**Why necessary:** `bespoke.BESPOKE_GEOMETRY["alien_sector"]` was
+`lambda s, p, q: alien_sector.gallery(s, p)` — handed the place and dropping it — so
+`kosh_quarters` **drew the public gallery**. A Vorlon ambassador's private compartment and a row of
+four rented atmosphere locks were one mesh, and `deck.py --degeneracy` fails on it.
+
+**Constrained by the register, which already said they are different programs:**
+
+    alien_sector     9.7 x  5.7 m   residence multi_environ atmosphere_containment
+    kosh_quarters   10.2 x 12.0 m   residence sealed_environment
+
+`multi_environ` + `atmosphere_containment` is a gallery serving many species behind many locks;
+`sealed_environment` is one volume behind one. The footprint is not invented — it is
+`rooms.bay_span_m` — and neither is the vocabulary, which is this module's own portal, lock,
+grating and lamps rearranged to a different program.
+
+**And the room's one distinguishing feature is SOURCED rather than extrapolated.** `LOCATIONS.md`
+§238 is authority 1 on the environment: *"Its wall treatment is visible behind Kosh: a frosted grid
+wall with backlit panels, in vapour."* `reference/15-races-and-makeup/more vorlon.png` shows it, and
+the panel colour is measured off that frame rather than chosen — sRGB (184,192,217), H 225.5,
+S 0.152, linear (0.479,0.527,0.694), normalised to emission (0.691,0.760,1.000).
+
+**The finding that came out of measuring it:** the compartment is lit **cool** where everything else
+this module owns is amber — `light_alien_lattice` H 39.3, `light_deck_grating` H 39.6, both from the
+gallery outside. Kosh's atmosphere is lit the opposite colour to the corridor it opens off, which is
+what makes it read as somebody else's air rather than a room with a different lamp.
+
+**What is extrapolated and stated as such:** `emission_energy` 0.55 and the housing albedo, because
+**75.6% of the sampled crop is above the lit threshold** — what the frame gives is the panel seen
+*through its own vapour*, which survives as hue and does not survive as brightness. The rib colour
+is deliberately NOT taken from the frame: the dark population in that crop is 0.1% of it (1,427 px)
+and reads H 72, green, which is noise in a near-black region, so `alien_frost_rib` follows
+`alien_wall`. The grid counts (7 x 4) are read off the frame's visible cells.
+
+**Not built, and stated rather than assumed:** the vapour itself. It is a volumetric and belongs to
+the shot's environment, not to geometry.
+
+**Overturned by:** any clean frame of the compartment, which would replace both the energy and the
+grid counts, and would let `tools/measure_frame.py --against` close the lighting half properly.
