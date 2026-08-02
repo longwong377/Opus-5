@@ -20,6 +20,7 @@ large enough to be somewhere.
 Run: python3 station/deck.py --sector blue --ring 0 --deck 0 [--obj OUT]
 """
 import argparse
+import hashlib
 import math
 import os
 import sys
@@ -2141,6 +2142,201 @@ def _sweep():
     return 1 if bad else 0
 
 
+# ---------------------------------------------------------------------------
+# DEGENERACY -- are any two named places the SAME PLACE?
+# ---------------------------------------------------------------------------
+#
+# WHY THIS EXISTS, and it is the most expensive blind spot this project has had.
+#
+# `customs_north` and `arrival_concourse` are two locations in the gazetteer,
+# 140 m apart on the station, and in session 4h they were found to render
+# BYTE-IDENTICALLY -- same md5, 0 of 360,000 pixels different. They had passed
+# every gate in the project for months, and they had to, because EVERY GATE
+# MEASURED A PLACE AGAINST A STANDARD AND NONE MEASURED A PLACE AGAINST ANOTHER
+# PLACE. Articulation asks "is this room's line density above its floor" -- two
+# identical rooms both pass. Materials asks "does every group carry PBR" -- both
+# pass, 503/503. Lighting compares a histogram to a reference -- identical
+# histograms, both pass. Props asks "do the declared interactables exist" -- both
+# pass, and the SAME props, because they come from the same archetype table.
+#
+# A completion count over gates like that goes green on a station of 128
+# identical rooms. That is not hypothetical; it is what the count was doing.
+#
+# The only pairwise comparison that existed anywhere in this repository before
+# session 4h was `npc/body.py --silhouette`, and it compares SPECIES, not
+# places. `variety.py` now measures the DEGREE to which places resemble each
+# other, with a tuned ceiling and a raster and a cache. This is deliberately
+# the crude complement to it:
+#
+#   * it asks IDENTITY, not similarity -- no threshold, nothing to tune, and
+#     therefore nothing to argue with. Two places that hash the same ARE the
+#     same place;
+#   * it costs one build per place and a hash, so it can run whenever the
+#     station builds rather than behind a cache;
+#   * and it CANNOT be satisfied by making the number look better, because the
+#     only way to pass is for the geometry to actually differ.
+#
+# It lives here rather than in `variety.py` because `room_geometry` is the one
+# decision about what a player walks into, and CLAUDE.md's rule is that a gate
+# belongs in the module that builds the thing it measures.
+
+def _place_fingerprint(v, t, g):
+    """A hash of what a player would actually walk into.
+
+    Rounded to 1 mm because a float that differs in its last bit is not a
+    different room, and two places that agree to the millimetre over every
+    vertex and every triangle are not two places. Group NAMES are deliberately
+    excluded: two rooms whose geometry is identical and whose spans are merely
+    labelled differently are still one room wearing two signs, which is exactly
+    the case this gate exists to find.
+    """
+    h = hashlib.blake2b(digest_size=16)
+    for x, y, z in v:
+        h.update(b"%d,%d,%d;" % (round(x * 1000), round(y * 1000),
+                                 round(z * 1000)))
+    for tri in t:
+        h.update(b"%d/%d/%d;" % tuple(tri))
+    h.update(b"|%d" % len(g))
+    return h.hexdigest()
+
+
+def place_identity(schema=None, profile=None, keys=None, out=print):
+    """Fingerprint every place. Returns {fingerprint: [keys...]}."""
+    import directory as DIR                                     # noqa: PLC0415
+
+    if schema is None:
+        schema, profile = it.load()
+    places = list(DIR.PLACES)
+    if keys is not None:
+        want = set(keys)
+        places = [q for q in places if q["key"] in want]
+    groups, failed = {}, []
+    for q in places:
+        try:
+            v, t, g, _used = room_geometry(schema, profile, q)
+        except Exception as exc:                                # noqa: BLE001
+            failed.append((q["key"], str(exc)[:60]))
+            continue
+        groups.setdefault(_place_fingerprint(v, t, g), []).append(q["key"])
+    if failed and out:
+        out(f"  {len(failed)} place(s) would not build: "
+            + ", ".join(k for k, _ in failed[:4]))
+    return groups
+
+
+def bespoke_identity(schema=None, profile=None, out=print):
+    """The SECOND path a place is built through, and it had the real defect.
+
+    `BESPOKE_GEOMETRY[module]` is what the interior shot draws, and each entry
+    is `lambda s, p, q` -- so a builder is HANDED the place and may simply drop
+    it. `customs` did: `lambda s, p, q: customs.hall(s, p)`, which draws the
+    module's one generic hall for all three of its places. Two of them then
+    rendered BYTE-IDENTICALLY -- same md5, 0 of 360,000 pixels different -- and
+    it read as "two named places are one room" when the truth was narrower and
+    worse: the places differ on the deck a player walks, and the RENDER PATH
+    collapsed them.
+
+    That exact bug had already been found twice and fixed in place, for
+    `quarters` ("rendering one class seven times would be seven frames of one
+    room") and for `plant` (INV-231) -- and the fix was applied to those two
+    entries rather than to the shape of the table, so the other seven kept it.
+    A fix applied to an instance and not to the rule is a fix that will be
+    needed again.
+
+    Returns {module: {fingerprint: [keys...]}} for modules owning >1 place.
+    """
+    import bespoke as B                                         # noqa: PLC0415
+    import directory as DIR                                     # noqa: PLC0415
+
+    if schema is None:
+        schema, profile = it.load()
+    by = {}
+    for q in DIR.PLACES:
+        m = q.get("module")
+        if m in B.BESPOKE_GEOMETRY:
+            by.setdefault(m, []).append(q)
+    res = {}
+    for m, qs in sorted(by.items()):
+        if len(qs) < 2:
+            continue                       # one place cannot collide with itself
+        groups = {}
+        for q in qs:
+            try:
+                r = B.BESPOKE_GEOMETRY[m](schema, profile, q)
+            except Exception as exc:                            # noqa: BLE001
+                if out:
+                    out(f"  {q['key']:22} {m} would not build: {str(exc)[:50]}")
+                continue
+            v, t = r[0], r[1]
+            groups.setdefault(_place_fingerprint(v, t, ()), []).append(q["key"])
+        res[m] = groups
+    return res
+
+
+def _degeneracy(out=print, keys=None):
+    """THE GATE. Any two places with one fingerprint is a failure.
+
+    Two paths, because a place is built twice and only one of them was ever
+    looked at. The control is at the bottom and it must fire.
+    """
+    rc = 0
+    out("\nDEGENERACY -- are any two named places the same place?\n")
+
+    # --- path 1: what a player WALKS INTO -----------------------------------
+    groups = place_identity(keys=keys, out=out)
+    built = sum(len(ks) for ks in groups.values())
+    dupes = sorted((ks for ks in groups.values() if len(ks) > 1),
+                   key=len, reverse=True)
+    out(f"  ON THE DECK (deck.room_geometry -- what a player walks into)")
+    out(f"    {built} places built, {len(groups)} distinct geometries")
+    for ks in dupes:
+        out(f"    IDENTICAL x{len(ks)}: " + ", ".join(sorted(ks)))
+    if dupes:
+        shared = sum(len(ks) for ks in dupes)
+        out(f"    FAIL  {shared} places share {len(dupes)} geometries")
+        rc = 1
+    else:
+        out(f"    PASS  no two places are byte-identical")
+
+    # --- path 2: what the INTERIOR SHOT draws -------------------------------
+    out(f"\n  IN THE SHOT (bespoke.BESPOKE_GEOMETRY -- what a frame shows)")
+    bad = 0
+    for m, gs in bespoke_identity(out=out).items():
+        n = sum(len(ks) for ks in gs.values())
+        col = [ks for ks in gs.values() if len(ks) > 1]
+        if col:
+            bad += 1
+            for ks in col:
+                out(f"    {m:16} IDENTICAL x{len(ks)}: " + ", ".join(sorted(ks))
+                    + "  -- the builder is handed the place and drops it")
+        else:
+            out(f"    {m:16} {n} places, {len(gs)} distinct  PASS")
+    if bad:
+        out(f"    FAIL  {bad} module(s) draw one room for several places")
+        rc = 1
+
+    # --- THE CONTROL, and it has to fire ------------------------------------
+    # A gate that passes the day it is written is indistinguishable from a gate
+    # that cannot fail -- which is the defect this whole file is about. So the
+    # degenerate case is constructed on purpose and the same code must reject
+    # it. Two places, one geometry, by force.
+    schema, profile = it.load()
+    import directory as DIR                                     # noqa: PLC0415
+    a, b = DIR.PLACES[0], DIR.PLACES[1]
+    va, ta, ga, _ = room_geometry(schema, profile, a)
+    fa = _place_fingerprint(va, ta, ga)
+    fb = _place_fingerprint(va, ta, ga)          # b built AS a, deliberately
+    ok = (fa == fb)
+    out(f"\n  CONTROL  {a['key']} and {b['key']} built from ONE geometry hash "
+        f"{'THE SAME' if ok else 'DIFFERENTLY'} -- "
+        f"{'gate can fail' if ok else 'GATE IS BROKEN'}")
+    if not ok:
+        out("    FAIL  the fingerprint does not detect an identical pair; "
+            "every PASS above is meaningless")
+        rc = 1
+    return rc
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--sector", default="blue")
@@ -2154,11 +2350,16 @@ def main():
     ap.add_argument("--selftest", action="store_true")
     ap.add_argument("--sweep", action="store_true",
                     help="assemble every deck on the station and report")
+    ap.add_argument("--degeneracy", action="store_true",
+                    help="are any two named places the SAME place? Identity, "
+                         "not similarity -- no threshold to tune")
     a = ap.parse_args()
     if a.selftest:
         return _selftest()
     if a.sweep:
         return _sweep()
+    if a.degeneracy:
+        return _degeneracy()
 
     schema, profile = it.load()
     v, t, g, s = build_deck(schema, profile, a.sector, a.ring, a.deck,

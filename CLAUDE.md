@@ -247,6 +247,36 @@ either alone can be defeated — check the precondition before, and grep the too
 what it did after, and destroy the artefact if it disagrees. **Any tool that can substitute a
 lesser mode for the one asked for must say which one it used, in its output, on every run.**
 
+**A GATE THAT SCORES N THINGS MUST ALSO ASK WHETHER THE N THINGS ARE THE SAME THING.** Session
+4h, and it is the most expensive blind spot this project has had, because it is the one the owner
+found rather than a gate. Every gate here measures **a part against a standard**: articulation asks
+"is this room's line density above its floor", materials asks "does every group carry PBR",
+lighting compares a histogram to a reference, props asks "do the declared interactables exist".
+**Two identical rooms pass all four, and a layer-completion count therefore goes green on a station
+of 128 identical rooms.** The only pairwise comparison that existed anywhere before 4h was
+`npc/body.py --silhouette`, and it compares **species**, not places.
+
+`deck.py --degeneracy` is the cheap universal form and it asks **identity, not similarity** — no
+raster, no threshold, no cache, nothing to tune, and therefore nothing to argue with. Two places
+whose geometry hashes the same *are* one place. `variety.py` measures the *degree*; this catches the
+degenerate case for the price of a hash and can run whenever the station builds.
+
+**And it immediately falsified a claim its own author had just made, which is what a real gate is
+for.** Two places had been reported as "the same room" on the evidence of two byte-identical
+renders (same md5, 0 of 360,000 pixels different). The gate said **128 places, 128 distinct
+geometries**. Both were true: the places differ on the deck a player walks, and the **interior
+render path** collapsed them, because `bespoke.BESPOKE_GEOMETRY[module]` is handed the place as
+`q` and several entries drop it — `"customs": lambda s, p, q: customs.hall(s, p)`. A frame showed
+the module's one generic hall. **A thing is built more than once in this project, and a gate on one
+build path says nothing about the other.**
+
+**The deepest part of it: that exact bug had already been found and fixed TWICE**, for `quarters`
+(*"rendering one class seven times would be seven frames of one room"*) and for `plant` (INV-231) —
+and both fixes were applied **to their own table entry** rather than to the shape of the table. The
+other seven entries kept the defect, and `plant` is now the only module in the group that passes.
+**A fix applied to an instance and not to the rule is a fix that will be needed again.** When a
+defect is found in one entry of a table, check every entry and gate the table.
+
 **READ THE SHAPE OF A FAILING NUMBER BEFORE READING ITS SIZE.** Session 4d, and it is the cheapest
 lesson in this file. `interact.py --audit` failed on 84 of 357 declared interactables and 4c wrote
 the work up as two lists of props to go and build. The number that mattered was the split:
