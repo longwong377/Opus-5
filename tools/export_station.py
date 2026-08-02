@@ -234,8 +234,16 @@ def main(argv=None):
             cv, ct, cmeta = D.build_collision_clusters(
                 schema, profile, sec, ring, dk, join=True,
                 must_cover=ang[sec])
-            cgroups = [("collision", 0, len(ct))]
+            # THE SPANS, NOT ONE GROUP. Writing the shell as a single
+            # `("collision", 0, len(ct))` made `build_collision`'s
+            # `doorpanel_<place>` spans unaddressable and WELDED EVERY ROOM ON
+            # ALL 70 SHIPPED DECKS SHUT -- a body could walk the station and
+            # enter nothing. Found by the L1 agent when a resident could not
+            # leave their own quarters; no gate caught it because no gate had
+            # ever walked on this artefact.
+            cgroups = cmeta.get("groups") or [("collision", 0, len(ct))]
             _ob, cgb = _write(stem + "_collision", cv, ct, cgroups)
+            _doors = sum(1 for n, _a, _b in cgroups if "doorpanel" in n)
             # AND THE SIDECARS, WITHOUT WHICH A CELL CANNOT BE WIRED AT ALL.
             # `walk.gd` recovers the cast, the crowd and the interactables from
             # JSON beside the mesh, because a body baked into merged geometry
@@ -260,7 +268,8 @@ def main(argv=None):
             print(f"  [{n}/{len(order)}] {stem}: {len(st['clusters'])} cluster(s), "
                   f"{st.get('rooms', 0)} rooms, {len(T):,} tri, "
                   f"{len(joins)} join(s) {row['join_m']:.0f} m, "
-                  f"{row['glb_mb']:.1f} MB + {len(ct):,} collision tri, "
+                  f"{row['glb_mb']:.1f} MB + {len(ct):,} collision tri "
+                  f"({_doors} door panels), "
                   f"{side['actors']} actors / {side['crowd']} crowd / "
                   f"{side['interact']} interactables, {row['seconds']:.0f} s")
         except Exception as e:                                  # noqa: BLE001

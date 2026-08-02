@@ -1419,15 +1419,23 @@ def build_collision_clusters(schema, profile, sector, ring, deck, n=None,
                 hands = ([-1] if i else []) + ([1] if i < len(axial) - 1 else [])
                 at_deg[z] = tuple((join_deg, h) for h in hands)
 
-    V, T = [], []
+    V, T, G = [], [], []
     metas, cz = [], {}
     for z in zs:
         v, t, m = build_collision(schema, profile, sector, ring, deck, z_m=z,
                                   extra_doors=at_deg.get(z, ()),
                                   must_cover=must_cover, **kw)
-        base = len(V)
+        base, t0 = len(V), len(T)
         V.extend(v)
         T.extend((a + base, b + base, c + base) for a, b, c in t)
+        # THE DOOR PANELS, WHICH THE SHIPPED STATION THREW AWAY. `build_collision`
+        # names the shell's `doorpanel_<place>` spans in its meta so a runtime can
+        # find the panel and open it; `tools/export_station.py` wrote the whole
+        # collision mesh as ONE group called "collision", which made every span
+        # unaddressable and **welded every room on all 70 shipped decks shut**.
+        # No gate caught it because no gate had ever walked on that artefact.
+        G.extend((f"z{int(round(z))}__{nm}", a + t0, b + t0)
+                 for nm, a, b in (m.get("groups") or ()))
         metas.append(m)
         cz[z] = m
 
@@ -1441,13 +1449,14 @@ def build_collision_clusters(schema, profile, sector, ring, deck, n=None,
         jv, jt, jm = C.axial_shell(schema, profile, sector, ring, za, zb,
                                    angle_deg=join_deg,
                                    radius_m=ma["radius_m"])
-        base = len(V)
+        base, t0 = len(V), len(T)
         V.extend(jv)
         T.extend((x + base, y + base, c + base) for x, y, c in jt)
+        G.append((f"join{int(round(a))}_{int(round(b))}", t0, len(T)))
         joins.append(jm)
 
     return V, T, {"clusters": metas, "joins": joins, "join_deg": join_deg,
-                  "triangles": len(T), "z": list(zs),
+                  "triangles": len(T), "z": list(zs), "groups": G,
                   "spawn_meta": metas[0]}
 
 
