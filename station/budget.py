@@ -46,7 +46,15 @@ import time
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 MANIFEST = os.path.join(ROOT, "station/generated/hull_manifest.json")
-GLB = os.path.join(ROOT, "station/generated/station.glb")
+# THE SHIPPED EXTERIOR, and the path matters because this gate was reading one
+# nobody writes. `tools/export_scene.py` has always written the hull to
+# `scene/exterior/hull.glb` -- `station.glb` is a name from before the scene
+# directory existed. Combined with the `if size:` guard below, the effect was a
+# budget that could only ever be silently skipped: the one shipped artefact
+# whose size a player actually pays for was unmeasured for every session since.
+# Same defect as the stale committed frames -- a gate reading an artefact that
+# is not the artefact.
+GLB = os.path.join(ROOT, "station/generated/scene/exterior/hull.glb")
 
 # A 4070 sustains roughly 20-30 M triangles/frame at 1440p60 with a modern
 # deferred renderer. The exterior hull is always-visible background geometry
@@ -896,8 +904,21 @@ def main(argv=None):
           note="one per feature group, before instancing")
     check("vertex bandwidth", bandwidth, BUDGETS["vertex_bandwidth_mb"], " MB",
           "flat-shaded, un-indexed")
+    # NOT `if size:`. A missing artefact is the failure this bound exists to
+    # catch -- an exterior that did not export is not an exterior under budget --
+    # and the old guard turned every such case into a pass. It skipped for
+    # sessions because GLB named a file nothing writes.
     if size:
-        check("glb on disk", size, BUDGETS["glb_size_mb"], " MB")
+        check("glb on disk", size, BUDGETS["glb_size_mb"], " MB",
+              note=os.path.relpath(GLB, ROOT),
+              when=f"{BUDGETS['glb_size_mb'] / size:.1f}x today's hull")
+    else:
+        # 1 against a limit of 0, which is this file's idiom for "the thing
+        # being bounded is not there to bound" -- and it FAILS, because a
+        # zero-byte exterior passing a size budget is the whole defect.
+        check("glb on disk", 1, 0, "",
+              f"NOT EXPORTED -- {os.path.relpath(GLB, ROOT)} is missing; "
+              f"run tools/export_scene.py --shot exterior")
 
     greebles = man.get("greeble_triangles", 0)
     if greebles:
