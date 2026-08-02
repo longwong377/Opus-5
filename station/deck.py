@@ -1037,6 +1037,19 @@ def build_deck(schema, profile, sector, ring, deck, with_rooms=True,
                 # preserved, and `npc.gd` derives those two directions from the
                 # body's OWN position, which is where the ring angle enters.
                 "yaw": act["yaw"],
+                # THE CAPSULE, WHICH THIS DICT USED TO DROP ON THE FLOOR.
+                # `rooms.build` measures a radius and a height for every actor
+                # so the runtime can give them a collider; rebuilding the dict
+                # here listed the keys it wanted and `r_m`/`h_m` were not among
+                # them. Measured after the runtime agent found it: **73 actors,
+                # 0 carrying a capsule** -- NO ROOM INHABITANT ON THIS STATION
+                # HAS EVER HAD A COLLIDER, and CI's "The inhabitants are solid"
+                # has been red for exactly this.
+                #
+                # Copied rather than recomputed: a second measurement of a body
+                # already measured is a second number to drift.
+                **{k: act[k] for k in ("r_m", "h_m", "species", "lod")
+                   if k in act},
             })
 
         # And the passage joining it to the corridor, so the doorway frames a

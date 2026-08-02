@@ -573,6 +573,29 @@ def _placed_bounds(mesh, x, z, yaw):
     return min(xs), max(xs), min(zs), max(zs)
 
 
+def _stance_mesh(species, rec, lod):
+    """The body at REST, for measuring a collider off.
+
+    One call, cached, because a capsule is a property of a person rather than of
+    the frame of animation they happen to be on. Falls back to whatever was
+    handed in if the standing build is unavailable, so a measurement is never
+    silently skipped.
+    """
+    key = (species, rec.get("id") if isinstance(rec, dict) else rec, lod)
+    if key in _STANCE:
+        return _STANCE[key]
+    npc_id = key[1] or "stance/probe"
+    try:
+        m = _body.build(species, npc_id, lod=lod)[:3]
+    except Exception:                                          # noqa: BLE001
+        return None
+    _STANCE[key] = m
+    return m
+
+
+_STANCE = {}
+
+
 def body_capsule(mesh):
     """`(radius_m, height_m)` a body occupies, MEASURED off the mesh in hand.
 
@@ -594,7 +617,7 @@ def body_capsule(mesh):
     The corridor still passes: 0.269 m against a 1.081 m half-width leaves
     0.81 m of clearance either side of somebody standing on the centreline.
     """
-    verts = mesh[0]
+    verts = (mesh or (None,))[0]
     if not verts:
         return 0.0, 0.0
     ys = [q[1] for q in verts]
@@ -1696,7 +1719,20 @@ def populate_corridor(deck_id, radius_m, half_w_m, arc_deg, start_deg, z_m,
             # "up" is a different direction at every angle and a single angle
             # cannot express it -- the same trap `_place_ring_body` documents.
             ca2, sa2 = math.cos(a), math.sin(a)
-            r_m, h_m = body_capsule(mesh)
+            # THE CAPSULE COMES OFF THE STANDING BODY, NOT THE STRIDE. `mesh`
+            # here is a WALK CLIP frame -- legs apart, arms swung -- and the
+            # widest horizontal extent of that is the stride, not the volume a
+            # person occupies. Measured: 0.482 m mean and 0.624 m max across the
+            # corridor crowd, against 0.245 m standing. A 0.624 m radius is a
+            # person 1.25 m wide in a 2.6 m corridor, which is most of the
+            # walkable width, and it is why the crowd felt like a wall.
+            #
+            # A CAPSULE IS A VERTICAL CYLINDER THAT TRAVELS WITH THE BODY. Its
+            # radius is what the person occupies, and a leg swinging through the
+            # air is not that -- a walking human's collider is their standing
+            # width in every engine that ships. Found by the runtime agent while
+            # chasing why the crowd shoved the player.
+            r_m, h_m = body_capsule(_stance_mesh(sp, rec, lod))
             instances.append({
                 "group": f"corridor_{i}", "who": rec,
                 "mesh": crowd_key(sp, lod, phase),
