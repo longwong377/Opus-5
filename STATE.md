@@ -1,6 +1,6 @@
 # Project State
 
-**Last updated:** 2026-08-02 · **Session 4h** — **READ §20 FIRST: the owner reassessed and the plan turned over — LIFE FIRST (60/30/10), the shell stays 1:1. Ashir walked 887.9 m to work; the variety gate is red at 27 indistinguishable clusters over 82 of 128 places; 857 of 857 residents commute across decks** · **Session 4g** — **THE STATION IS ONE WALKABLE PIECE. READ §19 FIRST: components 96 → 1, the lift exists, the whole station is built, and four green numbers were lies** · **Sessions 4e–4f** — **READ §14 FIRST. The renderer was wrong all session; layer 7 exists; the Starfury flies; 34 of 41 CI gates had not run for thirty pushes** · **4d** — **READ §8 FIRST: the owner asked what actually works and the answer was mostly no. Direction changed.** Also: 357/357 interactables, and the 60-minute engine tax is over · **4c** — the station is INTERACTABLE, the port is on a wall, and the 24-minute suites were one bad cache key · **4b** — a police force, friction in metres, the plated shell, the fitting-reach fix
+**Last updated:** 2026-08-02 · **Session 4h** — **READ §20.05 FIRST: the identical-rooms defect is closed. `deck.py --degeneracy` asks identity rather than similarity, found 5 modules drawing one room for 14 places, and all six now pass. The two frames that were byte-identical are 98.7% different** · **§20: the owner reassessed and the plan turned over — LIFE FIRST (60/30/10), the shell stays 1:1. Ashir walked 887.9 m to work; the variety gate is red at 27 indistinguishable clusters over 82 of 128 places; 857 of 857 residents commute across decks** · **Session 4g** — **THE STATION IS ONE WALKABLE PIECE. READ §19 FIRST: components 96 → 1, the lift exists, the whole station is built, and four green numbers were lies** · **Sessions 4e–4f** — **READ §14 FIRST. The renderer was wrong all session; layer 7 exists; the Starfury flies; 34 of 41 CI gates had not run for thirty pushes** · **4d** — **READ §8 FIRST: the owner asked what actually works and the answer was mostly no. Direction changed.** Also: 357/357 interactables, and the 60-minute engine tax is over · **4c** — the station is INTERACTABLE, the port is on a wall, and the 24-minute suites were one bad cache key · **4b** — a police force, friction in metres, the plated shell, the fitting-reach fix
 
 ## Session 4h — THE PLAN TURNED OVER: LIFE FIRST, AND THE FIRST RESIDENT WALKED TO WORK
 
@@ -31,6 +31,67 @@ AAA surface is not reachable — not slowly, not at all.
    of footprint was never the blocker; identical rooms were.
 
 **Both new gates fail today and neither is a coverage count.** That is the point.
+
+### 20.05 THE IDENTICAL-ROOMS DEFECT, FOUND AND CLOSED — and the gate that had to exist first
+
+The owner asked why every interior shot in a trailer was the same hallway. Two separate faults, and
+separating them was the whole job.
+
+**Mine, and smaller:** `--shot deck --at <place>` stands the camera in the **ring corridor** at that
+place's angle. It never enters the room. Six corridor angles were captioned "Vorlon berth",
+"Customs north", "Bay elevators". Wrong shot type, wrong captions.
+
+**The real one:** rendered properly with `--shot interior --room <key>`, `customs_north` and
+`arrival_concourse` came back **byte-identical** — same md5, 0 of 360,000 pixels different. That
+looked like "two named places are one room" and **it was not**, which only a gate could establish.
+
+**`deck.py --degeneracy` is that gate** and it asks **identity, not similarity** — no raster, no
+threshold, no cache, nothing to tune, so nothing to argue with. Two places whose geometry hashes the
+same *are* one place. It runs both build paths, because a thing is built twice here:
+
+    ON THE DECK  (deck.room_geometry -- what a player walks into)   128 places, 128 distinct  PASS
+    IN THE SHOT  (bespoke.BESPOKE_GEOMETRY -- what a frame draws)   5 modules, 14 places -> 5 rooms
+
+**It falsified its own author within a minute of existing.** The station is *not* degenerate; the
+**interior render path** was, because `BESPOKE_GEOMETRY[module]` is handed the place as `q` and
+several entries dropped it — `"customs": lambda s, p, q: customs.hall(s, p)`.
+
+**And that bug had already been found and fixed TWICE**, for `quarters` and for `plant` (INV-231),
+both times **in their own table entry rather than in the shape of the table**. Seven entries kept
+it. *A fix applied to an instance and not to the rule is a fix that will be needed again.*
+
+All six are now closed, and in every case **the register already held the answer and nothing read
+it** — almost nothing here is invented:
+
+| module | was | the thing nobody was reading |
+|---|---|---|
+| `hospitality` | 5 bars = 1 room | footprints 18.7×14.3 / 12.3×16.0 / 11.8×14.0, and functions: the oche is now conditional on `recreation`, so **a cafe stops having a dartboard**; `rumour` buys a snug, `black_market_fringe` a closed shutter (INV-265) |
+| `alien_sector` | **Kosh's quarters drew the public gallery** | `sealed_environment` is one volume behind one lock; `multi_environ` is a gallery of four (INV-266) |
+| `customs` | 3 places = 1 room | desks on `identicard_check` — **the concourse has none, it is where you arrive, not where you are processed** — gantry on `contraband_search`, schematic on `wayfinding` (INV-267) |
+| `quarters` | 2 places = 1 room | `run()`'s `count` fell back to 6; footprints 40×90 vs 16×40 give **16 suites against 7 delegation offices** (INV-268) |
+| `zocalo` | 2 places = 1 room | called as `zocalo_run(3)` with no place at all; 120 m vs 100 m give 11 bays against 9, seeded per place (INV-268) |
+
+**The pair that started it, measured:**
+
+| | before | after |
+|---|---|---|
+| `customs_north` vs `arrival_concourse` | **0 of 360,000 px differ** | **227,507 of 230,400 — 98.7%** |
+| `customs_north` vs `customs_south` | identical | **99.7%** |
+
+**Three disciplines that carried this and are worth repeating:**
+
+1. **A/B before blaming yourself, and before blaming anyone else.** Two selftests failed while this
+   work was in flight and *neither was caused by it* — `hospitality`'s `_INHERITED_NON_MANIFOLD`
+   (58 → 54, because V1's 854-line `rooms.py` change improved `articulate`) and `zocalo`'s seam
+   assertion (fails identically at the old default of 3 bays). Both established by `git stash`, not
+   by argument. The first was updated **and kept an exact equality**, because a *rise* is what it
+   exists to catch; relaxing it to `<=` would have made it unfailable.
+2. **Refusing a measurement is a result.** Kosh's rib colour would have come from 1,427 near-black
+   pixels reading H 72, green — sensor noise. It follows `alien_wall` instead. The *panel* colour
+   IS measured off the cited authority-1 frame, sRGB (184,192,217), and produced a finding worth
+   more than the room: **the compartment is lit cool where every other surface this module owns is
+   amber**, so it reads as somebody else's atmosphere rather than a room with a different lamp.
+3. **`check_material_coverage` caught every new group**, three times, before any frame was believed.
 
 ### 20.1 L1 — SOMEONE GOES TO WORK. It is a person, not a demo
 
