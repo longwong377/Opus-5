@@ -118,6 +118,15 @@ var _frames := 0
 var _dress: Node = null                ## dress_scene.gd, kept ALIVE across cells
 var _fixture_energy := 3.0
 var _player: Node3D = null
+## WHO TO TELL WHEN GEOMETRY ARRIVES AND LEAVES. `walk.gd`, which owns the door,
+## inhabitant and interactable nodes and holds the deck's sidecars. Without it a
+## streamed cell is a dead shell: its pressure doors are solid, nobody in it
+## knows a player exists, and nothing in it can be used -- which is exactly what
+## a streamed build was until this hook existed. `--no-cell-wiring` leaves it
+## null, and that is the control.
+var _wiring: Node = null
+var wired := 0
+var unwired := 0
 
 var _resident := {}                    ## id -> {node, col, tris, lights}
 var _inflight := {}                    ## id -> {paths:[..], got:{path:res}}
@@ -267,48 +276,82 @@ func bake(args: Dictionary) -> int:
 	print("bake: split in %d ms -- %d visual cell(s), %d collision cell(s)"
 		% [Time.get_ticks_msec() - t0, vis_bins.size(), col_bins.size()])
 
-	var idx: Array = vis_bins.keys()
+	# EVERY BIN EITHER HALF PRODUCED, not just the visual ones.
+	#
+	# THIS IS WHERE `red_2_4` LOST 138 TRIANGLES. The old loop walked
+	# `vis_bins.keys()` and `continue`d past any bin with no collision, so those
+	# triangles were neither written nor counted -- and the conservation
+	# assertion at the bottom then fired with a total and no location, which is
+	# exactly right and exactly unhelpful. A cell with render geometry and no
+	# floor is a TRUE statement about that arc: the deck has something to look at
+	# there and nothing to stand on, which the source says too. It is written,
+	# with `collision` empty, and `stream.gd`'s loader asks for one half. A bin
+	# with collision and no visual is written the same way, and used to vanish
+	# from the manifest silently -- a floor a player would have fallen through
+	# because nothing ever made it resident.
+	var idx: Array = []
+	for i in vis_bins:
+		idx.append(i)
+	for i in col_bins:
+		if not vis_bins.has(i):
+			idx.append(i)
 	idx.sort()
 	var rows: Array = []
+	var half_only: Array = []
 	for i in idx:
-		if not col_bins.has(i):
-			print("bake: cell %d has visual geometry and NO COLLISION -- "
-				% i + "skipped; a cell with no floor is not a cell")
-			continue
+		var have_v: bool = vis_bins.has(i)
+		var have_c: bool = col_bins.has(i)
 		var vpath := out_dir.path_join("%s_c%02d.scn" % [stem, i])
 		var cpath := out_dir.path_join("%s_c%02d_col.scn" % [stem, i])
-		var vinfo := _write_cell(vis_bins[i], "cell_%02d" % i, vpath)
-		var cinfo := _write_cell(col_bins[i], "cell_%02d_col" % i, cpath)
-		if vinfo.is_empty() or cinfo.is_empty():
+		var vinfo: Dictionary = ({} if not have_v
+			else _write_cell(vis_bins[i], "cell_%02d" % i, vpath))
+		var cinfo: Dictionary = ({} if not have_c
+			else _write_cell(col_bins[i], "cell_%02d_col" % i, cpath))
+		if (have_v and vinfo.is_empty()) or (have_c and cinfo.is_empty()):
 			push_error("bake: could not write cell %d" % i)
 			return 2
-		var aabb: AABB = vinfo["aabb"].merge(cinfo["aabb"])
+		if not (have_v and have_c):
+			half_only.append("cell %02d %6.2f-%6.2f deg: %s (%d tri)"
+				% [i, i * cell_deg, (i + 1) * cell_deg,
+					("NO COLLISION -- nothing to stand on there"
+						if have_v else "NO RENDER MESH -- floor with no room"),
+					int((vinfo if have_v else cinfo).get("tris", 0))])
+		var aabb: AABB = (vinfo["aabb"] if have_v else cinfo["aabb"])
+		if have_v and have_c:
+			aabb = vinfo["aabb"].merge(cinfo["aabb"])
 		rows.append({
 			"id": "%s_c%02d" % [stem, i],
 			"index": i,
-			"mesh": vpath.get_file(),
-			"collision": cpath.get_file(),
+			"mesh": (vpath.get_file() if have_v else ""),
+			"collision": (cpath.get_file() if have_c else ""),
 			# THE ARC IS THE DISTANCE METRIC. A 20 deg cell's world AABB is a
 			# 145 x 145 m box and a distance to it is nearly meaningless; the
 			# distance a player actually has to walk is along the arc, and the
 			# cell knows its own arc exactly.
 			"arc": {"r_m": floor_r, "a0_deg": i * cell_deg,
 				"a1_deg": (i + 1) * cell_deg,
-				"z0": snappedf(cinfo["zmin"], 0.001),
-				"z1": snappedf(cinfo["zmax"], 0.001)},
+				# The z span comes from the COLLISION half where there is one --
+				# a cell is a place you walk, and its render mesh reaches up into
+				# ducting a body never gets to. With no collision half there is
+				# nothing to walk and the render span is all there is.
+				"z0": snappedf(float((cinfo if have_c else vinfo)["zmin"]), 0.001),
+				"z1": snappedf(float((cinfo if have_c else vinfo)["zmax"]), 0.001)},
 			"aabb": {"pos": [aabb.position.x, aabb.position.y, aabb.position.z],
 				"size": [aabb.size.x, aabb.size.y, aabb.size.z]},
-			"tris": vinfo["tris"], "col_tris": cinfo["tris"],
-			"groups": vinfo["groups"],
+			"tris": int(vinfo.get("tris", 0)),
+			"col_tris": int(cinfo.get("tris", 0)),
+			"groups": int(vinfo.get("groups", 0)),
 			# A spawn is a CLAIM -- see walk.gd. It is placed 0.2 m off the
 			# MEASURED corridor floor at the cell's arc centre, so the settle
 			# either confirms it or does not.
 			"spawn": _floor_point(corr, (i + 0.5) * cell_deg, 0.2),
 		})
 		print("  cell %02d  %6.2f-%6.2f deg  %7d tri  %5d col tri  %3d groups  "
-			% [i, i * cell_deg, (i + 1) * cell_deg, vinfo["tris"],
-				cinfo["tris"], vinfo["groups"]]
-			+ "%5.1f MB" % (_file_mb(vpath) + _file_mb(cpath)))
+			% [i, i * cell_deg, (i + 1) * cell_deg, int(vinfo.get("tris", 0)),
+				int(cinfo.get("tris", 0)), int(vinfo.get("groups", 0))]
+			+ "%5.1f MB%s" % [_file_mb(vpath) + _file_mb(cpath),
+				("" if have_v and have_c
+					else ("   NO COLLISION" if have_v else "   NO RENDER MESH"))])
 
 	var nominal := int(bud["resident_tris"] / bud["cell_tris"])
 	var man := {
@@ -363,25 +406,51 @@ func bake(args: Dictionary) -> int:
 		},
 		"cells": rows,
 	}
-	var mpath := out_dir.path_join("cells.json")
-	var f := FileAccess.open(mpath, FileAccess.WRITE)
-	if f == null:
-		push_error("bake: cannot write " + mpath)
-		return 2
-	f.store_string(JSON.stringify(man, "  "))
-	f.close()
+	# ONE MANIFEST PER CLUSTER, NOT ONE PER DIRECTORY. `tools/bake_station.py`
+	# bakes seventy decks into a single `--cells-out`, and every one of them used
+	# to write `cells.json` -- so after a three-minute whole-station bake the
+	# 940 cells on disk were described by the four cells of whichever deck ran
+	# last. The stem is unique per cluster and already prefixes every cell id, so
+	# `<stem>_cells.json` cannot be overwritten by a sibling deck. `cells.json`
+	# is still written for a single-cluster bake, which is what every gate and
+	# every command in `docs/streaming-4g.md` names.
+	var mpath := out_dir.path_join(stem + "_cells.json")
+	for p in [mpath, out_dir.path_join("cells.json")]:
+		var f := FileAccess.open(p, FileAccess.WRITE)
+		if f == null:
+			push_error("bake: cannot write " + p)
+			return 2
+		f.store_string(JSON.stringify(man, "  "))
+		f.close()
 	var tot := 0
+	var ctot := 0
 	for r in rows:
 		tot += int(r["tris"])
+		ctot += int(r["col_tris"])
 	print("bake: %d cells, %d triangles total (source had %d), %.1f MB, "
 		% [rows.size(), tot, _mesh_tris(vis), _dir_mb(out_dir)]
 		+ "%d ms -> %s" % [Time.get_ticks_msec() - t0, mpath])
+	if not half_only.is_empty():
+		# NAMED, NOT COUNTED. A conservation failure with a total and no location
+		# is a diagnosis pass nobody can start; these are the arcs where the two
+		# halves of the deck disagree about what exists.
+		print("bake: %d cell(s) have only one half:" % half_only.size())
+		for s in half_only:
+			print("        " + s)
 	# THE BAKE IS LOSSLESS OR IT IS A BUG. Triangles are assigned whole, so the
 	# cells must sum to the source exactly; a mismatch means a triangle was
 	# dropped and a dropped triangle is a hole in a floor.
-	if tot != _mesh_tris(vis):
-		push_error("bake: LOST %d triangles -- the cells do not sum to the "
-			% (_mesh_tris(vis) - tot) + "source and a lost triangle is a hole")
+	var src := _mesh_tris(vis)
+	var csrc := _mesh_tris(col)
+	if tot != src or ctot != csrc:
+		push_error("bake: LOST %d render and %d collision triangles -- the "
+			% [src - tot, csrc - ctot] + "cells do not sum to the source and a "
+			+ "lost triangle is a hole")
+		# WHERE, per cell, so the next reader does not have to reproduce the
+		# arithmetic to find out which arc is short.
+		for r in rows:
+			print("        cell %02d: %d render, %d collision"
+				% [int(r["index"]), int(r["tris"]), int(r["col_tris"])])
 		return 2
 	return 0
 
@@ -522,6 +591,16 @@ func _write_cell(groups: Dictionary, root_name: String, path: String) -> Diction
 ## each bucket covers, and take the z range of the buckets that cover nearly all
 ## of it. Measured rather than written down, for the reason
 ## `station/collision.py` ray-casts its shell profile instead of asserting it.
+##
+## COVERAGE, NOT MIN-TO-MAX, and getting that wrong put every spawn on `blue_0_0`
+## in mid-air. The first version measured a bucket's arc as `max(angle) -
+## min(angle)`, which is the SPREAD of the floor in it and not how much of the
+## ring it covers: this deck has six rooms at 0, 130, 180, 260, 300 and 320
+## degrees, so a z bucket holding nothing but room floors spreads across 320
+## degrees while covering about 24 of them. The corridor lost to the rooms, the
+## measured z came out 3.8 m off, and `_floor_point` then placed all eighteen
+## cell spawns where this deck has no floor at all. Counting occupied one-degree
+## bins tells a ring from six rooms; a spread cannot.
 func _corridor_z(col_root: Node) -> Dictionary:
 	var rmax := 0.0
 	var tri: Array = []
@@ -550,23 +629,20 @@ func _corridor_z(col_root: Node) -> Dictionary:
 		if e[0] < rmax - 0.1:
 			continue                              # not floor
 		var b := int(round(e[2] * 2.0))           # 0.5 m buckets
-		var s2 = span.get(b)
-		if s2 == null:
-			span[b] = [e[1], e[1]]
-		else:
-			s2[0] = minf(s2[0], e[1])
-			s2[1] = maxf(s2[1], e[1])
-	var best := 0.0
+		if not span.has(b):
+			span[b] = {}
+		span[b][int(floor(e[1]))] = true          # one-degree bins
+	var best := 0
 	for b in span:
-		best = maxf(best, span[b][1] - span[b][0])
+		best = maxi(best, span[b].size())
 	var zlo := INF
 	var zhi := -INF
 	for b in span:
-		if span[b][1] - span[b][0] >= best * 0.95:
+		if span[b].size() >= int(ceil(float(best) * 0.95)):
 			zlo = minf(zlo, b / 2.0)
 			zhi = maxf(zhi, b / 2.0)
 	return {"r_floor_m": rmax, "z0": zlo, "z1": zhi,
-		"z_mid": (zlo + zhi) * 0.5, "arc_deg": best}
+		"z_mid": (zlo + zhi) * 0.5, "arc_deg": float(best)}
 
 
 ## A point on the measured corridor floor. On a spun ring UP IS INWARD, so the
@@ -635,8 +711,15 @@ func configure(manifest_path: String, dress: Node, fixture_energy: float,
 	cells = []
 	for c in j["cells"]:
 		var d: Dictionary = c.duplicate(true)
-		d["mesh_path"] = dir.path_join(String(d["mesh"]))
-		d["collision_path"] = dir.path_join(String(d["collision"]))
+		# EITHER HALF MAY BE ABSENT, and the manifest says which. A cell with
+		# render geometry and no floor is a real thing on this station -- see
+		# `bake()` -- and dropping it was how 138 triangles of `red_2_4` went
+		# missing. An empty string here means "there is no such half", not "the
+		# path is the directory".
+		d["mesh_path"] = ("" if String(d.get("mesh", "")) == ""
+			else dir.path_join(String(d["mesh"])))
+		d["collision_path"] = ("" if String(d.get("collision", "")) == ""
+			else dir.path_join(String(d["collision"])))
 		cells.append(d)
 	var res: Dictionary = j.get("residency", {})
 	radius_m = float(res.get("radius_m", 0.0))
@@ -667,11 +750,31 @@ func set_player(body: Node3D) -> void:
 	_player = body
 
 
+## The node whose `wire_cell(id, visual, collision)` and `unwire_cell(id)` are
+## called as cells arrive and leave.
+func set_wiring(node: Node) -> void:
+	_wiring = node
+	# ANYTHING ALREADY RESIDENT GETS WIRED NOW. The start cell is primed
+	# synchronously, before the player exists and therefore before `walk.gd` can
+	# hand this over -- so without this the one cell a player is guaranteed to be
+	# standing in would be the one cell whose doors never worked.
+	for id in resident_ids():
+		var r: Dictionary = _resident[id]
+		if not bool(r.get("wired", false)):
+			r["wired"] = true
+			wired += 1
+			node.wire_cell(id, r["vis"], r["col"])
+
+
 func cell_by_index(i: int) -> Dictionary:
 	for c in cells:
 		if int(c["index"]) == i:
 			return c
 	return {}
+
+
+func cell_by_id(id: String) -> Dictionary:
+	return _by_id(id)
 
 
 ## Distance from a world point to a cell, ALONG THE CORRIDOR. Zero inside.
@@ -869,7 +972,10 @@ func _request(c: Dictionary) -> void:
 	if _resident.has(id) or _inflight.has(id):
 		double_loads += 1
 		return
-	var paths := [String(c["mesh_path"]), String(c["collision_path"])]
+	var paths := []
+	for key in ["mesh_path", "collision_path"]:
+		if String(c.get(key, "")) != "":
+			paths.append(String(c[key]))
 	for p in paths:
 		if not FileAccess.file_exists(p):
 			push_error("stream: cell %s has no %s" % [id, p])
@@ -917,17 +1023,28 @@ func _activate(id: String, p: Vector3, primed: bool = false) -> void:
 		return
 	_inflight.erase(id)
 	var c := _by_id(id)
-	var vis: Node = (rec["got"][String(c["mesh_path"])] as PackedScene).instantiate()
-	var col: Node = (rec["got"][String(c["collision_path"])] as PackedScene).instantiate()
-	vis.name = "vis_" + id
-	col.name = "col_" + id
-	add_child(vis)
-	add_child(col)
+	var vis: Node = null
+	var col: Node = null
+	if String(c.get("mesh_path", "")) != "":
+		vis = (rec["got"][String(c["mesh_path"])] as PackedScene).instantiate()
+		vis.name = "vis_" + id
+		add_child(vis)
+	if String(c.get("collision_path", "")) != "":
+		col = (rec["got"][String(c["collision_path"])] as PackedScene).instantiate()
+		col.name = "col_" + id
+		add_child(col)
+	if vis == null:
+		# A cell with a floor and nothing to look at. Legal, and the visual root
+		# has to exist anyway because the fittings hang off it.
+		vis = Node3D.new()
+		vis.name = "vis_" + id
+		add_child(vis)
 	var ncol := 0
-	for m in _meshes(col):
-		m.create_trimesh_collision()
-		m.visible = false
-		ncol += 1
+	if col != null:
+		for m in _meshes(col):
+			m.create_trimesh_collision()
+			m.visible = false
+			ncol += 1
 
 	var lights := Node3D.new()
 	lights.name = "fit_" + id
@@ -943,7 +1060,15 @@ func _activate(id: String, p: Vector3, primed: bool = false) -> void:
 		_dress.light(vis, lights, _fixture_energy, p)
 
 	_resident[id] = {"vis": vis, "col": col, "tris": int(c["tris"]),
-		"lights": lights}
+		"lights": lights, "wired": false}
+	# WIRE IT. Everything `walk.gd::_load_level` does to a monolithic scene after
+	# it has colliders and materials -- doors, inhabitants, crowd, interactables
+	# -- happens here for a cell, in the same order, because a streamed cell that
+	# is not wired is a shell: solid doors, nobody home, nothing to use.
+	if _wiring != null:
+		_resident[id]["wired"] = true
+		wired += 1
+		_wiring.wire_cell(id, vis, col)
 	loads += 1
 	# INF FOR THE PRIMED CELL, NOT ZERO. There is no body yet when the load
 	# screen runs, so its lead is not "the body was standing on it as it
@@ -962,11 +1087,22 @@ func _activate(id: String, p: Vector3, primed: bool = false) -> void:
 
 func _free_cell(id: String) -> void:
 	var r: Dictionary = _resident[id]
+	# UNWIRE BEFORE FREEING, NOT AFTER. `door.gd`, `npc.gd` and `interact.gd`
+	# hold references INTO this subtree -- leaves, body parts, prompt targets --
+	# and they own nodes of their own that stand for them: an inhabitant's
+	# capsule and an interactable's proxy box are children of THOSE nodes, not of
+	# the cell, so freeing the cell alone leaves an invisible person to bump into
+	# and a prompt for a console that is not there.
+	if _wiring != null and bool(r.get("wired", false)):
+		unwired += 1
+		_wiring.unwire_cell(id)
 	# The lights are children of the visual root and the colliders are children
 	# of the collision meshes, so both go with their cell. Nothing here keeps a
 	# second list that could drift from what is actually in the tree.
-	r["vis"].queue_free()
-	r["col"].queue_free()
+	if r["vis"] != null:
+		r["vis"].queue_free()
+	if r["col"] != null:
+		r["col"].queue_free()
 	_resident.erase(id)
 	frees += 1
 	print("stream: -%s  resident %d (%d tri)"
@@ -977,7 +1113,7 @@ func report() -> String:
 	return ("cells=%d resident_max=%d resident_tris_max=%d budget_tris=%d "
 		+ "radius_m=%.1f free_m=%.1f loads=%d frees=%d double_loads=%d "
 		+ "abandoned=%d over_budget_frames=%d max_activate_ms=%.1f "
-		+ "lag_frames=%d") % [
+		+ "lag_frames=%d wired=%d unwired=%d") % [
 		cells.size(), peak_resident, peak_tris, resident_tris_budget,
 		radius_m, free_m, loads, frees, double_loads, abandoned,
-		over_budget_frames, max_activate_ms, lag_frames]
+		over_budget_frames, max_activate_ms, lag_frames, wired, unwired]

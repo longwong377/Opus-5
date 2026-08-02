@@ -129,6 +129,7 @@ func _ready() -> void:
 		cells_path = args["cells"]
 	_use_group = String(args.get("use-group", ""))
 
+	_load_sidecars()
 	if cells_path != "":
 		if not _load_streamed(args):
 			get_tree().quit(2)
@@ -140,6 +141,16 @@ func _ready() -> void:
 	_spawn_player()
 	if _stream != null:
 		_stream.set_player(_player)
+		# THE WIRING IS HANDED OVER AFTER THE PLAYER EXISTS, and it back-fills
+		# whatever is already resident -- the start cell is primed before there
+		# is a body, so without the back-fill the one cell a player is certain to
+		# be standing in would be the one cell whose doors never worked.
+		if not args.has("no-cell-wiring"):
+			_stream.set_wiring(self)
+		else:
+			print("walk: streamed cells are NOT WIRED (control) -- this is the "
+				+ "build before this session: solid doors, nobody home, "
+				+ "nothing to use")
 	if _doors != null:
 		_doors.watch(_player)
 	if _people != null:
@@ -336,7 +347,25 @@ func _load_streamed(args: Dictionary) -> bool:
 	if not _stream.configure(cells_path, _dress, energy, args.has("no-stream")):
 		push_error("walk: " + ", ".join(_stream.problems))
 		return false
+	# WHERE THE CORRIDOR IS, AND HOW FAR AHEAD TO AIM -- both off the manifest,
+	# both measured. The corridor radius and z come from `stream.bake`'s scan of
+	# the collision shell. The steering lookahead is `sqrt(r * w)`, which is the
+	# length whose chord sags exactly w/8 off the arc (sag = L^2/8r): aim further
+	# and a body walking a curved corridor walks the chord and grinds the inner
+	# wall; aim shorter and the heading is noise.
+	var corr: Dictionary = _stream.plan.get("corridor", {})
+	_s_r = float(corr.get("r_floor_m", 0.0))
+	_s_z = float(corr.get("z_mid", 0.0))
+	_s_w = float(corr.get("width_m", 2.5))
+	_s_lookahead = sqrt(maxf(_s_r * _s_w, 1.0))
+	# THE VISIT IS PLANNED BEFORE THE START CELL IS CHOSEN, because it is what
+	# chooses it: the body has to start far enough away that the cell it walks
+	# into was STREAMED IN AFTER LAUNCH rather than primed under its feet.
+	if args.has("visit") and not _plan_visit(args):
+		return false
 	_start_cell = int(args.get("start-cell", "-1"))
+	if _start_cell < 0 and _visiting:
+		_start_cell = _stream.cell_at(_corridor_point(_v_away_deg))
 	if _start_cell < 0:
 		_start_cell = int(_stream.cells[0]["index"])
 	var c: Dictionary = _stream.cell_by_index(_start_cell)
@@ -346,17 +375,6 @@ func _load_streamed(args: Dictionary) -> bool:
 		return false
 	if not args.has("spawn"):
 		spawn = Vector3(c["spawn"][0], c["spawn"][1], c["spawn"][2])
-	# WHERE THE CORRIDOR IS, AND HOW FAR AHEAD TO AIM -- both off the manifest,
-	# both measured. The corridor radius and z come from `stream.bake`'s scan of
-	# the collision shell. The steering lookahead is `sqrt(r * w)`, which is the
-	# length whose chord sags exactly w/8 off the arc (sag = L^2/8r): aim further
-	# and a body walking a curved corridor walks the chord and grinds the inner
-	# wall; aim shorter and the heading is noise.
-	var corr: Dictionary = _stream.plan.get("corridor", {})
-	_s_r = float(corr.get("r_floor_m", 0.0))
-	_s_z = float(corr.get("z_mid", spawn.z))
-	_s_w = float(corr.get("width_m", 2.5))
-	_s_lookahead = sqrt(maxf(_s_r * _s_w, 1.0))
 	_prime_ms = _stream.prime(_start_cell)
 	print("walk: STREAMED level -- start cell %d, primed in %d ms, spawn "
 		% [_start_cell, _prime_ms]
@@ -366,20 +384,71 @@ func _load_streamed(args: Dictionary) -> bool:
 	return true
 
 
+## -- THE SIDECARS ----------------------------------------------------------
+##
+## READ ONCE, HANDED TO EVERY CELL. A sidecar is per DECK -- one cast list, one
+## interactables list, one crowd list for a whole ring deck -- while a streamed
+## cell is 20 degrees of that deck's arc. Splitting the files per cell would be a
+## second description of where everything is, and the geometry already knows: a
+## row binds in the cell whose meshes carry its name and nowhere else. So there
+## is nothing to split. See `npc.gd::collect` and `interact.gd::collect`.
+var _actors: Array = []
+var _ix_rows: Array = []
+var _crowd_rows: Array = []
+var _crowd_libs: Array = []
+
+
+## A banner that is TRUE ONCE. Every `--no-*` control is now consulted per cell
+## rather than per level, so an unguarded print becomes one line per streamed
+## cell and the log stops being readable at exactly the moment it matters.
+var _said := {}
+
+
+func _say_once(msg: String) -> void:
+	if _said.has(msg):
+		return
+	_said[msg] = true
+	print(msg)
+
+
+func _read_rows(path: String) -> Array:
+	if path == "" or not FileAccess.file_exists(path):
+		return []
+	var rows = JSON.parse_string(FileAccess.get_file_as_string(path))
+	return (rows if typeof(rows) == TYPE_ARRAY else [])
+
+
+func _load_sidecars() -> void:
+	_actors = _read_rows(actors_path)
+	_ix_rows = _read_rows(interact_path)
+	_crowd_rows = _read_rows(crowd_path)
+	if interact_path != "" and _ix_rows.is_empty():
+		push_error("walk: %s is not a JSON array" % interact_path)
+
+
 ## Give the deck its doors. `--no-doors` leaves them out, which is the NEGATIVE
 ## CONTROL for the walk test: with the doors inert the closed panels stay solid
 ## and a body must NOT be able to reach the room. A test that only ever runs the
 ## working configuration cannot tell a door that opens from a hole in a wall.
 func _wire_doors(scene: Node, col: Node) -> void:
-	if _args().has("no-doors"):
-		print("walk: doors DISABLED (negative control)")
+	if not _make_doors():
 		return
+	var n: int = _doors.collect(scene, col, door_travel_m)
+	print("walk: %d doors wired" % n)
+
+
+func _make_doors() -> bool:
+	if _doors != null:
+		return true
+	if _args().has("no-doors"):
+		_say_once("walk: doors DISABLED (negative control) -- the closed panels "
+			+ "stay solid and a body must NOT get into the room")
+		return false
 	_doors = Node3D.new()
 	_doors.name = "Doors"
 	_doors.set_script(load("res://scripts/door.gd"))
 	add_child(_doors)
-	var n: int = _doors.collect(scene, col, door_travel_m)
-	print("walk: %d doors wired" % n)
+	return true
 
 
 ## Give the deck its inhabitants. `--no-people` leaves them inert, which is the
@@ -387,40 +456,55 @@ func _wire_doors(scene: Node, col: Node) -> void:
 ## test that only runs the working configuration cannot tell a person who turns
 ## from a statue that happened to be facing the right way.
 func _wire_people(scene: Node) -> void:
-	if actors_path == "" or not FileAccess.file_exists(actors_path):
+	if not _make_people():
 		return
+	var n: int = _people.collect(scene, _actors)
+	print("walk: %d people wired of %d in the cast list" % [n, _actors.size()])
+	_wire_crowd()
+	_wire_dialogue(_actors)
+
+
+func _make_people() -> bool:
+	if _people != null:
+		return true
+	if _actors.is_empty():
+		return false
 	if _args().has("no-people"):
-		print("walk: people DISABLED (negative control)")
-		return
-	var f := FileAccess.open(actors_path, FileAccess.READ)
-	var actors = JSON.parse_string(f.get_as_text())
-	if typeof(actors) != TYPE_ARRAY:
-		return
+		_say_once("walk: people DISABLED (negative control) -- nobody can "
+			+ "notice, so the turn must read ZERO")
+		return false
 	_people = Node3D.new()
 	_people.name = "People"
 	_people.set_script(load("res://scripts/npc.gd"))
 	add_child(_people)
-	var n: int = _people.collect(scene, actors)
-	print("walk: %d people wired of %d in the cast list" % [n, actors.size()])
-	_wire_crowd()
-	_wire_dialogue(actors)
+	return true
 
 
 ## The corridor's walkers. They are not in the deck mesh at all -- their bodies
 ## come from `crowd_lod<N>.glb`, 112 shared meshes for the whole station, and
 ## this list says where each one is and which phase they are on.
 func _wire_crowd() -> void:
-	if crowd_path == "" or (crowd_glb == "" and crowd_glbs == ""):
+	if not _load_crowd_libs():
 		return
+	var n2: int = _people.build_crowd_multi(_crowd_libs, _crowd_rows)
+	print("walk: %d walkers instanced across %d LOD libraries"
+		% [n2, _crowd_libs.size()])
+
+
+## Load the shared body libraries and tell `npc.gd` the ladder. Split out of
+## `_wire_crowd` because a STREAMED build sizes the MultiMeshes from the whole
+## deck's placement list up front and then admits each cell's walkers as it
+## arrives -- `MultiMesh.instance_count` cannot grow.
+func _load_crowd_libs() -> bool:
+	if not _crowd_libs.is_empty():
+		return true
+	if _people == null or _crowd_rows.is_empty():
+		return false
+	if crowd_glb == "" and crowd_glbs == "":
+		return false
 	if _args().has("no-crowd"):
-		print("walk: crowd DISABLED (negative control)")
-		return
-	if not FileAccess.file_exists(crowd_path):
-		return
-	var f2 := FileAccess.open(crowd_path, FileAccess.READ)
-	var rows = JSON.parse_string(f2.get_as_text())
-	if typeof(rows) != TYPE_ARRAY or rows.is_empty():
-		return
+		_say_once("walk: crowd DISABLED (negative control)")
+		return false
 	# One library per rung of the ladder. `crowd_glbs` is the new form and
 	# `crowd_glb` the single-rung one it replaces; both are accepted so a
 	# command written before the ladder existed still runs.
@@ -428,20 +512,17 @@ func _wire_crowd() -> void:
 		else Array(crowd_glbs.split(",")))
 	if paths.is_empty() and crowd_glb != "":
 		paths = [crowd_glb]
-	var libs: Array = []
 	for pth in paths:
 		if not FileAccess.file_exists(String(pth)):
 			continue
 		var l := _load_glb(String(pth))
 		if l != null:
-			libs.append(l)
-	if libs.is_empty():
+			_crowd_libs.append(l)
+	if _crowd_libs.is_empty():
 		push_error("walk: could not load any crowd library")
-		return
+		return false
 	_people.set_crowd_ladder(crowd_ladder)
-	var n2: int = _people.build_crowd_multi(libs, rows)
-	print("walk: %d walkers instanced across %d LOD libraries"
-		% [n2, libs.size()])
+	return true
 
 
 ## Give the deck the things a player can USE. `--no-interact` leaves them out,
@@ -454,24 +535,129 @@ func _wire_crowd() -> void:
 ## this reads it. A copy of those tables in GDScript would be a second
 ## description of one decision, which is hard rule 4's failure mode.
 func _wire_interact(scene: Node) -> void:
-	if interact_path == "" or not FileAccess.file_exists(interact_path):
+	if not _make_interact():
 		return
+	var n: int = _interact.collect(scene, _ix_rows)
+	if n == 0:
+		push_error("walk: the interact sidecar has %d rows and NONE of them "
+			% _ix_rows.size() + "matched a mesh in this build")
+
+
+func _make_interact() -> bool:
+	if _interact != null:
+		return true
+	if _ix_rows.is_empty():
+		return false
 	if _args().has("no-interact"):
-		print("walk: interactables DISABLED (control) -- nothing to use")
-		return
-	var f := FileAccess.open(interact_path, FileAccess.READ)
-	var rows = JSON.parse_string(f.get_as_text())
-	if typeof(rows) != TYPE_ARRAY:
-		push_error("walk: %s is not a JSON array" % interact_path)
-		return
+		_say_once("walk: interactables DISABLED (control) -- nothing to use")
+		return false
 	_interact = Node3D.new()
 	_interact.name = "Interactables"
 	_interact.set_script(load("res://scripts/interact.gd"))
 	add_child(_interact)
-	var n: int = _interact.collect(scene, rows)
-	if n == 0:
-		push_error("walk: the interact sidecar has %d rows and NONE of them "
-			% rows.size() + "matched a mesh in this build")
+	return true
+
+
+# ===========================================================================
+#  A CELL ARRIVES, AND EVERYTHING A MONOLITHIC LOAD WIRES IS WIRED TO IT
+# ===========================================================================
+#
+# WHAT THIS EXISTS TO END. `scripts/stream.gd` made the station bigger than one
+# file and `walk.gd` went on wiring doors, inhabitants and interactables exactly
+# once, over a scene the streamed path never loads. So a streamed build was a
+# shell you could walk through: `docs/streaming-4g.md` said so in its own "what
+# is NOT done" -- *"the collision proxy carries the door panels, so in a streamed
+# build today the pressure doors are solid"*. Every pressure door on the station
+# was a wall, nobody in any room knew a player existed, and nothing could be
+# used.
+#
+# THE HARD PART IS NOT ARRIVING, IT IS LEAVING. Each of the three subsystems owns
+# nodes that stand for cell geometry and are NOT children of the cell -- an
+# inhabitant's collision capsule, an interactable's proxy box -- and each holds
+# references INTO the cell. Freeing a cell without telling them leaves an
+# invisible person to bump into, a prompt for a console that has been unloaded,
+# and a door that keeps moving leaves that no longer exist. So `stream.gd` calls
+# `unwire_cell` BEFORE `queue_free`, and each subsystem gives back exactly what
+# that cell brought.
+var _wired_cells := {}
+var _double_wires := 0
+
+
+func wire_cell(id: String, vis: Node, col: Node) -> void:
+	if _wired_cells.has(id):
+		_double_wires += 1
+		push_error("walk: cell %s wired twice" % id)
+		return
+	_wired_cells[id] = true
+	var nd := 0
+	var np := 0
+	var ni := 0
+	var nc := 0
+	if _make_doors():
+		nd = _doors.collect(vis, col, door_travel_m, id)
+	if _make_people():
+		np = _people.collect(vis, _actors, id)
+		if _load_crowd_libs():
+			# Size the buckets from the WHOLE deck once, then admit this cell's
+			# walkers. Which walkers are this cell's is decided by the same arc
+			# the bake cut on -- `stream.cell_at` -- because a walker is a
+			# placement and has no mesh in the cell to be found by.
+			if not _crowd_ready:
+				_crowd_ready = true
+				_people.prepare_crowd(_crowd_libs, _crowd_rows)
+			nc = _people.add_crowd(_rows_in_cell(id), id)
+	if _make_interact():
+		ni = _interact.collect(vis, _ix_rows, id)
+	if _interact != null and _player != null:
+		_interact.watch(_player)
+	print("walk: +wired %s -- doors now %d, %d person(s), %d walker(s), "
+		% [id, nd, np, nc] + "%d interactable(s)" % ni)
+
+
+func unwire_cell(id: String) -> void:
+	if not _wired_cells.has(id):
+		return
+	_wired_cells.erase(id)
+	if _args().has("no-unwire"):
+		# THE CONTROL FOR THE OTHER HALF. Everything above still runs on arrival;
+		# nothing is given back. The cell's meshes are freed underneath the
+		# subsystems that hold them, so the second visit double-wires and the
+		# prompt goes on naming a console that has been unloaded -- which is
+		# what `stale_prompt_frames` counts.
+		return
+	var nd := 0
+	var np := 0
+	var ni := 0
+	if _doors != null:
+		nd = _doors.release(id)
+	if _people != null:
+		np = _people.release(id)
+	if _interact != null:
+		ni = _interact.release(id)
+	print("walk: -unwired %s -- %d door part(s), %d person(s), "
+		% [id, nd, np] + "%d interactable(s)" % ni)
+
+
+var _crowd_ready := false
+
+
+## Which crowd placements belong to a cell. A walker has no mesh in the cell --
+## their body comes from `crowd_lod*.glb` -- so unlike an actor they cannot be
+## found by name, and position is the only thing that can say. It is the SAME
+## test the bake binned triangles by, asked of `stream.gd` rather than repeated.
+func _rows_in_cell(id: String) -> Array:
+	var out: Array = []
+	if _stream == null:
+		return _crowd_rows
+	var c: Dictionary = _stream.cell_by_id(id)
+	if c.is_empty():
+		return out
+	for r in _crowd_rows:
+		var p := Vector3(float(r.get("x", 0.0)), float(r.get("y", 0.0)),
+			float(r.get("z", 0.0)))
+		if _stream.distance_to(c, p) <= 0.0:
+			out.append(r)
+	return out
 
 
 ## Give the player an INTERFACE. See `scripts/hud.gd`.
@@ -655,8 +841,210 @@ func _run_stream_test(args: Dictionary) -> void:
 	_t_traverse = int(args.get("traverse", "2400"))
 	_s_dir = (-1.0 if String(args.get("dir", "+1")).begins_with("-") else 1.0)
 	_s_turnaround = int(args.get("turnaround", "0"))
+	_trace = int(args.get("trace", "0"))
+	if _visiting:
+		_build_plan()
+		# The traverse cap is a backstop for the whole itinerary, not a leg
+		# budget -- the legs carry their own and report what they could not
+		# reach.
+		var total := 0
+		for leg in _plan:
+			total += int(leg["budget"])
+		_t_traverse = int(args.get("traverse", str(total)))
 	_streaming = true
 	set_physics_process(true)
+
+
+# ===========================================================================
+#  THE VISIT GATE -- a streamed cell is a PLACE, not a shell
+# ===========================================================================
+#
+## `--visit` walks a body into a cell that was loaded after launch, THROUGH a
+## pressure door in it, up to a declared interactable in it, uses that, and is
+## noticed by the people in it. Then it walks far enough away that the cell is
+## freed, comes back, and does the whole thing again.
+##
+## WHY THE SECOND VISIT IS HALF THE TEST. Wiring on arrival is the easy half; a
+## build that wires and never unwires passes every first-visit assertion and
+## leaves an invisible person to bump into, a prompt for an unloaded console and
+## a door that double-wires the moment its cell returns. `--no-unwire` is the
+## control for exactly that and it fires on `double_wires` and
+## `stale_prompt_frames`.
+##
+## IT PICKS ITS OWN TARGET, from the interactables sidecar it was given: the
+## first pressable interactable with a response behind it. The door is its
+## PLACE -- `doorpanel_<place>` is the generator's own naming and `door.gd` reads
+## the same key -- so nothing here holds a table of what is where.
+##
+## AND EVERY NUMBER IS METRES ON THE FLOOR. `floor_m`, not path length: the
+## `--no-stream` control walks 11,712 m by falling.
+func _plan_visit(args: Dictionary) -> bool:
+	if _ix_rows.is_empty():
+		push_error("walk: --visit needs --interact=<sidecar>")
+		return false
+	var want := String(args.get("use-group", ""))
+	var row := {}
+	for r in _ix_rows:
+		if want != "":
+			if String(r.get("group", "")) == want:
+				row = r
+				break
+			continue
+		if bool(r.get("pressable", false)) and bool(r.get("responds", false)) \
+				and String(r.get("place", "")) != "":
+			row = r
+			break
+	if row.is_empty():
+		push_error("walk: no pressable interactable with a response in %s"
+			% interact_path)
+		return false
+	_v_group = String(row["group"])
+	_use_group = _v_group
+	_v_door = String(args.get("door-key", String(row.get("place", ""))))
+	var c3 = row.get("centre")
+	if typeof(c3) != TYPE_ARRAY or c3.size() != 3:
+		push_error("walk: %s has no centre in the sidecar" % _v_group)
+		return false
+	_v_at = Vector3(float(c3[0]), float(c3[1]), float(c3[2]))
+	_v_deg = _deg_of(_v_at)
+
+	# WHERE THE CELL IS, and how far away is far enough to make it go away.
+	# `free_radius_m` is the streamer's own deadband, so the away angle is
+	# derived from the thing that decides the freeing rather than guessed: one
+	# free radius past the cell's far edge, plus half a cell of margin.
+	var cell: int = _stream.cell_at(_v_at)
+	if cell < 0:
+		cell = _nearest_cell(_v_at)
+	_v_cell = int(args.get("visit-cell", str(cell)))
+	var cd: Dictionary = _stream.cell_by_index(_v_cell)
+	if cd.is_empty() or not cd.has("arc"):
+		push_error("walk: cell %d is not an arc cell" % _v_cell)
+		return false
+	_v_id = String(cd["id"])
+	var arc: Dictionary = cd["arc"]
+	var r: float = float(arc["r_m"])
+	var margin := rad_to_deg(float(_stream.free_m) / maxf(r, 1.0)) \
+		+ 0.5 * float(_stream.plan.get("cell_deg", 20.0))
+	# Away on the side the body can actually reach: the corridor is 205 deg of a
+	# ring, not a closed loop, so walking off its end is not walking away.
+	_v_away_deg = float(arc["a1_deg"]) + margin
+	if _stream.cell_at(_corridor_point(_v_away_deg)) < 0:
+		_v_away_deg = float(arc["a0_deg"]) - margin
+	if _stream.cell_at(_corridor_point(_v_away_deg)) < 0:
+		push_error("walk: no corridor %0.1f deg either side of cell %d -- "
+			% [margin, _v_cell] + "this bake is too short to free it")
+		return false
+	_visiting = true
+	print("walk: VISIT cell %d (%s), door '%s', use '%s' at %.2f deg; "
+		% [_v_cell, _v_id, _v_door, _v_group, _v_deg]
+		+ "away is %.2f deg (%.1f m of arc, free radius %.1f m)"
+		% [_v_away_deg, absf(deg_to_rad(_v_away_deg - _v_deg)) * r,
+			float(_stream.free_m)])
+	return true
+
+
+## A point on the corridor floor at a given ring angle -- the same floor the
+## cell spawns are placed on, so it is somewhere a body can stand.
+func _corridor_point(deg: float) -> Vector3:
+	var a := deg_to_rad(deg)
+	var r: float = maxf(_s_r - 0.2, 1.0)
+	return Vector3(r * cos(a), r * sin(a), _s_z)
+
+
+func _deg_of(p: Vector3) -> float:
+	var a := rad_to_deg(atan2(p.y, p.x))
+	return (a + 360.0 if a < 0.0 else a)
+
+
+func _nearest_cell(p: Vector3) -> int:
+	var best := -1
+	var bd := INF
+	for c in _stream.cells:
+		var d: float = _stream.distance_to(c, p)
+		if d < bd:
+			bd = d
+			best = int(c["index"])
+	return best
+
+
+## The legs, built once the target is known. Two visits with a free in between.
+##
+## THE DOORWAY IS ITS OWN WAYPOINT, IN BOTH DIRECTIONS, and the first version of
+## this plan left it out. There is no pathfinder here -- a leg is a straight
+## steer -- so a body that walks out of a room aimed at a point in the corridor
+## approaches the aperture DIAGONALLY and catches the jamb: measured, it wedged
+## 0.4 m off the door's centreline with `velocity = 0` and stayed there for
+## 20,000 frames. Lining up on the door's own centre first is what a person does
+## and it costs one waypoint. It is also why the door centre is read from
+## `door.gd` rather than from the sidecar: only the engine knows where the leaves
+## actually are, and only once that cell is resident.
+func _build_plan() -> void:
+	_plan = [
+		{"kind": "arc", "deg": _v_deg, "budget": 3000, "what": "walk to the door"},
+		{"kind": "at", "to": "door_out", "near": 0.7, "budget": 900,
+			"what": "stand at the door"},
+		{"kind": "at", "to": "door_mid", "near": 1.0, "budget": 900,
+			"what": "line up on the doorway"},
+		{"kind": "at", "to": "use", "near": 1.2, "budget": 900, "use": true,
+			"record": 1, "what": "through the door and use it"},
+		{"kind": "at", "to": "door_mid", "near": 1.0, "budget": 900,
+			"what": "line up on the doorway from inside"},
+		# ALL THE WAY OUT. At `near = 1.6` this leg finished with the body still
+		# standing IN the aperture, and the arc leg after it then walked
+		# tangentially straight into the jamb: velocity 0 for 14,000 frames and
+		# the cell never freed. A doorway is somewhere you pass through, not
+		# somewhere you turn round in.
+		{"kind": "at", "to": "door_out", "near": 0.7, "budget": 900,
+			"what": "back out into the corridor"},
+		{"kind": "arc", "deg": _v_away_deg, "budget": 3000, "until": "freed",
+			"what": "walk away until the cell is freed"},
+		{"kind": "arc", "deg": _v_deg, "budget": 3000, "what": "walk back"},
+		{"kind": "at", "to": "door_out", "near": 0.7, "budget": 900,
+			"what": "stand at the door again"},
+		{"kind": "at", "to": "door_mid", "near": 1.0, "budget": 900,
+			"what": "line up on the doorway again"},
+		{"kind": "at", "to": "use", "near": 1.2, "budget": 900, "use": true,
+			"record": 2, "what": "through the door and use it again"},
+	]
+
+
+## Where a leg is aiming, resolved every frame because the door's position is
+## only knowable once its cell is resident -- which is the point of the test.
+func _leg_target(leg: Dictionary) -> Vector3:
+	var to := String(leg.get("to", ""))
+	if to == "use":
+		return _v_at
+	var c := Vector3.ZERO
+	if _doors != null and _doors.has(_v_door):
+		c = _doors.centre_of(_v_door)
+	if to == "door_mid":
+		# The aperture itself. With no door wired there is nothing to line up on
+		# and the corridor point is the honest fallback -- the run then fails on
+		# the door claim, which is the truth.
+		return (c if c != Vector3.ZERO else _corridor_point(_v_deg))
+	if c == Vector3.ZERO:
+		return _corridor_point(_v_deg)
+	return _corridor_point(_deg_of(c))
+
+
+var _visiting := false
+var _plan: Array = []
+var _leg := 0
+var _leg_f := 0
+var _v_cell := -1
+var _v_id := ""
+var _v_door := ""
+var _v_group := ""
+var _v_at := Vector3.ZERO
+var _v_deg := 0.0
+var _v_away_deg := 0.0
+var _v_freed := false
+var _v_stalls: Array = []
+## Per visit, filled at the end of a `record` leg: door openness, who noticed,
+## how far off they were facing, what the prompt said, what was used and how far
+## it moved.
+var _v_res: Array = [{}, {}]
+var _v_deepest := 0.0
 
 
 func _stream_frame(delta: float) -> void:
@@ -689,11 +1077,20 @@ func _stream_frame(delta: float) -> void:
 			% [_frame, _stream.inflight_count()])
 
 	var p := _player.global_position
-	var a := atan2(p.y, p.x) + _s_dir * (_s_lookahead / maxf(_s_r, 1.0))
-	var tgt := Vector3(_s_r * cos(a), _s_r * sin(a), _s_z)
-	_player.step(delta, Vector2.ZERO, false, false, tgt - p)
+	var steer := Vector3.ZERO
+	if _visiting:
+		steer = _visit_steer(p)
+	else:
+		var a := atan2(p.y, p.x) + _s_dir * (_s_lookahead / maxf(_s_r, 1.0))
+		steer = Vector3(_s_r * cos(a), _s_r * sin(a), _s_z) - p
+	_face(steer)
+	_player.step(delta, Vector2.ZERO, false, false, steer)
 	_stream.update(_player.global_position)
 	_note_residency()
+	if _visiting:
+		_visit_sample()
+	if _trace > 0 and _frame % _trace == 0:
+		_trace_line("leg%d@%.2fdeg" % [_leg, _deg_of(_player.global_position)])
 
 	var q := _player.global_position
 	var d := q.distance_to(_traverse_prev)
@@ -718,9 +1115,226 @@ func _stream_frame(delta: float) -> void:
 				float(_stream.lead_m.get(id, INF)))
 			_s_min_lead_f = mini(_s_min_lead_f,
 				_frame - int(_s_ready_frame.get(id, _frame)))
-	if _frame >= _t_settle + _t_traverse:
+	if _frame >= _t_settle + _t_traverse or (_visiting and _leg >= _plan.size()):
 		_print_stream_verdict()
 		get_tree().quit(0)
+
+
+## POINT THE BODY THE WAY IT IS WALKING, and this is a defect the streaming gate
+## found in the harness rather than in the station.
+##
+## `player.gd` has its own `_physics_process`, which steps the body every frame
+## from the KEYBOARD -- no keys down, so a zero wish -- and that step rebuilds the
+## body's basis from `_yaw`. A headless test that drives `step()` itself is
+## therefore stepped TWICE a frame: once with its own steer, and once more with
+## `_yaw`, which the stream test never set. So the body walked wherever it was
+## steered and FACED WHEREVER YAW 0 POINTS, which on a ring deck is straight
+## along the station's spine.
+##
+## Nothing about the walk noticed, because a wish vector needs no facing. What
+## needs one is the EYE: `interact.gd` scans a 35-degree cone about the camera
+## axis, and the camera rides the body. Measured, the target console sat **160
+## degrees off the view axis** while the body walked directly at it from 3.6 m --
+## so it could never be prompted, and the failure read as "the interactable is
+## not wired" rather than "the player is looking the other way".
+##
+## `--walk-test` is unaffected and its numbers do not move: it calls
+## `set_yaw(_best_yaw)` after its heading sweep, which is why the monolithic use
+## gate has always been able to see what it walked up to.
+func _face(dir: Vector3) -> void:
+	if _player == null or dir.length_squared() < 1e-9:
+		return
+	var up: Vector3 = _player.body_up()
+	var fwd0: Vector3 = (Vector3(0, 0, 1) if gravity_mode == "drum" else Vector3.FORWARD)
+	fwd0 = (fwd0 - up * fwd0.dot(up))
+	if fwd0.length() < 1e-4:
+		return
+	fwd0 = fwd0.normalized()
+	var flat: Vector3 = dir - up * dir.dot(up)
+	if flat.length() < 1e-4:
+		return
+	flat = flat.normalized()
+	# `player.step` builds its forward as `fwd0.rotated(up, yaw)`, which is
+	# `fwd0*cos(yaw) + (up x fwd0)*sin(yaw)` -- so this inverts exactly that
+	# rather than assuming a convention.
+	_player.set_yaw(atan2(flat.dot(up.cross(fwd0)), flat.dot(fwd0)))
+
+
+# -- the visit legs ---------------------------------------------------------
+
+## Steer for the current leg, advance when it is done or out of budget.
+##
+## A LEG THAT RUNS OUT OF BUDGET IS RECORDED AND MOVED ON FROM, not retried. A
+## body that cannot reach a waypoint has told you something -- what, and how far
+## short, is in `stalls=` in the verdict -- and a gate that sat there until the
+## traverse cap would report "no cell boundary was crossed" and hide it.
+func _visit_steer(p: Vector3) -> Vector3:
+	var leg: Dictionary = _plan[_leg]
+	if _leg_f == 0:
+		_leg_started(leg)
+	_leg_f += 1
+	var dir := Vector3.ZERO
+	var done := false
+	var short := 0.0
+	if String(leg["kind"]) == "arc":
+		var cur := _deg_of(p)
+		var d := wrapf(float(leg["deg"]) - cur, -180.0, 180.0)
+		short = absf(deg_to_rad(d)) * _s_r
+		_s_dir = (1.0 if d >= 0.0 else -1.0)
+		var reach := short <= 2.5
+		if not reach:
+			var a := atan2(p.y, p.x) + _s_dir * (_s_lookahead / maxf(_s_r, 1.0))
+			dir = Vector3(_s_r * cos(a), _s_r * sin(a), _s_z) - p
+		if String(leg.get("until", "")) == "freed":
+			# ARRIVING IS THE MEANS, THE FREE IS THE END. The body walks out to
+			# an angle one free radius past the cell and then STANDS THERE until
+			# the streamer lets go -- so the leg measures the residency rule and
+			# not the walk.
+			if not _stream.is_resident(_v_id):
+				_v_freed = true
+				done = true
+		else:
+			done = reach
+	else:
+		var t := _leg_target(leg)
+		dir = t - p
+		# ACROSS THE FLOOR, NOT THROUGH IT. A console's centre is 1.2 m up the
+		# wall and a door's is 1.15 m up the aperture, so a 3D distance to either
+		# can never fall below that however close the body stands -- the first
+		# version burned three whole leg budgets standing DIRECTLY UNDER things,
+		# 0.50 m from the console and 88 deg off the view axis, reporting "1.2 m
+		# short". A player stands in front of an object; the distance that
+		# matters is the one they walk.
+		var up: Vector3 = -Vector3(p.x, p.y, 0.0).normalized()
+		var flat: Vector3 = (t - p) - up * (t - p).dot(up)
+		short = flat.length()
+		_leg_best = minf(_leg_best, short)
+		done = short <= float(leg["near"])
+	if bool(leg.get("use", false)):
+		_try_use()
+		if _interact != null and String(_interact.prompt_group()) == _v_group:
+			_v_prompted = true
+		# THE CLOSEST IT EVER CAME TO PROMPTING, sampled every frame. A prompt
+		# that never fires otherwise reports whatever the body happened to be
+		# doing when the leg ended, which is the least informative frame of the
+		# whole approach.
+		if _interact != null:
+			var pr: Array = _interact.probe_terms(_v_group)
+			if float(pr[0]) >= 0.0:
+				_v_best_eye = minf(_v_best_eye, float(pr[0]))
+				_v_best_axis = minf(_v_best_axis, float(pr[1]))
+				if bool(pr[2]):
+					_v_sight_f += 1
+			if _trace > 0 and _leg_f % _trace == 0:
+				var cam := _player.get_node_or_null("Camera3D") as Camera3D
+				var cf := (Vector3.ZERO if cam == null
+					else -cam.global_transform.basis.z)
+				var t2 := _leg_target(leg)
+				print("USELEG f=%d short=%.2f eye_range=%.2f off_axis=%.0f "
+					% [_leg_f, short, float(pr[0]), float(pr[1])]
+					+ "in_sight=%s prompt=%s p=%.2f,%.2f,%.2f "
+					% [str(pr[2]).to_lower(), _interact.prompt_group(),
+						p.x, p.y, p.z]
+					+ "camfwd=%.2f,%.2f,%.2f steer=%.2f,%.2f,%.2f v=%.2f"
+					% [cf.x, cf.y, cf.z, (t2 - p).normalized().x,
+						(t2 - p).normalized().y, (t2 - p).normalized().z,
+						_player.velocity.length()])
+		# A USE LEG ENDS A LITTLE AFTER THE KEY GOES DOWN, not when the body is
+		# close. `near` is only the fallback for an object that cannot be
+		# reached: it stops the leg burning its whole budget standing on top of
+		# something that will never prompt, and the stall line then says how far
+		# short it was.
+		#
+		# THE DELAY IS THE PRESS ITSELF. `interact.gd` runs a control in for
+		# `press_frames` and reads the travel back off the mesh's own world AABB
+		# on the frame AFTER it starts, so a leg that ended on the keypress
+		# reported `travel_mm = 0.00` for a press that worked -- the object had
+		# not moved yet. Measured: 4.00 mm one frame later.
+		if _interact != null and _interact.use_count() > _v_use_before:
+			if _v_press_f < 0:
+				_v_press_f = _leg_f
+			elif _leg_f >= _v_press_f + 24:
+				done = true
+	if not done and _leg_f >= int(leg["budget"]):
+		_v_stalls.append("leg%d(%s)_%.1fm_short"
+			% [_leg, String(leg["what"]).replace(" ", "_"),
+				(short if _leg_best > 1e29 else _leg_best)])
+		done = true
+	if done:
+		if leg.has("record"):
+			_record_visit(int(leg["record"]), p)
+		_leg += 1
+		_leg_f = 0
+		_leg_best = 1e30
+	return dir
+
+
+func _leg_started(leg: Dictionary) -> void:
+	_leg_best = 1e30
+	if bool(leg.get("use", false)):
+		# EACH VISIT PRESSES ITS OWN KEY. `_used_ok` is the one-shot that stops
+		# the headless test mashing E every frame; without resetting it the
+		# second visit would inherit the first visit's press and report a use
+		# that never happened.
+		_used_ok = false
+		_v_prompted = false
+		_v_best_eye = 1e30
+		_v_best_axis = 1e30
+		_v_sight_f = 0
+		_v_press_f = -1
+		_v_use_before = (_interact.use_count() if _interact != null else 0)
+	if String(leg.get("to", "")) == "door_out" and _doors != null:
+		# The door claim is per visit: how open it got on the way in LAST time is
+		# not evidence about this time.
+		_doors.reset_peak(_v_door)
+
+
+## Once a frame, whatever leg is running: the things that are only true while
+## the body is where it is.
+func _visit_sample() -> void:
+	if _interact != null and String(_interact.prompt_group()) == _v_group:
+		_v_prompted = true
+
+
+func _record_visit(n: int, p: Vector3) -> void:
+	var res := {}
+	res["door"] = (_doors.peak_openness(_v_door) if _doors != null else -1.0)
+	res["near_m"] = (p.distance_to(_v_at) if _leg_best > 1e29 else _leg_best)
+	res["noticed"] = (_people.noticed_count() if _people != null else 0)
+	res["turned"] = (_people.turned_deg() if _people != null else 0.0)
+	res["face"] = (_people.facing_error_deg(p) if _people != null else -1.0)
+	res["prompted"] = _v_prompted
+	res["used"] = (_interact.used_group() if _interact != null else "")
+	res["presses"] = ((_interact.use_count() - _v_use_before)
+		if _interact != null else 0)
+	res["travel_mm"] = (_interact.used_travel_mm() if _interact != null else 0.0)
+	res["prompt_text"] = (_interact.used_prompt() if _interact != null else "")
+	res["wired"] = _stream.is_resident(_v_id)
+	# WHY, NOT JUST WHETHER. Only computed when the claim already failed.
+	res["why"] = ("" if bool(res["prompted"]) or _interact == null
+		else ("best over the leg: eye_range=%.2f off_axis=%.0fdeg "
+			% [_v_best_eye, _v_best_axis]
+			+ "in_sight_frames=%d; at the end: " % _v_sight_f
+			+ _interact.probe(_v_group)))
+	_v_res[n - 1] = res
+	print("walk: VISIT %d of %s -- door '%s' opened to %.2f, got within %.2f m "
+		% [n, _v_id, _v_door, float(res["door"]), float(res["near_m"])]
+		+ "of %s, %d person(s) noticed (%.0f deg turned, %.0f deg off), "
+		% [_v_group, int(res["noticed"]), float(res["turned"]),
+			float(res["face"])]
+		+ "prompted=%s pressed=%d moved %.2f mm%s"
+		% [str(res["prompted"]).to_lower(), int(res["presses"]),
+			float(res["travel_mm"]),
+			("" if String(res["why"]) == "" else "  [%s]" % String(res["why"]))])
+
+
+var _leg_best := 1e30
+var _v_prompted := false
+var _v_use_before := 0
+var _v_press_f := -1
+var _v_best_eye := 1e30
+var _v_best_axis := 1e30
+var _v_sight_f := 0
 
 
 ## Watch the streamer's resident set from outside and note the frame each cell
@@ -755,6 +1369,10 @@ func _print_stream_verdict() -> void:
 		why.append("%d double load(s)" % _stream.double_loads)
 	if _stream.disabled:
 		why.append("streaming disabled (this is the control and MUST fail)")
+	var visit := ""
+	if _visiting:
+		visit = _visit_verdict(why)
+		ok = ok and why.is_empty()
 	# `inf` rather than a sentinel when nothing streamed in during the run: every
 	# cell entered was resident before the walk began, which is an infinite lead
 	# and not a missing measurement. A negative number here would read as the
@@ -765,14 +1383,95 @@ func _print_stream_verdict() -> void:
 	print(("STREAMTEST mode=%s ok=%s start=%d dir=%s prime_ms=%d "
 		+ "traverse_m=%.2f floor_m=%.2f net_m=%.2f offfloor=%d/%d "
 		+ "crossings=%d entered=%s late=%d min_lead_m=%s min_lead_frames=%d "
-		+ "%s why=%s") % [
+		+ "%s%s why=%s") % [
 		mode, str(ok).to_lower(), _start_cell,
 		("+1" if _s_dir > 0.0 else "-1"), _prime_ms,
 		_path_m, _s_floor_m, _traverse_from.distance_to(_traverse_prev),
 		_off_floor, _t_traverse, crossings, ",".join(ent), _s_late, lead,
 		(-1 if _s_min_lead_f > 1 << 29 else _s_min_lead_f),
-		_stream.report(),
+		_stream.report(), visit,
 		("-" if why.is_empty() else ";".join(why).replace(" ", "_"))])
+
+
+## THE THREE CLAIMS, TWICE, AND THE FREE IN BETWEEN.
+##
+## Every one is a thing a player would notice and every one has a control that
+## turns it off: `--no-cell-wiring` (the build before this session),
+## `--no-doors`, `--no-people`, `--no-interact`, `--no-unwire`. A run in which
+## all five pass is a run measuring nothing.
+func _visit_verdict(why: PackedStringArray) -> String:
+	var out := " visit_cell=%d visit_id=%s door_key=%s use_group=%s" % [
+		_v_cell, _v_id, _v_door, _v_group]
+	for n in 2:
+		var r: Dictionary = _v_res[n]
+		if r.is_empty():
+			why.append("visit %d never happened" % (n + 1))
+			out += " v%d=none" % (n + 1)
+			continue
+		out += (" v%d_door_open=%.2f v%d_near_m=%.2f v%d_noticed=%d "
+			+ "v%d_turned_deg=%.1f v%d_face_err_deg=%.1f v%d_prompted=%s "
+			+ "v%d_used=%s v%d_presses=%d v%d_travel_mm=%.2f") % [
+			n + 1, float(r["door"]), n + 1, float(r["near_m"]),
+			n + 1, int(r["noticed"]), n + 1, float(r["turned"]),
+			n + 1, float(r["face"]), n + 1,
+			str(bool(r["prompted"])).to_lower(),
+			n + 1, ("-" if String(r["used"]) == "" else String(r["used"])),
+			n + 1, int(r["presses"]), n + 1, float(r["travel_mm"])]
+		var tag := "visit%d" % (n + 1)
+		# 1 -- THE DOOR OPENED. `peak_openness`, not the live value: the body
+		# walked THROUGH it and it shut again behind them.
+		if float(r["door"]) <= 0.0:
+			why.append("%s: the pressure door '%s' never opened (%.2f) -- in a "
+				% [tag, _v_door, float(r["door"])]
+				+ "streamed cell it is a wall")
+		# 2 -- SOMEBODY REACTED. Not "there are people in the cell": a body that
+		# turned is a body that was told a player exists.
+		if int(r["noticed"]) < 1 or float(r["turned"]) <= 0.0:
+			why.append("%s: %d person(s) noticed and the nearest turned %.1f deg"
+				% [tag, int(r["noticed"]), float(r["turned"])])
+		# 3 -- AND SOMETHING IN IT WORKED. Prompted, pressed, and the object's
+		# own mesh moved: `travel_mm` is read back off the scene graph, so a use
+		# that returned true and moved nothing reports zero.
+		if not bool(r["prompted"]):
+			why.append("%s: never prompted by %s (got within %.2f m: %s)"
+				% [tag, _v_group, float(r["near_m"]), String(r.get("why", "?"))])
+		if int(r["presses"]) < 1:
+			why.append("%s: %s was never used" % [tag, _v_group])
+		elif float(r["travel_mm"]) <= 0.0:
+			why.append("%s: %s was used and did not move" % [tag, _v_group])
+	# 4 -- AND IT SURVIVED THE CELL GOING AWAY AND COMING BACK.
+	out += " freed=%s wired_cells=%d unwired_cells=%d double_wires=%d" % [
+		str(_v_freed).to_lower(), int(_stream.wired), int(_stream.unwired),
+		_double_wires + (_doors.double_wires if _doors != null else 0)
+			+ (_people.double_wires if _people != null else 0)
+			+ (_interact.double_wires if _interact != null else 0)]
+	out += " stale_prompt_frames=%d stale_leaves=%d stale_parts=%d" % [
+		(_interact.stale_prompt_frames if _interact != null else 0),
+		(_doors.stale_leaves if _doors != null else 0),
+		(_people.stale_parts if _people != null else 0)]
+	if not _v_stalls.is_empty():
+		out += " stalls=" + ",".join(PackedStringArray(_v_stalls))
+	if not _v_freed:
+		why.append("cell %s was never freed -- the second visit is not a "
+			% _v_id + "re-entry")
+	var dbl: int = (_double_wires + (_doors.double_wires if _doors != null else 0)
+		+ (_people.double_wires if _people != null else 0)
+		+ (_interact.double_wires if _interact != null else 0))
+	if dbl > 0:
+		why.append("%d cell(s) were wired twice without being released" % dbl)
+	if _interact != null and _interact.stale_prompt_frames > 0:
+		why.append("%d frame(s) prompted for an object whose cell had been "
+			% _interact.stale_prompt_frames + "freed")
+	if _doors != null and _doors.stale_leaves > 0:
+		why.append("%d door leaf reference(s) outlived their cell"
+			% _doors.stale_leaves)
+	if _people != null and _people.stale_parts > 0:
+		why.append("%d inhabitant mesh reference(s) outlived their cell"
+			% _people.stale_parts)
+	if _doors != null and not _doors.orphan_panels().is_empty():
+		why.append("door panel(s) resident with no leaves: %s"
+			% ",".join(PackedStringArray(_doors.orphan_panels())))
+	return out
 
 
 var _streaming := false

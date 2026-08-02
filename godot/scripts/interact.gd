@@ -58,6 +58,7 @@ const INTERACT_LAYER := 2
 
 class Item:
 	var group: String = ""
+	var tag: String = ""                # which streamed cell brought it
 	var place: String = ""
 	var token: String = ""
 	var verb: String = ""
@@ -94,7 +95,20 @@ var _doors: Node = null
 ## `station/interact.py` knows that `bay_door` is a declared interactable and
 ## that its verb is `open`. Asking the geometry to give back what the generator
 ## already knew is how the door leaves ended up 0.16 m out of their own frame.
-func collect(visual: Node, rows: Array) -> int:
+## STREAMED: `tag` names the cell these meshes arrived in, and `release(tag)`
+## gives them back. The sidecar is per DECK and is NOT split -- a row whose
+## meshes are not in this cell binds to nothing, which is the same rule that
+## already skipped a row the glb never emitted.
+func collect(visual: Node, rows: Array, tag: String = "") -> int:
+	if tag != "":
+		for it0 in _items:
+			if it0.tag == tag:
+				double_wires += 1
+				push_error("interact: cell %s was wired twice without a "
+					% tag + "release")
+				return _items.size()
+		wired_cells += 1
+	var before := _items.size()
 	var want := {}
 	for row in rows:
 		if typeof(row) != TYPE_DICTIONARY:
@@ -134,6 +148,7 @@ func collect(visual: Node, rows: Array) -> int:
 			continue
 		var it := Item.new()
 		it.group = key2
+		it.tag = tag
 		it.place = String(row2.get("place", ""))
 		it.token = String(row2.get("token", ""))
 		it.verb = String(row2.get("verb", ""))
@@ -174,11 +189,59 @@ func collect(visual: Node, rows: Array) -> int:
 	# that name at all. The count is printed by `walk.gd` rather than swallowed,
 	# because a sidecar row nothing binds to is an interactable a player can
 	# never see.
-	for g4 in want:
-		if not found.has(g4):
-			_missing.append(String(g4))
-	_missing.sort()
-	return _items.size()
+	#
+	# NOT COMPUTABLE PER CELL, and saying so is better than a wrong number. On a
+	# streamed build a row absent from THIS cell is almost always present in
+	# another one, and whether it is present in ANY cell cannot be known until
+	# every cell has been resident -- which never happens. So the miss list is
+	# only accumulated for a monolithic load, where "not in this scene" really
+	# does mean "not in the build".
+	if tag == "":
+		for g4 in want:
+			if not found.has(g4):
+				_missing.append(String(g4))
+		_missing.sort()
+	return _items.size() - before
+
+
+## Give back everything one cell brought. Called BEFORE the cell is freed.
+##
+## THE PROXY BOXES ARE CHILDREN OF THIS NODE, NOT OF THE CELL, so they outlive
+## the geometry unless this frees them -- and an interact box with no object in
+## it is a prompt for a prop that has been unloaded, which is the streaming
+## version of a door that is a picture of a door.
+func release(tag: String) -> int:
+	if tag == "":
+		return 0
+	var keep: Array[Item] = []
+	var gone := 0
+	for it in _items:
+		if it.tag == tag:
+			if it.body != null and is_instance_valid(it.body):
+				it.body.queue_free()
+			if _prompt == it:
+				_prompt = null
+				if _hud != null:
+					_hud.text = ""
+			gone += 1
+		else:
+			keep.append(it)
+	_items = keep
+	if gone > 0:
+		released_cells += 1
+		# The scan is frame-guarded, so without this the prompt computed before
+		# the free would stand for the rest of this frame.
+		_scanned_frame = -1
+	return gone
+
+
+## Counters the streaming gate reads.
+var wired_cells := 0
+var released_cells := 0
+var double_wires := 0
+## Frames on which the live prompt named an object that is no longer wired. It
+## must be zero; the control that makes it fire is `--no-unwire`.
+var stale_prompt_frames := 0
 
 
 var _missing: Array[String] = []
@@ -377,6 +440,15 @@ func use() -> bool:
 	it.used += 1
 	_use_count += 1
 	_last_used = it
+	# SNAPSHOT WHAT WAS USED, as values. On a streamed build the cell holding
+	# this object can be freed before the verdict is printed, and a verdict that
+	# reads fields off a released Item is a verdict that reports on geometry that
+	# no longer exists -- or crashes on it.
+	_used_group = it.group
+	_used_verb = it.verb
+	_used_responds = it.responds
+	_used_centre = it.centre
+	_used_travel_m = it.travel_m
 	# A DOOR ALREADY HAS A MECHANISM AND IT IS `door.gd`'S. Pressing one records
 	# the use and does not grow a second way to open it: two descriptions of one
 	# decision is the failure mode this project keeps rediscovering, and a door
@@ -403,6 +475,11 @@ func use() -> bool:
 
 
 var _used_prompt := ""
+var _used_group := ""
+var _used_verb := ""
+var _used_responds := false
+var _used_centre := Vector3.ZERO
+var _used_travel_m := 0.0
 
 
 func _unhandled_input(event: InputEvent) -> void:
@@ -438,6 +515,14 @@ var _scanned_frame: int = -1
 
 func _physics_process(_delta: float) -> void:
 	refresh()
+	# A PROMPT FOR SOMETHING THAT IS NO LONGER LOADED. `release()` clears it, so
+	# on a correct build this is zero; with `--no-unwire` the Item survives its
+	# cell and the eye happily offers to operate a console that has been
+	# `queue_free`d. Counted here because the prompt is the one part of this file
+	# a player actually reads.
+	if _prompt != null and (_prompt.parts.is_empty()
+			or not is_instance_valid(_prompt.parts[0])):
+		stale_prompt_frames += 1
 	for it in _items:
 		if it.press_left <= 0:
 			continue
@@ -458,6 +543,8 @@ func _physics_process(_delta: float) -> void:
 				* it.parts[0].get_aabb())
 			it.travel_m = maxf(it.travel_m,
 				box.get_center().distance_to(it.rest_centre))
+			if it == _last_used:
+				_used_travel_m = it.travel_m
 
 
 # -- what the headless gate reads ------------------------------------------
@@ -494,18 +581,20 @@ func prompt_frames() -> int:
 	return _prompt_frames
 
 
+## WHAT WAS USED, FROM THE SNAPSHOT rather than from the Item. On a streamed
+## build the object's cell may have been freed since -- see `use()`.
 func used_group() -> String:
-	return "" if _last_used == null else _last_used.group
+	return _used_group
 
 
 func used_verb() -> String:
-	return "" if _last_used == null else _last_used.verb
+	return _used_verb
 
 
 ## Did the object the player used have a response behind it? Read off the
 ## sidecar row, so this cannot disagree with `station/interact.py::RESPONDS`.
 func used_responds() -> bool:
-	return false if _last_used == null else _last_used.responds
+	return _used_responds
 
 
 ## THE PROMPT AS IT READ AT THE MOMENT THE KEY WENT DOWN. The live prompt is
@@ -529,14 +618,14 @@ func use_count() -> int:
 ## "it responded" is otherwise unfalsifiable: a use that returns true and moves
 ## nothing looks identical to one that works.
 func used_travel_mm() -> float:
-	return 0.0 if _last_used == null else _last_used.travel_m * 1000.0
+	return _used_travel_m * 1000.0
 
 
 ## Distance from the player to the used object, for the gate to report.
 func used_range_m() -> float:
-	if _last_used == null or _player == null:
+	if _used_group == "" or _player == null:
 		return -1.0
-	return _player.global_position.distance_to(_last_used.centre)
+	return _player.global_position.distance_to(_used_centre)
 
 
 ## Is a named group among the interactables at all? The negative control strips
@@ -546,6 +635,83 @@ func has_group(g: String) -> bool:
 		if it.group == g:
 			return true
 	return false
+
+
+## WHY A NAMED GROUP IS NOT THE PROMPT, in the four terms `scan()` decides on.
+##
+## "Never prompted" is three different failures wearing one word -- it is not
+## wired, you are not close enough, you are not looking at it, or something is in
+## the way -- and a gate that cannot tell them apart sends the next reader to
+## re-derive the scan by hand. Costs nothing: it is only called when a claim has
+## already failed.
+## The three numbers `scan()` decides on, for one group: eye range, degrees off
+## the view axis, and whether the line of sight is clear. Sampled every frame by
+## the streaming gate on a use leg, so a prompt that never fires reports the
+## CLOSEST it ever came to firing rather than the state it happened to end in.
+func probe_terms(g: String) -> Array:
+	for it in _items:
+		if it.group != g:
+			continue
+		if _player == null:
+			return [-1.0, -1.0, false]
+		var eye: Vector3 = _player.global_position
+		var fwd := -_player.global_transform.basis.z
+		if _cam != null:
+			eye = _cam.global_position
+			fwd = -_cam.global_transform.basis.z
+		var to: Vector3 = it.centre - eye
+		var d: float = to.length()
+		if d < 1e-4:
+			return [d, 180.0, false]
+		var c: float = to.normalized().dot(fwd.normalized())
+		return [d, rad_to_deg(acos(clampf(c, -1.0, 1.0))),
+			_in_sight(eye, it, d)]
+	return [-1.0, -1.0, false]
+
+
+func probe(g: String) -> String:
+	var it: Item = null
+	for x in _items:
+		if x.group == g:
+			it = x
+			break
+	if it == null:
+		return "not wired (%d interactable(s) present)" % _items.size()
+	if _player == null:
+		return "no player"
+	var eye: Vector3 = _player.global_position
+	var fwd := -_player.global_transform.basis.z
+	if _cam != null:
+		eye = _cam.global_position
+		fwd = -_cam.global_transform.basis.z
+	var to: Vector3 = it.centre - eye
+	var d: float = to.length()
+	var c: float = (to.normalized().dot(fwd.normalized()) if d > 1e-4 else -2.0)
+	var bits := PackedStringArray()
+	bits.append("pressable=%s" % str(it.pressable).to_lower())
+	bits.append("eye_range=%.2fm/%.2f" % [d, reach_m])
+	bits.append("off_axis=%.0fdeg/%.0f" % [rad_to_deg(acos(clampf(c, -1.0, 1.0))),
+		look_half_deg])
+	bits.append("in_sight=%s" % str(_in_sight(eye, it, d)).to_lower())
+	# WHICH RAY, AND WHAT IT HIT. "in_sight=false" is two failures in one word:
+	# something else on the interact layer is in front of it, or the walking
+	# shell is.
+	var space := get_world_3d().direct_space_state
+	if space != null and it.body != null:
+		var qa := PhysicsRayQueryParameters3D.create(eye, it.centre)
+		qa.collision_mask = INTERACT_LAYER
+		var a := space.intersect_ray(qa)
+		bits.append("rayA=%s" % ("nothing" if a.is_empty()
+			else String((a["collider"] as Node).name)))
+		var qb := PhysicsRayQueryParameters3D.create(eye, it.centre)
+		qb.collision_mask = 1
+		var b := space.intersect_ray(qb)
+		bits.append("rayB=%s" % ("nothing" if b.is_empty()
+			else "%s@%.2fm" % [String((b["collider"] as Node).name),
+				eye.distance_to(b["position"])]))
+	if _prompt != null and _prompt != it:
+		bits.append("prompt_is=%s" % _prompt.group)
+	return ", ".join(bits)
 
 
 ## Distance from the eye to a named group, or -1. Reported so a failed prompt

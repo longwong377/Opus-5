@@ -21,6 +21,16 @@ extends Node3D
 ## vertices are already at their world positions, so the node's transform has to
 ## be `translate(pivot) * rotate * translate(-pivot)` or the person swings round
 ## the station's axis instead of their own heels.
+##
+## AND A PERSON CAN NOW GO AWAY UNDER YOU. With `scripts/stream.gd` an
+## inhabitant's body arrives with their cell and is `queue_free`d with it, while
+## the capsule a player bumps into is a child of THIS node and would outlive
+## them -- an invisible person standing in an empty corridor. `collect()`
+## therefore takes the cell's tag and `release()` gives back exactly what that
+## cell brought, capsules included. The cast list itself is per DECK and is not
+## split: an actor whose meshes are not in the cell simply binds to nothing,
+## which is the same rule that already made `collect` skip an actor the glb never
+## emitted.
 
 ## How far away somebody notices you. Beyond this they carry on with what they
 ## were doing, which is the point -- a room where everyone stares from 30 m is
@@ -36,6 +46,7 @@ var _body: Node3D
 
 class Person:
 	var group: String
+	var tag: String = ""             # which streamed cell brought them, "" = all
 	var parts: Array = []            # every mesh this body is made of
 	var pivot := Vector3.ZERO
 	var up := Vector3.UP
@@ -47,8 +58,19 @@ class Person:
 	var h_m: float = 0.0
 
 
+## Counters the streaming gate reads.
+var wired_cells := 0
+var released_cells := 0
+var double_wires := 0
+var stale_parts := 0
+
+
 ## Wire the cast list to the meshes it describes.
-func collect(visual: Node, actors: Array) -> int:
+##
+## `tag` names the streamed cell these meshes came from, or "" for a monolithic
+## load. Only actors whose meshes are IN this scene are bound, so the whole deck
+## cast list can be handed to every cell.
+func collect(visual: Node, actors: Array, tag: String = "") -> int:
 	# A PERSON IS SEVERAL MESHES. `npc/body.py` tags what it builds -- skin
 	# head, torso, arms, hands, feet, hair -- and `populace` now carries those
 	# names through so each binds to its own material, which is what stopped all
@@ -56,6 +78,14 @@ func collect(visual: Node, actors: Array) -> int:
 	# person's OWN group ends up with no faces of its own: the OBJ writer gives
 	# each triangle to the last group covering it, and the parts are written
 	# after the whole. Matching the exact name found nothing at all.
+	if tag != "":
+		for p0 in _people:
+			if p0.tag == tag:
+				double_wires += 1
+				push_error("npc: cell %s was wired twice without a release" % tag)
+				return _people.size()
+		wired_cells += 1
+	var before := _people.size()
 	var parts := {}
 	for m in _meshes(visual):
 		var n := String(m.name)
@@ -76,6 +106,7 @@ func collect(visual: Node, actors: Array) -> int:
 			continue
 		var p := Person.new()
 		p.group = g
+		p.tag = tag
 		p.parts = parts[g]
 		p.pivot = Vector3(float(a.get("x", 0.0)), float(a.get("y", 0.0)),
 			float(a.get("z", 0.0)))
@@ -91,11 +122,31 @@ func collect(visual: Node, actors: Array) -> int:
 		p.h_m = float(a.get("h_m", 0.0))
 		_people.append(p)
 	if not _args().has("no-npc-collision"):
-		for p in _people:
-			_give_body(p)
-	else:
+		for i in range(before, _people.size()):
+			_give_body(_people[i])
+	elif before == 0:
 		print("npc: inhabitant collision DISABLED (negative control)")
-	return _people.size()
+	return _people.size() - before
+
+
+## Give back every person one streamed cell brought, and the capsules with them.
+## Called BEFORE the cell is freed: their meshes are about to stop existing and
+## a `Person` holding them would be read on the next frame.
+func release(tag: String) -> int:
+	var keep := []
+	var gone := 0
+	for p in _people:
+		if p.tag == tag and tag != "":
+			if p.body != null and is_instance_valid(p.body):
+				p.body.queue_free()
+			gone += 1
+		else:
+			keep.append(p)
+	_people = keep
+	if gone > 0:
+		released_cells += 1
+	gone += release_crowd(tag)
+	return gone
 
 
 ## A PERSON IS SOMETHING YOU BUMP INTO, and until this existed a player walked
@@ -227,6 +278,14 @@ func _physics_process(delta: float) -> void:
 		var b := Basis(p.up, p.yaw - p.rest_yaw)
 		var xf := Transform3D(b, p.pivot - b * p.pivot)
 		for m in p.parts:
+			# A STREAMED CELL CAN TAKE A PERSON AWAY UNDER YOU. `release()` runs
+			# before the cell is freed so this should never fire; it is COUNTED
+			# rather than silently skipped, because a person whose meshes have
+			# gone and whose record has not is exactly the state that otherwise
+			# shows up as a null crash three subsystems away.
+			if not is_instance_valid(m):
+				stale_parts += 1
+				continue
 			m.global_transform = xf
 		# THE CAPSULE IS NOT TOUCHED HERE, and that is correct rather than an
 		# omission: it is a body of revolution about the person's own up axis,
@@ -306,6 +365,7 @@ class Walker:
 	var body: StaticBody3D = null
 	var r_m: float = 0.0
 	var h_m: float = 0.0
+	var tag: String = ""      # which streamed cell they belong to
 
 
 var _walkers: Array[Walker] = []
@@ -346,15 +406,100 @@ func _lod_at(d: float) -> int:
 
 
 ## Build the crowd from several LOD libraries and one placement list.
+##
+## EVERY LIBRARY IS SIZED FROM THE WHOLE LIST, not just the first. The bucket key
+## carries the rung -- `crowd_<species>_<lod>_<phase>` -- so the three libraries
+## fill disjoint buckets and each has to see the placement list to know how big
+## its own buckets must be.
 func build_crowd_multi(libraries: Array, rows: Array) -> int:
+	prepare_crowd(libraries, rows)
+	add_crowd(rows, "")
+	return _walkers.size()
+
+
+## THE CROWD IS NOT CELL GEOMETRY, and that is why it is allocated once.
+##
+## A walker is a PLACEMENT against 112 shared bodies -- their meshes live in
+## `crowd_lod*.glb`, not in any cell -- so a streamed build cannot get them by
+## instancing a cell. What it CAN do is choose who is present: the MultiMeshes
+## are sized here from the whole deck's placement list, because
+## `MultiMesh.instance_count` cannot grow without reallocating, and `add_crowd`
+## then admits the walkers of each cell as it arrives. `_place_crowd` already
+## writes only as many transforms as there are walkers, so an unadmitted cell's
+## crowd costs nothing.
+func prepare_crowd(libraries: Array, all_rows: Array) -> int:
 	var n := 0
 	for lib in libraries:
-		n = build_crowd(lib, rows if n == 0 else [])
-	return _walkers.size()
+		n += _index_library(lib, all_rows)
+	return n
+
+
+## Admit one cell's walkers. `rows` is that cell's slice of the placement list.
+func add_crowd(rows: Array, tag: String) -> int:
+	var before := _walkers.size()
+	for r in rows:
+		_walkers.append(_walker_from(r, tag))
+	if not _args().has("no-npc-collision"):
+		for i in range(before, _walkers.size()):
+			_give_walker_body(_walkers[i])
+	_place_crowd()
+	return _walkers.size() - before
+
+
+## Take them back with their cell.
+func release_crowd(tag: String) -> int:
+	if tag == "":
+		return 0
+	var keep: Array[Walker] = []
+	var gone := 0
+	for w in _walkers:
+		if w.tag == tag:
+			if w.body != null and is_instance_valid(w.body):
+				w.body.queue_free()
+			gone += 1
+		else:
+			keep.append(w)
+	_walkers = keep
+	if gone > 0:
+		_place_crowd()
+	return gone
+
+
+func _walker_from(r: Dictionary, tag: String) -> Walker:
+	var w := Walker.new()
+	w.tag = tag
+	w.species = String(r.get("species", "human"))
+	w.lod = int(r.get("lod", 4))
+	w.phase = int(r.get("phase", 0))
+	var x := float(r.get("x", 0.0))
+	var y := float(r.get("y", 0.0))
+	w.z = float(r.get("z", 0.0))
+	w.radius = sqrt(x * x + y * y)
+	w.angle = atan2(y, x)
+	w.omega = float(r.get("omega", 0.0))
+	w.cycle_s = maxf(0.1, float(r.get("cycle_s", 1.0)))
+	w.r_m = float(r.get("r_m", 0.0))
+	w.h_m = float(r.get("h_m", 0.0))
+	# Start each walker at their own point in the cycle, so 134 people are
+	# not marching. The generator already picked it; this reproduces it.
+	w.t = w.cycle_s * float(w.phase) / 8.0
+	return w
 
 
 ## Build the crowd from the library scene and the placement list.
 func build_crowd(library: Node, rows: Array) -> int:
+	_index_library(library, rows)
+	add_crowd(rows, "")
+	return _walkers.size()
+
+
+## Index one LOD library and allocate its MultiMeshes for a placement list.
+##
+## Split out of `build_crowd` so a STREAMED build can size the buckets from the
+## whole deck before any walker exists -- see `prepare_crowd`. It appends no
+## walkers, so calling it twice for the same library would double the buckets;
+## `_mm` is keyed by bucket and guarded for that.
+func _index_library(library: Node, rows: Array) -> int:
 	var meshes := {}
 	for m in _meshes(library):
 		# The library's mesh names are `crowd_<species>_<lod>_<phase>_npc_skin`
@@ -373,24 +518,6 @@ func build_crowd(library: Node, rows: Array) -> int:
 			# its index instead of after what it is renders the whole crowd on
 			# the magenta fallback.
 			meshes[key].append([m.mesh, n])
-	for r in rows:
-		var w := Walker.new()
-		w.species = String(r.get("species", "human"))
-		w.lod = int(r.get("lod", 4))
-		w.phase = int(r.get("phase", 0))
-		var x := float(r.get("x", 0.0))
-		var y := float(r.get("y", 0.0))
-		w.z = float(r.get("z", 0.0))
-		w.radius = sqrt(x * x + y * y)
-		w.angle = atan2(y, x)
-		w.omega = float(r.get("omega", 0.0))
-		w.cycle_s = maxf(0.1, float(r.get("cycle_s", 1.0)))
-		w.r_m = float(r.get("r_m", 0.0))
-		w.h_m = float(r.get("h_m", 0.0))
-		# Start each walker at their own point in the cycle, so 134 people are
-		# not marching. The generator already picked it; this reproduces it.
-		w.t = w.cycle_s * float(w.phase) / 8.0
-		_walkers.append(w)
 	# One MultiMesh per (species, lod, phase). Sized to the worst case -- every
 	# walker of that species at that phase at once -- because a MultiMesh's
 	# instance_count cannot grow without reallocating.
@@ -404,8 +531,9 @@ func build_crowd(library: Node, rows: Array) -> int:
 	# three times that plus a floor of four is slack no realistic clustering
 	# exceeds, and `_place_crowd` clamps to the count anyway.
 	var per_species := {}
-	for w in _walkers:
-		per_species[w.species] = int(per_species.get(w.species, 0)) + 1
+	for r in rows:
+		var sp := String((r as Dictionary).get("species", "human"))
+		per_species[sp] = int(per_species.get(sp, 0)) + 1
 	# EVERY RUNG, not just the one the bake chose. A walker's LOD now changes
 	# with their distance to the player, so a bucket has to exist for each
 	# level the ladder can put them at -- keyed the same way, so `_place_crowd`
@@ -418,14 +546,14 @@ func build_crowd(library: Node, rows: Array) -> int:
 	if lods.is_empty():
 		lods = [4]
 	var counts := {}
-	for w in _walkers:
+	for sp2 in per_species:
 		for lod in lods:
 			for ph in range(8):
-				var k := "crowd_%s_%d_%d" % [w.species, lod, ph]
-				counts[k] = maxi(4, int(ceil(
-					float(per_species[w.species]) / 8.0 * 3.0)))
+				counts["crowd_%s_%d_%d" % [sp2, lod, ph]] = maxi(4, int(ceil(
+					float(per_species[sp2]) / 8.0 * 3.0)))
+	var made := 0
 	for k in counts.keys():
-		if not meshes.has(k):
+		if not meshes.has(k) or _mm.has(k):
 			continue
 		for surf in meshes[k]:
 			var mmi := MultiMeshInstance3D.new()
@@ -440,11 +568,8 @@ func build_crowd(library: Node, rows: Array) -> int:
 			if not _mm.has(k):
 				_mm[k] = []
 			_mm[k].append(mmi)
-	if not _args().has("no-npc-collision"):
-		for w in _walkers:
-			_give_walker_body(w)
-	_place_crowd()
-	return _walkers.size()
+			made += 1
+	return made
 
 
 func _give_walker_body(w: Walker) -> void:
