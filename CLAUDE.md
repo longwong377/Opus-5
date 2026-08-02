@@ -39,6 +39,22 @@ into four scored dimensions with written descriptors — **craft, fidelity, perf
 robustness** — and defines the bar. Nothing is "done" because it was built; it is done when it
 clears the bar and stops regressing.
 
+## SESSION 4i — READ `docs/MASTER-PLAN.md`'s 4i AMENDMENT FIRST
+
+**PROPOSED, awaiting the owner.** It supersedes the ordering rule in every section below,
+including the 4d ruling, the W-track and the eight-layer table, once assented to. It exists as
+an amendment to `MASTER-PLAN.md` rather than a new document precisely because a plan this file
+does not point at would be read *after* the rulings below by every future context.
+
+Four things it corrects that were being repeated as fact: dialogue is **not** 0 lines (2,139-line
+module, 57 distinct lines baked on one deck, zero player utterances); the payload is 4.5 GB not
+2.39; the built world holds 2,504 bodies not 857; and a stopping rule already exists in
+`AAA-STANDARD.md` and has simply never been exercised.
+
+Its single most load-bearing finding: **`boot.py` emits one `.glb` and `main.gd` never sets
+`cells_path`, so the shipped scene loads ONE DECK and never streams.** Every player-facing
+system built before that is fixed is validated on a topology the shipped world does not have.
+
 ## THE OWNER'S RULING, SESSION 4d — IT IS A WORLD GENERATOR AND NOT YET A GAME
 
 **Read this before the plan below. It changes what to work on.**
