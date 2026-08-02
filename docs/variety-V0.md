@@ -670,3 +670,12 @@ module plus the source of `occupancy` itself, so a change to any generator inval
 `--verify-cache` rebuilds sampled rooms and diffs them, because a hash is a claim and this
 repository has been burned by a gate that read a committed artefact it could not rebuild. It read
 **5 of 5 sampled rooms rebuild identically** at the time of writing.
+
+That invalidation fired for real while this was being measured, and it is worth recording as
+evidence the key works. `c50dc50` changed `station/deck.py` — which is this measurement's build
+dispatcher — halfway through the session. The stamp changed, the cache missed, all 128 rooms were
+rebuilt against the new file, and **the two cache files are byte-identical** (`md5
+0eb533d353b18d526439d90edd7153c7`). The commit touches `build_collision_clusters` and not
+`room_geometry`, so it is geometry-neutral for this gate, and that is now a measured fact rather
+than a reading of the diff. `--derive` re-run at HEAD reports `ok: recorded 0.73 / 0.736, derived
+0.73 / 0.736`, and the gate reproduces every number in §4 and §5.
