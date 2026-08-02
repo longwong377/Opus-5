@@ -1,599 +1,139 @@
-# MASTER PLAN — Babylon 5, 1:1, living
+# MASTER PLAN — Babylon 5, alive
 
-**Status:** §0.5 below is authoritative and supersedes §3 and §7. The rest is the session-3k
-audit, which remains the best analysis in the repository and was correct — and was then not
-followed for eleven sessions.
-**Written:** session 3k. **Superseded in part:** session 4e, by the owner.
-
----
-
-## 0.5 THE OWNER'S RULING, SESSION 4e — TWO DAYS, AND IT IS NOT A COVERAGE PROBLEM
-
-**Read this before anything below it.**
-
-### What the owner said, and it is all true
-
-*"bare and colorless and undetailed and the npcs just being undetailed featureless blobs"* ·
-*"I would bet that it looks nothing like a starfield AAA game"* · *"it seems like nothing has been
-actually done other than surface level work"* · *"we keep going down the same road over and over
-taking forever and making unusable garbage"* · **and: there are two days.**
-
-### The verdict on §0's four properties, honestly
-
-§0 says the plan *"delivers A and B and does not deliver C or D"*. **That was too generous, and
-the error is the whole story.** B — *it is beautiful* — is not delivered either:
-
-- **186 of 234 materials had no texture at all** until session 4e: a flat albedo colour, a
-  roughness number, nothing else. 79% of every surface in shot was an untextured constant.
-- The 68 procedural rooms — **58% of the station** — score **craft 1** on this project's own
-  rubric, and layer 8 (judged) has always been **0**.
-- There is no audio, no UI, no dialogue, no player role, no arrival, no flight.
-
-### Why it went this way, mechanically
-
-**85,940 lines of Python against 3,291 of GDScript.** Rendering here is software, minutes a frame,
-so the pixel loop was almost never run — and every gate that runs in seconds counts something.
-The project optimised what was cheap to measure and reported the counts as progress. Session 4e's
-own first increment (357/357 interactables) is that pattern exactly.
-
-*Look is roughly 80% material and light and 20% form. This project spent 95% of its effort on
-form.* That single sentence explains every screenshot.
-
-### What should have happened, recorded so it is not repeated
-
-**One corridor taken to final quality — textured, lit, graded, with people in it — before a second
-location existed.** Then replicate by generator. Instead it went breadth-first across 128
-locations at blockout quality, and blockout × 128 is still blockout.
-
-### The two-day scope. Everything else is out.
-
-| | | why it is first |
-|---|---|---|
-| **1** | **Engine binary stops costing an hour** | **DONE, 4e.** Vendored in `vendor/godot/`; a fresh container unpacks it in seconds. Nothing visual can be checked without it |
-| **2** | **Texture the untextured** | **DONE, 4e.** 48/234 → 179/234. The remaining 55 are declared bare with a reason |
-| **3** | **Environment and post** | SSIL, volumetric fog and light shafts, contact shadows, grading. Changes every pixel of every frame for a few hours' work |
-| **4** | **The people stop being blobs** | Skin, cloth and hair maps are in; what is left is silhouette — heads, hands, hair as geometry |
-| **5** | **A HUD** | The only UI in the project is the text `[E] operate the …`. Without one it does not read as a game at all |
-
-**Explicitly NOT in the two days**, and saying so is the point: the arrival sequence, a player
-residence, dialogue, runtime NPC schedules, a flyable Starfury, audio, and layers 5–8. They are
-the right work and they do not fit. §1–§4 of this document remain the plan for after.
-
-### The process rules that replace the layer rule
-
-1. **Every visual claim cites a frame rendered THIS session.** Comparing against a committed frame
-   from another session is not an A/B — the lighting, exposure and camera have all moved.
-2. **Every visual change ships with a control render.** `MATERIALS_NO_4E=1` exists because the
-   first bound render came back *worse* and nothing could say which change did it.
-3. **Tune on a lit surface at viewing distance, never on a magnified swatch.** The paint sheet's
-   first numbers looked right flat and rendered as mould on a pilaster at 4 m.
-4. **No new coverage gates, no new layer numbers.** Keep the existing ones green.
+**Session 4h. This replaces every previous plan as the ordering rule.** The session-3k document —
+three tracks, twelve milestones M0–M11 — is preserved as `docs/MASTER-PLAN-3k.md` because its audit
+is still the best analysis in the repository; it is no longer what decides what to work on.
+`docs/SHIP-PLAN.md`'s audit of the four contradictory plans stands as the record of *why* this
+rewrite happened, and its connectivity work is finished. Set by the owner after a strategic
+reassessment, with two rulings recorded in §1.
 
 ---
 
-## 0. The deliverable, stated so it can be checked
+## 0. WHAT THIS IS AT THE END
 
-> A 1:1-scale, canon-accurate, real-time simulation of Babylon 5 in which the player is **one of
-> 250,000 inhabitants** of a station that continues to run whether or not they are watching.
-> Every location from the show, in the right place. AAA quality in every dimension.
+A 1:1, canon-accurate Babylon 5 you can walk end to end and fly out of, era-locked to Season 2–3,
+in which **250,000 people live by their own schedules** — and you can watch them do it. The owner's
+words, still binding: *"a living thing rather than a building"*, *"the simulation exists around you
+rather than in text"*, and the friction between factions **visible in a corridor**.
 
-Four properties, and each has to be independently true:
+## 1. THE STRATEGIC RULING — LIFE FIRST
 
-| | Property | Fails if |
-|---|---|---|
-| **A** | **It is Babylon 5** | A viewer who knows the show catches an error of place, proportion, colour or era |
-| **B** | **It is beautiful** | A frame does not clear `docs/AAA-STANDARD.md` on craft |
-| **C** | **It is alive** | The station behaves identically whether or not it is observed; leaving and returning is consistent; 03:00 differs visibly from 13:00 |
-| **D** | **It is inhabitable** | The player has a role, needs, and things to do that arise from the simulation rather than from a quest list |
+### The fact that decides it
 
-**The current plan delivers A and B and does not deliver C or D.** That is the audit's central
-finding and the reason this document exists.
+**We reinvented Starfield's worst feature and were trying to beat Starfield with it.** Starfield's
+hand-built cities are its best work — hundreds of artists, years — and its *procedurally generated*
+content is the single most criticised thing in the game: the same lab, over and over. That is
+exactly our **78 of 128 places built from one generic kit**, and it has the same cause.
 
----
+And the constraint that settles the argument: **one agent authors everything, with no artists.**
+Measured rate is four landmarks from craft 1 to craft 3 in a 70-minute agent session. 128 places at
+that rate is roughly thirty sessions for **one pass**, and they would still be craft 3.
+**Hand-authoring our way to AAA surface is not reachable — not slowly, not at all.**
 
-## 1. AUDIT of the eight-layer plan
+### The two rulings
 
-The layer plan (`CLAUDE.md`) is: addressed → geometry → materials → lighting → props → inhabitants
-→ audio → judged, across all 126 locations, completed in order.
+> **1. LIFE FIRST.** Roughly **60% life, 30% variety, 10% surface**. Surface quality is hard-capped
+> by having no artists; **simulation depth has no ceiling**, and it is the thing an agent is
+> actually good at building. Babylon 5 is a story setting: what people love is Downbelow and the
+> Zocalo being *alive with factions*, not the polygon count. **A living craft-3 station is far more
+> like Babylon 5 than a beautiful empty one.** Compete where Starfield failed, not where it won.
+>
+> **2. THE SHELL STAYS 1:1; ONLY THE NAMED PLACES GET INTERIORS.** The 8,047 m hull, its 70 ring
+> decks, the drum and the whole circulation network remain exactly 1:1 and walkable end to end. The
+> ~128 named places plus their connective corridors get real interiors. The other 73,507 bays are
+> sealed or generic-but-varied, and **that is stated rather than counted as a shortfall**. 0.17% of
+> footprint was never the blocker; identical rooms were.
 
-### 1.1 What it gets right — keep all of this
+### What this does NOT mean
 
-- **Layers over slices.** Correct, and correct for the specific reason the owner gave: a completed
-  layer is a state the next context inherits. This project loses context regularly.
-- **A computed denominator.** `directory.py` parses the gazetteer and prints completion. Progress
-  is a number the repository calculates.
-- **Contiguous layer reporting.** A place with audio but no materials is at layer 2, not 7.
-- **Layer 0 blocking.** Craft cannot be judged from the flat-shaded rasteriser, so the engine path
-  must precede the craft layers.
-
-### 1.2 FINDING 1 — the layers describe a *set of places*, not a *simulation*
-
-**Severity: blocking.** Every one of the eight layers is a property of a location. Run all eight to
-completion and you get 126 beautiful, correctly-placed, lit, propped, populated, scored rooms —
-**and a dead station.**
-
-"Living and breathing" is not a property of a location. It is a property of *systems that run
-across locations*: an economy, a legal system, a news cycle, a population that changes, needs that
-create motive, consequences that persist. None of those appear anywhere in the plan.
-
-The NPC modules make this concrete. `schedule.py` knows a Narn dockworker's shift. Nothing makes
-them **hungry**, nothing **pays** them, nothing **notices** if they never arrive, and nothing
-**remembers** that they were arrested last week. They execute a timetable. A timetable is not a
-life.
-
-**Fix:** a second track — **SYSTEMS** — that runs in parallel and has its own layers and its own
-completion metric.
-
-### 1.3 FINDING 2 — there is no player
-
-**Severity: blocking.** Nothing in the plan builds a controller, a camera, an interaction verb, an
-inventory, a UI, or a save file. The physics for flight and docking exist; the means to *be
-someone* does not.
-
-"You are one of 250,000 inhabitants" implies the player has: an identicard, a legal status,
-quarters at some class, an income, a job with a roster, a reputation, and a body subject to the
-same gravity gradient as everyone else. That is a design, and it is absent.
-
-**Fix:** a third track — **PLAYER**.
-
-### 1.4 FINDING 3 — layer 5 conflates geometry with behaviour
-
-`props & function` is one layer covering two unrelated kinds of work: *a chair exists* and *a chair
-can be sat on, is owned by the bar, wears out, and is thrown in a fight*. The first is modelling;
-the second is simulation. Bundling them guarantees the second is skipped, because the layer will
-look complete once the meshes are there.
-
-**Fix:** split into **props (geometry)** in the place track and **interaction & behaviour** in the
-systems track.
-
-### 1.5 FINDING 4 — nothing verifies the whole
-
-Layer 8 judges each location. Nothing judges **the station**: variety, pacing, memorability,
-whether Red feels different from Blue, whether the 24-hour cycle reads, whether a two-hour walk is
-worth taking. AAA reviews are written about wholes.
-
-**Fix:** a **holistic judgement** milestone with its own criteria, and a **soak test** — run the
-simulation for simulated weeks and assert it has not drifted.
-
-### 1.6 FINDING 5 — Layer 0 has no acceptance criteria
-
-"A materialled, lit frame comes out of Godot" is not a bar. Which frame? Judged how? Recorded
-where?
-
-**Fix:** Layer 0 exits when a **named scene** renders in the engine, is scored against all four
-rubric dimensions, and the score is committed to `docs/aaa-scorecard.json` — with the score being
-allowed to be *bad*. The gate is that the loop works, not that the first frame is good.
-
-### 1.7 FINDING 6 — no performance milestone on real hardware
-
-Budgets are numeric proxies. `CLAUDE.md` is explicit that they say nothing about framerate. There
-is no point in the plan where actual framerate is measured, and no owner-machine test.
-
-**Fix:** an explicit **performance milestone** requiring a measurement on target hardware, and an
-honest statement that until then all performance claims are proxies.
-
-### 1.8 FINDING 7 — no content-volume strategy
-
-126 locations at hand-authored AAA dressing is, at commercial rates, several hundred person-years.
-The plan does not say how one agent covers it.
-
-The answer already exists in the architecture and is not written down: **everything is generated
-from data.** The plan must state the ratio explicitly — which locations are hero-authored, which
-are procedurally dressed from a kit, and what fraction of the station a player will ever stand in.
-
-**Fix:** a **tiering** rule, in §3.4.
-
-### 1.9 FINDING 8 — the era lock is never verified end to end
-
-S2–3 is asserted per module. Nothing checks the *finished* station for era consistency — a S5
-uniform beside a S2 sign is exactly the kind of error that survives a per-module check.
-
-**Fix:** an **era sweep** in the judgement milestone.
-
-### 1.10 Smaller gaps found, each folded into the plan below
-
-- No **save/load**, so nothing persists between sessions of *play*.
-- No **localisation or accessibility**, both AAA table stakes.
-- No **photo mode**, which is how a beautiful game gets seen.
-- No **sound propagation** — layer 7 is ambience only, and occlusion is what makes audio read as
-  space.
-- No **dialogue or language** system, though the gazetteer establishes fifteen species.
-- No **damage, repair or failure** states, though the station is a machine with a plant.
-- No **onboarding** — how a player learns an 8 km station.
-- **Coriolis and the 2.23× gravity spread are derived and unused.** The most distinctive physical
-  fact about this station currently affects nothing a player feels.
+It is not an abandonment of AAA. It is a decision about *where* the quality goes: into a station
+that is **consistent, characterful and alive** rather than one that is beautiful in twelve rooms
+and empty everywhere. Surface work continues — but only at the **kit** level, where one pass
+multiplies across all 70 decks at once, which is how the corridor went 3 → 4 in a single session.
 
 ---
 
-## 2. SYSTEM ARCHITECTURE — everything, and how it connects
+## 2. THE THREE TRACKS, AND THEIR SHARE
 
-### 2.1 The map
-
-```mermaid
-graph TD
-    subgraph WORLD["WORLD STATE — the authority"]
-        CLOCK[Station clock<br/>EMT, 24h, calendar]
-        POP[Population<br/>250,000 · arrivals · deaths]
-        ECON[Economy<br/>credits · prices · wages · scarcity]
-        LOG[Logistics<br/>water · air · food · power · waste]
-        FAC[Factions<br/>relations · influence · territory]
-        LAW[Law & crime<br/>offences · arrests · trials · sentences]
-        NEWS[Information<br/>ISN · PA · rumour · propaganda]
-        TRAF[Traffic<br/>ships · cargo · customs queue]
-    end
-
-    subgraph AGENTS["AGENTS"]
-        SCHED[Schedules & roles]
-        NEED[Needs<br/>hunger · sleep · hygiene · social]
-        MEM[Memory & relationships]
-        NAV[Navigation]
-        ANIM[Animation & body]
-        DIAL[Dialogue & barks]
-    end
-
-    subgraph PLACE["PLACES"]
-        DIR[Directory<br/>address · function · interacts]
-        GEO[Geometry]
-        MAT[Materials]
-        LIT[Lighting]
-        PROP[Props]
-        AUD[Audio]
-    end
-
-    subgraph PLAYER["PLAYER"]
-        CTRL[Controller<br/>gravity · Coriolis]
-        INT[Interaction verbs]
-        INV[Inventory · identicard]
-        STAT[Legal status · job · income]
-        REP[Reputation]
-        UI[Diegetic UI]
-    end
-
-    subgraph ENGINE["ENGINE"]
-        STREAM[Streaming cells]
-        LOD[LOD & sim-LOD]
-        REND[Renderer]
-        SAVE[Save / load]
-    end
-
-    CLOCK --> SCHED
-    CLOCK --> LIT
-    CLOCK --> NEWS
-    CLOCK --> TRAF
-    POP --> SCHED
-    POP --> ECON
-    ECON --> NEED
-    ECON --> LAW
-    ECON --> STAT
-    LOG --> ECON
-    LOG --> PLACE
-    TRAF --> POP
-    TRAF --> ECON
-    TRAF --> LAW
-    FAC --> DIAL
-    FAC --> LAW
-    FAC --> NEWS
-    LAW --> MEM
-    LAW --> REP
-    NEWS --> MEM
-    NEWS --> UI
-    SCHED --> NAV
-    NEED --> SCHED
-    MEM --> DIAL
-    NAV --> DIR
-    DIR --> GEO --> MAT --> LIT
-    DIR --> PROP --> INT
-    PROP --> NEED
-    AUD --> PLACE
-    CTRL --> INT
-    INT --> INV
-    STAT --> REP
-    REP --> DIAL
-    STREAM --> LOD --> REND
-    SAVE --> WORLD
-    SAVE --> AGENTS
-    SAVE --> PLAYER
-```
-
-### 2.2 The systems, in full
-
-Every row is a system that must exist. **Status** is honest as of session 3k.
-
-#### World state — the authority nothing may contradict
-
-| # | System | What it does | Feeds | Status |
-|---|---|---|---|---|
-| W1 | **Station clock** | EMT 24 h cycle (authority 1, customs board), calendar, era date | schedules, lighting, news, traffic | partial — `schedule.py` |
-| W2 | **Population register** | 250,000 exactly; species mix; births, deaths, arrivals, departures | economy, schedules, crowd | partial — counts only |
-| W3 | **Economy** | Credits, prices, wages, rent, scarcity, the black market | needs, crime, player income | **none** |
-| W4 | **Logistics** | Water, air, food, power, waste flows and stocks — `LIFE-SUPPORT-AND-INDUSTRY.md` sized all of them | economy, failures, plant | **none** (researched) |
-| W5 | **Traffic & customs** | Ship arrivals/departures, cargo, the queue, refusals — `TRAFFIC-AND-CUSTOMS.md` | population, economy, law | **none** (researched) |
-| W6 | **Factions** | 15 species + Nightwatch, relations, influence, territory | dialogue, law, news, crowd mix | partial — `FACTIONS.md` data |
-| W7 | **Law & crime** | Offences, detection, arrest, trial, sentence, Downbelow's 90% share | reputation, memory, security NPCs | **none** (researched) |
-| W8 | **Information** | ISN broadcasts, PA announcements, rumour spread, propaganda | NPC memory, player UI, screens | **none** |
-| W9 | **Damage & repair** | Wear, faults, breakdowns, engineers dispatched, hull breaches | logistics, jobs, drama | **none** |
-| W10 | **Events** | Scheduled (Council session) and emergent (bar fight, strike, outbreak) | everything | **none** |
-
-#### Agents
-
-| # | System | What it does | Status |
+| | track | why this share | measured by |
 |---|---|---|---|
-| A1 | **Roles & schedules** | Who works where, when; three watches | **done** — `schedule.py` |
-| A2 | **Needs** | Hunger, thirst, sleep, hygiene, social, money — the *motive* behind a schedule | **none** |
-| A3 | **Memory & relationships** | Who knows whom, who saw what, grudges, favours | **none** |
-| A4 | **Navigation** | Pathing across the station | **done** — `navigation.py` |
-| A5 | **Bodies & costume** | 15 species, per-individual variation, era-gated dress | **done** |
-| A6 | **Animation** | Locomotion, gesture, sit/eat/work, gravity-aware gait | **done** (unwelded joints outstanding) |
-| A7 | **Dialogue & barks** | Speech, alien languages, translation, overheard conversation | **none** |
-| A8 | **Group behaviour** | Queues, crowds, panic, riots, security cordons | partial — `crowd.py` density only |
-| A9 | **Simulation LOD** | Full agent ↔ flow agent ↔ statistical, with consistency across promotion | partial — designed, not enforced |
+| **60%** | **L — LIFE** | uncapped, differentiating, and code rather than art | **AGENCY**: residents executing a schedule *by moving*; verbs with world-state consequence; lines of dialogue heard |
+| **30%** | **V — VARIETY** | the credibility floor. Fixes "every corridor looks the same" at its root | **VARIETY**: pairwise distinguishability between places, using the instrument `body.py --silhouette` already proves works |
+| **10%** | **S — SURFACE** | capped, but kit work multiplies across everything | the existing craft rubric, at the half distance, **kit-level only** |
 
-#### Places — the current eight layers
-
-| # | Layer | Status |
-|---|---|---|
-| P1 | Addressed | **118/118 COMPLETE** |
-| P2 | Geometry | **118/118 COMPLETE** |
-| P3 | Materials | 0 |
-| P4 | Lighting | 0 |
-| P5 | Props (geometry) | 0 |
-| P6 | Inhabitants placed | 0 |
-| P7 | Audio | 0 |
-| P8 | Judged | 0 |
-
-#### Player
-
-| # | System | Status |
-|---|---|---|
-| L1 | **Controller** — walk, run, crouch, climb; per-deck gravity; Coriolis on throws and falls | **none** |
-| L2 | **Interaction verbs** — the 71 declared prop types must do something | **none** (specified) |
-| L3 | **Inventory & identicard** — carrying, the identicard as a legal object | **none** |
-| L4 | **Status** — visa, work permit, quarters class, income, rent | **none** |
-| L5 | **Reputation** — per faction, per individual | **none** |
-| L6 | **Diegetic UI** — Babcom terminals, signage, no floating HUD where avoidable | **none** |
-| L7 | **Flight** — Starfury cockpit, HUD, launch and dock as one continuous action | physics **done**, cockpit none |
-| L8 | **Transit** — riding lifts, trams, the core shuttle; the 2-minute rim-to-axis ride | physics **done**, riding none |
-| L9 | **Save / load** | **none** |
-| L10 | **Onboarding** — how a player learns 8 km | **none** |
-| L11 | **Accessibility & localisation** | **none** |
-| L12 | **Photo mode** | **none** |
-
-#### Presentation & engine
-
-| # | System | Status |
-|---|---|---|
-| E1 | Renderer path (Godot + lavapipe offscreen) | **exists, unused since 2j — LAYER 0** |
-| E2 | Material library → engine | `materials.py` exists, not wired |
-| E3 | Lighting rig + volumetrics (B5's signature haze and shafts) | none |
-| E4 | Exposure / eye adaptation — mandatory: the bar is near-black, the Garden is bright | none |
-| E5 | Reflections, shadows, SSAO | none |
-| E6 | VFX — steam, sparks, holograms, engine plumes | none |
-| E7 | Screen content — Babcom, ISN, departure boards rendered to texture | none |
-| E8 | Decals & wear | none |
-| E9 | Streaming | **done** — 3,414 cells |
-| E10 | LOD | partial — `lod.py` exterior only |
-| E11 | Audio engine — propagation, occlusion, reverb zones | none |
-| E12 | Performance on target hardware | **never measured** |
+**Both new gates fail today and neither is a coverage count.** That is the point: every gate this
+project has ever had measures *coverage* or *correctness*, and both are perfectly satisfied by one
+generic thing repeated seventy-eight times.
 
 ---
 
-## 3. THE REVISED PLAN
+## 3. THE L-TRACK — the ladder, and every rung is player-visible
 
-### 3.1 Three tracks, not one
+Today: **zero** residents move, **zero** verbs change world state, **zero** lines of dialogue. All
+the *data* exists — `populace` knows every resident's name, species, home, job, role, faction and
+species-specific meal and sleep times; `npc/schedule.py` derives the day; `transit.py` costs every
+journey; `routes.py` can path between any two places. **None of it runs.** `life.gd`'s own comment:
+*"the runtime cannot create a person, so a room busier than its bake hour is capped"* — it shows and
+hides pre-baked bodies by the hour.
 
-```
-TRACK P — PLACES     P0 engine path → P1 addressed → P2 geometry → P3 materials
-                     → P4 lighting → P5 props → P6 inhabitants → P7 audio → P8 judged
-
-TRACK S — SYSTEMS    S1 clock+population → S2 needs → S3 economy → S4 logistics
-                     → S5 traffic → S6 law+crime → S7 information → S8 memory+relationships
-                     → S9 events+damage → S10 soak
-
-TRACK L — PLAYER     L1 controller → L2 interaction → L3 status+inventory → L4 UI
-                     → L5 transit+flight → L6 save → L7 onboarding → L8 accessibility
-```
-
-**Each track completes its layers in order.** Tracks run sequentially by milestone (§3.3), not
-simultaneously — the owner's rule stands. Within a milestone, one track is the current one.
-
-### 3.2 Why this ordering
-
-- **P0 first, always.** Nothing about craft can be judged without it.
-- **P1–P2 before S.** Systems need places to act on; an economy with no shops is untestable.
-- **S1–S3 before P5–P6.** Props and inhabitants should be placed against *what the simulation
-  needs*, not guessed. A bar needs a till because the economy has money.
-- **L1–L2 early.** The player's reach determines what "interactable" has to mean. Building 71 prop
-  behaviours before knowing the verb set is how you build the wrong 71.
-- **P8 and S10 last**, together: judge the parts and soak the whole.
-
-### 3.3 Milestones — each is a demonstrable state
-
-| M | Name | Exit criteria | Track |
+| L | milestone | done when | today |
 |---|---|---|---|
-| **M0** | **The eye** | A named scene renders in Godot+lavapipe with `materials.py` materials and a lighting rig, is scored on all four rubric dimensions, and the score is committed. **The score may be bad.** | P0 |
-| **M1** | **The map** | All 126 locations addressed, non-colliding, adjacency-valid, functions and interactions declared. `directory.py` reports 126/126 at layer 1 | P1 |
-| **M2** | **The shell** | All 126 have closed, correctly wound geometry inside their footprints. Boundary-edge count zero station-wide | P2 |
-| **M3** | **The look** | Materials and lighting on all 126. Every location scores ≥4 on craft in an engine frame | P3–P4 |
-| **M4** | **The pulse** | Clock, population, needs and economy run. An NPC gets hungry, goes to a bar, pays, and the bar's stock falls. Observed and unobserved paths agree | S1–S3 |
-| **M5** | **The body** | Player walks the station under correct per-deck gravity, uses the verb set on real props, carries an identicard | L1–L3 |
-| **M6** | **The world** | Logistics, traffic, law and information run. A ship arrives, cargo clears customs, a theft is reported, ISN mentions it | S4–S7 |
-| **M7** | **The people** | Memory, relationships, dialogue, group behaviour. NPCs recognise the player and each other | S8, A3, A7 |
-| **M8** | **The place** | Props, inhabitants and audio complete across 126. The station is populated at real density with working ambience | P5–P7 |
-| **M9** | **The life** | Events and damage. Something goes wrong and the station responds | S9 |
-| **M10** | **The game** | Save/load, UI, transit, flight, onboarding, accessibility | L4–L8 |
-| **M11** | **The verdict** | Per-location judgement complete; holistic pass; era sweep; **performance measured on target hardware**; soak test over 30 simulated days with no drift | P8, S10 |
+| **L1** | **Someone goes to work** | one named resident leaves their quarters at their own start hour, walks a `routes.py` path, and is at their post. Asserted headlessly | 0 |
+| **L2** | **They eat and they sleep** | the species-specific meal and sleep times in `schedule.py` move bodies to a mess, a bar, a bunk | 0 |
+| **L3** | **They use the transit** | a resident takes the lift to another deck, or the tram along the drum, and arrives. The vehicles already move | 0 |
+| **L4** | **They talk** | `dialogue.gd` is 912 lines with **no content**. Lines keyed on who they are, what they are doing, their faction and the era | 0 lines |
+| **L5** | **They react to you** | `npc.gd` already notices. Make it mean something: they move aside, they greet, they refuse | partial |
+| **L6** | **The factions act** | Psi Corps, Narn–Centauri friction, security patrols, Downbelow's underclass. **The friction visible in a corridor**, which is the owner's own test | 0 |
+| **L7** | **The economy turns** | a bar's stock falls when somebody buys. Money exists — a till is a till because there is money | 0 |
+| **L8** | **Crime and law** | a theft happens, is reported, security responds, the brig fills | 0 |
+| **L9** | **The information layer** | ISN, PA and signage report **what actually happened**, not a script | ambience only |
 
-### 3.4 Content tiering — how one agent covers 126 locations
+**L1 is the whole track in miniature and is the next thing built.** Everything above it is the same
+machinery with more verbs.
 
-Stated explicitly because the plan is otherwise arithmetic that does not close.
+## 4. THE V-TRACK — variety, generated rather than hand-authored
 
-| Tier | Count | Treatment | Examples |
-|---|---|---|---|
-| **Hero** | ~12 | Hand-authored to the reference frame, individually judged | Zocalo, C&C, Council Chamber, customs, the Garden landmark, Medlab One |
-| **Featured** | ~30 | Kit-built with a hand-authored identity pass — a distinctive fitting, palette and light rig | Dark Star, casino, Security Central, Medlabs, the bar |
-| **Generic** | ~84 | Fully procedural from the kit, varied by seed, dressed by function tag | Corridors, quarters runs, storage, offices, plant bays |
+The register already knows what every place **is**: its functions, its declared interactables, its
+fixtures, its faction, its species mix, its authority. **That has never driven form — only which
+props get dropped in.** A generic room is generic because one generator with ten archetypes serves
+seventy-eight places.
 
-**The player will stand in every tier.** The test is that a *generic* location is not identifiably
-generic — which is what the kit, the wear system and per-sector palettes are for.
-
-### 3.5 The stopping rule stands
-
-`docs/AAA-STANDARD.md` already defines it: a subsystem is done at **two consecutive clean review
-rounds**, with severity ladder and clean-round reset. That applies unchanged to every layer here.
-
----
-
-## 4. WHAT WE WOULD HAVE MISSED — the lessons other simulations paid for
-
-Not a wish list. Each of these is a specific failure mode with a specific fix in the plan.
-
-### 4.1 The look-away problem — *Dwarf Fortress*, *RimWorld*, *Star Citizen*
-
-The hardest problem in a 250,000-agent simulation is not simulating them. It is that the
-statistical layer and the detailed layer must **agree**. Walk away from a shop, come back, and the
-stock must be what an hour of trading would have produced.
-
-`schedule.py` has the statistical layer and the design intent. Nothing enforces agreement.
-→ **M4 exit criterion: observed and unobserved paths agree**, asserted numerically.
-
-### 4.2 The nemesis problem — *Shadow of Mordor*
-
-What makes a populated world feel authored is that it **remembers**. One NPC who recalls you from
-last week is worth a hundred with barks. → **S8 memory & relationships**, and the reputation system.
-
-### 4.3 Needs create motive — *The Sims*, *RimWorld*, *Kenshi*
-
-A schedule tells an NPC where to be. A **need** tells them *why*, and produces behaviour when the
-schedule is interrupted — which is when a simulation stops looking like a timetable.
-→ **S2 needs**, ahead of props, so props exist to satisfy needs.
-
-### 4.4 The economy is the plot generator — *X4*, *Elite*, *Dwarf Fortress*
-
-Scarcity makes crime, crime makes law, law makes reputation, reputation makes consequences. A
-station with no economy has no reason for anything to happen. `LIFE-SUPPORT-AND-INDUSTRY.md`
-already computed the flows — 13,250 m³ of water a day, 450 t of food, a >98% closed loop. That is
-an economy waiting to be wired. → **S3–S4**.
-
-### 4.5 Environment as antagonist — *Prey*, *Alien: Isolation*, *Barotrauma*
-
-The station is a machine that keeps people alive. If it can never fail, it is scenery. Six
-atmospheres, a water loop that must stay closed, 1.9 GW of power, a reactor that can be jettisoned
-— every one is a failure mode already researched. → **S9 damage & events**.
-
-### 4.6 Verticality and the felt body — *Half-Life: Alyx*, *Mirror's Edge*
-
-We derived the most distinctive physical facts about this station and used none of them:
-**2.23× body weight** between Blue and Grey, **2.00 g** of Coriolis on a fast rim-to-axis transit,
-**52.2 m/s** of inherited tangential velocity on launch, and a two-minute lift ride during which
-weight drains away. → **L1 controller must implement all four**, and they are gameplay, not trivia.
-
-### 4.7 Diegetic UI — *Dead Space*, *Metro*
-
-This station signs itself: Babcom terminals in every quarters, public monitors, departure boards,
-the arrival concourse's station schematic. The UI should be those objects. → **L6**, and **E7**
-screen-content rendering.
-
-### 4.8 Audio is half the room — *Alien: Isolation*, *Hunt: Showdown*
-
-Ambience alone is a bed. What makes audio read as *space* is occlusion and propagation: the bar
-heard through a door, the plant's compressors felt from Downbelow. → **E11**, not just P7.
-
-### 4.9 Onboarding an 8 km space — *Morrowind*, *Outer Wilds*
-
-126 locations across 8 km with no map screen is hostile. But B5 signs itself, and the arrival
-concourse *is* the tutorial — the customs board explains atmospheres, time, currency and the law in
-its own voice. → **L7 uses the authority-1 signage as onboarding**, which is both elegant and
-canon.
-
-### 4.10 THE OPENING — set by the owner, session 3k
-
-**This is now a design decision, not a proposal.** Verbatim:
-
-> *"You arrive on a transport ship and slowly see the station come into view before landing and
-> being processed. You pick your species/name/occupation etc. or maybe it's random. And you just
-> experience life aboard the vessel per your role or per your decisions; 1 of 250,000."*
-
-It is the right opening and it resolves several things the plan had left open:
-
-**It makes the first five minutes the tutorial, using only what canon already provides.** The
-approach establishes scale — 8,047 m arriving slowly through a viewport is the only way a player
-ever *feels* the size. The dock establishes the launch-and-dock hinge from the passenger side.
-Customs establishes the rules in the station's own voice: six atmospheres, Earth Mean Time,
-identicards, the Business Center, *smoking permitted in designated areas only*. Every one of those
-is authority-1 signage already transcribed in `signage.py` and `customs.py`. **The station explains
-itself, and we do not write a word of tutorial.**
-
-**It makes character creation diegetic.** Species, name and occupation are not a menu — they are
-what the identicard says, and the identicard is a prop we already model. `npc/names.py` generates
-per-species names to attested grammars; `npc/schedule.py` holds the roster; `quarters.py` sorts
-residence by class. **Picking a species picks an atmosphere, a quarters class, a gravity, a
-faction standing and a working day**, all from systems that exist.
-
-**It answers "what does the player do" without a quest list.** You do your job, or you don't. The
-consequences come from the economy, the law and the reputation systems rather than from a script.
-Roll random and you get a life you did not choose, which is the more interesting version and is
-also what being one of 250,000 means.
-
-**Sequence, and what each beat requires:**
-
-| Beat | What the player sees | Systems required | Status |
-|---|---|---|---|
-| 1. Approach | The station growing in a viewport over minutes. Rotation visible. Traffic in the lanes | hull geometry, materials, lighting, transport interior, traffic (W5) | geometry ✓, rest ✗ |
-| 2. Dock | Bay doors, the spin-match, clamps, the transport settling | docking physics ✓, bay geometry ✓, animation | partial |
-| 3. Disembark | First gravity. First crowd. The bay's noise and scale | controller (L1), crowd, audio | ✗ |
-| 4. Customs | Queue, identicard, atmosphere assignment, the boards | customs geometry ✓, signage ✓, interaction (L2), status (L4) | partial |
-| 5. Concourse | "WELCOME TO BABYLON 5", the station schematic screen, the crowd | geometry ✓, screens (E7), UI (L6) | partial |
-| 6. Your quarters | The room your class gets. Rent starts | quarters ✓, economy (W3), status (L4) | partial |
-| 7. Your first shift | The roster says where to be | schedule ✓, navigation ✓, needs (S2) | partial |
-
-**This becomes M5's exit criterion**: the seven beats playable end to end.
-
-### 4.11 The thing nobody plans for: **what does the player DO?**
-
-"Be one of 250,000" is a premise, not a loop. Without a role the result is a walking simulator with
-excellent architecture.
-
-**Settled by the owner — see §4.10.** The player is a **new arrival with a work permit**. That single choice activates every system already researched — customs and a visa
-(W5), a quarters class and rent (W3), a job with a roster (A1), an income, a reputation, and access
-to Downbelow when the money runs out. It is also exactly the show's own entry point for a
-newcomer. Everything else — flight, crime, diplomacy — becomes reachable from it rather than
-granted.
-
----
-
-## 5. RISK REGISTER
-
-| Risk | Severity | Mitigation |
+| V | milestone | done when |
 |---|---|---|
-| **Content volume exceeds one agent's reach** | high | §3.4 tiering; everything generated from data; kit reuse enforced by the directory |
-| **Performance never measured on real hardware** | high | M11 requires it; until then all claims are declared proxies |
-| **The engine path rots again** | high | It already did — built in 2j, unused by 3k. M0 wires it into CI, not into a session |
-| **Systems built against imagined places** | medium | S track ordered after P1–P2 |
-| **Canon drift as extrapolation accumulates** | medium | `INVENTIONS.md`, era sweep at M11, authority marked per row |
-| **Assertions that cannot fail** | medium | `tools/mutation_sweep.py`; current project-wide coverage **21%** and must rise |
-| **Context loss between sessions** | high | `STATE.md`, computed layer counts, this document |
-| **Scope creep into a game engine rewrite** | medium | Godot is chosen (ADR 0001); no engine work beyond wiring |
+| **V0** | **The gate exists and is red** | pairwise place distinguishability measured and reported, with the one-parameter-block control that must read 1.000 |
+| **V1** | **Form follows function** | a medlab's *plan* differs from an office's because a medlab is not an office — bay rhythm, ceiling height, servicing, circulation, all keyed on the register |
+| **V2** | **A corridor is not one corridor** | sector palette, deck age, traffic wear, faction presence. One kit, many readings |
+| **V3** | **No two visited places are indistinguishable** | the gate goes green on everything a route passes through |
+
+## 5. THE S-TRACK — surface, kit-level only
+
+**A craft pass on a kit multiplies; a craft pass on a room does not.** `interior_kit.corridor_section`
+is every one of the 70 decks at once — that is how the corridor went craft 3 → 4 in one session.
+The lift interior and the transit car are the same lever: they are what a player looks at for most
+of any journey.
+
+Per-location craft passes are **not** in the 10%. They come after L and V, ordered by the routes,
+authority-1 first — and a *generic* place still has to be **unidentifiable as generic**, which is
+V's job, not S's.
 
 ---
 
-## 6. HOW PROGRESS IS TRACKED
+## 6. WHAT IS EXPLICITLY OUT
 
-1. **`station/directory.py` computes and prints layer completion in CI.** No summary is
-   authoritative over it.
-2. **Every system in §2.2 gets a status field** in the same register once its track opens, so the
-   S and L tracks are counted the same way as P.
-3. **`docs/aaa-scorecard.json`** holds per-subsystem rubric scores. A location is at P8 only when
-   it has a committed passing score.
-4. **`STATE.md`** carries the current milestone and the current layer, and nothing else claims to.
+* instancing the 73,507 unnamed bays
+* hand-authored AAA interiors for all 128 places
+* beating Starfield on surface fidelity — stated plainly so nobody spends a session trying
+* the old M0–M11 milestones, layer numbers 0–8 as an ordering rule, and the W-track
 
----
+## 7. THE RULES THAT SURVIVE, AND ONE THAT IS NEW
 
-## 7. IMMEDIATE NEXT ACTIONS
+All of `CLAUDE.md`'s hard rules stand — nothing from memory, log every invention, blocking
+conflicts block, inside and outside from one schema, double precision, update `STATE.md`. So does
+the negative-control discipline, which is the highest-yield thing in this project.
 
-1. **M0 — the eye.** Wire `materials.py` into the Godot project, build a lighting rig, render the
-   Zocalo offscreen through lavapipe, score it against all four dimensions, commit the score.
-   *Accept a bad score.* The gate is that the loop closes.
-2. **M1 — the map.** Address the remaining 97 locations.
-3. **M2 — the shell.** Geometry for all 126.
+**New, and it is what this session cost to learn:**
 
-Then M3 onward in order.
+> **A GENERATOR IS FINISHED WHEN ITS OUTPUT IS VARIOUS, NOT WHEN ITS OUTPUT IS CORRECT.**
+> One kit passing every closure, winding, budget and material gate while producing seventy
+> identical decks is the disease, not the cure. And **do not send agents at defects** — defects are
+> what gates find, so gates are what keep getting fed. Point them at content and behaviour.
