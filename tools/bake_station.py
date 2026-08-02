@@ -100,13 +100,28 @@ def main(argv=None):
             print(f"  [{n}/{len(work)}] {stem}: SKIPPED -- no collision")
             continue
         sec, ring, dk = stem.split("_")[0], stem.split("_")[1], stem.split("_")[2]
-        before = set(glob.glob(os.path.join(CELLS, stem + "_c*.scn")))
+        # THE REGISTER'S DECK IS A NAME, NOT AN INDEX -- for the third time this
+        # session. `cell_manifest.json`'s deck_table is keyed by INDEX into the
+        # ring's stack; grey's locations carry the deck numbers the show uses,
+        # 24 through 80, on a 23-deep ring. 15 of 70 bakes died on
+        # "no deck_table row for grey ring_index=0 deck_index=24".
+        # `deck.deck_index` has existed for exactly this since the session that
+        # found 14 of 67 decks failing to assemble; `_ring_cells` goes through
+        # it, `routes.py` did not until an hour ago, and this did not either.
+        import deck as _D                                      # noqa: PLC0415
+        import interior as _it                                 # noqa: PLC0415
+        _schema, _profile = _it.load()
+        try:
+            dk_index = _D.deck_index(_schema, _profile, sec, int(ring), int(dk))
+        except Exception:                                      # noqa: BLE001
+            dk_index = int(dk)
         t1 = time.time()
         cmd = [godot, "--headless", "--path", os.path.join(ROOT, "godot"),
                "res://scenes/walk.tscn", "--", "--bake-cells",
                f"--glb={g}",
                f"--collision={col}",
-               f"--sector={sec}", f"--ring-index={ring}", f"--deck-index={dk}",
+               f"--sector={sec}", f"--ring-index={ring}",
+               f"--deck-index={dk_index}",
                f"--cell-id={stem}",
                f"--cells-out={CELLS}"]
         try:
@@ -115,8 +130,14 @@ def main(argv=None):
             out, err, code = r.stdout, r.stderr, r.returncode
         except subprocess.TimeoutExpired:
             out, err, code = "", f"timed out after {a.timeout}s", -1
-        made = sorted(set(glob.glob(os.path.join(CELLS, stem + "_c*.scn")))
-                      - before)
+        # FRESHNESS, NOT A SET DIFFERENCE. The first version diffed the cell
+        # files against a `before` snapshot, so a deck that had been baked in an
+        # earlier run re-baked correctly and reported "exit 0, 0 cells" -- the
+        # engine's own log in the same block said "7 cells, 782146 triangles
+        # (source had 782146)". A verdict that reads as failure when the
+        # artefact is already right is worse than no verdict.
+        made = sorted(p2 for p2 in glob.glob(os.path.join(CELLS, stem + "_c*.scn"))
+                      if os.path.getmtime(p2) >= t1 - 1.0)
         mb = sum(os.path.getsize(p) for p in made) / 1e6
 
         # THE CELLS ON DISK ARE THE VERDICT, NOT THE EXIT CODE. A bake that
