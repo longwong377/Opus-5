@@ -643,29 +643,105 @@ class Route extends RefCounted:
 		return best
 
 
-## Where one resident should be on their route at one hour. PURE.
+## Where one resident should be at one instant of their day. PURE IN `t`.
 ##
-## Three states and no memory: at home until their own departure hour, walking
-## at their own gait, at their post from the moment the walk is done. `s_at` is a
-## function of `h` alone, so 06.20 gives the same answer whether it was reached
-## by waiting or by jumping -- which is what makes the 1x, 10x and 60x runs
-## comparable rather than merely all green.
+## `t` is STATION SECONDS since the clock started, and every row of the plan is
+## a straight line in it: how far along a walking segment they are, where the
+## car is, how far open its doors are, and whether they are standing in it. No
+## memory, no state, no integration -- so 06.20 gives the same answer whether it
+## was reached by waiting or by jumping, which is what makes the x1, x10 and x60
+## runs the same journey three times rather than three that happened to pass.
+##
+## THE PLAN IS WRITTEN BY `station/agenda.py` AND EVERY DURATION IN IT BELONGS
+## TO SOMEBODY ELSE: the walk is the polyline's own length over
+## `populace._walk_speed`, the ride is `transit_runtime`'s motion table (whose
+## seconds are `navigation.lift_ride_s` and whose peak is asserted against the
+## Coriolis cap), the doors are the leaves' measured travel over `door.gd`'s own
+## speed, and the dwell is `navigation.TRANSIT_DWELL_S`. This class interpolates.
+##
+## L1's one-corridor commute is the degenerate case -- one walking row, no car,
+## no doors -- so there is ONE runtime for a resident's journey rather than a
+## second one for the journeys that have a lift in them.
 class Agenda extends RefCounted:
-	var depart_h: float = 0.0
-	var speed_ms: float = 1.4
-	var length_m: float = 0.0
+	var walk: Array = []            # {seg, t0, t1, s0, s1}
+	var car: Array = []             # {t0, t1, y0, y1, table}
+	var door: Array = []            # {t0, t1, f0, f1}
+	var hold: Array = []            # {t0, t1} -- standing in the car
+	var phases: Array = []          # {name, t0, t1}
+	var t_end: float = 0.0
 
-	func _init(p_depart: float, p_speed: float, p_length: float) -> void:
-		depart_h = p_depart
-		speed_ms = maxf(p_speed, 1e-6)
-		length_m = p_length
+	func _init(d: Dictionary) -> void:
+		walk = d.get("walk", [])
+		car = d.get("car", [])
+		door = d.get("door", [])
+		hold = d.get("hold_in_car", [])
+		phases = d.get("phases", [])
+		for r in phases:
+			t_end = maxf(t_end, float(r["t1"]))
+		for r in walk:
+			t_end = maxf(t_end, float(r["t1"]))
 
-	func s_at(h_abs: float) -> float:
-		return clampf((h_abs - depart_h) * 3600.0 * speed_ms, 0.0, length_m)
+	## [segment index, metres along it]. Between two rows the resident stands
+	## still at the end of the last one -- which is what waiting at a landing IS.
+	func walk_at(t: float) -> Array:
+		var seg := 0
+		var s := 0.0
+		for r in walk:
+			var t0 := float(r["t0"])
+			if t < t0:
+				break
+			var t1 := float(r["t1"])
+			var u: float = 1.0 if t >= t1 else (t - t0) / maxf(t1 - t0, 1e-9)
+			seg = int(r["seg"])
+			s = lerpf(float(r["s0"]), float(r["s1"]), u)
+		return [seg, s]
 
-	## The hour they get there, in the same unwrapped frame `s_at` reads.
-	func arrive_h() -> float:
-		return depart_h + length_m / speed_ms / 3600.0
+	## The car's position along the shaft's travel axis. `lift` supplies the
+	## motion table so the curve played here is the one `--ride` plays.
+	func car_y_at(t: float, lift) -> float:
+		if car.is_empty():
+			return 0.0
+		var y := float(car[0]["y0"])
+		for r in car:
+			var t0 := float(r["t0"])
+			if t <= t0:
+				break
+			var t1 := float(r["t1"])
+			var u: float = 1.0 if t >= t1 else (t - t0) / maxf(t1 - t0, 1e-9)
+			var f := u
+			if lift != null and r.has("table"):
+				f = lift.lift_ride_fraction(String(r["table"]), u)
+			y = lerpf(float(r["y0"]), float(r["y1"]), f)
+		return y
+
+	func door_at(t: float) -> float:
+		if door.is_empty():
+			return 1.0
+		var f := float(door[0]["f0"])
+		for r in door:
+			var t0 := float(r["t0"])
+			if t <= t0:
+				break
+			var t1 := float(r["t1"])
+			var u: float = 1.0 if t >= t1 else (t - t0) / maxf(t1 - t0, 1e-9)
+			f = lerpf(float(r["f0"]), float(r["f1"]), u)
+		return f
+
+	## Are they aboard? True from the moment they are in the car to the moment
+	## the far doors are open -- the window in which the thing they are steered
+	## at is the car's own stand point, which MOVES.
+	func aboard_at(t: float) -> bool:
+		for r in hold:
+			if t >= float(r["t0"]) and t < float(r["t1"]):
+				return true
+		return false
+
+	func phase_at(t: float) -> String:
+		var name := "before"
+		for r in phases:
+			if t >= float(r["t0"]):
+				name = String(r["name"])
+		return name
 
 
 ## The body, and the run. One resident, one route, one verdict.
@@ -677,11 +753,25 @@ class Agenda extends RefCounted:
 class Commuter extends Node3D:
 	var man: Dictionary = {}
 	var clock: Clock = null
-	var route: Route = null
+	## One `Route` per walking segment, indexed by the plan's own `seg`. A ride
+	## segment has no polyline: the body is not walking, it is being carried.
+	var routes: Array = []
+	var seg_len: Array = []
 	var agenda: Agenda = null
 	var body: CharacterBody3D = null
 	var crowd: Node3D = null                 # npc.gd, if the library loaded
 	var walker = null                        # their instanced body
+
+	## The lift, which is `scripts/transit.gd` instantiated rather than
+	## reimplemented -- one answer in this project to "how does a moving floor
+	## take a body with it", still tested by `transit_runtime.py --ride`. Null
+	## on a commute that never leaves its deck, and null in the pre-fix control.
+	var lift = null
+	var car_stand_from := Vector3.ZERO
+	var car_stand_to := Vector3.ZERO
+	var y_from := 0.0
+	var walk_r_to := 0.0
+	var t0_h := 0.0                          # the clock's own start, in hours
 
 	## Every pressure door on the deck, as {key, at, shape}. A shut door is a
 	## solid panel in the collision shell -- `collision.door_panel` -- so the
@@ -718,7 +808,22 @@ class Commuter extends Node3D:
 	var arrive_min := 1e30
 	var s_now := 0.0
 	var s_body := 0.0
+	var seg := 0
 	var done := false
+	# -- the ride's own tape, and it is RADIUS rather than distance ---------
+	# A lift on a spun ring travels radially: up is INWARD, so a ride is a change
+	# of radius and nothing else. Measuring the body's total displacement would
+	# score its shuffle across the car floor as riding.
+	var boarded := false
+	var alighted := false
+	var ride_frames := 0
+	var ride_off := 0
+	var radial_floor := 0.0
+	var radial_air := 0.0
+	var standoff_max := 0.0
+	var carried_m := 0.0
+	var end_landing := -1
+	var end_r := 0.0
 	var phase := "settle"
 	var phase_floor := 0.0
 	var phase_frames := 0
@@ -762,20 +867,72 @@ class Commuter extends Node3D:
 		# 2. THE CLOCK, AND THE AGENDA IS A PURE FUNCTION OF IT.
 		clock.tick(delta)
 		var h := clock.hours_abs()
-		s_now = agenda.s_at(h)
-		var want := (("after" if s_now >= route.length() - 1e-6
-			else "commute") if s_now > 0.0 else "before")
+		var t := (h - t0_h) * 3600.0
+		var want := agenda.phase_at(t)
 		if want != phase:
 			_phase(want)
+
+		# 2a. THE VEHICLE MOVES FIRST, AND THE BODY IS PUT BACK ON ITS FLOOR
+		#     BEFORE IT IS ASKED TO WALK. `transit.gd`'s own ordering, and its
+		#     reason: carrying after `move_and_slide` has resolved the body
+		#     against a floor that was not there yet leaves the rider a frame
+		#     behind the car all the way up. The carry is that script's, called
+		#     rather than copied.
+		var carried := Vector3.ZERO
+		if lift != null:
+			lift.lift_command(agenda.car_y_at(t, lift), agenda.door_at(t))
+			carried = lift.carry_body(body)
+			carried_m += carried.length()
+
+		# 2b. WHICH SEGMENT, AND HOW FAR ALONG IT. A new segment restarts the
+		#     body's own progress: the polyline it is following is a different
+		#     one, and `Route.advance` is monotone within a route.
+		var w := agenda.walk_at(t)
+		if int(w[0]) != seg:
+			seg = int(w[0])
+			s_body = 0.0
+		s_now = float(w[1])
 
 		# 3. THE BODY CHASES A CARROT ON THE ROUTE, and the carrot is placed
 		#    ahead of whichever of the two is FURTHER BACK -- the body, so it
 		#    stays on the polyline through a doorway, and the agenda, so it
 		#    cannot arrive at work before its own schedule says it does.
+		#
+		#    ABOARD, THERE IS NO ROUTE. The thing a passenger stands at is the
+		#    car's own stand point, and it MOVES -- so a body that is not being
+		#    carried reads a lag of the whole shaft rather than a metre of
+		#    dither, which is exactly what the parked-car control has to show.
 		_open_doors()
 		body.gravity_m_s2 = _spin_g()
-		s_body = route.advance(s_body, body.global_position)
-		if drive and s_now > 0.0:
+		var route: Route = (routes[seg] if seg < routes.size() else null)
+		if route != null:
+			s_body = route.advance(s_body, body.global_position)
+		# ABOARD IS TWO DIFFERENT QUESTIONS AND THEY MUST NOT BE ONE.
+		#   the plan's answer   -- where the timetable says they should be, and
+		#                          what their lag is therefore measured against
+		#   the body's answer   -- whether the capsule is actually inside the
+		#                          car, which is what decides what it walks at
+		# With the car never called the two disagree by the length of the shaft,
+		# and that disagreement IS the control's finding.
+		var aboard := agenda.aboard_at(t) and lift != null
+		# AND THE PASSENGER WALKS TO THE MIDDLE OF THE CAR WHETHER OR NOT THEY
+		# ARE IN IT YET. Steering at the car's stand point only ONCE INSIDE is a
+		# circular condition, and it cost a run: the boarding walk ended with
+		# the capsule 0.5 m short of the door plane, `_in_car` was false, so the
+		# body was never steered further in, so `_in_car` stayed false --
+		# `boarded=false`, `carry_frames=0`, and the ride carried by
+		# `floor_snap_length` alone. It is also what a passenger does, and it is
+		# `transit.gd`'s own ST_SHUT steer for the same reason: standing in a
+		# closing door is how a capsule gets depenetrated out of a floor.
+		if drive and aboard:
+			var to2 := car_stand_now() - body.global_position
+			var up2: Vector3 = body.body_up()
+			var flat2: Vector3 = to2 - up2 * to2.dot(up2)
+			if flat2.length() > float(body.speed_m_s) * delta:
+				body.step(delta, Vector2.ZERO, false, false, to2)
+			else:
+				body.step(delta, Vector2.ZERO, false, false)
+		elif drive and s_now > 0.0 and route != null:
 			var carrot := route.point_at(minf(route.length(),
 				minf(s_now, s_body) + lookahead))
 			var to := carrot - body.global_position
@@ -800,12 +957,15 @@ class Commuter extends Node3D:
 		else:
 			body.step(delta, Vector2.ZERO, false, false)
 
-		_measure()
+		_measure(aboard)
 		if trace > 0 and frame % trace == 0:
 			var q := body.global_position
-			print("ATRACE f=%d h=%.4f s=%.1f sb=%.1f floor_m=%.1f lag=%.2f "
-				% [frame, h, s_now, s_body, floor_m,
-					q.distance_to(route.point_at(s_now))]
+			print("ATRACE f=%d h=%.4f t=%.1f ph=%s seg=%d s=%.1f sb=%.1f "
+				% [frame, h, t, phase, seg, s_now, s_body]
+				+ "floor_m=%.1f lag=%.2f car_y=%.2f door=%.2f "
+				% [floor_m, lag_max,
+					(0.0 if lift == null else lift.lift_car_y()),
+					(1.0 if lift == null else lift.lift_door_open())]
 				+ "on=%s r=%.3f z=%.2f v=%.2f"
 				% [str(body.is_on_floor()).to_lower(),
 					sqrt(q.x * q.x + q.y * q.y), q.z, body.velocity.length()])
@@ -826,11 +986,63 @@ class Commuter extends Node3D:
 			d["shape"].disabled = (not seal) \
 				and p.distance_to(d["at"]) < door_range
 
-	func _measure() -> void:
+	## Where the passenger stands, in world space, WHILE THE CAR IS MOVING.
+	##
+	## The car's stand point is a point in the car, so it travels with it: it is
+	## the boarding landing's own stand point displaced along the shaft's travel
+	## axis by however far the car has gone. `station/agenda.py` asserts that
+	## evaluating this at the far landing's height reproduces `lift.stand_in_car`
+	## at that landing, so this is not a second opinion about where the floor of
+	## a lift is.
+	func car_stand_now() -> Vector3:
+		if lift == null:
+			return car_stand_from
+		var ax := _v3a(man["lift"]["travel_axis"])
+		return car_stand_from + ax * (lift.lift_car_y() - y_from)
+
+	func _v3a(a) -> Vector3:
+		return Vector3(float(a[0]), float(a[1]), float(a[2]))
+
+	func _measure(aboard: bool) -> void:
 		var p := body.global_position
 		var on := body.is_on_floor()
 		var step := p.distance_to(prev)
 		var heading := p - prev
+		# THE RIDE IS MEASURED IN RADIUS AND ONLY DURING THE RIDE. A lift on a
+		# spun ring goes radially and nothing else, so what has to be shown is
+		# that the body's own radius changed by the shaft's rise WHILE IT WAS
+		# STANDING ON SOMETHING -- a body that falls down the shaft covers the
+		# same radius and covers it in the air.
+		var r := sqrt(p.x * p.x + p.y * p.y)
+		var r_prev := sqrt(prev.x * prev.x + prev.y * prev.y)
+		if phase == "ride":
+			ride_frames += 1
+			if on:
+				radial_floor += absf(r - r_prev)
+			else:
+				radial_air += absf(r - r_prev)
+				ride_off += 1
+			if lift != null and lift.lift_in_car(p):
+				standoff_max = maxf(standoff_max, lift.lift_standoff(p))
+		# BOARDED IS ASSERTED WHERE IT MATTERS: at the first frame of the ride,
+		# with the doors already shut. Being in the car at some point is not
+		# boarding -- `transit.gd` learned that from a body that fell into a
+		# parked car through its own ceiling and reported a successful board.
+		if phase == "ride" and ride_frames == 1 and lift != null:
+			boarded = lift.lift_in_car(p) and on
+			# AND IT SAYS WHY. "They were not in the car" is a verdict nobody can
+			# act on; where they were in the car's own frame is.
+			var lc: Vector3 = lift.lift_local(p)
+			print("ABOARD in_car=%s on_floor=%s local=%.3f,%.3f,%.3f car_y=%.3f %s"
+				% [str(lift.lift_in_car(p)).to_lower(), str(on).to_lower(),
+					lc.x, lc.y, lc.z, lift.lift_car_y(),
+					lift.lift_in_car_why(p)])
+		# AND ALIGHTED IS AT THE RIGHT DECK, not merely out of the car: on the
+		# floor, outside the car, at the far landing's own walking radius.
+		if lift != null and phase in ["open", "walk_b", "after"] and on \
+				and not lift.lift_in_car(p) and absf(r - walk_r_to) < 1.0:
+			alighted = true
+		end_r = r
 		if on:
 			floor_m += step
 			phase_floor += step
@@ -851,7 +1063,12 @@ class Commuter extends Node3D:
 		# separates a body walking a route from a body being placed on one: a
 		# placed body reads 0.00 for ever, and a body shut in its quarters reads
 		# the whole route.
-		lag_max = maxf(lag_max, p.distance_to(route.point_at(s_now)))
+		# Aboard, the thing they should be at is the car's stand point, which is
+		# moving; on foot it is their own place on their own route.
+		var want_at: Vector3 = (car_stand_now() if aboard
+			else (routes[seg].point_at(s_now) if seg < routes.size()
+				and routes[seg] != null else p))
+		lag_max = maxf(lag_max, p.distance_to(want_at))
 		arrive_min = minf(arrive_min, p.distance_to(post_at))
 		post_end_m = p.distance_to(post_at)
 		# THE DRAWN BODY GOES WHERE THE PHYSICS BODY GOES. One truth about where
@@ -868,35 +1085,74 @@ class Commuter extends Node3D:
 				"frames": phase_frames})
 			if phase == "before":
 				pre_floor = phase_floor
-			elif phase == "commute":
-				walk_floor = phase_floor
+			elif phase != "after" and phase != "settle":
+				# EVERY PHASE OF THE JOURNEY, NOT ONE. L1's journey had a single
+				# "commute" phase; a commute with a lift in it has seven, and
+				# what "they left home" means is the floor covered across all of
+				# them that are not the before and the after.
+				walk_floor += phase_floor
 		phase = name
 		phase_floor = 0.0
 		phase_frames = 0
 
+	## The route the resident is meant to walk, added up over its segments. A
+	## ride segment contributes nothing: nobody walks a lift shaft.
+	func total_route_m() -> float:
+		var l := 0.0
+		for r in routes:
+			if r != null:
+				l += r.length()
+		return l
+
 	func _finish(why: String) -> void:
 		done = true
 		_phase("done")
-		var l := route.length()
+		var l := total_route_m()
 		var left := pre_floor < 0.5 and walk_floor > l * 0.5
 		var arrived := arrive_min <= float(man["arrive_m"])
 		var stayed := arrived and post_end_m <= float(man["arrive_m"])
 		for r in phase_rows:
 			print("AGENDAPHASE phase=%s floor_m=%.2f frames=%d"
 				% [r["phase"], r["floor_m"], r["frames"]])
+		# WHICH DECK THEY GOT OFF AT, from the body's own radius against the
+		# column's landings -- the same reading `transit.gd::_deck_at` takes.
+		var miss := 1e30
+		var lands: Array = (man["lift"]["landings"] if man.has("lift") else [])
+		for i in lands.size():
+			var d: float = absf(float(lands[i]["walk_r_m"]) - end_r)
+			if d < miss:
+				miss = d
+				end_landing = i
+		var agenda_m := s_now
+		for i in seg:
+			if i < routes.size() and routes[i] != null:
+				agenda_m += routes[i].length()
 		print(("AGENDATEST who=%s rate=%s home_before=%s left=%s arrived=%s "
 			+ "stayed=%s floor_m=%.3f air_m=%.3f offfloor=%d/%d frames=%d "
 			+ "lag_m=%.3f agenda_s_m=%.1f route_m=%.1f arrive_m=%.3f "
 			+ "post_end_m=%.3f home_start_m=%.3f pre_floor_m=%.3f "
-			+ "settle_drop_m=%.4f crowd_m=%.1f hour=%.4f why=%s")
+			+ "settle_drop_m=%.4f crowd_m=%.1f hour=%.4f "
+			+ "boarded=%s alighted=%s ride_radial_floor_m=%.3f "
+			+ "ride_radial_air_m=%.3f ride_offfloor=%d/%d standoff_max_mm=%.2f "
+			+ "carried_m=%.3f car_moved_m=%.3f carry_frames=%d "
+			+ "end_landing=%d end_deck=%s end_r=%.3f why=%s")
 			% [String(man["who"]["id"]), str(float(man["clock"]["rate_x"])),
 				str(home_start_m >= 0.0 and home_start_m
 					<= float(man["arrive_m"]) and pre_floor < 0.5).to_lower(),
 				str(left).to_lower(), str(arrived).to_lower(),
 				str(stayed).to_lower(), floor_m, air_m, off, scored, frame,
-				lag_max, s_now, l, arrive_min, post_end_m, home_start_m,
+				lag_max, agenda_m, l, arrive_min, post_end_m, home_start_m,
 				pre_floor, settle_drop, crowd_m,
 				fposmod(clock.hours_abs(), 24.0),
+				str(boarded).to_lower(), str(alighted).to_lower(),
+				radial_floor, radial_air, ride_off, ride_frames,
+				standoff_max * 1000.0, carried_m,
+				(0.0 if lift == null else lift.lift_car_moved_m()),
+				(0 if lift == null else lift.lift_carry_frames()),
+				end_landing,
+				(str(lands[end_landing]["deck"]) if end_landing >= 0
+					and end_landing < lands.size() else "-"),
+				end_r,
 				("-" if why == "" else why.replace(" ", "_"))])
 		get_tree().quit(0)
 
@@ -981,17 +1237,32 @@ func _run_agenda(opt: Dictionary) -> void:
 		quit(2)
 		return
 	var root := get_root()
-	var scene := _glb_scene(String(man["collision_glb"]))
-	if scene == null:
-		quit(2)
-		return
-	root.add_child(scene)
+	# ONE SHELL OR SEVERAL. A commute inside one corridor stands on its cluster's
+	# collision; a commute between two decks stands on two clusters, two spines
+	# and the transit column. Both arrive as a list of glbs the manifest names.
+	var shells: Array = (man["collision_glbs"] if man.has("collision_glbs")
+		else [man["collision_glb"]])
+	var scenes: Array = []
+	for path in shells:
+		var sc := _glb_scene(String(path))
+		if sc == null:
+			quit(2)
+			return
+		root.add_child(sc)
+		scenes.append(sc)
 
 	var com := Commuter.new()
 	com.man = man
 	com.seal = String(opt.get("doors", "live")) == "sealed"
 	com.drive = String(opt.get("agenda", "on")) != "off"
-	com.route = Route.new(man["route"]["points"])
+	# EVERY WALKING SEGMENT, IN THE PLAN'S OWN INDEXING. The ride segment gets a
+	# null: nobody walks a lift shaft, and a route with a 21.6 m radial jump in
+	# it would be a polyline through the floor.
+	for s in man["segments"]:
+		while com.routes.size() <= int(s["index"]):
+			com.routes.append(null)
+		if String(s["kind"]) == "walk":
+			com.routes[int(s["index"])] = Route.new(s["points"])
 	com.home_at = _v3(man["home_at"])
 	com.post_at = _v3(man["post_at"])
 	com.spawn = _v3(man["spawn"])
@@ -1003,8 +1274,47 @@ func _run_agenda(opt: Dictionary) -> void:
 	var rate_x := float(opt.get("rate", man["clock"]["rate_x"]))
 	man["clock"]["rate_x"] = rate_x
 	com.clock = Clock.new(float(man["clock"]["start_h"]), rate_x / 3600.0)
-	com.agenda = Agenda.new(float(man["shift"]["depart_h"]),
-		float(man["gait"]["speed_ms"]), com.route.length())
+	com.t0_h = float(man["clock"]["start_h"])
+	com.agenda = Agenda.new(man["plan"])
+
+	# THE LIFT, AND IT IS `scripts/transit.gd` RATHER THAN A SECOND COPY OF IT.
+	# That script owns the moving car, the door leaves measured off the mesh and
+	# the carry -- including the one-frame lag between what a kinematic body is
+	# told and what the physics server is holding, which is the whole reason a
+	# rider does not sink through the floor. `transit_runtime.py --ride` remains
+	# its test; this hands it a clock instead of running its own.
+	#
+	# `--lift=off` builds the station WITHOUT a car: the pre-fix build, in which
+	# a commuter reaches the landing and there is nothing in the shaft to ride.
+	# `--landings=sealed` swaps the column's shell for the one
+	# `lift.lift_collision(landings=False)` emits, in which every landing
+	# aperture is solid -- the generator's own negative control.
+	if man.has("lift") and String(opt.get("lift", "on")) != "none":
+		var ts = load("res://scripts/transit.gd")
+		if ts != null:
+			var lf: Node3D = ts.new()
+			root.add_child(lf)
+			var col := String(man["lift"]["static_col_glb"])
+			if String(opt.get("landings", "open")) == "sealed":
+				col = String(man["lift"]["static_col_sealed_glb"])
+			lf.embed_lift(man["lift"], col, false,
+				String(opt.get("lift", "on")) != "off")
+			com.lift = lf
+			com.car_stand_from = _v3(man["lift"]["car_stand_from"])
+			com.car_stand_to = _v3(man["lift"]["car_stand_to"])
+			com.y_from = lf.lift_landing_y(int(man["lift"]["from_landing"]))
+			com.walk_r_to = float(man["lift"]["landings"][
+				int(man["lift"]["to_landing"])]["walk_r_m"])
+			# CONTROL: THE CAR IS NEVER CALLED. Same scene, same body, same
+			# route, same timetable for the resident -- the car simply stays
+			# where it was parked and its doors never open. Everything about
+			# this run that is arithmetic still completes; the person does not.
+			if String(opt.get("lift", "on")) == "parked":
+				var pk := int(man["lift"]["park_landing"])
+				var py: float = lf.lift_landing_y(pk)
+				com.agenda.car = [{"t0": 0.0, "t1": 0.0, "y0": py, "y1": py}]
+				com.agenda.door = [{"t0": 0.0, "t1": 0.0, "f0": 0.0,
+					"f1": 0.0}]
 
 	# A FASTER CLOCK NEEDS MORE PHYSICS, NOT BIGGER STEPS, and this is the whole
 	# answer to "does it work at 60x".
@@ -1043,7 +1353,10 @@ func _run_agenda(opt: Dictionary) -> void:
 	for d in man["doors"]:
 		panels[String(d["group"])] = _v3(d["at"])
 	var n_panel := 0
-	for m in _mesh_list(scene):
+	var all_meshes: Array = []
+	for sc in scenes:
+		all_meshes.append_array(_mesh_list(sc))
+	for m in all_meshes:
 		var nm := String(m.name)
 		m.create_trimesh_collision()
 		if not panels.has(nm):

@@ -114,6 +114,13 @@ var _door_open := 1.0
 var _door_speed := 1.6                # replaced from scripts/door.gd at load
 var _door_travel := 0.75              # replaced from the manifest (measured)
 
+## Driven by another script's clock rather than by `--ride-test`. See `_ready`.
+var _embedded := false
+## Whether to load the static shaft's RENDER mesh. The ride gate loads it; a
+## headless commute does not need three thousand triangles nobody looks at, and
+## the collision -- which is what a body stands on -- is loaded either way.
+var _visuals := true
+
 # ---------------------------------------------------------------------------
 
 const ST_SETTLE := 0
@@ -167,9 +174,34 @@ var _ride_door_z := 0.0
 
 
 func _ready() -> void:
+	# ALREADY EMBEDDED, AND `_ready` CAN ARRIVE AFTER `embed_lift`.
+	#
+	# `scripts/life.gd` adds this node from `_initialize`, before the tree is
+	# running, so the order is embed-then-ready rather than ready-then-embed.
+	# Without this guard `_ready` re-read the COMMUTE manifest off the command
+	# line -- `--manifest=` is in `OS.get_cmdline_user_args()` for the whole
+	# process -- and replaced the lift's own manifest with it. Everything still
+	# looked right: the car moved 376 m, the body rode 21.55 m of radius with 0
+	# frames off the floor. Only `_in_car` failed, because the commute manifest
+	# has no `car` block, so its half widths read 0.0 and NOTHING is inside a
+	# box of zero size. `boarded=false` on a body standing in the car.
+	if _embedded:
+		return
 	var args := _args()
 	if args.has("manifest"):
 		manifest_path = args["manifest"]
+	# EMBEDDED: SOMEBODY ELSE OWNS THE CLOCK.
+	#
+	# `scripts/life.gd` drives a resident's whole day, and part of that day is a
+	# lift ride. It does NOT get its own copy of the car -- it instantiates this
+	# script and calls `embed_lift`, so there is exactly one answer in this
+	# project to "how does a moving floor take a body with it", and
+	# `transit_runtime.py --ride` remains the test of it. With no manifest on
+	# the command line and none set, this node builds nothing and waits.
+	if manifest_path == "" and not args.has("manifest"):
+		_embedded = true
+		set_physics_process(false)
+		return
 	if not _load_manifest():
 		push_error("transit: could not read %s" % manifest_path)
 		get_tree().quit(2)
@@ -224,6 +256,8 @@ func _v3(a) -> Vector3:
 
 
 func _load_glb(path: String) -> Node:
+	if path == "" or not FileAccess.file_exists(path):
+		return null
 	var doc := GLTFDocument.new()
 	var state := GLTFState.new()
 	if doc.append_from_file(path, state) != OK:
@@ -263,9 +297,10 @@ func _build_lift() -> void:
 	_pivot = _v3(_man["pivot"])
 	_landings = _man["landings"]
 
-	var vis := _load_glb(String(_man["static_glb"]))
-	if vis != null:
-		add_child(vis)
+	if _visuals and String(_man.get("static_glb", "")) != "":
+		var vis := _load_glb(String(_man["static_glb"]))
+		if vis != null:
+			add_child(vis)
 	var col := _load_glb(String(_man["static_col_glb"]))
 	var n_static := 0
 	if col != null:
@@ -278,11 +313,16 @@ func _build_lift() -> void:
 	_car = Node3D.new()
 	_car.name = "Car"
 	add_child(_car)
-	var cv := _load_glb(String(_man["car_glb"]))
+	# THE LEAVES ARE ON THE VISUAL CAR AND THE PANEL IS ON THE COLLISION ONE, so
+	# the car mesh is loaded even headless: it is what says how far a leaf
+	# travels, measured off the mesh by `transit_runtime.car_render` rather than
+	# passed in as a number.
+	var cv := _load_glb(String(_man.get("car_glb", "")))
 	if cv != null:
 		_car.add_child(cv)
+		cv.visible = _visuals
 		_wire_leaves(cv)
-	var cc := _load_glb(String(_man["car_col_glb"]))
+	var cc := _load_glb(String(_man.get("car_col_glb", "")))
 	if cc != null:
 		# A SIBLING OF THE VISUAL CAR, NOT A CHILD OF IT, and that is not
 		# arrangement for its own sake. `AnimatableBody3D.sync_to_physics` asks
@@ -508,22 +548,7 @@ func _physics_process(delta: float) -> void:
 	#    already resolved the body against a floor that was not there yet is how
 	#    a rider ends up a frame behind the car all the way up.
 	_advance(delta)
-	var carried := Vector3.ZERO
-	var d := _car_lag
-	if d.length_squared() > 0.0:
-		if _carry and _in_car(_player.global_position):
-			_player.global_position += d
-			carried = d
-			_carry_frames += 1
-	# What the server will have applied by the time the body is resolved NEXT
-	# frame, kept for that frame. `_car_y_phys` is the floor's physical height
-	# now, and is what the stand-off is measured against -- measuring against the
-	# command would report one frame of travel as an error every frame.
-	var cmd := _car.position
-	_car_y_phys = _car_y - _axis.dot(cmd - _car_prev)
-	_car_lag = cmd - _car_prev
-	_car_moved += _car_lag.length()
-	_car_prev = cmd
+	var carried := carry_body(_player)
 
 	# 2. Then the body walks, on whatever it is standing on now.
 	var steer := _steer()
@@ -540,6 +565,134 @@ func _physics_process(delta: float) -> void:
 				_radius(_player.global_position),
 				str(_player.is_on_floor()).to_lower(), _door_open])
 	_next_state()
+
+
+## THE CARRY, AND IT IS THE ONE COPY OF IT.
+##
+## Called once a physics frame, AFTER the car has been commanded and BEFORE the
+## body walks: carrying after `move_and_slide` has resolved the body against a
+## floor that was not there yet is how a rider ends up a frame behind the car
+## all the way up. Returns what the body was carried by, for the tape.
+##
+## `scripts/life.gd` calls this for a commuter; `_physics_process` below calls
+## it for the ride test. Neither has its own copy of the one-frame lag argument
+## in `_car_lag`'s declaration, which is the whole reason this is a function.
+func carry_body(target: Node3D) -> Vector3:
+	var carried := Vector3.ZERO
+	var d := _car_lag
+	if d.length_squared() > 0.0:
+		if _carry and target != null and _in_car(target.global_position):
+			target.global_position += d
+			carried = d
+			_carry_frames += 1
+	# What the server will have applied by the time the body is resolved NEXT
+	# frame, kept for that frame. `_car_y_phys` is the floor's physical height
+	# now, and is what the stand-off is measured against -- measuring against the
+	# command would report one frame of travel as an error every frame.
+	var cmd := _car.position
+	_car_y_phys = _car_y - _axis.dot(cmd - _car_prev)
+	_car_lag = cmd - _car_prev
+	_car_moved += _car_lag.length()
+	_car_prev = cmd
+	return carried
+
+
+# ---------------------------------------------------------------------------
+# THE EMBEDDED LIFT -- somebody else's clock, this file's mechanism
+# ---------------------------------------------------------------------------
+
+## Build the lift from a manifest another script is holding, and hand the clock
+## to it. `static_col` overrides the shaft's collision -- `station/agenda.py`
+## passes the SEALED shell for the control in which every landing aperture is
+## shut, which is `lift.lift_collision(landings=False)`, the generator's own
+## negative control rather than a slab invented for a test.
+func embed_lift(man: Dictionary, static_col: String = "",
+		visuals: bool = false, with_car: bool = true) -> void:
+	_man = man
+	_embedded = true
+	_visuals = visuals
+	if static_col != "":
+		_man["static_col_glb"] = static_col
+	if not with_car:
+		# THE PRE-FIX CONTROL. Before this session `life.gd` had no vehicle at
+		# all: the commuter reaches the landing and there is nothing in the
+		# shaft. Removing the car is that build, and it is a removal of one
+		# node rather than a different code path.
+		_man["car_glb"] = ""
+		_man["car_col_glb"] = ""
+	_build_lift()
+	set_physics_process(false)
+
+
+## Command the car and its doors, in the units the timetable is written in:
+## `y` is metres along the shaft's own travel axis, `door` is 0 shut to 1 open.
+func lift_command(y: float, door: float) -> void:
+	_set_car(y)
+	_door_open = clampf(door, 0.0, 1.0)
+	_apply_doors()
+
+
+## The fraction of a ride's travel completed at fraction `u` of its time, out of
+## the motion table `transit_runtime._ride_table` wrote and asserted against the
+## Coriolis cap. The interpolation is `_interp`'s, so a caller cannot play the
+## ride to a different curve than `--ride` does.
+func lift_ride_fraction(key: String, u: float) -> float:
+	var rides: Dictionary = _man.get("rides", {})
+	if not rides.has(key):
+		return clampf(u, 0.0, 1.0)
+	return _interp(rides[key]["table"], u)
+
+
+func lift_car_y() -> float:
+	return _car_y
+
+
+func lift_landing_y(i: int) -> float:
+	return _landing_y(i)
+
+
+func lift_in_car(p: Vector3) -> bool:
+	return _in_car(p)
+
+
+## The body's position in the CAR'S OWN FRAME, for a caller that has to report
+## why `lift_in_car` said what it said. x across, y radially inward, z along.
+func lift_local(p: Vector3) -> Vector3:
+	return _local(p)
+
+
+## Every clause of `_in_car`, spelled out. A boolean that says no is a verdict
+## nobody can act on; this says which half-width it failed.
+func lift_in_car_why(p: Vector3) -> String:
+	var l := _local(p)
+	var car: Dictionary = _man.get("car", {})
+	var hw := float(car.get("clear_w", 0.0)) / 2.0
+	var hd := float(car.get("clear_d", 0.0)) / 2.0
+	var ch := float(car.get("clear_h", 0.0))
+	return ("x %.3f<%.3f=%s z %.3f<%.3f=%s y %.3f in (%.3f,%.3f)=%s"
+		% [absf(l.x), hw, str(absf(l.x) < hw).to_lower(),
+			absf(l.z), hd, str(absf(l.z) < hd).to_lower(),
+			l.y, _car_y - 0.35, _car_y + ch,
+			str(l.y > _car_y - 0.35 and l.y < _car_y + ch).to_lower()])
+
+
+## How far the body is standing off the car's floor, in the car's own frame and
+## against the height the PHYSICS SERVER is holding rather than the one just
+## commanded -- see `_car_lag`.
+func lift_standoff(p: Vector3) -> float:
+	return absf(_local(p).y - _car_y_phys)
+
+
+func lift_car_moved_m() -> float:
+	return _car_moved
+
+
+func lift_carry_frames() -> int:
+	return _carry_frames
+
+
+func lift_door_open() -> float:
+	return _door_open
 
 
 ## Where the vehicle is this frame, and it is the only place the clock is read.

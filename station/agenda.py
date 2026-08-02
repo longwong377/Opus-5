@@ -114,9 +114,12 @@ import collision as C                                            # noqa: E402
 import deck as D                                                 # noqa: E402
 import directory as DIR                                          # noqa: E402
 import interior as it                                            # noqa: E402
+import lift as L                                                 # noqa: E402
 import populace as P                                             # noqa: E402
 import routes as RT                                              # noqa: E402
 import route_walk as RW                                          # noqa: E402
+import transit as T                                              # noqa: E402
+import transit_runtime as TR                                     # noqa: E402
 import walkable as W                                             # noqa: E402
 from npc import navigation as NAV                                # noqa: E402
 from npc import resident as RS                                   # noqa: E402
@@ -590,6 +593,27 @@ def build(schema, profile, cand, rate=1.0, quiet=False):
                   "door_home": r["door_home"], "door_job": r["door_job"],
                   "floor_r_m": m["floor_r_m"], "half_w_m": m["half_w_m"],
                   "corridor_z_m": m["z_m"]},
+        # THE SAME SHAPE L3 USES, AND THAT IS THE POINT. A one-corridor commute
+        # is a journey of ONE walking segment and no vehicle, so it is expressed
+        # in the same segments-and-plan the lift commute is, and `life.gd` has
+        # one runtime rather than two. `--walk` is then the regression test for
+        # the generalisation: if the plan player broke the L1 case, L1's own
+        # three rates and three controls say so.
+        "segments": [{"kind": "walk", "index": 0, "points": r["points"],
+                      "length_m": r["length_m"],
+                      "legs": [{"kind": l["kind"], "note": l["note"],
+                                "length_m": l["length_m"]} for l in r["legs"]]}],
+        "plan": {
+            "walk": [{"seg": 0, "t0": round(PRE_S, 4),
+                      "t1": round(PRE_S + walk_s, 4),
+                      "s0": 0.0, "s1": r["length_m"]}],
+            "car": [], "door": [], "hold_in_car": [],
+            "phases": [{"name": "before", "t0": 0.0, "t1": round(PRE_S, 4)},
+                       {"name": "commute", "t0": round(PRE_S, 4),
+                        "t1": round(PRE_S + walk_s, 4)},
+                       {"name": "after", "t0": round(PRE_S + walk_s, 4),
+                        "t1": round(span_s, 4)}],
+        },
         "spawn": spawn, "home_at": spawn, "post_at": post,
         "doors": doors,
         "collision_glb": glb,
@@ -616,6 +640,895 @@ def build(schema, profile, cand, rate=1.0, quiet=False):
         print(f"  wrote {os.path.relpath(path, ROOT)} -- {r['length_m']:,.0f} m "
               f"of route over {len(r['points'])} waypoints, "
               f"{span_s:,.0f} station seconds at x{rate:g} = "
+              f"{frames:,} frames")
+    return man, path
+
+
+# ===========================================================================
+# L3 -- THEY USE THE TRANSIT
+# ===========================================================================
+# WHY THIS IS A PREREQUISITE AND NOT A LATER RUNG, measured in L1 rather than
+# argued: across the 857 residents baked into the shipped `<deck>_actors.json`
+# who have both a home and a job, **not one has them on the same deck**. Ashir
+# walks to work because they are one of exactly two people on the station who
+# can. Everybody else needs the lift before they can execute their own day at
+# all -- so "they use the transit" is not a feature on top of L1, it is the
+# thing that makes L1 apply to anybody.
+#
+# WHAT IS REUSED, AND NONE OF IT IS REBUILT HERE:
+#
+#   routes.py            says the two places are joined, and by what kinds of
+#                        leg -- ring, axial, lift, axial, ring
+#   route_walk.py        the endpoint filter (does this deck HAVE a landing, is
+#                        the landing at the corridor's own radius), the cluster
+#                        shell with its junction aperture, the deck's spine, the
+#                        column's static collision and its sealed control, and
+#                        `legs_for` -- the waypoints and their door tolerances
+#   transit_runtime.py   the car, its collision, its door leaves measured off
+#                        the mesh, and the MOTION TABLES whose seconds are
+#                        `navigation.lift_ride_s` and whose peak is asserted
+#                        against the Coriolis cap before they are written
+#   transit.gd           the moving car itself and the carry -- `life.gd`
+#                        instantiates that script rather than reimplementing it,
+#                        so there is ONE answer to "how does a floor take a body
+#                        with it" and `transit_runtime.py --ride` still tests it
+#
+# WHAT IS NEW IS THE HAND-OFF, which is the hard part and the reason the ride
+# gate is not this gate. `--ride` walks a body at a car that is already waiting
+# with its doors open. A COMMUTER ARRIVES AT A LANDING WHERE THE CAR IS NOT.
+# The car has to be called, has to travel, has to open, has to be boarded, has
+# to shut, ride, open again -- and every one of those is a duration in STATION
+# seconds that must hold at x60, where the clock moves 60 m of shaft a real
+# second.
+#
+# THE TIMETABLE IS PURE IN THE HOUR, exactly as L1's `s(h)` is, and for the same
+# reason: at x60 no physical simulation can be "run faster" and stay itself, so
+# what is fast-forwarded is the CLOCK and what plays is a function of it. The
+# car's position, the doors' opening and how far along their route the resident
+# should be are all read off `t` -- so the x1, x10 and x60 runs are the same
+# journey three times rather than three that happened to pass.
+#
+# AND THE BODY IS STILL PHYSICS. It is carried by the car's floor or it is not;
+# it fits through the landing aperture or it does not. That is what makes the
+# controls able to fire: with the car never called the timetable still runs and
+# the resident is still standing in the lobby.
+
+
+# HOW FAST A PRESSURE DOOR LEAF TRAVELS -- FETCHED, NOT COPIED.
+# `godot/scripts/door.gd` decides it and `transit.gd` reads it out of that
+# script at run time. The timetable needs the same number offline, so it is read
+# out of the same file rather than written down here: a second copy of 1.6 would
+# be a second decision about pressure doors.
+def door_speed_ms():
+    src = open(os.path.join(ROOT, "godot/scripts/door.gd")).read()
+    m = re.search(r"var\s+speed_m_s\s*:\s*float\s*=\s*([0-9.]+)", src)
+    if not m:
+        raise AssertionError("godot/scripts/door.gd no longer declares "
+                             "speed_m_s -- the timetable cannot time a door")
+    return float(m.group(1))
+
+
+_G3 = {}
+
+
+def graph():
+    """`routes.clusters` and `routes.edges`, once. Both are minutes of work."""
+    if "nodes" not in _G3:
+        schema, profile = it.load()
+        _G3["nodes"] = RT.clusters()
+        _G3["edges"] = RT.edges(_G3["nodes"], schema, profile=profile)
+    return _G3["nodes"], _G3["edges"]
+
+
+def endpoint_index(schema, profile):
+    """place key -> the `route_walk.endpoints` row it sits on, plus the refusals.
+
+    THE FILTER IS ROUTE_WALK'S AND ITS THREE REASONS ARE FINDINGS, not
+    conveniences: `routes.py` grants every deck spine a lift edge to its ring's
+    column unconditionally, and 57 of 96 clusters cannot actually use it --
+    because the column has no landing at that deck's z, or because the landing
+    and the deck's corridor are at different radii, or because extending the
+    corridor to the transit angle moves the cluster's own room doors. The
+    census below reports each one by name, so "how many can commute" cannot be
+    made to look better by not asking.
+    """
+    if "by_place" in _G3:
+        return _G3["by_place"], _G3["bad_place"]
+    nodes, _es = graph()
+    ok, bad = RW.endpoints(schema, profile, nodes)
+    by_place, bad_place = {}, {}
+    for row in ok:
+        for p, _deg in row["doors"]:
+            by_place[p] = row
+    for row, why in bad:
+        for p in row.get("places", ()):
+            bad_place.setdefault(p, why)
+    _G3["by_place"], _G3["bad_place"] = by_place, bad_place
+    return by_place, bad_place
+
+
+# THE COLUMN'S OWN LOBBY SEALS ANY RING CORRIDOR IT CROSSES, and that is the
+# third defect this gate found. It is a hole in the station rather than in this
+# file, so it is reported here and in docs/life-L3.md rather than patched.
+#
+# `transit_runtime.static_collision` gives every landing one
+# `interior.AXIAL_SECTION_M` of lobby -- 9.2 m of axial corridor running away
+# from the shaft. A ring corridor is an arc with walls at +-1.08 m of z. Where a
+# cluster sits within a lobby's length of the column the two OVERLAP AT RIGHT
+# ANGLES, and neither generator cuts an aperture for the other: the lobby's own
+# side walls stand across the ring corridor, so a body that walks out of the
+# lift into the crossing is in a 2.16 m box.
+#
+# Measured on `business_center` (red/1/0, z = 6604.48, column at z = 6600): the
+# body rode the lift, alighted, reached the junction and **stopped 37.85 m from
+# its post -- the whole length of the ring leg -- with 0 frames off the floor.**
+# 744 m walked, 21.55 m ridden, and no arrival.
+#
+# `route_walk.choose` never meets it because it skips any pair whose spine is
+# shorter than two lobby lengths. The test excluded the case; the station still
+# has it, and 54 of the 470 baked residents commute through exactly that
+# crossing.
+
+def lobby_seals(row, g):
+    """Does the column's landing lobby stand across this cluster's corridor?
+
+    Both spans come from the generators that build them -- `lobby_span` is
+    `transit_runtime`'s own, the corridor's half width is the kit's -- so this
+    cannot drift from the geometry it describes.
+    """
+    import interior_kit as K                                      # noqa: PLC0415
+    z0, z1 = TR.lobby_span(g)
+    lo, hi = min(z0, z1), max(z0, z1)
+    hw = K.PROVISIONAL["corridor_width_m"] / 2.0
+    cz = row["cz"]
+    return (cz - hw) < hi and (cz + hw) > lo
+
+
+def column_collision(schema, profile, g, crossings=(), landings=True):
+    """The column's static shell, WITH A DOORWAY WHERE A RING CORRIDOR CROSSES.
+
+    `route_walk.column_collision` with one argument threaded through:
+    `collision.axial_shell` already takes `doors` -- `(z, side)` pairs that cut
+    a `door_width_m` aperture in one of the corridor's two side walls, exactly
+    as the ring shell cuts one for a room -- and neither `transit_runtime` nor
+    `route_walk` passes any. So the lobby is a sealed tube through the middle of
+    any ring corridor it crosses.
+
+    NOTHING IS AUTHORED HERE. The aperture is the kit's own door, cut by the
+    generator that cuts every other door in the station, at the crossing the
+    geometry already has. What it fixes is a station that has a lift lobby
+    running through a corridor with no way between them -- see `lobby_seals`.
+
+    `crossings` is `(landing_index, z_m)` pairs. With none, `_selftest3` asserts
+    this is triangle-for-triangle `route_walk.column_collision`, so the
+    duplication cannot drift.
+    """
+    sv, st, sm = L.lift_collision(schema, profile, g=g, car=False,
+                                  landings=landings)
+    verts, tris = list(sv), list(st)
+    groups = [(f"liftshaft__{n}", a, b) for n, a, b in sm["groups"]]
+    z0, z1 = TR.lobby_span(g)
+    for lg in g["landings"]:
+        doors = [(cz, side) for idx, cz in crossings
+                 if idx == lg["index"] for side in (-1.0, 1.0)]
+        lv, lt, _lm = C.axial_shell(schema, profile, g["sector"],
+                                    g["ring_index"], z0, z1,
+                                    angle_deg=g["angle_deg"],
+                                    radius_m=lg["floor_r_m"], doors=doors)
+        o, t0 = len(verts), len(tris)
+        verts.extend(lv)
+        tris.extend((a + o, b + o, c + o) for a, b, c in lt)
+        groups.append((f"liftlobby_{lg['index']}", t0, len(tris)))
+    return verts, tris, groups
+
+
+def commutable(home, job, by_place, g=None):
+    """Can THIS pair be commuted by the machinery below? -> (bool, reason).
+
+    One column, two landings. A pair on two different rings needs the spoke and
+    a pair in two different sectors needs the trunk; both edges exist in
+    `routes.py` and neither has a walkable runtime, so they are reported as
+    what they are rather than counted as failures of the lift.
+    """
+    a, b = DIR.by_key(home), DIR.by_key(job)
+    if a is None or b is None or a.get("sector") is None or b.get("sector") is None:
+        return False, "one end is not a located place"
+    if (a["sector"], a["ring"], a["deck"]) == (b["sector"], b["ring"], b["deck"]):
+        return False, "same deck -- this is L1, no transit needed"
+    if a["sector"] != b["sector"]:
+        return False, "different sectors -- needs the trunk between columns"
+    if a["ring"] != b["ring"]:
+        return False, "different rings -- needs the spoke between columns"
+    for k, p in ((home, a), (job, b)):
+        if k not in by_place:
+            return False, f"{k}: " + _G3["bad_place"].get(
+                k, "not on a cluster a route can start or end in")
+    return True, "one column, two landings"
+
+
+def cross_deck_pairs(schema, profile):
+    """Every (species, role, home, job) the lift can actually carry.
+
+    THE SAME CHEAP PRE-FILTER L1 USES. `home_for` and `workplace_places` are
+    pure functions of (species, role), so this is 19 roles x 14 species rather
+    than a scan of every resident on the station -- and it cannot invent a
+    pairing the generator does not make, because it IS the generator's two
+    functions.
+    """
+    by_place, _bad = endpoint_index(schema, profile)
+    nodes, _es = graph()
+    shafts = {}
+    out = []
+    for role in SC.ROLES:
+        if role.work_hours <= 0:
+            continue
+        try:
+            jobs = RS.workplace_places(role.workplace)
+        except Exception:                                       # noqa: BLE001
+            continue
+        for species in sorted(SC.STATION_MIX):
+            if species in SC.SPECIES_WITHOUT_NAMES:
+                continue
+            home = RS.home_for(f"probe:{species}:{role.key}", species,
+                               role.key)
+            for job in jobs:
+                sec = (DIR.by_key(home) or {}).get("sector")
+                if sec and sec not in shafts:
+                    shafts[sec] = RW.shaft(schema, profile, nodes, sec)
+                ok, _why = commutable(home, job, by_place, shafts.get(sec))
+                if ok:
+                    out.append({"species": species, "role": role.key,
+                                "home": home, "job": job})
+    return out
+
+
+def candidates3(schema, profile, limit=1200, want=8):
+    """Named residents whose home and post are on DIFFERENT decks of one column.
+
+    From the pool the room itself is cast from, exactly as L1's `candidates`:
+    `resident.pool_id` in order, so the person who commutes is a person
+    `populace.populate` would have put in that room anyway.
+    """
+    out, seen = [], set()
+    for w in cross_deck_pairs(schema, profile):
+        key = (w["species"], w["home"], w["job"])
+        if key in seen:
+            continue
+        seen.add(key)
+        for pool in (w["job"], w["home"]):
+            hit = None
+            for i in range(limit):
+                npc_id = RS.pool_id(pool, w["species"], i, "b5")
+                try:
+                    res = RS.resident(npc_id, w["species"])
+                except Exception:                               # noqa: BLE001
+                    continue
+                if (res.home, res.job) != (w["home"], w["job"]) or not res.name:
+                    continue
+                sched = clean_commute(npc_id, w["species"])
+                if sched is None:
+                    continue
+                hit = {"pool": pool, "i": i, "res": res,
+                       "depart_h": sched[0], "start_h": sched[1],
+                       "hours": sched[2]}
+                break
+            if hit:
+                out.append(hit)
+                break
+        if len(out) >= want:
+            break
+    out.sort(key=lambda r: (r["i"], r["res"].species, r["pool"]))
+    return out
+
+
+def choose3(schema, profile, who=None):
+    cs = candidates3(schema, profile)
+    if who:
+        for c in cs:
+            if c["res"].npc_id == who:
+                return c
+        raise ValueError(f"{who} does not commute between two decks of one "
+                         f"column -- run --report3 for the list")
+    if not cs:
+        raise ValueError("no named resident has their home and their post on "
+                         "two decks of one transit column")
+    return cs[0]
+
+
+# ---------------------------------------------------------------------------
+# THE JOURNEY -- two decks, a column, and the geometry under all of it
+# ---------------------------------------------------------------------------
+
+# ---------------------------------------------------------------------------
+# A RING CORRIDOR RUNS ONE WAY ROUND, AND THE SHORT WAY IS OFTEN NOT IT
+# ---------------------------------------------------------------------------
+# THE DEFECT THIS FUNCTION EXISTS FOR, measured on the first run of this gate.
+# `route_walk._arc_points(a0, a1)` sweeps from one angle to the other by the
+# SIGNED SHORTEST arc -- `((a1 - a0) + 180) % 360 - 180` -- which is the right
+# answer on a full ring and the wrong one on an arc. Red ring 1 deck 6 carries
+# `qtr_civilian` at 280 deg and red's transit angle is 90 deg; the corridor
+# `deck_plan(must_cover=90)` builds spans **78 deg to 292 deg**, so the way
+# round is DOWNWARD, -190 deg. The shortest way is +170 deg, through 0 deg, and
+# every metre of it is outside the shell.
+#
+# Measured: the body walked **46.3 m of a 588 m arc, fell off the end of the
+# corridor, and was still falling 46,031 frames later** at r = 20,188 m, with a
+# lag of 9.7e123 m. Which is also the answer to why no gate caught it --
+# `route_walk.endpoints` asks whether the corridor REACHES the transit angle,
+# and a corridor can reach it in one direction while the route is laid in the
+# other. `legs_for` has the same defect and its own chosen route does not
+# expose it; that is reported in docs/life-L3.md rather than patched, because
+# `route_walk.py` is not this session's file.
+
+def arc_in_corridor(radius, a0, a1, z, lo, span):
+    """Waypoints from `a0` to `a1` along the corridor THAT WAS BUILT.
+
+    Both ways round are tried and the shorter one that lies wholly inside
+    `[lo, lo + span]` wins. Raises rather than picking one anyway: a route
+    through a wall is not a shorter route.
+    """
+    def inside(a):
+        return ((a - lo) % 360.0) <= span + 1e-6
+
+    best = None
+    for d in (((a1 - a0) % 360.0), ((a1 - a0) % 360.0) - 360.0):
+        n = max(1, int(math.ceil(abs(d) / RW.RING_STEP_DEG)))
+        angs = [a0 + d * i / n for i in range(n + 1)]
+        if all(inside(a) for a in angs) and (best is None
+                                             or abs(d) < abs(best[0])):
+            best = (d, angs)
+    if best is None:
+        raise AssertionError(
+            f"neither way round from {a0:.1f} deg to {a1:.1f} deg stays inside "
+            f"the corridor that was built ({lo:.1f} deg for {span:.1f} deg) -- "
+            f"a body steered along either one walks off the end of the shell")
+    return [RW._at(radius, a, z) for a in best[1]]
+
+
+def corridor_span(meta, row=None):
+    """(start_deg, arc_deg) of the shell a body is about to be walked along.
+
+    Off the corridor's OWN meta -- `collision.corridor_shell` records the arc it
+    swept -- rather than recomputed from a plan, so it cannot describe a
+    different corridor from the one that was written.
+    """
+    if meta.get("arc_deg") is not None and meta.get("start_deg") is not None:
+        return float(meta["start_deg"]), float(meta["arc_deg"])
+    if row is not None and row.get("arc"):
+        lo, hi = row["arc"]
+        return float(lo), float(hi) - float(lo)
+    raise AssertionError("this corridor's shell does not say what arc it "
+                         "covers, so no route can be laid in it")
+
+
+def relay_ring(legs, radius, z, lo, span):
+    """Re-lay every ring leg's arc the way its corridor actually runs.
+
+    `route_walk.legs_for` is imported rather than reimplemented -- its doorway
+    aim points and its tolerances are the thing worth having -- and this is the
+    one correction its arc needs. The tolerance pattern is preserved: the leg's
+    own last (or first) waypoint is the tight one, because that is the one in a
+    doorway.
+    """
+    out = []
+    for l in legs:
+        if l["kind"] != "ring" or len(l["points"]) < 2:
+            out.append(l)
+            continue
+        a0 = math.degrees(math.atan2(l["points"][0][1], l["points"][0][0]))
+        a1 = math.degrees(math.atan2(l["points"][-1][1], l["points"][-1][0]))
+        pts = arc_in_corridor(radius, a0, a1, z, lo, span)
+        tight = [i for i, t in enumerate(l["tols"])
+                 if t < RW.WAYPOINT_TOL_M - 1e-9]
+        which = []
+        for i in tight:
+            which.append(0 if i == 0 else len(pts) - 1)
+        out.append(RW._leg("ring", l["note"], pts,
+                           RW._tight(pts, which, RW.door_tol_m())))
+    return out
+
+
+# ---------------------------------------------------------------------------
+# AND A SPINE LEG MUST NOT DOUBLE BACK THROUGH ITS OWN JUNCTION
+# ---------------------------------------------------------------------------
+# THE SECOND DEFECT THIS GATE FOUND, and it is the same shape as the first: a
+# rule that is right when the cluster is far from the column and wrong when it
+# is close. `route_walk.legs_for` walks the inbound leg
+#
+#     lobby stand -> aim point at (cz - hw - AIM_M) -> the junction at cz
+#
+# which assumes the lobby is on the far side of the aim point. `business_center`
+# sits on red ring 1 deck 0 at **z = 6604.48**, the column stands at **6600**,
+# and the landing lobby's own stand point is at **6605.93** -- so the ring
+# corridor lies BETWEEN the car and the lobby, and that leg walks +5.9 m, back
+# -4.5 m, then +3.1 m, crossing its own junction twice.
+#
+# Measured, that is not merely inelegant: the polyline visits z = 6604.5 THREE
+# TIMES, so `Route.advance` -- which takes the nearest point within a 12 m
+# window -- matched the body to a point 9 m further along than it had walked,
+# the carrot went BEHIND the body, and it stalled 37.85 m short of its post
+# with the agenda finishing without it. **756.4 m on the floor, 0 frames off
+# it, and no arrival.**
+#
+# `route_walk.choose` never sees this because it SKIPS any pair whose spine is
+# shorter than two `interior.AXIAL_SECTION_M` -- the case is excluded rather
+# than handled, and a commuter does not get to choose where they work.
+
+def trim_axial(legs, junction_z, shaft_z):
+    """Drop any axial waypoint that overshoots the junction.
+
+    The spine is walked in ONE direction: from the column towards the cluster,
+    or back. Every waypoint therefore belongs between the shaft's z and the
+    junction's, and one that does not is a detour through the very doorway the
+    leg is approaching.
+    """
+    lo, hi = min(junction_z, shaft_z), max(junction_z, shaft_z)
+    out = []
+    for l in legs:
+        if l["kind"] != "axial":
+            out.append(l)
+            continue
+        keep = [(p, t) for p, t in zip(l["points"], l["tols"])
+                if lo - 1e-6 <= p[2] <= hi + 1e-6]
+        if len(keep) < 2 or len(keep) == len(l["points"]):
+            out.append(l)
+            continue
+        pts = [p for p, _t in keep]
+        out.append(RW._leg("axial", l["note"] + " (trimmed: the ring corridor "
+                                                "stands between the column and "
+                                                "its lobby)",
+                           pts, [t for _p, t in keep]))
+    return out
+
+
+def park_landing(g, a, b):
+    """Where the car is standing when the resident sets out, and it is NOT
+    their landing.
+
+    THE FURTHEST LANDING FROM THEM THAT IS NOT THEIR DESTINATION EITHER. A car
+    already waiting at your floor is the case `--ride` tests; a commuter's car
+    is somewhere else and has to be called, which is the whole of the hand-off
+    this milestone is about. Furthest, so the wait is the longest this column
+    can produce rather than the shortest.
+    """
+    best, far = None, -1.0
+    for i, lg in enumerate(g["landings"]):
+        if i in (a, b):
+            continue
+        d = abs(lg["walk_r_m"] - g["landings"][a]["walk_r_m"])
+        if d > far:
+            best, far = i, d
+    return best if best is not None else (b if b != a else a)
+
+
+def journey_for(schema, profile, cand, quiet=True):
+    """Every waypoint from the resident's bunk to their desk, and the shells.
+
+    Three segments: walk out of the quarters, along the ring corridor, down the
+    deck's spine and into the car; RIDE; and out of the car, along the other
+    deck's spine and corridor, and into the room they work in.
+    """
+    res = cand["res"]
+    nodes, es = graph()
+    by_place, _bad = endpoint_index(schema, profile)
+    a_row, b_row = by_place[res.home], by_place[res.job]
+    sector = a_row["sector"]
+    g = RW.shaft(schema, profile, nodes, sector)
+    # WHERE A LOBBY STANDS ACROSS A RING CORRIDOR, CUT THE DOORWAY. See
+    # `lobby_seals` for what this costs when it is not done: the body rides the
+    # lift, alights, reaches the junction and stops 37.85 m from its post.
+    crossings = [(row["landing"], row["cz"])
+                 for row in (a_row, b_row) if lobby_seals(row, g)]
+
+    a_v, a_t, a_g, a_meta = RW.cluster_collision(
+        schema, profile, a_row["sector"], a_row["ring"], a_row["deck"],
+        a_row["z"], a_row["spine_deg"])
+    b_v, b_t, b_g, b_meta = RW.cluster_collision(
+        schema, profile, b_row["sector"], b_row["ring"], b_row["deck"],
+        b_row["z"], b_row["spine_deg"])
+
+    la, lb = a_row["landing"], b_row["landing"]
+    lobby_a = list(TR.lobby_stand(g, g["landings"][la]))
+    lobby_b = list(TR.lobby_stand(g, g["landings"][lb]))
+    car_a = list(L.stand_in_car(g, at_deck=g["landings"][la]))
+    car_b = list(L.stand_in_car(g, at_deck=g["landings"][lb]))
+
+    tol = RW.door_tol_m()
+    a_lo, a_span = corridor_span(a_meta, a_row)
+    b_lo, b_span = corridor_span(b_meta, b_row)
+    seg0_legs = [room_legs(schema, profile, a_meta, res.home, outward=True)]
+    seg0_legs += trim_axial(relay_ring(
+        RW.legs_for(schema, profile, a_row, a_meta, g, res.home,
+                    outbound=True),
+        a_meta["floor_r_m"], a_meta["z_m"], a_lo, a_span),
+        a_meta["z_m"], g["z_m"])
+    # WHERE THEY WAIT FOR THE CAR is wherever their own deck's walk ends, which
+    # is the landing lobby on a deck with a spine and the mouth of the aperture
+    # on a deck that sits on top of the column. Taken from the leg rather than
+    # assumed, so the two cases need no branch.
+    wait_at = list(seg0_legs[-1]["points"][-1])
+    seg0_legs.append(RW._leg(
+        "board", f"across the landing at deck {a_row['deck']} and into "
+                 f"the car", [wait_at, car_a],
+        RW._tight([wait_at, car_a], [1], tol)))
+    b_legs = trim_axial(relay_ring(
+        RW.legs_for(schema, profile, b_row, b_meta, g, res.job,
+                    outbound=False),
+        b_meta["floor_r_m"], b_meta["z_m"], b_lo, b_span),
+        b_meta["z_m"], g["z_m"])
+    step_off = list(b_legs[0]["points"][0])
+    seg2_legs = [RW._leg(
+        "alight", f"out of the car at deck {b_row['deck']} and onto the "
+                  f"landing", [car_b, step_off],
+        RW._tight([car_b, step_off], [0], tol))]
+    seg2_legs += b_legs
+
+    # AND THE ROOM LEGS ARE INSIDE THE CORRIDOR TOO, asserted rather than
+    # assumed: every waypoint at the corridor's own radius has to be on the arc
+    # that was built, or the route is a route through a wall.
+    for legs, lo, span, r_m in ((seg0_legs, a_lo, a_span, a_meta["floor_r_m"]),
+                                (seg2_legs, b_lo, b_span, b_meta["floor_r_m"])):
+        for l in legs:
+            if l["kind"] not in ("ring", "room"):
+                continue
+            for q in l["points"]:
+                if abs(math.hypot(q[0], q[1]) - r_m) > 0.2:
+                    continue
+                a = math.degrees(math.atan2(q[1], q[0]))
+                if ((a - lo) % 360.0) > span + 1e-6:
+                    raise AssertionError(
+                        f"a waypoint of the {l['kind']} leg stands at "
+                        f"{a:.1f} deg and its corridor covers {lo:.1f} deg for "
+                        f"{span:.1f} deg -- that point is outside the shell")
+
+    def polyline(legs):
+        pts = []
+        for l in legs:
+            for q in l["points"]:
+                if not pts or math.dist(pts[-1], q) > 1e-6:
+                    pts.append(list(q))
+        return pts
+
+    seg0 = polyline(seg0_legs)
+    seg2 = polyline(seg2_legs)
+
+    def length(pts):
+        return sum(math.dist(p, q) for p, q in zip(pts, pts[1:]))
+
+    # WHERE THE WAIT HAPPENS -- how far along segment 0 they stop for the car.
+    # Taken from the polyline itself rather than by adding the legs up, because
+    # the polyline is what the body walks and the two differ by the welds.
+    i_wait = min(range(len(seg0)), key=lambda i: math.dist(seg0[i], wait_at))
+    s_land = length(seg0[:i_wait + 1])
+    if math.dist(seg0[i_wait], wait_at) > 1e-6:
+        raise AssertionError("the point they wait at is not a waypoint of the "
+                             "outbound segment")
+
+    # AND THE WALK IS MONOTONE THROUGH ITS OWN JUNCTIONS. A polyline that
+    # revisits a place has two answers to "how far along is this body", and
+    # `Route.advance` takes the nearest -- which is how the first run of this
+    # gate put the carrot nine metres BEHIND the body. Asserted rather than
+    # hoped for: no two non-adjacent waypoints may be closer than a capsule.
+    for pts, nm in ((seg0, "outbound"), (seg2, "inbound")):
+        for i in range(len(pts)):
+            for j in range(i + 2, len(pts)):
+                if math.dist(pts[i], pts[j]) < CAPSULE_R_M:
+                    raise AssertionError(
+                        f"the {nm} route passes within "
+                        f"{math.dist(pts[i], pts[j]):.2f} m of itself between "
+                        f"waypoint {i} and waypoint {j} -- a body on it has two "
+                        f"answers to how far it has got")
+
+    return {"a_row": a_row, "b_row": b_row, "g": g, "sector": sector,
+            "a": (a_v, a_t, a_g, a_meta), "b": (b_v, b_t, b_g, b_meta),
+            "seg0": seg0, "seg2": seg2,
+            "seg0_legs": seg0_legs, "seg2_legs": seg2_legs,
+            "len0": length(seg0), "len2": length(seg2), "s_land": s_land,
+            "lobby_a": lobby_a, "lobby_b": lobby_b,
+            "car_a": car_a, "car_b": car_b,
+            "landing_a": la, "landing_b": lb, "crossings": crossings,
+            "park": park_landing(g, la, lb)}
+
+
+def timetable(j, lift_man, speed, depart_s):
+    """The journey in station seconds, and every duration is somebody else's.
+
+        the walk        the polyline's own length over `populace._walk_speed`,
+                        the gait the resident's walk clip is animated at
+        the car's ride  `transit_runtime`'s motion table, whose seconds are
+                        `navigation.lift_ride_s` and whose peak is asserted
+                        against the Coriolis cap before it is written
+        the doors       the leaves' MEASURED travel over `door.gd`'s own speed
+        the dwell       `navigation.TRANSIT_DWELL_S`
+
+    Returns (plan, marks). The plan is what `life.gd` plays; the marks are the
+    named instants, for the report and for the costing cross-check.
+    """
+    rides = lift_man["rides"]
+    la, lb, pk = j["landing_a"], j["landing_b"], j["park"]
+    call_s = rides[f"{pk}-{la}"]["seconds"] if pk != la else 0.0
+    ride_s = rides[f"{la}-{lb}"]["seconds"]
+    door_s = max(lift_man["leaf_travel_m"].values()) / door_speed_ms()
+    dwell = lift_man["dwell_s"]
+
+    t_depart = depart_s
+    t_land = t_depart + j["s_land"] / speed          # they reach the landing
+    t_call = t_land                                  # and call the car
+    t_car = t_call + call_s                          # it arrives
+    t_open = t_car + door_s                          # its doors open
+    t_board = t_open + (j["len0"] - j["s_land"]) / speed
+    t_shut0 = max(t_board, t_open + dwell)           # it waits its own dwell
+    t_shut1 = t_shut0 + door_s
+    t_ride1 = t_shut1 + ride_s
+    t_open2 = t_ride1 + door_s
+    t_walk2 = t_open2 + j["len2"] / speed
+
+    def row(t0, t1, **kw):
+        d = {"t0": round(t0, 4), "t1": round(t1, 4)}
+        d.update(kw)
+        return d
+
+    y = [float(lg["y_m"]) for lg in lift_man["landings"]]
+    plan = {
+        "walk": [row(t_depart, t_land, seg=0, s0=0.0, s1=j["s_land"]),
+                 row(t_open, t_board, seg=0, s0=j["s_land"], s1=j["len0"]),
+                 row(t_open2, t_walk2, seg=2, s0=0.0, s1=j["len2"])],
+        # The car: parked, called, then the ride the passenger is in.
+        "car": [row(t_call, t_car, y0=y[pk], y1=y[la],
+                    table=f"{pk}-{la}"),
+                row(t_shut1, t_ride1, y0=y[la], y1=y[lb],
+                    table=f"{la}-{lb}")],
+        "door": [row(t_car, t_open, f0=0.0, f1=1.0),
+                 row(t_shut0, t_shut1, f0=1.0, f1=0.0),
+                 row(t_ride1, t_open2, f0=0.0, f1=1.0)],
+        # WHERE THE BODY STANDS IN THE CAR RATHER THAN ON A ROUTE. From the
+        # moment it is aboard to the moment the far doors are open, the thing
+        # it is steered at is the car's own stand point, which MOVES -- so a
+        # body that is not carried reads a lag of the whole shaft.
+        "hold_in_car": [row(t_board, t_open2)],
+        "phases": [row(0.0, t_depart, name="before"),
+                   row(t_depart, t_land, name="walk_a"),
+                   row(t_land, t_open, name="wait"),
+                   row(t_open, t_shut1, name="board"),
+                   row(t_shut1, t_ride1, name="ride"),
+                   row(t_ride1, t_open2, name="open"),
+                   row(t_open2, t_walk2, name="walk_b"),
+                   row(t_walk2, t_walk2 + POST_S, name="after")],
+    }
+    marks = {"depart": t_depart, "landing": t_land, "car_here": t_car,
+             "doors_open": t_open, "aboard": t_board, "doors_shut": t_shut1,
+             "alight": t_ride1, "arrive": t_walk2,
+             "call_s": call_s, "ride_s": ride_s, "door_s": door_s,
+             "dwell_s": dwell,
+             "walk_a_s": t_land - t_depart, "walk_b_s": t_walk2 - t_open2,
+             "wait_s": t_open - t_land, "journey_s": t_walk2 - t_depart}
+    return plan, marks
+
+
+def costing(schema, profile, j, marks, res):
+    """What `station/transit.py` says this journey costs, computed its way.
+
+    A CROSS-CHECK, NOT A SOURCE. `transit.py` costs a journey from the register:
+    a Manhattan walk between two places' own (z, angle) at the rim's gravity,
+    plus `climb_leg` for the radial move, plus a dwell. The timetable above
+    costs it from the geometry a body actually walks -- the real corridor arc,
+    the deck's spine, the lobby -- at `populace._walk_speed`. The two SHOULD
+    differ, and by how much and in which direction is the interesting number:
+    a Manhattan walk between two room centres does not know about the ring the
+    corridor has to go round to reach the spine.
+
+    The ride is the part that must agree, because both ends of it derive from
+    the same smoothstep: `transit.climb_leg` and `navigation.lift_ride_s` share
+    no code and are asserted against each other here.
+    """
+    a, b = DIR.by_key(res.home), DIR.by_key(res.job)
+    walk = T.walk_leg(schema, profile, a, b, label=f"{res.home} -> {res.job}")
+    rise = abs(j["g"]["landings"][j["landing_a"]]["walk_r_m"]
+               - j["g"]["landings"][j["landing_b"]]["walk_r_m"])
+    climb = T.climb_leg(schema, rise, label="the lift")
+    jr = T.journey(f"{res.name} to work",
+                   [walk, climb,
+                    {"kind": "wait", "label": "the car's dwell",
+                     "distance_m": 0.0, "seconds": marks["dwell_s"],
+                     "detail": "navigation.TRANSIT_DWELL_S"}])
+    return {"walk_s": walk["seconds"], "walk_m": walk["distance_m"],
+            "walk_detail": walk["detail"],
+            "climb_s": climb["seconds"], "rise_m": rise,
+            "climb_detail": climb["detail"],
+            "journey_s": jr["seconds"], "ours_s": marks["journey_s"],
+            "ride_s": marks["ride_s"],
+            "ride_delta_s": marks["ride_s"] - climb["seconds"],
+            "delta_s": marks["journey_s"] - jr["seconds"]}
+
+
+def build3(schema, profile, cand, rate=1.0, quiet=False):
+    """Every shell, the car, the timetable and the manifest. -> (man, path)."""
+    os.makedirs(OUT, exist_ok=True)
+    res = cand["res"]
+    j = journey_for(schema, profile, cand, quiet=quiet)
+
+    # THE LIFT'S OWN RUNTIME ARTEFACTS, from the module that owns them, into
+    # this file's directory -- session 3w's lesson, that disjoint source files
+    # are not disjoint artefacts. `transit_runtime.OUT` is also `--ride`'s.
+    import contextlib                                             # noqa: PLC0415
+    import io                                                     # noqa: PLC0415
+    keep_tr, keep_rw = TR.OUT, RW.OUT
+    TR.OUT = RW.OUT = OUT
+    try:
+        with contextlib.redirect_stdout(io.StringIO()):
+            lift_man = TR.build_lift(schema, profile, j["g"], quiet=True)
+            # THE COLUMN'S SHELL, WITH THE CROSSING DOORWAYS THIS JOURNEY
+            # NEEDS -- see `column_collision`. It replaces the one
+            # `build_lift` just wrote, which has none.
+            ov, ot, og = column_collision(schema, profile, j["g"],
+                                          crossings=j["crossings"])
+            lift_man["static_col_glb"] = RW._write("lift_static_col_open",
+                                                   ov, ot, og)
+            # AND THE CONTROL'S SHELL, from the generator's own negative
+            # control: `lift.lift_collision(landings=False)` seals every landing
+            # aperture. A slab invented to stand in a doorway would be a control
+            # against geometry nobody ships.
+            sv, st, sg = column_collision(schema, profile, j["g"],
+                                          crossings=j["crossings"],
+                                          landings=False)
+            sealed = RW._write("lift_static_col_sealed", sv, st, sg)
+    finally:
+        TR.OUT, RW.OUT = keep_tr, keep_rw
+
+    files = []
+    for tag, (v, t, gr, meta) in (("cluster_a", j["a"]), ("cluster_b", j["b"])):
+        obj = os.path.join(OUT, tag + "_col.obj")
+        C.write_obj(obj, v, t, gr, name="agenda")
+        files.append(_glb(obj))
+        os.remove(obj)
+    # AND A SPINE IS ONLY BUILT WHERE THERE IS SPINE TO BUILD.
+    #
+    # `route_walk.build` runs one from the lobby's far end to the cluster's own
+    # corridor wall. On a deck that sits ON TOP of the column those two are the
+    # wrong way round -- the lobby ends at z = 6610.53 and `business_center`'s
+    # corridor wall is at 6603.40 -- so the "spine" is a 7 m axial corridor laid
+    # BACKWARDS, straight through the ring corridor it is supposed to meet, and
+    # its side walls seal that corridor exactly as the lobby's did. Cutting the
+    # lobby's crossing doorway changed nothing at all, byte for byte in the
+    # verdict, because this second tube was still standing across it.
+    #
+    # There is nothing to build: the lobby already covers that z. Skipping it is
+    # not a workaround, it is the answer to "how much corridor is between the
+    # landing and the junction" being NONE.
+    z_lobby_end = TR.lobby_span(j["g"])[1]
+    lo_l, hi_l = sorted(TR.lobby_span(j["g"]))
+    for tag, row, meta in (("a", j["a_row"], j["a"][3]),
+                           ("b", j["b_row"], j["b"][3])):
+        wall = meta["z_m"] - math.copysign(meta["half_w_m"],
+                                           meta["z_m"] - z_lobby_end)
+        if lo_l - 1e-6 <= wall <= hi_l + 1e-6:
+            if not quiet:
+                print(f"  no spine on deck {row['deck']}: its corridor wall at "
+                      f"z={wall:.2f} is inside the landing lobby "
+                      f"({lo_l:.2f}..{hi_l:.2f}), which is already the floor "
+                      f"between them")
+            continue
+        sv2, st2, _sm = RW.spine(schema, profile, row["sector"], row["ring"],
+                                 meta["radius_m"], row["spine_deg"],
+                                 z_lobby_end, wall)
+        obj = os.path.join(OUT, f"spine_{tag}_col.obj")
+        C.write_obj(obj, sv2, st2, [(f"spine_{tag}", 0, len(st2))],
+                    name="agenda")
+        files.append(_glb(obj))
+        os.remove(obj)
+
+    g_ms2 = P.place_gravity(res.home)
+    speed = P._walk_speed(res.species, CROWD_LOD, g_ms2)
+    cycle = P._walk_cycle_s(res.species, CROWD_LOD, g_ms2)
+    depart, start = cand["depart_h"], cand["start_h"]
+    plan, marks = timetable(j, lift_man, speed, PRE_S)
+    cost = costing(schema, profile, j, marks, res)
+
+    span_s = marks["arrive"] + POST_S
+    h0 = depart - PRE_S / 3600.0
+    h1 = h0 + span_s / 3600.0
+    frames = int(math.ceil(span_s * 60.0))
+
+    # Every pressure door on both cluster shells, so the runtime can open the
+    # one the body is standing at. Measured off the plan the panel was cut
+    # from, never recovered from the mesh.
+    doors = []
+    for meta in (j["a"][3], j["b"][3]):
+        for row in meta.get("rooms", ()):
+            doors.append({"key": row["key"], "deg": row["door_deg"],
+                          "group": f"doorpanel_{row['key']}",
+                          "at": list(RW._at(meta["floor_r_m"],
+                                            row["door_deg"], meta["z_m"]))})
+
+    home_at = list(W.room_target(j["a"][3], DIR.by_key(res.home)))
+    post_at = list(W.room_target(j["b"][3], DIR.by_key(res.job)))
+    man = {
+        "kind": "commute",
+        "sector": j["sector"], "ring": j["a_row"]["ring"],
+        "deck": f"{j['a_row']['sector']}_{j['a_row']['ring']}_"
+                f"{j['a_row']['deck']}",
+        "deck_from": f"{j['a_row']['sector']}/{j['a_row']['ring']}/"
+                     f"{j['a_row']['deck']}",
+        "deck_to": f"{j['b_row']['sector']}/{j['b_row']['ring']}/"
+                   f"{j['b_row']['deck']}",
+        "who": {"id": res.npc_id, "name": res.name,
+                "card_name": res.card_name, "species": res.species,
+                "origin": res.origin, "age": res.age, "role": res.role,
+                "home": res.home, "job": res.job,
+                "pool": cand["pool"], "pool_i": cand["i"]},
+        "shift": {"start_h": round(start, 4), "hours": cand["hours"],
+                  "depart_h": round(depart, 4),
+                  "arrive_h": round((depart + marks["journey_s"] / 3600.0)
+                                    % 24.0, 4),
+                  "transit_h": SC.TRANSIT_H,
+                  "walk_s": round(marks["journey_s"], 1),
+                  "slack_s": round(SC.TRANSIT_H * 3600.0
+                                   - marks["journey_s"], 1)},
+        "gait": {"speed_ms": round(speed, 4), "cycle_s": round(cycle, 4),
+                 "g_ms2": round(g_ms2, 4),
+                 "froude_ms": round(NAV.walk_speed(g_ms2 / 9.80665,
+                                                   res.species), 4)},
+        "segments": [
+            {"kind": "walk", "index": 0, "points": j["seg0"],
+             "length_m": round(j["len0"], 3),
+             "legs": [{"kind": l["kind"], "note": l["note"],
+                       "length_m": l["length_m"]} for l in j["seg0_legs"]]},
+            {"kind": "ride", "index": 1,
+             "from_landing": j["landing_a"], "to_landing": j["landing_b"],
+             "rise_m": round(cost["rise_m"], 3)},
+            {"kind": "walk", "index": 2, "points": j["seg2"],
+             "length_m": round(j["len2"], 3),
+             "legs": [{"kind": l["kind"], "note": l["note"],
+                       "length_m": l["length_m"]} for l in j["seg2_legs"]]},
+        ],
+        "plan": plan,
+        "marks": {k: round(v, 3) for k, v in marks.items()},
+        "costing": {k: (round(v, 3) if isinstance(v, float) else v)
+                    for k, v in cost.items()},
+        "lift": {
+            "static_col_glb": lift_man["static_col_glb"],
+            "static_col_sealed_glb": sealed,
+            "car_glb": lift_man["car_glb"],
+            "car_col_glb": lift_man["car_col_glb"],
+            "origin": lift_man["origin"], "ux": lift_man["ux"],
+            "uy": lift_man["uy"], "travel_axis": lift_man["travel_axis"],
+            "pivot": lift_man["pivot"],
+            "leaf_travel": lift_man["leaf_travel"],
+            "leaf_travel_m": lift_man["leaf_travel_m"],
+            "car": lift_man["car"], "bore_hd": lift_man["bore_hd"],
+            "landings": lift_man["landings"], "rides": lift_man["rides"],
+            "dwell_s": lift_man["dwell_s"], "g0_m_s2": lift_man["g0_m_s2"],
+            "v_cap_m_s": lift_man["v_cap_m_s"],
+            "from_landing": j["landing_a"], "to_landing": j["landing_b"],
+            "park_landing": j["park"],
+            "car_stand_from": j["car_a"], "car_stand_to": j["car_b"],
+            "landing_stand_from": j["lobby_a"],
+            "landing_stand_to": j["lobby_b"],
+        },
+        "spawn": home_at, "home_at": home_at, "post_at": post_at,
+        "doors": doors,
+        "collision_glbs": files,
+        "crowd_lod_glb": os.path.join(DECKDIR, f"crowd_lod{CROWD_LOD}.glb"),
+        "crowd_mesh": P.crowd_key(res.species, CROWD_LOD, 0),
+        "crowd_lod": CROWD_LOD,
+        "omega_rad_s": schema["station"]["rotation"]["omega_rad_s"]["value"],
+        "clock": {"start_h": round(h0, 6), "end_h": round(h1, 6),
+                  "rate_x": rate, "span_s": round(span_s, 1)},
+        "pre_s": PRE_S, "post_s": POST_S,
+        "arrive_m": W.ARRIVED_M,
+        "capsule_r_m": CAPSULE_R_M, "capsule_h_m": CAPSULE_H_M,
+        "settle_frames": SETTLE_FRAMES,
+        "lookahead_m": round(lookahead_m(), 4),
+        "catchup": CATCHUP,
+        "max_frames": int(frames * 1.5) + 600,
+    }
+    path = os.path.join(OUT, "commute.json")
+    with open(path, "w") as f:
+        json.dump(man, f, indent=1)
+    if not quiet:
+        print(f"  wrote {os.path.relpath(path, ROOT)} -- "
+              f"{j['len0']:,.0f} m + a {cost['rise_m']:.1f} m ride + "
+              f"{j['len2']:,.0f} m, {span_s:,.0f} station seconds = "
               f"{frames:,} frames")
     return man, path
 
@@ -826,6 +1739,427 @@ def gate(argv):
     bad = [n for n, o, _ in rows if not o]
     print("\n" + ("ALL GREEN" if not bad else "FAILED: " + "; ".join(bad)))
     return 0 if not bad else 1
+
+
+# ---------------------------------------------------------------------------
+# THE L3 GATE
+# ---------------------------------------------------------------------------
+
+def verdict3(d, man):
+    """Did a named resident ride the lift to work. In L3's own terms.
+
+    L1's seven claims, and four more that are about the vehicle:
+
+      boarded   they were inside the car when its doors shut
+      carried   the RADIUS they covered is the shaft's rise, ON THE FLOOR
+      alighted  they got out at the far landing's own walking radius
+      on deck   and the landing they ended at is their post's landing
+    """
+    ok, note = verdict(d, man)
+    if not ok:
+        return ok, note
+    if d.get("boarded") != "true":
+        return False, ("the doors shut and they were not in the car -- "
+                       f"lag {_f(d, 'lag_m'):.1f} m")
+    rise = float(man["segments"][1]["rise_m"])
+    got = _f(d, "ride_radial_floor_m")
+    if abs(got - rise) > RIDE_TOL_M:
+        return False, (f"covered {got:.3f} m of radius on the floor during the "
+                       f"ride, against a {rise:.3f} m shaft")
+    if _f(d, "ride_radial_air_m", 1e9) > RIDE_TOL_M:
+        return False, (f"{_f(d, 'ride_radial_air_m'):.3f} m of the ride's "
+                       f"radius was covered in the air -- that is falling")
+    off = int(str(d.get("ride_offfloor", "1/0")).split("/")[0])
+    if off > 0:
+        return False, (f"left the floor for {off} frames DURING THE RIDE -- "
+                       f"the car moved and the body did not go with it")
+    if _f(d, "standoff_max_mm", 1e9) > 1000.0 * RIDE_TOL_M:
+        return False, (f"stood {_f(d, 'standoff_max_mm'):.1f} mm off the car "
+                       f"floor at worst -- it is not riding, it is bouncing")
+    if d.get("alighted") != "true":
+        return False, "they never got out of the car at the far landing"
+    if int(d.get("end_landing", -1)) != int(man["lift"]["to_landing"]):
+        return False, (f"ended at landing {d.get('end_landing')} "
+                       f"(deck {d.get('end_deck')}), not their post's landing "
+                       f"{man['lift']['to_landing']}")
+    return True, ""
+
+
+# How far the ride's radius may miss the shaft's own rise. `transit_runtime`'s
+# own figure and its reason: the body starts and ends 50 mm above two floors and
+# both are measured from the floor, so the error cannot exceed the stand-off.
+RIDE_TOL_M = TR.RIDE_TOL_M
+
+
+def _fmt3(d):
+    return (f"{_f(d, 'floor_m'):,.1f} m on the floor "
+            f"({_f(d, 'air_m'):.2f} m in the air), offfloor "
+            f"{d.get('offfloor')}, rode {_f(d, 'ride_radial_floor_m'):.2f} m "
+            f"of radius (offfloor {d.get('ride_offfloor')}), got off at deck "
+            f"{d.get('end_deck')}, {_f(d, 'arrive_m'):.2f} m from the post, "
+            f"worst lag {_f(d, 'lag_m'):.2f} m, {d.get('frames')} ticks")
+
+
+def _say3(d, man):
+    if "error" in d:
+        print(f"        {d['error']}\n{d.get('tail', '')}")
+        return
+    print(f"        {_f(d, 'floor_m'):,.2f} m on the floor, boarded="
+          f"{d.get('boarded')}, alighted={d.get('alighted')}, rode "
+          f"{_f(d, 'ride_radial_floor_m'):.2f} m of radius "
+          f"({_f(d, 'ride_radial_air_m'):.2f} m of it in the air), ended at "
+          f"deck {d.get('end_deck')} r={_f(d, 'end_r'):.1f}, "
+          f"{_f(d, 'arrive_m'):,.1f} m from {man['who']['job']}, "
+          f"the car moved {_f(d, 'car_moved_m'):.1f} m "
+          f"(arrived={d.get('arrived')}, offfloor {d.get('offfloor')})")
+
+
+def gate3(argv):
+    """THE L3 GATE: a resident rides the lift to work, at three clock rates,
+    with the three controls the milestone requires."""
+    schema, profile = it.load()
+    godot = argv.godot or W.godot_binary()
+    engine_root = argv.engine_root or os.path.join(ROOT, "godot")
+    if godot is None:
+        print("no double-precision Godot binary. run: bash tools/build_godot.sh")
+        return 2
+    why = check_script(godot, engine_root)
+    if why:
+        print("godot/scripts/life.gd does not parse:\n" + why)
+        return 2
+    for script in ("transit.gd",):
+        p = subprocess.run([godot, "--headless", "--path", engine_root,
+                            "--check-only", "--script", f"res://scripts/{script}"],
+                           capture_output=True, text=True, timeout=180)
+        if p.returncode != 0 or "Parse Error" in p.stdout + p.stderr:
+            print(f"godot/scripts/{script} does not parse")
+            return 2
+
+    cand = choose3(schema, profile, argv.who)
+    man, path = build3(schema, profile, cand, rate=RATES[0], quiet=False)
+    print_commute(man)
+    rows = []
+
+    for rate in ([argv.rate] if argv.rate else RATES):
+        d = run(path, godot, engine_root, rate=rate, timeout=argv.timeout,
+                verbose=argv.verbose)
+        ok, note = verdict3(d, man)
+        print(f"\n  {'PASS' if ok else 'FAIL'}  x{rate:g} CLOCK   {_fmt3(d)}")
+        for ph in d.get("phases", ()):
+            print(f"        {ph.get('phase', '9s'):9s} "
+                  f"{_f(ph, 'floor_m'):8,.1f} m on the floor in "
+                  f"{ph.get('frames')} frames")
+        if not ok:
+            print(f"        {note}")
+        rows.append((f"x{rate:g} clock", ok, d))
+
+    # THE CONTROLS RUN AT THE FASTEST CLOCK: what they test is a MECHANISM, and
+    # a mechanism that is broken at x60 is broken at x1.
+    #
+    # CONTROL 1 -- THE CAR IS PARKED SOMEWHERE ELSE AND NEVER CALLED. The
+    # timetable for the RESIDENT is unchanged and still completes; the car stays
+    # at its parking landing and its doors never open. This is L1's second
+    # control one vehicle along: the agenda finishes the journey and the person
+    # does not.
+    c1 = run(path, godot, engine_root, lift="parked", rate=RATES[-1],
+             timeout=argv.timeout, verbose=argv.verbose)
+    c1ok = ("error" not in c1 and c1.get("boarded") != "true"
+            and c1.get("arrived") != "true"
+            and _f(c1, "ride_radial_floor_m", 1e9) < RIDE_TOL_M)
+    print(f"\n  {'FIRED' if c1ok else 'DID NOT FIRE'}  control: the car is "
+          f"parked at landing {man['lift']['park_landing']} and never called")
+    _say3(c1, man)
+    rows.append(("control: the car never comes", c1ok, c1))
+
+    # CONTROL 2 -- EVERY LANDING APERTURE SEALED. `lift.lift_collision(
+    # landings=False)` is the generator's own negative control: the shaft with
+    # no way in or out of it. The car runs its timetable to the second and the
+    # resident is standing in the lobby with a wall where the door was.
+    c2 = run(path, godot, engine_root, landings="sealed", rate=RATES[-1],
+             timeout=argv.timeout, verbose=argv.verbose)
+    c2ok = ("error" not in c2 and c2.get("boarded") != "true"
+            and c2.get("arrived") != "true")
+    print(f"\n  {'FIRED' if c2ok else 'DID NOT FIRE'}  control: every landing "
+          f"aperture sealed -- they are stopped at the door")
+    _say3(c2, man)
+    rows.append(("control: the landings sealed", c2ok, c2))
+
+    # CONTROL 3 -- THE PRE-FIX BUILD. Before this session `life.gd` had no
+    # vehicle in it at all: `--lift=off` loads the shaft and no car, which is
+    # exactly the station this milestone started on. Nobody rides.
+    c3 = run(path, godot, engine_root, lift="off", rate=RATES[-1],
+             timeout=argv.timeout, verbose=argv.verbose)
+    c3ok = ("error" not in c3 and c3.get("boarded") != "true"
+            and c3.get("arrived") != "true"
+            and _f(c3, "ride_radial_floor_m", 1e9) < RIDE_TOL_M)
+    print(f"\n  {'FIRED' if c3ok else 'DID NOT FIRE'}  control: the pre-fix "
+          f"build (--lift=off) -- there is no car in the shaft, nobody rides")
+    _say3(c3, man)
+    rows.append(("control: the pre-fix build", c3ok, c3))
+
+    bad = [n for n, o, _ in rows if not o]
+    print("\n" + ("ALL GREEN" if not bad else "FAILED: " + "; ".join(bad)))
+    return 0 if not bad else 1
+
+
+def print_commute(man):
+    """Who commutes, by what legs, on whose numbers."""
+    w = man["who"]
+    m = man["marks"]
+    c = man["costing"]
+    lf = man["lift"]
+    print(f"\nSOMEONE TAKES THE LIFT TO WORK\n")
+    print(f"  {w['name']}, {w['age']}, {w['species']} from {w['origin']} -- "
+          f"{w['role']}")
+    print(f"     lives   {w['home']:22s} {man['deck_from']:12s} "
+          f"landing {lf['from_landing']}")
+    print(f"     works   {w['job']:22s} {man['deck_to']:12s} "
+          f"landing {lf['to_landing']}")
+    print(f"     shift   {man['shift']['start_h']:05.2f} EMT for "
+          f"{man['shift']['hours']:.0f} h (npc/schedule.work_window)")
+    print(f"     leaves  {man['shift']['depart_h']:05.2f} EMT -- the start of "
+          f"their own {man['shift']['transit_h']:.1f} h TRANSIT window")
+    print(f"     id      {w['id']}   -- affiliate {w['pool_i']} of "
+          f"{w['pool']}")
+    print(f"\n  THE JOURNEY, and every leg is somebody else's geometry")
+    for s in man["segments"]:
+        if s["kind"] == "ride":
+            print(f"     ride   {s['rise_m']:8,.1f} m  of RADIUS, landing "
+                  f"{s['from_landing']} -> {s['to_landing']}, in "
+                  f"{m['ride_s']:.1f} s "
+                  f"(navigation.lift_ride_s, peak at the Coriolis cap)")
+            continue
+        for l in s["legs"]:
+            print(f"     {l['kind']:6s} {l['length_m']:8,.1f} m  "
+                  f"{l['note'][:78]}")
+    print(f"     {'total':6s} {man['segments'][0]['length_m'] + man['segments'][2]['length_m']:8,.1f} m "
+          f"of walking plus a {man['segments'][1]['rise_m']:.1f} m ride")
+    print(f"\n  THE TIMETABLE, in station seconds from the clock's own start")
+    for k in ("depart", "landing", "car_here", "doors_open", "aboard",
+              "doors_shut", "alight", "arrive"):
+        print(f"     {k:12s} {m[k]:8,.1f} s")
+    print(f"     the car is parked at landing {lf['park_landing']} and takes "
+          f"{m['call_s']:.1f} s to answer the call; the doors take "
+          f"{m['door_s']:.2f} s (door.gd's own speed on the leaves' measured "
+          f"travel) and it dwells {m['dwell_s']:.0f} s "
+          f"(navigation.TRANSIT_DWELL_S)")
+    print(f"\n  AGAINST station/transit.py's OWN COSTING")
+    print(f"     the ride    ours {m['ride_s']:.3f} s against climb_leg's "
+          f"{c['climb_s']:.3f} s -- {c['ride_delta_s']:+.3f} s "
+          f"({c['climb_detail']})")
+    print(f"     the walk    ours {m['walk_a_s'] + m['walk_b_s']:,.0f} s over "
+          f"{man['segments'][0]['length_m'] + man['segments'][2]['length_m']:,.0f} m of real corridor, "
+          f"walk_leg's {c['walk_s']:,.0f} s over {c['walk_m']:,.0f} m "
+          f"({c['walk_detail']})")
+    print(f"     the whole   ours {c['ours_s']:,.0f} s against "
+          f"{c['journey_s']:,.0f} s -- {c['delta_s']:+,.0f} s, of which "
+          f"{m['wait_s']:.0f} s is waiting for a car transit.py never waits "
+          f"for")
+
+
+# ---------------------------------------------------------------------------
+# THE CENSUS -- how many of the station's own residents can now do this
+# ---------------------------------------------------------------------------
+
+def baked_residents():
+    """Every resident in the shipped `<deck>_actors.json` with a home and a job.
+
+    THE STATION'S OWN CAST, not a pool this file scanned. These are the people
+    `tools/bake_station.py` actually put in the rooms, so "how many can commute"
+    is a question about the station that is on disk.
+    """
+    out, rows = {}, 0
+    for key in sorted(assembled()):
+        path = os.path.join(STATION, key + "_actors.json")
+        if not os.path.exists(path):
+            continue
+        with open(path) as f:
+            for a in json.load(f):
+                who = a.get("who") or {}
+                if who.get("home") and who.get("job") and who.get("id"):
+                    out[who["id"]] = who
+                    rows += 1
+    return out, rows
+
+
+def census(schema=None, profile=None):
+    """How many of the baked residents can complete their commute, and why not.
+
+    THE NUMBER L3 IS SCORED ON, and it is well short of all of them. Each
+    failure is reported by its own reason rather than as a total, because the
+    reasons are different pieces of work: a pair on two rings needs the SPOKE,
+    a pair in two sectors needs the TRUNK, and a pair whose deck has no landing
+    on its column is a fact about `interior.decks_in_ring` at that z.
+    """
+    if schema is None:
+        schema, profile = it.load()
+    by_place, _bad = endpoint_index(schema, profile)
+    nodes, _es = graph()
+    shafts = {}
+    who, rows = baked_residents()
+    reasons = {}
+    can = []
+    for wid, w in sorted(who.items()):
+        sec = (DIR.by_key(w["home"]) or {}).get("sector")
+        if sec and sec not in shafts:
+            shafts[sec] = RW.shaft(schema, profile, nodes, sec)
+        ok, why = commutable(w["home"], w["job"], by_place, shafts.get(sec))
+        if ok:
+            can.append(w)
+            continue
+        # A reason a reader can act on, rather than the raw sentence.
+        if "same deck" in why:
+            k = "home and post on ONE deck -- L1 already walks it"
+        elif "trunk" in why:
+            k = "different sectors -- needs the trunk between columns (no gate)"
+        elif "spoke" in why:
+            k = "different rings -- needs the spoke between columns (no gate)"
+        elif "no landing" in why:
+            k = "a deck with no landing on its own column"
+        elif "apart" in why:
+            k = "the landing and the deck's corridor are at different radii"
+        elif "moves" in why:
+            k = "reaching the spine moves that cluster's room doors"
+        elif "landing lobby" in why:
+            k = ("a cluster inside the column's own lobby, whose walls seal "
+                 "its ring corridor")
+        elif "never built" in why:
+            k = "the deck was never exported"
+        elif "not a located place" in why or "not on a cluster" in why:
+            k = "an end that is not on a route-capable cluster"
+        else:
+            k = why
+        reasons[k] = reasons.get(k, 0) + 1
+    print(f"\nHOW MANY OF THE STATION'S RESIDENTS CAN COMMUTE\n")
+    print(f"  {rows:,} baked bodies carry a home and a job, and they are "
+          f"{len(who)} DISTINCT PEOPLE -- the same resident is baked into more "
+          f"than one room.")
+    print(f"  {len(can)} of them can complete it with what exists today -- "
+          f"{100.0 * len(can) / max(1, len(who)):.1f}%\n")
+    for k, n in sorted(reasons.items(), key=lambda x: -x[1]):
+        print(f"     {n:5d}  {k}")
+    routes_ = {}
+    for w in can:
+        routes_[(w["home"], w["job"])] = routes_.get((w["home"], w["job"]), 0) + 1
+    if routes_:
+        print(f"\n  and the commutes they make, which are all one column:")
+        for (h, j), n in sorted(routes_.items(), key=lambda x: -x[1]):
+            print(f"     {n:5d}  {h:22s} -> {j:22s} "
+                  f"{deck_key(h)} -> {deck_key(j)}")
+    return can, reasons
+
+
+def _selftest3():
+    """Everything about the ride that can be checked without an engine."""
+    ok = [0, 0]
+
+    def check(name, cond, note=""):
+        ok[0] += 1
+        ok[1] += bool(cond)
+        print(("  ok   " if cond else "  FAIL ") + name
+              + (f"  {note}" if note else ""))
+
+    schema, profile = it.load()
+    print("\nL3 -- EVERY PIECE OF THE RIDE THAT CAN BE CHECKED OFFLINE\n")
+    cand = choose3(schema, profile)
+    res = cand["res"]
+    j = journey_for(schema, profile, cand)
+    check("a NAMED resident commutes between two decks of one column",
+          bool(res.name) and deck_key(res.home) != deck_key(res.job),
+          f"{res.name}, {res.species} {res.role}, {res.home} "
+          f"({deck_key(res.home)}) -> {res.job} ({deck_key(res.job)})")
+    ids = RS.affiliates(cand["pool"], res.species, "b5")
+    check("and they are in the pool populace casts that room from",
+          res.npc_id in ids,
+          f"affiliate {cand['i']} of {cand['pool']}, {len(ids)} in the pool")
+
+    nodes, es = graph()
+    at = {}
+    for k, n in nodes.items():
+        for pk in n["places"]:
+            at[pk] = k
+    legs = RW.path_between(nodes, es, at[res.home], at[res.job])
+    kinds = [l["kind"] for l in (legs or ())]
+    check("routes.py joins their quarters to their post THROUGH THE LIFT",
+          legs is not None and "lift" in kinds, " -> ".join(kinds))
+
+    # THE RIDE'S SECONDS ARE TWO MODULES' AND THEY AGREE. `navigation` and
+    # `transit` share no code; the table this runtime plays is asserted against
+    # the cap before it is written and against `climb_leg` here.
+    rise = abs(j["g"]["landings"][j["landing_a"]]["walk_r_m"]
+               - j["g"]["landings"][j["landing_b"]]["walk_r_m"])
+    nav_s = NAV.lift_ride_s(schema, rise)
+    climb = T.climb_leg(schema, rise, "the lift")["seconds"]
+    check("the ride's duration is navigation's and transit's alike",
+          abs(nav_s - climb) < 1e-6,
+          f"{nav_s:.4f} s against {climb:.4f} s over {rise:.2f} m")
+
+    # THE CAR'S STAND POINT MOVES WITH THE CAR, and the runtime computes it that
+    # way. Evaluated at the far landing's height it must be that landing's own
+    # stand point -- otherwise the passenger is steered at a point in the wall.
+    ax = j["g"]["landings"]
+    axis = L._basis(j["g"]["angle_deg"])[1]
+    dy = ax[j["landing_b"]]["y_m"] - ax[j["landing_a"]]["y_m"]
+    moved = [j["car_a"][k] + axis[k] * dy for k in range(3)]
+    check("the car's stand point carried to the far landing IS that landing's",
+          math.dist(moved, j["car_b"]) < 1e-6,
+          f"{math.dist(moved, j['car_b']) * 1000:.3f} mm apart")
+
+    # THE ROUTE IS MONOTONE and every ring waypoint is inside its own corridor.
+    # Both are asserted inside `journey_for`; this says so out loud.
+    check("the route never passes within a capsule of itself",
+          True, f"{len(j['seg0'])} + {len(j['seg2'])} waypoints, "
+                f"{j['len0']:.1f} m + {j['len2']:.1f} m")
+
+    # THE CROSSING DOORWAY IS THE ONLY THING ADDED TO THE COLUMN, and with no
+    # crossing this function is route_walk's own shell triangle for triangle.
+    v0, t0, _g0 = column_collision(schema, profile, j["g"])
+    rv, rt, _rg = RW.column_collision(schema, profile, j["g"])
+    check("CONTROL: with no crossing, the column shell is route_walk's",
+          len(t0) == len(rt) and t0 == rt and v0 == rv,
+          f"{len(t0):,} triangles against {len(rt):,}")
+    v1, t1, _g1 = column_collision(schema, profile, j["g"],
+                                   crossings=j["crossings"])
+    check("and cutting the crossing changes it",
+          (len(j["crossings"]) == 0) or len(t1) != len(t0),
+          f"{len(j['crossings'])} crossing(s): {len(t0):,} -> {len(t1):,} "
+          f"triangles")
+
+    # THE SEALED CONTROL REALLY IS SEALED -- the generator's own switch.
+    v2, t2, _g2 = column_collision(schema, profile, j["g"],
+                                   crossings=j["crossings"], landings=False)
+    check("CONTROL: sealing the landings changes the shell",
+          len(t2) != len(t1), f"{len(t1):,} -> {len(t2):,} triangles")
+
+    # THE TIMETABLE FITS THE SCHEDULE'S OWN TRANSIT WINDOW.
+    keep = TR.OUT
+    TR.OUT = OUT
+    try:
+        import contextlib                                         # noqa: PLC0415
+        import io                                                 # noqa: PLC0415
+        with contextlib.redirect_stdout(io.StringIO()):
+            lift_man = TR.build_lift(schema, profile, j["g"], quiet=True)
+    finally:
+        TR.OUT = keep
+    g_ms2 = P.place_gravity(res.home)
+    speed = P._walk_speed(res.species, CROWD_LOD, g_ms2)
+    plan, marks = timetable(j, lift_man, speed, PRE_S)
+    check("the whole journey fits the schedule's own transit window",
+          marks["journey_s"] < SC.TRANSIT_H * 3600.0,
+          f"{marks['journey_s']:,.0f} s against "
+          f"{SC.TRANSIT_H * 3600:.0f} s allowed")
+    check("the car is called from a landing that is neither end",
+          j["park"] not in (j["landing_a"], j["landing_b"]),
+          f"parked at {j['park']}, {marks['call_s']:.1f} s away")
+    # AND THE PLAN IS ORDERED. A timetable whose rows overlap is a body in two
+    # places, and the runtime would play whichever came last.
+    seq = [marks[k] for k in ("depart", "landing", "car_here", "doors_open",
+                              "aboard", "doors_shut", "alight", "arrive")]
+    check("the timetable's instants are in order",
+          all(a <= b + 1e-9 for a, b in zip(seq, seq[1:])),
+          " -> ".join(f"{x:.0f}" for x in seq))
+    print(f"\n{ok[1]}/{ok[0]}")
+    return 0 if ok[1] == ok[0] else 1
 
 
 def _say(d, man):
@@ -1134,7 +2468,18 @@ def main(argv=None):
     ap.add_argument("--selftest", action="store_true")
     ap.add_argument("--build", action="store_true")
     ap.add_argument("--walk", action="store_true",
-                    help="THE GATE: three clock rates and three controls")
+                    help="L1's GATE: three clock rates and three controls")
+    ap.add_argument("--commute", action="store_true",
+                    help="L3's GATE: they ride the lift, three rates, three "
+                         "controls")
+    ap.add_argument("--report3", action="store_true",
+                    help="who can ride to work, and the journey they make")
+    ap.add_argument("--build3", action="store_true")
+    ap.add_argument("--selftest3", action="store_true",
+                    help="L3's offline checks")
+    ap.add_argument("--census", action="store_true",
+                    help="how many of the baked residents can commute, and "
+                         "why the rest cannot")
     ap.add_argument("--who", default=None, help="pin one resident by npc_id")
     ap.add_argument("--rate", type=float, default=0.0,
                     help="one clock rate only, in station seconds a second")
@@ -1145,6 +2490,26 @@ def main(argv=None):
     a = ap.parse_args(argv)
     if a.walk:
         return gate(a)
+    if a.commute:
+        return gate3(a)
+    if a.selftest3:
+        return _selftest3()
+    if a.census:
+        census()
+        return 0
+    if a.build3 or a.report3:
+        schema, profile = it.load()
+        cand = choose3(schema, profile, a.who)
+        man, _p = build3(schema, profile, cand, rate=a.rate or 1.0,
+                         quiet=a.report3)
+        print_commute(man)
+        if a.report3:
+            print(f"\n  EVERY NAMED RESIDENT WHO COULD MAKE THIS JOURNEY")
+            for c in candidates3(schema, profile):
+                r = c["res"]
+                print(f"     {r.name:22s} {r.species:9s} {r.role:10s} "
+                      f"{r.home:16s} -> {r.job:18s} shift {c['start_h']:05.2f}")
+        return 0
     if a.build:
         schema, profile = it.load()
         cand = choose(a.who)
