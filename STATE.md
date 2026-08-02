@@ -1,6 +1,116 @@
 # Project State
 
-**Last updated:** 2026-08-01 · **Session 4h** — **IT IS PLAYABLE: press Play and you are standing in Blue Sector** · **4g** — **the Babcom terminal is a built device, and it shipped a logged mistake once before the log caught it** · **4f** — a per-token verb override · **4e** — **the naming-mismatch class is CLOSED: built-but-misnamed 26 → 0, resolving 302/357** · **4d** — **the bespoke rooms' interactables were never unbuilt, they were unnamed: 259/357 → 284/357** · **4c** — **the station is INTERACTABLE, the port is on a wall, and the 24-minute suites were one bad cache key** · **4b** — a police force, friction in metres, the plated shell, the fitting-reach fix
+**Last updated:** 2026-08-02 · **Session 4i** — **every curved surface in the project was flat-shaded, and the crease angle is measured off the station** · **4h** — **IT IS PLAYABLE: press Play and you are standing in Blue Sector** · **4g** — **the Babcom terminal is a built device, and it shipped a logged mistake once before the log caught it** · **4f** — a per-token verb override · **4e** — **the naming-mismatch class is CLOSED: built-but-misnamed 26 → 0, resolving 302/357** · **4d** — **the bespoke rooms' interactables were never unbuilt, they were unnamed: 259/357 → 284/357** · **4c** — **the station is INTERACTABLE, the port is on a wall, and the 24-minute suites were one bad cache key** · **4b** — a police force, friction in metres, the plated shell, the fitting-reach fix
+
+## Session 4i — EVERY CURVED SURFACE IN THE PROJECT WAS FLAT-SHADED
+
+### 1. `station/generated/**.obj` carried ZERO `vn` lines, and it was on purpose once
+
+`export_gltf.build_group`'s docstring said why, and it was true when it was written:
+
+> *"Un-index into flat-shaded triangles with per-face normals. The hull is faceted deliberately --
+> plating steps and section transitions should read as hard edges, not be smoothed away by shared
+> vertex normals."*
+
+**That was a decision about the exterior hull, taken when the hull was the only subject.** It then
+applied, unexamined, to everything built since: the drum's 8 km barrel, 345 degrees of ring
+corridor, every lathed cylinder in `dressing`, the observation domes, and every human head in the
+crowd. `write_obj` emits `v` and `f` only, so nothing downstream could disagree — Godot receives
+whatever `export_gltf` computes and there was no second opinion anywhere in the pipeline.
+
+Same shape as the layer-2 lesson: **a criterion correct for one subject, applied to all of them
+because nothing re-asked the question.**
+
+### 2. THE CREASE ANGLE IS MEASURED OFF THE STATION, NOT CHOSEN
+
+`export_gltf.py --dihedral` reports the distribution of dihedral angles across a mesh's shared
+edges and re-derives the threshold. On the assembled blue/0/0 deck, 760,952 shared edges:
+
+| band | edges | share |
+|---|---|---|
+| coplanar 0–5° | 279,455 | 36.72% |
+| curve tessellation 6–45° | 38,041 | 5.00% |
+| **THE TROUGH 46–84°** | **7,073** | **0.93%** |
+| real corners 85–180° | 436,383 | 57.35% |
+
+Bimodal, with a trough three orders of magnitude below either peak — so the threshold is *well
+determined* rather than picked: anywhere in 46–84 shades at most 0.93% of edges the wrong way.
+**`CREASE_DEG = 57`** is the least dense degree of it (1,509 edges within ±5).
+
+**It agrees on geometry it was not derived from.** The 8 km hull, from a different generator,
+puts its crossing at **50°** — 7° away. The drum's ground has **zero** edges above 85°, because a
+heightfield is not architecture; the report says so in those words rather than crying wolf, and
+checks only that 57 clears the terrain's steepest fold (7°).
+
+My first attempt at the derivation was wrong in a way worth keeping: at 5-degree bins the trough
+looked *empty*, and I nearly wrote "there is a clean gap from 50 to 70". At 1-degree resolution it
+is 100–200 edges a degree. **The bin width was doing the arguing.**
+
+### 3. AREA WEIGHTING WAS WRONG AND THE SELF-TEST CAUGHT IT
+
+First implementation weighted each face normal by its area. A 24-segment barrel came back with
+**48** distinct normals instead of 24: a quad split into two triangles gives one endpoint two faces
+of the quad and the other endpoint one, so the two ends of the same lathe column got different
+answers. **Angle-weighted normals are provably invariant to how a surface was triangulated**
+(Thürmer & Wüthrich), which is the whole claim — the smoothed normal is a property of the surface,
+not of the mesher.
+
+Then the assertions themselves were wrong. *Counting distinct normals cannot tell smooth from
+flat*: a flat-shaded barrel has 24 too, one per planar quad. What can, and what the gate measures
+now: **on a smooth cylinder the vertex normal points out through its own vertex; on a flat-shaded
+one it points through the middle of the facet, half a segment away.** Every check has a control
+that fires:
+
+| claim | control |
+|---|---|
+| barrel normals are radial to <1e-6° | crease 0 gives **exactly 7.5°** = 360/24/2 |
+| a lathe seam smooths across duplicated vertices | index keying would leave both seam columns 7.5° out |
+| a cube keeps 6 axis-aligned normals | crease 180 gives 8 diagonal ones, none axis-aligned |
+| a capped cylinder keeps its rim | — barrel stays radial, caps stay axial |
+
+Welding is **by position, not by index** — the same rule `interior.boundary_edges` uses, and the
+difference between a smooth cylinder and a hard line down every barrel in the project.
+
+### 4. AND THE A/B LOOKED LIKE IT HAD DONE NOTHING, BECAUSE OF A CACHE
+
+The first re-render after the change was **bit-identical on the crowd**. `walkable.py` cached the
+three crowd LOD libraries on `os.path.exists` and nothing else, so they survived every change to
+the code that writes them — they were hours old and still flat. The deck itself had rebuilt and
+10.7% of the frame had changed; the people had not.
+
+`_stale()` now compares a generated file's mtime against the newest of `station/*.py` and
+`station/npc/*.py`. Keyed on *every* station module rather than a hand-listed few, because the list
+is exactly the thing that goes out of date. **A cache that can go stale silently is a second copy
+of a computed number** — the same defect as `budget.py`'s cached collision total and
+`--gate-frames` reading a committed PNG.
+
+With everything rebuilt: **14.1%** of the frame differs from the flat build, `crowd 968/968
+MATERIALLED` (was 728 — the library itself changed), and at 4× the near figure's head has lost the
+hard facet ridge down its left side. The silhouette is unchanged, which is correct: smoothing
+changes shading, not outline.
+
+### 5. GATES
+
+| gate | result |
+|---|---|
+| `export_gltf.py --selftest` | **9/9**, both controls firing |
+| `--dihedral` on blue/0/0 | crossing **57°**, AGREES (0° away) |
+| `--dihedral` on hull.obj | crossing **50°**, AGREES (7° away) |
+| `--dihedral` on the drum ground | no corners; 57 clears its 7° steepest fold |
+| `walkable.py --deck blue/0/0 --use` | **PASS** + PASS, both controls firing |
+| `tools/play.sh --verify` | **PLAYABLE**, control firing |
+
+Deck build cost 36 s → 63 s: ~19 s of smoothing on 657,880 triangles, plus the crowd libraries now
+rebuilding when the code changes.
+
+### 6. NEXT
+
+- **`docs/aaa-scorecard.json`'s frames are now stale.** Every committed craft frame was rendered
+  flat-shaded. They need re-taking before any craft score is quoted again — this is the
+  `--gate-frames --rerender` lesson, and it applies to the scorecard the same way.
+- The heads are still bare: dressed and smooth, but no features and no hair.
+- `tools/play.sh` still builds one cluster; walk off the end of blue/0/0 and you walk off the
+  built world.
 
 ## Session 4h — READ THIS FIRST: IT IS PLAYABLE. PRESS PLAY AND YOU ARE STANDING IN BLUE SECTOR
 

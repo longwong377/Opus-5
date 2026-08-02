@@ -288,6 +288,39 @@ def pick_interactable(rows, target, place=None, responds=True):
     return best
 
 
+_SRC_MTIME = None
+
+
+def _stale(path):
+    """Is this generated file older than the code that generates it?
+
+    THE CROWD LIBRARY WAS CACHED ON `os.path.exists` AND NOTHING ELSE, so it
+    survived every change to the thing that writes it. Session 4i: the glTF
+    exporter learned crease-angle normals, the deck was rebuilt, 10.7% of the
+    frame changed -- and the 134 people in the corridor came back bit-identical
+    and flat-shaded, because their three .glb files were hours old and still
+    existed. The A/B looked like the change had done nothing.
+
+    Same defect CLAUDE.md records for `budget.py`'s cached collision total and
+    for `--gate-frames` reading a committed PNG: **a cache that can go stale
+    silently is a second copy of a computed number.** Keyed on every station
+    module rather than on a hand-listed few, because the list is exactly the
+    thing that goes out of date -- the library's shape comes from `populace`,
+    its bodies from `npc/*`, its normals from `export_gltf`, and the next one
+    from a module that does not exist yet.
+    """
+    global _SRC_MTIME
+    if not os.path.exists(path):
+        return True
+    if _SRC_MTIME is None:
+        import glob                                             # noqa: PLC0415
+        _SRC_MTIME = max(
+            os.path.getmtime(p)
+            for p in glob.glob(os.path.join(HERE, "*.py"))
+            + glob.glob(os.path.join(HERE, "npc", "*.py")))
+    return os.path.getmtime(path) < _SRC_MTIME
+
+
 def engine_args(out, stem, crowd, gravity="drum", spawn=None):
     """The command line that makes the engine BE this piece of the station.
 
@@ -431,7 +464,7 @@ def walk_deck(sector, ring, deck, godot, timeout=1800, traverse=None,
         import populace as _pop                                 # noqa: PLC0415
         for _hi, lod in _pop.crowd_ladder():
             lib = os.path.join(out, f"crowd_lod{lod}.obj")
-            if not os.path.exists(lib):
+            if _stale(lib) or _stale(lib[:-4] + ".glb"):
                 cv2, ct2, cg2 = _pop.station_crowd_library(lod)
                 D.write_obj(lib, cv2, ct2, cg2)
                 _glb(lib, lib[:-4] + ".glb")
