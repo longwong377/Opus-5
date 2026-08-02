@@ -286,12 +286,23 @@ def _surfaces_of(v, t, g, mark):
 
 
 def dress(place, w_m, l_m, ceil_m, arch, inset=(0.0, 0.0), seed=None,
-          density=1.0):
+          density=1.0, walls=None):
     """Fill one room. Returns (verts, tris, group_spans, stats).
 
     `w_m`/`l_m` are the room's interior span and `inset` the depth each side has
     already lost to fixtures, so furniture lands against free wall rather than
     inside the machinery `rooms.py` put there.
+
+    `walls` IS HALF THE PLAN CHANNEL AND IT USED TO BE A CONSTANT.  Every room
+    on the station dressed all four of its walls, so every room wore the same
+    ring of furniture -- and that ring is roughly 6 m2 of an 11 m2 plan, over
+    half of everything `station/variety.py`'s plan channel can see.  Which walls
+    a room uses is a fact about what it is FOR: you do not stand shelving across
+    an observation deck's window wall, and a room whose middle is full of ranked
+    rows keeps its long walls clear because that is how you reach the rows.
+    `rooms.dress_walls` derives it from the place's own plan elements; None
+    keeps the old all-four behaviour, which is what a place with no elements
+    gets.  Names are `"x-"`, `"x+"`, `"z-"`, `"z+"`.
     """
     seed = seed or place
     v, t, g = [], [], []
@@ -332,8 +343,14 @@ def dress(place, w_m, l_m, ceil_m, arch, inset=(0.0, 0.0), seed=None,
     # ALL FOUR WALLS. The first version dressed the two long ones and a 6x9 m
     # office came out with six pieces of furniture, which is a waiting room, not
     # a working space. The end walls are wall too.
-    walls = [(-hw + inset[0], 1, hl * 2, "x"), (hw - inset[1], -1, hl * 2, "x"),
-             (-hl, 1, hw * 2, "z"), (hl, -1, hw * 2, "z")]
+    all_walls = [("x-", -hw + inset[0], 1, hl * 2, "x"),
+                 ("x+", hw - inset[1], -1, hl * 2, "x"),
+                 ("z-", -hl, 1, hw * 2, "z"),
+                 ("z+", hl, -1, hw * 2, "z")]
+    use = set(walls) if walls is not None else {w[0] for w in all_walls}
+    walls = [w[1:] for w in all_walls if w[0] in use]
+    if not walls:
+        return v, t, g, counts
     for wall_x, facing, run, axis in walls:
         for spec in scheme:
             build, pw, pd, ph, per10 = spec
@@ -345,7 +362,18 @@ def dress(place, w_m, l_m, ceil_m, arch, inset=(0.0, 0.0), seed=None,
                 # using one dimension and built with the other, and furniture
                 # left the room. rooms.py's footprint assertion caught it on
                 # three locations.
-                s_along, s_perp = (pw, pd) if axis == "x" else (pd, pw)
+                # ALONG THE WALL IS ALWAYS THE PIECE'S WIDTH, and on the two
+                # END walls it was not: `(pd, pw)` there put every shelf,
+                # locker and table on an end wall TURNED THROUGH 90 DEGREES --
+                # standing on its narrow edge and projecting its full 2.0 m
+                # width into the room instead of its 0.5 m depth.  Consistent
+                # with the position, which is what the comment above is about
+                # and why nothing caught it: an object positioned and built
+                # with the same two numbers stays inside the room however they
+                # are assigned.  It was still the wrong way round, it ate ~2 m
+                # off both ends of every room on the station, and it is a large
+                # part of why the ends of every plan read as solid.
+                s_along, s_perp = pw, pd
                 along = -run / 2 + run * (i + 0.5) / max(1, n)
                 along += (_u(seed, "z", wall_x, build, i) - 0.5) * 0.4
                 along = max(-run / 2 + s_along / 2,
@@ -410,7 +438,11 @@ def dress(place, w_m, l_m, ceil_m, arch, inset=(0.0, 0.0), seed=None,
     # walkable with none, so the whole dressing was thrown away to remove two
     # shallow panels. A floor under a scale factor is a scale factor that does
     # not reach zero.
-    for wall_x, facing, run, axis in walls[:2]:
+    # SIDE WALLS ONLY, and now by the AXIS rather than by `walls[:2]`.  The
+    # slice was the two long walls only while the list was always all four;
+    # with the list chosen per room it could hand an end wall to a loop that
+    # lays its runs out along z, which would put a conduit through the room.
+    for wall_x, facing, run, axis in [w for w in walls if w[3] == "x"]:
         if density <= 0.0:
             break
         n = int(run / 2.2 * density)

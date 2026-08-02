@@ -95,6 +95,111 @@ CEIL_HEADROOM_M = 0.35     # clearance above the tallest prop
 # at the number.
 PLACE_CEILING = {"coolant_gallery": 3.20}
 
+# ---------------------------------------------------------------------------
+# V1 -- CLEAR HEIGHT, KEYED ON FUNCTION.  INV-141
+# ---------------------------------------------------------------------------
+# `docs/variety-V0.md` section 5: the SECTION channel is the worst number in
+# the whole measurement -- **47.6% of all 8,128 pairs are above the ceiling
+# there**, median 0.699 against 0.269 for plan -- and section 7 says why in one
+# line: **48 of 128 places share a 2.90 m ceiling** and eleven distinct heights
+# exist on the entire station, one per archetype.
+#
+# A cross-section IoU between two box rooms is exactly `min(h1,h2)/max(h1,h2)`,
+# which is worth stating because it bounds what this table can do: two rooms
+# are told apart on section alone only if one is 1.37x the height of the other.
+# So this does NOT break clusters on its own and is not meant to -- it moves the
+# distribution, and it moves `rib_pitch_m` and `light_pitch_m` with it, which
+# are plan.
+#
+# THE LADDER, and every value on it is a clearance argument rather than a taste:
+#
+#   2.40  a berth.  1.70 m standing plus hair, and a bunk you sit up in.
+#         Nothing passes overhead because there is nothing to pass.
+#   2.60  a cell.  One person, a fixed light, a door that opens inward.
+#   2.90  THE STATION'S FITTED STANDARD, and the anchor the rest is read
+#         against.  It is what `CEIL_BY_ARCHETYPE` already called an office.
+#   3.10  people stand round a table in it, so the space over the table has to
+#         read as room rather than as lid.
+#   3.20  a ducted service zone runs over it -- 0.30 m of duct on 0.15 m of
+#         hanger, clear of a 2.35 m door head.
+#   3.40  a public room: a queue, a counter, signage over the counter.
+#   3.60  a gantry track or a lifting point over a working surface.  One deck
+#         pitch, which is the most a room can be without spanning two.
+#   4.20+ a volume where height IS the content -- worship, and the plant.
+#
+# NOTHING BELOW 3.60 IS RAISED ABOVE IT and that is a hard constraint rather
+# than a style: `_selftest` holds rooms taller than `interior.DECK_PITCH_M` to
+# under 40% of the generator's remit and the count stands at 31 of 78, which is
+# 39.7% -- ONE ROOM of margin.  The industrial and store functions below are
+# already over that line and are varied within it; every other function here is
+# clamped under 3.60 so this table cannot move the count at all.  Asserted.
+FUNCTION_HEIGHT = {
+    # --- you sleep in it ---------------------------------------------------
+    "residence": 2.60, "informal_residence": 2.40, "short_stay": 2.45,
+    "detention": 2.55, "crime": 2.40, "organised_crime": 2.65,
+    # --- you work in it, one or two of you ---------------------------------
+    "offices": 2.75, "administration": 2.90, "psi_corps": 3.00,
+    "political_policing": 2.85, "law_enforcement": 2.95, "surveillance": 2.70,
+    "military_liaison": 3.05, "hire": 2.90, "mortuary": 2.80,
+    # --- you meet in it: the table needs air over it ------------------------
+    "meeting": 3.10, "diplomacy": 3.45, "diplomatic_mission": 3.40,
+    "briefing": 3.25, "adjudication": 3.50, "ombudsman_hearings": 3.35,
+    "council_session": 3.60, "ceremony": 3.55, "civic": 3.50,
+    # --- medical: the gantry over the bed decides it ------------------------
+    "medical": 3.05, "triage": 3.00, "surgery": 3.60, "quarantine": 3.10,
+    "research": 3.30, "monitoring": 3.15, "variable_gravity": 3.55,
+    # --- a watch floor: screens above eye level, cable tray above those -----
+    "station_ops": 3.45, "traffic_control": 3.40, "control": 3.20,
+    "command": 3.50, "defence_command": 3.35, "fire_control": 3.30,
+    "signal_ops": 3.25, "communications": 3.30, "sensors": 3.15,
+    "navigation": 3.35,
+    # --- you queue in it ----------------------------------------------------
+    "commerce": 3.40, "retail": 3.20, "mail": 3.00, "issue_stores": 3.30,
+    "currency_exchange": 3.10, "immigration": 3.50, "identicard_check": 3.20,
+    "checkpoint": 3.00, "contraband_search": 3.25, "manifest": 3.05,
+    "dispatch": 3.15, "public_information": 3.30, "logistics": 3.45,
+    "arrival": 3.60, "wayfinding": 3.30, "ship_arrival": 3.55,
+    "ship_departure": 3.55,
+    # --- you drink in it: low is the point, it is why a bar feels like one --
+    "hospitality": 2.90, "food_service": 3.10, "catering": 3.20,
+    "gambling": 3.35, "crew_social": 2.85, "rumour": 2.80, "nightlife": 3.45,
+    "black_market": 2.70, "black_market_fringe": 2.75, "public_social": 3.55,
+    "crowd_hub": 3.60,
+    # --- you pass through it ------------------------------------------------
+    "transit": 3.40, "eva_egress": 3.30, "suit_service": 3.45,
+    "umbilical_service": 3.50, "starfury_launch": 3.60, "ship_mooring": 3.55,
+    # --- height IS the content ----------------------------------------------
+    "worship": 4.20, "contemplation": 3.60, "quiet": 3.00,
+    "observation": 3.60, "viewport": 3.50, "recreation": 3.40, "sport": 3.60,
+    # --- and the ones already over a deck pitch, varied within it -----------
+    # Every value here is what has to fit UNDER the roof: a vessel and the
+    # crane that lifts its head off, a stacked container and the reach of the
+    # gantry over it, a heat exchanger and its pull space.
+    "power_generation": 8.40, "power_distribution": 7.50,
+    "emergency_power": 6.20, "reactor_control": 6.80, "rotation": 8.10,
+    "coolant_loop": 5.40, "coolant_transfer": 5.20, "cooling": 5.80,
+    "heat_rejection": 7.20, "air_handling": 6.40, "atmosphere_plant": 6.00,
+    "oxygen_production": 6.60, "water_reclamation": 6.20, "water_storage": 8.20,
+    "waste_processing": 6.80, "fabrication": 7.50, "industry": 7.20,
+    "repair": 6.00, "fighter_maintenance": 7.20, "plant": 7.40,
+    "storage": 6.50, "hazardous_storage": 5.60, "fuel_storage": 7.80,
+    "cargo_handling": 8.60, "atmosphere_feedstock": 6.90,
+    "microgravity_handling": 7.40, "fuel_transfer": 6.30,
+}
+# What a function may not do to a room that is under a deck pitch today.
+FUNCTION_HEIGHT_CAP_M = 3.60
+
+
+def function_ceiling_m(place):
+    """The clear height this place's own functions ask for, or None.
+
+    The MAX over its functions, because a room has to hold the tallest thing it
+    is for: `waste_control` is (waste_processing, control) and is a 6.80 m plant
+    hall with a control desk in it, not a 3.20 m control room with a digester.
+    """
+    hs = [FUNCTION_HEIGHT[f] for f in place["functions"] if f in FUNCTION_HEIGHT]
+    return max(hs) if hs else None
+
 
 def ceiling_m(place):
     """Room height: the archetype's nominal, raised to hold its own props.
@@ -103,8 +208,25 @@ def ceiling_m(place):
     `docking_bay.py` and spans many decks; pretending every volume fits in one
     3.6 m pitch is what produced a 5 m door in a 2.9 m room.
     """
-    base = PLACE_CEILING.get(place["key"],
-                             CEIL_BY_ARCHETYPE.get(archetype(place), 2.9))
+    arch_base = CEIL_BY_ARCHETYPE.get(archetype(place), 2.9)
+    base = PLACE_CEILING.get(place["key"])
+    if base is None:
+        base = function_ceiling_m(place)
+        # THE CAP, AND IT IS LOAD-BEARING.  A function may vary a room's height
+        # freely inside the band its archetype already occupies, and may NOT
+        # push a room that fits in one deck pitch into two.  Measured without
+        # it: `hydroponics` (agriculture, oxygen_production, food_production),
+        # `fusion_core` (power_generation) and `cryo_storage` (medical,
+        # storage) all went from under 3.60 m to 6.5-8.4 m, taking the
+        # multi-deck count from 31 of 78 to 34 and failing the 40% gate by one
+        # room.  Each of those three IS arguably a tall volume -- and this
+        # session was asked to make rooms various, not to re-proportion three
+        # named places as a side effect.  `ARCHETYPES` records the identical
+        # decision about `power_generation` for the identical reason.
+        if base is not None and arch_base <= it.DECK_PITCH_M:
+            base = min(base, FUNCTION_HEIGHT_CAP_M)
+    if base is None:
+        base = arch_base
     tallest = max((PROPS[k][2] for k in place["interacts"] if k in PROPS),
                   default=0.0)
     return max(base, tallest + CEIL_HEADROOM_M)
@@ -303,6 +425,388 @@ def archetype(place):
     return "generic"
 
 
+# ===========================================================================
+# V1 -- THE PLAN GRAMMAR.  WHAT SHAPE A ROOM'S FLOOR IS, FROM WHAT IT IS FOR
+# ===========================================================================
+# `station/variety.py` measured the station and found 27 clusters of mutually
+# indistinguishable places covering 82 of 128, and `--drivers` measured the
+# CAUSE rather than guessing it:
+#
+#     both built generic   +0.195 on form      <-- ten times the next driver
+#     same archetype       +0.021
+#     shared function      +0.162  -- and the sign is BACKWARDS
+#     sector / auth / ring / species mix   inert, +/-0.01
+#
+# Read the shape of that before its size, which is this repository's own rule.
+# The places are not alike because they are similar KINDS of place; they are
+# alike because they come out of the SAME FUNCTION.  Eleven archetypes decided
+# the whole of form for 128 places, `functions` was read exactly once in the
+# entire generator (by `archetype()`), and the register declares **122 distinct
+# functions**, of which the archetypes claim 66.
+#
+# So form is keyed here on the FUNCTION rather than on the eleven-way
+# archetype, and it is keyed by COMPOSITION rather than by a winner-takes-all
+# lookup.  That second half is the whole design and it is forced by the data:
+# the eight-place office cluster holds eight DISTINCT function tuples --
+# (administration, command), (ceremony, hire), (diplomacy, meeting),
+# (meeting,), (offices,), (administration, military_liaison),
+# (political_policing, administration), (offices, psi_corps) -- so any rule
+# that picks one function and throws the rest away collapses four of those onto
+# one plan again.  An element per function keeps all eight apart.
+#
+# WHAT AN ELEMENT IS.  Not a prop.  V0's own last section says what not to do
+# -- *"content is already the least bad channel ... they are the same because
+# they are the same box, and a box with more things in it is still that box"*
+# -- so every element here is a piece of PLAN: something standing in the middle
+# of the floor, or dividing it, or ranked across it.  A player reads the
+# arrangement of a room from the door and reads its props by walking up to one.
+#
+# (name, span_along_z, extent_across_x, height, kind), the same 5-tuple shape
+# `FIXTURES` uses, so `_fixture` builds these through exactly the same
+# articulated machines -- there is no second geometry path to drift.  What the
+# two middle numbers mean depends on the kind, and that is stated per kind in
+# `place_elements`:
+#
+#   island  ONE block on the centreline, walked around.  A conference table, a
+#           bar counter, a reactor drum.
+#   rank    rows across the room at a pitch, with a centre aisle.  Pews, desk
+#           ranks, racking, market stalls.  The strongest plan signature there
+#           is, because it fills the middle of the floor in stripes.
+#   cross   ONE run across the room a third of the way in, with a gap at one
+#           end.  The counter that divides a public side from a staff side.
+#   cell    fins off ONE long wall at a pitch, making units off an aisle.  This
+#           is the one V0 names outright: *"a residence is CELLULAR -- that is a
+#           topology change, not a furniture change"*.
+#   end     ONE block against the far end wall, spanning most of the width with
+#           a way past it.  A dais, a shielded booth, an airlock lobby.
+#
+# THE NAMES READ BACKWARDS AND THAT IS THE HOUSE RULE, not an oversight -- see
+# `PLACE_FIXTURES` below.  `materials.resolve` matches a group name against bind
+# FRAGMENTS as substrings, `station/materials.py` is not editable from this
+# session, and a fixture whose name resolved to nothing would ship rooms of
+# unmaterialled surface and take `test_materials_layer3.py` down with it.  So
+# the bound fragment names the MATERIAL and the qualifier names the OBJECT:
+# `fume_column_table` is a conference table in `furn_casework`, the painted
+# steel desk and counter body, and `dais_pew_row` is seating in
+# `furn_worship_stone`.  `_selftest` asserts every name here resolves.
+#
+# INV-140.  Everything in this table is extrapolation.  What constrains it: an
+# element must leave the room crossable by a 0.9 m walker (asserted), must not
+# occupy the same cubic metre as anything else (asserted, and by construction
+# -- see `place_elements`), must fit under the room's own ceiling (asserted),
+# and must be the arrangement the named activity actually has -- a counter you
+# queue at, rows you sit in, cells you sleep in.
+PLAN_ELEMENTS = {
+    # --- you sit round it -------------------------------------------------
+    # A meeting is a table with people on both sides of it, and the room is the
+    # walkround.  3.2 m seats eight; 1.30 m across is two 0.65 m reaches.
+    "meeting":            (("fume_column_table", 3.20, 1.30, 0.74, "island"),),
+    "diplomacy":          (("dais_delegate_bench", 0.60, 1.40, 0.90, "rank"),),
+    "adjudication":       (("dais_platform", 1.40, 0.00, 0.35, "end"),),
+    "council_session":    (("dais_delegate_bench", 0.60, 1.40, 0.90, "rank"),),
+    "ombudsman_hearings": (("dais_platform", 1.20, 0.00, 0.35, "end"),),
+    "briefing":           (("dais_pew_row", 0.50, 1.40, 0.90, "rank"),),
+    # --- you queue at it --------------------------------------------------
+    # A counter across the room is what makes a public side and a staff side,
+    # and it is the plan every transactional space on the station has.  The gap
+    # is a walker plus a trolley.
+    "commerce":           (("fume_column_counter", 0.70, 1.60, 1.05, "cross"),),
+    "retail":             (("stall_frame_row", 1.30, 1.80, 2.20, "rank"),),
+    "mail":               (("fume_column_counter", 0.70, 1.60, 1.05, "cross"),),
+    "issue_stores":       (("racking_run_rank", 1.00, 1.60, 2.40, "rank"),),
+    "currency_exchange":  (("fume_column_counter", 0.60, 1.60, 1.15, "cross"),),
+    "immigration":        (("fume_column_counter", 0.80, 1.60, 1.05, "cross"),),
+    "identicard_check":   (("partition_screen_booth", 1.60, 0.00, 2.20, "end"),),
+    "checkpoint":         (("partition_screen_booth", 1.40, 0.00, 2.20, "end"),),
+    "contraband_search":  (("fume_column_counter", 0.90, 1.60, 0.95, "cross"),),
+    "manifest":           (("fume_column_counter", 0.70, 1.60, 1.05, "cross"),),
+    "hire":               (("fume_column_counter", 0.70, 1.60, 1.05, "cross"),),
+    "dispatch":           (("fume_column_counter", 0.70, 1.60, 1.05, "cross"),),
+    "public_information": (("fume_column_counter", 0.70, 1.60, 1.05, "cross"),),
+    "logistics":          (("racking_run_rank", 1.10, 1.60, 2.60, "rank"),),
+    # --- you work at it, in rows ------------------------------------------
+    # A clerked office is desks in ranks, not furniture round the walls -- and
+    # the ranks are what a player sees from the door.
+    "offices":            (("fume_column_desk_rank", 0.80, 1.40, 0.74, "rank"),),
+    "administration":     (("fume_column_desk_rank", 0.80, 1.40, 0.74, "rank"),),
+    "station_ops":        (("fume_column_console_rank", 0.90, 1.60, 1.05, "rank"),),
+    "traffic_control":    (("fume_column_console_rank", 0.90, 1.60, 1.05, "rank"),),
+    "control":            (("fume_column_console_rank", 0.90, 1.60, 1.05, "rank"),),
+    "command":            (("dais_platform", 1.60, 0.00, 0.35, "end"),),
+    "defence_command":    (("fume_column_console_rank", 0.90, 1.60, 1.05, "rank"),),
+    "fire_control":       (("fume_column_console_rank", 0.90, 1.60, 1.05, "rank"),),
+    "signal_ops":         (("racking_run_rank", 0.70, 1.60, 2.20, "rank"),),
+    "communications":     (("racking_run_rank", 0.70, 1.60, 2.20, "rank"),),
+    "sensors":            (("racking_run_rank", 0.70, 1.60, 2.20, "rank"),),
+    "navigation":         (("fume_column_console_rank", 0.90, 1.60, 1.05, "rank"),),
+    "monitoring":         (("fume_column_console_rank", 0.85, 1.60, 1.05, "rank"),),
+    "surveillance":       (("partition_screen_booth", 1.60, 0.00, 2.20, "end"),),
+    # A telepath's office and the Ministry of Peace are both an office with a
+    # room inside it, and they are DIFFERENT rooms inside it: a Psi Corps
+    # consulting suite is a shielded box you are taken into, and a political
+    # police office is a barrier you are stopped at.
+    "psi_corps":          (("partition_screen_booth", 2.00, 0.00, 2.35, "end"),),
+    "political_policing": (("fume_column_counter", 0.90, 1.60, 1.15, "cross"),),
+    "law_enforcement":    (("fume_column_counter", 0.80, 1.60, 1.15, "cross"),),
+    "military_liaison":   (("fume_column_table", 2.40, 1.10, 0.74, "island"),),
+    "diplomatic_mission": (("dais_delegate_bench", 0.60, 1.40, 0.90, "rank"),),
+    "ceremony":           (("dais_platform", 1.80, 0.00, 0.35, "end"),),
+    "civic":              (("dais_pew_row", 0.50, 1.40, 0.90, "rank"),),
+    # --- you sit in rows facing one end ------------------------------------
+    "worship":            (("dais_pew_row", 0.50, 1.40, 0.90, "rank"),),
+    "contemplation":      (("dais_platform", 1.40, 0.00, 0.35, "end"),),
+    "quiet":              (("dais_pew_row", 0.45, 1.40, 0.90, "rank"),),
+    # --- you sleep in it, and it is CELLULAR -------------------------------
+    # V0's own example.  A residence is not a differently furnished hall: it is
+    # a run of units off an aisle, and the fins are the units.
+    "residence":          (("partition_screen_cell", 0.16, 2.00, 2.20, "cell"),),
+    "informal_residence": (("partition_screen_cell", 0.12, 1.60, 2.00, "cell"),),
+    "short_stay":         (("partition_screen_cell", 0.16, 1.80, 2.20, "cell"),),
+    "detention":          (("cell_divider_bay", 0.30, 2.20, 2.30, "cell"),),
+    "quarantine":         (("partition_screen_cell", 0.20, 2.20, 2.35, "cell"),),
+    "sealed_environment": (("partition_screen_booth", 1.60, 0.00, 2.35, "end"),),
+    "multi_environ":      (("partition_screen_cell", 0.20, 2.40, 2.35, "cell"),),
+    # --- a bed with servicing round it -------------------------------------
+    # A medlab is BAYS, and a bay is defined by what stands between two beds.
+    "medical":            (("equipment_gantry_bay", 0.55, 1.60, 2.30, "cell"),),
+    "triage":             (("cell_divider_bay", 0.25, 1.40, 1.90, "cell"),),
+    "surgery":            (("equipment_gantry_bay", 0.70, 2.00, 2.30, "cell"),),
+    "mortuary":           (("cell_divider_bay", 0.30, 2.10, 2.00, "cell"),),
+    "repair":             (("cell_divider_bay", 0.30, 2.20, 2.00, "cell"),),
+    "fighter_maintenance": (("cell_divider_bay", 0.35, 2.40, 2.20, "cell"),),
+    "suit_service":       (("racking_run_rank", 0.60, 1.60, 2.10, "rank"),),
+    "research":           (("fume_column_bench_rank", 0.75, 1.60, 0.90, "rank"),),
+    "variable_gravity":   (("racking_run_rank", 0.80, 1.60, 2.40, "rank"),),
+    # --- you drink at it ----------------------------------------------------
+    # A bar IS its counter, and the counter is an island you are served at from
+    # one side -- which is why a bar reads differently from a mess hall even
+    # when both are 8 x 8 m with tables in them.
+    "hospitality":        (("back_shelving_bar", 4.00, 0.72, 1.08, "island"),),
+    "food_service":       (("fume_column_counter", 0.70, 1.60, 1.05, "cross"),),
+    "catering":           (("racking_run_rank", 0.60, 1.60, 2.20, "rank"),),
+    "gambling":           (("back_shelving_bar", 2.20, 1.10, 0.78, "island"),),
+    "crew_social":        (("back_shelving_bar", 3.20, 0.72, 1.08, "island"),),
+    "rumour":             (("partition_screen_booth", 1.20, 0.00, 2.00, "end"),),
+    "nightlife":          (("stall_frame_row", 1.10, 1.80, 2.20, "rank"),),
+    # --- the black economy, which is stalls and screens ---------------------
+    "black_market":       (("stall_frame_row", 1.40, 1.80, 2.20, "rank"),),
+    "black_market_fringe": (("stall_frame_row", 1.00, 1.80, 2.00, "rank"),),
+    "organised_crime":    (("partition_screen_booth", 1.80, 0.00, 2.20, "end"),),
+    "crime":              (("partition_screen_cell", 0.12, 1.40, 2.00, "cell"),),
+    "public_social":      (("dais_platform", 1.20, 0.00, 0.35, "end"),),
+    "crowd_hub":          (("fume_column_counter", 0.60, 1.60, 1.05, "cross"),),
+    # --- the plant, which is one big machine you walk round -----------------
+    "power_generation":   (("plant_column_core", 2.40, 2.40, 3.20, "island"),),
+    "power_distribution": (("plant_column_core", 2.00, 1.80, 3.00, "island"),),
+    "emergency_power":    (("plant_column_core", 1.80, 1.60, 2.60, "island"),),
+    "reactor_control":    (("fume_column_console_rank", 0.90, 1.60, 1.15, "rank"),),
+    "rotation":           (("plant_column_core", 2.60, 2.20, 3.40, "island"),),
+    "coolant_loop":       (("plant_column_core", 1.60, 1.60, 3.00, "island"),),
+    "coolant_transfer":   (("racking_run_rank", 0.90, 1.60, 2.60, "rank"),),
+    "cooling":            (("racking_run_rank", 1.00, 1.60, 2.80, "rank"),),
+    "heat_rejection":     (("plant_column_core", 2.20, 2.00, 3.20, "island"),),
+    "air_handling":       (("plant_column_core", 2.00, 2.00, 3.40, "island"),),
+    "atmosphere_plant":   (("plant_column_core", 2.40, 2.20, 3.60, "island"),),
+    "oxygen_production":  (("racking_run_rank", 1.20, 1.60, 2.60, "rank"),),
+    "water_reclamation":  (("plant_column_core", 2.20, 2.20, 3.00, "island"),),
+    "water_storage":      (("plant_column_core", 2.60, 2.40, 3.60, "island"),),
+    "waste_processing":   (("racking_run_rank", 1.10, 1.60, 2.80, "rank"),),
+    "fabrication":        (("cell_divider_bay", 0.30, 2.40, 2.20, "cell"),),
+    "industry":           (("racking_run_rank", 1.10, 1.60, 2.80, "rank"),),
+    "plant":              (("plant_column_core", 2.00, 2.00, 3.00, "island"),),
+    "maintenance_access": (("racking_run_rank", 0.70, 1.40, 2.20, "rank"),),
+    "services":           (("racking_run_rank", 0.70, 1.40, 2.20, "rank"),),
+    # --- you put things down in it ------------------------------------------
+    "storage":            (("racking_run_rank", 1.10, 1.60, 2.60, "rank"),),
+    "hazardous_storage":  (("racking_run_rank", 1.20, 1.80, 2.40, "rank"),),
+    "fuel_storage":       (("plant_column_core", 2.40, 2.40, 3.40, "island"),),
+    "cargo_handling":     (("racking_run_rank", 1.30, 1.80, 3.00, "rank"),),
+    "atmosphere_feedstock": (("plant_column_core", 2.20, 2.20, 3.20, "island"),),
+    "microgravity_handling": (("racking_run_rank", 0.90, 1.60, 2.80, "rank"),),
+    "fuel_transfer":      (("plant_column_core", 1.80, 1.80, 2.80, "island"),),
+    # --- you pass through it -------------------------------------------------
+    # A concourse is not furnished: it is a floor with a line across it and
+    # everything else pushed to the walls.
+    "arrival":            (("fume_column_counter", 0.60, 1.80, 1.05, "cross"),),
+    "ship_arrival":       (("partition_screen_booth", 1.20, 0.00, 2.10, "end"),),
+    "ship_departure":     (("fume_column_counter", 0.60, 1.80, 1.05, "cross"),),
+    "wayfinding":         (("partition_screen_booth", 1.00, 0.00, 2.20, "end"),),
+    "eva_egress":         (("racking_run_rank", 0.60, 1.60, 2.10, "rank"),),
+    "umbilical_service":  (("racking_run_rank", 0.80, 1.60, 2.40, "rank"),),
+    "starfury_launch":    (("plant_column_core", 2.20, 2.20, 3.20, "island"),),
+    "ship_mooring":       (("plant_column_core", 2.00, 2.00, 2.80, "island"),),
+    # --- and the ones that are a floor rather than a fit-out ------------------
+    "agriculture":        (("racking_run_rank", 1.20, 1.60, 1.20, "rank"),),
+    "food_production":    (("racking_run_rank", 1.10, 1.60, 2.20, "rank"),),
+    "recreation":         (("dais_platform", 1.20, 0.00, 0.35, "end"),),
+    "sport":              (("dais_platform", 1.60, 0.00, 0.35, "end"),),
+    "observation":        (("dais_platform", 1.00, 0.00, 0.35, "end"),),
+    "viewport":           (("dais_platform", 0.90, 0.00, 0.35, "end"),),
+}
+
+# HOW MANY OF THEM, and the cap is a triangle budget rather than a taste:
+# `station/budget.py` gates deck primitives at 401 of 600 and every element
+# instance is a group.  Two also keeps the composition legible -- a room is a
+# thing and a modifier -- and it is enough for combinatorial separation: the
+# eight-place office cluster resolves to eight distinct ordered pairs.
+MAX_ELEMENTS = 2
+ROW_GAP_M = 0.90           # between two ranked rows: a person, edge on
+CELL_PITCH_M = 2.40        # a unit's width between two fins
+ELEMENT_CLEAR_M = 0.10     # element to the band the walls' own furniture takes
+
+
+def elements_for(place):
+    """The plan elements this place composes, in the order it declares them.
+
+    THE ORDER IS THE REGISTER'S, not this table's, and that is deliberate: the
+    directory lists a place's functions with the primary one first, so the
+    element that shapes the middle of the floor is the one the place is chiefly
+    for.  `minipax` is (political_policing, administration) and gets the
+    barrier counter first; `earthforce_office` is (administration,
+    military_liaison) and gets the desk ranks first.  Two rooms that share a
+    function but declare it at a different rank get different plans, which is
+    correct -- they are different rooms.
+
+    Deduplicated BY NAME, so a place declaring two functions that want the same
+    element gets one of it rather than two in the same cubic metre.
+    """
+    out, seen = [], set()
+    for fn in place["functions"]:
+        for el in PLAN_ELEMENTS.get(fn, ()):
+            if el[0] in seen:
+                continue
+            seen.add(el[0])
+            out.append(el)
+            if len(out) >= MAX_ELEMENTS:
+                return tuple(out)
+    return tuple(out)
+
+
+# WHICH WALLS CARRY FURNITURE, and it is the cheapest half of the plan channel.
+# `dressing.dress` put furniture against ALL FOUR walls of every room on the
+# station, so every room wore the same ring -- and that ring is roughly 6 m2 of
+# an 11 m2 plan, over half of everything the plan channel can see.  Which walls
+# a room uses is a fact about what it is for: you do not stand shelving across
+# an observation deck's window wall, and a room whose middle is full of ranked
+# rows keeps its long walls clear because that is how you reach the rows.
+#
+# Keyed on the FIRST element's kind, because that is what the room is chiefly
+# for.  `dressing.dress`'s own wall names.
+DRESS_WALLS = {
+    "island": ("z-", "z+"),        # walked round: the long walls ARE the walkround
+    "rank":   ("z-", "z+"),        # reached from the ends, down the aisle
+    "cross":  ("x-", "x+"),        # the counter divides; the sides are fitted out
+    "cell":   ("x-", "z-"),        # the units take +x; the opposite wall is fitted
+    "end":    ("x-", "x+", "z-"),  # everything but the wall the block stands on
+}
+
+
+def dress_walls(place):
+    """Which of the four walls this room's furniture stands against."""
+    els = elements_for(place)
+    if not els:
+        return ("x-", "x+", "z-", "z+")
+    use = list(DRESS_WALLS[els[0][4]])
+    # AND THE SECOND ELEMENT HAS A CLAIM TOO.  Measured, not reasoned:
+    # `telepath_office` is (offices, psi_corps) -- a desk rank, whose kind
+    # dresses both end walls, and then a shielded booth against the far one,
+    # which reported `want 1, got 0` because the furniture was already there.
+    # A room where the second element silently does not exist is a room that
+    # came back generic, so the wall it stands on is taken off the list.
+    if any(k == "end" for *_r, k in els) and "z+" in use:
+        use.remove("z+")
+    if any(k == "cell" for *_r, k in els) and "x+" in use:
+        use.remove("x+")
+    return tuple(use)
+
+
+def element_keep_m(place):
+    """The band each of the four walls keeps for its own furniture, in metres.
+
+    ONE STATEMENT, READ BY THREE CALLERS -- the width sizing, the length sizing
+    and the placement -- because the last time this project kept two copies of
+    one cross-section they disagreed by 0.26 m and a flood fill found it
+    (`lateral_stack`'s docstring).  Returns (x-, x+, z-, z+).
+
+    A wall that carries no furniture keeps almost nothing, which is most of why
+    keying the dressing on the plan pays for itself twice: a cellular room
+    dresses two walls, so its run of cells has the other two ends of the room
+    to run into.
+    """
+    import dressing as _dress                                   # noqa: PLC0415
+    band = _dress.wall_band_m(archetype(place))
+    deep = max((PROPS[k][1] for k in place["interacts"]
+                if PROPS.get(k, (0, 0, 0, "floor"))[3] == "floor"), default=0.0)
+    dw = dress_walls(place)
+    # The two long walls carry the DECLARED floor props whether they are dressed
+    # or not -- `place_interacts` ranks them down both -- so their band is the
+    # deeper of the two claims.  The end walls carry only wall-mounted props,
+    # which are 0.45 m at the deepest.
+    return (max(band if "x-" in dw else 0.0, deep) + ELEMENT_CLEAR_M,
+            max(band if "x+" in dw else 0.0, deep) + ELEMENT_CLEAR_M,
+            (band if "z-" in dw else 0.45) + ELEMENT_CLEAR_M,
+            (band if "z+" in dw else 0.45) + ELEMENT_CLEAR_M)
+
+
+def element_cross_m(place):
+    """How much of the room's WIDTH the plan elements need, insets included.
+
+    `bay_span_m` adds this so the bay is sized for the arrangement, rather than
+    the arrangement being squeezed into a bay sized for something else -- which
+    is the defect `lateral_stack` was extracted to close, one level up.
+    """
+    els = elements_for(place)
+    if not els:
+        return 0.0
+    kx0, kx1, _z0, _z1 = element_keep_m(place)
+    need = 0.0
+    for _n, _span_z, ext_x, _h, kind in els:
+        if kind == "island":
+            need = max(need, ext_x + 2 * AISLE_M)
+        elif kind in ("rank", "cross"):
+            need = max(need, ext_x + 2 * 1.20)   # the aisle plus two half rows
+        elif kind == "cell":
+            need = max(need, ext_x * (2 if sum(
+                1 for e in els if e[4] == "cell") > 1 else 1) + AISLE_M + 1.20)
+        elif kind == "end":
+            need = max(need, AISLE_M + 1.20)
+    return need + kx0 + kx1
+
+
+def element_along_m(place):
+    """How much of the room's LENGTH the plan elements need, insets included.
+
+    Three rows is a rank and one row is a table; two cells is a cellular run and
+    one cell is a cupboard.  A bay shorter than this gets the degenerate case,
+    which is variety measured and not built -- so the sizing asks for the real
+    thing and `place_elements`' report says whether it got it.
+    """
+    els = elements_for(place)
+    if not els:
+        return 0.0
+    _x0, _x1, kz0, kz1 = element_keep_m(place)
+    # THE CLAIMS ADD AND THE FILLS DO NOT, because that is the order they are
+    # built in (`place_elements`): an `end` block and a `cross` counter each
+    # take a band out of the length and hand the rest on, while a `rank` or a
+    # `cell` run takes what is left.  Summing them was the third thing building
+    # this found -- `earharts` is (hospitality, food_service, recreation), so a
+    # counter across the room AND a bar island behind it, and with the two
+    # taking the max the bar reported `want 1, got 0`.
+    claim, fill = 0.0, 0.0
+    for _n, span_z, _x, _h, kind in els:
+        if kind == "island":
+            claim += span_z + 2 * AISLE_M
+        elif kind == "cross":
+            claim += 3 * span_z + 3.20
+        elif kind == "end":
+            claim += span_z + AISLE_M + 1.60
+        elif kind == "rank":
+            fill = max(fill, 3 * (span_z + ROW_GAP_M) - ROW_GAP_M + 1.20)
+        elif kind == "cell":
+            fill = max(fill, 2 * (span_z + CELL_PITCH_M) - CELL_PITCH_M + 1.20)
+    return claim + fill + kz0 + kz1
+
+
 # ---------------------------------------------------------------------------
 # Fixtures: the machinery a room is NAMED FOR and that nobody touches
 # ---------------------------------------------------------------------------
@@ -390,6 +894,28 @@ MACHINE_KIND = {
     "stall_frame": "screen",
     "awning_rail": "duct",
     "partition_screen": "screen",
+    # --- V1 plan elements (PLAN_ELEMENTS) -------------------------------
+    # Same rule as everything above: the kind is chosen from WHAT THE OBJECT
+    # IS.  A conference table, a service counter, a desk rank and a bar back
+    # are all casework bodies with a top, so all four are `counter`; a dais and
+    # a planting bed are low platforms, which is `kerb`; a cell fin, a stall
+    # frame and a shielded booth are all panelled screens.
+    "fume_column_table": "counter",
+    "fume_column_counter": "counter",
+    "fume_column_desk_rank": "counter",
+    "fume_column_console_rank": "console",
+    "fume_column_bench_rank": "counter",
+    "dais_delegate_bench": "seat",
+    "dais_platform": "kerb",
+    "dais_pew_row": "seat",
+    "partition_screen_booth": "screen",
+    "partition_screen_cell": "screen",
+    "cell_divider_bay": "screen",
+    "equipment_gantry_bay": "gantry",
+    "stall_frame_row": "screen",
+    "racking_run_rank": "rack",
+    "plant_column_core": "vessel",
+    "back_shelving_bar": "counter",
     # --- the named machines --------------------------------------------
     "reactor_plant_tank": "vessel",
     "shield_plant_frame": "block",     # a biological shield is a mass, not a machine
@@ -1090,6 +1616,15 @@ def lateral_stack(place):
                 if PROPS.get(k, (0, 0, 0, "floor"))[3] == "floor"), default=0.0)
     aisles = 2 if spine_d else 1
     need = inset[0] + inset[1] + 2 * deep + spine_d + aisles * AISLE_M
+    # AND THE PLAN ELEMENTS, for the same reason the dressing had to be added
+    # to `bay_span_m`: a bay sized for its props and then given a rank of desks
+    # down the middle is a bay whose desks do not fit, and this generator's
+    # answer to that is to drop them -- which is variety measured and not
+    # built.  `element_cross_m` is asked here so there is ONE statement of the
+    # cross-section and both the sizing and the placing read it.
+    el = element_cross_m(place)
+    if el:
+        need = max(need, inset[0] + inset[1] + el)
     return need, start[0], start[1]
 
 
@@ -1106,6 +1641,18 @@ def fixtures_for(place):
     3.4 m and the same declaration in a 7.5 m reactor hall is 7.5 m.
     """
     fx = PLACE_FIXTURES.get(place["key"]) or FIXTURES.get(archetype(place), ())
+    # AN ARCHETYPE'S SPINE AND A PLAN ELEMENT WANT THE SAME CUBIC METRE, and
+    # the archetype loses, because the element is what this PLACE is for and
+    # the spine is what its KIND of place is for.  Measured: with both in,
+    # `alpha_substation`'s power core reported `want 1, got 0` -- silently not
+    # built, because `industrial` puts a furnace stack down the centreline of
+    # every room in the sector and a substation does not have a furnace in it.
+    # A place with its OWN fixtures (`PLACE_FIXTURES`) keeps them: those are
+    # hand-authored for one named room and are not a kind's default.
+    if (place["key"] not in PLACE_FIXTURES
+            and any(k in ("island", "rank", "cross")
+                    for *_r, k in elements_for(place))):
+        fx = tuple(f for f in fx if f[4] != "spine")
     out = []
     for name, w, d, h, kind in fx:
         out.append((name, w, d, ceiling_m(place) if h == 0.0 else h, kind))
@@ -1197,6 +1744,20 @@ def _box(v, t, g, name, lo, hi):
     return v, t, g
 
 
+def _fit_bay(place, w_min, l_min):
+    """The contents-derived minimum, grown to a whole fraction of the location.
+
+    NEVER LARGER THAN THE LOCATION, which is what makes this safe for
+    `station/deck.py`: that module sizes every room slot as
+    `min(room_extent_m, bay_span_m)` and `rooms.build` uses the same two lines,
+    so the assembler and the geometry agree by construction (hard rule 4). A bay
+    that came back bigger than its own footprint would break that agreement in
+    the one direction it cannot survive.
+    """
+    w_full, l_full, _r = _place_extent(place)
+    return whole_bays(w_full, w_min), whole_bays(l_full, l_min)
+
+
 def bay_span_m(place):
     """The size of one representative bay -- DERIVED from what it holds.
 
@@ -1236,6 +1797,9 @@ def bay_span_m(place):
     import dressing as _dress                                   # noqa: PLC0415
     band = _dress.wall_band_m(archetype(place))
     dressed = fx_width + 2.0 * band + max(WALK_M, 1.2)
+    # The plan elements' own length: three rows of a rank, two cells of a
+    # cellular run, an island plus its walkround.
+    el_len = element_along_m(place)
 
     if not floor:
         # A room with nothing standing on its floor is small by nature -- a
@@ -1243,8 +1807,8 @@ def bay_span_m(place):
         # 6 x 8 m minimum made those read as empty halls, which is the same
         # picked-not-derived mistake one size down. Size to the wall props.
         wide = max((PROPS[k][0] for k in wall), default=1.6)
-        return (max(wide + 1.2, fx_width, dressed, 3.0),
-                max(wide + 1.6, fx_len, 4.0))
+        return _fit_bay(place, max(wide + 1.2, fx_width, dressed, 3.0),
+                        max(wide + 1.6, fx_len, el_len, 4.0))
     # Ranked alternately down two walls, so each wall takes half of them.
     per_side = [PROPS[k] for k in floor] * 2
     run = sum(pw + 0.45 for pw, _pd, _ph, _m in per_side) / 2.0 + 1.2
@@ -1253,8 +1817,63 @@ def bay_span_m(place):
     # Wall props run along z, so the bay must be long enough to hang the
     # widest of them -- a 6 m bay door needs 6 m of wall.
     widest_wall = max((PROPS[k][0] for k in wall), default=0.0)
-    return (max(width, fx_width, dressed, 4.0),
-            max(run, widest_wall + 1.2, fx_len, 6.0))
+    return _fit_bay(place, max(width, fx_width, dressed, 4.0),
+                    max(run, widest_wall + 1.2, fx_len, el_len, 6.0))
+
+
+_EXTENT_MEMO = {}
+_SCHEMA_MEMO = []
+
+
+def _place_extent(place):
+    """`room_extent_m` for a place, memoised, without the caller holding a schema.
+
+    `room_extent_m` needs the deck radius and therefore the schema, which is why
+    the bay sizing has never been able to look at the location it is a bay OF.
+    Loading it costs 49 ms and computing an extent 10 ms, and `bay_span_m` is
+    called from six modules and thousands of times, so both are cached -- the
+    same defect `interior.load()`'s missing memo caused in session 4c, where an
+    `id(schema)`-keyed cache missed every call and one gate went from 2 minutes
+    to 24. Keyed on the place KEY, so `variety.clone_place` (which changes only
+    the key) recomputes rather than inheriting, and gets the same answer.
+    """
+    k = place["key"]
+    if k not in _EXTENT_MEMO:
+        if not _SCHEMA_MEMO:
+            _SCHEMA_MEMO.append(it.load())
+        _EXTENT_MEMO[k] = room_extent_m(_SCHEMA_MEMO[0][0], _SCHEMA_MEMO[0][1],
+                                        place)
+    return _EXTENT_MEMO[k]
+
+
+def whole_bays(full_m, min_m):
+    """Divide a real footprint into a whole number of bays, none below `min_m`.
+
+    THE BAY IS A FRACTION OF ITS OWN LOCATION, and until V1 it was a constant
+    derived from the contents alone -- so all six medlabs on the station built
+    the identical 7.9 x 6.0 m room, and `variety.py` scored them 0.93 to 0.96 on
+    plan because they ARE the identical room. Four of the six declare the same
+    two functions and the same two interactables; the register's only remaining
+    statement that they are different places is how big they are: 8 x 20, 8 x 22,
+    12 x 30 and 10 x 24 degrees by metres.
+
+    That number reached the geometry through `bays_in()`, whose two callers both
+    put it in a report dict (STATE.md section 13), and nowhere else. Here it
+    decides the PROPORTION of the bay that is built: a 40.8 m wide medlab is
+    five 8.16 m bays and a 35.8 m one is four 8.95 m bays. Under `variety.py`'s
+    `fit` mapping the absolute size is normalised away -- correctly, a player
+    cannot tell 6 x 8 from 6 x 10 -- but the RATIO of the furniture band to the
+    open floor is not, and neither is how many rows of anything fit.
+
+    Never larger than about 1.5x the minimum, because `round` is what picks the
+    count: a bay twice the size its contents need is an empty hall again.
+    """
+    if full_m <= min_m:
+        return min_m
+    n = max(1, int(round(full_m / min_m)))
+    while n > 1 and full_m / n < min_m:
+        n -= 1
+    return full_m / n
 
 
 def bays_in(schema, profile, place):
@@ -1853,7 +2472,14 @@ def place_interacts(v, t, g, place, hw, hl, ceil, inset=(0.0, 0.0),
         if wi >= len(walls):
             placed["dropped"].append(key)
             break                      # room is out of wall; sized by bay_span
-        sill = 0.0 if ph > 2.0 else 1.05
+        # A WALL PROP THAT WILL NOT FIT ABOVE THE SILL STANDS ON THE FLOOR.
+        # `ph > 2.0` misses a 2.00 m door by a hair, so `prop_makeshift_door`
+        # was hung with its head at 3.05 m -- which passed for as long as every
+        # generic room was 2.90 m and the containment tolerance was 0.15, and
+        # failed the moment `thieves_guild` became the 2.65 m room its own
+        # functions ask for. A latent defect that a variety pass merely
+        # uncovered; the sill is now derived from the room it is in.
+        sill = 0.0 if ph > 2.0 else min(1.05, max(0.0, ceil - ph - 0.10))
         sd = (place["key"], walls[wi][0], round(cur, 2))
         if walls[wi][0] == "side":
             _fixture(v, t, g, key, (-hw, sill, cur),
@@ -1882,6 +2508,145 @@ def place_interacts(v, t, g, place, hw, hl, ceil, inset=(0.0, 0.0),
     if report is not None:
         report["interacts"] = placed
     return placed
+
+
+def place_elements(v, t, g, place, hw, hl, ceil, chan_lo, chan_hi,
+                   report=None, w=None, ln=None):
+    """Build this place's PLAN ELEMENTS -- the middle of its floor.  INV-140.
+
+    Runs AFTER the declared props and BEFORE the dressing, and that order is
+    the whole safety argument.  Every instance is tested against the solids
+    already standing in the room and simply is not built where it would clash,
+    so `_selftest`'s interpenetration assertion cannot be made to fire by a
+    table that is 20 mm too wide: the geometry is correct BY CONSTRUCTION
+    rather than by my arithmetic being right in 78 rooms at once.
+
+    What the arithmetic still has to get right is the SIZE OF THE BAY, and that
+    is exactly what `element_cross_m` / `element_along_m` are for -- so this
+    reports, per element, how many instances it WANTED and how many it got.  A
+    room too small for its own plan is then a number rather than a room that
+    quietly came back generic.  `--elements` prints it for all 78.
+
+    The free floor is the fixtures' channel less the band each wall keeps for
+    its own furniture (`element_keep_m`), which is why nothing here needs to
+    know anything about the props or the dressing.
+    """
+    els = elements_for(place)
+    if not els:
+        return
+    kx0, kx1, kz0, kz1 = element_keep_m(place)
+    # A FIN THINNER THAN THIS HAS NO ROOM TO BE A MACHINE. `dressing.machine`
+    # insets its builders by 12% of the box so that flanges, bands and nosings
+    # have somewhere to be proud into, and on a 0.12 m screen that is 14 mm --
+    # which `machine_escapes` measured leaving the box by exactly 0.0144 m in
+    # `ngrath` and `thieves_guild`. Stated as a floor rather than fixed in the
+    # table, because it is a property of the BUILDER and would come back the
+    # next time somebody writes a thin element.
+    els = tuple((n, max(sz, 0.16) if k == "cell" else sz, ex, h, k)
+                for n, sz, ex, h, k in els)
+    lo, hi = chan_lo + kx0, chan_hi - kx1
+    zlo, zhi = -hl + kz0, hl - kz1
+    solids = [b for _n, b in _boxes(v, t, g, is_solid)]
+
+    def put(name, kind, x0, x1, y1, z0, z1, i):
+        """Build one instance -- unless it would clash, or seal the room.
+
+        THE WALKABILITY IS TESTED ON BOXES BEFORE ANY GEOMETRY IS EMITTED, and
+        that is why it can be a guarantee rather than a hope. `gunnery_control`
+        is (defence_command, fire_control) in a 9.7 x 7.5 m bay already holding
+        a plot frame and a signal rack on both flanks, and the fifth console row
+        closed the last 0.9 m path across it -- `walkable` said so, on a room
+        the interpenetration check was perfectly happy with. A room a player
+        cannot cross is worse than a room with one row fewer in it, so the row
+        is not built and the shortfall is in the report.
+        """
+        box = (x0, 0.0, z0, x1, min(y1, ceil - 0.10), z1)
+        if x1 - x0 < 0.20 or z1 - z0 < 0.10:
+            return 0
+        if any(_overlaps(box, s) for s in solids):
+            return 0
+        if w is not None and not walkable(
+                [(name, b) for b in solids + [box]], w, ln):
+            return 0
+        _fixture(v, t, g, name, (box[0], box[1], box[2]),
+                 (box[3], box[4], box[5]), (place["key"], kind, i),
+                 report=report)
+        solids.append(box)
+        return 1
+
+    # ORDER OF PLACEMENT IS NOT THE ORDER OF DECLARATION, and it is the second
+    # thing building this found.  `telepath_office` is (offices, psi_corps) --
+    # ranks of desks and a shielded booth against the far wall -- and declared
+    # in that order the ranks fill the room to both ends and the booth reports
+    # `want 1, got 0`.  A `rank` and a `cell` FILL whatever is left; an `end`,
+    # a `cross` and an `island` CLAIM one piece of the room.  So the claims go
+    # in first and take their band out of the free rectangle, and what fills is
+    # then honest about how much room it had.  The declared order still decides
+    # WHICH elements a place gets -- see `elements_for` -- only not the order
+    # they are built in.
+    _CLAIM = {"end": 0, "cross": 1, "island": 2, "cell": 3, "rank": 4}
+    for name, span_z, ext_x, h, kind in sorted(els, key=lambda e: _CLAIM[e[4]]):
+        want = got = 0
+        cx = (lo + hi) / 2.0
+        if kind == "island":
+            dx = min(ext_x, (hi - lo) - 2 * AISLE_M)
+            dz = min(span_z, (zhi - zlo) - 2 * AISLE_M)
+            want = 1
+            zc = (zlo + zhi) / 2.0
+            if dx > 0.0 and dz > 0.0:
+                got = put(name, kind, cx - dx / 2, cx + dx / 2, h,
+                          zc - dz / 2, zc + dz / 2, 0)
+            if got:
+                zhi = zc - dz / 2 - AISLE_M
+        elif kind == "rank":
+            aisle = max(AISLE_M, ext_x)
+            half = ((hi - lo) - aisle) / 2.0
+            pitch = span_z + ROW_GAP_M
+            n = max(0, min(5, int((zhi - zlo + ROW_GAP_M) / pitch)))
+            want = 2 * n
+            z = zlo + ((zhi - zlo) - (n * pitch - ROW_GAP_M)) / 2.0
+            for i in range(n if half > 0.25 else 0):
+                got += put(name, kind, lo, lo + half, h, z, z + span_z, 2 * i)
+                got += put(name, kind, hi - half, hi, h, z, z + span_z,
+                           2 * i + 1)
+                z += pitch
+        elif kind == "cross":
+            gap = max(AISLE_M, ext_x)
+            want = 1
+            zc = zlo + (zhi - zlo) / 3.0
+            got = put(name, kind, lo, hi - gap, h, zc, zc + span_z, 0)
+            if got:
+                zlo = zc + span_z + AISLE_M
+        elif kind == "cell":
+            # A SECOND CELLULAR RUN GOES DOWN THE OTHER WALL.  `medlab_red` is
+            # (medical, triage) -- servicing bays and then triage bays -- and
+            # with both on +x the second reported `want 2, got 0`: two runs of
+            # fins at two pitches down one wall are the same cubic metre.  Two
+            # facing runs off an aisle is also what a ward actually is.
+            side = sum(1 for e in els[:els.index(
+                (name, span_z, ext_x, h, kind))] if e[4] == "cell") % 2
+            pitch = span_z + CELL_PITCH_M
+            n = max(0, min(6, int((zhi - zlo + CELL_PITCH_M) / pitch)))
+            want = n
+            z = zlo + ((zhi - zlo) - (n * pitch - CELL_PITCH_M)) / 2.0
+            x0, x1 = ((hi - ext_x, hi) if side == 0 else (lo, lo + ext_x))
+            for i in range(n if hi - ext_x > lo + AISLE_M else 0):
+                got += put(name, kind, x0, x1, h, z, z + span_z, i)
+                z += pitch
+            if got and side == 0:
+                hi -= ext_x
+            elif got:
+                lo += ext_x
+        elif kind == "end":
+            gap = max(AISLE_M, ext_x)
+            want = 1
+            got = put(name, kind, lo, hi - gap, h, zhi - span_z, zhi, 0)
+            if got:
+                zhi -= span_z + AISLE_M
+        else:
+            raise ValueError(f"{place['key']}: unknown plan kind {kind!r}")
+        if report is not None:
+            report.setdefault("elements", []).append((name, kind, want, got))
 
 
 def build(schema, profile, place, max_span_m=None, door_at=None,
@@ -2019,6 +2784,12 @@ def build(schema, profile, place, max_span_m=None, door_at=None,
                     chan_lo=chan_lo, chan_hi=chan_hi, over_h=over_h,
                     budget=DENSITY.get(arch, 0.22) * w * ln, report=report)
 
+    # THE PLAN ELEMENTS -- INV-140, and this is the line that makes a medlab's
+    # floor a different shape from an office's rather than a differently
+    # furnished one.  See `place_elements` and `PLAN_ELEMENTS`.
+    place_elements(v, t, g, place, hw, hl, ceil, chan_lo, chan_hi,
+                   report=report, w=w, ln=ln)
+
     # ------------------------------------------------------------------
     # Light fittings. See LIGHTS. Emitted LAST and tested against what is
     # already standing, because a lamp is the one thing in the room whose
@@ -2052,11 +2823,24 @@ def build(schema, profile, place, max_span_m=None, door_at=None,
         blocks = sorted((s[2], s[5]) for _n, s in obstacles
                         if s[0] < x1 - 1e-6 and x0 < s[3] - 1e-6
                         and s[1] < y1 - 1e-6 and y0 < s[4] - 1e-6)
-        runs, cur = [], -hl + 0.05
+        runs, cur, longest = [], -hl + 0.05, (0.0, 0.0, 0.0)
         for b0, b1 in blocks + [(hl - 0.05, hl)]:
             if b0 - cur >= lw:
                 runs.append((cur, b0))
+            if b0 - cur > longest[0]:
+                longest = (b0 - cur, cur, b0)
             cur = max(cur, b1)
+        # A FITTING LONGER THAN EVERY BAY IS CUT TO THE BAY, and until V1 it
+        # simply was not fitted. `light_wall_course` is 2.40 m and `rib_pitch_m`
+        # is 2.60 m at a 4.2 m ceiling, so the clear run between two ribs is
+        # 2.15 m -- the course NEVER fits, and the only reason `interfaith_chapel`
+        # had one was that its bay was short enough to carry two ribs instead of
+        # four. Growing the bay for its pews turned that luck off and the room
+        # lost its wall lighting entirely, which is how this was found. A strip
+        # cut to the recess it sits in is also what the reference frames show.
+        if not runs and longest[0] >= 0.60:
+            lw = longest[0] - 0.02
+            runs = [(longest[1], longest[2])]
         n = 0
         for lo, hi in runs:
             k = max(1, int((hi - lo - lw) / pitch) + 1)
@@ -2140,7 +2924,8 @@ def build(schema, profile, place, max_span_m=None, door_at=None,
     for _dens in DRESS_DENSITIES:
         dv, dt, dg, _dc = _dress.dress(
             place["key"], w - 2 * WALL_T_M, ln - 2 * WALL_T_M, ceil, arch,
-            inset=(inset[0], inset[1]), seed=place["key"], density=_dens)
+            inset=(inset[0], inset[1]), seed=place["key"], density=_dens,
+            walls=dress_walls(place))
         trial_v = v + dv
         trial_t = list(t) + [(a + len(v), b + len(v), c + len(v))
                              for a, b, c in dt]
@@ -2579,6 +3364,24 @@ def _selftest():
     check("multi-deck rooms are a minority and are the ones that should be",
           len(tall) < len(places) * 0.4,
           f"{len(tall)} of {len(places)}: {tall[:6]}")
+    # AND THE FUNCTION TABLE MAY NOT MOVE THAT COUNT.  The gate above has one
+    # room of margin, so the constraint is stated where it can fire rather than
+    # only in FUNCTION_HEIGHT's comment.  Negative control: remove the
+    # `FUNCTION_HEIGHT_CAP_M` clamp in `ceiling_m` and this names hydroponics,
+    # fusion_core and cryo_storage.
+    _was_tall = [p["key"] for p in places
+                 if max(PLACE_CEILING.get(p["key"],
+                                          CEIL_BY_ARCHETYPE.get(archetype(p),
+                                                                2.9)),
+                        max((PROPS[k][2] for k in p["interacts"]
+                             if k in PROPS), default=0.0) + CEIL_HEADROOM_M)
+                 > it.DECK_PITCH_M]
+    check("keying height on function did not make any room multi-deck",
+          not (set(tall) - set(_was_tall)),
+          f"newly tall: {sorted(set(tall) - set(_was_tall))}")
+    check("...and it did give the station more than eleven ceiling heights",
+          len({round(ceiling_m(p), 2) for p in places}) >= 25,
+          f"{len({round(ceiling_m(p), 2) for p in places})} distinct heights")
 
     # --- winding ----------------------------------------------------------
     bv, bt, bg = [], [], []
@@ -2599,7 +3402,8 @@ def _selftest():
     # this fires naming it.
     import dressing as _dress                                   # noqa: PLC0415
     fx_names = set()
-    for _fx in list(FIXTURES.values()) + list(PLACE_FIXTURES.values()):
+    for _fx in (list(FIXTURES.values()) + list(PLACE_FIXTURES.values())
+                + list(PLAN_ELEMENTS.values())):
         fx_names.update(n for n, *_r in _fx)
     check("every fixture has a machine shape",
           not (fx_names - set(MACHINE_KIND)),
@@ -2657,14 +3461,30 @@ def _selftest():
             != {n for n, *_ in PLACE_FIXTURES[k]}]
     check("a place with its own fixtures gets them, not its archetype's",
           not _sub, f"{_sub}")
-    check("...and a place without them still gets its archetype's",
+    # AND THE PLAN ELEMENTS TAKE THE CENTRELINE OFF IT, which is a real change
+    # to this rule and is stated here rather than left for the diff to imply:
+    # a place whose own function puts something down the middle of the floor
+    # does not also get its archetype's spine, because they are the same cubic
+    # metre and the element is what THIS place is for. `fabrication` gets a
+    # `cell` element, which is not a centreline, so it still gets all three
+    # industrial fixtures verbatim.
+    _spine = {n for n, *_r, k in FIXTURES["industrial"] if k == "spine"}
+    check("...and a place without them still gets its archetype's, less any "
+          "centreline its own plan takes",
           {n for n, *_ in fixtures_for(dr.by_key("fabrication"))}
-          == {n for n, *_ in FIXTURES["industrial"]})
+          == {n for n, *_ in FIXTURES["industrial"]} - _spine
+          and bool(_spine))
+    check("...and a place whose own plan takes the centreline loses the "
+          "archetype's spine",
+          {n for n, *_ in fixtures_for(dr.by_key("alpha_substation"))}
+          == {n for n, *_, k in FIXTURES["industrial"] if k != "spine"}
+          and any(k == "spine" for *_r, k in FIXTURES["industrial"]))
     # NEGATIVE CONTROL, run rather than described: hand the resolver a place
     # whose key is in neither table and confirm it falls back, and hand it one
     # that is in both and confirm it does not.
     _probe = dict(dr.by_key("reactor_hall"))
     _probe["key"] = "__not_in_place_fixtures__"
+    _probe["functions"] = ("storage",)   # a rank, so the spine rule does not fire
     check("the override test can fail",
           {n for n, *_ in fixtures_for(_probe)}
           == {n for n, *_ in FIXTURES[archetype(_probe)]}
@@ -2866,7 +3686,13 @@ def _selftest():
         v, t, g = build(schema, profile, p)
         ceil_ = ceiling_m(p)
         for nm, lo, hi in g:
-            if not nm.endswith(_TRIM_SUFFIXES):
+            # A MACHINE PART IS NOT ROOM TRIM, and the two collide by name:
+            # `dressing`'s vessel builder emits a `plant_conduit` part, and
+            # `_conduit` is in `_TRIM_SUFFIXES`, so `fusion_core`'s reactor drum
+            # was being measured against the rule for skirtings. Its containment
+            # is `machine_escapes`' job and is gated there; this check is about
+            # the bands `articulate` puts on the SHELL.
+            if not nm.endswith(_TRIM_SUFFIXES) or _MACH in nm:
                 continue
             pts = [v[i] for tri in t[lo:hi] for i in tri]
             if not pts:
