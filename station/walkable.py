@@ -78,11 +78,44 @@ MIN_TRAVERSE_M = 63.0
 ARRIVED_M = 1.5
 # The deck spawns a body 50 mm above its floor, so a drop of more than a step
 # means it is not where the shell says the floor is.
+#
+# MEASURED ALONG THE BODY'S OWN UP, and it was not. This asserted on `drop`,
+# which is `spawn.distance_to(rest)` -- a 3D displacement -- while its own
+# failure message is a claim about the floor's radius. On a deck with 134 people
+# walking down it the two are nothing like each other: session 4h measured
+# `drop=0.319` against `drop_up=0.043` on the same frame, so the body fell 43 mm
+# onto a shell 50 mm below it exactly as designed, and was pushed 316 mm ALONG
+# the corridor by people walking past it during the 2.5 s it stood there
+# settling. `drop` is still printed and still in the verdict; it is simply not
+# the number this bound is about.
 MAX_DECK_DROP_M = 0.30
 # How close to actually facing the player the nearest inhabitant has to end up.
 # Generous: they turn at a human rate and the walk ends when the player arrives,
 # so a few degrees of lag is a person still turning, not a person facing wrong.
 FACING_TOL_DEG = 25.0
+
+# -- STREAMING: IS A STREAMED CELL A PLACE, OR A SHELL? ---------------------
+# Every other gate in this file loads one glb whole and wires it once, so none
+# of them can fail for a station whose doors are solid because the geometry
+# arrived late -- which is exactly what `docs/streaming-4g.md` shipped and
+# `docs/streaming-doors-4g.md` fixed. That fix has never been in CI.
+STREAM_CELLS = os.path.join(
+    ROOT, "station/generated/scene/deck/cells_blue_0_0/cells.json")
+STREAM_DECK = os.path.join(ROOT, "station/generated/scene/deck")
+# The object the monolithic `--deck --use` gate picks on this cluster, named so
+# the two gates walk up to the SAME thing and a difference is the streaming.
+STREAM_USE = "docking_bays__prop_bay_control_booth"
+# Two cell lengths less a margin: a run that crosses one boundary and stops has
+# not shown the hand-off repeats.
+MIN_STREAM_FLOOR_M = 100.0
+# HOW PEOPLE ARE MADE SOLID. `godot/scripts/npc.gd` can either leave them on the
+# world collision layer for `move_and_slide` to resolve -- which costs the body
+# its floor for as long as it is touching one, and is what shoved the player in
+# `docs/streaming-doors-4g.md` 4c -- or put them on their own layer and separate
+# the player from them by hand, across the floor plane only. Asserted rather than
+# assumed, because a control that silently became the subject is a gate
+# measuring nothing.
+STREAM_COLLIDER = "separate/every_frame"
 
 
 def godot_binary():
@@ -485,6 +518,9 @@ def walk_deck(sector, ring, deck, godot, timeout=1800, traverse=None,
     for tok in m.group(1).split():
         k, _, val = tok.partition("=")
         d[k] = val
+    # THE LINE THE GATE JUDGED, kept so a before/after can be quoted rather
+    # than re-derived. `--raw` prints it.
+    d["verdict"] = m.group(0)
     return d
 
 
@@ -512,9 +548,14 @@ def deck_verdict(d):
         return False, d["error"]
     if d.get("on_floor") != "true":
         return False, "the body never reached a floor"
-    if float(d.get("drop", 0)) > MAX_DECK_DROP_M:
-        return False, (f"dropped {float(d['drop']):.2f} m from a spawn 50 mm "
-                       f"above the shell -- the floor is not where it says")
+    if "drop_up" not in d:
+        return False, ("the verdict carries no `drop_up` -- this build of "
+                       "godot/scripts/walk.gd cannot say how far the body fell "
+                       "as opposed to how far it moved")
+    if float(d["drop_up"]) > MAX_DECK_DROP_M:
+        return False, (f"fell {float(d['drop_up']):.2f} m from a spawn 50 mm "
+                       f"above the shell -- the floor is not where it says "
+                       f"(total displacement {float(d.get('drop', 0)):.2f} m)")
     if float(d.get("moved_1s", 0)) < MIN_WALK_M:
         return False, f"walked {float(d.get('moved_1s', 0)):.2f} m in a second"
     off, tot = (d.get("offfloor", "0/0").split("/") + ["0"])[:2]
@@ -586,11 +627,40 @@ def deck_verdict(d):
             note = (f", {d['noticed']} of the room look up "
                     f"({float(d['turned_deg']):.0f} deg turned, {err:.0f} deg "
                     f"off)")
+        # -- AND THE DOOR OPENED ------------------------------------------
+        # This gate has printed `door_open` since W5 and asserted nothing on
+        # it, because the number was a lie: `walk.gd` sampled the LIVE openness
+        # at the frame the verdict printed, which for a body that walked
+        # THROUGH a pressure door is several seconds after it shut again behind
+        # them. Every passing run reported 0.00. It is now the door's PEAK over
+        # the walk -- `door.gd::peak_openness` -- so it can be asserted.
+        #
+        # -1.00 is a different failure and says so: no door of that name was
+        # ever assembled, which is leaves in one place and a panel in another.
+        # The control is `--no-doors`, where `door.gd` is not built at all and
+        # the token is absent; that is the branch below.
+        door = ""
+        if "door_open" in d:
+            op = float(d["door_open"])
+            if op < 0.0:
+                return False, (f"there is no pressure door called `{d['goto']}` "
+                               f"in this build -- nothing ever assembled its "
+                               f"leaves and its panel into one door")
+            if op <= 0.0:
+                return False, (f"the body reached {d['goto']} and the pressure "
+                               f"door never opened at all -- the way in is a "
+                               f"hole in the wall, not a door")
+            door = f", through a door that opened to {op:.2f}"
+        elif int(d.get("doors", 0)) > 0:
+            return False, (f"this cluster has {d['doors']} door(s) and the "
+                           f"verdict carries no `door_open` -- "
+                           f"godot/scripts/door.gd did not load, so every "
+                           f"pressure door on it is a wall")
         return True, (f"{d['rooms']} rooms over {float(d['arc_deg']):.0f} deg, "
                       f"{d['doors']} doors; a body spawns in the corridor and "
                       f"WALKS INTO {d['goto']} "
                       f"({float(d['goto_start_m']):.1f} m -> {near:.2f} m), "
-                      f"never leaving the floor{note}")
+                      f"never leaving the floor{door}{note}")
     got = float(d.get("traverse_m", 0))
     if got < MIN_TRAVERSE_M:
         return False, (f"covered {got:.1f} m of corridor, under the "
@@ -691,6 +761,205 @@ def use_verdict(d):
                   f"{d.get('pressable')} pressable ({d.get('verbs')})")
 
 
+def _visit_run(godot, extra, crowd=False, timeout=1200):
+    """One `--visit` run of the streamed build, parsed into a dict.
+
+    `crowd` puts the corridor's walkers in it. It is a SEPARATE run rather than
+    always-on, and the reason is a measurement rather than a preference: with
+    people resolved by `move_and_slide` the crowd cost the body most of its
+    walking speed -- 12 walkers resident and the arc leg covered 93 m of its
+    130 m inside the same frame budget -- so the crowd run could not make the
+    visit claims at all. Quietly raising the leg budgets until it could would
+    have been picking the convenient reading.
+
+    That is no longer true and the gate says so: since `npc.gd` stopped putting
+    people in the player's way and started separating them by hand, the crowd
+    run makes EVERY claim the crowd-less one makes and its own on top, and
+    `stream_gate` asserts both on it. The crowd-less run is kept because it is
+    the configuration the five wiring controls are controls FOR, and because a
+    difference between the two is then the crowd and nothing else.
+    """
+    d = STREAM_DECK
+    cmd = [godot, "--headless", "--path", os.path.join(ROOT, "godot"),
+           "res://scenes/walk.tscn", "--", f"--cells={STREAM_CELLS}",
+           "--stream-test", "--visit", "--gravity-mode=drum", "--settle=120",
+           f"--actors={d}/blue_0_0_actors.json",
+           f"--interact={d}/blue_0_0_interact.json",
+           f"--door-travel={K.PROVISIONAL['door_width_m'] / 2.0}",
+           f"--use-group={STREAM_USE}"]
+    if crowd:
+        import populace as _pop                                # noqa: PLC0415
+        # The ladder and its libraries come from `populace.crowd_ladder()`, the
+        # same function the bake wrote them with -- a literal here would be a
+        # second description of which mesh belongs at which distance.
+        lad = _pop.crowd_ladder()
+        cmd += [f"--crowd={d}/blue_0_0_crowd.json",
+                "--crowd-ladder=" + ",".join(f"{hi:g}:{lod}" for hi, lod in lad),
+                "--crowd-glbs=" + ",".join(f"{d}/crowd_lod{lod}.glb"
+                                           for _hi, lod in lad)]
+    cmd += list(extra)
+    try:
+        out = subprocess.run(cmd, capture_output=True, text=True,
+                             timeout=timeout).stdout
+    except subprocess.TimeoutExpired:
+        return {"error": f"timed out after {timeout}s"}
+    m = re.search(r"STREAMTEST (.+)", out)
+    if not m:
+        return {"error": "no STREAMTEST verdict printed"}
+    return dict(t.split("=", 1) for t in m.group(1).split() if "=" in t)
+
+
+def stream_verdict(s):
+    """Is a streamed cell a PLACE: doors that open, people who react, things
+    that work -- and does it still work after the cell has been freed and
+    walked back into?"""
+    if "error" in s:
+        return False, s["error"]
+    if s.get("ok") != "true":
+        return False, (f"the run did not pass its own assertions: "
+                       f"{s.get('why', '?')}")
+    off = int(s["offfloor"].split("/")[0])
+    if off > 0:
+        return False, (f"{s['offfloor']} frames off the floor -- something in "
+                       f"the corridor is taking the ground away")
+    if float(s["floor_m"]) < MIN_STREAM_FLOOR_M:
+        return False, (f"covered {float(s['floor_m']):.1f} m ON THE FLOOR, "
+                       f"under the {MIN_STREAM_FLOOR_M:.0f} m bar")
+    if s.get("freed") != "true":
+        return False, "the cell was never freed, so visit 2 is not a re-entry"
+    for tok, want in (("double_wires", 0), ("stale_prompt_frames", 0),
+                      ("stale_leaves", 0), ("stale_parts", 0)):
+        if int(s.get(tok, -1)) != want:
+            return False, (f"{tok}={s.get(tok)} -- something outlived the cell "
+                           f"that brought it")
+    for v in ("v1", "v2"):
+        if float(s[f"{v}_door_open"]) <= 0.0:
+            return False, (f"{v}: the pressure door never opened "
+                           f"({s[f'{v}_door_open']}) -- in a streamed cell it "
+                           f"is a wall")
+        if int(s[f"{v}_noticed"]) < 1:
+            return False, f"{v}: nobody in the cell noticed the body"
+        if s[f"{v}_prompted"] != "true" or int(s[f"{v}_presses"]) < 1:
+            return False, f"{v}: {s['use_group']} was never prompted or pressed"
+        if float(s[f"{v}_travel_mm"]) <= 0.0:
+            return False, f"{v}: {s['use_group']} was used and did not move"
+    return True, (
+        f"a body walks {float(s['floor_m']):.1f} m ON THE FLOOR, "
+        f"{s['offfloor']} frames off it, into cell {s['visit_cell']} which was "
+        f"streamed in after launch: the pressure door opens to "
+        f"{float(s['v1_door_open']):.2f}, {s['v1_noticed']} people look up, "
+        f"and {s['use_group']} prompts and moves "
+        f"{float(s['v1_travel_mm']):.1f} mm. The cell is then FREED and "
+        f"re-entered and all three still work ({float(s['v2_door_open']):.2f} "
+        f"/ {s['v2_noticed']} / {float(s['v2_travel_mm']):.1f} mm)")
+
+
+def crowd_verdict(s):
+    """Can a body do all of that with people in the corridor, and still never
+    lose the floor?
+
+    EVERY VISIT CLAIM AND THEN THE CROWD'S OWN. The crowd is what
+    `docs/streaming-doors-4g.md` had to switch OFF to get its headline run, so
+    a crowd run that only asserted the crowd would leave the harder half of the
+    build unguarded in the configuration a player actually meets.
+    """
+    ok, why = stream_verdict(s)
+    if not ok:
+        return False, why
+    off = int(s["offfloor"].split("/")[0])
+    # THE CROWD HAS TO BE THERE, or `offfloor=0` is a measurement of an empty
+    # corridor. `walkers`, `crowd_collider` and `push_m` are printed
+    # unconditionally by `walk.gd::_crowd_report` for exactly this: a run whose
+    # `--crowd-glbs` pointed at nothing would otherwise report a flawless zero.
+    if int(s.get("walkers", 0)) < 1:
+        return False, ("no walkers were resident -- this measured an empty "
+                       "corridor, not a crowd that keeps off the player")
+    if float(s.get("crowd_travel_m", 0.0)) <= 0.0:
+        return False, (f"{s['walkers']} walkers covered "
+                       f"{s.get('crowd_travel_m')} m -- statues wearing a "
+                       f"walk pose")
+    # `stream_verdict` has already failed anything that left the floor, which is
+    # where `--npc-solid=mask` dies -- 821 frames in 705 episodes. That is the
+    # substantive claim and it is checked BEFORE the identity check below, which
+    # a control would fail whatever it did: a control that fails for declaring
+    # itself a control has measured nothing.
+    if float(s.get("push_m", 0.0)) <= 0.0:
+        return False, ("the body walked the whole corridor and was never "
+                       "separated from anybody -- people are holograms")
+    if s.get("crowd_collider") != STREAM_COLLIDER:
+        return False, (f"people were `{s.get('crowd_collider')}` and not "
+                       f"`{STREAM_COLLIDER}` -- a lesser mechanism was "
+                       f"substituted for the one asked for")
+    return True, (
+        f"a body walks {float(s['floor_m']):.1f} m ON THE FLOOR through a "
+        f"corridor with people in it, {s['offfloor']} frames off it. "
+        f"{s['walkers']} walkers resident cover "
+        f"{float(s['crowd_travel_m']):,.0f} m around it and push it "
+        f"{float(s['push_m']):.0f} m out of their way "
+        f"({float(s['push_max_mm']):.0f} mm in the worst frame) -- so they are "
+        f"solid, and not one of those metres is vertical")
+
+
+# EVERY ONE OF THESE MUST FAIL, and between them they turn off every claim the
+# two subject runs make. `--no-cell-wiring` is the build `docs/streaming-4g.md`
+# shipped -- cells stream and nothing is told about them -- and stands for all
+# three wiring claims at once; the next four turn off exactly one each. The
+# last is judged against the CROWD run instead, and it is the build before
+# session 4h: people back on the world collision layer, resolved by
+# `move_and_slide`, which cost the body its floor for 3,090 of 16,200 frames.
+STREAM_CONTROLS = (
+    (("--no-cell-wiring",), False, "the build before the cells were wired"),
+    (("--no-doors",), False, "the door claim"),
+    (("--no-people",), False, "the reaction claim"),
+    (("--no-interact",), False, "the use claim"),
+    (("--no-unwire",), False, "the free-and-re-enter claim"),
+    (("--npc-solid=mask",), True,
+     "people back on the world layer, as they were before session 4h"),
+)
+
+
+def stream_gate(godot):
+    """A streamed cell is a PLACE and its corridor has people in it.
+
+    TWO SUBJECT RUNS AND SIX CONTROLS. The visit claims and the crowd claim
+    cannot honestly be made by the same run -- see `_visit_run` -- so each is
+    made by the run that can make it, and every control is judged against the
+    subject it is a control for.
+    """
+    sub = _visit_run(godot, [])
+    good, why = stream_verdict(sub)
+    print(f"  {'PASS' if good else 'FAIL'}  stream  {why}")
+
+    crowd = _visit_run(godot, [], crowd=True)
+    cgood, cwhy = crowd_verdict(crowd)
+    print(f"  {'PASS' if cgood else 'FAIL'}  crowd   {cwhy}")
+    good = good and cgood
+
+    for flags, on_crowd, what in STREAM_CONTROLS:
+        c = _visit_run(godot, list(flags), crowd=on_crowd)
+        cok, _cw = (crowd_verdict(c) if on_crowd else stream_verdict(c))
+        if cok:
+            print(f"  FAIL  with {' '.join(flags)} the gate still passed -- it "
+                  f"is measuring nothing ({what})")
+            good = False
+        else:
+            print(f"        control {' '.join(flags):20s} FAILS as it must: "
+                  f"{_control_note(c)}  [{what}]")
+    return 0 if good else 1
+
+
+def _control_note(c):
+    """One line saying what the control actually did, so a control that fails
+    for the wrong reason is visible rather than merely absent."""
+    if "error" in c:
+        return c["error"]
+    return (f"floor_m={float(c.get('floor_m', 0)):.1f} "
+            f"offfloor={c.get('offfloor')} "
+            f"v1_door={c.get('v1_door_open')} v1_noticed={c.get('v1_noticed')} "
+            f"v1_presses={c.get('v1_presses')} "
+            f"people={c.get('crowd_collider')} push_m={c.get('push_m')}")
+
+
 def verdict(d):
     """Pass/fail for one room, with the reason a player would give."""
     if "error" in d:
@@ -733,6 +1002,14 @@ def main():
                     help="walk up to a declared interactable, be prompted, and "
                          "use it. The control strips that object out of the "
                          "render mesh and walks the identical route again")
+    ap.add_argument("--stream", action="store_true",
+                    help="is a streamed cell a PLACE? Walks into one that "
+                         "arrived after launch, through a pressure door in it, "
+                         "up to something usable, then frees it and comes back "
+                         "-- with the corridor crowd walking past throughout")
+    ap.add_argument("--raw", action="store_true",
+                    help="also print the engine's own verdict line for the "
+                         "deck walk, which is what the gate judged")
     a = ap.parse_args()
 
     godot = godot_binary()
@@ -748,6 +1025,9 @@ def main():
               "  see docs/godot-binary.md")
         return 1
 
+    if a.stream:
+        return stream_gate(godot)
+
     if a.deck or a.deck_only:
         sector, ring, deck = (a.deck or "blue/0/0").split("/")
         d = walk_deck(sector, int(ring), int(deck), godot,
@@ -760,6 +1040,8 @@ def main():
             good, why = deck_verdict(d)
         print(f"  {'PASS' if good else 'FAIL'}  "
               f"{'drum' if drum else 'deck'} {sector}/{ring}/{deck}  {why}")
+        if a.raw and "verdict" in d:
+            print(f"        measured: {d['verdict']}")
 
         # THE NEGATIVE CONTROL, and it is the whole reason the door claim means
         # anything. A body that reaches the room proves the route is open; it
@@ -770,8 +1052,13 @@ def main():
         # The drum has no doors, so `--no-doors` is not a control there --
         # running it would compare a thing against itself and pass.
         if good and not a.no_doors and not drum:
+            # `z_m=a.z` OR THE CONTROL WALKS A DIFFERENT PLACE. A deck is not a
+            # z-slice -- blue/0/0 has six clusters over 1,100 m -- so a control
+            # that drops it compares the subject's cluster against the default
+            # one and the comparison means nothing. Every other call here
+            # passes it; this one did not.
             n = walk_deck(sector, int(ring), int(deck), godot,
-                          traverse=a.traverse, no_doors=True)
+                          traverse=a.traverse, z_m=a.z, no_doors=True)
             blocked, _w = deck_verdict(n)
             near = float(n.get("goto_best_m", 0.0))
             if blocked:

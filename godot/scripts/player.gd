@@ -36,6 +36,9 @@ extends CharacterBody3D
 var _yaw := 0.0
 var _pitch := 0.0
 var _cam: Camera3D
+## Whether the body is in the air because it JUMPED. See `step`: it is the
+## only thing allowed to give a walking body upward velocity.
+var _jumped := false
 
 
 func _ready() -> void:
@@ -86,6 +89,29 @@ func body_up() -> Vector3:
 ## corridor runs whichever way it runs.
 func set_yaw(y: float) -> void:
 	_yaw = y
+
+
+## A HARNESS THAT DRIVES `step()` MUST BE THE ONLY THING THAT DOES.
+##
+## With no window there is no input, so `_physics_process` below steps the body
+## a SECOND time every frame with a zero wish -- and a zero wish still rebuilds
+## the body's basis from `_yaw`. Nothing about walking notices, because a wish
+## vector needs no facing. What needs one is the EYE: the camera rides the body,
+## `interact.gd` scans a 35-degree cone about the camera axis, and on a ring deck
+## yaw 0 points straight along the station's spine. Measured in session 4g while
+## the body walked directly at a console from 3.6 m:
+##
+##     USELEG f=10 short=3.62 eye_range=3.65 off_axis=162 in_sight=false
+##            camfwd=-0.00,-0.00,1.00 steer=-0.32,-0.26,-0.91
+##
+## 160 degrees off the view axis, so it could never be prompted, and the failure
+## read as "the interactable is not wired". `--walk-test` masked it by calling
+## `set_yaw` after its own heading sweep -- which is the only reason the
+## monolithic use gate could ever see what it walked up to -- and the stream test
+## worked around it in `walk.gd::_face`. Both are the wrong place: any future
+## headless driver would have to remember. One line here ends the class.
+func drive_externally() -> void:
+	set_physics_process(false)
 
 
 func _unhandled_input(event: InputEvent) -> void:
@@ -155,11 +181,28 @@ func step(delta: float, wish: Vector2, jump: bool, sprint: bool,
 	# direction does not turn forward motion into falling.
 	var v_along := velocity.project(up)
 	if is_on_floor():
+		_jumped = false
 		if jump:
 			v_along = up * jump_m_s
+			_jumped = true
 		else:
 			v_along = up * -0.1        # keep the body pinned to the floor
 	else:
+		# A WALKING BODY HAS NO UPWARD VELOCITY IT DID NOT ASK FOR. Only a jump
+		# sends a person up; `move_and_slide` writes back the motion it actually
+		# achieved, so anything that shoves the body arrives here as velocity
+		# nobody asked for, and Godot skips `floor_snap_length` entirely while
+		# `velocity.dot(up_direction) > 0`. A body that has been nudged upward by
+		# a millimetre would otherwise coast, unsnapped, until gravity turned it
+		# round.
+		#
+		# A MEASURED NEGATIVE, and it is kept because it is right rather than
+		# because it fixed anything. It was session 4h's third hypothesis for the
+		# crowd shove and it moved the count from 2,523 off-floor frames to
+		# 2,520 -- see `docs/runtime-4h.md` 1b. The cause was elsewhere and this
+		# is still the correct rule for a walking body.
+		if not _jumped and v_along.dot(up) > 0.0:
+			v_along = Vector3.ZERO
 		v_along += g * delta
 
 	velocity = horiz + v_along

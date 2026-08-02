@@ -248,6 +248,17 @@ jobs:
         continue-on-error: true
         run: python3 station/walkable.py --deck blue/0/0 --deck-only --bump
 
+      # A STREAMED CELL IS A PLACE, NOT A SHELL. Every other walkability gate
+      # here loads one .glb whole and wires it once, so none of them can fail
+      # for a station whose doors are solid because the geometry arrived late --
+      # which is exactly what docs/streaming-4g.md shipped. Two subject runs
+      # (the visit, and the same route with the corridor crowd in it) and six
+      # controls, every one of which must fail.
+      - name: A streamed cell has working doors, people and interactables
+        id: sstreamed_cell_is_a_place
+        continue-on-error: true
+        run: python3 station/walkable.py --stream
+
       # AND THE WHOLE STATION, not six rooms of it. `--sweep` is the only gate
       # here that asks a whole-station question: every deck assembles, every
       # room has a door, and no doorway has a hole in the floor.
@@ -512,6 +523,8 @@ jobs:
             echo "FAILED: sthe_station_is_walkable"; fail=1; fi
           if [ "${{ steps.sthe_inhabitants_are_solid.outcome }}" != "success" ]; then
             echo "FAILED: sthe_inhabitants_are_solid"; fail=1; fi
+          if [ "${{ steps.sstreamed_cell_is_a_place.outcome }}" != "success" ]; then
+            echo "FAILED: sstreamed_cell_is_a_place"; fail=1; fi
           if [ "${{ steps.show_much_of_the_station_can_be_walked_in.outcome }}" != "success" ]; then
             echo "FAILED: show_much_of_the_station_can_be_walked_in"; fail=1; fi
           if [ "${{ steps.sthe_habitat_drum_is_walkable.outcome }}" != "success" ]; then
@@ -554,4 +567,8 @@ jobs:
             echo "FAILED: sconfirm_the_schema_still_parses_and_is_f"; fail=1; fi
           if [ "$fail" != "0" ]; then
             echo; echo "One or more gates failed -- see above."; exit 1; fi
-          echo "all 36 gates green" 
+          # NOT A COUNT. It was hand-maintained and said 36 while the list
+          # held 39, which is the same defect as a cached number nobody
+          # recomputes -- and a wrong count here reads as "some gate is
+          # missing from the list" when nothing is.
+          echo "every gate ran, and every one of them passed" 

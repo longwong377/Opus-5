@@ -43,6 +43,166 @@ extends Node3D
 var _people: Array = []
 var _body: Node3D
 
+# ---------------------------------------------------------------------------
+#  YOU CANNOT WALK THROUGH A PERSON, AND A PERSON CANNOT TAKE YOUR FLOOR AWAY
+# ---------------------------------------------------------------------------
+# THE CROWD SHOVED THE PLAYER OFF THE FLOOR. `docs/streaming-doors-4g.md` 4c
+# isolated it and did not fix it: with the corridor crowd on, the visit gate
+# went from 0 of 16,200 frames off the floor to 605, the walk oscillated between
+# three cells instead of crossing two, and the first visit was stopped 75 m
+# short of the console. `--no-npc-collision` reproduced the crowd-less subject
+# exactly, so it was never the wiring and never the LOD ladder.
+#
+# ITS DIAGNOSIS WAS WRONG, and the wrong diagnosis is the useful part. It read
+# "a static body teleported into a CharacterBody3D ejects it rather than pushing
+# it ... the body is thrown sideways out of a 2.6 m corridor", and proposed
+# `AnimatableBody3D` with `sync_to_physics`. Three things were measured before
+# any of this was written (`docs/runtime-4h.md` has the table):
+#
+#   * NOBODY IS THROWN ANYWHERE. Over 16,200 frames the body's greatest height
+#     above its own last floor position is **1.3 mm**, in 442 separate episodes
+#     the longest of which is 17 frames. It is not flight, it is flicker.
+#   * `AnimatableBody3D` + `sync_to_physics`, swept every physics frame instead
+#     of teleported at 10 Hz, moved the count from 2,523 to 2,507. Nothing.
+#   * Padding the capsule's round end caps out of the player's reach -- the
+#     classic "you got lifted by a hemisphere" -- moved it from 2,523 to 2,507
+#     the other way. Also nothing.
+#
+# WHAT IT ACTUALLY IS, printed by `walk.gd` on the frame the floor is lost:
+#
+#     walk: OFF FLOOR f=711 lift=0.7mm v_up=-0.000 wall=true slides=3
+#           [walker_human_23@n=-0.19,0.55,-0.81, ...]
+#
+# Every episode is a contact with a person, the contact normal is horizontal to
+# within a degree, the body is not rising, and THE FLOOR IS NOT IN THE SLIDE
+# LIST. `CharacterBody3D` re-attaches to a floor it has drifted off using
+# `floor_snap_length`, and that snap casts down with `recovery_as_collision`
+# set: while the capsule is in contact with anything, the cast comes back
+# holding the thing it is touching, whose normal is 89 degrees off the floor,
+# and the snap is refused. **So a body TOUCHING a person is a body with no
+# floor**, whatever the person is made of. That is why every mechanism above
+# changed nothing: they all still touch.
+#
+# THE MECHANISM THAT FITS A WALKER IS NOT A PHYSICS BODY AT ALL. People sit on
+# their own collision layer with mask 0, so `move_and_slide` never resolves
+# against one and the floor is never in question; and `push_off()` separates the
+# player from anybody it overlaps by hand, ACROSS THE FLOOR PLANE ONLY, every
+# frame. You still cannot walk through a person -- the separation is the full
+# overlap, applied before they can get inside you -- and a person can no longer
+# cost you the ground you are standing on, because nothing they do has a
+# vertical component. It is the same shape of answer as `interact.gd`'s proxy
+# boxes, which have been on their own layer with mask 0 since they were written.
+#
+# `--npc-solid=mask` puts them back on the world layer and turns the separation
+# off, which is the build before this session and is one of `walkable.py
+# --stream`'s six controls. It MUST fail.
+const PEOPLE_LAYER := 4          ## world is 1, interact.gd's proxies are 2
+
+var _solid_mode := "separate"    ## "separate" | "mask" (control) | "off"
+var _walker_bodies := 0
+var _said_collider := false
+## The player's own capsule radius, read off the body it is told to watch --
+## never written down here, because a second copy of `walk.gd::_spawn_player`'s
+## 0.35 m is a second copy of how wide a person is.
+var _player_r := 0.35
+var _player_h := 1.8
+## How far the separation has moved the player in total, and the largest single
+## frame of it. The claim "a person is something you bump into" is these two
+## numbers; with `--no-npc-collision` they are zero and you walk through people.
+var _push_m := 0.0
+var _push_max := 0.0
+
+
+func _ready() -> void:
+	var a := _args()
+	_solid_mode = String(a.get("npc-solid", "separate"))
+	if a.has("no-npc-collision"):
+		_solid_mode = "off"
+	if a.has("crowd-hz"):
+		crowd_hz = float(a["crowd-hz"])
+
+
+## WHICH MECHANISM ACTUALLY RAN, in the verdict, on every run. Anything that can
+## substitute a lesser mode for the one asked for has to say which one it used --
+## CLAUDE.md's rule, learned from a renderer that silently fell back to OpenGL 3
+## and exited 0 with a PNG.
+func walker_collider_report() -> String:
+	return "%s/%s" % [_solid_mode,
+		("every_frame" if crowd_hz <= 0.0 else "%.0fhz" % crowd_hz)]
+
+
+func push_report() -> String:
+	return "push_m=%.2f push_max_mm=%.1f" % [_push_m, _push_max * 1000.0]
+
+
+## SEPARATE THE PLAYER FROM ANYBODY IT IS INSIDE, ACROSS THE FLOOR ONLY.
+##
+## Called by `walk.gd` immediately after `player.step()`, so the next frame's
+## `move_and_slide` starts from a body that is not overlapping a person. The
+## push is the exact overlap of the two circles in the floor plane -- no more,
+## so it cannot fling anybody, and no less, so a person cannot be walked into.
+##
+## THE UP COMPONENT IS PROJECTED OUT AND THAT IS THE WHOLE POINT. On a spun ring
+## "up" is radial and different at every angle, so this is the body's own up and
+## not a world axis. A separation with any vertical component would put the body
+## a millimetre off the deck, and a millimetre off the deck is what this exists
+## to stop.
+func push_off(delta: float) -> float:
+	if _body == null or _solid_mode != "separate":
+		return 0.0
+	var p: Vector3 = _body.global_position
+	var up: Vector3 = (_body.body_up() if _body.has_method("body_up")
+		else Vector3.UP)
+	var push := Vector3.ZERO
+	for w in _walkers:
+		push += _overlap(p, up, _walker_xform(w).origin, w.r_m, w.h_m)
+	for pr in _people:
+		push += _overlap(p, up, pr.pivot, pr.r_m, pr.h_m)
+	var l := push.length()
+	if l <= 0.0:
+		return 0.0
+	# NOBODY MOVES YOU FASTER THAN YOU CAN WALK. Uncapped, this was measured
+	# putting the body 162 mm sideways in a single frame -- which is what
+	# resolving a whole overlap at once looks like when a streamed cell arrives
+	# with somebody already standing where the player is. A deep overlap is now
+	# paid off over as many frames as it takes, at the player's OWN speed, read
+	# off the body rather than written down here.
+	var cap: float = maxf(0.01, float(_body.get("speed_m_s")) * delta)
+	if l > cap:
+		push *= cap / l
+		l = cap
+	_body.global_position = p + push
+	_push_m += l
+	_push_max = maxf(_push_max, l)
+	return l
+
+
+## How far, and which way, to move a body at `p` so it is not inside somebody
+## standing at `foot` with radius `r` and height `h`. Zero unless the two
+## actually overlap, both across the floor and up it.
+func _overlap(p: Vector3, up: Vector3, foot: Vector3, r: float,
+		h: float) -> Vector3:
+	if r <= 0.0 or h <= 0.0:
+		return Vector3.ZERO
+	var d: Vector3 = p - foot
+	# HEIGHT FIRST: somebody on the deck below is not in your way. A body's
+	# origin is at its feet, so the two overlap when their spans do.
+	var vert: float = d.dot(up)
+	if vert > h or vert < -_player_h:
+		return Vector3.ZERO
+	var flat: Vector3 = d - up * vert
+	var want: float = r + _player_r
+	var l := flat.length()
+	if l >= want:
+		return Vector3.ZERO
+	if l < 1e-4:
+		# Dead centre: any direction will do and none is derivable, so use the
+		# station axis, which on a ring deck is across the corridor.
+		flat = Vector3(0, 0, 1) - up * up.z
+		l = maxf(flat.length(), 1e-4)
+	return flat / l * (want - l)
+
+
 
 class Person:
 	var group: String
@@ -121,11 +281,12 @@ func collect(visual: Node, actors: Array, tag: String = "") -> int:
 		p.r_m = float(a.get("r_m", 0.0))
 		p.h_m = float(a.get("h_m", 0.0))
 		_people.append(p)
-	if not _args().has("no-npc-collision"):
+	if _solid_mode != "off":
 		for i in range(before, _people.size()):
 			_give_body(_people[i])
 	elif before == 0:
-		print("npc: inhabitant collision DISABLED (negative control)")
+		print("npc: inhabitant collision DISABLED (negative control) -- a "
+			+ "person you walk through is a hologram")
 	return _people.size() - before
 
 
@@ -170,6 +331,7 @@ func _give_body(p: Person) -> void:
 		return
 	var sb := StaticBody3D.new()
 	sb.name = "body_" + p.group
+	_layer(sb)
 	var cs := CollisionShape3D.new()
 	var cap := CapsuleShape3D.new()
 	# Godot's capsule height INCLUDES its two hemispherical ends, so a body
@@ -194,6 +356,17 @@ func _give_body(p: Person) -> void:
 	p.body = sb
 
 
+## Which layer a body a player bumps into sits on, and it is not the world's.
+##
+## `collision_mask = 0` always: a person is something that gets bumped INTO, and
+## has never needed to collide with anything itself. `--npc-solid=mask` puts
+## them back on layer 1, which is the build before session 4h and the control
+## that has to fail.
+func _layer(sb: CollisionObject3D) -> void:
+	sb.collision_layer = (1 if _solid_mode == "mask" else PEOPLE_LAYER)
+	sb.collision_mask = 0
+
+
 func _args() -> Dictionary:
 	var out := {}
 	for a in OS.get_cmdline_user_args():
@@ -206,8 +379,18 @@ func _args() -> Dictionary:
 	return out
 
 
+## MEASURED OFF THE BODY, NOT WRITTEN DOWN. The separation needs the player's
+## own girth and stature, and `walk.gd::_spawn_player` already decided both. A
+## second copy here is a second answer to "how wide is a person", which is the
+## failure mode hard rule 4 exists for.
 func watch(body: Node3D) -> void:
 	_body = body
+	for c in body.get_children():
+		if c is CollisionShape3D and (c as CollisionShape3D).shape is CapsuleShape3D:
+			var cap: CapsuleShape3D = (c as CollisionShape3D).shape
+			_player_r = cap.radius
+			_player_h = cap.height
+			break
 
 
 func _meshes(node: Node) -> Array:
@@ -362,7 +545,7 @@ class Walker:
 	var omega: float          # radians a second, signed by direction
 	var cycle_s: float
 	var t: float = 0.0
-	var body: StaticBody3D = null
+	var body: PhysicsBody3D = null
 	var r_m: float = 0.0
 	var h_m: float = 0.0
 	var tag: String = ""      # which streamed cell they belong to
@@ -439,9 +622,13 @@ func add_crowd(rows: Array, tag: String) -> int:
 	var before := _walkers.size()
 	for r in rows:
 		_walkers.append(_walker_from(r, tag))
-	if not _args().has("no-npc-collision"):
+	if _solid_mode != "off":
 		for i in range(before, _walkers.size()):
 			_give_walker_body(_walkers[i])
+		# SAY WHICH MECHANISM RAN, once, on every run that has a crowd in it.
+		if not _said_collider and _walker_bodies > 0:
+			_said_collider = true
+			print("npc: walker colliders are %s" % walker_collider_report())
 	_place_crowd()
 	return _walkers.size() - before
 
@@ -572,18 +759,34 @@ func _index_library(library: Node, rows: Array) -> int:
 	return made
 
 
+## The capsule a player bumps into as somebody walks past them.
+##
+## ON `PEOPLE_LAYER` WITH MASK 0, so `move_and_slide` never resolves against it
+## and `push_off` does the separating -- see the header. It is still a real
+## collider rather than a number in an array, because it is what any future
+## query about "is somebody standing there" will ask, and because
+## `--npc-solid=mask` has to be able to put exactly it back on the world layer.
+##
+## AND IT IS PUT WHERE THEY ARE BEFORE IT ENTERS THE TREE. It was not: the
+## capsule sat at the world origin, 7 km away, until the next `advance_crowd`
+## moved it -- so for the first tenth of a second after a cell arrived, its
+## walkers were somewhere else entirely.
 func _give_walker_body(w: Walker) -> void:
 	if w.r_m <= 0.0 or w.h_m <= 0.0:
 		return
 	var sb := StaticBody3D.new()
+	_walker_bodies += 1
+	sb.name = "walker_%s_%d" % [w.species, _walker_bodies]
+	_layer(sb)
 	var cs := CollisionShape3D.new()
 	var cap := CapsuleShape3D.new()
 	cap.radius = w.r_m
 	cap.height = maxf(w.h_m, 2.0 * w.r_m + 0.01)
 	cs.shape = cap
 	sb.add_child(cs)
-	add_child(sb)
 	w.body = sb
+	sb.transform = _walker_body_xform(w)
+	add_child(sb)
 
 
 ## Where a walker is, and which way is up for them. Up is INWARD on a spun
@@ -598,6 +801,20 @@ func _walker_xform(w: Walker) -> Transform3D:
 	var right := fwd.cross(up).normalized()
 	return Transform3D(Basis(right, up, fwd),
 		Vector3(w.radius * ca, w.radius * sa, w.z))
+
+
+## Where a walker's CAPSULE stands. Their own transform raised half a height
+## along their own up, because a Godot capsule is centred on its origin and a
+## walker's origin is their feet.
+##
+## ONE FORMULA, TWO CALLERS. It was written out twice -- once where the body is
+## made and once where it moves -- and the two were not the same: the first
+## never ran at all, so every capsule spent its first frames at the world
+## origin.
+func _walker_body_xform(w: Walker) -> Transform3D:
+	var xf := _walker_xform(w)
+	return Transform3D(xf.basis,
+		xf.origin + xf.basis.y * (maxf(w.h_m, 2.0 * w.r_m + 0.01) * 0.5))
 
 
 ## Refill every MultiMesh from the walkers' current phase. A walker moves
@@ -654,13 +871,29 @@ func crowd_lod_report() -> String:
 	return "%s nearest=%.1f" % ["/".join(parts), nearest]
 
 
-## How often the crowd's transforms are rewritten, in hertz. NOT every physics
-## frame, and the reason is measured: each rewrite re-uploads every MultiMesh's
-## whole instance buffer, so at 60 Hz a deck's crowd cost more than the rest of
-## the walk gate put together. At 10 Hz a walker moves 0.145 m between updates
-## -- under the 0.22 m tile they are stepping on, and a tenth of the 1.45 m
-## stride the pose is showing -- so nothing a player can see is dropped.
-@export var crowd_hz: float = 10.0
+## How often the crowd advances, in hertz. **0 -- the default -- is every
+## physics frame**, and that is a change from the 10 Hz this shipped with.
+##
+## THE OLD NUMBER WAS MEASURED AGAINST THE WRONG QUESTION, and this is the
+## lesson rather than the setting. 10 Hz was justified by a bound on POSITION
+## ERROR: "a walker moves 0.145 m between updates -- under the 0.22 m tile they
+## are stepping on". True, and it says nothing about the two things the rate
+## actually costs. A body redrawn ten times a second is a body animated at
+## **10 fps**; and its collider crosses the whole 0.145 m in ONE step, into
+## whoever is standing there.
+##
+## AND THE COST IT WAS TRADED AGAINST IS NOT THERE ANY MORE. The claim was that
+## at 60 Hz "a deck's crowd cost more than the rest of the walk gate put
+## together", and it was measured before the MultiMesh buckets were sized to what
+## can be in them rather than to the whole species -- eight times the crowd
+## uploaded every frame. Re-measured on the visit gate, same 16,200 frames, same
+## deck: **67 s with no crowd at all and 68 s with the crowd drawing at 10 Hz**,
+## so 2,700 updates of 134 walkers cost about a second. The whole of the 86 s the
+## crowd used to add was its COLLIDERS, and those are off the player's mask now.
+##
+## `--crowd-hz=10` restores the old cadence exactly -- state, collider and draw
+## together -- so it is the control for this half of the fix.
+@export var crowd_hz: float = 0.0
 
 var _crowd_dt: float = 0.0
 
@@ -668,12 +901,16 @@ var _crowd_dt: float = 0.0
 func advance_crowd(delta: float) -> void:
 	if _walkers.is_empty():
 		return
-	_crowd_dt += delta
-	var step := 1.0 / maxf(1.0, crowd_hz)
-	if _crowd_dt < step:
-		return
-	delta = _crowd_dt
-	_crowd_dt = 0.0
+	# THROTTLED ONLY IF ASKED. When it is, the accumulated delta is replayed in
+	# one step, so the crowd covers the same ground either way and
+	# `crowd_travel_m` cannot tell the two apart -- which is what makes it a
+	# control on the SHOVE rather than on how far anybody walked.
+	if crowd_hz > 0.0:
+		_crowd_dt += delta
+		if _crowd_dt < 1.0 / crowd_hz:
+			return
+		delta = _crowd_dt
+		_crowd_dt = 0.0
 	var eye := (_body.global_position if _body != null else Vector3.ZERO)
 	for w in _walkers:
 		var d: float = w.omega * delta
@@ -688,8 +925,10 @@ func advance_crowd(delta: float) -> void:
 		# Eight phases over one stride cycle. `cycle_s` and `omega` come from
 		# the SAME `walk_clip`, so the feet land where the body has moved to.
 		w.phase = int(floor(w.t / w.cycle_s * 8.0)) % 8
+		# THE CAPSULE GOES WHERE THE BODY GOES. The drawn body and the thing a
+		# player bumps into come from ONE call, so they cannot disagree about
+		# where somebody is -- and `push_off` reads the same function again
+		# rather than the capsule's transform, so a third answer is impossible.
 		if w.body != null:
-			var xf := _walker_xform(w)
-			w.body.global_transform = Transform3D(xf.basis,
-				xf.origin + xf.basis.y * (maxf(w.h_m, 2.0 * w.r_m + 0.01) * 0.5))
+			w.body.global_transform = _walker_body_xform(w)
 	_place_crowd()

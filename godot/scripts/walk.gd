@@ -762,6 +762,23 @@ func _spawn_player() -> void:
 	_player.add_child(shape)
 	_player.position = spawn
 	add_child(_player)
+	# ONE THING STEPS THE BODY. Every headless mode in this file drives
+	# `player.step()` from `_physics_process` below, and `player.gd` has its own
+	# `_physics_process` that steps it again from a keyboard that is not there --
+	# a zero wish, which is harmless to the walk and rebuilds the basis from
+	# `_yaw`, which is not harmless to the eye. See `player.gd::drive_externally`
+	# and `docs/runtime-4h.md`. A build with a window and a player at the
+	# keyboard is untouched: none of these three flags is present.
+	var a2 := _args()
+	if ((a2.has("walk-test") or a2.has("stream-test") or a2.has("shot"))
+			and not a2.has("self-step")):
+		_player.drive_externally()
+	elif a2.has("self-step"):
+		_self_step = true
+		print("walk: player.gd is STEPPING ITSELF as well (control) -- the "
+			+ "body is stepped twice a frame and the second step rebuilds its "
+			+ "basis from a yaw nobody set, so the eye stops following the "
+			+ "walk. See eye_err_deg in the verdict.")
 
 	# THE LOOK COMES FROM interior.tscn, not from here. What used to be in this
 	# spot was a hand-written Environment with ambient 0.6 and no tonemapping --
@@ -1083,8 +1100,20 @@ func _stream_frame(delta: float) -> void:
 	else:
 		var a := atan2(p.y, p.x) + _s_dir * (_s_lookahead / maxf(_s_r, 1.0))
 		steer = Vector3(_s_r * cos(a), _s_r * sin(a), _s_z) - p
+	# SAMPLED BEFORE THE STEP, and the first version was not. `player.gd`'s own
+	# `_physics_process` runs AFTER this node's, so a reading taken straight
+	# after `player.step` sees the basis this file just set and reports 0.0
+	# however wrong the eye is by the time anything looks through it. What the
+	# player sees is what the LAST thing to touch the basis left, which is what
+	# is here at the top of the next frame.
+	_note_eye(steer)
 	_face(steer)
 	_player.step(delta, Vector2.ZERO, false, false, steer)
+	# AND THEN NOBODY IS INSIDE ANYBODY. `npc.gd::push_off` separates the body
+	# from any person it overlaps, across the floor plane only, before the next
+	# frame's `move_and_slide` can see the overlap. It is not `move_and_slide`'s
+	# job because it cannot do it without costing the floor -- see that file.
+	_push_off(delta)
 	_stream.update(_player.global_position)
 	_note_residency()
 	if _visiting:
@@ -1095,10 +1124,48 @@ func _stream_frame(delta: float) -> void:
 	var q := _player.global_position
 	var d := q.distance_to(_traverse_prev)
 	_path_m += d
+	# WHAT KIND OF OFF-FLOOR IS IT? A count alone cannot tell a body thrown a
+	# metre into the air from one whose contact flickers for a frame while
+	# something pushes past it, and the two want completely different fixes.
+	# So: how many separate EPISODES, the longest one, and how far above its own
+	# last floor position the body ever got. Measured along the body's own up,
+	# which on a ring is radial and different at every angle -- a world axis
+	# would read the corridor's curvature as lift.
 	if _player.is_on_floor():
 		_s_floor_m += d
+		_floor_p = q
+		_have_floor_p = true
+		_offf_run = 0
 	else:
 		_off_floor += 1
+		if _offf_run == 0:
+			_offf_episodes += 1
+		_offf_run += 1
+		_offf_run_max = maxi(_offf_run_max, _offf_run)
+		if _have_floor_p:
+			var lift: float = (q - _floor_p).dot(_player.body_up())
+			_lift_m = maxf(_lift_m, lift)
+			_drop_m = minf(_drop_m, lift)
+			# WHAT IS IT TOUCHING? A count of off-floor frames cannot name the
+			# thing that took the floor away, and three wrong hypotheses were
+			# tested against that count before this existed. The first few
+			# episodes, in full, with the colliders `move_and_slide` actually
+			# resolved against.
+			if _offf_run == 1 and _offf_episodes <= 8:
+				var hits := PackedStringArray()
+				for i in _player.get_slide_collision_count():
+					var kc := _player.get_slide_collision(i)
+					var nd := kc.get_collider()
+					hits.append("%s@n=%.2f,%.2f,%.2f" % [
+						("?" if nd == null else String((nd as Node).name)),
+						kc.get_normal().x, kc.get_normal().y,
+						kc.get_normal().z])
+				print("walk: OFF FLOOR f=%d lift=%.1fmm v_up=%.3f wall=%s "
+					% [_frame, lift * 1000.0,
+						_player.velocity.dot(_player.body_up()),
+						str(_player.is_on_wall()).to_lower()]
+					+ "slides=%d [%s]" % [_player.get_slide_collision_count(),
+						", ".join(hits)])
 	_traverse_prev = q
 
 	var here: int = _stream.cell_at(q)
@@ -1120,28 +1187,33 @@ func _stream_frame(delta: float) -> void:
 		get_tree().quit(0)
 
 
-## POINT THE BODY THE WAY IT IS WALKING, and this is a defect the streaming gate
-## found in the harness rather than in the station.
+## POINT THE BODY THE WAY IT IS WALKING.
 ##
-## `player.gd` has its own `_physics_process`, which steps the body every frame
-## from the KEYBOARD -- no keys down, so a zero wish -- and that step rebuilds the
-## body's basis from `_yaw`. A headless test that drives `step()` itself is
-## therefore stepped TWICE a frame: once with its own steer, and once more with
-## `_yaw`, which the stream test never set. So the body walked wherever it was
-## steered and FACED WHEREVER YAW 0 POINTS, which on a ring deck is straight
-## along the station's spine.
+## THE DEFECT THIS WORKED AROUND IS FIXED, and the history is worth keeping
+## because the workaround being in this file was the mistake. `player.gd` used to
+## step the body a SECOND time every frame from its own `_physics_process` --
+## from a keyboard that is not there, so a zero wish, which still rebuilt the
+## basis from `_yaw`. The body walked wherever it was steered and FACED WHEREVER
+## YAW 0 POINTS, which on a ring deck is straight along the station's spine: the
+## eye ended up 160 degrees off a console the body was walking directly at. Since
+## session 4h `_spawn_player` calls `player.gd::drive_externally()`, so nothing
+## steps the body but this file.
 ##
-## Nothing about the walk noticed, because a wish vector needs no facing. What
-## needs one is the EYE: `interact.gd` scans a 35-degree cone about the camera
-## axis, and the camera rides the body. Measured, the target console sat **160
-## degrees off the view axis** while the body walked directly at it from 3.6 m --
-## so it could never be prompted, and the failure read as "the interactable is
-## not wired" rather than "the player is looking the other way".
-##
-## `--walk-test` is unaffected and its numbers do not move: it calls
-## `set_yaw(_best_yaw)` after its heading sweep, which is why the monolithic use
-## gate has always been able to see what it walked up to.
+## This stays, and it is no longer a workaround. `player.step` derives its
+## forward from `_yaw` on any frame it is given no steer -- the settle frames are
+## exactly that -- so keeping `_yaw` equal to the direction the body was last
+## sent is what makes the eye continuous across a leg boundary rather than
+## snapping back to the spine. It inverts `player.step`'s own
+## `fwd0.rotated(up, yaw)` rather than assuming a convention.
 func _face(dir: Vector3) -> void:
+	# THE CONTROL IS THE WHOLE PRE-4h ARRANGEMENT, not half of it. With
+	# `player.gd` stepping itself AND this keeping `_yaw` equal to the steer,
+	# the two agree and the defect is invisible -- measured, `eye_err_deg=0.0`
+	# either way. `--self-step` therefore turns off both: the body is stepped
+	# twice a frame and nothing tells it which way it is walking, which is
+	# exactly what the stream test met before session 4g worked around it here.
+	if _self_step:
+		return
 	if _player == null or dir.length_squared() < 1e-9:
 		return
 	var up: Vector3 = _player.body_up()
@@ -1158,6 +1230,39 @@ func _face(dir: Vector3) -> void:
 	# `fwd0*cos(yaw) + (up x fwd0)*sin(yaw)` -- so this inverts exactly that
 	# rather than assuming a convention.
 	_player.set_yaw(atan2(flat.dot(up.cross(fwd0)), flat.dot(fwd0)))
+
+
+## HOW FAR THE EYE IS FROM WHERE THE BODY IS WALKING, in degrees, every frame.
+##
+## THE ONLY NUMBER THAT COULD HAVE CAUGHT THE DOUBLE STEP. A body stepped twice
+## a frame walks exactly as well as one stepped once -- a wish vector needs no
+## facing -- so every distance in this verdict was unaffected while the camera
+## sat at yaw 0, which on a ring deck is straight along the station's spine.
+## `interact.gd` scans a 35-degree cone about that camera, so the failure
+## surfaced as "the interactable is not wired".
+##
+## The control is `--self-step`, which puts `player.gd`'s own `_physics_process`
+## back. Flattened onto the floor plane before comparing, because `player.step`
+## flattens the steer too and a target a little up or down the radius is not a
+## heading error.
+func _note_eye(steer: Vector3) -> void:
+	if _player == null:
+		return
+	var cam := _player.get_node_or_null("Camera3D") as Camera3D
+	if cam == null:
+		return
+	var up: Vector3 = _player.body_up()
+	var flat: Vector3 = steer - up * steer.dot(up)
+	if flat.length() < 1e-4:
+		return
+	var fwd: Vector3 = -cam.global_transform.basis.z
+	fwd = fwd - up * fwd.dot(up)
+	if fwd.length() < 1e-4:
+		return
+	var e: float = rad_to_deg(fwd.angle_to(flat))
+	_eye_err_sum += e
+	_eye_err_n += 1
+	_eye_err_max = maxf(_eye_err_max, e)
 
 
 # -- the visit legs ---------------------------------------------------------
@@ -1387,14 +1492,40 @@ func _print_stream_verdict() -> void:
 	print(("STREAMTEST mode=%s ok=%s start=%d dir=%s prime_ms=%d "
 		+ "traverse_m=%.2f floor_m=%.2f net_m=%.2f offfloor=%d/%d "
 		+ "crossings=%d entered=%s late=%d min_lead_m=%s min_lead_frames=%d "
-		+ "%s%s why=%s") % [
+		+ "%s%s%s why=%s") % [
 		mode, str(ok).to_lower(), _start_cell,
 		("+1" if _s_dir > 0.0 else "-1"), _prime_ms,
 		_path_m, _s_floor_m, _traverse_from.distance_to(_traverse_prev),
 		_off_floor, _t_traverse, crossings, ",".join(ent), _s_late, lead,
 		(-1 if _s_min_lead_f > 1 << 29 else _s_min_lead_f),
-		_stream.report(), visit,
+		_stream.report(), visit, _crowd_report(),
 		("-" if why.is_empty() else ";".join(why).replace(" ", "_"))])
+
+
+## WAS THERE A CROWD IN THE CORRIDOR AT ALL, and what were they made of?
+##
+## PRINTED UNCONDITIONALLY, because the alternative is the defect that let the
+## NPC assertions vanish for six runs: a gate that reads `offfloor=0` from a run
+## where `--crowd-glbs` pointed at nothing has measured a corridor with nobody in
+## it and called the crowd fixed. `walkers` is what makes the claim falsifiable;
+## `crowd_collider` is which of the two mechanisms actually ran, so a control
+## cannot silently be the subject.
+func _crowd_report() -> String:
+	var s := (" offfloor_runs=%d offfloor_longest=%d lift_mm=%.1f drop_mm=%.1f"
+		+ " eye_err_deg=%.1f/%.1f") % [
+		_offf_episodes, _offf_run_max, _lift_m * 1000.0, _drop_m * 1000.0,
+		(0.0 if _eye_err_n == 0 else _eye_err_sum / float(_eye_err_n)),
+		_eye_err_max]
+	if _people == null:
+		# THE SAME TOKENS EITHER WAY. A verdict whose field set changes with the
+		# thing it describes is the defect that let the NPC assertions vanish
+		# for six runs -- `walkable.py` guarded them on the presence of the very
+		# token they asserted.
+		return s + (" walkers=0 crowd_travel_m=0.0 crowd_collider=-"
+			+ " push_m=0.00 push_max_mm=0.0")
+	return s + " walkers=%d crowd_travel_m=%.1f crowd_collider=%s %s" % [
+		_people.crowd_count(), _people.crowd_travel_m(),
+		_people.walker_collider_report(), _people.push_report()]
 
 
 ## THE THREE CLAIMS, TWICE, AND THE FREE IN BETWEEN.
@@ -1494,6 +1625,17 @@ var _s_floor_m := 0.0
 var _s_min_lead_m := 1e30
 var _s_min_lead_f := 1 << 30
 var _s_ready_frame := {}
+var _floor_p := Vector3.ZERO
+var _have_floor_p := false
+var _offf_run := 0
+var _offf_run_max := 0
+var _offf_episodes := 0
+var _lift_m := 0.0
+var _drop_m := 0.0
+var _self_step := false
+var _eye_err_sum := 0.0
+var _eye_err_n := 0
+var _eye_err_max := 0.0
 
 
 ## THE PLAYABLE BUILD, PHOTOGRAPHED THROUGH THE PLAYER'S OWN EYE.
@@ -1628,6 +1770,7 @@ func _physics_process(delta: float) -> void:
 	if _shooting:
 		_frame += 1
 		_player.step(delta, Vector2.ZERO, false, false)
+		_push_off(delta)
 		if _frame >= _shot_settle:
 			_shooting = false
 			set_physics_process(false)
@@ -1638,6 +1781,7 @@ func _physics_process(delta: float) -> void:
 	_frame += 1
 	if _frame <= _t_settle:
 		_player.step(delta, Vector2.ZERO, false, false)
+		_push_off(delta)
 		if _trace > 0 and _frame % _trace == 0:
 			_trace_line("settle")
 		if _frame == _t_settle:
@@ -1677,6 +1821,7 @@ func _physics_process(delta: float) -> void:
 			_player.set_yaw(float(which) * PI * 0.5)
 			_leg_from = _rest
 		_player.step(delta, Vector2(0, 1), false, false)
+		_push_off(delta)
 		if _trace > 0 and n % _trace == 0:
 			_trace_line("walk%d" % which)
 		var d := _player.global_position.distance_to(_leg_from)
@@ -1701,6 +1846,7 @@ func _physics_process(delta: float) -> void:
 			_goto - _player.global_position)
 	else:
 		_player.step(delta, Vector2(0, 1), false, false)
+	_push_off(delta)
 	_try_use()
 	var p := _player.global_position
 	var gd := p.distance_to(_goto)
@@ -1719,7 +1865,16 @@ func _physics_process(delta: float) -> void:
 			goto_s = " goto_start_m=%.2f goto_best_m=%.2f goto_end_m=%.2f" % [
 				_traverse_from.distance_to(_goto), _goto_best, gd]
 			if _doors != null:
-				goto_s += " door_open=%.2f" % _doors.openness(_door_key)
+				# THE MOST OPEN IT EVER GOT, not how open it is now. This read
+				# the LIVE openness at the frame the verdict prints, which for a
+				# body that walked THROUGH a door is several seconds after it
+				# shut again behind them -- so a run that worked perfectly
+				# reported `door_open=0.00` and read as the failure. The visit
+				# gate has used `peak_openness` since it was written; the deck
+				# walk was still sampling too late. See docs/runtime-4h.md.
+				goto_s += " door_open=%.2f door_open_now=%.2f" % [
+					_doors.peak_openness(_door_key),
+					_doors.openness(_door_key)]
 			if _people != null:
 				goto_s += " turned_deg=%.1f noticed=%d facing_err_deg=%.1f" % [
 					_people.turned_deg(), _people.noticed_count(),
@@ -1762,11 +1917,20 @@ func _physics_process(delta: float) -> void:
 				(("-" if String(_interact.used_prompt()) == ""
 					else String(_interact.used_prompt()))
 					.replace(" ", "_"))]
+		# DROP IS A HEIGHT AND WAS MEASURED AS A DISTANCE. `MAX_DECK_DROP_M`'s
+		# own words are "a drop of more than a step means it is not where the
+		# shell says the floor is" -- a claim about the floor's RADIUS -- and
+		# `spawn.distance_to(_rest)` is the 3D displacement, which on a deck
+		# with people on it also counts every millimetre a passing walker
+		# pushed the body sideways while it settled. Both are printed:
+		# `drop` unchanged, `drop_up` along the body's own up, which on a ring
+		# is radial and different at every angle.
 		print(("WALKTEST rest=%.3f,%.3f,%.3f on_floor=%s fell=%s moved_1s=%.3f "
-			+ "drop=%.3f legs=%.2f/%.2f/%.2f/%.2f traverse_m=%.2f net_m=%.2f "
-			+ "offfloor=%d/%d%s") % [
+			+ "drop=%.3f drop_up=%.3f legs=%.2f/%.2f/%.2f/%.2f "
+			+ "traverse_m=%.2f net_m=%.2f offfloor=%d/%d%s") % [
 			_rest.x, _rest.y, _rest.z, str(_on_floor).to_lower(),
 			str(fell).to_lower(), _moved_1s, spawn.distance_to(_rest),
+			(spawn - _rest).dot(_player.body_up()),
 			_leg_m[0], _leg_m[1], _leg_m[2], _leg_m[3],
 			_path_m, _traverse_from.distance_to(p), _off_floor, _t_traverse,
 			goto_s])
@@ -1783,6 +1947,15 @@ func _physics_process(delta: float) -> void:
 ## THE PROMPT IS RE-TAKEN FIRST. `_interact` is a sibling node, so its own
 ## `_physics_process` may not have run since the body moved; `refresh()` is
 ## frame-guarded and idempotent.
+## NOBODY IS INSIDE ANYBODY. One call, after every place this file steps the
+## body, so the walk test and the stream test separate identically. See
+## `npc.gd::push_off`: it is a horizontal correction and never a vertical one,
+## because `move_and_slide` cannot resolve a person without costing the floor.
+func _push_off(delta: float) -> void:
+	if _people != null:
+		_people.push_off(delta)
+
+
 func _try_use() -> void:
 	if _interact == null or _use_group == "" or _used_ok:
 		return
