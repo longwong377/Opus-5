@@ -2068,6 +2068,26 @@ def _build():
         binds=("npc_suit", "npc_suit_robe", "npc_suit_shell", "npc_suit_tube"),
         scenes=("interior",),
         source="npc/costume.py PAKMARA_COWL_ANCHOR; npc/body.py _S_VORLON"))
+    # THE IMPOSTOR CARD, and it was the ONE group a body can emit that this file
+    # did not bind. `npc/body.py`'s own gate has been reporting it as a declared
+    # hole -- "the day the runtime starts drawing cards, every figure past 272 m
+    # lands on the fallback" -- and the fix belongs here rather than there.
+    #
+    # DERIVED FROM WHAT IT REPLACES, not chosen. A card stands in for a whole
+    # dressed figure at over 272 m, so its colour is the figure's own area-mean:
+    # a body is mostly garment with skin at the head and hands, and `npc_suit`'s
+    # SUIT_V against `npc_skin` weighted by that split is what a viewer sees as
+    # one averaged pixel. Roughness sits between the two; the card is two
+    # triangles and never catches a specular highlight worth arguing about.
+    a(Material(
+        "npc_impostor",
+        "A person at over 272 m — the area-mean of garment and skin",
+        albedo=(SUIT_V * 0.82 + SKIN_V * 0.18,
+                SUIT_V * 0.82 + SKIN_V * 0.18 * 0.86,
+                SUIT_V * 0.82 + SKIN_V * 0.18 * 0.74),
+        roughness=0.55, metallic=0.0, specular=0.4,
+        binds=("npc_impostor",), scenes=("interior",),
+        source="npc/body.py lod9 card; area-mean of npc_suit and npc_skin"))
     a(Material(
         "npc_hair", "Hair — matte, at the bottom of the measured human range",
         albedo=(HAIR_V, HAIR_V * 0.96, HAIR_V * 0.92), roughness=0.78,
@@ -4327,6 +4347,12 @@ TEXTURE_BINDINGS = (
 # perfectly smooth, has no microstructure to show. Putting a weave on a lamp
 # lens or a stone tooth on a window is the failure this list exists to prevent.
 UNTEXTURED_BY_DESIGN = {
+    # A CARD CANNOT CARRY A TRIM SHEET. `npc_impostor` is `body.py`'s lod9 --
+    # TWO TRIANGLES standing in for a whole dressed figure at over 272 m, where
+    # the figure subtends well under a pixel. A texture on it is sampled once at
+    # a random point and reads as noise between frames; the area-mean albedo IS
+    # the correct value there, which is why it was derived that way.
+    "impostors": ("npc_impostor",),
     "glass": ("device_screen_glass", "dome_glazing", "viewport_glazing",
               "tram_glass", "garden_glass", "garden_town_window",
               "garden_pool_water", "garden_falling_water", "ground_water"),

@@ -1,4 +1,4 @@
-[gd_scene load_steps=170 format=3]
+[gd_scene load_steps=171 format=3]
 
 ; A room, from the inside.
 ;
@@ -203,6 +203,7 @@
 [ext_resource type="Material" path="res://materials/npc_metal__psi_chrome.tres" id="m_npc_metal__psi_chrome"]
 [ext_resource type="Material" path="res://materials/npc_metal__ranger_gold.tres" id="m_npc_metal__ranger_gold"]
 [ext_resource type="Material" path="res://materials/npc_cloth_trim__nightwatch_black.tres" id="m_npc_cloth_trim__nightwatch_black"]
+[ext_resource type="Material" path="res://materials/npc_impostor.tres" id="m_npc_impostor"]
 
 [sub_resource type="Environment" id="Env"]
 ; Flat colour, not a sky. Near-black rather than pure black for the reason the
@@ -620,6 +621,7 @@ material_rules = {
 "npc_foot": ExtResource("m_npc_skin"),
 "npc_hair": ExtResource("m_npc_hair"),
 "npc_hand": ExtResource("m_npc_skin"),
+"npc_impostor": ExtResource("m_npc_impostor"),
 "npc_leather__civ_boot": ExtResource("m_npc_leather__civ_boot"),
 "npc_leather__ef_black_leather": ExtResource("m_npc_leather__ef_black_leather"),
 "npc_leather__ef_command_leather": ExtResource("m_npc_leather__ef_command_leather"),

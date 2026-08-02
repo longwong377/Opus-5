@@ -499,6 +499,7 @@ material_rules = {
 "npc_foot": ExtResource("m_npc_skin"),
 "npc_hair": ExtResource("m_npc_hair"),
 "npc_hand": ExtResource("m_npc_skin"),
+"npc_impostor": ExtResource("m_npc_impostor"),
 "npc_leather__civ_boot": ExtResource("m_npc_leather__civ_boot"),
 "npc_leather__ef_black_leather": ExtResource("m_npc_leather__ef_black_leather"),
 "npc_leather__ef_command_leather": ExtResource("m_npc_leather__ef_command_leather"),
