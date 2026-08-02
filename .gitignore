@@ -30,3 +30,10 @@ __pycache__/
 # infrastructure, not content, and committing it would put a second copy of the
 # whole project inside the project.
 .claude/worktrees/
+
+# station/variety.py's rebuilt-room cache. 8.6 MB of derived geometry keyed on
+# the generators' own content hash -- `--rebuild` ignores it and `--verify-cache`
+# diffs sampled rooms against it, so it is reproducible rather than authoritative.
+# A cache that can go stale is a second copy of a computed number; this one is
+# keyed so it cannot, and it does not belong in the repository either way.
+.variety-cache/
