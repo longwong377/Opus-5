@@ -374,6 +374,18 @@ PART_CHAINS = {
     # do; a thumb belongs to the wrist for the same reason the hand does.
     "nose": ("head",), "ear": ("head",),
     "thumb": ("wrist_%s",),
+    # THE EYES, THE BROWS AND THE FINGERS, session 4g, and the same assertion
+    # fired again on the first build -- which is the point of it. An eye and an
+    # eyebrow are rigid to the skull and take the head bone, like the nose and
+    # the ears above. A FINGER TAKES THE WRIST, and there is no finger bone: a
+    # digit's own articulation is 15 mm of movement at the tip, which is under
+    # a pixel past 1.5 m, and adding four chains of three bones each to every
+    # figure would multiply the skeleton by five to animate something no camera
+    # in this project resolves. The hand carries them rigidly, exactly as the
+    # thumb has been carried since 4e, and `_selftest`'s interpenetration
+    # control is what would catch that being wrong.
+    "eye": ("head",), "eyebrow": ("head",),
+    "finger": ("wrist_%s",),
     "centauri_crest": ("head",), "minbari_crest": ("head",),
     "pakmara_keel": ("head",), "pakmara_tendrils": ("head",),
     "abbai_fin": ("head",),

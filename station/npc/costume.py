@@ -1733,10 +1733,25 @@ def group_name(slot, fabric):
 # head of hair in flesh tone. The crests are the same: a Centauri crest is
 # hair, not scalp. Session 4e; the body agent found it while giving the figures
 # hair to begin with, and it had been latent for as long as hair existed.
+#
+# THE FALL-THROUGH IS SILENT AND THAT IS THE HAZARD. A part this table does not
+# name becomes `npc_skin_<part>`, which resolves to a real material and renders
+# in flesh tone -- so the failure mode is not a magenta box, it is a head of
+# hair the colour of a forehead, which is what shipped for a session. It is
+# RIGHT for the nose, the ears, the thumbs, the keel and the tendrils, which
+# are skin; it is wrong for anything that is not. `body._selftest`'s tag gate
+# therefore checks the emitted GROUP of every part against `materials.resolve`
+# AND against this table's intent, rather than trusting the default.
+#
+# `eye` and `eyebrow` are `npc_hair` for the reason `body._f_eyes` sets out --
+# an eyebrow IS hair, and `npc_hair` is the library's one measured "darker than
+# skin, matte" surface. `finger` is bare skin, like `hand`, and is `None`.
 PART_SLOT = {
     "torso": "npc_cloth", "arm": "npc_cloth", "leg": "npc_cloth",
-    "neck": None, "head": None, "hand": None, "foot": "npc_leather",
+    "neck": None, "head": None, "hand": None, "finger": None,
+    "foot": "npc_leather",
     "hair": "npc_hair", "brow": None,
+    "eye": "npc_hair", "eyebrow": "npc_hair",
     "centauri_crest": "npc_hair", "minbari_crest": "npc_hair",
     "pakmara_keel": None, "pakmara_tendrils": None, "abbai_fin": None,
 }

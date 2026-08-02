@@ -96,6 +96,50 @@ stop being visible at three different distances. The same split applies here:
     `no_detail` level, was BALD. Hair has moved to the `extremity` tier for that
     reason and the schedule now prices what the box could not see.
 
+SESSION 4G: A FACE, A HAND, AND THE VIEW THE SILHOUETTE TEST COULD NOT SEE
+---------------------------------------------------------------------------
+Session 4f gave the head nine landmark rings, a nose, a pair of ears and a
+haircut, and the owner looked at the next render and said the same thing again:
+*"the npcs just being undetailed featureless blobs"*. Three things were still
+true of every resident on the station and each is now closed:
+
+  * **no eyes.** A head with a nose and no eyes is a mannequin at every
+    distance a mannequin can be told from a person, and nothing else on a face
+    reads below ~100 px of head height. `_f_eyes` builds two eyes and two
+    brows, off the SKULL'S OWN section (`_face_point`) so a Narn's braincase
+    and every cranium jitter carry them. They emit into `npc_hair` -- an
+    eyebrow IS hair, and it is the library's one measured "darker than skin"
+    material -- and they are emitted LAST, beside the hair, because
+    `populace._by_material` merges RUNS and a dark part in the middle of the
+    skin run costs two draw calls a person.
+  * **no fingers.** `_hand` was one closed shell wrist to fingertip. A mitten
+    and a hand have the same bounding box, the same front outline, and nothing
+    else in common: what reads as a hand is the 4 mm of BACKGROUND between two
+    fingers. The palm now stops at the metacarpal head and gives up exactly
+    what the four fingers add, so the hand does not grow, and culling
+    `fingers` brings the mitt back as the coarse level of the same object.
+  * **species that were four humans in hats at the level the crowd SHIPS at.**
+    `_detail_gate` rasterises a filled silhouette from the FRONT AND THE SIDE
+    and scores every pair of human / Centauri / Minbari / Narn in the head
+    band. It found the Minbari crest 60% shorter than its own source says
+    ("wider than the skull" -- it was 1.18 half-widths), and it found the brow
+    ridge culled at 22 m, which made every Narn in a corridor a bald human.
+    Both fixed; the front-only view was itself the blind instrument, since a
+    brow, a nose and an occiput all project fore-aft.
+
+`_small_seg` is what paid for it: a part is built at the coarsest ring count
+whose sagitta is no worse than the BODY's own at that level, so a 9 mm finger
+is 6 segments and not 64. Four fingers at the body's count would be 1,024
+triangles a hand.
+
+And the gate found two defects older than this session, both the same shape:
+`interior.boundary_edges` keys edges on POSITION and `edge_census` keys on
+INDEX, so a coincident capped disc between two shells is invisible to one and
+obvious to the other. Every humanoid's foot began on exactly the leg's last
+ring (2 non-manifold edges) and Kosh's yoke on exactly the robe's (125). Both
+now overlap like every other joint here. Session 3x's `portal_frame` lesson,
+in a second module: coincident faces are geometry nobody can see.
+
 And the honest limit, which no switch distance can fix: **the deviation budget
 bounds the error per figure and says nothing about the number of figures.**
 Beyond `SUBPIXEL_FIGURE_M` (695 m, where a 0.45 m shoulder span falls under one
@@ -364,11 +408,29 @@ _S_GENERIC = Surface("skin", ("EXTRAPOLATED",), "plain",
 # resident's head from another's. Hair is therefore priced with the hands and
 # the feet, and the honest statement of the cost is in `report()`.
 FEATURE_TIER = {
-    "brow":            "detail",
+    # THE BROW RIDGE IS A NARN'S IDENTITY, NOT A DETAIL, and it was `detail`
+    # until session 4g -- so it was gone past 22 m and the corridor's Narn were
+    # bald humans with a slightly heavier braincase. It is the same mistake
+    # hair was in `_head_profile`'s note: an attachment that lies inside the
+    # figure's own bounding box, priced by a measurement that cannot see it.
+    # `_f_brow` is what `G'Kar more.jpg` establishes about that face; dropping
+    # it at the level the crowd is BAKED at is dropping the species.
+    # 20 triangles at seg 8. `_detail_gate`'s silhouette measurement is what
+    # moved it: human vs Narn read IoU 0.875 in the head band with the brow
+    # culled, which is 87.5% the same picture.
+    "brow":            "extremity",
     # The nose and the ears. 20-60 mm of relief, genuinely cullable, and the
     # tier says so.
     "face":            "detail",
     "thumbs":          "detail",
+    # Eyes and brows, and fingers. Both are `detail` for the same reason the
+    # nose is -- an eye aperture is 11 mm tall and the gap between two fingers
+    # is 4 mm -- and both are here rather than absent because a head with no
+    # eyes and a hand with no digits is what "featureless blob" MEANS at the
+    # only distance a player ever talks to somebody. `feature_schedule` prices
+    # them; nothing here asserts they are worth their triangles.
+    "eyes":            "detail",
+    "fingers":         "detail",
     "hair":            "extremity",
     "hands":           "extremity",
     "feet":            "extremity",
@@ -738,6 +800,59 @@ def _mirror(theta_deg, half, amt):
     """A left/right symmetric pair of lobes. A body is bilateral; typing the
     two entries by hand is how one of them ends up 5 degrees out."""
     return ((theta_deg, half, amt), (180.0 - theta_deg, half, amt))
+
+
+# ---------------------------------------------------------------------------
+# Segment counts for the SMALL parts -- fingers, eyes, brows
+# ---------------------------------------------------------------------------
+# The reference radius a small part's sagitta is compared against: the human
+# figure's own shoulder half-width, MEASURED, straight out of `FIGURE`.
+#
+# IT IS DELIBERATELY NOT `_max_section_radius()`, for two reasons and the
+# second one is the interesting one. First, that function measures by BUILDING
+# every species, so calling it from inside a builder recurses into itself.
+# Second, it reads 0.4514 m -- the Vorlon's robe hem, an object no humanoid
+# has -- against this 0.2056 m, so using it would let every attachment be
+# built COARSER than the body it hangs on. Being the smaller of the two makes
+# `_small_seg` conservative in the only direction that matters: a part can come
+# out finer than the strict sagitta rule requires, never coarser.
+# `_selftest` asserts that ordering rather than an agreement, and prints both.
+REF_SECTION_R_M = FIGURE["shoulder_w"] * HUMAN_STATURE_M / 2.0     # 0.2056 m
+
+# Not powers of two, and deliberately so. A small attachment is PRESENT OR
+# GONE -- it is culled by `FEATURE_TIER`, never decimated -- so it takes no part
+# in the strict-subset property `SILHOUETTE_STEPS` exists to guarantee, and is
+# free to be sized by its own sagitta. `costume._ATT_SEGS` makes the identical
+# argument for a collar and this is the same ladder.
+_PART_SEGS = (4, 5, 6, 8, 10, 12, 16, 24, 32)
+
+
+def _small_seg(radius_m, seg, floor=4, cap=8):
+    """Ring count for an attachment of `radius_m`, matched to the BODY's error.
+
+    THE RULE IS "AS HONEST AS THE THING IT IS ATTACHED TO", stated once so it
+    needs no distance argument. The body's silhouette error at `seg` is the
+    sagitta at the figure's worst section, `R(1 - cos(pi/seg))`; the coarsest
+    `n` whose sagitta at `radius_m` is no worse than that is exactly as visible
+    a defect as the body already carries, and anything finer is spent on an
+    error the torso beside it does not honour.
+
+    It runs the OPPOSITE way from intuition and that is the whole point: a 9 mm
+    finger at the body's 64 segments would cost 4x what it needs, which is the
+    mistake `costume._att_seg` records paying for a 90 mm collar. Four fingers
+    at 64 segments are 1,024 triangles a hand; at 6 they are 128, and the
+    sagitta is 1.2 mm.
+
+    `cap` is a stated ceiling on quality rather than an oversight, in the same
+    words `costume._att_seg` uses: past 8 segments a 9 mm cylinder is round to
+    well under a tenth of a millimetre and the ring count is buying nothing any
+    camera in this project can resolve.
+    """
+    ref = REF_SECTION_R_M * (1.0 - math.cos(math.pi / max(int(seg), 3)))
+    for n in _PART_SEGS:
+        if radius_m * (1.0 - math.cos(math.pi / n)) <= ref:
+            return max(floor, min(n, cap, max(int(seg), floor)))
+    return max(floor, min(cap, max(int(seg), floor)))
 
 
 def _loft(rings, cap_lo=True, cap_hi=True):
@@ -1321,8 +1436,22 @@ def build_humanoid(ind: Individual, sp: SpeciesBody, seg=16, ring_stride=1,
         # Ends ABOVE the chin plane and narrower than the head's lowest ring, so
         # the head swallows the joint. Ending at the chin left the neck's top
         # cap visible as a disc with the head balanced on it.
-        m.add(*_loft([_ring(0.0, sh_y - 0.02 * H, -0.004 * H,
-                            neck_r * 1.30, neck_r * 1.30, seg),
+        #
+        # THREE RINGS, AND THE BOTTOM ONE IS THE FIX FOR judge-4e's F-9.
+        # `_torso_profile` closes on a trapezius ring at 0.40 of the shoulder
+        # half-width, 0.024 of stature above the acromion -- a 42 mm rise from
+        # a 118 mm half-width to a 47 mm one. That is not a slope, it is a lid,
+        # and a two-ring neck standing on it gave the render a head balanced on
+        # a post above a shelf. The added root ring is nearly twice the neck's
+        # own radius with the same 20-degree trapezius lobes the torso's top
+        # ring carries, so the two solids meet at similar widths and the
+        # sterno-mastoid runs into the shoulder instead of off a cliff. One
+        # ring: 2 x seg triangles, 16 of them at the level the crowd ships at.
+        m.add(*_loft([_ring(0.0, sh_y - 0.042 * H, -0.004 * H,
+                            neck_r * 1.90, neck_r * 1.72, seg, power=2.2,
+                            lobes=_mirror(20.0, 45.0, 0.12)),
+                      _ring(0.0, sh_y + 0.012 * H, -0.004 * H,
+                            neck_r * 1.22, neck_r * 1.26, seg, power=2.1),
                       _ring(0.0, chin_y + 0.010 * H, -0.006 * H,
                             neck_r * 0.86, neck_r * 0.94, seg)]),
               "npc_%s_neck" % sp.surface.kind, "neck")
@@ -1410,8 +1539,21 @@ def build_humanoid(ind: Individual, sp: SpeciesBody, seg=16, ring_stride=1,
             # A foot is narrow at the heel, widest across the ball, and its
             # toe box is a wedge rather than a cone -- so the forward rings are
             # squarer AND offset forward, which is what puts the instep in.
-            foot = [_ring(side * lx, ank_y * H, 0.0, r_an, r_an, lseg,
-                          power=2.2),
+            #
+            # THE TOP RING IS INSIDE THE SHIN, and it was not until 4g. It sat
+            # at exactly `ank_y * H` with exactly `r_an` and exactly `lseg`
+            # segments -- the leg's own last ring, to the vertex. Two closed
+            # shells with a coincident capped disc between them is 4 triangles
+            # on one edge, which `edge_census` cannot see because it keys on
+            # vertex INDEX and the two caps are different indices, and which
+            # `interior.boundary_edges` sees immediately because it keys on
+            # POSITION. It is the same defect as session 3x's `portal_frame`:
+            # coincident faces are geometry nobody can see, and they z-fight.
+            # The comment 20 lines up already stated the rule -- "rooted a
+            # little ABOVE ... so the two solids overlap" -- and the ankle was
+            # the one joint in the figure that did not follow it.
+            foot = [_ring(side * lx, (ank_y + 0.020) * H, 0.0, r_an * 0.94,
+                          r_an * 0.94, lseg, power=2.2),
                     _ring(side * lx, 0.012 * H, 0.020 * H, r_an * 1.05,
                           r_an * 1.9, lseg, power=2.5,
                           lobes=((90.0, 60.0, 0.06),)),
@@ -1426,6 +1568,21 @@ def build_humanoid(ind: Individual, sp: SpeciesBody, seg=16, ring_stride=1,
         fn = _FEATURES.get(f)
         if fn is not None:
             fn(m, ind, sp, seg, chin_y, head_h, hw, hd)
+
+    # --- the dark parts of the face, LAST ----------------------------------
+    # EMITTED HERE AND NOT WITH `_face`, AND THE REASON IS THE DRAW-CALL MERGE.
+    # `populace._by_material` merges a body's spans into one span per RUN of
+    # the same material, and a run only ever joins spans that are already
+    # ADJACENT in the triangle list. The eyes and brows are `npc_hair`; the
+    # nose and the ears are skin, and so is a Narn's brow ridge. Emitted with
+    # the face they would cut the skin run in three; emitted before the
+    # attachments they would cut it in two on every species whose attachment is
+    # skin. Emitted LAST they sit beside the hair, and a body's merged span
+    # count does not move at all -- which `_detail_gate` measures per species,
+    # against `budget.BUDGETS["deck_primitives"] = 600`, and which has a
+    # control that reorders them and watches the count grow.
+    if "eyes" in keep:
+        _f_eyes(m, ind, sp, seg, chin_y, head_h, hw, hd, ch)
 
     # Stature last, pose after it: `stature_m` is the ERECT crown height, so it
     # is fixed before the stoop is applied and the stoop then genuinely lowers
@@ -1715,8 +1872,29 @@ def _face(m, ind, sp, seg, chin_y, head_h, hw, hd, ch):
 # ---------------------------------------------------------------------------
 # Hands
 # ---------------------------------------------------------------------------
+# Four fingers, as (z position across the palm, length, radius), the last two
+# in fractions of the wrist radius and the first of the knuckle ring's own
+# depth. The proportions are standard adult hand anthropometry -- index and
+# ring within 5% of each other, middle longest, little ~0.78 of middle, and the
+# four spanning about 1.25 palm depths at the knuckle -- which is the same
+# class of source as `FIGURE`'s cross-check: two references that could not have
+# copied each other, the photograph and the anthropometric table. EXTRAPOLATED
+# at authority 5 as a set; see docs/npc-detail-4g.md, INV-4G-002.
+FINGER_PLAN = ((+0.62, 0.92, 0.98),      # index
+               (+0.21, 1.00, 1.00),      # middle -- longest and thickest
+               (-0.21, 0.94, 0.93),      # ring
+               (-0.62, 0.78, 0.80))      # little
+# Where the fingers leave the palm and where they end, in stature. The old
+# four-ring mitt ran 0.000 -> 0.100 of stature, which is 175 mm on a human and
+# is hand length; the split keeps that total and puts the metacarpal head at
+# 0.045, so the fingers are 0.055 of stature = 96 mm, against an adult middle
+# finger of 85-100 mm.
+FINGER_ROOT_F = 0.045
+FINGER_TIP_F = 0.100
+
+
 def _hand(m, ind, sp, side, ax, hy, r_wr, lseg, keep):
-    """A hand: four rings of palm and fingers, plus a thumb.
+    """A hand: a palm, four fingers and a thumb.
 
     IT WAS THREE RINGS OF NOTHING AND IT WAS ORIENTED WRONG. The old mitt was
     widest across X -- palms facing forward, which is a posture nobody stands
@@ -1725,26 +1903,72 @@ def _hand(m, ind, sp, side, ax, hy, r_wr, lseg, keep):
     FORWARD. Getting that round the right way costs nothing and is most of why
     the old arm ended in a paddle.
 
-    The thumb is `detail`-tier: it is 20 mm of silhouette, which
-    `feature_schedule` will price honestly, and it exists so that a figure the
-    player is talking to has a hand instead of a mitten.
+    AND THEN IT WAS STILL A MITTEN, which is what session 4f left and what the
+    owner is looking at: one closed lofted shell from the wrist to the
+    fingertips with nothing cut into it. A mitten and a hand have the same
+    bounding box, the same silhouette from the front, and completely different
+    ones from every other angle -- the gap between two fingers is 4 mm of
+    background showing through, and background showing through is the only
+    thing that reads as a hand rather than as the end of a sleeve.
+
+    So the palm now stops at the metacarpal head and four fingers carry the
+    rest. THE PALM GETS SHORTER BY EXACTLY WHAT THE FINGERS ADD, so the hand
+    does not grow: `FINGER_TIP_F` is the old plan's last ring. When `fingers`
+    is culled the palm runs the full length again and the mitt comes back --
+    it is the coarse level of the same object, not a different hand.
+
+    Every count here is `_small_seg`'s, not the body's: a 9 mm finger built at
+    the torso's 64 segments is the `costume._att_seg` mistake with a different
+    part name.
     """
     H = ind.stature_m
     x = side * ax
+    fingers = "fingers" in keep
     # (dy in stature, rx, rz, power, dz in stature)
-    plan = ((0.000, 0.72, 0.86, 2.0, 0.000),      # wrist
-            (0.030, 0.78, 1.20, 2.6, 0.004),      # knuckles -- the widest ring
-            (0.070, 0.66, 1.10, 2.8, 0.006),      # mid-phalanx
-            (0.100, 0.40, 0.62, 2.2, 0.004))      # fingertips
+    plan = [(0.000, 0.72, 0.86, 2.0, 0.000),      # wrist
+            (0.030, 0.78, 1.20, 2.6, 0.004)]      # knuckles -- the widest ring
+    if fingers:
+        # The palm ends at the metacarpal head, a little proud of where the
+        # fingers root, so the finger roots are BURIED and neither end shows a
+        # seam -- the same trick the nose, the arm root and the head's t=-0.07
+        # ring use.
+        plan.append((FINGER_ROOT_F + 0.006, 0.70, 1.14, 2.8, 0.005))
+    else:
+        plan.append((0.070, 0.66, 1.10, 2.8, 0.006))    # mid-phalanx
+        plan.append((0.100, 0.40, 0.62, 2.2, 0.004))    # fingertips
     rings = [_ring(x, hy - dy * H, dz * H, r_wr * rx, r_wr * rz, lseg,
                    power=p)
              for dy, rx, rz, p, dz in plan]
     m.add(*_loft(rings), "npc_%s_hand" % sp.surface.kind, "hand")
 
+    if fingers:
+        # Knuckle-ring depth, so the four sit across the palm the palm actually
+        # has rather than across a remembered one.
+        knuckle_rz = r_wr * 1.20
+        r0 = r_wr * 0.30
+        fseg = _small_seg(r0, lseg, floor=4, cap=8)
+        y_root = hy - FINGER_ROOT_F * H
+        for zf, lk, rk in FINGER_PLAN:
+            length = (FINGER_TIP_F - FINGER_ROOT_F) * H * lk
+            r = r0 * rk
+            rings = []
+            for k in range(3):
+                t = k / 2.0
+                # A hanging hand's fingers curl slightly toward the thigh, and
+                # the tips converge: both are `t*t` so the root ring stays in
+                # the plane the palm hands it.
+                rings.append(_ring(
+                    x - side * r_wr * 0.16 * t * t,
+                    y_root + 0.010 * H - length * t,
+                    knuckle_rz * zf * (1.0 - 0.14 * t * t) + r_wr * 0.06 * t,
+                    r * (1.0 - 0.28 * t * t), r * (1.0 - 0.22 * t * t), fseg,
+                    power=2.2))
+            m.add(*_loft(rings), "npc_%s_finger" % sp.surface.kind, "finger")
+
     if "thumbs" not in keep:
         return
-    tseg = max(4, min(8, lseg))
     tr = r_wr * 0.36
+    tseg = _small_seg(tr, lseg, floor=4, cap=8)
     rings = []
     for dy, rk, dz in ((0.020, 1.00, 0.60), (0.044, 0.90, 1.05),
                        (0.066, 0.55, 1.30)):
@@ -1753,13 +1977,166 @@ def _hand(m, ind, sp, side, ax, hy, r_wr, lseg, keep):
     m.add(*_loft(rings), "npc_%s_thumb" % sp.surface.kind, "thumb")
 
 
+# ---------------------------------------------------------------------------
+# Eyes and brows
+# ---------------------------------------------------------------------------
+# WHY THESE ARE `npc_hair` AND NOT A NEW MATERIAL, said plainly because it is
+# the one decision here a reviewer should push on. A body in this project has
+# no UVs and no texture: `materials.py` binds one material per GROUP, so
+# anything on a face that is not skin-coloured has to be its own group, and the
+# only groups a body may emit are the ones the material library already binds
+# -- `npc_skin`, `npc_hair`/`npc_crest`, the wardrobe, the suits. Inventing
+# `npc_eye` would put every eye on the fallback, which is the defect CLAUDE.md
+# records three times this week and `check_material_coverage` now fails on.
+#
+# `npc_hair` is the right one anyway rather than merely the available one: an
+# EYEBROW IS HAIR, and the eye's aperture is the darkest thing on a face at any
+# distance a crowd is seen from. Both are "darker than skin, matte", which is
+# what `npc_hair` is measured as. What would overturn it: a `npc_eye` material
+# with a sclera and an iris, which needs `materials.py` and is not this
+# module's to add.
+#
+# Sizes, in fractions of head height, from adult craniofacial anthropometry --
+# the same standard-proportion source `_head_profile` cites, and the same
+# authority-5 status. Palpebral fissure 28 x 11 mm on a 231 mm head gives the
+# half-extents below; interpupillary 63 mm on a 145 mm head width gives 0.43 of
+# the head's own half-width, which is where the eye sits ACROSS the face.
+# Logged as INV-4G-001 in docs/npc-detail-4g.md.
+EYE_X_F = 0.43        # of the skull's half-width at the eye ring
+EYE_T = 0.46          # `_head_profile`'s own eye-line row
+BROW_T = 0.550        # on its brow-ridge row, 21 mm above the eye
+EYE_HALF_W_F = 0.061  # of head height
+EYE_HALF_H_F = 0.024
+BROW_HALF_W_F = 0.078
+BROW_HALF_H_F = 0.013
+
+
+def _face_point(ind, sp, t, xf, chin_y, head_h, hw, hd, ch):
+    """A point on the SKULL's own surface at head-height `t`, `xf` of the way
+    out to its half-width. Returns (x, y, z).
+
+    Hard rule 4 at the scale of an eye socket: the eye and the brow are placed
+    off the head's actual section rather than off a remembered one, so a Narn's
+    heavier braincase, a pak'ma'ra's deeper skull and every per-individual
+    cranium jitter carry them without a second table. `_head_at` gives the
+    radius scale and the z drift; the superellipse and the front squash come
+    from the nearest row of `_head_profile`, so if that table is re-shaped the
+    eyes move with it.
+    """
+    prof = _head_profile(ind)
+    row = min(prof, key=lambda r: abs(r[0] - t))
+    p = float(row[3].get("power", 2.0))
+    sq = float(row[3].get("squash_front", 1.0))
+    k, zo = _head_at(ind, t)
+    jk = sp.jaw_k + (1.0 - sp.jaw_k) * min(1.0, max(0.0, t) / 0.34)
+    rx, rz = hw * k * jk, hd * k * jk
+    e = max(0.0, 1.0 - min(1.0, abs(xf)) ** p)
+    return (xf * rx, chin_y + head_h * ch * t,
+            head_h * zo + rz * (e ** (1.0 / p)) * sq)
+
+
+def _f_eyes(m, ind, sp, seg, chin_y, head_h, hw, hd, ch):
+    """Two eyes and two brows. THE PART THE WORD "FEATURELESS" IS ABOUT.
+
+    A head with a nose and a pair of ears and nothing at the eye line is a
+    mannequin, and a mannequin is exactly what the corridor render shows. At
+    the distances a player meets somebody -- 1 to 6 m, where a head is 40 to
+    240 px -- the eye is the first thing the eye finds, and the second is the
+    brow. Nothing else on a face reads at all below about 100 px.
+
+    Both are BURIED, roughly half their depth inside the skull, for the reason
+    `_face` records for the nose: a shallow blob laid on a curved surface
+    crosses it at a grazing angle over its whole footprint, which is the case
+    no renderer sorts well, and a deeply set one crosses along a short steep
+    curve. The eye then stands 0.32 of its own half-width proud, which is 4.5
+    mm on a human -- an eye that is flush z-fights and an eye that is proud is
+    a bug's.
+
+    `plan == "none"` has no eyes (the pak'ma'ra face is four tendrils and a
+    maw) and neither does an encounter suit, which never reaches this function.
+    """
+    if sp.face == "none":
+        return
+    ew = head_h * EYE_HALF_W_F
+    eh = head_h * EYE_HALF_H_F
+    ed = ew * 0.55
+    # A Vree is built large-craniumed and small-featured, and its `flat` face
+    # plan already shrinks the nose; the eyes follow the same factor so the one
+    # species whose face is deliberately understated stays understated.
+    small = 0.74 if sp.face == "flat" else 1.0
+    ew, eh, ed = ew * small, eh * small, ed * small
+    eseg = _small_seg(ew, seg, floor=4, cap=8)
+    bseg = _small_seg(head_h * BROW_HALF_H_F, seg, floor=4, cap=8)
+
+    for side in (-1, 1):
+        ex, ey, ez = _face_point(ind, sp, EYE_T, side * EYE_X_F,
+                                 chin_y, head_h, hw, hd, ch)
+        # HOW FAR IT STANDS PROUD IS THE WHOLE OF WHETHER IT READS, and the
+        # first version got it wrong in the safe direction. Buried 42% of its
+        # depth like the nose, a 28 x 11 mm lens on a skull that curves away
+        # under it emerged as two 3 mm slivers -- present in the mesh, absent
+        # in the picture. It is a LENS, not a blob: the lid assembly of a real
+        # eye stands about 10 mm proud of the orbital rim, so 0.86 of its depth
+        # is outside and the crossing with the skull is still steep because the
+        # section is flat (power 2.4) rather than round.
+        cz = ez - ed * 0.14
+        m.add(*_loft([
+            _ring(ex, ey - eh, cz, ew * 0.62, ed * 0.66, eseg, power=2.4),
+            _ring(ex, ey, cz, ew * 1.00, ed * 1.00, eseg, power=2.5),
+            _ring(ex, ey + eh * 0.92, cz, ew * 0.70, ed * 0.72, eseg,
+                  power=2.4)]),
+            "npc_hair", "eye")
+
+        bw = head_h * BROW_HALF_W_F * small
+        bh = head_h * BROW_HALF_H_F * small
+        bx, by, bz = _face_point(ind, sp, BROW_T, side * EYE_X_F,
+                                 chin_y, head_h, hw, hd, ch)
+        bcz = bz - bw * 0.30
+        m.add(*_loft([
+            _ring(bx, by - bh, bcz, bw * 0.86, bw * 0.36, bseg, power=2.6),
+            _ring(bx, by, bcz, bw * 1.00, bw * 0.42, bseg, power=2.8),
+            _ring(bx, by + bh * 0.86, bcz, bw * 0.74, bw * 0.32, bseg,
+                  power=2.6)]),
+            "npc_hair", "eyebrow")
+
+
 def _f_brow(m, ind, sp, seg, chin_y, head_h, hw, hd):
-    """A brow shelf. G'Kar more.jpg shows deep vertical furrows under a heavy
-    supraorbital ridge; at crowd distance the ridge is the part that reads."""
+    """A brow shelf. The ridged face's one attachment, and it earns its tier.
+
+    `G'Kar more.jpg` shows deep vertical furrows under a heavy supraorbital
+    ridge and a crown that is a reticulated DOME rather than a scalp -- and the
+    shelf alone was only ever the first of those. The silhouette gate is what
+    said so: with the brow and nothing else, a Narn and a human overlapped at
+    IoU 0.875 from the front and 0.816 from the side at the level the corridor
+    crowd is baked at, which is 82-88% the same picture. A supraorbital shelf
+    projects FORWARD, so a front-view outline cannot see it at all, and the
+    dome is the part that changes the head's outline from every angle.
+
+    What is NOT here, and why, is below the shelf: a crown keel was built,
+    measured, and removed.
+    """
+    bseg = max(6, seg // 2)
     y = chin_y + head_h * 0.60
-    rings = [_ring(0.0, y - head_h * 0.05, hd * 0.30, hw * 0.80, hd * 0.34, max(6, seg // 2)),
-             _ring(0.0, y + head_h * 0.05, hd * 0.34, hw * 0.86, hd * 0.30, max(6, seg // 2))]
+    rings = [_ring(0.0, y - head_h * 0.05, hd * 0.30, hw * 0.80, hd * 0.34, bseg),
+             _ring(0.0, y + head_h * 0.05, hd * 0.34, hw * 0.86, hd * 0.30, bseg)]
     m.add(*_loft(rings), "npc_%s_brow" % sp.surface.kind, "brow")
+
+    # A CROWN KEEL WAS BUILT HERE AND THE MEASUREMENT THREW IT OUT. Written
+    # down because a negative result nobody records is a thing the next context
+    # builds again. The idea was a low fore-aft ridge over the crown, riding
+    # `_head_at`, to give the Narn something the front view could see. It made
+    # the number WORSE: human vs Narn went 0.875 -> 0.946 in the front head
+    # band and 0.816 -> 0.832 in the side one, because a ridge standing proud
+    # of the crown occupies exactly the outline region a HUMAN'S HAIR CAP
+    # occupies, so it made a Narn look more like a person with a haircut, not
+    # less. It cost 32 triangles at the bake level to do that.
+    #
+    # And the reference does not ask for it: `G'Kar more.jpg` shows a
+    # reticulated, spotted DOME, which is a texture and a colour on a skull
+    # this module already builds wider and deeper than a human's. The Narn is
+    # the one species of the four whose identity is not a silhouette, the gate
+    # below reports the pair as the closest of the six, and that is the honest
+    # answer rather than an invented fin.
 
 
 def _f_centauri_crest(m, ind, sp, seg, chin_y, head_h, hw, hd):
@@ -1789,11 +2166,23 @@ def _f_minbari_crest(m, ind, sp, seg, chin_y, head_h, hw, hd):
     upright fin rising behind and above the crown, wider than the skull -- and
     not its size. Sizes are EXTRAPOLATED. Swept back rather than upright because
     every figure in that frame shows the crest behind the ear line.
+
+    AND IT WAS TOO SMALL TO BE THE THING IT NAMES, which the silhouette gate
+    found rather than an opinion: at 0.46 of head height and 1.18 of the
+    skull's half-width, a Minbari's head band overlapped a human's at IoU
+    0.875 -- 87.5% the same picture -- while a Centauri's crest brought that
+    pair to 0.770. The source says "wider than the skull" and this was barely
+    wider; it now stands 0.74 of head height above where it leaves the skull
+    and 1.44 of its half-width across. Both numbers are still EXTRAPOLATED,
+    authority 5, and what bounds them is not taste: `_selftest` asserts every
+    species clears `interior_kit.PROVISIONAL["door_height_m"]`, and the crest
+    is measured into that bounding box. Logged as INV-4G-003. It costs ZERO
+    triangles -- `_blade`'s ring and segment counts are unchanged.
     """
     _blade(m, "npc_crest", "minbari_crest", 0.0,
-           chin_y + head_h * 0.72, -hd * 0.35,
-           hw * 1.18, head_h * 0.46, hd * 0.26, seg,
-           sweep=hd * 0.45, taper=0.72, rings=4)
+           chin_y + head_h * 0.70, -hd * 0.34,
+           hw * 1.44, head_h * 0.74, hd * 0.30, seg,
+           sweep=hd * 0.58, taper=0.82, rings=4)
 
 
 def _f_pakmara_keel(m, ind, sp, seg, chin_y, head_h, hw, hd):
@@ -1963,7 +2352,17 @@ def build_column(ind: Individual, sp: SpeciesBody, seg=16, ring_stride=1,
     m.add(*_loft(robe), "npc_suit_robe", "vorlon_robe")
 
     # The collar/yoke: a short flared ring the shells and hood sit on.
-    yoke = [_ring(0.0, collar_y, 0.0, collar_r, collar_r * 0.88, seg),
+    #
+    # ITS BOTTOM RING IS INSIDE THE ROBE, and it was a literal copy of the
+    # robe's top ring until 4g -- same centre, same radii, same segment count,
+    # both capped. `interior.boundary_edges`, which keys edges on POSITION
+    # rather than on vertex index, read 125 non-manifold edges on Kosh: 250
+    # triangles of robe and 250 of yoke sharing one disc and z-fighting over
+    # it. `edge_census` could not see it and had scored the suit closed since
+    # the module was written. Buried 0.030 of stature down and 6% narrower, so
+    # the two shells overlap the way every other joint in this file does.
+    yoke = [_ring(0.0, collar_y - 0.030 * H, 0.0, collar_r * 0.94,
+                  collar_r * 0.83, seg),
             _ring(0.0, collar_y + 0.055 * H, 0.0, collar_r * 1.22,
                   collar_r * 1.02, seg),
             _ring(0.0, collar_y + 0.090 * H, 0.0, collar_r * 1.02,
@@ -2834,6 +3233,365 @@ def report(out=print):
 
 
 # ---------------------------------------------------------------------------
+# The silhouette gate: what a head, a hand and a haircut are actually worth
+# ---------------------------------------------------------------------------
+def silhouette_raster(verts, tris, nx=64, ny=128, axis=0, span=None):
+    """A FILLED silhouette bitmap of a figure, normalised to its own height.
+
+    Filled, not a vertex splat: a vertex cloud of two different bodies overlaps
+    almost nowhere and reports a difference that is really a sampling artefact,
+    which is what the first version of this measured and why it is written down.
+    Scanline-filled per triangle, which is exact for the coverage question.
+
+    Normalised by the figure's OWN height so this compares SHAPE. Stature is a
+    real difference between species and it is asserted separately -- folding it
+    in here would let a tall human pass as a Narn's silhouette test.
+
+    `axis` picks the projected horizontal: 0 is x (front view), 2 is z (side).
+    """
+    ys = [p[1] for p in verts]
+    y0, y1 = min(ys), max(ys)
+    h = max(y1 - y0, 1e-9)
+    cx = (min(p[axis] for p in verts) + max(p[axis] for p in verts)) / 2.0
+    w = span if span is not None else 0.75          # of a stature, half-width
+    grid = bytearray(nx * ny)
+
+    def to_px(p):
+        return (((p[axis] - cx) / h / (2.0 * w) + 0.5) * nx,
+                (p[1] - y0) / h * ny)
+
+    for (a, b, c) in tris:
+        pa, pb, pc = to_px(verts[a]), to_px(verts[b]), to_px(verts[c])
+        lo = max(0, int(math.floor(min(pa[1], pb[1], pc[1]))))
+        hi = min(ny - 1, int(math.ceil(max(pa[1], pb[1], pc[1]))))
+        for row in range(lo, hi + 1):
+            yc = row + 0.5
+            xs = []
+            for (p, q) in ((pa, pb), (pb, pc), (pc, pa)):
+                if (p[1] <= yc < q[1]) or (q[1] <= yc < p[1]):
+                    f = (yc - p[1]) / (q[1] - p[1])
+                    xs.append(p[0] + (q[0] - p[0]) * f)
+            if len(xs) < 2:
+                continue
+            xs.sort()
+            x0 = max(0, int(math.floor(xs[0] + 0.5)))
+            x1 = min(nx - 1, int(math.ceil(xs[-1] - 0.5)))
+            base = row * nx
+            for col in range(x0, x1 + 1):
+                grid[base + col] = 1
+    return grid, nx, ny
+
+
+def silhouette_iou(g1, g2, lo_row=0, hi_row=None):
+    """Intersection over union of two rasters, optionally over a row band."""
+    (a, nx, ny), (b, _nx, _ny) = g1, g2
+    hi_row = ny if hi_row is None else hi_row
+    inter = union = 0
+    for r in range(lo_row, hi_row):
+        base = r * nx
+        for c in range(nx):
+            x, y = a[base + c], b[base + c]
+            if x or y:
+                union += 1
+                if x and y:
+                    inter += 1
+    return inter / max(1, union)
+
+
+# Every pair of these four must differ by more than this in the head band --
+# the top fifth of the figure, where a crest, a cranium and a haircut live --
+# in the VIEW THEY DIFFER MOST IN, front or side.
+#
+# 0.90 is the worst measured pair with a margin, not a target: human vs Narn
+# reads 0.832 and is the closest of the six, because a Narn's identity in the
+# reference is a spotted, reticulated crown -- a texture -- and not a shape.
+# The two controls below are what make the number mean anything: four bodies
+# built from ONE parameter block read 1.000 and fail this ceiling, and taking
+# the Centauri's crest away moves that pair from 0.634 to 0.848.
+SPECIES_HEAD_IOU_MAX = 0.90
+GATE_SPECIES = ("human", "centauri", "minbari", "narn")
+
+
+def _detail_gate(check, quiet=False, out=print):
+    """The four questions session 4g's silhouette work has to answer.
+
+    Run from `_selftest`, and printable on its own with `--silhouette`, because
+    the numbers are the deliverable and a number nobody prints is a number the
+    next context re-derives. Each part carries a NEGATIVE CONTROL that
+    constructs the defect and confirms the check rejects it -- AAA-STANDARD
+    ROBUSTNESS 4, and the reason is in this repository's own history: three
+    assertions here scored a defect as passing because the defective case was
+    never built.
+    """
+    say = (lambda *_a, **_k: None) if quiet else out
+    chain = lod_chain()
+
+    # -- 1. triangles per body per level, and the draw-call merge ----------
+    say("\nTRIANGLES PER BODY, and the merge that keeps a deck under "
+        f"{600} primitives")
+    try:
+        sys.path.insert(0, _STATION)
+        import populace as _pop                                 # noqa: PLC0415
+        merge = _pop._by_material
+    except Exception as exc:                                    # noqa: BLE001
+        check(False, f"populace._by_material not importable: {exc}")
+        merge = None
+    if merge is not None:
+        say(f"  {'level':6} {'segs':>5} {'features':>14} {'tri':>7} "
+            f"{'spans':>6} {'merged':>7}")
+        worst_merged, worst_where = 0, None
+        for i, lv in enumerate(chain):
+            v, t, s = build("human", "merge-probe", i, chain)
+            mg = merge(s)
+            say(f"  {lv['name']:6} {lv['radial_segments']:>5} "
+                f"{lv['features']:>14} {len(t):>7,} {len(s):>6} {len(mg):>7}")
+        # EVERY SPECIES, not the one I happened to look at. A Narn's brow and a
+        # Minbari's crest are skin and bone; if the dark face parts were
+        # emitted before them the run would split on exactly the species this
+        # loop would otherwise never build.
+        for key, sp in SPECIES.items():
+            for i, lv in enumerate(chain):
+                if lv["kind"] != "mesh":
+                    continue
+                m = _PLANS[sp.plan](individual(key, "merge-probe"), sp,
+                                    seg=lv["radial_segments"],
+                                    ring_stride=lv["ring_stride"],
+                                    features=lv["features"])
+                n = len(merge(m.spans))
+                if n > worst_merged:
+                    worst_merged, worst_where = n, f"{key}/{lv['name']}"
+        check(worst_merged <= 3,
+              f"a bare body merges to at most 3 material runs at every level "
+              f"of every species (worst {worst_merged} on {worst_where}) -- "
+              f"the new parts are emitted adjacent to a part of their own "
+              f"material, not in the middle of another")
+        # THE CONTROL. Emit the same spans with the dark face parts moved next
+        # to the nose, which is where they would naturally have gone, and the
+        # merge has to grow. If it does not, this check is measuring nothing.
+        _v, _t, sp_ok = build("human", "merge-probe", 0, chain)
+        moved, dark = [], []
+        for nm, lo, hi in sp_ok:
+            (dark if nm == "npc_hair" else moved).append((nm, lo, hi))
+        cut = next(i for i, (nm, _l, _h) in enumerate(moved)
+                   if nm.endswith("_nose"))
+        bad = moved[:cut + 1] + dark + moved[cut + 1:]
+        check(len(merge(bad)) > len(merge(sp_ok)),
+              f"MUTATION: emitting the eyes and brows beside the nose instead "
+              f"of beside the hair splits the skin run -- "
+              f"{len(merge(sp_ok))} runs becomes {len(merge(bad))}")
+        # And the level the corridor is actually baked at, dressed, which is
+        # the number `budget.BUDGETS['deck_primitives']` is spent in.
+        try:
+            import npc.costume as _cos                          # noqa: PLC0415
+            bake = min(range(len(chain)),
+                       key=lambda i: abs(len(build("human", "bp", i, chain)[1])
+                                         - 600))
+            dv, dt, ds = _cos.build_dressed("human", "merge-probe",
+                                            lod=bake)[:3]
+            say(f"  dressed at the corridor bake level ({chain[bake]['name']}): "
+                f"{len(dt):,} tri, {len(ds)} spans, {len(merge(ds))} merged")
+            check(len(merge(ds)) <= 12,
+                  f"a DRESSED body at the bake level is at most 12 primitives "
+                  f"(got {len(merge(ds))})")
+        except Exception as exc:                                # noqa: BLE001
+            check(False, f"costume.build_dressed not usable here: {exc}")
+
+    # -- 2. every part is tagged and resolves to a material that exists ----
+    say("\nMATERIAL COVERAGE of every group any body can emit")
+    groups = set()
+    for key, sp in SPECIES.items():
+        for lv in chain:
+            if lv["kind"] != "mesh":
+                continue
+            m = _PLANS[sp.plan](individual(key, "tag-probe"), sp,
+                                seg=lv["radial_segments"],
+                                ring_stride=lv["ring_stride"],
+                                features=lv["features"])
+            check(all(g for g, _l, _h in m.spans),
+                  f"{key}/{lv['name']}: every span carries a group name")
+            check(len(m.spans) == len(m.parts),
+                  f"{key}/{lv['name']}: every emitted part is tagged "
+                  f"({len(m.spans)} spans against {len(m.parts)} parts)")
+            groups.update(g for g, _l, _h in m.spans)
+    groups.add("npc_impostor")
+    try:
+        sys.path.insert(0, _STATION)
+        import materials as _mat                                # noqa: PLC0415
+        unbound = sorted(g for g in groups if _mat.resolve_any(g) is None)
+        say(f"  {len(groups)} distinct groups, {len(unbound)} unbound "
+            f"{unbound if unbound else ''}")
+        # DECLARED, WITH A REASON, WHICH IS NOT THE SAME AS IGNORED.
+        # `npc_impostor` is the only group on this station a body can emit that
+        # `materials.py` does not bind, and it is latent rather than shipped:
+        # `lod9` is the impostor card, nothing outside this file references the
+        # name, and no exporter reaches that level -- `populace.crowd_ladder()`
+        # stops at lod8. It is still a real hole and it is reported rather than
+        # papered over: the day the runtime starts drawing cards, every figure
+        # past 272 m lands on the fallback. Fixing it needs a `npc_impostor`
+        # entry in `materials.py`, which this module does not own. The
+        # assertion is EXACTLY this list, so a NEW unbound group fails.
+        check(unbound == ["npc_impostor"] or not unbound,
+              f"every group a body emits resolves to a material, except the "
+              f"declared impostor card ({unbound})")
+        check(_mat.resolve_any("npc_eyeball_no_such_material") is None,
+              "MUTATION: an invented group name resolves to nothing, so the "
+              "check above is capable of failing")
+        # And the dressed groups, which are the ones that actually ship.
+        try:
+            import npc.costume as _cos2                         # noqa: PLC0415
+            dg = set()
+            for key in SPECIES:
+                for lod in (0, 2, 4):
+                    dg.update(g for g, _l, _h
+                              in _cos2.build_dressed(key, "tag-probe",
+                                                     lod=lod)[2])
+            du = sorted(g for g in dg if _mat.resolve_any(g) is None)
+            say(f"  {len(dg)} distinct DRESSED groups, {len(du)} unbound")
+            check(not du, f"every dressed group resolves too ({du})")
+            check(_mat.resolve_any("npc_hair") is _mat.resolve_any("npc_crest"),
+                  "eyes, brows, hair and crests share one measured material")
+        except Exception as exc:                                # noqa: BLE001
+            check(False, f"dressed material coverage not runnable: {exc}")
+    except Exception as exc:                                    # noqa: BLE001
+        check(False, f"materials.py not importable for the tag gate: {exc}")
+
+    # -- 3. closure, measured by the station's own instrument ---------------
+    say("\nCLOSURE, via interior.boundary_edges")
+    try:
+        sys.path.insert(0, _STATION)
+        import interior as _int                                 # noqa: PLC0415
+        # IT RETURNS TWO LISTS, NOT TWO COUNTS, and `interior`'s own docstring
+        # warns that mis-reading the shape of this return is a mistake made
+        # here before. Written out so the next reader sees the len().
+        worst = 0
+        for key, sp in SPECIES.items():
+            for lv in chain:
+                if lv["kind"] != "mesh":
+                    continue
+                v, t, _s = _PLANS[sp.plan](
+                    individual(key, "closure-probe"), sp,
+                    seg=lv["radial_segments"], ring_stride=lv["ring_stride"],
+                    features=lv["features"]).as_tuple()
+                op, nmf = _int.boundary_edges(v, t)
+                worst = max(worst, len(op) + len(nmf))
+                check(not op and not nmf,
+                      f"{key}/{lv['name']}: interior.boundary_edges reads "
+                      f"{len(op)} open / {len(nmf)} non-manifold")
+        say(f"  {len(SPECIES)} species x {len(chain) - 1} mesh levels, worst "
+            f"open+non-manifold edge count {worst}")
+        v, t, _s = build("human", "closure-probe", 0, chain)
+        holed = len(_int.boundary_edges(v, t[:-2])[0])
+        check(holed > 0,
+              f"MUTATION: deleting two triangles from a body makes "
+              f"interior.boundary_edges report {holed} open edges")
+    except Exception as exc:                                    # noqa: BLE001
+        check(False, f"interior.boundary_edges not usable here: {exc}")
+
+    # -- 4. four species, four silhouettes ---------------------------------
+    # AT THE LEVEL THE CROWD IS BAKED AT, not at lod0. A difference that only
+    # exists on the hero mesh is a difference nobody sees.
+    bake = min(range(len(chain)),
+               key=lambda i: abs(len(build("human", "bp", i, chain)[1]) - 600))
+    say(f"\nSPECIES SILHOUETTE at {chain[bake]['name']}, head band = the top "
+        f"fifth of the figure")
+    # FRONT AND SIDE, and the second view is not decoration. A front-view
+    # outline cannot see a brow ridge, a nose, an occiput or a pak'ma'ra's
+    # tendrils, because every one of them projects fore-aft -- which is the
+    # same blindness `_cull_standoff` exists to fix in the feature schedule.
+    # Measured from one view a Narn and a human are 87.5% the same picture and
+    # the difference that matters is entirely in the other one. The pair's
+    # score is the view they differ MOST in: two bodies differ if there is any
+    # angle a player can tell them apart from.
+    rast = {}
+    for key in GATE_SPECIES:
+        v, t, _s = build(key, "sil-probe", bake, chain)
+        rast[key] = (silhouette_raster(v, t, axis=0),
+                     silhouette_raster(v, t, axis=2))
+    ny = rast["human"][0][2]
+    band = int(ny * 0.80)
+    say(f"  {'pair':24} {'front':>7} {'side':>7} {'head F':>7} {'head S':>7}")
+    worst_pair, worst_iou = None, 0.0
+    for i, a in enumerate(GATE_SPECIES):
+        for b in GATE_SPECIES[i + 1:]:
+            wf = silhouette_iou(rast[a][0], rast[b][0])
+            ws = silhouette_iou(rast[a][1], rast[b][1])
+            hf = silhouette_iou(rast[a][0], rast[b][0], lo_row=band)
+            hs = silhouette_iou(rast[a][1], rast[b][1], lo_row=band)
+            say(f"  {a + ' vs ' + b:24} {wf:>7.3f} {ws:>7.3f} "
+                f"{hf:>7.3f} {hs:>7.3f}")
+            if min(hf, hs) > worst_iou:
+                worst_pair, worst_iou = (a, b), min(hf, hs)
+    check(worst_iou <= SPECIES_HEAD_IOU_MAX,
+          f"every pair of {GATE_SPECIES} differs in the head band "
+          f"(worst {worst_pair} at IoU {worst_iou:.3f} against a "
+          f"{SPECIES_HEAD_IOU_MAX} ceiling)")
+    # CONTROL A: the measurement must return 1.000 for a figure against itself,
+    # or the numbers above are noise rather than difference.
+    check(abs(silhouette_iou(rast["human"][0], rast["human"][0], lo_row=band)
+              - 1.0) < 1e-12,
+          "a figure against itself reads IoU 1.000")
+    # CONTROL B: take the Centauri's crest away and the pair that was the most
+    # different has to collapse toward a human. This is the assertion that
+    # would have fired on a station of four humans in different hats.
+    spc = SPECIES["centauri"]
+    ind = individual("centauri", "sil-probe")
+    bare = Individual(*[getattr(ind, f.name) if f.name != "features"
+                        else tuple(x for x in ind.features
+                                   if x not in ("centauri_crest", "hair"))
+                        for f in ind.__dataclass_fields__.values()])
+    bv, bt, _bs = _PLANS[spc.plan](bare, spc,
+                                   seg=chain[bake]["radial_segments"],
+                                   ring_stride=chain[bake]["ring_stride"],
+                                   features=chain[bake]["features"]).as_tuple()
+    bare_iou = min(silhouette_iou(silhouette_raster(bv, bt, axis=ax),
+                                  rast["human"][k], lo_row=band)
+                   for k, ax in enumerate((0, 2)))
+    with_iou = min(silhouette_iou(rast["centauri"][k], rast["human"][k],
+                                  lo_row=band) for k in (0, 1))
+    say(f"  CONTROL  centauri without its crest vs human: {bare_iou:.3f} "
+        f"(with the crest: {with_iou:.3f})")
+    check(bare_iou > with_iou + 0.05,
+          f"MUTATION: stripping the Centauri crest moves its head silhouette "
+          f"toward a human's, {with_iou:.3f} -> {bare_iou:.3f}")
+    # CONTROL C, AND IT IS THE ONE THE TASK NAMES: build all four species from
+    # the HUMAN parameter block with no attachments at all -- four humans in
+    # different hats, which is exactly the failure this gate exists to catch --
+    # and every pair has to read 1.000 and FAIL the ceiling above. Without
+    # this, a raster that returned a constant would pass everything.
+    hsp = SPECIES["human"]
+    clones = {}
+    for key in GATE_SPECIES:
+        ind0 = individual("human", "sil-probe")
+        cl = Individual(*[getattr(ind0, f.name) if f.name != "species"
+                          else key
+                          for f in ind0.__dataclass_fields__.values()])
+        cm = _PLANS[hsp.plan](cl, hsp, seg=chain[bake]["radial_segments"],
+                              ring_stride=chain[bake]["ring_stride"],
+                              features=chain[bake]["features"])
+        cv, ct, _cs = cm.as_tuple()
+        clones[key] = (silhouette_raster(cv, ct, axis=0),
+                       silhouette_raster(cv, ct, axis=2))
+    clone_worst = 0.0
+    for i, a in enumerate(GATE_SPECIES):
+        for b in GATE_SPECIES[i + 1:]:
+            clone_worst = max(clone_worst,
+                              min(silhouette_iou(clones[a][k], clones[b][k],
+                                                 lo_row=band) for k in (0, 1)))
+    say(f"  CONTROL  four species built from ONE parameter block: "
+        f"worst pair IoU {clone_worst:.3f}")
+    check(clone_worst > SPECIES_HEAD_IOU_MAX,
+          f"MUTATION: four bodies built from one parameter block read "
+          f"{clone_worst:.3f} and FAIL the {SPECIES_HEAD_IOU_MAX} ceiling the "
+          f"four real species pass -- the gate can tell four humans apart "
+          f"from four species")
+    # Stature is the other half of a species' silhouette and is asserted
+    # separately, because the raster above normalises it away on purpose.
+    stats = {k: nominal(k).stature_m for k in GATE_SPECIES}
+    check(max(stats.values()) - min(stats.values()) > 0.08,
+          f"and the four differ in stature as well as in shape ({stats})")
+
+
+# ---------------------------------------------------------------------------
 # Self-test
 # ---------------------------------------------------------------------------
 def _selftest():
@@ -2888,7 +3646,14 @@ def _selftest():
     # Cross-module: the body must be drawn from the SAME stream as the name and
     # the schedule, or one NPC id gives three unrelated people.
     try:
+        # BOTH directories, and the second one is a fix. `schedule.py` reaches
+        # its siblings as `npc.<module>`, so the package's PARENT has to be
+        # importable too; with only `_HERE` on the path the import died with
+        # "No module named 'npc'" and this check had been reporting FAIL --
+        # against a real interface, for an environment reason -- since
+        # `schedule.py` grew that import.
         sys.path.insert(0, _HERE)
+        sys.path.insert(0, _STATION)
         import schedule as sched                        # noqa: PLC0415
         check(abs(sched._u("x", "y") - _u("x", "y")) < 1e-15,
               "body._u matches schedule._u byte for byte")
@@ -3088,12 +3853,27 @@ def _selftest():
                if individual("centauri", f"c{i}").sex == "f"]
     check(150 < len(males) < 250 and len(males) + len(females) == 400,
           f"sex splits about evenly ({len(males)} m / {len(females)} f of 400)")
-    mm = build("centauri", f"c{males[0]}", 0, chain)
-    ff = build("centauri", f"c{females[0]}", 0, chain)
-    check(any(g == "npc_hair" for g, _l, _h in mm[2]),
-          "a Centauri male carries the crest")
-    check(not any(g == "npc_hair" for g, _l, _h in ff[2]),
+    # BY PART, NOT BY GROUP, and the difference is a defect this assertion
+    # caught the moment eyes existed. The crest emits into `npc_hair` and so do
+    # the brows, so "no npc_hair group" stopped meaning "no crest" and started
+    # meaning "no crest and no eyebrows either" -- an assertion that had
+    # silently changed what it was about. The parts list is the thing that
+    # actually says which feature was built.
+    def _parts_of(species, npc_id):
+        sp = SPECIES[species]
+        return {n for n, _v, _t in _PLANS[sp.plan](
+            individual(species, npc_id), sp, seg=16, ring_stride=1,
+            features="all").parts}
+
+    mp = _parts_of("centauri", f"c{males[0]}")
+    fp = _parts_of("centauri", f"c{females[0]}")
+    check("centauri_crest" in mp and "hair" in mp,
+          "a Centauri male carries the crest and the hair")
+    check("centauri_crest" not in fp and "hair" not in fp,
           "a Centauri female carries no crest mesh at all, not a zero-size one")
+    check("eye" in fp and "eyebrow" in fp,
+          "and she still has eyes -- the shaven head is a feature-list drop, "
+          "not a bald group name")
     # Four tendrils, not two lobes. FACTIONS 9.2 flags the two-lobe reading as
     # a known error, so the count is asserted rather than trusted to the code.
     pm = build("pakmara", "tendril-probe", 0, chain)
@@ -3447,6 +4227,29 @@ def _selftest():
           "MUTATION: duplicating a triangle creates non-manifold edges")
     check(_max_section_radius() > 0.05,
           "the section-radius measurement returns a real number")
+    # `REF_SECTION_R_M` must stay at or below the MEASURED worst section, or
+    # `_small_seg` starts handing attachments a looser error budget than the
+    # body they hang on. Asserted as an ordering, because the first version of
+    # this check claimed the two agreed to 10% and they do not -- the measured
+    # worst is a Vorlon robe hem at 0.4514 m and this is a human shoulder at
+    # 0.2056 m. The assertion fired on its first run, which is why the comment
+    # above now says the true thing.
+    _rref = _max_section_radius()
+    check(REF_SECTION_R_M <= _rref,
+          f"REF_SECTION_R_M {REF_SECTION_R_M:.4f} m is at or below the "
+          f"MEASURED worst section radius {_rref:.4f} m, so _small_seg is "
+          f"conservative rather than permissive")
+    # And `_small_seg` must actually be doing arithmetic rather than returning
+    # its cap: a finger is 30x smaller in radius than the reference section, so
+    # it has to come out coarser than the body at every level.
+    check(_small_seg(0.009, 64) < 64 and _small_seg(0.009, 16) <= 8
+          and _small_seg(0.009, 8) <= 8,
+          f"_small_seg gives a 9 mm finger {_small_seg(0.009, 64)} segments at "
+          f"the body's 64 and {_small_seg(0.009, 16)} at its 16")
+    check(_small_seg(REF_SECTION_R_M, 8) >= 8,
+          "MUTATION: asked about a part the SIZE of the reference section it "
+          "returns the body's own count, so the rule is a comparison and not "
+          "a constant")
     # If _max_section_radius measured about the FIGURE's centreline instead of
     # each part's own axis it would report an arm's offset as its radius. Build
     # that error and confirm the number moves by more than the tolerance the
@@ -3477,6 +4280,8 @@ def _selftest():
           f"the profile schedule finds real deviation at stride 2 "
           f"({pro[1]['error_m']:.5f} m)")
 
+    _detail_gate(check, quiet=True)
+
     print(f"{ok}/{ok + fail} passed")
     # 0 on success. This read `0 if fail else 1` -- inverted -- until the
     # deliberate-break pass ran twelve mutants and every one of them exited 0
@@ -3496,7 +4301,15 @@ def main():
     ap.add_argument("--lineup", action="store_true")
     ap.add_argument("--nominal", action="store_true",
                     help="lineup of unjittered species means")
+    ap.add_argument("--silhouette", action="store_true",
+                    help="print the session-4g detail gate and its controls")
     a = ap.parse_args()
+    if a.silhouette:
+        bad = []
+        _detail_gate(lambda c, label: None if c else bad.append(label))
+        for b in bad:
+            print(f"FAIL: {b}")
+        sys.exit(1 if bad else 0)
     if not (a.report or a.obj):
         sys.exit(_selftest())
     if a.report:
