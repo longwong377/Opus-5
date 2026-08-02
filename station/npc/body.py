@@ -743,8 +743,29 @@ def individual(species: str, npc_id: str) -> Individual:
 # Primitives. Y is up, +Z is facing -- the same frame as interior_kit, whose
 # decks lie in XZ with `ceiling_height_m` along Y.
 # ---------------------------------------------------------------------------
+def _window(theta_deg, th, half, sharp=1.0):
+    """The raised-cosine weight of a bump centred on `th`, at azimuth
+    `theta_deg`. Zero outside `half`, one at the centre, C1 at the edges.
+
+    `sharp` is an exponent on the window and it is what separates a CREASE from
+    a SWELL. The oral fissure is 4 mm deep over 20 degrees of azimuth and the
+    supraorbital torus is 4 mm proud over 45; with one window shape the first
+    is a dent in a balloon. Raising the cosine to a power narrows the support
+    without narrowing `half` -- which matters because `half` also sets how many
+    of a coarse ring's samples fall inside the feature at all, and a feature
+    narrower than one sample is a feature that vanishes at lod2 rather than
+    softening. So `half` stays wide enough to be SAMPLED and `sharp` decides
+    how much of that support carries amplitude.
+    """
+    d = (theta_deg - th + 180.0) % 360.0 - 180.0
+    if abs(d) >= half:
+        return 0.0
+    w = math.cos(math.pi * 0.5 * d / half) ** 2
+    return w if sharp == 1.0 else w ** sharp
+
+
 def _ring(cx, cy, cz, rx, rz, seg, squash_front=1.0, squash_back=1.0,
-          power=2.0, lobes=()):
+          power=2.0, lobes=(), zoff=()):
     """One closed loop of `seg` points in the XZ plane at height cy.
 
     `squash_front` scales +Z only, which is how a chest gets a flatter back than
@@ -754,7 +775,7 @@ def _ring(cx, cy, cz, rx, rz, seg, squash_front=1.0, squash_back=1.0,
     parameter runs x = cos(t), z = sin(t), so **t = 0 is the figure's LEFT
     (+X), t = 90 deg is the FACE (+Z), t = 180 deg is the right, t = 270 deg is
     the back**. Everything a body needs to stop being a solid of revolution is
-    a function of that angle, and that is the whole point of the two arguments
+    a function of that angle, and that is the whole point of the arguments
     below:
 
     `power` is the exponent of a superellipse |x/a|^p + |z/b|^p = 1. p = 2 is
@@ -766,40 +787,70 @@ def _ring(cx, cy, cz, rx, rz, seg, squash_front=1.0, squash_back=1.0,
     was missing, and articulation that moves vertices instead of adding them
     survives every level of the LOD chain unchanged.
 
-    `lobes` is a tuple of `(theta_deg, half_width_deg, amount)` radial bumps.
-    A deltoid, a brow ridge, a chin, an occiput and a cheekbone are all "the
-    radius is 12% larger over a 40 degree arc centred here", and a raised
+    `lobes` is a tuple of `(theta_deg, half_width_deg, amount[, sharp])` RADIAL
+    bumps. A deltoid, a brow ridge, a chin, an occiput and a cheekbone are all
+    "the radius is 12% larger over a 40 degree arc centred here", and a raised
     cosine window keeps the ring smooth and strictly convex-ish so the loft
     cannot fold. Amounts are additive so two lobes may overlap.
+
+    `zoff` is the same tuple shape and it displaces **z alone**, by
+    `amount * rz`, AFTER the squash. IT IS NOT A LOBE AT 90 DEGREES AND THE
+    DIFFERENCE IS THE WHOLE OF WHY A FACE IS NOT A STACK OF DISCS. A radial
+    lobe scales the distance from the ring's ONE CENTRE, so it moves x and z
+    together everywhere except exactly on an axis: a 6 mm "eye socket" built as
+    a negative lobe at 66 degrees pulls the temple in by 2.4 mm as well, and a
+    nasal root built that way narrows the whole upper face. Every craniofacial
+    landmark that is a matter of FORE-AFT relief and not of width -- the
+    nasion, the orbit, the oral fissure, the lip vermilion, the submalar
+    hollow -- is a `zoff`, and every one that really is a width -- the
+    zygomatic arch, the gonial angle, the temporal fossa, the occiput -- is a
+    lobe. Both cost nothing.
 
     BOTH ARE PURE FUNCTIONS OF t, WHICH IS WHAT KEEPS THE LOD CHAIN HONEST.
     `SILHOUETTE_STEPS` are powers of two so a coarse ring's vertices are a
     strict SUBSET of a fine one's; that property survives any per-angle
     shaping, and would not survive shaping that depended on `seg`.
     """
+    return [_ring_point(cx, cy, cz, rx, rz, 360.0 * i / seg,
+                        squash_front, squash_back, power, lobes, zoff)
+            for i in range(seg)]
+
+
+def _ring_point(cx, cy, cz, rx, rz, theta_deg, squash_front=1.0,
+                squash_back=1.0, power=2.0, lobes=(), zoff=()):
+    """ONE point of the ring `_ring` would build, at an arbitrary azimuth.
+
+    Split out of `_ring` so that anything which needs to sit ON the surface --
+    an eye in its orbit, a brow on its ridge -- reads the SAME function the
+    surface is lofted from instead of a second copy of it. `_face_point` used
+    to reconstruct the superellipse by hand and knew nothing about the lobes,
+    so an orbit recess would have moved the skull and left the eye floating in
+    front of it. Hard rule 4 at the scale of an eye socket: one authoritative
+    model, evaluated twice.
+    """
     e = 2.0 / max(power, 1e-6)
-    out = []
-    for i in range(seg):
-        t = math.tau * i / seg
-        c, s = math.cos(t), math.sin(t)
-        if abs(power - 2.0) > 1e-9:
-            c = math.copysign(abs(c) ** e, c)
-            s = math.copysign(abs(s) ** e, s)
-        k = 1.0
-        for th, half, amt in lobes:
-            d = (math.degrees(t) - th + 180.0) % 360.0 - 180.0
-            if abs(d) < half:
-                k += amt * math.cos(math.pi * 0.5 * d / half) ** 2
-        x, z = rx * c * k, rz * s * k
-        z *= squash_front if z > 0 else squash_back
-        out.append((cx + x, cy, cz + z))
-    return out
+    t = math.radians(theta_deg)
+    c, s = math.cos(t), math.sin(t)
+    if abs(power - 2.0) > 1e-9:
+        c = math.copysign(abs(c) ** e, c)
+        s = math.copysign(abs(s) ** e, s)
+    k = 1.0
+    for lb in lobes:
+        th, half, amt = lb[0], lb[1], lb[2]
+        k += amt * _window(theta_deg, th, half, lb[3] if len(lb) > 3 else 1.0)
+    x, z = rx * c * k, rz * s * k
+    z *= squash_front if z > 0 else squash_back
+    for zb in zoff:
+        th, half, amt = zb[0], zb[1], zb[2]
+        z += rz * amt * _window(theta_deg, th, half,
+                                zb[3] if len(zb) > 3 else 1.0)
+    return (cx + x, cy, cz + z)
 
 
-def _mirror(theta_deg, half, amt):
+def _mirror(theta_deg, half, amt, sharp=1.0):
     """A left/right symmetric pair of lobes. A body is bilateral; typing the
     two entries by hand is how one of them ends up 5 degrees out."""
-    return ((theta_deg, half, amt), (180.0 - theta_deg, half, amt))
+    return ((theta_deg, half, amt, sharp), (180.0 - theta_deg, half, amt, sharp))
 
 
 # ---------------------------------------------------------------------------
@@ -1105,18 +1156,95 @@ def _bend(m: "Mesh", deg: float, pivot_y: float, full_y: float):
 # ---------------------------------------------------------------------------
 # The base topology
 # ---------------------------------------------------------------------------
-# The ring plan. IDENTICAL for every species and every LOD, so a coarser level
-# is a strict SUBSET of a finer one -- `_selftest` measures that as a set
-# operation rather than trusting this comment. `stride` picks every other entry
-# with 0 and -1 pinned, which is why the count is odd.
+# The ring plan. IDENTICAL for every species, so a coarser level is a strict
+# SUBSET of a finer one -- `_selftest` measures that as a set operation rather
+# than trusting this comment. `stride` picks every other entry with 0 and -1
+# pinned, which is why the count is odd.
 TORSO_RINGS = ("hip", "pelvis", "waist", "lower_chest", "chest", "upper_chest",
                "shoulder", "trapezius")
 LIMB_RINGS = 5           # root, upper mid, joint, lower mid, tip
 # Nine, one per craniofacial landmark: under-chin, chin, jaw, cheek, eye, brow,
 # forehead, parietal, crown. It was seven and three of those were pure
-# interpolation. `_selftest` asserts this IS the length of `_head_profile`, so
-# the constant cannot go stale the way it did between sessions 4d and 4e.
+# interpolation. `_selftest` asserts this IS the length of `_head_profile`'s
+# BASE tier, so the constant cannot go stale the way it did between sessions 4d
+# and 4e.
 HEAD_RINGS = 9
+
+# ---------------------------------------------------------------------------
+# RING TIERS -- session 4h, and it is the only thing that made a modelled skull
+# affordable.
+# ---------------------------------------------------------------------------
+# A ring plan that is one list serves two irreconcilable jobs. `ROOM_LOD = 1` is
+# the level a player stands in front of, where a mouth, an orbit and a deltoid
+# roll-over have to exist; `populace.corridor_lod` resolves to lod4, where the
+# whole body is 644 triangles and `_selftest` caps the level the crowd is baked
+# at at 640. Session 4g's honest craft 3 was written about the FORM, and a form
+# needs rings -- but every ring is 2 x seg triangles at EVERY level, so buying a
+# lip at lod0 also buys it at lod4, where it cannot be paid for and cannot be
+# seen (8 azimuth samples across a whole head).
+#
+# So a profile row carries a tier:
+#
+#   "base"  -- built at every feature level. Exactly the rings that existed
+#              before this session, so lod3 and below do not move at all.
+#   "form"  -- built only at `features == "all"`, i.e. lod0/1/2, out to 22.1 m.
+#
+# The base set is a subset of the full set BY CONSTRUCTION -- one list, filtered
+# -- so dropping to it removes rings rather than rearranging them, which is the
+# same contract `_stride` and `SILHOUETTE_STEPS` hold.
+#
+# AND THE DROP IS PRICED BY THE RIGHT INSTRUMENT, which is the part worth
+# reading. `feature_schedule()` cannot see this cull at all: it compares PART
+# NAMES, and a reshaped torso is the same part. The bounding box cannot see it
+# either -- that is the exact blindness session 4e paid for with a bald crowd.
+# What a dropped intermediate ring costs is the distance from its vertices to
+# the chord joining the rings that remain, which is precisely `chord_error`, and
+# `_detail_gate` asserts that error is honest at the distance lod3 begins.
+# AND THERE ARE TWO FORM TIERS, NOT ONE, FOR THE REASON THIS MODULE ALREADY
+# SPLIT ONE LOD SCHEDULE INTO THREE: two knobs stop being visible at two
+# distances. A lip is 9 mm and a deltoid is 22 mm of outline, and pricing them
+# together prices the lip at the deltoid's distance -- which is what the first
+# version of this did, and `npc/crowd.py` caught it in one run: carrying the
+# face rings out to 26.8 m made a body 25% dearer in the band that holds most
+# of a Zocalo, and the crowd system answered by moving the impostor swap from
+# 51.1 m to 33.4 m -- INSIDE the 36 m floor that module sets so that "fix the
+# budget" can never mean "put cards on people the player is talking to".
+#
+#   "base"  every level. The rings that existed before session 4h.
+#   "face"  the head's landmark rings -- lips, orbital rims, frontal eminences.
+#   "body"  the torso's shoulder S-curve and costal arch, and the limbs' extra
+#           muscle rings.
+#
+# Each is dropped at its own MEASURED distance -- `form_schedule()` -- and the
+# base set is a subset of both by construction, so every drop removes rings
+# rather than rearranging them.
+RING_TIERS = ("base", "face", "body")
+# The steps, coarsening left to right, exactly like SILHOUETTE_STEPS.
+FORM_STEPS = ("face_and_body", "body", "none")
+_FORM_KEEP = {"face_and_body": ("face", "body"), "body": ("body",),
+              "none": ()}
+
+
+def _tier_rows(rows, form):
+    """Filter a profile by tier. `rows` are `(..., tier)`; the tier is last.
+
+    `form` is a `FORM_STEPS` key, or a bool for the two callers that only want
+    "everything" or "nothing" -- `_detail_gate`'s control and `_face_point`.
+    """
+    if form is True:
+        keep = ("face", "body")
+    elif form is False:
+        keep = ()
+    else:
+        keep = _FORM_KEEP[form]
+    return [r for r in rows if r[-1] == "base" or r[-1] in keep]
+
+
+def form_flags(form):
+    """(face, body) booleans for a `FORM_STEPS` key."""
+    keep = _FORM_KEEP[form] if isinstance(form, str) else (
+        ("face", "body") if form else ())
+    return ("face" in keep, "body" in keep)
 
 
 def _leg_params(ind: Individual, sp: SpeciesBody):
@@ -1151,8 +1279,8 @@ def _shoulder_half(ind: Individual) -> float:
             * (0.95 if ind.sex == "f" else 1.0))
 
 
-def _torso_profile(ind: Individual, sp: SpeciesBody):
-    """(name, height_fraction, half_width, half_depth, section) per torso ring.
+def _torso_profile(ind: Individual, sp: SpeciesBody, form=True):
+    """(name, height, half_width, half_depth, section, tier) per torso ring.
 
     `section` is the keyword block handed to `_ring` -- superellipse exponent,
     front/back squash and radial lobes -- and it is where a stack of rings stops
@@ -1176,10 +1304,15 @@ def _torso_profile(ind: Individual, sp: SpeciesBody):
         one silhouette.
       * upper_chest / shoulder -- p 2.9, the squarest sections on the figure.
         A square section is what makes a shoulder read as a shelf rather than
-        as the top of a bottle. There is no deltoid lobe here on purpose: the
-        deltoid belongs to the ARM, whose own bulge already carries it, and a
-        lobe here would swallow the arm root instead.
-      * trapezius     -- back to nearly round, sloping into the neck.
+        as the top of a bottle.
+      * deltoid / supraspinous / trapezius -- the S-curve of the shoulder, and
+        the long comment beside them is the argument. The note that used to
+        stand here said "there is no deltoid lobe on purpose: the deltoid
+        belongs to the ARM, whose own bulge already carries it". MEASURED, it
+        did not: the arm's widest point is 0.99 of the biacromial half-width
+        against the torso's 1.00, so the deltoid was inside the torso at every
+        height and the widest point of the figure was the flat corner at the
+        acromion. It is the torso's now, and the arm's bulge meets it below.
 
     SEXUAL DIMORPHISM IS A RATIO, NOT A SIZE. `shoulder_k` and stature are
     already jittered per individual, so what is applied here is only the part
@@ -1227,10 +1360,11 @@ def _torso_profile(ind: Individual, sp: SpeciesBody):
     # Grome's 8 leg-root vertices outside the solid -- the same defect the first
     # lineup render showed as magenta across the pelvis, but measured, per
     # species, and at every LOD.
-    return [
+    ac = FIGURE["acromion"]
+    rows = [
         ("hip",          hip_y - 0.035,                   hw * 1.00, cd_hip,
          {"power": 2.1, "squash_back": 0.98,
-          "lobes": ((270.0, 60.0, 0.10 if f else 0.05),)}),
+          "lobes": ((270.0, 60.0, 0.10 if f else 0.05),)}, "base"),
         # Placed BETWEEN the hip and the waist rather than a fixed 0.030 above
         # the hip: with a fixed offset, a species with long legs (Minbari at
         # leg_k 1.03) pushes the pelvis ring ABOVE the waist ring, the stack
@@ -1241,7 +1375,7 @@ def _torso_profile(ind: Individual, sp: SpeciesBody):
         ("pelvis",       hip_y + 0.55 * (FIGURE["waist"] - hip_y),
                                                           hw * 1.00, cd_hip,
          {"power": 2.1, "squash_back": 0.99,
-          "lobes": ((270.0, 55.0, 0.06 if f else 0.03),)}),
+          "lobes": ((270.0, 55.0, 0.06 if f else 0.03),)}, "base"),
         # The waist and the ribcage hang off `hw0`, the pelvis's width BEFORE
         # the sex factor, and that is not a detail. Deriving them from the
         # widened hip makes a woman's waist wider in the same proportion, so
@@ -1249,28 +1383,92 @@ def _torso_profile(ind: Individual, sp: SpeciesBody):
         # dimorphism -- comes out unchanged. The assertion in `_selftest`
         # caught exactly that and it is the reason these two read `hw0`.
         ("waist",        FIGURE["waist"],            hw0 * waist_k, cd * 0.80,
-         {"power": 2.3}),
+         {"power": 2.3}, "base"),
+        # The costal arch: the ribcage flares out of the waist FASTER than it
+        # then rises, so the lower ribs are a corner and not a ramp. A form
+        # ring, because at 22 m it is 6 mm of outline.
+        ("lower_ribs",   0.578,                          hw0 * 0.945, cd * 0.88,
+         {"power": 2.4, "squash_front": 1.03,
+          "lobes": _mirror(30.0, 34.0, 0.03)}, "body"),
         ("lower_chest",  0.615,                          hw0 * 0.98, cd * 0.94,
-         {"power": 2.5, "squash_front": 1.04}),
+         {"power": 2.5, "squash_front": 1.04}, "base"),
         ("chest",        FIGURE["chest"],                 sw * 0.86, cd * 1.00,
-         {"power": 2.6, "squash_back": 0.94, "lobes": bust}),
+         {"power": 2.6, "squash_back": 0.94, "lobes": bust}, "base"),
         ("upper_chest",  0.772,                           sw * 0.96, cd * 0.96,
          {"power": 2.8, "squash_back": 0.92,
-          "lobes": _mirror(62.0, 26.0, 0.04)}),
-        ("shoulder",     FIGURE["acromion"],              sw * 1.00, cd * 0.86,
-         {"power": 2.9, "squash_back": 0.94}),
+          "lobes": _mirror(62.0, 26.0, 0.04)}, "base"),
+        # ------------------------------------------------------------------
+        # THE SHOULDER, AND IT IS THE OTHER HALF OF SESSION 4h's BRIEF.
+        # ------------------------------------------------------------------
+        # What the owner was looking at, stated as geometry: the torso's top
+        # was `shoulder` at the acromion, `sw * 1.00` half-width, and then
+        # `trapezius` 42 mm above it at `sw * 0.40`. That is 71 mm of
+        # horizontal travel over 42 mm of rise, all the way round, so the top
+        # of the shoulder was a PLATE and the front outline turned a hard
+        # corner at the acromion. The arm did not help: rooted at 0.44 of the
+        # biacromial half-width and never exceeding 0.99 of it, its deltoid
+        # never reached the silhouette at all, so the widest point of the
+        # figure was the flat corner rather than the muscle.
+        #
+        # A real shoulder is the opposite in both respects. Its widest point
+        # is the DELTOID, about 25 mm BELOW the acromion; from there the
+        # outline runs up and IN over the acromion, then down and in again
+        # along the trapezius to the neck. That is an S, and three rings is
+        # the fewest that can carry one.
+        #
+        #   deltoid       0.798   the widest ring on the whole figure
+        #   shoulder      0.818   the acromion, now NARROWER than the deltoid
+        #   supraspinous  0.831   the roll-over into the trapezius
+        #   trapezius     0.842   the neck root, but reaching out at the sides
+        #
+        # `deltoid` and `supraspinous` are `form`, so lod3 and below keep the
+        # two-ring stack they had -- but the two BASE rings' own numbers move,
+        # which is free and which is why the crowd gets a shoulder too: the
+        # acromion comes in to 0.94 and the trapezius goes out to 0.50 with a
+        # 0.34 lobe at the sides, so even at 8 azimuth samples the top ring is
+        # a RIDGE running out toward the joint instead of a small round post.
+        #
+        # The deltoid lobe is at 0 and 180 -- the pure sides, where the arm is
+        # -- and `_selftest`'s `contains()` check is what stops it being turned
+        # up further: every arm-root vertex has to stay inside this solid.
+        #
+        # AND THE WHOLE GROUP IS SCALED SO THE DELTOID SITS *AT* THE MEASURED
+        # BIACROMIAL WIDTH RATHER THAN OUTSIDE IT, which is a fidelity point
+        # and not a budget one. `FIGURE["shoulder_w"] = 0.235` was read off a
+        # standing officer in `more hallway.jpg` -- across his shoulders, in a
+        # uniform, deltoids and all. Building a deltoid 6.5% OUTSIDE that
+        # number double-counts the muscle the number already contains. The
+        # first version did exactly that and `populace.py`'s idle-sway control
+        # is what said so: a dressed figure went 0.549 m across the shoulders
+        # to 0.601 m, through a 0.58 m bound that exists because a body has to
+        # come back inside its own shoulders. Scaled to land the widest ring at
+        # 1.01 of biacromial, the S-curve is unchanged -- deltoid 1.01,
+        # acromion 0.95, supraspinous 0.83, trapezius 0.64 -- and the figure is
+        # the width the photograph says it is.
+        ("deltoid",      0.798,                          sw * 0.940, cd * 0.90,
+         {"power": 2.85, "squash_back": 0.93,
+          "lobes": _mirror(0.0, 42.0, 0.075)}, "body"),
+        ("shoulder",     ac,                             sw * 0.900, cd * 0.86,
+         {"power": 2.9, "squash_back": 0.94,
+          "lobes": _mirror(0.0, 46.0, 0.055)}, "base"),
+        ("supraspinous", ac + 0.013,                     sw * 0.755, cd * 0.72,
+         {"power": 2.5, "squash_back": 0.94,
+          "lobes": _mirror(0.0, 50.0, 0.10)}, "body"),
         # The torso used to end on the acromion ring, and the render showed
         # exactly what that is: a flat elliptical disc across the top of the
         # shoulders, lit like a table. A body closes with the trapezius sloping
         # up to the neck, so the last ring is small and high and the shoulder
         # becomes an edge rather than a lid.
         # The lobes are the two trapezius ridges running from the neck out over
-        # the clavicle: at this height they are what tells a viewer where the
-        # neck ends, and they are 40 degrees wide because that is the arc the
-        # muscle covers between the spine of the scapula and the throat.
-        ("trapezius",    FIGURE["acromion"] + 0.024,      sw * 0.40, cd * 0.52,
-         {"power": 2.2, "lobes": _mirror(20.0, 40.0, 0.10)}),
+        # the clavicle. They were at 20/160 degrees -- 20 degrees off the side
+        # -- and 0.10 deep, which put the ridge in the wrong place and made it
+        # too shallow to see; the muscle runs to the ACROMION, so the lobe is
+        # on the side itself and deep enough that the top ring is 0.67 of the
+        # biacromial half-width there against 0.50 at the throat.
+        ("trapezius",    ac + 0.024,                     sw * 0.480, cd * 0.52,
+         {"power": 2.2, "lobes": _mirror(0.0, 52.0, 0.34)}, "base"),
     ]
+    return _tier_rows(rows, form)
 
 
 # How much the +Z half of every head ring is flattened. A face is a PLANE and
@@ -1279,8 +1477,31 @@ def _torso_profile(ind: Individual, sp: SpeciesBody):
 FACE_FLATTEN = 0.88
 
 
-def _head_profile(ind: Individual):
-    """(t, radius_scale, z offset in head heights, section) chin to crown.
+# WHERE A FACE'S FEATURES SIT ROUND THE RING, derived once rather than typed
+# fifteen times. The angle convention is `_ring`'s: 90 degrees is the midline of
+# the face and 0 is the figure's left side, so a landmark `d` degrees off the
+# midline is a `_mirror` pair at `90 - d`.
+#
+# The three that matter are DERIVED from the width the landmark actually sits at
+# rather than chosen, using the superellipse the head ring is built on: a point
+# at a fraction `xf` of the half-width lies at azimuth acos(xf^(p/2)) from the
+# +X axis, so with p ~ 2.1
+#
+#   eye     0.43 of half-width (INV-4G-001's interpupillary)   -> 24 deg off
+#   zygion  0.72 of half-width (the arch is near the widest)   -> 43 deg off
+#   gonion  0.86 of half-width (the jaw angle is nearly at it) -> 60 deg off
+#
+# so `_face_az(0.43)` and `EYE_X_F` cannot drift apart, and the cheekbone lobe
+# is at the cheekbone rather than 8 degrees off it.
+def _face_az(xf, power=2.1):
+    """Azimuth, in degrees off the +X axis, of the point `xf` of the way out to
+    a superellipse ring's half-width on the FACE side."""
+    xf = max(0.0, min(1.0, abs(xf)))
+    return math.degrees(math.acos(xf ** (power / 2.0)))
+
+
+def _head_profile(ind: Individual, form=True):
+    """(t, radius_scale, z offset in head heights, section, tier) chin to crown.
 
     A head is not an ellipsoid, and the first version of this table was one --
     the render showed an egg with no jaw and no face plane. Three things make it
@@ -1296,93 +1517,243 @@ def _head_profile(ind: Individual):
     the neck. Coplanar caps read as a step, and at conversation distance a step
     under the chin is the first thing the eye finds.
 
-    SEVEN RINGS OF ELLIPSE IS STILL A BLOCK, and the owner said so in session 4e
-    -- "undetailed featureless blobs". Three of those seven were doing nothing
-    but interpolating between the other four, and none of them carried a single
-    landmark. So the stack is now NINE rings, one on each of the landmarks a
-    human head actually has, and each ring carries a `section` block that says
-    what shape it is rather than how big:
+    NINE RINGS OF LANDMARK IS STILL A STACK OF DISCS, and session 4g scored
+    itself craft 3 for it and was right. Nine rings over a 231 mm head is 26 mm
+    of vertical resolution: a lip is 9 mm, an orbital rim is 6 mm and a
+    mentolabial sulcus is 4 mm, so NONE OF THEM CAN EXIST, however many lobes
+    the rings carry. And every landmark that had been built was built as a
+    RADIAL lobe about the ring's one centre, which is a shape that can only make
+    a head rounder or narrower -- there was no way to say "this part of the face
+    is further back" at all.
 
-        chin      a point, forward, narrow           lobe at the face
-        jaw       the gonial angles                  lobes rear of the sides
-        cheek     the zygomatic arch                 lobes forward of the sides
-        eye       the temples, which go IN           negative lobes at the sides
-        brow      the supraorbital ridge             lobe at the face
-        forehead  slopes back                        squash_front
-        parietal  the widest ring, occiput behind    lobe at the back
-        crown     small, and set back
+    So the stack is now FIFTEEN rows and there are two kinds of displacement:
 
-    The temple lobes being NEGATIVE is the whole argument for having a signed
-    amplitude: a head narrows above the cheekbone and widens again above the
-    ear, and a profile that can only add is a profile that can only make heads
-    rounder. Two rings and eight lobes are the difference between a face and an
-    egg, and both cost the same: nothing. The two extra rings cost 4 x seg
-    triangles -- 32 at the level the corridor crowd is baked at.
+        t      landmark              tier   what carries it
+      -0.07  submental               base   buried in the neck, tucked back
+       0.06  mental protuberance     base   radial lobe at the midline
+       0.115 mentolabial sulcus      form   zoff  -- the crease under the lip
+       0.165 lower vermilion         form   zoff  -- the lower lip
+       0.20  oral fissure / gonion   base   zoff at the midline + radial lobes
+       0.255 upper vermilion         form   zoff, with a philtrum groove in it
+       0.34  zygomatic arch          base   radial lobes, submalar zoff below
+       0.405 infraorbital rim        form   zoff -- the lower orbital margin
+       0.46  orbit / temporal fossa  base   zoff INTO the socket, radial out
+       0.515 supraorbital rim        form   zoff -- the superciliary arches
+       0.57  supraorbital torus      base   radial lobe + the nasion notch
+       0.635 frontal eminence        form   zoff, paired
+       0.70  frontal squama          base   slopes back
+       0.86  parietal / occiput      base   the widest ring
+       1.00  crown                   base   small, and set back
+
+    THE SPLIT BETWEEN A LOBE AND A `zoff` IS THE ANATOMY, and `_ring`'s own
+    docstring derives it: width is a lobe, relief is a zoff. The orbit is the
+    case that proves it. As a negative lobe at 66 degrees a 8 mm socket also
+    pulls 3 mm out of the temple, because a lobe scales the distance from the
+    ring's single centre; as a `zoff` it is 8 mm straight back and the head is
+    exactly as wide as it was. That is what lets the eye be RECESSED instead of
+    a bead stuck on a ball, which is what the owner was looking at.
+
+    The temple lobes being NEGATIVE is the same argument in the other currency:
+    a head narrows above the cheekbone and widens again above the ear, and a
+    profile that can only add is a profile that can only make heads rounder.
+
+    `form` rows are dropped at `features != "all"`, i.e. past 22.1 m -- see
+    RING_TIERS. The BASE nine are exactly the rows that existed before, so the
+    corridor bake does not move, and every base row's own shaping got better for
+    free: at lod4 a head is 8 azimuth samples and a `zoff` at the midline is
+    still exactly one of them.
 
     Every number is EXTRAPOLATED (authority 5) except the widths, which inherit
-    `jaw_k`'s measurement. The constraint is standard adult craniofacial
-    proportion -- the eyes sit at half the head height, the widest point is the
-    parietal at ~0.6, the chin is ~0.6 of the parietal width -- and what would
-    overturn any of it is one square-on portrait at a stated scale, which
+    `jaw_k`'s measurement, and the azimuths, which are derived by `_face_az`
+    from the width the landmark sits at. The constraint is standard adult
+    craniofacial proportion -- eyes at half the head height, widest point at the
+    parietal, chin ~0.6 of the parietal width, stomion ~0.19 of chin-to-crown,
+    interpupillary 0.43 of the half-width -- and what would overturn any of it
+    is one square-on portrait at a stated scale, which
     `reference/15-races-and-makeup/` has for G'Kar and for nobody else.
+    Logged as INV-4H-001 in docs/npc-form-4g.md.
     """
     ff = FACE_FLATTEN
-    return (
-        (-0.07, 0.50, +0.020, {"power": 2.0, "squash_front": ff}),
+    # Azimuths, derived. `ey` is where the eye is, `zy` the zygomatic arch,
+    # `go` the gonial angle, and the midline is 90.
+    ey, zy, go = _face_az(EYE_X_F), _face_az(0.72), _face_az(0.86)
+    rows = (
+        # The submental triangle: BEHIND the chin and narrower than it, so the
+        # underside of the jaw slopes back to the neck instead of hanging as a
+        # cylinder. -0.008 rather than +0.020: the old value put this ring
+        # almost level with the chin point and the jaw had no underside at all.
+        (-0.07, 0.50, -0.008, {"power": 2.0, "squash_front": ff * 0.92},
+         "base"),
         # The chin: narrow, forward, and with a point on it.
         (0.06, 0.63, +0.030, {"power": 2.2, "squash_front": ff * 1.06,
                               "squash_back": 0.92,
-                              "lobes": ((90.0, 34.0, 0.10),)}),
-        # The jaw line. The gonial angle sits BEHIND the widest point of the
-        # face, which is why these lobes are at 18 degrees off the side and not
-        # on it.
-        (0.20, 0.83, +0.012, {"power": 2.3, "squash_front": ff,
-                              "lobes": _mirror(18.0, 30.0, 0.05)}),
-        # The cheekbone, forward of the side.
+                              "lobes": ((90.0, 34.0, 0.10),)}, "base"),
+        # The mentolabial sulcus -- the crease between the lower lip and the
+        # chin. `sharp` 2.2 keeps it a crease: at half 26 degrees it is sampled
+        # by three vertices at lod1 and still reads as a groove rather than as
+        # a flattening of the whole lower face.
+        (0.115, 0.735, +0.026, {"power": 2.25, "squash_front": ff * 1.03,
+                                "zoff": ((90.0, 26.0, -0.075, 2.2),)}, "face"),
+        # The lower lip. The vermilion stands proud of the sulcus below it and
+        # of the fissure above it; that pair of sign changes over 9 mm is the
+        # entire reason a mouth needs its own rings.
+        (0.165, 0.790, +0.029, {"power": 2.2, "squash_front": ff * 1.05,
+                                "zoff": ((90.0, 25.0, +0.070, 1.4),)}, "face"),
+        # The oral fissure and the gonial angle, at one height and on a BASE
+        # ring. Both survive to lod4, which is the point: at 22 m a mouth is a
+        # shadow line and a jaw angle is the outline of the face, and they cost
+        # nothing. The lips above and below it are `form`.
+        (0.20, 0.845, +0.014, {"power": 2.3, "squash_front": ff * 1.01,
+                               "lobes": _mirror(go, 30.0, 0.05),
+                               "zoff": ((90.0, 23.0, -0.055, 2.0),)}, "base"),
+        # The upper lip, with the philtrum cut into it: a wide positive window
+        # and a narrow negative one at the same azimuth. Two windows on one
+        # ring is what `zoff` being additive buys.
+        (0.255, 0.880, +0.010, {"power": 2.25, "squash_front": ff * 1.04,
+                                "zoff": ((90.0, 24.0, +0.060, 1.3),
+                                         (90.0, 9.0, -0.035, 1.8),
+                                         ) + _mirror(90.0 - 32.0, 16.0, -0.030)},
+         "face"),
+        # The cheekbone: a WIDTH, so a radial lobe, with the submalar hollow
+        # behind it as a zoff. The arch is the widest thing on a face below the
+        # parietal and the hollow under it is why a face is not a balloon.
         (0.34, 0.94, +0.002, {"power": 2.2, "squash_front": ff * 1.02,
-                              "lobes": _mirror(52.0, 24.0, 0.07)}),
-        # The eye line, where the temple goes IN.
+                              "lobes": _mirror(zy, 24.0, 0.07),
+                              "zoff": _mirror(90.0 - 40.0, 16.0, -0.035)}, "base"),
+        # The infraorbital rim -- the lower margin of the socket. The lid sits
+        # on it, so the surface comes forward here and goes back above.
+        (0.405, 0.965, -0.003, {"power": 2.15, "squash_front": ff * 1.01,
+                                "zoff": _mirror(ey, 17.0, +0.030)}, "face"),
+        # The eye line. The temple goes IN (a width, so a lobe) and the ORBIT
+        # goes BACK (a relief, so a zoff). The two used to be one lobe and the
+        # head paid for the socket in width.
         (0.46, 0.99, -0.008, {"power": 2.1, "squash_front": ff,
-                              "lobes": _mirror(2.0, 28.0, -0.045)}),
-        # The brow ridge.
+                              "lobes": _mirror(2.0, 28.0, -0.045),
+                              "zoff": _mirror(ey, 19.0, -0.105, 1.2)
+                              + ((90.0, 11.0, -0.055, 1.6),)}, "base"),
+        # The supraorbital rim: the superciliary arches, and the NASION notch
+        # between them. The nose is a separate solid whose bridge used to sit
+        # exactly level with the face plane -- 0.871 hd against 0.860 -- so it
+        # had no root at all. Cutting the notch is what gives it one.
+        (0.515, 1.00, -0.013, {"power": 2.1, "squash_front": ff,
+                               "lobes": _mirror(2.0, 26.0, -0.030),
+                               "zoff": _mirror(ey, 21.0, +0.055)
+                               + ((90.0, 12.0, -0.070, 1.6),)}, "face"),
+        # The supraorbital torus. A width AND a relief: the ridge is wider than
+        # the frontal bone above it and stands proud of it.
         (0.57, 1.00, -0.018, {"power": 2.1, "squash_front": ff,
-                              "lobes": ((90.0, 46.0, 0.055),)}),
-        # The forehead, sloping back.
-        (0.70, 0.98, -0.030, {"power": 2.0, "squash_front": ff * 0.94}),
+                              "lobes": ((90.0, 46.0, 0.045),),
+                              "zoff": ((90.0, 13.0, -0.045, 1.6),)}, "base"),
+        # The frontal eminences -- the pair of low domes above the brow that
+        # stop a forehead being a cone.
+        (0.635, 0.995, -0.025, {"power": 2.05, "squash_front": ff * 0.97,
+                                "zoff": _mirror(90.0 - 30.0, 24.0, +0.022)},
+         "face"),
+        # The frontal squama, sloping back.
+        (0.70, 0.98, -0.030, {"power": 2.0, "squash_front": ff * 0.94}, "base"),
         # The parietal and the occiput behind it.
         (0.86, 0.90, -0.042, {"power": 2.0, "squash_front": ff * 0.90,
-                              "lobes": ((270.0, 55.0, 0.055),)}),
-        (1.00, 0.46, -0.052, {"power": 2.0, "squash_front": ff * 0.90}),
+                              "lobes": ((270.0, 55.0, 0.055),)}, "base"),
+        (1.00, 0.46, -0.052, {"power": 2.0, "squash_front": ff * 0.90}, "base"),
     )
+    return tuple(_tier_rows(rows, form))
+
+
+def _limb_ts(bulge_at, rings=LIMB_RINGS, form=False):
+    """Where a limb's rings sit along its own length, as parameter values.
+
+    THE DOCSTRING BELOW USED TO CLAIM THE JOINT RING WAS PINNED AT `bulge_at`
+    AND IT WAS NOT -- the ring plan was `k / (rings - 1)`, five evenly spaced
+    values, and no `bulge_at` this module uses is one of them. The consequence
+    is arithmetic and it is the whole shoulder: an arm authored with a 1.30
+    deltoid at t = 0.16 was sampled at t = 0.25, where the envelope has already
+    fallen to 0.33 of its peak, so the built bulge was 1.098. A leg authored
+    with a 1.10 calf at 0.55 was sampled at 0.50 and built 1.034. Both muscles
+    existed in the parameters and in no vertex, for as long as the function has
+    existed.
+
+    So the plan is the SAME even spacing it always was, with the one ring
+    nearest the belly snapped onto it. That is the minimal repair and it is
+    deliberately minimal: the elbow and the knee are where they were (0.50 on
+    an arm, 0.25/0.75 on a leg), the count is unchanged, so lod4 does not move
+    by a triangle -- and the muscle exists.
+
+        arm  (belly 0.19)   0, 0.19, 0.50, 0.75, 1.0
+        leg  (belly 0.62)   0, 0.25, 0.62, 0.75, 1.0
+
+    AND A BELLY MUST NOT SIT ON A JOINT, which is a constraint this function
+    creates by snapping. `FIGURE` puts the knee at 0.527-0.572 of the leg, so a
+    calf authored at 0.55 pulled a ring onto the knee and `animation.
+    rigid_track` -- a different module's gate -- went 10.7 mm to 30.3 mm
+    against a 20 mm bar. See the note beside the leg in `build_humanoid`.
+
+    `form` adds two rings at `features == "all"` only: one at half the belly's
+    height, which is the muscle's superior slope -- the part of a deltoid that
+    caps the shoulder -- and one in the middle of the widest remaining gap.
+    They are a strict superset by construction.
+    """
+    b = max(1e-6, min(1.0 - 1e-6, bulge_at))
+    ts = [k / (rings - 1) for k in range(rings)]
+    near = min(range(1, rings - 1), key=lambda i: abs(ts[i] - b))
+    ts[near] = b
+    ts.sort()
+    if not form:
+        return ts
+    extra = [b * 0.5]
+    gaps = sorted(zip(ts, ts[1:]), key=lambda p: p[1] - p[0], reverse=True)
+    extra.append((gaps[0][0] + gaps[0][1]) / 2.0)
+    # 0.06, not an epsilon: a leg's belly is at 0.55 so its superior slope
+    # lands on 0.275, which is 0.025 from the ring already at 0.25. Two rings
+    # 2.5% of a limb apart are a near-degenerate band that costs a full ring of
+    # triangles and moves the surface by nothing.
+    for e in extra:
+        if all(abs(e - t) > 0.06 for t in ts):
+            ts.append(e)
+    return sorted(ts)
 
 
 def _limb(p0, p1, r0, r1, seg, bulge=1.12, bulge_at=0.5, rings=LIMB_RINGS,
-          section=None, depth_k=1.0):
+          section=None, depth_k=1.0, form=False, sections=()):
     """A tapered limb from p0 to p1 as a loft of `rings` rings.
 
-    `bulge` puts a muscle belly at `bulge_at` so an arm is not a cone. The
-    joint ring is pinned at bulge_at, which is what makes the PROFILE LOD
-    schedule interesting: dropping the joint ring on a limb with a 12% bulge is
-    a measurable silhouette error and dropping a mid-shaft ring is not.
+    `bulge` puts a muscle belly at `bulge_at`, which `_limb_ts` now actually
+    puts a ring on -- see its note, and the 1.30 deltoid that was built as 1.098
+    for as long as this function existed. That is also what makes the PROFILE
+    LOD schedule interesting: dropping the joint ring on a limb with a real
+    bulge is a measurable silhouette error and dropping a mid-shaft ring is not.
 
     `depth_k` scales the +/-Z radius against the +/-X one, and `section` is the
     shaping block from `_ring`. A limb was a solid of revolution here and a limb
     is not one: an upper arm is flattened front to back, a calf is deeper than
     it is wide and its mass sits at the BACK. Both cost nothing.
+
+    `sections` is an optional list of `(t, extra_section)` overrides blended in
+    by nearest t, so one limb can be square at the deltoid and round at the
+    wrist without becoming two lofts.
     """
     out = []
     ax, ay, az = p0
     bx, by, bz = p1
     sec = dict(section or {})
-    for k in range(rings):
-        t = k / (rings - 1)
+    for t in _limb_ts(bulge_at, rings, form):
         r = r0 + (r1 - r0) * t
         r *= 1.0 + (bulge - 1.0) * math.sin(math.pi * min(1.0, t / max(bulge_at, 1e-6))
                                             if t <= bulge_at else
                                             math.pi * (1.0 - (t - bulge_at)
                                                        / max(1e-6, 1.0 - bulge_at)))
+        s = dict(sec)
+        for st, extra in sections:
+            w = max(0.0, 1.0 - abs(t - st) / 0.30)
+            if w <= 0.0:
+                continue
+            for key, val in extra.items():
+                if key == "lobes":
+                    s["lobes"] = tuple(s.get("lobes", ())) + tuple(
+                        (lb[0], lb[1], lb[2] * w) + tuple(lb[3:]) for lb in val)
+                else:
+                    s[key] = 1.0 + (val - 1.0) * w
         out.append(_ring(ax + (bx - ax) * t, ay + (by - ay) * t,
-                         az + (bz - az) * t, r, r * depth_k, seg, **sec))
+                         az + (bz - az) * t, r, r * depth_k, seg, **s))
     return out
 
 
@@ -1402,21 +1773,36 @@ def _stride(seq, stride):
 
 
 def build_humanoid(ind: Individual, sp: SpeciesBody, seg=16, ring_stride=1,
-                   features="all"):
-    """The base topology: torso, head, two arms, two legs, plus attachments."""
+                   features="all", form=None):
+    """The base topology: torso, head, two arms, two legs, plus attachments.
+
+    `form` overrides the ring tier that `features` would imply. It exists for
+    ONE caller and that caller is a control: `_detail_gate` part 5 has to build
+    the same feature level with the form rings on and off, to show that
+    `feature_schedule`'s part-list and bounding-box instruments both score the
+    difference at zero. A control that cannot be constructed is a control that
+    does not exist, which is this repository's most-repeated defect.
+    """
     m = Mesh()
     H = ind.stature_m
     b = ind.build
     keep = _feature_filter(features)
+    # THE ONE SWITCH THE FORM TIER HANGS OFF. `features == "all"` is lod0-lod2,
+    # which `lod_chain()` uses out to 22.1 m; past that the profile falls back
+    # to its base rings and nothing about the corridor bake moves. See
+    # RING_TIERS for why this is a ring-count decision and not a feature-list
+    # one, and `_detail_gate` part 5 for the chord error it is priced by.
+    form = _form_for(seg, features) if form is None else form
+    face_form, body_form = form_flags(form)
 
     # --- torso ------------------------------------------------------------
     # The section block comes from the profile; `squash_front` is the torso-wide
     # 1.08 unless the ring names its own, and the two MULTIPLY rather than one
     # replacing the other -- a ribcage is 4% deeper in front than the rest of
     # the trunk AND the whole trunk is deeper in front than behind.
-    prof = _torso_profile(ind, sp)
+    prof = _torso_profile(ind, sp, body_form)
     rings = []
-    for _n, fy, w, d, sec in prof:
+    for _n, fy, w, d, sec, _tier in prof:
         sec = dict(sec)
         sec["squash_front"] = 1.08 * sec.get("squash_front", 1.0)
         rings.append(_ring(0.0, fy * H, 0.0, w * H, d * H, seg, **sec))
@@ -1460,7 +1846,7 @@ def build_humanoid(ind: Individual, sp: SpeciesBody, seg=16, ring_stride=1,
     hw = head_h * 0.36 * cw          # half-width at the widest ring
     hd = head_h * 0.36 * cd
     hrings = []
-    for t, k, zo, sec in _head_profile(ind):
+    for t, k, zo, sec, _tier in _head_profile(ind, face_form):
         jk = sp.jaw_k + (1.0 - sp.jaw_k) * min(1.0, max(0.0, t) / 0.34)
         # `squash_front` < 1 flattens the +Z half only: the face is a plane and
         # the back of the skull is a dome, which is what separates a head from
@@ -1506,11 +1892,27 @@ def build_humanoid(ind: Individual, sp: SpeciesBody, seg=16, ring_stride=1,
         # the deltoid than it is deep, and squarer at the elbow than at the
         # wrist. `_limb`'s `section` rides the same free mechanism the torso and
         # head use, and the flattening is what stops a sleeve reading as a pipe.
+        #
+        # THE DELTOID BELLY IS NOW BUILT AND IT WAS NOT BEFORE -- `_limb_ts`
+        # puts a ring on `bulge_at`, so the authored 1.30 is 1.30 in the mesh
+        # instead of the 1.098 five evenly-spaced rings sampled. `bulge_at`
+        # moved 0.16 -> 0.19 with it: with the belly ACTUALLY at 0.16 of the
+        # arm the mass sat above the torso's own deltoid ring and the two
+        # surfaces crossed at a grazing angle over 40 mm, which is the case a
+        # renderer sorts worst. At 0.19 the arm's widest point is 26 mm below
+        # the torso's and it emerges through it steeply.
+        #
+        # The lateral lobe at 0/180 is the deltoid's own outboard mass, and it
+        # is what carries the muscle out to the biacromial width: `sections`
+        # blends it in around the belly and out again by the elbow, so a
+        # forearm is not built with a shoulder's section.
         arm = _limb((side * ax_in, arm_top * H, 0.0),
                     (side * ax, (arm_top - span) * H, 0.0),
-                    r_up, r_wr, lseg, bulge=1.30, bulge_at=0.16,
+                    r_up, r_wr, lseg, bulge=1.30, bulge_at=0.19,
                     section={"power": 2.3, "squash_front": 0.94},
-                    depth_k=0.90)
+                    depth_k=0.90, form=body_form,
+                    sections=((0.19, {"power": 2.7,
+                                      "lobes": _mirror(0.0, 54.0, 0.14)}),))
         arm = _stride(arm, ring_stride)
         m.add(*_loft(arm), "npc_%s_arm" % sp.surface.kind, "arm")
         if "hands" in keep and "hands" in ind.features:
@@ -1529,10 +1931,29 @@ def build_humanoid(ind: Individual, sp: SpeciesBody, seg=16, ring_stride=1,
         # The calf lobe sits at 270 degrees, which is the BACK. A leg whose
         # mass is centred is a table leg; the gastrocnemius is the reason a
         # standing figure reads as standing rather than as propped up.
+        # The calf's own 1.10 was built as 1.034 for the same reason the
+        # deltoid was built as 1.098 -- see `_limb_ts`. With a ring on the
+        # belly it is 1.10, and `bulge_at` 0.55 now names the gastrocnemius
+        # rather than a point between two rings. The thigh gets its own lobe
+        # forward (the rectus) so the leg is not symmetric front to back.
+        #
+        # 0.62 AND NOT 0.55, AND THE RIG IS WHAT SAID SO. `FIGURE`'s own
+        # numbers put the knee at t = 0.527-0.572 of the hip-to-ankle span
+        # depending on `leg_k`, so a belly at 0.55 lands a ring ON THE JOINT --
+        # and `_limb_ts` now snaps a ring to the belly, so it actually did.
+        # `animation.rigid_track` fires on exactly that: a piece straddling a
+        # joint has to follow one bone while its vertices interpolate two, and
+        # the human's worst rigid piece went 10.7 mm -> 30.3 mm against a 20 mm
+        # bar. The gastrocnemius belly is BELOW the knee -- about 0.62 of the
+        # span -- which is both where the muscle is and clear of the joint, and
+        # it takes the fit back to 10.7 mm. A number checked by a second
+        # module's gate, which is the point of having one.
         leg = _limb((side * lx, hip_y * H, 0.0), (side * lx, ank_y * H, 0.0),
-                    r_th, r_an, lseg, bulge=1.10, bulge_at=0.55,
+                    r_th, r_an, lseg, bulge=1.10, bulge_at=0.62,
                     section={"power": 2.2, "lobes": ((270.0, 70.0, 0.10),)},
-                    depth_k=1.06)
+                    depth_k=1.06, form=body_form,
+                    sections=((0.14, {"power": 2.4,
+                                      "lobes": ((90.0, 60.0, 0.05),)}),))
         leg = _stride(leg, ring_stride)
         m.add(*_loft(leg), "npc_%s_leg" % sp.surface.kind, "leg")
         if "feet" in keep and "feet" in ind.features:
@@ -1628,7 +2049,8 @@ def _head_at(ind, t):
     prof = _head_profile(ind)
     if t <= prof[0][0]:
         return prof[0][1], prof[0][2]
-    for (t0, k0, z0, _s0), (t1, k1, z1, _s1) in zip(prof, prof[1:]):
+    for r0, r1 in zip(prof, prof[1:]):
+        (t0, k0, z0), (t1, k1, z1) = r0[:3], r1[:3]
         if t <= t1:
             f = (t - t0) / max(t1 - t0, 1e-9)
             return k0 + (k1 - k0) * f, z0 + (z1 - z0) * f
@@ -1826,29 +2248,52 @@ def _face(m, ind, sp, seg, chin_y, head_h, hw, hd, ch):
     small = plan == "flat"
 
     # --- nose --------------------------------------------------------------
-    # t values are the head profile's own: 0.27 is under the nose, 0.34 is the
-    # cheek ring (the tip), 0.46 the eye line (the bridge), 0.58 the brow.
-    #
     # THE NOSE IS DEEPLY BURIED AND THAT IS THE WHOLE OF ITS CONSTRUCTION. Its
     # z-radius is 0.33 of the head's own depth -- 69 mm on a human -- against a
-    # PROJECTION past the face plane of 27 mm, so two thirds of the solid is
+    # PROJECTION past the face plane of 20 mm, so two thirds of the solid is
     # inside the skull. A shallow blob laid on the face crosses it at a grazing
     # angle over the blob's whole footprint, which is the case no renderer sorts
     # well; a deeply buried one crosses along a short steep curve. The first and
     # last rings are entirely inside the head, so the nose EMERGES between
     # t = 0.28 and t = 0.50 and has no visible seam at either end -- the same
     # trick the head's own t = -0.07 ring and the arm root use.
+    #
+    # AND THE PROJECTION IS NOW MEASURED FROM THE SKULL RATHER THAN FROM THE
+    # ORIGIN, which is the same hard-rule-4 correction `_face_point` got. Every
+    # ring centre used to be an absolute fraction of the head's depth --
+    # `hd * 0.74` -- so the nose knew nothing about the face it sits on. The
+    # moment session 4h gave the maxilla a lip that stands 4.4 mm proud, the
+    # face plane came out to meet the nose and the nose lost a fifth of its
+    # projection without a number changing. It is now `_face_point(..., 0.0)`,
+    # the midline of the skull's own surface at that height, plus a stated
+    # projection: so the nasion notch cut into the brow ring gives the bridge a
+    # ROOT, the philtrum below gives it a base, and a Narn's deeper skull moves
+    # its nose with it.
+    #
+    # Projections, in fractions of head depth, EXTRAPOLATED at authority 5 from
+    # standard adult nasal proportion -- nasal length (nasion to subnasale)
+    # ~0.22 of head height, projection (subnasale to pronasale) ~20 mm on a
+    # 231 mm head = 0.087 of head height = 0.24 of head depth.
     nw = hw * (0.17 if not small else 0.12)
     small_k = 0.62 if small else 1.0
     rings = []
-    for t, rx_k, cz, rz in ((0.24, 0.55, 0.50, 0.16),
-                            (0.31, 0.95, 0.74, 0.33),
-                            (0.39, 0.85, 0.72, 0.33),
-                            (0.49, 0.60, 0.60, 0.26),
-                            (0.58, 0.50, 0.45, 0.20)):
-        rings.append(_ring(0.0, chin_y + head_h * ch * t,
-                           hd * cz * (1.0 if not small else 0.94),
-                           nw * rx_k, hd * rz * small_k, fseg, power=2.3))
+    for t, rx_k, proj, rz, alae in ((0.235, 0.50, -0.100, 0.16, 0.00),
+                                    (0.290, 1.00, +0.150, 0.30, 0.34),
+                                    (0.330, 0.95, +0.240, 0.32, 0.16),
+                                    (0.400, 0.72, +0.150, 0.28, 0.00),
+                                    (0.480, 0.62, +0.045, 0.24, 0.00),
+                                    (0.560, 0.55, -0.060, 0.20, 0.00)):
+        _sx, _sy, sz = _face_point(ind, sp, t, 0.0, chin_y, head_h, hw, hd, ch)
+        # The ring's own depth is the buried part; `proj` is how far its FRONT
+        # stands past the skull, so the centre is (surface + proj) - rz.
+        rzz = hd * rz * small_k
+        cz = sz + hd * proj * (0.72 if small else 1.0) - rzz
+        rings.append(_ring(0.0, chin_y + head_h * ch * t, cz,
+                           nw * rx_k, rzz, fseg, power=2.3,
+                           # The alae: the nostril wings are the widest part of
+                           # a nose and they sit BEHIND the tip, so they are a
+                           # radial lobe at the sides of the nose's own ring.
+                           lobes=_mirror(0.0, 62.0, alae) if alae else ()))
     m.add(*_loft(rings), "npc_%s_nose" % sp.surface.kind, "nose")
 
     if plan != "humanoid":
@@ -2019,20 +2464,35 @@ def _face_point(ind, sp, t, xf, chin_y, head_h, hw, hd, ch):
     off the head's actual section rather than off a remembered one, so a Narn's
     heavier braincase, a pak'ma'ra's deeper skull and every per-individual
     cranium jitter carry them without a second table. `_head_at` gives the
-    radius scale and the z drift; the superellipse and the front squash come
-    from the nearest row of `_head_profile`, so if that table is re-shaped the
-    eyes move with it.
+    radius scale and the z drift; the section block comes from the nearest row
+    of `_head_profile`, so if that table is re-shaped the eyes move with it.
+
+    AND IT NOW READS THE SECTION'S LOBES AND `zoff` TOO, which it did not
+    before and which session 4h's orbit made compulsory. The old body of this
+    function reconstructed the superellipse by hand -- `e = 1 - |xf|^p`, then
+    `z = rz * e^(1/p) * sq` -- so it knew the ring's exponent and its front
+    squash and NOTHING about the displacements laid on top of them. Cutting an
+    8 mm orbit into the skull would then have left the eye standing exactly
+    where the old un-socketed surface was: a bead on a ball, one level worse
+    than the bead it already was. So the azimuth `xf` corresponds to is solved
+    from the same superellipse (`_face_az`) and the point comes back out of
+    `_ring_point`, the one function the ring itself is built from.
     """
     prof = _head_profile(ind)
     row = min(prof, key=lambda r: abs(r[0] - t))
-    p = float(row[3].get("power", 2.0))
-    sq = float(row[3].get("squash_front", 1.0))
+    sec = dict(row[3])
+    p = float(sec.get("power", 2.0))
     k, zo = _head_at(ind, t)
     jk = sp.jaw_k + (1.0 - sp.jaw_k) * min(1.0, max(0.0, t) / 0.34)
     rx, rz = hw * k * jk, hd * k * jk
-    e = max(0.0, 1.0 - min(1.0, abs(xf)) ** p)
-    return (xf * rx, chin_y + head_h * ch * t,
-            head_h * zo + rz * (e ** (1.0 / p)) * sq)
+    # `xf` is a signed fraction of the half-width and `_face_az` gives the
+    # azimuth FROM +X at which the ring reaches it, so the figure's LEFT
+    # (+X, xf > 0) is at `az` itself and its right at 180 - az. xf = 0 is the
+    # midline of the face at 90 degrees, which is `_ring`'s stated convention.
+    az = _face_az(abs(xf), p)
+    theta = az if xf >= 0.0 else (180.0 - az)
+    return _ring_point(0.0, chin_y + head_h * ch * t, head_h * zo,
+                       rx, rz, theta, **sec)
 
 
 def _f_eyes(m, ind, sp, seg, chin_y, head_h, hw, hd, ch):
@@ -2251,8 +2711,8 @@ _FEATURES = {
 # PROFILE error is dominated by the plate edges, so its ring schedule is
 # stricter than a body's, and `profile_schedule()` measures that rather than
 # assuming one number for both.
-def build_encounter_suit(ind: Individual, sp: SpeciesBody, seg=16, ring_stride=1,
-                         features="all"):
+def build_encounter_suit(ind: Individual, sp: SpeciesBody, seg=16,
+                         ring_stride=1, features="all", form=None):
     """The Gaim suit: helmet, mantle, barrel torso, plated limbs, boots.
 
     EXTRAPOLATED throughout -- reference/ holds no Gaim frame. What constrains
@@ -2322,7 +2782,7 @@ def build_encounter_suit(ind: Individual, sp: SpeciesBody, seg=16, ring_stride=1
 
 
 def build_column(ind: Individual, sp: SpeciesBody, seg=16, ring_stride=1,
-                 features="all"):
+                 features="all", form=None):
     """Kosh. A singleton, and unlike anything else on the station.
 
     `Vorlon moree.jpg` (authority 2) is the only full-height view we hold: a
@@ -2483,7 +2943,8 @@ def build(species: str, npc_id: str, lod=0, chain=None):
     if lv["kind"] == "impostor":
         return impostor(ind, sp)
     m = _PLANS[sp.plan](ind, sp, seg=lv["radial_segments"],
-                        ring_stride=lv["ring_stride"], features=lv["features"])
+                        ring_stride=lv["ring_stride"], features=lv["features"],
+                        form=lv.get("ring_form"))
     return m.as_tuple()
 
 
@@ -2567,16 +3028,30 @@ def profile_schedule(seg=16):
     out = []
     for stride in PROFILE_STEPS:
         worst, where = 0.0, None
-        for key, sp in SPECIES.items():
-            ind = individual(key, "lod-probe")
-            m = _PLANS[sp.plan](ind, sp, seg=seg, ring_stride=1, features="all")
-            for name, verts, _tris in m.parts:
-                nrings = _rings_of(verts, seg, name)
-                if nrings is None or len(nrings) < 3:
-                    continue
-                e = chord_error(nrings, stride)
-                if e > worst:
-                    worst, where = e, f"{key} {name}"
+        # OVER EVERY FEATURE LEVEL, AND THAT IS NOT THOROUGHNESS -- IT IS THE
+        # DIFFERENCE BETWEEN A MEASUREMENT AND A FLATTERING ONE. `lod_chain`
+        # composes the three schedules independently, so a stride is applied at
+        # levels whose ring plan is the BASE tier; measuring the stride only on
+        # the `all` build measures decimation of a stack that has six more
+        # rings in it than the stack being decimated. It showed up the moment
+        # the form tier landed: the grome torso's stride-4 error fell 0.1227 ->
+        # 0.0749 purely because the measured torso had eleven rings instead of
+        # eight, stride 2 and stride 4 became equally honest, and the chain
+        # silently DROPPED a level on the strength of geometry that level does
+        # not contain. Same shape as every gate this repository has had to fix:
+        # it built the case without the defect in it.
+        for level in FEATURE_STEPS:
+            for key, sp in SPECIES.items():
+                ind = individual(key, "lod-probe")
+                m = _PLANS[sp.plan](ind, sp, seg=seg, ring_stride=1,
+                                    features=level)
+                for name, verts, _tris in m.parts:
+                    nrings = _rings_of(verts, seg, name)
+                    if nrings is None or len(nrings) < 3:
+                        continue
+                    e = chord_error(nrings, stride)
+                    if e > worst:
+                        worst, where = e, f"{key} {name} at {level}"
         worst = round(worst, 5)
         out.append({
             "ring_stride": stride,
@@ -2593,6 +3068,28 @@ def profile_schedule(seg=16):
     return out
 
 
+def _chord_error_keep(rings, kept):
+    """Worst deviation of the DROPPED rings from the surface `kept` would loft.
+
+    The general form of `chord_error`, which is this with `kept` derived from a
+    stride. Split out because the form tier's drop is not a stride -- it keeps
+    an arbitrary subset -- and pricing it needed the same measurement rather
+    than a second one.
+    """
+    kept = set(kept)
+    worst = 0.0
+    for i in range(len(rings)):
+        if i in kept:
+            continue
+        lo = max((k for k in kept if k < i), default=None)
+        hi = min((k for k in kept if k > i), default=None)
+        if lo is None or hi is None:
+            continue
+        for a, b, c in zip(rings[i], rings[lo], rings[hi]):
+            worst = max(worst, _point_segment_m(a, b, c))
+    return worst
+
+
 def chord_error(rings, stride):
     """Worst deviation of a dropped ring from the surface `_stride` would loft.
 
@@ -2604,16 +3101,7 @@ def chord_error(rings, stride):
     interpolated by ring index on a non-uniformly spaced stack and reported
     0.123 m of "error" on a torso that changes radius by 20 mm end to end.
     """
-    kept = set(_stride_indices(len(rings), stride))
-    worst = 0.0
-    for i in range(len(rings)):
-        if i in kept:
-            continue
-        lo = max(k for k in kept if k < i)
-        hi = min(k for k in kept if k > i)
-        for a, b, c in zip(rings[i], rings[lo], rings[hi]):
-            worst = max(worst, _point_segment_m(a, b, c))
-    return worst
+    return _chord_error_keep(rings, _stride_indices(len(rings), stride))
 
 
 def _point_segment_m(p, a, b):
@@ -2660,6 +3148,46 @@ def _rings_of(verts, seg, name):
     if seg <= 0 or len(verts) % seg:
         return None
     return [verts[i * seg:(i + 1) * seg] for i in range(len(verts) // seg)]
+
+
+def _unstooped(ind: "Individual") -> "Individual":
+    """The same resident with the stoop suppressed.
+
+    One helper because two measurements need it and a hand-rolled copy of the
+    dataclass rebuild is how one of them ends up dropping a field.
+    """
+    return Individual(*[0.0 if f.name == "stoop_deg" else getattr(ind, f.name)
+                        for f in ind.__dataclass_fields__.values()])
+
+
+def _y_rings(verts):
+    """A lofted part's rings, recovered by grouping runs of equal height.
+
+    `_rings_of` needs the ring size and gets it wrong on anything not built at
+    the body's own `seg` -- a limb is `seg // 2`, so `len(verts) % seg` either
+    rejects it or, worse, divides evenly and hands back three "rings" of 16
+    where the part has six of 8. This groups by y instead, which is exact
+    because `_ring` puts every vertex of a ring at one height, and returns None
+    for anything that is not a stack of equal rings. Same construction as
+    `animation._ring_partition`, which has the same job on the same meshes.
+    """
+    runs, start = [], 0
+    for i in range(1, len(verts) + 1):
+        if i == len(verts) or abs(verts[i][1] - verts[start][1]) > 1e-9:
+            runs.append(verts[start:i])
+            start = i
+    # `len(runs[0]) < 3` is the STOOP GUARD and it is not defensive coding.
+    # `_bend` rotates y as a function of z, so a pak'ma'ra's rings are not
+    # flat: every vertex lands in its own run and this returns a list of
+    # one-vertex "rings" that a caller will happily measure. The first run of
+    # `form_schedule` did exactly that and reported 0.222 m of error on a
+    # pak'ma'ra head -- a whole head-height, from a partition that had nothing
+    # to do with rings. The smallest ring this module builds is 4 vertices
+    # (`_small_seg`'s floor), so anything under 3 is not a ring stack.
+    if (len(runs) < 2 or len(runs[0]) < 3
+            or any(len(r) != len(runs[0]) for r in runs)):
+        return None
+    return runs
 
 
 def _box_of(verts):
@@ -2782,6 +3310,119 @@ def feature_schedule(seg=16):
     return out
 
 
+# WHERE THE FACE RINGS STOP, AND THE 4.5 m THIS COSTS.
+# ------------------------------------------------------------------------
+# `form_schedule()` measures the face tier as honest to drop at 13.4 m. It is
+# dropped at 8.9 m instead -- the first level whose radial count falls to 16 --
+# and the reason is both a Nyquist argument and a budget one, in that order.
+#
+# NYQUIST: the face tier's whole content is `zoff` windows on the front of the
+# head. The narrowest that has to READ is the lip vermilion at half 24 degrees,
+# so 48 degrees of arc; at seg 16 the azimuth step is 22.5 degrees, which is
+# two samples across a lip and ONE across the philtrum. A ring bought to carry
+# a feature the ring cannot sample is a ring bought for nothing.
+#
+# BUDGET: and it is the harder constraint. Carrying the face rings through
+# seg 16 -- the 8.9-26.8 m band, which holds most of a busy Zocalo -- makes a
+# figure 1,929 triangles instead of 1,739, and `npc/crowd.py` answered by
+# moving the Zocalo's impostor swap from 51.1 m to 33.4 m, INSIDE the 36 m
+# floor that module sets so "fix the overrun" can never mean "put cards on the
+# people the player is talking to".
+#
+# WHAT IT COSTS, stated rather than absorbed: between 8.9 m and 13.4 m a figure
+# carries 13.0 mm of ring error against a budget of 1.5 px, so about 2.2 px of
+# deviation instead of 1.5 over a 4.5 m band. That is the compromise, it is the
+# same KIND of compromise `populace.crowd_ladder` records for its near band, and
+# it is the number a future budget increase would buy back.
+FACE_FORM_MIN_SEG = 32
+
+
+def _form_for(radial_segments, features):
+    """The `FORM_STEPS` key for a level with these knobs."""
+    if features != "all":
+        return "none"
+    return "face_and_body" if radial_segments >= FACE_FORM_MIN_SEG else "body"
+
+
+def form_schedule(seg=16):
+    """Landmark-ring culling. Error is the CHORD the dropped rings leave.
+
+    THE FOURTH SCHEDULE, AND IT EXISTS FOR THE REASON THE OTHER THREE DO: a
+    knob that stops being visible at its own distance needs its own distance.
+    Session 4h added rings to the skull and the shoulder -- a mouth, an orbital
+    rim, a deltoid roll-over -- and a ring, unlike a superellipse exponent or a
+    lobe, costs triangles at every level it exists at.
+
+    NEITHER OF THE OTHER INSTRUMENTS CAN SEE THIS CULL, which is why it is here
+    and not folded into `feature_schedule`:
+
+      * `feature_schedule` compares PART NAMES and prices what is removed
+        against what survives. A head with fewer rings is the same part with
+        the same name, so it scores exactly zero.
+      * the figure's BOUNDING BOX does not move either -- the crown, the soles
+        and the fingertips are all base geometry. That is the same blindness
+        session 4e paid for with a bald corridor.
+
+    What a dropped intermediate ring actually costs is the distance from its
+    vertices to the chord joining the rings that remain, which is
+    `chord_error`'s question with an arbitrary kept set. Measured over every
+    species, on the parts each tier touches, and quoted for the worst.
+
+    The two tiers come out at very different distances and that is the whole
+    argument for splitting them -- see RING_TIERS.
+    """
+    rows = []
+    for step in FORM_STEPS:
+        worst, where = 0.0, None
+        for key, sp in SPECIES.items():
+            # UNSTOOPED, for the reason `animation.rig` builds an unstooped
+            # probe: `_bend` is a graded rotation, so a stooped stack has no
+            # flat rings to recover and the stoop is a POSE rather than a
+            # property of the ring plan. Measuring the erect figure measures
+            # the thing the schedule is about.
+            ind = _unstooped(individual(key, "lod-probe"))
+            full = _PLANS[sp.plan](ind, sp, seg=seg, ring_stride=1,
+                                   features="all", form=FORM_STEPS[0])
+            cut = _PLANS[sp.plan](ind, sp, seg=seg, ring_stride=1,
+                                  features="all", form=step)
+            # PART FOR PART, WITH THE SURVIVING RINGS FOUND BY MATCHING, not by
+            # reading a tier table a second time. A limb's rings come out of
+            # `_limb_ts` rather than a profile row, so a table-driven version of
+            # this would need `bulge_at` copied here -- and a second copy of a
+            # number is the defect `budget.py`'s cached collision total records.
+            for (n0, v0, _t0), (n1, v1, _t1) in zip(full.parts, cut.parts):
+                if n0 != n1 or len(v0) == len(v1):
+                    continue
+                r0, r1 = _y_rings(v0), _y_rings(v1)
+                if r0 is None or r1 is None or len(r0) <= len(r1):
+                    continue
+                kept, j = [], 0
+                for i, ring in enumerate(r0):
+                    if j < len(r1) and abs(ring[0][1] - r1[j][0][1]) < 1e-9:
+                        kept.append(i)
+                        j += 1
+                if len(kept) != len(r1):
+                    continue                 # not a subset: measured elsewhere
+                e = _chord_error_keep(r0, kept)
+                if e > worst:
+                    worst, where = e, f"{key} {n0}"
+        worst = round(worst, 5)
+        rows.append({
+            "form": step,
+            "error_m": worst,
+            "error_baseline": "every landmark ring built",
+            "error_source": ("max distance from a dropped landmark ring's "
+                             "vertex to the chord of the base rings that "
+                             "remain, over every species"
+                             + (f", worst at {where}" if where else "")),
+            "honest_from_m": round(honest_from_m(worst), 2),
+            "feature_m": worst,
+            "feature_source": "the same deviation, as a feature size",
+            "aliases_beyond_m": round(aliases_beyond_m(worst), 1),
+        })
+    return rows
+
+
 def impostor_distance():
     """Distance from which an 8-azimuth impostor is inside the deviation budget.
 
@@ -2833,7 +3474,22 @@ def lod_chain(seg_measure=16):
     sil = silhouette_schedule()
     pro = profile_schedule(seg_measure)
     fea = feature_schedule(seg_measure)
+    frm = form_schedule(seg_measure)
     imp = impostor_distance()
+    # THE FORM SCHEDULE IS MEASURED AND THEN NOT GIVEN ITS OWN BOUNDARY, and
+    # that is a stated compromise rather than an oversight. Its two honest
+    # distances (13.4 m for the face rings, 31.6 m for the body's) do not
+    # coincide with any other schedule's, so putting them in `bounds` adds two
+    # levels -- and a chain that grows breaks the one thing a chain index means
+    # to another module: `npc/crowd.py`'s `CROWD_LOD_OFFSET = 2` is "two levels
+    # coarser", so a finer-grained chain makes the same offset save less. It
+    # was measured: 12 levels took the Zocalo's impostor horizon from 51.1 m to
+    # 26.1 m and the crowd offset's saving from 36% to 27%, failing three of
+    # that module's gates.
+    #
+    # So `ring_form` is derived from the knobs the level ALREADY has -- see
+    # `_form_for` -- and the schedule's job is to say what that costs, which it
+    # does in `report()` and in `_detail_gate` part 5.
     bounds = sorted({0.0} | {o["honest_from_m"]
                              for s in (sil, pro, fea) for o in s
                              if 0 < o["honest_from_m"] <= SUBPIXEL_FIGURE_M})
@@ -2842,7 +3498,9 @@ def lod_chain(seg_measure=16):
         s = _coarsest(sil, "radial_segments", d)
         p = _coarsest(pro, "ring_stride", d)
         f = _coarsest(fea, "features", d)
-        combo = (s["radial_segments"], p["ring_stride"], f["features"])
+        r = {"form": _form_for(s["radial_segments"], f["features"])}
+        combo = (s["radial_segments"], p["ring_stride"], f["features"],
+                 r["form"])
         if combo == last:
             continue
         last = combo
@@ -2852,6 +3510,7 @@ def lod_chain(seg_measure=16):
             "radial_segments": s["radial_segments"],
             "ring_stride": p["ring_stride"],
             "features": f["features"],
+            "ring_form": r["form"],
             "switch_distance_m": round(d, 2),
             "honest_from_m": {"silhouette": s["honest_from_m"],
                               "profile": p["honest_from_m"],
@@ -2859,12 +3518,15 @@ def lod_chain(seg_measure=16):
             "switch_reason": ("coarsest honest option in each schedule: "
                               f"silhouette {s['honest_from_m']} m, "
                               f"profile {p['honest_from_m']} m, "
-                              f"feature {f['honest_from_m']} m"),
+                              f"feature {f['honest_from_m']} m; "
+                              f"ring form {r['form']} from seg "
+                              f"{s['radial_segments']}"),
         })
     levels.append({
         "name": f"lod{len(levels)}",
         "kind": "impostor",
         "radial_segments": 8, "ring_stride": 1, "features": "identity_only",
+        "ring_form": FORM_STEPS[-1],
         "switch_distance_m": round(max(imp["honest_from_m"],
                                        levels[-1]["switch_distance_m"] * 2.0), 2),
         "honest_from_m": {"impostor": imp["honest_from_m"]},
@@ -3165,7 +3827,8 @@ def report(out=print):
     out(f"\nworst measured section radius on any species: {r:.4f} m")
     for name, rows, key in (("SILHOUETTE", silhouette_schedule(), "radial_segments"),
                             ("PROFILE", profile_schedule(), "ring_stride"),
-                            ("FEATURE", feature_schedule(), "features")):
+                            ("FEATURE", feature_schedule(), "features"),
+                            ("RING FORM", form_schedule(), "form")):
         out(f"\n{name} schedule")
         out(f"  {'option':>14} {'error m':>10} {'honest from':>13} "
             f"{'aliases beyond':>15}")
@@ -3183,10 +3846,12 @@ def report(out=print):
     tri = level_triangles(chain)
     out(f"\nCHAIN ({len(chain)} levels)")
     out(f"  {'level':6} {'kind':10} {'segs':>5} {'stride':>7} {'features':>14} "
-        f"{'from':>10} {'to':>10} {'tri min':>9} {'tri max':>9} {'mix mean':>9}")
+        f"{'ring form':>14} {'from':>10} {'to':>10} {'tri min':>9} "
+        f"{'tri max':>9} {'mix mean':>9}")
     for lv, t in zip(chain, tri):
         out(f"  {lv['name']:6} {lv['kind']:10} {lv['radial_segments']:>5} "
             f"{lv['ring_stride']:>7} {lv['features']:>14} "
+            f"{lv['ring_form']:>14} "
             f"{lv['switch_distance_m']:>9,.1f}m {lv['used_to_m']:>9,.1f}m "
             f"{t['min']:>9,} {t['max']:>9,} {t['mean_mix']:>9,.0f}")
     out(f"\n  lod0's own quality floor is {chain[0]['honest_from_m']['silhouette']:.2f} m: "
@@ -3308,8 +3973,46 @@ def silhouette_iou(g1, g2, lo_row=0, hi_row=None):
 # The two controls below are what make the number mean anything: four bodies
 # built from ONE parameter block read 1.000 and fail this ceiling, and taking
 # the Centauri's crest away moves that pair from 0.634 to 0.848.
-SPECIES_HEAD_IOU_MAX = 0.90
+# 0.86, and the derivation is the point rather than the number. The comment
+# here used to say "0.90 is the worst measured pair with a margin" -- and with
+# the head band rasterised five pixels wide (see HEAD_BAND_SPAN) that margin was
+# 0.088 of a five-pixel shape, which is to say it was nothing. A mutation sweep
+# caught it: shrinking the MINBARI crest to zero leaves that pair at 0.887 and
+# the ceiling passed it. The worst pair that really exists is human vs Narn at
+# 0.812 -- a Narn's identity in the reference is a spotted crown, a texture, and
+# the module says so -- so 0.86 leaves 4.8 points of margin AND sits below the
+# 0.887 a crestless Minbari reads, which means the ceiling itself now catches an
+# identity feature that has silently gone. Three controls below check the same
+# thing from the other side.
+SPECIES_HEAD_IOU_MAX = 0.86
 GATE_SPECIES = ("human", "centauri", "minbari", "narn")
+# The attachment each of these carries that IS its silhouette, for the strip
+# control. The Narn is deliberately absent and that is a recorded finding, not
+# an omission: stripping its brow moves the pair by 0.000 (INV-4G-004).
+IDENTITY_FEATURE = {"centauri": "centauri_crest", "minbari": "minbari_crest"}
+
+# ---------------------------------------------------------------------------
+# AND THE HEAD BAND WAS BEING RASTERISED FIVE PIXELS WIDE. Session 4h, found
+# while checking that a rebuilt skull had not moved these numbers.
+# ---------------------------------------------------------------------------
+# `silhouette_raster`'s default span is 0.75 of a stature EITHER SIDE, because
+# it is sized for a whole figure with its arms out. A head is 0.048 of a
+# stature to the side, so on the 64-column grid the head band came out **3 to
+# 13 columns across**, and the pair scores were quantised to about a fifth of a
+# head. That is enough to separate a Minbari crest from a human skull and not
+# nearly enough to say anything about a jaw: rebuilding the face moved human vs
+# Narn from 0.875 to 0.911 in the front view and the entire move was ONE PIXEL
+# of a five-pixel shape. Measured at a span that fits a head, the same pair
+# reads 0.881 before and 0.884 after -- the "regression" does not exist.
+#
+# `HEAD_BAND_SPAN` is DERIVED, not chosen: the widest head band on the four
+# gate species is a Narn's at 0.1288 of its own height, so 0.14 clears it with
+# 9% of margin and `_detail_gate` asserts no species touches the raster edge --
+# a clipped silhouette would score two different heads as identical at the
+# clip. 192 columns then put a head at 161 of them.
+HEAD_BAND_SPAN = 0.14
+HEAD_BAND_NX = 192
+HEAD_BAND_NY = 384
 
 
 def _detail_gate(check, quiet=False, out=print):
@@ -3360,11 +4063,28 @@ def _detail_gate(check, quiet=False, out=print):
                 n = len(merge(m.spans))
                 if n > worst_merged:
                     worst_merged, worst_where = n, f"{key}/{lv['name']}"
-        check(worst_merged <= 3,
-              f"a bare body merges to at most 3 material runs at every level "
-              f"of every species (worst {worst_merged} on {worst_where}) -- "
-              f"the new parts are emitted adjacent to a part of their own "
-              f"material, not in the middle of another")
+        # PINNED, NOT BOUNDED, and the difference matters this session. A "<= 3"
+        # ceiling passes a change that quietly takes every human from 2 runs to
+        # 3, which on a deck of 147 people is 147 draw calls against
+        # `budget.BUDGETS["deck_primitives"] = 600`. Session 4h rebuilt the
+        # skull and the shoulder and had to be able to say the merge did not
+        # move, so the number is the number.
+        BARE_MERGE_RUNS = 3          # a Minbari: skin, crest, hair
+        check(worst_merged == BARE_MERGE_RUNS,
+              f"a bare body merges to EXACTLY {BARE_MERGE_RUNS} material runs "
+              f"at the worst level of the worst species (got {worst_merged} on "
+              f"{worst_where}) -- the new parts are emitted adjacent to a part "
+              f"of their own material, not in the middle of another")
+        _human_runs = max(
+            len(merge(_PLANS["humanoid"](individual("human", "merge-probe"),
+                                         SPECIES["human"],
+                                         seg=lv["radial_segments"],
+                                         ring_stride=lv["ring_stride"],
+                                         features=lv["features"]).spans))
+            for lv in chain if lv["kind"] == "mesh")
+        check(_human_runs == 2,
+              f"and a bare HUMAN is exactly 2 at every level -- skin and hair "
+              f"(got {_human_runs})")
         # THE CONTROL. Emit the same spans with the dark face parts moved next
         # to the nose, which is where they would naturally have gone, and the
         # merge has to grow. If it does not, this check is measuring nothing.
@@ -3390,9 +4110,10 @@ def _detail_gate(check, quiet=False, out=print):
                                             lod=bake)[:3]
             say(f"  dressed at the corridor bake level ({chain[bake]['name']}): "
                 f"{len(dt):,} tri, {len(ds)} spans, {len(merge(ds))} merged")
-            check(len(merge(ds)) <= 12,
-                  f"a DRESSED body at the bake level is at most 12 primitives "
-                  f"(got {len(merge(ds))})")
+            check(len(merge(ds)) == 12,
+                  f"a DRESSED body at the bake level is EXACTLY 12 primitives "
+                  f"(got {len(merge(ds))}) -- pinned rather than bounded, so a "
+                  f"change that costs a deck 147 draw calls cannot pass")
         except Exception as exc:                                # noqa: BLE001
             check(False, f"costume.build_dressed not usable here: {exc}")
 
@@ -3484,6 +4205,28 @@ def _detail_gate(check, quiet=False, out=print):
         check(holed > 0,
               f"MUTATION: deleting two triangles from a body makes "
               f"interior.boundary_edges report {holed} open edges")
+        # AND THE MUTATION FOR THE CLASS `edge_census` CANNOT SEE, because that
+        # is the whole reason this gate uses the other instrument. Two capped
+        # shells sharing one ring EXACTLY -- which is what every foot and Kosh's
+        # yoke were until session 4g -- give one disc four triangles per edge.
+        # `edge_census` keys on vertex INDEX, so the two caps are different
+        # indices and it reads (0, 0); `interior.boundary_edges` keys on
+        # POSITION and sees it at once. Constructed here rather than trusted,
+        # so the difference between the two instruments is a measurement.
+        _r = [_ring(0, 0, 0, 0.2, 0.2, 8), _ring(0, 0.4, 0, 0.2, 0.2, 8)]
+        _u = [_ring(0, 0.4, 0, 0.2, 0.2, 8), _ring(0, 0.8, 0, 0.2, 0.2, 8)]
+        _sv, _st = _loft(_r)
+        _uv, _ut = _loft(_u)
+        _cv = list(_sv) + list(_uv)
+        _ct = list(_st) + [(a + len(_sv), b + len(_sv), c + len(_sv))
+                           for a, b, c in _ut]
+        _idx = edge_census(_ct)
+        _pos = _int.boundary_edges(_cv, _ct)
+        check(_idx == (0, 0) and len(_pos[1]) > 0,
+              f"MUTATION: two shells sharing a ring read {_idx} to edge_census "
+              f"and {len(_pos[0])} open / {len(_pos[1])} non-manifold to "
+              f"interior.boundary_edges -- the class the index-keyed check is "
+              f"blind to, and the reason this gate uses the other one")
     except Exception as exc:                                    # noqa: BLE001
         check(False, f"interior.boundary_edges not usable here: {exc}")
 
@@ -3502,21 +4245,52 @@ def _detail_gate(check, quiet=False, out=print):
     # the difference that matters is entirely in the other one. The pair's
     # score is the view they differ MOST in: two bodies differ if there is any
     # angle a player can tell them apart from.
-    rast = {}
+    rast, head = {}, {}
     for key in GATE_SPECIES:
         v, t, _s = build(key, "sil-probe", bake, chain)
         rast[key] = (silhouette_raster(v, t, axis=0),
                      silhouette_raster(v, t, axis=2))
+        # THE HEAD BAND GETS ITS OWN RASTER, at its own span. See
+        # HEAD_BAND_SPAN: on the figure-wide grid a head was 5 columns across
+        # and every pair score was quantised to a fifth of a head.
+        head[key] = (silhouette_raster(v, t, nx=HEAD_BAND_NX, ny=HEAD_BAND_NY,
+                                       axis=0, span=HEAD_BAND_SPAN),
+                     silhouette_raster(v, t, nx=HEAD_BAND_NX, ny=HEAD_BAND_NY,
+                                       axis=2, span=HEAD_BAND_SPAN))
     ny = rast["human"][0][2]
     band = int(ny * 0.80)
+    hband = int(HEAD_BAND_NY * 0.80)
+    # AND THE SPAN MUST NOT CLIP, or two different heads score identical at the
+    # edge of the grid. Asserted per species and per view rather than assumed
+    # from the one number that was measured to choose it.
+    clipped = []
+    for key in GATE_SPECIES:
+        for k, g in enumerate(head[key]):
+            grid, nx_, ny_ = g
+            for r in range(hband, ny_):
+                if grid[r * nx_] or grid[r * nx_ + nx_ - 1]:
+                    clipped.append(f"{key}/{'front' if k == 0 else 'side'}")
+                    break
+    check(not clipped,
+          f"no species' head band reaches the edge of its own raster at span "
+          f"{HEAD_BAND_SPAN} -- a clipped silhouette scores two heads the same "
+          f"({sorted(set(clipped))})")
+    _hw_px = max(sum(1 for c in range(HEAD_BAND_NX)
+                     if head["human"][0][0][r * HEAD_BAND_NX + c])
+                 for r in range(hband, HEAD_BAND_NY))
+    check(_hw_px > 100,
+          f"and a head is {_hw_px} of {HEAD_BAND_NX} columns across, not the "
+          f"5 the figure-wide grid gave it")
+    say(f"  a head is {_hw_px} px across on the head-band raster "
+        f"(it was 5 on the figure-wide one)")
     say(f"  {'pair':24} {'front':>7} {'side':>7} {'head F':>7} {'head S':>7}")
     worst_pair, worst_iou = None, 0.0
     for i, a in enumerate(GATE_SPECIES):
         for b in GATE_SPECIES[i + 1:]:
             wf = silhouette_iou(rast[a][0], rast[b][0])
             ws = silhouette_iou(rast[a][1], rast[b][1])
-            hf = silhouette_iou(rast[a][0], rast[b][0], lo_row=band)
-            hs = silhouette_iou(rast[a][1], rast[b][1], lo_row=band)
+            hf = silhouette_iou(head[a][0], head[b][0], lo_row=hband)
+            hs = silhouette_iou(head[a][1], head[b][1], lo_row=hband)
             say(f"  {a + ' vs ' + b:24} {wf:>7.3f} {ws:>7.3f} "
                 f"{hf:>7.3f} {hs:>7.3f}")
             if min(hf, hs) > worst_iou:
@@ -3527,32 +4301,55 @@ def _detail_gate(check, quiet=False, out=print):
           f"{SPECIES_HEAD_IOU_MAX} ceiling)")
     # CONTROL A: the measurement must return 1.000 for a figure against itself,
     # or the numbers above are noise rather than difference.
-    check(abs(silhouette_iou(rast["human"][0], rast["human"][0], lo_row=band)
+    check(abs(silhouette_iou(head["human"][0], head["human"][0], lo_row=hband)
               - 1.0) < 1e-12,
           "a figure against itself reads IoU 1.000")
-    # CONTROL B: take the Centauri's crest away and the pair that was the most
-    # different has to collapse toward a human. This is the assertion that
-    # would have fired on a station of four humans in different hats.
-    spc = SPECIES["centauri"]
-    ind = individual("centauri", "sil-probe")
-    bare = Individual(*[getattr(ind, f.name) if f.name != "features"
-                        else tuple(x for x in ind.features
-                                   if x not in ("centauri_crest", "hair"))
-                        for f in ind.__dataclass_fields__.values()])
-    bv, bt, _bs = _PLANS[spc.plan](bare, spc,
-                                   seg=chain[bake]["radial_segments"],
-                                   ring_stride=chain[bake]["ring_stride"],
-                                   features=chain[bake]["features"]).as_tuple()
-    bare_iou = min(silhouette_iou(silhouette_raster(bv, bt, axis=ax),
-                                  rast["human"][k], lo_row=band)
-                   for k, ax in enumerate((0, 2)))
-    with_iou = min(silhouette_iou(rast["centauri"][k], rast["human"][k],
-                                  lo_row=band) for k in (0, 1))
-    say(f"  CONTROL  centauri without its crest vs human: {bare_iou:.3f} "
-        f"(with the crest: {with_iou:.3f})")
-    check(bare_iou > with_iou + 0.05,
-          f"MUTATION: stripping the Centauri crest moves its head silhouette "
-          f"toward a human's, {with_iou:.3f} -> {bare_iou:.3f}")
+    # CONTROL B: take EVERY crest away, one species at a time, and each pair
+    # has to collapse toward a human. It was the Centauri alone and a mutation
+    # sweep found the hole: shrinking the MINBARI crest to nothing left the
+    # gate green, because no control built that case and the ceiling was loose
+    # enough to pass it. A control that covers one instance of a class is the
+    # defect AAA-STANDARD's ROBUSTNESS 2 describes.
+    caught_by_ceiling = set()
+    for key, feat in IDENTITY_FEATURE.items():
+        spc = SPECIES[key]
+        ind = individual(key, "sil-probe")
+        bare = Individual(*[getattr(ind, f.name) if f.name != "features"
+                            else tuple(x for x in ind.features
+                                       if x not in (feat, "hair"))
+                            for f in ind.__dataclass_fields__.values()])
+        bv, bt, _bs = _PLANS[spc.plan](
+            bare, spc, seg=chain[bake]["radial_segments"],
+            ring_stride=chain[bake]["ring_stride"],
+            features=chain[bake]["features"],
+            form=chain[bake]["ring_form"]).as_tuple()
+        bare_iou = min(silhouette_iou(silhouette_raster(
+                                          bv, bt, nx=HEAD_BAND_NX,
+                                          ny=HEAD_BAND_NY, axis=ax,
+                                          span=HEAD_BAND_SPAN),
+                                      head["human"][k], lo_row=hband)
+                       for k, ax in enumerate((0, 2)))
+        with_iou = min(silhouette_iou(head[key][k], head["human"][k],
+                                      lo_row=hband) for k in (0, 1))
+        say(f"  CONTROL  {key} without its {feat} vs human: {bare_iou:.3f} "
+            f"(with it: {with_iou:.3f})")
+        check(bare_iou > with_iou + 0.05,
+              f"MUTATION: stripping the {key} {feat} moves its head "
+              f"silhouette toward a human's, {with_iou:.3f} -> "
+              f"{bare_iou:.3f}")
+        if bare_iou > SPECIES_HEAD_IOU_MAX:
+            caught_by_ceiling.add(key)
+    # WHICH OF THOSE THE CEILING CATCHES ON ITS OWN, pinned as a set rather
+    # than hoped for. The ceiling cannot go below the worst pair that really
+    # exists (human vs Narn, 0.812), so it can only catch a stripped species
+    # whose bare skull still reads above 0.86 -- the Minbari does, at 0.887; the
+    # Centauri's skull alone reads 0.822 and is covered by its own strip control
+    # and by nothing else. Asserting the SET means a change that stops the
+    # ceiling catching the Minbari fails here instead of passing quietly.
+    check(caught_by_ceiling == {"minbari"},
+          f"the {SPECIES_HEAD_IOU_MAX} ceiling alone catches a crestless "
+          f"{sorted(caught_by_ceiling)}; the rest are covered by their strip "
+          f"control, because the ceiling cannot sit below the worst real pair")
     # CONTROL C, AND IT IS THE ONE THE TASK NAMES: build all four species from
     # the HUMAN parameter block with no attachments at all -- four humans in
     # different hats, which is exactly the failure this gate exists to catch --
@@ -3569,14 +4366,18 @@ def _detail_gate(check, quiet=False, out=print):
                               ring_stride=chain[bake]["ring_stride"],
                               features=chain[bake]["features"])
         cv, ct, _cs = cm.as_tuple()
-        clones[key] = (silhouette_raster(cv, ct, axis=0),
-                       silhouette_raster(cv, ct, axis=2))
+        clones[key] = (silhouette_raster(cv, ct, nx=HEAD_BAND_NX,
+                                         ny=HEAD_BAND_NY, axis=0,
+                                         span=HEAD_BAND_SPAN),
+                       silhouette_raster(cv, ct, nx=HEAD_BAND_NX,
+                                         ny=HEAD_BAND_NY, axis=2,
+                                         span=HEAD_BAND_SPAN))
     clone_worst = 0.0
     for i, a in enumerate(GATE_SPECIES):
         for b in GATE_SPECIES[i + 1:]:
             clone_worst = max(clone_worst,
                               min(silhouette_iou(clones[a][k], clones[b][k],
-                                                 lo_row=band) for k in (0, 1)))
+                                                 lo_row=hband) for k in (0, 1)))
     say(f"  CONTROL  four species built from ONE parameter block: "
         f"worst pair IoU {clone_worst:.3f}")
     check(clone_worst > SPECIES_HEAD_IOU_MAX,
@@ -3589,6 +4390,140 @@ def _detail_gate(check, quiet=False, out=print):
     stats = {k: nominal(k).stature_m for k in GATE_SPECIES}
     check(max(stats.values()) - min(stats.values()) > 0.08,
           f"and the four differ in stature as well as in shape ({stats})")
+
+    # -- 5. THE FORM TIER: what it costs, what it buys, where it is honest ---
+    # Session 4h added rings, and a ring is the one kind of articulation this
+    # module cannot make free. So the tier is gated four ways and every one of
+    # them can fail:
+    #
+    #   (a) it must cost NOTHING below `features == "all"`. The corridor bake
+    #       and every level past 28.1 m are the same triangles they were.
+    #   (b) the level a body is drawn at must carry the tier the schedule and
+    #       the Nyquist rule say it should -- `_form_for`, not a table.
+    #   (c) the deviation each drop accepts, in PIXELS at the distance it is
+    #       actually dropped at, against the module's own budget.
+    #   (d) and the control: `feature_schedule`'s two instruments must both be
+    #       shown to score this cull at zero, which is why it needed a third.
+    say("\nTHE FORM TIER: landmark rings, and where each one stops")
+    frm = form_schedule()
+    say(f"  {'step':16} {'error m':>9} {'honest from':>12} "
+        f"{'dropped at':>11} {'px at the drop':>15}")
+    for row in frm:
+        at = [lv["switch_distance_m"] for lv in chain
+              if lv.get("ring_form") == row["form"]]
+        d = min(at) if at else None
+        px = (row["error_m"] / d * _px_scale(1.0)) if d else 0.0
+        say(f"  {row['form']:16} {row['error_m']:>9.5f} "
+            f"{row['honest_from_m']:>11.2f}m "
+            f"{('%.1f m' % d) if d is not None else '--':>11} "
+            f"{px:>14.2f}")
+    say(f"  {'level':6} {'features':>14} {'ring form':>14} {'as shipped':>11} "
+        f"{'all rings':>10} {'saved':>7}")
+    for i, lv in enumerate(chain):
+        if lv["kind"] != "mesh":
+            continue
+        kw = dict(seg=lv["radial_segments"], ring_stride=lv["ring_stride"],
+                  features=lv["features"])
+        n_ship = len(_PLANS["humanoid"](individual("human", "form-probe"),
+                                        SPECIES["human"],
+                                        form=lv["ring_form"], **kw).tris)
+        n_form = len(_PLANS["humanoid"](individual("human", "form-probe"),
+                                        SPECIES["human"],
+                                        form=FORM_STEPS[0], **kw).tris)
+        say(f"  {lv['name']:6} {lv['features']:>14} {lv['ring_form']:>14} "
+            f"{n_ship:>11,} {n_form:>10,} {n_form - n_ship:>7,}")
+    # (a) The invariant that keeps lod3 and below at exactly the cost they had:
+    # a build below `all` uses the DECLARED base plan and nothing else. Stated
+    # as ring counts rather than as triangle counts, because a triangle count
+    # is a number this session could have tuned and a ring plan is not.
+    bad_plan = []
+    for key, sp in SPECIES.items():
+        if sp.plan != "humanoid":
+            continue
+        ind_b = individual(key, "form-probe")
+        if len(_head_profile(ind_b, False)) != HEAD_RINGS:
+            bad_plan.append(f"{key} head")
+        if len(_torso_profile(ind_b, sp, False)) != len(TORSO_RINGS):
+            bad_plan.append(f"{key} torso")
+    check(not bad_plan,
+          f"(a) every species' BASE ring plan is the declared one -- "
+          f"{HEAD_RINGS} head, {len(TORSO_RINGS)} torso -- so no level below "
+          f"`all` can have grown ({bad_plan})")
+    lod_base = [i for i, lv in enumerate(chain)
+                if lv["kind"] == "mesh" and lv["ring_form"] == FORM_STEPS[-1]]
+    check(lod_base and all(
+              len(_PLANS["humanoid"](individual("human", "form-probe"),
+                                     SPECIES["human"],
+                                     seg=chain[i]["radial_segments"],
+                                     ring_stride=chain[i]["ring_stride"],
+                                     features=chain[i]["features"],
+                                     form=FORM_STEPS[0]).tris)
+              > len(build("human", "form-probe", i, chain)[1])
+              for i in lod_base),
+          f"and forcing the tier ON at those levels WOULD cost more, so the "
+          f"saving is real rather than a level that never had the rings "
+          f"({[chain[i]['name'] for i in lod_base]})")
+    # (b) The chain's own field agrees with the rule, level by level.
+    check(all(lv["ring_form"] == _form_for(lv["radial_segments"],
+                                           lv["features"])
+              for lv in chain if lv["kind"] == "mesh"),
+          "(b) every level's ring form is `_form_for`'s answer for its own "
+          "knobs, not a table that can go stale")
+    check(_form_for(64, "all") == "face_and_body"
+          and _form_for(16, "all") == "body"
+          and _form_for(16, "no_detail") == "none",
+          "and that rule turns the face rings off with the radial count and "
+          "the body rings off with the feature level")
+    # (c) The pixel cost of each drop, at the distance it is really dropped at.
+    # A DECLARED CEILING RATHER THAN THE BUDGET, because the face tier is
+    # dropped 4.5 m early on purpose -- see FACE_FORM_MIN_SEG -- and a gate
+    # that read PIXEL_BUDGET would either fail by design or have to pretend
+    # that compromise was not made.
+    FORM_DROP_PX_MAX = 2.5
+    worst_px, worst_step = 0.0, None
+    for row in frm:
+        at = [lv["switch_distance_m"] for lv in chain
+              if lv.get("ring_form") == row["form"]]
+        if not at or row["error_m"] <= 0.0:
+            continue
+        px = row["error_m"] / min(at) * _px_scale(1.0)
+        if px > worst_px:
+            worst_px, worst_step = px, row["form"]
+    check(worst_px <= FORM_DROP_PX_MAX,
+          f"(c) the worst ring-form drop accepts {worst_px:.2f} px of "
+          f"deviation at the distance it happens ({worst_step}), against a "
+          f"declared {FORM_DROP_PX_MAX} px ceiling and the module's own "
+          f"{PIXEL_BUDGET} px budget")
+    check(worst_px > PIXEL_BUDGET,
+          f"and it is OVER the budget rather than inside it -- {worst_px:.2f} "
+          f"px against {PIXEL_BUDGET} -- which is the compromise "
+          f"FACE_FORM_MIN_SEG states, recorded as a number rather than "
+          f"absorbed")
+    # (d) THE CONTROL, WHICH NEEDED `form` TO BE OVERRIDABLE TO EXIST AT ALL.
+    # `feature_schedule`'s two instruments -- the part list and the figure's
+    # bounding box -- must be SHOWN to score this cull at zero, on the very
+    # pair of meshes the schedule scored at millimetres. Building the same
+    # feature level with the rings on and off is the only way to construct
+    # that, which is why `build_humanoid` takes `form` and not just `features`.
+    _fp = _unstooped(individual("human", "form-probe"))
+    _mf = _PLANS["humanoid"](_fp, SPECIES["human"], seg=16, features="all",
+                             form=FORM_STEPS[0])
+    _mb = _PLANS["humanoid"](_fp, SPECIES["human"], seg=16, features="all",
+                             form=FORM_STEPS[-1])
+    _bbox = max(abs(a - b) for a, b in zip(_mf.bbox(), _mb.bbox()))
+    _pf = {n for n, _v, _t in _mf.parts}
+    _pb = {n for n, _v, _t in _mb.parts}
+    _stand = _cull_standoff(_mf, _mb)
+    check(len(_mf.tris) > len(_mb.tris),
+          f"(d) the two builds differ ({len(_mb.tris):,} -> "
+          f"{len(_mf.tris):,} triangles), so the comparison below is real")
+    check(_bbox < 1e-4 and _pf == _pb and _stand == 0.0
+          and frm[-1]["error_m"] > 0.002,
+          f"(d) dropping the form rings removes NO part, moves the bounding "
+          f"box {_bbox * 1000:.3f} mm and gives `_cull_standoff` {_stand:.3f} "
+          f"m -- `feature_schedule`'s two instruments BOTH score it zero -- "
+          f"while the chord error is {frm[-1]['error_m'] * 1000:.1f} mm. The "
+          f"cull needed a third instrument and `form_schedule` is it")
 
 
 # ---------------------------------------------------------------------------
@@ -3701,17 +4636,47 @@ def _selftest():
     # The ring stack must be monotonic in y or the loft folds and the solid
     # self-intersects -- which renders perfectly and breaks every containment
     # and volume test downstream.
-    check(len(_head_profile(nominal("human"))) == HEAD_RINGS
-          and len(_torso_profile(nominal("human"), SPECIES["human"]))
-          == len(TORSO_RINGS),
-          f"the declared ring plan is the built one "
-          f"({len(_head_profile(nominal('human')))} head rings against "
-          f"HEAD_RINGS={HEAD_RINGS})")
+    # THE DECLARED PLAN IS THE BASE TIER, and the FULL plan must be a strict
+    # superset of it -- otherwise a switch to lod3 rearranges the figure rather
+    # than simplifying it, which is the exact property `SILHOUETTE_STEPS` and
+    # `_stride` exist to hold and the reason the tier is a filter of one list.
+    _hb = _head_profile(nominal("human"), form=False)
+    _hf = _head_profile(nominal("human"), form=True)
+    _tb = _torso_profile(nominal("human"), SPECIES["human"], form=False)
+    _tf = _torso_profile(nominal("human"), SPECIES["human"], form=True)
+    check(len(_hb) == HEAD_RINGS and len(_tb) == len(TORSO_RINGS),
+          f"the declared BASE ring plan is the built one "
+          f"({len(_hb)} head rings against HEAD_RINGS={HEAD_RINGS}, "
+          f"{len(_tb)} torso against {len(TORSO_RINGS)})")
+    check(len(_hf) > len(_hb) and len(_tf) > len(_tb),
+          f"and the form tier adds rings ({len(_hb)} -> {len(_hf)} head, "
+          f"{len(_tb)} -> {len(_tf)} torso)")
+    check(all(r in _hf for r in _hb) and all(r in _tf for r in _tb),
+          "every BASE row is present, identical, in the FORM profile -- the "
+          "coarse ring plan is a strict subset of the fine one")
+    check(all(r[-1] in RING_TIERS for r in _hf + tuple(_tf)),
+          "every profile row declares a tier the module knows")
+    # And the same for a limb: the form ring plan must contain the base one.
+    for _b_at in (0.19, 0.55):
+        _lb, _lf = _limb_ts(_b_at), _limb_ts(_b_at, form=True)
+        check(len(_lb) == LIMB_RINGS and len(_lf) > len(_lb)
+              and all(any(abs(x - y) < 1e-12 for y in _lf) for x in _lb),
+              f"a limb's base ring plan is {LIMB_RINGS} rings and a strict "
+              f"subset of its form plan ({_lb} in {_lf})")
+        check(any(abs(x - _b_at) < 1e-12 for x in _lb),
+              f"and the muscle belly at {_b_at} HAS a ring on it -- the "
+              f"defect `_limb_ts` exists to fix ({_lb})")
     for key, sp in SPECIES.items():
-        ys = [f for _n, f, _w, _d, _s in _torso_profile(nominal(key), sp)]
-        check(all(a < b for a, b in zip(ys, ys[1:])),
-              f"{key}: torso ring heights strictly increase "
-              f"({[round(y, 3) for y in ys]})")
+        for _form in (False, True):
+            ys = [f for _n, f, _w, _d, _s, _t
+                  in _torso_profile(nominal(key), sp, _form)]
+            check(all(a < b for a, b in zip(ys, ys[1:])),
+                  f"{key}: torso ring heights strictly increase at "
+                  f"form={_form} ({[round(y, 3) for y in ys]})")
+            ts = [t for t, _k, _z, _s, _ti in _head_profile(nominal(key), _form)]
+            check(all(a < b for a, b in zip(ts, ts[1:])),
+                  f"{key}: head ring heights strictly increase at "
+                  f"form={_form} ({ts})")
 
     # `contains()` must be able to say NO, or every containment assertion below
     # is vacuous -- the exact shape of the three assertions AAA-STANDARD scores
@@ -4089,7 +5054,7 @@ def _selftest():
                         1.0, SPECIES["human"].cranium, 1.0, 0.0, s, 0, 0,
                         SPECIES["human"].features, "crop")
         pr = _torso_profile(ii, SPECIES["human"])
-        return {n: (w, d) for n, _f, w, d, _s in pr}
+        return {n: (w, d) for n, _f, w, d, _s, _t in pr}
     _m, _f2 = _sexed("m"), _sexed("f")
     check(_f2["hip"][0] > _m["hip"][0] and _f2["shoulder"][0] < _m["shoulder"][0]
           and _f2["waist"][0] / _f2["shoulder"][0]

@@ -1999,9 +1999,17 @@ def _build_mesh(species, npc_id, lod=0, chain=None, datum=ERA_DATUM,
         # is the honest version of "the costume has an impostor LOD".
         return body.impostor(ind, sp)          # a tuple, not a Mesh
 
+    # `ring_form` AS WELL AS `features`, and the reason is that a dressed body
+    # must be the SAME mesh as the bare one. Session 4h split the ring plan
+    # into tiers a level carries or does not (`body.RING_TIERS`), and
+    # `build_humanoid` derives the tier from `seg` and `features` if it is not
+    # given one -- which happens to agree here, but "happens to agree" is how
+    # `populace`'s rest-pose probe came to be dressed while the posed figure
+    # was nude. The level says which rings it has; this passes it on.
     src = body._PLANS[sp.plan](ind, sp, seg=lv["radial_segments"],
                               ring_stride=lv["ring_stride"],
-                              features=lv["features"])
+                              features=lv["features"],
+                              form=lv.get("ring_form"))
     if c.set_key == "none":
         return src
 
@@ -2045,6 +2053,18 @@ def _build_mesh(species, npc_id, lod=0, chain=None, datum=ERA_DATUM,
 
     if torso_verts is None:                    # column plan: nothing to dress
         return src
+    # THE COLLAR IS SIZED OFF THE NECK, NOT OFF THE TORSO'S TOP RING, and the
+    # difference is a session's worth of frame. `standing_collar` used
+    # `_axis_at(torso_verts, 0.985)` because the torso's topmost ring HAPPENED
+    # to be neck-sized -- 0.40 of the biacromial half-width with a 0.10 lobe.
+    # Session 4h gave the trapezius the lateral ridge a trapezius has (0.48 x
+    # 1.34 at the sides, because the muscle runs to the acromion), the same
+    # measurement came back 46% larger, and the render put an EarthForce
+    # officer inside a bowl wider than his own shoulders. The collar wraps the
+    # NECK; measuring the neck is hard rule 4, and it also means the collar
+    # follows a pak'ma'ra's short neck and a Minbari's long one without a
+    # second table.
+    neck_verts = next((v for n, v, _t in out.parts if n == "neck"), None)
 
     # --- attachments -------------------------------------------------------
     arm_parts = [v for n, v, _t in out.parts if n == "arm"]
@@ -2052,8 +2072,17 @@ def _build_mesh(species, npc_id, lod=0, chain=None, datum=ERA_DATUM,
         if not _attachment_active(key, distance_m):
             continue
         if key == "standing_collar":
-            cx, cz, r, y = _axis_at(torso_verts, 0.985, band=0.03)
-            _band(out, cx, cz, y + 0.022 * H, r * 0.92, 0.024 * H,
+            # 0.50 of the neck's height and x1.15: the collar wraps the
+            # STERNOCLEIDOMASTOID part of the neck, not its flared root ring
+            # (which is 0.138 m and is the shoulder blending in) nor its
+            # narrowest (0.061 m, which is where the head swallows it).
+            # 0.0819 x 1.15 = 0.094 m, against the 0.091 m the old
+            # torso-derived measurement gave -- so the garment is the size it
+            # has always rendered at, and now for a stated reason.
+            base = neck_verts if neck_verts else torso_verts
+            cx, cz, r, y = _axis_at(base, 0.50 if neck_verts else 0.985,
+                                    band=0.06 if neck_verts else 0.03)
+            _band(out, cx, cz, y + 0.022 * H, r * 1.15, 0.024 * H,
                   group_name("npc_leather", c.leather), "collar",
                   _att_seg(r * 0.92, distance_m), taper=1.06)
         elif key == "epaulettes":
