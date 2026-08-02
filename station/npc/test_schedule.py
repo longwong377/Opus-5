@@ -288,21 +288,38 @@ def main():
     # Neither check above can catch a salted hash: both calls happen in one
     # process, where `str.__hash__` is stable. This one can, and a salted hash
     # would have produced a different station every run.
+    # BOTH paths, exactly as lines 18-19 set up for this process. The probe used
+    # to insert `_HERE` alone, which was true when it was written and stopped
+    # being true when `schedule.py` grew a module-scope `from npc import body`
+    # for `_body_frame_share()` -- that needs `station/` on the path, so every
+    # probe process died on ModuleNotFoundError and printed nothing. A child
+    # process does not inherit sys.path edits; it inherits the interpreter's
+    # defaults, so anything the parent had to arrange the child must arrange too.
     probe = (
-        "import sys, os; sys.path.insert(0, %r);"
+        "import sys, os; sys.path.insert(0, %r); sys.path.insert(0, %r);"
         "import schedule as S;"
         "print('|'.join(S.role_for('n-%%d' %% i, 'narn').key + ':' +"
         "S.activity_at('n-%%d' %% i, 'narn', i %% 24).value for i in range(400)))"
-        % _HERE
+        % (os.path.dirname(_HERE), _HERE)
     )
-    outs = []
+    outs, errs = [], []
     for seed in ("0", "12345"):
         env = dict(os.environ, PYTHONHASHSEED=seed)
-        outs.append(subprocess.run([sys.executable, "-c", probe], env=env,
-                                   capture_output=True, text=True).stdout)
+        r = subprocess.run([sys.executable, "-c", probe], env=env,
+                           capture_output=True, text=True)
+        outs.append(r.stdout)
+        errs.append(r.stderr.strip().splitlines()[-1] if r.stderr.strip() else "")
+    # `len(outs[0]) > 1_000` is the clause that kept this honest -- two crashed
+    # runs both print nothing and compare EQUAL, which is CLAUDE.md's "a diff of
+    # two failed runs is not a pass". It did its job; what it could not do is say
+    # WHY, because the harness captured stderr and dropped it. It took a manual
+    # re-run to see a one-line ModuleNotFoundError. Report the child's last error
+    # line: a harness that can only say "0 bytes" makes its own failure expensive.
     check("identical byte for byte across two PYTHONHASHSEED values",
           outs[0] == outs[1] and len(outs[0]) > 1_000,
-          f"{len(outs[0])} bytes, seeds 0 and 12345")
+          f"{len(outs[0])} bytes, seeds 0 and 12345"
+          + (f" -- child said: {errs[0] or errs[1]}" if (errs[0] or errs[1])
+             else ""))
     # Parsed rather than grepped. A substring search over the source flagged
     # the module's own docstring, which says in prose that it never uses
     # `str.__hash__` -- so the first version of this check failed on a comment
