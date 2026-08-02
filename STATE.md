@@ -1,6 +1,103 @@
 # Project State
 
-**Last updated:** 2026-08-01 · **Session 4g** — **THE STATION IS ONE WALKABLE PIECE. READ §19 FIRST: components 96 → 1, the lift exists, the whole station is built, and four green numbers were lies** · **Sessions 4e–4f** — **READ §14 FIRST. The renderer was wrong all session; layer 7 exists; the Starfury flies; 34 of 41 CI gates had not run for thirty pushes** · **4d** — **READ §8 FIRST: the owner asked what actually works and the answer was mostly no. Direction changed.** Also: 357/357 interactables, and the 60-minute engine tax is over · **4c** — the station is INTERACTABLE, the port is on a wall, and the 24-minute suites were one bad cache key · **4b** — a police force, friction in metres, the plated shell, the fitting-reach fix
+**Last updated:** 2026-08-02 · **Session 4h** — **READ §20 FIRST: the owner reassessed and the plan turned over — LIFE FIRST (60/30/10), the shell stays 1:1. Ashir walked 887.9 m to work; the variety gate is red at 27 indistinguishable clusters over 82 of 128 places; 857 of 857 residents commute across decks** · **Session 4g** — **THE STATION IS ONE WALKABLE PIECE. READ §19 FIRST: components 96 → 1, the lift exists, the whole station is built, and four green numbers were lies** · **Sessions 4e–4f** — **READ §14 FIRST. The renderer was wrong all session; layer 7 exists; the Starfury flies; 34 of 41 CI gates had not run for thirty pushes** · **4d** — **READ §8 FIRST: the owner asked what actually works and the answer was mostly no. Direction changed.** Also: 357/357 interactables, and the 60-minute engine tax is over · **4c** — the station is INTERACTABLE, the port is on a wall, and the 24-minute suites were one bad cache key · **4b** — a police force, friction in metres, the plated shell, the fitting-reach fix
+
+## Session 4h — THE PLAN TURNED OVER: LIFE FIRST, AND THE FIRST RESIDENT WALKED TO WORK
+
+### 20. READ THIS FIRST — the owner reassessed the project and changed what gets built
+
+The owner asked what we were doing and why it was slow, and the answer was not a defect list. It
+was **strategy**. `docs/MASTER-PLAN.md` is rewritten (the 3k document is preserved verbatim as
+`docs/MASTER-PLAN-3k.md`, because its audit is still the best analysis in the repository).
+
+**The fact that decided it:** we had reinvented Starfield's *worst* feature and were trying to beat
+Starfield with it. Starfield's hand-built cities are its best work — hundreds of artists, years —
+and its procedurally generated content is the single most criticised thing in the game: the same
+lab, over and over. That is exactly our **78 of 128 places built from one generic kit**.
+
+And the constraint that settles the argument: **one agent authors everything, with no artists.**
+Measured rate is four landmarks from craft 1 to craft 3 in a 70-minute agent session. 128 places at
+that rate is ~thirty sessions for **one pass**, and they would still be craft 3. Hand-authoring to
+AAA surface is not reachable — not slowly, not at all.
+
+**Two rulings, both the owner's, taken through `AskUserQuestion`:**
+
+1. **LIFE FIRST — roughly 60% life, 30% variety, 10% surface.** Surface is hard-capped by having
+   no artists; **simulation depth has no ceiling**, and it is what an agent is actually good at.
+   *A living craft-3 station is far more like Babylon 5 than a beautiful empty one.*
+2. **THE SHELL STAYS 1:1; ONLY THE NAMED PLACES GET INTERIORS.** The 8,047 m hull, 70 ring decks,
+   the drum and the whole circulation network stay 1:1 and walkable. The other 73,507 bays are
+   sealed or generic-but-varied, and **that is stated rather than counted as a shortfall**. 0.17%
+   of footprint was never the blocker; identical rooms were.
+
+**Both new gates fail today and neither is a coverage count.** That is the point.
+
+### 20.1 L1 — SOMEONE GOES TO WORK. It is a person, not a demo
+
+`python3 station/agenda.py --walk`, full write-up in `docs/life-L1.md`.
+
+> **Ashir**, 111, Minbari, diplomat. Lives in the ambassadorial suites, green/0/1 at 24°; works in
+> the League delegations, same deck at 200°. Shift 06:39 EMT, leaves **06:09** — the start of
+> *their own* `schedule.activity_at` TRANSIT window, not a departure the gate invented. Walks
+> **887.9 m** of ring corridor at **1.469 m/s**, taking **10.1 min**, and is at their desk 20
+> minutes early.
+
+Nothing in that is chosen by the gate: the person comes from `npc/resident.py`, the hours from
+`npc/schedule.py`, the gait from `populace._walk_speed` (the speed their own walk clip is animated
+at), the gravity from `interior.gravity_at`, the corridor radius and both door angles from
+`deck.deck_plan`, the connectivity claim from `routes.py`. Three clock rates, three controls, every
+control fires.
+
+**And the finding that made L3 mandatory rather than optional:** across the **857 baked residents
+with both a home and a job, NOT ONE has them on the same deck.** The four commonest commutes all
+need a lift. Ashir is the exception the gate had to search for, not the typical case.
+
+### 20.2 V0 — the variety gate exists and it is RED
+
+`station/variety.py`, full write-up in `docs/variety-V0.md`. It is `body.py --silhouette`'s
+instrument — pairwise IoU with a one-parameter-block control that must read 1.000 — pointed at
+rooms instead of species.
+
+> **27 clusters of mutually indistinguishable places, covering 82 of the 128.** On FORM alone —
+> plan and section, which is what a generator has to produce — **21 clusters covering 90 of 128,
+> the largest of them 18 places.** The station's six medlabs are one room. Its eight offices are
+> one room. Its five bars are one room. Its four places of worship are one room. **47.6% of all
+> 8,128 pairs have a cross-section and a longitudinal section that cannot be told apart at all.**
+
+The drivers were measured rather than guessed, and one of them has its **sign backwards**: *both
+built generic* +0.195 and *same archetype* +0.021, but **shared function +0.162** — places that do
+the same job are LESS alike than places that merely share a generator. Sector, authority, ring and
+species mix are inert. That is V1's brief: form must follow **function**, and section before plan.
+
+### 20.3 THREE GATES THAT COULD NOT FAIL, FOUND WHILE AGENTS HELD THE CORES
+
+Cheap work done deliberately off the CPU while two agents ran — which is the rule from 4c, applied
+rather than rediscovered.
+
+1. **`budget.py`'s exterior size bound was reading a path nothing writes.** `GLB` named
+   `station/generated/station.glb`, a name from before the scene directory existed;
+   `export_scene.py` has always written `scene/exterior/hull.glb`. On its own that is a stale path.
+   What made it invisible is the guard it sat behind — **`if size:`** — which turns a missing
+   artefact into a *skip*. The one shipped file whose size a player actually pays for was
+   unmeasured. Now **PASS 32 / 64 MB (50.1%)**, and absent → **FAIL**. *Same shape as the stale
+   committed frames: a gate reading an artefact that is not the artefact.*
+2. **`npc/test_schedule.py`'s salted-hash determinism check has been dark.** The test puts both
+   `station/npc/` and `station/` on `sys.path`; the subprocess probe it spawns put only the first.
+   Correct when written, and it stopped being correct when `schedule.py` grew a module-scope
+   `from npc import body`. Every probe process died on `ModuleNotFoundError` before printing a
+   byte. **It did not silently pass** — `len(outs[0]) > 1_000` caught it, which is *"a diff of two
+   failed runs is not a pass"* doing its job. But the harness captured stderr and dropped it, so
+   all it could say was **"0 bytes"**, and finding the one-line cause cost a manual re-run. Both
+   ends fixed: the probe arranges the paths its parent did (**a child inherits the interpreter's
+   defaults, not the parent's `sys.path` edits**) and the harness reports the child's last stderr
+   line. **99/100 → 100/100**, comparing 5,902 real bytes. Control: *"0 bytes — child said:
+   ModuleNotFoundError: No module named 'npc'"*.
+3. **`hud.gd` vs `ambience.gd` was a MISDIAGNOSIS of mine and needed no change.** They resolve
+   location identically (`Places.at` containment over the same boxes). `hud.gd:279` then reports
+   `CORRIDOR` *plus* the nearest place and its distance; `ambience.gd:263` falls back to
+   `central_corridor`, a real register key. The "31.6 m disagreement" was the HUD's `near_m`
+   readout. *Recorded because a finding withdrawn is worth as much as a finding confirmed, and the
+   next context would otherwise spend a session "fixing" two correct functions.*
 
 ## Session 4g — THE STATION IS ONE WALKABLE PIECE
 
