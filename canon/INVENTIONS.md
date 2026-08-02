@@ -5944,3 +5944,40 @@ per frame (which would remove `populace`'s shared-library constraint and with it
 whole reason the crowd is baked at one level).
 
 ---
+
+## INV-265 — What tells five bars apart: a snug, an oche and a shuttered hatch
+
+**Invented:** in `station/hospitality.py` — `bar_program()`, and three fitting sets keyed on the
+register's declared functions: the dartboard and its scoreboard on `recreation`, four booths
+(`BOOTHS = 4`, `BOOTH_BACK_M = 1.42`) on `rumour`, and a closed roller shutter
+(`SHUTTER_W_M = 1.30`, `SHUTTER_H_M = 2.05`, `SHUTTER_SLATS = 14`) on `black_market_fringe`.
+
+**Why necessary:** `room()` took no arguments, so `bespoke.BESPOKE_GEOMETRY["hospitality"]` —
+`lambda s, p, q: hospitality.room()` — drew one room for all five named bars. `bar_unnamed`,
+`eclipse_cafe`, `earharts`, `fresh_air` and `happy_daze` were byte-identical, which
+`deck.py --degeneracy` now fails on. Something has to differ, and the choice is between inventing
+five looks and reading the five descriptions the gazetteer already carries.
+
+**Constrained by:** the register, which is why the *footprints* are not invented at all —
+`rooms.bay_span_m` gives 18.7 x 14.3, 18.7 x 14.3, 12.3 x 16.0, 12.3 x 16.0 and 11.8 x 14.0 m, and
+the table grid is derived from that rather than the module's old fixed 3 x 3. Only the **fittings**
+are extrapolated, and each is the most ordinary reading of the function it hangs off: a room the
+gazetteer marks for `rumour` needs somewhere you are *not* overheard, which is what a snug is, so
+`BOOTH_BACK_M` sits above a seated head or it is a sofa; a `black_market_fringe` room needs a
+visible back-of-house that is *closed*, which is a shutter. The dartboard is authority 1 and was
+already here — what is new is that it is now conditional, because a cafe with an oche is a pub, and
+`eclipse_cafe` and `fresh_air` declare `food_service` without `recreation`.
+
+**What it does NOT claim:** that these are the *right* five characters. They are five *different*
+rooms derived from five different declarations, which is the bar `--degeneracy` sets. The measured
+result is honest and partial: the geometry differs (5 of 5 distinct fingerprints, 6,584 to 6,956
+triangles) and a rendered frame still reads as the same bar at a different size, because the
+palette, the fitting density and the table furniture are shared. Character is the next pass.
+
+**Overturned by:** any frame of a named Babylon 5 bar interior other than the unnamed one in
+`reference/04-sector-red`. One frame of Earhart's would replace the derived half of this outright.
+
+**Materials:** the new groups take existing measured materials rather than new ones — booths follow
+`bar_stool`'s upholstery (the same seat, in the same room, from the same frame) and the shutter
+follows `prop_barred_screen`'s unpainted steel. `check_material_coverage` caught all five groups on
+the fallback the first time they were rendered, which is exactly what that gate is for.

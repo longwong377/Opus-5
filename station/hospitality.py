@@ -122,7 +122,31 @@ MATRIX_GAP_M = 0.025
 # assertion is against the measured inherited count, exactly as `zocalo._selftest`
 # does for `interior_kit.wall_assembly`. It still fails the moment this file
 # introduces one of its own.
-_INHERITED_NON_MANIFOLD = 58
+#
+# 58 -> 54 in session 4h, and the number was CHECKED rather than relaxed: the
+# selftest failed identically before and after this module was touched (29/30,
+# 5,852 triangles both ways), and `rooms.py` changed by 854 lines in c4f989b
+# when the V1 pass reworked `articulate`. So four of the inherited edges went
+# away because the module that owns them improved.
+#
+# It stays an EXACT equality. A drop means rooms.py got better and the constant
+# is stale; a RISE means either rooms.py regressed or this file introduced an
+# edge of its own, and that second case is the one this assertion exists for.
+_INHERITED_NON_MANIFOLD = 54
+
+# Booths -- the `rumour` fitting. A snug is a bench with a high back, which is
+# what makes it a place you can talk in; the height is the one thing that has to
+# be right or it is just a sofa. INV-265.
+BOOTHS = 4
+BOOTH_L_M = 1.65           # two people a side
+BOOTH_D_M = 0.62
+BOOTH_SEAT_M = 0.46
+BOOTH_BACK_M = 1.42        # above a seated head, which is the whole point
+
+# The `black_market_fringe` fitting: a closed roller shutter behind the bar.
+SHUTTER_W_M = 1.30
+SHUTTER_H_M = 2.05
+SHUTTER_SLATS = 14
 
 DART_R_M = 0.2255          # a regulation board is 451 mm across
 DART_T_M = 0.038           # and 38 mm deep -- INV-171
@@ -272,10 +296,48 @@ def dartboard(v, t, g, cx, cy, z):
     return v, t, g
 
 
-def room():
-    """The whole bar, authored with x across, y up, z along."""
+def bar_program(place=None):
+    """What KIND of bar this is, read off the register rather than chosen.
+
+    THE FIVE BARS WERE ONE ROOM. `room()` took no arguments, so `bespoke`'s
+    entry -- `lambda s, p, q: hospitality.room()` -- drew the same geometry for
+    `bar_unnamed`, `eclipse_cafe`, `earharts`, `fresh_air` and `happy_daze`.
+    They rendered byte-identically and `deck.py --degeneracy` now fails on it.
+
+    Nothing here is invented. The register already distinguishes them and
+    nobody was reading it:
+
+        bar_unnamed   18.7 x 14.3 m   hospitality food_service recreation rumour
+        eclipse_cafe  18.7 x 14.3 m   hospitality food_service
+        earharts      12.3 x 16.0 m   hospitality food_service recreation
+        fresh_air     12.3 x 16.0 m   hospitality food_service
+        happy_daze    11.8 x 14.0 m   hospitality recreation black_market_fringe
+
+    So the footprint comes from `rooms.bay_span_m` and the fittings come from
+    the declared functions -- which is the V-track's rule, form follows
+    function, applied to the module that had the worst case of not doing it.
+    `place=None` keeps the module's own constants so the self-test and any
+    caller without a register entry still build the reference bar.
+    """
+    if place is None:
+        return {"w": ROOM_W_M, "l": ROOM_L_M, "fn": frozenset(),
+                "key": "reference"}
+    w, l = _rooms.bay_span_m(place)
+    return {"w": float(w), "l": float(l),
+            "fn": frozenset(place.get("functions") or ()),
+            "key": place.get("key", "reference")}
+
+
+def room(place=None):
+    """The whole bar, authored with x across, y up, z along.
+
+    `place` is a register row. See `bar_program` for what it changes and why.
+    """
+    prog = bar_program(place)
+    room_w, room_l = prog["w"], prog["l"]
+    fn = prog["fn"]
     v, t, g = [], [], []
-    hw, hl = ROOM_W_M / 2.0, ROOM_L_M / 2.0
+    hw, hl = room_w / 2.0, room_l / 2.0
 
     # Deck and soffit run to the OUTER wall extent, not the inner face.
     #
@@ -322,8 +384,8 @@ def room():
     # Tables in a loose grid, each with its own pendant and stools.
     for i in range(TABLES_X):
         for j in range(TABLES_Z):
-            cx = -hw + (i + 1) * ROOM_W_M / (TABLES_X + 1.6)
-            cz = -hl + (j + 1) * ROOM_L_M / (TABLES_Z + 1)
+            cx = -hw + (i + 1) * room_w / (TABLES_X + 1.6)
+            cz = -hl + (j + 1) * room_l / (TABLES_Z + 1)
             _cyl(v, t, g, "bar_table_stem", cx, cz, 0.0,
                  TABLE_H_M - TABLE_TOP_M, 0.075, seg=8)
             _cyl(v, t, g, "bar_table", cx, cz, TABLE_H_M - TABLE_TOP_M,
@@ -382,11 +444,55 @@ def room():
                  (-hw + 0.04, 1.35 + j * step + MATRIX_CELL_M,
                   -hl + 2.6 + i * step + MATRIX_CELL_M))
 
-    # Dartboard and the amber display, on the far wall.
-    dartboard(v, t, g, hw - 2.1, 1.73, hl - 0.02)
-    _box(v, t, g, "bar_display",
-         (hw - 2.1 - DISPLAY_W_M / 2, 1.28, hl - 0.04),
-         (hw - 2.1 + DISPLAY_W_M / 2, 1.28 + DISPLAY_H_M, hl - 0.02))
+    # --- WHAT THIS BAR IS FOR, and it is the register that says so ----------
+    #
+    # These three were unconditional, which is half of why five named bars were
+    # one room. A darts oche is a RECREATION fitting and `eclipse_cafe` and
+    # `fresh_air` do not declare recreation; they are food_service, and a cafe
+    # with a dartboard is a pub. `place=None` keeps every fitting so the
+    # reference bar in `_selftest` -- the one measured against Doug's Dugout --
+    # is unchanged. INV-265.
+
+    # RECREATION -> the dartboard and its amber scoreboard. Authority 1: the
+    # frame shows both, and it is a pub frame.
+    if not fn or "recreation" in fn:
+        dartboard(v, t, g, hw - 2.1, 1.73, hl - 0.02)
+        _box(v, t, g, "bar_display",
+             (hw - 2.1 - DISPLAY_W_M / 2, 1.28, hl - 0.04),
+             (hw - 2.1 + DISPLAY_W_M / 2, 1.28 + DISPLAY_H_M, hl - 0.02))
+
+    # RUMOUR -> booths. A room where things are overheard needs somewhere to
+    # sit where you are NOT overheard, which is what a snug is for; the
+    # gazetteer gives `rumour` to exactly one bar and this is what it buys.
+    if "rumour" in fn:
+        for k in range(BOOTHS):
+            z0 = -hl + 0.5 + k * (BOOTH_L_M + 0.22)
+            if z0 + BOOTH_L_M > hl - 0.5:
+                break
+            _box(v, t, g, "bar_booth_bench",
+                 (-hw + 0.06, 0.0, z0), (-hw + 0.06 + BOOTH_D_M,
+                                         BOOTH_SEAT_M, z0 + BOOTH_L_M))
+            _box(v, t, g, "bar_booth_back",
+                 (-hw + 0.06, 0.0, z0), (-hw + 0.16,
+                                         BOOTH_BACK_M, z0 + BOOTH_L_M))
+            _box(v, t, g, "bar_booth_divider",
+                 (-hw + 0.06, 0.0, z0 - 0.05),
+                 (-hw + 0.06 + BOOTH_D_M, BOOTH_BACK_M, z0))
+
+    # BLACK MARKET FRINGE -> a shuttered hatch behind the counter. Not a
+    # storeroom you can enter -- the point is that it is CLOSED, and that a
+    # player can see there is a back of house they are not in.
+    if "black_market_fringe" in fn:
+        sx = hw - 0.30
+        _box(v, t, g, "bar_shutter_frame",
+             (sx - 0.06, 0.0, -SHUTTER_W_M / 2 - 0.08),
+             (sx, SHUTTER_H_M + 0.08, SHUTTER_W_M / 2 + 0.08))
+        for k in range(SHUTTER_SLATS):
+            y0 = k * SHUTTER_H_M / SHUTTER_SLATS
+            _box(v, t, g, "bar_shutter_slat",
+                 (sx - 0.04, y0 + 0.006, -SHUTTER_W_M / 2),
+                 (sx, y0 + SHUTTER_H_M / SHUTTER_SLATS - 0.006,
+                  SHUTTER_W_M / 2))
 
     return v, t, g
 

@@ -2891,6 +2891,13 @@ def _build():
                # and `prop_bunk` -- the same machine kind, the same object in a
                # room -- is already here. `prop_stool` follows `bar_stool`,
                # which is the stool this material was bound for.
+               # The snug in a `rumour` bar (INV-265). A booth is a bench, and
+               # `bar_stool` -- the seat in the same room, from the same frame
+               # -- is already on this material; a second upholstery invented
+               # for the bench beside it would be unmarked invention where a
+               # measured one exists. The divider is the back of the next
+               # booth, so it is the same cloth by construction.
+               "bar_booth_bench", "bar_booth_back", "bar_booth_divider",
                "dress_bed", "prop_stool"), scenes=("interior",),
         source="03-sector-blue/Babylon_5_2-22_35a.jpg, authority 1, already measured and already in this library: the lit cushion cluster, balanced (gains 0.913/1.090/1.013), rgb(0.375,0.237,0.225) H 5 S 0.401, 10.4% of the saloon. 00-INDEX.md reads that frame as 'bench and individual seating in red-maroon upholstery on moulded grey bases'. Five of the seven locations that declare `prop_seat` — ground_tram, drum_tram, core_shuttle, shuttle_car — ARE that vehicle, so for most of its uses this is not an analogy, it is the same seat. No frame shows a bunk.",
         extrapolated="That a bunk mattress and blanket take the seat's cloth. What constrains it: the station's only measured soft goods are this maroon set, quarters are fitted out by the same authority that fits out the transit cars, and a second invented colour for bedding would be unmarked invention where a sourced one exists. Overturned by any frame of crew or civilian quarters."))
@@ -2944,6 +2951,11 @@ def _build():
                # `prop_barred_screen` follows `fix_cell_divider`: bars over an
                # opening in the alien sector are the same unpainted steel as
                # bars across a cell, and both are the `screen` machine.
+               # The closed roller shutter behind a `black_market_fringe` bar
+               # (INV-265). Unpainted mill steel is exactly what a back-of-house
+               # shutter is, and `prop_barred_screen` -- bars across an opening
+               # -- is already on this material for the same reason.
+               "bar_shutter_frame", "bar_shutter_slat",
                "dress_rack", "prop_barred_screen"), scenes=("interior",),
         source="NO FRAME SHOWS A WORKSHOP BENCH, TOOL RACK, GROW RACK OR BRIG DIVIDER. Bracketed against the library's own measured steel registers, which come from authority-1 exterior and drum frames: `truss_steel` 0.204/0.200/0.181 (34b lattice), `greeble_fitting` 0.310/0.306/0.300 (exterior more.jpg dorsal fittings), `tram_saloon_post` 0.560/0.565/0.580 (35a poles). Those are painted or coated structure; unpainted mill and galvanised steel sits above them.",
         extrapolated="The whole surface. What constrains it: these four objects are the station's unpainted utility steelwork — a bench top scarred back to bare metal, an open tool rack, a wet galvanised grow rack, a heavy brig divider — and the painted register already exists next door in `furn_casework`, so anything that would be sprayed goes there and only what would not comes here. 0.470 is below the servery's 0.560 because scuffed and oxidised steel loses reflectance, and roughness 0.58 is twice the servery's because a workshop surface is abraded in every direction. Overturned by any frame of maintenance, hydroponics or the brig."))

@@ -49,7 +49,12 @@ BESPOKE_GEOMETRY = {
     "customs": lambda s, p, q: __import__("customs").hall(s, p),
     "docking_bay": lambda s, p, q: __import__("docking_bay").docking_bay(
         0, s, p),
-    "hospitality": lambda s, p, q: __import__("hospitality").room(),
+    # THE PLACE, not the module. Five named bars -- bar_unnamed, eclipse_cafe,
+    # earharts, fresh_air, happy_daze -- drew one room because this entry threw
+    # `q` away. Their footprints and their declared functions already differ in
+    # the register; `hospitality.bar_program` reads them. Same shape of defect
+    # as `quarters` and `plant` above, and see deck.py --degeneracy.
+    "hospitality": lambda s, p, q: __import__("hospitality").room(q),
     # THE PLACE'S OWN CELL, not a 10-degree slice of the whole grey sector.
     # This used to read `plant_bay(s, p, bays(s, p)[0], 10.0)` -- outermost bay
     # for all five places regardless of which deck the register puts them on,
