@@ -549,6 +549,18 @@ class Walker:
 	var r_m: float = 0.0
 	var h_m: float = 0.0
 	var tag: String = ""      # which streamed cell they belong to
+	# -- A COMMUTER IS A WALKER WHO IS NOT ON A LOOP -----------------------
+	# Everything above describes somebody going round the ring for ever:
+	# `angle` advances at `omega` and never arrives. That is the right model
+	# for ambient corridor traffic and it is the wrong one for a resident with
+	# a shift to get to, so `free` swaps the ring parameters for a world
+	# position and a heading that somebody else decides. It is the SAME body,
+	# the SAME MultiMesh bucket and the SAME phase ladder -- see
+	# `drive_commuter`, and `station/agenda.py` for who does the deciding.
+	var free: bool = false
+	var pos: Vector3 = Vector3.ZERO
+	var fwd_free: Vector3 = Vector3(0, 0, 1)
+	var speed_ms: float = 1.4
 
 
 var _walkers: Array[Walker] = []
@@ -794,6 +806,20 @@ func _give_walker_body(w: Walker) -> void:
 ## generator writes a basis per instance and why this recomputes one rather
 ## than carrying a yaw.
 func _walker_xform(w: Walker) -> Transform3D:
+	# A COMMUTER'S FEET ARE WHEREVER THEY GOT TO. Up is still INWARD -- that is a
+	# property of standing inside a spun barrel and not of being on a loop -- so
+	# it is recomputed from their own position exactly as below; only the
+	# position and the heading come from outside.
+	if w.free:
+		var radial := Vector3(w.pos.x, w.pos.y, 0.0)
+		var up2 := (-radial.normalized() if radial.length() > 0.001
+			else Vector3.UP)
+		var f2 := w.fwd_free - up2 * w.fwd_free.dot(up2)
+		if f2.length() < 1e-4:
+			f2 = Vector3(0, 0, 1) - up2 * up2.z
+		f2 = f2.normalized()
+		var r2 := f2.cross(up2).normalized()
+		return Transform3D(Basis(r2, up2, f2), w.pos)
 	var ca := cos(w.angle)
 	var sa := sin(w.angle)
 	var up := Vector3(-ca, -sa, 0.0)
@@ -801,6 +827,67 @@ func _walker_xform(w: Walker) -> Transform3D:
 	var right := fwd.cross(up).normalized()
 	return Transform3D(Basis(right, up, fwd),
 		Vector3(w.radius * ca, w.radius * sa, w.z))
+
+
+# ---------------------------------------------------------------------------
+#  A COMMUTER -- a walker who is going somewhere, and gets there
+# ---------------------------------------------------------------------------
+# WHY THIS IS A WALKER AND NOT A `Person`. `collect()` binds somebody to the
+# meshes they were BAKED as, which is right for a room occupant and impossible
+# for a commuter: a baked body is welded into the deck's merged mesh, so the only
+# thing a runtime can do with one is show it or hide it, and a resident who winks
+# out of their quarters and winks in at their post is not going to work. It also
+# costs the deck .glb primitives -- measured across the shipped station, 5.04 per
+# baked actor against `budget.BUDGETS["deck_primitives"] = 600`, which two decks
+# are already over. An instanced walker costs ZERO: their body is in
+# `crowd_lod*.glb` and every walker of one (species, lod, phase) shares one
+# MultiMesh.
+#
+# WHAT IS NOT DECIDED HERE. Where they are. `station/agenda.py` lays the route on
+# the corridor `deck.deck_plan` built, `life.gd` puts a CharacterBody3D on the
+# collision shell and walks it, and this is handed the result -- so the drawn
+# body and the physics body cannot disagree about where somebody is, which is the
+# same rule `_walker_body_xform` already applies to the capsule.
+
+## Admit one commuter. Returns their `Walker`, to be handed to `drive_commuter`.
+##
+## `prepare_crowd` must have been called with a placement list containing this
+## row, because a MultiMesh's `instance_count` cannot grow without reallocating.
+func add_commuter(row: Dictionary) -> Walker:
+	var w := _walker_from(row, "")
+	w.free = true
+	w.pos = Vector3(float(row.get("x", 0.0)), float(row.get("y", 0.0)),
+		float(row.get("z", 0.0)))
+	w.speed_ms = maxf(0.01, float(row.get("speed_ms", 1.4)))
+	_walkers.append(w)
+	if _solid_mode != "off":
+		_give_walker_body(w)
+	_place_crowd()
+	return w
+
+
+## Put a commuter where their body actually got to, and advance their gait by
+## the ground they actually covered.
+##
+## THE PHASE COMES FROM DISTANCE, NOT FROM TIME, and that is the difference
+## between this and `advance_crowd`. A loop walker's `omega` and `cycle_s` come
+## from the same `walk_clip`, so time and distance agree by construction. A
+## commuter is steered by a character controller that scrapes walls, waits at
+## doors and is capped at its own speed -- so the only quantity that keeps the
+## feet on the ground is how far they moved.
+func drive_commuter(w: Walker, at: Vector3, heading: Vector3,
+		moved_m: float) -> void:
+	if w == null:
+		return
+	w.pos = at
+	if heading.length_squared() > 1e-8:
+		w.fwd_free = heading.normalized()
+	_crowd_travel_m += moved_m
+	w.t += moved_m / w.speed_ms
+	w.phase = int(floor(w.t / w.cycle_s * 8.0)) % 8
+	if w.body != null:
+		w.body.global_transform = _walker_body_xform(w)
+	_place_crowd()
 
 
 ## Where a walker's CAPSULE stands. Their own transform raised half a height

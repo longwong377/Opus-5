@@ -113,6 +113,16 @@ class Clock:
 		start_hour = fposmod(h, DAY_H)
 		elapsed_s = 0.0
 
+	## Station hours since the clock was started, NOT wrapped at midnight.
+	##
+	## `hour()` is the right answer for "how full is the Zocalo", which is a
+	## question about a time of day. It is the wrong one for "how far along their
+	## commute is this person", which is a question about a DURATION -- and a
+	## commute that straddles midnight would run backwards on the wrapped value.
+	## Same clock, two readings, and the agenda takes this one.
+	func hours_abs() -> float:
+		return start_hour + elapsed_s * rate
+
 
 # ===========================================================================
 # 2.  THE DIRECTOR
@@ -524,7 +534,375 @@ class Integrator extends RefCounted:
 
 
 # ===========================================================================
-# 3.  SELF-TEST
+# 3.  L1 -- SOMEONE GOES TO WORK
+# ===========================================================================
+## WHAT THE DIRECTOR ABOVE CANNOT DO, stated first because it is the whole
+## reason this section exists. `Director.apply` is a VISIBILITY function: it
+## shows and hides bodies that were baked into a room at one hour, and it moves
+## corridor walkers round a fixed ring loop. Neither of those is a person going
+## anywhere. A resident who leaves their quarters for their post must be one
+## body, present the whole time, on the floor the whole time -- so they cannot
+## be a baked actor, and their path cannot be a circle.
+##
+## THE SPLIT THAT MAKES IT WORK AT ANY CLOCK RATE:
+##
+##     the AGENDA is pure in the hour     `Agenda.s_at(h)` -- how far along the
+##                                        route they should be. It teleports.
+##     the BODY is physics                a CharacterBody3D on the station's own
+##                                        collision shell, steered at a carrot
+##                                        `lookahead` metres ahead of `s(h)`.
+##
+## Requirement 5 of the milestone is that a schedule work at 60x as well as 1x,
+## and no character controller walks 78 m/s under its own steam. Only a pure
+## function of the clock survives that -- which is the same argument the Director
+## above already makes, one level up. And only a physics body can FAIL to arrive:
+## with the pressure doors sealed the agenda still completes the route and the
+## body is still in the bedroom, which is exactly the control a
+## placed-from-the-clock runtime could not fire.
+
+
+## A polyline on the floor, parameterised by arc length.
+##
+## The points come out of `station/agenda.py`, which lays them on the corridor
+## `deck.deck_plan` built -- the arc faceting is `route_walk.RING_STEP_DEG`'s
+## sagitta rule and the doorway waypoints are `route_walk.door_tol_m`'s. Nothing
+## about the route's SHAPE is decided here; this interpolates it.
+class Route extends RefCounted:
+	var pts: PackedVector3Array = PackedVector3Array()
+	var cum: PackedFloat64Array = PackedFloat64Array()
+
+	func _init(points: Array) -> void:
+		for p in points:
+			pts.append(Vector3(float(p[0]), float(p[1]), float(p[2])))
+		cum.append(0.0)
+		for i in range(1, pts.size()):
+			cum.append(cum[i - 1] + pts[i].distance_to(pts[i - 1]))
+
+	func length() -> float:
+		return 0.0 if cum.is_empty() else cum[cum.size() - 1]
+
+	## The point `s` metres along. Clamped at both ends, so a caller cannot walk
+	## off the front or the back of a route by arithmetic.
+	func point_at(s: float) -> Vector3:
+		if pts.is_empty():
+			return Vector3.ZERO
+		var l := length()
+		if s <= 0.0:
+			return pts[0]
+		if s >= l:
+			return pts[pts.size() - 1]
+		var lo := 0
+		var hi := cum.size() - 1
+		while lo + 1 < hi:
+			var mid := (lo + hi) / 2
+			if cum[mid] <= s:
+				lo = mid
+			else:
+				hi = mid
+		var seg: float = cum[lo + 1] - cum[lo]
+		var f: float = 0.0 if seg <= 1e-9 else (s - cum[lo]) / seg
+		return pts[lo].lerp(pts[lo + 1], f)
+
+	## How far along the route a body at `p` has actually got, searching FORWARD
+	## from `s_from` over `window` metres.
+	##
+	## THE BODY'S OWN PROGRESS, AND IT IS WHAT KEEPS IT ON THE POLYLINE. The
+	## first version of this steered at the AGENDA's point plus a lookahead,
+	## which at x60 is a point 44 m further on -- and 44 m along a ring corridor
+	## from a bedroom doorway is a point through two walls. The body walked
+	## 6.09 m, wedged its capsule against the room's own wall exactly one radius
+	## short of it, and reported `on_floor=true` for 604 frames. A route is a
+	## POLYLINE and a body follows it segment by segment; a carrot placed on the
+	## route ahead of the BODY is on the route, and a carrot placed ahead of the
+	## AGENDA is only on it when the two are together.
+	##
+	## Monotone by construction -- it never returns less than `s_from` -- so a
+	## body brushing a wall cannot be recorded as having gone backwards, and the
+	## search is a handful of segments rather than all 93.
+	func advance(s_from: float, p: Vector3, window: float = 12.0) -> float:
+		var best := s_from
+		var best_d := 1e30
+		var i := 0
+		while i + 1 < pts.size():
+			if cum[i + 1] < s_from:
+				i += 1
+				continue
+			if cum[i] > s_from + window:
+				break
+			var a := pts[i]
+			var ab := pts[i + 1] - a
+			var l2 := ab.length_squared()
+			var t := 0.0 if l2 <= 1e-12 else clampf((p - a).dot(ab) / l2,
+				0.0, 1.0)
+			var q := a + ab * t
+			var d := q.distance_squared_to(p)
+			if d < best_d:
+				best_d = d
+				best = maxf(s_from, cum[i] + sqrt(l2) * t)
+			i += 1
+		return best
+
+
+## Where one resident should be on their route at one hour. PURE.
+##
+## Three states and no memory: at home until their own departure hour, walking
+## at their own gait, at their post from the moment the walk is done. `s_at` is a
+## function of `h` alone, so 06.20 gives the same answer whether it was reached
+## by waiting or by jumping -- which is what makes the 1x, 10x and 60x runs
+## comparable rather than merely all green.
+class Agenda extends RefCounted:
+	var depart_h: float = 0.0
+	var speed_ms: float = 1.4
+	var length_m: float = 0.0
+
+	func _init(p_depart: float, p_speed: float, p_length: float) -> void:
+		depart_h = p_depart
+		speed_ms = maxf(p_speed, 1e-6)
+		length_m = p_length
+
+	func s_at(h_abs: float) -> float:
+		return clampf((h_abs - depart_h) * 3600.0 * speed_ms, 0.0, length_m)
+
+	## The hour they get there, in the same unwrapped frame `s_at` reads.
+	func arrive_h() -> float:
+		return depart_h + length_m / speed_ms / 3600.0
+
+
+## The body, and the run. One resident, one route, one verdict.
+##
+## MEASURES `floor_m` AND NEVER PATH LENGTH. This codebase has twice found a
+## falling body reporting a journey -- 11,712 m in the streaming work and
+## 876,827 m before that -- because a gate that adds up displacement without
+## asking whether the body was standing on anything scores a fall as a commute.
+class Commuter extends Node3D:
+	var man: Dictionary = {}
+	var clock: Clock = null
+	var route: Route = null
+	var agenda: Agenda = null
+	var body: CharacterBody3D = null
+	var crowd: Node3D = null                 # npc.gd, if the library loaded
+	var walker = null                        # their instanced body
+
+	## Every pressure door on the deck, as {key, at, shape}. A shut door is a
+	## solid panel in the collision shell -- `collision.door_panel` -- so the
+	## quarters cannot be left and the post cannot be entered until one opens.
+	var doors: Array = []
+	var door_range: float = 2.6
+
+	## `--doors=sealed`: no panel ever opens. THE ROUTE-UNAVAILABLE CONTROL.
+	var seal := false
+	## `--agenda=off`: the build before this session. The body is placed where it
+	## was baked and never steered; the Director still shows and hides. NOBODY
+	## MOVES, which is what has to be shown.
+	var drive := true
+
+	var lookahead := 1.5
+	var max_frames := 60000
+	var trace := 0
+	var hz := 60
+
+	# -- the tape ----------------------------------------------------------
+	var frame := 0
+	var scored := 0
+	var floor_m := 0.0
+	var air_m := 0.0
+	var off := 0
+	var lag_max := 0.0
+	var prev := Vector3.ZERO
+	var spawn := Vector3.ZERO
+	var settle_drop := 0.0
+	var home_at := Vector3.ZERO
+	var post_at := Vector3.ZERO
+	var home_start_m := -1.0
+	var post_end_m := -1.0
+	var arrive_min := 1e30
+	var s_now := 0.0
+	var s_body := 0.0
+	var done := false
+	var phase := "settle"
+	var phase_floor := 0.0
+	var phase_frames := 0
+	var phase_rows: Array = []
+	var pre_floor := 0.0
+	var walk_floor := 0.0
+	var crowd_m := 0.0
+
+	func _ready() -> void:
+		set_physics_process(true)
+
+	func settle_frames() -> int:
+		return int(man.get("settle_frames", 90)) * hz / 60
+
+	func _physics_process(delta: float) -> void:
+		if done:
+			return
+		frame += 1
+		if frame > max_frames:
+			_finish("the run's own %d frame cap -- the clock never got there"
+				% max_frames)
+			return
+		# 1. SETTLE. `station/walkable.room_target` puts a body 50 mm above the
+		#    shell on purpose, so the drop is asserted rather than excluded.
+		# THE SETTLE IS A DURATION, NOT A FRAME COUNT, and at x60 the two are 60
+		# times apart. 90 ticks at 60 Hz is 1.5 s and is long enough for a body
+		# spawned 50 mm up to land; the same 90 ticks at 3,600 Hz is 25 ms, and
+		# the drop this is supposed to assert had not happened yet -- measured,
+		# it read 3 mm of a 50 mm fall and passed.
+		if frame <= settle_frames():
+			if frame == settle_frames():
+				var up: Vector3 = (body.body_up() if body.has_method("body_up")
+					else Vector3.UP)
+				settle_drop = (spawn - body.global_position).dot(up)
+				prev = body.global_position
+				home_start_m = body.global_position.distance_to(home_at)
+				_phase("before")
+			_open_doors()
+			return
+
+		# 2. THE CLOCK, AND THE AGENDA IS A PURE FUNCTION OF IT.
+		clock.tick(delta)
+		var h := clock.hours_abs()
+		s_now = agenda.s_at(h)
+		var want := (("after" if s_now >= route.length() - 1e-6
+			else "commute") if s_now > 0.0 else "before")
+		if want != phase:
+			_phase(want)
+
+		# 3. THE BODY CHASES A CARROT ON THE ROUTE, and the carrot is placed
+		#    ahead of whichever of the two is FURTHER BACK -- the body, so it
+		#    stays on the polyline through a doorway, and the agenda, so it
+		#    cannot arrive at work before its own schedule says it does.
+		_open_doors()
+		body.gravity_m_s2 = _spin_g()
+		s_body = route.advance(s_body, body.global_position)
+		if drive and s_now > 0.0:
+			var carrot := route.point_at(minf(route.length(),
+				minf(s_now, s_body) + lookahead))
+			var to := carrot - body.global_position
+			# DO NOT STEP PAST WHAT YOU ARE WALKING TO, AND MEASURE THE DISTANCE
+			# LEFT ON THE FLOOR PLANE.
+			#
+			# `player.step` flattens its steer onto the floor plane before using
+			# it, so a target 58 mm away RADIALLY is a target the body walks at
+			# full speed in an essentially arbitrary direction, for ever.
+			# `walkable.room_target` sits 50 mm above the shell on purpose --
+			# its own docstring records the same defect one order up, "an
+			# irreducible 0.85 m ... because a body standing on the deck can
+			# never close a radial offset". Measured here: 229 m of dither in
+			# the seven thousand frames AFTER this resident had reached their
+			# desk, scored as commuting.
+			var up: Vector3 = body.body_up()
+			var flat: Vector3 = to - up * to.dot(up)
+			if flat.length() > float(body.speed_m_s) * delta:
+				body.step(delta, Vector2.ZERO, false, false, to)
+			else:
+				body.step(delta, Vector2.ZERO, false, false)
+		else:
+			body.step(delta, Vector2.ZERO, false, false)
+
+		_measure()
+		if trace > 0 and frame % trace == 0:
+			var q := body.global_position
+			print("ATRACE f=%d h=%.4f s=%.1f sb=%.1f floor_m=%.1f lag=%.2f "
+				% [frame, h, s_now, s_body, floor_m,
+					q.distance_to(route.point_at(s_now))]
+				+ "on=%s r=%.3f z=%.2f v=%.2f"
+				% [str(body.is_on_floor()).to_lower(),
+					sqrt(q.x * q.x + q.y * q.y), q.z, body.velocity.length()])
+		# 4. And the clock decides when it is over, not the body.
+		if h >= float(man["clock"]["end_h"]):
+			_finish("")
+
+	func _spin_g() -> float:
+		var w := float(man["omega_rad_s"])
+		var p := body.global_position
+		return w * w * sqrt(p.x * p.x + p.y * p.y)
+
+	## A pressure door opens for somebody standing at it. `godot/scripts/door.gd`
+	## owns the range and it is read off that script rather than copied here.
+	func _open_doors() -> void:
+		var p := body.global_position
+		for d in doors:
+			d["shape"].disabled = (not seal) \
+				and p.distance_to(d["at"]) < door_range
+
+	func _measure() -> void:
+		var p := body.global_position
+		var on := body.is_on_floor()
+		var step := p.distance_to(prev)
+		var heading := p - prev
+		if on:
+			floor_m += step
+			phase_floor += step
+		else:
+			air_m += step
+			off += 1
+			# WHERE THE FLOOR WAS LOST, not merely how often. A count says a body
+			# left the floor; only the position says whether it was one doorway
+			# 118 times or 118 places once.
+			if trace > 0 and off < 12:
+				print("AOFF f=%d s=%.2f r=%.3f z=%.3f v_up=%.3f step=%.4f"
+					% [frame, s_body, sqrt(p.x * p.x + p.y * p.y), p.z,
+						body.velocity.dot(body.body_up()), step])
+		scored += 1
+		phase_frames += 1
+		prev = p
+		# HOW FAR THE BODY IS BEHIND ITS OWN AGENDA. This is the number that
+		# separates a body walking a route from a body being placed on one: a
+		# placed body reads 0.00 for ever, and a body shut in its quarters reads
+		# the whole route.
+		lag_max = maxf(lag_max, p.distance_to(route.point_at(s_now)))
+		arrive_min = minf(arrive_min, p.distance_to(post_at))
+		post_end_m = p.distance_to(post_at)
+		# THE DRAWN BODY GOES WHERE THE PHYSICS BODY GOES. One truth about where
+		# somebody is -- the instanced walker is slaved to the capsule rather
+		# than integrating a second copy of the same journey, which is how two
+		# answers to "where is this person" get shipped.
+		if walker != null and crowd != null and step > 1e-6:
+			crowd.drive_commuter(walker, p, heading, step)
+			crowd_m = crowd.crowd_travel_m()
+
+	func _phase(name: String) -> void:
+		if phase_frames > 0:
+			phase_rows.append({"phase": phase, "floor_m": phase_floor,
+				"frames": phase_frames})
+			if phase == "before":
+				pre_floor = phase_floor
+			elif phase == "commute":
+				walk_floor = phase_floor
+		phase = name
+		phase_floor = 0.0
+		phase_frames = 0
+
+	func _finish(why: String) -> void:
+		done = true
+		_phase("done")
+		var l := route.length()
+		var left := pre_floor < 0.5 and walk_floor > l * 0.5
+		var arrived := arrive_min <= float(man["arrive_m"])
+		var stayed := arrived and post_end_m <= float(man["arrive_m"])
+		for r in phase_rows:
+			print("AGENDAPHASE phase=%s floor_m=%.2f frames=%d"
+				% [r["phase"], r["floor_m"], r["frames"]])
+		print(("AGENDATEST who=%s rate=%s home_before=%s left=%s arrived=%s "
+			+ "stayed=%s floor_m=%.3f air_m=%.3f offfloor=%d/%d frames=%d "
+			+ "lag_m=%.3f agenda_s_m=%.1f route_m=%.1f arrive_m=%.3f "
+			+ "post_end_m=%.3f home_start_m=%.3f pre_floor_m=%.3f "
+			+ "settle_drop_m=%.4f crowd_m=%.1f hour=%.4f why=%s")
+			% [String(man["who"]["id"]), str(float(man["clock"]["rate_x"])),
+				str(home_start_m >= 0.0 and home_start_m
+					<= float(man["arrive_m"]) and pre_floor < 0.5).to_lower(),
+				str(left).to_lower(), str(arrived).to_lower(),
+				str(stayed).to_lower(), floor_m, air_m, off, scored, frame,
+				lag_max, s_now, l, arrive_min, post_end_m, home_start_m,
+				pre_floor, settle_drop, crowd_m,
+				fposmod(clock.hours_abs(), 24.0),
+				("-" if why == "" else why.replace(" ", "_"))])
+		get_tree().quit(0)
+
+
+# ===========================================================================
+# 4.  SELF-TEST
 # ===========================================================================
 var _fails: Array = []
 
@@ -549,11 +927,14 @@ func _initialize() -> void:
 	var hour := 13.0
 	var out := ""
 	var at := "customs_north"
+	var opt := {}
 	for a in args:
 		if a == "--life-hours":
 			mode = "hours"
 		elif a == "--life-shot":
 			mode = "shot"
+		elif a == "--agenda-test":
+			mode = "agenda"
 		elif a.begins_with("--actors="):
 			deck = a.substr(9)
 		elif a.begins_with("--glb="):
@@ -564,6 +945,13 @@ func _initialize() -> void:
 			at = a.substr(5)
 		elif a.begins_with("--out="):
 			out = a.substr(6)
+		elif a.begins_with("--"):
+			var s := a.substr(2)
+			var eq := s.find("=")
+			if eq >= 0:
+				opt[s.substr(0, eq)] = s.substr(eq + 1)
+			else:
+				opt[s] = "1"
 	if mode == "hours":
 		_report_hours()
 		quit(0)
@@ -571,7 +959,234 @@ func _initialize() -> void:
 	if mode == "shot":
 		_run_shot(glb, deck, at, hour, out)
 		return
+	if mode == "agenda":
+		_run_agenda(opt)
+		return
 	_run_test(deck)
+
+
+# ---------------------------------------------------------------------------
+# L1 -- THE RUN
+# ---------------------------------------------------------------------------
+# NOT ONE DISTANCE, ANGLE, RADIUS, HOUR OR SPEED IS DECIDED HERE. Every one
+# arrives in the manifest `station/agenda.py` writes, and that module reads each
+# of them out of the generator that owns it -- the route off `deck.deck_plan`,
+# the shift off `npc/schedule.work_window`, the gait off `populace._walk_speed`,
+# the gravity off `interior.gravity_at`. This file loads a shell, drops a body on
+# it, reads a clock and steers.
+func _run_agenda(opt: Dictionary) -> void:
+	var man := _read_dict(String(opt.get("manifest", "")))
+	if man.is_empty():
+		push_error("agenda: could not read " + String(opt.get("manifest", "")))
+		quit(2)
+		return
+	var root := get_root()
+	var scene := _glb_scene(String(man["collision_glb"]))
+	if scene == null:
+		quit(2)
+		return
+	root.add_child(scene)
+
+	var com := Commuter.new()
+	com.man = man
+	com.seal = String(opt.get("doors", "live")) == "sealed"
+	com.drive = String(opt.get("agenda", "on")) != "off"
+	com.route = Route.new(man["route"]["points"])
+	com.home_at = _v3(man["home_at"])
+	com.post_at = _v3(man["post_at"])
+	com.spawn = _v3(man["spawn"])
+	com.lookahead = float(man["lookahead_m"])
+
+	# THE RATE IS STATION SECONDS PER REAL SECOND, and the clock takes station
+	# hours per real second -- one conversion, in one place. `--rate=0` stops the
+	# clock without stopping anything else, which is the first control.
+	var rate_x := float(opt.get("rate", man["clock"]["rate_x"]))
+	man["clock"]["rate_x"] = rate_x
+	com.clock = Clock.new(float(man["clock"]["start_h"]), rate_x / 3600.0)
+	com.agenda = Agenda.new(float(man["shift"]["depart_h"]),
+		float(man["gait"]["speed_ms"]), com.route.length())
+
+	# A FASTER CLOCK NEEDS MORE PHYSICS, NOT BIGGER STEPS, and this is the whole
+	# answer to "does it work at 60x".
+	#
+	# The agenda is pure in the hour, so IT works at any rate by construction.
+	# The body is a physical simulation, and fast-forwarding one is not free: at
+	# x60 a resident covers 88 m of station in a real second, which at 60 Hz is
+	# **1.9 m a tick** -- wider than the 1.5 m pressure door they have to walk
+	# through, and four times their own capsule. Measured, the first run of this
+	# gate did exactly that and wedged at the bedroom wall.
+	#
+	# So the physics tick rate rises WITH the clock rate, and the body's step in
+	# station time is then 24 mm at x1, x10 and x60 alike -- which is what makes
+	# the three runs comparable rather than merely all green. THE COST IS STATED
+	# RATHER THAN HIDDEN: the run takes the same number of physics ticks at
+	# every rate. x60 buys station time, not wall time.
+	var hz := int(round(60.0 * maxf(rate_x, 1.0)))
+	Engine.physics_ticks_per_second = hz
+	Engine.max_physics_steps_per_frame = maxi(8, int(ceil(maxf(rate_x, 1.0))) + 2)
+	# AND IT SAYS WHICH ONE IT GOT. Anything that can substitute a lesser mode
+	# for the one asked for has to report what it did -- CLAUDE.md's rule, learned
+	# from a renderer that silently fell back to OpenGL 3 and exited 0 with a PNG.
+	var got := Engine.physics_ticks_per_second
+	if got != hz:
+		push_error("agenda: asked for %d physics ticks/s and got %d -- a body "
+			% [hz, got] + "stepping %.2f m at a time is not walking"
+			% [float(man["gait"]["speed_ms"]) * rate_x / float(got)])
+	# THE TICK BUDGET, and it is the same at every rate for the reason above.
+	com.max_frames = int(ceil(float(man["clock"]["span_s"]) * 60.0 * 1.5)) + 600
+	com.hz = got
+
+	# The shell, its pressure doors kept addressable. `station/agenda.py`
+	# re-emits `deck.build_collision`'s own `doorpanel_*` spans, which the
+	# shipped `<deck>_collision.glb` welds into one group -- see that module.
+	var panels := {}
+	for d in man["doors"]:
+		panels[String(d["group"])] = _v3(d["at"])
+	var n_panel := 0
+	for m in _mesh_list(scene):
+		var nm := String(m.name)
+		m.create_trimesh_collision()
+		if not panels.has(nm):
+			continue
+		for c in m.get_children():
+			if c is StaticBody3D:
+				for cs in c.get_children():
+					if cs is CollisionShape3D:
+						com.doors.append({"key": nm, "at": panels[nm],
+							"shape": cs})
+						n_panel += 1
+	var ds = load("res://scripts/door.gd")
+	if ds != null:
+		var probe = ds.new()
+		com.door_range = float(probe.open_range_m)
+		probe.free()
+
+	com.body = _spawn_body(man)
+	root.add_child(com.body)
+	# `position`, not `global_position`: during `_initialize` the window's
+	# children are not yet considered inside the tree, so the global read comes
+	# back as identity and prints an error while doing it.
+	com.prev = com.body.position
+	com.trace = int(opt.get("trace", "0"))
+
+	# AND THEY ARE AN INSTANCED WALKER, WHICH IS THE ARCHITECTURAL CLAIM. A
+	# commuter cannot be a baked actor -- a baked actor is welded into the deck
+	# mesh and can only be shown or hidden -- so they are a placement against
+	# `populace.station_crowd_library`, exactly like the corridor crowd, and they
+	# cost the deck .glb nothing. `--crowd=off` runs without the library, which
+	# is only a saving of load time: the verdict does not read it.
+	if String(opt.get("crowd", "on")) != "off":
+		com.crowd = _wire_commuter_body(root, man)
+		if com.crowd != null:
+			com.walker = com.crowd.add_commuter(_crowd_row(man))
+	root.add_child(com)
+
+	print(("agenda: %s (%s %s) %s -> %s on %s, %.0f m, leaves %05.2f, "
+		+ "shift %05.2f, gait %.2f m/s, body %.1f m/s, clock x%s over "
+		+ "%.0f station s, %d pressure door(s), doors=%s agenda=%s")
+		% [String(man["who"]["name"]), String(man["who"]["species"]),
+			String(man["who"]["role"]), String(man["who"]["home"]),
+			String(man["who"]["job"]), String(man["deck"]),
+			com.route.length(), float(man["shift"]["depart_h"]),
+			float(man["shift"]["start_h"]), float(man["gait"]["speed_ms"]),
+			float(com.body.speed_m_s), str(rate_x),
+			float(man["clock"]["span_s"]), n_panel,
+			("sealed" if com.seal else "live"),
+			("off" if not com.drive else "on")])
+
+
+## The body a player would be. Same capsule, same script, same gravity mode
+## `route_test.gd` and `walk.gd` spawn -- a second answer to "how wide is a
+## person" is the failure hard rule 4 exists for, so the figures come out of the
+## manifest, which took them from `station/agenda.py`'s own constants.
+func _spawn_body(man: Dictionary) -> CharacterBody3D:
+	var b := CharacterBody3D.new()
+	b.set_script(load("res://scripts/player.gd"))
+	# DOWN IS OUTWARD. A ring deck is the inside of a spun barrel, so gravity is
+	# the radial direction at the body's own position and its magnitude is w^2 r
+	# -- set every frame from the body's own radius, not once at spawn.
+	b.gravity_mode = "drum"
+	var shape := CollisionShape3D.new()
+	var caps := CapsuleShape3D.new()
+	caps.height = float(man["capsule_h_m"])
+	caps.radius = float(man["capsule_r_m"])
+	shape.shape = caps
+	shape.position = Vector3(0, caps.height * 0.5, 0)
+	b.add_child(shape)
+	b.position = _v3(man["spawn"])
+	b.platform_floor_layers = 0
+	# A CATCH-UP MARGIN, NOT A DIFFERENT GAIT. The agenda advances at the
+	# resident's own walking speed times the clock rate; the body is allowed a
+	# little more so a metre lost squeezing past a door jamb can be paid back
+	# rather than becoming permanent desync.
+	b.speed_m_s = float(man["gait"]["speed_ms"]) \
+		* maxf(float(man["clock"]["rate_x"]), 1.0) * float(man["catchup"])
+	return b
+
+
+## The 112-body shared crowd library and one placement in it.
+func _wire_commuter_body(root: Node, man: Dictionary) -> Node3D:
+	var lib_path := String(man.get("crowd_lod_glb", ""))
+	if lib_path == "" or not FileAccess.file_exists(lib_path):
+		return null
+	var lib := _glb_scene(lib_path)
+	if lib == null:
+		return null
+	root.add_child(lib)
+	lib.visible = false
+	var ns = load("res://scripts/npc.gd")
+	if ns == null:
+		return null
+	var n: Node3D = ns.new()
+	root.add_child(n)
+	n.set_crowd_ladder("1e9:%d" % int(man.get("crowd_lod", 4)))
+	n.prepare_crowd([lib], [_crowd_row(man)])
+	return n
+
+
+func _crowd_row(man: Dictionary) -> Dictionary:
+	var p := _v3(man["spawn"])
+	return {"group": String(man["who"]["id"]), "who": man["who"],
+		"species": String(man["who"]["species"]),
+		"lod": int(man.get("crowd_lod", 4)), "phase": 0,
+		"x": p.x, "y": p.y, "z": p.z, "omega": 0.0,
+		"cycle_s": float(man["gait"]["cycle_s"]),
+		"r_m": float(man["capsule_r_m"]), "h_m": float(man["capsule_h_m"]),
+		"speed_ms": float(man["gait"]["speed_ms"])}
+
+
+func _v3(a) -> Vector3:
+	return Vector3(float(a[0]), float(a[1]), float(a[2]))
+
+
+func _read_dict(path: String) -> Dictionary:
+	if path == "":
+		return {}
+	var f := FileAccess.open(path, FileAccess.READ)
+	if f == null:
+		return {}
+	var txt := f.get_as_text()
+	f.close()
+	var v = JSON.parse_string(txt)
+	return v if v is Dictionary else {}
+
+
+func _glb_scene(path: String) -> Node:
+	var doc := GLTFDocument.new()
+	var st := GLTFState.new()
+	if doc.append_from_file(path, st) != OK:
+		push_error("agenda: could not read " + path)
+		return null
+	return doc.generate_scene(st)
+
+
+func _mesh_list(n: Node) -> Array:
+	var out := []
+	if n is MeshInstance3D and n.mesh != null:
+		out.append(n)
+	for c in n.get_children():
+		out.append_array(_mesh_list(c))
+	return out
 
 
 # ---------------------------------------------------------------------------
