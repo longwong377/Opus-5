@@ -1,6 +1,88 @@
 # Project State
 
-**Last updated:** 2026-08-02 · **Session 4i** — **every curved surface in the project was flat-shaded, and the crease angle is measured off the station** · **4h** — **IT IS PLAYABLE: press Play and you are standing in Blue Sector** · **4g** — **the Babcom terminal is a built device, and it shipped a logged mistake once before the log caught it** · **4f** — a per-token verb override · **4e** — **the naming-mismatch class is CLOSED: built-but-misnamed 26 → 0, resolving 302/357** · **4d** — **the bespoke rooms' interactables were never unbuilt, they were unnamed: 259/357 → 284/357** · **4c** — **the station is INTERACTABLE, the port is on a wall, and the 24-minute suites were one bad cache key** · **4b** — a police force, friction in metres, the plated shell, the fitting-reach fix
+**Last updated:** 2026-08-02 · **Session 4j** — **the 21 exposure frames describe the code again, and the verdict did not move** · **4i** — **every curved surface in the project was flat-shaded, and the crease angle is measured off the station** · **4h** — **IT IS PLAYABLE: press Play and you are standing in Blue Sector** · **4g** — **the Babcom terminal is a built device, and it shipped a logged mistake once before the log caught it** · **4f** — a per-token verb override · **4e** — **the naming-mismatch class is CLOSED: built-but-misnamed 26 → 0, resolving 302/357** · **4d** — **the bespoke rooms' interactables were never unbuilt, they were unnamed: 259/357 → 284/357** · **4c** — **the station is INTERACTABLE, the port is on a wall, and the 24-minute suites were one bad cache key** · **4b** — a police force, friction in metres, the plated shell, the fitting-reach fix
+
+## Session 4j — THE 21 EXPOSURE FRAMES NOW DESCRIBE THE CODE AGAIN, AND THE VERDICT DID NOT MOVE
+
+### 1. What was stale and why
+
+4i gave the glTF exporter crease-angle normals, which changed the shading of every curved surface
+in the project. **Every committed frame `--gate-frames` reads was rendered before that**, so the
+layer-4b gate was measuring code that no longer existed — the exact defect 3z recorded, where
+eleven of fourteen distribution failures turned out to be stale frames rather than lighting.
+
+`--gate-frames --rerender` re-took all 21 re-takeable rows from their own recorded shots. 20 files
+changed on disk; the frames moved a long way:
+
+| frame | pixels changed | max channel delta |
+|---|---|---|
+| `engine-medlab.png` | **89.7%** | 177 |
+| `engine-corridor.png` (the anchor) | 24.7% | 27 |
+| `engine-4a-worship.png` | 17.3% | 123 |
+
+### 2. AND THE GATE CAME BACK IDENTICAL. 14 pass, 9 fail, THE SAME NINE
+
+Not "about the same" — the same rows failing on the same statistics:
+
+| row | before | after |
+|---|---|---|
+| medical p5 | ×1.46 | ×1.45 |
+| office p5 | ×1.39 | ×1.39 |
+| research p5 | ×1.79 | ×1.78 |
+| worship p5 / p5·p95 | ×1.46 / ×3.53 | ×1.41 / ×3.92 |
+| zocalo p5 | ×1.56 | ×1.57 |
+| bespoke hospitality p5 | ×1.88 | ×1.88 |
+| industrial p99 | ×0.31 | ×0.31 |
+| alien_sector crushed | ×42.70 | ×42.70 |
+| plant p5/p95 | ×27.21 | ×27.34 |
+
+**This is a clean negative result and it is worth as much as a fix.** The p5-bright failures survive
+re-shading 90% of a frame's pixels, so they are **not a shading-model artefact** — the flatness is
+in the light, exactly where 3z's measurement said it was (ambient owns p5: 1.30 → 2.60 moves it
+×2.35; fixture energy is inert at ×1.0000). Nobody needs to wonder again whether the normals were
+hiding it.
+
+It also re-establishes the frames as evidence: they now describe the build a player is standing in.
+
+### 3. ONE FRAME RE-RENDERED BYTE-IDENTICAL, AND THAT IS THE RIGHT ANSWER
+
+`docs/engine-alien-sector.png` came back bit-for-bit the same — a 640×360 frame with 17,990
+distinct colours, so not a black frame hiding the difference. `--dihedral` on that room says why:
+
+```
+17,400 shared edges
+  coplanar             0-  5 deg   5,856   33.66%
+  curve tessellation   6- 45 deg      40    0.23%
+  THE TROUGH          46- 84 deg       0    0.00%
+  real corners        85-180 deg  11,504   66.11%
+```
+
+**It is built entirely from flat panels and square corners.** There is nothing in it to smooth, so
+smoothing it is a no-op. The change does exactly nothing where nothing is curved and 89.7% of the
+pixels where something is, which is the strongest statement of correctness available here.
+
+### 4. WHAT IS STILL STALE, STATED RATHER THAN LEFT
+
+- **The two `DECK` rows record no shot** (`deck_corridor`, `deck_door`) and could not be re-taken.
+  Their frames are still flat-shaded. They are the only stale rows left, and the fix is to give
+  them a shot in `EXPOSURE_FRAMES` the way every other row has one.
+- **`docs/aaa-scorecard.json` is untouched.** Its craft scores were taken from frames that are now
+  regenerated, but re-scoring is a judgement exercise and the file says of itself that it is a
+  *"SEED, NOT A REVIEW … provisional until a reviewer other than the builder has scored it."*
+  Re-scoring it from this session's frames would make that worse, not better.
+
+### 5. A CORRECTION TO 4i's NEXT LIST
+
+"The heads are bare" was too broad. The **baked cast** has hair — visible in `engine-medlab.png`,
+two figures with dark hair and uniforms. It is the **instanced crowd LOD bodies** that are
+featureless: `populace.station_crowd_library` builds them at LOD 2/4/8 and the near rung is what a
+player sees a metre away.
+
+### 6. NEXT
+
+- Give the two `DECK` rows a recorded shot so `--rerender` can reach them.
+- The crowd's near LOD has no face and no hair; the baked cast does.
+- `tools/play.sh` still builds one cluster.
 
 ## Session 4i — EVERY CURVED SURFACE IN THE PROJECT WAS FLAT-SHADED
 
