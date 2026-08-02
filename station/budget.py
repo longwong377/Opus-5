@@ -345,6 +345,34 @@ def _glb_primitives(path):
     return prims, npc
 
 
+def crowd_library_tris(near_level=None):
+    """`(total, ["<max_m> m: level L, N tri", ...])` for the crowd libraries.
+
+    ONE DESCRIPTION OF WHAT IS SHIPPED. `populace.crowd_ladder` decides which
+    chain levels are written as .glb beside the deck, `walkable.engine_args`
+    names exactly those on the command line, and `walk.gd` loads exactly those
+    -- so this asks the ladder rather than keeping a second list that could
+    disagree with it. The library's size is a function of the SPECIES MIX and
+    the phase count, not of how many people are walking, which is the whole
+    reason it is shared.
+
+    `near_level` overrides the nearest rung's chain level, for pricing an
+    alternative without shipping it.
+    """
+    import populace as _pop                                       # noqa: PLC0415
+    from npc import schedule as _sch                              # noqa: PLC0415
+    counts = _pop._lod_triangles()
+    bodies = len(_sch.STATION_MIX) * _pop.CROWD_PHASES
+    total, rows = 0, []
+    for i, (hi, lod) in enumerate(_pop.crowd_ladder()):
+        if i == 0 and near_level is not None:
+            lod = near_level
+        n = bodies * counts[lod]
+        total += n
+        rows.append(f"<={hi:g} m: level {lod}, {n:,}")
+    return total, rows
+
+
 def check(name, value, limit, unit="", note="", when=""):
     """One bound. `when` says what it takes to fail, in units of the content.
 
@@ -694,11 +722,39 @@ def deck_section(args):
                f"at once"
                if draws_resident + ext_draws <= DRAW["max_per_frame"] else
                f"{draws_resident + ext_draws - DRAW['max_per_frame']} draws")
-    check("resident triangles", len(tris), CELLS["resident_tris"], " tri",
-          "walk.gd loads one .glb whole -- there is no streaming and no LOD",
-          when=f"{abs(len(tris) - CELLS['resident_tris']):,} tri, "
-               f"{len(tris)/CELLS['resident_tris']:.2f}x this file's own "
-               f"three-cell resident budget")
+    # -- WHAT THE BUILD ACTUALLY LOADS, WHICH IS NOT ONLY THE DECK ---------
+    # `walk.gd` loads the deck's .glb AND one crowd library per LOD rung, and
+    # until session 4l this check counted the first and not the second -- so
+    # 321,664 triangles of resident geometry, half again the deck's own mesh,
+    # were invisible to every gate in this project. 4k then raised the near
+    # rung from 2,068 to 2,256 triangles a body and nothing could see it.
+    #
+    # Same defect as every other one recorded in CLAUDE.md: the number was true
+    # about the part it measured. `resident triangles` was about the deck.
+    lib, lib_rows = crowd_library_tris()
+    resident_all = len(tris) + lib
+    check("resident triangles", resident_all, CELLS["resident_tris"], " tri",
+          f"walk.gd loads one .glb whole -- there is no streaming and no LOD "
+          f"-- plus {lib:,} tri of crowd library ({', '.join(lib_rows)})",
+          when=f"{abs(resident_all - CELLS['resident_tris']):,} tri, "
+               f"{resident_all/CELLS['resident_tris']:.2f}x this file's own "
+               f"three-cell resident budget; the deck is {len(tris):,} of it "
+               f"and the crowd library {lib:,}")
+
+    # WHAT THE FINER NEAR RUNG WOULD COST, printed rather than gated. Session
+    # 4k left open whether the 32-gon silhouette a metre from the player's eye
+    # should be closed by shipping chain level 0 on the near rung. It is a
+    # question about RESIDENT geometry, so this is where the number belongs --
+    # and it is stated rather than turned into a bound, because a bound needs a
+    # limit this file can source and the honest limit here is a streaming
+    # budget that does not exist yet.
+    fine = crowd_library_tris(near_level=0)[0]
+    print(f"  the crowd library is resident for the whole session and shared "
+          f"across every cluster; the deck's mesh is not. Raising the near "
+          f"rung to chain level 0 -- which is what closes the faceted head at "
+          f"1 m -- would take it to {fine:,} tri, "
+          f"{fine / max(lib, 1):.2f}x, and the resident total to "
+          f"{len(tris) + fine:,}.")
 
     # PITCH IS NOT GATED AND THE REASON IS WORTH STATING. The sweep is at level
     # gaze, which is the pose eye height is defined for and the pose

@@ -1,6 +1,75 @@
 # Project State
 
-**Last updated:** 2026-08-02 · **Session 4k** — **every walker on the station was bald, for 188 triangles** · **4j** — **the 21 exposure frames describe the code again, and the verdict did not move** · **4i** — **every curved surface in the project was flat-shaded, and the crease angle is measured off the station** · **4h** — **IT IS PLAYABLE: press Play and you are standing in Blue Sector** · **4g** — **the Babcom terminal is a built device, and it shipped a logged mistake once before the log caught it** · **4f** — a per-token verb override · **4e** — **the naming-mismatch class is CLOSED: built-but-misnamed 26 → 0, resolving 302/357** · **4d** — **the bespoke rooms' interactables were never unbuilt, they were unnamed: 259/357 → 284/357** · **4c** — **the station is INTERACTABLE, the port is on a wall, and the 24-minute suites were one bad cache key** · **4b** — a police force, friction in metres, the plated shell, the fitting-reach fix
+**Last updated:** 2026-08-02 · **Session 4l** — **the resident-triangle gate was about the deck; the build also loads 321,664 triangles of people** · **4k** — **every walker on the station was bald, for 188 triangles** · **4j** — **the 21 exposure frames describe the code again, and the verdict did not move** · **4i** — **every curved surface in the project was flat-shaded, and the crease angle is measured off the station** · **4h** — **IT IS PLAYABLE: press Play and you are standing in Blue Sector** · **4g** — **the Babcom terminal is a built device, and it shipped a logged mistake once before the log caught it** · **4f** — a per-token verb override · **4e** — **the naming-mismatch class is CLOSED: built-but-misnamed 26 → 0, resolving 302/357** · **4d** — **the bespoke rooms' interactables were never unbuilt, they were unnamed: 259/357 → 284/357** · **4c** — **the station is INTERACTABLE, the port is on a wall, and the 24-minute suites were one bad cache key** · **4b** — a police force, friction in metres, the plated shell, the fitting-reach fix
+
+## Session 4l — THE RESIDENT-TRIANGLE GATE WAS ABOUT THE DECK; THE BUILD ALSO LOADS 321,664 TRIANGLES OF PEOPLE
+
+### 1. What the gate could not see
+
+`walk.gd` loads the deck's `.glb` **and one crowd library per LOD rung**. `budget.py`'s
+`resident triangles` check counted `len(tris)` — the deck's own triangle list — and the crowd
+libraries are separate `.glb` files that the walk gate itself describes as *"0 triangles of their
+own in the deck"*. True, and the reason they were invisible.
+
+| | reported | actual |
+|---|---|---|
+| resident triangles | 657,880 (3.65× budget) | **979,544 (5.44×)** |
+
+**The gate understated the resident set by 33%**, and session 4k raised the near rung from 2,068 to
+2,256 triangles a body — +21,056 resident — with nothing able to see it. This is the same defect
+as every other one in CLAUDE.md's list: *the number was true about the part it measured.* A
+tag-coverage assertion that ran on a corridor with no doors (3x), a coverage count that was not a
+walk test (3z), a materialled count about the deck while the people were blank (4h), and now a
+resident count about the deck while the people were resident.
+
+`crowd_library_tris()` asks `populace.crowd_ladder()` which rungs ship rather than keeping a second
+list — the ladder decides what is written, `walkable.engine_args` names exactly those, and
+`walk.gd` loads exactly those, so there is one description and the gate reads it.
+
+Shipped today:
+
+```
+<=18 m: level 1, 252,672     <=45 m: level 4, 54,208     <=400 m: level 8, 14,784
+```
+
+### 2. 4k's OPEN QUESTION IS ANSWERED, WITH ARITHMETIC
+
+4k left open whether the 32-gon silhouette a metre from the player's eye should be closed by
+shipping chain level 0 on the near rung. Two of the three candidate answers are now priced:
+
+- **"Ship level 0 to the whole library."** 510,720 triangles for the near rung alone, taking the
+  library to **579,712** and the resident total to **1,237,592** — 6.9× the three-cell budget, from
+  5.4×. It is not affordable against any number this project states.
+- **"Ship a smaller library — only the species actually on the deck."** Measured on blue/0/0's
+  crowd: **11 of the 14 species are present**, so trimming saves 21%, not the order of magnitude
+  the idea needs. 85 of the 134 walkers are human and four species have exactly one walker each —
+  the library pays a full eight-phase set for a species with one person on the deck.
+
+So the remaining candidate is the one `crowd_ladder`'s own docstring already names as what would
+overturn the compromise: **a runtime that can skin a body per frame**, which makes a shared static
+library unnecessary. That is a real feature, not a tweak, and it is where the faceted head goes.
+
+The number is **printed rather than gated**, deliberately: a bound needs a limit this file can
+source, and the honest limit for resident geometry is a streaming budget that does not exist yet.
+
+### 3. Gates
+
+| gate | result |
+|---|---|
+| `station/budget.py` | **20/23**, unchanged — the same three over: `frustum structure`, `structure share of frame`, `resident triangles` |
+| `resident triangles` | now **979,544 / 180,000**, and says which part is the deck and which the crowd |
+
+No build file was touched, so no frame changed and none was re-rendered — the diff is
+`station/budget.py` alone.
+
+### 4. NEXT
+
+- **Streaming is now the top item by size**, and this session is why: `resident triangles` is 5.44×
+  its budget and the honest figure names two separable parts — a 657,880-triangle deck loaded whole
+  with no LOD, and a 321,664-triangle crowd library that is shared and therefore not what streaming
+  would fix. `tools/play.sh` building one cluster is the same problem seen from the player's side.
+- The near figure's silhouette is 32-gon faceted at 1 m; the affordable fix is runtime skinning.
+- The two `DECK` rows in `EXPOSURE_FRAMES` still record no shot and cannot be re-taken.
 
 ## Session 4k — EVERY WALKER ON THE STATION WAS BALD, FOR 188 TRIANGLES
 
