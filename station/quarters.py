@@ -381,6 +381,32 @@ def walkable_width_m(cls):
     return d - used - 0.2
 
 
+def units_in(cls, place, cap=24):
+    """How many units of `cls` the register's own footprint holds.
+
+    THE COUNT WAS A DEFAULT AND THE DEFAULT WAS THE DEFECT. `ambassadorial_suites`
+    and `league_delegations` are both class `diplomatic`, so
+    `bespoke.BESPOKE_GEOMETRY["quarters"]` -- which correctly reads the class off
+    the place -- handed `run()` the same class and let `count` fall back to 6 for
+    both. Two places, one geometry, and `deck.py --degeneracy` fails on it.
+
+    The register already separates them and it is not close: 40 x 90 m against
+    16 x 40 m, 5.6x the floor area. A row of units opens off one side of a
+    corridor, so the count is the run LENGTH over the unit width -- 16 suites
+    against 7 delegation offices, which is also the right answer politically:
+    the League is many small delegations, the ambassadors are few large ones.
+
+    `cap` exists because a count is a triangle budget as well as a layout: at
+    5.36 m a unit, an uncapped 120 m run of `qtr_civilian` would emit 22 units
+    into a shot that shows four of them.
+    """
+    w, _d = unit_dims(cls)
+    fp = (place or {}).get("footprint")
+    if not fp or w <= 0:
+        return 6                                   # the historical default
+    return max(2, min(cap, int(float(fp[1]) // w)))
+
+
 def run(schema, profile, cls, count=6, corridor_w_m=None):
     """A row of units opening off one side of a corridor.
 

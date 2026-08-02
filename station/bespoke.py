@@ -76,10 +76,22 @@ BESPOKE_GEOMETRY = {
     # THE CLASS COMES FROM THE PLACE. A lurker's berth and a command cabin are
     # different geometry, and rendering one class seven times would be seven
     # frames of one room. See QUARTERS_CLASS.
-    "quarters": lambda s, p, q: __import__("quarters").run(
-        s, p, __import__("quarters").class_by_key(QUARTERS_CLASS[q["key"]])),
-    "zocalo": lambda s, p, q: __import__("zocalo").zocalo_run(
-        3, cap_ends=True),
+    # THE CLASS COMES FROM THE PLACE -- and so does the COUNT. Reading the
+    # class was the 3z fix and it was only half: `ambassadorial_suites` and
+    # `league_delegations` are both `diplomatic`, so both got `run`'s default
+    # of 6 units and drew one room. Their footprints are 40 x 90 and 16 x 40.
+    # `units_in` reads them: 16 suites against 7. INV-268.
+    "quarters": lambda s, p, q: (lambda Q, c: Q.run(
+        s, p, c, count=Q.units_in(c, q)))(
+            __import__("quarters"),
+            __import__("quarters").class_by_key(QUARTERS_CLASS[q["key"]])),
+    # THE PLACE, not a literal 3. `zocalo` and `shops_kiosks` drew the same
+    # three bays with the same stall seed. 70 x 120 m against 40 x 100 m.
+    # `bays_for` reads both the count and the seed off the register. INV-268.
+    "zocalo": lambda s, p, q: (lambda Z, b: Z.zocalo_run(
+        b[0], seed=b[1], cap_ends=True))(
+            __import__("zocalo"),
+            __import__("zocalo").bays_for(q)),
 }
 
 

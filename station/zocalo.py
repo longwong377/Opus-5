@@ -1171,6 +1171,34 @@ def zocalo_bay(p=None, index=0, seed="zocalo", stair_side=None,
     return m.as_tuple()
 
 
+def bays_for(place, p=None, cap=6):
+    """How many bays the register's own footprint holds, and a per-place seed.
+
+    Returns `(bays, seed)`.
+
+    THE ARGUMENTS EXISTED AND NOBODY PASSED THEM. `bespoke.BESPOKE_GEOMETRY`
+    called `zocalo_run(3, cap_ends=True)` with no place at all, so `zocalo` and
+    `shops_kiosks` drew the same three bays with the same stall seed --
+    identical geometry, which `deck.py --degeneracy` fails on.
+
+    The register separates them: 70 x 120 m against 40 x 100 m, and the Zocalo
+    declares `crowd_hub` and `public_social` where the kiosks declare `retail`.
+    A bay is `bay_length_m` along the run, so the count is arithmetic rather
+    than a choice; the seed is the place key, so two runs of the same length
+    still lay their stalls out differently.
+
+    `cap` is a triangle budget, not a layout opinion: 120 m at 10.8 m a bay is
+    11 bays, and the Zocalo is already the heaviest interior in the project.
+    """
+    p = p or params()
+    fp = (place or {}).get("footprint")
+    key = (place or {}).get("key", "zocalo")
+    if not fp:
+        return 3, "zocalo"
+    n = int(float(fp[1]) // p["bay_length_m"])
+    return max(2, min(cap, n)), key
+
+
 def zocalo_run(bays=3, p=None, seed="zocalo", cap_ends=False, **kw):
     """`bays` bays end to end along +z.
 

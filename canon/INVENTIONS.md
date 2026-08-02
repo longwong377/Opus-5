@@ -6070,3 +6070,43 @@ come through — and the schematic is sized to the wall it sits on. Both authori
 
 **Overturned by:** any frame of the south hall or the concourse, which would replace the derived
 half outright.
+
+## INV-268 — How many suites, how many bays: a count read off the footprint
+
+**Invented:** in `station/quarters.py` — `units_in(cls, place, cap=24)`; and in
+`station/zocalo.py` — `bays_for(place, p=None, cap=6)`.
+
+**Why necessary:** both modules already took the argument that would have separated their places,
+and nobody passed it.
+
+* `bespoke.BESPOKE_GEOMETRY["quarters"]` correctly read the CLASS off the place — that was the 3z
+  fix — and then let `run()`'s `count` fall back to **6** for everything. `ambassadorial_suites` and
+  `league_delegations` are both class `diplomatic`, so both drew six identical units.
+* `BESPOKE_GEOMETRY["zocalo"]` called `zocalo_run(3, cap_ends=True)` with **no place at all**, so
+  `zocalo` and `shops_kiosks` drew the same three bays with the same stall seed.
+
+**Constrained by the register, and it is not close in either case:**
+
+    ambassadorial_suites  40 x 90    diplomatic_mission residence
+    league_delegations    16 x 40    diplomatic_mission residence
+    zocalo                70 x 120   commerce crowd_hub public_social
+    shops_kiosks          40 x 100   commerce retail
+
+A row of quarters opens off one side of a corridor and a Zocalo bay is `bay_length_m` along the run,
+so **both counts are arithmetic rather than choices**: 90 / 5.36 = 16 suites against 40 / 5.36 = 7
+delegation offices; 120 / 10.8 = 11 bays against 100 / 10.8 = 9. The Zocalo's seed is the place key,
+so two runs of the same length still lay their stalls out differently.
+
+**And the quarters answer is right for a second, independent reason**, which is the check that it is
+not merely arithmetic: the League of Non-Aligned Worlds is *many small delegations* and the
+ambassadorial wing is *few large suites*. 7 against 16 says that.
+
+**What IS invented, and it is only the caps:** `cap=24` units and `cap=6` bays. Both are triangle
+budgets rather than layout opinions — at 5.36 m a unit an uncapped 120 m run of `qtr_civilian` emits
+22 units into a shot that shows four, and the Zocalo is already the heaviest interior in the
+project. Authority 5. Overturned by a streaming/LOD pass that makes the count cost nothing, at which
+point both caps should simply rise.
+
+**Not fixed here, and pre-existing:** `zocalo._selftest` fails its seam assertion (4 non-manifold
+edges at 3 bays, 6 at 4). Verified by A/B — it failed identically before this change, on the old
+default of 3 — so it is a seam defect in `zocalo_run`, not a consequence of varying the count.
