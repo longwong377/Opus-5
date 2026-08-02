@@ -1493,6 +1493,47 @@ SUBPIXEL_FIGURE_M = aliases_beyond_m(FIGURE_WIDTH_M)
 IMPOSTOR_VIEWS = 8
 
 
+def tier_alias_m(tier, species="human", sample=8):
+    """Distance beyond which a feature TIER stops being resolvable. Measured.
+
+    Builds the figure with every feature present, takes the geometry belonging
+    to that tier, and returns `aliases_beyond_m` of its SMALLEST dimension --
+    the smallest is what falls under the shading rate first.
+
+    OVER A SAMPLE OF INDIVIDUALS, TAKING THE SMALLEST, because `individual()`
+    varies a body by its id and the first two probes written for this returned
+    166 m and 153 m for the same feature on two different people. A number that
+    depends on which name you happened to type is not a measurement. The
+    smallest head in the sample is the one whose hair aliases first, so it is
+    the one the answer has to hold for.
+
+    NOT A WRITTEN-DOWN NUMBER either way. The hair cap's size is a property of
+    `_f_hair` and the crest's of `_f_centauri_crest`; a constant here would be
+    a second copy of a computed value and would drift the first time either
+    changes. `populace.crowd_ladder` calls this to decide whether a distance
+    band can afford to drop a tier.
+    """
+    keys = [k for k, t in FEATURE_TIER.items() if t == tier]
+    if not keys:
+        raise KeyError(f"no features in tier {tier!r}")
+    chain = lod_chain()
+    lvl = next((i for i, lv in enumerate(chain) if lv["features"] == "all"), 0)
+    worst = None
+    for n in range(max(1, sample)):
+        v, t, g = build(species, f"tier-probe-{n}", lod=lvl, chain=chain)
+        idx = set()
+        for name, lo, hi in g:
+            if any(k in name for k in keys):
+                for tri in t[lo:hi]:
+                    idx.update(tri)
+        if not idx:
+            continue
+        span = min(max(v[k][ax] for k in idx) - min(v[k][ax] for k in idx)
+                   for ax in (0, 1, 2))
+        worst = span if worst is None else min(worst, span)
+    return 0.0 if worst is None else aliases_beyond_m(worst)
+
+
 def _feature_filter(level):
     if level == "all":
         return set(FEATURE_TIER) | {"hands", "feet"}

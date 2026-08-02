@@ -1,6 +1,97 @@
 # Project State
 
-**Last updated:** 2026-08-02 · **Session 4j** — **the 21 exposure frames describe the code again, and the verdict did not move** · **4i** — **every curved surface in the project was flat-shaded, and the crease angle is measured off the station** · **4h** — **IT IS PLAYABLE: press Play and you are standing in Blue Sector** · **4g** — **the Babcom terminal is a built device, and it shipped a logged mistake once before the log caught it** · **4f** — a per-token verb override · **4e** — **the naming-mismatch class is CLOSED: built-but-misnamed 26 → 0, resolving 302/357** · **4d** — **the bespoke rooms' interactables were never unbuilt, they were unnamed: 259/357 → 284/357** · **4c** — **the station is INTERACTABLE, the port is on a wall, and the 24-minute suites were one bad cache key** · **4b** — a police force, friction in metres, the plated shell, the fitting-reach fix
+**Last updated:** 2026-08-02 · **Session 4k** — **every walker on the station was bald, for 188 triangles** · **4j** — **the 21 exposure frames describe the code again, and the verdict did not move** · **4i** — **every curved surface in the project was flat-shaded, and the crease angle is measured off the station** · **4h** — **IT IS PLAYABLE: press Play and you are standing in Blue Sector** · **4g** — **the Babcom terminal is a built device, and it shipped a logged mistake once before the log caught it** · **4f** — a per-token verb override · **4e** — **the naming-mismatch class is CLOSED: built-but-misnamed 26 → 0, resolving 302/357** · **4d** — **the bespoke rooms' interactables were never unbuilt, they were unnamed: 259/357 → 284/357** · **4c** — **the station is INTERACTABLE, the port is on a wall, and the 24-minute suites were one bad cache key** · **4b** — a police force, friction in metres, the plated shell, the fitting-reach fix
+
+## Session 4k — EVERY WALKER ON THE STATION WAS BALD, FOR 188 TRIANGLES
+
+### 1. The LOD chain drops hair at level 2, and level 2 is what the crowd shipped
+
+`body.lod_chain()`'s feature schedule, printed rather than remembered:
+
+| level | segments | stride | features | triangles |
+|---|---|---|---|---|
+| 0 | 64 | 1 | **all** | 4,560 |
+| 1 | 32 | 1 | **all** | 2,256 |
+| 2 | 32 | 1 | `no_detail` | 2,068 |
+| 3 | 16 | 1 | `no_detail` | 1,012 |
+
+**Levels 1 and 2 have identical tessellation.** They differ in one thing: whether the `detail`
+tier — the hair and the brow — exists. The shipped crowd ladder's nearest rung was level 2, so
+every one of the 963 people walking the station was bald at every distance, and the 21 baked cast
+members were not, because they build at a finer level. Two descriptions of a person, disagreeing.
+
+### 2. The selection rule was blind, and its pick was the worst of three
+
+`crowd_ladder` chose "the level whose measured triangle count is nearest the band's allowance". For
+the 6–18 m band, allowance **2,000**:
+
+| level | triangles | vs allowance | hair |
+|---|---|---|---|
+| 3 | 1,012 | −49% | no |
+| **2 (chosen)** | **2,068** | **+3.4% OVER** | **no** |
+| 1 | 2,256 | +12.8% over | **yes** |
+
+It picked the one that is *over the allowance and faceless*. A nearest-count rule cannot see a
+face; it compares two numbers and neither of them is the head.
+
+The rule is now feature-aware: **if a tier is still resolvable at the band's far edge, take the
+cheapest level that keeps it, provided that costs no more than `FEATURE_OVER_TOL` (1.15) over the
+allowance.** The middle and far rungs are unchanged — at 45 m the cheapest level with hair is ×3.76
+the allowance and is correctly refused.
+
+### 3. "Still resolvable" is MEASURED, and the first measurement was not reproducible
+
+`body.tier_alias_m(tier)` builds the figure, takes the geometry belonging to that tier, and returns
+`aliases_beyond_m` of its smallest dimension. **Hair aliases beyond 143.2 m** — eight times past
+the near band's 18 m far edge. A constant here would be a second copy of a value that lives in
+`_f_hair`, and would drift the first time the cap changes.
+
+The first two probes for this returned **166 m and 153 m for the same feature**, because
+`individual()` varies a body by its id and they were two different people. A number that depends on
+which name you happened to type is not a measurement. It now samples eight individuals and takes
+the **smallest** — the smallest head is the one whose hair aliases first — and converges at 143.2 m
+from a sample of four onward.
+
+### 4. What it costs, measured
+
+The shared library is 112 bodies (14 species × 8 phases): **231,616 → 252,672 triangles resident,
++21,056, +9.1%.** The band holds 20 agents, so **+3,760 drawn** in a frame that already carries
+657,880. CLAUDE.md's own rule governs: *"the triangle budget is a TARGET, not a ceiling. 83%
+headroom sat unspent for sessions because the gate only ever said 'under budget, pass'."*
+
+### 5. Gates
+
+| gate | result |
+|---|---|
+| `station/populace.py` | **73/73**, and the new assertion names the rung and its cost |
+| control: `FEATURE_OVER_TOL = 1.0` | fires — the near rung falls back to level 2, faceless |
+| `walkable.py --deck blue/0/0 --use` | **PASS** + **PASS**, both controls firing; ladder now reads `LOD 1:3/4:5/8:126` |
+| `tools/play.sh --verify` | **PLAYABLE** — stood 112/112 reports to 224 s, 0.043 m from spawn, peak speed 0.000 m/s |
+
+### 6. WHAT THE FRAME SHOWS, INCLUDING WHAT IT DOES NOT FIX
+
+`docs/engine-playable-eye.png` at 4×: the near figure has a dark hair cap with a clear hairline
+where there was a bare egg. **The crown silhouette is visibly faceted** — a 32-segment lathe across
+a 0.17 m head is 0.017 m a facet, resolvable to roughly 24 m, and this figure is about 1 m away.
+
+That is **the documented cost of a compromise already recorded in `crowd_ladder`**, not a new
+defect: `NPC_BUDGET` has a 0–6 m band allowing 8,000 triangles, and the ladder collapses it into
+the 6–18 m rung because shipping level 0 to a shared library means 14 × 8 × 4,560 = **510,720
+triangles resident** to draw the four agents that band ever holds. What would overturn it is stated
+there too — a runtime that can skin a body per frame, which would make the library unnecessary.
+
+**A hypothesis I checked and refuted rather than shipped:** the stepped hairline looked like the
+open-ended loft this project has shipped three times (`dressing._cyl`, `plant_pipe`,
+`plant_conduit`). `interior.boundary_edges` on the hair span alone: **0 open, 0 non-manifold.** The
+cap is closed. The figure's 61 non-manifold edges are all at the feet and hands, where separate
+solids butt flush.
+
+### 7. NEXT
+
+- The near figure's silhouette is 32-gon faceted at 1 m. Either ship level 0 to a *small* library
+  (the species actually present on a deck, not all 14) or skin at runtime.
+- The two `DECK` rows in `EXPOSURE_FRAMES` still record no shot and cannot be re-taken.
+- `tools/play.sh` still builds one cluster.
 
 ## Session 4j — THE 21 EXPOSURE FRAMES NOW DESCRIBE THE CODE AGAIN, AND THE VERDICT DID NOT MOVE
 

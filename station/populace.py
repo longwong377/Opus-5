@@ -816,6 +816,34 @@ def corridor_sight_m(radius_m, width_m):
     return math.sqrt(8.0 * max(1e-9, radius_m) * max(1e-9, width_m))
 
 
+# How far over a band's per-body triangle allowance a level may go to keep a
+# feature tier that is still resolvable at that band's far edge.
+#
+# NOT A ROUND NUMBER PICKED TO ADMIT THE ANSWER I WANTED, and the arithmetic is
+# all measured. The 6-18 m band allows 2,000 triangles a body. This chain
+# offers 1,012 (no hair, 49% under), 2,068 (no hair, 3.4% OVER) and 2,256
+# (hair, 12.8% over) -- and the nearest-count rule shipped the middle one,
+# which is the worst of the three: over the allowance AND faceless. 1.15
+# admits 2,256 and refuses the 45 m band's x3.76, which is the whole job.
+#
+# WHAT IT COSTS, measured rather than asserted: the shared library is 112
+# bodies (14 species x 8 phases), so +188 triangles a body is **+21,056
+# resident**, and the band holds 20 agents, so **+3,760 drawn** in a frame that
+# already carries 657,880. CLAUDE.md's own rule applies -- "the triangle budget
+# is a TARGET, not a ceiling. 83% headroom sat unspent for sessions because the
+# gate only ever said 'under budget, pass'."
+FEATURE_OVER_TOL = 1.15
+
+
+@_lru_cache(maxsize=1)
+def _detail_alias_m():
+    """How far away hair stops being resolvable. Measured, cached once.
+
+    Cached because it builds a figure, and `crowd_ladder` is called per deck.
+    """
+    return _body.tier_alias_m("detail")
+
+
 @_lru_cache(maxsize=1)
 def crowd_ladder():
     """`((max_distance_m, chain_lod), ...)` for the shipped crowd, nearest first.
@@ -838,9 +866,33 @@ def crowd_ladder():
     altogether.
     """
     counts = _lod_triangles()
+    chain = _body.lod_chain()
+    detail_m = _detail_alias_m()
     out = []
     for _name, _lo, hi, tri, _n in _sched.NPC_BUDGET["lod"]:
         lod = min(range(len(counts)), key=lambda i: abs(counts[i] - tri))
+        # -- A NEAREST-COUNT RULE CANNOT SEE A FACE ------------------------
+        # It picked level 2 for the 6-18 m band: 2,068 triangles against an
+        # allowance of 2,000, so ALREADY 3.4% over -- and level 2 is the first
+        # rung of the chain to drop the `detail` tier, which is the hair. Level
+        # 1 has identical tessellation (32 segments, stride 1), keeps the hair,
+        # and costs 2,256: 9% more triangles than the rung that was chosen, and
+        # the difference between a head and an egg.
+        #
+        # So: if the tier is still resolvable at this band's FAR edge, take the
+        # cheapest level that keeps it, provided that costs no more than
+        # `FEATURE_OVER_TOL` over the allowance. `body.tier_alias_m` measures
+        # the hair off the built mesh, over a sample of individuals and taking
+        # the smallest, and puts it under the shading rate only beyond
+        # **143.2 m** -- eight times past this band's 18 m far edge. At 45 m the
+        # cheapest level with hair is x3.76 the allowance and is correctly
+        # refused, so the middle and far rungs are unchanged.
+        if hi <= detail_m:
+            keep = [i for i, lv in enumerate(chain)
+                    if lv["features"] == "all"
+                    and counts[i] <= tri * FEATURE_OVER_TOL]
+            if keep:
+                lod = max(keep, key=lambda i: -counts[i])
         out.append((float(hi), lod))
     # Collapse the near band into the next one out -- see the note above -- and
     # drop any band that resolves to the same level as its neighbour, so the
@@ -1771,6 +1823,46 @@ def _selftest():
         else:
             fail += 1
             print(f"FAIL  {name}  -- {detail}")
+
+    # -- THE PERSON A METRE FROM YOUR EYE HAS A FACE -----------------------
+    # Every walker on the station was bald until session 4k, and no gate could
+    # say so: the ladder's rungs were checked against a triangle allowance and
+    # nothing checked what was IN them. `no_detail` is the tier that holds the
+    # hair and the brow, and the nearest rung had already dropped it.
+    _chain, _counts = _body.lod_chain(), _lod_triangles()
+    _near_hi, _near = crowd_ladder()[0]
+    check("the crowd's nearest rung keeps the features it can still resolve",
+          _chain[_near]["features"] == "all",
+          f"rung <= {_near_hi:g} m is level {_near} with "
+          f"features={_chain[_near]['features']}, and hair is resolvable to "
+          f"{_detail_alias_m():.0f} m")
+    check("...and the tier's range is measured, not written down",
+          _detail_alias_m() > _near_hi,
+          f"hair aliases beyond {_detail_alias_m():.1f} m, rung reaches "
+          f"{_near_hi:g} m")
+    # THE CONTROL. With no tolerance over the allowance the rule cannot afford
+    # the tier and falls back to the nearest-count pick -- which is level 2,
+    # the faceless one that shipped for five sessions. If this does not change,
+    # the assertion above is passing for some other reason.
+    global FEATURE_OVER_TOL
+    _tol = FEATURE_OVER_TOL
+    try:
+        FEATURE_OVER_TOL = 1.0
+        crowd_ladder.cache_clear()
+        _ctl = crowd_ladder()[0][1]
+    finally:
+        FEATURE_OVER_TOL = _tol
+        crowd_ladder.cache_clear()
+    check("control: with no tolerance the near rung loses its face",
+          _chain[_ctl]["features"] != "all" and _ctl != _near,
+          f"control picked level {_ctl} "
+          f"(features={_chain[_ctl]['features']}), subject picked {_near}")
+    # And the cost of it, stated rather than left to be discovered.
+    _lib = len(_sched.STATION_MIX) * CROWD_PHASES
+    print(f"      crowd near rung: level {_near}, {_counts[_near]:,} tri/body, "
+          f"library {_lib} bodies = {_lib * _counts[_near]:,} triangles "
+          f"({_lib * (_counts[_near] - _counts[_ctl]):+,} against the "
+          f"faceless rung)")
 
     import dressing as D
     dv, dt, dg, _dc = D.dress("t", 6.0, 9.0, 2.9, "office")
