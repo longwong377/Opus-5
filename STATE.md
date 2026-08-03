@@ -1,6 +1,78 @@
 # Project State
 
-**Last updated:** 2026-08-02 · **Session 4l** — **the resident-triangle gate was about the deck; the build also loads 321,664 triangles of people** · **4k** — **every walker on the station was bald, for 188 triangles** · **4j** — **the 21 exposure frames describe the code again, and the verdict did not move** · **4i** — **every curved surface in the project was flat-shaded, and the crease angle is measured off the station** · **4h** — **IT IS PLAYABLE: press Play and you are standing in Blue Sector** · **4g** — **the Babcom terminal is a built device, and it shipped a logged mistake once before the log caught it** · **4f** — a per-token verb override · **4e** — **the naming-mismatch class is CLOSED: built-but-misnamed 26 → 0, resolving 302/357** · **4d** — **the bespoke rooms' interactables were never unbuilt, they were unnamed: 259/357 → 284/357** · **4c** — **the station is INTERACTABLE, the port is on a wall, and the 24-minute suites were one bad cache key** · **4b** — a police force, friction in metres, the plated shell, the fitting-reach fix
+**Last updated:** 2026-08-02 · **Session 4m** — **the streaming cell budget met a real deck, and the design survives** · **4l** — **the resident-triangle gate was about the deck; the build also loads 321,664 triangles of people** · **4k** — **every walker on the station was bald, for 188 triangles** · **4j** — **the 21 exposure frames describe the code again, and the verdict did not move** · **4i** — **every curved surface in the project was flat-shaded, and the crease angle is measured off the station** · **4h** — **IT IS PLAYABLE: press Play and you are standing in Blue Sector** · **4g** — **the Babcom terminal is a built device, and it shipped a logged mistake once before the log caught it** · **4f** — a per-token verb override · **4e** — **the naming-mismatch class is CLOSED: built-but-misnamed 26 → 0, resolving 302/357** · **4d** — **the bespoke rooms' interactables were never unbuilt, they were unnamed: 259/357 → 284/357** · **4c** — **the station is INTERACTABLE, the port is on a wall, and the 24-minute suites were one bad cache key** · **4b** — a police force, friction in metres, the plated shell, the fitting-reach fix
+
+## Session 4m — THE STREAMING CELL BUDGET MET A REAL DECK, AND THE DESIGN SURVIVES
+
+### 1. The cell budget had only ever been measured on the corridor kit
+
+`budget.py`'s "Streaming cells" section says so in its own comment: *"Everything below gates
+`interior.deck_cell`"* — the **bare corridor kit**, no rooms, no props, no fixtures, no people. Its
+worst habitat cell reads **39,104 tri**. That is the model a streaming loader would be written
+against, and it had never met content.
+
+Same kit-versus-assembled gap that caught `frustum structure` at 2.05×, and exactly the thing to
+find out *before* building the loader rather than after.
+
+`deck.cell_partition` assigns an assembled deck's real triangles to **the ring's own cells** —
+`interior.ring_cells`, 18 of 20° on a Blue deck, the same cells `npc/navigation.cell_plan` builds
+3,414 of — so there is no second partition to disagree with the navigation one. A triangle goes to
+the cell its centroid's angle about the spin axis falls in.
+
+### 2. What blue/0/0 actually looks like cut into its own cells
+
+```
+18 cells of 20 deg: worst 63,304 tri, emptiest 23,995, mean 36,549
+worst three consecutive: 147,675 at cell 13
+```
+
+| bound | measured | budget | |
+|---|---|---|---|
+| `assembled cell triangles` | **63,304** | 60,000 | **FAIL, 1.06×** |
+| `assembled resident set (3 cells)` | **147,675** | 180,000 | **PASS, 82%** |
+
+**The design survives contact with content.** The number that binds is the three-cell resident set,
+because a player is never holding one cell alone — and it passes with 18% to spare. Loading the
+deck whole is **4.5× that**, which is the size of the prize: 979,544 resident today against
+147,675 + the shared crowd library once a loader exists.
+
+The real content is **62% denser than the kit estimate** (63,304 against 39,104), which is the
+whole reason for measuring it.
+
+### 3. THE FAILING BOUND IS LEFT FAILING, ON PURPOSE
+
+`cell_tris` is 60,000 and `resident_tris` is 180,000 — exactly 3×, so the per-cell bound is an
+*average* constraint wearing a per-cell coat. A busy cell flanked by two quiet ones is not a
+problem; it is what an unevenly-populated station looks like, and the three-cell window is what the
+player pays. The honest reading is that `cell_tris` is the wrong shape.
+
+**It has not been relaxed.** CLAUDE.md's rule is that a deferral list cannot be grown to make a
+number go green, and quietly re-deriving a budget to admit my own measurement is the same move. It
+fails at 1.06×, the cause is understood and written down, and whoever writes the loader can decide
+whether a per-cell bound should exist at all.
+
+### 4. Gates
+
+| gate | result |
+|---|---|
+| `station/budget.py` | **21/25** — over on `frustum structure`, `structure share of frame`, `assembled cell triangles` (new), `resident triangles` |
+| `station/deck.py` | **40/40** |
+
+No build file's output changed: `cell_partition` and `resident_window` are new top-level functions
+that no build path calls, so no geometry moved and no frame was re-rendered.
+
+### 5. NEXT — and the loader now has its numbers
+
+- **Write the loader.** The target is measured, not modelled: hold three cells, 147,675 triangles
+  at the worst point on blue/0/0. Collision is only 5,270 triangles for the whole cluster, so it
+  can stay resident and the floor can never vanish under a player while a cell is in flight — which
+  makes the render mesh the only thing that streams and keeps the walk gate's floor assertion
+  intact by construction.
+- One complication to plan for: `dress_scene` binds materials once in `_load_level` and then
+  `_dress_late` releases the library. A streamed cell arriving later has to be dressed, so the
+  library has to outlive the first load.
+- The near figure's silhouette is 32-gon faceted at 1 m; the affordable fix is runtime skinning.
+- The two `DECK` rows in `EXPOSURE_FRAMES` still record no shot.
 
 ## Session 4l — THE RESIDENT-TRIANGLE GATE WAS ABOUT THE DECK; THE BUILD ALSO LOADS 321,664 TRIANGLES OF PEOPLE
 

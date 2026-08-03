@@ -733,6 +733,39 @@ def deck_section(args):
     # about the part it measured. `resident triangles` was about the deck.
     lib, lib_rows = crowd_library_tris()
     resident_all = len(tris) + lib
+    # -- THE CELL BUDGET, MET BY AN ASSEMBLED DECK FOR THE FIRST TIME ------
+    # The "Streaming cells" section below gates `interior.deck_cell()`, and
+    # says so in its own comment: it is the BARE CORRIDOR KIT. So the cell
+    # budget that a streaming loader would be built against had never been
+    # measured on a deck with its rooms, props, fixtures and people in it --
+    # the same kit-versus-assembled gap that caught `frustum structure` at
+    # 2.05x, and exactly the thing to find out BEFORE writing the loader.
+    #
+    # `deck.cell_partition` assigns this deck's real triangles to the ring's
+    # OWN cells (`interior.ring_cells`, 18 of 20 degrees here), so there is no
+    # second partition to disagree with the navigation one.
+    cells, cmeta = D.cell_partition(verts, tris, sec, ring, dk, schema, profile)
+    percell = [len(c) for c in cells]
+    win, at = D.resident_window(percell, 3)
+    print(f"\n  the same deck cut into its own {cmeta['cells']} streaming "
+          f"cells of {cmeta['cell_deg']:.0f} deg: worst cell "
+          f"{max(percell):,} tri, emptiest {min(percell):,}, mean "
+          f"{sum(percell)/len(percell):,.0f}; worst three consecutive "
+          f"{win:,} at cell {at}")
+    check("assembled cell triangles", max(percell), CELLS["cell_tris"], " tri",
+          f"the busiest 20 deg of a real deck, not the corridor kit "
+          f"({cmeta['cell_length_m']:.0f} m of arc)",
+          when=f"{abs(max(percell) - CELLS['cell_tris']):,} tri, "
+               f"{max(percell)/CELLS['cell_tris']:.2f}x")
+    check("assembled resident set (3 cells)", win, CELLS["resident_tris"],
+          " tri",
+          "what a player standing at the busiest point would hold with the "
+          "cell they are in plus both neighbours -- the target a loader has "
+          "to reach, measured on content rather than on the kit",
+          when=f"{abs(win - CELLS['resident_tris']):,} tri, "
+               f"{win/CELLS['resident_tris']:.2f}x; loading the deck whole is "
+               f"{len(tris)/max(win,1):.1f}x this")
+
     check("resident triangles", resident_all, CELLS["resident_tris"], " tri",
           f"walk.gd loads one .glb whole -- there is no streaming and no LOD "
           f"-- plus {lib:,} tri of crowd library ({', '.join(lib_rows)})",

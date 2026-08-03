@@ -712,6 +712,68 @@ def room_shell_for(schema, profile, meta, place, door_angle_deg):
 CORRIDOR_INSTANCED = True
 
 
+def cell_partition(verts, tris, sector, ring, deck, schema=None, profile=None):
+    """Which streaming cell each triangle of an ASSEMBLED deck falls in.
+
+    Returns `(cells, meta)` where `cells[i]` is the list of triangle indices in
+    cell `i`, and `meta` carries the ring's own `cells` and `cell_deg`.
+
+    THE CELL GEOMETRY IS THE RING'S, NOT A NEW ONE. `interior.ring_cells` has
+    defined the station's streaming cells since the schema was written -- 18
+    cells of 20 degrees on a Blue deck -- and `npc/navigation.cell_plan` builds
+    3,414 of them as navigation metadata. This assigns real triangles to those
+    same cells rather than inventing a second partition that could disagree.
+
+    WHY IT EXISTS: `budget.py` gates `cell_tris` against
+    `interior.deck_cell()`, which is the bare corridor kit. It says so in its
+    own comment -- "everything below gates `interior.deck_cell`". So the cell
+    budget that streaming would be built on had never met an assembled deck,
+    with its rooms, props, fixtures and people in it. That is the same
+    kit-versus-assembled gap that caught `frustum structure` at 2.05x, and it
+    is worth knowing BEFORE a loader is written against the model.
+
+    A triangle is assigned by its centroid's angle about the spin axis, which
+    is +Z. A triangle spanning a cell boundary lands in one of the two; over a
+    deck of 657,880 triangles at 20 degrees a cell, that boundary population is
+    a rounding error against the counts this is for.
+    """
+    import interior as _it                                        # noqa: PLC0415
+    if schema is None:
+        schema, profile = _it.load()
+    plan = _it.ring_cells(schema, profile, sector, ring, deck)
+    n, step = int(plan["cells"]), float(plan["cell_deg"])
+    out = [[] for _ in range(n)]
+    for i, (a, b, c) in enumerate(tris):
+        va, vb, vc = verts[a], verts[b], verts[c]
+        cx = (va[0] + vb[0] + vc[0]) / 3.0
+        cy = (va[1] + vb[1] + vc[1]) / 3.0
+        deg = math.degrees(math.atan2(cy, cx)) % 360.0
+        out[min(n - 1, int(deg / step))].append(i)
+    return out, {"cells": n, "cell_deg": step,
+                 "cell_length_m": plan["cell_length_m"],
+                 "radius_m": plan["radius_m"]}
+
+
+def resident_window(counts, width=3):
+    """(worst total, first cell index) over `width` CONSECUTIVE cells, wrapping.
+
+    `budget.CELLS["resident_tris"]` is "the cell you are in plus both
+    neighbours", so the number that matters is not the worst cell but the worst
+    RUN of them -- a player standing at the busiest point has all three loaded.
+    Wraps, because a ring has no end and the run spanning 350-10 degrees is as
+    real as any other.
+    """
+    n = len(counts)
+    if n == 0:
+        return 0, 0
+    best, at = -1, 0
+    for i in range(n):
+        s = sum(counts[(i + k) % n] for k in range(width))
+        if s > best:
+            best, at = s, i
+    return best, at
+
+
 def build_deck(schema, profile, sector, ring, deck, with_rooms=True,
                bake_crowd=False,
                max_rooms=None, z_m=None):
