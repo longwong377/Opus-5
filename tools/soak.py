@@ -38,10 +38,31 @@ def rss_kb(pid):
     return None
 
 
-def godot_pids():
+# A GODOT PROCESS HOLDING A STATION IS HUNDREDS OF MEGABYTES. Anything smaller
+# is a wrapper, a shell or `nice` -- and the first run of this tool sampled
+# exactly that: 274 samples, "peak 6 MB, drift +0.0%", which reads as a clean
+# bill of health and is a measurement of /bin/sh. A floor makes that failure
+# loud instead of plausible.
+MIN_PLAUSIBLE_KB = 50 * 1024
+
+
+def godot_pid():
+    """The Godot process, chosen by LARGEST RSS rather than by pgrep order.
+
+    `pgrep -f godot.linuxbsd` matches the wrapper as well as the engine, and
+    taking [0] takes whichever the kernel lists first. The engine is the big
+    one, always, by two orders of magnitude.
+    """
     out = subprocess.run(["pgrep", "-f", "godot.linuxbsd"],
                          capture_output=True, text=True).stdout
-    return [int(x) for x in out.split() if x.strip().isdigit()]
+    best, best_kb = None, 0
+    for x in out.split():
+        if not x.strip().isdigit():
+            continue
+        kb = rss_kb(int(x)) or 0
+        if kb > best_kb:
+            best, best_kb = int(x), kb
+    return best, best_kb
 
 
 def main():
@@ -52,11 +73,9 @@ def main():
     def sampler():
         t0 = time.time()
         while not stop.is_set():
-            for pid in godot_pids():
-                kb = rss_kb(pid)
-                if kb:
-                    samples.append((time.time() - t0, pid, kb))
-                    break
+            pid, kb = godot_pid()
+            if pid and kb >= MIN_PLAUSIBLE_KB:
+                samples.append((time.time() - t0, pid, kb))
             stop.wait(SAMPLE_S)
 
     th = threading.Thread(target=sampler, daemon=True)
@@ -70,8 +89,14 @@ def main():
     print(f"\nsoak: {FRAMES:,} frames, {wall / 60.0:.1f} min wall")
     print(f"  traverse_m={d.get('traverse_m')} offfloor={d.get('offfloor')} "
           f"fell={d.get('fell')} error={d.get('error', '-')}")
+    if d.get("error"):
+        print(f"  THE WALK DID NOT FINISH: {d['error']}")
+        print("  RSS below is over however long it DID run, and the soak's own "
+              "claim -- that an hour of walking does not leak -- is NOT made.")
     if not samples:
-        print("  NO RSS SAMPLES -- the child was never seen; this proves nothing")
+        print(f"  NO RSS SAMPLES ABOVE {MIN_PLAUSIBLE_KB // 1024} MB -- the "
+              f"engine was never seen. THIS PROVES NOTHING; do not read the "
+              f"absence of drift as the absence of a leak.")
         return 1
     ts = [s[0] for s in samples]
     kb = [s[2] for s in samples]
