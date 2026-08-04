@@ -45,3 +45,18 @@ project is text that can be authored, verified and diffed.
   4 cores. Build once, publish as a GitHub Release asset, pull in seconds thereafter.
 - Software rendering via Mesa lavapipe (Vulkan 1.4 on CPU, verified) provides the visual
   feedback loop.
+
+## Amendment — 2026-08-03 (session 4i): GDScript in practice, C# not adopted
+
+The decision above says "Godot 4, C#". Measured at 4i: **zero `.cs` files against 14,718
+lines of GDScript.** The runtime was written in GDScript from the first script and C# was
+never picked up. This note makes the drift a decision rather than an accident.
+
+**Ruling: GDScript stands.** The reasons it won in practice are real: no build step in a
+container that already pays 61 minutes for the engine itself; instant iteration on scripts
+an agent edits blind; and the runtime is deliberately thin (the 4i amendment forbids porting
+the generators in-engine), so C#'s performance case never materialised — the hot paths are
+all offline Python or engine-internal. What would overturn it: a measured GDScript
+bottleneck in a shipped scene that a C# port demonstrably closes. None has been observed;
+`budget.py` gates counts, not script time, and the P0h hardware measurement is the place a
+real number would first appear.

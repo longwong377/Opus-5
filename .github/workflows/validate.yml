@@ -432,6 +432,28 @@ jobs:
           python3 animation.py
           python3 navigation.py
 
+      # --- the 4i amendment's rule 2: a gate is not adopted until it is a
+      # step here. These three existed for a session before they ran in CI,
+      # which is exactly the defect walkable.py had for thirty pushes.
+      - name: No two named places are the same place (both build paths)
+        id: sdegeneracy
+        continue-on-error: true
+        run: |
+          python3 station/deck.py --degeneracy
+
+      - name: Variety -- is this place different from that place?
+        id: svariety
+        continue-on-error: true
+        run: |
+          python3 station/variety.py --matrix --rebuild
+
+      - name: A resident's day is derivable and controlled (agenda selftests)
+        id: sagenda_selftest
+        continue-on-error: true
+        run: |
+          python3 station/agenda.py --selftest
+          python3 station/agenda.py --selftest3
+
       - name: Confirm the schema still parses and is fully sourced
         id: sconfirm_the_schema_still_parses_and_is_f
         continue-on-error: true
@@ -563,6 +585,12 @@ jobs:
             echo "FAILED: snpc_bodies_costume_and_crowd"; fail=1; fi
           if [ "${{ steps.snpc_animation_and_navigation.outcome }}" != "success" ]; then
             echo "FAILED: snpc_animation_and_navigation"; fail=1; fi
+          if [ "${{ steps.sdegeneracy.outcome }}" != "success" ]; then
+            echo "FAILED: sdegeneracy"; fail=1; fi
+          if [ "${{ steps.svariety.outcome }}" != "success" ]; then
+            echo "FAILED: svariety"; fail=1; fi
+          if [ "${{ steps.sagenda_selftest.outcome }}" != "success" ]; then
+            echo "FAILED: sagenda_selftest"; fail=1; fi
           if [ "${{ steps.sconfirm_the_schema_still_parses_and_is_f.outcome }}" != "success" ]; then
             echo "FAILED: sconfirm_the_schema_still_parses_and_is_f"; fail=1; fi
           if [ "$fail" != "0" ]; then
