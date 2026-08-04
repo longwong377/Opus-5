@@ -116,12 +116,33 @@ time at stated NPC count ("GPU half unknown" in the same line); the playtest scr
 **Visible deliverable:** the trailer re-cut from the real build after L3 is green.
 
 ### P0.5 — the station streams, or everything after is built on one deck
-`boot.py` emits cell sets; `_configure_walk` sets `cells_path`; all ~96 z-clusters baked
-**in batches across firings** with a progress gate; per-cell tri/memory budget; **payload
-ceiling stated up front** (measure one full sector first, extrapolate, and if the number is
-ugly it displaces work now, not at ship); streaming-failure negative control.
-**Gate:** boots streamed; a body crosses three cluster boundaries; RSS under ceiling;
-forced-failure control fires. **Visible deliverable:** a walk video across a sector seam.
+
+**THE SHIPPED SCENE STREAMS AS OF 4j/4k.** `godot --headless --path godot`, no arguments:
+`main: STREAMED -- 18 cells, starting in cell 13`, three cells resident (154,454 tri against
+a 180,000 budget) with the neighbours arriving at **+17.8 m and +56.1 m of lead**,
+`drop_m=0.053`, `cells=18 cell_resident=3`, boot **8.9 s → 3.7 s**. Gate: `python3
+station/boot.py --gate`, hermetic, 10/10 with three controls; CI step
+`sthe_shipped_scene_streams`. `coldstart.py` G3 PASS, G1 PASS, controls pass.
+
+*And the finding was bigger than this section stated: `main.gd` not setting `cells_path` was
+only half. **`walk.gd` called `_stream.update()` only inside `--stream-test`**, so even with a
+path the shipped build primed one cell and never loaded a second. `stream.gd` scored a green
+gate and moved nobody — finished, tested machinery with no caller on the shipped path.*
+
+*Three record corrections: the cell baker is GDScript (`stream.gd::bake`), not Python; CI's
+"Streaming cell manifest" step is about the sight-line table the baker READS, not the cell
+set; and cells exist for **70 decks / 955 cells / 1.7 GB**, not "1 z-cluster of ~96".*
+
+| still open in P0.5 | why it is not done |
+|---|---|
+| a body crosses **three cluster boundaries** | the shipped run crosses **cell** boundaries inside one cluster; cluster-to-cluster hand-off is untested |
+| **RSS under a stated ceiling** | no ceiling has been stated and no soak has been run |
+| **payload ceiling stated up front** | 1.7 GB of cells for 70 decks is measured; the figure has not been turned into a budget with a consequence |
+| the shipped cell set is **stale** | cells sum to 735,732 render tri against the deck's 741,040 (−5,308); reported by `--gate` and by the engine banner on every run, fixed by `boot.py --bake` |
+| `present_0300`/`present_1300` now measures **the primed cell's cast alone** (0 vs 1, was 4 vs 21) | `_start_clock` measures once before the viewer attaches, deliberately; re-measuring per transition would teleport people in front of the player |
+| systems `main.gd` binds **once** may still read the cell set they booted with | `life.gd`'s Director is fixed (`_rebind_on_stream`); `ambience.gd::bind` takes `_world` at start-up and has not been audited |
+
+**Visible deliverable:** a walk video across a sector seam.
 
 ### P0.6 — the three unowned preconditions
 Navigation graph into the engine (bigger than L2–L9 combined); **a day index in `Clock`**
