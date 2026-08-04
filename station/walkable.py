@@ -472,6 +472,52 @@ def walk_deck(sector, ring, deck, godot, timeout=1800, traverse=None,
     _glb(os.path.join(out, f"{stem}_col.obj"),
          os.path.join(out, f"{stem}_col.glb"))
 
+    # -- THE DECK CUT INTO ITS STREAMING CELLS -----------------------------
+    # `budget.py` has said `resident triangles` is 5.44x its budget since 4l,
+    # for one reason it printed itself: "walk.gd loads one .glb whole -- there
+    # is no streaming and no LOD". 4m measured what the alternative costs on
+    # real content rather than on the corridor kit -- worst three consecutive
+    # cells 147,675 triangles against a 180,000 budget -- so the target is
+    # known and this writes the pieces it needs.
+    #
+    # THE CELLS ARE THE RING'S OWN, from `interior.ring_cells` by way of
+    # `deck.cell_partition`: the same 18 x 20 degrees `npc/navigation.cell_plan`
+    # builds 3,414 of. Not a second partition.
+    #
+    # THE COLLISION SHELL IS NOT CUT, and that is the design rather than an
+    # omission. It is 5,270 triangles for the whole cluster against the render
+    # mesh's 657,880, so keeping it whole costs almost nothing and buys
+    # something this project cannot afford to get wrong: the floor can never
+    # vanish under a player because a cell is in flight. The walk gate's
+    # `offfloor` assertion stays true by construction.
+    #
+    # NOTHING LOADS THESE YET, and they are written anyway rather than left for
+    # the session that writes the loader, because the loader's real obstacle is
+    # not the loading. `walk.gd` wires doors, actors and interactables by
+    # walking the whole render scene once, so a cell arriving later would carry
+    # people nobody watches and objects nobody can press -- making those three
+    # modules additive is the work, and it is a separate one. Measured on this
+    # deck, what cannot stream until then is 49,252 triangles of actors plus
+    # 872 of interactables: **50,124, 8% of the mesh**, which added to a
+    # three-cell bulk window lands at about 186,547 against a 180,000 budget.
+    # That is the number the next session is working against.
+    cellmap, cmeta2 = D.cell_partition(v, t, sector, ring, deck,
+                                       schema, profile)
+    cells = []
+    for ci, idxs in enumerate(cellmap):
+        if not idxs:
+            continue
+        cv3, ct3, cg3 = D.submesh(v, t, g, idxs)
+        cobj = os.path.join(out, f"{stem}_c{ci}.obj")
+        D.write_obj(cobj, cv3, ct3, cg3)
+        _glb(cobj, cobj[:-4] + ".glb")
+        cells.append({"cell": ci, "tris": len(ct3),
+                      "deg_lo": ci * cmeta2["cell_deg"],
+                      "deg_hi": (ci + 1) * cmeta2["cell_deg"],
+                      "glb": cobj[:-4] + ".glb"})
+    with open(os.path.join(out, f"{stem}_cells.json"), "w") as f:
+        _json.dump({"cell_deg": cmeta2["cell_deg"], "cells": cells}, f)
+
     sx, sy, sz = s["spawn"]
     # -- STOP HERE IF SOMEBODY IS GOING TO PLAY IT ------------------------
     # `tools/play.sh` needs the deck built and the arguments that describe it;

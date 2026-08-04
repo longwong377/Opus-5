@@ -754,6 +754,44 @@ def cell_partition(verts, tris, sector, ring, deck, schema=None, profile=None):
                  "radius_m": plan["radius_m"]}
 
 
+def submesh(verts, tris, groups, idxs):
+    """The `(verts, tris, groups)` of a subset of triangles, re-indexed.
+
+    Only the vertices the subset actually uses are carried, which is what makes
+    a cell cost a cell rather than a cell plus the whole deck's vertex buffer.
+
+    GROUP NAMES SURVIVE, and that is load-bearing rather than tidy:
+    `materials.resolve` matches by substring on the group name and
+    `dress_scene.bind` looks the mesh up by node name, so a cell whose spans
+    were renamed or dropped would load as untextured geometry -- the same
+    failure as the 728 crowd instances on the glTF fallback in 4h.
+    """
+    per = [None] * len(tris)
+    for name, lo, hi in groups:
+        for i in range(lo, hi):
+            per[i] = name
+    remap, v2, t2, g2 = {}, [], [], []
+    cur, start = None, 0
+    for k in sorted(idxs):
+        nm = per[k]
+        if nm != cur:
+            if cur is not None and len(t2) > start:
+                g2.append((cur, start, len(t2)))
+            cur, start = nm, len(t2)
+        tri = []
+        for vi in tris[k]:
+            j = remap.get(vi)
+            if j is None:
+                j = len(v2)
+                remap[vi] = j
+                v2.append(verts[vi])
+            tri.append(j)
+        t2.append(tuple(tri))
+    if cur is not None and len(t2) > start:
+        g2.append((cur, start, len(t2)))
+    return v2, t2, g2
+
+
 def resident_window(counts, width=3):
     """(worst total, first cell index) over `width` CONSECUTIVE cells, wrapping.
 
@@ -1188,6 +1226,48 @@ def _selftest():
 
     v, t, g, s = build_deck(schema, profile, "blue", 0, 0, max_rooms=4)
     check("a deck assembles", len(t) > 0, str(s)[:120])
+
+    # -- CUTTING THE DECK INTO CELLS LOSES NOTHING -------------------------
+    # THE FAILURE THIS GUARDS IS INVISIBLE IN A RENDER. A partition that drops
+    # a triangle, or hands the same one to two cells, produces a frame that
+    # looks almost right -- a missing panel behind you, a z-fighting seam at a
+    # cell boundary -- and this project has shipped exactly that class of thing
+    # for four sessions at a time. Partition arithmetic is checkable, so it is
+    # checked: every triangle in exactly one cell, and the cells put back
+    # together are the deck.
+    cellmap, cmeta = cell_partition(v, t, "blue", 0, 0, schema, profile)
+    seen = [i for c in cellmap for i in c]
+    check("every triangle lands in exactly one cell",
+          len(seen) == len(t) and len(set(seen)) == len(t),
+          f"{len(seen)} assignments, {len(set(seen))} distinct, {len(t)} tris")
+    check("the cells are the ring's own",
+          cmeta["cells"] == it.ring_cells(schema, profile, "blue", 0,
+                                          0)["cells"],
+          f"{cmeta['cells']} cells at {cmeta['cell_deg']} deg")
+    # AND A CELL'S SUBMESH IS THE SAME GEOMETRY, not merely the same count.
+    # Re-indexing is where a partition goes wrong silently: a submesh that
+    # renumbers vertices incorrectly still has the right triangle count and
+    # draws garbage.
+    busiest = max(range(len(cellmap)), key=lambda i: len(cellmap[i]))
+    cv, ct, cg = submesh(v, t, g, cellmap[busiest])
+    check("a cell's submesh keeps its triangles", len(ct) == len(cellmap[busiest]),
+          f"{len(ct)} vs {len(cellmap[busiest])}")
+    want = [tuple(sorted(tuple(round(x, 4) for x in v[k]) for k in t[i]))
+            for i in sorted(cellmap[busiest])]
+    got = [tuple(sorted(tuple(round(x, 4) for x in cv[k]) for k in tri))
+           for tri in ct]
+    check("...at the same positions after re-indexing", want == got,
+          f"{sum(1 for a, b in zip(want, got) if a != b)} of {len(want)} moved")
+    check("...and carries every group its triangles belong to",
+          len(cg) > 0 and all(0 <= lo < hi <= len(ct) for _n, lo, hi in cg),
+          f"{len(cg)} spans over {len(ct)} triangles")
+    # THE SUBMESH IS SMALLER THAN THE DECK, which is the entire point and is
+    # not implied by any of the above: carrying the whole vertex buffer into
+    # every cell would pass every check so far and save nothing.
+    check("...and does not drag the whole vertex buffer with it",
+          len(cv) < len(v) / 2,
+          f"{len(cv):,} verts for {len(ct):,} tris against the deck's "
+          f"{len(v):,}")
     check("it has corridor AND rooms in one mesh",
           s["corridor_tris"] > 0 and s["room_tris"] > 0, str(s)[:120])
     # EVERY GROUP POINTS AT REAL TRIANGLES. Not "the spans sum to the triangle

@@ -1,6 +1,87 @@
 # Project State
 
-**Last updated:** 2026-08-02 · **Session 4m** — **the streaming cell budget met a real deck, and the design survives** · **4l** — **the resident-triangle gate was about the deck; the build also loads 321,664 triangles of people** · **4k** — **every walker on the station was bald, for 188 triangles** · **4j** — **the 21 exposure frames describe the code again, and the verdict did not move** · **4i** — **every curved surface in the project was flat-shaded, and the crease angle is measured off the station** · **4h** — **IT IS PLAYABLE: press Play and you are standing in Blue Sector** · **4g** — **the Babcom terminal is a built device, and it shipped a logged mistake once before the log caught it** · **4f** — a per-token verb override · **4e** — **the naming-mismatch class is CLOSED: built-but-misnamed 26 → 0, resolving 302/357** · **4d** — **the bespoke rooms' interactables were never unbuilt, they were unnamed: 259/357 → 284/357** · **4c** — **the station is INTERACTABLE, the port is on a wall, and the 24-minute suites were one bad cache key** · **4b** — a police force, friction in metres, the plated shell, the fitting-reach fix
+**Last updated:** 2026-08-02 · **Session 4n** — **the deck cuts into loadable cells, and the loader's real obstacle is named** · **4m** — **the streaming cell budget met a real deck, and the design survives** · **4l** — **the resident-triangle gate was about the deck; the build also loads 321,664 triangles of people** · **4k** — **every walker on the station was bald, for 188 triangles** · **4j** — **the 21 exposure frames describe the code again, and the verdict did not move** · **4i** — **every curved surface in the project was flat-shaded, and the crease angle is measured off the station** · **4h** — **IT IS PLAYABLE: press Play and you are standing in Blue Sector** · **4g** — **the Babcom terminal is a built device, and it shipped a logged mistake once before the log caught it** · **4f** — a per-token verb override · **4e** — **the naming-mismatch class is CLOSED: built-but-misnamed 26 → 0, resolving 302/357** · **4d** — **the bespoke rooms' interactables were never unbuilt, they were unnamed: 259/357 → 284/357** · **4c** — **the station is INTERACTABLE, the port is on a wall, and the 24-minute suites were one bad cache key** · **4b** — a police force, friction in metres, the plated shell, the fitting-reach fix
+
+## Session 4n — THE DECK CUTS INTO LOADABLE CELLS, AND THE LOADER'S REAL OBSTACLE IS NAMED
+
+### 1. What was built
+
+`deck.submesh` re-indexes a subset of triangles into standalone geometry carrying only the
+vertices it uses, and `walkable.walk_deck` now writes one `.glb` per streaming cell beside the
+whole deck, plus `{stem}_cells.json` naming each cell's angular span.
+
+```
+18 non-empty cells of 20 deg
+sum 657,880 tri (exactly the deck), worst 63,304, smallest 23,995, 55.8 MB
+```
+
+The cells are **the ring's own** — `interior.ring_cells`, the same 18 × 20° that
+`npc/navigation.cell_plan` builds 3,414 of. Not a second partition.
+
+**The collision shell is not cut**, and that is the design. It is 5,270 triangles for the whole
+cluster against the render mesh's 657,880, so keeping it whole costs almost nothing and means the
+floor can never vanish under a player while a cell is in flight — the walk gate's `offfloor`
+assertion stays true by construction rather than by care.
+
+### 2. THE LOADER WAS STARTED AND BACKED OUT, WHICH IS THE FINDING
+
+I wrote the runtime half — cell paths, a load/unload radius, and a fix for the dressing lifetime —
+and then reverted it, because measuring the obstacle changed what the work is.
+
+`walk.gd` wires doors, actors and interactables by **walking the whole render scene once**. A cell
+arriving at minute four would carry people nobody watches and objects nobody can press. Making
+`door.gd`, `npc.gd` and `interact.gd` additive is the actual work, and it is a separate increment
+from loading.
+
+Measured per triangle on this deck, what cannot stream until they are:
+
+| | triangles | share |
+|---|---|---|
+| bulk (streamable) | 607,756 | 92.4% |
+| actors | 49,252 | 7.5% |
+| interactables | 872 | 0.1% |
+
+**50,124 triangles, 8%, must stay resident** until the wiring is additive. Added to a three-cell
+bulk window that lands at about **186,547 against a 180,000 budget — 1.04× over.** So streaming
+bulk alone does not reach the target; the actors have to stream with their cell. That is worth
+knowing before writing a loader, and it is why nothing was shipped half-wired: `--cells` is written
+but not passed to the engine, so there is no argument naming a feature that does not work.
+
+Doors turn out not to be a problem at all: `doorpanel_*` lives in the **collision** mesh, which
+stays whole.
+
+### 3. Gates
+
+| gate | result |
+|---|---|
+| `station/deck.py` | **46/46** (was 40/40 — six new) |
+| `walkable.py --deck blue/0/0` | **PASS**, control firing, 5,965 m of crowd travel |
+
+The six new checks are about a failure that **is invisible in a render**: a partition that drops a
+triangle or hands the same one to two cells produces a frame that looks almost right — a missing
+panel behind you, a seam that z-fights. Partition arithmetic is checkable, so it is checked: every
+triangle in exactly one cell, the cells are the ring's own, a submesh keeps its triangles *at the
+same positions after re-indexing*, it carries its groups, and — the one none of the others imply —
+**it does not drag the whole vertex buffer with it**, which would pass everything else and save
+nothing.
+
+And the busiest cell was rendered alone against magenta: coherent corridor, walls and pilasters
+receding down the arc, background showing only at the open ends where a 20° slice should end. A
+scrambled re-index passes the arithmetic and fails the eye.
+
+Build cost 63 s → 77 s for cutting and exporting the 18 cells.
+
+`tools/play.sh --verify` was not re-run: the load path and `engine_args` are byte-identical this
+session, and the deck walk gate exercises the same arguments. The only change is 18 extra files
+nothing reads yet.
+
+### 4. NEXT
+
+- **Make `door.gd`, `npc.gd` and `interact.gd` additive** — `collect()` called per cell rather than
+  once over the whole scene. That is the loader's prerequisite and the 8% above is what it buys.
+- Then the loader: hold three cells, target 147,675 triangles of bulk, collision resident.
+- The near figure's silhouette is 32-gon faceted at 1 m; the affordable fix is runtime skinning.
+- The two `DECK` rows in `EXPOSURE_FRAMES` still record no shot.
 
 ## Session 4m — THE STREAMING CELL BUDGET MET A REAL DECK, AND THE DESIGN SURVIVES
 
