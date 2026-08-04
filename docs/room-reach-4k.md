@@ -413,3 +413,40 @@ says the room is — with p95 at 5.10 m.
 of this session, applied it correctly to find fourteen identical failures were one cause, and
 then spent three more rounds looking for that cause in the station because I did not ask what
 `z_half − 0.1` was the shape OF.*
+
+
+---
+
+## 11. `vorlon_berth`: what is measured, and what I could not localise
+
+The last failing place, and I am recording it unresolved rather than adding a third confident
+wrong diagnosis. Two readings of this room have already been retracted (§4's "the doorway is
+0.00 m at capsule radius" and §10's "the aperture pierces only the outer face").
+
+**Measured, and reproducible via `roomnav.py --place vorlon_berth --map`:**
+
+- Its door panel sits with the other five at z 7184.96–7185.08, spanning 0.4° of arc — 1.48 m
+  at r=211.5, which is `interior_kit.PROVISIONAL`'s 1.5 m aperture. Nothing anomalous.
+- `plantroom_bay` has **identical** z, half-depth (20.00) and outer face (7135.00), sits 20° away
+  on the same wall, and **passes**.
+- Free run through each room's own front wall, widest per z row, ±8 m of arc:
+
+| room | half | rows across the front wall |
+|---|---|---|
+| `docking_bays` | 70.0 | 1.0 0.8 0.8 0.8 0.8 1.0 7.2 3.2 3.2 3.2 |
+| `bay_elevators` | 12.0 | 7.0 7.0 0.8 **0.2 0.2 0.2** 1.2 6.8 6.8 6.8 |
+| `plantroom_bay` | 20.0 | 6.8 6.8 0.8 0.8 0.8 1.2 4.2 3.0 3.0 3.0 |
+| **`vorlon_berth`** | 20.0 | 7.0 7.0 **1.6 1.6 1.4 1.4** 5.0 5.0 5.0 3.8 |
+
+**`vorlon_berth` has the WIDEST wall opening of the six and is the only one that fails.
+`bay_elevators` has the narrowest — 0.2 m — and passes.** So the failure is not the aperture,
+not its width, and not the wall.
+
+**The contradiction I could not resolve:** the occupancy map drawn at ±40 m of arc shows row
+z=7134.70 solid across the room, while this ±8 m probe reports 1.4 m free on the same row. Both
+come from the same `Grid.carve`. One of the two readings is wrong and I did not find which.
+**Do not build on either until that is settled** — the map and the probe disagree, so the first
+job is making them agree, not diagnosing the room.
+
+*115 of 116 places are fine. This one is worth an hour when someone has it, and worth nothing
+guessed at.*
