@@ -150,6 +150,33 @@ threaded through the boot manifest; crowd-physics policy stated (non-colliding i
 cap, unstated it reads as a bug). **Gate:** an NPC paths across decks on the engine graph;
 the clock says day 2; the policy is a sentence in this file.
 
+### P0.7 — THE PLAYER MOVES 3.4x FASTER THAN THE STATION DOES (measured 4k)
+
+Small, and it changes how every other thing on this list feels, so it is placed before P1.
+
+| who | speed | one lap of the blue ring corridor (1,329 m) |
+|---|---|---|
+| an NPC, derived by Froude scaling at the deck's own 0.760 g | **1.22–1.29 m/s** | **~18 min** |
+| the player — `godot/scripts/player.gd:24`, a hardcoded literal | **4.2 m/s** | 5.3 min |
+| the player sprinting — `player.gd:25` | **8.0 m/s** | 2.8 min |
+
+`life.gd:1435` sets a commuter's `speed_m_s` from `populace._walk_speed`, so **the NPCs are
+physically right for the spin gravity and the player is not**. The consequences are not
+cosmetic: a 1:1 station felt at 3.4x speed is a station that feels a third of its size, which
+is the exact opposite of what this project is for; every inhabitant appears to wade; and every
+distance the simulation derives — commute times, schedules, `transit.py`'s costing — is
+calibrated against a pace the player never experiences.
+
+**Do:** derive the player's walk from the same function the NPCs use, at the gravity of the
+deck they are standing on (`player.gd` already tracks `gravity_m_s2`). Keep sprint as a
+multiple of it rather than a second literal. **Gate:** the player's speed on a given deck
+equals `populace._walk_speed('human', 0, g)` to a tolerance, asserted in `coldstart.py`'s
+verdict line; control — force the old literal and the check fails.
+
+*Measured because a body walking to `plantroom_bay` covered 486 m in 20,000 physics frames and
+the number did not match anything: 1.46 m/s sustained, against a 4.2 m/s export and a 1.22 m/s
+derivation. Two of those three are wrong and nothing in the project could have said so.*
+
 ### P1 — THE GAME EXISTS (G-track, expanded from the rejected draft)
 - **G0** `docs/THE-GAME.md`: what the player wants, who can stop them, what failure costs.
 - **G1 — A ROLE:** one complete job loop (dock work is the canon-obvious first: shifts exist,
