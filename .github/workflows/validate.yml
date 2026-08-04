@@ -454,6 +454,19 @@ jobs:
           python3 station/agenda.py --selftest
           python3 station/agenda.py --selftest3
 
+      # THE-STATION.md's anti-rig clause, executable: the registry must be
+      # producible from the live annexes (every item checked, every pointer
+      # resolving, no duplicates), and the checker reports the honest ledger.
+      # RED rows do not fail CI -- RED is the truth -- but an ambiguity that
+      # prevents the registry existing does.
+      - name: Completion spec -- registry generates and the ledger reports
+        id: sspec_gate
+        continue-on-error: true
+        run: |
+          python3 tools/spec_registry.py --check
+          python3 tools/spec_registry.py
+          python3 station/spec_check.py --smoke
+
       - name: Confirm the schema still parses and is fully sourced
         id: sconfirm_the_schema_still_parses_and_is_f
         continue-on-error: true
@@ -585,6 +598,8 @@ jobs:
             echo "FAILED: snpc_bodies_costume_and_crowd"; fail=1; fi
           if [ "${{ steps.snpc_animation_and_navigation.outcome }}" != "success" ]; then
             echo "FAILED: snpc_animation_and_navigation"; fail=1; fi
+          if [ "${{ steps.sspec_gate.outcome }}" != "success" ]; then
+            echo "FAILED: sspec_gate"; fail=1; fi
           if [ "${{ steps.sdegeneracy.outcome }}" != "success" ]; then
             echo "FAILED: sdegeneracy"; fail=1; fi
           if [ "${{ steps.svariety.outcome }}" != "success" ]; then
