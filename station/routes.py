@@ -93,10 +93,53 @@ TRUNK_GAP_M = 400.0
 _LIFT_EXISTS = os.path.exists(os.path.join(HERE, "lift.py"))
 _SPOKE_WAY_EXISTS = os.path.exists(os.path.join(HERE, "spoke_way.py"))
 
-# The loaded schema, so `column_z` can ask how many decks a candidate z carries.
-# A one-slot cache rather than a parameter because `column_z` is called from
-# inside `why=` strings and threading it everywhere would be noise.
+# The loaded schema and radius profile, so `column_z` can ask how many decks a
+# candidate z carries. A one-slot cache rather than a parameter because
+# `column_z` is called from inside `why=` strings and threading it everywhere
+# would be noise.
 _SCHEMA = [None, None]
+
+
+def station(schema=None, profile=None):
+    """The schema and radius profile this module answers about. RESOLVED.
+
+    THIS EXISTS BECAUSE THE GRAPH USED TO DEPEND ON HOW IT WAS ASKED FOR, and
+    that is a worse defect than a wrong graph -- a wrong graph is one answer, a
+    caller-dependent graph is four. Measured, session 4k, over the two knobs
+    that are not about the station -- whether `edges` was handed `profile=` and
+    whether anyone had primed `_SCHEMA` first:
+
+        profile=  _SCHEMA | lifts built  routable pairs  COMPONENTS
+        -------------------------------------------------------------
+          no       cold   |    0 of 70      10 of 741        71
+          no      primed  |    0 of 70      10 of 741        71
+          yes      cold   |   66 of 70     741 of 741         5
+          yes     primed  |   70 of 70     741 of 741         1
+
+    `TARGET_COMPONENTS` is 1 and the bottom row is the only one that reaches it.
+    **The headline number of this file was 1, 5 or 71 depending on two
+    arguments.** `_selftest` happened to use the bottom row, so the gate was
+    green over a graph three of its four callers never saw:
+    `route_walk.py` drops `profile=` at all three of its call sites -- `gate`,
+    `report` and `_selftest` -- and primes `_SCHEMA` nowhere, so every route it
+    has ever asked for came off the TOP row: a station with no lift in it, and
+    `--report` printing *"NO PATH between them in the circulation graph"* four
+    lines under *"routes.py grants every one of them a lift edge"*.
+    `agenda.py` passes `profile=` at all three of ITS call sites and still
+    primes nothing, so it routed over the third row -- a station in 5 pieces.
+
+    Neither knob is a question about Babylon 5, so neither may change the
+    answer. `profile` stays an optional ARGUMENT because passing it saves a
+    file read; it is no longer an optional FACT.
+    """
+    if schema is not None and profile is not None:
+        _SCHEMA[0], _SCHEMA[1] = schema, profile
+    elif _SCHEMA[0] is None or _SCHEMA[1] is None:
+        s, p = it.load()
+        _SCHEMA[0] = schema if schema is not None else s
+        _SCHEMA[1] = profile if profile is not None else p
+    return (schema if schema is not None else _SCHEMA[0],
+            profile if profile is not None else _SCHEMA[1])
 
 
 def clusters():
@@ -210,20 +253,26 @@ def column_z(nodes, sector):
     A column stands where it serves the most decks. Ties break to the lowest z
     so the answer is deterministic, and `export_station` is handed this number
     rather than choosing its own.
+
+    AND "DETERMINISTIC" USED TO MEAN "GIVEN THAT SOMEBODY ELSE RAN FIRST". The
+    body below needs the schema, and the version of this function that could
+    not get one returned `zs[0]` instead -- a DIFFERENT column, silently, on
+    the strength of module state a caller had to remember to set. On blue that
+    is 6,880 m cold against 7,120 m primed, and the four decks between them are
+    four lift edges: the whole station reads as 5 pieces rather than 1. It now
+    resolves the schema through `station()` and has one answer.
     """
     zs = sorted({k[3] for k in nodes if k[0] == sector})
     if not zs:
         return 0.0
-    if _SCHEMA[0] is None:
-        return zs[0]
-    schema, profile = _SCHEMA
+    schema, profile = station()
     best, best_n = zs[0], -1
     for z in zs:
         n = 0
         for ring in sorted({k[1] for k in nodes if k[0] == sector}):
             try:
                 stack = it.decks_in_ring(schema, profile, sector, ring, z_m=z)
-            except Exception:                                  # noqa: BLE001
+            except (ValueError, KeyError, IndexError):
                 continue
             n += sum(1 for k in nodes
                      if k[0] == sector and k[1] == ring and k[2] < len(stack))
@@ -265,17 +314,37 @@ def has_landing(schema, profile, nodes, key, z_m=None):
     in its own docstring: *"a show-facing deck NUMBER is a name, and using a
     name as an index is the same mistake as placing a corridor at a z-cluster's
     bucket label."* `_ring_cells` goes through it and this did not.
+
+    AND THE THIRD VERSION CAUGHT `Exception`, WHICH IS HOW IT ANSWERED A
+    QUESTION IT HAD NOT BEEN GIVEN THE MEANS TO ANSWER. Called with
+    `profile=None` -- which is what `edges(nodes, schema)` used to pass, and
+    what `route_walk.py` asks for at three call sites -- `deck_index` raises
+    `TypeError: 'NoneType' object is not iterable` from inside
+    `interior.ring_radii`, and a bare `except Exception: return False` turned
+    that into **"this deck has no landing"**. All 70 lift edges then went
+    unbuilt carrying a `why` that names a specific z and a specific stack
+    depth: *"the column at z=6880 has no landing at deck 0: decks_in_ring
+    returns a shorter stack there"*. Every word of it was invented. That is
+    CLAUDE.md's degrading tool one level down -- it did not merely fail
+    quietly, it MANUFACTURED EVIDENCE, and the evidence was specific enough to
+    be believed.
+
+    So the excepts are narrowed to the family that means *the station does not
+    carry that*: `deck_index` raises `ValueError` for a ring with no stack and
+    for a deck number the ring does not use. A `TypeError` is a caller with the
+    wrong arguments and must reach the caller.
     """
+    schema, profile = station(schema, profile)
     sec, ring, dk, _z = key
     try:
         idx = D.deck_index(schema, profile, sec, ring, dk)
-    except Exception:                                          # noqa: BLE001
+    except (ValueError, KeyError, IndexError):
         return False
     try:
         stack = it.decks_in_ring(
             schema, profile, sec, ring,
             z_m=column_z(nodes, sec) if z_m is None else z_m)
-    except Exception:                                          # noqa: BLE001
+    except (ValueError, KeyError, IndexError):
         return False
     return 0 <= idx < len(stack)
 
@@ -287,7 +356,13 @@ def edges(nodes, schema, full_ring=False, profile=None):
     the network becomes once a deck's corridor covers its ring instead of only
     the arc its rooms sit on. The difference between the two runs is the value
     of that one change, in components, and it is printed rather than argued.
+
+    `profile` IS AN OPTIONAL ARGUMENT AND NOT AN OPTIONAL FACT -- `station()`
+    resolves it, because the `lift` edge below cannot be decided without one
+    and a graph that quietly has no lifts in it is not a smaller answer, it is
+    a different station. See `station()` for the four that used to come back.
     """
+    schema, profile = station(schema, profile)
     out = []
     keys = sorted(nodes)
     sectors = sorted({k[0] for k in keys})
@@ -523,9 +598,7 @@ def declared_check(nodes, es, only_built=True):
 
 
 def report(schema=None, profile=None):
-    if schema is None:
-        schema, profile = it.load()
-    _SCHEMA[0], _SCHEMA[1] = schema, profile
+    schema, profile = station(schema, profile)
     nodes = clusters()
     es = edges(nodes, schema, profile=profile)
     built = [e for e in es if e["built"]]
@@ -590,7 +663,7 @@ def report(schema=None, profile=None):
         sec2, ring2, dk2, z2 = k
         try:
             st2 = it.decks_in_ring(schema, profile, sec2, ring2, z_m=z2)
-        except Exception:                                      # noqa: BLE001
+        except (ValueError, KeyError, IndexError):
             st2 = []
         if dk2 >= len(st2):
             orphan_decks.append((k, dk2, len(st2)))
@@ -683,6 +756,78 @@ def _selftest():
     check("and the lift is load-bearing",
           n1 > r["components_built"],
           f"without it {n1} pieces, with it {r['components_built']}")
+
+    # THE GRAPH MUST BE THE SAME HOWEVER IT IS ASKED FOR, and this is the check
+    # that was missing rather than failing. Every other assertion in this file
+    # measures the station; this one measures whether the answer is a property
+    # of the station at all. It compares the graph built the way `_selftest`
+    # asks for it -- profile passed, `_SCHEMA` primed -- against the graph built
+    # the way `route_walk.py` asks for it at all three of its call sites: no
+    # profile, cold cache, nothing primed.
+    #
+    # IT FAILED WHEN IT WAS WRITTEN, which is the point. Cold and profile-less
+    # the answer was **0 of 70 lift edges and 71 components**; warm it is 70 and
+    # 1. The gate above was green throughout, because it only ever asked the one
+    # way. A gate that scores the station must also ask whether it is scoring
+    # the station.
+    #
+    # The comparison is on the full edge list -- kind, both endpoints and the
+    # built flag -- rather than on the component count, because two different
+    # graphs can share a count and identity is cheaper to believe than
+    # similarity (`deck.py --degeneracy`, session 4h).
+    def _sig(e_list):
+        return [(e["kind"], e["a"], e["b"], e["built"]) for e in e_list]
+
+    _SCHEMA[0], _SCHEMA[1] = None, None
+    es_cold = edges(nodes, schema)            # route_walk's call, verbatim
+    _SCHEMA[0], _SCHEMA[1] = schema, profile
+    es_warm = edges(nodes, schema, profile=profile)
+    lifts_c = sum(1 for e in es_cold if e["kind"] == "lift" and e["built"])
+    lifts_w = sum(1 for e in es_warm if e["kind"] == "lift" and e["built"])
+    check("the graph does not depend on how it was asked for",
+          _sig(es_cold) == _sig(es_warm)
+          and len(components(nodes, es_cold, True))
+          == len(components(nodes, es_warm, True)),
+          f"edges(nodes, schema) with a cold cache gives {lifts_c} built lifts "
+          f"and {len(components(nodes, es_cold, True))} components; "
+          f"edges(..., profile=) primed gives {lifts_w} and "
+          f"{len(components(nodes, es_warm, True))}")
+
+    # AND THE CONTROL FOR IT, because the check above is satisfiable by a
+    # `station()` that resolves nothing if the two ways happen to agree anyway.
+    # Deny the resolver its fallback -- the exact state this module was in
+    # before `station()` existed -- and the fix's OTHER end has to fire: the
+    # graph must REFUSE rather than answer.
+    #
+    # It refuses with the `TypeError` that `interior.ring_radii` raises on a
+    # null profile, which is the exception a bare `except Exception` used to
+    # convert into "this deck has no landing" -- 70 lift edges deleted, each
+    # carrying an invented z and an invented stack depth. A control that
+    # returned a smaller graph here would be a control on the wrong end; the
+    # defect was never the size of the answer, it was that there WAS one.
+    def _denied(fn):
+        """Run `fn` with the resolver's fallback taken away. Returns the
+        exception, or None if it answered anyway."""
+        _SCHEMA[0], _SCHEMA[1] = None, None
+        real, it.load = it.load, lambda: (schema, None)
+        try:
+            fn()
+            return None
+        except TypeError as e:
+            return e
+        finally:
+            it.load = real
+            _SCHEMA[0], _SCHEMA[1] = schema, profile
+
+    raised = _denied(lambda: edges(nodes, schema))
+    # and at the precise site of the old swallow, on its own
+    fab = _denied(lambda: has_landing(schema, None, nodes, sorted(nodes)[0]))
+    check("and denied a profile it refuses to answer instead of inventing "
+          "one -- the control",
+          raised is not None and fab is not None,
+          f"edges raises {type(raised).__name__}({raised}); has_landing "
+          f"raises {type(fab).__name__} where it used to return False and "
+          f"blame the hull for it")
 
     # The declared graph is 33 edges over 128 places and cannot connect them.
     dg = {}

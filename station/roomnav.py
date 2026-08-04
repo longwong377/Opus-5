@@ -736,7 +736,16 @@ def station(limit=None, only=None, verbose=False):
                 seen.add(key)
                 place = dr.by_key(key)
                 zh = D.room_interior_half_m(schema, profile, place)
-                door = _at(fr, room["door_deg"], place["z_m"] + zh - 0.5)
+                # HALF A METRE INSIDE THE DOOR, AND THE DOOR FACES THE CORRIDOR.
+                # `place["z_m"] + zh` is what `agenda.room_legs` and
+                # `route_walk.legs_for` both use, unconditionally -- correct for
+                # a room on the near side of its corridor and the room's FAR
+                # wall for one on the other side. Getting it backwards here
+                # reported `docking_bays` as sealed, and a body walks into
+                # `docking_bays` in `walkable.py --deck`.
+                toward = 1.0 if meta["z_m"] > place["z_m"] else -1.0
+                door = _at(fr, room["door_deg"],
+                           place["z_m"] + toward * (zh - 0.5))
                 rep = {}
                 approach(meta, place, v, t, groups, from_pt=door, z_half=zh,
                          report=rep)
@@ -796,6 +805,104 @@ def station(limit=None, only=None, verbose=False):
     return 1 if bad else 0
 
 
+def draw(key):
+    """Draw one room's occupancy, and scan the column its own door is in.
+
+    THE REPRODUCTION FOR THE DOORWAY FINDING, in the module that owns it rather
+    than in a scratch script somebody has to rewrite. `--station` says WHICH
+    places a body cannot get into; this says WHY, in three pictures:
+
+      * the room's floor, free/solid/reachable, with the entry point marked
+      * free/solid straight down the door's own column, corridor -> room
+      * the widest free run across the wall's row at four dilation radii,
+        which separates "the aperture is narrow" from "there is no aperture"
+
+    That last one is the discriminator and it is worth keeping. Run on
+    `vorlon_berth` it reads, at the room's front wall: 12.00 m of free run at
+    0.00 m of dilation, 12.00 m at 0.20 m, and **0.00 m at the 0.35 m capsule**
+    -- every cell across twelve metres of arc blocked. A narrow doorway would
+    leave a channel that shrinks with the radius. A row that goes from wholly
+    free to wholly blocked between 0.20 and 0.35 is a HOLLOW WALL whose two
+    faces are ~0.6 m apart, with no aperture cut in the inner one.
+    """
+    import deck as D                                             # noqa: PLC0415
+    import directory as dr                                       # noqa: PLC0415
+    import interior as it                                        # noqa: PLC0415
+    schema, profile = it.load()
+    p = dr.by_key(key)
+    sec, ring, dk = p["sector"], p["ring"], p["deck"]
+    for zc in (D.z_clusters(sec, ring, dk) or [None]):
+        v, t, meta = D.build_collision(schema, profile, sec, ring, dk,
+                                       z_m=zc, props=True)
+        room = next((x for x in meta.get("rooms", ()) if x["key"] == key), None)
+        if room is None:
+            continue
+        gs = meta.get("groups") or ()
+        fr, cz, hw = meta["floor_r_m"], meta["z_m"], meta["half_w_m"]
+        z0, th0 = float(p["z_m"]), math.radians(p["angle_deg"])
+        zh = D.room_interior_half_m(schema, profile, p)
+        # TOWARD THE CORRIDOR, which is the side a room's door is on. Getting
+        # this backwards is how the first version of this reported `docking_bays`
+        # -- a room a body demonstrably walks into -- as sealed: it probed the
+        # room's FAR wall and found, correctly, that there is no door in it.
+        toward = 1.0 if cz > z0 else -1.0
+        side = toward
+        wall = cz - toward * hw
+        print(f"{key}  {sec}/{ring}/{dk}")
+        print(f"  place z={z0:.1f} angle={p['angle_deg']:.1f}  "
+              f"door_deg={room['door_deg']:.1f}  declared half-depth={zh:.2f}")
+        print(f"  corridor cz={cz:.2f} half_w={hw:.2f} -> inner wall z={wall:.2f}"
+              f"   ({abs(wall - z0):.2f} m from the room's centre, "
+              f"{abs(wall - z0) / zh:.2f}x its declared half-depth)")
+        print(f"  {len(t):,} collision triangles, "
+              f"{sum(1 for g in gs if str(g[0]).startswith('doorpanel_'))} "
+              f"named pressure doors (excluded as obstacles)")
+
+        entry = (fr * math.cos(math.radians(room["door_deg"])),
+                 fr * math.sin(math.radians(room["door_deg"])),
+                 z0 + toward * (zh - 0.5))
+        rep = {}
+        approach(meta, p, v, t, gs, from_pt=entry, z_half=zh, report=rep)
+        print(f"  approach: {({k: rep[k] for k in sorted(rep) if k != 'centre'})}")
+
+        g = Grid(fr, th0, z0, max(6.0, 2.0 * zh), z0 - zh, z0 + zh)
+        g.carve(v, t, gs)
+        snap = g.snap(*g.fwd(entry))
+        prev = g.bfs((snap[0], snap[1])) if snap else [-1] * (g.nw * g.nh)
+        print("\n  the room's floor -- '.' free  '#' solid  'o' reachable  "
+              "'D' entry     (+z at the top)")
+        for k in range(g.nh - 1, -1, -1):
+            ln = []
+            for i in range(g.nw):
+                if snap and (i, k) == (snap[0], snap[1]):
+                    ln.append("D")
+                elif prev[k * g.nw + i] != -1:
+                    ln.append("o")
+                else:
+                    ln.append("." if g.free[k * g.nw + i] else "#")
+            print(f"   z={g.z_lo + (k + 0.5) * g.cell:9.2f} |{''.join(ln)}|")
+
+        print("\n  the widest free run across a wall's row, by dilation radius"
+              " -- a narrow door shrinks, a missing one goes to zero")
+        for cr in (0.0, 0.05, 0.20, CAPSULE_R_M):
+            g2 = Grid(fr, th0, z0, 6.0, z0 - 13.0, z0 + 13.0)
+            g2.carve(v, t, gs, clear_r=cr)
+            out = []
+            for zt, nm in ((wall, "corridor inner wall"),
+                           (z0 + toward * (zh - 0.4), "room front wall")):
+                _i, k = g2.cell_of(0.0, zt)
+                if not g2.inside(0, k):
+                    continue
+                line = "".join("." if g2.is_free(i, k) else "#"
+                               for i in range(g2.nw))
+                run = max((len(x) for x in line.split("#")), default=0)
+                out.append(f"{nm} {run * g2.cell:5.2f} m")
+            print(f"   dilate {cr:4.2f} m   " + "   ".join(out))
+        return 0
+    print(f"{key}: no room row in any cluster of {sec}/{ring}/{dk}")
+    return 1
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser()
     ap.add_argument("--selftest", action="store_true")
@@ -804,9 +911,15 @@ def main(argv=None):
                          "through its own door and stand up (minutes of CPU: "
                          "it builds every cluster's collision)")
     ap.add_argument("--place", default=None, help="just this one")
+    ap.add_argument("--map", action="store_true",
+                    help="with --place: draw the room's occupancy and scan the "
+                         "door's own column, which is how the doorway finding "
+                         "below was made and is how it is re-made")
     ap.add_argument("--limit", type=int, default=0)
     ap.add_argument("--verbose", action="store_true")
     a = ap.parse_args(argv)
+    if a.place and a.map:
+        return draw(a.place)
     if a.station or a.place:
         return station(limit=a.limit or None, only=a.place,
                        verbose=a.verbose or bool(a.place))
