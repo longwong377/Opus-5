@@ -156,6 +156,22 @@ class Grid:
     def free_count(self):
         return sum(self.free)
 
+    def touches_edge(self):
+        """Does free floor run off the side of the grid?
+
+        NO SILENT CAPS. `s_half` is a bound on how far along the arc the search
+        looks, and a room wider than that is a room searched in part -- which
+        would read as "this is the best spot in the room" when it is the best
+        spot in the slice that was looked at. A room's own walls normally stop
+        the search long before the bound does, and this says when they did not
+        so the caller can widen rather than quietly believe a clipped answer.
+        """
+        n = 0
+        for k in range(self.nh):
+            n += bool(self.free[k * self.nw]) + bool(
+                self.free[k * self.nw + self.nw - 1])
+        return n
+
     # -- rasterising the obstacles ------------------------------------------
     def carve(self, verts, tris, groups=None, clear_r=CAPSULE_R_M,
               head_m=CAPSULE_H_M):
@@ -346,6 +362,10 @@ def approach(meta, place, verts, tris, groups=None, from_pt=None,
     rep["cells"] = (g.nw, g.nh)
     rep["obstacle_tris"] = g.carve(verts, tris, groups, clear_r, head_m)
     rep["free"] = g.free_count()
+    # Reported, never silently swallowed: free floor running off the side of
+    # the grid means the room is wider than the arc this looked along, so the
+    # spot chosen is the best in a SLICE of the room and says so.
+    rep["clipped_cells"] = g.touches_edge()
 
     # WHERE THE BODY COMES IN. The doorway, if the caller said; otherwise the
     # middle of the room, which makes this a "nearest standable spot" query

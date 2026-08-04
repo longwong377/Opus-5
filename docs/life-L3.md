@@ -172,6 +172,57 @@ There is nothing to build there: the lobby already covers that z. `build3` skips
 
 ---
 
+### 2.5 A ROOM LEG LAID BEFORE ROOMS HAD FURNITURE IN THEM — the 5.59 m (session 4j)
+
+**This is the defect that held L3 red for a session, and it was never the lift.** The gate
+reported, deterministically at ×1, ×10 and ×60:
+
+```
+stopped 5.59 m from business_center on leg None (None) -- 788.9 m on the floor
+```
+
+It was written up twice as a lift or tracking defect and it is neither. The tell was in the phase
+table rather than the verdict: **`walk_b` covered 50.7 m of a 56.41 m segment**, and the 5.71 m
+missing is the length of the room leg. Then `after` covered 0.0 m in 7,201 frames — a body that
+has stopped, not a body that is late.
+
+`agenda.room_legs` built that leg as three points — the door, half a metre inside it, and the
+register's centre — and the last hop is a **straight line**, laid when a room was an empty box.
+Measured against the cluster's own collision shell with point-to-triangle distance (centroid
+distance misses a large triangle entirely, and the first probe that used it found nothing):
+
+| what | where | height above the deck |
+|---|---|---|
+| desk tops | `r=219.06`, 0.8 m of arc, z 6600.7–6605.2 | 0.72 m |
+| a partition | `r=219.80 → 217.63` at fixed z | floor to head |
+
+Clearance along the leg **never exceeds 0.53 m and is under the 0.35 m capsule for 4.5 of its
+5.5 m**. The body walked to the desks and stopped. **It had arrived. There was nowhere further
+to go**, and the verdict measured the distance to a post inside a desk rank.
+
+**Two readings this corrects, and both were the investigator's.** The *target* was never the
+problem — `roomnav.clear_at` puts a full capsule of room at the register's centre point. And an
+endpoint disagreement was not it either: the route's last waypoint and the manifest's `post_at`
+already named the same point, to 0.000 m. It was the **approach**.
+
+`station/roomnav.py` replaces the hop with the way a person would take, searched over the room's
+own collision and nothing else — no second list of where the furniture was meant to go. Height
+above the deck is `floor_r − r`; a triangle is the deck, over your head, or an obstacle dilated by
+the capsule; and **a `doorpanel_*` group is not a wall**, because `life.gd::_open_doors` switches
+it off for a body standing at it. On `business_center`: 416 obstacle triangles, 1,394 reachable
+cells, and the way in goes 0.7 m along the arc out of the doorway, 5 m down the room, then in to
+the centre — 3 points / 7.50 m → 5 points / 8.54 m.
+
+**A room whose middle is clear still gets exactly one waypoint**, at the register's own centre
+point to the metre it was written at. `qtr_civilian`'s leg is byte-identical. A change that moves
+what it was not asked to move cannot be reviewed.
+
+*And the generalisation, which is the part worth carrying: a gate that reports only its verdict
+hides the phase that failed. `stopped 5.59 m` named the lift's destination and said nothing; the
+per-phase floor metres printed two lines below it identified the leg in one glance.*
+
+---
+
 ## 3. THE GATE
 
 ### What it asserts
@@ -184,7 +235,28 @@ There is nothing to build there: the lobby already covers that z. `build3` skips
 | 4 | **metres on the floor and frames off it**, never path length | `floor_m` accumulates only while `is_on_floor()`; the ride is measured in **radius**, because a lift on a spun ring goes radially and nothing else |
 | 5 | at **×1, ×10 and ×60** | three runs off ONE manifest, differing only in `--rate` |
 
-*(results table — see the run log; filled below)*
+### THE RESULT — `ALL GREEN`, session 4j
+
+`python3 station/agenda.py --commute`, one manifest, three rates, three controls, exit 0:
+
+| run | on the floor | in the air | offfloor | ride | alighted | **from the post** | worst lag |
+|---|---|---|---|---|---|---|---|
+| ×1 | 795.5 m | 0.00 m | 0/59,068 | 21.60 m of radius | deck 12 | **0.05 m** | 0.57 m |
+| ×10 | 796.5 m | 0.00 m | 0/59,068 | 21.60 m of radius | deck 12 | **0.05 m** | 0.57 m |
+| ×60 | 796.0 m | 0.00 m | 0/59,068 | 21.60 m of radius | deck 12 | **0.05 m** | 0.57 m |
+
+**`MASTER-PLAN.md` P0a's "resolve 0.05 vs 5.59 m" resolves to 0.05 m.** The before/after that
+decides it is the walking phase, not the verdict line:
+
+| | before (session 4h) | after (§2.5) |
+|---|---|---|
+| `walk_b` covered | **50.7 m** of a 56.41 m segment | **57.3 m** of a 57.45 m segment |
+| distance from the post | 5.59 m | **0.05 m** |
+| worst lag | 5.59 m | 0.57 m |
+
+The 0.05 m is the 50 mm `roomnav` stands a body above the shell so its settle drop can be
+asserted rather than excluded — i.e. the body is **on** its post, and the residue is the spawn
+offset, not a miss.
 
 ### The controls
 
@@ -193,6 +265,20 @@ There is nothing to build there: the lobby already covers that z. `build3` skips
 | `--lift=parked` | the car stays at its parking landing and is never called; the resident's timetable is unchanged | the agenda completes and the person does not — L1's second control, one vehicle along |
 | `--landings=sealed` | `lift.lift_collision(landings=False)`, the generator's own negative control: every landing aperture solid | they are stopped at the door |
 | `--lift=off` | no car in the shaft at all — the build before this session | nobody rides |
+
+And all three **FIRED** on the same green run, which is what makes the three passes evidence
+rather than a gate that stopped discriminating:
+
+| control | result |
+|---|---|
+| `--lift=parked` | 719.23 m walked, `boarded=false`, 0.00 m of radius ridden, **41.0 m** from `business_center`, and the car moved 211.4 m without them |
+| `--landings=sealed` | 719.74 m walked, `boarded=false`, **42.3 m** from the post, 0 frames off the floor — stopped at a wall, not falling through one |
+| `--lift=off` | 721.45 m walked, **38.2 m** from the post, **2,917/59,068 frames off the floor** — with no car the aperture is a hole |
+
+*The three controls end 38–42 m short while the subject ends 0.05 m short. A 5.59 m failure sat
+inside that spread and read as "nearly arrived"; it was a body stopped at a desk. Distances alone
+do not separate "blocked at the last metre" from "blocked at the last leg" — the phase table
+does.*
 
 ---
 

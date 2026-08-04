@@ -59,7 +59,9 @@ counts. One mechanism against each, all four in force from adoption:
 bodies **2,504 of 250,000**; **`boot.py` emits one `.glb`, `main.gd` never sets
 `cells_path` — the shipped scene loads ONE DECK and never streams**; streaming cells exist
 for 1 z-cluster of ~96; **zero `Navigation*` in godot/**; **no day index**; crowd
-non-colliding by design; L3 disputed 0.05 m vs 5.59 m; performance never measured on a GPU;
+non-colliding by design; ~~L3 disputed 0.05 m vs 5.59 m~~ **L3 SETTLED 4j: 0.05 m, green at
+x1/x10/x60 with all three controls firing — `python3 station/agenda.py --commute`**;
+performance never measured on a GPU;
 `variety.py` red at 18 clusters / 45 of 128; craft: corridor 4, Zocalo 3, generated rooms 1,
 garden 1; **0 C#** against an ADR that says C#.)
 
@@ -105,8 +107,11 @@ Losing the card is canon-catastrophic, which makes it the perfect stakes object.
 ## A3. THE PHASES
 
 ### P0a — agent-dischargeable, blocking
-CI wiring (`variety.py`, `--degeneracy`, `agenda.py --selftest`); **verify L3** (x1/x10/x60
-+ controls; resolve 0.05 vs 5.59 m); re-run `--life-test`; 60-min soak with RSS; CPU frame
+CI wiring (`variety.py`, `--degeneracy`, `agenda.py --selftest`); ~~**verify L3**~~ **L3 IS
+VERIFIED AND GREEN (4j)** — x1/x10/x60 all PASS at **0.05 m from the post**, all three controls
+FIRE at 38–42 m short, exit 0; the dispute resolves to **0.05 m**, and the 5.59 m was a room leg
+laid as a straight line through a desk rank, fixed by `station/roomnav.py` (evidence:
+`docs/life-L3.md` §2.5 and §3); re-run `--life-test`; 60-min soak with RSS; CPU frame
 time at stated NPC count ("GPU half unknown" in the same line); the playtest script.
 **Visible deliverable:** the trailer re-cut from the real build after L3 is green.
 
