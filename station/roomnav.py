@@ -156,20 +156,27 @@ class Grid:
     def free_count(self):
         return sum(self.free)
 
-    def touches_edge(self):
-        """Does free floor run off the side of the grid?
+    def touches_edge(self, prev):
+        """Does the REACHABLE set run off the side of the grid?
 
-        NO SILENT CAPS. `s_half` is a bound on how far along the arc the search
-        looks, and a room wider than that is a room searched in part -- which
-        would read as "this is the best spot in the room" when it is the best
-        spot in the slice that was looked at. A room's own walls normally stop
-        the search long before the bound does, and this says when they did not
-        so the caller can widen rather than quietly believe a clipped answer.
+        NO SILENT CAPS. `s_half` bounds how far along the arc the search looks,
+        and a room wider than that is a room searched in part -- which would
+        read as "this is the best spot in the room" when it is the best spot in
+        the slice that was looked at. A room's own walls normally stop the
+        search long before the bound does; this says when they did not.
+
+        REACHABLE, not free, and the difference is the whole point. The grid is
+        deliberately wider than most rooms, so its edge columns usually sit
+        inside the NEIGHBOURING rooms -- free floor a body in this room can
+        never get to. Counting free cells there fired on every room and meant
+        nothing. Counting reachable ones fires only when this room's own floor
+        was cut off.
         """
         n = 0
         for k in range(self.nh):
-            n += bool(self.free[k * self.nw]) + bool(
-                self.free[k * self.nw + self.nw - 1])
+            for i in (0, self.nw - 1):
+                if prev[k * self.nw + i] != -1:
+                    n += 1
         return n
 
     # -- rasterising the obstacles ------------------------------------------
@@ -362,10 +369,6 @@ def approach(meta, place, verts, tris, groups=None, from_pt=None,
     rep["cells"] = (g.nw, g.nh)
     rep["obstacle_tris"] = g.carve(verts, tris, groups, clear_r, head_m)
     rep["free"] = g.free_count()
-    # Reported, never silently swallowed: free floor running off the side of
-    # the grid means the room is wider than the arc this looked along, so the
-    # spot chosen is the best in a SLICE of the room and says so.
-    rep["clipped_cells"] = g.touches_edge()
 
     # WHERE THE BODY COMES IN. The doorway, if the caller said; otherwise the
     # middle of the room, which makes this a "nearest standable spot" query
@@ -382,6 +385,10 @@ def approach(meta, place, verts, tris, groups=None, from_pt=None,
     prev = g.bfs((si, sk))
     reach = [n for n, p in enumerate(prev) if p != -1]
     rep["reachable"] = len(reach)
+    # Reported, never silently swallowed: reachable floor running off the side
+    # of the grid means this room is wider than the arc that was looked along,
+    # so the spot chosen is the best in a SLICE of the room and says so.
+    rep["clipped_cells"] = g.touches_edge(prev)
     if not reach:
         rep["why"] = "nothing is reachable from the doorway"
         return [centre]
@@ -395,6 +402,7 @@ def approach(meta, place, verts, tris, groups=None, from_pt=None,
     gi, gk = goal % g.nw, goal // g.nw
     gc = g.centre_of(gi, gk)
     rep["off_centre_m"] = round(math.hypot(gc[0], gc[1] - z0), 3)
+    rep["detour_m"] = 0.0
 
     # The path back out to the door, then string-pulled: keep a waypoint only
     # where the straight line to the next one is not free.
@@ -425,6 +433,10 @@ def approach(meta, place, verts, tris, groups=None, from_pt=None,
     exact_centre = ((gi, gk) == (ci, ck)
                     and g.clear_at(0.0, z0) >= clear_r)
     rep["exact_centre"] = exact_centre
+    if exact_centre:
+        # The spot IS the register's point, so the cell-centre residue is an
+        # artefact of the grid and not a distance anybody stands from anything.
+        rep["off_centre_m"] = 0.0
 
     out = []
     for (i, k) in pulled:
@@ -553,12 +565,141 @@ def _selftest():
     return 1 if fails else 0
 
 
+# ---------------------------------------------------------------------------
+# THE WHOLE-STATION QUESTION
+# ---------------------------------------------------------------------------
+
+def _at(radius, angle_deg, z):
+    """Polar -> world on the ring. Three lines rather than an import, because
+    `route_walk._at` is downstream of this module (route_walk -> walkable ->
+    roomnav) and importing it back would be a cycle."""
+    a = math.radians(angle_deg)
+    return (radius * math.cos(a), radius * math.sin(a), z)
+
+
+def station(limit=None, only=None, verbose=False):
+    """Can a body get INTO every named place on the station, and stand up?
+
+    THE ONE-ROOM FIX IS NOT THE FINDING. `business_center`'s doorway-to-desk
+    line was fixed by building this module; whether the same defect sits in the
+    other 127 places is a different question, and CLAUDE.md's session-4h lesson
+    is exactly that a fix applied to an instance and not to the rule is a fix
+    that will be needed again. So this asks every place the same question its
+    own commute leg asks: from this room's own doorway, over this room's own
+    collision, is there anywhere a capsule can stand?
+
+    Two things FAIL, and both are "a player cannot get in":
+      * the doorway has no free cell within `SNAP_MAX_M`  -- walled off
+      * nothing is reachable from it                      -- a sealed room
+
+    Everything else is REPORTED and not failed, because it is not a defect: a
+    room whose middle is furniture legitimately has its standing spot off
+    centre, and that number is what says how furnished the station is.
+    """
+    import deck as D                                             # noqa: PLC0415
+    import directory as dr                                       # noqa: PLC0415
+    import interior as it                                        # noqa: PLC0415
+
+    schema, profile = it.load()
+    if only:
+        # Straight to the one cluster. Sweeping to find it builds every deck's
+        # collision on the way, which turns a debugging aid into a whole-station
+        # gate -- and then nobody uses the debugging aid.
+        q = dr.by_key(only)
+        decks = [(q["sector"], q["ring"], q["deck"])]
+    else:
+        decks = sorted({(q["sector"], q["ring"], q["deck"]) for q in dr.PLACES})
+    rows, bad, skipped = [], [], []
+    seen = set()
+    for s, r, dk in decks:
+        if (s, r) in getattr(D, "NOT_RING_DECKS", ()):
+            skipped.append((s, r, dk, "drum -- a heightfield, not a corridor"))
+            continue
+        for zc in (D.z_clusters(s, r, dk) or [None]):
+            try:
+                v, t, meta = D.build_collision(schema, profile, s, r, dk,
+                                               z_m=zc, props=True)
+            except Exception as e:                               # noqa: BLE001
+                skipped.append((s, r, dk, f"{type(e).__name__}: {e}"))
+                continue
+            groups = meta.get("groups") or ()
+            fr = meta["floor_r_m"]
+            for room in meta.get("rooms", ()):
+                key = room["key"]
+                if key in seen or (only and key != only):
+                    continue
+                seen.add(key)
+                place = dr.by_key(key)
+                zh = D.room_interior_half_m(schema, profile, place)
+                door = _at(fr, room["door_deg"], place["z_m"] + zh - 0.5)
+                rep = {}
+                approach(meta, place, v, t, groups, from_pt=door, z_half=zh,
+                         report=rep)
+                row = {"key": key, "deck": f"{s}/{r}/{dk}", **rep}
+                rows.append(row)
+                if rep.get("snap_m") is None or not rep.get("reachable"):
+                    bad.append(row)
+                if verbose:
+                    print(f"  {key:34s} {row['deck']:12s} "
+                          f"obst {rep.get('obstacle_tris', 0):5d}  "
+                          f"reach {rep.get('reachable', 0):6d}  "
+                          f"off {rep.get('off_centre_m', 0.0):5.2f} m  "
+                          f"snap {rep.get('snap_m')}  "
+                          f"wp {rep.get('waypoints', 0)}")
+                if limit and len(rows) >= limit:
+                    break
+            if limit and len(rows) >= limit:
+                break
+        if limit and len(rows) >= limit:
+            break
+
+    n = len(rows)
+    exact = sum(1 for x in rows if x.get("exact_centre"))
+    detoured = sum(1 for x in rows if x.get("waypoints", 1) > 1)
+    clipped = [x for x in rows if x.get("clipped_cells")]
+    offs = sorted(x.get("off_centre_m", 0.0) for x in rows)
+    print(f"\n{n} places asked, {n - len(bad)} a body can get into and stand up "
+          f"in, {len(bad)} it cannot")
+    print(f"  {exact} stand at the register's own centre point -- the middle "
+          f"of the room is standable")
+    print(f"  {n - exact} stand somewhere else, because their middle is not")
+    print(f"  {detoured} need more than one waypoint to GET there -- a straight "
+          f"line from their door would cross their own furniture")
+    print(f"  {n - detoured} are one waypoint, unchanged from before this "
+          f"module existed")
+    if offs:
+        print(f"  off-centre: median {offs[len(offs) // 2]:.2f} m, "
+              f"p95 {offs[int(0.95 * (len(offs) - 1))]:.2f} m, "
+              f"max {offs[-1]:.2f} m")
+    # NO SILENT CAPS -- say what was not looked at and what was looked at in
+    # part, rather than letting either read as coverage.
+    if clipped:
+        print(f"  {len(clipped)} searched in part (free floor ran off the arc "
+              f"half-span): {', '.join(x['key'] for x in clipped[:6])}"
+              + (" ..." if len(clipped) > 6 else ""))
+    for s, r, dk, why in skipped:
+        print(f"  not asked: {s}/{r}/{dk} -- {why}")
+    for x in bad:
+        print(f"  CANNOT GET IN: {x['key']} ({x['deck']}) -- "
+              f"{x.get('why', 'no standable cell reachable from its doorway')}")
+    return 1 if bad else 0
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser()
     ap.add_argument("--selftest", action="store_true")
+    ap.add_argument("--station", action="store_true",
+                    help="ask every named place whether a body can get in "
+                         "through its own door and stand up (minutes of CPU: "
+                         "it builds every cluster's collision)")
+    ap.add_argument("--place", default=None, help="just this one")
+    ap.add_argument("--limit", type=int, default=0)
+    ap.add_argument("--verbose", action="store_true")
     a = ap.parse_args(argv)
-    if a.selftest or True:
-        return _selftest()
+    if a.station or a.place:
+        return station(limit=a.limit or None, only=a.place,
+                       verbose=a.verbose or bool(a.place))
+    return _selftest()
 
 
 if __name__ == "__main__":
