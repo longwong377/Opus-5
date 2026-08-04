@@ -3644,7 +3644,15 @@ def interior_geometry(room):
             v = unroll_to_local(v)
         return v, t, to_spans(r[2] if len(r) > 2 else None, len(t)), None
     v, t, g = R.build(schema, profile, place)
-    return v, t, g, R.bay_span_m(place)
+    # THE SPAN A CAMERA IS PLACED FROM IS THE SPAN THAT WAS BUILT, and since 4k
+    # those are different numbers. `bay_span_m` is ONE representative bay;
+    # `rooms.tiling` now instances it along the footprint, so a shot framed on
+    # the bay frames 10.77 m of a 140 m room and every interior render of a
+    # tiled place silently became a close-up. `built_span_m` is the function
+    # `deck.room_interior_half_m` and `collision.room_shell` already ask, and it
+    # returns the old number unchanged for the places `bespoke` translates
+    # rather than scales -- so nothing that was framed correctly moves.
+    return v, t, g, R.built_span_m(schema, profile, place)
 
 
 def open_standpoint(verts, tris, eye_h, clear_m=0.75, walk_spans=None):

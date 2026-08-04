@@ -1507,9 +1507,13 @@ def _selftest(verbose=True):
     for r in live_s:
         p = _D.by_key(r["key"])
         v, t, g = _R.build(schema, profile, p, plates=False)
-        bw, bl = _R.bay_span_m(p)
-        w_f, l_f, _rr = _R.room_extent_m(schema, profile, p)
-        same = kit_like_floor(min(w_f, bw), min(l_f, bl), _R.ceiling_m(p))
+        # THE REFERENCE FLOOR IS THE FLOOR THAT WAS BUILT. `min(room_extent_m,
+        # bay_span_m)` was that until 4k tiled the bay along the footprint;
+        # since then it is one bay of a room up to thirteen bays long, so the
+        # comparison floor for a 140 m room was 10.77 m of it. `built_span_m`
+        # is the one function that knows which reading applies.
+        bw, bl = _R.built_span_m(schema, profile, p)
+        same = kit_like_floor(bw, bl, _R.ceiling_m(p))
         surfs = {}
         for surf, tris in shell_split(v, t, g).items():
             a = analyse(v, tris, min_facet_m=0.0)
@@ -2015,9 +2019,9 @@ def shell_rows(schema=None, profile=None, keys=None, floor=None):
     out = []
     for p in places:
         v, t, g = R.build(schema, profile, p)
-        bw, bl = R.bay_span_m(p)
-        w_f, l_f, _r = R.room_extent_m(schema, profile, p)
-        same = kit_like_floor(min(w_f, bw), min(l_f, bl), R.ceiling_m(p))
+        # Built span, not the one-bay clamp -- see the note at the other site.
+        bw, bl = R.built_span_m(schema, profile, p)
+        same = kit_like_floor(bw, bl, R.ceiling_m(p))
         row = {"key": p["key"], "name": p["name"], "arch": R.archetype(p),
                "tris": len(t), "surfaces": {}}
         worst = 1.0
