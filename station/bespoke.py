@@ -32,6 +32,99 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 
+# ---------------------------------------------------------------------------
+# A MODULE IS NOT A PROGRAM, and `components` is the proof
+# ---------------------------------------------------------------------------
+# Session 4h's finding was that several entries below dropped `q` and drew one
+# room for every place that reached them, and that *"a fix applied to an
+# instance and not to the rule is a fix that will be needed again"*. Each entry
+# was then fixed to read the place. This is the same defect ONE LEVEL UP, and
+# it is the level the 4h note did not reach: **the table is keyed by MODULE,
+# and a module can own places that are not the same KIND of thing at all.**
+#
+#   `components`   owns NINE places. Three are rooms -- obs_dome_1,
+#                  obs_dome_2, obs_rotundas. The other six are exterior
+#                  structures: cobra bays, mooring clamps, a navigation
+#                  beacon, comms grids, proximity arrays, the power transfer
+#                  core. Registering the module would hand a navigation beacon
+#                  to an observation-room builder.
+#   `interior_kit` owns TWO. One is the Central Corridor; the other is
+#                  `standard_corridor`, which IS the kit -- composing it would
+#                  build a corridor inside the corridor `deck.build_deck` has
+#                  already laid, and the generic bay standing in for it is the
+#                  correct outcome.
+#
+# So the registry grows a PLACE level, and it is the place level that is
+# authoritative where both exist. `_by_place` is what a module entry becomes:
+# it looks the place up and REFUSES by name for anything it has no program
+# for, which is the outcome the module-keyed table could not express -- the
+# alternative is a silent wrong room, which is what 4h cost.
+BESPOKE_PLACES = {
+    # `station/concourse.py` -- PLC-056, `central corridor.webp` authority 1.
+    "central_corridor":
+        lambda s, p, q: __import__("concourse").central_corridor(s, p, q),
+    # `station/observation.py` -- PLC-002 / PLC-030 / PLC-064. One module,
+    # three programs, and `observation._selftest` hashes all three and fails if
+    # any two are one geometry, with a control that collapses them.
+    "obs_dome_1": lambda s, p, q: __import__("observation").room(s, p, q),
+    "obs_dome_2": lambda s, p, q: __import__("observation").room(s, p, q),
+    "obs_rotundas": lambda s, p, q: __import__("observation").room(s, p, q),
+}
+
+# The modules whose entry dispatches by place rather than building one room.
+# Explicit, so `composable()` and the self-test can tell the two kinds of entry
+# apart without inspecting a lambda.
+PLACE_DISPATCH = ("components", "interior_kit")
+
+
+def _by_place(module):
+    """A module entry that dispatches to `BESPOKE_PLACES`, or refuses by name."""
+    def build(schema, profile, place):
+        f = BESPOKE_PLACES.get(place.get("key"))
+        if f is None:
+            raise KeyError(
+                f"{place.get('key')}: {module}.py owns this place and no "
+                f"place-level builder claims it. "
+                f"{module} builds "
+                f"{sorted(k for k in BESPOKE_PLACES if _owner(k) == module)}; "
+                f"the rest are exterior structures or the kit itself -- see "
+                f"the audit block at the foot of bespoke.py.")
+        return f(schema, profile, place)
+    return build
+
+
+def _owner(place_key):
+    """The module a place-level builder is registered under."""
+    import directory as _d                                       # noqa: PLC0415
+    try:
+        return _d.by_key(place_key).get("module")
+    except Exception:                                            # noqa: BLE001
+        return None
+
+
+def composable(place):
+    """Will the assembler compose THIS place from a bespoke builder?
+
+    `deck.build_deck` asks `place['module'] in NEAR_END`, which is the right
+    question for a module that owns one kind of room and the wrong one for
+    `components`. Everything in this file that iterates places asks THIS
+    instead, so a gate written here cannot silently start measuring a
+    navigation beacon.
+    """
+    mod = place.get("module")
+    if mod not in NEAR_END:
+        return False
+    if mod in PLACE_DISPATCH:
+        return place.get("key") in BESPOKE_PLACES
+    return True
+
+
+def composable_places():
+    """Every place the assembler composes, in register order."""
+    import directory as _d                                       # noqa: PLC0415
+    return [q for q in _d.PLACES if composable(q)]
+
+
 # The entry points are NOT uniform and were established by reading each
 # module's own _selftest, which is its canonical usage. They are recorded here
 # so nobody has to rediscover them a third time -- test_materials_layer3 had
@@ -50,6 +143,11 @@ BESPOKE_GEOMETRY = {
         s, p, q),
     "command_control":
         lambda s, p, q: __import__("command_control").command_control(),
+    # DISPATCHED BY PLACE. See `BESPOKE_PLACES` above: `components` owns nine
+    # places of which three are rooms, and `interior_kit` owns two of which one
+    # is the kit itself.
+    "components": _by_place("components"),
+    "interior_kit": _by_place("interior_kit"),
     "council_chamber":
         lambda s, p, q: __import__("council_chamber").council_chamber(),
     # THE PLACE, not the module. customs_north, customs_south and
@@ -293,6 +391,15 @@ NEAR_BAND_M = 1.2
 SHELL_OPEN_EDGES = {
     "alien_sector": 0,
     "quarters": 0,
+    # BUILT CLOSED, and each module's own self-test says so with a control that
+    # fires: `concourse._selftest` removes the rib springing caps and watches
+    # the shell leak 40 edges; `observation._selftest` measures all three
+    # programs. `interior_kit.rib_arch` arrives OPEN at both springings -- it
+    # sweeps t = 0..pi and emits no end caps, 8 edges a rib -- and that is
+    # closed in `concourse._rib` rather than in the kit, because the kit is not
+    # that module's to change and the caps are its own geometry.
+    "interior_kit": 0,
+    "components": 0,
     # 192 -> 0 in session 4b, and they were `dressing._cyl`'s session-3x defect
     # in a third costume: `plant_pipe` and `plant_conduit` were lathed with
     # `cap_lo=False, cap_hi=False` on the reasoning that a cell's ends face the
@@ -760,6 +867,12 @@ def compare(schema, profile, places=None):
         mod = q.get("module")
         if mod not in BESPOKE_GEOMETRY:
             continue
+        # A PLACE-DISPATCHED MODULE'S OTHER PLACES ARE NOT MEASURABLE AND MUST
+        # NOT BE COUNTED. `components` owns a navigation beacon; there is no
+        # "what would the swap cost" for a place no builder claims, and
+        # including it makes the ratio below a statistic about refusals.
+        if mod in PLACE_DISPATCH and q["key"] not in BESPOKE_PLACES:
+            continue
         try:
             gt = len(_R.build(schema, profile, q)[1])
         except Exception:                                      # noqa: BLE001
@@ -824,7 +937,14 @@ def _selftest():
     # `deck` would silently keep the generic bay for a reason that is a bug.
     broken = []
     for mod in sorted(BESPOKE_GEOMETRY):
-        q = next((p for p in _dr.PLACES if p.get("module") == mod), None)
+        # A COMPOSABLE place, not merely the first place the module owns. For
+        # `components` the register's first row is `obs_dome_1` today and could
+        # be `nav_beacon` tomorrow -- and this loop would then report a builder
+        # as broken for correctly refusing a navigation beacon.
+        q = next((p for p in _dr.PLACES
+                  if p.get("module") == mod and composable(p)), None)
+        if q is None:
+            q = next((p for p in _dr.PLACES if p.get("module") == mod), None)
         if q is None:
             broken.append((mod, "no place claims this module"))
             continue
@@ -913,10 +1033,8 @@ def _selftest():
 
     placed = 0
     openings = {}
-    for q in _dr.PLACES:
+    for q in composable_places():
         mod = q.get("module")
-        if mod not in NEAR_END:
-            continue
         ah = _D.room_axial_half_m(schema, profile, q)
         v, t, _g = room_shell(schema, profile, q, ah)
         xs = [p[0] for p in v]
@@ -986,6 +1104,32 @@ def _selftest():
           refused == len([m for m in held
                           if any(p.get("module") == m for p in _dr.PLACES)]),
           f"{refused} refused")
+
+    # AND A PLACE-DISPATCHED MODULE MUST REFUSE THE PLACES IT DOES NOT BUILD.
+    # This is the gate the module-keyed table could not have: `components` owns
+    # a navigation beacon and a comms grid as well as two domes and a rotunda,
+    # and the failure mode of registering it without this is SILENT -- an
+    # observation room where a sensor blade goes, with the same triangle count,
+    # the same extent and the same materials as a correct one.
+    wrong, refused_p = [], []
+    for q in _dr.PLACES:
+        if q.get("module") not in PLACE_DISPATCH:
+            continue
+        if composable(q):
+            continue
+        try:
+            BESPOKE_GEOMETRY[q["module"]](schema, profile, q)
+            wrong.append(q["key"])
+        except KeyError:
+            refused_p.append(q["key"])
+    check("a place-dispatched module refuses every place it has no program for",
+          not wrong,
+          f"{wrong} were BUILT by a module that has no program for them")
+    check("...and it names them, so the refusal is a decision and not a gap",
+          len(refused_p) >= 6, f"only {len(refused_p)} refused")
+    print(f"  place dispatch: {len(BESPOKE_PLACES)} places claimed across "
+          f"{len(PLACE_DISPATCH)} modules, {len(refused_p)} refused by name "
+          f"({', '.join(sorted(refused_p)[:4])}...)")
     print(f"  frame adapter: {placed} places recentred, "
           f"{len(NEAR_END)} modules composed, "
           f"{len(NOT_COMPOSED)} declared but held back, "
@@ -1008,10 +1152,8 @@ def _selftest():
     import interact as _ia                                     # noqa: PLC0415
     walled, narrow, cleared = [], [], 0
     unresolved, declared_n, alias_n = [], 0, 0
-    for q in _dr.PLACES:
+    for q in composable_places():
         mod = q.get("module")
-        if mod not in NEAR_END:
-            continue
         ah = _D.room_axial_half_m(schema, profile, q)
         brep = {}
         cv, ct, cg = compose(schema, profile, q, ah, report=brep)
@@ -1056,9 +1198,7 @@ def _selftest():
                                            "ceiling": 0, "dropped": []}
     try:
         ctl_res = ctl_dec = 0
-        for q in _dr.PLACES:
-            if q.get("module") not in NEAR_END:
-                continue
+        for q in composable_places():
             want = tuple(q.get("interacts") or ())
             if not want:
                 continue
@@ -1175,14 +1315,22 @@ def _selftest():
     # visible and cannot grow -- and the direction it can fail in is the one
     # that matters, which is a module getting leakier. Its negative control is
     # below and it fires.
+    # EVERY PLACE, NOT ONE PER MODULE. This used to build the register's first
+    # place for each module and read the answer as the module's -- which is the
+    # session-4h defect in its purest form: *"when a defect is found in one
+    # entry of a table, check every entry and gate the table"*, applied to the
+    # rows of a table whose entries are now places. `quarters` builds seven
+    # different rooms and `hospitality` five; one of them being closed said
+    # nothing about the other six.
     counts, worse = {}, []
-    for mod in sorted(set(NEAR_END) | set(NOT_COMPOSED)):
-        q = next(p for p in _dr.PLACES if p.get("module") == mod)
+    for q in composable_places() + [p for p in _dr.PLACES
+                                    if p.get("module") in NOT_COMPOSED]:
+        mod = q["module"]
         r = BESPOKE_GEOMETRY[mod](schema, profile, q)
         op, _non = _it_kit.boundary_edges(r[0], r[1])
-        counts[mod] = len(op)
+        counts[mod] = max(counts.get(mod, 0), len(op))
         if len(op) > SHELL_OPEN_EDGES.get(mod, 0):
-            worse.append((mod, len(op), SHELL_OPEN_EDGES.get(mod)))
+            worse.append((q["key"], mod, len(op), SHELL_OPEN_EDGES.get(mod)))
     check("no composed shell has got leakier", not worse,
           f"{worse} -- these edges land on a DECK, and the deck asserts "
           f"watertightness")
@@ -1268,6 +1416,23 @@ NEAR_END = {
     # decision made in one place rather than two that can disagree.
     "zocalo": ("min_z", "zocalo_run(cap_ends=True) cuts its doorway in the "
                         "minimum-z bulkhead; the maximum-z cap is solid"),
+    # BOTH OF THE PLACE-DISPATCHED MODULES ARE `max_z`, and they are because
+    # they were AUTHORED to be -- which is the difference between these two
+    # entries and the nine above them. Every module above was written to be
+    # rendered on its own before `deck.py` could assemble anything, so its near
+    # end had to be recovered from what it says about itself. `concourse.py`
+    # and `observation.py` were written after the assembler and cut their own
+    # doorway in their own maximum-z face at local x = 0, which is where
+    # `deck._place_local` maps the corridor's door. The declaration and the
+    # geometry are one decision made in one place, and each module's own
+    # self-test measures the aperture with `near_face_opening` -- the same
+    # function this file's gate uses.
+    "interior_kit": ("max_z", "concourse.central_corridor cuts its doorway "
+                              "with bespoke.doorway_wall in the maximum-z end "
+                              "wall; the minimum-z end is solid"),
+    "components": ("max_z", "observation.room enters through a vestibule that "
+                            "runs out to maximum z and carries the doorway in "
+                            "its end wall; the chamber is behind it"),
     # DECIDED BY THE WALKWAY, exactly as the Zocalo's is decided by its cap.
     # `plant.room_cell` puts the catwalk hard against the cell's MAXIMUM z and
     # rails only its open side, so the maximum-z face is the one a body can
@@ -1525,7 +1690,35 @@ def _spans(groups, n):
     return out
 
 
-def dressable_extent(verts, tris, groups=None, module=None, tol=0.05):
+def _largest_inscribed_rect(cells, nx, nz):
+    """The largest all-true axis-aligned rectangle in a boolean grid.
+
+    Maximal rectangle in a histogram, run once per row: O(nx.nz), no
+    thresholds, nothing to tune. Returns (i0, i1, k0, k1) inclusive, or None.
+    """
+    best = None
+    best_area = 0
+    heights = [0] * nx
+    for k in range(nz):
+        for i in range(nx):
+            heights[i] = heights[i] + 1 if cells[i][k] else 0
+        stack = []
+        for i in range(nx + 1):
+            h = heights[i] if i < nx else 0
+            start = i
+            while stack and stack[-1][1] >= h:
+                s, sh = stack.pop()
+                area = sh * (i - s)
+                if area > best_area:
+                    best_area = area
+                    best = (s, i - 1, k - sh + 1, k)
+                start = s
+            stack.append((start, h))
+    return best
+
+
+def dressable_extent(verts, tris, groups=None, module=None, tol=0.05,
+                     grid=112, keep_frac=0.98, cover_frac=0.50):
     """(width, length, cx, cz) of the floor a person can be furnished onto.
 
     NOT THE BOUNDING BOX, and on a docking bay the difference is 42 x 141 m
@@ -1544,6 +1737,7 @@ def dressable_extent(verts, tris, groups=None, module=None, tol=0.05):
     """
     fy = floor_y(verts, tris, groups, module)
     xs, zs = [], []
+    faces = []
     for a, b, c in tris:
         p0, p1, p2 = verts[a], verts[b], verts[c]
         u = [p1[k] - p0[k] for k in range(3)]
@@ -1555,13 +1749,94 @@ def dressable_extent(verts, tris, groups=None, module=None, tol=0.05):
             continue
         if abs((p0[1] + p1[1] + p2[1]) / 3.0 - fy) > tol:
             continue
+        faces.append(((p0[0], p0[2]), (p1[0], p1[2]), (p2[0], p2[2])))
         for q in (p0, p1, p2):
             xs.append(q[0])
             zs.append(q[2])
     if not xs:
         return None
-    return (max(xs) - min(xs), max(zs) - min(zs),
-            (min(xs) + max(xs)) / 2.0, (min(zs) + max(zs)) / 2.0)
+    x0, x1, z0, z1 = min(xs), max(xs), min(zs), max(zs)
+    bbox = ((x1 - x0), (z1 - z0), (x0 + x1) / 2.0, (z0 + z1) / 2.0)
+    if x1 - x0 < 1e-6 or z1 - z0 < 1e-6:
+        return bbox
+
+    # THE BOUNDING BOX IS WRONG FOR A ROUND ROOM, and `bespoke.py`'s own audit
+    # block said so before there was a round room to be wrong about: *"a 2R x
+    # 2R dressing rectangle puts its corners at 1.41 R, through the window
+    # ring. The general fix is the largest axis-aligned rectangle inscribed in
+    # the floor band, which equals the bounding box on a rectangular plan and
+    # so changes nothing already composed."* This is that fix.
+    #
+    # THE `keep_frac` SHORTCUT IS WHAT MAKES THE SECOND HALF OF THAT SENTENCE
+    # TRUE. A rasterised inscribed rectangle is quantised by the grid, so on a
+    # perfectly rectangular plan it would come back a cell or two short and
+    # every room already composed would shift by a few centimetres for no
+    # reason. Above 98% of the bounding box the plan IS the box and the box is
+    # returned unchanged, so the ten modules composed before this existed are
+    # byte-identical -- asserted in `_selftest`.
+    # THE CHEAP HALF OF THE SHORTCUT, and it is what keeps this affordable.
+    # The floor band's own triangle area is O(faces) to add up; if it already
+    # fills `keep_frac` of the bounding box then the plan IS the box and no
+    # raster is needed at all. Every rectangular room on the station takes this
+    # exit, so the ten modules composed before this existed pay nothing --
+    # which matters, because `_selftest` composes every place three times and
+    # a 112x112 raster per compose is minutes.
+    tot = 0.0
+    for (ax, az), (bx, bz), (cx_, cz_) in faces:
+        tot += abs((bx - ax) * (cz_ - az) - (cx_ - ax) * (bz - az)) / 2.0
+    if tot >= keep_frac * (x1 - x0) * (z1 - z0):
+        return bbox
+
+    nx = nz = max(8, int(grid))
+    cells = [[False] * nz for _ in range(nx)]
+    dx = (x1 - x0) / nx
+    dz = (z1 - z0) / nz
+    for (ax, az), (bx, bz), (cx_, cz_) in faces:
+        i0 = max(0, int((min(ax, bx, cx_) - x0) / dx) - 1)
+        i1 = min(nx - 1, int((max(ax, bx, cx_) - x0) / dx) + 1)
+        k0 = max(0, int((min(az, bz, cz_) - z0) / dz) - 1)
+        k1 = min(nz - 1, int((max(az, bz, cz_) - z0) / dz) + 1)
+        d = ((bz - az) * (cx_ - ax) - (bx - ax) * (cz_ - az))
+        if abs(d) < 1e-15:
+            continue
+        for i in range(i0, i1 + 1):
+            px = x0 + (i + 0.5) * dx
+            for k in range(k0, k1 + 1):
+                if cells[i][k]:
+                    continue
+                pz = z0 + (k + 0.5) * dz
+                s = ((bz - az) * (px - ax) - (bx - ax) * (pz - az)) / d
+                tt = ((az - cz_) * (px - ax) + (cx_ - ax) * (pz - az)) / d
+                if s >= -1e-9 and tt >= -1e-9 and s + tt <= 1.0 + 1e-9:
+                    cells[i][k] = True
+    r = _largest_inscribed_rect(cells, nx, nz)
+    if r is None:
+        return bbox
+    i0, i1, k0, k1 = r
+    if (i1 - i0 + 1) * (k1 - k0 + 1) >= keep_frac * nx * nz:
+        return bbox
+    # AND IT MUST DESCRIBE THE SAME FLOOR, which is what `cover_frac` decides
+    # and it is not a tuning knob -- it separates two different kinds of plan
+    # with one number and no list of module names.
+    #
+    #   ONE connected room whose plan is not a rectangle: a disc's inscribed
+    #   square is 2/pi = 64% of it, C&C's upper deck round its pit about 75%.
+    #   The rectangle is the better description and replaces the box.
+    #
+    #   SEVERAL rooms the caller means as one span: `quarters.run` is a row of
+    #   six sealed cells 64 m long, and its largest inscribed rectangle is ONE
+    #   CELL -- 17% of the floor. Furnishing one unit of six is not an
+    #   improvement on furnishing all six badly, and it is not what that
+    #   module's caller is asking for.
+    #
+    # Measured over every place composed before this existed: `qtr_transient`
+    # 64.28 x 3.79 -> 7.46 x 3.79 without this clause, and unchanged with it.
+    rect_area = (i1 - i0 + 1) * (k1 - k0 + 1) * dx * dz
+    if rect_area < cover_frac * tot:
+        return bbox
+    rx0, rx1 = x0 + i0 * dx, x0 + (i1 + 1) * dx
+    rz0, rz1 = z0 + k0 * dz, z0 + (k1 + 1) * dz
+    return (rx1 - rx0, rz1 - rz0, (rx0 + rx1) / 2.0, (rz0 + rz1) / 2.0)
 
 
 def room_shell(schema, profile, place, axial_half_m):

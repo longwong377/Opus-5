@@ -6110,3 +6110,260 @@ point both caps should simply rise.
 **Not fixed here, and pre-existing:** `zocalo._selftest` fails its seam assertion (4 non-manifold
 edges at 3 bays, 6 at 4). Verified by A/B — it failed identically before this change, on the old
 default of 3 — so it is a seam defect in `zocalo_run`, not a consequence of varying the count.
+
+---
+
+## INV-290 — The Central Corridor: what `station/concourse.py` adds to INV-020
+
+**Invented:** the gallery walkway's width and slab (1.80 m, 0.22 m), the fascia beam (0.46 m),
+the centre-line paired cell (0.26 m square on a 0.62 m pitch), the emitting floor panel
+(1.55 × 0.93 m in a running bond with a 0.055 m joint), the wall blade (0.14 m wide, 1.90 →
+3.30 m, 3.0 m pitch) with its 0.11 m surround and 0.075 m red indicator, the vendor front's 4 × 3
+backlit panel field, and **the composed run of four rib bays = 24.0 m**.
+
+**Why necessary:** `central_corridor` is owned by `interior_kit` in the register and
+`interior_kit` has no builder for it, so `deck.build_deck` assembled Red Sector's grand
+circulation spine as a **6.93 × 6.00 m generic store bay**. It is the place with the most
+player footfall of anything still unbuilt: the Red rosette names it alongside the Zocalo,
+Earhart's and Waste Management, and a player crossing Red crosses it.
+
+**What is sourced, and is NOT invention.** Every primary dimension of this room already
+existed and is READ rather than restated — `interior_kit.CORRIDOR_CLASSES["concourse"]`, whose
+values INV-020 derived **from this same frame**:
+
+| | value | where it comes from |
+|---|---|---|
+| clear width | **9.0 m** | INV-020, proportioned against the rib arches in `more hallway.jpg`. INV-020 calls this its weakest figure and says so. |
+| height | **7.2 m** | INV-020: the frame shows people standing above people, so the volume is two decks, and 3.6 m is INV-010 |
+| rib spacing | **6.0 m** | INV-020 |
+| deck strip width | **0.9 m** | INV-020 |
+| rib section | **0.55 × 0.42 m** | `interior_kit.rib_arch`'s own defaults, INV-020 |
+
+The frame itself — `reference/09-garden-core-and-transit/central corridor.webp`, authority 1,
+extracted in `reference/00-INDEX.md` — establishes, and this module builds, every one of: two or
+three concentric circular ring frames in **dark oxide red**; a catwalk *"about two people wide"*
+with a two-bar railing on slender posts and a solid fascia beam carrying a light line; a **raked
+panelled soffit** in canted rows with dark joints; diagonal bracing and canted panels above; the
+centre-line **ladder of paired square cells** in a raised dark kerb; large **pale-blue emitting
+floor panels** in a running-bond grid; wall-mounted **vertical white light blades** in chamfered
+dark surrounds with small red indicators above; a **vendor front** of backlit orange-red panels
+behind vertical mullions over a counter; and a **wheeled trolley with a magenta-lit top**.
+
+**Constrained by:**
+
+- **The gallery's height is not a new number.** It is one INV-010 deck pitch, which is the same
+  observation that makes the volume 7.2 m tall in the first place. A gallery at any other height
+  would land between decks.
+- **The gallery's width is the frame's own words against a measured body.** *"About two people
+  wide"*; `station/npc/body.py` puts a shoulder at 0.45–0.60 m, so two abreast plus a hand's
+  clearance is 1.80 m.
+- **The cell pitch is the deck the station is already laid in.** `rooms.DECK_TILE_M` = 0.62 m, so
+  the ladder lands on the existing grid instead of beating against it. The cell is ~⅓ of
+  INV-020's 0.9 m kerb.
+- **The floor panel is 2.5 × 1.5 of that same tile.** The frame shows roughly two panels between
+  a standing figure's feet and the wall over about 3 m, which is 1.55 m — and 1.55 m is 2.5
+  tiles, so the field is a bond of tiles rather than a size of its own.
+- **The blade runs from above a standing head to the fascia**, 1.90 → 3.30 m, which is the band
+  the frame shows lit and is bounded at the top by the gallery, not chosen.
+- **The rib is handed `width − 2t, height − t`**, not the room's own section, so its OUTER face
+  is the wall and it stands proud inside by its own thickness. Handing it the room's 9.0 × 7.2
+  put 0.42 m of steel through both walls and through the soffit; `_selftest` caught it as a
+  bounding box 0.48 m wider than the class allows.
+
+**The colour is a material decision this module could not make and had to name around.** The
+reference calls the ribs *"dark oxide red … a deliberate note, not grime"*. The archetype's own
+`transit_rib` binds `shell_rib_painted`, a flat 0.469 grey. The rib is therefore emitted as
+`dress_gantry_rib`, which binds `steel_gantry_oxide` (albedo 0.300 / 0.255 / 0.242, sourced from
+`03-sector-blue/dock.webp`) — the closest sourced oxide in the library. **The name also has to
+end in `_rib`**, because `rooms.is_solid` treats that suffix as SHELL: an arch named as an object
+becomes a collision box spanning the whole 9 m section and walls the spine a player is meant to
+walk down. `concourse._selftest` asserts no collision box exceeds 80% of the section.
+
+**What is capped, said out loud:** the place is 187 m of arc by 120 m of axis and PLC-056's
+tiling target is **540 bays**. This builds **four rib bays, 24.0 m — 20.0% of its axial extent
+and one bay of its arc.** That is STATE.md §13's own rule (*"tile the bay along Z to the
+location's real length, dress only the bays within sight, and state the cap loudly"*) and the
+tiling itself is unbuilt for every place on the station. `concourse.py --selftest` prints the
+ratio on every run so it cannot quietly become the place.
+
+**Overturned by:** any frame with a person against a concourse wall (which would re-derive
+INV-020's 9.0 m and with it every proportion here), or a wider shot showing the catwalk's far
+side, which would settle whether the gallery runs one side or both.
+
+---
+
+## INV-291 — The observation rotunda
+
+**Invented:** the chamber's interior radius **7.00 m**, its sixteen bays, the sill at 1.20 m,
+the head at 3.60 m, the entablature at 4.32 m, the crown at 7.20 m, the slat band at 1.05 m with
+seven slats a bay, the three-tier corbel course at 0.30 m a tier, the column's proportions, and
+the fittings' sizes.
+
+**Why necessary:** `obs_rotundas` is owned by `components.py`, which builds the EXTERIOR.
+Standing under an `observation_dome` at its own base plane, **0 of its 192 triangles face the
+viewer** — every surface points out, so a player inside one sees the background, and the
+background is black. The register therefore fell back to a generic bay: an 8.4 × 6.0 m store
+room where the station's observation lounges are. `bespoke.py`'s own audit block nominated this
+place as one of *"the three worth building"* and stated what it needs: *"an observation room is a
+FLOOR, a WINDOW RING and a DOME WITH THICKNESS"*.
+
+**What is sourced:** `reference/05-sector-green/rotunda.webp`, **authority 1**, and it is the
+richest single interior frame in `reference/00-INDEX.md`. It establishes, and this module builds:
+*"at least eight columns across the far arc … a closed ring at that spacing implies roughly
+sixteen bays"*; the column order — *"a plain slightly tapered cylindrical shaft carrying a group
+of THREE narrow ring collars, then a longer plain shaft, then a short stepped capital under the
+entablature"*, an order which **also appears on the Garden's civic building in `garden.png`**, so
+it is a station order and not a one-off; *"a corbel course of stepped rectangular blocks in
+layered tiers"*; *"a smooth warm gold-bronze dome with broad radial ribs"*; *"two pale conical
+elements on the cornice"*; *"a continuous band of narrow pale vertical slats at about waist
+height running right around the room"*; *"four hanging banners"*; *"tall blue backlit lattice
+panels … at far left and far right"*; *"a flight of about ten pale steps rising to a dark portal,
+flanked by piers whose lower ends carry a comb of vertical slots"*; *"a dark plinth lectern with
+a sloping cyan-glowing top"*; and *"a radiating sunburst mosaic — triangular radial wedges about
+a centre, and a broad concentric band of chevrons at larger radius"*.
+
+**Constrained by — and the radius is derived twice, independently:**
+
+- **From the register.** `obs_rotundas` is a CLASS row for **four** rotundas over 12° at radius
+  281.9 m — 59.0 m of arc, so **14.75 m of frontage each**. A chamber of that outside width with
+  `rooms.WALL_T_M` walls has an interior radius of **7.00 m**.
+- **From the frame.** Sixteen counted bays around a circumference of 2π × 7.00 = 44.0 m is
+  **2.75 m a bay**, which is what a colonnade bay reads as against the robed figures and is
+  comfortably wider than `rooms.PROPS['viewport']`'s 2.4 m glazed panel.
+
+  Neither derivation was fitted to the other and they agree. That is the strongest evidence in
+  this entry and it is the reason the radius is stated without a range.
+- **Both heights are INV-010's deck pitch**, which is the same rule INV-020 used on the
+  concourse: the window occupies exactly the first deck (head at 3.60 m) and the crown sits at
+  exactly the second (7.20 m). The entablature is 1.2 pitches.
+- **The slat band is a waist on a 1.75 m body** — 1.05 m, which is also `interior_kit.handrail`'s
+  height, so the band and the rails of this station agree by construction.
+- **The dome is a CLOSED SOLID with 0.22 m of thickness**, revolved from a closed meridian:
+  outer surface up, inner surface back down, rim across. That is the whole difference between a
+  room and a blister on a hull, and `observation._selftest` measures it directly — it counts the
+  triangles facing an eye at the chamber's centre at standing height and requires more than a
+  quarter of them, which is the measurement that failed on `components.dome_mesh` at 0 of 192.
+
+**The one thing the spec and the gazetteer disagree about, carried visibly rather than
+resolved:** `LOCATIONS.md` §241 records the rotundas' facing as **unresolved** — *"if the domed
+rotunda above is one of these, they face inward across the drum, not outward at space"* — and
+`00-INDEX` reads this frame as drum-interior *"with the caveat stated"* (green and khaki terrain
+reaching the window head with no sky band). `docs/spec/PLACES.md` PLC-064 is the content
+authority and says **"facing OUT at space"**. This module follows **the spec for the glazing and
+the auth-1 frame for the architecture**, which is the only split that uses both sources honestly.
+Nothing here decides `CONFLICTS.md` C-003.
+
+**Overturned by:** a frame showing a rotunda's exterior, which would fix the diameter directly;
+or any shot establishing which way the windows face, which would also close C-003 note 2r.
+
+---
+
+## INV-292 — The observation domes, and their bay module
+
+**Invented:** the dome chamber's radius as **`(viewport width + walking clearance) × the place's
+own viewport count ÷ 2π`** — 6.30 m for `obs_dome_1` and 4.20 m for `obs_dome_2` — the ring
+wall at one deck pitch, the dome rise at 0.75 R, the gallery well at 0.55 R, and the vestibule
+that gives a round room a flat face to be entered through.
+
+**Why necessary:** the same reason as INV-291 — `components.py` builds blisters on a hull and
+both domes fell back to generic bays. PLC-002 describes the room `obs_dome_1` actually is: *"the
+dome structure holding C&C (PLC-001 `within`); glazing ribs, gallery ring, service crawl"* — the
+ring gallery **round** C&C's light well, not a second C&C. PLC-030's function is unstated in
+canon; LOCATIONS P-11 adopts a traffic annexe plus public gallery and PLACES.md carries it at
+authority 5.
+
+**What is sourced:** `reference/03-sector-blue/comand and contorl.webp`, **authority 1**, is the
+dome glazing seen FROM INSIDE, and `LOCATIONS.md` §169 records it: *"a large circle on radial
+spoke mullions with a broad concentric ring band, set in a flat-panelled bulkhead with angled
+bracing"*. That is this room's window and it is the same glass C&C looks through, so **the
+mullion count is READ from `components.DOME_MULLIONS`** rather than restated — the number INV-024
+measured off this frame, independently corroborated by `rotunda.webp`'s *"roughly sixteen bays"*.
+
+**Constrained by:**
+
+- **The bay module is derived from two constants that already exist.** A window bay must hold
+  `rooms.PROPS['viewport']` (2.4 m wide) and leave a pier a person can pass, `rooms.WALK_M`
+  (0.9 m). So a bay is **3.30 m**, and the radius follows from the count. Nothing about the
+  radius is chosen; changing either constant re-derives both domes.
+- **The counts are the spec's, and they are what makes the two domes two rooms.** PLC-002 lists
+  **12 viewports**, PLC-030 lists **8**. Feeding those counts through one bay module gives
+  6.30 m and 4.20 m — 125 m² against 55 m² — with different fittings on top: dome 1 has the
+  gallery well, its rail, two service ladders, the blast-shutter leaves and the shutter master;
+  dome 2 has six benches and two traffic repeater consoles and neither ladders nor shutters.
+  `observation._selftest` hashes all three programs' geometry and fails if any two are one
+  geometry, **with a control that ignores the place and collapses them** — session 4h's own
+  test, applied inside the module.
+- **The gallery well is a RECESS, not a hole.** A void in a floor is a void a body falls through
+  and `station/collision.py` sweeps a smooth shell that has no way to say so. 0.25 m down with a
+  kerb and a rail on its edge reads as a gallery over C&C without being a trap.
+- **The vestibule is not a decoration.** A round room has no flat face for a corridor to arrive
+  at, and `bespoke.room_shell` puts the near face on the assembler's plane while
+  `near_face_opening` measures the widest way in across it. Its half-width is
+  `bespoke.DOOR_HALF_W_M` + 0.45 and its length is `bespoke.APPROACH_DEPTH_M` + 1.40, both taken
+  from the numbers the assembler itself probes with, so the passage IS the aperture.
+
+**A measurement that changed where a door frame stands, and it generalises.**
+`interior_kit.door_frame` carries a sliding leaf's pocket on one side. Standing it in the
+vestibule's aperture left **1.20 m clear, centred 0.125 m off** at the three heights
+`deck._mouth_clear` probes — narrower than the corridor's own 1.50 m leaf and not symmetric about
+it, so a body walking straight at the door meets a jamb. The frame is therefore built at the
+CHAMBER end of the vestibule, where it still reads and blocks nothing. `bespoke.near_face_opening`
+found this in the module that builds the thing, which is where session 3x said the gate belongs.
+
+**Overturned by:** any frame of a dome interior other than C&C's, or a production drawing giving
+the dome's internal deck. Both radii are consequences of a bay module, so a single measured
+observation-gallery width would replace all of it.
+
+## INV-293 — How much of a location gets built, and where the detail stops
+
+**Invented:** in `station/rooms.py` — `tiling()`, `bays_along()`, `built_span_m()`.
+
+**Why necessary:** `bay_span_m`'s docstring has always ended *"the full location is then that bay
+instanced along its footprint"* and nothing instanced it. `bays_in()` had two callers and both put
+the number in a report dict. Measured: the station was built at **1,280 m of 18,790 m** of its own
+declared axial footprint — `docking_bays` is 140 m in the gazetteer and a player walked 10.77 m of
+it, into a wall that was drawn as well as felt, so nothing looked broken.
+
+Instancing the bay is arithmetic and needs no invention. **What is invented is where it stops**,
+because 128 locations at full footprint is 2,338 bays and no frame can draw them.
+
+**Constrained by numbers already committed in `station/budget.py`, not by new ones:**
+
+* **The ceiling is `DECK["visible_all_tris"]` = 300,000** — *"everything in the frame, not just
+  structure: props, fittings, doors and people are what the player is looking at"*. A tiled
+  location is a straight run with no curvature to occlude it, so from its door every bay of it is
+  in frame at once — the same visibility case that file prices the habitat drum on. A place is
+  allowed the whole allowance because at the distance where it fills the frame it **is** the frame,
+  which is the reading `density.scene_budget` already takes, in its own words, for the same reason.
+* **The ladder is distance from the door**, and which layer falls off is measured rather than
+  chosen. One `docking_bays` bay is 96,628 triangles: **51% baked NPC bodies, 26% dressing, 19%
+  shell and articulation, 5% fixtures and declared props.** Structure, machinery, plan elements,
+  declared interactables and light fittings are built in **every** bay — they are what the place is,
+  and they are the cheapest fifth of it. `dressing.py`'s furniture and `populace.py`'s baked bodies
+  reach `n_dress` and `n_pop` bays back from the door, which is exactly the trade
+  `deck.CORRIDOR_INSTANCED` already makes for the corridor crowd at 88% fewer triangles.
+* **The per-bay cost is probed, not assumed.** It is a property of the room — 25,740 triangles a
+  bay in `docking_bays` against 4,928 in `core_shuttle` — so a global bay count would be a picked
+  number, the defect `bay_span_m` was itself written to fix. Three probe builds through `build`
+  give the marginal cost of a bay, the fixed cost of the two end walls, and the cost of the two
+  falling-off layers. The fixed term matters: `n x cost(1 bay)` over-charged `docking_bays` by 30%
+  and cost it four bays — 43 m of room — to an arithmetic error.
+
+**Authority 5 on the ceiling reading.** Charging one location the whole deck frame allowance is
+generous in one direction (the corridor and everything through the doors get nothing) and mean in
+the other (real occlusion culling and LOD would draw far bays for a fraction). `budget.py` records
+that the project *"contradicts itself on the frame figure and always has"* — 1,200,000 against
+20,000,000 — and everything here is gated against the smaller one, so if the 20 M reading is right
+every capped location has 16x more headroom than it claims.
+
+**What would overturn it:** a frame capture on the target card (which is what INV-082 says settles
+the frame figure at all); or engine-side occlusion and distance LOD, at which point the cap should
+simply rise and no other line changes — `tiling()` reads the budget live.
+
+**Recorded, not fixed:** `bays_in()` uses `int(l_full / bl)` where `whole_bays` guarantees an exact
+division, so floating point truncates 13.000000000000002 to 12 and it under-counts by a whole bay
+on most of the station. `bays_along()` uses `round` and is what the tiling builds to.
+**`bays_in` is deliberately unchanged** — its 49,265 total is frozen normative in
+`docs/spec/PLACES.md` §TILING, where any recompute divergence fails the gate until a SPEC-CHANGE
+entry shows the re-derivation, and quietly correcting an off-by-one underneath a frozen number is
+the move that annex exists to prevent.

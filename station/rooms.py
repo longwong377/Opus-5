@@ -1883,6 +1883,207 @@ def bays_in(schema, profile, place):
     return max(1, int(w_full / bw)) * max(1, int(l_full / bl))
 
 
+# ---------------------------------------------------------------------------
+# TILING -- A LOCATION IS ITS FOOTPRINT, NOT ONE BAY OF IT
+# ---------------------------------------------------------------------------
+# `bay_span_m`'s docstring has always ended "the full location is then that bay
+# instanced along its footprint", and until this section NOTHING INSTANCED IT.
+# `bays_in` had two callers and both put the number in a report dict. Measured
+# in 4e and restated in CLAUDE.md's W-track: 128 places, one bay apiece, against
+# the 49,265 the footprints ask for -- `docking_bays` is 140 m in the gazetteer
+# and a player walked 10.8 m of it before meeting a wall that was drawn as well
+# as felt, so nothing looked broken and the room was one thirteenth of itself.
+#
+# WHAT IS TILED IS THE AXIS AND NOT THE RING, and that is STATE.md section 13's
+# ruling rather than a convenience: "the ACROSS count is the ring direction and
+# is largely handled -- a player walks along the ring corridor and meets the
+# next location, so a 219-bay-wide plant is the sector, not a room. The DEEP
+# count is the real gap." The deep axis is the one a player walks INTO a room
+# along, and it is where the wall is.
+#
+# NOTHING HERE EMITS A SECOND COPY OF ANY GEOMETRY RULE. `build` already sizes
+# every one of its loops off `ln` -- the rib count, the fixture pitch, the light
+# courses, the plate fields, the dressing's area. The only thing standing
+# between one bay and the whole footprint was the clamp `ln = min(l_full, bl)`.
+# What this section decides is HOW FAR that clamp opens, WHAT DETAIL each bay
+# gets, and the per-bay seed that stops the repeat reading as a tile pattern.
+
+
+def bays_along(schema, profile, place):
+    """Bays the footprint wants along the STATION AXIS.
+
+    `round`, not `int`, and the difference is a whole bay of every location on
+    the station. `whole_bays` divides the footprint into a WHOLE number of bays,
+    so `l_full / bl` is an integer in exact arithmetic and 12.999999999999998 in
+    floating point -- which `bays_in`'s `int()` truncates to 12, losing 10.77 m
+    of `docking_bays`' 140.
+
+    `bays_in` IS DELIBERATELY NOT CHANGED. Its 49,265 total is frozen normative
+    in `docs/spec/PLACES.md` §TILING ("ANY recompute divergence, in either
+    direction, fails the gate until a SPEC-CHANGE entry shows the
+    re-derivation"), and quietly correcting an off-by-one underneath a frozen
+    number is exactly the move that annex exists to prevent. The discrepancy is
+    recorded here so it can be reconciled deliberately.
+    """
+    _w, l_full, _r = room_extent_m(schema, profile, place)
+    _bw, bl = bay_span_m(place)
+    if bl >= l_full:
+        return 1
+    return max(1, int(round(l_full / bl)))
+
+
+_TILING = {}
+
+
+def tiling(schema, profile, place):
+    """How many bays of this location get built, and at what detail.
+
+    Returns the plan every caller must read rather than re-derive:
+    `n_want` / `n` / `n_dress` / `n_pop` / `bay_w` / `bay_l` / `built_l` /
+    `want_l` / `tris` / `cap` / `capped`.
+
+    THE CAP IS `budget.py`, AND IT IS STATED RATHER THAN SILENT. A tiled
+    location is a straight run with no curvature to occlude it, so from its door
+    every bay of it is in frame at once -- the same visibility case `budget.py`
+    prices the habitat drum on ("every triangle in the volume is in the frustum
+    at once"). The number that file already commits to for *everything* in a
+    standing frame, not structure alone, is `DECK["visible_all_tris"]` = 300,000,
+    and a place gets the whole of it because at the distance where it fills the
+    frame it IS the frame -- the same reading `density.scene_budget` takes, in
+    its own words, for the same reason. Nothing new is chosen here.
+
+    THE LADDER IS DISTANCE FROM THE DOOR. The door is cut in the +z wall
+    (`_end_wall_with_door`), so bay `n-1` is the one a player walks into and bay
+    0 is the far end. Three tiers, and which layer sits in which is a measured
+    argument, not a preference -- on `docking_bays` one bay is 96,628 triangles
+    and splits 51% baked bodies, 26% dressing, 19% shell and articulation, 5%
+    fixtures and declared props:
+
+      every bay      shell, articulation, ribs, the fixtures the room is named
+                     for, its plan elements, its declared interactables and its
+                     light fittings. These are what the place IS. A 140 m
+                     docking bay with machinery in the first 11 m is the defect
+                     this section exists to remove, and they are also the
+                     cheapest fifth of the mesh.
+      `n_dress` bays `dressing.py`'s loose furniture and clutter.
+      `n_pop` bays   `populace.py`'s baked bodies.
+
+    The two that fall off with distance are the two highest-triangle,
+    lowest-silhouette layers, and they are exactly what a streaming system
+    instantiates instead of baking -- `deck.CORRIDOR_INSTANCED` already makes
+    that trade for the corridor crowd, at 88% fewer triangles. `--footprint`
+    prints `n`, `n_dress` and `n_pop` per place so the cap reads as a cap.
+
+    THE PROBE IS THREE BUILDS AND IT IS WHY THIS IS DERIVED RATHER THAN TUNED.
+    The per-bay cost of a room is a property of that room -- 25,740 triangles a
+    bay in `docking_bays` against 4,928 in `core_shuttle` -- so a single global
+    bay count would be a picked number, which is the defect `bay_span_m`'s own
+    docstring was written to record ("A SIZE WAS PICKED INSTEAD OF DERIVED").
+
+    THE COST OF A ROOM IS NOT ITS BAY COUNT TIMES THE COST OF ONE BAY, and the
+    first version of this assumed it was. A run has TWO end walls however long it
+    is, and their plating is a fifth of a one-bay build -- so `n x shell(1)`
+    over-charged `docking_bays` by 30% and cost it four bays, 43 m of room, to an
+    arithmetic error. Two shell probes at one and two bays give the marginal cost
+    and the fixed cost separately, which is the model that is actually true:
+    `f + n*m`. The third probe turns the two falling-off layers on and prices
+    them. All three go through `build` itself, so there is no second description
+    of what a bay contains.
+    """
+    key = place["key"]
+    if key in _TILING:
+        return _TILING[key]
+    w_full, l_full, _r = room_extent_m(schema, profile, place)
+    bw, bl = bay_span_m(place)
+    bay_w, bay_l = min(w_full, bw), min(l_full, bl)
+    n_want = bays_along(schema, profile, place)
+    plan = {"key": key, "n_want": n_want, "bay_w": bay_w, "bay_l": bay_l,
+            "want_l": n_want * bay_l, "cap": 0, "capped": False,
+            "shell_tris": 0, "fixed_tris": 0, "dress_tris": 0, "pop_tris": 0}
+
+    # A COMPOSED PLACE IS ITS MODULE'S OWN SIZE AND TILING IT WOULD MOVE IT,
+    # NOT GROW IT. `bespoke.room_shell` TRANSLATES a module's geometry so its
+    # near face lands on the plane the assembler expects -- it does not scale
+    # anything, and `docking_bay` already runs the full 140 m in its own frame.
+    # So for the 26 places in `bespoke.NEAR_END` the depth `deck.py` asks for is
+    # a DOOR PLANE, and answering it with a tiled length would slide the room a
+    # hundred metres down the axis. Their footprint coverage is their own
+    # module's problem and several already have it. `rooms.build` is only ever
+    # their fallback stand-in, and a fallback that is a different size from the
+    # thing it stands in for is the divergence `deck.room_geometry` exists to
+    # close. Asked of `bespoke` rather than listed here, so the two cannot drift.
+    #
+    # NOT WRAPPED IN A `try`, deliberately. Swallowing an import error here
+    # would answer "no module composes this place" for all 128 and silently
+    # tile the 26 that a module owns -- sliding each of them down the axis
+    # instead of growing it, with nothing in any output to say so. A tool that
+    # degrades quietly is worse than one that fails.
+    import bespoke as _BSP                                      # noqa: PLC0415
+    composed = place.get("module") in _BSP.NEAR_END
+
+    if n_want <= 1 or composed:
+        # A place whose footprint is one bay of its own contents. Five of those
+        # were already at full footprint before this section existed and
+        # `docs/spec/PLACES.md` names them.
+        plan.update(n=1, n_dress=1, n_pop=1, built_l=bay_l, tris=0,
+                    composed=composed)
+        _TILING[key] = plan
+        return plan
+
+    import budget as _B                                         # noqa: PLC0415
+    ceiling = _B.DECK["visible_all_tris"]
+    plan["cap"] = ceiling
+    # Seed the memo before probing so the probes' own `build` calls cannot
+    # recurse into here. They pass `_tiles` explicitly and therefore do not,
+    # but a plan that depends on a build that depends on the plan is worth
+    # closing by construction rather than by reading the call graph.
+    _TILING[key] = dict(plan, n=1, n_dress=1, n_pop=1, built_l=bay_l, tris=0)
+
+    s1 = len(build(schema, profile, place, _tiles=(1, 0, 0))[1])
+    s2 = (s1 if n_want < 2
+          else len(build(schema, profile, place, _tiles=(2, 0, 0))[1]))
+    marg = max(1, s2 - s1)                  # one more bay of shell
+    fixed = max(0, s1 - marg)               # the two end walls, once
+    rep = {}
+    full = len(build(schema, profile, place, report=rep, _tiles=(1, 1, 1))[1])
+    dress = max(0, rep.get("dress_tris", 0))
+    pop = max(0, full - s1 - dress)
+
+    def _cost(n_, nd_, np_):
+        return fixed + n_ * marg + nd_ * dress + np_ * pop
+
+    n = max(1, min(n_want, int((ceiling - fixed - dress - pop) // marg)))
+    rem = ceiling - _cost(n, 1, 1)
+    n_dress = n if dress <= 0 else 1 + int(max(0, rem) // dress)
+    n_dress = max(1, min(n, n_dress))
+    rem -= (n_dress - 1) * dress
+    n_pop = n_dress if pop <= 0 else 1 + int(max(0, rem) // pop)
+    n_pop = max(1, min(n_dress, n_pop))
+
+    plan.update(n=n, n_dress=n_dress, n_pop=n_pop, built_l=n * bay_l,
+                capped=n < n_want, shell_tris=marg, fixed_tris=fixed,
+                dress_tris=dress, pop_tris=pop, composed=False,
+                tris=_cost(n, n_dress, n_pop))
+    _TILING[key] = plan
+    return plan
+
+
+def built_span_m(schema, profile, place):
+    """The size of what `build` ACTUALLY emits: (across the ring, along the axis).
+
+    THE ONE FUNCTION EVERYTHING THAT PLACES A ROOM MUST ASK, and it exists
+    because three places in `deck.py` each carried their own copy of the old
+    answer -- `min(room_extent_m, bay_span_m)`, written out twice per site. With
+    the bay tiled that expression is no longer how big the room is, and a
+    collision shell sized on it would put an invisible wall 11 m into a 140 m
+    room a player can see all the way down. `build`'s own note on `door_at` says
+    what that is worth: "Physics and pixels disagreeing about whether there is a
+    wall there is worse than either being wrong on its own."
+    """
+    plan = tiling(schema, profile, place)
+    return plan["bay_w"], plan["built_l"]
+
+
 def articulate(v, t, g, prefix, hw, hl, ceil, nrib=None, ln=None,
                ow=None, ol=None, z_off=0.0, x_off=0.0, scale=1.0,
                soffit=True, conduit=True, bands=True,
@@ -2258,9 +2459,9 @@ def spawn_m(schema, profile, place):
     deck, z along. y is a small clearance above the deck so the body settles
     onto the floor rather than starting embedded in it.
     """
-    w_full, l_full, _r = room_extent_m(schema, profile, place)
-    bw, bl = bay_span_m(place)
-    w, ln = min(w_full, bw), min(l_full, bl)
+    w, ln = built_span_m(schema, profile, place)
+    _bw, bay_l = bay_span_m(place)
+    bay_l = min(ln, bay_l)
     hw, hl = w / 2.0, ln / 2.0
     _need, i0, i1 = lateral_stack(place)
     fx = fixtures_for(place)
@@ -2274,7 +2475,17 @@ def spawn_m(schema, profile, place):
         lo, hi = left if (left[1] - left[0]) > (right[1] - right[0]) else right
     x = (lo + hi) / 2.0
     # Keep clear of the end walls, and of the first fixture bay along z.
-    z = max(-hl + 1.2, min(hl - 1.2, -hl + FIXTURE_PITCH_M * 0.5))
+    #
+    # IN THE BAY THE DOOR IS IN, and that is the tiling's doing. This read
+    # `-hl + FIXTURE_PITCH_M * 0.5` -- just inside the FAR wall -- which was the
+    # same thing as "just inside the room" only while the room was one bay. On a
+    # tiled `docking_bays` it would put a body 140 m from the way in and 129 m
+    # from the nearest furniture, and every room-reach measurement taken from it
+    # would be measuring the walk back. The expression is unchanged; it is
+    # applied to the NEAR bay's own frame, so a one-bay room gets exactly the
+    # point it got before.
+    z = max(-hl + 1.2, min(hl - 1.2,
+                           hl - bay_l + max(1.2, FIXTURE_PITCH_M * 0.5)))
     return (x, 0.35, z)
 
 
@@ -2303,7 +2514,7 @@ def _end_wall_with_door(v, t, g, arch, ow, ceil, hl, ol, door_at):
 def place_interacts(v, t, g, place, hw, hl, ceil, inset=(0.0, 0.0),
                     spine_d=0.0, chan_c=0.0, chan_lo=None, chan_hi=None,
                     over_h=0.0, budget=None, skip=(), wall_faces=None,
-                    keep_clear=None, report=None):
+                    keep_clear=None, report=None, z_off=0.0, seed=0):
     """Stand this place's DECLARED interactables in a room. One rule, two shells.
 
     THE SPLIT THIS FUNCTION EXISTS TO CLOSE. `directory.PLACES["interacts"]` is
@@ -2357,6 +2568,22 @@ def place_interacts(v, t, g, place, hw, hl, ceil, inset=(0.0, 0.0),
     three times over -- but a DECLARED interactable that is never placed is a
     thing the register says a player can use and the room does not contain.
     One of each is the floor; repeats are what the budget governs.
+
+    `z_off` IS WHAT MAKES THIS WORK IN A TILED LOCATION, and without it the
+    tiling would have been furniture in the first bay and 129 m of nothing. Both
+    passes are CURSORS from `-hl`, and the floor pass runs `floor_props * 3` --
+    a hard cap of three copies of each declared prop no matter how long the
+    room is. Handed a 140 m room they place a handful of props against one end
+    and stop. So `build` calls this once per bay with `hl` the BAY's half-length
+    and `z_off` the bay's centre, which is exactly what `bay_span_m`'s docstring
+    always meant by "that bay instanced along its footprint".
+
+    `seed` IS PER BAY AND IT IS WHY THE REPEAT IS NOT A TILE PATTERN. It picks
+    which side wall the floor cursor starts on and phases the cursor within its
+    own clearance, so bay 7's declared props are not bay 6's translated by
+    `bay_l`. `deck.py --degeneracy` asks identity of two PLACES; the same
+    question asked of two bays of one place is what this answers, and
+    `--footprint` asserts it.
     """
     want = [p for p in place["interacts"] if p not in skip]
     floor_props = [p for p in want
@@ -2374,17 +2601,39 @@ def place_interacts(v, t, g, place, hw, hl, ceil, inset=(0.0, 0.0),
     placed = {"floor": 0, "wall": 0, "ceiling": 0, "dropped": [],
               "turned": 0}
 
+    z_lo, z_top = z_off - hl, z_off + hl
+
     def z_limit(xa, xb):
         """How far up the room a prop spanning x in [xa, xb] may reach."""
         if keep_clear is None:
-            return hl
+            return z_top
         cx0, cx1, cz0 = keep_clear
-        return min(hl, cz0) if (xb > cx0 and xa < cx1) else hl
+        return min(z_top, cz0) if (xb > cx0 and xa < cx1) else z_top
 
     z_hi = z_limit(-hw, hw)             # the tightest bound, for the reports
 
     used = 0.0
-    side, cursor = -1, [-hl + 0.6, -hl + 0.6]
+    # THE BAY'S OWN PHASE. `_u` is the module's seeded hash, so this is
+    # reproducible from (place, bay) and there is no `random` anywhere in the
+    # build. The start side alternates and the cursor is offset by up to one
+    # prop gap, which is enough that two bays never rank the same props against
+    # the same wall at the same z.
+    #
+    # SEED 0 IS EXACTLY THE PRE-TILING BEHAVIOUR -- side `-1`, cursor at
+    # `-hl + 0.6`, instance seeds without the bay in them. A one-bay room, every
+    # `bespoke.compose` caller and the two probes in `_selftest` therefore emit
+    # the geometry they emitted before, byte for byte, and the variation is
+    # purely additive. A change that moved every prop on the station a
+    # centimetre would be a content churn nothing asked for, and it would land
+    # in `variety.py` and `--degeneracy` as noise on top of the real signal.
+    side = -1 if (seed % 2 == 0) else 1
+    z0_start = z_lo + 0.6 + (0.40 * _u(place["key"], "interacts", seed)
+                             if seed else 0.0)
+    cursor = [z0_start, z0_start]
+
+    def _sd(*parts):
+        """An instance seed that carries the bay only when there is one."""
+        return (place["key"],) + ((seed,) if seed else ()) + parts
     ndist = len(floor_props)
     free_x = 2 * hw - inset[0] - inset[1] - 0.1
     for i, key in enumerate(floor_props * 3):
@@ -2436,7 +2685,7 @@ def place_interacts(v, t, g, place, hw, hl, ceil, inset=(0.0, 0.0),
             continue
         s, ax, az, x0, z0, turned = pick
         _fixture(v, t, g, key, (x0, 0.0, z0), (x0 + ax, ph, z0 + az),
-                 (place["key"], i), "prop_", report)
+                 _sd(i), "prop_", report)
         cursor[0 if s < 0 else 1] = z0 + az + 0.45
         used += pw * pd
         side = -s
@@ -2457,7 +2706,7 @@ def place_interacts(v, t, g, place, hw, hl, ceil, inset=(0.0, 0.0),
     # near and far end walls. Each is (origin, along-axis, usable length).
     # The side wall's own bound, from its own x band -- a terminal hung at
     # x = -hw is only in the doorway's way if the doorway reaches that wall.
-    walls = [("side", -hl, z_limit(-hw, -hw + 0.6)),
+    walls = [("side", z_lo, z_limit(-hw, -hw + 0.6)),
              ("near", -hw + inset[0], hw - inset[1]),
              ("far", -hw + inset[0], hw - inset[1])]
     if wall_faces is not None:
@@ -2480,13 +2729,13 @@ def place_interacts(v, t, g, place, hw, hl, ceil, inset=(0.0, 0.0),
         # functions ask for. A latent defect that a variety pass merely
         # uncovered; the sill is now derived from the room it is in.
         sill = 0.0 if ph > 2.0 else min(1.05, max(0.0, ceil - ph - 0.10))
-        sd = (place["key"], walls[wi][0], round(cur, 2))
+        sd = _sd(walls[wi][0], round(cur, 2))
         if walls[wi][0] == "side":
             _fixture(v, t, g, key, (-hw, sill, cur),
                      (-hw + pd, sill + ph, cur + pw), sd, "prop_", report)
         elif walls[wi][0] == "near":
-            _fixture(v, t, g, key, (cur, sill, -hl),
-                     (cur + pw, sill + ph, -hl + pd), sd, "prop_", report)
+            _fixture(v, t, g, key, (cur, sill, z_lo),
+                     (cur + pw, sill + ph, z_lo + pd), sd, "prop_", report)
         else:
             _fixture(v, t, g, key, (cur, sill, z_hi - pd),
                      (cur + pw, sill + ph, z_hi), sd, "prop_", report)
@@ -2500,9 +2749,9 @@ def place_interacts(v, t, g, place, hw, hl, ceil, inset=(0.0, 0.0),
         # gantry crane does not do.
         top = ceil - over_h
         xc = min(max(chan_c, chan_lo + pd / 2), chan_hi - pd / 2)
-        z0 = min(max(-hl + 2.0 + i * 3.0, -hl), z_hi - pw)
+        z0 = min(max(z_lo + 2.0 + i * 3.0, z_lo), z_hi - pw)
         _fixture(v, t, g, key, (xc - pd / 2, top - ph, z0),
-                 (xc + pd / 2, top, z0 + pw), (place["key"], i), "prop_",
+                 (xc + pd / 2, top, z0 + pw), _sd(i), "prop_",
                  report)
         placed["ceiling"] += 1
     if report is not None:
@@ -2511,7 +2760,7 @@ def place_interacts(v, t, g, place, hw, hl, ceil, inset=(0.0, 0.0),
 
 
 def place_elements(v, t, g, place, hw, hl, ceil, chan_lo, chan_hi,
-                   report=None, w=None, ln=None):
+                   report=None, w=None, ln=None, z_off=0.0, seed=0):
     """Build this place's PLAN ELEMENTS -- the middle of its floor.  INV-140.
 
     Runs AFTER the declared props and BEFORE the dressing, and that order is
@@ -2530,6 +2779,16 @@ def place_elements(v, t, g, place, hw, hl, ceil, chan_lo, chan_hi,
     The free floor is the fixtures' channel less the band each wall keeps for
     its own furniture (`element_keep_m`), which is why nothing here needs to
     know anything about the props or the dressing.
+
+    `z_off` AND `seed` ARE THE TILING'S, and this function needed them for a
+    sharper reason than `place_interacts` did. A `rank` is capped at `min(5, ...)`
+    rows and a `cell` at `min(6, ...)`, and both CENTRE what they build in the
+    window they are given -- so over a 140 m run the plan would be five rows of
+    desks in the middle and 120 m of bare deck either side, which reads worse
+    than the one bay it replaced. `build` calls this per bay against the bay's
+    own window; `w`/`ln` stay the WHOLE run, because the walkability trial in
+    `put` must ask whether the run is still crossable end to end and not whether
+    one bay of it is.
     """
     els = elements_for(place)
     if not els:
@@ -2545,7 +2804,7 @@ def place_elements(v, t, g, place, hw, hl, ceil, chan_lo, chan_hi,
     els = tuple((n, max(sz, 0.16) if k == "cell" else sz, ex, h, k)
                 for n, sz, ex, h, k in els)
     lo, hi = chan_lo + kx0, chan_hi - kx1
-    zlo, zhi = -hl + kz0, hl - kz1
+    zlo, zhi = z_off - hl + kz0, z_off + hl - kz1
     solids = [b for _n, b in _boxes(v, t, g, is_solid)]
 
     def put(name, kind, x0, x1, y1, z0, z1, i):
@@ -2569,7 +2828,8 @@ def place_elements(v, t, g, place, hw, hl, ceil, chan_lo, chan_hi,
                 [(name, b) for b in solids + [box]], w, ln):
             return 0
         _fixture(v, t, g, name, (box[0], box[1], box[2]),
-                 (box[3], box[4], box[5]), (place["key"], kind, i),
+                 (box[3], box[4], box[5]),
+                 (place["key"],) + ((seed,) if seed else ()) + (kind, i),
                  report=report)
         solids.append(box)
         return 1
@@ -2623,8 +2883,13 @@ def place_elements(v, t, g, place, hw, hl, ceil, chan_lo, chan_hi,
             # with both on +x the second reported `want 2, got 0`: two runs of
             # fins at two pitches down one wall are the same cubic metre.  Two
             # facing runs off an aisle is also what a ward actually is.
-            side = sum(1 for e in els[:els.index(
-                (name, span_z, ext_x, h, kind))] if e[4] == "cell") % 2
+            # `+ seed` is the tiling's, and it is the one variation in this
+            # function that changes the PLAN rather than the machine: a ward's
+            # bays face off an aisle either way round, so alternating which wall
+            # they hang on down the run is both varied and correct.
+            side = (sum(1 for e in els[:els.index(
+                (name, span_z, ext_x, h, kind))] if e[4] == "cell")
+                + seed) % 2
             pitch = span_z + CELL_PITCH_M
             n = max(0, min(6, int((zhi - zlo + CELL_PITCH_M) / pitch)))
             want = n
@@ -2650,13 +2915,22 @@ def place_elements(v, t, g, place, hw, hl, ceil, chan_lo, chan_hi,
 
 
 def build(schema, profile, place, max_span_m=None, door_at=None,
-          report=None, plates=True):
-    """Geometry for one representative bay of a location.
+          report=None, plates=True, _tiles=None):
+    """Geometry for a location: its bay, instanced along its own footprint.
 
-    A 300 m storage run is a corridor of identical bays; emitting all of it
-    would put millions of triangles into a layer that only has to prove the
-    volume exists, is closed, and is furnished. `bays_in()` says how many the
-    streaming system instances.
+    IT USED TO BE ONE BAY AND THAT IS THE DEFECT THIS ANSWERS. The docstring
+    here read "Geometry for one representative bay of a location... `bays_in()`
+    says how many the streaming system instances", and nothing instanced them --
+    so `docking_bays` is 140 m in the gazetteer and a player walked 10.77 m of
+    it. `tiling()` decides how many bays are built and at what detail; the loops
+    below already scale with `ln` and always did, which is why this is a change
+    of one clamp plus the four content passes that had to become per-bay.
+
+    `_tiles` is `(n, n_dress, n_pop)` and exists for ONE caller: `tiling()`'s own
+    probe, which needs the cost of a single bay with and without the two layers
+    that fall off with distance. Everything else asks for the plan. It is private
+    because a caller that picks its own tile count is a second description of how
+    big a room is, and hard rule 4 is that there is only ever one.
 
     `door_at` is `(x_m, width_m, height_m)` -- an opening in the wall at +z,
     which is the end a ring corridor arrives at. Without it a room is a sealed
@@ -2673,12 +2947,30 @@ def build(schema, profile, place, max_span_m=None, door_at=None,
     w_full, l_full, _r = room_extent_m(schema, profile, place)
     bw, bl = bay_span_m(place)
     w = min(w_full, bw)
-    ln = min(l_full, bl)
+    bay_l = min(l_full, bl)
+    if _tiles is None:
+        _plan = tiling(schema, profile, place)
+        n_bay, n_dress, n_pop = (_plan["n"], _plan["n_dress"], _plan["n_pop"])
+    else:
+        n_bay, n_dress, n_pop = _tiles
+    # THE ONE CLAMP THAT KEPT 128 LOCATIONS AT A BAY APIECE. Everything below
+    # is written against `ln` and scales with it; this line is what used to make
+    # `ln` one bay.
+    ln = n_bay * bay_l
     arch = archetype(place)
     ceil = ceiling_m(place)
     v, t, g = [], [], []
     hw, hl = w / 2.0, ln / 2.0
     ow, ol = hw + WALL_T_M, hl + WALL_T_M
+    # Bay k's centre in the run's own frame. The door is in the +z wall, so the
+    # LAST bay is the one a player walks into and detail falls off backwards
+    # from it -- `_near` is that ordering, and it is what makes `n_dress` and
+    # `n_pop` mean "within this far of the way in" rather than "somewhere".
+    def _bay_z(k):
+        return -hl + (k + 0.5) * bay_l
+
+    def _near(k):
+        return n_bay - 1 - k                 # 0 at the door, n-1 at the far end
 
     # Shell: deck and soffit run to the OUTER wall extent, or every wall/soffit
     # junction is an open corner. hospitality.py shipped that defect and it
@@ -2779,16 +3071,40 @@ def build(schema, profile, place, max_span_m=None, door_at=None,
     # objects. It runs AFTER the fixtures so it can read the free channel they
     # leave, and before the declared props so a declared prop always wins its
     # spot -- `interacts` is what a player can USE and must not be buried.
-    place_interacts(v, t, g, place, hw, hl, ceil,
-                    inset=inset, spine_d=spine_d, chan_c=chan_c,
-                    chan_lo=chan_lo, chan_hi=chan_hi, over_h=over_h,
-                    budget=DENSITY.get(arch, 0.22) * w * ln, report=report)
+    # PER BAY, and that is the whole of what "instanced along its footprint"
+    # means for the things a player uses. Both passes are cursors from the near
+    # end of the window they are given, and both cap how many copies they will
+    # make -- `floor_props * 3` here, `min(5, ...)` rows and `min(6, ...)` cells
+    # in the plan elements. Called once over a 140 m run they put a handful of
+    # props against one end and centre five rows of desks in the middle; called
+    # once per bay they furnish all of it. The seed is the bay index, so bay 7
+    # is not bay 6 translated by `bay_l`.
+    for k in range(n_bay):
+        # ONLY THE END BAYS HAVE END WALLS. `place_interacts` hangs wall props
+        # on the -x side wall first and spills onto the two end walls when it
+        # runs out; in a tiled run those planes are interior to the room for
+        # every bay but the two on the ends, so a spilled monitor wall would
+        # hang in mid-air 60 m down an open hall. `wall_faces` already existed
+        # for exactly this question and a one-bay room gets all three, which is
+        # what it got before.
+        faces = ("side",) + (("near",) if k == 0 else ()) \
+            + (("far",) if k == n_bay - 1 else ())
+        place_interacts(v, t, g, place, hw, bay_l / 2.0, ceil,
+                        inset=inset, spine_d=spine_d, chan_c=chan_c,
+                        chan_lo=chan_lo, chan_hi=chan_hi, over_h=over_h,
+                        budget=DENSITY.get(arch, 0.22) * w * bay_l,
+                        report=report, z_off=_bay_z(k), seed=k,
+                        wall_faces=faces)
 
-    # THE PLAN ELEMENTS -- INV-140, and this is the line that makes a medlab's
-    # floor a different shape from an office's rather than a differently
-    # furnished one.  See `place_elements` and `PLAN_ELEMENTS`.
-    place_elements(v, t, g, place, hw, hl, ceil, chan_lo, chan_hi,
-                   report=report, w=w, ln=ln)
+        # THE PLAN ELEMENTS -- INV-140, and this is the line that makes a
+        # medlab's floor a different shape from an office's rather than a
+        # differently furnished one.  See `place_elements` and `PLAN_ELEMENTS`.
+        # `w`/`ln` stay the WHOLE run: `put`'s walkability trial has to ask
+        # whether a body can still cross the location end to end, and a bay that
+        # is crossable inside a run that is not is the failure the tiling would
+        # otherwise introduce.
+        place_elements(v, t, g, place, hw, bay_l / 2.0, ceil, chan_lo, chan_hi,
+                       report=report, w=w, ln=ln, z_off=_bay_z(k), seed=k)
 
     # ------------------------------------------------------------------
     # Light fittings. See LIGHTS. Emitted LAST and tested against what is
@@ -2920,45 +3236,120 @@ def build(schema, profile, place, max_span_m=None, door_at=None,
     # finished yet. It accepted full density, the props went in on top, and
     # 21 rooms came out impassable -- including the brig, which is walkable
     # with no dressing at all. A trial has to run on what actually ships.
+    # PER BAY, WITH THE BAY'S OWN SEED, AND ONLY AS FAR BACK AS `n_dress`.
+    # Two reasons, and the second is the one that matters.
+    #
+    # 1. COST. Dressing is 26% of a `docking_bays` bay -- 25,500 triangles --
+    #    and it is the layer a streaming system instantiates rather than bakes.
+    #    `tiling()` decides how deep it reaches from the budget, not from a
+    #    number chosen here.
+    # 2. VARIETY. One `dress()` call over a 140 m room is one seed, and the
+    #    generator would lay the same furniture against the same wall at the
+    #    same pitch for the whole run -- a visible tile pattern, which is the
+    #    failure `deck.py --degeneracy` exists to catch one level up. A seed per
+    #    bay is what makes the repeat a place instead of a texture.
+    #
+    # The trial is per bay for a third reason that is not cost: it now runs
+    # against the run's OWN solids clipped to the bay's window, computed once
+    # instead of re-derived from the whole merged mesh at every density -- the
+    # old form was O(bays x densities x run triangles) and would have made a
+    # 140 m room quadratic in its own length.
     import dressing as _dress                                   # noqa: PLC0415
-    for _dens in DRESS_DENSITIES:
-        dv, dt, dg, _dc = _dress.dress(
-            place["key"], w - 2 * WALL_T_M, ln - 2 * WALL_T_M, ceil, arch,
-            inset=(inset[0], inset[1]), seed=place["key"], density=_dens,
-            walls=dress_walls(place))
-        trial_v = v + dv
-        trial_t = list(t) + [(a + len(v), b + len(v), c + len(v))
-                             for a, b, c in dt]
-        trial_g = list(g) + [(n, lo + len(t), hi + len(t))
-                             for n, lo, hi in dg]
-        _trial_boxes = _boxes(trial_v, trial_t, trial_g, is_solid)
-        _ok = walkable(_trial_boxes, bw, bl)
-        if report is not None:
-            report.setdefault("trials", []).append(
-                (_dens, _ok, len(_trial_boxes)))
-        if _dens == 0.0 or _ok:
-            v, t, g = trial_v, trial_t, trial_g
-            # WHICH DENSITY IT SETTLED ON. Without this the only way to know how
-            # much furniture a room actually got is to re-run the trial from
-            # outside, which is a second copy of the rule that decides it -- and
-            # every time this project has kept two copies of one decision they
-            # have drifted. `report` is how a caller asks the thing that decided.
-            if report is not None:
-                report["density"] = _dens
-                report["dress_tris"] = len(dt)
-            break
+    run_boxes = _boxes(v, t, g, is_solid)
+    dress_tris, dens_used = 0, None
+    _walls = dress_walls(place)
 
+    def _bay_walls(k):
+        """The walls THIS bay actually has, which at a join is not four.
+
+        THE GATE FOUND THIS AND IT IS THE FAILURE THE TILING EXISTS TO AVOID.
+        `dressing.dress` ranks furniture against the walls it is given, and
+        `"z-"`/`"z+"` are walls only for the two bays on the ends of the run.
+        Given all four, every bay put a rank of furniture across the room at
+        each of its own z faces -- so at a join two ranks stood back to back and
+        SEALED the run. `casino` and `admin_complex` came back crossable bay by
+        bay and not end to end, which `_selftest`'s "the lit room is still
+        walkable" said in one line. A 22 m room a body is stopped halfway down
+        is worse than the 11 m room it replaced.
+
+        Same rule as `wall_faces` above, for the same reason, and a one-bay room
+        gets exactly what it got before.
+        """
+        if n_bay <= 1:
+            return _walls
+        keep = {"x-", "x+"}
+        if k == 0:
+            keep.add("z-")
+        if k == n_bay - 1:
+            keep.add("z+")
+        return tuple(x for x in _walls if x in keep)
+
+    for k in range(n_bay - 1, -1, -1):          # from the door backwards
+        if _near(k) >= n_dress:
+            continue
+        zc = _bay_z(k)
+        window = [(n_, (b[0], b[1], b[2] - zc, b[3], b[4], b[5] - zc))
+                  for n_, b in run_boxes
+                  if b[5] > zc - bay_l / 2.0 - 1e-6
+                  and b[2] < zc + bay_l / 2.0 + 1e-6]
+        for _dens in DRESS_DENSITIES:
+            dv, dt, dg, _dc = _dress.dress(
+                place["key"], w - 2 * WALL_T_M, bay_l - 2 * WALL_T_M, ceil,
+                arch, inset=(inset[0], inset[1]),
+                seed=f"{place['key']}#{k}", density=_dens,
+                walls=_bay_walls(k))
+            _trial_boxes = window + _boxes(dv, dt, dg, is_solid)
+            _ok = walkable(_trial_boxes, w, bay_l)
+            if report is not None:
+                report.setdefault("trials", []).append(
+                    (_dens, _ok, len(_trial_boxes)))
+            if _dens == 0.0 or _ok:
+                # WHICH DENSITY IT SETTLED ON. Without this the only way to know
+                # how much furniture a room actually got is to re-run the trial
+                # from outside, which is a second copy of the rule that decides
+                # it -- and every time this project has kept two copies of one
+                # decision they have drifted. `report` is how a caller asks the
+                # thing that decided. Across a tiled run it is the WORST bay's,
+                # because that is the one a claim about the room has to survive.
+                off, t0 = len(v), len(t)
+                v.extend((x, y, z + zc) for x, y, z in dv)
+                t.extend((a + off, b + off, c + off) for a, b, c in dt)
+                g.extend((n_, lo + t0, hi + t0) for n_, lo, hi in dg)
+                dress_tris += len(dt)
+                dens_used = (_dens if dens_used is None
+                             else min(dens_used, _dens))
+                break
+    if report is not None:
+        report["density"] = dens_used
+        report["dress_tris"] = dress_tris
 
     # POPULATION -- station/populace.py, and it runs LAST for the same reason
     # the dressing does: people are placed against the furniture that is
     # actually there, so somebody ends up ON a chair rather than near one. The
     # hour comes from STATION_HOUR so the whole station can be moved to 0300
     # with one number.
+    #
+    # `max_people` IS THE TILING'S CAP AND IT IS THE BIGGEST ONE. A baked body
+    # is ~3,760 triangles and 51% of a `docking_bays` bay; at the room's own
+    # derived density a 140 m bay ring holds 114 of them, which is 429,000
+    # triangles of people in one room and more than the whole frame allowance.
+    # `deck.CORRIDOR_INSTANCED` already made exactly this trade for the corridor
+    # crowd -- 88% fewer triangles and the only form that can move -- and rooms
+    # bake theirs because nothing has instanced them yet. So the DENSITY is the
+    # room's own over its full length and the COUNT is capped at what `n_pop`
+    # bays' worth is; `occupancy` is asked rather than assumed, so the cap is
+    # stated in the same units the uncapped number is.
     import populace as _pop                                     # noqa: PLC0415
+    _bay_people = _pop.occupancy(place["key"],
+                                 (w - 2 * WALL_T_M) * (bay_l - 2 * WALL_T_M),
+                                 STATION_HOUR, arch)
+    _cap = max(1, int(round(_bay_people * n_pop)))
     pv, pt, pg, _ps = _pop.populate(
         place["key"], v, t, g, w - 2 * WALL_T_M, ln - 2 * WALL_T_M,
         hour=STATION_HOUR, arch=arch, seed=place["key"],
-        g_ms2=_pop.place_gravity(place["key"]))
+        max_people=_cap, g_ms2=_pop.place_gravity(place["key"]))
+    if report is not None:
+        report["people_cap"] = _cap
     if report is not None:
         # WHO IS IN THIS ROOM AND WHICH WAY THEY ARE FACING. A body is baked
         # into the merged mesh, so nothing downstream can recover its yaw by
@@ -3151,6 +3542,197 @@ def unbuilt(schema, profile):
     return [p for p in dr.PLACES if not p["module"]]
 
 
+# ---------------------------------------------------------------------------
+# THE GATE: DOES THE GEOMETRY SPAN THE FOOTPRINT
+# ---------------------------------------------------------------------------
+
+
+def bay_signatures(v, t, plan):
+    """One hash per bay, of that bay's own geometry IN ITS OWN FRAME.
+
+    IDENTITY, NOT SIMILARITY, and it is `deck.py --degeneracy`'s question asked
+    one level down. That gate hashes a PLACE and says two places whose geometry
+    hashes the same are one place; the same argument applies exactly to two bays
+    of one place, and it is the failure mode tiling introduces -- a 140 m room
+    built as thirteen copies of one 10.77 m room is a texture, not a location.
+    There is no raster, no threshold and nothing to tune, so there is nothing to
+    argue with.
+
+    Order-independent by construction: each triangle is hashed in its bay's
+    local frame and the hashes are XORed, so two bays match only if they hold
+    the same set of triangles in the same places. Sorting eight hundred thousand
+    triangles to get the same answer would cost thirty times as much.
+    """
+    n, bl = plan["n"], plan["bay_l"]
+    hl = n * bl / 2.0
+    acc = [0] * n
+    for a, b, c in t:
+        pa, pb, pc = v[a], v[b], v[c]
+        k = int(((pa[2] + pb[2] + pc[2]) / 3.0 + hl) / bl)
+        k = min(n - 1, max(0, k))
+        zc = -hl + (k + 0.5) * bl
+        # Rotate to a fixed starting vertex so winding order alone cannot make
+        # two identical triangles hash differently.
+        tri = [(round(p[0], 4), round(p[1], 4), round(p[2] - zc, 4))
+               for p in (pa, pb, pc)]
+        i0 = tri.index(min(tri))
+        key = repr(tri[i0:] + tri[:i0]).encode()
+        acc[k] ^= int.from_bytes(hashlib.blake2b(key, digest_size=8).digest(),
+                                 "big")
+    return [f"{a:016x}" for a in acc]
+
+
+def footprint_ledger(schema, profile, places=None, legacy=False):
+    """Metres of each location that are actually BUILT, measured off the mesh.
+
+    THE NUMBER THIS PROJECT DID NOT HAVE. `deck.py --sweep` answers "how much of
+    the station can I walk in" per LOCATION and reports 128 of 128; it is a count
+    of locations REACHED, not of location BUILT, and the difference was 0.17% of
+    the declared footprint. This measures the built extent off the emitted mesh
+    -- not off the plan, not off `bays_in`, off the geometry -- so it can catch a
+    plan that says 140 m and a builder that emits 11.
+
+    `legacy=True` REBUILDS THE PRE-TILING CONTENT -- one bay per location, which
+    is what `build` emitted for every session up to this one -- and is the
+    negative control. This gate must fail on it, and it does: the station comes
+    back at 1,280 m of the 18,790 m its own register declares, with the mesh
+    short of the plan in 115 of 128 places. A gate that cannot fail on the
+    content it was written for is measuring the wrong thing, which is the defect
+    that cost this repository three layers of work.
+    """
+    import deck as _D                                           # noqa: PLC0415
+    if places is None:
+        places = [p for p in dr.PLACES]
+    rows = []
+    for p in places:
+        plan = tiling(schema, profile, p)
+        v, t, g = build(schema, profile, p,
+                        _tiles=(1, 1, 1) if legacy else None)
+        zs = [q[2] for q in v]
+        # The shell's deck, soffit and side walls run to the OUTER extent, so
+        # the mesh is the interior length plus a wall thickness at each end.
+        built_m = (max(zs) - min(zs)) - 2 * WALL_T_M
+        sigs = bay_signatures(v, t, plan) if plan["n"] > 1 and not legacy else []
+        row = {
+            "key": p["key"], "want_m": plan["want_l"],
+            "plan_m": plan["built_l"], "built_m": built_m,
+            "n_want": plan["n_want"], "n": plan["n"],
+            "n_dress": plan["n_dress"], "n_pop": plan["n_pop"],
+            "capped": plan["capped"], "tris": len(t),
+            "est": plan["tris"], "cap": plan["cap"],
+            "twins": len(sigs) - len(set(sigs)),
+            "composed": bool(plan.get("composed")), "module_m": None,
+        }
+        # A PLACE THIS MODULE DOES NOT BUILD IS MEASURED ON THE MESH THAT IS
+        # ACTUALLY DRAWN, not excused. `deck.room_geometry` is the function that
+        # decides which of the two builds a place gets, so asking it is the only
+        # way to get a number that is about the shipped room -- and it keeps the
+        # 26 composed places IN the ledger with their own coverage printed
+        # instead of quietly absent. An exemption list nobody can see is how a
+        # coverage figure becomes a lie; this one is 26 rows of metres.
+        if row["composed"] and not legacy:
+            bv, _bt, _bg, used = _D.room_geometry(schema, profile, p)
+            bz = [q[2] for q in bv]
+            row["module_m"] = max(bz) - min(bz)
+            row["used"] = used
+        rows.append(row)
+    return rows
+
+
+def spans_footprint(schema, profile, legacy=False, verbose=False):
+    """Assert that a location's geometry spans the footprint it declares.
+
+    Three properties, and each of them can fail on its own:
+
+    1. THE MESH FOLLOWS THE PLAN. What `tiling()` says is built and what `build`
+       emits must agree to a centimetre. This is the one that fails on the
+       pre-tiling content, by an order of magnitude, in 115 of 128 places.
+    2. THE PLAN IS THE FOOTPRINT UNLESS THE BUDGET SAYS OTHERWISE. A place is
+       built to its full declared length; a place that is not must be one whose
+       own measured per-bay cost puts the full length over `budget.py`'s frame
+       allowance, and the shortfall is printed in metres. There is no list of
+       exemptions to grow -- the only thing that can shorten a room is its own
+       triangle cost, and that is a number, not a decision.
+    3. NO TWO BAYS OF ONE PLACE ARE THE SAME BAY. `bay_signatures`, above.
+
+    ASSERTED OVER THE PLACES THIS MODULE BUILDS, MEASURED OVER ALL 128. The 26
+    that `bespoke.compose` owns get their own line: this file cannot make
+    `zocalo` reach 120 m and asserting that it does would be a gate demanding a
+    fix it does not own. Their coverage is PRINTED from the mesh
+    `deck.room_geometry` actually draws, so it is visible on every run and
+    cannot rot into a silent exemption.
+
+    Prints the station's built length against its declared length, because that
+    is the figure the owner's complaint is actually about and no other gate in
+    this repository computes it.
+    """
+    rows = footprint_ledger(schema, profile, legacy=legacy)
+    mine = [r for r in rows if not r["composed"]]
+    theirs = [r for r in rows if r["composed"]]
+    bad_plan = [r for r in rows if abs(r["built_m"] - r["plan_m"]) > 0.01]
+    short = [r for r in mine if r["plan_m"] < r["want_m"] - 0.01
+             and not r["capped"]]
+    twins = [r for r in rows if r["twins"]]
+    want = sum(r["want_m"] for r in mine)
+    built = sum(r["built_m"] for r in mine)
+    capped = [r for r in mine if r["capped"]]
+
+    tris = sum(r["tris"] for r in rows)
+    print(f"  {len(mine)} places built here   {built:,.0f} m of {want:,.0f} m "
+          f"declared ({100.0 * built / want:.1f}%)   "
+          f"{len(mine) - len(capped)} at full footprint, "
+          f"{len(capped)} capped by budget.py")
+    if theirs:
+        tw = sum(r["want_m"] for r in theirs)
+        tb = sum((r["module_m"] or r["built_m"]) for r in theirs)
+        print(f"  {len(theirs)} places built by a bespoke module   "
+              f"{tb:,.0f} m of {tw:,.0f} m declared "
+              f"({100.0 * tb / max(tw, 1e-9):.1f}%)   "
+              f"NOT asserted here -- rooms.py does not build them")
+    print(f"  {tris:,d} triangles over the 128, "
+          f"{tris / max(built, 1e-9):,.0f} per built metre; "
+          f"worst place {max(r['tris'] for r in rows):,d} against a "
+          f"{max(r['cap'] for r in rows):,d} frame allowance")
+    if verbose or capped:
+        for r in sorted(capped, key=lambda r: r["want_m"] - r["built_m"],
+                        reverse=True)[:12]:
+            print(f"     capped {r['key']:<22} {r['built_m']:>7.1f} m of "
+                  f"{r['want_m']:>7.1f} m  ({r['n']}/{r['n_want']} bays, "
+                  f"dressed {r['n_dress']}, peopled {r['n_pop']}, "
+                  f"{r['est']:,} tri est vs {r['cap']:,})")
+    if verbose:
+        for r in sorted(mine, key=lambda r: -r["built_m"])[:20]:
+            print(f"     {r['key']:<22} {r['built_m']:>7.1f} m  "
+                  f"{r['n']:>3d} bays  {r['tris']:>9,d} tri")
+        for r in sorted(theirs, key=lambda r: (r["module_m"] or 0)
+                        - r["want_m"])[:12]:
+            print(f"     bespoke {r['key']:<20} "
+                  f"{(r['module_m'] or 0):>7.1f} m of {r['want_m']:>7.1f} m "
+                  f"({r.get('used')})")
+
+    ok = True
+    if bad_plan:
+        ok = False
+        print(f"FAIL  the mesh does not span what the plan says it does "
+              f"({len(bad_plan)} of {len(rows)})")
+        for r in bad_plan[:8]:
+            print(f"        {r['key']:<22} built {r['built_m']:.2f} m, "
+                  f"plan {r['plan_m']:.2f} m, declared {r['want_m']:.2f} m")
+    if short:
+        ok = False
+        print(f"FAIL  {len(short)} places are short of their footprint with no "
+              f"budget cap to account for it: "
+              f"{[r['key'] for r in short][:8]}")
+    if twins:
+        ok = False
+        print(f"FAIL  {len(twins)} places contain two byte-identical bays: "
+              f"{[(r['key'], r['twins']) for r in twins][:8]}")
+    if ok:
+        print("PASS  every location's geometry spans its own footprint, or is "
+              "capped by a stated triangle budget, and no bay is a copy")
+    return ok
+
+
 def write_obj(path, key):
     """One bay of one location, plus the camera that frames it.
 
@@ -3169,7 +3751,7 @@ def write_obj(path, key):
     # kit's writer is the right one. interior.write_grouped_obj indexes groups
     # per triangle and raises IndexError on spans.
     ik.write_obj(path, v, t, spans=g, default_group="room")
-    w, ln = bay_span_m(place)
+    w, ln = built_span_m(schema, profile, place)
     ceil = ceiling_m(place)
     # Stand where a PLAYER COULD STAND and look LEVEL down the room. Three
     # camera bugs in a row came from picking a standpoint by arithmetic:
@@ -3238,7 +3820,16 @@ def _selftest():
           DENSITY["medical"] != DENSITY["store"])
 
     # --- geometry ---------------------------------------------------------
+    # ONE BUILD PER PLACE, ANSWERING EVERY PER-PLACE QUESTION. This loop, the
+    # furnished-density loop, the "every room has scenery" comprehension and the
+    # light-fitting loop each used to rebuild all 128 places -- four full builds
+    # apiece, which was affordable at one bay each and is not now that a place
+    # is its whole footprint. The checks are unchanged and still fire where they
+    # did; only the mesh they read is built once.
     total = 0
+    dark, pierced, outside, unwalkable = [], [], [], []
+    lamp_total = 0
+    furnished, has_fix = {}, {}
     for p in places:
         rep = {}
         v, t, g = build(schema, profile, p, report=rep)
@@ -3256,9 +3847,7 @@ def _selftest():
               len(covered) == len(t) and all(0 <= lo <= hi <= len(t)
                                              for _n, lo, hi in g),
               f"{len(covered)} of {len(t)} covered")
-        w_f, l_f, _r = room_extent_m(schema, profile, p)
-        bw, bl = bay_span_m(p)
-        w, ln = min(w_f, bw), min(l_f, bl)
+        w, ln = built_span_m(schema, profile, p)
         xs = [q[0] for q in v]
         ys = [q[1] for q in v]
         zs = [q[2] for q in v]
@@ -3308,6 +3897,60 @@ def _selftest():
               walkable(boxes, w, ln),
               f"no {WALK_M:.1f} m path across a {w:.1f}x{ln:.1f} m bay")
 
+        # --- what the later checks need, taken off this one build ----------
+        furnished[p["key"]] = (
+            sum(1 for n_, _lo, _hi in g
+                if n_.startswith("prop_") or n_.startswith("fix_")), w * ln)
+        has_fix[p["key"]] = any(n_.startswith("fix_") for n_, _l, _h in g)
+
+        # LIGHT FITTINGS. Placed, not inside anything solid, inside the room,
+        # and not closing it. The containment bound is the BUILT run and not
+        # `bay_span_m`: a tiled room's light courses repeat the whole length of
+        # it, so measured against one bay every fitting past the first would
+        # read as outside the room it lights.
+        want_l = {n_ for n_, *_ in lights_for(p)}
+        got_l = {n_ for n_, _l, _h in g if n_.startswith("light_")}
+        lamps = _boxes(v, t, g, lambda n_: n_.startswith("light_"))
+        lamp_total += len(lamps)
+        if want_l - got_l:
+            dark.append((p["key"], sorted(want_l - got_l)))
+        # A fitting inside a furnace stack lights the inside of the furnace.
+        # Ribs count here and do not for props: a chair in front of an
+        # articulated wall is a chair; a light course through one is a strip
+        # of light passing through structure.
+        solid = _boxes(v, t, g, lambda n_: n_.startswith(("prop_", "fix_"))
+                       or n_.endswith("_rib"))
+        for ln_, lb in lamps:
+            if any(_overlaps(lb, sb) for _sn, sb in solid):
+                pierced.append((p["key"], ln_))
+                break
+        ceil_p = ceiling_m(p)
+        for ln_, lb in lamps:
+            if (lb[0] < -w / 2 - WALL_T_M - 1e-6
+                    or lb[3] > w / 2 + WALL_T_M + 1e-6
+                    or lb[2] < -ln / 2 - WALL_T_M - 1e-6
+                    or lb[5] > ln / 2 + WALL_T_M + 1e-6
+                    or lb[1] < -1e-6 or lb[4] > ceil_p + 1e-6):
+                outside.append((p["key"], ln_))
+                break
+        # The deck channel is 20 mm proud and the warm practical is 100 mm
+        # proud at hip height. Neither should close a room, and the flood fill
+        # is the only thing that can say so.
+        # PEOPLE ARE NOT WALLS. An NPC is an agent: a player walks around one
+        # and one steps aside, so a crowded bar is walkable and a bar with a
+        # locker across the door is not. Counting bodies as permanent obstacles
+        # made 11 rooms fail the moment the population generator was wired in,
+        # which is the wrong answer to a right-looking question.
+        #
+        # THE EXEMPTION IS EARNED BELOW, not assumed: a separate check asserts
+        # no body is spawned INSIDE solid furniture, which is a real defect and
+        # the one this exclusion could otherwise hide.
+        if not walkable(_boxes(v, t, g, lambda n_: not (
+                n_.endswith(("_deck", "_soffit", "_wall", "_rib")
+                             + _TRIM_SUFFIXES)
+                or n_.startswith("npc_"))), w, ln):
+            unwalkable.append(p["key"])
+
     # --- the directory's footprints must hold what they declare ------------
     # A location whose declared footprint is smaller than the bay its own
     # declared props need is an error in directory.py, not in this generator,
@@ -3334,18 +3977,20 @@ def _selftest():
     # and the player cannot tell which table they came from. It deliberately
     # does NOT count ribs: a rib is wall articulation, and letting a room pass
     # this by growing more ribs is exactly how the metric would go vacuous.
+    # AREA OVER THE WHOLE BUILT RUN, not over one bay of it. Left as
+    # `bay_span_m` this metric goes vacuous the moment tiling lands: the prop
+    # count would be the run's and the area one bay's, so a 13-bay room would
+    # score thirteen times better for building nothing new. A metric whose
+    # numerator and denominator describe different rooms is not a metric.
     worst = None
     for p in places:
-        v, t, g = build(schema, profile, p)
-        n = sum(1 for n_, _lo, _hi in g
-                if n_.startswith("prop_") or n_.startswith("fix_"))
-        bw, bl = bay_span_m(p)
-        per = (bw * bl) / max(n, 1)
+        n, area = furnished[p["key"]]
+        per = area / max(n, 1)
         if worst is None or per > worst[1]:
             worst = (p["key"], per, n)
         check(f"{p['key']}: the bay is furnished, not an empty hall",
               per < 30.0, f"{per:.0f} m2 per prop ({n} props in "
-                          f"{bw:.1f}x{bl:.1f} m)")
+                          f"{area:.0f} m2)")
     check("even the emptiest bay reads as a room",
           worst[1] < 30.0, f"{worst[0]} at {worst[1]:.0f} m2/prop")
     print(f"  emptiest bay: {worst[0]} at {worst[1]:.1f} m2 per prop")
@@ -3425,9 +4070,7 @@ def _selftest():
                   if min(s[0], s[1], s[2]) < MACHINE_MIN_M)
     print(f"  props still emitted as a plain box because a declared dimension "
           f"is under {MACHINE_MIN_M} m: {tiny}")
-    unscened = [p["key"] for p in places
-                if not any(n.startswith("fix_") for n, _l, _h
-                           in build(schema, profile, p)[2])]
+    unscened = [p["key"] for p in places if not has_fix[p["key"]]]
     check("every room contains scenery it does not declare",
           not unscened, f"{len(unscened)}: {unscened[:6]}")
     # A fixture's whole point is being present WITHOUT being interactable. If
@@ -3621,53 +4264,9 @@ def _selftest():
           all(n.startswith("light_") for n in lit_names),
           f"{sorted(n for n in lit_names if not n.startswith('light_'))}")
 
-    dark, pierced, outside, unwalkable = [], [], [], []
-    lamp_total = 0
-    for p in places:
-        v, t, g = build(schema, profile, p)
-        want = {n for n, *_ in lights_for(p)}
-        got = {n for n, _l, _h in g if n.startswith("light_")}
-        lamps = _boxes(v, t, g, lambda n: n.startswith("light_"))
-        lamp_total += len(lamps)
-        if want - got:
-            dark.append((p["key"], sorted(want - got)))
-        # A fitting inside a furnace stack lights the inside of the furnace.
-        # Ribs count here and do not for props: a chair in front of an
-        # articulated wall is a chair; a light course through one is a strip
-        # of light passing through structure.
-        solid = _boxes(v, t, g, lambda n: n.startswith(("prop_", "fix_"))
-                       or n.endswith("_rib"))
-        for ln_, lb in lamps:
-            if any(_overlaps(lb, sb) for _sn, sb in solid):
-                pierced.append((p["key"], ln_))
-                break
-        bw, bl = bay_span_m(p)
-        ceil = ceiling_m(p)
-        for ln_, lb in lamps:
-            if (lb[0] < -bw / 2 - WALL_T_M - 1e-6
-                    or lb[3] > bw / 2 + WALL_T_M + 1e-6
-                    or lb[2] < -bl / 2 - WALL_T_M - 1e-6
-                    or lb[5] > bl / 2 + WALL_T_M + 1e-6
-                    or lb[1] < -1e-6 or lb[4] > ceil + 1e-6):
-                outside.append((p["key"], ln_))
-                break
-        # The deck channel is 20 mm proud and the warm practical is 100 mm
-        # proud at hip height. Neither should close a room, and the flood fill
-        # is the only thing that can say so.
-        # PEOPLE ARE NOT WALLS. An NPC is an agent: a player walks around one
-        # and one steps aside, so a crowded bar is walkable and a bar with a
-        # locker across the door is not. Counting bodies as permanent obstacles
-        # made 11 rooms fail the moment the population generator was wired in,
-        # which is the wrong answer to a right-looking question.
-        #
-        # THE EXEMPTION IS EARNED BELOW, not assumed: a separate check asserts
-        # no body is spawned INSIDE solid furniture, which is a real defect and
-        # the one this exclusion could otherwise hide.
-        if not walkable(_boxes(v, t, g, lambda n: not (
-                n.endswith(("_deck", "_soffit", "_wall", "_rib")
-                           + _TRIM_SUFFIXES)
-                or n.startswith("npc_"))), bw, bl):
-            unwalkable.append(p["key"])
+    # `dark`, `pierced`, `outside`, `unwalkable` and `lamp_total` are filled in
+    # the single geometry pass above -- this loop used to be the fourth full
+    # rebuild of all 128 places.
     check("no room renders black -- every fitting its archetype declares is "
           "placed", not dark, f"{len(dark)}: {dark[:4]}")
     check("no light fitting is inside something solid",
@@ -3796,7 +4395,17 @@ def _cli(argv):
                     help="write one bay to PATH and print its camera")
     ap.add_argument("--key", default="fabrication",
                     help="directory key of the location to write")
+    ap.add_argument("--footprint", action="store_true",
+                    help="does every location's geometry span its footprint")
+    ap.add_argument("--legacy", action="store_true",
+                    help="--footprint's negative control: build one bay per "
+                         "location, the way every session before 4k did")
+    ap.add_argument("--verbose", action="store_true")
     a = ap.parse_args(argv)
+    if a.footprint:
+        schema, profile = it.load()
+        return 0 if spans_footprint(schema, profile, legacy=a.legacy,
+                                    verbose=a.verbose) else 1
     if not a.obj:
         return _selftest()
     m = write_obj(a.obj, a.key)

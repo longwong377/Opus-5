@@ -150,15 +150,25 @@ def _place_local(verts, radius_m, angle_deg, z_m):
 def room_interior_half_m(schema, profile, place):
     """Half a built room's INSIDE length along the station axis.
 
-    Read off the same three lines `rooms.build` uses to size itself, rather than
-    off the gazetteer footprint: a location's stored footprint is its FULL
+    ASKED OF THE BUILDER RATHER THAN RE-DERIVED HERE, and that is the whole
+    change. This used to read `min(room_extent_m, bay_span_m)` -- the one-bay
+    clamp -- with the note that "a location's stored footprint is its FULL
     extent (`docking_bays` is 360 degrees by 140 m), and what gets built is one
-    representative bay clamped by `bay_span_m`. Asking the footprint gives a
-    number an order of magnitude too big.
+    representative bay". That was true for as long as `rooms.build` emitted one
+    bay. `rooms.tiling` now instances the bay along the footprint, so a shell
+    sized on the old expression would put an INVISIBLE wall 10.8 m into a 140 m
+    room a player can see the whole length of, and `corridor_z_m` -- which is
+    this number plus a wall -- would run the ring corridor straight through the
+    far end of every room on the deck.
+
+    `rooms.built_span_m` returns exactly the old number for the 26 places
+    `bespoke.compose` builds, because `bespoke.room_shell` TRANSLATES a module's
+    geometry rather than scaling it: for those this is where the near face goes,
+    not how big the room is, and tiling it would slide the room down the axis
+    instead of growing it. One function knows which reading applies and it is
+    the one that decides the size.
     """
-    _w, l_full, _r = R.room_extent_m(schema, profile, place)
-    _bw, bl = R.bay_span_m(place)
-    return min(l_full, bl) / 2.0
+    return R.built_span_m(schema, profile, place)[1] / 2.0
 
 
 def room_axial_half_m(schema, profile, place):

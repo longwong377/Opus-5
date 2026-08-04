@@ -176,6 +176,27 @@ jobs:
           python3 rooms.py
           python3 directory.py
 
+      # HOW MUCH OF EACH LOCATION IS ACTUALLY BUILT, measured off the emitted
+      # mesh rather than off a plan or a bay count. `deck.py --sweep` answers
+      # "how much of the station can I walk in" per LOCATION and says 128 of
+      # 128 -- a count of locations REACHED, not of location BUILT. Measured in
+      # 4e the difference was the whole product: `bay_span_m`'s docstring ends
+      # "the full location is then that bay instanced along its footprint" and
+      # nothing instanced it, so `docking_bays` was 140 m in the gazetteer and
+      # 10.8 m on the deck.
+      #
+      # Its negative control is one flag: `--legacy` rebuilds one bay per
+      # location, which is what every session before this one shipped, and this
+      # gate fails on it -- 115 of 128 places short and the station at 6.8% of
+      # its own declared length. A gate that cannot fail on the content it was
+      # written for is measuring the wrong thing.
+      - name: Every location's geometry spans its own footprint
+        id: sfootprint
+        continue-on-error: true
+        run: |
+          cd station
+          python3 rooms.py --footprint
+
       - name: Streaming cell manifest
         id: sstreaming_cell_manifest
         continue-on-error: true
@@ -585,6 +606,8 @@ jobs:
             echo "FAILED: szocalo_and_docking_bay"; fail=1; fi
           if [ "${{ steps.sgenerated_rooms_and_the_layer_register.outcome }}" != "success" ]; then
             echo "FAILED: sgenerated_rooms_and_the_layer_register"; fail=1; fi
+          if [ "${{ steps.sfootprint.outcome }}" != "success" ]; then
+            echo "FAILED: sfootprint"; fail=1; fi
           if [ "${{ steps.sstreaming_cell_manifest.outcome }}" != "success" ]; then
             echo "FAILED: sstreaming_cell_manifest"; fail=1; fi
           if [ "${{ steps.smaterials_and_that_the_scenes_still_agre.outcome }}" != "success" ]; then
