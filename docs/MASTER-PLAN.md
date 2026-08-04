@@ -121,14 +121,19 @@ Losing the card is canon-catastrophic, which makes it the perfect stakes object.
 | **verify L3** | **GREEN** — x1/x10/x60 all PASS at **0.05 m from the post**, three controls FIRE at 38–42 m short, exit 0. The 0.05-vs-5.59 dispute resolves to **0.05 m**; the 5.59 was a room leg laid as a straight line through a desk rank (`docs/life-L3.md` §2.5, §3) |
 | **CI wiring** | `svariety`, `sdegeneracy`, `sagenda_selftest` in `validate.yml`, plus `sroomnav`, `sfootprint`, `sthe_shipped_scene_streams`, `sspec_gate`, `sdoc_chain`. **47 step ids, 0 unaggregated, every one `continue-on-error`** so no failure blinds the steps behind it |
 
-**STILL OPEN, and none of it is started:**
+**ALSO DONE (4l):**
 
-| item | why it matters |
+| item | evidence |
 |---|---|
-| re-run `--life-test` | not run since the station grew 8.7× |
-| **60-minute soak with RSS sampling** | no memory ceiling has ever been stated for this project, let alone tested |
-| **CPU frame time at a stated NPC count** | the GPU half stays unknown and the line must say so |
-| the playtest script | — |
+| **CPU frame time at a stated NPC count** | **5.48 ms/frame** on blue/0/0 z7120 — 1,542,960 tri, 657 meshes, **84 baked bodies** — against `budget.DRAW["frame_ms"]` 16.667, so **3.0× headroom**. Measured as a DIFFERENCE (1,800 vs 5,400 frames) so the two-minute build and engine start-up cancel rather than being averaged in. `tools/frametime.py`. **The GPU half is unknown and the tool says so in its own docstring**: `--headless` is a null rendering driver, so nothing here touches rasterisation, shadows, SSAO or glow |
+| **the playtest script** | `docs/PLAYTEST.md` — opens with what is measurably *missing* so a tester does not spend the session rediscovering it, names the five minutes that matter, and asks only for what a gate structurally cannot answer |
+
+**STILL OPEN:**
+
+| item | state |
+|---|---|
+| **60-minute soak with RSS sampling** | `tools/soak.py` written and committed; **first run in flight** at 660,000 frames, sized off the 5.48 ms measurement. Samples RSS from `/proc` *outside* the engine and reports **drift, not peak** — a leak is a rising floor |
+| re-run `--life-test` | **not started.** Not run since the station grew 12× |
 
 **Visible deliverable — the trailer re-cut from the real build — is now UNBLOCKED**, and it is
 the first thing worth doing when the cores are free: L3 is green, the shipped scene streams, the
