@@ -94,6 +94,9 @@ class Clock:
 	var rate: float = 1.0 / 60.0
 	var start_hour: float = 13.0
 	var elapsed_s: float = 0.0
+	## Midnights crossed before the current `start_hour` was set. Only `set_hour`
+	## writes it -- see there for why it has to exist at all.
+	var day_offset: int = 0
 
 	func _init(p_start: float = 13.0, p_rate: float = 1.0 / 60.0) -> void:
 		start_hour = p_start
@@ -109,7 +112,13 @@ class Clock:
 
 	## Jump the clock. A jump is indistinguishable from having waited, which is
 	## the whole point of the design.
+	##
+	## THE DAY SURVIVES THE JUMP. `day()` is derived from `hours_abs()`, and
+	## this resets `elapsed_s`, so without carrying the count forward every jump
+	## would silently return the station to day 0 -- and `--life-test` jumps four
+	## times in one run.
 	func set_hour(h: float) -> void:
+		day_offset = day()
 		start_hour = fposmod(h, DAY_H)
 		elapsed_s = 0.0
 
@@ -122,6 +131,25 @@ class Clock:
 	## Same clock, two readings, and the agenda takes this one.
 	func hours_abs() -> float:
 		return start_hour + elapsed_s * rate
+
+	## WHICH DAY IT IS, counting midnights crossed since the clock started.
+	##
+	## `docs/MASTER-PLAN.md` P0.6 lists "a day index in `Clock`" as one of three
+	## unowned preconditions, and P1-G3's gate is that a consequence PERSISTS to
+	## day N+1 -- which cannot even be stated while the only readings this class
+	## offers are an hour that wraps and a duration that does not. A station with
+	## no calendar has no second day for anything to persist into.
+	##
+	## Derived, not stored: `hours_abs()` is `start_hour + elapsed`, so a clock
+	## started at 13:00 is on day 0 until it reaches 24.0, which is its first
+	## midnight and not its first 24 hours. That is what a date means.
+	func day() -> int:
+		return day_offset + int(floor(hours_abs() / DAY_H))
+
+	## The hour of THAT day, for anything that wants to print a date and a time
+	## together. Identical to `hour()`; named so a caller reads as it means.
+	func day_hour() -> float:
+		return hour()
 
 
 # ===========================================================================
@@ -1701,6 +1729,37 @@ func _run_test(actors_path: String) -> void:
 	_check(absf(c1.hour() - c2.hour()) < 1e-12,
 		"two clocks with the same parameters never diverge",
 		"%.9f h apart after 100 ticks" % absf(c1.hour() - c2.hour()))
+
+	# THE STATION HAS A CALENDAR. `docs/MASTER-PLAN.md` P0.6 names "a day index
+	# in `Clock`" as one of three unowned preconditions, and P1-G3's gate -- a
+	# consequence that PERSISTS to day N+1 -- cannot be stated without it.
+	var dk := Clock.new(13.0, 1.0)
+	_check(dk.day() == 0, "a clock starts on day 0", "day %d at 13:00" % dk.day())
+	dk.tick(11.0)                                   # 13:00 + 11 h = midnight
+	_check(dk.day() == 1,
+		"and crosses to day 1 at ITS FIRST MIDNIGHT, not after 24 hours",
+		"day %d at %05.2f" % [dk.day(), dk.hour()])
+	dk.tick(24.0)
+	_check(dk.day() == 2, "THE CLOCK SAYS DAY 2 -- P0.6's own gate",
+		"day %d at %05.2f" % [dk.day(), dk.hour()])
+	# AND A JUMP DOES NOT UNDO THE CALENDAR. `set_hour` resets `elapsed_s`, so
+	# without `day_offset` every jump would silently return the station to day 0
+	# -- and this very test jumps four times.
+	var before_jump := dk.day()
+	dk.set_hour(3.0)
+	_check(dk.day() == before_jump, "and a jump does not send it back to day 0",
+		"day %d before, %d after set_hour(3.0)" % [before_jump, dk.day()])
+	# CONTROL: without the offset the jump loses the days, which is what makes
+	# the assertion above able to fail.
+	var ctl := Clock.new(13.0, 1.0)
+	ctl.tick(35.0)
+	var ctl_before := ctl.day()
+	ctl.day_offset = 0
+	ctl.start_hour = 3.0
+	ctl.elapsed_s = 0.0
+	_check(ctl.day() == 0 and ctl_before > 0,
+		"CONTROL: with the offset discarded the same jump loses the calendar",
+		"day %d -> %d" % [ctl_before, ctl.day()])
 
 	# --- 3. binding to a real deck's cast ---------------------------------
 	print("\n3. BOUND TO A REAL DECK'S CAST")

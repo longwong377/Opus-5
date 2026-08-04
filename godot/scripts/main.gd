@@ -544,6 +544,7 @@ func _coldstart() -> void:
 	# additive.
 	print(("COLDSTART scene=%s mode=%s player=%d on_floor=%s drop_m=%.3f "
 		+ "hud=%d hud_place=%s h0=%05.2f h1=%05.2f clock_advanced=%s "
+		+ "day=%d "
 		+ "bodies=%d present_0300=%d present_1300=%d audio_layers=%d "
 		+ "audio_place=%s audio_ready_s=%.2f audio_why=%s cells=%d "
 		+ "cell_resident=%d boot_s=%.1f") % [
@@ -551,6 +552,7 @@ func _coldstart() -> void:
 		1 if body != null else 0, str(on_floor).to_lower(), drop,
 		1 if hud != null else 0, (hud_place if hud_place != "" else "-"),
 		h0, h1, str(h1 > h0).to_lower(),
+		(_clock.day() if _clock != null else -1),
 		_life.count() if _life != null else 0,
 		_present_0300, _present_1300, layers,
 		(_audio._here if _audio != null and _audio._here != "" else "-"),
