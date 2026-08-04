@@ -20,7 +20,10 @@ import subprocess
 import sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-REG = os.path.join(ROOT, "spec/completion.yaml")
+# SPEC-CHANGE #4: one registry path, reconciled with THE-STATION.md §1 and
+# tools/spec_registry.py. Two paths for one artefact is hard rule 4's
+# failure mode, and here it read as "the registry is missing".
+REG = os.path.join(ROOT, "docs/spec/completion.yaml")
 sys.path.insert(0, os.path.join(ROOT, "station"))
 
 

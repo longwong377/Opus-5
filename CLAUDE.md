@@ -39,21 +39,50 @@ into four scored dimensions with written descriptors — **craft, fidelity, perf
 robustness** — and defines the bar. Nothing is "done" because it was built; it is done when it
 clears the bar and stops regressing.
 
-## SESSION 4i — READ `docs/MASTER-PLAN.md`'s 4i AMENDMENT FIRST
+## START HERE — THE READ ORDER, AND WHAT SUPERSEDES WHAT (session 4j)
 
-**ADOPTED as direction by the owner (session 4i: "all the stated goals and more, in detail, AAA, tens of hours"), final after two adversarial rounds.** It supersedes the ordering rule in every section below,
-including the 4d ruling, the W-track and the eight-layer table, once assented to. It exists as
-an amendment to `MASTER-PLAN.md` rather than a new document precisely because a plan this file
-does not point at would be read *after* the rulings below by every future context.
+**Everything below this section is HISTORY. Its lessons still bind; its orderings do
+not.** This project has accumulated five plan documents across many sessions, and a
+future context that reads them in file order will act on a ruling that was replaced three
+sessions ago. So the hierarchy is stated once, here, in the file every session reads
+first:
 
-Four things it corrects that were being repeated as fact: dialogue is **not** 0 lines (2,139-line
-module, 57 distinct lines baked on one deck, zero player utterances); the payload is 4.5 GB not
-2.39; the built world holds 2,504 bodies not 857; and a stopping rule already exists in
-`AAA-STANDARD.md` and has simply never been exercised.
+| # | read | it decides | status |
+|---|---|---|---|
+| 1 | **`docs/THE-STATION.md`** + its annexes `docs/spec/{PLACES,PEOPLE,SYSTEMS}.md` | **WHAT gets built** — 291 enumerated, checkable items with acceptance checks that name content | **CURRENT — the content authority** |
+| 2 | **`docs/MASTER-PLAN.md`** § "SESSION 4i — FINAL" | **WHAT ORDER** it gets built in — phases, gates, the enforcement rules | **CURRENT — the ordering authority** |
+| 3 | `docs/AAA-STANDARD.md` | the quality bar and **the hard stop** (3 rounds, then CAPPED in writing) | **CURRENT — the quality authority** |
+| 4 | `STATE.md` | where the last session stopped and what is half-finished | **CURRENT — the handoff** |
+| 5 | `canon/00-MASTER.md`, `INVENTIONS.md`, `CONFLICTS.md` | what is true, what is extrapolated, what is blocked | **CURRENT — the fact authority** |
 
-Its single most load-bearing finding: **`boot.py` emits one `.glb` and `main.gd` never sets
-`cells_path`, so the shipped scene loads ONE DECK and never streams.** Every player-facing
-system built before that is fixed is validated on a topology the shipped world does not have.
+**The spec is the gate input.** `python3 tools/spec_registry.py` regenerates
+`docs/spec/completion.yaml` from the annexes and refuses to emit around any ambiguity;
+`python3 station/spec_check.py --smoke` reports the honest GREEN/RED ledger. Both run in
+CI as `sspec_gate`. **No statistic may substitute for a spec item.**
+
+### The supersession ledger — nothing is lost, everything is placed
+
+| document | status | what STILL binds from it |
+|---|---|---|
+| `docs/THE-STATION.md` + `docs/spec/*` | **CURRENT** | all of it — the content spec |
+| `docs/MASTER-PLAN.md` (4i FINAL section) | **CURRENT** | all of it — phases, gates, the four anti-failure mechanisms |
+| `docs/MASTER-PLAN.md` (4h body, below the 4i section) | superseded as ordering | the **LIFE-FIRST ruling** and its reasoning; the 60/30/10 effort split **within** tracks; "a generator is finished when its output is VARIOUS, not when it is correct" |
+| `docs/MASTER-PLAN-3k.md` | superseded | its **audit** is still the best analysis in the repo — read it for diagnosis, never for ordering |
+| `docs/SHIP-PLAN.md` | superseded, work finished | the record of *why* four contradictory plans had to be collapsed; its connectivity work is done |
+| `docs/PLAN-3u-populated.md` | superseded | **"the build is always walkable"** — still a hard rule |
+| `docs/MASTER-PLAN-DRAFT-4i.md` | **REJECTED, kept deliberately** | nothing binds. It exists only so `docs/reviews/bible-panel-4j.md`'s critique is legible against its target. **Do not build from it.** |
+| the eight-layer table (in this file, below) | superseded as ordering | the **lessons**: layer 2's "a cube passes every word of a topological test", layer 4's "a median cannot express mood" |
+| the W-track (in this file, below) | superseded as ordering | collision ≠ render geometry; a walk gate reports **distance covered** |
+| the 4d ruling (in this file, below) | superseded by 4i | "the project optimises what can be counted, because counts go green and a game cannot be expressed as a count" |
+
+**If you are about to act on a ruling from a section below and it is not in the "still
+binds" column, stop and read §1–2 above instead.**
+
+**A new plan document may not be created.** Amend `docs/MASTER-PLAN.md` with a dated
+section, as 4i did. A fifth plan this file does not point at would be read *after* the
+old rulings by every future context — which is the same defect as a gate that does not
+run, at plan scale. `tools/doc_chain.py` asserts in CI that every plan-shaped document in
+`docs/` appears in the ledger above, so a new one cannot appear unplaced.
 
 ## THE OWNER'S RULING, SESSION 4d — IT IS A WORLD GENERATOR AND NOT YET A GAME
 

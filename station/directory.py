@@ -563,10 +563,16 @@ PLACES = (
     _P("rotation_drivers", "Rotation drivers and mag-lev bearing points",
        "yellow", 0, 8, 320.0, 3300.0, (40.0, 120.0), auth=3,
        functions=("rotation", "structure"), interacts=("console",)),
-    _P("core_shuttle", "The core shuttle", "yellow", 0, 30, 0.0, 1700.0,
-       (20.0, 3000.0), module="core_tube", auth=1,
+    # SPEC-CHANGE #2 (owner-approved 2026-08-04): z and footprint corrected to
+    # the line `transit.core_shuttle_line` actually derives -- z 3,397..8,047,
+    # so the midpoint is 5,722 and the length 4,650 m, not 1,700/3,000. The old
+    # row put the shuttle in Yellow's aft third, which is exactly the 42% of the
+    # station the shuttle DOES NOT serve (transit.py's own finding), so a
+    # register row and a timetable disagreed about where a vehicle was.
+    _P("core_shuttle", "The core shuttle", "yellow", 0, 30, 0.0, 5722.0,
+       (20.0, 4650.0), module="core_tube", auth=1,
        functions=("transit",), interacts=("shuttle_door", "seat", "handhold"),
-       note="Runs the axis across the whole station."),
+       note="Runs the axis z 3,397-8,047; does not serve Yellow's aft 3,397 m."),
 
     # --- M1 completion: the last real places ------------------------------
     _P("alien_resident_qtr", "Alien residential quarters", "green", 0, 4,
@@ -626,7 +632,7 @@ PLACES = (
        interacts=("pew", "door"), adjacent=("sanctuaries",),
        note="PROPOSED. Unplaced; sited with the Sanctuaries."),
     _P("shuttle_car", "Core shuttle car interior", "yellow", 0, 30, 40.0,
-       1700.0, (8.0, 40.0), module="core_tube", auth=3,
+       5722.0, (8.0, 40.0), module="core_tube", auth=3,   # SPEC-CHANGE #2
        functions=("transit",), interacts=("seat", "handhold", "shuttle_door"),
        within="core_shuttle"),
     _P("radial_tubes", "Radial transport tubes (the spokes)", "green", 1, 0,

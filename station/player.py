@@ -153,15 +153,20 @@ KIT_BAG = "kit_bag"
 # Setting that equal to LEAK_RATE and solving:
 #
 #   SKEW = ln((PASSAGE - MIN) / (MAX - MIN)) / ln(LEAK_RATE)
-#        = ln(0.05) / ln(0.01) = 0.6506
+#        = ln(0.06) / ln(0.01) = 0.6111
 #
 # `arrival.py::_selftest` measures the realised rate over 4,000 draws and fails
 # if it is not 1%, and its negative control sets SKEW to 1.0 -- a flat draw --
-# which puts the rate at 5% and fires the gate. The three inputs are authority 5
+# which puts the rate at 6% and fires the gate. The three inputs are authority 5
 # (INV-249) and the OUTPUT is the sourced number, which is the right way round.
+#
+# SPEC-CHANGE #1 (owner-approved 2026-08-04): the passage-home anchor is the
+# FLOOR of LAW-CRIME:748's sourced 300-800 cr band, not 250. `docs/THE-STATION.md`
+# §9 carries the entry and its recomputes; the skew self-derives from the change,
+# which is why it is a derivation and not a constant.
 CREDIT_MIN = 0.0
 CREDIT_MAX = 5000.0
-PASSAGE_HOME_CR = 250.0        # a berth on an outbound transport
+PASSAGE_HOME_CR = 300.0        # a berth on an outbound transport (band floor)
 LEAK_RATE = 0.01               # §6.6, the share who never leave
 CREDIT_SKEW = (__import__("math").log(
     (PASSAGE_HOME_CR - CREDIT_MIN) / (CREDIT_MAX - CREDIT_MIN))

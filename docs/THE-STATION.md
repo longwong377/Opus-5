@@ -17,26 +17,31 @@ a mood. The rule that ends it:
 
 > **THE SPEC IS THE GATE INPUT.** Every item in this file and its annexes carries an ID and
 > a binary acceptance check naming the *enumerated thing itself*. CI iterates the registry
-> (`docs/spec/completion.yaml`, generated from this file and the three annexes — **341 rows =
-> 193 places (128 PLC + 9 SHB + 20 SHB annex letters + 13 SHC + 22 INC + GDS-01) + 102
-> people (52 items + 50 cast rows) + 38 systems/surface (16 SYS + 9 SUR + 13 VRB) + 8
-> player (PLY)**): every item is GREEN (its named content exists and functions), CAPPED
+> (`docs/spec/completion.yaml`, generated from this file and the three annexes — **291 rows
+> = 271 addressable items + 20 lettered SHB annex sub-rows**: 128 PLC · 9 SHB · 13 SHC ·
+> 22 INC · GDS-01 · 28 FAC · 6 CAST · 12 ROLE · 6 DLG · 16 SYS · 9 SUR · 13 VRB · 8 PLY.
+> CAST-02's 50 roster rows are children of that umbrella item, not registry rows —
+> SPEC-CHANGE #5): every item is GREEN (its named content exists and functions), CAPPED
 > (owner-signed, with reason — and **CAPPED is reported as NOT-GREEN in every completion
 > figure**), or RED. There is no fourth state, and **no statistic may substitute for an
 > item**. Statistics (variety IoU, density floors, distinct-line counts) remain as *floors
 > on top* — they catch sameness — but passing them completes nothing.
 
-**THE MACHINERY IS THE FIRST DELIVERABLE, AND UNTIL IT RUNS AGAINST THESE DOCS, THIS
-SECTION IS RED.** `tools/spec_registry.py` (parses the four docs, emits the registry,
-asserts every cross-reference), `station/spec_check.py` (executes checks by harness
-class, refuses GREEN for any harness it does not implement) and the `sspec_gate` step in
-`validate.yml` **exist as of commit c5e82f6** — built against the pre-adoption 313-row
-skeleton, before this edit set. **SPEC-CHANGE #4 (pending, adoption-blocking)** in §9 is
-their re-derivation against the adopted census (VRB/GDS ID classes, 341 rows, the
-registry path), and **both files are inside the adoption digest** (§9) — the code that
-decides what GREEN means cannot itself be edited without a SPEC-CHANGE. A gate that has
-not run against the adopted docs has not run, and until its first clean run is recorded
-here, every anti-rig clause below is prose.
+**THE MACHINERY IS THE FIRST DELIVERABLE — AND AS OF 2026-08-04 IT RUNS, SO THIS SECTION
+IS NO LONGER RED.** `tools/spec_registry.py` (parses the four docs, emits the registry,
+resolves every cross-reference including lettered SHB pointers, verifies the INC
+vocabulary↔mechanics bijection both ways), `station/spec_check.py` (executes checks by
+harness class and **refuses GREEN for any harness it does not implement**) and the
+`sspec_gate` step in `validate.yml`. **First clean run recorded in §9 / SPEC-CHANGE #5:
+291 rows, 0 errors.** Both files are inside the adoption digest (§9) — the code that
+decides what GREEN means cannot be edited without a SPEC-CHANGE.
+
+**What that first run cost is the evidence this section is not decorative.** It began at
+**195 errors**, and every one was real: three whole ID families the parser could not see,
+a heading that *mentions* an ID read as a definition, seven mis-lettered SHB pointers, and
+— the two that matter — **CAST-02 and SYS-14, the bible's two largest umbrella items, had
+no acceptance check at all.** The two biggest claims in the spec were unfalsifiable until
+the generator refused to emit around them. A gate that has not run has not run.
 
 Three subrules that close the remaining rigging routes:
 
@@ -46,7 +51,7 @@ Three subrules that close the remaining rigging routes:
    moves a dialogue floor; a passage-home ruling reruns a wage table; an entry without
    its recomputes list is invalid), exactly as `INVENTIONS.md` treats canon. An agent
    cannot quietly redefine success mid-session. The frozen denominators (49,265 bays and
-   every per-place target, the 79 voice cells, the 6,544-line floor, the 341-row census)
+   every per-place target, the 79 voice cells, the 6,544-line floor, the 291-row census)
    are normative: ANY recompute divergence, in either direction, fails the gate until a
    SPEC-CHANGE shows the re-derivation.
 2. **Acceptance checks name content, not counts.** Wrong: "≥5 bars exist." Right: "BAR-02
@@ -67,7 +72,7 @@ Three subrules that close the remaining rigging routes:
 
 **CAPPED, made unriggable:** a cap's signature is a **dated verbatim owner quote in §9** —
 nothing else signs one. Agents may **PROPOSE-CAP** (the row stays RED, the proposal is
-just text awaiting the quote). Ceiling: **≤5% of all rows (17 of 341) may ever be
+just text awaiting the quote). Ceiling: **≤5% of all rows (14 of 291) may ever be
 CAPPED**, and **zero caps exist for SUR-02 landmark rows below craft 3** — the floor of
 the owner's standard is not negotiable by anyone, including the owner's own tooling.
 
@@ -201,18 +206,31 @@ day, a booked appointment (SYS-15) each wake the player with the cause stated.
 overnight (the world ran); a scripted 03:00 sweep event wakes the player camping below.
 harness: headless time-compression run (tool-to-build ⇒ RED).
 
-### PLY-06 — Needs, ruled {none | light}
-**Ruling proposed (auth 5): LIGHT.** Hunger and fatigue exist as a gentle rhythm, not a
-survival game: eating and sleeping on a species-normal pattern grants small, stated
-effects (dialogue warmth band, work pay stub bonus); skipping both for days costs the
-same small effects and nothing else — no death spiral, no nagging HUD. This gives
-EAT/DRINK and SLEEP mechanical meaning at B5's register (meals are social fabric).
-**The owner signs one branch — {none} is equally signable** and reverts the verbs to
-economy/flavour only. **RED until signed either way.**
-**CHECK (for LIGHT):** two station-days without food or sleep produce exactly the
-declared gentle set (measurably, nothing else); normal rhythm produces the bonuses; the
-whole effect set is enumerated in the registry row.
-harness: condition-model selftest (tool-to-build ⇒ RED) + owner signature in §9.
+### PLY-06 — Needs — **SIGNED `{light}`, 2026-08-04**
+**Ruled LIGHT** by the owner's sign-off in §9 (*"I also like the hunger/fatigue stuff
+too"*). The `{none}` branch is closed; this is a normal buildable row.
+
+Hunger and fatigue are a gentle rhythm, not a survival game. **The complete effect set,
+enumerated — nothing outside this list may be added without a SPEC-CHANGE, which is what
+stops a mild system growing into a nagging one:**
+
+| state | reached by | effect — and this is ALL of it |
+|---|---|---|
+| fed | a meal within the species-normal window (`schedule.py` meal times per species) | dialogue warmth band +1 (NPCs open one topic sooner) |
+| rested | a sleep of the species-normal length | work pay-stub bonus on the next shift (stated in credits on the stub) |
+| hungry | no meal for ~1.5 species-normal intervals | dialogue warmth band −1 |
+| tired | no sleep for ~1.5 species-normal intervals | pay-stub bonus forfeited |
+| — | anything worse | **nothing. No damage, no death spiral, no HUD nag, no screen effect.** |
+
+The point is B5's register: **meals are social fabric**, so EAT/DRINK and SLEEP have
+mechanical meaning that pushes the player toward the mess, the bar and the rhythm the
+station already runs on — never toward a resource bar.
+**CHECK:** two station-days with no food and no sleep produce **exactly** the two declared
+penalties and nothing else — asserted as a whole-state diff against a fed-and-rested
+control run, so an undeclared effect fails; the normal rhythm produces both bonuses, the
+pay bonus visible as a number on the stub; and the species windows come from
+`npc/schedule.py`, not from a constant in the condition model.
+harness: condition-model selftest with the fed/rested control (tool-to-build ⇒ RED).
 
 ### PLY-07 — The journal
 A diegetic journal (identicard-adjacent screen, SUR-09) auto-records **SYS-16 knowledge
@@ -322,12 +340,12 @@ SPEC-CHANGE entry fails the gate:
 | file | sha256 at adoption |
 |---|---|
 | docs/THE-STATION.md | pinned by the adoption commit itself (a file cannot carry its own hash; the commit object is this row's digest) |
-| docs/spec/PLACES.md | `f23e89215e506e8947c599a6f1348cb1ca7d3f213b9bd6bf6db49c494d7d30b5` |
-| docs/spec/PEOPLE.md | `1280f613edb5c08efbfcc6c71d71aff52aeb498b13637131af58bb7fa483c116` |
-| docs/spec/SYSTEMS.md | `fd301707cc4de7e8aac4c0da2ac5cf882ea7ed9ffe0854e873e30f76654e27f6` |
-| station/directory.py | `b8a74aa5d6ebed00d1a672dbb3514fe64b1cc77ba7ecdfda354fcbed58bd16ac` |
-| tools/spec_registry.py | `40992ac08c0f2a26643959115214fc45a04747c6f021a9122556c740cfe96ec5` (exists, c5e82f6 — re-derivation pending, SPEC-CHANGE #4) |
-| station/spec_check.py | `94cbebeb29602200376de4b34717444f6740dedf44f6122b1f6c90bd7beee503` (exists, c5e82f6 — re-derivation pending, SPEC-CHANGE #4) |
+| docs/spec/PLACES.md | `65dea796fb8549baa68203d630b787c2e4cd6594c5b656649b1a78b2fe52b07c`|
+| docs/spec/PEOPLE.md | `cf631f2de028156bdaa7e3b2a7fc4259fc969fecc5042a2d3b13f7cff7e64439`|
+| docs/spec/SYSTEMS.md | `e97cb9cb2edad015fc5ce34900ba6f37707576e79545fe2198079f1e9c0bd196`|
+| station/directory.py | `ef7c45faf14d3b8c10880cf2221358485367c7f5958ab4eb635caba9b3631fed`|
+| tools/spec_registry.py | `13b03a898304432f7c29fb8027c4866b971c3ae7f1252d9cbb82032d04a7dc31`|
+| station/spec_check.py | `d2a16d95e0fe92bfe2b3e64a011f6690c8e84c44f2dd1af95d04ecb3fb9332b1`|
 
 ### SPEC-CHANGE LOG (master)
 Entry format: dated · what · why · owner-visible · **recomputes: every downstream number
@@ -362,6 +380,64 @@ per-annex halves of the same entries; this log is the index.
   recomputes: the census itself (313 → 341, decomposition in §1) — the first clean run
   re-emits every frozen denominator and files any divergence as its own SPEC-CHANGE
   entry.
+
+### OWNER SIGN-OFF — 2026-08-04, verbatim
+
+> *"I approve all the spec changes and I love the sex work stuff, I also like the
+> hunger/fatigue stuff too"*
+
+This quote is the signature §1 requires. It discharges, in one act:
+
+- **SPEC-CHANGE #1, #2, #3 — APPROVED and APPLIED** (code halves landed this session;
+  see the entries above, each now carrying its commit evidence).
+- **SPEC-CHANGE #4 — APPROVED and APPLIED.** The machinery was re-derived against the
+  adopted docs and **its first clean run is recorded below**.
+- **PLY-06 needs — SIGNED `{light}`.** Hunger and fatigue exist as the gentle rhythm the
+  row specifies. The `{none}` branch is closed. The row leaves RED-pending-signature and
+  becomes a normal buildable item.
+- **PLC-028 discretion-level content — SIGNED IN, NOT CAPPED.** The row was drafted as a
+  PROPOSE-CAP because an agent may not cap on its own authority. The owner signed it IN,
+  so **the cap is withdrawn**: it is built to the same T-tier law and the same
+  register-sourced treatment as every other Downbelow economy row (LAW-CRIME's own
+  informal-jobs table carries it at 5%), handled at the show's register — present,
+  economic, unglamorised, never explicit. It counts against no cap ceiling.
+
+**Caps outstanding after this sign-off: ZERO of the 17 permitted (0% of 291 rows).**
+
+### SPEC-CHANGE #5 — 2026-08-04 · the census re-derivation (the machinery's first run)
+
+**What:** the frozen census **341 → 291 registry rows**, decomposed:
+**271 addressable items + 20 lettered SHB annex sub-rows**.
+**Why:** the 341 figure counted CAST-02's 50 roster rows as registry rows. They are not:
+they are numbered children *inside* the CAST-02 umbrella item, addressed as "row 6", not
+as `CAST-…` IDs, and greened by CAST-02's umbrella check (§1.1.6). 341 = 291 + those 50.
+Both numbers were right about different things; only 291 is the registry.
+**Owner-visible:** the completion percentage now has a denominator of 291.
+**recomputes:** §1's census sentence (341 → 291 rows = 271 items + 20 sub-rows); the cap
+ceiling **≤5% = 14 rows** (was 17); `docs/spec/completion.yaml` row count; every
+"of 341" reference in the four docs.
+
+**FIRST CLEAN RUN, recorded as §1 requires:** `tools/spec_registry.py` →
+*"registry: CAST 6 · DLG 6 · FAC 28 · GDS 1 · INC 22 · PLC 128 · PLY 8 · ROLE 12 ·
+SHB 9 · SHC 13 · SUR 9 · SYS 16 · VRB 13 = 271 items + 20 lettered sub-rows = 291 rows"*,
+**0 errors**, `docs/spec/completion.yaml` emitted. **§1 is no longer RED.**
+
+The run began at **195 errors** and every one was a real defect in the docs or the parser:
+the parser did not know the annexes' table-row and lettered-annex definition forms, treated
+a heading that *mentions* an ID (`## 2b. THE PLAYER — PLY-01..08`) as a definition, and
+rejected the INC dual definition that the spec **requires** — now verified as a 22-class
+bijection in both directions instead. Two genuine content gaps were found and fixed:
+**CAST-02 and SYS-14 had no acceptance check at all**, so the two largest umbrella items in
+the bible were unfalsifiable. Both now carry named checks.
+
+### SPEC-CHANGE #6 — 2026-08-04 · the credit-skew arithmetic
+
+**What:** `CREDIT_SKEW` ≈ **0.6109**, not the 0.6111 written into #1's entry.
+**Why:** ln(0.06)/ln(0.01) = −2.813411 / −4.605170 = 0.610923. A rounding slip; the value
+is derived in code and was never hand-set, so only the *documentation* was wrong.
+**Owner-visible:** none — the distribution is unchanged from what the code computes.
+**recomputes:** #1's entry text only. Verified: `station/player.py` 28/28 with the leak at
+0.0080 against the 0.0100 target and the flat-draw control firing at 5.2×.
 
 *(Post-adoption edits to any item land here, dated, with reason and recomputes, or the
 registry gate fails.)*

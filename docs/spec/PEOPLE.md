@@ -604,6 +604,16 @@ species-without-names rows are office-designates whose identicards render the em
 NAME field — checkable content, per INV-004. All (auth 5) as individuals; offices, counts
 and schedules cited per §1.
 
+**CHECK (umbrella, §1.1.6 — greens only when all 50 rows below green):** and named
+specifically, three probes no substitute content can pass — (1) **Ruth Delgado** (row 1)
+is at the muster board at 05:40 and in the Dark Star that evening, on her own schedule,
+with no player present; (2) she greets a player she has met before **by name and standing**
+and a stranger differently, from CAST-05's memory rather than a scripted one-off; (3)
+**Efraim Duarte's** 340 cr debt to the Collector (row 6 ↔ row 37) is legible in dialogue
+while it stands and stops being mentioned once SYS-04's sponsorship sink clears it — the
+link graph is live state, not a table.
+**harness:** cast-roster headless day + dialogue-memory probe (tool-to-build ⇒ RED).
+
 | # | name / designation | sp/sex/age | office | home | schedule anchors | links |
 |---|---|---|---|---|---|---|
 | 1 | Ruth Delgado | hum F 55 | Dock chief, Guild steward | `qtr_civilian` | 05:40 muster board; evenings Dark Star | 6, 24, FAC-06 |

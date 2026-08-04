@@ -467,6 +467,14 @@ jobs:
           python3 tools/spec_registry.py
           python3 station/spec_check.py --smoke
 
+      # The plan hierarchy itself. A plan document nobody points at is read
+      # AFTER the superseded rulings by every future context -- the same defect
+      # as a gate that does not run, at plan scale.
+      - name: The plan chain -- every plan doc is placed, every pointer resolves
+        id: sdoc_chain
+        continue-on-error: true
+        run: python3 tools/doc_chain.py
+
       - name: Confirm the schema still parses and is fully sourced
         id: sconfirm_the_schema_still_parses_and_is_f
         continue-on-error: true
@@ -600,6 +608,8 @@ jobs:
             echo "FAILED: snpc_animation_and_navigation"; fail=1; fi
           if [ "${{ steps.sspec_gate.outcome }}" != "success" ]; then
             echo "FAILED: sspec_gate"; fail=1; fi
+          if [ "${{ steps.sdoc_chain.outcome }}" != "success" ]; then
+            echo "FAILED: sdoc_chain"; fail=1; fi
           if [ "${{ steps.sdegeneracy.outcome }}" != "success" ]; then
             echo "FAILED: sdegeneracy"; fail=1; fi
           if [ "${{ steps.svariety.outcome }}" != "success" ]; then

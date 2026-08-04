@@ -133,7 +133,15 @@ MANIFEST = (
     ("freighter_bay", 20.0, "bay", 6, 15, 8.0, 14.0),
     ("transport", 14.0, "bay", 26, 86, 6.0, 12.0),
     ("shuttle", 12.0, "bay", 2, 20, 1.0, 4.0),
-    ("freighter_standoff", 4.0, "standoff", 10, 30, 12.0, 36.0),
+    # SPEC-CHANGE #3 (owner-approved 2026-08-04): the tanker split out of the
+    # standoff freighters, 4.0 -> 3.7 + 0.3, so the daily total is UNCHANGED at
+    # 55.0. The station imports ~2,000 t/day of consumables and burns fusion
+    # slush it cannot make (LIFE-SUPPORT §1), so a fuel carrier had to be a
+    # class rather than an unnamed freighter -- PLC-039 and PLC-120's checks
+    # already name its arrival stepping up the slush wall, and a check naming a
+    # ship class the manifest does not carry is a check that cannot pass.
+    ("freighter_standoff", 3.7, "standoff", 10, 30, 12.0, 36.0),
+    ("tanker", 0.3, "standoff", 3, 8, 12.0, 24.0),
     ("diplomatic", 2.0, "standoff", 1, 12, 48.0, 96.0),
     ("liner", 0.5, "bay", 400, 800, 4.0, 8.0),
     ("ef_transport", 2.0, "bay", 20, 200, 6.0, 24.0),

@@ -115,6 +115,10 @@ SHIP_CALL = {
     "ef_transport": "EarthForce personnel transport",
     "ef_warship": "EarthForce vessel",
     "alien_warship": "visiting patrol vessel",
+    # SPEC-CHANGE #3: the fuel carrier. Named plainly rather than with an
+    # invented class name (auth 5) -- the register's other alien and utility
+    # hulls take descriptive calls for the same reason.
+    "tanker": "fuel tanker",
 }
 
 # A liner's passengers clear customs over 90 minutes (traffic.hall_rate uses
@@ -404,6 +408,23 @@ def _selftest(out=print):                                       # noqa: C901
     global ISN_BULLETINS, PA_PLACES
     del _FAILED[:]
     n = 0
+
+    # -- EVERY SHIP CLASS HAS A SPOKEN NAME ------------------------------
+    # `port_calls` falls back to the raw manifest key, so a class added to
+    # traffic.MANIFEST without an entry here has the PA announcing a dict key
+    # ("now docking, tanker") and nothing fails. That is this project's own
+    # recurring shape -- a table extended in one place and not the other -- so
+    # the coupling is asserted rather than remembered. Found when SPEC-CHANGE #3
+    # added the tanker.
+    import traffic as _t                                          # noqa: PLC0415
+    n += 1
+    missing = [k for k, *_ in _t.MANIFEST if k not in SHIP_CALL]
+    check(not missing, "every traffic.MANIFEST class has a spoken SHIP_CALL name",
+          f"{missing}")
+    n += 1
+    orphan = [k for k in SHIP_CALL if k not in {r[0] for r in _t.MANIFEST}]
+    check(not orphan, "...and no SHIP_CALL names a class the manifest dropped",
+          f"{orphan}")
 
     # -- every place a voice reaches is a real place ---------------------
     for name, group in (("PA_PLACES", PA_PLACES),

@@ -1431,10 +1431,23 @@ register key `grey/0` outer-arc volume (SHB-08.f's partitions and the PLC-089 fr
   the 745 empty outer-ring cells inside it (capped/sheeted/welded, stencilled), 145 stay
   open and dark, ~8 cells hold the camps — net walkable bays = footprint − SHC-11,
   computed by the registry generator (RED until it runs).**
-- sex work (the informal table's 5%): **PROPOSE-CAP (row stays RED until the owner signs
-  per §1): represented at discretion level only — implied premises off PLC-089's arches,
-  referenced in dialogue and the jobs ledger, no explicit content. Either signature
-  (cap, or a discretion-level place row) is a one-line SPEC-CHANGE.**
+- sex work (the informal table's 5%, ~1,000 of Downbelow's 20,000): **SIGNED IN, NOT
+  CAPPED — owner sign-off 2026-08-04 (THE-STATION §9). The cap proposal is withdrawn.**
+  It is built to the same law as every other row here: it is an **economy**, not a
+  decoration. Concretely — a named premise off PLC-089's arch line with a door that reads
+  occupied or not (T2); its people are `resident.py` residents with homes, names and the
+  same schedule machinery as a docker, appearing in the informal-jobs ledger at 5% and in
+  the muster/standing systems like any other trade; it prices into SYS-04 at the
+  Downbelow ladder and is one of the routes by which a refused arrival who could not
+  afford passage (SYS-03's leak) makes the 300 cr back; FAC-24's protection cut and
+  SYS-05's tolerance-not-enforcement boundary both touch it, which is where the friction
+  a player actually sees comes from. **Treated at the show's register: present, economic,
+  unglamorised, consequential — and never explicit.** No sexual content is depicted or
+  described; the interactables are a door, a ledger row, a conversation and a transaction.
+  **CHECK:** a named practitioner appears in the jobs ledger at the sourced share, has a
+  home address and a schedule the player can intersect, can be talked to about the
+  standpipe/protection economy rather than the trade, and FAC-24's cut on her earnings is
+  visible in SYS-04's ledger when it is taken.
 - interacts: catwalk (T1), standpipe ×14 (T3 — **the lurker water answer, decided: public
   standpipes teed off water_reclamation's return line (auth 5)** — closes the flagged
   unknown), makeshift_door (T2 — every one distinct scrap), brazier (T2 — heat clusters

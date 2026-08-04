@@ -266,6 +266,23 @@ in both directions; the generator asserts the two lists are identical** (a class
 without a PLACES ID, or a PLACES ID without mechanics here, fails the gate). Each row:
 trigger / actors / escalation / consequence writes.
 
+**Tick:** classes fire from their trigger systems at their sourced rates, weighted by
+district and by SYS-01's era position. **Rate floor: ≥2 meaningful incidents per
+station-hour inside a fixed probe volume** (the volume is fixed so the rate cannot be
+inflated by widening the window); **"meaningful" = the incident writes ≥1 world delta** —
+a brig custody row, a standing change, a stock move, a work order, or a card endorsement.
+**Couples to:** every SYS above (each row names its trigger), PLACES §0.2's vocabulary,
+FAC standing, SYS-13 persistence.
+**Player surface:** incidents happen near the player at the rate above and are joinable,
+reportable or ignorable; none of them requires the player to exist.
+**CHECK:** one headless station-day at ×1 logs the rate inside the probe volume; **one
+seeded incident replayed three ways — player-absent / player-helps / player-reports —
+yields three world states that differ in NAMED facts** (which ledger row, whose standing,
+which stock line, who is in custody), not merely in a log string; and the 22-row union
+above matches PLACES §0.2 in both directions (asserted by `tools/spec_registry.py`).
+**harness:** `tools/spec_registry.py --check` (bijection half, exists) + incident
+headless-day and three-way replay (tool-to-build ⇒ RED).
+
 | ID | trigger (system) | actors | escalation | writes |
 |---|---|---|---|---|
 | INC-LINER | SYS-02 liner row (0.5/day, ~2/wk) | liner pax 400–800, hall staff, touts | one hall at 8.5 souls/min ~90 min → queue overflow → advisory PA | berth map, hall load, INC-PICK weighting, vendor sales spike |
