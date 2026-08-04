@@ -133,8 +133,35 @@ too fat. **Two doorways in one wall, one passable and one not.**
 ## 5. WHAT IS NOT KNOWN
 
 - **Whether the 21 are unenterable in the engine.** Everything above is measured on the
-  collision shell by this module. The engine is the authority and only `docking_bays` has been
-  driven — the A/B that would settle it is `walkable.walk_deck(..., goto_key=<key>)` per place.
+  collision shell by this module. The engine is the authority — and **the obvious A/B cannot
+  answer this, by construction**, which is worth knowing before somebody spends a session on
+  it. `walkable.walk_deck(..., goto_key=<key>)` passes `--goto=<x,y,z>` to `walk.gd`, and
+  `walk.gd:1882` steers **straight at the point**:
+
+  ```gdscript
+  if _have_goto:
+      ... _goto - _player.global_position
+  ```
+
+  No path following. Driven at `docking_bays` on cluster `blue_0_0_z7126` it reports
+  `goto_start_m=11.53 goto_best_m=5.17 goto_end_m=5.18`, `traverse_m=6.66`, `offfloor=0/1800`
+  — a body that walked six metres toward the room and stopped at the first thing in the way.
+  **That is a measurement of straight-line reachability, not of whether the room can be
+  entered**, and it is exactly the limitation the L3 room leg turned out to have. Reporting
+  5.17 m as evidence about `docking_bays` would be the same mistake as reading L3's 5.59 m as
+  a lift defect.
+
+  Driven at `vorlon_berth` — 40° round the ring from the spawn — the same harness proves it
+  beyond argument: `goto_start_m=145.06 goto_best_m=96.69`, **`traverse_m=1661.65`** and
+  **`offfloor=1084/1800`**. Steering straight at a point 145 m round a *curved* corridor walks
+  the body off the deck; 1,661 m of "journey" with 60% of it in the air is the
+  falling-body-reporting-a-journey signature `life.gd`'s own docstring records twice (11,712 m
+  and 876,827 m). It is not a fact about `vorlon_berth`.
+
+  The valid experiment is to **drive `roomnav`'s own waypoints** — which is what `agenda.py`
+  and `route_walk.py` do, and what proved `business_center` at 0.05 m. Wiring the waypoint
+  list into `walk_deck` would upgrade the W-track's deck gate from a straight-line steer into
+  a real "can you get in", and is the obvious next increment.
 - **Whether the four at ratio 0.59–0.78 are the same defect** as the seventeen at 0.90+, or a
   different one, or false positives of the threshold.
 - **How many places `agenda.room_legs` / `route_walk.legs_for` aim at the wrong wall** (§2).
