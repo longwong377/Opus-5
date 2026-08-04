@@ -80,6 +80,16 @@ CELL_M = 0.20            # the grid; a shade over half a capsule diameter
 FLOOR_EPS_M = 0.12       # a surface within this of the deck IS the deck
 SNAP_MAX_M = 1.50        # how far the search may look for a free cell to start
                          # from when the doorway itself is tight
+# A ROOM YOU CAN ENTER AND NOT MOVE IN IS NOT A ROOM YOU CAN ENTER. Reaching
+# less than this from the entry point, without reaching the room's own middle,
+# is a pocket beside a door rather than the room -- see `approach`. Two square
+# metres is a body's own footprint and a step in any direction.
+MIN_STAND_M2 = 2.0
+# ...and how far from the middle of a room the nearest standable cell may be,
+# as a fraction of the room's own half-depth, before "we are in the room" stops
+# being true. Measured: a pocket outside the wall lands at 0.97 of it; a room
+# entered properly lands well under a third.
+POCKET_FRAC = 0.5
 
 
 # ---------------------------------------------------------------------------
@@ -393,16 +403,62 @@ def approach(meta, place, verts, tris, groups=None, from_pt=None,
         rep["why"] = "nothing is reachable from the doorway"
         return [centre]
 
+    # AND IS WHAT WE REACHED THE ROOM, OR A POCKET BESIDE ITS DOOR?
+    #
+    # THE GATE THIS MODULE SHIPPED WITHOUT, and it is the defect this module
+    # exists to stop, committed here. `from_pt` is handed in as
+    # `place.z + deck.room_interior_half_m - 0.5` -- a DECLARED depth. For most
+    # places it lands in the doorway. For fourteen of the station's it does not:
+    # `vorlon_berth`'s centre is 11.5 m from its corridor and its declared
+    # half-depth is 4.0 m, so the probe sits against the room's FAR wall, snaps
+    # to the 2x2 gap on the wrong side of it, and the search explores that gap.
+    # Every one of those fourteen reported `reachable=4` -- 0.16 m2 of standable
+    # floor -- and the first version of `--station` passed all 116 places,
+    # because its criterion was "is ANYTHING reachable" and a pocket is
+    # something. A gate that cannot fail for the thing it is named after.
+    #
+    # The tell is arithmetic and exact: all fourteen sat at `z_half - 0.1` from
+    # their own centre, which is the topmost row of the grid. Identical failures
+    # across unrelated places are one cause, not fourteen -- CLAUDE.md's own
+    # "read the shape of a failing number before its size".
+    #
+    # SO THE TEST IS "HOW NEAR THE MIDDLE DID WE GET, RELATIVE TO THE ROOM'S OWN
+    # SIZE", and it is deliberately not "is the exact centre cell reachable".
+    # That stricter reading fails a genuine room with a table in the middle of
+    # it, where the body IS in the room and standing beside the table; the two
+    # cases separate cleanly on distance. Measured on the station, a pocket sits
+    # at `z_half - 0.1` from the centre -- 97% of the room's own half-depth --
+    # while a room entered properly lands within a metre or so of its middle.
+    # A tiny reachable area is the second, independent trigger, because a
+    # 0.16 m2 answer is a pocket whatever its distance says.
+    #
+    # Say so, and fall back to the register's centre point, which is what every
+    # caller had before this module existed -- A ROUTE MUST NOT GET WORSE
+    # BECAUSE A DIAGNOSIS FAILED.
+    ci, ck = g.cell_of(0.0, z0)
+    centre_reachable = prev[ck * g.nw + ci] != -1 if g.inside(ci, ck) else False
+    rep["centre_reachable"] = centre_reachable
+    rep["stand_m2"] = round(len(reach) * g.cell * g.cell, 3)
+
     # THE SPOT: the reachable cell nearest the register's centre. Not the
     # cell with the most clearance -- a body that walks to the emptiest corner
     # of a room is not standing where the room is.
-    ci, ck = g.cell_of(0.0, z0)
     goal = min(reach, key=lambda n: ((n % g.nw) - ci) ** 2
                + ((n // g.nw) - ck) ** 2)
     gi, gk = goal % g.nw, goal // g.nw
     gc = g.centre_of(gi, gk)
     rep["off_centre_m"] = round(math.hypot(gc[0], gc[1] - z0), 3)
     rep["detour_m"] = 0.0
+
+    if not centre_reachable and (rep["stand_m2"] < MIN_STAND_M2
+                                 or rep["off_centre_m"] > POCKET_FRAC * z_half):
+        rep["why"] = (f"the entry point is sealed off from this room's own "
+                      f"floor -- {rep['stand_m2']:.2f} m2 reachable and the "
+                      f"nearest standable cell is {rep['off_centre_m']:.2f} m "
+                      f"from the middle of a room {z_half:.1f} m half-deep. The "
+                      f"point came in as a DECLARED depth, not off the mesh")
+        rep["pocket"] = True
+        return [centre]
 
     # The path back out to the door, then string-pulled: keep a waypoint only
     # where the straight line to the next one is not free.
@@ -561,6 +617,55 @@ def _selftest():
           "CONTROL: a doorpanel_* group is not an obstacle -- the runtime "
           "opens it", f"{rep3.get('obstacle_tris')} obstacles")
 
+    # A DOOR PROBE ON THE WRONG SIDE OF A WALL IS A POCKET, NOT A ROOM, and
+    # this is the control for the defect `--station` shipped unable to see. Seal
+    # the room off from the entry point with an unbroken partition: the search
+    # then reaches a strip beside the probe and not the room, and the answer
+    # must be "that is not the room" plus the register's centre -- NOT the best
+    # cell in the strip. Fourteen of the station's places were in exactly this
+    # state while the sweep reported 116 of 116 fine.
+    v2, t2 = list(verts[:n_base_v]), list(tris[:n_base_t])
+
+    def wall(z):
+        i = len(v2)
+        v2.extend([at(-13, z, 0.0), at(13, z, 0.0),
+                   at(13, z, 2.0), at(-13, z, 2.0)])
+        t2.append((i, i + 1, i + 2))
+        t2.append((i, i + 2, i + 3))
+
+    wall(4.4)                                  # unbroken, between door and room
+    rep4 = {}
+    path4 = approach(meta, place, v2, t2, groups=[("room", 0, len(t2))],
+                     from_pt=door, z_half=6.0, report=rep4)
+    check(rep4.get("pocket") is True,
+          "CONTROL: an entry point sealed off from the room reads as a POCKET, "
+          "not as the room", f"{rep4.get('stand_m2')} m2 reachable, "
+          f"centre_reachable={rep4.get('centre_reachable')}")
+    check(len(path4) == 1 and abs(path4[0][2] - z0) < 1e-6,
+          "and it falls back to the register's centre, so a route cannot get "
+          "WORSE because a diagnosis failed")
+    # ...and with the same wall pierced by a doorway the room is reachable again,
+    # which is what proves the check is about connectivity and not about walls.
+    v3, t3 = list(verts[:n_base_v]), list(tris[:n_base_t])
+
+    def pierced(z):
+        i = len(v3)
+        for s0, s1 in ((-13.0, -1.0), (1.0, 13.0)):
+            i = len(v3)
+            v3.extend([at(s0, z, 0.0), at(s1, z, 0.0),
+                       at(s1, z, 2.0), at(s0, z, 2.0)])
+            t3.append((i, i + 1, i + 2))
+            t3.append((i, i + 2, i + 3))
+
+    pierced(4.4)
+    rep5 = {}
+    approach(meta, place, v3, t3, groups=[("room", 0, len(t3))],
+             from_pt=door, z_half=6.0, report=rep5)
+    check(not rep5.get("pocket") and rep5.get("centre_reachable"),
+          "and the SAME wall with a 2 m doorway in it is not a pocket",
+          f"{rep5.get('stand_m2')} m2 reachable, "
+          f"centre_reachable={rep5.get('centre_reachable')}")
+
     print(f"\n{'OK' if not fails else 'FAILED: ' + '; '.join(fails)}")
     return 1 if fails else 0
 
@@ -637,15 +742,17 @@ def station(limit=None, only=None, verbose=False):
                          report=rep)
                 row = {"key": key, "deck": f"{s}/{r}/{dk}", **rep}
                 rows.append(row)
-                if rep.get("snap_m") is None or not rep.get("reachable"):
+                if (rep.get("snap_m") is None or not rep.get("reachable")
+                        or rep.get("pocket")):
                     bad.append(row)
                 if verbose:
                     print(f"  {key:34s} {row['deck']:12s} "
                           f"obst {rep.get('obstacle_tris', 0):5d}  "
-                          f"reach {rep.get('reachable', 0):6d}  "
+                          f"stand {rep.get('stand_m2', 0.0):8.2f} m2  "
                           f"off {rep.get('off_centre_m', 0.0):5.2f} m  "
                           f"snap {rep.get('snap_m')}  "
-                          f"wp {rep.get('waypoints', 0)}")
+                          f"wp {rep.get('waypoints', 0)}"
+                          + ("  POCKET" if rep.get("pocket") else ""))
                 if limit and len(rows) >= limit:
                     break
             if limit and len(rows) >= limit:
@@ -679,6 +786,10 @@ def station(limit=None, only=None, verbose=False):
               + (" ..." if len(clipped) > 6 else ""))
     for s, r, dk, why in skipped:
         print(f"  not asked: {s}/{r}/{dk} -- {why}")
+    areas = sorted(x.get("stand_m2", 0.0) for x in rows)
+    if areas:
+        print(f"  standable floor reached: median {areas[len(areas) // 2]:.1f} "
+              f"m2, min {areas[0]:.2f} m2")
     for x in bad:
         print(f"  CANNOT GET IN: {x['key']} ({x['deck']}) -- "
               f"{x.get('why', 'no standable cell reachable from its doorway')}")
