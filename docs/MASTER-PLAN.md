@@ -107,13 +107,28 @@ Losing the card is canon-catastrophic, which makes it the perfect stakes object.
 ## A3. THE PHASES
 
 ### P0a — agent-dischargeable, blocking
-CI wiring (`variety.py`, `--degeneracy`, `agenda.py --selftest`); ~~**verify L3**~~ **L3 IS
-VERIFIED AND GREEN (4j)** — x1/x10/x60 all PASS at **0.05 m from the post**, all three controls
-FIRE at 38–42 m short, exit 0; the dispute resolves to **0.05 m**, and the 5.59 m was a room leg
-laid as a straight line through a desk rank, fixed by `station/roomnav.py` (evidence:
-`docs/life-L3.md` §2.5 and §3); re-run `--life-test`; 60-min soak with RSS; CPU frame
-time at stated NPC count ("GPU half unknown" in the same line); the playtest script.
-**Visible deliverable:** the trailer re-cut from the real build after L3 is green.
+
+**DONE (4j/4k), each with the evidence:**
+
+| item | state |
+|---|---|
+| **verify L3** | **GREEN** — x1/x10/x60 all PASS at **0.05 m from the post**, three controls FIRE at 38–42 m short, exit 0. The 0.05-vs-5.59 dispute resolves to **0.05 m**; the 5.59 was a room leg laid as a straight line through a desk rank (`docs/life-L3.md` §2.5, §3) |
+| **CI wiring** | `svariety`, `sdegeneracy`, `sagenda_selftest` in `validate.yml`, plus `sroomnav`, `sfootprint`, `sthe_shipped_scene_streams`, `sspec_gate`, `sdoc_chain`. **47 step ids, 0 unaggregated, every one `continue-on-error`** so no failure blinds the steps behind it |
+
+**STILL OPEN, and none of it is started:**
+
+| item | why it matters |
+|---|---|
+| re-run `--life-test` | not run since the station grew 8.7× |
+| **60-minute soak with RSS sampling** | no memory ceiling has ever been stated for this project, let alone tested |
+| **CPU frame time at a stated NPC count** | the GPU half stays unknown and the line must say so |
+| the playtest script | — |
+
+**Visible deliverable — the trailer re-cut from the real build — is now UNBLOCKED**, and it is
+the first thing worth doing when the cores are free: L3 is green, the shipped scene streams, the
+station is 53.9% built by length against 6.2% when the last trailer was cut, and the interior
+camera has been fixed (`export_scene` framed tiled rooms at one bay of their length — every
+frame in the previous cut was a close-up of a room 13× longer than it looked).
 
 ### P0.5 — the station streams, or everything after is built on one deck
 
