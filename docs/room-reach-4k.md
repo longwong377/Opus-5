@@ -2,7 +2,7 @@
 
 **Gate:** `python3 station/roomnav.py --station`
 **Reproduction for one place:** `python3 station/roomnav.py --place <key> --map`
-**Session:** 4k. **Status: 99 of 116 yes, 17 no, exit 1** — recalibrated against the engine after it overruled the first threshold (§6).
+**Session:** 4k. **Status: 101 of 116 yes, 15 no, exit 1** — re-run against the tiled station (§9). The figures in §3 and §6 are superseded; read §9 first.
 
 ---
 
@@ -290,3 +290,55 @@ the moment it is done. Not attempted: the station is verifiably green right now
 (`deck.py --sweep`: 90/90 clusters, 128/128 locations, 0 floor holes) and a six-file refactor
 whose verification cycle is twenty minutes is not something to start on a green build without
 the time to finish it.*
+
+
+---
+
+## 9. RE-RUN AGAINST THE TILED STATION — half the hypothesis was right, and the rest is not what I said
+
+§8 predicted the vestibule would explain all seventeen. Re-run: **101 of 116 yes, 15 no.**
+
+**Right about four.** `mooring_clamps`, `bay_elevators`, `lowg_bays` and `plantroom_bay` — the
+blue/0/0 rooms with 40–66 m vestibules — **all now pass**. `deck.room_interior_half_m` returning
+the built span moved the probe onto the real door, exactly as §8 said it would.
+
+**Wrong about the other fifteen**, and the reason is the most useful thing in this document.
+Their signature is unchanged and **perfectly scale-invariant**:
+
+| place | reached | off-centre | half-depth | ratio |
+|---|---|---|---|---|
+| `dark_star` | 0.16 m² | 6.90 | 7.0 | 0.986 |
+| `telepath_office` | 0.16 m² | 7.90 | 8.0 | 0.988 |
+| `casino` | 0.16 m² | 10.90 | 11.0 | 0.991 |
+| `vorlon_berth` | 0.16 m² | 19.90 | 20.0 | 0.995 |
+| `thieves_guild` | 0.16 m² | 49.90 | 50.0 | 0.998 |
+| `generator_hall` | 0.16 m² | 74.90 | 75.0 | **0.999** |
+
+**`off = z_half − 0.1` exactly, at every scale from 7 m to 75 m.** That is the topmost cell
+centre of a 0.2 m grid spanning `z0 ± z_half` — an arithmetic identity, not a measurement. The
+search is reaching a 2×2 pocket at the grid's own edge, which means **the entry point is landing
+outside the built room and BFS is exploring the strip above its wall.** A defect in the geometry
+could not be this exactly proportional to a number this module computes.
+
+### Hypotheses eliminated, so nobody spends the time again
+
+1. **"The doorway aperture is missing."** Refuted by the engine: `mooring_clamps` carried this
+   exact signature and a body walked 684 m and entered it (§6).
+2. **"A vestibule puts the real door far from the probe."** Explains 4 of 19; not the 15.
+3. **"`bespoke.room_shell` translates rather than scales, so the span overshoots."** All 15
+   failures have `module: None` — they are plain `rooms.py` builds — and so do several places
+   that pass (`bay_elevators`, `lowg_bays`, `business_center`).
+
+### What to test next, in order
+
+The discriminator is between two sets of **generic** rooms, so it is not about which builder
+runs. `python3 station/roomnav.py --place thieves_guild --map` draws the occupancy and scans the
+door's own column; the row below the pocket will say what is sealing it. Check first whether
+`built_span_m` overshoots the **emitted mesh's** z-extent for these fifteen — the `--footprint`
+gate asserts mesh == plan for the places `rooms.py` tiles, and if these fifteen are outside that
+assertion then the probe is being placed from a plan nothing built.
+
+*Three corrections in one thread, each from measurement: the 21 became 17 when the engine
+overruled the threshold, 17 became 15 when the station grew under the gate, and the single
+cause I proposed for all of them explains four. The number has never been quoted without being
+re-derived, which is the only reason it kept getting smaller.*
