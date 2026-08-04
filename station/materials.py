@@ -6643,6 +6643,14 @@ NOT_GENERATORS = {"materials.py", "directory.py", "rooms.py",
 # than a regex that quietly widened. If one of these ever becomes a real group,
 # deleting the line is what makes the coverage gate start caring about it.
 NOT_GROUPS = {
+    # A DIRECTORY PLACE KEY that the `core_*` prefix scan reads as a mesh group.
+    # `station/shuttle.py` builds PLC-102, whose register key is `core_shuttle`,
+    # and every `core_*` literal in `station/*.py` is taken for a surface name.
+    # It is a PLACE, not a surface -- the same line `NOT_GENERATORS` draws with
+    # "a SPECIFICATION names places and props, a GENERATOR names surfaces" --
+    # and it is excluded by name rather than by excluding `shuttle.py`, because
+    # that module emits real groups the scan must keep seeing.
+    "core_shuttle",
     # A MANIFEST STATISTIC. `deck.py` reads `dm["drum_lod0_triangles"]` out of
     # drum_walk's report to size a budget; it is a triangle count, not a
     # surface. The two modules that define and consume it are both already

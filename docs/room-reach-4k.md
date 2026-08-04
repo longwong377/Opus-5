@@ -460,3 +460,39 @@ job is making them agree, not diagnosing the room.
 
 *115 of 116 places are fine. This one is worth an hour when someone has it, and worth nothing
 guessed at.*
+
+
+---
+
+## 12. A GATE THAT CANNOT SEE THE THREE NEWEST MODULES — reported, not fixed
+
+`station/test_materials_layer3.py` is the station-wide check that every bespoke module's mesh
+groups resolve to a material. It cannot see `concourse.py`, `observation.py` or `shuttle.py` —
+the three modules built in 4k — so the newest content on the station is outside the only gate
+that asks that question of it. Their own module self-tests do check it, which is where
+`CLAUDE.md` says a gate belongs, but the whole-station one is blind.
+
+**And the obvious fix is wrong, which is why this is recorded rather than patched.** I tried
+deriving its `BESPOKE_ALL` from `bespoke.BESPOKE_GEOMETRY` — one registry instead of two, hard
+rule 4. It made things worse: **16 hand-listed → 12 derived, still none of the new three.**
+There are three tables and they measure genuinely different sets:
+
+| table | what it holds | count |
+|---|---|---|
+| `bespoke.BESPOKE_GEOMETRY` | modules the **assembler composes** | 12 |
+| `test_materials_layer3.BESPOKE_BUILDERS` | modules **this gate can build**, with per-module entry points that are *not uniform* | includes `signage`, `tram`, `garden` — absent from the first |
+| `bespoke.BESPOKE_PLACES` | the **place**-level allowlist, where the new three live | 6 places |
+
+`concourse`/`observation`/`shuttle` have **no module key anywhere** — they are reached through
+their owning module's lambda, dispatched by place. So no derivation from a module-keyed table
+can ever find them, and substituting one table for another just swaps which four modules are
+missing. Reverted.
+
+**The real fix is to make the gate place-keyed like the assembler already is** — walk
+`bespoke.composable_places()` and check the groups each place actually emits — which is the
+same correction `bespoke.py` itself received in 4k when `BESPOKE_GEOMETRY` went from
+module-keyed to place-aware. It is a real piece of work, not a line.
+
+*Applied and verified separately: `materials.NOT_GROUPS` gains `"core_shuttle"`, because the
+`core_*` prefix scan reads that register PLACE key as a mesh group. That one is a name on a
+list and is done.*
