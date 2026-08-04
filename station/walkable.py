@@ -194,6 +194,55 @@ def room_target(meta, place, verts=None, tris=None, groups=None, **kw):
     return RN.standpoint(meta, place, verts, tris, groups, **kw)
 
 
+# How near a path waypoint the body has to get before it aims at the next one.
+# Loose on purpose: these are aim points on a corridor's centre line, not
+# apertures. The waypoints that ARE in an aperture get `route_walk.door_tol_m()`
+# from the module that owns that question -- see `deck_path`.
+WAYPOINT_TOL_M = 0.5
+
+
+def deck_path(schema, profile, meta, place, verts, tris, spawn):
+    """Every waypoint from a body standing in the corridor to inside a room.
+
+    THREE PIECES AND NONE OF THEM IS AUTHORED HERE. The arc along the ring is
+    `route_walk._arc_points` at that module's own faceting; the two aim points
+    either side of the doorway are its discipline, because a body that turns
+    while standing in an aperture meets the jamb; and the way across the room,
+    past its furniture, is `roomnav.approach`. This function chooses the order.
+
+    Returns [] when the room is not in this shell or has no door in it, and the
+    caller then falls back to the straight steer -- so a deck this cannot route
+    on behaves exactly as it did before.
+    """
+    import route_walk as RW                                      # noqa: PLC0415
+    import deck as D_                                            # noqa: PLC0415
+    door = next((r for r in meta.get("rooms", ())
+                 if r["key"] == place["key"]), None)
+    if door is None:
+        return []
+    fr, cz = meta["floor_r_m"], meta["z_m"]
+    sx, sy, _sz = spawn
+    start_deg = math.degrees(math.atan2(sy, sx))
+    zh = D_.room_interior_half_m(schema, profile, place)
+    # TOWARD THE CORRIDOR: a room's door is in the wall that faces it, and
+    # `place.z + zh` is the FAR wall for a room on the other side. See
+    # docs/room-reach-4k.md section 2.
+    toward = 1.0 if cz > place["z_m"] else -1.0
+    z_inner = place["z_m"] + toward * zh
+    pts = list(RW._arc_points(fr, start_deg, door["door_deg"], cz))
+    pts.append(RW._at(fr, door["door_deg"], z_inner - toward * 0.5))
+    pts += [list(q) for q in room_approach(meta, place, verts, tris,
+                                           meta.get("groups"),
+                                           from_pt=pts[-1], z_half=zh)]
+    # No two consecutive waypoints in the same place: a zero-length hop is a
+    # waypoint the body is already at, and it would be skipped anyway.
+    out = []
+    for q in pts:
+        if not out or math.dist(out[-1], q) > 1e-6:
+            out.append(list(q))
+    return out
+
+
 def room_approach(meta, place, verts, tris, groups=None, **kw):
     """The way in from the door AND the spot, for a caller laying a route.
 
@@ -452,11 +501,23 @@ def walk_deck(sector, ring, deck, godot, timeout=1800, traverse=None,
            f"--traverse={traverse if traverse is not None else TRAVERSE_FRAMES}"]
     # Walking INTO a named place is the claim W2 actually makes, and it is a
     # strictly harder question than "did the body move": it fails when the route
-    # is blocked, not only when the body is wedged. The body steers straight at
-    # the target, so the target has to be one it can reach without navigating --
-    # the room the spawn is standing outside. Reaching one across the ring needs
-    # a path, and there is no pathfinder yet.
+    # is blocked, not only when the body is wedged.
+    #
+    # AND IT FOLLOWS A PATH NOW, which this comment used to say it could not:
+    # *"the target has to be one it can reach without navigating -- Reaching one
+    # across the ring needs a path, and there is no pathfinder yet."* Measured,
+    # that limitation was not a caveat but a wrong answer: steered straight at
+    # `vorlon_berth`, 40 degrees round the ring, the body walked off a CURVED
+    # corridor and reported 1,661 m travelled with 1,084 of 1,800 frames in the
+    # air -- the falling-body-reporting-a-journey signature, scored as a walk.
+    #
+    # The path is nobody's new invention: the arc along the ring is
+    # `route_walk._arc_points`, the doorway aim points are that module's own
+    # discipline (a body that turns while standing in an aperture meets the
+    # jamb), and the way across the room is `roomnav.approach`. Imported late
+    # because `route_walk` imports THIS module -- one direction only.
     tx, ty, tz = rtgt
+    path = deck_path(schema, profile, cm, dr.by_key(goto), cv, ct, s["spawn"])
     # -- WALK UP TO A THING AND USE IT -------------------------------------
     # The route is the same one the plain deck walk takes -- the object is the
     # pressable interactable nearest the room target -- so a failure here is a
@@ -498,6 +559,13 @@ def walk_deck(sector, ring, deck, godot, timeout=1800, traverse=None,
             f"--interact={os.path.join(out, stem + '_interact.json')}",
             f"--goto={tx},{ty},{tz}", f"--door-key={goto}",
             f"--door-travel={K.PROVISIONAL['door_width_m'] / 2.0}"]
+    # THE WAY THERE, when there is one and the target is still the room. A
+    # `--bump` or `--use` run is steered at a PERSON or an OBJECT rather than at
+    # the room's standing point, so its path would end somewhere else; those
+    # keep the straight steer they were written against.
+    if path and chosen is None and bumped is None:
+        cmd += ["--goto-path=" + ";".join(f"{q[0]},{q[1]},{q[2]}" for q in path),
+                f"--goto-tol={WAYPOINT_TOL_M}"]
     if chosen is not None:
         cmd += [f"--use-group={chosen['group']}"]
     if no_doors:

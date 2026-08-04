@@ -835,6 +835,16 @@ func _run_walk_test(args: Dictionary) -> void:
 	if args.has("goto"):
 		_goto = _vec(args["goto"])
 		_have_goto = true
+	if args.has("goto-path"):
+		for piece in String(args["goto-path"]).split(";", false):
+			_wp.append(_vec(piece))
+		if not _wp.is_empty():
+			# The last waypoint IS the place, so `goto_best_m` keeps measuring
+			# against the same point with or without a path.
+			_goto = _wp[_wp.size() - 1]
+			_have_goto = true
+	if args.has("goto-tol"):
+		_wp_tol = float(args["goto-tol"])
 	_door_key = String(args.get("door-key", ""))
 	_trace = int(args.get("trace", "0"))
 	_testing = true
@@ -1880,8 +1890,23 @@ func _physics_process(delta: float) -> void:
 	# geometry" -- and it is a strictly harder question than "did it move",
 	# because it fails when the route is blocked rather than when the body is.
 	if _have_goto:
+		# ON THE FLOOR PLANE, and that is not a detail. A waypoint sits 50 mm
+		# above the shell on purpose so its settle drop can be asserted, and a
+		# body standing on the deck can never close a RADIAL offset -- measure
+		# the gap in 3D and the last waypoint is never reached, the body dithers
+		# at it for ever, and the run scores as "walked" while going nowhere.
+		# `walkable.room_target`'s docstring records the same defect one level up.
+		var aim := _goto
+		if not _wp.is_empty():
+			var up: Vector3 = _player.body_up()
+			while _wp_i < _wp.size() - 1:
+				var d: Vector3 = _wp[_wp_i] - _player.global_position
+				if (d - up * d.dot(up)).length() >= _wp_tol:
+					break
+				_wp_i += 1
+			aim = _wp[_wp_i]
 		_player.step(delta, Vector2.ZERO, false, false,
-			_goto - _player.global_position)
+			aim - _player.global_position)
 	else:
 		_player.step(delta, Vector2(0, 1), false, false)
 	_push_off(delta)
@@ -1902,6 +1927,8 @@ func _physics_process(delta: float) -> void:
 		if _have_goto:
 			goto_s = " goto_start_m=%.2f goto_best_m=%.2f goto_end_m=%.2f" % [
 				_traverse_from.distance_to(_goto), _goto_best, gd]
+			if not _wp.is_empty():
+				goto_s += " wp_done=%d/%d" % [_wp_i + 1, _wp.size()]
 			if _doors != null:
 				# THE MOST OPEN IT EVER GOT, not how open it is now. This read
 				# the LIVE openness at the frame the verdict prints, which for a
@@ -2018,4 +2045,14 @@ var _off_floor := 0
 var _goto := Vector3.ZERO
 var _have_goto := false
 var _goto_best := 1e30
+## THE WAY THERE, not just the place. `--goto` alone steers STRAIGHT at a point,
+## which measures straight-line reachability and calls it walkability: driven at
+## a room 40 degrees round the ring it walked the body off a curved corridor --
+## 1,661 m travelled with 1,084 of 1,800 frames in the air. `station/roomnav.py`
+## and `station/route_walk.py` already compute the way a person would take; this
+## follows it. Empty means the old straight steer, so every existing caller is
+## unchanged.
+var _wp: Array[Vector3] = []
+var _wp_i := 0
+var _wp_tol := 0.5
 var _door_key := ""
