@@ -87,9 +87,24 @@ SNAP_MAX_M = 1.50        # how far the search may look for a free cell to start
 MIN_STAND_M2 = 2.0
 # ...and how far from the middle of a room the nearest standable cell may be,
 # as a fraction of the room's own half-depth, before "we are in the room" stops
-# being true. Measured: a pocket outside the wall lands at 0.97 of it; a room
-# entered properly lands well under a third.
-POCKET_FRAC = 0.5
+# being true.
+#
+# CALIBRATED AGAINST THE ENGINE, WHICH OVERRULED THE FIRST VALUE. At 0.5 this
+# flagged `mooring_clamps`, and a body driven along `walkable.deck_path` walked
+# 684 m to it and arrived 1.18 m from its standing point, 93 of 93 waypoints,
+# 0 of 15,000 frames off the floor. The room is enterable; the gate was wrong.
+# The engine is the authority and a gate that contradicts it is a gate to fix,
+# not a finding to defend.
+#
+# Three engine runs is a thin calibration and this says so:
+#   docking_bays    ratio 0.32   arrived 0.05 m    gate agreed
+#   lowg_bays       ratio  --    arrived 0.91 m    gate agreed
+#   mooring_clamps  ratio 0.59   arrived 1.18 m    GATE WAS WRONG
+# So the two signals are ANDed rather than ORed and the fraction is raised past
+# the case that was measured. That fails only where both agree -- a tiny
+# reachable area AND nearly a whole half-depth from the middle -- which is the
+# 0.16-0.40 m2 / 0.90-0.99 cluster and none of the four borderline places.
+POCKET_FRAC = 0.85
 
 
 # ---------------------------------------------------------------------------
@@ -451,7 +466,7 @@ def approach(meta, place, verts, tris, groups=None, from_pt=None,
     rep["detour_m"] = 0.0
 
     if not centre_reachable and (rep["stand_m2"] < MIN_STAND_M2
-                                 or rep["off_centre_m"] > POCKET_FRAC * z_half):
+                                 and rep["off_centre_m"] > POCKET_FRAC * z_half):
         rep["why"] = (f"the entry point is sealed off from this room's own "
                       f"floor -- {rep['stand_m2']:.2f} m2 reachable and the "
                       f"nearest standable cell is {rep['off_centre_m']:.2f} m "
@@ -618,28 +633,36 @@ def _selftest():
           "opens it", f"{rep3.get('obstacle_tris')} obstacles")
 
     # A DOOR PROBE ON THE WRONG SIDE OF A WALL IS A POCKET, NOT A ROOM, and
-    # this is the control for the defect `--station` shipped unable to see. Seal
-    # the room off from the entry point with an unbroken partition: the search
-    # then reaches a strip beside the probe and not the room, and the answer
-    # must be "that is not the room" plus the register's centre -- NOT the best
-    # cell in the strip. Fourteen of the station's places were in exactly this
-    # state while the sweep reported 116 of 116 fine.
+    # this is the control for the defect `--station` shipped unable to see.
+    #
+    # THE POCKET HAS TO BE POCKET-SIZED. The first version of this control
+    # sealed the room with one full-width wall and left a 28.8 m2 STRIP behind
+    # it -- which stopped firing the moment the rule was tightened to "tiny AND
+    # far from the middle", correctly, because a 28.8 m2 strip is not a pocket.
+    # A control that only fires against a loose rule is not a control. So the
+    # fixture is a real doorway pocket: a sealing wall with two returns either
+    # side of the door, 1.4 m x 1.0 m, which is 0.21 m2 once a capsule is
+    # allowed for.
     v2, t2 = list(verts[:n_base_v]), list(tris[:n_base_t])
 
-    def wall(z):
+    def slab(s0, s1, z0_, z1_):
         i = len(v2)
-        v2.extend([at(-13, z, 0.0), at(13, z, 0.0),
-                   at(13, z, 2.0), at(-13, z, 2.0)])
+        v2.extend([at(s0, z0_, 0.0), at(s1, z1_, 0.0),
+                   at(s1, z1_, 2.0), at(s0, z0_, 2.0)])
         t2.append((i, i + 1, i + 2))
         t2.append((i, i + 2, i + 3))
 
-    wall(4.4)                                  # unbroken, between door and room
+    door2 = at(0.0, 5.5, 0.05)
+    slab(-13, 13, 5.0, 5.0)                    # seals the room off entirely
+    slab(-0.7, -0.7, 5.0, 6.5)                 # ...and returns either side of
+    slab(0.7, 0.7, 5.0, 6.5)                   # the door, so the pocket is one
     rep4 = {}
     path4 = approach(meta, place, v2, t2, groups=[("room", 0, len(t2))],
-                     from_pt=door, z_half=6.0, report=rep4)
+                     from_pt=door2, z_half=6.0, report=rep4)
     check(rep4.get("pocket") is True,
-          "CONTROL: an entry point sealed off from the room reads as a POCKET, "
-          "not as the room", f"{rep4.get('stand_m2')} m2 reachable, "
+          "CONTROL: a doorway-sized pocket sealed off from the room reads as a "
+          "POCKET, not as the room", f"{rep4.get('stand_m2')} m2 reachable, "
+          f"{rep4.get('off_centre_m')} m off centre, "
           f"centre_reachable={rep4.get('centre_reachable')}")
     check(len(path4) == 1 and abs(path4[0][2] - z0) < 1e-6,
           "and it falls back to the register's centre, so a route cannot get "
@@ -648,19 +671,20 @@ def _selftest():
     # which is what proves the check is about connectivity and not about walls.
     v3, t3 = list(verts[:n_base_v]), list(tris[:n_base_t])
 
-    def pierced(z):
+    def slab3(s0, s1, z0_, z1_):
         i = len(v3)
-        for s0, s1 in ((-13.0, -1.0), (1.0, 13.0)):
-            i = len(v3)
-            v3.extend([at(s0, z, 0.0), at(s1, z, 0.0),
-                       at(s1, z, 2.0), at(s0, z, 2.0)])
-            t3.append((i, i + 1, i + 2))
-            t3.append((i, i + 2, i + 3))
+        v3.extend([at(s0, z0_, 0.0), at(s1, z1_, 0.0),
+                   at(s1, z1_, 2.0), at(s0, z0_, 2.0)])
+        t3.append((i, i + 1, i + 2))
+        t3.append((i, i + 2, i + 3))
 
-    pierced(4.4)
+    slab3(-13, -1.0, 5.0, 5.0)                 # the SAME wall, with a 2 m gap
+    slab3(1.0, 13, 5.0, 5.0)
+    slab3(-0.7, -0.7, 5.0, 6.5)
+    slab3(0.7, 0.7, 5.0, 6.5)
     rep5 = {}
     approach(meta, place, v3, t3, groups=[("room", 0, len(t3))],
-             from_pt=door, z_half=6.0, report=rep5)
+             from_pt=door2, z_half=6.0, report=rep5)
     check(not rep5.get("pocket") and rep5.get("centre_reachable"),
           "and the SAME wall with a 2 m doorway in it is not a pocket",
           f"{rep5.get('stand_m2')} m2 reachable, "

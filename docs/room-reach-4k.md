@@ -2,7 +2,7 @@
 
 **Gate:** `python3 station/roomnav.py --station`
 **Reproduction for one place:** `python3 station/roomnav.py --place <key> --map`
-**Session:** 4k. **Status: 95 of 116 yes, 21 no, exit 1.**
+**Session:** 4k. **Status: 99 of 116 yes, 17 no, exit 1** — recalibrated against the engine after it overruled the first threshold (§6).
 
 ---
 
@@ -126,7 +126,8 @@ module blaming the station for its own conservatism. **Same wall, same cluster:*
 
 `docking_bays` has 0.80 m of clear doorway at capsule radius. `vorlon_berth`, in the same wall
 of the same cluster, has none — and none at 0.20 m either, so this is not a capsule that is
-too fat. **Two doorways in one wall, one passable and one not.**
+too fat. Two doorways in one wall, one clear and one not **as this module measures them** —
+and §6 is why that sentence is no longer allowed to end "one passable and one not".
 
 ---
 
@@ -171,3 +172,46 @@ too fat. **Two doorways in one wall, one passable and one not.**
   answer is the best spot in a slice of the room. Reported on every run, never swallowed.
 - **The drum is not asked at all** (`green/1/0`): it is a heightfield, not a corridor, and
   needs `drum_walk`'s question rather than this one. Printed as `not asked`, with the reason.
+
+
+---
+
+## 6. THE ENGINE OVERRULED THIS GATE, AND THE GATE WAS CHANGED
+
+`walkable.deck_path` + `walk.gd --goto-path` now drive a body along a real route rather than
+steering it straight (see the commit *"the deck gate follows a path now"*). That made the
+experiment §5 called for possible, and it immediately falsified a claim in this document.
+
+| room | this gate said | the engine did |
+|---|---|---|
+| `docking_bays` | fine, ratio 0.32 | arrived **0.05 m**, 5/5 waypoints, 0/1800 off the floor |
+| `lowg_bays` | fine | walked **495 m**, arrived **0.91 m**, 71/72, 0/12000 off the floor |
+| `mooring_clamps` | **CANNOT GET IN**, ratio 0.59 | walked **684 m**, arrived **1.18 m**, **93/93**, 0/15000 off the floor |
+
+**`mooring_clamps` is enterable and this gate said it was not.** The engine is the authority;
+a gate that contradicts it is a gate to fix, not a finding to defend.
+
+Two changes follow. The two signals are **ANDed** rather than ORed — a place fails only when
+its reachable floor is tiny *and* the nearest standable cell is nearly a whole half-depth from
+the middle — and `POCKET_FRAC` is raised from 0.5 to **0.85**, past the case that was measured.
+Reclassifying the same sweep: **21 → 17**, and the four dropped are exactly the borderline
+band, `mooring_clamps` (0.60) among them:
+
+| dropped | reached m² | ratio |
+|---|---|---|
+| `mooring_clamps` | 7.32 | 0.60 |
+| `subfloor_stack` | 2.40 | 0.67 |
+| `bay_elevators` | 7.20 | 0.72 |
+| `cnc` | 0.80 | 0.78 |
+
+**Three engine runs is a thin calibration and the code says so.** The 17 that remain all sit at
+0.16–0.40 m² and 0.90–0.99, which is a different population from anything the engine has
+walked — but *none of them has been walked either*. `vorlon_berth` is 1,181 m along the
+corridor from the spawn and needs ~20,000 physics frames; that run has not been made.
+
+**And the control had to be rebuilt, which is its own finding.** The selftest's synthetic
+pocket was one full-width wall leaving a **28.8 m² strip** behind it — and it stopped firing
+the moment the rule was tightened, correctly, because a 28.8 m² strip is not a pocket. *A
+control that only fires against a loose rule is not a control.* It is now a doorway-sized
+pocket — a sealing wall with returns either side of the door, 0.48 m² reachable — and it fires
+against the strict rule.
