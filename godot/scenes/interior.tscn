@@ -1,4 +1,4 @@
-[gd_scene load_steps=172 format=3]
+[gd_scene load_steps=173 format=3]
 
 ; A room, from the inside.
 ;
@@ -205,6 +205,7 @@
 [ext_resource type="Material" path="res://materials/npc_cloth_trim__nightwatch_black.tres" id="m_npc_cloth_trim__nightwatch_black"]
 [ext_resource type="Material" path="res://materials/npc_impostor.tres" id="m_npc_impostor"]
 [ext_resource type="Material" path="res://materials/light_vorlon_frost.tres" id="m_light_vorlon_frost"]
+[ext_resource type="Material" path="res://materials/alien_status_lamp_dark.tres" id="m_alien_status_lamp_dark"]
 
 [sub_resource type="Environment" id="Env"]
 ; Flat colour, not a sky. Near-black rather than pure black for the reason the
@@ -344,6 +345,7 @@ material_rules = {
 "alien_ring": ExtResource("m_kit_pilaster"),
 "alien_skirt": ExtResource("m_shell_wall_panel"),
 "alien_status_lamp": ExtResource("m_alien_status_lamp"),
+"alien_status_lamp_dark": ExtResource("m_alien_status_lamp_dark"),
 "alien_stile": ExtResource("m_kit_pilaster"),
 "alien_wall": ExtResource("m_shell_wall_panel"),
 "baggage_scanner": ExtResource("m_steel_gantry_oxide"),
@@ -385,7 +387,7 @@ material_rules = {
 "bay_deck": ExtResource("m_shell_deck_industrial"),
 "bay_disc": ExtResource("m_bay_deck_marking"),
 "bay_emblem": ExtResource("m_bay_deck_emblem"),
-"bay_girder": ExtResource("m_steel_gantry_oxide"),
+"bay_girder": ExtResource("m_shell_rib_oxide"),
 "bay_lamp": ExtResource("m_bay_floodlight"),
 "bay_ledge": ExtResource("m_shell_wall_industrial"),
 "bay_mullion": ExtResource("m_shell_rib_painted"),

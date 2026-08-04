@@ -2443,7 +2443,27 @@ def _build():
         "shell_rib_oxide", "Plant Rib — red-oxide primed structural steel, bay and cargo hall",
         albedo=(0.379, 0.315, 0.265), roughness=0.45, metallic=0,
         specular=0.42, texture="truss_steel", uv_scale=1.0 / 2.5,
-        binds=("industrial_rib", "store_rib", "customs_bracket", "customs_hanger"), scenes=("interior",),
+        binds=("industrial_rib", "store_rib", "customs_bracket", "customs_hanger",
+               # SESSION 4m -- THE OBJECT THIS MATERIAL WAS MEASURED FROM.
+               # The `source` below reads dock.webp's "overhead structure band
+               # (0.00,0.00)-(0.55,0.20)" and quotes 00-INDEX.md's "red-orange
+               # box girders in dock.webp", and `docking_bay.py`'s own docstring
+               # calls that band "red-orange painted structural steel overhead
+               # ... the bay's whole lighting scheme and the first thing that
+               # reads". The girders it builds from that reading were on
+               # `steel_gantry_oxide` (0.300/0.255/0.242) -- the HANDLING
+               # material, for cranes, racking and skids -- so the one surface
+               # in the frame that carries the colour was rendered in the grey
+               # of the machines standing under it. A material measured off an
+               # object and bound to everything except that object; CLAUDE.md's
+               # own pattern, and the second instance of it found in this room
+               # today (see AMBIENT_BY_ARCHETYPE["store"] in export_scene.py).
+               #
+               # `bay_girder` is 84% of this module's triangles -- the truss
+               # chords, the Warren web, the end posts, the longitudinal
+               # runners and every floodlight housing -- so it is also the
+               # single largest surface in the bay after the deck.
+               "bay_girder"), scenes=("interior",),
         source="03-sector-blue/dock.webp (gains 0.968/1.027/1.007): k-means over the overhead structure band (0.00,0.00)-(0.55,0.20) gives rgb(0.080,0.042,0.029) H 15 S 0.633 and rgb(0.129,0.068,0.052) H 13 S 0.595; over the left pier band (0.02,0.18)-(0.14,0.58) gives H 22 S 0.618, H 17 S 0.731, H 17 S 0.677 and H 16 S 0.400. 09-garden-core-and-transit/central corridor.webp (gains 1.044/1.085/0.892): the hull ring frames at (0.87,0.10)-(0.94,0.55) cluster at V 0.086 S 0.440, V 0.157 S 0.324, V 0.243 S 0.318 and V 0.462 S 0.294 — all at H 28-34. 00-INDEX.md independently describes both: 'red-orange box girders' in dock.webp and ring frames in 'dark oxide red' in central corridor.webp.",
         extrapolated="Value 0.379 = lit(0.243) from central corridor's dominant lit ring cluster. Hue 26 deg is the midpoint of the two frames' registers (dock H 13-22, central corridor H 28-34). Saturation 0.301 is set so that truss_steel's own (1.000, 0.980, 0.950) tint carries the rendered surface to S 0.336, which is the mean of the four cleanest lit clusters across the two frames (0.294, 0.318, 0.324, 0.400) — the declared albedo is pulled below the target on purpose so the sheet does not double-count. Roughness 0.45 and specular 0.42 are extrapolated from the specular roll-off visible along the ring tube (the V 0.462 cluster). The 2.5 m truss_steel repeat gives 0.5 m panels, about one per rib face."))
     # ---- steel_heavy ---------------------------------------------------
@@ -2478,7 +2498,13 @@ def _build():
         "steel_gantry_oxide", "Gantry Steel — oxide-primed heavy structure, handling and plant",
         albedo=(0.300, 0.255, 0.242), roughness=0.52, metallic=0.3,
         specular=0.45, texture="truss_steel", uv_scale=1.0 / 4,
-        binds=("fix_gantry_rail", "fix_racking_run", "fix_catenary_run", "crane", "prop_docking_clamp", "bay_girder", "plant_frame", "plant_frame_ring",
+        binds=("fix_gantry_rail", "fix_racking_run", "fix_catenary_run", "crane", "prop_docking_clamp",
+               # `bay_girder` MOVED TO `shell_rib_oxide` in session 4m -- see
+               # the block on its bind list there. This material is the
+               # handling family (cranes, racking, skids, machine bodies); the
+               # bay's overhead steel is the object `shell_rib_oxide` was
+               # measured from, and it belongs to that measurement.
+               "plant_frame", "plant_frame_ring",
                # The customs baggage arch (INV-267). `rooms.PROP_KIND` maps
                # `baggage_scanner` onto the `gantry` machine, so it is heavy
                # handling structure and takes the material the rest of this
@@ -2716,8 +2742,38 @@ def _build():
         albedo=(0.040, 0.042, 0.046), roughness=0.07, metallic=0,
         specular=0.92,
         binds=("prop_viewport", "cc_glazing"), scenes=("interior",),
+        # SESSION 4m LOOKED AT SPLITTING THIS AND STOPPED, AND THE REASON IS
+        # WORTH MORE THAN THE SPLIT WOULD HAVE BEEN. The entry's one measured
+        # number -- V 0.067 at (0.560,0.530)-(0.780,0.560) -- is taken on a
+        # region its own next clause calls "near-black vertical MULLIONS with a
+        # dark SILL", while the sentence before it says the drum reads through
+        # the glass UNATTENUATED. So the pane inherits a measurement of the
+        # frame around it, and `obs_rotundas` renders a ring of black holes.
+        #
+        # A `viewport_drum_daylight` was built and measured: emission
+        # (1.000,0.952,0.923) at energy 0.62, from rotunda.webp's three clean
+        # glazing bays (linear Y 0.553/0.522/0.423 against that room's own lit
+        # wall at 0.053 -- the pane is 9.4x the wall it is set in). On
+        # `obs_rotundas` it moved p95 x0.23 -> x0.54 and p5/p95 x6.79 -> x3.31,
+        # i.e. it took the two failing distribution statistics to PASS in one
+        # change. IT IS STILL REVERTED, because `prop_viewport` is ONE GROUP
+        # and the places that use it do not face the same way:
+        #
+        #   PLC-063 domed_rotunda  "inward drum-facing windows"  -> daylight
+        #   PLC-065 drum_office    the frame THIS entry measures -> daylight
+        #   PLC-064 obs_rotundas   "facing OUT at space"         -> starfield
+        #
+        # and `docs/spec/PLACES.md` PLC-063 says the split is deliberate:
+        # "facing question resolved inward for this one, outward for PLC-064,
+        # splitting the canon ambiguity visibly". C-003 is OPEN and BLOCKING
+        # and this is the picture it decides, not a label. Separating the two
+        # needs a second group from `station/rooms.py`, which is where the
+        # generic viewport prop is placed; until then a global bind lights
+        # vacuum. See docs/reference-values.md and the note in
+        # tools/export_scene.py's EXPOSURE_FRAMES on the mis-paired reference.
         source="reference/14-characters-and-uniforms/talia-winters in gorgeous office.webp (authority 1; reference/00-INDEX.md calls it the clearest view of the habitat drum interior the project holds), grey-world gains 0.844/1.075/1.131. It shows a drum office viewport head-on: the glazing carries NO visible tint or veiling reflection — the drum's ground, guideway trusses and lit blocks read through it unattenuated — and it is divided by near-black vertical mullions with a dark sill, measured at (0.560,0.530)-(0.780,0.560) rgb 0.043,0.038,0.067, V 0.067. station/directory.py places prop_viewport in `drum_office` (offices, green sector) and `domed_rotunda` (observation, public_social), which is the same room class as the frame.",
         extrapolated="That the aperture is rendered as one dark, near-mirror surface rather than as transparent glass in a frame. station/rooms.py builds prop_viewport as a single 2.40 x 0.20 x 1.40 m box, so there is no frame member to separate from the pane; the material has to read as 'a window' from that one box. Constrained by: it must be the darkest thing in any room it stands in (0.042 luminance, an order below the door leaf) so it reads as an opening rather than a panel, and roughness 0.07 with specular 0.92 makes it carry the room as a reflection, which is what the measured mullion-and-sill darkness plus an untinted view actually look like from inside. The precedent is `tram_glass`, opaque rather than transparent for the same reason — a sort costs more than it buys. Overturned by: layer 5 splitting the viewport into pane and frame, at which point the pane should become genuinely transmissive and this material becomes the frame's."))
+
 
         # This is the brightest and smoothest surface in the family, and it
         # should be — 0.565 luminance against a 0.46 wall, because for a metal

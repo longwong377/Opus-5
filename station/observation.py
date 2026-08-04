@@ -64,6 +64,64 @@ says **"facing OUT at space"**. This module follows the spec for the GLAZING
 and the auth-1 frame for the ARCHITECTURE, which is the only split that uses
 both sources honestly. Nothing here decides C-003.
 
+SESSION 4m -- `obs_rotundas` IS BEING GRADED AGAINST A DIFFERENT ROOM'S FRAME,
+AND THAT IS WHY ITS LIGHTING CANNOT PASS
+---------------------------------------------------------------------
+`tools/measure_frame.py --against reference/05-sector-green/rotunda.webp`
+scores this place median x0.51, p5 x1.58 FAIL, p95 x0.23 FAIL, p5/p95 x6.79
+FAIL. The p95 miss IS the whole gap and it is a WINDOW: that reference frame's
+95th percentile is 0.7906 and its bright population is the band of glazing,
+which reads linear Y 0.42-0.55 across three clean bays against the room's own
+lit wall at 0.053 -- **the pane is 9.4x the wall it is set in**.
+
+`docs/spec/PLACES.md` says those are not this room's windows. PLC-063
+`domed_rotunda` is "stepped gold coffered dome, INWARD DRUM-FACING WINDOWS,
+alien-sigil banners, blue altar table (auth 1 dressing)" and its CHECK is "the
+windows show the true drum interior". PLC-064 -- this place -- is "the
+4-rotunda class (canon count), **facing OUT at space**", its viewports are
+"T1 -- starfield + gate bearing true", and its CHECK wants "one of them
+planetward: Epsilon III below". PLC-063 states the split is deliberate:
+"facing question resolved inward for this one, outward for PLC-064, splitting
+the canon ambiguity visibly".
+
+So `rotunda.webp` is PLC-063's frame. Measuring PLC-064 against it asks a
+gallery looking at vacuum to match a chapel looking at a sunlit habitat, and
+**no exposure, ambient or fitting change in this module can close a x0.23 p95
+that is made of daylight this room does not have.** The pairing was tried:
+binding `prop_viewport` to a measured drum-daylight material (emission
+(1.000,0.952,0.923) at energy 0.62) took p95 x0.23 -> x0.54 and p5/p95
+x6.79 -> x3.31, both to PASS, in one change -- and it is REVERTED, because
+`prop_viewport` is one group shared with PLC-063 and PLC-065 and lighting it
+globally decides C-003, which is OPEN and BLOCKING. See the block on
+`materials.viewport_glazing`'s bind list.
+
+WHAT IS WRONG HERE INDEPENDENTLY OF THE REFERENCE, and it is the same defect
+`docking_bay` had. Summing Godot's own attenuation over every source on the
+working plane -- the measurement recorded above `tools/export_scene.py`'s
+BESPOKE_EXPOSURE -- gives:
+
+    corridor (the anchor)   24 sources   3.3 x  22.1 m   mean E 4.2641
+    docking_bays            39 sources  42.5 x 141.5 m   mean E 1.9026
+    obs_rotundas             1 source   14.4 x  17.9 m   mean E 0.0044
+
+**970x under the anchor, from ONE source.** This module emits four light
+groups and three of them cast nothing: `light_pilaster_strip` (1,260
+triangles, the largest fitting in the room), `light_portal_head` and
+`light_bar_backlight` are all absent from `FIXTURE_LIGHTING` and are emissive
+only. The single caster is `light_dais_key`, 12 triangles, and
+`export_scene.room_reach` has stretched its 9 m measured range to 27 m -- the
+REACH_CAP -- to report 100% floor coverage, which is the rig saying out loud
+that it has no sources. The room is therefore lit by `ambient_energy` 1.300,
+the residential corridor's full calibrated fill, because `ambient_energy`
+hands every module-owned place `AMBIENT_CALIBRATED_RATIO`.
+
+NOT FIXED HERE, deliberately: the remedy is sources, and the reference frame
+names them -- "a continuous band of narrow pale vertical slats ... **lit so it
+reads as a bright ribbon**" and "tall blue **backlit** lattice panels", which
+is `alien_sector`'s own ruling that a diffuser is not the source. But that
+overturns a measured `emissive_only` decision, and the only frame available to
+verify the result against is the wrong room's. Pick the reference first.
+
 WHAT IS EXTRAPOLATED -- INV-291 (the rotunda) and INV-292 (the domes)
 ---------------------------------------------------------------------
 Every absolute dimension. The frames give proportions against robed figures

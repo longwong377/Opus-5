@@ -2187,6 +2187,30 @@ AMBIENT_BY_ARCHETYPE = {
 # the modules -- see LIGHTING_COVERAGE's `n >= A / (2 R^2)`.
 AMBIENT_SOLVED = {
     # archetype / mod:module      ambient   what it did
+    # ---------------------------------------------------------------------
+    # SESSION 4m -- AND THIS ROW IS NOT A NEW MEASUREMENT. `AMBIENT_BY_
+    # ARCHETYPE` above carries `"store": 0.076,  # docking_bay` -- the ratio
+    # was measured IN THIS ROOM, is labelled with this room's name, and this
+    # room has never used it, because `ambient_energy` takes the
+    # `place["module"]` branch for every bespoke place and that branch returns
+    # `AMBIENT_CALIBRATED_RATIO` (0.300) -- the residential corridor's. So the
+    # 140 m hangar has been lit with 3.9x the flat fill its own frame was
+    # measured to have, and the number that says so was sitting eighty lines
+    # up under the comment `# docking_bay`.
+    #
+    # CLAUDE.md's own pattern, one table over: a value measured for one place
+    # and applied to every place except that one.
+    #
+    # BEING IN THIS TABLE IS THE POINT, not the value. 0.076 x 1.30 / 0.300 =
+    # 0.3293 against the 0.3510 the module branch was giving, i.e. the LEVEL
+    # barely moves (-6%). What moves is that the ambient stops being
+    # multiplied by `room_exposure`, and that is what makes the exposure
+    # usable at all here: the bay's fittings deliver 1.7% of the corridor
+    # anchor's floor irradiance (measured, see BESPOKE_EXPOSURE['docking_bay'])
+    # so the exposure has to go up by an order of magnitude, and while the two
+    # terms were coupled that took the flat fill up with it and produced the
+    # flat frame session 4l recorded.
+    "mod:docking_bay": 0.0760,    # 0.3000   the bay's OWN ratio, off dock.webp
     "detention": 0.0080,          # 0.0346   the solved cell wanted exposure
                                   #          0.078 and the self-test's runaway
                                   #          guard is right to refuse it, so
@@ -2500,13 +2524,23 @@ BESPOKE_EXPOSURE = {
                              # the deck now -- and the level is right at the
                              # target; what is missing is the small bright
                              # population a set dresser puts in shot.
-    "docking_bay": 0.27,     # 0.90 x0.30. vs reference/03-sector-blue/
-                             # dock.webp. median x1.22, p5 x0.90, PASS -- and
-                             # it is the single largest correction here. At
-                             # 0.90 the same shot reads median x1.84 and p5
-                             # x2.95: the lamp-count recovery (13 -> 39) was
-                             # applied without re-deriving the exposure that
-                             # had been measured at 13.
+    "docking_bay": 7.11,     # 0.27, and the jump is 26x because the row it
+                             # replaces was solved on a room whose ambient it
+                             # was also scaling. See the block below: this is
+                             # the one row in the table that is a LIGHTING
+                             # DESIGN correction wearing an exposure's
+                             # clothes, and it is only usable at all because
+                             # AMBIENT_SOLVED now holds the bay's flat term
+                             # still while this moves. vs reference/
+                             # 03-sector-blue/dock.webp.
+                             #
+                             # PREVIOUSLY, and the record is worth keeping
+                             # because the row PASSED: at 0.27 the shot read
+                             # median x1.22 and p5 x0.90 and was written up as
+                             # "PASS -- the single largest correction here".
+                             # It passed on the CENSORED median of a frame
+                             # 92.25% of which was under the measurable floor,
+                             # i.e. on 7.7% of its own pixels. See below.
     "alien_sector": 0.47,    # UNCHANGED, swept x0.5/x1/x1.25/x2. x1.00 is the
                              # only gain inside the level window (median
                              # x1.26). FAIL crushed x36.9 -- this frame holds
@@ -2558,6 +2592,153 @@ BESPOKE_EXPOSURE = {
                              # frame is not an exposure measurement -- it is a
                              # lighting-design problem with a number attached.
 }
+
+
+# ---------------------------------------------------------------------------
+# A RIG THAT DELIVERS 1.7% OF THE ANCHOR'S FLOOR IRRADIANCE IS NOT AN EXPOSURE
+# PROBLEM -- session 4m, docking_bay
+# ---------------------------------------------------------------------------
+# Layer 4a's row for `docking_bays` read "median x0.30, 92.25% crushed against
+# the show's 38.82%", and three sessions tried to move it with a gain. The
+# reason no gain moved it is measurable WITHOUT A RENDER, and this is the
+# measurement. Sum Godot's own attenuation -- `(1-(d/r)^4)^2 * d^-decay` with
+# `decay = spot_attenuation = 1.0`, which is what render_shot.gd builds -- over
+# every source in a room, on the working plane, at the shipped energies:
+#
+#   room            sources   floor            mean E    p50      p95/p5
+#   corridor (ANCHOR)   24     3.3 x  22.1 m   4.2641   3.7682     2.8
+#   docking_bays        39    42.5 x 141.5 m   0.0722   0.0625     2.2
+#
+# **59x.** The station's calibration anchor puts fifty-nine times as much
+# fitting light on its floor as the 140 m hangar a player arrives through. That
+# is not a level a tonemapper, a `crushed` fraction or a censored median is
+# reporting -- it is the rig, and it is why `--fixture-energy` reads as "inert"
+# in this file's older notes: at 0.81 per lamp the fittings supply 16% of the
+# frame and the flat ambient supplies the rest, so the knob that moves them
+# moves almost nothing. Decomposed by rendering the room three ways at 1280x720
+# and taking UNCENSORED whole-frame means (see below for why uncensored):
+#
+#   default (ambient 0.351, lamps 0.81)   0.00920
+#   fittings off                          0.00777    -> fittings supply 0.00143
+#   ambient off                           0.00475    -> ambient  supplies 0.00445
+#
+# The flat term is 3.1x the forty floodlights. `interior.tscn`'s own header
+# says what that means: "Ambient here is a floor that stops unlit geometry
+# being pure black, not a fill." In this room it was the key light.
+#
+# WHY THE CORRECTION HAD TO BE 26x AND NOT A NUDGE. `energy_rel` cannot carry
+# it -- the block above AMBIENT_CALIBRATED_ENERGY is explicit that `energy_rel`
+# is relative WITHIN one measured family and that the ratio BETWEEN families
+# lives here, and `_selftest` asserts `0 < energy_rel <= 1` to keep it that
+# way. So the between-family flux ratio for a 13 m pendant against a 2.4 m
+# corridor fitting is this row's job, and it had never been done: `bay_lamp`'s
+# `energy_rel` is the unmeasured default 1.00 (the entry's own comment lists
+# what WAS measured off dock.webp -- colour, range, spacing, shadow, cone --
+# and energy is not in the list), and the exposure that was supposed to supply
+# the rest was solved at 0.27 against a frame that was 92% black.
+#
+# THE SOLVE, by the procedure recorded above ROOM_EXPOSURE. Four renders, one
+# variable, `--fixture-energy` only (which scales the fittings and NOT the
+# ambient, so it is the clean ladder for this row now that AMBIENT_SOLVED holds
+# the flat term still):
+#
+#   lamp energy   median   level_p25       p5      p95   crushed
+#         0.81   0.01112     0.00372   0.01036  0.24091   92.25%
+#         3.24   0.01894     0.00564   0.01079  0.02951   57.10%
+#         8.10   0.03291     0.00838   0.01067  0.06692   36.12%
+#        12.15   0.04135     0.01049   0.01093  0.09717   23.09%
+#
+#   d(ln median)/d(ln energy)     = 0.487
+#   d(ln level_p25)/d(ln energy)  = 0.378        both monotone over 15x
+#
+# Inverting the median fit onto the target -- x1.40 of dock.webp's 0.03729 --
+# gives lamp energy 21.33, i.e. `--fixture-energy` 3.0 x **7.11**. The verdict
+# is the re-render, as it has to be, and it is:
+#
+#                        before (0.27)        after (7.11)      band
+#   median               x0.30  OUT           x1.36  OK         x1.40 +/-25%
+#   p5                   x0.89                x0.96             x1.29
+#   p95                  x0.89 (see below)    x0.59             x3.27
+#   p99                  x2.20                x0.44             x2.58
+#   p5/p95               x0.99 (see below)    x1.63             x3.38
+#   crushed              x2.38                x0.27             x11.42
+#   crushed in range     92.25%  FAIL         10.57%  OK        0.22..63.92%
+#   distribution         **FAIL**             **PASS 7/7**
+#
+# on docs/engine-docking-bay.png, the frame EXPOSURE_FRAMES records for this
+# row, re-rendered from its own command. The 1280x720 shot of the same room
+# reads median x1.48 with the same 7/7.
+#
+# THE "before" p95 AND p5/p95 IN THAT TABLE ARE NOT COMPARABLE WITH THE
+# "after" ONES and the next section says why. They are printed because layer
+# 4a's row quoted them as evidence that "the SHAPE is right and only the LEVEL
+# is wrong"; they were a statistic of 7.7% of the frame.
+#
+# ---------------------------------------------------------------------------
+# AND THE p95 COLLAPSE THAT SESSION 4l COULD NOT EXPLAIN IS IN THAT TABLE
+# ---------------------------------------------------------------------------
+# 4l recorded, as a mystery it withdrew a conclusion over, that raising the
+# fixture energy x4 took p95 from x0.89 to x0.11 -- the frame "going flat" when
+# more light was added. It is reproduced exactly in row two above (0.24091 ->
+# 0.02951) and it is not a lighting effect at all. `measure_frame` censors at
+# FLOOR = 0.010, so every statistic it prints except `level_p25` is taken over
+# the MEASURABLE pixels. At 0.81 the measurable set is 7.7% of the frame and is
+# almost entirely lamp glow, so its 95th percentile is a highlight; at 3.24 the
+# set is 42.9% and now contains the whole deck, so the same percentile lands on
+# floor. **The population changed, not the light.** A p95 is not comparable
+# between two frames whose `measurable` fractions differ by 5x, and the same
+# applies to the median -- which is how a frame 92% under the floor came to be
+# recorded as passing its level test on 7.7% of its own pixels.
+#
+# The corollary is a rule and it is cheap: when an A/B moves `crushed` by more
+# than a few points, decompose it on UNCENSORED whole-frame statistics first
+# and use the censored ones only for the verdict against the band.
+#
+# AND THE ONE SINGLE-VARIABLE AMBIENT RUN THIS PROJECT HAD NEVER DONE. 4l's
+# arithmetic put this room's default ambient at 0.089 (1.30 x 0.076/0.300 x
+# 0.27) and concluded that `--ambient 0.35` had moved it x3.9. It had not:
+# `ambient_energy` takes the MODULE branch for a bespoke place, which returns
+# `AMBIENT_CALIBRATED_RATIO` and not the archetype's 0.076, so the default was
+# **0.351** and that experiment moved the ambient by 0.3%. It was a
+# single-variable fixture run all along. Run properly here, ambient alone,
+# fittings held at 0.81:
+#
+#   ambient   mean      p25       p50       p95      crushed
+#     0       0.00475   0.00035   0.00119   0.00342   97.81%
+#     0.0351  0.00513   0.00065   0.00150   0.00376   97.77%
+#     0.351   0.00920   0.00372   0.00560   0.01094   92.25%
+#     1.755   0.04030   0.02604   0.03962   0.06286    8.56%
+#
+# x5 on the ambient alone puts the LEVEL right (mean 0.0403 against the show's
+# 0.0356) and collapses the distribution into a band 0.026-0.049 wide with 8.6%
+# black against the show's 45.9%. So the withdrawn conclusion is re-established
+# on evidence that actually supports it: **ambient buys level and spends
+# contrast**, and a frame the show gives 46% black to cannot be lit with it.
+#
+# WHAT IS STILL WRONG WITH THIS ROOM AND IS NOT AN EXPOSURE. The frame passes
+# 7/7 and reads WASHED: the deck is an even sheet with no pools in it, where
+# dock.webp has discrete cones with dark between them. That is geometry, and it
+# is arithmetic rather than taste -- 39 floods at 12.23 m through a 35 deg cone
+# throw a 17.1 m pool at a 14.0 m lateral and 11.67 m longitudinal pitch, so
+# every point of the deck is inside about ten of them and the sum is flat. The
+# entry's own measurement gives the cone as **28-35 deg** and the table takes
+# 35, "the top of the measured range ... rather than opened further"; 28 gives
+# a 13.0 m pool at the same pitch, which scallops. THE NEXT SINGLE-VARIABLE
+# EXPERIMENT IS `bay_lamp["angle_deg"]` 35 -> 28, and it needs a re-solve of
+# the row above with it, because a narrower cone lights less floor: expect the
+# median to fall and the exposure to come back up. Not attempted here rather
+# than attempted and left half-solved.
+#
+# AND THE OVERHEAD STEEL TAKES NO LIGHT AT ALL. `docking_bay.floodlight` hangs
+# the lamps LAMP_DROP_M = 2.6 m BELOW the girder soffit and aims them straight
+# down through a hood that is closed on top, so the red-oxide truss -- 84% of
+# the module's triangles, and the thing its own docstring calls "the first
+# thing that reads" -- is lit by nothing but the flat ambient. In dock.webp it
+# is the brightest structural mass in the top third of the frame. `bay_girder`
+# now at least carries the right material (session 4m moved it onto
+# `shell_rib_oxide`, the material MEASURED FROM IT); giving it light needs an
+# uplight component on the fitting, which is a new emitted group in
+# `docking_bay.py` and a new FIXTURE_LIGHTING row, not a gain.
 
 
 # EMISSION IS THE TERM THE EXPOSURE CANNOT REACH, and it is why several rooms
