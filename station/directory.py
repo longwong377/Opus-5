@@ -569,9 +569,25 @@ PLACES = (
     # row put the shuttle in Yellow's aft third, which is exactly the 42% of the
     # station the shuttle DOES NOT serve (transit.py's own finding), so a
     # register row and a timetable disagreed about where a vehicle was.
+    # SPEC-CHANGE (proposed 2026-08-04, needs an adoption stamp): the five
+    # interactables `docs/spec/PLACES.md` PLC-102 lists under "added" are
+    # DECLARED here, so they are checkable by `interact.py --audit` rather than
+    # only visible in a render. Every token is already in `rooms.PROPS` and
+    # already tiered by PLACES.md 0.1, so nothing here is a new vocabulary:
+    #   info_board                 = the stop board (T1 live)
+    #   station_schematic_screen   = the line map (T1)
+    #   breaker_lever              = the emergency stop (T3)
+    #   intercom                   = the help point (T3)
+    #   counter                    = the line control desk at stop 1 (T3 serve)
+    # `station/shuttle.py` builds all five; before this row they existed in the
+    # geometry and no gate could ask for them. THE ADOPTION DIGEST IN
+    # `docs/THE-STATION.md` PINS THIS FILE, so this needs a SPEC-CHANGE stamp.
     _P("core_shuttle", "The core shuttle", "yellow", 0, 30, 0.0, 5722.0,
        (20.0, 4650.0), module="core_tube", auth=1,
-       functions=("transit",), interacts=("shuttle_door", "seat", "handhold"),
+       functions=("transit",),
+       interacts=("shuttle_door", "seat", "handhold", "info_board",
+                  "station_schematic_screen", "breaker_lever", "intercom",
+                  "counter"),
        note="Runs the axis z 3,397-8,047; does not serve Yellow's aft 3,397 m."),
 
     # --- M1 completion: the last real places ------------------------------
@@ -631,9 +647,17 @@ PLACES = (
        4300.0, (8.0, 22.0), auth=5, functions=("worship", "ceremony"),
        interacts=("pew", "door"), adjacent=("sanctuaries",),
        note="PROPOSED. Unplaced; sited with the Sanctuaries."),
+    # SPEC-CHANGE (proposed 2026-08-04, needs an adoption stamp): PLC-113's
+    # five "added" interactables declared, same rule as `core_shuttle` above --
+    #   breaker_lever  = emergency stop (T3) · intercom = help point (T3)
+    #   parcel_locker  = lost-property tag point (T3)
+    #   level_plaque   = the car plaque (T1 -- 6 cars, 6 numbers)
+    #   info_board     = the advert/notice panel (T1, ISN + MiniPax rotation)
     _P("shuttle_car", "Core shuttle car interior", "yellow", 0, 30, 40.0,
        5722.0, (8.0, 40.0), module="core_tube", auth=3,   # SPEC-CHANGE #2
-       functions=("transit",), interacts=("seat", "handhold", "shuttle_door"),
+       functions=("transit",),
+       interacts=("seat", "handhold", "shuttle_door", "breaker_lever",
+                  "intercom", "parcel_locker", "level_plaque", "info_board"),
        within="core_shuttle"),
     _P("radial_tubes", "Radial transport tubes (the spokes)", "green", 1, 0,
        20.0, 5200.0, (10.0, 50.0), module="interior", auth=3,

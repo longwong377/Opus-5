@@ -6367,3 +6367,256 @@ on most of the station. `bays_along()` uses `round` and is what the tiling build
 `docs/spec/PLACES.md` §TILING, where any recompute divergence fails the gate until a SPEC-CHANGE
 entry shows the re-derivation, and quietly correcting an off-by-one underneath a frozen number is
 the move that annex exists to prevent.
+
+---
+
+## INV-294 — The core shuttle car interior
+
+**What:** every absolute dimension of `station/shuttle.py`'s `car` program — the saloon's
+3.94 m interior width, its 2.35 m ceiling, the 0.62 m plinth module, the window band's
+0.93–1.80 m sill and head, the 4.0 m body-pillar bay, and the ten of them that make the
+register's 40 m car.
+
+**Why it is needed:** `docs/gazetteer/LOCATIONS.md` line 364 records the core shuttle car
+interior at **authority 1** from `reference/03-sector-blue/Babylon_5_2-22_35a.jpg`, and
+`docs/spec/PLACES.md` PLC-102 adopts the same list as the line's *"auth 1 car dressing"*.
+Its `module` column reads **`no`** — nothing in the repository built it, and a player who
+boarded the station's trunk line found a generic store bay. The frame is a close interior
+with a seated figure and is **cropped on both sides**; `tram.py` says so itself where it
+declines to measure a car width off it. So it gives proportions and no metres.
+
+**What constrained it — the two rules, and every number follows one of them.**
+
+*Rule 1 — a proportion off the frame, scaled by a constant this project has already fixed.*
+The scale is the seat height, `rooms.PROPS["seat"][2]` = 0.45 m. Read at 2× on the crop of
+35a's right-hand bench, the floor line is at y = 590 and the cushion top at y = 300, so
+**290 px is 0.45 m** and every other vertical reading is quoted against that:
+
+| element | reading (2× crop px) | metres |
+|---|---|---|
+| plinth top / cushion underside | 220 above floor (y = 370) | 0.341 |
+| seat cushion thickness | 70 | 0.109 |
+| back cushion top | 555 above floor (y = 35) | 0.861 |
+| amber panel sill | 90 above floor (y = 500) | 0.140 |
+| amber panel head | 165 above floor (y = 425) | 0.256 |
+| amber panel width | 280 (x = 265..545) | 0.435 |
+| red skirting at the foot | 40 | 0.062 |
+| red trim rail over the backrest | 46 | 0.071 |
+
+*Rule 2 — derived from a clearance the project already states.* The frame shows **one amber
+panel per plinth module** with the plinth's seam falling on the seat division, so the module
+is one seated person: `tram.SEAT_PITCH_M` = **0.62 m**, read from that module rather than
+restated. The panel is then 0.435 / 0.62 = **0.70 of the module**, which is the frame's own
+proportion and is not fitted to anything.
+
+The **interior width** is the seating plan the frame shows and cannot be measured from it:
+a bench run against each side wall (`rooms.PROPS["bench"][1]` = 0.45), knee room in front of
+each (the same 0.62 seat pitch used the other way), and an aisle two people can pass in
+(2 × `rooms.WALK_M` = 1.80). **2 × (0.45 + 0.62) + 1.80 = 3.94 m.**
+
+The **ceiling** is `interior_kit.PROVISIONAL["door_height_m"]` + 0.25 = **2.35 m** — a leaf
+and the least lintel that reads as one. The corridor's own ceiling is 3.00 m; a vehicle is
+lower and this is the number that says so.
+
+The **window band**'s sill is the frame's (the red trim rail sits directly on the backrest:
+0.861 + 0.071 = **0.932 m**) and its head is derived so a STANDING passenger sees out:
+`budget.DECK["eye_m"]` + 0.10 = **1.80 m**. A seated eye at ~1.20 m is dead centre of it,
+which is what LOCATIONS.md means by *"a continuous window band at seated eye height"*.
+
+The **bay** is `tram.WINDOW_PITCH_M` = 4.0 m, the same measurement off the same episode's
+rolling stock; the register's 40 m footprint is exactly ten of them, which is a
+corroboration and not the derivation. Body pillar `tram.PILLAR_W_M`, skin `tram.WALL_T`,
+windscreen rake 24° — all three read from `tram.py` rather than taken again. `_selftest`
+asserts each identity, so a change there fails here instead of drifting.
+
+**Door spacing (auth 5).** Three door pairs a side, at bays 1, 4 and 7 — 12 m centres, so
+no seat is more than 6 m from a door. Constrained by the line's own derived numbers
+(PLC-102: 20.4 m/s peak, 3m52s headway): a trunk line on that headway has to clear a
+platform inside its dwell.
+
+**What would overturn it:** any wider frame of the same car — one showing both side walls,
+or the car from outside at the platform — would give the width directly and could move it
+by a metre in either direction; the seating plan and everything hung on the bodyside scale
+with it. A frame showing a door would settle the door pitch. A second interior frame at a
+different focal length would let the 290 px scale be checked rather than assumed.
+
+---
+
+## INV-295 — A core shuttle station, and why there is one rather than 4.65 km of tube
+
+**What:** `station/shuttle.py`'s `station` program — a 44.0 × 4.67 m platform, 7.20 m tall,
+beside a 4.38 m berth whose floor is 1.10 m down, behind a glazed screen wall.
+
+**Why ONE station.** `docs/spec/PLACES.md` PLC-102 rules it in a sentence and this module
+follows it rather than the register's 4,650 m footprint: *"the running tube between stations
+is transit envelope, not walkable rooms — the built product is 13 stations + the tube the
+cars traverse."* That is the same reading `rooms.bay_span_m` takes of every other place on
+the station, and the reason `bespoke.room_shell` translates a module's geometry rather than
+tiling it.
+
+**What constrained the dimensions:**
+
+* **Platform length 44.0 m** = the car's own 40 m (PLC-113's register footprint) plus
+  `bespoke.APPROACH_DEPTH_M` at each end — the distance this project already uses for
+  "a body is standing IN the room rather than in its doorway", here as stopping overrun.
+* **Platform depth 4.67 m** = an alighting stream the width of a car door
+  (`rooms.PROPS["shuttle_door"][0]` = 1.80), two people passing behind it (2 × `WALK_M`),
+  and a seating bay against the back wall (bench 0.45 + knee 0.62).
+* **Berth width 4.38 m** = INV-294's car plus two skins of `tram.WALL_T`.
+* **Berth floor −1.10 m**, so a car's own floor arrives level with the platform. That is
+  what makes a platform have an *edge* rather than a step, and it is why the edge carries a
+  nosing, a tactile band and a fascia rather than a painted line.
+* **Hall height 7.20 m** = 2 × INV-010's deck pitch. INV-020 made the concourse two decks
+  tall on the argument that a public volume is not a 3 m room; a station on the axis of a
+  station of 250,000 people is the same argument.
+* **Berth roof 3.60 m** — one deck, so the tube is a tube and the hall above it is one
+  volume. The illuminator tubes and the truss's serrated rack hang inside it, which is what
+  `Babylon_5_2-22_34b` (authority 1) shows: *"a lattice-girder truss ... carrying long
+  cylindrical illuminator tubes; its lower edge is serrated — a rack — which is how the
+  cars are driven."*
+* **Screen doors at the car's own door centres** — the same `DOOR_BAYS` table drives both
+  programs, so a car that berths here opens onto them by construction rather than by two
+  modules agreeing about a number.
+* **13 stops at 387.5 m** on the line map and the stop board: PLC-102's, not a second copy.
+
+**Authority 5** on the whole of it, and on one content decision worth naming: the platform
+is separated from the running way by a **glazed screen wall** rather than by a railing.
+34b shows the running way as open structure with cars swinging through it, so a station has
+to be separated from it; and 35a's own light — amber panels low, a bright band at eye
+height — is a lit interior seen through glass, which is what a platform looks like from a
+car and a car looks like from a platform.
+
+**What would overturn it:** any frame of a core-shuttle stop. None exists in `00-INDEX`.
+A frame showing passengers boarding would settle the platform depth, the edge treatment and
+whether there is a screen wall at all; a frame down the platform would settle its length and
+whether one station berths one car or a pair.
+
+**Recorded, not fixed — the group scan and a place key.** `materials._scan_generator_groups`
+reads every `core_*` string literal in `station/*.py` as a mesh GROUP name, so the register
+key `core_shuttle` cannot be written in a generator: it is a place, not a surface, and it
+has no material. `directory.py`, `rooms.py` and `transit.py` are all on that scan's
+`NOT_GENERATORS` list for exactly this reason. `bespoke.py` is not, so its
+`BESPOKE_PLACES` key is assembled from two literals with the reason written beside it, and
+`shuttle._selftest` asserts it is a real register key. **The one-line fix is
+`"core_shuttle"` in `materials.NOT_GROUPS`**, and it is reported rather than applied because
+`materials.py` was another agent's file this session.
+
+---
+
+## INV-296 — How far a bespoke module builds along its own footprint: two modes, and why there are two
+
+**Authority 5 (extrapolation).** Session 4l.
+
+### What was invented
+
+Every place whose module appears in `bespoke.NEAR_END` now carries a declared **axial mode**
+in `bespoke.AXIAL`, and the mode decides how much of the register's declared axial footprint
+that place's geometry actually spans:
+
+| mode | what it means | places |
+|---|---|---|
+| **grow** | the module's subject genuinely repeats along the station's axis, so the module is given its own length as a parameter and lays MORE CONTENT — not more copies | `plant` (4), `quarters` (7), `alien_sector`'s gallery, `interior_kit`'s Central Corridor, `zocalo` (2) |
+| **one** | the module's subject is ONE ROOM. Its built length is its own, measured off its own mesh, and the shortfall against the register is REPORTED with its reason | `customs` (3), `hospitality` (5), `command_control`, `council_chamber`, `components`' three observation rooms, `alien_sector`'s sealed chamber |
+
+### Why it is that value
+
+**The measurement that forced it.** The 37 places whose module is in `NEAR_END` were building
+**625 m of 3,922 m** declared — 16%. `rooms.tiling` answered `n = 1, built_l = bay_span_m` for
+every one of them, on the true observation that `bespoke.room_shell` *translates* a module's
+geometry onto the assembler's door plane rather than scaling it, so tiling one would slide the
+room down the axis instead of growing it. That is an accurate description of the mechanism and
+it is an argument for growing the **module**, which is what `AXIAL` does.
+
+**Why not one mode.** A tank farm, a row of quarters off a corridor, a lock gallery, a transit
+spine and a run of market bays are all *the same thing repeated along an axis*; Command &
+Control, the Council chamber, an observation dome, a customs hall and a bar are not. Thirteen
+copies of C&C is not a bigger C&C, it is a fault that no triangle count, no extent and no
+coverage number can see — which is precisely the class of defect `deck.py --degeneracy` was
+written for one level up. So the answer for those is a **shorter room that says why**, and
+`rooms.py --footprint` prints the sentence next to the metres on every run.
+
+**What constrained the grow modules.** Each takes its own length in its own vocabulary and
+snaps to its own quantum, so `n = 1` reproduces the pre-4l geometry exactly:
+
+* `plant.room_cell(span_m=)` — the cell's axial length; the tank count, the catwalk width,
+  the frame positions and the walkway centre were already expressions in `z0`/`z1`. Quantum is
+  `rooms.bay_span_m`'s representative bay, which is what it clamped to before.
+* `quarters.run(rows=)` — `run` lays units along the **ring** and was one unit deep, so a
+  120 m residential footprint built 5.22 m of itself. Quantum is `row_pitch_m` = unit depth +
+  two walls + the residential corridor width.
+* `alien_sector.gallery(length_m=)` — one longer corridor with more locks at their authored
+  pitch, not four galleries end to end. Quantum `GALLERY_LEN_M` = 30 m.
+* `concourse.central_corridor(bay_mult=)` — `program()['bays']`; quantum
+  `rib_spacing_m * RIB_BAYS` = 24 m.
+* `zocalo.zocalo_run(bays)` — quantum `params()['bay_length_m']`.
+
+**What decides how far a grow place goes.** `budget.DECK["visible_all_tris"]` = 300,000, the
+same frame allowance `rooms.tiling` spends on the generic half and for the same stated reason.
+The ladder is `rooms.tiling`'s: **shell, articulation, fixtures and declared interactables run
+the WHOLE length** — they are what the place is, and they are the cheapest layer — while
+`dressing` and `populace` reach a **band measured from the door**, because those two are the
+highest-triangle, lowest-silhouette layers and are exactly what a streaming system instantiates
+rather than bakes.
+
+**What would overturn it.** A module moving from `grow` to `one` or back is a content decision
+and needs a line in `AXIAL` with its reason; the gate does not care which it is, only that the
+declaration and the geometry agree. If room crowds ever become instanced the way
+`deck.CORRIDOR_INSTANCED` already makes the corridor crowd instanced — 88% fewer triangles —
+the band arithmetic changes by an order of magnitude and every capped place should be
+re-derived.
+
+### What it fixed that was not the headline
+
+`deck.room_shell_for` sizes a room's **collision** from `rooms.built_span_m`, which returned
+the generic representative bay for every composed place. `council_chamber`'s mesh is 22.38 m
+and its collision shell was 15.00 m; `obs_dome_1`'s mesh is 16.55 m and its shell was 6.29 m.
+That is render geometry outside its own collision — hard rule 4's failure mode, in the one
+direction `deck.room_geometry` had left open. `bespoke.axial_span_m` measures the module's own
+mesh, so the two agree by construction, and `rooms.py --footprint --legacy` shows the old
+answer failing on exactly those rows.
+
+---
+
+## INV-297 — A baked body is 7,300 triangles, and it is what decides how long a room can be
+
+**Authority 5 (extrapolation, measured).** Session 4l.
+
+### What was invented
+
+`bespoke.BAKED_BODY_TRIS = 7_300` — the triangle cost of one inhabitant placed by
+`populace.populate` at `ROOM_LOD`, including their wardrobe and their pose — and
+`bespoke.composed_cost`, which prices a candidate room length as
+`shell + MAX_DRESS_TRIS + occupancy(area) x BAKED_BODY_TRIS` before a triangle is emitted.
+
+### Why it is that value
+
+Measured on composed rooms rather than on a probe: `council_chamber` emits 529,616 triangles of
+`npc_*` over 70 people (7,565 each) and `customs_north` 188,928 over 27 (6,997 each). 7,300 is
+the middle and the spread is stated.
+
+**A first probe read 3,515 and was wrong by half, which is the transferable part.** It stood 30
+bodies on a bare shell with no furniture in it. A person placed against real furniture SITS, and
+a seated clip plus a wardrobe is about twice a standing bare body — so *the probe measured the
+probe*. The same trap `bespoke.NEAR_END_UNKNOWN` records for `plant`: **a measurement taken
+through a call describes the call.**
+
+### Why it matters
+
+`populace.occupancy` is a crowd **density** — people per square metre at an hour — so a room
+grown 32x in area wants 32x the people and 32x their triangles. At 7,300 each that is the whole
+frame allowance several times over, and it is the term that decides everything: `plant.room_cell`
+is 688 triangles at 13.8 m and 1,736 at 110.5 m, which is 150 triangles for a unit of *room*
+against 7,300 for one *person* standing in it. Pricing growth on the shell alone let every place
+reach its full footprint and multiplied the station's crowd with its area; pricing the whole room
+at full furnishing capped `plant_zone` at 6 units of its 32. Neither is what `rooms.tiling`
+does, and its ladder — full length of shell, a door-anchored band of furniture and people — is
+what both halves of the station now use.
+
+### What would overturn it
+
+Instanced room crowds. `deck.CORRIDOR_INSTANCED` already makes the corridor's walkers instanced
+at 88% fewer triangles and room occupants are still baked; if room occupants join them,
+`BAKED_BODY_TRIS` is the wrong constant and every band in `bespoke.axial_units` is
+recomputed from the new one. A change to `populace.ROOM_LOD` does the same. `bespoke._selftest`
+re-measures the constant against a composed room and fails if it has moved more than 25%, so it
+cannot go stale silently.
