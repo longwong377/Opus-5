@@ -64,8 +64,18 @@ z_inner = place["z_m"] + D.room_interior_half_m(schema, profile, place)
 ```
 
 — unconditionally `+`, which is the *far* wall for any room sitting on the other side of its
-corridor. `roomnav` now derives the side from the cluster's own `meta["z_m"]`. **The two route
-modules have not been fixed and nothing has yet counted how many places they affect.**
+corridor. `roomnav` now derives the side from the cluster's own `meta["z_m"]`.
+
+**COUNTED, AND THE ANSWER IS ZERO OF 128.** `deck.corridor_z_m` places the ring *beyond the
+deepest room on the cluster* — `far + corridor_width/2` — so every room on this station sits
+below its own corridor and the unconditional `+` has never once aimed at a far wall. It is a
+**latent** bug, not an active one: it fires the first time a corridor is placed below its rooms,
+and nothing in the code says that cannot happen. Left as-is in `agenda` and `route_walk`, and
+recorded here so the next person neither "fixes" 128 working routes nor rediscovers the risk.
+
+*This is the counterpart to §10 and worth as much: a claim that sounded like a defect, measured,
+turned out to cost nothing today. Both directions have to be measurable or neither number means
+anything.*
 
 *The general form, and it is this module's own subject matter turned on itself: the entry
 point arrives as a **declared** depth while everything else in `roomnav` is derived from the
