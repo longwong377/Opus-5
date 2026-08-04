@@ -366,6 +366,17 @@ func _load_streamed(args: Dictionary) -> bool:
 	_start_cell = int(args.get("start-cell", "-1"))
 	if _start_cell < 0 and _visiting:
 		_start_cell = _stream.cell_at(_corridor_point(_v_away_deg))
+	# A SPAWN SET AS A PROPERTY CHOOSES THE CELL TOO. `main.gd` is the only
+	# instantiator that is not a command line: it sets `spawn` from the boot
+	# manifest, where it was measured off the collision shell's own floor, and
+	# cannot pass `--spawn=` because `OS.get_cmdline_user_args()` is not
+	# writable. Without this the shipped build primes `cells[0]` and then --
+	# below -- overwrites the derived spawn with that cell's own, so a manifest
+	# that says 265 degrees boots the player at 10 and `boot.py`'s whole
+	# derivation is decoration. Inert for every other caller: they leave `spawn`
+	# at the export default, and no cell of a ring deck contains the origin.
+	if _start_cell < 0 and spawn != Vector3.ZERO:
+		_start_cell = _stream.cell_at(spawn)
 	if _start_cell < 0:
 		_start_cell = int(_stream.cells[0]["index"])
 	var c: Dictionary = _stream.cell_by_index(_start_cell)
@@ -373,7 +384,12 @@ func _load_streamed(args: Dictionary) -> bool:
 		push_error("walk: no cell with index %d in %s"
 			% [_start_cell, cells_path])
 		return false
-	if not args.has("spawn"):
+	# THE CELL'S OWN FLOOR POINT UNLESS THE CALLER'S IS INSIDE THE PRIMED CELL.
+	# Exactly one cell exists at the first frame, so a spawn outside it is a
+	# body falling through geometry that has not arrived -- and blaming the
+	# streamer for a start-up ordering mistake is what `prime` exists to
+	# prevent. `boot.py --gate` reports the same disagreement before launch.
+	if not args.has("spawn") and _stream.cell_at(spawn) != _start_cell:
 		spawn = Vector3(c["spawn"][0], c["spawn"][1], c["spawn"][2])
 	_prime_ms = _stream.prime(_start_cell)
 	print("walk: STREAMED level -- start cell %d, primed in %d ms, spawn "
@@ -1765,6 +1781,28 @@ func _physics_process(delta: float) -> void:
 	if _streaming:
 		_stream_frame(delta)
 		return
+	# AND THE SHIPPED BUILD STREAMS TOO, which it did not until session 4k.
+	#
+	# `_streaming` is set by `_run_stream_test` alone, so `_stream.update` --
+	# the whole of residency: free, activate, request -- ran ONLY inside the
+	# gate that measures it. A player launched by `main.gd` got the primed
+	# start cell and never a second one: walk to its edge and the floor stops,
+	# because nothing ever asked for the neighbour. The manifest was loaded, the
+	# radius was derived, the budget was read, and the streamer was inert.
+	#
+	# It is the same shape as the finding this session exists to fix, one level
+	# down, and it is this repository's most-repeated defect: FINISHED, TESTED
+	# MACHINERY WITH NO CALLER ON THE SHIPPED PATH. `stream.gd` scored a gate
+	# and moved nobody.
+	#
+	# AFTER the `_streaming` return and not before it, because `_stream_frame`
+	# calls `update` itself: two calls a frame would activate two cells a frame
+	# -- against that function's own "AT MOST ONE PER FRAME, because instancing,
+	# the trimesh collider, the material bind and the fittings are all
+	# main-thread work" -- and would double `_frames`, which is what the lag
+	# stress control counts in.
+	if _stream != null and _player != null:
+		_stream.update(_player.global_position)
 	# The shot phase: settle the body on the floor, then take the picture from
 	# where it ended up. No wish vector -- a photograph is of somebody standing.
 	if _shooting:

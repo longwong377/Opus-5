@@ -38,22 +38,69 @@ the derived spawn against the arrival sidecar's independently computed one, and
 `station/coldstart.py --g1` stands a real body on it and reports `on_floor` and
 the drop. A spawn inside a wall fails that in six seconds.
 
+AND IT NAMES A CELL SET, NOT A MONOLITH -- session 4k, and it is the single most
+load-bearing finding in `docs/MASTER-PLAN.md`'s P0.5:
+
+    "`boot.py` emits one `.glb` and `main.gd` never sets `cells_path`, so the
+     shipped scene loads ONE DECK and never streams. Every player-facing system
+     built before that is fixed is validated on a topology the shipped world
+     does not have."
+
+Every part of the machinery already existed and none of it was on the shipped
+path. `godot/scripts/stream.gd` bakes and streams cells; `godot/scripts/walk.gd`
+takes `--cells=` and loads nothing else when it has one; `tools/bake_station.py`
+has baked all 70 decks into 955 cells; `station/walkable.py --stream` drives a
+body across them in CI. What was missing was two strings: this file never said
+where the cells were, and `main.gd` never set `cells_path`. A player launching
+the game got `walk.gd`'s other branch -- one 62 MB `.glb`, loaded whole, with
+nothing on the other side of it.
+
+THE CELL SET IS FOUND, NEVER DESCRIBED. This file writes no cell format and cuts
+no geometry: `stream.gd::bake()` does both, and `--bake` here shells out to that
+same entry point with this deck's paths. A second description of where a cell is
+would be `arrival.tscn`'s `--spawn=0,0,0` one level up.
+
+AND THE START CELL IS THE ONE THE SPAWN IS IN. A streamed build primes exactly
+one cell before the first frame; a body spawned outside it has nothing under its
+feet. `start_cell` reads the containing cell out of the manifest's own arc rows,
+by the same predicate `stream.gd::distance_to` uses, so the two cannot disagree
+about which cell a point is in.
+
 Run:
     python3 station/boot.py                 # write station/generated/scene/boot.json
     python3 station/boot.py --check         # derive, compare, write nothing
     python3 station/boot.py --deck <stem>   # choose the deck by name
+    python3 station/boot.py --bake          # bake the cell set first, if it is
+                                            #   missing or no longer describes
+                                            #   the deck on disk (needs Godot)
+    python3 station/boot.py --gate          # CI: the shipped scene streams
 """
 import argparse
 import glob
 import json
 import math
 import os
+import re
+import subprocess
 import sys
+import tempfile
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
 DECK_DIR = os.path.join(ROOT, "station/generated/scene/deck")
 OUT = os.path.join(ROOT, "station/generated/scene/boot.json")
+# `tools/bake_station.py`'s output -- 70 decks, 955 cells, one `<stem>_cells.json`
+# each. Consulted last, because a deck built into `scene/deck/` is the one this
+# file's spawn was measured off and a sibling bake of the same NAME is a
+# different build of it.
+STATION_CELLS = os.path.join(ROOT, "station/generated/scene/station/cells")
+# The Godot project `stream.gd` lives in. Only `--bake` uses it.
+GODOT_DIR = os.path.join(ROOT, "godot")
+# What `main.gd` must set for any of this to reach a player. Asserted by
+# `--gate` against the file itself: this repository has shipped finished,
+# tested, gated machinery with no caller three times, and the only check that
+# catches it is one that reads the caller.
+MAIN_GD = os.path.join(ROOT, "godot/scripts/main.gd")
 
 # How far inside the floor surface a body's origin sits, in metres. The deck
 # build spawns 50 mm over its shell -- `walkable.py::MAX_DECK_DROP_M`'s comment
@@ -78,6 +125,13 @@ DEFAULT_HOUR = 13.0
 # point is only to stop "the nearest person on the whole deck" being read as
 # "the room you are standing in".
 NEAR_ROOM_M = 15.0
+# How far the cells' own triangle totals may drift from the deck on disk before
+# the set is called stale, as a fraction. ZERO, and that is not a strict choice
+# -- `stream.gd::bake()` asserts the cells sum to the source EXACTLY, because it
+# assigns whole triangles and never cuts one, and it returns 2 rather than write
+# a set that does not. So any difference at all means the cells were baked from
+# a different build of this deck, and there is no tolerance to pick.
+CELL_DRIFT = 0.0
 
 
 def _obj_floor_tris(path):
@@ -180,27 +234,247 @@ def spawn_from_shell(col_obj):
     }
 
 
-def decks():
+def decks(deck_dir=None):
     """Every deck on disk that has both a mesh and a collision shell."""
+    dd = deck_dir or DECK_DIR
     out = []
-    for col in sorted(glob.glob(os.path.join(DECK_DIR, "*_col.obj"))):
+    for col in sorted(glob.glob(os.path.join(dd, "*_col.obj"))):
         stem = os.path.basename(col)[:-len("_col.obj")]
-        if os.path.exists(os.path.join(DECK_DIR, stem + ".glb")):
+        if os.path.exists(os.path.join(dd, stem + ".glb")):
             out.append(stem)
     return out
 
 
-def sidecar(stem, suffix):
-    p = os.path.join(DECK_DIR, stem + suffix)
+def sidecar(stem, suffix, deck_dir=None):
+    p = os.path.join(deck_dir or DECK_DIR, stem + suffix)
     return p if os.path.exists(p) else ""
 
 
-def build(stem=None, hour=None):
+# ---------------------------------------------------------------------------
+# THE CELL SET -- found, measured, and named. Never authored.
+# ---------------------------------------------------------------------------
+
+def _obj_tris(path):
+    """Triangles in an .obj, fan-triangulated exactly as `_obj_floor_tris` is.
+
+    The `.obj` and not the `.glb` for the same reason `_obj_floor_tris` gives:
+    it is the file the .glb is converted from, it is text, and this needs no
+    engine. Returns -1 when there is no .obj to count, which is a DIFFERENT
+    answer from zero and is reported as one.
+    """
+    if not os.path.exists(path):
+        return -1
+    n = 0
+    with open(path) as f:
+        for line in f:
+            if line.startswith("f "):
+                n += len(line.split()) - 3
+    return n
+
+
+def _describes(stem, man):
+    """Is this manifest a cell set for THIS deck?
+
+    THE PREFIX ALONE IS NOT ENOUGH, and the deck on this station that proves it
+    is `blue_0_0`: `blue_0_0_z7440_c01` starts with `blue_0_0`, so a plain
+    prefix test hands the wrong deck's eleven cells to a boot that measured its
+    spawn off a different shell -- 320 m down the axis, where this deck has no
+    floor. `_c` is the separator `stream.gd::bake()` writes between the cluster
+    stem and the cell index, so `stem + "_c"` cannot match a sibling cluster.
+    """
+    if not isinstance(man, dict):
+        return False
+    rows = man.get("cells") or []
+    if not rows:
+        return False
+    src = os.path.basename(str((man.get("source") or {}).get("glb", "")))
+    if src and src != stem + ".glb":
+        return False
+    return all(str(c.get("id", "")).startswith(stem + "_c") for c in rows)
+
+
+def _cell_candidates(stem, dd):
+    """Where a cell set for `stem` can be, best first.
+
+    `<stem>_cells.json` before `cells.json` everywhere, and that ordering is a
+    finding rather than a preference: `stream.gd::bake()` writes both, and
+    `cells.json` is whichever cluster of a multi-deck bake ran LAST. On this
+    tree `scene/deck/cells/cells.json` describes `blue_0_0_z7440` while sitting
+    in a directory a reader would take for the station's. The stem-named file
+    cannot be overwritten by a sibling; the bare one can, so it is only ever
+    reached after `_describes` has agreed it is this deck's.
+    """
+    out = [os.path.join(dd, "cells_" + stem, stem + "_cells.json"),
+           os.path.join(dd, "cells_" + stem, "cells.json"),
+           os.path.join(dd, "cells", stem + "_cells.json"),
+           os.path.join(dd, "cells", "cells.json")]
+    if os.path.abspath(dd) == os.path.abspath(DECK_DIR):
+        # The whole-station bake, last. Only for the real deck directory: a
+        # fixture deck must not be able to reach the station's own cells and
+        # pass on somebody else's geometry.
+        out.append(os.path.join(STATION_CELLS, stem + "_cells.json"))
+    return out
+
+
+def cells_for(stem, deck_dir=None):
+    """(path, manifest) of this deck's cell set, or ("", None)."""
+    for p in _cell_candidates(stem, deck_dir or DECK_DIR):
+        if not os.path.exists(p):
+            continue
+        try:
+            with open(p) as f:
+                man = json.load(f)
+        except (OSError, ValueError):
+            continue
+        if _describes(stem, man):
+            return p, man
+    return "", None
+
+
+def cells_describe(stem, man, deck_dir=None):
+    """How many cells, and do they still describe the deck on disk?
+
+    A CELL SET THAT NO LONGER SUMS TO ITS DECK IS A DIFFERENT STATION. The bake
+    assigns whole triangles and asserts the cells sum to the source exactly, so
+    this comparison has no tolerance to argue about -- and it is the general
+    form of the lesson this repository already paid for twice: a gate that reads
+    a committed artefact must be able to say whether the artefact still
+    describes the code. `--bake` is how it is rebuilt.
+
+    Measured on both halves. The COLLISION half is what a body stands on and
+    the RENDER half is what it looks at, and they go stale independently: on
+    this tree at the time of writing the collision totals agreed exactly (5,270
+    = 5,270) while the render mesh had moved by 5,308 triangles, so a
+    collision-only check would have called a stale set fresh.
+    """
+    dd = deck_dir or DECK_DIR
+    rows = man.get("cells") or []
+    got = {"count": len(rows),
+           "tris": sum(int(c.get("tris", 0)) for c in rows),
+           "col_tris": sum(int(c.get("col_tris", 0)) for c in rows)}
+    got["deck_tris"] = _obj_tris(os.path.join(dd, stem + ".obj"))
+    got["deck_col_tris"] = _obj_tris(os.path.join(dd, stem + "_col.obj"))
+    why = []
+    for half, mine, theirs in (("render", got["tris"], got["deck_tris"]),
+                               ("collision", got["col_tris"],
+                                got["deck_col_tris"])):
+        if theirs < 0:
+            why.append("%s: no .obj beside the deck to compare against" % half)
+            continue
+        if abs(mine - theirs) > CELL_DRIFT * max(theirs, 1):
+            why.append("%s: cells sum to %d, the deck on disk has %d (%+d)"
+                       % (half, mine, theirs, mine - theirs))
+    got["fresh"] = not why
+    got["why"] = "; ".join(why)
+    return got
+
+
+def start_cell(man, spawn):
+    """The index of the cell that CONTAINS `spawn`, or -1.
+
+    THE SAME PREDICATE THE ENGINE USES, read off the manifest's own rows rather
+    than recomputed from the cell grid. `stream.gd::distance_to` returns zero
+    for an arc cell exactly when the point's angle is in [a0, a1) and its z is
+    within [z0, z1], and falls back to the world AABB when a cell has no arc;
+    `cell_at` is "the cell whose distance is zero". A second rule here -- even a
+    correct one -- would be a second description of where a cell is, and the
+    failure mode is silent: the wrong cell primed, and a body standing on a
+    floor that has not arrived.
+    """
+    for c in man.get("cells") or []:
+        arc = c.get("arc")
+        if arc:
+            a = math.degrees(math.atan2(spawn[1], spawn[0])) % 360.0
+            if not (float(arc["a0_deg"]) <= a < float(arc["a1_deg"])):
+                continue
+            if not (float(arc["z0"]) <= spawn[2] <= float(arc["z1"])):
+                continue
+            return int(c["index"])
+        ab = c.get("aabb")
+        if not ab:
+            continue
+        lo, size = ab["pos"], ab["size"]
+        if all(lo[i] <= spawn[i] <= lo[i] + size[i] for i in range(3)):
+            return int(c["index"])
+    return -1
+
+
+def bake_cells(stem, deck_dir=None, timeout=900):
+    """Cut this deck into cells WITH THE EXISTING BAKER. Returns (ok, why).
+
+    Nothing about the cell format, the cell grid or the cut is decided here.
+    `godot/scripts/stream.gd::bake()` owns all three -- it reads `cell_deg` out
+    of `station/generated/cell_manifest.json`, assigns every triangle whole to
+    the cell its centroid falls in, asserts the cells sum to the source, and
+    refuses to write a set that does not. This function supplies four paths and
+    a deck address, which is exactly what `tools/bake_station.py` supplies for
+    all 70 decks; the difference is that this one bakes the ONE cluster the
+    shipped scene boots into, beside the deck it was built from.
+    """
+    dd = deck_dir or DECK_DIR
+    glb = os.path.join(dd, stem + ".glb")
+    col = os.path.join(dd, stem + "_col.glb")
+    for p in (glb, col):
+        if not os.path.exists(p):
+            return False, "no %s -- run the deck exporter" % os.path.relpath(
+                p, ROOT)
+    sys.path.insert(0, HERE)
+    try:
+        import walkable as W                                   # noqa: PLC0415
+        godot = W.godot_binary()
+    except Exception as e:                                     # noqa: BLE001
+        return False, "could not find a Godot binary (%s)" % e
+    if godot is None:
+        return False, ("no double-precision Godot binary -- run "
+                       "`bash tools/build_godot.sh`")
+    part = stem.split("_")
+    if len(part) < 3:
+        return False, "cannot read a deck address out of the stem %r" % stem
+    sec, ring, dk = part[0], part[1], part[2]
+    # THE REGISTER'S DECK IS A NAME, NOT AN INDEX. `cell_manifest.json`'s
+    # deck_table is keyed by index into the ring's stack while the gazetteer
+    # carries the numbers the show uses; `tools/bake_station.py` lost 15 of 70
+    # bakes to exactly this before it went through `deck.deck_index`.
+    try:
+        import deck as _D                                      # noqa: PLC0415
+        import interior as _I                                  # noqa: PLC0415
+        schema, profile = _I.load()
+        dk_index = _D.deck_index(schema, profile, sec, int(ring), int(dk))
+    except Exception:                                          # noqa: BLE001
+        dk_index = int(dk)
+    out_dir = os.path.join(dd, "cells_" + stem)
+    os.makedirs(out_dir, exist_ok=True)
+    cmd = [godot, "--headless", "--path", GODOT_DIR, "res://scenes/walk.tscn",
+           "--", "--bake-cells", "--glb=" + glb, "--collision=" + col,
+           "--sector=" + sec, "--ring-index=" + str(ring),
+           "--deck-index=" + str(dk_index), "--cell-id=" + stem,
+           "--cells-out=" + out_dir]
+    print("boot: baking %s -> %s" % (stem, os.path.relpath(out_dir, ROOT)))
+    try:
+        r = subprocess.run(cmd, capture_output=True, text=True, cwd=ROOT,
+                           timeout=timeout)
+    except subprocess.TimeoutExpired:
+        return False, "the bake timed out after %d s" % timeout
+    # THE CELLS ON DISK ARE THE VERDICT, NOT THE EXIT CODE -- `bake_station.py`'s
+    # rule, and this repository's most-repeated lesson: a tool that exits 0
+    # having written nothing manufactures evidence.
+    path, man = cells_for(stem, dd)
+    if not path:
+        tail = [ln for ln in (r.stderr or r.stdout).splitlines()
+                if ln.strip()][-3:]
+        return False, "exit %d and no cell set for %s: %s" % (
+            r.returncode, stem, " | ".join(tail))
+    return True, "%d cells in %s" % (len(man.get("cells") or []),
+                                     os.path.relpath(path, ROOT))
+
+
+def build(stem=None, hour=None, deck_dir=None):
     """The boot manifest for one deck, derived from what is on disk."""
-    have = decks()
+    dd = deck_dir or DECK_DIR
+    have = decks(dd)
     if not have:
         raise SystemExit("boot: no built deck in %s -- run the deck exporter"
-                         % DECK_DIR)
+                         % dd)
     if stem is None:
         # THE FIRST BY NAME, and stated rather than left to a directory listing's
         # order: a boot that opens a different deck depending on the filesystem
@@ -209,14 +483,14 @@ def build(stem=None, hour=None):
     if stem not in have:
         raise SystemExit("boot: %s is not built (have: %s)"
                          % (stem, ", ".join(have)))
-    col_obj = os.path.join(DECK_DIR, stem + "_col.obj")
+    col_obj = os.path.join(dd, stem + "_col.obj")
     spawn, detail = spawn_from_shell(col_obj)
     # WHICH PLACE THE SPAWN IS IN is read off the cast standing in it -- the
     # actors carry their own place key and their own position, so the nearest
     # one names the spot without a second table of room bounds. It is a LABEL
     # for the HUD and the report; nothing depends on it being right.
     at, rooms = "corridor", []
-    actors_p = sidecar(stem, "_actors.json")
+    actors_p = sidecar(stem, "_actors.json", dd)
     if actors_p:
         with open(actors_p) as f:
             cast = json.load(f)
@@ -234,14 +508,44 @@ def build(stem=None, hour=None):
             # corridor, which is `ambience.place_at`'s rule and `places.gd`'s.
             if d <= NEAR_ROOM_M:
                 at = near.get("place", "corridor")
+
+    # THE CELL SET. `glb` and `collision` stay in the manifest and are NOT
+    # replaced: they are what `walk.gd` loads when there is no cell set, and
+    # what `arrival.gd` adopts for its own cluster. `cells_path` is the one that
+    # decides -- `walk.gd::_ready` loads the monolith only when it is empty.
+    cells_p, cman = cells_for(stem, dd)
+    cells = {"path": cells_p, "count": 0, "start": -1, "fresh": False,
+             "why": "no cell set for %s -- run `python3 station/boot.py "
+                    "--bake`" % stem}
+    if cman is not None:
+        cells = cells_describe(stem, cman, dd)
+        cells["path"] = cells_p
+        cells["start"] = start_cell(cman, spawn)
+        if cells["start"] < 0:
+            # A SPAWN IN NO CELL IS A FALL, and it must be said here rather than
+            # discovered by a body. Exactly one cell is primed before the first
+            # frame; if the spawn is not in it, the body drops through geometry
+            # that has not arrived and the verdict blames streaming for it.
+            cells["fresh"] = False
+            cells["why"] = ((cells["why"] + "; ") if cells["why"] else "") + (
+                "the spawn %.1f,%.1f,%.1f is in none of the %d cells"
+                % (spawn[0], spawn[1], spawn[2], cells["count"]))
     return {
         "deck": stem,
-        "glb": os.path.join(DECK_DIR, stem + ".glb"),
-        "collision": os.path.join(DECK_DIR, stem + "_col.glb"),
-        "interact": sidecar(stem, "_interact.json"),
+        "glb": os.path.join(dd, stem + ".glb"),
+        "collision": os.path.join(dd, stem + "_col.glb"),
+        "interact": sidecar(stem, "_interact.json", dd),
         "actors": actors_p,
-        "dialogue": sidecar(stem, "_dialogue.json"),
-        "crowd": sidecar(stem, "_crowd.json"),
+        "dialogue": sidecar(stem, "_dialogue.json", dd),
+        "crowd": sidecar(stem, "_crowd.json", dd),
+        # WHAT MAKES THE SHIPPED SCENE STREAM. Empty means it does not, and
+        # `cells_why` says which of the two reasons it is -- there is no set, or
+        # the set on disk no longer describes this deck.
+        "cells_path": cells["path"] if cells["count"] else "",
+        "cells_count": cells["count"],
+        "cells_start": cells["start"],
+        "cells_fresh": cells["fresh"],
+        "cells_why": cells["why"],
         "spawn": [round(v, 4) for v in spawn],
         "spawn_at": at,
         "rooms": rooms,
@@ -285,15 +589,232 @@ def check(man):
     return ok
 
 
+# ===========================================================================
+# THE GATE -- the shipped scene streams, or everything after it is built on
+# one deck
+# ===========================================================================
+#
+# IT LIVES HERE BECAUSE THIS IS THE MODULE THAT BUILDS THE THING. CLAUDE.md's
+# rule, learned from a doorway that carried four defects at once: the closure
+# gate lived in the module that IMPORTED the kit, so the module that built the
+# pieces had no way to measure them.
+#
+# AND IT IS HERMETIC. Every artefact this file reads -- the deck, its shell, its
+# cells -- is under `station/generated/scene/`, which is gitignored, so a gate
+# that needed one could never run in CI and would join the Godot steps in being
+# permanently red. The core assertions are made against a FIXTURE deck built in
+# a temporary directory: a shell whose floor this file's own `spawn_from_shell`
+# measures, and a cell set in `stream.gd`'s format. No engine, no build, 40 ms,
+# and it fails on today's code for the reason it exists to catch.
+#
+# THE REAL DECK IS STILL CHECKED when it is there, and reported separately, so
+# a developer's tree answers the question about the station and CI answers it
+# about the contract.
+
+def main_gd_sets_cells(text):
+    """Does `main.gd` hand the manifest's `cells_path` to `walk.gd`?
+
+    A SOURCE CHECK, AND IT IS THE HALF THAT WAS ACTUALLY MISSING. Both ends of
+    this existed and were tested: `stream.gd` bakes and streams, `walk.gd`
+    streams when it is given `--cells=`, `walkable.py --stream` drives a body
+    across cell boundaries in CI. `main.gd::_configure_walk` set seven
+    properties and none of them was this one, so the shipped scene took the
+    other branch and loaded one 62 MB `.glb` whole. Nothing that measures
+    geometry can see that; only something that reads the caller can.
+
+    Takes the TEXT rather than the path so the negative control can hand it a
+    copy with the line removed.
+    """
+    # `w.set("cells_path", ...)` with the value coming from the boot manifest.
+    # Both halves matter: setting it from a constant would be this file's spawn
+    # problem one level up.
+    m = re.search(r'set\(\s*"cells_path"\s*,\s*([^\n]*)', text)
+    if not m:
+        return False, 'no `set("cells_path", ...)` in main.gd'
+    if "_boot" not in m.group(1):
+        return False, ('main.gd sets cells_path from %r rather than from the '
+                       'boot manifest' % m.group(1).strip())
+    return True, m.group(0).strip()
+
+
+def _fixture(dirpath, stem="gate_0_0", cells=2, offset_deg=0.0):
+    """A deck and a cell set on disk, small enough to reason about.
+
+    The shell is an arc of floor at a fixed radius: every vertex is at r=R, so
+    `spawn_from_shell`'s floor band takes all of it and the spawn lands at the
+    angular and axial middle -- which for a 0..30 degree arc is 15 degrees, in
+    the first of two 30-degree cells. `offset_deg` slides the CELLS away from
+    the shell without moving the shell, which is how the "the spawn is in no
+    cell" control is made without authoring an unreachable spawn.
+    """
+    r, z0, z1, span = 200.0, 100.0, 101.0, 30.0
+    lines, n = [], 0
+    faces = []
+    for i in range(31):
+        a = math.radians(span * i / 30.0)
+        for z in (z0, z1):
+            lines.append("v %.6f %.6f %.6f" % (r * math.cos(a),
+                                               r * math.sin(a), z))
+            n += 1
+        if i:
+            b = n - 4                      # 1-based: b+1..b+4
+            faces.append("f %d %d %d" % (b + 1, b + 2, b + 3))
+            faces.append("f %d %d %d" % (b + 2, b + 4, b + 3))
+    body = "\n".join(lines) + "\ng %s\n" % FLOOR_GROUP + "\n".join(faces) + "\n"
+    with open(os.path.join(dirpath, stem + "_col.obj"), "w") as f:
+        f.write(body)
+    # BOTH HALVES, because `cells_describe` checks both and the render half is
+    # the one that went stale on the real deck. The `.glb` only has to EXIST for
+    # `decks()` to see the deck; the `.obj` beside it is what is counted.
+    with open(os.path.join(dirpath, stem + ".obj"), "w") as f:
+        f.write(body)
+    open(os.path.join(dirpath, stem + ".glb"), "w").close()
+    rows, per = [], len(faces) // max(cells, 1)
+    for i in range(cells):
+        a0 = offset_deg + span * i / cells
+        share = per if i < cells - 1 else len(faces) - per * (cells - 1)
+        rows.append({
+            "id": "%s_c%02d" % (stem, i), "index": i,
+            "mesh": "%s_c%02d.scn" % (stem, i),
+            "collision": "%s_c%02d_col.scn" % (stem, i),
+            "arc": {"r_m": r, "a0_deg": a0, "a1_deg": a0 + span / cells,
+                    "z0": z0 - 0.5, "z1": z1 + 0.5},
+            "aabb": {"pos": [-r, -r, z0], "size": [2 * r, 2 * r, z1 - z0]},
+            "tris": share,
+            "col_tris": share,
+            "groups": 1,
+            "spawn": [r * math.cos(math.radians(a0 + 1.0)),
+                      r * math.sin(math.radians(a0 + 1.0)), (z0 + z1) / 2.0],
+        })
+    out = os.path.join(dirpath, "cells_" + stem)
+    os.makedirs(out, exist_ok=True)
+    with open(os.path.join(out, stem + "_cells.json"), "w") as f:
+        json.dump({"version": 1, "kind": "ring", "cell_deg": span / cells,
+                   "written_by": "station/boot.py::_fixture (gate)",
+                   "source": {"glb": os.path.join(dirpath, stem + ".glb")},
+                   "cells": rows}, f)
+    return stem
+
+
+def gate():
+    """Assert the shipped scene streams. Returns 0 or 1.
+
+    Four things, each with a control that must FAIL. The bar this repository
+    keeps paying for is not "does the check pass" but "can it fail on the
+    content in front of it" -- so every subject below is run again with one
+    thing removed, and a control that passes is itself a failure.
+    """
+    print("\nDOES THE SHIPPED SCENE STREAM?\n")
+    bad = []
+
+    def say(ok, what, detail=""):
+        print("  %s  %s%s" % ("PASS" if ok else "FAIL", what,
+                              ("  -- " + detail) if detail else ""))
+        if not ok:
+            bad.append(what)
+
+    # -- 1. the caller ------------------------------------------------------
+    src = open(MAIN_GD).read()
+    ok, why = main_gd_sets_cells(src)
+    say(ok, "main.gd hands the boot manifest's cells_path to walk.gd", why)
+    cut = re.sub(r'.*set\(\s*"cells_path".*\n', "", src)
+    cok, _ = main_gd_sets_cells(cut)
+    say(not cok, "CONTROL: with that line removed the check fails",
+        "it passed -- the check is not reading what it says it reads"
+        if cok else "fails, as it must")
+
+    # -- 2. the manifest, on a fixture nobody has to build -------------------
+    with tempfile.TemporaryDirectory() as d:
+        stem = _fixture(d, cells=2)
+        man = build(stem, deck_dir=d)
+        say(bool(man.get("cells_path")),
+            "boot.build() names a cells_path",
+            man.get("cells_path") or man.get("cells_why", "empty"))
+        say(os.path.exists(man.get("cells_path") or ""),
+            "the cells_path it names exists on disk")
+        say(int(man.get("cells_count", 0)) > 1,
+            "it names MORE THAN ONE cell",
+            "%d cells" % man.get("cells_count", 0))
+        say(int(man.get("cells_start", -1)) >= 0,
+            "the spawn is inside one of them",
+            "cell %d" % man.get("cells_start", -1))
+        say(bool(man.get("cells_fresh")),
+            "the cells still sum to the deck they were cut from",
+            man.get("cells_why") or "exactly")
+
+    # -- 3. the controls, each removing one thing ---------------------------
+    with tempfile.TemporaryDirectory() as d:
+        stem = _fixture(d, cells=2)
+        import shutil                                          # noqa: PLC0415
+        shutil.rmtree(os.path.join(d, "cells_" + stem))
+        m = build(stem, deck_dir=d)
+        say(not m.get("cells_path"),
+            "CONTROL: with no cell set on disk there is no cells_path",
+            m.get("cells_why", ""))
+    with tempfile.TemporaryDirectory() as d:
+        stem = _fixture(d, cells=1)
+        m = build(stem, deck_dir=d)
+        say(int(m.get("cells_count", 0)) == 1,
+            "CONTROL: a one-cell set is reported as one cell, not as streaming",
+            "%d" % m.get("cells_count", 0))
+    with tempfile.TemporaryDirectory() as d:
+        # The cells moved 180 degrees round the ring, the shell did not.
+        stem = _fixture(d, cells=2, offset_deg=180.0)
+        m = build(stem, deck_dir=d)
+        say(int(m.get("cells_start", 0)) < 0 and not m.get("cells_fresh"),
+            "CONTROL: a spawn in none of the cells is caught here, not by a "
+            "falling body", m.get("cells_why", ""))
+
+    # -- 4. the real deck, when there is one --------------------------------
+    print()
+    have = decks()
+    if not have:
+        print("  the built station is not on disk (station/generated/scene/ is "
+              "gitignored), so the four checks above are the whole gate here. "
+              "On a tree with a built deck this also reports that deck's own "
+              "cell set -- run `python3 station/deck.py --deck blue/0/0` then "
+              "`python3 station/boot.py --gate`.")
+    else:
+        man = build()
+        n, s = man["cells_count"], man["cells_start"]
+        print("  the real deck: %s -- %d cells, start cell %d, %s"
+              % (man["deck"], n, s,
+                 "fresh" if man["cells_fresh"] else man["cells_why"]))
+        # REPORTED, NOT ASSERTED, and the line above says which. The fixture
+        # half is the contract and it is hermetic; whether THIS tree's cells
+        # have been re-baked since its deck was rebuilt is a property of the
+        # tree, and failing CI for it would be failing for the absence of a
+        # 62 MB artefact nobody commits.
+        if n <= 1 or s < 0:
+            print("  ...which would boot MONOLITHIC. `python3 station/boot.py "
+                  "--bake` cuts it.")
+
+    print("\n  %s\n" % ("the shipped scene streams" if not bad
+                        else "%d failed: %s" % (len(bad), "; ".join(bad))))
+    return 1 if bad else 0
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--deck", default=None, help="deck stem to boot into")
     ap.add_argument("--hour", type=float, default=None)
     ap.add_argument("--check", action="store_true",
                     help="derive and cross-check, write nothing")
+    ap.add_argument("--bake", action="store_true",
+                    help="cut the deck into streaming cells first, if the set "
+                         "is missing or no longer describes it (needs Godot)")
+    ap.add_argument("--gate", action="store_true",
+                    help="CI: does the shipped scene stream?")
     ap.add_argument("--out", default=OUT)
     a = ap.parse_args()
+    if a.gate:
+        return gate()
     man = build(a.deck, a.hour)
+    if a.bake and not (man["cells_count"] > 1 and man["cells_fresh"]
+                       and man["cells_start"] >= 0):
+        ok, why = bake_cells(man["deck"])
+        print("boot: bake %s -- %s" % ("ok" if ok else "FAILED", why))
+        man = build(a.deck, a.hour)
     d = man["spawn_derivation"]
     print("boot: %s -- spawn %.3f,%.3f,%.3f in %s, %d rooms; standing on 1 of "
           "%d floor triangles (of %d in the shell) at r=%.3f, %.0f deg"
@@ -301,6 +822,18 @@ def main():
              man["spawn_at"] or "?", len(man["rooms"]),
              d["floor_triangles"], d["shell_triangles"], d["floor_r_m"],
              d["arc_deg"]))
+    # WHICH BUILD A PLAYER WILL GET, in one line, every run. A manifest that
+    # names no cell set boots the monolith, and the failure this whole section
+    # exists to end was silent precisely because nothing said so.
+    if man["cells_path"]:
+        print("boot: STREAMED -- %d cells from %s, starting in cell %d%s"
+              % (man["cells_count"],
+                 os.path.relpath(man["cells_path"], ROOT), man["cells_start"],
+                 "" if man["cells_fresh"] else "  -- STALE: " + man["cells_why"]))
+    else:
+        print("boot: MONOLITHIC -- %s. The shipped scene will load one deck "
+              "whole and nothing will be on the other side of it."
+              % man["cells_why"])
     ok = check(man)
     if a.check:
         return 0 if ok else 1

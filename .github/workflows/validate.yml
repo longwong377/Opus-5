@@ -248,6 +248,25 @@ jobs:
         continue-on-error: true
         run: python3 station/walkable.py --deck blue/0/0 --deck-only --bump
 
+      # ...AND THE SHIPPED SCENE ACTUALLY USES IT. The gate below proves a
+      # streamed cell is a place; it proves nothing about whether a PLAYER ever
+      # reaches one, and until session 4k none did: `boot.py` named one .glb and
+      # `main.gd` never set `cells_path`, so `godot --path godot` took walk.gd's
+      # other branch and loaded one deck whole. docs/MASTER-PLAN.md P0.5 calls
+      # that its single most load-bearing finding, because every player-facing
+      # system built before it is fixed is validated on a topology the shipped
+      # world does not have.
+      #
+      # HERMETIC ON PURPOSE. station/generated/scene/ is gitignored, so a check
+      # that needed a built deck could never run here. The assertions are made
+      # against a fixture deck and cell set in a temp dir -- no engine, no build,
+      # ~40 ms -- and each has a control that must fail. It failed on the commit
+      # before this one, on both halves.
+      - name: The shipped scene streams
+        id: sthe_shipped_scene_streams
+        continue-on-error: true
+        run: python3 station/boot.py --gate
+
       # A STREAMED CELL IS A PLACE, NOT A SHELL. Every other walkability gate
       # here loads one .glb whole and wires it once, so none of them can fail
       # for a station whose doors are solid because the geometry arrived late --
@@ -578,6 +597,8 @@ jobs:
             echo "FAILED: sthe_station_is_walkable"; fail=1; fi
           if [ "${{ steps.sthe_inhabitants_are_solid.outcome }}" != "success" ]; then
             echo "FAILED: sthe_inhabitants_are_solid"; fail=1; fi
+          if [ "${{ steps.sthe_shipped_scene_streams.outcome }}" != "success" ]; then
+            echo "FAILED: sthe_shipped_scene_streams"; fail=1; fi
           if [ "${{ steps.sstreamed_cell_is_a_place.outcome }}" != "success" ]; then
             echo "FAILED: sstreamed_cell_is_a_place"; fail=1; fi
           if [ "${{ steps.show_much_of_the_station_can_be_walked_in.outcome }}" != "success" ]; then

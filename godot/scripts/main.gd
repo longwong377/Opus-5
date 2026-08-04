@@ -85,6 +85,18 @@ var _mode := "station"
 var _boot := {}
 var _present_0300 := -1
 var _present_1300 := -1
+## `stream.gd`, when this build has one. Found by METHOD rather than by reaching
+## into `walk.gd`'s private `_stream` field, for the same reason `_player()` is
+## found by type: that file's internals are not this one's to depend on.
+var _streamer = null
+## `loads + frees` at the last time the cast was bound. A streamed build's tree
+## CHANGES SHAPE as the player walks, and `life.gd`'s Director binds people by
+## walking the meshes that are in the tree at the moment it is called.
+var _stream_epoch := -1
+## The cast list, read once. `Director.bind` is called again on every cell
+## transition and re-reading a JSON file per transition would be a file read
+## inside a hitch.
+var _cast: Array = []
 ## Why there is no mixer, when there is no mixer. Carried into the verdict so a
 ## silent build says which silence it is.
 var _audio_why := "-"
@@ -155,11 +167,47 @@ func _ready() -> void:
 ## Boot into the walkable station. Every property set here is one `walk.gd`
 ## already exports and one a developer's command line already passes; the values
 ## come from the manifest rather than from this file.
+##
+## AND IT STREAMS. Until session 4k this function set `glb_path` and nothing
+## else, so `walk.gd::_ready` took its OTHER branch -- `_load_level`, one 62 MB
+## `.glb` read synchronously, with nothing on the far side of it. Every part of
+## the alternative already existed and was gated: `stream.gd` bakes cells and
+## keeps a derived number of them resident around the body, `walk.gd` loads
+## nothing else when it has a `cells_path`, `tools/bake_station.py` has cut all
+## 70 decks into 955 cells, and `station/walkable.py --stream` drives a body
+## across cell boundaries with working doors and people in CI. The shipped scene
+## reached none of it, because this file never said where the cells were --
+## `docs/MASTER-PLAN.md` P0.5 calls that "its single most load-bearing finding",
+## since every player-facing system built before it is fixed is validated on a
+## topology the shipped world does not have.
+##
+## THE PATH IS READ, NOT BUILT. `station/boot.py` finds the cell set that
+## belongs to the deck it measured the spawn off -- checking the cells' own ids
+## and source, because `blue_0_0_z7440_c01` starts with `blue_0_0` and a prefix
+## match hands over a cluster 320 m down the axis -- and puts it in the manifest
+## under `cells_path`. An empty string means there is no set on disk and the
+## monolith is the honest fallback; `cells_why` says which it is and the banner
+## below prints it, because the failure this ends was silent.
 func _build_station() -> Node3D:
 	var w := _instance(WALK_SCENE)
 	if w == null:
 		return null
 	_configure_walk(w)
+	w.set("cells_path", String(_boot.get("cells_path", "")))
+	# READ BACK FROM THE PROPERTY, NOT FROM THE MANIFEST. What is reported is
+	# what the world was actually given -- the same argument `_coldstart` makes
+	# about the spawn one screen down, and the reason `_resident_cells` asks
+	# `stream.gd` rather than counting the manifest's rows.
+	var cells := String(w.get("cells_path"))
+	if cells == "":
+		print("main: MONOLITHIC -- %s. Run `python3 station/boot.py --bake`."
+			% String(_boot.get("cells_why", "the boot manifest names no cell set")))
+	else:
+		print("main: STREAMED -- %d cells from %s, starting in cell %d%s"
+			% [int(_boot.get("cells_count", 0)), cells,
+				int(_boot.get("cells_start", -1)),
+				("" if bool(_boot.get("cells_fresh", false))
+					else "  -- STALE: " + String(_boot.get("cells_why", "")))])
 	add_child(w)
 	return w
 
@@ -167,6 +215,16 @@ func _build_station() -> Node3D:
 ## Boot into the player's first ten minutes. `arrival.gd` EXTENDS `walk.gd` and
 ## reads the same sidecar this node found, so the build a player arrives into is
 ## the build they then walk in -- there is no second world here.
+##
+## AND IT DOES NOT STREAM, deliberately, which is a statement rather than an
+## omission. `arrival.gd::_adopt_build` REPLACES `glb_path`, `collision_path`
+## and `spawn` with the arrival sidecar's own, and on this station that sidecar
+## belongs to a different cluster from the one `boot.py` measures its spawn off
+## -- `blue_0_0_z7440` against `blue_0_0`. Setting `cells_path` here would hand
+## `walk.gd` one cluster's cells and the other cluster's spawn: a body streaming
+## geometry 320 m from where it is standing. When the arrival sequence and the
+## boot deck are the same cluster this becomes one line; until then the honest
+## build is the monolith the sidecar names.
 func _build_arrival() -> Node3D:
 	var a := _instance(ARRIVAL_SCENE)
 	if a == null:
@@ -177,6 +235,8 @@ func _build_arrival() -> Node3D:
 	return a
 
 
+## The properties every walkable mode shares. `cells_path` is NOT among them and
+## is set by `_build_station` alone -- see `_build_arrival` for why.
 func _configure_walk(w: Node) -> void:
 	w.set("glb_path", String(_boot.get("glb", "")))
 	w.set("collision_path", String(_boot.get("collision", "")))
@@ -254,11 +314,19 @@ func _start_clock() -> void:
 	_life.clock = _clock
 	add_child(_life)
 
-	var actors := _read_array(String(_boot.get("actors", "")))
+	_cast = _read_array(String(_boot.get("actors", "")))
+	_streamer = _find_where(self, "Node3D", "resident_ids")
+	var actors := _cast
 	var n: int = _life.bind(_world, actors)
+	if _streamer != null:
+		_stream_epoch = int(_streamer.loads) + int(_streamer.frees)
 	print("life: clock started at %05.2f EMT, %.3f station hours per real "
-		% [_clock.hour(), clock_rate] + "second; %d of %d residents bound"
-		% [n, actors.size()])
+		% [_clock.hour(), clock_rate] + "second; %d of %d residents bound%s"
+		% [n, actors.size(),
+			("" if _streamer == null else
+				" (streamed: the cast in the %d resident cell(s); rebound as "
+				% (_streamer.resident_ids() as Array).size()
+				+ "cells arrive)")])
 	if n > 0:
 		# THE CLAIM, MEASURED IN THE SHIPPED BUILD RATHER THAN IN A HARNESS.
 		# `docs/MASTER-PLAN.md` §0 asks that "03:00 differs visibly from 13:00";
@@ -342,6 +410,45 @@ func _start_ambience() -> void:
 func _process(_delta: float) -> void:
 	if _audio != null and _clock != null:
 		_audio.hour = _clock.hour()
+	_rebind_on_stream()
+
+
+## THE CAST CHANGES WHEN THE GEOMETRY DOES, and until this existed it did not.
+##
+## `life.gd`'s Director binds a person by finding the MESHES in the tree whose
+## names match their group -- so `bind` describes the tree at the instant it was
+## called, and in a streamed build that instant is the load screen. Measured on
+## the shipped scene the moment it started streaming: `21 of 21 residents bound`
+## became `1 of 21`, and the twenty who arrive with later cells would have stood
+## at their bake pose for ever while the clock ran past them. That is the same
+## defect `docs/streaming-doors-4g.md` fixed for doors, people and interactables
+## inside `walk.gd`, recurring one level up at the node that owns the clock --
+## and it is exactly what P0.5 means by "every player-facing system built before
+## this is validated on a topology the shipped world does not have".
+##
+## ON THE TRANSITION, NOT PER FRAME. `loads + frees` only moves when a cell
+## arrives or leaves, so this is two integer reads a frame and a rebuild at a
+## cell boundary -- where `stream.gd` is already doing its ~30 ms of main-thread
+## instancing, collider building and material binding. `Director.bind` clears
+## and rebuilds from scratch, keeps its viewer, and `_process` re-applies the
+## hour on the next frame, so there is nothing to reconcile.
+func _rebind_on_stream() -> void:
+	if _streamer == null or _life == null:
+		return
+	var epoch: int = int(_streamer.loads) + int(_streamer.frees)
+	if epoch == _stream_epoch:
+		return
+	_stream_epoch = epoch
+	var n: int = _life.bind(_world, _cast)
+	# The viewer survives `bind`, but it is set here anyway: a body that did not
+	# exist at the first bind -- which is every launch, since the cast is bound
+	# before `_player()` can be found -- would otherwise never become the eyes
+	# that hold a pop back.
+	var body := _player()
+	if body != null:
+		_life.watch(body)
+	print("life: %d cells resident -- %d of %d residents bound"
+		% [(_streamer.resident_ids() as Array).size(), n, _cast.size()])
 
 
 # ---------------------------------------------------------------------------
@@ -369,7 +476,19 @@ func _coldstart() -> void:
 			float(Time.get_ticks_msec()) / 1000.0])
 		get_tree().quit(0)
 		return
+	# WHERE THE BODY WAS ACTUALLY PUT, not where the manifest asked for it.
+	#
+	# The two are the same in a monolithic build and can differ in a streamed
+	# one: `walk.gd::_load_streamed` falls back to the start cell's own measured
+	# floor point when the manifest's spawn is not inside the cell it primed.
+	# That fallback is correct -- a body spawned into a cell that has not arrived
+	# falls -- but measuring `drop_m` against the number that was NOT used turns
+	# a working build into a verdict claiming it fell, which is the same class of
+	# mistake as scoring a frame the renderer never produced. `boot.py --gate`
+	# reports the disagreement itself; this line just measures the right thing.
 	var spawn: Vector3 = _vec3(_boot.get("spawn", []))
+	if _world != null and _world.get("spawn") != null:
+		spawn = _world.get("spawn")
 	for _i in settle_frames:
 		await get_tree().physics_frame
 	var body := _player()
@@ -418,10 +537,16 @@ func _coldstart() -> void:
 		print(said)
 		layers = _layers(said)
 
+	# `cells=` IS IN THE VERDICT because the topology a player-facing system was
+	# validated on is a property of the run, not of the repository. `cells=0`
+	# says this build loaded one deck whole; `station/coldstart.py::parse_verdict`
+	# reads `k=v` tokens and ignores the ones it has no check for, so this is
+	# additive.
 	print(("COLDSTART scene=%s mode=%s player=%d on_floor=%s drop_m=%.3f "
 		+ "hud=%d hud_place=%s h0=%05.2f h1=%05.2f clock_advanced=%s "
 		+ "bodies=%d present_0300=%d present_1300=%d audio_layers=%d "
-		+ "audio_place=%s audio_ready_s=%.2f audio_why=%s boot_s=%.1f") % [
+		+ "audio_place=%s audio_ready_s=%.2f audio_why=%s cells=%d "
+		+ "cell_resident=%d boot_s=%.1f") % [
 		String(get_tree().current_scene.scene_file_path), _mode,
 		1 if body != null else 0, str(on_floor).to_lower(), drop,
 		1 if hud != null else 0, (hud_place if hud_place != "" else "-"),
@@ -430,8 +555,23 @@ func _coldstart() -> void:
 		_present_0300, _present_1300, layers,
 		(_audio._here if _audio != null and _audio._here != "" else "-"),
 		ready_s, _audio_why.replace(" ", "_"),
+		int(_boot.get("cells_count", 0)), _resident_cells(),
 		float(Time.get_ticks_msec()) / 1000.0])
 	get_tree().quit(0)
+
+
+## How many streamed cells are actually in the tree, asked of `stream.gd` rather
+## than of the manifest. THE TWO ANSWER DIFFERENT QUESTIONS and only this one is
+## about the run: a manifest naming 18 cells with none resident is a build that
+## configured streaming and never loaded anything, which is a shape this
+## repository has shipped before under the name "the gate was green".
+## Untyped for the reason `_hud()` is: a value typed `Node3D` resolves its calls
+## against that class at compile time, and `resident_ids` is on the script.
+func _resident_cells() -> int:
+	var s = _find_where(self, "Node3D", "resident_ids")
+	if s == null:
+		return 0
+	return (s.resident_ids() as Array).size()
 
 
 ## The layer count out of an `AMBIENCE ...` line, or 0.
