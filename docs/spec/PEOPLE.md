@@ -42,7 +42,10 @@ medium-high 2.4/0.05, medium 1.9/0.04, low 1.3/0.01, ceremonial 6.0/0.00, episod
 **Money anchors** (LAW-CRIME:739–748, 979): command quarters **30 cr/wk (auth 1†)** ·
 standard quarters 10–15 · transient room 4–8 · dosshouse bunk 1 cr/night · cart meal 1–2 ·
 day labour 8–15 cr/day · **passage home 300–800 cr** (= 30–100 days of casual labour saved
-whole — the load-bearing underclass number).
+whole — the load-bearing underclass number). **The 300 cr FLOOR is the one ruling
+(SPEC-CHANGE #1, SYSTEMS.md log): the Downbelow leak is defined leak = P(credits < 300),
+and player.py's PASSAGE_HOME_CR=250 re-solve (CREDIT_SKEW → ln 0.06/ln 0.01 ≈ 0.611) is
+the pending code half.**
 
 ---
 
@@ -118,7 +121,7 @@ security.py:105; FACTIONS §5.4:524); **1,500–3,000 civilian informers** — 1
 humans, "enough that a denunciation is credible in any public room; too few to be a crowd"
 (FACTIONS:525). Present, growing, NOT in control at datum (§5.1:487–488). **Territory:**
 none — an armband over security grey and an allowance in civilian pockets; `nightwatch`
-duty room; muster room unplaced (§13:900). **Hours:** wherever its wearers' shifts are;
+duty room; muster room placed — PLC-108 (§13:900 closed by that row). **Hours:** wherever its wearers' shifts are;
 recruiting notices cycle on MiniPax boards. **Frictions:** (1) human↔alien under Nightwatch,
 high, era-gated on (2,22) (PAIRS `human/*`): **"a human talking with aliens lowers his
 voice when an armband passes"** — that literal behaviour, on ambient NPCs, is the check.
@@ -141,7 +144,7 @@ open with the trader's changed lines — either outcome, consistently persisted.
 human-only, roles {visitor, financier, merchant, diplomat} (resident.py:519–529) — a
 1-in-10,000 encounter by design; **no resident Corps telepath at datum** (psi_resident_ends
 (2,19)); Psi Cop visits are world-events. **Territory:** `telepath_office` (Business
-District); proposed liaison office unplaced (§13:899). **Hours:** office 09:00–17:00;
+District); liaison office placed — SHB-04.c (§13:899 closed by that row). **Hours:** office 09:00–17:00;
 commercial telepaths appear at contract signings in `business_center`. **Frictions:** (1)
 telepath↔everyone, high (PAIRS `telepath/*`): **"conversation stops when someone with the
 Psi badge enters. Nobody sits at the adjacent table"** — will_share_table false; the player
@@ -161,7 +164,8 @@ document that SYS-04 records as telepath-witnessed.
 all species (spine); **1,500 guild-carded core** (TRAFFIC:596–667); ~1,200 on EA payroll
 (FACTIONS §2.2 docks+traffic split; §11.1:782 — struck in S1E12). **Territory:**
 `docking_bays`, `cargo_bays`, `bay_elevators`, Dock Workers' Quarters (auth 3), guild hall
-unplaced (§13:912); casual-labour muster point outside the bay-elevator post (D-10).
+placed — SHB-02.a (§13:912 closed by that row); casual-labour muster point outside the
+bay-elevator post (D-10 → SHB-02.c).
 **Hours:** fixed day shift 06:00–15:00 reproducing the two observed surges
 (schedule.py:286–287); muster crowds 06:00 and 14:00. **Frictions:** (1)
 dockworker↔command, latent (PAIRS): **"grievance boards, notices, the memory of the strike.
@@ -191,8 +195,8 @@ none (auth 5 staging of the sourced secret). (2) medicine↔customs (auth 5, fro
 quarantine authority gap TRAFFIC §6.5): a quarantine flag holds a ship's passengers in the
 hall — the player sees a roped queue going nowhere and a doctor arguing jurisdiction with
 a customs supervisor. **Incidents:** six atmospheres mean six kinds of emergency
-(PLACES:1017–1019); quarantine arrival; Dust casualty; morgue transfer vs the Downbelow
-unofficial mortuary (D-09). **Standing:** treated patients remember (CAST-05); clinic
+(PLC-009's crash-kit note); quarantine arrival; Dust casualty; morgue transfer vs the
+Downbelow unofficial mortuary (D-09 → SHB-08.c). **Standing:** treated patients remember (CAST-05); clinic
 volunteering is the entry to ROLE-06's Downbelow branch. **ACCEPT:** present at
 `medlab_one` triage with a breather-mismatch casualty (an Abbai off a failed humid line):
 triage board [T3] queues them, diagnostic_bed [T2] states the species-specific reading,
@@ -224,9 +228,10 @@ Downbelow + 1,000 transient (FACTIONS §6.2:577–584); stateless post-(2,20); S
 `SANCTUARY -- EXPIRED` visas (resident.py:553–555); refugees excluded from card-checked
 commerce and eating out (resident.py:391, 437). **Territory:** G'Kar-figure's former suite
 as private residence (`ambassadorial_suites` — no council seat, government-in-exile);
-Red/Blue outer; refugees in converted cargo, Brown outer; `refugee_reception` workplace
-(queueing IS the day, resident.py:760–767); shrine/mourning space unplaced (§13:902 — "the
-most important new geometry any faction implies"). **Hours:** sleep 21:30–05:30; aid queue
+Red/Blue outer; refugees in converted cargo, Brown outer (= SHB-08.f, the §1.4 Brown ruling);
+`refugee_reception` workplace
+(queueing IS the day, resident.py:760–767); shrine/mourning space placed — SHB-06.b
+(§13:902 — "the most important new geometry any faction implies" — closed by that row). **Hours:** sleep 21:30–05:30; aid queue
 from 06:00; traders 09:00–20:00. **Frictions:** (1) Narn↔Centauri, THE highest, rarest
 contact (PAIRS, 1.80 m separation, 0.02 events/h): **"The Narn stops, turns, and does not
 yield the corridor. The Centauri crosses to the far side. Neither speaks. Groups reroute
@@ -284,10 +289,12 @@ religious caste out, worker caste in, zero mixed dwell inside, the rota-keeper's
 schedule [T1] readable and TRUE against the NPCs actually moving.
 
 ### FAC-12 — The League of Non-Aligned Worlds (the council organ)
-**Numbers:** 9 member species aboard at datum; all assign ambassadors; **only ten sit in
-the Assembly at a time** (FACTIONS §9.1:688–696 — the rotation is buildable politics).
-**Territory:** council anteroom, `league_delegations` (7 offices — 40 m / 5.36 m,
-INV-268), `alien_sector` as the physical home (§9.3). **Hours:** session days 10:00; the
+**Numbers (the PLC-021 ruling, auth 5 — one ruling, three consumers):** League membership
+**>10**; **NINE staffed missions aboard at datum**; **ten Assembly seats, one held in
+absentia** by a rotation delegation not currently staffed aboard — the empty seat with
+its nameplate is content (FACTIONS §9.1:688–696 — the rotation is buildable politics).
+**Territory:** council anteroom, `league_delegations` (7 offices — 5 single + 2 shared
+by the four smallest missions, PLC-062), `alien_sector` as the physical home (§9.3). **Hours:** session days 10:00; the
 anteroom is the all-day room. **Frictions:** (1) League↔great powers, low-constant bloc
 (friction.py:133–135, 179–183): **the caucus "visibly not being consulted"** — the player
 sees the Centauri and EA parties pass the anteroom without slowing. (2) member↔member
@@ -297,8 +304,9 @@ seat-rotation days; walkouts; a delegation demanding Ombuds time. **Standing:** 
 the door; carrying messages between delegation offices earns named-delegation standing
 separately. **ACCEPT:** on a session day the anteroom holds ≥6 species of delegate staff
 with correct atmospheres (Abbai masked, Gaim suited), the seating board [T1] names the ten
-sitting delegations for that session, and the two non-sitting delegations' aides carry the
-consultation grievance in their topic lines.
+seats for that session — nine staffed, one in absentia — and **the two rotation-claimant
+delegations' aides** (both claim the in-absentia seat's next rotation) carry the
+consultation grievance in their topic lines, seated at opposite anteroom walls.
 
 ### FAC-13 — The Drazi
 **Numbers:** 12,500 — dominant in `docking_bays`, `dark_star`, Grey industrial (schedule
@@ -383,7 +391,9 @@ zone; meals bracket the shift because they cannot eat outside it** (schedule.py)
 visible reason the Alien Sector exists". SEX field renders HIVE (resident.py:660).
 **Territory:** `alien_sector` methane zone behind its lock. **Frictions:** (1)
 Gaim↔corridor traffic (auth 5, from the suit): a suited Gaim occupies a doorway's full
-width — crowds wait rather than squeeze, and the player reads patience, not fear. (2)
+width — crowds wait rather than squeeze, and the player reads patience, not fear
+(**operational proxy: crowd NPCs at a suited-Gaim-occupied doorway enter wait-state, no
+push-through pathing, no flee-state — a behavioral assert, not a mood claim**). (2)
 Gaim↔customs (arrival.py:509–516): an unnumbered atmosphere class FLAGs — every Gaim
 arrival is a secondary-inspection referral by rule, visible as the suit standing in the
 referral pen. **Incidents:** suit-integrity alarms; the interpreter's absence stalling any
@@ -508,7 +518,7 @@ customs genetic match (arrival.py:440–545) — both outcomes real.
 4 Sanctuaries (auth 3; function never stated — P-08 contemplation reading); cleric-role
 heads 7,300 station-wide; worship split human/alien venues (resident.py:383–384).
 **Territory:** `sanctuary_blue`, `sanctuaries`, `interfaith_chapel`, `alien_worship`;
-monastery unplaced (§13:904). **Hours:** cleric shift 06:00; the Minbari rota (FAC-11);
+monastery placed — PLC-111's annexe + SHB-06.a dormitory (§13:904 closed by those rows). **Hours:** cleric shift 06:00; the Minbari rota (FAC-11);
 Theo's monks keep canonical hours (auth 5: offices at 06:00/12:00/18:00/23:00).
 **Frictions:** (1) faith↔law (§11.3:819): the G'Quan Eth is a controlled substance under
 Earth law and a liturgical necessity — seen each season as a customs hold argued by a Narn
@@ -541,8 +551,8 @@ the gap, and the event's own participants carry a third version in theirs.
 
 ### FAC-28 — The Rangers
 **Numbers:** 20–60 aboard, semi-covert from (3,1) (`rangers_visible`; count auth 5,
-FACTIONS §10.1:753–757). **Territory:** safe house/message drop unplaced (§13:905 —
-Brown/Downbelow margin); `bar_unnamed` as a contact point (CAST row 48). **Hours:**
+FACTIONS §10.1:753–757). **Territory:** safe house/message drop placed — SHB-08.d (§13:905 closed by that row;
+the Brown margin, `grey/0` outer arc); `bar_unnamed` as a contact point (CAST row 48). **Hours:**
 deliberately unpatterned. **Frictions:** none tabled — by design they generate curiosity,
 not friction: (1) Ranger↔Nightwatch (auth 5, era-latent): the rim bulletin IS about them;
 an armband studying the brooch-wearer across the bar is the scene. (2) Ranger↔security
@@ -618,7 +628,7 @@ and schedules cited per §1.
 | 20 | Marta Okonkwo | hum F 44 | Downbelow free-clinic charge nurse | clinic cot 2 nights of 3 (auth 5) | clinic evenings; Medlab supply run Mondays | 18, 38 — asks no names (FAC-07 friction) |
 | 21 | Milo Okada | hum M 58 | publican, `bar_unnamed` — owner-operator evenings | `qtr_civilian` | counter 17:00–01:00; cellar morning | 22, 23, 48 |
 | 22 | Vresh | drz M 29 | day barman, `bar_unnamed` | `qtr_civilian` | 09:00–17:00 (Drazi sleep 00:30–07:00) | 21, 4 |
-| 23 | Na'Ver | narn F 41 | kitchen, `bar_unnamed` — paid cash-in-hand (SANCTUARY visa bars carded work, resident.py:391) | converted-cargo block, Brown | kitchen 10:00–22:00 | 21, 42 |
+| 23 | Na'Ver | narn F 41 | kitchen, `bar_unnamed` — paid cash-in-hand (SANCTUARY visa bars carded work, resident.py:391) | SHB-08.f converted-cargo partition, Brown (`grey/0` outer) | kitchen 10:00–22:00 | 21, 42 |
 | 24 | Corva Talline | cen F 47 | owner, `dark_star` | `qtr_civilian` | 20:00–04:00 on the floor | 25, 1 |
 | 25 | the night barman | brak — | Dark Star night counter | `alien_resident_qtr` | 21:00–05:00 (Brakiri wake 16:00) | 24, 36 |
 | 26 | Renata Iyer | hum F 63 | owner-cook, `eclipse_cafe` | `qtr_civilian` | opens 05:30 for the A-watch handover trade | 7, 31 |
@@ -634,10 +644,10 @@ and schedules cited per §1.
 | 36 | the night broker | brak — | commodities desk, `business_center` | `alien_resident_qtr` | 18:30–02:30 (species_work_shift, schedule.py:455–469) | 25, 19 (FAC-14 scene) |
 | 37 | the Collector | hum M ~55 | debt enforcement (office, not name — LAW-CRIME rule) | `thieves_guild` margin | rounds 10:00 & 22:00 through the camps | 6, 50, 24 (casino debts bought) |
 | 38 | Th'Ranna | narn F 48 | salvage boss (the 22% economy), crew of 9 | `downbelow_arch` | day sweeps; sells 14:00 at the fence | 40, 41, 20 |
-| 39 | Aldo Pryce | hum M 66 | dosshouse keeper — 60 bunks at 1 cr/night | the dosshouse backroom | lights-out 23:00; full on cold-plant nights | 6, 40 |
+| 39 | Aldo Pryce | hum M 66 | dosshouse keeper — 120 bunks at 1 cr/night (SHB-08.b, the one number) | the dosshouse backroom | lights-out 23:00; full on cold-plant nights | 6, 40 |
 | 40 | Edda Kovac | hum F 58 | standpipe warden, water-reclamation camp (auth 5 — the spec's answer to the open lurker-water question: a person, not a plumbing ruling) | `downbelow` | queues 05:00–08:00, 17:00–20:00 | 38 (water-for-salvage barter), 39 |
 | 41 | Solly Vane | hum M 44 | the fence, `black_market` stall | `subfloor_stack` | buys 14:00–02:00; Llort suppliers overnight | 38, 29, 50 |
-| 42 | G'Lorn | narn M 63 | refugee-committee chair | converted-cargo block, Brown | 06:00 aid queue head; 18:00 committee | 23, 32, FAC-09 |
+| 42 | G'Lorn | narn M 63 | refugee-committee chair | SHB-08.f converted-cargo partition, Brown (`grey/0` outer) | 06:00 aid queue head; 18:00 committee | 23, 32, FAC-09 |
 | 43 | Andro Tessari | cen M 39 | Centauri mission social secretary | `ambassadorial_suites` annexe | receptions; court-dress deliveries; casino nights | 28, 30, 12 |
 | 44 | Verann | min M 70 | worker-caste foreman, Grey fabrication | `alien_resident_qtr` | day shifts among the 3-shift industrial rota | 45, 19 |
 | 45 | Mayann | min F 88 | religious-caste rota-keeper, `sanctuaries` | `alien_resident_qtr` | holds the 18:00 rota turnover (FAC-11 scene) | 44, 19 |
@@ -645,12 +655,12 @@ and schedules cited per §1.
 | 47 | the Gaim voice | gaim — (SEX: HIVE) | designated interpreter suit, methane lock | `alien_sector` methane zone | shift bracketed by in-zone meals (species rule) | 46, FAC-18 |
 | 48 | Deryn Vale | hum F 34 | Ranger contact — the brooch worn open | `qtr_transient` | `bar_unnamed` 19:00–22:00; drops unpatterned | 21, FAC-28 |
 | 49 | Corin Hale | hum M 31 | Psi Corps liaison clerk — badge and gloves, **no LICENSED PSI field** (the specific that teaches badge ≠ telepath) | `qtr_civilian` | `telepath_office` 09:00–17:00 | 16, 12 |
-| 50 | the Broker | insectoid — (name optional per §11.4) | Alien Sector fixer, N'Grath model | `ngrath` — sealed non-oxygen room | audiences 20:00–02:00 by token | 41, 37, FAC-25 |
+| 50 | the Broker | other (insectoid) — (species `other` in STATION_COUNTS; no name grammar — office-designate; the style "the Broker" per §11.4, name optional) | Alien Sector fixer, N'Grath model | `ngrath` — sealed non-oxygen room | audiences 20:00–02:00 by token | 41, 37, FAC-25 |
 
-**Per-row acceptance template** (instantiated per row in `spec/completion.yaml`): the NPC
+**Per-row acceptance template** (instantiated per row in `docs/spec/completion.yaml`): the NPC
 exists at their schedule anchor at the stated hour; their home address resolves and they
 are findable there in their off-hours; their identicard renders correctly (rows 5, 25, 35,
-36, 46, 47: the empty red NAME field; row 47: SEX=HIVE); each link is a TALK-reachable
+36, 46, 47, **50**: the empty red NAME field; row 47: SEX=HIVE); each link is a TALK-reachable
 topic in BOTH directions (ask Delgado about Duarte and Duarte about Delgado — different
 lines, one fact); and their memory of the player persists across a save (CAST-05).
 **Roster-wide check, content not count:** walking rows 1→50 on their anchors over three
@@ -741,7 +751,15 @@ week's standard rent, enough to matter to a 70 cr/wk officer, which is the show'
 motive. Cross-check: a docker saving whole clears passage home in 4–13 weeks; a casual in
 30–100 days; a lurker never — the ladder reproduces the underclass, as it must.
 
-Every loop below is written in the closed player verb set (THE-STATION §2): LOOK, USE,
+**WORK-fidelity clause (normative for every ROLE below):** each role names its
+**decision loop** — the recurring judgment call that makes the shift a job rather than an
+animation (the customs admit/refer/refuse; the caller's gang assignment; triage order;
+the haggle) — and its **per-shift variation source** (the manifest, the incident log, the
+liner calendar, the season), so no two shifts replay. A role whose shift has no decision
+and no variation is not GREEN at any coverage.
+
+Every loop below is written in the closed player verb set (THE-STATION §2, one registry
+row per verb — SYSTEMS.md VRB-01..13): LOOK, USE,
 TAKE/PLACE, SIT, BUY/SELL, TALK, WORK, SHOW-PAPERS, FIGHT/RESTRAIN, PILOT, RIDE, SLEEP,
 EAT/DRINK.
 
@@ -800,7 +818,10 @@ the queue doubles); the strike ballot at the grievance board [T4]; the unlogged 
 crate (FAC-09's thread — work it or report it, both have consequences). **ACCEPT:** from
 muster to clock-off on a liner day: the gang the player joins is assigned to the liner's
 actual berth, moves cargo the manifest names, eats the mess meal, and the day's pay
-matches the caller's chalked rate.
+matches the caller's chalked rate. **Cargo classes (the decision loop's material):
+containerised · bulk/transshipment · bonded (customs-sealed, opens SHOW-PAPERS) ·
+hazmat (suit-check, PLC-100 chain) · perishable/live (priority, the Grome grading
+dispute) — five classes with distinct handling, and the caller's board says which.**
 
 ### ROLE-04 — Bartender / publican
 **Seated by:** service 43,230 heads; serve_response already puts named staff behind 29
@@ -825,7 +846,8 @@ Milo's next-day dialogue referencing how the player ran his bar.
 ROUTE's retail end (LAW-CRIME:858–879). **Get it:** pitch licence at `admin_complex`
 (4 cr/wk against the rent-revenue model); Chao and Brakk sell starter stock. **The
 shift:** 07:00 stock from the cargo consignment [T4] → open the stall [T3] → BUY/SELL
-with haggling (price memory per repeat customer — CAST-05 in miniature) → the 13:00 crowd
+with haggling (price memory per repeat customer — SYS-12's bounded tier-2 memory: a
+K-slot keyed fact on the stable regulars pool, resident.py:846–893) → the 13:00 crowd
 peak (Zocalo dBA curve) → close, count, restock order. Margin 25–60 cr/wk. **Mastery:**
 cart → pitch → shopfront under the gallery; association membership (FAC-08) → under-counter
 choice: stock the ROUTE's goods at better margin and worse exposure. **Incidents
@@ -839,7 +861,7 @@ the credit.
 
 ### ROLE-06 — Medlab assistant
 **Seated by:** medical 2,800; 12-h shifts; "six atmospheres means six kinds of emergency"
-(PLACES:1017–1019); the clinic institution (LAW-CRIME D-06). **Get it:** medical cert
+(PLC-009's crash-kit note); the clinic institution (LAW-CRIME D-06 → SHB-08.a). **Get it:** medical cert
 endorsement via Osei; or the back door — volunteer evenings with Okonkwo, no cert asked.
 **The shift:** WORK triage board [T3] → per case: LOOK (species vitals differ) → USE
 diagnostic_bed [T2] → fetch from medcabinet [T3, stock-tracked] → atmosphere cases: the
@@ -877,8 +899,9 @@ toward the player measurably unchanged after (the NO_POST covenant kept).
 muster 18% · plant hand-work 12% · portering 12% · begging 8% · services 8% · sex work
 5% · criminal auxiliary 8% · nothing 7% — LAW-CRIME:685–772); black-market access is
 role-gated to no-status (resident.py:391–402). **Get it:** lose everything — arrive with
-<250 cr (the leak, player.py LEAK_RATE) or overstay to `-- EXPIRED`; the role is a state
-before it is a job. **The day:** SLEEP doss (1 cr) or squat (0) → Kovac's standpipe queue
+**<300 cr** (the leak: leak = P(credits < 300), SPEC-CHANGE #1's one threshold — the
+passage-home floor, player.py re-solve pending) or overstay to `-- EXPIRED`; the role is
+a state before it is a job. **The day:** SLEEP doss (1 cr) or squat (0) → Kovac's standpipe queue
 → muster reject or day-labour luck (8–15 cr) → salvage sweep with Th'Ranna's crew (TAKE)
 → SELL to Vane at 14:00 → EAT cart meal (1–2 cr) → avoid the sweep (the camp's own
 warning outruns the patrol) → the arithmetic that never reaches 300. **Mastery:** is
@@ -916,7 +939,9 @@ delivery a persisted SYS-04/FAC ledger event.
 simulation numbers (dialogue.py); the stringer and the boxes (FAC-27, FAC-04). **Get it:**
 listen — the role begins as a notebook, not an appointment. **The trade:** LOOK/TALK
 collection at counters and corners (what the player hears is true simulation state: a berth
-map fact, a docket date, an armband's beat) → verify (two sources differ; one is wrong) →
+map fact, a docket date, an armband's beat — **each a typed SYS-16 knowledge item with a
+source event and a verification state; the journal, PLY-07, is the notebook**) → verify
+(two sources differ; one is wrong) →
 SELL: to Voss on or off the record [T3], to the security tip desk [T3], to the
 Nightwatch box [T3 — the denunciation terminal, and FAC-24/-08 standing burns], to the
 Broker [T3, the other ledger] → per-item 1–20 cr. **Mastery:** gossip → sourced fact →
@@ -937,16 +962,18 @@ EA liaison desk at `earthforce_office`). **The day:** anteroom board [T1] → es
 delegate through corridors ROUTED around the friction field (the separation table as a
 pathfinding cost — the aide's craft is not walking a Narn past a Centauri party) → prep
 the session: delegate_bench [T2], speaking_position [T2], papers PLACEd → session day:
-the ten seated per the rotation, the two claimants managed (FAC-12's scene) → carry the
+nine seated + the in-absentia nameplate per the rotation (the PLC-021 ruling), the two
+rotation-claimant delegations managed (FAC-12's scene) → carry the
 communiqué (ROLE-09's verbs at diplomatic grade) → 50–80 cr/wk scrip. **Mastery:**
 runner → office aide → anteroom fixture (the secretary's opposite number); access
 endorsements per delegation. **Incidents exposed:** a walkout mid-session; the empty Narn
 seat question (FACTIONS §15:981 — the chair is content: it is THERE, and G'Lorn's
 committee wants it discussed); Kosh's two public hours crossing the player's escort
-route. **ACCEPT:** run one session day end-to-end: the board's ten delegations match the
-seats filled, the player's escorted delegate arrives having crossed zero
+route. **ACCEPT:** run one session day end-to-end: the board's ten seats resolve — nine filled
+by the staffed missions, one in absentia with nameplate — the player's escorted delegate
+arrives having crossed zero
 friction-violating proximities (measured against separation_m), the session's outcome
-posts to the information layer, and the two non-seated delegations' aides carry it
+posts to the information layer, and the two rotation-claimant delegations' aides carry it
 bitterly by nightfall.
 
 ### ROLE-12 — Starfury auxiliary pilot
@@ -998,20 +1025,29 @@ Occupied (species × role) cells, computed this session from ROLE_WEIGHTS: **79*
 variants + 8 greet/farewell = **30 → 2,370 lines**. Species register constraints carried:
 Brakiri daypart inversion (good evening at 13:00 — already built), pak'ma'ra
 translator-terse, Gaim through the interpreter only, caste address forms inside the
-Minbari cells. **ACCEPT-shape:** a Drazi dockworker, a Drazi merchant, a human dockworker
-and a Narn dockworker are four audibly different speakers on the same corridor.
+Minbari cells. **Anti-repeat rule (normative): within one place-visit no tier-2 line
+repeats until its cell's pool is exhausted (draw without replacement per (NPC, session));
+floor on top: lines-before-first-repeat ≥20 in any 10-minute room dwell — derived, not
+round: two-thirds of the 30-line cell before reshuffle.** **ACCEPT-shape:** a Drazi
+dockworker, a Drazi merchant, a human dockworker
+and a Narn dockworker are four audibly different speakers on the same corridor — and ten
+minutes at one counter never hears the same line twice.
 
 ### DLG-03 — The 29 counters
 serve_response's 29 counters across 27 places (interact.py:120–126) each add ≥6
 place-specific trade lines beyond their matrix cell (the Quartermaster does not sell
-spices) = **174**. **ACCEPT-shape:** the same Narn merchant voice behind the Zocalo spice
-pitch and behind a `black_market` stall names different goods, prices and worries.
+spices) = **174**. Trade lines name their wares from the GDS-01 goods vocabulary
+(PLACES §0.3) — a counter that trades in "goods" fails the T1 specificity rule.
+**ACCEPT-shape:** the same Narn merchant voice behind the Zocalo spice
+pitch and behind a `black_market` stall names different goods, prices and worries — and
+the goods named are GDS-01 rows (spoo at the spice pitch, salvage lots at the fence).
 
 ### DLG-04 — Ambient and era
-ISN 5 bulletins × 3 rotation variants = 15 · MiniPax 3 × 2 = 6 · PA: 9 ship classes × 3
-call types = 27 templates + watch calls 3 + civic board-voice 2 + sensor sweep 1 + liner
-customs advisory 1 = 34 · the denunciation/questioning scene set 8 · era-rumour lines: 8
-ERA_EVENTS × 4 speaker classes = 32 → **95**, all era-locked through the one clock
+ISN 5 bulletins × 3 rotation variants = 15 · MiniPax 3 × 2 = 6 · PA: **10 ship classes**
+(the code's 9 + the tanker split, SPEC-CHANGE #3) × 3
+call types = **30** templates + watch calls 3 + civic board-voice 2 + sensor sweep 1 + liner
+customs advisory 1 = **37** · the denunciation/questioning scene set 8 · era-rumour lines: 8
+ERA_EVENTS × 4 speaker classes = 32 → **98**, all era-locked through the one clock
 (INV-240). **ACCEPT-shape:** a full station-day's PA names real ships at real bays; the
 day after the datum crosses (3,9) in SYS-01, the martial-law bulletin exists and the
 Zocalo's rumour lines know it first.
@@ -1032,13 +1068,31 @@ prose must call them by office (the INV-004 rule reaching the UI layer). **ACCEP
 two sessions' Kosh public hours produce disjoint utterances; no subtitle ever renders a
 Brakiri personal name.
 
-**Grand floor: 3,750 + 2,370 + 174 + 95 + 152 + 32 = 6,573 distinct lines** — against 57
+**Grand floor: 3,750 + 2,370 + 174 + 98 + 152 = 6,544 distinct lines, plus DLG-06's
+scarce-voice CEILINGS (≤32: Kosh ≤12 + the Broker ≤20), stated separately because a
+ceiling cannot sit inside a floor** — against 57
 baked today; a 115× gap, stated honestly. The floor is the statistic; the acceptance is
 the walks above.
 
 ---
 
 *Item census: FAC-01..28 · CAST-01..06 (50 pinned Tier-1 rows inside CAST-02) ·
-ROLE-01..12 · DLG-01..06 = 52 spec items. Registry rows for `spec/completion.yaml`
-generate one row per item plus one per CAST-02 roster line (102 checkable rows).
-SPEC-CHANGE discipline per THE-STATION §1.1 applies from adoption.*
+ROLE-01..12 · DLG-01..06 = 52 spec items. Registry rows for `docs/spec/completion.yaml`
+generate one row per item plus one per CAST-02 roster line (**102 checkable rows**; the
+CAST-02 umbrella row greens only when all 50 children green — THE-STATION §1 grammar).
+SPEC-CHANGE discipline per THE-STATION §1.1 applies from adoption; every entry carries
+its **recomputes** field.*
+
+## SPEC-CHANGE LOG
+Entry format: dated · what · why · owner-visible · **recomputes** (every downstream
+number touched). An entry without its recomputes list is invalid.
+
+- **2026-08-04 — SPEC-CHANGE #1 pending (adoption-blocking, RED):** passage-home floor
+  300 cr — full entry in SYSTEMS.md's log. This annex's touched rows: §0 money-anchor
+  floor annotation · ROLE-08 "<250 cr" → "<300 cr" · wage table re-verified UNCHANGED
+  (already derived from 300–800: casual 8–15 cr/day irregular; docker exit 4–13 weeks;
+  casual exit 30–100 days; lurker never — the ladder still reproduces the underclass).
+- **2026-08-04 — SPEC-CHANGE #3 pending (adoption-blocking, RED):** the tanker manifest
+  class — full entry in SYSTEMS.md's log. This annex's touched rows: DLG-04 PA templates
+  27→30, DLG-04 total 95→98, grand floor 6,573→6,544 (+ ≤32 scarce-voice ceiling moved
+  out of the floor).

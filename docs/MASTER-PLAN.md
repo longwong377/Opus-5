@@ -181,6 +181,11 @@ LOD + occlusion + payload displace P4 entirely; P3 denominators re-derived under
 - **The vertical-slice alternative: DEAD.** The full 3c scope is the target.
 - **73,507 unnamed bays: still OUT** (4h ruling stands — sealed or generic-but-varied;
   nothing in 3c requires entering them; 1:1 is scale, and scale is real).
+- **2026-08-04: SUPERSEDED on tiling and dialogue scope by docs/THE-STATION.md** — the
+  "73,507 unnamed bays" line misread STATE §13: those ARE the named places' footprint
+  bays (corrected 73,635→49,265 by V1 `_fit_bay`, c4f989b; STATE §13 carries the note);
+  P4/L4 re-derive from the bible (49,265 gross / 23,716 net-of-seals tiling, 6,544-line
+  dialogue floor).
 
 ## A6. BLOCKING CONFLICTS — unchanged: C-003/C-004 isolated behind single register fields.
 ## A7. ADR-0001 gets its dated GDScript note. Free, owed, done in P0a.
