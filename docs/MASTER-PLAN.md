@@ -171,10 +171,29 @@ set; and cells exist for **70 decks / 955 cells / 1.7 GB**, not "1 z-cluster of 
 **Visible deliverable:** a walk video across a sector seam.
 
 ### P0.6 — the three unowned preconditions
-Navigation graph into the engine (bigger than L2–L9 combined); **a day index in `Clock`**
-threaded through the boot manifest; crowd-physics policy stated (non-colliding is a legal
-cap, unstated it reads as a bug). **Gate:** an NPC paths across decks on the engine graph;
-the clock says day 2; the policy is a sentence in this file.
+
+**DONE — a day index in `Clock` (4m).** `Clock.day()` counts midnights crossed, derived from
+`hours_abs()` rather than stored, so a clock started at 13:00 is on day 0 until it reaches
+**24.0 — its first midnight, not its first 24 hours**. Threaded to the shipped boot verdict as
+`day=`. `--life-test`: *"THE CLOCK SAYS DAY 2 — P0.6's own gate"*, plus *"a jump does not send
+it back to day 0"* and a control that fires (discard `day_offset` and the same jump takes day
+2 → 0). `coldstart.py`'s `--no-clock` control now fails on `[bodies, clock, day]`.
+
+**DONE — the crowd-physics policy, and it is THREE populations rather than one (4m).** Stated
+here because unstated it reads as a bug, and each answer is deliberate with a measurement
+behind it:
+
+| population | solid? | why |
+|---|---|---|
+| **baked static geometry** | **NO — excluded by construction** | `rooms.is_solid` drops every `npc_` group. Static collision is generated once, so a person baked into it is a **permanent statue** standing where somebody stood at bake time |
+| **named residents at runtime** | **YES** | `npc.gd::_give_body` gives each a `StaticBody3D` on `PEOPLE_LAYER` with `collision_mask = 0` — *a person is something that gets bumped INTO and has never needed to collide with anything itself*. The player is separated from them across the floor plane only, because putting them on the world layer costs the body its floor. Gated by `walkable.py --bump` with `--npc-solid=mask` as the control that must fail |
+| **the corridor crowd (MultiMesh LOD)** | **NO — and this is the accepted cap** | It is instanced geometry with no bodies at all. **A player walks through it.** The number that justifies it: `--life-test` measures **1.93 µs per body**, and the crowd's borrowed frame share is 3,167 µs, so the ceiling is **~1,640 bodies** — against a corridor crowd derived from a 250,000-resident density. Giving the crowd bodies does not fit and no tuning makes it fit |
+
+*The consequence a player sees: named people are solid, background crowd is not. That is a
+legal cap, it is stated, and the number that sets it is measured rather than assumed.*
+
+**STILL OPEN — the navigation graph into the engine.** The plan's own estimate: bigger than
+L2–L9 combined. **Gate:** an NPC paths across decks on the engine graph.
 
 ### P0.7 — AN OWNER DECISION: THE PLAYER MOVES 3.4x FASTER THAN THE STATION DOES
 
