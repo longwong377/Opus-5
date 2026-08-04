@@ -165,18 +165,41 @@ absence.
 |---|---|---|---|
 | **W1** | **Stand up** | Collision on the station mesh, a character controller, per-deck gravity. A player spawns in the corridor kit and walks. Asserted headlessly | **DONE** (3v) |
 | **W2** | **Go somewhere** | Two named locations joined by real walkable geometry; the player walks between them without leaving the floor | **DONE** (3v) — 126 m of corridor walked, `offfloor=0/1800`, and a body walks through a door into a named room |
-| **W3** | **A furnished room** | ONE location at true prop density -- the reference is the owner's Starfield frames, not our own past work -- with a stated props/m2 | **DONE** (3z) -- and on every room, not one: `dressing.py` measures **4.00 props/m2** in an office and quarters, **6.68** in commerce, **6.37** in hospitality. 3u measured the station at **4.5 prop instances per room** total |
+| **W3** | **A furnished room** | ONE location at true prop density -- the reference is the owner's Starfield frames, not our own past work -- with a stated props/m2 | **DONE** (3z) -- and on every room, not one: `dressing.py` measures **4.00 props/m2** in an office and quarters, **6.68** in commerce, **6.37** in hospitality. 3u measured the station at **4.5 prop instances per room** total. **THOSE THREE BRACKETS ARE STALE AS OF 4k** -- re-running `dressing.stats` today gives office **9.88**, commerce **7.71**, hospitality **5.92**, so a room judged against the old numbers is judged against a bar the station has already passed. Re-measure before quoting them |
 | **W4** | **A populated room** | NPCs standing, sitting and walking in it. `station/npc/` already has twelve tested modules with zero importers; wire them | **DONE** (3z) -- all three poses, and they are POSES: `npc/animation.py` finally has an importer, so a sitter is `sit_clip` on the seat's own measured height rather than a standing body dropped 0.42 m, and a corridor walker is `walk_clip` at a per-resident phase. **963 walking in corridors, 449 in rooms** across the sweep |
 | **W5** | **The loop** | Spawn -> walk -> use something -> an NPC reacts. The smallest complete experience | **DONE** (3z) -- and `walkable.py --deck blue/0/0` reports all four in one line: *"a body spawns in the corridor and WALKS INTO docking_bays (6.3 m -> 0.04 m), never leaving the floor, **7 of the room look up** (123 deg turned, 4 deg off)"*, with the control *"with the doors inert the body is stopped 5.26 m short"* |
 | **W6+** | **Breadth** | Roll W3-W5 outward by generator across the 128, in the order a player meets them | **THE WHOLE STATION** (3z) -- `deck.py --sweep`: **90 z-clusters assemble, 0 fail, 128 of 128 locations on an assembled cluster, 128 with a door or on ground, 0 floor holes.** 58,660 collision triangles across the ring decks + 573,440 in the drum's ground = **632,100** for the walkable station. What remains is DEPTH: 49 module-owned places still assemble as generic bays, 18 with a builder that exists |
 
 **AND IT ANSWERS IT PER LOCATION, NOT PER SQUARE METRE.** Session 4e measured the other half:
 `rooms.bay_span_m` builds ONE REPRESENTATIVE BAY and its own docstring says *"the full location is
-then that bay instanced along its footprint"* -- and **nothing instances it**. `bays_in()` computes
-the count and both its callers put it in a report dict. **73,635 bays wanted across the 128 places;
-128 built.** `docking_bays` is 140 m long in the gazetteer and a player walks 15.5 m of it. The
-sweep's 128 of 128 is true and it is a count of locations REACHED, not of location BUILT. See
-STATE.md section 13.
+then that bay instanced along its footprint"* -- and **nothing instanced it**. The sweep's 128 of
+128 was true and it was a count of locations REACHED, not of location BUILT.
+
+**CLOSED IN 4k, AND THE NUMBERS BELOW SUPERSEDE 4e's AND STATE.md section 13's.** `rooms.tiling`
+instances the bay along the footprint, gated by `python3 station/rooms.py --footprint` (CI step
+`sfootprint`):
+
+| | before | after |
+|---|---|---|
+| the 91 places `rooms.py` builds | **926 m of 14,868 m (6.2%)** | **8,014 m (53.9%)**, 77 at full footprint, 14 capped by budget |
+| `docking_bays` | **10.77 m** of its 140 m | **140.0 m**, render and collision agreeing, 70/70 floor probes |
+| triangles over the 128 | 5,883,720 | 19,633,996 -- **3.34x for 8.7x the metres** |
+| **triangles per built metre** | 6,354 | **2,450** |
+
+Three of 4e's own figures were wrong and are corrected here: **the wanted total is 51,465, not
+73,635** (`bays_in` truncates `13.000000000000002` to 12, so it under-counts a whole bay on most of
+the station -- left alone because that total is frozen normative in `docs/spec/PLACES.md` §TILING,
+and `bays_along()` is the new one that rounds); `docking_bays` built **10.77 m, not 15.5 m** (15.5
+predated `_fit_bay`); and the one clamp that caused all of it was a single `min(l_full, bl)` --
+every loop below it already scaled correctly.
+
+**The gate can fail and is shown failing:** `--footprint --legacy` rebuilds one bay per place and
+reports **84 of 128 mesh short of plan, 926 m of 14,868 m**. It also asserts that **no two bays of
+a place hash identically** -- `deck.py --degeneracy`'s question one level down -- so a tiled room
+cannot pass by being a tile pattern.
+
+**AND IT COST BUILD TIME, WHICH IS NOT FREE:** `rooms.py` is now 13m03s and `--footprint` is
+**23m06s**. A twenty-minute CI gate is a liability; profile before adding to it.
 
 **`python3 station/deck.py --sweep` is the answer to "how much of the station can I walk in".**
 It is the only gate here that asks a whole-station question; every other one measures a part.
