@@ -42,10 +42,10 @@ OUT = os.path.join(ROOT, "spec/completion.yaml")
 # Item IDs. Lettered sub-rows (SHB-08.a) attach to their parent. CAST-02's 50
 # roster rows green only when all children green (the umbrella rule).
 ID_RE = re.compile(
-    r"\b(PLC|SHB|SHC|INC|FAC|CAST|ROLE|DLG|SYS|SUR|PLY)-(\d{1,3})([a-z]|\.[a-z])?\b")
+    r"\b(PLC|SHB|SHC|INC|FAC|CAST|ROLE|DLG|SYS|SUR|PLY|VRB|GDS)-(\d{1,3})([a-z]|\.[a-z])?\b")
 DEF_RE = re.compile(
-    r"^#{2,4}\s+.*?\b(PLC|SHB|SHC|INC|FAC|CAST|ROLE|DLG|SYS|SUR|PLY)-(\d{1,3})\b"
-    r"|^\*\*(PLC|SHB|SHC|INC|FAC|CAST|ROLE|DLG|SYS|SUR|PLY)-(\d{1,3})")
+    r"^#{2,4}\s+.*?\b(PLC|SHB|SHC|INC|FAC|CAST|ROLE|DLG|SYS|SUR|PLY|VRB|GDS)-(\d{1,3})\b"
+    r"|^\*\*(PLC|SHB|SHC|INC|FAC|CAST|ROLE|DLG|SYS|SUR|PLY|VRB|GDS)-(\d{1,3})")
 CHECK_RE = re.compile(r"\*\*(CHECK|ACCEPT|Check)[:\s]", re.I)
 HARNESS_RE = re.compile(r"harness:\s*([A-Za-z0-9_./ -]+)")
 
