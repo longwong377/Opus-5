@@ -322,12 +322,12 @@ SPEC-CHANGE entry fails the gate:
 | file | sha256 at adoption |
 |---|---|
 | docs/THE-STATION.md | pinned by the adoption commit itself (a file cannot carry its own hash; the commit object is this row's digest) |
-| docs/spec/PLACES.md | `PLACES_SHA256` |
-| docs/spec/PEOPLE.md | `PEOPLE_SHA256` |
-| docs/spec/SYSTEMS.md | `SYSTEMS_SHA256` |
-| station/directory.py | `DIRECTORY_SHA256` |
-| tools/spec_registry.py | `REGISTRY_SHA256` (exists, c5e82f6 — re-derivation pending, SPEC-CHANGE #4) |
-| station/spec_check.py | `CHECKER_SHA256` (exists, c5e82f6 — re-derivation pending, SPEC-CHANGE #4) |
+| docs/spec/PLACES.md | `f23e89215e506e8947c599a6f1348cb1ca7d3f213b9bd6bf6db49c494d7d30b5` |
+| docs/spec/PEOPLE.md | `1280f613edb5c08efbfcc6c71d71aff52aeb498b13637131af58bb7fa483c116` |
+| docs/spec/SYSTEMS.md | `fd301707cc4de7e8aac4c0da2ac5cf882ea7ed9ffe0854e873e30f76654e27f6` |
+| station/directory.py | `b8a74aa5d6ebed00d1a672dbb3514fe64b1cc77ba7ecdfda354fcbed58bd16ac` |
+| tools/spec_registry.py | `40992ac08c0f2a26643959115214fc45a04747c6f021a9122556c740cfe96ec5` (exists, c5e82f6 — re-derivation pending, SPEC-CHANGE #4) |
+| station/spec_check.py | `94cbebeb29602200376de4b34717444f6740dedf44f6122b1f6c90bd7beee503` (exists, c5e82f6 — re-derivation pending, SPEC-CHANGE #4) |
 
 ### SPEC-CHANGE LOG (master)
 Entry format: dated · what · why · owner-visible · **recomputes: every downstream number
