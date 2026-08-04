@@ -355,8 +355,14 @@ def engine_args(out, stem, crowd, gravity="drum", spawn=None):
     # THE SIDECARS THAT WERE ACTUALLY WRITTEN. The drum has no cast list and no
     # interactables -- it is a heightfield, not a room -- and naming a file that
     # is not there makes the engine complain about a thing nobody asked for.
+    # `--cells` is in this SHARED list, so the headless walk gate streams exactly
+    # as a person does. walk.gd's own header gives the reason: "a step that only
+    # ever runs in the configuration nobody checks is a step that rots", and
+    # this file carries that scar three times over. `--no-stream` is the control
+    # and loads the deck whole, which is what every session before 4p did.
     for flag, suffix in (("actors", "_actors.json"),
-                         ("interact", "_interact.json")):
+                         ("interact", "_interact.json"),
+                         ("cells", "_cells.json")):
         p = os.path.join(out, stem + suffix)
         if os.path.exists(p):
             a.append(f"--{flag}={p}")

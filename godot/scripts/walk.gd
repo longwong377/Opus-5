@@ -72,6 +72,192 @@ var _player: CharacterBody3D
 var _static: StaticBody3D
 
 
+## The deck's streaming cells, from `station/walkable.py`: `{cell, tris, deg_lo,
+## deg_hi, glb}` each, cut on the ring's own `interior.ring_cells` boundaries.
+## Empty means load the deck as one mesh, which is what this did until session
+## 4p and what omitting `--cells` still does.
+@export var cells_path: String = ""
+## The sidecar rows, kept so a cell that lands later can be wired against the
+## same data the first load used. Not re-read per cell: one description.
+var _actors_rows: Array = []
+var _interact_rows: Array = []
+var _cells: Array = []
+var _stream_root: Node3D
+var _col_root: Node
+var _loaded := {}                ## cell index -> the Node3D holding it
+var _resident_tris := 0
+var _cell_loads := 0
+var _cell_frees := 0
+var _peak_resident := 0
+var _bound: Dictionary = {}
+var _lit_count := 0
+## How many cells either side of the player's own stay loaded. ONE, because
+## `budget.CELLS["resident_tris"]` is written in exactly those terms -- "the
+## cell you are in plus both neighbours" -- and session 4m measured that window
+## on this very deck at 147,675 triangles against a 180,000 budget.
+const CELL_RADIUS := 1
+## How far inside a new cell the body must be before the window moves. See
+## the thrash note in `_update_cells`.
+const HYST_DEG := 1.0
+var _here := -1
+
+
+func _read_cells() -> void:
+	if not FileAccess.file_exists(cells_path):
+		push_error("walk: no cell manifest at %s" % cells_path)
+		return
+	var d = JSON.parse_string(FileAccess.get_file_as_string(cells_path))
+	if typeof(d) != TYPE_DICTIONARY or not d.has("cells"):
+		push_error("walk: %s is not a cell manifest" % cells_path)
+		return
+	_cells = d["cells"]
+	var tot := 0
+	for c in _cells:
+		tot += int(c["tris"])
+	# BUILT WITH `str()`, NOT `%`, and that is a retreat rather than a
+	# preference. Written as a concatenation with a `%` on each half this
+	# printed the first half's specifiers verbatim, which is the documented
+	# precedence trap; rewritten as one string with a single four-value `%` it
+	# STILL printed them verbatim, in a run that provably used the corrected
+	# file and reported no format error. That is unexplained, and a log line is
+	# not worth the launches to explain it. Concatenation cannot fail this way.
+	print("walk: STREAMING " + str(_cells.size()) + " cells of "
+		+ str(d.get("cell_deg", 20.0)) + " deg, " + str(tot)
+		+ " triangles whole; holding the cell you are in plus "
+		+ str(CELL_RADIUS) + " either side")
+
+
+## Which cell an angle about the spin axis falls in.
+func _cell_at(p: Vector3) -> int:
+	if _cells.is_empty():
+		return -1
+	var deg := rad_to_deg(atan2(p.y, p.x))
+	if deg < 0.0:
+		deg += 360.0
+	var n := _cells.size()
+	for i in n:
+		var c: Dictionary = _cells[i]
+		if deg >= float(c["deg_lo"]) and deg < float(c["deg_hi"]):
+			return i
+	return n - 1
+
+
+## Load and free cells so the player holds their own plus `CELL_RADIUS` either
+## side, and nothing else.
+##
+## THE COLLISION SHELL IS NOT STREAMED, which is what makes this safe to run
+## every frame. It is 5,270 triangles for the whole cluster against the render
+## mesh's 657,880, so it stays resident and the floor cannot vanish under a body
+## because a cell is in flight. Streaming what a player STANDS on would make
+## every hitch a fall, and this project has already spent a session on a body
+## that ended 66 km outside the station.
+func _update_cells() -> void:
+	if _cells.is_empty() or _player == null:
+		return
+	var here := _cell_at(_player.global_position)
+	if here < 0:
+		return
+	var n := _cells.size()
+	# -- HYSTERESIS, AND WITHOUT IT THIS THRASHES ---------------------------
+	# The spawn stands at angle 0.000 degrees, exactly on the boundary between
+	# cell 0 and cell 17. `atan2` jitter in the last bits flips the answer every
+	# frame, the wanted set shifts by one cell at each end, and the loader frees
+	# and reloads two cells 60 times a second: measured at **1,737 loads** in a
+	# single walk test, which crawled until it timed out.
+	#
+	# So the CENTRE only moves when the body is properly inside another cell.
+	# 1 degree is 3.7 m of arc at this radius and a sprint covers 0.035 deg a
+	# frame, so it takes ~29 frames of committed walking to switch -- far more
+	# than jitter can produce -- while a cell is 20 degrees wide, so the next
+	# one is resident long before anybody can reach it.
+	if _here >= 0 and here != _here:
+		var d := rad_to_deg(atan2(_player.global_position.y,
+			_player.global_position.x))
+		if d < 0.0:
+			d += 360.0
+		var c2: Dictionary = _cells[here]
+		# Stay put unless the body is HYST_DEG clear of both edges of the cell
+		# it has apparently entered. Written with `and` this can never fire on
+		# a 20-degree cell -- "below lo+1 AND above hi-1" is empty -- which is
+		# a hysteresis band that silently does nothing.
+		if d < float(c2["deg_lo"]) + HYST_DEG \
+				or d > float(c2["deg_hi"]) - HYST_DEG:
+			here = _here
+	_here = here
+	var want := {}
+	for k in range(-CELL_RADIUS, CELL_RADIUS + 1):
+		want[(here + k + n * 8) % n] = true
+	for i in want:
+		if not _loaded.has(i):
+			_load_cell(int(i))
+	for i in _loaded.keys():
+		if not want.has(i):
+			_free_cell(int(i))
+
+
+func _load_cell(i: int) -> void:
+	var c: Dictionary = _cells[i]
+	var node := _load_glb(String(c["glb"]))
+	if node == null:
+		push_error("walk: cell %d would not load (%s)" % [i, c["glb"]])
+		return
+	node.name = "cell_%d" % i
+	_stream_root.add_child(node)
+	_loaded[i] = node
+	_resident_tris += int(c["tris"])
+	_peak_resident = maxi(_peak_resident, _resident_tris)
+	_cell_loads += 1
+	# DRESSED AND LIT ON ARRIVAL, not once at startup. `_dress_late` keeps the
+	# material library alive precisely so this can happen -- a cell that landed
+	# undressed would be grey geometry with no fittings, and the corridor would
+	# go flat behind you as you walked.
+	_bound = {}
+	_lit_count = 0
+	if _dress != null:
+		_bound = _dress.bind(node)
+		if _lights != null:
+			var lit: Dictionary = _dress.light(node, _lights,
+				float(_dress.consts.get("fixture_energy", 3.0)), spawn)
+			_lit_count = int(lit.get("lights", lit.get("made", 0)))
+	# AND WIRED. All three of these append and none clears -- checked in session
+	# 4o before it was relied on -- and `deck.cell_partition` keeps every door,
+	# person and prop whole inside one cell, so what arrives here is never half
+	# an object.
+	if _doors != null and _col_root != null:
+		_doors.collect(node, _col_root, door_travel_m)
+		_doors.watch(_player)
+	if _people != null:
+		_people.collect(node, _actors_rows)
+		_people.watch(_player)
+	if _interact != null:
+		_interact.collect(node, _interact_rows)
+		_interact.watch(_player)
+	print("cell %d LOADED %d tri, %d/%d resident, dressed %d/%d, %d lights, "
+		% [i, int(c["tris"]), _loaded.size(), _cells.size(),
+			int(_bound.get("bound", 0)), int(_bound.get("meshes", 0)),
+			_lit_count]
+		+ "doors %d people %d interactables %d" % [
+			(_doors.count() if _doors != null and _doors.has_method("count") else 0),
+			(_people.count() if _people != null and _people.has_method("count") else 0),
+			(_interact.count() if _interact != null else 0)])
+
+
+func _free_cell(i: int) -> void:
+	var node = _loaded.get(i)
+	_loaded.erase(i)
+	_resident_tris -= int(_cells[i]["tris"])
+	_cell_frees += 1
+	if is_instance_valid(node):
+		node.queue_free()
+	# THE RECORDS GO WITH THE GEOMETRY. `queue_free` leaves `door.gd`, `npc.gd`
+	# and `interact.gd` holding references to deleted nodes -- and `npc.gd`'s
+	# bump capsule is parented to ITSELF rather than to the mesh, so without
+	# this an unloaded cell leaves invisible people you still walk into.
+	for m in [_doors, _people, _interact]:
+		if m != null and m.has_method("forget_freed"):
+			m.forget_freed()
+
+
 ## The manifest `station/walkable.py --build-only` writes. Under `godot/` rather
 ## than beside the meshes because Godot will not resolve a `res://` path that
 ## escapes the project directory, and the whole point of the file is that
@@ -113,6 +299,9 @@ func _ready() -> void:
 
 	if args.has("interact"):
 		interact_path = args["interact"]
+	if args.has("cells") and not args.has("no-stream"):
+		cells_path = args["cells"]
+		_read_cells()
 	_use_group = String(args.get("use-group", ""))
 
 	if not _load_level():
@@ -120,6 +309,7 @@ func _ready() -> void:
 		get_tree().quit(2)
 		return
 	_spawn_player()
+	_update_cells()
 	if _doors != null:
 		_doors.watch(_player)
 	if _people != null:
@@ -211,10 +401,21 @@ func _vec(s: String) -> Vector3:
 ## choice here and it is also the expensive one; that is a runtime streaming
 ## problem, not a reason to use the wrong shape.
 func _load_level() -> bool:
-	var scene := _load_glb(glb_path)
-	if scene == null:
-		return false
-	add_child(scene)
+	var scene: Node = null
+	if _cells.is_empty():
+		scene = _load_glb(glb_path)
+		if scene == null:
+			return false
+		add_child(scene)
+	else:
+		# STREAMING: the deck's render mesh arrives a cell at a time. This node
+		# stands in for it so everything below has a root to walk, and it is
+		# EMPTY at this point -- the wiring that follows finds nothing, and
+		# `_update_cells` does it per cell as each one lands.
+		scene = Node3D.new()
+		scene.name = "Deck"
+		add_child(scene)
+		_stream_root = scene
 	_dress_level(scene)
 
 	# WHICH MESH IS THE FLOOR. With a collision mesh supplied, the visible one
@@ -238,6 +439,7 @@ func _load_level() -> bool:
 		_wire_people(scene)
 		_wire_interact(scene)
 		_dress_late()
+		_col_root = col
 		return c > 0
 
 	var n := 0
@@ -267,7 +469,13 @@ func _dress_late() -> void:
 			print("dress: crowd %d/%d MATERIALLED, %d on the glTF fallback%s"
 				% [m["bound"], m["meshes"], un.size(),
 					("" if un.is_empty() else ": " + ", ".join(un))])
-	_dress.release()
+	# NOT RELEASED WHILE CELLS STILL HAVE TO ARRIVE. `release()` frees the
+	# instantiated interior scene the material table is read from, so a
+	# streamed build that released here would dress its first cells and
+	# leave every later one on the glTF fallback -- 4h's defect with a
+	# timer on it, showing up as the corridor going grey behind you.
+	if _cells.is_empty():
+		_dress.release()
 
 
 ## Bind the materials and light the fittings -- see `scripts/dress_scene.gd`.
@@ -301,6 +509,16 @@ func _dress_level(scene: Node) -> void:
 	# five sessions while this line printed "382/382 MATERIALLED". `_dress_late`
 	# binds them and releases afterwards.
 	var un: PackedStringArray = m["unmatched"]
+	if not _cells.is_empty():
+		# The deck arrives a cell at a time, so there is nothing here to dress
+		# yet and this line would read "0/0 MATERIALLED" -- true, and about a
+		# scene that has not been loaded. Each cell reports its own on arrival.
+		print("dress: prepared; the deck streams, so cells are dressed and lit "
+			+ "as they arrive")
+		_lights = Node3D.new()
+		_lights.name = "Fittings"
+		add_child(_lights)
+		return
 	print("dress: %d/%d meshes MATERIALLED, %d group(s) on the glTF fallback%s"
 		% [m["bound"], m["meshes"], un.size(),
 			("" if un.is_empty() else ": " + ", ".join(un))])
@@ -367,6 +585,7 @@ func _wire_people(scene: Node) -> void:
 	var actors = JSON.parse_string(f.get_as_text())
 	if typeof(actors) != TYPE_ARRAY:
 		return
+	_actors_rows = actors
 	_people = Node3D.new()
 	_people.name = "People"
 	_people.set_script(load("res://scripts/npc.gd"))
@@ -434,6 +653,7 @@ func _wire_interact(scene: Node) -> void:
 	if typeof(rows) != TYPE_ARRAY:
 		push_error("walk: %s is not a JSON array" % interact_path)
 		return
+	_interact_rows = rows
 	_interact = Node3D.new()
 	_interact.name = "Interactables"
 	_interact.set_script(load("res://scripts/interact.gd"))
@@ -568,11 +788,16 @@ func _play_report() -> void:
 	# creep of 0.2 m/s went unseen: the walk gate drives the body on purpose, so
 	# every frame it measured was one where moving was correct.
 	var fn := _player.get_floor_normal()
+	var res := ""
+	if not _cells.is_empty():
+		res = " cells=%d/%d resident=%d peak=%d loads=%d frees=%d" % [
+			_loaded.size(), _cells.size(), _resident_tris, _peak_resident,
+			_cell_loads, _cell_frees]
 	print("PLAY frame=%d feet=%.3f,%.3f,%.3f r=%.3f on_floor=%s speed=%.3f "
 		% [_frame, p.x, p.y, p.z, sqrt(p.x * p.x + p.y * p.y),
 			str(_player.is_on_floor()).to_lower(), _player.velocity.length()]
 		+ "fn=%.2f,%.2f,%.2f crowd=%d travel_m=%.0f yielding=%d prompt=%s"
-		% [fn.x, fn.y, fn.z, crowd, travel, yielded, prompt])
+		% [fn.x, fn.y, fn.z, crowd, travel, yielded, prompt] + res)
 
 
 func _run_walk_test(args: Dictionary) -> void:
@@ -707,6 +932,7 @@ func _physics_process(delta: float) -> void:
 	# test is a corridor whose people do not move. It is also what makes the
 	# shot phase worth taking: a photograph of a station with somebody
 	# mid-stride in it is the whole point of the exercise.
+	_update_cells()
 	if _people != null:
 		_people.advance_crowd(delta)
 	# A person is playing. Nothing to drive -- `player.gd` reads the keyboard --

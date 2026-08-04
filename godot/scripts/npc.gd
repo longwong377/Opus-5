@@ -105,8 +105,14 @@ func collect(visual: Node, actors: Array) -> int:
 		p.h_m = float(a.get("h_m", 0.0))
 		_people.append(p)
 	if not _args().has("no-npc-collision"):
+		# ONLY THOSE WHO DO NOT ALREADY HAVE ONE. This iterated every person on
+		# every call, which was harmless while `collect` ran once and is a
+		# second capsule each for everybody once cells stream it -- an
+		# invisible wall where somebody used to be. Additive is not free; it is
+		# a property each of these loops has to actually have.
 		for p in _people:
-			_give_body(p)
+			if p.body == null:
+				_give_body(p)
 	else:
 		print("npc: inhabitant collision DISABLED (negative control)")
 	return _people.size()
@@ -612,3 +618,32 @@ func advance_crowd(delta: float) -> void:
 			w.body.global_transform = Transform3D(xf.basis,
 				xf.origin + xf.basis.y * (maxf(w.h_m, 2.0 * w.r_m + 0.01) * 0.5))
 	_place_crowd()
+
+
+## Drop people whose meshes the engine has freed, taking their bump capsule
+## with them. See `door.gd::forget_freed`.
+##
+## THE CAPSULE IS NOT A CHILD OF THE MESH. `_give_body` parents it to this node,
+## so freeing a streamed cell's geometry leaves the body behind -- an invisible
+## person you still walk into, which is the worst of both. It goes here.
+func forget_freed() -> int:
+	var keep: Array = []
+	for p in _people:
+		var live := false
+		for m in p.parts:
+			if is_instance_valid(m):
+				live = true
+				break
+		if live:
+			keep.append(p)
+		elif is_instance_valid(p.body):
+			p.body.queue_free()
+	var gone: int = _people.size() - keep.size()
+	_people = keep
+	return gone
+
+
+## How many inhabitants are wired right now. Changes as cells stream. NOT the
+## crowd -- `crowd_count()` is that, and they are instances rather than actors.
+func count() -> int:
+	return _people.size()

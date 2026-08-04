@@ -46,6 +46,17 @@ MAX_DROP_M = 0.30
 # capsule finding its floor.
 MAX_IDLE_SPEED_M_S = 0.05
 
+# The cell window the loader is supposed to hold, and the budget it exists to
+# reach. `budget.CELLS["resident_tris"]` is "the cell you are in plus both
+# neighbours"; session 4m measured that window on blue/0/0 at 147,675 triangles
+# against this 180,000. A loader that holds more than three cells, or more
+# triangles than the budget, is not doing the job it was written for.
+MAX_CELLS_RESIDENT = 3
+MAX_RESIDENT_TRIS = 180_000
+
+STREAM_RE = re.compile(
+    r"cells=(\d+)/(\d+) resident=(\d+) peak=(\d+) loads=(\d+) frees=(\d+)")
+
 PLAY_RE = re.compile(
     r"PLAY frame=(\d+) feet=([-\d.]+),([-\d.]+),([-\d.]+) r=([-\d.]+) "
     r"on_floor=(\w+) speed=([\d.]+) fn=([-\d.]+),([-\d.]+),([-\d.]+) "
@@ -76,6 +87,17 @@ def parse(log_text):
     if m:
         d["wired"], d["pressable"] = int(m.group(1)), int(m.group(2))
     d["playable_line"] = "walk: PLAYABLE." in log_text
+    d["streaming"] = "walk: STREAMING " in log_text
+    d["cell_loads"] = log_text.count(" LOADED ")
+    # Under streaming the deck is dressed a cell at a time, so the one-line
+    # "N/M meshes MATERIALLED" summary is about an empty root and the real
+    # numbers are per cell.
+    cell = re.findall(r"cell \d+ LOADED \d+ tri, \d+/\d+ resident, "
+                      r"dressed (\d+)/(\d+), (\d+) lights", log_text)
+    if cell:
+        d["cell_bound"] = sum(int(a2) for a2, _b, _c in cell)
+        d["cell_meshes"] = sum(int(b) for _a, b, _c in cell)
+        d["cell_lights"] = sum(int(c) for _a, _b, c in cell)
     d["nothing_to_play"] = "walk: NOTHING TO PLAY" in log_text
     for m in PLAY_RE.finditer(log_text):
         d["play"].append({
@@ -85,7 +107,14 @@ def parse(log_text):
             "speed": float(m.group(7)),
             "fn": (float(m.group(8)), float(m.group(9)), float(m.group(10))),
             "crowd": int(m.group(11)), "travel_m": float(m.group(12)),
-            "yielding": int(m.group(13)), "prompt": m.group(14)})
+            "yielding": int(m.group(13)), "prompt": m.group(14),
+            "stream": None})
+    for i, m in enumerate(STREAM_RE.finditer(log_text)):
+        if i < len(d["play"]):
+            d["play"][i]["stream"] = {
+                "cells": int(m.group(1)), "of": int(m.group(2)),
+                "resident": int(m.group(3)), "peak": int(m.group(4)),
+                "loads": int(m.group(5)), "frees": int(m.group(6))}
     return d
 
 
@@ -113,12 +142,19 @@ def verdict(d, manifest=None):
           f"{d.get('collision_meshes', 0)} collision mesh(es) as a proxy, "
           f"{d.get('visual_meshes', 0)} visual with none -- a player walks on a "
           f"surface built for walking on")
-    check(d.get("bound", 0) > 0 and not d.get("dress_null")
-          and not d.get("dress_failed"),
-          f"{d.get('bound', 0)}/{d.get('meshes', 0)} meshes materialled, "
-          f"{d.get('fallback', 0)} on the glTF fallback"
-          + (" -- BUT A RULE RESOLVED TO NULL" if d.get("dress_null") else "")
-          + (" -- BUT DRESSING FAILED" if d.get("dress_failed") else ""))
+    if d.get("streaming"):
+        cb, cm = d.get("cell_bound", 0), d.get("cell_meshes", 0)
+        check(cb > 0 and cb == cm and not d.get("dress_failed"),
+              f"{cb}/{cm} meshes materialled across the loaded cells and "
+              f"{d.get('cell_lights', 0)} fittings lit -- a cell is dressed "
+              f"when it ARRIVES, not once at startup")
+    else:
+        check(d.get("bound", 0) > 0 and not d.get("dress_null")
+              and not d.get("dress_failed"),
+              f"{d.get('bound', 0)}/{d.get('meshes', 0)} meshes materialled, "
+              f"{d.get('fallback', 0)} on the glTF fallback"
+              + (" -- BUT A RULE RESOLVED TO NULL" if d.get("dress_null") else "")
+              + (" -- BUT DRESSING FAILED" if d.get("dress_failed") else ""))
     check(d.get("wired", 0) > 0,
           f"{d.get('wired', 0)} interactables wired, "
           f"{d.get('pressable', 0)} pressable")
@@ -173,6 +209,23 @@ def verdict(d, manifest=None):
           f"above {MAX_IDLE_SPEED_M_S} m/s, peak "
           f"{max(p['speed'] for p in fast):.3f} m/s. Something in the world is "
           f"carrying it")
+
+    # -- AND IT IS STREAMING, not holding the whole deck -------------------
+    st = [p["stream"] for p in play if p["stream"]]
+    if st:
+        worst = max(x["cells"] for x in st)
+        peak = max(x["peak"] for x in st)
+        check(worst <= MAX_CELLS_RESIDENT,
+              f"never more than {worst} of {st[-1]['of']} cells resident "
+              f"(bar {MAX_CELLS_RESIDENT}) -- the cell you are in plus both "
+              f"neighbours, which is what the budget is written in terms of")
+        check(peak <= MAX_RESIDENT_TRIS,
+              f"peak resident {peak:,} triangles against a {MAX_RESIDENT_TRIS:,} "
+              f"budget -- loading the deck whole was 657,880")
+        out.append(f"        {st[-1]['loads']} cell load(s), "
+                   f"{st[-1]['frees']} free(s) over the run")
+    elif d.get("streaming"):
+        check(False, "the build said STREAMING and then reported no cell state")
 
     if last["crowd"] > 0:
         check(last["travel_m"] > 0.0,

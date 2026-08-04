@@ -174,14 +174,30 @@ func collect(visual: Node, rows: Array) -> int:
 	# that name at all. The count is printed by `walk.gd` rather than swallowed,
 	# because a sidecar row nothing binds to is an interactable a player can
 	# never see.
+	# RECOMPUTED AGAINST EVERYTHING LOADED SO FAR, not appended per call. This
+	# used to append the rows this one call did not find, which was right while
+	# `collect` ran once over the whole deck and becomes nonsense the moment
+	# cells stream it: each cell would report every interactable in every OTHER
+	# cell as missing, and the list would grow past the number of rows that
+	# exist. The claim is "no loaded geometry provides this row", so it is a set
+	# difference over the accumulated state rather than a running log.
 	for g4 in want:
-		if not found.has(g4):
-			_missing.append(String(g4))
+		_want[g4] = true
+	var have := {}
+	for it3 in _items:
+		have[it3.group] = true
+	_missing.clear()
+	for g5 in _want:
+		if not have.has(g5):
+			_missing.append(String(g5))
 	_missing.sort()
 	return _items.size()
 
 
 var _missing: Array[String] = []
+## Every declared row seen by any `collect` call, so `_missing` can be a set
+## difference rather than a running log. See the note in `collect`.
+var _want: Dictionary = {}
 
 
 ## The object's world box, measured off its own meshes.
@@ -572,3 +588,24 @@ func verb_report() -> String:
 		parts.append("%s:%d" % [String(k), int(by[k])])
 	parts.sort()
 	return "/".join(parts)
+
+
+## Drop items whose meshes the engine has freed. See `door.gd::forget_freed`.
+func forget_freed() -> int:
+	var keep: Array[Item] = []
+	for it2 in _items:
+		var live := false
+		for m in it2.parts:
+			if is_instance_valid(m):
+				live = true
+				break
+		if live:
+			keep.append(it2)
+		elif is_instance_valid(it2.body):
+			it2.body.queue_free()
+	var gone: int = _items.size() - keep.size()
+	_items = keep
+	# The live prompt may point at something that has just gone.
+	if _prompt != null and not keep.has(_prompt):
+		_prompt = null
+	return gone

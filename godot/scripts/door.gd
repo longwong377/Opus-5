@@ -135,3 +135,37 @@ func openness(key: String) -> float:
 		if d.key == key:
 			return d.open
 	return -1.0
+
+
+## Drop doors whose leaves the engine has freed, and say how many went.
+##
+## THE ONE THING `collect()` COULD NOT DO. All three wiring modules append and
+## none of them clears, so calling `collect` again on a newly streamed cell
+## already accumulates correctly -- session 4o checked that before assuming it.
+## Unloading is the half with no inverse: free a cell's subtree and this array
+## still holds records pointing at deleted nodes, which is a crash the first
+## time anything iterates them.
+##
+## BY VALIDITY, NOT BY BOOKKEEPING. Nothing here records which cell a door came
+## from, and deliberately: a map from cell to record is a second description of
+## something the engine already knows, and it goes stale exactly when a node is
+## freed by any path other than the one that wrote the map. `is_instance_valid`
+## asks the authority.
+func forget_freed() -> int:
+	var keep: Array = []
+	for d in _doors:
+		var live := false
+		for m in d.leaves:
+			if is_instance_valid(m):
+				live = true
+				break
+		if live:
+			keep.append(d)
+	var gone: int = _doors.size() - keep.size()
+	_doors = keep
+	return gone
+
+
+## How many doors are wired right now. Changes as cells stream.
+func count() -> int:
+	return _doors.size()

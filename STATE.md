@@ -1,6 +1,96 @@
 # Project State
 
-**Last updated:** 2026-08-02 · **Session 4o** — **a cell boundary was cutting doors and people in half** · **4n** — **the deck cuts into loadable cells, and the loader's real obstacle is named** · **4m** — **the streaming cell budget met a real deck, and the design survives** · **4l** — **the resident-triangle gate was about the deck; the build also loads 321,664 triangles of people** · **4k** — **every walker on the station was bald, for 188 triangles** · **4j** — **the 21 exposure frames describe the code again, and the verdict did not move** · **4i** — **every curved surface in the project was flat-shaded, and the crease angle is measured off the station** · **4h** — **IT IS PLAYABLE: press Play and you are standing in Blue Sector** · **4g** — **the Babcom terminal is a built device, and it shipped a logged mistake once before the log caught it** · **4f** — a per-token verb override · **4e** — **the naming-mismatch class is CLOSED: built-but-misnamed 26 → 0, resolving 302/357** · **4d** — **the bespoke rooms' interactables were never unbuilt, they were unnamed: 259/357 → 284/357** · **4c** — **the station is INTERACTABLE, the port is on a wall, and the 24-minute suites were one bad cache key** · **4b** — a police force, friction in metres, the plated shell, the fitting-reach fix
+**Last updated:** 2026-08-02 · **Session 4p** — **the deck streams: 657,880 resident triangles become 127,204** · **4o** — **a cell boundary was cutting doors and people in half** · **4n** — **the deck cuts into loadable cells, and the loader's real obstacle is named** · **4m** — **the streaming cell budget met a real deck, and the design survives** · **4l** — **the resident-triangle gate was about the deck; the build also loads 321,664 triangles of people** · **4k** — **every walker on the station was bald, for 188 triangles** · **4j** — **the 21 exposure frames describe the code again, and the verdict did not move** · **4i** — **every curved surface in the project was flat-shaded, and the crease angle is measured off the station** · **4h** — **IT IS PLAYABLE: press Play and you are standing in Blue Sector** · **4g** — **the Babcom terminal is a built device, and it shipped a logged mistake once before the log caught it** · **4f** — a per-token verb override · **4e** — **the naming-mismatch class is CLOSED: built-but-misnamed 26 → 0, resolving 302/357** · **4d** — **the bespoke rooms' interactables were never unbuilt, they were unnamed: 259/357 → 284/357** · **4c** — **the station is INTERACTABLE, the port is on a wall, and the 24-minute suites were one bad cache key** · **4b** — a police force, friction in metres, the plated shell, the fitting-reach fix
+
+## Session 4p — THE DECK STREAMS. 657,880 RESIDENT TRIANGLES BECOME 127,204
+
+### 1. What it does
+
+`walk.gd` holds the cell the player is in plus one either side, loading and freeing as they walk.
+The manifest `walkable.py` writes since 4n is now passed to the engine as `--cells`, in the
+**shared** `engine_args` list, so the headless walk gate streams exactly as a person does —
+`--no-stream` is the control and loads the deck whole, which is what every session before this did.
+
+```
+walk: STREAMING 18 cells of 20 deg, 657880 triangles whole; holding the cell you are in plus 1 either side
+cell 17 LOADED 45349 tri, 1/18 resident, dressed 74/74, 32 lights, doors 0 people 4 interactables 5
+cell  0 LOADED 55807 tri, 2/18 resident, dressed 77/77, 49 lights, doors 1 people 9 interactables 5
+cell  1 LOADED 26048 tri, 3/18 resident, dressed 13/13, 48 lights, doors 1 people 9 interactables 5
+```
+
+| | before | after |
+|---|---|---|
+| resident render triangles | 657,880 | **127,204** |
+| against `CELLS["resident_tris"]` | 3.65× over | **0.71×, inside it** |
+
+**The collision shell is not streamed** — 5,270 triangles for the whole cluster, so it stays
+resident and the floor cannot vanish under a body because a cell is in flight. That is what makes
+`_update_cells()` safe to run every frame, and it keeps `offfloor=0/1800` true by construction.
+
+**Cells are dressed and lit ON ARRIVAL**: 164/164 meshes materialled across the loaded cells and
+129 fittings lit. `_dress.release()` is now skipped while cells still have to come, because
+releasing frees the table a later cell would need — 4h's defect with a timer on it, which would
+have shown as the corridor going grey behind you.
+
+### 2. THE FIRST TRAVERSE THRASHED 1,737 TIMES, AND IT WAS THE SPAWN'S FAULT
+
+The spawn stands at angle **0.000°** — exactly the boundary between cell 0 and cell 17. `atan2`
+jitter in the last bits flipped the answer every frame, the wanted set shifted by one cell at each
+end, and the loader freed and reloaded two cells sixty times a second. The walk test crawled until
+it timed out at 600 s.
+
+Hysteresis: the window's centre only moves when the body is a degree clear of both edges of the
+cell it has apparently entered. 1° is 3.7 m of arc at this radius and a sprint covers 0.035° a
+frame, so switching takes ~29 frames of committed walking — far more than jitter can produce —
+while a cell is 20° wide, so the next one is resident long before anybody reaches it.
+
+**1,737 loads → 3.** And the bug is the only evidence so far that the FREE path works: it ran
+~1,734 times, and the walk test afterwards still reported its doors, its people and its
+interactables intact. A run where the player stands still frees nothing, so `frees=0` in the
+verify log is honest and not yet a demonstration.
+
+### 3. Three things that were additive by luck rather than by property
+
+Session 4o checked that `collect()` appends and never clears. Relying on it exposed three places
+where "additive" was not actually true:
+
+- **`npc.gd` gave a capsule to *every* person on every call**, so a second cell load would give
+  everybody a second one — an invisible wall where somebody used to be. Now only those without.
+- **`interact.gd::_missing` appended per call**, so each cell would report every interactable in
+  every *other* cell as missing and the list would grow past the number of rows that exist. It is
+  now a set difference over the accumulated state.
+- **Nothing could remove a record.** `forget_freed()` on all three drops records whose meshes the
+  engine has freed, **by validity rather than by bookkeeping** — a cell→record map is a second
+  description of something the engine already knows. `npc.gd`'s bump capsule is parented to itself
+  rather than to the mesh, so without this an unloaded cell leaves people you still walk into.
+
+### 4. Gates
+
+| gate | result |
+|---|---|
+| `tools/play.sh --verify` | **PLAYABLE** — 3 of 18 cells, peak **127,204** against 180,000, stood 194/194 reports over 388 s, 0.043 m from spawn, peak speed 0.000 m/s |
+| control: no manifest | fires |
+| `walkable.py --deck blue/0/0 --use` | **PASS** + **PASS**, both controls firing, `traverse_m=125.93`, `offfloor=0/1800` |
+
+`play_verdict.py` gained two bounds it can fail on: never more than three cells resident, and peak
+resident under the budget.
+
+### 5. UNEXPLAINED, AND WRITTEN DOWN RATHER THAN PAPERED OVER
+
+`"...%d..." % [a, b, c, d]` printed its specifiers **verbatim** in a run that provably used the
+corrected file and reported no format error. The first version was the documented precedence trap —
+a concatenation with a `%` on each half — but rewriting it as one string with a single four-value
+`%` did not fix it. The line is built with `str()` now. A log line is not worth the launches to
+explain, but if another `%` format comes out literal, this is the second instance.
+
+### 6. NEXT
+
+- **Exercise the free path deliberately**: a walk test with a `--goto` far enough round the ring to
+  cross two cell boundaries, asserting `frees > 0` and that doors and people survive it.
+- Interactables read 5 of 16 while three cells are loaded, which is correct and makes
+  `interact.gd::missing()` mean something different under streaming — it now reports "no loaded
+  geometry provides this", not "no mesh in the build".
+- The near figure's silhouette is 32-gon faceted at 1 m; the affordable fix is runtime skinning.
 
 ## Session 4o — A CELL BOUNDARY WAS CUTTING DOORS AND PEOPLE IN HALF
 
