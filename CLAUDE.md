@@ -201,6 +201,24 @@ cannot pass by being a tile pattern.
 **AND IT COST BUILD TIME, WHICH IS NOT FREE:** `rooms.py` is now 13m03s and `--footprint` is
 **23m06s**. A twenty-minute CI gate is a liability; profile before adding to it.
 
+**IT WAS PROFILED, AND IT IS CONTENT COST RATHER THAN A BUG** — which this file's own rule
+("a slow suite is a bug until profiled") demands be checked and which it is worth recording as
+a NEGATIVE result. One `docking_bays` build is **~9.3 s** for 269,688 triangles, and 128 places
+at that rate is the twenty minutes. There is no cache-key defect of the session-4c kind here.
+
+**AND THE PROFILE LIED ABOUT WHERE THE TIME WENT, which is the transferable part.** `cProfile`
+reported the same build at **34.4 s** with `interior.ring_radii` at 6.5 s over 539 calls — but
+the workload makes **28 million function calls**, and cProfile's per-call overhead is most of
+the difference. Acting on that attribution, an `id()`-keyed cache on `ring_radii` measured
+**×3.8 faster**, then **×1.92**, then — run in a *fresh process each way, alternating* —
+**nothing at all: 9.2/9.3 s without it against 9.3/9.7 s with it.** The first number was
+profiler overhead; the second was a second run riding caches the first had warmed. The cache
+was reverted.
+
+*On a call-heavy workload, use wall-clock in a cold process as the arbiter and `cProfile` only
+to generate hypotheses. And an A/B of two runs in one process is not an A/B: the second one
+inherits every memo the first one filled.*
+
 **`python3 station/deck.py --sweep` is the answer to "how much of the station can I walk in".**
 It is the only gate here that asks a whole-station question; every other one measures a part.
 Run it before claiming coverage. As of 3z it is **128 of 128** — every location in the register
