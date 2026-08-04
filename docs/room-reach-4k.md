@@ -243,7 +243,16 @@ the speed the body **actually achieves**, and this project's stated speed is not
 | `vorlon_berth` | 1,181.3 m | 24,000 | ~48,500 | **abandoned, under-budgeted** |
 
 `player.gd` exports `speed_m_s = 4.2`, and a body sustained **1.46 m/s** — so a budget computed
-from the export is 2.9x short. Two runs were wasted on that. The likely cause is the corridor
+from the export is 2.9x short. Two runs were wasted on that.
+
+**CORRECTED LATER THE SAME SESSION, AND THE TABLE ABOVE IS THEREFORE PESSIMISTIC.**
+`tools/frametime.py` walked the same deck twice and got **4.2 m/s both times** — 125.93 m in
+1,800 frames and 377.94 m in 5,400, which is the exported speed exactly. So 1.46 m/s is **not**
+the body's sustained pace; it is what *that route* produced, and the cause is route-specific —
+turns, waypoint tolerances, or the corridor crowd. The "frames needed" column is up to 2.9x too
+large. **Re-derive it from a straight-line walk on the route in question before budgeting a
+run**, and note that `no_npc_collision=True` remains the untried A/B that would separate the
+crowd from the turns. The likely cause is the corridor
 crowd (`--deck` spawns it, `npc.gd` gives every walker a capsule, 963 of them over 1,329 m is
 0.72 people per metre); the A/B is `walk_deck(..., no_npc_collision=True)` and it has not been
 run. **Run that first**: it settles the crowd question *and* roughly halves the frame cost of
