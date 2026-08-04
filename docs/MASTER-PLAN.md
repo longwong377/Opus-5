@@ -194,8 +194,15 @@ and `MIN_WALK_M` must move with it: both are derived from the 4.2 literal in the
 comments, so a speed change silently turns those gates red.*
 
 *Found because a body walking to `plantroom_bay` covered 486 m in 20,000 physics frames —
-1.46 m/s sustained, matching neither the 4.2 export nor the 1.22 derivation. That third number
-is still unexplained and is the one genuine defect here.*
+**1.46 m/s sustained**, matching neither the 4.2 export nor the 1.22 derivation. Read
+`player.step`: given a steer it sets `wish = Vector2(0, 1)` and moves at the full
+`speed_m_s`, so the body was asking for 4.2. The likely answer is that it did not get it —
+`--deck` spawns the corridor crowd and `npc.gd` gives every one of them a capsule, and 963
+walkers over 1,329 m of corridor is **0.72 people per metre**. If that is the cause, 1.46 m/s
+is not a defect at all but the first measurement this project has of what its own crowd
+density costs a body trying to cross it — a 65% tax. **A/B to settle it:
+`walk_deck(..., no_npc_collision=True)` against the same run; the flag already exists.** Not
+yet run.*
 
 ### P1 — THE GAME EXISTS (G-track, expanded from the rejected draft)
 - **G0** `docs/THE-GAME.md`: what the player wants, who can stop them, what failure costs.
