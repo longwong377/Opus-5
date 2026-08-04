@@ -2,7 +2,7 @@
 
 **Gate:** `python3 station/roomnav.py --station`
 **Reproduction for one place:** `python3 station/roomnav.py --place <key> --map`
-**Session:** 4k. **Status: 101 of 116 yes, 15 no, exit 1** — re-run against the tiled station (§9). The figures in §3 and §6 are superseded; read §9 first.
+**Session:** 4k. **Status: 115 of 116 yes, 1 no.** §3, §6, §8 and §9 are all superseded — **read §10 first.** The station was fine; this gate was not.
 
 ---
 
@@ -342,3 +342,63 @@ assertion then the probe is being placed from a plan nothing built.
 overruled the threshold, 17 became 15 when the station grew under the gate, and the single
 cause I proposed for all of them explains four. The number has never been quoted without being
 re-derived, which is the only reason it kept getting smaller.*
+
+
+---
+
+## 10. THE ANSWER: IT WAS THIS GATE, NOT THE STATION
+
+**115 of 116.** The count went 116 (wrong) → 95 → 99 → 101 → **115**, and the last step was one
+function.
+
+`Grid.snap` looked for the nearest free cell in **every direction**. Just inside a doorway the
+nearest free cell is very often *outside* the room — the void inside a hollow wall, or the
+vestibule beyond it. The search snapped out of the room, explored a 2×2 pocket bounded by the
+grid's own edge, and reported the room sealed.
+
+**The tell was in the first run's data and I read it as geometry.** Every failure sat at exactly
+`z_half − 0.1` from the centre — 6.90/7.0, 49.90/50.0, 74.90/75.0 — across an elevenfold range
+of room sizes. That is the topmost cell centre of a 0.2 m grid spanning `z0 ± z_half`: **an
+arithmetic identity of this module's own grid.** A defect in a station cannot be that exactly
+proportional to a number the gate computes about itself.
+
+**And no constant fixes it, which is the proof the model was wrong rather than the number:**
+
+| entry inset | `thieves_guild` | `business_center` |
+|---|---|---|
+| 0.5 m | 0.16 m² pocket | 306 m² fine |
+| 2.5 m | 600 m² fine | 2.24 m² pocket |
+
+How far in the floor starts is a property of the room. `Grid.step_in` walks from the doorway
+toward the room's centre line and takes the first cell a capsule fits in — directional, so it
+cannot wander outside; derived from the mesh, which is this module's whole principle.
+
+### What remains: one place, and it looks real
+
+`vorlon_berth` — 0.80 m² reachable, 18.70 m from the middle of a 20 m half-deep room. §4's
+dilation table is the independent evidence: **at capsule radius its corridor doorway has 0.00 m
+of free run, where `docking_bays` in the same wall of the same cluster has 0.80 m** — and 0.00 m
+at 0.20 m dilation too, so it is not a capsule that is too fat. That is the one genuine
+candidate in the set, and it should be checked against `deck.build_collision`'s door cutting
+rather than against this module.
+
+### And the number that justifies the whole module
+
+> **114 of 116 rooms need more than one waypoint to reach their own middle** — a straight line
+> from the door would cross their own furniture. **Two do not.**
+
+The L3 failure this session opened with was not a quirk of `business_center`. The straight-line
+room leg was wrong in 114 of 116 places; it only *failed visibly* in the one place a gate
+happened to walk. Median off-centre is **0.00 m** — 85 of 116 stand exactly where the register
+says the room is — with p95 at 5.10 m.
+
+### The three hypotheses this killed, all mine, all blaming the station
+
+1. **the doorway aperture is missing** — refuted by the engine walking 684 m into `mooring_clamps`
+2. **a vestibule puts the real door out of reach** — explained 4 of 19
+3. **`built_span_m` overshoots the emitted mesh** — measured 100.00 against 100.36; it matches
+
+*Read the shape of a failing number before its size. I wrote that in this repository at the top
+of this session, applied it correctly to find fourteen identical failures were one cause, and
+then spent three more rounds looking for that cause in the station because I did not ask what
+`z_half − 0.1` was the shape OF.*
