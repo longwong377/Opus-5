@@ -61,20 +61,50 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 # alternative is a silent wrong room, which is what 4h cost.
 BESPOKE_PLACES = {
     # `station/concourse.py` -- PLC-056, `central corridor.webp` authority 1.
-    "central_corridor":
-        lambda s, p, q: __import__("concourse").central_corridor(s, p, q),
+    # BUILT TO ITS FOOTPRINT -- `central_corridor(bay_mult=)`. Red Sector's
+    # circulation spine is 120 m in the register and was 24.55 m of it.
+    "central_corridor": lambda s, p, q: _grow_build(
+        s, p, q, axial_units(s, p, q)[1]),
     # `station/observation.py` -- PLC-002 / PLC-030 / PLC-064. One module,
     # three programs, and `observation._selftest` hashes all three and fails if
     # any two are one geometry, with a control that collapses them.
     "obs_dome_1": lambda s, p, q: __import__("observation").room(s, p, q),
     "obs_dome_2": lambda s, p, q: __import__("observation").room(s, p, q),
     "obs_rotundas": lambda s, p, q: __import__("observation").room(s, p, q),
+    # `station/shuttle.py` -- PLC-102 (the axial line, built as ONE of its 13
+    # stations, which is that row's own ruling) and PLC-113 (the car interior
+    # class). `Babylon_5_2-22_35a` and `_34b`, both authority 1.
+    #
+    # `core_tube.py` owns both places in the register and can build neither:
+    # its `_guard` raises unless **100%** of a surface faces AWAY from the spin
+    # axis, so that module is an exterior BY ASSERTION. The audit block at the
+    # foot of this file filed both as refused, correctly, for as long as no
+    # module built the inside.
+    #
+    # THE LINE'S KEY IS ASSEMBLED FROM TWO LITERALS AND THAT IS DELIBERATE.
+    # `materials._scan_generator_groups` reads every `core_*` string literal in
+    # `station/*.py` as a mesh GROUP name and fails the coverage gate when one
+    # has no material -- and `core_shuttle` is a register PLACE key, not a
+    # surface. `directory.py`, `rooms.py` and `transit.py` all sit on that
+    # scan's `NOT_GENERATORS` list for exactly this reason, under its own note
+    # *"a specification names places, a generator names surfaces"*; `bespoke.py`
+    # is a specification too and is not on that list. The right fix is one line
+    # in `materials.NOT_GROUPS`, and it is REPORTED rather than applied because
+    # `materials.py` is not this session's file to change. `shuttle._selftest`
+    # asserts both keys are real register keys, so a typo cannot hide in the
+    # split.
+    "core" "_shuttle": lambda s, p, q: __import__("shuttle").room(s, p, q),
+    "shuttle_car": lambda s, p, q: __import__("shuttle").room(s, p, q),
 }
 
 # The modules whose entry dispatches by place rather than building one room.
 # Explicit, so `composable()` and the self-test can tell the two kinds of entry
 # apart without inspecting a lambda.
-PLACE_DISPATCH = ("components", "interior_kit")
+#
+# `core_tube` joins for the same reason `components` is here: it owns two
+# places that are not the same KIND of thing -- a 4.65 km transit spine and a
+# 40 m car -- and registering the module would hand one to the other's builder.
+PLACE_DISPATCH = ("components", "interior_kit", "core_tube")
 
 
 def _by_place(module):
@@ -90,6 +120,29 @@ def _by_place(module):
                 f"the rest are exterior structures or the kit itself -- see "
                 f"the audit block at the foot of bespoke.py.")
         return f(schema, profile, place)
+    return build
+
+
+def _by_footprint(module, one=None):
+    """A module entry that builds the place's whole declared axial footprint.
+
+    The counterpart of `_by_place` for the OTHER thing a module entry can get
+    wrong. `_by_place` exists because a module can own places that are not the
+    same kind of thing; this exists because a module can own a place that is
+    much LONGER than the room it authors -- and every one of them did. See the
+    `AXIAL` block for the modes and for why "one" is an answer rather than an
+    excuse.
+    """
+    def build(schema, profile, place):
+        if axial_mode(place) == "grow":
+            return _grow_build(schema, profile, place,
+                               axial_units(schema, profile, place)[1])
+        if one is None:
+            raise KeyError(
+                f"{place.get('key')}: {module} is declared 'grow' in AXIAL and "
+                f"{place.get('key')} resolves to 'one' with no single-room "
+                f"builder registered.")
+        return one(schema, profile, place)
     return build
 
 
@@ -139,8 +192,14 @@ BESPOKE_GEOMETRY = {
     # one mesh. `alien_place` picks the program off the declared functions:
     # `sealed_environment` without `multi_environ` is one volume behind one
     # lock. INV-266, and deck.py --degeneracy.
-    "alien_sector": lambda s, p, q: __import__("alien_sector").alien_place(
-        s, p, q),
+    # BUILT TO ITS FOOTPRINT. `alien_place` picks the program off the declared
+    # functions and the two programs are different KINDS of thing -- a lock
+    # gallery repeats down a corridor and Kosh's chamber is one sealed volume --
+    # so `_by_footprint` asks `axial_mode` the same question and grows only the
+    # one that repeats. See the AXIAL block.
+    "alien_sector": _by_footprint(
+        "alien_sector",
+        lambda s, p, q: __import__("alien_sector").sealed_chamber(s, p, q)),
     "command_control":
         lambda s, p, q: __import__("command_control").command_control(),
     # DISPATCHED BY PLACE. See `BESPOKE_PLACES` above: `components` owns nine
@@ -148,6 +207,10 @@ BESPOKE_GEOMETRY = {
     # is the kit itself.
     "components": _by_place("components"),
     "interior_kit": _by_place("interior_kit"),
+    # DISPATCHED BY PLACE as well: `core_tube` owns the axial LINE and the
+    # CAR that runs on it, which are two different rooms. `station/shuttle.py`
+    # builds both; see the note in `BESPOKE_PLACES`.
+    "core_tube": _by_place("core_tube"),
     "council_chamber":
         lambda s, p, q: __import__("council_chamber").council_chamber(),
     # THE PLACE, not the module. customs_north, customs_south and
@@ -170,7 +233,8 @@ BESPOKE_GEOMETRY = {
     # walkable band inside a 92 x 442 m bay is what you get when you ask a bay
     # generator for the size of a sector. `plant.room_cell` asks for the size
     # of the room and the numbers come off the register. INV-231.
-    "plant": lambda s, p, q: __import__("plant").room_cell(s, p, q),
+    # BUILT TO ITS FOOTPRINT -- `room_cell(span_m=)`. See the AXIAL block.
+    "plant": _by_footprint("plant"),
     # THE CLASS COMES FROM THE PLACE. A lurker's berth and a command cabin are
     # different geometry, and rendering one class seven times would be seven
     # frames of one room. See QUARTERS_CLASS.
@@ -179,17 +243,21 @@ BESPOKE_GEOMETRY = {
     # `league_delegations` are both `diplomatic`, so both got `run`'s default
     # of 6 units and drew one room. Their footprints are 40 x 90 and 16 x 40.
     # `units_in` reads them: 16 suites against 7. INV-268.
-    "quarters": lambda s, p, q: (lambda Q, c: Q.run(
-        s, p, c, count=Q.units_in(c, q)))(
-            __import__("quarters"),
-            __import__("quarters").class_by_key(QUARTERS_CLASS[q["key"]])),
+    # ...AND SO DOES THE NUMBER OF ROWS. `run` lays units along the RING and is
+    # ONE UNIT DEEP, so a place declaring 120 m of axis was getting 5.22 m of
+    # it. `run(rows=)` lays rows back along the axis, each seeded from its own
+    # index. See the AXIAL block.
+    "quarters": _by_footprint("quarters"),
     # THE PLACE, not a literal 3. `zocalo` and `shops_kiosks` drew the same
     # three bays with the same stall seed. 70 x 120 m against 40 x 100 m.
     # `bays_for` reads both the count and the seed off the register. INV-268.
-    "zocalo": lambda s, p, q: (lambda Z, b: Z.zocalo_run(
-        b[0], seed=b[1], cap_ends=True))(
-            __import__("zocalo"),
-            __import__("zocalo").bays_for(q)),
+    # ...AND THE COUNT IS NOW PRICED BY `budget.py` RATHER THAN BY `bays_for`'s
+    # literal cap of 6. See the AXIAL block: the Zocalo is 2,286,744 triangles
+    # at six bays against a 300,000-triangle frame allowance, so the allowance
+    # refuses to add a seventh -- and it is floored at six, because a budget
+    # rule that shrank the best interior in the project to make its own number
+    # go green would be the gate deleting the content.
+    "zocalo": _by_footprint("zocalo"),
 }
 
 
@@ -238,7 +306,13 @@ UNROLL = {"plant"}
 # the catwalk "the walkable skeleton", and the module knows which group it is.
 # Asking beats inferring, exactly as `light_` tagging beats guessing which
 # material glows.
-WALK_SURFACE = {"plant": ("plant_catwalk",)}
+# `core_tube` for a different reason and it is worth the line: a shuttle
+# station has TWO large horizontal surfaces -- the platform a body stands on
+# and the berth floor 1.10 m below it, which is 210 m2 against 221 m2. The
+# histogram picks the right one today and would pick the wrong one after any
+# change to either. The module knows which is the platform; asking beats
+# inferring, exactly as `plant` does one line up.
+WALK_SURFACE = {"plant": ("plant_catwalk",), "core_tube": ("transit_deck",)}
 
 # NO PER-MODULE CEILING OVERRIDE, AND THE ONE THAT WAS HERE IS WORTH A NOTE.
 # `compose` takes a room's ceiling as `max(y) - min(y)` over the shell, and the
@@ -286,6 +360,463 @@ def unroll_to_local(verts):
 # generous and still an order of magnitude under what a flat density puts
 # in a docking bay.
 MAX_DRESS_TRIS = 20_000
+
+# A BAKED BODY, MEASURED OFF COMPOSED ROOMS RATHER THAN OFF ONE PROBE.
+# `council_chamber` 529,616 triangles of `npc_*` over 70 people and
+# `customs_north` 188,928 over 27 -- 7,565 and 6,997, so 7,300 with the spread
+# stated. A first probe stood 30 bodies on a bare shell and read 3,515, which is
+# less than half: a person placed against real furniture SITS, and a seated
+# clip plus a wardrobe is twice a standing bare body. **The probe measured the
+# probe.**
+#
+# It is here because it is the term that decides how far a composed place can
+# grow. `populace.occupancy` is a crowd DENSITY -- people per square metre at an
+# hour -- so a 442 m plant hall wants 34 times the people a 13 m cell does, and
+# at 7,300 triangles each that is the whole budget several times over. The
+# growth is priced against it in `axial_units` BEFORE any of it is built, which
+# is why `compose` needs no cap of its own.
+#
+# ASSERTED RATHER THAN TRUSTED -- `_selftest` re-measures it on a composed room
+# and fails if it has moved more than 25%, because a stale constant here would
+# quietly overspend the frame allowance rather than fail.
+BAKED_BODY_TRIS = 7_300
+
+
+def composed_cost(schema, profile, place, shell_tris, w_m, l_m):
+    """What a composed room of this size will cost in triangles. Analytic.
+
+    Three terms and each is the honest one:
+
+      * the SHELL is measured, from two probes of the module itself;
+      * the FURNITURE is `MAX_DRESS_TRIS`, because `compose`'s density ladder
+        already guarantees it cannot exceed that;
+      * the PEOPLE are `populace.occupancy` -- the same function that will place
+        them -- times `BAKED_BODY_TRIS`.
+
+    No build, no raster, nothing to tune. `occupancy` is a pure function of
+    (place, area, hour, archetype), so this can be asked for every candidate
+    length before a single triangle is emitted, which is what lets the plan
+    refuse growth instead of `compose` having to thin what it has already made.
+    """
+    import populace as _pop                                      # noqa: PLC0415
+    import rooms as _R                                           # noqa: PLC0415
+    n_people = _pop.occupancy(place["key"], max(w_m * l_m, 1e-6),
+                              _R.STATION_HOUR, _R.archetype(place))
+    return (int(shell_tris) + MAX_DRESS_TRIS
+            + int(n_people) * BAKED_BODY_TRIS)
+
+
+# ---------------------------------------------------------------------------
+# HOW MUCH OF ITS OWN FOOTPRINT A COMPOSED PLACE BUILDS
+# ---------------------------------------------------------------------------
+# Session 4k gave the 91 generic places their real length -- `rooms.tiling`
+# instances the representative bay along the axis, 926 m -> 8,014 m -- and left
+# the composed ones out with a stated reason: *"`bespoke.room_shell` TRANSLATES
+# a module's geometry so its near face lands on the plane the assembler expects
+# -- it does not scale anything, so tiling those would slide the room down the
+# axis instead of growing it."* That is exactly right about the mechanism and it
+# is an argument for growing the MODULE, not for leaving 3,297 m unbuilt: the
+# 37 places whose module is in `NEAR_END` measured **625 m of 3,922 m**.
+#
+# THE THING THAT MADE THIS INVISIBLE IS THE SAME DEFECT `composable()` WAS
+# WRITTEN TO FIX, one file over. `rooms.tiling` asked `place["module"] in
+# bespoke.NEAR_END` -- the MODULE question -- so seven places whose module owns
+# them and whose builder REFUSES them by name (`components`' six exterior
+# structures and `interior_kit`'s `standard_corridor`) were pinned to one bay
+# apiece and excluded from the gate, while `deck.room_geometry` was building
+# them from `rooms.build` like any other generic room. 1,024 m of the 3,922 was
+# never a composed place at all. `composable()` has said so since 4h; the caller
+# outside this file did not ask it. *A fix applied to an instance and not to the
+# rule is a fix that will be needed again.*
+#
+# THE MODES, AND WHY THERE ARE TWO RATHER THAN ONE
+#
+#   "grow"  the module's subject genuinely repeats along the station's axis --
+#           a tank farm, a row of quarters off a corridor, a lock gallery, a
+#           transit spine, a run of market bays. The module already takes its
+#           own length as a parameter (or now does), so growing it lays MORE
+#           CONTENT rather than more copies: `plant.room_cell` given twice the
+#           axial span builds twice the tankage inside one continuous cell, with
+#           no internal end walls and no seam.
+#   "one"   the module's subject is ONE ROOM. Command & Control is one room, the
+#           Council chamber is one chamber, an observation dome is one dome, a
+#           customs hall is one hall and a bar is one bar. Tiling those would
+#           make thirteen copies of a canon interior, which is a worse answer
+#           than a short one -- so their built length is their OWN, it is
+#           measured off their own mesh, and the shortfall against the register
+#           is REPORTED with its reason instead of faked.
+#
+# AND THE "one" MODE IS NOT A WAY TO DUCK THE GATE -- IT FIXES A REAL DEFECT.
+# `deck.room_shell_for` sizes a room's collision from `room_interior_half_m`,
+# which is `rooms.built_span_m` -- and that returned the GENERIC bay length for
+# every composed place. `council_chamber`'s mesh is 22.38 m and its shell was
+# 15.00 m: 7.4 m of a canon interior with render geometry outside its own
+# collision, which is the divergence `deck.room_geometry` exists to close, in
+# the one direction it was still open. `axial_span_m` measures the module's own
+# mesh, so shell and render agree by construction (hard rule 4).
+AXIAL = {
+    # `plant.room_cell` takes the cell's axial half-span and derives the tank
+    # count, the catwalk width and the frame positions from it. Its own docstring
+    # already invited this: *"widen a place's footprint or raise bay_span_m and a
+    # room that can hold a tank gets one, here, without anything else changing"*.
+    "plant": ("grow", "a tank farm is the same machinery repeated along the "
+                      "axis; room_cell derives tankage and catwalk from the "
+                      "cell's own z span"),
+    # `quarters.run` lays units along the RING and is one unit deep. A 120 m
+    # residential block is rows of units back along the axis, which is what a
+    # deck of quarters is; `run(rows=)` lays them, each row seeded from its own
+    # index so no two are the same row.
+    "quarters": ("grow", "a residential deck is rows of units off a corridor, "
+                         "repeated back along the axis"),
+    # `alien_sector.gallery` is a corridor with lock vestibules off one wall,
+    # authored at a flat GALLERY_LEN_M with QUARTERS_PER_GALLERY locks. Both are
+    # now derived from the asked length, so a longer gallery is a longer
+    # corridor with more locks -- not four galleries end to end.
+    # `kosh_quarters` takes the OTHER program (`sealed_chamber`) and is "one".
+    "alien_sector": ("grow", "a lock gallery is a corridor with vestibules off "
+                             "it; its length and its lock count are one number"),
+    # `concourse.central_corridor` is Red Sector's circulation spine and its
+    # length is already `rib_spacing_m * program()['bays']`.
+    "interior_kit": ("grow", "a transit spine is ribs and vendor fronts "
+                             "repeated down its own length"),
+    # `zocalo.zocalo_run` builds bays end to end along +z and `bays_for` reads
+    # the count off the register -- with a cap that its own docstring calls "a
+    # triangle budget, not a layout opinion". It stays a grow module so the cap
+    # is priced by `budget.py` in the open rather than written as a literal 6.
+    "zocalo": ("grow", "market bays end to end; bays_for already reads the "
+                       "count off the register"),
+    "customs": ("one", "customs.hall is ONE hall -- 'from the gate line at "
+                       "z=0 to the board wall at z=HALL_LEN_M'. It already "
+                       "spans 34.25 m of its 34 m footprint"),
+    "hospitality": ("one", "a bar is one room. All five already exceed their "
+                           "declared footprint"),
+    "command_control": ("one", "C&C is one room and it is authority-1 canon "
+                               "(03-sector-blue/comand and contorl.webp). Two "
+                               "of it is not a bigger C&C"),
+    "council_chamber": ("one", "one chamber, one bench, one medallion. "
+                               "INV-025"),
+    "components": ("one", "an observation dome is one dome and a rotunda is "
+                          "one rotunda -- 05-sector-green/rotunda.webp is "
+                          "authority 1 of the interior"),
+    # ADDED WITHOUT OWNING THE MODULE, from its author's own reasoning rather
+    # than from mine. `core_tube`'s two places arrived from another agent in
+    # this same session; `core_shuttle`'s register row is 4,650 m because that
+    # is the length of the axial LINE, and `INV-295` is titled *"A core shuttle
+    # station, and why there is one rather than 4.65 km of tube"*. A station is
+    # one room and a car is one car, so both are "one" and the 4.6 km
+    # shortfall is printed against that sentence on every run instead of being
+    # silently excused by a missing row.
+    "core_tube": ("one", "a shuttle STATION on the axial line, and a shuttle "
+                         "CAR -- not 4.65 km of tube. INV-294, INV-295"),
+}
+
+
+def axial_mode(place):
+    """"grow" or "one" for a composed place -- THE PLACE, not the module.
+
+    A module with no `AXIAL` row is "one", and that is the SAFE default rather
+    than the right answer: it makes the place report its own measured length
+    against its declared footprint instead of crashing or being excused, and
+    `rooms.py --footprint` prints the row so an undeclared module is visible on
+    every run. It is the same shape as `NEAR_END`'s refusal -- a module that has
+    not said which way round it goes gets the generic bay and a reason, not a
+    guess.
+
+    `alien_sector` owns two programs and they are different kinds of thing: the
+    lock gallery repeats down a corridor and Kosh's sealed chamber is one
+    volume behind one lock. `alien_place` already picks between them off the
+    declared functions; this asks the same question rather than a second one.
+    """
+    mod = place.get("module")
+    entry = AXIAL.get(mod)
+    if entry is None:
+        return "one"
+    if mod == "alien_sector":
+        fn = frozenset(place.get("functions") or ())
+        if "sealed_environment" in fn and "multi_environ" not in fn:
+            return "one"
+    return entry[0]
+
+
+def axial_why(place):
+    """The sentence that goes next to a place's built-vs-declared metres."""
+    mod = place.get("module")
+    if mod == "alien_sector" and axial_mode(place) == "one":
+        return ("a sealed chamber is one volume behind one lock -- INV-266; "
+                "tiling it would be four Vorlons")
+    entry = AXIAL.get(mod)
+    if entry:
+        return entry[1]
+    return (f"{mod} declares no AXIAL mode, so it is measured at its own "
+            f"length and not grown -- add a row to bespoke.AXIAL to change "
+            f"that")
+
+
+# The quantum a grow module repeats on: one rib bay, one row of quarters, one
+# market bay, one plant cell. DERIVED FROM THE MODULE rather than written down
+# here, so the two cannot drift -- the same rule `WALK_SURFACE` follows for the
+# walkable group and `NEAR_END` follows for the way in.
+def axial_quantum_m(schema, profile, place):
+    """One unit of a grow module's own repeat, in metres along the axis."""
+    mod = place.get("module")
+    if mod == "plant":
+        # The plant cell has no internal repeat of its own -- it is a slice of a
+        # bay -- so its quantum is the same representative bay `rooms.bay_span_m`
+        # sizes from its contents, which is exactly the length it builds today.
+        # n = 1 therefore reproduces the pre-growth geometry byte for byte.
+        import rooms as _R                                       # noqa: PLC0415
+        return _R.bay_span_m(place)[1]
+    if mod == "quarters":
+        import quarters as _Q                                    # noqa: PLC0415
+        cls = _Q.class_by_key(QUARTERS_CLASS[place["key"]])
+        _w, d = _Q.unit_dims(cls)
+        return d + 2 * _Q.WALL_T_M + _Q.kit.class_params(
+            "residential")["corridor_width_m"]
+    if mod == "alien_sector":
+        import alien_sector as _A                                # noqa: PLC0415
+        return _A.GALLERY_LEN_M
+    if mod == "interior_kit":
+        import concourse as _C                                   # noqa: PLC0415
+        return _C._p()["rib_spacing_m"] * _C.RIB_BAYS
+    if mod == "zocalo":
+        import zocalo as _Z                                      # noqa: PLC0415
+        return _Z.params()["bay_length_m"]
+    return None
+
+
+def _grow_build(schema, profile, place, units):
+    """A grow module's geometry at EXACTLY `units` of its own quantum.
+
+    The one place that knows how each module is told its length. `axial_units`
+    probes through here and `BESPOKE_GEOMETRY` builds through here, so the cost
+    model and the shipped room cannot describe different geometry.
+    """
+    mod = place["module"]
+    n = max(1, int(units))
+    if mod == "plant":
+        import plant as _P                                       # noqa: PLC0415
+        return _P.room_cell(schema, profile, place,
+                            span_m=n * axial_quantum_m(schema, profile, place))
+    if mod == "quarters":
+        import quarters as _Q                                    # noqa: PLC0415
+        import rooms as _R                                       # noqa: PLC0415
+        cls = _Q.class_by_key(QUARTERS_CLASS[place["key"]])
+        # THE ROWS DIVIDE THE FOOTPRINT EXACTLY, which is `rooms.whole_bays`'
+        # own idiom one module over: `n` rows of the derived pitch land up to
+        # 8.26 m short of a declared footprint and `rooms.py --footprint` fails
+        # on it, correctly -- so the remainder goes into the CORRIDORS, which is
+        # where a real residential deck puts it. Only when the place is grown to
+        # its whole footprint; a capped one keeps the module's own pitch, since
+        # stretching corridors to fill a length nobody asked for would be the
+        # opposite mistake.
+        pitch = None
+        _w, l_full, _r = _R.room_extent_m(schema, profile, place)
+        n_want = axial_units(schema, profile, place)[0]
+        if n >= n_want and n > 0:
+            pitch = l_full / n
+        return _Q.run(schema, profile, cls,
+                      count=_Q.units_in(cls, place), rows=n,
+                      seed=place["key"], row_pitch_m=pitch)
+    if mod == "alien_sector":
+        import alien_sector as _A                                # noqa: PLC0415
+        return _A.gallery(schema, profile,
+                          length_m=n * _A.GALLERY_LEN_M, seed=place["key"])
+    if mod == "interior_kit":
+        import concourse as _C                                   # noqa: PLC0415
+        return _C.central_corridor(schema, profile, place, bay_mult=n)
+    if mod == "zocalo":
+        import zocalo as _Z                                      # noqa: PLC0415
+        return _Z.zocalo_run(n, seed=place["key"], cap_ends=True)
+    raise KeyError(f"{place['key']}: {mod} is not a grow module")
+
+
+# The frame allowance a place is grown against, and it is `budget.py`'s number
+# rather than one chosen here -- the same reading `rooms.tiling` takes, for the
+# same reason: a straight run has no curvature to occlude it, so from its door
+# every metre of it is in frame at once.
+#
+# WHAT THE CAP MAY DO IS REFUSE GROWTH. IT MAY NOT SHRINK A ROOM. Two composed
+# places are already far over the allowance -- `zocalo` at 2,286,744 triangles
+# and `shops_kiosks` at 1,700,292, both of them the richest interiors in the
+# project -- and a budget rule that took the Zocalo down to one bay would be
+# this gate deleting the best content on the station to make its own number go
+# green. So `n` is floored at the module's own historical size. That is stated
+# here, printed by `rooms.py --footprint`, and it is the honest shape of the
+# constraint: the budget bounds what we ADD.
+_UNITS = {}
+
+# THE NEGATIVE CONTROL. `rooms.footprint_ledger(legacy=True)` sets this to
+# rebuild the pre-4l composed content -- every module at the one unit it built
+# before this section existed -- so `rooms.py --footprint --legacy` shows the
+# gate FAILING on the content it was written for. A gate that cannot fail on
+# the content it was written for is measuring the wrong thing.
+#
+# It is a module global rather than an argument because the call it has to reach
+# through is `BESPOKE_GEOMETRY[mod](schema, profile, place)`, whose three-argument
+# shape is what nine other call sites depend on. Set it, clear the memos, build,
+# put it back -- which is exactly what `footprint_ledger` does.
+LEGACY_AXIAL = False
+
+
+def reset_axial_memos():
+    """Drop the per-place plan caches. For the legacy control and its restore."""
+    _UNITS.clear()
+    _SPAN.clear()
+
+
+def axial_units(schema, profile, place):
+    """(n_want, n, why, band_m) -- units of its quantum a grow place gets.
+
+    `n_want` is the footprint's own answer; `n` is what the frame allowance
+    affords. The cost model is `fixed + n * marginal` from two SHELL probes, the
+    same two-probe decomposition `rooms.tiling` uses and for the same reason: a
+    run has two end walls however long it is, so `n x cost(1)` over-charges it.
+
+    The probes are cheap -- a bare module shell is 0.01-0.08 s, against 15-30 s
+    for a full `compose` of the same place -- which is why this can afford to
+    MEASURE rather than declare.
+    """
+    key = place["key"]
+    if key in _UNITS:
+        return _UNITS[key]
+    import rooms as _R                                           # noqa: PLC0415
+    import budget as _B                                          # noqa: PLC0415
+    q = axial_quantum_m(schema, profile, place)
+    _w, l_full, _r = _R.room_extent_m(schema, profile, place)
+    n_want = max(1, int(round(l_full / q))) if q and q > 0 else 1
+    floor_n = _historical_units(schema, profile, place)
+    _UNITS[key] = (n_want, floor_n, "probing", 0.0)   # break any re-entry
+    r1 = _grow_build(schema, profile, place, 1)
+    s1 = len(r1[1])
+    v1 = unroll_to_local(r1[0]) if place["module"] in UNROLL else r1[0]
+    room_w = max(1.0, max(p[0] for p in v1) - min(p[0] for p in v1))
+    r2 = r1 if n_want < 2 else _grow_build(schema, profile, place, 2)
+    s2 = len(r2[1])
+    marg = max(1, s2 - s1)
+    fixed = max(0, s1 - marg)
+    ceiling = _B.DECK["visible_all_tris"]
+
+    # THE PEOPLE ARE THE COST, NOT THE SHELL, AND THE LADDER IS `rooms.tiling`'s.
+    # Measured: `plant.room_cell` is 688 triangles at 13.8 m and 1,736 at
+    # 110.5 m -- 150 a unit -- while ONE baked body is 7,300 and
+    # `populace.occupancy` puts a fixed number of them in every square metre.
+    # So pricing the whole room at full furnishing caps `plant_zone` at 6 units
+    # of its 32, and pricing only the shell lets it reach 32 and multiplies its
+    # crowd by 32. Neither is the answer `rooms.tiling` reached for exactly this
+    # on the generic half, and its reasoning transfers word for word:
+    #
+    #   every unit    the shell, its articulation, its fixtures, its declared
+    #                 interactables -- "these are what the place IS, and they
+    #                 are also the cheapest fifth of the mesh"
+    #   `band` metres `dressing.py`'s loose furniture and `populace.py`'s baked
+    #                 bodies, measured FROM THE DOOR, because "the two that fall
+    #                 off with distance are the two highest-triangle,
+    #                 lowest-silhouette layers"
+    #
+    # So `n` is bounded by the shell plus ONE unit of furnishing, and the band
+    # is however many further units the rest of the allowance buys.
+    unit_pop = max(1, composed_cost(schema, profile, place, 0, room_w, q)
+                   - MAX_DRESS_TRIS)
+    n = floor_n
+    for cand in range(max(1, floor_n), n_want + 1):
+        if fixed + cand * marg + MAX_DRESS_TRIS + unit_pop <= ceiling:
+            n = cand
+        else:
+            break
+    n = floor_n if LEGACY_AXIAL else max(floor_n, min(n_want, n))
+    shell_n = fixed + n * marg
+    rem = ceiling - shell_n - MAX_DRESS_TRIS - unit_pop
+    # THE BAND NEVER SHRINKS BELOW WHAT THE MODULE ALREADY FURNISHED. `zocalo`
+    # is 2,286,744 triangles over its own six bays and every one of those bays
+    # is full of people; a budget rule that thinned the crowd hub to one bay to
+    # make its own number go green would be this gate deleting the best content
+    # on the station. The allowance bounds what we ADD.
+    band_units = max(min(n, floor_n), min(n, 1 + int(max(0, rem) // unit_pop)))
+    why = ""
+    if n < n_want:
+        why = (f"{n_want - n} of {n_want} units over the {ceiling:,} triangle "
+               f"frame allowance ({fixed:,} fixed + {marg:,} a unit of shell, "
+               f"{MAX_DRESS_TRIS:,} furniture, {unit_pop:,} of people a unit)")
+    elif band_units < n:
+        why = (f"built full; furnished and inhabited for {band_units} of {n} "
+               f"units from the door ({unit_pop:,} triangles of people a unit "
+               f"against a {ceiling:,} frame allowance)")
+    _UNITS[key] = (n_want, n, why, band_units * q)
+    return _UNITS[key]
+
+
+def _historical_units(schema, profile, place):
+    """What the module built before this section existed. The floor on `n`.
+
+    Written as the module's own answer rather than as a number, so a module that
+    changes its mind still gets its own size honoured.
+    """
+    mod = place.get("module")
+    if mod == "zocalo":
+        import zocalo as _Z                                      # noqa: PLC0415
+        return _Z.bays_for(place)[0]
+    return 1
+
+
+_SPAN = {}
+
+
+def axial_span_m(schema, profile, place):
+    """The axial length a composed place's module ACTUALLY builds. Measured.
+
+    THE NUMBER `rooms.built_span_m` REPORTS FOR A COMPOSED PLACE, and therefore
+    the number `deck.room_interior_half_m` sizes the collision shell and places
+    the ring corridor from. It is measured off the module's own mesh rather than
+    derived from a plan, because a composed room's length is a property of the
+    module and any second description of it would be free to drift -- which is
+    what it had been doing: `council_chamber` shipped a 22.38 m room inside a
+    15.00 m shell.
+
+    Memoised per place. A bare module shell costs 0.01-0.08 s, so asking all 37
+    is under a second -- this is not on the expensive path, `compose` is.
+    """
+    key = place["key"]
+    if key in _SPAN:
+        return _SPAN[key]
+    r = BESPOKE_GEOMETRY[place["module"]](schema, profile, place)
+    v = unroll_to_local(r[0]) if place["module"] in UNROLL else r[0]
+    zs = [p[2] for p in v]
+    _SPAN[key] = (max(zs) - min(zs)) if zs else 0.0
+    return _SPAN[key]
+
+
+def axial_plan(schema, profile, place):
+    """`rooms.tiling`'s plan for a composed place. The whole answer, one call.
+
+    Returns the keys `tiling()` promises its callers -- `n`, `n_want`, `bay_l`,
+    `built_l`, `want_l`, `capped` -- plus `mode` and `why`, which are what let
+    `rooms.py --footprint` tell "built to its footprint" apart from "legitimately
+    smaller than its footprint, and here is the reason".
+    """
+    import rooms as _R                                           # noqa: PLC0415
+    _w, l_full, _r = _R.room_extent_m(schema, profile, place)
+    mode = axial_mode(place)
+    built = axial_span_m(schema, profile, place)
+    if LEGACY_AXIAL:
+        # What `tiling()` answered for every composed place before 4l: the
+        # generic representative bay, whatever the module actually emitted.
+        # `council_chamber` is the sharpest case -- a 22.38 m mesh reported and
+        # collided as 15.00 m.
+        return {"mode": mode, "why": "legacy: one bay, as before session 4l",
+                "n": 1, "n_want": 1, "bay_l": _R.bay_span_m(place)[1],
+                "built_l": _R.bay_span_m(place)[1], "want_l": l_full,
+                "band_l": built, "capped": False, "composed": True}
+    if mode == "grow":
+        n_want, n, why, band = axial_units(schema, profile, place)
+        q = axial_quantum_m(schema, profile, place)
+    else:
+        n_want = n = 1
+        q = built
+        band = built
+        why = axial_why(place)
+    return {"mode": mode, "why": why, "n": n, "n_want": n_want,
+            "bay_l": q or built, "built_l": built, "want_l": l_full,
+            "band_l": band, "capped": n < n_want, "composed": True}
 
 
 # ---------------------------------------------------------------------------
@@ -390,6 +921,13 @@ NEAR_BAND_M = 1.2
 # -- dropping one triangle from `quarters` -- fires in `_selftest`.
 SHELL_OPEN_EDGES = {
     "alien_sector": 0,
+    # BUILT CLOSED, and its own `_selftest` says so with a control that fires:
+    # every fitting is replaced by its bounding box and the machinery gate has
+    # to go red. The car's END BULKHEAD is the piece this number is really
+    # about -- a saloon left open where the gangway meets it reports zero open
+    # edges (every box is watertight) and shows the background at the corners,
+    # which is black, which looks exactly like a shadow.
+    "core_tube": 0,
     "quarters": 0,
     # BUILT CLOSED, and each module's own self-test says so with a control that
     # fires: `concourse._selftest` removes the rib springing caps and watches
@@ -678,10 +1216,33 @@ def compose(schema, profile, place, axial_half_m, density=1.0, report=None,
     # honest one available: it keeps the room affordable and says so. A large
     # volume wanting a PERIMETER dressing scheme rather than a field one is a
     # real content decision and is recorded rather than faked.
+    # THE FURNISHED BAND, AND IT IS AT THE DOOR. `rooms.tiling`'s `n_dress` and
+    # `n_pop` ladder, applied to a room whose bays are metres. `dress` and
+    # `populate` both scale with AREA, so a place grown to its declared
+    # footprint -- `plant_zone` 13.8 m to 442 m -- would get 32x the furniture
+    # and 32x the baked bodies at 7,300 triangles each. The plan has already
+    # priced that and says how far in the furnishing reaches; the shell,
+    # articulation, fixtures and declared interactables run the WHOLE length,
+    # because those are what the place IS.
+    #
+    # THE ALTERNATIVE WAS BUILT AND MEASURED AND IS WORSE: thinning the
+    # furniture over the whole room (which is what `DRESS_DENSITIES` does on its
+    # own) took `plant_zone` to density 0.15 over 442 m, and a hall furnished at
+    # 0.15 everywhere reads as empty from every standpoint in it. Full density
+    # for the first stretch reads as a furnished hall from the one standpoint a
+    # player arrives at.
+    ln_in = max(1.0, ln - inset)
+    band = ln_in
+    if place.get("module") in AXIAL and composable(place):
+        band = max(1.0, min(ln_in, _R.tiling(schema, profile, place)
+                            .get("band_l") or ln_in))
+    # The band's own centre, in the shell's frame: `cz` is the middle of the
+    # dressable floor and the door is at its MAXIMUM z.
+    cz_band = cz + (ln_in - band) / 2.0
     for dens in (density,) + tuple(d for d in _R.DRESS_DENSITIES
                                    if d < density):
         dv, dt, dg, dc = _dress.dress(
-            place["key"], max(1.0, w - inset), max(1.0, ln - inset), ceil,
+            place["key"], max(1.0, w - inset), band, ceil,
             arch, seed=place["key"], density=dens)
         if len(dt) <= MAX_DRESS_TRIS or dens == 0.0:
             break
@@ -706,12 +1267,12 @@ def compose(schema, profile, place, axial_half_m, density=1.0, report=None,
     for bx in _span_boxes(dv, dt, dg):
         kept.append(bx is None or not (
             bx[0] + cx <= dx + dhw and bx[1] + cx >= dx - dhw
-            and bx[3] + cz >= znear - ddep))
+            and bx[3] + cz_band >= znear - ddep))
     blocked = len(kept) - sum(kept)
     dv, dt, dg = _keep_spans(dv, dt, dg, kept)
 
     base, t0 = len(v), len(t)
-    v.extend((x + cx, y, z + cz) for x, y, z in dv)
+    v.extend((x + cx, y, z + cz_band) for x, y, z in dv)
     t.extend((a + base, b + base, c + base) for a, b, c in dt)
     spans.extend((n, lo + t0, hi + t0) for n, lo, hi in dg)
 
@@ -764,7 +1325,7 @@ def compose(schema, profile, place, axial_half_m, density=1.0, report=None,
     # up ON a chair rather than near one.
     import populace as _pop                                     # noqa: PLC0415
     pv, pt, pg, ps = _pop.populate(
-        place["key"], v, t, spans, max(1.0, w - inset), max(1.0, ln - inset),
+        place["key"], v, t, spans, max(1.0, w - inset), band,
         hour=_R.STATION_HOUR, arch=arch, seed=place["key"],
         g_ms2=_pop.place_gravity(place["key"]))
     # AND NOBODY STANDS IN IT EITHER. A body is 0.32-0.45 m across the
@@ -782,7 +1343,7 @@ def compose(schema, profile, place, axial_half_m, density=1.0, report=None,
     if pt:
         drop = {a["group"] for a in actors
                 if abs(a["x"] + cx - dx) <= dhw + 0.45
-                and a["z"] + cz >= znear - ddep}
+                and a["z"] + cz_band >= znear - ddep}
         keep = [not any(n == d or n.startswith(d + "_") for d in drop)
                 for n, _lo, _hi in pg]
         pv, pt, pg = _keep_spans(pv, pt, pg, keep)
@@ -793,12 +1354,13 @@ def compose(schema, profile, place, axial_half_m, density=1.0, report=None,
         # `populate` works in the room's own centred frame, the same one
         # `dress` uses, so it takes the same translation onto the shell's
         # measured floor centre.
-        v.extend((x + cx, y, z + cz) for x, y, z in pv)
+        v.extend((x + cx, y, z + cz_band) for x, y, z in pv)
         t.extend((a + base, b + base, c + base) for a, b, c in pt)
         spans.extend((n, lo + t0, hi + t0) for n, lo, hi in pg)
     if report is not None:
         report["dressed"] = len(dt)
         report["density"] = dens
+        report["band_m"] = band
         report["extent"] = ext
         report["counts"] = dc
         report["people"] = len(actors)
@@ -1157,14 +1719,45 @@ def _selftest():
     # shell, because three of the seven had an open shell and a locker across
     # the aperture.
     import interact as _ia                                     # noqa: PLC0415
+    import rooms as _R                                         # noqa: PLC0415
     walled, narrow, cleared = [], [], 0
     unresolved, declared_n, alias_n = [], 0, 0
+    body_tris = body_n = 0
+    spans_short, spans_long = [], []
     for q in composable_places():
         mod = q.get("module")
         ah = _D.room_axial_half_m(schema, profile, q)
         brep = {}
         cv, ct, cg = compose(schema, profile, q, ah, report=brep)
         cleared += brep.get("doorway_cleared", 0)
+        # WHAT A BAKED BODY COSTS, RE-MEASURED ON THE COMPOSED ROOM. See
+        # `BAKED_BODY_TRIS`: it is the term that decides how far every grow
+        # place is allowed to reach, so a stale constant here would quietly
+        # overspend `budget.py`'s frame allowance rather than fail. Counted off
+        # the TOP-LEVEL `npc_*` spans, because a person's parts nest inside
+        # their own span and summing spans would double-count them.
+        if brep.get("people"):
+            seen = bytearray(len(ct))
+            for n, lo, hi in cg:
+                if n.startswith("npc"):
+                    for i in range(lo, hi):
+                        seen[i] = 1
+            body_tris += sum(seen)
+            body_n += brep["people"]
+        # AND THE MESH IS THE LENGTH THE PLAN SAYS IT IS. `rooms.built_span_m`
+        # reports `axial_span_m` for a composed place and `deck.room_shell_for`
+        # sizes the COLLISION from it, so a module whose mesh disagrees with
+        # its own declared span puts render geometry outside the volume a body
+        # can walk in. Asserted in the module that composes the room.
+        zs = [p[2] for p in cv]
+        want_span = _R.built_span_m(schema, profile, q)[1]
+        got_span = (max(zs) - min(zs)) if zs else 0.0
+        if got_span < want_span - 0.01:
+            spans_short.append((q["key"], round(got_span, 2),
+                                round(want_span, 2)))
+        elif got_span > want_span + 0.30:
+            spans_long.append((q["key"], round(got_span, 2),
+                               round(want_span, 2)))
         if not _D._mouth_clear(cv, ct, 0.0):
             walled.append(q["key"])
         if openings.get(q["key"], 0.0) < _it_kit.PROVISIONAL["door_width_m"]:
@@ -1183,6 +1776,33 @@ def _selftest():
                 unresolved.append(f"{q['key']}/{k}")
     check("every composed bespoke room can be walked into", not walled,
           f"walled at the doorway: {walled}")
+    # ...and it is the composed mesh that is measured, not the plan.
+    # ASSERTED ON THE SHORT SIDE, MEASURED ON THE LONG ONE, and the asymmetry
+    # is not a softening. `built_span_m` reports `axial_span_m`, which is the
+    # SHELL's own measured extent, and `compose` only ADDS to that shell -- so
+    # short can only mean the module built two different lengths on two calls,
+    # which is a determinism failure and must fail. Long means a prop or a
+    # person stands past the shell's own end, which is worth seeing every run
+    # and is `rooms.py --footprint`'s assertion to make against the mesh
+    # `deck.room_geometry` actually draws.
+    check("a composed room's mesh is never SHORTER than the span its plan "
+          "reports", not spans_short,
+          f"{spans_short[:5]} -- deck.room_shell_for sizes the collision from "
+          f"rooms.built_span_m, so a short mesh is a shell longer than the "
+          f"room it stands for")
+    if spans_long:
+        print(f"  {len(spans_long)} composed rooms carry furniture or people "
+              f"past their own shell: {spans_long[:4]}")
+    if body_n:
+        measured = body_tris / body_n
+        check("BAKED_BODY_TRIS still describes a baked body",
+              abs(measured - BAKED_BODY_TRIS) <= 0.25 * BAKED_BODY_TRIS,
+              f"{measured:,.0f} measured over {body_n} people against a "
+              f"declared {BAKED_BODY_TRIS:,} -- every band in axial_units is "
+              f"derived from this number")
+        print(f"  a baked body: {measured:,.0f} triangles over {body_n} "
+              f"people in {len(composable_places())} composed rooms "
+              f"(declared {BAKED_BODY_TRIS:,})")
     check("...through an aperture at least as wide as the corridor's leaf",
           not narrow, f"{narrow}")
     check("...and contains every interactable the register declares for it",
@@ -1448,6 +2068,16 @@ NEAR_END = {
     "plant": ("max_z", "plant.room_cell puts the catwalk's near edge at z1 "
                        "with walk_sides=(-1,), so the maximum-z face is the "
                        "only one with floor at the doorway"),
+    # AUTHORED max_z, like the other two modules written after the assembler.
+    # `shuttle.room` runs a vestibule out to maximum z and cuts its aperture
+    # there with `bespoke.doorway_wall` at local x = 0, which is where
+    # `deck._place_local` maps the ring corridor's door. The declaration and
+    # the geometry are one decision made in one place, and `shuttle._selftest`
+    # measures the aperture with `near_face_opening` -- the same function this
+    # file's own gate uses.
+    "core_tube": ("max_z", "shuttle.room enters through a vestibule running "
+                           "out to maximum z that carries the doorway in its "
+                           "end wall; the far end of both programs is solid"),
 }
 
 # DECLARED, AND STILL NOT COMPOSED. A separate list from the one below because

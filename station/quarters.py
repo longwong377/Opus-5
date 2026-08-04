@@ -69,6 +69,7 @@ door that opens; the areas must descend with class or the gradient is a lie;
 and a run of units must tile a corridor exactly, because a residual gap is a
 hole a player walks into.
 """
+import hashlib
 import math
 import os
 import sys
@@ -407,11 +408,71 @@ def units_in(cls, place, cap=24):
     return max(2, min(cap, int(float(fp[1]) // w)))
 
 
-def run(schema, profile, cls, count=6, corridor_w_m=None):
-    """A row of units opening off one side of a corridor.
+def row_pitch_m(cls, corridor_w_m=None):
+    """Corridor plus units: how far back along the axis the next row starts.
+
+    The quantum `bespoke.axial_quantum_m` reports for this module, asked of the
+    module that lays the rows so the two cannot drift.
+    """
+    if isinstance(cls, str):
+        cls = class_by_key(cls)
+    _w, d = unit_dims(cls)
+    if d <= 0:
+        return 0.0
+    p = kit.class_params("residential")
+    return d + 2 * WALL_T_M + (corridor_w_m or p["corridor_width_m"])
+
+
+def run(schema, profile, cls, count=6, corridor_w_m=None, rows=1, seed=None,
+        row_pitch_m=None):
+    """`rows` rows of units, each opening off one side of its own corridor.
 
     Units tile exactly along the run: a residual gap between two quarters is a
     void a player can walk into, and it is invisible in any elevation.
+
+    ROWS ARE THE AXIS AND UNITS ARE THE RING, and until session 4l there was one
+    row. That is not a small thing: `run` lays units along +X, which
+    `bespoke.room_shell` maps onto the ring, so the whole of a quarters place
+    was ONE UNIT DEEP -- `qtr_civilian` built 5.22 m of a 120 m declared
+    footprint, `qtr_transient` 3.95 m of 80. A deck of quarters is rows of units
+    off corridors, repeated back along the axis, and that is what `rows` builds.
+
+    AND NO TWO ROWS ARE THE SAME ROW. A twenty-row block of one row is
+    wallpaper, which is the failure `rooms.bay_signatures` and `deck.py
+    --degeneracy` both exist to catch, and it would be introduced HERE rather
+    than by the tiler. Two things vary, both of them things a real block varies
+    and neither of them random:
+
+      * the row's PHASE along the ring. Party walls do not line up between one
+        row of quarters and the next, and a seeded phase within one unit pitch
+        is what that looks like. It is also what makes each row's geometry
+        distinct in its own frame, which is what the twin gate asks.
+      * alternate rows FACE THE OTHER WAY, so their doors open onto the corridor
+        behind them rather than the one in front. A 180-degree turn about the
+        vertical, `(x, z) -> (X - x, Z - z)`, determinant +1 -- a rotation, so
+        the winding is untouched. `plant.py` shipped a determinant -1 remap with
+        no flip and rendered every surface inside-out; this is the same trap and
+        `_selftest` measures the signed volume either way.
+
+    ROW 0 IS NEVER FLIPPED. `bespoke.NEAR_END["quarters"]` is `min_z` on the
+    grounds that "`run()` offsets every unit by +cw/2, leaving the corridor gap
+    at minimum z", and that is the face the ring corridor's door is cut in. A
+    flipped first row would put a party wall there.
+
+    AND THE CORRIDOR IS BUILT, WHICH IT NEVER WAS. `run` left `cw` of empty
+    space in front of every unit and put nothing in it -- the units floated with
+    a gap, and a gap is not a corridor. Two consequences, both measured:
+    a row's mesh was `(n-1) * pitch + d` rather than `n * pitch`, so seven
+    quarters places came back short of their own declared footprint by up to
+    8.26 m with no budget cap to account for it (`rooms.py --footprint`); and
+    `bespoke.near_face_opening` had NO FLOOR at the doorway, which is the test
+    that decides whether a body can walk in at all.
+
+    `row_pitch_m` OVERRIDES the derived pitch so the caller can make the rows
+    divide the footprint exactly -- `rooms.whole_bays`' own idiom, one module
+    over: the remainder goes into the corridors, which is where a real deck puts
+    it, and the run then spans its declared length to the millimetre instead of
+    to the nearest whole row.
     """
     if isinstance(cls, str):
         cls = class_by_key(cls)
@@ -423,13 +484,42 @@ def run(schema, profile, cls, count=6, corridor_w_m=None):
     V, T, G = [], [], []
     uv, ut, ug = unit(cls)
     pitch = w + 2 * WALL_T_M
-    for i in range(count):
-        x0 = i * pitch
-        off = len(V)
-        t0 = len(T)
-        V.extend((x + x0, y, z + cw / 2.0) for x, y, z in uv)
-        T.extend((a + off, b + off, c + off) for a, b, c in ut)
-        G.extend((n, lo + t0, hi + t0) for n, lo, hi in ug)
+    rpitch = float(row_pitch_m) if row_pitch_m else d + 2 * WALL_T_M + cw
+    rpitch = max(rpitch, d + 2 * WALL_T_M + 0.9)
+    key = str(seed if seed is not None else cls.get("key", "quarters"))
+    n_rows = max(1, int(rows))
+    for r in range(n_rows):
+        h = int(hashlib.blake2b(f"{key}/{r}".encode(),
+                                digest_size=8).hexdigest(), 16)
+        phase = (h % 97) / 97.0 * pitch if r else 0.0
+        z_row = r * rpitch
+        # The band this row's units occupy, so a flip turns about its middle
+        # and lands the row back where it started.
+        # The units sit at the FAR side of their row band, so the corridor
+        # that serves them is on the near side -- which for row 0 is minimum z,
+        # the face `bespoke.NEAR_END` declares and the ring corridor meets.
+        cwr = rpitch - d - 2 * WALL_T_M
+        zc = z_row + cwr / 2.0 + d / 2.0
+        flip = bool(r % 2)
+        xc = phase + count * pitch
+        for i in range(count):
+            x0 = phase + i * pitch
+            off = len(V)
+            t0 = len(T)
+            for x, y, z in uv:
+                px, pz = x + x0, z + cwr / 2.0 + z_row
+                if flip:
+                    px, pz = xc - (px - phase), 2.0 * zc - pz
+                V.append((px, y, pz))
+            T.extend((a + off, b + off, c + off) for a, b, c in ut)
+            G.extend((n, lo + t0, hi + t0) for n, lo, hi in ug)
+        # THE CORRIDOR THE UNITS OPEN OFF. Deck and soffit over the whole row
+        # band, so the row spans its own pitch and there is floor at the door.
+        _box(V, T, G, "qtr_deck",
+             (phase, -0.12, z_row), (xc, 0.0, z_row + rpitch))
+        _box(V, T, G, "qtr_soffit",
+             (phase, UNIT_H_M, z_row),
+             (xc, UNIT_H_M + 0.12, z_row + rpitch))
     return V, T, G
 
 

@@ -306,8 +306,17 @@ def _gantry_y(width, height, x):
 # ---------------------------------------------------------------------------
 # The room
 # ---------------------------------------------------------------------------
-def program(place=None):
+def program(place=None, bay_mult=1):
     """What KIND of concourse this is, read off the register.
+
+    `bay_mult` IS THE FOOTPRINT. `RIB_BAYS` is 4 and the spine was therefore
+    24.0 m long whatever the register said; `central_corridor` declares 120 m,
+    so it was building 20% of Red Sector's circulation spine. A transit spine is
+    ribs, blades, soffit rakes and vendor fronts repeated down its own length --
+    every one of those loops is already driven off `bays` or off `hl` -- so a
+    longer spine is MORE OF THE SAME ORGANS at their authored pitch rather than
+    the same organs stretched. `bespoke.axial_units` picks the multiple and
+    prices it against `budget.py`.
 
     THE PLACE, NOT THE MODULE. `bespoke.BESPOKE_GEOMETRY` is keyed by module
     and `interior_kit` owns two places -- this one and `standard_corridor`,
@@ -317,29 +326,33 @@ def program(place=None):
     `bespoke.BESPOKE_PLACES` refuses anything it has no program for, so the
     failure mode is a stated refusal rather than the wrong room.
     """
+    m = max(1, int(bay_mult))
     if place is None:
-        return {"key": "reference", "bays": RIB_BAYS, "fn": frozenset(),
-                "vendor": VENDOR_BAYS}
+        return {"key": "reference", "bays": RIB_BAYS * m, "fn": frozenset(),
+                "vendor": VENDOR_BAYS * m, "mult": m}
     fn = frozenset(place.get("functions") or ())
     return {"key": place.get("key", "reference"),
-            "bays": RIB_BAYS,
+            "bays": RIB_BAYS * m,
+            "mult": m,
             "fn": fn,
             # A spine that is not declared `public_social` is circulation only:
             # no shopfront, no benches. Nothing on the station is that today,
             # and the branch exists so the vendor front is a consequence of the
             # register rather than a decoration this module always draws.
-            "vendor": VENDOR_BAYS if "public_social" in fn else 0}
+            "vendor": VENDOR_BAYS * m if "public_social" in fn else 0}
 
 
-def central_corridor(schema=None, profile=None, place=None):
+def central_corridor(schema=None, profile=None, place=None, bay_mult=1):
     """The whole concourse: x across, y up, z along, deck at y = 0.
 
     Authored with the way IN at MAXIMUM z -- `bespoke.NEAR_END` declares
     `max_z` on that basis and `doorway_wall` cuts the aperture in that face at
     local x = 0, which is where `deck._place_local` puts the corridor's door.
+
+    `bay_mult` grows it to its declared footprint -- see `program()`.
     """
     p = _p()
-    prog = program(place)
+    prog = program(place, bay_mult)
     w = p["corridor_width_m"]                   # 9.0, INV-020
     h = p["ceiling_height_m"]                   # 7.2, INV-020 / INV-010
     pitch = p["rib_spacing_m"]                  # 6.0, INV-020
@@ -609,9 +622,14 @@ def _fittings(v, t, g, hw, hl, h, w, prog):
     PLC-056 adds the wayfinding gantry boards as this place's T4 organ. The
     rail is built in `_gallery`; the rest is here.
     """
-    # BABCOM x4 (PLC-056's count), on the starboard wall between the blades.
-    for i in range(4):
-        z = -hl + 1.6 + i * (2 * hl - 3.2) / 3.0
+    # BABCOM x4 PER 24 m OF SPINE (PLC-056's count is 4 over the authored four
+    # rib bays), on the starboard wall between the blades. Scaled with the
+    # length rather than spread over it: four terminals down 120 m of concourse
+    # is one every 30 m, which is not a public comms wall, it is decoration.
+    mult = max(1, int(prog.get("mult", 1)))
+    n_bab = 4 * mult
+    for i in range(n_bab):
+        z = -hl + 1.6 + i * (2 * hl - 3.2) / max(1, n_bab - 1)
         _box(v, t, g, "prop_babcom_terminal",
              (hw - 0.26, 0.95, z - 0.34), (hw - 0.04, 1.78, z + 0.34))
         _box(v, t, g, "signage_panel",
@@ -628,9 +646,10 @@ def _fittings(v, t, g, hw, hl, h, w, prog):
     # every triangle into the wall -- invisible in a triangle count, in an
     # extent, and in a render against black.
     reveal = 0.27
+    n_door = 2 * mult
     for s in (-1, 1):
-        for i in range(2):
-            z = -hl + 4.0 + i * (2 * hl - 8.0)
+        for i in range(n_door):
+            z = -hl + 4.0 + i * (2 * hl - 8.0) / max(1, n_door - 1)
             fv, ft = kit.door_frame()
             turned = ([(-z2, y, x2) for x2, y, z2 in fv] if s > 0
                       else [(z2, y, -x2) for x2, y, z2 in fv])
@@ -638,8 +657,9 @@ def _fittings(v, t, g, hw, hl, h, w, prog):
                    ft, dx=s * (hw - reveal), dz=z)
 
     # THE WAYFINDING GANTRY BOARDS, hung from the ribs. Height off the arch.
-    for i in range(GANTRY_BOARDS):
-        z = -hl + 2.2 + i * (2 * hl - 4.4) / max(1, GANTRY_BOARDS - 1)
+    n_board = GANTRY_BOARDS * mult
+    for i in range(n_board):
+        z = -hl + 2.2 + i * (2 * hl - 4.4) / max(1, n_board - 1)
         y = _gantry_y(w, h, GANTRY_W_M / 2.0) - 0.42
         # A SURROUND, NOT A SLAB BEHIND THE FACE. The first frame showed the
         # boards as pale blank panels: the frame box was 0.14 m deep and

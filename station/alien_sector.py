@@ -56,6 +56,7 @@ interesting part: a lock has to hold **one person plus an encounter suit** and
 its two doors must never share an open state, so the vestibule is sized from
 `npc/body.py`'s tallest species rather than from taste.
 """
+import hashlib
 import math
 import os
 import sys
@@ -444,45 +445,75 @@ def _absorb(V, T, G, v, t, g, off=(0.0, 0.0, 0.0)):
     G.extend((n, lo + t0, hi + t0) for n, lo, hi in g)
 
 
-def gallery(schema, profile):
-    """One gallery: the corridor, its lattice, and QUARTERS_PER_GALLERY locks."""
+def gallery(schema, profile, length_m=None, seed=None):
+    """One gallery: the corridor, its lattice, and its locks.
+
+    `length_m` IS THE FOOTPRINT AND IT IS WHY THE LOCK COUNT IS NOT A CONSTANT.
+    `alien_sector` declares 120 m of axis in the register and this built 30.27 m
+    of it, because both the length and `QUARTERS_PER_GALLERY` were flat numbers.
+    A longer gallery is ONE LONGER CORRIDOR WITH MORE LOCKS ON IT, not four
+    galleries end to end -- the locks stay at their own authored pitch and the
+    count follows the length, so nothing about a lock changes and no interior
+    end wall appears in the middle of a corridor. Defaults to the authored
+    30.0 m, so a caller that knows nothing about `bespoke.AXIAL` gets exactly
+    the old geometry.
+
+    AND NO TWO LOCKS ARE THE SAME LOCK once there are sixteen of them, which is
+    the wallpaper failure `deck.py --degeneracy` asks about one level down. What
+    varies is what a rented atmosphere lock varies: its status lamp is lit or
+    dark (the quarter is let or empty), its breather-mask dispenser is present
+    or has been stripped, and the barred screen sits at one of three depths in
+    its reveal. All three are seeded from `(seed, lock index)` with no `random`,
+    so the gallery is reproducible and a diff of two builds is empty.
+    """
+    ln = float(length_m) if length_m else GALLERY_LEN_M
+    n_locks = max(QUARTERS_PER_GALLERY,
+                  int(round(QUARTERS_PER_GALLERY * ln / GALLERY_LEN_M)))
+    key = str(seed if seed is not None else "alien_sector")
     V, T, G = [], [], []
     hw = GALLERY_W_M / 2.0
 
     # shell -- four plates round the volume
-    _box(V, T, G, "alien_deck", (-hw, -0.18, 0.0), (hw, 0.0, GALLERY_LEN_M))
+    _box(V, T, G, "alien_deck", (-hw, -0.18, 0.0), (hw, 0.0, ln))
     _box(V, T, G, "alien_wall", (-hw - 0.22, 0.0, 0.0),
-         (-hw, GALLERY_H_M, GALLERY_LEN_M))
+         (-hw, GALLERY_H_M, ln))
     _box(V, T, G, "alien_wall", (hw, 0.0, 0.0),
-         (hw + 0.22, GALLERY_H_M, GALLERY_LEN_M))
+         (hw + 0.22, GALLERY_H_M, ln))
     _box(V, T, G, "alien_soffit", (-hw, GALLERY_H_M, 0.0),
-         (hw, GALLERY_H_M + 0.22, GALLERY_LEN_M))
-    _box(V, T, G, "alien_endwall", (-hw, 0.0, GALLERY_LEN_M),
-         (hw, GALLERY_H_M, GALLERY_LEN_M + 0.22))
+         (hw, GALLERY_H_M + 0.22, ln))
+    _box(V, T, G, "alien_endwall", (-hw, 0.0, ln),
+         (hw, GALLERY_H_M, ln + 0.22))
 
     # ARTICULATION -- rooms.articulate(), INV-073. 39.0% of its floor. Soffit
     # grid off: this gallery's ceiling is its overhead lattice, built below,
     # and two grids in one plane is one too many.
-    _rooms.articulate(V, T, G, "alien", hw, GALLERY_LEN_M / 2.0, GALLERY_H_M,
-                      z_off=GALLERY_LEN_M / 2.0, soffit=False, scale=0.38)
+    _rooms.articulate(V, T, G, "alien", hw, ln / 2.0, GALLERY_H_M,
+                      z_off=ln / 2.0, soffit=False, scale=0.38)
 
-    lv, lt, lg = overhead_lattice(GALLERY_LEN_M, GALLERY_W_M, GALLERY_H_M)
+    lv, lt, lg = overhead_lattice(ln, GALLERY_W_M, GALLERY_H_M)
     _absorb(V, T, G, lv, lt, lg)
 
-    cv, ct, cg = ceiling_lamps(GALLERY_LEN_M, GALLERY_W_M, GALLERY_H_M)
+    cv, ct, cg = ceiling_lamps(ln, GALLERY_W_M, GALLERY_H_M)
     _absorb(V, T, G, cv, ct, cg)
 
-    gv, gt, gg = deck_grating(GALLERY_LEN_M, GALLERY_W_M)
+    gv, gt, gg = deck_grating(ln, GALLERY_W_M)
     _absorb(V, T, G, gv, gt, gg)
 
     # The ring fitting on the end wall.
     _torus_ring(V, T, G, "alien_ring", 0.0, GALLERY_H_M * 0.55,
-                GALLERY_LEN_M - 0.05, RING_R_M, RING_SECTION_M)
+                ln - 0.05, RING_R_M, RING_SECTION_M)
 
     # Quarters open off the LEFT wall, each behind a two-door lock.
     depth = lock_depth_m()
-    for q in range(QUARTERS_PER_GALLERY):
-        z = 3.5 + q * (GALLERY_LEN_M - 7.0) / max(QUARTERS_PER_GALLERY - 1, 1)
+    for q in range(n_locks):
+        z = 3.5 + q * (ln - 7.0) / max(n_locks - 1, 1)
+        # WHAT A RENTED ATMOSPHERE LOCK VARIES, seeded from (place, index) with
+        # no `random` so two builds are byte-identical. See the docstring.
+        hsh = int(hashlib.blake2b(f"{key}/{q}".encode(),
+                                  digest_size=8).hexdigest(), 16)
+        let = bool(hsh & 1)                    # is the quarter behind it let
+        stripped = (hsh >> 1) % 5 == 0         # dispenser gone
+        reveal = BAR_INSET_M * (1.0 + 0.5 * ((hsh >> 3) % 3))
 
         pv, pt, pg, (w, h) = portal()
         # The portal is authored with x across the aperture, y up and z into
@@ -515,23 +546,30 @@ def gallery(schema, profile):
         # screen. It now clears the full portal depth.
         bv, bt, bg = barred_screen(w, h)
         _absorb(V, T, G,
-                _to_wall(bv, hw + depth + PORTAL_DEPTH_M, z), bt, bg)
+                _to_wall(bv, hw + depth + PORTAL_DEPTH_M
+                         + (reveal - BAR_INSET_M), z), bt, bg)
 
-        # breather-mask dispenser beside the outer door
-        _box(V, T, G, "alien_mask_dispenser",
-             (-hw, 0.95, z + w / 2 + PORTAL_JAMB_M + 0.15),
-             (-hw + DISPENSER_D_M, 0.95 + DISPENSER_H_M,
-              z + w / 2 + PORTAL_JAMB_M + 0.15 + DISPENSER_W_M))
+        # breather-mask dispenser beside the outer door -- unless this lock's
+        # has been stripped, which is what Downbelow does to a fitting nobody
+        # is watching.
+        if not stripped:
+            _box(V, T, G, "alien_mask_dispenser",
+                 (-hw, 0.95, z + w / 2 + PORTAL_JAMB_M + 0.15),
+                 (-hw + DISPENSER_D_M, 0.95 + DISPENSER_H_M,
+                  z + w / 2 + PORTAL_JAMB_M + 0.15 + DISPENSER_W_M))
 
         # The quarter shell behind the screen. Closed, so the grille reads as
         # containment rather than as a hole.
-        x_scr = -hw - depth - PORTAL_DEPTH_M - BAR_INSET_M - BAR_H_M
+        x_scr = -hw - depth - PORTAL_DEPTH_M - reveal - BAR_H_M
         _box(V, T, G, "alien_quarter_shell",
              (x_scr - QUARTER_DEPTH_M, -0.18, z - w / 2 - PORTAL_JAMB_M),
              (x_scr, GALLERY_H_M, z + w / 2 + PORTAL_JAMB_M))
 
-        # green status lamp per lock
-        _box(V, T, G, "alien_status_lamp",
+        # Status lamp per lock -- LIT if the quarter is let, dark if it is
+        # empty. Two group names rather than two colours, because the material
+        # is what says whether a lamp is on and `materials.py` binds by name.
+        _box(V, T, G,
+             "alien_status_lamp" if let else "alien_status_lamp_dark",
              (-hw, h + 0.12, z - GREEN_LAMP_R_M),
              (-hw + 0.06, h + 0.12 + 2 * GREEN_LAMP_R_M, z + GREEN_LAMP_R_M))
 

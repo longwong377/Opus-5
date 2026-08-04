@@ -4229,6 +4229,28 @@ def _build():
                      "geometry this module does not yet emit separately."))
 
     a(Material(
+        "alien_status_lamp_dark", "Airlock Status Lamp -- UNLIT, a vacant lock",
+        albedo=(0.075, 0.082, 0.075), roughness=0.34, metallic=0.0,
+        specular=0.28,
+        emission=(0.0, 0.0, 0.0), emission_energy=0.0,
+        binds=("alien_status_lamp_dark",), scenes=("interior",),
+        source="Same fitting as alien_status_lamp with no power behind it. "
+               "The gallery grew from four locks to sixteen in session 4l and "
+               "a lock is let or it is not -- alien_sector.gallery seeds that "
+               "from (place, index). A dark lamp is the SAME BOX under a "
+               "different material, because whether a lamp is on is a material "
+               "property and not a shape, which is the same reading "
+               "export_scene.ROOM_EXPOSURE records for emission: 'room_exposure "
+               "scales fittings and ambient while emission_energy is a "
+               "material property neither touches'.",
+        extrapolated="The unlit albedo. Nothing in the show establishes a dead "
+                     "status lamp in the alien sector; it is the lit lamp's "
+                     "own albedo with the green cast taken out and the "
+                     "roughness raised, which is what an unpowered diffuser "
+                     "looks like. Overturned by any frame showing the fitting "
+                     "dark."))
+
+    a(Material(
         "alien_status_lamp", "Airlock Status Lamp -- green, one per lock",
         albedo=(0.085, 0.095, 0.085), roughness=0.28, metallic=0.0,
         specular=0.30,

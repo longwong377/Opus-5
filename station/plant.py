@@ -53,6 +53,7 @@ constrained BY is real and is stated per constant: the deck stack they must fit
 inside, the gravity they carry, the reserve volume they must hold, and the
 triangle budget they must come in under.
 """
+import hashlib
 import math
 import os
 import sys
@@ -395,8 +396,23 @@ def bay_for_deck(schema, profile, place):
     return bays(schema, profile, place.get("sector"))[0]
 
 
-def room_cell(schema, profile, place):
+def room_cell(schema, profile, place, span_m=None):
     """A plant bay the size of the ROOM the register addresses. INV-231.
+
+    `span_m` IS THE CELL'S AXIAL LENGTH AND IT IS WHAT MAKES THE FOOTPRINT REAL.
+    Defaults to the one representative bay this used to clamp to, so a caller
+    that does not know about `bespoke.AXIAL` gets exactly the old geometry. The
+    four addressed plant places declare 442, 442, 300 and 200 m of axis and were
+    building 13.8, 11.6, 11.1 and 10.0 m of it -- `bespoke.axial_units` prices
+    the growth against `budget.py` and hands the answer here.
+
+    NOTHING BELOW CHANGES TO SUIT IT. The tank count along the axis, the
+    catwalk's width, the frame positions and the walkway centre are already
+    expressions in `z0`/`z1`; a longer cell lays more tankage inside ONE
+    continuous cell rather than repeating a cell, which is why this is a "grow"
+    module and not a tiled one. The block below on `fits` says so in advance:
+    *"widen a place's footprint or raise `bay_span_m` and a room that can hold a
+    tank gets one, here, without anything else changing"* -- and it does.
 
     THE PLACEMENT DECISION `bespoke.NEAR_END_UNKNOWN` ASKED FOR, and it turns
     out not to be a near-end question at all. That entry says plant "needs a
@@ -435,7 +451,7 @@ def room_cell(schema, profile, place):
     w_full, l_full, _r = _R.room_extent_m(schema, profile, place)
     bw, bl = _R.bay_span_m(place)
     half_w = min(w_full, bw) / 2.0
-    half_l = min(l_full, bl) / 2.0
+    half_l = (min(l_full, bl) if span_m is None else float(span_m)) / 2.0
 
     # THE WALKWAY IS THE ADDRESSED DECK'S OWN FLOOR. Every one of the five
     # plant places is addressed to the OUTERMOST deck of its bay -- plant_zone
@@ -556,13 +572,17 @@ def room_cell(schema, profile, place):
                      # ...and the rail and the service tubes go on the FAR side
                      # only: the near side is the wall the corridor's door is
                      # in, and a tube stands TUBE_PROUD_M past the rail line.
-                     walk_sides=(-1,))
+                     walk_sides=(-1,),
+                     # THE FARM IS GRADED, and only here: `seed` is None for
+                     # the exterior and for every streaming cell, so their
+                     # geometry is untouched. See the block at the tank loop.
+                     seed=place["key"])
 
 
 def plant_bay(schema, profile, bay, arc_deg, start_deg=0.0, z_span=None,
               sector=None, walk_z=None, walk_w=None, walk_r=None,
               walk_sides=(-1, 1), farm_at=None, farm_tanks=None,
-              frame_at=None):
+              frame_at=None, seed=None):
     """One bay of plant over an arc: frames, tankage, catwalk and pipe runs.
 
     THE FOUR `walk_*` ARGUMENTS ARE THE PLACEMENT DECISION, and they exist
@@ -702,9 +722,33 @@ def plant_bay(schema, profile, bay, arc_deg, start_deg=0.0, z_span=None,
                         zc = fz + (j - (n_z - 1) / 2.0) * step
                         if not (z0 + TANK_R_M <= zc <= z1 - TANK_R_M):
                             continue
+                        # NO TWO TANKS IN A FARM ARE THE SAME TANK. A plant
+                        # cell grown to its declared 442 m (INV-296) lays the
+                        # farm along the whole of it, and one tank repeated
+                        # forty times at a fixed pitch is wallpaper -- the
+                        # failure `rooms.bay_signatures` and `deck.py
+                        # --degeneracy` both exist to catch. A real farm is
+                        # graded: the vessels are not one size, because they
+                        # hold different things at different pressures.
+                        #
+                        # Seeded from (seed, angle index, z index) with no
+                        # `random`, so two builds are byte-identical, and
+                        # OFF BY DEFAULT -- `seed=None` is what the exterior
+                        # and every streaming cell pass, and their geometry is
+                        # unchanged. +/-14% on height and +/-6% on the seat
+                        # radius, which is a visible grading at 18 m and stays
+                        # inside the `tanks_in_bay` fit test that decided
+                        # there is a tank here at all.
+                        th, rb = t_height, r_base
+                        if seed is not None:
+                            h_ = int(hashlib.blake2b(
+                                f"{seed}/{i}/{j}/{fz:.1f}".encode(),
+                                digest_size=8).hexdigest(), 16)
+                            th = t_height * (0.86 + (h_ % 29) / 29.0 * 0.28)
+                            rb = r_base - (h_ >> 5) % 7 * 0.06 * TANK_R_M
                         local, lt, lg = [], [], []
-                        _tank_radial(local, lt, lg, zc, r_base,
-                                     r_base - t_height)
+                        _tank_radial(local, lt, lg, zc, rb,
+                                     rb - th)
                         _absorb(verts, tris, groups, _place(local, a), lt, lg,
                                 flip=True)
 

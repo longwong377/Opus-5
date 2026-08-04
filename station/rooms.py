@@ -2001,32 +2001,45 @@ def tiling(schema, profile, place):
             "want_l": n_want * bay_l, "cap": 0, "capped": False,
             "shell_tris": 0, "fixed_tris": 0, "dress_tris": 0, "pop_tris": 0}
 
-    # A COMPOSED PLACE IS ITS MODULE'S OWN SIZE AND TILING IT WOULD MOVE IT,
-    # NOT GROW IT. `bespoke.room_shell` TRANSLATES a module's geometry so its
-    # near face lands on the plane the assembler expects -- it does not scale
-    # anything, and `docking_bay` already runs the full 140 m in its own frame.
-    # So for the 26 places in `bespoke.NEAR_END` the depth `deck.py` asks for is
-    # a DOOR PLANE, and answering it with a tiled length would slide the room a
-    # hundred metres down the axis. Their footprint coverage is their own
-    # module's problem and several already have it. `rooms.build` is only ever
-    # their fallback stand-in, and a fallback that is a different size from the
-    # thing it stands in for is the divergence `deck.room_geometry` exists to
-    # close. Asked of `bespoke` rather than listed here, so the two cannot drift.
+    # A COMPOSED PLACE IS ITS MODULE'S OWN SIZE, AND THE MODULE IS ASKED WHAT
+    # THAT IS. This branch used to answer `n=1, built_l=bay_l` for every place
+    # whose module is in `bespoke.NEAR_END`, on the true observation that
+    # `room_shell` TRANSLATES rather than scales -- so tiling one here would
+    # slide the room down the axis instead of growing it. That is an argument
+    # for growing the MODULE, which `bespoke.AXIAL` now does, and this branch
+    # asks `bespoke.axial_plan` for the answer instead of assuming one. The
+    # module's own mesh is measured, so `built_span_m` -- and therefore
+    # `deck.room_interior_half_m`, the collision shell and the ring corridor's
+    # position -- describes the room that is actually drawn.
+    #
+    # AND IT ASKS `composable()`, NOT `module in NEAR_END`. That is the question
+    # `bespoke.composable` exists to replace and its docstring says so: a module
+    # can own places it has no program for. Seven places -- `components`' six
+    # exterior structures and `interior_kit`'s `standard_corridor` -- are built
+    # by `rooms.build` like any other generic room and were being pinned to one
+    # bay by this test, 1,024 m of them, invisible to the gate below because it
+    # excused every row it thought was composed.
     #
     # NOT WRAPPED IN A `try`, deliberately. Swallowing an import error here
     # would answer "no module composes this place" for all 128 and silently
-    # tile the 26 that a module owns -- sliding each of them down the axis
+    # tile the 30 that a module builds -- sliding each of them down the axis
     # instead of growing it, with nothing in any output to say so. A tool that
     # degrades quietly is worse than one that fails.
     import bespoke as _BSP                                      # noqa: PLC0415
-    composed = place.get("module") in _BSP.NEAR_END
+    composed = _BSP.composable(place)
 
-    if n_want <= 1 or composed:
+    if composed:
+        plan.update(_BSP.axial_plan(schema, profile, place))
+        plan.update(n_dress=1, n_pop=1, tris=0)
+        _TILING[key] = plan
+        return plan
+
+    if n_want <= 1:
         # A place whose footprint is one bay of its own contents. Five of those
         # were already at full footprint before this section existed and
         # `docs/spec/PLACES.md` names them.
         plan.update(n=1, n_dress=1, n_pop=1, built_l=bay_l, tris=0,
-                    composed=composed)
+                    composed=False)
         _TILING[key] = plan
         return plan
 
@@ -2951,6 +2964,19 @@ def build(schema, profile, place, max_span_m=None, door_at=None,
     if _tiles is None:
         _plan = tiling(schema, profile, place)
         n_bay, n_dress, n_pop = (_plan["n"], _plan["n_dress"], _plan["n_pop"])
+        # A COMPOSED PLACE'S `n` COUNTS THE MODULE'S OWN UNITS, NOT THESE BAYS.
+        # `bespoke.axial_quantum_m` is a row of quarters or a rib bay or a
+        # market bay, and only for `plant` does it coincide with `bay_span_m`.
+        # This is the FALLBACK path -- what `deck.room_geometry` draws when a
+        # composed room raises or comes back walled -- and a fallback that is a
+        # different size from the thing it stands in for is precisely the
+        # divergence `deck.room_geometry` exists to close. So it is re-divided
+        # to land on the composed room's own length exactly.
+        if _plan.get("composed") and _plan.get("built_l"):
+            n_bay = max(1, int(round(_plan["built_l"] / max(bay_l, 1e-9))))
+            bay_l = _plan["built_l"] / n_bay
+            n_dress = max(1, min(n_bay, n_dress))
+            n_pop = max(1, min(n_dress, n_pop))
     else:
         n_bay, n_dress, n_pop = _tiles
     # THE ONE CLAMP THAT KEPT 128 LOCATIONS AT A BAY APIECE. Everything below
@@ -3600,18 +3626,49 @@ def footprint_ledger(schema, profile, places=None, legacy=False):
     content it was written for is measuring the wrong thing, which is the defect
     that cost this repository three layers of work.
     """
+    import bespoke as _BSP                                      # noqa: PLC0415
     import deck as _D                                           # noqa: PLC0415
     if places is None:
         places = [p for p in dr.PLACES]
     rows = []
+    was, _BSP.LEGACY_AXIAL = _BSP.LEGACY_AXIAL, bool(legacy)
+    if was != _BSP.LEGACY_AXIAL:
+        _BSP.reset_axial_memos()
+        _TILING.clear()
+    try:
+        rows = _ledger_rows(schema, profile, places, legacy, _BSP, _D)
+    finally:
+        if was != _BSP.LEGACY_AXIAL:
+            _BSP.LEGACY_AXIAL = was
+            _BSP.reset_axial_memos()
+            _TILING.clear()
+    return rows
+
+
+def _ledger_rows(schema, profile, places, legacy, _BSP, _D):
+    """`footprint_ledger`'s loop, with the legacy switch already set."""
+    rows = []
     for p in places:
         plan = tiling(schema, profile, p)
-        v, t, g = build(schema, profile, p,
-                        _tiles=(1, 1, 1) if legacy else None)
-        zs = [q[2] for q in v]
-        # The shell's deck, soffit and side walls run to the OUTER extent, so
-        # the mesh is the interior length plus a wall thickness at each end.
-        built_m = (max(zs) - min(zs)) - 2 * WALL_T_M
+        composed = bool(plan.get("composed"))
+        # A COMPOSED PLACE IS MEASURED ON THE MESH THAT IS ACTUALLY DRAWN.
+        # `deck.room_geometry` is the function that decides which of the two
+        # builds a place gets, so asking it is the only way to get a number
+        # about the shipped room -- and building the generic fallback as well
+        # would be two full builds of every composed place for a number nothing
+        # reads. That was costing this 23-minute gate a third of its time.
+        if composed:
+            v, t, g, used = _D.room_geometry(schema, profile, p)
+            zs = [q[2] for q in v]
+            built_m = max(zs) - min(zs)
+        else:
+            v, t, g = build(schema, profile, p,
+                            _tiles=(1, 1, 1) if legacy else None)
+            used = "generic"
+            zs = [q[2] for q in v]
+            # The shell's deck, soffit and side walls run to the OUTER extent,
+            # so the mesh is the interior length plus a wall at each end.
+            built_m = (max(zs) - min(zs)) - 2 * WALL_T_M
         sigs = bay_signatures(v, t, plan) if plan["n"] > 1 and not legacy else []
         row = {
             "key": p["key"], "want_m": plan["want_l"],
@@ -3620,21 +3677,30 @@ def footprint_ledger(schema, profile, places=None, legacy=False):
             "n_dress": plan["n_dress"], "n_pop": plan["n_pop"],
             "capped": plan["capped"], "tris": len(t),
             "est": plan["tris"], "cap": plan["cap"],
-            "twins": len(sigs) - len(set(sigs)),
-            "composed": bool(plan.get("composed")), "module_m": None,
+            # EMPTY SLICES ARE NOT TWINS. A generic tiled place instances a
+            # whole bay, so every bay holds triangles and every signature is
+            # meaningful. A composed GROW place is not instanced -- `plant` is
+            # one continuous cell 442 m long, and a single 442 m box
+            # contributes twelve triangles whose centroids land in two of the
+            # thirty-two slices. Thirty empty slices hashing to zero is not
+            # thirty copies of one room, it is a long object, and counting it
+            # as wallpaper would be the gate failing on the shape of its own
+            # arithmetic -- the same class of mistake as `roomnav.Grid.snap`'s
+            # "every failure at exactly z_half - 0.1", which was an identity of
+            # the gate rather than a fact about the station.
+            "twins": (len([x for x in sigs if x != f"{0:016x}"])
+                      - len({x for x in sigs if x != f"{0:016x}"})),
+            "composed": composed,
+            "module_m": built_m if composed else None,
+            "used": used,
+            # WHY A COMPOSED PLACE IS SHORTER THAN ITS FOOTPRINT, IN ITS OWN
+            # WORDS. This is what lets the gate below tell "built to its
+            # footprint" apart from "legitimately smaller than its footprint,
+            # and here is the reason" -- the distinction that stops a "one"
+            # mode being a way to duck the assertion.
+            "mode": plan.get("mode"), "why": plan.get("why") or "",
+            "band_m": plan.get("band_l"),
         }
-        # A PLACE THIS MODULE DOES NOT BUILD IS MEASURED ON THE MESH THAT IS
-        # ACTUALLY DRAWN, not excused. `deck.room_geometry` is the function that
-        # decides which of the two builds a place gets, so asking it is the only
-        # way to get a number that is about the shipped room -- and it keeps the
-        # 26 composed places IN the ledger with their own coverage printed
-        # instead of quietly absent. An exemption list nobody can see is how a
-        # coverage figure becomes a lie; this one is 26 rows of metres.
-        if row["composed"] and not legacy:
-            bv, _bt, _bg, used = _D.room_geometry(schema, profile, p)
-            bz = [q[2] for q in bv]
-            row["module_m"] = max(bz) - min(bz)
-            row["used"] = used
         rows.append(row)
     return rows
 
@@ -3655,12 +3721,25 @@ def spans_footprint(schema, profile, legacy=False, verbose=False):
        triangle cost, and that is a number, not a decision.
     3. NO TWO BAYS OF ONE PLACE ARE THE SAME BAY. `bay_signatures`, above.
 
-    ASSERTED OVER THE PLACES THIS MODULE BUILDS, MEASURED OVER ALL 128. The 26
-    that `bespoke.compose` owns get their own line: this file cannot make
-    `zocalo` reach 120 m and asserting that it does would be a gate demanding a
-    fix it does not own. Their coverage is PRINTED from the mesh
-    `deck.room_geometry` actually draws, so it is visible on every run and
-    cannot rot into a silent exemption.
+    ASSERTED OVER ALL 128 NOW, AND IT USED TO BE ASSERTED OVER 91. The composed
+    places were measured and printed and not asserted, on the reasoning that
+    *"this file cannot make `zocalo` reach 120 m and asserting that it does
+    would be a gate demanding a fix it does not own"*. That was true while
+    `bespoke` had no answer to the question; `bespoke.AXIAL` is that answer, so
+    the exemption goes and all three properties above apply to a composed row:
+
+      1. its mesh is what `bespoke.axial_span_m` says it is, to a centimetre --
+         and that number is now what `deck.room_interior_half_m` sizes the
+         collision shell from, so property 1 on a composed row is the assertion
+         that a player cannot see geometry outside the room they can walk in;
+      2. it is built to its footprint UNLESS it is one of two stated things --
+         over the frame allowance (`capped`, with the triangle arithmetic), or a
+         place whose true form is ONE ROOM (`mode == "one"`, with the sentence
+         from `bespoke.AXIAL` saying which room and why). Anything else fails.
+         **The "one" mode cannot be used to duck this**: a module declared
+         `grow` that comes back short with no cap fails exactly as a generic
+         place does;
+      3. no two units of a grown place are the same unit.
 
     Prints the station's built length against its declared length, because that
     is the figure the owner's complaint is actually about and no other gate in
@@ -3670,8 +3749,15 @@ def spans_footprint(schema, profile, legacy=False, verbose=False):
     mine = [r for r in rows if not r["composed"]]
     theirs = [r for r in rows if r["composed"]]
     bad_plan = [r for r in rows if abs(r["built_m"] - r["plan_m"]) > 0.01]
-    short = [r for r in mine if r["plan_m"] < r["want_m"] - 0.01
-             and not r["capped"]]
+    # THE THREE REASONS A ROW MAY BE SHORT, AND THERE IS NO FOURTH. Over the
+    # budget, or a place whose true form is one room and says so; everything
+    # else is a failure. `one_room` is counted and printed rather than filtered
+    # out, so it can never become an exemption list nobody reads.
+    one_room = [r for r in theirs if r["mode"] == "one"
+                and r["plan_m"] < r["want_m"] - 0.01]
+    excused = {id(r) for r in one_room}
+    short = [r for r in rows if r["plan_m"] < r["want_m"] - 0.01
+             and not r["capped"] and id(r) not in excused]
     twins = [r for r in rows if r["twins"]]
     want = sum(r["want_m"] for r in mine)
     built = sum(r["built_m"] for r in mine)
@@ -3685,12 +3771,30 @@ def spans_footprint(schema, profile, legacy=False, verbose=False):
     if theirs:
         tw = sum(r["want_m"] for r in theirs)
         tb = sum((r["module_m"] or r["built_m"]) for r in theirs)
+        tcap = [r for r in theirs if r["capped"]]
         print(f"  {len(theirs)} places built by a bespoke module   "
               f"{tb:,.0f} m of {tw:,.0f} m declared "
               f"({100.0 * tb / max(tw, 1e-9):.1f}%)   "
-              f"NOT asserted here -- rooms.py does not build them")
+              f"{len(theirs) - len(tcap) - len(one_room)} at full footprint, "
+              f"{len(tcap)} capped by budget.py, "
+              f"{len(one_room)} whose true form is ONE ROOM")
+        for r in sorted(one_room, key=lambda r: r["want_m"] - r["plan_m"],
+                        reverse=True):
+            print(f"     one room {r['key']:<21} {r['built_m']:>7.1f} m of "
+                  f"{r['want_m']:>7.1f} m  -- {r['why'][:96]}")
+        for r in sorted(tcap, key=lambda r: r["want_m"] - r["plan_m"],
+                        reverse=True):
+            print(f"     capped   {r['key']:<21} {r['built_m']:>7.1f} m of "
+                  f"{r['want_m']:>7.1f} m  -- {r['why'][:96]}")
+    # PER BUILT METRE OVER EVERY METRE THAT IS BUILT. This used to divide the
+    # whole station's triangles by only the metres `rooms.py` builds, which was
+    # right while the composed places were unasserted and is not now that they
+    # are: 2,833 m of built room was in the numerator and not in the
+    # denominator, which reads as a third worse than the truth.
+    built_all = built + sum((r["module_m"] or r["built_m"]) for r in theirs)
     print(f"  {tris:,d} triangles over the {len(rows)}, "
-          f"{tris / max(built, 1e-9):,.0f} per built metre; "
+          f"{tris / max(built_all, 1e-9):,.0f} per built metre "
+          f"over {built_all:,.0f} m; "
           f"worst place {max(r['tris'] for r in rows):,d} against a "
           f"{max(r['cap'] for r in rows):,d} frame allowance")
     # AND WHERE THE ESTIMATE WAS WRONG, PRINTED RATHER THAN LEFT TO BE NOTICED.
@@ -3735,15 +3839,19 @@ def spans_footprint(schema, profile, legacy=False, verbose=False):
     if short:
         ok = False
         print(f"FAIL  {len(short)} places are short of their footprint with no "
-              f"budget cap to account for it: "
+              f"budget cap and no one-room declaration to account for it: "
               f"{[r['key'] for r in short][:8]}")
+        for r in short[:6]:
+            print(f"        {r['key']:<22} built {r['plan_m']:.2f} m of "
+                  f"{r['want_m']:.2f} m  mode={r['mode']}  {r['why'][:60]}")
     if twins:
         ok = False
         print(f"FAIL  {len(twins)} places contain two byte-identical bays: "
               f"{[(r['key'], r['twins']) for r in twins][:8]}")
     if ok:
         print("PASS  every location's geometry spans its own footprint, or is "
-              "capped by a stated triangle budget, and no bay is a copy")
+              "capped by a stated triangle budget, or is one room and says so; "
+              "and no bay is a copy")
     return ok
 
 
