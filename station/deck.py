@@ -712,7 +712,8 @@ def room_shell_for(schema, profile, meta, place, door_angle_deg):
 CORRIDOR_INSTANCED = True
 
 
-def cell_partition(verts, tris, sector, ring, deck, schema=None, profile=None):
+def cell_partition(verts, tris, sector, ring, deck, schema=None, profile=None,
+                   groups=None, whole=None):
     """Which streaming cell each triangle of an ASSEMBLED deck falls in.
 
     Returns `(cells, meta)` where `cells[i]` is the list of triangle indices in
@@ -732,10 +733,23 @@ def cell_partition(verts, tris, sector, ring, deck, schema=None, profile=None):
     kit-versus-assembled gap that caught `frustum structure` at 2.05x, and it
     is worth knowing BEFORE a loader is written against the model.
 
-    A triangle is assigned by its centroid's angle about the spin axis, which
-    is +Z. A triangle spanning a cell boundary lands in one of the two; over a
-    deck of 657,880 triangles at 20 degrees a cell, that boundary population is
-    a rounding error against the counts this is for.
+    WHOLE GROUPS, NOT WHOLE TRIANGLES, when `groups` is given -- and that is
+    not tidiness, it is the difference between a working door and half of one.
+    Assigning per triangle cut **5 of this deck's 12 door leaves and 54 of its
+    288 actor groups** across a boundary: a door whose second leaf is in the
+    cell behind you, a person whose legs load and whose torso does not.
+    `docking_bays__npc_standing_0` straddled cells 0 and 17, which is the
+    0/360 wrap. None of it would have raised anything -- `door.gd` would have
+    found one leaf and opened it, `npc.gd` a partial body -- so the fix is here,
+    where the cut is made, rather than in three GDScript modules downstream.
+
+    A group goes to the cell containing its own spatial centroid, taken in XY
+    and then turned into an angle, so the wrap is handled by construction: a
+    group with triangles at 359 and 1 degrees has a centroid near 0, where an
+    average of the two angles would say 180.
+
+    Without `groups` it assigns per triangle, which is what `budget.py` measures
+    with and what the whole-group mode is checked against.
     """
     import interior as _it                                        # noqa: PLC0415
     if schema is None:
@@ -743,15 +757,76 @@ def cell_partition(verts, tris, sector, ring, deck, schema=None, profile=None):
     plan = _it.ring_cells(schema, profile, sector, ring, deck)
     n, step = int(plan["cells"]), float(plan["cell_deg"])
     out = [[] for _ in range(n)]
-    for i, (a, b, c) in enumerate(tris):
+
+    def centroid(i):
+        a, b, c = tris[i]
         va, vb, vc = verts[a], verts[b], verts[c]
-        cx = (va[0] + vb[0] + vc[0]) / 3.0
-        cy = (va[1] + vb[1] + vc[1]) / 3.0
-        deg = math.degrees(math.atan2(cy, cx)) % 360.0
-        out[min(n - 1, int(deg / step))].append(i)
+        return ((va[0] + vb[0] + vc[0]) / 3.0, (va[1] + vb[1] + vc[1]) / 3.0)
+
+    def cell_of(x, y):
+        return min(n - 1, int((math.degrees(math.atan2(y, x)) % 360.0) / step))
+
+    if groups is None or not whole:
+        for i in range(len(tris)):
+            x, y = centroid(i)
+            out[cell_of(x, y)].append(i)
+        return out, {"cells": n, "cell_deg": step,
+                     "cell_length_m": plan["cell_length_m"],
+                     "radius_m": plan["radius_m"], "by": "triangle"}
+
+    # THE FINEST SPAN WINS, which is the rule `write_obj` already uses when it
+    # decides which `g` line a triangle is written under: spans nest, and the
+    # parts are emitted after the whole. Partitioning on a different rule than
+    # the one the OBJ is written with would put a triangle in one cell and its
+    # name in another.
+    owner = [None] * len(tris)
+    for name, lo, hi in groups:
+        for i in range(lo, hi):
+            owner[i] = name
+    # THE UNIT IS THE WIRED OBJECT, NOT THE SPAN, and getting that wrong twice
+    # is what this comment is for. Keeping every *span* whole put the corridor's
+    # continuous runs -- `deck_panel`, `wall_assembly` -- entirely into one cell
+    # and took the worst cell from 63,304 triangles to **418,728**, which is not
+    # a partition at all. And it still split four people, because a person's
+    # skin and their cloth are different spans: keeping each whole keeps neither
+    # of them with the other.
+    #
+    # So structure is cut per triangle, where a seam costs nothing because
+    # nothing looks it up by name, and only what `walk.gd` WIRES is held
+    # together: a door's leaves, a person's parts, a prop's parts. `groups` is
+    # the span list and `whole` the prefixes that name those objects -- supplied
+    # by `walkable.py`, which is the module that knows what it wires.
+    def key_of(name):
+        if name is None:
+            return None
+        best = None
+        for p in (whole or ()):
+            if (name == p or name.startswith(p + "_")) and (
+                    best is None or len(p) > len(best)):
+                best = p
+        return best
+
+    members = {}
+    for i, name in enumerate(owner):
+        members.setdefault(key_of(name), []).append(i)
+    for name, idxs in members.items():
+        if name is None:
+            for i in idxs:
+                x, y = centroid(i)
+                out[cell_of(x, y)].append(i)
+            continue
+        sx = sy = 0.0
+        for i in idxs:
+            x, y = centroid(i)
+            sx += x
+            sy += y
+        ci = cell_of(sx / len(idxs), sy / len(idxs))
+        out[ci].extend(idxs)
+    for c in out:
+        c.sort()
     return out, {"cells": n, "cell_deg": step,
                  "cell_length_m": plan["cell_length_m"],
-                 "radius_m": plan["radius_m"]}
+                 "radius_m": plan["radius_m"], "by": "group"}
 
 
 def submesh(verts, tris, groups, idxs):
@@ -1268,6 +1343,67 @@ def _selftest():
           len(cv) < len(v) / 2,
           f"{len(cv):,} verts for {len(ct):,} tris against the deck's "
           f"{len(v):,}")
+
+    # -- A WIRED OBJECT IS NEVER CUT IN HALF -------------------------------
+    # `walk.gd` finds doors, people and props BY NAME. An object whose parts
+    # land in two cells is a door with one leaf, a body with no legs, a prop
+    # half of which you can press -- and none of it raises anything, because
+    # each half is perfectly good geometry. Per triangle it happened to 5 of
+    # this deck's 12 door leaves and 54 of its 288 actor spans.
+    # THE DOOR, NOT THE LEAF. `door.gd` groups `doorleaf_<key>_<i>` by `<key>`
+    # and opens the set together, so a partition that keeps each leaf whole can
+    # still put leaf 0 in cell 0 and leaf 1 in cell 17. Measured on this deck
+    # before the unit was corrected: 8 of 12 wired objects landed in two cells
+    # while every individual leaf was intact.
+    leaves = sorted({n.rsplit("_", 1)[0] for n, _l, _h in g
+                     if n.startswith("doorleaf_") and "_" in n[9:]})
+    acts = sorted({a["group"] for a in s.get("actors", ()) if a.get("group")})
+    keep = leaves + acts
+    check("the deck has doors and people to keep whole", len(keep) > 4,
+          f"{len(leaves)} leaves, {len(acts)} actors")
+
+    def split_count(gg, ww):
+        cm, _mt = cell_partition(v, t, "blue", 0, 0, schema, profile,
+                                 groups=gg, whole=ww)
+        at = {}
+        for ci, idxs in enumerate(cm):
+            for i in idxs:
+                at[i] = ci
+        own = [None] * len(t)
+        for nm, lo2, hi2 in g:
+            for i in range(lo2, hi2):
+                own[i] = nm
+        seen2 = {}
+        for i, nm in enumerate(own):
+            best = None
+            for p in keep:
+                if nm is not None and (nm == p or nm.startswith(p + "_")) \
+                        and (best is None or len(p) > len(best)):
+                    best = p
+            if best:
+                seen2.setdefault(best, set()).add(at[i])
+        return sum(1 for cs in seen2.values() if len(cs) > 1), len(seen2)
+
+    bad, total = split_count(g, keep)
+    check("no wired object is cut across cells", bad == 0,
+          f"{bad} of {total} split")
+    # THE CONTROL, and it has to fire or the check above is passing for some
+    # other reason: the same deck cut per triangle DOES split them.
+    ctl, _n2 = split_count(None, None)
+    check("control: cutting per triangle splits them", ctl > 0,
+          f"per-triangle split {ctl} of {total} -- if this is 0 the check "
+          f"above proves nothing")
+    # AND THE DISTRIBUTION SURVIVES. Keeping every SPAN whole -- rather than
+    # only what is wired -- put the corridor's continuous runs into single
+    # cells and took the worst from 63,304 triangles to 418,728. Structure is
+    # cut per triangle for exactly this reason.
+    cm2, _m2 = cell_partition(v, t, "blue", 0, 0, schema, profile,
+                              groups=g, whole=keep)
+    per = [len(c) for c in cm2]
+    base = [len(c) for c in cellmap]
+    check("...without collapsing the cell distribution",
+          max(per) <= max(base) * 1.10,
+          f"worst cell {max(per):,} against {max(base):,} cut per triangle")
     check("it has corridor AND rooms in one mesh",
           s["corridor_tris"] > 0 and s["room_tris"] > 0, str(s)[:120])
     # EVERY GROUP POINTS AT REAL TRIANGLES. Not "the spans sum to the triangle

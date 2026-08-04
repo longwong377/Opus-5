@@ -1,6 +1,82 @@
 # Project State
 
-**Last updated:** 2026-08-02 · **Session 4n** — **the deck cuts into loadable cells, and the loader's real obstacle is named** · **4m** — **the streaming cell budget met a real deck, and the design survives** · **4l** — **the resident-triangle gate was about the deck; the build also loads 321,664 triangles of people** · **4k** — **every walker on the station was bald, for 188 triangles** · **4j** — **the 21 exposure frames describe the code again, and the verdict did not move** · **4i** — **every curved surface in the project was flat-shaded, and the crease angle is measured off the station** · **4h** — **IT IS PLAYABLE: press Play and you are standing in Blue Sector** · **4g** — **the Babcom terminal is a built device, and it shipped a logged mistake once before the log caught it** · **4f** — a per-token verb override · **4e** — **the naming-mismatch class is CLOSED: built-but-misnamed 26 → 0, resolving 302/357** · **4d** — **the bespoke rooms' interactables were never unbuilt, they were unnamed: 259/357 → 284/357** · **4c** — **the station is INTERACTABLE, the port is on a wall, and the 24-minute suites were one bad cache key** · **4b** — a police force, friction in metres, the plated shell, the fitting-reach fix
+**Last updated:** 2026-08-02 · **Session 4o** — **a cell boundary was cutting doors and people in half** · **4n** — **the deck cuts into loadable cells, and the loader's real obstacle is named** · **4m** — **the streaming cell budget met a real deck, and the design survives** · **4l** — **the resident-triangle gate was about the deck; the build also loads 321,664 triangles of people** · **4k** — **every walker on the station was bald, for 188 triangles** · **4j** — **the 21 exposure frames describe the code again, and the verdict did not move** · **4i** — **every curved surface in the project was flat-shaded, and the crease angle is measured off the station** · **4h** — **IT IS PLAYABLE: press Play and you are standing in Blue Sector** · **4g** — **the Babcom terminal is a built device, and it shipped a logged mistake once before the log caught it** · **4f** — a per-token verb override · **4e** — **the naming-mismatch class is CLOSED: built-but-misnamed 26 → 0, resolving 302/357** · **4d** — **the bespoke rooms' interactables were never unbuilt, they were unnamed: 259/357 → 284/357** · **4c** — **the station is INTERACTABLE, the port is on a wall, and the 24-minute suites were one bad cache key** · **4b** — a police force, friction in metres, the plated shell, the fitting-reach fix
+
+## Session 4o — A CELL BOUNDARY WAS CUTTING DOORS AND PEOPLE IN HALF
+
+### 1. The prerequisite turned out to be in the cut, not in the wiring
+
+4n said the loader's blocker was that `door.gd`, `npc.gd` and `interact.gd` wire by walking the
+whole scene once, and that making them additive was the work. **Reading them first showed they are
+already additive** — all three append to their arrays and none clears. The real blocker was
+somewhere else and worse.
+
+`cell_partition` assigned **per triangle**, so an object straddling a cell boundary was cut in two.
+Measured on blue/0/0:
+
+| | split across cells |
+|---|---|
+| door leaves | **5 of 12** |
+| actor spans | **54 of 288** |
+| interactable groups | 0 of 26 |
+
+`docking_bays__npc_standing_0` straddled cells 0 and 17 — the 0°/360° wrap. **None of it would have
+raised anything**, because each half is perfectly good geometry: `door.gd` would have found one
+leaf and opened it, `npc.gd` a body with no legs. The fix belongs where the cut is made, so it is
+one change in `deck.cell_partition` rather than a refactor of three GDScript modules.
+
+### 2. THE UNIT WAS WRONG TWICE, AND BOTH WRONG ANSWERS MEASURED WELL
+
+**First: keep every span whole.** It took the worst cell from 63,304 triangles to **418,728** —
+the corridor's continuous runs (`deck_panel`, `wall_assembly`) went into single cells and the
+partition stopped being one. It also still split four people, because a person's skin and their
+cloth are different spans and keeping each whole keeps neither with the other.
+
+So structure is cut per triangle — nothing looks a wall panel up by name — and only what `walk.gd`
+**wires** is held together.
+
+**Second: keep every door LEAF whole.** Every leaf was then intact and 8 of 12 wired objects still
+landed in two cells, because `door.gd` groups `doorleaf_<key>_<i>` by `<key>` and opens the set
+together. A door is its leaves. The key is everything before the last underscore — the same rule
+`door.gd` parses the name with.
+
+Final: **42 wired objects present in the cell files, 0 split**, worst cell unchanged at 63,304 and
+the sum still exactly 657,880.
+
+### 3. Gates
+
+| gate | result |
+|---|---|
+| `station/deck.py` | **50/50** (was 46/46 — four new) |
+| control: cut per triangle | fires — splits wired objects, so the check above is not passing for another reason |
+| distribution check | worst cell within 10% of the per-triangle cut, which is what catches the 418,728 mistake |
+| `walkable.py --deck blue/0/0` | **PASS**, control firing |
+
+The visual check is a cell rendered alone against magenta: a pair of door leaves parting on their
+centreline with the corridor beyond, both leaves in one cell. Before the fix one of them was in
+cell 0 and the other in cell 17.
+
+**A test of mine was wrong before the code was**, and it is worth recording which: checking whether
+a *parent span's range* lands in one cell reported 5 interactables split when none were. A parent
+span encloses siblings that last-writer-wins owns separately — `docking_bays__prop_docking_clamp`
+covers 576 triangles of which only 64 are its own, the rest belonging to `..._prop_mp_plant_frame`
+and friends. The right question is asked of the owner key, not the span.
+
+### 4. ONE GAP LEFT OPEN, STATED
+
+`interact.gd` also claims `_mp_`-infixed siblings as parts of an articulated prop, and the `whole`
+list does not name them — so a machine's frame and its own group could still land in neighbouring
+cells even though every declared interactable is whole. It did not happen on this deck (0 of 16
+split), and closing it properly means the part-matching rule living in one place rather than in
+GDScript and Python separately.
+
+### 5. NEXT
+
+- **The loader.** Its prerequisites are done: cells are lossless, wired objects are whole, and
+  collision stays resident so the floor cannot vanish. Target 147,675 triangles of bulk for three
+  cells, plus the 50,124 of actors that cannot stream until `collect()` is called per cell.
+- `interact.gd`'s `_mp_` sibling rule wants one home.
+- The near figure's silhouette is 32-gon faceted at 1 m; the affordable fix is runtime skinning.
 
 ## Session 4n — THE DECK CUTS INTO LOADABLE CELLS, AND THE LOADER'S REAL OBSTACLE IS NAMED
 

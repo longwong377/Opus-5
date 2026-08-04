@@ -501,8 +501,28 @@ def walk_deck(sector, ring, deck, godot, timeout=1800, traverse=None,
     # 872 of interactables: **50,124, 8% of the mesh**, which added to a
     # three-cell bulk window lands at about 186,547 against a 180,000 budget.
     # That is the number the next session is working against.
+    # WHAT MUST NOT BE CUT IN HALF, named by the module that wires it. A door
+    # is its leaves, a person is their parts, a prop is its group; `walk.gd`
+    # looks all three up by name, so an object split across two cells is a door
+    # with one leaf and a body with no legs. Cutting per triangle did exactly
+    # that to 5 of this deck's 12 leaves and 54 of its 288 actor spans.
+    #
+    # STRUCTURE IS STILL CUT PER TRIANGLE, deliberately: nothing looks a wall
+    # panel up by name, and keeping the corridor's continuous runs whole put
+    # 418,728 triangles into one cell -- measured, not feared.
+    # A DOOR IS ITS LEAVES, NOT ONE LEAF. `door.gd::collect` groups
+    # `doorleaf_<key>_<i>` by `<key>` and opens the set together, so keeping
+    # each LEAF whole still puts `doorleaf_docking_bays_0` in cell 0 and `_1`
+    # in cell 17 -- a door that opens halfway, and nothing would report it. The
+    # key is everything before the last underscore, which is the same rule
+    # `door.gd` uses to parse the name.
+    doors = {n.rsplit("_", 1)[0] for n, _l, _h in g
+             if n.startswith("doorleaf_") and "_" in n[9:]}
+    whole = (sorted(doors)
+             + [a["group"] for a in s.get("actors", ()) if a.get("group")]
+             + [r["group"] for r in rows if r.get("group")])
     cellmap, cmeta2 = D.cell_partition(v, t, sector, ring, deck,
-                                       schema, profile)
+                                       schema, profile, groups=g, whole=whole)
     cells = []
     for ci, idxs in enumerate(cellmap):
         if not idxs:
