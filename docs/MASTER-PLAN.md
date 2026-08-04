@@ -56,9 +56,15 @@ counts. One mechanism against each, all four in force from adoption:
 
 (unchanged from the adjudicated table — dialogue **2,139-line module, 57 distinct lines,
 38/73 close on one string, zero player utterances, 1 of 71 decks**; payload **4.5 GB**;
-bodies **2,504 of 250,000**; **`boot.py` emits one `.glb`, `main.gd` never sets
-`cells_path` — the shipped scene loads ONE DECK and never streams**; streaming cells exist
-for 1 z-cluster of ~96; **zero `Navigation*` in godot/**; **no day index**; crowd
+bodies **2,504 of 250,000**; ~~`boot.py` emits one `.glb`, `main.gd` never sets `cells_path`
+— the shipped scene loads ONE DECK and never streams; streaming cells exist for 1 z-cluster of
+~96~~ **ALL THREE OF THOSE ARE FALSE AS OF 4k**: the shipped scene STREAMS (`godot --headless
+--path godot` → *"main: STREAMED — 18 cells, starting in cell 13"*, 3 resident, neighbours at
++17.8 m and +56.1 m of lead, boot 8.9 s → 3.7 s, gate `python3 station/boot.py --gate` 10/10,
+CI step `sthe_shipped_scene_streams`); cells exist for **70 decks / 955 cells / 1.7 GB**, not
+one z-cluster; and the deeper half was that **`walk.gd` only called `_stream.update()` inside
+`--stream-test`**, so even with a path the build primed one cell and never loaded a second;
+**zero `Navigation*` in godot/**; **no day index**; crowd
 non-colliding by design; ~~L3 disputed 0.05 m vs 5.59 m~~ **L3 SETTLED 4j: 0.05 m, green at
 x1/x10/x60 with all three controls firing — `python3 station/agenda.py --commute`**;
 performance never measured on a GPU;
