@@ -41,7 +41,7 @@ clears the bar and stops regressing.
 
 ## SESSION 4i — READ `docs/MASTER-PLAN.md`'s 4i AMENDMENT FIRST
 
-**PROPOSED, awaiting the owner.** It supersedes the ordering rule in every section below,
+**ADOPTED as direction by the owner (session 4i: "all the stated goals and more, in detail, AAA, tens of hours"), final after two adversarial rounds.** It supersedes the ordering rule in every section below,
 including the 4d ruling, the W-track and the eight-layer table, once assented to. It exists as
 an amendment to `MASTER-PLAN.md` rather than a new document precisely because a plan this file
 does not point at would be read *after* the rulings below by every future context.

@@ -9,206 +9,187 @@ reassessment, with two rulings recorded in §1.
 
 ---
 
-# SESSION 4i AMENDMENT — THE ORDERING RULE, SUPERSEDING §2–§5 BELOW
+# SESSION 4i — FINAL. THE ORDERING RULE, SUPERSEDING §2–§5 BELOW
 
-**Status: PROPOSED, awaiting the owner. Nothing below §1 of this amendment is adopted until
-the owner assents to A1 and A2, because both reverse an owner ruling made one day earlier.**
+**Adopted direction: the owner directed "all the stated goals of this project and more,
+completed in detail and in AAA execution — a fully functional living 1:1 simulation you can
+lose tens and tens of hours in." This document is that instruction turned into phases, gates
+and enforcement.** It survived two adversarial rounds: a three-critic panel + synthesis judge
+(28 confirmed findings, 3 rejected — the 4i draft was not adopted), then a final pass against
+the tens-of-hours / AAA / all-goals test, which found ten more (F1–F10 below, folded in).
 
-This is an amendment rather than a fifth document, and that is the most important structural
-decision in it. `CLAUDE.md` is the file every session reads first and its contents override
-default behaviour; it points here. **A new document `CLAUDE.md` does not name would be read
-*after* the 4d ruling and the eight-layer table by every future context** — a plan that cannot
-take effect, which is this repository's own "a gate that does not run is not a gate" one level
-up. The adoption commit edits `CLAUDE.md`'s plan section or this amendment is void.
+## WHY THIS PLAN CANNOT QUIETLY FAIL — the enforcement, before the content
 
-## A0. GROUND TRUTH — every row carries the command, and four rows were WRONG
+Plans here have failed four ways: they could not take effect (a document nothing pointed at);
+their gates could not fail; their scope evaporated item by item; and progress was reported as
+counts. One mechanism against each, all four in force from adoption:
 
-The 4i draft's ground truth was presented as measurement and was partly recall. Corrected:
+1. **`CLAUDE.md` points here first.** A plan it does not name is not the plan.
+2. **A gate is not adopted until it is a step in `validate.yml`**, using the
+   per-step-outcome pattern so one red gate cannot blind the rest.
+3. **The scope traceability matrix (§T) is itself a gate.** Every 3c scope item maps to a
+   phase and a gate, or sits on EXPLICITLY OUT with the owner's reason. An item in neither
+   place fails CI. This is the mechanism that would have stopped the Starfury vanishing.
+4. **A rung passes with a denominator, never an existence proof** — "N of the deck's
+   residents", never "it happened once". And **every session lands something a player can
+   see or do**, even in infrastructure phases: the owner's own history says pure-gate
+   sessions read as nothing happening, because they are.
 
-| | | how |
+## T. SCOPE TRACEABILITY — the 3c binding list, item by item
+
+| 3c scope item | phase | gate |
 |---|---|---|
-| hull | 8,047 m, r_max 480.3 m, envelope 1.977 km3 | `radius_profile.json`, 1,978 samples |
-| places / decks | **128** over **71** | `directory.PLACES` |
-| circulation | **249 edges**, **1 component** | `routes.py` — 96 ring, 71 axial, 70 lift, 8 spoke, 4 trunk |
-| canon adjacency | **46 declared, 46 reachable, 0 not** | `routes.py` |
-| distinctness | **128/128 distinct**; **6/6 modules distinct** | `deck.py --degeneracy` |
-| **variety** | **18 clusters, largest 5, covering 45 of 128 — STILL RED** | `variety.py`, V1 (`c4f989b`) |
-| bays | 73,635 implied, **128 built = 0.17%**; named places are **one bay deep** | `docking_bays` is 140 m; a player walks 15.5 m |
-| code | 115,874 Python / 14,718 GDScript / **0 C#** | contradicts `adr/0001` — see A7 |
-| runtime | **27 load sites, 0 geometry-generation sites** | grep |
-| **dialogue** | ~~0 lines~~ **2,139-line module; 73 conversations, 168 speech, 57 DISTINCT, 38/73 close on one string, ZERO player utterances, on 1 of 71 decks** | the draft's "0 lines" was 22.6 h stale when written |
-| **payload** | ~~2.39 GB~~ **4.5 G total / 3.9 G station** | `du` |
-| **bodies** | ~~857~~ **2,504 in the built world** (1,060 actors + 1,444 crowd) against 250,000 | counted over 70 decks |
-| **streaming** | **24 cells exist, all on ONE z-cluster of ~96. `boot.py` emits a `glb`, never a `cells_path`, so the shipped scene never streams** | `boot.py:239`, `main.gd:181`, `walk.gd:128` |
-| **navigation** | **zero `Navigation*` references in `godot/`.** `npc/navigation.py` (3,010 lines) is consumed only by Python | grep |
-| clock | **no day index.** `life.gd` `hour()` is `fposmod` — there is no second day | `life.gd:88,107` |
-| crowd | **non-colliding by design** (`npc.gd:367` `collision_mask = 0`) | undiscussed policy |
-| L-track | L1 done (N=1). **L3 DISPUTED — passes in a worktree at 0.05 m, fails in the main tree at 5.59 m** | `agenda.py --commute` |
-| performance | **never measured on a GPU.** `streaming-4g.md:26` puts one component at 74 M tri / 6 GB | 412x the cell budget |
-| playtest | **never, by anyone** | — |
+| every POI from the show, in the right place | done | `directory.py` 128/128 · `routes.py` 46/46 adjacency |
+| NPCs as *residents* — quarters, jobs, schedules | P3-L2/L3 | denominator gates below |
+| transports + visitors arriving continuously; **jump gate working** | P3-L9 + P4 | a ship the schedule names enters via the gate and docks, watchable from a viewpoint |
+| customs and immigration | P2 arrival | `coldstart --g1` + the customs incident class |
+| law enforcement, crime, black market | P1-G3 + P3-L8 | incident generator gates |
+| Downbelow's underclass | P3-L6 | faction presence gate, measured in Downbelow |
+| every faction, friction **visible in a corridor** | P3-L6 | two factions' members pass; a measurable interaction occurs without the player |
+| physical plant for 250,000 | done as places | its *function* surfaces via L9 + one plant incident class |
+| information layer — comms, ISN, propaganda, signage | P3-L9 | "the week has news" gate |
+| "the simulation exists around you rather than in text" | P1+P3 | the absence gate: player-absent vs player-present days differ |
+| flyable Starfury, seamless launch and dock | P4 | launch → fly → dock, headless, plus one piloted playtest |
+| era lock Season 2–3 | standing | `costume.ERA_EVENTS` guards; C-009 contamination noted |
 
-**Four of the draft's nine "completely missed" items were false and are struck:** a stopping
-rule exists (`AAA-STANDARD.md` "The hard stop", never exercised); player identity exists
-(`player.py` 677 lines, `arrival.py` 1,401) but **has no runtime reader in any `.gd`**;
-performance was named in three planning documents; and the owner — not an agent — caught the
-two largest defects this project has had, so "every judgement is an agent marking its own
-homework" is false.
+## A0. GROUND TRUTH — corrected; every row carries its command
 
-## A1. THE TWO REVERSALS THAT NEED THE OWNER'S ASSENT
+(unchanged from the adjudicated table — dialogue **2,139-line module, 57 distinct lines,
+38/73 close on one string, zero player utterances, 1 of 71 decks**; payload **4.5 GB**;
+bodies **2,504 of 250,000**; **`boot.py` emits one `.glb`, `main.gd` never sets
+`cells_path` — the shipped scene loads ONE DECK and never streams**; streaming cells exist
+for 1 z-cluster of ~96; **zero `Navigation*` in godot/**; **no day index**; crowd
+non-colliding by design; L3 disputed 0.05 m vs 5.59 m; performance never measured on a GPU;
+`variety.py` red at 18 clusters / 45 of 128; craft: corridor 4, Zocalo 3, generated rooms 1,
+garden 1; **0 C#** against an ADR that says C#.)
 
-1. **Sequencing before the 60/30/10 split.** The 4h ruling allocated 60% life / 30% variety /
-   10% surface. This amendment puts streaming, a day index, navigation and a game premise
-   *ahead of and blocking* the L-track. That is a re-ordering, not a re-weighting — the split
-   still governs effort **within** the tracks — but it must be said out loud.
-2. **The unnamed bays stay out.** 4h §6 explicitly excluded instancing the 73,507 unnamed
-   bays; the draft quietly reversed it. **This amendment keeps them out** and instead states
-   the shortfall it does own: **named places are one bay deep and that is the ship**, unless
-   the owner wants a tiling milestone.
+## A1. WHAT "AAA EXECUTION" MEANS HERE, PER DIMENSION — so it can be gated, not wished
 
-## A2. THE DEFINITION OF DONE, AND IT MAY NOT NARROW THE BINDING SCOPE
+`AAA-STANDARD.md` is the bar and its **hard stop** (3 remediation rounds, then CAPPED with a
+written reason) is finally exercised rather than admired. Per dimension:
 
-`CLAUDE.md`'s session-3c scope statement is binding on everything: customs and immigration,
-law enforcement, crime, the black market, Downbelow's underclass, every faction with its
-friction visible in a corridor, the physical plant, an information layer, a flyable Starfury.
-**A Definition of Done narrower than that lets scope evaporate item by item with no gate able
-to notice** — which is exactly how the Starfury and the jump gate vanished from the draft.
+- **Craft** — everything the player sees closest is ≥4 at the rubric's half distance: all
+  5 kits (corridor, lift, tram car, doorway, drum ground), plus the landmark set (Zocalo,
+  customs, garden vista, C&C, a bar interior) driven to 4 by the panel loop. Generated rooms
+  reach "unidentifiable as generic" (V-track), not hand-crafted beauty. **Anything capped is
+  listed with its reason — an honest cap is AAA practice; a silent 1 is not.**
+- **Fidelity** — canon gates stay green; every extrapolation logged; the two blocking
+  conflicts (C-003, C-004) isolated behind single register fields so a future answer
+  re-stamps them in one place.
+- **Performance** — measured on target hardware (P0h), with the three-outcome branch
+  pre-written (§A4). Until then: CPU frame time + soak in CI, labelled as the half it is.
+- **Robustness** — the negative-control discipline, the soak, streaming-failure policy,
+  save/load delta gates. Nothing ships that cannot fail visibly.
 
-> **DONE = a stranger downloads one file, runs it, arrives at Babylon 5, is drawn into
-> something that would have happened without them, changes how it ends, and finds the station
-> different when they come back — and the 3c scope list is either built or written on the
-> EXPLICITLY OUT list with a reason.**
+## A2. THE TARGET, QUANTIFIED — "tens and tens of hours" needs an engine, not a wish
 
-**EXPLICITLY OUT until the owner says otherwise:** instancing 73,507 unnamed bays; hand-authored
-interiors for all 128; multiplayer; localisation; modding; commercial release (this is a fan
-reconstruction and cannot be sold — stated once, here).
+**DONE = a stranger downloads one file, runs it at 60 fps, arrives at Babylon 5 as a person
+with papers, is drawn into events that would have happened without them, changes how they
+end, finds the station different when they return — and every 3c item in §T is green or
+EXPLICITLY OUT with the owner's signature.**
 
-**EXPLICITLY IN and currently ownerless — the draft's worst omission:** the **flyable Starfury**
-and the exterior. Built, reachable at HEAD (`--mode=starfury`), in `CLAUDE.md`'s headline, and
-in no phase of the draft. It is owned by P4 below.
+The hours come from four sources, each with a measurable proxy (headless, in CI):
+
+| source | mechanism | proxy gate |
+|---|---|---|
+| **the place** | 128 places, viewpoints, the drum, the exterior | route coverage: every place reachable and lit; ≥10 places with a view out (today 6) |
+| **the day** | 250,000-person schedule field, 52 ship movements/day, era clock | the **absence gate** (player-absent day ≠ player-present day) and the **second-day gate** (day N ≠ day N+1 in derived facts, not scripts) |
+| **the role** | the player IS someone: jobs, shifts, pay | ≥3 playable roles with complete loops (work → pay → spend) |
+| **the stakes** | incidents + progression + consequence | generator rate ≥2 meaningful incidents/station-hour near the player; 5 access tiers all reachable; arrest → brig → fine → release loop closes |
+
+**The progression spine is the identicard — and it already exists** (`player.py`: identicard,
+visas, credits; customs enforces it; the brig is a built place). Tiers: undocumented →
+visitor visa → resident → licensed trader / deputy → docking privileges (the Starfury cert).
+Losing the card is canon-catastrophic, which makes it the perfect stakes object.
 
 ## A3. THE PHASES
 
-Ordered by *what the next phase would otherwise be built on top of wrongly*.
+### P0a — agent-dischargeable, blocking
+CI wiring (`variety.py`, `--degeneracy`, `agenda.py --selftest`); **verify L3** (x1/x10/x60
++ controls; resolve 0.05 vs 5.59 m); re-run `--life-test`; 60-min soak with RSS; CPU frame
+time at stated NPC count ("GPU half unknown" in the same line); the playtest script.
+**Visible deliverable:** the trailer re-cut from the real build after L3 is green.
 
-### P0a — WHAT AN AGENT CAN DISCHARGE ALONE (blocking)
-Nothing here needs a human, because a phase whose gate needs a human must never block one
-that does not.
-- **Wire the gates that exist into CI.** `variety.py`, `deck.py --degeneracy`,
-  `agenda.py --selftest` as `validate.yml` steps, using the existing `continue-on-error` +
-  final-outcome pattern. **A gate is not adopted until it is a step in `validate.yml`.**
-- **Verify L3.** Re-run `--commute` at x1/x10/x60 with its three controls and resolve the
-  0.05 m / 5.59 m disagreement. Re-run `--life-test`, which has not run since `life.gd` gained
-  405 lines.
-- **Headless 60-minute soak** with RSS sampled, and a CPU-side frame time through lavapipe at
-  a stated NPC count — reported *with* "the GPU half is unknown" in the same output.
-- **Write the 20-minute playtest script** the human will follow.
-**Gate:** CI reports every gate's own outcome; L3 is green or its failure is characterised.
+### P0.5 — the station streams, or everything after is built on one deck
+`boot.py` emits cell sets; `_configure_walk` sets `cells_path`; all ~96 z-clusters baked
+**in batches across firings** with a progress gate; per-cell tri/memory budget; **payload
+ceiling stated up front** (measure one full sector first, extrapolate, and if the number is
+ugly it displaces work now, not at ship); streaming-failure negative control.
+**Gate:** boots streamed; a body crosses three cluster boundaries; RSS under ceiling;
+forced-failure control fires. **Visible deliverable:** a walk video across a sector seam.
 
-### P0.5 — THE STATION STREAMS, OR EVERY PHASE AFTER IS BUILT ON ONE DECK
-**This is the highest-ranked finding and it is not optional.** `boot.py` emits one `.glb` and
-`main.gd` never sets `cells_path`, so the shipped build loads a single deck. Every player
-system built before this is validated on a topology the shipped world does not have — and
-**residents commute across decks**, so L1–L3 are exactly the systems that would be wrong.
-- `boot.py` emits a cell set; `_configure_walk` sets `cells_path`; all ~96 z-clusters baked.
-- Per-cell triangle and memory budget; a **streaming-failure policy with a negative control
-  that forces a load failure**.
-**Gate:** the shipped scene boots streamed, a body walks across three cluster boundaries,
-RSS holds under a stated ceiling, and the forced-failure control fires.
+### P0.6 — the three unowned preconditions
+Navigation graph into the engine (bigger than L2–L9 combined); **a day index in `Clock`**
+threaded through the boot manifest; crowd-physics policy stated (non-colliding is a legal
+cap, unstated it reads as a bug). **Gate:** an NPC paths across decks on the engine graph;
+the clock says day 2; the policy is a sentence in this file.
 
-### P0.6 — THE THREE PRECONDITIONS NOTHING OWNS
-Each is a prerequisite of the L-track and each is currently invisible.
-- **The navigation graph reaches the engine.** Bigger than L2–L9 combined and assumed by all of them.
-- **A day index in `Clock`,** threaded through the boot manifest — *before* save/load is
-  designed. There is currently no second day to come back to.
-- **A crowd-physics policy, stated.** Non-colliding is a legitimate cap; an unstated cap reads
-  as a bug.
-**Gate:** an NPC paths between two decks using the engine's graph; the clock reports day 2.
-
-### P1 — THE GAME EXISTS (G-track)
-The draft named "there is no game" and gave it no phase, no gate and no budget. That is the 4d
-failure repeated one level up.
-- **G0 — `docs/THE-GAME.md`:** what does the player want, who can stop them, what does failure
-  cost. Answered in writing before anything is built.
-- **L0 — AN INCIDENT** (below L1, not above it): a person who wants something, a rule
-  forbidding it, an officer whose beat passes, an outcome that differs by what you do. Every
-  input already exists — `npc/friction.py`, `npc/security.py`, `resident.identicard`,
-  `traffic.arrivals`.
-**Gate:** the same incident run **player-absent / player-helps / player-reports** produces
-three different world states. A session can end in a state the player would not have chosen.
+### P1 — THE GAME EXISTS (G-track, expanded from the rejected draft)
+- **G0** `docs/THE-GAME.md`: what the player wants, who can stop them, what failure costs.
+- **G1 — A ROLE:** one complete job loop (dock work is the canon-obvious first: shifts exist,
+  the port exists, pay exists). Work a shift → credits change → spend them at a bar the
+  economy debits (the L7 seed, pulled early because the role needs it).
+- **G2 — PROGRESSION & CONSEQUENCE:** the identicard tier ladder; arrest → brig → fine →
+  release closes; visa revocation exists and can actually happen to you.
+- **G3 — THE INCIDENT GENERATOR** (not one incident): classes seeded from `friction.py`,
+  `security.py`, customs contraband, dock accidents; rate denominator ≥2/station-hour near
+  the player; each class run **absent / helps / reports** produces 3 distinct world states.
+**Gate:** a 60-minute headless day at x1 logs N incidents, M reachable, ≥1 consequence that
+persists to day N+1. A session can end in a state the player would not have chosen.
 
 ### P2 — THE PLAYER PERSISTS
-- Wire `player.py` to a runtime reader and a character UI (it has neither).
-- **Arrival begins at customs, not in the bay,** until C-010 closes.
-- Save/load — designed **after** P0.6's day index, and gated on a **delta**.
-**Gate:** buy something, quit, reload, **the stock is still down.** This fails today and keeps
-failing until L7, which is the point — `life.gd`'s state is a pure function of the clock, so a
-save gate written now would pass on day one and forbid the economy later.
+`player.py` gets its runtime reader + character UI (species, name, origin — the fields the
+identicard already carries). Arrival begins at customs (C-010). Save/load **after** the day
+index, gated on a **delta**: buy something, quit, reload, **stock still down** — fails today,
+keeps failing until G1's economy seed lands, which is the point.
 
-### P3 — LIFE (the 4h L-track, with denominators)
-L2 eat/sleep · L3 transit · L4 dialogue · L5 react · L6 factions · L7 economy · L8 crime ·
-L9 information.
-**Gate per rung — never "it happened once".** L1 passed with one resident, *"one of exactly
-two people on the station who can"*. Every rung states **a population denominator and a
-variety denominator**: "N of the deck's residents", "M distinct lines heard in a 20-minute
-walk". L4's denominator starts at 57 distinct lines, 38/73 duplicated, zero player utterances.
+### P3 — LIFE, with denominators (the 4h L-track, effort split 60/30/10 within P3–P4)
+L2 eat/sleep · L3 transit (verified in P0a, scaled here: **≥60% of the 857 can complete
+their commute**) · L4 dialogue (**≥300 distinct lines; duplicate closer ≤10%; every
+conversation offers ≥1 player utterance** — from today's 57/38-dupes/zero) · L5 react ·
+L6 factions (friction visible in a corridor, measured without the player) · L7 economy
+(stock, prices, the till) · L8 crime (feeds G3) · L9 information — **"the week has news"**:
+two consecutive days' ISN/PA content differ, derived from traffic + incidents + the era
+clock (`ERA_EVENTS` — the Narn–Centauri war is *rising* in S2–3, and the station should
+feel it without a cutscene).
 
-### P4 — VARIETY, SURFACE AND THE EXTERIOR
-- **Variety scoped to the places a route passes through** (V3's own wording), gated by
-  **`variety.py` IoU with a stated ceiling** — `--degeneracy` is the cheap precondition and
-  **cannot fail on a seeded generator**.
-- Kit-level surface: **5 of 5 kits at craft ≥4**, each with its own half-distance frame and an
-  A/B control.
-- **The Starfury, launch, dock and the exterior** — owned here, or moved to EXPLICITLY OUT.
-- Generation stays **offline in Python → `.scn` → streamed.** The draft's "port the generators
-  in-engine" is 85,455 lines across 55 modules and would create a second description of one
-  decision — hard rule 4. If it is ever needed, **the agreement gate between the two
-  implementations is the deliverable**, not the port.
+### P4 — VARIETY, SURFACE, THE EXTERIOR, AND DEPTH
+- V-track to green **on every place a route passes through** (`variety.py` IoU ceiling;
+  `--degeneracy` as precondition).
+- 5 kits to craft ≥4 (A/B controls); landmark set to 4 by panel loop; **viewpoints 6 → ≥10**
+  including the garden vista — the show's signature image.
+- **The Starfury**: launch → fly → dock, seamless, headless-gated + piloted once.
+- **Named-place depth: the tiling milestone.** `docking_bays` at 140 m walkable, not 15.5.
+  `bay_span_m`'s own docstring says instancing along the footprint was always the design.
+  **The owner's "in detail, fully" instruction settles A5's open question: depth is IN.**
+- Generation stays offline → `.scn` → streamed. No in-engine port (85,455 lines, hard rule 4).
 
 ### P5 — SHIP
-Onboarding, controls, accessibility, packaging, credits, IP statement.
-**Gate:** each clause of A2's Definition of Done, cited to the gate that proves it.
+Packaging, onboarding, controls, accessibility, credits, IP statement (fan work, non-
+commercial, stated once). **Gate: §T all green or signed OUT; every A2 clause cited to its gate.**
 
-### P0h — THE HUMAN (non-blocking, scheduled once, with a date)
-fps on target hardware, and the 20-minute playtest against P0a's script.
+### P0h — the human (non-blocking, now TWO sittings)
+20 minutes after P2 (arrival + save), 20 after P3 (a living day), fps on target hardware
+whenever hardware exists. One sitting at the end was too thin for a tens-of-hours claim.
 
-## A4. THE BRANCH NOBODY WROTE
+## A4. THE PERFORMANCE BRANCH (pre-written)
+Comfortably over → proceed. Marginal → LOD/cell-budget displaces P4 surface. Far under →
+LOD + occlusion + payload displace P4 entirely; P3 denominators re-derived under the new cap.
 
-**P0h can invalidate P3, P4 and the payload, and the plan must say so in advance.** With no
-structure LOD, occluders at 6 of 7, and one component measured at 74 M triangles / 6 GB, a
-15 fps result is plausible. Recorded now:
-- **comfortably over** → proceed as written.
-- **marginal** → LOD and cell-budget work displaces P4's surface half.
-- **far under** → LOD, occlusion and payload reduction displace P4 entirely and P3's
-  denominators are re-derived against the new body cap.
+## A5. DECISIONS RESOLVED BY THE OWNER'S LATEST INSTRUCTION
+- **Named-place depth: IN** (P4 tiling). "One bay deep" is dead.
+- **The vertical-slice alternative: DEAD.** The full 3c scope is the target.
+- **73,507 unnamed bays: still OUT** (4h ruling stands — sealed or generic-but-varied;
+  nothing in 3c requires entering them; 1:1 is scale, and scale is real).
 
-## A5. THE SHORTFALLS, STATED AS DECISIONS RATHER THAN LEFT TO BE FOUND
-- **2,504 bodies against 250,000.** The mechanism is near-field instantiation from the offline
-  day; the cap is a design position, not a gap.
-- **Named places are one bay deep.** `docking_bays` is 140 m and you walk 15.5 m. The 4h
-  ruling covered *unnamed* bays; it does not cover this, and this amendment does not fix it.
+## A6. BLOCKING CONFLICTS — unchanged: C-003/C-004 isolated behind single register fields.
+## A7. ADR-0001 gets its dated GDScript note. Free, owed, done in P0a.
 
-## A6. THE BLOCKING CONFLICTS THIS PLAN MUST NOT WALK PAST
-**C-003 and C-004 are open and BLOCKING** — which longitudinal band is the habitat drum, and
-which ring is level 1. Both reduce to one piece of evidence each.
-- Player-facing level numbering is **provisional pending C-004** and read from **one register
-  field**, so it can be re-stamped in one place.
-- Player-facing sector naming is provisional pending C-003 — the Green/Brown transposition,
-  which is also why our fifth sector is "Yellow" and the show's is "Brown".
-
-## A7. THE FREE FIX NOBODY OWNS
-`adr/0001-engine-choice.md` and `CLAUDE.md` both say **"Godot 4, C#"**. There are **zero C#
-files**. A decision that exists in two descriptions will have to be made again. Amend ADR-0001
-with a dated note — GDScript in practice, C# not adopted, and why. One paragraph, free.
-
-## A8. THE RULES THIS AMENDMENT ADDS
-1. **A gate is not adopted until it is a step in `validate.yml`.**
-2. **A phase whose gate requires a human must never block a phase whose gate does not.**
-3. **Every ground-truth row carries the command that produced it and is re-run, not recalled.**
-   Four rows in the 4i draft were stale, including one repeated to the owner all session.
-4. **A rung passes with a denominator, never with an existence proof.**
-5. **A plan that `CLAUDE.md` does not point at is not the plan.**
-
----
+## A8. THE STANDING RULES (all previous, plus)
+6. **The absence gate is permanent:** any life system's CI check runs the day player-absent
+   and player-present and asserts they differ. A world that only moves when watched is a set.
+7. **Content denominators only ratchet up.** A distinct-line count or incident rate that
+   drops fails CI, like a craft regression.
 
 ## 0. WHAT THIS IS AT THE END
 
