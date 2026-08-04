@@ -286,6 +286,31 @@ class Grid:
                 return best
         return None
 
+    def step_in(self, start_sz, z_centre):
+        """The first standable cell on the way from the doorway to the middle.
+
+        Directional by construction: it walks the segment from `start_sz` to the
+        room's centre line and returns the first free cell on it. A doorway is a
+        hole in a wall of unknown thickness with unknown fittings behind it, so
+        "how far in does the floor start" is a question only the mesh can answer
+        -- and answering it by stepping inward cannot wander into the void
+        inside the wall the way an omnidirectional search does.
+
+        Returns (i, k, distance) like `snap`, or None if nothing on the way in
+        is standable, which is a genuinely sealed room.
+        """
+        s0, z_0 = start_sz
+        dz = z_centre - z_0
+        n = max(1, int(abs(dz) / self.cell))
+        for j in range(n + 1):
+            z = z_0 + dz * j / n
+            i, k = self.cell_of(s0, z)
+            if self.is_free(i, k):
+                return (i, k, abs(z - z_0))
+        # Nothing straight in front of the door; fall back to the old
+        # omnidirectional look, which at least finds a cell if one is near.
+        return self.snap(s0, z_0)
+
     def bfs(self, start):
         """Every cell reachable from `start`, with parents. 8-connected, and a
         diagonal step requires both of its orthogonal neighbours -- a body does
@@ -399,7 +424,31 @@ def approach(meta, place, verts, tris, groups=None, from_pt=None,
     # middle of the room, which makes this a "nearest standable spot" query
     # with no reachability claim attached.
     start_sz = g.fwd(from_pt) if from_pt else (0.0, z0)
-    snapped = g.snap(*start_sz)
+    # INWARD, NOT OUTWARD, and this is the whole of the pocket defect.
+    #
+    # `snap` looks for the nearest free cell in EVERY direction, and just inside
+    # a doorway the nearest free cell is very often OUTSIDE the room -- the void
+    # inside a hollow wall, or the vestibule beyond it. The search then explores
+    # that, finds a 2x2 pocket bounded by the grid's own edge, and reports the
+    # room as sealed. It is why every failure sat at exactly `z_half - 0.1` from
+    # the centre at every scale from 7 m to 75 m: an arithmetic identity (the
+    # topmost cell of the grid), not a measurement.
+    #
+    # And no fixed inset fixes it, which is what proves the model wrong rather
+    # than the constant. Measured: an entry 0.5 m inside the wall works for
+    # `business_center` and finds a 0.16 m2 pocket in `thieves_guild`; 2.5 m
+    # works for `thieves_guild` and finds a 2.24 m2 pocket in `business_center`.
+    # A guessed distance cannot be right for both, because how far in the floor
+    # starts is a property of the room, not a constant.
+    #
+    # So the entry is SEARCHED FOR ALONG THE WAY IN: step from the doorway
+    # toward the room's middle and take the first cell a capsule fits in. That
+    # is derived from the mesh, which is this module's entire principle, and it
+    # cannot land outside the room because it only ever moves inward.
+    if from_pt is not None:
+        snapped = g.step_in(start_sz, z0)
+    else:
+        snapped = g.snap(*start_sz)
     if snapped is None:
         rep["why"] = ("the doorway is not standable and there is no free cell "
                       f"within {SNAP_MAX_M} m of it")
