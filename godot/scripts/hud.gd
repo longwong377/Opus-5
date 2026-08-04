@@ -202,6 +202,30 @@ func _pretty(key: String) -> String:
 	return key.replace("_", " ").to_upper()
 
 
+## Is a conversation open right now?
+##
+## FOUND, NOT INJECTED, AND IT IS A SIBLING. `walk.gd` builds `Dialogue` and
+## then this node as children of the same walk node, so the lookup is one
+## `get_node_or_null` -- no new argument on `bind()`, whose five callers are
+## spread across `walk.gd`, `arrival.gd` and two harnesses, and no second copy
+## of the conversation state. Cached on first success; a build with no dialogue
+## (an empty `dialogue_path`, `--no-talk`, or any walk test) never finds one and
+## this returns false for ever, which is the behaviour this file had before.
+var _talk: Node = null
+var _talk_looked := false
+
+
+func talking() -> bool:
+	if not _talk_looked:
+		_talk_looked = true
+		var par := get_parent()
+		if par != null:
+			_talk = par.get_node_or_null("Dialogue")
+	if _talk == null:
+		return false
+	return _talk.has_method("is_open") and bool(_talk.call("is_open"))
+
+
 func _process(delta: float) -> void:
 	if _player == null:
 		return
@@ -573,6 +597,16 @@ class Face extends Control:
 	func _prompt(sz: Vector2, s: float) -> void:
 		var a: float = h.hot
 		if a <= 0.01 or h.prompt_verb == "":
+			return
+		# NOT WHILE SOMEBODY IS TALKING TO YOU. `E` and `T` are different keys
+		# on different systems and both are legitimately true at a manned
+		# counter -- which is exactly why they must not both be ON SCREEN at
+		# once. `[E] OPERATE THE BAR COUNTER` floating over a conversation
+		# offers the player a key that `dialogue.gd` has taken the input for,
+		# and a prompt for a key that does nothing is a lie about the controls.
+		# The two systems keep their own state and this reads it; it does not
+		# hold a second copy of whether a conversation is open.
+		if h.talking():
 			return
 		var cx := sz.x * 0.5
 		# Rises the last few pixels as it fades in. Motion is what makes it

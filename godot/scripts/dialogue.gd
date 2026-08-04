@@ -51,6 +51,28 @@ var INK := Color(0.016, 0.031, 0.047)
 var _palette_from := "fallback literals"
 
 
+## The three keys that take a stance. `station/dialogue.STANCES`' order, and
+## the panel numbers them in the same order -- a menu whose numbering disagrees
+## with the model is a menu that mispresses under the player's fingers.
+const PICK_KEYS := [KEY_1, KEY_2, KEY_3]
+
+
+## One version of a person: what they say at ONE hour of the station's day.
+##
+## `station/dialogue.py::speak` is a function of `world.hour` and the sidecar
+## bakes it at `SIDECAR_HOURS`. A Person below holds every variant and switches
+## between them as `life.gd`'s Clock turns, which is why this is a class and
+## not four loose fields.
+class Take:
+	var hour: float = 13.0
+	var topic: String = ""
+	var band: String = ""
+	var doing: String = ""         # what they return to at THIS hour
+	var lines: Array = []          # [{who, kind, text}]
+	var choices: Array = []        # [{stance, text, yielded, reply:[...]}]
+	var choice_at: int = -1
+
+
 class Person:
 	var group: String = ""
 	var id: String = ""
@@ -58,11 +80,44 @@ class Person:
 	var species: String = ""
 	var role: String = ""
 	var place: String = ""
-	var topic: String = ""
-	var band: String = ""
-	var lines: Array = []          # [{who, kind, text}]
+	## What they were doing when the deck was baked -- `populace`'s own
+	## `who.doing` field, off the cast list rather than out of this file. It is
+	## what "they go back to what they were doing" is quoting.
+	var doing: String = ""
+	var takes: Array = []          # [Take], one per baked hour
+	var at_hour: int = 0           # which of them the clock has selected
 	var pos := Vector3.ZERO
 	var talked: int = 0
+
+	func take() -> Take:
+		return takes[clampi(at_hour, 0, takes.size() - 1)]
+
+	var topic: String:
+		get: return take().topic
+	var band: String:
+		get: return take().band
+	var lines: Array:
+		get: return take().lines
+	var choices: Array:
+		get: return take().choices
+	var choice_at: int:
+		get: return take().choice_at
+
+	## Pick the take nearest `h` ON THE CLOCK RING. Nearest and not
+	## interpolated: an averaged person is a person nobody is, and the 21:00
+	## midpoint between a 19:00 and a 03:00 take belongs to one of them.
+	func select(h: float) -> bool:
+		var best := 0
+		var best_d := INF
+		for i in takes.size():
+			var d: float = absf(fposmod(takes[i].hour - h + 12.0, 24.0) - 12.0)
+			if d < best_d:
+				best_d = d
+				best = i
+		if best == at_hour:
+			return false
+		at_hour = best
+		return true
 
 
 var _people: Array[Person] = []
@@ -90,8 +145,15 @@ var _last_report := ""
 ## `<deck>_dialogue.json` is what `station/dialogue.py` derived for those same
 ## rows. The join key is the mesh group, which is the only name both files and
 ## the .glb agree on.
+## AND ONE PERSON PER GROUP, NOT ONE PER ROW. `station/dialogue.write_sidecar`
+## bakes `SIDECAR_HOURS` takes of every body, so the file holds four rows for
+## each of them. Keying the join on `group` alone -- which is what this did
+## while the sidecar was single-hour -- would stand four copies of the same
+## resident in the same square metre and offer the player whichever the scan
+## reached first.
 func collect(actors: Array, rows: Array) -> int:
 	var where := {}
+	var doing := {}
 	for a in actors:
 		if typeof(a) != TYPE_DICTIONARY:
 			continue
@@ -100,7 +162,10 @@ func collect(actors: Array, rows: Array) -> int:
 			continue
 		where[g] = Vector3(float(a.get("x", 0.0)), float(a.get("y", 0.0)),
 			float(a.get("z", 0.0)))
-	var n := 0
+		var who = a.get("who", {})
+		if typeof(who) == TYPE_DICTIONARY:
+			doing[g] = String(who.get("doing", ""))
+	var by_group := {}
 	var unplaced := 0
 	for r in rows:
 		if typeof(r) != TYPE_DICTIONARY:
@@ -109,31 +174,118 @@ func collect(actors: Array, rows: Array) -> int:
 		if not where.has(g2):
 			unplaced += 1
 			continue
-		var p := Person.new()
-		p.group = g2
-		p.id = String(r.get("id", ""))
-		p.name = String(r.get("name", ""))
-		p.species = String(r.get("species", ""))
-		p.role = String(r.get("role", ""))
-		p.place = String(r.get("place", ""))
-		p.topic = String(r.get("topic", ""))
-		p.band = String(r.get("band", ""))
+		var t := Take.new()
+		t.hour = float(r.get("hour", 13.0))
+		t.topic = String(r.get("topic", ""))
+		t.band = String(r.get("band", ""))
+		t.doing = String(r.get("doing", ""))
 		var ls = r.get("lines", [])
 		if typeof(ls) == TYPE_ARRAY:
-			p.lines = ls
+			t.lines = ls
+		# `choices` and `choice_at` are ADDITIVE: a sidecar baked before player
+		# utterances existed has neither, and reads here as a conversation with
+		# nothing to say back -- exactly what it was.
+		var cs = r.get("choices", [])
+		if typeof(cs) == TYPE_ARRAY:
+			t.choices = cs
+		t.choice_at = int(r.get("choice_at", -1))
 		# A PERSON WITH NO LINES IS NOT A PERSON YOU CAN TALK TO, and saying so
 		# here is better than offering a prompt that opens an empty panel --
 		# the failure that looks like success.
-		if p.lines.is_empty():
+		if t.lines.is_empty():
 			continue
-		p.pos = where[g2]
-		_people.append(p)
-		n += 1
+		if not by_group.has(g2):
+			var p := Person.new()
+			p.group = g2
+			p.id = String(r.get("id", ""))
+			p.name = String(r.get("name", ""))
+			p.species = String(r.get("species", ""))
+			p.role = String(r.get("role", ""))
+			p.place = String(r.get("place", ""))
+			p.doing = String(doing.get(g2, ""))
+			p.pos = where[g2]
+			by_group[g2] = p
+			_people.append(p)
+		(by_group[g2] as Person).takes.append(t)
+	for g3 in by_group:
+		var pp: Person = by_group[g3]
+		pp.takes.sort_custom(func(a, b): return a.hour < b.hour)
 	if unplaced > 0:
 		print("dialogue: %d exchange(s) name a group with no body in the cast "
 			% unplaced + "list -- the two sidecars were built from different "
 			+ "populations")
-	return n
+	if not _people.is_empty():
+		var hrs := []
+		for t2 in (_people[0] as Person).takes:
+			hrs.append("%05.2f" % t2.hour)
+		print("dialogue: %d people, %d rows, baked at %s"
+			% [_people.size(), rows.size(), ", ".join(hrs)])
+	return _people.size()
+
+
+# ===========================================================================
+#  The clock
+# ===========================================================================
+# WHY THIS FILE LOOKS FOR THE CLOCK INSTEAD OF BEING HANDED IT. `walk.gd`
+# builds this node and has no clock; `main.gd` builds the Clock and hands it to
+# `life.gd`'s Director. Threading it through would mean editing both, and both
+# are load-bearing files this session does not own. The Director is a named
+# node in the tree with an `hour()` accessor, so one guarded search finds it
+# and a build that has no Director keeps the take it booted with -- which is
+# the old behaviour exactly.
+
+var _director: Node = null
+var _looked := false
+var _hour: float = -1.0
+
+
+func _find_director() -> Node:
+	if _looked:
+		return _director
+	_looked = true
+	var scene := get_tree().current_scene if get_tree() != null else null
+	for root in [scene, get_parent()]:
+		if root == null:
+			continue
+		var n := _search(root, 0)
+		if n != null:
+			_director = n
+			print("dialogue: following the station clock at %s"
+				% _director.get_path())
+			return _director
+	print("dialogue: no Life director in the tree -- the cast keeps the hour "
+		+ "it was baked at")
+	return null
+
+
+## Depth-limited, and BY CAPABILITY rather than by name: a node that answers
+## `hour()` is the clock whatever it is called, and a node called "Life" that
+## does not is not.
+func _search(node: Node, depth: int) -> Node:
+	if depth > 4:
+		return null
+	if node.has_method("hour") and node != self:
+		return node
+	for c in node.get_children():
+		var got := _search(c, depth + 1)
+		if got != null:
+			return got
+	return null
+
+
+## Move the whole cast to the hour the station is at. Returns how many people
+## changed what they would say.
+func set_hour(h: float) -> int:
+	_hour = h
+	var moved := 0
+	for p in _people:
+		if p != _open and p.select(h):
+			moved += 1
+	return moved
+
+
+func hour() -> float:
+	return _hour
 
 
 func watch(body: Node3D) -> void:
@@ -242,52 +394,144 @@ func refresh() -> Person:
 #  Talking
 # ===========================================================================
 
+## THE LIVE CONVERSATION. `_run` is the take's lines with the player's chosen
+## utterance and its answer SPLICED IN, so the pointer below walks one array
+## rather than switching between two. `Take.lines` is never mutated: the take
+## is baked data and a conversation that edited it would make the second
+## conversation with the same person a different one.
+var _run: Array = []
+var _run_max: int = 0              # how long it grew to, kept past close()
+var _menu := false                 # sitting at the choice point, nothing picked
+var _picked := ""                  # which stance, once one has been
+var _said: int = 0                 # player utterances actually spoken
+var _pressed_new: int = 0          # ...that were a press which yielded
+
+
 ## Open a conversation, or advance the one that is open. Returns true if
 ## anything happened.
 ##
 ## THE KEYPRESS AND THE HEADLESS TEST CALL THIS, not two paths that can
 ## diverge, which is the rule `interact.gd::use()` states and this file
 ## inherits.
+##
+## AND IT WILL NOT WALK PAST AN UNANSWERED QUESTION. At the choice point `T`
+## does nothing and `say()` is the only way on. A `more` key that also meant
+## "take the first option" would make the menu decorative -- the player would
+## never learn that the three stances differ, because the fastest way through
+## would never show them.
 func talk() -> bool:
 	if _open == null:
 		var p := refresh()
 		if p == null:
 			return false
 		_open = p
+		_run = p.lines.duplicate()
+		_run_max = _run.size()
 		_at = 0
+		_menu = false
+		_picked = ""
 		_opened += 1
 		p.talked += 1
 		_spoken += 1
 		print("TALK open %s id=%s species=%s role=%s place=%s topic=%s band=%s "
 			% [p.group, p.id, p.species, p.role, p.place, p.topic, p.band]
-			+ "lines=%d" % p.lines.size())
-		print("TALK line 1/%d %s" % [p.lines.size(), _line_text(0)])
+			+ "hour=%05.2f lines=%d choices=%d"
+			% [p.take().hour, _run.size(), p.choices.size()])
+		print("TALK line 1/%d %s" % [_run.size(), _line_text(0)])
+		_arm_menu()
 		return true
+	if _menu:
+		return false
 	_at += 1
-	if _at >= _open.lines.size():
+	if _at >= _run.size():
 		close()
 		return true
 	_spoken += 1
-	print("TALK line %d/%d %s" % [_at + 1, _open.lines.size(),
-		_line_text(_at)])
+	print("TALK line %d/%d %s" % [_at + 1, _run.size(), _line_text(_at)])
+	_arm_menu()
+	return true
+
+
+## Offer the menu when the pointer reaches the line the choices answer.
+func _arm_menu() -> void:
+	if _open == null or _picked != "":
+		return
+	if _open.choices.is_empty() or _at != _open.choice_at:
+		return
+	_menu = true
+	var opts := []
+	for i in _open.choices.size():
+		opts.append("%d) %s" % [i + 1, String(_open.choices[i].get("text", ""))])
+	print("TALK you may say -- " + "  |  ".join(opts))
+
+
+## Say one of them. This is the whole of what was missing: a 2,139-line module
+## with ZERO player utterances, and the owner named it.
+func say(i: int) -> bool:
+	if _open == null or not _menu:
+		return false
+	if i < 0 or i >= _open.choices.size():
+		return false
+	var c: Dictionary = _open.choices[i]
+	var stance := String(c.get("stance", ""))
+	var mine := {"who": "you", "kind": "speech",
+		"text": String(c.get("text", ""))}
+	var add: Array = [mine]
+	var reply = c.get("reply", [])
+	if typeof(reply) == TYPE_ARRAY:
+		for r in reply:
+			add.append(r)
+	# Splice, never append: the farewell that follows the topic is still owed,
+	# and a stance that dropped it would end the conversation on the player's
+	# own voice.
+	for j in add.size():
+		_run.insert(_at + 1 + j, add[j])
+	_run_max = _run.size()
+	_menu = false
+	_picked = stance
+	_said += 1
+	if stance == "press" and bool(c.get("yielded", false)):
+		_pressed_new += 1
+	print("TALK stance=%s yielded=%s" % [stance,
+		str(bool(c.get("yielded", false)))])
+	_at += 1
+	_spoken += 1
+	print("TALK line %d/%d %s" % [_at + 1, _run.size(), _line_text(_at)])
 	return true
 
 
 func close() -> void:
 	if _open != null:
-		print("TALK close %s after %d line(s)" % [_open.group,
-			_open.lines.size()])
+		# THEY GO BACK TO WHAT THEY WERE DOING, and what that is comes off
+		# `populace`'s own `who.doing` field rather than out of this file.
+		print("TALK close %s after %d line(s), stance=%s -- back to %s"
+			% [_open.group, _run.size(),
+				(_picked if _picked != "" else "-"),
+				_back_to(_open)])
 	_open = null
 	_at = -1
+	_menu = false
+	_run = []
+
+
+## THE TAKE'S HOUR FIRST. `Person.doing` is `<deck>_actors.json`'s `who.doing`,
+## which `populace` baked at ONE hour; the take carries the same call asked at
+## the hour the player is actually standing in. Falling back to the actor row
+## keeps a pre-`doing` sidecar reading exactly as it did.
+func _back_to(p: Person) -> String:
+	var d := p.take().doing
+	if d == "":
+		d = p.doing
+	return (d if d != "" else "their day")
 
 
 func _line_text(i: int) -> String:
 	if _open == null and _near == null:
 		return ""
-	var p: Person = (_open if _open != null else _near)
-	if i < 0 or i >= p.lines.size():
+	var src: Array = (_run if _open != null else _near.lines)
+	if i < 0 or i >= src.size():
 		return ""
-	var ln: Dictionary = p.lines[i]
+	var ln: Dictionary = src[i]
 	var kind := String(ln.get("kind", "speech"))
 	var who := String(ln.get("who", "npc"))
 	var txt := String(ln.get("text", ""))
@@ -299,7 +543,7 @@ func _line_text(i: int) -> String:
 	# neither of them said anything.
 	if kind == "action":
 		return "(%s%s)" % [("" if who == "npc" else "> "), txt]
-	return "\"%s\"" % txt
+	return "%s\"%s\"" % [("> " if who == "you" else ""), txt]
 
 
 func _unhandled_input(event: InputEvent) -> void:
@@ -308,9 +552,20 @@ func _unhandled_input(event: InputEvent) -> void:
 			talk()
 		elif event.keycode == KEY_ESCAPE and _open != null:
 			close()
+		elif _menu:
+			var i := PICK_KEYS.find(event.keycode)
+			if i >= 0:
+				say(i)
 
 
 func _physics_process(delta: float) -> void:
+	# THE CLOCK FIRST, so a body that walks up at 03:00 is offered the 03:00
+	# conversation rather than the one the deck was baked with.
+	var dir := _find_director()
+	if dir != null:
+		var h: float = float(dir.call("hour"))
+		if h >= 0.0 and absf(h - _hour) > 0.001:
+			set_hour(h)
 	refresh()
 	_hot = move_toward(_hot, (1.0 if (_near != null or _open != null) else 0.0),
 		delta / maxf(fade_s, 0.001))
@@ -326,9 +581,12 @@ func _physics_process(delta: float) -> void:
 ## when the shutter opened.
 func report() -> String:
 	if _open != null:
-		return "talking to %s (%s/%s) line %d/%d topic=%s" % [
+		if _menu:
+			return "%s is waiting for an answer (%d option(s), topic=%s)" % [
+				_open.name, _open.choices.size(), _open.topic]
+		return "talking to %s (%s/%s) line %d/%d topic=%s stance=%s" % [
 			_open.name, _open.species, _open.role, _at + 1,
-			_open.lines.size(), _open.topic]
+			_run.size(), _open.topic, (_picked if _picked != "" else "-")]
 	if _near != null:
 		return "prompt=talk/%s %.2fm topic=%s" % [_near.name,
 			_player.global_position.distance_to(_near.pos), _near.topic]
@@ -339,6 +597,12 @@ func report() -> String:
 
 func count() -> int:
 	return _people.size()
+
+
+## Is a conversation on screen? Read by `hud.gd` so the `[E]` prompt stands
+## down while somebody is talking to you.
+func is_open() -> bool:
+	return _open != null
 
 
 func opened() -> int:
@@ -384,6 +648,64 @@ func total_lines() -> int:
 	for p in _people:
 		n += p.lines.size()
 	return n
+
+
+## How many player utterances the whole deck offers, and how many DISTINCT
+## ones. The DLG-05 denominator, measured after the join rather than at the
+## generator -- which is the one measurement this file can make that
+## `station/dialogue.py` cannot.
+func offers() -> int:
+	var n := 0
+	for p in _people:
+		if not p.choices.is_empty():
+			n += 1
+	return n
+
+
+func distinct_says() -> int:
+	var seen := {}
+	for p in _people:
+		for t in p.takes:
+			for c in t.choices:
+				seen[String(c.get("text", ""))] = true
+	return seen.size()
+
+
+func said() -> int:
+	return _said
+
+
+func pressed_yield() -> int:
+	return _pressed_new
+
+
+func picked() -> String:
+	return _picked
+
+
+## How many of the cast say something different at `a` than at `b`. The
+## 03:00-against-13:00 question, asked of the RUNTIME's own take selection
+## rather than of the generator that baked it.
+func hour_moves(a: float, b: float) -> int:
+	var n := 0
+	for p in _people:
+		var keep := p.at_hour
+		p.select(a)
+		var ta := _joined(p)
+		p.select(b)
+		if _joined(p) != ta:
+			n += 1
+		p.at_hour = keep
+	return n
+
+
+func _joined(p: Person) -> String:
+	var out := ""
+	for ln in p.lines:
+		out += String(ln.get("text", "")) + "|"
+	for c in p.choices:
+		out += String(c.get("text", "")) + "|"
+	return out
 
 
 # ===========================================================================
@@ -589,9 +911,15 @@ class Plate extends Control:
 		# said to you -- and an ACTION in cyan and parentheses, because a
 		# stage direction is not a voice. `station/dialogue.py` marks the
 		# difference; nothing here decides it.
-		var ln: Dictionary = ({} if d._at < 0 or d._at >= p.lines.size()
-			else p.lines[d._at])
+		#
+		# AND THE PLAYER'S OWN VOICE IS NEITHER. It is set in cyan and marked
+		# with a leading rule, because the one thing a player must never have
+		# to work out is which of the two people on screen just spoke.
+		var run: Array = d._run
+		var ln: Dictionary = ({} if d._at < 0 or d._at >= run.size()
+			else run[d._at])
 		var kind := String(ln.get("kind", "speech"))
+		var mine := String(ln.get("who", "npc")) == "you"
 		var txt := String(ln.get("text", ""))
 		var speech := kind != "action"
 		if not speech:
@@ -601,23 +929,67 @@ class Plate extends Control:
 		var lpx := int(roundf(16.0 * s))
 		var col: Color = (Color(d.AMBER, 0.96 * a) if speech
 			else Color(d.CYAN, 0.72 * a))
+		if speech and mine:
+			col = Color(d.CYAN, 0.96 * a)
 		var ly := y + 42.0 * s
+		if speech and mine:
+			_hair(Vector2(x - 12.0 * s, ly - 12.0 * s),
+				Vector2(x - 12.0 * s, ly + 6.0 * s), Color(d.CYAN, 0.8 * a),
+				s, 2.0)
 		for row in _wrap(txt, w, lpx, 1.2 * s):
 			_tracked(Vector2(x, ly), row, lpx, col, 1.2 * s)
 			ly += 24.0 * s
 
+		# THE MENU. Drawn ABOVE the plate rather than inside it, because the
+		# line they just said has to stay on screen while you choose what to
+		# answer -- a stance is an answer to a specific sentence and replacing
+		# that sentence with a list is how a player ends up picking blind.
+		if d._menu:
+			_menu(sz, s, a, x, w, y)
+
 		# Where you are in the exchange, and the key that moves it on.
 		var ny := y + h + 6.0 * s
-		var tick := "%d / %d" % [d._at + 1, p.lines.size()]
+		var tick := "%d / %d" % [d._at + 1, run.size()]
 		_tracked(Vector2(x, ny), tick, int(roundf(9.0 * s)),
 			Color(d.CYAN, 0.55 * a), 1.4 * s)
-		var last: bool = d._at >= p.lines.size() - 1
+		if d._menu:
+			# No `[T] MORE` while a question is open: the key does nothing
+			# there, and a prompt for a key that does nothing is a lie about
+			# the controls.
+			var wait := "CHOOSE"
+			_tracked(Vector2(x + w - _tracked_width(wait,
+				int(roundf(11.0 * s)), 1.6 * s), ny), wait,
+				int(roundf(11.0 * s)), Color(d.AMBER, 0.88 * a), 1.6 * s)
+			return
+		var last: bool = d._at >= run.size() - 1
 		var word := ("END" if last else "MORE")
 		var kx := x + w - 24.0 * s - 12.0 * s \
 			- _tracked_width(word, int(roundf(11.0 * s)), 1.6 * s)
 		_key(Vector2(kx, ny - 4.0 * s), "T", s, a)
 		_tracked(Vector2(kx + 24.0 * s + 12.0 * s, ny), word,
 			int(roundf(11.0 * s)), Color(d.AMBER, 0.88 * a), 1.6 * s)
+
+	## The stances, numbered, each with its own key glyph. One row each, cyan,
+	## sitting on their own scrim above the speaker's plate.
+	func _menu(sz: Vector2, s: float, a: float, x: float, w: float,
+			plate_y: float) -> void:
+		var cs: Array = d._open.choices
+		var px := int(roundf(14.0 * s))
+		var rowh := 30.0 * s
+		var top := plate_y - 62.0 * s - rowh * cs.size()
+		_scrim(Rect2(x - 40.0 * s, top - 30.0 * s, w + 80.0 * s,
+			rowh * cs.size() + 52.0 * s), 0.66 * a,
+			Vector2(0.14, 0.14), Vector2(0.26, 0.20))
+		_tracked(Vector2(x, top - 12.0 * s), "YOU MAY SAY",
+			int(roundf(9.0 * s)), Color(d.CYAN, 0.55 * a), 1.8 * s)
+		for i in cs.size():
+			var ry := top + rowh * i + rowh * 0.5
+			_key(Vector2(x, ry), str(i + 1), s, a)
+			var t := String(cs[i].get("text", ""))
+			var rows := _wrap(t, w - 46.0 * s, px, 1.2 * s)
+			_tracked(Vector2(x + 24.0 * s + 14.0 * s, ry + px * 0.36),
+				String(rows[0] if rows.size() > 0 else t), px,
+				Color(d.CYAN, 0.94 * a), 1.2 * s)
 
 	## Break a line at word boundaries to fit `w` pixels. Measured with the
 	## same tracking it is drawn with, or the last word runs off the plate.
@@ -711,11 +1083,17 @@ func _run_shot(args: Dictionary) -> void:
 		_near = who
 	else:
 		_open = who
+		_run = who.lines.duplicate()
 		_at = int(args.get("line", "1"))
-		_at = clampi(_at, 0, who.lines.size() - 1)
-	print("dialogue: shot of %s (%s/%s) topic=%s line %d/%d"
+		_at = clampi(_at, 0, _run.size() - 1)
+		# `--menu` poses the choice point, which is the state a frame of the
+		# OLD panel could not have been taken in because it did not exist.
+		if args.has("menu"):
+			_at = maxi(who.choice_at, 0)
+			_menu = not who.choices.is_empty()
+	print("dialogue: shot of %s (%s/%s) topic=%s line %d/%d%s"
 		% [who.name, who.species, who.role, who.topic, _at + 1,
-			who.lines.size()])
+			_run.size(), (" at the menu" if _menu else "")])
 	_shot_out = String(args.get("dialogue-shot", ""))
 	# THE SHUTTER IS NOT THE SIMULATION. `_physics_process` re-runs the scan
 	# every frame, and with no level and no body near anybody it correctly
@@ -772,7 +1150,8 @@ func _run_test(args: Dictionary) -> void:
 
 	if n == 0:
 		print("DIALOGUETEST people=0 opened=0 lines=0 shown=0 distinct=0 "
-			+ "prompt_m=-1.00 palette=%s" % palette_source())
+			+ "prompt_m=-1.00 offers=0 says=0 said=0 hour_moves=0 takes=0 "
+			+ "palette=%s" % palette_source())
 		get_tree().quit(0)
 		return
 
@@ -830,6 +1209,13 @@ func _run_test(args: Dictionary) -> void:
 	_scanned_frame = -1
 	var behind: bool = refresh() == target
 
+	# THE CLOCK MOVES THE CAST, and it is asked before any conversation is
+	# opened so the measurement is of the take selection and not of a
+	# conversation that happens to be frozen open. `hour_moves` restores
+	# everybody's take, so this is a read and not a state change.
+	var moved := hour_moves(3.0, 13.0)
+	var takes: int = (_people[0] as Person).takes.size()
+
 	# Now stand in front of them and hold the conversation.
 	_aim(body, cam, up, head)
 	_scanned_frame = -1
@@ -838,20 +1224,51 @@ func _run_test(args: Dictionary) -> void:
 	# run off the end and closed it -- not on a call count, because a bound
 	# that happens to equal the line count cannot tell a working line pointer
 	# from one that never advances.
+	#
+	# AND IT STOPS AT THE QUESTION, WHICH IS THE POINT OF THE QUESTION. `talk()`
+	# returns false at the menu and this loop would spin there for ever, so the
+	# STANCE is what moves it on. `--stance=` picks which one; the default is
+	# `press`, because it is the only one that can be REFUSED and therefore the
+	# only one whose outcome is not knowable from the sidecar alone.
+	var want_stance := String(args.get("stance", "press"))
+	var picked_i := -1
 	var guard := 0
+	var stalled := 0
 	talk()
-	while _open != null and guard < 64:
+	while _open != null and guard < 96:
 		_scanned_frame = -1
-		talk()
+		if _menu:
+			var opts: Array = _open.choices
+			var k := 0
+			for i in opts.size():
+				if String(opts[i].get("stance", "")) == want_stance:
+					k = i
+			picked_i = k
+			if not say(k):
+				stalled += 1
+				break
+		elif not talk():
+			stalled += 1
+			break
 		guard += 1
+	# WHAT THE PLAYER ACTUALLY SAID, carried into the verdict verbatim. A count
+	# of utterances can be right while the text is empty, and an empty string in
+	# a panel is the failure that reads as success.
+	var mine := ""
+	if picked_i >= 0 and picked_i < target.choices.size():
+		mine = String(target.choices[picked_i].get("text", ""))
 	print("DIALOGUETEST people=%d opened=%d deck_lines=%d open_lines=%d "
 		% [count(), opened(), total_lines(), target.lines.size()]
 		+ "shown=%d distinct=%d prompt_m=%.2f far_prompt=%s behind=%s "
 		% [lines_shown(), distinct_lines(), first_m, str(far_prompt),
 			str(behind)]
-		+ "bad_range=%d bad_cone=%d palette=%s topic=%s name=%s"
+		+ "bad_range=%d bad_cone=%d palette=%s topic=%s name=%s "
 		% [bad_range, bad_cone, palette_source(), target.topic,
-			target.name.replace(" ", "_")])
+			target.name.replace(" ", "_")]
+		+ "offers=%d says=%d said=%d stance=%s stalled=%d takes=%d "
+		% [offers(), distinct_says(), said(), picked(), stalled, takes]
+		+ "hour_moves=%d run_lines=%d you_said=%s"
+		% [moved, _run_max, mine.replace(" ", "_")])
 	get_tree().quit(0)
 
 

@@ -178,6 +178,24 @@ class Line:
 
 
 @dataclass(frozen=True)
+class Choice:
+    """One thing the PLAYER can say, and what it gets them.
+
+    A STANCE, NOT A FLAVOUR. `docs/spec/PEOPLE.md` DLG-05 is explicit --
+    *"Choices are stances, not flavour"* -- so the three differ in what they
+    are worth rather than in tone: `ask` gets the qualitative half of the
+    topic, `press` gets the NUMBER THAT DECIDED THE TOPIC'S SALIENCE and can
+    be refused, `let_go` gets nothing and ends the conversation. Dropping it
+    is a real choice because the number is real and you do not get it.
+    """
+    stance: str        # "ask" | "press" | "let_go"
+    text: str          # what the PLAYER says
+    reply: tuple       # the Lines they answer with; empty is an answer too
+    yielded: bool      # did the register let them be drawn out
+    source: str
+
+
+@dataclass(frozen=True)
 class Exchange:
     npc_id: str
     name: str
@@ -190,13 +208,42 @@ class Exchange:
     lines: tuple
     ranking: tuple = ()          # every applicable topic and its salience
     sources: tuple = ()
+    # WHAT THE PLAYER MAY SAY, and the index in `lines` it is offered after.
+    # BOTH DEFAULT TO "NOTHING", which is what keeps every existing caller --
+    # `report`, the selftest, the committed sidecars, `dialogue.gd`'s reader --
+    # reading exactly what it read before this field existed.
+    choices: tuple = ()
+    choice_at: int = -1
 
     @property
     def spoken(self):
         return tuple(x for x in self.lines if x.kind == "speech")
 
+    @property
+    def said(self):
+        """Every player utterance this exchange offers. The DLG-05 denominator."""
+        return tuple(c.text for c in self.choices)
+
     def text(self):
         return " / ".join(x.text for x in self.lines)
+
+    def transcript(self, stance: str = "press"):
+        """The whole conversation with one stance taken, as it would be heard.
+
+        THE ONLY PLACE THE TWO HALVES ARE JOINED, so a gate that asks what a
+        player actually experiences does not have to reimplement the splice
+        that `godot/scripts/dialogue.gd` performs at runtime.
+        """
+        out = []
+        for i, ln in enumerate(self.lines):
+            out.append(ln)
+            if i == self.choice_at:
+                for c in self.choices:
+                    if c.stance != stance:
+                        continue
+                    out.append(Line("you", "speech", c.text, c.source))
+                    out.extend(c.reply)
+        return tuple(out)
 
 
 # ===========================================================================
@@ -480,11 +527,27 @@ def daypart(species: str, hour: float) -> str:
     return "late"
 
 
+# A REGISTER NAME IS A CATALOGUE ENTRY AND NOBODY SPEAKS ONE. 22 of the 128
+# rows in `directory.PLACES` carry a disambiguating slash or a parenthetical
+# count -- "Transport tubes / lifts (between levels)", "Docking bays (24)",
+# "Security posts / checkpoints" -- because the register's job is to be
+# unambiguous across 128 places. Put verbatim in a mouth it reads as a database
+# field, which is the same fidelity failure as the era topic naming an episode.
+#
+# The first alternative and no parenthetical is what a person says: "Transport
+# tubes", "Docking bays", "Security posts". The register keeps its precision;
+# this is a RENDERING of it for speech, not a second name, so nothing can
+# drift. INV-300.
+def _spoken(name: str) -> str:
+    out = name.split("(")[0].split("/")[0].strip().rstrip(",;")
+    return out or name
+
+
 def _place_name(key: str) -> str:
     if not key:
         return ""
     try:
-        return dr.by_key(key)["name"]
+        return _spoken(dr.by_key(key)["name"])
     except Exception:                                           # noqa: BLE001
         return key.replace("_", " ")
 
@@ -629,7 +692,12 @@ def _topic_news(sp, li, w, reg):
         # Ministry out loud and a civilian looks at the floor.
         sal += 0.9 if reg.armband else 0.25
     return {"key": "news", "salience": sal,
-            "fact": {"kind": pick["kind"], "text": _headline(pick["text"])},
+            # `live` is the count that DECIDED the salience above, carried so a
+            # player who presses gets that number rather than a second opinion
+            # about it. See `PRESSED` -- every row names its topic's own
+            # salience input, which is the one thing the first line never says.
+            "fact": {"kind": pick["kind"], "text": _headline(pick["text"]),
+                     "live": len(live)},
             "source": f"broadcast.audible_at({sp.place!r}, {w.hour:.2f}) -> "
                       f"{pick['kind']}; {pick['source']}"}
 
@@ -686,7 +754,7 @@ def _topic_trade(sp, li, w, reg):
         return None
     return {"key": "trade", "salience": PERSONAL["trade"]
             + (0.4 if sp.job == sp.place else 0.0),
-            "fact": {"where": q["name"], "counter": counters[0].replace(
+            "fact": {"where": _spoken(q["name"]), "counter": counters[0].replace(
                 "_", " "), "here": sp.job == sp.place,
                 "what": ", ".join(q.get("functions") or ())},
             "source": f"resident.job={sp.job!r} -> directory.by_key + "
@@ -709,7 +777,7 @@ def _topic_shift(sp, li, w, reg):
     here = sp.place == sp.job
     return {"key": "shift", "salience": PERSONAL["shift"]
             + (0.4 if act is sched.Activity.TRANSIT else 0.0),
-            "fact": {"job": (q or {}).get("name", sp.job),
+            "fact": {"job": _spoken((q or {}).get("name", sp.job)),
                      "start": _hhmm(start), "end": _hhmm(start + hours),
                      "hours": hours, "here": here,
                      "transit": act is sched.Activity.TRANSIT,
@@ -841,11 +909,23 @@ def _topic_era(sp, li, w, reg):
     # of everybody aboard and would otherwise put the same sentence in three
     # mouths in one room, which is what it did before this line existed.
     sal = PERSONAL["era"] + (0.8 if who != "*" else -0.3)
+    # `when` IS A PRODUCTION REFERENCE AND `what` IS THE FACT. Every
+    # `ERA_EVENTS` description is `"E7  The Fall of Night -- Nightwatch
+    # surfaces aboard; the first armband"`: an episode marker, then what
+    # happened in the world. Splitting on `--` and keeping the FIRST half gives
+    # a production credit, and the first line that put it in a mouth had a
+    # customs officer saying *"You mean since E7 The Fall of Night?"* -- an
+    # era-lock failure of the opposite kind to the one this module guards, and
+    # a fidelity failure by the era rule. `when` is left as it was because
+    # provenance wants the marker; `what` is the half a person can say.
+    desc = cos.ERA_EVENTS[ev][1]
     return {"key": "era", "salience": sal,
             "fact": {"event": ev, "who": who,
                      "refugee": sp.role == "refugee",
                      "armband": reg.armband,
-                     "when": cos.ERA_EVENTS[ev][1].split("--")[0].strip()},
+                     "when": desc.split("--")[0].strip(),
+                     "what": (desc.split("--", 1)[1] if "--" in desc
+                              else desc).split(";")[0].strip()},
             "source": f"costume.ERA_EVENTS[{ev!r}] active at {w.era}; {why}"}
 
 
@@ -1153,6 +1233,306 @@ def phrase(topic: dict, reg: Register, sp: _Speaker) -> str:
 
 
 # ===========================================================================
+# 4b.  WHAT YOU SAY BACK -- the player's own voice
+# ===========================================================================
+# THE HOLE THIS FILLS, MEASURED. `docs/spec/PEOPLE.md` §4: *"a 2,139-line
+# module, 57 distinct lines baked on one deck, ZERO PLAYER UTTERANCES"*. The
+# owner's session-4d ruling names it in the same breath as the missing HUD.
+# Everything above this line is somebody talking AT you.
+#
+# THE THREE STANCES ARE DLG-05's, AND THEY DIFFER IN WHAT THEY ARE WORTH.
+# A conversation whose options are three ways of saying "go on" is a menu, not
+# a choice, so each stance is defined by what it can and cannot get:
+#
+#   ask     -- the QUALITATIVE half of the topic. Always answered.
+#   press   -- THE NUMBER THAT DECIDED THE TOPIC'S SALIENCE. `_topic_port`
+#              chose the liner because `hall_rate` says x9.7; `_topic_beat`
+#              chose the beat because `security.on_duty` says 174. The first
+#              line never carries that number. Pressing is how you get it --
+#              AND IT CAN BE REFUSED.
+#   let_go  -- nothing, and the farewell. You do not learn the number.
+#
+# WHETHER A PRESS WORKS IS THE REGISTER, NOT A DIE -- AND IT IS A COMPARISON
+# OF TWO NUMBERS THIS MODULE ALREADY COMPUTES, with no third constant at all:
+#
+#     they yield when they are MORE WILLING than they are CLIPPED,
+#     `reg.warmth > reg.terseness`.
+#
+# Both sides are already derived. `warmth` is `friction.SEVERITY`'s separation
+# ladder inverted -- the same number the crowd keeps its distance by -- and
+# `terseness` is the role row plus the species delta. Nothing here to tune and
+# therefore nothing to argue with, which is `deck.py --degeneracy`'s argument
+# for a hash over a threshold.
+#
+# THE FIRST VERSION WAS A THRESHOLD AND IT MEASURED AS A SLOT MACHINE.
+# `warmth >= 0.75 AND terseness <= median(_ROLE_REGISTER)` looked principled --
+# both halves derived -- and ANDing two independent cuts is multiplicative: on
+# the shipped deck's own 21-person cast it yielded 1 TIME IN 21, and on the
+# 73-person customs cast 16 in 73. A stance that pays out 5% of the time is not
+# a choice a player makes, it is one they stop taking. The comparison above
+# lands the same fiction (a Narn dock worker at this datum gives you nothing; a
+# Centauri merchant gives you the number; Kosh, at 1.00 against 1.00, never
+# yields to anybody) without either constant. INV-299.
+#
+# WHAT IS INVENTED HERE, PLAINLY: the phrasings, exactly as `PHRASE`'s are --
+# authority 5, flat civic register, and every brace is a value the station
+# computed. What is NOT invented is which fact each row names: `PRESSED[k]`
+# names the input to `_topic_<k>`'s own salience expression, so a phrasing
+# cannot drift from the reason the topic won. INV-298 and INV-299.
+
+STANCES = ("ask", "press", "let_go")
+
+# The friction floor `speak` already uses for the greeting, named once so the
+# press and the hello agree by construction rather than by two literals.
+WARM_FLOOR = 0.75
+
+
+def yields_to_press(reg: Register) -> bool:
+    """Will this person give up the number if you push? Nothing random here."""
+    return reg.warmth > reg.terseness
+
+
+# What the PLAYER says. ONE VOICE, NOT THREE BANDS: the player has no role row
+# and no species row -- `Listener` carries species, role and psi for the
+# FRICTION model and nothing in this repository decides how the player speaks.
+# Banding them would be inventing a register for a person the simulation does
+# not describe, which is precisely the unmarked invention hard rule 1 forbids.
+#
+# Every line names a value out of the topic's own `fact`, for the same reason
+# the NPC's do: a line any NPC could hear is a line that has not been earned.
+SAY = {
+    "port":    ("The {ship} -- were you expecting her?",
+                "{souls} through one hall. How is that going?",
+                "I'll leave you to the {ship}."),
+    "news":    ("You put much stock in {surface}?",
+                "How much of that is running in here right now?",
+                "I've heard enough of it."),
+    "beat":    ("{min:.0f} minutes a lap. Do you walk it alone?",
+                "How many of the {on} are actually out on the ring?",
+                "I won't hold up your watch."),
+    "trade":   ("The {counter}. What do you keep behind it?",
+                "What is {where} good for, besides the {counter}?",
+                "Another time, then."),
+    "shift":   ("{start} to {end}. Every day?",
+                "How do you get across to {job}?",
+                "Don't let me make you late."),
+    "meal":    ("{meals} a day. Is that your people's count or the station's?",
+                "Do you eat at {where} by choice?",
+                "Enjoy it."),
+    "home":    ("{home}. Have you been there long?",
+                "What is it actually like where you sleep?",
+                "It's not my business."),
+    "worship": ("You keep the hours at {where}?",
+                "Does the watch actually let you go?",
+                "I'll not interrupt."),
+    "visa":    ("Your card reads {visa}?",
+                "Is that a problem in a room like this one?",
+                "I didn't ask."),
+    "era":     ("{What}. Is that how it looks from where you stand?",
+                "What did that actually change for you?",
+                "We needn't talk about it."),
+}
+
+# The ASK answer -- the QUALITATIVE half. Named facts, no salience number.
+ASKED = {
+    "port":    ("She is at {berth}, and berthed at {when}.",
+                "{berth}, in at {when}.",
+                "{berth}. {when}."),
+    "news":    ("It is {surface}. One reads what one is given.",
+                "It's {surface}. Make of it what you like.",
+                "{surface}. That's all."),
+    "beat":    ("I am {posting} on this watch.",
+                "I'm {posting} this watch.",
+                "{Posting}."),
+    "trade":   ("{where} is for {what}.",
+                "{where}'s for {what}.",
+                "{what}."),
+    "shift":   ("I go by {via}, as everybody does.",
+                "{via}. Same as everyone.",
+                "{via}."),
+    "meal":    ("I eat {eating}, and it is a fixed hour.",
+                "I eat {eating}. Fixed hour.",
+                "{Eating}."),
+    "worship": ("{clerical}",
+                "{clerical}",
+                "{clerical}"),
+    "visa":    ("It is what the card says. {reading}.",
+                "That's what it says. {reading}.",
+                "{reading}."),
+    "era":     ("{standing}",
+                "{standing}",
+                "{standing}"),
+}
+
+# The HOME ask is split the way `PHRASE`'s is, and for the same reason: nobody
+# in `resident.DOWNBELOW_HOMES` answers "have you been there long" about a
+# billet they do not have.
+ASKED_HOME = ("Long enough that {home} is the word I use for it.",
+              "Long enough. {home}, for what it's worth.",
+              "Long enough.")
+ASKED_DOWN = ("Long enough to know which corridors are {policing}.",
+              "Long enough. The corridors down there are {policing}.",
+              "{Policing}. That's what you need to know.")
+
+# The PRESS answer, WHEN THEY YIELD -- and every row carries the number the
+# topic's own salience expression was computed from.
+PRESSED = {
+    "port":    ("{rate:.1f} souls a minute through the hall. That is {mult:.1f} "
+                "times an ordinary watch.",
+                "{rate:.1f} a minute through here. {mult:.1f} times normal.",
+                "{rate:.1f} a minute. {mult:.1f} times normal."),
+    "news":    ("There are {live} of them running in this room at present.",
+                "{live} of them running in here right now.",
+                "{live} of them. In here. Now."),
+    "beat":    ("{pairs} pairs roving, of {on} on the watch across the sector.",
+                "{pairs} pairs out, {on} on the watch.",
+                "{pairs} pairs. {on} on watch."),
+    "trade":   ("{where} answers for {what}; the {counter} is only my part "
+                "of it.",
+                "{where} does {what}. The {counter}'s just my bit.",
+                "{what}. The {counter}'s mine."),
+    "shift":   ("{hours:.0f} hours of it, {start} to {end}, and I cross by "
+                "{via}.",
+                "{hours:.0f} hours, {start} to {end}. I come by {via}.",
+                "{hours:.0f} hours. {via}."),
+    "meal":    ("My people keep {meals} in a day; the station keeps three. I "
+                "eat {eating}.",
+                "{meals} a day for us, three for the station. I eat {eating}.",
+                "{meals} a day. {Eating}."),
+    "worship": ("{where}, when the watch allows it, which is less often than "
+                "the order would like.",
+                "{where}, when the watch allows. Which isn't often.",
+                "{where}. When they let me."),
+    "visa":    ("In this room it matters: {reading}.",
+                "In here it matters. {reading}.",
+                "{reading}."),
+    "era":     ("{bearing} That is the difference, and it is the whole of it.",
+                "{bearing} That's the difference.",
+                "{Bearing}"),
+}
+PRESSED_HOME = ("{home}, and it is exactly what the register says it is.",
+                "{home}. Exactly what it says on the register.",
+                "{home}. That's it.")
+PRESSED_DOWN = ("{m2:.0f} square metres a person, and the corridor is "
+                "{policing}.",
+                "{m2:.0f} square metres each, and the corridor is {policing}.",
+                "{m2:.0f} metres each. {Policing}.")
+
+# ...AND WHEN THEY DO NOT. Three bands of the same refusal, because a formal
+# speaker declines and a blunt one stops talking. This is the line the player
+# gets for pushing the wrong person, and it is the reason the stance is a
+# gamble rather than a button.
+DEFLECT = ("I have said what there is to say.",
+           "That's as much as you'll get.",
+           "No.")
+
+# The LET-GO answer is the empty tuple, everywhere. The farewell that already
+# follows in `speak` IS the reply, so a stance that means "drop it" produces no
+# extra words -- which is the whole of its cost: you never hear `PRESSED`.
+
+
+def _stance_extra(key: str, f: dict, reg: Register, sp: _Speaker) -> dict:
+    """Render the topic's BOOLEANS into words, and nothing else.
+
+    A template that prints `True` is a template that prints a Python literal at
+    a player. Every entry here is a two-way rendering of a flag the topic
+    already computed -- no new facts, no new decisions.
+    """
+    e = {}
+    if key == "news":
+        e["surface"] = ("the ISN screen" if f.get("kind") == "isn"
+                        else "the Ministry notice")
+    if key == "beat":
+        e["posting"] = ("posted here" if f.get("posted") else "roving")
+        e["pairs"] = f.get("pairs", 0)
+    if key == "meal":
+        e["eating"] = ("out" if f.get("out") else "in quarters")
+        if f.get("segregated"):
+            # FACTIONS.md 12: the only species with a segregated food economy.
+            e["eating"] = "where my people are allowed to"
+    if key == "worship":
+        e["clerical"] = ("It is my office." if f.get("cleric")
+                         else "When the hours fall right, yes.")
+    if key == "visa":
+        e["reading"] = ("there is a reader on this deck"
+                        if f.get("reader") else "nobody here is checking")
+    if key == "home" and f.get("down"):
+        e["policing"] = ("walked by a patrol" if f.get("policed")
+                         else "never walked by anyone")
+    if key == "era":
+        # The two facts `_topic_era` decides with. `who` is the species or role
+        # the row landed on, and `who == "*"` is the +/-0.8 term in its own
+        # salience -- an era that happened TO you against one that happened.
+        e["bearing"] = ("It was done to my own people."
+                        if f.get("who") != "*"
+                        else "It was done to this station; I only watched.")
+        e["standing"] = ("I am here on sufferance, and that is what it means."
+                         if f.get("refugee")
+                         else "I wear the armband. You can see that for "
+                              "yourself." if f.get("armband")
+                         else "It neither hunts me nor favours me. That is "
+                              "as much as I will say.")
+    # A BLUNT ROW OFTEN OPENS ON A VALUE, so every string fact -- the topic's
+    # own and this function's -- gets a Capitalised twin, the way `_fmt` makes
+    # `{Word}` out of `{word}`. Without it "{Policing}. That's what you need to
+    # know." starts a sentence in lower case, which reads as a bug in the game
+    # rather than as a voice.
+    for src in (f, e):
+        for k in list(src):
+            v = src[k]
+            if isinstance(v, str) and v and not k[0].isupper():
+                e[k[0].upper() + k[1:]] = v[0].upper() + v[1:]
+    return e
+
+
+def choices_for(pick, reg: Register, sp: _Speaker, world: World) -> tuple:
+    """The three things a player may say, and what each is worth.
+
+    Returns () when there is nothing to say back -- a refusal, or a person
+    with no applicable topic at all. THAT IS AN ANSWER AND NOT A GAP: a Narn
+    meeting a Centauri does not speak, and offering the player a menu at a
+    silence FACTIONS.md 12 is explicit about would be inventing the opposite of
+    what is attested.
+    """
+    if pick is None or pick["key"] not in SAY:
+        return ()
+    key = pick["key"]
+    f = dict(pick.get("fact") or {})
+    b = reg.band
+    e = _stance_extra(key, f, reg, sp)
+    yields = yields_to_press(reg)
+    down = key == "home" and f.get("down")
+
+    ask_row = (ASKED_DOWN if down else ASKED_HOME) if key == "home" \
+        else ASKED[key]
+    press_row = (PRESSED_DOWN if down else PRESSED_HOME) if key == "home" \
+        else PRESSED[key]
+
+    why = (f"register warmth {reg.warmth:.2f} "
+           f"{'>' if yields else '<='} terseness {reg.terseness:.2f} -> "
+           f"{'yields' if yields else 'deflects'}")
+
+    out = [
+        Choice(stance="ask", text=_fmt(SAY[key][0], f, e),
+               reply=(Line("npc", "speech", _fmt(ask_row[b], f, e),
+                           pick["source"]),),
+               yielded=True,
+               source=f"{pick['source']} -> the qualitative half"),
+        Choice(stance="press", text=_fmt(SAY[key][1], f, e),
+               reply=(Line("npc", "speech",
+                           _fmt(press_row[b], f, e) if yields else DEFLECT[b],
+                           pick["source"] if yields
+                           else f"npc/friction + register: {why}"),),
+               yielded=yields,
+               source=(f"{pick['source']} -> the salience input; {why}")),
+        Choice(stance="let_go", text=_fmt(SAY[key][2], f, e), reply=(),
+               yielded=True,
+               source="the topic is dropped; schedule.RHYTHMS resumes"),
+    ]
+    return tuple(out)
+
+
+# ===========================================================================
 # 5.  The exchange
 # ===========================================================================
 
@@ -1189,7 +1569,7 @@ def speak(resident, place_key: str, world: World = None,
                                       for t in ranked),
                         sources=tuple(sources))
 
-    greet = (COLD_GREET if reg.warmth < 0.75 else GREET)[reg.band]
+    greet = (COLD_GREET if reg.warmth < WARM_FLOOR else GREET)[reg.band]
     if greet:
         lines.append(Line("npc", "speech", _fmt(greet, {"word": word}),
                           f"schedule.RHYTHMS[{sp.species!r}] -> their own "
@@ -1214,14 +1594,23 @@ def speak(resident, place_key: str, world: World = None,
         lines.append(Line(side, "action", _behaviour(p),
                           f"npc/friction.pair({x!r}, {y!r}) -> row "
                           f"({p[0]!r}, {p[1]!r}) {p[2]}, warmth "
-                          f"{reg.warmth:.2f} < 0.75 "
+                          f"{reg.warmth:.2f} < {WARM_FLOOR:.2f} "
                           f"(FACTIONS.md 12, authority {p[3]})"))
     sources.append(lines[-1].source)
 
+    choices = ()
+    choice_at = -1
     if pick is not None:
         lines.append(Line("npc", "speech", phrase(pick, reg, sp),
                           pick["source"]))
         sources.append(pick["source"])
+        # THE MENU GOES HERE AND NOWHERE ELSE. A player can answer a topic;
+        # there is nothing to say back to "good afternoon", and interrupting
+        # before they have said what is on their mind would make every stance
+        # the same stance.
+        choices = choices_for(pick, reg, sp, world)
+        if choices:
+            choice_at = len(lines) - 1
 
     # THE FAREWELL IS THE SCHEDULE, HALF AN HOUR AHEAD. If the clock is about
     # to move them, they say where -- which means a person you catch at 07:40
@@ -1249,7 +1638,8 @@ def speak(resident, place_key: str, world: World = None,
                     lines=tuple(lines),
                     ranking=tuple((t["key"], round(t["salience"], 3))
                                   for t in ranked),
-                    sources=tuple(sources))
+                    sources=tuple(sources),
+                    choices=choices, choice_at=choice_at)
 
 
 def prompt(resident, listener: Listener = None,
@@ -1358,19 +1748,61 @@ def sidecar(actors, world: World = None, listener: Listener = None) -> list:
             "role": r.role,
             "place": place,
             "hour": world.hour,
+            # WHAT THEY GO BACK TO WHEN YOU STOP TALKING, at THIS take's hour.
+            # `<deck>_actors.json` carries a `who.doing` too and it is the one
+            # `populace` baked -- one hour, frozen, so a conversation held at
+            # 03:00 ended with a dock worker going "back to work". This is the
+            # same call `populace` makes, asked at the hour being baked.
+            "doing": sched.activity_at(npc_id, r.species, world.hour).value,
             "topic": ex.topic,
             "band": BAND_NAME[ex.band],
             "lines": [{"who": ln.who, "kind": ln.kind, "text": ln.text}
                       for ln in ex.lines],
+            # WHAT THE PLAYER MAY SAY. A row without it is an old sidecar and
+            # `dialogue.gd` reads it exactly as it always did -- the key is
+            # additive, like `cells=` in the COLDSTART verdict.
+            "choice_at": ex.choice_at,
+            "choices": [{"stance": c.stance, "text": c.text,
+                         "yielded": c.yielded,
+                         "reply": [{"who": ln.who, "kind": ln.kind,
+                                    "text": ln.text} for ln in c.reply]}
+                        for c in ex.choices],
             "sources": list(ex.sources),
         })
     return out
 
 
-def write_sidecar(actors_path: str, out_path: str, world: World = None) -> int:
+# WHICH HOURS GET BAKED, and why it is four rather than one.
+#
+# THE SIDECAR USED TO BE A PHOTOGRAPH. `speak` is a function of `world.hour`
+# and `boot.py` baked it once at 13:00, so every derivation in this module --
+# the species daypart, `schedule.activity_at`, `traffic.hall_rate`, the
+# farewell's half-hour lookahead -- was frozen at one instant and the station's
+# clock ran on underneath it. A resident said "I am due at the Zocalo" at
+# 03:00 because he had been due there at 13:00 when the deck was built.
+#
+# Four is the schedule's own structure and not a round number: `npc/schedule`
+# gives a human RHYTHM sleep/work/eat/leisure, and 03:00, 09:00, 13:00 and
+# 19:00 are one sample inside each of the four. `dialogue.gd` takes the nearest
+# on the ring, so a clock at 05:00 gets the 03:00 row rather than an average of
+# two -- an averaged person is a person nobody is.
+SIDECAR_HOURS = (3.0, 9.0, 13.0, 19.0)
+
+
+def write_sidecar(actors_path: str, out_path: str, world: World = None,
+                  hours=SIDECAR_HOURS) -> int:
+    """Bake the exchanges beside the deck. Returns the row count.
+
+    `hours=None` writes the single-hour form this function had before, which
+    is what `--hour` on the command line asks for.
+    """
     with open(actors_path) as f:
         actors = json.load(f)
-    rows = sidecar(actors, world)
+    world = world or World()
+    rows = []
+    for h in (hours or (world.hour,)):
+        rows += sidecar(actors, World(hour=h, day=world.day,
+                                      datum=world.datum))
     with open(out_path, "w") as f:
         json.dump(rows, f, indent=1)
     return len(rows)
@@ -1379,6 +1811,327 @@ def write_sidecar(actors_path: str, out_path: str, world: World = None) -> int:
 # ===========================================================================
 # 8.  Report
 # ===========================================================================
+
+# ===========================================================================
+# 7b.  THE CONVERSATION GATE -- can a player talk back, and to how many?
+# ===========================================================================
+# WHY THIS GATE AND NOT ANOTHER COVERAGE COUNT. CLAUDE.md's session-4d ruling
+# is that this project optimises what can be counted and a game cannot be
+# expressed as a count, and the honest reading of that is NOT "stop counting".
+# It is that the count must be of the thing a player does. `--selftest` above
+# asks whether the derivation is sound -- 37 checks, every one of them about a
+# table or a topic. NONE of them could fail for *"there is no way to answer"*,
+# and for 2,139 lines there was none.
+#
+# So this asks four questions with DENOMINATORS, over the cast a player
+# actually meets rather than a synthetic roster:
+#
+#   1. how many of the deck's people can be spoken to at all
+#   2. how many DISTINCT things they open with     -- variety, not existence
+#   3. how many offer the player a line back, and how many distinct player
+#      lines exist                                 -- DLG-05, from zero
+#   4. does the same person say the same thing at 03:00 and at 13:00
+#
+# AND THREE CONTROLS, because a gate that only runs the working configuration
+# cannot tell a working thing from a lucky one. Every one of them removes a
+# single mechanism and must break exactly the number that names it.
+#
+# WHAT IT LOOKED LIKE BEFORE THIS SESSION, run against the same casts:
+# `utterances 0/94`, `distinct player lines 0`, `press yields 0 deflects 0`.
+# The gate FAILS on that, which is the only reason to believe it.
+
+# `docs/spec/PEOPLE.md` DLG-05's own arithmetic: 11 topics x 3 stances = 33,
+# plus openers/closers, role work-lines and the papers/trade sets = 152. The
+# floor is quoted rather than met, because quoting a floor you have not reached
+# is honest and moving the floor to where you are is not.
+DLG05_FLOOR = 152
+
+
+def _cast_files():
+    """Every baked cast on disk, newest deck first. The population, not a roster.
+
+    A gate that built its own roster would be measuring `resident.roster` and
+    calling it dialogue. These are the JSON files `populace.py` wrote and
+    `godot/scripts/walk.gd` loads, so the people counted here are the people
+    standing in the build.
+    """
+    import glob                                                  # noqa: PLC0415
+    d = os.path.join(_HERE, "generated", "scene", "deck")
+    return sorted(glob.glob(os.path.join(d, "*_actors.json")))
+
+
+# WHERE THE CAST COMES FROM WHEN THERE IS NO DECK ON DISK.
+#
+# `station/generated/scene/` IS GITIGNORED, and this gate would otherwise be
+# the fourth in this repository to depend on an artefact its own CI cannot
+# rebuild -- the defect `--gate-frames` had with stale PNGs and `budget.py` had
+# with a cached collision total. Building a deck takes twenty minutes and CI
+# does not do it, so a gate that needs one is a gate that reports
+# "NO BAKED CAST" on every push and is read as noise inside a month.
+#
+# So the fallback is a ROSTER over real register places -- the same
+# `resident.roster` the deck baker itself casts rooms from, so it is the same
+# people, just not yet placed against a mesh. It is WEAKER and the gate says
+# which one it used on every run: the deck form additionally proves the join to
+# `<deck>_actors.json` and the shipped manifest, and the roster form cannot.
+#
+# The places are the four the selftest already samples plus the two that carry
+# the roles those four do not (an officer's beat, a cleric's hours), so every
+# `PHRASE` row that a stance table has a row for can appear.
+ROSTER_PLACES = (("zocalo", 10.0), ("customs_north", 9.0),
+                 ("docking_bays", 14.0), ("downbelow", 2.0),
+                 ("bar_unnamed", 20.0), ("security_posts", 6.0))
+ROSTER_SPECIES = ("human", "narn", "centauri", "minbari", "drazi")
+
+
+def _roster_cast(per=4):
+    """A stand-in cast shaped exactly like `_cast`'s rows, from the register."""
+    out = []
+    for place, h in ROSTER_PLACES:
+        for sp in ROSTER_SPECIES:
+            for r in res.roster(place, h, sp, per):
+                out.append(("(roster)", {
+                    "group": f"{place}__{r.npc_id}",
+                    "place": place,
+                    "who": {"id": r.npc_id, "species": r.species},
+                }))
+    return out
+
+
+def _cast(paths=None, cap=None):
+    out = []
+    for p in (paths if paths is not None else _cast_files()):
+        try:
+            with open(p) as f:
+                rows = json.load(f)
+        except Exception:                                        # noqa: BLE001
+            continue
+        for a in rows:
+            who = a.get("who") or {}
+            if who.get("id"):
+                out.append((os.path.basename(p), a))
+    # Deduplicate on (person, place): the same resident is baked into more than
+    # one deck of one z-cluster, and counting them twice would inflate every
+    # denominator below by a factor nobody could see.
+    seen, uniq = set(), []
+    for stem, a in out:
+        k = (a["who"]["id"], a.get("place", ""))
+        if k in seen:
+            continue
+        seen.add(k)
+        uniq.append((stem, a))
+    return uniq[:cap] if cap else uniq
+
+
+def _exchange_for(a, hour, day=0, listener=None):
+    who = a["who"]
+    r = res.resident(who["id"], who.get("species", "human"))
+    place = a.get("place") or who.get("at_post") or ""
+    return speak(r, place, World(hour=hour, day=day), listener)
+
+
+def converse(out=print, hours=(3.0, 13.0), cap=None):            # noqa: C901
+    """The gate. Returns True if a player can hold a conversation on this deck."""
+    cast = _cast(cap=cap)
+    fails = []
+    baked = bool(cast)
+    if not baked:
+        cast = _roster_cast()
+        if cap:
+            cast = cast[:cap]
+    if not cast:
+        out("converse: no cast could be assembled, baked or rostered")
+        return False
+
+    h_a, h_b = hours[0], hours[-1]
+    ex_a = [_exchange_for(a, h_a) for _stem, a in cast]
+    ex_b = [_exchange_for(a, h_b) for _stem, a in cast]
+    n = len(cast)
+    decks = sorted({s for s, _ in cast})
+
+    # -- 1. who is here ---------------------------------------------------
+    people = len({a["who"]["id"] for _s, a in cast})
+    out("the cast: %s, %d distinct residents"
+        % ((f"{n} placed bodies over {len(decks)} baked deck(s)" if baked
+            else f"{n} rostered from {len(ROSTER_PLACES)} register places "
+                 f"-- NO BAKED DECK in this checkout, so the join to "
+                 f"<deck>_actors.json is NOT exercised"), people))
+
+    # -- 2. what they open with -------------------------------------------
+    def opener(ex):
+        for ln in ex.lines:
+            return ln.text
+        return ""
+    openers = {opener(e) for e in ex_b} - {""}
+    # AND WHAT THEY ACTUALLY TELL YOU, which is the number that matters.
+    # A greeting is drawn from three banded forms plus the withheld one, so its
+    # ceiling is 4 BY CONSTRUCTION and reporting it alone would make a station
+    # of 136 people look like it had four things to say. The topic line is the
+    # one that names today's liner, this officer's beat or this stallholder's
+    # counter, and it is the one a repeat would be felt in.
+    tells = {e.lines[e.choice_at].text for e in ex_b if e.choice_at >= 0}
+    out(f"openers: {len(openers)} distinct greetings (a banded table of "
+        f"{len(GREET)} plus the withheld one -- 4 is its ceiling) over {n} "
+        f"people, who then tell you {len(tells)} distinct things")
+    if len(openers) < 2:
+        fails.append(f"the whole cast opens {len(openers)} way(s)")
+    if len(tells) < 8:
+        fails.append(f"{n} people between them say {len(tells)} distinct "
+                     f"things")
+
+    # -- 3. CAN THE PLAYER SAY ANYTHING ------------------------------------
+    with_choice = [e for e in ex_b if e.choices]
+    said = {t for e in ex_b for t in e.said}
+    out(f"player utterances: {len(with_choice)}/{n} exchanges offer one, "
+        f"{len(said)} distinct player lines "
+        f"(DLG-05 floor {DLG05_FLOOR}; this is not that yet)")
+    if not with_choice:
+        fails.append("NOT ONE exchange offers the player a line -- this is the "
+                     "state the owner's session-4d ruling named")
+    # A person who does not speak to you at all is the one legitimate zero, and
+    # it is `friction`'s decision rather than a gap. Everybody else must be
+    # answerable.
+    silent = [e for e in ex_b if not e.choices]
+    unexplained = [e for e in silent if e.topic not in ("refusal", "")]
+    if unexplained:
+        fails.append(f"{len(unexplained)} exchange(s) have a topic and no way "
+                     f"to answer it: {sorted({e.topic for e in unexplained})}")
+    if silent:
+        out(f"  the {len(silent)} with nothing to answer are "
+            f"{sorted({e.topic or '(no topic)' for e in silent})} -- "
+            f"friction.PAIRS' refusals, which FACTIONS.md 12 calls a silence")
+    else:
+        out("  nobody on this cast is unanswerable; no refusal fires against "
+            "a human listener here, which is the friction model's answer and "
+            "not a gap")
+    if len(said) < len(STANCES):
+        fails.append(f"{len(said)} distinct player lines is below one full "
+                     f"set of {len(STANCES)} stances")
+
+    # -- 4. IS A STANCE WORTH ANYTHING -------------------------------------
+    press = [c for e in ex_b for c in e.choices if c.stance == "press"]
+    yes = [c for c in press if c.yielded]
+    out(f"the press: {len(yes)}/{len(press)} yield the number that decided "
+        f"their topic, {len(press) - len(yes)} deflect")
+    if not yes or len(yes) == len(press):
+        fails.append("the press has ONE outcome on this whole cast -- a stance "
+                     "with one outcome is not a stance")
+    # ...and what it is worth is a fact the first line did not carry.
+    earned = 0
+    for e in ex_b:
+        first = " ".join(ln.text for ln in e.lines)
+        for c in e.choices:
+            if c.stance != "press" or not c.yielded:
+                continue
+            new = {w.strip(".,;:-") for r in c.reply
+                   for w in r.text.split()} - {w.strip(".,;:-")
+                                               for w in first.split()}
+            if new:
+                earned += 1
+    out(f"  {earned}/{len(yes)} of those replies carry a word the exchange had "
+        f"not already said")
+    if earned < len(yes):
+        fails.append(f"{len(yes) - earned} press(es) yield nothing new -- the "
+                     f"stance is a rephrase")
+    lets = [c for e in ex_b for c in e.choices if c.stance == "let_go"]
+    if any(c.reply for c in lets):
+        fails.append("let_go produced words -- dropping it must cost the "
+                     "player the answer, or it is not a third option")
+
+    # -- 5. THE HOUR --------------------------------------------------------
+    moved = sum(1 for a, b in zip(ex_a, ex_b) if a.text() != b.text())
+    said_a = {t for e in ex_a for t in e.said}
+    out(f"the hour: {moved}/{n} say something different at "
+        f"{h_a:05.2f} and {h_b:05.2f}; the player's own options move too "
+        f"({len(said_a)} -> {len(said)} distinct)")
+    if moved == 0:
+        fails.append("nobody on the deck says anything different at 03:00 and "
+                     "13:00 -- the exchange is not a function of the clock")
+
+    # -- 6. AND IT REACHES THE BUILD ---------------------------------------
+    # A DERIVATION THE RUNTIME CANNOT READ IS NOT IN THE GAME. `boot.py`'s
+    # manifest names a `_dialogue.json` beside the deck it boots, and
+    # `walk.gd::_wire_dialogue` returns without building the node when that
+    # string is empty -- which is exactly what the shipped manifest held when
+    # this gate was written, so every line above was true and NOBODY SPOKE.
+    boot_p = os.path.join(_HERE, "generated", "scene", "boot.json")
+    if not os.path.exists(boot_p):
+        # SAID OUT LOUD, because a green run that silently skipped this clause
+        # would read as "the shipped build speaks" and it would not have been
+        # asked. `station/generated/scene/` is gitignored.
+        out("the shipped build: NOT CHECKED -- no boot manifest in this "
+            "checkout, so whether a player can reach any of the above is "
+            "unanswered here. `python3 station/boot.py` writes it.")
+    else:
+        with open(boot_p) as f:
+            man = json.load(f)
+        side = man.get("dialogue", "")
+        ok_side = bool(side) and os.path.exists(side)
+        out(f"the shipped build: boot.json deck={man.get('deck', '?')!r} "
+            f"dialogue={'-> ' + os.path.basename(side) if side else 'EMPTY'}"
+            f"{'' if ok_side else '  <-- nobody speaks in the shipped build'}")
+        if not ok_side:
+            fails.append("the shipped boot manifest names no dialogue sidecar, "
+                         "so walk.gd builds no Dialogue node and the whole "
+                         "system is unreachable from the game")
+        else:
+            with open(side) as f:
+                rows = json.load(f)
+            hs = sorted({r.get("hour") for r in rows})
+            with_c = sum(1 for r in rows if r.get("choices"))
+            out(f"  {len(rows)} baked rows over hours {hs}, {with_c} carrying "
+                f"player utterances")
+            if with_c == 0:
+                fails.append("the shipped sidecar carries no player utterances "
+                             "-- rebuild it with `--sidecar`")
+
+    # ------------------------------------------------------------------
+    # CONTROLS
+    # ------------------------------------------------------------------
+    out("negative controls:")
+    global SAY
+    keep = dict(SAY)
+    try:
+        SAY = {}
+        muted = [_exchange_for(a, h_b) for _s, a in cast[:40]]
+        got = sum(len(e.choices) for e in muted)
+        out(f"  with SAY emptied, the same 40 people offer {got} player "
+            f"line(s) -- utterance gate {'FIRES' if got == 0 else 'DOES NOT '}"
+            f"{'' if got == 0 else 'FIRE'}")
+        if got != 0:
+            fails.append("CONTROL: the player lines survive SAY being emptied")
+    finally:
+        SAY = keep
+
+    global yields_to_press
+    keepy = yields_to_press
+    try:
+        yields_to_press = lambda _reg: True                      # noqa: E731
+        allyes = [c for _s, a in cast[:60]
+                  for c in _exchange_for(a, h_b).choices
+                  if c.stance == "press"]
+        d_now = sum(1 for c in allyes if not c.yielded)
+        out(f"  with every register forced to yield, {d_now} of "
+            f"{len(allyes)} press(es) deflect -- register gate "
+            f"{'FIRES' if d_now == 0 else 'DOES NOT FIRE'}")
+        if d_now != 0:
+            fails.append("CONTROL: deflection does not come from the register")
+    finally:
+        yields_to_press = keepy
+
+    ex_same = [_exchange_for(a, h_b) for _s, a in cast]
+    still = sum(1 for a, b in zip(ex_same, ex_b) if a.text() != b.text())
+    out(f"  the same cast read twice at {h_b:05.2f} differs on {still} of {n} "
+        f"-- clock gate {'FIRES' if still == 0 else 'DOES NOT FIRE'}")
+    if still:
+        fails.append("CONTROL: two reads of one hour disagree, so the hour "
+                     "difference above is noise")
+
+    for f in fails:
+        out(f"  FAIL {f}")
+    out(f"\nconverse: {'PASS' if not fails else 'FAIL'}")
+    return not fails
+
 
 def _show(ex: Exchange, out=print, prov=True):
     who = ex.name or f"[unnamed {ex.species}]"
@@ -1925,11 +2678,35 @@ run/main_scene="res://dialogue_selftest.tscn"
 renderer/rendering_method="forward_plus"
 """
 
-# The two scripts the harness needs on `res://`. `hud.gd` is there because
+# The scripts the harness needs on `res://`. `hud.gd` is there because
 # `dialogue.gd` loads the palette off it at runtime, and the gate asserts that
 # it succeeded -- so a harness without it would silently exercise the fallback
 # literals and report the drift it exists to catch.
-_LINKED = ("dialogue.gd", "hud.gd")
+#
+# `places.gd` IS HERE BECAUSE THE GATE WAS FAILING ON ITS ABSENCE AND NOBODY
+# HAD RUN IT. `hud.gd:89` is `const _Places = preload("res://scripts/places.gd")`
+# -- a preload, which is resolved at PARSE time, so a project without that file
+# fails to compile `hud.gd` at all:
+#
+#     Parse Error: Preload file "res://scripts/places.gd" does not exist.
+#     Failed to load script "res://scripts/hud.gd" with error "Parse error".
+#     Invalid access to property or key 'CYAN' on a base object of type 'GDScript'
+#
+# `_load_palette` then fell back to its own colour literals and the gate's
+# `palette != res://scripts/hud.gd` check fired -- correctly, and about the
+# harness rather than about the panel. It had never run in CI: this module has
+# no step in `.github/workflows/validate.yml`. The second parse error on
+# `hud.gd:273` was a CASCADE of the first (`_Places` untyped makes `var k :=`
+# uninferable) and disappears with the link, which is why only one file was
+# added rather than the type annotation the message asks for.
+#
+# A PRELOAD IS A HARD DEPENDENCY AND A LINKED-SCRIPT LIST IS A SECOND COPY OF
+# THE DEPENDENCY GRAPH. This one is asserted rather than trusted: `_test_project`
+# scans each linked script for `preload("res://...")` and refuses to build a
+# project that is missing one, so the next file `hud.gd` preloads breaks the
+# harness loudly instead of quietly downgrading it -- which is CLAUDE.md's own
+# rule about a tool that substitutes a lesser mode and exits 0.
+_LINKED = ("dialogue.gd", "hud.gd", "places.gd")
 
 
 def _test_project(root: str) -> str:
@@ -1943,12 +2720,26 @@ def _test_project(root: str) -> str:
         f.write(_PROJECT)
     with open(os.path.join(d, "dialogue_selftest.tscn"), "w") as f:
         f.write(_TSCN)
+    import re                                                    # noqa: PLC0415
     for name in _LINKED:
         src = os.path.join(root, "godot", "scripts", name)
         dst = os.path.join(d, "scripts", name)
         if os.path.islink(dst) or os.path.exists(dst):
             os.remove(dst)
         os.symlink(src, dst)
+    # THE DEPENDENCY CHECK, and it must run AFTER the links so it reports what
+    # is missing from the assembled project rather than from the source tree.
+    missing = []
+    for name in _LINKED:
+        with open(os.path.join(root, "godot", "scripts", name)) as f:
+            for want in re.findall(r'preload\(\s*"res://([^"]+)"', f.read()):
+                if not os.path.exists(os.path.join(d, want)):
+                    missing.append(f"{name} preloads res://{want}")
+    if missing:
+        raise RuntimeError(
+            "the runtime harness is missing a hard dependency and would have "
+            "reported a downgraded run as a defect in the panel: "
+            + "; ".join(missing) + " -- add it to _LINKED")
     return d
 
 GODOT_CANDIDATES = (
@@ -2049,10 +2840,20 @@ def runtime_test(actors_path: str, out=print) -> bool:          # noqa: C901
     if g(live, "opened") != 1:
         fails.append(f"walked in and opened {g(live, 'opened')} "
                      f"conversation(s), expected 1")
-    if g(live, "shown") != g(live, "open_lines"):
+    # THE RUN, NOT THE TAKE. `open_lines` is what the sidecar baked; `run_lines`
+    # is that with the player's chosen utterance and its answer spliced in, and
+    # it is the array the pointer actually walks. Asserting against the take was
+    # right until this session and now reads `showed 4 of 2` on a working
+    # conversation -- a check measuring the wrong array, which is the same
+    # defect as a gate reading a stale artefact.
+    if g(live, "shown") != g(live, "run_lines"):
         fails.append(f"showed {g(live, 'shown')} of "
-                     f"{g(live, 'open_lines')} lines -- the line pointer does "
+                     f"{g(live, 'run_lines')} lines -- the line pointer does "
                      f"not reach the end")
+    if g(live, "run_lines") <= g(live, "open_lines"):
+        fails.append(f"the conversation ran {g(live, 'run_lines')} lines "
+                     f"against a baked {g(live, 'open_lines')} -- nothing was "
+                     f"spliced in, so the player said nothing")
     pm = g(live, "prompt_m", float, -1.0)
     if not (0.0 < pm <= 3.3):
         fails.append(f"the prompt first appeared at {pm} m, which is not "
@@ -2076,6 +2877,38 @@ def runtime_test(actors_path: str, out=print) -> bool:          # noqa: C901
     if g(live, "distinct") < 2:
         fails.append(f"the whole deck says {g(live, 'distinct')} distinct "
                      f"line(s)")
+    # -- AND THE HALF THAT DID NOT EXIST: can the player answer -------------
+    if g(live, "offers") < g(live, "people"):
+        fails.append(f"{g(live, 'people') - g(live, 'offers')} of "
+                     f"{g(live, 'people')} people offer the player nothing "
+                     f"to say")
+    if g(live, "said") != 1:
+        fails.append(f"the walk-in spoke {g(live, 'said')} player line(s) in "
+                     f"one conversation, expected exactly 1")
+    if live.get("stance") != "press":
+        fails.append(f"the harness asked for the `press` stance and the "
+                     f"runtime recorded {live.get('stance')!r}")
+    if not live.get("you_said", "").strip("-_"):
+        fails.append("the player's utterance came back EMPTY -- a counted "
+                     "line with no text is the failure that reads as success")
+    if g(live, "stalled"):
+        fails.append("the conversation stalled: `talk()` could not advance and "
+                     "no stance would move it")
+    if g(live, "says") < len(STANCES):
+        fails.append(f"the deck offers {g(live, 'says')} distinct player "
+                     f"line(s), fewer than one set of {len(STANCES)} stances")
+    # -- and the clock reaches it ------------------------------------------
+    if g(live, "takes") < 2:
+        fails.append(f"every body carries {g(live, 'takes')} take(s) -- the "
+                     f"sidecar is a photograph and the station's clock cannot "
+                     f"move it")
+    if g(live, "hour_moves") < 1:
+        fails.append("nobody in the runtime's own cast says anything different "
+                     "at 03:00 and 13:00")
+    if g(ctl, "offers") or g(ctl, "says"):
+        fails.append(f"CONTROL: with the exchanges withheld the runtime still "
+                     f"offers {g(ctl, 'offers')} menus and "
+                     f"{g(ctl, 'says')} player lines")
     # THE CONTROL. With the exchanges withheld everything downstream must
     # report zero; if it does not, the numbers above are measuring something
     # other than this file.
@@ -2092,8 +2925,17 @@ def runtime_test(actors_path: str, out=print) -> bool:          # noqa: C901
         f"was inside {live.get('bad_range')}/{live.get('bad_cone')} "
         f"range/cone violations; the deck's {g(live, 'people')} people carry "
         f"{g(live, 'distinct')} distinct spoken lines")
+    out(f"  AND IT ANSWERED BACK: {g(live, 'offers')}/{g(live, 'people')} "
+        f"people offer a menu, {g(live, 'says')} distinct player lines on the "
+        f"deck, and the walk-in said "
+        f"\"{live.get('you_said', '').replace('_', ' ')}\" "
+        f"({live.get('stance')})")
+    out(f"  and the clock reaches them: {g(live, 'takes')} takes per body, "
+        f"{g(live, 'hour_moves')}/{g(live, 'people')} say something different "
+        f"at 03:00 than at 13:00")
     out(f"  CONTROL, exchanges withheld: {g(ctl, 'people')} bound, "
-        f"{g(ctl, 'opened')} opened")
+        f"{g(ctl, 'opened')} opened, {g(ctl, 'offers')} menus, "
+        f"{g(ctl, 'says')} player lines")
     for f in fails:
         out(f"  FAIL {f}")
     out(f"\nruntime: {'PASS' if not fails and ok else 'FAIL'}")
@@ -2107,6 +2949,9 @@ DEFAULT_ACTORS = os.path.join(_HERE, "generated", "scene", "deck",
 def _cli(argv=None):                                         # pragma: no cover
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("--selftest", action="store_true")
+    ap.add_argument("--converse", action="store_true",
+                    help="the conversation gate: can a player talk back, and "
+                         "to how many of the deck's people")
     ap.add_argument("--report", action="store_true")
     ap.add_argument("--sidecar", help="an actors.json written by walkable.py")
     ap.add_argument("--out", help="where to write the dialogue sidecar")
@@ -2116,6 +2961,8 @@ def _cli(argv=None):                                         # pragma: no cover
                     help="drive godot/scripts/dialogue.gd headlessly")
     ap.add_argument("--actors", default=DEFAULT_ACTORS)
     a = ap.parse_args(argv)
+    if a.converse:
+        return 0 if converse() else 1
     if a.runtime_test:
         return 0 if runtime_test(a.actors) else 1
     if a.sidecar:

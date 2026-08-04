@@ -437,6 +437,28 @@ jobs:
         continue-on-error: true
         run: python3 station/physics/test_core_shuttle.py
 
+      # SOMEBODY TALKS BACK, AND HOW MANY OF THEM.
+      #
+      # `--selftest`'s 37 checks all ask whether the DERIVATION is sound -- a
+      # table is total, a topic outranks another, an era row fires -- and not
+      # one of them could fail for *"there is no way to answer"*, which is what
+      # 2,139 lines of it were. `--converse` asks the player's question with
+      # denominators: how many of the baked cast can be spoken to, how many
+      # distinct things they say, how many offer a line BACK, whether pressing
+      # is worth anything and can be refused, and whether the same person says
+      # the same thing at 03:00 and 13:00. It also asserts the derivation
+      # REACHES THE BUILD -- the shipped `boot.json` named no dialogue sidecar
+      # when this was written, so every other number was true and nobody spoke.
+      #
+      # Three controls, each removing one mechanism: `SAY` emptied, the
+      # register forced to yield, and the clock held still.
+      - name: Somebody talks back -- the conversation gate
+        id: sconverse
+        continue-on-error: true
+        run: |
+          python3 station/dialogue.py --selftest
+          python3 station/dialogue.py --converse
+
       - name: NPC names
         id: snpc_names
         continue-on-error: true
@@ -654,6 +676,8 @@ jobs:
             echo "FAILED: sdocking"; fail=1; fi
           if [ "${{ steps.score_shuttle_and_radial_transit.outcome }}" != "success" ]; then
             echo "FAILED: score_shuttle_and_radial_transit"; fail=1; fi
+          if [ "${{ steps.sconverse.outcome }}" != "success" ]; then
+            echo "FAILED: sconverse"; fail=1; fi
           if [ "${{ steps.snpc_names.outcome }}" != "success" ]; then
             echo "FAILED: snpc_names"; fail=1; fi
           if [ "${{ steps.snpc_schedules.outcome }}" != "success" ]; then

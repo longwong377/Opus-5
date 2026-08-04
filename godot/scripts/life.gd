@@ -391,6 +391,20 @@ class Director extends Node3D:
 	func watch(body: Node3D) -> void:
 		_viewer = body
 
+	## What time the station thinks it is, for anything that must AGREE with
+	## this Director rather than keep a second clock.
+	##
+	## READ-ONLY, AND IT ADDS NOTHING TO THE FRAME. `main.gd` owns the Clock and
+	## hands it here; systems built by `walk.gd` -- which has no clock and is
+	## not the file to grow one -- would otherwise each need it threading
+	## through two load-bearing scripts. `scripts/dialogue.gd` finds this
+	## Director BY THIS METHOD rather than by node name and follows it, so a
+	## resident stopped at 03:00 is offered their 03:00 conversation instead of
+	## the one the deck was baked with. Returns -1.0 when there is no clock,
+	## which is a real answer: callers keep whatever they booted with.
+	func hour() -> float:
+		return clock.hour() if clock != null else -1.0
+
 	# -- the frame ---------------------------------------------------------
 	func _process(delta: float) -> void:
 		if clock == null:

@@ -167,6 +167,30 @@ func _ready() -> void:
 				% miss.size() + "generator and NO MESH in the glb -- their "
 				+ "parts claimed every triangle: " + ", ".join(miss))
 
+	# NOBODY SPOKE, AND IT WAS AN ORDERING BUG ON BOTH PATHS.
+	#
+	# `_wire_dialogue` has been called from `_wire_people` since it was
+	# written, and `_wire_people` runs inside `_load_level()` -- which happens
+	# ABOVE `_spawn_player()` in this function. Its second guard is
+	# `if _player == null ... return`, so the node was never built in a
+	# monolithic build either: its own header says *"the module that makes
+	# them talk had no instantiator"*, and the instantiator it gained could
+	# not fire. The SHIPPED build is streamed, where `_load_level` is not
+	# called at all -- `wire_cell` handles doors, people, crowd and
+	# interactables per cell, and dialogue was not among them.
+	#
+	# It is wired HERE, once, for both paths, because a conversation is not
+	# per cell: `dialogue.gd::collect` joins the exchange sidecar to the CAST
+	# LIST's own coordinates and never touches a mesh, so it has nothing to
+	# wait for and nothing to re-wire when a cell arrives or is freed.
+	#
+	# INERT FOR EVERY EXISTING CALLER. `_wire_dialogue` returns immediately
+	# when `_talk` is already built, so the older call from `_wire_people` is
+	# a no-op wherever it still fires; `--walk-test`, `--no-talk` and an empty
+	# `dialogue_path` return exactly as they did before, which is every
+	# headless gate in this repository.
+	_wire_dialogue(_actors)
+
 	_wire_hud()
 
 	if args.has("stream-test"):
@@ -701,6 +725,9 @@ func _rows_in_cell(id: String) -> Array:
 ## leaves the people standing there silent, which is the frame that shows the
 ## dialogue is what put the words on screen.
 func _wire_dialogue(actors: Array) -> void:
+	# IDEMPOTENT, so the older call site above `_spawn_player` stays legal.
+	if _talk != null:
+		return
 	var args := _args()
 	if args.has("walk-test"):
 		return

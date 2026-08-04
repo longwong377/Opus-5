@@ -6620,3 +6620,59 @@ at 88% fewer triangles and room occupants are still baked; if room occupants joi
 recomputed from the new one. A change to `populace.ROOM_LOD` does the same. `bespoke._selftest`
 re-measures the constant against a composed room and fails if it has moved more than 25%, so it
 cannot go stale silently.
+
+## INV-298 — the three player stances, and what each is worth
+
+**What.** A player answers a topic with one of three stances -- `ask`, `press`, `let_go` --
+and they differ in what they are WORTH rather than in tone: `ask` returns the topic's
+qualitative half, `press` returns the number that decided the topic's own salience and can be
+refused, `let_go` returns nothing and ends the conversation.
+**Why.** `docs/spec/PEOPLE.md` DLG-05 names the three by name and says *"Choices are stances,
+not flavour"*; against zero player utterances, the smallest thing that satisfies that is a
+choice whose outcomes differ in information rather than in wording. Assigning `press` the
+salience input is what makes it non-arbitrary: `_topic_port` chose the liner because
+`traffic.hall_rate` reads x9.7, `_topic_beat` chose the beat because `security.on_duty` reads
+174, and the first line never says either number. So pressing is *how you learn why they
+brought it up*, and dropping it costs you exactly that.
+**Overturned by.** DLG-05's remaining terms (role work-lines, SHOW-PAPERS, the buy/sell and
+refusal sets) landing, or CAST-05 ledgers existing -- at which point a stance must move a
+ledger and not only an answer. Play testing on whether three is the right number.
+**Authority 5.**
+
+## INV-299 — a press yields when warmth exceeds terseness
+
+**What.** `dialogue.yields_to_press(reg)` is `reg.warmth > reg.terseness`, and nothing else.
+**Why.** Both sides are already derived and neither is new: `warmth` is `friction.SEVERITY`'s
+separation ladder inverted (the multiple the crowd already keeps its distance by) and
+`terseness` is the `_ROLE_REGISTER` row plus the `_SPECIES_VOICE` delta. A comparison of two
+existing numbers introduces no third constant, so there is nothing to tune and nothing to
+argue with -- `deck.py --degeneracy`'s argument for a hash over a threshold, applied to a
+register. It also lands the right fiction without being asked to: a Narn dock worker at this
+datum (0.60 against 1.00) gives you nothing, a Centauri merchant (0.60 against 0.10) gives you
+the number, and Kosh (1.00 against 1.00) never yields to anybody.
+**The alternative was measured and rejected**, which is the part worth keeping: the first form
+was `warmth >= 0.75 AND terseness <= median(_ROLE_REGISTER)`. Both halves were derived and the
+AND is multiplicative, so on the shipped deck's own 21-person cast it yielded **1 time in 21**
+and on the 73-person customs cast 16 in 73. A stance that pays out 5% of the time is not a
+choice a player makes. The comparison gives 120/157 across the three baked casts, with 37
+deflections -- a split, which is what a stance needs.
+**Overturned by.** A measured yield rate that reads as either free or hopeless in play; or
+`friction.SEVERITY`/`_ROLE_REGISTER` being re-derived, since the cut moves with them by
+construction. `dialogue.py --converse` fails if the press ever has ONE outcome across a whole
+cast, so a table change that collapses it cannot pass silently.
+**Authority 5.**
+
+## INV-300 — a register name is rendered for speech
+
+**What.** `dialogue._spoken(name)` drops any parenthetical and any alternative after a slash
+before a register place name is put in a mouth: "Transport tubes / lifts (between levels)"
+is said as "Transport tubes", "Security posts / checkpoints" as "Security posts".
+**Why.** 22 of `directory.PLACES`' 128 rows carry a disambiguating slash or a parenthetical
+count, because the register's job is to be unambiguous across 128 places. Spoken verbatim it
+reads as a database field -- the same fidelity failure as the era topic naming an episode
+number, which this session also found and fixed. The first alternative and no parenthetical is
+what a person says. It is a RENDERING of the register value and not a second name, so the two
+cannot drift.
+**Overturned by.** A row whose meaning lives after the slash rather than before it, which would
+make the first alternative the wrong one. Nothing in the current 22 is of that shape.
+**Authority 5.**
