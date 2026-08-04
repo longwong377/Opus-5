@@ -807,6 +807,7 @@ func _run_walk_test(args: Dictionary) -> void:
 	if args.has("goto"):
 		_goto = _vec(args["goto"])
 		_have_goto = true
+	_arc_walk = float(args.get("arc-walk", "0"))
 	_door_key = String(args.get("door-key", ""))
 	_trace = int(args.get("trace", "0"))
 	_testing = true
@@ -888,6 +889,9 @@ var _frame := 0
 var _t_settle := 150
 var _t_walk := 120
 var _trace := 0
+## Degrees of ring to walk tangentially in the traverse phase; the sign is the
+## direction. 0 keeps the old behaviour. See the chord note in the traverse.
+var _arc_walk := 0.0
 var _rest := Vector3.ZERO
 var _on_floor := false
 
@@ -1015,7 +1019,22 @@ func _physics_process(delta: float) -> void:
 	# is the actual W2 claim -- "two named locations joined by real walkable
 	# geometry" -- and it is a strictly harder question than "did it move",
 	# because it fails when the route is blocked rather than when the body is.
-	if _have_goto:
+	if _arc_walk != 0.0:
+		# -- WALK ALONG THE RING, NOT ACROSS IT -------------------------------
+		# A corridor on a spun ring is an ARC, so a target 60 degrees away is a
+		# CHORD: at r = 211 m it cuts 28 m inside a corridor 3 m wide, the
+		# heading is ~30 degrees into the outer wall, and the body slides along
+		# it making 7.4 degrees of progress in a minute. Measured, in the first
+		# version of the streaming gate.
+		#
+		# The direction a person actually walks down this corridor is the
+		# TANGENT at their own position, recomputed as they go. `player.step`
+		# flattens it onto the floor plane, so this is "follow the corridor".
+		var r := Vector3(_player.global_position.x, _player.global_position.y,
+			0.0)
+		var tan := Vector3(-r.y, r.x, 0.0).normalized() * signf(_arc_walk)
+		_player.step(delta, Vector2.ZERO, false, false, tan)
+	elif _have_goto:
 		_player.step(delta, Vector2.ZERO, false, false,
 			_goto - _player.global_position)
 	else:
@@ -1081,6 +1100,25 @@ func _physics_process(delta: float) -> void:
 				(("-" if String(_interact.used_prompt()) == ""
 					else String(_interact.used_prompt()))
 					.replace(" ", "_"))]
+		# THE CELL STATE GOES IN THE VERDICT, not only in the play heartbeat.
+		# Until now the loader's loads and frees were visible only to a human
+		# reading a log -- so `walkable.py` could not assert on them, and the
+		# free path's only evidence was a thrash bug that happened to run it
+		# 1,734 times. A behaviour no gate can see is one that silently stops.
+		if not _cells.is_empty():
+			goto_s += (" cells=%d/%d resident=%d peak=%d loads=%d frees=%d"
+				+ " wired_doors=%d wired_people=%d wired_interact=%d") % [
+				_loaded.size(), _cells.size(), _resident_tris, _peak_resident,
+				_cell_loads, _cell_frees,
+				(_doors.count() if _doors != null else 0),
+				(_people.count() if _people != null else 0),
+				(_interact.count() if _interact != null else 0)]
+		# WHERE IT ENDED UP, which the verdict has never reported. `rest` is the
+		# position at the END OF THE SETTLE, before a single step is taken, and
+		# it was the only coordinate in this line -- so the streaming gate's
+		# first version measured how far the body swept round the ring and got
+		# 0.0 degrees for a body that had walked 250 m.
+		goto_s += " end=%.3f,%.3f,%.3f" % [p.x, p.y, p.z]
 		print(("WALKTEST rest=%.3f,%.3f,%.3f on_floor=%s fell=%s moved_1s=%.3f "
 			+ "drop=%.3f legs=%.2f/%.2f/%.2f/%.2f traverse_m=%.2f net_m=%.2f "
 			+ "offfloor=%d/%d%s") % [

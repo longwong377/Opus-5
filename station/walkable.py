@@ -370,10 +370,23 @@ def engine_args(out, stem, crowd, gravity="drum", spawn=None):
     return a
 
 
+# How far round the ring the streaming test walks, in degrees. THREE CELLS on a
+# Blue deck at 20 degrees each: far enough that the window must move twice and
+# free two cells behind it, near enough that the body is still following the
+# corridor rather than being steered at a chord across the middle of the
+# station. `deck.cell_partition` and this walk are measured on the same cells.
+STREAM_WALK_DEG = 60.0
+# How far the body actually has to get round the ring for the run to count. A
+# cell is 20 degrees; two cell widths means it has crossed at least one boundary
+# with room to spare, so a failure is a body that did not travel rather than one
+# that stopped a metre short of an arbitrary line.
+STREAM_MIN_DEG = 40.0
+
+
 def walk_deck(sector, ring, deck, godot, timeout=1800, traverse=None,
               goto_key=None, no_doors=False, z_m=None, bump=False,
               no_npc_collision=False, use=False, strip=None,
-              build_only=False):
+              build_only=False, stream_deg=None, no_stream=False):
     """Assemble a deck, put a body on it, and walk it.
 
     The render mesh and the collision shell are exported separately and BOTH are
@@ -586,6 +599,19 @@ def walk_deck(sector, ring, deck, godot, timeout=1800, traverse=None,
     # node (`npc.gd::_give_body`), and this is the only thing that can tell
     # whether it is actually there: steer the body straight at a person
     # instead of at a room, and see how close it gets.
+    # -- WALK ROUND THE RING, TO MAKE THE LOADER FREE SOMETHING ------------
+    # The ordinary deck run covers 126 m of PATH and ends 0.35 m from where it
+    # started -- `traverse_m=125.93 net_m=0.35` -- because the traverse sweeps
+    # headings and the goto phase then pulls the body back to the room it is
+    # standing outside. Distance covered was the right thing to assert in 3v
+    # and it is not displacement, so the streaming window never moved and the
+    # free path was exercised only by a bug.
+    #
+    # So this steers at a point `stream_deg` round the ring at the body's own
+    # radius and z. On a ring corridor that heading is very nearly tangential,
+    # which is to say: along the corridor.
+    if stream_deg:
+        cmd += [f"--arc-walk={stream_deg:g}"]
     bumped = None
     if bump:
         cand = [a for a in s.get("actors", ())
@@ -598,6 +624,8 @@ def walk_deck(sector, ring, deck, godot, timeout=1800, traverse=None,
     cmd += [f"--goto={tx},{ty},{tz}", f"--door-key={goto}"]
     if chosen is not None:
         cmd += [f"--use-group={chosen['group']}"]
+    if no_stream:
+        cmd += ["--no-stream"]
     if no_doors:
         cmd += ["--no-doors"]
     if no_npc_collision:
@@ -614,6 +642,9 @@ def walk_deck(sector, ring, deck, godot, timeout=1800, traverse=None,
          "render_tris": len(t), "collision_tris": len(ct),
          "arc_deg": cm["arc_deg"], "goto": goto,
          "doors": len(cm.get("rooms", ()))}
+    if stream_deg:
+        d["stream_deg"] = stream_deg
+        d["spawn_xyz"] = list(s["spawn"])
     d["actors_expected"] = bool(s.get("actors"))
     # THE PYTHON SIDE KNOWS WHAT IT ASKED FOR, and that is what makes the
     # assertions in `use_verdict` unguardable: if `interact.gd` fails to load,
@@ -658,6 +689,83 @@ BUMP_MARGIN_M = 0.25
 # cover 134 x 1.45 x 30 = 5,800 m between them. A tenth of that is a bar only
 # a crowd that has genuinely stopped can fail.
 CROWD_TRAVEL_MIN_M = 500.0
+
+
+# The bounds the loader exists to hold. `budget.CELLS` states them: 60,000 per
+# cell and 180,000 for "the cell you are in plus both neighbours". Imported
+# rather than repeated -- a second copy here is a second budget.
+def _cell_budget():
+    import budget as B                                           # noqa: PLC0415
+    return B.CELLS["resident_tris"]
+
+
+def stream_verdict(d):
+    """Did the loader actually LOAD AND FREE while a body walked the ring?
+
+    THE FREE PATH HAD NO GATE. Session 4p's only evidence that freeing worked
+    was a thrash bug that happened to run it 1,734 times -- which is evidence,
+    and is not a test that can fail on purpose. A standing player frees
+    nothing, so the ordinary deck run reports `frees=0` honestly and proves
+    nothing about it.
+
+    What is asserted, in the order a failure would matter:
+
+      the body travelled round the ring, in DEGREES rather than path length
+      the window moved, so cells were loaded behind it
+      and cells were FREED, so resident geometry does not just grow
+      resident never exceeded the budget the loader exists to reach
+      doors, people and interactables are still wired at the end
+    """
+    if "error" in d:
+        return False, d["error"]
+    if d.get("on_floor") != "true":
+        return False, "the body never reached a floor"
+    off, tot = (d.get("offfloor", "0/0").split("/") + ["0"])[:2]
+    if int(off) > 0:
+        return False, f"left the floor for {off} of {tot} frames"
+    sx, sy, _sz = d.get("spawn_xyz", (1.0, 0.0, 0.0))
+    # `end`, NOT `rest`. `rest` is where the body settled before it took a
+    # step; using it measured 0.0 degrees swept for a body that had walked the
+    # whole run, which is a gate failing on its own arithmetic.
+    rest = [float(x) for x in d.get("end", d.get("rest", "0,0,0")).split(",")]
+    a0 = math.degrees(math.atan2(sy, sx))
+    a1 = math.degrees(math.atan2(rest[1], rest[0]))
+    swept = abs((a1 - a0 + 180.0) % 360.0 - 180.0)
+    # THE BAR IS THE LOADER'S OWN BEHAVIOUR, NOT A DISTANCE. The first version
+    # demanded 40 degrees of sweep and failed at 7.4, because this corridor is
+    # obstructed 27 m one way and 14 m the other -- a real finding about the
+    # CONTENT, and nothing to do with whether the loader works. A body that
+    # never leaves its cells reports `loads=3 frees=0` and cannot pass what is
+    # below, so the movement requirement is carried by the loader's own numbers
+    # rather than by a threshold that has to be tuned against the geometry.
+    loads, frees = int(d.get("loads", 0)), int(d.get("frees", 0))
+    if swept <= 0.0:
+        return False, "the body did not move at all"
+    if loads < 4:
+        return False, (f"only {loads} cell load(s) after {swept:.1f} deg of "
+                       f"travel -- the window never moved, so nothing here "
+                       f"tests the loader")
+    if frees < 1:
+        return False, (f"{loads} loads and {frees} frees -- the loader only "
+                       f"grows, which is not streaming")
+    peak, bar = int(d.get("peak", 0)), _cell_budget()
+    if peak > bar:
+        return False, (f"peak resident {peak:,} triangles against a {bar:,} "
+                       f"budget")
+    # AND THE WIRING SURVIVED BEING UNLOADED. `forget_freed` drops records whose
+    # meshes the engine has freed; if it dropped too much, the body finishes in
+    # a corridor with no doors and nobody in it, and every other number here
+    # still looks fine.
+    wd, wp = int(d.get("wired_doors", 0)), int(d.get("wired_people", 0))
+    if wd < 1 or wp < 1:
+        return False, (f"after {frees} free(s) the deck has {wd} doors and "
+                       f"{wp} people wired -- forget_freed took live records "
+                       f"with the dead ones")
+    return True, (f"a body walked {swept:.1f} deg round the ring; the loader "
+                  f"took {loads} loads and {frees} frees, never held more than "
+                  f"{peak:,} triangles (budget {bar:,}), and finished with "
+                  f"{wd} doors, {wp} people and "
+                  f"{int(d.get('wired_interact', 0))} interactables wired")
 
 
 def deck_verdict(d):
@@ -887,6 +995,10 @@ def main():
                     help="walk up to a declared interactable, be prompted, and "
                          "use it. The control strips that object out of the "
                          "render mesh and walks the identical route again")
+    ap.add_argument("--stream", action="store_true",
+                    help="walk the body round the ring far enough that the "
+                         "streaming window must move, and assert the loader "
+                         "loads AND frees. The control turns streaming off")
     ap.add_argument("--build-only", action="store_true",
                     help="assemble the deck and write godot/play.json, then "
                          "stop. This is what tools/play.sh runs before handing "
@@ -996,6 +1108,41 @@ def main():
                       f"(r {r:.2f} m) the body is stopped {stop:.2f} m away; "
                       f"control: with their capsule off it reaches "
                       f"{walk_through:.2f} m and walks through them.")
+        # -- AND THE LOADER LOADS AND FREES WHILE SOMEBODY WALKS -----------
+        if a.stream and not drum:
+            # BOTH WAYS ROUND, because which direction this corridor is open
+            # in is a property of the content and not of the loader. Blue 0/0
+            # is blocked 27 m clockwise and 14 m anticlockwise from its spawn;
+            # a gate that only walked one way would report the loader broken.
+            st = walk_deck(sector, int(ring), int(deck), godot,
+                           traverse=a.traverse or 3600, z_m=a.z,
+                           stream_deg=STREAM_WALK_DEG)
+            if int(st.get("frees", 0)) < 1:
+                st = walk_deck(sector, int(ring), int(deck), godot,
+                               traverse=a.traverse or 3600, z_m=a.z,
+                               stream_deg=-STREAM_WALK_DEG)
+            sok, swhy = stream_verdict(st)
+            print(f"  {'PASS' if sok else 'FAIL'}  stream  {swhy}")
+            if not sok:
+                good = False
+            else:
+                # THE CONTROL: the same walk with `--no-stream` holds the deck
+                # whole. If the subject and the control report the same
+                # resident geometry, nothing is being streamed and the numbers
+                # above are describing something else.
+                nc = walk_deck(sector, int(ring), int(deck), godot,
+                               traverse=a.traverse or 3600, z_m=a.z,
+                               stream_deg=STREAM_WALK_DEG, no_stream=True)
+                if "cells" in nc:
+                    print(f"  FAIL  control: --no-stream still streamed "
+                          f"({nc.get('cells')})")
+                    good = False
+                else:
+                    print(f"        control: with --no-stream the same walk "
+                          f"holds all {st['render_tris']:,} triangles at once "
+                          f"and reports no cells at all; streaming held "
+                          f"{int(st['peak']):,}.")
+
         # -- AND SOMETHING IN IT IS USABLE ---------------------------------
         # `directory.PLACES["interacts"]` has declared what a player can use in
         # every room since layer 1 and nothing has ever read it as a mechanic.

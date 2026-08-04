@@ -1,6 +1,83 @@
 # Project State
 
-**Last updated:** 2026-08-02 · **Session 4p** — **the deck streams: 657,880 resident triangles become 127,204** · **4o** — **a cell boundary was cutting doors and people in half** · **4n** — **the deck cuts into loadable cells, and the loader's real obstacle is named** · **4m** — **the streaming cell budget met a real deck, and the design survives** · **4l** — **the resident-triangle gate was about the deck; the build also loads 321,664 triangles of people** · **4k** — **every walker on the station was bald, for 188 triangles** · **4j** — **the 21 exposure frames describe the code again, and the verdict did not move** · **4i** — **every curved surface in the project was flat-shaded, and the crease angle is measured off the station** · **4h** — **IT IS PLAYABLE: press Play and you are standing in Blue Sector** · **4g** — **the Babcom terminal is a built device, and it shipped a logged mistake once before the log caught it** · **4f** — a per-token verb override · **4e** — **the naming-mismatch class is CLOSED: built-but-misnamed 26 → 0, resolving 302/357** · **4d** — **the bespoke rooms' interactables were never unbuilt, they were unnamed: 259/357 → 284/357** · **4c** — **the station is INTERACTABLE, the port is on a wall, and the 24-minute suites were one bad cache key** · **4b** — a police force, friction in metres, the plated shell, the fitting-reach fix
+**Last updated:** 2026-08-02 · **Session 4q** — **the free path has a gate, and it found the corridor is blocked 27 m from the spawn** · **4p** — **the deck streams: 657,880 resident triangles become 127,204** · **4o** — **a cell boundary was cutting doors and people in half** · **4n** — **the deck cuts into loadable cells, and the loader's real obstacle is named** · **4m** — **the streaming cell budget met a real deck, and the design survives** · **4l** — **the resident-triangle gate was about the deck; the build also loads 321,664 triangles of people** · **4k** — **every walker on the station was bald, for 188 triangles** · **4j** — **the 21 exposure frames describe the code again, and the verdict did not move** · **4i** — **every curved surface in the project was flat-shaded, and the crease angle is measured off the station** · **4h** — **IT IS PLAYABLE: press Play and you are standing in Blue Sector** · **4g** — **the Babcom terminal is a built device, and it shipped a logged mistake once before the log caught it** · **4f** — a per-token verb override · **4e** — **the naming-mismatch class is CLOSED: built-but-misnamed 26 → 0, resolving 302/357** · **4d** — **the bespoke rooms' interactables were never unbuilt, they were unnamed: 259/357 → 284/357** · **4c** — **the station is INTERACTABLE, the port is on a wall, and the 24-minute suites were one bad cache key** · **4b** — a police force, friction in metres, the plated shell, the fitting-reach fix
+
+## Session 4q — THE FREE PATH HAS A GATE, AND IT FOUND THE CORRIDOR IS BLOCKED 27 m FROM THE SPAWN
+
+### 1. `walkable.py --stream`
+
+4p's loader could only be shown to FREE anything by a thrash bug that happened to run it 1,734
+times. That is evidence, not a test. `--stream` walks a body along the ring and asserts what the
+loader is for:
+
+```
+PASS  stream  a body walked 3.7 deg round the ring; the loader took 4 loads and 1 frees,
+              never held more than 151,077 triangles (budget 180,000), and finished with
+              1 doors, 9 people and 5 interactables wired
+      control: with --no-stream the same walk holds all 657,880 triangles at once and
+               reports no cells at all; streaming held 151,077.
+```
+
+The last clause is the one that matters most: **`forget_freed` dropped the dead records and kept
+the live ones.** If it over-reached, the body would finish in a corridor with no doors and nobody
+in it, and every other number in that line would still look fine.
+
+### 2. THREE THINGS WERE WRONG BEFORE THE GATE COULD SAY ANYTHING, AND EACH IS ITS OWN LESSON
+
+**The verdict never said where the body ENDED UP.** `WALKTEST rest=...` is the position at the end
+of the *settle*, before a single step. The first streaming gate measured the sweep from it and got
+**0.0 degrees for a body that had walked**. `end=x,y,z` is now in the verdict.
+
+**A ring corridor cannot be walked by aiming at a distant point on it.** A target 60° away is a
+CHORD: at r = 211 m it cuts 28 m inside a corridor 3 m wide, so the heading is ~30° into the outer
+wall and the body slides along it. `--arc-walk` steers the **tangent at the body's own position**,
+recomputed as it goes, which is what "follow the corridor" means on a spun ring.
+
+**The bar was a distance, and the thing being tested is a loader.** Demanding 40° of sweep failed at
+7.4 — because of the content, not the loader. The bar is now the loader's own numbers: a body that
+never leaves its cells reports `loads=3 frees=0` and cannot pass, so the movement requirement is
+carried by `loads ≥ 4` and `frees ≥ 1` without a threshold anybody has to tune against geometry.
+
+### 3. AND THE FINDING THE GATE PRODUCED: THIS CORRIDOR DOES NOT GO ANYWHERE
+
+Walking the tangent from the spawn, with the floor never lost (`offfloor=0/3600`):
+
+| direction | distance before it stops |
+|---|---|
+| clockwise | **28.40 m** (7.4°) |
+| anticlockwise | **13.81 m** (3.7°) |
+
+The deck is a **345° ring, 1,273 m of walkable arc**, and a body can reach 42 m of it. It is not
+falling and not wedged — it is walking into something and stopping, on the floor, in both
+directions. `deck.py --sweep` has reported "0 floor holes" throughout, and the walk gate's
+`traverse_m=125.93` is **path length**, which a body pacing back and forth satisfies: the same run
+reports `net_m=0.35`.
+
+**A distance-covered gate does not test whether you can go anywhere**, which is the exact lesson
+3v recorded when it replaced "did it move" with "how far did it get" — one level up. This needs
+its own session: find what stops the body at 27 m and at 14 m.
+
+### 4. Gates
+
+| gate | result |
+|---|---|
+| `walkable.py --deck blue/0/0 --stream` | **PASS**, control firing |
+| `walkable.py --deck blue/0/0` | **PASS**, control firing |
+| `walkable.py --deck blue/0/0 --use` | **PASS**, control firing |
+
+`play.sh --verify` was not re-run: nothing on the play path changed this session — the additions
+are the `end=` and cell tokens on the WALKTEST line and the `--arc-walk` traverse mode, both
+test-only.
+
+### 5. NEXT
+
+- **Find what blocks the corridor at 27 m and 14 m.** The ring is 1,273 m of arc and a body can
+  reach 42 m of it. Likely candidates: a closed door with no opener on that side, a vestibule wall,
+  or a prop box across the walkable width — `collision.prop_boxes` derives boxes from the emitted
+  mesh, so a mis-sized one would be solid and invisible.
+- The walk gate should assert **net displacement**, not only path length. `traverse_m=125.93` with
+  `net_m=0.35` passes today.
+- The near figure's silhouette is 32-gon faceted at 1 m; the affordable fix is runtime skinning.
 
 ## Session 4p — THE DECK STREAMS. 657,880 RESIDENT TRIANGLES BECOME 127,204
 
