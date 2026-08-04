@@ -911,8 +911,15 @@ def compare(schema, profile, places=None):
 # clears the aperture, and its people no longer do. That is the split doing its
 # job twice in one session, and it is why these are two measured lists rather
 # than one count.
-ZONE_DEPENDENT = ("cnc", "customs_south", "zocalo", "arrival_concourse")
-ZONE_FREED = ("council_chamber",)
+ZONE_DEPENDENT = ("cnc", "customs_south", "zocalo")
+# `arrival_concourse` MOVED HERE IN 4k, and the move is the measurement rather
+# than a way to make a number green. `rooms.tiling` re-laid its furniture, and
+# with the approach zone collapsed to nothing the room stays OPEN -- its own
+# fittings now keep the aperture clear, which is a better outcome than needing
+# the zone and is exactly what this tuple records. Verified as not an artefact
+# of the other 4k change: swapping the new `dressable_extent` for the old bbox
+# version gives a byte-identical 20.4 x 34.0 and open in both cases.
+ZONE_FREED = ("council_chamber", "arrival_concourse")
 
 
 def _selftest():
