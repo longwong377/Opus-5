@@ -3689,10 +3689,24 @@ def spans_footprint(schema, profile, legacy=False, verbose=False):
               f"{tb:,.0f} m of {tw:,.0f} m declared "
               f"({100.0 * tb / max(tw, 1e-9):.1f}%)   "
               f"NOT asserted here -- rooms.py does not build them")
-    print(f"  {tris:,d} triangles over the 128, "
+    print(f"  {tris:,d} triangles over the {len(rows)}, "
           f"{tris / max(built, 1e-9):,.0f} per built metre; "
           f"worst place {max(r['tris'] for r in rows):,d} against a "
           f"{max(r['cap'] for r in rows):,d} frame allowance")
+    # AND WHERE THE ESTIMATE WAS WRONG, PRINTED RATHER THAN LEFT TO BE NOTICED.
+    # `tiling()` picks the bay count from three probe builds and a linear model,
+    # `fixed + n*marginal`, so the count is chosen against an ESTIMATE and the
+    # built room is the truth. Six places land over their own ceiling by up to a
+    # third. That is a real overrun and it is stated here because a cap nobody
+    # reports is the "silent cap reads as coverage" failure STATE.md section 13
+    # names -- one level in, applied to the cap's own arithmetic.
+    over = sorted((r for r in mine if r["cap"] and r["tris"] > r["cap"]),
+                  key=lambda r: -r["tris"])
+    if over:
+        print(f"  {len(over)} of {len(mine)} land OVER the allowance the plan "
+              f"was chosen against (estimate low): "
+              + ", ".join(f"{r['key']} {r['tris']:,}/{r['est']:,} est"
+                          for r in over[:5]))
     if verbose or capped:
         for r in sorted(capped, key=lambda r: r["want_m"] - r["built_m"],
                         reverse=True)[:12]:
