@@ -447,6 +447,18 @@ jobs:
         run: |
           python3 station/variety.py --matrix --rebuild
 
+      # WHERE IN A ROOM CAN A BODY STAND, AND HOW DOES IT GET THERE. The L3
+      # commute stopped 5.59 m from its post for a session and was written up
+      # twice as a lift defect; measured, the last leg of the route was a
+      # straight line from the doorway to the register's centre through a desk
+      # rank, laid before rooms had furniture in them. Cheap, no engine, and
+      # its two negative controls both fire: an empty room collapses to one
+      # waypoint at the centre, and a `doorpanel_*` group is not a wall.
+      - name: Where in a room a body can stand, and the way in
+        id: sroomnav
+        continue-on-error: true
+        run: python3 station/roomnav.py --selftest
+
       - name: A resident's day is derivable and controlled (agenda selftests)
         id: sagenda_selftest
         continue-on-error: true
@@ -614,6 +626,8 @@ jobs:
             echo "FAILED: sdegeneracy"; fail=1; fi
           if [ "${{ steps.svariety.outcome }}" != "success" ]; then
             echo "FAILED: svariety"; fail=1; fi
+          if [ "${{ steps.sroomnav.outcome }}" != "success" ]; then
+            echo "FAILED: sroomnav"; fail=1; fi
           if [ "${{ steps.sagenda_selftest.outcome }}" != "success" ]; then
             echo "FAILED: sagenda_selftest"; fail=1; fi
           if [ "${{ steps.sconfirm_the_schema_still_parses_and_is_f.outcome }}" != "success" ]; then

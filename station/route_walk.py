@@ -84,6 +84,7 @@ import lift as L                                                 # noqa: E402
 import routes as RT                                              # noqa: E402
 import spoke_way as SW                                           # noqa: E402
 import transit_runtime as TR                                     # noqa: E402
+import roomnav as RN                                            # noqa: E402
 import walkable as W                                             # noqa: E402
 
 OUT = os.path.join(ROOT, "station/generated/scene/route")
@@ -112,8 +113,10 @@ WAYPOINT_TOL_M = 0.8
 
 # The player's capsule radius. `godot/scripts/walk.gd`, `transit.gd` and this
 # module's own runtime all build the same 0.35 m capsule, and
-# `collision.floor_holes` measures floor gaps against the same figure.
-CAPSULE_R_M = 0.35
+# `collision.floor_holes` measures floor gaps against the same figure -- so it
+# is IMPORTED rather than restated. Three modules each writing 0.35 down is one
+# fact with three owners, and the room search added a fourth before this.
+CAPSULE_R_M = RN.CAPSULE_R_M
 
 # AND A DOORWAY IS NOT A CORRIDOR. A door aperture is `door_width_m` wide -- half
 # the width of the corridor it is cut in -- so a body that "reached" a waypoint
@@ -582,7 +585,8 @@ def _tight(points, which, tol):
     return t
 
 
-def legs_for(schema, profile, row, meta, g, place_key, outbound):
+def legs_for(schema, profile, row, meta, g, place_key, outbound,
+             verts=None, tris=None, groups=None):
     """The walking legs on one deck, in the direction of travel.
 
     `outbound` is the deck the body starts on -- corridor, then spine, then the
@@ -592,6 +596,13 @@ def legs_for(schema, profile, row, meta, g, place_key, outbound):
     waypoint inside it is tight. A body is steered straight at its next
     waypoint, so a doorway crossed by turning inside it is a doorway whose jamb
     the capsule meets -- see `door_tol_m`.
+
+    `verts`/`tris`/`groups` are the cluster's own collision mesh and they reach
+    exactly one place: `walkable.room_approach`, so the way across the room is
+    the way past its furniture rather than a straight line through it. Pass
+    them whenever the caller has them -- and a caller that has them and does
+    not pass them lays a route to a different point than the manifest names,
+    which `agenda.assert_route_endpoints` fails on.
     """
     floor_r = meta["floor_r_m"]
     hw = meta["half_w_m"]
@@ -613,12 +624,15 @@ def legs_for(schema, profile, row, meta, g, place_key, outbound):
     at_door = _at(floor_r, door["door_deg"], cz)
     # 0.5 m inside the room, past the vestibule the shell puts between the
     # corridor and the room's own wall -- `deck.build_collision`'s `inner`.
-    z_inner = place["z_m"] + D.room_interior_half_m(schema, profile, place)
+    z_half = D.room_interior_half_m(schema, profile, place)
+    z_inner = place["z_m"] + z_half
     in_door = _at(floor_r, door["door_deg"], z_inner - 0.5)
-    # ON THE FLOOR IN THE MIDDLE OF THE ROOM -- `walkable.room_target`, the same
-    # point `walkable.py --deck` walks to, so "reached a named location" means
-    # here what it means there.
-    target = list(W.room_target(meta, place))
+    # ACROSS THE FLOOR TO THE MIDDLE OF THE ROOM -- `walkable.room_approach`,
+    # the same points `walkable.py --deck` walks, so "reached a named location"
+    # means here what it means there. One waypoint in a room whose middle is
+    # clear; the way round the furniture in a room whose middle is not.
+    way = [list(p) for p in W.room_approach(meta, place, verts, tris, groups,
+                                            from_pt=in_door, z_half=z_half)]
 
     out = []
     if outbound:
@@ -641,7 +655,7 @@ def legs_for(schema, profile, row, meta, g, place_key, outbound):
         out.append(_leg("ring", f"the ring corridor of {where}, the spine to "
                                 f"{place_key}'s door", arc,
                         _tight(arc, [len(arc) - 1], tol)))
-        pts = [at_door, in_door, target]
+        pts = [at_door, in_door] + way
         out.append(_leg("room", f"through the door into {place_key}", pts,
                         _tight(pts, [0, 1], tol)))
     return out
@@ -736,9 +750,9 @@ def build(schema, profile, a_row, a_key, b_row, b_key, quiet=False):
     sealed = _write("column_col_sealed", sv, st, sg)
 
     a_legs = legs_for(schema, profile, a_row, a_meta, g, a_key,
-                      outbound=True)
+                      outbound=True, verts=a_v, tris=a_t, groups=a_g)
     b_legs = legs_for(schema, profile, b_row, b_meta, g, b_key,
-                      outbound=False)
+                      outbound=False, verts=b_v, tris=b_t, groups=b_g)
     a_door = next(d for d in a_meta["rooms"] if d["key"] == a_key)
     spawn = C.stand_at(a_meta, a_door["door_deg"])
 
@@ -1221,7 +1235,8 @@ def _selftest():
     # straight at the next one, so the chord between two of them has to sit
     # inside the corridor's own half width, or the route is a route through a
     # wall.
-    lgs = legs_for(schema, profile, a_row, meta, g, a_key, outbound=True)
+    lgs = legs_for(schema, profile, a_row, meta, g, a_key, outbound=True,
+                   verts=v, tris=t, groups=_gp)
     worst = 0.0
     for l in lgs:
         if l["kind"] != "ring":

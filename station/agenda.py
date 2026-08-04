@@ -117,6 +117,7 @@ import interior as it                                            # noqa: E402
 import lift as L                                                 # noqa: E402
 import populace as P                                             # noqa: E402
 import routes as RT                                              # noqa: E402
+import roomnav as RN                                            # noqa: E402
 import route_walk as RW                                          # noqa: E402
 import transit as T                                              # noqa: E402
 import transit_runtime as TR                                     # noqa: E402
@@ -163,8 +164,10 @@ CATCHUP = 1.30
 
 # The player's capsule. Same figure `walk.gd::_spawn_player`, `route_test.gd` and
 # `collision.floor_holes` all use; not a second answer to how wide a person is.
-CAPSULE_R_M = 0.35
-CAPSULE_H_M = 1.8
+# `roomnav.py` owns it, because that is the module whose whole job is asking
+# whether a body fits somewhere.
+CAPSULE_R_M = RN.CAPSULE_R_M
+CAPSULE_H_M = RN.CAPSULE_H_M
 
 # Frames of settling before the walk is scored. `collision.stand_at` spawns 50 mm
 # above the shell on purpose, so the drop is asserted rather than excluded --
@@ -379,8 +382,39 @@ def cluster_meta(schema, profile, sector, ring, deck, place_key):
                      f"{[r['key'] for m in meta['clusters'] for r in m['rooms']]}")
 
 
-def room_legs(schema, profile, m, place_key, outward):
-    """Getting through one room's doorway, in the direction of travel.
+def assert_route_endpoints(where, first, last, home_at, post_at, tol=1e-6):
+    """The route the body walks ends where the manifest says its post is.
+
+    THIS IS THE GATE ON THE THREADING, and it exists because the alternative is
+    discipline. `walkable.room_target` is called from five places to answer one
+    question -- where inside a room does a person stand -- and it now takes the
+    room's collision mesh so it can nudge the answer off the furniture. A call
+    site that forgets to pass the mesh does not crash and does not look wrong:
+    it quietly answers the register's centre point while the others answer free
+    floor, and the body then walks to one point while the verdict measures the
+    other.
+
+    That is one level below the defect this whole change fixes. The L3 run that
+    read `stopped 5.59 m from business_center` was a body that HAD arrived, at
+    the only place in the room it could stand, with the post inside a desk
+    rank. A silent threading miss would put the same distance back and look
+    identical. So the two points are asserted equal rather than assumed equal
+    -- hard rule 4, one authority per fact, applied to a point.
+    """
+    for nm, a, b in (("spawn", first, home_at), ("post", last, post_at)):
+        d = math.dist(a, b)
+        if d > tol:
+            raise AssertionError(
+                f"{where}: the route's {nm} waypoint is {d:.3f} m from the "
+                f"manifest's {nm} -- the body walks to one point and the "
+                f"verdict measures another. A `walkable.room_target` call site "
+                f"is missing its collision mesh: {list(a)} vs {list(b)}")
+
+
+def room_legs(schema, profile, m, place_key, outward, verts=None, tris=None,
+              groups=None):
+    """Getting through one room's doorway AND across its floor, in the
+    direction of travel.
 
     `outward` is leaving the room; otherwise entering it. THE DOORWAY IS THE
     PLACE A BODY GETS STUCK and `route_walk` paid for the rule this reproduces:
@@ -388,25 +422,56 @@ def room_legs(schema, profile, m, place_key, outward):
     and the capsule), and there is an aim point on the doorway's own centre line
     at both ends, because a body that turns while standing in a doorway meets
     the jamb.
+
+    AND THE FLOOR INSIDE IS THE SECOND PLACE, which cost this milestone a
+    session. This leg used to be three points -- the door, half a metre inside
+    it, and the register's centre -- and that last hop was a straight line laid
+    before rooms had furniture in them. On `business_center` it passes through a
+    desk rank and a partition, with under a capsule's clearance for 4.5 of its
+    5.5 m, so the body walked to the desks and stopped 5.59 m from a post it
+    could not reach. `walkable.room_approach` -> `roomnav.approach` replaces the
+    hop with the way a person would actually take, searched over the room's own
+    collision. A room whose middle is clear still gets exactly one point, and
+    it is the register's centre to the metre it was written at.
     """
     place = DIR.by_key(place_key)
     door = next(r for r in m["rooms"] if r["key"] == place_key)
     fr = m["floor_r_m"]
     cz = m["z_m"]
     tol = RW.door_tol_m()
-    z_inner = place["z_m"] + D.room_interior_half_m(schema, profile, place)
-    target = list(W.room_target(m, place))
+    z_half = D.room_interior_half_m(schema, profile, place)
+    z_inner = place["z_m"] + z_half
     in_door = RW._at(fr, door["door_deg"], z_inner - 0.5)
     at_door = RW._at(fr, door["door_deg"], cz)
+    way = [list(p) for p in W.room_approach(m, place, verts, tris, groups,
+                                            from_pt=in_door, z_half=z_half)]
     if outward:
-        pts = [target, in_door, at_door]
+        pts = list(reversed(way)) + [in_door, at_door]
         return RW._leg("room", f"out of {place_key} through its door at "
                                f"{door['door_deg']:.0f} deg", pts,
-                       RW._tight(pts, [1, 2], tol))
-    pts = [at_door, in_door, target]
+                       RW._tight(pts, [len(pts) - 2, len(pts) - 1], tol))
+    pts = [at_door, in_door] + way
     return RW._leg("room", f"through the door into {place_key} at "
                            f"{door['door_deg']:.0f} deg", pts,
                    RW._tight(pts, [0, 1], tol))
+
+
+def shell_groups(all_meta):
+    """The whole shell's named spans, in the concatenated shell's own indices.
+
+    ONE CONSTRUCTION, TWO USERS. `write_collision` needs these to write a GLB
+    whose pressure doors the runtime can switch off one at a time, and
+    `roomnav` needs them to know that a `doorpanel_*` triangle is a door rather
+    than a wall -- a room searched with its door counted as solid reads as
+    sealed. Building the list twice is how the two would come to disagree about
+    which triangles are a door.
+    """
+    groups, base = [], 0
+    for m in all_meta["clusters"]:
+        for nm, lo, hi in m.get("groups", ()):
+            groups.append((nm, base + lo, base + hi))
+        base += m["triangles"]
+    return groups
 
 
 def route_for(schema, profile, cand):
@@ -424,6 +489,7 @@ def route_for(schema, profile, cand):
     p = DIR.by_key(res.home)
     sector, ring, deck = p["sector"], p["ring"], p["deck"]
     v, t, meta, m = cluster_meta(schema, profile, sector, ring, deck, res.home)
+    sgroups = shell_groups(meta)
     if not any(r["key"] == res.job for r in m["rooms"]):
         raise ValueError(f"{res.job} is not on the same z-cluster as "
                          f"{res.home}; L1 walks one corridor")
@@ -433,11 +499,13 @@ def route_for(schema, profile, cand):
 
     arc = RW._arc_points(fr, d0, d1, cz)
     legs = [
-        room_legs(schema, profile, m, res.home, outward=True),
+        room_legs(schema, profile, m, res.home, outward=True,
+                  verts=v, tris=t, groups=sgroups),
         RW._leg("ring", f"the ring corridor of {sector}/{ring}/{deck} at "
                         f"r={fr:.1f} m, {d0:.0f} deg -> {d1:.0f} deg", arc,
                 RW._tight(arc, [0, len(arc) - 1], RW.door_tol_m())),
-        room_legs(schema, profile, m, res.job, outward=False),
+        room_legs(schema, profile, m, res.job, outward=False,
+                  verts=v, tris=t, groups=sgroups),
     ]
     pts = []
     for l in legs:
@@ -447,6 +515,7 @@ def route_for(schema, profile, cand):
     length = sum(math.dist(a, b) for a, b in zip(pts, pts[1:]))
     return {"legs": legs, "points": pts, "length_m": round(length, 3),
             "meta": m, "verts": v, "tris": t, "all_meta": meta,
+            "groups": sgroups,
             "sector": sector, "ring": ring, "deck": deck,
             "door_home": d0, "door_job": d1}
 
@@ -503,12 +572,7 @@ def write_collision(cand, r, quiet=False):
             f"deck.build_collision_clusters no longer reproduces what "
             f"tools/export_station.py wrote, so nothing below is about the "
             f"station that is on disk")
-    groups = [("shell", 0, len(tris))]
-    base = 0
-    for m in meta["clusters"]:
-        for nm, lo, hi in m.get("groups", ()):
-            groups.append((nm, base + lo, base + hi))
-        base += m["triangles"]
+    groups = [("shell", 0, len(tris))] + shell_groups(meta)
     obj = os.path.join(OUT, cand["deck"] + "_col.obj")
     C.write_obj(obj, verts, tris, groups, name="agenda")
     glb = _glb(obj)
@@ -537,8 +601,10 @@ def build(schema, profile, cand, rate=1.0, quiet=False):
     m = r["meta"]
     home = DIR.by_key(res.home)
     job = DIR.by_key(res.job)
-    spawn = list(W.room_target(m, home))
-    post = list(W.room_target(m, job))
+    groups = r.get("groups")
+    spawn = list(W.room_target(m, home, r["verts"], r["tris"], groups))
+    post = list(W.room_target(m, job, r["verts"], r["tris"], groups))
+    assert_route_endpoints("L1", r["points"][0], r["points"][-1], spawn, post)
 
     # WHERE EVERY PRESSURE DOOR IS, so the runtime can open the one it is at.
     # Measured off the same `deck_plan` the panel was cut from, rather than
@@ -1136,10 +1202,11 @@ def journey_for(schema, profile, cand, quiet=True):
     tol = RW.door_tol_m()
     a_lo, a_span = corridor_span(a_meta, a_row)
     b_lo, b_span = corridor_span(b_meta, b_row)
-    seg0_legs = [room_legs(schema, profile, a_meta, res.home, outward=True)]
+    seg0_legs = [room_legs(schema, profile, a_meta, res.home, outward=True,
+                           verts=a_v, tris=a_t, groups=a_g)]
     seg0_legs += trim_axial(relay_ring(
         RW.legs_for(schema, profile, a_row, a_meta, g, res.home,
-                    outbound=True),
+                    outbound=True, verts=a_v, tris=a_t, groups=a_g),
         a_meta["floor_r_m"], a_meta["z_m"], a_lo, a_span),
         a_meta["z_m"], g["z_m"])
     # WHERE THEY WAIT FOR THE CAR is wherever their own deck's walk ends, which
@@ -1153,7 +1220,7 @@ def journey_for(schema, profile, cand, quiet=True):
         RW._tight([wait_at, car_a], [1], tol)))
     b_legs = trim_axial(relay_ring(
         RW.legs_for(schema, profile, b_row, b_meta, g, res.job,
-                    outbound=False),
+                    outbound=False, verts=b_v, tris=b_t, groups=b_g),
         b_meta["floor_r_m"], b_meta["z_m"], b_lo, b_span),
         b_meta["z_m"], g["z_m"])
     step_off = list(b_legs[0]["points"][0])
@@ -1440,8 +1507,11 @@ def build3(schema, profile, cand, rate=1.0, quiet=False):
                           "at": list(RW._at(meta["floor_r_m"],
                                             row["door_deg"], meta["z_m"]))})
 
-    home_at = list(W.room_target(j["a"][3], DIR.by_key(res.home)))
-    post_at = list(W.room_target(j["b"][3], DIR.by_key(res.job)))
+    home_at = list(W.room_target(j["a"][3], DIR.by_key(res.home),
+                                 j["a"][0], j["a"][1], j["a"][2]))
+    post_at = list(W.room_target(j["b"][3], DIR.by_key(res.job),
+                                 j["b"][0], j["b"][1], j["b"][2]))
+    assert_route_endpoints("L3", j["seg0"][0], j["seg2"][-1], home_at, post_at)
     man = {
         "kind": "commute",
         "sector": j["sector"], "ring": j["a_row"]["ring"],

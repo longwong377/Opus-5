@@ -58,6 +58,7 @@ import directory as dr                                          # noqa: E402
 import interact as IX                                           # noqa: E402
 import interior as it                                           # noqa: E402
 import interior_kit as K                                        # noqa: E402
+import roomnav as RN                                            # noqa: E402
 import rooms as R                                               # noqa: E402
 
 # A body that walks for a second at 4.2 m/s covers 4.2 m in the open. Rooms are
@@ -171,17 +172,39 @@ def _glb(obj_path, glb_path):
         sys.argv = argv
 
 
-def room_target(meta, place):
-    """A point on the floor in the middle of a room, for the body to walk to.
+def room_target(meta, place, verts=None, tris=None, groups=None, **kw):
+    """A point on the floor of a room a body can actually STAND on.
 
     ON THE FLOOR, not at eye or waist height. Aiming at a room's mid-height left
     an irreducible 0.85 m in the "how close did it get" number, because a body
     standing on the deck can never close a radial offset -- which reads as a
     near miss and is nothing of the kind.
+
+    AND NOT INSIDE THE FURNITURE, which is `roomnav.py`'s answer and not a
+    second one. The register's centre point is where the ROOM is, not where a
+    person can be, and the two stopped being the same thing the moment V1's
+    form-follows-function pass put real fittings in these rooms. Without a mesh
+    this is the register's centre point exactly as it always was, so a caller
+    that has no collision to offer changes nothing.
     """
-    a = math.radians(place["angle_deg"])
-    r = meta["floor_r_m"] - 0.05
-    return (r * math.cos(a), r * math.sin(a), place["z_m"])
+    if not verts or not tris:
+        a = math.radians(place["angle_deg"])
+        r = meta["floor_r_m"] - 0.05
+        return (r * math.cos(a), r * math.sin(a), place["z_m"])
+    return RN.standpoint(meta, place, verts, tris, groups, **kw)
+
+
+def room_approach(meta, place, verts, tris, groups=None, **kw):
+    """The way in from the door AND the spot, for a caller laying a route.
+
+    `room_target` is this list's last element. Kept as two names because most
+    callers want a point and one wants the whole way in -- never as two
+    computations, which is how the route and the manifest came to name
+    different points in the first place.
+    """
+    if not verts or not tris:
+        return [room_target(meta, place)]
+    return RN.approach(meta, place, verts, tris, groups, **kw)
 
 
 # How close to the object the body has to end up for "you walked up to it" to
@@ -360,7 +383,7 @@ def walk_deck(sector, ring, deck, godot, timeout=1800, traverse=None,
     # same object the subject did. `strip` names it directly; otherwise it is
     # the pressable interactable nearest the point the body was already going.
     goto = goto_key or s["spawn_at"]
-    rtgt = room_target(cm, dr.by_key(goto))
+    rtgt = room_target(cm, dr.by_key(goto), cv, ct, cm.get("groups"))
     rows = interact_rows(v, t, g)
     chosen, stripped = None, 0
     if strip:
