@@ -375,12 +375,23 @@ cannot wander outside; derived from the mesh, which is this module's whole princ
 
 ### What remains: one place, and it looks real
 
-`vorlon_berth` — 0.80 m² reachable, 18.70 m from the middle of a 20 m half-deep room. §4's
-dilation table is the independent evidence: **at capsule radius its corridor doorway has 0.00 m
-of free run, where `docking_bays` in the same wall of the same cluster has 0.80 m** — and 0.00 m
-at 0.20 m dilation too, so it is not a capsule that is too fat. That is the one genuine
-candidate in the set, and it should be checked against `deck.build_collision`'s door cutting
-rather than against this module.
+`vorlon_berth` — 0.80 m² reachable, 18.70 m from the middle of a 20 m half-deep room.
+
+**AND IT IS NOT THE DOORWAY**, which retracts what §4 was read to mean. Every door panel on that
+cluster sits at z 7184.96–7185.08 spanning 0.4° of arc — 1.48 m at r=211.5, which is the 1.5 m
+aperture `interior_kit.PROVISIONAL` cuts — and `vorlon_berth`'s is there with the other five.
+§4's "0.00 m of free run" was measured on a wall row **above** the aperture, not through it.
+
+The comparison that settles it is on the same wall, 20° apart:
+
+| room | z | half-depth | outer face | door panel | verdict |
+|---|---|---|---|---|---|
+| `plantroom_bay` | 7115 | **20.00** | **7135.00** | 259.8–260.2° | **passes** |
+| `vorlon_berth` | 7115 | **20.00** | **7135.00** | 319.8–320.2° | fails |
+
+Identical depth, identical door construction, one passes and one does not. **So the remaining
+failure is inside that room, not at its entrance** — which is a far better-scoped question than
+the one §4 posed. `python3 station/roomnav.py --place vorlon_berth --map` draws it.
 
 ### And the number that justifies the whole module
 
