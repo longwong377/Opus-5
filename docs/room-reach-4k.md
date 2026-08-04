@@ -215,3 +215,30 @@ the moment the rule was tightened, correctly, because a 28.8 m² strip is not a 
 control that only fires against a loose rule is not a control.* It is now a doorway-sized
 pocket — a sealing wall with returns either side of the door, 0.48 m² reachable — and it fires
 against the strict rule.
+
+
+---
+
+## 7. HOW TO BUDGET ONE OF THESE RUNS, because I got it wrong twice
+
+An engine walk to a far room costs frames in proportion to the corridor distance divided by
+the speed the body **actually achieves**, and this project's stated speed is not that.
+
+| room | corridor distance | frames given | frames needed at 1.46 m/s | outcome |
+|---|---|---|---|---|
+| `docking_bays` | 0.1 m | 1,800 | ~10 | arrived, 0.05 m |
+| `lowg_bays` | 479.9 m | 12,000 | ~19,700 | arrived, 0.91 m (it had slack: it stops on arrival) |
+| `mooring_clamps` | 664.5 m | 15,000 | ~27,300 | arrived, 1.18 m |
+| `plantroom_bay` | 959.9 m | 20,000 | ~39,400 | **ran out** — 486 m of 960 |
+| `vorlon_berth` | 1,181.3 m | 24,000 | ~48,500 | **abandoned, under-budgeted** |
+
+`player.gd` exports `speed_m_s = 4.2`, and a body sustained **1.46 m/s** — so a budget computed
+from the export is 2.9x short. Two runs were wasted on that. The likely cause is the corridor
+crowd (`--deck` spawns it, `npc.gd` gives every walker a capsule, 963 of them over 1,329 m is
+0.72 people per metre); the A/B is `walk_deck(..., no_npc_collision=True)` and it has not been
+run. **Run that first**: it settles the crowd question *and* roughly halves the frame cost of
+every subsequent far-room test.
+
+*And the two that DID arrive had slack for the same reason a marathon time is not a pace: the
+run stops when the body arrives, so `traverse_m / frames` understates the walking speed for
+those and is only a true rate for the ones that ran out.*
