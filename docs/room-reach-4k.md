@@ -242,3 +242,51 @@ every subsequent far-room test.
 *And the two that DID arrive had slack for the same reason a marathon time is not a pace: the
 run stops when the body arrives, so `traverse_m / frames` understates the walking speed for
 those and is only a true rate for the ones that ran out.*
+
+
+---
+
+## 8. AND THEN THE STATION GREW UNDER IT — the vestibule, and a likely answer for the 17
+
+`rooms.tiling` landed after everything above was measured, and it moved the ground this gate
+stands on. Rooms grow **symmetrically about `place["z_m"]`**, and `deck.corridor_z_m` puts the
+ring corridor clear of the deepest room on the cluster — so a deck with one very deep room
+gives every shallower room a long vestibule between its door and the ring.
+
+Measured across the station: **794 m of vestibule, mean 14.7 m**, and it is *not* spread —
+9 places exceed 20 m and four of those are on the drum (`green/1/0`), which is heightfield
+ground with no ring corridor, so their figure is meaningless. The real cases are **one deck
+plus one place**:
+
+| place | deck | vestibule | own half | deepest on its deck |
+|---|---|---|---|---|
+| `shuttle_car` | yellow/0/30 | **232.0 m** | 20.2 | 252.2 |
+| `mooring_clamps` | blue/0/0 | 66.4 m | 3.8 | 70.2 |
+| `bay_elevators` | blue/0/0 | 58.0 m | 12.2 | 70.2 |
+| `vorlon_berth` | blue/0/0 | 50.0 m | 20.2 | 70.2 |
+| `plantroom_bay` | blue/0/0 | 50.0 m | 20.2 | 70.2 |
+| `lowg_bays` | blue/0/0 | 40.0 m | 30.2 | 70.2 |
+
+Five are on **blue/0/0 — the arrival deck, the player's front door** — because `docking_bays`
+is 140 m now and pushes the corridor out for everyone else on the cluster.
+
+**AND THREE OF THEM ARE ROOMS THIS DOCUMENT CALLS UNENTERABLE.** `mooring_clamps`,
+`bay_elevators` and `vorlon_berth` are in §3's table. This gate places its doorway probe at
+`place["z_m"] ± (z_half − 0.5)` — a point relative to the ROOM — while the actual door is
+50–66 m away across a vestibule. That is the same defect §2 already names, one turn deeper:
+**a point derived from the room's own extent is not the door when something else decides
+where the door is.** It is the first single cause that would explain all seventeen, and
+`mooring_clamps` — the one the engine proved enterable — is the largest of the three.
+
+`deck.room_interior_half_m` now returns the built span rather than the one-bay clamp, so the
+probe has moved. **The sweep must be re-run before any figure in §3 or §6 is quoted again.**
+Neither the 17 nor the 21 before it should be repeated until it has been.
+
+*The structural fix for the vestibule itself is to grow rooms toward their door instead of
+symmetrically — keep the near face fixed and extend away from the corridor. That needs a
+`deck.room_centre_z_m` read by `deck.build_deck`, `collision.room_shell`, `roomnav`,
+`route_walk`, `agenda` and `walkable`, because `place["z_m"]` stops being the room's centre
+the moment it is done. Not attempted: the station is verifiably green right now
+(`deck.py --sweep`: 90/90 clusters, 128/128 locations, 0 floor holes) and a six-file refactor
+whose verification cycle is twenty minutes is not something to start on a green build without
+the time to finish it.*
