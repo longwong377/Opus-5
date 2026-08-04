@@ -86,33 +86,26 @@ completion state, in three shells:
   bulkhead with a stencil, not missing space). The C-list is written down and owner-signed
   — it is the ONLY sealed volume on the station.
 
-## 4. THE PLACES — all 128 + Shell B, item by item ◐
-*(from mine:places + mine:canon — each place: footprint, program, fixtures with counts,
-interactables with tiers, named staff, schedule, sound, signage, incidents that can occur
-there, acceptance check)*
+## 4. THE PLACES — normative annex: `docs/spec/PLACES.md` (1,848 lines)
+All 128 places (PLC-001..128) with tiling targets recomputed live — **49,265 bays total**
+(blue 7,692 / red 1,644 / green 7,052 / grey 16,487 / yellow 16,390) — plus Shell B
+(SHB-01..09 + 20 lettered named annexes: Franklin's clinic, the guild hall, refugee
+reception, the monastery, four station houses…), sized from the role ledger which sums
+**250,001 exactly**, ~5.04 M m² gross, capacity 250,120. Shell C: 13 reasoned seals with
+verbatim stencils. 188 addressable items.
 
-## 5. THE PEOPLE — factions, species, named cast ◐
-*(from mine:people — each faction: numbers, territory, schedule presence, frictions with
-named counterparties, observable behaviours, player-facing interactions, incidents they
-generate. Named-NPC ladder: how many fully-individual residents with persistent identity,
-relationships and memory; the statistical 250k beneath them.)*
+## 5–6. THE PEOPLE AND THE ROLES — normative annex: `docs/spec/PEOPLE.md` (1,044 lines)
+28 factions with cited headcounts and verbatim observable frictions; the show-character
+policy (institution-in / character-out, Kosh the sole instantiation); a pinned 50-row
+Tier-1 named cast with homes, schedules and a woven debt/relationship graph; **12 roles**,
+each seated on named data with verb-by-verb loops; wages derived (not chosen) from the
+passage-home anchor; dialogue floors as arithmetic: **6,573 distinct lines** vs 57 today.
+102 checkable rows.
 
-## 6. THE ROLES — how you live aboard ◐
-*(from mine:people + mine:systems — every playable career with its complete loop: get the
-job, the shift, the verbs, the pay, what mastery looks like, what it unlocks. Target
-breadth: every major role the schedule data already carries, not three.)*
+## 7–8. THE SYSTEMS AND THE SURFACE — normative annex: `docs/spec/SYSTEMS.md`
+SYS-01..14 (era clock → incident generator) and SUR-01..09, each with state, tick,
+couplings, player surface and an end-to-end named-content check. 23 items.
 
-## 7. THE SYSTEMS — the machines of the simulation ◐
-*(from mine:systems — economy, law/crime, medical, atmosphere, plant, traffic/docking,
-transit, information/era-clock, maintenance/failure. Each: its state variables, its tick,
-its couplings to other systems, its player surface, its acceptance check.)*
-
-## 8. THE SURFACE — AAA inside and out ◐
-*(kits, landmarks, lighting, audio, the exterior, the Starfury — carried over from the 4i
-amendment's A1 but re-keyed to spec items so craft is judged on enumerated content.)*
-
----
-
-*Filled sections replace their ◐ stubs as the research returns; the registry is generated
-when §4–§8 are complete; the plan is rebuilt from the registry; both go through the
-adversarial panel before adoption.*
+## 9. SPEC-CHANGE LOG
+*(empty at adoption — post-adoption edits to any item land here, dated, with reason, or
+the registry gate fails)*

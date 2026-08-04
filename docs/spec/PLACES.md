@@ -1,0 +1,1848 @@
+# THE PLACES — normative annex to THE-STATION.md §3 (volume) and §4 (places)
+
+Format law: `docs/THE-STATION.md` §1 (anti-rig: every item = ID + binary acceptance check
+naming the enumerated content itself; no statistic substitutes) and §2 (depth tiers
+T1 inspectable / T2 operable / T3 transactional / T4 systemic; every named place ≥1 T4 and
+≥3 T3). Sources: the four-domain research fan-out, cited as file:line where load-bearing.
+Inventions marked **(auth 5)** inline, per hard rule 1. System couplings cite
+`docs/spec/SYSTEMS.md` (SYS-01..14).
+
+**ID scheme.** PLC-001..PLC-128 are assigned in `station/directory.py` PLACES order
+(index 1..128, verified `len(PLACES)==128` this session). Presentation below groups by
+sector, Blue first, so PLC numbers are **non-contiguous within a sector group** — the ID is
+the stable register index, not a page position.
+
+**TILING.** Each place carries `TILING built → target`: target is `rooms.bays_in`
+(rooms.py:1879), recomputed live this session — **total 49,265** (blue 7,692 / red 1,644 /
+green 7,052 / grey 16,487 / yellow 16,390). Exactly **5 places are already full-footprint**
+(bays_in==1): bar_unnamed, dark_star, quartermaster, eclipse_cafe, minipax. Everything else
+is one representative bay against its declared footprint (STATE.md §13: "a player walks
+15.5 m of docking_bays' 140 m"). The tiling target is the full-footprint build-out **with
+interior variation** — `deck.py --degeneracy` (identity, not similarity) must keep reporting
+distinct geometry per place AND, once tiled, no two bays of one place byte-identical.
+
+**Three rulings this annex adopts** (each one line, each visible):
+1. **Bay numbering: bays 1–24, berth letter = level (A pad / B parking).** Reconciles
+   auth-1 "Bay 17" with auth-1 "Docking Bay 12B"; already modelled as
+   `arrival.BAY_BERTHS=("A","B")` pad/parking (INV-250). All signage follows this.
+2. **Souls/day: C-012 stays open here** — this annex sizes halls to the manifest
+   (55 movements, ~1,500–2,300 souls/day, traffic.py measured day 0) and flags every number
+   SYS-02's resolution would rescale.
+3. **C-003/C-004 are label blocks, not build blocks** (CLAUDE.md scope rule 5): drum and
+   level-1 naming waits; every volume below is identified by geometry.
+
+## 0.1 DEPTH-TIER DEFAULTS — per interactable class (overrides marked per place)
+
+Verb derivation is `interact.py`'s (99 tokens → 8 verbs, asserted total + minimal). Tier is
+assigned per class here; a place block lists deviations only. "≥1 T4, ≥3 T3 per place" is
+satisfied per block below, including the three places whose register row declares zero
+interacts (proximity_arrays, nav_beacon, comms_grid — program added, auth 5).
+
+| class (tokens) | default tier | why |
+|---|---|---|
+| identicard_reader, customs_desk, baggage_scanner | **T4** | the customs pipeline runs without the player (SYS-03: admit/refer/refuse → housing or the 1%/day Downbelow leak) |
+| bay_door, docking_clamp, launch_tube, clamp | **T4** | the traffic loop (SYS-02, 55 arrivals/day) operates them |
+| serving_counter, bar_counter, market_stall, shopfront, stall, tray_dispenser | **T3**, T4 where a stock loop is specced | till takes credits, stock drops (SYS-04); T4 = restock arrives on a real ship |
+| credit_terminal, exchange_terminal, gaming_table | **T3** | credits move (SYS-04) |
+| counter, issue_counter, duty_desk, customs_desk, reception, desk, lab_bench, workbench, bay_control_booth | **T3** | `serve` — a named resident answers (dialogue.py serve_response, live behind 29 counters/27 places today); filing/issuing moves state elsewhere |
+| manifest_terminal, parcel_locker, medcabinet, diagnostic_bed | **T3** | files a manifest / moves mail / dispenses stock / writes a medical record (SYS-10) |
+| babcom_terminal | **T3** | information layer: calls, notices, directory (SYS-08); NPCs use it too |
+| breaker_lever, irrigation_control, furnace_control, reactor_console, lift_call | **T3** | operating it changes somewhere else (lights out, water on, heat, power, a car comes); the network each sits in is the room's T4 |
+| door family (14 tokens), valve, shower, locker, weapons_locker, cold_drawer, cryo_pod, grow_rack, container, tool_rack, standpipe, console, monitor_wall, tactical_display, tank_gauge, dartboard, intercom, breather_dispenser, shuttle_door, tram_door, lift_door | **T2** | visible own-state change; NPCs operate them; gauges/needles read live sim values |
+| seat family (sit: 9 tokens), bunk, brazier, shrine, pew | **T2** | SIT/SLEEP verbs (player rig lands with P-track; NPCs already pose) |
+| viewport, info_board, welcome_board, level_plaque, menu_display, neon_sign, deck_marking, station_schematic_screen, comms_channel, atmosphere_status_lamp, barred_screen, pendant_lamp, welcome/notice boards | **T1** | says something true and specific; **no two identical strings within a room class** (menu carries prices per SYS-04 ladder) |
+| tread family (9 tokens: catwalk, path, handhold, …) | **T1** | underfoot by design (interact.py:98); LOOK still answers |
+
+**Counting rule for the §2 floor:** the floor is ≥1 T4 and ≥3 interactables at T3-or-above,
+counted **with multiplicity** (`console ×14 (T3)` is fourteen) — a T4 item satisfies a T3
+slot, because a systemic till still transacts. A block lists tags for its named
+interactables; unlisted ones inherit this table. **Utility trio (auth 5):** every
+plant/structure/transit place carries, named in its own machinery, a fault-report terminal
+(T3), an isolation or transfer control (T3), and a log/requisition point (T3) — the
+registry generator emits the three rows per place from the block's own fixture list, so
+"utility" never means "nothing to do". In residence classes every UNIT carries its
+door/babcom/locker/bunk set, so a class tag there counts once per unit (a 270-unit block
+holds 270 T3 babcom terminals); compound tags ("T3/T4", "T2/T4", "stock loop T4") declare
+both tiers.
+
+## 0.2 INCIDENT CLASSES — the vocabulary place blocks cite (mechanics live in SYS-14)
+
+| ID | incident | anchor |
+|---|---|---|
+| INC-LINER | liner arrival surge, ~2×/wk: 400–800 pax, one hall at 8.5 souls/min for ~90 min | traffic.py measured; TRAFFIC §5 |
+| INC-ELEV | one bay elevator down (2 units, 62% peak utilisation — the cheapest high-value failure) | TRAFFIC §4.3 |
+| INC-CONTRA | contraband find at scan (P=0.01, ×4 for no-status) | arrival.py:427-431, INV-250 |
+| INC-REFUSED | refused entry waiting in the hall; can't afford 250 cr passage → Downbelow leak | TRAFFIC §6.6 |
+| INC-SWEEP | announced security sweep of a camp; camp empties, fruitless, back in 6 h | LAW-CRIME §5.5 |
+| INC-BRAWL | Drazi factional brawl (colours/cycle deliberately unstated — FACTIONS §15) | S2E03 |
+| INC-DENOUNCE | Nightwatch denunciation of a merchant; neighbours look away | FACTIONS §5.4 |
+| INC-DUST | Dust seizure (rare; a Psi Cop follows) | S3E06; LAW-CRIME crime table |
+| INC-PICK | petty theft (dozens/day station-wide, concentrated where crowds are) | LAW-CRIME :816 |
+| INC-FRAUD | forged/expired identicard at a reader (THE signature crime; VISA_EXPIRED_P=1/12) | resident.py:549 |
+| INC-ACCIDENT | dock clearance accident chain (bad chip → dual clearance → death → union action) | TRAFFIC §9, S1E12 |
+| INC-BROWNOUT | power shed event, district lighting steps down (plot-grade, SYS-07) | LIFE-SUPPORT :121 |
+| INC-QUAR | medical quarantine arrival; isolation path activates | TRAFFIC §9 |
+| INC-PSICOP | Psi Cop visit: corridors quieten, Zocalo volume drops | FACTIONS §4.1 |
+| INC-NC | Narn–Centauri contact event (the 5% of the 95/5 rule; 0.02/h — rare, severe) | friction.py:72-92 |
+| INC-GQE | G'Quan Eth seizure (controlled substance vs religious need) | FACTIONS §11.3 |
+| INC-STRIKE | dockers' "blue flu" / grievance action | TRAFFIC §9; S1E12 |
+| INC-FAULT | a machine breaks; a maintenance job is created and somebody walks to it | THE-STATION §2 T4 |
+
+**Staffing rule.** Staff below are *named residents* from `resident.py`'s deterministic
+roster (same person every session, per (place, species, seed) affiliate pools —
+resident.py:846-893). Composition is given as species × role × shift; proper names come from
+`names.py` grammars; the 8 species without attested name grammars serve with the
+authority-1 empty red NAME field on their cards (INV-004). Shifts: A/B/C watches 00/08/16
+where rotating (schedule.py:268-276); species frame-shifts apply (a Brakiri "day" shift is
+18:30–02:30).
+
+---
+
+# 1. SHELL A — THE 128 NAMED PLACES AT FULL FOOTPRINT
+
+## 1.1 BLUE SECTOR — 36 places (docking, crew country, C&C) — tiling 36 → 7,692
+
+### PLC-001 `cnc` — Command and Control
+`blue/0/0 0° z7960 · 24°×40 m · command_control/bespoke · auth 3` · TILING 1 → **40**
+- program: the observation-dome command deck — tiered console pit, transparent dome above
+  (within obs_dome_1), traffic control on the port arc, defence on starboard, watch
+  officer's ring centre. 40 bays = pit + galleries + ready room + signal annexe.
+- fixtures: 14 crewed console positions (auth 5: 8 traffic, 4 ops, 2 defence), 1 tactical
+  display wall, 1 comms rack run, watch officer's dais, blast shutters for the dome.
+- interacts: console ×14 (T3 — each files/acknowledges into SYS-02's live berth map),
+  comms_channel ×4 (T1, live port calls), tactical_display ×2 (T2, pages the defence plot),
+  blast_door ×2 (T2); **T4 = the traffic-control loop itself**: C&C grants the clearances
+  the 55 daily arrivals consume whether or not the player watches.
+- staff: 40/watch × 3 watches (the 120 command heads, FACTIONS §2.2:190): watch officer
+  (human commander), 8 traffic controllers (6 human, 1 Minbari worker-caste contractor
+  auth 5, 1 Drazi), ops and defence crew; a MiniPax liaison visits daily 10:00 (era, auth 5).
+- schedule: 24 h, watch change 00/08/16 with PA watch_calls (broadcast.py).
+- sound: circulation-class 45 dBA, console telemetry chatter, port-call PA at source.
+- incidents: INC-ACCIDENT (the dual-clearance chain lands here first), INC-ELEV.
+- CHECK: from the C&C gallery the player watches a named arrival (SYS-02) get its clearance
+  at a specific console whose operator speaks the call heard later on the concourse PA; the
+  14 consoles carry 14 distinct live readouts (no two identical strings); the watch changes
+  at 16:00 with bodies walking to qtr_command.
+
+### PLC-002 `obs_dome_1` — Observation Dome 1
+`blue/0/0 0° z7960 · 26°×44 m · components/generic* · auth 3` · TILING 1 → **84**
+- program: the dome structure holding C&C (PLC-001 `within`); glazing ribs, gallery ring,
+  service crawl. Contract-5 count: 2 domes.
+- interacts: viewport ×12 (T1 — each names what it faces: gate bearing, mooring line,
+  cobra arc); service_ladder (T1); added (auth 5): dome-status console (T2), inspection log
+  terminal (T3 — files to SYS-14 maintenance), shutter master (T3 — closes PLC-001's
+  shutters). T4 = the dome IS C&C's weather: its shutter state couples to defence drills.
+- CHECK: the dome's 12 viewports each answer LOOK with the true bearing they face; the
+  shutter master visibly shutters C&C; an inspection filed here appears as a maintenance job.
+
+### PLC-003 `customs_north` — Customs Hall North
+`blue/0/0 40° z7460 · 10°×34 m · customs/bespoke · auth 1` · TILING 1 → **9**
+- program: the arrival funnel — 9 bays = 4 numbered processing areas (areas 1–4; "customs
+  area 7" lives in the south hall per T-X1 reconciliation, arrival.py:293-335) + queue
+  switchback + secondary inspection room + holding room (both currently
+  `arrival.UNBUILT` — **this row builds them**) + search/seizure room (D-12).
+- fixtures: 12 desk lanes with barriers, 4 baggage scanners, backlit blue board pair
+  (verbatim auth-1 text incl. sic "ARANGEMENT", signage.py:41-75), queue bollards ×24,
+  Nightwatch denunciation box ×1 (era, FACTIONS §5.4:539).
+- interacts: identicard_reader ×12 (T4 — the full 10-station pipeline, arrival.py:440-545),
+  customs_desk ×12 (T3, staffed serve), baggage_scanner ×4 (T3), info_board ×2 (T1,
+  verbatim), babcom_terminal ×2 (T3); isolation_door to holding (T2).
+- staff/watch: 12 desk officers + 4 scanner ops + 2 supervisors (auth 5 split of the
+  900-head admin+customs pool, FACTIONS §2.2) — mixed human/Drazi/Vree desks (the halls are
+  "the most alien places", FACTIONS §2.4:292); +3 posted security (security.py:170-198
+  exact); customs uniform is a declared unknown — spec: EA grey with customs flash (auth 5).
+- schedule: 24 h; wave_pulse surges 20–40/min against 0.28–0.88/min background
+  (schedule.py:1112-1147); liner advisory PA 15 min ahead ("All processing positions…").
+- sound: circulation 45 dBA base; 8.5 souls/min on a liner (INC-LINER) is audibly a crowd.
+- incidents: INC-LINER, INC-FRAUD, INC-CONTRA, INC-REFUSED.
+- CHECK: a liner day pushes a queue through all 12 named desk officers; one scripted
+  forged-card NPC is caught and walked to the now-existing holding room; the player, as
+  arriving visitor, is processed through all 10 stations; as customs officer (WORK verb)
+  refuses an "-- EXPIRED" card and that NPC surfaces in Downbelow within 2 days (SYS-03).
+
+### PLC-004 `customs_south` — Customs Hall South
+`blue/0/0 220° z7460 · 10°×34 m · customs/bespoke · auth 3` · TILING 1 → **9**
+- program: mirror of north at cargo-side; areas 5–7 ("customs area 7" is here), crew-visa
+  lane, cargo-manifest counter; shares holding via corridor.
+- interacts: identicard_reader ×8 (T4), customs_desk ×8 (T3), info_board ×2 (T1),
+  manifest counter (T3); added (auth 5): duty-assessment desk (T3, SYS-04 duties gap noted).
+- staff: 8 desks + 1 supervisor + 3 posted security (security.py exact); Narn day porter
+  crew of 4 outside (auth 5).
+- CHECK: a freighter crew of 9 (manifest row) clears the crew lane between ship departure
+  windows; area signage reads 5/6/7 per ruling 1; the search/seizure room logs INC-CONTRA
+  finds with the item named.
+
+### PLC-005 `arrival_concourse` — Arrival Concourse
+`blue/0/0 52° z7460 · 12°×34 m · customs/bespoke · auth 1` · TILING 1 → **12**
+- program: the first public room — WELCOME TO BABYLON 5 sign (auth-1 letterforms), the two
+  canted amber-green arrivals/departures boards (live from `traffic.arrivals` —
+  signage.py:549-603), station schematic wall map, greeters' rail, luggage edge, exchange
+  kiosk pointer to Business Center.
+- interacts: babcom_terminal ×3 (T3), station_schematic_screen ×1 (T2 — pages sectors),
+  welcome_board ×1 (T1 verbatim incl. "REMEMBER Smoking permitted in designated areas
+  only"), bollard ×12 (T1); arrivals boards ×2 (T1, live — **they may never disagree with
+  SYS-02**). T4 = the boards/PA/berth-map three-reader agreement.
+- staff: 2 EA information clerks (day), 1 Brakiri clerk (night — night-dweller shift);
+  6–10 touts/greeters as scheduled NPCs, incl. 1 lurker tout security moves on (INC-PICK).
+- sound: concourse 45 dBA; port-call PA at full 68 dBA here; Zocalo-bound crowd wash.
+- incidents: INC-LINER (floods it), INC-PICK, INC-DENOUNCE (box by the boards, era).
+- CHECK: every line on both boards corresponds to a real SYS-02 movement ±0 discrepancies
+  across a full day; the schematic screen pages all five sectors; a first-time player can
+  navigate to the Zocalo from board + schematic alone (no HUD waypoint).
+
+### PLC-006 `docking_bays` — The Docking Bays
+`blue/0/0 0° z7115 · 360°×140 m · docking_bay/generic* · auth 3` · TILING 1 → **1,092**
+- program: **24 numbered bays (1–24), each berth A (pad) + B (parking level below)** per
+  ruling 1; the 140 m gallery run connects them; per-bay: pad, clamp set, crew door, cargo
+  apron, control booth. The unused `docking_bay.docking_bay` builder (3,740 tri,
+  BESPOKE_GEOMETRY) is the per-bay kit — wired, with its 160 open edges closed (STATE.md 3z
+  §12 reversal note).
+- fixtures: red-orange structural steel, lattice gantry floodlights, yellow/black chevron
+  nosings on every step, 9–11 m red disc with white oval emblem per pad (all auth 1/2,
+  reference texture list), cargo cranes ×24, stepped hull-ward ledges (INV-170).
+- interacts: bay_door ×24 (T4), docking_clamp ×48 (T4 — SYS-02 operates them), cargo_crane
+  ×24 (T3 — moves manifest containers), bay_control_booth ×24 (T3, staffed serve),
+  deck_marking (T1, per-bay number stencils — 24 distinct), manifest_terminal (T3).
+- staff: dockers' guild day gang 06:00–15:00 (dockworker role, schedule.py:286-287
+  reproduces the two observed surges): per active bay a gang of 6 (typ. 3 human, 2 Narn,
+  1 Drazi — docks are alien-heavy, FACTIONS §2.4); 2 posted security (security.py exact);
+  bay chiefs are named guild residents.
+- schedule: 12–20 of 24 bays in use through the day (traffic.py measured); muster at
+  06:00/14:00 outside the elevator post (D-10 → SHB-02.c).
+- sound: the loudest civilian floor — berth traffic layer from `traffic.berths_in_use`;
+  liner day is a wall of it; PA port calls per ship by name.
+- incidents: INC-ACCIDENT, INC-ELEV, INC-CONTRA, INC-STRIKE.
+- CHECK: the player walks the full 140 m gallery past 24 distinct numbered bays (no two
+  bay dressings identical), rides pad→parking at bay 12 ("12B" signed), watches a named
+  Achilles-type freighter (SYS-02 day-0 manifest) land on the pad its clearance names, and
+  the 06:00 muster crowd (18% of Downbelow's working poor, LAW-CRIME jobs table) queues at
+  the gate.
+
+### PLC-007 `qtr_command` — Command Quarters
+`blue/0/2 150° z7600 · 30°×60 m · quarters/bespoke · auth 4` · TILING 1 → **90**
+- program: senior-officer housing: 90 bays → 270 units at 34 m² (INV-032; capacity 270 ≥
+  the 120 command heads + 150 senior staff, auth 5). **The only class with showers besides
+  diplomatic** (L-03: water is rank).
+- fixtures per unit: bunk, locker, shower, babcom_terminal, desk; corridor: level plaques,
+  laundry alcove per 15 units (auth 5).
+- interacts: door ×270 (T2, unit-numbered NN-L per arrival.py UNITS_PER_BLOCK=60),
+  babcom_terminal (T3), locker (T2), shower (T2 — and its 60 dB sound exists only here and
+  in diplomatic), bunk (T2 SLEEP). T4 = the residence loop: named officers commute to
+  PLC-001 on their watch, verifiably the same people.
+- staff/residents: the C&C watch roster lives here — the watch officer the player saw at
+  16:00 is findable at their named door off-watch.
+- CHECK: follow one named C&C controller from console (PLC-001) at watch end to their
+  numbered unit door here; the door plate carries their name; their shower is audible
+  (the class distinction is hearable); a second resident's unit differs in dressing.
+
+### PLC-008 `qtr_personnel` — Personnel Quarters
+`blue/0/4 190° z7600 · 44°×90 m · quarters/bespoke · auth 3` · TILING 1 → **210**
+- program: EF rank-and-file housing: 210 bays → 1,260 units at 18 m² (INV-032); no showers
+  (communal wash per block, L-03). Overflow EF housing is SHB-01.
+- interacts: door (T2), babcom_terminal (T3), locker (T2), bunk (T2); T4 = watch-cycle
+  residence loop (00/08/16 tides in the corridor, life.py routed).
+- CHECK: at 07:40 the corridor measurably fills toward lifts (life.py commute tide); three
+  named security officers of C watch are asleep behind named doors at 10:00; wash rooms
+  exist per block and units have none (the L-03 distinction is walkable).
+
+### PLC-009 `medlab_one` — Medlab One
+`blue/0/1 100° z7300 · 14°×30 m · -/generic · auth 3` · TILING 1 → **16**
+- program: the flagship medlab (canon: Medlab One + distributed 2/5): triage bay, surgery,
+  quarantine isolation suite, ward of 8 diagnostic beds, dispensary, CMO office; mindwipe
+  facility room (D-07 — machinery certified by Medlab, LAW-CRIME:422-464) behind a signed
+  door; isolab adjacency (PLC-046).
+- fixtures: diagnostic_bed ×8, surgery table ×1, medcabinet ×4, isolation_door ×2,
+  xeno-atmosphere crash kit ×2 (auth 5 — "six atmospheres means six kinds of emergency").
+- interacts: diagnostic_bed ×8 (T3 — writes a medical record, SYS-10), medcabinet ×4
+  (T3 — dispenses, stock depletes), isolation_door ×2 (T2), babcom_terminal ×2 (T3);
+  T4 = the medical loop: injuries from SYS-14 incidents arrive as patients without the
+  player.
+- staff/watch (12 h shifts, medical 2,800 pool, EA medical 300): 1 chief physician,
+  4 physicians (1 xeno-physiology per watch), 8 med-techs, 2 orderlies (auth 5 split);
+  night watch runs 60%.
+- schedule: 24 h; quiet 03:00–06:00 except INC-QUAR.
+- sound: quiet-adjacent 38 dBA (auth 5 between classes), monitor tones per occupied bed.
+- incidents: INC-QUAR, INC-DUST (victims arrive), INC-ACCIDENT (casualties land here).
+- CHECK: an INC-ACCIDENT casualty is carried in by named NPCs, occupies bed 3, generates a
+  record readable at the bed (T3), and is discharged days later walking with a limp
+  animation; the mindwipe room door reads its function and stays locked to the player
+  without SYS-05 standing.
+
+### PLC-010 `mess_hall` — Crew Mess
+`blue/0/3 260° z7700 · 16°×34 m · -/generic · auth 3` · TILING 1 → **8**
+- program: EF catering hall: serving line, 24 tables, tray return, kitchen behind.
+- interacts: serving_counter ×2 (T3 — debits nothing for EF, logs meal; stock loop T4:
+  provisions arrive via PLC-036 cargo), table/seat ×96 (T2 SIT), tray_dispenser ×2 (T3).
+- staff: EF catering crew 6/shift ×2 shifts (4 human, 1 Narn, 1 pak'ma'ra pot-wash on the
+  segregated late clean — pakmara feed at low-traffic hours, schedule.py).
+- schedule: meal tides at 07/12.5/19 EMT (human EMT anchors, schedule.py:132-239).
+- CHECK: the 12:30 tide fills ≥60% of the 96 seats with named EF residents whose schedule
+  says lunch; the serving line's stock visibly ran from this morning's cargo delivery
+  (SYS-04 chain names the container).
+
+### PLC-030 `obs_dome_2` — Observation Dome 2
+`blue/0/0 90° z7960 · 20°×36 m · components/generic* · auth 3` · TILING 1 → **54**
+- program: the second dome (Contract 5); function unstated in canon → adopted P-11:
+  traffic annexe + public gallery (auth 5).
+- interacts: viewport ×8 (T1, named bearings); added (auth 5): traffic repeater console ×2
+  (T2, mirrors SYS-02), inspection terminal (T3), bench ×6 (T2). T4 = repeater couples to
+  the live berth map.
+- CHECK: the repeater shows the same berth map C&C shows, delayed 0 s; the gallery's 8
+  viewports name 8 true bearings; a filed inspection creates a maintenance job.
+
+### PLC-031 `war_room` — War Room
+`blue/1/0 300° z7900 · 10°×24 m · -/generic · auth 5` · TILING 1 → **6**
+- program: backlit galactic-map mural + circular blue holo table (auth-1 dressing);
+  briefing seats 14.
+- interacts: tactical_display ×2 (T2), console ×2 (T3 — pages SYS-02 defence picture),
+  blast_door (T2); T4 = defence-readiness state couples to INC drills.
+- CHECK: the mural and holo table match the auth-1 dressing list; a drill event pages the
+  displays and summons 6 named command staff within 10 min.
+
+### PLC-032 `admin_complex` — Station Administration
+`blue/1/1 314° z7900 · 12°×28 m · -/generic · auth 5` · TILING 1 → **6**
+- program: 6 offices: station house Blue desk, records, permits (vendor licences —
+  SYS-04's paper), commander's outer office.
+- interacts: desk ×4 (T3 serve — permits filed here matter at Zocalo stalls),
+  babcom_terminal ×2 (T3), door ×6 (T2); T4 = the permit ledger NPC vendors renew.
+- CHECK: a named Zocalo stallholder renews a permit here on the 1st of the cycle; the
+  player filing a vendor application gets a dated permit that security accepts at a stall
+  check.
+
+### PLC-033 `bay_elevators` — Bay Elevators
+`blue/0/0 300° z7115 · 8°×24 m · -/generic · auth 3` · TILING 1 → **4**
+- program: the 2-unit ship elevator head (T-04: ~90 s each way, ~5 min cycle, 12 mov/h
+  each, 62% peak) + muster gate outside (SHB-02.c).
+- interacts: lift_call ×2 (T3), lift_door ×2 (T2/T4 — SYS-02 moves ships through them);
+  posted security desk (T3, 2 officers — security.py exact).
+- incidents: INC-ELEV (the canonical cheap failure), INC-STRIKE (muster gate is the flash
+  point).
+- CHECK: both elevator units cycle ships on SYS-02's schedule; when INC-ELEV takes unit 2
+  down, the berth map shows the hold stack forming and a maintenance job walks in.
+
+### PLC-034 `lowg_bays` — Low-G Bays
+`blue/0/0 130° z7115 · 16°×60 m · -/generic · auth 3` · TILING 1 → **20**
+- program: 4 low-gravity handling bays (canon count auth 4) for ships >~100 m; handhold
+  lattice, netting, drift-cargo rails.
+- interacts: bay_door ×4 (T4), docking_clamp ×8 (T4), handhold runs (T1); added: cargo
+  net winch ×4 (T3, auth 5).
+- CHECK: a >100 m manifest arrival berths here not at bays 1–24; cargo drifts on rails to
+  the winches; the 4 bays are individually numbered LG-1..LG-4 and distinct.
+
+### PLC-035 `cobra_bays` — Cobra Bays
+`blue/0/0 0° z6900 · 360°×120 m · components/generic* · auth 3` · TILING 1 → **979**
+- program: the fighter ring — working figure **28 bays / 24 fighters / 2 squadrons**
+  (C-002 open 24 vs 28, carried visibly; Zeta named auth 1†, second squadron "Delta Wing"
+  auth 4; Zeta leader VACANT at datum — Keffer is out of era, FACTIONS:366). Per bay:
+  nose-out cradle on lattice arm, orange-banded tanks, NO catapult (drum spin launches).
+- interacts: launch_tube ×28 (T4 — the Starfury launch loop, and the PLAYER'S: PILOT verb
+  entry point), clamp ×28 (T2); added: crew ladder + suit rack per manned bay (T2),
+  readiness board (T1, per-bay fighter tail numbers, 24 distinct), armoury issue desk
+  (T3), fuel/ordnance bowser console (T3), down-bird job board (T3 — feeds PLC-082).
+- staff: flight-ops pool 350 (FACTIONS split): per watch 2 crew chiefs + 8 fitters across
+  the ring (auth 5); pilots on alert rotation.
+- sound: near-silent ring until a launch — then the 33.47 s spin period is the launch
+  timer audible as the bay swings to release bearing.
+- incidents: INC-FAULT (a down fighter creates a visible maintenance job), scramble drill.
+- CHECK: the player walks the ring past 28 cradles of which 24 hold fighters with distinct
+  tail numbers; suits up at bay Z-7 (their assigned tail per SYS roster), launches through
+  the tube on the spin timer, flies, docks back (the 4d ruling's flyable Starfury), and a
+  fitter crew swarms the returned fighter.
+
+### PLC-036 `cargo_bays` — Cargo Bays
+`blue/1/3 60° z7000 · 60°×200 m · -/generic · auth 3` · TILING 1 → **273**
+- program: canon multiplicity: 42 bays (28 rotating + 14 support) — this row carries the
+  Blue rotating 28; support/dorsal live with PLC-099/experimental note. Container stacks,
+  crane aisles, manifest office, bonded cage (customs hold for duty goods, auth 5).
+- interacts: cargo_crane ×8 (T3), container stacks (T2, TAKE/PLACE at crate scale),
+  manifest_terminal ×4 (T4 — the transshipment ledger: 4,000–5,000 t/day through
+  SYS-02/04), bonded-cage door (T2).
+- staff: guild shift gangs (day 06–15), tally clerks ×4 (2 human, 1 Vree, 1 Drazi, auth 5).
+- incidents: INC-CONTRA (the black-market route starts here — LAW-CRIME:858), INC-PICK.
+- CHECK: a manifest container landed at bay 9 this morning is findable in stack row F,
+  its terminal row names its ship and its consignee stall in the Zocalo, and tomorrow it is
+  gone because the consignee's porter collected it (SYS-04 chain walkable end to end).
+
+### PLC-037 `quartermaster` — Quartermaster's Issue
+`blue/1/2 20° z7250 · 6°×16 m · -/generic · auth 3` · TILING **1 → 1 (full)**
+- interacts: issue_counter (T3 serve — EF kit issue against roster), manifest_terminal
+  (T3), locker ×6 (T2); T4 = stores ledger draws down and reorders via PLC-036.
+- staff: 1 QM sergeant + 1 clerk (day); Narn civilian storeman (evenings, auth 5).
+- CHECK: an EF NPC draws a kit item and the ledger row moves; the reorder appears on a
+  future manifest.
+
+### PLC-038 `post_office` — Post Office
+`blue/1/2 34° z7250 · 6°×16 m · -/generic · auth 3` · TILING 1 → **2**
+- interacts: counter (T3 serve), parcel_locker ×24 (T3 — mail moves via SYS-02 ships),
+  babcom_terminal (T3); T4 = the mail loop (a letter posted rides a real departure).
+- staff: 1 EA postal clerk day / 1 Brakiri night counter (auth 5).
+- CHECK: the player posts a parcel to a named resident; it leaves on a named departure;
+  locker 17 holds mail addressed to a Downbelow alias (INC-FRAUD hook).
+
+### PLC-039 `fuel_stores` — Fuel Stores
+`blue/0/8 240° z7000 · 30°×90 m · -/generic · auth 3` · TILING 1 → **48**
+- program: ship-fuel bunkering for the bays; bund rows, transfer gantries.
+- interacts: valve ×8 (T2), tank_gauge ×8 (T2 live), blast_door ×2 (T2); added: transfer
+  console (T3 — books fuel to a berthed ship, SYS-02/04); T4 = every departure drew fuel
+  here.
+- CHECK: gauge total falls by the day's departures' aggregate and is replenished by the
+  named tanker arrival on the manifest.
+
+### PLC-040 `mooring_clamps` — Mooring Clamps
+`blue/0/0 180° z7115 · 14°×50 m · components/generic* · auth 3` · TILING 1 → **28**
+- program: external mooring hardpoints for >400 m hulls (Sharlin/Omega class never touch
+  the hull); interior = clamp galleries.
+- interacts: docking_clamp ×6 (T4 — SYS-02 moored tier), added: clamp console ×2 (T3),
+  inspection ladder (T1).
+- CHECK: when the manifest moors an EF warship (0.3/day class), these clamps hold it and
+  the gallery viewport frames the hull at its true 1.7926 rpm relative roll.
+
+### PLC-041 `plantroom_bay` — Dockside Plant Room
+`blue/0/0 260° z7115 · 10°×40 m · -/generic · auth 1` · TILING 1 → **4**
+- interacts: valve ×4 (T2), catwalk (T1), bay_door (T2); added: air-charge console (T3 —
+  recharges ship atmospheres, billed via SYS-04); T4 = every berth umbilical feeds from
+  here.
+- CHECK: a berthed freighter's umbilical demand shows on the console; INC-FAULT here
+  degrades bay 20–24 services until the maintenance walk arrives.
+
+### PLC-042 `proximity_arrays` — Proximity Arrays
+`blue/0/0 200° z7900 · 30°×60 m · components/generic* · auth 3` · TILING 1 → **84**
+- register declares no interacts — program added (auth 5): array bay galleries.
+- interacts: array status console ×2 (T2), fault-report terminal (T3), isolation breaker
+  (T3); **T4 = the arrays themselves** — SYS-02's approach picture consumes them; a fault
+  here degrades C&C's plot and creates the walk.
+- CHECK: killing array 3 at the breaker visibly degrades the C&C repeater's contact detail
+  until the maintenance job completes.
+
+### PLC-043 `nav_beacon` — Navigation Beacon
+`blue/0/0 340° z8000 · 10°×24 m · components/generic* · auth 3` · TILING 1 → **12**
+- register declares no interacts — program added (auth 5): beacon head service room.
+- interacts: beacon console (T2), fault terminal (T3), power isolation (T3), service_ladder
+  (T1); **T4 = the beacon** — every arrival's phase-2 "beacon lock" (SYS-02's 8-phase
+  machine) locks onto this emitter.
+- CHECK: with the beacon isolated, the next scheduled arrival holds at phase 2 and C&C
+  raises the fault; restoring it releases the queue.
+
+### PLC-044 `vorlon_berth` — The Vorlon Berth
+`blue/0/0 320° z7115 · 10°×40 m · -/generic · auth 4` · TILING 1 → **15**
+- program: Kosh's transport berth (hull auth 1): diplomatic privilege — no customs walk,
+  no clamp crew; the ship "grows" its own cradle dressing (auth 5 within canon strangeness).
+- interacts: bay_door (T4 — SYS-02 diplomatic class), docking_clamp ×2 (T2), added:
+  atmosphere_status_lamp (T1 — reads UNDISCLOSED). ≥3 T3 satisfied by the bay-gallery pair:
+  observation log terminal (T3), security sign-in desk (T3, staffed on movement days),
+  umbilical isolation (T3) (all auth 5).
+- CHECK: on Kosh's 2 public hours (schedule.py:233-238), the encounter-suit transit from
+  this berth toward Green happens as a watchable corridor event and the berth seals behind
+  it; nobody else ever berths here across a full week.
+
+### PLC-045 `infirmary` — Infirmary
+`blue/0/1 116° z7300 · 8°×20 m · -/generic · auth 4` · TILING 1 → **6**
+- program: walk-in adjunct to Medlab One: 4 beds, dressing station.
+- interacts: diagnostic_bed ×4 (T3), medcabinet ×2 (T3), added: triage desk (T3 serve);
+  T4 = feeds/receives SYS-10 patient flow with PLC-009.
+- CHECK: a walk-in with a dock strain is treated here not in Medlab One; overflow on an
+  INC-ACCIDENT day transfers by named gurney to PLC-009.
+
+### PLC-046 `isolab` — Isolab
+`blue/0/1 128° z7300 · 6°×16 m · -/generic · auth 4` · TILING 1 → **2**
+- program: one Isolab per Medlab (canon rule): the Blue one — airlock anteroom, negative
+  pressure, viewing glass.
+- interacts: isolation_door ×2 (T2 interlocked), diagnostic_bed (T3), medcabinet (T3),
+  added: atmosphere control console (T3); T4 = INC-QUAR routes patients here unattended.
+- CHECK: the two doors never open together; an INC-QUAR patient is visible through the
+  glass and their record reads at the outer console.
+
+### PLC-047 `morgue` — Morgue
+`blue/0/6 140° z7300 · 8°×20 m · -/generic · auth 5` · TILING 1 → **3**
+- interacts: cold_drawer ×12 (T2, each with a name-or-empty tag — T1 strings distinct),
+  door (T2); added: registrar desk (T3 — death records into SYS-05/10), release form
+  terminal (T3); T4 = the (single-figures/yr, mostly unreported) murder pipeline ends here.
+- CHECK: the INC-ACCIDENT fatality's drawer tag carries their roster name; the registrar's
+  ledger line matches ISN's silence (unreported is a property, not an omission).
+
+### PLC-048 `cryo_storage` — Cryo Storage
+`blue/0/7 152° z7300 · 8°×20 m · -/generic · auth 5` · TILING 1 → **4**
+- interacts: cryo_pod ×8 (T2, occupancy lamps), console (T3 — pod telemetry to SYS-10),
+  added: transfer request terminal (T3), power failover breaker (T3); T4 = pods ride the
+  power system: INC-BROWNOUT here is a medical event.
+- CHECK: pod 5 is occupied (named, records sealed); a brownout drill fails over audibly
+  and the telemetry never blinks.
+
+### PLC-049 `sanctuary_blue` — Blue Sanctuary
+`blue/1/5 76° z7500 · 10°×24 m · -/generic · auth 3` · TILING 1 → **8**
+- program: one of the 4 Contract-5 sanctuaries (function never canon-stated; adopted P-08
+  star-view contemplation room, auth 5): hull-facing viewport wall, 8 pew rows.
+- interacts: pew ×8 (T2), door (T2), viewport (T1); added: reservation plaque (T3 —
+  faith-rota bookings move via SYS-08), donations box (T3), verger's cupboard (T2).
+  T4 = the faith rota (cleric role 7,300 station-wide) cycles services without the player.
+- CHECK: the posted rota names real resident congregations at real hours; at a posted hour
+  the named service is in progress; 30 dBA quiet class holds (loudest thing is the spoke-
+  pass swell).
+
+### PLC-050 `comms_grid` — Communications Grid
+`blue/0/0 160° z7900 · 40°×120 m · components/generic* · auth 3` · TILING 1 → **306**
+- register declares no interacts — program added (auth 5): waveguide galleries, dish-drive
+  rooms (2 grids + tachyon transmitter are canon exterior systems; the tachyon transmitter
+  room is volume-audit row 12, 2,365 m² — **built under this row**).
+- interacts: console ×4 (T2), patch-bay (T3), fault terminal (T3), isolation breaker (T3);
+  **T4 = the grid carries SYS-08**: BabCom, ISN feed, StellarCom priority traffic.
+- CHECK: isolating the ISN feed at the patch-bay blanks every ISN_PLACES screen station-
+  wide until the maintenance job restores it; the tachyon room exists at its audited size.
+
+### PLC-116 `lifts` — The Lift Network (Blue trunk)
+`blue/0/5 80° z7500 · 40°×200 m · -/generic · auth 3` · TILING 1 → **1,120**
+- program: the vertical circulation class row — shafts, landings, cars (lift.py generator;
+  4-landing test shaft shipped; transit_runtime RIDETEST passes).
+- interacts: lift_call (T3 — a car comes), lift_door (T2), level_plaque (T1 — every
+  landing names ring/deck truthfully; C-004 numbering deferred, geometry labels used);
+  T4 = the transit network (SYS-09) NPCs ride 24 h (life.py: 9,898 in transit at 03:00).
+- CHECK: the player calls, boards, rides, alights at a named landing whose plaque matches
+  the register address; named NPCs board and alight on their commutes at watch change.
+
+### PLC-117 `standard_corridor` — Standard Corridor (class row)
+`blue/0/9 300° z7500 · 60°×400 m · interior_kit/generic* · auth 1` · TILING 1 → **3,080**
+- program: THE kit (INV-007 grammar: skirt/dado/hip rail/plate courses/bullnose pilasters/
+  segmented light strips/fine deck tile) — the class row for every corridor bay station-
+  wide; corridor_dressing SCHEMES (freight/service/public/lurker/works) per district.
+- interacts: door (T2), babcom_terminal (T3), level_plaque (T1); T4 = the corridor IS the
+  circulation system: 963 walkers measured, commute tides ×2.48 03:00→08:00.
+- CHECK: walking 400 m of Blue trunk corridor crosses ≥3 dressing scheme changes matched
+  to what is behind the walls (freight near cargo, public near concourse); every door
+  leads somewhere real (0 unopenable painted doors).
+
+### PLC-126 `mooring_gallery` — Mooring Gallery
+`blue/0/2 180° z7250 · 20°×60 m · -/generic · auth 5` · TILING 1 → **25**
+- program: umbilical service gallery over the mooring line (volume-audit row addition 3z).
+- interacts: docking_clamp (T4 — moored-tier service), console ×2 (T3), blast_door (T2),
+  handhold (T1); PLACE_FIXTURES: umbilical_plant_pipe, clamp_plant_frame,
+  gallery_plant_conduit (rooms.py:1079).
+- CHECK: with an Omega moored (0.3/day EF class), the gallery's umbilicals run live
+  (gauges move) and a clamp fault creates the EVA job that PLC-127 stages.
+
+### PLC-127 `eva_lock_blue` — EVA Lock Blue
+`blue/0/1 100° z7230 · 10°×30 m · -/generic · auth 5` · TILING 1 → **12**
+- program: suit room + lock (maintenance+EVA pool 630, FACTIONS split): suit_plant_frame,
+  charging_plant_pipe, lock_plant_conduit fixtures.
+- interacts: blast_door interlock pair (T2), suit rack (T2), charging console (T3),
+  job-board terminal (T3 — SYS-14 EVA jobs), intercom (T2); T4 = hull-maintenance loop
+  stages from here without the player.
+- CHECK: an EVA pair suits up, cycles the lock (never both doors), and the job they walk
+  to is the one the board named; the player with the maintenance role can WORK the same
+  board.
+
+### PLC-128 `gunnery_control` — Gunnery Control
+`blue/1/4 340° z7100 · 14°×40 m · -/generic · auth 5` · TILING 1 → **20**
+- program: fire-control room for the auth-1 hull cannons (exterior emplacements are a
+  gazetteer absence carried in SUR; this is the interior); plot_plant_frame, rack frames,
+  tray conduits.
+- interacts: console ×4 (T2), tactical_display (T2), blast_door (T2), added: readiness
+  log terminal (T3), drill authorisation desk (T3, staffed on drill days), isolation
+  breaker (T3); T4 = defence-grid readiness state SYS-14 drills exercise.
+- CHECK: a scheduled drill lights the plot, names 4 emplacements, and stands down on the
+  log; outside drills the room holds a 2-person EF watch who answer TALK with era-true
+  lines.
+
+## 1.2 RED SECTOR — 22 places (commerce, residence, law) — tiling 22 → 1,644
+
+### PLC-011 `zocalo` — The Zocalo
+`red/0/0 0° z6600 · 70°×120 m · zocalo/bespoke · auth 3` · TILING 1 → **275**
+- program: the two-storey market street at its full 120 m run (INV-268's 11-arch grain
+  inside the 275-bay tiling): tubular arch ribs, gallery with vertical-bar balustrade,
+  blue/red backlit shopfront panels, pale square tiles with yellow/red/blue chevron band,
+  parasol stalls with fairy-lit post-and-beam, orange-red tree-masses in tubs (all auth 1/2
+  texture list); Zocalo neon wordmark both variants.
+- fixtures/counts (auth 5 within the auth-1 grain): **44 market stalls, 18 shopfronts,
+  6 licensed carts**, 30 cafe tables on the gallery, 12 planters, 1 denunciation box (era).
+- interacts: market_stall ×44 (T3 buy; 6 of them T4 — stock arrives from named PLC-036
+  consignments), shopfront ×18 (T3), cafe_table ×30 (T2), credit_terminal ×8 (T3),
+  babcom_terminal ×4 (T3), neon_sign (T1, every sign distinct incl. 3 alien letterform
+  families), gallery_rail (T1), planter (T1).
+- staff: ~140 named stallholders/shopkeepers across two shifts (merchant role 39,300
+  station-wide; composition by dominant-where: Human majority, Narn spice row, Centauri
+  imports, Drazi hardware, Vree oddments; a Brakiri druggist opens 18:30); 4 posted
+  security (security.py exact) + continuous patrol.
+- schedule: never closed; measured swing **62.1 → 67.6 dBA 03:00 → 13:00** (audio.py) —
+  the crowd IS the schedule; Nightwatch walk-through 2×/day (era).
+- sound: the loudest civic room; murmur resolves to individual voices below 12 speakers.
+- incidents: INC-PICK, INC-DENOUNCE, INC-BRAWL (spillover), INC-PSICOP (volume drop).
+- CHECK: the player buys a meal (1–2 cr, SYS-04 ladder) from a named cart whose stock ran
+  from a named consignment; all 44 stalls carry distinct signage and goods lists; at 03:00
+  the street is ≥80% shuttered with the Brakiri druggist open; the two Nightwatch officers
+  pause at a named merchant and the neighbours' idle animations look away (INC-DENOUNCE
+  staging).
+
+### PLC-012 `business_center` — Business Center
+`red/1/0 80° z6600 · 24°×60 m · -/generic · auth 3` · TILING 1 → **40**
+- program: the exchange floor (auth 1: "MONETARY EXCHANGE RATES THROUGH BUSINESS CENTER")
+  + 12 hire offices + telepath-for-hire desk (vacant at datum — no resident commercial
+  telepath, E5; the desk exists and says so, era-true).
+- interacts: exchange_terminal ×4 (T4 — SYS-04's rate board is the station's money face),
+  office_door ×12 (T2), babcom_terminal ×2 (T3), added: notary desk (T3 serve), hire-desk
+  (T3, "NO LICENSED TELEPATH IN RESIDENCE" plaque T1).
+- staff: 6 exchange clerks (3 human day, 1 Centauri, 2 Brakiri night — the night shift is
+  the Brakiri financial district, schedule.py:455-469).
+- CHECK: rates on the board move daily and every vendor price in the Zocalo converts
+  against them; the Brakiri clerks work 18:30–02:30 verifiably; the telepath desk answers
+  with the era-true vacancy line.
+
+### PLC-013 `bar_unnamed` — The Bar (auth-1 set)
+`red/0/0 96° z6620 · 4°×12 m · hospitality/bespoke · auth 1` · TILING **1 → 1 (full)**
+- program: THE show bar: low pendant cones in pools of light, 20-segment dartboard
+  (numerals verified), amber "209" display, segmented cyan neon tube (all auth 1).
+- interacts: bar_counter (T4 — stock loop: the week's barrels arrive via PLC-036),
+  table ×5 + stool ×8 (T2), dartboard (T2 — playable, scoring), pendant_lamp (T1),
+  menu_display (T1 with prices per SYS-04 ladder); added: the till (T3), kitchen pass
+  (T3 — orders move), dart-league stakes slate (T3).
+- staff: counter crew of 3 across two shifts: Drazi barman days, human owner-operator
+  evenings, Narn kitchen hand (auth 5); all three named regulars-pool residents.
+- schedule: 11:00–03:00; friction seating live (will_share_table — a Centauri party and a
+  Narn never share).
+- sound: hospitality murmur over the cyan neon hum; bar-volume drop on a Nightwatch entry
+  (era behaviour, FACTIONS §5.4).
+- incidents: INC-BRAWL, INC-DENOUNCE, INC-PICK.
+- CHECK: the player buys a drink (credits debit, stock drops), plays a scored dartboard
+  game against a named regular, and on the Nightwatch pair's entry the room's crowd layer
+  audibly drops; the owner-operator knows the player on a second visit (SYS-12 met-before).
+
+### PLC-014 `dark_star` — The Dark Star
+`red/1/2 140° z6600 · 5°×14 m · -/generic · auth 3` · TILING **1 → 1 (full)**
+- program: the nightclub: stage, floor show, booth ring, DARK STAR acid-green letters +
+  amber sunburst vesica plaque (auth 1 emblem).
+- interacts: bar_counter (T3/T4 stock), table ×6 (T2), neon_sign (T1), door (T2); added:
+  stage edge (T1), booking slate (T3).
+- staff: 5 nights: human proprietor, Centauri floor manager, 2 human dancers, Llort
+  door-keep (llort rhythm IS the night shift, schedule.py); Brakiri-heavy 01:00–05:00 trade.
+- schedule: 20:00–06:00; the one venue whose peak is 02:00.
+- incidents: INC-PICK, INC-DUST (a deal in the back booth is the classic seed).
+- CHECK: at 02:00 the club is fuller than at 22:00 (species rhythms make it so
+  measurably); the floor show runs its posted set; the back booth's INC-DUST seed event
+  can occur and security's response walks in through the named door.
+
+### PLC-015 `casino` — The Casino
+`red/1/1 160° z6600 · 8°×22 m · -/generic · auth 4` · TILING 1 → **4**
+- program: monochrome industrial mural (largest flat art on station, auth 1), ~24-lamp
+  wheel of fortune, blue-felt kidney table on plinth, full-width green bar, cube grid
+  pendants, magenta neon.
+- interacts: gaming_table ×4 (T3 — credits genuinely move both ways), credit_terminal ×2
+  (T3), bar_counter (T3), wheel (T2), door (T2); T4 = the house ledger feeds SYS-04 (and
+  the black-market fringe: a debt here is INC-FRAUD's favourite motive).
+- staff: pit boss (human), 6 croupiers over two shifts (2 Centauri — "gambling is
+  culturally theirs" as patrons AND the house style, 3 human, 1 Drazi), Brakiri night pit
+  01:00–07:00 (auth 5).
+- incidents: INC-PICK, INC-FRAUD (debt enforcement archetype, LAW-CRIME §5).
+- CHECK: the player stakes at the kidney table and can win or lose real credits against
+  posted odds; a named Centauri noble loses conspicuously on liner nights; the mural and
+  wheel match the auth-1 dressing.
+
+### PLC-016 `security_central` — Security Central
+`red/2/0 200° z6600 · 10°×26 m · -/generic · auth 3` · TILING 1 → **4**
+- program: the force's hub (500 officers, ~150 on duty, security.py): duty room, monitor
+  wall, armoury cage, briefing bay, cell corridor to PLC-017.
+- interacts: duty_desk (T3 serve — file a report, SYS-05 acts on it), monitor_wall (T2 —
+  pages real camera views of chokepoints), weapons_locker (T2, signed issue T3),
+  cell_door (T2), babcom_terminal (T3); T4 = the dispatch loop: SYS-14 incidents route
+  patrols from this room whether or not the player watches.
+- staff: 4 posted pairs 24 h (security.py:170-198 exact — 8 officers), watch sergeant
+  (Zack-pattern: armband, auth 2 costume note), duty officers; ~175/500 armbanded
+  (NIGHTWATCH_SHARE), every patrol pair one-band-one-bare (security.py guarantee).
+- schedule: watch change 00/08/16; briefing 15 min into each watch.
+- sound: radio traffic bed; the monitor wall's 9 feeds each carry their place's own
+  audio bed at low level (audio.py beds exist for all 128).
+- incidents: all INC classes terminate here as dispatch entries.
+- CHECK: the player files a theft report at the duty desk and a named patrol pair walks
+  to the scene within response-model time (security.response: seconds Zocalo, 12–20 min
+  far ring); the briefing at 08:15 names today's real incidents; the armoury issues
+  nothing without a signed T3 entry.
+
+### PLC-017 `brig` — The Brig
+`red/2/1 206° z6600 · 6°×18 m · -/generic · auth 5` · TILING 1 → **3**
+- program: remand not prison (hold hours–days): working figure **28 cells + 2 group
+  holds** within canon's 24–40 bracket (auth 5), **3 atmosphere-fitted cells** (LAW-CRIME
+  :416 — one methane-capable, one humid, one standard-variant); Blue remand annexe is
+  SHB-02.d.
+- interacts: cell_door ×30 (T2 interlocked), bunk (T2), intercom ×30 (T2 — each cell's
+  answers differ by occupant, T1 rule), added: custody desk (T3 — booking writes SYS-05
+  record), property locker (T3), atmosphere panel ×3 (T3). T4 = the arrest pipeline:
+  SYS-05 books, holds and releases remands here without the player.
+- staff: 2 posted officers (security.py exact) + custody sergeant.
+- CHECK: an INC-BRAWL arrest is booked at the desk (named, charged, timed), holds in cell
+  9, and is released or referred to the Ombuds docket within the remand window; the
+  methane cell's panel reads its atmosphere and its door interlock differs; FIGHT/RESTRAIN
+  used on the player ends here with the player's own booking record readable.
+
+### PLC-018 `law_courts` — Ombuds Court
+`red/2/0 216° z6600 · 8°×22 m · -/generic · auth 3` · TILING 1 → **4**
+- program: 2 hearing rooms (≥2 Ombuds canon: Wellington, Zimmerman — held as offices, not
+  likenesses, per the institution-in/character-out rule), bench, public gallery, clerk's
+  cage.
+- interacts: bench (T1), public_gallery (T2 SIT), door (T2), added: docket board (T1 —
+  today's real cases from SYS-05), clerk desk (T3), fine-payment terminal (T3), filing
+  counter (T3), oath rail (T1). T4 = the docket loop: cases flow from arrest to verdict
+  on the calendar whether or not anyone watches.
+- staff: 2 Ombuds (generated stand-ins holding the named offices), 2 clerks, 1 bailiff.
+- schedule: sessions 10:00–16:00; docket posted 08:00.
+- CHECK: the INC-FRAUD arrest from the brig appears on the docket board by name within
+  2 days and its hearing runs at the posted hour with the public gallery sittable; verdicts
+  write back to SYS-05 (fine debits, hold extends, or release walks out the door).
+
+### PLC-019 `qtr_civilian` — Civilian Quarters (class row)
+`red/1/6 280° z6650 · 50°×120 m · quarters/bespoke · auth 4` · TILING 1 → **320**
+- program: the registered-resident housing class: 320 bays → 1,920 units at 16 m²
+  (INV-032); no showers (L-03); unit doors numbered NN-L (arrival.py:573 UNITS_PER_BLOCK
+  =60). The other ~137,800 civilian units are SHB-04 — this row is the exemplar the
+  generator rolls outward.
+- interacts: door (T2), babcom_terminal (T3), locker (T2), bunk (T2 SLEEP); T4 = rent
+  (SYS-04: the station's sourced revenue) collects weekly against these doors.
+- CHECK: 1,920 doors carry 1,920 distinct unit labels; behind three sampled doors live
+  the exact residents `resident.home_for` names, at home in their schedule's home hours;
+  a rent-arrears notice on one named door escalates to an SYS-05 eviction docket entry.
+
+### PLC-020 `qtr_transient` — Transient Quarters (class row)
+`red/1/9 330° z6650 · 26°×80 m · quarters/bespoke · auth 4` · TILING 1 → **104**
+- program: short-stay class: 104 bays → 1,248 units at 9 m² (INV-032); 7-day mean stay
+  (FACTIONS §2.2); hotels (auth 4, distinct) are SHB-04.b.
+- interacts: door (T2), locker (T2), bunk (T2); added: night-desk (T3 serve — takes 4–8
+  cr/wk, SYS-04 ladder), luggage cage (T3); T4 = the arrival pipeline books beds here
+  (SYS-03 ADMITTED/TRANSIT outcome names a unit).
+- CHECK: a TRANSIT-visa arrival processed at PLC-003 is bookable to a named unit here the
+  same hour; the desk ledger's occupancy tracks SYS-02's arrivals within the 7-day decay;
+  the player's own first night aboard is spent in a numbered unit that stays theirs.
+
+### PLC-051 `eclipse_cafe` — Eclipse Cafe
+`red/0/0 110° z6620 · 4°×12 m · hospitality/bespoke · auth 4` · TILING **1 → 1 (full)**
+- interacts: bar_counter (T3/T4 stock loop), table ×4, stool ×6 (T2), added: menu_display
+  (T1, priced), kitchen hatch (T3).
+- staff: 24 h diner crew: human short-order day, pak'ma'ra pot-wash (segregated late
+  hours), Drazi counter nights (auth 5).
+- CHECK: open at 04:00 with the night-shift trade (dockers pre-muster); a meal debits
+  credits and depletes the day's stock line.
+
+### PLC-052 `shops_kiosks` — Shops and Kiosks
+`red/0/0 24° z6600 · 40°×100 m · zocalo/bespoke · auth 4` · TILING 1 → **98**
+- program: the Zocalo's spur arcade: 22 lock-up shops + 12 kiosks (auth 5 counts within
+  the 9-wanted-arch INV-268 grain).
+- interacts: shopfront ×22 (T3), market_stall ×12 (T3), credit_terminal ×4 (T3); T4 =
+  shares the Zocalo consignment loop.
+- staff: ~48 named keepers, two shifts, permit numbers issued by PLC-032.
+- CHECK: every shopfront names its trade and keeper; a spot permit-check by patrol matches
+  the PLC-032 ledger; shutters step down through the 03:00 trough on schedule.
+
+### PLC-053 `ceremonial_rooms` — Ceremonial Rooms
+`red/1/3 100° z6600 · 10°×26 m · -/generic · auth 4` · TILING 1 → **6**
+- program: hireable function rooms; MiniPax borrows one for public meetings (P-06 —
+  formally NO ministry premises, the borrow is the point).
+- interacts: door ×6 (T2), table (T2), added: booking board (T3 — SYS-08 lists real
+  bookings), deposit terminal (T3), catering hatch (T3), lectern (T1), chair stacks
+  (T2). T4 = the booking calendar fills, holds and turns over its events unattended.
+- CHECK: the booking board's week includes a named wedding, a species festival
+  (Parliament-of-Dreams precedent), and a MiniPax meeting whose notice is also on the
+  MINIPAX_PLACES screens; each booked event actually occurs in-room at its hour.
+
+### PLC-054 `water_storage` — Water Storage (Red rosette)
+`red/3/0 20° z6600 · 40°×120 m · -/generic · auth 3` · TILING 1 → **60**
+- interacts: tank_gauge ×6 (T2 live — SYS-07 levels), valve ×6 (T2), catwalk (T1); added:
+  transfer console (T3), sample tap (T3 — files water-quality record), isolation wheel
+  (T3); T4 = the 30-day reserve (397,500 m³ station total) draws down measurably in a
+  supply event.
+- CHECK: gauges disagree tank-to-tank plausibly and sum to SYS-07's Red inventory; closing
+  the sampled riser drops pressure in a named SHB-04 block until maintenance restores it.
+
+### PLC-055 `waste_red` — Waste Processing (Red rosette)
+`red/3/4 90° z6600 · 30°×100 m · -/generic · auth 3` · TILING 1 → **30**
+- program: one of the THREE distributed waste rosettes (canon: named 3× + twice on
+  schematic); Red's satellite Downbelow camp pins to it (SHB-06.b).
+- interacts: valve (T2), catwalk (T1), tank_gauge (T2); added: intake console (T3), sluice
+  interlock (T3), odour scrubber panel (T3); T4 = 37.5 t/day solid stream runs through.
+- staff: waste role crew 8/shift rotating; pak'ma'ra crew preference is a schedule fact.
+- CHECK: the intake ledger's tonnage tracks the sector's population activity by hour; the
+  0.75 Hz compressor beat is audible at the camp side and absent on the corridor side of
+  the 25 dB bulkhead (INV-262/264).
+
+### PLC-056 `central_corridor` — Central Corridor
+`red/0/0 300° z6600 · 40°×120 m · interior_kit/generic* · auth 3` · TILING 1 → **540**
+- program: Red's grand circulation spine — public-scheme dressing, the crowd's main stage.
+- interacts: babcom_terminal ×4 (T3), gallery_rail (T1), door (T2); T4 = the circulation
+  loop (commute tides ×2.48).
+- CHECK: at 08:00 vs 03:00 the corridor's measured crowd differs by the life.py tide
+  factor; every side door opens into a real address; friction pairs (Narn/Centauri 1.80 m,
+  friction.py) visibly lane-split here at peak.
+
+### PLC-057 `medlab_red` — Medlab Red
+`red/1/4 240° z6600 · 10°×24 m · -/generic · auth 4` · TILING 1 → **6**
+- interacts: diagnostic_bed ×4 (T3), medcabinet ×2 (T3), added: triage desk (T3 serve),
+  isolation_door (T2); T4 = SYS-10 patient flow (Zocalo's casualties come here first).
+- staff: 1 physician + 3 med-techs/watch (mixed human/Abbai — humid-atmos physiology
+  skill, auth 5).
+- CHECK: an INC-BRAWL casualty from the Zocalo arrives here not Medlab One; its record
+  is readable at the bed and referenced at the Ombuds hearing.
+
+### PLC-058 `outdoor_rec` — Recreation Deck
+`red/1/5 60° z6650 · 30°×90 m · -/generic · auth 3` · TILING 1 → **60**
+- interacts: pool_edge (T1), bench (T2), path (T1); added: kit counter (T3 serve), court
+  booking board (T3), scoreboard (T2); gymnasium/training gap (LOCATIONS P-12) is folded
+  in here as 2 training bays (auth 5). T4 = the booking rota runs without the player.
+- CHECK: the booking board's slots are held by named residents who show up and play; the
+  security unarmed-combat class runs Tuesdays 17:00 with real officer NPCs.
+
+### PLC-107 `security_posts` — Sector Security Posts (class row)
+`red/2/2 230° z6600 · 30°×120 m · -/generic · auth 4` · TILING 1 → **70**
+- program: the 6-post chokepoint class (security.py posts: one per sector + Grey boundary)
+  + the 4 station houses (D-02) as SHB items; this row builds the post kit: desk, barrier,
+  reader, one-cell hold.
+- interacts: duty_desk (T3 serve), identicard_reader (T4 — the commonest security
+  interaction is the card check, LAW-CRIME:372), barrier (T2); added: hold-cell door (T2).
+- staff: 6 posts × 1 pair × 3 watches from the 56-post allocation (security.py exact).
+- CHECK: each of the 6 posts stands at its register chokepoint; a card check on the player
+  at the Grey boundary post reads their real card and reacts to its visa state; posts
+  never appear in NO_POST places (Downbelow).
+
+### PLC-108 `nightwatch` — Nightwatch Muster Room
+`red/2/3 244° z6600 · 10°×30 m · -/generic · auth 1` · TILING 1 → **4**
+- program: the era-critical room (present, growing, NOT in control at datum): muster
+  benches, armband issue cabinet, notice wall, sign-up desk (§13:900 placement closed by
+  this row).
+- interacts: duty_desk (T3 — sign-ups; joining is a real SYS-05/12 standing change),
+  babcom_terminal (T3), added: armband cabinet (T3 issue-logged), notice wall (T1 — the
+  three MINIPAX_NOTICES verbatim), muster bench (T2). T4 = the denunciation pipeline:
+  box reports become musters become merchant-questioning scenes (SYS-05/08/12).
+- staff: coordinator (human civilian, armband) + rotating volunteer clerks; ~175 of 500
+  officers armbanded station-wide (NIGHTWATCH_SHARE) muster here by roster.
+- schedule: musters 19:00 nightly; "supplementary allowance" pay line (FACTIONS §5.2).
+- incidents: INC-DENOUNCE originates here (reports are read out).
+- CHECK: the 19:00 muster fills the benches with the exact armbanded officer subset the
+  roster carries; a denunciation filed at a Zocalo box is read here and becomes the next
+  day's merchant-questioning scene; the player CAN sign up and the armband changes how
+  merchants greet them (SYS-12).
+
+### PLC-109 `minipax` — Ministry of Peace Office
+`red/2/4 258° z6600 · 8°×20 m · -/generic · auth 5` · TILING **1 → 1 (full)**
+- program: the political officer's office (aboard since (3,5) — the datum episode): desk,
+  file wall, portrait of Clark (auth 5 prop), visitor chair no one wants.
+- interacts: desk (T3 serve — the officer receives), babcom_terminal (T3), added: file
+  request slot (T3), portrait (T1), door (T2). T4 = the propaganda layer: MINIPAX_NOTICES
+  and ISN bulletin scheduling route through this office (SYS-08).
+- staff: 1 political officer (generated stand-in holding the canon office) + 1 clerk.
+- CHECK: the notices on every MINIPAX_PLACES screen match this office's outbox by date;
+  being summoned here (era event) is a dialogue scene with the officer whose lines are
+  "official and reasonable" (FACTIONS:854 tone rule enforced in text).
+
+### PLC-118 `medlab_others` — Medlab Annexes (class row)
+`red/1/7 320° z6600 · 12°×30 m · -/generic · auth 4` · TILING 1 → **12**
+- program: the distributed-medlab class (canon count UNKNOWN — declared: this row + One/
+  Red/Green = 4 built, "Medlab 2"/"Medlab 5" names assigned to Red/Green annexes, auth 5).
+- interacts: diagnostic_bed ×4 (T3), medcabinet ×2 (T3), added: triage desk (T3);
+  isolation bay (T2). T4 = SYS-10 network triage routing.
+- CHECK: a casualty is routed to the nearest medlab by the SYS-10 rule, verifiably not
+  always Medlab One; signage carries the assigned canonical numbers.
+
+## 1.3 GREEN SECTOR — 35 places (diplomacy, the drum, worship) — tiling 35 → 7,052
+
+### PLC-021 `council_chamber` — Council Chamber
+`green/0/0 0° z4100 · 12°×30 m · council_chamber/bespoke · auth 3` · TILING 1 → **10**
+- program: the Advisory Council + League Assembly room: internally-lit gold mesh bench
+  front, black-lattice chairs one per delegation, radiating fin wall + spoked medallion,
+  pale mosaic floor (all auth 1); anteroom + gallery.
+- fixtures: 5 great-power stations + **10 League seats** (of the full membership — only
+  ten sit at a time, FACTIONS §9.1:688; seat rotation is real politics), gallery rows,
+  speaking floor. **The Narn station at datum: occupied by a Centauri-appointed observer
+  or empty — flagged open (FACTIONS §15:981); spec ships it EMPTY with G'Kar in the public
+  gallery when sessions touch Narn business (auth 5, era-true).**
+- interacts: delegate_bench ×15 (T2; T1 nameplates all distinct and rotation-correct),
+  speaking_position (T3 — addresses enter the session record, SYS-08 reportable),
+  gallery_door (T2), added: session clerk desk (T3), petition slot (T3), session board
+  (T1 — the docket), translator rail (T2). T4 = the seat-rotation and session calendar
+  (SYS-01) reconfigure this room without the player.
+- staff: session clerk, 2 posted security (security.py exact), delegation aides flow.
+- schedule: sessions from 10:00 on session days (diplomat shift 10:00–17:00); the room is
+  FOUND EMPTY most hours — emptiness with nameplates is era-true dressing.
+- sound: quiet class between sessions; session murmur + gavel on the record.
+- incidents: INC-NC (anteroom is the one place both must stand near), walkout events.
+- CHECK: on a session day the 10 currently-seated League delegations match the rotation
+  state (SYS-01 clock), their species' bodies sit their own seats, the Narn seat stands
+  empty, and the session's one agenda line is later hearable as an ISN bulletin variant;
+  off-session the player can walk the gallery and read all 15 nameplates.
+
+### PLC-022 `ambassadorial_suites` — Ambassadorial Suites
+`green/0/1 24° z4100 · 40°×90 m · quarters/bespoke · auth 3` · TILING 1 → **209**
+- program: **16 suites** (INV-268: 90 m / 5.36 m unit, cap 24) at 46 m² diplomatic class
+  (INV-032) — showers exist here (L-03); reception, corridor of flags.
+- named doors (institution-in/character-out): the Centauri suite (occupied, loud, staffed
+  — mission of 150 aboard), the Minbari suite (the hybrid ambassador's household of 2 —
+  unique silhouette flagged, costume build note), **G'Kar's former suite — now a private
+  residence, seal-stripped, the government-in-exile's address** (FACTIONS §6.2), the
+  vacant Markab suite (sealed, SHC-01 cross-ref), 12 more by delegation.
+- interacts: door ×16 (T2), babcom_terminal (T3), shower (T2 — class-audible), bunk (T2),
+  reception (T3 serve); T4 = the diplomatic loop: aides commute to PLC-021 on session
+  days; deliveries arrive per suite.
+- staff: reception clerk ×2 watches, 2 posted security at the corridor head (auth 5
+  extension of council post), per-suite aides by species.
+- CHECK: each of 16 suite doors carries its true delegation; the Centauri suite receives
+  a catered delivery from a named Zocalo vendor on session eve; G'Kar's door answers as a
+  private residence not a mission (era fact); the Markab door is sealed with the SHC-01
+  stencil readable.
+
+### PLC-023 `alien_sector` — The Alien Sector
+`green/0/3 300° z4400 · 36°×120 m · alien_sector/bespoke · auth 3` · TILING 1 → **399**
+- program: **6 numbered atmosphere zones behind interlocked airlocks** for ~14
+  non-oxygen species (canon counts); gallery 30×4.2×3.4 m, two-door locks sized for the
+  tallest suited species (INV-031), grille screens, amber lattice light (auth 1),
+  breather-mask dispensers at every lock; zone 2 = humid (Abbai), zone 4 = methane (Gaim
+  — "the visible reason the Alien Sector exists"), others per atmosphere board;
+  **the sealed Markab quarter adjoins (SHC-01)**.
+- interacts: airlock_door ×12 (T2 interlocked pairs — never both open),
+  breather_dispenser ×6 (T3 — take a mask, stock depletes), barred_screen (T1),
+  atmosphere_status_lamp ×6 (T1 live per zone), added: zone directory board (T1), lock
+  override desk (T3, staffed), infirmary alcove cart (T3). T4 = SYS-11: each zone's
+  atmosphere is simulated state; a lock fault is a real emergency the plant answers.
+- staff: 2 lock wardens/watch (1 human suited-qualified, 1 Abbai on the humid side), zone
+  elders as fixture residents (auth 5).
+- sound: crossing a lock CHANGES the world first — ambience/fog/exposure/own-breathing
+  before any signage (LIFE-SUPPORT §2.3 rule made binding here).
+- incidents: INC-QUAR, lock-fault INC-FAULT, INC-GQE (the G'Quan Eth plant moves through
+  here).
+- CHECK: the player takes a breather at zone 4's dispenser, cycles the interlock (doors
+  never coincide), and inside the methane zone the Gaim (encounter-suited outside, unsuited
+  within) live their schedule; removing the mask inside triggers SYS-10/11 consequence;
+  all 6 zone lamps read their zone's true simulated atmosphere.
+
+### PLC-024 `kosh_quarters` — Kosh's Quarters
+`green/0/3 316° z4400 · 4°×12 m · alien_sector/bespoke · auth 1` · TILING 1 → **2**
+- program: one sealed volume behind one lock (INV-266): the frosted backlit grid wall in
+  vapour (auth 1); the ONE instantiated canon character's home.
+- interacts: airlock_door (T2 — opens only for Kosh; the player's attempt is a logged
+  refusal), atmosphere_status_lamp (T1 — UNDISCLOSED); the ≥3 T3 floor is met at the
+  threshold suite (auth 5): visitor petition terminal (T3 — petitions are answered in
+  Vorlon non-answers via SYS-12), environment feed console (T3, wardens'), courier drop
+  (T3). T4 = Kosh's own loop: 20 h seclusion / 2-h public glide (schedule.py:233-238)
+  runs daily.
+- CHECK: at Kosh's public hours the encounter suit exits this lock, glides its corridor
+  circuit (6.0× ceremonial separation — the corridor visibly clears, friction.py), and
+  returns; the wall glows through vapour exactly as the auth-1 frame; the petition
+  terminal answers the player with an era-true non-answer.
+
+### PLC-025 `garden_town` — Garden Township
+`green/1/0 112° z4900 · 50°×300 m · garden/generic* · auth 1` · TILING 1 → **440**
+- program: the drum's settlement: civic square with the reflecting pool/waterfall/palms/
+  flagpoles/red-orange external stairs (auth 1), ~60 buildings (auth 5 count at the
+  podium's 300 m: housing terraces, civic hall — function unknown in canon, adopted as
+  drum administration + registry, auth 5 — clinic annexe, school room (the children
+  question: children exist only as 8% of visitor/refugee/lurker draws; the school exists
+  SMALL and says so — declared unknown carried visibly), 2 chapels, Earhart's + Fresh Air
+  premises (PLC-104/105 within).
+- interacts: building_door ×60 (T2, each named — no two identical), bench ×24 (T2),
+  pool_edge (T1), path (T1); added: civic registry desk (T3), noticeboard (T1 —
+  drum-local notices), well-house valve (T3). T4 = the township is the drum's labour pool:
+  agriculture shifts (05:00–13:00) walk from these doors to the fields.
+- sound: the waterfall's 62 dB is the drum's signature "conspicuous consumption of
+  water" (audio research); birdsong layer; the 11.157 s spoke-pass swell overhead.
+- incidents: INC-GQE (garden-grown), festival weeks (Parliament-of-Dreams precedent).
+- CHECK: at 05:00 field crews leave named doors and are countable in the fields by 05:30;
+  the civic hall's registry answers a query about any drum resident; the waterfall is
+  audible from 100 m and the pool edge walkable; a festival week visibly dresses the
+  square per its species.
+
+### PLC-026 `hydroponics` — Hydroponics
+`green/0/5 200° z4600 · 30°×120 m · -/generic · auth 3` · TILING 1 → **224**
+- program: racked growing halls incl. species-specific crops in non-human atmospheres
+  (canon: some racks behind atmosphere glass); seed store, nutrient plant.
+- interacts: grow_rack ×24 (T2; 4 behind zone glass), irrigation_control ×6 (T3 — SYS-07
+  water draws), door (T2); added: crop log terminal (T3), harvest bench (T3). T4 = the
+  food chain: 450 t/day wet total station diet is three-sourced (drum staples /
+  hydroponic specialty / imports) and this is source two.
+- staff: hydroponics role 2,850 station-wide; here 40/shift, shift 05:00–13:00: human
+  chargehands, Grome agricultural crews (their rhythm is the farm's), Abbai wet-rack
+  specialists (auth 5).
+- CHECK: the crop log names what each of 24 racks grows and for whom (Narn spice row's
+  supplier is rack 9's consignment); a Gaim-atmosphere rack is visible behind its glass;
+  an irrigation draw registers on SYS-07's water ledger.
+
+### PLC-059 `conference_5` — Conference Room 5
+`green/0/0 40° z4100 · 8°×20 m · -/generic · auth 4` · TILING 1 → **3**
+- interacts: table (T2), seat ×10 (T2), door (T2); added: booking plate (T3), comms
+  console (T3), water service (T3). T4 = the diplomatic side-meeting loop (the real
+  business happens here, not in session).
+- CHECK: on session days the booking plate shows back-to-back delegation pairs whose
+  frictions permit the pairing (will_share_table logic applied to diplomacy).
+
+### PLC-060 `conference_rooms` — Conference Suite (class row)
+`green/0/0 56° z4100 · 12°×28 m · -/generic · auth 3` · TILING 1 → **15**
+- interacts: table, seat, babcom_terminal (T3), door; added: booking board (T3), lectern
+  (T1). T4 = booking rota runs unattended.
+- CHECK: 5 rooms, 5 distinct dressings; bookings real and attended by named parties.
+
+### PLC-061 `earthforce_office` — EarthForce Liaison Office
+`green/0/2 70° z4100 · 8°×20 m · -/generic · auth 3` · TILING 1 → **3**
+- interacts: desk (T3 serve), babcom_terminal (T3), door (T2); added: dispatch tray (T3).
+  T4 = the military-liaison paper loop between PLC-001 and the council.
+- CHECK: a council session's EA position paper originates here the day before, walkable
+  as a courier NPC's route.
+
+### PLC-062 `league_delegations` — League Delegation Offices
+`green/0/1 200° z4100 · 16°×40 m · quarters/bespoke · auth 3` · TILING 1 → **42**
+- program: **7 offices** (INV-268: 40 m / 5.36 m) for the currently-seated League
+  delegations' working staff; rotation politics visible: nameplates change with the seat
+  rotation (SYS-01).
+- interacts: door ×7 (T2), babcom_terminal (T3), reception (T3 serve); added: dispatch tray (T3), caucus
+  room door (T2 — "visibly not being consulted" scenes stage here, friction.py:179-183).
+  T4 = the rotation loop: nameplates, staff and dispatch traffic track the SYS-01 seat
+  state unattended.
+- CHECK: the 7 nameplates track the rotation state; a caucus fills the room while a
+  great-power meeting happens without them (the bloc friction staged as geography).
+
+### PLC-063 `domed_rotunda` — Domed Rotunda
+`green/0/0 84° z4200 · 10°×26 m · -/generic · auth 4` · TILING 1 → **24**
+- program: stepped gold coffered dome, inward drum-facing windows, alien-sigil banners,
+  blue altar table (auth 1 dressing).
+- interacts: viewport ×6 (T1 — they face the DRUM: facing question resolved inward for
+  this one, outward for PLC-064, splitting the canon ambiguity visibly, auth 5), bench
+  (T2); added: banner rail (T1 — sigils match currently-seated delegations), ceremony
+  board (T3), lamp-rota switchboard (T3), donation rail (T3), altar table (T1). T4 = the ceremony calendar (SYS-01 festivals).
+- CHECK: the dome's coffers and banners match the auth-1 frame; a scheduled species
+  ceremony occurs with the right congregation; the windows show the true drum interior.
+
+### PLC-064 `obs_rotundas` — Observation Rotundas (class row)
+`green/0/0 96° z4200 · 12°×30 m · components/generic* · auth 3` · TILING 1 → **35**
+- program: the 4-rotunda class (canon count), facing OUT at space.
+- interacts: viewport ×8 (T1 — starfield + gate bearing true), bench (T2); added: sky
+  plaque (T1), lights-down switch (T2), inspection terminal (T3), etiquette notice (T1);
+  T3 floor met via terminal + bookable quiet hours (T3) + telescope hire (T3, auth 5).
+  T4 = the transit-watch board: lists the next gate transits from SYS-02's live schedule
+  and is never wrong.
+- CHECK: a gate transit (SYS-02, ~110/day) is watchable from here on schedule; the 4
+  rotundas carry 4 distinct sky plaques naming their true bearings.
+
+### PLC-065 `drum_office` — Drum Works Office
+`green/0/2 128° z4900 · 6°×16 m · -/generic · auth 1` · TILING 1 → **4**
+- interacts: desk (T3 serve), viewport (T1 — over the fields), babcom_terminal (T3);
+  added: field roster board (T1). T4 = assigns the drum's agricultural shifts.
+- CHECK: the roster board's crews match who is actually in the fields at 06:00.
+
+### PLC-066 `telepath_office` — Telepath Registration Office
+`green/0/2 140° z4900 · 6°×16 m · -/generic · auth 5` · TILING 1 → **2**
+- program: the Psi Corps paper presence (NOT the liaison office — that is SHB-05.d in the
+  Business District per FACTIONS §4.1): registration desk, scan-notice wall.
+- interacts: desk (T3 — LICENSED PSI field checks file here from customs FLAGs), 
+  babcom_terminal (T3), added: notice wall (T1 — Corps notices era-true), waiting bench
+  (T2). T4 = the customs telepath-FLAG pipeline terminates here (arrival.py:509).
+- CHECK: a customs telepath FLAG raised at PLC-003 generates this office's next-day
+  interview appointment, held by a visiting (not resident — era) Corps functionary.
+
+### PLC-067 `zen_garden` — Zen Garden
+`green/1/0 150° z5000 · 20°×80 m · garden/generic* · auth 3` · TILING 1 → **56**
+- interacts: path (T1), bench (T2); added: raked-bed frame (T1), water bowl (T1), koan
+  plaque ×4 (T1 all distinct), groundsman's chest (T2), offering box (T3), lesson booking
+  slate (T3), gardener's log (T3). T4 = Minbari religious-caste tending rota (7,000
+  religious-caste aboard; broken-sleep schedule puts robed figures here at odd hours).
+- CHECK: at 03:30 a Minbari religious-caste NPC is tending the raked beds (broken-sleep
+  schedule made visible); the four koan plaques read four different texts.
+
+### PLC-068 `garden_terrace` — Garden Terrace
+`green/1/0 130° z4900 · 14°×60 m · garden/generic* · auth 1` · TILING 1 → **28**
+- interacts: path, bench, pool_edge (T1/T2); added: terrace cafe cart (T3), rail plaque
+  (T1), water valve (T3), event booking (T3). T4 = the promenade loop between township
+  and fields.
+- CHECK: the terrace cart trades at shift-end (13:00) to real field-crew NPCs; the view
+  down the terrace matches the drum's true curvature (fields overhead).
+
+### PLC-069 `water_rec` — Water Recreation
+`green/1/0 175° z5100 · 16°×70 m · garden/generic* · auth 3` · TILING 1 → **80**
+- interacts: pool_edge (T1), bench (T2); added: changing stalls (T2), lifeguard chair
+  (T1), towel counter (T3), swim booking (T3), filtration valve (T3 — SYS-07 draw).
+  T4 = the pool is a real SYS-07 water customer (its draw is on the ledger).
+- CHECK: Abbai residents rest in the water per species rhythm ("rest in water",
+  schedule.py); the filtration draw shows on SYS-07; towels debit.
+
+### PLC-070 `drum_endcaps` — Drum End Caps
+`green/1/0 340° z4000 · 18°×100 m · interior/generic* · auth 1` · TILING 1 → **340**
+- program: concentric-band caps with blue ring strip (auth 1); transit galleries and
+  service ways up the cap face.
+- interacts: service_ladder (T1); added: gallery rail (T1), cap access doors (T2),
+  inspection terminal (T3), lamp isolation (T3), banner winch (T3 — festival dressing
+  rigs from here). T4 = the cap galleries are the drum's maintenance access.
+- CHECK: the blue ring strip lights the cap as in the auth-1 frame; a festival banner
+  rigged from the winch is visible from the township below.
+
+### PLC-071 `drum_spokes` — Drum Spokes
+`green/1/0 0° z5200 · 12°×60 m · interior/generic* · auth 1` · TILING 1 → **140**
+- program: the 3 banded spokes with salmon collars (auth 1); spoke lifts within
+  (transit.py: capped 3.13 m/s tangential, 2m17s ride).
+- interacts: lift_call (T3), lift_door (T2); added: spoke plaque (T1), Coriolis warning
+  notice (T1 — the physics is real and the sign says so), handhold (T1). T4 = SYS-09
+  spoke-lift line.
+- CHECK: the ride takes its derived 2m17s and the felt lean reverses at the midpoint
+  (the 0.12 g comfort bound made perceptible); all 3 spokes' plaques differ.
+
+### PLC-072 `subfloor_stack` — Drum Subfloor Stack
+`green/0/7 250° z5000 · 60°×300 m · interior/generic* · auth 3` · TILING 1 → **682**
+- program: the 9-deck service stack under the drum floor (281.9 m span, 1.013 g):
+  irrigation mains, root-zone galleries, informal residence fringe (a Green satellite
+  camp — SHB-07.f).
+- interacts: catwalk (T1), door (T2), valve (T2); added: pump console (T3), leak-report
+  terminal (T3), stopcock run (T3). T4 = the drum's irrigation plant lives here.
+- CHECK: a field's irrigation cycle traces to a named pump here; the camp fringe
+  population appears when sweeps displace the Grey main camp (INC-SWEEP coupling).
+
+### PLC-073 `ground_tram` — Ground Ring Tram
+`green/1/0 210° z5000 · 20°×200 m · -/generic · auth 5` · TILING 1 → **594**
+- program: the drum-floor ring line: 3 stops, 4 cars, green-yellow livery with own canopy
+  (auth 1), capped 3.13 m/s by Coriolis (the 27.2% weight swing riding spinward vs anti
+  is REAL — transit.py).
+- interacts: tram_door (T2/T4 — SYS-09 line runs 24 h), seat (T2); added: stop call button ×3
+  (T3), emergency stop (T3 — halts the line), freight hook booking (T3), stop plaque ×3
+  (T1), line map (T1), bell (T2).
+- CHECK: the 10m32s loop holds; riding spinward vs anti-spinward measurably changes felt
+  weight per the derivation; the 3 stop plaques name township / fields / Garden gate.
+
+### PLC-074 `drum_tram` — Drum Guideway Tram
+`green/1/0 240° z5000 · 24°×240 m · tram/generic* · auth 1` · TILING 1 → **880**
+- program: the elevated guideway (white/maroon cars, auth-1 measured 3.9 truss bays;
+  benches, stanchions, yellow plinth strips from S2E22): 5 stops, 3 lines × 2 cars, the
+  guideway trusses carrying the drum's light runs (THE drum light source — auth 1).
+- interacts: tram_door (T2/T4), seat (T2), handhold (T1); added: stop call button ×5 (T3),
+  emergency stop (T3), depot dispatch board (T3 — SHB-07 cars in/out), stop board ×5
+  (T1 live), car plaque (T1). 
+- CHECK: end-end 4m14s at the derived speeds; the light runs on the trusses are the
+  drum's actual illumination (kill one line segment via SYS-07 and a field darkens);
+  the 5 stop boards show live next-car times that come true.
+
+### PLC-075 `alien_worship` — Alien Worship Hall
+`green/0/4 330° z4400 · 12°×30 m · -/generic · auth 4` · TILING 1 → **25**
+- interacts: door (T2), shrine ×4 (T2 — four species' shrines, each dressed distinctly:
+  Narn G'Quan alcove, Drazi, Brakiri, pak'ma'ra, auth 5), added: offering box (T3),
+  rota board (T3), incense cupboard (T3). T4 = the faith rota; the G'Quan Eth question
+  walks through here (INC-GQE).
+- CHECK: the Narn alcove holds a G'Quan Eth ceremony on its calendar day and the plant's
+  legal status collides visibly (security attends, does not enter).
+
+### PLC-076 `waste_green` — Waste Processing (Green rosette)
+`green/0/8 190° z4600 · 30°×120 m · -/generic · auth 3` · TILING 1 → **156**
+- interacts: valve (T2), catwalk (T1); added: intake console (T3), sluice interlock (T3),
+  compost transfer (T3 — feeds PLC-026 nutrient plant). T4 = the distributed waste system
+  (canon: one plant per sector).
+- CHECK: the compost line's output registers as PLC-026 nutrient stock; the Green
+  satellite camp (SHB-07.f) pins to this plant's warmth exactly as LAW-CRIME's model says.
+
+### PLC-077 `medlab_green` — Medlab Green
+`green/0/2 158° z4300 · 8°×22 m · -/generic · auth 4` · TILING 1 → **9**
+- interacts: diagnostic_bed ×4 (T3), medcabinet (T3), added: triage desk (T3),
+  xeno-atmosphere crash cart (T3 — nearest medlab to the Alien Sector). T4 = SYS-10
+  routing; the six-atmospheres-six-emergencies room.
+- CHECK: an Alien Sector lock casualty routes here with the crash cart deployed; a Gaim
+  patient's record shows atmosphere-competent treatment.
+
+### PLC-078 `ngrath` — The Fixer's Room
+`green/0/6 344° z4400 · 5°×14 m · -/generic · auth 4` · TILING 1 → **2**
+- program: the organised-crime fixer: a sealed NON-OXYGEN room in the Alien Sector's
+  shadow (LAW-CRIME:858 route model) — the insectoid fixer role built, the name N'Grath
+  optional (S3 status unestablished, FACTIONS §11.4:837).
+- interacts: door (T2 — a minder answers, entry is by standing), credit_terminal (T3);
+  added: barred hatch (T1), waiting bench (T2), the fixer's audience (T3 — forged cards,
+  debts, passage; SYS-06's terminal node). T4 = the black-market route (cargo → docker →
+  lift → storage → fixer → Zocalo under-counter) transacts through this room daily.
+- CHECK: a forged identicard bought here (SYS-06) scans as its forgery class at a customs
+  reader (INC-FRAUD end-to-end); the minder refuses the player until SYS-12 standing
+  exists; the room's atmosphere is visibly not oxygen (the hatch fogs).
+
+### PLC-103 `alien_resident_qtr` — Alien Resident Quarters
+`green/0/4 260° z4500 · 30°×90 m · quarters/bespoke · auth 4` · TILING 1 → **210**
+- program: oxygen-breathing alien residence class: 210 bays → 840 units at 22 m²
+  (INV-032); species-clustered corridors (Drazi row, Narn row, Brakiri night-quiet row).
+- interacts: door (T2), babcom_terminal (T3), locker (T2), bunk (T2); T4 = residence
+  loop; added: corridor shrine niches (T1, distinct per row).
+- CHECK: three sampled doors open on residents whose species matches their row's cluster
+  and whose schedules match their lights (Brakiri rows dark by day); unit labels NN-L
+  consistent with arrival.py's block arithmetic.
+
+### PLC-104 `earharts` — Earhart's
+`green/1/0 120° z4800 · 5°×16 m · hospitality/bespoke · auth 3` · TILING 1 → **2**
+- program: the flyers' bar: pedestal saucer, glazed equatorial band, 8–9 bays alternating
+  timber 3-slat screens/cyan panels, 6 roof vents (auth 1 dressing).
+- interacts: bar_counter (T3/T4 stock), table ×5, stool ×8 (T2), menu_display (T1 priced);
+  added: squadron board (T1 — Zeta's tail numbers; the leader line VACANT, era),
+  bell (T2 — rung for a first solo, auth 5).
+- staff: human proprietor (ex-EF), 2 bar staff across shifts (1 human, 1 Drazi), Narn
+  cook (auth 5).
+- CHECK: off-watch flight crews from PLC-035 drink here by roster (the same named pilots);
+  the squadron board's tails match the cobra-bay readiness board; the VACANT leader line
+  is present (Keffer excluded by era rule).
+
+### PLC-105 `fresh_air` — The Fresh Air Restaurant
+`green/1/0 128° z4800 · 5°×16 m · hospitality/bespoke · auth 3` · TILING 1 → **2**
+- program: the good restaurant (oval plaque serif+script under teal double swoosh,
+  auth 1): drum-grown menu — the only kitchen fed primarily from source one (drum
+  staples).
+- interacts: table ×8 (T2, bookable T3), seat, menu_display (T1 — the menu NAMES which
+  field/rack grew tonight's dishes), added: maitre d' lectern (T3 serve), kitchen pass
+  (T1), wine cage (T3).
+- staff: Centauri maitre d' evenings, human chef, Minbari worker-caste sous (auth 5).
+- T4 = the supply line: tonight's menu is yesterday's PLC-110 harvest, delivered on the
+  internal consignment ledger daily without the player.
+- CHECK: a booked table is held under the player's name; tonight's menu line traces to a
+  real PLC-025 field or PLC-026 rack consignment; Londo-pattern Centauri nobles dine
+  loudly on liner nights (composition, not likeness).
+
+### PLC-110 `the_garden` — The Garden (agricultural drum floor)
+`green/1/0 60° z5100 · 60°×600 m · interior/generic* · auth 1` · TILING 1 → **1,274**
+- program: the 600 m agricultural run: hedged fields + roads curving overhead (auth 1),
+  crop rotation blocks, orchard belt, irrigation standpipes, field sheds; **reads as
+  2 km² of production, not parkland** (LIFE-SUPPORT §8's ranked build note; 48% arable of
+  the 4.5 M m² drum surface, 76 t/ha/yr needed = staples only).
+- interacts: path (T1), bench (T2); added: field gate ×12 (T2), irrigation standpipe ×12
+  (T3 — SYS-07 draws), harvest cart (T3), crop board ×12 (T1 — each names its crop and
+  its consignee), scarecrow-equiv bird deterrents (T1, alien and specific, auth 5).
+  T4 = the food chain source one: harvests become PLC-036 internal consignments become
+  meals.
+- staff: field crews 05:00–13:00 from PLC-025 doors: human, Grome ("agricultural" rhythm),
+  Narn refugee day-labour gangs (paid 8–15 cr, SYS-04 ladder — the aid-queue alternative).
+- sound: wind-in-crops layer, birdsong, the spoke-pass swell; the quietest inhabited
+  place at night (the drum lung breathing).
+- incidents: INC-GQE (grown here quietly), festival harvest week.
+- CHECK: the 12 crop boards name 12 different crops matching season state (SYS-01); a
+  harvest cart's load appears on the internal consignment ledger and later as Fresh Air's
+  menu line; walking the full 600 m crosses ≥4 visibly different cultivation blocks and
+  the curvature shows fields overhead.
+
+### PLC-111 `sanctuaries` — The Sanctuaries (class row)
+`green/0/5 20° z4300 · 16°×50 m · -/generic · auth 3` · TILING 1 → **64**
+- program: the Green pair of the 4 Contract-5 sanctuaries (P-08 star-view rooms) +
+  **Brother Theo's monastery annexe (15–25 monks resident from S3E02 — era-active;
+  monastics_resident gate)**: cells, scriptorium, chapter room (SHB-07.d holds the
+  dormitory).
+- interacts: pew (T2), door (T2), shrine (T2); added: rota board (T3), scriptorium desks
+  (T1 — the monks work real texts), guest book (T3), alms box (T3). T4 = the monastic
+  day (offices at canonical hours) runs without the player.
+- CHECK: the monks' offices sound at their hours (chant layer, quiet class); 15–25
+  named monk residents exist with cells; the era gate removes them cleanly if the datum
+  moves before (3,2).
+
+### PLC-112 `interfaith_chapel` — Interfaith Chapel
+`green/0/5 40° z4300 · 8°×22 m · -/generic · auth 5` · TILING 1 → **8**
+- interacts: pew (T2), door (T2); added: reconfigurable altar (T2 — its dressing changes
+  per booking, T1 states distinct), booking board (T3), vestry cupboard (T3), candle
+  stand (T3). T4 = the multi-faith rota (human/alien split per resident.py:383).
+- CHECK: the altar's configuration matches the current booking's faith; two consecutive
+  services re-dress it correctly.
+
+### PLC-114 `radial_tubes` — Radial Tubes (class row)
+`green/1/0 20° z5200 · 10°×50 m · interior/generic* · auth 3` · TILING 1 → **88**
+- program: the 5-rosette radial-tube class connecting drum floor to hub.
+- interacts: lift_call (T3), lift_door (T2), handhold (T1); added: rosette plaque (T1),
+  pressure door (T2), inspection terminal (T3). T4 = SYS-09 network.
+- CHECK: the felt gravity falls off correctly over the ride (rim→axis 133 s figure);
+  each rosette plaque names its true bearing.
+
+### PLC-115 `transfer_systems` — Transfer Systems Hall
+`green/0/6 100° z4700 · 20°×90 m · -/generic · auth 3` · TILING 1 → **360**
+- interacts: lift_call (T3), lift_door (T2); added: interchange board (T1 live), gate
+  line (T2), station clock (T1). T4 = the Green interchange between drum, rosette decks
+  and core shuttle.
+- CHECK: the interchange board's connections agree with SYS-09's live car positions; a
+  commuter transfer (tram→lift→shuttle) works as the board promises.
+
+### PLC-125 `cargo_transfer_deck` — Cargo Transfer Deck
+`green/0/5 90° z5400 · 30°×900 m · -/generic · auth 5` · TILING 1 → **640**
+- program: the 900 m internal logistics spine (volume-audit addition): container rail,
+  racking runs, transfer frames, hoist cranes (PLACE_FIXTURES set).
+- interacts: cargo_crane (T3), container (T2), manifest_terminal (T4 — internal
+  consignment ledger), bay_door (T2), docking_clamp (T2).
+- CHECK: the Zocalo consignment from PLC-036 physically transits this deck on a rail
+  car the player can follow; the manifest terminal shows it moving in real time.
+
+## 1.4 GREY SECTOR — 20 places (industry, plant, Downbelow) — tiling 20 → 16,487
+
+*Grey rule: 12 of these 20 addresses clamp to one physical deck (392.05 m floor, 1.409 g
+— volume-audit §3.4.1); the plant zone is structure/tankage/void with a thin walkable
+skeleton, NOT 34 corridor decks (LIFE-SUPPORT §1 ruling). Downbelow IS the plant zone —
+the transition is a service stair and 30% more body weight (canon convergence). Security:
+NO_POST holds here (security.py:204) — no post in downbelow/black_market/thieves_guild/
+happy_daze/welded_shut, ever.*
+
+### PLC-027 `plant_zone` — The Plant Zone
+`grey/0/0 0° z3618 · 360°×442 m · plant/bespoke · auth 5` · TILING 1 → **6,880**
+- program: the full-ring physical plant: tank farms (r=4.5 m tanks, INV-028), frame bays
+  2.4 m deep, catwalk webs 1.8 m, pump galleries, the walkable skeleton through 139.8 M m³
+  (559 m³/resident) of tankage and void; the drum's 30-day water reserve is 0.3% of it —
+  the honesty of the emptiness is the content (SHC-05..07 seal the rest).
+- interacts: catwalk (T1), valve (T2), tank_gauge (T2 live), service_ladder (T1); added:
+  section isolation consoles ×12 (T3), leak-report terminals (T3), pump-start panels (T3).
+  T4 = SYS-07 itself: air 7 M m³/h, water 13,250 m³/day, O₂ 210 t/day run THROUGH this
+  geometry; every gauge reads the live model.
+- staff: engineer role rounds (7:00 9 h + rotating): plant walkers in pairs, 24 h;
+  their round routes are real patrol paths (life.py-routed).
+- sound: working class 60 dBA; the 0.75 Hz compressor beat (INV-262) IS this place's
+  voice, audible into Downbelow through the 25 dB bulkheads.
+- incidents: INC-FAULT (the fault board is fed from here), INC-BROWNOUT.
+- CHECK: a valve closed on a named riser drops a named SHB block's water pressure and
+  creates the maintenance walk that reopens it; the plant walkers' round passes the
+  player's position on schedule; every 12th catwalk stencil names its true section.
+
+### PLC-028 `downbelow` — Downbelow (main camp)
+`grey/0/0 180° z3618 · 180°×442 m · plant/bespoke · auth 3` · TILING 1 → **4,256**
+- program: the main camp beside Waste Management Control (D-04): **~8 occupied cells of
+  ~2,500 people each inside 753 outer-ring cells** (LAW-CRIME §5.3; security.py camps()
+  model, DOWNBELOW_ANCHORS = waste_control/air_compressors/water_reclamation, 25 m²/
+  person); in-era texture = UNFINISHED not ruined: illuminated centre grating in live/dead
+  checkerboard, no ceiling (portal truss + pipe runs), asymmetric half-commissioned light
+  bars, primer-grey unclad frame, festoon + clip lamps, green-yellow alien-script neon
+  shopfront, blue backlit equipment banks (all auth 1/2; the S5 debris frame is OUT of
+  era).
+- population: 20,000 station total (78% human / 17.5% Narn — "the crowd should look
+  wrong"); six streams (strandees 11,000 / Narn refugees 3,500 / working poor 2,500 /
+  fugitives 1,500 / alien 1,000 / sick 500); informal jobs table is the schedule
+  (salvage 22%, dock muster 18%, plant hand-work 12%, portering 12%, begging 8%, internal
+  services 8%, sex work 5%, criminal-adjacent 8%, nothing 7%).
+- interacts: catwalk (T1), standpipe ×14 (T3 — **the lurker water answer, decided: public
+  standpipes teed off water_reclamation's return line (auth 5)** — closes the flagged
+  unknown), makeshift_door (T2 — every one distinct scrap), brazier (T2 — heat clusters
+  ARE the map: sleeping spots track warmth). T4 = the camp economy: the 06:00/14:00 dock
+  muster empties 18% of it and pays 8–15 cr; the immigration leak (~15/day) feeds it.
+- security: NONE (NO_POST); enforcement is the boundary, not the volume; contact events
+  1–2/h of play (DOWNBELOW_CONTACT_PER_HOUR=1.5, security.py:657-684) — being marked out
+  (clothing/gait/light) is the mechanic, not a hostility radius.
+- sound: the compressor beat, coughing, a child, an argument, a radio (LAW-CRIME §5.4
+  camp layer verbatim); warmth-at-the-compressor drives the bodies.
+- incidents: INC-SWEEP (announced by its own approach; camp empties; back in 6 h),
+  INC-PICK/knife robbery (the one place it is common), INC-FRAUD.
+- CHECK: the camp's ~2,500-per-cell clusters sit at the three anchor plants' warm walls;
+  the player filling a container at standpipe 9 queues behind named lurkers; at 05:40
+  the muster stream toward the bay elevators is countable and at 06:10 the camp is
+  measurably thinner; a sweep (INC-SWEEP) empties cell G-4 before the officers arrive
+  and refills it by +6 h.
+
+### PLC-079 `alpha_substation` — Alpha Substation
+`grey/0/40 20° z3618 · 20°×100 m · -/generic · auth 3` · TILING 1 → **168**
+- interacts: reactor_console ×2 (T3 — district load management), blast_door (T2); added:
+  breaker gallery (T3), fault terminal (T3). T4 = Grey/Downbelow's power district: the
+  half-commissioned light bars in PLC-028 are THIS substation's unfinished circuits
+  (INC-BROWNOUT origin).
+- CHECK: shedding one feeder here kills a named, mapped set of Downbelow light bars (the
+  live/dead checkerboard is circuit-true) and the fault walk restores it.
+
+### PLC-080 `primary_breaker` — Primary Breaker Hall
+`grey/0/42 40° z3618 · 12°×60 m · -/generic · auth 3` · TILING 1 → **56**
+- interacts: breaker_lever ×8 (T3 — each names its district and works), console (T3);
+  added: arc-flash barrier rail (T1), lockout-tagout board (T3). T4 = the SYS-07 power
+  tree's Grey node.
+- CHECK: the 8 levers' district labels are true (thrown under supervision in a drill,
+  the named district browns out); the LOTO board's tags match open work orders.
+
+### PLC-081 `fabrication` — Fabrication Halls
+`grey/0/50 70° z3618 · 30°×200 m · -/generic · auth 4` · TILING 1 → **255**
+- program: the foundry/fab floor (high-g is a foundry advantage — canon note): furnace
+  line, casting pits, machine rows; 24 h 3 shifts (grey_industrial roster).
+- interacts: furnace_control ×4 (T3), crane (T3), catwalk (T1); added: job board (T4 —
+  SYS-14 fabrication orders: broken parts arrive, castings leave), pour-schedule board
+  (T1), quench tank (T2).
+- staff: industrial role (22,100 station-wide): shift of ~60 here — human chargehands,
+  Narn heavy-labour gangs, Minbari worker-caste machinists, 1 Drazi crane crew (auth 5).
+- sound: the loudest work floor (60 dBA class + furnace emitters +3 dB, audio.py
+  per-fixture table).
+- incidents: INC-FAULT (industrial accident class), INC-STRIKE sympathy.
+- CHECK: a part broken anywhere on station (SYS-14) appears on the job board, is cast on
+  the pour schedule, and ships out on the internal consignment ledger; the three shifts
+  change over at 00/08/16 with real crowd tides.
+
+### PLC-082 `maintenance` — Maintenance Bays
+`grey/0/55 110° z3618 · 30°×200 m · -/generic · auth 4` · TILING 1 → **594**
+- interacts: workbench ×8 (T3), tool_rack (T2), crane (T3); added: work-order board (T4 —
+  THE maintenance loop's home: every INC-FAULT job is dispatched from here), parts cage
+  (T3), test rig (T2).
+- staff: maintenance+EVA pool 630 (FACTIONS split) + civilian engineer contractors.
+- CHECK: the work-order board lists every open fault the player has caused or seen, each
+  with a named assignee who actually walks to it; closing rates match SYS-14's tick.
+
+### PLC-083 `research_labs` — Research Labs
+`grey/0/60 150° z3618 · 24°×140 m · -/generic · auth 4` · TILING 1 → **304**
+- interacts: lab_bench ×6 (T3 serve), console (T2), door (T2); added: sample store (T3),
+  clean-room lock (T2), results terminal (T3). T4 = contract research for SYS-04 clients.
+- CHECK: each of 6 benches carries a distinct named project with a client; the clean-room
+  interlock never opens both doors.
+
+### PLC-084 `gravity_torus` — Variable Gravity Torus
+`grey/0/65 220° z3618 · 30°×160 m · -/generic · auth 4` · TILING 1 → **462**
+- interacts: console (T3 — spin-section control), door (T2); added: test log (T3),
+  centrifuge cage (T2), medical-observation window (T1). T4 = SYS-10 gravity-therapy
+  bookings (high-g natives decompress here).
+- CHECK: the torus's posted g differs from the deck's 1.4x and a booked Narn heavy-worker
+  session occurs; the console's setting physically changes the cage's felt load (player
+  verifiable).
+
+### PLC-085 `zerog_maint` — Zero-G Maintenance
+`grey/0/70 260° z3618 · 24°×140 m · -/generic · auth 4` · TILING 1 → **285**
+- interacts: handhold (T1), tool_rack (T2); added: tether points (T2), job board (T3),
+  drift-net (T1), suit rack (T2), certification log (T3). T4 = hull-side jobs stage here
+  (with PLC-127's Blue lock).
+- CHECK: an EVA job on the board matches a real exterior fault; the player without
+  certification is refused the suit rack (log is checked).
+
+### PLC-086 `atmos_monitor` — Atmosphere Monitoring
+`grey/0/30 300° z3618 · 12°×60 m · -/generic · auth 3` · TILING 1 → **28**
+- interacts: console ×4 (T2 live — the SIX atmospheres each have a live board),
+  tank_gauge (T2); added: alarm test panel (T3), sensor-fault terminal (T3), zone map
+  (T1). T4 = SYS-11's monitoring node: the Alien Sector's lamps read from here.
+- CHECK: zone 4 (methane)'s board here and its lamp at PLC-023 always agree; a sensor
+  fault raised here dispatches the walk and the lamp shows FAULT not a stale value.
+
+### PLC-087 `raw_material` — Raw Material Stores
+`grey/0/75 330° z3618 · 24°×160 m · -/generic · auth 3` · TILING 1 → **247**
+- interacts: container (T2), crane (T3); added: stock ledger terminal (T3), assay bench
+  (T3), rack plaques (T1). T4 = feeds PLC-081's furnaces; drawn down by the fabrication
+  loop.
+- CHECK: the ledger's stock moves opposite to the pour schedule; rack plaques name real
+  alloys with real consignment origins.
+
+### PLC-088 `micro_g_bays` — Micro-G Bays
+`grey/0/80 350° z3618 · 10°×60 m · -/generic · auth 3` · TILING 1 → **48**
+- program: volume-audit row 13's re-address carried: micro-g work bays at 0.122 g
+  (2,837 m²).
+- interacts: handhold (T1); added: delicate-assembly benches ×4 (T3), vibration log (T3),
+  gimbal cradle (T2). T4 = precision work the fabrication loop cannot do at 1.4 g.
+- CHECK: the assembly benches' work orders name jobs flagged "micro-g only"; the felt
+  gravity here is measurably ~0.12 g (jump height changes).
+
+### PLC-089 `downbelow_arch` — Downbelow Arches
+`grey/0/20 200° z3618 · 60°×300 m · plant/bespoke · auth 1` · TILING 1 → **1,053**
+- program: the archway warren between camps: the auth-1 texture list's corridor of
+  festoon lamps, capped/sheeted openings, the green-yellow alien-neon shopfront; lurker
+  scheme corridor dressing (densest by design, 0.78 — corridor_dressing).
+- interacts: catwalk (T1), makeshift_door (T2), brazier (T2); added: the neon shopfront
+  stall (T3 — a real informal trader), message wall (T1 — chalked, changes weekly),
+  toll point (T3 — a lurker gang's, pay or detour, SYS-05/06). T4 = the black-market
+  route's midsection runs through these arches nightly.
+- CHECK: the message wall's chalk changes week to week with legible content; the toll
+  point demands 1 cr or a detour and paying it changes gang standing (SYS-12); the
+  route's nightly porter (named) passes with a crate between 02:00–04:00.
+
+### PLC-090 `black_market` — The Black Market
+`grey/0/22 230° z3618 · 30°×150 m · -/generic · auth 4` · TILING 1 → **170**
+- program: the under-market: 20 stalls of grey/stolen/unlicensed goods (auth 5 count),
+  fence's row, no fixed lighting (portable lamps — it can pack up in minutes).
+- interacts: stall ×20 (T3 — buy/sell incl. SELL, the fence path for stolen goods),
+  credit_terminal ×2 (T3 — laundered, worse rates); T4 = SYS-06: the route's retail end;
+  stock provably arrives via the arches porter.
+- staff: 20 named stallholders (no-status roles only get full access — resident.py:391;
+  llort traders on the night rhythm); lookout children (the 8% minors draw — visible,
+  uncomfortable, true).
+- incidents: INC-SWEEP (it packs up and is GONE in minutes, back in hours), INC-FRAUD,
+  INC-DUST (sourced here).
+- CHECK: an item stolen by the player is SELLable here at fence rates and later
+  surfaces on a stall; during INC-SWEEP the market is physically absent (stalls packed)
+  and re-forms displaced by one bay; a registered-resident player is refused two named
+  stalls until standing exists.
+
+### PLC-091 `thieves_guild` — Thieves' Guild Floor
+`grey/0/24 250° z3618 · 20°×100 m · -/generic · auth 4` · TILING 1 → **160**
+- program: the network's floor (institution in, character out): meeting floor, ledger
+  alcove, dosshouse fringe.
+- interacts: makeshift_door (T2 — password serve at the knock, T3); added: the ledger
+  (T3 — debts and jobs, SYS-05/06), stash cages (T3), watch post (T1). T4 = debt
+  enforcement archetype: the ledger generates collection walks the player can witness or
+  be subject to.
+- CHECK: a casino debt (PLC-015) sold on appears in this ledger and a named collector
+  visits the debtor's address within days; entry without standing is refused at the door.
+
+### PLC-092 `welded_shut` — The Welded Sections
+`grey/0/26 270° z3618 · 24°×120 m · -/generic · auth 4` · TILING 1 → **672**
+- program: the honest face of Shell C inside a place row: a corridor of sealed openings —
+  every closure REASONED and visible (weld bead, cap plate, sheeting), stencilled.
+- interacts: welded_door ×12 (T2-refused: LOOK/USE answer with the closure's stencil
+  text — 12 distinct texts, T1 rule); added: one breached panel (T2 — the warren's one
+  way through, known to lurkers, SYS-06 route segment; the toll at it is T3,
+  standing-gated), seal-inspection terminal (T3), breach-report intercom (T3),
+  inspection tag wall (T1), ordinance notice (T1). T4 = the seal register: SYS-05 logs breach attempts.
+- CHECK: all 12 stencils read distinct real reasons (cross-ref SHC register); the one
+  breach is findable only by following a lurker or standing (SYS-12); using it moves the
+  player between two real volumes.
+
+### PLC-093 `water_reclamation` — Water Reclamation
+`grey/0/5 150° z3618 · 40°×200 m · plant/bespoke · auth 3` · TILING 1 → **460**
+- interacts: valve (T2), tank_gauge (T2 live), catwalk (T1); added: process console ×3
+  (T3), sample bench (T3), return-line manifold (T3 — the standpipe tee, PLC-028's water).
+  T4 = the >98% loop closure (forced by traffic arithmetic — 13,250 t/day cannot ship)
+  runs here; the reserve's gauges are SYS-07 truth.
+- staff: waste/engineer crews; the camp's plant hand-work jobs (12% of the informal
+  table) are HERE — lurkers with shovels beside EA plant walkers, paid informally.
+- CHECK: the return-line manifold's branch 9 feeds standpipe row 1–7 and closing it dries
+  them (the lurker water loop is real end-to-end); lurker hand-crews work visibly beside
+  the EA round at 10:00.
+
+### PLC-094 `waste_control` — Waste Management Control
+`grey/0/8 190° z3618 · 14°×70 m · -/generic · auth 3` · TILING 1 → **80**
+- program: the control room the largest camp pins to (D-04): console gallery over the
+  waste train.
+- interacts: console ×4 (T3), valve (T2); added: train schedule board (T1), odour alarm
+  (T2), intake interlock (T3). T4 = 37.5 t/day solid + ~40 t/day non-recyclable; nothing
+  jettisoned (canon) — the mass balance is live.
+- CHECK: the control gallery's throughput numbers reconcile with the three rosettes'
+  intakes; the camp outside its wall is the largest (D-04 made geometric).
+
+### PLC-095 `air_compressors` — Air Compressor Stacks
+`grey/0/10 215° z3618 · 24°×120 m · plant/bespoke · auth 4` · TILING 1 → **306**
+- interacts: valve (T2), tank_gauge (T2); added: compressor start panels ×4 (T3),
+  vibration log (T3), hearing-protection rack (T2, T1 notice). T4 = the 0.75 Hz beat
+  source (INV-262): "the reason nobody chooses to sleep there" — and the warmth the
+  camps choose anyway.
+- CHECK: stopping compressor 2 for maintenance audibly changes the beat in PLC-028
+  (the camp stirs); the warm-wall sleeping cluster tracks the running compressor's side.
+
+### PLC-106 `happy_daze` — Happy Daze
+`grey/0/18 240° z3618 · 5°×14 m · hospitality/bespoke · auth 4` · TILING 1 → **3**
+- program: the Downbelow bar (the Wet Rock / Eight to the Bar types are SHB-09.g): scrap
+  counter, mismatched seats, the good bottle shelf.
+- interacts: bar_counter (T3/T4 — stock arrives via the route, not the manifest),
+  table ×4, stool ×6 (T2); added: tab slate (T3 — credit exists down here as chalk),
+  back-room door (T2, standing-gated).
+- staff: human proprietor (ex-docker, name-pool), Llort night barman, lurker potboy
+  (auth 5).
+- incidents: INC-PICK, knife robbery aftermath (victims come here first), INC-DUST.
+- CHECK: prices undercut the Zocalo (SYS-04 grey-goods margin visible); the tab slate
+  carries named regulars' real debts; the back room opens only on SYS-12 standing and
+  hosts the route's handoffs.
+
+## 1.5 YELLOW SECTOR — 15 places (power, spine, zero-g) — tiling 15 → 16,390
+
+*Yellow rule: no residents (roster ledger 0); "two or three suited figures in a
+kilometre" is the density brief. 42% of station length is served by no shuttle stop —
+walk-only past z 3,397 (transit.py) — and that remoteness is content: response times
+12–20 min are real here.*
+
+### PLC-029 `fusion_core` — The Fusion Core
+`yellow/0/0 0° z400 · 360°×800 m · -/generic · auth 3` · TILING 1 → **10,413**
+- program: the 800 m reactor complex shell: containment ring galleries, feed halls,
+  the largest tiling number on the station — most of it SHC-08 sealed tankage/void with
+  the walkable skeleton through it (same honesty rule as PLC-027).
+- interacts: reactor_console ×4 (T3), blast_door ×6 (T2); added: dosimeter racks (T2),
+  radiation boundary plaques (T1 — every crossing stencilled), escort log (T3). T4 =
+  SYS-07's 1.9 GW source: every light on the station is this room's output.
+- staff: engineer watch pairs, escorted access only (auth 5).
+- CHECK: the radiation boundary plaques form an unbroken, walkable perimeter; an
+  INC-BROWNOUT drill traces from a console here to a named district's lights and back.
+
+### PLC-096 `disconnect_point` — Explosive Disconnect Point
+`yellow/0/0 40° z2680 · 30°×60 m · -/generic · auth 3` · TILING 1 → **140**
+- interacts: blast_door (T2); added: disconnect console pair (T3 two-key), charge status
+  board (T1 live), inspection terminal (T3), warning klaxon test (T2). T4 = the station's
+  last-resort separation system, drilled quarterly (SYS-14 drill class).
+- CHECK: the two-key consoles are 4 m apart (one person cannot fire it); the quarterly
+  drill runs on the SYS-01 calendar with PA warnings station-wide.
+
+### PLC-097 `power_transfer` — Power Transfer Core
+`yellow/0/0 90° z925 · 60°×250 m · components/generic* · auth 3` · TILING 1 → **266**
+- interacts: console ×4 (T2); added: transfer switchboard (T3), fin-temperature wall
+  (T1 live — the 12 cooling fins each read), fault terminal (T3). T4 = the 12-fin
+  radiator loop rejecting the 1.9 GW (radiator geometry bounds it — canon cross-check).
+- CHECK: fin 7's reading responds to load shed in a drill; the wall's 12 values are
+  never identical.
+
+### PLC-098 `mainstage_node` — Mainstage Distribution Node
+`yellow/0/2 140° z3000 · 20°×100 m · -/generic · auth 3` · TILING 1 → **56**
+- interacts: console (T3), breaker_lever ×4 (T3); added: district map board (T1),
+  hum-signature plate (T1 — "a real acoustic signature", audio brief). T4 = the
+  distribution tree's trunk node.
+- CHECK: the map board's live district loads sum to generation minus losses; the node's
+  hum is audibly distinct from any other room (audio.py signature).
+
+### PLC-099 `spinal_cargo` — Spinal Cargo Facility
+`yellow/0/4 200° z2200 · 40°×400 m · -/generic · auth 3` · TILING 1 → **315**
+- program: the zero-g bulk store (canon sector function): container lattice, tug cradles
+  (T-11's bay tender/lighter/module tug get their interior berths here — the tugs
+  themselves are SUR items), drift aisles.
+- interacts: cargo_crane (T3), container (T2); added: lattice ledger (T3), tug berth
+  clamps (T2), net winch (T3). T4 = transshipment bulk: the 4,000–5,000 t/day majority
+  that never touches a shop.
+- CHECK: a bulk consignment manifested "transshipment" goes hull→here→outbound hull
+  without ever entering Blue cargo (the port's real business, TRAFFIC §7.3, walkable).
+
+### PLC-100 `hazard_tanks` — Hazardous Storage Tanks
+`yellow/0/6 260° z1400 · 40°×300 m · -/generic · auth 3` · TILING 1 → **176**
+- interacts: valve (T2), tank_gauge (T2), blast_door (T2); added: manifest board (T3),
+  suit-check mirror (T1), leak sniffer rack (T2), transfer console (T3). T4 = atmosphere
+  feedstock (the six atmospheres' raw gases) draws from here.
+- CHECK: zone 4's methane top-up traces from a named tank here through SYS-11's ledger;
+  the sniffer rack alarms in a drill.
+
+### PLC-101 `rotation_drivers` — Rotation Drivers
+`yellow/0/8 320° z3300 · 40°×120 m · -/generic · auth 3` · TILING 1 → **128**
+- interacts: console (T3); added: driver gallery rail (T1), torque log (T3), bearing
+  temperature wall (T1 live). T4 = the 1.7926 rpm itself (~5 MW budget line) — the spin
+  every berth speed and every dBA swell derives from.
+- CHECK: the drivers' room carries the +8 dB structure signature (INV-261); the torque
+  log's trend is flat (the control: rotation is boring, and the room proves it).
+
+### PLC-102 `core_shuttle` — Core Shuttle (line)
+`yellow/0/30 0° z1700 · 20°×3000 m · core_tube/generic* · auth 1` · TILING 1 → **4,000**
+- program: the 3 km axial line: 13 stops @388 m, 6 cars, peak 20.4 m/s, end-end 11m16s,
+  headway 3m52s (all derived, transit.py); maroon upholstery, low amber panels,
+  continuous window band, grab poles, red tube ribs (auth 1 car dressing).
+- interacts: shuttle_door (T2/T4 — SYS-09 trunk), seat (T2), handhold (T1); added: stop
+  boards ×13 (T1 live), line map (T1), emergency stop (T3), help points ×13 (T3), line
+  control desk at stop 1 (T3 serve).
+- CHECK: all 13 stops exist, named, at 388 m spacing; the timetable's derived times come
+  true ±headway; the windows show the real axial structure passing at the real speed.
+
+### PLC-113 `shuttle_car` — Shuttle Car (interior class)
+`yellow/0/30 40° z1700 · 8°×40 m · core_tube/generic* · auth 3` · TILING 1 → **18**
+- interacts: seat (T2), handhold (T1), shuttle_door (T2); added: emergency stop (T3), help
+  point (T3 — summons SYS-05), lost-property tag point (T3), car plaque (T1 — 6 cars,
+  6 numbers), advert/notice panel (T1 — era-true: ISN + MiniPax rotation). T4 = rides the
+  SYS-09 line.
+- CHECK: boarding car 4 at stop 2 and alighting at stop 9 takes the table's time; the
+  notice panel cycles real SYS-08 content.
+
+### PLC-119 `reactor_hall` — Reactor Hall
+`yellow/0/0 20° z240 · 60°×120 m · -/generic · auth 5` · TILING 1 → **90**
+- program: the manned face of PLC-029 (volume-audit addition): reactor_plant_tank spine
+  (4.0×4.0×6.2 m units), shield frames, refuel crane (PLACE_FIXTURES exact).
+- interacts: reactor_console (T3), blast_door (T2), breaker_lever (T3), catwalk (T1);
+  added: watch desk (T3 serve). T4 = generation control: the +0.05 dBA day-night swing
+  is the control that proves the sim breathes (audio.py).
+- CHECK: the watch desk is manned 24 h by named engineer pairs; the refuel crane runs
+  its scheduled evolution with the hall cleared (PA warning local).
+
+### PLC-120 `fuel_bunkerage` — Fuel Bunkerage
+`yellow/0/2 200° z150 · 60°×220 m · -/generic · auth 5` · TILING 1 → **208**
+- interacts: valve, tank_gauge, blast_door (T2), cargo_crane (T3); fixtures bunker_plant_
+  tank/bund_plant_frame/transfer_crane (exact); added: bund walk (T1), transfer log (T3),
+  slush-tank status wall (T1 live). T4 = the isotope slush reserve feeding PLC-029.
+- CHECK: the slush wall's inventory declines with generation and steps up on the named
+  tanker's arrival (SYS-02 manifest cross-ref).
+
+### PLC-121 `coolant_gallery` — Coolant Gallery
+`yellow/3/3 120° z170 · 90°×240 m · -/generic · auth 5` · TILING 1 → **120**
+- interacts: valve, tank_gauge (T2), catwalk, handhold (T1); manifold/pump/return
+  fixtures (exact); added: pump status row (T1 live ×8), isolation console (T3), leak
+  tray inspection (T3). T4 = the 8-manifold coolant loop between core and fins.
+- CHECK: pump row readings differ and respond to the transfer core's load; an isolation
+  drill reroutes flow visibly on the status row.
+
+### PLC-122 `generator_hall` — Generator Hall
+`yellow/1/4 250° z1185 · 60°×150 m · -/generic · auth 5` · TILING 1 → **104**
+- interacts: console, breaker_lever (T3), catwalk (T1), blast_door (T2); generator_plant_
+  tank/switchgear/busbar fixtures (exact); added: load-dispatch desk (T3), LOTO board (T3), synchroscope board (T1 live). T4 = the
+  4 APUs + aux cores' switchyard — INC-BROWNOUT's recovery path.
+- CHECK: in a brownout drill the APU pickup is watchable on the synchroscope and the
+  district relight order matches SYS-07's priority table.
+
+### PLC-123 `heat_exchanger_hall` — Heat Exchanger Hall
+`yellow/0/4 60° z2300 · 60°×400 m · -/generic · auth 5` · TILING 1 → **300**
+- interacts: valve, tank_gauge (T2), catwalk (T1), console (T3); exchanger/header/
+  condensate fixtures (exact); added: array status wall (T1 — the 12 heat-exchange
+  arrays), emergency-power changeover (T3). T4 = the L-01 1.9 GW rejection path.
+- CHECK: array wall totals reconcile with the fin wall at PLC-097 (two rooms, one
+  physics); changeover drill holds essential load.
+
+### PLC-124 `comms_operations` — Communications Operations
+`yellow/1/5 300° z2600 · 24°×100 m · -/generic · auth 5` · TILING 1 → **56**
+- interacts: console ×4 (T2), monitor_wall (T2), babcom_terminal (T3); rack/patch/
+  waveguide fixtures (exact); added: traffic log (T3), StellarCom priority desk (T3
+  serve — Gold Channel priority structure, FACTIONS §11.5). T4 = SYS-08's transmission
+  room: ISN feed, BabCom switching, gate-link.
+- staff: 4/watch signal ops (2 human, 1 Vree, 1 Hyach — precision cultures, auth 5).
+- CHECK: a BabCom call placed by the player routes through this room's log; cutting the
+  ISN feed here (drill) blanks the same screens PLC-050's patch-bay test does — two
+  rooms, one system, both true.
+
+# 2. SHELL B — THE CONNECTIVE TISSUE, FULLY ENTERABLE
+
+**Derivation.** Shell B assigns program to deck cells the model already carries
+(`interior.cell_manifest`: 210 decks, 2,330 cells — the audit's ruling is "do not add
+floor; state the structure"). Housing arithmetic: **units = heads** (resident.py carries
+no households — family grouping is PEOPLE-annex work and only adds slack); unit areas from
+the INV-032 quarters ladder (command 34 m² / personnel 18 / diplomatic 46 / alien 22 /
+civilian 16 / transient 9 / lurker no rooms); **blocks of 60 units** (arrival.py:573
+`UNITS_PER_BLOCK=60`, unit labels NN-L already issued by the customs pipeline); gross =
+net ×1.4 circulation/mess/sanitation/plant (auth 5). Sanitation rule everywhere: **no
+showers outside command/diplomatic** (L-03) — each block gets a communal wash room, and
+that absence is walkable class texture.
+
+**The roster ledger** (roles → home sector; sums to 250,001 exactly, schedule.py
+ROLE_WEIGHTS; allocation auth 5 constrained by canon sector functions and
+resident.home_for):
+
+| sector | who lives there | heads |
+|---|---|---|
+| Blue | command 120 · security 500 · customs 900 · traffic 400 · dockworkers 9,650 (1,200 EA + 8,450 guild — dock_workers_quarters is canon station.yaml) · EF engineering 1,800 · EF medical 300 | **13,670** |
+| Red (civilian) | merchant 39,300 · service 43,230 · financier 23,700 · industrial 22,100 · civilian engineers 12,630 · civilian medical 2,500 · waste 2,500 · minus 6,250 breathers housed Green | **139,710** |
+| Red (transient) | visitors/transients (7-day mean stay) | **44,770** |
+| Green | diplomats 2,060 · clerics 7,300 · hydroponics 2,850 · breather species 6,250 (Gaim 2,500 + Abbai 3,750) · Kosh 1 | **18,461** |
+| Grey | lurkers 20,390 · refugees 13,000 | **33,390** |
+| Yellow | nobody (zero-g storage; work visits only) | **0** |
+
+### SHB-01 — Blue ring 0, crew country residential belt
+- 83 blocks × 60 units @18 m² (EF overflow beyond PLC-008's 1,260) across decks 2–9:
+  ~10/deck; per deck: 3 mess rooms, wash room per block, 4 storage rooms, 1 maintenance
+  shop, 3 local plant rooms (air handler / water riser / breaker). **124,500 m² gross.**
+- CHECK: every EF resident whose card says Blue has a real, enterable, numbered unit;
+  the 07:40 commute tide flows from these doors to PLC-116 lifts; no corridor on a
+  resident's daily path dead-ends in unbuilt space.
+
+### SHB-02 — Blue ring 1, dockers' belt + port annexes
+- 120 blocks × 60 @16 m² (guild civilians 7,200) on decks 2–5, ~30/deck; mess 8/deck
+  (24 h — shift meals), storage 6/deck, maintenance 2/deck, plant 3/deck.
+  **≈161,300 m² gross.**
+- named annexes (research 1b additions, built under this ID):
+  a. **Dockers' Guild hall** (§13:912): meeting floor 400 m², grievance board (T1, real
+     S1-strike memory texts), strike ballot box (T3 — INC-STRIKE's trigger), steward's
+     office (T3 serve).
+  b. **Blue remand annexe** (D-01): 8 cells feeding PLC-017.
+  c. **Casual-labour muster point** (D-10): the 06:00/14:00 gate outside PLC-033 — rail,
+     tally desk (T3 — pays 8–15 cr day labour), chalk board (T1, today's gang count).
+  d. **Narn refugee reception** (FACTIONS §6.2): queue hall + aid desk (T3) + SANCTUARY
+     visa stamp line (T4 — feeds SYS-03's REFER outcome), staffed by 2 EA clerks + Narn
+     volunteer interpreters.
+  e. **Station house Blue** (D-02): 1 of the 4 sector houses — pair post + report desk.
+- CHECK: at 06:00 the muster gate pays a countable gang drawn from PLC-028's working
+  poor; the guild hall's ballot mechanism can trigger INC-STRIKE; a SANCTUARY referral
+  from customs ends at the aid desk the same hour, and the refugee's card carries the
+  stamp this room issued.
+
+### SHB-03 — Red ring 0, market back-of-house
+- No housing. Per Zocalo/arcade deck: 40 stockrooms (consignment cages matched to named
+  stalls), 8 cold stores, 4 waste holds, 2 staff wash rooms, 1 maintenance shop, 3 plant
+  rooms. **≈28,000 m² gross (auth 5).**
+- CHECK: every Zocalo stall's stock line points at a real cage here; a porter NPC
+  restocks stall 23 from cage 23 before the 08:00 peak, walkable behind him.
+
+### SHB-04 — Red rings 1–2, the civilian residential mass
+- **2,297 blocks** × 60 @16 m² (137,790 civilian units beyond PLC-019) + **726 blocks**
+  × 60 @9 m² (43,522 transient units beyond PLC-020) over ~40 residential decks:
+  ~76 blocks/deck, ~90,900 m²/deck; per deck: 19 mess rooms, wash room per block,
+  8 storage, 2 maintenance shops, 3 plant rooms + 1 laundry hall per 3 decks (auth 5).
+  **≈3,634,900 m² gross — Red's undescribed volume (worst z-coverage, 46%; red_section
+  0.1498 km³ holds zero addressed places) is exactly this housing; the audit's naming
+  gap, not empty hull.**
+- named annexes: a. **4 hotels** (auth 4, Red — a cut above qtr_transient: desk T3,
+  porter, 60–120 rooms each); b. **evidence/property store** (D-08, behind PLC-016);
+  c. **Psi Corps liaison office** (FACTIONS §4.1: 3–8 clerical staff, Business District
+  adjacency — NOT a garrison; at datum no resident telepath, the office says so);
+  d. **station house Red** (D-02).
+- CHECK: three sampled residents of three named blocks are home at their schedule's
+  hours behind doors carrying their NN-L labels; a hotel books the player at hotel
+  rates; block-to-work commute paths for 5 sampled residents never cross sealed volume;
+  the whole belt's corridor dressing varies by species mix per deck (no two decks
+  byte-identical).
+
+### SHB-05 — Red ring 3, plant ring support
+- No housing. Water/waste rosette support: 12 pump rooms, 8 storage, 2 maintenance
+  shops, sample lab; the Red satellite Downbelow camp fringe (small, swept often) pins
+  to PLC-055's warm wall. **≈14,000 m² (auth 5).**
+- CHECK: the satellite camp appears/disappears on the sweep cycle; pump rooms serve
+  named SHB-04 blocks traceably.
+
+### SHB-06 — Green ring 0, diplomatic and rosette residential
+- **267 blocks** × 60 (16,020 units: 4,654 @22 m² breather-adjacent zone extensions of
+  PLC-023's six atmospheres + 11,366 @16 m²) across rosette decks 1–8, ~33/deck; per
+  deck: 8 mess (2 species-segregated — pak'ma'ra eat apart, friction.py), wash per
+  block, 5 storage, 1 maintenance, 3 plant + per-zone atmosphere plant rooms.
+  **≈397,700 m² gross.**
+- named annexes: a. **Brother Theo's monastery dormitory** (15–25 cells, era-gated —
+  PLC-111's annexe); b. **Narn shrine and mourning space** (§13:902 — "the most
+  important new geometry any faction implies": G'Quan alcove, book stands, mourning
+  wall with the surrender's names, auth 5 dressing); c. **station house Green**;
+  d. **Green satellite camp** at PLC-076's wall.
+- CHECK: the six atmosphere zones' residential extensions hold the breather roster
+  (every Gaim address resolves to zone 4 housing); the mourning wall's names render
+  distinct and Narn residents visit it on G'Quan calendar days; monastery cells match
+  the era gate.
+
+### SHB-07 — Green ring 1, drum support
+- No blocks (the township PLC-025 houses drum residents). Field support: 6 bothies,
+  2 tram depots (cars stable here off-peak), 3 irrigation pump houses, 1 ag-store barn,
+  1 cold store. **≈9,500 m² (auth 5).**
+- CHECK: off-peak tram cars are physically in the depots; the barn's stock is last
+  harvest's and feeds PLC-105's menu chain.
+
+### SHB-08 — Grey ring 0, industrial support
+- No formal housing (Downbelow is PLC-028/089 + camps). Per industrial deck: 6 shift
+  wash-up rooms, 4 tool cribs, 8 storage, 2 first-aid points, 3 plant rooms; the
+  **casual plant hand-work muster** (12% informal jobs) at PLC-093's gate.
+  **≈36,000 m² (auth 5).**
+- named annexes: a. **Franklin's free clinic** (D-06 — LAW-CRIME:910: "should be built
+  before any security post in Downbelow", and there is no post, so it is the ONLY
+  institutional presence: 6 beds, volunteer med-techs off-shift, no questions asked —
+  doubles as the telepath-railroad cover, held as institution); b. **dosshouse**
+  (1 cr/night bunk hall, 120 bunks, LAW-CRIME §7.1 ladder); c. **unofficial mortuary**
+  (D-09, run by a lurker layer-out); d. **Rangers' safe house** (§13:905 — an unmarked
+  door on the Brown margin: message drop T3, brooch-tell discovery mechanic; 20–60
+  Rangers aboard, semi-covert); e. **type-bars ×2** ("Wet Rock" / "Eight to the Bar"
+  types, era-unverified names carried as types per LAW-CRIME "build the type");
+  f. **refugee overspill accommodation**: partitioned converted-cargo volume for the
+  13,000 (9 m² partitions, communal standpipes, FACTIONS §6.2); g. **station house
+  Grey** at the sector BOUNDARY (the chokepoint post — not inside Downbelow, which
+  stays NO_POST).
+- CHECK: the clinic treats a knife-robbery casualty who would not go to a medlab (SYS-05
+  unreported-crime path made visible); a bunk bought for 1 cr is sleepable and the
+  dosshouse ledger fills by 02:00; the safe-house drop passes a message the player can
+  carry once brooch-trust exists (SYS-12); every refugee address resolves to a real
+  partition.
+
+### SHB-09 — Yellow, work-visit support
+- No housing. At the 4 worked nodes (PLC-097/098/119–124 clusters): 2 mess/galley
+  points, 4 wash rooms, 4 suit lockers, 2 first-aid, tool cribs. **≈12,000 m²
+  (auth 5).** "Two or three suited figures in a kilometre" is the density brief — Shell
+  B here is deliberately thin and the emptiness is content.
+- CHECK: an engineer's full Yellow shift (commute, work, meal, wash, return) never
+  requires an unbuilt room, and never meets a crowd.
+
+**Formally excluded (build-refused, per corpus — carried so nobody re-adds them):**
+ISN bureau (P-10 — broadcast presence only, an S4 import), Ministry of Peace premises
+(P-06 — borrows PLC-053, the borrow is the era), a Downbelow police station (LAW-CRIME
+§9 "must not be built"), a work-for-food institution (D-05 — patronage stays informal),
+Markab NPCs (extinct at datum; the quarter is SHC-01), White Star warship / ISA-Army of
+Light insignia / Zack-as-chief / Keffer (era traps, FACTIONS §1).
+
+# 3. SHELL C — THE HONEST FABRIC (the ONLY sealed volume; owner-signed list)
+
+Rule (THE-STATION §3): present as geometry; enterable where a maintenance role goes;
+sealed elsewhere with a REASONED, VISIBLE closure — a real bulkhead with a stencil, never
+missing space. Every stencil is a distinct T1 string; every closure's reason is written
+here. **This list is exhaustive: volume not named by Shell A, Shell B, or this table does
+not exist as sealed space.**
+
+| ID | volume | size | closure + stencil (T1, verbatim) | reason |
+|---|---|---|---|---|
+| SHC-01 | the Markab quarter (adjoins PLC-023) | one zone arm | welded plate, wreath bracket. "SECTION CLOSED BY ORDER — MEDICAL AUTHORITY B5 — 2259. NO ENTRY. LET THEM REST." | the only monument to an extinct species (datum consequence, FACTIONS §1.3); era-gated: reopens populated if datum ever moves pre-(2,18) |
+| SHC-02 | welded sections behind PLC-092's corridor | 672-bay volume less the corridor | weld bead + cap plates, 12 stencils cross-reffed to PLC-092 | unfinished construction volume, never commissioned (in-era truth: B5 was built broke) |
+| SHC-03 | water reserve tank interiors (Red r3 + Grey) | 397,500 m³ | manway covers, dogged. "POTABLE RESERVE — 30 DAY — ENTRY BY WATER AUTHORITY PERMIT W-7 ONLY" | the reserve IS the wall; inspection manways enterable on the maintenance rota only |
+| SHC-04 | Yellow tankage interiors (slush, inert gas ×4, hazard, fuel bund inner cells) | bulk of PLC-100/120 footprints | blast manways. "ISOTOPE SLUSH — CRYOGENIC — SUIT AND ESCORT MANDATORY" (+3 variants) | contents lethal; catwalk skins are the enterable truth |
+| SHC-05 | plant_zone bulk void between the walkable skeleton | ~139 M m³ less catwalk web | frame-and-sheet closures at every skeleton edge, section stencils "GREY VOID G-nn — NO AIR ASSURANCE BEYOND THIS FRAME" | 559 m³/resident of tankage/void is the true structure (LIFE-SUPPORT §1); flooding it with corridors was the 26%-of-triangles mistake |
+| SHC-06 | fusion_core containment ring beyond PLC-029's galleries | most of the 800 m drum | shield doors. "RADIATION AREA — REACTOR CONTAINMENT — DOSIMETRY + ESCORT" | the reactor is mostly not a place people go; the boundary plaque perimeter is PLC-029's check |
+| SHC-07 | aft_hull_block undecked flanks | 0.2785 km³ (Yellow flank 0.1273, Green flank 0.1442) | ring bulkheads at every deck edge. "STRUCTURAL VOLUME — AFT BLOCK — NO DECKING BEYOND FRAME 3107–4207" | the widest structure on the station is structure (volume-audit §3.4); stating it beats faking it |
+| SHC-08 | bearing_neck | 0.1084 km³ | ring of stencilled bulkheads where Green's stack ends at 310.7 m. "MAIN BEARING — ROTATING/STATIC INTERFACE — AUTHORISED RIGGERS ONLY" | the bearing is the one volume nobody could inhabit; its hum belongs to PLC-101's system |
+| SHC-09 | hull-skin interstitial | 0.0742 km³ | crawlway hatches every 40 m, enterable ONLY at declared EVA/maintenance points (PLC-085/127). "HULL INTERSPACE — VACUUM RATED — LOG OUT / LOG IN" | armour gap; the maintenance role's territory, everyone else's stencil |
+| SHC-10 | forward spike above z 8,010 | past PLC-043's platform | pressure cap. "UNPRESSURISED BEYOND THIS POINT — DEFLECTOR MAST" | instrument mast, never habitable (materials.py declares the spike uninhabited; the 22 Blue places below 8,010 stay live — the audit conflict resolves at this cap, auth 5) |
+| SHC-11 | Downbelow's unoccupied outer-ring cells: 600 of the 745 empty | ~600 cells | the auth-1 closure vocabulary itself: capped / sheeted / welded-shut openings, stencilled "UNCOMMISSIONED — B5 CONSTRUCTION CONTRACT 5 — NO SERVICES" (145 cells stay OPEN and dark — enterable Downbelow fabric, not sealed) | in-era Downbelow is UNFINISHED, not ruined; the checkerboard of dead cells is the texture list's own reading |
+| SHC-12 | red_section remainder after SHB-04 claims its decks | residual of 0.1498 km³ | deck-edge bulkheads, tank stencils "RED RESERVE TANKAGE R-nn" | what Red's housing does not fill is the sector's water/stores tankage (canon: storage is a Red function) |
+| SHC-13 | **Grey 17 — the hidden level** | one unnumbered inhabited level between Grey 16 and 17 | **an unremarkable capped opening identical to SHC-11's, deliberately UNSTENCILLED — the ONE closure with no registry entry visible in-world** | it exists before it is found (S3E19, just past datum; LAW-CRIME §5.5); owner-eyes-only note: interior built, population seeded, no door signage, no directory row — discovery is a post-datum event the era clock can fire |
+
+- CHECK (whole shell): walking every corridor of Shells A+B encounters **zero** unclosed
+  cuts and zero doors into nothing (`interior_kit.boundary_edges` = 0 stays the gate);
+  every sealed face carries its table stencil verbatim, LOOK answers with it; the 13 rows
+  above are the complete sealed set — any other sealed volume found in audit is a defect;
+  SHC-13 alone answers LOOK with nothing at all.
+
+# 4. TOTALS — per sector
+
+| sector | places | tiling bays built → target | Shell B gross m² | housing capacity vs roster |
+|---|---|---|---|---|
+| Blue | 36 | 36 → **7,692** | 285,800 (SHB-01/02) | 13,710 (270 + 1,260 + 12,180) vs **13,670** ✓ |
+| Red | 22 | 22 → **1,644** | 3,676,900 (SHB-03/04/05) | 184,548 (1,920 + 1,248 + 181,380) vs **184,480** ✓ |
+| Green | 35 | 35 → **7,052** | 407,200 (SHB-06/07) | 18,472 (2,452 + 16,020) vs **18,461** ✓ |
+| Grey | 20 | 20 → **16,487** | 656,000 informal (camps 509,750 @25 m²/person + refugee partitions 146,250) | 33,390 camp/partition capacity vs **33,390** ✓ (no units by design — lurker class has no rooms, INV-032) |
+| Yellow | 15 | 15 → **16,390** | 12,000 (SHB-09) | 0 vs **0** ✓ |
+| **total** | **128** | **128 → 49,265** (verified live via `rooms.bays_in` this session; 5 places already at target) | **≈5.04 M m²** (2.4% of the 213 km² fitted walkable floor — the audit's 718–881 m²/resident headroom absorbs it ~40× over) | **250,120 capacity vs 250,001 roster** ✓ |
+
+Notes carried forward: "built → target" counts representative bays; the 5 already-full
+places are bar_unnamed, dark_star, quartermaster, eclipse_cafe, minipax. The 8 gazetteer
+NOT_A_PLACE rows (directory.py:820-838) remain excluded and are information-layer items
+(SYS-08), not places. C-012 (souls/day ×3.6) rescales SHB-04's transient block count and
+PLC-003/004 staffing if SYS-02 resolves it upward — the two numbers flagged there are the
+only Shell B dependencies.
+
+---
+
+*Spec freeze: per THE-STATION §1.1, changes to any PLC/SHB/SHC row after adoption require
+a dated SPEC-CHANGE entry here.*
+
+## SPEC-CHANGE LOG
+*(empty at adoption)*
