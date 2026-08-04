@@ -150,9 +150,13 @@ threaded through the boot manifest; crowd-physics policy stated (non-colliding i
 cap, unstated it reads as a bug). **Gate:** an NPC paths across decks on the engine graph;
 the clock says day 2; the policy is a sentence in this file.
 
-### P0.7 — THE PLAYER MOVES 3.4x FASTER THAN THE STATION DOES (measured 4k)
+### P0.7 — AN OWNER DECISION: THE PLAYER MOVES 3.4x FASTER THAN THE STATION DOES
 
-Small, and it changes how every other thing on this list feels, so it is placed before P1.
+**This is a decision to take, not a defect to fix, and the distinction matters.**
+`godot/scripts/player.gd:23` says so in as many words — *"A person walks at 1.4 m/s; this is a
+game, so it is faster."* Somebody knew the real figure and chose 4.2 deliberately. What is new
+is the measurement of what that choice costs, now that the station is 1:1 and its NPCs are
+Froude-scaled.
 
 | who | speed | one lap of the blue ring corridor (1,329 m) |
 |---|---|---|
@@ -160,22 +164,38 @@ Small, and it changes how every other thing on this list feels, so it is placed 
 | the player — `godot/scripts/player.gd:24`, a hardcoded literal | **4.2 m/s** | 5.3 min |
 | the player sprinting — `player.gd:25` | **8.0 m/s** | 2.8 min |
 
-`life.gd:1435` sets a commuter's `speed_m_s` from `populace._walk_speed`, so **the NPCs are
-physically right for the spin gravity and the player is not**. The consequences are not
-cosmetic: a 1:1 station felt at 3.4x speed is a station that feels a third of its size, which
-is the exact opposite of what this project is for; every inhabitant appears to wade; and every
-distance the simulation derives — commute times, schedules, `transit.py`'s costing — is
-calibrated against a pace the player never experiences.
+`life.gd:1435` sets a commuter's `speed_m_s` from `populace._walk_speed`, so the NPCs *are*
+physically right for the spin gravity while the player is a literal. The costs of the choice,
+measured rather than argued:
 
-**Do:** derive the player's walk from the same function the NPCs use, at the gravity of the
-deck they are standing on (`player.gd` already tracks `gravity_m_s2`). Keep sprint as a
-multiple of it rather than a second literal. **Gate:** the player's speed on a given deck
-equals `populace._walk_speed('human', 0, g)` to a tolerance, asserted in `coldstart.py`'s
-verdict line; control — force the old literal and the check fails.
+- every inhabitant appears to wade — the player overtakes the whole station at 3.4x
+- a 1:1 station traversed at 3.4x **feels a third of its size**, which is in direct tension
+  with the reason this project is 1:1 at all
+- every distance the simulation derives — commute times, schedules, `transit.py`'s costing —
+  is calibrated against a pace the player never experiences
 
-*Measured because a body walking to `plantroom_bay` covered 486 m in 20,000 physics frames and
-the number did not match anything: 1.46 m/s sustained, against a 4.2 m/s export and a 1.22 m/s
-derivation. Two of those three are wrong and nothing in the project could have said so.*
+And the cost of *changing* it, which is why it is a decision and not a patch: **at the derived
+1.22 m/s, one lap of the blue ring corridor is 18 minutes on foot.** The lifts, trams and core
+shuttle exist precisely so a player does not walk it — but if they are not finished, deriving
+the player's gait makes the station tedious before it makes it convincing.
+
+**Three options, and the owner picks:**
+
+| | player walk | one lap | what it costs |
+|---|---|---|---|
+| **A** keep 4.2 m/s | 4.2 | 5.3 min | the station keeps feeling ~1:3; NPCs keep wading |
+| **B** derive it | 1.22 | 18 min | correct, and unusable until transit is finished |
+| **C** derive it and declare a multiplier | e.g. 2.0x = 2.44 | 9 min | honest about being a game concession, logged as an invention with a number that can be tuned |
+
+*If B or C: derive from the same function the NPCs use — the sqrt(g) law reproduces
+`populace._walk_speed` to **0.00% across the whole gravity range**, so one reference pair plus
+the law is the same authority, not a second opinion. Then `walkable.py`'s `MIN_TRAVERSE_M=63`
+and `MIN_WALK_M` must move with it: both are derived from the 4.2 literal in their own
+comments, so a speed change silently turns those gates red.*
+
+*Found because a body walking to `plantroom_bay` covered 486 m in 20,000 physics frames —
+1.46 m/s sustained, matching neither the 4.2 export nor the 1.22 derivation. That third number
+is still unexplained and is the one genuine defect here.*
 
 ### P1 — THE GAME EXISTS (G-track, expanded from the rejected draft)
 - **G0** `docs/THE-GAME.md`: what the player wants, who can stop them, what failure costs.
