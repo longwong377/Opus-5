@@ -1,6 +1,6 @@
 {
  "version": 1,
- "notes": "SEED, NOT A REVIEW. Round 1 for every subsystem was scored by the author of docs/AAA-STANDARD.md from facts already recorded in STATE.md, so that the gate has real data to run against. No adversarial review round has produced these numbers. Treat every score as provisional until a reviewer other than the builder has scored it. The scores are deliberately conservative: where STATE.md records a defect, the descriptor it matches is the score.  SESSION 3r: first scores taken from CLOSE frames rather than wide ones. AAA-STANDARD.md's craft section has always required judging 'at three distances: the distance the player normally sees it from, half that, and the distance at which it is one pixel of silhouette.' Only the first was ever rendered, which is how 118 locations of blockout passed three layers. The standard did not fail here -- applying it did.  SESSION 3w: first judgement of the WALKABLE build -- an assembled ring deck rather than a single room -- at all three distances, through Godot + lavapipe. Two new subsystems, `walkable_deck` and `npc_bodies`. Full report and every frame in docs/judge-3w.md. NOTE that this file does NOT pass its own gate: `python3 tools/aaa_gate.py docs/aaa-scorecard.json` reports 52 structural errors, ALL of them in rounds written before 3w (severity 'resolved' is not a valid severity; evidence keyed by 'frames'/'path'/'shader' instead of by dimension; dimensions below the bar with no finding). They are left as found. Rewriting past rounds to make a gate green is the exact failure this file exists to catch; the 3w entries below are gate-clean and can be checked in isolation.  SESSION 4a (layer 4b, lighting mood): the first thing this pass found is that ELEVEN OF THE FOURTEEN distribution failures were STALE FRAMES, not lighting defects. Every failing frame was committed 2026-07-29/30, every frame committed 07-31 passed, and the lens fix (c05a877) and the soft fill (7cf9404) landed in between. The ANCHOR -- docs/engine-corridor.png, the frame RENDER_OFFSET=1.40 is defined against -- read p5 x1.64 and had the show's own ladder UPSIDE DOWN (soffit x1.82 over deck x0.29, against the show's 0.23-0.32 over 2.49); re-rendered from its own command it reads x0.214 and x2.59 and passes every band. A committed PNG is a CACHE OF A MEASUREMENT and no gate here could tell a stale cache from a fresh one. export_scene.EXPOSURE_FRAMES now records the shot that produces each frame and --gate-frames --rerender re-takes it. Exposure gate: 3 pass / 11 fail / 9 UNVERIFIABLE -> 13 pass / 10 fail / 0 unverifiable.",
+ "notes": "SEED, NOT A REVIEW. Round 1 for every subsystem was scored by the author of docs/AAA-STANDARD.md from facts already recorded in STATE.md, so that the gate has real data to run against. No adversarial review round has produced these numbers. Treat every score as provisional until a reviewer other than the builder has scored it. The scores are deliberately conservative: where STATE.md records a defect, the descriptor it matches is the score.  SESSION 3r: first scores taken from CLOSE frames rather than wide ones. AAA-STANDARD.md's craft section has always required judging 'at three distances: the distance the player normally sees it from, half that, and the distance at which it is one pixel of silhouette.' Only the first was ever rendered, which is how 118 locations of blockout passed three layers. The standard did not fail here -- applying it did.  SESSION 3w: first judgement of the WALKABLE build -- an assembled ring deck rather than a single room -- at all three distances, through Godot + lavapipe. Two new subsystems, `walkable_deck` and `npc_bodies`. Full report and every frame in docs/judge-3w.md. NOTE that this file does NOT pass its own gate: `python3 tools/aaa_gate.py docs/aaa-scorecard.json` reports 52 structural errors, ALL of them in rounds written before 3w (severity 'resolved' is not a valid severity; evidence keyed by 'frames'/'path'/'shader' instead of by dimension; dimensions below the bar with no finding). They are left as found. Rewriting past rounds to make a gate green is the exact failure this file exists to catch; the 3w entries below are gate-clean and can be checked in isolation.  SESSION 4a (layer 4b, lighting mood): the first thing this pass found is that ELEVEN OF THE FOURTEEN distribution failures were STALE FRAMES, not lighting defects. Every failing frame was committed 2026-07-29/30, every frame committed 07-31 passed, and the lens fix (c05a877) and the soft fill (7cf9404) landed in between. The ANCHOR -- docs/engine-corridor.png, the frame RENDER_OFFSET=1.40 is defined against -- read p5 x1.64 and had the show's own ladder UPSIDE DOWN (soffit x1.82 over deck x0.29, against the show's 0.23-0.32 over 2.49); re-rendered from its own command it reads x0.214 and x2.59 and passes every band. A committed PNG is a CACHE OF A MEASUREMENT and no gate here could tell a stale cache from a fresh one. export_scene.EXPOSURE_FRAMES now records the shot that produces each frame and --gate-frames --rerender re-takes it. Exposure gate: 3 pass / 11 fail / 9 UNVERIFIABLE -> 13 pass / 10 fail / 0 unverifiable.  || 4k: three new subsystems scored by the MAIN AGENT from the frames and measurements directly, not from the builder's report. Where we differ the builder scored concourse 3 (agree), dome2 3 (I say 2 -- the frame omits the windows), rotunda 2-3 (I say 2 -- 8.95% crushed). Craft is measured at the rubric's HALF distance. Fidelity is scored 3 on the builder's authority-1 citations and INV-290/291/292 rather than on an independent canon check, and that is stated rather than implied.",
  "bar": {
   "min_score": 4,
   "clean_rounds_required": 2,
@@ -1401,6 +1401,145 @@
      "reviewer": "judging agent, session 4e -- LAYER 8 ROUND 1. The first frames of this station scored against docs/AAA-STANDARD.md. 21 engine frames, every one confirmed 'Vulkan 1.4.318 - Forward+' in its own log and recorded with its command in docs/judge-4e-frames.json. Builder of none of it. Full report: docs/judge-4e.md",
      "date": "2026-08-01",
      "broke_assertions": false
+    }
+   ]
+  },
+  "concourse_central_corridor": {
+   "status": "active",
+   "rounds": [
+    {
+     "round": 1,
+     "reviewer": "main agent, session 4k -- independent of the builder",
+     "date": "2026-08-04",
+     "scores": {
+      "craft": 3,
+      "fidelity": 3,
+      "performance": 2,
+      "robustness": 4
+     },
+     "evidence": {
+      "frame_half": "docs/engine-4k-concourse-half.png",
+      "frame_normal": "docs/engine-4k-concourse-normal.png",
+      "measured": "median 0.109, p5 0.0215, p95 0.9192, clipped 0.60%, crushed 1.15%",
+      "objects_per_m2": 4.28,
+      "density_machinery": "x1.57 PASS",
+      "gate": "station/concourse.py 8/8, 0 open boundary edges, control leaks 40"
+     },
+     "findings": [
+      {
+       "severity": "major",
+       "dimension": "craft",
+       "descriptor": "C3",
+       "where": "docs/engine-4k-concourse-half.png",
+       "text": "Reads as a place at half distance -- rib arches, mezzanine with rail and fascia, backlit vendor front, deck cells, crates, a view out. Held back from 4 by three things measured on the frame: a large undifferentiated right-hand wall, a BLOWN floor pool (0.60% of pixels clipped, and the deck strip is emissive so `room_exposure` cannot reach it -- the builder took lit AREA from 71% to 20% as its only lever), and signage that is a lit panel with no legible content."
+      },
+      {
+       "severity": "minor",
+       "dimension": "craft",
+       "descriptor": "C2",
+       "where": "station/concourse.py",
+       "text": "Built 24.0 m of a 120 m location -- 20.0% of its axial extent, 4 rib bays against PLC-056's 540. Its own gate prints this rather than hiding it, which is right, but the place a player walks is a fifth of the place the register names."
+      },
+      {
+       "severity": "minor",
+       "dimension": "performance",
+       "descriptor": "-",
+       "where": "station/concourse.py",
+       "text": "Composes to 127,472 tri against `budget.CELLS['cell_tris']` = 60,000. ~104k of that is 14 populace bodies at ~7k each rather than architecture (the module itself is 11,764), so the fix is body LOD in this room, not less room."
+      }
+     ]
+    }
+   ]
+  },
+  "observation_rotunda": {
+   "status": "active",
+   "rounds": [
+    {
+     "round": 1,
+     "reviewer": "main agent, session 4k -- independent of the builder",
+     "date": "2026-08-04",
+     "scores": {
+      "craft": 2,
+      "fidelity": 3,
+      "performance": 3,
+      "robustness": 4
+     },
+     "evidence": {
+      "frame_half": "docs/engine-4k-rotunda-half.png",
+      "measured": "median 0.047, p5 0.0158, p95 0.5959, clipped 0.00%, crushed 8.95%",
+      "objects_per_m2": 5.75,
+      "density_machinery": "x1.33 PASS",
+      "gate": "station/observation.py 17/17, 0 open boundary edges"
+     },
+     "findings": [
+      {
+       "severity": "major",
+       "dimension": "craft",
+       "descriptor": "C2",
+       "where": "docs/engine-4k-rotunda-half.png",
+       "text": "UNDEREXPOSED, and it is the discriminator against the other two frames: median 0.047 against the concourse's 0.109 and the dome's 0.138, with 8.95% of the frame CRUSHED to black against their 1.15% and 0.79%. Nearly a tenth of the picture carries no information. The colonnade is grey-on-grey at half distance."
+      },
+      {
+       "severity": "major",
+       "dimension": "craft",
+       "descriptor": "C1",
+       "where": "docs/engine-4k-rotunda-half.png",
+       "text": "The two blue signage panels are the most eye-catching objects in the shot and are blank -- a lit rectangle standing in for a named object. C1 verbatim."
+      },
+      {
+       "severity": "minor",
+       "dimension": "craft",
+       "descriptor": "-",
+       "where": "station/observation.py",
+       "text": "489 non-manifold edges (dome 1: 360, dome 2: 209). Closed and correctly wound, so no gate fails -- but session 3x rebuilt `portal_frame` for exactly this and got 8,832 FEWER triangles, because coincident faces are geometry nobody can see."
+      }
+     ]
+    }
+   ]
+  },
+  "observation_domes": {
+   "status": "active",
+   "rounds": [
+    {
+     "round": 1,
+     "reviewer": "main agent, session 4k -- independent of the builder",
+     "date": "2026-08-04",
+     "scores": {
+      "craft": 2,
+      "fidelity": 3,
+      "performance": 4,
+      "robustness": 4
+     },
+     "evidence": {
+      "frame_half": "docs/engine-4k-dome2-half.png",
+      "measured": "median 0.138, p5 0.0509, p95 0.6629, clipped 0.00%, crushed 0.79%",
+      "objects_per_m2": 4.34,
+      "density_machinery": "x1.60 PASS",
+      "gate": "station/observation.py 17/17"
+     },
+     "findings": [
+      {
+       "severity": "major",
+       "dimension": "craft",
+       "descriptor": "C2",
+       "where": "docs/engine-4k-dome2-half.png",
+       "text": "Roughly 80% of the frame is flat panelled wall. I first read this as 'an observation dome with no view of space', which was WRONG -- `station/observation.py` builds glazing, mullions and window bays (51 references incl. 'dome glazing seen FROM INSIDE'). The module builds the windows; this frame is aimed away from them. A frame offered as craft evidence that omits the reason the place exists cannot be accepted as evidence, per AAA-STANDARD's own distance rule."
+      },
+      {
+       "severity": "major",
+       "dimension": "craft",
+       "descriptor": "-",
+       "where": "godot/scenes/interior.tscn",
+       "text": "And when a window IS in frame it renders BLACK: `--shot interior` has no exterior, and interior.tscn's background is flat near-black by deliberate choice (pure black once let two structural holes survive four sessions of renders). So an observation room cannot currently be judged on its subject at all. Fixing it trades a closure gate for a view and needs the tradeoff stated, not made silently."
+      },
+      {
+       "severity": "minor",
+       "dimension": "craft",
+       "descriptor": "C2",
+       "where": "docs/engine-4k-dome2-half.png",
+       "text": "The ledges read as saturated orange blocks and each material carries one flat value."
+      }
+     ]
     }
    ]
   }
