@@ -201,6 +201,40 @@ def room_target(meta, place, verts=None, tris=None, groups=None, **kw):
 WAYPOINT_TOL_M = 0.5
 
 
+def _arc_inside(meta, radius, a0, a1, z):
+    """Points along the ring from a0 to a1 THAT STAY ON THE BUILT CORRIDOR.
+
+    `route_walk._arc_points` takes the short way round unconditionally, and
+    `route_walk`'s own section 2.1 is the warning: *"a ring corridor runs one
+    way round, and the short way is often not it."* A corridor covers an ARC,
+    not the whole ring, so the short way between two of its angles can leave the
+    floor entirely. Measured before this existed: a body following a path to
+    `vorlon_berth` cleared 13 of 24 waypoints and then fell -- **1,089 of 1,800
+    frames in the air**, 1,677 m of "journey".
+
+    The arc the shell actually swept is recorded by `collision.corridor_shell`
+    in its own meta, so it is READ rather than recomputed -- the same rule
+    `agenda.corridor_span` states: a route laid against a recomputed arc can
+    describe a different corridor from the one that was written. With no arc
+    recorded, this falls back to the short way, which is what every caller had
+    before.
+    """
+    import route_walk as RW                                      # noqa: PLC0415
+    lo = meta.get("start_deg")
+    span = meta.get("arc_deg")
+    if lo is None or span is None:
+        return RW._arc_points(radius, a0, a1, z)
+    lo, span = float(lo), float(span)
+    u0 = (a0 - lo) % 360.0
+    u1 = (a1 - lo) % 360.0
+    if u0 > span + 1e-6 or u1 > span + 1e-6:
+        # One of the ends is not on this corridor at all; the short way is no
+        # worse than anything else and the caller's own gate will say so.
+        return RW._arc_points(radius, a0, a1, z)
+    n = max(1, int(math.ceil(abs(u1 - u0) / RW.RING_STEP_DEG)))
+    return [RW._at(radius, lo + u0 + (u1 - u0) * i / n, z) for i in range(n + 1)]
+
+
 def deck_path(schema, profile, meta, place, verts, tris, spawn):
     """Every waypoint from a body standing in the corridor to inside a room.
 
@@ -229,7 +263,7 @@ def deck_path(schema, profile, meta, place, verts, tris, spawn):
     # docs/room-reach-4k.md section 2.
     toward = 1.0 if cz > place["z_m"] else -1.0
     z_inner = place["z_m"] + toward * zh
-    pts = list(RW._arc_points(fr, start_deg, door["door_deg"], cz))
+    pts = list(_arc_inside(meta, fr, start_deg, door["door_deg"], cz))
     pts.append(RW._at(fr, door["door_deg"], z_inner - toward * 0.5))
     pts += [list(q) for q in room_approach(meta, place, verts, tris,
                                            meta.get("groups"),
