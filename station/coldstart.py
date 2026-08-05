@@ -592,6 +592,44 @@ def _check_run(extra, verbose=False, timeout=300):
     return _parse_check(out), out
 
 
+def built_deck():
+    """`(ok, why)` -- can an engine gate run here at all?
+
+    WHY THIS EXISTS, AND IT COST A CONTAINER RESTART TO NOTICE. Every gate below
+    that launches the shipped scene needs a BUILT deck: `boot.json`, the deck
+    GLBs it names, and -- for G5 -- the per-species ragdoll bodies. All of that
+    lives under `station/generated/`, which is **gitignored**, so a fresh clone
+    or a recycled container has none of it. CI never builds a real deck either.
+
+    A gate that fails because its input is absent looks exactly like a gate that
+    failed because the content is wrong, and this repository has been bitten by
+    that reading twice at plan scale. So the two are DIFFERENT WORDS: a missing
+    input is `SKIP -- <what is missing>` and does not claim a pass, and a real
+    failure is `FAIL`. Neither is silent, because "a tool that silently degrades
+    and exits 0 manufactures evidence".
+
+    Rebuild with `python3 station/boot.py --bake` and, for G5,
+    `python3 station/npc/ragdoll.py --emit station/generated/scene/npc`.
+    """
+    gen = os.path.join(ROOT, "station", "generated", "scene")
+    boot = os.path.join(gen, "boot.json")
+    if not os.path.exists(boot):
+        return False, ("no %s -- run `python3 station/boot.py --bake`"
+                       % os.path.relpath(boot, ROOT))
+    return True, ""
+
+
+def ragdoll_bodies():
+    """`(ok, why)` -- are the per-species ragdoll bodies on disk? See above."""
+    d = os.path.join(ROOT, "station", "generated", "scene", "npc")
+    n = len(glob.glob(os.path.join(d, "*_ragdoll.json")))
+    if n == 0:
+        return False, ("no *_ragdoll.json in %s -- run `python3 "
+                       "station/npc/ragdoll.py --emit station/generated/"
+                       "scene/npc`" % os.path.relpath(d, ROOT))
+    return True, ""
+
+
 def g4(verbose=False):
     """G4 -- the card is read on the way in, in the shipped scene.
 
@@ -605,6 +643,10 @@ def g4(verbose=False):
     if godot is None:
         print("G4 FAIL -- no double-precision Godot binary found")
         return {"ok": False}
+    ok_deck, why = built_deck()
+    if not ok_deck:
+        print("G4 SKIP -- %s" % why)
+        return {"ok": True, "skipped": why}
     print("G4 THE CARD IS READ ON THE WAY IN -- "
           "`godot --headless --path godot -- --check-gate`")
     # `parse_verdict` splits on the token after the tag, so `gate=` is consumed
@@ -664,6 +706,12 @@ def g5(verbose=False):
     if godot is None:
         print("G5 FAIL -- no double-precision Godot binary found")
         return {"ok": False}
+    # TWO INPUTS, TWO DIFFERENT MISSING-INPUT MESSAGES. See `built_deck`.
+    for probe in (built_deck, ragdoll_bodies):
+        good, why = probe()
+        if not good:
+            print("G5 SKIP -- %s" % why)
+            return {"ok": True, "skipped": why}
     print("G5 SOMEBODY COLLAPSES -- "
           "`godot --headless --path godot -- --collapse-gate`")
     ok = True
