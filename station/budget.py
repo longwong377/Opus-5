@@ -224,6 +224,510 @@ DECK = {
 }
 
 # ---------------------------------------------------------------------------
+# OCCLUSION. What a wall in front of you is worth, and at what granularity.
+# ---------------------------------------------------------------------------
+#
+# `Frustum`'s docstring below has said since 3x that no occlusion is applied and
+# that this is "not an approximation -- it is what ships". That was true and it
+# is now measured rather than merely conceded. `station/occluders.py` builds the
+# geometry; this section says what it buys.
+#
+# WHAT THIS PASS MODELS, STATED BEFORE ANY NUMBER, because an occlusion pass
+# that assumes perfect culling is as wrong as none at all:
+#
+#   * Godot 4 rasterises the scene's OccluderInstance3D geometry into a small
+#     depth buffer on the render thread and then tests each INSTANCE's
+#     axis-aligned bounding box against it. It does not test triangles. So the
+#     figure that describes the shipped renderer is the INSTANCE one, and it is
+#     the one gated.
+#   * `export_gltf` writes one primitive per OBJ group and `deck.build_deck`
+#     names a room's groups `<key>__<name>` while the corridor keeps the kit's
+#     own bare names. A corridor group therefore spans the WHOLE 345-degree
+#     ring and its AABB contains the camera, so no occluder can ever cull it.
+#     That is not a defect in the occluder; it is what submitting a ring as one
+#     primitive costs, and the pass prints it as its own line.
+#   * the TRIANGLE figure is reported beside it as the ceiling -- what occlusion
+#     would be worth if the renderer culled per triangle. Nothing does. It is
+#     there so the gap between the two is visible, because the gap is the
+#     argument for spatial submission.
+#   * the CELL figure is the third: the same AABB test with the deck cut into
+#     the streaming cells `interior.ring_cells` already declares and
+#     `godot/scripts/stream.gd` already bakes. It is what the shipped path would
+#     get for free once cells carry their own instances.
+#
+# Every one of the three is conservative in the same direction -- an instance or
+# a triangle survives unless it is provably behind the occluder -- so all three
+# understate the saving rather than flatter it.
+OCCLUSION = {
+    # THE DEPTH BUFFER'S RESOLUTION IS DERIVED FROM THE NARROWEST HOLE THE
+    # OCCLUDER HAS, and the derivation runs the dangerous way round. A coarse
+    # buffer loses a doorway between two pixel centres, the wall's depth fills
+    # the pixel, and the room behind it is culled -- over-occlusion, which is a
+    # hole in the world rather than a slow frame. So:
+    #
+    #   door_width_m       1.5      interior_kit.PROVISIONAL, read at run time
+    #   sight_m           60.5      the corridor's own measured sight line,
+    #                               deck.build_deck's `corridor_people`
+    #   subtense          1.42 deg  = 2*atan(0.75/60.5)
+    #   fov_h            102.4 deg  DECK's own camera
+    #   pixels per door  >= 2       Nyquist on the aperture
+    #
+    # -> W >= 2 * 102.4 / 1.42 = 144. 160 x 90 is the next 16:9 step up.
+    # `deck_section` recomputes that bound from the deck it is measuring and
+    # FAILS if the buffer is under it, so the number cannot quietly stop being
+    # derived.
+    "buffer_w": 160,
+    "buffer_h": 90,
+    "min_door_px": 2.0,
+    # A triangle wider than this on screen is never culled. The per-triangle
+    # test reads the occluder depth at each of the three vertices' own pixels,
+    # max-pooled over a 3x3 neighbourhood, which covers a triangle whose screen
+    # extent stays inside that neighbourhood and would silently over-cull one
+    # that does not. Big triangles are the corridor's own floor and walls, which
+    # are INSIDE the occluder and never cullable anyway.
+    "max_tri_px": 3.0,
+    # Only cull what is clearly behind. Not chosen: the occluder's cylindrical
+    # bands are faceted to `collision.MAX_SAG_M`, so a facet can sit that far
+    # inside the surface it stands for.
+    "bias_m": 0.005,
+    # The occluded sweep runs on every other station and heading -- the same
+    # half-resolution lattice `deck_section` already re-uses for its own
+    # sampling-error figure, whose error on this deck it prints.
+    "sweep_stride": 2,
+}
+
+
+def occluder_path(sector, ring, deck, z_m=None, root=ROOT):
+    """Where `tools/export_scene.py` writes the occluder for one deck.
+
+    ONE NAME, TWO FILES THAT MUST AGREE, so it lives in a function rather than
+    in two format strings. Keyed by z-cluster exactly as the deck artefacts
+    beside it are, because a deck in the gazetteer is not a z-slice and the
+    corridor arc differs between clusters.
+    """
+    stem = f"{sector}_{ring}_{deck}"
+    if z_m is not None:
+        stem += f"_z{int(round(z_m))}"
+    return os.path.join(root, "station/generated/scene/deck", stem + "_occ.tscn")
+
+
+def occlusion_chain(sector, ring, deck, z_m=None, root=ROOT):
+    """The three things that must ALL be true before an occlusion saving is real.
+
+    A GATE THAT APPLIES A DISCOUNT THE BUILD DOES NOT GET IS WORSE THAN NO
+    GATE, so this is a ladder and each rung says what is missing in the units of
+    the fix:
+
+      1. `rendering/occlusion_culling/use_occlusion_culling` on in
+         `godot/project.godot`. Godot 4's engine default is FALSE -- measured
+         headless against this build with the key absent -- so without the line
+         every occluder in the scene is ignored. **If this rung is missing the
+         pass is not computed at all**, because a number that cannot be reached
+         is not a measurement.
+      2. the occluder geometry emitted beside the deck it belongs to.
+      3. something in `godot/` that instantiates it. Emitting a resource nobody
+         loads is exactly the failure `tools/wiring.py` exists to catch, and
+         this file must not be the ninth instance of it.
+
+    Rungs 2 and 3 do not stop the pass. They stop the SAVING being applied to
+    the gated bounds, and each is a `check()` of its own so the build says which
+    one is missing.
+    """
+    out = {"setting": False, "geometry": None, "runtime": (), "why": []}
+    pg = os.path.join(root, "godot/project.godot")
+    txt = ""
+    if os.path.exists(pg):
+        with open(pg) as f:
+            txt = f.read()
+    m = re.search(r"^occlusion_culling/use_occlusion_culling\s*=\s*(\w+)",
+                  txt, re.M)
+    out["setting"] = bool(m and m.group(1).lower() == "true")
+    if not out["setting"]:
+        out["why"].append(
+            "godot/project.godot does not set "
+            "rendering/occlusion_culling/use_occlusion_culling=true, and the "
+            "engine default is false, so Godot ignores every "
+            "OccluderInstance3D in the scene")
+
+    p = occluder_path(sector, ring, deck, z_m, root)
+    if os.path.exists(p):
+        out["geometry"] = p
+    else:
+        out["why"].append(
+            f"{os.path.relpath(p, root)} has not been written -- "
+            f"`python3 tools/export_scene.py --shot deck --deck "
+            f"{sector}/{ring}/{deck}` writes it")
+
+    hits = []
+    for base, _dirs, names in os.walk(os.path.join(root, "godot")):
+        for n in names:
+            if not n.endswith((".gd", ".tscn")):
+                continue
+            fp = os.path.join(base, n)
+            try:
+                with open(fp) as f:
+                    s = f.read()
+            except OSError:
+                continue
+            if "OccluderInstance3D" in s or "ArrayOccluder3D" in s \
+                    or "_occ.tscn" in s:
+                hits.append(os.path.relpath(fp, root))
+    out["runtime"] = tuple(sorted(hits))
+    if not hits:
+        out["why"].append(
+            "nothing under godot/ mentions OccluderInstance3D, ArrayOccluder3D "
+            "or *_occ.tscn, so the emitted occluder is never added to the "
+            "scene tree and the engine has nothing to rasterise")
+    out["applied"] = bool(out["setting"] and out["geometry"] and out["runtime"])
+    return out
+
+
+def _cam_axes(eye, fwd, up):
+    """Forward, up and right, orthonormal, in `_frustum`'s own convention."""
+    import numpy as np                                          # noqa: PLC0415
+    f = np.asarray(fwd, float)
+    f = f / np.linalg.norm(f)
+    u = np.asarray(up, float)
+    u = u - f * float(u @ f)
+    u = u / np.linalg.norm(u)
+    return np.asarray(eye, float), f, u, np.cross(u, f)
+
+
+def _screen(P, eye, f, u, r, tv, th, w, h):
+    """Pixel coordinates and forward depth for many world points."""
+    import numpy as np                                          # noqa: PLC0415
+    d = np.asarray(P, float) - eye
+    z = d @ f
+    zz = np.where(np.abs(z) < 1e-9, 1e-9, z)
+    px = ((d @ r) / (zz * th) + 1.0) * 0.5 * w
+    py = (1.0 - (d @ u) / (zz * tv)) * 0.5 * h
+    return px, py, z
+
+
+def occluder_depth(occ_v, occ_t, cam, w, h, near):
+    """Nearest occluder depth per pixel, or inf. The engine's buffer, in numpy.
+
+    CONSERVATIVE IN BOTH OF THE TWO WAYS IT CAN BE, and neither is an accident:
+
+      coverage  a pixel is filled only when its CENTRE is inside the triangle,
+                so the buffer never claims coverage the occluder does not have.
+                Over-claiming coverage culls things that are visible.
+      depth     the whole covered area takes the triangle's FARTHEST vertex
+                depth rather than an interpolated one, so the occluder is
+                recorded as further away than it is and culls less.
+
+    A triangle with any vertex at or behind the near plane is skipped entirely
+    and counted, because clipping it correctly is work that would only ever
+    increase the saving.
+    """
+    import numpy as np                                          # noqa: PLC0415
+    eye, f, u, r, tv, th = cam
+    V = np.asarray(occ_v, float)
+    px, py, z = _screen(V, eye, f, u, r, tv, th, w, h)
+    Z = np.full((h, w), np.inf)
+    xs = np.arange(w) + 0.5
+    ys = np.arange(h) + 0.5
+    skipped = 0
+    for i0, i1, i2 in occ_t:
+        z0, z1, z2 = z[i0], z[i1], z[i2]
+        if min(z0, z1, z2) <= near:
+            skipped += 1
+            continue
+        ax, ay, bx, by, cx, cy = px[i0], py[i0], px[i1], py[i1], px[i2], py[i2]
+        x0 = max(0, int(math.floor(min(ax, bx, cx))))
+        x1 = min(w - 1, int(math.ceil(max(ax, bx, cx))))
+        y0 = max(0, int(math.floor(min(ay, by, cy))))
+        y1 = min(h - 1, int(math.ceil(max(ay, by, cy))))
+        if x1 < x0 or y1 < y0:
+            continue
+        X = xs[x0:x1 + 1][None, :]
+        Y = ys[y0:y1 + 1][:, None]
+        e0 = (bx - ax) * (Y - ay) - (by - ay) * (X - ax)
+        e1 = (cx - bx) * (Y - by) - (cy - by) * (X - bx)
+        e2 = (ax - cx) * (Y - cy) - (ay - cy) * (X - cx)
+        inside = (((e0 >= 0) & (e1 >= 0) & (e2 >= 0))
+                  | ((e0 <= 0) & (e1 <= 0) & (e2 <= 0)))
+        if not inside.any():
+            continue
+        sub = Z[y0:y1 + 1, x0:x1 + 1]
+        np.minimum(sub, max(z0, z1, z2), out=sub, where=inside)
+    return Z, skipped
+
+
+def _pool3(Z):
+    """3x3 maximum of a depth buffer, padded with inf so a border never culls."""
+    import numpy as np                                          # noqa: PLC0415
+    h, w = Z.shape
+    P = np.full((h + 2, w + 2), np.inf)
+    P[1:-1, 1:-1] = Z
+    return np.maximum.reduce([P[dy:dy + h, dx:dx + w]
+                              for dy in range(3) for dx in range(3)])
+
+
+def group_boxes(V, T, key, n):
+    """World AABB per instance, as `(lo, hi)` arrays of shape (n, 3).
+
+    `key` is the instance every triangle belongs to. What an instance IS is not
+    this function's choice: `export_gltf` writes one primitive per OBJ group and
+    merges by name, so a group name is a draw and therefore a cull unit.
+    """
+    import numpy as np                                          # noqa: PLC0415
+    P = V[T]
+    tmin, tmax = P.min(axis=1), P.max(axis=1)
+    order = np.argsort(key, kind="stable")
+    ks = key[order]
+    tmin, tmax = tmin[order], tmax[order]
+    edge = np.searchsorted(ks, np.arange(n + 1))
+    lo = np.full((n, 3), np.inf)
+    hi = np.full((n, 3), -np.inf)
+    for b in range(n):
+        a, z = edge[b], (edge[b + 1] if b + 1 < len(edge) else len(ks))
+        if z > a:
+            lo[b] = tmin[a:z].min(axis=0)
+            hi[b] = tmax[a:z].max(axis=0)
+    return lo, hi
+
+
+def _corners(lo, hi):
+    import numpy as np                                          # noqa: PLC0415
+    n = len(lo)
+    out = np.empty((n, 8, 3))
+    for i in range(8):
+        for ax in range(3):
+            out[:, i, ax] = hi[:, ax] if (i >> ax) & 1 else lo[:, ax]
+    return out
+
+
+def boxes_in_frustum(corners, planes):
+    """An AABB survives a plane if ANY corner is inside it. Standard, and loose
+    in the safe direction -- it keeps boxes a tighter test would reject."""
+    import numpy as np                                          # noqa: PLC0415
+    keep = np.ones(len(corners), bool)
+    for n, d in planes:
+        keep &= ((corners @ n + d) >= 0.0).any(axis=1)
+    return keep
+
+
+def boxes_occluded(corners, Z, cam, w, h, near, bias):
+    """Which AABBs are entirely behind the occluder buffer. Godot's own test.
+
+    An instance is culled when its NEAREST point is further than the FURTHEST
+    occluder depth anywhere in its screen rect. A pixel the occluder does not
+    cover holds inf, so one uncovered pixel in the rect keeps the instance --
+    which is the correct and conservative answer.
+    """
+    import numpy as np                                          # noqa: PLC0415
+    eye, f, u, r, tv, th = cam
+    n = len(corners)
+    px, py, z = _screen(corners.reshape(-1, 3), eye, f, u, r, tv, th, w, h)
+    px, py, z = px.reshape(n, 8), py.reshape(n, 8), z.reshape(n, 8)
+    ok = z.min(axis=1) > near
+    zmin = z.min(axis=1)
+    x0 = np.clip(np.floor(px.min(axis=1)), 0, w - 1).astype(int)
+    x1 = np.clip(np.ceil(px.max(axis=1)), 0, w - 1).astype(int)
+    y0 = np.clip(np.floor(py.min(axis=1)), 0, h - 1).astype(int)
+    y1 = np.clip(np.ceil(py.max(axis=1)), 0, h - 1).astype(int)
+    out = np.zeros(n, bool)
+    for i in np.nonzero(ok)[0]:
+        if Z[y0[i]:y1[i] + 1, x0[i]:x1[i] + 1].max() + bias < zmin[i]:
+            out[i] = True
+    return out
+
+
+def tris_occluded(px, py, z, T, Zp, w, h, near, bias, max_px):
+    """Which triangles are behind the occluder. THE CEILING, NOT THE BEHAVIOUR.
+
+    No renderer this project ships to culls per triangle. This exists so the
+    distance between it and `boxes_occluded` is on the page, because that
+    distance is the whole argument for submitting a deck in spatial pieces.
+    """
+    import numpy as np                                          # noqa: PLC0415
+    zt, pxt, pyt = z[T], px[T], py[T]
+    ok = (zt > near).all(axis=1)
+    ok &= (pxt.max(axis=1) - pxt.min(axis=1)) <= max_px
+    ok &= (pyt.max(axis=1) - pyt.min(axis=1)) <= max_px
+    ok &= ((pxt >= 0) & (pxt < w) & (pyt >= 0) & (pyt < h)).all(axis=1)
+    ix = np.clip(pxt, 0, w - 1).astype(int)
+    iy = np.clip(pyt, 0, h - 1).astype(int)
+    ok &= (zt > Zp[iy, ix] + bias).all(axis=1)
+    return ok
+
+
+def deck_occlusion(schema, profile, sector, ring, deck, stats, meta, fr, KL,
+                   cam_at, worst_all, worst_struct):
+    """What the corridor's own walls are worth, on the deck already measured.
+
+    Returns a dict, or raises. Everything it prints is measured here; nothing is
+    read from an artefact this function could not rebuild.
+    """
+    import numpy as np                                          # noqa: PLC0415
+    sys.path.insert(0, os.path.join(ROOT, "station"))
+    import occluders as OC                                      # noqa: PLC0415
+    import interior as it                                       # noqa: PLC0415
+    import interior_kit as ik                                   # noqa: PLC0415
+
+    w, h = OCCLUSION["buffer_w"], OCCLUSION["buffer_h"]
+    near, far = DECK["near_m"], DECK["far_m"]
+    fov, asp = DECK["fov_v_deg"], DECK["aspect"]
+    tv = math.tan(math.radians(fov) / 2.0)
+    th = tv * asp
+    fov_h = 2 * math.degrees(math.atan(th))
+    bias = OCCLUSION["bias_m"]
+
+    t0 = time.time()
+    # THE DOORS COME FROM `stats`, NOT FROM `collision_meta`, and the difference
+    # is a sealed occluder. `deck.build_deck` builds its `collision_meta` shell
+    # with no `doors=` at all -- it exists only to locate the spawn -- so
+    # `meta["doors"]` is empty on every deck. An occluder cut from that would be
+    # a tube with no doorways in it, which `occluders.py`'s own control shows
+    # hiding 34 rays' worth of room.
+    doors = stats.get("doors", ()) or meta.get("doors", ())
+    ov, ot, om = OC.occluder_shell(
+        schema, profile, sector, ring, degrees=meta["arc_deg"],
+        start_deg=meta["start_deg"], radius_m=meta["radius_m"],
+        z_offset=meta["z_m"], doors=doors)
+    build_s = time.time() - t0
+
+    # --- the buffer has to resolve the narrowest hole, derived from THIS deck
+    sight = (stats.get("corridor_people") or {}).get("sight_m", 60.0)
+    door_w = ik.PROVISIONAL["door_width_m"]
+    subtense = 2.0 * math.degrees(math.atan(door_w / 2.0 / max(sight, 1e-6)))
+    w_needed = OCCLUSION["min_door_px"] * fov_h / subtense
+
+    # --- containment, on a slice of the deck that actually has rooms in it ----
+    # NOT ON THE WHOLE DECK, and the reason is cost rather than convenience:
+    # `containment` is O(rays x triangles) and this deck is 1.54 M triangles.
+    # The window is the corridor's OWN measured sight line either side of the
+    # worst-structure pose, so nothing a body at its centre can see is outside
+    # it, and it carries the rooms and doorways that make the test hard.
+    half_win = math.degrees(sight / max(meta["radius_m"], 1e-6))
+    centre = worst_struct[1]
+    ang = np.degrees(np.arctan2(fr.cy, fr.cx))
+    dd = (ang - centre + 180.0) % 360.0 - 180.0
+    sel = np.abs(dd) <= half_win
+    kt = fr.T[sel]
+    om["profile"] = OC.deep_profile(None)
+    win = dict(om, start_deg=centre - half_win * 0.5,
+               arc_deg=half_win, profile=om["profile"])
+    # 12 EYES AND 64 DIRECTIONS, AND THE SPLIT IS NOT ARBITRARY. `containment`
+    # is O(rays x triangles) with no acceleration structure and this window is
+    # ~150,000 triangles, so the ray budget is real money -- 1,728 rays cost
+    # 112 s. Directions are what got cut LAST: `occluders.py` records a control
+    # that reads 0 breaches at 64 directions and 2 at 256, because the case it
+    # exists to catch is a sliver seen at a slant. Eye positions are the
+    # cheaper axis to thin, and 3 angles x 2 lateral x 2 heights still puts an
+    # eye against each wall, which is where the worst slant through a doorway
+    # is taken from.
+    eyes = OC._eye_lattice(win, 3, 2, 2)
+    t1 = time.time()
+    rays, breach, worst_m, escaped = OC.containment(
+        fr.V, kt, ov, ot, om, n_dirs=64, eyes=eyes)
+    contain_s = time.time() - t1
+    blocked = OC.blocked_fraction(ov, ot, om, n_dirs=256,
+                                  eyes=OC._eye_lattice(win, 2, 2, 2))
+
+    # NEGATIVE CONTROL, ON THIS DECK AND NOT ONLY IN occluders.py's SELFTEST.
+    # A containment test that reads 0 is worth nothing until the same test on
+    # the same geometry is shown reading more than 0, and the case that does it
+    # is the one this project already made once: collision geometry, which
+    # takes the NEAREST surface, used as an occluder. Deliberately few rays --
+    # a control has to fire, not to be exhaustive.
+    import collision as _C                                      # noqa: PLC0415
+    cv, ctr, cm = _C.corridor_shell(
+        schema, profile, sector, ring, degrees=meta["arc_deg"],
+        start_deg=meta["start_deg"], radius_m=meta["radius_m"],
+        z_offset=meta["z_m"], doors=doors)
+    cm["profile"] = om["profile"]
+    ctrl = OC.containment(fr.V, kt, cv, ctr, cm, n_dirs=32,
+                          eyes=OC._eye_lattice(win, 2, 2, 1))
+
+    # --- three cull units, and only one of them is what Godot does -----------
+    # AN EMPTY BUCKET IS NOT A BOX. `group_boxes` returns +/-inf for a bucket
+    # nothing landed in, and an inf corner projects to NaN, which compares
+    # false against every plane and silently culls itself. Dropping them is not
+    # cosmetic: the untagged bucket is empty on this deck and every cell bucket
+    # for a group that does not reach that cell is too.
+    n_g = len(fr.names)
+    key = np.where(fr.gid >= 0, fr.gid, n_g).astype(np.int64)
+    kls_all = np.array([klass_of(n) for n in fr.names] + ["structure"])
+    lo_g, hi_g = group_boxes(fr.V, fr.T, key, n_g + 1)
+    live_g = np.isfinite(lo_g[:, 0])
+    corn_g = _corners(lo_g[live_g], hi_g[live_g])
+    tri_of_g = np.bincount(key, minlength=n_g + 1)[live_g]
+    kls_g = kls_all[live_g]
+
+    plan = it.ring_cells(schema, profile, sector, ring, deck)
+    n_c = max(1, int(plan["cells"]))
+    cell = np.clip(((ang - meta["start_deg"]) % 360.0
+                    / (360.0 / n_c)).astype(np.int64), 0, n_c - 1)
+    ckey = key * n_c + cell
+    lo_c, hi_c = group_boxes(fr.V, fr.T, ckey, (n_g + 1) * n_c)
+    live = np.isfinite(lo_c[:, 0])
+    corn_c = _corners(lo_c[live], hi_c[live])
+    tri_of_c = np.bincount(ckey, minlength=(n_g + 1) * n_c)[live]
+    kls_c = kls_all[np.nonzero(live)[0] // n_c]
+
+    def at(a, hd, pitch=0.0):
+        eye, fwd, up = cam_at(a, hd, pitch)
+        e, f, u, r = _cam_axes(eye, fwd, up)
+        return (e, f, u, r, tv, th)
+
+    def one(a, hd, pitch=0.0, tri=False):
+        cam = at(a, hd, pitch)
+        Z, skipped = occluder_depth(ov, ot, cam, w, h, near)
+        planes = _frustum(*cam_at(a, hd, pitch), fov, asp, near, far)
+        out = {"skipped": skipped}
+        for tag, corn, ntri, kls in (("inst", corn_g, tri_of_g, kls_g),
+                                     ("cell", corn_c, tri_of_c, kls_c)):
+            vis = boxes_in_frustum(corn, planes)
+            occl = boxes_occluded(corn, Z, cam, w, h, near, bias) & vis
+            out[tag] = int(ntri[vis].sum())
+            out[tag + "_after"] = int(ntri[vis & ~occl].sum())
+            out[tag + "_s"] = int(ntri[vis & (kls == "structure")].sum())
+            out[tag + "_s_after"] = int(
+                ntri[vis & ~occl & (kls == "structure")].sum())
+        if tri:
+            eye, f, u, r, _tv, _th = cam
+            px, py, z = _screen(fr.V, eye, f, u, r, tv, th, w, h)
+            k = fr.sphere(planes)
+            hid = tris_occluded(px, py, z, fr.T, _pool3(Z), w, h, near, bias,
+                                OCCLUSION["max_tri_px"])
+            out["tri"] = int(k.sum())
+            out["tri_after"] = int((k & ~hid).sum())
+            out["tri_s"] = int((k & (KL == "structure")).sum())
+            out["tri_s_after"] = int(
+                (k & ~hid & (KL == "structure")).sum())
+        return out
+
+    t2 = time.time()
+    here = one(worst_struct[1], worst_struct[2], tri=True)
+    there = one(worst_all[1], worst_all[2], tri=True)
+
+    # --- and swept, because one convenient camera is AAA-STANDARD's P2 -------
+    lo_deg, arc = meta["start_deg"], meta["arc_deg"]
+    st, hd = DECK["stations"], DECK["headings"]
+    step = OCCLUSION["sweep_stride"]
+    sweep = None
+    for i in range(0, st, step):
+        a = lo_deg + arc * i / st
+        for j in range(0, hd, step):
+            m = one(a, 360.0 * j / hd)
+            if sweep is None or m["inst_after"] > sweep[0]["inst_after"]:
+                sweep = (m, a, 360.0 * j / hd)
+    sweep_s = time.time() - t2
+
+    return {"ov": ov, "ot": ot, "meta": om, "build_s": build_s,
+            "contain": (rays, breach, worst_m, escaped), "contain_s": contain_s,
+            "control": ctrl, "control_tris": len(ctr),
+            "blocked": blocked, "here": here, "there": there,
+            "sweep": sweep, "sweep_s": sweep_s, "poses": len(range(0, st, step))
+            * len(range(0, hd, step)),
+            "w_needed": w_needed, "subtense": subtense, "sight": sight,
+            "cells": n_c, "instances": n_g, "cell_instances": int(live.sum()),
+            "half_win": half_win, "eyes": len(eyes), "door_w": door_w}
+
+
+# ---------------------------------------------------------------------------
 # DRAW CALLS. There was no interior draw-call budget in existence before 3x --
 # `exterior_draw_calls: 64` was the only one on the station, and it gates a
 # manifest, not a frame.
@@ -661,9 +1165,154 @@ def deck_section(args):
           f"{resident['fixtures']:,}  ({fr.untagged:,} triangles carry no "
           f"group and export as `deck_untagged`)\n")
 
+    # --- occlusion, and whether the build actually gets it -------------------
+    chain = occlusion_chain(sec, ring, dk)
+    occ = None
+    print("\nOcclusion -- an occluder on the corridor's own walls\n")
+    if not chain["setting"]:
+        print("  NOT MEASURED. The first rung of the ladder is missing, and a "
+              "saving the\n  engine cannot reach is not a measurement:")
+        for why in chain["why"]:
+            print(f"    - {why}")
+    else:
+        try:
+            occ = deck_occlusion(schema, profile, sec, ring, dk, stats, meta,
+                                 fr, KL,
+                                 lambda a, hh, p=0.0: deck_camera(meta, a, hh,
+                                                                  p, eye_m),
+                                 all_best, st_best)
+        except Exception as exc:                                # noqa: BLE001
+            import traceback
+            traceback.print_exc()
+            check("occlusion measurable", 1, 0, "", f"could not measure: {exc}")
+    if occ is not None:
+        occ["chain"] = chain
+
+    if occ:
+        rays, breach, worst_m, escaped = occ["contain"]
+        hh, tt, sw = occ["here"], occ["there"], occ["sweep"]
+        print(f"  occluder  {len(occ['ot']):,} triangles for {arc:.0f} deg of "
+              f"corridor -- {len(occ['ot'])/max(len(tris),1)*100:.3f}% of the "
+              f"deck, built in {occ['build_s']:.0f} s. Apertures cut "
+              f"{occ['meta']['aperture_scale']:.3f}x wide at the occluder plane")
+        print(f"  buffer    {OCCLUSION['buffer_w']}x{OCCLUSION['buffer_h']}; a "
+              f"{occ['door_w']:.2f} m doorway at this corridor's own "
+              f"{occ['sight']:.1f} m sight line subtends {occ['subtense']:.2f} "
+              f"deg, so {OCCLUSION['min_door_px']:.0f} pixels across it needs "
+              f"w >= {occ['w_needed']:.0f}")
+        print(f"  contain   {rays:,} rays from {occ['eyes']} standing eyes over "
+              f"+/-{occ['half_win']:.1f} deg of the worst-structure pose: "
+              f"{breach} breaches, worst {worst_m*1000:.1f} mm, {escaped:,} "
+              f"escaped ({occ['contain_s']:.0f} s). Blocks "
+              f"{occ['blocked']*100:.1f}% of the sphere")
+        cn, cb, cw, _ce = occ["control"]
+        print(f"  control   the COLLISION shell ({occ['control_tris']:,} tri, "
+              f"nearest surface instead of farthest) used as this deck's "
+              f"occluder:\n            {cb:,} of {cn:,} rays hidden, worst "
+              f"{cw*1000:.0f} mm of visible surface culled -- so the 0 above is "
+              f"a measurement and not a tautology")
+        # AND THE FIRST RUNG, SHOWN FAILING, on a copy of the real file with
+        # one line taken out. `occlusion_chain` is what decides whether any of
+        # this is applied, and a precondition nobody has watched fail is a
+        # precondition that does not exist.
+        import shutil                                           # noqa: PLC0415
+        import tempfile                                         # noqa: PLC0415
+        with tempfile.TemporaryDirectory() as td:
+            shutil.copytree(os.path.join(ROOT, "godot"),
+                            os.path.join(td, "godot"),
+                            ignore=shutil.ignore_patterns(".godot"))
+            gp = os.path.join(td, "godot/project.godot")
+            with open(gp) as f:
+                src = f.read()
+            with open(gp, "w") as f:
+                f.write(re.sub(r"^occlusion_culling/use_occlusion_culling.*\n",
+                               "", src, flags=re.M))
+            off = occlusion_chain(sec, ring, dk, root=td)
+        print(f"  control   with `use_occlusion_culling` removed from a copy of "
+              f"project.godot,\n            occlusion_chain reports "
+              f"setting={off['setting']} applied={off['applied']} and the pass "
+              f"is not computed")
+        print(f"  swept     {occ['poses']} poses in {occ['sweep_s']:.0f} s; "
+              f"worst survivor at {sw[1]:.1f} deg heading {sw[2]:.0f}\n")
+        print(f"  {'cull unit':22s} {'submitted':>12s} {'after occl':>12s} "
+              f"{'saved':>8s}   what it is")
+        for tag, name, why in (
+                ("tri", "triangle", "THE CEILING -- no renderer here culls per "
+                                    "triangle"),
+                ("inst", "instance (as shipped)", "one primitive per OBJ group "
+                                                  "-- WHAT GODOT DOES"),
+                ("cell", f"instance x {occ['cells']} cells", "the streaming "
+                                                            "unit stream.gd "
+                                                            "already bakes")):
+            a0, a1 = hh.get(tag), hh.get(tag + "_after")
+            if a0 is None:
+                continue
+            print(f"  {name:22s} {a0:>12,} {a1:>12,} {1-a1/max(a0,1):>7.1%}   "
+                  f"{why}")
+        print(f"\n  structure alone, at the worst-structure pose "
+              f"({st_best[1]:.1f} deg / {st_best[2]:.0f}):")
+        for tag, name in (("tri", "triangle"), ("inst", "instance (as shipped)"),
+                          ("cell", f"instance x {occ['cells']} cells")):
+            a0, a1 = hh.get(tag + "_s"), hh.get(tag + "_s_after")
+            if a0 is None:
+                continue
+            print(f"  {name:22s} {a0:>12,} {a1:>12,} "
+                  f"{a1/INTERIOR['visible_set_tris']:>7.2f}x   of the 60,000 "
+                  f"allowance")
+        print("\n  THE INSTANCE ROW IS THE ONE THAT SHIPS AND IT SAVES ALMOST "
+              "NOTHING, because a\n  corridor group spans the whole "
+              f"{arc:.0f} deg ring and its AABB contains the camera.\n  The "
+              "occluder is not the problem; submitting a ring as one primitive "
+              "is.")
+        print(f"  And that costs before any occluder does: frustum culling at "
+              f"instance granularity\n  submits {hh['inst']:,} triangles where "
+              f"the per-triangle count is {hh['tri']:,} -- "
+              f"{hh['inst']/max(hh['tri'],1):.2f}x. Cut the same deck into the "
+              f"{occ['cells']} cells\n  `interior.ring_cells` already declares "
+              f"and it is {hh['cell']:,} ({1-hh['cell']/max(hh['inst'],1):.0%} "
+              f"less) BEFORE occlusion.\n  Spatial submission is worth more "
+              f"here than occlusion is, and it is the same fix.")
+        check("occlusion buffer resolves a doorway",
+              OCCLUSION["min_door_px"], OCCLUSION["buffer_w"]
+              * occ["subtense"] / (2 * math.degrees(math.atan(
+                  math.tan(math.radians(fov) / 2) * asp))), " px",
+              f"{OCCLUSION['buffer_w']}x{OCCLUSION['buffer_h']} gives "
+              f"{OCCLUSION['buffer_w']*occ['subtense']/(2*math.degrees(math.atan(math.tan(math.radians(fov)/2)*asp))):.2f}"
+              f" px across a {occ['door_w']:.2f} m door at {occ['sight']:.1f} m",
+              when=f"a sight line past "
+                   f"{occ['sight']*OCCLUSION['buffer_w']/occ['w_needed']:.0f} m, "
+                   f"or a narrower aperture -- a doorway lost between two pixel "
+                   f"centres culls the room behind it, which is a hole in the "
+                   f"world rather than a slow frame")
+        check("occluder hides nothing visible", breach, 0, " rays",
+              f"{rays:,} rays from {occ['eyes']} standing eyes, {escaped:,} "
+              f"escaped the modelled slice; worst {worst_m*1000:.1f} mm",
+              when="any ray at all -- occluders.py's own controls put the "
+                   "collision shell at 1,974 breaches and the ray-measured "
+                   "profile this module shipped with at 209")
+    if chain["setting"] and not chain["applied"]:
+        print("\n  the saving is NOT applied to the bounds below:")
+        for why in chain["why"]:
+            print(f"    - {why}")
+
+    check("occluder reaches the engine", 0 if chain["applied"] else 1, 0, "",
+          ("loaded by " + ", ".join(chain["runtime"])) if chain["applied"]
+          else "; ".join(chain["why"])[:180],
+          when=("anything that removes the project setting, the emitted "
+                "geometry or the script that loads it"
+                if chain["applied"] else
+                "each rung of occlusion_chain() is a separate fix; the pass "
+                "above says what the missing ones are worth"))
+
+    if occ and chain["applied"]:
+        n_struct = occ["here"]["inst_s_after"]
+        n_all = occ["sweep"][0]["inst_after"]
+
     over = n_struct - INTERIOR["visible_set_tris"]
     check("frustum structure", n_struct, INTERIOR["visible_set_tris"], " tri",
-          "was 30,941 from the kit in isolation",
+          "was 30,941 from the kit in isolation"
+          + (", occlusion applied" if occ and chain["applied"]
+             else ", NO occlusion (see the ladder above)"),
           when=(f"{over:,} tri, {n_struct/INTERIOR['visible_set_tris']:.2f}x. "
                 f"The synthetic estimate this replaces read 51.6% of the same "
                 f"allowance" if over > 0 else
@@ -719,7 +1368,8 @@ def deck_section(args):
     # 60 fps.
     worst_pitch = (0, n_all)
     print("\n  what looking up costs, from the worst standing position "
-          "(godot/ contains no occluders):")
+          "(no occlusion applied -- see\n  the ladder above for which rung is "
+          "missing):")
     for p in (-30, -15, 0, 15, 30, 45, 60, 90):
         n = int(fr.exact(planes_at(all_best[1], all_best[2], p)).sum())
         if n > worst_pitch[1]:
@@ -730,8 +1380,16 @@ def deck_section(args):
     print(f"     worst {worst_pitch[0]:+d} deg at {worst_pitch[1]:,} tri -- "
           f"{worst_pitch[1]/max(n_all,1):.2f}x the gated pose, "
           f"{worst_pitch[1]/DECK['visible_all_tris']*100:.0f}% of the "
-          f"allowance. What closes this is an occluder on the corridor's own "
-          f"walls, not fewer props.")
+          f"allowance.")
+    # THIS LINE USED TO SAY "what closes this is an occluder on the corridor's
+    # own walls, not fewer props", and it was a hypothesis with nothing behind
+    # it. The section below measures it. The short answer is that an occluder
+    # closes it at TRIANGLE granularity and not at the granularity Godot
+    # actually culls, so the sentence was half right and named the wrong half.
+    print("     what an occluder is actually worth is measured ABOVE, at three "
+          "cull granularities.\n     The short answer: it closes this at "
+          "triangle granularity and not at the granularity\n     Godot culls "
+          "at, so the old sentence was half right and named the wrong half.")
     n_ship = int(fr.exact(planes_at(all_best[1], all_best[2], 0.0,
                                     cam["fov_deg"])).sum())
     check("shipped camera not wider", cam["fov_deg"], DECK["fov_v_deg"], " deg",
@@ -810,6 +1468,7 @@ def deck_section(args):
               f"now prints all three numbers.")
 
     return {
+        "occ": occ,
         "frustum_all": n_all, "frustum_structure": n_struct,
         "draws_frustum": draws_frustum, "draws_resident": draws_resident,
         "resident": len(tris), "collision_deck": len(ct),
@@ -1201,6 +1860,21 @@ def prove(m):
         ("corridor shell tessellation", 5.0, COLLISION["tessellation_ratio"],
          "MAX_SAG_M dropped to 0.04 mm, a 5x finer shell"),
     ]
+    occ = m.get("occ")
+    if occ:
+        # THE OCCLUSION BOUND, FED THE ONLY REGRESSION THAT MATTERS FOR IT:
+        # the geometry emitted and the setting on, but nothing in the engine
+        # loading it. That is the state this file is in as it is written, so
+        # this row is RED for real rather than by construction -- and it is the
+        # row that flips the gated numbers from unoccluded to occluded the
+        # moment a script instantiates the resource.
+        cn, cb, _cw, _ce = occ["control"]
+        cases.append(("occluder hides nothing visible", cb, 0,
+                      f"the COLLISION shell used as the occluder, {cn:,} rays "
+                      f"-- nearest surface instead of farthest"))
+        cases.append(("occluder reaches the engine",
+                      0 if occ["chain"]["applied"] else 1, 0,
+                      "; ".join(occ["chain"]["why"])[:120] or "all three rungs"))
     bad = 0
     for name, value, limit, why in cases:
         red = value > limit

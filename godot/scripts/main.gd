@@ -242,6 +242,15 @@ func _configure_walk(w: Node) -> void:
 	w.set("glb_path", String(_boot.get("glb", "")))
 	w.set("collision_path", String(_boot.get("collision", "")))
 	w.set("interact_path", String(_boot.get("interact", "")))
+	# THE OCCLUDER'S THIRD RUNG, and it is the line that makes the other two
+	# real. `budget.occlusion_chain` reported `applied=True` the moment
+	# `walk.gd` merely NAMED `occluder_path` -- a static scan finding a
+	# reference, one level above whether anything ever sets it. It did not:
+	# `boot.json` had no `occluder` key and this function did not pass one, so
+	# the export var would have stayed "" and the occluder would never have
+	# loaded. That is the same defect the chain exists to catch, hiding
+	# underneath the chain.
+	w.set("occluder_path", String(_boot.get("occluder", "")))
 	w.set("actors_path", String(_boot.get("actors", "")))
 	w.set("dialogue_path", String(_boot.get("dialogue", "")))
 	w.set("crowd_path", String(_boot.get("crowd", "")))

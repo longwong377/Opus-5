@@ -72,6 +72,24 @@ var _people: Node3D
 ## declared interactable, derived from `directory.PLACES["interacts"]`. The verb
 ## table lives in Python and is NOT repeated here.
 @export var interact_path: String = ""
+
+## The deck's occlusion geometry, written beside the deck `.glb` by
+## `tools/export_scene.py::write_deck_occluder` as an `ArrayOccluder3D` in a
+## `.tscn`. THESE SIX LINES ARE THE THIRD RUNG OF THREE, and without them the
+## other two are inert: `station/occluders.py` builds a provably-contained
+## occluder (9/9, 0 breaches of 2,880 rays) and `project.godot` turns
+## `use_occlusion_culling` on, but Godot only consults occluders that are
+## actually in the tree. `station/budget.py::occlusion_chain` reports rung 3
+## as the failing one until this loads something.
+##
+## READ INV-371 BEFORE EXPECTING A SAVING. Godot culls per INSTANCE AABB, not
+## per triangle, and `export_gltf` writes one primitive per OBJ group whose
+## corridor groups span the whole 345 deg ring -- so their bounding box
+## contains the camera and no occluder can reject them. Measured: 7.8% of the
+## frame overall and 0.2% of structure. The larger win is next door and is
+## the same fix: cutting the deck into the 18 cells `stream.gd` already bakes
+## takes frustum submission down 39% BEFORE any occluder.
+@export var occluder_path: String = ""
 var _interact: Node3D
 ## The group the headless test is to walk up to and use, and whether it has.
 var _use_group := ""
@@ -235,6 +253,33 @@ func _vec(s: String) -> Vector3:
 var _visual: Node = null
 
 
+## The deck's occlusion geometry, from an absolute path outside `res://` — the
+## same route the deck `.glb` already takes.
+##
+## CALLED FROM BOTH LEVEL PATHS, AND THE FIRST CUT WAS NOT. It went into
+## `_load_level` alone, which the SHIPPED build never runs: the shipped scene is
+## STREAMED, and `_load_level` is the monolithic path. The scene booted, the
+## occluder never loaded, and nothing said so — which is instance NINE of this
+## project's signature defect, created while closing instance eight, in the one
+## file whose own header records the same trap for `stream.gd` and
+## `dialogue.gd`. It was caught by launching the scene and grepping for the line
+## this function prints, which is the only check that could have caught it:
+## `budget.occlusion_chain` reported `applied=True` throughout, because it looks
+## for a REFERENCE in the source and cannot see which branch runs.
+##
+## A missing file is not an error. The deck renders identically without it, only
+## slower, so this must never be the reason a player cannot walk.
+func _load_occluder() -> void:
+	if occluder_path == "" or not FileAccess.file_exists(occluder_path):
+		return
+	var occ := ResourceLoader.load(occluder_path)
+	if occ is PackedScene:
+		add_child((occ as PackedScene).instantiate())
+		print("walk: occluder loaded from %s" % occluder_path)
+	else:
+		push_warning("walk: %s is not a PackedScene" % occluder_path)
+
+
 func _load_level() -> bool:
 	var scene := _load_glb(glb_path)
 	if scene == null:
@@ -242,6 +287,8 @@ func _load_level() -> bool:
 	add_child(scene)
 	_visual = scene
 	_dress_level(scene)
+
+	_load_occluder()
 
 	# WHICH MESH IS THE FLOOR. With a collision mesh supplied, the visible one
 	# gets no colliders at all and the proxy is invisible -- that separation is
@@ -416,6 +463,7 @@ func _load_streamed(args: Dictionary) -> bool:
 	if not args.has("spawn") and _stream.cell_at(spawn) != _start_cell:
 		spawn = Vector3(c["spawn"][0], c["spawn"][1], c["spawn"][2])
 	_prime_ms = _stream.prime(_start_cell)
+	_load_occluder()
 	print("walk: STREAMED level -- start cell %d, primed in %d ms, spawn "
 		% [_start_cell, _prime_ms]
 		+ "%.2f,%.2f,%.2f, corridor r=%.2f z=%.2f w=%.2f, lookahead %.1f m "

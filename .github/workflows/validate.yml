@@ -77,6 +77,30 @@ jobs:
         continue-on-error: true
         run: python3 station/budget.py
 
+      # THE OCCLUDER, AND THE ONE PROPERTY THAT MATTERS. `station/occluders.py`
+      # was 630 lines that nothing imported -- `tools/wiring.py --callers` found
+      # it, the eighth instance in this project of finished machinery with no
+      # caller on the shipped path -- and its own self-test shipped RED at 6/7
+      # with 209 containment breaches. It is 9/9 now, it has three importers,
+      # and it runs here because AN OVER-OCCLUDING OCCLUDER IS INVISIBLE IN A
+      # STILL FRAME: it is a hole in the world that only appears when the camera
+      # moves, which is the one class of defect this project's render path
+      # cannot see.
+      #
+      # Five controls, all shown firing: the collision shell used as an occluder
+      # (1,974 breaches), the ray-measured profile this module shipped with
+      # (209), an unwidened aperture (2, and 0 at 64 directions -- see the note
+      # in the file), a sealed occluder (34), and the blocked ray cast against
+      # the scalar one it replaced.
+      #
+      # ~60 s. The four-minute ray lattice is `--rays` and is deliberately NOT
+      # run here: it cannot change the profile, because no cast can leave the
+      # kit's own vertex box (INV-370).
+      - name: Occluders hide nothing visible
+        id: soccluders
+        continue-on-error: true
+        run: python3 station/occluders.py --selftest
+
       # SEPARATE, because it asks a different question and must stay green.
       # `RING_DECK_COLLISION_TRIS` is a cache of a 60 s whole-station sweep, and
       # a cache that can go stale silently is a second copy of a computed number.
@@ -732,6 +756,8 @@ jobs:
             echo "FAILED: scirculation"; fail=1; fi
           if [ "${{ steps.sperformance_budgets.outcome }}" != "success" ]; then
             echo "FAILED: sperformance_budgets"; fail=1; fi
+          if [ "${{ steps.soccluders.outcome }}" != "success" ]; then
+            echo "FAILED: soccluders"; fail=1; fi
           if [ "${{ steps.swhole_station_collision_total_has_not_dr.outcome }}" != "success" ]; then
             echo "FAILED: swhole_station_collision_total_has_not_dr"; fail=1; fi
           if [ "${{ steps.scanon_assertions.outcome }}" != "success" ]; then

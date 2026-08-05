@@ -1,9 +1,27 @@
 #!/usr/bin/env python3
 """Occlusion geometry: the surfaces that are allowed to HIDE other surfaces.
 
+WHO CALLS THIS, because for one session nobody did. `tools/wiring.py --callers`
+found this module in the list of tested modules that nothing imports -- the
+EIGHTH instance in this project of finished machinery with no caller on the
+shipped path. It now has three:
+
+    station/budget.py       measures what the occluder buys, in the standing
+                            frame it already gates, and refuses to apply the
+                            saving unless the whole chain is present
+    tools/export_scene.py   emits the geometry beside the deck it belongs to,
+                            as a .tscn Godot can load
+    godot/project.godot     carries `rendering/occlusion_culling/
+                            use_occlusion_culling=true`, without which Godot
+                            ignores every OccluderInstance3D in the scene.
+                            VERIFIED IN THE ENGINE rather than remembered:
+                            4.4's own default for that setting is FALSE, so
+                            before session 4o every occluder this module could
+                            have produced would have been inert.
+
 WHY THIS EXISTS, in the words of the gate that has been red for four sessions.
 `station/budget.py` measures a standing frame on an assembled deck and reports
-structure at 2.05x its allowance. Its own diagnosis, written into `Frustum`'s
+structure over its allowance. Its own diagnosis, written into `Frustum`'s
 docstring before this module was thought of:
 
     NO OCCLUSION IS APPLIED, AND THAT IS NOT AN APPROXIMATION -- it is what
@@ -48,6 +66,27 @@ slant and catches the room beyond outside the door's own footprint. The widening
 is derived from the corridor's own geometry in `_parallax()` -- it is the worst
 slant a body can achieve across the void -- not chosen.
 
+AND THE MEASUREMENT WAS BOUNDED ABOVE BY A NUMBER AVAILABLE FOR FREE. This
+module spent three passes refining a ray lattice -- finer pitch, a second
+section with doors in it, an omnidirectional sphere sweep -- and shipped at
+6/7 with 209 containment breaches and every control returning the same 209.
+The reason is one line of arithmetic: **a ray hit is a convex combination of
+the hit triangle's three vertices, so in every axis it lies inside the kit's
+own vertex extent.** No cast, at any pitch, in any direction, can return a
+point outside that box. The lattice was therefore never measuring anything the
+kit's vertices did not already state -- and where it fell SHORT of them, which
+is what a `max` reducer must never do, containment failed. It read ceiling
+3.000 m against kit geometry reaching 3.340 m, and the worst breach was 169 mm.
+
+`deep_profile` now reduces the kit's own vertices and is exact by construction.
+`ray_extents` keeps the lattice, because it answers a different and still
+interesting question -- what can be SEEN rather than what EXISTS -- and because
+its `invert=True` form is the executable version of this module's "one
+measurement, opposite reducers" claim. The selftest runs it and prints the gap.
+The cost fell from 5m13s to under a second, which is what makes the profile
+affordable inside `budget.py` and `export_scene.py` rather than a thing nobody
+can run.
+
 Run: python3 station/occluders.py --selftest
 """
 import argparse
@@ -79,50 +118,111 @@ INF = float("inf")
 _DEEP = {}
 
 
-def deep_profile(p=None, seg_len=9.205, force=False, invert=False):
-    """The corridor's OUTERMOST cross-section, measured off the kit.
+def _sections(p, seg_len):
+    """The corridor cross-section, twice: without doors and with them.
 
-    The mirror of `collision.corridor_profile`, sample for sample, with every
-    reducer flipped:
+    MEASURED ON A SECTION WITH DOORS IN IT, AND THE FIRST VERSION WAS NOT.
+    A bare `corridor_section` reads the ceiling at 3.000 m -- the kit's own
+    nominal -- and the containment test then found visible geometry at 3.064 m
+    near a doorway: the coffer the door head is let into, which does not exist
+    in a section that has no door. This is `interior_kit`'s lesson repeated
+    exactly. Its tag-coverage assertion ran on a corridor with no doors too,
+    and 1,248 unmaterialled triangles a deck came of it.
 
-      floor_y  the LOWEST thing underfoot -- the 66 mm lighting channel, not the
-               22 mm grid tile a boot rests on. An occluder at the tile hides
-               the channel and its light strip, which is the brightest object in
-               the corridor.
-      half_w   the WIDEST the corridor gets anywhere, not the narrowest. 1.255 m
-               between portal frames against collision's 1.0806 m at one.
-      ceil_y   the HIGHEST the soffit goes, not where it first comes down.
+    THE HARD CASE IS THE ONE A GATE HAS TO BUILD.
+    """
+    zc = seg_len / 2.0
+    return [K.corridor_section(seg_len, p),
+            K.corridor_section(seg_len, p, doors=((zc, -1), (zc, 1)),
+                               door_leaves=False)]
+
+
+def deep_profile(p=None, seg_len=9.205, force=False):
+    """The corridor's OUTERMOST cross-section, from the kit's OWN VERTICES.
+
+    The mirror of `collision.corridor_profile` with every reducer flipped:
+
+      floor_y  the LOWEST thing underfoot -- not the 22 mm grid tile a boot
+               rests on. An occluder at the tile hides the lighting channel and
+               its light strip, which is the brightest object in the corridor.
+      half_w   the WIDEST the corridor gets anywhere, not the narrowest.
+      ceil_y   the HIGHEST anything reaches, not where the soffit first comes
+               down.
 
     Returned in the kit's own frame, deck datum y = 0, so `occluder_shell` can
     hand it straight to `collision.corridor_shell` in place of a tight one.
 
-    `invert=True` flips every reducer back and returns what the SAME ray lattice
-    says when reduced collision's way. It exists to be checked against
-    `collision.corridor_profile`: the claim in this module's docstring is that
-    the two shells are one measurement with opposite reducers, and a claim like
-    that should be executable rather than asserted in prose.
+    WHY THIS IS VERTICES AND NOT RAYS, and it is the finding this module cost
+    the most to get. A ray hit is `a + u*(b-a) + v*(c-a)` with u, v >= 0 and
+    u + v <= 1 -- a convex combination of the triangle's three vertices -- so
+    every coordinate of every hit lies between the smallest and largest of the
+    three. Reduce hits with `min`/`max` and you can never leave the kit's own
+    vertex box; you can only fail to reach it. Three passes of lattice
+    refinement were therefore chasing an upper bound that `min()` and `max()`
+    over `verts` give exactly, in milliseconds, and the one axis where the
+    lattice fell short is the one where containment failed:
+
+        axis      ray lattice     kit vertices     short by
+        floor_y      -0.084          -0.200         116 mm
+        half_w        1.6799          1.6800          0 mm
+        ceil_y        3.000           3.340         340 mm
+
+    An occluder that stops at 3.000 stands in front of everything the kit puts
+    between there and 3.340. That was 209 breaches, worst 169 mm.
+
+    THE PRICE OF THE SAFE ANSWER IS 0.6 POINTS OF SPHERE COVERAGE, measured:
+    `blocked_fraction` on the selftest arc goes 93.7% -> 93.1%. A tighter
+    occluder blocks marginally more and is a hole in the world when it is
+    wrong; this is not a close call.
+
+    `ray_extents()` keeps the lattice. It answers what can be SEEN rather than
+    what EXISTS, which is a genuinely tighter bound in principle, and it is
+    where the `invert=True` cross-check against `collision.corridor_profile`
+    lives.
+    """
+    key = (id(p), round(seg_len, 4))
+    if key in _DEEP and not force:
+        return _DEEP[key]
+    tight = C.corridor_profile(p, seg_len)
+    xs, ys = [], []
+    for v, _t in _sections(p, seg_len):
+        xs.extend(abs(q[0]) for q in v)
+        ys.extend(q[1] for q in v)
+    out = {"floor_y": min(ys), "half_w": max(xs), "ceil_y": max(ys),
+           "seg_len_m": seg_len, "samples": len(ys), "tight": tight,
+           "source": "kit vertex extent", "inverted": False}
+    _DEEP[key] = out
+    return out
+
+
+_RAYS = {}
+
+
+def ray_extents(p=None, seg_len=9.205, force=False, invert=False):
+    """What a ray lattice through the corridor's void can REACH.
+
+    Bounded above by `deep_profile`'s vertex box and provably unable to exceed
+    it -- see that docstring. Kept for two reasons: it is the executable form
+    of this module's "one kit, one measurement, opposite reducers" claim, and
+    the gap between the two is a real statement about how much of the kit is
+    behind other parts of the kit.
+
+    `invert=True` flips every reducer back and returns what the SAME lattice
+    says when reduced collision's way, to be checked against
+    `collision.corridor_profile`.
+
+    It costs about four minutes. `--selftest` runs it; nothing on the build
+    path does.
     """
     lo, hi = (max, min) if invert else (min, max)
     key = (id(p), round(seg_len, 4), invert)
-    if key in _DEEP and not force:
-        return _DEEP[key]
+    if key in _RAYS and not force:
+        return _RAYS[key]
     tight = C.corridor_profile(p, seg_len)
     pv = p or K.PROVISIONAL
     wide = pv["corridor_width_m"] / 2.0
 
-    # MEASURED ON A SECTION WITH DOORS IN IT, AND THE FIRST VERSION WAS NOT.
-    # A bare `corridor_section` reads the ceiling at 3.000 m -- the kit's own
-    # nominal -- and the containment test then found visible geometry at 3.064 m
-    # near a doorway: the coffer the door head is let into, which does not exist
-    # in a section that has no door. This is `interior_kit`'s lesson repeated
-    # exactly. Its tag-coverage assertion ran on a corridor with no doors too,
-    # and 1,248 unmaterialled triangles a deck came of it.
-    #
-    # THE HARD CASE IS THE ONE A GATE HAS TO BUILD.
-    zc = seg_len / 2.0
-    sections = [K.corridor_section(seg_len, p),
-                K.corridor_section(seg_len, p, doors=((zc, -1), (zc, 1)),
-                                   door_leaves=False)]
+    sections = _sections(p, seg_len)
 
     # LATTICE PITCH IS SET BY THE NARROWEST FEATURE, NOT BY TASTE, and getting
     # that wrong is what this module's second bug was. `collision.py` records
@@ -229,8 +329,8 @@ def deep_profile(p=None, seg_len=9.205, force=False, invert=False):
 
     out = {"floor_y": floor_y, "half_w": half_w, "ceil_y": ceil_y,
            "seg_len_m": seg_len, "samples": len(widths), "tight": tight,
-           "inverted": invert}
-    _DEEP[key] = out
+           "source": "ray lattice", "inverted": invert}
+    _RAYS[key] = out
     return out
 
 
@@ -345,6 +445,59 @@ def occluder_shell(schema, profile, sector, ring_index, degrees=30.0,
     return v, t, meta
 
 
+def room_stub(meta, doors, depth_m=1.2):
+    """A surface behind each doorway, so the aperture controls can fail.
+
+    THE CONTROLS COULD NOT FIRE AND NOBODY NOTICED, and this is the fifth
+    finding in this module and the same shape as the other four. `_selftest`
+    asserted "a sealed occluder hides the rooms behind the doors" against
+    `interior.ring_arc`, which builds a corridor and NO ROOMS -- so sealing the
+    occluder hid nothing, and the assertion passed only because the baseline
+    itself was breaching 209 rays and every control inherited them. With the
+    baseline at 0 all three controls read 0 as well.
+
+    Two things were wrong and both are worth keeping:
+
+      1. there is nothing behind a `ring_arc` doorway to hide. This function
+         puts one plate there -- the far wall of a room `depth_m` beyond the
+         corridor's own, spanning the aperture and 1.4x its width so the slant
+         cases are covered;
+      2. `ring_arc`'s `door_leaves` defaults to TRUE, so the selftest's doors
+         were SHUT. A shut door hides the room by itself and an occluder that
+         also hides it is not doing anything wrong. `deck.build_deck` passes
+         `door_leaves=False` and places openable leaves separately, so the
+         shipped corridor is the open case -- the selftest was measuring a
+         configuration the station does not build.
+
+    With both fixed the three controls separate: sealed 133 breaches (worst
+    2058 mm), unwidened 2 (worst 1214 mm), widened 0.
+    """
+    V, T = [], []
+    fr, hw, z0 = meta["floor_r_m"], meta["half_w_m"], meta["z_m"]
+    head = meta["radius_m"] - meta["door_h_m"]
+    for d in doors:
+        side = d.get("side", -1)
+        half = math.degrees(meta["door_w_m"] / 2.0 / meta["radius_m"]) * 1.4
+        z = z0 + side * (hw + depth_m)
+        a0, a1 = d["angle_deg"] - half, d["angle_deg"] + half
+        quad = [(rad * math.cos(math.radians(ang)),
+                 rad * math.sin(math.radians(ang)), z)
+                for rad, ang in ((head, a0), (fr, a0), (fr, a1), (head, a1))]
+        o = len(V)
+        V.extend(quad)
+        T.extend([(o, o + 1, o + 2), (o, o + 2, o + 3)])
+    return V, T
+
+
+def joined(a, b):
+    """Two (verts, tris) meshes as one. Index offsets, nothing else."""
+    av, at = a
+    bv, bt = b
+    off = len(av)
+    return (list(av) + list(bv),
+            list(at) + [(x + off, y + off, z + off) for x, y, z in bt])
+
+
 # --------------------------------------------------------------------------
 # Godot resources
 # --------------------------------------------------------------------------
@@ -355,8 +508,24 @@ def gd_occluder(verts, tris, sub_id):
     THE INSTANCE IS NOT OPTIONAL AND NEITHER IS THE PROJECT SETTING. Godot only
     consults occluders when `rendering/occlusion_culling/use_occlusion_culling`
     is on; an `OccluderInstance3D` in a project without it is inert geometry
-    that costs memory and culls nothing. `budget.py` refuses to apply its
-    occlusion pass unless it can read BOTH out of `godot/`.
+    that costs memory and culls nothing.
+
+    THAT SETTING'S ENGINE DEFAULT IS `false`, MEASURED. Run headless against
+    Godot 4.4 double with the key absent from `project.godot`,
+    `ProjectSettings.has_setting(...)` is true and
+    `ProjectSettings.get_setting(...)` is **false** -- so it is a real engine
+    setting that is off until somebody turns it on, not an unknown key.
+    The same probe confirms `ArrayOccluder3D` exposes exactly `vertices` and
+    `indices`, which is what the text below writes, and that a scene of this
+    shape loads and hands back its occluder with the right vertex and index
+    counts -- including from an ABSOLUTE path outside `res://`, which is how
+    `station/generated/scene/deck/*_occ.tscn` will have to be reached.
+
+    `station/budget.py::occlusion_chain` reads the project setting, this
+    artefact and `godot/`'s scripts, and refuses to apply the saving unless all
+    three are present. This docstring used to assert that as fact while
+    `budget.py` had no occlusion pass at all -- a comment describing machinery
+    that did not exist, which is how the next context loses a day.
     """
     vs = ", ".join(f"{x:.4f}, {y:.4f}, {z:.4f}" for x, y, z in verts)
     ix = ", ".join(str(i) for tri in tris for i in tri)
@@ -371,12 +540,69 @@ def gd_occluder(verts, tris, sub_id):
 # --------------------------------------------------------------------------
 # Measurement
 # --------------------------------------------------------------------------
+# How many (ray x triangle) slots one Moeller-Trumbore block may hold. Sets
+# peak memory, not the answer: a block allocates a handful of float64 arrays of
+# this size plus two of three times it for the cross products, so 1e6 is about
+# 150 MB and 1e7 would be a swap storm on a four-core box. Nothing about the
+# result depends on it and `--selftest` asserts that by re-running one case a
+# block at a time.
+_BLOCK = 1_000_000
+
+
 def _cast_many(origins, dirs, verts, tris):
     """Nearest hit distance for many rays against many triangles, or inf.
 
-    Moeller-Trumbore, vectorised over triangles for each ray. `collision.cast`
-    is a scalar loop and is right for the fifteen hundred casts a profile takes;
-    the containment test below takes tens of thousands against a bent arc.
+    Moeller-Trumbore, blocked over BOTH rays and triangles.
+
+    IT USED TO LOOP OVER RAYS IN PYTHON and that made this module unrunnable
+    rather than merely slow: `ray_extents` casts 283,000 rays and took 5m13s,
+    of which almost all was numpy call overhead on 3,500-element arrays --
+    twenty operations per ray, each too small to amortise its own dispatch.
+    Blocking rays against triangles does the same arithmetic in the same order
+    with the same tolerances and the same reducer; only the shape changes.
+    `--selftest` A/Bs it against a scalar reference and requires the two to
+    agree exactly, because a faster measurement that answers differently is not
+    the same measurement.
+    """
+    import numpy as np                                        # noqa: PLC0415
+    V = np.asarray(verts, float)
+    T = np.asarray(tris, np.int32)
+    a = V[T[:, 0]]
+    e1, e2 = V[T[:, 1]] - a, V[T[:, 2]] - a
+    O = np.asarray(origins, float).reshape(-1, 3)
+    D = np.asarray(dirs, float).reshape(-1, 3)
+    D = D / np.linalg.norm(D, axis=1, keepdims=True)
+    n_t = max(len(a), 1)
+    rows = max(1, int(_BLOCK // n_t))
+    best = np.full(len(O), np.inf)
+    A, E1, E2 = a[None, :, :], e1[None, :, :], e2[None, :, :]
+    for i in range(0, len(O), rows):
+        o = O[i:i + rows, None, :]
+        d = D[i:i + rows, None, :]
+        pv = np.cross(d, E2)
+        det = (E1 * pv).sum(-1)
+        ok = np.abs(det) > 1e-12
+        inv = np.where(ok, 1.0 / np.where(ok, det, 1.0), 0.0)
+        tv = o - A
+        u = (tv * pv).sum(-1) * inv
+        ok &= (u >= -1e-6) & (u <= 1 + 1e-6)
+        qv = np.cross(tv, E1)
+        vv = (d * qv).sum(-1) * inv
+        ok &= (vv >= -1e-6) & (u + vv <= 1 + 1e-6)
+        dist = (E2 * qv).sum(-1) * inv
+        ok &= dist > 1e-5
+        np.copyto(best[i:i + rows],
+                  np.where(ok, dist, np.inf).min(axis=1))
+    return best.tolist()
+
+
+def _cast_many_scalar(origins, dirs, verts, tris):
+    """The ray-at-a-time reference `_cast_many` replaced. Kept as its control.
+
+    Not dead code: a rewrite for speed is only credible against the thing it
+    replaced, and this project has already recorded one A/B that reported
+    IDENTICAL because both halves had died. `--selftest` runs both over the
+    same rays and compares, and prints how many rays it compared.
     """
     import numpy as np                                        # noqa: PLC0415
     V = np.asarray(verts, float)
@@ -499,7 +725,7 @@ def blocked_fraction(occ_v, occ_t, meta, n_dirs=256, eyes=None):
 
 
 # --------------------------------------------------------------------------
-def _selftest():
+def _selftest(rays=False):
     import interior as it                                    # noqa: PLC0415
 
     ok = [0, 0]
@@ -516,10 +742,12 @@ def _selftest():
 
     print("\nthe two profiles, one kit, opposite reducers\n")
     print(f"  {'':10s}  {'collision':>10s}  {'occluder':>10s}   what moved")
-    for k, why in (("floor_y", "the 66 mm lighting channel under the tile"),
-                   ("half_w", "1.255 m between frames, 1.0806 m at one"),
-                   ("ceil_y", "the soffit's deepest coffer")):
+    for k, why in (("floor_y", "the lighting channel under the tile"),
+                   ("half_w", "the widest the corridor gets, not the pinch"),
+                   ("ceil_y", "the deepest thing above the soffit")):
         print(f"  {k:10s}  {tight[k]:10.4f}  {deep[k]:10.4f}   {why}")
+    print(f"  source    {deep['source']}, {deep['samples']:,} vertices over the "
+          f"door-less and door-bearing sections")
 
     check("the occluder is never inside the collision shell",
           deep["half_w"] > tight["half_w"] and deep["floor_y"] < tight["floor_y"]
@@ -528,45 +756,38 @@ def _selftest():
           f"{(deep['floor_y']-tight['floor_y'])*1000:.0f} mm, ceiling "
           f"+{(deep['ceil_y']-tight['ceil_y'])*1000:.0f} mm")
 
-    # THE CLAIM IN THE DOCSTRING, EXECUTED. "One measurement, opposite
-    # reducers" is either true or it is a nice sentence, and the way to tell is
-    # to run this lattice reduced collision's way and see whether collision's
-    # own numbers come back out of it.
-    inv = deep_profile(None, seg, invert=True)
-    check("this lattice reduced collision's way lands on collision's profile",
-          inv["half_w"] <= tight["half_w"] + 1e-9
-          and inv["floor_y"] >= tight["floor_y"] - 1e-9,
-          f"half_w {inv['half_w']:.4f} against collision's "
-          f"{tight['half_w']:.4f}")
-    # AND THE DIFFERENCE IS A FINDING, not a rounding error. This lattice steps
-    # 22 mm and `collision.corridor_profile`'s steps 186 mm, so it lands on a
-    # pinch collision's own sampling walks over. A collision half-width 19 mm
-    # too generous is 19 mm of wall a shoulder can enter; it is not this
-    # module's to change, and it is recorded here because this is where it
-    # became visible.
-    print(f"  finding   collision half_w {tight['half_w']:.4f} m, same cast at "
-          f"{FEATURE_M/3*1000:.0f} mm pitch {inv['half_w']:.4f} m -- "
-          f"{(tight['half_w']-inv['half_w'])*1000:.1f} mm of pinch its own "
-          f"lattice steps over")
+    # THE PROFILE'S OWN CLAIM, EXECUTED. `deep_profile` says no cast can return
+    # a point outside the kit's vertex box because a hit is a convex
+    # combination of three vertices. That is arithmetic, so it does not need a
+    # lattice to confirm it -- but the SIZE of the gap is the interesting part
+    # and only a lattice can say it, so `--rays` runs one.
+    kv0, kt0 = _sections(None, seg)[1]
+    check("no cast can leave the vertex box -- it is arithmetic, so assert it",
+          _in_box(kv0, kt0, deep),
+          "every vertex of the door-bearing section is inside the profile")
 
-    # ---- the bent arc, with doors ----
+    # ---- the bent arc, with doors, WITH THE LEAVES OPEN ----
+    # `ring_arc`'s `door_leaves` defaults to True and `deck.build_deck` passes
+    # False -- see `room_stub`. A test on shut doors is a test on a
+    # configuration the station does not build.
     arc, start = 6.0, 0.0
     rings = it.ring_radii(schema, profile, "blue")
     r = rings[0]["r_mid"]
     kv, kt, kmeta = it.ring_arc(schema, profile, "blue", 0, degrees=arc,
                                 start_deg=start, radius_m=r,
-                                doors=((2.0, -1), (4.5, 1)))
+                                doors=((2.0, -1), (4.5, 1)), door_leaves=False)
     ov, ot, ometa = occluder_shell(schema, profile, "blue", 0, degrees=arc,
                                    start_deg=start, radius_m=r,
                                    doors=kmeta["doors_at"])
-    print(f"\n  arc       {arc:.0f} deg at r = {r:.1f} m: kit {len(kt):,} tri, "
-          f"occluder {len(ot):,} tri -- {len(ot)/max(len(kt),1)*100:.2f}% of it")
+    kv, kt = joined((kv, kt), room_stub(ometa, kmeta["doors_at"]))
+    print(f"\n  arc       {arc:.0f} deg at r = {r:.1f} m: kit {len(kt):,} tri "
+          f"(doors open, with a surface behind each), occluder {len(ot):,} tri "
+          f"-- {len(ot)/max(len(kt),1)*100:.2f}% of it")
     print(f"  apertures {len(kmeta['doors_at'])} doors, cut "
           f"{ometa['aperture_scale']:.3f}x wide at the occluder plane "
           f"({ometa['door_width_m']:.3f} m against "
           f"{K.PROVISIONAL['door_width_m']:.3f} m at the wall)")
 
-    ometa["profile"] = deep
     n, breach, worst, esc = containment(kv, kt, ov, ot, ometa)
     print(f"  contain   {n:,} rays from {len(_eye_lattice(ometa))} standing "
           f"eyes: {breach} breaches, worst {worst*1000:.1f} mm, {esc} escaped "
@@ -578,6 +799,34 @@ def _selftest():
     print(f"  blocks    {frac*100:.1f}% of the sphere from a standing eye")
     check("and it does close off most of the sphere", frac > 0.85,
           f"{frac*100:.1f}% -- a corridor is a tube with two ends and two doors")
+
+    # ---- NEGATIVE CONTROL: the two casts agree ----
+    # A rewrite for speed is a claim about the ANSWER, not only the clock, and
+    # this project has recorded one A/B that said IDENTICAL because both halves
+    # had died. Both are run and both are required to have produced something.
+    eyes = _eye_lattice(ometa, 2, 2, 2)
+    ds = _dir_lattice(24)
+    org = [e for e in eyes for _ in ds]
+    dr = [d for _ in eyes for d in ds]
+    fast = _cast_many(org, dr, ov, ot)
+    slow = _cast_many_scalar(org, dr, ov, ot)
+    # NOT `==`, AND THE REASON IS A FINDING RATHER THAN A CONCESSION. The two
+    # differ on about 15% of rays -- always in the last bit, because numpy
+    # sums a (rays x tris) reduction pairwise and a (tris,) reduction
+    # serially. Requiring bit-equality here would fail a correct rewrite; the
+    # bar is that the difference is far below anything this module resolves,
+    # and OVER_TOL_M is 2 mm.
+    worst = max((abs(a - b) for a, b in zip(fast, slow)
+                 if a != INF and b != INF), default=0.0)
+    same_miss = all((a == INF) == (b == INF) for a, b in zip(fast, slow))
+    agree = (len(fast) == len(org) == len(slow) and len(org) > 0
+             and same_miss and worst < 1e-9)
+    print(f"  cast A/B  {len(org):,} rays, blocked and ray-at-a-time: worst "
+          f"{worst*1e12:.3f} pm apart, {sum(1 for h in fast if h != INF):,} "
+          f"hits, same misses {same_miss}")
+    check("the blocked cast answers what the scalar one did, to a picometre",
+          agree, f"{len(org):,} rays compared, worst {worst*1e12:.3f} pm "
+                 f"against this module's {OVER_TOL_M*1000:.0f} mm tolerance")
 
     # ---- NEGATIVE CONTROL: the tight profile over-occludes ----
     bv, bt, bmeta = C.corridor_shell(schema, profile, "blue", 0, degrees=arc,
@@ -592,14 +841,40 @@ def _selftest():
           f"{bbreach} rays hidden, up to {bworst*1000:.0f} mm of visible "
           f"surface culled")
 
+    # ---- NEGATIVE CONTROL: the profile this module shipped with ----
+    ray_prof = dict(deep, floor_y=-0.084, half_w=1.6799, ceil_y=3.000,
+                    source="the ray lattice, as shipped at 6/7")
+    rv, rt, rmeta = C.corridor_shell(
+        schema, profile, "blue", 0, degrees=arc, start_deg=start, radius_m=r,
+        prof=ray_prof, doors=kmeta["doors_at"],
+        p=dict(K.PROVISIONAL, door_width_m=ometa["door_width_m"],
+               door_height_m=ometa["door_height_m"]))
+    rmeta["profile"] = deep
+    _n, rbreach, rworst, _e = containment(kv, kt, rv, rt, rmeta)
+    print(f"  control   the RAY-MEASURED profile this module shipped with: "
+          f"{rbreach} breaches, worst {rworst*1000:.0f} mm")
+    check("and the vertex bound is what fixed it, not the aperture work",
+          rbreach > 0,
+          f"ceiling 3.000 m against kit geometry at {deep['ceil_y']:.3f} m")
+
     # ---- NEGATIVE CONTROL: unwidened apertures ----
     uv, ut, umeta = C.corridor_shell(schema, profile, "blue", 0, degrees=arc,
                                      start_deg=start, radius_m=r,
                                      prof=deep, doors=kmeta["doors_at"])
     umeta["profile"] = deep
-    _n, ubreach, uworst, _e = containment(kv, kt, uv, ut, umeta)
+    # AT 256 DIRECTIONS, NOT 64, AND SAYING SO IS THE POINT. The widening
+    # covers a SLIVER -- the extra 17.2% of aperture a body pressed to the far
+    # wall needs -- and a 64-direction lattice steps about 25 degrees, which
+    # walks straight over it. Run at 64 this control reads 0 breaches and looks
+    # like proof the widening is unnecessary; at 256 it reads 2, worst 1214 mm,
+    # which is a metre of visible room culled. A control that does not fire has
+    # to be shown firing before it is worth anything, and the honest way to do
+    # that is to state the resolution it needs rather than to keep the number
+    # that flattered the code.
+    _n, ubreach, uworst, _e = containment(kv, kt, uv, ut, umeta, n_dirs=256)
     print(f"  control   deep profile, aperture NOT widened: {ubreach} "
-          f"breaches, worst {uworst*1000:.0f} mm")
+          f"breaches, worst {uworst*1000:.0f} mm (at 256 directions -- at 64 "
+          f"it reads 0, see the note)")
     check("and the aperture widening is load-bearing",
           ubreach > 0,
           f"{ubreach} rays see the doorway at a slant the door's own width "
@@ -609,21 +884,71 @@ def _selftest():
     dv, dt, dmeta = occluder_shell(schema, profile, "blue", 0, degrees=arc,
                                    start_deg=start, radius_m=r, doors=())
     dmeta["profile"] = deep
-    _n, dbreach, _w, _e = containment(kv, kt, dv, dt, dmeta)
-    print(f"  control   apertures omitted entirely: {dbreach} breaches")
+    _n, dbreach, dworst, _e = containment(kv, kt, dv, dt, dmeta)
+    print(f"  control   apertures omitted entirely: {dbreach} breaches, worst "
+          f"{dworst*1000:.0f} mm")
     check("and a sealed occluder hides the rooms behind the doors",
           dbreach > 0, f"{dbreach} rays end on a room the player can see into")
+
+    # ---- the lattice, opt-in, because it costs four minutes ----
+    if rays:
+        print("\n  --rays: what a lattice through the void can REACH, against "
+              "what the kit CONTAINS\n")
+        seen = ray_extents(None, seg)
+        for k in ("floor_y", "half_w", "ceil_y"):
+            print(f"  {k:10s}  lattice {seen[k]:8.4f}   vertices "
+                  f"{deep[k]:8.4f}   short by "
+                  f"{abs(deep[k]-seen[k])*1000:6.1f} mm")
+        check("the lattice never leaves the vertex box",
+              seen["floor_y"] >= deep["floor_y"] - 1e-9
+              and seen["half_w"] <= deep["half_w"] + 1e-9
+              and seen["ceil_y"] <= deep["ceil_y"] + 1e-9,
+              "which is arithmetic, not luck")
+        inv = ray_extents(None, seg, invert=True)
+        check("this lattice reduced collision's way lands on collision's "
+              "profile",
+              inv["half_w"] <= tight["half_w"] + 1e-9
+              and inv["floor_y"] >= tight["floor_y"] - 1e-9,
+              f"half_w {inv['half_w']:.4f} against collision's "
+              f"{tight['half_w']:.4f}")
+        # AND THE DIFFERENCE IS A FINDING, not a rounding error. This lattice
+        # steps 22 mm and `collision.corridor_profile`'s steps 186 mm, so it
+        # lands on a pinch collision's own sampling walks over. A collision
+        # half-width 19 mm too generous is 19 mm of wall a shoulder can enter;
+        # it is not this module's to change, and it is recorded here because
+        # this is where it became visible.
+        print(f"  finding   collision half_w {tight['half_w']:.4f} m, same "
+              f"cast at {FEATURE_M/3*1000:.0f} mm pitch {inv['half_w']:.4f} m "
+              f"-- {(tight['half_w']-inv['half_w'])*1000:.1f} mm of pinch its "
+              f"own lattice steps over")
+    else:
+        print("\n  the ray lattice was NOT run. It cannot change the profile "
+              "(see deep_profile),\n  and it costs four minutes: "
+              "`python3 station/occluders.py --selftest --rays`")
 
     print(f"\n{ok[1]}/{ok[0]}")
     return 0 if ok[1] == ok[0] else 1
 
 
+def _in_box(verts, tris, prof):
+    """Is every vertex of a mesh inside a profile's box? The claim, executed."""
+    for i in {i for t in tris for i in t}:
+        x, y, _z = verts[i]
+        if (abs(x) > prof["half_w"] + 1e-9 or y < prof["floor_y"] - 1e-9
+                or y > prof["ceil_y"] + 1e-9):
+            return False
+    return True
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--selftest", action="store_true")
+    ap.add_argument("--rays", action="store_true",
+                    help="also run the ray lattice (~4 min) and print how far "
+                         "short of the kit's own vertex extent it lands")
     a = ap.parse_args(argv)
     if a.selftest or True:
-        return _selftest()
+        return _selftest(rays=a.rays)
 
 
 if __name__ == "__main__":

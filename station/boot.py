@@ -535,6 +535,11 @@ def build(stem=None, hour=None, deck_dir=None):
         "glb": os.path.join(dd, stem + ".glb"),
         "collision": os.path.join(dd, stem + "_col.glb"),
         "interact": sidecar(stem, "_interact.json", dd),
+        # The deck's occlusion geometry, written by
+        # `export_scene.write_deck_occluder`. `sidecar` returns "" when the file
+        # is absent, and walk.gd treats "" as "render without it" -- a deck that
+        # has never been exported must still be walkable.
+        "occluder": sidecar(stem, "_occ.tscn", dd),
         "actors": actors_p,
         "dialogue": sidecar(stem, "_dialogue.json", dd),
         "crowd": sidecar(stem, "_crowd.json", dd),

@@ -7521,3 +7521,124 @@ a hazard.
 **Overturned by.** Any depiction of B5 security's move-on practice, or of children aboard.
 **Authority 5.** `station/incident.py::MOVEONS_PER_OFFICER_H`, `STRAYS_PER_CHILD_YEAR`,
 `STRAY_HARM_SHARE`.
+
+## INV-370 — An occluder's cross-section is the kit's own VERTEX EXTENT, not what a ray can reach
+
+**What.** `station/occluders.py`'s deep profile — the corridor cross-section every occluder is
+swept from — is `min`/`max` over the vertices of `interior_kit.corridor_section`, taken over
+both the door-less and the door-bearing variant. On the shipped kit that is **floor_y −0.200 m,
+half_w 1.680 m, ceil_y 3.340 m**, against the collision shell's 0.022 / 1.0806 / 2.829.
+**Why it is not a ray cast, and this is arithmetic rather than a preference.** A ray hit is
+`a + u·(b−a) + v·(c−a)` with `u,v ≥ 0` and `u+v ≤ 1` — a convex combination of the hit
+triangle's three vertices — so each coordinate lies between the smallest and largest of the
+three. Reduce hits with `min`/`max` and you can never leave the vertex box; you can only fail to
+reach it. The module spent three passes refining a lattice (22 mm pitch, a second section with
+doors in it, a 192-direction sphere sweep) against a bound that `min()` and `max()` give
+exactly, for free.
+**Constrained by.** Correctness in one direction only. An occluder that stops short of the kit
+stands in front of geometry a player can see, which is a hole in the world rather than a slow
+frame; an occluder that reaches past the kit merely blocks slightly less. The ray lattice fell
+short on two of three axes — **floor by 116 mm, ceiling by 340 mm** — and that was **209
+containment breaches with a worst case of 169 mm**, at the coffer the door head is let into.
+`--rays` still runs the lattice and asserts it lands inside the box.
+**The price, measured:** `blocked_fraction` on the self-test arc 93.7% → 93.1%. Six tenths of a
+point of sphere coverage for a provably safe occluder. **The gain: 5m13s → under a second**,
+which is what makes the profile affordable inside `budget.py` and `export_scene.py`.
+**Overturned by.** A kit whose vertex extent contains geometry that is genuinely never visible
+AND far enough out to matter — a thick back-of-wall volume, say. Then the vertex bound would
+cost real occlusion and the right answer would be a per-group extent (walls and soffit only)
+rather than a per-section one. The number to watch is `blocked_fraction`: below ~0.85 on a
+corridor the bound has become too loose to be worth having.
+**Authority 5.** `station/occluders.py::deep_profile`, `ray_extents`.
+
+## INV-371 — Godot 4 culls occlusion per INSTANCE AABB, and that is the granularity budget.py gates
+
+**What.** `station/budget.py`'s occlusion pass models Godot 4's occlusion culling as: rasterise
+the scene's `OccluderInstance3D` geometry into a small depth buffer on the render thread, then
+reject an instance when its axis-aligned bounding box is entirely behind that buffer. It does
+**not** cull triangles.
+**Why.** The saving a gate reports depends entirely on this, and reporting the flattering
+granularity would be the gate lying about the build.
+**Constrained by.** What is SOURCED rather than assumed: that
+`rendering/occlusion_culling/use_occlusion_culling` exists and defaults to **false**; that
+`ArrayOccluder3D` exposes exactly `vertices` and `indices`; and that a generated `.tscn` of this
+shape loads and returns its occluder with the right counts — all measured headless against this
+project's own Godot 4.4 double build, with the key present and absent. That `export_gltf` writes
+one primitive per OBJ group is read off this repository. What is DECLARED is the AABB test
+itself: one world AABB per submitted instance, eight corners projected, culled when the box's
+nearest depth exceeds the furthest occluder depth anywhere in its screen rect — the standard
+formulation, and conservative (an uncovered pixel holds inf and keeps the instance).
+**The consequence is the whole finding.** A pass assuming per-triangle culling would have
+reported this occluder saving **58.2%** of the frame. At instance granularity it saves **7.8%
+overall and 0.2% of structure**, because a corridor group spans the whole 345° ring and its AABB
+contains the camera.
+**Overturned by.** A frame capture on the target card showing a different rejection granularity,
+or Godot moving to a per-cluster or per-surface test. The tell would be a measured frame cost
+between the instance and triangle rows of that table.
+**Authority 5.** `station/budget.py::occlusion_chain`, `deck_section`.
+
+## INV-372 — The occlusion depth buffer is 160 × 90, from the doorway's subtense
+
+**What.** `station/budget.py`'s `OCCLUSION["buffer_w"/"buffer_h"]`.
+**Why, and the derivation runs the dangerous way round.** A coarse buffer loses a doorway
+between two pixel centres; the wall's depth fills the pixel and the room behind it is culled —
+**over-occlusion, which is a hole in the world rather than a slow frame**. So the bound is that
+the buffer must resolve the narrowest hole in the occluder at the longest range the corridor
+offers.
+**Constrained by.**
+
+    door_width_m       1.5      interior_kit.PROVISIONAL, read at run time
+    sight_m           60.5      the corridor's own measured sight line
+    subtense          1.42 deg  = 2*atan(0.75/60.5)
+    fov_h            102.4 deg  INV-083's camera
+    pixels per door  >= 2       Nyquist on the aperture
+    -> w >= 2 * 102.4 / 1.42 = 144
+
+**160 × 90** is the next 16:9 step up and gives **2.22 px** across that door. `deck_section`
+recomputes the bound from the deck it is measuring and fails if the buffer is under it, so the
+number cannot quietly stop being derived. It goes red at a sight line past 67 m or a narrower
+aperture. **Not claimed to be Godot's own buffer size** — Godot derives its from
+`occlusion_rays_per_thread` and the viewport; this is the resolution at which the *measurement*
+is honest, and if the engine's is coarser then the engine, not this gate, is over-occluding.
+**Overturned by.** A frame capture on target.
+**Authority 5.** `station/budget.py::OCCLUSION`.
+
+## INV-373 — The occlusion depth bias is 5 mm, the shell's own facet sag
+
+**What.** `station/budget.py`'s `OCCLUSION["bias_m"] = 0.005`. Nothing is culled unless it is
+more than this far behind the occluder.
+**Why.** Not chosen: **it is `collision.MAX_SAG_M`.** The occluder's cylindrical bands are swept
+as flat facets sized so a facet sags at most that far inside the true cylinder, so a point up to
+5 mm behind the recorded occluder surface may in fact be in front of the real one.
+**Constrained by.** Using the shell's own tessellation tolerance as the bias means the two
+cannot drift apart, and it is the same number `collision.floor_steps` certifies a floor smooth
+against — one decision in one place rather than two copies.
+**Overturned by.** `MAX_SAG_M` changing (it already has once, 1 mm → 5 mm, tied to
+`STEP_TOLERANCE_M` in 3x); the bias follows it by construction. A measured over-occlusion at a
+distance where 5 mm is not the dominant error — grazing angles down a long arc — would mean the
+bias needs to scale with range rather than be constant.
+**Authority 5.** `station/budget.py::OCCLUSION["bias_m"]`.
+
+## INV-374 — The containment control's room: 1.2 m behind the corridor wall, 1.4× the aperture wide
+
+**What.** `station/occluders.py`'s `room_stub()` places one plate per doorway at
+`half_w + 1.2 m` from the corridor centreline, spanning the door's angular half-width × 1.4 and
+from the door head down to the floor.
+**Why.** `interior.ring_arc` builds a corridor and **no rooms**, so the self-test's two aperture
+controls — "the aperture widening is load-bearing" and "a sealed occluder hides the rooms behind
+the doors" — had nothing to hide and **could not fire**. They passed only because the baseline
+was itself breaching 209 rays, which every control inherited; with the baseline at 0 they both
+read 0. This is the surface a doorway opens onto. *(A second cause, and it is worth its own
+sentence: `ring_arc`'s `door_leaves` defaults to `True`, so the self-test's doors were SHUT — a
+configuration `deck.build_deck` never builds, since it passes `door_leaves=False`.)*
+**Constrained by.** 1.2 m puts the plate outside the occluder's own wall (1.68 m against the
+corridor's 1.0806 m) so it is reachable only through the aperture, and inside any plausible room
+depth so it is reachable at all. The 1.4× span covers the slant cases the parallax widening
+exists for; at 1.0× a ray entering at the worst angle leaves past the plate's edge. With both,
+the controls separate cleanly: sealed **34** breaches (worst 1,789 mm), unwidened **2** (worst
+1,214 mm, **and 0 at 64 directions** — that resolution is stated in the code rather than left as
+a flattering number), widened **0**.
+**Overturned by.** A real vestibule builder in `interior`, at which point this fixture should be
+deleted and the control run against the geometry the station actually builds. **It is a test
+fixture and is not station canon**; no shipped geometry uses it.
+**Authority 5.** `station/occluders.py::room_stub`.

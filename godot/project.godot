@@ -29,6 +29,26 @@ window/size/viewport_height=1080
 
 [rendering]
 renderer/rendering_method="forward_plus"
+; OCCLUSION CULLING. Godot ignores every OccluderInstance3D in the scene unless
+; this is on, and its ENGINE DEFAULT IS false -- measured, not remembered: run
+; headless against this build with the key absent,
+; ProjectSettings.has_setting("rendering/occlusion_culling/use_occlusion_culling")
+; is true and get_setting() returns false. So an occluder in a project without
+; this line is inert geometry that costs memory and culls nothing, which is what
+; station/occluders.py has been producing for nobody since it was written.
+;
+; WHAT IT BUYS AND WHAT IT DOES NOT. A ring corridor puts the far side of the
+; ring inside the frustum from most standing positions -- station/budget.py
+; measures 260,243 triangles of structure in one standing frame against a 60,000
+; allowance, and 770,572 of everything when the player tilts their head up. The
+; occluder is the corridor's own walls. It culls PER INSTANCE, against each
+; instance's AABB, so it can only remove things that are submitted as their own
+; instance; see budget.py's occlusion section for what that costs today.
+;
+; It is CPU work on the render thread (Godot rasterises the occluders into a
+; small depth buffer each frame), so it is not free and it is measured rather
+; than assumed: turning it on with no occluders in the scene is pure cost.
+occlusion_culling/use_occlusion_culling=true
 ; Far plane must clear the whole station plus flight range. Double precision is
 ; what makes a depth range this large usable without z-fighting.
 camera/depth_of_field/depth_of_field_bokeh_shape=1
