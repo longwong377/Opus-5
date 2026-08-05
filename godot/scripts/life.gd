@@ -261,6 +261,39 @@ class Director extends Node3D:
 	var hold_radius_m: float = 12.0
 	var clock: Clock = null
 
+	## THE STATION'S CIRCULATION GRAPH, IF THE BUILD HAS ONE.
+	##
+	## Null for every caller that exists today, and the one method that reads it
+	## returns empty when it is null -- so this file behaves exactly as it did
+	## before `godot/scripts/navgraph.gd` existed.
+	##
+	## WHY IT HANGS HERE. `docs/MASTER-PLAN.md` P0.6 asks for an NPC that PATHS
+	## rather than one that plays back a polyline. `Commuter` below walks
+	## `station/agenda.py`'s manifest, which is ONE route chosen in Python before
+	## the build started; an inhabitant who decides at run time where to go needs
+	## something to ask, and the Director is the object that owns inhabitants.
+	## Two lines in a caller give it one:
+	##
+	##     dir.nav = preload("res://scripts/navgraph.gd").new()
+	##     dir.nav.load_graph("/abs/.../station/generated/navgraph.json")
+	##
+	## Nothing in this file plans on it yet, deliberately. The gate that drives
+	## it is `python3 station/navgraph_export.py --gate`: it builds a Director,
+	## hands it a graph, and asserts that the polyline THIS METHOD returns is the
+	## same polyline the body then walks, waypoint for waypoint. A hook with a
+	## gate and no caller is honest; a hook with a caller and no gate is what
+	## left `stream.gd` scoring green while moving nobody.
+	var nav: Node = null
+
+	## The floor polyline between two named places, or empty if this build has no
+	## graph. NOT ONE POINT OF IT IS DECIDED HERE: the route is searched for in
+	## `navgraph.gd` over `station/routes.py`'s own network, and every waypoint
+	## was laid by `station/route_walk.py`.
+	func route_between(from_place: String, to_place: String) -> PackedVector3Array:
+		if nav == null or not nav.loaded:
+			return PackedVector3Array()
+		return nav.route_points(from_place, to_place)
+
 	class Person:
 		var group: String = ""
 		var place: String = ""

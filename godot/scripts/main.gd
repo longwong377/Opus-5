@@ -54,6 +54,7 @@ const STARFURY_SCENE := "res://scenes/starfury.tscn"
 const TRANSIT_SCENE := "res://scenes/transit.tscn"
 const LIFE_SCRIPT := "res://scripts/life.gd"
 const AMBIENCE_SCRIPT := "res://scripts/ambience.gd"
+const NAVGRAPH_SCRIPT := "res://scripts/navgraph.gd"
 
 ## Station hours per real second, handed to `life.gd`'s Clock. 1/60 is a station
 ## minute a second: `life.gd`'s own default, and the rate at which a player
@@ -329,6 +330,32 @@ func _start_clock() -> void:
 	_life.name = "Life"
 	_clock = life.Clock.new(start_hour, clock_rate)
 	_life.clock = _clock
+
+	# THE STATION'S NAVIGATION GRAPH, and these four lines are the whole reason
+	# it is reachable. `navgraph.gd` routes 741 of 741 walkable cluster pairs at
+	# run time, node for node against `route_walk.path_between` with zero
+	# disagreements -- and `Director.route_between` returns an empty array unless
+	# `nav` is set, which nothing in the shipped build did. That is the SEVENTH
+	# built-but-unreachable in this project, after L3's room leg, `stream.gd`,
+	# the circulation graph, `dialogue.gd`, the Starfury's unbuilt data and
+	# `--mode=transit`'s manifest that nothing wrote.
+	#
+	# It is a soft dependency on purpose: a missing or unreadable graph leaves
+	# `nav` null and every caller gets an empty route, which is what every caller
+	# already handled. The station still boots without it.
+	var graph := _root().path_join("station/generated/navgraph.json")
+	if FileAccess.file_exists(graph):
+		var nav = load(NAVGRAPH_SCRIPT).new()
+		if nav != null and nav.load_graph(graph):
+			_life.nav = nav
+			print("life: navgraph %d nodes, %d edges" % [nav.node_count(),
+				nav.edge_count()])
+		else:
+			push_warning("main: navgraph at %s did not load" % graph)
+	else:
+		push_warning("main: no navgraph at %s -- run " % graph
+			+ "`python3 station/navgraph_export.py --build`")
+
 	add_child(_life)
 
 	_cast = _read_array(String(_boot.get("actors", "")))
