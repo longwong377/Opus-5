@@ -13,22 +13,36 @@ repository already knows is missing.
 
 Measured, not guessed. Wasting a session discovering these is the failure this section prevents.
 
-**This table has now gone stale TWICE in the same direction — saying *absent* about things that
-work — and both times it was caught by grepping the claims rather than by re-running them.**
-Session 4n found four such rows; 4p found six more. **Re-grep §0 before every playtest**, and
-treat any "not there" older than a session as unverified. The rows below are re-checked as of
-session 4p.
+**This table has now gone stale THREE TIMES in the same direction — saying *absent* about things
+that work — and every time it was caught by grepping the claims rather than by re-running them.**
+Session 4n found four such rows; 4p found six more; 4q found four more, listed below. **Re-grep §0
+before every playtest**, and treat any "not there" older than a session as unverified. *An absence
+quietly becomes an instruction not to look.* The rows below are re-checked as of session 4q.
 
 | you will reach for | state |
 |---|---|
-| **a menu or a map** | none. The only UI is the HUD line, `[E] …`, and the read panel. |
+| **a menu or a map** | none. The only UI is the HUD line, `[E] …`, the read panel and the identicard plate. |
 | **the jump gate** | not wired. |
 | **arriving as a person** | `--mode arrival` exists and is a sequence, not a character creation. |
-| **the drum from inside** | `--mode drum` walks it, and **the drum floor is 4.5 million m² with nothing standing on it** — no vegetation, no props, no people, no relief. The buildings and trees WERE rebuilt after the owner's "shitty little cubes"; the ground they stand on was not. MASTER-PLAN A4a-1. |
-| **most verbs** | `read` works. `open`, `operate`, `store`, `serve` still only depress the prop for a few frames — **there is no verb dispatch**. `sit` and `rest` are not even in `RESPONDS`: **you can press E on a chair and not sit down.** MASTER-PLAN A4b-1. |
-| **buying something** | the economy is a working simulation and is **read-only in the game** — the HUD draws a number Python wrote. **No counter will take your money.** A4b-3. |
-| **anything breaking** | power, air, water and waste are geometry plus a staffing roster. **C&C has a watch roster and controls nothing that can break.** A4a-3. |
-| **a craft-4 interior** | there is exactly one thing on the station at craft 4 (the exterior approach). **Six subsystems are at craft 1** — including C&C and the council chamber, which have bespoke builders, and the customs hall and docking bay, which are the player's first ten minutes. A4a-2. |
+| **buying something** | the economy is a working simulation and the bar's till debits, but **most counters are still read-only** — the HUD draws a number Python wrote. A4b-3. |
+| **being arrested** | **a checkpoint will now refuse you** (see below) and nothing happens next. `consequence.arrest` → brig → fine → release is Python and stays there. You are TOLD, not detained. |
+| **the drum up close** | `--mode drum` walks it and the floor is **no longer empty** — 1,945 features in 12 kinds. But the scatter reads at 500 m and not at 20 m: **the near field is bare, the near tree is a lollipop, and the parcel boundary underfoot is a hard straight edge.** See `docs/engine-4q-drum-dressed.png` and STATE.md §24.4b. A4a-1 is HALF closed. |
+| **a craft-4 interior** | one thing on the station is craft 4 (the exterior approach), plus the core shuttle car. **Four subsystems remain at craft 1** — C&C, customs, the garden, exterior components. The council chamber and the docking bay came off it in 4p/4q. A4a-2. |
+
+### Corrected in session 4q — these were listed as absent and are IN
+
+| you were told | actually |
+|---|---|
+| *"most verbs … there is no verb dispatch. `sit` and `rest` are not even in `RESPONDS`: you can press E on a chair and not sit down"* | **false by grep, on both halves.** `interact.RESPONDS` has **7 entries including `sit` and `rest`**, the verb set is `open, operate, read, rest, serve, sit, store, tread`, and `godot/scripts/interact.gd::use()` carries a `match it.verb` dispatch at line 676. Sit down. |
+| *"anything breaking — power, air, water and waste are geometry plus a staffing roster"* | `station/plant_systems.py` landed with `shed_factor()`, `wear_at()` and `state_key()`: **61 places shed load** and plant wear feeds `incident.py`. The half that is still true is the other one — whether **C&C** reads any of it. That is in flight, not done. |
+| *"a player walks into the command deck of a military station unchallenged"* (never written down, and it was true) | **98 of 129 places now read your identicard on the way in.** Walk into `vorlon_berth` as a citizen and the HUD says IDENTICARD REFUSED / ACCREDITED REQUIRED. `docs/engine-4q-check-refused.png`. |
+| *"nobody ever falls over"* | **the station knocks people down.** 45 incidents are baked for the boot deck for one station-day — named residents, 5 species — and when the clock passes one, a walker is pulled out of the crowd and ragdolls at the deck's own 7.454 m/s² along its own radius. INC-SICK gets back up; INC-ACCIDENT does not. |
+
+**IF THE BUILD DOES NOT DO THE LAST TWO**, it is a stale bake, not a missing feature: run
+`python3 station/boot.py --bake` and `python3 station/npc/ragdoll.py --emit
+station/generated/scene/npc`. `station/generated/` is gitignored, so a fresh clone has neither.
+`coldstart.py --g4`/`--g5` will tell you which key is missing rather than failing as if the
+content were wrong.
 
 ### Corrected in session 4p — these were absent and are now IN
 
