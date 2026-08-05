@@ -2019,7 +2019,19 @@ def _selftest():
     # change to any frame. It is PINNED rather than accepted: if either count
     # moves, something changed in the object 1,597 copies of which stand on the
     # drum floor, and this says so.
-    GARDEN_OPEN_EDGES = {"tree": 1048, "town_block": 2304}
+    # SESSION 4q MOVED BOTH, AND THE PIN DID ITS JOB by going red. `garden.py`
+    # was rebuilt off craft 1: the tree's open edges are now the open ends of
+    # `garden._sweep`'s parallel-transported tubes rather than `_taper`/`_limb`'s
+    # caps, and the TOWN BLOCK'S COUNT FELL BY 1,728 -- the terraced mass, with
+    # its setback tiers and slab caps, closes far more than it opens. A pin that
+    # moves in the direction nobody predicted is worth more than one that holds.
+    #
+    # BOTH NUMBERS ARE MEASURED HERE, NOT TAKEN FROM A REPORT. The builder's
+    # handover gave `town_block: 960`; re-measured on the delivered file it is
+    # **576**, and pinning 960 turned the gate red on correct content. A pin is
+    # a record of what the code does, so it is read off the code -- taking one
+    # from prose is how a gate ends up asserting a number nobody computed.
+    GARDEN_OPEN_EDGES = {"tree": 1240, "town_block": 576}
     for kind, want in GARDEN_OPEN_EDGES.items():
         got = nonman = 0
         for i in range(PROTOTYPES):

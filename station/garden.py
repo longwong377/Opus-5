@@ -54,6 +54,46 @@ Ground height comes from `drum_ground.terrain_sample()` on every footing, so a
 building follows the heightfield instead of floating over it or sinking into
 it. That is the same class of error that put the first drum camera five metres
 underground in session 2u.
+
+SESSION 4q -- THE PART A PLAYER STANDS IN
+-----------------------------------------
+`docs/aaa-scorecard.json` scores `garden_townscape` **craft 1**, twice, and the
+owner's words behind that score are "shitty little cubes" and "a sad excuse for
+a tree". Session 3z rebuilt both generators against a line-density floor
+(INV-072) and **the score did not move**, which is the interesting part and the
+reason this section exists.
+
+WHAT WAS ACTUALLY WRONG, read off an engine frame at the rubric's HALF distance
+rather than off a metric. `scratchpad/frames/before-tree5.png`, Forward+ on
+Vulkan 1.4, eye 11 m from a tree:
+
+  * the tree was a **five-facet green blob on a black spike**. Cause, and it is
+    arithmetic rather than taste: `tree()` drew its height from a distribution
+    and every canopy lobe from the CONSTANT `TREE_R_M = 2.2`, so the taller half
+    of the population got a 2.2 m crown on a 10 m stem -- a lollipop by
+    construction, whatever else was hung on it. -> `CROWN_FRAC`, INV-453.
+  * the buildings were **grey slabs reading as retaining walls**. The 3z rebuild
+    had put pilasters, cills, gutters, downpipes, balconies and roof plant on a
+    single rectangular prism: twenty-one times the line and the same
+    silhouette. "Cubes" is a statement about MASS. -> terracing, INV-455.
+  * the ground was two flat colour fields meeting along a drawn edge with
+    nothing standing on either -- the same finding STATE.md 24.4b records
+    against `docs/engine-4q-drum-dressed.png`. -> ground cover, INV-456.
+  * a tree's canopy stood **inside a building**, from 11 m away, because blocks
+    and trees were drawn from two independent distributions and neither knew
+    about the other. Nothing measured it.
+
+THE STRUCTURAL POINT, and it is the transferable one: every gate this module
+had -- triangle count, line density, closure, winding, determinism, the surface
+budget -- is satisfied by a ball on a stick beside a box. **A metric that
+scores a part cannot ask what the part IS.** The gates added below ask shape
+questions instead: crown span over height, mass plan at two heights over the
+walls alone, foliage masses off the trunk axis, a trunk section that is not a
+circle. Each one is shown failing on the content it replaced.
+
+The near field is a LEVEL BELOW `drum_dressing`'s ladder, not more detail on
+it -- see `NEAR_LEVEL` and INV-452 for why the default level is deliberately
+not the finest one.
 """
 import hashlib
 import math
@@ -130,7 +170,7 @@ STAIR_FLIGHT = 18          # the red-orange external stair
 # purpose -- see the 0.06 tri/m2 note above.
 BLOCK_MIN_M = (9.0, 6.0, 4.0)      # length, width, height
 BLOCK_MAX_M = (22.0, 13.0, 11.0)
-BLOCK_BANDS = 3                     # lit window bands up a facade
+BLOCK_BANDS = 3                     # vestigial: see `_banded_tier` (INV-455)
 
 # --- hard landscape, all INV-072, all from 29a's extraction -------------------
 PATH_W_M = 2.4
@@ -210,15 +250,29 @@ TREE_SEG = 6                        # kept: `setting()` still uses it for hedgin
 # assertion fails if a future session forgets.
 NEAR_LEVEL = -1
 
-# The near switch, DERIVED and not chosen. `drum_dressing` accepts a coarser
-# level once the smallest feature it throws away falls under a pixel bar; the
-# same criterion applied here asks how close a bark flute has to be to be worth
-# building. The flute depth is TRUNK_R_M * FLUTE_D (0.26 * 0.11 = 29 mm) and
-# `drum_dressing._pixels` puts that at 1.0 px at 39 m on the project's own
-# FOV/screen constants. Rounded DOWN to 35 m: the level also carries the
-# order-3 twigs, which are thinner still, and a switch that happens after the
-# feature has already vanished buys nothing. Printed by `--near`, not asserted
-# as a constant, so a change to the screen constants moves it.
+# The near switch. IT IS A BUDGET AND NOT A PERCEPTUAL RESULT, and saying so
+# is the point of this comment, because the first draft of it claimed the
+# opposite and the arithmetic refuted me.
+#
+# The obvious derivation is the one `drum_dressing._switch_distance` uses:
+# switch once the smallest feature the coarser level throws away falls under a
+# pixel. Run on this level's own features, at the project's own FOV 50 deg /
+# 1440 px constants (`drum_ground.FOV_DEG`, `SCREEN_H`), it says:
+#
+#     bark flute, 0.0286 m deep  ->  1.0 px at  44.2 m
+#     order-3 twig, 0.104 m dia  ->  1.0 px at 160.6 m
+#
+# So a pixel criterion says "carry the near level out past 160 m", which is
+# every tree in the settlement at 2,900 triangles each. That is exactly the
+# refutation `drum_dressing`'s own docstring records one level up -- "a
+# pixel-error criterion says never switch" -- and it applies here with more
+# force, because near-field content is the expensive kind.
+#
+# 35 m is therefore a BUDGET, stated as one. It is under both pixel figures,
+# so the level never carries a feature that has already vanished; and the real
+# spending control is `HERO_TREES` below, which is a COUNT, because a radius
+# silently costs whatever happens to fall inside it. `--near` prints both
+# columns so the next session can see the trade rather than re-derive it.
 NEAR_SWITCH_M = 35.0
 
 # Crown radius as a fraction of tree height. THE BUG ABOVE, fixed as a rule
@@ -236,7 +290,7 @@ BRANCH_ORDERS = 3                   # trunk -> limb -> bough -> twig
 LIMBS_MIN, LIMBS_MAX = 4, 6
 BOUGHS_MIN, BOUGHS_MAX = 2, 3
 LEAF_LOBES = 3                      # small masses per bough tip
-LEAF_R_FRAC = 0.34                  # lobe radius as a fraction of the crown
+LEAF_R_FRAC = 0.40                  # lobe radius as a fraction of the crown
 
 # The form vocabulary, and every one of the three is authority 1.
 #   broadleaf  `garden.png` "deciduous trees and shrubs", dark rounded masses
@@ -291,9 +345,9 @@ CANOPY_T_M = 0.26
 # red-brown timber-slat walls", ivy over the planted bank.
 SCRUB_R_M = 0.62                    # one low shrub clump
 SCRUB_H_FRAC = 0.55                 # squashed: wider than tall
-SCRUB_PER_100M2 = 2.6               # near-field clumps per 100 m2 of verge
+SCRUB_PER_100M2 = 2.0               # near-field clumps per 100 m2 of verge
 TUSSOCK_R_M = 0.26
-TUSSOCK_PER_100M2 = 5.5
+TUSSOCK_PER_100M2 = 4.4
 VERGE_W_M = 3.2                     # the planted band that kills the hard edge
 COBBLE_M = 0.42                     # sett module, 29a "small setts"
 COBBLE_PROUD_M = 0.018              # a sett stands this proud of its neighbour
@@ -311,6 +365,10 @@ TRUNK_SEG = 10
 FLARE_K = 1.45                      # root flare radius multiple at ground
 FLARE_H_M = 0.55                    # height the flare resolves over
 FORK_FRAC = 0.42                    # trunk height where limbs spring, as a frac of h
+# Vestigial as of 4q: `tree()` now sizes its sections from `_TREE_LOD`. Kept
+# because `drum_dressing._tree_proto` builds its own levels 1-3 out of this
+# module's primitives and a constant it might reach for is cheaper to keep than
+# to prove unused. Nothing in `garden.py` reads them.
 LIMB_SEG = 6
 LOBE_SEG = 8
 LOBE_STACKS = 4
@@ -786,14 +844,21 @@ def _leaf_mass(v, t, g, name, centre, r, seed, lobes=LEAF_LOBES, seg=6,
     for j in range(lobes):
         a = math.tau * (j + 0.5 * _u(seed, "lm", j)) / lobes
         tilt = -0.35 + 0.9 * _u(seed, "lt", j)
-        off = r * (0.42 + 0.30 * _u(seed, "lo", j))
-        rr = r * (0.62 + 0.30 * _u(seed, "lr", j))
+        # OFFSET UNDER RADIUS, DELIBERATELY, AND IT IS THE WHOLE READ. The
+        # first version of this had lobes 0.42-0.72 r out carrying radii of
+        # 0.62-0.92 r, so the masses only just touched, and
+        # `scratchpad/frames/after-heroA.png` shows the result: a cluster of
+        # dark dice hung on the branches with sky between them. Foliage reads
+        # as foliage when neighbouring masses INTERSECT -- the crease where
+        # two lobes cut each other is the line, and the union is the mass.
+        off = r * (0.28 + 0.26 * _u(seed, "lo", j))
+        rr = r * (0.80 + 0.34 * _u(seed, "lr", j))
         _lobe(v, t, g, name,
               centre[0] + off * math.cos(a),
               centre[1] + off * tilt,
               centre[2] + off * math.sin(a),
               rr, seg=seg, stacks=stacks,
-              squash=0.70 + 0.28 * _u(seed, "ls", j))
+              squash=0.74 + 0.26 * _u(seed, "ls", j))
     return v, t, g
 
 
@@ -873,16 +938,16 @@ def _skeleton(seed, h, r0, fork, spread, rise, orders=BRANCH_ORDERS):
 # triangles for a mass the eye reads as one surface.
 _TREE_LOD = {
     #        orders foliage trunk_seg rings br_seg lobes lobe_seg lobe_r
-    -1:  dict(orders=3, foliage=2, tseg=12, rings=5, bseg=7, lobes=4,
-              lseg=6, lscale=1.00),
+    -1:  dict(orders=3, foliage=2, tseg=12, rings=5, bseg=7, lobes=5,
+              lseg=7, lstk=4, lscale=1.00),
     0:   dict(orders=1, foliage=1, tseg=TRUNK_SEG, rings=3, bseg=6, lobes=2,
-              lseg=5, lscale=1.45),
+              lseg=5, lstk=3, lscale=1.45),
     1:   dict(orders=1, foliage=1, tseg=6, rings=3, bseg=4, lobes=1,
-              lseg=5, lscale=2.10),
+              lseg=5, lstk=3, lscale=2.10),
     2:   dict(orders=1, foliage=1, tseg=5, rings=2, bseg=3, lobes=1,
-              lseg=4, lscale=2.60),
+              lseg=4, lstk=3, lscale=2.60),
     3:   dict(orders=0, foliage=0, tseg=4, rings=2, bseg=3, lobes=0,
-              lseg=4, lscale=0.00),
+              lseg=4, lstk=3, lscale=0.00),
 }
 
 
@@ -925,7 +990,7 @@ def _broadleaf(seed, level, squat=False):
     lr = crown * LEAF_R_FRAC * lod["lscale"]
     for i, tip in enumerate(_tips(carried)):
         _leaf_mass(v, t, g, "garden_foliage", tip, lr, f"{seed}/{i}",
-                   lobes=lod["lobes"], seg=lod["lseg"], stacks=3)
+                   lobes=lod["lobes"], seg=lod["lseg"], stacks=lod["lstk"])
     return v, t, g
 
 
@@ -1225,7 +1290,9 @@ def block_building(seed, level=0):
     _box(v, t, g, "garden_parapet",
          (-top_x - CORNICE_P_M, H, -top_z - CORNICE_P_M),
          (top_x + CORNICE_P_M, H + PARAPET_H_M, top_z + CORNICE_P_M))
-    for zs in (-1, 1):
+    for zs in (-1, 1) if level < 0 else ():
+        # A 50 mm handrail is 0.2 px at the level-0 switch distance of 113 m,
+        # so it is near-field geometry by measurement rather than by taste.
         _box(v, t, g, "garden_rail",
              (-top_x - CORNICE_P_M, H + PARAPET_H_M,
               zs * (top_z + CORNICE_P_M) - RAIL_T_M / 2),
@@ -1250,8 +1317,9 @@ def block_building(seed, level=0):
               zs * (bz + CORNICE_P_M)),
              (bx, per[0] * sh - SLAB_T_M,
               zs * (bz + CORNICE_P_M + GUTTER_D_M)))
-        for i in range(DOWNPIPES_PER_FACE):
-            x = -bx * 0.9 + 1.8 * bx * i / max(1, DOWNPIPES_PER_FACE - 1)
+        n_pipe = DOWNPIPES_PER_FACE if level < 0 else 3
+        for i in range(n_pipe):
+            x = -bx * 0.9 + 1.8 * bx * i / max(1, n_pipe - 1)
             _taper(v, t, g, "garden_downpipe", x,
                    zs * (bz + PILASTER_PROUD_M + PIPE_R_M),
                    [(0.0, PIPE_R_M), (per[0] * sh - SLAB_T_M, PIPE_R_M)],
@@ -1680,8 +1748,8 @@ TOWNSCAPE_TRIS = 55_000
 STREET_PITCH_M = 38.0               # centre to centre, across the plots
 CROSS_PITCH_M = 52.0                # centre to centre, along them
 STREET_W_M = 9.0
-NEAR_TOWN_M = 75.0                  # how far the grid runs from the terrace
-STREET_TREE_PITCH_M = 19.0
+NEAR_TOWN_M = 68.0                  # how far the grid runs from the terrace
+STREET_TREE_PITCH_M = 26.0
 HERO_TREES = 6                      # how many get the -1 level. See the budget.
 CONE_H_M = (7.4, 4.2)               # 29a's orange cones, tallest and shortest
 CONE_R_M = 0.62
@@ -1731,7 +1799,7 @@ def ground_cover(seed, eye=(0.0, 0.0), radius=NEAR_SWITCH_M, avoid=()):
     # inside its own cell, so the spacing has a floor and no pattern.
     for name, per100, r0, lobes, seg in (
             ("tussock", TUSSOCK_PER_100M2, TUSSOCK_R_M, 1, 4),
-            ("scrub", SCRUB_PER_100M2, SCRUB_R_M, 2, 5)):
+            ("scrub", SCRUB_PER_100M2, SCRUB_R_M, 3, 5)):
         cell = math.sqrt(100.0 / per100)
         n = int(math.ceil(2 * radius / cell))
         for i in range(n):
@@ -1743,7 +1811,12 @@ def ground_cover(seed, eye=(0.0, 0.0), radius=NEAR_SWITCH_M, avoid=()):
                 rr = r0 * (0.7 + 0.7 * _u(seed, name, "r", i, j))
                 for k in range(lobes):
                     a = math.tau * (k + _u(seed, name, "a", i, j, k)) / lobes
-                    off = rr * 0.45 * k
+                    # A CLUMP, NOT A LATTICE POINT. One lobe per cell reads as
+                    # a scattering of dark dice on flat grass, which is what
+                    # `after-heroA.png` shows underfoot. Overlapping lobes at
+                    # 0.38 of their own radius merge into a patch of scrub with
+                    # a lumpy edge, for the same triangles.
+                    off = rr * 0.38 * k
                     _lobe(v, t, g, "garden_hedge",
                           x + off * math.cos(a), rr * SCRUB_H_FRAC * 0.55,
                           z + off * math.sin(a),
@@ -1753,7 +1826,7 @@ def ground_cover(seed, eye=(0.0, 0.0), radius=NEAR_SWITCH_M, avoid=()):
     return v, t, g
 
 
-def sett_courses(seed, x0, x1, z0, z1, eye=(0.0, 0.0), radius=14.0):
+def sett_courses(seed, x0, x1, z0, z1, eye=(0.0, 0.0), radius=10.0):
     """29a's "paved winding paths in small setts", as courses rather than setts.
 
     THE ARITHMETIC THAT DECIDED THE FORM. A 46 x 26 m terrace at the frame's
@@ -1908,6 +1981,17 @@ def townscape(schema, profile, sector=None, angle_deg=112.0, z_m=4900.0,
         return all(abs(a - pa) > r_deg + arc_deg(pr)
                    or abs(z - pz) > r_m + pr + KEEPOUT_M
                    for pa, pz, pr in plots)
+
+    # The waterfall bank is a 14 x 26 x 12 m solid at the terrace's west end
+    # and it goes into `plots` before anything is planted. Found by reading the
+    # placement rather than by a render: the hero ring's west point lands at
+    # local x = -32 m and the bank runs -37 to -23, so a tree would have stood
+    # inside a twelve-metre embankment. Same class as the trunk-in-a-wall the
+    # gate below catches, one module over -- `setting()` and the planting were
+    # two independent draws with nothing between them.
+    _bank_x = -TERRACE_L_M / 2 - BANK_W_M / 2
+    plots.append((angle_deg + arc_deg(_bank_x), z_m,
+                  math.hypot(BANK_W_M, TERRACE_W_M) / 2.0))
 
     placed = 0
     for i in range(blocks * 3):
@@ -2367,5 +2451,92 @@ def _selftest():
     return 1 if fail else 0
 
 
+# ---------------------------------------------------------------------------
+# THE FRAMES A CRAFT CLAIM ABOUT THIS MODULE HAS TO CITE
+# ---------------------------------------------------------------------------
+# `CLAUDE.md`: "Every craft claim cites a frame at the rubric's HALF distance,
+# not the normal one. A wide shot is not evidence about craft." That rule is
+# the reason this module sat at craft 1 through a whole rebuild -- the only
+# committed frames of the Garden were the wide `docs/engine-drum-garden.png`
+# and a 3z terrace shot, and at 56 m a lollipop reads as a tree.
+#
+# So the cameras are recorded here, next to the geometry, in the same shape
+# `export_scene.EXPOSURE_FRAMES` records its own. Each one is a `--shot drum`
+# argument string; the eye stands at 1.70 m on the heightfield and the target
+# is the subject's own mid height, both computed from `drum_ground` rather than
+# written down, by the snippet in `_shots_report`.
+HERO_SHOTS = {
+    # 9 m from a level -1 broadleaf, standing under the canopy edge. This is
+    # THE frame for the tree, and its before-image is
+    # `docs/garden-4q-before-tree.png` at the identical camera.
+    "hero_tree": ('--shot drum --eye " -117.091,243.413,4909.880" '
+                  '--target " -116.094,241.341,4918.880" --fov 50'),
+    # 14 m off the near corner of a street block, three-quarter, so the tiers,
+    # the batter and the wing are all in silhouette at once. A face-on shot of
+    # a terraced building looks exactly like a face-on shot of a box.
+    "hero_block": ('--shot drum --eye " -113.898,245.347,4885.000" '
+                   '--target " -124.912,236.429,4900.000" --fov 50'),
+}
+
+
+def _near_report():
+    """What the near level costs and what the pixel criterion would say.
+
+    Both columns, side by side, because the honest answer is that they
+    disagree and the budget wins. See `NEAR_SWITCH_M`.
+    """
+    k = dg.SCREEN_H / (2.0 * math.tan(math.radians(dg.FOV_DEG) / 2.0))
+    print(f"screen {dg.SCREEN_H} px at {dg.FOV_DEG} deg -> {k:.1f} px.m\n")
+    print("feature                       size      1 px at")
+    for name, size in (("bark flute", TRUNK_R_M * FLUTE_D),
+                       ("order-3 twig diameter", TRUNK_R_M * 0.20 * 2),
+                       ("balcony rail", RAIL_T_M),
+                       ("sett course upstand", COBBLE_PROUD_M),
+                       ("window pane", PANE_H_M)):
+        print(f"  {name:26s} {size:6.3f} m  {size * k:8.1f} m")
+    print(f"\nnear switch                            {NEAR_SWITCH_M:8.1f} m"
+          f"   <- budget, not pixels")
+    print(f"then drum_dressing's ladder            "
+          f"{LOD_SWITCH_M[1]:8.1f} / {LOD_SWITCH_M[2]:.1f} / "
+          f"{LOD_SWITCH_M[3]:.1f} m\n")
+    print("level   broadleaf   umbrella   palm   block")
+    for lv in (-1, 0, 1, 2, 3):
+        row = [len(tree("report", level=lv, form=f)[1]) for f in TREE_FORMS]
+        blk = len(block_building("report", level=lv)[1]) if lv <= 0 else 0
+        print(f"{lv:>5}   {row[0]:9,}   {row[1]:8,}   {row[2]:4,}   "
+              f"{blk:5,}")
+    print(f"\nHERO_TREES = {HERO_TREES} -- a count, so the near level's cost "
+          f"is stated rather than\n  discovered. A radius costs whatever "
+          f"happens to fall inside it.")
+    return 0
+
+
+def _cost_report():
+    """Where the townscape's triangles go, by material group."""
+    schema, profile = it.load()
+    sector = it.drum_sector(schema, profile)
+    _V, T, G = townscape(schema, profile, sector)
+    per = {}
+    for name, lo, hi in G:
+        per[name] = per.get(name, 0) + (hi - lo)
+    for name, n in sorted(per.items(), key=lambda kv: -kv[1]):
+        print(f"  {name:26s} {n:7,}  {100.0 * n / len(T):5.1f}%")
+    print(f"  {'TOTAL':26s} {len(T):7,}  against TOWNSCAPE_TRIS "
+          f"{TOWNSCAPE_TRIS:,}")
+    _bare = townscape(schema, profile, sector, near=False)[1]
+    print(f"\n  --no-near (the state this session started from, plus the new "
+          f"massing): {len(_bare):,}")
+    return 0
+
+
 if __name__ == "__main__":
+    if "--near" in sys.argv:
+        sys.exit(_near_report())
+    if "--cost" in sys.argv:
+        sys.exit(_cost_report())
+    if "--shots" in sys.argv:
+        for name, cmd in HERO_SHOTS.items():
+            print(f"tools/render_godot.sh {cmd} --res 960x540 \\\n"
+                  f"    --out docs/garden-4q-{name}.png")
+        sys.exit(0)
     sys.exit(_selftest())

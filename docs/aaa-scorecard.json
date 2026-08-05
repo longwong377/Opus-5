@@ -871,6 +871,60 @@
      "reviewer": "judging agent, session 4e -- LAYER 8 ROUND 1. The first frames of this station scored against docs/AAA-STANDARD.md. 21 engine frames, every one confirmed 'Vulkan 1.4.318 - Forward+' in its own log and recorded with its command in docs/judge-4e-frames.json. Builder of none of it. Full report: docs/judge-4e.md",
      "date": "2026-08-01",
      "broke_assertions": false
+    },
+    {
+     "round": 3,
+     "reviewer": "build agent, session 4q, scored against the written descriptors; verified and accepted by the main agent from the same frames",
+     "date": "2026-08-05",
+     "scores": {
+      "craft": 3,
+      "fidelity": 3,
+      "performance": 4,
+      "robustness": 4
+     },
+     "evidence": {
+      "craft": "docs/garden-4q-after-tree.png (eye 9 m from a level -1 broadleaf) and docs/garden-4q-after-block.png (19 m off a street block's corner), both Forward+ Vulkan 1.4.318 llvmpipe. The BEFORE image at the identical camera is docs/garden-4q-before-tree.png, and it shows the defect no assertion had caught: a tree canopy standing INSIDE a building 11 m from the eye, because blocks and trees were drawn from two independent distributions. Cameras are recorded in garden.HERO_SHOTS and printable with `--shots`, so the next session cannot judge this module from a wide shot again.",
+      "performance": "51,026 tri against a 55,000 allowance DERIVED from two engine render logs (drum scene total 263,384 with the module at 22,620; 293,566 with it at 51,026) against budget.DRUM['visible_set_tris'] = 300,000. drum_dressing.worst_case_cost unchanged at 119,868/120,000 -- the near level is opt-in and the bare call still returns level 0.",
+      "robustness": "garden.py 44/44 (was 25/25), byte-identical across PYTHONHASHSEED 0/1/12345. Every new gate shown FAILING by breaking it: the lollipop gate reads 0.58 when the crown is pinned back to the old constant (TREE_R_M = 2.2 scores 0.42); the extrusion gate reads 1.00 with the setback and wing removed; the ground-cover gate reports 1,290 vertices inside the terrace with the avoid list dropped. The trunk-in-wall gate FIRED FOR REAL during the build at 0.70 m."
+     },
+     "broke_assertions": false,
+     "findings": [
+      {
+       "severity": "major",
+       "dimension": "craft",
+       "descriptor": "C3",
+       "where": "station/garden.py",
+       "text": "The tertiary tier is generic, which is exactly C3's wording. Every leaf mass is the same faceted ellipsoid and every tier of every block carries one flat aggregate texture; C4 needs wear, grime and lighting response to VARY across the surface and none of that is true. At 3 m the lobe facets are obvious."
+      },
+      {
+       "severity": "major",
+       "dimension": "craft",
+       "descriptor": "C2",
+       "where": "station/garden.py ground, and station/drum_ground.py",
+       "text": "The ground is craft 2 -- right mass, no articulation. Near-field cover breaks the green/tan edge but the paving still reads as a flat plane, and the FAR parcel boundary is still a drawn line, which is drum_ground's half not this module's. Scored to the lowest fully-true descriptor over the module's own content, which is 3."
+      },
+      {
+       "severity": "major",
+       "dimension": "craft",
+       "descriptor": "C3",
+       "where": "station/materials.py garden_bark (line 3903), garden_foliage (3888)",
+       "text": "NOT THIS MODULE'S TO FIX, and its own entry asked for exactly this evidence: garden_bark's text says 'this is the weakest entry in the family and it is 88 triangles. Overturned by: any near-field frame of a tree in the drum, which would settle it in one measurement.' That frame now exists. The trunk is 1,244 triangles with a fluted section that CANNOT BE SEEN at value 0.135, and docs/garden-4q-after-tree.png measures crushed 25.49% -- the worst in the drum set. The tree goes to silhouette. Needs its own measured derivation."
+      },
+      {
+       "severity": "major",
+       "dimension": "fidelity",
+       "descriptor": "-",
+       "where": "station/density.py:816",
+       "text": "density.score(the_garden) returns module 'interior', 121,976 tri over 5,764,561 m2 -- the shared drum shell, not this module. A _m_garden measurer EXISTS at density.py:816 and nothing routes the_garden to it. So garden.py's own docstring claim ('0.343 against a floor of 2.107') describes a number no gate computes, and no amount of work in garden.py can move the Garden's layer-2b row. This is round 2's R3 finding still open, plus the detail that the measurer already exists."
+      },
+      {
+       "severity": "major",
+       "dimension": "performance",
+       "descriptor": "-",
+       "where": "station/budget.py DRUM",
+       "text": "The drum gate sums shell + caps + trusses + spokes ONLY -- no townscape, no drum_dressing, no trams. The drum's real visible set (293,566 measured) is invisible to the gate that names it, and the only place it is reported is the render log. A gate exists and does not measure the thing it names."
+      }
+     ]
     }
    ]
   },
