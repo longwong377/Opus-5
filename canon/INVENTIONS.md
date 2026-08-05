@@ -9723,3 +9723,292 @@ up. Setting it looser would let the walk gate pass on a body that cannot touch t
 different files, which is the drift risk this entry exists to name. **Overturned by.** Any change
 to `interact.gd::reach_m` — which must move this constant in the same commit. **Authority 5.**
 Argument at `station/walkable.py:294`.
+
+---
+
+## INV-580 — The cargo train's proportions, measured off the orthographic sheet as ratios
+
+**What.** The dorsal cargo modules' spacing and proportions, taken from
+`reference/01-station-exterior/exterior more.jpg` (authority 2, production orthographic renders):
+
+| measured | px | ratio to module length |
+|---|---|---|
+| module length along z | 18.33 | 1.000 — the datum |
+| gap between modules | 15.80 | **0.862** |
+| module width across | 17.0 | **0.927** |
+| module height, side view | 16.0 | **0.873** |
+
+**Why these are ratios and not metres.** The sheet carries no scale bar, so INV-018's rule
+applies: store the figure as a ratio and the unknown scale cancels. Calibrating instead against
+the station's own 8,047 m over its 1,152 px length gives ~6.99 m/px and a module 128 m long,
+but that calibration is soft — the run I measured may not be the station's full extent in that
+view — and every use below needs only the ratio.
+
+**How it was measured.** Thresholded on the modules' red against a neutral hull
+(45 < r < 200, r − g > 18, r − b > 18) over the top view's rows 176–192 and the side view's
+rows 400–450. Six runs at x 639–657, 673–691, 707–724, 742–759, 776–793, 810–827: six modules,
+which settles 00-INDEX's "~5–6" at **six**. Grey pixels fill 14 of 15 and 14 of 16 columns in
+two of the five gaps and some of every other one — the plinths, measured rather than assumed.
+
+**What it constrains.** The modules occupy **0.537** of their own pitch (18.33 / 34.13).
+`station/schema/station.yaml` sets `fill: 0.62`, which is 15% longer than measured. That is a
+schema key and not this module's to change; the proposal is in
+`scratchpad/PATCHES-4r-exterior.md`.
+
+**The one that is NOT built, stated plainly.** The measured module height is **0.873** of its
+length; the schema's `protrusion_m` of 46 m against a built length of 117.8 m is **0.390**, less
+than half. Building to the measurement would move the station's silhouette and trip
+`validate.py`'s radius envelope, so `station/components.py` builds strictly inside the schema
+and the discrepancy is recorded here and proposed in the patch file rather than acted on.
+
+**Overturned by** any authority-1 frame of the dorsal line, or by a scale anchor on this sheet
+that fixes the metres rather than the ratios.
+
+---
+
+## INV-581 — The cargo train is a train: rail, plinths, feet and a loader gantry
+
+**What.** `station/components.py::dorsal_line` builds, besides the six modules: a continuous
+raised dorsal rail with cross-ties running the whole run, a grey plinth in each of the five
+gaps, two feet under every module, and a machinery block closing the fore end.
+
+**Why — and this is a cross-check, not a single reading.** Two authority-2 sources that could
+not have copied each other say the same thing:
+
+* `01-station-exterior/exterior more.jpg`, production orthographic renders — "six dark-red
+  rectangular modules ... sitting on a continuous **raised dorsal rail** with small grey plinths
+  between them. Six, not '5–6'." (00-INDEX)
+* `other map 4.jpg`, the Miller print sheet — "A **dorsal row of ~6 small square modules on a
+  rail** runs aft-of-centre along the spine, with six blue leader arrows taking them to six
+  callout boxes under the heading **AUTO LOADERS SEQUENCE**." (00-INDEX)
+
+The second also says what they are *for*, which is why the run terminates in a gantry rather
+than in nothing: these are auto-loader positions.
+
+**What constrained it.** `station.yaml` has carried `rail: True` on this component since the
+component was written, and `rail` appeared nowhere in `station/components.py` — a sourced fact,
+declared in the schema, that no builder read for eleven sessions. `_selftest`'s
+`unread_spec_keys` check now fails on that class of defect rather than on this instance of it.
+
+**What would overturn it.** A frame showing the modules standing directly on hull plate.
+
+---
+
+## INV-582 — The container's own construction: frame, castings, corrugation, hatch
+
+**What.** Each cargo module is built as a welded structural frame with recessed panels between:
+four corner posts and perimeter top and bottom rails at 6.5 m section standing 2.4 m proud,
+eight corner castings oversailing the posts by 1.45, nine corrugation ribs per wall panel at
+1.1 m proud, and a recessed loading hatch inside a raised rim on the top face.
+
+**Why, and it is extrapolation — authority 5.** The sheet resolves a module at 18 px and shows
+none of this. What it does establish is *what the object is*: a freight container at an auto
+loader position. A container IS a welded frame of corner posts and top and bottom rails with
+corrugated panels between them, and the corner castings are the lift points the loader grabs.
+So this is the object's own construction rather than decoration applied to a box, which is the
+distinction AAA-STANDARD draws between C1's "detail that reads as noise" and C4's "a fitting is
+where a fitting would be needed".
+
+**What constrained the numbers.** Three tiers with a stated ratio between them, because
+AAA-STANDARD C3 asks for "a primary form, secondary structure, tertiary fittings" and a box
+cannot have one: the container at 118 m, the frame at 6.5 m standing 2.4 m proud, the
+corrugation at 1.1 m proud — **half** the frame's relief, deliberately, so the frame still reads
+as the higher tier rather than as more of the same. The hatch is on the top face because that is
+the face an auto loader reaches and the face the arrival framing looks straight down at.
+
+**Cost.** 72 → 5,652 triangles across the six modules and their rail, and the component's
+articulation ratio moves from **1.02×** a plain box to **8.61×**.
+
+**Overturned by** any frame resolving a module's surface.
+
+---
+
+## INV-583 — A communications grid is a lattice, and the end views say so
+
+**What.** `pylon_pair` no longer builds a 1,060 m solid strut carrying a solid 893 × 300 m
+plate. It builds a three-step root bracket, a mast of six tapering segments with a collar at
+each joint, and an open Warren-braced lattice: two booms at the inner and outer radius, two end
+posts, nine radial ribs and one diagonal per bay.
+
+**Why.** `01-station-exterior/exterior more.jpg` carries both end views, and in each of them the
+grid reads as **a short dark stub arm at the equator carrying a very long hairline-thin mast**
+— 2 to 3 px of width against a hull some 370 px across — with **no broad panel anywhere on it**.
+00-INDEX records the reading twice and independently: "two very long thin masts run vertically
+far beyond the hull silhouette in *both* end views, and two shorter stub arms project laterally
+at the equator", and for the Miller sheet "long thin masts extend beyond the hull at spine level
+toward the fore end".
+
+An open framework of thin members reads as a thin mast at 100 km; a solid 893 × 300 m plate does
+not. The lattice is also what the object's own name says it is.
+
+**What is NOT changed.** `span_m` 1,060.25 and `grid_width_m` 893.2 are untouched — the extent
+of the component is exactly what the schema says and only its construction has changed. The span
+is corroborated (2,120.5 m tip to tip against masts that visibly overrun the hull in both end
+views); the width is ambiguous, see INV-584.
+
+**The bay spacing is biased, and that is structural.** The mast meets the grid at its mid-span,
+so that is where the shear is and where a real truss puts its bays closest together; bays are
+spaced by |2f − 1|^1.45. It also removes the one thing about this component the eye could index,
+which AAA-STANDARD C4 asks for.
+
+**Cost.** 48 → 888 triangles across both pylons; articulation **2.19× → 10.56×** a plain box.
+
+**Overturned by** any authority-1 or -2 view resolving the grid's face.
+
+---
+
+## INV-584 — "Width at communications grid" is ambiguous, and it is not resolved here
+
+**What.** `canon/00-MASTER.md` §1.1 lists, in Miller's rescaled specification table,
+`Communications grid span | 819 | 2120.5` and `Width at communications grid | 345 | 893.2`.
+`station/schema/station.yaml` uses the second as `grid_width_m`, i.e. as the grid panel's own
+width along the station axis. **That reading is not established.**
+
+**The two readings.** Every other row of that table is a *section* dimension — "Blue Section
+diameter", "Bio-Habitat interior length" — and "width **at** X" reads naturally as the station's
+width at X's location, exactly like "Bio-Habitat interior diameter". Against that: "span" and
+"width" paired together are also the two dimensions of one panel.
+
+**What the measurement says, and it does not settle it.** The hull's own profile gives a diameter
+of **301.2 m** at the grid's placed z (2,751 m) and **329.6 m** at z 2,515 — nowhere near 893.2.
+So the location reading is not satisfied by the current placement either. Either the grid is
+placed at the wrong z, or 893.2 is the grid's own width, or the table's row means something
+else again.
+
+**Why it is left open.** This is a `CONFLICTS.md`-shaped ambiguity in a canon table, and hard
+rule 3 forbids resolving one by picking whichever reading is convenient. `station/components.py`
+therefore uses `grid_width_m` exactly as the schema hands it over and changes only the
+construction (INV-583), so the component's extent is unmoved whichever reading wins.
+
+**What would settle it.** A scale anchor on `exterior more.jpg`'s end views fixing the masts'
+span in metres, or Miller's own text for that table row.
+
+---
+
+## INV-585 — The cargo rail's grey, as a same-frame ratio to the hull
+
+**What.** Albedo **(0.473, 0.453, 0.513)** for the dorsal rail, plinths, feet and gantry —
+proposed, not applied; the diff is in `scratchpad/PATCHES-4r-exterior.md` because
+`station/materials.py` belongs to another agent this session.
+
+**How it was derived.** Not measured absolutely: `exterior more.jpg` carries the render's own
+grade, and INV-010 records that only differences *within* that sheet are trustworthy. The rail
+band under the module row (x 639–827, rows 195–201) reads **65.64 / 65.08 / 84.22** against two
+independent hull patches at **83.65 / 84.24 / 88.44** and **82.98 / 83.11 / 97.02** — ratios
+0.785/0.773/0.952 and 0.791/0.783/0.868, which agree to 1% in R and G. Mean ratio
+**0.788 / 0.778 / 0.910** applied to `materials.hull_exterior`'s 0.600/0.582/0.564 gives the
+albedo above: the same plated grey as the hull, darker and slightly cooler, which is what an
+unpainted structural rail beside a weathered painted hull should be.
+
+**What constrained it.** 00-INDEX says "small **grey** plinths"; the measured saturation is
+0.227 against the modules' 0.481, so the band is unambiguously the neutral member of the pair.
+
+**What it costs while unapplied.** `SPLIT_RAIL_GROUP` is False, so the rail ships inside the
+`cargo_module` group and takes the red container skin. The A/B is
+`docs/craft-4r-ext-cargo-after-railmat.png` (bound) against
+`docs/craft-4r-ext-cargo-after.png` (unbound). What is lost is a hue, not a shape.
+
+**Overturned by** a production paint reference, which would replace this differential with an
+absolute.
+
+---
+
+## INV-586 — The articulation floor: 3.0× a plain box, derived from its own control
+
+**What.** `station/components.py::ARTICULATION_FLOOR = 3.0`. Every schema component's visible
+line density, concatenated over every group it emits and normalised against a plain box of ONE
+instance's surface area, must exceed 3.0.
+
+**Why a floor at all.** Every other assertion in that file is topological — closed, wound
+outward, inside its envelope, not floating, not interpenetrating — and CLAUDE.md's most
+expensive lesson is that **a cube passes every word of a topological test**. Out here it cost
+eleven sessions of `cargo_module` being six boxes and `comms_grid_pylon` being four, at 44/44
+green throughout.
+
+**Why 3.0, and it is derived from the control rather than chosen.** `boxed_control` rebuilds
+every component as its own bounding boxes — which is exactly what the two failing builders WERE
+— and that population tops out at **2.02×**. The least articulated real component is `cobra_bay`
+at **5.43×**. The log-space midpoint is √(2.02 × 5.43) = **3.31**, taken as 3.0: rounded *down*
+rather than up, so that where the derivation is soft the gate errs toward accepting a real
+component rather than rejecting one. The self-test prints the control's maximum on every run, so
+the number in the file cannot go stale silently.
+
+**Two normalisations, and getting either wrong makes it lie.** Per INSTANCE, because
+`lam_of_plain_box` builds its null from the total area handed to it and N instances of one shape
+score √N higher — the 28 cobra bays read 20.31× over the group and 3.84× per bay, so a component
+could otherwise pass by being numerous. And per schema COMPONENT rather than per emitted group,
+because a dome IS its glazing and its mullions, and scoring the glazing alone asks a pane of
+glass to carry line-work.
+
+**Shown failing on the pre-fix content**, which is the only evidence that counts. Against
+`git show 1982be0:station/components.py`: `reactor_cooling_fin` 34.20×, `forward_comms_plate`
+18.46×, `space_traffic_prox_array` 16.65×, `heat_exchange_solar_array` 14.36×,
+`observation_dome` 8.39×, `observation_rotunda` 8.34×, `docking_port` 8.31×, `cobra_bay` 5.43×
+— and **`comms_grid_pylon` 2.19× FAIL**, **`cargo_module` 1.02× FAIL**. `cargo_module`'s own
+boxed control is also **1.02×**, the identical number, because it *was* its bounding boxes.
+Eight components pass unchanged, the two the frames showed to be boxes fail, nothing else does.
+
+**What would break if it is wrong.** Too high and a legitimately smooth surface — glazing, a
+radiator coating — is forced to carry decoration it should not have, which is C1's "detail that
+reads as noise rather than machinery". Too low and it stops separating a box from a built thing,
+which is the only job it has.
+
+---
+
+## INV-587 — A schema key no builder reads is a sourced fact that does nothing
+
+**What.** `station/components.py::unread_spec_keys` fails when a component in
+`station/schema/station.yaml` declares a key that no builder in that file reads, with
+`SPEC_META_KEYS` exempt by kind and `SUPERSEDED_SPEC_KEYS` exempt by name *with a written
+reason*.
+
+**Why.** `cargo_module` carried `rail: True` beside a `src` that reads "six dark-red modules
+countable on a continuous raised dorsal rail with grey plinths between them", and `rail`
+appeared nowhere in `station/components.py`. The rail and the plinths were sourced, declared and
+unbuilt, and nothing could say so. This is the same shape as the project's recurring
+no-caller defect, one level down: not machinery with no caller, but *evidence* with no consumer.
+
+**Why on the class and not on the instance.** CLAUDE.md: "a fix applied to an instance and not
+to the rule is a fix that will be needed again." Building the rail closes `rail`; the check
+closes the kind.
+
+**The one live exemption.** `reactor_cooling_fin`'s `root_taper: 0.5`, superseded in session 3s
+when `planar_blades` replaced a root-to-tip taper with `PLANFORM`, a seven-point lozenge read
+off the same sheet — "tapered lozenges, wide at mid-height and narrowing at both root and tip"
+(00-INDEX). A single taper factor cannot express that. The key survives only because
+`station.yaml` is not that module's file to edit; its deletion is proposed in
+`scratchpad/PATCHES-4r-exterior.md`.
+
+**Its control has a trap in it and the trap fired.** The check scans this file's own source for
+the key as a literal, so the negative control's probe key must be BUILT at run time rather than
+written out — spelled out, it finds itself and the control passes vacuously. It did exactly that
+on the first run. Same shape as `drum_ground`'s periodicity assertion comparing a value against
+itself.
+
+---
+
+## INV-588 — The three distances are derived from the lens, and the lens is stated
+
+**What.** The distances every exterior component in session 4r was scored at: **normal** = the
+instance spans half the frame height, **half** = half of that, **one pixel** = the instance
+spans one row. Per component, from its own longest dimension.
+
+**Why derived rather than chosen.** AAA-STANDARD asks for "the distance the player normally sees
+it from, half that, and the distance at which it is one pixel of silhouette", and CLAUDE.md
+records that only the first was ever rendered for 118 interior locations — "at 200 m a box reads
+as a building". A per-component rule removes the choice from the reviewer's hand and makes a
+1,075 m grid and a 42 m cobra bay comparable.
+
+**The lens, because a distance is meaningless without one.** Every frame is
+`tools/export_scene.SHOT_FOV_DEG = 46.0` vertical over 720 rows, so D = S / (2·tan(FOV/4)) =
+**2.458 S**. The shipped camera is **70.0** (`godot/scripts/player.gd:279`, vertical at Godot's
+default `keep_aspect = KEEP_HEIGHT`), which puts the same framing at **1.586 S** — a player
+reaches it at **0.645×** these distances. Every score taken here is therefore the *easier* test.
+
+**And the LOD ladder is calibrated for a third lens.** `station/lod.py::FOV_DEG` is **50.0**
+with no provenance, which makes every switch distance in the project ~33% too large. Every craft
+frame in session 4r forces `--lod lod0`, so the ladder does not enter the judgement and these
+scores survive that constant being corrected.
+
+**Overturned by** a change to `SHOT_FOV_DEG` or to the shipped camera, either of which moves
+every distance quoted in `docs/aaa-scorecard.json`'s `exterior_components` rows.

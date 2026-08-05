@@ -178,44 +178,158 @@ def radial_array(spec, profile):
     return verts, tris
 
 
+# --- the deep space communications grid -------------------------------------
+#
+# WHAT WAS WRONG. Each pylon was TWO BOXES -- 24 triangles, 12 facets, a 517.6
+# m unbroken face, visible line density 0.0120 m^-1, the lowest number anywhere
+# in this file. Its own docstring said the grid "is the widest structure on the
+# station ... so it dominates the silhouette from any angle and is worth
+# placing precisely"; it was placed precisely and never built. At the rubric's
+# half distance (docs/craft-4r-ext-pylon-before-half.png) it is a featureless
+# plank on a featureless stick.
+#
+# WHAT THE REFERENCE SHOWS, and it decides the SHAPE rather than the size.
+# `01-station-exterior/exterior more.jpg` is authority 2 and carries BOTH end
+# views. In each of them the grid reads as a **short dark stub arm at the
+# equator carrying a very long, very hairline-thin mast** running perpendicular
+# to it -- 2 to 3 px of width against a hull some 370 px across at that
+# magnification -- and there is **no broad panel anywhere on it**. 00-INDEX
+# records the same reading twice, independently: "two very long thin masts run
+# vertically far beyond the hull silhouette in *both* end views, and two
+# shorter stub arms project laterally at the equator", and for the Miller
+# sheet, "long thin masts extend beyond the hull at spine level toward the
+# fore end".
+#
+# WHAT IS NOT CHANGED, AND WHY. `span_m` 1,060.25 and `grid_width_m` 893.2 are
+# schema numbers off `canon/00-MASTER.md`'s rescaled specification table and
+# they stay exactly as they are: the span is corroborated (2,120.5 m tip to tip
+# against masts that visibly overrun the hull in both end views), and the width
+# is AMBIGUOUS in a way that is not mine to resolve -- see INV-584. So the
+# extent of this component is untouched and only its CONSTRUCTION changes.
+#
+# A GRID IS A LATTICE. That is what the word means, it is what the end views
+# are consistent with -- an open framework of thin members reads as thin masts
+# at 100 km and a solid 893 x 300 m plate does not -- and it is what turns 24
+# triangles into a structure with three tiers. Primary: two booms at the inner
+# and outer radius plus two end posts, 26 m. Secondary: the radial ribs that
+# divide it into bays, 14 m. Tertiary: one diagonal brace per bay, 9 m. The
+# aperture between them is open, which is the point: a communications grid that
+# is solid is a billboard. INV-583.
+GRID_RIBS = 9                  # radial ribs dividing the grid into bays
+GRID_BOOM_FRAC = 0.055         # boom section / panel depth
+GRID_RIB_FRAC = 0.030          # rib section / panel depth
+GRID_BRACE_FRAC = 0.019        # diagonal brace section / panel depth
+GRID_BAY_BIAS = 1.45           # >1 bunches the bays where the mast meets the
+                               # grid, which is where the shear is
+MAST_SEGMENTS = 6              # tapering lengths between collars
+MAST_TIP_FRAC = 0.42           # tip section as a fraction of the root's
+
+
 def pylon_pair(spec, profile):
-    """Two opposed pylons carrying the deep-space communications grid.
+    """Two opposed masts carrying the deep-space communications grid.
 
     The grid is the widest structure on the station -- 2,120 m tip to tip,
     against a hull that is under 1 km at its broadest -- so it dominates the
-    silhouette from any angle and is worth placing precisely.
+    silhouette from any angle and is worth building as well as placing.
+
+    Built in the mast's own (tangential, axial, radial) frame, which is
+    RIGHT-HANDED -- u_t x u_z = u_r -- so every member takes positive extents
+    and comes out wound outward.
     """
     verts, tris = [], []
     z0, z1 = spec["z0"], spec["z1"]
     zc = (z0 + z1) / 2.0
     r0 = radius_at(profile, zc)
-    span, gw, th = spec["span_m"], spec["grid_width_m"], spec["thickness_m"] / 2.0
+    span, gw = spec["span_m"], spec["grid_width_m"]
+    th = spec["thickness_m"] / 2.0
+    depth = spec.get("panel_depth_m", 90)
 
     for i in range(spec["count"]):
         # On +/-X, not +/-Y: the grid must not be edge-on to the North/South
         # docking axis, which is where traffic approaches from.
         a = 2.0 * math.pi * i / spec["count"]
         ca, sa = math.cos(a), math.sin(a)
-        tx, ty = -sa, ca
-        # Pylon: a tapering strut from the hull out to the grid panel.
-        c = []
-        for rr in (r0 * 0.9, r0 + span):
-            for zz in (zc - 40, zc + 40):
-                c.append((ca * rr - tx * th, sa * rr - ty * th, zz))
-        c = [c[0], c[1], c[3], c[2]]
-        c += [(x + 2 * tx * th, y + 2 * ty * th, z) for x, y, z in c]
-        _box(verts, tris, c)
 
-        # Grid panel at the tip, broad face normal to the station axis.
-        rt = r0 + span
+        def put(t0, dt, dz0, dz, r_at, dr, _ca=ca, _sa=sa):
+            _cargo_put((verts, tris), _ca, _sa, 0.0, zc, t0, dt, dz0, dz,
+                       r_at, dr)
+
+        root_r, tip_r = r0 * 0.9, r0 + span
+        # --- the stub arm: the heavy root bracket the end views show ---------
+        # A mast 1,060 m long does not bolt straight to plate. The bracket is
+        # three stepping blocks, widest at the hull, and it is the only part of
+        # this component that is thicker than the mast.
+        brk = tip_r - root_r
+        for k, (f0, f1, wide) in enumerate((
+                (0.00, 0.045, 3.4), (0.045, 0.085, 2.3), (0.085, 0.125, 1.5))):
+            put(-th * wide, 2.0 * th * wide, -40.0 * wide, 80.0 * wide,
+                root_r + brk * f0, brk * (f1 - f0))
+
+        # --- the mast: tapering segments with a collar at every joint --------
+        m0, m1 = root_r + brk * 0.125, tip_r - depth
+        for k in range(MAST_SEGMENTS):
+            f0, f1 = k / MAST_SEGMENTS, (k + 1) / MAST_SEGMENTS
+            s0 = 1.0 - (1.0 - MAST_TIP_FRAC) * f0
+            ra, rb = m0 + (m1 - m0) * f0, m0 + (m1 - m0) * f1
+            put(-th * s0, 2.0 * th * s0, -40.0 * s0, 80.0 * s0, ra, rb - ra)
+            # The collar. It is what makes a long thin member read as built
+            # rather than extruded, and it is where the taper steps.
+            if k < MAST_SEGMENTS - 1:
+                s1 = 1.0 - (1.0 - MAST_TIP_FRAC) * f1
+                put(-th * s1 * 1.55, 2.0 * th * s1 * 1.55,
+                    -40.0 * s1 * 1.25, 80.0 * s1 * 1.25,
+                    rb - (m1 - m0) * 0.012, (m1 - m0) * 0.024)
+
+        # --- the grid: an open lattice, not a plate --------------------------
+        boom = GRID_BOOM_FRAC * depth
+        rib = GRID_RIB_FRAC * depth
+        brace = GRID_BRACE_FRAC * depth
+        gt = th * 0.9                 # the lattice is thinner than the mast
         pw = gw / 2.0
-        c = []
-        for rr in (rt - spec.get("panel_depth_m", 90), rt):
-            for zz in (zc - pw, zc + pw):
-                c.append((ca * rr - tx * 9, sa * rr - ty * 9, zz))
-        c = [c[0], c[1], c[3], c[2]]
-        c += [(x + tx * 18, y + ty * 18, z) for x, y, z in c]
-        _box(verts, tris, c)
+        r_in, r_out = tip_r - depth, tip_r
+        # two booms along the axis, at the inner and outer radius
+        for r_at in (r_in, r_out - boom):
+            put(-gt, 2.0 * gt, -pw, gw, r_at, boom)
+        # two end posts, radial, closing the frame
+        for sz in (-1.0, +1.0):
+            put(-gt, 2.0 * gt, sz * pw if sz > 0 else -pw, boom,
+                r_in + boom, depth - 2.0 * boom)
+        # ribs dividing it into bays, and one diagonal brace per bay
+        # BAYS ARE NOT EVENLY SPACED, and that is structural rather than
+        # decorative. The mast meets the grid at its MID-SPAN, so that is where
+        # the shear is highest and where a real truss puts its bays closest
+        # together. Spacing them by |2f-1|^GRID_BAY_BIAS does exactly that, and
+        # it costs one line. It also removes the only thing about this
+        # component the eye could index -- ten identical bays is a ladder, and
+        # AAA-STANDARD's C4 asks that a specialist find the repeat and nobody
+        # else. `_bay_f` is used for the ribs and the braces alike so the two
+        # cannot disagree about where a bay boundary is.
+        nrib = _ribs(GRID_RIBS)
+        bays = nrib + 1
+
+        def _bay_f(k, n=bays):
+            f = k / n
+            s = -1.0 if f < 0.5 else 1.0
+            return 0.5 + s * 0.5 * abs(2.0 * f - 1.0) ** GRID_BAY_BIAS
+
+        for k in range(nrib):
+            zz = -pw + gw * _bay_f(k + 1) - rib / 2.0
+            put(-gt, 2.0 * gt, zz, rib, r_in + boom, depth - 2.0 * boom)
+        inner_d = depth - 2.0 * boom
+        for k in range(bays):
+            za = -pw + gw * _bay_f(k)
+            zb = -pw + gw * _bay_f(k + 1)
+            # Alternating diagonal: a Warren brace, which is what carries shear
+            # in a boom this slender and what stops the bays reading as a
+            # ladder. Built through `_ribbon` because it is the one member here
+            # that is not axis-aligned.
+            p0 = (ca * (r_in + boom) - sa * 0.0, sa * (r_in + boom) + ca * 0.0,
+                  zc + (za if k % 2 == 0 else zb))
+            p1 = (ca * (r_in + boom + inner_d) - sa * 0.0,
+                  sa * (r_in + boom + inner_d) + ca * 0.0,
+                  zc + (zb if k % 2 == 0 else za))
+            _ribbon(verts, tris, p0, p1, (0.0, 0.0, 1.0), brace, 2.0 * gt,
+                    (ca, sa, 0.0))
     return verts, tris
 
 
@@ -660,38 +774,389 @@ def planar_blades(spec, profile):
     return verts, tris
 
 
-def dorsal_line(spec, profile):
-    """Modules in a row along one line of longitude, riding the hull surface.
+# --- the cargo train --------------------------------------------------------
+#
+# WHAT WAS WRONG. Each of the six cargo modules was ONE BOX -- 12 triangles, 6
+# facets, a 110.7 m unbroken face -- and the row had nothing else in it at all.
+# At the rubric's half distance (docs/craft-4r-ext-cargo-before-half.png) that
+# is a dark red slab filling 720 of 720 rows with no hatch, no rib, no door and
+# no seam, sitting on a hull that carries plating, window rows and greebles.
+# AAA-STANDARD's C1 verbatim: "a box primitive standing in for a named object".
+#
+# AND THE SCHEMA ALREADY SAID WHAT WAS MISSING. `station.yaml` gives
+# cargo_module `rail: True` and its `src` reads "six dark-red modules countable
+# on a continuous raised dorsal rail with grey plinths between them" -- and the
+# key `rail` appeared nowhere in this file. A sourced fact, declared in the
+# schema, that no builder read. `_selftest`'s spec-key check now fires on that
+# class of defect rather than on this instance of it.
+#
+# TWO AUTHORITY-2 SOURCES THAT COULD NOT HAVE COPIED EACH OTHER agree on the
+# rail, which is what FIDELITY 4 asks for:
+#   * `01-station-exterior/exterior more.jpg`, production orthographic renders:
+#     "six dark-red rectangular modules ... sitting on a continuous raised
+#     dorsal rail with small grey plinths between them. Six, not 5-6."
+#   * `other map 4.jpg`, the Miller print sheet: "A dorsal row of ~6 small
+#     square modules on a rail runs aft-of-centre along the spine, with six
+#     blue leader arrows taking them to six callout boxes under the heading
+#     AUTO LOADERS SEQUENCE."
+# The second also says what they ARE -- auto-loader positions -- which is why
+# the row ends in a machinery block rather than in nothing.
+#
+# THE MEASUREMENT, AND IT IS STORED AS RATIOS. `exterior more.jpg` carries no
+# scale bar, so INV-018's rule applies: store the figure as a ratio and the
+# unknown scale cancels. Measured on the native 1280x960 sheet by thresholding
+# the modules' red against a neutral hull (45 < r < 200, r-g > 18, r-b > 18),
+# over the top view's rows 176..192 and the side view's rows 400..450:
+#
+#   six runs at x 639-657, 673-691, 707-724, 742-759, 776-793, 810-827
+#   module length along z   18.33 px   (1.000, the datum)
+#   gap between modules     15.80 px   (0.862)
+#   module width across     17.0  px   (0.927)
+#   module height, side vw  16.0  px   (0.873)
+#
+# Grey pixels fill 14 of 15 and 14 of 16 columns in two of the five gaps and
+# some of every other one -- the plinths, measured rather than taken on trust.
+# See INV-580.
+CARGO_GAP_FRAC = 0.862         # gap / module length along z, measured
+CARGO_WIDE_FRAC = 0.927        # module width across / module length, measured
+CARGO_TALL_FRAC = 0.873        # module height / module length, measured. NOT
+                               # BUILT -- see the note in _selftest and the
+                               # patch proposal; `protrusion_m` is schema.
+CARGO_POST_FRAC = 0.055        # corner post width / module length
+CARGO_PROUD_FRAC = 0.020       # frame relief, as a fraction of module length
+CARGO_CASTING_FRAC = 1.45      # a corner casting oversails its post
+CARGO_CORRUGATIONS = 9         # ribs per wall panel between the corner posts
+CARGO_RIB_PROUD_FRAC = 0.009   # rib relief -- HALF the frame's, deliberately
+CARGO_RAIL_TOP_FRAC = 0.14     # rail height / protrusion
+CARGO_FOOT_TOP_FRAC = 0.20     # module underside / protrusion
+CARGO_SLEEPERS = 4             # rail cross-ties per module pitch
 
-    The orthographic sheet shows the cargo modules as a single dorsal row on the
-    mid-section, clearly visible in both top and side views -- which only happens
-    for a row lying along one meridian. They were previously wrapped around the
-    circumference, which read as surface noise rather than as a cargo train.
+# DOES THE RAIL GET ITS OWN GROUP, AND THEREFORE ITS OWN MATERIAL.
+#
+# It should. The sheet shows the modules dark red and the rail, plinths and
+# gantry GREY, measured on the native image as a same-frame ratio against two
+# independent hull patches: the rail band reads 0.788/0.778/0.910 of the hull
+# plate beside it, which on `materials.hull_exterior`'s 0.600/0.582/0.564 is an
+# albedo of 0.473/0.453/0.513 -- the same plated grey, darker and slightly
+# cooler. INV-585, and the frames are
+# docs/craft-4r-ext-cargo-after-railmat.png (bound) against
+# docs/craft-4r-ext-cargo-after.png (unbound).
+#
+# It is OFF because binding it needs a `Material` in `station/materials.py`,
+# which another agent owns and is editing this session. `export_scene`'s
+# exterior coverage check is STRICT -- an emitted group matching no rule in
+# `exterior.tscn` RAISES rather than warns -- so shipping the split group
+# without its material would not render a grey rail, it would stop the exterior
+# exporting at all. The whole diff, with the measurement behind it, is in
+# `scratchpad/PATCHES-4r-exterior.md`; flipping this to True is the other half
+# of that patch and `_selftest` builds BOTH branches so neither can rot.
+#
+# What is lost meanwhile is a hue, not a shape: the rail, plinths, feet and
+# gantry are all built either way and read as structure either way. They just
+# read as red structure.
+SPLIT_RAIL_GROUP = False
+
+
+def dorsal_line(spec, profile):
+    """The cargo train: six auto-loader modules on a continuous dorsal rail.
+
+    Returns TWO groups, because the sheet shows two materials and a group is
+    the finest thing the engine binds a material to: the modules are dark red
+    (`materials.cargo_module`, albedo 0.340/0.222/0.205, measured off this same
+    sheet) and the rail, plinths, feet and terminal block are GREY. Emitting
+    them as one group would paint a grey rail red, which is the defect
+    `cobra_bay_ring` was split five ways to avoid.
+
+    AND THE SECOND GROUP IS `cargo_rail`, NOT `cargo_module_rail`, WHICH IS NOT
+    A STYLE CHOICE. `render_shot.gd::_material_for` binds by LONGEST SUBSTRING
+    -- `mesh_name.contains(frag)` -- so any group name CONTAINING
+    `cargo_module` inherits the red container skin. The first build of this was
+    named `cargo_module_rail` and the frame came back with a red rail and red
+    plinths against a sheet that says grey. Nothing failed and no gate fired;
+    the only tell was the picture. Until `materials.py` binds it -- the patch
+    is written out in `scratchpad/PATCHES-4r-exterior.md` -- this group matches
+    no rule and lands on `exterior.tscn`'s `fallback_material = m_hull`, the
+    pale structural grey. That is the right family BY ACCIDENT rather than by
+    decision, and this sentence exists so the next reader knows which.
+
+    Placement is unchanged. The row lies along one meridian because the
+    orthographic sheet shows it in BOTH the top and side views, which only
+    happens for a row on one line of longitude; it was once wrapped around the
+    circumference and read as surface noise. `z0`, `z1`, `count`, `rows`,
+    `fill`, `width_m`, `protrusion_m` and `plane_deg` all mean exactly what
+    they meant before and the outer envelope is unmoved -- the module top is
+    still exactly `r0 + protrusion_m`, so `validate.py`'s radius envelope and
+    `lod.max_radius` cannot see this change.
+
+    THREE TIERS, which is what AAA-STANDARD C3 asks for and what a box cannot
+    have. Primary: the container, 118 m. Secondary: its structural frame --
+    four corner posts, top and bottom rails, eight corner castings -- at 6.5 m,
+    standing 2.4 m proud. Tertiary: the corrugation between the posts at 1.1 m
+    proud, half the frame's relief so the frame still reads as the higher tier
+    rather than as more of the same. A container IS a welded frame with
+    corrugated panels between; this is not decoration applied to a box, it is
+    the object's own construction. INV-582.
     """
-    verts, tris = [], []
     z0, z1 = spec["z0"], spec["z1"]
     n = spec["count"]
     rows = spec.get("rows", 1)
     per_row = max(1, n // rows)
     prot, w = spec["protrusion_m"], spec["width_m"]
-    length = (z1 - z0) / per_row * spec.get("fill", 0.72)
+    pitch = (z1 - z0) / per_row
+    length = pitch * spec.get("fill", 0.72)
+
+    mod = ([], [])
+    rail = ([], [])
+    # `rail` is a schema key and it is READ here, which is the whole point of
+    # _selftest's spec-key check. A row with the rail switched off is the
+    # pre-4r silhouette and the gate's negative control uses it.
+    want_rail = bool(spec.get("rail", False))
 
     for row in range(rows):
         a = math.radians(spec.get("plane_deg", 0.0)) + row * 2.0 * math.pi / rows
         ca, sa = math.cos(a), math.sin(a)
-        tx, ty = -sa, ca
+        r_mid = radius_at(profile, (z0 + z1) / 2.0)
+        if want_rail:
+            _cargo_rail(rail, ca, sa, profile, z0, z1, w, prot, pitch, per_row)
         for i in range(per_row):
             zc = z0 + (z1 - z0) * (i + 0.5) / per_row
             r0 = radius_at(profile, zc)
-            hw = w / 2.0
-            quad = []
-            for rr in (r0 - 8, r0 + prot):
-                for zz in (zc - length / 2, zc + length / 2):
-                    quad.append((ca * rr - tx * hw, sa * rr - ty * hw, zz))
-            quad = [quad[0], quad[1], quad[3], quad[2]]
-            quad += [(x + 2 * tx * hw, y + 2 * ty * hw, z) for x, y, z in quad]
-            _box(verts, tris, quad)
-    return verts, tris
+            _cargo_module(mod, rail, ca, sa, r0, zc, length, w, prot,
+                          want_rail)
+            if want_rail and i < per_row - 1:
+                # A plinth in each gap. Its own z span is the gap the sheet
+                # measures, not a guess: the modules are `length` long on a
+                # `pitch`, so the gap is whatever the schema's `fill` leaves.
+                zg = zc + pitch / 2.0
+                _cargo_plinth(rail, ca, sa, radius_at(profile, zg), zg,
+                              pitch - length, w, prot)
+        if want_rail:
+            # THE TERMINAL MUST NOT SIT ON A MODULE. The first build of it took
+            # `pitch * 0.26` of length off `z1` and landed 21 m inside the last
+            # container -- two solids sharing a volume, which is R5's standing
+            # counter-example (the tram 6.43 m inside a spoke) reproduced in
+            # miniature, and which no render at this scale would have shown
+            # because the block is grey against a red module in shadow. The
+            # space actually available is whatever `fill` leaves past the last
+            # module, so that is what it is given, and the guard raises rather
+            # than silently clamping.
+            last_end = z0 + (z1 - z0) * (per_row - 0.5) / per_row + length / 2.0
+            avail = z1 - last_end
+            # A tenth of the module pitch is the smallest the gantry can be and
+            # still read as machinery rather than as a chip off the last
+            # container -- one rail cross-tie's spacing, `CARGO_SLEEPERS` per
+            # pitch being four. Below that the honest answer is that the run
+            # does not fit, not a thinner block.
+            if avail < pitch / CARGO_SLEEPERS / 2.5:
+                raise ValueError(
+                    f"cargo train has no room for its terminal block: the last "
+                    f"module ends at z={last_end:.1f}, the run ends at "
+                    f"z={z1:.1f}, so {avail:.1f} m is left against a minimum of "
+                    f"{pitch / CARGO_SLEEPERS / 2.5:.1f} m. Lower `fill` "
+                    f"({spec.get('fill', 0.72)}) or extend z1.")
+            _cargo_terminal(rail, ca, sa, r_mid, last_end, avail, w, prot)
+
+    if not SPLIT_RAIL_GROUP:
+        base = len(mod[0])
+        mod[0].extend(rail[0])
+        mod[1].extend((a + base, b + base, c + base) for a, b, c in rail[1])
+        return {spec["id"]: mod}
+    return {spec["id"]: mod, "cargo_rail": rail}
+
+
+def _cargo_put(part, ca, sa, r0, zc, t0, dt, dz0, dz, r_off, dr):
+    """Place a box in the module's own (across, along, radial) frame.
+
+    (u_t, u_z, u_r) is RIGHT-HANDED -- u_t x u_z = (-sa, ca, 0) x (0, 0, 1) =
+    (ca, sa, 0) = u_r -- so every call takes positive extents and comes out
+    wound outward, and `_selftest`'s signed-volume check on the group is what
+    holds me to it. Same discipline as `_cobra_bay.put`, and for the same
+    reason: the two components whose winding was inside-out for four sessions
+    both got it wrong reordering corners by hand.
+    """
+    if dt <= 0 or dz <= 0 or dr <= 0:
+        raise ValueError(f"cargo box has a non-positive extent: "
+                         f"dt={dt} dz={dz} dr={dr}")
+    ut = (-sa, ca, 0.0)
+    uz = (0.0, 0.0, 1.0)
+    ur = (ca, sa, 0.0)
+    origin = (ur[0] * (r0 + r_off) + ut[0] * t0,
+              ur[1] * (r0 + r_off) + ut[1] * t0,
+              zc + dz0)
+    _slab(part[0], part[1], origin,
+          tuple(c * dt for c in ut), tuple(c * dz for c in uz),
+          tuple(c * dr for c in ur))
+
+
+def _cargo_module(mod, rail, ca, sa, r0, zc, length, w, prot, want_rail):
+    """One container: body, frame, castings, corrugation, hatch and feet."""
+    post = CARGO_POST_FRAC * length
+    proud = CARGO_PROUD_FRAC * length
+    rib_proud = CARGO_RIB_PROUD_FRAC * length
+    base = CARGO_FOOT_TOP_FRAC * prot if want_rail else 0.0
+    # The top is exactly `prot`, unchanged from the box this replaces, so the
+    # silhouette's outer extent does not move. What changes is everything
+    # between the top and the hull.
+    hgt = prot - base
+    if hgt <= 0:
+        raise ValueError(f"cargo module has no height: prot={prot} base={base}")
+    hw, hl = w / 2.0, length / 2.0
+
+    # --- primary: the container body ---------------------------------------
+    _cargo_put(mod, ca, sa, r0, zc, -hw, w, -hl, length, base, hgt)
+
+    # --- secondary: the welded frame ---------------------------------------
+    # Four corner posts, running the full height and standing proud on BOTH
+    # faces they meet at, which is what a corner post does and what makes the
+    # corner read as a corner rather than as an arris.
+    for st in (-1.0, +1.0):
+        for sz in (-1.0, +1.0):
+            t_out = st * (hw + proud)
+            z_out = sz * (hl + proud)
+            _cargo_put(mod, ca, sa, r0, zc,
+                       min(t_out, t_out - st * (post + proud)), post + proud,
+                       min(z_out, z_out - sz * (post + proud)), post + proud,
+                       base, hgt)
+    # Top and bottom rails round the whole perimeter. `rail_d` is the post
+    # width, so the frame is one member size throughout -- a frame built of
+    # three different sections reads as three unrelated things.
+    for r_at in (base, base + hgt - post):
+        for st in (-1.0, +1.0):
+            _cargo_put(mod, ca, sa, r0, zc, st * hw if st > 0 else -hw - proud,
+                       proud, -hl, length, r_at, post)
+        for sz in (-1.0, +1.0):
+            _cargo_put(mod, ca, sa, r0, zc, -hw, w,
+                       sz * hl if sz > 0 else -hl - proud, proud, r_at, post)
+    # Eight corner castings -- the lift points an auto-loader grabs. They are
+    # the reason the frame has corners at all, and they are the smallest thing
+    # in the secondary tier, so they set its lower bound.
+    cast = CARGO_CASTING_FRAC * post
+    for st in (-1.0, +1.0):
+        for sz in (-1.0, +1.0):
+            for r_at in (base, base + hgt - cast):
+                t_out = st * (hw + proud + rib_proud)
+                z_out = sz * (hl + proud + rib_proud)
+                _cargo_put(mod, ca, sa, r0, zc,
+                           min(t_out, t_out - st * cast), cast,
+                           min(z_out, z_out - sz * cast), cast,
+                           r_at, cast)
+
+    # --- tertiary: corrugation between the posts ---------------------------
+    nrib = _ribs(CARGO_CORRUGATIONS)
+    inner_t, inner_z = w - 2.0 * post, length - 2.0 * post
+    rib_w = max(0.6, inner_z / (2.0 * nrib + 1.0)) if nrib else 0.0
+    for k in range(nrib):
+        f = (k + 0.5) / nrib
+        # long faces: ribs run radially, spaced along z
+        zz = -inner_z / 2.0 + inner_z * f - rib_w / 2.0
+        for st in (-1.0, +1.0):
+            _cargo_put(mod, ca, sa, r0, zc,
+                       st * hw if st > 0 else -hw - rib_proud, rib_proud,
+                       zz, rib_w, base + post, hgt - 2.0 * post)
+        # end faces: ribs run radially, spaced across
+        tt = -inner_t / 2.0 + inner_t * f - rib_w / 2.0
+        for sz in (-1.0, +1.0):
+            _cargo_put(mod, ca, sa, r0, zc, tt, rib_w,
+                       sz * hl if sz > 0 else -hl - rib_proud, rib_proud,
+                       base + post, hgt - 2.0 * post)
+
+    # --- the loading hatch, on the face the loader reaches --------------------
+    # `other map 4.jpg` calls these AUTO LOADER positions, so the top face is
+    # the working face and it gets the aperture the name implies: a recessed
+    # lid inside a raised rim. Without it the top is the one face with nothing
+    # on it, and the top is what a camera above the dorsal line looks straight
+    # down at -- which is the framing docs/craft-4r-ext-cargo-before-half.png
+    # is taken from.
+    ht, hz = inner_t * 0.62, inner_z * 0.62
+    rim = post * 0.85
+    for st in (-1.0, +1.0):
+        _cargo_put(mod, ca, sa, r0, zc, st * ht / 2.0 if st > 0
+                   else -ht / 2.0 - rim, rim, -hz / 2.0, hz,
+                   base + hgt, rim * 1.2)
+    for sz in (-1.0, +1.0):
+        _cargo_put(mod, ca, sa, r0, zc, -ht / 2.0 - rim, ht + 2.0 * rim,
+                   sz * hz / 2.0 if sz > 0 else -hz / 2.0 - rim, rim,
+                   base + hgt, rim * 1.2)
+    _cargo_put(mod, ca, sa, r0, zc, -ht / 2.0, ht, -hz / 2.0, hz,
+               base + hgt, rim * 0.55)
+
+    # --- the feet, and they belong to the RAIL's material --------------------
+    # The side view shows a shadow gap under every module with two dark blocks
+    # in it. That gap is why the modules read as cargo standing ON something
+    # rather than as blisters grown out of the hull.
+    if want_rail:
+        foot_t, foot_z = w * 0.26, length * 0.16
+        for sz in (-1.0, +1.0):
+            _cargo_put(rail, ca, sa, r0, zc, -foot_t / 2.0, foot_t,
+                       sz * length * 0.30 - foot_z / 2.0, foot_z,
+                       CARGO_RAIL_TOP_FRAC * prot,
+                       base - CARGO_RAIL_TOP_FRAC * prot)
+
+
+def _cargo_rail(rail, ca, sa, profile, z0, z1, w, prot, pitch, per_row):
+    """The continuous raised dorsal rail, stepped, with cross-ties.
+
+    Two authority-2 sources call it continuous, so it is built as one run from
+    z0 to z1 rather than as a plinth under each module. It follows the hull the
+    way `_cobra_bay` does -- sampled per tie -- because this band is 1,140 m
+    long and a rail on one radius would bury itself at one end.
+    """
+    ties = max(1, int(round(CARGO_SLEEPERS * per_row)))
+    seg = (z1 - z0) / ties
+    top = CARGO_RAIL_TOP_FRAC * prot
+    for k in range(ties):
+        za = z0 + seg * k
+        r0 = radius_at(profile, za + seg / 2.0)
+        # lower deck, wider; upper rail, narrower. The step is what gives the
+        # run its own base line in the side view.
+        _cargo_put(rail, ca, sa, r0, za, -w * 0.56, w * 1.12, 0.0, seg,
+                   -10.0, 10.0 + top * 0.5)
+        _cargo_put(rail, ca, sa, r0, za, -w * 0.36, w * 0.72, 0.0, seg,
+                   top * 0.5, top * 0.5)
+        # A cross-tie standing proud at the head of each segment -- the row of
+        # small dark ticks running the length of the band under the modules in
+        # the top view, which is the only tertiary detail the rail has in the
+        # sheet.
+        _cargo_put(rail, ca, sa, r0, za, -w * 0.60, w * 1.20,
+                   seg * 0.06, seg * 0.16, -2.0, top * 0.62)
+
+
+def _cargo_plinth(rail, ca, sa, r0, zc, gap, w, prot):
+    """A grey plinth in the gap between two modules. Measured: grey fills 14 of
+    15 and 14 of 16 columns in two of the five gaps on the sheet."""
+    top = CARGO_RAIL_TOP_FRAC * prot
+    gl = gap * 0.52
+    _cargo_put(rail, ca, sa, r0, zc, -w * 0.24, w * 0.48, -gl / 2.0, gl,
+               top, prot * 0.20)
+    _cargo_put(rail, ca, sa, r0, zc, -w * 0.30, w * 0.60,
+               -gl * 0.34, gl * 0.68, top + prot * 0.20, prot * 0.06)
+
+
+def _cargo_terminal(rail, ca, sa, r0, zc, avail, w, prot):
+    """The machinery block that closes the run, inside `avail` metres of z.
+
+    Both sheets show the row ending in a taller grey structure rather than in
+    nothing, and `other map 4.jpg` says what it is for: the modules are AUTO
+    LOADER positions, so the run terminates at the loader itself. It is TALL
+    rather than long because `fill` leaves it 36 m and it is 104 m wide -- a
+    gantry over the end of a train is the shape that fits and the shape the
+    sheet shows.
+    """
+    top = CARGO_RAIL_TOP_FRAC * prot
+    dz = avail * 0.86
+    z0_ = avail * 0.07
+    _cargo_put(rail, ca, sa, r0, zc, -w * 0.44, w * 0.88, z0_, dz,
+               top, prot * 0.52)
+    _cargo_put(rail, ca, sa, r0, zc, -w * 0.30, w * 0.60, z0_ + dz * 0.12,
+               dz * 0.76, top + prot * 0.52, prot * 0.34)
+    _cargo_put(rail, ca, sa, r0, zc, -w * 0.11, w * 0.22, z0_ + dz * 0.26,
+               dz * 0.48, top + prot * 0.86, prot * 0.30)
+    # Two legs straddling the rail, so the loader stands over the train rather
+    # than beside it.
+    for st in (-1.0, +1.0):
+        _cargo_put(rail, ca, sa, r0, zc, st * w * 0.44 if st > 0
+                   else -w * 0.44 - w * 0.09, w * 0.09, z0_ + dz * 0.30,
+                   dz * 0.40, -6.0, top + 6.0)
 
 
 def dome_frame(out):
@@ -1189,6 +1654,195 @@ def boundary_edges(tris):
     return sorted(k for k, v in seen.items() if v != 2)
 
 
+# --- THE GATE THIS FILE DID NOT HAVE -----------------------------------------
+#
+# Every assertion above this line is TOPOLOGICAL -- closed, outward-wound,
+# inside its envelope, not floating, not interpenetrating -- and CLAUDE.md's
+# most expensive lesson is that **a cube passes every word of a topological
+# test**. It cost three layers of work on the interior; out here it cost eleven
+# sessions of `cargo_module` being six boxes and `comms_grid_pylon` being four,
+# with 44/44 green the whole time.
+#
+# So this one measures FORM. `density.analyse` gives visible line density in
+# metres of line per square metre; `density.lam_of_plain_box` gives the same
+# number for a plain box of the same surface area -- the null hypothesis, which
+# is 1.0 by construction. The ratio is "how many times more line-work than a
+# cuboid", and a component that is a cuboid scores 1.
+#
+# TWO NORMALISATIONS MATTER AND GETTING EITHER WRONG MAKES THE NUMBER LIE.
+#
+#  1. PER INSTANCE, not per group. `lam_of_plain_box` builds its null from the
+#     TOTAL area it is handed, so N separate instances of one shape score
+#     sqrt(N) times higher than one of them -- the 28 cobra bays read 20.31x
+#     over the group and 3.84x per bay. Written the first way a component could
+#     pass by being numerous. So the null is a box of ONE INSTANCE's area.
+#
+#  2. PER SCHEMA COMPONENT, not per emitted group. A cobra bay IS its frame,
+#     its well liner, its hazard lip and its two light families; a dome IS its
+#     glazing and its mullions. Scoring the glazing alone asks a pane of glass
+#     to carry line-work, which is C1's "detail that reads as noise rather than
+#     machinery". The rubric judges the object, so the gate concatenates every
+#     group a component emits and scores that.
+#
+# THE FLOOR IS DERIVED FROM THE CONTROL, which is what makes it defensible.
+# `boxed_control` rebuilds every component as its own bounding boxes -- which is
+# exactly what `dorsal_line` and `pylon_pair` WERE -- and that population tops
+# out at **2.02x** (the self-test prints it on every run, so this number cannot
+# go stale silently). The least articulated real component is `cobra_bay` at
+# **5.43x**. The log-space midpoint is sqrt(2.02 x 5.43) = 3.31, taken as 3.0 --
+# rounded DOWN rather than up, so that where the derivation is soft the gate
+# errs toward accepting a real component rather than toward rejecting one.
+#
+# AND IT IS SHOWN FAILING ON THE PRE-4r CONTENT, which is the only evidence
+# that matters. Run against `git show 1982be0:station/components.py`, the same
+# ten components score:
+#
+#     reactor_cooling_fin     34.20x       observation_dome           8.39x
+#     forward_comms_plate     18.46x       observation_rotunda        8.34x
+#     space_traffic_prox      16.65x       docking_port               8.31x
+#     heat_exchange_array     14.36x       cobra_bay                  5.43x
+#     comms_grid_pylon         2.19x  FAIL
+#     cargo_module             1.02x  FAIL
+#
+# and `cargo_module`'s own boxed control is **1.02x** -- the identical number,
+# because it WAS its bounding boxes. Eight components pass unchanged, the two
+# the frames showed to be boxes fail, and nothing else does. After this
+# session's rework they read 8.61x and 10.56x.
+#
+# WHAT WOULD BREAK IF IT IS WRONG: too high and a legitimately smooth surface is
+# forced to carry decoration it should not have. Too low and it stops
+# separating a box from a built thing, which is the only job it has.
+ARTICULATION_FLOOR = 3.0
+
+
+def component_groups(specs, profile):
+    """{component id: the group names its builder emits}."""
+    out = {}
+    for spec in specs:
+        built = BUILDERS[spec["kind"]](spec, profile)
+        out[spec["id"]] = (sorted(built) if isinstance(built, dict)
+                           else [spec["id"]])
+    return out
+
+
+def _concat(gids, parts):
+    verts, tris = [], []
+    for gid in gids:
+        base = len(verts)
+        verts.extend(parts[gid][0])
+        tris.extend((a + base, b + base, c + base) for a, b, c in parts[gid][1])
+    return verts, tris
+
+
+def articulation(specs, parts, groups, min_facet_m=0.0):
+    """{component id: its line density / that of a box of ONE instance's area}.
+
+    `density` is imported here rather than at module scope because `density`
+    imports THIS module (lazily, inside `_m_components`) and a top-level pair
+    would be a cycle. The measurement is not restated here, for the same reason
+    a second copy of any computed number is forbidden: there is one definition
+    of "visible line density" in this repository and it is `density.analyse`.
+    """
+    import density                                           # noqa: PLC0415
+    out = {}
+    for spec in specs:
+        verts, tris = _concat(groups[spec["id"]], parts)
+        a = density.analyse(verts, tris, min_facet_m=min_facet_m)
+        n = max(1, spec["count"])
+        inst_area = a["area"] / n
+        if inst_area <= 0.0:
+            out[spec["id"]] = 0.0
+            continue
+        # `lam_of_plain_box` on ONE instance's area, written out rather than
+        # called because that helper takes a whole analysis row and the whole
+        # row is the group.
+        box = (12.0 * math.sqrt(inst_area / 6.0)) / inst_area
+        out[spec["id"]] = a["lam"] / box
+    return out
+
+
+def boxed_control(parts, specs, groups):
+    """Every instance of every group replaced by its own bounding box.
+
+    The negative control for `articulation`, and it is not a stand-in for
+    something else: this IS what `dorsal_line` and `pylon_pair` were before
+    session 4r -- one box per cargo module, two per pylon -- reconstructed from
+    the real geometry rather than kept alive as dead code that no shipped path
+    calls. `tools/wiring.py`'s whole subject is machinery with no caller, and a
+    legacy builder retained only so a test can call it is exactly that.
+
+    Instances are taken as `count` equal runs of the vertex list, which is how
+    every builder here emits them. Where a group merges parts of more than one
+    instance -- `cargo_module` does, when SPLIT_RAIL_GROUP is off -- the runs
+    are not the true instances and the control is then simply "this group as a
+    handful of boxes", which is still the null hypothesis it exists to be.
+    """
+    out = {}
+    by_spec = {spec["id"]: spec for spec in specs}
+    owner = {gid: by_spec[cid] for cid, gids in groups.items() for gid in gids}
+    for gid, (verts, tris) in parts.items():
+        spec = owner.get(gid)
+        n = max(1, spec["count"] if spec else 1)
+        per = max(1, len(verts) // n)
+        v, t = [], []
+        for i in range(n):
+            chunk = verts[i * per:(i + 1) * per] or verts
+            lo = [min(p[k] for p in chunk) for k in range(3)]
+            hi = [max(p[k] for p in chunk) for k in range(3)]
+            for k in range(3):
+                if hi[k] - lo[k] < 1e-6:
+                    hi[k] = lo[k] + 1e-3
+            _box(v, t, [(lo[0], lo[1], lo[2]), (hi[0], lo[1], lo[2]),
+                        (hi[0], hi[1], lo[2]), (lo[0], hi[1], lo[2]),
+                        (lo[0], lo[1], hi[2]), (hi[0], lo[1], hi[2]),
+                        (hi[0], hi[1], hi[2]), (lo[0], hi[1], hi[2])])
+        out[gid] = (v, t)
+    return out
+
+
+# A schema key that no builder reads is a sourced fact that silently does
+# nothing, and this file had two. `cargo_module` carried `rail: True` with the
+# `src` "six dark-red modules countable on a continuous raised dorsal rail with
+# grey plinths between them", and `rail` appeared nowhere in this module for
+# eleven sessions -- the rail and the plinths were sourced, declared, and
+# unbuilt. The check below is on the CLASS, not on that instance: CLAUDE.md's
+# rule is that a fix applied to one entry of a table and not to the table will
+# be needed again.
+#
+# An exemption must say why and must name what would end it. Metadata keys are
+# not builder input and are exempt by kind rather than by name.
+SPEC_META_KEYS = ("id", "kind", "auth", "src")
+SUPERSEDED_SPEC_KEYS = {
+    ("reactor_cooling_fin", "root_taper"):
+        "Superseded, and by something better sourced. `planar_blades` replaced "
+        "the root-to-tip taper this key sets with PLANFORM, a seven-point "
+        "lozenge read off reference/01-station-exterior/exterior more.jpg -- "
+        "00-INDEX: 'tapered lozenges, wide at mid-height and narrowing at both "
+        "root and tip'. A single taper factor cannot express that shape. The "
+        "key survives only because station/schema/station.yaml is not this "
+        "module's file to edit; the one-line deletion is proposed in "
+        "scratchpad/PATCHES-4r-exterior.md.",
+}
+
+
+def unread_spec_keys(specs, source=None):
+    """Schema keys a component declares that no builder in this file reads."""
+    if source is None:
+        import os                                            # noqa: PLC0415
+        with open(os.path.abspath(__file__)) as f:
+            source = f.read()
+    bad = []
+    for spec in specs:
+        for key in spec:
+            if key in SPEC_META_KEYS:
+                continue
+            if (spec["id"], key) in SUPERSEDED_SPEC_KEYS:
+                continue
+            if f'"{key}"' not in source and f"'{key}'" not in source:
+                bad.append((spec["id"], key))
+    return sorted(bad)
+
+
 def _selftest():
     import json                                              # noqa: PLC0415
     import os                                                # noqa: PLC0415
@@ -1354,6 +2008,103 @@ def _selftest():
               "none of them is named for it" in str(exc), str(exc))
     finally:
         del BUILDERS["__misnaming_builder"]
+
+    # -- the cargo train ----------------------------------------------------
+    cargo = next(c for c in specs if c["id"] == "cargo_module")
+    prev, globals()["SPLIT_RAIL_GROUP"] = SPLIT_RAIL_GROUP, True
+    try:
+        split = dorsal_line(cargo, profile)
+    finally:
+        globals()["SPLIT_RAIL_GROUP"] = prev
+    merged = dorsal_line(cargo, profile)
+    # BOTH BRANCHES ARE BUILT, so the one that is off cannot rot. That is the
+    # defect this project has produced nine times -- finished machinery with no
+    # caller on the shipped path -- and a flag defaulting to False is the
+    # easiest possible way to produce a tenth.
+    check("the rail group is named so it cannot inherit the container skin",
+          set(split) == {"cargo_module", "cargo_rail"}
+          and "cargo_module" not in "cargo_rail",
+          f"{sorted(split)}; render_shot.gd binds by longest substring, so a "
+          f"group containing 'cargo_module' would render red")
+    check("both rail-group branches build closed, outward-wound solids",
+          all(not boundary_edges(t) and signed_volume(v, t) > 0.0
+              for v, t in list(split.values()) + list(merged.values())))
+    check("merging the rail into the module group loses no geometry",
+          sum(len(t) for _v, t in merged.values())
+          == sum(len(t) for _v, t in split.values()),
+          f"{sum(len(t) for _v, t in merged.values()):,} merged against "
+          f"{sum(len(t) for _v, t in split.values()):,} split")
+    # And the terminal block must not stand on the last module. It did, by 21 m,
+    # on the first build of it -- two solids sharing a volume, which is R5's
+    # standing counter-example in miniature and which no frame showed.
+    rail_v = split["cargo_rail"][0]
+    per_row = max(1, cargo["count"] // cargo.get("rows", 1))
+    pitch = (cargo["z1"] - cargo["z0"]) / per_row
+    last_end = (cargo["z0"] + (cargo["z1"] - cargo["z0"])
+                * (per_row - 0.5) / per_row + pitch * cargo.get("fill", 0.72) / 2.0)
+    mod_v = split["cargo_module"][0]
+    mod_max = max(v[2] for v in mod_v)
+    term = [v for v in rail_v if v[2] > last_end]
+    check("the cargo terminal block clears the last module",
+          term and min(v[2] for v in term) >= last_end - 1e-6,
+          f"terminal starts at {min((v[2] for v in term), default=0):.1f}, "
+          f"last module ends at {last_end:.1f}")
+    check("no cargo geometry leaves the run's own z envelope",
+          mod_max <= cargo["z1"] + 1e-6
+          and max(v[2] for v in rail_v) <= cargo["z1"] + 1e-6,
+          f"module max z {mod_max:.1f}, rail max z "
+          f"{max(v[2] for v in rail_v):.1f}, z1 {cargo['z1']}")
+    # The guard has to be able to fail: a `fill` that leaves the terminal no
+    # room must be refused rather than silently overlapped.
+    try:
+        dorsal_line(dict(cargo, fill=0.95), profile)
+        check("the terminal guard rejects a run with no room for it",
+              False, "a fill of 0.95 was accepted")
+    except ValueError as exc:
+        check("the terminal guard rejects a run with no room for it",
+              "no room for its terminal" in str(exc), str(exc))
+
+    # -- ARTICULATION: the gate a cube cannot pass --------------------------
+    cgroups = component_groups(specs, profile)
+    ratios = articulation(specs, parts, cgroups)
+    low = sorted((r, g) for g, r in ratios.items() if r < ARTICULATION_FLOOR)
+    check(f"every component carries more than {ARTICULATION_FLOOR}x a plain "
+          f"box's line density",
+          not low,
+          "; ".join(f"{g} {r:.2f}x" for r, g in low[:4]))
+    # AND THE CONTROL, which is the whole reason the number above means
+    # anything. Re-boxed, EVERY group must fail it -- if a boxed component can
+    # still pass, the gate is measuring something other than what it says.
+    boxed = articulation(specs, boxed_control(parts, specs, cgroups), cgroups)
+    passing = sorted(g for g, r in boxed.items() if r >= ARTICULATION_FLOOR)
+    check("and a boxed rebuild of every component fails that gate",
+          not passing,
+          f"{len(passing)} of {len(boxed)} still passed as bare boxes: "
+          f"{passing[:4]}")
+    print(f"       worst three: "
+          + ", ".join(f"{g} {r:.2f}x"
+                      for r, g in sorted((r, g) for g, r in ratios.items())[:3])
+          + f"   (boxed control tops out at {max(boxed.values()):.2f}x, "
+          f"floor {ARTICULATION_FLOOR})")
+
+    # -- every schema key a component declares is READ ----------------------
+    unread = unread_spec_keys(specs)
+    check("every schema key a component declares is read by its builder",
+          not unread,
+          f"{unread} -- a key in station.yaml that no builder reads is a "
+          f"sourced fact that silently does nothing. Either consume it or add "
+          f"it to SUPERSEDED_SPEC_KEYS with a reason.")
+    # The control, and its own name has to be BUILT rather than written out:
+    # this check scans THIS FILE for the key as a literal, so a probe spelled
+    # out here would find itself and the control would pass vacuously. It did,
+    # on the first run -- the check returned [] because the test was reading its
+    # own source. Same shape as `drum_ground`'s periodicity assertion comparing
+    # a value against itself.
+    probe = "__" + "unread" + "_probe_key"
+    check("and the spec-key check catches a key nothing reads",
+          unread_spec_keys([dict(cargo, **{probe: 1})])
+          == [("cargo_module", probe)],
+          str(unread_spec_keys([dict(cargo, **{probe: 1})])))
 
     tris = sum(len(t) for _v, t in parts.values())
     print(f"\n  {tris:,} component triangles across {len(parts)} groups")
