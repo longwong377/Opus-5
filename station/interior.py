@@ -18,6 +18,7 @@ every sector would be millions of triangles that are never simultaneously in
 frame. An arc is what a streaming cell will be, so it is what the generator
 emits.
 """
+import bisect
 import json
 import math
 import os
@@ -40,6 +41,23 @@ def load():
 
 
 def hull_radius_at(profile, z):
+    """The ENVELOPE radius at one z -- the outline, protrusions included.
+
+    TWO CONVENTIONS LIVE IN THIS MODULE AND THEY DISAGREE BY UP TO 95.6 m.
+    This returns the sample at or BELOW z (piecewise constant, left-continuous);
+    `core_hull_radius_at` returns the NEAREST sample. At a step in the profile
+    -- and the profile has steps of that size, at 4.07 m pitch over 1,978
+    samples -- which side of a control point a query lands on is worth as much
+    as a whole sector's taper.
+
+    Neither convention is wrong on its own and this is NOT a licence to compare
+    them pointwise: doing that made the opened core profile look as though it
+    exceeded the envelope at z 7060, which is impossible (an opening is
+    anti-extensive, and asserted so: 0 of 1,978 samples violate it). Any code
+    that needs a hull radius over a RANGE should take the extremum over the
+    profile's own samples in that range -- see `narrowest_z` -- rather than
+    probing on a grid of its own.
+    """
     lo, hi = 0, len(profile) - 1
     if z <= profile[0]["z_m"]:
         return profile[0]["radius_m"]
@@ -1668,22 +1686,39 @@ def narrowest_z(profile, z_m, z_span_m=0.0, samples=401):
     result is a deck stack that fits along the whole room rather than at one
     sample of it.
 
-    401 samples, matching the density `directory.py`'s own hand-audit of ten
-    rows used, so the two agree by construction. The profile is piecewise
-    constant between control points, so this is exact wherever the span is
-    longer than the sample pitch and conservative where it is shorter.
+    IT WALKS THE PROFILE'S OWN SAMPLES, NOT A FIXED GRID, and the first version
+    did not. 401 evenly-spaced probes was chosen to match the density
+    `directory.py`'s hand-audit of ten rows used -- which sounds careful and is
+    the wrong shape: the radius profile is 1,978 samples at a 4.07 m pitch, so
+    a fixed grid can straddle a step and miss the narrow side of it entirely.
+    That is not hypothetical here. `hull_radius_at` returns the sample at or
+    BELOW z and `core_hull_radius_at` returns the NEAREST sample, two
+    conventions in this one module that disagree by up to **95.6 m** at a step
+    in the profile -- so which side of a control point a probe lands on is
+    worth as much as a whole sector's taper.
+
+    Walking the profile's own indices, plus the two that bracket the span,
+    makes the answer EXACT rather than sampled and removes the exposure. It is
+    also usually cheaper: a 40 m footprint touches ~11 samples, not 401.
+
+    `samples` is kept only so existing callers do not break; it is unused.
     """
+    zs = [q["z_m"] for q in profile]
     if not z_span_m:
-        return z_m
-    lo = z_m - z_span_m / 2.0
-    step = z_span_m / (samples - 1)
-    worst_z, worst_r = z_m, float("inf")
-    for i in range(samples):
-        zz = lo + step * i
-        r = core_hull_radius_at(profile, zz)
-        if r < worst_r:
-            worst_r, worst_z = r, zz
-    return worst_z
+        # Still not a point query: bracket the sample interval containing z, so
+        # a place sitting just past a control point cannot be measured against
+        # the wider side of the step it is standing on.
+        lo = hi = z_m
+    else:
+        lo, hi = z_m - z_span_m / 2.0, z_m + z_span_m / 2.0
+    i0 = max(0, bisect.bisect_left(zs, lo) - 1)
+    i1 = min(len(zs) - 1, bisect.bisect_right(zs, hi))
+    core = core_hull_profile(profile)
+    worst_i = min(range(i0, i1 + 1), key=lambda i: core[i])
+    # Report a z INSIDE the footprint where one exists, so the returned value
+    # can be handed to `ring_radii(z_m=)` without addressing a place to a z it
+    # does not occupy.
+    return min(max(zs[worst_i], lo), hi) if z_span_m else zs[worst_i]
 
 
 def place_floor_radius(schema, profile, place, z_aware=False):
