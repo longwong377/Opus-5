@@ -235,7 +235,7 @@ def _pixels(size_m, distance_m):
 # stops being a hedge and becomes a shelterbelt (which is a separate class here,
 # with trees in it); bounded BELOW by 1.4 m, under which it stops occluding a
 # person and reads as a kerb. Overturned by any frame showing the arable
-# boundaries at a known scale. -- INV-450, authority 5
+# boundaries at a known scale. -- INV-495, authority 5
 HEDGE_H_M = 1.90
 HEDGE_W_M = 1.40
 HEDGE_WOBBLE_M = 0.35       # amplitude of the clipped-but-not-machined top
@@ -247,7 +247,7 @@ HEDGE_STEP_M = (6.0, 18.0, 40.0, 80.0)
 # A standard -- a full tree left uncut in the hedge line -- every 85 m. English
 # hedgerow practice is one standard per chain-and-a-half of hedge; 85 m is the
 # same order and is chosen so a 323 m parcel edge carries three or four rather
-# than a regular two. -- INV-450
+# than a regular two. -- INV-495
 HEDGE_STANDARD_M = 85.0
 
 # ---------------------------------------------------------------------------
@@ -260,7 +260,7 @@ HEDGE_STANDARD_M = 85.0
 #
 # Lattice spacing 118 m: `drum_ground.PATCH_A` is 32 cells = 124.9 m and the
 # clump lattice is deliberately NOT that number, so clumps do not line up with
-# patch boundaries and produce a visible grid at the LOD seams. -- INV-451
+# patch boundaries and produce a visible grid at the LOD seams. -- INV-496
 CLUMP_SPACING_M = 118.0
 CLUMP_JITTER = 0.42                  # of a lattice cell, each axis
 CLUMP_P_ARABLE = 0.34                # fraction of arable lattice cells

@@ -129,6 +129,20 @@ jobs:
         continue-on-error: true
         run: python3 station/command_control.py
 
+      # HARD RULE 2 HAD NO GATE. `canon/INVENTIONS.md` is the register of every
+      # declared extrapolation and the modules cite it by number; a citation
+      # with nothing behind it looks exactly like a sourced value, which is the
+      # one thing hard rule 1 forbids. On its first run this found TWO NUMBERS
+      # MEANING TWO THINGS EACH -- INV-450 was both the ragdoll's settle
+      # threshold and a farm hedge's height -- because two agents in one session
+      # were each given a reserved block and nothing checked the blocks against
+      # each other. EXPECTED RED on five pre-existing dangling citations
+      # (INV-074/078/140/141/232); the session-4q collisions are closed.
+      - name: Every INV cited in code is defined
+        id: sinv_register
+        continue-on-error: true
+        run: python3 tools/inv_check.py
+
       - name: The circulation network -- can you get from here to there
         id: scirculation
         continue-on-error: true
@@ -917,6 +931,8 @@ jobs:
             echo "FAILED: scnc_ops"; fail=1; fi
           if [ "${{ steps.scommand_control.outcome }}" != "success" ]; then
             echo "FAILED: scommand_control"; fail=1; fi
+          if [ "${{ steps.sinv_register.outcome }}" != "success" ]; then
+            echo "FAILED: sinv_register"; fail=1; fi
           if [ "${{ steps.scirculation.outcome }}" != "success" ]; then
             echo "FAILED: scirculation"; fail=1; fi
           if [ "${{ steps.sperformance_budgets.outcome }}" != "success" ]; then
