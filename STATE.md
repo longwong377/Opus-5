@@ -791,6 +791,59 @@ the only assertion about being noticed lived in a run CI does not make.*
 `counter`* to **3 of 4**. The remaining three are other z-clusters (`z7120`, `z7126`, `z7440`) and
 need their own invocations.
 
+### 25.6 THE TWO AGENTS, VERIFIED HERE RATHER THAN TAKEN FROM THEIR REPORTS
+
+**Exterior components — the last unmeasured craft subsystem, scored and reworked.** Honest
+before-scores written and committed BEFORE any change: **craft 1**, from nine frames at three
+distances, all `Vulkan 1.4.318 - Forward+`, lens stated (`SHOT_FOV_DEG = 46.0`). The per-group
+numbers predicted the frames: `cargo_module` **12 triangles each**, biggest unbroken face 110.7 m;
+`comms_grid_pylon` **24 each**, 517.6 m — *"a featureless plank on a featureless stick, on the
+widest structure on the station"*. Reworked to **8.61×** and **10.56×** a plain box; components
+53,568 → 59,988 tri, `hull_lod0` at **96.9%** of the 400,000 exterior allowance — under, and tight
+enough that the next component reworked will not have that room. **Verified here: 55/56, exit 1 by
+design.** The failure is its own new interface assertion, and it is a real finding — 70 `cobra_bay`
+vertices up to **32.3 m inside observation dome 2's glazing**, 290 `cargo_module` vertices **49.8 m
+inside the primary docking port**, both pre-existing and both verified against `1982be0`.
+
+**Materials — the most valuable result is the one that changed nothing.** `garden_bark` **NOT
+changed**, and `scratchpad/READ-BEFORE-MATERIALS.md` was right to demand the check. Painting the
+bark white moves the frame by **3.61 of its 25.49 crushed points** — 86% of the evidence was about
+something else. A complete trim sheet moves the trunk **×0.94**, because a normal map modulates a
+quantity already at ~0; that probe was run *before* authoring a sheet, which is why none exists.
+**Shadow is the lever**: 24 → 0 casters lifts the trunk **×4.33**, and summing Godot's own
+attenuation over all 60 drum sources gives direct irradiance 80.8 on the trunk against 102.2 on the
+ground — ×1.26, not ×44, so the missing factor is **occlusion**. The tree is standing in its own
+canopy's shade. **And the entry's overturning condition was never met**: *"any near-field frame of
+a tree in the drum"* sits under a source field opening *"NO FRAME MEASURES THIS"* and means a
+REFERENCE frame — an albedo cannot be measured off a picture drawn with that albedo. Wording
+tightened. Real fix landed instead: the arable sheet was **85.3 texels/m**, tied for the lowest in
+the library, on ground a player now stands a median 2.32 m from → **256 texels/m**, target derived
+from INV-491 rather than chosen.
+
+**Two of my own briefs were wrong and both agents said so.** Customs screens and `cc_console_face`
+already emit — measured at **26×** and **6.8×** their walls — so there was no defect to fix. And
+the transmittance patch I relayed carried `depth_draw_mode = 1`, which in this build is
+`DEPTH_DRAW_ALWAYS`, **the opposite of the shim's `OPAQUE_ONLY`** — a pane you look through
+stamping depth over the view. I passed that line on without checking the enum; the agent printed it
+out of `BaseMaterial3D` and dropped it. *`depth_draw_mode` is absent from `STANDARD_MATERIAL_KEYS`,
+so the existing gate would have caught it as a NAME and never as a VALUE.*
+
+**And my "byte-identical would mean failure" warning was the wrong discriminator.** The library
+transmittance and the shim produce identical pixels *because the shim already produced them* —
+equivalence is what a correct move looks like there. The right controls are the engine's own
+readback line flipping (`1 made transmissive, 0 already in the library` → `0, 1`) and the
+no-transmittance case, which moves 87.6% of pixels.
+
+**Gates after both merged, run here:** `materials.py` **2349/2351** (two pre-existing, baseline
+captured at `1982be0` before either agent touched it), `export_scene.py` **277/277**,
+`components.py` **55/56 red by design**, `inv_check` **OK at 317 entries / 202 citations**,
+`doc_chain` **6 documents all placed**, `hull_fit` unchanged at 34.
+
+**One patch left that is not about a material and matters most:** a regenerated texture renders
+through its **previous import**, silently, exit 0 — the agent's first "after" render used the new
+tile with the old 1024 texture. Same shape as 3z's stale frame and 4e's OpenGL fallback, one level
+down. `scratchpad/PATCHES-4r-materials.md` §1.
+
 ### 24.5 Open, and honestly
 
 * **The arrest chain behind a refusal is still Python.** A refused player is *told* they are
