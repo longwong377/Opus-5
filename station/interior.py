@@ -1790,8 +1790,8 @@ def hull_fit(schema, profile, verbose=True):
 
       `outside`   the place's floor radius is outside the hull at its own
                   CENTRE z. The address resolves against the sector's widest
-                  cylinder and the place is not there. 22 of them, worst
-                  `mainstage_node` at 135.9 m and `cnc` at 100.7 m.
+                  cylinder and the place is not there. 21 of them, worst `cnc`
+                  and the two observation domes at 101.6 m.
       `taper`     the centre fits and the SPAN does not -- one end of the room
                   is outside the ship. 12 of them. See `narrowest_z`.
       `deck_gap`  the register names a deck NUMBER that the generated stack
@@ -1829,8 +1829,13 @@ def hull_fit(schema, profile, verbose=True):
         # NO DECK STACK SURVIVES AT THIS PLACE'S OWN z. Threading z through the
         # builders does NOT fix these: there is nothing at that radius to move
         # them to, so the address itself has to change. Three of them, and
-        # `mainstage_node` is the clearest -- the core hull is 18.3 m where the
-        # register puts it, which is narrower than a corridor.
+        # `mainstage_node` WAS the clearest and is fixed: the core hull is
+        # 18.3 m at the z the register used to give it, narrower than a
+        # corridor. This category is empty today. It is kept, and kept able to
+        # fail, because the condition it names is a property of the register
+        # rather than of that one row -- any future z that lands in a waist
+        # reproduces it, and a category deleted the day it went green is a
+        # category that has to be re-derived the day it comes back.
         if _rdi is None:
             kinds.append("homeless")
         if not kinds:

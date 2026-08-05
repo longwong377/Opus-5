@@ -1722,7 +1722,8 @@ def room_extent_m(schema, profile, place):
     `interior.place_floor_radius`, not four lines here. It was four lines here
     AND four in `directory.gravity_of`, which is two copies of one rule; see
     that function's note. `z_aware=False` is deliberate and is what the
-    station is built from today: `interior.hull_fit()` reports the 34 places
+    station is built from today: `interior.hull_fit()` reports the 34 places (21 at their
+    centre, 13 at one end only)
     where that answer is outside the pressure hull, and flipping this flag is
     the change that moves them.
     """

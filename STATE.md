@@ -513,6 +513,45 @@ rows and are **inside** the hull, and one place carries two kinds at once. The r
 Caught by reading the gate's own output against its own categories before quoting it — which is
 the only reason it is not now a number in this file that three future sessions repeat.
 
+**THE ONE PLACE THREADING z COULD NOT FIX IS FIXED, AND IT COST NOTHING.** `mainstage_node` was
+the whole of the `homeless` category: at z 3000 Yellow waists to a core hull of **18.3 m** — 12.3 m
+inside the skin, narrower than a corridor — and carries **zero deck stacks**, so the row's "ring 0
+deck 2" resolved against Yellow's widest cylinder and put the node **135.9 m outside the ship**,
+the largest single miss in the register.
+
+Moved to **z 3250**, chosen rather than guessed. The gazetteer's constraint is loose — *"Yellow/Grey
+… on the schematic between the reactor and the carousel"* (`LOCATIONS.md:302`, Security Manual
+callout, authority 3) — and gives a band. Inside that band z 3200–3300 is the only stretch
+satisfying all four conditions at once: forward of the explosive disconnect at z 2,680 so it is not
+on the jettisoned assembly; inside Yellow (0–3397) and near the Grey boundary, which matches
+*"Yellow/Grey"* better than z 3000 did; a full 7-deck stack present across the **whole** 100 m
+footprint rather than at its centre only; and a deck-2 floor that is a constant **148.2 m** over the
+entire span.
+
+That last number is why the move is nearly free: **148.2 m is exactly the radius the node is built
+at today.** Measured after: z-blind radius 148.2, z-aware radius 148.2, gravity 0.5327 g, register
+collisions 0. The room does not change shape, arc or gravity — only where along the axis it sits —
+and because the two answers now agree, the pending builder flip costs this place nothing.
+
+Gate after: **34 outside (was 35), 21 at centre (was 22), `homeless` empty, 48 rows (was 49).**
+
+**AND RUNNING THE REGISTER'S OWN SELFTEST PROPERLY FOUND TWO PRE-EXISTING FAILURES THAT A PIPE HAD
+BEEN HIDING.** The earlier run was piped through `tail -8`, which buffers, so a 15-minute run
+printed nothing and read as "no verdict". Run unbuffered it fails in the first seconds:
+
+```
+FAIL  core_shuttle: fits inside its sector longitudinally  -- z 3397-8047 in 0-3397
+FAIL  shuttle_car:  fits inside its sector longitudinally  -- z 5702-5742 in 0-3397
+```
+
+Both are the core shuttle tube — PLC-102's ruling that the running tube is envelope rather than
+rooms, registered as one Yellow place spanning the whole station. **Neither is mine**, and that is
+established from the diff rather than asserted: the only functional change in `directory.py` is
+`3000.0 → 3250.0`, and neither those rows nor the assertion moved. Not fixed here — it is a
+register-modelling question about a place that is 4.6 km long, and it wants its own decision.
+
+*A gate whose output you read through `tail` is a gate you have not read.*
+
 **OPEN, AND IT IS THE NEXT INCREMENT:** flipping `place_floor_radius(z_aware=True)` and passing
 `narrowest_z` into `deck._ring_cells` is what actually moves the 35. It re-radiuses most of Blue
 and the Zocalo, so it needs a full `rooms.py --footprint` rebuild (23 min) plus `deck.py --sweep`,

@@ -593,8 +593,36 @@ PLACES = (
     _P("power_transfer", "Power transfer core + 12 cooling fins", "yellow", 0,
        0, 90.0, 925.0, (60.0, 250.0), module="components", auth=3,
        functions=("power_distribution", "cooling"), interacts=("console",)),
+    # MOVED z 3000 -> 3250 IN 4r. It was the only place on the station with no
+    # home at its own z, and `interior.hull_fit()`'s `homeless` category exists
+    # because of it: at z 3000 Yellow waists to a core hull of 18.3 m -- 12.3 m
+    # inside the skin, narrower than a corridor -- and carries ZERO deck stacks.
+    # The old row named ring 0 deck 2, which at Yellow's widest cylinder is a
+    # 148.2 m floor, so the node was assembled 135.9 m outside the ship: the
+    # largest single miss in the register. Threading z through the builders
+    # cannot fix it, because there is nothing at that z to move it to.
+    #
+    # z 3250 is chosen and not guessed. The gazetteer's own constraint is the
+    # loose one -- "Yellow/Grey ... on the schematic between the reactor and
+    # the carousel" (LOCATIONS.md:302, Security Manual callout, authority 3) --
+    # and it gives a band, not a number. Inside that band z 3200-3300 is the
+    # only stretch that satisfies all four: forward of the explosive
+    # disconnect at z 2,680 so it is not on the jettisoned assembly; inside
+    # Yellow (0-3397) and near the Grey boundary, which matches "Yellow/Grey"
+    # better than z 3000 did; a full 7-deck stack present across the WHOLE
+    # 100 m footprint rather than at its centre only; and a deck-2 floor that
+    # is a constant 148.2 m over the entire span.
+    #
+    # That last number is why this move is nearly free: 148.2 m is EXACTLY the
+    # radius the node is built at today. The room does not change shape, gain
+    # or lose a metre of arc, or change gravity. Only where along the axis it
+    # sits changes -- and the z-aware answer now equals the z-blind one, so the
+    # pending builder flip costs this place nothing.
+    #
+    # Nearest neighbour is `rotation_drivers` at angle 320 deg, z 3240-3360;
+    # this sits at 140 deg, 180 deg away. No arc overlap.
     _P("mainstage_node", "Mainstage power distribution node", "yellow", 0, 2,
-       140.0, 3000.0, (20.0, 100.0), auth=3, functions=("power_distribution",),
+       140.0, 3250.0, (20.0, 100.0), auth=3, functions=("power_distribution",),
        interacts=("console", "breaker_lever")),
     _P("spinal_cargo", "Spinal cargo facility", "yellow", 0, 4, 200.0, 2200.0,
        (40.0, 400.0), auth=3, functions=("cargo_handling", "storage"),
