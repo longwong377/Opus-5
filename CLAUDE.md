@@ -439,6 +439,27 @@ radius**. The cure is to move the derivation into the thing that needs it (`ragd
 both out from the body's own world position) and to give it a control that withholds the stated
 values: `--derive-g` is **byte-identical** to the run that states them. INV-451.
 
+**A RESCUE SNAPSHOT IS NOT FREE, AND IT CAN POISON AN AGENT'S OWN BASELINE.** Session 4r, and
+it is the counterweight to the `git add -A` rule above rather than a contradiction of it. This
+container was recycled **three times in one session**; each recycle rolled the checkout back
+and took everything uncommitted, so the main agent began committing labelled
+`WIP SNAPSHOT n — NOTHING HERE IS VERIFIED` restore points that deliberately captured running
+agents' mid-flight files. Staged by an explicit list every time — **never `git add -A`** — and
+that distinction matters, because three separate agents reported the hazard as *"`git add -A`
+swept my files"* and **all three were wrong about the mechanism**. It was a deliberate rescue.
+
+But the cost is real and one of them named it exactly: *"had the snapshot landed 20 minutes
+earlier my baseline would have been my own 'after'."* **An agent that computes a BEFORE from
+`git show HEAD:` can get a HEAD that already contains its own half-finished work**, and the
+resulting A/B is a diff of a thing against itself. That is the vacuous-A/B defect this file
+already records from 4d, arriving by a new route.
+
+So: rescue snapshots are right when a container is being recycled, and they need two things
+said out loud. **Label them so nobody reads them as reviewed** — the label is what stops a WIP
+commit being cited as evidence later. And **an agent that needs a baseline must take it from a
+`git worktree` at a NAMED commit it chose, not from live `HEAD`**, because HEAD is a moving
+target while anyone is snapshotting.
+
 **READ THE SHAPE OF A FAILING NUMBER BEFORE READING ITS SIZE.** Session 4d, and it is the cheapest
 lesson in this file. `interact.py --audit` failed on 84 of 357 declared interactables and 4c wrote
 the work up as two lists of props to go and build. The number that mattered was the split:
