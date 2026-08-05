@@ -615,6 +615,65 @@ the finding; neither should be quoted as *the* figure until they are reconciled.
 is right is exactly how this project acquired a "committed frame" it measured itself against for
 three sessions.
 
+### 25.3 INSTANCE TEN CLOSED — the shipped build mounts the window's view, and still cannot show it
+
+`godot/scripts/vista.gd` was complete and tested and mounted only by `render_shot.gd`, the RENDER
+path. The shipped build is `main.gd → walk.gd → stream.gd` and mounted nothing, so a player at
+C&C's window saw the background colour while a render of the same room showed the station.
+`vista.gd`'s own header said so and named `main.gd` as the fix.
+
+**It was not the one-liner the report predicted, for two measured reasons.** `cnc`'s vista is
+**96,498 triangles** and the streamed build already runs 154,454 against a 180,000 `resident_tris`
+budget — mounting it unconditionally is **139% of budget** before the player looks at anything. So
+the mount is lazy, driven off `hud.place_inside`, and released on the way out. And the frame is
+different: `--shot interior` builds one room in a ROOM-LOCAL frame, the shipped build is in station
+world coordinates, so the geometry has to be placed at the aperture's own pose.
+
+**The convention was checked numerically before a line was written**, because 4q found the whole
+corridor crowd drawn mirrored from a det = −1 basis and no gate here asks a transform whether it is
+a rotation. `station/vista.py` builds local geometry as `L = (V − p) @ B`, so the local axes are
+the **columns** of B and the inverse is `world = B @ local + p`. det(B) = +1.000 for all three
+apertures, `B[:,2]` equals the manifest's own station-frame `normal` to 0, round trip closes to
+1.8e-13 m.
+
+**AND THE FIRST TEST I RAN COULD NOT HAVE CAUGHT AN ERROR.** I compared both conventions against
+the hull and they agreed to the metre — because `cnc`'s basis is **symmetric to 1.2e-16**, so B and
+Bᵀ are the same matrix. The test passed for no reason. The domes are the discriminating case.
+
+**That same trap then got into the gate, and the gate caught it.** `--vista-gate`'s transpose
+control took the MIN across all three places; `cnc` dragged it to 0.0 m and the gate **PASSED with
+a dead control**. It now measures each basis's asymmetry, requires the asymmetric ones to move, and
+names the ones that cannot discriminate:
+
+```
+VISTA gate=PASS mounted=3/3 origin_err=0.000000 m transpose_control fired on 1 place(s),
+worst 1414.2 m (symmetric, cannot discriminate: cnc, obs_dome_2) no_manifest_mounts=false
+reachable_from_spawn=no -- nearest window is 838 m along the axis from the spawn
+```
+
+Shown FAILING: fed the basis rows instead of its columns it reports *"obs_dome_1: local +Z maps to
+(0,1,0), manifest normal is (1,0,0)"*, mounted 1/3.
+
+**THE LAST FIELD IS THE HONEST ONE AND IT IS THE NEXT JOB.** The mount is correct and in the
+shipped `_process`, and the shipped build still cannot show it: the boot cell cluster is at z ≈ 7120
+and all three windowed places are at **z 7938–7982**, a different z-cluster of the same deck. There
+is no walk from the spawn to a window. Writing the mount and stopping there would have been
+instance **eleven** of the defect it fixes, so the gate computes that gap from the spawn and prints
+it. It moves on its own the day the build boots elsewhere. (This is the same open item
+`MASTER-PLAN` P0.5 records as *"cluster-to-cluster hand-off untested"*, reached from a new
+direction.)
+
+**And a regression I caught on my own change before it shipped:** `_vista_update()` runs every frame
+and called `_hud()`, which is a **recursive walk of the whole scene tree**. Fine for the
+once-per-run callers it was written for; from `_process`, with three resident cells of meshes,
+walkers and props, it is exactly how 3.0× frame headroom gets spent silently — **no gate here times
+`_process`**. Cached.
+
+**Independently reproduced while doing it:** both domes report `station fills 0.000 of the window`.
+That is `PATCHES-4r-windows.md` §6 — the room is authored facing forward past the nose at empty
+space, and half-turned it fills 0.740. Real, and queued with the rebuild because the turn moves the
+room's door.
+
 ### 24.5 Open, and honestly
 
 * **The arrest chain behind a refusal is still Python.** A refused player is *told* they are
