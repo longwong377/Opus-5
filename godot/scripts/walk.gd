@@ -44,6 +44,20 @@ var _stream: Node3D = null
 @export var spawn: Vector3 = Vector3.ZERO
 @export var gravity_mode: String = "deck"
 @export var gravity_m_s2: float = 9.81
+## THE STATION'S SPIN, omega^2 in rad^2/s^2, handed to `player.gd` so the body
+## falls along its own radius at its own g instead of straight down at Earth's.
+##
+## WHY IT IS HERE AND NOT A CONSTANT. `g = omega^2 r` on a rigid rotor, so one
+## deck row of `cell_manifest.json` -- `floor_r_m` with `floor_g` -- fixes the
+## field at EVERY radius, including the ones with no deck on them. Left at 0 this
+## file derives it from the deck it is standing on and says so; `--omega2=` and
+## `--gravity=` both override, in that order of specificity.
+##
+## `--gravity=` WINS OUTRIGHT and that is deliberate. `station/drum_walk.py`
+## passes a measured `--gravity=` for the drum floor, and a caller that has
+## stated a number must not have it quietly replaced -- so a run with `--gravity`
+## is byte-identical to the pre-4r build. See `_derive_omega2`.
+@export var omega2: float = 0.0
 ## How far each pressure door leaf travels when it opens, in metres -- half the
 ## aperture width, since two leaves part on the centreline. From
 ## `interior_kit.PROVISIONAL["door_width_m"]`, passed in rather than repeated.
@@ -131,6 +145,8 @@ func _ready() -> void:
 		gravity_mode = args["gravity-mode"]
 	if args.has("gravity"):
 		gravity_m_s2 = float(args["gravity"])
+	if args.has("omega2"):
+		omega2 = float(args["omega2"])
 	if args.has("door-travel"):
 		door_travel_m = float(args["door-travel"])
 	if args.has("actors"):
@@ -988,11 +1004,101 @@ func _all_meshes(node: Node) -> Array:
 	return out
 
 
+## The SI definition of standard gravity, used only to turn the deck table's
+## `floor_g` back into m/s^2. `main.gd::_spin_omega2` uses the same constant for
+## the same conversion; the schema keeps it as
+## `station.rotation.standard_gravity_m_s2`.
+const G0_M_S2 := 9.80665
+
+
+## The deck table row for one deck, through `stream.gd`'s reader.
+##
+## ONE READER. `stream.gd::deck_row` already parses `cell_manifest.json` and is
+## loud on a miss; a second parse here would be a second copy of where the
+## station's spin is written down, which is the defect that produced `INV-451`
+## one file over. On the monolithic path there is no streamer yet, so a bare
+## instance is made for the read and thrown away -- `deck_row` touches no state.
+func _deck_row(sector: String, ring_index: int, deck_index: int) -> Dictionary:
+	if _stream != null:
+		return _stream.deck_row(sector, ring_index, deck_index)
+	var n := Node3D.new()
+	n.name = "DeckTableRead"
+	n.set_script(load("res://scripts/stream.gd"))
+	add_child(n)
+	var row: Dictionary = n.deck_row(sector, ring_index, deck_index)
+	n.queue_free()
+	return row
+
+
+## Work out the station's spin, and SAY WHERE IT CAME FROM.
+##
+## The order is most-specific-first and every branch is reported, because the
+## thing this replaces was a scalar nobody set and a mode nobody checked:
+##
+##   1. `--gravity=` -- the caller has stated a number. It wins outright and no
+##      spin is derived, so `drum_walk.py`'s measured drum-floor value is
+##      untouched and its run is byte-identical to the pre-4r build.
+##   2. `--omega2=` or the export -- somebody handed us the spin.
+##   3. the deck the body is standing on, off `cell_manifest.json`'s own
+##      `floor_r_m`/`floor_g` pair: omega^2 = g0 * floor_g / floor_r_m.
+##   4. nothing -- keep the old behaviour and print why, rather than invent one.
+func _derive_omega2(args: Dictionary) -> String:
+	if args.has("gravity"):
+		omega2 = 0.0
+		return ("STATED --gravity=%.4f m/s2 along %s -- no spin derived, the "
+			% [gravity_m_s2, gravity_mode] + "caller's number wins")
+	if omega2 > 0.0:
+		return "given omega2=%.8f rad2/s2" % omega2
+	var sector := ""
+	var ri := -1
+	var di := -1
+	if _stream != null:
+		var src: Dictionary = _stream.plan.get("source", {})
+		sector = String(src.get("sector", ""))
+		ri = int(src.get("ring_index", -1))
+		di = int(src.get("deck_index", -1))
+	else:
+		# `<sector>_<ring>_<deck>.glb` -- the name `station/deck.py` writes and
+		# `boot.json` repeats as its `deck` key. Anything else (the drum ground,
+		# a single room) does not parse and falls through to branch 4.
+		var stem := (collision_path if collision_path != "" else glb_path
+			).get_file().get_basename().trim_suffix("_col")
+		var p := stem.split("_")
+		if p.size() == 3 and p[1].is_valid_int() and p[2].is_valid_int():
+			sector = p[0]
+			ri = int(p[1])
+			di = int(p[2])
+	if sector == "" or ri < 0 or di < 0:
+		return ("NO SPIN STATED -- this build names no deck, so the body keeps "
+			+ "mode=%s at %.4f m/s2 (the pre-4r field)" % [gravity_mode,
+			gravity_m_s2])
+	var row: Dictionary = _deck_row(sector, ri, di)
+	var r := float(row.get("floor_r_m", 0.0))
+	var g := float(row.get("floor_g", 0.0))
+	if r <= 1.0 or g <= 0.0:
+		return ("NO SPIN STATED -- no deck_table row for %s ring %d deck %d, so "
+			% [sector, ri, di] + "the body keeps mode=%s at %.4f m/s2"
+			% [gravity_mode, gravity_m_s2])
+	omega2 = g * G0_M_S2 / r
+	return ("omega2=%.8f rad2/s2 from cell_manifest deck_table[%s]: "
+		% [omega2, String(row.get("id", "?"))]
+		+ "floor_g %.4f at r=%.2f m, period %.3f s"
+		% [g, r, TAU / sqrt(omega2)])
+
+
 func _spawn_player() -> void:
 	_player = CharacterBody3D.new()
 	_player.set_script(load("res://scripts/player.gd"))
 	_player.gravity_mode = gravity_mode
 	_player.gravity_m_s2 = gravity_m_s2
+	# DOWN IS OUTWARD ALONG A RADIUS AND IT IS NOT 9.81. See `player.gd`'s header:
+	# `main.gd` has always set `gravity_mode = "drum"` so the shipped DIRECTION was
+	# right, and nothing anywhere set `gravity_m_s2`, so the shipped MAGNITUDE was
+	# Earth's -- 9.81 against this deck's 7.4522, +31.7%, on the only build a
+	# player launches.
+	var why := _derive_omega2(_args())
+	_player.omega2 = omega2
+	print("walk: gravity -- " + why)
 	var shape := CollisionShape3D.new()
 	var caps := CapsuleShape3D.new()
 	# 1.8 m tall, 0.35 m radius: a person, and the same stature the render
@@ -1003,6 +1109,19 @@ func _spawn_player() -> void:
 	shape.position = Vector3(0, 0.9, 0)
 	_player.add_child(shape)
 	_player.position = spawn
+	# STAND THE CAPSULE UP BEFORE ITS FIRST FRAME. `shape.position` is
+	# `(0, 0.9, 0)` in the BODY's frame, so it follows the body's own up -- but
+	# only once something has set the body's basis, and until session 4r nothing
+	# did until `player.step()` ran. The body therefore entered the tree with an
+	# IDENTITY basis, i.e. a 1.8 m capsule lying along world +Y, which on a ring
+	# deck at 264.8 degrees is 5.2 degrees off and at 90 degrees is upside down.
+	# `player.gd`'s own header records what that costs when it persists: a capsule
+	# through the floor and the wall, reporting `on_floor = true`, unable to move.
+	#
+	# It is the same class as the field defect above -- an orientation left to a
+	# default nobody chose -- and it is one line, because `stand_basis()` is the
+	# expression `step()` itself uses.
+	_player.transform = Transform3D(_player.stand_basis(), spawn)
 	add_child(_player)
 	# ONE THING STEPS THE BODY. Every headless mode in this file drives
 	# `player.step()` from `_physics_process` below, and `player.gd` has its own

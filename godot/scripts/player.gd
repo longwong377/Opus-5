@@ -7,19 +7,55 @@ extends CharacterBody3D
 ## them had a floor in the physics sense. Every gate measured a part in
 ## isolation, so nothing ever failed for the absence of a player.
 ##
-## GRAVITY POINTS OUTWARD, NOT DOWN, and that is not a detail on this station.
-## The habitat drum spins; "down" for someone standing inside it is AWAY from the
-## spin axis, so the gravity vector is the radial direction at the player's own
-## position and it changes as they walk around the barrel. In the cylindrical
-## sections it is -Y like anywhere else. `gravity_mode` selects, because a body
-## walking in Blue Sector and a body walking on the drum floor are the same body
-## under different fields.
+## GRAVITY POINTS OUTWARD, NOT DOWN, AND IT IS NOT 9.81 ANYWHERE ON THE ROTOR.
+## The whole station spins about +Z. "Down" for anyone standing inside it is AWAY
+## from the spin axis, so the gravity vector is the radial direction at the
+## player's own position and it changes as they walk around the ring; and the
+## magnitude is g = omega^2 r, which on the boot deck at r = 211.5 m is
+## **7.454 m/s^2 (0.760 g)**, not 9.81.
+##
+## THE OLD SHAPE OF THIS FILE GOT BOTH HALVES WRONG AND ONE OF THEM SHIPPED.
+## `gravity_mode` was a two-way switch -- "drum" derived the direction from the
+## body's position, "deck" returned the constant `Vector3(0, -1, 0)` -- with a
+## separate scalar `gravity_m_s2` defaulting to 9.81 that every caller was
+## expected to fill in. Measured, session 4r:
+##
+##   * `"deck"` mode is wrong everywhere except the bottom of the ring. The
+##     shipped spawn sits at ring angle **264.8 deg**, where -Y is 5.2 deg off
+##     the true radial, so it LOOKED right; at ring angle 90 deg the same
+##     constant points at the ceiling and a player falls off it.
+##   * `main.gd::_configure_walk` does set `"drum"`, so the shipped direction was
+##     right -- and **nothing anywhere sets `gravity_m_s2`**, so the shipped
+##     magnitude was Earth's: 9.81 against 7.4522, **+31.7%**. A jump was a third
+##     short and every fall a third too fast, on the only build a player launches.
+##
+## So the derivation lives HERE, once, off the body's own world position, exactly
+## as `ragdoll.gd::promote` was made to do in session 4q (INV-451) for exactly
+## the same reason: a default that only the gate it was written in ever sets is
+## an unset default. `omega2` is the one number the runtime cannot work out for
+## itself -- the station's spin -- and `walk.gd` reads it off the same
+## `cell_manifest.json` deck table `main.gd::_spin_omega2` does. INV-480.
 
-## Which field this body is in. "drum" derives it from position; "deck" is -Y.
+## Which field this body is in when `omega2` is unset. "drum" derives the
+## DIRECTION from position; "deck" is -Y. **Both are superseded by `omega2`**,
+## which derives direction and magnitude together; this switch survives so that
+## the callers which spawn their own body and state their own scalar --
+## `transit.gd`, `route_test.gd`, `life.gd`, `navwalk.gd`, `arrival.gd` -- are
+## bit-for-bit unchanged by that fix.
 @export_enum("deck", "drum") var gravity_mode: String = "deck"
-## Metres per second squared. 9.81 on a deck; the drum's own spin gravity is a
-## property of the drum and is read from the schema by whoever spawns the body.
+## Metres per second squared, when there is no `omega2`. See `gravity_g()`: with
+## a spin stated, this is not read at all.
 @export var gravity_m_s2: float = 9.81
+## THE STATION'S OWN SPIN, omega^2 in rad^2/s^2. Positive means "this body is
+## standing on the rotor": down is radially outward from +Z and the magnitude is
+## omega^2 r at the body's own radius, which is exact at every radius including
+## the ones with no deck on them.
+##
+## ZERO IS NOT A GUESS, IT IS "NOBODY TOLD ME". A build that does not state the
+## spin keeps the pre-4r behaviour rather than silently inventing a field --
+## `field_report()` says which of the two is in force, on every run, because a
+## thing that can substitute one mode for another has to name the one it used.
+@export var omega2: float = 0.0
 ## Walking speed. A person walks at 1.4 m/s; this is a game, so it is faster.
 @export var speed_m_s: float = 4.2
 @export var sprint_m_s: float = 8.0
@@ -245,16 +281,28 @@ func _ready() -> void:
 		Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
 
 
+## The distance from the spin axis, in metres. The axis is +Z in this project's
+## world frame, so the radial is the xy part of the body's own position.
+func spin_radius() -> float:
+	return sqrt(global_position.x * global_position.x
+		+ global_position.y * global_position.y)
+
+
 ## The direction gravity pulls this body, as a unit vector.
 ##
-## On a spinning drum the floor is the INSIDE of a barrel, so "down" is the
-## outward radial direction from the spin axis -- the axis being +Z in this
-## project's world frame. Getting this backwards is the same sign error that
-## `interior.drum_interior` guards with `_inward_fraction`: a body with the sign
-## wrong falls to the axis and hangs there, which looks like a physics bug and
-## is a coordinate one.
+## On a spinning ring or drum the floor is the INSIDE of a barrel, so "down" is
+## the outward radial direction from the spin axis. Getting this backwards is the
+## same sign error that `interior.drum_interior` guards with `_inward_fraction`:
+## a body with the sign wrong falls to the axis and hangs there, which looks like
+## a physics bug and is a coordinate one.
+##
+## WITH A SPIN STATED THERE IS NO MODE. A ring deck and the drum floor are the
+## same field -- one rigid rotor -- and the old `gravity_mode` split let a body
+## on the ring take the -Y branch, which is the defect this function is being
+## fixed for. `omega2 == 0.0` keeps the old two-way switch so that every caller
+## which has never heard of the spin behaves exactly as it did.
 func gravity_dir() -> Vector3:
-	if gravity_mode == "drum":
+	if omega2 > 0.0 or gravity_mode == "drum":
 		var radial := Vector3(global_position.x, global_position.y, 0.0)
 		if radial.length() < 0.001:
 			return Vector3(0, -1, 0)
@@ -262,9 +310,66 @@ func gravity_dir() -> Vector3:
 	return Vector3(0, -1, 0)
 
 
+## How hard, in m/s^2, at the body's OWN radius.
+##
+## `g = omega^2 r` is the whole of rigid-rotor kinematics and it is exact --
+## there is no place on the rotor where it is an approximation, and it is the
+## same expression `ragdoll.gd::promote` and `populace.place_gravity_at` use. A
+## body 3.6 m up a lift shaft is in a measurably weaker field than one on the
+## deck below it, and this returns that rather than a per-deck constant.
+func gravity_g() -> float:
+	if omega2 <= 0.0:
+		return gravity_m_s2
+	var r := spin_radius()
+	if r < 0.001:
+		# ON THE AXIS THERE IS NO SPIN GRAVITY, and that is a physical fact rather
+		# than a failure: r = 0 is weightless. Returning the stated scalar here
+		# would be inventing a field on the one line where there is none.
+		return 0.0
+	return omega2 * r
+
+
+## WHICH RULE IS IN FORCE, in words, for whoever is reading a verdict. CLAUDE.md's
+## rule from the renderer that silently fell back to OpenGL 3 and exited 0: a
+## thing that can substitute a lesser mode for the one asked for must say which
+## one it used.
+func field_report() -> String:
+	if omega2 > 0.0:
+		return ("spin omega2=%.8f rad2/s2 -> r=%.3f m, g=%.4f m/s2 (%.4f g), "
+			% [omega2, spin_radius(), gravity_g(), gravity_g() / 9.80665]
+			+ "up=%.4f,%.4f,%.4f" % [body_up().x, body_up().y, body_up().z])
+	return ("STATED mode=%s g=%.4f m/s2 up=%.4f,%.4f,%.4f -- no spin given"
+		% [gravity_mode, gravity_m_s2, body_up().x, body_up().y, body_up().z])
+
+
 ## The body's own up, which is the opposite of the way it falls.
 func body_up() -> Vector3:
 	return -gravity_dir()
+
+
+## The basis a body standing HERE has: local +Y along its own up, local -Z the
+## way it faces. Split out of `step()` so a spawn can stand the capsule up before
+## its first frame -- see `walk.gd::_spawn_player`.
+##
+## RIGHT-HANDED, AND IT IS THE PROJECT'S ONE IDIOM. `Basis(x, y, z)` takes the
+## three COLUMNS and is a rotation only when x cross y = z. With
+## `right = fwd cross up` and the third column `-fwd` the two negations cancel
+## and the determinant is +1; `npc.gd::_walker_xform` passing `+fwd` with the
+## same `right` is what drew the whole corridor crowd mirrored for six sessions.
+func stand_basis(face: Vector3 = Vector3.ZERO) -> Basis:
+	var up := body_up()
+	var fwd := face
+	if fwd.length_squared() < 1e-9:
+		# THE REFERENCE AXIS IS THE SPIN AXIS. On a spun habitat `up` is radial
+		# and therefore always perpendicular to +Z, so +Z can never degenerate --
+		# unlike `up.cross(Vector3.RIGHT)`, which is zero at ring angles 0 and
+		# 180, one of which is where a deck's own spawn can sit. See `step()`.
+		fwd = Vector3(0, 0, 1)
+	fwd = fwd - up * fwd.dot(up)
+	if fwd.length() < 1e-4:
+		fwd = Vector3(0, 0, 1) - up * up.z
+	fwd = fwd.normalized()
+	return Basis(fwd.cross(up).normalized(), up, -fwd).orthonormalized()
 
 
 ## Face a given yaw. The headless walk test uses this to try more than one
@@ -321,7 +426,10 @@ func _unhandled_input(event: InputEvent) -> void:
 func step(delta: float, wish: Vector2, jump: bool, sprint: bool,
 		world_dir: Vector3 = Vector3.ZERO) -> void:
 	var up := body_up()
-	var g := gravity_dir() * gravity_m_s2
+	# BOTH HALVES FROM THE SAME PLACE. Before session 4r the direction came from
+	# `gravity_mode` and the magnitude from a scalar nobody set, so the shipped
+	# build fell along a radius at Earth's 9.81 instead of this deck's 7.4522.
+	var g := gravity_dir() * gravity_g()
 
 	# -- SEATED: THE WISH IS REFUSED, THE FLOOR HOLD IS NOT ------------------
 	# A sit that can be walked out of is a camera effect. The body keeps its
@@ -353,7 +461,8 @@ func step(delta: float, wish: Vector2, jump: bool, sprint: bool,
 	# radial and therefore ALWAYS perpendicular to the spin axis, so +Z is a
 	# reference that can never degenerate. Choose the one the geometry
 	# guarantees rather than the one that usually works.
-	var fwd := Vector3(0, 0, 1) if gravity_mode == "drum" else Vector3.FORWARD
+	var fwd := (Vector3(0, 0, 1) if (omega2 > 0.0 or gravity_mode == "drum")
+		else Vector3.FORWARD)
 	if world_dir.length_squared() > 1e-9:
 		var flat := world_dir - up * world_dir.dot(up)
 		if flat.length() > 1e-4:
@@ -370,7 +479,11 @@ func step(delta: float, wish: Vector2, jump: bool, sprint: bool,
 	# -- the body reported `on_floor = true`, because it was, and could not move
 	# in any of four directions, because it was embedded. It is not enough for
 	# gravity to know which way is up; the shape has to.
-	global_transform.basis = Basis(right, up, -fwd).orthonormalized()
+	#
+	# ONE CONSTRUCTION SITE. `stand_basis` builds exactly this expression and is
+	# what `walk.gd::_spawn_player` stands the capsule up with before the body's
+	# first frame, so a spawn pose and a walking pose cannot drift apart.
+	global_transform.basis = stand_basis(fwd)
 
 	var speed := sprint_m_s if sprint else speed_m_s
 	var horiz := (fwd * wish.y + right * wish.x)

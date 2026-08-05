@@ -43,3 +43,10 @@ __pycache__/
 # `hud.gd`. Committing it would freeze one playthrough's world into the repo,
 # and `Ledger.fresh()` rebuilds the opening balances from the register.
 station/generated/economy.json
+
+# C&C's persisted watch state, on the same grounds as `economy.json` above: it
+# is world state a run WRITES, not content the repo owns, and committing it
+# would freeze one watch's orders into the build. Added while the C&C agent was
+# still running -- if it turns out this directory holds authored content rather
+# than generated state, this line is the thing to delete.
+station/generated/cnc/
