@@ -289,6 +289,68 @@ feel it without a cutscene).
   **The owner's "in detail, fully" instruction settles A5's open question: depth is IN.**
 - Generation stays offline → `.scn` → streamed. No in-engine port (85,455 lines, hard rule 4).
 
+### P4a — THE OWNER'S AUDIT, SESSION 4p — four gaps the phase list did not cover
+
+**Raised by the owner directly, checked against the repository rather than answered from
+memory, and placed here so they cannot be lost with a session's task list.** Each is real,
+each is measured, and none of them was adequately in this plan before.
+
+**A4a-1 — THE DRUM FLOOR IS EMPTY AT 4.5 MILLION m².** `garden.block_building()` and
+`garden.tree()` *were* rebuilt to their density floor after the owner's "shitty little cubes"
+and "sad excuse for a tree" — both docstrings now quote him. **The scorecard still reads
+craft 1** because the last review found the ground rather than the buildings:
+*"the habitat floor is two flat colour fields meeting along a straight-edged polygon boundary
+with the terrain lattice visible in the zigzag. No vegetation, no props, no people, no relief,
+**nothing standing anywhere on 4.5 million m²**."* And five distinct gazetteer rows — drum end
+caps, three radial spokes, the sub-floor stack, the Garden, the radial tubes — **report the
+IDENTICAL measurement** (121,976 tri, 5,764,561 m², λ 0.112), which is `--degeneracy`'s defect
+at drum scale. Carried from round 1 and still open: *"the townscape traces to four authority-1
+frames by subject and nothing in it is measured against them."*
+**Two jobs:** populate the floor at a stated density, and **re-score** — the craft 1 predates
+the generator rework and may now be stale in the other direction. Reference is the owner's
+Starfield bar, not our own past work.
+
+**A4a-2 — SIX SUBSYSTEMS ARE CRAFT 1**, and only ONE thing on the station is craft 4
+(`exterior_approach`). The 1s: `garden_townscape`, `command_control`, `council_chamber`,
+`customs_arrival`, `docking_bay_interior`, `exterior_components`.
+**Two facts that change the priority.** `command_control` and `council_chamber` are **bespoke
+modules** and still score 1 — *having a hand-written builder is not the same as clearing the
+bar*, which is the layer-2b lesson again one level up. And `customs_arrival` +
+`docking_bay_interior` are **the player's first ten minutes** (`arrival.py --report` walks
+twelve legs through them), so they are the highest-value craft targets on the station.
+Each runs CLAUDE.md's loop — build → harsh panel → rework → re-judge → stop — with every craft
+claim citing a frame at the rubric's **half** distance, and AAA-STANDARD's 3-round cap.
+
+**A4a-3 — THE PLANT LAYER CANNOT FAIL, and this is the sharpest of the four.** The owner's
+requirement is that the station *"needs to be functional and working meaning all the stuff needs
+to be real and function ie. can be messed up and have real effects."*
+**What is real:** shifts are genuine data (command 08:00×8 h at `cnc`, traffic 08:00×8,
+dockworker 06:00×9, medical 08:00×12, hydroponics 05:00×8, cleric 06:00×8; round-the-clock
+posts rotate three watches at +0/+8/+16, with a recorded fix for a version that put the night
+watch to bed), and 30 incident classes write 2,011 persistent events a station-day.
+**What is not:** power, air, water, waste and rotation exist as **geometry plus a staffing
+roster**. There is no state in which power drops and lights go out. **C&C has a watch roster and
+controls nothing that can break.** `INC-BROWNOUT` is an event with a rate, not a system with a
+load.
+That is precisely the scope clause — *"the physical plant that makes 250,000 people possible:
+food, water, air, power, waste"* — unbuilt as a *system*.
+**SETTLE THE FORK BEFORE BUILDING:** a resource simulation (each system carries capacity, load
+and a degradation curve, feeding the incident generator) or a scripted-failure layer. The
+former is in the spirit of everything else here — **no rate in `incident.py` is authored** —
+and is the larger build. Recommend deriving from the existing occupancy and roster models the
+way `incident.py` already does.
+
+**A4a-4 — SPECIES SLEEP IS MODELLED AND CANNOT BE SEEN.** `npc/animation.py`'s `CLIP_SET` is
+`("walk_ladder", "idle", "talk", "sit")` — **no sleep or recline clip** — while
+`schedule.RHYTHMS` knows every Narn aboard is asleep at 03:00 and every Centauri awake, and the
+incident work's `clock_mismatch` is built on it. A player in a residential corridor at 03:00
+meets people who are, animation-wise, standing about. Second half of the same gap: **corridor
+crowds move** (5,966 m measured, 963 walkers) and **room occupants are posed, not animated** —
+they sit at the seat's own measured height and never get up.
+*Related and worth stating with it:* **262 bodies are baked into scene data across 4 decks**
+against 250,001 modelled, so the named-resident layer and the visible-body layer only meet
+where a deck has been baked.
+
 ### P5 — SHIP
 Packaging, onboarding, controls, accessibility, credits, IP statement (fan work, non-
 commercial, stated once). **Gate: §T all green or signed OUT; every A2 clause cited to its gate.**

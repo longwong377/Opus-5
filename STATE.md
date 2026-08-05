@@ -357,6 +357,37 @@ chain.** Caught by launching the scene and grepping for the line the loader prin
 check that could have caught it. *A static scan can tell you a caller exists; only running the
 thing tells you the caller runs.*
 
+### 21.10 THE OWNER'S AUDIT (4p) — four gaps, now in `docs/MASTER-PLAN.md` §P4a
+
+The owner asked directly what is built and what is glossed over: transports and processing,
+NPC counts and behaviour, collisions, how much of the ship is built, whether unique locations
+are hand-crafted, whether the Garden still looks like cubes, and whether the station actually
+*functions* — *"can be messed up and have real effects"*. Answered from measurement, not memory.
+
+**What checked out.** Transports: **55 arrivals/day, 1,734 souls/day**, 24 bays × 2 berths, and
+`arrival.py --report` walks a named person through ten sourced customs steps and twelve address-
+carrying legs from berth clamps to bunk. NPCs: **250,001 across 19 roles**, each traceable —
+*Nadia Sinclair, human, EARTH, merchant, 23, home `qtr_civilian`*, at the Zocalo at 13:00 and
+home at 03:00 and 22:00. Collisions: corridors on a swept smooth shell, **props solid** (derived
+from the room's own emitted mesh), the drum on its real relief, **NPCs capsuled**. Builders:
+**50 of 129 places bespoke, 79 generic**.
+
+**THE FOUR GAPS ARE NOW §P4a OF THE MASTER PLAN**, not a session task list — which is where
+they were for about an hour, and a session task list does not survive a context reset. This
+file and the plan are the memory that does.
+
+| | gap | the number that makes it real |
+|---|---|---|
+| A4a-1 | **the drum floor is empty** | *"nothing standing anywhere on 4.5 million m²"* — and five gazetteer rows report the IDENTICAL measurement, which is `--degeneracy` at drum scale. The Garden's buildings and trees WERE rebuilt after the owner's feedback; the craft 1 is about the ground and has not been re-scored since |
+| A4a-2 | **six subsystems at craft 1**, one thing at craft 4 | `command_control` and `council_chamber` are BESPOKE and still score 1 — a hand-written builder is not the same as clearing the bar. `customs_arrival` and `docking_bay_interior` are the player's first ten minutes |
+| A4a-3 | **the plant layer cannot fail** | shifts are real, incidents are real and persist — but power/air/water/waste are geometry plus a roster. **C&C has a watch roster and controls nothing that can break.** The scope clause's "physical plant" is unbuilt as a SYSTEM |
+| A4a-4 | **species sleep is modelled and cannot be seen** | `CLIP_SET` is walk/idle/talk/sit — no sleep clip — while `schedule.RHYTHMS` knows every Narn is asleep at 03:00. Room occupants are posed, not animated. 262 bodies baked against 250,001 modelled |
+
+**A4a-3 carries a fork to settle before building:** resource simulation (capacity, load,
+degradation feeding the incident generator) or a scripted-failure layer. Recommend the former —
+**no rate in `incident.py` is authored**, and a plant layer that broke on a script would be the
+one system on the station that did not derive from its own state.
+
 ### 21.5 What is queued and why it is queued rather than done
 
 | # | work | blocked on |
