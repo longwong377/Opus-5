@@ -33,9 +33,11 @@ extends Node3D
 ##
 ## MODES
 ##   --selftest [--drift=aero|nogyro]   replay the Python vectors; print the table
+##   --dock-selftest [--drift=NAME]     replay the Python docking law's samples
 ##   --pilot-test                       fly it from a scripted key sequence
-##   --mission  [--flight-out=PATH]     fly the cobra bay launch, write flight.json
+##   --mission  [--flight-out=PATH]     fly launch -> transit -> approach -> dock
 ##   --out=PNG  [--frame=NAME]          fly it and photograph it
+##                                      (ride | release | lookback | dock)
 ##   (none)                             fly it yourself; see _read_pilot_input
 
 # --- what the shot supplies -------------------------------------------------
@@ -303,6 +305,11 @@ func _ready() -> void:
 
 	if launch_json != "":
 		_launch = _read_json(launch_json)
+		_dock = _launch.get("dock", {})
+
+	if args.has("dock-selftest"):
+		get_tree().quit(0 if _dock_selftest(String(args.get("drift", ""))) else 1)
+		return
 
 	if args.has("mission"):
 		var flight := _fly_mission()
@@ -554,6 +561,11 @@ const COAST_S := 6.0         ## seconds after release with no thrust at all
 const MISSION_DT := 1.0 / 120.0
 const MISSION_MAX_S := 240.0
 const TRANSIT_VMAX := 520.0   ## m/s cruise cap on the run out
+## Ceiling on the dock. The Python sweep's slowest of twelve start phases takes
+## 160.6 s, of which up to 33.47 s is the loiter wait for the bay to come round,
+## so 300 s is a little under twice the worst case and cannot be reached by a
+## converging approach.
+const DOCK_MAX_S := 300.0
 
 
 ## Fly the whole thing and return a record of it.
@@ -710,13 +722,33 @@ func _fly_mission() -> Dictionary:
 		if int(t / dt) % 12 == 0:
 			samples.append(_sample(t, m, "look"))
 
+	# THE LOOK-BACK BEAT IS CAPTURED BEFORE THE DOCK, and this is not tidiness.
+	# `_photograph("lookback")` and `starfury_scene.compose_lookback` both used
+	# `flight["final"]`, which up to this session WAS the look-back state. Adding
+	# a dock phase after it silently redefined `final` to mean "parked in the
+	# bay", and the money shot would have been taken from 3 m off the hull with
+	# the nose 85 degrees off the station -- a frame nobody would have re-taken
+	# and no gate would have failed on.
+	var lookback := _sample(t, m, "lookback")
 	var eye := _chase_eye(m)
 	var nose_err := rad_to_deg((centre - m.position).normalized()
 		.angle_to(m.forward()))
+	var look_range := (m.position - centre).length()
+
+	# --- the dock -----------------------------------------------------------
+	# THE MISSION IS ONE CONTINUOUS RUN. Everything above got the fighter out;
+	# this brings it home to the bay it left, and it is the same craft, the same
+	# integrator and the same allocator throughout -- no teleport, no reset.
+	var dock := _fly_dock(m, t, dt, samples)
+	t = float(dock["t_end_s"])
+
 	var summary := {
 		"elapsed_s": t,
 		"dt": dt,
-		"range_m": (m.position - centre).length(),
+		"range_m": look_range,
+		"lookback_t_s": float(lookback["t_s"]),
+		"docked": dock["docked"],
+		"dock_elapsed_s": dock["elapsed_s"],
 		"peak_speed_m_s": peak,
 		"final_speed_m_s": m.speed(),
 		"burn_s": burn_s,
@@ -724,24 +756,298 @@ func _fly_mission() -> Dictionary:
 		"unpowered_radius_gain_m": r1 - r0,
 		"unpowered_radius_m": [r0, r1],
 		"nose_error_deg": nose_err,
+		"dock_contact_speed_m_s": dock["contact_speed_m_s"],
 		"max_linear_accel_m_s2": m.max_linear_accel(),
 	}
 	print("starfury: released at %.2f m/s from r %.1f m; coasted unpowered to "
 		% [release["exit_speed_m_s"], r0]
 		+ "r %.0f m in %.0f s; %.0f s under power (%.0f accelerating, %.0f "
 			% [r1, COAST_S, burn_s + brake_s, burn_s, brake_s]
-		+ "decelerating), peak %.0f m/s; ended %.0f m from the station centre "
-			% [peak, summary["range_m"]]
-		+ "at %.1f m/s with the nose %.2f deg off it, after %.0f s"
-			% [summary["final_speed_m_s"], nose_err, t])
+		+ "decelerating), peak %.0f m/s; looked back from %.0f m with the nose "
+			% [peak, look_range]
+		+ "%.2f deg off the station, then %s in %.0f s. %.0f s in all."
+			% [nose_err, "DOCKED" if dock["docked"] else "did NOT dock",
+				float(dock["elapsed_s"]), t])
 	return {
 		"release": release,
+		"dock": dock,
+		"lookback": lookback,
 		"final": _sample(t, m, "final"),
 		"camera": {"eye": [eye.x, eye.y, eye.z],
 			"target": [centre.x, centre.y, centre.z], "fov": 46.0},
 		"summary": summary,
 		"samples": samples,
 	}
+
+
+## Fly the approach and dock. The launch run backwards.
+##
+## FIVE STAGES AND EACH ONE ENDS ON A MEASUREMENT, not on a timer:
+##   return    fly to the loiter point -- a FIXED INERTIAL point on the hold
+##             circle, on the craft's own azimuth. Ends inside the capture box.
+##   loiter    wait, costing nothing, until the bay is exactly one spin-up arc
+##             behind. Arming on `gap > lead` first, because committing merely
+##             because the gap is small lets the bay sweep past a craft at rest
+##             and the law then chases it the long way round and cuts the chord
+##             into the hull -- measured, on 1 of 12 start phases.
+##   run_in    spin up onto the circle and capture the hold point.
+##   terminal  ramp the standoff down at the plan's closing rate.
+##   settle    hold at the contact standoff until the contact test passes.
+func _fly_dock(m: FlightModel, t0: float, dt: float, samples: Array) -> Dictionary:
+	if _dock.is_empty():
+		return {"docked": false, "reason": "launch.json carries no dock block",
+			"t_end_s": t0}
+	var t := t0
+	var stage := "return"
+	var standoff: float = _dk("standoff_m")
+	var loiter := _loiter_point(m.position)
+	var lead: float = _dk("commit_lead_rad")
+	var armed := false
+	var t_stage := t0
+	var times := {"return": 0.0, "loiter": 0.0, "run_in": 0.0,
+		"terminal": 0.0, "settle": 0.0}
+	var prev_aim := Vector3.ZERO
+	var have_prev := false
+	var peak := 0.0
+	var dock_peak := 0.0
+	var hull_clear := 1.0e30
+	var docked := false
+	var reason := ""
+	var steps := 0
+	while t - t0 < DOCK_MAX_S:
+		var target := _stage_target(stage, t, standoff, loiter)
+		var out := _dock_command(t, m.position, m.velocity, standoff, target)
+		var cmd: Vector3 = out[0]
+		var d: float = out[1]
+		var dv: float = out[2]
+		if stage == "return":
+			if d <= _dk("capture_range_m") and dv <= _dk("capture_speed_m_s"):
+				stage = "loiter"
+				times["return"] = t - t_stage
+				t_stage = t
+		if stage == "loiter":
+			var gap: float = fposmod(atan2(m.position.y, m.position.x)
+				- (float(_dock["bay_phase"]) + float(_dock["omega"]) * t), TAU)
+			if gap > lead:
+				armed = true
+			if armed and gap <= lead:
+				stage = "run_in"
+				times["loiter"] = t - t_stage
+				t_stage = t
+		elif stage == "run_in":
+			if d <= _dk("capture_range_m") and dv <= _dk("capture_speed_m_s"):
+				stage = "terminal"
+				times["run_in"] = t - t_stage
+				t_stage = t
+		elif stage == "terminal":
+			standoff = maxf(_dk("contact_standoff_m"),
+				standoff - _dk("closing_rate_m_s") * dt)
+			if standoff <= _dk("contact_standoff_m"):
+				stage = "settle"
+				times["terminal"] = t - t_stage
+				t_stage = t
+		elif stage == "settle":
+			var rep := _contact_report(t, m.position, m.velocity)
+			if bool(rep["safe"]) and d <= _dk("capture_range_m"):
+				times["settle"] = t - t_stage
+				docked = true
+				break
+		var clear: float = Vector2(m.position.x, m.position.y).length() \
+			- _hull_radius_at(m.position.z)
+		hull_clear = minf(hull_clear, clear)
+		if clear < 0.0:
+			reason = "flew into the hull at r %.1f m, z %.1f m" \
+				% [Vector2(m.position.x, m.position.y).length(), m.position.z]
+			break
+		var mag := cmd.length()
+		peak = maxf(peak, mag)
+		if stage == "terminal" or stage == "settle":
+			dock_peak = maxf(dock_peak, mag)
+		# The feedforward is the demand's OWN measured rotation rate, not the
+		# station's omega. Both are right at the bay and only one is right at
+		# 10 km: during the return the demand points wherever the velocity error
+		# is and rotates at nothing like omega. It converges to 0.1877 rad/s by
+		# the time the craft is on the circle, which is omega to three figures.
+		var aim := _unit(cmd)
+		var ff := Vector3.ZERO if not have_prev \
+			else prev_aim.cross(aim) * (1.0 / dt)
+		prev_aim = aim
+		have_prev = true
+		var ap := _dock_autopilot(m, aim,
+			ff, minf(1.0, mag / _dk("max_accel_m_s2")))
+		m.step(dt, ap[0])
+		t += dt
+		steps += 1
+		if steps % 12 == 0:
+			samples.append(_sample(t, m, "dock_" + stage))
+	if not docked and reason == "":
+		reason = "ran out of time in stage %s" % stage
+	var rep := _contact_report(t, m.position, m.velocity)
+	var bay_pos: Vector3 = _dock_target(t, 0.0, 0.0)[0]
+	var phase_err := rad_to_deg(atan2(m.position.y, m.position.x)
+		- (float(_dock["bay_phase"]) + float(_dock["omega"]) * t))
+	while phase_err > 180.0:
+		phase_err -= 360.0
+	while phase_err < -180.0:
+		phase_err += 360.0
+	var radial: float = m.velocity.dot(
+		Vector3(bay_pos.x, bay_pos.y, 0.0).normalized())
+	var r_c := Vector2(m.position.x, m.position.y).length()
+	var out_d := {
+		"docked": docked, "reason": reason, "t_end_s": t,
+		"elapsed_s": t - t0, "steps": steps,
+		"stage_s": times, "loiter_point_m": [loiter.x, loiter.y, loiter.z],
+		"commit_lead_deg": rad_to_deg(lead),
+		"closing_rate_m_s": rep["closing_rate"],
+		"lateral_slip_m_s": rep["lateral_slip"],
+		"naive_lateral_m_s": rep["naive_lateral"],
+		"naive_safe": rep["naive_safe"],
+		"misalignment_deg": rep["misalignment_deg"],
+		"lateral_offset_m": rep["lateral_offset"],
+		"phase_error_deg": phase_err,
+		"miss_m": (m.position - bay_pos).length(),
+		"contact_radius_m": r_c,
+		"contact_speed_m_s": m.speed(),
+		"radial_velocity_m_s": radial,
+		# The tangential speed the craft would have AT THE BAY'S OWN RADIUS if
+		# it kept co-rotating -- which is the number the launch releases at.
+		"tangential_at_bay_radius_m_s":
+			sqrt(maxf(0.0, m.speed() * m.speed() - radial * radial))
+			* float(_dock["bay_radius"]) / maxf(1.0, r_c),
+		"peak_accel_m_s2": peak,
+		"peak_accel_fraction": peak / _dk("max_accel_m_s2"),
+		"dock_peak_accel_m_s2": dock_peak,
+		"dock_peak_accel_fraction": dock_peak / _dk("max_accel_m_s2"),
+		"hull_clearance_m": hull_clear,
+		"contact_safe": docked and bool(rep["safe"]),
+	}
+	print("starfury: dock %s -- %s in %.1f s (return %.1f, loiter %.1f, run-in "
+		% ["ACHIEVED" if docked else "FAILED (%s)" % reason,
+			"contact" if docked else "no contact", t - t0, times["return"],
+			times["loiter"]]
+		+ "%.1f, close %.1f, settle %.2f); closing %.3f m/s, slip %.4f m/s, "
+			% [times["run_in"], times["terminal"], times["settle"],
+				rep["closing_rate"], rep["lateral_slip"]]
+		+ "lateral %.2f m, phase error %+.3f deg, peak %.1f%% of thrust, hull "
+			% [rep["lateral_offset"], phase_err,
+				100.0 * dock_peak / _dk("max_accel_m_s2")]
+		+ "clearance %.1f m" % hull_clear)
+	return out_d
+
+
+## `contact_is_safe` referenced to the ROTATING STRUCTURE rather than to the
+## bay's own reference point -- see `docking.contact_report`. Both verdicts are
+## reported because the difference is the finding: a craft standing off by its
+## own half-length is co-rotating 0.563 m/s faster than the bay, and the old
+## function's lateral limit is 0.500, so a perfectly flown dock fails it by
+## construction.
+func _contact_report(t: float, pos: Vector3, vel: Vector3) -> Dictionary:
+	var w: float = float(_dock["omega"])
+	var ang := float(_dock["bay_phase"]) + w * t
+	var n := Vector3(cos(ang), sin(ang), 0.0)
+	var bp: Vector3 = _dock_target(t, 0.0, 0.0)[0]
+	var slip := vel - Vector3(-w * pos.y, w * pos.x, 0.0)
+	var naive := vel - Vector3(-w * bp.y, w * bp.x, 0.0)
+	var los := _unit(pos - bp)
+	var mis := rad_to_deg(acos(clampf(los.dot(n), -1.0, 1.0)))
+	var lat := (slip - n * slip.dot(n)).length()
+	var offs: Vector3 = pos - bp
+	return {
+		"safe": -slip.dot(n) <= 2.0 and lat <= 0.5 and mis <= 8.0,
+		"closing_rate": -slip.dot(n), "lateral_slip": lat,
+		"misalignment_deg": mis,
+		"lateral_offset": (offs - n * offs.dot(n)).length(),
+		"naive_lateral": (naive - n * naive.dot(n)).length(),
+		"naive_safe": -naive.dot(n) <= 2.0
+			and (naive - n * naive.dot(n)).length() <= 0.5 and mis <= 8.0,
+	}
+
+
+## The port against station/physics/docking.py, at fixed states, open loop.
+##
+## `--dock-selftest --drift=NAME` injects the three mistakes a port of this law
+## actually makes and the comparison must go red for all three:
+##   nocoriolis   drop the 2*closing*omega term out of the target acceleration
+##   nophase      drop the target's velocity feedforward
+##   noattff      drop the attitude loop's rotation-rate feedforward
+func _dock_selftest(drift: String) -> bool:
+	if vectors_json == "" or _dock.is_empty():
+		push_error("starfury: --dock-selftest needs --vectors and a dock block")
+		return false
+	var vec := _read_json(vectors_json)
+	var gs: Array = vec.get("guidance_samples", [])
+	var att: Array = vec.get("attitude_samples", [])
+	if gs.is_empty() or att.is_empty():
+		push_error("starfury: vectors.json carries no guidance/attitude "
+			+ "samples -- run station/starfury_scene.py --build")
+		return false
+	_drift = drift
+	print("--- the docking law against station/physics/docking.py ---")
+	if drift != "":
+		print("NEGATIVE CONTROL ACTIVE: drift=%s. The comparison MUST go red."
+			% drift)
+	var worst_g := 0.0
+	var bad_g := 0
+	for s in gs:
+		var sd: Dictionary = s
+		var target := _stage_target(String(sd["stage"]), float(sd["t"]),
+			float(sd["standoff_m"]), _v3(sd["loiter"]))
+		var got := _dock_command(float(sd["t"]), _v3(sd["position"]),
+			_v3(sd["velocity"]), float(sd["standoff_m"]), target,
+			bool(sd["phase_match"]))
+		var want := _v3(sd["accel"])
+		var e := (got[0] as Vector3 - want).length()
+		e = maxf(e, absf(float(got[1]) - float(sd["range_m"])))
+		e = maxf(e, absf(float(got[2]) - float(sd["velocity_error_m_s"])))
+		worst_g = maxf(worst_g, e)
+		if e > 1e-9:
+			bad_g += 1
+	print("  %s  guidance                 %d of %d samples match, worst "
+		% ["PASS" if bad_g == 0 else "FAIL", gs.size() - bad_g, gs.size()]
+		+ "|delta| %s" % _sci(worst_g))
+
+	var worst_a := 0.0
+	var bad_a := 0
+	for s in att:
+		var sd: Dictionary = s
+		var m := FlightModel.new()
+		var q = sd["orientation"]
+		m.orientation = Quaternion(float(q[1]), float(q[2]), float(q[3]),
+			float(q[0]))
+		m.angular_velocity = _v3(sd["angular_velocity"])
+		var r := _dock_autopilot(m, _v3(sd["aim"]), _v3(sd["omega_ff"]),
+			float(sd["throttle"]))
+		var want: Dictionary = sd["throttles"]
+		var e := absf(float(r[1]) - float(sd["pointing_error_deg"]))
+		for key in want.keys():
+			e = maxf(e, absf(float((r[0] as Dictionary).get(key, -1.0))
+				- float(want[key])))
+		worst_a = maxf(worst_a, e)
+		if e > 1e-9:
+			bad_a += 1
+	print("  %s  attitude                 %d of %d samples match, worst "
+		% ["PASS" if bad_a == 0 else "FAIL", att.size() - bad_a, att.size()]
+		+ "|delta| %s" % _sci(worst_a))
+	_drift = ""
+	var ok := bad_g == 0 and bad_a == 0
+	if drift != "":
+		# INVERTED. A drifted port that still matches means the comparison is
+		# inert, and an inert comparison is worse than none because it is
+		# reported as a pass.
+		if ok:
+			print("CONTROL DID NOT FIRE -- drift=%s changed nothing the "
+				% drift + "comparison can see. This is a FAILURE.")
+			return false
+		print("CONTROL FIRED: %d guidance and %d attitude samples went red "
+			% [bad_g, bad_a] + "under drift=%s." % drift)
+		return true
+	print("%d guidance and %d attitude samples match the Python law"
+		% [gs.size(), att.size()])
+	return ok
+
+
+## Set only by `--dock-selftest --drift=`. Never in flight.
+var _drift: String = ""
 
 
 func _sample(t: float, m: FlightModel, phase: String) -> Dictionary:
@@ -786,6 +1092,193 @@ func _autopilot(m: FlightModel, aim: Vector3, throttle: float) -> Dictionary:
 		rot = rot.normalized()
 	var thr := throttle if ang < deg_to_rad(12.0) else 0.0
 	return m.allocate(Vector3(0.0, 0.0, thr), rot)
+
+
+# ===========================================================================
+# THE DOCK -- a port of station/physics/docking.py
+# ===========================================================================
+## Docking is the launch run backwards, and the hard part is that the bay is
+## rotating. The launch already rides the bay and lets go at the right phase;
+## the dock has to MATCH that phase from outside -- arrive on the bay's own
+## circle, at its angular rate, at the right angle, with a closing velocity the
+## airframe can null.
+##
+## THE WHOLE LAW IS `station/physics/docking.py` AND THIS IS A PORT OF IT, which
+## makes it a liability until it is checked. `--dock-selftest` replays 48
+## guidance samples and 16 attitude samples recorded from the Python module and
+## compares component by component at 1e-9. Open loop, deliberately: the mission
+## below flies the same law in a feedback loop, and a feedback loop HIDES a
+## mis-ported gain by correcting for it -- the trajectory comes out nearly right
+## and the law is wrong.
+##
+## Every constant comes out of `launch.json`'s `dock` block. Not one of them is
+## written here, because a constant duplicated across a language boundary is a
+## constant that drifts.
+
+var _dock: Dictionary = {}
+
+
+func _dk(key: String, fallback: float = 0.0) -> float:
+	return float(_dock.get(key, fallback))
+
+
+## Python's `unit()` multiplies by the reciprocal; Godot's `normalized()`
+## divides. They differ in the last bit of a double, which is below any physical
+## significance and ABOVE the 1e-9 the sample comparison runs at -- and that is
+## deliberate, because the comparison is asking whether this is the same
+## algorithm, not whether it is approximately right. `allocate` already carries
+## the same note.
+func _unit(v: Vector3) -> Vector3:
+	var n := v.length()
+	return Vector3.ZERO if n == 0.0 else v * (1.0 / n)
+
+
+func _clip(v: Vector3, cap: float) -> Vector3:
+	var n := v.length()
+	return v if n <= cap else v * (cap / n)
+
+
+## Position, velocity and acceleration of a point held `standoff` off the bay
+## while closing on it at `closing` m/s. Differentiated, not guessed:
+## with p = R(t) n(t), R' = -closing and n' = omega * tangent,
+##     v = -closing n + omega R t
+##     a = -omega^2 R n - 2 closing omega t
+## The second acceleration term is the Coriolis term of a radial closure and it
+## is the one a careless port drops.
+func _dock_target(t: float, standoff: float, closing: float) -> Array:
+	var ang := float(_dock["bay_phase"]) + float(_dock["omega"]) * t
+	var n := Vector3(cos(ang), sin(ang), 0.0)
+	var tg := Vector3(-sin(ang), cos(ang), 0.0)
+	var w: float = float(_dock["omega"])
+	var r: float = float(_dock["bay_radius"]) + standoff
+	# NEGATIVE CONTROL ONLY: the Coriolis term of a radial closure, 0.56 m/s^2
+	# at the plan's closing rate. Dropping it is the single most plausible port
+	# mistake in this function, and it is a term nobody would notice missing
+	# from a trajectory plot.
+	var cor := 0.0 if _drift == "nocoriolis" else -2.0 * closing * w
+	return [Vector3(r * n.x, r * n.y, float(_dock["bay_z"])),
+		tg * (w * r) + n * (-closing),
+		n * (-w * w * r) + tg * cor]
+
+
+## Where the craft waits for the bay, on ITS OWN azimuth.
+##
+## A point on the hold circle is doing 68.5 m/s and costs 12.9 m/s^2 to stay on;
+## a point FIXED IN INERTIAL SPACE on the same circle costs nothing, and the bay
+## arrives at it within one 33.47 s rotation whatever the craft does. The launch
+## is a craft at rest in the ROTATING frame being thrown clear; the dock is a
+## craft at rest in the INERTIAL frame being caught.
+##
+## The azimuth is the craft's own and that is a hull-clearance result rather
+## than a preference: measured along the straight line from the look-back point,
+## aiming at the hold point at the BAY's phase clears the hull by -11.6 m -- it
+## goes through the station -- and the same radius on the craft's own azimuth
+## clears by +96.5 m.
+func _loiter_point(pos: Vector3) -> Vector3:
+	var th := atan2(pos.y, pos.x)
+	var r: float = _dk("hold_radius_m")
+	return Vector3(r * cos(th), r * sin(th), float(_dock["bay_z"]))
+
+
+func _stage_target(stage: String, t: float, standoff: float,
+		loiter: Vector3) -> Array:
+	if stage == "return" or stage == "loiter":
+		return [loiter, Vector3.ZERO, Vector3.ZERO]
+	return _dock_target(t, standoff,
+		_dk("closing_rate_m_s") if stage == "terminal" else 0.0)
+
+
+## The guidance law: one gain, two feedforwards.
+##
+##     a = a_target(t) + vel_gain * (v_desired - v)
+##     v_desired = unit(target - pos) * vcap + v_target(t)
+##
+## VELOCITY MATCHING, NOT PURSUIT, for the reason the transit leg above records:
+## a closing-rate test cannot see LATERAL velocity. AND THE TARGET'S OWN
+## ACCELERATION IS FED FORWARD, which is what makes the equilibrium the circle
+## rather than a straight line -- without it, sitting exactly on the hold point
+## with exactly the hold point's velocity gives zero command and the craft flies
+## straight while the hold point curves away.
+##
+## `phase_match=false` is the negative control: it drops the target's velocity
+## and acceleration, which is docking with a rotating station as though it were
+## not rotating, and the craft misses by 298 m.
+func _dock_command(t: float, pos: Vector3, vel: Vector3, standoff: float,
+		target: Array, phase_match: bool = true) -> Array:
+	var p: Vector3 = target[0]
+	var v: Vector3 = target[1] if phase_match else Vector3.ZERO
+	var a: Vector3 = target[2] if phase_match else Vector3.ZERO
+	# NEGATIVE CONTROL ONLY. `nophase` drops the target's VELOCITY feedforward
+	# and keeps its acceleration -- a subtler mistake than `phase_match=false`,
+	# and one a port makes by forgetting a single `+ v`.
+	if _drift == "nophase":
+		v = Vector3.ZERO
+	var dp := p - pos
+	var d := dp.length()
+	# NO STANDOFF SUBTRACTED FROM THE BRACHISTOCHRONE. The transit leg above
+	# uses `sqrt(2 * 0.7 * amax * (d - 100))` because it means to stop short of
+	# its waypoint. Written that way here it read zero for every d under the
+	# capture range, which took the WHOLE cap to zero -- it is a min -- and
+	# removed the position feedback: the craft then settled 14.26 m from the bay
+	# and held it, because a law with no position term has a perfect equilibrium
+	# at any offset whose velocity matches.
+	var amax: float = _dk("max_accel_m_s2")
+	var vcap: float = minf(_dk("cruise_vmax_m_s"), minf(
+		sqrt(2.0 * _dk("brachistochrone_derate") * amax * d),
+		_dk("terminal_taper") * d))
+	var v_des := _unit(dp) * vcap + v
+	return [_clip(a + (v_des - vel) * _dk("vel_gain"), amax), d,
+		(v - vel).length()]
+
+
+## Point the nose at `aim`, tracking a demand that is itself rotating.
+##
+## THE FEEDFORWARD IS THE DIFFERENCE BETWEEN DOCKING AND NOT. A docking craft's
+## thrust vector rotates with the station, 10.75 deg/s, once every 33.47 s. A
+## pure PD tracking that settles where `kp * error = kd * rate`, i.e. at a
+## standing error of kd/kp * omega = 26 degrees -- past the thrust gate, so the
+## mains never light and the craft never docks. Measured before the feedforward:
+## the pointing error pinned at exactly 25.0 deg, the gate value, for the whole
+## approach. After it: 0.0-0.5 deg.
+##
+## `rot.z` is zeroed because the layout has no roll authority; see `_autopilot`.
+func _dock_autopilot(m: FlightModel, aim: Vector3, omega_ff: Vector3,
+		throttle: float) -> Array:
+	var f := m.forward()
+	var axis := f.cross(aim)
+	var ang := atan2(axis.length(), f.dot(aim))
+	var err := Vector3.ZERO
+	if axis.length() > 1e-12:
+		err = m.world_to_body(_unit(axis)) * ang
+	# NEGATIVE CONTROL ONLY: the one number that makes docking work.
+	var w_ff := m.world_to_body(
+		Vector3.ZERO if _drift == "noattff" else omega_ff)
+	var rot := err * _dk("att_kp") - (m.angular_velocity - w_ff) * _dk("att_kd")
+	rot.z = 0.0
+	if rot.length() > 1.0:
+		rot = _unit(rot)
+	var thr := throttle if ang < deg_to_rad(_dk("thrust_gate_deg")) else 0.0
+	return [m.allocate(Vector3(0.0, 0.0, thr), rot), rad_to_deg(ang)]
+
+
+## The station's own radius at z, from the profile `launch.json` carries.
+##
+## SAMPLED FROM `components.radius_at`, the function the hull mesh is built
+## from, at 20.17 m -- so a craft that measures its clearance here and the hull
+## a player looks at cannot disagree about where the station is. Nothing in this
+## model collides, so without this a law that flies THROUGH the station reports
+## a clean miss distance and reads as merely inaccurate.
+func _hull_radius_at(z: float) -> float:
+	var hp: Dictionary = _launch.get("hull_profile", {})
+	if hp.is_empty():
+		return 0.0
+	var radii: Array = hp["radii"]
+	var u := (z - float(hp["z0"])) / float(hp["step"])
+	if u <= 0.0 or u >= float(radii.size() - 1):
+		return 0.0                       # off either end: no station to hit
+	var i := int(floor(u))
+	var f := u - float(i)
+	return lerpf(float(radii[i]), float(radii[i + 1]), f)
 
 
 func _look_quat(fwd: Vector3, up: Vector3) -> Quaternion:
@@ -994,8 +1487,10 @@ func _sync_transforms() -> void:
 ## there, and this project has a scar for exactly that shape of evidence.
 func _photograph(which: String) -> void:
 	var flight := _fly_mission()
-	var pick: Dictionary = flight["final"]
-	if which == "release":
+	var pick: Dictionary = flight.get("lookback", flight["final"])
+	if which == "dock":
+		pick = flight["final"]
+	elif which == "release":
 		# The FIRST coast sample, a twelfth of a second after the clamps let
 		# go: the fighter is still in the bay's mouth and the hull it is
 		# leaving is the frame. The last one is six seconds and 150 m later,
@@ -1010,7 +1505,7 @@ func _photograph(which: String) -> void:
 		float(q[0])).normalized()
 	_chase = true
 	_sync_transforms()
-	if which != "lookback":
+	if which != "lookback" and which != "dock":
 		# THE LAUNCH BEAT NEEDS A DIFFERENT CAMERA, and the reason is where the
 		# fighter is pointing. A cobra bay tube points radially OUT, so at
 		# release the nose is aimed at empty space and the station is directly

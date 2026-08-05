@@ -21,11 +21,26 @@ Four artefacts, all under `station/generated/scene/starfury/`:
                         itself; the file's `expected_exit_velocity` is what its
                         derivation is checked against.
   * `vectors.json`   -- the flight model run over nine scenarios in pure Python,
-                        with the full state recorded at checkpoints. The
-                        GDScript port replays these and must land on the same
-                        numbers. A port that drifts from its tested source is
-                        the defect this project keeps finding.
+                        with the full state recorded at checkpoints, PLUS 48
+                        guidance samples and 16 attitude samples from
+                        `station/physics/docking.py`'s approach law. The
+                        GDScript port replays all of it and must land on the
+                        same numbers. A port that drifts from its tested source
+                        is the defect this project keeps finding.
   * `scene.json`     -- a shot `tools/render_godot.sh --shot starfury` can render
+
+`launch.json` also carries a `dock` block -- every constant the engine's
+approach needs, all of them derived by `docking.plan_approach` from the spin,
+the airframe and the bay -- and a 400-sample table of the hull's own radius
+against z, so the engine can measure its own clearance against the same
+`components.radius_at` the hull mesh is built from.
+
+## The dock is the launch run backwards
+
+`--dock-gate` flies the measured cobra bay from every phase of one rotation and
+reports a denominator. The whole approach is `station/physics/docking.py`; this
+file supplies the real bay, the real hull and the real airframe, and checks the
+engine's own flight against a second run of the same law in Python.
 
 JSON rather than YAML, and that is not a preference: Godot parses JSON in one
 built-in call and has no YAML at all. A vector file the engine cannot read is a
@@ -479,10 +494,19 @@ def write_bundle(out_dir=OUT_DIR):
     launch["airframe"] = {"triangles": man["triangles"],
                           "length_m": man["bounds"]["length_m"],
                           "span_x_m": man["bounds"]["span_x_m"]}
+    # THE DOCK. Every constant the engine's approach needs, plus the hull's own
+    # radius profile so the engine can measure its own clearance against the
+    # same function the mesh is built from.
+    plan = dock_plan(schema=schema, bay=bay)
+    launch["dock"] = dock_block(plan)
+    launch["hull_profile"] = hull_profile(schema)
     with open(os.path.join(out_dir, "launch.json"), "w") as f:
         json.dump(launch, f, indent=1)
+    vec = vectors(schema)
+    vec["guidance_samples"] = guidance_samples(plan)
+    vec["attitude_samples"] = attitude_samples(plan)
     with open(os.path.join(out_dir, "vectors.json"), "w") as f:
-        json.dump(vectors(schema), f, indent=1)
+        json.dump(vec, f, indent=1)
 
     # The flyable scene's own shot description. `render_godot.sh --shot
     # starfury --no-export` reads this, so the flyable build renders through
@@ -537,7 +561,11 @@ def compose_lookback(flight_path, out_png, out_dir=OUT_DIR, res="1280x720"):
     out of an argument.
     """
     flight = json.load(open(flight_path))
-    ship = flight["final"]
+    # THE LOOK-BACK BEAT, NOT THE LAST ONE. Since the mission grew a dock phase
+    # `final` is the craft parked 3 m off the hull with its nose 85 degrees off
+    # the station -- a perfectly valid state and the wrong photograph. The
+    # fallback keeps an older flight.json composable.
+    ship = flight.get("lookback", flight["final"])
     cam = flight["camera"]
     posed = pose_airframe(ship["position"], ship["orientation"], out_dir)
 
@@ -632,6 +660,103 @@ def check_flight(flight_path, perturb=0.0, quiet=False):
                  f"{flight['summary']['range_m']:.0f} m from the station centre "
                  f"in {flight['summary']['elapsed_s']:.1f} s, "
                  f"peak {flight['summary']['peak_speed_m_s']:.1f} m/s")
+
+    # --- THE DOCK -------------------------------------------------------------
+    # TWO INDEPENDENT IMPLEMENTATIONS FROM ONE START STATE. The engine flew the
+    # approach in GDScript; `docking.fly` flies it again in Python from the
+    # look-back state the engine recorded, and the two must land on the same
+    # contact. Anything else means the port drifted somewhere the open-loop
+    # samples do not reach -- the stage machine, the commit gate, the ramp.
+    dock = flight.get("dock")
+    if dock is None:
+        lines.append("  FAIL  the flight has no dock phase")
+        ok = False
+    else:
+        docking = _docking()
+        plan = dock_plan()
+        look = flight.get("lookback", flight["final"])
+        ship = Starfury()
+        ship.position = tuple(look["position"])
+        ship.velocity = tuple(look["velocity"])
+        q = look["orientation"]
+        ship.orientation = (q[0], q[1], q[2], q[3])
+        mine = docking.fly(plan, ship, t0=float(look["t_s"]), max_s=300.0)
+        got = bool(dock["docked"]) and not perturb
+        lines.append(f"  {'PASS' if got else 'FAIL'}  "
+                     f"{'the engine docked':<44} "
+                     f"{dock['reason'] or 'contact'}")
+        ok = ok and got
+        lines.append(f"  {'PASS' if mine.docked else 'FAIL'}  "
+                     f"{'and station/physics/docking.py agrees':<44} "
+                     f"python {mine.elapsed_s:.2f} s, engine "
+                     f"{float(dock['elapsed_s']):.2f} s")
+        ok = ok and mine.docked
+        # THE TOLERANCE HERE IS NOT THE VECTOR TOLERANCE, AND THE DIFFERENCE IS
+        # WORTH THE PARAGRAPH. `--selftest` and `--dock-selftest` compare the
+        # two implementations OPEN LOOP at 1e-9 and measure 5e-14, which is the
+        # bit-level agreement that says "same algorithm". These rows compare the
+        # end of an 18,751-step CLOSED LOOP, and doubles do not survive that
+        # untouched: written at 1e-9 these rows failed at 3.8e-9 (closing rate),
+        # 2.9e-9 (slip) and 4.6e-8 (peak accel, which is a max over the run, so
+        # a one-ulp difference changes WHICH step wins). None of that is drift.
+        #
+        # 1e-5 is four orders below the 1% perturbation the control applies
+        # (0.0146 on the closing rate) and three orders above the observed
+        # round-off, so it can still fail for a real difference and cannot fail
+        # for arithmetic. The measured worst is printed below either way, so the
+        # number is visible rather than swallowed by the band.
+        loop_tol = 1e-5
+        for label, a, b, tol in (
+                ("dock time, engine vs docking.py",
+                 float(dock["elapsed_s"]) * (1.0 + perturb), mine.elapsed_s,
+                 loop_tol),
+                ("closing rate at contact",
+                 float(dock["closing_rate_m_s"]) * (1.0 + perturb),
+                 mine.closing_rate_m_s, loop_tol),
+                ("lateral slip at contact",
+                 float(dock["lateral_slip_m_s"]) * (1.0 + perturb),
+                 mine.lateral_slip_m_s, loop_tol),
+                ("lateral offset at contact",
+                 float(dock["lateral_offset_m"]) * (1.0 + perturb),
+                 mine.lateral_offset_m, loop_tol),
+                ("phase error at contact, deg",
+                 float(dock["phase_error_deg"]) * (1.0 + perturb),
+                 mine.phase_error_deg, loop_tol),
+                ("peak dock accel as a fraction of max",
+                 float(dock["dock_peak_accel_fraction"]) * (1.0 + perturb),
+                 mine.dock_peak_accel_fraction, loop_tol),
+                # THE A/B AGAINST THE LAUNCH: same bay, same omega, backwards.
+                # A docked craft co-rotates, so its tangential speed AT THE
+                # BAY'S OWN RADIUS is the speed the launch releases at.
+                ("dock contact speed == launch release speed",
+                 float(dock["tangential_at_bay_radius_m_s"]) * (1.0 + perturb),
+                 predicted["expected_exit_speed_m_s"], 1e-2)):
+            row(label, a, b, tol)
+        safe = bool(dock["contact_safe"]) and not perturb
+        lines.append(f"  {'PASS' if safe else 'FAIL'}  "
+                     f"{'contact is inside the safety envelope':<44} "
+                     f"closing {float(dock['closing_rate_m_s']):.3f} m/s, slip "
+                     f"{float(dock['lateral_slip_m_s']):.4f} m/s, misalign "
+                     f"{float(dock['misalignment_deg']):.2f} deg")
+        ok = ok and safe
+        clear = float(dock["hull_clearance_m"]) > 0.0 and not perturb
+        lines.append(f"  {'PASS' if clear else 'FAIL'}  "
+                     f"{'the approach never touched the hull':<44} "
+                     f"tightest clearance "
+                     f"{float(dock['hull_clearance_m']):.1f} m")
+        ok = ok and clear
+        lines.append(
+            f"  ..  {'stages':<44} "
+            + ", ".join(f"{k} {v:.1f} s" for k, v in dock["stage_s"].items()))
+        drift = max(
+            abs(float(dock["closing_rate_m_s"]) - mine.closing_rate_m_s),
+            abs(float(dock["lateral_slip_m_s"]) - mine.lateral_slip_m_s),
+            abs(float(dock["dock_peak_accel_fraction"])
+                - mine.dock_peak_accel_fraction))
+        lines.append(
+            f"  ..  {'closed-loop round-off over ' + str(dock['steps']) + ' steps':<44} "
+            f"worst |engine - python| = {drift:.3e} "
+            f"(open loop the same law agrees to 5e-14)")
     if not quiet:
         print("\n".join(lines))
     return ok
@@ -700,6 +825,308 @@ def docking_envelope(schema=None, bay=None):
     }
 
 
+# ---------------------------------------------------------------------------
+# The dock -- the launch run backwards
+# ---------------------------------------------------------------------------
+
+# How finely the hull's own radius profile is written into launch.json so the
+# engine can measure its own clearance. 8,047 m over 400 samples is 20.1 m a
+# sample, which is finer than the profile's own control points. INV-402.
+HULL_SAMPLES = 400
+
+
+def _docking():
+    sys.path.insert(0, os.path.join(STATION, "physics"))
+    import docking  # noqa: E402
+    return docking
+
+
+def hull_profile(schema=None):
+    """The station's radius against z, sampled, so the engine can carry it.
+
+    THE SAME `components.radius_at` THE HULL MESH IS BUILT FROM. Hard rule 4:
+    a craft that measures its clearance against a second description of the
+    hull is a craft that can fly through the first one.
+    """
+    # THE PROFILE'S OWN EXTENT, not the schema's stated 8,047 m. They agree, and
+    # taking it from the profile means the sampled table cannot end before the
+    # mesh does if the two ever stop agreeing.
+    prof = generate_hull.load()[1]["profile"]
+    z0 = min(p["z_m"] for p in prof)
+    z1 = max(p["z_m"] for p in prof)
+    step = (z1 - z0) / (HULL_SAMPLES - 1)
+    return {"z0": z0, "step": step,
+            "radii": [components.radius_at(prof, z0 + i * step)
+                      for i in range(HULL_SAMPLES)],
+            "source": "station/components.radius_at(generate_hull.load() "
+                      "profile) -- the function the hull mesh is built from"}
+
+
+def dock_plan(schema=None, bay=None):
+    """The approach plan for the measured cobra bay, with the real hull.
+
+    Everything the plan needs comes from somewhere that already exists: the bay
+    off `hull.obj`, the spin off `rotating_frame`, the thrust off the flight
+    model, the craft's half-length off `starfury_geometry`'s own manifest, and
+    the hull radius off the function `generate_hull` builds the mesh with.
+    Nothing in the plan is written down here.
+    """
+    docking = _docking()
+    if schema is None:
+        schema = yaml.safe_load(open(os.path.join(STATION, "schema/station.yaml")))
+    if bay is None:
+        bay = cobra_bay_geometry(schema=schema)
+    drum = from_schema(schema)
+    amax = Starfury().max_linear_accel()
+    half = 0.5 * starfury_geometry.manifest(starfury_geometry.build())[
+        "bounds"]["length_m"]
+    d = docking.DockingBay(drum, bay["mouth_radius_m"], bay["z_m"],
+                           bay["phase_rad"])
+    plan = docking.plan_approach(d, amax, craft_half_length_m=half)
+    prof = generate_hull.load()[1]["profile"]
+    plan.hull_radius_at = lambda z: components.radius_at(prof, z)
+    return plan
+
+
+def dock_block(plan):
+    """Every number the engine needs to fly the same approach.
+
+    Written into `launch.json` rather than restated in GDScript for the reason
+    the launch block is: a constant duplicated across a language boundary is a
+    constant that drifts. What IS duplicated on purpose is the law itself, and
+    `vectors.json`'s guidance samples are what catch that.
+    """
+    docking = _docking()
+    return {
+        # The bay again, inside the dock block, so the port reads ONE dictionary
+        # and cannot pick up the bay from one place and omega from another.
+        "omega": plan.omega,
+        "bay_radius": plan.bay.radius,
+        "bay_z": plan.bay.z,
+        "bay_phase": plan.bay.phase,
+        "period_s": plan.bay.drum.period,
+        "max_accel_m_s2": plan.max_accel,
+        "ceiling_radius_m": plan.ceiling_radius_m,
+        "max_standoff_m": plan.ceiling_radius_m - plan.bay.radius,
+        "standoff_m": plan.standoff_m,
+        "hold_radius_m": plan.hold_radius_m,
+        "hold_cost_m_s2": plan.hold_cost_m_s2,
+        "control_reserve": plan.control_reserve,
+        "authority_m_s2": plan.authority_m_s2,
+        "closing_rate_m_s": plan.closing_rate_m_s,
+        "capture_range_m": plan.capture_range_m,
+        "capture_speed_m_s": plan.capture_speed_m_s,
+        "vel_gain": plan.vel_gain,
+        "cruise_vmax_m_s": plan.cruise_vmax_m_s,
+        "brachistochrone_derate": plan.brachistochrone_derate,
+        "terminal_taper": plan.terminal_taper,
+        "contact_standoff_m": plan.contact_standoff_m,
+        "commit_lead_rad": docking.commit_lead_angle(plan),
+        "att_kp": docking.ATT_KP, "att_kd": docking.ATT_KD,
+        "thrust_gate_deg": docking.THRUST_GATE_DEG,
+        "derivation": ("station/physics/docking.plan_approach -- the standoff "
+                       "from the control reserve, the closing rate from "
+                       "contact_is_safe's own buffer limit, the one gain from "
+                       "the authority budget, the commit lead from the "
+                       "spin-up time"),
+    }
+
+
+def guidance_samples(plan, n=24):
+    """The law evaluated at fixed states, for the GDScript port to reproduce.
+
+    OPEN LOOP, AND THAT IS THE POINT. The engine flies the same approach in a
+    feedback loop, and a feedback loop hides a mis-ported gain by correcting for
+    it -- the trajectory comes out nearly the same and the law is wrong. These
+    samples pin the law itself: one state in, one acceleration out, compared
+    component by component at 1e-9. The states are spread over every stage, both
+    sides of the capture, and both settings of `phase_match`, so a port that
+    drops the Coriolis term or the target-velocity feedforward cannot pass.
+    """
+    docking = _docking()
+    out = []
+    rng_t = [0.0, 4.7, 11.3, 22.9, 31.4, 47.0]
+    for i in range(n):
+        t = rng_t[i % len(rng_t)] + 7.0 * (i // len(rng_t))
+        stage = ["return", "loiter", "run_in", "terminal"][i % 4]
+        standoff = [plan.standoff_m, plan.standoff_m, plan.standoff_m,
+                    plan.contact_standoff_m + 9.0][i % 4]
+        ang = plan.bay.angle_at(t) + 0.37 * (i - n / 2.0) / n
+        rad = plan.hold_radius_m + 40.0 * math.sin(0.9 * i) + 3.0 * i
+        pos = (rad * math.cos(ang), rad * math.sin(ang),
+               plan.bay.z + 30.0 * math.cos(1.7 * i))
+        vel = (12.0 * math.sin(0.5 * i), plan.omega * rad * 0.8,
+               2.0 * math.cos(0.3 * i))
+        loiter = docking.loiter_point(plan, pos)
+        for pm in (True, False):
+            tgt = docking.stage_target(plan, t, stage, standoff, loiter)
+            cmd, d, dv = docking.dock_command(plan, t, pos, vel, standoff, 0.0,
+                                              pm, tgt)
+            out.append({"t": t, "stage": stage, "standoff_m": standoff,
+                        "phase_match": pm, "position": list(pos),
+                        "velocity": list(vel), "loiter": list(loiter),
+                        "accel": list(cmd), "range_m": d,
+                        "velocity_error_m_s": dv})
+    return out
+
+
+def attitude_samples(plan, n=16):
+    """`docking.attitude_command` at fixed states, throttle by throttle.
+
+    The attitude loop is the other half of the port and it is where the one
+    number that makes docking work lives -- the demand's own rotation rate, fed
+    forward. A port that drops it still flies, badly, with a 26 degree standing
+    error, and no trajectory comparison at engine tolerances would name the
+    cause. This does.
+    """
+    docking = _docking()
+    out = []
+    for i in range(n):
+        ship = Starfury()
+        a = 0.41 * i
+        ship.orientation = quat_from_basis(
+            (math.cos(a), math.sin(a), 0.3 * math.sin(0.7 * i)),
+            (0.0, 0.0, 1.0))
+        ship.angular_velocity = (0.05 * math.sin(i), 0.12 * math.cos(0.6 * i),
+                                 0.03 * i / n)
+        aim = unit((math.cos(a + 0.25), math.sin(a + 0.25), 0.2))
+        ff = (0.0, 0.0, plan.omega) if i % 2 else (0.01 * i, 0.0, 0.0)
+        thr = 0.15 + 0.05 * (i % 8)
+        th, ang = docking.attitude_command(ship, aim, ff, thr)
+        out.append({"orientation": list(ship.orientation),
+                    "angular_velocity": list(ship.angular_velocity),
+                    "aim": list(aim), "omega_ff": list(ff), "throttle": thr,
+                    "throttles": th, "pointing_error_deg": ang})
+    return out
+
+
+def dock_gate(phases=12, quiet=False):
+    """The whole dock, at the real bay, over a full rotation, with its controls.
+
+    Reports a DENOMINATOR. One dock against a rotating target is an existence
+    proof and this project does not accept those: the bay's phase when the
+    approach starts is the variable the problem turns on, and a law can dock
+    from the phase it was written against and fly into the hull from the one 90
+    degrees away -- which is exactly what the first version of the commit gate
+    did, on 1 of 12.
+    """
+    docking = _docking()
+    schema = yaml.safe_load(open(os.path.join(STATION, "schema/station.yaml")))
+    bay = cobra_bay_geometry(schema=schema)
+    plan = dock_plan(schema=schema, bay=bay)
+    launch = launch_state(schema=schema, bay=bay)
+    ok = True
+    out = []
+
+    def row(name, good, detail=""):
+        nonlocal ok
+        ok = ok and good
+        out.append(f"  {'PASS' if good else 'FAIL'}  {name:<52}"
+                   + (f"  {detail}" if detail else ""))
+
+    out.append("--- the Starfury docks in the measured cobra bay ---")
+    out.append(f"  bay r {plan.bay.radius:.2f} m at z {plan.bay.z:.1f} m; "
+               f"omega {plan.omega:.9f} rad/s; airframe {plan.max_accel:.2f} "
+               f"m/s^2 max")
+    out.append(f"  ceiling {plan.ceiling_radius_m:.1f} m of radius = "
+               f"{plan.ceiling_radius_m - plan.bay.radius:.1f} m of standoff; "
+               f"plan holds at {plan.standoff_m:.1f} m "
+               f"({plan.hold_cost_m_s2:.2f} m/s^2, "
+               f"{plan.control_reserve:.1%} in hand)")
+    out.append(f"  commit lead {math.degrees(docking.commit_lead_angle(plan)):.1f} "
+               f"deg; closing {plan.closing_rate_m_s:.2f} m/s; contact standoff "
+               f"{plan.contact_standoff_m:.2f} m (the airframe's half-length)")
+
+    # THE START STATE IS THE MISSION'S OWN LOOK-BACK POINT, so this gate flies
+    # the leg the engine flies rather than a convenient one.
+    start = {"t0": 0.0, "position": waypoint(), "velocity": (0.0, 0.0, 0.0),
+             "orientation": (1.0, 0.0, 0.0, 0.0)}
+    rows = docking.sweep(plan, Starfury, start, phases=phases)
+    docked = [r for _t, _a, r in rows if r.docked]
+    for _t, ang, r in rows:
+        out.append(
+            f"    bay at {ang:6.1f} deg: "
+            + (f"DOCK {r.elapsed_s:6.1f} s (return {r.return_s:5.1f} loiter "
+               f"{r.loiter_s:5.1f} run-in {r.run_in_s:5.1f} close "
+               f"{r.terminal_s:5.1f} settle {r.settle_s:4.2f})  closing "
+               f"{r.closing_rate_m_s:5.3f} m/s  slip {r.lateral_slip_m_s:6.4f} "
+               f"m/s  lateral {r.lateral_offset_m:5.2f} m  phase "
+               f"{r.phase_error_deg:+6.3f} deg  peak "
+               f"{r.dock_peak_accel_fraction:5.1%}  hull +"
+               f"{r.hull_clearance_m:.0f} m"
+               if r.docked else f"NO DOCK -- {r.reason}"))
+    row("every start phase over one rotation docks", len(docked) == len(rows),
+        f"{len(docked)} of {len(rows)}")
+    if not docked:
+        print("\n".join(out))
+        return False, rows, plan
+    worst = max(r.dock_peak_accel_fraction for r in docked)
+    row("no dock asks the airframe for more than it has", worst <= 1.0,
+        f"peak {worst:.1%} of {plan.max_accel:.2f} m/s^2")
+    row("no dock touches the hull",
+        all(r.hull_clearance_m > 0.0 for r in docked),
+        f"tightest clearance {min(r.hull_clearance_m for r in docked):.1f} m")
+    row("every contact is inside the safety envelope",
+        all(r.contact_safe for r in docked),
+        f"worst closing {max(r.closing_rate_m_s for r in docked):.3f} m/s, "
+        f"slip {max(r.lateral_slip_m_s for r in docked):.4f} m/s, misalign "
+        f"{max(r.misalignment_deg for r in docked):.2f} deg")
+
+    # --- THE A/B AGAINST THE LAUNCH -- the same bay, the same omega, backwards
+    # A docked craft is co-rotating with the station, so its tangential speed at
+    # the BAY'S OWN RADIUS must be the speed the launch releases at. Same bay,
+    # same omega, opposite direction of travel.
+    ref = docking.contact_report
+    worst_ab = 0.0
+    for _t, _a, r in rows:
+        if not r.docked:
+            continue
+        tang = math.sqrt(max(0.0, r.contact_speed_m_s ** 2
+                             - r.radial_velocity_m_s ** 2))
+        at_bay = tang * plan.bay.radius / r.contact_radius_m
+        worst_ab = max(worst_ab, abs(at_bay - launch["expected_exit_speed_m_s"]))
+    row("the dock's contact velocity IS the launch's release velocity",
+        worst_ab < 1e-2,
+        f"worst |dock - launch| = {worst_ab:.2e} m/s against "
+        f"{launch['expected_exit_speed_m_s']:.4f} m/s")
+
+    # --- NEGATIVE CONTROL 1: the phase-matching term nulled ------------------
+    bad = docking.sweep(plan, Starfury, start, phases=4, phase_match=False)
+    misses = sorted(r.miss_m for _t, _a, r in bad)
+    row("CONTROL: null the phase match and nothing docks",
+        not any(r.docked for _t, _a, r in bad),
+        f"misses {', '.join(f'{m:.0f}' for m in misses)} m against "
+        f"{sum(r.miss_m for r in docked) / len(docked):.2f} m when matched")
+
+    # --- NEGATIVE CONTROL 2: a standoff past the ceiling ---------------------
+    for demand, why in ((300.0, "past the 227.8 m ceiling"),
+                        (227.0, "inside it, with no authority left")):
+        try:
+            docking.plan_approach(plan.bay, plan.max_accel, standoff=demand)
+            row(f"CONTROL: {demand:.0f} m of standoff is refused", False,
+                "IT WAS ACCEPTED -- the envelope is not enforced")
+        except docking.InfeasibleApproach as e:
+            row(f"CONTROL: {demand:.0f} m of standoff ({why}) is refused", True,
+                str(e)[:110])
+
+    # --- THE FINDING ABOUT contact_is_safe -----------------------------------
+    r0 = docked[0]
+    out.append(
+        f"  ..    `contact_is_safe` says {'SAFE' if r0.naive_safe else 'UNSAFE'}"
+        f" on the same contact: its lateral term reads "
+        f"{r0.naive_lateral_m_s:.4f} m/s against its own 0.5 limit, because it "
+        f"measures against")
+    out.append(
+        f"        the BAY's velocity and the craft's centre stands off by its "
+        f"half-length. Referenced to the rotating structure the slip is "
+        f"{r0.lateral_slip_m_s:.4f} m/s. See docking.contact_report.")
+
+    if not quiet:
+        print("\n".join(out))
+        print("DOCK GATE: " + ("PASS" if ok else "FAIL"))
+    return ok, rows, plan
+
+
 def godot_binary():
     """The same search `station/walkable.py` does, and the same message."""
     for c in [os.environ.get("GODOT", ""),
@@ -747,9 +1174,14 @@ def gate(out_dir=OUT_DIR):
         # own verdict, so a zero here means the control fired.
         ok = ok and run([f"--selftest", f"--drift={d}"],
                         f"negative control drift={d}") == 0
+    ok = ok and run(["--dock-selftest"],
+                    "the docking law against station/physics/docking.py") == 0
+    for d in ("nocoriolis", "nophase", "noattff"):
+        ok = ok and run(["--dock-selftest", f"--drift={d}"],
+                        f"negative control drift={d}") == 0
     ok = ok and run(["--pilot-test"],
                     "the pilot's controls, from a scripted key sequence") == 0
-    ok = ok and run(["--mission"], "the mission") == 0
+    ok = ok and run(["--mission"], "the mission, launch to dock") == 0
     print("--- the launch against rotating_frame.py ---")
     ok = check_flight(os.path.join(out_dir, "flight.json")) and ok
     bad = check_flight(os.path.join(out_dir, "flight.json"), perturb=0.01,
@@ -772,6 +1204,12 @@ def main():
                          "the flyable scene's scene.json")
     ap.add_argument("--report", action="store_true",
                     help="print the launch the engine has to reproduce")
+    ap.add_argument("--dock-gate", action="store_true",
+                    help="fly the dock at the measured cobra bay from every "
+                         "phase of one rotation, with both negative controls "
+                         "and the A/B against the launch")
+    ap.add_argument("--phases", type=int, default=12,
+                    help="start phases the dock gate sweeps over one rotation")
     ap.add_argument("--docking-envelope", action="store_true",
                     help="what holding formation off a rotating cobra bay "
                          "costs a Starfury, and where it stops being possible")
@@ -822,6 +1260,11 @@ def main():
 
     if a.gate:
         raise SystemExit(0 if gate() else 1)
+
+    if a.dock_gate:
+        did = True
+        ok, _rows, _plan = dock_gate(phases=a.phases)
+        raise SystemExit(0 if ok else 1)
 
     if a.docking_envelope:
         did = True

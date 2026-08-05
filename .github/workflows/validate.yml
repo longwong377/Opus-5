@@ -436,6 +436,31 @@ jobs:
         continue-on-error: true
         run: python3 station/physics/test_floating_origin.py
 
+      # THE DOCK, AND THE DATA THE ENGINE READS. Both were missing until 4p.
+      # `--build` writes station/generated/scene/starfury/{starfury.glb,
+      # launch.json,vectors.json} -- the three files `starfury.gd` reads BY PATH
+      # and which no CI step had ever rebuilt, so they survived only because
+      # somebody once ran the builder by hand (tools/wiring.py --data reported
+      # them "present but no CI step rebuilds them").
+      #
+      # `--dock-gate` flies the dock at the measured cobra bay from every start
+      # phase over one rotation: 12 of 12 dock, peak 72.7% of the airframe's
+      # 18.38 m/s^2, tightest hull clearance 28.1 m. Its strongest assertion is
+      # the A/B against launch -- the dock's contact velocity IS the launch's
+      # release velocity, agreeing to 1.98e-03 m/s on 55.1483 m/s -- because
+      # docking is launch run backwards and the two share one bay model.
+      # Controls: null the phase match and the craft misses by ~298 m; ask for
+      # 300 m of standoff (past the derived 227.8 m ceiling) and it is refused;
+      # ask for 227 m (inside it, but leaving 0.1% of thrust for control) and it
+      # is refused too. ~15 s.
+      - name: The Starfury docks
+        id: sstarfury_dock
+        continue-on-error: true
+        run: |
+          python3 station/physics/test_docking.py
+          python3 station/starfury_scene.py --build
+          python3 station/starfury_scene.py --dock-gate
+
       - name: Starfury flight model
         id: sstarfury_flight_model
         continue-on-error: true
@@ -836,6 +861,8 @@ jobs:
             echo "FAILED: sprecision_and_floating_origin"; fail=1; fi
           if [ "${{ steps.sstarfury_flight_model.outcome }}" != "success" ]; then
             echo "FAILED: sstarfury_flight_model"; fail=1; fi
+          if [ "${{ steps.sstarfury_dock.outcome }}" != "success" ]; then
+            echo "FAILED: sstarfury_dock"; fail=1; fi
           if [ "${{ steps.sstarfury_airframe_and_that_it_still_agre.outcome }}" != "success" ]; then
             echo "FAILED: sstarfury_airframe_and_that_it_still_agre"; fail=1; fi
           if [ "${{ steps.sdocking.outcome }}" != "success" ]; then
