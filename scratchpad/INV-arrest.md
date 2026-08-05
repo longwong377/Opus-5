@@ -216,6 +216,16 @@ debtors' prison — which `consequence.arrest` already applies on the Python sid
 **Overturned by.** Any depiction of what B5 does about an unpaid Ombuds fine.
 **Authority 5.** `godot/scripts/interact.gd::fine`, `_record_fine`.
 
+**AND IT GAVE ITS OWN GATE AN EXPIRY DATE, which is worth recording because the money being real
+is exactly what caused it.** Five verification runs took the shipped purse from **420.50 to
+372.40 cr** — five detentions at 9.62 cr, each one correct. At that rate the gate stops passing
+after about thirty-eight runs, when the purse cannot cover the fine and `paid` becomes
+`OUTSTANDING`: a gate that spends its own subject's money is a gate with a countdown on it.
+`enforcement.py::_run` now copies the ledger into a temp directory and passes
+`--ledger=<copy>` — which `interact.gd::ledger_path` already honoured — and then reads the copy
+back off disk, so the verdict rests on **a file having changed** rather than on the runtime saying
+it did.
+
 ---
 
 ## INV-559 — The conviction is written into the purse, because that is what survives

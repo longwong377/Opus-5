@@ -1,0 +1,845 @@
+#!/usr/bin/env python3
+"""WHAT HAPPENS NEXT -- a refusal is a rule only if somebody comes.
+
+Session 4q wired `consequence.certain_check` into the game: 98 of 129 places
+read your identicard on the way in, and walking into `vorlon_berth` as a citizen
+puts IDENTICARD REFUSED on the HUD. The commit that landed it stated its own
+limit in as many words:
+
+    "the arrest chain behind a refusal (`consequence.arrest` -> brig -> fine ->
+     release) is still Python. A refused player is TOLD they are refused and is
+     not yet detained."
+
+A refusal a player can walk away from unharmed is a SIGN, not a rule. This
+module is the join, and it is the thirteenth instance of the same defect: two
+finished halves -- `consequence.arrest`'s whole custody pipeline on one side,
+`npc.gd`'s instanced walkers and `interact.gd`'s ledger on the other -- with
+nothing between them.
+
+WHAT IT DOES NOT DO, AND THE REASON IS HARD RULE 4. It computes nothing. Every
+number below comes out of `consequence.py` or `npc/security.py` and is written
+into `station/generated/scene/enforcement.json` as a RESULT, exactly the way
+`boot.py::_checks` bakes `certain_check`'s result rather than its rule. The
+engine holds no copy of P-05, of the offence table, of the fine ladder, or of
+where the brig is. If it did, the two would drift and one of them would be
+wrong on a Tuesday.
+
+THE FOUR THINGS A PLAYER MEETS, and each is derived rather than authored:
+
+  1. SOMEBODY COMES, AND WHEN THEY COME IS THE PLACE'S OWN ANSWER.
+     `security.response_from_nearest_post` routes from every fixed post on the
+     station on the graph a resident commutes on. On the boot deck that is
+     **0 s at `docking_bays`** -- there is a post standing in it -- and
+     **227 s at `lowg_bays`**, from `customs_north`. LAW-CRIME 2.6's headline
+     is a CONTRAST rather than a number, and this is that contrast arriving as
+     arithmetic.
+
+  2. THEY HAVE NAMES AND ONE OF THEM WEARS THE ARMBAND. `security.patrol`
+     returns a pair, and it deliberately does not roll the Nightwatch boolean
+     twice and hope -- FACTIONS 5.3 calls one band and one bare sleeve in the
+     same pair the best environmental storytelling on the station.
+
+  3. MOST OF THE TIME NOTHING HAPPENS TO YOU, WHICH IS THE POINT.
+     LAW-CRIME 2.7 rung 3 -- "Move on. No arrest, no record. The standard
+     Downbelow-in-a-commercial-area outcome" -- is the commonest disposal, and
+     `consequence.DETAIN_ON_FAIL` already prices it at one in five. A build
+     where every refusal ends in the brig would be a worse lie than a build
+     where none of them does, because it would make the brig meaningless.
+
+  4. WHEN IT DOES, IT COSTS. `consequence.arrest` runs the whole pipeline:
+     respond, escort to the brig on the routed graph, book, hold to the next
+     Ombuds sitting, court, release, fine, record, rung. The fine moves in the
+     ledger a drink moves through; the hold moves the station clock; the
+     conviction is written into the purse and survives the process.
+
+THE FORK IS PER EVENT AND IT IS DETERMINISTIC (INV-550). `consequence.py` has
+carried `DETAIN_ON_FAIL = 0.20` since P1-G2 and used it only as a RATE, inside
+`day_arrests`, where it prices a station-day. A player meets it as a single
+event, so it has to resolve to a yes or a no for THIS refusal -- and it resolves
+through `consequence._u`, the same hash every other per-person draw in that
+module uses, keyed on (npc_id, place, day, how many times you have been stopped
+here). Reload the save and the same refusal comes out the same way; walk in a
+second time and it is a new draw.
+
+WHY THE BAKE IS PER PLACE AND PER HOUR, and why that is not 24 copies of a rule.
+Only ONE leg of the chain depends on the clock: the hold runs to the next 08:00
+Ombuds sitting, so a 09:00 arrest is held 23 hours and a 07:00 arrest is held
+one. Everything else -- response, escort, booking, court, release, the fine, the
+disposal, the rung -- is hour-independent, which was measured rather than
+assumed. So the table carries the hold and the total for each of the 24 hours
+and the engine INDEXES it. It does not add anything up.
+
+Run:
+    python3 station/enforcement.py --report      # the table, for the boot deck
+    python3 station/enforcement.py --report --all
+    python3 station/enforcement.py --bake        # write the engine's sidecar
+    python3 station/enforcement.py --selftest    # the arithmetic, with controls
+    python3 station/enforcement.py --gate        # THE ENGINE GATE: somebody comes
+    python3 station/enforcement.py --gate --legacy   # today's build: nobody does
+"""
+import argparse
+import json
+import os
+import re
+import subprocess
+import sys
+
+HERE = os.path.dirname(os.path.abspath(__file__))
+ROOT = os.path.dirname(HERE)
+if HERE not in sys.path:
+    sys.path.insert(0, HERE)
+
+import consequence as cq                                          # noqa: E402
+import directory as dr                                            # noqa: E402
+import player as PL                                               # noqa: E402
+from npc import security as sec                                   # noqa: E402
+
+GODOT_DIR = os.path.join(ROOT, "godot")
+GEN = os.path.join(ROOT, "station", "generated")
+SCENE = os.path.join(GEN, "scene")
+BOOT_JSON = os.path.join(SCENE, "boot.json")
+LEDGER = os.path.join(GEN, "economy.json")
+OUT_JSON = os.path.join(SCENE, "enforcement.json")
+
+# ===========================================================================
+# 1.  WHICH OFFENCE A REFUSAL IS -- and no new offence was invented for it
+# ===========================================================================
+# `OFFENCES` already carries the row, with its source sentence attached:
+#
+#   ("id_check_fail", 1, 2, 5, "a card that does not read. 2.7 rung 2 is the
+#    commonest interaction and most of its failures end at rung 3")
+#
+# That IS a refusal at a reader: the card was read and it did not admit you.
+# Escalation rung 2, and the table's own note says where most of them end.
+REFUSAL_OFFENCE = "id_check_fail"
+
+# And rung 3 is a row of the same table, so "nothing happens to you" is a
+# disposal `consequence.arrest` can produce rather than a branch taken here.
+MOVED_ON_OFFENCE = "move_on"
+
+# HOW MANY SUCCESSIVE DETENTIONS THE TABLE CARRIES. Three, so that
+# `consequence.REVOKE_ON_ORDINARY`'s "survives one and not two" is inside the
+# window with the state after it -- baking one would make the ladder invisible
+# and baking ten would bake a tail nobody reaches. The engine WRAPS this index
+# rather than falling through to "moved on" on the fourth stop; a rule that
+# switches itself off the moment somebody tests it is worse than either answer.
+#
+# WHAT THE LADDER ACTUALLY DOES FOR *THIS* OFFENCE IS NOTHING, and that is the
+# answer rather than a gap: `Record.ordinary()` counts grade-2 convictions and
+# `id_check_fail` is grade 1. A refusal at a door never costs you your standing.
+# See `--selftest` check 4 and its grade-2 positive control.
+CONVICTIONS_BAKED = 3
+
+# THE OFFICER'S WALKING SPEED, and it is not a new number. `life.gd`'s Director
+# walks a commuting resident at this, off `agenda`'s own gait; an officer
+# crossing a room to reach you is the same body on the same deck.
+WALK_SPEED_MS = 1.30
+
+
+def _detain_draw(npc_id: str, place_key: str, day: int, nth: int,
+                 seed: str = "b5") -> bool:
+    """Does THIS refusal end in detention? INV-550.
+
+    `consequence.DETAIN_ON_FAIL` is 0.20 and has only ever been used as a rate.
+    A player meets it once, so it has to be a draw -- and it is drawn through
+    `consequence._u`, which is that module's own hash, so the fork lives on the
+    same seed line as every fine, every deferral and every discretionary stop.
+    """
+    return cq._u("detain_on_refusal", npc_id, place_key, day, nth,
+                 seed) < cq.DETAIN_ON_FAIL
+
+
+# ===========================================================================
+# 2.  THE PLAYER, AND WHOSE RUNG THE ENGINE IS ACTUALLY HOLDING
+# ===========================================================================
+def player_from_ledger(path: str = None):
+    """The played session's own person, rebuilt so the ENGINE agrees with it.
+
+    THIS IS NOT `player.from_state` AND IT CANNOT BE, WHICH IS A DEFECT I FOUND
+    RATHER THAN CHOSE. `from_state` regenerates the card from `(npc_id,
+    species)` alone -- deliberately, because a save must not be able to describe
+    a person the station would not produce -- but `player.player_from(choices)`
+    mints a card with a CHOSEN role, and that choice is not in the id. So for
+    the purse this repository actually ships:
+
+        stored in economy.json   role=lurker   tier=0  no_status
+        player.from_state(...)   role=service  tier=4  citizen
+
+    The engine reads the stored field and every Python caller that reloads the
+    purse gets the other one. Two descriptions of one person, disagreeing about
+    the exact number this whole module is a consequence of: at tier 0 the
+    disposal is "already at the floor, next stop is transfer off-station"; at
+    tier 4 it is "EA citizenship is not revocable". Two different games.
+
+    So this rebuilds through `player_from` with the role the purse recorded, and
+    then ASSERTS the rung it got equals the rung the engine holds. A mismatch
+    raises rather than being quietly repaired, because a bake that silently
+    disagreed with the HUD would be worse than no bake.
+    """
+    path = path or LEDGER
+    with open(path) as f:
+        led = json.load(f)
+    purses = led.get("purses") or {}
+    keys = sorted(purses)
+    mine = next((k for k in keys if k.startswith("player:")), keys[0] if keys
+                else None)
+    if mine is None:
+        raise KeyError(f"{path} holds no purse -- run the ledger first")
+    st = purses[mine]
+    seed = mine.split(":", 1)[1] if ":" in mine else mine
+    pl = PL.player_from({"species": st.get("species", "human"),
+                         "role": st.get("role", "")}, seed=seed)
+    pl.restore({k: v for k, v in st.items() if k != "npc_id"})
+    if int(st.get("tier", -99)) != int(pl.tier):
+        raise ValueError(
+            f"the purse says tier {st.get('tier')} ({st.get('tier_name')}) and "
+            f"the rebuilt card says {pl.tier} ({pl.tier_name}). The engine is "
+            f"holding the first and this bake would be about the second. Fix "
+            f"`player.from_state` (see this function's docstring) or re-seed "
+            f"the ledger; do not paper over it.")
+    return pl, st
+
+
+# ===========================================================================
+# 3.  THE PLACES THE ENGINE CAN ACTUALLY NAME
+# ===========================================================================
+def boot_rooms(path: str = None) -> list:
+    """The rooms the shipped build has, from the file the shipped build reads.
+
+    THE SAME SCOPING RULE `boot.py::_collapses` USES, and for the same reason:
+    an arrest in a place the player cannot walk to is a row nothing will ever
+    read. `hud.gd` resolves a place from the interact sidecar's boxes, and
+    `boot.json::rooms` is the list those boxes come from, so baking against it
+    means the table's keys and the HUD's keys are the same keys by construction.
+    """
+    path = path or BOOT_JSON
+    try:
+        with open(path) as f:
+            return [str(r) for r in (json.load(f).get("rooms") or [])]
+    except Exception:                                             # noqa: BLE001
+        return []
+
+
+def checked_places(keys=None) -> list:
+    """Of those, the ones that read a card at all -- `certain_check` decides."""
+    keys = keys if keys is not None else [q["key"] for q in dr.PLACES]
+    out = []
+    for k in keys:
+        try:
+            ok, _why = cq.certain_check(k)
+        except Exception:                                         # noqa: BLE001
+            continue
+        if ok:
+            out.append(k)
+    return out
+
+
+# ===========================================================================
+# 4.  ONE PLACE, END TO END
+# ===========================================================================
+def _officers(place_key: str, index: int = 0) -> list:
+    p = sec.patrol(place_key, index)
+    return [{"id": o["id"],
+             "name": o["resident"].name,
+             "card_name": o["resident"].card_name,
+             "species": o["resident"].species,
+             "armband": bool(o["armband"])} for o in p["officers"]]
+
+
+def _custody_row(c) -> dict:
+    return {"disposal": c.disposal, "reason": c.reason,
+            "offence": c.offence,
+            "fine": round(float(c.fine), 2),
+            "paid": bool(c.paid),
+            "outstanding": round(float(c.outstanding), 2),
+            "tier_before": int(c.tier_before), "tier_after": int(c.tier_after),
+            "tier_before_name": cq.tier_name(c.tier_before),
+            "tier_after_name": cq.tier_name(c.tier_after),
+            "revoked": bool(c.revoked),
+            "deferrals": int(c.deferrals),
+            "line": c.line()}
+
+
+def place_row(place_key: str, pl, day: int = 1, seed: str = "b5") -> dict:
+    """Everything that follows a refusal at one place, for one person.
+
+    EVERY CALL BELOW GETS ITS OWN PLAYER. `consequence.arrest` MUTATES the
+    record it is handed -- that is the point of it -- so twenty-four hourly
+    calls on one player would be twenty-four convictions and the disposal of the
+    24th would be baked as the disposal of the first. The hour sweep therefore
+    runs on a throwaway clone and the conviction ladder runs on its own.
+    """
+    need, why_need = cq.required_tier(place_key)
+    ok, why_check = cq.certain_check(place_key)
+    r = sec.response_from_nearest_post(place_key, cq.graph())
+    if r["seconds"] is None:
+        raise KeyError(f"no post can reach {place_key}: that is a hole in the "
+                       f"navgraph, not a fact about policing")
+
+    def clone():
+        p2 = PL.player_from({"species": pl.card.species,
+                             "role": pl.card.role},
+                            seed=pl.npc_id.split(":", 1)[-1])
+        p2.credits = pl.credits
+        return p2
+
+    # -- the hour sweep: the ONLY leg the clock moves ------------------------
+    hold_h, total_h = [], []
+    legs = None
+    for h in range(24):
+        c = cq.arrest(clone(), place_key, REFUSAL_OFFENCE, hour=float(h),
+                      day=day, seed=seed)
+        hold_h.append(round(c.hold_s, 1))
+        total_h.append(round(c.total_s, 1))
+        if legs is None:
+            legs = {"escort_s": round(c.escort_s, 1),
+                    "booking_s": round(c.booking_s, 1),
+                    "court_s": round(c.court_s, 1),
+                    "release_s": round(c.release_s, 1)}
+    # THE CLAIM THAT MAKES THE 24-ROW TABLE HONEST, asserted rather than
+    # asserted-in-prose: if any leg but the hold moved with the hour, indexing
+    # the hold alone would be wrong and the totals would be a fiction.
+    for h in range(24):
+        want = (r["seconds"] + legs["escort_s"] + legs["booking_s"]
+                + hold_h[h] + legs["court_s"] + legs["release_s"])
+        if abs(want - total_h[h]) > 0.2:
+            raise AssertionError(
+                f"{place_key} {h:02d}:00 -- the legs sum to {want:.1f} s and "
+                f"the chain reports {total_h[h]:.1f}. Something other than the "
+                f"hold depends on the clock, so the baked table is wrong.")
+
+    # -- the conviction ladder: one person, stopped three times --------------
+    ladder, p3 = [], clone()
+    for i in range(CONVICTIONS_BAKED):
+        c = cq.arrest(p3, place_key, REFUSAL_OFFENCE, hour=13.0, day=day,
+                      seed=seed)
+        row = _custody_row(c)
+        row["convictions_after"] = len(cq.record_of(p3).convictions)
+        ladder.append(row)
+
+    # -- the same ladder from every OTHER rung -------------------------------
+    # WHY IT IS BAKED AND NOT DERIVED IN THE ENGINE. `--tier=N` forces the card
+    # (`main.gd::_check_gate` writes the rung onto `player.gd`, because it is the
+    # identicard that changed and not the reader), and the whole interest of the
+    # ladder is that the consequence of a conviction is DIFFERENT at each rung:
+    # a transit visa is withdrawn on the second ordinary conviction, EA
+    # citizenship cannot be withdrawn by an Ombuds at all, and the floor rung has
+    # nothing left to take. A build that showed one of those for all six would be
+    # a rule with the interesting half filed off.
+    #
+    # `_dispose` is `consequence.py`'s own disposal rule and is called here
+    # rather than re-derived. The fine is per (offence, person) and does not
+    # move with the rung, so it comes off the ladder above.
+    by_tier = {}
+    for t in cq.RUNGS:
+        if t == cq.ACCREDITED:
+            by_tier[str(t)] = [{"tier_before": t, "tier_after": t,
+                                "tier_before_name": cq.tier_name(t),
+                                "tier_after_name": cq.tier_name(t),
+                                "revoked": False,
+                                "disposal": "immunity -- the file dies "
+                                            "(LAW-CRIME 4.3 step 4)",
+                                "reason": "diplomatic immunity, LAW-CRIME 4.1",
+                                "fine": 0.0}
+                               for _i in range(CONVICTIONS_BAKED)]
+            continue
+        rec, seq, t_now = cq.Record(), [], t
+        for i in range(CONVICTIONS_BAKED):
+            rec.convictions += (REFUSAL_OFFENCE,)
+            after, revoked, why = cq._dispose(
+                t_now, rec, cq.OFFENCE[REFUSAL_OFFENCE][1])
+            seq.append({"tier_before": t_now, "tier_after": after,
+                        "tier_before_name": cq.tier_name(t_now),
+                        "tier_after_name": cq.tier_name(after),
+                        "revoked": bool(revoked),
+                        "disposal": ("fine paid"
+                                     + (" + status revoked" if revoked else "")),
+                        "reason": why,
+                        "fine": ladder[i]["fine"]})
+            t_now = after
+        by_tier[str(t)] = seq
+
+    # -- and the disposal when it is NOT a detention -------------------------
+    moved = cq.arrest(clone(), place_key, MOVED_ON_OFFENCE, hour=13.0, day=day,
+                      seed=seed)
+
+    return {
+        "place": place_key,
+        "name": dr.by_key(place_key).get("name", place_key),
+        "need": int(need), "need_name": cq.tier_name(need),
+        "why_need": why_need, "why_check": why_check, "reads_card": bool(ok),
+        "respond_s": round(float(r["seconds"]), 1),
+        "respond_from": r["from"],
+        "respond_from_name": dr.by_key(r["from"]).get("name", r["from"]),
+        "officers": _officers(place_key),
+        "detain_p": cq.DETAIN_ON_FAIL,
+        # The fork, drawn per event, for as many stops as the table carries.
+        "detained": [bool(_detain_draw(pl.npc_id, place_key, day, i, seed))
+                     for i in range(CONVICTIONS_BAKED)],
+        "moved_on": {"disposal": moved.disposal, "rung": 3,
+                     "offence": MOVED_ON_OFFENCE,
+                     "line": "no arrest, no record (LAW-CRIME 2.7 rung 3)"},
+        "detention": {"rung": 4, "offence": REFUSAL_OFFENCE,
+                      "legs": legs, "hold_s_h": hold_h, "total_s_h": total_h,
+                      "ladder": ladder, "ladder_by_tier": by_tier},
+    }
+
+
+# ===========================================================================
+# 5.  THE BAKE
+# ===========================================================================
+def table(keys=None, day: int = 1, seed: str = "b5", ledger: str = None,
+          out=None) -> dict:
+    pl, st = player_from_ledger(ledger)
+    keys = checked_places(keys if keys is not None else boot_rooms())
+    rows = {}
+    for k in keys:
+        rows[k] = place_row(k, pl, day=day, seed=seed)
+        if out:
+            out(f"  {k}")
+    return {
+        "version": 1,
+        "day": day, "seed": seed,
+        "player": {"npc_id": pl.npc_id, "name": pl.card.card_name,
+                   "species": pl.card.species, "role": pl.card.role,
+                   "tier": int(pl.tier), "tier_name": pl.tier_name,
+                   "credits": float(st.get("credits", pl.credits))},
+        "walk_speed_ms": WALK_SPEED_MS,
+        "revoke_on_ordinary": cq.REVOKE_ON_ORDINARY,
+        "revoke_on_serious": cq.REVOKE_ON_SERIOUS,
+        "brig": cq.BRIG, "court": cq.COURT,
+        "offence": {k: {"grade": v[1], "rung": v[2], "authority": v[3],
+                        "source": v[4]}
+                    for k, v in cq.OFFENCE.items()
+                    if k in (REFUSAL_OFFENCE, MOVED_ON_OFFENCE)},
+        "places": rows,
+    }
+
+
+def emit(path: str = None, **kw) -> str:
+    path = path or OUT_JSON
+    d = table(**kw)
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, "w") as f:
+        json.dump(d, f, indent=1, sort_keys=True)
+    return path
+
+
+# ===========================================================================
+# 6.  REPORTS
+# ===========================================================================
+def report(all_places=False, out=print) -> dict:
+    keys = None if all_places else boot_rooms()
+    d = table(keys)
+    p = d["player"]
+    out(f"A REFUSAL, AND WHAT COMES OF IT -- for {p['name']} "
+        f"({p['species']} {p['role']}), rung {p['tier']} {p['tier_name']}, "
+        f"{p['credits']:.2f} cr")
+    out("")
+    out(f"{'place':<16}{'needs':<12}{'respond':>9}  {'from':<16}"
+        f"{'who comes':<34}{'this stop':<10}")
+    for k in sorted(d["places"]):
+        r = d["places"][k]
+        who = " + ".join(("%s%s" % (o["name"], "*" if o["armband"] else ""))
+                         for o in r["officers"])
+        out(f"{k:<16}{r['need_name']:<12}{r['respond_s']:>8.0f}s  "
+            f"{r['respond_from']:<16}{who:<34}"
+            + ("DETAINED" if r["detained"][0] else "moved on"))
+    out("")
+    out("  * wears the Nightwatch armband (FACTIONS 5.3)")
+    out("")
+    out("THE CHAIN, when it is a detention -- every leg routed:")
+    out("")
+    out(f"{'place':<16}{'respond':>8}{'escort':>8}{'hold@13':>9}{'court':>7}"
+        f"{'total':>9}{'fine':>8}  disposal")
+    for k in sorted(d["places"]):
+        r = d["places"][k]
+        det = r["detention"]
+        c1 = det["ladder"][0]
+        out(f"{k:<16}{r['respond_s']:>7.0f}s{det['legs']['escort_s'] / 60:>7.1f}m"
+            f"{det['hold_s_h'][13] / 3600:>8.1f}h"
+            f"{det['legs']['court_s'] / 60:>6.1f}m"
+            f"{det['total_s_h'][13] / 3600:>8.1f}h{c1['fine']:>8.2f}  "
+            f"{c1['disposal']}")
+    out("")
+    out("AND WHAT IT COSTS THE THIRD TIME -- the same person, stopped again:")
+    k0 = sorted(d["places"])[0]
+    for i, c in enumerate(d["places"][k0]["detention"]["ladder"]):
+        out(f"  stop {i + 1} at {k0}: {c['tier_before_name']} -> "
+            f"{c['tier_after_name']}, {c['fine']:.2f} cr, {c['reason']}")
+    return d
+
+
+# ===========================================================================
+# 7.  THE PYTHON SELFTEST -- with controls that must fire
+# ===========================================================================
+_FAILED = []
+# COUNTED, NOT WRITTEN DOWN. The first version of the summary line held the
+# number of checks as a literal and it was already wrong by one when the
+# revocation check was split in two -- a self-test that misreports its own size
+# is a small instance of the thing this whole module is about.
+_RAN = [0]
+
+
+def check(ok, name, detail=""):
+    _RAN[0] += 1
+    _FAILED.append(name) if not ok else None
+    print(f"  {'ok  ' if ok else 'FAIL'} {name}" + (f" -- {detail}" if detail
+                                                    else ""))
+    return ok
+
+
+def control(claim, name, detail=""):
+    """A control PASSES BY FAILING. `claim` is the same sentence the subject
+    asserted, evaluated with one input taken away; if it is still true, the
+    subject's check was not measuring that input and proves nothing."""
+    if claim:
+        _FAILED.append("control did not fire: " + name)
+    print(f"  {'FIRED' if not claim else 'INERT'} control: {name}"
+          + (f" -- {detail}" if detail else ""))
+    return not claim
+
+
+def selftest(out=print) -> bool:                                  # noqa: C901
+    del out
+    _FAILED.clear()
+    _RAN[0] = 0
+    print("enforcement.py -- the arithmetic behind a refusal")
+    pl, st = player_from_ledger()
+    check(int(pl.tier) == int(st["tier"]),
+          "the rebuilt player is the rung the engine holds",
+          f"{pl.tier} ({pl.tier_name}) == purse {st['tier']}")
+
+    keys = checked_places(boot_rooms())
+    check(len(keys) >= 1, "the boot deck has places that read a card",
+          f"{len(keys)} of {len(boot_rooms())} rooms")
+
+    d = table(keys)
+    rows = d["places"]
+
+    # 1. RESPONSE IS A CONTRAST, NOT A CONSTANT. If every place answered the
+    #    same number the whole routed graph would be doing nothing.
+    secs = sorted(r["respond_s"] for r in rows.values())
+    check(secs[-1] - secs[0] > 30.0,
+          "response time VARIES across the deck",
+          f"{secs[0]:.0f} s at the nearest, {secs[-1]:.0f} s at the furthest")
+
+    # 2. AND THE PLACE WITH A POST IN IT ANSWERS ZERO -- 2.6's own sentence.
+    posted = [k for k, r in rows.items() if r["respond_s"] == 0.0
+              and r["respond_from"] == k]
+    check(bool(posted), "a place with its own post answers in zero seconds",
+          ", ".join(sorted(posted)) or "none")
+
+    # 3. THE PAIR IS SPLIT. FACTIONS 5.3.
+    split = [k for k, r in rows.items()
+             if len({o["armband"] for o in r["officers"]}) == 2]
+    check(len(split) == len(rows), "every responding pair is one band, one bare",
+          f"{len(split)} of {len(rows)}")
+
+    # 4. A REFUSAL AT A DOOR NEVER COSTS YOU YOUR VISA, AND THAT IS THE ANSWER
+    #    RATHER THAN A GAP. This check was written the other way round -- "the
+    #    second conviction is where something is taken away" -- and it PASSED,
+    #    because the shipped player stands on the floor rung where nothing is
+    #    left to take. It could not have failed for the case it was named
+    #    after. Asked at every rung it turns out to be false at all six, and the
+    #    cause is one line of `consequence.py`: `Record.ordinary()` counts
+    #    grade-2 convictions and `id_check_fail` is grade 1.
+    #
+    #    That is right. INV-347's ladder makes grade 1 one day of casual labour
+    #    -- a citation -- and a station that withdrew a transit visa for two
+    #    citations would have no middle to its own escalation. What DOES revoke
+    #    is a grade-2 conviction, which is a different verb (carrying, theft,
+    #    expired status), and the positive control below proves the machinery
+    #    is live rather than absent.
+    k0 = sorted(rows)[0]
+    by_tier = rows[k0]["detention"]["ladder_by_tier"]
+    ever = [t for t, seq in by_tier.items() if any(c["revoked"] for c in seq)]
+    check(not ever,
+          "a refusal at a door never withdraws a permission, at ANY rung",
+          f"grade {cq.OFFENCE[REFUSAL_OFFENCE][1]} is not `ordinary` "
+          f"(Record.ordinary counts grade 2); revoking rungs: {ever or 'none'}")
+    # POSITIVE CONTROL, and it is the one that stops the line above being an
+    # excuse: the same `_dispose`, the same rungs, one grade heavier.
+    rec2, seen = cq.Record(), []
+    for _i in range(cq.REVOKE_ON_ORDINARY):
+        rec2.convictions += ("expired_status",)
+        seen.append(cq._dispose(cq.TRANSIT, rec2, 2))
+    check(seen[-1][1] and not seen[0][1],
+          "and a grade-2 conviction DOES, on the second one",
+          f"transit: 1st -> {seen[0][2][:34]}; 2nd -> {seen[-1][2][:44]}")
+
+    # 5. THE FINE IS REAL MONEY AGAINST A REAL PURSE.
+    fine = rows[k0]["detention"]["ladder"][0]["fine"]
+    lo, hi, days = cq.fine_for(REFUSAL_OFFENCE)
+    check(lo <= fine <= hi, "the fine sits inside the offence's own band",
+          f"{fine:.2f} cr in {lo:.2f}-{hi:.2f} ({days:g} day of wages)")
+    check(fine < float(d["player"]["credits"]),
+          "and the player can pay it, so 'paid' is not a fiction",
+          f"{fine:.2f} of {d['player']['credits']:.2f} cr")
+
+    # 6. THE HOLD MOVES WITH THE CLOCK AND NOTHING ELSE DOES. `place_row`
+    #    asserts the sum; this asserts the SHAPE, because a table of 24
+    #    identical numbers would pass the sum and mean the hour is inert.
+    h = rows[k0]["detention"]["hold_s_h"]
+    check(max(h) - min(h) > 3600.0, "the hold depends on the hour of arrest",
+          f"{min(h) / 3600:.1f} h at {h.index(min(h)):02d}:00, "
+          f"{max(h) / 3600:.1f} h at {h.index(max(h)):02d}:00")
+
+    # 7. THE FORK IS A FORK. A draw that always says the same thing is a
+    #    constant wearing a hash, so this asks the whole station.
+    allk = checked_places()
+    draws = [_detain_draw(pl.npc_id, k, 1, 0) for k in allk]
+    got = sum(draws) / max(1, len(draws))
+    check(0.5 * cq.DETAIN_ON_FAIL < got < 2.0 * cq.DETAIN_ON_FAIL,
+          "one refusal in five detains, over the whole register",
+          f"{sum(draws)} of {len(draws)} = {got:.3f} against "
+          f"DETAIN_ON_FAIL {cq.DETAIN_ON_FAIL}")
+    check(_detain_draw(pl.npc_id, allk[0], 1, 0)
+          == _detain_draw(pl.npc_id, allk[0], 1, 0),
+          "and it is deterministic in the event")
+
+    # -- CONTROLS: each removes one input and the claim above must fail -------
+    print("  CONTROLS -- each removes one input; the claim must stop holding")
+    flat = {k: sec.response(k, cq.graph(), origin=sec.HQ) for k in rows}
+    span = max(flat.values()) - min(flat.values())
+    control(min(flat.values()) == 0.0,
+            "route every turn-out from HQ, not from the nearest post",
+            f"nearest becomes {min(flat.values()):.0f} s, span {span:.0f} s -- "
+            f"2.6's 'to the Zocalo it is seconds' is gone")
+    # THE FORK'S CONTROL: drop the event out of the key and it stops being a
+    # draw. `_u(...)` on a constant argument list is one number, so 98 places
+    # come back identical -- which is what a hash used as a decoration looks
+    # like, and is exactly what check 7 would have read if the key were wrong.
+    const = [cq._u("detain_on_refusal", pl.npc_id, "", 1, 0) < cq.DETAIN_ON_FAIL
+             for _k in allk]
+    control(len(set(const)) != 1,
+            "take the place and the stop count out of the fork's key",
+            f"{sum(const)} of {len(const)} detain -- one number, 98 times")
+
+    # AND THE FINE'S CONTROL: rung 3 must not be able to take money, or the two
+    # rungs are one rung and 'moved on' is a detention with better manners.
+    control(cq.fine_for(MOVED_ON_OFFENCE)[2] not in (0.0, None),
+            "ask rung 3's disposal for a fine",
+            f"fine_for({MOVED_ON_OFFENCE}) = {cq.fine_for(MOVED_ON_OFFENCE)} "
+            f"-- 0 days of wages, so nothing is taken")
+
+    print("enforcement selftest %s -- %d checked, %d failed"
+          % ("PASS" if not _FAILED else "FAIL", _RAN[0], len(_FAILED)))
+    return not _FAILED
+
+
+# ===========================================================================
+# 8.  THE ENGINE GATE -- somebody comes, in the shipped scene
+# ===========================================================================
+# WHY IT LIVES HERE AND NOT IN `coldstart.py`. That file owns G1 and G3 to G7
+# and this is its G8 in every respect but the file it is written in; the patch
+# that adds it is in this session's report. What matters is the SHAPE, and the
+# shape is copied from G4 deliberately: launch the scene `godot/project.godot`
+# actually ships, with no `--glb=` and no fixture, drive a body across a real
+# boundary, and read one verdict line. A static scan can tell you a caller
+# exists; only running the thing tells you the caller runs.
+GATE_TAG = "ARREST"
+
+# Each control removes exactly ONE input and the subject's verdict must move.
+# `--enforce-legacy` is the state of this repository before this session: the
+# refusal is reported and nothing follows it.
+GATE_CONTROLS = (
+    (("--no-enforcement",), "the node is never built (the pre-4r tree)"),
+    (("--enforce-legacy",), "it is built and reads no table"),
+    (("--tier=5",), "the card admits -- there is no refusal to answer"),
+    (("--enforce-no-detain",), "every stop takes rung 3 -- nobody is booked"),
+    (("--enforce-no-officer",), "the verdict lands with nobody in the room"),
+)
+
+
+def godot_binary():
+    """The same binary `coldstart.py` runs, found the same way.
+
+    A SECOND SEARCH RULE IS A SECOND DESCRIPTION OF WHICH ENGINE THIS PROJECT
+    SHIPS, and the copy below is the honest cost of the file boundary this
+    session works under -- `coldstart.py` is not P2's file, so importing its
+    `godot_binary` would have meant editing it to be importable. When G8 folds
+    in (see the session's patch list) this function goes and the caller's is
+    used, which is the whole reason the copy is annotated rather than quietly
+    left. The one thing worse than an engine gate that cannot find a binary is
+    two gates finding different ones.
+    """
+    import glob as _glob
+    cand = ("/home/user/godot-build/godot-4.4-stable/bin/"
+            "godot.linuxbsd.editor.double.x86_64")
+    if os.path.exists(cand) and os.access(cand, os.X_OK):
+        return cand
+    for c in _glob.glob("/home/user/godot-build/*/bin/godot.linuxbsd.*double*"):
+        if os.access(c, os.X_OK):
+            return c
+    return None
+
+
+def _run(extra, timeout=240, verbose=False):
+    """One launch of the shipped scene, and TWO things about it are deliberate.
+
+    A TIMEOUT IS A RESULT. `--no-enforcement` stops `interact.gd` building the
+    node at all, which is the pre-4r tree exactly -- and in that tree nothing
+    answers `--arrest-gate`, so `main.gd` goes on running the game for ever.
+    That is not a hang to be worked around, it is the control's finding: a build
+    with no responder cannot produce a verdict. The bound is stated so it reads
+    as an answer rather than as a gate that gave up. The subject takes ~85 s.
+
+    AND THE LEDGER IS A COPY, WHICH IT WAS NOT AND WHICH GAVE THIS GATE AN
+    EXPIRY DATE. The fine is real money out of `station/generated/economy.json`,
+    so five verification runs took the shipped purse from **420.50 to 372.40
+    cr** -- correct behaviour, and a gate that spends its own subject's money
+    stops passing after about thirty-eight runs, when the purse cannot cover
+    9.62 cr and the fine becomes OUTSTANDING instead of PAID. `interact.gd`
+    already honours `--ledger=<path>`, so each launch gets a fresh copy in a
+    temp directory. The run is then repeatable AND the claim is stronger: the
+    caller reads the copy back off disk and reports the delta, so the verdict
+    rests on a FILE having changed rather than on the engine saying it did.
+    """
+    g = godot_binary()
+    if g is None:
+        return None, "no godot binary"
+    import shutil                                                 # noqa: PLC0415
+    import tempfile                                               # noqa: PLC0415
+    tmp = tempfile.mkdtemp(prefix="arrest-gate-")
+    led = os.path.join(tmp, "economy.json")
+    shutil.copyfile(LEDGER, led)
+    cmd = [g, "--headless", "--path", GODOT_DIR, "--", "--no-coldstart",
+           "--arrest-gate", "--ledger=" + led] + list(extra)
+    try:
+        res = subprocess.run(cmd, capture_output=True, text=True,
+                             timeout=timeout)
+    except subprocess.TimeoutExpired:
+        return None, ("no verdict in %d s -- nothing in this build answered "
+                      "--arrest-gate" % timeout)
+    out = res.stdout + res.stderr + "\n" + _ledger_delta(LEDGER, led)
+    if verbose:
+        print(out)
+    m = re.search(r"^%s gate=(\S+)(.*)$" % GATE_TAG, out, re.M)
+    if not m:
+        return None, out
+    d = {"gate": m.group(1)}
+    for tok in m.group(2).split():
+        if "=" in tok:
+            k, v = tok.split("=", 1)
+            d[k] = v
+    return d, out
+
+
+def _purse(path):
+    try:
+        with open(path) as f:
+            p = json.load(f).get("purses", {})
+    except Exception:                                             # noqa: BLE001
+        return {}
+    for k in sorted(p):
+        if k.startswith("player:"):
+            return p[k]
+    return next(iter(p.values()), {})
+
+
+def _ledger_delta(before: str, after: str) -> str:
+    """What CHANGED ON DISK, as a line the verdict parser can read.
+
+    THE CLAIM THE ENGINE MAKES IS NOT THE CLAIM THAT MATTERS. `ARREST fine 9.62
+    cr paid` says the runtime debited a variable; this says the JSON document
+    on disk carries one fewer credit, one more conviction, and a row in the
+    Ombuds court's till. A consequence that does not survive the process is a
+    mood, and only the file can settle that.
+    """
+    a, b = _purse(before), _purse(after)
+    if not a or not b:
+        return "ARREST ledger=UNREADABLE"
+    ra = (a.get("record") or {}).get("convictions", [])
+    rb = (b.get("record") or {}).get("convictions", [])
+    return ("ARREST ledger cr %.2f -> %.2f (-%.2f), convictions %d -> %d, "
+            "tier %s -> %s"
+            % (float(a.get("credits", 0)), float(b.get("credits", 0)),
+               float(a.get("credits", 0)) - float(b.get("credits", 0)),
+               len(ra), len(rb), a.get("tier"), b.get("tier")))
+
+
+def gate(verbose=False, legacy=False) -> dict:
+    if not os.path.exists(OUT_JSON):
+        print("ARREST SKIP -- no %s. Run `python3 station/enforcement.py "
+              "--bake`" % os.path.relpath(OUT_JSON, ROOT))
+        return {"ok": True, "skipped": True}
+    print("ARREST SOMEBODY COMES -- "
+          "`godot --headless --path godot -- --no-coldstart --arrest-gate`")
+    if legacy:
+        d, out = _run(("--enforce-legacy",), verbose=verbose)
+        print("  --enforce-legacy (the build before this session): %s"
+              % (("no verdict -- " + out.splitlines()[-1][:80]) if d is None
+                 else " ".join(f"{k}={v}" for k, v in d.items())))
+        return {"ok": d is not None and d.get("gate") == "FAIL"}
+    d, out = _run((), verbose=verbose)
+    if d is None:
+        print("  no ARREST verdict printed")
+        for line in out.splitlines()[-25:]:
+            print("    | " + line)
+        print("  ARREST FAIL -- the shipped scene printed no verdict")
+        return {"ok": False}
+    ok = d.get("gate") == "PASS"
+    print("  %s %s" % (d["gate"], " ".join(f"{k}={v}" for k, v in d.items()
+                                           if k != "gate")))
+    for line in out.splitlines():
+        if line.startswith("ARREST ") and "gate=" not in line:
+            print("    | " + line[7:])
+    # THE FILE, NOT THE RUNTIME. `ok` already required the engine to report a
+    # debit; this requires the document to carry it, and a disagreement between
+    # the two is the whole reason `_ledger_delta` exists.
+    m = re.search(r"^ARREST ledger cr .*\(-([\d.]+)\), convictions (\d+) -> "
+                  r"(\d+)", out, re.M)
+    on_disk = bool(m) and float(m.group(1)) > 0.0 \
+        and int(m.group(3)) > int(m.group(2))
+    print("  %s the LEDGER ON DISK carries it: %s"
+          % ("ok  " if on_disk else "FAIL",
+             m.group(0)[7:] if m else "no ledger line"))
+    ok = ok and on_disk
+    print("  ARREST CONTROLS -- each changes one input and must move the verdict")
+    for flags, why in GATE_CONTROLS:
+        cd, cout = _run(flags, verbose=verbose)
+        good = cd is None or cd.get("gate") == "FAIL"
+        said = ((cout.splitlines() or ["no verdict"])[-1][:64]
+                if cd is None else
+                " ".join(f"{k}={v}" for k, v in cd.items()
+                         if k in ("gate", "refused", "responded", "arrived",
+                                  "detained", "moved_on", "cr")))
+        print("    %s %-22s %-44s -- %s"
+              % ("ok  " if good else "FAIL", " ".join(flags), why, said))
+        ok = ok and good
+    print("  ARREST %s" % ("PASS" if ok else "FAIL"))
+    return {"ok": ok, "verdict": d}
+
+
+def main(argv=None):
+    ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    ap.add_argument("--report", action="store_true")
+    ap.add_argument("--all", action="store_true",
+                    help="every place on the station, not just the boot deck")
+    ap.add_argument("--bake", action="store_true")
+    ap.add_argument("--selftest", action="store_true")
+    ap.add_argument("--gate", action="store_true")
+    ap.add_argument("--legacy", action="store_true",
+                    help="with --gate: run the pre-4r build and show it FAIL")
+    ap.add_argument("--verbose", action="store_true")
+    a = ap.parse_args(argv)
+    if not any((a.report, a.bake, a.selftest, a.gate)):
+        a.report = True
+    rc = 0
+    if a.report:
+        report(all_places=a.all)
+    if a.bake:
+        p = emit()
+        with open(p) as f:
+            n = len(json.load(f)["places"])
+        print("enforcement: %s -- %d place(s)" % (os.path.relpath(p, ROOT), n))
+    if a.selftest and not selftest():
+        rc = 1
+    if a.gate and not gate(a.verbose, a.legacy).get("ok"):
+        rc = 1
+    return rc
+
+
+if __name__ == "__main__":
+    sys.exit(main())

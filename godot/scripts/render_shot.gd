@@ -525,7 +525,12 @@ func _mount_vista(args: Dictionary) -> void:
 		return
 	if args.has("vista-gain"):
 		vista_gain = float(args["vista-gain"])
-	var phase := float(args.get("vista-phase", _shot.get("vista_phase", 0.0)))
+	# -1 MEANS "WHATEVER THE MANIFEST WAS BUILT FOR", and the default has to be
+	# that rather than 0.0. With 0.0 here, `station/vista.py --build --phase 90`
+	# wrote a 90-degree manifest and this overrode it back to zero on every
+	# run: the A/B over a quarter turn of the station came back 0.00% of pixels
+	# different and looked exactly like a starfield that does not move.
+	var phase := float(args.get("vista-phase", _shot.get("vista_phase", -1.0)))
 	# DERIVED FROM THE SHOT'S OWN GEOMETRY PATH, not from a res:// guess. The
 	# room's .glb is written into `station/generated/scene/interior/` by the
 	# exporter and the vista beside it in `.../scene/vista/`, and the shot

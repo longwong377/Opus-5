@@ -40,6 +40,7 @@ var _stars: MeshInstance3D
 var _hull: Node3D
 var _sun: DirectionalLight3D
 var _manifest: Dictionary = {}
+var _phase: float = 0.0
 
 
 ## Mount the vista for one room. `dir` is the directory
@@ -47,7 +48,7 @@ var _manifest: Dictionary = {}
 ## is nothing to mount -- a room with no window is the normal case, not an
 ## error.
 static func mount(parent: Node3D, room: String, dir: String,
-		phase_deg: float = 0.0, gain: float = 1.0) -> Node:
+		phase_deg: float = -1.0, gain: float = 1.0) -> Node:
 	var path := dir.path_join(room + ".json")
 	if not FileAccess.file_exists(path):
 		print("vista: no view for '%s' (%s absent) -- the room renders with "
@@ -76,8 +77,11 @@ func _build(man: Dictionary, phase_deg: float, gain: float) -> void:
 		% [man.get("place", "?"), int(man.get("triangles", 0)),
 			(man.get("groups", []) as Array).size(),
 			float(man.get("station_frac", 0.0))]
-		+ "the window (the show's frame gives %.3f), phase %.1f deg"
-		% [float(man.get("station_frac_ref", 0.0)), phase_deg])
+		+ "the window (the show's frame gives %.3f), spin phase %.1f deg "
+		% [float(man.get("station_frac_ref", 0.0)), _phase]
+		+ "(%.2f s into a %.2f s revolution)"
+		% [_phase / 360.0 * float(man.get("spin_period_s", 33.471574)),
+			float(man.get("spin_period_s", 33.471574))])
 
 
 func _load_hull(man: Dictionary) -> void:
@@ -197,20 +201,24 @@ func _add_sun(man: Dictionary, gain: float) -> void:
 func set_phase(phase_deg: float) -> void:
 	if _stars == null:
 		return
+	if phase_deg < 0.0:
+		phase_deg = float(_manifest.get("phase_deg", 0.0))
+	_phase = phase_deg
 	var b: Array = _manifest.get("sky_basis", [])
 	var basis := Basis.IDENTITY
 	if b.size() == 3:
-		# `station/vista.py` writes rows; Godot's Basis takes rows too
-		# (Basis(x_row, y_row, z_row) is the transposed-column form its docs
-		# call "rows"), so this is a straight read. Asserted below rather than
-		# assumed, because a basis that is a reflection would mirror the sky
-		# and nothing in a starfield would show it -- session 4q lost six
-		# sessions to exactly that on the crowd.
-		basis = Basis(Vector3(b[0][0], b[0][1], b[0][2]),
-			Vector3(b[1][0], b[1][1], b[1][2]),
-			Vector3(b[2][0], b[2][1], b[2][2]))
-	var spin := Basis(Vector3(0, 0, 1), deg_to_rad(
-		phase_deg - float(_manifest.get("phase_deg", 0.0))))
+		# `station/vista.py` writes the matrix ROW BY ROW; Godot's
+		# `Basis(x, y, z)` takes the three COLUMNS, so the read transposes.
+		# Stated rather than left to be inferred: both readings produce a
+		# perfectly plausible starfield and only one of them is the sky this
+		# window looks at.
+		basis = Basis(Vector3(b[0][0], b[1][0], b[2][0]),
+			Vector3(b[0][1], b[1][1], b[2][1]),
+			Vector3(b[0][2], b[1][2], b[2][2]))
+	# The station turns +phi about its own +Z, so the sky turns -phi in the
+	# window. Applied ONCE, here: `build` writes the basis at phase zero for
+	# exactly this reason.
+	var spin := Basis(Vector3(0, 0, 1), -deg_to_rad(phase_deg))
 	var b2 := basis * spin
 	if absf(b2.determinant() - 1.0) > 1e-6:
 		push_error("vista: sky basis determinant %.6f -- that is a "

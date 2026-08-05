@@ -529,6 +529,22 @@ var _purse_done := false
 var _enforce: Node = null
 
 
+## Harness modes this must stay out of. A refusal ESCORTS THE PLAYER OUT OF THE
+## ROOM -- it moves the body -- and every gate in this list measures where a body
+## got to. `walkable.py --deck` walks straight into `docking_bays`, which is a
+## checked place, so a responder that fired there would move the subject of the
+## measurement and the walk gate would report a distance nobody walked.
+##
+## IT IS INERT TODAY AND THAT IS NOT THE ARGUMENT FOR LEAVING IT OUT. Checked
+## against the live tree: `hud.gd::checks` is only ever filled by
+## `walk.gd::_wire_hud` from an `@export` that `main.gd` sets off `boot.json`, so
+## a `--glb=` harness has an empty table and no reading fires at all. That is
+## true by accident of who sets one variable, and the cost of it becoming untrue
+## is a walk gate that fails for a reason nobody would look for.
+const HARNESS_MODES := ["walk-test", "stream-test", "corpse-gate",
+	"gravity-gate", "shot", "ragdoll-gate", "route-test"]
+
+
 func _make_enforcement() -> void:
 	if _enforce != null or _player == null:
 		return
@@ -536,6 +552,12 @@ func _make_enforcement() -> void:
 		print("interact: enforcement DISABLED (control) -- a refusal is "
 			+ "reported and nothing follows it")
 		return
+	var a := _args()
+	for m in HARNESS_MODES:
+		if a.has(m):
+			print("interact: enforcement OFF under --%s -- this harness "
+				% m + "measures where a body got to, and a refusal moves it")
+			return
 	_enforce = Node3D.new()
 	_enforce.name = "Enforcement"
 	_enforce.set_script(load("res://scripts/enforcement.gd"))

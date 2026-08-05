@@ -15,9 +15,17 @@ ARREST SOMEBODY COMES -- `godot --headless --path godot -- --no-coldstart --arre
     |   FINE 9.62 CR -- FINE PAID
     |   RELEASED -- 19.1 h in custody, CARD ENDORSED
     | clock 13.12 -> 08.20 EMT (19.1 h in custody)
-    | fine 9.62 cr paid -- 391.64 cr left
+    | fine 9.62 cr paid -- 362.78 cr left
     | refused at mooring_clamps -- David Nakamura* + Bo Rossi notified, 114 s away (customs_south)
     | David Nakamura* + Bo Rossi arriving 12.0 m away, at 1.30 m/s
     | arrived -- 2.00 m from the player, 9.6 m of floor covered by a body in the crowd
     | moved on at mooring_clamps -- moved on -- no arrest, no record (2.7 rung 3) (no arrest, no record (LAW-CRIME 2.7 rung 3))
+    | ledger cr 372.40 -> 362.78 (-9.62), convictions 5 -> 6, tier 0.0 -> 0.0
+  ok   the LEDGER ON DISK carries it: ledger cr 372.40 -> 362.78 (-9.62), convictions 5 -> 6
   ARREST CONTROLS -- each changes one input and must move the verdict
+    ok   --no-enforcement       the node is never built (the pre-4r tree)    -- no verdict in 240 s -- nothing in this build answered --arrest-g
+    ok   --enforce-legacy       it is built and reads no table               -- gate=FAIL
+    ok   --tier=5               the card admits -- there is no refusal to answer -- gate=FAIL
+    ok   --enforce-no-detain    every stop takes rung 3 -- nobody is booked  -- gate=FAIL refused=3 responded=3 arrived=3 moved_on=3 detained=0 cr=-0.00
+    ok   --enforce-no-officer   the verdict lands with nobody in the room    -- gate=FAIL refused=3 responded=3 arrived=0 moved_on=2 detained=1 cr=-9.62
+  ARREST PASS

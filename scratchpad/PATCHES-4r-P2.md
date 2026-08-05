@@ -1,5 +1,25 @@
 # PATCHES FOR FILES P2 DOES NOT OWN — session 4r, the arrest chain
 
+> **BEFORE ANYTHING ELSE — `git add -A` SWEPT THIS AGENT'S FILES AGAIN.** At 20:33:04 the commit
+> `0d9e94a "WIP SNAPSHOT 6 -- three agents mid-flight, NOTHING HERE IS VERIFIED"` picked up
+> `godot/scripts/enforcement.gd` and `godot/scripts/interact.gd` **while they were mid-edit** —
+> `enforcement.gd` still had the pre-fix `_verdict`, and the engine gate had not yet been run
+> against either. Nothing was lost (the working tree is ahead of that commit and the final files
+> are verified), but this is the exact failure CLAUDE.md already records from session 4e: *"File
+> lists were disjoint; the staging command was not. Stage the paths you changed."* It has now
+> happened twice. The verified state is the WORKING TREE, not `0d9e94a`.
+>
+> Also live in this tree while P2 worked: another agent's till/economy work
+> (`scratchpad/till-*`, `station/vista.py`). Their snapshots use their own copies, but **P2's gate
+> writes `station/generated/economy.json`** — it took the shipped purse from 420.50 to 372.40 cr
+> across five runs before the gate was made hermetic. The shipped purse now reads **372.40 cr with
+> five convictions on the record and 48.10 cr in the Ombuds court's till** — every credit of it
+> genuinely earned by an arrest that happened. If a till measurement taken this afternoon shows
+> money appearing in `law_courts` and a player 48 cr poorer, that is P2's arrest gate and not a
+> bug in theirs. `economy.json` is gitignored and regenerable (`dockwork.py --loop --days 14
+> --role lurker --seed downbelow --save station/generated/economy.json`); it was left as it stands
+> because a played session that has been arrested five times is a truer save than a reset one.
+
 P2 owns `station/consequence.py`, `godot/scripts/interact.gd`, and the two new files
 `station/enforcement.py` and `godot/scripts/enforcement.gd`. Everything below touches a file on
 the do-not-touch list and is therefore **reported, not applied**. In priority order.
@@ -42,7 +62,7 @@ def from_state(st: dict) -> Player:
     pl = Player(card=card).restore(st)
     if "tier" in st and int(st["tier"]) != int(pl.tier):
         raise ValueError(f"{nid}: the purse says rung {st['tier']} and the "
-                         f"rebuilt card says {pl.tier} -- see INV-xxx")
+                         f"rebuilt card says {pl.tier}")
     return pl
 ```
 

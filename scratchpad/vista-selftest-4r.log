@@ -1,0 +1,32 @@
+VISTA -- what is outside a window
+
+SHADER: the interior starfield is the exterior starfield
+  [PASS] hash33 is lifted verbatim from space_sky.gdshader
+  [PASS] both star layers come across -- 3 references
+  [PASS] it is a spatial shader on a shell, not a sky
+
+APERTURE: derived from the room's own glazing, on the hull
+  [PASS] cnc: the basis is a rotation -- det 1.000000000
+  [PASS] cnc: the aperture is 5.46 m across
+  [PASS] obs_dome_1: the basis is a rotation -- det 1.000000000
+  [PASS] obs_dome_1: the aperture is 12.91 m across
+  [PASS] obs_dome_2: the basis is a rotation -- det 1.000000000
+  [PASS] obs_dome_2: the aperture is 8.69 m across
+
+CONTAINMENT: is the window in the pressure hull? (this one FAILS, and the failure is the finding)
+  [FAIL] cnc: the register puts the window inside the hull -- register r 207.9 m, hull r 118.4 m at z 7968 -> +55.5 m
+  [FAIL] obs_dome_1: the register puts the window inside the hull -- register r 209.9 m, hull r 116.5 m at z 7959 -> +59.5 m
+  [FAIL] obs_dome_2: the register puts the window inside the hull -- register r 209.9 m, hull r 116.5 m at z 7959 -> +59.5 m
+  [FAIL] obs_dome_1: the register and the schema's dome are the same place -- register 0 deg z 7960; nearest built dome 90 deg z 7180; off by 90 deg and 780 m
+  [FAIL] obs_dome_2: the register and the schema's dome are the same place -- register 90 deg z 7960; nearest built dome 90 deg z 7180; off by 0 deg and 780 m
+
+FILL: the station fills as much of the window as the show does
+  [PASS] cnc: the station fills most of the window -- 0.740 against the show's 0.852; aim HALF TURNED (as built 0.000); station inward of the window (the show has it below -- see STATION_FRAC_REF); standoff 34 m
+  [PASS] obs_dome_1: an observation dome looks out, not at the hull -- outward component 1.000, station fills 0.000, standoff 34 m
+  [PASS] obs_dome_2: an observation dome looks out, not at the hull -- outward component 1.000, station fills 0.000, standoff 34 m
+  [PASS] CONTROL cnc: as the build places the room, the window is empty -- as built 0.000, half turned 0.740
+
+NOT A BACKDROP: two windows are two views
+  [PASS] cnc and obs_dome_1 see different sky -- max basis difference 2.0000
+  [PASS] obs_dome_1 and obs_dome_2 see different sky -- max basis difference 1.0000
+  [PASS] cnc: sees 96498 triangles of the station
