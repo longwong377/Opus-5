@@ -188,6 +188,7 @@ import consequence as cq                                       # noqa: E402
 import directory as dr                                         # noqa: E402
 import economy as ec                                           # noqa: E402
 import interior as it                                          # noqa: E402
+import plant_systems as plant                                  # noqa: E402
 import player as PL                                            # noqa: E402
 import populace as pop                                         # noqa: E402
 import rooms as rm                                             # noqa: E402
@@ -1556,7 +1557,14 @@ def _r_brownout(ctx, place, hour):
     rather than chosen. It comes to one district brownout every ~16 days.
     """
     share = machine_instances(place) / machine_instances_total()
-    unavail = JOB_HOURS / (MACHINE_MTBF_DAYS * 24.0)
+    # A SHED NEEDS EVERY REMAINING STANDBY TO BE OUT, NOT JUST ONE. The literal
+    # this replaces was this same expression with the exponent 1 written into
+    # it, which is right only while the power plant holds exactly one spare --
+    # and it holds exactly one spare only while nothing is offline.
+    # `plant_systems.shed_factor` is UNAVAIL ** max(0, 1 - spares LOST): the
+    # same value at the nominal state, saturating at 1.0 once the redundancy is
+    # gone. This line moves no rate until a generating unit goes down.
+    unavail = plant.shed_factor("power", hour)
     return visible_faults_per_day() / 24.0 * share * unavail
 
 
@@ -1640,7 +1648,11 @@ def _r_strike(ctx, place, hour):
 
 def _r_fault(ctx, place, hour):
     share = machine_instances(place) / machine_instances_total()
-    return visible_faults_per_day() / 24.0 * share
+    # A UNIT WITH NO SPARE BEHIND IT CANNOT BE TAKEN OUT OF SERVICE, so its
+    # planned maintenance is deferred and arrives later as corrective work.
+    # `wear_at` is 1.0 at every one of the 129 register places at nominal.
+    return (visible_faults_per_day() / 24.0 * share
+            * plant.wear_at(place, hour))
 
 
 def _r_hold(ctx, place, hour):
@@ -3157,7 +3169,14 @@ def _bucket_h(hour):
 
 
 def _fixed_lams(ctx, place, hour):
-    key = (ctx.day, ctx.datum, int(hour) % 24, place)
+    # THE PLANT STATE IS AN INPUT TO TWO OF THE RATES BELOW, so it belongs in
+    # this key. Without it a unit going offline mid-process leaves every
+    # already-computed lambda frozen, and a one-hour simulation before and after
+    # the failure returns BYTE-IDENTICAL results -- which reads exactly like a
+    # plant model that never reached the simulation. The plant gate reproduces
+    # that on purpose as its own control. `state_key()` is a short constant
+    # string at nominal, so nothing about the cache changes until a unit is out.
+    key = (ctx.day, ctx.datum, int(hour) % 24, place, plant.state_key())
     t = _LAM.get(key)
     if t is None:
         hb = _bucket_h(hour)

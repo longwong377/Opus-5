@@ -738,6 +738,35 @@ jobs:
         continue-on-error: true
         run: python3 station/civic_calendar.py --gate
 
+      # THE PLANT, AND WHETHER IT CAN FAIL. The owner's requirement was that the
+      # station "can be messed up and have real effects"; power, air, water,
+      # waste, food and rotation were geometry plus a staffing roster, and C&C
+      # had a watch roster controlling nothing that could break.
+      #
+      # Six systems over 21 register rows, capacity N+1 against each system's
+      # own design peak, so margin@peak IS 1/(N-1) -- a fact about
+      # directory.PLACES rather than a number anybody chose. THE REGISTER
+      # PRODUCED THE FINDING: water reclamation and rotation are SINGLE ROWS,
+      # so the two systems the station cannot do without are the two with no
+      # redundant twin -- and what stands behind water instead is a sourced
+      # 30-day reserve. Air is two orders faster than anything else (5.8 h) and
+      # CO2 is why, not oxygen.
+      #
+      # It feeds incident.py rather than inventing parallel classes: two units
+      # out takes INC-BROWNOUT at reactor_hall from 1.877e-05 to 4.110e-02 an
+      # hour, sheds 61 places with 78,271 people standing in them, and takes a
+      # station-hour from 64 incidents to 168.
+      #
+      # ITS BEST CONTROL REPRODUCES A CACHE DEFECT ON PURPOSE: with
+      # incident._LAM left alone, a degraded hour returns BYTE-IDENTICAL results
+      # to a nominal one, because _fixed_lams memoised on a key the plant state
+      # was not in -- which reads exactly like a model that never reached the
+      # simulation. That is what the third patch hunk is for. ~34 s.
+      - name: The plant can fail
+        id: splant_systems
+        continue-on-error: true
+        run: python3 station/plant_systems.py --gate
+
       - name: Confirm the schema still parses and is fully sourced
         id: sconfirm_the_schema_still_parses_and_is_f
         continue-on-error: true
@@ -893,6 +922,8 @@ jobs:
             echo "FAILED: sincident"; fail=1; fi
           if [ "${{ steps.scivic_calendar.outcome }}" != "success" ]; then
             echo "FAILED: scivic_calendar"; fail=1; fi
+          if [ "${{ steps.splant_systems.outcome }}" != "success" ]; then
+            echo "FAILED: splant_systems"; fail=1; fi
           if [ "${{ steps.sdegeneracy.outcome }}" != "success" ]; then
             echo "FAILED: sdegeneracy"; fail=1; fi
           if [ "${{ steps.svariety.outcome }}" != "success" ]; then
