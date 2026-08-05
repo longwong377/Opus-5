@@ -14,10 +14,13 @@ spot would be near.
 
 WHAT IT IS
 ----------
-Twenty-two classes -- **exactly** `docs/spec/PLACES.md` §0.2's vocabulary and
+Thirty classes -- **exactly** `docs/spec/PLACES.md` §0.2's vocabulary and
 SYS-14's mechanics table, and the gate parses BOTH FILES and asserts the
-bijection both ways rather than trusting this file's own list. Each class
-carries:
+bijection both ways AND THE COUNT, rather than trusting this file's own list.
+(The count used to be written `== 22` here, which made the table's size a fact
+about this module rather than about the spec, so growing the table meant
+editing the assertion that was guarding it. It is `len(spec_ids(...))` now.)
+Each class carries:
 
     trigger   a rate in incidents per station-hour, computed from station
               state that already exists: `traffic.hall_rate`, `traffic.
@@ -33,6 +36,64 @@ carries:
     writes    named facts into a `World`. Custody rows, docket rows, seizure
               rows, standing changes, stock movements, work orders, card
               endorsements, camp states, casualties, ISN items.
+
+THE LIVED-IN HALF, AND WHY IT IS NOT SIX MORE OFFENCES
+-------------------------------------------------------
+The first twenty-two skew hard to crime, customs and industrial fault, because
+`LAW-CRIME-DOWNBELOW.md` and `TRAFFIC-AND-CUSTOMS.md` are the two gazetteer
+documents with rate tables in them. The measurement said so: at 13:00 the
+arrival half ran at 10.9/h and Downbelow at 7.1/h, the Zocalo's probe at
+0.68/h, and **every residence row on the station at 0.0000/h** -- not "low",
+exactly zero, because no class in the table could happen in a home.
+
+The cure is not more offences. `--gate` counts the framing rather than
+asserting it: **seven of the original twenty-two book somebody into the brig in
+the ABSENT branch** -- what the station does when nobody is watching -- and
+**none of the eight added here do.** A residential corridor furnished with six
+more crimes would be a crime simulator with flats in it.
+
+  INC-NEIGHBOUR  a dispute across a bulkhead, and THE STATION'S OWN CLOCKS
+                 CAUSE IT: `schedule.RHYTHMS` says every Narn aboard is asleep
+                 at 03:00 (awake 0.000) and every Centauri is awake (1.000),
+                 and at 13:00 it is the Brakiri who are asleep (0.068). That
+                 was already in the repository and nothing read it.
+  INC-LOCKOUT    a door that will not admit its own tenant. Two causes and the
+                 second is the interesting one: `consequence.py`'s rungs, so
+                 the same event two decks apart is a call to maintenance or a
+                 call to immigration.
+  INC-ARREARS    rent arrears -- ENDOGENOUS, and `economy.py` decided that.
+  INC-STILL      the camp's own kitchen, still, laundry and barber's chair.
+  INC-SICK       somebody needs a clinician and there is not one.
+  INC-STRAY      a child where a child should not be.
+  INC-MOVEON     a busker moved off the licensed commercial floor.
+  INC-STOCKOUT   a counter runs out of a line.
+
+WHAT IS DELIBERATELY *NOT* AN INCIDENT, AND WHERE IT BELONGS
+-------------------------------------------------------------
+SYS-14's own CHECK is the discriminator and it is worth stating as a rule: an
+incident is a thing a player can be **absent from, help with, or report**, and
+that yields three different worlds. Apply it honestly and half of residential
+life fails it, because **ordinary life is not an incident**:
+
+  * eating, sleeping, coming off shift, the 19:00 crowd, thirteen journeys a
+    resident a day -- `npc/life.py` and `populace.py` already carry it, and you
+    cannot report somebody's dinner.
+  * a species festival week, a faith rota, a wedding, a funeral and its rites,
+    the Tuesday combat class, the quarterly drill, an invitation-gated
+    reception -- **`docs/spec/SYSTEMS.md` SYS-15, THE CIVIC CALENDAR, and it
+    has no code.** These are CALENDAR-shaped, not RATE-shaped: an observance
+    that happens at a random hour is not an observance. Forcing them in here
+    would have been the wrong mechanism, and the honest answer is that the
+    right one does not exist yet.
+  * the PA, ISN, the boards, the muster read-out -- `broadcast.py`.
+  * a BIRTH, and this one is a finding rather than an omission:
+    `schedule.ROLE_WEIGHTS` is a **workforce**, not a population.
+    `resident._age` says minors exist in exactly three roles -- visitor,
+    refugee and lurker, the ones with no work hours -- so the model has 6,253
+    children and **no dependants, no schools, and nobody's parents**. A birth
+    rate derived from this station's own data would be zero over 229,000 of
+    its 250,001 people. That is `schedule.py`'s question to answer, not this
+    file's to paper over.
 
 THE THREE STANCES, AND THEY DIFFER IN NAMED FACTS
 -------------------------------------------------
@@ -123,6 +184,7 @@ _ROOT = os.path.dirname(_HERE)
 
 import arrival as ar                                           # noqa: E402
 import audio as aud                                            # noqa: E402
+import consequence as cq                                       # noqa: E402
 import directory as dr                                         # noqa: E402
 import economy as ec                                           # noqa: E402
 import interior as it                                          # noqa: E402
@@ -578,6 +640,427 @@ ELEVATOR_MTBF_CYCLES = 10000.0
 
 
 # ===========================================================================
+# 4b.  THE DOMESTIC DENOMINATORS -- a household, a clock, a rent and a child
+# ===========================================================================
+# The first twenty-two classes are the arrival half and the crime half, because
+# `LAW-CRIME-DOWNBELOW.md` and `TRAFFIC-AND-CUSTOMS.md` are the two gazetteer
+# documents with rate tables in them. Nothing in this section is a crime. Every
+# number is somebody else's, and where a constant had to be chosen it carries
+# an INV id and two brackets.
+#
+# THE UNIT OF RESIDENTIAL LIFE IS THE HOUSEHOLD, AND THE REGISTER ALREADY
+# COUNTS IT. `docs/spec/PLACES.md` §0.2's staffing rule says it outright --
+# *"In residence classes every UNIT carries its door/babcom/locker/bunk set, so
+# a class tag there counts once per unit (a 270-unit block holds 270 T3 babcom
+# terminals)"*. So `rooms.bays_in` IS the dwelling count of a residence row,
+# for the same reason it is the machine count of a plant room, and no second
+# number has to be invented.
+
+def units_in(place_key):
+    """Dwelling units built in a residence row. `rooms.bays_in`, no more."""
+    return _bays(place_key)
+
+
+def peak_occupancy(place_key):
+    """The block's own busiest hour, over its own 24. Its resident population:
+    a residence is fullest when everybody who lives there is asleep in it."""
+    return _memo(("peak", place_key),
+                 lambda: max(crowd(place_key, float(h)) for h in range(24)))
+
+
+def household_size(place_key):
+    """People per unit -- AND IT IS A CROSS-CHECK, NOT AN INPUT.
+
+    `rooms.bays_in` and `populace.occupancy` are two mechanisms that have never
+    been pointed at each other: one tiles a bay along a footprint, the other
+    integrates a density curve over an area. Divided, they agree on **3.07
+    people per unit** across every EA-standard block aboard (qtr_personnel
+    3.07, qtr_civilian 3.07, qtr_transient 3.09, alien_resident_qtr 3.14) --
+    a household -- and they diverge exactly where the content says they should:
+    `downbelow` 9.23 and `downbelow_arch` 14.29, which is a **3x to 4.7x
+    overcrowding ratio** nothing in this project had written down. INV-380.
+
+    A block with nobody in it returns 0.0 rather than dividing, and that is the
+    sealed Markab quarter: 60 units, zero residents, and every class in this
+    section is therefore silent there. `--gate` asserts it.
+    """
+    u = units_in(place_key)
+    return peak_occupancy(place_key) / float(u) if u else 0.0
+
+
+def households_home(place_key, hour):
+    """Units with somebody in them right now.
+
+    The class rates below are per HOUSEHOLD and not per head, because a dispute
+    across a bulkhead, a door that will not open and a week's rent are all
+    things that happen to a dwelling. `crowd / household_size` is the same
+    thing as `units x (occupancy now / occupancy at peak)`, so it is zero in an
+    empty block by construction rather than by a special case.
+    """
+    hh = household_size(place_key)
+    if hh <= 0.0:
+        return 0.0
+    return crowd(place_key, hour) / hh
+
+
+# --- THE CLOCK, WHICH IS THIS STATION'S OWN SOURCE OF DOMESTIC FRICTION -----
+# `npc/schedule.py` carries fifteen species rhythms and they do not agree about
+# when night is. Measured through `schedule.awake_fraction` at 03:00: **every
+# Narn aboard is asleep (0.000) and every Centauri is awake (1.000)**, with
+# Minbari at 0.920 and Brakiri at 0.969; at 13:00 the Brakiri are the ones
+# asleep (0.068) while everybody else is up. A Brakiri who works nights lives
+# on the other side of a bulkhead from a family whose day starts at seven.
+#
+# That is a better generator of residential friction than any crime, it is
+# already in the repository, and NOTHING READ IT. This is the reading.
+def clock_mismatch(place_key, hour):
+    """P(two residents of this block, drawn at random, are on opposite clocks).
+
+    `audio.species_mix` gives who lives here and `schedule.awake_fraction`
+    gives who is up. The sum is over unordered pairs and doubled, so it is a
+    probability over ordered draws and lands in [0,1]. Nothing here is chosen.
+    """
+    key = ("mism", place_key, int(hour) % 24)
+    if key in _ONCE:
+        return _ONCE[key]
+    mix = aud.species_mix(place_key)
+    sps = sorted(mix)
+    aw = {s: sched.awake_fraction(s, hour % 24.0) for s in sps}
+    t = 0.0
+    for i, a in enumerate(sps):
+        for b in sps[i + 1:]:
+            t += 2.0 * mix[a] * mix[b] * abs(aw[a] - aw[b])
+    _ONCE[key] = t
+    return t
+
+
+def mismatch_anchor():
+    """The station's own mean clock mismatch over its homes and its hours.
+
+    The DIVISOR, so `DISPUTES_PER_UNIT_YEAR` is the rate at an average block on
+    an average night and the geography is the deviation from it -- the same
+    shape `NC_ANCHOR_PER_H` uses, and for the same reason: an anchor plus a
+    derived shape is one number to defend instead of one hundred and thirty.
+    """
+    def go():
+        ks = home_places()
+        n = len(ks) * 24
+        return max(1e-9, sum(clock_mismatch(k, float(h))
+                             for k in ks for h in range(24)) / max(1, n))
+    return _memo("mism_anchor", go)
+
+
+# --- WHO LIVES WHERE, from the roster rather than from a list here ----------
+# `resident.home_for` is the station's own housing allocation and it is a pure
+# function of (id, species, role). Pushed through `schedule.ROLE_WEIGHTS` it
+# gives the roster's own distribution over the register's residence rows.
+# Sampled rather than called once per cell because `home_for` picks a Downbelow
+# address PER ID -- one synthetic id would put all 20,390 lurkers in one camp.
+HOME_SAMPLE = 48
+
+
+def home_roster():
+    """{place: {role: heads}} -- the roster, housed. Nothing else computes it."""
+    def go():
+        out = {}
+        for sp, w in sched.ROLE_WEIGHTS.items():
+            for role, heads in w.items():
+                heads = int(heads)
+                if heads <= 0:
+                    continue
+                tally = {}
+                for i in range(HOME_SAMPLE):
+                    h = res.home_for(f"home-probe-{sp}-{role}-{i}", sp, role)
+                    tally[h] = tally.get(h, 0) + 1
+                for h, c in tally.items():
+                    d = out.setdefault(h, {})
+                    d[role] = d.get(role, 0.0) + heads * c / float(HOME_SAMPLE)
+        return out
+    return _memo("home_roster", go)
+
+
+def role_share(place_key, roles):
+    """What share of this block's roster holds one of these roles."""
+    d = home_roster().get(place_key)
+    if not d:
+        return 0.0
+    tot = sum(d.values())
+    return (sum(d.get(r, 0.0) for r in roles) / tot) if tot else 0.0
+
+
+# The three roles `schedule.ROLES` gives `work_hours = 0` -- visitor, refugee,
+# lurker. They are also exactly the three `resident._age` will make a minor,
+# and two of the three are `resident.NO_STATUS_ROLES`. That is not a
+# coincidence: they are the people the station does not employ.
+NO_WAGE_ROLES = tuple(r.key for r in sched.ROLES
+                      if float(getattr(r, "work_hours", 1.0)) == 0.0)
+
+
+SENIOR_ROLES = ("command", "envoy", "diplomat")
+
+
+def rent_row(place_key):
+    """Which `economy.LADDER` row this block's tenancy is on.
+
+    Through `consequence.RENT_TIER`, which is already a reading of that table
+    by rung -- so this is the register's roster -> the rung that roster holds ->
+    the published price, and there is no second price table here.
+
+    THE FIRST DRAFT TOOK THE BLOCK'S LOWEST RUNG AND `_selftest` REFUTED IT:
+    rent came out NON-MONOTONE down the ladder, with `qtr_command` at 12.5
+    cr/wk against the 30 cr LAW-CRIME §7.1 sources. A tenancy is priced by what
+    the room IS, so it is the block's HIGHEST rung, and the senior roles are
+    named rather than inferred because the sourced row names them: §7.1's one
+    authority-1 price is *"Command / senior quarters -- 30 credits/week"* and
+    the billing event behind it (S2E08) is Earth Central billing Sheridan and
+    Ivanova, who are `command`. `consequence.RENT_TIER`'s top row is that row.
+    """
+    def go():
+        d = home_roster().get(place_key) or {}
+        if not d:
+            return "squat"
+        if any(r in d for r in SENIOR_ROLES):
+            return cq.RENT_TIER[cq.ACCREDITED]
+        return cq.RENT_TIER.get(max(_role_rung(r) for r in d), "squat")
+    return _memo(("rent", place_key), go)
+
+
+def _role_rung(role):
+    """A role's rung on `consequence`'s ladder, by that module's own rules.
+
+    Not a second visa parser -- `consequence.TIERS` states the rule for each
+    rung in words and this is those words applied to a role: an envoy or a
+    diplomat is ACCREDITED ('diplomatic immunity'), a lurker or a refugee is at
+    or near the floor ('the reason lurkers avoid readers'), a visitor holds
+    FACTIONS 2.3's seven-day transit visa, and everybody the station employs
+    holds a job aboard, which is CITIZEN/RESIDENT's own criterion.
+    """
+    if role in ("envoy", "diplomat"):
+        return cq.ACCREDITED
+    if role == "lurker":
+        return cq.NO_STATUS
+    if role == "refugee":
+        return cq.SANCTUARY
+    if role == "visitor":
+        return cq.TRANSIT
+    return cq.CITIZEN
+
+
+def rent_week_cr(place_key):
+    """What a unit here costs a week, in credits, from `economy.LADDER`."""
+    row = rent_row(place_key)
+    lo, hi = ec.ladder(row)
+    per = (lo + hi) / 2.0
+    return per * 7.0 if LADDER_BY_NIGHT.get(row) else per
+
+
+LADDER_BY_NIGHT = {r[0]: (r[3] == "night") for r in ec.LADDER}
+
+
+def weekly_subsistence_cr():
+    """Rent + food for one household-week at the cheapest tenancy aboard, and
+    THE ARITHMETIC IS THE FINDING.
+
+    Priced entirely off `economy.LADDER` and `economy.casual_constraint()`:
+
+        room_transient, a week      6.0 cr  = 0.75 days of casual labour
+        bunk_dosshouse, seven nights 7.0 cr = 0.88 days
+        meal_cart x3 x7 days        31.5 cr = **3.94 days**
+
+    **Food costs five times what the room costs.** So rent is NOT the pressure
+    on a working household -- 4.7 days of casual labour a week clears both, out
+    of the seven the muster offers -- and a household falls into arrears when
+    its earner STOPS EARNING rather than when the rent goes up. That is why
+    INC-ARREARS below is ENDOGENOUS on INC-SICK instead of carrying a rate of
+    its own, and it is `economy.py`'s own numbers saying so rather than a
+    design decision. The load-bearing number of the underclass is still
+    LAW-CRIME §7.1's 300-800 cr passage home: 68.8 days at the same wage.
+    """
+    lo, hi = ec.ladder("meal_cart")
+    food = (lo + hi) / 2.0 * MEALS_PER_DAY * 7.0
+    return rent_week_cr("qtr_transient") + food
+
+
+MEALS_PER_DAY = 3.0          # `schedule.RHYTHMS` carries three meal windows
+
+
+def casual_week_cr():
+    """A week's casual labour at `economy.casual_constraint()`'s own floor."""
+    lo, _hi = ec.casual_constraint()
+    return lo * MUSTER_DAYS_PER_WEEK
+
+
+# LAW-CRIME §7.2: casual dock labour is hired at a "**06:00 and 14:00 EMT
+# muster**", two a day, every day. `economy.GUILD_SHIFTS_PER_WEEK` = 5 is what
+# a GUILD card buys -- five GUARANTEED shifts -- so a casual works at most the
+# seven days the muster runs and is not guaranteed any of them. Seven is the
+# ceiling and it is the number that makes the margin honest: if a household
+# cannot clear subsistence on SEVEN days of work, the table is wrong.
+MUSTER_DAYS_PER_WEEK = 7.0
+
+
+# --- THE CAMP'S OWN SERVICE ECONOMY, which is not crime --------------------
+# LAW-CRIME §7.2's work table, verbatim rows: "Cooking, brewing, laundry,
+# barbering *for other lurkers* | **8%** | Inside the camps" -- and the
+# document's own gloss on it, which is why this class exists at all: *"This is
+# the one that makes it a community rather than a pit."* Plus "Begging and
+# busking | 8% | The boundary between Downbelow and the commercial rings.
+# **Never inside the Zocalo** -- they are moved on | Station-evening".
+#
+# Both shares are of "the 20,000", which `schedule.ROLE_WEIGHTS` carries as
+# 20,390 lurkers. Neither is a crime in that document; both are WORK.
+LURKER_SERVICE_SHARE = 0.08          # LAW-CRIME §7.2, stated
+LURKER_BUSK_SHARE = 0.08             # LAW-CRIME §7.2, stated
+
+
+def lurker_heads():
+    return _memo("lurkers", lambda: sum(
+        int(w.get("lurker", 0)) for w in sched.ROLE_WEIGHTS.values()))
+
+
+# How many people one camp kitchen, still, laundry or barber's chair serves.
+# INV-382, and it is bracketed by the table it comes from: at 1 the 8% share
+# would mean every eighth lurker runs a business for nobody, and at 100 the
+# 20,390-strong camp holds sixteen kitchens for 39,262 residents, which is a
+# queue rather than a community. Twelve is a stall a household walks to.
+SERVICE_PITCH_HEADS = 12.0
+
+
+def service_pitches():
+    """Kitchens, stills, laundries and chairs running in the camps."""
+    return lurker_heads() * LURKER_SERVICE_SHARE / SERVICE_PITCH_HEADS
+
+
+# How often one of them is the incident -- a batch that goes wrong, a fire
+# watch, a queue, an inspection, a hand-over. INV-382. Bracketed above by the
+# camps' own contact rate (`security.DOWNBELOW_CONTACT_PER_HOUR` = 1.5/h where
+# nobody patrols): the camp's kitchens must not be a commoner event than being
+# robbed in it, or Downbelow reads as a market. Bracketed below by the
+# document's own word for the activity -- "continuous" work at 8% of the
+# workforce cannot be invisible.
+SERVICE_EVENT_PER_PITCH_DAY = 0.10
+
+
+def busker_heads():
+    return lurker_heads() * LURKER_BUSK_SHARE
+
+
+# --- WHO IS ILL, and the roster that has to attend them --------------------
+# THE SAME SHAPE AS INV-350, DELIBERATELY, because that derivation's own lesson
+# is that a fix applied to one instance and not to the rule is a fix that will
+# be needed again. INV-383. Two ends, both computed from things already here,
+# and NOTHING PICKED BETWEEN THEM:
+#
+#   THE FLOOR.   `rooms.bays_in` x the register's own `diagnostic_bed` rows =
+#                **51 beds** across medlab_one, infirmary, isolab, medlab_red,
+#                medlab_green and medlab_others. A bed held for BED_DAYS at
+#                ADMIT_OCCUPANCY needs 13.6 admissions a day to stay full, and
+#                a station whose built beds stand empty is not modelling
+#                illness at all.
+#   THE CEILING. `schedule.ROLE_WEIGHTS` carries **2,800 `medical`**. At
+#                CLINICAL_SHARE of a SHIFT_H watch and CONSULT_HOURS a case
+#                that is 11,200 attendances a day. Above it the medlabs are a
+#                queue that never clears -- the same refutation INV-350's
+#                maintenance ceiling supplies for faults.
+#
+# The two bounds are **three orders apart** (0.0199 to 16.35 episodes per head
+# per year) and canon puts nothing between them. When a quantity is bracketed
+# by two DERIVED bounds and nothing sits inside, the GEOMETRIC MEAN is the only
+# value equally far from being refuted by either end -- so that is what is
+# used, and it is computed rather than transcribed so it moves if either bound
+# does. It lands at **0.570 episodes per head per year**, which is one
+# clinician contact every 21 months for a roster that is entirely working-age
+# by construction (`resident.AGE_SKEW` puts the median at 34).
+#
+# AND THE GAP BETWEEN THE TWO BOUNDS IS ITSELF A FINDING: 2,800 medical staff
+# against 51 built beds is **55 staff per bed**. The register's medlabs are a
+# fraction of the medical plant a quarter of a million people need, exactly as
+# its 7,637 built dwellings are a fraction of their housing. Neither is this
+# module's to fix; both are reported by `--report` so the number is visible.
+BED_DAYS = 3.0                       # INV-383: a bed held, admission to walk
+ADMIT_OCCUPANCY = 0.80               # INV-383: a ward that is never full has
+                                     # beds nobody needed
+CLINICAL_SHARE = 0.25                # INV-383: of a medical watch; the rest is
+                                     # ward, lab, pharmacy, isolation, research
+CONSULT_HOURS = 0.5                  # INV-383: one attendance
+
+
+def medical_beds():
+    return _memo("beds", lambda: sum(
+        _bays(p["key"]) for p in dr.PLACES
+        if "diagnostic_bed" in p["interacts"]))
+
+
+def medical_heads():
+    return _memo("medheads", lambda: sum(
+        int(w.get("medical", 0)) for w in sched.ROLE_WEIGHTS.values()))
+
+
+def admissions_per_day():
+    """THE FLOOR: what the built beds need to not stand empty."""
+    return medical_beds() * ADMIT_OCCUPANCY / BED_DAYS
+
+
+def medical_capacity_per_day():
+    """THE CEILING: what the medical roster can attend."""
+    return medical_heads() * SHIFT_H * CLINICAL_SHARE / CONSULT_HOURS
+
+
+def presentations_per_day():
+    """THE RATE: how often somebody aboard needs a clinician and is not
+    already standing in a medlab. The geometric mean of the two bounds."""
+    return _memo("presentations", lambda: math.sqrt(
+        admissions_per_day() * medical_capacity_per_day()))
+
+
+def episodes_per_head_year():
+    return presentations_per_day() * 365.0 / float(sched.STATION_HEADCOUNT)
+
+
+def medical_load_share():
+    """The sanity check INV-350's own version made honest: the rate must sit
+    INSIDE the roster's capacity. It comes back at 3.5%."""
+    return presentations_per_day() / max(1e-9, medical_capacity_per_day())
+
+
+# --- THE CHILDREN, and there are only three roles that can be one ----------
+# `resident._age` is the only place aboard that says a child exists, and it
+# says it in one line: *"Children exist on the station and do not hold roles.
+# The three roles with no work hours are the only ones that can be a minor"* --
+# visitor, refugee and lurker, at **8%**. So the station's child population is
+# not a number anybody has to choose; it is `NO_WAGE_ROLES` x `MINOR_SHARE`
+# over `schedule.ROLE_WEIGHTS`, and it comes to 6,253 of 250,001.
+#
+# AND IT MOVES WITH THE ERA, WHICH IS THE POINT. 13,000 of those role-heads are
+# `refugee`, and `costume.ERA_EVENTS["narn_surrender"]` (2,20) is the episode
+# that creates a Narn refugee population. Before it there is no such population
+# aboard, so the child count is smaller and INC-STRAY's rate is lower -- a rate
+# that MOVES with the era rather than a switch that flips, which is a stronger
+# demonstration that the era reaches this layer than a binary gate is.
+MINOR_SHARE = 0.08                   # resident._age's own literal
+REFUGEE_ERA = "narn_surrender"
+
+
+def child_heads(datum=None):
+    datum = cos.ERA_DATUM if datum is None else datum
+    roles = [r for r in NO_WAGE_ROLES
+             if r != "refugee" or era_on(REFUGEE_ERA, datum)]
+    return sum(int(w.get(r, 0)) for w in sched.ROLE_WEIGHTS.values()
+               for r in roles) * MINOR_SHARE
+
+
+# How often a child is somewhere a child should not be. INV-384. Bracketed
+# above by the camps themselves: at one a week per child the 6,253 children
+# aboard would generate 893 a day, more than every other class in this file
+# combined, and Downbelow would be a playground. Bracketed below by
+# LAW-CRIME §11.2's attested lurker children, who have no school, no roster
+# entry and nobody watching them -- at one a year the station never shows one.
+# Six a year is once every two months, per child, and it lands at 103/day
+# across a register whose hazardous half is where it fires.
+STRAYS_PER_CHILD_YEAR = 6.0
+
+
+# ===========================================================================
 # 5.  Where each class can happen -- derived from the register, not listed
 # ===========================================================================
 def _by_function(*names):
@@ -676,6 +1159,119 @@ def clearance_places():
 def medical_places():
     return _memo_places("med", lambda: _by_function(
         "medical", "quarantine", "triage"))
+
+
+# --- the domestic place sets, all three by register FUNCTION ---------------
+def home_places():
+    """Everywhere on the station somebody sleeps in their own space.
+
+    `residence` and `informal_residence` -- the register's own two words for
+    it, so a block added to `directory.PLACES` is a block these classes reach
+    without a line being edited here. It is 13 rows today and one of them, the
+    sealed Markab quarter, holds **zero** residents; every rate below therefore
+    returns exactly 0.0 there, which is the cheapest negative control in this
+    file because it is content rather than a stub.
+    """
+    return _memo_places("homes", lambda: _by_function(
+        "residence", "informal_residence"))
+
+
+def lockable_places():
+    """Homes with a LOCK, which is not all of them.
+
+    A LOCKOUT NEEDS A DOOR CONTROLLER AND A CAMP DOES NOT HAVE ONE. The first
+    draft ran this class over every `home_places()` row and produced **35.95
+    lockouts an hour in Downbelow** -- because `rooms.bays_in` gives that row
+    4,256 squats and each one was being handed a card reader. The register
+    already says otherwise, in its own vocabulary: `downbelow` and
+    `downbelow_arch` declare a **`makeshift_door`**, and `qtr_civilian`
+    declares a `door`. You cannot be locked out of a curtain.
+    """
+    return _memo_places("lockable", lambda: tuple(
+        k for k in home_places() if "door" in q_of(k)["interacts"]))
+
+
+def tenancy_places():
+    """Where somebody pays rent. LAW-CRIME §7.1 prices a squat at **0** and
+    says why -- *"And it is why people are there"* -- so a camp cannot fall
+    into arrears and `informal_residence` is deliberately excluded."""
+    return _memo_places("tenancy", lambda: _by_function("residence"))
+
+
+def camp_homes():
+    """The camps as DWELLINGS rather than as a crime scene. `camp_places()`
+    above is `security.camps` plus the Downbelow rows and exists to be swept;
+    this is the register's own `informal_residence`, and the difference is the
+    whole point of INC-STILL: the same volume, read as a community."""
+    return _memo_places("camp_homes",
+                        lambda: _by_function("informal_residence"))
+
+
+def counter_places():
+    """`economy.vendors()` -- the thirteen counters that hold stock."""
+    return _memo_places("counters", lambda: tuple(
+        k for k in ec.vendors() if q_of(k) is not None))
+
+
+def moveon_places():
+    """The licensed commercial floor -- where a busker is moved OFF.
+
+    LAW-CRIME §7.2 is precise and the precision is the content: begging and
+    busking happen at *"the boundary between Downbelow and the commercial
+    rings. **Never inside the Zocalo** -- they are moved on"*. So the class
+    fires where the moving-on happens, which is the licensed floor, and it is
+    silent in Downbelow -- where there are no officers and nobody to move
+    anybody. `_r_moveon` gets that for free from `security.presence_at`
+    rather than from a place list.
+    """
+    return _memo_places("moveon", lambda: _by_function(
+        "commerce", "retail", "public_social", "crowd_hub", "hospitality",
+        "food_service", "arrival", "recreation"))
+
+
+# WHERE A CHILD SHOULD NOT BE, and it is a list of register FUNCTIONS rather
+# than of places -- the same rule that lets `power_places` follow the register.
+# Every one of these is somewhere the station itself treats as controlled: a
+# pressure boundary, a power train, a moving cargo floor, a variable-gravity
+# volume, a detention block, or a room whose function word is `crime`.
+ADULT_FUNCTIONS = (
+    "cargo_handling", "power_generation", "power_distribution", "reactor",
+    "radiation_boundary", "hazardous_storage", "fuel_storage",
+    "fuel_transfer", "waste_processing", "microgravity_handling",
+    "variable_gravity", "atmosphere_containment", "atmosphere_feedstock",
+    "coolant_loop", "coolant_transfer", "eva_egress", "detention",
+    "crime", "organised_crime", "black_market", "sealed_volume",
+    "ship_arrival", "ship_departure", "starfury_launch", "fabrication",
+    "industry", "repair", "mortuary",
+)
+
+
+def stray_places():
+    """AND A CAMP IS NOT ONE OF THEM, WHICH THE FIRST DRAFT GOT WRONG.
+
+    `downbelow` declares `crime` and `black_market`, so it matched
+    `ADULT_FUNCTIONS` and took **2.221 strays an hour** -- half the station's
+    total -- on the strength of holding 39,262 people. But a lurker child in
+    Downbelow is AT HOME. That it is a bad home is LAW-CRIME §11.2's point and
+    not this class's: "somewhere a child should not be" has to mean somewhere
+    that is not where they live, or the commonest place to find a stray child
+    is their own bed. `informal_residence` is subtracted for that reason.
+    """
+    return _memo_places("stray", lambda: tuple(
+        k for k in _by_function(*ADULT_FUNCTIONS)
+        if "informal_residence" not in q_of(k)["functions"]))
+
+
+def sick_places():
+    """Everywhere a person can be, LESS the places a clinician already is.
+
+    A presentation inside a medlab is a CONSULTATION, and a consultation is not
+    an incident because there is no stance to take toward it -- you cannot help
+    or report somebody's appointment. What makes this one an incident is that
+    there is nobody there yet.
+    """
+    return _memo_places("sick", lambda: tuple(
+        p["key"] for p in dr.PLACES if p["key"] not in set(medical_places())))
 
 
 # ===========================================================================
@@ -1159,6 +1755,315 @@ SEAT_TURNOVER_PER_H = 1.0            # INV-359: a diner holds a seat an hour
 PAKMA_MEALS = (4.0, 16.0)            # PLACES §0.2 / SYS-14's own hours
 
 
+# ---------------------------------------------------------------------------
+# THE EIGHT DOMESTIC AND COMMERCIAL RATES
+# ---------------------------------------------------------------------------
+# NOT ONE OF THEM IS A CRIME, and that is checked rather than claimed:
+# `--gate` counts how many classes book somebody into the brig in the ABSENT
+# branch -- what the station does when nobody is watching -- and the eight
+# below write **zero** custody rows there against the original table's seven.
+# A residential ring furnished with six more offences would be a crime
+# simulator with flats in it, which is the thing this half exists not to be.
+
+def _r_neighbour(ctx, place, hour):
+    """A dispute across a bulkhead, and THE STATION'S OWN CLOCKS CAUSE IT.
+
+    Per HOUSEHOLD, not per head -- `households_home` is `rooms.bays_in` scaled
+    by how much of the block is in tonight -- times the block's own
+    `clock_mismatch` against the station's mean. Everything in it belongs to
+    another module: the units to `rooms.tiling`, the presence to
+    `populace.occupancy`, the species to `audio.species_mix` and the sleep to
+    `schedule.RHYTHMS`.
+
+    The geography falls out and none of it was placed by hand: the mismatch
+    peaks at 22:00-03:00 in every EA block (qtr_civilian 0.274 at 03:00 against
+    0.066 at 19:00) because that is when the human and Narn halves are asleep
+    and the Centauri and Minbari halves are not, and it peaks at **22:00 in the
+    Alien Sector** (0.298), which is a corridor where four species keep four
+    different nights.
+    """
+    hh = households_home(place, hour)
+    if hh <= 0.0:
+        return 0.0
+    return (hh * DISPUTES_PER_UNIT_YEAR / (365.0 * 24.0)
+            * clock_mismatch(place, hour) / mismatch_anchor())
+
+
+# INV-381. One dispute per household every two months. Bracketed both ways and
+# the brackets are this project's own numbers rather than intuition:
+#   ABOVE  LAW-CRIME §8.2's commonest CRIME is petty theft at "dozens/day", and
+#          INV-351 reads that as 36. At 12/unit/year the station runs 251
+#          disputes a day -- seven times its whole crime rate and more than
+#          every other class in this file combined -- and a residential
+#          corridor becomes a soap opera.
+#   BELOW  at 1/unit/year a player who lives aboard for a season never hears
+#          one, and the residential rings stay at the zero this class exists
+#          to fix.
+# Six lands at 126/day station-wide, 3.5x the petty-theft rate, which is the
+# right ORDER as well as the right sign: the commonest thing in a block of
+# flats is not a crime, and it should be commoner than the commonest crime.
+# Overturned by any depiction of a B5 residential complaint procedure.
+DISPUTES_PER_UNIT_YEAR = 6.0
+
+
+def _r_lockout(ctx, place, hour):
+    """A door that will not admit its own tenant, and it has TWO CAUSES.
+
+    (a) THE DOOR. Every unit carries a `door` in `directory.PLACES`'
+        `interacts` -- `docs/spec/PLACES.md` §0.2's "every UNIT carries its
+        door/babcom/locker/bunk set" -- so the mechanical term is one declared
+        machine per unit at `MACHINE_MTBF_DAYS`, the same MTBF INC-FAULT uses,
+        weighted by whether anybody is at it.
+    (b) THE CARD. `consequence.py`'s six-rung ladder is the interesting half.
+        A block housing refugees and visitors holds cards that EXPIRE --
+        `arrival.entry_class`'s own expired share, measured through
+        `card_outcomes()` rather than read off `resident.VISA_EXPIRED_P` -- and
+        a card that no longer carries the rung the door wants is a lockout with
+        no machine fault in it at all. `role_share` over `NO_WAGE_ROLES` is how
+        much of the block that is, and it is 100% at qtr_transient and 0% at
+        qtr_command. **The same event, two floors apart, is a call to
+        maintenance or a call to immigration.**
+
+        AND IT IS ONCE PER VISA, NOT ONCE PER TOUCH. The first draft priced
+        this per door-reader touch, which said a resident's card is expired on
+        1.7% of the times they come home -- several times a week, for ever. A
+        card expires ONCE and is then dealt with, so the divisor is
+        `resident.VISA_TRANSIT_DAYS`, FACTIONS 2.3's seven-day mean stay, which
+        is the cycle a transient card actually turns over on. That drops the
+        term by two orders and it is right that it does: this class is a door
+        fault with a rung attached, not a card epidemic.
+    """
+    hh = households_home(place, hour)
+    if hh <= 0.0:
+        return 0.0
+    door = hh / MACHINE_MTBF_DAYS / 24.0
+    _ref, _rfd, _con, exp, _med = card_outcomes()
+    card = (hh * role_share(place, NO_WAGE_ROLES) * exp
+            / res.VISA_TRANSIT_DAYS / 24.0)
+    return door + card
+
+
+def _r_arrears(ctx, place, hour):
+    """ENDOGENOUS, and `economy.LADDER`'s own arithmetic is what makes it so.
+
+    THE FIRST DRAFT GAVE THIS CLASS A RATE OF ITS OWN AND THE PRICE TABLE
+    REFUTED IT. Priced off `economy.ladder` and `economy.casual_constraint`,
+    a week's cheapest tenancy is **0.75 days of casual labour** and a week's
+    food is **3.94 days** -- so rent is a twentieth of a household's outgoings
+    and a household that works at all is never in arrears. Nothing about the
+    rent can produce this incident; only something that STOPS THE EARNING can.
+
+    So the rate reads the sick pool INC-SICK writes, exactly as INC-DEBT reads
+    the debtor pool and INC-SWEEP reads camp heat. A household falls behind one
+    rent cycle after its earner stops, which is why the class fires at the
+    week's end rather than continuously -- `RENT_DAY_H` is the hour, and the
+    day is the station week's own boundary through `ctx.day`.
+    """
+    pool = _WORLD_SICKHOMES.get(place, 0.0)
+    if pool <= 0.0:
+        return 0.0
+    if abs((hour % 24.0) - RENT_DAY_H) >= 1.0:
+        return 0.0
+    return pool * RENT_MISS_SHARE
+
+
+# A household whose earner is off its feet clears subsistence on 4.7 of the
+# muster's 7 days (`weekly_subsistence_cr` / `casual_constraint`'s floor), so
+# it survives a short absence and not a long one. INV-381: the share of stopped
+# households that actually miss the week is the share whose absence outlasts
+# the margin -- 1 - 4.7/7. Bracketed by the arithmetic at both ends: at 1.0
+# every illness costs a tenancy, which the margin says is false; at 0 the
+# ladder's rent rows are decoration.
+RENT_MISS_SHARE = 1.0 - 4.7 / 7.0
+RENT_DAY_H = 9.0                     # rent is collected before the day shift
+
+
+def _r_still(ctx, place, hour):
+    """The camp's own kitchen, still, laundry and barber's chair.
+
+    LAW-CRIME §7.2 gives the share -- **8%** of the lurker workforce cook,
+    brew, launder and cut hair *for other lurkers* -- and gives the reason this
+    is content rather than crime in the same row: *"This is the one that makes
+    it a community rather than a pit."* The rate is that workforce divided into
+    pitches and each pitch having something happen at it, distributed over the
+    camps by their own share of the camp population, so `subfloor_stack`'s 1,930
+    residents get a twentieth of what `downbelow`'s 39,262 do.
+    """
+    tot = _camp_heads_total(hour)
+    if tot <= 0.0:
+        return 0.0
+    share = crowd(place, hour) / tot
+    return (service_pitches() * SERVICE_EVENT_PER_PITCH_DAY / 24.0) * share
+
+
+def _camp_heads_total(hour):
+    key = ("camph", int(hour) % 24)
+    if key not in _ONCE:
+        _ONCE[key] = sum(crowd(k, hour) for k in camp_homes())
+    return _ONCE[key]
+
+
+def _r_sick(ctx, place, hour):
+    """Somebody needs a clinician and is not standing in a medlab.
+
+    The station-wide presentation rate, distributed by where the people
+    actually are -- `populace.occupancy` summed over the register, which at
+    13:00 comes to **249,801 against a roster of 250,001**, so the distribution
+    is over the whole population and not over a sample of it.
+
+    The medical places are excluded on purpose: a presentation inside a medlab
+    is a consultation, and a consultation is not an incident because there is
+    no stance to take toward it. What makes this one an incident is that there
+    is nobody there yet -- which is also why the resolution reads
+    `consequence.admits`: the same collapse in `qtr_personnel` and in
+    `downbelow` is a gurney or a shrug, and the difference is the rung on the
+    card.
+    """
+    tot = _station_crowd(hour)
+    if tot <= 0.0:
+        return 0.0
+    return presentations_per_day() / 24.0 * crowd(place, hour) / tot
+
+
+def _station_crowd(hour):
+    key = ("scrowd", int(hour) % 24)
+    if key not in _ONCE:
+        _ONCE[key] = sum(crowd(p["key"], hour) for p in dr.PLACES)
+    return _ONCE[key]
+
+
+def _r_stray(ctx, place, hour):
+    """A child somewhere a child should not be, AND THE ERA MOVES IT.
+
+    `resident._age` is the only statement anywhere in this project that a child
+    exists aboard, and it is one line: the three roles with no work hours --
+    visitor, refugee, lurker -- are the only ones that can be a minor, at 8%.
+    That is 6,253 children over `schedule.ROLE_WEIGHTS`, and 1,040 of them are
+    refugee children who **do not exist before `narn_surrender` (2,20)**.
+
+    So this rate MOVES with the era rather than switching, and that is a
+    stronger demonstration that SYS-01 reaches the incident layer than a binary
+    gate is: at S2E01 the class runs at 87.4/day and at the datum 103.1/day,
+    a 17.9% step created by one episode, on a class nothing era-gates.
+
+    Where it fires is `ADULT_FUNCTIONS`: a pressure boundary, a power train, a
+    moving cargo floor, a detention block, a room whose function word is
+    `crime`. The child comes from a household, so the weight is the place's own
+    crowd share of the hazardous half -- a child is found where there are
+    people to find them.
+    """
+    tot = _stray_weight_total(hour)
+    if tot <= 0.0:
+        return 0.0
+    n = child_heads(ctx.datum) * STRAYS_PER_CHILD_YEAR / (365.0 * 24.0)
+    return n * crowd(place, hour) / tot
+
+
+def _stray_weight_total(hour):
+    key = ("strayw", int(hour) % 24)
+    if key not in _ONCE:
+        _ONCE[key] = sum(crowd(k, hour) for k in stray_places())
+    return _ONCE[key]
+
+
+def _r_moveon(ctx, place, hour):
+    """A busker or a beggar moved off the licensed floor.
+
+    THE ONE CLASS HERE WHERE POLICING IS THE DRIVER, and it is the exact
+    inverse of INC-PICK's recorded lesson. A theft needs a crowd and a shoulder
+    to brush and happens *despite* the officers, so weighting it by policing
+    counted it twice. A move-on **cannot happen without a uniform** -- it is an
+    act performed by an officer -- so `security.presence_at`'s own officer
+    count IS the rate, and the class is silent in Downbelow because there are
+    zero officers there, which is LAW-CRIME §2.5 saying so rather than a place
+    list saying so.
+
+    The evening weighting is not a constant either: LAW-CRIME §7.2 files the
+    activity as "Station-evening", and a busker works where the money is, so
+    the weight is the place's own crowd against its own daily peak.
+    """
+    pres = sec.presence_at(place, hour % 24.0)
+    if not pres["policed"] or pres["officers"] <= 0.0:
+        return 0.0
+    pk = peak_occupancy(place)
+    if pk <= 0.0:
+        return 0.0
+    return (pres["officers"] * MOVEONS_PER_OFFICER_H
+            * crowd(place, hour) / pk)
+
+
+# INV-384. Bracketed by FACTIONS §11.4's own enforcement sentence -- *"~150
+# officers on duty across 8 km. Crime is not policed, it is contained at
+# chokepoints"* -- which is what a move-on IS. ABOVE: at 1.0 the Zocalo's 12.9
+# officers do nothing else all watch and the 150-strong duty roster is entirely
+# consumed moving people on. BELOW: at 0.05 a busker is moved on once every
+# fifty working days, and LAW-CRIME §7.2's "**Never inside the Zocalo** -- they
+# are moved on" would simply not be true. `--report` prints the implied
+# interval per busker, which is the sanity check INV-350's `implied_mtbf_days`
+# is for this derivation.
+MOVEONS_PER_OFFICER_H = 0.20
+
+
+def _r_stockout(ctx, place, hour):
+    """A counter runs out of a line, and THERE IS NO NEW CONSTANT IN IT.
+
+    `economy.opening_stock` stands a counter with exactly `RESTOCK_DAYS` of its
+    own mean demand and no safety stock -- so a line runs out whenever the
+    realised demand over a restock cycle exceeds its own mean, which is a
+    Poisson tail this can evaluate. Everything is `economy.py`'s: the lines
+    from `stock_list`, the demand from `line_demand`, the depth from
+    `opening_stock`, the cycle from `RESTOCK_DAYS`.
+
+    And the shape it produces is a statement about that module rather than
+    about this one: because the depth SCALES with demand, a big counter is no
+    likelier to run out than a small one, and the small ones are SAFER --
+    N'Grath's three thin lines carry ten units against a mean of 9.5 and run
+    out 36% of a cycle, the Zocalo's fourteen fat ones sit at 50%. A stockout
+    is a property of how deep a counter stands, not of how much it sells.
+    """
+    p = _stockout_cycle(place)
+    if p <= 0.0:
+        return 0.0
+    pk = peak_occupancy(place)
+    if pk <= 0.0:
+        return 0.0
+    return p / (ec.RESTOCK_DAYS * 24.0) * crowd(place, hour) / pk
+
+
+def _stockout_cycle(place_key):
+    """Expected lines running out per restock cycle at this counter."""
+    def go():
+        try:
+            dem = ec.line_demand(place_key)
+            dep = ec.opening_stock(place_key)
+        except Exception:                                    # pragma: no cover
+            return 0.0
+        tot = 0.0
+        for g, per_day in dem.items():
+            mu = per_day * ec.RESTOCK_DAYS
+            d = dep.get(g, 0)
+            if mu <= 0.0:
+                continue
+            tot += _poisson_tail(mu, d)
+        return tot
+    return _memo(("stockout", place_key), go)
+
+
+def _poisson_tail(mu, d):
+    """P(N > d) for N ~ Poisson(mu). Exact for a small depth, normal with a
+    continuity correction above `POISSON_CAP` where the sum stops being cheap
+    -- the Zocalo's fattest line has mu = 1,611, which is 1,611 terms."""
+    if d < POISSON_CAP:
+        p = math.exp(-mu)
+        cum = p
+        for k in range(1, int(d) + 1):
+            p *= mu / k
+            cum += p
+        return max(0.0, 1.0 - cum)
+    z = (d + 0.5 - mu) / math.sqrt(mu)
+    return 0.5 * math.erfc(z / math.sqrt(2.0))
+
+
 # --- endogenous state the rate functions read ------------------------------
 # Kept module-level and RESET BY `simulate` so a rate can be a function of the
 # world without every rate function taking the world -- the alternative is 22
@@ -1167,6 +2072,11 @@ _WORLD_HEAT = {}
 _WORLD_GRIEVANCE = [0.0]
 _WORLD_DEBTORS = [0]
 _WORLD_ELEV_DOWN = [False]
+# {place: households whose earner is off their feet}. Written by INC-SICK's
+# resolution, read by INC-ARREARS' rate, and the ONLY route between them --
+# so a rent notice on day 2 is caused by an illness on day 1 and by nothing
+# else, which is the same shape as INC-ACCIDENT -> INC-STRIKE one floor down.
+_WORLD_SICKHOMES = {}
 SWEEP_HEAT = 6.0                     # INV-358
 STRIKE_THRESHOLD = 3.0               # INV-358
 DRAZI_CYCLE_ON = False               # PEOPLE.md FAC-13: OFF at the datum
@@ -1197,6 +2107,7 @@ class World:
         self.debtors = 0
         self.camps = {}
         self.elev_down = False
+        self.sickhomes = {}
         self.log = []
 
     # -- writing ------------------------------------------------------------
@@ -1242,6 +2153,13 @@ class World:
         w.debtors = int(self.debtors * HEAT_DECAY)
         w.camps = dict(self.camps)
         w.elev_down = self.elev_down
+        # A household whose earner is ill RECOVERS, on the same decay the camps
+        # and the ledger take. Without it every illness is permanent and by day
+        # 5 the whole station is in arrears -- the compounding defect `carry`
+        # already fixed once for the debtor pool, applied to the rule rather
+        # than to the instance.
+        w.sickhomes = {k: v * HEAT_DECAY for k, v in self.sickhomes.items()
+                       if v * HEAT_DECAY >= 1.0}
         for who, row in sorted(self.custody.items()):
             w.fact("custody", who, f"held from day {row['day']}: {row['charge']}")
         return w
@@ -1715,6 +2633,305 @@ def _res_pakma(inc, w, st):
         _standing(w, "player", "hospitality", +0.5)
 
 
+# ---------------------------------------------------------------------------
+# THE EIGHT DOMESTIC AND COMMERCIAL RESOLUTIONS
+# ---------------------------------------------------------------------------
+# Every one of them writes a named fact per stance and NONE of them books
+# anybody into the brig in the ABSENT branch. `--gate` counts it.
+
+def _role_of(person):
+    """This person's role, through `schedule.role_for` -- the same function
+    `resident.resident` used to build them, so the resolution and the roster
+    cannot disagree about what somebody does."""
+    return sched.role_for(person.npc_id, person.species).key
+
+
+def _home_of(person):
+    """And where they live, through `resident.home_for`. Not the incident's
+    place: somebody who collapses in the Zocalo goes home to a block, and
+    WHICH block is what decides whether the household loses its earner."""
+    return res.home_for(person.npc_id, person.species, _role_of(person))
+
+
+def _person_rung(person):
+    """The rung on this person's own card, by role. Not the block's."""
+    return _role_rung(_role_of(person))
+
+
+# CITIZEN AND ABOVE ENTER BY RIGHT; TRANSIT AND BELOW HOLD A PERMISSION. That
+# line is `consequence.TIERS`' own, in its own words -- TRANSIT is *"a
+# conditional permission -- so it expires, and so it can be withdrawn"* and
+# SANCTUARY is *"a GRANT ... and a grant can be withdrawn"*, against CITIZEN's
+# *"enters by right"*. It is the line a door, a counter and an Ombuds all draw,
+# and it is where the domestic classes below bite differently on two people
+# living one deck apart.
+CONDITIONAL = cq.TRANSIT
+
+
+def _rung_of(place_key):
+    """The rung this block's tenancy is on -- `consequence`'s ladder, keyed by
+    the same `rent_row` the price came from, so the money and the standing
+    cannot disagree about who lives here."""
+    row = rent_row(place_key)
+    for t, r in sorted(cq.RENT_TIER.items(), reverse=True):
+        if r == row:
+            return t
+    return cq.NO_STATUS                                      # pragma: no cover
+
+
+def _res_neighbour(inc, w, st):
+    a, b = inc.cast[0], inc.cast[-1]
+    w.fact("rumour", _case_id(inc),
+           f"{_who(a)} and {_who(b)} through the bulkhead at {inc.place}; "
+           f"{_who(b)} keeps a {b.species} clock")
+    if st == ABSENT:
+        _standing(w, a.npc_id, b.npc_id, -1.0)
+        _standing(w, b.npc_id, a.npc_id, -1.0)
+        w.fact("standing", f"{inc.place}:corridor", "two doors that do not "
+                                                   "greet each other")
+    elif st == HELPS:
+        _standing(w, a.npc_id, "player", +1.0)
+        _standing(w, b.npc_id, "player", +1.0)
+        w.fact("rumour", f"{inc.place}:corridor", "the landing goes quiet")
+    else:
+        w.fact("docket", _case_id(inc),
+               f"noise complaint, {inc.place}, {_who(a)} v {_who(b)} -- "
+               f"listed before the Ombuds")
+        _standing(w, a.npc_id, "player", -2.0)
+        _standing(w, b.npc_id, "player", -2.0)
+    _heat(w, inc.place, 0.5)
+
+
+def _res_lockout(inc, w, st):
+    person = inc.cast[0]
+    low = _person_rung(person) <= CONDITIONAL
+    if st == ABSENT:
+        if low:
+            _card(w, person, "reader rejected at own door -- status queried")
+            w.fact("standing", f"{person.npc_id}:home",
+                   f"a night out of {inc.place}")
+            _camp(w, _first(camp_homes()), f"+1 locked out of {inc.place}")
+        else:
+            _order(w, inc, "door controller logged fault; tenant waits")
+            w.fact("standing", f"{person.npc_id}:home",
+                   f"waited {int(1 + 3 * u('wait', inc.key()))} h at the door")
+    elif st == HELPS:
+        _card(w, person, "admitted on a neighbour's word; annotation only")
+        _standing(w, person.npc_id, "player", +2.0)
+    else:
+        _order(w, inc, "door controller replaced on report")
+        if low:
+            _card(w, person, "REFERRED -- reader rejects, immigration notified")
+            _standing(w, person.npc_id, "player", -2.0)
+            _standing(w, "player", "earthforce", +0.5)
+        else:
+            _standing(w, "player", "engineers", +0.3)
+
+
+def _res_arrears(inc, w, st):
+    tenant = inc.cast[0]
+    row = rent_row(inc.place)
+    due = rent_week_cr(inc.place)
+    w.sickhomes[inc.place] = max(0.0, w.sickhomes.get(inc.place, 0.0) - 1.0)
+    if st == ABSENT:
+        _card(w, tenant, f"TENANCY {row}: notice served, {due:.0f} cr owing")
+        w.fact("stock", f"{tenant.npc_id}:credits", f"-{due:.0f} cr owing")
+        _standing(w, tenant.npc_id, "housing", -1.0)
+    elif st == HELPS:
+        w.fact("stock", f"{tenant.npc_id}:credits",
+               f"+{due:.0f} cr, arrears cleared by the player")
+        _standing(w, tenant.npc_id, "player", +3.0)
+        _standing(w, "player", "merchants", -0.5)
+    else:
+        w.fact("docket", _case_id(inc),
+               f"{_who(tenant)} -- {row} arrears {due:.0f} cr, listed before "
+               f"the Ombuds")
+        _card(w, tenant, f"TENANCY {row}: referred, {due:.0f} cr")
+        _standing(w, tenant.npc_id, "player", -3.0)
+
+
+def _res_still(inc, w, st):
+    keeper, customer = inc.cast[0], inc.cast[-1]
+    line = _brewed(inc)
+    if st == ABSENT:
+        _stock(w, inc.place, line, +int(2 + 6 * u("batch", inc.key())))
+        w.fact("rumour", _case_id(inc),
+               f"{_who(keeper)}'s pitch at {inc.place} is open; "
+               f"{_who(customer)} is in the queue")
+        _camp(w, inc.place, "a kitchen, a still and a chair working")
+    elif st == HELPS:
+        _stock(w, inc.place, line, +int(6 + 6 * u("batch2", inc.key())))
+        _standing(w, "player", "lurkers", +1.0)
+        _standing(w, keeper.npc_id, "player", +2.0)
+    else:
+        _seize(w, inc, f"unlicensed {line}", keeper)
+        _arrest(w, inc, keeper, f"unlicensed supply of {line}", by="a report")
+        _camp(w, inc.place, "the pitch is gone; the queue has nowhere")
+        _standing(w, "player", "lurkers", -3.0)
+        _standing(w, "player", "earthforce", +0.5)
+    _heat(w, inc.place, 0.5)
+
+
+def _brewed(inc):
+    """What the pitch makes: a `GOODS` line that a camp could actually source
+    -- drum or hydroponics grown, or route-supplied. Not an invented menu."""
+    goods = [g.name for g in ec.GOODS
+             if g.supply in ("drum", "hydroponics", "route")]
+    if not goods:                                            # pragma: no cover
+        return "still spirit"
+    return goods[int(u("brew", inc.key()) * len(goods)) % len(goods)]
+
+
+def _res_sick(inc, w, st):
+    person = inc.cast[0]
+    bed, _why = cq.admits(_first(medical_places()), _person_rung(person))
+    home = _home_of(person)
+    if st == ABSENT:
+        if bed:
+            _casualty(w, inc, person,
+                      f"taken from {inc.place} to a medlab bed")
+        else:
+            # THE RUNG IS THE WHOLE CONTENT OF THIS BRANCH. FACTIONS 6.2's
+            # stateless and 3.4's card-avoiders are not admitted, which is why
+            # LAW-CRIME §7.3 says the pattern is "informal patronage, not an
+            # institution" and why Franklin's free clinic existed at all.
+            _casualty(w, inc, person,
+                      f"left at {inc.place}; the card does not admit them")
+            w.sickhomes[home] = w.sickhomes.get(home, 0.0) + 1.0
+            _standing(w, person.npc_id, "housing", -0.5)
+    elif st == HELPS:
+        _casualty(w, inc, person, "walked to triage on the player's arm")
+        _standing(w, "player", "medical", +1.0)
+        _standing(w, person.npc_id, "player", +2.0)
+    else:
+        _casualty(w, inc, person, "medical team dispatched on report")
+        _order(w, inc, "triage team walked from the nearest medlab")
+        _standing(w, "player", "medical", +0.5)
+        if not bed:
+            w.sickhomes[home] = w.sickhomes.get(home, 0.0) + 1.0
+
+
+def _res_stray(inc, w, st):
+    child, finder = inc.cast[0], inc.cast[-1]
+    # A CHILD'S ROLE IS THEIR HOUSEHOLD'S, and there are only three it can be:
+    # `resident._age` says minors exist in `NO_WAGE_ROLES` and nowhere else, so
+    # the child is drawn from those three by their own headcounts rather than
+    # assigned one here. That is what decides whether a card exists to read.
+    role = _child_role(inc)
+    home = res.home_for(child.npc_id, child.species, role)
+    carded = _role_rung(role) > cq.NO_STATUS
+    w.fact("rumour", _case_id(inc),
+           f"a {child.species} child at {inc.place}, which is no place for one")
+    if st == ABSENT:
+        if u("hurt", inc.key()) < STRAY_HARM_SHARE:
+            _casualty(w, inc, child, f"hurt at {inc.place}; carried out")
+        else:
+            _unsolved(w, inc, f"nobody claimed the child at {inc.place}")
+        _standing(w, child.npc_id, "housing", -0.5)
+    elif st == HELPS:
+        w.fact("standing", f"{child.npc_id}:home", f"walked back to {home}")
+        _standing(w, finder.npc_id, "player", +2.0)
+        _standing(w, "player", "lurkers", +0.5)
+    else:
+        if carded:
+            _card(w, child, f"MINOR: returned to {home} by security")
+            _standing(w, "player", "earthforce", +0.5)
+        else:
+            # AND REPORTING IT IS NOT THE KIND ACT. A child with no card is
+            # not taken home, they are taken into the system -- FACTIONS 3.4's
+            # "the reason lurkers avoid readers", one generation down.
+            _card(w, child, "NO STATUS -- minor, referred to immigration")
+            _standing(w, "player", "lurkers", -2.0)
+            _standing(w, "player", "earthforce", +0.5)
+
+
+def _child_role(inc):
+    """visitor / refugee / lurker, by their own headcounts on the roster."""
+    tot = {r: sum(int(w.get(r, 0)) for w in sched.ROLE_WEIGHTS.values())
+           for r in NO_WAGE_ROLES}
+    n = sum(tot.values()) or 1
+    r = u("childrole", inc.key()) * n
+    acc = 0
+    for role in NO_WAGE_ROLES:
+        acc += tot[role]
+        if r <= acc:
+            return role
+    return NO_WAGE_ROLES[-1]                                 # pragma: no cover
+
+
+# INV-384: how often a child found somewhere hazardous has already been hurt.
+# Bounded above by INC-ACCIDENT's own 100:1 recordable-to-fatal ratio, which
+# says an industrial volume hurts people at far below the rate it holds them;
+# below by zero, which would make `ADULT_FUNCTIONS` a label rather than a
+# hazard. A tenth is a scrape, a burn or a fall, most of which the resolution
+# treats as "carried out" rather than as a casualty ward.
+STRAY_HARM_SHARE = 0.10
+
+
+def _res_moveon(inc, w, st):
+    busker, officer = inc.cast[0], inc.cast[-1]
+    took = 1 + int(TAKINGS_CR * u("take", inc.key()))
+    if st == ABSENT:
+        w.fact("stock", f"{busker.npc_id}:credits",
+               f"pitch ended; {took} cr short of the day")
+        _standing(w, busker.npc_id, "earthforce", -1.0)
+        w.fact("rumour", inc.place, "the boards get their frontage back")
+    elif st == HELPS:
+        w.fact("stock", f"{busker.npc_id}:credits", f"+{took} cr, given")
+        _standing(w, "player", "lurkers", +1.0)
+        _standing(w, busker.npc_id, "player", +2.0)
+    else:
+        w.fact("docket", _case_id(inc),
+               f"{_who(busker)} moved on from {inc.place} on a report by "
+               f"{_who(officer)}; obstruction noted, no charge")
+        _standing(w, "player", "lurkers", -2.0)
+        _standing(w, "player", "merchants", +1.0)
+
+
+# A day's busking, and it is the LADDER's own bottom rung rather than a new
+# number: LAW-CRIME §7.1 prices a Downbelow bunk at 1 cr/night and a cart meal
+# at 1-2 cr, so a day that ends short of a bunk and a meal is a day that
+# matters. `economy.ladder` supplies both.
+TAKINGS_CR = (ec.ladder("bunk_dosshouse")[0]
+              + ec.ladder("meal_cart")[1] * MEALS_PER_DAY)
+
+
+def _res_stockout(inc, w, st):
+    keeper, customer = inc.cast[0], inc.cast[-1]
+    line = _sold_out(inc)
+    _stock(w, inc.place, line, -1)
+    w.fact("stock", f"{inc.place}:{line}", "line empty; board changed")
+    if st == ABSENT:
+        w.fact("stock", f"{inc.place}:substitute",
+               "the next line up carries the trade")
+        _standing(w, customer.npc_id, keeper.npc_id, -1.0)
+    elif st == HELPS:
+        alt = _other_counter(inc)
+        _stock(w, alt, line, -2)
+        _stock(w, inc.place, line, +2)
+        _standing(w, keeper.npc_id, "player", +2.0)
+    else:
+        _order(w, inc, f"{line} re-ordered against the next consignment")
+        _standing(w, "player", "merchants", +0.5)
+
+
+def _sold_out(inc):
+    try:
+        lines = list(ec.stock_list(inc.place))
+    except Exception:                                        # pragma: no cover
+        lines = []
+    if not lines:                                            # pragma: no cover
+        return "the house line"
+    return lines[int(u("line", inc.key()) * len(lines)) % len(lines)]
+
+
+def _other_counter(inc):
+    ks = [k for k in counter_places() if k != inc.place]
+    if not ks:                                               # pragma: no cover
+        return inc.place
+    return ks[int(u("alt", inc.key()) * len(ks)) % len(ks)]
+
+
 def _first(seq):
     return seq[0] if seq else "downbelow"
 
@@ -1824,9 +3041,67 @@ CLASSES = (
           lambda p, h, s: _cast2(p, h, s, "pakma", None, "pakmara"),
           ("polite translator ask", "tables clear", "staff resolve",
            "a rumour line"), _res_pakma, window_s=600.0),
+
+    # -- the eight that are not crimes -----------------------------------
+    Klass("INC-NEIGHBOUR", "a dispute across a bulkhead", home_places,
+          _r_neighbour, lambda p, h, s: _cast2(p, h, s, "neighbour"),
+          ("a wall", "two clocks", "a landing that stops greeting",
+           "a complaint or a quiet word"), _res_neighbour, window_s=900.0),
+    Klass("INC-LOCKOUT", "a door that will not admit its own tenant",
+          lockable_places, _r_lockout,
+          lambda p, h, s: _cast1(p, h, s, "tenant"),
+          ("the reader refuses", "the panel or the card",
+           "a wait, a neighbour or immigration"), _res_lockout,
+          window_s=1800.0),
+    Klass("INC-ARREARS", "rent arrears, and who calls about them",
+          tenancy_places, _r_arrears,
+          lambda p, h, s: _cast1(p, h, s, "tenant"),
+          ("the earner stopped", "a week's margin gone", "notice served",
+           "cleared, carried or listed"), _res_arrears, window_s=3600.0,
+          endogenous=True),
+    Klass("INC-STILL", "the camp's own kitchen, still and barber's chair",
+          camp_homes, _r_still, lambda p, h, s: _cast2(p, h, s, "still"),
+          ("a pitch opens", "a queue", "a batch, a shave or a wash",
+           "trade, help or a seizure"), _res_still, window_s=1800.0),
+    Klass("INC-SICK", "somebody needs a clinician and there is not one",
+          sick_places, _r_sick, lambda p, h, s: _cast1(p, h, s, "patient"),
+          ("collapse", "the crowd opens", "the card is read",
+           "a bed, an arm or nothing"), _res_sick, window_s=600.0),
+    Klass("INC-STRAY", "a child where a child should not be", stray_places,
+          _r_stray, lambda p, h, s: _cast2(p, h, s, "stray"),
+          ("a child at a hazard", "nobody claims them",
+           "walked home, or referred"), _res_stray, window_s=1200.0),
+    Klass("INC-MOVEON", "a busker moved off the licensed floor",
+          moveon_places, _r_moveon, lambda p, h, s: _cast2(p, h, s, "moveon"),
+          ("a pitch on the boards", "an officer crosses",
+           "moved on, paid or docketed"), _res_moveon, window_s=300.0),
+    Klass("INC-STOCKOUT", "a counter runs out of a line", counter_places,
+          _r_stockout, lambda p, h, s: _cast2(p, h, s, "stock"),
+          ("the line empties", "the board changes",
+           "a substitute, a favour or a re-order"), _res_stockout,
+          window_s=1800.0),
 )
 
 BY_ID = {k.cid: k for k in CLASSES}
+
+# The eight added in session 4o, kept as a named set because every control in
+# the gate that talks about "the lived-in half" has to be able to REMOVE them
+# and re-measure. A control that cannot subtract its own subject is a claim.
+LIVED_IN = ("INC-NEIGHBOUR", "INC-LOCKOUT", "INC-ARREARS", "INC-STILL",
+            "INC-SICK", "INC-STRAY", "INC-MOVEON", "INC-STOCKOUT")
+CRIME_ORIGINAL = tuple(k.cid for k in CLASSES if k.cid not in LIVED_IN)
+
+
+def books_custody(cid, stance=ABSENT, hour=13.0, seed="b5"):
+    """Does this class put somebody in the brig in this stance?
+
+    THE FRAMING CLAIM, MADE MEASURABLE. "Do not just add more crime" is an
+    assertion until something counts, and the thing to count is what the
+    station does when NOBODY IS WATCHING -- the absent branch. Seven of the
+    original twenty-two book a custody row there; the eight above book none.
+    """
+    _inc, worlds, _sets, _uniq = three_ways(cid, hour=hour, seed=seed)
+    return bool(worlds[stance].custody)
 
 
 # ===========================================================================
@@ -1980,6 +3255,8 @@ def simulate(ctx, world=None, start_h=13.0, window_min=WINDOW_MIN,
     _WORLD_GRIEVANCE[0] = w.grievance
     _WORLD_DEBTORS[0] = w.debtors
     _WORLD_ELEV_DOWN[0] = w.elev_down
+    _WORLD_SICKHOMES.clear()
+    _WORLD_SICKHOMES.update(w.sickhomes)
 
     allow = None if classes is None else {k.cid for k in ks}
     fired = []
@@ -2006,21 +3283,31 @@ def simulate(ctx, world=None, start_h=13.0, window_min=WINDOW_MIN,
                     _WORLD_GRIEVANCE[0] = w.grievance
                     _WORLD_DEBTORS[0] = w.debtors
                     _WORLD_ELEV_DOWN[0] = w.elev_down
+                    _WORLD_SICKHOMES.clear()
+                    _WORLD_SICKHOMES.update(w.sickhomes)
     return w, fired
 
 
-def expected_rate(ctx, probe, hour):
+def expected_rate(ctx, probe, hour, only=None):
     """The probe volume's incident rate per station-hour, summed analytically.
 
     The measurement the gate leads with. It is the SUM OF THE CLASS RATES over
     the probe's fixed places, which is what "incidents per station-hour" means
     before any draw is made -- so it cannot be moved by a lucky seed, and the
     simulated count can be checked against it.
+
+    `only` restricts the sum to a set of class ids, and it exists so the
+    before/after in `--gate` is a SUBTRACTION OF THE SAME NUMBERS rather than a
+    second derivation: the "before" figure is this same call over the original
+    twenty-two, on the same code path, with the eight new rows left out of the
+    sum. A before/after computed two different ways measures the two ways.
     """
     tot = 0.0
     per = {}
     for place in probe.places:
         for k, r in live_classes(ctx, place, hour):
+            if only is not None and k.cid not in only:
+                continue
             per[k.cid] = per.get(k.cid, 0.0) + r
             tot += r
     return tot, per
@@ -2194,13 +3481,119 @@ def report(out=print, at="customs_north", hour=13.0, day=0):
         f"refused {ref * 100:.1f}%, referred {rfd * 100:.1f}%, "
         f"contraband {con * 100:.1f}%, expired visa {exp * 100:.1f}%, "
         f"unnumbered atmosphere {med * 100:.1f}%")
+    domestic_report(out)
     return tot
 
 
+def domestic_report(out=print):
+    """The lived-in half's own denominators, each with its cross-check."""
+    homes = home_places()
+    units = sum(units_in(k) for k in homes)
+    people = sum(peak_occupancy(k) for k in homes)
+    out("")
+    out(f"HOUSING: {len(homes)} register rows, {units:,} built dwelling units "
+        f"(rooms.bays_in) holding {people:,.0f} residents at their own peak "
+        f"hours -- {people / max(1, units):.2f} people a unit. The EA-standard "
+        f"blocks all land at ~3.07 and the camps at "
+        f"{household_size('downbelow'):.2f} (downbelow) and "
+        f"{household_size('downbelow_arch'):.2f} "
+        f"(downbelow_arch), which is the overcrowding ratio nothing else in "
+        f"this project computes (INV-380)")
+    roster = sum(sum(v.values()) for v in home_roster().values())
+    out(f"  AND THE GAP IS REPORTED RATHER THAN ABSORBED: "
+        f"resident.home_for over schedule.ROLE_WEIGHTS houses "
+        f"{roster:,.0f} people, so the register's built housing is "
+        f"{100.0 * people / max(1.0, roster):.1f}% "
+        f"of the roster's. Every rate below is per HOUSEHOLD PRESENT, so a "
+        f"player standing in one block sees that block rather than the "
+        f"station's notional 250,000 -- INV-350's denominator lesson, the "
+        f"other way round")
+    for k in homes:
+        d = home_roster().get(k) or {}
+        top = sorted(d.items(), key=lambda x: -x[1])[:2]
+        out(f"    {k:22s} {units_in(k):5d} units  rent {rent_row(k):18s} "
+            f"{rent_week_cr(k):5.1f} cr/wk  no-wage share "
+            f"{role_share(k, NO_WAGE_ROLES) * 100:5.1f}%  "
+            + ", ".join(f"{r} {int(c):,}" for r, c in top))
+    lo, _hi = ec.casual_constraint()
+    out(f"  SUBSISTENCE: {weekly_subsistence_cr():.1f} cr a household-week "
+        f"(cheapest tenancy + {MEALS_PER_DAY:.0f} cart meals a day) against "
+        f"{casual_week_cr():.1f} cr of casual labour at "
+        f"{lo:.0f} cr/day over {MUSTER_DAYS_PER_WEEK:.0f} muster days -- "
+        f"a margin of {casual_week_cr() - weekly_subsistence_cr():.1f} cr, "
+        f"which is why INC-ARREARS is endogenous")
+    out(f"  MEDICAL: {medical_beds()} built diagnostic beds at "
+        f"{ADMIT_OCCUPANCY:.0%} for {BED_DAYS:.0f} days = "
+        f"{admissions_per_day():.1f} admissions/day (the FLOOR); "
+        f"{medical_heads():,} medical staff can attend "
+        f"{medical_capacity_per_day():,.0f}/day (the CEILING); the geometric "
+        f"mean is {presentations_per_day():,.1f} presentations/day = "
+        f"{episodes_per_head_year():.3f} per head per year, "
+        f"{medical_load_share() * 100:.1f}% of capacity. "
+        f"{medical_heads() / max(1, medical_beds()):.0f} staff per built bed "
+        f"is the same shortfall the housing has")
+    out(f"  THE CAMPS' OWN ECONOMY: {lurker_heads():,} lurkers, "
+        f"LAW-CRIME 7.2's {LURKER_SERVICE_SHARE:.0%} cooking/brewing/laundry/"
+        f"barbering = {service_pitches():,.0f} pitches at "
+        f"{SERVICE_EVENT_PER_PITCH_DAY:.2f} events/day; its "
+        f"{LURKER_BUSK_SHARE:.0%} begging/busking = {busker_heads():,.0f} "
+        f"buskers")
+    mv = sum(_r_moveon(Ctx(), k, float(h)) for k in moveon_places()
+             for h in range(24))
+    out(f"  MOVE-ONS: {mv:.1f}/day station-wide from "
+        f"security.presence_at's own officer count -- one every "
+        f"{busker_heads() / max(1e-9, mv):.1f} working days per busker, which "
+        f"is the sanity check INV-350's implied_mtbf_days is for that one")
+    out(f"  CHILDREN: {child_heads():,.0f} at the datum "
+        f"({child_heads((2, 1)):,.0f} before narn_surrender), from "
+        f"resident._age's own {MINOR_SHARE:.0%} minor rule over "
+        f"{', '.join(NO_WAGE_ROLES)}")
+
+
+# WHAT KIND OF PLACE THIS IS, from the register's own function words. Used
+# only to REPORT where the station is alive -- "12 of 128" is a number nobody
+# can act on, and "0 of 13 homes" is. Order matters: a place is labelled by the
+# first row it matches, so `downbelow` reads as a camp rather than as commerce.
+DISTRICTS = (
+    ("home", ("residence",)),
+    ("camp", ("informal_residence",)),
+    ("arrival", ("immigration", "arrival", "ship_arrival", "ship_departure",
+                 "cargo_handling", "ship_mooring")),
+    ("commerce", ("commerce", "retail", "hospitality", "food_service",
+                  "recreation", "gambling", "nightlife", "public_social",
+                  "crowd_hub", "catering")),
+    ("plant", ("power_generation", "power_distribution", "reactor",
+               "life_support", "atmosphere", "air_handling",
+               "waste_processing", "water_reclamation", "fabrication",
+               "agriculture", "cooling")),
+    ("medical", ("medical", "triage", "quarantine", "mortuary")),
+    ("law", ("law_enforcement", "detention", "adjudication",
+             "political_policing", "checkpoint")),
+    ("civic", ("worship", "ceremony", "diplomacy", "council_session",
+               "administration", "offices", "meeting", "observation",
+               "contemplation")),
+)
+
+
+def district_of(place_key):
+    fns = set(q_of(place_key)["functions"])
+    for name, want in DISTRICTS:
+        if fns & set(want):
+            return name
+    return "works"
+
+
 def rate_map(ctx, hour=13.0, top=12, out=print):
-    """Where the station is alive, and where it is not. Printed rather than
-    asserted, because a rate floor is a PLACE fact -- a residential ring at
-    03:00 has nothing to go wrong and no class table changes that."""
+    """Where the station is alive, and where it is not.
+
+    IT REPORTS BY DISTRICT NOW, AND THAT IS THE POINT OF THE SESSION. The
+    number this printed before -- "12 of 128 clear the floor" -- was true and
+    unactionable, because it hid the SHAPE of the failure: every one of the
+    twelve was the arrival half, the plant or Downbelow, and the homes and the
+    commercial ring were at zero to four decimal places. `READ THE SHAPE OF A
+    FAILING NUMBER BEFORE READING ITS SIZE` is this repository's own rule and
+    the total could not express the shape. Per district it can.
+    """
     rows = []
     for p in dr.PLACES:
         probe = Probe(p["key"])
@@ -2215,7 +3608,30 @@ def rate_map(ctx, hour=13.0, top=12, out=print):
             f"{probe.span_m:6.0f} m span")
     out(f"    ... {len(rows) - top} more, floor "
         f"{rows[-1][0]:.4f}/h at {rows[-1][1]}")
+    by = {}
+    for tot, key, _probe in rows:
+        d = by.setdefault(district_of(key), [])
+        d.append(tot)
+    out(f"  BY DISTRICT ({'over'} the register's own function words):")
+    for name, _w in DISTRICTS + (("works", ()),):
+        v = by.get(name)
+        if not v:
+            continue
+        v = sorted(v, reverse=True)
+        out(f"    {name:9s} {sum(1 for x in v if x >= RATE_FLOOR):3d}/"
+            f"{len(v):<3d} clear   best {v[0]:7.3f}/h   "
+            f"median {v[len(v) // 2]:7.3f}/h   worst {v[-1]:7.4f}/h")
     return rows, met
+
+
+def district_rate(ctx, name, hour, only=None):
+    """(mean, best, cleared, n) over one district. The before/after number."""
+    vals = [expected_rate(ctx, Probe(p["key"]), hour, only=only)[0]
+            for p in dr.PLACES if district_of(p["key"]) == name]
+    if not vals:                                             # pragma: no cover
+        return 0.0, 0.0, 0, 0
+    return (sum(vals) / len(vals), max(vals),
+            sum(1 for v in vals if v >= RATE_FLOOR), len(vals))
 
 
 RATE_FLOOR = 2.0             # SYS-14, in writing
@@ -2306,8 +3722,16 @@ def gate(out=print, at="customs_north", hour=13.0, step_min=STEP_MIN,
           f"{sorted(places_ids - ours)}, only in SYSTEMS "
           f"{sorted(systems_ids - ours)}")
     n += 1
-    check(len(ours) == 22, "twenty-two classes, which is what SYS-14 says",
-          str(len(ours)))
+    # NOT A LITERAL. The count used to be written `== 22` here, which meant the
+    # class table's SIZE was a fact about this file rather than about the spec
+    # -- so growing the table meant editing the assertion that was supposed to
+    # be guarding it. It is the spec's own count, read from the spec, for the
+    # same reason `len(dr.PLACES)` replaced 128 elsewhere in this project.
+    check(len(ours) == len(places_ids) == len(systems_ids) > 0,
+          "the class COUNT is the spec's count, read from the spec -- not a "
+          "literal in this file that has to be edited to let the table grow",
+          f"{len(ours)} here, {len(places_ids)} in PLACES 0.2, "
+          f"{len(systems_ids)} in SYS-14")
 
     # ------------------------------------------------------------------
     # B.  THE RATE, IN A FIXED PROBE VOLUME
@@ -2611,22 +4035,27 @@ def gate(out=print, at="customs_north", hour=13.0, step_min=STEP_MIN,
 
     # -- the endogenous control ------------------------------------------
     _WORLD_HEAT.clear()
+    _WORLD_SICKHOMES.clear()
     _WORLD_GRIEVANCE[0] = 0.0
     _WORLD_DEBTORS[0] = 0
     _WORLD_ELEV_DOWN[0] = False
     endo_cold = {k.cid: class_rate_day(Ctx(day=1, seed=seed), k.cid)
                  for k in CLASSES if k.endogenous}
     _WORLD_HEAT.update(w1.heat)
+    _WORLD_SICKHOMES.update(w1.sickhomes)
     _WORLD_GRIEVANCE[0] = w1.grievance
     _WORLD_DEBTORS[0] = w1.debtors
     _WORLD_ELEV_DOWN[0] = w1.elev_down
     endo_warm = {k.cid: class_rate_day(Ctx(day=1, seed=seed), k.cid)
                  for k in CLASSES if k.endogenous}
     woke = [c for c in endo_cold if endo_warm[c] > endo_cold[c] == 0.0]
-    out(f"  FOUR CLASSES ARE ENDOGENOUS. In a world nothing has happened in "
-        f"yet their rates are {[f'{c} {v:.3f}' for c, v in endo_cold.items()]}"
+    out(f"  {len(endo_cold)} CLASSES ARE ENDOGENOUS. In a world nothing has "
+        f"happened in yet their rates are "
+        f"{[f'{c} {v:.3f}' for c, v in endo_cold.items()]}"
         f"; after day 1 wrote camp heat on {len(w1.heat)} place(s), "
-        f"{w1.debtors} debtor(s) and a {w1.grievance:+.1f} grievance board "
+        f"{w1.debtors} debtor(s), a {w1.grievance:+.1f} grievance board and "
+        f"{sum(w1.sickhomes.values()):.0f} household(s) with a stopped earner "
+        f"in {len(w1.sickhomes)} block(s) "
         f"they are {[f'{c} {v:.3f}' for c, v in endo_warm.items()]}")
     n += 1
     check(len(woke) >= 1,
@@ -2636,6 +4065,198 @@ def gate(out=print, at="customs_north", hour=13.0, step_min=STEP_MIN,
           "difference between a schedule of events and a simulation",
           f"{woke} woke up; heat on {len(w1.heat)} place(s), "
           f"{w1.debtors} debtors, grievance {w1.grievance:+.1f}")
+
+    # ------------------------------------------------------------------
+    # G.  THE LIVED-IN HALF -- what a player standing at home actually sees
+    # ------------------------------------------------------------------
+    out("")
+    out("THE LIVED-IN HALF -- the same measurement with the eight new classes "
+        "SUBTRACTED, which is the before, and with them, which is the after:")
+    out(f"  {'district':10s} {'before mean':>11s} {'after mean':>11s} "
+        f"{'before best':>11s} {'after best':>11s}  cleared")
+    moved = {}
+    for name in ("home", "camp", "commerce", "civic", "medical", "arrival"):
+        b_m, b_b, b_c, cnt = district_rate(ctx, name, hour,
+                                           only=set(CRIME_ORIGINAL))
+        a_m, a_b, a_c, _ = district_rate(ctx, name, hour)
+        moved[name] = (b_m, a_m, b_b, a_b, b_c, a_c, cnt)
+        out(f"  {name:10s} {b_m:11.4f} {a_m:11.4f} {b_b:11.4f} {a_b:11.4f}  "
+            f"{b_c} -> {a_c} of {cnt}")
+    # WHICH CLASSES COULD HAPPEN IN A HOME AT ALL -- at the PLACE, not at its
+    # probe, because a probe is the place plus its adjacent rows and several
+    # residence rows are adjacent to something busy. This is the sharper
+    # statement and it is the one that can fail: before this session exactly
+    # ONE of the twenty-two could fire in a home, and it was a machine.
+    def _cids(only):
+        s = set()
+        for p in dr.PLACES:
+            if district_of(p["key"]) != "home":
+                continue
+            for k, r in live_classes(ctx, p["key"], hour):
+                if r > 0.0 and (only is None or k.cid in only):
+                    s.add(k.cid)
+        return s
+    was = _cids(set(CRIME_ORIGINAL))
+    now = _cids(None)
+    out(f"  classes that can fire in a RESIDENCE at all: before {sorted(was)}, "
+        f"after {sorted(now)}")
+    n += 1
+    # NOT LITERALLY ONE, AND THE GATE CAUGHT THE OVERCLAIM. The first version
+    # of this assertion said the before-set was exactly {INC-FAULT} and it
+    # failed on INC-DUST -- which reaches `alien_sector` because
+    # `security.BLACK_MARKET_ROUTE` runs through it. Both are still NON-DOMESTIC:
+    # a fitting wearing out, and a smuggling route that happens to cross a
+    # residential deck. The claim is about what a home could produce BECAUSE
+    # SOMEBODY LIVES IN IT, and the honest form of it is a named pair.
+    NON_DOMESTIC = {"INC-FAULT", "INC-DUST"}
+    check(was <= NON_DOMESTIC and len(now - was) >= 4,
+          "AND THE SHAPE OF THE BEFORE IS THE FINDING. Only TWO of the "
+          "original twenty-two could fire in a home -- a machine breaking, "
+          "and the black-market route crossing the Alien Sector -- and "
+          "neither of them happens because somebody LIVES there. That is not "
+          "six missing offences, it is a missing half, and the control is the "
+          "subtraction: the same call, the same places, the same hour, with "
+          "the eight new rows left out of the sum",
+          f"before {sorted(was)}, after {sorted(now)}")
+    n += 1
+    check(moved["home"][1] > moved["home"][0] > 0.0,
+          "...and the residential probe rate rises with them",
+          f"{moved['home'][0]:.4f}/h before, {moved['home'][1]:.4f}/h after")
+    # WHY THE HOMES STILL DO NOT CLEAR SYS-14's FLOOR, in arithmetic rather
+    # than in apology. It is printed rather than asserted because it is a
+    # finding about the FLOOR and not about the generator.
+    ref = "qtr_civilian"
+    ru = units_in(ref)
+    rbest = max(expected_rate(ctx, Probe(ref), float(h))[0] for h in range(24))
+    out(f"  AND WHY THE HOMES DO NOT CLEAR THE FLOOR, in arithmetic: "
+        f"{ref} is {ru} built households, so SYS-14's >=2/station-hour is "
+        f"{2 * 24 / ru:.3f} incidents per household per day -- **one thing "
+        f"going wrong in every flat every {ru / 48.0:.1f} days**. This runs it "
+        f"at {rbest:.3f}/h at its own busiest hour, which is one per household "
+        f"per {ru / (rbest * 24.0):.0f} days. The floor is a PORT's number: "
+        f"the places that clear it move 55 ships or 39,262 people a day. A "
+        f"generator that made a block of flats as eventful as the customs "
+        f"hall would be lying, and probe SIZE is not the excuse -- "
+        f"core_shuttle and fusion_core clear it with one place")
+    n += 1
+    check(moved["commerce"][1] > moved["commerce"][0] > 0.0,
+          "...and the commercial ring, which was NOT at zero but was quiet, "
+          "moves too. It was already carrying theft and denunciation, so the "
+          "test here is a strict increase rather than zero-to-something",
+          f"{moved['commerce'][0]:.4f} -> {moved['commerce'][1]:.4f}/h mean")
+    hrs = [(h, district_rate(ctx, "home", float(h))[1]) for h in (3, 8, 13,
+                                                                 19, 22)]
+    out("  a home's own clock, best residential probe by hour: "
+        + ", ".join(f"{h:02d}:00 {v:.3f}/h" for h, v in hrs))
+    n += 1
+    check(max(v for _h, v in hrs) > 2.0 * min(v for _h, v in hrs),
+          "AND A HOME HAS AN HOUR. The residential rate has to MOVE over the "
+          "day or it is a constant with a place attached -- it peaks when "
+          "people are in and the species clocks disagree, which is the night, "
+          "not the afternoon",
+          str([(h, round(v, 4)) for h, v in hrs]))
+
+    # -- the framing, counted rather than claimed ------------------------
+    old_brig = [c for c in CRIME_ORIGINAL if books_custody(c, hour=hour,
+                                                           seed=seed)]
+    new_brig = [c for c in LIVED_IN if books_custody(c, hour=hour, seed=seed)]
+    out(f"  ORDINARY LIFE IS NOT A CRIME, counted: of the original "
+        f"{len(CRIME_ORIGINAL)} classes, {len(old_brig)} book somebody into "
+        f"the brig in the ABSENT branch -- what the station does when nobody "
+        f"is watching -- and of the {len(LIVED_IN)} new ones, "
+        f"{len(new_brig)} do. {old_brig}")
+    n += 1
+    check(not new_brig,
+          "NOT ONE of the eight new classes puts a person in custody when the "
+          "player is absent. Six more offences bolted onto a residential "
+          "corridor would have made the station a crime simulator with flats "
+          "in it; this is the assertion that says it did not happen, and it "
+          "can fail the moment somebody adds an arrest to an absent branch",
+          f"{new_brig} book custody with nobody watching")
+
+    # -- the sealed quarter, which is a control the register supplies -----
+    sealed = [p["key"] for p in dr.PLACES
+              if district_of(p["key"]) in ("home", "camp")
+              and peak_occupancy(p["key"]) <= 0.0]
+    if sealed:
+        # THE PLACE, NOT ITS PROBE, and only the domestic classes. A probe is
+        # the place PLUS its adjacent rows, and `markab_quarter` is adjacent to
+        # `alien_sector` -- so a probe-level assertion here would be measuring
+        # the neighbours. And INC-FAULT fires in a sealed room legitimately:
+        # 60 units of unpowered fittings still age.
+        dom = set(LIVED_IN)
+        sl = [(k, units_in(k), sum(r for kk, r in live_classes(ctx, k, hour)
+                                   if kk.cid in dom)) for k in sealed]
+        out("  THE SEALED QUARTER IS THE FREE CONTROL: "
+            + "; ".join(f"{k} has {u} built units and {r:.4f}/h of domestic "
+                        f"incident" for k, u, r in sl))
+        n += 1
+        check(all(r == 0.0 for _k, _u, r in sl),
+              "a residence with units and NO RESIDENTS runs at exactly zero. "
+              "Every domestic rate here is per HOUSEHOLD PRESENT rather than "
+              "per unit built, so the sealed Markab quarter -- 60 units, a "
+              "dead species, an era consequence the register already carries "
+              "-- cannot generate a dispute, a lockout or a rent notice. A "
+              "class that used the unit count would fire in an empty tomb",
+              str(sl))
+
+    # -- the era, on a rate that MOVES rather than a switch ---------------
+    stray_e = class_rate_day(early, "INC-STRAY")
+    stray_l = class_rate_day(late, "INC-STRAY")
+    out(f"  and the era MOVES a rate rather than switching it: INC-STRAY runs "
+        f"at {stray_e:.1f}/day at S2E01 against {stray_l:.1f}/day at the "
+        f"datum ({100.0 * (stray_l / max(1e-9, stray_e) - 1.0):+.1f}%), "
+        f"because {int(child_heads(late.datum) - child_heads(early.datum))} "
+        f"of the station's {int(child_heads(late.datum))} children are "
+        f"refugee children and there is no Narn refugee population before "
+        f"narn_surrender (2,20)")
+    n += 1
+    check(0.0 < stray_e < stray_l,
+          "THE ERA IS A WEIGHT AND NOT ONLY A SWITCH. INC-DENOUNCE proves the "
+          "binary case; this proves the graded one -- a class nothing "
+          "era-gates whose rate still steps when an episode lands, because "
+          "the population it draws from steps. A rate that could not move "
+          "would mean the era reaches the class list and not the arithmetic",
+          f"{stray_e:.3f}/day at S2E01 against {stray_l:.3f}/day")
+
+    # -- the endogenous chain the price table forced ---------------------
+    _rent = rent_week_cr("qtr_transient")
+    _food = weekly_subsistence_cr() - _rent
+    _wage = ec.casual_constraint()[0]
+    out(f"  INC-ARREARS IS ENDOGENOUS ON INC-SICK AND economy.py DECIDED "
+        f"THAT: a week's cheapest tenancy is {_rent:.1f} cr = "
+        f"{_rent / _wage:.2f} days of casual labour, and a week's food is "
+        f"{_food:.1f} cr = {_food / _wage:.2f} days. Rent is a fifth of the "
+        f"food bill, so no working household falls behind and the class can "
+        f"only fire off a stopped earner")
+    # AND THE RUNG LADDER MAKES THAT CHAIN NEARLY INERT, WHICH IS CONTENT.
+    rented = {k: v for k, v in w1.sickhomes.items() if k in tenancy_places()}
+    out(f"  ...and it is THIN BY CONSTRUCTION, which is the more interesting "
+        f"half: day 1 stopped {sum(w1.sickhomes.values()):.0f} earners and "
+        f"{sum(rented.values()):.0f} of them live somewhere that charges "
+        f"rent. The households that lose an earner are the ones "
+        f"consequence.admits turns away from a medlab -- SANCTUARY and "
+        f"NO_STATUS -- and LAW-CRIME 7.1 prices their housing at 0 cr, "
+        f"'and it is why people are there'. THE SAME RUNG THAT DENIES YOU A "
+        f"BED MEANS YOU CANNOT BE EVICTED. "
+        + str({k: round(v) for k, v in sorted(w1.sickhomes.items())}))
+    n += 1
+    check(sum(w1.sickhomes.values()) > 0.0
+          and sum(rented.values()) < 0.5 * sum(w1.sickhomes.values()),
+          "the illness -> arrears chain exists AND most of it cannot bite, "
+          "because the rung that keeps you out of a medlab also keeps you out "
+          "of a tenancy. If this ever inverted it would mean the rung ladder "
+          "had stopped reaching the housing model",
+          f"{sum(rented.values()):.0f} of {sum(w1.sickhomes.values()):.0f} "
+          f"stopped earners are in rented housing")
+    n += 1
+    check(rent_week_cr("qtr_transient") * 4.0 < weekly_subsistence_cr()
+          - rent_week_cr("qtr_transient"),
+          "and that is economy.LADDER's arithmetic rather than a design "
+          "decision: food costs more than four times rent at the bottom of "
+          "the ladder, which is why INC-ARREARS carries no rate of its own",
+          f"rent {rent_week_cr('qtr_transient'):.1f} cr against food "
+          f"{weekly_subsistence_cr() - rent_week_cr('qtr_transient'):.1f} cr")
 
     if _FAILED:
         out("")
@@ -2650,8 +4271,11 @@ def _selftest(out=print):                                       # noqa: C901
     del _FAILED[:]
     n = 0
     n += 1
-    check(len(CLASSES) == len(BY_ID) == 22,
-          "twenty-two classes, no duplicate ids", f"{len(CLASSES)}")
+    check(len(CLASSES) == len(BY_ID) == len(spec_ids(SPEC_PLACES)),
+          "the class table is the spec's, with no duplicate ids -- and the "
+          "count comes from the spec rather than from a literal here",
+          f"{len(CLASSES)} rows, {len(BY_ID)} ids, "
+          f"{len(spec_ids(SPEC_PLACES))} spec rows")
     n += 1
     check(spec_ids(SPEC_PLACES) == spec_ids(SPEC_SYSTEMS) == set(BY_ID),
           "the two spec files and this table are one list",
@@ -2726,6 +4350,79 @@ def _selftest(out=print):                                       # noqa: C901
     check(abs(con - (0.01 * (1 - 0.08) + 0.04 * 0.08)) < 0.03,
           "...and the contraband share brackets INV-250's own 1% / 4% split",
           f"{con:.4f}")
+
+    # -- the lived-in half's own denominators, offline -------------------
+    n += 1
+    hh = [household_size(k) for k in tenancy_places()
+          if peak_occupancy(k) > 0.0]
+    check(hh and 1.5 < min(hh) and max(hh) < 7.0,
+          "INV-380's CROSS-CHECK, and it is two mechanisms that had never "
+          "been pointed at each other: rooms.bays_in tiles a bay along a "
+          "footprint and populace.occupancy integrates a density curve over "
+          "an area, and divided they agree on a HOUSEHOLD. If they did not, "
+          "one of the two is wrong about what a residence row is",
+          f"{min(hh):.2f}-{max(hh):.2f} people per unit over "
+          f"{len(hh)} tenanted blocks")
+    n += 1
+    check(household_size("downbelow_arch") > 3.0 * min(hh),
+          "...and the camps are OVERCROWDED by that same measurement rather "
+          "than by an adjective -- downbelow_arch carries 4.7x the people per "
+          "unit that an EA block does, which is content the register produced "
+          "and nobody had read",
+          f"{household_size('downbelow_arch'):.2f} against {min(hh):.2f}")
+    n += 1
+    sealed = [k for k in home_places() if peak_occupancy(k) <= 0.0]
+    check(all(households_home(k, h) == 0.0
+              for k in sealed for h in (3.0, 13.0, 22.0)),
+          "a residence with built units and no residents is silent at every "
+          "hour -- the sealed Markab quarter, which the register carries as "
+          "an era consequence and which is therefore a control this file did "
+          "not have to write",
+          str(sealed))
+    n += 1
+    share = medical_load_share()
+    check(0.0 < share < 1.0
+          and admissions_per_day() < presentations_per_day()
+          < medical_capacity_per_day(),
+          "INV-383's SANITY CHECK, INV-350's shape reused rather than "
+          "reinvented: the presentation rate must sit strictly between what "
+          "the built beds need and what the medical roster can attend. "
+          "Outside that bracket the medlabs are either empty or a queue that "
+          "never clears",
+          f"{admissions_per_day():.1f} < {presentations_per_day():.1f} < "
+          f"{medical_capacity_per_day():,.0f}, {share * 100:.1f}% of capacity")
+    n += 1
+    check(rent_week_cr("qtr_command") > rent_week_cr("qtr_personnel")
+          > rent_week_cr("qtr_transient") > rent_week_cr("downbelow"),
+          "rent is MONOTONE down the rung ladder, and it is economy.LADDER "
+          "read through consequence.RENT_TIER rather than a second price "
+          "table here -- a squat is free, which is LAW-CRIME 7.1's own "
+          "sentence for why people are in one",
+          str([round(rent_week_cr(k), 1) for k in
+               ("qtr_command", "qtr_personnel", "qtr_transient",
+                "downbelow")]))
+    n += 1
+    check(0.0 < child_heads((2, 1)) < child_heads(cos.ERA_DATUM),
+          "the child population MOVES with the era: refugee children do not "
+          "exist before narn_surrender (2,20) and there are children aboard "
+          "either way, so the rate that reads it steps rather than switching",
+          f"{child_heads((2, 1)):.0f} at S2E01, "
+          f"{child_heads(cos.ERA_DATUM):.0f} at the datum")
+    n += 1
+    mism = [clock_mismatch(k, 3.0) for k in home_places()]
+    check(max(mism) > 0.0 and max(mism) <= 1.0
+          and clock_mismatch("qtr_civilian", 3.0)
+          > clock_mismatch("qtr_civilian", 19.0),
+          "the species clocks disagree MORE at three in the morning than at "
+          "seven in the evening, which is schedule.RHYTHMS saying so: every "
+          "Narn aboard is asleep at 03:00 and every Centauri is awake",
+          f"03:00 {clock_mismatch('qtr_civilian', 3.0):.4f} against 19:00 "
+          f"{clock_mismatch('qtr_civilian', 19.0):.4f}")
+    n += 1
+    check(all(not books_custody(c) for c in LIVED_IN),
+          "and NOT ONE of the eight new classes books somebody into the brig "
+          "when the player is absent -- the framing claim, counted",
+          str([c for c in LIVED_IN if books_custody(c)]))
     if _FAILED:
         for f in _FAILED:
             out(f"  FAIL {f}")

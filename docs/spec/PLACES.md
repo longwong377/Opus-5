@@ -116,7 +116,7 @@ unexplained room count, which is the rig this file exists to prevent.
 
 ## 0.2 INCIDENT CLASSES — the vocabulary place blocks cite (mechanics live in SYS-14)
 
-**This vocabulary and SYS-14's class table are the same 22 IDs, 1:1 in both directions —
+**This vocabulary and SYS-14's class table are the same 30 IDs, 1:1 in both directions —
 the registry generator asserts the union both ways** (an ID here without SYS-14 mechanics,
 or a SYS-14 row without an ID here, fails the gate).
 
@@ -144,6 +144,14 @@ or a SYS-14 row without an ID here, fails the gate).
 | INC-CONTACT | Downbelow contact event (the 5% of the 95/5 rule; 1–2/h of play there) | security.py:657-684, DOWNBELOW_CONTACT_PER_HOUR=1.5 |
 | INC-DEBT | debt enforcement round: the Collector's visit; the debtor pays, pleads or hides | LAW-CRIME §5; CAST row 37 |
 | INC-PAKMA | pak'ma'ra eating-area segregation friction: a wrong-seat diner, the tables clear | FACTIONS §12; friction.py PAIRS |
+| INC-NEIGHBOUR | a dispute across a bulkhead: two households, two species clocks, one wall | LAW-CRIME §7.1 tenancy; schedule.py RHYTHMS' fifteen sleep blocks |
+| INC-LOCKOUT | a door that will not admit its own tenant — a panel fault, or a card that lost its rung | PLACES §0.2's per-unit door/babcom/locker/bunk rule; consequence.py's six rungs |
+| INC-ARREARS | rent arrears and the visit that follows; endogenous on INC-SICK, because rent is a fifth of the food bill | LAW-CRIME §7.1 price ladder; economy.casual_constraint() |
+| INC-STILL | the camp's own kitchen, still, laundry and barber's chair — the service economy that makes it a community | LAW-CRIME §7.2, "cooking, brewing, laundry, barbering *for other lurkers*", 8% |
+| INC-SICK | somebody needs a clinician and there is not one; the rung on the card decides whether a bed opens | 51 built `diagnostic_bed` instances against schedule.py's 2,800 `medical` |
+| INC-STRAY | a child where a child should not be; era-weighted through the refugee population | resident.py `_age`'s 8% minor rule; costume.ERA_EVENTS narn_surrender (2,20) |
+| INC-MOVEON | a busker or beggar moved off the licensed commercial floor | LAW-CRIME §7.2, "**Never inside the Zocalo** — they are moved on", 8% |
+| INC-STOCKOUT | a counter runs out of a line and the board changes | economy.py `opening_stock` / `RESTOCK_DAYS` |
 
 **Staffing rule.** Staff below are *named residents* from `resident.py`'s deterministic
 roster (same person every session, per (place, species, seed) affiliate pools —

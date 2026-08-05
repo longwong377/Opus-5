@@ -278,7 +278,7 @@ reportable or ignorable; none of them requires the player to exist.
 **CHECK:** one headless station-day at ×1 logs the rate inside the probe volume; **one
 seeded incident replayed three ways — player-absent / player-helps / player-reports —
 yields three world states that differ in NAMED facts** (which ledger row, whose standing,
-which stock line, who is in custody), not merely in a log string; and the 22-row union
+which stock line, who is in custody), not merely in a log string; and the 30-row union
 above matches PLACES §0.2 in both directions (asserted by `tools/spec_registry.py`).
 **harness:** `tools/spec_registry.py --check` (bijection half, exists) + incident
 headless-day and three-way replay (tool-to-build ⇒ RED).
@@ -307,6 +307,14 @@ headless-day and three-way replay (tool-to-build ⇒ RED).
 | INC-CONTACT | security.py DOWNBELOW_CONTACT_PER_HOUR=1.5 (the 5% of 95/5) | lurkers, the marked-out (PLY-04's wardrobe input) | approach → demand/beg/warn → resolve {comply\|resist\|flee} | camp standing, inventory, SYS-10 on resist |
 | INC-DEBT | FAC-25 ledger ages past terms | the Collector, debtor, camp watchers | visit → pay/plead/hide → seizure or a beating (SYS-10) → ledger closes or rolls | crime ledger, debtor state, camp fear texture |
 | INC-PAKMA | species meal windows 04:00/16:00 + a wrong-seat diner | pak'ma'ra diners, a transient, venue staff | polite translator ask → tables clear → staff resolve → a rumour line | seating state, venue rumour, standing if the player is the diner |
+| INC-NEIGHBOUR | households present × the block's own clock mismatch (SYS-11 rhythms × audio species mix) | two named neighbours, the landing | a wall → two clocks → a landing that stops greeting → a quiet word or a complaint | neighbour standing both ways, corridor state, district heat, SYS-05 Ombuds docket on report |
+| INC-LOCKOUT | one declared `door` per unit at SYS-07's MTBF + SYS-03's expired-card share | the tenant, a neighbour, a duty tech | the reader refuses → the panel or the card → a wait, a neighbour, or immigration | work order, card endorsement, roster home state, camp population |
+| INC-ARREARS | SYS-06 rent cycle against a stopped earner (INC-SICK's pool) | tenant, the block's collector, the Ombuds | the earner stopped → a week's margin gone → notice served → cleared, carried or listed | card tenancy state, credit line, housing standing, Ombuds docket |
+| INC-STILL | LAW-CRIME §7.2's 8% service share of the lurker roster, per pitch | the pitch keeper, the queue, a patrol on report | a pitch opens → a queue → a batch, a shave or a wash → trade, help, or a seizure | camp stock line, camp state, SYS-06 supply, seizure log + custody on report |
+| INC-SICK | presentation rate bracketed by the built-bed floor and the SYS-10 medical roster ceiling | the patient, bystanders, a triage team | collapse → the crowd opens → the card is read → a bed, an arm, or nothing | medlab/casualty record, INC-ARREARS' stopped-earner pool, medical standing |
+| INC-STRAY | SYS-01 era-weighted child population in the register's adult-only volumes | the child, the finder, security | a child at a hazard → nobody claims them → walked home, or referred | card state (a minor referral), housing standing, casualty on harm |
+| INC-MOVEON | SYS-05 officer presence × the place's own crowd against its peak | the busker, the officer, the frontage | a pitch on the boards → an officer crosses → moved on, paid, or docketed | takings line, lurker and merchant standing, docket on report |
+| INC-STOCKOUT | SYS-04/06 restock cycle: realised demand over `opening_stock`'s depth | the keeper, the customer, the next counter | the line empties → the board changes → a substitute, a favour, or a re-order | stock lines at two named counters, work order, keeper standing |
 
 **Tick:** ≥2 meaningful incidents/station-hour **within fixed probe volumes — the district
 cell holding the player plus its adjacent cells, fixed at tick start** (never a floating

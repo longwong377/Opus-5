@@ -633,23 +633,35 @@ jobs:
         continue-on-error: true
         run: python3 station/consequence.py --gate
 
-      # THE INCIDENT GENERATOR -- P1-G3 / SYS-14. Twenty-two classes whose
-      # rates come from station state that already exists (traffic.hall_rate,
+      # THE INCIDENT GENERATOR -- P1-G3 / SYS-14. THIRTY classes whose rates
+      # come from station state that already exists (traffic.hall_rate,
       # traffic.berths_in_use, security.hostility, audio.species_mix,
       # schedule.ROLE_WEIGHTS, arrival.checks sampled through its own code
-      # path, costume.ERA_EVENTS) rather than being authored, drawn per
-      # one-minute step over all 128 register places.
+      # path, costume.ERA_EVENTS, and -- for the lived-in half added in 4o --
+      # rooms.bays_in's dwelling count, schedule.RHYTHMS' species clocks,
+      # consequence.py's rung ladder, economy.LADDER's rents and
+      # economy.opening_stock's depth) rather than being authored, drawn per
+      # one-minute step over every register place. It reads
+      # len(directory.PLACES) and the spec's own class count rather than any
+      # literal, so it does not need editing when either grows -- which is the
+      # same defect as a hardcoded 128 and was removed for the same reason.
       #
       # The class table is checked against `docs/spec/PLACES.md` §0.2 AND
       # `docs/spec/SYSTEMS.md` SYS-14 by PARSING BOTH FILES, both directions --
-      # a class here with no spec row, or a spec row with no class, fails.
+      # a class here with no spec row, or a spec row with no class, fails; and
+      # the COUNT is the spec's count, not a literal in the module.
       #
-      # ~97 s: a 60-minute headless window over the whole station, five
+      # ~140 s: a 60-minute headless window over the whole station, five
       # headless station-days (day 1, day 2 carried, day 2 fresh, the 4x-step
-      # control, the S2E01 control), the three-stance replay of all 22 classes,
-      # and six negative controls. It does NOT build geometry -- it reads
-      # rooms.bays_in for the tiling count and nothing else -- so it does not
-      # contend with the deck gates.
+      # control, the S2E01 control), the three-stance replay of all 30 classes,
+      # and eleven negative controls -- including the SUBTRACTION that is the
+      # lived-in half's own before/after, the sealed Markab quarter (10 built
+      # units, no residents, 0.0000/h of domestic incident, so a rate that used
+      # unit count rather than households present would fire in an empty tomb),
+      # and the count of classes that book somebody into the brig with the
+      # player ABSENT -- 4 of the original 22, 0 of the 8 added. It does NOT
+      # build geometry -- it reads rooms.bays_in for the tiling count and
+      # nothing else -- so it does not contend with the deck gates.
       - name: The incident generator
         id: sincident
         continue-on-error: true

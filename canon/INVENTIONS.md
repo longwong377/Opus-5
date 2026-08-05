@@ -7387,3 +7387,137 @@ the duplicate the table exists to prevent and would leave thirteen identical "ga
 **Overturned by.** A source establishing a single, physically distinct Narn reception hall — in
 which case it becomes a PLACE with its own key, and the alias stays as it is.
 **Authority 5.** `station/npc/resident.py::WORKPLACE_FUNCTIONS`.
+
+## INV-380 — A residence row's dwelling count is its bay count, and the camps are 4.7× overcrowded
+
+**What.** A `residence`/`informal_residence` register row's dwelling count is `rooms.bays_in`,
+and its household size is that block's own peak occupancy divided by it. Measured: **3.07
+people per unit** in every EA-standard block (`qtr_personnel` 3.07, `qtr_civilian` 3.07,
+`qtr_transient` 3.09, `alien_resident_qtr` 3.14), 2.21 in the Alien Sector, **9.23 in
+`downbelow` and 14.29 in `downbelow_arch`**. 13 rows, 7,587 units, 60,557 residents at peak.
+**Why.** Every domestic incident rate is per HOUSEHOLD — a dispute across a bulkhead, a door
+that will not open, a week's rent — and nothing in this project counted households.
+**Constrained by.** `docs/spec/PLACES.md` §0.2's staffing rule states the unit rule outright:
+"In residence classes every UNIT carries its door/babcom/locker/bunk set, so a class tag there
+counts once per unit (a 270-unit block holds 270 T3 babcom terminals)". The bay count IS the
+unit count by the spec's own words, for the same reason INV-350 uses it as the machine count.
+The household size is then not chosen at all: it is the quotient of two mechanisms that had
+never been pointed at each other — `rooms.tiling`'s footprint instancing and
+`populace.occupancy`'s density integral — and they agree to two decimal places across four
+blocks built by different generators.
+**Overturned by.** Any depicted B5 quarters occupancy, or a change to either mechanism that
+breaks the agreement — which is why `incident._selftest` asserts the bracket (1.5–7.0 per unit
+across tenanted blocks, and >3× that in `downbelow_arch`) rather than recording the number.
+**Authority 5** for the reading; the numbers are measured.
+`station/incident.py::units_in`, `household_size`, `households_home`.
+*Note: the 3.07 : 14.29 ratio is the first quantitative statement of Downbelow's overcrowding
+anywhere in this project, and the register produced it rather than anybody authoring it.*
+*Second note, and it is a GAP rather than an invention. `resident.home_for` over
+`schedule.ROLE_WEIGHTS` houses 250,001 people; the register's built residence rows hold 60,557
+at peak — **24.2%**. The rest sleep in quarters the register does not carry. Every rate in
+`incident.py` is per household PRESENT, so a player standing in one block sees that block
+rather than the station's notional 250,000 — INV-350's denominator lesson the other way round.
+Closing the shortfall belongs to `directory.py` and `rooms.tiling`, not to the generator.*
+
+## INV-381 — One dispute per household every two months, and the rent margin that made arrears endogenous
+
+**What.** `DISPUTES_PER_UNIT_YEAR = 6.0`, weighted by the block's own clock mismatch.
+`MEALS_PER_DAY = 3.0`, `MUSTER_DAYS_PER_WEEK = 7.0`, `RENT_MISS_SHARE = 1 − 4.7/7 = 0.329`,
+`RENT_DAY_H = 9.0`.
+**Why.** THE-STATION's scope clause wants "NPCs with quarters, jobs, schedules and events — not
+crowds, residents", and before this the only thing that could happen in a home was a fitting
+wearing out (INC-FAULT) and a smuggling route crossing the Alien Sector (INC-DUST).
+**Constrained by.** FROM ABOVE: LAW-CRIME §8.2's commonest *crime* is petty theft at
+"dozens/day", read by INV-351 as 36. At 12/unit/year the station runs 251 disputes a day —
+seven times its whole crime rate and more than every other class combined, and a residential
+corridor becomes a soap opera. FROM BELOW: at 1/unit/year a player who lives aboard for a
+season never hears one. Six measures at **82.1/day**, 2.3× the petty-theft rate — the right
+sign as well as the right order, because the commonest thing in a block of flats is not a crime
+and should be commoner than the commonest crime.
+**The rent margin is DERIVED and it refuted the first draft of INC-ARREARS.** Priced off
+`economy.ladder` and `economy.casual_constraint()`: a week's cheapest tenancy is **6.0 cr =
+0.75 days** of casual labour; a week's food is **31.5 cr = 3.94 days**. Rent is a fifth of the
+food bill, so no working household falls behind on rent alone; a household clears subsistence
+on 4.7 of the muster's 7 days, and `RENT_MISS_SHARE` is the 1 − 4.7/7 a stopped earner cannot
+cover. INC-ARREARS therefore carries no rate of its own and reads INC-SICK's pool.
+**Overturned by.** Any depicted B5 residential complaint procedure; any stated B5 wage or rent
+that breaks the 5:1 food-to-rent ratio.
+**Authority 5.** `station/incident.py::DISPUTES_PER_UNIT_YEAR`, `RENT_MISS_SHARE`,
+`weekly_subsistence_cr`, `clock_mismatch`.
+
+## INV-382 — The camps' own service economy: 136 pitches, one event each per ten days
+
+**What.** `SERVICE_PITCH_HEADS = 12.0` (people one camp kitchen, still, laundry or barber's
+chair serves) and `SERVICE_EVENT_PER_PITCH_DAY = 0.10`. Over `schedule.ROLE_WEIGHTS`' 20,390
+lurkers and LAW-CRIME §7.2's stated 8% share that is **136 pitches and 13.6 events a
+station-day**.
+**Why.** LAW-CRIME §7.2's own gloss on that row is the reason the class exists: "This is the
+one that makes it a community rather than a pit." Downbelow had eight incident classes and
+every one of them was a crime.
+**Constrained by.** The 8% is the document's, stated. `SERVICE_PITCH_HEADS` is bracketed by
+that same table: at 1 the share means every eighth lurker runs a business for nobody; at 100 a
+camp of 39,262 holds sixteen kitchens, which is a queue rather than a community.
+`SERVICE_EVENT_PER_PITCH_DAY` is bracketed above by `security.DOWNBELOW_CONTACT_PER_HOUR =
+1.5/h` — the camp's kitchens must not be a commoner event than being robbed in it — and below
+by the document's own word for the work, "continuous".
+**Overturned by.** Any depiction of Downbelow's internal economy.
+**Authority 5.** `station/incident.py::SERVICE_PITCH_HEADS`, `SERVICE_EVENT_PER_PITCH_DAY`.
+
+## INV-383 — The clinical presentation rate, bracketed by the built beds and the medical roster, with nothing picked between
+
+**What.** `BED_DAYS = 3.0`, `ADMIT_OCCUPANCY = 0.80`, `CLINICAL_SHARE = 0.25`,
+`CONSULT_HOURS = 0.5`, and the presentation rate is the **geometric mean of the two bounds
+those produce**: 390.3 presentations a station-day, 0.570 per head per year, 3.5% of capacity.
+**Why.** THE-STATION's scope wants the physical plant that makes 250,000 people possible, and
+"somebody needs a doctor near you" is the commonest meaningful thing that happens in a
+population that size. Nothing in canon gives a morbidity rate.
+**Constrained by.** INV-350's shape, reused deliberately rather than reinvented — that entry's
+own lesson is that a fix applied to an instance and not to the rule will be needed again.
+THE FLOOR: `rooms.bays_in` × the register's `diagnostic_bed` rows = **51 built beds**; held for
+`BED_DAYS` at `ADMIT_OCCUPANCY` they need **13.6 admissions a day** to stay full, and a station
+whose built beds stand empty is not modelling illness at all. THE CEILING:
+`schedule.ROLE_WEIGHTS`' **2,800 `medical`** at `CLINICAL_SHARE` of an 8 h watch and
+`CONSULT_HOURS` a case = **11,200 attendances a day**; above it the medlabs are a queue that
+never clears. The two are three orders apart (0.0199 to 16.35 episodes/head/year) and canon
+puts nothing between them. **When a quantity is bracketed by two DERIVED bounds and nothing
+sits inside, the geometric mean is the only value equally far from being refuted by either
+end** — so that is what is used, and it is computed rather than transcribed so it moves if
+either bound does.
+**Overturned by.** Any figure for B5 medlab throughput, bed count or medical staffing.
+**Authority 5.** `station/incident.py::presentations_per_day`, `BED_DAYS`, `ADMIT_OCCUPANCY`,
+`CLINICAL_SHARE`, `CONSULT_HOURS`.
+*Note, and it is a finding rather than a number: 2,800 medical staff against 51 built beds is
+**55 staff per bed**. The register's medlabs are a fraction of the medical plant a quarter of a
+million people need, exactly as its built dwellings are a fraction of their housing. Both are
+printed by `--report` rather than absorbed into a rate.*
+
+## INV-384 — Move-ons per officer-hour, strays per child-year, and the harm share
+
+**What.** `MOVEONS_PER_OFFICER_H = 0.20`, `STRAYS_PER_CHILD_YEAR = 6.0`,
+`STRAY_HARM_SHARE = 0.10`.
+**Why.** LAW-CRIME §7.2 states that 8% of the lurker workforce beg and busk at "the boundary
+between Downbelow and the commercial rings. **Never inside the Zocalo** — they are moved on",
+and `resident._age` is the only statement anywhere in this project that children exist aboard.
+Neither had a rate.
+**Constrained by — MOVE-ONS.** FACTIONS §11.4's enforcement sentence: "~150 officers on duty
+across 8 km. Crime is not policed, it is contained at chokepoints" — and a move-on IS
+containment at a chokepoint. It is also the one class here where policing is the DRIVER, the
+exact inverse of INV-351's recorded lesson: a theft happens despite the officers, a move-on
+cannot happen without one, so `security.presence_at`'s officer count IS the rate and the class
+is silent in Downbelow (zero officers) without a place list saying so. ABOVE: at 1.0 the
+Zocalo's 12.92 officers do nothing else all watch and the whole duty roster is consumed.
+BELOW: at 0.05 a busker is moved on once every fifty working days and "never inside the Zocalo"
+is not true. 0.20 gives **92.7–98.7 move-ons a station-day** against LAW-CRIME's 1,631-strong
+busking workforce — **one per busker per 16.5–17.6 working days**, which is the sanity check
+INV-350's `implied_mtbf_days` is for that derivation, and `--report` prints it.
+**Constrained by — STRAYS.** `resident._age`'s own 8% minor rule over `schedule.ROLE_WEIGHTS`'
+three role-less roles gives **6,253 children at the datum and 5,213 before `narn_surrender`
+(2,20)**. ABOVE: at 52/child/year the station runs 893 strays a day, more than every other
+class combined, and Downbelow is a playground. BELOW: at 1/year the station never shows one.
+Six gives **102.8/day at the datum against 85.7 at S2E01**, a +20.0% era step on a class
+nothing era-gates. HARM: bounded above by INC-ACCIDENT's own 100:1 recordable-to-fatal ratio
+(INV-361) and below by zero, which would make the adult-only function list a label rather than
+a hazard.
+**Overturned by.** Any depiction of B5 security's move-on practice, or of children aboard.
+**Authority 5.** `station/incident.py::MOVEONS_PER_OFFICER_H`, `STRAYS_PER_CHILD_YEAR`,
+`STRAY_HARM_SHARE`.
