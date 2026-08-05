@@ -87,6 +87,9 @@ var wages_cr := 0.0
 # everywhere, which hides what is being read.
 var _player
 var _cam: Camera3D
+## The last `read`'s text, held for a few seconds by `interact.gd`. Empty most
+## of the time; drawn under the prompt line when it is not.
+var read_text := ""
 var _interact
 var _face
 ## place key -> [lo, hi] world box, unioned over that place's interactables.
@@ -317,6 +320,13 @@ func _process(delta: float) -> void:
 	var it = null
 	if _interact != null:
 		it = _interact.refresh()
+		# WHAT THE LAST `read` SAID. `interact.gd` holds it for a few seconds
+		# after the press; this draws it. Until session 4p every verb in the
+		# game was a wiggle -- the prop depressed for a few frames and nothing
+		# told the player anything -- so a board with a real arrivals list cut
+		# into its letters said exactly as much as a locker. See MASTER-PLAN
+		# A4b-1: `read` is the first of the eight verbs with a consequence.
+		read_text = String(_interact.read_text())
 	if it != null:
 		prompt_verb = String(it.verb).to_upper()
 		prompt_label = String(it.label).to_upper()
@@ -423,6 +433,7 @@ class Face extends Control:
 		_location(sz, s)
 		_reticle(sz, s)
 		_prompt(sz, s)
+		_read(sz, s)
 		_systems(sz, s)
 
 	# -- primitives ---------------------------------------------------------
@@ -647,6 +658,44 @@ class Face extends Control:
 				maxf(1.0, roundf(s)), false)
 
 	# -- what you can do ----------------------------------------------------
+
+	## WHAT THE THING YOU JUST READ SAYS. Drawn under the prompt, held for a
+	## few seconds by `interact.gd`, then gone.
+	##
+	## THIS IS THE LAST MILE AND IT IS WHY IT EXISTS. `station/interact.py`
+	## derives the text, the sidecar carries it, `interact.gd` holds it -- and
+	## until this function was written none of that reached a player, which is
+	## exactly the shape of the nine built-but-unreachable defects this project
+	## has already produced. The evidence that it works is a frame with words on
+	## it, not a scan that finds a reference.
+	##
+	## Deliberately plain: near-black plate, one cyan keyline, the station's own
+	## monospace-ish tracking. A board reads like a board.
+	func _read(sz: Vector2, s: float) -> void:
+		if h.read_text == "":
+			return
+		var lines: PackedStringArray = h.read_text.split("\n", false)
+		if lines.is_empty():
+			return
+		var px := int(roundf(13.0 * s))
+		var lh: float = px * 1.45
+		var w := 0.0
+		for ln in lines:
+			w = maxf(w, _tracked_width(String(ln).to_upper(), px, 2.0 * s))
+		var pad := 14.0 * s
+		var bw: float = w + pad * 2.0
+		var bh: float = lh * lines.size() + pad * 2.0
+		var x: float = sz.x * 0.5 - bw * 0.5
+		var y: float = sz.y * 0.5 + 132.0 * s
+		draw_rect(Rect2(Vector2(x, y), Vector2(bw, bh)), Color(0, 0, 0, 0.72))
+		_hair(Vector2(x, y), Vector2(x + bw, y), CYAN, s, 1.0)
+		_hair(Vector2(x, y + bh), Vector2(x + bw, y + bh), CYAN, s, 1.0)
+		var ty: float = y + pad + px
+		for ln in lines:
+			_tracked(Vector2(x + pad, ty), String(ln).to_upper(), px, CYAN,
+				2.0 * s)
+			ty += lh
+
 
 	func _prompt(sz: Vector2, s: float) -> void:
 		var a: float = h.hot

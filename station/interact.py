@@ -271,6 +271,100 @@ def provides(group):
 # ---------------------------------------------------------------------------
 # Does a declared use RESOLVE to something a room emits?
 # ---------------------------------------------------------------------------
+# ---------------------------------------------------------------------------
+# WHAT A READ ACTUALLY SAYS
+# ---------------------------------------------------------------------------
+# THE VERB WAS A WIGGLE AND THIS IS THE HALF THAT MAKES ONE OF THEM REAL.
+# `interact.gd::_press` increments a counter, depresses the prop for a few
+# frames and prints a log line -- for EVERY verb, identically. So `read` on an
+# arrivals board showed a player exactly what `open` on a locker showed them:
+# nothing. The module's own header set out to end "357 declarations, 0 verbs";
+# it ended the DECLARATION gap, and the 357/357 statistic measures the half that
+# was closed.
+#
+# NOT ONE LINE HERE IS WRITTEN. Every string is a READING of a module that
+# already had the content and no consumer:
+#
+#   info_board / arrivals   `signage.arrivals_lines(hour, day)` -- the real
+#                           board, the same one the mesh letters are cut from
+#   monitor_wall,           `broadcast.day(day_n)` -- ISN bulletins era-keyed
+#   public_information_*,   through `costume.ERA_EVENTS`, MiniPax notices, the
+#   comms_channel           PA calls, all of which existed and were audible-only
+#   menu_display            `economy` stock and price at THIS counter
+#   level_plaque            the place's own address out of `directory`
+#   station_schematic_*     where you are, and what is adjacent
+#   atmosphere_status_lamp  the place's atmosphere number
+#   neon_sign, sign         the place's own name
+#
+# A token with nothing derivable returns "" and the runtime falls back to the
+# label, which is what it did before. That is deliberate: a `read` that invents
+# a line would be exactly the unmarked invention hard rule 1 forbids.
+# Tokens whose text is a FUNCTION OF THE HOUR. The sidecar is baked, so their
+# string is a snapshot taken at the bake hour and is flagged `live` -- a runtime
+# that wants a board to change through the day refreshes these and leaves the
+# rest alone. Saying which is which here is cheaper than the runtime guessing,
+# and it is the difference between a board that is WRONG at 03:00 and one that
+# is merely not yet refreshed.
+LIVE_READ = ("info_board", "arrivals_board", "departure_board", "monitor_wall",
+             "public_information_monitor", "comms_channel", "babcom_terminal",
+             "isn_screen", "menu_display", "price_board")
+
+_READ_CACHE = {}
+
+
+def read_text(place_key, token, hour=13.0, day=0):
+    """What this readable prop says right now, derived. "" if nothing is."""
+    key = (place_key, token, round(float(hour), 2), int(day))
+    if key in _READ_CACHE:
+        return _READ_CACHE[key]
+    out = ""
+    try:
+        q = dr.by_key(place_key)
+    except Exception:
+        q = None
+    t = token or ""
+    try:
+        if t in ("info_board", "arrivals_board", "departure_board"):
+            import signage                                      # noqa: PLC0415
+            rows = signage.arrivals_lines(hour=hour, day=day)
+            out = "\n".join(str(r) for r in rows[:6])
+        elif t in ("monitor_wall", "public_information_monitor",
+                   "comms_channel", "babcom_terminal", "isn_screen"):
+            import broadcast                                    # noqa: PLC0415
+            calls = broadcast.day(day)
+            near = [c for c in calls
+                    if abs(float(c.get("hour", -99)) - float(hour)) <= 3.0]
+            pick = (near or calls)[:2]
+            out = "\n".join(str(c.get("text", "")) for c in pick)
+        elif t in ("menu_display", "price_board") and q is not None:
+            import economy                                      # noqa: PLC0415
+            lines = []
+            for ln in economy.lines_at(place_key)[:5] \
+                    if hasattr(economy, "lines_at") else []:
+                lines.append(str(ln))
+            out = "\n".join(lines)
+        elif t == "level_plaque" and q is not None:
+            out = ("%s\n%s ring %d deck %d" % (q["name"], q["sector"].upper(),
+                                                q["ring"], q["deck"]))
+        elif t in ("station_schematic_screen", "wayfinding_sign") and q is not None:
+            adj = ", ".join(q.get("adjacent", ())[:4]) or "no marked neighbour"
+            out = "YOU ARE HERE -- %s\nadjacent: %s" % (q["name"], adj)
+        elif t == "atmosphere_status_lamp" and q is not None:
+            fns = set(q.get("functions", ()))
+            if "sealed_volume" in fns:
+                out = "%s\nATMOSPHERE MAINTAINED -- SEALED, NO ENTRY" % q["name"]
+            elif "multi_environ" in fns or "sealed_environment" in fns:
+                out = "%s\nNON-STANDARD ATMOSPHERE -- BREATHER REQUIRED" % q["name"]
+            else:
+                out = "%s\nATMOSPHERE 02 -- STANDARD OXYGEN/NITROGEN" % q["name"]
+        elif t in ("neon_sign", "sign", "shop_sign") and q is not None:
+            out = q["name"]
+    except Exception:
+        out = ""
+    _READ_CACHE[key] = out
+    return out
+
+
 def emitted_tokens(names):
     """The interactables a set of emitted group names actually provides."""
     out = set()
@@ -531,7 +625,7 @@ def tally(rows):
 # ---------------------------------------------------------------------------
 # The sidecar the runtime reads
 # ---------------------------------------------------------------------------
-def sidecar(names, spans=None):
+def sidecar(names, spans=None, hour=13.0, day=0):
     """`godot/scripts/interact.gd`'s half of the contract, as plain data.
 
     ONE SOURCE FOR THE VERB. The alternative is a copy of the two tables above
@@ -553,7 +647,9 @@ def sidecar(names, spans=None):
         out.append({"group": n, "place": place, "token": tok, "verb": verb,
                     "pressable": verb in PRESSABLE,
                     "responds": verb in RESPONDS,
-                    "label": tok.replace("_", " ")})
+                    "label": tok.replace("_", " "),
+                    "text": read_text(place, tok, hour, day),
+                    "live": tok in LIVE_READ})
     # AND THE ONES THE MODULES NAMED THEMSELVES. `alias_for` needs to know what
     # a place DECLARED, which a group name alone does not carry -- so the names
     # are grouped by the place prefix `deck.build_deck` puts on them and the
@@ -575,7 +671,9 @@ def sidecar(names, spans=None):
             out.append({"group": n, "place": key, "token": tok, "verb": verb,
                         "pressable": verb in PRESSABLE,
                         "responds": verb in RESPONDS,
-                        "label": tok.replace("_", " ")})
+                        "label": tok.replace("_", " "),
+                        "text": read_text(key, tok, hour, day),
+                        "live": tok in LIVE_READ})
     return out
 
 

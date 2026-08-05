@@ -65,6 +65,19 @@ class Item:
 	var label: String = ""
 	var pressable: bool = false
 	var responds: bool = false
+	## WHAT A `read` ACTUALLY SAYS. Derived in `station/interact.py::read_text`
+	## from the modules that already held the content and had no consumer --
+	## `signage.arrivals_lines` for a board, `broadcast.day` for a monitor or a
+	## comms channel, `economy` for a menu, `directory` for a plaque, a
+	## schematic or an atmosphere lamp. Empty means nothing was derivable, and
+	## the prompt falls back to the label exactly as before. NOT ONE LINE IS
+	## WRITTEN HERE: a `read` that invented its text would be the unmarked
+	## invention hard rule 1 forbids.
+	var text: String = ""
+	## True when that text is a function of the hour (a board, a monitor, a
+	## menu). The sidecar is baked, so those are a snapshot at the bake hour and
+	## a runtime that refreshes boards through the day refreshes only these.
+	var live: bool = false
 	var parts: Array[MeshInstance3D] = []
 	var rest: Array[Vector3] = []       # each part's untouched origin
 	var centre := Vector3.ZERO
@@ -152,6 +165,8 @@ func collect(visual: Node, rows: Array, tag: String = "") -> int:
 		it.place = String(row2.get("place", ""))
 		it.token = String(row2.get("token", ""))
 		it.verb = String(row2.get("verb", ""))
+		it.text = String(row2.get("text", ""))
+		it.live = bool(row2.get("live", false))
 		it.label = String(row2.get("label", it.token))
 		it.pressable = bool(row2.get("pressable", false))
 		it.responds = bool(row2.get("responds", false))
@@ -468,10 +483,47 @@ func use() -> bool:
 		if n.dot(away) < 0.0:
 			n = -n
 		it.push = n
-	print("USE %s place=%s token=%s verb=%s response=%s prompt=%s"
+	# THE VERB DOES SOMETHING NOW, FOR ONE VERB. Everything above this line is
+	# what every verb has always done -- count the press, depress the prop,
+	# print a line -- and it is why `read` on an arrivals board showed a player
+	# exactly what `open` on a locker showed them: nothing. `read` is the first
+	# verb with a consequence, and the consequence is that the thing TELLS YOU
+	# WHAT IT SAYS.
+	#
+	# The remaining six are still wiggles and the count says so rather than
+	# hiding it: `read` is 43 declared instances across 36 of the 129 places.
+	# `sit` and `rest` are not even in RESPONDS -- a player can press E on a
+	# chair and not sit down. See MASTER-PLAN A4b-1.
+	_read_text = ""
+	if it.verb == "read" and it.text != "":
+		_read_text = it.text
+		_read_until = _read_hold_s
+	print("USE %s place=%s token=%s verb=%s response=%s prompt=%s%s"
 		% [it.group, it.place, it.token, it.verb,
-			("press" if it.responds else "none"), _used_prompt])
+			("press" if it.responds else "none"), _used_prompt,
+			("" if _read_text == "" else " READ=%s"
+				% _read_text.replace("\n", " / "))])
 	return true
+
+
+## What the last `read` said, and how long it stays up. Held rather than latched
+## so a player who walks away is not still reading a board from ten metres.
+var _read_text := ""
+var _read_until := 0.0
+const _read_hold_s := 6.0
+
+
+## The text the last `read` produced, "" once it has timed out. `hud.gd` draws
+## this under the prompt line.
+func read_text() -> String:
+	return _read_text
+
+
+func _tick_read(delta: float) -> void:
+	if _read_until > 0.0:
+		_read_until -= delta
+		if _read_until <= 0.0:
+			_read_text = ""
 
 
 var _used_prompt := ""
@@ -515,6 +567,7 @@ var _scanned_frame: int = -1
 
 func _physics_process(_delta: float) -> void:
 	refresh()
+	_tick_read(_delta)
 	# A PROMPT FOR SOMETHING THAT IS NO LONGER LOADED. `release()` clears it, so
 	# on a correct build this is zero; with `--no-unwire` the Item survives its
 	# cell and the eye happily offers to operate a console that has been
