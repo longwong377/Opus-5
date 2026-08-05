@@ -1,6 +1,80 @@
 # Project State
 
-**Last updated:** 2026-08-02 · **Session 4s** — **a sidestep that begins on contact is not a sidestep; and the bump gate was reporting an empty sample** · **4r** — **the thing blocking the corridor was a person, and I put them there: 28 m → 238 m** · **4q** — **the free path has a gate, and it found the corridor is blocked 27 m from the spawn** · **4p** — **the deck streams: 657,880 resident triangles become 127,204** · **4o** — **a cell boundary was cutting doors and people in half** · **4n** — **the deck cuts into loadable cells, and the loader's real obstacle is named** · **4m** — **the streaming cell budget met a real deck, and the design survives** · **4l** — **the resident-triangle gate was about the deck; the build also loads 321,664 triangles of people** · **4k** — **every walker on the station was bald, for 188 triangles** · **4j** — **the 21 exposure frames describe the code again, and the verdict did not move** · **4i** — **every curved surface in the project was flat-shaded, and the crease angle is measured off the station** · **4h** — **IT IS PLAYABLE: press Play and you are standing in Blue Sector** · **4g** — **the Babcom terminal is a built device, and it shipped a logged mistake once before the log caught it** · **4f** — a per-token verb override · **4e** — **the naming-mismatch class is CLOSED: built-but-misnamed 26 → 0, resolving 302/357** · **4d** — **the bespoke rooms' interactables were never unbuilt, they were unnamed: 259/357 → 284/357** · **4c** — **the station is INTERACTABLE, the port is on a wall, and the 24-minute suites were one bad cache key** · **4b** — a police force, friction in metres, the plated shell, the fitting-reach fix
+**Last updated:** 2026-08-02 · **Session 4t** — **the cast are solid, and one of them is standing in the doorway** · **4s** — **a sidestep that begins on contact is not a sidestep; and the bump gate was reporting an empty sample** · **4r** — **the thing blocking the corridor was a person, and I put them there: 28 m → 238 m** · **4q** — **the free path has a gate, and it found the corridor is blocked 27 m from the spawn** · **4p** — **the deck streams: 657,880 resident triangles become 127,204** · **4o** — **a cell boundary was cutting doors and people in half** · **4n** — **the deck cuts into loadable cells, and the loader's real obstacle is named** · **4m** — **the streaming cell budget met a real deck, and the design survives** · **4l** — **the resident-triangle gate was about the deck; the build also loads 321,664 triangles of people** · **4k** — **every walker on the station was bald, for 188 triangles** · **4j** — **the 21 exposure frames describe the code again, and the verdict did not move** · **4i** — **every curved surface in the project was flat-shaded, and the crease angle is measured off the station** · **4h** — **IT IS PLAYABLE: press Play and you are standing in Blue Sector** · **4g** — **the Babcom terminal is a built device, and it shipped a logged mistake once before the log caught it** · **4f** — a per-token verb override · **4e** — **the naming-mismatch class is CLOSED: built-but-misnamed 26 → 0, resolving 302/357** · **4d** — **the bespoke rooms' interactables were never unbuilt, they were unnamed: 259/357 → 284/357** · **4c** — **the station is INTERACTABLE, the port is on a wall, and the 24-minute suites were one bad cache key** · **4b** — a police force, friction in metres, the plated shell, the fitting-reach fix
+
+## Session 4t — THE CAST ARE SOLID, AND ONE OF THEM IS STANDING IN THE DOORWAY
+
+### 1. A re-pack that enumerates its fields drops the next one
+
+`populace` measures a capsule off each individual's own mesh — `body_capsule`, whose docstring
+says it is *"carried in the actor record, applied by the runtime"* — and writes `r_m`/`h_m` into
+the room's actor record. It always did.
+
+**`deck.build_deck` then re-packs each actor from room-local into ring coordinates by building a
+new dict and naming the fields it carries across. It named seven of nine.** The two it dropped were
+the capsule, so every baked inhabitant on the station reached `npc.gd::_give_body` with `r_m = 0`,
+which returns early — and all of them were walk-through. Nothing in between was wrong; the
+measurement was made, and a hand-written field list lost it.
+
+Fixed, and gated in the module that does the re-packing:
+
+| check | |
+|---|---|
+| every field of an actor record survives the re-pack | asserts the **field set**, not one field — an enumerating re-pack drops the next one somebody adds, in the same silence |
+| every inhabitant carries a capsule | 21 of 21 |
+| measured per individual rather than a constant | **12 distinct radii** across 21, 0.244–0.320 m; heights 1.61–1.95 m |
+
+`deck.py` **54/54**.
+
+### 2. The bump gate says something now, and both sides fire
+
+```
+a person is SOLID: walking straight at Mateo Allan (r 0.26 m) the body is stopped
+0.62 m away; control: with their capsule off it reaches 0.03 m and walks through them.
+```
+
+4s left this reporting "0.04 m with the capsule on and 0.04 m with it off" — an empty sample
+dressed as a refutation, because there was no candidate to walk into at all.
+
+### 3. AND `--deck` WENT RED, WHICH IS THE FIX WORKING
+
+```
+FAIL  deck blue/0/0  got within 3.86 m of docking_bays from 6.3 m away -- the way in is blocked
+```
+
+Making 21 people solid revealed where they are standing:
+
+```
+2 inhabitants between the corridor and the room, z 7117.5-7121.0:
+   z=7118.23  r_m=0.262  Mateo Allan     (standing)
+   z=7117.62  r_m=0.278  Nadia Alexander (standing)
+```
+
+**Mateo Allan is standing in the doorway** — and he is the same person the bump test walks into.
+`populace.populate` places bodies against furniture, floor area and species friction; it has never
+been told where the door is, because until this session it did not matter. A hologram in a doorway
+is invisible.
+
+This is left RED with the cause named, as 4m and 4r were. It is a genuine defect that was
+previously unobservable, not a regression: the alternative is to make people walk-through again so
+the gate goes green, which is the shape of thing this project's rules exist to refuse.
+
+### 4. Gates
+
+| gate | result |
+|---|---|
+| `station/deck.py` | **54/54** (was 50/50 — four new) |
+| `walkable.py --deck blue/0/0 --bump` | **PASS** on the bump, subject and control both firing |
+| `walkable.py --deck blue/0/0` | **FAIL** — the way into `docking_bays` is blocked by an inhabitant, §3 |
+
+### 5. NEXT
+
+- **Keep the doorway clear of solid bodies.** `deck.py` knows the door position — it builds the
+  aperture and the vestibule — and `populace` does not. The cheapest correct place is the re-pack:
+  an actor whose position lies in the passage gets moved aside by the minimum that clears the
+  aperture, rather than dropped, because a room with fewer people in it is a worse answer.
+- The walk gate still asserts path length, not net displacement.
+- The near figure's silhouette is 32-gon faceted at 1 m; the affordable fix is runtime skinning.
 
 ## Session 4s — A SIDESTEP THAT BEGINS ON CONTACT IS NOT A SIDESTEP
 

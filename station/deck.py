@@ -1121,6 +1121,20 @@ def build_deck(schema, profile, sector, ring, deck, with_rooms=True,
                 # preserved, and `npc.gd` derives those two directions from the
                 # body's OWN position, which is where the ring angle enters.
                 "yaw": act["yaw"],
+                # WHAT A PLAYER BUMPS INTO, AND THIS LINE IS WHY THEY DID NOT.
+                # `populace` measures a capsule off each individual's own mesh
+                # -- 0.269 m for a human, 0.414 for a Vorlon in an encounter
+                # suit -- and writes it into the room's actor record. This
+                # re-pack, which exists to move the actor from room-local into
+                # ring coordinates, listed the fields it carried across and
+                # these two were not among them. So every one of the 21 baked
+                # inhabitants on a deck arrived at `npc.gd::_give_body` with
+                # `r_m = 0`, which returns early, and all of them were
+                # holograms. The `--bump` gate reported "not solid" and was
+                # comparing an empty sample: session 4s.
+                #
+                # A RE-PACK THAT ENUMERATES ITS FIELDS DROPS THE NEXT ONE TOO.
+                "r_m": act.get("r_m", 0.0), "h_m": act.get("h_m", 0.0),
             })
 
         # And the passage joining it to the corridor, so the doorway frames a
@@ -1301,6 +1315,37 @@ def _selftest():
 
     v, t, g, s = build_deck(schema, profile, "blue", 0, 0, max_rooms=4)
     check("a deck assembles", len(t) > 0, str(s)[:120])
+
+    # -- THE ACTOR RECORD SURVIVES BEING RE-PACKED -------------------------
+    # `build_deck` moves each room's actors from room-local into ring
+    # coordinates by building a NEW dict and naming the fields it carries
+    # across. It named seven of nine, and the two it dropped -- `r_m` and
+    # `h_m` -- are the capsule, so `npc.gd::_give_body` returned early on every
+    # baked inhabitant on the station and all of them were walk-through. The
+    # `--bump` gate said "not solid" for four sessions while comparing an empty
+    # sample, because with no candidate it steered at the room target twice.
+    #
+    # The assertion is on the FIELDS, not on one of them: an enumerating
+    # re-pack drops the next field somebody adds, in exactly the same silence.
+    acts = s.get("actors", ())
+    check("a deck has a cast", len(acts) > 0, f"{len(acts)} actors")
+    if acts:
+        want = {"group", "place", "who", "pose", "x", "y", "z", "yaw",
+                "r_m", "h_m"}
+        missing = sorted(want - set(acts[0]))
+        check("every field of an actor record survives the re-pack",
+              not missing, f"the ring-frame record is missing {missing}")
+        solid = [a for a in acts if float(a.get("r_m", 0.0)) > 0.0]
+        check("...and every inhabitant carries a capsule to bump into",
+              len(solid) == len(acts),
+              f"{len(solid)} of {len(acts)} have r_m > 0")
+        # AND IT IS THE MEASURED ONE, not a default somebody filled in. A human
+        # measures 0.269 m about their own axis and a Vorlon 0.414; a column of
+        # identical radii would mean a constant had been substituted for the
+        # measurement `populace.body_capsule` makes off each body's own mesh.
+        radii = {round(float(a["r_m"]), 3) for a in solid}
+        check("...measured per individual rather than a constant",
+              len(radii) > 1, f"{len(radii)} distinct radii across {len(solid)}")
 
     # -- CUTTING THE DECK INTO CELLS LOSES NOTHING -------------------------
     # THE FAILURE THIS GUARDS IS INVISIBLE IN A RENDER. A partition that drops
