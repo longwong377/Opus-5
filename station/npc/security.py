@@ -477,6 +477,121 @@ def patrol(place_key: str, index: int = 0, seed: str = "b5") -> dict:
             "armbands": sum(1 for o in officers if o["armband"])}
 
 
+# ===========================================================================
+# 4b.  THE PATROL IN A CORRIDOR -- an event, not furniture
+# ===========================================================================
+#
+# WHAT WAS MISSING. `presence_at` answers "how many officers are in this ROOM",
+# and `beat` answers "how long is a circuit". Neither answers the question the
+# owner's scope actually asks -- *"the friction between them visible in a
+# corridor"* -- which is **is there a patrol on this arc right now, and when**.
+#
+# THE DUTY CYCLE IS THE WHOLE ANSWER AND IT IS DERIVED. LAW-CRIME §2.5: "Patrol
+# beat: one outermost-ring deck arc, out and back." So a roving pair occupies
+# ONE deck arc at a time. `roving_pairs(hour)` of them, over the `ring_decks()`
+# arcs the station has, gives the fraction of the time any one arc has a pair
+# on it:
+#
+#     13:00  ->  59 pairs / 251 decks  =  23.5% of the time
+#
+# which is exactly the shape LAW-CRIME describes -- "Zocalo continuous, Red and
+# Blue 30 min, Green 60 min, Grey 3-4 h, Downbelow zero" -- without any of
+# those four numbers being typed in. A patrol is an EVENT in a corridor, and a
+# model that leaves one standing there permanently gets the station wrong in
+# the direction that matters: the reason Downbelow is Downbelow is that nobody
+# comes.
+#
+# PLACES WITH A POST ARE THE EXCEPTION, and `POSTS` already carries them: an
+# arc serving `docking_bays` and `bay_elevators` has four pairs STANDING on it
+# continuously whatever the roving cycle says. `corridor_patrol` returns both
+# kinds and labels which is which, because a patrol that walks past and a post
+# that is always there produce different corridors.
+
+_RING_DECKS = []
+
+
+def ring_decks(schema=None, profile=None) -> int:
+    """How many ring deck arcs the station has. `navigation.cell_plan`'s own.
+
+    NOT a constant. 251 today; it moves when the station's addressing does,
+    and a duty cycle written against a stale denominator is a patrol frequency
+    that quietly drifts.
+    """
+    if _RING_DECKS and schema is None:
+        return _RING_DECKS[0]
+    if schema is None:
+        schema, profile = it.load()
+    n = len(nav.cell_plan(schema, profile)[0])
+    if not _RING_DECKS:
+        _RING_DECKS.append(n)
+    return n
+
+
+def patrol_duty_cycle(hour: float, schema=None, profile=None) -> float:
+    """The fraction of the time one ring deck arc has a roving pair on it."""
+    n = ring_decks(schema, profile)
+    return min(1.0, roving_pairs(hour) / max(1, n))
+
+
+def corridor_patrol(deck_id: str, arc_len_m: float, walk_speed_ms: float,
+                    hour: float, window_s: float, served=(), seed: str = "b5",
+                    schema=None, profile=None) -> dict:
+    """Who is policing this arc over `window_s` seconds, and when.
+
+    Returns
+        posts     ((place_key, pairs, patrol_dict), ...)  standing, always
+        visits    ((t_enter_s, t_leave_s, patrol_dict, way), ...)  roving
+        cycle     the duty cycle the visits were drawn from
+        officers  every officer either kind puts on the arc
+
+    Every patrol is a real `patrol()` -- two named officers with the one-band-
+    one-bare split guaranteed -- so the armband a corridor behaviour keys on is
+    the same armband `costume.py` hangs on the sleeve in the render.
+
+    THE PHASE IS SEEDED ON THE DECK, NOT ROLLED. Two runs of the same deck at
+    the same hour see the same patrol arrive at the same second, which is what
+    makes a before/after of anything else on this corridor readable.
+    """
+    v = max(0.1, float(walk_speed_ms))
+    cross_s = arc_len_m / v                       # one traverse of the arc
+    cycle = patrol_duty_cycle(hour, schema, profile)
+
+    posts = []
+    for i, (key, pairs, _c, _a, _w) in enumerate(POSTS):
+        if key in served:
+            posts.append((key, pairs, patrol(key, i, seed)))
+
+    # How many traverses fall in the window: `cycle` of the time occupied, each
+    # occupancy lasting one traverse.
+    visits = []
+    n_visits = cycle * window_s / max(1e-6, cross_s)
+    whole = int(n_visits)
+    frac = n_visits - whole
+    # The fractional visit is not rounded away: it is a visit that starts late
+    # enough that only `frac` of it lands inside the window. Rounding it to
+    # zero is how a 23% duty cycle becomes "no patrol, ever" on every deck the
+    # station has.
+    total = whole + (1 if frac > 0 else 0)
+    if total:
+        step = window_s / total
+        for k in range(total):
+            ph = res._u(f"{seed}/{deck_id}/patrol", str(k))
+            t0 = k * step + ph * max(0.0, step - cross_s * min(1.0, frac if
+                                                              k == total - 1
+                                                              else 1.0))
+            way = 1.0 if res._u(f"{seed}/{deck_id}/way", str(k)) < 0.5 else -1.0
+            visits.append((t0, min(window_s, t0 + cross_s),
+                           patrol(f"{deck_id}#{k}", k, seed), way))
+    officers = []
+    for _k, _p, pt in posts:
+        officers.extend(pt["officers"])
+    for _t0, _t1, pt, _w in visits:
+        officers.extend(pt["officers"])
+    return {"posts": tuple(posts), "visits": tuple(visits), "cycle": cycle,
+            "cross_s": cross_s, "officers": tuple(officers),
+            "armbands": sum(1 for o in officers if o["armband"])}
+
+
 def presence_at(place_key: str, hour: float, schema=None, profile=None,
                 G=None) -> dict:
     """Officers a player can see in one place at one hour.
@@ -1138,6 +1253,42 @@ def _selftest(out=print):                                       # noqa: C901
           "call, which is what the sweep was doing", f"{naive_calls}")
     out(f"  memo: 50 calls -> {memo_calls} cell_plan build(s); "
         f"control (memo cleared each call) -> {naive_calls}")
+
+    # -- the patrol in a corridor ----------------------------------------
+    n += 1
+    rd = ring_decks()
+    check(200 < rd < 320,
+          "the station has a ring deck count and it comes from "
+          "`navigation.cell_plan` rather than from a constant here",
+          f"{rd}")
+    n += 1
+    cyc = patrol_duty_cycle(13.0)
+    night = patrol_duty_cycle(3.0)
+    check(0.0 < night < cyc < 1.0,
+          "one deck arc has a roving pair on it for a FRACTION of the hour, "
+          "and less of it at 03:00 than at 13:00 -- LAW-CRIME 2.5's beat, "
+          "which is a visit and not a fixture",
+          f"{cyc * 100:.1f}% at 13:00, {night * 100:.1f}% at 03:00")
+    n += 1
+    cp = corridor_patrol("blue/0/0", 1273.0, 1.2, 13.0, 3600.0,
+                         served=("docking_bays", "bay_elevators"))
+    check(cp["visits"] and all(0.0 <= a < b <= 3600.0
+                               for a, b, _p, _w in cp["visits"]),
+          "a patrol enters and leaves the arc inside the window, at a second "
+          "the deck's own seed decides",
+          str([(round(a), round(b)) for a, b, _p, _w in cp["visits"]]))
+    n += 1
+    check(cp["armbands"] and cp["armbands"] < len(cp["officers"]),
+          "and every pair it puts on the arc is one band and one bare sleeve "
+          "-- `patrol()`'s guarantee, carried into the corridor",
+          f"{cp['armbands']} of {len(cp['officers'])}")
+    n += 1
+    quiet = corridor_patrol("grey/0/0", 1273.0, 1.2, 13.0, 3600.0, served=())
+    check(not quiet["posts"],
+          "a deck serving no posted place gets no post -- LAW-CRIME 2.4's "
+          "'Downbelow: NO PERMANENT POST' is the shape of this, not an "
+          "exception to it",
+          str([k for k, _p, _q in quiet["posts"]]))
 
     # -- the gazetteer is actually read ----------------------------------
     n += 1

@@ -188,6 +188,112 @@ def _league_split(a: str, b: str) -> bool:
             or (b in LEAGUE and a in GREAT_POWERS))
 
 
+# ===========================================================================
+# 2b.  THE MULTI-FACET QUERY -- a person is a species AND a job
+# ===========================================================================
+#
+# WHY THIS IS HERE AND NOT WHERE IT WAS. `PAIRS` is mixed-vocabulary: a row's
+# side may be a species key or a role key, so the join between two PEOPLE and
+# this table is a cross product, and `pair()` above takes two bare strings and
+# cannot do it. The only correct implementation in the project lived in
+# `station/dialogue.py` -- a PLAYER-FACING module -- which meant the corridor
+# could not ask the question the conversation could.
+#
+# That is CLAUDE.md's own rule inverted: *a gate belongs in the module that
+# builds the thing.* The table is here, so the query is here.
+# `npc/faction.facets` supplies the keys and asserts against `dialogue._facets`
+# so the two readings cannot drift.
+#
+# THE WILDCARD TRAP, kept from dialogue.py because it cost a session there:
+# `("human", "*")` is FACTIONS.md 12's human vs **ALIEN** row, and a cross
+# product that offers it `("human", "visitor")` matches, because `visitor` is
+# not `human`. A `*` side must be filled by a SPECIES. Nothing else is
+# "anyone else".
+_SPECIES_KEYS = frozenset(sched.ROLE_WEIGHTS)
+
+
+def rows(x: str, y: str, datum=None, witness=None):
+    """Every acceptable row for the ordered key pair `(x, y)`.
+
+    NOT `pair()`, which collapses to the strongest row before returning -- so
+    when a human meets a telepath it answers with the `("human", "*")` row,
+    which is about aliens, is the same severity, and comes first in the table.
+    The wildcard filter has to run BEFORE the collapse.
+    """
+    out = []
+    for row in PAIRS:
+        pa, pb, _sev, _auth, _why = row
+        if not _match(pa, pb, x, y):
+            continue
+        if pa == "human" and pb == "*" and not _nightwatch_on(datum, witness):
+            continue
+        if "*" in (pa, pb):
+            named = pa if pb == "*" else pb
+            other = y if x == named else x
+            if other not in _SPECIES_KEYS:
+                continue
+        out.append(row)
+    if not out and _league_split(x, y):
+        # THE LEAGUE ROW IS SYNTHESISED AND MUST BE SYNTHESISED HERE, not
+        # fetched from `pair()`. `pair()` collapses to the strongest row AND is
+        # witness-blind, so at the datum it answers a human/Abbai pair with the
+        # Nightwatch row -- which this function has just filtered out for want
+        # of an armband -- and then the old fallback dropped that row for
+        # containing `*` and returned nothing at all. Measured on blue/0/0:
+        # the fallback-through-`pair` version reported 10,803 grievances at
+        # S2E01 against 5,986 at the datum, i.e. the corridor got LESS tense
+        # when the Nightwatch arrived, because an armband nobody could see was
+        # masking the League row rather than outranking it.
+        out.append((x, y, "low", "1",
+                    "League delegations caucus together and are visibly not "
+                    "being consulted"))
+    return out
+
+
+def strongest(a_keys, b_keys, datum=None, witness=None):
+    """`(row, a_key, b_key)` -- the strongest friction between two PEOPLE.
+
+    `a_keys` / `b_keys` are `faction.facets(...)`: species, role and, for a
+    telepath, `telepath`. The matched keys come back with the row because a
+    provenance string that says `pair('human', 'human')` when the row that
+    fired was `('human', '*')` is a source citation that lies.
+    """
+    best = None
+    for x in a_keys:
+        for y in b_keys:
+            for p in rows(x, y, datum, witness):
+                if best is None or SEVERITY[p[2]][0] > SEVERITY[best[0][2]][0]:
+                    best = (p, x, y)
+    return best
+
+
+def _nightwatch_on(datum, witness) -> bool:
+    """Is the Nightwatch row in force for THIS encounter?
+
+    TWO CONDITIONS, AND ONLY ONE OF THEM WAS EVER APPLIED. FACTIONS.md 12's
+    row reads *"a human talking with aliens lowers his voice **when an armband
+    passes**"* -- an era condition AND a witness condition. Everything in this
+    project reads only the era one, which makes every human on the station keep
+    `high` separation (1.35 m) from every alien at every hour, forever. Two
+    consequences, both real and both measured in session 4n:
+
+      * `populace._clear` takes `max(need, separation_m(sp, usp))` for every
+        pair in every room, so 85 humans are held 1.35 m off 49 aliens in the
+        blue/0/0 corridor with no officer within seven kilometres;
+      * on that corridor **14,286 of 16,683** friction-carrying encounters an
+        hour are this row. It is 86% of all friction on the station and its
+        source sentence is about a passing armband.
+
+    `witness=None` KEEPS THE OLD BEHAVIOUR, deliberately: changing the default
+    changes crowd placement on all 128 decks, and that is a re-bake, not a
+    patch. A caller that knows whether an armband is present passes True or
+    False and gets the sourced reading. `npc/encounter.py` is the first one.
+    """
+    if not _era_on(NIGHTWATCH_EVENT, datum):
+        return False
+    return True if witness is None else bool(witness)
+
+
 def separation_m(a: str, b: str, datum=None) -> float:
     """How much room these two leave each other, in metres.
 
@@ -397,6 +503,96 @@ def _selftest(out=print):                                       # noqa: C901
     check("95% as avoidance and 5% as" in txt
           and "contact" in txt,
           "the rule this module is built on is still in FACTIONS.md")
+
+    # -- the multi-facet query, moved here from dialogue.py ----------------
+    n += 1
+    got = strongest(("human", "security"), ("narn", "merchant"))
+    check(got is not None and got[0][0] == "human" and got[0][1] == "*",
+          "a human security officer meeting a Narn merchant matches the "
+          "Nightwatch row at the datum")
+    n += 1
+    got = strongest(("narn", "merchant"), ("human", "command"))
+    check(got is not None and got[0][:2] == ("human", "*"),
+          "and a Narn merchant meeting an EA officer matches the STRONGEST of "
+          "the two rows that apply -- Nightwatch high over narn/command "
+          "medium, not the first in the table",
+          str(got and got[0][:3]))
+    n += 1
+    check(strongest(("human", "visitor"), ("human", "merchant")) is None,
+          "TWO HUMANS DO NOT MATCH THE ALIEN ROW. `('human', '*')` offered "
+          "`('human', 'visitor')` matches on a bare cross product, because "
+          "`visitor` is not `human` -- the trap dialogue.py records paying for",
+          str(strongest(("human", "visitor"), ("human", "merchant"))))
+    n += 1
+    import dialogue as _dlg                                    # noqa: PLC0415
+
+    class _L:                                                  # noqa: D401
+        species, role, psi = "narn", "merchant", False
+    got = strongest(("human", "security"), ("narn", "merchant"))
+    theirs = _dlg.standing(type("S", (), {"species": "human",
+                                          "role": "security",
+                                          "licensed_psi": False})(), _L())
+    check(got is not None and theirs is not None
+          and got[0][:3] == theirs[0][:3],
+          "and it agrees with `dialogue.standing`, which is the second copy "
+          "of this rule -- a change detector, because a corridor and a "
+          "conversation that disagree about who resents whom is worse than "
+          "either being wrong",
+          f"{got and got[0][:3]} against {theirs and theirs[0][:3]}")
+
+    # -- AND WHERE THE TWO COPIES NOW DISAGREE, PINNED ---------------------
+    # `dialogue._rows` still falls through `pair()` for the League bloc, so at
+    # the datum it answers an unwitnessed human/League pair with nothing --
+    # `pair()` collapses to the Nightwatch row, which `_rows` has just filtered
+    # out, and the League row it should have fallen back to is never reached.
+    # That is the defect `rows()` above fixes. It is COUNTED here rather than
+    # described, so it cannot grow while nobody is looking and it disappears
+    # the moment somebody applies the same fix to `dialogue.py`.
+    n += 1
+    _same, _diff = [], []
+    for _sp in sorted(sched.ROLE_WEIGHTS):
+        for _dm in (None, (2, 1)):
+            a = [r[:3] for r in rows("human", _sp, _dm)]
+            c = [r[:3] for r in _dlg._rows("human", _sp, _dm)]  # noqa: SLF001
+            (_same if a == c else _diff).append((_sp, _dm))
+    check(not _diff,
+          "the two copies of the row scan agree on EVERY species at both "
+          "datums, wherever `dialogue._rows` can be asked -- the change "
+          "detector, because a corridor and a conversation that disagree "
+          "about who resents whom is worse than either being wrong",
+          f"{len(_diff)} of {len(_same) + len(_diff)} disagree: {_diff[:4]}")
+    n += 1
+    _w = [_sp for _sp in LEAGUE
+          if [r[:3] for r in rows("human", _sp, witness=False)]
+          != [r[:3] for r in _dlg._rows("human", _sp)]]        # noqa: SLF001
+    check(len(_w) == len(LEAGUE),
+          "...and they differ on every League species the moment the WITNESS "
+          "is applied, which is the capability `dialogue._rows` does not have "
+          "and the reason the scan had to move here: without an armband "
+          "present a human and an Abbai are a League row, not a Nightwatch one",
+          f"{len(_w)} of {len(LEAGUE)}: "
+          f"{[r[2] for r in rows('human', 'abbai', witness=False)]} against "
+          f"{[r[2] for r in _dlg._rows('human', 'abbai')]}")
+
+    # -- THE WITNESS, and it is a finding rather than a feature ------------
+    n += 1
+    with_band = strongest(("human", "visitor"), ("narn", "merchant"),
+                          witness=True)
+    without = strongest(("human", "visitor"), ("narn", "merchant"),
+                        witness=False)
+    check(with_band is not None and with_band[0][2] == "high"
+          and (without is None or without[0][2] != "high"),
+          "the Nightwatch row needs an ARMBAND as well as an era -- "
+          "FACTIONS.md 12 says 'when an armband passes' and nothing in this "
+          "project had ever read the second half of that sentence",
+          f"witness {with_band and with_band[0][2]}, "
+          f"none {without and without[0][2]}")
+    n += 1
+    check(strongest(("human", "visitor"), ("narn", "merchant"))
+          == with_band,
+          "...and the DEFAULT is unchanged, on purpose: witness=None keeps "
+          "the old reading, because flipping it moves every human away from "
+          "every alien on 128 baked decks and that is a re-bake, not a patch")
 
     # ------------------------------------------------------------------
     # NEGATIVE CONTROLS
