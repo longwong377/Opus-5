@@ -37,3 +37,9 @@ __pycache__/
 # A cache that can go stale is a second copy of a computed number; this one is
 # keyed so it cannot, and it does not belong in the repository either way.
 .variety-cache/
+
+# The economy ledger (`station/economy.py`). SESSION STATE, not content: stock
+# levels, tills, wages and purses, written by `dockwork.py --loop` and read by
+# `hud.gd`. Committing it would freeze one playthrough's world into the repo,
+# and `Ledger.fresh()` rebuilds the opening balances from the register.
+station/generated/economy.json

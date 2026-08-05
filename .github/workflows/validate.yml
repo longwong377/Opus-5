@@ -483,6 +483,29 @@ jobs:
           python3 costume.py
           python3 crowd.py
 
+      # THE FRICTION, IN A CORRIDOR, WITHOUT THE PLAYER. `docs/MASTER-PLAN.md`'s
+      # traceability matrix gates the owner's scope line "every major faction
+      # present, with the friction between them visible in a corridor" as "two
+      # factions' members pass; a measurable interaction occurs without the
+      # player". Before this the friction was a spawn radius and a line of
+      # dialogue -- both of them the player's own frame.
+      #
+      # `faction.py` is the 28 FAC blocks as a queryable register (which
+      # factions is this person in). `friction.py` is the distance table and
+      # now the multi-facet query that used to live in `dialogue.py`.
+      # `encounter.py` runs one deck's own walkers round the ring for a
+      # station-hour and reports N encounters / M grievances / K world deltas,
+      # with the frictionless twin as its control. ~50 s all told; the deck
+      # build is 28 s of it.
+      - name: Faction friction in a corridor
+        id: sfaction_friction
+        continue-on-error: true
+        run: |
+          cd station/npc
+          python3 faction.py --selftest
+          python3 friction.py --selftest
+          python3 encounter.py --gate
+
       # Animation and navigation are the two that touch station geometry, so
       # they are the two a schema change can silently break. Slowest gates in
       # the project at ~24 s and ~77 s; both are worth it.
@@ -527,6 +550,42 @@ jobs:
         run: |
           python3 station/agenda.py --selftest
           python3 station/agenda.py --selftest3
+
+      # P1-G1: ONE COMPLETE JOB LOOP -- work, pay, spend, and the world
+      # notices. MASTER-PLAN §A2's third source of hours is "the role: the
+      # player IS someone", gated at complete loops rather than at existence,
+      # so this asserts DENOMINATORS: N shifts worked off the real manifest,
+      # credits before and after, a purchase that leaves a stock and a till
+      # delta, and the delta still there when a second process looks again.
+      #
+      # `--controls` is the half that matters: five removals, each of one
+      # mechanism this landed, each asserted to turn the claim that names it
+      # red. Wages off -> five shifts and the purse never moves, which is
+      # exactly what the project did before this existed.
+      - name: The job loop -- a dock shift, its pay, and a bar that debits
+        id: sjob_loop
+        continue-on-error: true
+        run: |
+          python3 station/economy.py --selftest
+          python3 station/dockwork.py --selftest
+          python3 station/dockwork.py --controls
+
+      # THE NAVIGATION GRAPH, IN THE ENGINE -- P0.6's last item. Until this
+      # existed, `grep -rn Navigation godot/` returned nothing: every route
+      # this project had ever walked was chosen in Python and played back, so
+      # an inhabitant could FOLLOW a route and could not CHOOSE one.
+      #
+      # Three questions, and a denominator rather than an existence proof:
+      # all 741 pairs of walkable z-clusters routed in GDScript at run time and
+      # compared NODE FOR NODE against `route_walk.path_between`; every node
+      # resolved with nothing in the scene tree, with a residency filter as the
+      # control; and one named resident's body walking a route the engine found
+      # after the scene was up. Runs the graph half always; the walk half needs
+      # the collision shells under `station/generated/scene/navwalk/`.
+      - name: The navigation graph is in the engine, and a body walks it
+        id: snavgraph
+        continue-on-error: true
+        run: python3 station/navgraph_export.py --gate
 
       # THE-STATION.md's anti-rig clause, executable: the registry must be
       # producible from the live annexes (every item checked, every pointer
@@ -686,6 +745,8 @@ jobs:
             echo "FAILED: snpc_bodies_costume_and_crowd"; fail=1; fi
           if [ "${{ steps.snpc_animation_and_navigation.outcome }}" != "success" ]; then
             echo "FAILED: snpc_animation_and_navigation"; fail=1; fi
+          if [ "${{ steps.sfaction_friction.outcome }}" != "success" ]; then
+            echo "FAILED: sfaction_friction"; fail=1; fi
           if [ "${{ steps.sspec_gate.outcome }}" != "success" ]; then
             echo "FAILED: sspec_gate"; fail=1; fi
           if [ "${{ steps.sdoc_chain.outcome }}" != "success" ]; then
@@ -698,6 +759,10 @@ jobs:
             echo "FAILED: sroomnav"; fail=1; fi
           if [ "${{ steps.sagenda_selftest.outcome }}" != "success" ]; then
             echo "FAILED: sagenda_selftest"; fail=1; fi
+          if [ "${{ steps.sjob_loop.outcome }}" != "success" ]; then
+            echo "FAILED: sjob_loop"; fail=1; fi
+          if [ "${{ steps.snavgraph.outcome }}" != "success" ]; then
+            echo "FAILED: snavgraph"; fail=1; fi
           if [ "${{ steps.sconfirm_the_schema_still_parses_and_is_f.outcome }}" != "success" ]; then
             echo "FAILED: sconfirm_the_schema_still_parses_and_is_f"; fail=1; fi
           if [ "$fail" != "0" ]; then

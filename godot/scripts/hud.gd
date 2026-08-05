@@ -67,6 +67,18 @@ var prompt_place := ""
 var prompt_m := 0.0
 var hot := 0.0
 
+## THE PURSE. `station/economy.py` writes the world's mutable half -- stock,
+## tills, wages and purses -- to `station/generated/economy.json`, and this is
+## the one number on this face that belongs to the PLAYER rather than to the
+## room they are standing in. It obeys the same rule as everything else here:
+## nothing is invented, the ledger is the only source, and if there is no
+## ledger the line is not drawn at all rather than drawn as zero. A HUD that
+## shows `0 CR` when no economy has run is a HUD asserting a fact nobody
+## computed, which is the defect this file's header is about.
+var credits := -1.0                    # < 0 means "no ledger" -> draw nothing
+var purse_who := ""
+var wages_cr := 0.0
+
 # UNTYPED ON PURPOSE, all three. `_player`'s `gravity_mode`, `_interact`'s
 # `refresh()` and `Face`'s `h` are SCRIPT members, not members of CharacterBody3D,
 # Node or Control -- and GDScript resolves a statically typed variable's members
@@ -131,6 +143,8 @@ func bind(player: Node3D, interact: Node, glb: String,
 		if old != null:
 			old.visible = false
 
+	_wallet()
+
 	_face = Face.new()
 	_face.h = self
 	_face.name = "Face"
@@ -138,6 +152,43 @@ func bind(player: Node3D, interact: Node, glb: String,
 	_face.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(_face)
 	set_process(true)
+
+
+## Read the economy ledger, if a session has written one.
+##
+## The path is derived exactly the way `main.gd` derives `boot.json`'s --
+## `res://` globalised and walked up one -- so there is one description of
+## where the generated tree is and this file does not add a second. Absent
+## file, unreadable file or empty ledger all leave `credits` at -1, and
+## `_systems` draws nothing: no economy has run, so there is nothing true to
+## say about a purse.
+func _wallet() -> void:
+	var path := ProjectSettings.globalize_path("res://").path_join(
+		"../station/generated/economy.json").simplify_path()
+	var f := FileAccess.open(path, FileAccess.READ)
+	if f == null:
+		return
+	var d = JSON.parse_string(f.get_as_text())
+	if typeof(d) != TYPE_DICTIONARY:
+		return
+	var purses = d.get("purses", {})
+	if typeof(purses) != TYPE_DICTIONARY or purses.is_empty():
+		return
+	# TYPED, not inferred. `Dictionary.keys()` has no set return type in
+	# GDScript 4, so `var keys := purses.keys()` is a PARSE error -- and a
+	# parse error in this file takes the whole boot with it: `walk.gd` then
+	# calls `bind()` on a bare CanvasLayer and `coldstart --g1` comes back
+	# `hud=0`. Caught by that gate on the first run after this block landed.
+	var keys: Array = purses.keys()
+	keys.sort()
+	var me = purses[keys[0]]
+	credits = float(me.get("credits", 0.0))
+	purse_who = String(keys[0])
+	var wages = d.get("wages", {})
+	if typeof(wages) == TYPE_DICTIONARY:
+		wages_cr = float(wages.get(purse_who, 0.0))
+	print("hud: purse %s %.2f cr, %.2f earned" % [purse_who, credits,
+		wages_cr])
 
 
 ## The address, off the name of the mesh. `shot_blue_0_0.glb`, `blue_0_0.glb`
@@ -341,6 +392,9 @@ func report() -> String:
 			prompt_label.to_lower().replace(" ", "_"), prompt_m]
 	else:
 		s += " prompt=-"
+	# `credits=-` when no ledger exists, which is a different statement from
+	# `credits=0.00` and the two must not be confused by anything reading this.
+	s += " credits=%s" % ("-" if credits < 0.0 else "%.2f" % credits)
 	return s
 
 
@@ -671,3 +725,23 @@ class Face extends Control:
 			Vector2(x - 10.0 * s, y + 3.0 * s), Color(AMBER, 0.75), s)
 		_tracked(Vector2(x, y), txt, int(roundf(10.0 * s)), Color(CYAN, 0.62),
 			1.4 * s)
+
+		# -- THE PURSE, bottom right, and only if a ledger says so ---------
+		if h.credits < 0.0:
+			return
+		var cr := "%0.2f CR" % h.credits
+		var px := int(roundf(10.0 * s))
+		var cw := _tracked_width(cr, px, 1.4 * s)
+		var cx := sz.x - 34.0 * s - cw
+		_scrim(Rect2(cx - 40.0 * s, y - 24.0 * s, sz.x - cx + 40.0 * s,
+			sz.y - y + 24.0 * s), 0.54, Vector2(0.34, 0.0),
+			Vector2(0.0, 0.36))
+		# Amber, because amber on this face is the thing you can act on and
+		# credits are the only number here you can spend.
+		_tracked(Vector2(cx, y), cr, px, Color(AMBER, 0.78), 1.4 * s)
+		if h.wages_cr > 0.0:
+			var sub := "EARNED %0.2f" % h.wages_cr
+			var spx2 := int(roundf(8.0 * s))
+			var sw2 := _tracked_width(sub, spx2, 1.2 * s)
+			_tracked(Vector2(sz.x - 34.0 * s - sw2, y - 13.0 * s), sub,
+				spx2, Color(CYAN, 0.55), 1.2 * s)

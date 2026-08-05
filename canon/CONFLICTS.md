@@ -1777,3 +1777,49 @@ it is authority 5 in both files.
 **What is blocked:** nothing. The crowd system keeps `schedule.py`'s figure; `traffic.py` is a
 second description that can be compared with it, and the comparison is the deliverable. What must
 not happen is a third module quietly adopting whichever number is convenient.
+
+---
+
+## C-013 — TRAFFIC §7.4's cargo total is 2.5× what its own manifest can land
+
+**Status:** open, **NOT blocking**. `station/economy.py::cargo_check()` computes both and
+`report()` prints the gap on every run.
+
+`docs/gazetteer/TRAFFIC-AND-CUSTOMS.md` §7.4 reasons the station's cargo in one chain, and the
+chain's two halves do not meet:
+
+| step | figure | how it is reached |
+|---|---|---|
+| consumables consumed | **2,000 t/day** | 250,000 people × 8 kg/person/day |
+| of which imported | **~1,200 t/day** | the drum covers half of food by mass |
+| per bay-class freighter | **~60 t** | 1,200 t/day over the manifest's 20 freighter_bay arrivals |
+| transshipment on top | **2–3× the consumed tonnage** | JG-11 makes B5 a route junction |
+| **stated total throughput** | **~4,000–5,000 t/day** | the two added |
+
+**The break is at the last row.** Take the §7.4 anchor at face value — 60 t per bay freighter at
+`traffic.MANIFEST`'s own 8–14 h dwell is **5.4545 t/h alongside** — and apply it to every freight
+hull the manifest carries, plus 40 kg of baggage per passenger for the rest. Summed over the
+manifest the station lands **1,757 t/day**, which reproduces the ~1,200 consumed figure and its
+freighter share and **has no hulls at all for the transshipment**. §7.4 proposes 2–3× more
+tonnage without proposing any more ships to bring it.
+
+**Both readings are internally consistent and they cannot both be built:**
+
+1. **The manifest is right and the total is wrong.** Throughput is ~1,800 t/day; the "2–3×
+   transshipment" is a route-junction *intuition* that was never checked against the hull count.
+2. **The total is right and the per-ship figure is wrong.** Each hull carries ~2.5× §7.4's own
+   worked 60 t — which would make a bay-class freighter a 150 t ship, straining §7.4's own
+   remark that 60 t "is a small ship — consistent with a 60 m Centauri Brezebel-class hull".
+3. **The total is right and the manifest is short of freighters.** Which would move
+   `traffic.MANIFEST`'s 55.0 arrivals/day off the sourced 50–60 movements band, so this reading
+   costs the one authority-4 number in the neighbourhood.
+
+**What is built, and why it does not block.** `economy.cargo_tonnes` implements reading 1 —
+the manifest's own hulls at §7.4's own anchor rate — because that is the reading in which every
+number is either sourced or worked in the gazetteer, and because reading 3 would break the only
+authority-4 figure the port has. Dock work is unaffected in KIND: a gang works the ship in front
+of it. It is affected in VOLUME, so a future resolution moves crate counts and nothing else.
+
+**What would settle it.** Any stated cargo figure for the station or for any ship class; or a
+frame establishing a freighter's size well enough to date the 60 t. **T-09 in the gazetteer is
+the same proposal and is where a resolution belongs.**

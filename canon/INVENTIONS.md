@@ -6676,3 +6676,264 @@ cannot drift.
 **Overturned by.** A row whose meaning lives after the slash rather than before it, which would
 make the first alternative the wrong one. Nothing in the current 22 is of that shape.
 **Authority 5.**
+
+## INV-301 — the price of a named good, in three factors with one anchor
+
+**What.** `economy.price(good, place)` is `CLASS_BAND[klass] x SUPPLY_MULT[supply] x
+VENUE_MULT[sector]`. Two class bands are `LAW-CRIME-DOWNBELOW.md` §7.1's own rows verbatim
+(a Zocalo cart meal 1–2 cr, a Downbelow bunk 1 cr/night) and the other ten are one stated
+step off them: a staple is HALF the meal band, because a cart selling a 1–2 cr plate cannot
+have paid more than about half of that for it and still be a cart; a drink is 60% of the
+meal band, bracketed above by the plate and below by the bunk; a liturgical import is 1/40 of
+the passage-home band, which is the step that makes G'Quan Eth an event rather than a
+grocery; hardware sits under a day's casual pay, or a docker cannot own their own tools.
+`SUPPLY_MULT` is 1.00 for anything grown or made aboard and **1.60** for an import, because
+§7.4 puts the drum at half the station's food by mass and the other half on a freighter.
+`VENUE_MULT` is the CUBE ROOT of the sector's rent tier over Red's, from the same §7.1
+ladder — cube-rooted because a drink is mostly the drink and only partly the roof, which
+puts the Green-sector houses at ×1.71 of a Red one.
+**Why.** Because a price board with numbers nobody can trace is the same defect as a
+schematic with no scale bar. Every factor above lands on one published table and the two
+rows the table states for goods are asserted, not assumed: `economy.price_check()` fails if
+a drum-grown plate at a Zocalo counter leaves the staple band or a house drink leaves the
+bunk-to-meal bracket, and its negative control (route multiplier 0.75 → 3.0) fires it.
+**What is weakest.** The 60% drink ratio and the cube root are the two free choices; both
+are bounded by checks rather than by sources. The 1.60 import multiplier is the strongest of
+the three because §7.4's half-and-half split is an explicit sentence.
+**Overturned by.** Any on-screen price for a specific good — one Zocalo stall board or one
+bar tab would replace a whole class band. Any stated pitch, lease or freight rate would
+replace `VENUE_MULT` or `SUPPLY_MULT` outright.
+**Authority 5.**
+
+## INV-302 — a counter is a part of a place, and how big a part
+
+**What.** `economy.retail_m2(place)` caps a vendor's selling floor at
+**44 × 225 = 9,900 m²** and multiplies by **0.05** for a place whose functions include
+`black_market`. `stock_list` carries one line per 12 m² of that, floor 3 and ceiling 14, and
+a place whose FIRST declared function is not a selling function gets the floor.
+**Why.** `directory`'s footprint is the PLACE, not the counter, and using it directly gave
+Downbelow — 654,370 m² of camp — **235,572 retail transactions a day** against 20,000 people
+with no money. The cap is solved from the only stated count in the spec: PLACES §0.3 says
+the goods vocabulary "feeds the Zocalo's **44 stalls**", and `bar_unnamed`, the authority-1
+bar, is one counter with a 225 m² register footprint. 44 × 225 is a quarter of the Zocalo's
+own 39,298 m² and the other three quarters are concourse, gallery and circulation — which is
+what the Zocalo is. Nothing aboard has more counter than the Zocalo. The 0.05 is SYS-06's
+own title made numeric ("**a route, not a room**"): under-counter trade has to be big enough
+to be worth LAW-CRIME:858-879's five-station route and small enough that customs is not
+visibly failing. The first-function rule needs no new data at all — the register already
+orders a row's functions by what the place is for, which is why `post_office`
+(`mail`, `commerce`) stops being a grocer.
+**Overturned by.** A stall count for any place other than the Zocalo; any figure for
+contraband volume; a frame showing a counter run whose length contradicts 225 m².
+**Authority 5.**
+
+## INV-303 — a crate, and how much of the day's tonnage is retail
+
+**What.** A container is `rooms.PROPS["container"]`'s own 2.40 × 1.20 × 1.20 m at
+**250 kg/m³** = **0.864 t**, holding **960 saleable units** at a nominal 0.9 kg each. A
+freight hull lands `5.4545 t/h × its own dwell`; a passenger hull lands `souls × 40 kg` of
+baggage; a tanker lands none, because slush is pumped. Retail consignments are sized by
+DEMAND — a counter's line is topped up by what it sold — so **0.9% of the day's crates go
+behind a counter** and the rest are stores.
+**Why.** The volume is the station's own modelled crate rather than a number. 250 kg/m³ is
+the low end of mixed general cargo (water is 1,000, packaged dry food 300–500, machinery
+800+, and a mixed crate is 40–60% void) and the low end is right because §7.4 says the
+import is "food, packaging, supplies, spares". The 5.4545 t/h is not chosen at all: it is
+§7.4's own worked example — "across 20 bay-class freighters a day that is ~60 t each" — over
+`traffic.MANIFEST`'s own 8–14 h dwell for that row, so the anchor is a rate and every other
+freight class is that rate for as long as it is alongside. The 40 kg allowance is bigger
+than an airline's and smaller than a household's, for a move between systems.
+**AND THE MODEL FALSIFIES ITS OWN SOURCE, which is the useful part.** Summed over the
+manifest the station lands **1,757 t/day**. §7.4 states 4,000–5,000 t/day: ~1,200 consumed
+plus "2–3× that again" transshipped. The manifest reproduces the CONSUMED figure and has
+**no hulls for the transshipment to arrive on** — see C-013. `economy.cargo_check()` reports
+the gap on every run rather than closing it by picking a reading.
+**Overturned by.** Any stated container mass or ship tonnage; a resolution of C-013.
+**Authority 5.**
+
+## INV-304 — what a gang can move, what it is paid, and when it is carded
+
+**What.** A gang of six moves **6.31 crates/h** (`dockwork.CRATES_PER_GANG_H`). Handling
+multipliers are containerised 1.00, bulk 0.80, bonded 1.35, perishable 1.00, hazmat 1.80.
+The caller's chalked rate maps that mix onto the **stated** 8–15 cr/day casual band. A
+casual is carded after `economy.GUILD_SHIFTS_PER_WEEK` = **5** shifts.
+**Why.** The crate rate is a CONSTRAINT rather than a choice: a berth is released when the
+ship leaves, so a gang must clear a hull inside its own dwell, and the manifest's mean bay
+freighter (60 t = 69.4 crates over 11 h) sets the rate. It cross-checks: 69 crates in 11 h is
+one crane cycle every 9.5 minutes with a gang of six, which is a hook-lift-traverse-set-scan.
+The multipliers are the handling steps ROLE-03 itself names for each class (the customs seal
+read into the terminal; the suit-check and the suit worn after it; transshipment that never
+leaves the bay) rather than difficulty knobs. **The chalked rate introduces no number at
+all** — the caller pays the top of the published band for the jobs nobody wants and the
+bottom for the easy ones, so the band's own width finally means something. Five shifts is
+one guaranteed week's worth of turning up, which is the shortest span over which a caller
+sees a man be reliable and short enough that a player reaches it in a session.
+**AND THE WAGE ANCHOR IS TIGHTER THAN THE BAND IT IS QUOTED AS.** LAW-CRIME:748 says the
+300–800 cr passage must be 30–100 days of casual labour. Read as a constraint that pins the
+rate to **8–10 cr/day**: the published band's FLOOR is reproduced exactly (800/100 = 8) and
+its top five credits are not derivable from the anchor. `economy.wage_check()` prints both
+and `_selftest` asserts the gap is non-zero, so the discrepancy cannot quietly disappear.
+The published 8–15 is what is used, because two documents carry it.
+**Overturned by.** Any on-screen dock wage; any figure for gang size or crane cycle; a
+resolution of the 8–10 / 8–15 tension in favour of either.
+**Authority 5.**
+
+## INV-305 — a lurker's purse is drawn from the left tail
+
+**What.** `player.credits_for(npc_id, role_key)` confines the draw to
+`[0, PASSAGE_HOME_CR)` when the role is in `resident.NO_STATUS_ROLES` (lurker, refugee).
+**Why.** This is a correction, not an addition. The draw is the ARRIVAL distribution, fitted
+to §6.6's 1% leak, and it knew nothing about who the arrival became — so
+`player_from({"role": "lurker"})` produced a Downbelow squatter holding **4,666 credits**.
+Canon's entire explanation of the underclass is that they "did not have the money to afford
+a ticket back home", so somebody in a no-status role is BY DEFINITION under that line. The
+left-tail confinement leaves §6.6's solved skew exactly as it was — the leak is a statement
+about arrivals and this is a statement about what an arrival has become — and the role set is
+imported from `resident` rather than restated, so it cannot drift from `arrival.py`'s.
+**Overturned by.** Nothing likely; a canon lurker with money would be the counter-example,
+and Jinxo (a skilled lurker who never leaves) is about skill, not solvency.
+**Authority 5.**
+
+## INV-306 — the eight corridor verbs, and which side of a grievance takes which
+
+**What.** `npc/faction.VERBS` is a closed list of eight things a body does when it meets
+somebody it has a grievance with — `widen`, `cross`, `hold`, `aside`, `reverse`, `clear`,
+`quieten`, `none` — and `npc/faction.RESPONSES` assigns **two** of them, one per side, to
+every row of `friction.PAIRS`.
+**Why.** `friction.py` produces a **distance**, which is the right primitive and is not a
+behaviour. FACTIONS.md §12 and `docs/spec/PEOPLE.md`'s FAC blocks describe the behaviours in
+sentences, and every verb here is quoted from one: *"The Narn stops, turns, and does not
+yield the corridor. The Centauri crosses to the far side"* is `hold`/`cross`, and it is why
+the assignment is **per side and asymmetric** — answering that row symmetrically plants the
+Centauri in the middle of the corridor, which is the opposite of what the source says. The
+list is closed at eight because a ninth would be a movement with no sentence behind it.
+Where a source gives no yielder the rule is one line, applied everywhere: **the party on its
+own faction's territory does not yield** — `PEOPLE.md` gives every FAC block a Territory line
+of register keys, so "whose corridor is this" is already a fact the register can answer, and
+a corridor serving `docking_bays` is the Dockers' Guild's ground in a way it is not the Psi
+Corps'. One verb is deliberately not geometry: `quieten` is on the list because §12's
+Nightwatch sentence is about a voice, and inventing a movement for it would be worse than
+carrying a state change.
+**A STOPPING VERB IS A HEAD-ON VERB.** Every sentence behind `hold`, `aside`, `reverse` and
+`clear` describes two parties coming *at* each other — "does not yield the corridor", "leaves
+before the other arrives", "reverse *out of* a corridor a patrol *enters*". Overtaking
+somebody walking the same way is not that, so on a same-direction encounter those four
+degrade to their walking equivalents and the degradation is recorded, not silent.
+**Overturned by.** Any frame showing who gives way in a B5 corridor; a docker giving way to
+a passenger on a dock deck would overturn the territory tiebreak specifically.
+**Authority 5.** The FACT of each antagonism carries FACTIONS.md's own authority; the verbs
+are the design, exactly as §12 says the behaviours are.
+
+## INV-307 — a Narn and a Centauri cannot pass in a ring corridor, and that is arithmetic
+
+**What.** The escalation policy in `npc/encounter._resolve`: a pair whose tabled separation
+exceeds what the corridor can physically give does not "try harder", it takes the row's
+stopping verb.
+**Why.** This is a **derivation before it is an invention** and the derivation is the point.
+`collision.corridor_shell` measures blue/0/0's half-width at **1.0806 m**, so the widest two
+ordinary bodies can be centre-to-centre with both inside the walls is `2 x 1.0806 - 0.20 -
+0.21 =` **1.64 m**. `friction.separation_m("narn", "centauri")` is `4.0 x 0.45 =` **1.80 m**.
+Nobody chose those two numbers to disagree and they disagree by 0.16 m, on every ring
+corridor on the station. So FACTIONS.md §12's sentence for that row is not a distance at all,
+and could not have been: the behaviour in the source **is** the resolution of an impossible
+geometry. The same sum ranks the rest of the ladder without a second decision — `ceremonial`
+2.70 m is impossible (the corridor clears), `high` 1.35 m fits with 0.29 m to spare,
+`medium` 0.855 m is ordinary give-way. That is FACTIONS.md's own 95/5 split falling out of
+one measurement rather than being tuned to it. Measured over a station-hour on blue/0/0:
+Narn/Centauri pairs pass **1.14 m** apart against **0.46 m** for pairs with no grievance and
+**0.47 m** for the same crowd with the table off.
+**Overturned by.** A wider measured corridor — `INV-020`'s 9 m concourse *can* hold the pair,
+and this predicts that the same two people pass each other normally there and stop in a ring
+corridor. A frame of the two passing comfortably in a standard corridor would overturn it.
+**Authority 5** for the policy; the two numbers it rests on are measured and tabled.
+
+## INV-308 — how fast somebody side-steps, and how long a stopped walker stands
+
+**What.** `encounter.LATERAL_STRIDES_PER_SHIFT = 0.5`, giving a per-walker lateral rate of
+`body half-width / (stride cycle / 2)` — 0.34 to 0.42 m/s on the corridor's own bodies. A
+stopped walker stands for `2 x want / closing speed + faction.STOP_RESTART_S`, with
+`STOP_RESTART_S = 2.4`.
+**Why.** Neither is a new number. The lateral rate is the walker's **own gait**: a person
+changing lane moves sideways about half a shoulder per stride, so both terms come from
+`animation.walk_clip`'s cycle and the individual's own measured mesh, and a species with
+broader shoulders and a longer stride side-steps at its own rate rather than at a constant.
+The hold is the time the other party spends inside the distance the row asks for — nothing
+else is being waited for — plus what it costs to stop and start again, which at a
+comfortable 1.0 m/s² either side of 1.2 m/s is 2 x 1.2 s. On the Narn/Centauri row that is
+**3.9 s**: you stop, they pass, you go on. **The first cut of this held from first sight to
+last sight and stood a Narn in a corridor for ten minutes**, which is not restraint, it is a
+bug, and it is recorded here because the wrong version looked perfectly plausible in a log.
+**Overturned by.** Any measured pedestrian lane-change rate; any frame timing a give-way.
+**Authority 5.**
+
+## INV-309 — the Guild card is a share of the dockworker role, not a second population
+
+**What.** `faction._flag_guild` draws the 1,500 guild-carded core (`GUILD_CARDED`) as a
+deterministic share of the 9,650 dockworker-role heads, off the same `resident._u` hash every
+other per-person flag uses.
+**Why.** `PEOPLE.md` FAC-06 gives three denominators, each true of a different set — 9,650
+role heads, 1,500 carded, ~1,200 on EA payroll — and a card is not a job. A share is the only
+honest reading of a population with no stated rule, and drawing it off the id is what
+`security.wears_armband` already does for the armband, so a carded docker is the same person
+on every run and on every machine. **A card is a SUBSET of a job and not an addition to it**:
+`head_count` therefore skips a flag whose `_FLAG_SUBSET_OF` role is already counted, because
+the first version added them and reported 11,550 dockers on a station that has 9,650.
+**Overturned by.** Any stated rule for who is carded (seniority, sector, species).
+**Authority 5.**
+
+## INV-310 — a roving patrol is a duty cycle over ring deck arcs, not a fixture
+
+**What.** `security.patrol_duty_cycle(hour) = roving_pairs(hour) / ring_decks()`, and
+`security.corridor_patrol` turns it into timed visits: a two-officer pair enters a named
+arc at a seeded second, walks its length, and leaves.
+**Why.** LAW-CRIME §2.5 defines the beat as *"one outermost-ring deck arc, out and back"*, so
+a roving pair occupies **one** arc at a time. `roving_pairs(13.0)` is 59 and
+`navigation.cell_plan` builds **251** ring decks, so any one arc has a patrol on it 23.5% of
+the time — and at 03:00, 16.3%. That reproduces the shape LAW-CRIME states in prose
+("Zocalo continuous, Red and Blue 30 min, Green 60 min, Grey 3-4 h, Downbelow zero") without
+any of those four numbers being typed anywhere, because the Zocalo's continuity comes from
+`POSTS` and Downbelow's zero comes from `NO_POST`. **The fractional visit is not rounded
+away**: rounding 0.23 to zero is how a real duty cycle becomes "no patrol, ever" on every
+deck the station has. The consequence is the content: a patrol is an **event** in a corridor,
+and the reason Downbelow is Downbelow is that nobody comes.
+**Overturned by.** A stated patrol frequency per district; a resolution of C-011 (the
+gazetteer's own 35-vs-45 pairs).
+**Authority 5.**
+
+## INV-311 — an encounter begins at the commit distance, not at the sight line
+
+**What.** `encounter.commit_m(want, lat_rate, closing) = (want / 2) / lat_rate * closing` —
+10.0 m on blue/0/0 — is the range at which two walkers become an encounter.
+**Why.** The first cut used `populace.corridor_sight_m`, which is 60.5 m on a Blue deck, and
+with a person every 9.5 m that makes "an encounter" mean *everyone in view*: thirteen
+simultaneous encounters per walker and a denominator that measures the crowd's density rather
+than anything anybody did. An encounter begins where the **manoeuvre** has to begin — to open
+`want` metres of lateral gap before contact each side must travel `want/2` sideways at its
+own rate, and in that time the pair closes at `closing`. Wider than that is *seeing*
+somebody, which is not an encounter; narrower is too late to avoid them, which is a
+collision. It lands at twice the derived earshot (5.6 m, from `audio.py`'s 60 dBA talker
+against a 45 dBA circulation space) and a sixth of the sight line.
+**Overturned by.** A measured pedestrian avoidance-onset distance.
+**Authority 5.**
+
+## INV-312 — the Nightwatch row needs an armband PRESENT, not merely an era
+
+**What.** `friction.strongest(..., witness=)` gates the `("human", "*")` row on an armband
+being within earshot. **The default, `witness=None`, keeps the old era-only reading**, and
+`npc/encounter.py` is the only caller that passes the new one.
+**Why.** FACTIONS.md §12's row reads *"a human talking with aliens lowers his voice **when an
+armband passes**"*. That is two conditions and this project had only ever applied the first.
+The consequence is not small: `populace._clear` takes `max(need, separation_m(...))` for
+every pair in every room, so **85 humans are held 1.35 m off 49 aliens** in the blue/0/0
+corridor with no officer within seven kilometres, and on that corridor the row accounted for
+**14,286 of 16,683** friction-carrying passes an hour — 86% of all friction on the station,
+from a sentence about a passing armband. Who is wearing one is already decided by
+`costume.costume_for(...).nightwatch`, which covers the 35% of officers *and* the civilian
+informer rate, both era-gated, so the witness costs no new number. **The default is left
+alone deliberately**: flipping it moves every human away from every alien on 128 baked decks,
+which is a re-bake and not a patch, and doing it silently while other work was in flight
+would have been the worse error.
+**Overturned by.** A reading of §12 in which the chill is ambient rather than triggered — the
+row's own text is the evidence either way. Closing it properly means re-baking the decks and
+re-running `deck.py --sweep`.
+**Authority 5** for the witness condition; **1 (S2E22)** for the antagonism itself.

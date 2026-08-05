@@ -173,9 +173,27 @@ CREDIT_SKEW = (__import__("math").log(
     / __import__("math").log(LEAK_RATE))
 
 
-def credits_for(npc_id: str) -> int:
-    """What this person landed with. Deterministic; fitted to §6.6's leak."""
+def credits_for(npc_id: str, role_key: str = "") -> int:
+    """What this person landed with. Deterministic; fitted to §6.6's leak.
+
+    A LURKER CANNOT BE RICH, and the first version of this function let one be.
+    `player_from({"role": "lurker"})` produced a Downbelow squatter holding
+    4,666 credits, because the draw is the ARRIVAL distribution and knows
+    nothing about who the arrival became. Canon's whole explanation of the
+    underclass is that they *"did not have the money to afford a ticket back
+    home"* (LAW-CRIME 7.1's own note on the passage-home row), so somebody in a
+    no-status role is BY DEFINITION under that line: the draw is confined to
+    the left tail rather than re-fitted, which keeps §6.6's 1% leak exactly as
+    solved -- the leak is a statement about arrivals, and this is a statement
+    about what an arrival has become.
+
+    `resident.NO_STATUS_ROLES` is the set, and it is imported rather than
+    restated: `arrival.py` already refuses these roles a status and a second
+    list here would drift from it.
+    """
     u = _u(npc_id, "credits")
+    if role_key and role_key in RES.NO_STATUS_ROLES:
+        return int(CREDIT_MIN + (PASSAGE_HOME_CR - CREDIT_MIN) * u)
     return int(CREDIT_MIN + (CREDIT_MAX - CREDIT_MIN) * (u ** CREDIT_SKEW))
 
 
@@ -249,12 +267,32 @@ class Player:
         dr.by_key(place_key)        # raises KeyError if it is not a place
         self.at = place_key
 
+    # MILLICREDITS EXIST, and this method used to eat them. LAW-CRIME:730 is
+    # explicit -- "Currency is **credits**, with **millicredits** below 1
+    # credit" -- and `self.credits = int(self.credits - n)` TRUNCATED, so a
+    # 0.80 cr drink took a whole credit off a 200 cr purse and 0.20 cr left the
+    # universe. Found by `economy.py::_selftest`'s first transaction, which
+    # asserted the debit equalled the price and did not.
+    #
+    # The balance is therefore rounded to millicredits rather than to credits.
+    # `credits_for` still returns a whole number -- somebody arrives with a
+    # round sum -- so nothing that reads a purse sees a float until a sub-credit
+    # price has actually been paid, which is the point.
+    MILLI = 3
+
     def spend(self, n: float) -> bool:
         """Pay, if there is enough. Returns whether it went through."""
         if n > self.credits:
             return False
-        self.credits = int(self.credits - n)
+        bal = round(self.credits - n, self.MILLI)
+        self.credits = int(bal) if float(bal).is_integer() else bal
         return True
+
+    def earn(self, n: float) -> float:
+        """The other direction, and the only one that creates credits."""
+        bal = round(self.credits + float(n), self.MILLI)
+        self.credits = int(bal) if float(bal).is_integer() else bal
+        return self.credits
 
     def take(self, item: str) -> None:
         if item not in self.carrying:
@@ -269,6 +307,44 @@ class Player:
     def can_afford_passage(self) -> bool:
         """§6.6's fork: the difference between a visitor and a lurker."""
         return self.credits >= PASSAGE_HOME_CR
+
+    # -- serialisation, and it is ONLY the mutable half ---------------------
+    # `station/economy.py` persists purses so that a purchase survives the
+    # process, and the thing it must NOT do is write its own copy of a person.
+    # The card is not in here on purpose: `random_player(seed)` rebuilds it
+    # bit-identically from the id (`indistinguishable` claim 4 asserts exactly
+    # that), so storing 27 frozen fields would be a second description of a
+    # record this project can already regenerate -- hard rule 4. What a save
+    # has to carry is what a session CHANGED.
+    def state(self) -> dict:
+        return {"npc_id": self.card.npc_id, "species": self.card.species,
+                "at": self.at, "credits": self.credits,
+                "carrying": list(self.carrying), "status": self.status,
+                "quarters": self.quarters, "generated": bool(self.generated)}
+
+    def restore(self, st: dict) -> "Player":
+        """Put a saved mutable half back on this record. Returns self."""
+        if st.get("npc_id") not in (None, self.card.npc_id):
+            raise ValueError(f"that state belongs to {st['npc_id']}, not "
+                             f"{self.card.npc_id}")
+        self.at = st.get("at", "")
+        self.credits = st.get("credits", 0)
+        self.carrying = tuple(st.get("carrying", ()))
+        self.status = st.get("status", UNPROCESSED)
+        self.quarters = st.get("quarters", "")
+        self.generated = bool(st.get("generated", True))
+        return self
+
+
+def from_state(st: dict) -> Player:
+    """A whole player back from a saved purse, card and all.
+
+    The card is REGENERATED rather than loaded, which is the point: an id and a
+    species resolve to one person deterministically, so a save file cannot
+    describe a player the station's own machinery would not produce.
+    """
+    card = RES.resident(st["npc_id"], st["species"])
+    return Player(card=card).restore(st)
 
 
 # ---------------------------------------------------------------------------
@@ -294,7 +370,7 @@ def random_player(seed: str = "player", at: str = "") -> Player:
     """
     nid = player_id(seed)
     card = RES.resident(nid, _draw_species(nid))
-    return Player(card=card, at=at, credits=credits_for(nid),
+    return Player(card=card, at=at, credits=credits_for(nid, card.role),
                   carrying=(IDENTICARD, KIT_BAG), status=UNPROCESSED,
                   quarters="", generated=True)
 
@@ -368,7 +444,7 @@ def player_from(choices: dict, seed: str = "player", at: str = "") -> Player:
     if "age" in direct:
         dob, dob_card = RES._dob(nid, int(direct["age"]))
         card = replace(card, dob=dob, dob_card=dob_card)
-    return Player(card=card, at=at, credits=credits_for(nid),
+    return Player(card=card, at=at, credits=credits_for(nid, card.role),
                   carrying=(IDENTICARD, KIT_BAG), status=UNPROCESSED,
                   quarters="", generated=not choices)
 
@@ -618,6 +694,22 @@ def _selftest(out=print):                                        # noqa: C901
     check("...and a FLAT credit draw misses it, so the skew is doing the work",
           abs(flat - LEAK_RATE) > 0.02,
           f"flat gives {flat:.4f}, {flat / LEAK_RATE:.1f}x the target")
+
+    # A LURKER CANNOT AFFORD TO LEAVE -- which is the entire canon explanation
+    # of the underclass, and was false in this module until 4n.
+    lurkers = [player_from({"species": "human", "role": "lurker"}, seed=f"L{i}")
+               for i in range(40)]
+    check("no lurker can afford the passage home -- the one fact the whole "
+          "underclass rests on",
+          all(not q.can_afford_passage() for q in lurkers),
+          f"richest of 40 has {max(q.credits for q in lurkers)} cr against "
+          f"the {PASSAGE_HOME_CR:.0f} cr fare")
+    # NEGATIVE CONTROL: the role-blind draw, which is what this used to do.
+    blind = [credits_for(player_id(f"L{i}")) for i in range(40)]
+    check("...and the role-BLIND draw does not, which is why the draw reads "
+          "the role", any(c >= PASSAGE_HOME_CR for c in blind),
+          f"{sum(1 for c in blind if c >= PASSAGE_HOME_CR)}/40 of them could, "
+          f"richest {max(blind)} cr")
 
     # -- 7. the mutable half -------------------------------------------------
     q = random_player("m")
