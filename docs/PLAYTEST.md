@@ -33,12 +33,38 @@ says how.
 |---|---|
 | *"nobody talks back"* | **157 of 157 exchanges offer a player line**, 69 distinct player utterances, press yields 120 / deflects 37, and the shipped `boot.json` carries 84 rows over four hours. The old row described a real defect with a misdiagnosed cause: `dialogue.gd` was 913 lines that had **never been instantiated on any path**, because `_wire_dialogue` ran above `_spawn_player()` behind an `if _player == null: return`. Fixed in `c59ff4e`. |
 | *"a second day: `Clock` has no day index"* | it has one — `Clock.day()`, `day_offset`, `day_hour()` in `life.gd`, with the jump case guarded (without `day_offset` every clock jump silently returned the station to day 0). The verdict line prints `day=%d`. |
-| *"nothing flies. Zero references in any `.gd` or `.tscn`"* | **false by grep**: `godot/scripts/starfury.gd` (34 references), `godot/scenes/starfury.tscn`, and 14 in `main.gd`. `godot --path godot -- --mode=starfury` flies one, with a flight model, a chase camera and floating-origin rebasing. |
+| *"nothing flies. Zero references in any `.gd` or `.tscn`"* | **false by grep**, but read the caveat below before trying it: `godot/scripts/starfury.gd` (34 references), `godot/scenes/starfury.tscn`, and 14 in `main.gd`. `godot --path godot -- --mode=starfury` is the entry point, with a flight model, a chase camera and floating-origin rebasing. |
 | *"credits exist; no shop reads them"* | the bar's till debits. Fourteen days of one lurker: 267 → 420.50 cr, the bar's till 3,598.42, station stock 52,720 → 51,518, and `station/generated/economy.json` survives the process — a second run reads back the same purse. |
 
-**The Starfury's honest remainder**: the mission is `ride → coast → transit`. It rides the
-rotating cobra bay, is released at the correct phase, coasts, and runs out. **There is no dock
-phase.** P4's bar is "launch → fly → dock, seamless" and half of it is built.
+**The Starfury's honest remainder, and it is larger than the grep suggests.** Every part
+exists and the assembly does not — which is this project's signature defect, now on its fifth
+instance after L3's room leg, `stream.gd`, the circulation graph and `dialogue.gd`:
+
+| part | state |
+|---|---|
+| flight model | `station/physics/starfury.py`, tested, **in CI** (`sstarfury_flight_model`) |
+| airframe | `starfury_geometry.py`, tested, **in CI** (`sstarfury_airframe…`) |
+| docking physics | `station/physics/docking.py` + `test_docking.py`, tested, **not in CI** |
+| docking envelope | `starfury_scene.py --docking-envelope` — derived and real, see below |
+| engine script | `starfury.gd`, 1,000+ lines: mission, chase cam, floating origin, selftest |
+| **the data it reads** | **`station/generated/starfury/{starfury.glb,launch.json,vectors.json}` DOES NOT EXIST on this checkout, and `starfury_scene.py --build` is never run in CI.** Bake it before you fly |
+| **a dock phase** | **absent.** The mission is `ride → coast → transit`: it rides the rotating cobra bay, is released at the correct phase, coasts, and runs out |
+
+P4's bar is "launch → fly → dock, seamless". Launch is built, docking is *analysed* and never
+flown. The analysis is worth reading on its own — a cobra bay sits at **293.8 m** of radius and
+the spin that makes 1 g at the habitat floor means holding formation off that bay costs
+centripetal acceleration that rises with standoff:
+
+```
+ standoff 0 m   → 10.35 m/s²  (56.3% of max thrust)   yes
+ standoff 227 m → 18.35 m/s²  (99.9% of max thrust)   yes
+ standoff 300 m → 20.92 m/s²  (113.8%)                NO
+```
+
+**The ceiling is 227.8 m of standoff**, beyond which ω²R exceeds the airframe's maximum and no
+guidance law helps. On the spin axis the tangential speed to match is 0.0 m/s, which is why the
+forward docking sphere exists at all. None of that is authored; it falls out of the spin rate
+the station already had.
 
 ---
 
