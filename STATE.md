@@ -719,9 +719,37 @@ turning is what is broken.
 *Twice this session an artefact's absence looked like content missing and turned out to be content
 stored somewhere I had not looked.*
 
-**Still open:** why `noticed` is 0. The `watch()` loop marks anybody within `notice_m` and steps
-their yaw toward the player; something between the instanced placement and that loop is not
-connecting. Next session's first job, and it now has a red gate pointing at it.
+**DIAGNOSED, AND CONFIRMED BY THE MODULE'S OWN CONTROL.** The cause is `populace.ROOM_INSTANCED
+= True`, session 4p's *"a room occupant is the same kind of object as a corridor walker"*. It is a
+good change — `deck.CORRIDOR_INSTANCED` had already made the trade for the corridor and rooms
+shipped the old baked form, so the station carried two crowd systems. What went with it is the
+consumer:
+
+`npc.gd::collect()` builds its `Person` records **by matching actor group names against
+`MeshInstance3D` names in the scene**. An instanced occupant has no per-person mesh — it is a
+transform in a `MultiMesh` bucket — so `parts[group]` is empty, the `Person` is skipped, `_people`
+is empty, and `watch()`/`_physics_process` have nobody to turn. The two systems in `npc.gd` are
+`_people` (turn to look at you) and `_mm` (draw efficiently, cannot turn), and **room occupants
+moved from the first to the second.**
+
+The A/B is decisive because it moved the failure rather than removing it:
+
+| | verdict |
+|---|---|
+| `ROOM_INSTANCED = True` (shipped) | `reached docking_bays and NOBODY noticed -- 0.0 deg turned` |
+| `ROOM_INSTANCED = False` (the module's own documented control) | **gets past the notice assertion entirely** and fails later on `134 walkers are all on one LOD rung` |
+
+Flag restored; `git diff station/populace.py` is empty.
+
+**The fix is not to revert it.** `MultiMesh` supports `set_instance_transform`, and `add_crowd`
+already knows which instance index belongs to which placement, so an instanced occupant CAN turn —
+it needs the notice loop to write into the bucket instead of into a node's `global_transform`.
+That is a real piece of work and it makes the corridor walkers able to notice you too, which they
+have never been. Next session's first job, and it now has a red gate pointing at it.
+
+*This is the signature defect in its purest form: a representation changed, and the consumer that
+reads the other representation was left behind. What is new is that no gate could see it, because
+the only assertion about being noticed lived in a run CI does not make.*
 
 **Also:** the run did refresh one sidecar — `bootstrap.py --check` goes from *4 of 4 carry no
 `counter`* to **3 of 4**. The remaining three are other z-clusters (`z7120`, `z7126`, `z7440`) and
