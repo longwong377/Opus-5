@@ -84,12 +84,36 @@ G5 SOMEBODY COLLAPSES AND A PLAYER IS THERE
     their own reflection. `ragdoll.gd` refuses a mirrored transform, which is
     how it surfaced.
 
+G6 THE FIELD IS RIGHT ALL THE WAY ROUND THE RING
+    THE DEFECT IT CLOSES SHIPPED, and it is not the one that was written down.
+    `STATE.md` §24.5 recorded that `player.gd` returned `-Y` at 9.81 in "deck"
+    mode and that `walk.gd` shipped that mode. Half wrong: `main.gd` line 305
+    sets `gravity_mode` to "drum", so the DIRECTION was already radial. What
+    shipped broken was the MAGNITUDE -- nothing anywhere set `gravity_m_s2`, so
+    the 9.81 export default stood and a player fell **31.6% too fast at every
+    angle**, on a deck that delivers 7.4523 m/s^2.
+
+    Two controls, because there are two wrong answers: `--legacy-field` is what
+    shipped (radial, 9.81); `--legacy-deck` is the default nobody was using
+    (-Y at 9.81), which keeps the floor at only 5 of 18 angles and puts the body
+    179.98 deg from up -- standing on the ceiling -- at 90 deg.
+
+    It does not read a variable back: it lifts the body into ray-cast headroom,
+    drops it, and measures acceleration off the velocity.
+
+G7 A PLAYER WALKS AROUND A BODY, NOT THROUGH IT
+    `ragdoll.gd` excepts the player's RID from every physical bone deliberately,
+    so a settled casualty could not separate a player the way a standing person
+    does. Control: with the push off, the player ends 0.420 m INSIDE the body.
+
 Run:
     python3 station/coldstart.py            # all gates
     python3 station/coldstart.py --g3       # reachability only, no engine
     python3 station/coldstart.py --g1       # cold start only
     python3 station/coldstart.py --g4       # the card check and its controls
     python3 station/coldstart.py --g5       # an incident puts a body down
+    python3 station/coldstart.py --g6       # the field, at 18 ring angles
+    python3 station/coldstart.py --g7       # walking around a body
     python3 station/coldstart.py --g3 --verbose
 """
 import argparse
@@ -750,6 +774,105 @@ def g4(verbose=False):
     return {"ok": ok, "verdict": d}
 
 
+def _walk_gate(verbose, tag, flag, cases, extra_probes=(), timeout=420,
+               echo=()):
+    """One engine gate over the shipped scene: run the subject and its controls.
+
+    FACTORED OUT OF G5 RATHER THAN COPIED THREE TIMES. G6 and G7 have exactly
+    G5's shape -- launch `main.gd` with one flag, parse one `<TAG> gate=` line,
+    require the subject to PASS and each control to FAIL -- and this file's own
+    history says what copying it would cost: `parse_verdict`'s regex was wrong
+    for `CHECK gate=` and the copy would have carried the fix to one caller.
+
+    `--no-coldstart` is not optional. Without it `_coldstart()` reaches its
+    `get_tree().quit(0)` first and the gate never finishes.
+    """
+    godot = godot_binary()
+    if godot is None:
+        print("%s FAIL -- no double-precision Godot binary found" % tag)
+        return {"ok": False}
+    for probe in extra_probes:
+        good, why = probe()
+        if not good:
+            print("%s SKIP -- %s" % (tag, why))
+            return {"ok": True, "skipped": why}
+    ok = True
+    for flags, want, why in cases:
+        cmd = [godot, "--headless", "--path", GODOT_DIR, "--",
+               "--no-coldstart", flag] + list(flags)
+        try:
+            res = subprocess.run(cmd, capture_output=True, text=True,
+                                 timeout=timeout)
+        except subprocess.TimeoutExpired:
+            print("  FAIL %-18s timed out" % " ".join(flags))
+            ok = False
+            continue
+        out = res.stdout + res.stderr
+        if verbose:
+            print(out)
+        m = re.search(r"^%s gate=(\w+)(.*)$" % tag, out, re.M)
+        got = (m.group(1) == "PASS") if m else False
+        good = got == want
+        ok = ok and good
+        said = m.group(0)[len(tag) + 6:].strip() if m else "no verdict"
+        print("  %s %-18s %-46s -- %s"
+              % ("ok  " if good else "FAIL",
+                 (" ".join(flags) if flags else "(subject)"), why, said))
+        if not flags and echo:
+            for line in out.splitlines():
+                if any(k in line for k in echo):
+                    print("    | " + line.strip())
+    print("  %s %s" % (tag, "PASS" if ok else "FAIL"))
+    return {"ok": ok}
+
+
+def g6(verbose=False):
+    """G6 -- the field is right ALL THE WAY ROUND the ring, not just at spawn.
+
+    THE DEFECT THIS CLOSES SHIPPED, and it is not the one that was written down.
+    `STATE.md` §24.5 recorded (from the ragdoll agent) that `player.gd` returned
+    `-Y` at 9.81 in `"deck"` mode and that `walk.gd` shipped that mode. Half of
+    that was wrong: `main.gd::_configure_walk` line 305 sets `gravity_mode` to
+    `"drum"`, so the DIRECTION was already radial. What actually shipped broken
+    was the MAGNITUDE -- **nothing anywhere set `gravity_m_s2`**, so the export
+    default of 9.81 stood, and a player fell **31.6% too fast at every angle on
+    the ring**, on a deck that delivers 7.4523 m/s^2.
+
+    The `-Y` constant is real and is a latent trap on the export default, which
+    is why there are two controls rather than one: `--legacy-field` reproduces
+    what shipped (radial, 9.81), `--legacy-deck` reproduces the default nobody
+    was using (-Y at 9.81, which keeps the floor at only 5 of 18 angles and puts
+    the body 179.98 deg from up -- standing on the ceiling -- at 90 deg).
+
+    IT DOES NOT READ A VARIABLE BACK. It lifts the body into headroom it RAY
+    CASTS for, drops it, and measures the acceleration off the velocity: a
+    constant cannot fake `g = omega^2 r`.
+    """
+    return _walk_gate(verbose, "GRAVITY", "--gravity-gate", (
+        ((), True, "the shipped build"),
+        (("--legacy-field",), False,
+         "radial at 9.81 -> +31.6% on g at every angle (what shipped)"),
+        (("--legacy-deck",), False,
+         "-Y at 9.81 -> 5 of 18 angles keep the floor"),
+    ), extra_probes=(built_deck,), echo=("walk: gravity --", "GRAVITY gate:"))
+
+
+def g7(verbose=False):
+    """G7 -- a player walks AROUND a body on the deck, not through it.
+
+    `ragdoll.gd` excepts the player's RID from every physical bone deliberately,
+    so a settled body could not separate a player the way a standing person
+    does -- you walked through the casualty. `npc.gd::push_off` now does it in
+    the same loop, with the same across-the-floor-only rule and the same
+    per-frame cap read off the body's own speed.
+    """
+    return _walk_gate(verbose, "CORPSE", "--corpse-gate", (
+        ((), True, "the shipped build"),
+        (("--no-ragdoll-push",), False,
+         "the corpse is a hologram -> the player ends 0.42 m inside it"),
+    ), extra_probes=(built_deck, ragdoll_bodies), echo=("CORPSE gate:",))
+
+
 def g5(verbose=False):
     """G5 -- the station knocks somebody down and a player is there to see it.
 
@@ -823,12 +946,17 @@ def main():
                     help="the card check on a place boundary only")
     ap.add_argument("--g5", action="store_true",
                     help="an incident puts a body on the deck")
+    ap.add_argument("--g6", action="store_true",
+                    help="the field is right all the way round the ring")
+    ap.add_argument("--g7", action="store_true",
+                    help="a player walks around a body, not through it")
     ap.add_argument("--controls", action="store_true",
                     help="only the negative controls on G1")
     ap.add_argument("--verbose", action="store_true")
     ap.add_argument("--budget-s", type=float, default=BOOT_BUDGET_S)
     a = ap.parse_args()
-    run_all = not (a.g1 or a.g3 or a.g4 or a.g5 or a.controls)
+    run_all = not (a.g1 or a.g3 or a.g4 or a.g5 or a.g6 or a.g7
+                   or a.controls)
     bad = 0
     if a.g3 or run_all:
         if not g3(a.verbose).get("ok"):
@@ -853,6 +981,14 @@ def main():
     if a.g5 or run_all:
         print()
         if not g5(a.verbose).get("ok"):
+            bad += 1
+    if a.g6 or run_all:
+        print()
+        if not g6(a.verbose).get("ok"):
+            bad += 1
+    if a.g7 or run_all:
+        print()
+        if not g7(a.verbose).get("ok"):
             bad += 1
     return 1 if bad else 0
 

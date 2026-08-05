@@ -113,11 +113,42 @@ var _push_m := 0.0
 var _push_max := 0.0
 
 
+## ---------------------------------------------------------------------------
+##  AND A BODY ON THE DECK IS SOMETHING YOU WALK AROUND, NOT THROUGH
+## ---------------------------------------------------------------------------
+## `ragdoll.gd` excepts the player's RID from every physical bone, deliberately
+## and for the reason at the top of this file: a `CharacterBody3D` touching
+## ANYTHING has its floor snap refused, so sixteen bone colliders on the player's
+## mask is the pre-4h floor-loss hazard multiplied by sixteen. `--ragdoll-solid`
+## removes the exception and reproduces exactly that.
+##
+## So a settled ragdoll was a hologram: `STATE.md` §24.5, *"a settled ragdoll does
+## not push the player aside the way a standing person does"*. The separation has
+## to be done by hand here, and it is the SAME hand -- `push_off` already
+## separates the player from a walker and from a baked person, across the floor
+## plane only, capped at the player's own speed. This adds the third kind of body
+## to the same loop rather than writing a second one.
+##
+## `--no-ragdoll-push` is the control: the corpse goes back to being a hologram.
+var _ragdolls: Node = null
+var _rag_bones: Array = []          ## PhysicalBone3D, rebuilt when the set moves
+var _rag_stamp := -1
+var _rag_push := true
+var _push_rag_m := 0.0
+var _push_rag_max := 0.0
+var _rag_seen := 0                  ## segments considered on the last frame
+
+
 func _ready() -> void:
 	var a := _args()
 	_solid_mode = String(a.get("npc-solid", "separate"))
 	if a.has("no-npc-collision"):
 		_solid_mode = "off"
+	if a.has("no-ragdoll-push"):
+		_rag_push = false
+		print("npc: a body on the deck is a HOLOGRAM (control) -- the player "
+			+ "walks through settled ragdolls, which is the build before "
+			+ "session 4r")
 	if a.has("crowd-hz"):
 		crowd_hz = float(a["crowd-hz"])
 
@@ -132,7 +163,130 @@ func walker_collider_report() -> String:
 
 
 func push_report() -> String:
-	return "push_m=%.2f push_max_mm=%.1f" % [_push_m, _push_max * 1000.0]
+	return ("push_m=%.2f push_max_mm=%.1f rag_push_m=%.3f rag_push_max_mm=%.1f "
+		% [_push_m, _push_max * 1000.0, _push_rag_m, _push_rag_max * 1000.0]
+		+ "rag_segments=%d%s" % [_rag_seen, ("" if _rag_push else " (OFF)")])
+
+
+## Where the ragdoll director is, so a body on the deck can be walked around.
+##
+## TWO ROUTES, BOTH CHEAP, AND NEITHER IS A TREE SCAN. `promote_walker` is handed
+## the director by whoever fires an incident, so the first collapse binds it for
+## free; `walk.gd` also offers it the node `main.gd` builds. Whichever arrives
+## first wins and the second is a no-op -- there is only ever one director.
+func watch_ragdolls(director: Node) -> void:
+	if director == null or _ragdolls == director:
+		return
+	if not director.has_method("promote"):
+		push_error("npc: watch_ragdolls was handed a %s, which is not a ragdoll "
+			% director.get_class() + "director")
+		return
+	_ragdolls = director
+	_rag_stamp = -1
+
+
+func ragdoll_director() -> Node:
+	return _ragdolls
+
+
+## Every physical bone of every promoted body, as [Transform3D, a, b, radius] in
+## world space -- a capsule per segment.
+##
+## THE SHAPE IS AN APPROXIMATION AND HERE IS EXACTLY WHAT IS LOST. `ragdoll.py`
+## solves each segment as a capsule or a BOX -- **7 of a human's 16 are boxes**:
+## pelvis, spine, chest, both wrists, both ankles. This treats a box as a capsule
+## down its own longest axis with the radius that CIRCUMSCRIBES the other two
+## half-extents, so a chest is separated as the cylinder around it rather than as
+## the box. The error is one-sided and OUTWARD: at the corners of a box segment
+## the player is held `sqrt(h_i^2 + h_j^2) - max(h_i, h_j)` further away than the
+## collision shape itself would hold them. Measured off the emitted
+## `human_ragdoll.json` rather than estimated: **worst 33.2 mm at the spine**,
+## 14.1 mm at the chest, 9.2 mm at the pelvis, 7.2 mm at a wrist. Nobody can walk
+## into a body; a player standing beside one is up to 33 mm further off than the
+## mesh, at one attitude of one segment.
+##
+## The alternative is a box-vs-capsule separation, which is a second collision
+## routine in a file that has one, and `_overlap`'s whole design note is that the
+## separation must be trivially horizontal or it costs the floor. INV-482.
+func _ragdoll_segments() -> Array:
+	if _ragdolls == null:
+		return []
+	if not is_instance_valid(_ragdolls):
+		_ragdolls = null
+		_rag_bones = []
+		return []
+	# A DOLL ROOT IS `queue_free`d ON DEMOTION, so the child count is the cheap
+	# tell that the set has changed. Validity is checked anyway, because a free
+	# lands at the end of a frame and this can run before it.
+	var n := _ragdolls.get_child_count()
+	if n != _rag_stamp:
+		_rag_stamp = n
+		_rag_bones = []
+		for c in _ragdolls.get_children():
+			_collect_bones(c, _rag_bones)
+	var out: Array = []
+	var live := false
+	for pb in _rag_bones:
+		if not is_instance_valid(pb):
+			live = true
+			continue
+		var b := pb as PhysicalBone3D
+		var cs: CollisionShape3D = null
+		for c in b.get_children():
+			if c is CollisionShape3D:
+				cs = c
+				break
+		if cs == null or cs.shape == null:
+			continue
+		var xf: Transform3D = cs.global_transform
+		var r := 0.0
+		# THE AXIS IS PICKED, NEVER REBUILT INTO A BASIS. Swapping two columns of
+		# a `Basis` to move the long axis into +Y mirrors it -- determinant -1 --
+		# and this project has already paid six sessions for one of those.
+		var axis := Vector3.ZERO
+		if cs.shape is CapsuleShape3D:
+			var cap := cs.shape as CapsuleShape3D
+			r = cap.radius
+			axis = xf.basis.y.normalized() * maxf(0.0,
+				cap.height * 0.5 - cap.radius)
+		elif cs.shape is BoxShape3D:
+			var h: Vector3 = (cs.shape as BoxShape3D).size * 0.5
+			# The longest local axis is the segment; the other two give the
+			# circumscribing radius. See the docstring for what that costs.
+			if h.y >= h.x and h.y >= h.z:
+				r = sqrt(h.x * h.x + h.z * h.z)
+				axis = xf.basis.y.normalized() * h.y
+			elif h.x >= h.z:
+				r = sqrt(h.y * h.y + h.z * h.z)
+				axis = xf.basis.x.normalized() * h.x
+			else:
+				r = sqrt(h.x * h.x + h.y * h.y)
+				axis = xf.basis.z.normalized() * h.z
+		else:
+			continue
+		out.append([xf.origin + axis, xf.origin - axis, r])
+	if live:
+		_rag_stamp = -1
+	return out
+
+
+## The middle of the promoted bodies, for something that wants to walk at one.
+## `Vector3.ZERO` when there are none -- no body is on the station's axis.
+func ragdoll_centre() -> Vector3:
+	var segs: Array = _ragdoll_segments()
+	if segs.is_empty():
+		return Vector3.ZERO
+	var c := Vector3.ZERO
+	for s in segs:
+		c += ((s[0] as Vector3) + (s[1] as Vector3)) * 0.5
+	return c / float(segs.size())
+
+
+func _collect_bones(node: Node, out: Array) -> void:
+	if node is PhysicalBone3D:
+		out.append(node)
+	for c in node.get_children():
+		_collect_bones(c, out)
 
 
 ## SEPARATE THE PLAYER FROM ANYBODY IT IS INSIDE, ACROSS THE FLOOR ONLY.
@@ -160,6 +314,23 @@ func push_off(delta: float) -> float:
 		push += _overlap(p, up, _walker_xform(w).origin, w.r_m, w.h_m)
 	for pr in _people:
 		push += _overlap(p, up, pr.pivot, pr.r_m, pr.h_m)
+	# AND ANYBODY WHO IS ON THE FLOOR RATHER THAN ON THEIR FEET. A lying body is
+	# not a standing capsule, so each segment is separated as its own capsule --
+	# `_ragdoll_segments` states the approximation and its 48 mm cost. The push is
+	# accumulated into the SAME vector and capped by the SAME cap below: a corpse
+	# cannot shove the player faster than the player walks, and it cannot move
+	# them vertically at all, which is the invariant this whole function exists
+	# for.
+	var segs: Array = _ragdoll_segments()
+	_rag_seen = segs.size()
+	var before: Vector3 = push
+	# THE SEGMENTS ARE STILL COUNTED WITH THE CONTROL ON. A control that also
+	# removes the measurement proves nothing: `--no-ragdoll-push` has to leave the
+	# gate able to see the body it is walking through.
+	if _rag_push:
+		for s in segs:
+			push += _seg_overlap(p, up, s[0], s[1], float(s[2]))
+	var rag: float = (push - before).length()
 	var l := push.length()
 	if l <= 0.0:
 		return 0.0
@@ -172,10 +343,20 @@ func push_off(delta: float) -> float:
 	var cap: float = maxf(0.01, float(_body.get("speed_m_s")) * delta)
 	if l > cap:
 		push *= cap / l
+		# THE ATTRIBUTION IS SCALED WITH IT. Reported uncapped, the corpse's share
+		# came out LARGER than the total push it is part of -- 10.270 against
+		# 10.01 m on the gate's own first run -- which is not a number anybody can
+		# read.
+		rag *= cap / l
 		l = cap
 	_body.global_position = p + push
 	_push_m += l
 	_push_max = maxf(_push_max, l)
+	# COUNTED SEPARATELY so "the corpse moved me" and "the crowd moved me" are two
+	# numbers rather than one. Attributed before the cap, since the cap is shared.
+	if rag > 0.0:
+		_push_rag_m += rag
+		_push_rag_max = maxf(_push_rag_max, rag)
 	return l
 
 
@@ -203,6 +384,85 @@ func _overlap(p: Vector3, up: Vector3, foot: Vector3, r: float,
 		flat = Vector3(0, 0, 1) - up * up.z
 		l = maxf(flat.length(), 1e-4)
 	return flat / l * (want - l)
+
+
+## The same question for a body that is LYING DOWN: how far, and which way, to
+## move the player at `p` so they are not inside the capsule from `a` to `b` of
+## radius `r`.
+##
+## THE PLAYER IS A VERTICAL CAPSULE AND THE SEGMENT IS AN ARBITRARY ONE, and this
+## decomposes that into the two questions `_overlap` already asks -- do the two
+## spans overlap ALONG up, and how close are their axes ACROSS it. That is exact
+## when the segment is horizontal, which is what a settled body's segments mostly
+## are, and it over-separates by at most `r * (1 - cos(tilt))` on a segment
+## standing on end -- a forearm at 45 degrees is 29.3% of its own 43.3 mm radius
+## (`elbow_r` in `human_ragdoll.json`), i.e. **12.7 mm**, and a thigh at 45
+## degrees is 23.4 mm of its 79.9. Solving the true capsule-capsule distance would
+## give a push with a component ALONG up, and a push along up is precisely what
+## costs a `CharacterBody3D` its floor. The approximation is not a shortcut; it
+## is the constraint.
+func _seg_overlap(p: Vector3, up: Vector3, a: Vector3, b: Vector3,
+		r: float) -> Vector3:
+	if r <= 0.0:
+		return Vector3.ZERO
+	var da: Vector3 = a - p
+	var db: Vector3 = b - p
+	var va: float = da.dot(up)
+	var vb: float = db.dot(up)
+	# HEIGHT FIRST, exactly as above: a body on the deck below is not in the way.
+	# The segment's own span is padded by its radius at both ends; the player's is
+	# their capsule, feet at 0.
+	if minf(va, vb) - r > _player_h or maxf(va, vb) + r < 0.0:
+		return Vector3.ZERO
+	var fa: Vector3 = da - up * va
+	var fb: Vector3 = db - up * vb
+	var e: Vector3 = fb - fa
+	var ee: float = e.length_squared()
+	# The closest point on the flattened segment to the player's own axis.
+	var t: float = (0.0 if ee < 1e-12
+		else clampf(-fa.dot(e) / ee, 0.0, 1.0))
+	var c: Vector3 = fa + e * t
+	var want: float = r + _player_r
+	var l := c.length()
+	if l >= want:
+		return Vector3.ZERO
+	if l < 1e-4:
+		# Standing on the body's own axis: no direction is derivable from the
+		# geometry, so use the station axis, which on a ring deck is across the
+		# corridor. Same rule as `_overlap`.
+		var away: Vector3 = Vector3(0, 0, 1) - up * up.z
+		return away.normalized() * want
+	return -c / l * (want - l)
+
+
+## The player's clearance from the nearest promoted body, in metres, measured the
+## way `_seg_overlap` measures it: negative means inside. Read by the corpse gate
+## in `walk.gd` -- and it is the SAME function, so the gate cannot pass by
+## measuring something the separation does not use.
+func nearest_ragdoll_clearance() -> float:
+	if _body == null:
+		return INF
+	var segs: Array = _ragdoll_segments()
+	if segs.is_empty():
+		return INF
+	var p: Vector3 = _body.global_position
+	var up: Vector3 = (_body.body_up() if _body.has_method("body_up")
+		else Vector3.UP)
+	var best := INF
+	for s in segs:
+		var da: Vector3 = (s[0] as Vector3) - p
+		var db: Vector3 = (s[1] as Vector3) - p
+		var va: float = da.dot(up)
+		var vb: float = db.dot(up)
+		if minf(va, vb) - float(s[2]) > _player_h or maxf(va, vb) + float(s[2]) < 0.0:
+			continue
+		var fa: Vector3 = da - up * va
+		var fb: Vector3 = db - up * vb
+		var e: Vector3 = fb - fa
+		var ee: float = e.length_squared()
+		var t: float = (0.0 if ee < 1e-12 else clampf(-fa.dot(e) / ee, 0.0, 1.0))
+		best = minf(best, (fa + e * t).length() - (float(s[2]) + _player_r))
+	return best
 
 
 
@@ -916,6 +1176,10 @@ func promote_walker(director: Node, spec: Dictionary, at: Vector3,
 	if director == null:
 		promote_why = "no ragdoll director"
 		return ""
+	# WHOEVER FIRES A COLLAPSE HAS ALREADY FOUND THE DIRECTOR, so `push_off` gets
+	# it for nothing and never has to search a tree of several thousand nodes for
+	# it. See `watch_ragdolls`.
+	watch_ragdolls(director)
 	if _walkers.is_empty():
 		promote_why = "this build has no crowd at all"
 		return ""

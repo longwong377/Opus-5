@@ -232,7 +232,11 @@ func _ready() -> void:
 
 	_wire_hud()
 
-	if args.has("stream-test"):
+	if args.has("gravity-gate"):
+		_run_gravity_gate(args)
+	elif args.has("corpse-gate"):
+		_run_corpse_gate(args)
+	elif args.has("stream-test"):
 		_run_stream_test(args)
 	elif args.has("walk-test"):
 		_run_walk_test(args)
@@ -1043,6 +1047,20 @@ func _deck_row(sector: String, ring_index: int, deck_index: int) -> Dictionary:
 ##      `floor_r_m`/`floor_g` pair: omega^2 = g0 * floor_g / floor_r_m.
 ##   4. nothing -- keep the old behaviour and print why, rather than invent one.
 func _derive_omega2(args: Dictionary) -> String:
+	# THE CONTROLS FOR THE GRAVITY GATE, and they belong HERE rather than after
+	# the body exists, because `_spawn_player` stands the capsule up from the
+	# field: a control applied after the spawn would leave the fixed pose in place
+	# and only half the defect would come back.
+	if args.has("legacy-field") or args.has("legacy-deck"):
+		omega2 = 0.0
+		gravity_mode = ("deck" if args.has("legacy-deck") else "drum")
+		gravity_m_s2 = 9.81
+		return ("LEGACY CONTROL -- mode=%s at %.2f m/s2 and no spin. "
+			% [gravity_mode, gravity_m_s2]
+			+ ("This is `player.gd`'s own export default."
+				if gravity_mode == "deck"
+				else "This is what the shipped build did: `main.gd` set the "
+				+ "mode and nobody set the scalar."))
 	if args.has("gravity"):
 		omega2 = 0.0
 		return ("STATED --gravity=%.4f m/s2 along %s -- no spin derived, the "
@@ -1061,10 +1079,15 @@ func _derive_omega2(args: Dictionary) -> String:
 		# `<sector>_<ring>_<deck>.glb` -- the name `station/deck.py` writes and
 		# `boot.json` repeats as its `deck` key. Anything else (the drum ground,
 		# a single room) does not parse and falls through to branch 4.
+		# THE FIRST THREE TOKENS, NOT EXACTLY THREE. `station/walkable.py` writes
+		# `blue_0_0`, `blue_0_0_z7121` (a deck has up to six walkable clusters)
+		# and `blue_0_0_nouse` (the stripped control) -- so an exact-length test
+		# would give one form of the same deck its real gravity and the other two
+		# Earth's, which is the kind of split this project keeps paying for.
 		var stem := (collision_path if collision_path != "" else glb_path
 			).get_file().get_basename().trim_suffix("_col")
 		var p := stem.split("_")
-		if p.size() == 3 and p[1].is_valid_int() and p[2].is_valid_int():
+		if p.size() >= 3 and p[1].is_valid_int() and p[2].is_valid_int():
 			sector = p[0]
 			ri = int(p[1])
 			di = int(p[2])
@@ -1086,27 +1109,33 @@ func _derive_omega2(args: Dictionary) -> String:
 		% [g, r, TAU / sqrt(omega2)])
 
 
+## The player's capsule, kept because two gates need to know how big the body is
+## and a second copy of 1.8 x 0.35 is a second description of a person.
+var _cap_h := 1.8
+var _cap_r := 0.35
+
+
 func _spawn_player() -> void:
 	_player = CharacterBody3D.new()
 	_player.set_script(load("res://scripts/player.gd"))
-	_player.gravity_mode = gravity_mode
-	_player.gravity_m_s2 = gravity_m_s2
 	# DOWN IS OUTWARD ALONG A RADIUS AND IT IS NOT 9.81. See `player.gd`'s header:
 	# `main.gd` has always set `gravity_mode = "drum"` so the shipped DIRECTION was
 	# right, and nothing anywhere set `gravity_m_s2`, so the shipped MAGNITUDE was
 	# Earth's -- 9.81 against this deck's 7.4522, +31.7%, on the only build a
-	# player launches.
+	# player launches. DERIVED FIRST: it can rewrite the mode and the scalar.
 	var why := _derive_omega2(_args())
+	_player.gravity_mode = gravity_mode
+	_player.gravity_m_s2 = gravity_m_s2
 	_player.omega2 = omega2
 	print("walk: gravity -- " + why)
 	var shape := CollisionShape3D.new()
 	var caps := CapsuleShape3D.new()
 	# 1.8 m tall, 0.35 m radius: a person, and the same stature the render
 	# harness stands its cameras at.
-	caps.height = 1.8
-	caps.radius = 0.35
+	caps.height = _cap_h
+	caps.radius = _cap_r
 	shape.shape = caps
-	shape.position = Vector3(0, 0.9, 0)
+	shape.position = Vector3(0, _cap_h * 0.5, 0)
 	_player.add_child(shape)
 	_player.position = spawn
 	# STAND THE CAPSULE UP BEFORE ITS FIRST FRAME. `shape.position` is
@@ -1121,8 +1150,12 @@ func _spawn_player() -> void:
 	# It is the same class as the field defect above -- an orientation left to a
 	# default nobody chose -- and it is one line, because `stand_basis()` is the
 	# expression `step()` itself uses.
-	_player.transform = Transform3D(_player.stand_basis(), spawn)
+	#
+	# AFTER `add_child`, NOT BEFORE. `Node3D::get_global_transform` fails outright
+	# outside the tree, and `stand_basis()` reads the body's own world position to
+	# know which way the radius points.
 	add_child(_player)
+	_player.global_transform = Transform3D(_player.stand_basis(), spawn)
 	# ONE THING STEPS THE BODY. Every headless mode in this file drives
 	# `player.step()` from `_physics_process` below, and `player.gd` has its own
 	# `_physics_process` that steps it again from a keyboard that is not there --
@@ -1131,7 +1164,8 @@ func _spawn_player() -> void:
 	# and `docs/runtime-4h.md`. A build with a window and a player at the
 	# keyboard is untouched: none of these three flags is present.
 	var a2 := _args()
-	if ((a2.has("walk-test") or a2.has("stream-test") or a2.has("shot"))
+	if ((a2.has("walk-test") or a2.has("stream-test") or a2.has("shot")
+			or a2.has("gravity-gate") or a2.has("corpse-gate"))
 			and not a2.has("self-step")):
 		_player.drive_externally()
 	elif a2.has("self-step"):
@@ -2166,6 +2200,14 @@ func _physics_process(delta: float) -> void:
 	# stress control counts in.
 	if _stream != null and _player != null:
 		_stream.update(_player.global_position)
+	# THE TWO SESSION-4r GATES. Both drive the body themselves and quit when they
+	# have their answer; neither runs unless its flag is on the command line.
+	if _g_gate:
+		_gravity_frame(delta)
+		return
+	if _c_gate:
+		_corpse_frame(delta)
+		return
 	# The shot phase: settle the body on the floor, then take the picture from
 	# where it ended up. No wish vector -- a photograph is of somebody standing.
 	if _shooting:
@@ -2370,8 +2412,534 @@ func _physics_process(delta: float) -> void:
 ## `npc.gd::push_off`: it is a horizontal correction and never a vertical one,
 ## because `move_and_slide` cannot resolve a person without costing the floor.
 func _push_off(delta: float) -> void:
-	if _people != null:
-		_people.push_off(delta)
+	if _people == null:
+		return
+	# THE RAGDOLL DIRECTOR IS A SIBLING OF THIS NODE. `main.gd::_start_ragdolls`
+	# builds it as its own child AFTER `_build_station` has added this one, so it
+	# cannot be found in `_ready` and is offered here instead: one hashed child
+	# lookup on the frames before a body exists, nothing after.
+	if _people.ragdoll_director() == null:
+		var par := get_parent()
+		if par != null:
+			var d := par.get_node_or_null("Ragdolls")
+			if d != null:
+				_people.watch_ragdolls(d)
+	_people.push_off(delta)
+
+
+# ===========================================================================
+#  THE GRAVITY GATE -- is the field right ALL THE WAY ROUND the ring?
+# ===========================================================================
+#
+# WHAT IT IS FOR. `player.gd::gravity_dir()` returned `Vector3(0, -1, 0)` at
+# 9.81 m/s^2 in `"deck"` mode and nothing anywhere set the scalar in `"drum"`
+# mode either. Both survived because THE SPAWN SITS AT RING ANGLE 264.8 DEGREES,
+# where -Y is 5.2 degrees off the true radial and a body stands up perfectly
+# well. Every gate in this repository measured the body at that one angle.
+#
+# So this one puts the body at EVERY angle the deck has -- the eighteen cells of
+# blue/0/0, twenty degrees apart -- and asks two questions per angle:
+#
+#   1. WHAT THE BODY THINKS. `body_up()` against the true inward radial at its
+#      own position, and `gravity_g()` against omega^2 r.
+#   2. WHAT THE BODY DOES. Lift it into the corridor's own measured headroom,
+#      let it fall, and measure the acceleration off its velocity: a constant
+#      cannot fake `g = omega^2 r` and a -Y field cannot fake a radius. This is
+#      the half that a variable read-back could never be.
+#
+# THE TARGET POINTS ARE THE BUILD'S OWN. Each cell carries the floor point
+# `stream.bake::_floor_point` measured off that cell's collision shell; nothing
+# here writes down where the corridor is.
+#
+# TWO CONTROLS, BOTH OF WHICH MUST FAIL:
+#   --legacy-deck   `player.gd`'s export default: -Y at 9.81.
+#   --legacy-field  what the shipped build actually had: radial at 9.81.
+var _g_gate := false
+var _g_idx: Array = []
+var _g_at := -1
+var _g_phase := 0
+var _g_f := 0
+var _g_rows: Array = []
+var _g_true_w2 := 0.0
+var _g_r_floor := 0.0
+var _g_up_tol_deg := 0.0
+var _g_g_tol := 0.005
+var _g_a_tol := 0.010
+var _g_drop_tol := 0.0
+var _g_settle_f := 40
+var _g_fall_f := 16
+var _g_lift := 0.0
+var _g_rest := Vector3.ZERO
+var _g_v0 := Vector3.ZERO
+var _g_air := 0
+var _g_dt := 0.0
+var _g_row: Dictionary = {}
+
+
+func _run_gravity_gate(args: Dictionary) -> void:
+	if _stream == null or _player == null:
+		print("GRAVITY gate=FAIL -- this mode needs the streamed build, which "
+			+ "is what carries a floor point per ring angle. Launch it as "
+			+ "`godot --headless --path godot -- --no-coldstart --gravity-gate`.")
+		get_tree().quit(2)
+		return
+	# THE TRUTH IS READ INDEPENDENTLY OF THE THING UNDER TEST. `_derive_omega2`
+	# may have been overruled by a control, so the reference comes straight off
+	# the deck table here. Both use the same reader, and that is the point: the
+	# number has ALWAYS been available to the runtime -- the defect was that the
+	# body never used it.
+	var src: Dictionary = _stream.plan.get("source", {})
+	var row: Dictionary = _deck_row(String(src.get("sector", "")),
+		int(src.get("ring_index", -1)), int(src.get("deck_index", -1)))
+	var fr := float(row.get("floor_r_m", 0.0))
+	var fg := float(row.get("floor_g", 0.0))
+	if fr <= 1.0 or fg <= 0.0:
+		print("GRAVITY gate=FAIL -- no deck_table row for this build, so there "
+			+ "is nothing to check the field against")
+		get_tree().quit(2)
+		return
+	_g_true_w2 = fg * G0_M_S2 / fr
+	_g_r_floor = float((_stream.plan.get("corridor", {}) as Dictionary
+		).get("r_floor_m", fr))
+	# THE TOLERANCES ARE DERIVED, NOT PICKED. INV-481.
+	#   up   -- the angle the player's OWN capsule radius subtends at the deck
+	#           radius. Inside that, "the field points at a different part of the
+	#           same body" and no gameplay can tell.
+	#   g    -- 0.5%, about ten times the 0.051% spread between the 251 deck rows'
+	#           own implied omega^2 (`floor_g` is stored to four places). The
+	#           defect being caught is 31.7%.
+	#   a    -- 1.0%, twice the above, because a measured acceleration also
+	#           carries whatever one frame of contact does to it.
+	#   drop -- the spawn's own height above the floor plus Godot's default
+	#           `floor_snap_length`, both read rather than assumed.
+	_g_up_tol_deg = rad_to_deg(atan2(_cap_r, _g_r_floor))
+	_g_idx = []
+	for c in _stream.cells:
+		_g_idx.append(int(c["index"]))
+	_g_idx.sort()
+	if args.has("angles"):
+		var keep: Array = []
+		var step: int = maxi(1, int(_g_idx.size() / maxi(1, int(args["angles"]))))
+		for i in range(0, _g_idx.size(), step):
+			keep.append(_g_idx[i])
+		_g_idx = keep
+	_g_settle_f = int(args.get("settle", "40"))
+	# HOW FAR A BODY IS EXPECTED TO FALL when it is put down: the cell's own spawn
+	# point stands `r_floor - r_spawn` off the shell (0.200 m here, written by
+	# `stream.bake::_floor_point` and never by this file), plus Godot's default
+	# `floor_snap_length` of 0.10 m.
+	var c0: Dictionary = _stream.cell_by_index(int(_g_idx[0]))
+	var s0 := Vector3(c0["spawn"][0], c0["spawn"][1], c0["spawn"][2])
+	_g_drop_tol = (_g_r_floor - sqrt(s0.x * s0.x + s0.y * s0.y)) + 0.10
+	_g_gate = true
+	_g_at = -1
+	_g_phase = 0
+	print(("GRAVITY gate: %d ring angles on %s, omega2=%.8f rad2/s2 "
+		+ "(period %.3f s) from deck_table[%s] floor_g=%.4f at r=%.2f m; "
+		+ "corridor floor r=%.3f m; player %s")
+		% [_g_idx.size(), String(src.get("sector", "?")), _g_true_w2,
+		TAU / sqrt(_g_true_w2), String(row.get("id", "?")), fg, fr, _g_r_floor,
+		_player.field_report()])
+	print(("GRAVITY tol: up %.4f deg (capsule r=%.2f m at r=%.1f m), g %.2f%%, "
+		+ "a %.2f%%, settle %d frames, fall window derived per angle")
+		% [_g_up_tol_deg, _cap_r, _g_r_floor, _g_g_tol * 100.0,
+		_g_a_tol * 100.0, _g_settle_f])
+
+
+## The true down at a point: radially OUTWARD from the +Z spin axis.
+func _true_down(p: Vector3) -> Vector3:
+	var radial := Vector3(p.x, p.y, 0.0)
+	return (radial.normalized() if radial.length() > 0.001 else Vector3(0, -1, 0))
+
+
+func _ang_deg(a: Vector3, b: Vector3) -> float:
+	return rad_to_deg(acos(clampf(a.normalized().dot(b.normalized()),
+		-1.0, 1.0)))
+
+
+func _gravity_frame(delta: float) -> void:
+	_g_dt = delta
+	match _g_phase:
+		0:      # -- PLACE. Teleport to the next cell's own measured floor point.
+			_g_at += 1
+			if _g_at >= _g_idx.size():
+				_gravity_verdict()
+				return
+			var ci: int = _g_idx[_g_at]
+			var c: Dictionary = _stream.cell_by_index(ci)
+			var sp := Vector3(c["spawn"][0], c["spawn"][1], c["spawn"][2])
+			_player.velocity = Vector3.ZERO
+			_player.global_position = sp
+			# THE POSE IS SET FROM THE FIELD, exactly as `_spawn_player` does, so
+			# a control that breaks the field breaks the pose too and the gate
+			# sees both.
+			_player.global_transform = Transform3D(_player.stand_basis(), sp)
+			# SYNCHRONOUS. A body dropped into a cell that has not arrived falls
+			# through the deck and the verdict blames gravity for streaming.
+			_stream.prime(ci)
+			var arc: Dictionary = c.get("arc", {})
+			_g_row = {
+				"cell": ci,
+				"ang": (float(arc.get("a0_deg", 0.0))
+					+ float(arc.get("a1_deg", 0.0))) * 0.5,
+				"place": sp,
+			}
+			_g_f = 0
+			_g_phase = 1
+		1:      # -- SETTLE. Stand still and let the body find the floor.
+			_player.step(delta, Vector2.ZERO, false, false)
+			_push_off(delta)
+			_g_f += 1
+			if _g_f < _g_settle_f:
+				return
+			_g_rest = _player.global_position
+			var dn: Vector3 = _true_down(_g_rest)
+			var place: Vector3 = _g_row["place"]
+			_g_row["on_floor"] = _player.is_on_floor()
+			_g_row["r"] = sqrt(_g_rest.x * _g_rest.x + _g_rest.y * _g_rest.y)
+			_g_row["drop"] = (_g_rest - place).dot(dn)
+			_g_row["up_err"] = _ang_deg(_player.body_up(), -dn)
+			# THE CAPSULE'S OWN AXIS, not the field's. `shape.position` rides the
+			# body's basis, so a body whose basis is identity is a person lying
+			# down -- which is what every spawn on this station was until 4r.
+			_g_row["pose_err"] = _ang_deg(_player.global_transform.basis.y, -dn)
+			_g_row["det"] = _player.global_transform.basis.determinant()
+			_g_row["g_read"] = _player.gravity_g()
+			_g_row["g_want"] = _g_true_w2 * float(_g_row["r"])
+			_g_phase = 2
+		2:      # -- LIFT, into headroom this corridor is MEASURED to have.
+			var up: Vector3 = -_true_down(_g_rest)
+			var space := get_world_3d().direct_space_state
+			var from: Vector3 = _g_rest + up * 0.05
+			var q := PhysicsRayQueryParameters3D.create(from, from + up * 8.0)
+			q.exclude = [_player.get_rid()]
+			var hit: Dictionary = space.intersect_ray(q)
+			var head: float = (from.distance_to(hit["position"])
+				if hit.has("position") else 8.0)
+			_g_row["headroom"] = head
+			# Clear of the ceiling by the same 50 mm a spawn stands off a floor.
+			_g_lift = maxf(0.0, head - _cap_h - 0.05)
+			# THE FALL WINDOW IS DERIVED FROM THE LIFT AND THE NUMBER BEING
+			# DISPROVED: the largest whole frames for which even a 9.81 m/s^2
+			# field leaves the body clear of the deck. Semi-implicit Euler puts
+			# the body at 0.5*a*t^2*(1 + 1/n), so the check uses that and not the
+			# continuous form.
+			var budget: float = _g_lift - 0.05
+			_g_fall_f = 0
+			for n in range(1, 60):
+				var t: float = float(n) * delta
+				if 0.5 * 9.81 * t * t * (1.0 + 1.0 / float(n)) > budget:
+					break
+				_g_fall_f = n
+			_g_row["lift"] = _g_lift
+			_g_row["fall_f"] = _g_fall_f
+			if _g_fall_f < 8:
+				# Not enough room to measure anything. Say so rather than
+				# reporting a number taken over four frames.
+				_g_row["a_meas"] = -1.0
+				_g_row["a_err_deg"] = -1.0
+				_g_rows.append(_g_row)
+				_g_phase = 0
+				return
+			_player.global_position = _g_rest + up * _g_lift
+			_player.velocity = Vector3.ZERO
+			_g_air = -1
+			_g_f = 0
+			_g_phase = 3
+		3:      # -- FALL. Measure the field the body actually integrates.
+			_player.step(delta, Vector2.ZERO, false, false)
+			_g_f += 1
+			if _g_air < 0:
+				if _player.is_on_floor():
+					if _g_f > 6:
+						# It never left the floor: the lift failed, which is a
+						# result and not a reason to keep waiting.
+						_g_row["a_meas"] = -2.0
+						_g_row["a_err_deg"] = -1.0
+						_g_rows.append(_g_row)
+						_g_phase = 0
+					return
+				_g_air = 0
+				_g_v0 = _player.velocity
+				var pa: Vector3 = _player.global_position
+				_g_row["r_air0"] = sqrt(pa.x * pa.x + pa.y * pa.y)
+				return
+			_g_air += 1
+			if _g_air < _g_fall_f:
+				return
+			var dv: Vector3 = _player.velocity - _g_v0
+			var pb: Vector3 = _player.global_position
+			var dn2: Vector3 = _true_down(pb)
+			var t2: float = float(_g_air) * delta
+			_g_row["a_meas"] = dv.dot(dn2) / t2
+			_g_row["a_err_deg"] = _ang_deg(dv, dn2)
+			_g_row["slides"] = _player.get_slide_collision_count()
+			# THE FIELD IS WEAKER HIGHER UP, AND THE MEASUREMENT HAS TO SAY SO.
+			# `g = omega^2 r` and a body 1.1 m above the deck is 1.1 m NEARER the
+			# axis, so it falls measurably more slowly than the floor value: over
+			# this window the difference is ~0.4%, which is larger than the whole
+			# tolerance. Comparing the measured acceleration against the floor's g
+			# would therefore report a real physical effect as gate error. The
+			# reference is omega^2 at the mean radius of the fall itself.
+			_g_row["r_air1"] = sqrt(pb.x * pb.x + pb.y * pb.y)
+			_g_row["g_air"] = _g_true_w2 * 0.5 * (float(_g_row["r_air0"])
+				+ float(_g_row["r_air1"]))
+			_g_rows.append(_g_row)
+			_g_phase = 0
+
+
+func _gravity_verdict() -> void:
+	_g_gate = false
+	set_physics_process(false)
+	var ok := true
+	var n_floor := 0
+	var up_max := 0.0
+	var pose_max := 0.0
+	var g_max := 0.0
+	var a_max := 0.0
+	var adir_max := 0.0
+	var drop_max := -1e30
+	var det_min := 1e30
+	var measured := 0
+	if _g_rows.is_empty():
+		print("GRAVITY gate=FAIL -- no angle was ever measured")
+		get_tree().quit(1)
+		return
+	for r in _g_rows:
+		var g_err: float = absf(float(r["g_read"]) / maxf(1e-9,
+			float(r["g_want"])) - 1.0)
+		var a: float = float(r.get("a_meas", -1.0))
+		# Against the field over the FALL's own radii, not the floor's -- see the
+		# note where `g_air` is taken.
+		var g_air: float = float(r.get("g_air", r["g_want"]))
+		var a_err: float = (absf(a / maxf(1e-9, g_air) - 1.0)
+			if a > 0.0 else 1e9)
+		var bad: Array[String] = []
+		if not bool(r["on_floor"]):
+			bad.append("OFF-FLOOR")
+		if float(r["up_err"]) > _g_up_tol_deg:
+			bad.append("up")
+		if float(r["pose_err"]) > _g_up_tol_deg:
+			bad.append("pose")
+		if float(r["det"]) < 0.999:
+			bad.append("mirrored")
+		if g_err > _g_g_tol:
+			bad.append("g")
+		if float(r["drop"]) > _g_drop_tol or float(r["drop"]) < -0.02:
+			bad.append("drop")
+		if a <= 0.0:
+			bad.append("NOT-MEASURED")
+		else:
+			measured += 1
+			if a_err > _g_a_tol:
+				bad.append("a")
+			if float(r["a_err_deg"]) > _g_up_tol_deg:
+				bad.append("a-dir")
+			a_max = maxf(a_max, a_err)
+			adir_max = maxf(adir_max, float(r["a_err_deg"]))
+		if bool(r["on_floor"]):
+			n_floor += 1
+		up_max = maxf(up_max, float(r["up_err"]))
+		pose_max = maxf(pose_max, float(r["pose_err"]))
+		g_max = maxf(g_max, g_err)
+		drop_max = maxf(drop_max, float(r["drop"]))
+		det_min = minf(det_min, float(r["det"]))
+		if not bad.is_empty():
+			ok = false
+		print(("  ang %5.1f deg cell %2d r=%8.3f  on_floor=%s drop=%+.3f m  "
+			+ "up_err=%7.3f deg pose_err=%7.3f det=%+.4f  g_read=%7.4f "
+			+ "want=%7.4f (%+6.2f%%)  head=%.2f lift=%.2f n=%d  a_meas=%s "
+			+ "vs g(fall)=%7.4f  a_dir=%6.2f deg  %s")
+			% [float(r["ang"]), int(r["cell"]), float(r["r"]),
+			("yes" if bool(r["on_floor"]) else "NO "), float(r["drop"]),
+			float(r["up_err"]), float(r["pose_err"]), float(r["det"]),
+			float(r["g_read"]), float(r["g_want"]),
+			(float(r["g_read"]) / maxf(1e-9, float(r["g_want"])) - 1.0) * 100.0,
+			float(r.get("headroom", 0.0)), float(r.get("lift", 0.0)),
+			int(r.get("fall_f", 0)),
+			("%7.4f (%+6.2f%%)" % [a, (a / maxf(1e-9, g_air) - 1.0)
+				* 100.0] if a > 0.0 else "  none          "), g_air,
+			float(r.get("a_err_deg", -1.0)),
+			("ok" if bad.is_empty() else "FAIL " + ", ".join(bad))])
+	print(("GRAVITY gate=%s angles=%d on_floor=%d/%d measured=%d "
+		+ "up_err_max=%.4f deg (tol %.4f) pose_err_max=%.4f det_min=%+.4f "
+		+ "g_err_max=%.3f%% (tol %.2f%%) a_err_max=%s a_dir_max=%.3f deg "
+		+ "drop_max=%.3f m (tol %.3f)")
+		% [("PASS" if ok else "FAIL"), _g_rows.size(), n_floor, _g_rows.size(),
+		measured, up_max, _g_up_tol_deg, pose_max, det_min, g_max * 100.0,
+		_g_g_tol * 100.0,
+		("%.3f%%" % (a_max * 100.0) if measured > 0 else "n/a"),
+		adir_max, drop_max, _g_drop_tol])
+	get_tree().quit(0 if ok else 1)
+
+
+# ===========================================================================
+#  THE CORPSE GATE -- a player walks AROUND a body, not through it
+# ===========================================================================
+#
+# `STATE.md` §24.5: *"a settled ragdoll does not push the player aside the way a
+# standing person does"*. `ragdoll.gd` excepts the player's RID from all sixteen
+# bones on purpose -- see `npc.gd`'s header for the floor-loss diagnosis that
+# forced it -- so the only thing that can separate them is `npc.gd::push_off`,
+# and until session 4r that loop knew about walkers and baked people and not
+# about anybody lying down.
+#
+# WHAT THIS DRIVES: settle, drop a real body out of the corridor crowd where a
+# collapse would put one, let it settle at the deck's own 7.45 m/s^2, then walk
+# the player straight at it and measure the closest the two ever come.
+#
+# THE MEASUREMENT IS `npc.gd`'s OWN. `nearest_ragdoll_clearance()` is the same
+# capsule maths `push_off` separates with, so this cannot pass by measuring
+# something the separation does not use -- and it is negative exactly when the
+# player is inside the body.
+#
+# CONTROL: `--no-ragdoll-push` puts the corpse back to being a hologram and the
+# clearance collapses to about -(segment radius + capsule radius).
+var _c_gate := false
+var _c_phase := 0
+var _c_f := 0
+var _c_settle := 60
+var _c_wait := 0
+var _c_walk := 0
+var _c_who := ""
+var _c_min := 1e30
+var _c_min_at := 0
+var _c_off := 0
+var _c_from := Vector3.ZERO
+var _c_path := 0.0
+var _c_prev := Vector3.ZERO
+var _c_seen := 0
+var _c_start_clear := 0.0
+
+
+func _run_corpse_gate(args: Dictionary) -> void:
+	if _player == null or _people == null:
+		print("CORPSE gate=FAIL -- no player or no crowd node")
+		get_tree().quit(2)
+		return
+	_c_gate = true
+	_c_phase = 0
+	_c_f = 0
+	_c_settle = int(args.get("settle", "60"))
+	# HOW LONG A BODY TAKES TO STOP MOVING IS MEASURED, NOT GUESSED. `ragdoll.gd`
+	# prints a settle time on every drop and INV-446 records the range across the
+	# fifteen species: 2.02-3.55 s. Four seconds is the top of that plus a frame
+	# budget's worth of margin; the gate also prints whether SETTLED was reached.
+	_c_wait = int(args.get("settle-body", str(int(4.0
+		* Engine.physics_ticks_per_second))))
+	# Far enough to cross the whole body and out the other side if nothing stops
+	# it: the approach starts ~3 m out and a human is ~1.8 m long on the deck.
+	_c_walk = int(args.get("approach", str(int(2.5
+		* Engine.physics_ticks_per_second))))
+	print(("CORPSE gate: settle %d frames, body settle window %d frames "
+		+ "(%.1f s), approach %d frames")
+		% [_c_settle, _c_wait, float(_c_wait)
+		/ float(Engine.physics_ticks_per_second), _c_walk])
+
+
+func _corpse_frame(delta: float) -> void:
+	match _c_phase:
+		0:      # -- SETTLE THE PLAYER.
+			_player.step(delta, Vector2.ZERO, false, false)
+			_push_off(delta)
+			_c_f += 1
+			if _c_f < _c_settle:
+				return
+			_c_phase = 1
+		1:      # -- DROP SOMEBODY, out of the crowd, along the corridor.
+			var d: Node = _people.ragdoll_director()
+			if d == null:
+				print("CORPSE gate=FAIL -- no ragdoll director in the tree. "
+					+ "`main.gd::_start_ragdolls` builds it on modes station "
+					+ "and arrival; this build has none.")
+				get_tree().quit(2)
+				return
+			var p: Vector3 = _player.global_position
+			var up: Vector3 = _player.body_up()
+			# ALONG THE CORRIDOR, WHICH IS NOT THE AXIS. A ring corridor runs
+			# round the circumference; +Z is the station's axis and is the
+			# corridor's 2.6 m WIDTH. Same derivation as `main.gd::_ragdoll_gate`,
+			# which learned it by dropping two bodies off the edge of the floor.
+			var along: Vector3 = up.cross(Vector3(0, 0, 1)).normalized()
+			_c_who = _people.promote_walker(d, {
+				"cause": "INC-ACCIDENT", "dead": true,
+			}, p + along * 3.0, 12.0)
+			if _c_who == "":
+				print("CORPSE gate=FAIL -- nobody fell: %s"
+					% String(_people.get("promote_why")))
+				get_tree().quit(1)
+				return
+			print("CORPSE gate: %s went down 3.0 m along the corridor" % _c_who)
+			_c_f = 0
+			_c_phase = 2
+		2:      # -- LET IT SETTLE. The player stands still while it does.
+			_player.step(delta, Vector2.ZERO, false, false)
+			_push_off(delta)
+			_c_f += 1
+			if _c_f < _c_wait:
+				return
+			_c_seen = int(_people.get("_rag_seen"))
+			_c_start_clear = _people.nearest_ragdoll_clearance()
+			_c_from = _player.global_position
+			_c_prev = _c_from
+			_c_f = 0
+			_c_phase = 3
+			print(("CORPSE gate: body settled, %d segments, clearance %.3f m "
+				+ "before the approach") % [_c_seen, _c_start_clear])
+		3:      # -- WALK AT IT.
+			var aim: Vector3 = _people.ragdoll_centre()
+			if aim == Vector3.ZERO:
+				print("CORPSE gate=FAIL -- the body stopped existing mid-walk")
+				get_tree().quit(1)
+				return
+			_player.step(delta, Vector2.ZERO, false, false,
+				aim - _player.global_position)
+			_push_off(delta)
+			var c: float = _people.nearest_ragdoll_clearance()
+			if c < _c_min:
+				_c_min = c
+				_c_min_at = _c_f
+			if not _player.is_on_floor():
+				_c_off += 1
+			_c_path += _player.global_position.distance_to(_c_prev)
+			_c_prev = _player.global_position
+			_c_f += 1
+			if _c_f < _c_walk:
+				return
+			_corpse_verdict()
+
+
+func _corpse_verdict() -> void:
+	_c_gate = false
+	set_physics_process(false)
+	# THE TOLERANCE IS ONE FRAME OF WALKING. `push_off` deliberately pays a deep
+	# overlap off over several frames at the player's own speed rather than
+	# teleporting them out of it, so a body arriving at walking pace is inside by
+	# up to one frame's travel before the separation catches up. 1.5x that for the
+	# diagonal case. Nothing else here is allowed a tolerance: a corpse you can
+	# stand in the middle of is -(r_segment + 0.35) deep, two orders bigger.
+	var step_m: float = float(_player.get("speed_m_s")) \
+		/ float(Engine.physics_ticks_per_second)
+	var tol: float = 1.5 * step_m
+	var ok := true
+	var bad: Array[String] = []
+	if _c_seen <= 0:
+		bad.append("no segments were ever seen")
+	if _c_min < -tol:
+		bad.append("the player was %.3f m INSIDE the body" % -_c_min)
+	if _c_off > 0:
+		bad.append("%d frames off the floor" % _c_off)
+	if _c_path < 0.5:
+		bad.append("the player never approached (%.2f m walked)" % _c_path)
+	ok = bad.is_empty()
+	print(("CORPSE gate=%s who=%s segments=%d clearance_start=%.3f m "
+		+ "clearance_min=%.4f m (tol -%.4f, one frame of walking is %.4f) "
+		+ "at frame %d, walked=%.2f m, offfloor=%d/%d, %s%s")
+		% [("PASS" if ok else "FAIL"), _c_who, _c_seen, _c_start_clear, _c_min,
+		tol, step_m, _c_min_at, _c_path, _c_off, _c_walk,
+		String(_people.push_report()),
+		("" if ok else " -- " + "; ".join(bad))])
+	get_tree().quit(0 if ok else 1)
 
 
 func _try_use() -> void:

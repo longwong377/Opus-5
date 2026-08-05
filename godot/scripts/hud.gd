@@ -157,8 +157,16 @@ func bind(player: Node3D, interact: Node, glb: String,
 	_player = player
 	if _player != null:
 		_cam = _player.get_node_or_null("Camera3D") as Camera3D
-		gravity_m_s2 = float(_player.gravity_m_s2)
-		field = String(_player.gravity_mode).to_upper()
+		# THE FIELD IN FORCE, NOT THE FALLBACK SCALAR. `player.gd` derives
+		# g = omega^2 r from the body's own position when the spin is known
+		# (INV-480); `gravity_m_s2` is only what it falls back to when nothing
+		# states one -- and NOTHING DID, so this drew a confident `9.81 M/S2`
+		# over a body that was falling at 7.45. A HUD reporting a number the
+		# simulation does not use is the same defect as a gate reading a stale
+		# artefact: both are a second copy of a computed value.
+		gravity_m_s2 = float(_player.gravity_g())
+		field = ("SPIN" if float(_player.omega2) > 0.0
+			else String(_player.gravity_mode).to_upper())
 	_interact = interact
 	_address(glb)
 	# THE GEOMETRY FIRST, THE SIDECAR ONLY IF THERE IS NO GEOMETRY. This HUD used
@@ -348,6 +356,11 @@ func _process(delta: float) -> void:
 	ring_deg = fposmod(rad_to_deg(atan2(p.y, p.x)), 360.0)
 	var vel: Vector3 = _player.velocity
 	speed_m_s = vel.length()
+	# AND IT IS RE-READ EVERY FRAME, because g = omega^2 r VARIES WITH RADIUS on
+	# a spun station -- 0.234 g on Yellow's innermost addressed deck to 1.693 g
+	# deep in Grey. A value captured once at bind is correct only on the deck it
+	# was captured on.
+	gravity_m_s2 = float(_player.gravity_g())
 
 	# -- HEADING, IN THE FRAME THE STATION ACTUALLY HAS -------------------
 	# A compass rose is a planet's idea. This is a spinning ring 8 km long, so

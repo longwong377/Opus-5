@@ -136,18 +136,140 @@ the parcel patchwork now reads as land rather than as two colours.
 So A4a-1 is **half closed**: the drum is no longer empty, and it is not yet a place to stand in.
 The next increment is a near-field density measured at eye level, not more scatter.
 
+### 24.6 THE GARDEN IS A TOWN — craft 1 → 3, and "cubes" was never about trim
+
+The owner's words were *"shitty little cubes"* and *"a sad excuse for a tree"*, and the score had
+not moved in two rounds **despite** session 3z rebuilding both generators against a line-density
+floor. `docs/garden-4q-before-tree.png` (Forward+, eye 11 m) shows why, and the finding is the
+transferable part:
+
+**The previous answer to "cubes" was TRIM** — pilasters, cills, gutters, downpipes, balconies,
+twenty-one times the line density — laid over a single rectangular prism. **"Cubes" is a statement
+about SILHOUETTE, and trim does not change one.** The block still read as a concrete retaining wall
+from 12 m. Same for the tree: `tree()` drew height from 5.25–10.5 m and every canopy lobe from the
+**constant** `TREE_R_M = 2.2`, so a 10.5 m tree got a 2.2 m crown — a lollipop **by construction**
+on the tall half of the population, whatever else was hung on it (INV-453).
+
+**And every gate the module had was satisfied by a ball on a stick beside a box.** Triangle count,
+line density, closure, winding, determinism, the surface budget — all green, all measuring a *part*
+against a standard, none able to ask what the part *is*. That is this project's oldest defect
+(layer 2's "a cube passes every word of a topological test") recurring in a module that had already
+been rebuilt once for it. The four new gates ask **shape** questions: crown span over height,
+whether a block's plan at 80% of its height is smaller than its base, whether ground cover passes
+through the paving, whether a trunk stands inside a wall.
+
+| | before | after |
+|---|---|---|
+| `garden.py` selftest | 25/25 | **44/44**, byte-identical across `PYTHONHASHSEED` 0/1/12345 |
+| townscape triangles | 22,620 | **51,026** against a 55,000 allowance *derived from two render logs* |
+| craft at half distance | **1** | **3** |
+
+**A defect no assertion had, found by looking at the before-frame:** a tree's canopy stood **inside
+a building**, 11 m from the eye, because blocks and trees were drawn from two independent
+distributions with nothing between them. The trunk-in-wall gate then **fired for real during the
+build at 0.70 m**, which is what sent the street blocks to a yaw and a stand-off.
+
+**The near field needed a new LOD RUNG, not the existing shape reused.** §24.4b's own conclusion was
+that `drum_dressing`'s ladder "does not place more things near the eye" — its finest rung is 113 m.
+`garden` now numbers that ladder exactly and adds **level −1** inside 35 m, with the bare call still
+returning level 0 so `drum_dressing.worst_case_cost` is **unchanged at 119,868 / 120,000** (INV-452).
+
+**THE PIN DID ITS JOB, AND ITS HANDOVER NUMBER WAS WRONG.** `drum_dressing`'s `GARDEN_OPEN_EDGES`
+went red as designed. The builder's report gave `town_block: 960`; re-measured on the delivered
+file it is **576** — the terraced mass closes 1,728 more edges than the prism did. *A pin is a
+record of what the code does, so it is read off the code; taking one from prose is how a gate ends
+up asserting a number nobody computed.*
+
+**Three findings that are NOT the garden's to fix**, all confirmed and logged in the scorecard:
+
+1. **`density.py` does not measure `garden.py` for the Garden.** `density.score(the_garden)` returns
+   `module: interior` over the shared drum shell. A `_m_garden` measurer **exists at
+   `density.py:816`** and nothing routes `the_garden` to it — so `garden.py`'s own docstring claim
+   describes a number no gate computes, and **no work in `garden.py` can move the Garden's layer-2b
+   row.**
+2. **`budget.py`'s drum gate cannot see the Garden at all.** It sums shell + caps + trusses + spokes
+   only — no townscape, no `drum_dressing`, no trams. The drum's real visible set (**293,566**
+   measured) is invisible to the gate that names it, and is reported only in the render log. *A gate
+   exists and does not measure the thing it names.*
+3. **`garden_bark` is too dark to show what was built**, and its own INV entry asked for exactly this
+   evidence: *"Overturned by: any near-field frame of a tree in the drum, which would settle it in
+   one measurement."* That frame now exists. The trunk is 1,244 triangles with a fluted section that
+   **cannot be seen at value 0.135**, and the frame measures **crushed 25.49%** — the worst in the
+   drum set. Left for `materials.py` to derive properly rather than nudged.
+
+**A measurement corrected the builder's eye, and it is worth keeping:** they wrote "the window bands
+are blown out"; `measure_frame.py` says **clipped 0.03%**, p95 0.9078. Not clipping — the *glow*
+post-process spreading a bright band. The real numeric finding was at the other end of the histogram.
+
+### 24.7 THE PLAYER FELL 31.6% TOO FAST, EVERYWHERE, AND THE WRITTEN DIAGNOSIS WAS HALF WRONG
+
+§24.5 recorded — from the ragdoll agent, and I wrote it down without re-deriving it — that
+`player.gd::gravity_dir()` returned `-Y` at 9.81 in `"deck"` mode and that `walk.gd` shipped that
+mode. **Half of that was wrong.** `main.gd::_configure_walk` line 305 sets `gravity_mode` to
+`"drum"`, so the **direction** shipped correct. What shipped broken was the **magnitude**:
+**nothing anywhere set `gravity_m_s2`**, so the export default of 9.81 stood on a deck that
+delivers **7.4523 m/s²**, and the player fell **31.6% too fast at every angle on the ring**.
+
+*One agent's finding, recorded faithfully by me, corrected by the next agent that had to act on it.
+The correction is the process working — but the lesson is mine: I put a diagnosis into the
+project's memory without running the one grep that would have split it in two.*
+
+`--legacy-deck` shows the trap is nonetheless real, because it is the export default one
+mis-configuration away:
+
+| ring angle | `--legacy-deck` (the export default) | `--legacy-field` (**what shipped**) | after |
+|---|---|---|---|
+| 10° | up **99.42° off**, off-floor | up 0.000°, **g +31.60%** | g +0.00% |
+| 90° | up **179.98° off** — standing on the ceiling | up 0.000°, g +31.61% | ok |
+| 270° | up 0.000°, on floor — **the only angle ever tested** | g +31.60% | ok |
+| all 18 | **on_floor 5/18** | on_floor 18/18, g_err_max 31.61% | **18/18, g_err_max 0.000%** |
+
+**THE GATE DOES NOT READ A VARIABLE BACK.** It lifts the body into headroom it *ray-casts* for,
+drops it, and measures the acceleration off the velocity — a constant cannot fake `g = ω²r`.
+Referenced against the *floor's* g the fall read a systematic **−0.33%** at all 18 angles; that is
+not error, it is the field genuinely weakening 0.9 m nearer the axis. Re-referenced against ω² at
+the fall's own mean radius the residual is **0.053%** — 6× better, and positive evidence that the
+body is integrating a radial field rather than a scalar.
+
+Fix shape, and it is the same one 4q applied to `ragdoll.gd`: `player.gd` takes an `omega2` and
+derives **both** halves from the body's own world position. `gravity_mode`/`gravity_m_s2` survive
+as the no-spin fallback, so `transit.gd`, `route_test.gd`, `life.gd`, `navwalk.gd`, `arrival.gd` and
+`drum_walk.py --gravity=` are bit-for-bit unchanged. `walk.gd` reads ω² off `cell_manifest.json`'s
+deck row and **prints which branch it took on every run**.
+
+Also fixed, same class: `_spawn_player` put the capsule in the tree with an **identity basis** — a
+person lying along world +Y until `step()` first ran. There is now one construction site for the
+pose.
+
+**And you no longer walk through the casualty** (§24.5's other open item). `npc.gd::push_off`
+separates the player from every bone of every promoted ragdoll, in the same loop and under the same
+per-frame cap as walkers. The shape approximation is stated rather than hidden: a box segment
+becomes a capsule down its longest axis with the circumscribing radius, costing **33.2 mm at the
+spine**, 14.1 chest, 9.2 pelvis (INV-482). The exact capsule-capsule solve would push **along up**,
+which is precisely what costs a `CharacterBody3D` its floor — *the approximation is the constraint,
+not a shortcut.*
+
+**A CONTROL THAT ONLY REMOVED A SECOND LOCK ON A DOOR NOBODY HAD A KEY TO.** §24.5 said
+`--ragdoll-solid` "removes the exception and reproduces the pre-4h floor-loss hazard". Measured: it
+does nothing. Bones sit on `RAGDOLL_LAYER` (16) and **`walk.gd::_spawn_player` never sets the
+player's `collision_mask`**, so it is Godot's default 1 — the player could never collide with a
+bone, RID exception or not. To be a real control it must also put the bones on `WORLD_LAYER`. Still
+open, and now written down.
+
 ### 24.5 Open, and honestly
 
 * **The arrest chain behind a refusal is still Python.** A refused player is *told* they are
   refused and is not yet detained. P2 owns closing it.
-* **A settled ragdoll does not push the player aside** the way a standing person does.
+* ~~**A settled ragdoll does not push the player aside**~~ — **CLOSED in 4q**, `coldstart.py --g7`;
+  with the push off the control ends the player 0.420 m inside the body. Previously:
   `ragdoll.gd` excepts the player's RID from every bone deliberately (`--ragdoll-solid` removes
   the exception and reproduces the pre-4h floor-loss hazard), so the separation has to be added by
   hand in `npc.gd::push_off`, exactly as it already is for people. Not done.
-* **`player.gd::gravity_dir()` in `"deck"` mode returns `Vector3(0,-1,0)` at 9.81 m/s²**, and
-  `walk.gd` ships that mode. The spawn happens to sit near the bottom of the ring where −Y ≈
-  radial, so it looks right; a quarter-turn round the ring and the player falls off the ceiling at
-  the wrong g. The **ragdoll** uses the true radial field. Found by the ragdoll agent, not fixed.
+* ~~`player.gd::gravity_dir()` in `"deck"` mode returns `Vector3(0,-1,0)` at 9.81~~ — **CLOSED in
+  4q, and the entry above was HALF WRONG.** See §24.7: `main.gd` line 305 already set
+  `gravity_mode` to `"drum"`, so the *direction* shipped correct. What shipped broken was the
+  *magnitude* — **nothing anywhere set `gravity_m_s2`**, so the 9.81 export default stood and the
+  player fell **31.6% too fast at every angle**. Both closed; `coldstart.py --g6`.
 * **The shipped build draws its crowd at the coarsest LOD** — *"no crowd library was named, ladder
   1e9:8 (the coarsest that shipped)"*. The derived ladder exists and nothing passes it.
 * A promoted body is **4 draw calls**, not 1, and the crowd already spends 31–33 of a 32 budget.

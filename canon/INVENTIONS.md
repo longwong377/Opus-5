@@ -8089,3 +8089,165 @@ run** — `posture()` off `body.FIGURE` alone is wrong for every non-human speci
 **Why it is in the DIRECTOR and not in each caller.** It was a default of 9.81 m/s² and +Y, and the only caller that set them correctly was the gate they were written in. `npc.gd::promote_walker` — the one a player's session actually goes through — set neither, so a real collapse would have fallen at Earth gravity straight down on a station whose deck delivers **7.454 m/s² along a radius**. That is a fix applied to the instance rather than to the rule, which is the defect this file's own §4h section is about.
 **Checkable.** `--derive-g` withholds both and the run is byte-identical to the one that states them.
 **Overturned by.** a place on the station that is not on the rotor — the drum ground and a docked Starfury both need their own answer.
+
+## INV-480 — The player's gravity is g = ω²r along its own radius, never a constant
+
+**What.** `player.gd` derives BOTH halves of its field from the body's own world position when it is told the station's spin: down is the outward radial from the +Z axis, and the magnitude is `omega2 * r`. On the boot deck at r = 211.5 m that is **7.452 m/s² (0.760 g)**, not 9.81.
+
+**Why it is in the BODY and not in each caller.** It was a two-way switch plus a scalar, and both were wrong in the shipped build. `"deck"` mode returned the constant `Vector3(0, -1, 0)` — right only near the bottom of the ring, where the boot spawn happens to sit (ring angle **264.8°**, so −Y is 5.2° off the true radial). And `main.gd::_configure_walk` did set `"drum"`, so the shipped DIRECTION was right — while **nothing anywhere set `gravity_m_s2`**, so the shipped MAGNITUDE was Earth's. Measured in the engine at all eighteen ring angles of blue/0/0: the pre-fix field reads **+31.6% on g and +31.9% on the measured free-fall acceleration**, at every angle. This is INV-451's finding one file over — a default that only the gate it was written in ever sets is an unset default — and the cure is the same: move the derivation into the thing that needs it.
+
+**Where ω² comes from.** `cell_manifest.json`'s deck table, `floor_g × 9.80665 / floor_r_m`, the same rule `main.gd::_spin_omega2` uses; `walk.gd::_derive_omega2` reads the row for the deck the body is actually standing on and prints which one. On a rigid rotor one row fixes the field at every radius, including the ones with no deck on them. Over the 251 rows the implied ω² spreads **0.051%** (0.03522752 to 0.03524550), which is `floor_g` being stored to four places and is the noise floor of the whole method. Period 33.470 s.
+
+**What it does NOT change.** A caller that states a number still wins: `--gravity=` short-circuits the derivation entirely, so `station/drum_walk.py`'s measured drum-floor value is untouched, and any caller that spawns its own body without a spin (`transit.gd`, `route_test.gd`, `life.gd`, `navwalk.gd`, `arrival.gd`) keeps the exact pre-4r behaviour.
+
+**Checkable.** `godot --headless --path godot -- --no-coldstart --gravity-gate` — 18 angles, `up_err_max=0.0000°`, `g_err_max=0.000%`, and a measured free-fall acceleration within **0.053%** of ω² at the fall's own mean radius. Controls `--legacy-field` and `--legacy-deck` both fail.
+
+**Overturned by.** a part of the station that is not on the rotor. The docked Starfury and anything in the zero-g core need their own answer, and `player.gd` returns g = 0 on the axis rather than inventing one.
+
+## INV-481 — The gravity gate's tolerances, all four derived
+
+**up direction — 0.0948°.** The angle the player's OWN capsule radius subtends at the deck's floor radius: `atan(0.35 / 211.555)`. Inside that, the field points at a different part of the same body and no gameplay can tell. Computed at run time from the capsule and the deck, never written down. The defect it catches is up to **179.98°**.
+
+**g — 0.5%.** About ten times the 0.051% spread between the 251 deck rows' own implied ω² (INV-480), and sixty times the ±0.0066% quantisation of a single `floor_g`. The defect it catches is **31.6%**.
+
+**measured acceleration — 1.0%.** Twice the g band, because an acceleration measured off a falling body also carries whatever one frame of contact does to it. Achieved: 0.053%.
+
+**drop — 0.300 m.** The cell spawn's own height above the shell (`r_floor - r_spawn` = **0.200 m**, written by `stream.bake::_floor_point`) plus Godot's default `floor_snap_length` of 0.10 m. Achieved: 0.176 m.
+
+**And one number the gate had to be taught.** Referenced against the FLOOR's g the measured fall came out systematically **−0.33%** at all eighteen angles. That is not error: `g = ω²r` and the body is lifted 0.9 m NEARER the axis to fall, so it genuinely falls more slowly. Referencing against ω² at the mean radius of the fall itself takes the residual to **0.053%** — a factor of six, and a confirmation that the body integrates a radial field rather than a constant, which no read-back of a variable could have given.
+
+**Overturned by.** a deck at a radius where the capsule subtends a materially different angle — Yellow's innermost addressed deck is r = 155.45 m, where the up band would be 0.129°.
+
+## INV-482 — A settled body is separated as capsules, and a box segment as its circumscribing cylinder
+
+**What.** `npc.gd::push_off` separates the player from every physical bone of every promoted ragdoll, using the same across-the-floor-only rule it already uses for walkers and baked people. Each segment is treated as a capsule: `ragdoll.py`'s own capsule shapes exactly, and a BOX shape as a capsule down its longest local axis with the radius that circumscribes the other two half-extents.
+
+**What is lost, measured off `human_ragdoll.json` rather than estimated.** 7 of a human's 16 segments are boxes (pelvis, spine, chest, both wrists, both ankles). At the corners of one the player is held `sqrt(h_i² + h_j²) − max(h_i, h_j)` further out than the box itself would hold them: **33.2 mm at the spine**, 14.1 mm at the chest, 9.2 mm at the pelvis, 7.2 mm at a wrist. Separately, flattening an arbitrary capsule onto the floor plane over-separates by `r(1 − cos tilt)` — a forearm at 45° is 12.7 mm of its 43.3 mm radius, a thigh 23.4 mm of 79.9.
+
+**Why not the exact shape.** The true capsule-capsule separation has a component ALONG the body's up, and a push along up is precisely what costs a `CharacterBody3D` its floor — the whole diagnosis at the top of `npc.gd`. The approximation is not a shortcut, it is the constraint.
+
+**Checkable.** `--corpse-gate`: `clearance_min = −0.0000 m` against a tolerance of one frame of walking (0.070 m at 4.2 m/s and 60 Hz). Control `--no-ragdoll-push`: the player walks the full 10.50 m and ends **0.420 m inside** the body.
+
+**Overturned by.** a segment whose box is far from square in its minor axes, where the circumscribing radius stops being a fair stand-in; or a body posture where two segments' capsules leave a gap the player can stand in, which nothing yet measures.
+
+## INV-452 — The near field is a level BELOW drum_dressing's ladder, numbered -1
+
+**What.** `garden.tree(seed, level)` / `garden.block_building(seed, level)` number
+`drum_dressing.LOD_RATIOS` exactly — 0 is that module's LOD0 at 113 m, 1/2/3 its proxies — and add
+**level -1**, inside `NEAR_SWITCH_M = 35 m`. The default is **0**, not -1.
+**Why a level and not more detail on the existing one.** STATE.md §24.4b against
+`docs/engine-4q-drum-dressed.png`: *"The LOD ladder resolves detail by distance; it does not place
+more things near the eye."* A ladder whose finest rung is 113 m has no rung for where a player stands.
+**Why the default is not the finest.** `drum_dressing._tree_proto` and `_building_proto` call
+`gd.tree(seed)` / `gd.block_building(seed)` with no level, and `LOD_SCALE_M = 113.0` was solved by
+bisection against `DRESSING_TRIS = 120,000` at that cost, over 1,945 features, landing at 119,868.
+A finer bare call silently overruns a budget in a file `garden.py` does not own.
+**Why -1 rather than renumbering.** Renumbering makes every `drum_dressing` comment that says
+"level 0 IS `garden.tree()`" wrong, silently.
+**Checkable.** `garden._selftest` runs `drum_dressing.worst_case_cost(6)` and asserts it fits.
+**Overturned by.** A change to `drum_dressing.LOD_SCALE_M`, or a streaming budget for the drum.
+
+## INV-453 — A tree's crown radius is a fraction of its height, not a constant
+
+**What.** `CROWN_FRAC = 0.45`; crown radius = 0.45 × the tree's own height, ×(0.85..1.15).
+**Why.** `tree()` drew height from `TREE_H_M * (0.75 + 0.5u)` — 5.25 to 10.5 m — and every canopy
+lobe from the **constant** `TREE_R_M = 2.2`. A 10.5 m tree got a 2.2 m crown: a lollipop **by
+construction** on the tall half of the population, whatever else was hung on it.
+`docs/garden-4q-before-tree.png`, Forward+, eye 11 m away, shows it.
+**What constrained it.** A mature open-grown garden broadleaf is about as wide as it is tall.
+`garden.png`'s trees behind the landmark read 0.40-0.55 of their own height in radius; 29a's
+overhanging broadleaf is wider than tall because it is pruned over a path. Bounded BELOW by 0.30,
+under which a broadleaf reads as a conifer; ABOVE by 0.60, at which crowns merge into a roof at
+`STREET_TREE_PITCH_M`.
+**Checkable.** The lollipop gate measures crown span over height across 40 seeds and needs >= 0.60;
+its control asserts the constant it replaced scores 0.42 and FAILS.
+**Overturned by.** Any frame of the Garden's planting where a crown and its own trunk base are both
+legible.
+
+## INV-454 — Three tree forms, mixed 55 / 25 / 20
+
+**What.** `TREE_FORMS = ("broadleaf", "umbrella", "palm")`, per seed at 55% broadleaf, 25% palm,
+20% umbrella.
+**Why.** All three are authority 1 and only the first was built. broadleaf: `garden.png`
+"deciduous trees and shrubs"; `The Gardens.webp` "dark rounded broadleaf trees"; 29a's overhanging
+canopy. palm: `The Gardens.webp` "**Palm trees** lining streets and open ground" — the only frame of
+the settlement's own street planting. umbrella: 29a upper left, broad flat-topped canopies on clear
+stems, the widest thing in that frame.
+**What constrained the mix.** `The Gardens.webp` shows roughly one palm to two broadleaves over the
+legible half of the town; 29a's flat-topped trees are four of about fifteen legible canopies.
+**Why the form is opt-in.** `drum_dressing` builds its own LOD 1-3 and all of them are rounded
+broadleaf blobs. A palm at LOD0 popping into a broadleaf at 113 m is worse than a broadleaf at both,
+so the drum scatter keeps the default and only `townscape()` — which owns its whole ladder — asks
+for the mix.
+**Overturned by.** Any frame of the drum's planting where crowns can be counted by form.
+
+## INV-455 — Terraced massing: setback 1.35 m, batter 0.55 m over 2.20 m, a low wing, recessed bands
+
+**What.** `SETBACK_M = 1.35`, `BATTER_M = 0.55` over `BATTER_H_M = 2.20`, `WING_FRAC = 0.55` ×
+`WING_D_M = 5.5` × `WING_H_M = 3.6`, `BAND_RECESS_M = 0.34`, `BAND_H_M = 1.30`, panes 0.95 × 0.90 m
+at 1.55 m pitch, 2-3 tiers.
+**Why.** The previous version answered "shitty little cubes" with TRIM — pilasters, cills, gutters,
+downpipes, balconies, twenty-one times the line density — over a single rectangular prism.
+`docs/garden-4q-before-tree.png` shows it reading as a concrete retaining wall from 12 m. **"Cubes"
+is a statement about SILHOUETTE and trim does not change one.**
+**What constrained each number.** setback and tier count: `talia-winters in gorgeous office.webp`
+"low wide grey settlement blocks, **terraced rather than towered**" and `The Gardens.webp` "two to
+four storeys". batter: `The Gardens.webp` "three stacked glazed bands over a **solid battered
+base**". wing: "**long low linear blocks** with unbroken window strips". recessed band and pane
+pitch: "continuous horizontal window banding — **rows of small bright rectangles in dark recessed
+bands**"; the old band stood 60 mm PROUD, which draws two lines and reads as a painted stripe —
+`docs/judge-4e-drum-half.png`'s "white boxes with window-grid textures". slab caps: `garden.png`
+"cantilevered horizontal slab canopies ... wrapping the base in layered tiers".
+**What is NOT changed and why.** The (L, W, H) envelope is drawn by the same three `_u` calls in the
+same order, because `drum_dressing.prototype_dims()` reads it back to fit 708 town blocks.
+**Checkable.** The extrusion gate reads the `garden_block` groups ONLY — the walls, never the trim —
+and needs every block's mass plan at 80% of its height to be <= 0.85 of its base plan. As built the
+worst is 0.50; with `SETBACK_M` forced to 0 it is 0.70 (the wing still working); with the setback
+AND the wing removed it is 1.000 and the gate fires.
+**Overturned by.** A frame of the drum settlement in which one block's plan can be traced at two
+heights.
+
+## INV-456 — Near-field ground cover: 4.4 tussocks and 2.0 scrub clumps per 100 m², and a sett COURSE
+
+**What.** Inside `NEAR_SWITCH_M`, on ground that is neither paved nor built: tussocks (0.26 m, one
+lobe) at 4.4 per 100 m² and scrub clumps (0.62 m, three overlapping lobes) at 2.0 per 100 m², on a
+jittered lattice. Paving in courses 0.42 m wide standing 18 mm proud; cross joints only within 10 m.
+**Why.** `docs/engine-4q-drum-dressed.png` and `docs/garden-4q-before-tree.png` show the same thing
+underfoot: two flat colour fields meeting along a hard straight edge with nothing standing on either.
+**What constrained it.** 29a is the only authority-1 frame at eye level in the Garden: "paved
+winding paths in **small setts**", "clipped hedges", a circular planter massed with flowering shrub,
+"terracing retained by horizontal red-brown timber-slat walls". The 0.42 m sett module is read from
+that frame's paving against its standing figures. Densities bounded BELOW by the point at which the
+cover stops closing the green/tan edge, ABOVE by the frame allowance: 212 tussocks inside 35 m is
+1.4 tri/m² locally, and that density over 4.5 million m² would be 4 million triangles.
+**Why courses and not setts.** A 46 × 26 m terrace at 0.42 m is 6,780 setts — 81,000 triangles, more
+than the drum's whole remaining allowance for one floor. A course lays the same two lines the length
+of the terrace for twelve triangles, and setts are laid in courses anyway.
+**Why a jittered lattice.** An even lattice reads as confetti (the session-2n greebles); pure noise
+clumps and leaves holes. A jittered lattice has a spacing floor and no visible period.
+**Overturned by.** A frame of the drum's open ground at eye level, which the reference set does not
+contain — 29a is a designed civic landscape, not a field.
+
+## INV-457 — The townscape's frame allowance is 55,000 triangles, and the street grid inside it
+
+**What.** `TOWNSCAPE_TRIS = 55,000`. `STREET_PITCH_M = 38`, `CROSS_PITCH_M = 52`, `STREET_W_M = 9`,
+`NEAR_TOWN_M = 68`, `STREET_TREE_PITCH_M = 26`, `HERO_TREES = 6`.
+**Why the allowance is a measurement, not an allocation.** Two engine renders of the drum, both
+Forward+ on Vulkan 1.4, report the scene total in their own log: 263,384 with this module at 22,620
+(room 59,236) and 293,566 with it at 51,026 (room 56,088), against
+`budget.DRUM["visible_set_tris"] = 300,000`. The binding figure is the smaller; 55,000 leaves 1,088.
+**What it replaced, and why that gate was wrong.** `garden._selftest` asserted `< 0.5 tri/m²` over
+the settlement band, borrowing `budget.DRUM["surface_tris_per_m2"]`. `budget.py` applies that number
+to `interior.drum_interior()` — the GROUND HEIGHTFIELD's own mesh density over 4.5 million m² — not
+to objects standing on the ground. Same units, different quantity, and near-field content is a
+concentration by definition: a rule that forbids 1.4 tri/m² inside 35 m forbids ever standing
+anywhere. The old number is still printed every run (0.3554 before, 0.802 after) so the cost of the
+change stays visible.
+**Why HERO_TREES is a count.** A radius costs whatever happens to fall inside it; a count is stated.
+**What constrained the grid.** `The Gardens.webp`: "low-rise flat-roofed blocky buildings, two to
+four storeys, in a **dense orthogonal street grid**", "street lighting: bright point sources on
+posts along the streets", "palm trees lining streets". The previous placement was one building per
+4,400 m², which is not a town.
+**Overturned by.** A streaming budget for the drum — everything here is built for one eye at one
+instant, exactly as `drum_ground.visible_set` and `drum_dressing.dressing_set` are — or any change
+to `budget.DRUM`.

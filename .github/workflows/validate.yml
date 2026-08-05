@@ -97,6 +97,22 @@ jobs:
         continue-on-error: true
         run: python3 station/coldstart.py --g5
 
+      # THE FIELD A PLAYER FALLS IN. Nothing set `gravity_m_s2`, so the 9.81
+      # export default stood and the shipped player fell 31.6% too fast at every
+      # angle on a deck delivering 7.4523. Measured at 18 ring angles, by
+      # dropping the body and reading acceleration off the velocity -- a
+      # constant cannot fake g = omega^2 r. Two controls, both shown failing.
+      - name: The field is right all the way round the ring
+        id: sgravity
+        continue-on-error: true
+        run: python3 station/coldstart.py --g6
+
+      # AND YOU WALK AROUND THE CASUALTY. Control: 0.420 m inside the body.
+      - name: A player walks around a body, not through it
+        id: scorpse
+        continue-on-error: true
+        run: python3 station/coldstart.py --g7
+
       - name: The circulation network -- can you get from here to there
         id: scirculation
         continue-on-error: true
@@ -868,6 +884,10 @@ jobs:
             echo "FAILED: sragdoll"; fail=1; fi
           if [ "${{ steps.scollapse.outcome }}" != "success" ]; then
             echo "FAILED: scollapse"; fail=1; fi
+          if [ "${{ steps.sgravity.outcome }}" != "success" ]; then
+            echo "FAILED: sgravity"; fail=1; fi
+          if [ "${{ steps.scorpse.outcome }}" != "success" ]; then
+            echo "FAILED: scorpse"; fail=1; fi
           if [ "${{ steps.scirculation.outcome }}" != "success" ]; then
             echo "FAILED: scirculation"; fail=1; fi
           if [ "${{ steps.sperformance_budgets.outcome }}" != "success" ]; then
