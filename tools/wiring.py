@@ -447,15 +447,28 @@ def _selftest(out=print):
     out("  the caller graph is not vacuous: %d of %d tested modules have an"
         " external importer" % (len(tested) - len(orphans), len(tested)))
 
+    # MISSING IS A FAILURE; UNREPRODUCIBLE IS A REPORT, and the asymmetry is
+    # deliberate. A path the engine reads that nothing on disk satisfies is a
+    # mode that cannot run -- unambiguous, and exactly the defect this tool
+    # exists for, so the gate must go red for it and stay red until it is built.
+    # "On disk but no CI step rebuilds it" is a weaker claim: the mode works
+    # here and would break on a fresh clone. Failing on that today would make
+    # the gate red for six paths at once and bury the one that is actually
+    # broken -- so it is printed, counted, and left for the CI-coverage work it
+    # belongs to rather than folded into this signal.
+    check(not missing, "every path the engine reads exists",
+          "%d missing: %s" % (len(missing), ", ".join(missing)))
+
     out("")
+    out("wiring: %d engine data paths, %d missing, %d unreproducible,"
+        " %d orphaned tested modules" % (len(rows), len(missing), len(unbuilt),
+                                         len(orphans)))
     if _FAILED:
+        out("")
         out("FAILED:")
         for f in _FAILED:
             out("  " + f)
         return False
-    out("wiring: %d engine data paths, %d missing, %d unreproducible,"
-        " %d orphaned tested modules" % (len(rows), len(missing), len(unbuilt),
-                                         len(orphans)))
     return True
 
 

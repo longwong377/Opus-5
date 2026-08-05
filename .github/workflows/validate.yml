@@ -608,6 +608,21 @@ jobs:
         continue-on-error: true
         run: python3 tools/doc_chain.py
 
+      # Built-but-unreachable, which has now happened six times. Every gate in
+      # this file scores a PART against a standard, and a part with no caller
+      # still meets its standard -- so none of them can fail for it. This asks
+      # whether the shipped path reaches the thing that was built: does every
+      # `station/generated/...` path an engine script reads exist, is its
+      # producer run by CI, and does anything import each tested module.
+      #
+      # IT IS RED TODAY AND THAT IS CORRECT: `--mode=transit` reads
+      # `scene/transit/lift.json` and nothing has built it. Seconds to run; no
+      # build, no render, no GPU.
+      - name: Is the built thing actually reachable
+        id: swiring
+        continue-on-error: true
+        run: python3 tools/wiring.py --selftest
+
       - name: Confirm the schema still parses and is fully sourced
         id: sconfirm_the_schema_still_parses_and_is_f
         continue-on-error: true
@@ -751,6 +766,8 @@ jobs:
             echo "FAILED: sspec_gate"; fail=1; fi
           if [ "${{ steps.sdoc_chain.outcome }}" != "success" ]; then
             echo "FAILED: sdoc_chain"; fail=1; fi
+          if [ "${{ steps.swiring.outcome }}" != "success" ]; then
+            echo "FAILED: swiring"; fail=1; fi
           if [ "${{ steps.sdegeneracy.outcome }}" != "success" ]; then
             echo "FAILED: sdegeneracy"; fail=1; fi
           if [ "${{ steps.svariety.outcome }}" != "success" ]; then
