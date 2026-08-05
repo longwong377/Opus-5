@@ -270,9 +270,26 @@ func _build_starfury() -> Node3D:
 ## The lift and the tram. `station/transit_runtime.py --build` writes the
 ## manifest; until it has, this mode reports the missing file and stops, which
 ## is the honest state rather than a silent empty scene.
+##
+## THE FILENAME HERE WAS WRONG FOR THE WHOLE OF THIS MODE'S LIFE, and it is
+## worth stating rather than quietly correcting. It read
+## `transit/transit_manifest.json`, a name that appeared EXACTLY ONCE in the
+## repository -- on the line that read it. Nothing wrote it, nothing else
+## mentioned it, and `--build` writes `transit/lift.json` (via `build_lift`)
+## and `transit/tram.json`. So `--mode=transit` could never have worked, and
+## its error message named a command that would not have fixed it: you would
+## run `--build`, watch it succeed, and get the same error.
+##
+## `transit.gd` takes ONE manifest and branches on its `kind` field, so a
+## combined index was never what the other end wanted either. Found by
+## `tools/wiring.py --data`, which asks whether every generated path the engine
+## names has a producer -- the sixth instance of built-but-unreachable in this
+## project, and the first one caught by a gate instead of by a person.
+const TRANSIT_MANIFEST := "station/generated/scene/transit/lift.json"
+
+
 func _build_transit() -> Node3D:
-	var man := _root().path_join(
-		"station/generated/scene/transit/transit_manifest.json")
+	var man := _root().path_join(TRANSIT_MANIFEST)
 	if not FileAccess.file_exists(man):
 		push_error("main: no transit manifest at %s -- run " % man
 			+ "`python3 station/transit_runtime.py --build`")

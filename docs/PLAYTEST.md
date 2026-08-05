@@ -36,9 +36,10 @@ says how.
 | *"nothing flies. Zero references in any `.gd` or `.tscn`"* | **false by grep**, but read the caveat below before trying it: `godot/scripts/starfury.gd` (34 references), `godot/scenes/starfury.tscn`, and 14 in `main.gd`. `godot --path godot -- --mode=starfury` is the entry point, with a flight model, a chase camera and floating-origin rebasing. |
 | *"credits exist; no shop reads them"* | the bar's till debits. Fourteen days of one lurker: 267 → 420.50 cr, the bar's till 3,598.42, station stock 52,720 → 51,518, and `station/generated/economy.json` survives the process — a second run reads back the same purse. |
 
-**The Starfury's honest remainder, and it is larger than the grep suggests.** Every part
-exists and the assembly does not — which is this project's signature defect, now on its fifth
-instance after L3's room leg, `stream.gd`, the circulation graph and `dialogue.gd`:
+**The Starfury's honest remainder.** *(An earlier revision of this section said the data files
+did not exist. They do — at `station/generated/scene/`, not `station/generated/`. I had
+`ls`-ed the wrong directory instead of following the path the engine actually builds.
+`tools/wiring.py` now follows the read.)*
 
 | part | state |
 |---|---|
@@ -47,7 +48,7 @@ instance after L3's room leg, `stream.gd`, the circulation graph and `dialogue.g
 | docking physics | `station/physics/docking.py` + `test_docking.py`, tested, **not in CI** |
 | docking envelope | `starfury_scene.py --docking-envelope` — derived and real, see below |
 | engine script | `starfury.gd`, 1,000+ lines: mission, chase cam, floating origin, selftest |
-| **the data it reads** | **`station/generated/starfury/{starfury.glb,launch.json,vectors.json}` DOES NOT EXIST on this checkout, and `starfury_scene.py --build` is never run in CI.** Bake it before you fly |
+| **the data it reads** | **present** at `station/generated/scene/starfury/` — but `starfury_scene.py --build` is **never run in CI**, so it survives only because somebody once ran it by hand. Delete it and nothing rebuilds it |
 | **a dock phase** | **absent.** The mission is `ride → coast → transit`: it rides the rotating cobra bay, is released at the correct phase, coasts, and runs out |
 
 P4's bar is "launch → fly → dock, seamless". Launch is built, docking is *analysed* and never
@@ -167,6 +168,7 @@ Not bugs — the gates find those. Write down the things a gate structurally can
 
 | symptom | cause |
 |---|---|
+| **any mode that opens a file and stops** | run `python3 tools/wiring.py --data` first. It lists every `station/generated/…` path the engine reads, whether it is on disk, and whether CI rebuilds it. As of session 4n: **1 missing** (`scene/transit/lift.json` — `--mode=transit` needs `python3 station/transit_runtime.py --build`), **6 present but rebuilt by no CI step**, so they die on a fresh clone |
 | no window, no frames | Godot's `--headless` **disables rendering**. Drop the flag, or use `xvfb-run` as `tools/render_godot.sh` does |
 | `MONOLITHIC` | no cell set for the boot deck — `python3 station/boot.py --bake` |
 | black frames, no shadows | the renderer fell back to OpenGL 3 Compatibility. Grep the output for `Forward+`; if it says `Compatibility`, **the frames are not evidence** |
