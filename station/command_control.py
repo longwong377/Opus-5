@@ -103,7 +103,14 @@ WINDOW_RING_W_M = 0.16
 WINDOW_COURSES = ((0.14, 0.40, 12), (0.40, 0.62, 24), (0.80, 1.00, 24))
 WINDOW_BAND = (0.62, 0.80)      # the broad structural ring, as radius fractions
 WINDOW_STUDS = 40               # along the band's inner edge
-WINDOW_STUD_R_M = 0.035
+# 45 mm and 30 mm proud rather than 35/18. Measured off the rendered frame
+# rather than guessed: at the first size the stud line was 1.4 px across at the
+# rubric's half distance and did not read at all, which is `docs/AAA-STANDARD.md`
+# C3's "tertiary tier is generic" -- detail that exists in the mesh and not in
+# the picture. The reference's stud line is the clearest single detail in the
+# crop, so it has to survive to the frame.
+WINDOW_STUD_R_M = 0.045
+WINDOW_STUD_PROUD_M = 0.030
 WINDOW_PANE_INSET_M = 0.022     # how far a pane sits behind its own frame
 WINDOW_RIB_OUT_M = 1.35         # how far the radial ribs run past the rim
 
@@ -156,8 +163,16 @@ CONSOLE_LEG_TOP = 0.560         # fraction of CONSOLE_H_M
 CONSOLE_VALANCE_TOP = 0.690
 CONSOLE_APRON_TOP = 0.882       # = (H - 0.12) / H, the old bed line, kept
 CONSOLE_PANES = 3               # backlit panes across one unit's apron
-CONSOLE_BANKS = 3               # control-cell banks on the bed
-CONSOLE_CELLS = 3               # lit cells per bank
+# FOUR BY FOUR, NOT THREE BY THREE, and the reason is a rendered frame rather
+# than a preference. `docs/craft-4q-cnc-half-console.png` at the rubric's half
+# distance shows nine cells a unit reading as nine large pale tiles -- the
+# reference crop at 3x carries dozens of small controls in tight blocks, and the
+# difference is exactly `docs/AAA-STANDARD.md` C3's "the tertiary tier is
+# generic" against C4's "the detail is functional". Sixteen cells a unit at 9
+# units is 144 lit registers on the floor, which is 1,728 triangles -- affordable
+# against the 300,000 a whole deck's visible set is allowed.
+CONSOLE_BANKS = 4               # control-cell banks on the bed
+CONSOLE_CELLS = 4               # lit cells per bank
 CONSOLE_JOINT_FRAC = 0.94       # of the arc share -- the visible butt joint
 
 # The forward pit: "a lower forward pit of red-lit consoles". The frame's
@@ -568,6 +583,7 @@ STATE_CYCLE = {
 
 
 _LAYOUT = []
+BOX_LEDGER = []
 
 
 def _layout():
@@ -701,7 +717,14 @@ def console_unit(m, o, y_base, w_m, d_m, h_m, seed, cells=CELL_CYCLE,
     # bank is a recessed sub-panel carrying its own lit cells, which is what
     # makes the bed read as instrumented rather than painted: a proud edge
     # catches the wall course at a grazing angle and a decal cannot.
-    bw = (w_m - 0.11) / CONSOLE_BANKS
+    # THE BANKS ARE THE DARK PART OF THE BED, and that is the single biggest
+    # correction the half-distance frame asked for. `cc_console_face` binds to
+    # `device_console_bed`, a warm pale emissive, so a bed with small bank
+    # plates on it reads as a light-coloured TABLE carrying pale tiles -- the
+    # reference's bed is dark and the cells are the only bright thing on it.
+    # `_Parts.conduit` is `plant_valve_metal`, the darkest bound surface in the
+    # machine vocabulary, and the banks now cover most of the working area.
+    bw = (w_m - 0.075) / CONSOLE_BANKS
 
     def on_bed(u, s, lift):
         w, y = bed(s)
@@ -722,20 +745,30 @@ def console_unit(m, o, y_base, w_m, d_m, h_m, seed, cells=CELL_CYCLE,
     if cells == (CELL_RED,):
         live = cells                      # the pit is red-lit by the reference
     for b in range(CONSOLE_BANKS):
-        u0 = -hw + 0.055 + b * bw
-        u1 = u0 + bw - 0.030
-        m.plate(on_bed(u0, 0.12, 0.007), on_bed(u0, 0.90, 0.007),
-                on_bed(u1, 0.90, 0.007), on_bed(u1, 0.12, 0.007),
-                0.020, P.gauge)
-        cs = (0.90 - 0.12) / CONSOLE_CELLS
+        u0 = -hw + 0.038 + b * bw
+        u1 = u0 + bw - 0.016
+        m.plate(on_bed(u0, 0.10, 0.007), on_bed(u0, 0.94, 0.007),
+                on_bed(u1, 0.94, 0.007), on_bed(u1, 0.10, 0.007),
+                0.020, P.conduit)
+        cs = (0.94 - 0.10) / CONSOLE_CELLS
         for c in range(CONSOLE_CELLS):
-            s0 = 0.12 + c * cs + 0.030
-            s1 = s0 + cs - 0.060
+            s0 = 0.10 + c * cs + 0.020
+            s1 = s0 + cs - 0.040
             grp = live[(b + c) % len(live)]
-            m.plate(on_bed(u0 + 0.022, s0, 0.017),
-                    on_bed(u0 + 0.022, s1, 0.017),
-                    on_bed(u1 - 0.022, s1, 0.017),
-                    on_bed(u1 - 0.022, s0, 0.017), 0.012, grp)
+            m.plate(on_bed(u0 + 0.014, s0, 0.017),
+                    on_bed(u0 + 0.014, s1, 0.017),
+                    on_bed(u1 - 0.014, s1, 0.017),
+                    on_bed(u1 - 0.014, s0, 0.017), 0.012, grp)
+            # A KEY ROW BESIDE EVERY CELL. The reference's blocks are not rows
+            # of identical lozenges: each lit register sits beside a run of
+            # small unlit keys, and that alternation is most of what makes the
+            # bed read as instrumented at 1 m. `P.gauge` is the amber
+            # switchgear the plant kit already uses for exactly this.
+            if c % 2 == 0:
+                m.plate(on_bed(u0 + 0.014, s0 + 0.004, 0.024),
+                        on_bed(u0 + 0.014, s1 - 0.004, 0.024),
+                        on_bed(u0 + 0.040, s1 - 0.004, 0.024),
+                        on_bed(u0 + 0.040, s0 + 0.004, 0.024), 0.008, P.gauge)
 
     # --- 6. THE STATUS STACK -- three lamps, one of them lit ----------------
     # An annunciator: what this desk's system is doing, in the one place an
@@ -940,7 +973,7 @@ def window(m, z, cy):
             cx, cyy = rr * math.cos(a), cy + rr * math.sin(a)
             sv, st, ss = [], [], []
             _dress._tube(sv, st, ss, "cc_ring",
-                         (cx, cyy, z - WINDOW_MULLION_D_M - 0.018),
+                         (cx, cyy, z - WINDOW_MULLION_D_M - WINDOW_STUD_PROUD_M),
                          (cx, cyy, z - WINDOW_MULLION_D_M),
                          WINDOW_STUD_R_M, _dress.SEG_BOLT)
             m.merge_spans(sv, st, ss)
@@ -1010,20 +1043,35 @@ def bulkhead(m, zw, cy, hw, bot):
                BULK_BOSS_R_M - 0.02, BULK_BOSS_R_M + 0.09, "cc_ring", seg=28)
 
 
-def wall_course(m, sx, y, z0, z1, lit):
-    """One horizontal light course, as the fitting the reference shows.
+def course_lens(m, sx, y, z0, z1, lit):
+    """The emitting face of one wall course, and nothing else.
 
-    Five surfaces, not one box: a recessed TROUGH, a reflector CHEEK above and
-    below it, the LENS itself, and a dark DIVIDER every `STRIP_SEG_M` so the
-    run reads as tubes rather than as a painted line. `lit` chooses which
-    emissive the lens takes -- see STRIP_Y_EXTRA_M for why two of the four
-    courses a side are `light_service_tube` and not `cc_light_strip`.
+    SEPARATE FROM ITS HOUSING FOR A REASON IN ANOTHER FILE.
+    `export_scene.fixture_lights` hangs one lamp on each connected BODY of a
+    `cc_light_strip` SPAN, and a span is a run of consecutive triangles with
+    one group name -- so building each course as trough-then-lens-then-dividers
+    turns one span of four bodies into four spans of one body. The lamp count is
+    identical either way (four), but `export_scene._selftest` asserts the shape
+    and not the count: `_courses == [4]` became `[1, 1, 1, 1]`.
+    Both readings are right about the rig and the gate is in a file this module
+    does not own, so the lenses are emitted together in their own pass and the
+    assertion stays exactly as it was.
+    """
+    x_in = sx * (FLOOR_W_M / 2.0)
+    x_bk = x_in - sx * STRIP_TROUGH_D_M
+    h = STRIP_H_M
+    m.box(min(x_in - sx * 0.055, x_bk + sx * 0.04),
+          max(x_in - sx * 0.055, x_bk + sx * 0.04),
+          y - h * 0.5, y + h * 0.5, z0, z1, lit)
 
-    THE LENS MUST STAY ONE CONNECTED BODY PER COURSE PER WALL.
-    `export_scene.fixture_lights` hangs one lamp on each connected body of a
-    `cc_light_strip` span and `export_scene._selftest` asserts there are exactly
-    four; the dividers are therefore a separate group standing in FRONT of the
-    lens rather than gaps cut through it.
+
+def wall_course(m, sx, y, z0, z1):
+    """One horizontal light course's HOUSING, as the fitting the reference shows.
+
+    Four surfaces, not one box: a recessed TROUGH, a reflector CHEEK above and
+    below it, a dark DIVIDER every `STRIP_SEG_M` so the run reads as tubes
+    rather than as a painted line, and an end cap. The lens itself is
+    `course_lens`, for the reason written there.
     """
     P = _dress._Parts("fix_")
     x_in = sx * (FLOOR_W_M / 2.0)          # the wall plane
@@ -1037,11 +1085,7 @@ def wall_course(m, sx, y, z0, z1, lit):
               max(x_in - sx * 0.006, x_bk + sx * 0.02),
               y + sy * h * 0.62, y + sy * h * 0.62 + 0.045,
               z0 + 0.012, z1 - 0.012, P.frame)
-    # the lens, one body, standing 40 mm proud of the trough's back
-    m.box(min(x_in - sx * 0.055, x_bk + sx * 0.04),
-          max(x_in - sx * 0.055, x_bk + sx * 0.04),
-          y - h * 0.5, y + h * 0.5, z0, z1, lit)
-    # the dividers, in front of it
+    # the dividers, in front of the lens
     n = max(1, int((z1 - z0) / (STRIP_SEG_M + STRIP_GAP_M)))
     for k in range(1, n + 1):
         zc = z0 + k * (z1 - z0) / (n + 1.0)
@@ -1178,6 +1222,27 @@ def annunciator(m, layout, cy):
           ANNUN_Y_M - ANNUN_H_M / 2.0 - 0.11,
           ANNUN_Y_M + ANNUN_H_M / 2.0 + 0.11,
           zw - 0.30, zw - 0.02, P.panel)
+    # A HOOD, and it is not decoration. Rendered without one
+    # (`docs/craft-4q-cnc-annunciator.png`, first take) the nine lamps sit
+    # directly under the dais keys' glare and every one of them reads as the
+    # same pale rectangle -- a board whose whole job is to be legible at a
+    # glance, illegible in the frame it was built for. A shade over it puts the
+    # lamps in their own shadow, which is what makes a lit one read AS lit.
+    m.box(-ANNUN_W_M / 2.0 - 0.24, ANNUN_W_M / 2.0 + 0.24,
+          ANNUN_Y_M + ANNUN_H_M / 2.0 + 0.11,
+          ANNUN_Y_M + ANNUN_H_M / 2.0 + 0.19,
+          zw - 0.62, zw - 0.02, P.frame)
+    for s in (-1, 1):
+        a, b = s * (ANNUN_W_M / 2.0 + 0.16), s * (ANNUN_W_M / 2.0 + 0.24)
+        # STOPPING 4 mm SHORT OF THE HOOD ABOVE, for the reason the window's
+        # secondary mullions do: a cheek built to the same y as the soffit it
+        # meets shares a whole face with it, which the non-manifold gate reports
+        # as two pieces of this module in the same place and which it is right
+        # to. Third instance in one session; every one was found by the gate.
+        m.box(min(a, b), max(a, b),
+              ANNUN_Y_M - ANNUN_H_M / 2.0 - 0.11,
+              ANNUN_Y_M + ANNUN_H_M / 2.0 + 0.106,
+              zw - 0.62, zw - 0.02, P.frame)
     for k, d in enumerate(desks):
         x = -ANNUN_W_M / 2.0 + (k + 0.5) * w
         lamp = STATE_LAMP.get(st.get(d, "NORMAL"), CELL_GREEN)
@@ -1225,9 +1290,16 @@ def command_control(state=None):
     # the room's two occupied levels -- was looking sideways at the background
     # through a 1.9 m x 4.6 m gap either side, and the floor's two long edges
     # were the last open edges in the room.
+    # AND THE SECOND INSIDE-OUT SOLID THE BOX LEDGER FOUND, in the same run as
+    # the bulkhead's: `m.box(sx * hw, sx * (hw + 0.16), ...)` is
+    # `m.box(-7.0, -7.16, ...)` on the port side -- x0 to the RIGHT of x1 -- so
+    # one of the pit's two side walls has been wound inward since it was
+    # written. A player standing in the pit sees the background through the
+    # port wall and the deck through the starboard one, and no test in this
+    # file could tell them apart. Two for two on a gate that is nine lines.
     for sx in (-1, 1):
-        m.box(sx * hw, sx * (hw + 0.16), -PIT_DROP_M, 0.0,
-              L * 0.45, L * 0.70, "cc_pit_face")
+        m.box(min(sx * hw, sx * (hw + 0.16)), max(sx * hw, sx * (hw + 0.16)),
+              -PIT_DROP_M, 0.0, L * 0.45, L * 0.70, "cc_pit_face")
 
     # The stepped dais, as a CLOSED stepped solid.
     #
@@ -1295,12 +1367,19 @@ def command_control(state=None):
     # See STRIP_Y_EXTRA_M: `export_scene` hangs one lamp per connected body of
     # a `cc_light_strip` span and asserts there are four, so the room's solved
     # exposure survives this exactly.
+    zs0, zs1 = -L * 0.30, L * 0.42
     for sx in (-1, 1):
         for y in STRIP_Y_M:
-            wall_course(m, sx, y + STRIP_H_M / 2.0, -L * 0.30, L * 0.42,
-                        "cc_light_strip")
+            wall_course(m, sx, y + STRIP_H_M / 2.0, zs0, zs1)
         for y in STRIP_Y_EXTRA_M:
-            wall_course(m, sx, y, -L * 0.30, L * 0.42, "light_service_tube")
+            wall_course(m, sx, y, zs0, zs1)
+    # ...and the four lit lenses in ONE consecutive run -- see `course_lens`.
+    for sx in (-1, 1):
+        for y in STRIP_Y_M:
+            course_lens(m, sx, y + STRIP_H_M / 2.0, zs0, zs1, "cc_light_strip")
+    for sx in (-1, 1):
+        for y in STRIP_Y_EXTRA_M:
+            course_lens(m, sx, y, zs0, zs1, "light_service_tube")
 
     # The forward pit: "a lower forward pit of red-lit consoles". It was a bare
     # box with a floor, two side walls and nothing in it -- one of the room's
@@ -1352,6 +1431,12 @@ def command_control(state=None):
     m.t.extend((a + off, b + off, c + off) for a, b, c in at)
     m.g.extend(per)
 
+    # THE LEDGER OF EVERY BOX THIS BUILD EMITTED, for `_selftest`. Kept on the
+    # module rather than returned because `bespoke.BESPOKE_GEOMETRY` unpacks a
+    # three-tuple and a fourth element would break the only caller that
+    # matters. See `_M.__init__` for what it is for.
+    del BOX_LEDGER[:]
+    BOX_LEDGER.extend(m.boxes)
     return m.as_tuple()
 
 
@@ -1506,7 +1591,17 @@ def _selftest():
             p0, p1, p2 = (v[i] for i in tri)
             u = tuple(p1[i] - p0[i] for i in range(3))
             w = tuple(p2[i] - p0[i] for i in range(3))
-            if u[2] * w[0] - u[0] * w[2] <= 0:
+            n = (u[1] * w[2] - u[2] * w[1], u[2] * w[0] - u[0] * w[2],
+                 u[0] * w[1] - u[1] * w[0])
+            ln = math.sqrt(sum(c * c for c in n)) or 1.0
+            # A SLAB HAS SIDES AND THEY ARE VERTICAL. The old form tested the
+            # sign of the y component alone, so `<= 0` counted every vertical
+            # face as downward -- which is why turning the pit floor into a
+            # solid appeared to break it. The question is about the
+            # near-horizontal faces; the rim of a slab is neither up nor down.
+            if abs(n[1]) / ln < 0.7:
+                continue
+            if n[1] <= 0:
                 bad += 1
         check(f"{grp} faces up", bad == 0, f"{bad} downward")
     # ...and the base is there, facing DOWN, which is what closes the dais.
@@ -1718,6 +1813,170 @@ def _selftest():
     check("mullions stand proud of the glazing, not coplanar with it",
           min(mz) < min(gz) - 1e-9,
           f"mullion face z {min(mz):.3f} vs glazing face {min(gz):.3f}")
+
+    # === EVERY BOX, NOT THE FOUR GROUPS SOMEBODY REMEMBERED =================
+    # THE DEFECT THIS EXISTS FOR IS IN THIS FILE'S OWN HISTORY: the bulkhead
+    # panel over the window was `m.box(..., cy + ap, top, ...)` with
+    # cy + ap = 6.52 and top = 6.12 -- y0 above y1 -- so twelve triangles were
+    # wound inward, -1.68 m3 of solid you could see straight through, directly
+    # over the only window the room has. It survived because the facing tests
+    # above name `cc_floor`, `cc_pit`, `cc_dais` and `cc_dais_riser` and the
+    # bulkhead is not one of them. `_M.box` now records every box it emits and
+    # this asks the question of all of them at once -- a class of error rather
+    # than the instance that bit.
+    _probe = _M()
+    _probe.box(0.0, 1.0, 0.0, 2.0, 0.0, 3.0, "probe")
+    check("the box ledger measures a good box as positive",
+          _probe.boxes[-1][1] > 0, str(_probe.boxes[-1]))
+    _probe.box(0.0, 1.0, 2.0, 0.0, 0.0, 3.0, "inverted")
+    check("...and CONTROL: an inverted box measures negative",
+          _probe.boxes[-1][1] < 0, str(_probe.boxes[-1]))
+    _bad_boxes = [b for b in BOX_LEDGER if b[1] <= 0.0]
+    check("every box the SHIPPED room emits is wound outward",
+          BOX_LEDGER and not _bad_boxes,
+          f"{len(_bad_boxes)} inside-out solids of {len(BOX_LEDGER)}: "
+          f"{sorted({b[0] for b in _bad_boxes})}")
+    # CONTROL 1 -- the 4p line, verbatim, run through the ledger. This is the
+    # defect the ledger exists for and not a synthetic one: the two numbers are
+    # `cy + ap` and `DOME_H_M * 0.18` exactly as this file carried them.
+    _hw2, _zw2 = FLOOR_W_M / 2.0, FLOOR_L_M * 0.70
+    _ap2, _cy2 = WINDOW_D_M / 2.0 + 0.12, WINDOW_D_M / 2.0 + 0.9
+    _old = _M()
+    _old.box(-_hw2, _hw2, _cy2 + _ap2, DOME_H_M * 0.18, _zw2, _zw2 + 0.30,
+             "cc_bulkhead")
+    check("...and CONTROL: session 4p's own bulkhead line fires it",
+          _old.boxes[-1][1] < 0.0,
+          f"{_old.boxes[-1][1]:.3f} m3 for `m.box(..., {_cy2 + _ap2}, "
+          f"{DOME_H_M * 0.18}, ...)`")
+    # CONTROL 2 -- the ledger has to cover the SHIPPED room and not a probe.
+    # Invert every box the real build emits and it must report all of them.
+    _real = _M.box
+    try:
+        _M.box = lambda s, x0, x1, y0, y1, z0, z1, gp: _real(
+            s, x0, x1, y1, y0, z0, z1, gp)
+        command_control()
+        _all_bad = [b for b in BOX_LEDGER if b[1] <= 0.0]
+        check("...and CONTROL: inverting every box in the real build reports "
+              "every box in the real build",
+              len(_all_bad) == len(BOX_LEDGER) and len(BOX_LEDGER) > 100,
+              f"{len(_all_bad)} of {len(BOX_LEDGER)}")
+    finally:
+        _M.box = _real
+        command_control()
+
+    # === THE WINDOW IS AN ASSEMBLY, NOT A WHEEL ============================
+    # `docs/craft-4q-cnc-before-half.png` at the rubric's HALF distance is a
+    # black rectangle with sixteen bars across it. Each of these fails on that
+    # frame's geometry, which is the test `docs/AAA-STANDARD.md` demands: a
+    # layer's exit criterion must be able to fail on the current content.
+    panes = [k for k in range(len(t)) if g[k] == "cc_glazing"]
+    n_panes = sum(n for _f0, _f1, n in WINDOW_COURSES)
+    check("the glazing is divided into panes, not one disc",
+          len(panes) >= n_panes * 8,
+          f"{len(panes)} triangles of glazing for {n_panes} declared panes")
+    # ...and they are in CONCENTRIC COURSES, which is the thing a subdivided
+    # disc would still not have. Measured as distinct pane radii.
+    cyw = WINDOW_D_M / 2.0 + 0.9
+    radii = sorted({round(math.hypot(v[i][0], v[i][1] - cyw), 2)
+                    for k in panes for i in t[k]})
+    check("...in at least three concentric courses",
+          len(radii) >= 6, f"{len(radii)} distinct pane radii: {radii[:8]}")
+    studs = [k for k in range(len(t)) if g[k] == "cc_ring"]
+    check("the structural band is studded",
+          len(studs) >= WINDOW_STUDS * 2 * 6,
+          f"{len(studs)} cc_ring triangles for {WINDOW_STUDS * 2} studs")
+    # The ribs must leave the window. A rib that stops at the rim is a spoke;
+    # one that runs out across the bulkhead is what ties the two together, and
+    # it is the difference between a window IN a wall and a decal ON one.
+    mull_r = max(math.hypot(v[i][0], v[i][1] - cyw)
+                 for k in range(len(t)) if g[k] == "cc_mullion" for i in t[k])
+    check("the radial ribs run out past the rim into the bulkhead",
+          mull_r > WINDOW_D_M / 2.0 + WINDOW_RIB_OUT_M * 0.8,
+          f"furthest mullion vertex at r={mull_r:.2f} against a "
+          f"{WINDOW_D_M / 2.0:.2f} m rim")
+
+    # === THE APERTURE IS ROUND ==============================================
+    # It was a SQUARE hole in four boxes with a round window in the middle of
+    # it, so the four corners showed the background. Measured as: no bulkhead
+    # vertex lies inside the aperture circle.
+    inside = [i for k in range(len(t)) if g[k] == "cc_bulkhead" for i in t[k]
+              if math.hypot(v[i][0], v[i][1] - cyw) < WINDOW_D_M / 2.0 + 0.10]
+    check("the bulkhead's aperture is circular, not a square hole",
+          not inside,
+          f"{len(inside)} bulkhead vertices inside the window's own radius")
+
+    # === THE ROOM HAS A LID, A DRESSED DECK AND A REAL STAIR ================
+    check("the room has a ceiling", any(g[k] == "cc_cornice"
+                                        and all(v[i][1] > CEIL_Y_M - 1e-6
+                                                for i in t[k])
+                                        for k in range(len(t))),
+          "every frame taken in here had a black void over it")
+    check("the deck carries lit insets",
+          any(g[k] == "light_deck_channel" and all(v[i][1] < 0.05 for i in t[k])
+              for k in range(len(t))), "the floor was one quad")
+    st_y = [v[i][1] for k in range(len(t)) if g[k] == "cc_stair" for i in t[k]]
+    check("the stair has stringers that carry it, not just treads",
+          min(st_y) < -PIT_DROP_M + 0.05,
+          f"lowest cc_stair vertex {min(st_y):.2f} m against a "
+          f"{-PIT_DROP_M:.2f} m pit")
+
+    # === THE WALL COURSES ARE FITTINGS =====================================
+    # The lens count is the one `export_scene._selftest` asserts -- one lamp
+    # per connected body of the `cc_light_strip` span, four bodies -- so this
+    # module states it too rather than leaving it to be discovered by a gate
+    # in another file failing.
+    lens = [k for k in range(len(t)) if g[k] == "cc_light_strip"]
+    check("the lit courses are exactly two a side",
+          len(lens) == 12 * STRIP_COURSES * 2,
+          f"{len(lens)} triangles; export_scene asserts four bodies")
+    check("...and there are four courses a side in the room",
+          len(STRIP_Y_M) + len(STRIP_Y_EXTRA_M) == 4,
+          "materials.light_wall_course's own source line says four")
+    seg = [k for k in range(len(t)) if g[k] == "fix_mp_plant_conduit"]
+    check("a course is segmented into tubes rather than one bar",
+          len(seg) >= 8 * 12,
+          f"{len(seg)} divider triangles over eight courses")
+
+    # === THE BOARD IS IN THE ROOM ==========================================
+    # THE HALF OF THIS SESSION THE OWNER ASKED FOR: "do they actually work and
+    # have shifts and run the ship?" The consoles read `station/cnc_ops.py`,
+    # which reads `plant_systems`, and the geometry differs when the plant is
+    # in trouble. Proved here on the mesh and in the engine by
+    # `cnc_ops --engine-gate`.
+    import cnc_ops as _ops                                      # noqa: PLC0415
+    lay = _ops.room_layout()
+    desks = list(lay["dais"]) + list(lay["pit"])
+    check("every console on the floor has a desk",
+          len(desks) == CONSOLE_N + PIT_CONSOLE_N,
+          f"{len(desks)} desks for {CONSOLE_N + PIT_CONSOLE_N} consoles")
+    ann = [k for k in range(len(t)) if g[k] == "prop_tactical_display"]
+    check("the room's declared tactical_display is real geometry",
+          bool(ann), "it was resolved by alias onto something else")
+    lamps = {g[k] for k in range(len(t))
+             if g[k] in set(STATE_LAMP.values()) | {LAMP_DARK}}
+    check("the status stacks carry a dark lamp as well as a lit one",
+          LAMP_DARK in lamps,
+          "a single lamp that changes colour is a light, not a state")
+
+    hot = dict(lay, state={d: "ALARM" for d in desks}, worst="ALARM")
+    cold = dict(lay, state={d: "NORMAL" for d in desks}, worst="NORMAL")
+    _vh, _th, gh = command_control(state=hot)
+    _vc, _tc, gc = command_control(state=cold)
+    n_red_h = sum(1 for x in gh if x == CELL_RED)
+    n_red_c = sum(1 for x in gc if x == CELL_RED)
+    check("a station in ALARM builds a redder room than a station that is well",
+          n_red_h > n_red_c,
+          f"{n_red_c} -> {n_red_h} triangles of {CELL_RED}")
+    # NEGATIVE CONTROL -- two builds of the SAME board must be identical, or
+    # the difference above is nondeterminism and not the plant. A diff of two
+    # runs that were not both produced is not a diff (CLAUDE.md, 4d).
+    _vc2, _tc2, gc2 = command_control(state=cold)
+    check("...and CONTROL: the same board builds the same room",
+          (_vc2, _tc2, gc2) == (_vc, _tc, gc),
+          "the A/B above is measuring nondeterminism")
+    check("...and the difference is ONLY the lit cells, not the structure",
+          len(gh) == len(gc) and _vh == _vc,
+          f"{len(gh)} vs {len(gc)} triangles -- an alarm must not move a wall")
 
     print(f"{ok}/{ok + fail} passed")
     return 1 if fail else 0

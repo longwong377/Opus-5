@@ -66,6 +66,7 @@ crowd, not metres, so the room is sized from the interior kit's `concourse`
 class -- 9.0 m wide, 7.2 m tall, both already logged as INV-020 and INV-010 --
 and the fittings are proportioned against that.
 """
+import hashlib
 import math
 import os
 import sys
@@ -140,6 +141,15 @@ BRACKET_D_M = 0.26
 # Backlit ceiling grid above the screens.
 CEIL_CELL_M = 1.6
 CEIL_INSET_M = 0.22
+# What fraction of the lattice is LIT. Measured off the authority-1 frame by
+# the material that already reads it: `materials.light_ceiling_grid`'s own
+# source note counts "7,013 px of dark lattice at V 0.06-0.10, and only 212 px
+# of 14,983 -- 1.4% -- above V 0.50, with 78% of the lit cells below V 0.34".
+# So the ceiling in the frame is mostly dark ground with a minority of bright
+# cells, and this module lit 100% of it. 0.34 is the seed density; the trace
+# rule below takes the drawn fraction to about half, which is what a circuit
+# board looks like.
+CEIL_LIT_FRAC = 0.34
 
 # Bollards flanking the approach.
 BOLLARD_R_M = 0.55
@@ -278,6 +288,221 @@ DESK_W_M = 2.4
 DESK_D_M = 0.85
 DESK_H_M = 1.05
 DESKS = 4
+
+# ---------------------------------------------------------------------------
+# SESSION 4q -- THE HALL HAD NOTHING IN IT BETWEEN THE DOOR AND THE DESKS
+# ---------------------------------------------------------------------------
+# `docs/engine-4f-customs-normal.png` and `-half.png` are the evidence and they
+# are this module's own frames. Read at the rubric's HALF distance the room is:
+# three lettered screens, four dark counters against the end wall, a lit band
+# down one wall, a pale ceiling -- and **twenty-six metres of empty deck between
+# the eye and the nearest object**. AAA-STANDARD C2 is "right mass, no
+# articulation ... a correct skeleton with a missing layer", and that is exactly
+# what the frame shows: the hall is the right size and there is nothing in it.
+#
+# The missing layer is not decoration. Every item below is either DECLARED in
+# `directory.py` for one of this module's three places, or NAMED in the
+# authority-1 frame and never built. Nothing here is invented for effect.
+#
+# WHAT THE AUTHORITY-1 FRAME SAYS AND THE BUILDER NEVER MADE. The docstring at
+# the head of this file has recorded it since session 3c -- "a **gated passage**
+# beyond, with vertical white light strips ranked along the left-hand wall, a
+# **red-orange sign panel**, and a **second WELCOME legend on the right-hand
+# wall**". Re-read at full size for this session, that passage is:
+#
+#   * an ARCH -- a segmental opening in a transverse wall, not a doorway. The
+#     light course runs along its jamb and through the reveal.
+#   * a MAROON FASCIA over the arch carrying a white legend, and a second white
+#     legend further along the same wall which reads `WELCOME TO BAB...` before
+#     the crop cuts it. That second one is the docstring's "WELCOME legend".
+#   * PALE GREY PIERS flanking the passage on both sides, each carrying two
+#     DARK RECESSED SQUARE PANELS -- the frame's most distinctive wall object
+#     and the thing that makes the passage read as built rather than cut.
+#   * a RED-ORANGE PANEL of four stacked bars mounted beside the arch.
+#
+# AND THE LIGHT COURSE IS ON THE OTHER WALL FROM THE ONE THE FRAME SHOWS.
+# The frame's camera looks in the direction of travel, so the frame's left is
+# the arriving viewer's left. This module places the player walking up +z with
+# +y up, and its own screen block already works out what that means: "their
+# right hand points at -X". So the frame's left-hand wall is **+X here**, and
+# `hall()` built its only cast fitting at `x = -hw`. One wall, and the wrong
+# one -- which is the same family of error as the mirrored deck numeral and the
+# mirrored crowd, found the same way, by working the handedness out rather than
+# assuming it.
+#
+# The course is built on BOTH walls now, and that is not a dodge:
+# `export_scene.ROOM_EXPOSURE`'s own note on this room says it is "a room with
+# no fill rather than a room with the wrong exposure" and that it holds "37x
+# MORE black than its reference". A 3.5 m reach on a 17 m hall lit from one
+# side leaves 13.5 m of it dark by construction. Two courses is the room's OWN
+# measured fitting doing the job it was measured doing, on both walls of a
+# public hall, and it makes the left/right reading moot instead of arguing it.
+
+# --- the gate line ---------------------------------------------------------
+# THE WALL IS 3.90 m TALL AND NOT 7.2, and that is a composition decision taken
+# against the frame rather than a shortcut. In the reference the screens hang
+# NEARER the camera than the arch and the arch's fascia sits below them; here
+# the screens are at the far end, so a full-height gate wall 2.6 m inside the
+# door would hide the three boards this room exists for from the one place a
+# player is guaranteed to stand. At 3.90 m the fascia sits under the screens'
+# 4.30 m underside and both read from the doorway.
+#
+# AND IT IS 2.60 m INSIDE THE MOUTH, NOT ON IT. `bespoke.near_face_opening` and
+# `deck._mouth_clear` both measure the near 1.2 m band; a wall built ON the
+# near face is a wall those two functions have to be argued with. 2.60 m is
+# `interior_kit.PROVISIONAL["corridor_width_m"]`, so the arch stands one
+# corridor width in and the band the assembler probes is exactly as open as it
+# was before this section existed.
+GATE_Z_M = 2.60            # near face of the gate wall
+GATE_T_M = 0.90            # the passage is a short tunnel, as the frame shows
+GATE_OPEN_W_M = 4.00       # the arched opening
+GATE_SPRING_M = 2.20       # springing -- a head a loaded trolley clears
+GATE_CROWN_M = 3.10        # crown of the arch
+GATE_HEAD_M = 3.90         # top of the fascia; under the screens at 4.30
+GATE_SEG = 14              # stations across the half-arch pair
+GATE_BAND_M = 0.06         # how far the arch ring stands proud of the fascia
+
+# The pale piers, and their dark insets. Proportioned against the arch: two
+# insets stacked in a pier that stands to the springing line, which is what the
+# frame shows -- the piers stop where the arch starts to turn.
+PIER_W_M = 0.90
+PIER_D_M = 0.17
+PIER_H_M = GATE_SPRING_M
+PIER_INSETS = 2
+PIER_INSET_M = 0.045       # how deep the dark square is recessed
+
+# The red-orange notice panel beside the arch. Four bars, which is what the
+# frame resolves; the wording is not legible at 1262x634 and is therefore NOT
+# transcribed -- an unreadable sign rendered as bars is honest, and a sign with
+# invented words on it would be canon-shaped invention, which hard rule 1
+# forbids by name.
+NOTICE_W_M = 0.86
+NOTICE_H_M = 1.14
+NOTICE_BARS = 4
+NOTICE_Y_M = 1.55
+
+# --- the queue -------------------------------------------------------------
+# DERIVED FROM THE STATION'S OWN TRAFFIC MODEL, not chosen. `docs/gazetteer/
+# FACTIONS.md` 2.3 gives 52 arrivals a station-day and about 6,300 souls
+# disembarking, across two customs halls (authority 3 for the two halls,
+# authority 5 for the traffic, and every assumption is stated there):
+#
+#     6,300 / 52          = 121 souls off one movement
+#     121 / 2 halls       =  61 into one hall as a wave
+#     61 x QUEUE_PITCH_M  =  55 m of lane the hall has to hold
+#
+# That is the number that sizes the room. The same section says the mean rate
+# is "4.4 people/minute/hall" but that "arrivals come in waves, so design the
+# hall for a peak of 20-40/minute and long dead periods" -- so the queue is
+# sized for the WAVE and not for the mean, which is the whole point of the
+# sentence. Four desks cannot clear 61 people quickly; the hall's job is to
+# hold them in order while they wait, and 55 m of lane is what that costs.
+#
+# THE SERPENTINE IS ON THE -X HALF AND THAT IS LOAD-BEARING. `deck._place_local`
+# maps this room's local x = 0 onto the corridor's door, so the centre line is
+# the way in; and `roomnav` has to walk a body from that door to the register's
+# own centre. Barriers become collision (`collision.prop_boxes` derives them
+# from this mesh, `rooms.is_solid` says a `prop_` group is solid), so a
+# serpentine across the full width would be a maze the room-reach gate has to
+# solve. Arrivals queue on one side and cleared passengers walk out on the
+# other, which is what a real hall does and which leaves the centre line clear.
+ARRIVALS_PER_DAY = 6300    # FACTIONS.md 2.3
+MOVEMENTS_PER_DAY = 52     # FACTIONS.md 2.3
+CUSTOMS_HALLS = 2          # Security Manual, authority 3
+QUEUE_PITCH_M = 0.90       # standing queue, one person along the lane
+QUEUE_LANE_W_M = 1.20      # a person with a bag, and a barrier either side
+QUEUE_Z0_M = 4.60          # clear of the gate wall's back face at 3.50
+QUEUE_MARGIN_M = 0.55      # the wall side of the outermost lane
+QUEUE_CENTRE_CLEAR_M = 0.75  # the walk-in channel the barriers stop short of
+BARRIER_H_M = 1.05
+BARRIER_POST_W_M = 0.09
+BARRIER_POST_PITCH_M = 2.10
+BARRIER_BARS = 5           # balusters in one bay
+BARRIER_BAR_W_M = 0.030
+BARRIER_RAIL_T_M = 0.075
+BARRIER_KICK_M = 0.16      # height of the bottom rail above the deck
+
+# --- the desk booths -------------------------------------------------------
+# A counter is not a booth. The register declares `identicard_reader` for both
+# halls and `interact.py --audit` has been resolving it off a mesh-derived
+# alias since 4d, i.e. the reader existed as a NAME and not as an object. The
+# booth is what makes the counter a place a person is processed AT: a return
+# screen between neighbours, a lane plate the queue reads, a lamp that says
+# whether the lane is open, the reader itself, and the officer's own monitor.
+BOOTH_FIN_T_M = 0.09
+BOOTH_FIN_H_M = 2.30
+BOOTH_FIN_D_M = 1.90        # back from the counter toward the end wall
+LANE_SIGN_W_M = 0.92
+LANE_SIGN_H_M = 0.30
+LANE_SIGN_Y_M = 2.62
+LANE_LAMP_R_M = 0.075
+READER_W_M = 0.19           # the identicard reader on the public edge
+READER_D_M = 0.13
+READER_H_M = 0.16
+MONITOR_W_M = 0.42
+MONITOR_H_M = 0.30
+WICKET_W_M = 0.98           # the gate a cleared passenger passes through
+
+# --- the search line -------------------------------------------------------
+# `contraband_search` is a declared function of `customs_north` and the only
+# thing built for it was two scanner arches. A search happens ON something and
+# what it finds goes somewhere, and neither existed.
+#
+# THE SEIZURE STORE IS AN EXTRAPOLATION AND THE GAZETTEER SAYS SO IN ADVANCE:
+# `docs/gazetteer/LAW-CRIME-DOWNBELOW.md` lists "The customs contraband
+# inspection area" as gap **D-12** -- "the customs *halls* are placed at
+# authority 3; the search room is not". So this is a declared hole being filled
+# in style, which is hard rule 1's own instruction, not a silent invention.
+BENCH_W_M = 2.30
+BENCH_D_M = 0.80
+BENCH_H_M = 0.88
+BENCHES = 2
+ROLLER_W_M = 1.30           # in-feed and out-feed either side of an arch
+ROLLER_D_M = 0.62
+ROLLER_H_M = 0.74
+ROLLERS_PER_TABLE = 7
+CAGE_W_M = 3.60             # the seizure store, against the +x wall
+CAGE_D_M = 1.45
+CAGE_H_M = 2.55
+CAGE_BARS = 13
+LOCKER_COLS = 5
+LOCKER_ROWS = 4
+
+# --- atmosphere assignment -------------------------------------------------
+# SIX LAMPS BECAUSE THE BOARD SAYS SIX. `signage.BOARDS["customs_atmosphere"]`
+# carries the authority-1 transcription "SIX DIFFERENT ATMOSPHERES ARE
+# CURRENTLY AVAILABLE ON B-5", and `atmosphere_assignment` is a declared
+# function of `customs_north` alone. So the rank has exactly as many lamps as
+# the sign in the same room claims atmospheres, and if that transcription is
+# ever corrected the rank follows it -- the count is read from the board's own
+# words at build time rather than written here.
+#
+# Humans are atmosphere **02** -- authority 1, the on-screen identicard schema
+# quoted in `docs/AAA-STANDARD.md`'s NPC checklist ("with humans as atmosphere
+# 02"). The rank's second station is therefore the one a human arrival is sent
+# to, and it is the one the module marks.
+HUMAN_ATMOSPHERE = 2
+ATMO_LAMP_R_M = 0.085
+ATMO_PLATE_W_M = 0.34
+ATMO_PITCH_M = 0.62
+ATMO_Y_M = 2.05
+DISPENSER_W_M = 0.66        # the breather dispenser under the rank
+DISPENSER_H_M = 1.35
+DISPENSER_D_M = 0.30
+
+# --- the one new cast fitting, and it is a task light ----------------------
+# `light_ceiling_batten` is already in `export_scene.FIXTURE_LIGHTING` (omni,
+# 1.000/0.980/1.000, energy_rel 0.90, **range 7.2 m**) and already bound in
+# `materials.py`. Its range is the hall's own height, so a batten on the soffit
+# lights the deck beneath it and no further -- which is why it is hung over the
+# DESK LINE and the SEARCH LINE and nowhere else. A hall is lit brightly where
+# the work is and dimly where the queue stands; an even wash over 578 m2 would
+# be the withdrawn ceiling-coffer experiment again, which came back at 18.9x
+# its reference from 210 sources.
+BATTEN_W_M = 0.26
+BATTEN_L_M = 3.10
+BATTEN_DROP_M = 0.34        # below the soffit, clear of the coffer's 0.22
+
 
 # ---------------------------------------------------------------------------
 # The boards, as data
@@ -606,7 +831,10 @@ def station_schematic(v, t, g, profile, cx, cy, z_face, w, h):
     """
     rows, z0, z1 = schematic_lines(profile)
     # the diagonal the schematic is laid along, inside the lit face
-    dx, dy = (w - 0.34) / 2.0, (h - 0.30) / 2.0
+    # 0.52/0.62 and not 0.34/0.30: at the tighter inset the end bars of the
+    # diagonal run under the bezel rail and through the status strip along the
+    # bottom of the panel. Both are solids; so are the bars.
+    dx, dy = (w - 0.52) / 2.0, (h - 0.62) / 2.0
     ln = math.hypot(2 * dx, 2 * dy)
     ux, uy = 2 * dx / ln, 2 * dy / ln
     scale = ln / (z1 - z0)
@@ -644,8 +872,579 @@ def _lit_board_pair(gap_m=0.55):
     return v, t, g
 
 
+_FACES = {
+    # name: (u-axis map, w-axis map) -- see `_face_place`. Each is a rotation
+    # and the self-test proves it on a probe solid rather than on this comment.
+    "-Z": lambda u, w, p: (u - p[0], p[1], w - p[2]),
+    "+X": lambda u, w, p: (u + p[2], p[1], w - p[0]),
+    "-X": lambda u, w, p: (u - p[2], p[1], w + p[0]),
+}
+
+
+def _face_place(v, t, g, part, face, u, w, dy=0.0):
+    """Put a `signage`-authored object on one of this hall's own surfaces.
+
+    A MIRROR IS THE OBVIOUS WAY AND IT IS WRONG TWICE -- `_rot180` above
+    already records why, and this is the same argument generalised to the four
+    walls instead of hard-coded three times. Every map here has determinant
+    **+1**: the glyphs keep their winding and the words keep their reading
+    order.
+
+    THE THREE FACES ARE NOT SYMMETRIC AND THE HANDEDNESS IS WHY. A viewer's
+    right hand is `forward x up`. Walking up +z that is **-X**, which is the
+    fact the screen block above works from; looking at the +X wall it is +Z and
+    looking at the -X wall it is -Z. Getting one of those backwards produces a
+    sign that renders perfectly and reads backwards, which is exactly the
+    defect `docs/craft-4p-dockingbay-numeral-mirrored.png` is kept for.
+    """
+    fn = _FACES[face]
+    bv, bt, bg = part
+    off, t0 = len(v), len(t)
+    v.extend(fn(u, w, (x, y + dy, z)) for x, y, z in bv)
+    t.extend((a + off, b + off, c + off) for a, b, c in bt)
+    if bg and isinstance(bg[0], str):
+        _spans_from_per_triangle(g, bg, t0)
+    else:
+        g.extend((n, lo + t0, hi + t0) for n, lo, hi in bg)
+
+
+def _legend(v, t, g, lines, face, u, w, cy, width_m, height_m, header=0):
+    """A run of proud lettering straight on a wall, with no board behind it.
+
+    The frame's two white legends are painted on the fascia, not framed: one
+    over the arch and one further along the same wall reading `WELCOME TO
+    BAB...` before the crop cuts it. `signage.board()` would put a lit panel
+    round them and that is a different object.
+    """
+    lv, lt, lg = _lettering(tuple(lines), width_m, height_m, header)
+    _face_place(v, t, g, (lv, lt, lg), face, u, w, dy=cy)
+
+
+def _gate_legend(place):
+    """The white legend over the arch -- DERIVED from the register, INV-471.
+
+    The authority-1 frame plainly carries a white legend on the fascia over the
+    arch. **Its wording is not recoverable.** At the source's 1262x634 it is
+    four unresolved blocks; magnified nine times it is a violet smear with no
+    letterform in it, and that crop is in the session's scratch.
+
+    Both easy answers are wrong. Transcribing a guess would put invented words
+    on a surface where every other word in this room is authority-1 verbatim --
+    a number that looks sourced and is not, which hard rule 1 forbids by name.
+    Leaving the fascia blank would delete a thing the frame plainly shows.
+
+    So the legend is GENERATED from `directory.py`'s own row for the place --
+    its name and the processes it declares -- which makes it true of the
+    station even though it is not the show's wording, and makes the three
+    places say three different things. Authority 5. Overturned by any frame of
+    this fascia at a resolution that resolves a capital.
+    """
+    p = place or {}
+    name = str(p.get("name") or "Customs hall").replace(",", "")
+    fns = tuple(p.get("functions") or ("immigration", "identicard_check"))
+    return (" ".join(name.upper().split()),
+            "   ".join(f.replace("_", " ").upper() for f in fns[:2]))
+
+
+def _arch_head(v, t, g, name, ow, y_spring, y_crown, y_top, z0, z1,
+               seg=GATE_SEG):
+    """The wall ABOVE a segmental arch, as ONE closed prism.
+
+    THE OBVIOUS CONSTRUCTION IS A STACK OF BOXES AND IT IS NON-MANIFOLD.
+    Slicing the arch into vertical boxes gives every pair of neighbours a
+    shared face, which is `portal_frame`'s five-prism defect from session 3x --
+    828 non-manifold edges a deck -- rebuilt here. Separating them by a reveal
+    instead punches a slot through the wall at every station.
+
+    So the head is a single prism whose bottom boundary IS the arch curve: two
+    quad strips for the faces, two for the soffit and the top, and a quad at
+    each end. Every interior edge has exactly two owners by construction, and
+    `_selftest` measures that rather than trusting this paragraph.
+
+    The curve is a true circular segment fitted to the springing and the crown
+    -- `R = (rise^2 + halfspan^2) / (2 rise)` -- so the arch is one radius and
+    not a spline anybody chose.
+    """
+    rise = y_crown - y_spring
+    rad = (rise * rise + ow * ow) / (2.0 * rise)
+    cy = y_crown - rad
+    n0 = len(v)
+    for i in range(seg + 1):
+        x = -ow + 2.0 * ow * i / seg
+        yb = cy + math.sqrt(max(rad * rad - x * x, 0.0))
+        v += [(x, yb, z0), (x, y_top, z0), (x, yb, z1), (x, y_top, z1)]
+    t0 = len(t)
+
+    def q(a, b, c, d):
+        t.append((a, b, c))
+        t.append((a, c, d))
+
+    for i in range(seg):
+        a = n0 + 4 * i
+        b = n0 + 4 * (i + 1)
+        # front (-Z), back (+Z), soffit (down and outward), top (+Y)
+        q(a + 0, a + 1, b + 1, b + 0)
+        q(a + 2, b + 2, b + 3, a + 3)
+        q(a + 0, b + 0, b + 2, a + 2)
+        q(a + 1, a + 3, b + 3, b + 1)
+    e = n0 + 4 * seg
+    q(n0 + 0, n0 + 2, n0 + 3, n0 + 1)          # the -X end
+    q(e + 0, e + 1, e + 3, e + 2)              # the +X end
+    g.append((name, t0, len(t)))
+
+
+def gate_wall(v, t, g, hw, arrivals_legend):
+    """The gated passage: two flanks, an arched head, piers, legends, a notice.
+
+    Everything stands PROUD of the wall rather than flush in it. Two solids
+    that share a face are a non-manifold edge and this file's own gate fails on
+    one, so the arch ring is 60 mm forward of the fascia, the piers 170 mm
+    forward of the flanks and the notice panel forward of the pier. That is
+    also how the frame reads: the passage is layered, not carved.
+    """
+    z0, z1 = GATE_Z_M, GATE_Z_M + GATE_T_M
+    ow = GATE_OPEN_W_M / 2.0
+    for s in (-1, 1):
+        x_in, x_out = s * ow, s * hw
+        _box(v, t, g, "customs_wall_gate",
+             (min(x_in, x_out), 0.0, z0), (max(x_in, x_out), GATE_HEAD_M, z1))
+    # The arch ring stands forward of the flanks, so no two faces are coplanar
+    # along an edge with matching ends -- see `_arch_head`.
+    _arch_head(v, t, g, "customs_wall_arch", ow, GATE_SPRING_M, GATE_CROWN_M,
+               GATE_HEAD_M, z0 - GATE_BAND_M, z1)
+
+    # --- the pale piers, both faces of the passage ------------------------
+    # Two per flank per face: one against the opening and one outboard, which
+    # is the rhythm the frame shows either side of the arch.
+    for s in (-1, 1):
+        for k in range(2):
+            cx = s * (ow + 0.42 + k * (PIER_W_M + 0.46) + PIER_W_M / 2.0)
+            if abs(cx) + PIER_W_M / 2.0 > hw - 0.05:
+                continue
+            for zf, out in ((z0, -1.0), (z1, 1.0)):
+                zp = zf + out * PIER_D_M
+                za, zb = min(zf, zp), max(zf, zp)
+                # THE DARK SQUARES ARE A VOID, NOT A BOX IN A BOX. Drawing the
+                # inset as a solid inside the pier's solid is two solids in one
+                # place -- BLOCKING in AAA-STANDARD, and invisible to every
+                # closure and winding test in this file because both solids are
+                # perfectly closed. So the pier is built AROUND the squares,
+                # `screen_panel`'s own construction ("the lit face is smaller
+                # than the hole it sits in"), and the dark square you see is a
+                # back plate 45 mm behind the face with nothing in front of it.
+                sq = PIER_W_M * 0.52
+                ys = [PIER_H_M * (0.32 + 0.34 * j) for j in range(PIER_INSETS)]
+                # the back plate, in the two windows only and nowhere else
+                pz = (za + PIER_INSET_M, zb) if out < 0 else (za,
+                                                              zb - PIER_INSET_M)
+                # SMALLER THAN THE HOLE IT SITS IN, by 6 mm all round --
+                # `screen_panel` records the same number for the same reason.
+                # Drawn to the window's own edge, the plate and the rail above
+                # it share an edge exactly, and this file's own gate found 64
+                # of them the first time it ran.
+                sh = sq / 2.0 - 0.006
+                for yc in ys:
+                    _box(v, t, g, "customs_mullion_inset",
+                         (cx - sh, yc - sh, pz[0]), (cx + sh, yc + sh, pz[1]))
+                # the surround: two stiles and the rails between the squares
+                for s2 in (-1, 1):
+                    _box(v, t, g, "customs_panel_pier",
+                         (cx + s2 * sq / 2.0, 0.0, za),
+                         (cx + s2 * PIER_W_M / 2.0, PIER_H_M, zb))
+                # THE RAILS SIT 6 mm BEHIND THE STILES' FACE. Flush, a rail's
+                # top face and a stile's top face are coplanar AND their shared
+                # boundary edge has identical endpoints, which is 4 non-manifold
+                # edges a pier face and 32 a hall -- this file's own gate found
+                # them. The 6 mm is also the reveal line that makes a stile
+                # read as a stile.
+                ra = za + (0.006 if out < 0 else 0.0)
+                rb = zb - (0.006 if out > 0 else 0.0)
+                edges = [0.0] + [y + d for y in ys
+                                 for d in (-sq / 2.0, sq / 2.0)] + [PIER_H_M]
+                for k in range(0, len(edges), 2):
+                    y0r, y1r = edges[k], edges[k + 1]
+                    if y1r - y0r <= 0.01:
+                        continue
+                    _box(v, t, g, "customs_panel_pier",
+                         (cx - sq / 2.0, y0r, ra), (cx + sq / 2.0, y1r, rb))
+
+    # --- the red-orange notice panel --------------------------------------
+    # On the arriving player's RIGHT, which is -X, because that is the side the
+    # frame puts it on relative to its own camera. Four bars, unlettered.
+    #
+    # OUTBOARD OF BOTH PIERS, and that is a clearance decision rather than a
+    # composition one: the piers stand 170 mm forward of the flank and a panel
+    # centred on a pier would be a solid inside a solid, which AAA-STANDARD
+    # calls BLOCKING. `pier_out` is computed from the pier loop's own arithmetic
+    # so the two cannot drift.
+    pier_out = ow + 0.42 + (PIER_W_M + 0.46) + PIER_W_M
+    nx = -(pier_out + 0.30 + NOTICE_W_M / 2.0)
+    zf = z0 - 0.02
+    _box(v, t, g, "customs_panel_notice",
+         (nx - NOTICE_W_M / 2.0, NOTICE_Y_M - NOTICE_H_M / 2.0, zf - 0.06),
+         (nx + NOTICE_W_M / 2.0, NOTICE_Y_M + NOTICE_H_M / 2.0, zf))
+    bh = NOTICE_H_M / (NOTICE_BARS * 2 + 1)
+    for j in range(NOTICE_BARS):
+        yb = NOTICE_Y_M - NOTICE_H_M / 2.0 + bh * (1 + 2 * j)
+        _box(v, t, g, "light_indicator_red",
+             (nx - NOTICE_W_M * 0.40, yb, zf - 0.075),
+             (nx + NOTICE_W_M * 0.40, yb + bh, zf - 0.062))
+
+    # --- the two legends on the fascia ------------------------------------
+    # The one over the arch is DERIVED and declared so: its wording is not
+    # legible at this frame's resolution (see INV-471), so it is generated from
+    # the register rather than transcribed. The one on the right-hand wall IS
+    # the frame's -- `WELCOME TO BAB...` before the crop, which is the station's
+    # own welcome and is already authority-1 in `WELCOME_BOARD`.
+    _legend(v, t, g, arrivals_legend, "-Z", 0.0, z0 - GATE_BAND_M - 0.012,
+            (GATE_CROWN_M + GATE_HEAD_M) / 2.0, GATE_OPEN_W_M * 0.92, 0.46)
+    lx0, lx1 = nx - NOTICE_W_M / 2.0 - 0.30, -(hw - 0.15)
+    _legend(v, t, g, ("WELCOME TO BABYLON 5",), "-Z",
+            (lx0 + lx1) / 2.0, z0 - 0.012, GATE_SPRING_M + 0.72,
+            abs(lx1 - lx0) * 0.88, 0.34)
+
+    # --- the course carried through the reveal ----------------------------
+    # The frame's strips run along the jamb and into the passage. Same cell
+    # module, same group, so they merge into the same rig the wall band does.
+    n_rev = max(2, int((GATE_T_M - 0.16) / STRIP_PITCH_M))
+    for s in (-1, 1):
+        for j in range(n_rev):
+            zc = z0 + 0.08 + j * STRIP_PITCH_M
+            # 0.35 m LOWER than the wall course, because the arch springs at
+            # 2.20 and the wall course's band is 1.90-2.45: run at the wall's
+            # own sill and every reveal cell stands inside the arch ring.
+            _box(v, t, g, "customs_light_strip",
+                 (s * ow - (0.10 if s > 0 else 0.0),
+                  STRIP_SILL_M - 0.35, zc - STRIP_W_M / 2),
+                 (s * ow + (0.0 if s > 0 else 0.10),
+                  STRIP_SILL_M - 0.35 + STRIP_H_M, zc + STRIP_W_M / 2))
+
+
+def queue_plan(hall_w):
+    """How many lanes of switchback the hall has to hold, and how long.
+
+    Returns `(legs, x0, x1, lane_m, held)`. Derived in the constants block from
+    `FACTIONS.md` 2.3 and re-derived here so the geometry cannot drift from the
+    arithmetic that justifies it: a lane count written down is a second copy of
+    a computed number, which is the defect `budget.py`'s cached collision total
+    is recorded for.
+    """
+    hw = hall_w / 2.0
+    x0 = -hw + QUEUE_MARGIN_M
+    x1 = -QUEUE_CENTRE_CLEAR_M
+    leg = x1 - x0
+    souls = ARRIVALS_PER_DAY / MOVEMENTS_PER_DAY / CUSTOMS_HALLS
+    want_m = souls * QUEUE_PITCH_M
+    legs = max(1, math.ceil(want_m / leg))
+    return legs, x0, x1, leg, int(legs * leg / QUEUE_PITCH_M)
+
+
+def queue_barriers(v, t, g, hall_w):
+    """The switchback, as station-issue barrier rather than rope and post.
+
+    `materials.py` binds `prop_barrier` to "Door Leaf -- painted panel: leaves,
+    gallery front, **checkpoint barrier**", so the material this room's queue
+    wants already exists and already says what it is for.
+
+    A BAY IS FIVE BALUSTERS, A TOP RAIL AND A KICK RAIL, not a solid panel.
+    A solid panel is one more flat surface in a room whose whole defect is flat
+    surfaces; balusters give the eye something at 1 m and still read as a line
+    at 20 m, which is AAA-STANDARD's "two detail tiers minimum" on the object a
+    player stands closest to in this room.
+
+    Every part is inset 4 mm from its neighbour. Butted exactly, a rail's end
+    face and a post's side face are coplanar with matching ends, which is a
+    non-manifold edge -- `dressing._perim_band` records the same lesson and
+    this file's own gate fails on it.
+    """
+    legs, x0, x1, leg, _held = queue_plan(hall_w)
+    gap = 0.004
+    pw = BARRIER_POST_W_M
+    for i in range(legs):
+        zc = QUEUE_Z0_M + i * QUEUE_LANE_W_M
+        # A serpentine: each leg is open at ALTERNATE ends, which is what makes
+        # it one lane and not `legs` separate pens. The open end is the return.
+        open_at_x0 = (i % 2 == 1)
+        span = leg - QUEUE_LANE_W_M
+        rx0 = x0 + (QUEUE_LANE_W_M if open_at_x0 else 0.0)
+        bays = max(1, int(round(span / BARRIER_POST_PITCH_M)))
+        pitch = span / bays
+        for b in range(bays + 1):
+            px = rx0 + b * pitch
+            # THE COLUMN STARTS ABOVE ITS OWN FOOT. Run to 0.0 and the foot
+            # is a box the post passes straight through -- two solids in one
+            # place, which no closure test can see.
+            _box(v, t, g, "prop_barrier_post",
+                 (px - pw / 2, 0.055, zc - pw / 2),
+                 (px + pw / 2, BARRIER_H_M - 0.05, zc + pw / 2))
+            _box(v, t, g, "prop_barrier_post",
+                 (px - pw * 0.72, BARRIER_H_M - 0.05, zc - pw * 0.72),
+                 (px + pw * 0.72, BARRIER_H_M, zc + pw * 0.72))
+            _box(v, t, g, "prop_barrier_post",
+                 (px - pw * 0.95, 0.0, zc - pw * 0.95),
+                 (px + pw * 0.95, 0.055, zc + pw * 0.95))
+        for b in range(bays):
+            a0 = rx0 + b * pitch + pw / 2 + gap
+            a1 = rx0 + (b + 1) * pitch - pw / 2 - gap
+            for y0, y1 in ((BARRIER_H_M - BARRIER_RAIL_T_M - 0.05,
+                            BARRIER_H_M - 0.05),
+                           (BARRIER_KICK_M, BARRIER_KICK_M + 0.055)):
+                _box(v, t, g, "prop_barrier_rail",
+                     (a0, y0, zc - 0.022), (a1, y1, zc + 0.022))
+            for k in range(BARRIER_BARS):
+                bx = a0 + (a1 - a0) * (k + 0.5) / BARRIER_BARS
+                _box(v, t, g, "prop_barrier_bar",
+                     (bx - BARRIER_BAR_W_M / 2,
+                      BARRIER_KICK_M + 0.055 + gap, zc - 0.014),
+                     (bx + BARRIER_BAR_W_M / 2,
+                      BARRIER_H_M - BARRIER_RAIL_T_M - 0.05 - gap, zc + 0.014))
+
+
+def desk_booth(v, t, g, cx, zc, lane, hall_l, hw, wicket_x=None):
+    """One processing position: the return screens, the plate, the lamp, the
+    reader and the officer's monitor.
+
+    THE LANE PLATE IS A GLYPH ON A SURFACE AND IT IS RENDERED AND READ. The
+    docking bay's deck numeral shipped MIRRORED in this same session -- "01" as
+    "10" -- and the wrong frame is kept as
+    `docs/craft-4p-dockingbay-numeral-mirrored.png`. The plate faces -Z, which
+    `_face_place` maps with `_FACES["-Z"]`, the one orientation this module has
+    used correctly since the screens were lettered; and it is checked in a
+    frame rather than argued for here.
+    """
+    half = DESK_W_M / 2.0
+    z_back = zc + DESK_D_M / 2.0
+    # The return screens, one each side, running back toward the end wall.
+    # CLAMPED INSIDE THE WALL. The outermost desk sits 1.4 m off the wall and
+    # its outer fin lands 5 mm INTO the wall plate unclamped -- a solid inside
+    # a solid, which is a BLOCKING finding and which no closure or winding test
+    # can see, because both solids are perfectly closed.
+    for s in (-1, 1):
+        fx = max(-(hw - 0.10), min(hw - 0.10, cx + s * (half + 0.16)))
+        _box(v, t, g, "fix_partition_screen",
+             (fx - BOOTH_FIN_T_M / 2, 0.0, z_back + 0.02),
+             (fx + BOOTH_FIN_T_M / 2, BOOTH_FIN_H_M,
+              min(z_back + BOOTH_FIN_D_M, hall_l - 0.10)))
+    # the lane plate, facing the queue
+    _box(v, t, g, "sign_face",
+         (cx - LANE_SIGN_W_M / 2, LANE_SIGN_Y_M - LANE_SIGN_H_M / 2,
+          zc - DESK_D_M / 2 - 0.10),
+         (cx + LANE_SIGN_W_M / 2, LANE_SIGN_Y_M + LANE_SIGN_H_M / 2,
+          zc - DESK_D_M / 2 - 0.04))
+    _legend(v, t, g, (f"LANE {lane:02d}",), "-Z", cx,
+            zc - DESK_D_M / 2 - 0.105, LANE_SIGN_Y_M,
+            LANE_SIGN_W_M * 0.80, LANE_SIGN_H_M * 0.62)
+    # open/closed lamp above the plate
+    _tube(v, t, g, "light_indicator_red",
+          (cx, LANE_SIGN_Y_M + LANE_SIGN_H_M / 2 + 0.13,
+           zc - DESK_D_M / 2 - 0.075),
+          (cx, LANE_SIGN_Y_M + LANE_SIGN_H_M / 2 + 0.13,
+           zc - DESK_D_M / 2 - 0.040), LANE_LAMP_R_M, seg=10)
+    # the identicard reader, on the PUBLIC edge of the counter where an arrival
+    # can reach it -- `directory.py` declares it for both halls
+    zr0 = zc - DESK_D_M / 2 + 0.06
+    _box(v, t, g, "prop_identicard_reader",
+         (cx - READER_W_M / 2, DESK_H_M + 0.004, zr0),
+         (cx + READER_W_M / 2, DESK_H_M + 0.004 + READER_H_M,
+          zr0 + READER_D_M))
+    # its little green register, PROUD of the body and not buried in it
+    _box(v, t, g, "customs_screen_reader",
+         (cx - READER_W_M * 0.36, DESK_H_M + READER_H_M - 0.045, zr0 - 0.008),
+         (cx + READER_W_M * 0.36, DESK_H_M + READER_H_M - 0.010, zr0))
+    # the officer's monitor, on the far edge and turned away from the queue
+    _box(v, t, g, "customs_screen_desk",
+         (cx + half - MONITOR_W_M - 0.10, DESK_H_M + 0.05, z_back - 0.30),
+         (cx + half - 0.10, DESK_H_M + 0.05 + MONITOR_H_M, z_back - 0.26))
+    # The wicket a cleared passenger passes through. Placed in the GAP between
+    # two booths by the caller rather than blindly to the right of each one:
+    # to the right of the last desk is the wall.
+    if wicket_x is not None:
+        _box(v, t, g, "prop_barrier_wicket",
+             (wicket_x - WICKET_W_M / 2, BARRIER_KICK_M, zc - DESK_D_M / 2),
+             (wicket_x + WICKET_W_M / 2, BARRIER_H_M,
+              zc - DESK_D_M / 2 + 0.05))
+
+
+def _roller_table(v, t, g, cx, zc, name):
+    """A belt table: a carcass, a rim and a rank of rollers across it."""
+    _box(v, t, g, name,
+         (cx - ROLLER_W_M / 2, 0.0, zc - ROLLER_D_M / 2),
+         (cx + ROLLER_W_M / 2, ROLLER_H_M - 0.12, zc + ROLLER_D_M / 2))
+    for s in (-1, 1):
+        _box(v, t, g, name,
+             (cx - ROLLER_W_M / 2, ROLLER_H_M - 0.12,
+              zc + s * ROLLER_D_M / 2 - (0.05 if s > 0 else 0.0)),
+             (cx + ROLLER_W_M / 2, ROLLER_H_M,
+              zc + s * ROLLER_D_M / 2 + (0.0 if s > 0 else 0.05)))
+    for k in range(ROLLERS_PER_TABLE):
+        zr = (zc - ROLLER_D_M / 2 + 0.09
+              + (ROLLER_D_M - 0.18) * k / max(ROLLERS_PER_TABLE - 1, 1))
+        _tube(v, t, g, name,
+              (cx - ROLLER_W_M / 2 + 0.06, ROLLER_H_M - 0.045, zr),
+              (cx + ROLLER_W_M / 2 - 0.06, ROLLER_H_M - 0.045, zr),
+              0.038, seg=8)
+
+
+def search_line(v, t, g, hw, hall_l):
+    """In-feed and out-feed either side of each arch, and the benches a search
+    is actually done on."""
+    z_arch = hall_l - 8.5
+    for j in range(SCANNERS):
+        cx = -hw + (2 * hw) * (j + 1) / (SCANNERS + 1)
+        for dz in (-(SCANNER_D_M / 2 + ROLLER_D_M / 2 + 0.22),
+                   +(SCANNER_D_M / 2 + ROLLER_D_M / 2 + 0.22)):
+            _roller_table(v, t, g, cx, z_arch + dz,
+                          "prop_baggage_scanner_table")
+    for j in range(BENCHES):
+        bx = hw - BENCH_W_M / 2 - 1.10
+        bz = z_arch - 3.4 + j * 2.9
+        _box(v, t, g, "prop_bench",
+             (bx - BENCH_W_M / 2, BENCH_H_M - 0.09, bz - BENCH_D_M / 2),
+             (bx + BENCH_W_M / 2, BENCH_H_M, bz + BENCH_D_M / 2))
+        for s in (-1, 1):
+            lx = bx + s * (BENCH_W_M / 2 - 0.16)
+            for sz in (-1, 1):
+                _box(v, t, g, "prop_bench",
+                     (lx - 0.05, 0.0, bz + sz * (BENCH_D_M / 2 - 0.12) - 0.05),
+                     (lx + 0.05, BENCH_H_M - 0.09,
+                      bz + sz * (BENCH_D_M / 2 - 0.12) + 0.05))
+        # the tray rail under it, which is what a bench in a search hall has
+        _box(v, t, g, "prop_bench",
+             (bx - BENCH_W_M / 2 + 0.20, 0.30, bz - 0.03),
+             (bx + BENCH_W_M / 2 - 0.20, 0.36, bz + 0.03))
+
+
+def seizure_store(v, t, g, hw, hall_l):
+    """Where what the search finds goes. Gazetteer gap **D-12**, filled in
+    style rather than left as a hole -- hard rule 1.
+
+    A cage standing against the wall rather than a room cut into it: cutting
+    the wall would put a hole in a shell whose `bespoke.SHELL_OPEN_EDGES` entry
+    is 0, and a locked steel cage in a public hall is the more legible object
+    anyway -- a player can SEE what has been taken.
+    """
+    # hw - 0.14, not hw - 0.06: the light course occupies the outer 0.10 m
+    # of that wall and a locker face at 8.41 stands inside a lit cell.
+    x1 = hw - 0.14
+    x0 = x1 - CAGE_D_M
+    zc = hall_l - 4.6
+    z0, z1 = zc - CAGE_W_M / 2.0, zc + CAGE_W_M / 2.0
+    # frame: four posts and a head rail, all clear of one another
+    for zz in (z0, z1):
+        _box(v, t, g, "prop_barred_screen",
+             (x0, 0.0, zz - 0.05), (x0 + 0.10, CAGE_H_M, zz + 0.05))
+    _box(v, t, g, "prop_barred_screen",
+         (x0, CAGE_H_M - 0.10, z0 + 0.06), (x0 + 0.10, CAGE_H_M, z1 - 0.06))
+    _box(v, t, g, "prop_barred_screen",
+         (x0, 0.0, z0 + 0.06), (x0 + 0.10, 0.09, z1 - 0.06))
+    for k in range(CAGE_BARS):
+        zb = z0 + 0.16 + (CAGE_W_M - 0.32) * k / max(CAGE_BARS - 1, 1)
+        _box(v, t, g, "prop_barred_screen",
+             (x0 + 0.028, 0.10, zb - 0.016),
+             (x0 + 0.072, CAGE_H_M - 0.11, zb + 0.016))
+    # the lockers behind the bars, a seized-goods rack
+    lw = (CAGE_W_M - 0.34) / LOCKER_COLS
+    lh = (CAGE_H_M - 0.30) / LOCKER_ROWS
+    for c in range(LOCKER_COLS):
+        for r in range(LOCKER_ROWS):
+            lz = z0 + 0.17 + c * lw
+            ly = 0.14 + r * lh
+            _box(v, t, g, "prop_locker",
+                 (x0 + 0.18, ly + 0.012, lz + 0.012),
+                 (x1 - 0.03, ly + lh - 0.012, lz + lw - 0.012))
+            _box(v, t, g, "prop_locker",
+                 (x0 + 0.155, ly + lh * 0.42, lz + lw * 0.62),
+                 (x0 + 0.180, ly + lh * 0.58, lz + lw * 0.80))
+
+
+def atmosphere_rank(v, t, g, hw, hall_l):
+    """Six lamps over six numbered plates, and the breather dispenser under
+    them. The count comes from the board in the same room.
+
+    `signage.BOARDS["customs_atmosphere"]` is authority-1 transcription and it
+    says SIX; `atmosphere_assignment` is a declared function of `customs_north`
+    alone. Reading the count out of the transcription rather than writing it
+    here means a correction to the board corrects the rank.
+    """
+    n = atmosphere_count()
+    x = -hw + 0.16
+    z_mid = hall_l - 13.0
+    span = (n - 1) * ATMO_PITCH_M
+    for k in range(n):
+        zc = z_mid - span / 2.0 + k * ATMO_PITCH_M
+        _box(v, t, g, "customs_panel_atmo",
+             (x, ATMO_Y_M - 0.34, zc - ATMO_PLATE_W_M / 2),
+             (x + 0.055, ATMO_Y_M + 0.30, zc + ATMO_PLATE_W_M / 2))
+        _tube(v, t, g, "prop_atmosphere_status_lamp",
+              (x + 0.058, ATMO_Y_M + 0.16, zc),
+              (x + 0.115, ATMO_Y_M + 0.16, zc), ATMO_LAMP_R_M, seg=10)
+        _legend(v, t, g, (f"{k + 1:02d}",), "+X", x + 0.062, zc,
+                ATMO_Y_M - 0.14, ATMO_PLATE_W_M * 0.62, 0.20)
+        if k + 1 == HUMAN_ATMOSPHERE:
+            # the human station, marked. Authority 1 -- the on-screen identicard
+            # schema puts humans at DES/ATMOS 02.
+            _box(v, t, g, "light_indicator_red",
+                 (x + 0.058, ATMO_Y_M - 0.325, zc - ATMO_PLATE_W_M * 0.44),
+                 (x + 0.082, ATMO_Y_M - 0.285, zc + ATMO_PLATE_W_M * 0.44))
+    _box(v, t, g, "prop_breather_dispenser",
+         (x, 0.0, z_mid - DISPENSER_W_M / 2),
+         (x + DISPENSER_D_M, DISPENSER_H_M, z_mid + DISPENSER_W_M / 2))
+    _box(v, t, g, "prop_breather_dispenser",
+         (x + DISPENSER_D_M, DISPENSER_H_M * 0.52,
+          z_mid - DISPENSER_W_M * 0.36),
+         (x + DISPENSER_D_M + 0.05, DISPENSER_H_M * 0.78,
+          z_mid + DISPENSER_W_M * 0.36))
+
+
+def atmosphere_count():
+    """How many atmospheres the hall's own authority-1 board claims.
+
+    Parsed rather than written down: the number lives in the transcription and
+    two copies of a fact drift. `six` is spelled, not digits, in the prop's own
+    words -- "SIX DIFFERENT ATMOSPHERES ARE CURRENTLY AVAILABLE ON B-5".
+    """
+    words = {"one": 1, "two": 2, "three": 3, "four": 4, "five": 5, "six": 6,
+             "seven": 7, "eight": 8, "nine": 9, "ten": 10}
+    b = sg.BOARDS["customs_atmosphere"]
+    for ln in list(b.get("lines", ())) + [b.get("title", "")]:
+        toks = str(ln).lower().replace(",", " ").split()
+        for i, w in enumerate(toks):
+            if w in words and "atmosphere" in " ".join(toks[i:i + 3]):
+                return words[w]
+    raise ValueError("customs_atmosphere no longer states an atmosphere count")
+
+
+def battens(v, t, g, hw, hall_l):
+    """The task light, over the desks and over the search line only.
+
+    THE TRAY RATHER THAN TWO DROP RODS, and the reason is clearance. A rod
+    reaching the lattice plane lands wherever the batten happens to be and half
+    of those land INSIDE a coffer box; a continuous tray whose top face is
+    exactly the lattice plane is coplanar with every coffer and inside none.
+    Same rule as the fin clamp above: closed solids can interpenetrate and no
+    closure test can tell.
+
+    The desk row is at `hall_l - 3.6` and NOT over the screens: the X-braced
+    brackets sweep the full height at `z_screen +/- BRACKET_W_M`, so a 3.1 m
+    batten hung there passes through one.
+    """
+    y_lattice = HALL_H_M - CEIL_INSET_M
+    for zc, n in ((hall_l - 3.6, 4), (hall_l - 8.5, 2)):
+        for k in range(n):
+            cx = -hw + 2.0 * hw * (k + 0.5) / n
+            _box(v, t, g, "light_ceiling_batten",
+                 (cx - BATTEN_L_M / 2, HALL_H_M - BATTEN_DROP_M,
+                  zc - BATTEN_W_M / 2),
+                 (cx + BATTEN_L_M / 2, HALL_H_M - BATTEN_DROP_M + 0.10,
+                  zc + BATTEN_W_M / 2))
+            _box(v, t, g, "customs_bracket",
+                 (cx - BATTEN_L_M / 2 + 0.10,
+                  HALL_H_M - BATTEN_DROP_M + 0.10, zc - 0.055),
+                 (cx + BATTEN_L_M / 2 - 0.10, y_lattice, zc + 0.055))
+
+
 def hall(schema, profile, sector="blue", with_crowd_clearance=True,
-         place=None):
+         place=None, strip_windows=True):
     """The whole room, authored in a local frame.
 
     x runs ACROSS the hall, y is up, z runs ALONG it -- from the gate line at
@@ -699,16 +1498,48 @@ def hall(schema, profile, sector="blue", with_crowd_clearance=True,
                       scale=1.5)
 
     # --- the backlit ceiling grid ----------------------------------------
+    # IT READS AS CIRCUITRY IN THE FRAME AND IT RENDERED AS A SHEET. The
+    # docstring has always said "yellow-green illuminated panels in a coffered
+    # lattice, **reading as circuitry at distance**", and re-read at full size
+    # the reference's ceiling is discrete CLUSTERS of lit cells on a dark
+    # ground, not a continuous field. This module lit every cell of a 64%-solid
+    # grid, so `docs/engine-4f-customs-normal.png` shows one flat pale slab
+    # 370 m2 across -- which is also the largest emissive surface in the room
+    # and the reason `materials.light_ceiling_grid` had to be pulled from 2.6
+    # to 0.8 to stop it blowing.
+    #
+    # A cell is lit when a keyed hash says so, and it is `blake2b` because
+    # `str.__hash__` is salted per process and would give a different ceiling
+    # every run -- AAA-STANDARD R0 names that by name. The rule below is not
+    # noise: a cell is lit if it or one of its axial neighbours is on a "trace",
+    # so lit cells form runs and corners rather than a speckle, which is what
+    # makes it read as circuitry rather than as static.
     nx = max(1, int(hall_w / CEIL_CELL_M))
     nz = max(1, int(hall_l / CEIL_CELL_M))
+
+    def _trace(i, j):
+        h = hashlib.blake2b(f"customs-ceiling-{i}-{j}".encode(),
+                            digest_size=4).digest()
+        return h[0] < CEIL_LIT_FRAC * 256
+
     for i in range(nx):
         for j in range(nz):
             x0 = -hw + (i + 0.10) * hall_w / nx
             x1 = -hw + (i + 0.90) * hall_w / nx
             z0 = (j + 0.10) * hall_l / nz
             z1 = (j + 0.90) * hall_l / nz
-            _box(v, t, g, "customs_ceiling_lamp",
-                 (x0, HALL_H_M - CEIL_INSET_M, z0), (x1, HALL_H_M, z1))
+            run = (_trace(i, j)
+                   or (_trace(i - 1, j) and _trace(i + 1, j))
+                   or (_trace(i, j - 1) and _trace(i, j + 1)))
+            if run:
+                _box(v, t, g, "customs_ceiling_lamp",
+                     (x0, HALL_H_M - CEIL_INSET_M, z0), (x1, HALL_H_M, z1))
+            else:
+                # the unlit coffer: a shallower recess in the ceiling plate, so
+                # the lattice still has depth where it is dark
+                _box(v, t, g, "customs_panel_coffer",
+                     (x0, HALL_H_M - CEIL_INSET_M * 0.45, z0),
+                     (x1, HALL_H_M, z1))
 
     # --- the suspended screens -------------------------------------------
     # The player arrives walking up +z, so the screens face -Z. Everything
@@ -780,13 +1611,19 @@ def hall(schema, profile, sector="blue", with_crowd_clearance=True,
             x = cx + s * SCREEN_W_M * 0.36
             _tube(v, t, g, "customs_hanger",
                   (x, SCREEN_HANG_M + SCREEN_H_M, z_screen),
-                  (x, HALL_H_M, z_screen), GANTRY_R_M)
+                  (x, HALL_H_M - CEIL_INSET_M, z_screen), GANTRY_R_M)
 
     # --- X-braced brackets ------------------------------------------------
     # They run past the screens rather than framing them: structure, not trim.
     for s in (-1, 1):
         x = s * (hw - BRACKET_W_M / 2 - 0.1)
-        y0, y1 = SCREEN_HANG_M - 0.6, HALL_H_M
+        # HALL_H_M - CEIL_INSET_M - r, NOT HALL_H_M. A tube's end cap is a
+        # disc PERPENDICULAR TO ITS AXIS, so a diagonal member ending exactly
+        # at the ceiling plane pokes a radius past it -- six brackets a hall
+        # standing inside the coffer and the soffit plate. Found by this file's
+        # own clearance gate below, and it predates this session.
+        y0 = SCREEN_HANG_M - 0.6
+        y1 = HALL_H_M - CEIL_INSET_M - BRACKET_D_M / 2
         z0, z1 = z_screen - BRACKET_W_M, z_screen + BRACKET_W_M
         for a, b in (((z0, y0), (z1, y1)), ((z0, y1), (z1, y0))):
             _tube(v, t, g, "customs_bracket",
@@ -805,9 +1642,13 @@ def hall(schema, profile, sector="blue", with_crowd_clearance=True,
     # Only `arrival_concourse` declares `bollard` in its interacts. A queue
     # barrier in a hall nobody queues in is set dressing pretending to be a
     # function, and `interact.py --audit` reads the same list.
+    # ON THE ARRIVAL SIDE OF THE GATE, flanking the way through it, which is
+    # where the authority-1 frame puts them -- heavy round-shouldered bollards
+    # in the FOREGROUND of a shot looking at the arch. At the old (4.0, 8.5)
+    # they stood inside the gate wall and inside the first queue leg.
     for s in ((-1, 1) if (not inter or "bollard" in inter) else ()):
-        for j, zc in enumerate((4.0, 8.5)):
-            cx = s * (hw - BOLLARD_R_M - 0.5)
+        for j, zc in enumerate((0.70, 1.85)):
+            cx = s * (GATE_OPEN_W_M / 2.0 + BOLLARD_R_M + 0.55)
             n0 = len(v)
             for k in range(BOLLARD_SEG):
                 a = math.tau * k / BOLLARD_SEG
@@ -848,12 +1689,46 @@ def hall(schema, profile, sector="blue", with_crowd_clearance=True,
     # every 1.8 m of run -- the segmentation survives in the geometry, where it
     # is the fitting's whole character, and disappears from the light rig,
     # where 132 sources would be 132 shadow-free cube maps for no visible gain.
+    #
+    # BOTH WALLS AS OF 4q, AND THE FRAME SAYS THE OTHER ONE. See the section
+    # above `GATE_Z_M`: the frame's camera looks in the direction of travel, so
+    # its left-hand wall is +X here and this loop built at -hw only. A 3.5 m
+    # reach on a 17 m hall lit from one side leaves 13.5 m dark, which is the
+    # "room with no fill" `export_scene.ROOM_EXPOSURE` records against this
+    # room's name, so the fix for the handedness and the fix for the fill are
+    # the same fitting on the other wall.
+    #
+    # AND IT STOPS WHERE A BOARD IS. Every wall board on this hall mounts at
+    # `signage.MOUNT_H_M` 1.35 m and stands 1.48 m tall, so it occupies
+    # 1.35-2.83 m and the course occupies 1.90-2.45 m: they are the same band
+    # of wall, and a run laid straight through them would put a lit cell inside
+    # a board. The windows are computed from the SAME z variables the boards
+    # are placed with, a few lines down, so the two cannot drift.
+    z_pair = hall_l - 10.0
+    z_arrivals = hall_l - 6.4
+    z_notice = hall_l * 0.47
+    z_babcom = hall_l - 15.3
+    # ...and at the GATE WALL, whose flanks are 0.90 m of solid across both
+    # walls at exactly the course's own height. Twelve lit cells stood inside
+    # it before the clearance gate below was written.
+    z_gate = (GATE_Z_M + GATE_T_M / 2.0, GATE_T_M + 0.40)
+    windows = {
+        1: [z_gate, (z_pair, 2 * sg.BOARD_W_M + 0.55 + 0.30),
+            (z_arrivals, sg.BOARD_W_M + 0.30), (z_babcom, 1.50)],
+        -1: [z_gate, (z_notice, sg.BOARD_W_M + 0.30)],
+    }
     n_strip = int((z_screen - 2.0) / STRIP_PITCH_M)
     for j in range(n_strip):
         zc = 2.0 + j * STRIP_PITCH_M
-        _box(v, t, g, "customs_light_strip",
-             (-hw, STRIP_SILL_M, zc - STRIP_W_M / 2),
-             (-hw + 0.10, STRIP_SILL_M + STRIP_H_M, zc + STRIP_W_M / 2))
+        for s in (-1, 1):
+            if strip_windows and any(abs(zc - zw) < w / 2.0
+                                     for zw, w in windows[s]):
+                continue
+            _box(v, t, g, "customs_light_strip",
+                 (s * hw - (0.10 if s > 0 else 0.0),
+                  STRIP_SILL_M, zc - STRIP_W_M / 2),
+                 (s * hw + (0.0 if s > 0 else 0.10),
+                  STRIP_SILL_M + STRIP_H_M, zc + STRIP_W_M / 2))
 
     # --- customs desks ----------------------------------------------------
     # Four 48-triangle slabs, at the one point in the station where a player
@@ -876,6 +1751,10 @@ def hall(schema, profile, sector="blue", with_crowd_clearance=True,
                        (cx - DESK_W_M / 2, 0.0, zc - DESK_D_M / 2),
                        (cx + DESK_W_M / 2, DESK_H_M, zc + DESK_D_M / 2),
                        f"customs-desk-{j}")
+        # ...AND A COUNTER IS NOT A BOOTH. See `desk_booth`.
+        pitch = (hall_w - 2.8) / max(DESKS - 1, 1)
+        desk_booth(v, t, g, cx, zc, j + 1, hall_l, hw,
+                   wicket_x=(cx + pitch / 2.0) if j < DESKS - 1 else None)
 
     # --- contraband_search: the baggage gantry ----------------------------
     # `rooms.PROP_KIND` already maps `baggage_scanner` onto the `gantry`
@@ -901,6 +1780,52 @@ def hall(schema, profile, sector="blue", with_crowd_clearance=True,
         station_schematic(v, t, g, profile, 0.0, SCHEMATIC_Y_M,
                           hall_l - 0.05, SCHEMATIC_W_M, SCHEMATIC_H_M)
 
+    # --- THE GATE LINE, and everything in the hall between it and the desks --
+    # Each block below is gated on a DECLARED function or interactable, for the
+    # reason `hall`'s own docstring gives: `place` is the room's program, and
+    # three places built alike is what `deck.py --degeneracy` exists to fail.
+    #
+    # The gate is on all three, because it is the threshold every arrival
+    # crosses and it is what the authority-1 frame is a picture OF. Its legend
+    # is derived from the place rather than transcribed -- INV-471.
+    gate_wall(v, t, g, hw, _gate_legend(place))
+    if not fn or "identicard_check" in fn:
+        queue_barriers(v, t, g, hall_w)
+    if "contraband_search" in fn:
+        search_line(v, t, g, hw, hall_l)
+        seizure_store(v, t, g, hw, hall_l)
+    if "atmosphere_assignment" in fn:
+        atmosphere_rank(v, t, g, hw, hall_l)
+    if not fn or {"identicard_check", "contraband_search"} & set(fn):
+        battens(v, t, g, hw, hall_l)
+
+    # --- boards whose words are TRUE, not decorative ----------------------
+    # `signage.arrivals_board` reads `traffic.arrivals(day)` -- the same model
+    # `audio.py` derives this hall's traffic bed from -- so the board in the
+    # arrival concourse lists the movements that are actually inbound, at
+    # Earth Mean Time, which is itself authority-1 canon off the customs board
+    # two metres away. `notice_board("minipax")` reads `broadcast`, which is
+    # era-locked at source: a Season 1 render has no Ministry of Peace on it.
+    # FACTIONS.md 5.1 puts "Ministry of Peace notices in the customs halls" by
+    # name, so the notice is sourced to this room and not sprayed everywhere.
+    if "public_information" in fn or not fn:
+        _face_place(v, t, g,
+                    solidify_lettering(*sg.arrivals_board(with_post=False)),
+                    "-X", hw - 0.005, z_arrivals)
+    if "immigration" in fn:
+        _face_place(v, t, g,
+                    solidify_lettering(
+                        *sg.notice_board("minipax", with_post=False)),
+                    "+X", -hw + 0.005, z_notice)
+    # The BabCom terminal both halls and the concourse declare. A wall station,
+    # not furniture: `rooms.PROP_KIND` maps it onto the `wallpanel` builder and
+    # this is that same builder on the same declared box. Held clear of the
+    # light course's 0.10 m of wall depth -- see the window list above.
+    if not inter or "babcom_terminal" in inter:
+        _dress.machine(v, t, g, "wallpanel", "prop_babcom_terminal",
+                       (hw - 0.40, 0.95, z_babcom - 0.60),
+                       (hw - 0.14, 2.15, z_babcom + 0.60), "customs-babcom")
+
     # --- the two blue boards, WITH THEIR OWN WORDS ON THEM ----------------
     # `board_pair()` is `board()` twice and `board()` is the UNLETTERED
     # constructor: two blank blue panels carrying the most quoted signage in
@@ -911,7 +1836,7 @@ def hall(schema, profile, sector="blue", with_crowd_clearance=True,
     # signage authors its boards standing at the origin facing -Z; set them on
     # the right-hand wall, turned to face across the hall.
     for x, y, z in bv:
-        v.append((hw - 0.35 - z, y, hall_l - 10.0 + x))
+        v.append((hw - 0.35 - z, y, z_pair + x))
     # That remap has a negative determinant (x,y,z) -> (-z,y,x) is a rotation,
     # determinant +1 -- verified in the self-test rather than asserted here.
     t.extend((a + off, b + off, c + off) for a, b, c in bt)
@@ -1129,9 +2054,33 @@ def _selftest():
     n_cells = names.count("customs_light_strip")
     check("the gate wall carries a light course",
           n_cells >= 100, f"{n_cells} cells")
+    # THE COUNT WAS THE ASSERTION AND THE COUNT IS NOT THE PROPERTY. It read
+    # `n_cells == int((HALL_LEN_M - 8.0) / STRIP_PITCH_M)` -- one wall, no
+    # interruptions -- which is a second copy of the loop it was testing and
+    # which had to be rewritten the moment the loop changed. What the rig
+    # actually needs is that every cell is its OWN span, so `to_spans` can give
+    # each one a lamp and `FIXTURE_MERGE_M` can merge them by proximity; and
+    # what the ROOM needs is a course on both walls that stops where a board is.
+    per_wall = {}
+    for name, lo, hi in g:
+        if name != "customs_light_strip":
+            continue
+        xs2 = [v[i][0] for tri in t[lo:hi] for i in tri]
+        per_wall.setdefault(round(sum(xs2) / len(xs2), 0), []).append(hi - lo)
+    walls = {k: c for k, c in per_wall.items() if len(c) > 20}
+    # Not an equal count: the +X wall carries three boards and the -X wall one,
+    # so the two runs are interrupted differently BY DESIGN. What has to be
+    # true is that each wall carries a course over most of its run.
+    stations = int((HALL_LEN_M - 6.0 - 2.0) / STRIP_PITCH_M)
+    check("the course runs on BOTH walls of the hall, not one",
+          len(walls) == 2
+          and min(len(c) for c in walls.values()) >= 0.60 * stations,
+          f"{ {k: len(c) for k, c in per_wall.items()} } of {stations} "
+          f"stations a wall")
     check("every cell of it is one span, so the rig can merge them itself",
-          n_cells == int((HALL_LEN_M - 6.0 - 2.0) / STRIP_PITCH_M),
-          f"{n_cells} spans")
+          n_cells == sum(len(c) for c in per_wall.values())
+          and all(x == 12 for c in per_wall.values() for x in c),
+          f"{n_cells} spans, sizes {sorted({x for c in per_wall.values() for x in c})}")
     check("the course is the fitting the light rig is told to hang on",
           set(CAST_FITTINGS) == {"customs_light_strip"}
           and "customs_light_strip" in names,
@@ -1295,6 +2244,127 @@ def _selftest():
           len(_k.boundary_edges(v, holed)[0]) == BOLLARD_SEG,
           f"{len(_k.boundary_edges(v, holed)[0])} open with one foot removed, "
           f"expected {BOLLARD_SEG}")
+
+    # --- CLEARANCE: TWO SOLIDS IN ONE PLACE -------------------------------
+    # THE CLASS OF DEFECT EVERY OTHER GATE IN THIS FILE IS BLIND TO, and it is
+    # blind for a reason worth writing down: closure, winding, signed volume,
+    # containment and the non-manifold gate all measure ONE solid against
+    # ITSELF or against the surface it forms. Two perfectly closed, perfectly
+    # wound solids standing in the same cubic metre pass every one of them.
+    # `docs/AAA-STANDARD.md` calls it BLOCKING by name and R5 asks for exactly
+    # this test -- "cross-subsystem clearance is asserted wherever two systems
+    # occupy the same space" -- and the standing counter-example in that file
+    # is the tram passing 6.43 m through a spoke with both modules green.
+    #
+    # WRITING THIS SESSION'S CONTENT PRODUCED SEVEN INSTANCES, three of which
+    # were already in the shipped room: a booth fin 5 mm inside the wall plate,
+    # a wicket 1 m outside it, a locker face inside a lit cell, twelve lit
+    # cells inside the gate wall, six X-brace end caps inside the ceiling
+    # coffer, five screen hangers through the same plane, and the schematic's
+    # end bars under their own bezel. Only the first two were mine to notice;
+    # the rest have been in the room for sessions.
+    #
+    # A BOUNDING BOX PER SPAN IS THE RIGHT RESOLUTION HERE and that is a
+    # property of how this module builds rather than a convenience: every
+    # primitive appends exactly one span, so a span IS a solid. It is not true
+    # of `dressing.machine`, whose parts nest inside an outer span by
+    # construction, so those are named and excluded -- and the exclusion is by
+    # PREFIX (`fix_mp_`, the machine-part vocabulary) rather than by listing
+    # the three call sites, because a fourth call site must not silently opt
+    # out of the gate.
+    #
+    # STATED LIMIT, because a gate that overstates itself is worse than none:
+    # this is AABB against AABB. Two diagonal members whose boxes overlap and
+    # whose bodies do not will be reported (and the X-braces are why the
+    # `customs_bracket` self-pair is declared). It cannot see a defect BETWEEN
+    # two declared pairs. It is a sieve for gross interpenetration and it
+    # caught seven.
+    def _abox(lo, hi):
+        idx = {i for tri in t[lo:hi] for i in tri}
+        return ([min(v[i][k] for i in idx) for k in range(3)],
+                [max(v[i][k] for i in idx) for k in range(3)])
+
+    def _overlap(a, b, eps=0.002):
+        return all(min(a[1][k], b[1][k]) - max(a[0][k], b[0][k]) > eps
+                   for k in range(3))
+
+    # Declared to overlap, each with the construction that makes it correct:
+    #   the four screen bezel rails overlap at their corners on purpose
+    #     (`screen_panel`: "butting them left the side members' inner faces
+    #     coplanar ... which is an edge with four faces on it")
+    #   `rooms.articulate`'s bands lie ON the surfaces they articulate
+    #   a glyph pyramid sits in the plaque it is lettering
+    #   `dressing.machine`'s parts nest inside their own outer span
+    # `_mp_` ANYWHERE IN THE NAME, not a prefix: `dressing` names a machine
+    # part by inserting `_mp_` after the family (`fix_mp_plant_conduit`,
+    # `prop_mp_dress_screen`), so a prefix test catches one family and misses
+    # the next. Found by the gate reporting `prop_babcom_terminal` against its
+    # own parts.
+    _NEST = "_mp_"
+    _PAIR_OK = {("customs_bracket", "customs_bracket")}
+    _SPAN_SKIP = ({"sign_text", "sign_text_head", "sign_face", "sign_frame",
+                   "sign_post"} | {n for n, _lo, _hi in _asp})
+
+    def _clearance(verts, tris, groups):
+        bx = [(n, _abox(lo, hi)) for n, lo, hi in groups
+              if hi > lo and n not in _SPAN_SKIP
+              and _NEST not in n]
+        out = {}
+        for i2 in range(len(bx)):
+            na, ba = bx[i2]
+            for j2 in range(i2 + 1, len(bx)):
+                nb, bb = bx[j2]
+                k2 = tuple(sorted((na, nb)))
+                if k2 in _PAIR_OK or not _overlap(ba, bb):
+                    continue
+                out[k2] = out.get(k2, 0) + 1
+        return out
+
+    clash = _clearance(v, t, g)
+    check("no two of this hall's solids stand in the same place", not clash,
+          f"{sum(clash.values())} overlapping pairs: "
+          f"{sorted(clash.items(), key=lambda q: -q[1])[:6]}")
+
+    # NEGATIVE CONTROL 1 -- the light course with its board windows removed.
+    # This is an A/B on the SHIPPED code path, not a hand-built stand-in: the
+    # same function, one keyword, and the cells that come back are the ones the
+    # window rule exists to remove.
+    v2, t2, g2 = hall(schema, profile, strip_windows=False)
+
+    def _clash2(verts, tris, groups):
+        def ab(lo, hi):
+            idx = {i for tri in tris[lo:hi] for i in tri}
+            return ([min(verts[i][k] for i in idx) for k in range(3)],
+                    [max(verts[i][k] for i in idx) for k in range(3)])
+        strips = [ab(lo, hi) for n, lo, hi in groups
+                  if n == "customs_light_strip"]
+        walls = [ab(lo, hi) for n, lo, hi in groups
+                 if n in ("customs_wall_gate", "sign_frame", "sign_face")]
+        return sum(1 for a in strips for b in walls if _overlap(a, b))
+
+    n_open = _clash2(v2, t2, g2)
+    check("...and removing the course's board windows FIRES it",
+          n_open > 0 and _clash2(v, t, g) == 0,
+          f"{n_open} lit cells inside a board or the gate wall without the "
+          f"windows, {_clash2(v, t, g)} with them")
+
+    # NEGATIVE CONTROL 2 -- put the outermost booth's fin back where it was
+    # before the clamp, which is 5 mm inside the wall plate. A 5 mm overlap is
+    # exactly the size a render cannot show and a gate can.
+    _v3, _t3, _g3 = list(v), list(t), list(g)
+    _cx = -HALL_W_M / 2.0 + 1.4
+    _fx = _cx - (DESK_W_M / 2.0 + 0.16)          # unclamped
+    _box(_v3, _t3, _g3, "fix_partition_screen",
+         (_fx - BOOTH_FIN_T_M / 2, 0.0, HALL_LEN_M - 2.0),
+         (_fx + BOOTH_FIN_T_M / 2, BOOTH_FIN_H_M, HALL_LEN_M - 0.5))
+    _t, _v_, _g_ = t, v, g
+    t, v = _t3, _v3
+    _fired = _clearance(_v3, _t3, _g3)
+    t, v = _t, _v_
+    check("...and the unclamped booth fin FIRES it",
+          any("fix_partition_screen" in k2 for k2 in _fired),
+          f"the fin at x={_fx:.3f} against a wall face at "
+          f"{-HALL_W_M / 2.0:.2f} left every solid clear: {sorted(_fired)}")
 
     print(f"\ncustoms hall: {HALL_LEN_M:.0f} x {HALL_W_M:.0f} x {HALL_H_M:.1f} m, "
           f"{len(t):,} triangles, {gee:.3f} g")

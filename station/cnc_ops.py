@@ -96,17 +96,39 @@ console registers, the annunciator over the window and the pit's alarm bar all
 show the state the orders produced -- which is what makes the picture change
 when the station breaks. `--engine-gate` renders both frames and diffs them.
 
-THE COST, AND WHY THE NOMINAL PATH IS FREE
--------------------------------------------
-`incident.visible_faults_per_day()` walks `machine_instances` over the whole
-register and takes ~3.5 s; the seating order needs it once. Every existing gate
-that builds C&C (`deck.py --sweep`, `rooms.py --footprint`, `variety.py`,
-`test_materials_layer3.py`) builds it with NO standing orders, and at nominal
-every plant desk is NORMAL by construction -- `spares == design_spares` is the
-definition of nominal. So `state_of_room()` returns the all-NORMAL board without
-importing anything when the log is empty, and `--gate` asserts that shortcut
-equals the long way round. A fast path with no check on it is a second copy of a
+THE COST -- AND THE FIRST DRAFT OF THIS PARAGRAPH SAID "FREE" AND WAS WRONG
+----------------------------------------------------------------------------
+It was written as *"the nominal path is free"* before it was measured. Measured,
+in a cold process: **`command_control.command_control()` goes from 0.03 s to
+14.85 s on its first call**, and the split is
+
+    plant_systems.survives_h('power')   6.83 s   the demand model warming up
+    incident.visible_faults_per_day     3.46 s   walks machine_instances over
+                                                 the whole register
+    npc/security.beat('blue')           2.67 s   memoised here; it is not
+                                                 memoised upstream and was
+                                                 being asked twice
+    imports, traffic, directory         ~1.9 s
+
+Subsequent builds in the same process are 0.03 s, so the cost is **once per
+process**, and it lands on `deck.py --sweep`, `rooms.py --footprint` (23 min),
+`variety.py`, `test_materials_layer3.py` and every render of this room. On the
+long gates that is under 2%; on the short ones it is not nothing, and it is
+recorded here rather than left to be rediscovered as "the room got slow".
+
+What IS free is the STATE at nominal. With no standing order every plant desk is
+NORMAL by construction -- `spares == design_spares` is the definition of nominal
+-- so `state_of_room()` short-circuits the six plant desks instead of asking
+them. `--gate` asserts that shortcut equals the long way round at 03, 08, 13 and
+20, with a control that isolates the station's only water plant and watches the
+shortcut NOT be taken. A fast path with no check on it is a second copy of a
 computed number; this one has the check.
+
+The remaining 14.85 s buys the three register desks, which genuinely change
+through the day, and the seat map. Making it free would mean either freezing the
+seat map on disk (a second copy of a computed number) or choosing the seating
+derivation for its speed, which is choosing a number for convenience. Neither is
+worth 14 s.
 
 Run: python3 station/cnc_ops.py --board          the nine desks, now
      python3 station/cnc_ops.py --board --hour 3
@@ -222,8 +244,7 @@ def time_to_consequence_h(desk):
             import incident as ic                             # noqa: PLC0415
             return 24.0 / max(1e-9, ic.visible_faults_per_day())
         if desk == "defence":
-            from npc import security as sec                   # noqa: PLC0415
-            return float(sec.beat("blue")["period_s"]) / 3600.0
+            return float(_beat()["period_s"]) / 3600.0
         if desk == "traffic":
             import traffic as tr                              # noqa: PLC0415
             peak = max(tr.rate_per_hour(float(h)) for h in range(24))
@@ -465,12 +486,22 @@ def _traffic_reading(hour):
     ]
 
 
+def _beat():
+    """`security.beat('blue')`, once. IT IS 2.67 s AND IT IS NOT MEMOISED
+    UPSTREAM -- called from both the seating derivation and the defence desk's
+    reading, it was a third of this module's cold-start cost on its own. The
+    beat is a property of the ring's circumference and the officer's mass; it
+    does not change with the hour, so nothing is lost by asking once."""
+    from npc import security as sec                            # noqa: PLC0415
+    return _memo("beat", lambda: sec.beat("blue"))
+
+
 def _defence_reading(hour):
     from npc import security as sec                            # noqa: PLC0415
     import incident as ic                                      # noqa: PLC0415
     on = sec.on_duty(float(hour))
     pairs = sec.roving_pairs(float(hour))
-    beat = sec.beat("blue")
+    beat = _beat()
     unp = ic.unpoliced("cnc", float(hour))
     st = ALARM if pairs <= 0 else (CAUTION if unp >= 0.5 else NORMAL)
     return st, [
@@ -498,14 +529,14 @@ def _ops_reading(hour, off):
         "FAULTS %.1f/h arriving   CREWS %.1f/h closing   WEAR x%.2f"
         % (faults, cap, wear),
         "REGISTER %d faults/day at design (incident.visible_faults_per_day)"
-        % round(ic.visible_faults_per_day()),
+        % round(_memo("vfpd", ic.visible_faults_per_day)),
     ]
 
 
-def desk_reading(desk, hour, off=None):
+def desk_reading(desk, hour, off=None, path=None):
     """(state, lines) for one desk. Nothing here computes a station fact."""
     ps = _ps()
-    off = tuple(offline_units()) if off is None else tuple(off)
+    off = tuple(offline_units(path)) if off is None else tuple(off)
     with _with_offline(off):
         if desk in ps.SYSTEM_KEYS:
             return _plant_state(desk, float(hour), off), \
@@ -517,14 +548,23 @@ def desk_reading(desk, hour, off=None):
         return _ops_reading(hour, off)
 
 
-def board(hour=13.0, off=None):
+def board(hour=13.0, off=None, path=None):
     """The whole floor: an ordered list of desk rows, dais first.
 
     Each row is a dict a console can be built from and a `read` verb can be
     printed from -- `{desk, where, index, state, title, lines, ttc_h}`.
+
+    `path` NAMES THE ORDER LOG, and it is here because its absence was a bug
+    the gate caught: `--gate` writes its orders to a temp file so it cannot
+    disturb the station's real ones, `room_layout(hour, tmp)` honoured that and
+    `board(hour)` did not -- so the same run had `room_layout` reporting ALARM
+    and `board` reporting NORMAL on the identical plant state, and four checks
+    failed with the two answers printed side by side. A test fixture that only
+    reaches half the readers is worse than no fixture, because the half it
+    misses reads the REAL state and looks like a disagreement about the model.
     """
     dais, pit = seating()
-    off = tuple(offline_units()) if off is None else tuple(off)
+    off = tuple(offline_units(path)) if off is None else tuple(off)
     rows = []
     with _with_offline(off):
         for where, seq in (("dais", dais), ("pit", pit)):
@@ -536,7 +576,7 @@ def board(hour=13.0, off=None):
     return rows
 
 
-def board_text(hour=13.0, off=None, desk=None):
+def board_text(hour=13.0, off=None, desk=None, path=None):
     """What the `tactical_display` in this room SAYS -- the `read` verb's text.
 
     `cnc` declares `("console", "comms_channel", "tactical_display",
@@ -546,7 +586,7 @@ def board_text(hour=13.0, off=None, desk=None):
     string that closes it; the four-line patch that calls it is in
     `--patch`, because `station/interact.py` is not this module's to edit.
     """
-    rows = board(hour, off)
+    rows = board(hour, off, path)
     if desk:
         rows = [r for r in rows if r["desk"] == desk]
     out = ["BABYLON 5 -- COMMAND AND CONTROL   %02d:%02d STATION"
@@ -558,8 +598,8 @@ def board_text(hour=13.0, off=None, desk=None):
     return "\n".join(out)
 
 
-def worst_state(rows=None, hour=13.0, off=None):
-    rows = board(hour, off) if rows is None else rows
+def worst_state(rows=None, hour=13.0, off=None, path=None):
+    rows = board(hour, off, path) if rows is None else rows
     return max((r["state"] for r in rows), key=lambda s: RUNG[s],
                default=NORMAL)
 
@@ -591,7 +631,7 @@ def state_of_room(hour=13.0, path=None):
             except Exception:                                  # noqa: BLE001
                 out[d] = NORMAL
         return out
-    return {r["desk"]: r["state"] for r in board(hour, off)}
+    return {r["desk"]: r["state"] for r in board(hour, off, path)}
 
 
 def room_layout(hour=13.0, path=None):
@@ -769,7 +809,7 @@ def gate(out=print):                                          # noqa: C901
     order_isolate(("fusion_core", "reactor_hall"), tmp)
     hot_r = ic._r_brownout(ic.Ctx(day=1, seed="b5"), "reactor_hall", 13.0)
     hot_f = ps.fault_arrivals_per_hour(13.0)
-    rows2 = board(13.0)
+    rows2 = board(13.0, path=tmp)
     st2 = {r["desk"]: r["state"] for r in rows2}
     check(hot_r > base_r,
           "isolating two generating units raises INC-BROWNOUT's rate",
@@ -923,19 +963,14 @@ def engine_gate(out=print, res="960x540", outdir=None):
         return p
 
     try:
-        a = shot("engine-4q-cnc-board-normal.png", ())
-        b = shot("engine-4q-cnc-board-alarm.png",
+        a = shot("craft-4q-cnc-board-normal.png", ())
+        b = shot("craft-4q-cnc-board-alarm.png",
                  ("fusion_core", "reactor_hall"))
-        a2 = shot("engine-4q-cnc-board-control.png", ())
+        a2 = shot("craft-4q-cnc-board-control.png", ())
     finally:
         write_orders(saved)
         apply_orders()
 
-    def diff(p, q):
-        r = subprocess.run(
-            [sys.executable, os.path.join(_ROOT, "tools", "measure_frame.py"),
-             p, "--against", q], capture_output=True, text=True, cwd=_ROOT)
-        return r.stdout
     px = _pixel_diff(a, b)
     ctl = _pixel_diff(a, a2)
     out("  A vs B  %.3f%% of pixels differ" % (100.0 * px))
