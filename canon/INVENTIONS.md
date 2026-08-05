@@ -10012,3 +10012,139 @@ scores survive that constant being corrected.
 
 **Overturned by** a change to `SHOT_FOV_DEG` or to the shipped camera, either of which moves
 every distance quoted in `docs/aaa-scorecard.json`'s `exterior_components` rows.
+
+---
+
+## INV-571 — `garden_bark` stays at 0.135, and the tree is a silhouette because of shadow
+
+**What.** A negative result: `materials.garden_bark`'s albedo (0.148, 0.135, 0.121),
+luminance 0.137, is **not changed**, and `garden_bark` is **not** given a trim sheet. The
+entry's overturning condition is tightened to say *reference* frame, and the measurement
+below is recorded in `materials.NEGATIVE_RESULTS`.
+
+**Why it was opened.** `docs/aaa-scorecard.json` and `STATE.md` carry a finding that the
+trunk's fluted section "CANNOT BE SEEN at value 0.135", citing
+`docs/garden-4q-after-tree.png` at `crushed 25.49%` — the worst frame in the drum set — and
+saying the entry's own overturning condition ("any near-field frame of a tree in the drum")
+was now met.
+
+**What constrained it — four renders at one camera** (`garden.HERO_SHOTS["tree"]`, eye 9 m
+from a level −1 broadleaf, Vulkan 1.4.318 Forward+ confirmed in every log). The committed
+frame was re-rendered at HEAD first and agreed (crushed 25.49% → 25.56%), so none of this
+is the stale-frame defect of session 3z.
+
+| trunk box (0.485,0.80)–(0.515,0.99) | linear Y | crushed, trunk | crushed, whole frame |
+|---|---|---|---|
+| shipped, albedo lum 0.137 | 0.00526 | 95.3% | 25.56% |
+| albedo lum 0.900 — a ceiling control, not a proposal | 0.30486 | 0.0% | **21.95%** |
+| shipped albedo + a full `stone_agg` trim sheet at 0.35 m | 0.00494 | 95.3% | 25.56% |
+| shipped material, shadow casters 24 → 0 | **0.02277** | **0.0%** | — |
+| the ground it stands on, shipped | 0.23109 | 0.0% | — |
+
+**Three things fall out and each kills a candidate explanation.**
+
+*The crushed figure is 86% about something else.* Painting the bark a white no reference
+could buy moves the whole frame's crushed fraction by **3.61 points of 25.56**. The bark and
+its branches own 3.61; the canopy and the shadowed town block own the rest. A statistic
+taken over 518,400 pixels was attributed to one 1,244-triangle object inside it.
+
+*Relief is not the lever either.* A complete trim sheet — albedo variation, normal, ORM and
+AO — moves the trunk by **×0.94**, and leaves it 95.3% crushed. A normal map modulates a
+quantity that is already ~0. This is why no `bark_flute` sheet was authored: the experiment
+that would have justified one was run first, for the price of one render, and came back
+negative. (`garden_bark` was also temporarily lifted out of
+`UNTEXTURED_BY_DESIGN["foliage"]` for that probe, and the observation that put it there —
+"a leaf is not a trim sheet" — is about **leaves** and does not describe bark. It is left in
+the list anyway, now for a measured reason instead of an inherited one.)
+
+*Shadow is the lever.* Turning the drum's 24 shadow casters off, one variable, same camera,
+takes the trunk from 95.3% crushed to **0.0%** and lifts it **×4.33**, against ×1.50 on the
+ground in the same pair — so **×2.9 is shadow on the trunk specifically**. The tree stands in
+its own canopy's shade under overhead light, which is what a tree does. The arithmetic
+agrees from the other side: summing Godot's own `pow(1 - d/range, attenuation)` over all 60
+drum sources (`scratchpad/mat4r/irradiance.py`), direct irradiance on a vertical trunk face
+is **80.8** against **102.2** on the ground beside it — ×1.26, nothing like the ×44 the
+render shows, so the missing factor is occlusion and not incidence.
+
+**And the premise that opened this was false.** "Any near-field frame of a tree in the drum"
+meant, in an entry whose source field opens *"NO FRAME MEASURES THIS"*, an authority-1 or -2
+frame from the show. `docs/garden-4q-after-tree.png` is our own render: an albedo cannot be
+measured off a picture drawn with that albedo. The wording is tightened so the next reader
+cannot make the same reading.
+
+**What would overturn THIS.** A reference frame in which a drum trunk is separable from what
+is behind it — which would settle the albedo directly and make all of the above irrelevant.
+Or a drum fill light: everything here is measured against the lighting rig as session 4r
+shipped it, and a fill on vertical surfaces under canopy moves every number in the table.
+The patch for that is in `scratchpad/PATCHES-4r-materials.md`; it belongs to
+`tools/export_scene.py` and was not applied here.
+
+---
+
+## INV-572 — the drum's arable floor is textured at 256 texels/m, because a player now stands on it
+
+**What.** `materials.TEX_SIZE["soil_clod"]` 1024 → **2048**, and the `ground_arable` binding's
+tile 12.00 m → **8.00 m**. Together: **85.3 → 256 texels per world metre** on the five
+`ground_arable*` materials, and 128 → 256 on `ground_shore`, which shares the sheet.
+
+**Why the old number was right when it was written and is not now.** Its own comment said
+*"the drum's arable floor, seen from far away"*, and session 4q measured exactly that: the
+nearest thing standing anywhere on the drum was **44.3 m** from the eye. `drum_dressing`'s
+near rung (INV-490..493) now places one item of cover per 3.90 × 4.04 m ground cell inside
+90 m, and reports a **median nearest object of 2.32 m**. The read distance moved by a factor
+of 19 and the sheet did not follow it. At 85.3 texels/m `ground_arable` was **tied with
+`hull_exterior` for the lowest texel density in the library** — the same sheet density as an
+8 km hull seen from 20 km, on ground a player kneels on.
+
+**What constrained the new number — it is solved, not rounded up.** INV-491 already fixes
+the read distance without taste: at the player's own **70°** vertical fov (`player.gd`, and
+it is the strictest of the three fovs in this project) from a 1.7 m eye, **half** the
+below-horizon frame is ground closer than **5.39 m**. Slant range there is
+hypot(1.7, 5.39) = 5.65 m; 1440 rows over 70° is 1178.7 px/rad; so one across-track metre of
+ground subtends **208.6 px**. One texel per pixel at the median therefore wants **≥ 209
+texels/m**. 2048 over an 8 m tile gives 256, clearing it by 1.23×; 2048 over the old 12 m
+tile gives 171 and would not.
+
+**And 8.00 m is not a new number in the file** — it is the tile `ground_shore`, the band
+next to it, has always used for the same sheet. It carries a second consequence that is
+wanted rather than tolerated: `gen_soil_sheet` lays about ten furrows across a repeat, so
+12 m spaced crop rows 1.2 m apart and 8 m spaces them **0.8 m**, inside the 0.15–0.75 m a
+real row occupies instead of just outside it. The cost is repetition — a 90 m field shows 11
+periods where it showed 7.5 — bounded by the parcel breaks `drum_ground` already cuts and by
+the near cover standing on top.
+
+**Measured, at the near field's own HALF distance** (eye 262.197,95.432,4700 → target
+263.802,96.016,4704, the camera `scratchpad/NEAR-FIELD-4r.md` records; Vulkan 1.4.318
+Forward+ on all three):
+
+| | texels/m | vs A |
+|---|---|---|
+| A `1024 @ 12 m` (shipped) | 85.3 | — |
+| B0 `1024 @ 8 m` | 128 | 56.45% of pixels differ |
+| B `2048 @ 8 m` (this change) | 256 | 56.44% |
+| B0 → B, i.e. **sheet size alone** | | **51.95% differ, max channel 23** |
+
+At 2× magnification of the near ground the difference is what the numbers predict: A's stones
+are large smeared blobs and its furrows are soft; B's stones are smaller, more numerous and
+resolved, and the furrow grain is legible. Crops in `scratchpad/mat4r/crop-{A,B0,B}.png`.
+
+**Cost.** Resident texture memory 97.3 → **105.3 MB**, 3.17% → 3.43% of the 3,072 MB budget;
+`soil_clod`'s own set 2.67 → 10.67 MB. Export time for the whole texture set is 2m24s.
+
+**Overturned by** `drum_dressing` withdrawing the near rung (which would restore the 44.3 m
+read distance and with it the 1024), or by a repetition finding on a wide drum frame — the 8 m
+tile is the half of this change that can be argued with, and reverting it alone leaves 171
+texels/m, which is 0.82× the derivation rather than 1.23×.
+
+**A HAZARD FOUND WHILE MEASURING THIS, AND IT IS NOT IN A MATERIAL.** The B render was taken
+twice. The first one used the **new 8 m tile with the OLD 1024 texture**, because
+`godot/.godot/imported/*.s3tc.ctex` still held the previous import: `render_godot.sh` warms
+the import cache only when `.godot/imported` is **absent**, and a game-mode Godot does not
+rescan the filesystem, so a regenerated texture renders through its previous import
+**silently, exit 0, with a plausible PNG**. Caught only by reading the `.ctex` file sizes
+(699,116 bytes — a 1024 BC1 with mips — against 2,796,268 after a forced
+`godot --path … --import`). This is the same shape as the stale-frame defect of 3z and the
+OpenGL-fallback defect of 4e, one level further down: **the frame was fresh, the renderer was
+right, and the texture was last session's.** The accidental render is kept above as B0
+because it is a real third rung of the ladder. A patch for `render_godot.sh` is in
+`scratchpad/PATCHES-4r-materials.md`.

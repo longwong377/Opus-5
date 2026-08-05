@@ -482,6 +482,59 @@ THE DRUM GROUND IS NOT DESATURATED.
   Byte-identical, md5 e2bf2216d53aa9ba89342267db3f92f6, filed in two folders.
   It is counted twice in the reference index's live-file total. No material
   cites it twice as independent corroboration; noted so that nobody does.
+
+`garden_bark` IS NOT WHY THE DRUM'S TREE IS A SILHOUETTE. THE SHADOW IS.
+  Session 4r. `docs/aaa-scorecard.json` and STATE.md §"the tree" both carry the
+  finding that the trunk's "fluted section CANNOT BE SEEN at value 0.135", on
+  the evidence that `docs/garden-4q-after-tree.png` measures `crushed 25.49%`,
+  the worst frame in the drum set. The symptom is real. The evidence is 86%
+  about something else, and the cure is in nobody's material.
+
+  Measured at `garden.HERO_SHOTS["tree"]` (eye 9 m from a level -1 broadleaf,
+  Vulkan 1.4.318 Forward+ on every run; the committed frame re-rendered at HEAD
+  first and agreed, crushed 25.49% -> 25.56%, so it is not a stale frame):
+
+    trunk box (0.485,0.80)-(0.515,0.99), linear Y, and the whole frame
+
+      shipped, albedo lum 0.137          0.00526   95.3% crushed   frame 25.56%
+      albedo lum 0.900 (ceiling control) 0.30486    0.0% crushed   frame 21.95%
+      + stone_agg trim sheet, 0.35 m     0.00494   95.3% crushed   frame 25.56%
+      shadow casters 24 -> 0, else same  0.02277    0.0% crushed          --
+      the ground it stands on, shipped   0.23109    0.0% crushed
+
+  Read the second row against the last: the WHOLE FRAME's crushed fraction only
+  falls 3.61 points when the bark goes to a white no reference could buy, so
+  the bark owns 3.61 of the 25.49 and the canopy and the shadowed town block own
+  the rest. A statistic taken over the frame was attributed to one 1,244-triangle
+  object in it.
+
+  Read the third row on its own: a full trim sheet -- albedo variation, normal,
+  ORM and AO -- moves the trunk by x0.94, i.e. nothing, and leaves it 95.3%
+  crushed. RELIEF CANNOT RESCUE A SURFACE TWO STOPS UNDER THE MEASUREMENT
+  FLOOR, because a normal map modulates a quantity that is already ~0. That is
+  why no bark sheet was authored: the experiment that would have justified it
+  was run first and came back negative for one render.
+
+  Read the fourth row for the cause: turning the drum's 24 shadow casters off,
+  one variable, takes the trunk from 95.3% crushed to 0.0% and lifts it x4.33,
+  against x1.50 on the ground in the same pair -- so x2.9 of it is shadow ON THE
+  TRUNK SPECIFICALLY. The tree is standing in its own canopy's shade under
+  overhead light, which is what a tree does. Summing Godot's own attenuation
+  over all 60 drum sources (`scratchpad/mat4r/irradiance.py`) the DIRECT
+  irradiance on a vertical trunk face is 80.8 against 102.2 on the ground beside
+  it -- x1.26, nothing like the x44 the render shows -- which is the same
+  finding from the arithmetic side.
+
+  So the two readings the evidence allows are "the bark is too dark" and "the
+  drum has no fill on a vertical surface under canopy", and it is the second.
+  The bark value is NOT changed. The fix is a fill light or an ambient the drum
+  does not have, and it belongs to `tools/export_scene.py` --
+  scratchpad/PATCHES-4r-materials.md carries it. INV-571.
+
+  This is the ochre dado again, upside down: five times this file has recorded a
+  COLOUR in a frame that belonged to the light. This is a DARKNESS in a frame
+  that belonged to the shadow, and the cheap test is the same one -- change the
+  light, not the surface, and see which the number follows.
 """
 
 
@@ -3934,7 +3987,7 @@ def _build():
         specular=0.3,
         binds=("garden_trunk", "garden_branch"), scenes=("drum",),
         source="NO FRAME MEASURES THIS, and saying so is the point. In reference/09-garden-core-and-transit/garden.png no trunk exceeds two pixels and every one of them stands against dark canopy, so any reading is a mixture; in reference/03-sector-blue/Babylon_5_2-22_29a.jpg (authority 1) trunks are visible — reference/00-INDEX.md records 'palm trees lining streets and open ground, plus dark rounded broadleaf trees' — but at that frame's exposure they are inseparable from the shadow behind them. The only sourced quantity is the level it is tied to: reference/09-garden-core-and-transit/garden.png's planted bank at (0.010,0.590)-(0.075,0.700), raw median 0.235/0.200/0.129, luminance 0.202, which through the in-frame ladder (lawn lum 0.606 -> materials.ground_parkland lum 0.396, K = 0.6534) is 0.132.",
-        extrapolated="Everything except the level it is pinned to. Value 0.135 sits at the planted bank's 0.132, on the argument that bark and shaded planted earth are the same class of dark organic surface and no frame in the set separates them; it must stay BELOW garden_foliage's 0.257 so a trunk never reads brighter than the canopy above it, which is the one relationship a viewer would notice. Saturation is held to 0.18 — under the library's 0.20 structural ceiling — because there is no frame to buy anything higher with, and because the warm reading the bank gives is the frame's additive key by the test in garden_civic_render's entry. Roughness 0.92: bark is the second-roughest surface in this set after foliage. Overturned by: any near-field frame of a tree in the drum, which would settle it in one measurement — this is the weakest entry in the family and it is 88 triangles."))
+        extrapolated="Everything except the level it is pinned to. Value 0.135 sits at the planted bank's 0.132, on the argument that bark and shaded planted earth are the same class of dark organic surface and no frame in the set separates them; it must stay BELOW garden_foliage's 0.257 so a trunk never reads brighter than the canopy above it, which is the one relationship a viewer would notice. Saturation is held to 0.18 — under the library's 0.20 structural ceiling — because there is no frame to buy anything higher with, and because the warm reading the bank gives is the frame's additive key by the test in garden_civic_render's entry. Roughness 0.92: bark is the second-roughest surface in this set after foliage. OVERTURNED BY A NEAR-FIELD *REFERENCE* FRAME OF A TREE — an authority-1 or -2 screencap in which a drum trunk is separable from what is behind it — AND BY NOTHING WE RENDER. The old wording said only 'any near-field frame of a tree in the drum', and session 4q's scorecard read that as satisfied by docs/garden-4q-after-tree.png, which is OUR OWN RENDER: measuring an albedo off a picture drawn with that albedo cannot overturn it, and the four-render A/B that followed is in NEGATIVE_RESULTS. The stated constraint above also needs reading with care — it constrains the two ALBEDOS, and in the shipped frame the trunk renders 3.5x BRIGHTER than the canopy over it (0.00526 against 0.00150) at 0.53x its albedo, because the canopy is backlit and the trunk is not. A rendered relationship is not an albedo relationship. This is the weakest entry in the family and it is now 1,244 triangles."))
 
         # A 14 x 12 m box that reads as a mass in silhouette behind the
         # waterfall, so what it owes is a level dark enough to give the fall
@@ -4425,7 +4478,17 @@ TEXTURE_BINDINGS = (
     ("garden_loggia_recess",       "stone_agg",       2.00),
     ("endcap_course_wall",         "stone_agg",       3.00),
     # -- ground. Eleven materials rendering farmland as flat brown ---------
-    ("ground_arable",              "soil_clod",      12.00),
+    # 12.00 -> 8.00, AND IT IS THIS SHEET'S OWN OTHER TILE RATHER THAN A NEW
+    # NUMBER: `ground_shore`, the band next to it, has always been at 8 m. Two
+    # things follow and both are wanted. Texel density goes 85.3 -> 256 per
+    # metre (with the 2048 in TEX_SIZE), over the 209 INV-572 derives. And the
+    # FURROW PITCH follows it: `gen_soil_sheet` lays about ten furrows across a
+    # repeat, so 12 m spaced them 1.2 m apart and 8 m spaces them 0.8 m, which
+    # is inside the 0.15-0.75 m a real crop row occupies instead of just
+    # outside it. The cost is repetition -- a 90 m field shows 11 periods where
+    # it showed 7.5 -- and it is bounded by the parcel breaks `drum_ground`
+    # already cuts and by the near cover standing on top of it.
+    ("ground_arable",              "soil_clod",       8.00),
     ("ground_shore",               "soil_clod",       8.00),
     ("ground_road",                "soil_clod",       6.00),
     ("ground_settlement",          "stone_agg",       6.00),
@@ -4752,7 +4815,26 @@ TEX_SIZE = {
     "metal_grain": 1024,     # fittings, rails, valve bodies, trim
     "stone_agg": 2048,       # architectural render and flagstone -- named as
                              # missing in two provenance entries in this file
-    "soil_clod": 1024,       # the drum's arable floor, seen from far away
+    # THE PREMISE OF THIS LINE EXPIRED IN SESSION 4r AND THE COMMENT WAS THE
+    # ONLY RECORD OF IT. It read "1024, # the drum's arable floor, seen from
+    # far away", and that was true when it was written: the nearest thing
+    # standing anywhere on the drum was 44.3 m from the eye. `drum_dressing`'s
+    # near rung (INV-490..493) now stands one item of cover per 3.90 x 4.04 m
+    # ground cell within 90 m, with a MEDIAN nearest object of 2.32 m -- so a
+    # player is standing ON this sheet at arm's length. Sizing here is by the
+    # distance a surface is READ at, and that distance moved by a factor of 19.
+    #
+    # 2048 IS SOLVED, NOT ROUNDED UP. INV-491 fixes the read distance without
+    # taste: at the player's own 70 deg vertical fov (`player.gd`) from a 1.7 m
+    # eye, HALF the below-horizon frame is ground closer than 5.39 m. Slant
+    # range there is hypot(1.7, 5.39) = 5.65 m; 1440 rows over 70 deg is
+    # 1178.7 px/rad, so one across-track metre of ground is 208.6 px. One texel
+    # per pixel at the median therefore wants >= 209 texels/m, and the arable
+    # bands ship at 1024/12 m = 85.3 -- a factor of 2.45 short, and TIED WITH
+    # `hull_exterior` FOR THE LOWEST DENSITY IN THE LIBRARY, on a surface a
+    # player kneels on rather than one seen from 20 km. 2048 over the 8 m tile
+    # (see TEXTURE_BINDINGS) gives 256 texels/m, which clears it by 1.23x.
+    "soil_clod": 2048,       # the drum's arable floor, now stood ON: INV-572
     "mesh_perf": 1024,       # cell fronts, catwalk mesh, guards
 }
 
