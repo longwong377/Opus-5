@@ -4572,12 +4572,39 @@ UNTEXTURED_BY_DESIGN = {
                  "marker_light_red", "marker_light_white",
                  "alien_status_lamp", "endcap_rimlight", "furn_shrine_lit",
                  "tram_headlight", "tram_saloon_strip", "light_indicator_red"),
+    # A LEAF IS NOT A TRIM SHEET. Foliage wants an alpha-cut card with a leaf
+    # shape on it, which is a different pipeline from every sheet here, and
+    # giving it stone or cloth would be worse than leaving it flat. Named as
+    # the next texture job.
+    #
+    # THAT REASON IS TRUE OF TWO OF THESE FIVE AND WAS INHERITED BY THE OTHER
+    # THREE (session 4r). It describes `garden_foliage` -- a tree canopy and a
+    # standing hedge, seen against the sky -- exactly. It does not describe:
+    #
+    #   `garden_bark`   bark is the archetypal trim-sheet surface, and the only
+    #                   reason it stays bare is now MEASURED rather than
+    #                   inherited: a full sheet on it moves the trunk x0.94,
+    #                   because the trunk sits two stops under the measurement
+    #                   floor and a normal map modulates a zero. See
+    #                   NEGATIVE_RESULTS and INV-571.
+    #   `ground_hedge`  NOT a hedge: it is the 12 m-wide GROUND BAND
+    #                   `drum_ground` cuts between parcels, and that module's
+    #                   own comment says the hedge inside it "is 2 m tall, 1 m
+    #                   wide" and "belongs in the material, not the field". The
+    #                   other 11 m is rough grass a player walks on.
+    #   `ground_parkland` / `garden_mown_grass`
+    #                   mown turf, and `drum_dressing`'s near rung (INV-490)
+    #                   now stands a player a median 2.32 m from it.
+    #
+    # MEASURED, on the near field's own half-distance camera (the frames in
+    # INV-572): 57.4% of that frame is ground carrying a `soil_clod` sheet, and
+    # **40.0% is ground below the horizon carrying NO TEXTURE MAP AT ALL** --
+    # the whole left half of the frame, which is a `ground_hedge` band at 20
+    # deg, z 4700, tussocks and all. A turf sheet is the next texture job and
+    # it is a bigger one than the arable fix; it is named here with its
+    # measurement rather than left as "foliage".
     "foliage": ("garden_foliage", "garden_mown_grass", "ground_hedge",
                 "ground_parkland", "garden_bark",
-                # A LEAF IS NOT A TRIM SHEET. Foliage wants an alpha-cut card
-                # with a leaf shape on it, which is a different pipeline from
-                # every sheet here, and giving it stone or cloth would be worse
-                # than leaving it flat. Named as the next texture job.
                 ),
     # Every `light_*` fitting. A luminaire's visible face is the source, and a
     # microstructure map on an emitter does nothing but modulate the thing that

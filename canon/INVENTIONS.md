@@ -9624,6 +9624,9 @@ the existing key gate would have caught it as a name and never as a value.
 | **B** library `transmittance=0.840`, shim finds it done | **×1.99** | `0 pane surface(s) made transmissive … 1 already transmissive in the library` |
 | **C** neither — `glazing_groups` emptied AND library opaque | **×0.29** | `0 … 0` |
 
+Frames: `docs/mat-4r-glass-transmissive.png` (B) and `docs/mat-4r-glass-opaque-control.png`
+(C). A is byte-identical to B and is therefore not committed twice.
+
 **A and B are BYTE-IDENTICAL (md5 `fc97094b…`), and that is the result rather than a failed
 test.** The shim already produced this pixel on this path, so equivalence is what a correct
 move looks like. What stops that being vacuous is C: 87.6% of pixels differ from A, max
@@ -10041,6 +10044,13 @@ is the stale-frame defect of session 3z.
 | shipped material, shadow casters 24 → 0 | **0.02277** | **0.0%** | — |
 | the ground it stands on, shipped | 0.23109 | 0.0% | — |
 
+Frames, in that order: `docs/mat-4r-tree-shipped.png`,
+`docs/mat-4r-tree-albedo090-control.png`, `docs/mat-4r-tree-trimsheet-probe.png`,
+`docs/mat-4r-tree-noshadow-control.png`. `scratchpad/mat4r/crushmap.py` draws the crushed
+population back onto the frame in magenta, which is how the split below was found rather than
+argued: the trunk, the canopy, the branches and one shadowed town block, in that order of
+area.
+
 **Three things fall out and each kills a candidate explanation.**
 
 *The crushed figure is 86% about something else.* Painting the bark a white no reference
@@ -10123,6 +10133,10 @@ Forward+ on all three):
 | B0 `1024 @ 8 m` | 128 | 56.45% of pixels differ |
 | B `2048 @ 8 m` (this change) | 256 | 56.44% |
 | B0 → B, i.e. **sheet size alone** | | **51.95% differ, max channel 23** |
+
+A and B are committed as `docs/mat-4r-arable-85tex-before.png` and
+`docs/mat-4r-arable-256tex-after.png`. B0 is the accidental stale-cache render described at
+the end of this entry and lives in `scratchpad/mat4r/`.
 
 At 2× magnification of the near ground the difference is what the numbers predict: A's stones
 are large smeared blobs and its furrows are soft; B's stones are smaller, more numerous and

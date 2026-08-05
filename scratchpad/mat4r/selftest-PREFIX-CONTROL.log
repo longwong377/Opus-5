@@ -1,0 +1,8 @@
+FAIL  every group literal found in the generators resolves  [['drum_endcaps', 'ground_cullable', 'ground_r', 'ground_total']]
+FAIL  the pane a window is made of is transmissive in the LIBRARY  [0.0]
+FAIL  vista.py's copy of T agrees with the material's  [0.84 != 0.0]
+FAIL  every untextured material is declared as such (179/237 textured, 58 bare by design)  [['alien_status_lamp_dark']]
+FAIL  every exported .tres is what the library would write today  [1 stale, run --export: ['viewport_glazing']]
+  worst interior view: cargo_transfer_deck at 21 materials (budget 64); library holds 171
+2346/2351 passed
+rc=5

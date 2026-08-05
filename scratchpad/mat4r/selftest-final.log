@@ -1,0 +1,5 @@
+FAIL  every group literal found in the generators resolves  [['drum_endcaps', 'ground_cullable', 'ground_r', 'ground_total']]
+FAIL  every untextured material is declared as such (179/237 textured, 58 bare by design)  [['alien_status_lamp_dark']]
+  worst interior view: cargo_transfer_deck at 21 materials (budget 64); library holds 171
+2349/2351 passed
+rc=2
