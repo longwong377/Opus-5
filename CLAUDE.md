@@ -60,6 +60,54 @@ first:
 `python3 station/spec_check.py --smoke` reports the honest GREEN/RED ledger. Both run in
 CI as `sspec_gate`. **No statistic may substitute for a spec item.**
 
+### THE LIVE NUMBERS — everything below the START HERE section is history, including its figures
+
+**Read these before quoting any number from further down this file.** The sections below are
+kept as history deliberately and their numbers were true when written; several are not true now,
+and a session that acts on a historic figure acts on a stale one. Measured as of session 4o:
+
+| | live | where a stale one appears below |
+|---|---|---|
+| places in the register | **129** (`markab_quarter` added, PLC-129) | "118 locations", "126 locations", "128 of 128" |
+| gazetteer rows | **137** | "126 locations" |
+| bay tiling total | **51,475** (blue 7,692 / red 1,644 / green 7,062 / grey 16,487 / yellow 18,590) | "49,265", "73,635" |
+| spec registry | **300 rows**, PLC 129 · INC 30 | "291 rows", "193 registry rows", "22 classes" |
+| `canon/INVENTIONS.md` | reaches **INV-384** | — |
+| frame structure vs budget | **4.34×** (260,243 tri against a 60,000 allowance) | **"2.05×" — stale by two sessions**; it predates 4k's footprint tiling, which multiplied deck triangles 3.34× |
+| incident classes | **30**, 2,011 incidents a station-day | "22 classes" |
+
+**And one live claim that is easy to misread as a win:** the corridor occluder is built, provably
+contained (0 breaches of 2,880 rays) and reaches the engine — and it is worth **7.8% of the frame
+and 0.2% of structure**, because Godot culls per instance AABB and the corridor's OBJ groups span
+the whole 345° ring. The 58.2% figure in its own report is the per-triangle ceiling and **no
+renderer here does that**. What actually closes the budget red is spatial submission — per-cell
+instances, measured at **39% before any occluder**.
+
+### THE DEFECT THIS PROJECT KEEPS PRODUCING — nine instances, and now a gate
+
+**Finished, tested machinery with no caller on the shipped path.** It has happened nine times:
+L3's room leg, `stream.gd` moving nobody, a circulation graph nothing but its own selftest saw,
+`dialogue.gd`'s node that had never been built on any path, the Starfury's un-rebuilt data,
+`--mode=transit`'s manifest that nothing wrote, `Director.route_between` with `nav` unset,
+`occluders.py` with no importer, and — created **while closing the eighth** — the occluder load
+placed in `walk.gd::_load_level`, **which the shipped build never runs**, because the shipped
+scene is STREAMED and `_load_level` is the monolithic path.
+
+Every one passed every gate at the time, and they had to: **every gate here scores a PART against
+a standard, and a part with no caller still meets its standard.**
+
+`python3 tools/wiring.py --selftest` asks the rule's question instead — does every
+`station/generated/…` path an engine script reads exist and get rebuilt by CI, and does anything
+import each tested module. Seconds, no build, no GPU, safe to run while agents work. CI step
+`swiring`. **Run it before claiming anything is wired.**
+
+**But know its ceiling, because the ninth instance slipped under it.**
+`budget.occlusion_chain` reported `applied=True` while the shipped build loaded nothing, because
+it looks for a **reference in the source** and cannot see which branch runs. One level lower,
+`boot.json` had no key and `main.gd` passed none, so the export var would have stayed empty even
+on the path that did call it. **A static scan can tell you a caller exists; only running the thing
+tells you the caller runs.** Launch the scene and grep for the line the loader prints.
+
 ### The supersession ledger — nothing is lost, everything is placed
 
 | document | status | what STILL binds from it |
