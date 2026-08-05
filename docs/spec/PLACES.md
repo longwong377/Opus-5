@@ -20,9 +20,16 @@ generator-resolved against the SHB annex tables** — a pointer to a letter that
 exist fails the gate. Cross-doc pointers are row IDs, never line numbers.
 
 **TILING.** Each place carries `TILING built → target`: target is `rooms.bays_in`
-(rooms.py:1879), recomputed live this session — **total 49,265** (blue 7,692 / red 1,644 /
-green 7,052 / grey 16,487 / yellow 16,390). **49,265 supersedes 73,635: V1's `_fit_bay`
-fits bays to their footprints (commit c4f989b); STATE.md §13 carries the correction.**
+(rooms.py:1879) — **total 51,475** (blue 7,692 / red 1,644 / green 7,062 / grey 16,487 /
+yellow 18,590), recomputed 2026-08-05. **49,265 superseded 73,635** (V1's `_fit_bay` fits
+bays to their footprints, commit c4f989b); **51,475 supersedes 49,265** via SPEC-CHANGE #3
+(core_shuttle 4,000 → 6,200, the re-run #2 asked for by name) and SPEC-CHANGE #4
+(`markab_quarter` added as PLC-129, +10 in green).
+**THE RECOMPUTE DECOMPOSED CLEANLY, WHICH IS WHY IT IS TRUSTWORTHY:** blue, red and grey
+came back **byte-identical** to their frozen values, green differed by exactly the new
+place's 10 bays, and **all +2,200 of the yellow delta is one place** — every other
+per-place target on the station matched its frozen number exactly. A divergence that
+lands 100% on one row is a fact about that row, not drift in the table.
 **These written numbers — 49,265, every per-place target, DLG's 79 voice cells, the
 dialogue floor — are normative: ANY recompute divergence, in either direction, fails the
 gate until a SPEC-CHANGE entry shows the re-derivation.** Exactly **5 places are already
@@ -1038,6 +1045,28 @@ names AUDIT against reference/.
   returns; the wall glows through vapour exactly as the auth-1 frame; the petition
   terminal answers the player with an era-true non-answer.
 
+### PLC-129 `markab_quarter` — The Sealed Markab Quarter
+`green/0/3 279° z4400 · 2.349°×58.32 m · -/generic · auth 5` · TILING 1 → **10**
+*(added 2026-08-05, SPEC-CHANGE #4. The extinction is auth 1 — S2E18, "Confessions and
+Lamentations" — and the PLACEMENT is auth 5: no source places it. Gazetteer P-14. The
+2.349° is not a choice either: `npc/crowd.py::EXTENTS` prices a 12.0 m frontage and
+`footprint[0]` is DEGREES, so 12.0 m of arc at this deck's 292.700 m radius is 2.3490°.)*
+- program: **the only room on the station built to be empty.** Sealed, powered, unlit,
+  still furnished; the community's own quarter, shut after the plague and never reopened.
+  Not enterable and not meant to be: the player meets a welded door in a Green residential
+  corridor, two doors along from the Alien Sector, and reads what is on it.
+- occupancy: **zero at every hour**, and that is asserted rather than incidental —
+  `npc/crowd.py` names it the ONE sealed place and checks `headcount == 0` for all 24
+  hours and `spawn() == ()`. `npc/navigation.py::EXPECTED_ISLANDS` expects it to be
+  unreachable in the walk graph, so a router that "fixes" it has broken something.
+- interacts: welded_door (T1 — a refusal with a reason, not a locked door with no text),
+  atmosphere_status_lamp (T1 — reading a maintained atmosphere nobody breathes),
+  level_plaque (T1 — the quarter still has its address).
+- CHECK: a player walking Green's outer residential ring passes it without being sent, the
+  door does not open, the lamp reads a live atmosphere, and **nothing is inside** — the
+  emptiness is a measured zero over a real floor, which is the whole reason to build it.
+  A station set in S2–3 that does not show this has not noticed its own history.
+
 ### PLC-025 `garden_town` — Garden Township
 `green/1/0 112° z4900 · 50°×300 m · garden/generic* · auth 1` · TILING 1 → **440**
 - program: the drum's settlement: civic square with the reflecting pool/waterfall/palms/
@@ -1731,10 +1760,11 @@ walk-only past z 3,397 (transit.py) — and that remoteness is content: response
   log's trend is flat (the control: rotation is boring, and the room proves it).
 
 ### PLC-102 `core_shuttle` — Core Shuttle (line)
-`yellow/0/30 0° z5722 · 20°×4650 m · core_tube/generic* · auth 1` · TILING 1 → **4,000**
-*(register row corrected — the committed directory.py row reads z1700 · 3000 m, which
-sits entirely inside the walk-only zone below z 3,397 while the live line runs
-z 3,397–8,047; code fix is SPEC-CHANGE #2, pending. PLC-113 rides along.)*
+`yellow/0/30 0° z5722 · 20°×4650 m · core_tube/generic* · auth 1` · TILING 1 → **6,200**
+*(register row corrected AND the code landed — SPEC-CHANGE #2 is now DONE, and the
+`rooms.bays_in` re-run it asked for by name is SPEC-CHANGE #3: **4,000 → 6,200**, because
+the target was written against the 3,000 m footprint while the address line already read
+4,650 m. PLC-113 rides along.)*
 - program: the 4.65 km axial line (z 3,397–8,047): 13 stops @387.5 m, 6 cars, peak
   20.4 m/s, end-end 11m16s,
   headway 3m52s (all derived, transit.py — derived on the TRUE span, so the times stand;
@@ -2042,9 +2072,9 @@ only Shell B dependencies.
 
 ---
 
-*Item census: PLC-001..128 · SHB-01..09 (+20 lettered annexes) · SHC-01..13 ·
+*Item census: PLC-001..129 · SHB-01..09 (+20 lettered annexes) · SHC-01..13 ·
 INC classes ×22 (mechanics in SYS-14; union asserted both ways) · GDS-01 =
-**193 registry rows**. Spec freeze: per THE-STATION §1.1, changes to any row after
+**194 registry rows**. Spec freeze: per THE-STATION §1.1, changes to any row after
 adoption require a dated SPEC-CHANGE entry here, with its **recomputes** field.*
 
 ## SPEC-CHANGE LOG
@@ -2067,3 +2097,40 @@ touched**. An entry without its recomputes list is invalid.
   footprint-collision assert (pending, code) · `rooms.bays_in("core_shuttle")` re-run
   after the code edit — if the 4,000-bay target moves, THAT recompute lands here as its
   own entry per the TILING freeze rule.
+  **— 2026-08-05: CLOSED.** The code landed in commit `a96a756`: `directory.py` now reads
+  `_P("core_shuttle", …, "yellow", 0, 30, 0.0, 5722.0, (20.0, 4650.0), …)` and
+  `collisions()` reports 0 pairs. The target DID move, and it is SPEC-CHANGE #3 below.
+
+- **2026-08-05 — SPEC-CHANGE #3 (DONE): `core_shuttle` TILING target 4,000 → 6,200.**
+  What: PLC-102's tiling target, and every total it rolls into. Why: **this is the
+  recompute SPEC-CHANGE #2 asked for by name**, not new drift. #2 corrected the register
+  row from `z1700 · 3000 m` to `z5722 · 4650 m` because the old row put the 13-stop line
+  entirely inside the walk-only zone below z 3,397; the address line in this file was
+  updated at the time and **the 4,000-bay target was not**, so it stayed a number derived
+  from the 3,000 m footprint sitting beside a 4,650 m address. 4,650/3,000 = 1.55, and
+  6,200/4,000 = 1.55. Owner-visible: yes — it is 2,200 more bays of axial line.
+  **recomputes:** PLC-102 target (4,000 → 6,200, done) · §TILING yellow (16,390 → 18,590,
+  done) · §TILING total (49,265 → 51,465 before #4, done) · PLC-102's own "sealed
+  fraction" note is UNCHANGED and still governs — the 6,200 is gross tube volume, the
+  built product is 13 stations plus the tube the cars traverse, and net walkable bays are
+  still RED until the registry generator runs · timetable figures UNCHANGED (derived on
+  the true 4.65 km span throughout).
+  **How it was found:** `rooms.bays_in` summed over the register came to 51,465 against
+  the frozen 49,265, and the shape of the difference is what made it cheap — blue, red and
+  grey byte-identical, green identical, and **one place carrying all 2,200**.
+
+- **2026-08-05 — SPEC-CHANGE #4 (DONE): `markab_quarter` added as PLC-129.**
+  What: the sealed Markab quarter enters the register and this annex. Why: three modules
+  already modelled the room — `npc/schedule.py` as a sealed `PlaceCrowd` at density 0.0,
+  `npc/crowd.py::EXTENTS` with a real floor and the assertion that it is **the one place
+  on the station empty at every hour**, and `npc/navigation.py::EXPECTED_ISLANDS` as a
+  deliberate island in the walk graph — and `directory.PLACES` did not, so there was
+  nothing for a player to stand in front of. The extinction is authority 1 (S2E18,
+  "Confessions and Lamentations"), squarely inside the datum; the placement is authority 5
+  and is gazetteer P-14. Owner-visible: yes.
+  **recomputes:** item census PLC-001..128 → **PLC-001..129**, registry rows 291 → 292
+  (done, below) · §TILING green 7,052 → 7,062 (done) · §TILING total 51,465 → 51,475
+  (done) · `directory.PLACES` 128 → 129 and `collisions()` re-run, 0 pairs (done, code) ·
+  `spec_registry.py --check` re-run, exit 0 (done) · **`directory._selftest()` NOT re-run
+  — it builds geometry for every place and was killed at 900 s with two agents on the
+  cores; it is queued, and this entry is honest that the gate behind it has not spoken.**
