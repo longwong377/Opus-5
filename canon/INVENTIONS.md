@@ -7642,3 +7642,33 @@ a flattering number), widened **0**.
 deleted and the control run against the geometry the station actually builds. **It is a test
 fixture and is not station canon**; no shipped geometry uses it.
 **Authority 5.** `station/occluders.py::room_stub`.
+
+## INV-390 — Station day 0 is a Monday
+
+**What.** `civic_calendar.EPOCH_DOW = 0`: the station's day 0 is a Monday, and `DAY_NAMES` runs
+Monday-first from there.
+**Why.** Nothing in the show or in this repository fixes the epoch's weekday, and the calendar
+cannot avoid the question: **`docs/spec/PLACES.md` PLC-058 states the security unarmed-combat
+class runs "Tuesdays 17:00"** — a weekday NAME, which requires an origin before it can be
+placed on a station day.
+**Constrained by.** PLC-058 itself is the whole constraint, read the obvious way: a class on
+**Tuesday** is a class on the second day of the working week, not the sixth day of a week that
+starts on Sunday. Taking day 0 as Monday makes the station week open with the working week,
+which is what a duty roster implies and what every other rota in the rule table then inherits
+for free.
+**Overturned by.** Any on-screen date, log slate or duty roster fixing a B5 weekday to a
+calendar date. It is a one-line change and every dated observance follows it.
+**Authority 5.** `station/civic_calendar.py::EPOCH_DOW`.
+
+## INV-391 — Eight swim lanes at the water-recreation venue
+
+**What.** `civic_calendar.SLOTS["water_rec"] = 8` — the number of simultaneously bookable lanes.
+**Why.** `docs/spec/PLACES.md` PLC-069 says **"swim lanes"** and states no count. A booking
+ledger cannot hold a booking against a venue with no capacity.
+**Constrained by.** The plural puts it above one, and the venue's own floor puts it under a
+competition hall's ten — eight is the standard municipal lane count and is what a station
+recreation deck of this footprint carries. It is a SLOT COUNT and nothing else depends on it
+except how many people can book at once, so being wrong costs a booking conflict rather than a
+geometry error.
+**Overturned by.** Any frame of the B5 recreation deck, or a stated lane count in the spec.
+**Authority 5.** `station/civic_calendar.py::SLOTS`.

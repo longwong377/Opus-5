@@ -693,6 +693,26 @@ jobs:
           python3 station/incident.py --selftest
           python3 station/incident.py --gate
 
+      # SYS-15, THE CIVIC CALENDAR. The one mechanism the incident generator
+      # deliberately refused: festivals, faith rotas, weddings, funerals,
+      # drills and invitation-gated receptions are CALENDAR-shaped rather than
+      # rate-shaped, and an observance that happens at a random hour is not an
+      # observance. 210 observances a station-week over 20 of 129 places.
+      #
+      # Its controls are the point: EMPTY (the rule table cleared -- this
+      # project's state before the file) fails 8 of 8 content assertions;
+      # FROZEN (every rule forced day-independent and maximal) fails exactly
+      # the one that matters, "two consecutive days DIFFER"; and moving the
+      # datum to S2E01 removes R-MINIPAX and R-OFFICE entirely.
+      #
+      # NAMED civic_calendar.py, not calendar.py: `station/` goes on sys.path,
+      # so a module named `calendar` there SHADOWS THE STDLIB for everything
+      # that imports it.
+      - name: The civic calendar
+        id: scivic_calendar
+        continue-on-error: true
+        run: python3 station/civic_calendar.py --gate
+
       - name: Confirm the schema still parses and is fully sourced
         id: sconfirm_the_schema_still_parses_and_is_f
         continue-on-error: true
@@ -844,6 +864,8 @@ jobs:
             echo "FAILED: sconsequence"; fail=1; fi
           if [ "${{ steps.sincident.outcome }}" != "success" ]; then
             echo "FAILED: sincident"; fail=1; fi
+          if [ "${{ steps.scivic_calendar.outcome }}" != "success" ]; then
+            echo "FAILED: scivic_calendar"; fail=1; fi
           if [ "${{ steps.sdegeneracy.outcome }}" != "success" ]; then
             echo "FAILED: sdegeneracy"; fail=1; fi
           if [ "${{ steps.svariety.outcome }}" != "success" ]; then
