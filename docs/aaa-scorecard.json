@@ -146,6 +146,75 @@
        "text": "The assertions cover classes rather than instances and four of them have working negative controls, which is R3. R4 needs two things this does not have. (1) The closure and winding checks that run over all 17 groups have never been deliberately broken -- no control exists that makes a group fail them, so their failure mode has not been observed. (2) Nothing asserts an interface: no check anywhere says a component does not interpenetrate the greebles, the docking-bay apertures or another component of a different kind. The only clearance assertion in the file is the cobra ring's arc pitch, which is one kind against itself."
       }
      ]
+    },
+    {
+     "round": 3,
+     "reviewer": "builder, session 4r -- NOT an independent review. Round 2's two blocking findings were raised by this same author and this round records that they are answered, not that the subsystem is good. AAA-STANDARD: 'Round zero is the build. A build agent reviewing its own work is not a round.' The clean-round counter should not advance on this.",
+     "date": "2026-08-05",
+     "scores": {
+      "craft": 3,
+      "fidelity": 3,
+      "performance": 4,
+      "robustness": 3
+     },
+     "evidence": {
+      "craft": "SAME CAMERA, BEFORE AND AFTER, every frame confirmed 'Vulkan 1.4.318 - Forward+', all at SHOT_FOV_DEG = 46.0 vertical over 720 rows with --lod lod0 forced so the LOD ladder does not enter the judgement. cargo_module at the half distance 139 m: docs/craft-4r-ext-cargo-before-half.png against docs/craft-4r-ext-cargo-after-samecam-half.png -- a featureless dark red slab becomes a container with corner posts, perimeter rails, eight corner castings, corrugated walls and a recessed loading hatch, standing on a rail with a plinth beside it. At the normal distance 278 m: docs/craft-4r-ext-cargo-before-normal.png against docs/craft-4r-ext-cargo-after-samecam-normal.png. The whole run: docs/craft-4r-ext-cargo-after-row.png. comms_grid_pylon at 1,267 m: docs/craft-4r-ext-pylon-before-half.png against docs/craft-4r-ext-pylon-after-samecam-half.png -- a 893 x 300 m plank becomes an open Warren-braced lattice on a segmented tapering mast with a stepped root bracket; at 2,533 m, docs/craft-4r-ext-pylon-before-normal.png against docs/craft-4r-ext-pylon-after-samecam-normal.png. At the one-pixel distance (106 km, where a cargo module spans one row) the silhouette is unchanged and still unmistakably Babylon 5: docs/craft-4r-ext-onepixel.png against docs/craft-4r-ext-onepixel-after.png. MEASURED: articulation against a plain box of one instance's area, per schema component -- cargo_module 1.02x -> 8.61x, comms_grid_pylon 2.19x -> 10.56x, the other eight unchanged at 5.43x to 34.20x.",
+      "fidelity": "The rail, the plinths and the loader gantry are now built, and they are a CROSS-CHECK rather than a single reading: 01-station-exterior/exterior more.jpg (production orthographic renders) gives 'six dark-red rectangular modules sitting on a continuous raised dorsal rail with small grey plinths between them', and other map 4.jpg (Miller print sheet) independently gives 'a dorsal row of ~6 small square modules on a rail' captioned AUTO LOADERS SEQUENCE -- two authority-2 sources that could not have copied each other, which is what F4's cross-check clause asks for. Proportions measured as ratios per INV-018 since the sheet has no scale bar: gap/length 0.862, width/length 0.927, height/length 0.873 (INV-580). The grid's shape now follows both end views, which show a stub arm and a hairline mast with no broad panel (INV-583). unread_spec_keys asserts no component declares a schema key its builder ignores, which is how the unbuilt rail was invisible for eleven sessions (INV-587).",
+      "performance": "Components 53,568 -> 59,988 triangles, +12.0%, and 15.0% of BUDGETS['exterior_triangles'] = 400,000. hull_lod0 381,210 -> 387,630 faces = 96.9% of the exterior allowance -- under, and tight enough to state as a risk rather than a margin. Rib counts run through _ribs(), so the chain still decimates components off ONE knob (lod.component_detail returns the level's own greeble_detail): 59,988 / 43,644 / 33,588 / 26,340 / 23,196 at detail 1.00 / 0.55 / 0.30 / 0.10 / 0.00, and the coarsest level is 28,188 of lod0's 387,630 = 7.3%, inside lod.py's 'coarsest under a tenth of finest' assertion. THE LADDER'S OWN CALIBRATION IS WRONG AND THIS NUMBER PREDATES THE FIX: station/lod.py::FOV_DEG is 50.0 with no provenance against a shipped 70.0, so every switch distance is ~33% too large. Re-check these after that constant moves.",
+      "robustness": "station/components.py is 55/56 and EXITS 1, deliberately -- see the blocking finding. Up from 44/44, with five new assertions each carrying a control that fires. ARTICULATION: the floor of 3.0 is derived from boxed_control, which rebuilds every component as its own bounding boxes and tops out at 2.02x against the least articulated real component at 5.43x; run against `git show 1982be0:station/components.py` it fails exactly comms_grid_pylon (2.19x) and cargo_module (1.02x, whose own boxed control is also 1.02x) and passes the other eight unchanged. SPEC KEYS: unread_spec_keys catches a declared key no builder reads, and its control's probe name must be BUILT at run time because the check scans this file -- written as a literal it found itself and passed vacuously, which is what it did on the first run. TERMINAL CLEARANCE: the gantry landed 21 m inside the last container on its first build; there is now a guard that raises, with a control at fill=0.95. BOTH RAIL BRANCHES are built and asserted closed, outward-wound and equal in triangle count on every run, so the branch that is switched off cannot rot. DOME INTRUSIONS: the interface assertion, and its control caught a second clash on its first run -- see the blocking finding. It is R3 and not R4 because the 34 closure and winding checks that run over all 17 groups still have no control that makes one fail, and because the one interface that IS now asserted is failing."
+     },
+     "broke_assertions": true,
+     "findings": [
+      {
+       "severity": "blocking",
+       "dimension": "robustness",
+       "descriptor": "R3",
+       "where": "station/components.py:dome_intrusions -- station/schema/station.yaml placement",
+       "text": "TWO COMPONENTS INTERPENETRATE, and the assertion that says so is new. observation_dome 2 at 90.0 deg / z 7180 holds 70 cobra_bay vertices up to 32.3 m inside its glazing and 48 cobra_bay_well vertices up to 25.5 m; observation_dome 1 -- COMMAND & CONTROL -- holds 6 and 17 at up to 7.3 m; and docking_port at 90.0 deg / z 5240 holds 290 cargo_module vertices up to 49.8 m. This is AAA-STANDARD's own R5 counter-example, the tram 6.43 m inside a spoke, reproduced out here. BOTH CLASHES ARE PRE-EXISTING -- measured against git 1982be0 the dome rows are identical and the docking-port row read 2 vertices at 29.7 m -- and THIS SESSION'S REWORK DEEPENED THE SECOND, 2 to 290 vertices and 29.7 to 49.8 m, because the cargo rail is now continuous through z 4870-6010 as both authority-2 sources say it is, where before there was empty hull between modules 1 and 2. NEITHER IS FIXABLE FROM station/components.py: at r=167 m the 28-bay ring has a 25.71 deg pitch of which a bay envelope eats 14.8 deg, leaving 10.9 deg, and a 46 m dome needs 31.6 deg -- it does not fit between two bays at any phase; and a 176 m docking port and a cargo train are both on the 90 deg meridian. Both are placement, and placement is schema. Corroborated from two directions this file cannot see: interior.hull_fit() lists obs_dome_1 and obs_dome_2 among 34 located places outside the pressure hull, and --vista-gate reports both domes facing forward past the nose. Three candidate fixes in scratchpad/PATCHES-4r-exterior.md section 5."
+      },
+      {
+       "severity": "major",
+       "dimension": "craft",
+       "descriptor": "C3",
+       "where": "station/components.py:domes -- docs/craft-4r-ext-rotunda-before-half.png",
+       "text": "CARRIED FORWARD FROM ROUND 2 AND NOT ADDRESSED. The domes still have the right mass with no articulation and their glazing does not read as glazing: the shell renders in the same pale hull value as the plate around it, with the hull material's window-row decal running over the blister, so a 124 m observation rotunda reads as a faceted beige bulge. It was left because the two C1s were the harder hit and there was one session; it is C2 in its own right and holds the subsystem at 3 either way."
+      },
+      {
+       "severity": "major",
+       "dimension": "craft",
+       "descriptor": "C3",
+       "where": "station/components.py:swept_fins, planar_blades, plate_array",
+       "text": "The four panel components read as the intended object at their normal distance and fall apart at half of it, which is C3 exactly. docs/craft-4r-ext-coolingfin-half.png at 947 m face-on shows the lozenge planform, a root mount and a tip cap -- a size hierarchy -- and a face that is one flat blue field with a uniform corrugation and no ducts, headers or attachment hardware. docs/craft-4r-ext-heatarray-half.png is the same at 609 m. The tertiary tier is generic in C3's own words: the same rib repeated without regard to what the part does."
+      },
+      {
+       "severity": "major",
+       "dimension": "fidelity",
+       "descriptor": "F3",
+       "where": "canon/00-MASTER.md 1.1 -> station/schema/station.yaml::comms_grid_pylon",
+       "text": "'Width at communications grid | 345 | 893.2' is AMBIGUOUS between the grid's own width and the station's width at the grid, and station.yaml uses it as the former. Every other row of that table is a section dimension and 'width at X' reads as a location; against that, span and width together are one panel's two dimensions. The measurement settles neither -- the hull profile gives a diameter of 301.2 m at the grid's placed z. Hard rule 3 forbids resolving a canon ambiguity by picking the convenient side, so components.py uses the number exactly as handed over and changed only the construction; INV-584, proposed for CONFLICTS.md in scratchpad/PATCHES-4r-exterior.md."
+      },
+      {
+       "severity": "major",
+       "dimension": "fidelity",
+       "descriptor": "F3",
+       "where": "station/components.py:dorsal_line + station/schema/station.yaml",
+       "text": "TWO MEASURED PROPORTIONS ARE RECORDED AND NOT BUILT, both because they are schema. `fill` should be 0.537 (18.33 of 34.13 px of pitch) and is 0.62, so each container is 15% longer than the sheet shows and the plinth gaps are correspondingly tight. `protrusion_m` gives the module 0.390 of its own length in height against a measured 0.873 -- less than half. Building the second moves the station's silhouette and interacts with validate.py's radius envelope, so components.py builds strictly inside the schema and the module top is still exactly r0 + protrusion_m. INV-580; proposals in scratchpad/PATCHES-4r-exterior.md 2b and 2c."
+      },
+      {
+       "severity": "minor",
+       "dimension": "craft",
+       "descriptor": "C4",
+       "where": "station/components.py:dorsal_line, SPLIT_RAIL_GROUP",
+       "text": "The rail, plinths, feet and gantry render in the red container skin rather than the grey the sheet measures, because binding them needs a Material in station/materials.py, which another agent owns this session, and export_scene's exterior coverage check RAISES on an unbound group rather than warning. Both branches are built and asserted on every run; the diff and the same-frame ratio behind the colour are in scratchpad/PATCHES-4r-exterior.md 1, and the A/B is docs/craft-4r-ext-cargo-after-railmat.png against docs/craft-4r-ext-cargo-after.png. What is lost is a hue, not a shape."
+      },
+      {
+       "severity": "note",
+       "dimension": "performance",
+       "descriptor": "P4",
+       "where": "station/generated/hull_lod0.obj",
+       "text": "hull_lod0 is at 96.9% of the exterior allowance. Under, but this subsystem spent 1.7% of the total getting there and the next component reworked will not have that room. Worth a look before the domes are articulated."
+      }
+     ]
     }
    ]
   },
