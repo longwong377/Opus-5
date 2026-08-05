@@ -1,0 +1,2 @@
+note: probe: 1 of 1 emitted group(s) match no rule in godot/scenes/interior.tscn and will render on the fallback -- which for interior.tscn is no material at all: a_group_no_rule_can_match_zzz. Add a bind in station/materials.py and re-run `python3 station/materials.py --export`.
+277/277 passed
