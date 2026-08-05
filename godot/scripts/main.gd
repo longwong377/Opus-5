@@ -55,6 +55,7 @@ const TRANSIT_SCENE := "res://scenes/transit.tscn"
 const LIFE_SCRIPT := "res://scripts/life.gd"
 const AMBIENCE_SCRIPT := "res://scripts/ambience.gd"
 const NAVGRAPH_SCRIPT := "res://scripts/navgraph.gd"
+const RAGDOLL_SCRIPT := "res://scripts/ragdoll.gd"
 
 ## Station hours per real second, handed to `life.gd`'s Clock. 1/60 is a station
 ## minute a second: `life.gd`'s own default, and the rate at which a player
@@ -82,6 +83,7 @@ var _world: Node3D           # the walk.tscn (or arrival.tscn) instance
 var _life: Node3D            # life.gd's Director
 var _clock                   # life.gd's Clock
 var _audio: Node3D           # ambience.gd
+var _ragdoll: Node3D         # ragdoll.gd -- the bodies that stop standing up
 var _mode := "station"
 var _boot := {}
 var _present_0300 := -1
@@ -156,6 +158,20 @@ func _ready() -> void:
 			print("ambience: DISABLED (control) -- the station is silent")
 		else:
 			_start_ambience()
+		# THE FOURTH THING WITH NO INSTANTIATOR. `station/incident.py` has been
+		# producing 380 collapses a day, a dock fatality every ~500 accidents
+		# and an arrest chain, all in text. `scripts/ragdoll.gd` is what makes
+		# one of them visible, and like the three above it is created here
+		# because nothing else in the tree owns the whole world plus the body.
+		#
+		# NO `--no-ragdoll` GUARD HERE, deliberately, and the first draft had
+		# one. `ragdoll.gd::apply_controls` owns that flag and answers it by
+		# REFUSING to promote -- so the incident still fires, three bodies are
+		# still asked for, and the report reads `refused=3 (disabled)`. Skipping
+		# the director instead would have produced "no director" and quit 2:
+		# the control would have failed on its own absence rather than on the
+		# thing it removes, which is a control that proves nothing.
+		_start_ragdolls()
 
 	# NOT `_headless()`-ONLY. `--check-shot` needs a real viewport to read a
 	# frame out of, and a headless run has none -- so the gate runs in both and
@@ -164,7 +180,11 @@ func _ready() -> void:
 		_check_gate()
 		return
 
-	if _headless() and not _args().has("no-coldstart"):
+	if _headless() and _args().has("ragdoll-gate"):
+		_ragdoll_gate()
+	elif _headless() and _args().has("collapse-gate"):
+		_collapse_gate()
+	elif _headless() and not _args().has("no-coldstart"):
 		_coldstart()
 
 
@@ -487,6 +507,219 @@ func _process(_delta: float) -> void:
 	if _audio != null and _clock != null:
 		_audio.hour = _clock.hour()
 	_rebind_on_stream()
+	_fire_collapses()
+
+
+# ---------------------------------------------------------------------------
+# When somebody stops standing up
+# ---------------------------------------------------------------------------
+
+## The day's collapses, from `boot.json` -- `incident.RAGDOLL_OF`'s four classes
+## over this deck's own rooms, each a named resident with a species and an hour.
+var _collapses: Array = []
+## How far into the list the clock has got. The list is sorted by hour, so this
+## is a cursor and not a search.
+var _collapse_i := 0
+## How many actually put a body on the deck, and how many had nobody standing
+## near enough to be the one who fell. BOTH are reported: an incident that fires
+## into an empty room is a real outcome and silently dropping it would make the
+## count a claim about the schedule rather than about the station.
+var _fell := 0
+var _fell_nobody := 0
+var _fell_last := ""
+## How close the player has to be to the place for the body to be worth
+## promoting. Beyond this nobody would see it fall and the promotion would spend
+## one of `ragdoll.gd`'s four concurrent slots on nothing.
+const COLLAPSE_SIGHT_M := 40.0
+
+
+## Fire every collapse the clock has passed. Called every frame; costs one float
+## compare when there is nothing due, which is almost always.
+##
+## THE MISSING HALF, AND BOTH HALVES WERE FINISHED. `station/incident.py` has
+## decided who collapses, where and at what hour since P1-G3 -- 380 INC-SICK a
+## day, with a named resident as the subject -- and wrote it into a ledger.
+## `scripts/ragdoll.gd` can drop a 16-segment body at the deck's own 7.454 m/s2
+## along its own radius. The only thing that had ever asked for one was
+## `--ragdoll-gate`, a flag no player passes: a capability reachable only from
+## its own test is this project's signature defect one step before it happens,
+## and it has now produced it eleven times.
+##
+## `--no-collapses` is the control -- the schedule is read, the clock runs past
+## every hour in it, and nobody falls over.
+func _fire_collapses() -> void:
+	if _clock == null or _ragdoll == null or _collapse_i >= _collapses.size():
+		return
+	var h: float = _clock.hour()
+	while _collapse_i < _collapses.size():
+		var row: Dictionary = _collapses[_collapse_i]
+		if float(row.get("hour", 0.0)) > h:
+			return
+		_collapse_i += 1
+		_collapse(row)
+
+
+func _collapse(row: Dictionary) -> void:
+	var body := _player()
+	if body == null:
+		return
+	# WHERE IT HAPPENS, off the same place boxes the HUD resolves the player
+	# against. No second table of where a room is.
+	var hud = _hud()
+	if hud == null:
+		return
+	var boxes: Dictionary = _check_boxes(hud)
+	var key := String(row.get("place", ""))
+	if not boxes.has(key):
+		return
+	var centre: Vector3 = (boxes[key] as AABB).get_center()
+	if body.global_position.distance_to(centre) > COLLAPSE_SIGHT_M:
+		# NOT COUNTED AS "NOBODY THERE". Out of sight is not the same failure as
+		# an empty room, and conflating them would let a gate pass on a build
+		# where the crowd never promotes anybody.
+		return
+	# UNTYPED, for the reason `_player` and `_hud()` are: `promote_walker` is a
+	# SCRIPT member and GDScript resolves a statically typed variable's members
+	# at parse time, so a `Node3D` here makes the file fail to compile.
+	var crowd = _crowd()
+	if crowd == null:
+		return
+	var spec := {
+		"cause": String(row.get("cid", "?")),
+		"who": String(row.get("who", "")),
+		"dead": bool(row.get("dead", false)),
+	}
+	var imp := float(row.get("impulse_n_s", 0.0))
+	if imp > 0.0:
+		# ALONG THE CORRIDOR, away from the player. A shove is directional and a
+		# brawl the player is standing in the middle of is a different scene.
+		var away := (centre - body.global_position)
+		var up_c := Vector3(centre.x, centre.y, 0.0).normalized()
+		away = (away - up_c * away.dot(up_c))
+		if away.length() > 0.001:
+			spec["impulse"] = away.normalized() * imp
+	# NO `g` AND NO `up`. `ragdoll.gd` derives both from where the body is --
+	# see its `omega2`. A caller that worked them out here would be a second
+	# copy of the station's spin.
+	var fell := String(crowd.call("promote_walker", _ragdoll, spec, centre,
+		12.0, String(row.get("species", ""))))
+	if fell == "":
+		_fell_nobody += 1
+		# SAID, NOT COUNTED. An incident that finds nobody to knock down has
+		# four possible causes and they need four different fixes; `npc.gd`
+		# knows which one it was.
+		print("collapse: %s at %s %05.2f -- nobody fell: %s"
+			% [String(row.get("cid", "?")), key, float(row.get("hour", 0.0)),
+				String(crowd.get("promote_why"))])
+		return
+	_fell += 1
+	_fell_last = fell
+	# WHO THE STATION SAID, AND WHO THE ENGINE COULD FIND. Both, always, and
+	# never conflated: `incident.py` names a resident with a home and a job, and
+	# the body that falls is whoever the crowd had standing there. When those
+	# are not the same person the line says so rather than borrowing the name.
+	print("collapse: %s at %s %05.2f -- %s goes down%s (the station's %s, %s, "
+		% [String(row.get("cid", "?")), key, float(row.get("hour", 0.0)),
+			fell, (" and does not get up" if spec["dead"] else ""),
+			String(row.get("who", "?")), String(row.get("species", "?"))]
+		+ "%s)" % String(crowd.get("promote_why")))
+
+
+## THE STATION KNOCKS SOMEBODY DOWN AND A PLAYER SEES IT -- the gate, in the
+## shipped scene, with no flag that manufactures a body.
+##
+## `--ragdoll-gate` proves the BODY: 16 segments, the right mass, the deck's own
+## gravity. It proves nothing about whether the game ever asks for one, and
+## until this existed the answer was no -- the only caller of `promote` in the
+## project was that gate. So this one touches nothing the runtime would not
+## touch: it stands the player where an incident is scheduled, WINDS THE CLOCK
+## to just before its hour (`Clock.set_hour` -- "a jump is indistinguishable
+## from having waited"), and lets `_process` do the rest. The body that falls is
+## a walker out of the crowd, with that walker's species and stature.
+##
+##   `--no-collapses`  the schedule is emptied -> nobody falls (the build
+##                     before this landed)
+##   `--no-ragdoll`    the director refuses    -> the walker is put straight
+##                     back, and nobody vanishes
+func _collapse_gate() -> void:
+	for _i in settle_frames:
+		await get_tree().physics_frame
+	var body := _player()
+	var hud = _hud()
+	var crowd = _crowd()
+	if body == null or hud == null or crowd == null or _clock == null:
+		print("COLLAPSE gate=FAIL -- no %s" % [
+			("body" if body == null else "hud" if hud == null
+				else "crowd" if crowd == null else "clock")])
+		get_tree().quit(1)
+		return
+	var boxes: Dictionary = _check_boxes(hud)
+	# The first scheduled row whose place this build actually has geometry for.
+	# A row for a room on another deck is not a failure, it is a row nothing on
+	# this deck can show -- so it is skipped and COUNTED.
+	var pick := -1
+	var offdeck := 0
+	for i in _collapses.size():
+		var r: Dictionary = _collapses[i]
+		if boxes.has(String(r.get("place", ""))):
+			pick = i
+			break
+		offdeck += 1
+	if pick < 0:
+		print("COLLAPSE gate=FAIL -- none of the %d scheduled rows names a "
+			% _collapses.size() + "place this build has geometry for")
+		get_tree().quit(1)
+		return
+	var row: Dictionary = _collapses[pick]
+	var key := String(row.get("place", ""))
+	var at: Vector3 = (boxes[key] as AABB).get_center()
+	body.global_position = at
+	body.velocity = Vector3.ZERO
+	# LET THE ROOM ARRIVE BEFORE ASKING WHO IS IN IT. This build STREAMS, so
+	# walking into a cell is what loads its crowd -- and the first version of
+	# this gate wound the clock on the same frame as the teleport and reported
+	# `nobody=1`, which reads exactly like a broken promotion path and was a
+	# gate measuring an empty room. `settle_frames` is two seconds at 60 Hz;
+	# `_rebind_on_stream` runs in `_process` and needs the frames as much as
+	# the streamer does.
+	for _i in settle_frames:
+		await get_tree().physics_frame
+	_collapse_i = pick
+	var h: float = float(row.get("hour", 0.0))
+	_clock.set_hour(h - 0.01)
+	print(("COLLAPSE gate: standing in %s at %.1f,%.1f,%.1f, clock wound to "
+		+ "%05.2f for %s (%s, %s) at %05.2f%s")
+		% [key, at.x, at.y, at.z, _clock.hour(), String(row.get("who", "?")),
+			String(row.get("species", "?")), String(row.get("cid", "?")), h,
+			("" if offdeck == 0 else ", %d earlier rows off this deck"
+				% offdeck)])
+	# LET THE CLOCK RUN. Nothing here calls `_fire_collapses` -- `_process`
+	# does, on its own, exactly as it would with a player at the keyboard.
+	var t := 0.0
+	while _fell == 0 and _fell_nobody == 0 and t < 20.0:
+		await get_tree().process_frame
+		t += 1.0 / 60.0
+	var live := int(_ragdoll.call("live_count"))
+	var ok := _fell > 0 and live > 0
+	print(("COLLAPSE gate=%s fell=%d nobody=%d live_ragdolls=%d who=%s "
+		+ "clock=%05.2f scheduled=%d cursor=%d") % [
+		("PASS" if ok else "FAIL"), _fell, _fell_nobody, live,
+		(_fell_last if _fell_last != "" else "-"), _clock.hour(),
+		_collapses.size(), _collapse_i])
+	print(String(_ragdoll.call("report")))
+	get_tree().quit(0 if ok else 1)
+
+
+## `npc.gd`'s crowd node, found by METHOD rather than by name or by reaching
+## into `walk.gd`'s private field -- the same rule `_player()` and `_streamer`
+## follow, and for the same reason.
+func _crowd():
+	if _world == null:
+		return null
+	for n in _world.find_children("*", "Node3D", true, false):
+		if n.has_method("promote_walker"):
+			return n
+	return null
 
 
 ## THE CAST CHANGES WHEN THE GEOMETRY DOES, and until this existed it did not.
@@ -525,6 +758,168 @@ func _rebind_on_stream() -> void:
 		_life.watch(body)
 	print("life: %d cells resident -- %d of %d residents bound"
 		% [(_streamer.resident_ids() as Array).size(), n, _cast.size()])
+
+
+# ---------------------------------------------------------------------------
+# Bodies that stop standing up
+# ---------------------------------------------------------------------------
+func _start_ragdolls() -> void:
+	_ragdoll = Node3D.new()
+	_ragdoll.name = "Ragdolls"
+	_ragdoll.set_script(load(RAGDOLL_SCRIPT))
+	add_child(_ragdoll)
+	_ragdoll.set("data_dir",
+		_root().path_join("station/generated/scene/npc"))
+	# THE SPIN, ONCE, SO NO CALLER HAS TO WORK IT OUT. Without it a promotion
+	# that does not state its own gravity falls at Earth's, which is wrong
+	# everywhere on this station -- see `ragdoll.gd::omega2`.
+	_ragdoll.set("omega2", _spin_omega2())
+	# THE DAY'S COLLAPSES. `--no-collapses` is the control: the schedule is
+	# still read and reported, the clock still runs past every hour in it, and
+	# nobody falls over -- which is the build before this line existed.
+	_collapses = _boot.get("collapses", [])
+	if _args().has("no-collapses"):
+		print("collapse: DISABLED (control) -- %d scheduled, none will fire"
+			% _collapses.size())
+		_collapses = []
+	else:
+		# THE DAY DOES NOT START OVER WHEN THE BUILD DOES. The schedule is a
+		# whole station-day and the player boots in at 13:00, so the twenty-four
+		# rows before that already happened -- firing them all on frame one
+		# would drop the entire morning's casualties in the player's lap at
+		# once. The cursor starts at the first row the clock has NOT passed.
+		var h0: float = (_clock.hour() if _clock != null else start_hour)
+		while (_collapse_i < _collapses.size()
+			and float((_collapses[_collapse_i] as Dictionary).get("hour", 0.0))
+				<= h0):
+			_collapse_i += 1
+		print("collapse: %d bodies scheduled today on this deck, %d still to "
+			% [_collapses.size(), _collapses.size() - _collapse_i]
+			+ "come after %05.2f" % h0)
+	var b := _player()
+	if b != null:
+		_ragdoll.call("watch", b)
+	if _world != null:
+		_ragdoll.call("set_material_donor", _world)
+	print("ragdoll: director ready, bodies from %s, controls %s"
+		% [_ragdoll.get("data_dir"), _ragdoll.call("apply_controls")])
+
+
+## The spin gravity at a world point, DERIVED from the deck table rather than
+## from a spin rate written down twice. `cell_manifest.json` records
+## `floor_r_m` and `floor_g` for all 251 decks, and on a rigid rotor
+## g = omega^2 r -- so any one row gives omega^2 and it is exact at every
+## radius, including the ones with no deck on them.
+func _spin_omega2() -> float:
+	var man := _root().path_join("station/generated/cell_manifest.json")
+	if not FileAccess.file_exists(man):
+		return 0.0
+	var f := FileAccess.open(man, FileAccess.READ)
+	var d = JSON.parse_string(f.get_as_text())
+	if typeof(d) != TYPE_DICTIONARY:
+		return 0.0
+	for row in ((d as Dictionary).get("deck_table", []) as Array):
+		var r := float((row as Dictionary).get("floor_r_m", 0.0))
+		var g := float((row as Dictionary).get("floor_g", 0.0))
+		if r > 1.0 and g > 0.0:
+			return g * 9.80665 / r
+	return 0.0
+
+
+## Drop bodies where the player is standing, on the streamed build, and print
+## what they did. `station/npc/ragdoll.py --gate` proves the BODY; this proves
+## it is reachable -- which in this project is the half that keeps failing.
+func _ragdoll_gate() -> void:
+	for _i in settle_frames:
+		await get_tree().physics_frame
+	var body := _player()
+	if body == null or _ragdoll == null:
+		print("RAGDOLL gate=FAIL no player or no director")
+		get_tree().quit(2)
+		return
+	var p: Vector3 = body.global_position
+	# UP IS INWARD ON A SPUN RING -- the floor is the outer wall, so a head
+	# points at the axis, and the axis is +Z. Same derivation as
+	# `npc.gd::collect`, and it is why this is not Vector3.UP.
+	var radial := Vector3(p.x, p.y, 0.0)
+	var up: Vector3 = -radial.normalized() if radial.length() > 0.001 else Vector3.UP
+	var g: float = _spin_omega2() * radial.length()
+	var zero := _args().has("zero-g")
+	# ALONG THE CORRIDOR, AND THE CORRIDOR IS NOT THE AXIS. A ring corridor
+	# runs round the circumference; +Z is the station's axis and is the
+	# corridor's WIDTH -- 2.60 m of it, which `walk.gd` prints as `w=2.60`.
+	# Offsetting the drops along +Z put two of the three bodies off the edge of
+	# their own floor, where they fell at terminal velocity for the whole gate
+	# and reported "settle=NEVER" as if the physics were wrong.
+	var axis := Vector3(0, 0, 1)
+	var along: Vector3 = up.cross(axis).normalized()
+	# RIGHT-HANDED, and it is checked rather than eyeballed: `Basis(x, y, z)`
+	# takes the three COLUMNS, and `along.cross(up)` gives an x whose
+	# x cross y is MINUS z on a ring corridor. `ragdoll.gd::promote` refuses a
+	# transform with a non-positive determinant for exactly this reason.
+	var basis := Basis(along, up, axis).orthonormalized()
+	print(("RAGDOLL gate: at %.2f,%.2f,%.2f r=%.1f m, up=%.3f,%.3f,%.3f, "
+		+ "g=%.3f m/s2 (%.3f g)%s")
+		% [p.x, p.y, p.z, radial.length(), up.x, up.y, up.z, g,
+		g / 9.80665, (" -- ZERO-G CONTROL" if zero else "")])
+	var drops := [
+		["INC-SICK", {"cause": "INC-SICK", "dead": false,
+			"velocity": Vector3.ZERO, "offset": -3.0}],
+		["INC-ACCIDENT", {"cause": "INC-ACCIDENT", "dead": true,
+			"velocity": along * 1.4, "offset": 3.0}],
+		["INC-BRAWL", {"cause": "INC-BRAWL", "dead": true,
+			"velocity": Vector3.ZERO, "offset": 1.5,
+			"impulse": along * 60.0}],
+	]
+	for row in drops:
+		var spec: Dictionary = (row[1] as Dictionary).duplicate()
+		var off: float = float(spec["offset"])
+		spec.erase("offset")
+		spec["species"] = "human"
+		spec["h_m"] = 1.75
+		# AT THE PLAYER'S FEET, WHICH IS THE PLAYER'S OWN ORIGIN.
+		# `walk.gd::_spawn_player` puts the capsule at `Vector3(0, 0.9, 0)`
+		# INSIDE the body, so the CharacterBody3D's origin is the sole -- and a
+		# ragdoll dropped at `p - up * 0.9` starts 0.9 m inside the deck, which
+		# a solver answers with a push-out of several hundred metres a second.
+		#
+		# EACH BODY STANDS ON ITS OWN LOCAL VERTICAL, and this cost two runs to
+		# get right. Sharing the player's vertical across three drops 3 m apart
+		# at r=211.5 m is a ~0.8 deg mismatch, which sounds like nothing: a body
+		# laid down on one vertical and pulled along another lands on its hip
+		# and keeps pressing, and INC-ACCIDENT came to rest **123-127 mm INTO
+		# the deck** against the 10 mm the solver allows -- reproducibly, two
+		# runs byte-identical. Whichever of placement and gravity was the
+		# odd one out, that body sank; with both taken from where it actually
+		# is, all three rest at 10.3-11.9 mm.
+		var at: Vector3 = p + along * off
+		var rad_at := Vector3(at.x, at.y, 0.0)
+		var r_at := rad_at.length()
+		var up_at: Vector3 = -rad_at / r_at if r_at > 0.001 else up
+		var along_at: Vector3 = up_at.cross(axis).normalized()
+		# `--derive-g` IS THE CONTROL FOR THE DERIVATION, and it is the one
+		# control here that tests a CALLER rather than the body. Every real
+		# promotion path -- `npc.gd::promote_walker` -- states neither `g` nor
+		# `up`, so the numbers a gate hands in are exactly the numbers nobody
+		# supplies in the game. Withholding them makes `ragdoll.gd` work both
+		# out from the body's own world position, and the two halves must agree:
+		# the subject states the SAME quantities this loop just computed, so the
+		# only difference between the two runs is WHO computed them.
+		if not _args().has("derive-g"):
+			spec["up"] = up_at
+			spec["g"] = 0.0 if zero else _spin_omega2() * r_at
+		spec["xform"] = Transform3D(
+			Basis(along_at, up_at, axis).orthonormalized(), at)
+		_ragdoll.call("gate_drop", String(row[0]), spec)
+	var t := 0.0
+	while not bool(_ragdoll.call("gate_done")) and t < 12.0:
+		await get_tree().physics_frame
+		t += 1.0 / 60.0
+	print(String(_ragdoll.call("gate_verdict")))
+	print("RAGDOLL gate=%s %s controls=%s"
+		% [("PASS" if not zero else "CONTROL"),
+		String(_ragdoll.call("report")), String(_ragdoll.call("apply_controls"))])
+	get_tree().quit(0)
 
 
 # ---------------------------------------------------------------------------

@@ -272,6 +272,34 @@ def _checks():
     return out
 
 
+def _collapses(rooms, day=1, seed="b5"):
+    """One station-day of incidents on THIS deck that put a body on the deck.
+
+    THE JOIN BETWEEN A SIMULATION AND A THING A PLAYER CAN SEE, and it is the
+    piece that was missing on both sides at once. `station/incident.py` decides
+    380 collapses a day and wrote them into a ledger; `godot/scripts/ragdoll.gd`
+    can drop a 16-segment body with the deck's own gravity. Neither knew about
+    the other, so the only way to see a ragdoll was to pass `--ragdoll-gate`.
+    A capability reachable only from its own gate is this project's signature
+    defect one step before it happens.
+
+    Scoped to the rooms this deck actually has, because an incident in a place
+    the player cannot walk to is a row nothing will ever read. `--no-collapses`
+    on the engine side is the control.
+    """
+    if not rooms:
+        return []
+    try:
+        import incident as ic                                   # noqa: PLC0415
+        return ic.visible_bodies(rooms, day=day, seed=seed)
+    except Exception as e:                                      # noqa: BLE001
+        # NAMED, NOT SWALLOWED. A bake that silently produced an empty schedule
+        # would look exactly like a quiet day on the station.
+        print("boot: no collapse schedule -- %s: %s"
+              % (type(e).__name__, e), file=sys.stderr)
+        return []
+
+
 def sidecar(stem, suffix, deck_dir=None):
     p = os.path.join(deck_dir or DECK_DIR, stem + suffix)
     return p if os.path.exists(p) else ""
@@ -575,6 +603,11 @@ def build(stem=None, hour=None, deck_dir=None):
         # and the reader lives in GDScript; the engine gets a place -> rung map
         # and compares it against the rung already on the purse.
         "checks": _checks(),
+        # WHO FALLS DOWN TODAY, AND WHEN, AND WHERE. `incident.RAGDOLL_OF`'s
+        # four classes over this deck's own rooms for one station-day -- each
+        # row a NAMED resident with a species, not "a body". `life.gd` fires
+        # them as the clock passes their hour. See `_collapses`.
+        "collapses": _collapses(rooms),
         "actors": actors_p,
         "dialogue": sidecar(stem, "_dialogue.json", dd),
         "crowd": sidecar(stem, "_crowd.json", dd),

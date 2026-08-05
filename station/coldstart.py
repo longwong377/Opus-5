@@ -63,11 +63,33 @@ G4 THE CARD IS READ ON THE WAY IN
     What it does NOT claim: the arrest chain behind a refusal is still Python. A
     refused player is TOLD they are refused and is not yet detained.
 
+G5 SOMEBODY COLLAPSES AND A PLAYER IS THERE
+    The same failure a fourth way, and this one had it on BOTH sides at once.
+    `station/incident.py` has decided who collapses, where and at what hour
+    since P1-G3 -- with a named resident as the subject -- and wrote it into a
+    ledger nothing read. `godot/scripts/ragdoll.gd` can drop a 16-segment body
+    at the deck's own 7.454 m/s^2 along its own radius, and the only thing that
+    had ever asked for one was `--ragdoll-gate`, a flag no player passes. Two
+    finished halves, no join.
+
+    G5 asserts the join in the shipped scene: `boot.py` bakes the day's
+    ragdoll-bearing incidents over this deck's own rooms, `main.gd` fires them
+    as the clock passes their hour, and the body that falls comes OUT OF THE
+    CROWD -- a walker who was standing there, matched to the incident's species
+    where the crowd has one.
+
+    It found a defect on its first real run that six sessions of rendering had
+    not: `npc.gd::_walker_xform` built `Basis(fwd.cross(up), up, fwd)`, whose
+    determinant is exactly -1, so every walker in the corridor was drawn as
+    their own reflection. `ragdoll.gd` refuses a mirrored transform, which is
+    how it surfaced.
+
 Run:
     python3 station/coldstart.py            # all gates
     python3 station/coldstart.py --g3       # reachability only, no engine
     python3 station/coldstart.py --g1       # cold start only
     python3 station/coldstart.py --g4       # the card check and its controls
+    python3 station/coldstart.py --g5       # an incident puts a body down
     python3 station/coldstart.py --g3 --verbose
 """
 import argparse
@@ -619,18 +641,79 @@ def g4(verbose=False):
     return {"ok": ok, "verdict": d}
 
 
+def g5(verbose=False):
+    """G5 -- the station knocks somebody down and a player is there to see it.
+
+    TWO FINISHED HALVES WITH NOTHING BETWEEN THEM, which is the shape this
+    project keeps producing. `station/incident.py` has decided who collapses,
+    where and at what hour since P1-G3 -- 380 INC-SICK a station-day, each with
+    a NAMED resident as its subject -- and wrote them into a ledger nothing
+    read. `station/npc/ragdoll.py` and `godot/scripts/ragdoll.gd` can drop a
+    16-segment body at the deck's own gravity, and the only caller either had
+    was `--ragdoll-gate`, a flag no player passes.
+
+    So this asserts the JOIN: `boot.py` bakes the day's four ragdoll-bearing
+    classes over the boot deck's own rooms, `main.gd::_fire_collapses` fires
+    them as the clock passes their hour, and `npc.gd::promote_walker` takes the
+    body out of the crowd -- a walker who was standing there, of the incident's
+    species where the crowd has one.
+
+    `--ragdoll-gate` (G6) proves the BODY. This proves the game asks for one.
+    """
+    godot = godot_binary()
+    if godot is None:
+        print("G5 FAIL -- no double-precision Godot binary found")
+        return {"ok": False}
+    print("G5 SOMEBODY COLLAPSES -- "
+          "`godot --headless --path godot -- --collapse-gate`")
+    ok = True
+    for flags, want, why in (
+            ((), True, "the shipped build"),
+            (("--no-collapses",), False, "no schedule -> nobody falls"),
+            (("--no-ragdoll",), False, "the director refuses -> nobody falls"),
+    ):
+        cmd = [godot, "--headless", "--path", GODOT_DIR, "--",
+               "--collapse-gate"] + list(flags)
+        try:
+            res = subprocess.run(cmd, capture_output=True, text=True,
+                                 timeout=420)
+        except subprocess.TimeoutExpired:
+            print("  FAIL %-16s timed out" % " ".join(flags))
+            ok = False
+            continue
+        out = res.stdout + res.stderr
+        if verbose:
+            print(out)
+        m = re.search(r"^COLLAPSE gate=(\w+)(.*)$", out, re.M)
+        got = (m.group(1) == "PASS") if m else False
+        good = got == want
+        ok = ok and good
+        said = m.group(0)[len("COLLAPSE gate="):].strip() if m else "no verdict"
+        print("  %s %-16s %-38s -- %s"
+              % ("ok  " if good else "FAIL",
+                 (" ".join(flags) if flags else "(subject)"), why, said))
+        if not flags:
+            for line in out.splitlines():
+                if line.startswith("collapse: INC") or "PROMOTED" in line:
+                    print("    | " + line.strip())
+    print("  G5 %s" % ("PASS" if ok else "FAIL"))
+    return {"ok": ok}
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--g1", action="store_true", help="cold start only")
     ap.add_argument("--g3", action="store_true", help="reachability only")
     ap.add_argument("--g4", action="store_true",
                     help="the card check on a place boundary only")
+    ap.add_argument("--g5", action="store_true",
+                    help="an incident puts a body on the deck")
     ap.add_argument("--controls", action="store_true",
                     help="only the negative controls on G1")
     ap.add_argument("--verbose", action="store_true")
     ap.add_argument("--budget-s", type=float, default=BOOT_BUDGET_S)
     a = ap.parse_args()
-    run_all = not (a.g1 or a.g3 or a.g4 or a.controls)
+    run_all = not (a.g1 or a.g3 or a.g4 or a.g5 or a.controls)
     bad = 0
     if a.g3 or run_all:
         if not g3(a.verbose).get("ok"):
@@ -651,6 +734,10 @@ def main():
     if a.g4 or run_all:
         print()
         if not g4(a.verbose).get("ok"):
+            bad += 1
+    if a.g5 or run_all:
+        print()
+        if not g5(a.verbose).get("ok"):
             bad += 1
     return 1 if bad else 0
 

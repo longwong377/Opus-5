@@ -959,7 +959,19 @@ def rig(species: str, npc_id: str, lod: int = 0) -> Rig:
     if DRESSED:
         try:
             import costume as _cos                              # noqa: PLC0415
-            m = _cos.dressed_mesh(species, npc_id, lod=lod, chain=chain)
+            # `ind=ind`, AND ITS ABSENCE WAS A REAL BUG. `_build_mesh` resolves
+            # its OWN figure through `body.individual(species, npc_id)` when it
+            # is not given one -- so with `npc_id == NOMINAL` this line dressed a
+            # different person from the one `nude`/`nude0` above were built from
+            # and the skeleton was measured on. On thirteen species the part
+            # counts happen to match and the binding was merely computed from
+            # the wrong person's ring radii, silently; on the Vree they diverge
+            # outright (stature 1.4833/build 0.7831 against the nominal
+            # 1.5000/0.7200) and a 24-vertex finger was bound to an 18-vertex
+            # one. `m0` had always passed its `ind` and `m` never did, which is
+            # why the two halves of one figure could disagree at all.
+            m = _cos.dressed_mesh(species, npc_id, lod=lod, chain=chain,
+                                  ind=ind)
             m0 = _cos.dressed_mesh(species, npc_id, lod=lod, chain=chain,
                                    ind=replace(ind, stoop_deg=0.0))
             if (isinstance(m, tuple) or isinstance(m0, tuple)

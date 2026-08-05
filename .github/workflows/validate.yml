@@ -78,6 +78,25 @@ jobs:
         continue-on-error: true
         run: python3 station/coldstart.py --g4
 
+      # THE BODY: 16 segments, mass from the mesh's own volume split by its own
+      # skin weights, joint frames from `animation._skeleton`.
+      - name: Ragdolls -- the body that stops standing up
+        id: sragdoll
+        continue-on-error: true
+        run: |
+          cd station/npc
+          python3 ragdoll.py --gate
+
+      # AND WHETHER THE GAME EVER ASKS FOR ONE. `incident.py` decided 380
+      # collapses a day into a ledger nothing read, and `ragdoll.gd` could drop
+      # a body only when a gate flag asked it to -- two finished halves with
+      # nothing between them. G5 asserts the join in the shipped scene; its two
+      # controls (`--no-collapses`, `--no-ragdoll`) each stop the body falling.
+      - name: Somebody collapses and a player is there
+        id: scollapse
+        continue-on-error: true
+        run: python3 station/coldstart.py --g5
+
       - name: The circulation network -- can you get from here to there
         id: scirculation
         continue-on-error: true
@@ -839,6 +858,10 @@ jobs:
             echo "FAILED: scoldstart"; fail=1; fi
           if [ "${{ steps.scardcheck.outcome }}" != "success" ]; then
             echo "FAILED: scardcheck"; fail=1; fi
+          if [ "${{ steps.sragdoll.outcome }}" != "success" ]; then
+            echo "FAILED: sragdoll"; fail=1; fi
+          if [ "${{ steps.scollapse.outcome }}" != "success" ]; then
+            echo "FAILED: scollapse"; fail=1; fi
           if [ "${{ steps.scirculation.outcome }}" != "success" ]; then
             echo "FAILED: scirculation"; fail=1; fi
           if [ "${{ steps.sperformance_budgets.outcome }}" != "success" ]; then

@@ -8004,3 +8004,88 @@ run** — `posture()` off `body.FIGURE` alone is wrong for every non-human speci
 **Why.** L-01 files rotation as "effectively zero in steady state -- a flywheel in vacuum", so the store is the drum's angular momentum and the clock is I*omega/torque. The period (33.4716 s) and the radius are both held; the drum's MASS is not held anywhere in this project, and an inertia invented to fill that hole would be exactly the "number that looks sourced and is not" hard rule 1 forbids.
 **What IS derivable instead**, and is reported: the consequence of a rotation outage is not gravity but the loss of docking torque correction, which is `traffic`'s problem and lands in INC-HOLD.
 **Overturned by.** any figure for the drum's mass, or any on-screen statement of spin-down time.
+
+## INV-440 — Body density, 746.5 kg/m³
+
+**What.** Every ragdoll segment's mass is its own volume × 746.5 kg/m³.
+**Why.** SOLVED, NOT CHOSEN. `docs/gazetteer/LAW-CRIME-DOWNBELOW.md` states "A 75 kg person weighs 108 kgf in Grey ring 1", and `npc/security.py` already computes its patrol-weight column from that officer — so ρ = 75 kg / V(nominal human), recomputed from the mesh on every run rather than written down.
+**Why it is BELOW real tissue density (~1000).** `body.py`'s elliptical ring lofts are the convex hull of a section that really has a waist and an armpit: the mesh is **0.1005 m³** against the ~0.075 m³ a 75 kg person displaces, ×1.34. The density absorbs the hull's overestimate so the total mass is right.
+**Overturned by.** any canon statement of a species' mass, or a non-convex torso section.
+
+## INV-441 — Spine and chest cones, 25° swing / 25° twist each
+
+**What.** The two torso joints in `npc/ragdoll.py`.
+**Bounded below.** `walk_fr14` drives the spine 6.8° and the chest 6.1°.
+**Bounded above.** 30° × 2 joints × 2 directions folds a torso double at the waist, which reads as a broken back.
+**Overturned by.** a show frame of a body bent further at the waist than 50° total.
+
+## INV-442 — The neck is not declared
+
+**What.** Neck swing 40°, twist 31.5°.
+**Why.** READ OFF `animation.LOOK_LIMIT` rather than invented: swing = `pitch_deg` (40), twist = `yaw_deg × neck_share` = 70 × 0.45. Editing LOOK_LIMIT moves both, so a head that can look somewhere can also fall that way and no further.
+**Overturned by.** a change to LOOK_LIMIT, which is the point.
+
+## INV-443 — Shoulder 95°/60°, hip 90°/40°
+
+**Bounded below.** the `sit` clip drives the hip 87.2°.
+**Bounded above.** a shoulder past ~100° puts the upper arm through the far armpit. The hip is tighter because the pelvis is in the way.
+**Overturned by.** a clip that needs more, which is how these two were last corrected.
+
+## INV-444 — Knee hinge −2..145°, elbow −145..2°
+
+**The zero is DERIVED.** `animation._skeleton` puts the knee on the hip–ankle line — measured 0.0 mm off and asserted in `ragdoll.py --gate` — so rest *is* full extension and neither limit needed an offset chosen for it.
+**The sign is derived too.** The axis is the figure's own X; a positive rotation about +X carries a point below the joint to −Z, which is backward in a **+Z-facing** body, so a knee flexes positive and an elbow negative.
+**Bounded below.** 89.8° (sit), 64.0° (talk).
+**Bounded above.** past ~145° the calf passes through the thigh.
+**The 2° opposite allowance** exists because a hinge limit sitting exactly on its rest angle chatters.
+**Overturned by.** a species whose knee is not on the hip–ankle line.
+
+## INV-445 — Wrist 95°/90°, ankle 70°/30°
+
+**What.** The two distal joints.
+**These were WRONG at 70/50 and 60/25 and the clip floor caught them**: `sleep_clip` drives the wrist **90.9°** and the ankle **64.3°**, so a body that can sleep in that pose could not fall into it.
+**The wrist number is anatomy in an unusual place.** `PLAN_BONES` goes shoulder→elbow→wrist with **no radioulnar bone**, so forearm pronation has nowhere to live but the wrist joint and the limit has to carry both.
+**Overturned by.** adding a forearm bone, which would move ~45° of that back where it belongs.
+
+## INV-446 — Linear damp 0.6, angular damp 3.0, bounce 0, friction 0.9
+
+**Bounded below.** undamped, a body is still above the settle threshold after the whole 6 s window.
+**Bounded above.** terminal speed falls as g/damp, and past ~1.5 the descent looks wrong.
+**Angular is 5× linear** because the thing that will not stop is spin on a 1.7 kg forearm.
+**Checkable.** settle time is printed on every drop — measured 2.02–3.55 s.
+**Overturned by.** a video reference of a body falling in ~0.76 g.
+
+## INV-447 — The Vorlon is excluded from ragdolls
+
+**What.** 14 of 15 species have a ragdoll. The Vorlon does not.
+**Why.** It is the `column` plan — 5 bones, root/base/column/collar/head, **no legs and no arms**. `animation.PLAN_BONES` already refuses it a walk clip ("Kosh has no gait and it would be an invention to give him one"); a fall would be the same invention with more moving parts.
+**Note the brief had this backwards.** `encounter_suit` is the **Gaim**'s plan and is fully humanoid (14 segments; its wrists carry no mesh and fold into the forearms). The suit is not the thing to exclude.
+**Scale.** `body.VORLON_SINGLETON = 1` — one on the station.
+**Overturned by.** any show frame of a Vorlon out of the encounter suit, or of one falling.
+
+## INV-448 — Segments under 0.2% of the figure's volume fold into their parent
+
+**Bounded below.** a human hand is 0.49% of the figure, and a flopping hand is most of what reads as unconscious.
+**Bounded above.** a Gaim's `wrist` owns one ring of `suit_arm` and would fit at **52,960×** its own flesh volume — four orders of magnitude away, with nothing real in between.
+**Overturned by.** a species whose hand is under 0.2%, which none of the fifteen is.
+
+## INV-449 — Intra-ragdoll self-collision is off
+
+**Why.** The shapes are solved from the mesh's own volume, so a chest box and a thigh capsule **share the volume the skin blends between them** and overlap at rest by construction. Measured with it on: **peak 500 m/s, 13.1 m of joint separation** — the solver tearing the body apart trying to resolve an overlap that is correct.
+**What holds limbs apart instead.** the joint limits, INV-441..445.
+**Lost.** an arm can pass through the far thigh in an extreme pose.
+**Overturned by.** per-segment shapes fitted to non-overlapping volumes, which would need the skin partition to be a partition.
+
+## INV-450 — "Settled" means displacement over a window, not instantaneous velocity
+
+**What.** Threshold **0.0583 m/s**, averaged over a 20-tick window.
+**Why that number.** `body._px_scale(body.PIXEL_BUDGET)` at 1 m — 0.97 mm a frame, i.e. sub-pixel at conversation distance. A body that has stopped moving *visibly* has settled.
+**Why a window.** an instantaneous check needs 20 CONSECUTIVE ticks under the bar, and a body whose fastest bone averaged 0.018 m/s never produced twenty in a row while visibly stopped — it reported "settle=NEVER".
+**Overturned by.** a change to PIXEL_BUDGET, which is the point.
+
+## INV-451 — A promotion that states no gravity gets the deck's, not Earth's
+
+**What.** `ragdoll.gd::promote` derives `g` and `up` from the body's own world position when the caller does not state them: up is −radial (the floor is the outer wall), g = ω²r with ω² read off `cell_manifest.json`'s deck table.
+**Why it is in the DIRECTOR and not in each caller.** It was a default of 9.81 m/s² and +Y, and the only caller that set them correctly was the gate they were written in. `npc.gd::promote_walker` — the one a player's session actually goes through — set neither, so a real collapse would have fallen at Earth gravity straight down on a station whose deck delivers **7.454 m/s² along a radius**. That is a fix applied to the instance rather than to the rule, which is the defect this file's own §4h section is about.
+**Checkable.** `--derive-g` withholds both and the run is byte-identical to the one that states them.
+**Overturned by.** a place on the station that is not on the rotor — the drum ground and a docked Starfury both need their own answer.

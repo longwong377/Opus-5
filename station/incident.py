@@ -3139,6 +3139,68 @@ class Incident:
                 f"{', '.join(_who(c) for c in self.cast)}>")
 
 
+# WHICH INCIDENTS PUT A BODY ON THE DECK.
+#
+# Thirty classes write world deltas and all of them were TEXT. `_casualty` has
+# been booking people into the medical ledger since P1-G3 and `_arrest` into the
+# brig, and nothing a player could see happened either way -- so this table is
+# the join between what the simulation decides and what the engine can show.
+#
+# It is FOUR classes, not thirty, and that is a decision rather than an
+# omission: a body falling over is what `INC-SICK` (somebody collapses),
+# `INC-ACCIDENT` (a dock clearance chain with a fatal branch), `INC-BRAWL` (a
+# Drazi factional fight) and `INC-STRAY` (a child, knocked down in a crowd)
+# actually look like. A stockout or a rent arrears does not knock anybody down,
+# and giving it a ragdoll would be animation invented to use a feature.
+#
+#   dead         False demotes on settle -- they get up. True leaves them down.
+#   impulse_n_s  the shove, in newton-seconds. Only a brawl has one; 60 N.s is
+#                what `--ragdoll-gate` runs with and is a hard push rather than
+#                a blow, which is what a factional shoving match is.
+RAGDOLL_OF = {
+    "INC-SICK":     {"dead": False, "impulse_n_s": 0.0},
+    "INC-ACCIDENT": {"dead": True,  "impulse_n_s": 0.0},
+    "INC-BRAWL":    {"dead": False, "impulse_n_s": 60.0},
+    "INC-STRAY":    {"dead": False, "impulse_n_s": 0.0},
+}
+
+
+def visible_bodies(places, day=1, seed="b5", step_min=None, hours=24):
+    """One station-day of incidents that put a body on the deck, over `places`.
+
+    THE HALF THAT KEEPS GOING MISSING. `station/npc/ragdoll.py` builds a body
+    and `godot/scripts/ragdoll.gd` drops it, and both were reachable only from
+    a gate flag -- which is this project's signature defect one step before it
+    happens. A simulation that decides 380 collapses a day and an engine that
+    can show one are two finished halves with nothing between them; this is the
+    between.
+
+    Returns a list of plain dicts, ordered by hour, each carrying what the
+    runtime needs and nothing it can recompute:
+
+        {"cid", "place", "hour", "who", "species", "dead", "impulse_n_s"}
+
+    `who` and `species` come from the incident's own CAST -- a named resident
+    with a home and a job, not "a body". That is the difference between a
+    person collapsing and a prop falling over.
+    """
+    ctx = Ctx(day=day, seed=seed)
+    kw = {} if step_min is None else {"step_min": step_min}
+    _w, fired = headless_day(ctx, scope=tuple(places), hours=hours, **kw)
+    out = []
+    for i in fired:
+        row = RAGDOLL_OF.get(i.cid)
+        if row is None:
+            continue
+        who = _who(i.cast[0]) if i.cast else ""
+        sp = i.cast[0].species if i.cast else "human"
+        out.append({"cid": i.cid, "place": i.place, "hour": round(i.hour, 4),
+                    "who": who, "species": sp, "dead": row["dead"],
+                    "impulse_n_s": row["impulse_n_s"]})
+    out.sort(key=lambda r: (r["hour"], r["place"], r["cid"]))
+    return out
+
+
 def live_classes(ctx, place, hour):
     """Every class with a non-zero rate here, and its rate. The gate's own
     denominator: a class with rate zero is not a class that fired and failed,

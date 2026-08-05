@@ -152,6 +152,7 @@ derivation, `--obj PATH` to write a figure or a lineup for the preview renderer.
 """
 import argparse
 import hashlib
+import json
 import math
 import os
 import sys
@@ -3765,6 +3766,374 @@ def write_obj(path, verts, tris, spans=None, default="npc"):
                     f.write(f"f {a + 1} {b + 1} {c + 1}\n")
 
 
+# ---------------------------------------------------------------------------
+# THE SKINNED EXPORT -- the same body, with bones, ALONGSIDE the baked poses
+# ---------------------------------------------------------------------------
+# WHY THIS IS AN ADDITION AND NOT A REPLACEMENT. `populace.crowd_library` bakes
+# a pose into vertex positions and instances it through a MultiMesh, and that is
+# what makes the station's whole crowd **112 draw calls**. A MultiMesh instance
+# is a transform into a shared mesh: it cannot own a skeleton, so it cannot
+# ragdoll. Nothing here touches that path -- `build()`, `crowd_body()` and every
+# baked pose behave exactly as before. This is the SECOND form of the same body,
+# for the one figure at a time that has stopped standing up.
+#
+# THE SKELETON AND THE WEIGHTS ALREADY EXISTED AND HAD NO EXPORT. `npc/
+# animation.py` has measured joints (`_skeleton`), ring-indexed weights
+# (`_bind`, `MAX_INFLUENCES = 4`) and a JSON writer for the skeleton and the
+# clips -- but `binding_dict` emits weights per RING, which is the right storage
+# and is not something a GPU can consume. What was missing was the expansion to
+# per-VERTEX arrays and the mesh to hang them on. So this function measures
+# nothing new: it reads `animation.rig()` and unrolls it.
+#
+# THE FRAME IS body.py's OWN, AND THAT IS DELIBERATE. `animation.emit()` applies
+# a 180-degree turn about +Y on its way out (`godot_note`), because a clip
+# consumer would want Godot's -Z-forward convention. `populace._place_body`
+# bakes these vertices into the deck WITHOUT that turn, so every person standing
+# on this station is already in the body frame, in world space, and `npc.gd`'s
+# own comment says so: "at yaw 0 the body's forward is the room's +z". A
+# promoted ragdoll has to land exactly where the baked body it replaces was
+# standing, so it is emitted in the frame the baked body uses. The two
+# conventions in this project are recorded in `skinned()['frame']` rather than
+# reconciled here, because reconciling them would change what `animation.emit`
+# writes and nothing consumes that yet.
+SKIN_INFLUENCES = 4          # animation.MAX_INFLUENCES; asserted against it
+# The stand-in identity used only when `animation.rig(NOMINAL)` cannot bind --
+# see `skinned()`. A fixed string so the fallback body is deterministic.
+SKIN_FALLBACK_ID = "skin-reference"
+
+
+def _rings_cover(rg):
+    """Does every skinned vertex belong to a ring the binding has weights for?
+
+    `animation._bind` partitions the UNSTOOPED build and applies the runs to the
+    DRESSED one by index. That is valid only while the two are the same figure,
+    and `rig()` does not always make them the same figure -- so this is the
+    check that notices, rather than an index error two hundred lines later.
+    """
+    for pi, ringw, runs in rg.binding:
+        if len(ringw) != len(runs):
+            return False
+        if sum(b - a for a, b in runs) != len(rg.parts[pi][1]):
+            return False
+    return True
+
+
+def _vertex_normals(verts, tris):
+    """Area-weighted vertex normals, WITHIN one part.
+
+    Per part rather than per body, so the seam between skin and a boot stays a
+    hard edge and a shoulder stays smooth. A body is a set of lofts, and a loft
+    is smooth along itself and discontinuous where it meets the next one --
+    which is the same rule `export_gltf.build_group` states in reverse for the
+    hull, where every edge is hard by design.
+    """
+    acc = [[0.0, 0.0, 0.0] for _ in verts]
+    for ia, ib, ic in tris:
+        a, b, c = verts[ia], verts[ib], verts[ic]
+        ux, uy, uz = b[0] - a[0], b[1] - a[1], b[2] - a[2]
+        wx, wy, wz = c[0] - a[0], c[1] - a[1], c[2] - a[2]
+        # NOT normalised: the cross product's length is twice the triangle's
+        # area, so accumulating it raw weights each face by its area, which is
+        # what stops a fan of slivers at a ring cap out-voting the body of the
+        # loft.
+        nx = uy * wz - uz * wy
+        ny = uz * wx - ux * wz
+        nz = ux * wy - uy * wx
+        for k in (ia, ib, ic):
+            acc[k][0] += nx
+            acc[k][1] += ny
+            acc[k][2] += nz
+    out = []
+    for n in acc:
+        ln = math.sqrt(n[0] * n[0] + n[1] * n[1] + n[2] * n[2])
+        out.append((0.0, 1.0, 0.0) if ln < 1e-12
+                   else (n[0] / ln, n[1] / ln, n[2] / ln))
+    return out
+
+
+def _skin_family(group):
+    """The material a body group binds through, via populace's OWN rule.
+
+    Imported rather than re-implemented. `populace._material_family` reads the
+    first two tokens of a part name back off THIS file's naming, and a second
+    copy of that rule here is a second answer to "which material is this" --
+    hard rule 4. The import is lazy because `populace` imports this module; by
+    the time anybody calls `skinned()` both are loaded.
+    """
+    if _STATION not in sys.path:
+        sys.path.insert(0, _STATION)
+    import populace as _pop                                     # noqa: PLC0415
+    return _pop._material_family(group)
+
+
+def _skin_part(surface, vweights, name, verts, tris):
+    """Append one mesh part to a surface, with its normals and weights."""
+    base = len(surface["positions"]) // 3
+    nrm = _vertex_normals(verts, tris)
+    for i, v in enumerate(verts):
+        surface["positions"].extend((round(v[0], 5), round(v[1], 5),
+                                     round(v[2], 5)))
+        surface["normals"].extend((round(nrm[i][0], 4), round(nrm[i][1], 4),
+                                   round(nrm[i][2], 4)))
+        pairs = list(vweights[i])[:SKIN_INFLUENCES]
+        tot = sum(w for _b, w in pairs) or 1.0
+        pairs = [(b, w / tot) for b, w in pairs]
+        while len(pairs) < SKIN_INFLUENCES:
+            pairs.append((pairs[0][0], 0.0))
+        surface["bones"].extend(int(b) for b, _w in pairs)
+        surface["weights"].extend(round(w, 5) for _b, w in pairs)
+    for a, b, c in tris:
+        surface["indices"].extend((a + base, b + base, c + base))
+    surface["parts"].append(name)
+
+
+def skinned(species: str, npc_id: str = None, lod: int = 0):
+    """The rest-pose mesh with a skeleton and per-vertex bone weights.
+
+    Returns a dict: bones (name, parent, rest head and tail), and one SURFACE
+    per material -- positions, normals, four bone indices and four weights per
+    vertex, and a triangle index list. That is exactly the shape of a Godot
+    `ArrayMesh` with `ARRAY_BONES`/`ARRAY_WEIGHTS`, and of a glTF skin.
+
+    ONE SURFACE PER MATERIAL, NOT ONE PER PART, and the reason is a draw call.
+    `populace._by_material` records that a human at lod 4 was twelve primitives
+    and merges the runs to one; this does the same merge on the same rule, so a
+    promoted body costs what `_by_material` says a baked one costs and the
+    ragdoll budget can be derived from a number that already exists.
+    """
+    if _STATION not in sys.path:
+        sys.path.insert(0, _STATION)
+    sys.path.insert(0, _HERE) if _HERE not in sys.path else None
+    import animation as _anim                                   # noqa: PLC0415
+    if _anim.MAX_INFLUENCES != SKIN_INFLUENCES:
+        raise ValueError(
+            f"animation.MAX_INFLUENCES is {_anim.MAX_INFLUENCES} and this "
+            f"exporter writes {SKIN_INFLUENCES}; a fifth influence per vertex "
+            f"is a format change, not a constant")
+    # THE UN-JITTERED MEMBER OF THE SPECIES, and it has to be spelled
+    # `animation.NOMINAL` rather than "nominal": `rig()` compares the id against
+    # that sentinel and hands anything else to `body.individual()`, so passing
+    # the word built a RANDOM person and called it the species mean. Caught by
+    # this file's own vertex counts moving between two runs that should have
+    # been identical.
+    npc_id = _anim.NOMINAL if npc_id is None else npc_id
+    rg = _anim.rig(species, npc_id, lod)
+    if npc_id == _anim.NOMINAL and not _rings_cover(rg):
+        # `animation.rig()` BINDS TWO DIFFERENT PEOPLE WHEN THE ID IS `NOMINAL`,
+        # and this is the fallback that keeps every species shipping until it is
+        # patched. The skeleton is measured off `body.nominal(species)`; the
+        # mesh that gets skinned is
+        #     _cos.dressed_mesh(species, npc_id, lod=lod, chain=chain)
+        # which resolves its own figure through `body.individual(species,
+        # npc_id)` -- so with npc_id == "__nominal__" it dresses a RANDOM draw.
+        # On thirteen species the two happen to have the same vertex counts and
+        # the binding is merely computed from the wrong person's ring radii; on
+        # the Vree they diverge outright (stature 1.4833/build 0.7831 against
+        # the nominal 1.5000/0.7200 -> a 24-vertex finger bound to an 18-vertex
+        # one) and the partition stops covering the mesh.
+        #
+        # The one-argument fix belongs in `animation.rig` -- pass `ind=ind` to
+        # `dressed_mesh`, which `_build_mesh` already accepts for exactly this
+        # reason. Until then, asking for a CONCRETE id makes both builds resolve
+        # the same individual, so the figure is one draw from the species rather
+        # than its mean. SAID OUT LOUD on every run that uses it: a tool that
+        # substitutes a lesser mode has to report which one it used.
+        print(f"body.skinned: {species}: animation.rig(NOMINAL) bound two "
+              f"different figures; falling back to the concrete reference id "
+              f"{SKIN_FALLBACK_ID!r} (one draw, not the species mean). Patch "
+              f"animation.rig to pass ind= to dressed_mesh.", file=sys.stderr)
+        npc_id = SKIN_FALLBACK_ID
+        rg = _anim.rig(species, npc_id, lod)
+        if not _rings_cover(rg):
+            raise ValueError(
+                f"{species}: the ring partition does not cover the skinned "
+                f"mesh even with a concrete id -- this is not the NOMINAL bug")
+
+    # Ring weights -> vertex weights. `_bind` stores one weight list per RING
+    # because the ring plan is a property of the species and not of the person;
+    # unrolling it here is the only place the per-vertex form is ever built.
+    per_vertex = [None] * len(rg.parts)
+    for pi, ringw, runs in rg.binding:
+        w = [None] * len(rg.parts[pi][1])
+        for (a, b), ring in zip(runs, ringw):
+            for i in range(a, b):
+                w[i] = ring
+        if any(x is None for x in w):
+            raise ValueError(
+                f"part {rg.parts[pi][0]!r} has vertices outside every ring; "
+                f"`_ring_partition` and the mesh disagree")
+        per_vertex[pi] = w
+
+    # ONE SURFACE PER MATERIAL FAMILY, AND THE PARTS ARE REORDERED TO GET IT.
+    # `populace._by_material` merges only ADJACENT runs, and it says why: a
+    # baked body's triangles live inside a room's merged mesh, where the spans
+    # of everything else are already written against those offsets, so moving a
+    # triangle moves somebody else's span. Measured on this figure that rule
+    # gives **twelve** surfaces at lod 0, because the parts interleave --
+    # cloth arm, skin hand, cloth arm, skin hand -- and twelve draw calls for
+    # one person is most of `schedule.NPC_BUDGET["max_draw_calls"]`.
+    #
+    # A PROMOTED BODY IS ITS OWN MESH AND HAS NO SUCH NEIGHBOURS. Nothing
+    # downstream indexes into it, so the parts can be gathered by family first,
+    # which gives FOUR surfaces on a dressed human -- skin, cloth, boot leather,
+    # hair. That is the whole difference between the two paths and it is why
+    # the merge is done here rather than by calling `_by_material`.
+    order, groups = [], {}
+    for pi in range(len(rg.parts)):
+        fam = _skin_family(rg.groups[pi]) if rg.groups[pi] else "npc_body"
+        if fam not in groups:
+            groups[fam] = []
+            order.append(fam)
+        groups[fam].append(pi)
+    surfaces = []
+    for fam in order:
+        surfaces.append({"group": fam, "positions": [], "normals": [],
+                         "bones": [], "weights": [], "indices": [],
+                         "parts": []})
+        for pi in groups[fam]:
+            name, verts, tris = rg.parts[pi]
+            _skin_part(surfaces[-1], per_vertex[pi], name, verts, tris)
+    del order, groups
+
+    bones = [{"name": b.name, "parent": b.parent,
+              "rest_head": [round(x, 6) for x in b.head],
+              "rest_tail": [round(x, 6) for x in b.tail]}
+             for b in rg.skel.bones]
+    return {
+        "generator": "station/npc/body.py::skinned",
+        "species": species, "npc_id": npc_id, "lod": lod,
+        "nominal": npc_id == _anim.NOMINAL,
+        "plan": rg.skel.plan,
+        # STATED, because two frames exist in this project and only one of them
+        # is what the station is built in. See the section header.
+        "frame": "body.py: +Z forward, +Y up, +X the figure's LEFT -- the frame "
+                 "populace._place_body bakes into the deck, NOT the 180-degree "
+                 "turn animation.emit() applies",
+        "stature_m": rg.skel.stature_m,
+        "ground_y": rg.skel.ground_y,
+        "com_height_m": rg.skel.com_height_m,
+        "leg_length_m": rg.skel.leg_length_m,
+        "influences": SKIN_INFLUENCES,
+        "bones": bones,
+        "surfaces": surfaces,
+        "vertices": sum(len(s["positions"]) // 3 for s in surfaces),
+        "triangles": sum(len(s["indices"]) // 3 for s in surfaces),
+    }
+
+
+def write_skinned(path, doc):
+    """The skinned body as JSON. Text, per ADR 0001."""
+    os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
+    with open(path, "w") as f:
+        json.dump(doc, f, separators=(",", ":"), sort_keys=True)
+    return path, os.path.getsize(path)
+
+
+def skin_selftest(species="human", out=print):
+    """The skinned mesh IS the baked mesh, vertex for vertex.
+
+    THE ASSERTION THAT MAKES THIS EXPORT WORTH ANYTHING. A skinned body and a
+    baked body are two builds of one figure -- CLAUDE.md's session-4h lesson,
+    one level down -- so the only thing that can show they have not drifted is
+    reproducing one from the other. In the rest pose every skinning matrix is
+    the identity (`animation.rest_offsets`: rest rotations are identity, so a
+    bone's rest transform is a pure translation to its head), which makes the
+    check exact rather than approximate: the skinned surfaces, concatenated in
+    emission order, must equal `rig().parts` to the export's own rounding.
+
+    Returns (ok, fail).
+    """
+    ok = fail = 0
+
+    def check(cond, label):
+        nonlocal ok, fail
+        if cond:
+            ok += 1
+        else:
+            fail += 1
+            out(f"FAIL: {label}")
+
+    if _STATION not in sys.path:
+        sys.path.insert(0, _STATION)
+    import animation as _anim                                   # noqa: PLC0415
+    doc = skinned(species, "nominal", 0)
+    rg = _anim.rig(species, "nominal", 0)
+
+    # THE PARTS ARE REORDERED BY MATERIAL, so the comparison is rebuilt part by
+    # part rather than by concatenating both lists and hoping the order agrees.
+    # Each surface names the parts it swallowed, in order; taking the next
+    # unconsumed rig part of that name reproduces the emission exactly, and it
+    # is the ONLY thing that would notice a part being dropped or duplicated.
+    pool = {}
+    for pi, (nm, vs, _t) in enumerate(rg.parts):
+        pool.setdefault(nm, []).append(vs)
+    flat, want = [], []
+    for srf in doc["surfaces"]:
+        pos = srf["positions"]
+        flat.extend((pos[i], pos[i + 1], pos[i + 2])
+                    for i in range(0, len(pos), 3))
+        for nm in srf["parts"]:
+            want.extend(pool[nm].pop(0))
+    check(not any(pool.values()),
+          f"{sum(len(v) for v in pool.values())} rig parts were never emitted "
+          f"into any surface")
+    check(len(flat) == len(want),
+          f"skinned() emits {len(flat)} vertices, the rig has {len(want)}")
+    worst = 0.0
+    for a, b in zip(flat, want):
+        worst = max(worst, max(abs(a[k] - b[k]) for k in range(3)))
+    check(worst <= 1e-5 + 1e-12,
+          f"the skinned mesh differs from the built body by {worst * 1000:.4f} "
+          f"mm; rounding is 1e-5 m so anything above 10 microns is drift")
+
+    ntri = sum(len(s["indices"]) // 3 for s in doc["surfaces"])
+    check(ntri == sum(len(t) for _n, _v, t in rg.parts),
+          f"{ntri} triangles skinned against {sum(len(t) for _n, _v, t in rg.parts)} built")
+
+    # Weights: four per vertex, summing to one, and every index a real bone.
+    nb = len(doc["bones"])
+    bad_sum = bad_idx = 0
+    for s in doc["surfaces"]:
+        w, b = s["weights"], s["bones"]
+        for i in range(0, len(w), SKIN_INFLUENCES):
+            if abs(sum(w[i:i + SKIN_INFLUENCES]) - 1.0) > 2e-4:
+                bad_sum += 1
+        bad_idx += sum(1 for x in b if not (0 <= x < nb))
+    check(bad_sum == 0, f"{bad_sum} vertices whose four weights do not sum to 1")
+    check(bad_idx == 0, f"{bad_idx} bone indices outside the skeleton")
+
+    # NEGATIVE CONTROL: a mesh skinned to the WRONG ring order must fail the
+    # reproduction check above. Without this the check could be passing because
+    # both sides read the same list.
+    shifted = [flat[(i + 1) % len(flat)] for i in range(len(flat))]
+    moved = max(max(abs(a[k] - b[k]) for k in range(3))
+                for a, b in zip(shifted, want))
+    check(moved > 1e-3,
+          f"CONTROL: rotating the vertex list by one moves it {moved * 1000:.2f} "
+          f"mm -- if this were small the reproduction check would be vacuous")
+
+    # NORMALS point out of the body: the mean dot of a normal with the ray from
+    # the part centroid must be positive, or the winding is inside out and every
+    # promoted body renders as a hole.
+    inward = 0
+    for s in doc["surfaces"]:
+        p, n = s["positions"], s["normals"]
+        cnt = len(p) // 3
+        cx = sum(p[0::3]) / cnt
+        cy = sum(p[1::3]) / cnt
+        cz = sum(p[2::3]) / cnt
+        dot = 0.0
+        for i in range(cnt):
+            dot += ((p[3 * i] - cx) * n[3 * i] + (p[3 * i + 1] - cy) * n[3 * i + 1]
+                    + (p[3 * i + 2] - cz) * n[3 * i + 2])
+        if dot <= 0.0:
+            inward += 1
+    check(inward == 0,
+          f"{inward} of {len(doc['surfaces'])} surfaces have normals pointing "
+          f"into the body")
+    return ok, fail
+
+
 def nominal(species: str) -> Individual:
     """The species' parameter block with NO per-individual jitter.
 
@@ -5247,6 +5616,16 @@ def _selftest():
 
     _detail_gate(check, quiet=True)
 
+    # -- the skinned export ------------------------------------------------
+    # HERE RATHER THAN IN ITS OWN GATE. CLAUDE.md's session-3x rule: a gate
+    # belongs in the module that builds the thing, and it must build the hard
+    # case. The hard case for a skin is a DRESSED figure, because `costume.py`
+    # replaces parts and appends accessories, so a human is run rather than the
+    # bare plan. It costs one `animation.rig()` build, ~1 s.
+    _sok, _sfail = skin_selftest("human", out=print)
+    ok += _sok
+    fail += _sfail
+
     print(f"{ok}/{ok + fail} passed")
     # 0 on success. This read `0 if fail else 1` -- inverted -- until the
     # deliberate-break pass ran twelve mutants and every one of them exited 0
@@ -5268,7 +5647,26 @@ def main():
                     help="lineup of unjittered species means")
     ap.add_argument("--silhouette", action="store_true",
                     help="print the session-4g detail gate and its controls")
+    ap.add_argument("--skin", action="store_true",
+                    help="print the skinned export's gate and its control")
+    ap.add_argument("--skin-out", default=None, metavar="DIR",
+                    help="write <species>_skin.json for every species")
     a = ap.parse_args()
+    if a.skin:
+        o, f = skin_selftest(a.species or "human")
+        print(f"skinned export: {o}/{o + f} passed")
+        sys.exit(1 if f else 0)
+    if a.skin_out:
+        total = 0
+        for k in ([a.species] if a.species else sorted(SPECIES)):
+            doc = skinned(k, lod=a.lod)
+            path, size = write_skinned(
+                os.path.join(a.skin_out, f"{k}_skin.json"), doc)
+            total += size
+            print(f"  {k:9s} {doc['vertices']:6,} v  {doc['triangles']:6,} t  "
+                  f"{len(doc['surfaces'])} surfaces  {size / 1e3:7.1f} kB")
+        print(f"wrote {a.skin_out}: {total / 1e6:.2f} MB")
+        sys.exit(0)
     if a.silhouette:
         bad = []
         _detail_gate(lambda c, label: None if c else bad.append(label))

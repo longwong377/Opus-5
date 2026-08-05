@@ -351,8 +351,12 @@ func _give_body(p: Person) -> void:
 	var fwd := Vector3(0, 0, 1)
 	if absf(fwd.dot(up)) > 0.99:
 		fwd = Vector3(1, 0, 0)
-	var right := fwd.cross(up).normalized()
-	fwd = up.cross(right).normalized()
+	# `up.cross(fwd)`, NOT `fwd.cross(up)` -- see `_walker_xform`. Invisible
+	# here, because a capsule is symmetric about its own Y and a mirrored one
+	# collides identically; fixed anyway, because the next person to copy this
+	# block will copy it onto something that is not a capsule.
+	var right := up.cross(fwd).normalized()
+	fwd = right.cross(up).normalized()
 	sb.global_transform = Transform3D(Basis(right, up, fwd),
 		p.pivot + up * (cap.height * 0.5))
 	p.body = sb
@@ -873,6 +877,125 @@ func _give_walker_body(w: Walker) -> void:
 ## ring, so it is a different direction at every angle -- which is why the
 ## generator writes a basis per instance and why this recomputes one rather
 ## than carrying a yaw.
+## WHY THE LAST `promote_walker` CAME BACK EMPTY. An empty return has four
+## different causes and they need four different fixes -- no crowd in the build,
+## a cell that has not streamed, a radius too tight, or the director refusing --
+## so the caller is told which. `_collapse` prints it.
+var promote_why := ""
+
+
+## Hand the nearest person to `at` over to the ragdoll director and take them
+## out of the crowd. Returns who fell, or "" if nobody was close enough.
+##
+## THIS IS WHAT MAKES A COLLAPSE A PERSON RATHER THAN A PROP. `ragdoll.gd` can
+## drop a body anywhere; dropping one where nobody was standing is a corpse
+## appearing out of the air. So the body comes OUT OF THE CROWD: a walker who
+## was there a moment ago stops being drawn, and the ragdoll takes their place,
+## their species, their stature and their heading.
+##
+## The three states that have to move together, and each one bit me:
+##   * `hidden` -- out of every MultiMesh bucket, or the crowd keeps drawing a
+##     standing copy of somebody lying on the floor.
+##   * `collision_layer = 0` -- out of `push_off`'s way, or the player is
+##     shouldered aside by a person who is no longer there.
+##   * `restore` -- both of the above put back on demotion, because
+##     `INC-SICK`'s subject GETS UP, and a walker who came back invisible would
+##     be a hole in the crowd that never closes.
+##
+## `_place_crowd()` at the end is not optional: the buckets are rebuilt from
+## `hidden`, so without it the change is in the data and not on the screen.
+## `want_species` IS NOT COSMETIC. The incident names a person -- David Allan,
+## human -- and the body comes out of the crowd, so without this the nearest
+## walker is taken whatever they are and a human's collapse is played by a
+## Drazi. Matching first and falling back to the nearest ANYBODY is the honest
+## order, and `promote_why` records which of the two happened so a run can say
+## whether its casualties were the right species.
+func promote_walker(director: Node, spec: Dictionary, at: Vector3,
+		radius_m: float = 12.0, want_species: String = "") -> String:
+	promote_why = ""
+	if director == null:
+		promote_why = "no ragdoll director"
+		return ""
+	if _walkers.is_empty():
+		promote_why = "this build has no crowd at all"
+		return ""
+	var best: Walker = null
+	var best_d := radius_m * radius_m
+	var any: Walker = null
+	var any_d := radius_m * radius_m
+	# THE NEAREST ANYBODY, whether or not they are in range. Without it the
+	# failure reads "nobody within 12 m" and says nothing about whether the
+	# crowd is 13 m away or on the other side of the station -- which is the
+	# difference between a radius to widen and a cell that has not streamed.
+	var nearest := INF
+	var shown := 0
+	for w in _walkers:
+		if w.hidden:
+			continue
+		shown += 1
+		var d: float = _walker_xform(w).origin.distance_squared_to(at)
+		nearest = minf(nearest, d)
+		if d < any_d:
+			any_d = d
+			any = w
+		if want_species != "" and w.species != want_species:
+			continue
+		if d < best_d:
+			best_d = d
+			best = w
+	var matched := best != null
+	if best == null:
+		best = any
+	if best == null:
+		promote_why = ("nobody within %.0f m -- %d of %d walkers drawn, "
+			% [radius_m, shown, _walkers.size()]
+			+ ("none at all" if shown == 0
+				else "nearest %.1f m" % sqrt(nearest)))
+		return ""
+	var xf := _walker_xform(best)
+	var was := best.hidden
+	best.hidden = true
+	if best.body != null:
+		best.body.collision_layer = 0
+	var w2 := best
+	spec["species"] = w2.species
+	spec["h_m"] = w2.h_m
+	spec["xform"] = xf
+	# THE MOMENTUM THEY ALREADY HAD. Somebody who collapses mid-stride does not
+	# stop first. `omega * radius` is the tangential speed the ring walker was
+	# carrying and `basis.z` is the way they were facing -- both read off the
+	# same transform the body is dropped into, so they cannot disagree.
+	spec["velocity"] = xf.basis.z * absf(w2.omega) * w2.radius
+	spec["restore"] = func():
+		w2.hidden = was
+		if w2.body != null:
+			w2.body.collision_layer = PEOPLE_LAYER
+		_place_crowd()
+	var doll = director.call("promote", spec)
+	if doll == null:
+		promote_why = ("the director refused (%s) -- %s, det=%.3f"
+			% [String(director.get("_why_refused")), w2.species,
+				xf.basis.determinant()])
+		# REFUSED -- put them straight back. A cap reached or a species with no
+		# body data is not a reason for somebody to vanish.
+		best.hidden = was
+		if best.body != null:
+			best.body.collision_layer = PEOPLE_LAYER
+		return ""
+	_place_crowd()
+	promote_why = ("the nearest %s, %.1f m away"
+		% [w2.species, sqrt(best_d if matched else any_d)]
+		if matched else
+		"NO %s in reach -- the nearest anybody, a %s %.1f m away"
+		% [want_species, w2.species, sqrt(any_d)])
+	# WHO ACTUALLY FELL, which is not always who the incident named. A corridor
+	# walker is anonymous by construction -- `who_name` is empty on the ring
+	# crowd and set only on a room occupant bound to a resident -- so this
+	# returns the person when there is one and the species when there is not,
+	# and never borrows the incident's name for a body that is not theirs.
+	return (w2.who_name if w2.who_name != "" else "a " + w2.species)
+
+
 func _walker_xform(w: Walker) -> Transform3D:
 	# A COMMUTER'S FEET ARE WHEREVER THEY GOT TO. Up is still INWARD -- that is a
 	# property of standing inside a spun barrel and not of being on a loop -- so
@@ -886,13 +1009,33 @@ func _walker_xform(w: Walker) -> Transform3D:
 		if f2.length() < 1e-4:
 			f2 = Vector3(0, 0, 1) - up2 * up2.z
 		f2 = f2.normalized()
-		var r2 := f2.cross(up2).normalized()
+		var r2 := up2.cross(f2).normalized()
 		return Transform3D(Basis(r2, up2, f2), w.pos)
 	var ca := cos(w.angle)
 	var sa := sin(w.angle)
 	var up := Vector3(-ca, -sa, 0.0)
 	var fwd := Vector3(-sa, ca, 0.0) * signf(w.omega if w.omega != 0.0 else 1.0)
-	var right := fwd.cross(up).normalized()
+	# `up.cross(fwd)`, AND IT WAS `fwd.cross(up)` UNTIL SESSION 4q, WHICH IS A
+	# MIRROR. `Basis(x, y, z)` takes the three COLUMNS and is right-handed only
+	# when x cross y = z. With `right = fwd x up` that product is MINUS fwd, so
+	# the determinant is exactly -1: every walker in the corridor was drawn as
+	# their own reflection. Nothing caught it in six sessions because a
+	# roughly symmetric body reads the same either way at corridor distance,
+	# and no gate here asks a transform whether it is a rotation.
+	#
+	# `ragdoll.gd::promote` is what found it, on the first real promotion, by
+	# refusing a determinant of -1.0000 -- a check written for a bug the GATE
+	# had hit and which turned out to be sitting in the shipped crowd. The
+	# baked half of the crowd never had it: `populace._place_body` places a
+	# body with a plain yaw, which is always right-handed. So the two halves of
+	# one crowd disagreed about which way round a person is.
+	#
+	# `player.gd` and `dialogue.gd` use the same `fwd.cross(up)` and are BOTH
+	# CORRECT, which is why this is a one-line sign and not a sweep: they pass
+	# `Basis(right, up, -fwd)`, and the two negations cancel to +1. Only this
+	# file's figures face +Z -- `body.py`'s do, `ragdoll.gd` agrees -- so only
+	# this file needed the other sign.
+	var right := up.cross(fwd).normalized()
 	return Transform3D(Basis(right, up, fwd),
 		Vector3(w.radius * ca, w.radius * sa, w.z))
 
