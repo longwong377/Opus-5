@@ -256,6 +256,64 @@ player's `collision_mask`**, so it is Godot's default 1 — the player could nev
 bone, RID exception or not. To be a real control it must also put the bones on `WORLD_LAYER`. Still
 open, and now written down.
 
+### 24.8 CUSTOMS: 26 m OF EMPTY DECK CLOSED, AND THE CRAFT-1 LIST WAS ITSELF STALE
+
+The first interior a player ever sees. `docs/engine-4f-customs-normal.png` showed the right-sized
+hall with **26 m of empty deck between the eye and the nearest object** — AAA-STANDARD C2's
+"correct skeleton with a missing layer". Now built, and every item either **declared** in
+`directory.py` for one of the module's three places or **named in the authority-1 frame and never
+built**: the arched gate line at one corridor width in, 57.6 m of switchback queue holding 64
+(derived from the faction doc's 60.6 people a wave), four booths with the `identicard_reader` **as
+an object** rather than an alias, the search line, the D-12 seizure store, six atmosphere stations
+parsed out of `signage.BOARDS`, and boards that read real inbound movements.
+
+The three places were within **400 triangles of each other**; they are now **8,000 apart** and
+their gate legends differ. `customs.py` 51/51 → **55/55**.
+
+**THE NEW GATE IS THE INTERESTING PART: two solids in one place.** Every other assertion in that
+file measures one solid against itself, and *two perfectly closed, perfectly wound solids in the
+same cubic metre pass all of them*. It found **seven interpenetrations, three of which shipped
+before this session** — six X-brace end caps 0.13 m inside the ceiling coffer, five screen hangers
+through the coffer plane, four schematic end bars under their own bezel. Its limit is written into
+the file: AABB, so it will report two diagonals whose boxes overlap and cannot see a defect between
+two declared pairs.
+
+Lighting, measured against the authority-1 frame at the same camera — `ROOM_EXPOSURE`'s own note
+said this was *"a room with no fill rather than a room with the wrong exposure"* holding *"37× more
+black than its reference"*, and that is closed:
+
+| | 4f | 4q |
+|---|---|---|
+| crushed | **54.09%** | **8.18%** |
+| measurable | 45.9% | **91.8%** |
+
+**AND THE "SIX SUBSYSTEMS AT CRAFT 1" LINE WAS STALE, WHICH I PROPAGATED TWICE TODAY.**
+`docs/aaa-scorecard.json` held **one round** for `customs_arrival` — craft 1, session 4e. Session
+**4f** rebuilt that room's boards (7,296 → 22,988 tri) and *its own author scored it 3* in
+`docs/craft-4f.md` line 193. **Nobody entered that round.** So the count of six propagated from a
+number that had already moved, into `PLAYTEST.md` and into MASTER-PLAN's A4a-2 — and I repeated it
+in both, today, without checking the rounds behind it.
+
+***A scorecard with one round in it reads as a current score.*** If the latest round predates the
+last rebuild, the score is **unmeasured**, not low. Corrected in all three documents. The honest
+movement for customs in 4q is **"3, with the empty floor closed"**, not "1 → 3".
+
+**A threshold is read from both sides.** `docs/craft-4q-customs-gate-oneside.png` is kept as the
+wrong frame: the legends were on the approach face only, and the approach is 2.6 m deep, so a 3.7 m
+legend was readable from 2.5 m in a 34 m hall. **927 warm-lit pixels in the whole shot**, every one
+of them a ceiling coffer.
+
+**No third mirror bug, and it was READ rather than reasoned.** `craft-4q-customs-gate.png` shows
+the legends reading correctly and the lane plates ascending right-to-left, which is right because
+lane 01 is at −X and a player walking +z has −X on their right. Three face maps, each determinant
++1, with the handedness argument written out.
+
+**Two performance findings, both the same shape as the drum's.** `customs` is instanced **three
+times** on the z=7440 cluster, so +18,518 triangles is **+55,554 on one cluster** — and
+`craft-4f.md` records that `budget.py` measures that cluster's total *not at all*. And
+`ROOM_EXPOSURE["customs"] = 0.17` was solved against a frame that was 54% crushed; it now reads
+×1.75 against a ×1.05–1.75 window, i.e. **on the boundary**, and needs re-solving.
+
 ### 24.5 Open, and honestly
 
 * **The arrest chain behind a refusal is still Python.** A refused player is *told* they are

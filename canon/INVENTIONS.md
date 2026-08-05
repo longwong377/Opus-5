@@ -8303,3 +8303,92 @@ to `budget.DRUM`.
 **The three non-plant desks take the same shape from their own modules' boundaries.** Traffic is ALARM when `traffic.berths_in_use` leaves no free bay, because a ship with nowhere to go is `INC-HOLD`; defence is ALARM when `security.roving_pairs` reaches zero; ops is ALARM when `plant_systems.fault_arrivals_per_hour` exceeds `corrective_capacity_per_hour`, which is INV-350's own bound.
 **Checkable.** `cnc_ops --gate` asserts all six plant desks NORMAL at 13:00 with nothing isolated, then isolates `fusion_core` and `reactor_hall` and measures the effect: INC-BROWNOUT ×2,190 at every power place, INC-FAULT ×16.9 at the plant, station fault arrivals 20.9/h → 113.7/h, and a shed plan naming **61 places with 78,271 people standing in them**.
 **Overturned by.** an on-screen brownout showing which lights step down first — S1 "Survivors" and S2's power-loss scenes are the frames to check, and they would test INV-424's ladder at the same time.
+
+## INV-470 — The customs gate line is an arched portal one corridor width inside the mouth
+
+**What.** `customs.gate_wall` builds a transverse wall at z = 2.60 m, 0.90 m deep, 3.90 m tall, pierced by a segmental arch 4.00 m wide springing at 2.20 m and crowning at 3.10 m. Pale piers 0.90 × 0.17 × 2.20 m flank the passage on both faces, each carrying two dark recessed 0.47 m squares; a four-bar red-orange notice panel stands outboard of them; the light course runs through the reveal.
+
+**Why the wall exists at all.** It is authority 1 and the module has recorded it since session 3c without building it: `reference/11-props-and-technology/babylon 5 welcome sign, instructions, and hub.jpg` shows "a gated passage beyond, with vertical white light strips ranked along the left-hand wall, a red-orange sign panel, and a second WELCOME legend on the right-hand wall". Re-read at full size, that passage is an **arch** in a wall, with pale piers carrying dark square insets either side of it and a white legend on the maroon fascia over it.
+
+**Why 2.60 m and not 0.** `bespoke.NEAR_END["customs"]` makes z = 0 the way in from the corridor, and both `bespoke.near_face_opening` and `deck._mouth_clear` measure the near 1.2 m band. A wall on the near face is a wall those two functions have to be argued with; at one corridor width in (`interior_kit.PROVISIONAL["corridor_width_m"]` = 2.60) the band they probe is exactly as open as it was before the wall existed.
+
+**Why 3.90 m tall and not 7.2.** In the reference the suspended screens hang NEARER the camera than the arch; here they are at the far end of the hall, so a full-height wall 2.6 m inside the door would hide the three boards the room exists for from the one place a player is guaranteed to stand. 3.90 m sits under the screens' 4.30 m underside, so the fascia and the boards both read from the doorway.
+
+**Why the arch is one radius.** `R = (rise² + halfspan²) / 2·rise` = 2.672 m from the springing and crown above, so the curve is a circular segment and not a spline anybody chose.
+
+**Checkable.** `python3 station/customs.py` — "no two of this hall's solids stand in the same place" (the arch ring stands 60 mm proud of the fascia so no two faces are coplanar with matching ends), plus the closure and non-manifold gates over the whole mesh.
+
+**Overturned by.** Any frame of this passage that resolves its width against a person, or that shows the wall to be full height.
+
+## INV-471 — The legend over the arch is GENERATED from the register, not transcribed
+
+**What.** `customs._gate_legend(place)` returns two lines built from `directory.py`'s own row — the place's name and the first two functions it declares. `customs_north` reads `CUSTOMS HALL NORTH / IMMIGRATION   IDENTICARD CHECK`; `arrival_concourse` reads `ARRIVAL CONCOURSE / ARRIVAL   WAYFINDING`.
+
+**Why not a transcription.** The authority-1 frame plainly carries a white legend on the fascia over the arch. **Its wording is not recoverable.** At the source's 1262 × 634 it is four unresolved blocks; magnified nine times with `tools/refzoom.py --box 0.40 0.605 0.53 0.65 --scale 9` it is a violet smear with no letterform in it. Transcribing a guess would put invented words on a surface where every other word in this room is authority-1 verbatim — a number that looks sourced and is not, which hard rule 1 forbids by name. Leaving the fascia blank would delete a thing the frame plainly shows.
+
+**What it buys besides honesty.** The three places say three different things, which is `deck.py --degeneracy`'s question answered in the signage as well as in the geometry.
+
+**Authority 5.** **Overturned by** any frame of this fascia at a resolution that resolves a capital.
+
+**Not extrapolated:** the second legend, `WELCOME TO BABYLON 5` on the flank. That one is legible in the wider crop as `WELCOME TO BAB…` before the frame edge, and `WELCOME_BOARD` already carries the wording at authority 1.
+
+## INV-472 — The queue is sized by the station's own arrival wave, not by taste
+
+**What.** `customs.queue_plan` returns 8 switchback legs of 7.20 m at 1.20 m lane pitch on the −X half of the hall, holding 64 people over 57.6 m of lane.
+
+**Derived from.** `docs/gazetteer/FACTIONS.md` §2.3, the traffic model:
+
+    6,300 arrivals/day ÷ 52 movements/day = 121 souls off one movement
+    121 ÷ 2 halls (Security Manual, authority 3) = 61 into one hall as a wave
+    61 × 0.90 m standing queue pitch = 55 m of lane the hall must hold
+    ⌈55 / 7.20 m of clear width⌉ = 8 legs
+
+**Why the wave and not the mean.** The same section gives 4.4 people/minute/hall averaged and then says in as many words that "arrivals come in *waves*, so design the hall for a peak of 20–40/minute and long dead periods". Four desks cannot clear 61 people quickly; the hall's job is to hold them in order while they wait.
+
+**Why the −X half and not the centre.** `deck._place_local` maps this room's local x = 0 onto the corridor's door, and `roomnav` has to walk a body from that door to the register's centre. Barriers are solid (`rooms.is_solid`, `collision.prop_boxes`), so a serpentine across the full width would be a maze the room-reach gate has to solve. Arrivals queue on one side and cleared passengers walk out on the other, which is what a real hall does.
+
+**Extrapolated:** the 0.90 m standing queue pitch and the 1.20 m lane width (a person with a bag between two barriers), authority 5. **Overturned by** any frame that shows queue management in a B5 customs hall, or a correction to FACTIONS.md §2.3's souls-per-arrival.
+
+## INV-473 — The processing booth: what a counter needs to be a place a person is processed AT
+
+**What.** `customs.desk_booth` adds, per desk: two 2.30 m return screens 0.09 m thick running 1.90 m back toward the end wall; a 0.92 × 0.30 m lane plate at 2.62 m facing the queue, lettered `LANE 01`…`LANE 04`; a lamp above it; a 0.19 × 0.13 × 0.16 m identicard reader on the counter's public edge with its own lit register; the officer's 0.42 × 0.30 m monitor on the far edge, turned away from the queue; and a 0.98 m wicket in the gap between two booths.
+
+**Why.** `directory.py` declares `identicard_reader` for both halls and `interact.py --audit` has been resolving it off a mesh-derived alias since session 4d — the reader existed as a NAME and not as an object. Judge-4e's C1 finding on this room is about the boards; the desks were four 48-triangle slabs and are now four `dressing.machine("counter", …)` carcasses with nothing on them.
+
+**Proportions extrapolated** against `DESK_W_M` 2.40 / `DESK_H_M` 1.05, themselves INV-029. Authority 5. **Overturned by** any frame of a B5 customs desk.
+
+**A clamp that is not cosmetic.** `fx` is clamped to ±(hw − 0.10). Unclamped, the outermost desk's outer fin lands 5 mm inside the wall plate — two closed solids in one place, which every closure, winding and manifold test in the module passes. It is the negative control for the clearance gate.
+
+## INV-474 — The search line and the seizure store — gazetteer gap D-12, filled
+
+**What.** On `contraband_search` only: an in-feed and out-feed roller table (1.30 × 0.62 × 0.74 m, seven rollers each) either side of each baggage arch; two 2.30 × 0.80 × 0.88 m inspection benches with a tray rail under them; and a 3.60 × 1.45 × 2.55 m steel cage against the +X wall — thirteen bars, a head and foot rail, and 20 seized-goods lockers in a 5 × 4 rack behind them.
+
+**Declared as a hole in advance.** `docs/gazetteer/LAW-CRIME-DOWNBELOW.md` lists "the customs contraband inspection area" as gap **D-12** — "the customs *halls* are placed at authority 3; the search room is not". So this is hard rule 1's own instruction being followed rather than a silent invention.
+
+**Why a cage and not a room.** Cutting a room into the wall would put a hole in a shell whose `bespoke.SHELL_OPEN_EDGES["customs"]` entry is **0**. A locked steel cage in a public hall is also the more legible object: a player can SEE what has been taken.
+
+**Why its outer face is at hw − 0.14 and not hw − 0.06.** The light course occupies the outer 0.10 m of that wall; at hw − 0.06 the third locker row stands inside a lit cell. Found by the module's own clearance gate.
+
+Authority 5 throughout. **Overturned by** any frame of a B5 customs search area.
+
+## INV-475 — Six atmosphere stations, and the count is read from the board in the same room
+
+**What.** On `atmosphere_assignment` only (declared by `customs_north` alone): a rank of N lamps on the −X wall at 2.05 m, each over a 0.34 m numbered plate at 0.62 m pitch, with a 0.66 × 1.35 × 0.30 m breather dispenser under them. The second station carries a marker bar.
+
+**N is not written down.** `customs.atmosphere_count()` parses it out of `signage.BOARDS["customs_atmosphere"]`, whose authority-1 transcription reads "SIX DIFFERENT ATMOSPHERES ARE CURRENTLY AVAILABLE ON B-5". Two copies of a fact drift; a correction to the board corrects the rank, and the function raises rather than defaulting if the sentence ever stops stating a count.
+
+**Why the second station is marked.** Humans are atmosphere **02** — authority 1, the on-screen identicard schema quoted in `docs/AAA-STANDARD.md`'s NPC checklist ("with humans as atmosphere 02"). So the rank's second station is the one a human arrival is sent to.
+
+**Extrapolated:** that the assignment is done at a marked rank at all, and every dimension. Authority 5. **Overturned by** any frame showing how atmosphere assignment is physically done.
+
+## INV-476 — The backlit ceiling is a circuit pattern, not a lit sheet
+
+**What.** `customs.hall` lights a cell of the 1.6 m coffered lattice when a `blake2b`-keyed test says so, seeded at `CEIL_LIT_FRAC` = 0.34 and grown by a trace rule (a cell is also lit if both its axial neighbours are), so lit cells form runs and corners. Unlit cells are built as a shallower recess in the same plate, so the lattice keeps its depth where it is dark.
+
+**Why.** The module docstring has always said the grid reads "as circuitry at distance", and re-read at full size the reference's ceiling is discrete clusters of yellow-green cells on a dark ground. This module lit **every** cell of a 64%-solid grid, so `docs/engine-4f-customs-normal.png` shows one flat pale slab ~370 m² across.
+
+**The fraction is measured, not chosen.** `materials.light_ceiling_grid`'s own source note counts, on the same authority-1 frame, "7,013 px of dark lattice at V 0.06–0.10, and only 212 px of 14,983 — 1.4% — above V 0.50, with 78% of the lit cells below V 0.34". That is a mostly-dark ceiling with a minority of bright cells. It is also why that material had to be pulled from emission 2.6 to 0.8: 370 m² of it is the largest emissive surface in the room.
+
+**Determinism.** `blake2b`, not `str.__hash__`, which is salted per process — AAA-STANDARD R0 names that failure by name.
+
+**Overturned by** a frame of this ceiling at a resolution that lets the lit fraction be counted directly.

@@ -27,7 +27,15 @@ quietly becomes an instruction not to look.* The rows below are re-checked as of
 | **buying something** | the economy is a working simulation and the bar's till debits, but **most counters are still read-only** — the HUD draws a number Python wrote. A4b-3. |
 | **being arrested** | **a checkpoint will now refuse you** (see below) and nothing happens next. `consequence.arrest` → brig → fine → release is Python and stays there. You are TOLD, not detained. |
 | **the drum up close** | `--mode drum` walks it and the floor is **no longer empty** — 1,945 features in 12 kinds. But the scatter reads at 500 m and not at 20 m: **the near field is bare, the near tree is a lollipop, and the parcel boundary underfoot is a hard straight edge.** See `docs/engine-4q-drum-dressed.png` and STATE.md §24.4b. A4a-1 is HALF closed. |
-| **a craft-4 interior** | one thing on the station is craft 4 (the exterior approach), plus the core shuttle car. **Four subsystems remain at craft 1** — C&C, customs, the garden, exterior components. The council chamber and the docking bay came off it in 4p/4q. A4a-2. |
+| **a craft-4 interior** | one thing on the station is craft 4 (the exterior approach), plus the core shuttle car. **The "six subsystems at craft 1" line was itself stale** — see below. As of 4q the council chamber, docking bay, garden, C&C and customs have all been rebuilt and scored 3; **exterior components is the one nobody has re-scored.** A4a-2. |
+
+**AND THE CRAFT-1 LIST WAS STALE THE SAME WAY THIS TABLE GETS STALE.** `docs/aaa-scorecard.json`
+had **one round** for `customs_arrival`, scored craft 1 in session 4e — and session **4f** rebuilt
+that room's boards (7,296 → 22,988 tri) and its own author scored it **3** in `docs/craft-4f.md`
+line 193. Nobody entered that round. So "six subsystems are at craft 1" propagated from a number
+that had already moved, into this file and into MASTER-PLAN's A4a-2, and I repeated it here earlier
+today. ***A scorecard with one round in it reads as a current score.*** Check the rounds, not the
+headline, and if the latest round predates the last rebuild, the score is unmeasured rather than low.
 
 ### Corrected in session 4q — these were listed as absent and are IN
 

@@ -1407,6 +1407,52 @@
      "reviewer": "judging agent, session 4e -- LAYER 8 ROUND 1. The first frames of this station scored against docs/AAA-STANDARD.md. 21 engine frames, every one confirmed 'Vulkan 1.4.318 - Forward+' in its own log and recorded with its command in docs/judge-4e-frames.json. Builder of none of it. Full report: docs/judge-4e.md",
      "date": "2026-08-01",
      "broke_assertions": false
+    },
+    {
+     "round": 2,
+     "reviewer": "build agent, session 4q; verified and accepted by the main agent",
+     "date": "2026-08-05",
+     "scores": {
+      "craft": 3,
+      "fidelity": 3,
+      "performance": 2,
+      "robustness": 3
+     },
+     "evidence": {
+      "craft": "docs/craft-4q-customs-half.png (judge-4e/4f's own eye at --fov 24.0) against docs/craft-4q-customs-normal.png at the same eye, both Forward+ Vulkan 1.4.318. 26 m of empty deck between the eye and the nearest object is closed: gate line, 57.6 m of switchback queue holding 64, four booths with the identicard_reader as a real object, search line, the D-12 seizure store, six atmosphere stations. customs_north 23,188 -> 41,706 tri; the three places were within 400 triangles of each other and are now 8,000 apart.",
+      "robustness": "customs.py 51/51 -> 55/55, and the NEW gate is the interesting one: clearance, two solids in one place. Every other assertion in the file measures one solid against itself, and two perfectly closed perfectly wound solids in the same cubic metre pass all of them. It found SEVEN interpenetrations, THREE of which shipped before this session: 6 X-brace end caps 0.13 m inside the ceiling coffer, 5 screen hangers through the coffer plane, 4 schematic end bars under their own bezel. Two controls fire."
+     },
+     "broke_assertions": false,
+     "findings": [
+      {
+       "severity": "major",
+       "dimension": "scorecard",
+       "descriptor": "-",
+       "where": "docs/aaa-scorecard.json, docs/PLAYTEST.md, docs/MASTER-PLAN.md",
+       "text": "ROUND 1'S CRAFT 1 WAS TWO SESSIONS STALE AND EVERYTHING DOWNSTREAM INHERITED IT. Session 4f rebuilt this room's boards (7,296 -> 22,988 tri) and its own author scored it 3 in docs/craft-4f.md line 193 -- and nobody entered that round here. So 'six subsystems are at craft 1' propagated into PLAYTEST.md and MASTER-PLAN's A4a-2 from a number that had already moved. A SCORECARD WITH ONE ROUND IN IT READS AS A CURRENT SCORE. The honest movement for 4q is '3, with the empty floor closed', not '1 -> 3'."
+      },
+      {
+       "severity": "major",
+       "dimension": "craft",
+       "descriptor": "C3",
+       "where": "station/customs.py",
+       "text": "The 32 barrier bays are the identical object and the eye indexes the period -- C3's tertiary-tier clause verbatim. The counters read as undifferentiated dark slabs because the dressing.machine carcass takes almost no light. No wear or grime anywhere. And a black band across the top third of the gate frame, 3.9 m to the coffer plane, with no light in it."
+      },
+      {
+       "severity": "major",
+       "dimension": "performance",
+       "descriptor": "-",
+       "where": "station/budget.py",
+       "text": "customs is instanced THREE TIMES on the z=7440 cluster, so +18,518 triangles is +55,554 on one cluster -- and craft-4f.md records that budget.py measures that cluster's total not at all. Same shape as the drum finding: a gate that does not measure the thing it names."
+      },
+      {
+       "severity": "minor",
+       "dimension": "fidelity",
+       "descriptor": "-",
+       "where": "tools/export_scene.py ROOM_EXPOSURE['customs']",
+       "text": "0.17 was solved against a frame that was 54% crushed. Measured now: crushed 54.09% -> 8.18%, measurable 45.9% -> 91.8%, median x3.88 -> x1.75 against a x1.05-1.75 window -- i.e. ON THE BOUNDARY. Needs re-solving; the builder deliberately proposed no number because that file records the mapping as non-invertible for this room."
+      }
+     ]
     }
    ]
   },
