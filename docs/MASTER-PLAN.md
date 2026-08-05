@@ -390,6 +390,50 @@ corridor at 03:00 has nobody lying down.
 data across 4 decks** against 250,001 modelled, so the named-resident layer and the visible-body
 layer meet only where a deck has been baked.
 
+### P4b — THE SECOND AUDIT, SESSION 4p — the owner asked "what ELSE am I missing"
+
+Asked after A4a-4, and the answer is three more of the same class. **They share one root cause
+and it is stated at the end; read that before the three.**
+
+**A4b-1 — THE INTERACTION LAYER IS A WIGGLE, NOT A VERB.** `interact.py` reports 357 of 357
+declared interactables built and `RESPONDS` covers 5 of the 8 verbs — and what "responds" means
+is the whole finding. `interact.gd::_press` increments a counter, sets `press_left` so the prop
+**visually depresses for a few frames**, resolves a push direction, and prints a log line.
+**There is no verb dispatch anywhere.** `open`, `operate`, `read`, `store` and `serve` all do the
+identical thing. **`read` displays no text. `store` has no inventory to move anything into.
+`serve` runs no transaction.** And `sit` and `rest` are in `PRESSABLE` but NOT in `RESPONDS` — so
+a player can press E on a chair and **not sit down**.
+The file's own header says it set out to end *"357 declarations, 0 verbs"*. It ended the
+*declaration* gap. **The verb gap is still open**, and the module's success statistic measures the
+half that was closed.
+
+**A4b-2 — THERE IS NO INVENTORY. ANYWHERE.** Zero references in all 16,865 lines of
+`godot/scripts/`. The identicard, the kit bag and credits exist in `player.py`; nothing carries
+anything.
+
+**A4b-3 — THE ECONOMY IS READ-ONLY IN THE GAME.** `economy.py` (25/25) and `dockwork.py` (23/23)
+are working simulations — stock, prices, tills, wages, rent tiers, a fourteen-day trace in which
+a lurker crosses the passage-home line on day 4 — and **the only runtime consumer of any of it
+is `hud.gd` drawing a NUMBER out of a JSON file Python wrote.** The player cannot buy anything.
+The bar, the market, the kiosks and the black market all exist as geometry and **not one of them
+will take your money.** P1-G1's gate is honest about what it proved — that the ledger persists
+and the engine can *read* it — and that is not the same as a shop.
+
+**THE ROOT CAUSE, AND IT IS ONE SENTENCE.** *The simulation is Python and the game is GDScript,
+and the bridge is one-way: Python bakes, the engine reads.* Everything that works in a `--gate`
+and not in the game is this. It is **the owner's own session-4d ruling, still true**: 85,940
+lines of Python against ~17,000 of GDScript, and the ruling then was *"the project has been
+optimising what can be counted, because counts go green and a game cannot be expressed as a
+count."* The counts are now much better and the ratio has barely moved.
+
+**So the fix for A4a-4, A4b-1, A4b-2 and A4b-3 is the same fix**, and they should be sequenced as
+one track rather than four: **the runtime needs to ACT on the simulation, not render a snapshot
+of it.** A person who can stand up, a chair you can sit in, a counter that takes credits and an
+inventory to put the thing in are four faces of one missing layer.
+
+**Sequencing note:** this outranks P4's variety and surface work. A craft-4 room full of dioramas
+you cannot interact with is worth less than a craft-3 room where people live and the shop works.
+
 ### P5 — SHIP
 Packaging, onboarding, controls, accessibility, credits, IP statement (fan work, non-
 commercial, stated once). **Gate: §T all green or signed OUT; every A2 clause cited to its gate.**
