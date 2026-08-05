@@ -7317,3 +7317,73 @@ call time.
 **Overturned by.** A definition of "district cell" in the spec that disagrees with the
 register's adjacency.
 **Authority 5.** `station/incident.py::Probe`.
+
+## INV-366 — The sealed Markab quarter: Green ring 0 deck 3, beside the Alien Sector
+
+**What.** `markab_quarter` is a register place at green/0/3, angle 279.0°, z 4400 m, footprint
+**(2.349°, 58.32 m)**, `functions=("residence", "sealed_volume")`, `interacts=("welded_door",
+"atmosphere_status_lamp", "level_plaque")`, adjacent to `alien_sector` in both directions.
+Nobody is in it at any hour.
+**Why.** The Markab die of the plague in "Confessions and Lamentations" (S2E18) — **authority 1,
+and squarely inside the S2–3 datum** — and no source we hold places their quarter. Three modules
+already modelled the room: `npc/schedule.py` carries it as a sealed `PlaceCrowd` at density 0.0,
+`npc/crowd.py::EXTENTS` gives it a floor and asserts it is **the one place on the station empty
+at every hour of the day**, and `npc/navigation.py::EXPECTED_ISLANDS` names it a deliberate
+island in the walk graph. The register did not, so there was nothing to stand in front of.
+**Constrained by.** THE SECTOR IS NOT A CHOICE — `schedule.PLACES` already puts it in Green's
+outer ring, and Green's outer ring is where the Alien Sector and the alien residential quarters
+are, so a non-human community's quarter belongs there and nowhere else. The DECK follows the
+Alien Sector's (3) for the same reason. The ANGLE is 284.0° because 300.0 and 316.0 are taken by
+`alien_sector` (which spans 282–318°) and `kosh_quarters`, and 279.0 clears 282.0 with the
+room's own 2.349° to spare. **THE SIZE IS NOT EXTRAPOLATED AT ALL**: 12.0 m of frontage ×
+58.32 m of z (699.84 m²) is `crowd.EXTENTS` verbatim, so the register and the crowd model agree
+by construction rather than by discipline — hard rule 4 applied to a fourth pair of
+descriptions.
+
+**AND THE UNIT CONVERSION IS THE PART WORTH KEEPING, because writing it wrong would have been
+invisible.** `footprint[0]` is **degrees of arc, not metres** — `rooms.py` reads it as
+`arc = 2πr · (footprint[0]/360)`. The first draft of this row wrote `12.0` straight from
+`crowd.EXTENTS`, which at this deck's **292.700 m** radius would have built a **61 m** frontage:
+five times the room the crowd model prices, while every document still said the two "agree".
+Nothing in `directory.py` can catch that — `collisions()` compares footprints against each other
+and never against the floor area another module derives. 12.0 m of arc at r = 292.700 is
+**2.3490°**, and that is what is written. *A number copied between two modules must be copied in
+the units the destination reads, and "they agree" is a claim about the value after conversion,
+not before.* The wrong angle would have been caught (284.0° sits inside `alien_sector`) but only
+by a fifteen-minute gate; the wrong unit would not have been caught at all.
+
+`sealed_volume` and `welded_door` are both borrowed from
+`welded_shut` in Grey rather than invented, and `welded_door` is an already-BUILT prop
+(`rooms.py`: 1.90 × 0.22 × 2.35 m, wall-mounted), so declaring it does not ask
+`interact.py --audit` for something nobody made.
+**The reason to build a room nobody can enter is that its emptiness IS the content** — a
+measured zero over a real floor rather than a missing entry, which is the distinction
+`crowd.py`'s own comment draws. It is the one place where the era lock pays for itself: a
+station set in S2–3 that does not show this has not noticed its own history.
+**Overturned by.** Any source placing the Markab elsewhere aboard, or showing their quarter
+reopened or repurposed within the era.
+**Authority 1** for the extinction, **5** for the placement. `station/directory.py`,
+`docs/gazetteer/LOCATIONS.md` P-14.
+
+## INV-367 — `refugee_reception` is a workplace alias and must NOT become a register place
+
+**What.** A NEGATIVE entry, recorded because the opposite is the obvious-looking move and was
+proposed once already. `refugee_reception` stays out of `directory.PLACES`.
+**Why.** It surfaces in `npc/schedule.py` as `Role("refugee", …, "refugee_reception", …)` and in
+`npc/resident.py`, and a search for it against the register comes back empty — which reads
+exactly like a missing row. It is not one.
+`npc/resident.py::WORKPLACE_FUNCTIONS` resolves a workplace to **every register place carrying a
+set of functions** — for refugees, `residence` + `short_stay` + `arrival` — and that table's
+header states the rule: *"the join is by function, not by a second list of keys, because a table
+of keys is a copy of a decision and every time this project has kept two copies of one decision
+they have drifted."*
+**Constrained by.** Measured rather than argued: **14 of the table's 19 keys are aliases rather
+than places** — `concourse`, `engineering`, `medlab`, `hospitality`, `sanctuary`,
+`customs_hall`, `docking_bay`, `patrol`, `traffic_control`, `business_district`, `green_sector`,
+`grey_industrial`, `waste_management`, `refugee_reception` — and only five (`cnc`,
+`council_chamber`, `downbelow`, `hydroponics`, `zocalo`) share a name with a register row.
+Promoting one alias of fourteen, on no evidence but that somebody grepped for it, would create
+the duplicate the table exists to prevent and would leave thirteen identical "gaps" behind it.
+**Overturned by.** A source establishing a single, physically distinct Narn reception hall — in
+which case it becomes a PLACE with its own key, and the alias stays as it is.
+**Authority 5.** `station/npc/resident.py::WORKPLACE_FUNCTIONS`.

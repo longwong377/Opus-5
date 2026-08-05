@@ -337,6 +337,7 @@ power live where they weigh the most.
 | **Mess hall** | Crew catering. | Blue | Named in the **Blue rosette** | STATED | 3 | `other map.png` Blue rosette | `no` |
 | **Ambassadorial / diplomatic quarters** | See §6. High security, wrapped around the Garden. | Green | fan sources: "Green 2" | STATED | 3, 4 | Security Manual; https://babylon5.fandom.com/wiki/Green_Sector | `no` |
 | **Alien residential quarters** | Homes for the **non-human population who are not ambassadors** — the majority of the station's aliens. Distinct from both the ambassadorial suites and the sealed Alien Sector. | Green | — | STATED | 4 | https://babylon5.fandom.com/wiki/Green_Sector | `no` |
+| **The sealed Markab quarter** | The Markab community's quarter, **sealed after the plague of "Confessions and Lamentations" (S2E18) killed the entire species**. Powered, unlit, still furnished; nobody at any hour. The station's only monument to an extinction, and the reason the S2–3 datum is worth its two costs. **The extinction is authority 1; the room's placement is authority 5** — no source places it, and it sits beside the Alien Sector because that is where a non-human community's quarter is. It is not enterable: a welded door, an atmosphere lamp reading nothing, and a level plaque. `npc/schedule.py` has carried it as a sealed `PlaceCrowd` at density 0.0 since it was written, `npc/crowd.py` asserts it is **the one place empty at every hour**, and `npc/navigation.py` names it a deliberate island in the walk graph — three modules modelled it and the register did not, so until now there was nothing to stand in front of. | Green | ring 0, deck 3, beside the Alien Sector | **PROPOSED — P-14** | 1 (the extinction), 5 (the placement) | S2E18; `station/npc/schedule.py::PLACES`; `station/npc/crowd.py::EXTENTS` (12.0 × 58.32 m, 699.84 m²) | `rooms` |
 | **Civilian residential (commercial)** | Paid residential for people who live and work aboard. | Red | — | STATED | 4 | https://babylon5.fandom.com/wiki/Red_Sector | `no` |
 | **Transient habitation** | Short-stay rooms for the constant flow of arrivals — the layer between a hotel and Downbelow. | Brown (and Red) | — | STATED | 4 | https://babylon5.fandom.com/wiki/Babylon_5 | `no` |
 | **Downbelow** | The slums. **"Various undeveloped areas, mostly in the lower levels, near the outer hull, around the waste recycling system, the air compressors and the water reclamation facility"** — corridors and chambers, not rooms. **The Brown rosette marks "DOWNBELOW" with a double-headed arrow spanning an OUTER annular band**, which is the source answering C-004's own standing objection. Home to the **Lurkers**, the station's homeless underclass — people who came for a new life, ran out of money and cannot buy passage home. **Accounts for as much as 90% of the station's crime.** | Brown (a **radial** designation in our schema — INV-009) | **outermost ring**, against the hull, at the **highest gravity in the sector** | STATED | 3 (the rosette band), 4 (the description) | `other map.png` Brown rosette; https://babylon5.fandom.com/wiki/Downbelow | `no` |
@@ -512,6 +513,36 @@ This is the most speculative proposal in the document and it is flagged as such.
 "Maintenance and repair facilities" and "fabrication furnaces" are both placed in Grey by the
 rosette. A player-scale workshop is the human-sized end of the same function and belongs at the
 same address. *Overturned by:* nothing likely; this is low-risk.
+
+**P-14 — The sealed Markab quarter: Green, ring 0, deck 3, immediately beside the Alien
+Sector.** The extinction is authority 1 — the Markab die of the plague in "Confessions and
+Lamentations", S2E18, squarely inside the S2–3 datum — and nothing places their quarter. Green's
+outer ring already holds the Alien Sector and the alien residential quarters, so a non-human
+community's quarter belongs there and nowhere else; putting it next door to the airlocked
+multi-environ sector also means a player who walks the alien quarter meets it without going
+looking. **Its footprint is not proposed at all: 12.0 × 58.32 m is `npc/crowd.py::EXTENTS`
+verbatim**, so the register and the crowd model agree by construction rather than by discipline.
+
+The reason to build a room nobody can enter is that **its emptiness is the content**. It is a
+measured zero over a real floor rather than a missing entry, which is the distinction
+`npc/crowd.py`'s own comment draws, and it is the one place on the station where the era lock
+pays for itself: a station set in S2–3 and not showing this is a station that has not noticed
+its own history. *Overturned by:* any source placing the Markab elsewhere aboard, or showing
+their quarter reopened or repurposed within the era.
+
+*Not proposed, and deliberately: `refugee_reception`.* It appears in `npc/schedule.py`'s
+`Role("refugee", …)` as a workplace and reads like a missing register row. It is not one.
+`npc/resident.py::WORKPLACE_FUNCTIONS` resolves a workplace to **every place carrying a set of
+functions** — for refugees, `residence` + `short_stay` + `arrival` — and that table's own header
+says why: *"the join is by function, not by a second list of keys, because a table of keys is a
+copy of a decision and every time this project has kept two copies of one decision they have
+drifted."* **Fourteen of its nineteen keys are aliases rather than places** — `concourse`,
+`engineering`, `medlab`, `hospitality`, `sanctuary`, `customs_hall`, `docking_bay`, `patrol`,
+`traffic_control`, `business_district`, `green_sector`, `grey_industrial`, `waste_management`
+and `refugee_reception`; only five (`cnc`, `council_chamber`, `downbelow`, `hydroponics`,
+`zocalo`) happen to share a name with a register row. Adding `refugee_reception` to the register
+would create exactly the duplicate the table exists to prevent, and would single out one alias
+of fourteen for no reason but that somebody grepped for it.
 
 ---
 

@@ -221,8 +221,51 @@ PLACES = (
        functions=("residence", "multi_environ", "atmosphere_containment"),
        interacts=("airlock_door", "breather_dispenser", "barred_screen",
                   "atmosphere_status_lamp"),
-       adjacent=("kosh_quarters",),
+       adjacent=("kosh_quarters", "markab_quarter"),
        note="Where the six-atmosphere board becomes a traversal mechanic."),
+    # THE ONLY MONUMENT ON THE STATION TO AN ENTIRE SPECIES, and until now it
+    # was a room the simulation modelled and a player could not walk to.
+    # `npc/schedule.py` has carried it as a `PlaceCrowd` since it was written
+    # -- sealed, density 0.0, the ONE place `npc/crowd.py` asserts is empty at
+    # every hour of the day -- `npc/crowd.py::EXTENTS` gives it a real floor,
+    # and `npc/navigation.py::EXPECTED_ISLANDS` names it as a deliberate island
+    # in the walk graph. Three modules knew about it and the register did not,
+    # so there was nothing to stand in front of.
+    #
+    # THE FOOTPRINT IS NOT MINE: `crowd.EXTENTS` gives 12.0 x 58.32 m
+    # (699.84 m2), so the register and the crowd model agree by construction
+    # rather than by discipline -- hard rule 4 applied to a fourth pair of
+    # descriptions.
+    #
+    # BUT `footprint[0]` IS DEGREES OF ARC, NOT METRES, and writing 12.0 here
+    # would have been a unit error that no assertion in this file could catch:
+    # `rooms.py` reads it as `arc = 2*pi*r * (footprint[0]/360)`, so a 12.0
+    # would have built a 61 m frontage at this deck's 292.700 m radius -- five
+    # times the room the crowd model prices, and still "agreeing" on paper.
+    # 12.0 m of arc at r=292.700 is 2.3490 deg, and that is what is written.
+    #
+    # THE ANGLE MOVED FOR THE SAME REASON. 284.0 deg was the first choice and it
+    # sits INSIDE `alien_sector`, which spans 36 deg about 300.0, i.e. 282..318
+    # -- `overlaps()` would have caught it, but only after a 15-minute gate.
+    # 279.0 clears 282.0 with the room's own 2.349 deg to spare, and it is
+    # still the next door along.
+    #
+    # `sealed_volume` is the existing function for exactly this and is borrowed
+    # from `welded_shut` in Grey; `welded_door` is an existing BUILT prop
+    # (rooms.py: 1.90 x 0.22 x 2.35 m, wall-mounted), so declaring it does not
+    # ask `interact.py --audit` for something nobody made.
+    _P("markab_quarter", "The sealed Markab quarter", "green", 0, 3, 279.0,
+       4400.0, (2.349, 58.32), auth=5,
+       functions=("residence", "sealed_volume"),
+       interacts=("welded_door", "atmosphere_status_lamp", "level_plaque"),
+       adjacent=("alien_sector",),
+       note="Sealed, powered, unlit, still furnished. Nobody at any hour. "
+            "AUTHORITY SPLITS: the extinction is authority 1 (S2E18, "
+            "Confessions and Lamentations); the room's PLACEMENT is 5 -- no "
+            "source places it, and it sits beside the Alien Sector because "
+            "that is where a non-human community's quarter is. Its emptiness "
+            "is a measured zero over a real floor rather than a missing "
+            "entry, which is the whole point of building it."),
     _P("kosh_quarters", "Kosh's quarters", "green", 0, 3, 316.0, 4400.0,
        (4.0, 12.0), module="alien_sector", auth=1,
        functions=("residence", "sealed_environment"),
