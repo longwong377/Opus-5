@@ -7896,3 +7896,111 @@ holding a copy of the table.
 **Overturned by.** `boot.py` writing `populace.crowd_ladder()` into the manifest, which replaces
 this conservative default with the derived ladder and is the better fix.
 **Authority 5.** `godot/scripts/walk.gd`.
+
+## INV-413 — Carry capacity is eight slots
+
+**What.** `station/player.py::CARRY_CAPACITY = 8`.
+**Why.** An inventory with no ceiling has no `store` verb, only a `take` one.
+**Bounded below by 3.** The player lands holding two — `IDENTICARD` and `KIT_BAG` — and
+`dockwork.py`'s fourteen-day loop has them buy a drink on each of those days, so a capacity of 2
+makes the shipped loop impossible.
+**Bounded above by 14**, which is `economy.MAX_LINES`: a bag that holds more than the widest
+counter's entire range is a hold, not a bag. **8** is the middle of that bracket rounded to a
+power of two, so the carried list draws as one HUD row at any frame height.
+**Overturned by.** Any depiction of a character carrying a countable number of things, or a
+per-item mass landing in `economy.GOODS` — the 40 kg/passenger baggage figure already in
+`canon/CONFLICTS.md` would then settle it arithmetically and retire this entry.
+**Authority 5.** `station/player.py::CARRY_CAPACITY`.
+
+## INV-414 — A container holds the lines its own place trades
+
+**What.** `interact.container_holds(place)` is `economy.stock_list(place)`.
+**Why.** A `store` prop needs contents and nothing in canon lists a locker's inventory.
+**Constrained by.** The register already says what each place trades through its `functions`, and
+`economy.Good.sold_by` names the functions carrying each line — so a crate in the black market
+holds contraband and a tray dispenser in `mess_hall` (`catering`, `crew_social`) holds nothing,
+without either being written down. It can only ever produce goods `economy.py` already prices
+and stocks, so it cannot invent an object.
+**Overturned by.** Any depicted contents of a specific container, or a per-place inventory in the
+spec.
+**Authority 5.** `station/interact.py::container_holds`.
+
+## INV-415 — A seated eye is the standing eye less (hip − seat)
+
+**What.** `player.posture()` and `player.gd::seated_eye`. Lying down puts the eye
+`FIGURE["chest_d"] × stature` above the surface.
+**Why.** A first-person camera needs a seated height and the skeleton is not available at
+runtime.
+**Constrained by.** This is `npc/animation.py::sit_clip`'s OWN translation — `dy = seat_h −
+hip_rest` moves the whole torso — restated for a camera rather than a rig. Hip and knee come
+from `body.FIGURE × sp.leg_k × stature`, the same expression `body._hip_ring` uses, so there is
+no second description of a body's proportions. `seat` and `bed` kinds measure the prop's own
+measured top; everything else uses the fitted knee height, per `animation.seat_height`'s "a
+chair at the sitter's knee" rule.
+**AND IT IS GATED AGAINST THE THING IT APPROXIMATES:** `player.py --selftest` fails if the cheap
+path drifts more than 20 mm from `animation.rig`'s skeleton. **It fired at 36 mm on the first
+run** — `posture()` off `body.FIGURE` alone is wrong for every non-human species, because
+`body._hip_ring` applies `sp.leg_k` and a Narn's legs are not a human's.
+**Overturned by.** A frame establishing seated eye height against a known-height fixture.
+**Authority 5**, derived from an authority-5 module.
+
+## INV-420 — Plant capacity is N+1 against the system's own design peak
+
+**What.** Every system's plant is sized so that it meets its own design peak demand with one producing unit out of service. Per-unit nameplate is peak/(N-1) where N is the count of `directory.PLACES` rows carrying that system's production functions; total capacity is peak*N/(N-1); the margin at design peak is therefore 1/(N-1) and is a fact about the register rather than a number chosen here.
+**Why.** Nothing in canon or the gazetteer states any plant capacity, and a system without one is a roster, not a system. L-01 1.1's equipment list is itself an explicitly redundant architecture at authority 3 -- a *primary* fusion core, *auxiliary* fusion cores, and *four* auxiliary power units -- so redundancy is sourced even though its size is not.
+**Bounded Above.** N+2 (peak*N/(N-2)): a third of the station's plant permanently idle, refuted by L-05's yield argument, which sizes the drum's growing area to *just* feed the station -- nothing here is built with a third of it spare.
+**Bounded Below.** N+0 (capacity = peak): every single outage becomes a deficit, refuted by SYS-14's own INC-BROWNOUT escalation column, which contains the beat "APU pickup (PLC-122)" -- the station is written as having a standby that picks up.
+**Overturned by.** any figure for any plant unit's output, or any on-screen statement of how many reactors the station runs. N=1 SYSTEMS have no N+1 available: `water_reclamation` and `rotation_drivers` are single register rows, are sized to their own peak exactly, and carry zero margin at peak. That is reported as a finding, not smoothed.
+
+## INV-421 — The share of interior services that follows occupancy -- 0.5
+
+**What.** Half of L-01's "interior lighting and services" row (250 MW) varies with the awake population; half is corridor lighting that never turns off.
+**Why.** The row's own basis is "251 decks, corridor and room lighting, displays, doors, comms", which is two kinds of load in one line.
+**Bounded Above.** 1.0: every watt following occupancy means the corridors go dark at 03:00, refuted by the corridor rig that defines this project's exposure anchor, which is lit at a fixed level.
+**Bounded Below.** 0.0: no watt following occupancy means 251 decks of displays and doors draw the same at 03:00 as at 13:00, refuted by `schedule.population_activity` -- 160,342 of 250,001 are asleep.
+**Overturned by.** any statement of the station's lighting control regime. SENSITIVITY: `--gate` prints the power margin at both bounds. It moves the 13:00 margin by under two points and changes no conclusion.
+
+## INV-422 — THE SLEEPING METABOLIC RATIO -- 0.85 of the 24-hour mean
+
+**What.** A sleeping resident's O2 draw as a fraction of the station's mean per-head draw. The awake rate is then solved so that the day integrates to L-02's sourced 0.84 kg/head/day.
+**Why.** Air demand cannot follow the awake fraction -- a sleeping body still breathes -- but it is not flat either.
+**Bounded Above.** 1.0 (no diurnal variation), refuted by L-04's own split of 3 L/day of drinking from 50 L/day of hygiene: hygiene does not happen while asleep, so the station's metabolic day is demonstrably not flat.
+**Bounded Below.** 0.6: a 40% metabolic drop in sleep is far outside anything a mammal does.
+**Overturned by.** any figure for the station's own O2 draw curve.
+
+## INV-423 — THE AIR BUFFER'S LIMITS -- CO2 1% by volume, O2 16%, 100 W per head
+
+**What.** The thresholds the air system's survival clocks are measured against.
+**Why.** "How long does the station survive with its air plant off" has no answer without a limit, and the answer is the most useful number in this module: under six hours.
+**Bounded.** CO2 0.5% (a conservative habitat set point) to 3% (frank impairment); O2 19.5% (the usual oxygen-deficient trigger) to 16%; metabolic heat 80 W (sleeping) to 120 W (light activity). THE BOX REFUTED THE FIRST CLAIM MADE FROM IT, and the corrected one is narrower. "CO2 binds before O2 at every corner" is FALSE: at CO2 3% with O2 19.5% -- the most permissive CO2 limit against the most conservative O2 limit, taken together -- O2 binds at 7.89 h against CO2's 17.80 h. CO2 binds at the other three corners and at the declared values, by 4.6x. WHAT IS ROBUST is that the air buffer is 3-18 hours over the whole box, two orders under water's 720, so "air is the fastest system on the station" does not depend on the numbers chosen and "it is a scrubber rather than an oxygen supply" does, mildly. Both are printed by `--gate` section G, corner by corner. THE THERMAL CLOCK IS DECLARED AND THEN NOT USED, deliberately. At 0.23 h it is the smallest number in the module and it counts the heat capacity of the air alone; the structure of a habitat outweighs its air by orders of magnitude and is what actually absorbs 25 MW. No mass for that structure exists in this project, so the clock is a lower bound known to be far too short, and letting an unbounded quantity set a bound would be worse than reporting it beside the others with the caveat attached.
+**Overturned by.** any statement of the station's atmospheric set points -- the customs board's "SIX DIFFERENT ATMOSPHERES" (authority 1) numbers none of them, which is why these are declared rather than sourced.
+
+## INV-424 — THE SHED LADDER -- life safety, habitation, work, leisure
+
+**What.** The order in which electrical load is shed, expressed over `directory.PLACES`' own function vocabulary rather than as a place list, so a new place joins the ladder by its function.
+**Why.** "The lights go out" has to say whose.
+**Bounded.** No ordering can put medical below leisure and remain a station; no ordering can shed nothing, or a deficit has no consequence.
+**Overturned by.** any on-screen brownout showing which lights went first.
+
+## INV-425 — THE FOOD RESERVE -- 30 days
+
+**What.** The station's larder, as hours of store behind the food system.
+**Why.** It is the SAME STANDARD as the water reserve rather than a second guess: L-04 sizes a strategic reserve at 30 days against resupply failure, and L-05's diet is three-sourced with imports as one source.
+**Bounded Below.** the resupply interval -- `traffic` lands 55 hulls a day, so a reserve shorter than a few days would be no reserve at all.
+**Bounded Above.** the drum's own crop cycle: a reserve longer than the time to grow a replacement is dead mass nobody would carry.
+**Overturned by.** any statement of the station's larder or rationing.
+
+## INV-426 — THE WASTE BALANCE TANK -- one day
+
+**What.** How long the waste stream can be held with the plant stopped.
+**Why.** It is a different KIND of store from food's, and that is the point: a strategic reserve protects against resupply failing, a balance tank protects against the plant stopping, and a balance tank is sized to one cycle of the stream it balances. The cycle here is the station-day -- L-06's organic stream is what L-05's food becomes, and food is eaten in `schedule`'s three diurnal meal windows.
+**Bounded Below.** `incident.JOB_HOURS` = 4 h: a plant that cannot be taken down for one corrective job cannot be maintained.
+**Bounded Above.** the 30-day strategic standard, which would be absurd for a stream nobody wants to hold.
+**Overturned by.** any figure for the station's waste tankage.
+
+## INV-427 — Rotation's store is not derivable, and that is recorded as a hole
+
+**What.** The rotation system reports an infinite store and a stated reason.
+**Why.** L-01 files rotation as "effectively zero in steady state -- a flywheel in vacuum", so the store is the drum's angular momentum and the clock is I*omega/torque. The period (33.4716 s) and the radius are both held; the drum's MASS is not held anywhere in this project, and an inertia invented to fill that hole would be exactly the "number that looks sourced and is not" hard rule 1 forbids.
+**What IS derivable instead**, and is reported: the consequence of a rotation outage is not gravity but the loss of docking torque correction, which is `traffic`'s problem and lands in INC-HOLD.
+**Overturned by.** any figure for the drum's mass, or any on-screen statement of spin-down time.
