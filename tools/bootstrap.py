@@ -1,0 +1,199 @@
+#!/usr/bin/env python3
+"""Rebuild every generated artefact the gates read, in one command.
+
+WHY THIS EXISTS. `station/generated/` is gitignored -- correctly, it is 4.5 GB
+of derived geometry -- and this project runs in a container that is reclaimed
+after a period of inactivity. Session 4q was recycled THREE TIMES. Each time the
+repository came back at an older commit (recoverable: everything was pushed) and
+`station/generated/` came back partly empty (not recoverable: it is derived).
+
+Each time, the same five commands were re-derived by hand from five different
+places, because nothing named them together:
+
+    python3 station/generate_hull.py
+    python3 station/lod.py --build
+    python3 station/dockwork.py --loop --days 14 --role lurker --seed downbelow \
+        --save station/generated/economy.json
+    python3 station/npc/ragdoll.py --emit station/generated/scene/npc
+    python3 station/boot.py
+
+AND THE GATES THAT NEED THEM ALREADY SAY SO, ONE AT A TIME. `coldstart.py`'s
+`built_deck`, `purse_ledger` and `ragdoll_bodies` each print the exact command
+that rebuilds their own input -- that work is what made this file obvious. A
+precondition that names its fix is right; five preconditions naming five fixes
+that nobody can run as a set is a checklist, and a checklist is a thing people
+half-do.
+
+WHAT IT DELIBERATELY DOES NOT DO. It does not build the deck geometry
+(`station/rooms.py --footprint` is 23 minutes) or bake the streaming cells
+(`stream.gd::bake`, and it needs Godot). Those survive a recycle here because
+they are large files the snapshot keeps, and rebuilding them unasked would turn
+a 4-minute recovery into a 40-minute one. `--check` says whether they are
+present; if they are not, it says which command builds them and stops rather
+than guessing that you wanted to wait.
+
+IDEMPOTENT BY DESIGN. Every step tests for its own output first, so running this
+on a warm container costs one `os.path.exists` per step. `--force` rebuilds
+anyway. That matters because the most likely caller is a session that does not
+yet know what is missing.
+
+Run:
+    python3 tools/bootstrap.py            # rebuild whatever is missing
+    python3 tools/bootstrap.py --check    # report only, build nothing
+    python3 tools/bootstrap.py --force    # rebuild everything
+"""
+import argparse
+import glob
+import json
+import os
+import subprocess
+import sys
+import time
+
+HERE = os.path.dirname(os.path.abspath(__file__))
+ROOT = os.path.dirname(HERE)
+GEN = os.path.join(ROOT, "station", "generated")
+
+
+def _n_glob(pat):
+    return len(glob.glob(os.path.join(GEN, pat)))
+
+
+def _boot_has(key):
+    """Is `boot.json` present AND current enough to carry `key`?
+
+    PRESENT IS NOT CURRENT, and that distinction cost a debugging pass in 4q:
+    the restored `boot.json` predated `_checks`/`_collapses`, so it parsed, held
+    a spawn, and was missing exactly the two keys the new gates read. G4 would
+    have run, found `table=0`, and reported a CONTENT failure on a stale file.
+    """
+    p = os.path.join(GEN, "scene", "boot.json")
+    if not os.path.exists(p):
+        return False
+    try:
+        with open(p) as f:
+            return bool(json.load(f).get(key))
+    except Exception:                                            # noqa: BLE001
+        return False
+
+
+# name, "is it there" predicate, the command, why anything cares.
+#
+# ORDER IS DEPENDENCY ORDER, not importance: `lod.py --build` decimates the hull
+# `generate_hull.py` writes, and `boot.py` reads the ragdoll directory when it
+# bakes the day's collapses.
+STEPS = (
+    # TWO STEPS, NOT ONE, AND THE FIRST RUN OF THIS FILE IS WHY. It had a
+    # single "hull" step running `generate_hull.py` and testing for
+    # `station.glb` -- and `generate_hull.py` writes `hull.obj`. `station.glb`
+    # comes from `export_gltf.py`, which is a SEPARATE CI step. So the step
+    # exited 0, wrote its real output, and this tool reported FAILED.
+    #
+    # That is the design working rather than a wart: verifying the OUTPUT and
+    # not the exit code is the whole point (see the note in the run loop), and
+    # the first thing it caught was its own author's wrong predicate.
+    ("hull",
+     lambda: os.path.exists(os.path.join(GEN, "hull.obj")),
+     ["python3", "station/generate_hull.py"],
+     "the hull itself -- the LOD chain decimates it and every exterior shot "
+     "reads its levels"),
+    ("station.glb",
+     lambda: os.path.exists(os.path.join(GEN, "station.glb")),
+     ["python3", "station/export_gltf.py"],
+     "the glTF the well-formedness gate parses"),
+    ("lod chain",
+     lambda: _n_glob("hull_lod*.obj") >= 8,
+     ["python3", "station/lod.py", "--build"],
+     "hull_lod0..7.obj. `export_scene` renders lod0, NOT hull.obj, and its "
+     "self-test fails on the missing files -- which went unnoticed because the "
+     "CI step ran `lod.py` bare, which is the selftest and not the builder"),
+    ("economy ledger",
+     lambda: os.path.exists(os.path.join(GEN, "economy.json")),
+     ["python3", "station/dockwork.py", "--loop", "--days", "14",
+      "--role", "lurker", "--seed", "downbelow",
+      "--save", "station/generated/economy.json"],
+     "the player's purse. Without it `player.gd::has_purse()` is false, `tier` "
+     "stays at its -99 sentinel, and every checkpoint correctly declines to "
+     "read a card that does not exist -- which reads as a dead check"),
+    ("ragdoll bodies",
+     lambda: _n_glob(os.path.join("scene", "npc", "*_ragdoll.json")) >= 14,
+     ["python3", "station/npc/ragdoll.py", "--emit",
+      "station/generated/scene/npc"],
+     "14 species. `ragdoll.gd` refuses to promote without them, so nobody "
+     "falls over"),
+    ("boot manifest",
+     lambda: _boot_has("checks") and _boot_has("collapses"),
+     ["python3", "station/boot.py"],
+     "what the game boots into, PLUS the 98 identicard checks and the day's 45 "
+     "collapses. A boot.json without those keys is stale, not absent"),
+)
+
+# Things this does NOT build, with the command that does. Reported by --check so
+# a session knows the difference between "missing and cheap" and "missing and
+# forty minutes".
+HEAVY = (
+    ("deck geometry", lambda: _n_glob(os.path.join("scene", "deck", "*.glb")) > 0,
+     "python3 station/rooms.py --footprint    # ~23 min"),
+    ("streaming cells",
+     lambda: len(glob.glob(os.path.join(GEN, "scene", "deck", "cells_*"))) > 0,
+     "python3 station/boot.py --bake          # needs Godot"),
+)
+
+
+def main():
+    ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
+    ap.add_argument("--check", action="store_true",
+                    help="report what is missing and build nothing")
+    ap.add_argument("--force", action="store_true",
+                    help="rebuild every step even if its output is present")
+    a = ap.parse_args()
+
+    print("bootstrap: station/generated/ is gitignored and a recycled container "
+          "loses it.\n")
+    missing = [s for s in STEPS if a.force or not s[1]()]
+    for name, have, cmd, why in STEPS:
+        state = "present" if have() else "MISSING"
+        # NOT `why.split(".")[0]` -- the first entry's reason is
+        # "hull_lod0..7.obj" and a split on the full stop cut it to
+        # "hull_lod0". Take the first clause instead.
+        print("  %-16s %-8s %s" % (name, state, why.split(" -- ")[0]))
+    print("")
+    for name, have, cmd in HEAVY:
+        if not have():
+            print("  %-16s MISSING  not built here -- run: %s" % (name, cmd))
+        else:
+            print("  %-16s present  (not rebuilt by this tool)" % name)
+
+    if a.check:
+        print("\n%d of %d cheap artefacts missing." % (len(missing), len(STEPS)))
+        return 1 if missing else 0
+    if not missing:
+        print("\nnothing to do.")
+        return 0
+
+    print("\nrebuilding %d:" % len(missing))
+    bad = 0
+    for name, _have, cmd, _why in missing:
+        t0 = time.time()
+        print("  %-16s %s" % (name, " ".join(cmd)))
+        r = subprocess.run(cmd, cwd=ROOT, capture_output=True, text=True)
+        dt = time.time() - t0
+        # VERIFY THE OUTPUT, NOT THE EXIT CODE. A tool that exits 0 having
+        # silently produced nothing is this project's most expensive failure
+        # mode -- the renderer that fell back to OpenGL and exited 0 with a PNG
+        # cost a whole session of visual judgement.
+        ok = _have()
+        print("     %s in %.0f s%s"
+              % ("ok" if ok else "FAILED", dt,
+                 "" if ok else " -- exit %d, and its output is still absent"
+                 % r.returncode))
+        if not ok:
+            bad += 1
+            for line in (r.stdout + r.stderr).splitlines()[-6:]:
+                print("       | " + line)
+    print("\nbootstrap %s" % ("PASS" if not bad else "FAILED on %d" % bad))
+    return 1 if bad else 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
