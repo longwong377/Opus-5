@@ -678,6 +678,54 @@ def report_policies(days=7, out=print):
     return rows
 
 
+DEPARTURE = "docking_bays"
+PASSAGE = "passage home"
+
+
+def passage_attempt(p, led, days):
+    """WHAT THE FOURTEEN DAYS WERE FOR -- the walk to the departure desk.
+
+    THE LOOP HAD NO ENDING UNTIL 4r. This function's whole reason for existing
+    is that `report_loop` used to stop at *"420.50 cr"* and the reader had to
+    supply the meaning: LAW-CRIME 7.1's passage-home row is the number the
+    underclass is defined by, and until `economy.SERVICES` existed **nothing
+    on the station sold it**, so crossing the line was a statistic.
+
+    Now it is a scene, and the scene does not go the way the arithmetic says.
+    Anna Allan reaches 420.50 cr against a 300.00 cr berth and is turned away
+    at the desk anyway -- `consequence.admits` refuses a `no_status` card the
+    blue sector, and 6.4's identicard is the credit card besides. **Money is
+    not the only thing standing between the underclass and the door**, and that
+    is a different story from the one canon tells (*"did not have the money to
+    afford a ticket back home"*). It is REPORTED rather than smoothed over,
+    because whichever way P2 settles it, this transcript changes.
+
+    Returns lines. Buys nothing: the loop's ledger is a record of fourteen
+    worked days, and quietly spending its subject's savings inside a report
+    would make the saved file disagree with the transcript above it.
+    """
+    import consequence as cq                                    # noqa: PLC0415
+    fare = ec.price(PASSAGE, DEPARTURE)
+    berths = led.units(DEPARTURE, PASSAGE)
+    ok, why = cq.sells_to(DEPARTURE, p.tier)
+    out = ["",
+           f"AND THEN THE DESK. {days} days of dock work buys a berth at "
+           f"{DEPARTURE}: {fare:.2f} cr, {berths} free today "
+           f"(economy.outbound_berths)."]
+    if p.credits < fare:
+        out.append(f"  {p.name} has {p.credits} cr and the fare is "
+                   f"{fare:.2f}. Not yet -- and that is the canon reading.")
+    elif ok:
+        out.append(f"  {p.name} has {p.credits} cr, the card reads "
+                   f"{p.tier_name}, and the clerk sells. THEY CAN LEAVE.")
+    else:
+        out.append(f"  {p.name} has {p.credits} cr -- "
+                   f"{p.credits - fare:+.2f} on the fare -- and is REFUSED: "
+                   f"{why}")
+        out.append("  Money was never the only thing in the way.")
+    return out
+
+
 def report_loop(days=5, seed="b5", policy="finisher", out=print,
                 path=None, role=None):
     """THE GATE'S OWN TRANSCRIPT: who, what shift, what pay, what they bought.
@@ -709,6 +757,8 @@ def report_loop(days=5, seed="b5", policy="finisher", out=print,
         f"wages {sum(led.wages.values()):.2f}, "
         f"{BAR}'s till {till:.2f} cr, "
         f"station stock {start_units} -> {led.total_units()} units")
+    for line in passage_attempt(p, led, days):
+        out(line)
     if path:
         led.save(path)
         out(f"ledger written to {path}")
@@ -916,6 +966,21 @@ def _selftest(out=print):                                        # noqa: C901
           and pp.can_afford_passage(),
           f"{ds[0]['credits_before']} cr on day 0 -> {pp.credits} cr on day "
           f"{DAYS - 1}, fare {pl.PASSAGE_HOME_CR:.0f}")
+    # AND THE LINE NOW HAS SOMETHING ON THE OTHER SIDE OF IT. Until 4r nothing
+    # on the station sold passage, so "crosses the line" was a statistic about
+    # a price nobody could pay. The desk exists, it has real berths off the
+    # manifest, and it still says no -- which is the finding, not the failure.
+    _end = passage_attempt(pp, ll, DAYS)
+    check("the loop ENDS somewhere: a real desk, a real fare and real berths "
+          "off the day's own hulls",
+          ll.units(DEPARTURE, PASSAGE) > 0
+          and abs(ec.price(PASSAGE, DEPARTURE) - pl.PASSAGE_HOME_CR) < 1e-9,
+          f"{ll.units(DEPARTURE, PASSAGE)} berths at "
+          f"{ec.price(PASSAGE, DEPARTURE):.2f} cr")
+    check("...and the transcript says which way it went, in words",
+          any("REFUSED" in x or "THEY CAN LEAVE" in x or "Not yet" in x
+              for x in _end),
+          _end[-1].strip()[:110])
     code = (f"import sys; sys.path.insert(0, {HERE!r});"
             f"import economy as e;"
             f"L = e.Ledger.load({tmp!r});"

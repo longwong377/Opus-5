@@ -128,6 +128,47 @@ STEPS = (
      "collapses. A boot.json without those keys is stale, not absent"),
 )
 
+def _sidecars_carry(field):
+    """Do the deck interact sidecars carry `field`, or do they predate it?
+
+    PRESENCE IS NOT FRESHNESS, AND THIS TOOL COULD NOT SEE THE DIFFERENCE UNTIL
+    A BUILD AGENT SAID SO. Every check above asks "is the file there". The
+    `*_interact.json` sidecars ARE there -- and every one in this container was
+    written on 2026-08-02, before `interact.verb_payload` existed, so they carry
+    no `counter`, `holds`, `kind`, `text` or `live` field. Four verbs' data
+    missing from the only artefact `interact.gd` can read, and the shipped build
+    boots into one of them.
+
+    That is the same defect as `_boot_has` one level out, and it is the reason
+    that function tests for KEYS rather than for the file. A stale artefact is
+    worse than an absent one: absent fails loudly, stale answers confidently
+    with last week's world.
+
+    NOT AUTO-REBUILT, because the writer is `walkable.py`/`arrival.py` building
+    a whole deck -- minutes of full CPU, and this tool's contract is that it is
+    cheap. Reported instead, with the command.
+    """
+    d = os.path.join(GEN, "scene", "deck")
+    have = glob.glob(os.path.join(d, "*_interact.json"))
+    if not have:
+        return None, "no deck sidecars at all"
+    stale = []
+    for f in have:
+        try:
+            with open(f) as fh:
+                rows = json.load(fh)
+        except Exception:                                        # noqa: BLE001
+            stale.append(os.path.basename(f))
+            continue
+        rows = rows if isinstance(rows, list) else rows.get("items", [])
+        if not any(field in r for r in rows if isinstance(r, dict)):
+            stale.append(os.path.basename(f))
+    return (not stale), ("%d of %d sidecars carry no `%s`: %s"
+                         % (len(stale), len(have), field,
+                            ", ".join(sorted(stale)[:3])
+                            + (" ..." if len(stale) > 3 else "")))
+
+
 # Things this does NOT build, with the command that does. Reported by --check so
 # a session knows the difference between "missing and cheap" and "missing and
 # forty minutes".
@@ -164,9 +205,22 @@ def main():
         else:
             print("  %-16s present  (not rebuilt by this tool)" % name)
 
+    # FRESHNESS, SEPARATELY FROM PRESENCE. See `_sidecars_carry`.
+    ok_side, why_side = _sidecars_carry("counter")
+    if ok_side is None:
+        print("  %-16s MISSING  %s" % ("deck sidecars", why_side))
+    elif not ok_side:
+        print("  %-16s STALE    %s" % ("deck sidecars", why_side))
+        print("  %-16s          rebuild: python3 station/walkable.py "
+              "--deck blue/0/0" % "")
+    else:
+        print("  %-16s present  and current" % "deck sidecars")
+
     if a.check:
-        print("\n%d of %d cheap artefacts missing." % (len(missing), len(STEPS)))
-        return 1 if missing else 0
+        print("\n%d of %d cheap artefacts missing.%s"
+              % (len(missing), len(STEPS),
+                 "" if ok_side else " Deck sidecars STALE."))
+        return 1 if (missing or ok_side is False) else 0
     if not missing:
         print("\nnothing to do.")
         return 0

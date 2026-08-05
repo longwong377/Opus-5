@@ -50,3 +50,5 @@ station/generated/economy.json
 # still running -- if it turns out this directory holds authored content rather
 # than generated state, this line is the thing to delete.
 station/generated/cnc/
+scratchpad/till-run/head/
+scratchpad/till-lurker/head/

@@ -377,7 +377,15 @@ def price(good_name, place_key, seed="b5"):
     Deterministic in (good, place, seed) -- two visits to the same stall on the
     same day quote the same price, which is what makes a player able to notice
     that the under-counter one is cheaper.
+
+    A SERVICE COMES THROUGH HERE TOO, and it is one line rather than a second
+    function because every consumer in the project -- `interact.counter_offer`,
+    `background_sales`, `buy`, `lines_at`, `godot/scripts/interact.gd`'s baked
+    `cr` field -- asks this one question. A second price function would be a
+    second answer to it, which is hard rule 4 at the scale of an arithmetic.
     """
+    if good_name in SERVICE_BY_NAME:
+        return service_price(good_name, place_key)
     g = GOODS_BY_NAME[good_name]
     lo, hi = CLASS_BAND[g.klass]
     p = dr.by_key(place_key)
@@ -414,18 +422,274 @@ def price_check():
         bad.append(("untaxed brivari", "black_market",
                     price("untaxed brivari", "black_market"),
                     "the route does not undercut the Zocalo"))
+    # AND EVERY SERVICE IS ITS LADDER ROW TO THE MILLICREDIT. There is no band
+    # to be inside here -- the price IS the published floor -- so this checks
+    # identity rather than membership, which is the strongest form the claim
+    # has and the one that fails if anybody re-introduces a draw.
+    for s in SERVICES:
+        want = round(ladder(s.ladder or "squat")[0], 2)
+        for k in tuple(p["key"] for p in dr.PLACES
+                       if s.function in p["functions"]):
+            got = price(s.name, k)
+            if abs(got - want) > 1e-9:
+                bad.append((s.name, k, got,
+                            f"is not the {s.ladder or 'squat'} row's "
+                            f"{want:.2f}"))
     return bad
+
+
+# ===========================================================================
+# 4b.  SERVICES -- what a station takes money for that is not a unit of stock
+# ===========================================================================
+# WHAT THIS EXISTS TO END, MEASURED. Before session 4r the whole economy was a
+# SHOP: `GOODS` is 33 lines of spoo and bearings and every one of them is a
+# thing you carry away. So `vendors()` was 13 places, `interact.counter_offer`
+# said `sells: False` everywhere else, and the shipped boot deck -- `blue_0_0`,
+# where a player actually spawns -- carried **one** `serve` interactable
+# (`docking_bays__prop_bay_control_booth`) which sold **nothing**. Counting the
+# whole register: 28 places declare a prop whose verb is `serve` and **9** of
+# them could take a credit. In the build a player launches, the number was ZERO.
+#
+# And the ladder this file is built on has always known better. Four of its
+# eight rows are not goods at all:
+#
+#     quarters_command  30 cr/week    -- THE one sourced price in the project
+#     room_transient    4-8 cr/week
+#     bunk_dosshouse    1 cr/night    -- "the floor of the market"
+#     passage_home      300-800 cr    -- "the load-bearing number of the
+#                                        underclass"
+#
+# A player could see every one of those prices in `--report` and pay none of
+# them. `dockwork.py`'s fourteen-day loop walks a Downbelow lurker from 267 to
+# 420.50 credits and 420.50 is ABOVE the 300 cr passage floor -- so the arc
+# this repository already ships had no ending, because nothing sold the ticket.
+#
+# THE THREE RULES, and they are the goods rules applied to a second noun:
+#
+# 1. **A service's price is a LADDER ROW, verbatim where one exists.**  INV-560 No supply
+#    multiplier and no venue multiplier: those two exist because a good has to
+#    cross hyperspace and pay rent on a shopfront before it reaches a counter,
+#    and a berth on a ship does neither -- the ladder's 300-800 already IS the
+#    fare. The one service with no row of its own (`a stake at the table`)
+#    takes another row with ONE stated step, and it says which.
+# 2. **A service is stocked and replenished by exactly the goods rule** --
+#    demand x RESTOCK_DAYS at open, one day's demand back each day -- and the
+#    only difference is what the delivery IS. A crate comes off a ship;
+#    a bunk-night comes back because tomorrow is another night. `deliver()`
+#    does both, and says so.
+# 3. **The daily demand is a REAL physical count wherever one exists.** INV-561 Passage
+#    home is free berths on the hulls that actually leave that day, off
+#    `traffic.MANIFEST`, which is the same rule `consignments()` uses for
+#    crates -- "a delivery is a real container off a real ship". Where no
+#    physical count exists it is the counter's own covers, and the counter is
+#    ONE counter (`COUNTER_M2`), because "a counter is not a district" is a
+#    lesson this file has already paid for once.
+@dataclass(frozen=True)
+class Service:
+    """One thing a station sells that you cannot put in a crate.
+
+    `function` is a REGISTER function, never a place key -- the same rule
+    `Good.sold_by` follows, so the list of places that sell passage is derived
+    from `directory.py` and would follow the register if it changed.
+    """
+    name: str
+    function: str           # the register function that puts it at a place
+    ladder: str             # the LADDER row its price IS, "" if derived
+    limiter: str            # "berths" | "covers"
+    unit: str
+    note: str = ""
+
+
+SERVICES = (
+    Service("passage home", "ship_departure", "passage_home", "berths", "each",
+            "LAW-CRIME 7.1's own row. The only place on the station a hull "
+            "leaves from, so the only place a berth can be bought"),
+    Service("a bunk for the night", "informal_residence", "bunk_dosshouse",
+            "covers", "night",
+            "The floor of the market, at the three places that declare "
+            "somewhere people sleep without a tenancy"),
+    Service("a hot meal", "catering", "", "covers", "each",
+            "An EarthForce crew mess ISSUES: 0.00 cr. The `squat` row exists "
+            "in the ladder for exactly this reason -- free is a price, not a "
+            "missing entry"),
+    Service("a stake at the table", "gambling", "meal_cart", "covers", "each",
+            "One stated step: the minimum stake is the smallest discretionary "
+            "sum the ladder carries, because a table whose minimum excludes "
+            "the dockers and lurkers `populace` puts in that room is a table "
+            "with nobody at it"),
+)
+SERVICE_BY_NAME = {s.name: s for s in SERVICES}
+SERVICE_FUNCTIONS = frozenset(s.function for s in SERVICES)
+
+# THREE SERVICES THAT ARE NOT HERE, AND THE REASON IS THE SAME ONE EACH TIME:
+# there is no derivable daily count, so a number would be an invention with
+# nothing constraining it -- which is the "looks sourced and is not" that hard
+# rule 1 forbids, rather than the declared extrapolation it permits.
+#
+#   a week's tenancy (`residence`, 10 places).  The PRICE is free -- `_RENT`
+#       below already reads the ladder through the sector, so a week in Green
+#       is the sourced 30 cr and a week in Grey is 1. What is missing is
+#       VACANCIES: this repository has a measured occupancy for a quarters
+#       block (`populace.occupancy(k, area, 3.0, "residence")` -- 951 people
+#       asleep in `qtr_civilian`) and no DESIGN capacity anywhere, so
+#       "how many are free this week" has no answer that is not made up.
+#       OVERTURNED BY: any per-block unit count, which closes it in one line.
+#   a fare (`transit`, 13 places).  Nothing establishes that station transit
+#       is charged for, and a fare invented here would put a paywall between a
+#       player and the rest of the station -- a design cost bought with an
+#       unsourced number.
+#   an exchange commission (`currency_exchange`, business_center).  The board
+#       (authority 1, `signage.BOARDS`) establishes that exchange HAPPENS and
+#       states no rate; a commission with no transaction size is a percentage
+#       of nothing. `business_center` already trades goods, so it is not a
+#       dead counter meanwhile.
+
+# THE PASSENGER CLASSES. A hull that carries souls can carry one more; a
+# freighter cannot, and `CREW_STAYS_ABOARD` never lands anybody at all.
+# Derived from `traffic.MANIFEST`'s own soul bands rather than listed: a class
+# whose band tops out at nobody is not a passenger class.
+#
+# LAZY BECAUSE `FREIGHT_CLASSES` IS DEFINED IN SECTION 7, below this one. That
+# is not tidiness: a module-level read of a name that is bound later raises at
+# IMPORT, which would take every consumer of this file down with it.
+_PAX = None
+
+
+def pax_classes():
+    """(classes that can sell a berth, {class: its capacity band top})."""
+    global _PAX
+    if _PAX is None:
+        cls = tuple(r[0] for r in tf.MANIFEST
+                    if r[0] not in tf.CREW_STAYS_ABOARD
+                    and r[0] not in FREIGHT_CLASSES and r[4] > 0)
+        _PAX = (cls, {r[0]: float(r[4]) for r in tf.MANIFEST})
+    return _PAX
+
+
+def outbound_berths(day=0):
+    """(free berths, hulls, seats) leaving during station day `day`. INV-561
+
+    A HULL LEAVES WHEN ITS STAY IS UP, which the manifest already says: an
+    arrival carries `hour` and `stay_h`, so its departure is arithmetic and
+    not a second table. Its SEATS are its class's own capacity band top
+    (`traffic.MANIFEST` column 5) and its outbound LOAD is what it brought --
+    TRAFFIC-AND-CUSTOMS 5.3's steady state, where the transient population is
+    resupplied entirely by arrivals, so over a day out equals in.
+    A hull that came in full leaves full, and on a day when they all did the
+    shelf is honestly empty.
+    """
+    classes, cap_of = pax_classes()
+    free = 0
+    hulls = 0
+    seats = 0
+    for d in (day - 1, day):
+        if d < 0:
+            continue
+        for a in tf.arrivals(d):
+            if a["type"] not in classes:
+                continue
+            if d + int((a["hour"] + a["stay_h"]) // 24.0) != day:
+                continue
+            cap = int(cap_of.get(a["type"], a["souls"]))
+            hulls += 1
+            seats += cap
+            free += max(0, cap - int(a["souls"]))
+    return free, hulls, seats
+
+
+def services_at(place_key):
+    """The services this place's own register functions put on its counter."""
+    fns = set(dr.by_key(place_key)["functions"])
+    return tuple(s.name for s in SERVICES if s.function in fns)
+
+
+def service_price(name, place_key):
+    """What one of these costs here: THE FLOOR OF ITS LADDER BAND, exactly. INV-560
+
+    NO JITTER, AND THE FIRST VERSION OF THIS FUNCTION HAD ONE -- it drew inside
+    the band the way `price()` does for goods and quoted **618.69 cr** for
+    passage home. That number is wrong for a reason worth keeping, because it
+    is this repository's oldest failure wearing a new hat: **the project had
+    already decided this price and I was about to decide it a second time.**
+    `player.py` line 194 carries `PASSAGE_HOME_CR = 300.0` with the note
+    *"a berth on an outbound transport (band floor)"* and SPEC-CHANGE #1,
+    owner-approved -- and `CREDIT_SKEW` is SOLVED against it so that exactly 1%
+    of arrivals land under the line, which is the mechanism that produces
+    Downbelow. A desk quoting 618.69 would have refused a player whom
+    `Player.can_afford_passage()` had just told they could afford to leave.
+    `_selftest` asserts the two are equal, so they cannot drift apart again.
+
+    So the rule, and it holds for every row: **a ladder band is the spread of a
+    market and a counter quotes one price, which is the cheapest thing the
+    counter has.** A berth in economy, a bunk on the floor, the minimum stake.
+    The top of the band is a cabin, a room and a high table -- none of which
+    this counter is offering. The upshot is that every service price in the
+    project is a published number rather than a number near one.
+
+    A ROW OF ITS OWN IS NOT REQUIRED, only a stated one. `a hot meal` takes
+    `squat`'s 0.0 -- the row the ladder carries so that free is a price and not
+    a missing entry -- because an EarthForce crew mess issues.
+    """
+    s = SERVICE_BY_NAME[name]
+    return round(ladder(s.ladder or "squat")[0], 2)
+
+
+def service_demand(place_key, day=0):
+    """{service: units a day} at this place. The physical count where one is.
+
+    A COUNTER IS NOT A DISTRICT, and this function is where that lesson is
+    applied a second time. `retail_m2` learned it for goods -- Downbelow's
+    654,370 m2 footprint gave it 235,572 transactions a day -- and a bunk desk
+    has the identical shape: `daily_covers("downbelow_arch")` is 4,714, which
+    is a district's worth of beds behind one desk (INV-562). So a service is
+    sold across
+    exactly one counter, and one counter is `COUNTER_M2` -- `bar_unnamed`'s own
+    225 m2 register footprint, the figure `MAX_RETAIL_M2` is already solved
+    from. No new constant, and the numbers come out at 84-166 a day.
+    """
+    out = {}
+    for n in services_at(place_key):
+        s = SERVICE_BY_NAME[n]
+        if s.limiter == "berths":
+            out[n] = float(outbound_berths(day)[0])
+        else:
+            out[n] = counter_covers(place_key)
+    return out
+
+
+def counter_covers(place_key):
+    """Transactions a day across ONE counter at this place."""
+    a = min(floor_m2(place_key), COUNTER_M2)
+    arch = _arch(place_key)
+    rate = SERVE_PER_HEAD if arch == "hospitality" else SHOP_SERVE_PER_HEAD
+    return sum(pop.occupancy(place_key, a, float(h) + 0.5, arch)
+               for h in range(24)) * rate
 
 
 # ===========================================================================
 # 5.  WHO SELLS WHAT -- derived from the register, never listed
 # ===========================================================================
-SELLING_FUNCTIONS = frozenset({"commerce", "retail", "hospitality",
-                               "food_service", "black_market"})
+# TWO SETS AND A UNION, AND THE SPLIT IS LOAD-BEARING. `GOODS_FUNCTIONS` is
+# what it has always been: the functions that put LINES OF STOCK on a counter,
+# and `vendors()` reads it, so every goods number in this file, in
+# `incident.py` and in `consequence.counters_for` is bit-for-bit what it was.
+# `SELLING_FUNCTIONS` is now the union, and it is the union because
+# `consequence.sells_to` asks it exactly one question -- *is this place a
+# counter at all* (INV-564) -- and a booking desk that takes 300 credits for a berth is a
+# counter by any reading of that word.
+GOODS_FUNCTIONS = frozenset({"commerce", "retail", "hospitality",
+                             "food_service", "black_market"})
+SELLING_FUNCTIONS = GOODS_FUNCTIONS | SERVICE_FUNCTIONS
 
 
 def vendors():
-    """Every place in the register that sells. Ordered, deterministic."""
+    """Every place in the register that sells GOODS. Ordered, deterministic."""
+    return tuple(p["key"] for p in dr.PLACES
+                 if set(p["functions"]) & GOODS_FUNCTIONS)
+
+
+def counters():
+    """Every place money can change hands at -- goods, services or both."""
     return tuple(p["key"] for p in dr.PLACES
                  if set(p["functions"]) & SELLING_FUNCTIONS)
 
@@ -478,8 +742,8 @@ def _species_weight(g, place_key):
     return max(sched.STATION_MIX[g.origin] / tot, 0.01)
 
 
-def stock_list(place_key, seed="b5"):
-    """The lines this counter carries. Deterministic, derived, ordered."""
+def goods_list(place_key, seed="b5"):
+    """The GOODS lines this counter carries. Deterministic, derived, ordered."""
     p = dr.by_key(place_key)
     fns = set(p["functions"])
     cand = [g for g in GOODS if set(g.sold_by) & fns]
@@ -491,7 +755,7 @@ def stock_list(place_key, seed="b5"):
     # `business_center` is ("currency_exchange", ...). A counter that is not
     # what the place is for is a small counter: MIN_LINES, no more. The
     # register already carries the distinction; nothing new is declared.
-    if p["functions"][0] not in SELLING_FUNCTIONS:
+    if p["functions"][0] not in GOODS_FUNCTIONS:
         n = MIN_LINES
     else:
         n = int(round(retail_m2(place_key) * LINES_PER_M2))
@@ -503,6 +767,55 @@ def stock_list(place_key, seed="b5"):
                                           * (0.5 + _u("line", g.name,
                                                       place_key, seed))))
     return tuple(g.name for g in ranked[:n])
+
+
+def stock_list(place_key, seed="b5"):
+    """Everything on this counter: goods first, then services.
+
+    THE ONE FUNCTION THE ENGINE REACHES. `interact.counter_offer` builds the
+    `serve` payload from this and `interact.container_holds` builds the `store`
+    payload from it, and both are baked into the deck sidecar
+    `godot/scripts/interact.gd` reads -- so a name that is not in this tuple is
+    a thing no player can ever be sold. Adding services HERE rather than in a
+    second accessor is what makes them reach the game without one line of
+    GDScript changing: the bridge is one-way and this is the near end of it.
+
+    Goods first and services last, deliberately: `interact.gd::_verb_serve`
+    walks the list from `it.used` and takes the first line with stock, so a
+    stall that sells both offers what it has on the shelf before it offers a
+    berth on somebody else's ship.
+    """
+    return tuple(goods_list(place_key, seed)) + tuple(services_at(place_key))
+
+
+def lines_at(place_key, seed="b5"):
+    """What a menu board or a price board at this place SAYS. One row a line.
+
+    THIS FUNCTION HAD A CALLER AND NO BODY. `interact.read_text` has read
+    `economy.lines_at(place_key)` since session 4p -- guarded by
+    `hasattr(economy, "lines_at")`, which is False, so the `menu_display` /
+    `price_board` branch has been returning "" for every board on the station
+    since it was written. **A `hasattr` guard around a function that does not
+    exist is an assertion that cannot fail**, and it is this repository's own
+    signature defect (machinery with no caller) with the ends swapped: a caller
+    with no callee, degrading silently to the empty string. Found by reading
+    the branch rather than by any gate.
+
+    WHAT IT MAY AND MAY NOT CARRY, and that is the one-way bridge deciding it.
+    `interact.sidecar()` BAKES this string at export time and `LIVE_READ` names
+    `menu_display` and `price_board` as tokens a runtime ought to refresh --
+    and nothing refreshes any of them. So a board may carry only what is
+    DETERMINISTIC in (place, seed): the lines and their prices, both of which
+    `price()` and `service_price()` reproduce identically in any process. It
+    must NOT carry how many are left, because that is the ledger's, it moves
+    every time anybody buys, and a baked count would be a board that lies with
+    a number on it. The stock is live at the counter (`interact.gd` reads
+    `_led.stock`); the board is the price list.
+    """
+    out = []
+    for g in stock_list(place_key, seed):
+        out.append("%-28s %8.2f cr" % (g, price(g, place_key, seed)))
+    return tuple(out)
 
 
 # ===========================================================================
@@ -571,18 +884,39 @@ def daily_covers(place_key):
 
 
 def line_demand(place_key, seed="b5"):
-    """Units a day of each line this counter carries."""
-    lines = stock_list(place_key, seed)
+    """Units a day of each GOODS line this counter carries."""
+    lines = goods_list(place_key, seed)
     if not lines:
         return {}
     per = daily_covers(place_key) / len(lines)
     return {g: per for g in lines}
 
 
-def opening_stock(place_key, seed="b5"):
-    """Units per line a counter stands with at the start of the ledger."""
+def demand_of(place_key, seed="b5", day=0):
+    """Units a day of EVERY line, goods and services, at this counter.
+
+    The two halves are computed separately and merged rather than divided out
+    of one total, and that is what keeps the goods economy bit-identical: a
+    place that gained a service (`downbelow` gained a bunk) still spreads its
+    own `daily_covers` across its own GOODS lines and nothing else, so every
+    number in `--report`, in `incident.py` and in the fourteen-day drift check
+    is exactly what it was before services existed.
+    """
+    out = dict(line_demand(place_key, seed))
+    out.update(service_demand(place_key, day))
+    return out
+
+
+def opening_stock(place_key, seed="b5", day=0):
+    """Units per line a counter stands with at the start of the ledger.
+
+    A SERVICE STANDS THE SAME DEPTH A GOOD DOES -- `RESTOCK_DAYS` of its own
+    demand -- because the alternative is a special case, and a special case is
+    where a second rule hides. What differs is only where the top-up comes
+    from, and `deliver()` is where that is said.
+    """
     return {g: max(1, int(round(v * RESTOCK_DAYS)))
-            for g, v in line_demand(place_key, seed).items()}
+            for g, v in demand_of(place_key, seed, day).items()}
 
 
 # ===========================================================================
@@ -827,10 +1161,17 @@ class Ledger:
     # -- construction -------------------------------------------------------
     @classmethod
     def fresh(cls, seed="b5"):
-        """Opening balances: every counter stood up from its own derivation."""
+        """Opening balances: every counter stood up from its own derivation.
+
+        `counters()` rather than `vendors()` since 4r -- a booking desk that
+        holds no crate still holds berths, and a counter with no row in
+        `led.stock` is a counter `godot/scripts/interact.gd::_verb_serve`
+        refuses with "the shelf is empty", which is the wrong sentence for a
+        desk that has forty seats going out at 14:20.
+        """
         led = cls(seed=seed)
-        for v in vendors():
-            s = opening_stock(v, seed)
+        for v in counters():
+            s = opening_stock(v, seed, 0)
             if s:
                 led.stock[v] = s
                 led.till[v] = 0.0
@@ -932,12 +1273,18 @@ def background_sales(led, day=None):
     day = led.day if day is None else day
     moved = 0
     for v, lines in led.stock.items():
-        covers = daily_covers(v)
         keys = sorted(lines)
         if not keys:
             continue
-        for i, g in enumerate(keys):
-            want = int(covers / len(keys) * (0.6 + 0.8 * _u("bg", v, g, day)))
+        # PER LINE, NOT COVERS/LINES, and the change is a no-op on every place
+        # that existed before services did: `line_demand` IS `daily_covers`
+        # over the goods lines, so a goods-only counter draws exactly the
+        # number it drew before. What it fixes is a MIXED counter -- adding a
+        # bunk to Downbelow would otherwise have divided its black-market
+        # covers by one more line and quietly changed the goods economy.
+        want_of = demand_of(v, led.seed, day)
+        for g in keys:
+            want = int(want_of.get(g, 0.0) * (0.6 + 0.8 * _u("bg", v, g, day)))
             take = min(want, lines[g])
             if take > 0:
                 lines[g] -= take
@@ -964,8 +1311,52 @@ def deliver(led, day=None, only=None):
             continue                     # a counter does not carry that line
         shelf[c.good] = shelf.get(c.good, 0) + c.units
         landed += c.units
+    landed += _renew_services(led, day)
     led.delivered[str(day)] = led.delivered.get(str(day), 0) + landed
     return landed
+
+
+def _renew_services(led, day):
+    """A SERVICE'S DELIVERY IS THE DAY ITSELF. INV-563
+
+    A crate arrives on a hull and `consignments` says which; a bunk-night comes
+    back because tomorrow is another night, and a berth comes back because
+    tomorrow is another ship -- so this is where the two nouns differ and it is
+    the ONLY place they do. Everything else about a service (its depth, its
+    demand, its price, its refusals) is the goods rule unchanged.
+
+    Topped up by one day's demand and capped at `RESTOCK_DAYS` of it, exactly
+    as the goods half is sized, so the shelf neither starves nor runs away and
+    the fourteen-day drift check does not have to be widened to admit it.
+
+    IT RUNS ON EVERY `deliver()`, INCLUDING `deliver(only=...)`, AND THE FIRST
+    VERSION DID NOT -- which is a mistake worth keeping written down because
+    the reasoning sounded right and the measurement killed it. `only=` exists
+    so `dockwork.py` can prove the crates the player's own gang worked are the
+    crates that arrived, and skipping the renewal there looked like the same
+    honesty. But `only=` restricts which CONSIGNMENTS land, and a service is
+    not a consignment: no gang has ever moved a berth. The effect of the skip
+    was that `dockwork.py --loop` -- the ONE loop in this project that runs
+    fourteen consecutive days -- drained every service shelf to nothing and
+    never refilled it, so the transcript's closing scene read
+    *"300.00 cr, **0 free today**"* on a day the manifest sailed 22 hulls.
+    A rule that is right about goods is not automatically right about the
+    other noun.
+    """
+    added = 0
+    for v in led.stock:
+        want = service_demand(v, day)
+        if not want:
+            continue
+        shelf = led.stock[v]
+        for g, per_day in want.items():
+            if g not in shelf:
+                continue
+            cap = max(1, int(round(per_day * RESTOCK_DAYS)))
+            new = min(cap, int(shelf[g]) + int(round(per_day)))
+            added += max(0, new - int(shelf[g]))
+            shelf[g] = new
+    return added
 
 
 # ===========================================================================
@@ -1100,6 +1491,104 @@ def _selftest(out=print):                                        # noqa: C901
           "Jovian Sunspot" in lists.get("bar_unnamed", ())
           and "Jovian Sunspot" not in lists.get("shops_kiosks", ()),
           f"bar_unnamed: {lists.get('bar_unnamed', ())}")
+
+    # -- 4b. THE SERVICES -- what a station sells that is not a crate ---------
+    # These are the four claims that make a service a real price rather than a
+    # second vocabulary, and each has a control that fires.
+    check("every service price IS its ladder row, to the millicredit -- there "
+          "is no band to be inside, because a counter quotes one price",
+          not [b for b in price_check() if b[0] in SERVICE_BY_NAME],
+          "; ".join(str(b) for b in price_check()
+                    if b[0] in SERVICE_BY_NAME)[:160]
+          or ", ".join(f"{s.name} = {s.ladder or 'squat'} "
+                       f"{ladder(s.ladder or 'squat')[0]:.2f}"
+                       for s in SERVICES))
+    # THE ONE THAT STOPS THIS FILE DECIDING A PRICE TWICE. `player.py` solved
+    # `CREDIT_SKEW` against 300 cr so that 1% of arrivals land under it; a desk
+    # quoting anything else would refuse a player `can_afford_passage()` had
+    # just cleared. The first draft of `service_price` quoted 618.69.
+    check("the fare at the desk is the number `player.PASSAGE_HOME_CR` was "
+          "solved against, so `can_afford_passage()` is a true statement "
+          "about a real counter",
+          abs(price("passage home", "docking_bays") - pl.PASSAGE_HOME_CR) < 1e-9,
+          f"{price('passage home', 'docking_bays'):.2f} cr at the desk "
+          f"against player.py's {pl.PASSAGE_HOME_CR:.2f}")
+    # NEGATIVE CONTROL: a drawn fare. This is what the first version did, and
+    # it must break the equality above -- otherwise the assertion is vacuous.
+    drawn = round(PASSAGE_LO + (PASSAGE_HI - PASSAGE_LO)
+                  * _u("service", "passage home", "docking_bays"), 2)
+    check("...and a fare DRAWN inside the same band breaks it, which is why "
+          "the draw was taken out",
+          abs(drawn - pl.PASSAGE_HOME_CR) > 1.0,
+          f"the draw gives {drawn:.2f} cr, {drawn - pl.PASSAGE_HOME_CR:+.2f} "
+          f"off the solved line")
+    free0, hulls0, seats0 = outbound_berths(0)
+    free1, _h1, _s1 = outbound_berths(1)
+    check("a berth is a real seat on a real hull that really leaves that day "
+          "-- the crate rule, applied to people",
+          free0 > 0 and hulls0 > 0 and free0 < seats0,
+          f"day 0: {hulls0} passenger hulls depart with {seats0} seats, "
+          f"{free0} of them free ({seats0 - free0} already carrying the souls "
+          f"they brought)")
+    check("...and two days do not sail the same ships",
+          free0 != free1, f"day 0 {free0} free berths, day 1 {free1}")
+    # A COUNTER IS NOT A DISTRICT, asked a second time. `daily_covers` over
+    # `downbelow_arch`'s whole footprint gives 4,714 bunks a night behind one
+    # desk; across ONE counter it is 106.
+    wide = daily_covers("downbelow_arch")
+    one = counter_covers("downbelow_arch")
+    check("a service is sold across ONE counter, not across the place's whole "
+          "footprint -- the lesson `retail_m2` already paid for",
+          one < wide / 10.0,
+          f"downbelow_arch: {wide:.0f} covers/day over its footprint, "
+          f"{one:.0f} over one {COUNTER_M2:.0f} m2 counter")
+    # THE ARC THIS PROJECT ALREADY SHIPS, AND IT NOW HAS AN ENDING.
+    check("the fourteen-day dock loop earns a lurker past the fare, so the "
+          "one transaction the underclass exists around can be completed",
+          420.50 >= price("passage home", "docking_bays"),
+          f"dockwork's lurker reaches 420.50 cr against a "
+          f"{price('passage home', 'docking_bays'):.2f} cr berth")
+    # AND THE SHELF CAN BE EMPTY, which is what makes the counter a counter.
+    lp = Ledger.fresh()
+    berths = lp.units("docking_bays", "passage home")
+    rich = pl.random_player("passage")
+    rich.credits = 5000
+    rich.move_to("docking_bays")
+    u_p, t_p = buy(lp, rich, "docking_bays", "passage home", 1)
+    check("a player buys a berth at the departure bay: purse down, shelf down, "
+          "till up, one row in the ledger",
+          rich.credits == 5000 - t_p
+          and lp.units("docking_bays", "passage home") == berths - 1
+          and lp.till["docking_bays"] == round(t_p, 2)
+          and lp.sales[-1]["good"] == "passage home",
+          f"{t_p:.2f} cr, {berths} -> "
+          f"{lp.units('docking_bays', 'passage home')} berths, till "
+          f"{lp.till['docking_bays']:.2f}")
+    # A DIVERGENCE THIS GATE REPORTS RATHER THAN HIDES, and it is between the
+    # two languages. `godot/scripts/interact.gd::_verb_serve` moves FIVE
+    # things -- it calls `_player.take(good)` and refuses with "nothing to
+    # carry it in" when the bag is full -- and `buy()` below moves four. So the
+    # engine can refuse a sale Python allows. It is not repaired here because
+    # the repair is a design decision with a cost either way: put every
+    # purchase in the bag and `dockwork.py`'s fourteen-day loop fills its eight
+    # slots on day six and starves; leave it out and `interact.verify_buy` --
+    # which compares till, stock, purse and sales and NOT `carrying` -- cannot
+    # see the difference. What is needed is a consumable flag on `Good`, and
+    # `station/till.py --divergence` measures the gap meanwhile.
+    check("the engine's transaction and this one move the same money, and the "
+          "BAG is the one thing they do not agree about -- reported, not hidden",
+          "passage home" not in rich.carrying,
+          f"python leaves the bag at {len(rich.carrying)} items; the engine "
+          f"would have made it {len(rich.carrying) + 1} of "
+          f"{pl.CARRY_CAPACITY}")
+    lp.stock["docking_bays"]["passage home"] = 0
+    try:
+        buy(lp, rich, "docking_bays", "passage home", 1)
+        sold_out = False
+    except Refused as e:
+        sold_out = "out of" in str(e)
+    check("...and a day whose hulls all sailed full refuses, in the words a "
+          "clerk would use", sold_out)
 
     # -- 5. cargo ------------------------------------------------------------
     c0 = consignments(0)

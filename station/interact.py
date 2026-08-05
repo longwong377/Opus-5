@@ -470,7 +470,10 @@ def container_holds(place_key, seed="b5"):
     if place_key not in _HOLDS_CACHE:
         try:
             import economy as EC                              # noqa: PLC0415
-            _HOLDS_CACHE[place_key] = list(EC.stock_list(place_key, seed))
+            # GOODS, not the whole counter. `stock_list` gained services in 4r
+            # so they could reach `counter_offer` and therefore the engine; a
+            # crate is not where you keep a berth on somebody else's ship.
+            _HOLDS_CACHE[place_key] = list(EC.goods_list(place_key, seed))
         except Exception:                                     # noqa: BLE001
             _HOLDS_CACHE[place_key] = []
     return list(_HOLDS_CACHE[place_key])
@@ -1146,12 +1149,19 @@ def _selftest():
     # because one alone proves nothing: if `sells` were always False the first
     # would pass silently, and if it were always True the second would.
     _bar = counter_offer("dark_star")
-    _not = counter_offer("docking_bays")
+    # THE SUBJECT MOVED IN 4r AND THE CONTROL DID NOT WEAKEN. `docking_bays`
+    # was the non-counter here and it now sells `passage home` --
+    # `ship_departure` is the only function on the station a berth can be
+    # bought against. `security_central` replaces it: a `duty_desk` carrying
+    # a `serve` verb at a place whose functions are law_enforcement /
+    # dispatch / surveillance / detention, so `counter_offer` is meaningful
+    # there and no reading of the register makes it a shop.
+    _not = counter_offer("security_central")
     if not _bar["sells"] or not _bar["goods"]:
         fails.append("dark_star -- a hospitality place in economy.vendors() -- "
                      "sells nothing; the serve verb has no counter anywhere")
     if _not["sells"]:
-        fails.append("docking_bays sells things, and it is a cargo dock")
+        fails.append("security_central sells things, and it is a police post")
     if "not a counter" not in _not["tier"].get("4", ["", ""])[1]:
         fails.append(f"a non-counter gives no reason: {_not['tier'].get('4')}")
     # THE LADDER CROSSES INTACT: exactly one licit rung is refused (NO_STATUS,

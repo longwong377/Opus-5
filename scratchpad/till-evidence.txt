@@ -1,0 +1,28 @@
+==== BEFORE (recorded at session start)
+BOOT DECK blue_0_0: 16 interactables, 1 with a serve verb
+   docking_bays__prop_bay_control_booth       sells=False tier4=False (docking_bays is not a counter)
+BOOT DECK counters that can take a credit: 0
+STATION serve props that can take a credit: 9 of 28
+
+==== AFTER: till.py --gate
+THE CHAIN -- 12 of 28 places with a `serve` prop will take a credit from a citizen
+    16 break at `no counter`: admin_complex, ambassadorial_suites, core_shuttle, customs_north, customs_south, drum_office ...
+
+THE SHIPPED DECK `blue_0_0` -- 16 interactables, 1 with a `serve` verb
+    docking_bays__prop_bay_control_booth         would_sell=True baked_in_sidecar=False
+PASS  the deck a player actually boots into has at least one counter that will take money -- the number this session found at ZERO  -- 1 of 1 serve props on blue_0_0 can take a credit
+FAIL  ...and the sidecar on disk carries the counter, so the engine can see it without a rebuild  -- 0 of 1 rows carry a `counter` payload -- the committed sidecar predates `interact.verb_payload`; re-bake with `python3 station/boot.py --bake`
+PASS  a counter exists whose shelf the ledger stands up  -- bar_unnamed
+PASS  ...and a purchase through the card reader moves four numbers and no fifth  -- bar_unnamed: Jovian Sunspot at 0.80 cr, purse 5000 -> 4999.2, shelf 50 -> 49, till 0.00 -> 0.80
+PASS  the fourteen-day lurker earns PAST the fare and is refused at the desk anyway, on STANDING and not on money -- stated, because it is a different story from the one canon tells  -- 420.50 cr against a 300.00 cr berth, rung no_status: cannot get in: needs transit (sector blue)
+PASS  ...and the SAME desk serves a rung the reader will take, so the refusal is the card and not the counter  -- citizen: card accepted
+PASS  a service crosses into the baked counter payload, which is the only thing `interact.gd` can read  -- 3 of 3 service places bake one: ['casino', 'docking_bays', 'mess_hall']
+
+CONTROLS -- each removes one input and must change the verdict
+PASS    --no-services reproduces the state this session started in: the station loses counters and the SHIPPED DECK loses all of them  -- station 12 -> 9 counters, shipped deck 1 -> 0
+PASS    --no-card (a NO_STATUS rung) is refused at the licit counters and served only where FACTIONS 11.4 says there is no reader  -- 3 of 12 counters serve no_status
+PASS    --broke: an empty purse is refused AND moves no stock and no till  -- bar_unnamed/Jovian Sunspot: shelf 50, till 0.00, unchanged
+PASS    --empty: a counter with nothing on the shelf refuses a rich buyer, so the shelf is what is being read and not the price list
+
+10/11 passed
+gate exit=1
