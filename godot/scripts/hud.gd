@@ -49,6 +49,17 @@ const TAPE_SPAN_DEG := 60.0
 
 # -- what the face draws, recomputed every frame ----------------------------
 var place_name := ""
+## The REGISTER KEY of the place the player is in, "" for the corridor.
+##
+## `place_name` is the prettified display form -- `_pretty("obs_dome_1")` is
+## "OBS DOME 1" -- and it is not reversible: `to_lower().replace(" ", "_")` on
+## a name containing a comma or an ampersand does not give the key back.
+## `_resolve()` has always HAD the key and only ever returned it to
+## `_boundary`, so every other consumer was reconstructing it from the display
+## string. Surfaced at the single exit `_where` already uses, per this file's
+## own rule that the key is "resolved by whichever path this build has, and
+## acted on in exactly one place".
+var place_key := ""
 var place_inside := false
 var near_name := ""
 var near_m := 0.0
@@ -490,7 +501,8 @@ func _where(p: Vector3) -> void:
 	place_name = ""
 	near_name = ""
 	near_m = 0.0
-	_boundary(_resolve(p))
+	place_key = _resolve(p)
+	_boundary(place_key)
 
 
 ## Which register place contains `p`, or "" for the corridor. Sets the display

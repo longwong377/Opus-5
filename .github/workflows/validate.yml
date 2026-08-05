@@ -798,6 +798,28 @@ jobs:
         continue-on-error: true
         run: python3 station/vista.py --selftest
 
+      # AND DOES THE SHIPPED BUILD MOUNT IT? `svista` above checks the DATA;
+      # this checks the CALLER, in the engine, which is the only thing that can.
+      # `vista.gd` was complete and mounted only by `render_shot.gd` -- the
+      # render path -- so a player at C&C's window saw the background colour
+      # while a render of the same room showed the station. Instance ten of
+      # finished machinery with no caller on the shipped path.
+      #
+      # It PASSES and it prints the thing that is still wrong: the boot cell
+      # cluster is 838 m along the axis from the nearest window, so the mount
+      # is correct and cannot fire in the build as it boots today. That number
+      # is computed from the spawn, so it moves on its own when the build
+      # boots somewhere else.
+      #
+      # Needs the engine; ~40 s headless, no GPU.
+      - name: Does the shipped build mount what is outside a window
+        id: svistamount
+        continue-on-error: true
+        run: |
+          G=$(ls -1 /home/user/godot-build/*/bin/godot.linuxbsd.*.double.* 2>/dev/null | head -1)
+          if [ -z "$G" ]; then echo "no Godot build here -- skipped"; exit 0; fi
+          "$G" --headless --path godot -- --vista-gate 2>&1 | grep -E "^VISTA"
+
       # P1-G2. The tier ladder, and arrest -> brig -> fine -> release closing
       # with every leg routed on the graph a resident commutes on. ~44 s, of
       # which ~36 s is `navigation.build_graph()` -- the escort and court legs
@@ -1084,6 +1106,8 @@ jobs:
             echo "FAILED: shullfit"; fail=1; fi
           if [ "${{ steps.svista.outcome }}" != "success" ]; then
             echo "FAILED: svista"; fail=1; fi
+          if [ "${{ steps.svistamount.outcome }}" != "success" ]; then
+            echo "FAILED: svistamount"; fail=1; fi
           if [ "$fail" != "0" ]; then
             echo; echo "One or more gates failed -- see above."; exit 1; fi
           # NOT A COUNT. It was hand-maintained and said 36 while the list

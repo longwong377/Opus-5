@@ -92,6 +92,25 @@ var _present_1300 := -1
 ## into `walk.gd`'s private `_stream` field, for the same reason `_player()` is
 ## found by type: that file's internals are not this one's to depend on.
 var _streamer = null
+## What is outside a window, in the build a player actually launches.
+##
+## INSTANCE TEN, AND IT IS CLOSED HERE. `godot/scripts/vista.gd` is complete,
+## tested and mounted by `render_shot.gd` -- which is the RENDER path. The
+## shipped build is `main.gd` -> `walk.gd` -> `stream.gd`, and it mounted
+## nothing, so a player walking to C&C's window saw the background colour while
+## a render of the same room showed the station. `vista.gd`'s own header says
+## so in as many words, and names this file as the fix. Ten is the count of
+## times this project has shipped finished machinery with no caller.
+var _vista: Node = null
+## Which place `_vista` is currently built for, "" for none.
+var _vista_place := ""
+## LAZY, AND THE TRIANGLE BUDGET IS WHY -- this is not the one-liner the
+## session report predicted. `cnc`'s vista is 96,498 triangles; the streamed
+## build already runs 154,454 against `budget.CELLS["resident_tris"]` of
+## 180,000, so mounting it unconditionally is 139% of budget before the player
+## has looked at anything. Three places on the station have a window, so the
+## cost is paid only while standing in one of them and released on the way out.
+const VISTA_DIR := "res://../station/generated/scene/vista"
 ## `loads + frees` at the last time the cast was bound. A streamed build's tree
 ## CHANGES SHAPE as the player walks, and `life.gd`'s Director binds people by
 ## walking the meshes that are in the tree at the moment it is called.
@@ -178,6 +197,10 @@ func _ready() -> void:
 	# only the capture is conditional.
 	if _args().has("check-gate"):
 		_check_gate()
+		return
+
+	if _args().has("vista-gate"):
+		_vista_gate()
 		return
 
 	if _headless() and _args().has("ragdoll-gate"):
@@ -508,6 +531,221 @@ func _process(_delta: float) -> void:
 		_audio.hour = _clock.hour()
 	_rebind_on_stream()
 	_fire_collapses()
+	_vista_update()
+
+
+## Mount or release the view through the window as the player enters and leaves
+## the places that have one.
+##
+## THE FRAME IS THE WHOLE DIFFICULTY AND IT IS WHY THIS IS NOT ONE LINE.
+## `render_shot.gd --shot interior` builds ONE room in a ROOM-LOCAL frame, so
+## it mounts the vista at the scene root and the two coincide. The shipped
+## build is in STATION WORLD COORDINATES, 8 km of them, so the same geometry
+## has to be placed at the aperture's own pose.
+##
+## The manifest already carries it: `aperture.p` and `aperture.basis` are in
+## station coordinates. `station/vista.py` builds the room-local geometry as
+## `L = (V - p) @ B`, so `local_j = (world - p) . B[:,j]` -- which makes the
+## local axes the COLUMNS of B and the inverse `world = B @ local + p`.
+##
+## THAT CONVENTION WAS CHECKED NUMERICALLY BEFORE THIS WAS WRITTEN, because
+## session 4q found `npc.gd` drawing the entire corridor crowd mirrored from a
+## `Basis(fwd.cross(up), up, fwd)` with determinant -1, and no gate here asks a
+## transform whether it is a rotation. For all three apertures: det(B) = +1.000,
+## `B[:,2]` equals the manifest's own station-frame `normal` to 0, and a
+## local -> world -> local round trip closes to 1.8e-13 m. The first test tried
+## could NOT have caught an error -- `cnc`'s basis is symmetric to 1.2e-16, so
+## B and B.T give identical answers and the check passed for no reason. The
+## domes are the discriminating case.
+func _vista_update() -> void:
+	if _mode != "station":
+		return
+	var hud = _hud()
+	var key := "" if hud == null else String(hud.get("place_key"))
+	if not hud_inside(hud):
+		key = ""
+	if key == _vista_place:
+		return
+	if _vista != null:
+		_vista.queue_free()
+		_vista = null
+		print("vista: released '%s'" % _vista_place)
+	_vista_place = key
+	if key == "" or _world == null:
+		return
+	var man := _vista_manifest(key)
+	if man.is_empty():
+		return
+	_vista = load("res://scripts/vista.gd").mount(_world, key, VISTA_DIR)
+	if _vista == null:
+		return
+	var ap: Dictionary = man.get("aperture", {})
+	(_vista as Node3D).global_transform = Transform3D(
+		_basis_cols(ap.get("basis", [])), _v3(ap.get("p", [])))
+	print("vista: MOUNTED '%s' in the shipped build at %s -- %d triangles"
+		% [key, (_vista as Node3D).global_transform.origin,
+			int(man.get("triangles", 0))])
+
+
+## Is the player INSIDE a place, rather than near one? Near is not in: the
+## corridor outside C&C is not C&C and must not pay for its window.
+func hud_inside(hud) -> bool:
+	return hud != null and bool(hud.get("place_inside"))
+
+
+## Prove the shipped build can mount a vista, and say where it cannot.
+##
+## WHY A GATE AND NOT A WALK TEST. This project's rule is that only running the
+## thing tells you the caller runs, and the strongest form of that here would
+## be to walk a body to C&C's window and grep the loader's line. IT CANNOT BE
+## DONE IN THE SHIPPED BUILD TODAY, and finding out why is most of this gate's
+## value: the boot deck is `blue_0_0` at the z ~7120 cluster, and all three
+## places that have a window -- `cnc`, `obs_dome_1`, `obs_dome_2` -- sit at
+## z 7938..7982, a DIFFERENT z-cluster of the same deck. There is no walk from
+## the spawn to a window. Writing the mount and stopping there would have been
+## instance eleven of exactly the defect it fixes.
+##
+## So this drives the mount directly for every place that has a manifest, and
+## checks the thing a walk test would have checked: that the node exists, that
+## it is placed at the aperture's own station coordinates, and that the hull
+## geometry LANDED WHERE THE HULL IS -- an aperture-frame mesh mounted with the
+## basis transposed still produces a node at the right origin and a station
+## pointing the wrong way, which is the mirrored-crowd defect's exact shape.
+##
+## Two controls, both of which fail when the code is right:
+##   * a place with no manifest must mount nothing;
+##   * mounting with the TRANSPOSED basis must move the geometry, and the gate
+##     reports by how much. If that comes back 0 the check is inert -- which is
+##     true for `cnc` alone, whose basis is symmetric to 1.2e-16, and is why
+##     the domes are the discriminating case and are checked too.
+func _vista_gate() -> void:
+	for _i in 4:
+		await get_tree().physics_frame
+	var keys := ["cnc", "obs_dome_1", "obs_dome_2"]
+	var mounted := 0
+	var worst_origin := 0.0
+	var least_control := INF
+	var control_places := 0
+	var symmetric: Array = []
+	var fail := ""
+	for k in keys:
+		var man := _vista_manifest(k)
+		if man.is_empty():
+			fail = "%s has no manifest" % k
+			break
+		var ap: Dictionary = man.get("aperture", {})
+		var want := _v3(ap.get("p", []))
+		var node = load("res://scripts/vista.gd").mount(self, k, VISTA_DIR)
+		if node == null:
+			fail = "%s did not mount" % k
+			break
+		var n3 := node as Node3D
+		n3.global_transform = Transform3D(
+			_basis_cols(ap.get("basis", [])), want)
+		worst_origin = maxf(worst_origin, n3.global_transform.origin.distance_to(want))
+		# WHERE DID THE GEOMETRY GO? The aperture normal is a station-frame
+		# unit vector and `B[:,2]` is its local +Z, so a correctly mounted
+		# vista maps local +Z onto it. Transposing the basis inverts the
+		# rotation; the control measures how far that moves a point 1 km out
+		# along the view axis, which is the scale a window actually shows.
+		var probe := Vector3(0.0, 0.0, 1000.0)
+		var good := n3.global_transform * probe
+		var B := _basis_cols(ap.get("basis", []))
+		var bad := Transform3D(B.transposed(), want) * probe
+		var moved := good.distance_to(bad)
+		# A SYMMETRIC BASIS IS ITS OWN TRANSPOSE, so for such a place this
+		# control CANNOT fire and reporting it as though it had is worse than
+		# not running it. `cnc` is symmetric to 1.2e-16 -- the first version of
+		# this gate took the MIN across all three places, so cnc dragged the
+		# control to 0.0 m and the gate PASSED with a dead check. Each place
+		# now declares which case it is, and the pass condition requires the
+		# asymmetric ones to move.
+		var asym := maxf(maxf((B.x - Basis(B.x, B.y, B.z).transposed().x).length(),
+			(B.y - B.transposed().y).length()), (B.z - B.transposed().z).length())
+		if asym > 1.0e-9:
+			control_places += 1
+			least_control = minf(least_control, moved)
+			if moved < 1.0:
+				fail = "%s: basis is asymmetric (%.3g) but transposing it moves the view %.3f m -- the control is inert" % [k, asym, moved]
+				node.queue_free()
+				break
+		else:
+			symmetric.append(k)
+		var nrm := _v3(ap.get("normal", []))
+		var got := (good - want).normalized()
+		if nrm.length() > 0.5 and got.distance_to(nrm) > 1e-3:
+			fail = "%s: local +Z maps to %s, manifest normal is %s" % [k, got, nrm]
+			node.queue_free()
+			break
+		mounted += 1
+		node.queue_free()
+	# CONTROL: a place with no window must mount nothing.
+	var none = load("res://scripts/vista.gd").mount(self, "plantroom_bay", VISTA_DIR)
+	if none != null:
+		fail = "a place with no manifest mounted a vista"
+		none.queue_free()
+	# CAN THE PLAYER REACH ANY OF THEM IN THIS BUILD? Computed, not asserted,
+	# and it is the most useful line this gate prints. The mount is correct and
+	# in the shipped `_process`, and the shipped build still cannot show it: the
+	# boot cell cluster and the windows are different z-clusters of one deck.
+	# Reported as the axial gap from the spawn to the nearest aperture so the
+	# number moves on its own when the build boots somewhere else.
+	var spawn_z := 0.0
+	if _world != null and _world.get("spawn") != null:
+		spawn_z = (_world.get("spawn") as Vector3).z
+	var nearest := INF
+	for k in keys:
+		var a: Dictionary = _vista_manifest(k).get("aperture", {})
+		if a.has("z_m"):
+			nearest = minf(nearest, absf(float(a["z_m"]) - spawn_z))
+	var reach := "no -- nearest window is %.0f m along the axis from the spawn (a different z-cluster of blue/0/0)" % nearest
+	# THE CONTROL HAS TO HAVE FIRED SOMEWHERE. If every basis were symmetric
+	# there would be nothing distinguishing the right convention from its
+	# inverse, and a PASS would mean only "it mounted".
+	if control_places == 0 and fail == "":
+		fail = "no place has an asymmetric basis -- the transpose control cannot discriminate"
+	var ok: bool = fail == "" and mounted == keys.size()
+	print("VISTA gate=%s mounted=%d/%d origin_err=%.6f m " % [
+			"PASS" if ok else "FAIL", mounted, keys.size(), worst_origin]
+		+ "transpose_control fired on %d place(s), worst %.1f m " % [
+			control_places, 0.0 if least_control == INF else least_control]
+		+ "(symmetric, cannot discriminate: %s) " % [
+			"none" if symmetric.is_empty() else ", ".join(symmetric)]
+		+ "no_manifest_mounts=%s reachable_from_spawn=%s%s" % [
+			str(none != null), reach, "" if fail == "" else "  -- " + fail])
+	get_tree().quit(0 if ok else 1)
+
+
+func _vista_manifest(key: String) -> Dictionary:
+	var path := VISTA_DIR.path_join(key + ".json")
+	if not FileAccess.file_exists(path):
+		return {}
+	var f := FileAccess.open(path, FileAccess.READ)
+	var parsed = JSON.parse_string(f.get_as_text())
+	return parsed if typeof(parsed) == TYPE_DICTIONARY else {}
+
+
+## A Godot `Basis` from a row-major 3x3, taking COLUMNS as the basis vectors.
+##
+## `Basis(x, y, z)` takes the three COLUMN vectors -- the images of the local
+## axes -- so column j is `(m[0][j], m[1][j], m[2][j])`. Feeding it the ROWS
+## builds the transpose, which for a rotation is the inverse: geometry that
+## looks plausible and faces the wrong way. That is exactly the shape of the
+## mirrored-crowd defect, so it is spelled out rather than inlined.
+func _basis_cols(m) -> Basis:
+	var a: Array = m as Array
+	if a.size() != 3:
+		return Basis()
+	return Basis(
+		Vector3(float(a[0][0]), float(a[1][0]), float(a[2][0])),
+		Vector3(float(a[0][1]), float(a[1][1]), float(a[2][1])),
+		Vector3(float(a[0][2]), float(a[1][2]), float(a[2][2])))
+
+
+func _v3(a) -> Vector3:
+	var v: Array = a as Array
+	return Vector3.ZERO if v.size() != 3 else Vector3(
+		float(v[0]), float(v[1]), float(v[2]))
 
 
 # ---------------------------------------------------------------------------
