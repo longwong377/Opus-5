@@ -7672,3 +7672,227 @@ except how many people can book at once, so being wrong costs a booking conflict
 geometry error.
 **Overturned by.** Any frame of the B5 recreation deck, or a stated lane count in the spec.
 **Authority 5.** `station/civic_calendar.py::SLOTS`.
+
+## INV-398 — The dock reserves 30% of thrust for control, and refuses under 5%
+
+**What.** `docking.CONTROL_RESERVE = 0.30` and `MIN_RESERVE = 0.05`. A docking plan will not
+spend more than 70% of the airframe's maximum acceleration merely holding station on the bay's
+circle, and it **refuses outright** below a 5% reserve even where `omega² R` is under `a_max`.
+**Why.** `formation_cost(omega, radius) = omega² R` is what the geometry costs before any
+manoeuvring, and MASTER-PLAN P4 asks for a dock rather than a hold. A plan with nothing left
+over cannot correct.
+**Constrained by.** The station's own spin sets the whole curve: at the cobra bay's 293.78 m
+radius holding costs 10.35 m/s² of the airframe's 18.38, i.e. **56.3%**, so a reserve above ~44%
+makes the bay itself unreachable. At the derived **227.8 m** standoff ceiling the cost is 99.9%
+and the reserve is nil, which is what MIN_RESERVE is for — the gate's third control asks for
+227 m, which is INSIDE the ceiling, and is refused because 0.1% of thrust is not steering. 30%
+lands the flown plan at a 71.3 m standoff, 12.86 m/s², **30.0% in hand**, and the measured peak
+demand over twelve start phases is 72.7%.
+**Overturned by.** Any stated Starfury thrust or docking procedure; a change to the airframe's
+`aurora_thrusters` figures, which this reads rather than copies.
+**Authority 5.** `station/physics/docking.py::CONTROL_RESERVE`, `MIN_RESERVE`.
+
+## INV-399 — Capture is 20 m and 4 m/s, and the taper is what makes it reachable
+
+**What.** `capture_range = 20.0 m`, `capture_speed = 4.0 m/s`: how near the hold point and how
+nearly matched the craft must be before the standoff ramp starts. The commanded closing speed
+tapers at 0.15/s.
+**Why.** Without a capture test the approach has no phase boundary and the craft ramps in from
+wherever it happens to be.
+**Constrained by.** THE TAPER AND THE TEST ARE ONE DECISION and the note says why: 0.15/s puts
+the commanded closing speed at 3 m/s when the range is `capture_range` — i.e. **inside**
+`capture_speed` — so the capture condition can be MET rather than asymptotically approached for
+ever. Pick either number without the other and the phase either never triggers or triggers at a
+speed the close cannot null. The closing limit itself is not chosen at all: it is
+`contact_is_safe`'s own 2.0 m/s buffer with a quarter kept back, so a perfectly flown plan is
+not sitting on its own gate.
+**Overturned by.** A stated docking procedure, or a change to `contact_is_safe`'s buffer, which
+this tracks by construction.
+**Authority 5.** `station/physics/docking.py::ApproachPlan`.
+
+## INV-400 — The attitude loop's rate error is measured against the FEEDFORWARD, not zero
+
+**What.** `docking.ATT_KP, ATT_KD = 0.9, 2.2`, proportional on pointing error and derivative on
+rate error — where the rate is measured **against the rotating demand**, not against zero.
+**Why.** The target is a bay on a spinning station: the demanded attitude is itself rotating at
+`omega`. A derivative term that drives body rate to zero fights the tracking it is supposed to
+damp, and the craft lags the bay by a constant angle for ever.
+**Constrained by.** The station's spin period (33.4716 s, sourced) sets the demand's rate, so
+the feedforward is not a tuning choice — it is `omega`. The gains are then bounded by the
+manoeuvre: under-damped and the nose oscillates through contact, over-damped and the craft
+cannot follow a demand rotating at `omega`. Measured over twelve start phases the worst
+misalignment at contact is **3.48 deg**.
+**Overturned by.** Any measured Starfury attitude response.
+**Authority 5.** `station/physics/docking.py::ATT_KP`, `ATT_KD`.
+
+## INV-401 — Mains are shut above 25 degrees of pointing error
+
+**What.** `docking.THRUST_GATE_DEG = 25.0`.
+**Why.** Thrust applied 40 degrees off the demand is **not a weaker correction, it is a
+different one** — it adds velocity in a direction nothing asked for and the loop then spends
+authority removing it.
+**Constrained by.** Above by the useful component: `cos 25° = 0.906`, so at the gate 91% of
+thrust is still doing what was asked and the cross-track error is under 42%. Below by the
+attitude loop's own settling — a gate tighter than the loop's overshoot chatters the mains on
+and off through the manoeuvre. It cannot be zero, or the craft may never fire at all.
+**Overturned by.** Any stated Starfury thrust-vectoring authority.
+**Authority 5.** `station/physics/docking.py::THRUST_GATE_DEG`.
+
+## INV-402 — The dock is sampled finer than the profile's own control points
+
+**What.** `starfury_scene`'s dock sampler steps finer than the approach profile's control
+points.
+**Why.** A sampler at the profile's own resolution can only ever confirm the profile; it cannot
+find an excursion between two control points, which is exactly where a guidance law overshoots.
+**Constrained by.** Fine enough that the peak-demand and hull-clearance figures are measurements
+rather than restatements of the plan (the gate reports peak 72.7% and clearance 28.1 m from the
+samples, not from the profile), and coarse enough that a twelve-phase sweep stays a fifteen-
+second gate.
+**Overturned by.** A measured excursion between samples, which would mean the step is still too
+coarse.
+**Authority 5.** `station/starfury_scene.py`.
+
+## INV-403 — Room occupants are instanced, not baked
+
+**What.** `populace.ROOM_INSTANCED = True`. A room's occupants are placements against
+`populace.station_crowd_library`, the same shared-body path the corridor crowd uses, rather than
+triangles welded into the deck `.glb`.
+**Why.** The owner's words on being shown the old behaviour: *"these need to be real people and
+we've come this far and we have fucking humanoid dioramas in rooms?"* A baked body **can only be
+shown or hidden** — `life.gd` says so outright — so the entire runtime behaviour of a person in
+a room was `npc.gd` rotating their yaw to face the player within 6 m.
+**Constrained by.** ABOVE by the corridor crowd's own measured trade, which this repeats rather
+than re-derives: a shared body is what every real crowd system ships. BELOW by individuality —
+within-species stature range is genuinely lost, up to **352 mm (narn), 297 (centauri), 296
+(minbari)**. Name, species, costume, role, home, job and identicard are unchanged. The budget
+decides it: 886 glTF primitives for 66 baked occupants against **31–33 draw calls for all 34
+people on screen**, versus `schedule.NPC_BUDGET["max_draw_calls"] = 32` — a rout, and still
+straddling the line rather than clearing it.
+**THE TRADE IS THE OPPOSITE WAY ROUND FROM THE ONE THAT WAS THERE, deliberately.** At two metres
+a player judges BEHAVIOUR, not bone structure; a unique face that never stands up reads worse
+than a shared face that gets up and leaves. Distance wants silhouette, proximity wants
+behaviour.
+**Overturned by.** A runtime that can skin a body on demand, which makes the shared library
+unnecessary. The hybrid is already affordable and unbuilt: 4 individual bodies inside 6 m cost
+**28,848 tri against 475,992** to give all 66 one — what blocks it is the skinning, not the
+budget.
+**Authority 5.** `station/populace.py::ROOM_INSTANCED`.
+
+## INV-404 — Pose slots share the walk-phase axis
+
+**What.** `POSE_SLOTS = ("idle", "sit", "sleep", "talk")` appended after the 8 walk phases on the
+same index; `CROWD_SLOTS = 12`.
+**Why.** The runtime's bucket key is `crowd_<species>_<lod>_<n>` and its material names follow
+it. Giving poses their own axis would have been a second shape for the same thing.
+**Constrained by.** Measured cost: 112 → **168** shared bodies; at lod4 the four poses add
+**32,288 tri** to the walk phases' 64,576. Below, fewer slots means a pose a room needs is
+missing; above, every extra slot is paid on every species at every rung.
+**Overturned by.** A pose a room needs that is not one of the four.
+**Authority 5.** `station/populace.py::POSE_SLOTS`.
+
+## INV-405 — `animation.sleep_clip`
+
+**What.** Recline 90°, `leg_reach_f` 0.94, `arm_reach_f` 0.86, `breath_deg` 2.4 at `IDLE`'s own
+two breaths per loop, `turn_deg` 2.2.
+**Why.** `CLIP_SET` was walk/idle/talk/sit — **no sleep clip at all** — while
+`schedule.RHYTHMS` has always known every Narn aboard is asleep at 03:00 and every Centauri
+awake. Species sleep was modelled and could not be seen.
+**Constrained by.** The 90° is not a choice: a body on a bunk is horizontal. The reach factors
+are under 1.0 because a sleeper's joints are not locked. `breath_deg` reuses `IDLE`'s own rate
+because recumbent breathing is diaphragmatic and is the ONLY motion a sleeping body has —
+without it a room of sleepers is a row of effigies, which `turn_deg` also guards. Arm spread and
+pillow rise are **measured off the rig**, not chosen.
+**AND IT NEEDED FOUR IK CONTACTS, NOT TWO**, which is the transferable part: posing arms by
+rotation put a sleeper's fingers **0.42 m in the air**, because an elbow flexes FORWARD and a
+90° recline turns forward into up. Hands are now solved with the same `_leg_ik` the legs use.
+Two-pass: build the estimate, measure the lowest vertex, lift the body onto its own mattress.
+Across all 14 humanoid species at lod 0: sink **20–27 mm** into a 40 mm panel, trunk tilt
+**< 0.83°**, zero interpenetration worse than rest.
+**Overturned by.** Any frame showing a B5 bunk occupied.
+**Authority 5.** `station/npc/animation.py::sleep_clip`.
+
+## INV-406 — `MATTRESS_SINK_M = 0.02`
+
+**What.** A sleeping body sinks 20 mm into its bedding.
+**Why.** Half of `dressing._m_bed`'s 40 mm mattress panel — derived from the furniture, not
+picked.
+**Constrained by.** A figure floating on its own bedding to the millimetre reads as a figure on
+a shelf; a figure sunk through it reads as a bug. Half the panel is the only value that needs no
+further argument.
+**Overturned by.** A change to `dressing._m_bed`, which this follows by construction.
+**Authority 5.** `station/npc/animation.py::MATTRESS_SINK_M`.
+
+## INV-407 — The occupant timetable, and its step
+
+**What.** `populace.occupant_day`, `DAY_STEP_H = 0.25`.
+**Why.** An occupant needs to know what they are doing at any hour, and the step decides what
+can be stepped over.
+**Constrained by.** **Under `schedule.MEAL_HALF_WINDOW_H` (0.3) and `TRANSIT_H` (0.5)**, so a
+meal or a commute cannot fall between two samples — the step is derived from the two shortest
+things in the schedule, not chosen. Every state traces to `schedule.activity_at`; presence
+traces to `resident.where_at` OR the place's own `occupancy` curve. Measured: 66 of 66 occupants
+change state over a station-day; at 03:00, 40 away / 12 eat / 7 work / 4 sleep / 2 idle /
+1 transit, and at 13:00, 21 idle / 18 work / 16 away / 9 eat / 2 sleep.
+**Overturned by.** A shorter activity in `schedule`, which would require a finer step.
+**Authority 5.** `station/populace.py::occupant_day`, `DAY_STEP_H`.
+
+## INV-408 — Leaving a room is along `dressing.LANE_M`
+
+**What.** An occupant exits by the nearer end of the reserved circulation band.
+**Why.** A room builder does not record where its door is, so "the way out" has to come from
+somewhere.
+**Constrained by.** `populace._free_spots` **already ranks that band first** as "where a person
+crossing a room actually is" — so this reuses an existing answer rather than inventing a second.
+**Overturned by.** The room builder recording its door position, which would be better and would
+make this obsolete.
+**Authority 5.** `station/populace.py`.
+
+## INV-409 — `TALK_M = 1.80 m`
+
+**What.** Two occupants closer than this are talking to each other.
+**Why.** A conversation needs a distance and none was stated.
+**Constrained by.** **The maximum of `friction.separation_m`** (0.75–1.80 m across the species
+table): two people standing closer than the widest avoidance distance the station models are, by
+definition, standing together rather than passing. Not a new number at all.
+**Overturned by.** A change to `friction.PAIRS`, which this tracks.
+**Authority 5.** `station/populace.py::TALK_M`.
+
+## INV-410 — `BED_BAND = (0.22, 0.82)`, `BED_MIN_AREA_M2 = 0.30`
+
+**What.** Which emitted prop surfaces an occupant may sleep on: height band and a minimum area.
+**Why.** `sleep_clip` needs a surface, and the room's own mesh is the only honest source.
+**Constrained by.** The band covers every `rooms.PROP_KIND` prop whose machine kind is `"bed"`
+at `dressing._m_bed`'s 70%-of-box deck. The area floor exists to stop a **rail or a head unit**
+being slept on — both sit inside the height band and neither is a bed.
+**Overturned by.** A bed outside the band, which would mean the furniture changed.
+**Authority 5.** `station/populace.py::BED_BAND`.
+
+## INV-411 — The seated lift is one-sided
+
+**What.** `seat_dy = max(0, actual − fitted)`: a seated occupant is raised when the seat is
+higher than the shared pose was built for, and never lowered when it is lower.
+**Why.** Instancing introduced a seated-hip error of **87–153 mm** against the 436 mm pan the
+shared `sit` pose is built for, because the pose is one body and the seats are many heights.
+**Constrained by.** ASYMMETRIC ON PURPOSE. On a higher seat the lift puts the hips on the pan
+and the feet clear, which is what a bar stool looks like. On a lower one the same correction
+drives the feet **through the deck**, and hips a few centimetres proud is the lesser error. The
+runtime lift closes the measured error to **0–0 mm**.
+**Overturned by.** A runtime that can scale the pose to the seat.
+**Authority 5.** `station/npc/animation.py`.
+
+## INV-412 — `walk.gd`'s fallback crowd ladder is the coarsest rung that shipped
+
+**What.** When the boot manifest does not name a crowd ladder, `walk.gd` derives one and uses
+the **coarsest** LOD rung present.
+**Why.** THIS EXISTS BECAUSE OF INSTANCE TEN. `main.gd::_configure_walk` set `crowd_path` and
+never `crowd_glbs` or `crowd_ladder`, and `walk.gd::_load_crowd_libs` returns false without
+them — so **every launch of the shipped build instanced ZERO corridor walkers** while a Python
+harness reported 963 walking 5,966 m. The figure was true of `walkable.py --deck`'s command line
+and had never reached the game.
+**Constrained by.** Copying `NPC_BUDGET`'s distances into GDScript would be a **second
+description of a budget that lives in Python** — the defect this repository has paid for three
+times. The coarsest rung cannot be over budget, so it is the only choice that is safe without
+holding a copy of the table.
+**Overturned by.** `boot.py` writing `populace.crowd_ladder()` into the manifest, which replaces
+this conservative default with the derived ladder and is the better fix.
+**Authority 5.** `godot/scripts/walk.gd`.
