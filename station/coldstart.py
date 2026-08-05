@@ -866,10 +866,23 @@ def g7(verbose=False):
     the same loop, with the same across-the-floor-only rule and the same
     per-frame cap read off the body's own speed.
     """
+    # THE THIRD CASE EXISTS BECAUSE ITS ABSENCE IS WHY NOBODY NOTICED.
+    # `--ragdoll-solid` was INERT for a whole session -- it removed an RID
+    # exception on a collision the player's mask had already removed -- and no
+    # gate's case list ran it, so nothing could report that a control had
+    # stopped controlling anything. It needs `--no-ragdoll-push` beside it to be
+    # observable at all: with the push working the player is separated before
+    # the solver ever touches a bone, so the flag ALONE is a
+    # statistic-for-statistic match with the subject and would make a useless
+    # case. Paired, it is decisive -- 142 of 150 frames resolve against a bone
+    # and the player is stopped after 0.62 m instead of walking 8.98 m through
+    # the body.
     return _walk_gate(verbose, "CORPSE", "--corpse-gate", (
         ((), True, "the shipped build"),
         (("--no-ragdoll-push",), False,
          "the corpse is a hologram -> the player ends 0.42 m inside it"),
+        (("--no-ragdoll-push", "--ragdoll-solid"), False,
+         "and with the bones back on the player, stopped after 0.62 m"),
     ), extra_probes=(built_deck, ragdoll_bodies), echo=("CORPSE gate:",))
 
 

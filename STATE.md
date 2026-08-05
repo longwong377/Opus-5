@@ -319,7 +319,30 @@ times** on the z=7440 cluster, so +18,518 triangles is **+55,554 on one cluster*
 * **The arrest chain behind a refusal is still Python.** A refused player is *told* they are
   refused and is not yet detained. P2 owns closing it.
 * ~~**A settled ragdoll does not push the player aside**~~ — **CLOSED in 4q**, `coldstart.py --g7`;
-  with the push off the control ends the player 0.420 m inside the body. Previously:
+  with the push off the control ends the player 0.420 m inside the body.
+
+  **AND `--ragdoll-solid` WAS INERT, WHICH THIS SECTION ASSERTED THE OPPOSITE OF.** §24.5 said it
+  *"removes the exception and reproduces the pre-4h floor-loss hazard"*. **Both halves were
+  wrong.** Probed in the engine rather than reasoned (`scratchpad/layer_probe.gd`, both controls
+  firing): Godot 4.4's `move_and_collide` consults **the mover's mask only**, the bones are on
+  `RAGDOLL_LAYER` (16), and `walk.gd::_spawn_player` never set the player's `collision_mask`, so
+  it was the default 1. **The RID exception was removing a collision the mask had already
+  removed.** Four runs, before: `--ragdoll-solid` was identical to the subject in every statistic.
+
+  Fixed by giving the player `1 | RAGDOLL_LAYER` under the flag — chosen over re-layering the
+  bones because bones mask `WORLD_LAYER`, so moving them there would also switch on ragdoll
+  self-collision (INV-449: *peak 500 m/s, 13.1 m of joint separation*), and **a control that
+  changes two things measures neither.** Now: paired with `--no-ragdoll-push`, **142 of 150 frames
+  resolve against a bone and the player stops after 0.62 m instead of walking 8.98 m through the
+  body.**
+
+  **It still does NOT reproduce a floor-loss hazard**, and that half of the old claim stays
+  refuted: `offfloor` is **0/150 in all four runs, before and after**. The body lies on the deck
+  *beside* the player rather than under them, so the floor contact that would be lost is never in
+  question. Reproducing floor loss needs a scenario that walks the player *over* a body, which no
+  gate here does. Nothing was manufactured to make the old sentence true.
+
+  Previously:
   `ragdoll.gd` excepts the player's RID from every bone deliberately (`--ragdoll-solid` removes
   the exception and reproduces the pre-4h floor-loss hazard), so the separation has to be added by
   hand in `npc.gd::push_off`, exactly as it already is for people. Not done.

@@ -5225,7 +5225,7 @@ def _selftest():
     # because they are numbers the MODULES chose and this code has to
     # rediscover:
     #   docking_bay  LAMPS_PER_BAY_GIRDER=3 x 13 girders = 39
-    #   zocalo       5 rib lamps per rib, measured, x 6 ribs = 30
+    #   zocalo       5 rib lamps per rib x RIBS_PER_BAY x bays_for(place)
     #   command_control  four wall courses, one per measured course
     def _lamps(room):
         v, t, g, _e = interior_geometry(room)
@@ -5234,9 +5234,30 @@ def _selftest():
     _bay = _lamps("docking_bays")
     check(len(_bay) == 39,
           f"the docking bay recovers its three floods a girder ({len(_bay)})")
+    # DERIVED FROM THE MODULE, NOT PINNED. This read `== 30` and had been wrong
+    # since 27d32d7 (2026-08-02) -- the commit that gave the Zocalo its own
+    # footprint and took it from three bays to six. That commit touched
+    # bespoke.py, quarters.py and zocalo.py and NOT this file, so the assertion
+    # went on describing a three-bay room that had stopped existing, and printed
+    # `(60)` against `30` for four sessions. 60 = 5 lamps x 2 ribs x 6 bays:
+    # nothing doubled, the room got twice as long.
+    #
+    # Re-pinning to 60 would go stale the day `bays_for`'s cap moves, which is
+    # the failure `drum_dressing`'s GARDEN_OPEN_EDGES comment is named after.
+    #
+    # WHAT THIS STILL CATCHES is the thing it was written for: a span is not a
+    # fitting. If `to_spans` were let loose on the whole run again the count
+    # would be the RIB count and not the LAMP count, which this expression can
+    # tell apart because it multiplies the two.
+    import zocalo as _Z                                          # noqa: PLC0415
+    import directory as _dr                                      # noqa: PLC0415
+    _zbays = _Z.bays_for(_dr.by_key("zocalo"))[0]
+    _want_zoc = len(_Z.RIB_LAMP_F) * _Z.RIBS_PER_BAY * _zbays
     _zoc = [x for x in _lamps("zocalo") if x["group"] == "zoc_rib_lamp"]
-    check(len(_zoc) == 30,
-          f"the Zocalo recovers its five rib lamps a rib ({len(_zoc)})")
+    check(len(_zoc) == _want_zoc,
+          f"the Zocalo recovers its {len(_Z.RIB_LAMP_F)} rib lamps on each of "
+          f"{_Z.RIBS_PER_BAY * _zbays} ribs over {_zbays} bays "
+          f"({len(_zoc)} of {_want_zoc})")
     # Stated on the bodies as well as on the lamps, because the lamp count of
     # an EXTENDED fitting is a sampling decision and can land on the right
     # number for the wrong reason -- reverting the body split and letting the

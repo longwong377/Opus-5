@@ -1029,6 +1029,16 @@ def seating_plan(p=None, index=0, seed="zocalo", stair_side=0, candidates=60):
 # ---------------------------------------------------------------------------
 # The bay
 # ---------------------------------------------------------------------------
+## THE RIBS IN ONE BAY, AND THE LAMPS SET INTO EACH RIB'S INTRADOS. Named
+## because `tools/export_scene.py`'s self-test has to derive its expected lamp
+## count from this module instead of pinning it: the pinned 30 was written when
+## `BESPOKE_GEOMETRY` called `zocalo_run(3)` and survived unchanged when
+## `bays_for` took the room to six bays, so the assertion said 30 against a
+## measured 60 for four sessions.
+RIBS_PER_BAY = 2
+RIB_LAMP_F = (0.16, 0.32, 0.50, 0.68, 0.84)
+
+
 def zocalo_bay(p=None, index=0, seed="zocalo", stair_side=None,
                furniture=True, stalls=True, sign=None):
     """One Zocalo bay, authored at z in [0, bay_length].
@@ -1087,7 +1097,7 @@ def zocalo_bay(p=None, index=0, seed="zocalo", stair_side=None,
 
     a_rib = p["well_width_m"] / 2.0
     b_rib = ceil - p["rib_thickness_m"]
-    for k in range(2):
+    for k in range(RIBS_PER_BAY):
         z_rib = k * p["rib_spacing_m"]
         _rib(m, p, z_rib)
         # Lamps set into the rib's intrados: `more hallway.jpg` shows them
@@ -1097,7 +1107,7 @@ def zocalo_bay(p=None, index=0, seed="zocalo", stair_side=None,
         # mirrored it, which put the 0.30 and 0.70 lamps at the same height and
         # the two crown lamps on top of each other: six pairs of exactly
         # coincident boxes and 108 non-manifold edges.
-        for f in (0.16, 0.32, 0.50, 0.68, 0.84):
+        for f in RIB_LAMP_F:
             t = math.pi * f
             lx, ly = -a_rib * math.cos(t), b_rib * math.sin(t)
             m.slab(lx - 0.13, lx + 0.13, ly - 0.10, ly + 0.10,

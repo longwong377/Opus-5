@@ -8392,3 +8392,53 @@ Authority 5 throughout. **Overturned by** any frame of a B5 customs search area.
 **Determinism.** `blake2b`, not `str.__hash__`, which is salted per process — AAA-STANDARD R0 names that failure by name.
 
 **Overturned by** a frame of this ceiling at a resolution that lets the lit fraction be counted directly.
+
+## INV-500 — The drum's triangle budget is charged against the exporter's own part list
+
+**What.** `station/budget.py`'s habitat-drum gate no longer sums a list written in `budget.py`. It calls `tools/export_scene.py::drum_parts()` — the one place the drum shot's contents are enumerated — and charges every triangle in it.
+
+**Why this is an INV entry and not just a fix.** The number the gate reports changed by a factor of 2.6 with no content changing, so every past statement about the drum's cost is superseded. Measured at the exporter's own standing eye (205°, mid-length):
+
+| | old sum | what the shot builds |
+|---|---|---|
+| shell / ground | `interior.drum_interior()` 88,736 — **not in the shot** | `drum_ground.visible_set()` 94,592 |
+| end caps | 15,072 | 15,072 |
+| guideways | 11,796 | 11,796 |
+| spokes | 516 | 516 |
+| core | — | 13,340 |
+| trams | — | 12,624 |
+| townscape | — | 51,026 |
+| dressing | — | 89,094 |
+| **total** | **116,120 (38.7% of 300,000, PASS)** | **288,060 (96.0%)** |
+
+**Constrained by** the fact that `drum_parts` replaces the band shell with `drum_ground.visible_set()` — its own comment says emitting both would z-fight across 4.5 million m² — so the old sum charged 88,736 triangles nobody renders while 166,084 triangles that *are* rendered were charged to nothing. `DRUM_CALIBRATION` measures the dressing alone at **39.08 / 32.30 / 47.26%** of the pixels of the three drum framings.
+
+**Overturned by** any change to what `--shot drum` builds, which is now the only thing that can move this number. There is nothing left in `budget.py` to update when the drum grows.
+
+## INV-501 — The drum gate stands on a 4 × 3 lattice, and its own lattice error is 16.2%
+
+**What.** `budget.DRUM["stations"] = 4` angles evenly around the circumference and `DRUM["z_stations"] = 3` axial stations at (j+½)/3 of the drum's open length — twelve standing eyes, worst charged.
+
+**Why a lattice at all.** `drum_ground.visible_set()` and `drum_dressing.dressing_set()` resolve LOD against the eye, so a drum figure is meaningless without one. `docs/AAA-STANDARD.md` scores a single convenient camera **PERFORMANCE 2** and a swept worst case **3**, and `budget.DECK` already sweeps 48 × 24 for that reason. Measured over a 10 × 3 exploratory sweep in session 4q, ground + dressing runs **144,256 to 201,162** across the drum — a factor of 1.39 — so one eye is not a bound.
+
+**Why 4 × 3 and not finer.** ~10 s an eye, all of it in LOD resolution: 12 eyes is 138 s, and `budget.py` goes 4m03s → 6m24s. 6 × 3 would be ~3.5 min for a verdict that does not change (the gate already fails). The lattice is **regular and stated rather than placed on the answer**: it knows nothing about `interior.LAND_USE`, which is where the worst case actually falls (270°, a settlement band), so it will keep finding the worst case if the land use moves.
+
+**What it costs, stated rather than hidden.** The half-resolution sub-lattice finds **256,144 against 305,536 — 16.2% lattice error**, printed on every run. That is large and it is the honest price of twelve eyes; it is reported for the same reason `deck_section` reports its own 10.1%.
+
+**Overturned by** a profile showing the LOD resolution is cheaper than measured, which would buy a finer lattice for the same seconds.
+
+## INV-502 — The drum's surface-density bound is charged on everything standing on the ground, not on the ground alone
+
+**What.** `budget.py`'s `surface density` check divides the **whole** drum visible set by the drum's inner area (0.068 tri/m² against a 0.500 bound), where it previously divided the band shell alone (0.020).
+
+**Why.** The bound's own comment says it "decides whether the ground can be per-object geometry or has to be a heightfield". Since `drum_dressing.py` and `garden.py` began standing objects on that ground the answer is *both*, and charging only the heightfield gated the half that was never in question. Ground alone is still printed beside it (0.021 tri/m²) because the heightfield question is still a real one.
+
+**Overturned by** nothing about the drum; this is a change of divisor, not of limit. The 0.5 tri/m² bound is untouched.
+
+## INV-503 — The eye a density measurement of the drum is taken from
+
+**What.** `station/density.py::DRUM_EYE = (205.0, 0.5)` — 205° of the drum's circumference, half-way along its open length.
+
+**Why not a choice.** It is `tools/export_scene.py::build_drum`'s own default stand, so the mesh `density.py` scores is a mesh somebody has rendered and judged. The value was already inline in `_m_interior`; naming it is what let `_m_interior`, its legacy control and the self-test all take the same one, which is the property that matters — three copies of an eye would put three different meshes behind one number.
+
+**Overturned by** the exporter changing its default stand, which this should then follow.

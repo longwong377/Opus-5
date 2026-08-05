@@ -303,6 +303,38 @@ func promote(spec: Dictionary) -> Doll:
 	# is the same hazard with sixteen colliders instead of one, so the player
 	# is an explicit exception on every bone. `--ragdoll-solid` removes it,
 	# which is the control, and it must reproduce that failure.
+	#
+	# THERE WERE TWO LOCKS ON THAT DOOR AND THIS FLAG ONLY EVER OPENED ONE OF
+	# THEM, which made it a control that could not fail. Measured in session 4q,
+	# four runs of `--corpse-gate` on one build:
+	#
+	#   (subject)                            PASS  clearance_min -0.0000  offfloor 0/150
+	#   --ragdoll-solid                      PASS  clearance_min -0.0000  offfloor 0/150
+	#   --no-ragdoll-push                    FAIL  clearance_min -0.4200  offfloor 0/150
+	#   --no-ragdoll-push --ragdoll-solid    FAIL  clearance_min -0.4822  offfloor 0/150
+	#
+	# `--ragdoll-solid` is IDENTICAL to the subject in every statistic the gate
+	# reports. The second lock is the layer/mask pair: bones sit on
+	# `RAGDOLL_LAYER` and `walk.gd::_spawn_player` never set the player's
+	# `collision_mask`, so it was Godot's default 1 -- and Godot 4.4's
+	# `move_and_collide` consults THE MOVER'S MASK ONLY. Probed in the engine
+	# rather than remembered, with both controls firing (see
+	# `scratchpad/layer_probe.gd`):
+	#
+	#   player L1 M1   obstacle L1  M1   ->  BLOCKED          (positive control)
+	#   player L1 M1   obstacle L16 M0   ->  PASSED THROUGH   (negative control)
+	#   player L1 M1   obstacle L16 M1   ->  PASSED THROUGH   (the shipped case)
+	#   player L1 M17  obstacle L16 M1   ->  BLOCKED          (the fix)
+	#
+	# So the exception was removing a collision the mask had already removed.
+	# `player_extra_mask()` below is the other half; `walk.gd` asks for it.
+	#
+	# WHY THE MASK AND NOT THE BONE'S LAYER. Putting bones on `WORLD_LAYER`
+	# under the flag would also make them solid to the player -- and would make
+	# them solid TO EACH OTHER, because their own mask is `WORLD_LAYER`. This
+	# file measured that case at "peak 500 m/s and 13.1 m of joint separation";
+	# the control would then reproduce a ragdoll explosion as well as the floor
+	# hazard, and a control that changes two things measures neither.
 	if _player_rid.is_valid() and not _args().has("ragdoll-solid"):
 		doll.sim.physical_bones_add_collision_exception(_player_rid)
 
@@ -921,6 +953,26 @@ func apply_controls() -> String:
 	if a.has("ragdoll-solid"):
 		said.append("player NOT excepted (the pre-4h floor-loss hazard)")
 	return "-" if said.is_empty() else ", ".join(said)
+
+
+## The bits a player's `collision_mask` must carry to FEEL a settled body.
+##
+## STATIC, AND READ BY `walk.gd` AT SPAWN, because the player is built before
+## any body falls over and its mask has to be right from its first frame. Zero
+## on the shipped build -- a corpse is separated by `npc.gd::push_off`, never by
+## the solver, for the floor-loss reason above. `--ragdoll-solid` returns
+## `RAGDOLL_LAYER`, which is the OTHER half of that control; see the block at
+## `physical_bones_add_collision_exception` for the four measured runs that
+## showed the flag doing nothing without it.
+##
+## ONE COPY OF THE LAYER NUMBER. `walk.gd` could have written 16 and it would
+## have been right today; this project's own history is a list of second copies
+## of a mapping with one of them updated.
+static func player_extra_mask() -> int:
+	for a in OS.get_cmdline_user_args():
+		if String(a) == "--ragdoll-solid":
+			return RAGDOLL_LAYER
+	return 0
 
 
 func controls_open_joints() -> bool:

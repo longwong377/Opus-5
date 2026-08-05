@@ -1166,6 +1166,121 @@ def triangle_report():
 # Self-test
 # ---------------------------------------------------------------------------
 
+# ---------------------------------------------------------------------------
+# WHY THE PARCEL BOUNDARY READS AS A DRAWN LINE, MEASURED
+# ---------------------------------------------------------------------------
+# STATE.md 24.4b, against `docs/engine-4q-drum-dressed.png`: "the parcel boundary
+# is still a hard straight edge where green meets tan in the foreground", and it
+# names this module's half of it as "a drawn line rather than a change in the
+# ground". Measured -- 140 hedge-tagged samples across the whole drum, profiled
+# over a 32 m window perpendicular to the boundary -- **that reading is wrong,
+# and being wrong about it is the useful part**:
+#
+#     level change across a 32 m window   median 0.581 m, p10 0.232, p90 3.198
+#     bank prominence (centre - ends)     median 0.068 m
+#
+# The ground DOES change. At `--stand 20,4700`, the frame the finding was made
+# from, it changes by **1.05 m over 28 m**. What it does not do is change
+# VISIBLY: 0.581 m over 32 m is **1.04 degrees**, and one degree of slope at 5 m
+# displaces the horizon by 9 cm, which is nothing. Meanwhile the MATERIAL changes
+# instantaneously, because `_KIND_GROUP` hands `arable2` and `arable1` two
+# different groups at the cell boundary. A hard tonal step on a surface with no
+# visible geometric step is exactly what "a drawn line" describes.
+#
+# AND THE FIX IS NOT TO SHARPEN IT. The step rule above this module's `_parcel`
+# forbids anything narrower than one stride-8 cell -- 31.2 m -- and gives the
+# measurement: the first version of this module put 3.5 m steps over 6 m in the
+# field, which produced a 3.28 m lod1 error, a 3,379 m switch distance and the
+# whole 573,440-triangle field at lod0. A field edge you can SEE as terrain is a
+# field edge that costs the drum its LOD chain.
+#
+# So the boundary has to be an OBJECT standing on the ground, and it now is:
+# `drum_dressing`'s hedgerow has always run the line, and its near rung puts
+# rough grass on the bank inside the distance at which a player can tell. This
+# assertion exists so that a future session reads the measurement before
+# reaching for the heightfield.
+BOUNDARY_WINDOW_M = 32.0
+_ARABLE_TAGS = {"arable"} | {f"arable{i}" for i in range(CROPS)}
+
+
+def parcel_boundary_relief(samples=140, window_m=None):
+    """How much the ground changes across a tagged parcel boundary.
+
+    DIFFERENTIAL, and the first version was not -- which its own control caught.
+    Written as an absolute ("the 32 m window across a boundary changes by
+    0.581 m"), the number survives `PARCEL_RELIEF_M = 0` almost intact: it drops
+    only to 0.269 m, because a 32 m window anywhere on a six-octave fbm field
+    changes by about that much. The measurement could not tell a parcel step
+    from the terrain it sits in, so the assertion built on it could not fail for
+    the thing it was named for. The control window is the same width at the same
+    z, half a parcel away, in open field -- and the reported figure is the
+    DIFFERENCE.
+    """
+    window_m = BOUNDARY_WINDOW_M if window_m is None else window_m
+    circ = 2.0 * math.pi * FLOOR_R
+    half_parcel = 0.5 * circ / PARCELS_A
+
+    def span(u, w):
+        prof = []
+        n = 16
+        for k in range(n + 1):
+            uu = (u + (k / n - 0.5) * window_m / circ) % 1.0
+            prof.append(sample(uu, w)[0])
+        return max(prof) - min(prof), prof[n // 2] - 0.5 * (prof[0] + prof[-1])
+
+    edge, interior, bank, paired = [], [], [], []
+    for ia in range(0, CELLS_A, 7):
+        for iz in range(0, CELLS_Z, 17):
+            u, w = (ia + 0.5) / CELLS_A, (iz + 0.5) / CELLS_Z
+            if sample(u, w)[1] != "hedge":
+                continue
+            uc = (u + half_parcel / circ) % 1.0
+            if sample(uc, w)[1] not in _ARABLE_TAGS:
+                continue
+            e, b = span(u, w)
+            c, _b2 = span(uc, w)
+            edge.append(e)
+            interior.append(c)
+            paired.append(e - c)
+            bank.append(b)
+            if len(edge) >= samples:
+                break
+        if len(edge) >= samples:
+            break
+    if not edge:
+        return None
+    edge.sort()
+    interior.sort()
+    bank.sort()
+    paired.sort()
+    e_med = edge[len(edge) // 2]
+    i_med = interior[len(interior) // 2]
+    return {
+        "samples": len(edge),
+        "window_m": window_m,
+        "edge_median_m": round(e_med, 3),
+        "open_field_median_m": round(i_med, 3),
+        # PAIRED, not a difference of two medians: each boundary is compared
+        # with the open field at its own z, so terrain that happens to be
+        # rougher where the boundaries fall cannot be read as a parcel step.
+        "excess_m": round(paired[len(paired) // 2], 3),
+        "excess_unpaired_m": round(e_med - i_med, 3),
+        "excess_p75_m": round(paired[len(paired) * 3 // 4], 3),
+        # THE UPPER QUARTILE IS THE ONE ASSERTED ON, AND THE REASON IS IN
+        # `_parcel`: a parcel's level is quantised to three values, so two
+        # neighbours agree about one time in three and the ground between them
+        # is then genuinely continuous. A median over all boundaries therefore
+        # sits within a few centimetres of the bank height (0.231 against 0.220)
+        # and an assertion on it would flap on sampling noise while separating
+        # built from control by only 5%. On p75 the same pair is 0.536 against
+        # 0.199 -- built passes with 2.4x and the control fails outright.
+        "edge_p90_m": round(edge[len(edge) * 9 // 10], 3),
+        "bank_median_m": round(bank[len(bank) // 2], 3),
+        "slope_median_deg": round(math.degrees(math.atan(e_med / window_m)), 3),
+        "step_ramp_m": round(_step_ramp_m(), 1),
+    }
+
+
 def _selftest():
     ok = fail = 0
 
@@ -1785,6 +1900,28 @@ def _selftest():
           worst_stand < 0.03,
           f"worst standing discrepancy {worst_stand * 1000:.1f} mm -- above a "
           "facet's own chord error this is a datum mistake, not discretisation")
+
+    # --- the parcel boundary, both halves of it ---------------------------
+    # See the block above `parcel_boundary_relief`. Two assertions, and they
+    # pull in opposite directions on purpose: the boundary must carry relief,
+    # and that relief must stay gentler than the step rule allows, because a
+    # boundary sharp enough to SEE as terrain is one that pins the whole drum
+    # at lod0. Anybody who "fixes" the drawn-line finding by steepening the
+    # field will trip the second one.
+    br = parcel_boundary_relief()
+    check("a parcel boundary is a change in the ground, not only in the tag",
+          br and br["excess_p75_m"] > HEDGE_H_M,
+          f"p75 {br['excess_p75_m'] if br else -1} m more than open field over "
+          f"{BOUNDARY_WINDOW_M} m, against a {HEDGE_H_M} m bank "
+          f"(median {br['excess_m'] if br else -1} m)")
+    check("...and it is gentler than the step rule's own limit, which is why "
+          "it reads as a drawn line and needs an OBJECT on it",
+          br and br["edge_median_m"] / br["window_m"]
+          <= PODIUM_STEP_M / _step_ramp_m(),
+          f"{br['slope_median_deg'] if br else -1} deg against the "
+          f"{math.degrees(math.atan(PODIUM_STEP_M / _step_ramp_m())):.2f} deg "
+          f"a {PODIUM_STEP_M} m step over one {_step_ramp_m():.1f} m ramp makes")
+    print(f"      parcel boundary: {br}")
 
     print(f"{ok}/{ok + fail} passed")
     return 1 if fail else 0

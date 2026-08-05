@@ -819,6 +819,20 @@ def _m_garden(s, p):
     return v, t
 
 
+# The eye the drum is measured from. `export_scene.build_drum` resolves the
+# ground's and the dressing's LOD against a standing eye, so a drum measurement
+# has to name one; 205 deg at mid-length is the exporter's own default stand and
+# is used here so the measured mesh is a mesh somebody has rendered.
+DRUM_EYE = (205.0, 0.5)
+
+
+def _drum_eye(s, p, sec):
+    import drum_ground as dg                                    # noqa: PLC0415
+    dg.configure(s, p, sec)
+    ang, f = DRUM_EYE
+    return dg.stand_on_ground(s, p, sec, ang, dg.Z0 + f * (dg.Z1 - dg.Z0))[0]
+
+
 def _m_interior(s, p):
     """The drum as the EXPORTER emits it, not as this module used to imagine it.
 
@@ -836,13 +850,50 @@ def _m_interior(s, p):
     A gate that scores something the player never sees is worse than no gate,
     because it prints PASS.
 
-    The ground is visibility-culled from an eye position, exactly as the shot
-    builds it, so what this returns is what the drum frame contains.
+    AND THE FIX WAS APPLIED TO THIS FUNCTION INSTEAD OF TO THE RULE, so it
+    started drifting the same day. Session 3s hand-copied the exporter's part
+    list into the body below -- ground, spokes, guideways, two end caps -- and
+    `drum_parts` has since grown FOUR MORE PARTS that this never learned about.
+    Measured in 4q at the same eye:
+
+        ground     94,592     <- both lists
+        endcaps    15,072     <- both lists
+        guideways  11,796     <- both lists
+        spokes        516     <- both lists
+        core       13,340     <- exporter only
+        trams      12,624     <- exporter only
+        townscape  51,026     <- exporter only, and it is `garden.py`'s output
+        dressing   89,094     <- exporter only, and `DRUM_CALIBRATION` measures
+                                 it at 39.08 / 32.30 / 47.26% of the PIXELS of
+                                 the three drum framings
+
+    121,976 measured against 288,060 rendered: the measurement saw 42.3% of the
+    frame. CLAUDE.md's session-4h finding, word for word -- *"A fix applied to
+    an instance and not to the rule is a fix that will be needed again."*
+
+    So the list is no longer here. `tools/export_scene.py::drum_parts` is the
+    one place the drum shot's contents are enumerated and its own docstring
+    says why; this asks it. A part added to the drum is now measured by the
+    fact of being added.
+    """
+    sys.path.insert(0, os.path.join(ROOT, "tools"))
+    import export_scene as es                                   # noqa: PLC0415
+    sec = it.drum_sector(s, p)
+    eye = _drum_eye(s, p, sec)
+    return _cat([(v, t) for _nm, v, t, _g in es.drum_parts(s, p, sec, eye)])
+
+
+def _m_interior_legacy(s, p):
+    """The pre-4q hand-copied list. THE CONTROL for `_m_interior`, kept live.
+
+    Not dead code and not history: `_selftest` runs both and requires the new
+    one to be strictly bigger, which is the only way to show that asking the
+    exporter changed what is measured rather than merely where the list lives.
+    Deleting it would leave the fix unfalsifiable.
     """
     import drum_ground as dg                                    # noqa: PLC0415
     sec = it.drum_sector(s, p)
-    dg.configure(s, p, sec)
-    eye = dg.stand_on_ground(s, p, sec, 205.0, (dg.Z0 + dg.Z1) / 2)[0]
+    eye = _drum_eye(s, p, sec)
     gv, gt, _gg, _gm = dg.visible_set(eye)
     parts = [(gv, gt),
              it.drum_spokes(s, p, sec)[:2],
@@ -1435,21 +1486,48 @@ def _selftest(verbose=True):
     # the first time. `export_scene.drum_parts` is the one list of what the drum
     # shot contains; if this module scores a part that list does not carry, or
     # misses one it does, the scores describe a station nobody renders.
+    #
+    # AND THE VERSION OF THIS CHECK THAT SHIPPED WAS ITSELF A THIRD COPY OF THE
+    # LIST, ASSERTED WITH THE WRONG OPERATOR. It read:
+    #
+    #     _scored = {"ground", "spokes", "guideways", "endcap_fore",
+    #                "endcap_aft"}
+    #     check(..., _scored <= _shot, ...)
+    #
+    # A LITERAL SET, not derived from `_m_interior`, tested for SUBSET. Adding a
+    # part to the drum shot leaves a subset relation true, so the one gate
+    # written to stop `_m_interior` drifting could only ever fail if a part were
+    # REMOVED -- and the exporter grew four (core, trams, townscape, dressing,
+    # 181,832 triangles) while it printed PASS. It was also blind by
+    # construction to any change in `_m_interior` itself, because it never asked
+    # `_m_interior` anything.
+    #
+    # So the question is asked in TRIANGLES, of the function itself, with
+    # equality: what this module scores IS what the shot contains, or it is not.
+    # `_m_interior_legacy` is the control, and it has to come back short.
     try:
         sys.path.insert(0, os.path.join(ROOT, "tools"))
         import export_scene as _X                               # noqa: PLC0415
         _s, _p = it.load()
         _sec = it.drum_sector(_s, _p)
-        import drum_ground as _dg                               # noqa: PLC0415
-        _dg.configure(_s, _p, _sec)
-        _eye = _dg.stand_on_ground(_s, _p, _sec, 205.0,
-                                   (_dg.Z0 + _dg.Z1) / 2)[0]
-        _shot = {n for n, _v, _t, _g in _X.drum_parts(_s, _p, _sec, _eye)}
-        # What `_m_interior` scores, by the same names the shot uses.
-        _scored = {"ground", "spokes", "guideways", "endcap_fore", "endcap_aft"}
+        _eye = _drum_eye(_s, _p, _sec)
+        _parts = _X.drum_parts(_s, _p, _sec, _eye)
+        _shot = {n for n, _v, _t, _g in _parts}
+        _shot_tris = sum(len(t) for _n, _v, t, _g in _parts)
+        _mine = module_mesh(_s, _p, "interior")
         check("the drum this module scores is the drum the exporter emits",
-              _scored <= _shot,
-              f"scored but not in the shot: {sorted(_scored - _shot)}")
+              not isinstance(_mine, dict) and len(_mine[1]) == _shot_tris,
+              f"{'error' if isinstance(_mine, dict) else len(_mine[1]):,} "
+              f"scored against {_shot_tris:,} in the shot "
+              f"({', '.join(sorted(_shot))})")
+        _old = _m_interior_legacy(_s, _p)
+        probe("...and the pre-4q hand-copied list did NOT, which is the "
+              "control for the line above",
+              len(_old[1]) < _shot_tris,
+              f"the old list scored {len(_old[1]):,} of {_shot_tris:,} -- "
+              f"{100 * len(_old[1]) / _shot_tris:.1f}% of the frame, missing "
+              f"{_shot_tris - len(_old[1]):,} triangles of core, trams, "
+              f"townscape and dressing")
         check("...and the shell it used to score is NOT in the shot, which is "
               "why scoring it certified geometry nobody renders",
               "drum_interior" not in _shot and "shell" not in _shot)

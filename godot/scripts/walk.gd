@@ -1137,6 +1137,28 @@ func _spawn_player() -> void:
 	shape.shape = caps
 	shape.position = Vector3(0, _cap_h * 0.5, 0)
 	_player.add_child(shape)
+	# WHAT THE PLAYER COLLIDES WITH, SAID OUT LOUD. Until session 4q nothing
+	# here set either field, so the shipped player carried Godot's defaults --
+	# layer 1, mask 1 -- and that happened to be right. A default nobody chose
+	# is not the same as a decision, and this one was load-bearing in a way
+	# nobody had noticed: it is the reason `--ragdoll-solid` was inert. Bones
+	# sit on `RAGDOLL_LAYER` (16) and Godot 4.4's `move_and_collide` consults
+	# THE MOVER'S MASK ONLY -- measured, see `ragdoll.gd` -- so the player could
+	# never collide with a bone whatever the RID exceptions said.
+	#
+	# The crowd is deliberately absent from this mask and always has been:
+	# `npc.gd::_layer` puts people on `PEOPLE_LAYER` with mask 0 precisely so
+	# `move_and_slide` never resolves against them, because a capsule touching
+	# anything refuses the floor snap. Ragdolls are excluded for the same
+	# reason and separated by `push_off` instead. `--ragdoll-solid` is the
+	# control that puts them back, and it is `ragdoll.gd`'s to decide.
+	const Ragdoll := preload("res://scripts/ragdoll.gd")
+	_player.collision_layer = Ragdoll.WORLD_LAYER
+	_player.collision_mask = Ragdoll.WORLD_LAYER | Ragdoll.player_extra_mask()
+	if Ragdoll.player_extra_mask() != 0:
+		print("walk: player collision_mask = %d -- CONTROL, the player is "
+			% _player.collision_mask
+			+ "solid to ragdoll bones and will lose the floor on contact")
 	_player.position = spawn
 	# STAND THE CAPSULE UP BEFORE ITS FIRST FRAME. `shape.position` is
 	# `(0, 0.9, 0)` in the BODY's frame, so it follows the body's own up -- but
@@ -2810,6 +2832,10 @@ var _c_path := 0.0
 var _c_prev := Vector3.ZERO
 var _c_seen := 0
 var _c_start_clear := 0.0
+## Frames in which `move_and_slide` resolved the player against a ragdoll bone.
+var _c_solid := 0
+## Read from `ragdoll.gd` rather than written again -- see `_spawn_player`.
+const RAGDOLL_LAYER := preload("res://scripts/ragdoll.gd").RAGDOLL_LAYER
 
 
 func _run_corpse_gate(args: Dictionary) -> void:
@@ -2895,6 +2921,20 @@ func _corpse_frame(delta: float) -> void:
 			_player.step(delta, Vector2.ZERO, false, false,
 				aim - _player.global_position)
 			_push_off(delta)
+			# DID THE SOLVER ITSELF TOUCH A BONE? Counted rather than inferred,
+			# because `--ragdoll-solid` is the control for exactly this and for
+			# four sessions it could not be told from the subject: with
+			# `push_off` separating them the two runs agree to four decimals on
+			# every statistic this gate printed, so an inert flag and a working
+			# one looked the same. This is the one number they cannot agree on.
+			for i in range(_player.get_slide_collision_count()):
+				var k := _player.get_slide_collision(i)
+				var co := k.get_collider()
+				if co is CollisionObject3D and \
+						((co as CollisionObject3D).collision_layer
+						& RAGDOLL_LAYER) != 0:
+					_c_solid += 1
+					break
 			var c: float = _people.nearest_ragdoll_clearance()
 			if c < _c_min:
 				_c_min = c
@@ -2934,9 +2974,9 @@ func _corpse_verdict() -> void:
 	ok = bad.is_empty()
 	print(("CORPSE gate=%s who=%s segments=%d clearance_start=%.3f m "
 		+ "clearance_min=%.4f m (tol -%.4f, one frame of walking is %.4f) "
-		+ "at frame %d, walked=%.2f m, offfloor=%d/%d, %s%s")
+		+ "at frame %d, walked=%.2f m, offfloor=%d/%d, solidhits=%d/%d, %s%s")
 		% [("PASS" if ok else "FAIL"), _c_who, _c_seen, _c_start_clear, _c_min,
-		tol, step_m, _c_min_at, _c_path, _c_off, _c_walk,
+		tol, step_m, _c_min_at, _c_path, _c_off, _c_walk, _c_solid, _c_walk,
 		String(_people.push_report()),
 		("" if ok else " -- " + "; ".join(bad))])
 	get_tree().quit(0 if ok else 1)

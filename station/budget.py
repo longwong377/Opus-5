@@ -173,6 +173,16 @@ DRUM = {
     # This is the number that decides whether the ground can be per-object
     # geometry or has to be a heightfield -- and it says heightfield.
     "surface_tris_per_m2": 0.5,
+    # THE LATTICE THE GATE STANDS ON. Regular and stated, not placed on the
+    # known answer -- see `drum_eyes`. 4 x 3 is 12 eyes at about ten seconds
+    # each; the lattice error against the half-resolution sub-lattice is
+    # printed on every run, so the cost/coverage trade is visible rather than
+    # asserted. INV-501.
+    "stations": 4,
+    "z_stations": 3,
+    # `tools/export_scene.py --shot drum` defaults to `--trams 2`, so the gate
+    # prices what the shot ships. Read from one place because two would drift.
+    "trams": 2,
 }
 
 # ---------------------------------------------------------------------------
@@ -1101,7 +1111,14 @@ def check(name, value, limit, unit="", note="", when=""):
     bar = "#" * min(66, int(pct / 5)) + "." * (20 - int(min(pct, 100) / 5))
     # Densities are fractions per square metre; rounding them to integers
     # printed "0 / 0" for a gate that was doing real work.
-    fmt = ",.3f" if (limit < 10 and unit != "%") else ",.0f"
+    #
+    # AND A PERCENTAGE ROUNDED TO INTEGERS PRINTS A FAILURE AS A TIE. The drum's
+    # share of frame is 25.5% against 25.0% and read "25% / 25%  (101.8%)" --
+    # the verdict was right and the two numbers beside it were indistinguishable,
+    # which is how a reader concludes the gate is broken. Percentages get one
+    # decimal for the same reason densities get three.
+    fmt = ",.3f" if (limit < 10 and unit != "%") else (
+        ",.1f" if unit == "%" else ",.0f")
     print(f"{'PASS' if ok else 'FAIL'}  {name:26s} [{bar}] "
           f"{value:>10{fmt}}{unit} / {limit:{fmt}}{unit}  ({pct:.1f}%)"
           + (f"  {note}" if note else ""))
@@ -1300,11 +1317,68 @@ def klass_of(name):
     return "structure"
 
 
-def deck_section(args):
+def deck_coverage():
+    """Which of the station's z-clusters this gate measures. The whole ledger.
+
+    A GATE WHOSE COVERAGE NOBODY HAS STATED IS A GATE NOBODY CAN TRUST, and
+    this one's coverage had never been written down anywhere. `deck_section`
+    builds `deck.build_deck(...)` with no `z_m`, which takes
+    `z_clusters(sector, ring, deck)[0]` -- the BUSIEST cluster of ONE deck of
+    ONE ring of ONE sector. Measured in 4q: that is **1 of 96 z-clusters over
+    71 addressed decks, and 6 of the 129 places in the register**.
+
+    It is the same limitation CLAUDE.md already records against
+    `deck.py --sweep` -- *"it once read 99 of 118 because it built
+    `z_clusters(...)[0]` alone"* -- still live here, and it has a cost that has
+    already been paid: `docs/craft-4f.md` records that session's customs work
+    as "+18,518 triangles", which is **+55,554 on the z = 7,440 cluster**
+    because `customs` is instanced there three times as `customs_north`,
+    `customs_south` and `arrival_concourse`. Nothing measured that cluster, so
+    `budget.py` came back byte-for-byte identical across the session.
+
+    Cheap -- it reads the register and the clustering rule, nothing is built --
+    so it prints on every run. `--clusters` is what MEASURES the rest.
+
+    NOT A NEW GATE, DELIBERATELY. CLAUDE.md's session-4d ruling is "Keep the
+    existing gates green. Do not grow them. No new coverage gates." A coverage
+    check here could only ever be red and would never go green by anyone
+    building anything, which is the definition of a number that stops meaning
+    something. So coverage is STATED, and the existing bounds -- resident
+    triangles, frustum structure, frustum everything -- are what fail, on
+    whichever cluster is put in front of them.
+    """
+    import deck as D                                          # noqa: PLC0415
+    import directory as dr                                    # noqa: PLC0415
+
+    decks, rows = set(), []
+    for q in dr.PLACES:
+        if q.get("sector") is not None:
+            decks.add((q["sector"], q["ring"], q["deck"]))
+    for k in sorted(decks):
+        for i, z in enumerate(D.z_clusters(*k)):
+            rows.append({"sector": k[0], "ring": k[1], "deck": k[2],
+                         "index": i, "z_m": z,
+                         "keys": [p["key"] for p in D.places_on(*k, z)]})
+    here = (DECK["sector"], DECK["ring"], DECK["deck"])
+    mine = [r for r in rows if (r["sector"], r["ring"], r["deck"]) == here]
+    seen = set(mine[0]["keys"]) if mine else set()
+    return {"rows": rows, "decks": len(decks), "subject": mine,
+            "places": len({k for r in rows for k in r["keys"]}),
+            "measured_keys": sorted(seen)}
+
+
+def deck_section(args, all_clusters=False):
     """The interior gate: an assembled deck, from a standing eye.
 
     Returns a dict of the measurements, so `--prove` can re-run the bounds
     against a regression without rebuilding.
+
+    `all_clusters` builds EVERY z-cluster on the subject deck and puts the
+    heaviest in front of the bounds instead of the busiest -- see
+    `deck_coverage` for why the two are different questions and what the
+    default costs. The expensive frustum sweep still runs once, on the cluster
+    that won; only the build is repeated, so the extra cost is one build a
+    cluster rather than a whole measurement a cluster.
     """
     import numpy as np                                        # noqa: PLC0415
     sys.path.insert(0, os.path.join(ROOT, "station"))
@@ -1315,7 +1389,19 @@ def deck_section(args):
     sec, ring, dk = DECK["sector"], DECK["ring"], DECK["deck"]
     t0 = time.time()
     schema, profile = it.load()
-    verts, tris, groups, stats = D.build_deck(schema, profile, sec, ring, dk)
+    cov = deck_coverage()
+    zs = [r["z_m"] for r in cov["subject"]] if all_clusters else [None]
+    # ONLY THE WINNER IS HELD. A blue/0/0 cluster is 1.26 M triangles as Python
+    # tuples; keeping all six to pick the biggest afterwards is gigabytes for a
+    # comparison that needs one integer per cluster.
+    built, best = [], None
+    for z in zs:
+        b = D.build_deck(schema, profile, sec, ring, dk, z_m=z)
+        built.append((len(b[1]), z))
+        if best is None or len(b[1]) > best[0]:
+            best = (len(b[1]), z, b)
+    verts, tris, groups, stats = best[2]
+    cluster_z = best[1]
     meta = stats["collision_meta"]
     build_s = time.time() - t0
 
@@ -1374,6 +1460,25 @@ def deck_section(args):
           f"{arc:.0f} deg at r = {meta['radius_m']:.2f} m, "
           f"{len(tris):,} triangles, {draws_resident} groups, built in "
           f"{build_s:.0f} s")
+    # WHAT IS AND IS NOT IN FRONT OF THE BOUNDS BELOW. Stated on every run,
+    # because until 4q nothing anywhere said it -- see `deck_coverage`.
+    n_sub = len(cov["subject"])
+    if all_clusters:
+        print(f"  clusters  all {n_sub} z-clusters of this deck built "
+              f"({', '.join(f'{n:,}@z{int(z)}' for n, z in built)}); "
+              f"the HEAVIEST, z = {cluster_z:.0f}, is what the bounds see")
+    elif not cov["subject"]:
+        print("  clusters  the subject deck carries no gazetteer place at all")
+    else:
+        print(f"  clusters  1 of {len(cov['rows'])} z-clusters on the station "
+              f"({cov['decks']} addressed decks) -- the BUSIEST of this deck's "
+              f"{n_sub}, at z = {cov['subject'][0]['z_m']:.0f}. "
+              f"{len(cov['measured_keys'])} of {cov['places']} places are on "
+              f"it: {', '.join(cov['measured_keys'])}")
+        print(f"            NOT measured on this deck: "
+              + "; ".join(f"z {int(r['z_m'])} ({', '.join(r['keys'])})"
+                          for r in cov["subject"][1:])
+              + ".  --clusters builds them all")
     print(f"  camera    eye {eye_m:.2f} m above the collision floor, "
           f"{fov:.0f} deg vertical / "
           f"{2*math.degrees(math.atan(math.tan(math.radians(fov)/2)*asp)):.1f}"
@@ -1832,6 +1937,118 @@ def deck_section(args):
     }
 
 
+def drum_eyes(schema, profile, sector, stations, zs):
+    """The standing lattice the drum gate sweeps, as (angle_deg, z_m, eye).
+
+    A LATTICE, NOT A VIEWPOINT. AAA-STANDARD scores a single convenient camera
+    as PERFORMANCE 2 and a swept worst case as 3, and `DECK` above already
+    sweeps 48 x 24 poses for exactly that reason. The drum had one hand-picked
+    eye and, before this session, none at all.
+
+    IT IS STATED RATHER THAN TUNED and it is regular: `stations` angles evenly
+    around the circumference from 0, `zs` stations evenly spaced through the
+    open part of the drum's length. Nothing here knows where the settlement
+    bands are -- which matters, because that is where the worst case turns out
+    to be, and a lattice that had been placed ON the known answer would stop
+    finding it the day the land use moved. INV-501.
+    """
+    import drum_ground as dg                                  # noqa: PLC0415
+    out = []
+    for i in range(stations):
+        ang = 360.0 * i / stations
+        for j in range(zs):
+            z = dg.Z0 + (dg.Z1 - dg.Z0) * (j + 0.5) / zs
+            out.append((ang, z,
+                        dg.stand_on_ground(schema, profile, sector, ang, z)[0]))
+    return out
+
+
+
+def drum_section(stations=None, zs=None):
+    """The drum's frame, swept over standing eyes. Returns the measurements.
+
+    THE LIST IS THE EXPORTER'S, NOT THIS FILE'S. `tools/export_scene.py`'s
+    `drum_parts()` is the one place the drum shot's contents are enumerated,
+    and its own docstring says why: "An earlier version had the list here and a
+    second copy in the self-test's group enumeration, which is the failure this
+    project keeps repeating in new costumes: two copies of a mapping, one of
+    them updated." This gate was that second copy, and it had been wrong since
+    the exporter grew.
+
+    WHAT IT WAS WRONG ABOUT, measured in session 4q and stated as a ledger
+    because the first entry is a different KIND of error from the other four:
+
+      shell     `interior.drum_interior()`'s band shell, 88,736 tri -- geometry
+                THE SHOT DOES NOT CONTAIN. `drum_parts` replaces it with
+                `drum_ground.visible_set()` because emitting both would z-fight
+                across four and a half million square metres, and its comment
+                has said so since it was written. `density._m_interior` found
+                exactly this substitution in session 3s and was fixed for it;
+                the fix was applied to that one measurer and not to the rule,
+                so this gate kept the defect. CLAUDE.md's 4h finding, verbatim:
+                "A fix applied to an instance and not to the rule is a fix that
+                will be needed again."
+      core      13,340 tri, absent
+      trams     12,624 tri, absent
+      townscape 51,026 tri, absent -- the Garden's own buildings
+      dressing  89,094 tri, absent -- hedgerows, tree masses, farmsteads, the
+                town on every settlement block, the park's spires, the lake's
+                reed margins. `DRUM_CALIBRATION` measures it at 39.08 / 32.30 /
+                47.26% OF THE PIXELS of the three drum framings, so it is not a
+                rounding error on the frame; it is a third of it.
+
+    The old sum was 116,120 against a 300,000 bound -- 38.7%, PASS, with a
+    printed "headroom: 183,880 triangles for ground detail, buildings, trams
+    and vegetation". Every one of those four had already been built and spent.
+    INV-500.
+
+    GROUND AND DRESSING ARE LOD-RESOLVED AGAINST THE EYE, which is why this
+    sweeps rather than standing somewhere. The other seven parts do not move;
+    they are rebuilt per eye anyway rather than hoisted, because a hoist is a
+    second assumption about which parts are eye-dependent and this file has
+    just paid for one of those.
+
+    Costs about ten seconds an eye, all of it in `drum_ground.visible_set` and
+    `drum_dressing.dressing_set` resolving LOD -- 138 s for the default 4 x 3.
+    It runs on the default path anyway, because a gate that has to be asked for
+    is the gate nobody runs, and this one printed PASS on a third of its own
+    subject for as long as it existed. `--no-drum` skips it for debugging.
+    """
+    sys.path.insert(0, os.path.join(ROOT, "station"))
+    sys.path.insert(0, os.path.join(ROOT, "tools"))
+    import interior as it                                     # noqa: PLC0415
+    import drum_ground as dg                                  # noqa: PLC0415
+    import export_scene as es                                 # noqa: PLC0415
+
+    stations = DRUM["stations"] if stations is None else stations
+    zs = DRUM["z_stations"] if zs is None else zs
+    schema, profile = it.load()
+    sector = it.drum_sector(schema, profile)
+    dg.configure(schema, profile, sector)
+    r = it.sector_radius(schema, profile, sector)
+    ex = schema["sectors"]["extents_m"][sector]
+    area = 2 * math.pi * r * (ex["z1"] - ex["z0"])
+
+    t0 = time.time()
+    rows = []
+    for ang, z, eye in drum_eyes(schema, profile, sector, stations, zs):
+        parts = {nm: len(t) for nm, _v, t, _g in
+                 es.drum_parts(schema, profile, sector, eye,
+                               trams=DRUM["trams"])}
+        rows.append({"ang": ang, "z": z, "parts": parts,
+                     "total": sum(parts.values())})
+    worst = max(rows, key=lambda r_: r_["total"])
+    # THE SAME SWEEP SAMPLED EVERY OTHER STATION AND EVERY OTHER z, which makes
+    # the lattice error free and exact rather than a second run -- `deck_section`
+    # does it the same way for the same reason.
+    half = max((r_ for k, r_ in enumerate(rows)
+                if not ((k // zs) % 2 or (k % zs) % 2)),
+               key=lambda r_: r_["total"])
+    return {"rows": rows, "worst": worst, "half": half, "area": area,
+            "sector": sector, "sweep_s": time.time() - t0,
+            "stations": stations, "zs": zs}
+
+
 def drum_collision():
     """The drum's collision ground, which the ring-deck sweep does not count."""
     try:
@@ -1891,9 +2108,23 @@ def main(argv=None):
                          "only gate here that measures what a player renders, "
                          "so skipping it is a debugging convenience and not a "
                          "shorter way to be green.")
+    ap.add_argument("--no-drum", action="store_true",
+                    help="skip the habitat drum's swept frame (~2 min). Same "
+                         "caveat as --no-deck: a debugging convenience, not a "
+                         "shorter way to be green.")
     ap.add_argument("--station", action="store_true",
                     help="rebuild every ring deck's collision (~60 s) and fail "
                          "if RING_DECK_COLLISION_TRIS has drifted")
+    ap.add_argument("--clusters", action="store_true",
+                    help="build EVERY z-cluster of the subject deck and gate "
+                         "the heaviest, not the busiest (~40 s a cluster). The "
+                         "default measures 1 of 96 clusters station-wide; the "
+                         "ledger prints either way.")
+    ap.add_argument("--drum-legacy", action="store_true",
+                    help="THE CONTROL for the drum gate: re-run it summing "
+                         "only shell + caps + trusses + spokes, as it did "
+                         "before session 4q, and show it passing on content "
+                         "that is over.")
     ap.add_argument("--prove", action="store_true",
                     help="feed each new bound the regression it exists to "
                          "catch and require it to go red")
@@ -1982,7 +2213,8 @@ def main(argv=None):
               "which is the defect this file had.")
     else:
         try:
-            deck_m = deck_section({"exterior_draws": draws})
+            deck_m = deck_section({"exterior_draws": draws},
+                                  all_clusters=a.clusters)
         except Exception as exc:                              # noqa: BLE001
             import traceback
             traceback.print_exc()
@@ -2063,41 +2295,94 @@ def main(argv=None):
         check("streaming cells measurable", 1, 0, "", f"could not measure: {exc}")
 
     # --- habitat drum -------------------------------------------------------
-    try:
-        import interior as it
+    drum_m = None
+    if a.no_drum:
+        print("\n--no-drum: the habitat drum was NOT measured. The drum is the "
+              "widest-open\nview in the project and the only gate that prices "
+              "it is this one.")
+    else:
+        try:
+            drum_m = drum_section()
+        except Exception as exc:                              # noqa: BLE001
+            import traceback
+            traceback.print_exc()
+            check("drum measurable", 1, 0, "", f"could not measure: {exc}")
+    if drum_m is not None:
+        area = drum_m["area"]
+        worst, half = drum_m["worst"], drum_m["half"]
+        total = worst["total"]
+        parts = worst["parts"]
+        ground = parts.get("ground", 0)
 
-        schema, profile = it.load()
-        drum = it.drum_sector(schema, profile)
-        r = it.sector_radius(schema, profile, drum)
-        ex = schema["sectors"]["extents_m"][drum]
-        length = ex["z1"] - ex["z0"]
-        area = 2 * math.pi * r * length
-
-        shell = len(it.drum_interior(schema, profile, drum, arc_deg=360.0,
-                                     seg_deg=2.0, z_step=40.0)[1])
-        caps = sum(len(it.drum_end_cap(schema, profile, drum, e)[1])
-                   for e in ("fore", "aft"))
-        trusses = len(it.drum_guideways(schema, profile, drum)[1])
-        spokes = len(it.drum_spokes(schema, profile, drum)[1])
-        total = shell + caps + trusses + spokes
-
-        print("\nHabitat drum, where everything is visible at once\n")
+        print("\nHabitat drum, where everything is visible at once -- "
+              "the EXPORTER's part list, swept\n")
+        print(f"  subject   {drum_m['sector']}, {area/1e6:.1f} million m2 of "
+              f"inner surface, {drum_m['stations']} angles x "
+              f"{drum_m['zs']} axial stations = {len(drum_m['rows'])} standing "
+              f"eyes in {drum_m['sweep_s']:.0f} s")
+        print(f"  worst     {worst['ang']:.0f} deg at z = {worst['z']:.0f} m, "
+              f"{total:,} tri: "
+              + ", ".join(f"{k} {v:,}" for k, v in sorted(parts.items())))
+        print(f"  spread    best eye {min(r_['total'] for r_ in drum_m['rows']):,}"
+              f", half-resolution lattice finds {half['total']:,} against "
+              f"{total:,} -- "
+              f"{abs(half['total']-total)/total*100:.1f}% lattice error\n")
         check("drum visible set", total, DRUM["visible_set_tris"], " tri",
-              f"shell {shell:,} + caps {caps:,} + trusses {trusses:,}"
-              f" + spokes {spokes:,}")
+              "the worst standing eye on the lattice, every part the shot "
+              "builds",
+              when=f"the four parts this gate could not see before 4q are "
+                   f"{parts.get('core',0)+parts.get('trams',0)+parts.get('townscape',0)+parts.get('dressing',0):,} "
+                   f"of it")
         check("drum share of frame", total / FRAME_TRIANGLES * 100,
               DRUM["frame_share"] * 100, "%",
               "no occlusion -- there is no wall to hide behind")
-        check("ground surface density", shell / area,
+        # GATED ON EVERYTHING STANDING ON THE SURFACE, not on the ground alone,
+        # and the change is deliberate. The bound's own comment says it "decides
+        # whether the ground can be per-object geometry or has to be a
+        # heightfield" -- and the answer since `drum_dressing` and `garden` began
+        # standing objects on it is that the drum now carries BOTH. Charging only
+        # the heightfield would gate the half that was never the question.
+        check("surface density", total / area,
               DRUM["surface_tris_per_m2"], " tri/m2",
-              f"{area/1e6:.1f} million m2 of inner surface")
-        print(f"\nheadroom: {DRUM['visible_set_tris'] - total:,} triangles for "
-              f"ground detail, buildings, trams and vegetation across "
-              f"{area/1e6:.1f} million m2 -- "
-              f"{(DRUM['visible_set_tris'] - total) / area:.2f} tri/m2. "
-              f"The ground is a heightfield, not objects.")
-    except Exception as exc:
-        check("drum measurable", 1, 0, "", f"could not measure: {exc}")
+              f"ground alone is {ground/area:.3f}; the other "
+              f"{total-ground:,} triangles are objects standing on it")
+        head = DRUM["visible_set_tris"] - total
+        print(f"\nheadroom: {head:,} triangles across {area/1e6:.1f} million "
+              f"m2 -- {head/area:+.3f} tri/m2. " + (
+                  "The ground is a heightfield and everything else standing on "
+                  "it has now been spent." if head < 0 else
+                  "For ground detail, buildings, trams and vegetation."))
+
+        # THE CONTROL, AND IT IS A NEGATIVE ONE: the pre-4q sum, on the same
+        # content, in the same run. It has to come back PASS while the gate
+        # above comes back FAIL, or this session changed nothing that matters.
+        # It does not touch `results`, because a control is evidence about the
+        # gate and not a bound on the content.
+        if a.drum_legacy:
+            import interior as it                             # noqa: PLC0415
+            schema, profile = it.load()
+            drum = it.drum_sector(schema, profile)
+            shell = len(it.drum_interior(schema, profile, drum, arc_deg=360.0,
+                                         seg_deg=2.0, z_step=40.0)[1])
+            caps = sum(len(it.drum_end_cap(schema, profile, drum, e)[1])
+                       for e in ("fore", "aft"))
+            trusses = len(it.drum_guideways(schema, profile, drum)[1])
+            spokes = len(it.drum_spokes(schema, profile, drum)[1])
+            legacy = shell + caps + trusses + spokes
+            lim = DRUM["visible_set_tris"]
+            print(f"\nCONTROL -- the pre-4q sum on the same content: "
+                  f"shell {shell:,} + caps {caps:,} + trusses {trusses:,} + "
+                  f"spokes {spokes:,} = {legacy:,} tri / {lim:,} "
+                  f"({legacy/lim*100:.1f}%) "
+                  f"{'PASS' if legacy <= lim else 'FAIL'}, against this gate's "
+                  f"{total:,} ({total/lim*100:.1f}%) "
+                  f"{'PASS' if total <= lim else 'FAIL'}.")
+            unseen = sum(parts.get(k, 0) for k in
+                         ("core", "trams", "townscape", "dressing"))
+            print(f"         The shell it charges is {shell:,} triangles the "
+                  f"shot does not contain; the {unseen:,} triangles of core, "
+                  f"trams, townscape and dressing it does contain are charged "
+                  f"to nothing.")
 
     # --- WHAT THE ENGINE IS ACTUALLY HANDED -------------------------------
     # THE DRAW-CALL GATE ABOVE MEASURES THE WRONG ARTEFACT and had done since
