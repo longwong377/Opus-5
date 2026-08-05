@@ -155,6 +155,8 @@ func push_off(delta: float) -> float:
 		else Vector3.UP)
 	var push := Vector3.ZERO
 	for w in _walkers:
+		if w.hidden:
+			continue          # somebody who is not in the room is not in the way
 		push += _overlap(p, up, _walker_xform(w).origin, w.r_m, w.h_m)
 	for pr in _people:
 		push += _overlap(p, up, pr.pivot, pr.r_m, pr.h_m)
@@ -561,11 +563,61 @@ class Walker:
 	var pos: Vector3 = Vector3.ZERO
 	var fwd_free: Vector3 = Vector3(0, 0, 1)
 	var speed_ms: float = 1.4
+	# -- AN OCCUPANT IS A WALKER WHO LIVES SOMEWHERE ------------------------
+	# The third kind, and it is the one this class existed to make possible.
+	# A loop walker never arrives; a commuter is steered by a physics body;
+	# an OCCUPANT is a pure function of the station clock -- `day` is the
+	# timetable `populace.occupant_day` derived from that resident's own
+	# species rhythm, role and shift, and everything below is where they are
+	# when they are doing each thing. Nothing here integrates, so walking out
+	# of a room and coming back gives the answer the room would have had:
+	# `life.gd`'s architecture, applied to the half of the crowd that could
+	# not have it while it was welded into the deck.
+	var occupant: bool = false
+	var hidden: bool = false          # away: drawn nowhere, collides nothing
+	var day: Array = []               # [[hour, state], ...] transitions
+	var anchor: Vector3 = Vector3.ZERO
+	var up_a: Vector3 = Vector3.UP    # their own up, cached from the anchor
+	var tang: Vector3 = Vector3.ZERO  # room x, carried onto the ring
+	var axis: Vector3 = Vector3(0, 0, 1)
+	var seat_off: Vector3 = Vector3.ZERO
+	var has_seat: bool = false
+	var bunk_off: Vector3 = Vector3.ZERO
+	var has_bunk: bool = false
+	var exit_off: Vector3 = Vector3.ZERO
+	var talks: bool = false
+	var yaw0: float = 0.0
+	var state: String = ""
+	var changes: int = 0              # how many times they have changed state
+	var who_name: String = ""
+	var place: String = ""
+	var moved_m: float = 0.0          # ground they have covered, in metres
 
+
+## How many phases one walk cycle is cut into. The generator's own
+## `populace.CROWD_PHASES`, and the bucket key's index is a phase only below
+## this -- at and above it the index is a POSE, which is what lets a room
+## occupant sit, sleep or talk without the bucket sort learning a second shape.
+const WALK_PHASES := 8
+
+## The pose slots, in `populace.POSE_SLOTS` order. Named here because a state
+## machine has to be able to ask for "the sleeping body" by something other than
+## the number 10; the NUMBERS are not written down -- `_slots` below is measured
+## off the library that was actually loaded, so a library with more poses in it
+## than this build knows about still allocates correctly.
+const SLOT_IDLE := 8
+const SLOT_SIT := 9
+const SLOT_SLEEP := 10
+const SLOT_TALK := 11
 
 var _walkers: Array[Walker] = []
 var _mm: Dictionary = {}          # "crowd_human_4_3" -> MultiMeshInstance3D
 var _mm_rows: Dictionary = {}     # the same key -> Array[Walker] this frame
+## Highest slot index the loaded library actually carries, plus one. MEASURED
+## off the library rather than declared: a build whose `crowd_lod*.glb` predates
+## the poses has 8, and allocating 12 buckets for it would size four MultiMeshes
+## per species per rung that can never be filled.
+var _slots := WALK_PHASES
 
 
 ## The LOD ladder, as `max_m:lod` pairs nearest-first. Parsed from the string
@@ -744,12 +796,28 @@ func _index_library(library: Node, rows: Array) -> int:
 			lods.append(int(rung[1]))
 	if lods.is_empty():
 		lods = [4]
+	# HOW MANY SLOTS THIS LIBRARY HAS, read off its own mesh names. A walk phase
+	# and a pose share one index axis (see `WALK_PHASES`), so the count is the
+	# largest index present plus one -- 8 for a library baked before the poses
+	# existed, 12 for one baked after. Declaring it instead would allocate
+	# buckets for meshes that are not there.
+	for k0 in meshes.keys():
+		var bits := String(k0).split("_")
+		if bits.size() >= 4:
+			_slots = maxi(_slots, int(bits[bits.size() - 1]) + 1)
 	var counts := {}
 	for sp2 in per_species:
 		for lod in lods:
-			for ph in range(8):
-				counts["crowd_%s_%d_%d" % [sp2, lod, ph]] = maxi(4, int(ceil(
-					float(per_species[sp2]) / 8.0 * 3.0)))
+			for ph in range(_slots):
+				# A POSE BUCKET IS NOT AN EIGHTH OF ANYTHING. Walkers spread over
+				# eight phases so a phase bucket holds about an eighth; an
+				# occupant sits in ONE pose for hours, and at 03:00 every sleeper
+				# in a residential block is in the same bucket. So a pose bucket
+				# is sized to the whole species and a phase bucket keeps the
+				# three-eighths slack `_place_crowd` clamps against.
+				counts["crowd_%s_%d_%d" % [sp2, lod, ph]] = (
+					maxi(4, int(per_species[sp2])) if ph >= WALK_PHASES
+					else maxi(4, int(ceil(float(per_species[sp2]) / 8.0 * 3.0))))
 	var made := 0
 	for k in counts.keys():
 		if not meshes.has(k) or _mm.has(k):
@@ -911,6 +979,12 @@ func _place_crowd() -> void:
 	for k in _mm.keys():
 		_mm_rows[k] = []
 	for w in _walkers:
+		# AWAY IS A REAL STATE AND IT COSTS NOTHING. An occupant whose timetable
+		# has them somewhere else is in no bucket at all -- not a hidden mesh, not
+		# a zero-scale transform, not there. That is the difference between a
+		# room that empties and a room whose people are invisible.
+		if w.hidden:
+			continue
 		var k := "crowd_%s_%d_%d" % [w.species, w.lod, w.phase]
 		if _mm_rows.has(k):
 			_mm_rows[k].append(w)
@@ -985,7 +1059,447 @@ func crowd_lod_report() -> String:
 var _crowd_dt: float = 0.0
 
 
+# ===========================================================================
+#  ROOM OCCUPANTS -- and they were the wrong KIND of object
+# ===========================================================================
+# THE OWNER'S WORDS, and they name the defect exactly: "these need to be real
+# people and we've come this far and we have fucking humanoid dioramas in
+# rooms?"
+#
+# Everything in `collect()` above binds a person to the meshes they were BAKED
+# as, and the whole runtime behaviour of such a person was `_physics_process`
+# turning their yaw to face the player within 6 m. They never stood, never
+# walked, never left, never slept -- `life.gd` says so in as many words, "a
+# baked actor can only be shown or hidden", and it is not a limitation of that
+# file: **a static mesh has no other option**, which is this file's own header
+# sentence about LOD applied to behaviour.
+#
+# THE TRADE WAS MADE FOR THE CORRIDOR AND NOT FOR THE ROOMS, and it was
+# backwards. `populace.py` records the reasoning -- an instanced walker wears
+# their species' NOMINAL body rather than their own, "which room occupants do
+# not pay". At two metres a player judges BEHAVIOUR, not bone structure. A
+# unique face that never stands up reads worse than a shared face that gets up
+# and leaves. Distance wants silhouette; proximity wants behaviour.
+#
+# WHAT AN OCCUPANT COSTS, measured rather than argued: nothing in the deck .glb
+# (their body is in `crowd_lod*.glb`, shared) against 5.04 primitives and ~3,760
+# triangles each baked; `populace.py --rooms` reports 249,728 triangles and 886
+# primitives given back over eight rooms. What it BUYS is the timetable below.
+#
+# AND IT IS PURE IN THE HOUR. `set_hour(h)` computes state and position from `h`
+# alone -- no previous position anywhere -- so a player who leaves a deck and
+# comes back finds the room the clock says it should be, not the room plus
+# however long they were gone times whatever the framerate was. That is
+# `life.gd`'s Director property, and this is the same property for the people
+# that Director could only ever show and hide.
+
+## Every occupant's state at the hour last applied, for the verdict.
+var _occ_states := {}
+var _occ_moved := 0
+var _occ_hour: float = -1.0
+var _occ_said := false
+## How many state changes get a line of their own before the log stops being
+## readable. A whole station-day at 2 hours a second is hundreds; the first
+## few are the evidence and the counter carries the rest.
+const OCC_LOG_MAX := 24
+var _occ_log := 0
+## Ground the occupants have covered between them, in metres. THE SAME CLAIM
+## `crowd_travel_m` makes for the corridor, asked of the people who could not
+## make it at all: a room whose occupants change pose but never change place is
+## still a diorama with more poses in it.
+var _occ_travel_m: float = 0.0
+var _occ_hour0: float = 0.0
+
+
+
+## Admit room occupants from the cast list. Returns how many became instances.
+##
+## AN ACTOR ROW IS ENOUGH, and that is what makes this reachable without editing
+## the generator's deck writer: `station/deck.py` forwards `species` and `lod`
+## verbatim off an actor record and copies `who` whole, so the mesh key, the
+## pose slot, the anchors and the timetable ride inside `who` and arrive intact.
+##
+## A ROW WITH BAKED MESHES IN THE SCENE IS **PROMOTED**, NOT DUPLICATED. Decks
+## built before `populace.ROOM_INSTANCED` still carry their occupants' triangles;
+## those meshes are hidden here and the instance drives instead, so a station
+## that has not been rebuilt gets the behaviour today and gets the triangles back
+## when it is. Without that this would be nine bodies drawn twice.
+func add_occupants(rows: Array, tag: String = "", visual: Node = null) -> int:
+	var before := _walkers.size()
+	var promoted := 0
+	var baked := {}
+	if visual != null:
+		for m in _meshes(visual):
+			baked[String(m.name)] = m
+	for r0 in rows:
+		var r: Dictionary = r0
+		var who: Dictionary = r.get("who", {})
+		if not who.has("day"):
+			continue                     # not an instanced occupant row
+		var sp := String(r.get("species", who.get("species", "")))
+		if sp == "":
+			continue
+		var w := Walker.new()
+		w.tag = tag
+		w.occupant = true
+		w.species = sp
+		w.lod = int(r.get("lod", 4))
+		w.phase = int(who.get("slot", SLOT_IDLE))
+		w.cycle_s = 1.0
+		w.r_m = float(r.get("r_m", 0.0))
+		w.h_m = float(r.get("h_m", 0.0))
+		w.free = true
+		w.anchor = Vector3(float(r.get("x", 0.0)), float(r.get("y", 0.0)),
+			float(r.get("z", 0.0)))
+		w.pos = w.anchor
+		w.yaw0 = float(r.get("yaw", 0.0))
+		w.day = who.get("day", [])
+		w.talks = bool(who.get("talks", false))
+		w.who_name = String(who.get("name", ""))
+		w.place = String(r.get("place", ""))
+		# THE ROOM'S OWN AXES, RECOVERED FROM WHERE THEY ARE STANDING. Every
+		# offset in the row is room-local -- x across, z along -- because that is
+		# the frame `deck.py::_place_local` maps: room x wraps onto the ring's
+		# arc and room z stays the station axis. So "along" is world +Z and
+		# "across" is the tangent at this body's own angle, which is a different
+		# direction for every person on the ring and is why the offsets are
+		# offsets rather than points.
+		var radial := Vector3(w.anchor.x, w.anchor.y, 0.0)
+		w.up_a = (-radial.normalized() if radial.length() > 0.001
+			else Vector3.UP)
+		w.axis = Vector3(0, 0, 1)
+		w.tang = w.axis.cross(w.up_a).normalized()
+		var seat = who.get("seat")
+		if seat is Array and (seat as Array).size() == 2:
+			w.has_seat = true
+			# ALONG THEIR OWN UP, WHICH IS INWARD ON A SPUN RING. The shared sit
+			# pose is built on the species' fitted seat and the room's seats are
+			# 87-153 mm off it; `seat_dy` is that difference, computed where
+			# `animation.seat_height` lives, and adding it here puts the hips
+			# back on the pan. Zero unless the real seat is HIGHER -- see the
+			# note in `populace._give_lives` for why it is one-sided.
+			w.seat_off = (w.tang * float(seat[0]) + w.axis * float(seat[1])
+				+ w.up_a * float(who.get("seat_dy", 0.0)))
+		var bunk = who.get("bunk")
+		if bunk is Array and (bunk as Array).size() == 2:
+			w.has_bunk = true
+			w.bunk_off = w.tang * float(bunk[0]) + w.axis * float(bunk[1])
+		var ex = who.get("exit")
+		if ex is Array and (ex as Array).size() == 2:
+			w.exit_off = w.tang * float(ex[0]) + w.axis * float(ex[1])
+		# Their heading at rest, in the same convention `_yaw_towards` uses:
+		# yaw 0 faces the station axis.
+		w.fwd_free = (w.axis * cos(w.yaw0) + w.tang * sin(w.yaw0)).normalized()
+		_walkers.append(w)
+		var g := String(r.get("group", ""))
+		if g != "":
+			for n in baked.keys():
+				if n == g or String(n).begins_with(g + "_"):
+					(baked[n] as Node3D).visible = false
+					promoted += 1
+	if _solid_mode != "off":
+		for i in range(before, _walkers.size()):
+			_give_walker_body(_walkers[i])
+	var added := _walkers.size() - before
+	if added > 0:
+		if promoted > 0:
+			print("npc: %d occupant(s) instanced, %d baked mesh(es) hidden "
+				% [added, promoted]
+				+ "-- a deck built before populace.ROOM_INSTANCED still ships "
+				+ "their triangles; the instance drives them")
+		# NO HOUR IS INVENTED HERE. `walk.gd` wires the first cell before
+		# `main.gd` has built the Director, so a written-down 13.00 was used and
+		# then corrected to 03.00 on the next frame -- four state changes that
+		# never happened, in the one number in the verdict a diorama cannot
+		# produce. Without a clock they keep the pose slot the generator baked
+		# and `advance_crowd` states them the moment there is an hour to state
+		# them at.
+		var h0 := _occ_hour
+		if h0 < 0.0:
+			var ck0 := _find_clock()
+			h0 = (float(ck0.call("hour")) if ck0 != null else -1.0)
+		if h0 >= 0.0:
+			set_hour(h0)
+		else:
+			_place_crowd()
+	return added
+
+
+## What one timetable says at an hour. PURE, and deliberately the same
+## arithmetic as `populace._state_at`, so the gate and the runtime cannot
+## disagree about what somebody is doing.
+static func state_at(day: Array, hour: float) -> String:
+	if day.is_empty():
+		return "idle"
+	var h := fposmod(hour, 24.0)
+	var st := String((day[day.size() - 1] as Array)[1])
+	for e in day:
+		if float((e as Array)[0]) <= h:
+			st = String((e as Array)[1])
+		else:
+			break
+	return st
+
+
+## The window `hour` falls in: [start, end] in hours, wrapping at midnight.
+static func window_at(day: Array, hour: float) -> Vector2:
+	if day.size() < 2:
+		return Vector2(0.0, 24.0)
+	var h := fposmod(hour, 24.0)
+	for i in range(day.size()):
+		var a := float((day[i] as Array)[0])
+		var b := float((day[(i + 1) % day.size()] as Array)[0])
+		var span: float = fposmod(b - a, 24.0)
+		if span <= 0.0:
+			span = 24.0
+		if fposmod(h - a, 24.0) < span:
+			return Vector2(a, span)
+	return Vector2(0.0, 24.0)
+
+
+## PUT EVERY OCCUPANT WHERE THE CLOCK SAYS THEY ARE. Pure in `h`.
+##
+## The mapping from a state to a body is the only place a decision is made here,
+## and each one is forced by what the room has rather than chosen:
+##
+##   away      not drawn, no collider in play. Most of a day, for most people.
+##   sleep     the sleeping pose, on the bed the generator found them. Nobody
+##             without a bunk is ever in this state -- `populace._give_lives`
+##             rewrites it to `away`, because you go home to sleep.
+##   eat/work  seated if they have a seat, standing at their post if not.
+##   idle      talking if somebody was placed inside `friction`'s own widest
+##             separation of them, standing otherwise.
+##   transit   walking the room's reserved circulation lane, between their post
+##             and the way out, at the fraction of the window that has elapsed.
+func set_hour(h: float) -> int:
+	_occ_hour = h
+	var moved := 0
+	_occ_states.clear()
+	for w in _walkers:
+		if not w.occupant:
+			continue
+		var st := state_at(w.day, h)
+		_occ_states[st] = int(_occ_states.get(st, 0)) + 1
+		if st != w.state:
+			# THE LINE THAT PROVES IT, and it names the person. A count of
+			# occupants is a count a diorama also produces; a named resident
+			# whose state changes at an hour their own species rhythm and their
+			# own shift decided is not.
+			if w.state != "" and _occ_log < OCC_LOG_MAX:
+				_occ_log += 1
+				print("npc: %05.2f EMT  %s (%s) in %s: %s -> %s"
+					% [fposmod(h, 24.0),
+						(w.who_name if w.who_name != "" else "<unnamed>"),
+						w.species, w.place, w.state, st])
+			# THE FIRST ASSIGNMENT IS NOT A CHANGE. Counting it made a build that
+			# admitted 394 people and then froze report `changes=394`, which is
+			# the exact number a diorama would print.
+			if w.state != "":
+				w.changes += 1
+				moved += 1
+			w.state = st
+		w.hidden = st == "away"
+		if w.hidden:
+			# The capsule goes with them. A person who is not in the room is not
+			# something you can bump into, and leaving the collider behind is the
+			# "invisible person standing in an empty corridor" this file's own
+			# header records for streamed cells.
+			if w.body != null and is_instance_valid(w.body):
+				(w.body as Node3D).visible = false
+				(w.body as CollisionObject3D).collision_layer = 0
+			continue
+		var at: Vector3 = w.anchor
+		var face: Vector3 = w.fwd_free
+		match st:
+			"sleep":
+				w.phase = SLOT_SLEEP
+				at = w.anchor + w.bunk_off
+			"eat", "work":
+				if w.has_seat:
+					w.phase = SLOT_SIT
+					at = w.anchor + w.seat_off
+				else:
+					w.phase = SLOT_IDLE
+			"transit":
+				# THE ONLY STATE THAT MOVES, and it moves as a function of the
+				# hour and nothing else. `window_at` gives the start and length
+				# of this leg of their day; the body is that fraction of the way
+				# along the lane. Out on the second half, back on the first --
+				# `schedule.activity_at` emits TRANSIT both before a shift and
+				# after it, so which way somebody is going is decided by what
+				# they are about to be doing rather than by a coin.
+				w.phase = int(floor(fposmod(h * 3600.0 / maxf(w.cycle_s, 0.1),
+					float(WALK_PHASES)))) % WALK_PHASES
+				var win := window_at(w.day, h)
+				var f: float = clampf(fposmod(h - win.x, 24.0)
+					/ maxf(win.y, 1e-4), 0.0, 1.0)
+				var leaving := state_at(w.day, h + win.y + 0.01) == "away"
+				var t: float = (f if leaving else 1.0 - f)
+				at = w.anchor + w.exit_off * t
+				if w.exit_off.length() > 0.01:
+					face = w.exit_off.normalized() * (1.0 if leaving else -1.0)
+			_:
+				w.phase = SLOT_TALK if w.talks else SLOT_IDLE
+		var step := w.pos.distance_to(at)
+		if step < 50.0:
+			# A jump bigger than a room is somebody arriving from `away`, not
+			# somebody walking; counting it would let a station that teleports
+			# everybody report the largest travel figure of all.
+			w.moved_m += step
+			_occ_travel_m += step
+		w.pos = at
+		w.fwd_free = face
+		if w.body != null and is_instance_valid(w.body):
+			(w.body as Node3D).visible = true
+			_layer(w.body as CollisionObject3D)
+			w.body.global_transform = _walker_body_xform(w)
+	_occ_moved += moved
+	if moved > 0:
+		_place_crowd()
+	return moved
+
+
+## The station clock, followed rather than owned.
+##
+## `walk.gd` builds this node and has no clock; `main.gd` builds the Clock and
+## hands it to `life.gd`'s Director. Both are load-bearing files this change does
+## not own, and `scripts/dialogue.gd` already solved it the same way: the
+## Director is a node in the tree with an `hour()` accessor, so one guarded
+## search BY CAPABILITY finds it and a build without one keeps the hour it
+## booted with -- which is the old behaviour exactly.
+var _clock_node: Node = null
+var _clock_looked := false
+var _clock_tries := 0
+
+
+## A NEGATIVE ANSWER IS NOT LATCHED, and latching one cost the whole feature on
+## the shipped path: `walk.gd` wires the first cell inside `main.gd::_ready`,
+## BEFORE `_start_clock` has built the Director, so the first search legitimately
+## finds nothing -- and a one-shot `_looked = true` then meant the occupants
+## never found the clock that appeared four lines later. `dialogue.gd` gets away
+## with the one-shot because it is built after the Director; this node is not.
+## Capped so a build with no Director does not walk the tree every frame.
+const CLOCK_TRIES := 240
+
+
+func _find_clock() -> Node:
+	if _clock_node != null or _clock_looked:
+		return _clock_node
+	_clock_tries += 1
+	if _clock_tries >= CLOCK_TRIES:
+		_clock_looked = true
+	var scene := get_tree().current_scene if get_tree() != null else null
+	for root in [scene, get_parent()]:
+		if root == null:
+			continue
+		var n := _search_clock(root, 0)
+		if n != null:
+			_clock_node = n
+			print("npc: occupants following the station clock at %s"
+				% _clock_node.get_path())
+			return _clock_node
+	if _clock_looked:
+		print("npc: no station clock in the tree after %d frames -- occupants "
+			% CLOCK_TRIES + "hold the pose the generator baked them in")
+	return null
+
+
+## BY CAPABILITY, AND `hour()` ALONE IS NOT ENOUGH OF ONE. `dialogue.gd` exposes
+## an `hour()` too -- it FOLLOWS the clock and reports what it last heard, which
+## is -1.0 until something tells it -- and a depth-first search found it before
+## the Director on the shipped scene: `npc: occupants following the station clock
+## at /root/Main/Walk/Dialogue`, and every occupant then held the hour they were
+## admitted at for ever. The Director is the node that also `apply`s an hour;
+## a node that only reports one is a follower like this one.
+func _search_clock(node: Node, depth: int) -> Node:
+	if depth > 4:
+		return null
+	if node.has_method("hour") and node.has_method("apply") and node != self:
+		return node
+	for c in node.get_children():
+		var got := _search_clock(c, depth + 1)
+		if got != null:
+			return got
+	return null
+
+
+## How many occupants, in what states, and how many state changes have happened.
+## THE ONLY THING THAT CAN TELL A LIVING ROOM FROM A DIORAMA: the count is the
+## same either way and the CHANGES are not.
+func occupant_report() -> String:
+	var n := 0
+	var shown := 0
+	for w in _walkers:
+		if w.occupant:
+			n += 1
+			if not w.hidden:
+				shown += 1
+	var parts := []
+	var keys := _occ_states.keys()
+	keys.sort()
+	for k in keys:
+		parts.append("%s:%d" % [k, _occ_states[k]])
+	return ("occupants=%d present=%d changes=%d travel_m=%.1f draws=%d/%d "
+		+ "h=%.2f [%s]") % [
+		n, shown, _occ_moved, _occ_travel_m, crowd_draw_calls(),
+		crowd_buckets(), _occ_hour, ", ".join(parts)]
+
+
+func occupant_travel_m() -> float:
+	return _occ_travel_m
+
+
+## HOW MANY DRAW CALLS THE PEOPLE ACTUALLY COST, counted rather than reasoned
+## about. A MultiMesh with `visible_instance_count == 0` submits nothing, so the
+## number is the buckets that have somebody in them -- which is a function of how
+## many (species, lod, slot) combinations are present and NOT of how many people
+## there are. That is the whole argument for instancing and it is the only form
+## of it a run can falsify: `schedule.NPC_BUDGET["max_draw_calls"]` is 32, and a
+## baked crowd pays one draw call per material span per person.
+func crowd_draw_calls() -> int:
+	var n := 0
+	for k in _mm.keys():
+		for mmi in _mm[k]:
+			if (mmi as MultiMeshInstance3D).multimesh.visible_instance_count > 0:
+				n += 1
+	return n
+
+
+## Every MultiMesh allocated, drawing or not. The resident cost.
+func crowd_buckets() -> int:
+	var n := 0
+	for k in _mm.keys():
+		n += (_mm[k] as Array).size()
+	return n
+
+
+func occupant_count() -> int:
+	var n := 0
+	for w in _walkers:
+		if w.occupant:
+			n += 1
+	return n
+
+
+func occupant_changes() -> int:
+	return _occ_moved
+
+
 func advance_crowd(delta: float) -> void:
+	# THE OCCUPANTS FIRST, AND THEY ARE NOT ADVANCED -- they are EVALUATED. A
+	# clock that runs at 60x is exactly why: nothing here steps, so a station
+	# minute a second and real time give the same room at the same hour.
+	var ck := _find_clock()
+	if ck != null:
+		var h: float = float(ck.call("hour"))
+		if h >= 0.0 and absf(h - _occ_hour) > 1e-4:
+			var ch := set_hour(h)
+			if ch > 0 and not _occ_said:
+				_occ_said = true
+				print("npc: %s" % occupant_report())
+			if absf(h - _occ_hour0) >= 1.0 and occupant_count() > 0:
+				_occ_hour0 = h
+				print("npc: %s" % occupant_report())
 	if _walkers.is_empty():
 		return
 	# THROTTLED ONLY IF ASKED. When it is, the accumulated delta is replayed in
@@ -1000,6 +1514,17 @@ func advance_crowd(delta: float) -> void:
 		_crowd_dt = 0.0
 	var eye := (_body.global_position if _body != null else Vector3.ZERO)
 	for w in _walkers:
+		if w.occupant:
+			# AN OCCUPANT'S PHASE IS A POSE, NOT A FRAME OF A WALK CYCLE, and
+			# falling through this loop overwrote it every frame: `w.phase =
+			# int(w.t / cycle_s * 8) % 8` drove SLOT_SLEEP back down into the
+			# walk phases, so a sleeping Narn was redrawn as frame 3 of a stride
+			# 60 times a second. Their RUNG still moves with the player, because
+			# that is a property of where the camera is and not of what they are
+			# doing.
+			if _body != null and not w.hidden:
+				w.lod = _lod_at(eye.distance_to(w.pos))
+			continue
 		var d: float = w.omega * delta
 		w.angle += d
 		_crowd_travel_m += absf(d) * w.radius

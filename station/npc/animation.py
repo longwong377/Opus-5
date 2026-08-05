@@ -1789,14 +1789,23 @@ def interpenetration(rg: Rig, clip: Clip = None, pairs=(("hand", "leg"),
 
 
 def _planted_clip(rg, name, duration, frames, g_ms2, pose_fn, meta=None,
-                  seat_h=None):
-    """Shared body for every clip whose feet do not move: idle, talk, sit.
+                  seat_h=None, foot_targets=None, hand_targets=None,
+                  hand_world=None):
+    """Shared body for every clip whose feet do not move: idle, talk, sit, sleep.
 
     The feet are pinned to their rest positions (or to a seat's geometry) and the
     pelvis is moved by `pose_fn`; the legs are solved by the same IK the walk
     uses. That is deliberate -- an idle whose feet drift is the commonest crowd
     bug there is, and here it cannot happen without the walk's own foot-slide
     measurement catching it, because it is the same measurement.
+
+    `foot_targets` OVERRIDES where the feet are pinned, and it exists because a
+    RECLINING body's feet are not on the deck and are not hanging off a seat --
+    they are lying on the same surface the rest of it is. Passing the targets in
+    rather than growing a third branch here keeps the one thing that matters --
+    that the contact points are FIXED across the loop, so `contact_slip` measures
+    the same property for every planted clip -- and lets `sleep_clip` derive its
+    own contacts off the rig instead of this function guessing at them.
     """
     sk = rg.skel
     ground = sk.ground_y
@@ -1810,7 +1819,10 @@ def _planted_clip(rg, name, duration, frames, g_ms2, pose_fn, meta=None,
     ff = {s: _foot_frame(sk, s, ground) for s in sides}
     targets, dangle = {}, {}
     for s in sides:
-        if seat_h is None:
+        if foot_targets is not None:
+            targets[s] = tuple(foot_targets[s])
+            dangle[s] = 0.0
+        elif seat_h is None:
             targets[s] = (ff[s]["x"], ground + ff[s]["rise"], 0.0)
             dangle[s] = 0.0
         else:
@@ -1829,6 +1841,21 @@ def _planted_clip(rg, name, duration, frames, g_ms2, pose_fn, meta=None,
                 k = 0.995 * reach2 / d
                 targets[s] = (ff[s]["x"], hip_y - drop * k, zk * k)
                 dangle[s] = drop * (1.0 - k)
+    # THE ARM IS THE SAME TWO-LINK CHAIN AS THE LEG, and a sleeper has four
+    # contacts rather than two. Solved with the same `_leg_ik` rather than a
+    # second solver, so a hand resting on a mattress is pinned by exactly the
+    # arithmetic that pins a foot to a deck -- and `contact_slip`'s argument
+    # about drifting contacts covers both.
+    arm_sides = ([s for s in "rl" if sk.has("shoulder_%s" % s)]
+                 if hand_targets else [])
+    ua = {s: _norm(_sub(sk.head("shoulder_%s" % s), sk.head("elbow_%s" % s)))
+          for s in arm_sides}
+    fa = {s: _norm(_sub(sk.head("elbow_%s" % s), sk.head("wrist_%s" % s)))
+          for s in arm_sides}
+    rest_ua = {s: _unit(_sub(sk.head("elbow_%s" % s),
+                             sk.head("shoulder_%s" % s))) for s in arm_sides}
+    rest_fa = {s: _unit(_sub(sk.head("wrist_%s" % s),
+                             sk.head("elbow_%s" % s))) for s in arm_sides}
     root, tracks = [], {bn.name: [] for bn in sk.bones}
     for f in range(frames):
         p = f / frames
@@ -1843,6 +1870,24 @@ def _planted_clip(rg, name, duration, frames, g_ms2, pose_fn, meta=None,
             loc[sk.index["knee_%s" % s]] = ls
             if sk.has("ankle_%s" % s):
                 loc[sk.index["ankle_%s" % s]] = _mt(Rw_s)
+        for s in arm_sides:
+            sho = w1[sk.index["shoulder_%s" % s]][1]
+            cR = w1[sk.index["chest"]][0]
+            at, af, _k2, Rw_h, _e2, _c2 = _leg_ik(
+                sho, tuple(hand_targets[s]), ua[s], fa[s],
+                rest_ua[s], rest_fa[s], cR)
+            loc[sk.index["shoulder_%s" % s]] = at
+            loc[sk.index["elbow_%s" % s]] = af
+            if sk.has("wrist_%s" % s):
+                # THE HAND KEEPS ITS OWN ATTITUDE, and for a sleeper that is
+                # not the rest attitude. `_mt(Rw)` alone drives the joint's
+                # WORLD rotation to identity, which is right for a foot on a
+                # deck and puts a reclining figure's fingers 0.10 m through the
+                # mattress -- the hand goes on pointing at the floor while the
+                # body it belongs to is lying down.
+                loc[sk.index["wrist_%s" % s]] = (
+                    _mt(Rw_h) if hand_world is None
+                    else _mul(_mt(Rw_h), hand_world))
         root.append(root_t)
         for i, bn in enumerate(sk.bones):
             tracks[bn.name].append(mat_to_quat(loc.get(i, IDENT)))
@@ -2010,6 +2055,264 @@ def sit_clip(species, npc_id, g_ms2, seat_h_m=None, frames=48, lod=0):
     return _planted_clip(rg, "sit", dur, frames, g_ms2, pose,
                          {"seat_h_m": seat, "hip_drop_m": -dy,
                           "sway_hz": f_sway}, seat_h=seat)
+
+
+# ---------------------------------------------------------------------------
+# Sleeping
+# ---------------------------------------------------------------------------
+# THE CLIP THAT WAS NOT THERE, and its absence was structural rather than an
+# oversight. `CLIP_SET` was ("walk_ladder", "idle", "talk", "sit") -- four ways
+# to be UPRIGHT -- so a station whose own `schedule.RHYTHMS` says every Narn
+# aboard is asleep at 03:00 and every Centauri awake had no pose in which
+# anybody could be asleep. `schedule.activity_at` returns `Activity.SLEEP` for
+# roughly a third of every resident's day and the only body that could express
+# it was a standing one.
+#
+# EVERY NUMBER BELOW IS MEASURED OFF THE RIG OR OFF THE FURNITURE, and the two
+# that are not are marked. In particular the RECLINE IS NOT A CHOICE: a body on
+# a bunk is horizontal, so the torso is 90 degrees off vertical by definition
+# and the only question is where the contacts are. Those come from the same
+# `_planted_clip` the sit does, with the contact plane moved from the deck up
+# to the mattress -- which is why `contact_slip` measures a sleeper and a
+# stander with one function.
+SLEEP = {
+    # A supine body is flat. Not a style number.
+    "recline_deg": 90.0,
+    # How much of the leg's own reach the lying leg takes up. Under 1.0 because
+    # a sleeper's knees are not locked; `_leg_ik` cannot solve a fully extended
+    # chain and this is the same 0.995 guard `_planted_clip` already applies to
+    # a seated shin, stated once here for the leg that is nearly straight.
+    "leg_reach_f": 0.94,
+    # Breathing. The SAME mechanism and the SAME period as `idle_clip` -- two
+    # breaths per loop -- because nothing about lying down changes how often a
+    # chest rises. What does change is the excursion: recumbent breathing is
+    # diaphragmatic and visibly larger than the 0.9 deg of a standing idle, and
+    # it is the only motion a sleeping body has, so it is the only thing that
+    # can tell a sleeper from a corpse at two metres.
+    "breath_deg": 2.4,
+    "breaths_per_loop": 2,
+    # The slow roll of a head on a pillow, and the shoulder that follows it.
+    # Authority 5, and it is the one number here that is a feeling: it exists
+    # so a room of sleepers is not a row of identical effigies, and it is
+    # per-resident phased like every other amplitude in this file.
+    "turn_deg": 2.2,
+    # WHERE THE HANDS REST. A supine sleeper's arms lie BESIDE them, and how
+    # far out that is is not a number: it is the trunk's own half width plus
+    # the hand's, measured off this individual, plus the clearance below. The
+    # wrist sits a hand's thickness off the mattress and reaches down the arm's
+    # own length; both scale the individual's arm, so a Narn's hands land
+    # beside a Narn's hips.
+    "arm_clear_m": 0.02,
+    "hand_rise_m": 0.05,
+    "arm_reach_f": 0.86,
+}
+
+# How far into the mattress a body rests. NOT a style number: `dressing._m_bed`
+# builds the mattress deck as a 0.04 m panel over the bed's base, and something
+# lying on a mattress is IN it. Half the panel is what a compliant surface gives
+# under a body's own weight, and it is the bound `_selftest` holds the recline
+# to -- a figure floating on top of its own bedding to the millimetre reads as a
+# figure on a shelf.
+MATTRESS_SINK_M = 0.02
+
+
+def _part_extent(rg, name, axis):
+    """(min, max) of a named body part along an axis, off the BARE figure.
+
+    `rg.base_parts` rather than `rg.parts`, for the reason the Rig's own field
+    comment gives: a robed Minbari has no leg part in `parts` at all, and a
+    coat's hem is not the sleeper's shoulder.
+    """
+    src = rg.base_parts or rg.parts
+    vals = [v[axis] for nm, vv, _t in src if nm == name for v in vv]
+    if not vals:
+        vals = [v[axis] for nm, vv, _t in src for v in vv]
+    return (min(vals), max(vals)) if vals else (0.0, 0.0)
+
+
+def bunk_height(species, npc_id=NOMINAL, lod=0):
+    """A bunk that fits this individual, when nothing measures a real one.
+
+    THE SAME ARGUMENT `seat_height` MAKES, and deliberately the same number:
+    `station/rooms.py`'s own note beside the 2.40 m berth clearance reads "1.70
+    m standing plus hair, and a bunk you sit up in" -- a bunk IS a seat with a
+    mattress on it, so the height that fits a sitter fits a sleeper. A caller
+    with real geometry passes the mattress deck it measured, exactly as
+    `populace.populate` passes a seat's own face height to `sit_clip`.
+    """
+    return seat_height(species, npc_id, lod)
+
+
+def sleep_clip(species, npc_id, g_ms2, bunk_h_m=None, frames=48, lod=0):
+    """Asleep on a surface at `bunk_h_m`. Supine, breathing, contacts fixed."""
+    rg = rig(species, npc_id, lod)
+    sk = rg.skel
+    if sk.plan == "column":
+        # No legs, no bunk, and `glide_clip` already says out loud that a Vorlon
+        # has no derivable gait. A Kosh at rest is a Kosh, hovering.
+        return glide_clip(species, npc_id, g_ms2, frames=frames, lod=lod,
+                          speed=0.0, name="sleep")
+    bunk = (bunk_h_m if bunk_h_m is not None
+            else bunk_height(species, npc_id, lod))
+    ground = sk.ground_y
+    recline = math.radians(SLEEP["recline_deg"])
+    ph = _u(f"{species}:{npc_id}", "sleep_phase") * math.tau
+    # WHERE THE PELVIS ENDS UP. A supine body rests on its BACK, so the pelvis
+    # joint sits half a trunk's thickness above the mattress -- an ESTIMATE, and
+    # `body.py` builds the torso front-to-back in z so the half depth is that
+    # part's own z half-extent. It is only the first pass: the estimate is out
+    # by up to 80 mm on a full-resolution figure, because the shoulder blade and
+    # the buttock reach further back than the torso ring's centreline does, and
+    # 80 mm is a body sunk to the ribs in a 40 mm mattress. The clip is built
+    # once, the LOWEST VERTEX IS MEASURED, and the body is lifted onto its own
+    # bunk exactly as a standing figure's feet are put on the deck.
+    z0, z1 = _part_extent(rg, "torso", 2)
+    back = max(0.05, (z1 - z0) * 0.5)
+    hip_rest = sk.head("pelvis")[1] - ground
+    dy = bunk + back - hip_rest
+    # AND THE HEAD IS ON A PILLOW. Raised until the crown clears the mattress by
+    # its own half depth -- the height a head takes up when something is under
+    # it -- so the angle is the arcsine of that over the neck-to-crown reach.
+    # `_m_bed`'s head unit stands proud of the mattress deck for exactly this
+    # reason and this is the body half of it.
+    hy0, hy1 = _part_extent(rg, "head", 1)
+    pillow = max(0.02, (hy1 - hy0) * 0.30)
+    neck = sk.head("head")
+    reach_h = max(0.05, math.dist(neck, sk.head("chest")))
+    head_rise = math.asin(max(-1.0, min(1.0, pillow / reach_h)))
+
+    def _build(lift):
+        def pose(p, s):
+            t = p * math.tau
+            br = math.radians(SLEEP["breath_deg"]) * math.sin(
+                SLEEP["breaths_per_loop"] * t + ph)
+            roll = math.radians(SLEEP["turn_deg"]) * math.sin(t + ph)
+            loc = {
+                s.index["pelvis"]: rot_x(-recline),
+                s.index["spine"]: rot_x(br * 0.35),
+                s.index["chest"]: rot_x(br),
+                s.index["neck"]: rot_x(head_rise * 0.45),
+                s.index["head"]: _mul(rot_x(head_rise * 0.55 - br * 0.4),
+                                      rot_y(roll)),
+            }
+            # The arms are NOT posed here -- they are solved to their contacts
+            # below, exactly as the legs are. What is left in this function is
+            # the only thing about a sleeping body that actually moves.
+            return loc, (0.0, lift, 0.0)
+
+        # THE FEET ARE PINNED TO THE MATTRESS, NOT TO THE DECK, and the targets
+        # are taken from the pose ITSELF rather than written down: run the base
+        # pose once, read where the hips actually landed, and lay the legs out
+        # from there. Anything else is a second opinion about where a rotated
+        # pelvis is.
+        loc0, root0 = pose(0.0, sk)
+        w0 = fk(sk, loc0, root0)
+        sides = [q for q in "rl" if sk.has("hip_%s" % q)]
+        targets = {}
+        for s in sides:
+            hip = w0[sk.index["hip_%s" % s]][1]
+            ff = _foot_frame(sk, s, ground)
+            targets[s] = (hip[0], ground + bunk + ff["rise"],
+                          hip[2] + sk.reach_m * SLEEP["leg_reach_f"])
+        # AND THE HANDS ARE ON THE MATTRESS TOO. Posed by rotation instead, the
+        # arms came out folded in the air: an elbow's flexion is FORWARD, and
+        # the -90 degree recline turns forward into up, so a standing idle's arm
+        # pose puts a sleeper's fingers 0.42 m above their own bunk. Measured,
+        # and it is the reason this clip solves four contacts rather than two.
+        tx0, tx1 = _part_extent(rg, "torso", 0)
+        hx0, hx1 = _part_extent(rg, "hand", 0)
+        beside = max(tx1, -tx0) + (hx1 - hx0) * 0.5 + SLEEP["arm_clear_m"]
+        hands = {}
+        for s in [q for q in "rl" if sk.has("shoulder_%s" % q)]:
+            sho = w0[sk.index["shoulder_%s" % s]][1]
+            wr = sk.head("wrist_%s" % s)
+            # WHICH WAY IS OUT, ASKED OF THE BODY. `sgn = +1 if s == "r"` reads
+            # correctly and is wrong on this rig: `body.py` puts the right
+            # shoulder at x = -0.076, so a letter-to-sign table sent both hands
+            # ACROSS the midline and the two of them ended up stacked on the
+            # sleeper's navel, 8 vertices deep in their own torso. A side is a
+            # measurement.
+            sgn = 1.0 if sho[0] >= 0.0 else -1.0
+            spread = max(0.0, beside - abs(sho[0]))
+            arm = (math.dist(sk.head("shoulder_%s" % s),
+                             sk.head("elbow_%s" % s))
+                   + math.dist(sk.head("elbow_%s" % s), wr))
+            # HOW FAR DOWN THE BUNK THE WRIST LANDS IS SOLVED, NOT CHOSEN. The
+            # shoulder is a shoulder's height above the mattress and the wrist
+            # has to be ON it, so two of the three components of the reach are
+            # already fixed and the third is whatever is left of the arm:
+            #     span = sqrt(reach^2 - drop^2 - spread^2)
+            # Written as a bare fraction of the arm instead, the target landed
+            # OUTSIDE the chain's own reach on a human -- 0.557 m of it against
+            # a 0.55 m arm -- and `_leg_ik` did the only thing it can with an
+            # unreachable target: pointed the whole arm at it and left the hand
+            # 0.107 m through the mattress with the fingers inside the hip.
+            # Both were measured before this line existed.
+            reach = arm * SLEEP["arm_reach_f"]
+            drop = sho[1] - (ground + bunk + SLEEP["hand_rise_m"])
+            span = math.sqrt(max(0.0, reach * reach - drop * drop
+                                 - spread * spread))
+            hands[s] = (sho[0] + sgn * spread,
+                        ground + bunk + SLEEP["hand_rise_m"],
+                        sho[2] + span)
+        return _planted_clip(rg, "sleep", dur, frames, g_ms2, pose,
+                             {"bunk_h_m": bunk, "hip_lift_m": lift,
+                              "back_half_m": back, "pillow_m": pillow,
+                              "head_rise_deg": math.degrees(head_rise),
+                              "breaths_per_loop": SLEEP["breaths_per_loop"]},
+                             foot_targets=targets, hand_targets=hands,
+                             hand_world=rot_x(-recline))
+
+    dur = IDLE["sway_cycles"] / sway_frequency(rg, g_ms2)
+    first = _build(dy)
+    # PASS TWO: PUT THEM ON THE BUNK. The lowest vertex of the built pose is
+    # where this body actually touches, so the correction is exact and the
+    # estimate above only has to be close enough for the contacts to be sane.
+    # A mattress compresses, so the contact is set `MATTRESS_SINK_M` INTO the
+    # panel `dressing._m_bed` builds rather than exactly on it -- a body resting
+    # on top of a mattress to the millimetre reads as a body on a shelf.
+    _w, mats0 = first.pose(sk, 0)
+    low = min(v[1] for _n, vv, _t in apply_pose(rg, mats0) for v in vv)
+    fix = (ground + bunk - MATTRESS_SINK_M) - low
+    out = _build(dy + fix)
+    out.meta["lift_correction_m"] = fix
+    out.meta["estimate_error_m"] = abs(fix)
+    return out
+
+
+def recline_report(rg: Rig, clip: Clip, bunk_h_m=None):
+    """Is the sleeper ON the bunk, flat, and inside its length?
+
+    THE THREE WAYS A RECLINE GOES WRONG and no other measurement in this module
+    can see any of them: the body sinks through the mattress, the body is not
+    actually horizontal, or the body is longer lying down than the bunk it is
+    lying on. `contact_slip` and `interpenetration` already cover the rest, and
+    they are run on this clip by `_selftest` exactly as they are on the walk.
+    """
+    bunk = (clip.meta.get("bunk_h_m", 0.0) if bunk_h_m is None else bunk_h_m)
+    ground = rg.skel.ground_y
+    lo, hi, zlo, zhi = 1e9, -1e9, 1e9, -1e9
+    tilt = 0.0
+    for f in range(clip.frames):
+        w, mats = clip.pose(rg.skel, f)
+        for _n, vv, _t in apply_pose(rg, mats):
+            for v in vv:
+                lo = min(lo, v[1])
+                hi = max(hi, v[1])
+                zlo = min(zlo, v[2])
+                zhi = max(zhi, v[2])
+        # The trunk axis, pelvis to chest, against the mattress plane.
+        p = w[rg.skel.index["pelvis"]][1]
+        c = w[rg.skel.index["chest"]][1]
+        d = _sub(c, p)
+        n = _norm(d)
+        if n > 1e-6:
+            tilt = max(tilt, abs(math.degrees(math.asin(
+                max(-1.0, min(1.0, d[1] / n))))))
+    return {"lowest_m": lo, "highest_m": hi, "bunk_m": ground + bunk,
+            "sink_m": (ground + bunk) - lo,
+            "clear_m": hi - (ground + bunk),
+            "length_m": zhi - zlo, "trunk_tilt_deg": tilt}
 
 
 GLIDE = {"speed_ms": 0.9, "bob_f": 0.004, "lean_deg": 1.5, "period_s": 6.0}
@@ -2196,7 +2499,11 @@ def clip_keys():
 QUAT_BYTES = 16             # 4 x float32; what Godot stores in a rotation track
 VEC3_BYTES = 12
 MAT43_BYTES = 48            # a bone palette entry: 4x3 float32
-CLIP_SET = ("walk_ladder", "idle", "talk", "sit")
+# EVERY POSE A RESIDENT'S DAY NEEDS. `sleep` was missing and its absence was
+# not cosmetic: `schedule.activity_at` returns `Activity.SLEEP` for about a
+# third of every resident's day, so a third of the station's population had no
+# body to be in. `cost_report` counts this set, so adding a clip is priced.
+CLIP_SET = ("walk_ladder", "idle", "talk", "sit", "sleep")
 
 
 def cost_report(keys=None):
@@ -2230,7 +2537,11 @@ def cost_report(keys=None):
     for plan, bones in PLAN_BONES.items():
         n = len(bones)
         per_key = n * QUAT_BYTES + VEC3_BYTES
-        clips = (lad["rungs"] + 3) if plan != "column" else 4
+        # The walk ladder's rungs plus every non-walk clip in `CLIP_SET`, so
+        # adding a pose is PRICED here rather than silently free. A column plan
+        # has no gait, so its whole set is the planted clips.
+        n_posed = len(CLIP_SET) - 1
+        clips = (lad["rungs"] + n_posed) if plan != "column" else n_posed + 1
         plans[plan] = {
             "bones": n,
             "clip_bytes": per_key * keys,
@@ -3164,6 +3475,67 @@ def _selftest():
         check(s < 1e-9, f"{cl.name}: planted feet do not drift ({s:.2e} m)")
         check(all(abs(r[2]) < 1e-12 for r in cl.root),
               f"{cl.name}: a standing clip has no root motion")
+
+    # -- SLEEP, and it is measured the way the other planted clips are -------
+    # `contact_slip` is VACUOUS on this one and that is stated rather than
+    # relied on: it looks for vertices within CONTACT_EPS_M of `ground_y`, and
+    # a body on a bunk has none, so it returns 0 contact pairs and a slip of
+    # zero WHATEVER the clip does. The properties that can actually fail here
+    # are the three in `recline_report` -- on the mattress, flat, and inside the
+    # bunk's own length -- plus the interpenetration every other clip is held to.
+    worst_sink, worst_tilt, worst_len = -1e9, 0.0, 0.0
+    for key in sorted(body.SPECIES):
+        rgs = rig(key, "sleeper", 0)
+        cs = sleep_clip(key, "sleeper", G0, frames=16)
+        if rgs.skel.plan == "column":
+            continue
+        rep = recline_report(rgs, cs)
+        worst_sink = max(worst_sink, rep["sink_m"])
+        worst_tilt = max(worst_tilt, rep["trunk_tilt_deg"])
+        worst_len = max(worst_len, rep["length_m"])
+        ips = interpenetration(rgs, cs)["worse_than_rest"]
+        check(ips["hand_in_torso"] <= 0 and ips["hand_in_leg"] <= 2,
+              f"{key}: a sleeper's arms lie beside them, not inside them "
+              f"({ips})")
+    # A mattress compresses; a body 30 mm into one is right and a body 300 mm
+    # into one is falling through the bunk. The bound is the bunk's own
+    # mattress thickness -- `dressing._m_bed` builds the deck panel 0.04 m
+    # thick over a base, so 0.04 is what there is to sink into.
+    check(worst_sink <= 0.04 + 1e-9,
+          f"nobody sinks through their own bunk ({worst_sink * 1000:.1f} mm "
+          f"against the 40 mm mattress panel)")
+    check(worst_tilt < 5.0,
+          f"a sleeping body is flat ({worst_tilt:.2f} deg off the mattress)")
+    # A FINDING RATHER THAN A TOLERANCE, and it is recorded here because this is
+    # where it is measurable. `rooms.PROPS["bunk"]` is **2.05 m** long and the
+    # two tallest species lie at **2.100 m (Narn)** and **2.081 m (Minbari)** --
+    # so the station builds one bunk size and it is 50 mm short for the people
+    # the show puts in G'Kar's and Delenn's quarters. The clip is right; the
+    # furniture is not. What the bound below asserts is that the overhang stays
+    # inside the pillow's own depth, which is the difference between a tall
+    # sleeper's feet over the end and a body lying on a plank.
+    #
+    # `rooms.PROPS` is not read here: importing `rooms` from inside `npc/` is a
+    # cycle (rooms -> populace -> animation), so the number is named with its
+    # source and `populace._selftest` asserts the two agree.
+    check(worst_len <= 2.05 + 0.08,
+          f"a sleeper is at most a pillow's depth over a 2.05 m bunk "
+          f"({worst_len:.3f} m, tallest species -- SEE THE NOTE: the bunk prop "
+          f"is 50 mm short for a Narn)")
+    cs = sleep_clip("human", "sleeper", G0, frames=16)
+    check(cs.meta["bunk_h_m"] > 0.0 and abs(cs.meta["root_advance_m"]) < 1e-12,
+          "a sleep clip has a bunk height and does not travel")
+    # THE CONTROL. Take the same body to a bunk twice as high and it has to
+    # move with it -- a clip that ignores the surface it was given is a clip
+    # that would put every sleeper at one height whatever they are lying on.
+    lo = sleep_clip("human", "sleeper", G0, bunk_h_m=0.30, frames=8)
+    hi = sleep_clip("human", "sleeper", G0, bunk_h_m=0.60, frames=8)
+    rgs = rig("human", "sleeper", 0)
+    d_lo = recline_report(rgs, lo)["lowest_m"]
+    d_hi = recline_report(rgs, hi)["lowest_m"]
+    check(abs((d_hi - d_lo) - 0.30) < 0.02,
+          f"the sleeper follows the bunk ({d_lo:.3f} -> {d_hi:.3f} m for a "
+          f"0.30 m rise)")
     # loop closure: the wrap must not be a bigger step than any other frame
     ck = walk_clip("human", "loop", G0, frames=24)
     rgl = rig("human", "loop", 0)

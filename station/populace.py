@@ -96,6 +96,23 @@ SEAT_GROUP = "dress_soft"
 # LOD1 from `schedule.NPC_BUDGET`: 2,000 triangles, good from 6 to 18 m, which
 # is the range a room is seen at. LOD0 is 8,000 and is for a face in dialogue.
 ROOM_LOD = 1
+
+
+def room_lod():
+    """The chain level an INSTANCED room occupant is emitted at.
+
+    NOT `ROOM_LOD`, and the difference is the difference between a mesh and a
+    key. A baked occupant carries their own geometry, so any chain level is
+    buildable; an instanced one is a REFERENCE into the shared library, and the
+    library only holds the rungs `crowd_ladder()` ships -- (18 m, 2), (45 m, 4),
+    (400 m, 8). Emitting `ROOM_LOD` produced `crowd_narn_1_8`, a key for a body
+    that is not in any glb, which the runtime resolves to nothing at all: an
+    invisible room. The nearest rung is the right one, because a room occupant
+    is somebody you walk up to; beyond that the runtime picks by distance,
+    which is the whole point of instancing them.
+    """
+    lad = crowd_ladder()
+    return int(lad[0][1]) if lad else 4
 # Nobody is in a sealed plant room at 0300, and a bar at 1300 is not full.
 # Without a floor every quiet room reads as abandoned rather than quiet.
 MIN_PRESENT = 0
@@ -425,12 +442,63 @@ def _faces_in_band(v, t, g, lo_h, hi_h, min_area=0.12, only=None):
 # still has a name, a job and a home; what they share is a silhouette.
 CROWD_PHASES = 8
 
+# ---------------------------------------------------------------------------
+#  AND THE TRADE WAS BACKWARDS FOR ROOMS
+# ---------------------------------------------------------------------------
+# The note above is right about a corridor and it was applied to exactly half
+# the station. A ROOM OCCUPANT stayed baked, so the sentence "which room
+# occupants do not pay" was true and the thing they paid instead was worse: a
+# body welded into the deck mesh cannot move, and the entire runtime behaviour
+# of a person sitting in a room was `npc.gd` turning their yaw to face the
+# player within 6 m. They never stand, never walk, never leave, never sleep --
+# `godot/scripts/life.gd` says so in as many words, "a baked actor can only be
+# shown or hidden".
+#
+# AT TWO METRES A PLAYER JUDGES BEHAVIOUR, NOT BONE STRUCTURE. A unique face
+# that never stands up reads worse than a shared face that gets up and leaves.
+# Distance wants silhouette; proximity wants behaviour. So the same instancing
+# applies, and the only thing it needs that a corridor did not is MORE THAN ONE
+# POSE: a walker is always walking and an occupant is standing, sitting,
+# talking or asleep depending on the hour, the species and their shift.
+#
+# THE POSES GO ON THE SAME AXIS AS THE WALK PHASES, deliberately. The library
+# key is `crowd_<species>_<lod>_<n>`; a walk phase is n < 8 and a pose is n >= 8,
+# so the runtime's bucket sort, its MultiMesh allocation and its material names
+# do not learn a second shape. Adding a pose costs one more body per species per
+# rung and nothing else.
+POSE_SLOTS = ("idle", "sit", "sleep", "talk")
+CROWD_SLOTS = CROWD_PHASES + len(POSE_SLOTS)
+SLOT_OF = {p: CROWD_PHASES + i for i, p in enumerate(POSE_SLOTS)}
+POSE_OF_SLOT = {v: k for k, v in SLOT_OF.items()}
 
-@_lru_cache(maxsize=64)
-def crowd_body(species, lod, phase):
-    """The shared walking body for `(species, lod, phase)`. Nominal, not an
-    individual -- see the section note above for why, and for what it costs."""
-    return _posed(species, _anim.NOMINAL, lod, "walk", G0_MS2, 0.0, phase)
+
+@_lru_cache(maxsize=256)
+def crowd_body(species, lod, slot):
+    """The shared body for `(species, lod, slot)`. Nominal, not an individual.
+
+    `slot < CROWD_PHASES` is a phase of the walk cycle; beyond that it is one of
+    `POSE_SLOTS`. See the section note above for why the two share an axis, and
+    for what a shared body costs.
+
+    THE SEATED AND SLEEPING SLOTS ARE POSED ON THE SPECIES' OWN FITTED
+    FURNITURE -- `animation.seat_height` and `animation.bunk_height`, which are
+    that individual's knee height -- because a shared body cannot know which
+    chair it will end up on. The placement still puts them on the real seat, so
+    what is lost is the difference between the two, and `seat_fit_report()`
+    measures exactly that rather than leaving it as a claim.
+    """
+    if slot < CROWD_PHASES:
+        return _posed(species, _anim.NOMINAL, lod, "walk", G0_MS2, 0.0, slot)
+    kind = POSE_OF_SLOT[slot]
+    h = 0.0
+    if kind in ("sit", "sleep"):
+        try:
+            h = (_anim.seat_height(species, _anim.NOMINAL, lod)
+                 if kind == "sit"
+                 else _anim.bunk_height(species, _anim.NOMINAL, lod))
+        except Exception:                                       # noqa: BLE001
+            h = 0.0
+    return _pose_mesh(species, _anim.NOMINAL, lod, kind, G0_MS2, h)
 
 
 def crowd_library(species_lods):
@@ -443,7 +511,7 @@ def crowd_library(species_lods):
     """
     v, t, g = [], [], []
     for sp, lod in sorted(set(species_lods)):
-        for ph in range(CROWD_PHASES):
+        for ph in range(CROWD_SLOTS):
             try:
                 bv, bt, bg = crowd_body(sp, lod, ph)
             except Exception:                                   # noqa: BLE001
@@ -458,8 +526,8 @@ def crowd_library(species_lods):
     return v, t, g
 
 
-def crowd_key(species, lod, phase):
-    return f"crowd_{species}_{lod}_{phase % CROWD_PHASES}"
+def crowd_key(species, lod, slot):
+    return f"crowd_{species}_{lod}_{slot % CROWD_SLOTS}"
 
 
 @_lru_cache(maxsize=8)
@@ -1076,6 +1144,17 @@ def _posed(species, npc_id, lod, kind, g_ms2, seat_h_m, phase=-1):
         elif kind == "sit":
             clip = _anim.sit_clip(species, npc_id, g_ms2,
                                   seat_h_m=seat_h_m or None, frames=8, lod=lod)
+        elif kind == "sleep":
+            # THE CLIP THAT DID NOT EXIST UNTIL A ROOM OCCUPANT COULD MOVE.
+            # `animation.CLIP_SET` was four ways to be upright, so a station
+            # whose own `schedule.RHYTHMS` puts every Narn asleep at 03:00 had
+            # no body anybody could be asleep in. Handed the bunk's own measured
+            # deck height, exactly as the sit is handed the seat's.
+            clip = _anim.sleep_clip(species, npc_id, g_ms2,
+                                    bunk_h_m=seat_h_m or None, frames=8,
+                                    lod=lod)
+        elif kind == "talk":
+            clip = _anim.talk_clip(species, npc_id, g_ms2, frames=8, lod=lod)
         elif kind == "walk":
             clip = _anim.walk_clip(species, npc_id, g_ms2, frames=WALK_FRAMES,
                                    lod=lod)
@@ -1239,9 +1318,131 @@ def _who(res, hour, place_key):
     }
 
 
+# ===========================================================================
+#  A ROOM OCCUPANT IS THE SAME KIND OF OBJECT AS A CORRIDOR WALKER
+# ===========================================================================
+# `deck.CORRIDOR_INSTANCED` made this trade for the corridor and rooms kept the
+# old one, so the station shipped two crowd systems: an instanced one that moves
+# and a baked one that cannot. This is the switch for the second half of it.
+#
+# It is a MODULE FLAG rather than a caller's argument because the only caller is
+# `rooms.build`, one line, in a file this change does not own -- exactly the
+# shape `deck.CORRIDOR_INSTANCED` already has. `populate(instanced=False)` is
+# the control and `_selftest` runs both.
+ROOM_INSTANCED = True
+
+# What an occupant can be doing. Every one of these comes out of
+# `npc/schedule.Activity` except `away` -- which is the state the old system
+# could not express at all, and is most of a day: a resident is somewhere else
+# for the twenty hours they are not in this room.
+ROOM_STATES = ("away", "sleep", "eat", "work", "idle", "talk", "transit")
+
+# How finely the day is sampled when the timetable is derived. A quarter hour:
+# `schedule.MEAL_HALF_WINDOW_H` is 0.3 h and `TRANSIT_H` is 0.5, so a coarser
+# step would step straight over a meal and a commute. Only TRANSITIONS are
+# emitted, so the sample rate costs nothing in the sidecar.
+DAY_STEP_H = 0.25
+
+# Which pose slot each state is drawn in, when the anchor for it exists. A state
+# with no anchor falls back: somebody with no seat eats standing up, and
+# somebody with no bunk is not in this room at all when they are asleep.
+STATE_POSE = {
+    "sleep": "sleep", "eat": "sit", "work": "idle", "idle": "idle",
+    "talk": "talk", "transit": "walk",
+}
+
+# WHERE A SLEEPING SURFACE IS. `rooms.PROPS["bunk"]` is 2.05 x 0.95 x 0.55 m and
+# `dressing._m_bed` puts the mattress deck at 70% of the box -- 0.385 m for a
+# bunk -- so the band has to cover every bed-kind prop the station builds rather
+# than that one number. Wide enough for a cryo pod and a cold drawer; the
+# min_area is most of a mattress, so a rail or a head unit cannot be slept on.
+BED_BAND = (0.22, 0.82)
+BED_MIN_AREA_M2 = 0.30
+
+
+@_lru_cache(maxsize=1)
+def _bed_groups():
+    """Every group prefix a bed-kind prop emits, from `rooms.PROP_KIND` itself.
+
+    DERIVED rather than listed: the table already says which prop tokens build
+    as a "bed" -- bunk, cryo_pod, cold_drawer, diagnostic_bed -- and `rooms.py`
+    prefixes a placed prop with `prop_`, `fix_` or `dress_` depending on where
+    it came from. A hand-written list here would be a second answer to "what is
+    a bed" and would go stale the first time a new one is added.
+    """
+    try:
+        import rooms as _R                                       # noqa: PLC0415
+        toks = sorted(k for k, v in _R.PROP_KIND.items() if v == "bed")
+    except Exception:                                            # noqa: BLE001
+        toks = ["bunk"]
+    return tuple(f"{p}{k}" for k in toks for p in ("prop_", "fix_", "dress_"))
+
+
+# How close two occupants have to be before the idle one becomes a talking one.
+# `friction.separation_m` is the distance people of two species keep from each
+# other and runs 0.75 m to 1.80 m, so a conversation is anybody INSIDE the
+# widest of those -- two people closer than the friction table's own maximum are
+# by definition standing together rather than avoiding each other.
+TALK_M = 1.80
+
+
+def _activity_state(act):
+    """`schedule.Activity` -> one of `ROOM_STATES`."""
+    a = getattr(act, "value", str(act))
+    if a in ("sleep", "eat", "work", "transit"):
+        return a
+    return "idle"
+
+
+def _collapse(day):
+    """Drop a transition that does not change the state, and the day's wrap."""
+    out = []
+    for h, st in day:
+        if not out or out[-1][1] != st:
+            out.append([h, st])
+    if len(out) > 1 and out[-1][1] == out[0][1] and out[0][0] <= 1e-9:
+        out.pop()
+    return out
+
+
+def occupant_day(res, place_key, rank, present_at, step_h=DAY_STEP_H):
+    """One resident's day in one room, as `[[hour, state], ...]` transitions.
+
+    DERIVED, NOT SCRIPTED, and every term traces:
+
+      * WHETHER they are here at all is `resident.where_at` -- the schedule's
+        own answer to "where is this person at this hour" -- OR the place's own
+        occupancy curve wanting more bodies than the roster sends, which is what
+        `present_at(h)` carries. `_who`'s `here_by` field already records that
+        distinction and this is it made temporal.
+      * WHAT they are doing is `schedule.activity_at`, which resolves sleep over
+        meals over work over a species-weighted leisure choice, through
+        `RHYTHMS` (a Brakiri sleeps through the station day) and `ROLES` (a
+        rotating post is on one of three watches at +0/+8/+16).
+
+    Only transitions are emitted, so a resident's whole day is six to ten pairs
+    rather than 96 samples. The result is PURE IN THE HOUR -- the same property
+    `life.gd`'s Director is built on, for the same reason: leaving a room and
+    coming back has to give the answer the room would have had.
+    """
+    out = []
+    h = 0.0
+    while h < 24.0 - 1e-9:
+        here = (_res.where_at(res, h) == place_key) or present_at(h, rank)
+        st = _activity_state(res.activity_at(h)) if here else "away"
+        if not out or out[-1][1] != st:
+            out.append([round(h, 3), st])
+        h += step_h
+    # A day is a loop: if the last state equals the first, the wrap already
+    # covers it and the trailing entry is noise.
+    if len(out) > 1 and out[-1][1] == out[0][1] and out[0][0] <= 1e-9:
+        out.pop()
+    return out
+
+
 def populate(place_key, room_v, room_t, room_g, w_m, l_m, hour=13.0,
              arch="generic", seed=None, lod=ROOM_LOD, max_people=None,
-             g_ms2=G0_MS2):
+             g_ms2=G0_MS2, instanced=None):
     """Put the hour's population into one room. Returns (v, t, g, stats).
 
     `room_*` is the finished room, and it is an INPUT rather than something this
@@ -1263,6 +1464,10 @@ def populate(place_key, room_v, room_t, room_g, w_m, l_m, hour=13.0,
     # the corridor. A resident who reacts has to be a thing, not a region of a
     # thing.
     actors = []
+    instanced = ROOM_INSTANCED if instanced is None else bool(instanced)
+    if instanced:
+        lod = room_lod()
+    instances = []
     area = max(w_m * l_m, 1e-6)
     n = occupancy(place_key, area, hour, arch)
     # ------------------------------------------------------------------
@@ -1303,8 +1508,17 @@ def populate(place_key, room_v, room_t, room_g, w_m, l_m, hour=13.0,
     desks = _faces_in_band(room_v, room_t, room_g, *DESK_BAND)
     seats.sort(key=lambda s: (-s[3], s[0], s[2]))
     desks.sort(key=lambda s: (-s[3], s[0], s[2]))
+    # AND WHERE ANYBODY CAN LIE DOWN. Read off the geometry exactly as the seats
+    # are, and the group list is DERIVED from `rooms.PROP_KIND` -- every prop
+    # whose machine kind is "bed" -- rather than being a second list of what a
+    # bed is called. A place with no bed has no sleepers in it, which is right:
+    # nobody sleeps standing up in a docking bay, they go home.
+    beds = _faces_in_band(room_v, room_t, room_g, *BED_BAND,
+                          min_area=BED_MIN_AREA_M2, only=_bed_groups())
+    beds.sort(key=lambda s: (-s[3], s[0], s[2]))
 
-    stats = {"seated": 0, "standing": 0, "walking": 0, "wanted": n}
+    stats = {"seated": 0, "standing": 0, "walking": 0, "wanted": n,
+             "beds": len(beds), "seats": len(seats), "instanced": instanced}
     used = []
 
     # WHO IS IN THIS ROOM. The species mix is unchanged -- it is calibrated per
@@ -1533,6 +1747,57 @@ def populate(place_key, room_v, room_t, room_g, w_m, l_m, hour=13.0,
         return (-hw - 1e-9 <= x0 and x1 <= hw + 1e-9
                 and -hl - 1e-9 <= z0 and z1 <= hl + 1e-9)
 
+    # ------------------------------------------------------------------
+    # THE INSTANCED PATH -- the same placement, emitting a PLACEMENT
+    # ------------------------------------------------------------------
+    # Everything above this point is untouched and is the reason it works: an
+    # occupant is still placed against the furniture that is actually there, is
+    # still kept `friction.separation_m` from their neighbours, and is still
+    # tested with the body that will be DRAWN. What changes is what comes out.
+    # A baked body is triangles welded into the deck mesh, and the only thing a
+    # runtime can do with one is show it or hide it. A placement is a transform.
+    def _emit(mesh_, x, z, yaw, group, pose, slot, seat_h=0.0):
+        """Bake a body, or record where one goes. One call site, two outputs."""
+        if not instanced:
+            _place_body(v, t, g, mesh_, x, 0.0, z, yaw, group, actors, who_rec)
+            return
+        # THE CAPSULE COMES OFF THE BODY THAT IS DRAWN. For a baked occupant
+        # that is their own build; for an instanced one it is the shared
+        # library's standing figure, because a player bumps into what they can
+        # see and a capsule measured off a body nobody is wearing is a second
+        # answer to how wide somebody is.
+        r_m, h_m = body_capsule(crowd_body(sp, lod, SLOT_OF["idle"]))
+        rec = {
+            "group": group, "who": who_rec, "x": x, "y": 0.0, "z": z,
+            "yaw": yaw, "pose": pose, "r_m": r_m, "h_m": h_m,
+            # THE TWO KEYS `deck.py` ALREADY FORWARDS, and they are the whole
+            # reason a room occupant can reach the runtime as an instance
+            # without editing that file: it copies `species` and `lod` off an
+            # actor record verbatim, and everything else this needs rides
+            # inside `who`, which it copies whole.
+            "species": sp, "lod": lod,
+            "mesh": crowd_key(sp, lod, slot), "slot": slot,
+            "seat_h_m": round(seat_h, 4),
+        }
+        instances.append(rec)
+        actors.append(rec)
+
+    def _blocked(mesh_, x, z, yaw):
+        """`_embedded`, asked of a body that emitted no triangles.
+
+        The baked check reads back the vertices it just appended; there are
+        none here, so the same question is put to the same `_placed_bounds` the
+        placement test already uses. Same boxes, same 0.10 m inset, same answer.
+        """
+        x0, x1, z0, z1 = _placed_bounds(mesh_, x, z, yaw)
+        cx, cz = (x0 + x1) / 2.0, (z0 + z1) / 2.0
+        for bx0, by0, bz0, bx1, by1, bz1 in _solid:
+            if by1 <= 0.8:
+                continue
+            if bx0 + 0.10 < cx < bx1 - 0.10 and bz0 + 0.10 < cz < bz1 - 0.10:
+                return True
+        return False
+
     for i in range(n):
         who = people[i]
         sp = who.species
@@ -1545,7 +1810,14 @@ def populate(place_key, room_v, room_t, room_g, w_m, l_m, hour=13.0,
         # POSED, not the bind pose. `mesh` here is the standing figure; a
         # sitter is rebuilt below against the height of the seat they take,
         # because `sit_clip` derives the whole pose from it.
-        mesh = _pose_mesh(sp, who.npc_id, lod, "idle", g_ms2)
+        # AN INSTANCED OCCUPANT WEARS THEIR SPECIES' NOMINAL BODY, and that is
+        # the cost of the trade stated in one line. `crowd_body` is the shared
+        # library's figure -- one per (species, lod, slot) for the whole station
+        # -- where `_pose_mesh` builds this individual's own. It is also the
+        # mesh the placement is TESTED against either way, so a body that fits
+        # the room is the body that gets drawn in it.
+        mesh = (crowd_body(sp, lod, SLOT_OF["idle"]) if instanced
+                else _pose_mesh(sp, who.npc_id, lod, "idle", g_ms2))
         who_rec = _who(who, hour, place_key)
 
         # A SEAT THAT DOES NOT WORK OUT MEANS THE PERSON STANDS, not that the
@@ -1559,7 +1831,8 @@ def populate(place_key, room_v, room_t, room_g, w_m, l_m, hour=13.0,
         seated = False
         if i < len(seats):
             sx, sy, sz, _a = seats[i]
-            seat_mesh = _pose_mesh(sp, who.npc_id, lod, "sit", g_ms2, sy)
+            seat_mesh = (crowd_body(sp, lod, SLOT_OF["sit"]) if instanced
+                         else _pose_mesh(sp, who.npc_id, lod, "sit", g_ms2, sy))
             # FACING THE ROOM, and the sign was inverted. `_place_body` maps
             # the body's local +Z -- its facing -- to `(-sin(yaw), cos(yaw))`,
             # so to look along `(fx, fz)` the yaw is `atan2(-fx, fz)`. It was
@@ -1580,10 +1853,8 @@ def populate(place_key, room_v, room_t, room_g, w_m, l_m, hour=13.0,
                 # takes the seat's own measured height `sy` and puts the hips
                 # on the pan and the feet on the floor, so the body's origin
                 # stays at deck level like every other placement here.
-                _place_body(v, t, g, seat_mesh,
-                            sx, 0.0, sz,
-                            seat_yaw, f"npc_seated_{i}",
-                            actors, who_rec)
+                _emit(seat_mesh, sx, sz, seat_yaw, f"npc_seated_{i}",
+                      "seated", SLOT_OF["sit"], sy)
                 used.append((sx, sz, sp))
                 stats["seated"] += 1
                 seated = True
@@ -1599,13 +1870,14 @@ def populate(place_key, room_v, room_t, room_g, w_m, l_m, hour=13.0,
                 _mv, _mt = len(v), len(t)
                 # Same convention, same inversion: to face the desk from
                 # the stand-off point the yaw is `atan2(-(dx-ux), dz-uz)`.
-                _place_body(v, t, g, mesh, ux, 0.0, uz,
-                            math.atan2(ux - dx, dz - uz), f"npc_standing_{i}",
-                            actors, who_rec)
-                if not _embedded(_mv, _mt):
-                    used.append((ux, uz, sp))
-                    stats["standing"] += 1
-                    seated = True
+                _yaw = math.atan2(ux - dx, dz - uz)
+                if not (instanced and _blocked(mesh, ux, uz, _yaw)):
+                    _emit(mesh, ux, uz, _yaw, f"npc_standing_{i}",
+                          "standing", SLOT_OF["idle"])
+                    if instanced or not _embedded(_mv, _mt):
+                        used.append((ux, uz, sp))
+                        stats["standing"] += 1
+                        seated = True
 
         if seated:
             continue
@@ -1619,18 +1891,172 @@ def populate(place_key, room_v, room_t, room_g, w_m, l_m, hour=13.0,
             if not _clear(px, pz, 0.7, sp=sp):
                 continue
             _mv, _mt = len(v), len(t)
-            _place_body(v, t, g, mesh, px, 0.0, pz,
-                        _u(seed, "yaw", i) * math.tau, f"npc_standing_{i}",
-                        actors, who_rec)
-            if _embedded(_mv, _mt):
+            _yaw = _u(seed, "yaw", i) * math.tau
+            if instanced and _blocked(mesh, px, pz, _yaw):
+                continue
+            _emit(mesh, px, pz, _yaw, f"npc_standing_{i}", "standing",
+                  SLOT_OF["idle"])
+            if not instanced and _embedded(_mv, _mt):
                 continue
             used.append((px, pz, sp))
             stats["walking"] += 1
             break
     stats["placed"] = stats["seated"] + stats["standing"] + stats["walking"]
     stats["triangles"] = len(t)
+    if instanced:
+        _give_lives(instances, place_key, hour, area, arch, seed, hw, hl,
+                    seats, beds, used, stats)
     stats["actors"] = actors
+    stats["instances"] = instances
+    stats["species_lods"] = sorted({(r["species"], r["lod"])
+                                    for r in instances})
     return v, t, g, stats
+
+
+def _give_lives(instances, place_key, hour, area, arch, seed, hw, hl,
+                seats, beds, used, stats):
+    """Turn a room's placements into people with a day. Modifies in place.
+
+    THIS IS THE HALF THAT MAKES AN INSTANCE WORTH HAVING. Instancing alone buys
+    a body that CAN move; what tells it when, and into what, is the resident's
+    own schedule -- and every term of it already existed and had never been
+    asked at run time. Four anchors and a timetable per person:
+
+      * `post`   where the placement put them: their desk, their spot, their bay
+      * `seat`   the nearest seat they can take, if the room has one spare
+      * `bunk`   a bed-kind prop, offered FIRST to residents whose `home` this
+                 is -- you sleep in your own quarters, not in the one you happen
+                 to be standing in
+      * `exit`   out along `dressing.LANE_M`'s reserved circulation lane, which
+                 is the band this module's own `_free_spots` already treats as
+                 where a person crossing a room walks
+
+    Every offset is in the ROOM's frame -- x across, z along -- because that is
+    the frame `deck.py::_place_local` maps: room x wraps onto the ring's arc and
+    room z stays the station axis. A runtime that knows a body's position knows
+    both directions, so an offset survives the wrap that an absolute point would
+    not.
+    """
+    # The place's own hourly curve, as a fraction of the hour the room was
+    # populated at. `occupancy` is the same function that decided how many
+    # bodies there are, asked 24 times -- so a room cannot be fuller at runtime
+    # than the generator would have built it, and the shape is the place's own
+    # `schedule.PlaceCrowd` rather than a second table.
+    base = max(1, occupancy(place_key, area, hour, arch))
+    curve = [min(1.0, occupancy(place_key, area, float(h), arch) / base)
+             for h in range(24)]
+    stats["curve"] = [round(c, 3) for c in curve]
+
+    def present_at(h, rank):
+        a = h % 24.0
+        i0 = int(a)
+        f = a - i0
+        c = curve[i0] + (curve[(i0 + 1) % 24] - curve[i0]) * f
+        return rank < c
+
+    # WHO IS TALKING TO WHOM, from the distance they were placed at. Nobody is
+    # given a conversation partner they are not standing next to.
+    pts = [(r["x"], r["z"]) for r in instances]
+    free_seats = [s for s in seats
+                  if not any(abs(s[0] - u[0]) < 1e-6 and abs(s[2] - u[1]) < 1e-6
+                             for u in used)]
+    # A bed goes to a resident whose HOME this is before it goes to a visitor.
+    order = sorted(range(len(instances)),
+                   key=lambda k: (instances[k]["who"].get("home") != place_key,
+                                  k))
+    bed_for = {}
+    for rank, k in enumerate(order):
+        if rank < len(beds):
+            bed_for[k] = beds[rank]
+
+    n_talk = n_bunk = n_seat = 0
+    for i, r in enumerate(instances):
+        x, z = r["x"], r["z"]
+        near = min((math.dist((x, z), p) for j, p in enumerate(pts) if j != i),
+                   default=1e9)
+        r["talks"] = near <= TALK_M
+        n_talk += int(r["talks"])
+        # THE SEAT. A sitter already has one -- their post IS the seat -- and a
+        # stander is offered the nearest one that nobody took.
+        if r["pose"] == "seated":
+            r["seat"] = [0.0, 0.0]
+            r["seat_h_m"] = r.get("seat_h_m", 0.0)
+            n_seat += 1
+        elif free_seats:
+            s = min(free_seats, key=lambda q: math.dist((x, z), (q[0], q[2])))
+            free_seats.remove(s)
+            r["seat"] = [round(s[0] - x, 4), round(s[2] - z, 4)]
+            r["seat_h_m"] = round(s[1], 4)
+            n_seat += 1
+        else:
+            r["seat"] = None
+        b = bed_for.get(i)
+        if b is not None:
+            r["bunk"] = [round(b[0] - x, 4), round(b[2] - z, 4)]
+            r["bunk_h_m"] = round(b[1], 4)
+            n_bunk += 1
+        else:
+            r["bunk"] = None
+        # OUT ALONG THE LANE, by the nearer end of it. `_free_spots` already
+        # ranks the reserved circulation band first because "that band is where
+        # a person standing in a room actually is"; it is also how they leave.
+        way = 1.0 if z >= 0.0 else -1.0
+        r["exit"] = [round(-x, 4),
+                     round(way * max(0.0, hl - BODY_R_M) - z, 4)]
+        # AND THE DAY. Pure in the hour, transitions only.
+        res = _res.resident(r["who"]["id"], r["species"])
+        rank01 = _u(seed, "presence", i)
+        r["rank"] = round(rank01, 4)
+        day = occupant_day(res, place_key, rank01, present_at)
+        # NOBODY SLEEPS STANDING UP IN A DOCKING BAY. `activity_at` answers what
+        # a person is doing and knows nothing about the room they are standing
+        # in, so a Zocalo trader's sleep block came back as "asleep, in the
+        # Zocalo" -- which is exactly the artefact the old system had, one level
+        # up: a body that is somewhere it would never be. A sleeper with no bed
+        # in reach is AWAY, which is where they actually are.
+        if r["bunk"] is None:
+            day = _collapse([[h, ("away" if st == "sleep" else st)]
+                             for h, st in day])
+        r["who"]["day"] = day
+        # THE ONE THING INSTANCING ACTUALLY BREAKS, AND ITS CORRECTION.
+        # A baked sitter got `sit_clip` handed the seat's OWN measured height; a
+        # shared one is posed on the species' fitted seat -- `animation.
+        # seat_height`, their knee -- so a stool at 0.589 m leaves their hips
+        # 0.153 m under the pan. Measured over the gate's rooms: 87 to 153 mm on
+        # every seated occupant, which is a visible sink.
+        #
+        # Raising the instance by the difference puts the hips back on the pan
+        # and lifts the feet clear, which is what somebody on a bar stool looks
+        # like. It is CLAMPED AT ZERO deliberately: on a seat LOWER than the
+        # fitted one the same correction would drive the feet through the deck,
+        # and hips a few centimetres proud of a pan is the lesser of those two.
+        r["seat_dy"] = 0.0
+        if r["seat"] is not None and r.get("seat_h_m", 0.0) > 0.0:
+            try:
+                fit = _anim.seat_height(r["species"], _anim.NOMINAL, r["lod"])
+                r["seat_dy"] = round(max(0.0, r["seat_h_m"] - fit), 4)
+            except Exception:                                   # noqa: BLE001
+                r["seat_dy"] = 0.0
+        r["who"]["seat_dy"] = r["seat_dy"]
+        r["who"]["seat_h_m"] = r.get("seat_h_m", 0.0)
+        r["who"]["seat"] = r["seat"]
+        r["who"]["bunk"] = r["bunk"]
+        r["who"]["exit"] = r["exit"]
+        r["who"]["talks"] = r["talks"]
+        r["who"]["slot"] = r["slot"]
+        r["who"]["mesh"] = r["mesh"]
+        r["who"]["rank"] = r["rank"]
+    hours = {st: 0 for st in ROOM_STATES}
+    for r in instances:
+        day = r["who"]["day"]
+        for k, (h0, st) in enumerate(day):
+            h1 = day[(k + 1) % len(day)][0]
+            hours[st] += (h1 - h0) % 24.0 if len(day) > 1 else 24.0
+    stats["talking"] = n_talk
+    stats["with_seat"] = n_seat
+    stats["with_bunk"] = n_bunk
+    stats["state_hours"] = {k: round(v, 2) for k, v in hours.items()}
+    stats["transitions"] = sum(len(r["who"]["day"]) for r in instances)
 
 
 def populate_corridor(deck_id, radius_m, half_w_m, arc_deg, start_deg, z_m,
@@ -1881,7 +2307,14 @@ def _selftest():
     import dressing as D
     dv, dt, dg, _dc = D.dress("t", 6.0, 9.0, 2.9, "office")
 
-    v, t, g, s = populate("t", dv, dt, dg, 6.0, 9.0, hour=13.0, arch="office")
+    # BAKED, EXPLICITLY. Every assertion in this block reads the VERTICES a room
+    # emitted, and the instanced path emits none -- so leaving these on the
+    # module default would turn a dozen real geometry checks into `min()` of an
+    # empty list. The instanced path has its own block below and its own gate in
+    # `--rooms`; this one is the control, and it has to keep working because it
+    # is what `ROOM_INSTANCED = False` still ships.
+    v, t, g, s = populate("t", dv, dt, dg, 6.0, 9.0, hour=13.0, arch="office",
+                          instanced=False)
     check("an office at 1300 has people in it", s["placed"] > 0, str(s))
     check("...and some of them are sitting on the furniture",
           s["seated"] > 0, str(s))
@@ -2041,6 +2474,7 @@ def _selftest():
     # from backwards. `rooms.py`'s footprint assertion caught it only once the
     # test became the body's real placed bounds.
     _sv, _st, _sg, _ss = populate("t", dv, dt, dg, 6.0, 9.0, hour=13.0,
+                                  instanced=False,
                                   arch="office")
     _seated = [a for a in _ss["actors"] if a["pose"] == "seated"]
     _facing = []
@@ -2098,12 +2532,34 @@ def _selftest():
     lib_v, lib_t, lib_g = station_crowd_library(4)
     bodies = [n for n, _lo, _hi in lib_g if n.endswith("_npc_body")]
     check(f"the station crowd library is {len(bodies)} shared bodies -- "
-          f"{len(_sched.STATION_MIX)} species x {CROWD_PHASES} phases",
-          len(bodies) == len(_sched.STATION_MIX) * CROWD_PHASES,
+          f"{len(_sched.STATION_MIX)} species x {CROWD_PHASES} walk phases + "
+          f"{len(POSE_SLOTS)} poses",
+          len(bodies) == len(_sched.STATION_MIX) * CROWD_SLOTS,
           f"{len(bodies)} bodies, {len(lib_t):,} triangles")
-    check("...and it is 8x smaller than baking the station's 963 walkers "
+    # THE POSES ARE WHY A ROOM OCCUPANT CAN BE INSTANCED AT ALL. A walker is
+    # always walking; an occupant sits, sleeps and talks, and a library with
+    # only walk phases in it would silently resolve every one of those to
+    # nothing -- an empty room that reports a full one.
+    _pose_names = {crowd_key("human", 4, SLOT_OF[p_]) for p_ in POSE_SLOTS}
+    _have = {n[:-len("_npc_body")] for n in bodies}
+    check("...and every pose slot a room occupant can take is in it",
+          _pose_names <= _have, f"missing {sorted(_pose_names - _have)}")
+    # AND THEY ARE DIFFERENT BODIES. A sleeping figure that is the standing one
+    # under another name passes every count in this file.
+    _idle = crowd_body("human", 4, SLOT_OF["idle"])[0]
+    _sleep = crowd_body("human", 4, SLOT_OF["sleep"])[0]
+    _dy = max(abs(a[1] - b[1]) for a, b in zip(_idle, _sleep))
+    check("BREAK: the sleeping body is LYING DOWN, not the standing one "
+          "renamed", _dy > 0.5,
+          f"the furthest vertex moves {_dy:.3f} m between idle and sleep")
+    # THE SAVING IS SMALLER THAN IT WAS AND IT IS STILL A ROUT. Four pose slots
+    # took the library from 112 shared bodies to 168, so the corridor-only
+    # comparison went from 86% saved to 79% -- and the poses are what let 1,065
+    # ROOM occupants stop being 4.0 million triangles of baked geometry, which
+    # is a trade this line's own denominator does not see.
+    check("...and it is still 4x smaller than baking the station's 963 walkers "
           f"individually ({len(lib_t):,} against {963 * 484:,})",
-          len(lib_t) < 963 * 484 / 5.0,
+          len(lib_t) < 963 * 484 / 4.0,
           f"{100 * (1 - len(lib_t) / (963 * 484)):.0f}% saved")
     # THE EIGHT PHASES ARE EIGHT DIFFERENT BODIES. A library of one pose
     # repeated eight times animates nothing and every gate above still passes.
@@ -2178,7 +2634,7 @@ def _selftest():
 
     # Determinism, same as every other generator here.
     v2, _t2, _g2, _s2 = populate("t", dv, dt, dg, 6.0, 9.0, hour=13.0,
-                                 arch="office")
+                                 arch="office", instanced=False)
     check("the same room populates identically twice", v == v2)
 
     # Bodies must stand ON the deck, not in it or above it.
@@ -2199,6 +2655,7 @@ def _selftest():
     # RESIDENTS, not a crowd
     # ------------------------------------------------------------------
     zv, zt, zg, zs = populate("zocalo", dv, dt, dg, 14.0, 22.0, hour=13.0,
+                              instanced=False,
                               arch="commerce")
     acts = zs["actors"]
     check("the Zocalo at 1300 is populated", len(acts) > 3, f"{len(acts)}")
@@ -2500,7 +2957,239 @@ def _cast(hour=13.0, places=("zocalo", "security_central", "downbelow",
                   f"job {w_['job'] or '-':<18} {w_['doing']}")
 
 
+ROOM_GATE_PLACES = ("qtr_personnel", "qtr_civilian", "zocalo", "medlab_one",
+                    "docking_bays", "security_central", "earharts",
+                    "downbelow")
+
+
+def _rooms_gate(places=ROOM_GATE_PLACES, hour=13.0):
+    """ARE ROOM OCCUPANTS THE SAME KIND OF OBJECT AS CORRIDOR WALKERS?
+
+    Everything this prints is measured on rooms built by `rooms.build`, both
+    ways, in one process -- so the baked column and the instanced column are the
+    same rooms with the same people in them and the only variable is the switch.
+
+    THE CONTROLS ARE PART OF THE GATE, not an appendix: a timetable read at one
+    hour cannot tell a working clock from a frozen one, and this project has
+    shipped that exact defect before.
+    """
+    import directory as _dir                                    # noqa: PLC0415
+    import interior as _it                                      # noqa: PLC0415
+    import rooms as _R                                          # noqa: PLC0415
+    # THE FLAG IS SET ON THE MODULE `rooms` WILL IMPORT, not on this scope's
+    # globals -- and the difference is a whole run of zeroes. Launched as
+    # `python3 station/populace.py` this file is `__main__`; `rooms.build` does
+    # `import populace`, which loads a SECOND copy of it under that name. A
+    # `global ROOM_INSTANCED` here moves `__main__`'s flag and the builder goes
+    # on reading its own. The first run of this gate reported 0 triangles saved
+    # on every room and the baked column was the instanced one twice.
+    import populace as _me                                      # noqa: PLC0415
+    schema, profile = _it.load()
+    rows, fail = [], 0
+    tot = {"baked_tris": 0, "baked_prims": 0, "inst": 0, "inst_tris": 0,
+           "occ": 0, "rooms": 0, "moves": 0, "bunks": 0, "seats": 0,
+           "talks": 0}
+    per_hour = {}
+    for key in places:
+        try:
+            place = next(q for q in _dir.PLACES if q["key"] == key)
+        except StopIteration:
+            print(f"  {key}: not in the register")
+            fail += 1
+            continue
+        out = {}
+        for mode in (False, True):
+            _me.ROOM_INSTANCED = mode
+            rep = {}
+            _v, t_, g_ = _R.build(schema, profile, place, report=rep,
+                                  _tiles=(1, 1, 1))
+            out[mode] = (len(t_), [n for n, _l, _h in g_
+                                   if n.startswith("npc_")],
+                         rep.get("actors", []))
+        _me.ROOM_INSTANCED = True
+        b_tris, b_groups, b_acts = out[False]
+        i_tris, i_groups, i_acts = out[True]
+        # WHAT A PRIMITIVE IS HERE, and it is not a guess: `export_gltf` writes
+        # one primitive per OBJ group, which is why `_by_material` exists at
+        # all. So a baked occupant's primitives ARE their groups.
+        occ = len(i_acts)
+        tot["rooms"] += 1
+        tot["occ"] += occ
+        tot["baked_tris"] += b_tris
+        tot["baked_prims"] += len(b_groups)
+        tot["inst_tris"] += i_tris
+        tot["inst"] += occ
+        # HOW MANY OF THEM ACTUALLY CHANGE STATE OVER A STATION-DAY. A person
+        # with one entry in their day is a person who does one thing for ever,
+        # which is the state this whole change exists to end.
+        moves = sum(1 for a in i_acts if len(a["who"].get("day", [])) > 1)
+        tot["moves"] += moves
+        tot["bunks"] += sum(1 for a in i_acts if a["who"].get("bunk"))
+        tot["seats"] += sum(1 for a in i_acts if a["who"].get("seat"))
+        tot["talks"] += sum(1 for a in i_acts if a["who"].get("talks"))
+        # AND WHAT THEY ARE DOING AT TWO HOURS. 03:00 against 13:00 is the
+        # station's own claim in `docs/MASTER-PLAN.md` §0.
+        for h in (3.0, 13.0):
+            for a in i_acts:
+                st = _state_at(a["who"].get("day", []), h)
+                per_hour.setdefault(h, {}).setdefault(st, 0)
+                per_hour[h][st] += 1
+        rows.append((key, occ, b_tris - i_tris, len(b_groups), moves,
+                     sum(1 for a in i_acts if a["who"].get("bunk"))))
+        if occ and len(b_groups) == 0:
+            fail += 1
+    print("\nROOM OCCUPANTS -- baked against instanced, same rooms, one process")
+    print(f"{'place':<18}{'occ':>5}{'tri saved':>11}{'prims saved':>13}"
+          f"{'with a day':>12}{'with a bunk':>13}")
+    for r in rows:
+        print(f"{r[0]:<18}{r[1]:>5}{r[2]:>11,}{r[3]:>13}{r[4]:>12}{r[5]:>13}")
+    print(f"{'TOTAL':<18}{tot['occ']:>5}"
+          f"{tot['baked_tris'] - tot['inst_tris']:>11,}"
+          f"{tot['baked_prims']:>13}{tot['moves']:>12}{tot['bunks']:>13}")
+    print(f"\n  {tot['rooms']} rooms, {tot['occ']} occupants; "
+          f"{tot['moves']} of {tot['occ']} change state over a station-day, "
+          f"{tot['seats']} have a seat, {tot['bunks']} a bunk, "
+          f"{tot['talks']} somebody to talk to")
+    for h in sorted(per_hour):
+        got = per_hour[h]
+        print(f"  {h:05.2f} EMT: "
+              + ", ".join(f"{v} {k}" for k, v in sorted(got.items(),
+                                                        key=lambda q: -q[1])))
+    # -- the library, and what the poses cost -------------------------------
+    lad = crowd_ladder()
+    print(f"\n  the shared library, at {len(lad)} rungs {lad}:")
+    for _hi, lodv in lad:
+        _v, tl, gl = station_crowd_library(lodv)
+        bodies = sum(1 for n, _a, _b in gl if n.endswith("_npc_body"))
+        walk_only = len(tl) * CROWD_PHASES // CROWD_SLOTS
+        print(f"    lod{lodv}: {bodies:>4} bodies  {len(tl):>7,} tri  "
+              f"(walk phases alone would be {walk_only:,}; the "
+              f"{len(POSE_SLOTS)} poses cost {len(tl) - walk_only:,})")
+    # -- WHAT IS LOST, MEASURED ---------------------------------------------
+    # An instanced occupant wears their species' NOMINAL body. Two things a
+    # player could see go with it and both are quantified rather than conceded:
+    # how far an individual differs from the nominal one, and how far the seat
+    # they are actually on differs from the one the shared pose was built for.
+    print("\n  WHAT AN INSTANCED OCCUPANT LOSES, per species:")
+    print(f"    {'species':<10}{'stature spread':>16}{'shoulder':>10}"
+          f"{'build':>8}{'silhouette':>12}")
+    for sp in sorted({r["species"] for key in places
+                      for r in [] } | {"human", "narn", "centauri",
+                                       "minbari", "drazi"}):
+        try:
+            nom = _body.nominal(sp)
+            ss, sh, bu = [], [], []
+            for i in range(48):
+                ind = _body.individual(sp, f"spread/{sp}/{i}")
+                ss.append(ind.stature_m)
+                sh.append(ind.shoulder_k)
+                bu.append(ind.build)
+            rng = max(ss) - min(ss)
+            print(f"    {sp:<10}{rng * 1000:>13.0f} mm"
+                  f"{(max(sh) - min(sh)):>10.3f}{(max(bu) - min(bu)):>8.3f}"
+                  f"{abs(nom.stature_m - sum(ss) / len(ss)) * 1000:>9.0f} mm")
+        except Exception as e:                                  # noqa: BLE001
+            print(f"    {sp:<10}  unmeasurable: {str(e)[:40]}")
+    # THE SEAT FIT. The shared sit pose is built on the species' own FITTED
+    # seat -- `animation.seat_height`, their knee height -- and the placement
+    # puts them on the seat the room actually has. The gap is the whole of what
+    # a shared seated body gets wrong, and it is a height, so it is visible as
+    # hips off the pan.
+    gaps = []
+    for key in places:
+        try:
+            place = next(q for q in _dir.PLACES if q["key"] == key)
+        except StopIteration:
+            continue
+        rep = {}
+        _R.build(schema, profile, place, report=rep, _tiles=(1, 1, 1))
+        for a in rep.get("actors", ()):
+            sh = float(a["who"].get("seat_h_m", 0.0) or 0.0)
+            if sh <= 0.0 or a["who"].get("seat") is None:
+                continue
+            fit = _anim.seat_height(a["species"], _anim.NOMINAL, a["lod"])
+            gaps.append((abs(sh - fit), float(a["who"].get("seat_dy", 0.0)),
+                         fit))
+    if gaps:
+        gaps.sort()
+        raw = [g[0] for g in gaps]
+        left = [g[0] - g[1] for g in gaps]
+        print(f"    seat fit: {len(gaps)} seated occupant(s) on seats "
+              f"{min(raw) * 1000:.0f}-{max(raw) * 1000:.0f} mm from the "
+              f"{gaps[0][2] * 1000:.0f} mm pan the shared pose is built for; "
+              f"the runtime lift closes it to "
+              f"{min(left) * 1000:.0f}-{max(left) * 1000:.0f} mm")
+    else:
+        print("    seat fit: no seated occupant in this sample")
+    # THE HYBRID, PRICED. `schedule.NPC_BUDGET`'s nearest band is 0-6 m and
+    # allows FOUR instances; an individual body at the finest chain level is
+    # what a baked occupant used to be. So keeping individuality where a player
+    # can see it costs four bodies, not sixty-six -- and it needs a runtime that
+    # can build one, which is the thing `crowd_ladder()`'s own note says does
+    # not exist yet.
+    near = _sched.NPC_BUDGET["lod"][0]
+    print(f"    the hybrid: {near[4]} individual bodies inside {near[2]:.0f} m "
+          f"at {_lod_triangles()[0]:,} tri each = "
+          f"{near[4] * _lod_triangles()[0]:,} tri, against "
+          f"{tot['occ'] * _lod_triangles()[0]:,} to give all "
+          f"{tot['occ']} of them one")
+
+    # -- CONTROL 1: a frozen clock ------------------------------------------
+    a3 = per_hour.get(3.0, {})
+    a13 = per_hour.get(13.0, {})
+    same = a3 == a13
+    print(f"\n  CONTROL a frozen clock: 03:00 and 13:00 read "
+          f"{'THE SAME -- the timetable is inert' if same else 'DIFFERENTLY'}")
+    if same:
+        fail += 1
+    # -- CONTROL 2: no poses in the library ---------------------------------
+    hit = miss = 0
+    keys = set()
+    for _hi, lodv in lad:
+        _v, _t2, gl = station_crowd_library(lodv)
+        keys |= {n[:-len("_npc_body")] for n, _a, _b in gl
+                 if n.endswith("_npc_body")}
+    for key in places:
+        try:
+            place = next(q for q in _dir.PLACES if q["key"] == key)
+        except StopIteration:
+            continue
+        rep = {}
+        _R.build(schema, profile, place, report=rep, _tiles=(1, 1, 1))
+        for a in rep.get("actors", ()):
+            for slot in range(CROWD_PHASES, CROWD_SLOTS):
+                k = crowd_key(a["species"], a["lod"], slot)
+                if k in keys:
+                    hit += 1
+                else:
+                    miss += 1
+                    keys.add("__reported__")
+    print(f"  CONTROL every pose an occupant can take is IN the library: "
+          f"{hit} resolve, {miss} do not")
+    if miss:
+        fail += 1
+    print(f"\n{'ROOMS GATE OK' if not fail else 'ROOMS GATE FAILED'} "
+          f"({fail} problem(s))")
+    return 1 if fail else 0
+
+
+def _state_at(day, hour):
+    """What a timetable says at an hour. PURE -- the runtime does the same."""
+    if not day:
+        return "idle"
+    h = hour % 24.0
+    st = day[-1][1]
+    for h0, s in day:
+        if h0 <= h:
+            st = s
+        else:
+            break
+    return st
+
+
 if __name__ == "__main__":
+    if "--rooms" in sys.argv:
+        sys.exit(_rooms_gate())
     if "--cast" in sys.argv:
         h = 13.0
         if "--hour" in sys.argv:

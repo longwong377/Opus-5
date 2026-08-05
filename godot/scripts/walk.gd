@@ -480,7 +480,6 @@ func _load_streamed(args: Dictionary) -> bool:
 ## second description of where everything is, and the geometry already knows: a
 ## row binds in the cell whose meshes carry its name and nowhere else. So there
 ## is nothing to split. See `npc.gd::collect` and `interact.gd::collect`.
-var _actors: Array = []
 var _ix_rows: Array = []
 var _crowd_rows: Array = []
 var _crowd_libs: Array = []
@@ -506,10 +505,38 @@ func _read_rows(path: String) -> Array:
 	return (rows if typeof(rows) == TYPE_ARRAY else [])
 
 
+## The cast list, split by WHAT KIND OF OBJECT each person is.
+##
+## A row whose `who` carries a `day` is an INSTANCED ROOM OCCUPANT --
+## `populace.populate` emitted a placement and a timetable instead of triangles,
+## so their body comes out of the shared crowd library and their state comes out
+## of the station clock. A row without one is a body baked into the deck mesh,
+## which `npc.gd::collect` binds to its own geometry exactly as before.
+##
+## THEY MUST NOT BOTH BE WIRED. An occupant promoted to an instance has their
+## baked meshes hidden; handing the same row to `collect()` as well would leave
+## a `Person` turning invisible geometry to face the player, and would count that
+## person twice in every report.
+var _actors: Array = []
+var _actors_occ: Array = []
+
+
 func _load_sidecars() -> void:
-	_actors = _read_rows(actors_path)
+	var all := _read_rows(actors_path)
+	_actors = []
+	_actors_occ = []
+	for a in all:
+		var who = (a as Dictionary).get("who", {})
+		if who is Dictionary and (who as Dictionary).has("day"):
+			_actors_occ.append(a)
+		else:
+			_actors.append(a)
 	_ix_rows = _read_rows(interact_path)
 	_crowd_rows = _read_rows(crowd_path)
+	if not _actors_occ.is_empty():
+		print("walk: cast of %d -- %d instanced occupant(s) with a timetable, "
+			% [all.size(), _actors_occ.size()]
+			+ "%d baked into the deck mesh" % _actors.size())
 	if interact_path != "" and _ix_rows.is_empty():
 		push_error("walk: %s is not a JSON array" % interact_path)
 
@@ -549,13 +576,17 @@ func _wire_people(scene: Node) -> void:
 	var n: int = _people.collect(scene, _actors)
 	print("walk: %d people wired of %d in the cast list" % [n, _actors.size()])
 	_wire_crowd()
-	_wire_dialogue(_actors)
+	# THE OCCUPANTS, AND THEY NEED THE LIBRARY FIRST. An occupant is a reference
+	# into `crowd_lod*.glb`; admitting one before the MultiMeshes exist gives a
+	# walker in no bucket, which draws nothing and reports fine.
+	_wire_occupants(scene, "")
+	_wire_dialogue(_actors + _actors_occ)
 
 
 func _make_people() -> bool:
 	if _people != null:
 		return true
-	if _actors.is_empty():
+	if _actors.is_empty() and _actors_occ.is_empty():
 		return false
 	if _args().has("no-people"):
 		_say_once("walk: people DISABLED (negative control) -- nobody can "
@@ -579,16 +610,114 @@ func _wire_crowd() -> void:
 		% [n2, _crowd_libs.size()])
 
 
+## Admit the room occupants of one cell (or of the whole level, tag "").
+##
+## THE MULTIMESH BUCKETS HAVE TO BE SIZED FOR THEM. `prepare_crowd` allocates
+## from a placement list and `instance_count` cannot grow, so the occupant rows
+## are handed in alongside the corridor's -- an occupant is a placement against
+## the same 168 shared bodies and belongs in the same allocation.
+func _wire_occupants(vis: Node, tag: String) -> int:
+	if _people == null or _actors_occ.is_empty():
+		return 0
+	if not _load_crowd_libs():
+		_say_once("walk: %d room occupant(s) have a timetable and NO shared "
+			% _actors_occ.size() + "body library -- they cannot be drawn")
+		return 0
+	if not _crowd_ready:
+		_crowd_ready = true
+		_people.prepare_crowd(_crowd_libs, _crowd_rows + _actors_occ)
+	var rows := _actors_occ
+	if tag != "" and vis != null:
+		# WHOSE CELL IS THIS? An occupant DOES have a mesh in the cell -- their
+		# baked one, until the deck is rebuilt -- but the honest test is the one
+		# `stream.gd` already owns, because after the rebuild there will be no
+		# mesh to find. Same question as `_rows_in_cell` asks of a walker.
+		rows = []
+		for r in _actors_occ:
+			var p := Vector3(float((r as Dictionary).get("x", 0.0)),
+				float((r as Dictionary).get("y", 0.0)),
+				float((r as Dictionary).get("z", 0.0)))
+			if _stream == null or _stream.cell_at(p) == _cell_index(tag):
+				rows.append(r)
+	var n: int = _people.add_occupants(rows, tag, vis)
+	if n > 0:
+		print("walk: %d room occupant(s) instanced%s -- %s"
+			% [n, ("" if tag == "" else " in " + tag),
+				_people.occupant_report()])
+	return n
+
+
+func _cell_index(id: String) -> int:
+	if _stream == null:
+		return -1
+	for c in _stream.cells:
+		if String((c as Dictionary).get("id", "")) == id:
+			return int((c as Dictionary).get("index", -1))
+	return -1
+
+
 ## Load the shared body libraries and tell `npc.gd` the ladder. Split out of
 ## `_wire_crowd` because a STREAMED build sizes the MultiMeshes from the whole
 ## deck's placement list up front and then admits each cell's walkers as it
 ## arrives -- `MultiMesh.instance_count` cannot grow.
+## Every shared-body library beside the crowd sidecar, when the caller named
+## none.
+##
+## INSTANCE TEN OF THIS PROJECT'S SIGNATURE DEFECT, and it is in the shipped
+## build. `main.gd::_configure_walk` sets `crowd_path` and NOT `crowd_glbs` or
+## `crowd_ladder`, so `_load_crowd_libs` returned false on its third line and
+## every launch of `godot --path godot` printed `0 walker(s)` on every cell. The
+## whole instanced-corridor argument -- 963 people, 88% fewer triangles, "the
+## only form they can MOVE in" -- reached a developer's command line and never
+## reached the game. Measured before this function existed:
+##
+##     walk: +wired blue_0_0_c13 -- doors now 1, 1 person(s), 0 walker(s), ...
+##
+## The libraries are not somewhere else: `deck.py` writes them into the same
+## directory as the crowd placement list. So the fallback is to look there,
+## which is one directory listing and cannot invent a path that does not exist.
+func _derived_crowd_glbs() -> Array:
+	if crowd_path == "":
+		return []
+	var dir := crowd_path.get_base_dir()
+	var d := DirAccess.open(dir)
+	if d == null:
+		return []
+	var out := []
+	for f in d.get_files():
+		if String(f).begins_with("crowd_lod") and String(f).ends_with(".glb"):
+			out.append(dir.path_join(String(f)))
+	out.sort()
+	return out
+
+
+## The LOD ladder, when the caller named none.
+##
+## NOT INVENTED, AND DELIBERATELY CONSERVATIVE. `populace.crowd_ladder()` derives
+## the real one -- ((18 m, 2), (45 m, 4), (400 m, 8)) -- from
+## `schedule.NPC_BUDGET`, and copying those distances into GDScript would be a
+## second description of a budget that lives in Python. What this can know
+## without repeating anything is which libraries actually shipped, so it puts
+## everybody on the COARSEST of them: the rung that cannot be over budget. A
+## caller with the real ladder still passes it and this is never consulted.
+func _derived_ladder(paths: Array) -> String:
+	var lods := []
+	for p in paths:
+		var n := String(p).get_file().trim_prefix("crowd_lod").trim_suffix(".glb")
+		if n.is_valid_int():
+			lods.append(int(n))
+	if lods.is_empty():
+		return ""
+	lods.sort()
+	return "1e9:%d" % lods[lods.size() - 1]
+
+
 func _load_crowd_libs() -> bool:
 	if not _crowd_libs.is_empty():
 		return true
-	if _people == null or _crowd_rows.is_empty():
+	if _people == null:
 		return false
-	if crowd_glb == "" and crowd_glbs == "":
+	if _crowd_rows.is_empty() and _actors_occ.is_empty():
 		return false
 	if _args().has("no-crowd"):
 		_say_once("walk: crowd DISABLED (negative control)")
@@ -600,6 +729,15 @@ func _load_crowd_libs() -> bool:
 		else Array(crowd_glbs.split(",")))
 	if paths.is_empty() and crowd_glb != "":
 		paths = [crowd_glb]
+	if paths.is_empty():
+		paths = _derived_crowd_glbs()
+		if not paths.is_empty():
+			if crowd_ladder == "":
+				crowd_ladder = _derived_ladder(paths)
+			_say_once("walk: no crowd library was named -- found %d beside %s, "
+				% [paths.size(), crowd_path.get_file()]
+				+ "ladder %s (the coarsest that shipped; pass "
+				% crowd_ladder + "--crowd-ladder= for the derived one)")
 	for pth in paths:
 		if not FileAccess.file_exists(String(pth)):
 			continue
@@ -685,6 +823,7 @@ func wire_cell(id: String, vis: Node, col: Node) -> void:
 		nd = _doors.collect(vis, col, door_travel_m, id)
 	if _make_people():
 		np = _people.collect(vis, _actors, id)
+		np += _wire_occupants(vis, id)
 		if _load_crowd_libs():
 			# Size the buckets from the WHOLE deck once, then admit this cell's
 			# walkers. Which walkers are this cell's is decided by the same arc
@@ -1623,10 +1762,18 @@ func _crowd_report() -> String:
 		# for six runs -- `walkable.py` guarded them on the presence of the very
 		# token they asserted.
 		return s + (" walkers=0 crowd_travel_m=0.0 crowd_collider=-"
-			+ " push_m=0.00 push_max_mm=0.0")
-	return s + " walkers=%d crowd_travel_m=%.1f crowd_collider=%s %s" % [
+			+ " push_m=0.00 push_max_mm=0.0 occupants=0 occ_changes=0")
+	# `occ_changes` IS THE CLAIM. `occupants` counts bodies, which a diorama has
+	# too; the number of times one of them changed what they were doing is the
+	# only figure in this line a station full of statues cannot produce.
+	return s + (" walkers=%d crowd_travel_m=%.1f crowd_collider=%s %s "
+		+ "occupants=%d occ_changes=%d occ_travel_m=%.1f "
+		+ "people_draws=%d people_buckets=%d") % [
 		_people.crowd_count(), _people.crowd_travel_m(),
-		_people.walker_collider_report(), _people.push_report()]
+		_people.walker_collider_report(), _people.push_report(),
+		_people.occupant_count(), _people.occupant_changes(),
+		_people.occupant_travel_m(), _people.crowd_draw_calls(),
+		_people.crowd_buckets()]
 
 
 ## THE THREE CLAIMS, TWICE, AND THE FREE IN BETWEEN.
