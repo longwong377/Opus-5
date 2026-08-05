@@ -67,6 +67,18 @@ which leaves **127,712**. `DRESSING_TRIS` below is 120,000 of that, and the
 about **26 times** the triangles the ground itself spends per square metre, and
 that is the headroom the reviewer said was unspent.
 
+**BOTH OF THOSE TWO NUMBERS ARE NOW WRONG, IN OPPOSITE DIRECTIONS, AND THE
+CEILING BELOW STANDS ANYWAY.** The `75,968` was measured with
+`garden.townscape` at 22,620 and the townscape is **51,026** -- INV-458 records
+that correction, and the true fixed cost is **104,374**. The `96,320` was the
+ground charging every patch the worst patch's LOD error; session 4r charges it
+per patch (INV-540) and the worst eye is now **70,880**. Together the drum's
+worst standing frame is **290,164 of 300,000**, and `DRESSING_TRIS` stays at
+120,000 because this module is 114,910 of it -- the allowance was never the
+binding constraint on the dressing, and re-deriving it from two corrected terms
+would land within a few thousand of the same place. Do not re-derive it to make
+a number tidy; INV-458 says what would overturn it.
+
 HOW THE LOD CHAIN IS DERIVED, AND WHY IT IS NOT THE GROUND'S CRITERION
 ----------------------------------------------------------------------
 `drum_ground._switch_distance()` accepts a level once its geometric error is

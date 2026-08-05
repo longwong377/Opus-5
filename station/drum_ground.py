@@ -1453,7 +1453,14 @@ def patch_lod_table(pa, pz, table=None):
     inside the collision tile and the per-patch triangle counts.
     """
     table = table or lod_table()
-    key = (pa % PATCHES_A, pz, id(table))
+    # KEYED ON THE TABLE'S VALUES, NOT ON id(table). CLAUDE.md records a
+    # session lost to an `id(schema)`-keyed memo that missed on every call
+    # because `interior.load()` returns a fresh dict; the mirror-image failure
+    # is worse -- a freed list's id can be reused by a new one and the memo
+    # would then HIT and return another table's answer. Five floats is nothing
+    # to build 3,360 times an eye and it cannot be wrong.
+    key = (pa % PATCHES_A, pz,
+           tuple(r["switch_distance_m"] for r in table))
     if key in _PATCH_LOD_CACHE:
         return _PATCH_LOD_CACHE[key]
     reach = collision_reach_m()
@@ -1490,13 +1497,13 @@ def visible_set(eye, patches=None, table=None):
     this function is the thing that has to be measured against it -- the whole
     drum at lod0 is 573,440 triangles, nearly twice the entire drum allowance.
 
-    AND IT IS NOT AN ARGUMENT, IT IS MEASURED. Session 4r cast the sight line
-    from the budget gate's own worst eye to all 280 patches and to every
-    dressing feature: a perfect, free, per-feature occlusion pass removes
-    16,008 of 315,604 triangles -- 5.07% -- and leaves the drum at 99.9% of its
-    allowance. Flatten the heightfield to the mean cylinder and the number is
-    0 of 1,440 targets, which is the control and which is what the interior of
-    a convex region has to report. INV-541.
+    AND IT IS NOT AN ARGUMENT, IT IS MEASURED -- `occluders.py --drum`. Session
+    4r cast the sight line from the budget gate's own worst eye to all 280
+    patches and to every dressing feature: a perfect, free, per-feature
+    occlusion pass removes **15,336 of 290,164 triangles, 5.29%**, and leaves
+    the drum at 91.6% of its allowance. Flatten the heightfield to the mean
+    cylinder and the number is **0 of 1,440 targets**, which is the control and
+    which is what the interior of a convex region has to report. INV-541.
 
     THE LEVEL IS THE PATCH'S OWN, not the drum's -- `patch_lod_table`, INV-540.
     """
