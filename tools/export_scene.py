@@ -1367,6 +1367,19 @@ def omit_parts(parts, omit):
     which is exactly the reading the table exists to make. A measurement whose
     failure mode is its own headline finding has to refuse to run.
     """
+    # AND IT LEAVES THE SCENE IN THE OMITTED STATE, WHICH THE SELFTEST READS.
+    # Measured the hard way in 4q: after measuring `dressing`'s contribution the
+    # last drum export on disk was the `--omit dressing` one, so
+    # `scene.json["parts"]` no longer listed it and the calibration check
+    # reported `gone ['dressing']` -- the exact mirror of the failure the
+    # measurement had just been performed to fix, and nothing to do with the
+    # content. RE-EXPORT THE FRAMING WHOLE WHEN YOU HAVE FINISHED MEASURING:
+    #
+    #   python3 tools/export_scene.py --shot drum --stand 20,4700 --look 20,6300 \
+    #       --out /tmp/restore.png
+    #
+    # The general form is this project's oldest: a gate reading a generated
+    # artefact reports on whatever the last command wrote, not on the code.
     if not omit:
         return parts
     want = {s.strip() for s in omit.split(",") if s.strip()}

@@ -416,10 +416,19 @@ jobs:
       # Also never ran. The LOD chain is what the exterior shot actually
       # renders: export_scene reads hull_lod0.obj, not hull.obj, and nothing
       # else in the pipeline regenerates it.
+      #
+      # AND THE COMMENT ABOVE DIAGNOSED IT WHILE THE COMMAND BELOW DID NOT FIX
+      # IT. `lod.py` bare runs the SELFTEST; `--build` is what writes
+      # `hull_lod0..7.obj`. So "nothing else regenerates it" was true of this
+      # step too, and `export_scene`'s own check -- "every chain level has a
+      # built mesh" -- has been failing on eight missing files that no step in
+      # this pipeline creates. `--build` runs the selftest as well (lod.py:1149
+      # only skips it when --build or --report is given, and 1157/1161 run the
+      # build's own assertions), so this is strictly more checking, not less.
       - name: LOD chain
         id: slod_chain
         continue-on-error: true
-        run: python3 station/lod.py
+        run: python3 station/lod.py --build
 
       # Layer 4 infrastructure. The interior scene has more materials than the
       # other two combined and had no .tscn at all until now, so none of them
