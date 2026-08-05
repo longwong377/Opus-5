@@ -44,8 +44,9 @@ THE TWO QUESTIONS
              exactly the Starfury case -- it dies on a fresh clone.
 
   --callers  Every module under `station/` that has a test or a selftest: does
-             anything OUTSIDE its own directory import it? A tested module with
-             no importer is a part nobody assembled.
+             anything else in the repository import it -- by `import`, by
+             attribute, or by `__import__("name")`? A tested module with no
+             importer is a part nobody assembled.
 
 Neither question can be answered by a gate that scores a part, and neither needs
 a build, a render or a GPU -- this is file scanning, seconds, and safe to run
@@ -84,6 +85,18 @@ WORKFLOW = os.path.join(ROOT, ".github", "workflows", "validate.yml")
 _LITERAL = re.compile(r'"([^"\n]*generated/[^"\n]+)"')
 _JOINED = re.compile(r'path_join\(\s*"([^"\n]+)"\s*\)')
 _SUFFIX = re.compile(r'\+\s*"(_[a-z_]+\.(?:json|glb|tscn|obj))"')
+
+# A MODULE NAME INSIDE A STRING IS INVISIBLE TO AN IMPORT REGEX, and this tool
+# fell for exactly the trap CLAUDE.md already records from session 4f (where
+# `materials._scan_generator_groups` missed 45 mesh groups named by f-string).
+# `bespoke.BESPOKE_GEOMETRY` dispatches with `__import__("shuttle").room(...)`,
+# so the first cut of `--callers` reported `shuttle`, `concourse`, `aperture`
+# and `observation` as having no importer -- four false orphans out of ten, in a
+# list whose whole value is being trustworthy. A gate that cries wolf about
+# unreachable code is worse than no gate, because the real ones stop being read.
+#
+# `%s` is filled with the escaped module name by the caller.
+_DYNAMIC_IMPORT = r'(?:__import__|import_module)\(\s*"%s"\s*\)'
 
 # The engine's `generated/` is `station/generated/`, reached through a base the
 # scripts build themselves; every literal is relative to it.
@@ -322,12 +335,24 @@ def caller_report(out=print):
     for src in sources:
         with open(src, encoding="utf-8", errors="replace") as fh:
             body = fh.read()
-        srcdir = os.path.dirname(src)
         for m, mpath in modules.items():
-            if os.path.dirname(mpath) == srcdir:
-                continue                       # same directory: not external
-            if re.search(r"\b(?:import|from)\s+\S*\b" + re.escape(m) + r"\b", body) \
-               or re.search(r"\b" + re.escape(m) + r"\.\w", body):
+            # "Does ANYTHING import it", not "does anything outside its own
+            # directory". CLAUDE.md's phrasing -- "twelve tested modules with
+            # zero importers OUTSIDE THEIR OWN DIRECTORIES" -- was about the
+            # `npc/` and `physics/` packages, where the distinction is real.
+            # Applied as a general rule it measures nothing, because ~60 of
+            # these modules live in `station/` together: it hid `bespoke.py`
+            # dispatching to `observation`, `concourse` and `aperture`, and
+            # reported all three as unreachable. The module itself and its own
+            # `test_` file are the only excluded callers.
+            if os.path.abspath(src) == os.path.abspath(mpath):
+                continue
+            if os.path.basename(src) == "test_%s.py" % m:
+                continue
+            name = re.escape(m)
+            if re.search(r"\b(?:import|from)\s+\S*\b" + name + r"\b", body) \
+               or re.search(r"\b" + name + r"\.\w", body) \
+               or re.search(_DYNAMIC_IMPORT % name, body):
                 external[m].append(_rel(src))
 
     # "Tested" means the repo asserts something about it -- a test_ file, a
@@ -346,7 +371,7 @@ def caller_report(out=print):
         % (len(modules), len(tested)))
     out("")
     if orphans:
-        out("  %d tested module(s) that NOTHING outside their own directory"
+        out("  %d tested module(s) that NOTHING else in the repository"
             " imports:" % len(orphans))
         for m in orphans:
             out("    %-28s %s" % (m, _rel(tested[m])))
@@ -439,7 +464,16 @@ def _selftest(out=print):
               "starfury/launch.json did not resolve")
         out("    locate('starfury/launch.json', 'joined') -> %r" % (real,))
 
-    # Control 5: the caller graph must not be vacuous. If it reports every
+    # Control 5: the dynamic-import form must be seen. `shuttle` is reached ONLY
+    # as `__import__("shuttle")` from `bespoke.py`, so if this regresses it
+    # reappears in the orphan list -- which is how the false-orphan bug was
+    # found in the first place.
+    check("shuttle" not in orphans, "a `__import__(\"name\")` caller is seen",
+          "shuttle is reported orphaned, but bespoke.py dispatches to it")
+    out("  a module reached only as `__import__(\"shuttle\")` is NOT reported"
+        " orphaned")
+
+    # Control 6: the caller graph must not be vacuous. If it reports every
     # module as orphaned, the import regex is broken rather than the repo.
     check(len(orphans) < len(tested), "the caller graph resolves imports",
           "%d of %d tested modules look orphaned -- the regex is the suspect"
