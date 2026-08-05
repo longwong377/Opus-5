@@ -13,16 +13,32 @@ repository already knows is missing.
 
 Measured, not guessed. Wasting a session discovering these is the failure this section prevents.
 
+**Four rows of this table were stale when session 4n checked them, and the direction of the
+error is the one that costs a playtest most: they said *absent* about things that now work.**
+A human who read the old §0 would have skipped the dialogue, the calendar and the Starfury —
+the three most interesting things the build does. The rows below are re-verified, and each
+says how.
+
 | you will reach for | state |
 |---|---|
-| **talking to anyone** | `dialogue.py` is a 2,139-line module with 57 distinct lines and **zero player utterances**. Nobody talks back. |
 | **a menu, map or inventory** | none. The only UI is the HUD line and `[E] operate the …`. |
-| **flying a Starfury** | the flight model (18 tests) and the airframe both exist and **nothing flies**. Zero references in any `.gd` or `.tscn`. |
 | **the jump gate** | not wired. |
-| **a second day** | `Clock` has no day index. The clock runs; the calendar does not. |
 | **arriving as a person** | `--mode arrival` exists and is a sequence, not a character creation. No papers to be checked yet. |
-| **buying anything** | credits and the identicard exist in `player.py`; no shop reads them. |
 | **the drum from inside** | `--mode drum` walks it, but the Garden is craft 1 — boxes and cylinder trees. Known, logged, not yet reworked. |
+| **docking a Starfury** | launch works, docking does not — see below. |
+
+### Corrected — these are IN, go and use them
+
+| you were told | actually |
+|---|---|
+| *"nobody talks back"* | **157 of 157 exchanges offer a player line**, 69 distinct player utterances, press yields 120 / deflects 37, and the shipped `boot.json` carries 84 rows over four hours. The old row described a real defect with a misdiagnosed cause: `dialogue.gd` was 913 lines that had **never been instantiated on any path**, because `_wire_dialogue` ran above `_spawn_player()` behind an `if _player == null: return`. Fixed in `c59ff4e`. |
+| *"a second day: `Clock` has no day index"* | it has one — `Clock.day()`, `day_offset`, `day_hour()` in `life.gd`, with the jump case guarded (without `day_offset` every clock jump silently returned the station to day 0). The verdict line prints `day=%d`. |
+| *"nothing flies. Zero references in any `.gd` or `.tscn`"* | **false by grep**: `godot/scripts/starfury.gd` (34 references), `godot/scenes/starfury.tscn`, and 14 in `main.gd`. `godot --path godot -- --mode=starfury` flies one, with a flight model, a chase camera and floating-origin rebasing. |
+| *"credits exist; no shop reads them"* | the bar's till debits. Fourteen days of one lurker: 267 → 420.50 cr, the bar's till 3,598.42, station stock 52,720 → 51,518, and `station/generated/economy.json` survives the process — a second run reads back the same purse. |
+
+**The Starfury's honest remainder**: the mission is `ride → coast → transit`. It rides the
+rotating cobra bay, is released at the correct phase, coasts, and runs out. **There is no dock
+phase.** P4's bar is "launch → fly → dock, seamless" and half of it is built.
 
 ---
 
@@ -71,16 +87,36 @@ currently is:
 
 ---
 
-## 3. THE ONE COMPLETE LOOP THAT EXISTS
+## 3. THE COMPLETE LOOPS — there are three now
+
+None are interactive; each runs headless and prints a verdict. Watch them in this order,
+because each is built on the one above it.
 
 ```bash
-python3 station/agenda.py --commute
+python3 station/agenda.py --commute        # somebody goes to work
+python3 station/dockwork.py --fortnight    # and gets paid for it, and spends it
+python3 station/npc/encounter.py --gate    # and cannot get past a Narn in a corridor
 ```
 
-Not interactive — it runs headless and prints a verdict. **Londo Tirenne walks from
-`qtr_civilian`, rides the lift, and arrives at his desk in `business_center`, 0.05 m from his
-post, at three clock rates, with three controls firing.** It is the smallest complete thing the
-simulation does and it is worth watching once, because everything in P1 is built on it.
+**1 — the commute.** Londo Tirenne walks from `qtr_civilian`, rides the lift, and arrives at
+his desk in `business_center`, **0.05 m from his post**, at three clock rates, with three
+controls firing. The smallest complete thing the simulation does.
+
+**2 — the job.** Anna Allan, human, a lurker with no job aboard, lands with **267 credits and
+cannot afford the 300-credit passage home**. She stands the muster at `docking_bays`, works
+crates, signs a manifest, drinks at the bar. After fourteen days: **267 → 420.50 cr**, the
+bar's till at 3,598.42, station stock 52,720 → 51,518 — and she crossed the passage-home line
+on day 4. The ledger survives the process and the engine prints it back:
+`hud: purse player:downbelow 420.50 cr`.
+
+**3 — the friction.** Two people pass in a corridor and it costs them metres.
+`friction.separation_m("narn","centauri")` is **1.80 m**; a ring corridor's half-width at
+blue/0/0 is **1.0806 m**, so the widest gap available is 1.64 m. **A Narn and a Centauri
+cannot pass**, and the escalation is not authored — it falls out of the geometry. Over one
+station-hour on that deck: 30,250 encounters, 11,157 carrying a grievance, 7,963 producing a
+world delta, and **1,400.4 m of displacement** against a frictionless twin run with the same
+people and the same seed. Lateral pass distance is the part you would actually see: 0.46 m
+with no grievance, 0.64 m with one, **1.14 m for a Narn and a Centauri**.
 
 ---
 
@@ -112,7 +148,14 @@ Not bugs — the gates find those. Write down the things a gate structurally can
 
 ---
 
-*Verified headless as of session 4l: `deck.py --sweep` 90/90 clusters, 128/128 locations,
+*Verified headless as of session 4n: `deck.py --sweep` 90/90 clusters, 128/128 locations,
 0 floor holes · `boot.py --gate` 10/10 · `coldstart.py` G1+G3 pass with controls ·
-`agenda.py --commute` green at ×1/×10/×60 · CPU frame time 5.48 ms against a 16.67 ms budget,
-GPU half unknown.*
+`agenda.py --commute` green at ×1/×10/×60 · `economy.py` 25/25 · `dockwork.py` 23/23 with 5/5
+controls · `faction.py --selftest` 27/27 · `friction.py --selftest` 30/30 ·
+`encounter.py --gate` 23/23 · CPU frame time 5.48 ms against a 16.67 ms budget, GPU half
+unknown · 300,000 frames and 21 km walked with 0 off-floor and no memory drift.*
+
+*§0's four corrections were found by grepping the claims rather than by re-running them, which
+is the cheap half of keeping this document honest. **A doc that says a thing is missing goes
+stale in the expensive direction** — nobody re-checks an absence, so it silently becomes a
+standing instruction not to look. Re-grep §0 before every playtest.*
