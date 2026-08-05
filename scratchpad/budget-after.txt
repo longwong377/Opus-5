@@ -1,0 +1,30 @@
+Exterior geometry against the 1440p60 / 12 GB target
+
+PASS  triangles                  [###################.]    381,210 / 400,000  (95.3%)  256,864 hull + 53,568 components + 70,778 greebles
+PASS  draw calls                 [############........]         41 / 64  (64.1%)  one per feature group, before instancing
+PASS  vertex bandwidth           [#################...]         27 MB / 32 MB  (85.8%)  flat-shaded, un-indexed
+PASS  glb on disk                [##########..........]         32 MB / 64 MB  (50.1%)  station/generated/scene/exterior/hull.glb
+                                goes red at: 2.0x today's hull
+
+surface detail: 70,778 triangles (18% of the triangle budget, 19% of the model) across 1,976 fittings in 662 assemblies and 52 conduit runs
+
+headroom: 18,790 triangles, 23 draw calls
+
+Interior kit -- the marginal rate every walkable metre is built at
+
+PASS  corridor rate              [##############......]        294 tri/m / 400 tri/m  (73.5%)  marginal along a run, interior_kit.corridor_section
+                                goes red at: 1.36x today's section: 1,270 m of arc x 294 tri/m is 373,246 triangles of corridor a deck
+
+The standing frame -- one ASSEMBLED deck, not the kit in isolation
+
+  subject   blue/0/0: 6 rooms over 345 deg at r = 211.55 m, 1,264,432 triangles, 323 groups, built in 32 s
+  clusters  1 of 96 z-clusters on the station (71 addressed decks) -- the BUSIEST of this deck's 6, at z = 7120. 6 of 129 places are on it: bay_elevators, docking_bays, lowg_bays, mooring_clamps, plantroom_bay, vorlon_berth
+            NOT measured on this deck: z 7960 (cnc, obs_dome_1, obs_dome_2, nav_beacon); z 7440 (customs_north, arrival_concourse, customs_south); z 7920 (cnc, obs_dome_1, obs_dome_2, comms_grid, proximity_arrays); z 6880 (cobra_bays); z 8000 (cnc, obs_dome_1, obs_dome_2, nav_beacon).  --clusters builds them all
+  camera    eye 1.70 m above the collision floor, 70 deg vertical / 102.4 deg horizontal at 1.778, near 0.15, far 12000
+  sweep     48 stations x 24 headings = 1,152 poses in 44 s; worst total at 8.7 deg heading 210, worst structure at 8.7 deg heading 210
+  sampling  half-resolution lattice finds 409,579 against 455,491 -- 10.1% lattice error; sphere test over-accepts 0.22% against exact
+  resident  structure 762,688  props 376,972  people 0  fixtures 124,772  (0 triangles carry no group and export as `deck_untagged`)
+
+
+Occlusion -- an occluder on the corridor's own walls
+

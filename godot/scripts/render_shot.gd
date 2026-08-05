@@ -88,9 +88,27 @@ extends Node3D
 ## Shadow settings for the omnis that are allowed to cast. Kept low because an
 ## omni shadow is a cube map and this renderer is a CPU.
 @export var omni_shadow_bias: float = 0.08
+## Where `station/vista.py --build` writes what is outside a window.
+##
+## A ROOM SHOT HAS NOTHING OUTSIDE IT, AND THREE ROOMS RENDERED THEIR GLAZING
+## PURE BLACK BECAUSE OF IT. `--shot interior` builds one room in a local frame;
+## behind its window is this scene's `background_color`, 0.010,0.012,0.018,
+## which is deliberately near-black so a HOLE in geometry reads as wrong. A
+## window is the one aperture where that diagnostic and the content want
+## opposite things, and the answer is not to lighten the background -- it is to
+## put the station back outside. See `godot/scripts/vista.gd` and
+## `station/vista.py`.
+@export var vista_dir: String = "res://../station/generated/scene/vista"
+## Scale on the vista's own sun. Its own knob and not `light_gain`, because
+## `light_gain` scales the room's fittings and the two are separately
+## measured: the room is matched to `grey level 1.webp` and the view through
+## the window is matched to the glazing/bulkhead ratio in
+## `comand and contorl.webp`.
+@export var vista_gain: float = 1.0
 
 var _shot: Dictionary = {}
 var _out_path: String = ""
+var _vista: Node = null
 
 
 func _ready() -> void:
@@ -161,6 +179,7 @@ func _ready() -> void:
 	_place_camera()
 	_aim_sun()
 	_spawn_lights()
+	_mount_vista(args)
 
 	for i in warmup_frames:
 		await RenderingServer.frame_post_draw
@@ -483,6 +502,78 @@ func _spawn_lights() -> void:
 			shadowed += 1
 	print("render_shot: %d light-run sources (%d spot), %d casting shadows"
 		% [lights.size(), spots, shadowed])
+
+
+## Put the station back outside the room's window.
+##
+## Ordered after `_spawn_lights` on purpose: the room's fittings are spawned
+## with Godot's default all-layers cull mask, so an omni 3 m from the glass
+## would otherwise light 8 km of hull, and the vista's own sun is masked to the
+## vista's layer so it cannot light the room. Both masks are set here, in one
+## place, and printed -- a light that reaches the wrong side of a window is
+## exactly the kind of defect a render shows as "the lighting looks a bit off".
+##
+## `--no-vista` is the negative control and it is the state every frame of this
+## project was taken in before session 4r.
+func _mount_vista(args: Dictionary) -> void:
+	if args.has("no-vista"):
+		print("render_shot: vista SUPPRESSED (--no-vista) -- the window shows "
+			+ "the background colour, which is the pre-4r state")
+		return
+	var room := String(_shot.get("room", ""))
+	if room == "":
+		return
+	if args.has("vista-gain"):
+		vista_gain = float(args["vista-gain"])
+	var phase := float(args.get("vista-phase", _shot.get("vista_phase", 0.0)))
+	# DERIVED FROM THE SHOT'S OWN GEOMETRY PATH, not from a res:// guess. The
+	# room's .glb is written into `station/generated/scene/interior/` by the
+	# exporter and the vista beside it in `.../scene/vista/`, and the shot
+	# carries an absolute path to the first. Building this out of `res://..`
+	# instead would depend on where the Godot project sits relative to the
+	# repository, which is the sort of thing that works until somebody runs it
+	# from a worktree.
+	var dir := vista_dir
+	var glbs: Array = _shot.get("glb", [])
+	if glbs.size() > 0:
+		dir = String(glbs[0]).get_base_dir().get_base_dir().path_join("vista")
+	var vista_gd = load("res://scripts/vista.gd")
+	_vista = vista_gd.mount(self, room, dir, phase, vista_gain)
+	if _vista == null:
+		return
+	var layer_bit: int = 1 << (int(vista_gd.VISTA_LAYER) - 1)
+	var masked := 0
+	for l in _light_nodes(self):
+		if l == _vista.get_node_or_null("VistaSun"):
+			continue
+		if (l.light_cull_mask & layer_bit) != 0:
+			l.light_cull_mask &= ~layer_bit
+			masked += 1
+	var glazed: int = vista_gd.glaze(get_node_or_null("Geometry"),
+		_vista._manifest)
+	# THE FAR PLANE HAS TO REACH THE STATION, and a room shot's does not.
+	# `export_scene.build_interior` sets far = 400 m, which is right for a room
+	# and clips 8 km of hull and the whole star shell out of existence -- the
+	# window would go from black to black and the cause would be a number in a
+	# different file. Widened only when a vista is mounted, and printed.
+	var cam := $Camera3D as Camera3D
+	var want: float = float(_vista._manifest.get("view_range_m", 12000.0)) * 1.4
+	if cam.far < want:
+		print("render_shot: far plane %.0f -> %.0f m for the vista"
+			% [cam.far, want])
+		cam.far = want
+	print("render_shot: vista mounted for '%s' at phase %.1f deg, gain %.2f; "
+		% [room, phase, vista_gain]
+		+ "%d room light(s) masked off the vista layer, %d pane surface(s) "
+		% [masked, glazed] + "glazed")
+
+
+func _light_nodes(n: Node, out: Array[Light3D] = []) -> Array[Light3D]:
+	if n is Light3D:
+		out.append(n)
+	for c in n.get_children():
+		_light_nodes(c, out)
+	return out
 
 
 func _scale_scene_lights(node: Node, gain: float) -> void:

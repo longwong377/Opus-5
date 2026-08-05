@@ -1,0 +1,28 @@
+ARREST SOMEBODY COMES -- `godot --headless --path godot -- --no-coldstart --arrest-gate`
+  no ARREST verdict printed
+    | npc: walker colliders are separate/every_frame
+    | interact: purse player:downbelow (ALLAN, ANNA, no_status) 420.50 cr, carrying 2/8
+    | walk: +wired blue_0_0_c13 -- doors now 1, 1 person(s), 8 walker(s), 1 interactable(s)
+    | walk: 1 interactables wired, 0 pressable (tread:1)
+    | dialogue: 21 people, 84 rows, baked at 03.00, 09.00, 13.00, 19.00
+    | dialogue: 21 people can speak, of 21 in the cast
+    | hud: purse player:downbelow (ALLAN, ANNA, no_status) 420.50 cr, 172.38 earned, carrying identicard, kit_bag
+    | hud: 98 checkpoints wired
+    | life: navgraph 179 nodes, 249 edges
+    | life: clock started at 13.00 EMT, 0.017 station hours per real second; 1 of 21 residents bound (streamed: the cast in the 1 resident cell(s); rebound as cells arrive)
+    | life: 03:00 -> 0 present, 13:00 -> 1 present, of 1 bound (the same cast, read at two hours)
+    | ambience: 13/13 streams, 128 places, master trim 8.33 dB
+    | ambience: bound 1 places, 2 emitters (cap 24)
+    | collapse: 45 bodies scheduled today on this deck, 23 still to come after 13.00
+    | ragdoll: director ready, bodies from /home/user/Opus-5/station/generated/scene/npc, controls -
+    | npc: occupants following the station clock at /root/Main/Life
+    | dialogue: following the station clock at /root/Main/Life
+    | dialogue: prompt=-
+    | hud: CORRIDOR(near PLANTROOM BAY 15.2m) blue/0/0 hdg=0 ring=264.8 r=211.5 prompt=- credits=420.50 carrying=identicard,kit_bag seated=- eye_m=1.70
+    | walk: +wired blue_0_0_c12 -- doors now 1, 1 person(s), 7 walker(s), 3 interactable(s)
+    | stream: +blue_0_0_c12  49552 tri, 2 col mesh, 77 materialled, 18.6 ms, lead 17.8 m, resident 2 (100992 tri)
+    | life: 2 cells resident -- 2 of 21 residents bound
+    | walk: +wired blue_0_0_c14 -- doors now 2, 4 person(s), 8 walker(s), 2 interactable(s)
+    | stream: +blue_0_0_c14  53462 tri, 2 col mesh, 91 materialled, 20.8 ms, lead 56.1 m, resident 3 (154454 tri)
+    | life: 3 cells resident -- 6 of 21 residents bound
+  ARREST FAIL -- the shipped scene printed no verdict

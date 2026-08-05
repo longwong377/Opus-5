@@ -68,6 +68,7 @@ import math
 import os
 import subprocess
 import sys
+import time
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
@@ -1043,6 +1044,440 @@ def level_for_distance(distance_m, table=None):
 
 
 # ---------------------------------------------------------------------------
+# THE ERROR IS A PROPERTY OF THE PATCH, NOT OF THE DRUM -- INV-540
+# ---------------------------------------------------------------------------
+# `lod_error_report()` above measures the deviation of each stride from lod0
+# inside `_representative_patches()` -- one patch per land-use band -- and then
+# takes the WORST and applies it to all 280 patches. So the lake pays the
+# settlement podium's error and the parkland pays the arable's finest noise
+# octave, and the ground draws detail at a distance where its own terrain
+# cannot express it. Measured over all 280 patches at stride 4, the switch
+# distance the drum-wide table imposes is 554 m and the per-patch answer ranges
+# 113 to 713 m -- a factor of 6.3.
+#
+# THE CRITERION IS UNCHANGED. It is still `_switch_distance(err)`, still 1.5 px
+# of deviation, still the same screen model. Only its DOMAIN changes: measured
+# on the patch that is being drawn instead of on the worst patch on the drum.
+# Nothing is removed from the ground and no allowance moves.
+#
+# AND IT IS NOT ONLY A SAVING -- IT IS ALSO A CORRECTION. The representative
+# sample is one patch per band at mid-length, and it MISSES the worst patch:
+# per-patch stride 8 runs to a 1.974 m error where the representative maximum
+# is 1.048 m. Those patches now switch LATER than they do today, i.e. they are
+# drawn FINER. 360 of the sampled positions inside the collision tile get more
+# triangles than they have now, not fewer.
+#
+# PINNED, NOT DERIVED AT IMPORT, for the reason `drum_dressing.DRUM_FIXED_TRIS`
+# is pinned: the derivation is 305,000 `sample()` calls and costs 51 s, and no
+# gate should pay that to answer a question whose answer is a property of a
+# committed terrain. `--derive-patch-lod` recomputes it and fails on drift, and
+# `_selftest` re-measures a deterministic subset on every run so the pin cannot
+# rot silently. Millimetres, as integers, because a float table is a diff
+# nobody can read.
+#
+# Index is (pa * PATCHES_Z + pz) * len(STRIDES) + level.
+PATCH_LOD_ERR_MM = (
+    # pa  0
+        7,  166,  279,  481, 1750,
+        7,  161,  250,  438, 1750,
+        7,  166,  278,  438, 1750,
+        7,  165,  188,  580, 1750,
+        7,  193,  233,  438, 1750,
+        7,  193,  259,  451, 1750,
+        7,  158,  249,  473, 1750,
+        7,  196,  229,  471, 1750,
+        7,  180,  239,  438, 1750,
+        7,  205,  235,  438, 1750,
+        7,  186,  296,  438, 1750,
+        7,  195,  254,  438, 1750,
+        7,  188,  248,  452, 1750,
+        7,  173,  204,  438, 1750,
+        7,  198,  306,  710, 1750,
+        7,  187,  207,  517, 1750,
+        7,  154,  203,  492, 1750,
+        7,  182,  261,  566, 1750,
+        7,  158,  260,  672, 1750,
+        7,  199,  338,  746, 1883,
+    # pa  1
+        7,  128,  221,  438, 1750,
+        7,  164,  234,  438, 1750,
+        7,  180,  260,  438, 1750,
+        7,   97,  295,  438, 1750,
+        7,  200,  246,  438, 1750,
+        7,  206,  245,  439, 1750,
+        7,  190,  234,  438, 1750,
+        7,  182,  239,  470, 1750,
+        7,  109,  196,  438, 1750,
+        7,  189,  272,  438, 1750,
+        7,  147,  231,  438, 1750,
+        7,  202,  268,  438, 1750,
+        7,  232,  308,  438, 1750,
+        7,  145,  182,  438, 1750,
+        7,  144,  203,  438, 1750,
+        7,  159,  231,  438, 1750,
+        7,  151,  215,  438, 1750,
+        7,  200,  383,  438, 1750,
+        7,  149,  284,  438, 1750,
+        7,  172,  258,  438, 1750,
+    # pa  2
+        7,  174,  277,  440, 1750,
+        7,  199,  286,  447, 1750,
+        7,  182,  265,  438, 1750,
+        7,  182,  233,  438, 1750,
+        7,  181,  249,  438, 1750,
+        7,  181,  205,  438, 1750,
+        7,  188,  242,  438, 1750,
+        7,  193,  271,  438, 1750,
+        7,  166,  237,  438, 1750,
+        7,  188,  276,  438, 1750,
+        7,  183,  294,  471, 1750,
+        7,  186,  268,  495, 1750,
+        7,  163,  309,  478, 1750,
+        7,  175,  282,  438, 1750,
+        7,  191,  233,  474, 1750,
+        7,  175,  302,  526, 1750,
+        7,  162,  251,  438, 1750,
+        7,  185,  229,  438, 1750,
+        7,  167,  246,  438, 1750,
+        7,  108,  288,  574, 1750,
+    # pa  3
+        7,  192,  599, 1553, 4223,
+        7,  191,  587, 1267, 3730,
+        7,  191,  630, 1210, 3570,
+        7,  189,  568, 1185, 3293,
+        7,  201,  530, 1352, 3703,
+        7,  185,  526, 1429, 3521,
+        7,  160,  465,  791, 2674,
+        7,  182,  544, 1373, 3586,
+        7,  178,  473, 1060, 3131,
+        7,  160,  396,  791, 2469,
+        7,  146,  413, 1051, 3256,
+        7,  148,  430,  752, 2816,
+        7,  167,  478, 1184, 3401,
+        7,  163,  478, 1040, 3378,
+        7,  182,  538, 1041, 3479,
+        7,  188,  560, 1354, 3865,
+        7,  182,  559, 1326, 3673,
+        7,  183,  543, 1021, 3272,
+        7,  187,  561, 1236, 3692,
+        7,  148,  420,  992, 2595,
+    # pa  4
+        7,  127,  290,  974, 1750,
+        7,  185,  386,  885, 2397,
+        7,  151,  290,  678, 2209,
+        7,  127,  433,  967, 1750,
+        7,  127,  301,  615, 1750,
+        7,  127,  290,  615, 1750,
+        7,  127,  290,  615, 2084,
+        7,  185,  386,  881, 2459,
+        7,  189,  408,  928, 2334,
+        7,  151,  369,  885, 2084,
+        7,  151,  369,  885, 2209,
+        7,  146,  290,  615, 2147,
+        7,  127,  369,  885, 1750,
+        7,  154,  386,  881, 2147,
+        7,  127,  290,  615, 1750,
+        7,  158,  369,  885, 2209,
+        7,  158,  386,  881, 2397,
+        7,  150,  290,  615, 2209,
+        7,  189,  408,  928, 2459,
+        7,  153,  386, 1281, 1750,
+    # pa  5
+        7,  223,  482, 1891, 3541,
+        7,  358,  537,  864, 3519,
+        7,  370,  556, 1105, 3545,
+        7,  417,  628, 1101, 3629,
+        7,  407,  693, 1553, 3453,
+        7,  197,  539, 1092, 2548,
+        7,  186,  399, 1097, 2319,
+        7,  202,  389, 1088, 2174,
+        7,  216,  361, 1315, 2794,
+        7,  215,  433, 1312, 2778,
+        7,  171,  306,  993, 2097,
+        7,  254,  650, 1558, 2996,
+        7,  189,  666, 1190, 2995,
+        7,  214,  424, 1286, 2959,
+        7,  220,  543, 1346, 2904,
+        7,  211,  636, 1281, 2699,
+        7,  194,  530, 1113, 2652,
+        7,  174,  363, 1040, 2408,
+        7,  198,  533, 1175, 2833,
+        7,  189,  628, 1142, 2638,
+    # pa  6
+        7,  254,  450, 1247, 2169,
+        7,  265,  398, 1117, 2047,
+        7,  211,  317, 1486, 2238,
+        7,  158,  237, 1474, 2211,
+        7,  301,  524, 1159, 2062,
+        7,  190,  308,  438, 1750,
+        7,  173,  265,  438, 1750,
+        7,  114,  183,  438, 1750,
+        7,  139,  283,  438, 1750,
+        7,  129,  292,  510, 1750,
+        7,  135,  263,  470, 1782,
+        7,  199,  326,  438, 1805,
+        7,  146,  243,  438, 1750,
+        7,   67,  130,  438, 1750,
+        7,  150,  224,  438, 1750,
+        7,  146,  247,  449, 1750,
+        7,   83,  147,  438, 1750,
+        7,  146,  221,  438, 1750,
+        7,  190,  359,  558, 1761,
+        7,  101,  446, 1013, 1750,
+    # pa  7
+        7,  169,  228,  438, 1750,
+        7,  113,  267,  438, 1750,
+        7,  187,  295,  689, 1750,
+        7,  189,  258,  593, 1750,
+        7,  164,  206,  438, 1750,
+        7,  204,  265,  438, 1750,
+        7,  154,  246,  438, 1750,
+        7,  201,  244,  438, 1750,
+        7,  130,  307,  438, 1750,
+        7,  183,  296,  487, 1750,
+        7,  183,  239,  449, 1750,
+        7,  119,  187,  438, 1750,
+        7,  163,  270,  438, 1750,
+        7,  180,  228,  438, 1750,
+        7,  175,  240,  438, 1750,
+        7,  174,  249,  459, 1750,
+        7,  143,  221,  438, 1750,
+        7,  192,  212,  438, 1750,
+        7,  164,  292,  438, 1750,
+        7,  150,  217,  438, 1750,
+    # pa  8
+        7,  121,  212,  438, 1750,
+        7,  124,  211,  438, 1750,
+        7,  173,  266,  438, 1750,
+        7,  162,  240,  438, 1750,
+        7,  179,  259,  453, 1750,
+        7,  203,  272,  438, 1750,
+        7,  182,  233,  438, 1750,
+        7,  206,  268,  438, 1750,
+        7,  176,  267,  438, 1750,
+        7,  198,  293,  438, 1750,
+        7,  175,  283,  438, 1750,
+        7,  170,  221,  438, 1750,
+        7,  176,  256,  438, 1750,
+        7,  129,  184,  438, 1750,
+        7,  168,  203,  438, 1750,
+        7,  186,  267,  438, 1750,
+        7,  183,  265,  438, 1750,
+        7,  186,  298,  438, 1750,
+        7,  167,  247,  438, 1750,
+        7,  171,  206,  438, 1750,
+    # pa  9
+        7,  130,  299, 1019, 1750,
+        7,  179,  332,  927, 1750,
+        7,  180,  354, 1009, 1803,
+        7,  169,  251,  844, 1750,
+        7,  176,  312, 1330, 2289,
+        7,  190,  312, 1393, 2144,
+        7,  178,  288, 1403, 2322,
+        7,  165,  267, 1078, 1800,
+        7,  100,  355, 1231, 1817,
+        7,  184,  374, 1203, 1795,
+        7,  159,  470, 1376, 1927,
+        7,  189,  405, 1200, 1750,
+        7,  143,  387, 1031, 1750,
+        7,  122,  359,  833, 1750,
+        7,  173,  334,  801, 1750,
+        7,  184,  261,  691, 1750,
+        7,  167,  241,  570, 1750,
+        7,  204,  267,  549, 1750,
+        7,  201,  266,  520, 1750,
+        7,  204,  247,  550, 1750,
+    # pa 10
+        7,  167,  461, 1220, 3544,
+        7,  171,  466,  795, 3716,
+        7,  171,  482, 1085, 3481,
+        7,  155,  401,  826, 2209,
+        7,  172,  475,  741, 3234,
+        7,  170,  464,  734, 2659,
+        7,  172,  469,  740, 3228,
+        7,  170,  460,  885, 3404,
+        7,  179,  485,  852, 3924,
+        7,  192,  524,  982, 4202,
+        7,  193,  538, 1048, 4459,
+        7,  178,  486,  696, 3463,
+        7,  170,  475,  923, 3767,
+        7,  153,  420,  797, 2482,
+        7,  185,  410,  885, 2909,
+        7,  144,  399,  615, 2720,
+        7,  155,  352,  742, 2447,
+        7,  127,  332,  603, 1885,
+        7,  127,  338,  787, 1968,
+        7,  145,  417,  839, 2788,
+    # pa 11
+        7,  241,  585, 1931, 2539,
+        7,  134,  344, 1342, 1858,
+        7,  208,  467, 1701, 2434,
+        7,  127,  321, 1089, 1816,
+        7,  177,  414, 1557, 2131,
+        7,  152,  290, 1019, 1941,
+        7,  134,  479, 1296, 1805,
+        7,  185,  321, 1009, 2316,
+        7,  129,  321, 1151, 1941,
+        7,  185,  479, 1401, 2378,
+        7,  152,  347, 1183, 2066,
+        7,  190,  490, 1690, 2361,
+        7,  153,  290,  897, 2003,
+        7,  176,  505, 1577, 2123,
+        7,  250,  583, 1970, 2552,
+        7,  248,  572, 1970, 2643,
+        7,  249,  580, 1974, 2619,
+        7,  149,  386, 1417, 1951,
+        7,  154,  479, 1517, 2066,
+        7,  154,  437, 1583, 1958,
+    # pa 12
+        7,   29,  109,  438, 1750,
+        7,   27,  109,  438, 1750,
+        7,   27,  109,  438, 1750,
+        7,   27,  109,  438, 1750,
+        7,   27,  109,  438, 1750,
+        7,   27,  109,  438, 1750,
+        7,   27,  109,  438, 1750,
+        7,   27,  109,  438, 1750,
+        7,   27,  109,  438, 1750,
+        7,   27,  109,  438, 1750,
+        7,   27,  109,  438, 1750,
+        7,   27,  109,  438, 1750,
+        7,   27,  109,  438, 1750,
+        7,   27,  109,  438, 1750,
+        7,   27,  109,  438, 1750,
+        7,   27,  109,  438, 1750,
+        7,   27,  109,  438, 1750,
+        7,   27,  109,  438, 1750,
+        7,   27,  109,  438, 1750,
+        7,   31,  109,  438, 1750,
+    # pa 13
+        7,   38,  129,  438, 1750,
+        7,   27,  109,  438, 1750,
+        7,   27,  109,  438, 1750,
+        7,   27,  109,  438, 1750,
+        7,   27,  109,  438, 1750,
+        7,   27,  109,  438, 1750,
+        7,   39,  134,  438, 1750,
+        7,   36,  132,  438, 1750,
+        7,   27,  109,  438, 1750,
+        7,   27,  109,  438, 1750,
+        7,   33,  109,  438, 1750,
+        7,   27,  109,  438, 1750,
+        7,   27,  109,  438, 1750,
+        7,   28,  109,  438, 1750,
+        7,   51,  184,  474, 1750,
+        7,   53,  182,  474, 1750,
+        7,   51,  181,  438, 1750,
+        7,   42,  153,  500, 1750,
+        7,   53,  188,  585, 1750,
+        7,   85,  293,  744, 1750,
+)
+
+# blake2b over the table above, the same instrument as GROUND_DIGEST and for
+# the same reason: one golden value beats 1,400 hand-written checks.
+PATCH_LOD_DIGEST = "3b42b398bcc5242e"
+
+_PATCH_LOD_CACHE = {}
+_COLLISION_REACH = {}
+
+
+def patch_lod_error_m(pa, pz):
+    """The pinned per-patch deviation of each stride from lod0, in metres."""
+    i = ((pa % PATCHES_A) * PATCHES_Z + pz) * len(STRIDES)
+    return tuple(PATCH_LOD_ERR_MM[i + k] / 1000.0 for k in range(len(STRIDES)))
+
+
+def measure_patch_lod_error(pa, pz):
+    """Derive one patch's row, the same way `lod_error_report` derives the max.
+
+    THE TRUE HEIGHTS ARE SAMPLED ONCE FOR ALL FIVE STRIDES. Every coarse
+    lattice point is a lod0 lattice point -- STRIDES' own comment says so -- so
+    a 33 x 33 grid of the true field serves every level, and the derivation is
+    305,000 `sample()` calls instead of 1.9 million.
+    """
+    ia0, iz0 = pa * PATCH_A, pz * PATCH_Z
+    true = [[sample(((ia0 + da) % CELLS_A) / CELLS_A, (iz0 + dz) / CELLS_Z)[0]
+             for dz in range(PATCH_Z + 1)]
+            for da in range(PATCH_A + 1)]
+    out = []
+    for stride in STRIDES:
+        worst = 0.0
+        for da in range(PATCH_A + 1):
+            ka0 = (da // stride) * stride
+            ka1 = min(ka0 + stride, PATCH_A)
+            ta = 0.0 if ka1 == ka0 else (da - ka0) / (ka1 - ka0)
+            for dz in range(PATCH_Z + 1):
+                kz0 = (dz // stride) * stride
+                kz1 = min(kz0 + stride, PATCH_Z)
+                tz = 0.0 if kz1 == kz0 else (dz - kz0) / (kz1 - kz0)
+                approx = (true[ka0][kz0] * (1 - ta) * (1 - tz)
+                          + true[ka1][kz0] * ta * (1 - tz)
+                          + true[ka0][kz1] * (1 - ta) * tz
+                          + true[ka1][kz1] * ta * tz)
+                e = abs(true[da][dz] - approx)
+                if e > worst:
+                    worst = e
+        dtheta = 2.0 * math.pi * stride / CELLS_A
+        out.append(max(worst, FLOOR_R * (1.0 - math.cos(dtheta / 2.0))))
+    return tuple(out)
+
+
+def collision_reach_m():
+    """How far from the eye `drum_walk` builds a collision surface.
+
+    THE PER-PATCH TABLE MAY NOT COARSEN ANYTHING A PLAYER CAN STAND ON.
+    `drum_walk` builds its collision tile at a uniform stride 1 and then asserts
+    two things against the render ground: that a body stands on the ground it
+    can see (within `STEP_M`), and that inside the render's own lod0 radius the
+    two are the IDENTICAL surface. Both are statements about the mesh inside
+    the tile, so inside the tile the per-patch table is held at the drum-wide
+    one and the render there is exactly what it is today. Read from `drum_walk`
+    rather than restated, because a second copy of a tile size is a second thing
+    to get wrong -- imported inside the function because `drum_walk` imports
+    this module.
+    """
+    if "reach" not in _COLLISION_REACH:
+        import drum_walk as _dw                                # noqa: PLC0415
+        a_m, z_m = _dw.patch_span_m()
+        rings = _dw.rings_for(_dw.walk_distance_m())
+        _COLLISION_REACH["reach"] = math.hypot((rings + 0.5) * a_m,
+                                               (rings + 0.5) * z_m)
+    return _COLLISION_REACH["reach"]
+
+
+def patch_lod_table(pa, pz, table=None):
+    """Switch distances for ONE patch: per-patch error, floored by the tile.
+
+    Monotonic by the same running max `lod_table` uses, and for the same
+    reason. `table` is the drum-wide table, which supplies both the floor
+    inside the collision tile and the per-patch triangle counts.
+    """
+    table = table or lod_table()
+    key = (pa % PATCHES_A, pz, id(table))
+    if key in _PATCH_LOD_CACHE:
+        return _PATCH_LOD_CACHE[key]
+    reach = collision_reach_m()
+    d, out = 0.0, []
+    for lvl, err in enumerate(patch_lod_error_m(pa, pz)):
+        floor_m = min(table[lvl]["switch_distance_m"], reach)
+        d = max(d, _switch_distance(err), floor_m)
+        out.append(d)
+    _PATCH_LOD_CACHE[key] = tuple(out)
+    return _PATCH_LOD_CACHE[key]
+
+
+def patch_level(pa, pz, distance_m, table=None):
+    """The level patch (pa, pz) may be drawn at, `distance_m` from the eye."""
+    sw = patch_lod_table(pa, pz, table)
+    lvl = 0
+    for i, s in enumerate(sw):
+        if distance_m >= s:
+            lvl = i
+    return lvl
+
+
+
+# ---------------------------------------------------------------------------
 # Visible set
 # ---------------------------------------------------------------------------
 
@@ -1054,6 +1489,16 @@ def visible_set(eye, patches=None, table=None):
     end caps are in frame. That is why the drum has its own budget gate and why
     this function is the thing that has to be measured against it -- the whole
     drum at lod0 is 573,440 triangles, nearly twice the entire drum allowance.
+
+    AND IT IS NOT AN ARGUMENT, IT IS MEASURED. Session 4r cast the sight line
+    from the budget gate's own worst eye to all 280 patches and to every
+    dressing feature: a perfect, free, per-feature occlusion pass removes
+    16,008 of 315,604 triangles -- 5.07% -- and leaves the drum at 99.9% of its
+    allowance. Flatten the heightfield to the mean cylinder and the number is
+    0 of 1,440 targets, which is the control and which is what the interior of
+    a convex region has to report. INV-541.
+
+    THE LEVEL IS THE PATCH'S OWN, not the drum's -- `patch_lod_table`, INV-540.
     """
     table = table or lod_table()
 
@@ -1061,7 +1506,7 @@ def visible_set(eye, patches=None, table=None):
     for pa in range(PATCHES_A):
         for pz in range(PATCHES_Z):
             d = patch_nearest_distance(pa, pz, eye)
-            chosen[(pa, pz)] = level_for_distance(d, table)
+            chosen[(pa, pz)] = patch_level(pa, pz, d, table)
 
     verts, tris, groups = [], [], []
     per_level = [0] * len(STRIDES)
@@ -1109,7 +1554,8 @@ def visible_cost(eye, table=None):
     per = [0] * len(STRIDES)
     for pa in range(PATCHES_A):
         for pz in range(PATCHES_Z):
-            lvl = level_for_distance(patch_nearest_distance(pa, pz, eye), table)
+            lvl = patch_level(pa, pz, patch_nearest_distance(pa, pz, eye),
+                              table)
             n = table[lvl]["patch_triangles"]
             total += n
             per[lvl] += 1
@@ -1748,6 +2194,84 @@ def _selftest():
           and table[0]["error_m"] == round(table[0]["curvature_sagitta_m"], 3),
           f"lod0 height error {table[0]['height_error_m']} m")
 
+    # --- the per-patch LOD error, INV-540 -----------------------------------
+    _mm = ",".join(str(x) for x in PATCH_LOD_ERR_MM)
+    _pd = hashlib.blake2b(_mm.encode(), digest_size=8).hexdigest()
+    check("the per-patch LOD table still has its committed shape",
+          _pd == PATCH_LOD_DIGEST and len(PATCH_LOD_ERR_MM)
+          == PATCHES_A * PATCHES_Z * len(STRIDES),
+          f"{_pd} != {PATCH_LOD_DIGEST} over {len(PATCH_LOD_ERR_MM)} values")
+    # A DIGEST ONLY SAYS THE PIN IS THE PIN. It cannot say the pin still
+    # describes the terrain, which is the failure `--gate-frames` had one level
+    # up: a committed artefact a gate could not rebuild. So re-derive a
+    # deterministic spread of patches -- one per land-use band, plus an end --
+    # on every run. Four patches is 0.8 s; all 280 is 51 s and is
+    # `--derive-patch-lod`.
+    _subset = sorted({(pa % PATCHES_A, pz) for pa, pz in
+                      _representative_patches()})[:4]
+    _worst_mm, _at = 0.0, None
+    for _pa, _pz in _subset:
+        for _k, (_a, _b) in enumerate(zip(measure_patch_lod_error(_pa, _pz),
+                                          patch_lod_error_m(_pa, _pz))):
+            if abs(_a - _b) * 1000.0 > _worst_mm:
+                _worst_mm, _at = abs(_a - _b) * 1000.0, (_pa, _pz, _k)
+    check("the pinned per-patch error still measures what it says",
+          _worst_mm <= 0.5,
+          f"{_worst_mm:.3f} mm at patch/level {_at} over {len(_subset)} "
+          f"patches -- the terrain moved under the pin; run "
+          f"`--derive-patch-lod` and look at a render")
+    # THE CONTROL. Move one pinned value and the check above must fire, or it
+    # is measuring nothing. Restored immediately; the table is a tuple, so this
+    # rebuilds it rather than mutating a shared object.
+    _saved = PATCH_LOD_ERR_MM
+    try:
+        _i = (_subset[0][0] * PATCHES_Z + _subset[0][1]) * len(STRIDES) + 1
+        globals()["PATCH_LOD_ERR_MM"] = (
+            _saved[:_i] + (_saved[_i] + 40,) + _saved[_i + 1:])
+        _ctl = abs(measure_patch_lod_error(*_subset[0])[1]
+                   - patch_lod_error_m(*_subset[0])[1]) * 1000.0
+    finally:
+        globals()["PATCH_LOD_ERR_MM"] = _saved
+    check("...and it fires when a pinned value is wrong", _ctl > 0.5,
+          f"a 40 mm perturbation moved the measurement by {_ctl:.3f} mm")
+
+    # NOTHING A PLAYER CAN STAND ON MAY BE COARSER THAN IT IS TODAY.
+    # `drum_walk` builds collision at a uniform stride 1 over its tile and
+    # asserts the render agrees with it. Inside the tile the per-patch table is
+    # floored by the drum-wide one, so the level assigned there is exactly the
+    # level assigned today -- checked over every patch at 5 m intervals rather
+    # than argued from the floor's algebra.
+    _reach = collision_reach_m()
+    _coarser = _finer = 0
+    for _pa in range(PATCHES_A):
+        for _pz in range(PATCHES_Z):
+            _sw = patch_lod_table(_pa, _pz, table)
+            for _d in range(5, int(_reach), 5):
+                _l = max((i for i, s in enumerate(_sw) if _d >= s), default=0)
+                _g = level_for_distance(_d, table)
+                _coarser += _l > _g
+                _finer += _l < _g
+    check("inside the collision tile no patch is coarser than it is today",
+          _coarser == 0,
+          f"{_coarser} of {PATCHES_A*PATCHES_Z*len(range(5,int(_reach),5))} "
+          f"patch-distance samples inside {_reach:.0f} m went coarser, which "
+          f"is a render surface `drum_walk` compares against stride-1 collision")
+    check("...and the representative sample was understating some of them",
+          _finer > 0,
+          f"{_finer} samples are FINER than the drum-wide table -- if this is "
+          f"0 the per-patch measurement found nothing the max() had hidden")
+    # And the per-patch table has to be USED, or this is 1,400 numbers doing
+    # nothing. Compare the two level assignments beyond the tile.
+    _eye_pp, _ = stand_on_ground(schema, profile, sector, 270.0,
+                                 (Z0 + Z1) / 2.0)
+    _pp = visible_cost(_eye_pp, table)[0]
+    _dw = sum(table[level_for_distance(patch_nearest_distance(pa_, pz_, _eye_pp),
+                                       table)]["patch_triangles"]
+              for pa_ in range(PATCHES_A) for pz_ in range(PATCHES_Z))
+    check("the per-patch table changes what gets drawn", _pp < _dw,
+          f"per-patch {_pp:,} vs drum-wide {_dw:,} at the budget gate's own "
+          f"worst eye -- {(1-_pp/_dw)*100:.1f}% fewer ground triangles")
+
     # --- LOD seams ----------------------------------------------------------
     # A T-junction between a fine patch and a coarse one leaves a sawtooth of
     # holes. Border clamping is supposed to close it; assert the shared edge
@@ -1927,5 +2451,49 @@ def _selftest():
     return 1 if fail else 0
 
 
+def _derive_patch_lod():
+    """Recompute all 280 rows of PATCH_LOD_ERR_MM and report the drift.
+
+    THE PIN'S REBUILD PATH. `_selftest` re-measures four patches on every run;
+    this measures all of them, at 51 s, and prints the replacement table when
+    it disagrees. A pin with no rebuild is a committed artefact a gate cannot
+    reproduce, which is the defect `--gate-frames` had one level up.
+    """
+    schema, profile = it.load()
+    sector = it.drum_sector(schema, profile)
+    configure(schema, profile, sector)
+    t0 = time.time()
+    rows, worst, at = [], 0.0, None
+    for pa in range(PATCHES_A):
+        for pz in range(PATCHES_Z):
+            errs = measure_patch_lod_error(pa, pz)
+            rows.append([int(round(e * 1000)) for e in errs])
+            for k, (a_, b_) in enumerate(zip(errs, patch_lod_error_m(pa, pz))):
+                if abs(a_ - b_) * 1000.0 > worst:
+                    worst, at = abs(a_ - b_) * 1000.0, (pa, pz, k)
+    flat = [x for r in rows for x in r]
+    dig = hashlib.blake2b(",".join(str(x) for x in flat).encode(),
+                          digest_size=8).hexdigest()
+    print(f"derived {PATCHES_A * PATCHES_Z} patches x {len(STRIDES)} strides "
+          f"in {time.time() - t0:.0f} s")
+    print(f"  worst drift against the pin: {worst:.3f} mm at {at}")
+    print(f"  digest {dig}  pinned {PATCH_LOD_DIGEST}  "
+          f"{'AGREE' if dig == PATCH_LOD_DIGEST else 'DISAGREE'}")
+    if dig != PATCH_LOD_DIGEST:
+        print("\nPATCH_LOD_ERR_MM = (")
+        for pa in range(PATCHES_A):
+            print(f"    # pa {pa:2d}")
+            for pz in range(PATCHES_Z):
+                print("    " + ",".join(f"{x:5d}"
+                                        for x in rows[pa * PATCHES_Z + pz])
+                      + ",")
+        print(")")
+        print(f'PATCH_LOD_DIGEST = "{dig}"')
+        return 1
+    return 0
+
+
 if __name__ == "__main__":
+    if "--derive-patch-lod" in sys.argv:
+        sys.exit(_derive_patch_lod())
     sys.exit(_selftest())

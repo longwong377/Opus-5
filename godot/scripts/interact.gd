@@ -506,9 +506,142 @@ func watch(body: Node3D) -> void:
 		_hud.anchors_preset = Control.PRESET_CENTER_BOTTOM
 		_hud.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		layer.add_child(_hud)
+	_make_enforcement()
 
 
 var _purse_done := false
+
+# ===========================================================================
+#  WHAT HAPPENS AFTER A REFUSAL -- see `scripts/enforcement.gd`
+# ===========================================================================
+# WHY IT IS BUILT HERE. `hud.gd` reads the identicard on the way into a place
+# and the arrest chain behind a refusal was still Python, so a player was TOLD
+# they were refused and nothing followed. The thing that follows needs three
+# joins this node already has and no other node has all of: the PURSE (a fine is
+# money, and this file is the ledger's one writer), the PLAYER (they are walked
+# out of the room), and a place in the shipped scene's tree that is built on
+# BOTH the monolithic and the streamed path -- `walk.gd::_make_interact` runs in
+# `_wire_interact`, which `stream.gd::wire_cell` calls per cell.
+#
+# ONCE PER SESSION, NOT ONCE PER CELL. `watch()` is called again on every
+# streamed cell that brings interactables, and a second director would mean two
+# patrols answering one refusal.
+var _enforce: Node = null
+
+
+func _make_enforcement() -> void:
+	if _enforce != null or _player == null:
+		return
+	if _args().has("no-enforcement"):
+		print("interact: enforcement DISABLED (control) -- a refusal is "
+			+ "reported and nothing follows it")
+		return
+	_enforce = Node3D.new()
+	_enforce.name = "Enforcement"
+	_enforce.set_script(load("res://scripts/enforcement.gd"))
+	add_child(_enforce)
+	_enforce.call("bind", _player, self)
+	# THE GATE IS DRIVEN FROM THE NODE IT GATES, and it is started here because
+	# this is the one call site both build paths pass through. `run_gate` is a
+	# coroutine: it settles, drives the body across a real boundary, and quits
+	# with its own verdict.
+	if _enforce.call("gate_wanted"):
+		_enforce.call("run_gate")
+
+
+## THE FINE, AND IT MOVES IN THE LEDGER A DRINK MOVES THROUGH.
+##
+## `consequence._post_fine` is the Python half and this is the same four
+## numbers: the purse goes down, the COURT's till goes up, a row is appended to
+## `sales` naming the offence, and the document is written. Not a new wallet and
+## not a new file -- `economy.Ledger.till`, `.sales` and `.purses` are the
+## existing three.
+##
+## RETURNS WHETHER IT WAS PAID, and an unpayable fine is not an error. LAW-CRIME
+## 4.3's Jinxo precedent read economically: the brig is not a debtors' prison,
+## so the debt walks out with you and the card carries it.
+func fine(cr: float, court: String, offence: String) -> bool:
+	if _player == null or _led.is_empty() or cr <= 0.0:
+		return false
+	var paid := float(_player.credits) >= cr
+	if paid:
+		_player.credits = snappedf(float(_player.credits) - cr, 0.001)
+	var till = _led.get("till", {})
+	till[court] = snappedf(float(till.get(court, 0.0)) + (cr if paid else 0.0),
+		0.01)
+	_led["till"] = till
+	var rows = _led.get("sales", [])
+	rows.append({"day": int(_led.get("day", 0)), "at": court,
+		"good": "(fine: %s)" % offence, "n": 1, "cr": snappedf(cr, 0.01),
+		"who": String(_player.npc_id), "paid": paid})
+	_led["sales"] = rows
+	_sync_purse()
+	_record_fine(cr, paid)
+	_save_ledger()
+	return paid
+
+
+## THE CONVICTION, WRITTEN WHERE IT SURVIVES THE PROCESS.
+##
+## `player.py::state()` already carries a `record` key and `restore` reads it
+## back -- its own comment says why: "A CONSEQUENCE THAT DOES NOT SURVIVE THE
+## PROCESS IS A MOOD". So the engine writes into that same key, in
+## `consequence.Record.state()`'s own shape, and a session that quits after a
+## detention comes back one conviction in with the rung it was left at.
+func convict(offence: String, cr: float, revoked: bool, tier_after: int,
+		tier_after_name: String) -> void:
+	var rec := _record()
+	var cv: Array = rec.get("convictions", [])
+	cv.append(offence)
+	rec["convictions"] = cv
+	rec["custody_events"] = int(rec.get("custody_events", 0)) + 1
+	if revoked:
+		rec["visa_revoked"] = true
+		rec["revoked_from"] = String(_player.tier_name)
+		var notes: Array = rec.get("notes", [])
+		notes.append("day %d: %s revoked on %s"
+			% [int(_led.get("day", 0)), String(_player.tier_name), offence])
+		rec["notes"] = notes
+		_player.tier = tier_after
+		_player.tier_name = tier_after_name
+	_put_record(rec)
+	_save_ledger()
+	print("interact: conviction %d on the card -- %s%s"
+		% [cv.size(), offence,
+			(", %s WITHDRAWN" % tier_after_name if revoked else "")])
+
+
+func convictions() -> int:
+	return (_record().get("convictions", []) as Array).size()
+
+
+func _record() -> Dictionary:
+	var st := _my_purse()
+	var r = st.get("record")
+	if typeof(r) != TYPE_DICTIONARY:
+		return {"convictions": [], "fines_paid": 0.0, "fines_outstanding": 0.0,
+			"custody_events": 0, "custody_seconds": 0.0, "in_custody": false,
+			"visa_revoked": false, "revoked_from": "", "notes": []}
+	return r
+
+
+func _put_record(rec: Dictionary) -> void:
+	var st := _my_purse()
+	if st.is_empty():
+		return
+	st["record"] = rec
+	_led_dirty = true
+
+
+func _record_fine(cr: float, paid: bool) -> void:
+	var rec := _record()
+	if paid:
+		rec["fines_paid"] = snappedf(float(rec.get("fines_paid", 0.0)) + cr,
+			0.001)
+	else:
+		rec["fines_outstanding"] = snappedf(
+			float(rec.get("fines_outstanding", 0.0)) + cr, 0.001)
+	_put_record(rec)
 
 
 func doors(d: Node) -> void:

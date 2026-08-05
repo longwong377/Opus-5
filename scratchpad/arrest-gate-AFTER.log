@@ -1,0 +1,23 @@
+ARREST SOMEBODY COMES -- `godot --headless --path godot -- --no-coldstart --arrest-gate`
+  PASS refused=3 responded=3 arrived=3 moved_on=2 detained=1 walked=9.6m cr=-9.62 clock=+19.2h out=5.1m rate=x40 place=mooring_clamps
+    | gate: mooring_clamps, rung 0(no_status) against need 2, response 114 s at x40
+    | refused at mooring_clamps -- David Nakamura* + Bo Rossi notified, 114 s away (customs_south)
+    | David Nakamura* + Bo Rossi arriving 12.0 m away, at 1.30 m/s
+    | arrived -- 2.00 m from the player, 9.6 m of floor covered by a body in the crowd
+    | moved on at mooring_clamps -- moved on -- no arrest, no record (2.7 rung 3) (no arrest, no record (LAW-CRIME 2.7 rung 3))
+    | refused at mooring_clamps -- David Nakamura* + Bo Rossi notified, 114 s away (customs_south)
+    | David Nakamura* + Bo Rossi arriving 12.0 m away, at 1.30 m/s
+    | arrived -- 2.16 m from the player, 9.6 m of floor covered by a body in the crowd
+    |   ESCORTED TO THE BRIG -- 15.2 min on the routed graph
+    |   BOOKED -- 60 min
+    |   HELD TO THE NEXT OMBUDS SITTING -- 17.7 h
+    |   OMBUDS COURT -- already at the floor; 4.3 step 6's next disposal is transfer off
+    |   FINE 9.62 CR -- FINE PAID
+    |   RELEASED -- 19.1 h in custody, CARD ENDORSED
+    | clock 13.12 -> 08.20 EMT (19.1 h in custody)
+    | fine 9.62 cr paid -- 391.64 cr left
+    | refused at mooring_clamps -- David Nakamura* + Bo Rossi notified, 114 s away (customs_south)
+    | David Nakamura* + Bo Rossi arriving 12.0 m away, at 1.30 m/s
+    | arrived -- 2.00 m from the player, 9.6 m of floor covered by a body in the crowd
+    | moved on at mooring_clamps -- moved on -- no arrest, no record (2.7 rung 3) (no arrest, no record (LAW-CRIME 2.7 rung 3))
+  ARREST CONTROLS -- each changes one input and must move the verdict
