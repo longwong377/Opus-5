@@ -1,0 +1,236 @@
+{
+ "day": 13.0,
+ "delivered": {
+
+ },
+ "purses": {
+  "player:till_citizen": {
+   "at": "docking_bays",
+   "carry_cap": 8.0,
+   "carrying": [
+    "identicard",
+    "kit_bag",
+    "passage home"
+   ],
+   "credits": 1.0,
+   "generated": true,
+   "hip_m": 1.0101,
+   "name": "LENNIR",
+   "npc_id": "player:till_citizen",
+   "quarters": "",
+   "recline_m": 0.2923,
+   "role": "cleric",
+   "seat_m": 0.4953,
+   "species": "minbari",
+   "status": "admitted",
+   "tier": 3.0,
+   "tier_name": "resident",
+   "wake_h": 2.5
+  }
+ },
+ "sales": [
+  {
+   "at": "docking_bays",
+   "cr": 300.0,
+   "day": 13,
+   "good": "passage home",
+   "n": 1,
+   "who": "player:till_citizen"
+  }
+ ],
+ "seed": "b5",
+ "stock": {
+  "bar_unnamed": {
+   "Jovian Sunspot": 50.0,
+   "bagna cauda": 50.0,
+   "bonded spirits": 50.0,
+   "breather cartridges": 50.0,
+   "brivari": 50.0,
+   "drum grain": 50.0,
+   "drum greens": 50.0,
+   "flarn": 50.0,
+   "jala": 50.0,
+   "orchard fruit": 50.0,
+   "spoo": 50.0,
+   "treel": 50.0
+  },
+  "black_market": {
+   "Dust": 51.0,
+   "aid-ration packs": 51.0,
+   "bearing sets": 51.0,
+   "breather cartridges": 51.0,
+   "dock-grade tools": 51.0,
+   "drum grain": 51.0,
+   "drum greens": 51.0,
+   "hydroponic specialty rack": 51.0,
+   "identicard blanks": 51.0,
+   "machine spares": 51.0,
+   "orchard fruit": 51.0,
+   "salvage lots": 51.0,
+   "treel": 51.0,
+   "water containers": 51.0
+  },
+  "business_center": {
+   "dock-grade tools": 2630.0,
+   "machine spares": 2630.0,
+   "salvage lots": 2630.0
+  },
+  "casino": {
+   "a stake at the table": 496.0
+  },
+  "dark_star": {
+   "Jovian Sunspot": 106.0,
+   "bagna cauda": 106.0,
+   "bonded spirits": 106.0,
+   "breather cartridges": 106.0,
+   "brivari": 106.0,
+   "drum grain": 106.0,
+   "drum greens": 106.0,
+   "flarn": 106.0,
+   "jala": 106.0,
+   "orchard fruit": 106.0,
+   "spoo": 106.0,
+   "treel": 106.0
+  },
+  "docking_bays": {
+   "passage home": 1334
+  },
+  "downbelow": {
+   "Dust": 180.0,
+   "a bunk for the night": 252.0,
+   "identicard blanks": 180.0,
+   "salvage lots": 180.0
+  },
+  "downbelow_arch": {
+   "a bunk for the night": 318.0
+  },
+  "earharts": {
+   "Jovian Sunspot": 134.0,
+   "bagna cauda": 134.0,
+   "bonded spirits": 134.0,
+   "breather cartridges": 134.0,
+   "brivari": 134.0,
+   "drum grain": 134.0,
+   "drum greens": 134.0,
+   "flarn": 134.0,
+   "jala": 134.0,
+   "orchard fruit": 134.0,
+   "spoo": 134.0,
+   "treel": 134.0
+  },
+  "eclipse_cafe": {
+   "Jovian Sunspot": 50.0,
+   "bagna cauda": 50.0,
+   "bonded spirits": 50.0,
+   "breather cartridges": 50.0,
+   "brivari": 50.0,
+   "drum grain": 50.0,
+   "drum greens": 50.0,
+   "flarn": 50.0,
+   "jala": 50.0,
+   "orchard fruit": 50.0,
+   "spoo": 50.0,
+   "treel": 50.0
+  },
+  "fresh_air": {
+   "Jovian Sunspot": 88.0,
+   "bagna cauda": 88.0,
+   "bonded spirits": 88.0,
+   "breather cartridges": 88.0,
+   "brivari": 88.0,
+   "drum grain": 88.0,
+   "drum greens": 88.0,
+   "flarn": 88.0,
+   "jala": 88.0,
+   "orchard fruit": 88.0,
+   "spoo": 88.0,
+   "treel": 88.0
+  },
+  "happy_daze": {
+   "Jovian Sunspot": 110.0,
+   "bagna cauda": 110.0,
+   "bonded spirits": 110.0,
+   "breather cartridges": 110.0,
+   "brivari": 110.0,
+   "drum grain": 110.0,
+   "drum greens": 110.0,
+   "flarn": 110.0,
+   "jala": 110.0,
+   "orchard fruit": 110.0,
+   "spoo": 110.0,
+   "treel": 110.0
+  },
+  "mess_hall": {
+   "a hot meal": 318.0
+  },
+  "ngrath": {
+   "Dust": 10.0,
+   "identicard blanks": 10.0,
+   "salvage lots": 10.0
+  },
+  "post_office": {
+   "breather cartridges": 132.0,
+   "dock-grade tools": 132.0,
+   "machine spares": 132.0
+  },
+  "shops_kiosks": {
+   "Drazi duct-sealant": 1010.0,
+   "G'Quan Eth": 1010.0,
+   "aid-ration packs": 1010.0,
+   "bearing sets": 1010.0,
+   "breather cartridges": 1010.0,
+   "dock-grade tools": 1010.0,
+   "drum grain": 1010.0,
+   "drum greens": 1010.0,
+   "hydroponic specialty rack": 1010.0,
+   "machine spares": 1010.0,
+   "orchard fruit": 1010.0,
+   "salvage lots": 1010.0,
+   "spoo": 1010.0,
+   "water containers": 1010.0
+  },
+  "subfloor_stack": {
+   "a bunk for the night": 318.0
+  },
+  "zocalo": {
+   "Drazi hardware grade B": 1611.0,
+   "G'Quan Eth": 1611.0,
+   "aid-ration packs": 1611.0,
+   "bearing sets": 1611.0,
+   "breather cartridges": 1611.0,
+   "dock-grade tools": 1611.0,
+   "drum grain": 1611.0,
+   "drum greens": 1611.0,
+   "hydroponic specialty rack": 1611.0,
+   "machine spares": 1611.0,
+   "orchard fruit": 1611.0,
+   "salvage lots": 1611.0,
+   "treel": 1611.0,
+   "water containers": 1611.0
+  }
+ },
+ "till": {
+  "bar_unnamed": 0.0,
+  "black_market": 0.0,
+  "business_center": 0.0,
+  "casino": 0.0,
+  "dark_star": 0.0,
+  "docking_bays": 300.0,
+  "downbelow": 0.0,
+  "downbelow_arch": 0.0,
+  "earharts": 0.0,
+  "eclipse_cafe": 0.0,
+  "fresh_air": 0.0,
+  "happy_daze": 0.0,
+  "mess_hall": 0.0,
+  "ngrath": 0.0,
+  "post_office": 0.0,
+  "shops_kiosks": 0.0,
+  "subfloor_stack": 0.0,
+  "zocalo": 0.0
+ },
+ "version": 1.0,
+ "wages": {
+  "player:downbelow": 172.38
+ }
+}

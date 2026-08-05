@@ -1,0 +1,12 @@
+TILL THE SHIPPED SCENE TAKES MONEY -- deck blue_0_0, docking_bays__prop_bay_control_booth
+     sells 1 line(s), cheapest passage home at 300.00 cr
+     before: purse player:till_citizen (resident) 301.00 cr, till 0.00, shelf 1335 x passage home, 0 sales
+     $ --stream-test --visit --gravity-mode=drum --settle=120 --interact=/home/user/Opus-5/scratchpad/till-run/interact.json --use-group=docking_bays__prop_bay_control_booth --ledger=/home/user/Opus-5/scratchpad/till-run/economy.json
+     | interact: purse player:till_citizen (LENNIR, resident) 301.00 cr, carrying 2/8
+     | USE docking_bays__prop_bay_control_booth place=docking_bays token=bay_control_booth verb=serve response=press prompt=[E]  serve the bay control booth DID=bought passage home for 300.00 cr (resident) -
+     | USE docking_bays__prop_bay_control_booth place=docking_bays token=bay_control_booth verb=serve response=press prompt=[E]  serve the bay control booth DID=REFUSED: passage home costs 300.00 cr and you 
+     | STREAMTEST mode=stream ok=false start=1 dir=-1 prime_ms=20 traverse_m=270.48 floor_m=270.48 net_m=110.31 offfloor=0/16200 crossings=6 entered=1,0,17,0,1,0,17 late=0 min_lead_m=36.92 min_lead_frames=63
+     after : purse 1.00 cr, till 300.00, shelf 1334, 1 sales
+     TILL money=MOVED (purse -300.00, till +300.00, shelf -1, sales +1)
+     CROSS-LANGUAGE agree -- 1 x passage home at docking_bays: 300.000 cr, till 300.00, stock 1334, purse 1.0
+TILL gate=PASS

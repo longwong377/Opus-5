@@ -196,6 +196,14 @@ LOD_RATIOS = (1.0, 3.2, 9.0)
 # allowance (see `_selftest`'s drum budget check, which is honestly RED), and
 # spending the last of a per-part allowance to buy far-field reach while the
 # whole is over is the wrong trade in both directions.
+#
+# THE DRUM IS NO LONGER OVER, AND THE DECISION IS UNCHANGED. Later in 4r the
+# ground's LOD error was charged per PATCH rather than per drum (INV-540) and
+# the drum's worst standing eye went 315,604 -> 290,164 against 300,000, so
+# `_selftest`'s budget check is green. That buys nothing here: this module is
+# still 114,910 of its own 120,000, and the second half of the sentence above
+# -- spending the last of a per-part allowance on far-field reach -- was always
+# the load-bearing half. 113.0 stands, and now on one reason instead of two.
 LOD_SCALE_M = 113.0
 
 # Screen constants, taken from `drum_ground` rather than restated, so the pixel

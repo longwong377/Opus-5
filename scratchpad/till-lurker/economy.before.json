@@ -1,0 +1,224 @@
+{
+ "day": 13,
+ "delivered": {},
+ "purses": {
+  "player:downbelow": {
+   "at": "docking_bays",
+   "carry_cap": 8,
+   "carrying": [
+    "identicard",
+    "kit_bag"
+   ],
+   "credits": 420.5,
+   "generated": false,
+   "hip_m": 0.8814,
+   "name": "ALLAN, ANNA",
+   "npc_id": "player:downbelow",
+   "quarters": "",
+   "recline_m": 0.2627,
+   "role": "lurker",
+   "seat_m": 0.4322,
+   "species": "human",
+   "status": "unprocessed",
+   "tier": 0,
+   "tier_name": "no_status",
+   "wake_h": 6.5
+  }
+ },
+ "sales": [],
+ "seed": "b5",
+ "stock": {
+  "bar_unnamed": {
+   "Jovian Sunspot": 50,
+   "bagna cauda": 50,
+   "bonded spirits": 50,
+   "breather cartridges": 50,
+   "brivari": 50,
+   "drum grain": 50,
+   "drum greens": 50,
+   "flarn": 50,
+   "jala": 50,
+   "orchard fruit": 50,
+   "spoo": 50,
+   "treel": 50
+  },
+  "black_market": {
+   "Dust": 51,
+   "aid-ration packs": 51,
+   "bearing sets": 51,
+   "breather cartridges": 51,
+   "dock-grade tools": 51,
+   "drum grain": 51,
+   "drum greens": 51,
+   "hydroponic specialty rack": 51,
+   "identicard blanks": 51,
+   "machine spares": 51,
+   "orchard fruit": 51,
+   "salvage lots": 51,
+   "treel": 51,
+   "water containers": 51
+  },
+  "business_center": {
+   "dock-grade tools": 2630,
+   "machine spares": 2630,
+   "salvage lots": 2630
+  },
+  "casino": {
+   "a stake at the table": 496
+  },
+  "dark_star": {
+   "Jovian Sunspot": 106,
+   "bagna cauda": 106,
+   "bonded spirits": 106,
+   "breather cartridges": 106,
+   "brivari": 106,
+   "drum grain": 106,
+   "drum greens": 106,
+   "flarn": 106,
+   "jala": 106,
+   "orchard fruit": 106,
+   "spoo": 106,
+   "treel": 106
+  },
+  "docking_bays": {
+   "passage home": 1335
+  },
+  "downbelow": {
+   "Dust": 180,
+   "a bunk for the night": 252,
+   "identicard blanks": 180,
+   "salvage lots": 180
+  },
+  "downbelow_arch": {
+   "a bunk for the night": 318
+  },
+  "earharts": {
+   "Jovian Sunspot": 134,
+   "bagna cauda": 134,
+   "bonded spirits": 134,
+   "breather cartridges": 134,
+   "brivari": 134,
+   "drum grain": 134,
+   "drum greens": 134,
+   "flarn": 134,
+   "jala": 134,
+   "orchard fruit": 134,
+   "spoo": 134,
+   "treel": 134
+  },
+  "eclipse_cafe": {
+   "Jovian Sunspot": 50,
+   "bagna cauda": 50,
+   "bonded spirits": 50,
+   "breather cartridges": 50,
+   "brivari": 50,
+   "drum grain": 50,
+   "drum greens": 50,
+   "flarn": 50,
+   "jala": 50,
+   "orchard fruit": 50,
+   "spoo": 50,
+   "treel": 50
+  },
+  "fresh_air": {
+   "Jovian Sunspot": 88,
+   "bagna cauda": 88,
+   "bonded spirits": 88,
+   "breather cartridges": 88,
+   "brivari": 88,
+   "drum grain": 88,
+   "drum greens": 88,
+   "flarn": 88,
+   "jala": 88,
+   "orchard fruit": 88,
+   "spoo": 88,
+   "treel": 88
+  },
+  "happy_daze": {
+   "Jovian Sunspot": 110,
+   "bagna cauda": 110,
+   "bonded spirits": 110,
+   "breather cartridges": 110,
+   "brivari": 110,
+   "drum grain": 110,
+   "drum greens": 110,
+   "flarn": 110,
+   "jala": 110,
+   "orchard fruit": 110,
+   "spoo": 110,
+   "treel": 110
+  },
+  "mess_hall": {
+   "a hot meal": 318
+  },
+  "ngrath": {
+   "Dust": 10,
+   "identicard blanks": 10,
+   "salvage lots": 10
+  },
+  "post_office": {
+   "breather cartridges": 132,
+   "dock-grade tools": 132,
+   "machine spares": 132
+  },
+  "shops_kiosks": {
+   "Drazi duct-sealant": 1010,
+   "G'Quan Eth": 1010,
+   "aid-ration packs": 1010,
+   "bearing sets": 1010,
+   "breather cartridges": 1010,
+   "dock-grade tools": 1010,
+   "drum grain": 1010,
+   "drum greens": 1010,
+   "hydroponic specialty rack": 1010,
+   "machine spares": 1010,
+   "orchard fruit": 1010,
+   "salvage lots": 1010,
+   "spoo": 1010,
+   "water containers": 1010
+  },
+  "subfloor_stack": {
+   "a bunk for the night": 318
+  },
+  "zocalo": {
+   "Drazi hardware grade B": 1611,
+   "G'Quan Eth": 1611,
+   "aid-ration packs": 1611,
+   "bearing sets": 1611,
+   "breather cartridges": 1611,
+   "dock-grade tools": 1611,
+   "drum grain": 1611,
+   "drum greens": 1611,
+   "hydroponic specialty rack": 1611,
+   "machine spares": 1611,
+   "orchard fruit": 1611,
+   "salvage lots": 1611,
+   "treel": 1611,
+   "water containers": 1611
+  }
+ },
+ "till": {
+  "bar_unnamed": 0.0,
+  "black_market": 0.0,
+  "business_center": 0.0,
+  "casino": 0.0,
+  "dark_star": 0.0,
+  "docking_bays": 0.0,
+  "downbelow": 0.0,
+  "downbelow_arch": 0.0,
+  "earharts": 0.0,
+  "eclipse_cafe": 0.0,
+  "fresh_air": 0.0,
+  "happy_daze": 0.0,
+  "mess_hall": 0.0,
+  "ngrath": 0.0,
+  "post_office": 0.0,
+  "shops_kiosks": 0.0,
+  "subfloor_stack": 0.0,
+  "zocalo": 0.0
+ },
+ "version": 1,
+ "wages": {
+  "player:downbelow": 172.38
+ }
+}

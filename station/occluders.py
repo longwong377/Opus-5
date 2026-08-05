@@ -940,15 +940,174 @@ def _in_box(verts, tris, prof):
     return True
 
 
+def drum_ceiling(angle_deg=270.0, z_m=5132.0, stations=72, zs=20, steps=48):
+    """WHAT AN OCCLUDER COULD BUY IN THE HABITAT DRUM. It is 5%. -- INV-541
+
+    THE ANSWER IS NO, AND IT IS GEOMETRY RATHER THAN ENGINEERING. Everything
+    above is about a corridor, where a wall a metre from each shoulder hides the
+    far side of the ring. The drum has no wall: it is the inside of a cylinder,
+    which is the boundary of a CONVEX region, and every point of the boundary of
+    a convex region is visible from every point inside it. The only thing that
+    can hide anything is relief and the objects standing on it.
+
+    So this measures those two, from `budget.DRUM`'s own worst standing eye, and
+    it measures the CEILING: it culls a target the moment it is hidden, charges
+    nothing for the occluder geometry, nothing for the depth rasterisation, and
+    tests at a granularity far finer than any renderer here works at. Weighted
+    by the triangles each hidden thing would have contributed at the level the
+    LOD chain would have drawn it, because a copse hidden at 1,200 m is 30
+    triangles and a farmstead hidden at 30 m is 800.
+
+    THE CONTROL IS THE CONVEXITY ITSELF. Flatten the heightfield to the mean
+    cylinder and NOTHING may be occluded; if that returns a single blocked
+    target this function is measuring its own arithmetic. Printed on every run.
+
+    AND ONE LEVEL FURTHER DOWN IT IS WORSE THAN THIS CEILING, because Godot
+    tests an INSTANCE's axis-aligned bounding box against a rasterised depth
+    buffer, not a triangle. `render_shot.gd` reports **147 mesh instances over
+    9 files** for the whole drum, and they are split by MATERIAL GROUP rather
+    than by place -- `ground.glb` is 13 nodes spanning 4.5 million square
+    metres. Not one of those AABBs can ever be behind anything. This is the
+    same finding CLAUDE.md records for the corridor ("Godot culls per instance
+    AABB and the corridor's OBJ groups span the whole 345 deg ring"), one
+    environment along, and with the same conclusion: what would close a drum
+    budget is spatial submission, and there is nothing for an occluder to do
+    until that exists.
+    """
+    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+    import drum_ground as dg                                   # noqa: PLC0415
+    import drum_dressing as dd                                 # noqa: PLC0415
+    import interior as _it                                     # noqa: PLC0415
+
+    schema, profile = _it.load()
+    sector = _it.drum_sector(schema, profile)
+    dg.configure(schema, profile, sector)
+
+    def ground_r(a_deg, z):
+        u = (a_deg / 360.0) % 1.0
+        w = min(max((z - dg.Z0) / (dg.Z1 - dg.Z0), 0.0), 1.0)
+        return dg.FLOOR_R - dg.sample(u, w)[0]
+
+    def point(a_deg, z):
+        r = ground_r(a_deg, z)
+        a = math.radians(a_deg)
+        return (r * math.cos(a), r * math.sin(a), z)
+
+    def blocked(eye, target, n):
+        for i in range(1, n):
+            t = i / n
+            q = tuple(eye[k] + (target[k] - eye[k]) * t for k in range(3))
+            if math.hypot(q[0], q[1]) > ground_r(
+                    math.degrees(math.atan2(q[1], q[0])) % 360.0, q[2]):
+                return True
+        return False
+
+    eye, _up = dg.stand_on_ground(schema, profile, sector, angle_deg, z_m)
+    targets = [(360.0 * i / stations,
+                dg.Z0 + (dg.Z1 - dg.Z0) * (j + 0.5) / zs)
+               for i in range(stations) for j in range(zs)]
+
+    real = dg.sample
+    dg.sample = lambda u, w: (0.0, "flat")
+    flat_eye, _ = dg.stand_on_ground(schema, profile, sector, angle_deg, z_m)
+    ctl = sum(1 for a_, z_ in targets
+              if blocked(flat_eye, point(a_, z_), steps))
+    dg.sample = real
+
+    table = dg.lod_table()
+    g_tot = g_hid = hid_patches = 0
+    for pa in range(dg.PATCHES_A):
+        for pz in range(dg.PATCHES_Z):
+            lvl = dg.patch_level(pa, pz,
+                                 dg.patch_nearest_distance(pa, pz, eye), table)
+            g_tot += table[lvl]["patch_triangles"]
+            allhid = True
+            for i in range(3):
+                for j in range(3):
+                    a_ = (pa + (i + 0.5) / 3) * 360.0 / dg.PATCHES_A
+                    z_ = dg.Z0 + (pz + (j + 0.5) / 3) * (dg.Z1 - dg.Z0) \
+                        / dg.PATCHES_Z
+                    if not blocked(eye, point(a_, z_), steps):
+                        allhid = False
+                        break
+                if not allhid:
+                    break
+            if allhid:
+                hid_patches += 1
+                g_hid += table[lvl]["patch_triangles"]
+
+    sw = dd.switch_distances()
+    fld = dd.field()
+    d_tot = d_hid = hid_feats = 0
+    for f in fld["points"]:
+        lv = dd._level(math.dist(f.position(), eye), sw)
+        if dd._culled(f.kind, f.proto, lv, sw, f.scale, f.radius_m):
+            continue
+        d_tot += dd._feature_tris(f, lv)
+        if blocked(eye, f.position(), 32):
+            hid_feats += 1
+            d_hid += dd._feature_tris(f, lv)
+    for ln in fld["lines"]:
+        lv = dd._level(math.dist(ln.centre(), eye), sw)
+        d_tot += dd._line_tris(ln, lv)
+        if blocked(eye, ln.centre(), 32):
+            hid_feats += 1
+            d_hid += dd._line_tris(ln, lv)
+
+    near = dd.near_cost(eye)
+    total = dd.DRUM_FIXED_TRIS + g_tot + d_tot + near
+    return {"eye": (angle_deg, z_m), "control_blocked": ctl,
+            "control_targets": len(targets),
+            "ground_total": g_tot, "ground_cullable": g_hid,
+            "hidden_patches": hid_patches, "patches": dg.PATCHES_A * dg.PATCHES_Z,
+            "dressing_total": d_tot + near, "dressing_cullable": d_hid,
+            "hidden_features": hid_feats,
+            "features": len(fld["points"]) + len(fld["lines"]),
+            "fixed": dd.DRUM_FIXED_TRIS, "frame_total": total,
+            "cullable": g_hid + d_hid,
+            "cullable_pct": (g_hid + d_hid) / total * 100.0}
+
+
+def _print_drum_ceiling(**kw):
+    m = drum_ceiling(**kw)
+    print(f"\nThe habitat drum, from ({m['eye'][0]:g} deg, {m['eye'][1]:g} m) "
+          f"-- budget.DRUM's own worst standing eye")
+    print(f"  CONTROL, heightfield flattened to the mean cylinder: "
+          f"{m['control_blocked']} of {m['control_targets']} targets blocked "
+          f"-- a convex boundary must report 0")
+    print(f"  ground   {m['ground_cullable']:,} of {m['ground_total']:,} "
+          f"cullable ({m['ground_cullable']/max(m['ground_total'],1)*100:.2f}%),"
+          f" {m['hidden_patches']} of {m['patches']} patches fully hidden")
+    print(f"  dressing {m['dressing_cullable']:,} of "
+          f"{m['dressing_total']:,} cullable "
+          f"({m['dressing_cullable']/max(m['dressing_total'],1)*100:.2f}%), "
+          f"{m['hidden_features']} of {m['features']} features hidden")
+    print(f"  fixed    {m['fixed']:,} -- one instance each, spanning the drum, "
+          f"not cullable at any granularity")
+    print(f"  CEILING  {m['cullable']:,} of {m['frame_total']:,} = "
+          f"{m['cullable_pct']:.2f}% of the drum frame, with a PERFECT and "
+          f"FREE per-feature cull")
+    print(f"  so the drum after perfect occlusion is "
+          f"{m['frame_total']-m['cullable']:,} against 300,000 = "
+          f"{(m['frame_total']-m['cullable'])/300000*100:.1f}%")
+    return m
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--selftest", action="store_true")
     ap.add_argument("--rays", action="store_true",
                     help="also run the ray lattice (~4 min) and print how far "
                          "short of the kit's own vertex extent it lands")
+    ap.add_argument("--drum", action="store_true",
+                    help="measure the CEILING on what an occluder could buy "
+                         "inside the habitat drum (~40 s). It is a negative "
+                         "result and it is the point of the flag")
     a = ap.parse_args(argv)
-    if a.selftest or True:
-        return _selftest(rays=a.rays)
+    if a.drum:
+        m = _print_drum_ceiling()
+        return 0 if m["control_blocked"] == 0 else 1
+    return _selftest(rays=a.rays)
 
 
 if __name__ == "__main__":

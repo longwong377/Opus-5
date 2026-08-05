@@ -1,0 +1,393 @@
+[
+ {
+  "group": "bay_elevators__prop_lift_call",
+  "place": "bay_elevators",
+  "token": "lift_call",
+  "verb": "operate",
+  "pressable": true,
+  "responds": true,
+  "label": "lift call",
+  "text": "",
+  "live": false,
+  "centre": [
+   102.09047792721464,
+   -183.92625668324754,
+   7112.25
+  ],
+  "half": [
+   0.08380209605745392,
+   0.13120997569859583,
+   0.09280000000035216
+  ],
+  "tris": 48
+ },
+ {
+  "group": "bay_elevators__prop_lift_door",
+  "place": "bay_elevators",
+  "token": "lift_door",
+  "verb": "open",
+  "pressable": true,
+  "responds": true,
+  "label": "lift door",
+  "text": "",
+  "live": false,
+  "centre": [
+   102.1889575544426,
+   -183.91778747295575,
+   7113.497
+  ],
+  "half": [
+   0.6411310329443225,
+   1.0511421247172308,
+   0.7730000000001382
+  ],
+  "tris": 176
+ },
+ {
+  "group": "docking_bays__prop_bay_control_booth",
+  "place": "docking_bays",
+  "token": "bay_control_booth",
+  "verb": "serve",
+  "pressable": true,
+  "responds": true,
+  "label": "bay control booth",
+  "text": "",
+  "live": false,
+  "counter": {
+   "sells": true,
+   "goods": [
+    {
+     "good": "passage home",
+     "cr": 300.0
+    }
+   ],
+   "tier": {
+    "-1": [
+     false,
+     "in custody"
+    ],
+    "5": [
+     true,
+     "card accepted"
+    ],
+    "4": [
+     true,
+     "card accepted"
+    ],
+    "3": [
+     true,
+     "card accepted"
+    ],
+    "2": [
+     true,
+     "card accepted"
+    ],
+    "1": [
+     false,
+     "cannot get in: needs transit (sector blue)"
+    ],
+    "0": [
+     false,
+     "cannot get in: needs transit (sector blue)"
+    ]
+   }
+  },
+  "centre": [
+   210.31843103590046,
+   -1.0794639273085593,
+   7115.8
+  ],
+  "half": [
+   1.229134024312998,
+   4.0134541317504056,
+   1.9920000000001892
+  ],
+  "tris": 1312
+ },
+ {
+  "group": "docking_bays__prop_bay_door",
+  "place": "docking_bays",
+  "token": "bay_door",
+  "verb": "open",
+  "pressable": true,
+  "responds": true,
+  "label": "bay door",
+  "text": "",
+  "live": false,
+  "centre": [
+   208.97979185461742,
+   -5.417642821154547,
+   7114.121999999999
+  ],
+  "half": [
+   2.505686195032567,
+   0.3166547424617816,
+   2.9580000000000837
+  ],
+  "tris": 176
+ },
+ {
+  "group": "docking_bays__prop_cargo_crane",
+  "place": "docking_bays",
+  "token": "cargo_crane",
+  "verb": "operate",
+  "pressable": true,
+  "responds": true,
+  "label": "cargo crane",
+  "text": "",
+  "live": false,
+  "centre": [
+   205.93589339746808,
+   -1.050416572056274,
+   7114.625
+  ],
+  "half": [
+   0.44158867485900544,
+   0.48214738375674143,
+   1.4549999999999272
+  ],
+  "tris": 152
+ },
+ {
+  "group": "docking_bays__prop_deck_marking",
+  "place": "docking_bays",
+  "token": "deck_marking",
+  "verb": "tread",
+  "pressable": false,
+  "responds": false,
+  "label": "deck marking",
+  "text": "",
+  "live": false,
+  "centre": [
+   211.51020060483916,
+   -1.079797401041589,
+   7114.775
+  ],
+  "half": [
+   0.03239480588210597,
+   4.049699837454778,
+   3.049999999999727
+  ],
+  "tris": 24
+ },
+ {
+  "group": "docking_bays__prop_docking_clamp",
+  "place": "docking_bays",
+  "token": "docking_clamp",
+  "verb": "operate",
+  "pressable": true,
+  "responds": true,
+  "label": "docking clamp",
+  "text": "",
+  "live": false,
+  "centre": [
+   211.07172646804133,
+   -1.0931344664631568,
+   7113.3625
+  ],
+  "half": [
+   0.473541275907607,
+   4.01804127070402,
+   1.5924999999997453
+  ],
+  "tris": 800
+ },
+ {
+  "group": "lowg_bays__prop_bay_door",
+  "place": "lowg_bays",
+  "token": "bay_door",
+  "verb": "open",
+  "pressable": true,
+  "responds": true,
+  "label": "bay door",
+  "text": "",
+  "live": false,
+  "centre": [
+   -130.49312034961105,
+   163.3236462042118,
+   7114.397
+  ],
+  "half": [
+   1.7573873217721143,
+   2.1104345559528923,
+   2.957999999999629
+  ],
+  "tris": 176
+ },
+ {
+  "group": "lowg_bays__prop_docking_clamp",
+  "place": "lowg_bays",
+  "token": "docking_clamp",
+  "verb": "operate",
+  "pressable": true,
+  "responds": true,
+  "label": "docking clamp",
+  "text": "",
+  "live": false,
+  "centre": [
+   -134.83904030822836,
+   162.45158603413455,
+   7113.8375
+  ],
+  "half": [
+   3.067208867105734,
+   2.5765911208264782,
+   1.7925000000000182
+  ],
+  "tris": 1200
+ },
+ {
+  "group": "lowg_bays__prop_handhold",
+  "place": "lowg_bays",
+  "token": "handhold",
+  "verb": "tread",
+  "pressable": false,
+  "responds": false,
+  "label": "handhold",
+  "text": "",
+  "live": false,
+  "centre": [
+   -131.17036603740024,
+   164.57077191057346,
+   7118.05
+  ],
+  "half": [
+   0.05367208692749159,
+   0.053703697015492935,
+   0.29894400000011956
+  ],
+  "tris": 56
+ },
+ {
+  "group": "mooring_clamps__prop_docking_clamp",
+  "place": "mooring_clamps",
+  "token": "docking_clamp",
+  "verb": "operate",
+  "pressable": true,
+  "responds": true,
+  "label": "docking clamp",
+  "text": "",
+  "live": false,
+  "centre": [
+   -211.08394967567514,
+   0.36488551021310633,
+   7114.4375
+  ],
+  "half": [
+   0.45965464631734676,
+   3.5197685559784357,
+   1.7924999999995634
+  ],
+  "tris": 1200
+ },
+ {
+  "group": "plantroom_bay__prop_bay_door",
+  "place": "plantroom_bay",
+  "token": "bay_door",
+  "verb": "open",
+  "pressable": true,
+  "responds": true,
+  "label": "bay door",
+  "text": "",
+  "live": false,
+  "centre": [
+   -41.43057196073479,
+   -204.9044562204678,
+   7113.972
+  ],
+  "half": [
+   0.7424160854192294,
+   2.5003532855204185,
+   2.9580000000000837
+  ],
+  "tris": 176
+ },
+ {
+  "group": "plantroom_bay__prop_catwalk",
+  "place": "plantroom_bay",
+  "token": "catwalk",
+  "verb": "tread",
+  "pressable": false,
+  "responds": false,
+  "label": "catwalk",
+  "text": "",
+  "live": false,
+  "centre": [
+   -37.77865247971357,
+   -208.04176461115702,
+   7114.775
+  ],
+  "half": [
+   3.7741867971802456,
+   0.7510147732898531,
+   3.98299999999972
+  ],
+  "tris": 336
+ },
+ {
+  "group": "plantroom_bay__prop_valve",
+  "place": "plantroom_bay",
+  "token": "valve",
+  "verb": "operate",
+  "pressable": true,
+  "responds": true,
+  "label": "valve",
+  "text": "",
+  "live": false,
+  "centre": [
+   -41.73019095384917,
+   -206.09701007845206,
+   7110.4
+  ],
+  "half": [
+   0.20656456649680166,
+   0.248919900868799,
+   0.1799999999998363
+  ],
+  "tris": 48
+ },
+ {
+  "group": "vorlon_berth__prop_bay_door",
+  "place": "vorlon_berth",
+  "token": "bay_door",
+  "verb": "open",
+  "pressable": true,
+  "responds": true,
+  "label": "bay door",
+  "text": "",
+  "live": false,
+  "centre": [
+   157.5547337085846,
+   -137.40303170354554,
+   7114.397
+  ],
+  "half": [
+   2.049772973126636,
+   1.8330690833253271,
+   2.957999999999629
+  ],
+  "tris": 176
+ },
+ {
+  "group": "vorlon_berth__prop_docking_clamp",
+  "place": "vorlon_berth",
+  "token": "docking_clamp",
+  "verb": "operate",
+  "pressable": true,
+  "responds": true,
+  "label": "docking clamp",
+  "text": "",
+  "live": false,
+  "centre": [
+   161.60189018551364,
+   -135.83839038291143,
+   7113.8375
+  ],
+  "half": [
+   2.6035050354142584,
+   2.9076894996181295,
+   1.7925000000000182
+  ],
+  "tris": 1200
+ }
+]

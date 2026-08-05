@@ -28,3 +28,123 @@ The standing frame -- one ASSEMBLED deck, not the kit in isolation
 
 Occlusion -- an occluder on the corridor's own walls
 
+  occluder  3,514 triangles for 345 deg of corridor -- 0.278% of the deck, built in 13 s. Apertures cut 1.217x wide at the occluder plane
+  buffer    160x90; a 1.50 m doorway at this corridor's own 60.5 m sight line subtends 1.42 deg, so 2 pixels across it needs w >= 144
+  contain   768 rays from 12 standing eyes over +/-16.4 deg of the worst-structure pose: 0 breaches, worst 0.0 mm, 1 escaped (42 s). Blocks 100.0% of the sphere
+  control   the COLLISION shell (3,518 tri, nearest surface instead of farthest) used as this deck's occluder:
+            73 of 128 rays hidden, worst 1618 mm of visible surface culled -- so the 0 above is a measurement and not a tautology
+  control   with `use_occlusion_culling` removed from a copy of project.godot,
+            occlusion_chain reports setting=False applied=False and the pass is not computed
+  swept     288 poses in 5 s; worst survivor at 1.5 deg heading 240
+
+  SHIPPED   blue_0_0_cells.json: 18 cells, resident inside 66.1 m, freed past 73.8 m. boot.json names it,
+            main.gd hands it to walk.gd and `_load_streamed` is taken -- so `_load_level`, which loads
+            the monolithic .glb this file used to call 'as shipped', is the FALLBACK path.
+            residency rule read off stream.gd: all four clauses found
+PASS  baked cells match the generator [....................]      0.000 / 0.000  (0.0%)  manifest 18 x 20.0 deg, radius 66.1 m, free 73.8 m; interior.ring_cells says 18 x 20.0 deg, sight 66.1 m, cell 73.8 m
+                                goes red at: any change to ring_cells without a re-bake -- the residency radius the engine uses would then describe a grid the generator no longer emits
+PASS  stream.gd still says what this file measures [....................]      0.000 clause(s) / 0.000 clause(s)  (0.0%)  radius_m = sight_line_m; free_radius_m = max(sight, cell); resident within radius_m; freed past free_m
+                                goes red at: any edit to stream.gd's residency rule -- this file transcribes it into resident_cells() and a silent divergence is a budget measuring a policy nobody runs
+  control   with boot.json's cells_path emptied, shipped_streaming reports streamed=False and the
+            gated unit falls back to the monolithic row -- so the saving disappears with the build
+
+  cull unit                     submitted   after occl   draws   what it is
+  triangle                        455,491      157,883    THE CEILING -- no renderer here culls per triangle
+  instance, whole ring            905,774      884,150     149   one primitive per OBJ group -- walk.gd --glb
+  instance x 18 cells             495,973      397,979     312   the cut, all cells in memory
+  ...x 3 resident                 319,058      222,252     106   WHAT THE SHIPPED BUILD SUBMITS
+
+  structure alone, at the worst-structure pose (8.7 deg / 210):
+  triangle                        261,080      102,990    1.72x   of the 60,000 allowance
+  instance, whole ring            604,610      603,318   10.06x   of the 60,000 allowance
+  instance x 18 cells             295,189      293,385    4.89x   of the 60,000 allowance
+  ...x 3 resident                 181,004      179,828    3.00x   of the 60,000 allowance
+
+  Instance granularity on the whole ring submits 905,774 triangles where the
+  per-triangle count is 455,491 -- 1.99x, and no occluder can touch it, because a
+  corridor group spans 345 deg and its AABB contains the camera. Cut on the 18 cells
+  `interior.ring_cells` declares it is 495,973 (45% less); with only the 3 cells the streamer
+  holds in memory it is 319,058 (65% less). The draws column is the price: 149 -> 106.
+  Residency is what makes the cut free. All 18 cells resident is 312 draws in
+  frame and 495,973 triangles; the 3 the streamer keeps is 106 draws. Spatial submission
+  without streaming trades triangles for draw calls; with it, it costs neither.
+PASS  occlusion buffer resolves a doorway [##################..]      2.000 px / 2.219 px  (90.1%)  160x90 gives 2.22 px across a 1.50 m door at 60.5 m
+                                goes red at: a sight line past 67 m, or a narrower aperture -- a doorway lost between two pixel centres culls the room behind it, which is a hole in the world rather than a slow frame
+PASS  occluder hides nothing visible [....................]      0.000 rays / 0.000 rays  (0.0%)  768 rays from 12 standing eyes, 1 escaped the modelled slice; worst 0.0 mm
+                                goes red at: any ray at all -- occluders.py's own controls put the collision shell at 1,974 breaches and the ray-measured profile this module shipped with at 209
+
+  the saving is NOT applied to the bounds below:
+    - station/generated/scene/deck/blue_0_0_occ.tscn has not been written -- `python3 tools/export_scene.py --shot deck --deck blue/0/0` writes it
+FAIL  occluder reaches the engine [##################################################################]      1.000 / 0.000  (1000.0%)  station/generated/scene/deck/blue_0_0_occ.tscn has not been written -- `python3 tools/export_scene.py --shot deck --deck blue/0/0` writes it
+                                over by: each rung of occlusion_chain() is a separate fix; the pass above says what the missing ones are worth
+FAIL  frustum structure          [##################################################################]    260,243 tri / 60,000 tri  (433.7%)  was 30,941 from the kit in isolation; 3 resident cells of 18, NO occlusion (see the ladder above)
+                                over by: 200,243 tri, 4.34x. The synthetic estimate this replaces read 51.6% of the same allowance
+FAIL  structure share of frame   [##################################################################]       21.7% / 5.0%  (433.7%)  structure only, on the assembled deck
+                                over by: 16.7 points of a 1.2 M frame
+FAIL  frustum, everything        [##############################]    454,498 tri / 300,000 tri  (151.5%)  3 resident cells of 18; the unoccluded whole-ring frustum at the worst-total pose is structure 260,243 + props 142,227 + people 0 + fixtures 52,028 = 454,498
+                                over by: 154,498 tri
+PASS  frustum draw calls         [###.................]        175 / 1,041  (16.8%)  2,597 tri a draw against a 4,800 break-even batch
+                                goes red at: 5.9x today's group count in view
+PASS  draw calls, whole frame    [######..............]        364 / 1,041  (35.0%)  323 interior resident (3 resident cells of 18) + 41 exterior; culling takes the interior to 175
+                                goes red at: 2.9x, ie 3 decks resident at once
+FAIL  resident triangles         [#########################################]    377,069 tri / 180,000 tri  (209.5%)  worst standing position: 3 of 18 cells in memory, 245 instances; the whole deck is 1,264,432 tri and that is what _load_level would hold
+                                over by: 197,069 tri, 2.09x this file's own three-cell resident budget
+
+  what looking up costs, from the worst standing position (no occlusion applied -- see
+  the ladder above for which rung is missing):
+     pitch -30 deg    210,128 tri
+     pitch -15 deg    300,911 tri   OVER the allowance
+     pitch  +0 deg    454,498 tri   <- the gated pose   OVER the allowance
+     pitch +15 deg    506,400 tri   OVER the allowance
+     pitch +30 deg    626,408 tri   OVER the allowance
+     pitch +45 deg    411,573 tri   OVER the allowance
+     pitch +60 deg    446,560 tri   OVER the allowance
+     pitch +90 deg    495,837 tri   OVER the allowance
+     worst +30 deg at 626,408 tri -- 1.38x the gated pose, 209% of the allowance.
+     These are per-TRIANGLE counts with no occlusion and the whole deck resident, so they
+     are the ceiling rather than the frame: the table above prices the same views at the
+     cull unit the engine uses. What closes the pitched views is the same thing that closed
+     the level one -- residency, then the cell cut, then the occluder, in that order of size.
+PASS  shipped camera not wider   [####################]         70 deg / 70 deg  (100.0%)  player.gd; at that fov the same pose renders 454,498 tri, +0 against the budgeted camera
+                                goes red at: any fov above 70 deg vertical
+
+Collision -- the mesh a body stands on, which is not the one it looks at
+
+  deck      15,154 triangles (3,504 corridor shell + 11,650 rooms, vestibules, door panels and prop boxes) for 1,273 m of walkable arc, 2,752 m2 of floor, in 14 s
+  tolerance MAX_SAG_M = 5 mm sizes the shell's angular step; STEP_TOLERANCE_M = 5 mm is what `floor_steps` certifies a floor against
+PASS  corridor shell tessellation [####################]      1.000x / 1.000x  (100.0%)  438 steps built, 438 needed at 5 mm -- sag scales as the square of the step
+                                goes red at: any step finer than the certified floor tolerance
+PASS  drum tile stride           [####################]      1.000x / 1.000x  (100.0%)  tile of 25 patches, 51,200 tri, 0.1267 tri/m2 -- the next stride up errs 0.193 m against a 0.10 m step, so stride 1 is the coarsest that fits
+                                goes red at: any tile built finer than the stride `collision_stride()` derives
+PASS  station collision resident [###############.....]    632,100 tri / 800,000 tri  (79.0%)  58,660 ring decks + 573,440 drum ground at lod0 = 126 MB at 200 B/tri
+                                goes red at: 1.27x -- one deck's RENDER mesh handed to the physics engine is 1,264,432 tri, 158% of this allowance on its own
+  the drum is 91% of that total and `deck.py --sweep`'s headline omitted it until this file measured it -- the sweep called 58,660 'the whole walkable station' and summed ring decks only. It now prints all three numbers.
+
+Streaming cells -- the unit the runtime loads (stream.gd, 955 baked cells)
+
+  worst habitat cell: grey ring_2 deck 11 at 1.246 g -- 18 cells of 20.0 deg, 121 m, 39,128 tri
+PASS  habitat cell triangles     [#############.......]     39,128 tri / 60,000 tri  (65.2%)  2,179 m ring would be 704,304 whole
+PASS  resident set (3 cells)     [#############.......]    117,384 tri / 180,000 tri  (65.2%)  the cell you are in plus both neighbours
+  worst plant cell: grey ring_1 deck 0 at 1.693 g -- 18 cells of 20.0 deg, 164 m, 57,048 tri
+PASS  plant cell triangles       [###################.]     57,048 tri / 60,000 tri  (95.1%)  2,961 m ring would be 1,026,864 whole -- priced with the corridor kit as a placeholder
+PASS  bent corridor rate         [################....]        323 tri/m / 400 tri/m  (80.8%)  +10% against the straight kit's 294 tri/m -- each bent section carries its own end caps
+
+Habitat drum, where everything is visible at once -- the EXPORTER's part list, swept
+
+  subject   green, 4.5 million m2 of inner surface, 4 angles x 3 axial stations = 12 standing eyes in 96 s
+  worst     270 deg at z = 5132 m, 290,164 tri: core 13,340, dressing 114,910, endcap_aft 7,536, endcap_fore 7,536, ground 70,880, guideways 11,796, spokes 516, townscape 51,026, trams 12,624
+  spread    best eye 245,254, half-resolution lattice finds 250,748 against 290,164 -- 13.6% lattice error
+
+PASS  drum visible set           [###################.]    290,164 tri / 300,000 tri  (96.7%)  the worst standing eye on the lattice, every part the shot builds
+                                goes red at: the four parts this gate could not see before 4q are 191,900 of it
+PASS  drum share of frame        [###################.]       24.2% / 25.0%  (96.7%)  no occlusion -- there is no wall to hide behind
+PASS  surface density            [##..................]      0.064 tri/m2 / 0.500 tri/m2  (12.8%)  ground alone is 0.016; the other 219,284 triangles are objects standing on it
+
+headroom: 9,836 triangles across 4.5 million m2 -- +0.002 tri/m2. For ground detail, buildings, trams and vegetation.
+PASS  deck primitives shipped    [#############.......]        401 / 600  (66.8%)  401 primitives over 401 distinct group names (89 of them people). The bound is on NAMES: a cell cut multiplies primitives on purpose, an unmerged body multiplies names by twelve
+                                goes red at: about 250 more inhabitants on one deck, or a body emitting its parts unmerged again (that alone was 1,262)
+Note: these gate the numbers framerate is a function of. They say nothing
+about actual framerate, which needs the target hardware.
+
+23/28 within budget
+over: occluder reaches the engine, frustum structure, structure share of frame, frustum, everything, resident triangles

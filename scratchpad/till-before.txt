@@ -1,0 +1,4 @@
+BOOT DECK blue_0_0: 16 interactables, 1 with a serve verb
+   docking_bays__prop_bay_control_booth       sells=False tier4=False (docking_bays is not a counter)
+BOOT DECK counters that can take a credit: 0
+STATION serve props that can take a credit: 9 of 28

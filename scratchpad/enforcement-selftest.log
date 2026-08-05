@@ -1,0 +1,18 @@
+enforcement.py -- the arithmetic behind a refusal
+  ok   the rebuilt player is the rung the engine holds -- 0 (no_status) == purse 0.0
+  ok   the boot deck has places that read a card -- 6 of 6 rooms
+  ok   response time VARIES across the deck -- 0 s at the nearest, 227 s at the furthest
+  ok   a place with its own post answers in zero seconds -- bay_elevators, docking_bays
+  ok   every responding pair is one band, one bare -- 6 of 6
+  ok   a refusal at a door never withdraws a permission, at ANY rung -- grade 1 is not `ordinary` (Record.ordinary counts grade 2); revoking rungs: none
+  ok   and a grade-2 conviction DOES, on the second one -- transit: 1st -> first conviction: fined, transit s; 2nd -> 2 ordinary convictions; transit withdrawn
+  ok   the fine sits inside the offence's own band -- 9.62 cr in 8.00-10.00 (1 day of wages)
+  ok   and the player can pay it, so 'paid' is not a fiction -- 9.62 of 382.02 cr
+  ok   the hold depends on the hour of arrest -- 0.8 h at 06:00, 23.8 h at 07:00
+  ok   one refusal in five detains, over the whole register -- 22 of 98 = 0.224 against DETAIN_ON_FAIL 0.2
+  ok   and it is deterministic in the event
+  CONTROLS -- each removes one input; the claim must stop holding
+  FIRED control: route every turn-out from HQ, not from the nearest post -- nearest becomes 706 s, span 206 s -- 2.6's 'to the Zocalo it is seconds' is gone
+  FIRED control: take the place and the stop count out of the fork's key -- 0 of 98 detain -- one number, 98 times
+  FIRED control: ask rung 3's disposal for a fine -- fine_for(move_on) = (0.0, 0.0, 0.0) -- 0 days of wages, so nothing is taken
+enforcement selftest PASS -- 11 checked, 0 failed
