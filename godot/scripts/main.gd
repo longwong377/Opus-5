@@ -102,6 +102,8 @@ var _streamer = null
 ## so in as many words, and names this file as the fix. Ten is the count of
 ## times this project has shipped finished machinery with no caller.
 var _vista: Node = null
+## The HUD, found once. See `_vista_update` for why this is not a call.
+var _hud_cache = null
 ## Which place `_vista` is currently built for, "" for none.
 var _vista_place := ""
 ## LAZY, AND THE TRIANGLE BUDGET IS WHY -- this is not the one-liner the
@@ -560,7 +562,15 @@ func _process(_delta: float) -> void:
 func _vista_update() -> void:
 	if _mode != "station":
 		return
-	var hud = _hud()
+	# CACHED, AND `_hud()` IS WHY. It is `_find_where(self, ...)`, a RECURSIVE
+	# WALK OF THE WHOLE TREE -- fine for the once-per-run callers it was written
+	# for and a real regression from `_process`, where the tree holds every mesh
+	# instance, walker and prop in three resident cells. The shipped frame is
+	# 5.48 ms with 3.0x headroom; a per-frame tree walk is exactly how that gets
+	# spent without anybody noticing, because no gate here times `_process`.
+	if _hud_cache == null or not is_instance_valid(_hud_cache):
+		_hud_cache = _hud()
+	var hud = _hud_cache
 	var key := "" if hud == null else String(hud.get("place_key"))
 	if not hud_inside(hud):
 		key = ""
