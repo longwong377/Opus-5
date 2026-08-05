@@ -91,6 +91,61 @@
        "text": "validate.py asserts each component produced geometry and stayed inside the radius envelope. Nothing asserts a component is closed, and no assertion has been deliberately broken."
       }
      ]
+    },
+    {
+     "round": 2,
+     "reviewer": "builder, session 4r -- THE FIRST ENGINE-RENDERED SCORE THIS SUBSYSTEM HAS EVER HAD. Round 1 was seeded from STATE.md prose on 2026-07-27 and never re-taken, while four of the nine component kinds were rebuilt underneath it. Scored BEFORE any change in this session, at the rubric's three distances, every frame confirmed 'Vulkan 1.4.318 - Forward+'.",
+     "date": "2026-08-05",
+     "scores": {
+      "craft": 1,
+      "fidelity": 3,
+      "performance": 4,
+      "robustness": 3
+     },
+     "evidence": {
+      "craft": "Three distances, derived from each component's own size and SHOT_FOV_DEG=46 over 720 rows rather than chosen: normal = the instance spans half the frame height, half = half of that, one pixel = the instance spans one row. cargo_module 278/139 m (docs/craft-4r-ext-cargo-before-normal.png, docs/craft-4r-ext-cargo-before-half.png); comms_grid_pylon 2,533/1,267 m (docs/craft-4r-ext-pylon-before-normal.png, docs/craft-4r-ext-pylon-before-half.png); observation_rotunda 146 m (docs/craft-4r-ext-rotunda-before-half.png); cobra_bay 81 m (docs/craft-4r-ext-cobra-half.png); reactor_cooling_fin 947 m face-on (docs/craft-4r-ext-coolingfin-half.png); heat_exchange_solar_array 609 m (docs/craft-4r-ext-heatarray-half.png); one-pixel-of-a-cargo-module = 106 km (docs/craft-4r-ext-onepixel.png), where the silhouette IS still unmistakably Babylon 5 and the fin cluster reads as a dark cross. Per-group articulation, measured PER GROUP because a module-wide average hides a flat surface inside itself: cargo_module lam 0.0228 with a 110.7 m unbroken facet and 36 facets for 6 modules; comms_grid_pylon lam 0.0120 with a 517.6 m unbroken facet and 24 facets for 2 pylons; against reactor_cooling_fin 0.3076 and cobra_bay 0.1131.",
+      "fidelity": "Every built dimension traces: cobra column width 0.228 of the bay unit measured at native 843x474 off 01-station-exterior/Cobra Bays with starfurries.webp (INV-040); DOME_MULLIONS=16 counted off 03-sector-blue/comand and contorl.webp (INV-041); radiator planform read off 01-station-exterior/exterior more.jpg (C-007); rib constants INV-073. What is NOT built is the finding below.",
+      "performance": "53,568 component triangles at full detail = 13.4% of BUDGETS['exterior_triangles'] = 400,000, and 14.1% of hull_lod0.obj's 381,210 faces. The chain decimates them off ONE knob rather than a second schedule -- lod.component_detail returns the level's own greeble_detail -- measured at detail 1.00/0.55/0.30/0.10/0.00 = 53,568/38,568/29,184/22,608/19,800.",
+      "robustness": "station/components.py 44/44. Closure (boundary_edges) and outward winding (signed_volume) asserted on EVERY one of the 17 emitted groups, not on the ones that broke; _selftest_winding feeds _slab a LEFT-HANDED triple and requires -30.000, so it cannot pass by ignoring its frame; the cobra arc-pitch guard is shown both rejecting a double-width bay and accepting the schema's own layout; a __misnaming_builder is registered inside the test to prove build_all's id guard fires."
+     },
+     "broke_assertions": false,
+     "findings": [
+      {
+       "severity": "blocking",
+       "dimension": "craft",
+       "descriptor": "C1",
+       "where": "station/components.py:dorsal_line -- docs/craft-4r-ext-cargo-before-half.png",
+       "text": "THE CARGO MODULES ARE ONE BOX EACH. 72 triangles for six modules is 12 apiece, which is a cuboid and nothing else: 36 facets over the group, a 110.7 m unbroken face, lam 0.0228. At the half distance the frame is a dark red slab filling 720 of 720 rows with no hatch, no rib, no door, no seam and no fitting, sitting on a hull that carries plating, window rows and greebles. This is AAA-STANDARD's C1 verbatim -- 'a box primitive standing in for a named object'."
+      },
+      {
+       "severity": "blocking",
+       "dimension": "craft",
+       "descriptor": "C1",
+       "where": "station/components.py:pylon_pair -- docs/craft-4r-ext-pylon-before-half.png",
+       "text": "THE DEEP SPACE COMMUNICATIONS GRID IS TWO BOXES PER SIDE. 48 triangles for two pylons is 24 apiece -- one box for the 1,060 m strut, one for the 893 x 300 m grid panel. 24 facets, a 517.6 m unbroken face, lam 0.0120, the lowest number in the subsystem. Its own docstring says it 'is the widest structure on the station -- 2,120 m tip to tip, against a hull that is under 1 km at its broadest -- so it dominates the silhouette from any angle and is worth placing precisely'; it was placed precisely and never built. At 1,267 m it is a featureless plank."
+      },
+      {
+       "severity": "major",
+       "dimension": "craft",
+       "descriptor": "C2",
+       "where": "station/components.py:domes -- docs/craft-4r-ext-rotunda-before-half.png",
+       "text": "The domes have the right mass and no articulation, and the glazing does not read as glazing: the shell renders in the same pale hull value as the plate around it, with the hull material's window-row decal running straight over the blister, so a 124 m observation rotunda reads as a faceted beige bulge rather than as a window. Mullions stop at the band by design, leaving the top 58% one unbroken cap of visible 16-segment facets. The frame group carries all the line-work the object has (lam 0.2799 against the shell's 0.0899)."
+      },
+      {
+       "severity": "major",
+       "dimension": "fidelity",
+       "descriptor": "F3",
+       "where": "station/schema/station.yaml::components[cargo_module] -> station/components.py:dorsal_line",
+       "text": "THE SCHEMA SOURCES THREE THINGS AND THE BUILDER EMITS ONE. cargo_module's src reads 'exterior more.jpg top view -- six dark-red modules countable on a continuous raised dorsal rail with grey plinths between them' and it carries rail: True. `rail` appears nowhere in station/components.py -- grep confirms the only 'rail' in the file is planar_blades' own spine rail -- so the rail and the plinths are sourced, declared in the schema, and unbuilt. A schema key no builder reads is a sourced fact that silently does nothing. reactor_cooling_fin's root_taper: 0.5 is unread for the same reason, benignly: planar_blades replaced the taper with a measured PLANFORM, which is better, and the dead key was left behind."
+      },
+      {
+       "severity": "major",
+       "dimension": "robustness",
+       "descriptor": "R3",
+       "where": "station/components.py:_selftest",
+       "text": "The assertions cover classes rather than instances and four of them have working negative controls, which is R3. R4 needs two things this does not have. (1) The closure and winding checks that run over all 17 groups have never been deliberately broken -- no control exists that makes a group fail them, so their failure mode has not been observed. (2) Nothing asserts an interface: no check anywhere says a component does not interpenetrate the greebles, the docking-bay apertures or another component of a different kind. The only clearance assertion in the file is the cobra ring's arc pitch, which is one kind against itself."
+      }
+     ]
     }
    ]
   },
