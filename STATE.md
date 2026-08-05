@@ -552,6 +552,55 @@ register-modelling question about a place that is 4.6 km long, and it wants its 
 
 *A gate whose output you read through `tail` is a gate you have not read.*
 
+### 25.2 THE `deck_gap` FIFTEEN: TWO BUILD PATHS, 54 m APART, AND ONLY ONE CONSUMER FEELS IT
+
+The gate's third category said *"the two build paths put the same place on different decks"*.
+Measured rather than left as a sentence, and the measuring changed the finding twice.
+
+**The disagreement is real and it is large.** For the 15 places whose register deck NUMBER exceeds
+the generated stack depth, `rooms.room_extent_m` clamps to the innermost deck and
+`deck.deck_index` ranks the distinct numbers into indices. Worst gap **54.0 m** of radius
+(`thieves_guild`), mean **28.3 m**.
+
+**And one path throws Grey's deck ladder away entirely.** Thirteen of Grey ring 0's twenty
+registered places — decks 22, 24, 26, 30, 40, 42, 50, 55, 60, 65, 70, 75, 80 — collapse onto deck
+index 22, so `black_market`, `thieves_guild`, `fabrication`, `research_labs`, `raw_material`,
+`micro_g_bays` and the **variable gravity research torus** are all computed at 392.1 m and
+**1.409 g, the same number**. The gazetteer calls that torus *"the single most interesting piece of
+set-dressing the schematic names, because the project already simulates exactly the physics it
+exists to study"* — and one of the two paths puts it at the same gravity as the thieves' guild.
+`deck.deck_index` spreads them 1.460–1.693 g, which is the ladder the register was describing.
+
+**THEN TWO OF MY OWN HYPOTHESES DIED, IN THE RIGHT ORDER.** I wrote that the rooms would be built
+~12% too narrow for the decks they sit on — `deck.py::room_half_w_m` and `room_shell_for` size a
+room from `room_extent_m` while `deck._ring_cells` places it by the ranked index, which is one file
+using two paths for one place. Measured: **0 of 15 change the built room width.** Every one is
+clamped by `min(w_full, bay_span_m)` — `w_full` runs 18–205 m and the bay is 5–14 m, so the bay
+always wins. The geometry never sees it.
+
+So where does 54 m of radius actually go? Measured, not reasoned:
+
+| consumer | affected | why | size |
+|---|---|---|---|
+| built room geometry | **0 of 15** | `min(w_full, bay_span_m)` clamps every one | — |
+| `density.py` articulation area | **6 of 15** | the 98.9 m interior sight line clamps the other nine | +2.3% … +11.2% |
+| `economy.floor_m2` | **15 of 15** | unclamped — it multiplies the raw arc | +2.7% … +13.8%, **+5.7%** over the set (~27,000 m²) |
+
+`density.py`'s area sets the articulation FLOOR, so for those six the bar is being set from a room
+smaller than the one that exists. `economy.floor_m2` feeds rent, occupancy and trade for all
+fifteen. Neither is catastrophic and both are wrong.
+
+**NOT FIXED HERE.** `deck.deck_index` is plainly the rule — its docstring says why (*"a show-facing
+deck NUMBER is a name, and using a name as an index is the same mistake as placing a corridor at a
+z-cluster's bucket label"*) and `room_extent_m`'s clamp is undocumented incidental behaviour. But
+collapsing them moves 15 radii, so it belongs in the SAME rebuild as the `z_aware` flip rather than
+in a second 23-minute one. Both are "make the radius honest"; verify them together, against the
+per-place delta table computed above rather than against a hope.
+
+*The measurement that mattered was the one that killed my own claim. A disagreement between two
+paths is not a defect until you have found the consumer that feels it — and here the loudest
+candidate was clamped and the quiet one was not.*
+
 **OPEN, AND IT IS THE NEXT INCREMENT:** flipping `place_floor_radius(z_aware=True)` and passing
 `narrowest_z` into `deck._ring_cells` is what actually moves the 35. It re-radiuses most of Blue
 and the Zocalo, so it needs a full `rooms.py --footprint` rebuild (23 min) plus `deck.py --sweep`,
