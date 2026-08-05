@@ -176,3 +176,65 @@ enter the exterior craft judgement and these scores survive that constant moving
 exterior ladder's triangle counts WILL move and are quoted in
 `docs/aaa-scorecard.json::exterior_components` round 3 at the 50° calibration; re-check them
 after the flip.
+
+---
+
+## 5. `station/schema/station.yaml` — TWO COMPONENTS INTERPENETRATE, and this is blocking
+
+**`python3 station/components.py` now exits 1 on this, deliberately.** It is 55/56, the CI
+step carries `continue-on-error` so it blinds nothing behind it, and `budget.py` is the
+precedent: a gate that is honestly red stays red and the fix is a decision somebody makes
+rather than a threshold somebody tunes.
+
+`components.dome_intrusions` tests other components' vertices against a dome's exact
+half-ellipsoid interior. It reports:
+
+| dome | at | intruder | vertices inside | deepest |
+|---|---|---|---|---|
+| `observation_dome` (Dome 2) | 90.0° / z 7180 | `cobra_bay` | 70 | **32.3 m** |
+| | | `cobra_bay_well` | 48 | 25.5 m |
+| `observation_dome` (Dome 1 — **Command & Control**) | 90.0° / z 7060 | `cobra_bay` | 6 | 7.3 m |
+| | | `cobra_bay_well` | 17 | 5.5 m |
+| `docking_port` (Primary) | 90.0° / z 5240 | `cargo_module` | 290 | **49.8 m** |
+
+**Both clashes are PRE-EXISTING.** Measured against `git show 1982be0:station/components.py`,
+the dome/cobra rows are identical and the docking-port row read 2 vertices at 29.7 m. **My
+rework deepened the second one** — 29.7 → 49.8 m and 2 → 290 vertices — because the cargo
+rail is now *continuous* through z 4870–6010, as both authority-2 sources say it is, where
+before there was empty hull between modules 1 and 2. The clash is not mine; that part of its
+depth is.
+
+**Why it cannot be fixed in `station/components.py`.**
+
+*Cobra bays vs domes:* re-clocking the ring does not help. At r = 167 m the 28-bay ring has a
+25.71° pitch of which a bay envelope eats 14.8°, leaving a **10.9° gap**; a 46 m dome needs
+**31.6°**. The dome does not fit between two bays at any phase. Cobra ring 1 #3 currently sits
+at exactly 90.00° / z 7182.5 against a dome at exactly 90.0° / z 7180.0.
+
+*Cargo train vs docking port:* both are on the 90° meridian, the port is 88 m in radius and
+52 m tall against modules 46 m proud, and the train spans z 4870–6010 across the port's
+z 5150–5330. A 176 m diameter port and a cargo train on the same meridian cannot coexist.
+
+Both are PLACEMENT decisions and placement lives in the schema.
+
+**Corroborated from two directions this file cannot see**, which is why the domes are the
+likelier thing to move: `interior.hull_fit()` independently lists `obs_dome_1` and
+`obs_dome_2` among 34 located places built outside the pressure hull, and `--vista-gate`
+reports both domes authored facing forward past the nose. Three unrelated measurements now
+say the domes are in the wrong place.
+
+### The options, in the order I would try them
+
+1. **Move the observation domes off the cobra ring's z band.** They are placed z 7000–7240
+   against a cobra ring at z 6980–7250 — the same band. Contract 5 puts both "on the forward
+   docking structure", which is a region and not a coordinate. This is the change the
+   `hull_fit` and `vista-gate` findings point at anyway, so it is one fix for three symptoms.
+2. **Give `cobra_bay` a `phase_deg`** and move the domes to a meridian a bay gap can hold —
+   only viable together with a smaller dome or a shorter ring, per the 10.9° vs 31.6° above.
+3. **Move the cargo train's meridian off the primary docking port's.** `plane_deg: 90` on
+   both. The sheet establishes the train is *dorsal* and on one meridian; it does not
+   establish which meridian relative to the port.
+
+Whichever is chosen, `components.dome_intrusions` is the check that says it worked, and its
+control (withhold one intruding group, assert exactly that group's rows disappear) is what
+stops it going vacuous.

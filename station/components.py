@@ -1811,6 +1811,62 @@ def boxed_control(parts, specs, groups):
 #
 # An exemption must say why and must name what would end it. Metadata keys are
 # not builder input and are exempt by kind rather than by name.
+def dome_intrusions(specs, profile, parts):
+    """Vertices of other components sitting INSIDE a dome's glazing.
+
+    THE INTERFACE ASSERTION THIS FILE DID NOT HAVE, and AAA-STANDARD names its
+    absence as the standing ROBUSTNESS 5 counter-example: "168 of 3,144 car
+    vertices sit 6.43 m inside a radial spoke, and both modules' self-tests
+    pass, because neither module asserts anything about the other." Every other
+    check here asks one component about itself.
+
+    A dome is the one component in this file with an exact analytic interior --
+    a half-ellipsoid of `radius_m` by `height_m` about its own outward axis --
+    so membership is a closed-form test rather than a mesh intersection, which
+    is why the interface check starts here rather than everywhere.
+    """
+    out = []
+    domed = [s for s in specs if s["kind"] == "domes"]
+    for dome in domed:
+        rad, hgt = dome["radius_m"], dome["height_m"]
+        rows = dome.get("rows", 1)
+        per_row = max(1, dome["count"] // rows)
+        for row in range(rows):
+            zc = (dome["z0"] + (dome["z1"] - dome["z0"]) * (row + 0.5) / rows
+                  if rows > 1 else (dome["z0"] + dome["z1"]) / 2.0)
+            r0 = radius_at(profile, zc)
+            for i in range(per_row):
+                a = (2 * math.pi * i / per_row
+                     + math.radians(dome.get("phase_deg", 0.0)))
+                ca, sa = math.cos(a), math.sin(a)
+                c = (ca * r0 * 0.97, sa * r0 * 0.97, zc)
+                outv = (ca, sa, 0.0)
+                (ax, ay, az), (bx, by, bz) = dome_frame(outv)
+                for other in specs:
+                    if other["id"] == dome["id"]:
+                        continue
+                    for gid, (verts, _t) in parts.items():
+                        if not gid.startswith(other["id"]):
+                            continue
+                        n = deep = 0
+                        deep = 0.0
+                        for p in verts:
+                            d = (p[0] - c[0], p[1] - c[1], p[2] - c[2])
+                            h = d[0] * outv[0] + d[1] * outv[1] + d[2] * outv[2]
+                            if h < 0.0:
+                                continue
+                            u = d[0] * ax + d[1] * ay + d[2] * az
+                            v = d[0] * bx + d[1] * by + d[2] * bz
+                            q = (u * u + v * v) / (rad * rad) + h * h / (hgt * hgt)
+                            if q < 1.0:
+                                n += 1
+                                deep = max(deep, (1.0 - math.sqrt(q)) * rad)
+                        if n:
+                            out.append((dome["id"], round(math.degrees(a) % 360, 1),
+                                        round(zc), gid, n, round(deep, 1)))
+    return out
+
+
 SPEC_META_KEYS = ("id", "kind", "auth", "src")
 SUPERSEDED_SPEC_KEYS = {
     ("reactor_cooling_fin", "root_taper"):
@@ -2105,6 +2161,55 @@ def _selftest():
           unread_spec_keys([dict(cargo, **{probe: 1})])
           == [("cargo_module", probe)],
           str(unread_spec_keys([dict(cargo, **{probe: 1})])))
+
+    # -- THE INTERFACE ASSERTION, AND IT FAILS -----------------------------
+    # This one is RED on the content as it stands and it is meant to be. The
+    # fix is not available from this file: cobra bay ring 1 #3 sits at exactly
+    # 90.00 deg and z 7182.5, observation dome 2 at exactly 90.0 deg and
+    # z 7180.0, and the two cannot be separated by re-clocking the ring --
+    # at r=167 m the 28-bay pitch is 25.71 deg and a bay envelope eats 14.8 deg
+    # of it, leaving a 10.9 deg gap, while a 46 m dome needs 31.6 deg. They
+    # compete for the same band, which is a PLACEMENT decision living in
+    # station/schema/station.yaml, not a geometry decision living here.
+    #
+    # It is corroborated from a direction this file cannot see:
+    # `interior.hull_fit()` independently reports obs_dome_1 and obs_dome_2
+    # among 34 located places built outside the pressure hull, and
+    # `--vista-gate` reports both domes authored facing forward past the nose.
+    # Three unrelated measurements say the domes are in the wrong place.
+    #
+    # DO NOT SILENCE THIS BY MOVING A NUMBER. `budget.py` is the precedent: a
+    # gate that is honestly red stays red, the CI step carries
+    # `continue-on-error` so it blinds nothing behind it, and the fix is a
+    # decision somebody makes rather than a threshold somebody tunes. The
+    # proposals are in scratchpad/PATCHES-4r-exterior.md section 5.
+    intrusions = dome_intrusions(specs, profile, parts)
+    check("no component's geometry sits inside an observation dome's glazing",
+          not intrusions,
+          "; ".join(f"{g} has {n} vertices up to {deep} m inside {did} at "
+                    f"{adeg} deg / z {z}"
+                    for did, adeg, z, g, n, deep in intrusions[:4])
+          + f"  [{len(intrusions)} group/dome pairs]")
+    # AND THE CONTROL, which caught a second clash on its first run and is the
+    # reason it is written this way. Withholding ONE intruding group must
+    # remove exactly that group's rows and leave every other row standing --
+    # withholding the cobra groups and asserting silence was the first version,
+    # and it failed, because `cargo_module` has its own intrusion into
+    # `docking_port` that the cobra groups have nothing to do with. A control
+    # that expects silence assumes it already knows every defect.
+    intruding = sorted({row[3] for row in intrusions})
+    control_ok = True
+    detail = []
+    for gid in intruding:
+        held = {g: p for g, p in parts.items() if g != gid}
+        got = dome_intrusions(specs, profile, held)
+        want = [r for r in intrusions if r[3] != gid]
+        if got != want:
+            control_ok = False
+            detail.append(f"withholding {gid} changed rows it does not own")
+    check("and withholding an intruding group removes exactly its own rows",
+          bool(intruding) and control_ok,
+          "; ".join(detail) or "no intruding group to withhold")
 
     tris = sum(len(t) for _v, t in parts.values())
     print(f"\n  {tris:,} component triangles across {len(parts)} groups")
