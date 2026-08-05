@@ -7095,3 +7095,225 @@ rather than the rule being invented to justify it. `triage` is deliberately excl
 emergency care is not a border.
 **Overturned by.** Any depiction of a stateless patient treated in a station medlab.
 **Authority 5.** `station/consequence.py::GATED_FUNCTIONS`.
+
+## INV-350 — The fault rate is bounded by the maintenance roster, not by an invented MTBF
+
+**What.** A declared interactable needs a corrective visit every 365 days. Against the
+182,905 instances `rooms.bays_in` tiles across the register (367 declared types × 51,465
+bays) that is 501 visible faults/day station-wide, which is 5.92% of what the maintenance
+roster can close.
+**Why.** THE-STATION §2 T4 wants "a machine breaks; a maintenance job is created and somebody
+walks to it" and nothing in canon gives a failure rate.
+**Constrained by.** FROM ABOVE by the roster: `schedule.ROLE_WEIGHTS` carries 14,430 engineers
++ 2,500 waste = 16,930 heads; one 8 h watch each, 25% of it corrective, 4 h a job = 8,465
+jobs/day of capacity. A station generating more than that degrades without bound, which the
+show's station visibly does not. That ceiling puts the shortest survivable MTBF at 21.6 days,
+so 365 sits 17× inside it. FROM BELOW by T4 itself: an MTBF of decades makes the maintenance
+job a thing a player never sees.
+**Overturned by.** Any figure for B5 maintenance volume, work-order throughput, or fitting
+reliability.
+**Authority 5.** `station/incident.py::MACHINE_MTBF_DAYS`, `CORRECTIVE_SHARE`, `JOB_HOURS`.
+*Note: the first draft of this entry used the workforce ceiling AS the fault rate and its own
+sanity check refuted it — 357 interactable types over 8,465 jobs/day implies a 0.04-day MTBF.
+The types/instances distinction is the correction.*
+
+## INV-351 — Petty theft: three dozen a day, weighted by crowd × density
+
+**What.** 36 thefts a station-day, distributed over the 31 register places theft can happen in
+by `people × people per m²`. Downbelow 11.2/day, Downbelow arch 8.5, the Zocalo 7.4, the black
+market 3.3.
+**Why.** LAW-CRIME-DOWNBELOW.md §8.2 files petty theft as "Constant — dozens/day", authority 4
+for the crime and 5 for the frequency, and gives no distribution.
+**Constrained by.** "Dozens" read as three dozen — the plural puts it above 24 and the word
+puts it below 100. The WEIGHT is constrained by the same sentence's "Everywhere; concentrated
+at customs exits, the Zócalo, and *within* the camps": two of those three are the most heavily
+policed places aboard, so policing cannot be the driver and density is. Whether the thief is
+CAUGHT is where `security.presence_at` belongs, and `_res_pick` puts it there.
+**Overturned by.** Any figure for reported thefts aboard, or an on-screen Ombudsman caseload.
+**Authority 5.** `station/incident.py::THEFTS_PER_DAY`, `_theft_weight`.
+
+## INV-352 — One denunciation per Nightwatch informer per year
+
+**What.** 2,250 civilian informers each file one box report a year = 6.16 denunciations/day
+station-wide, distributed by crowd over public commercial rooms.
+**Why.** `docs/spec/PEOPLE.md` FAC-04 gives the informer count (1,500–3,000, "1–2% of 155,000
+humans") and no filing rate.
+**Constrained by.** FROM ABOVE by FAC-04's own "Present, growing, NOT in control at datum" —
+a rate that shuttered a stall a day would be control. FROM BELOW by "enough that a denunciation
+is credible in any public room": at 6/day a Zocalo trader knows somebody it has happened to.
+**Overturned by.** Any depicted volume of Nightwatch filings.
+**Authority 5.** `station/incident.py::INFORMERS`, `FILINGS_PER_INFORMER_YEAR`.
+
+## INV-353 — A resident touches an identicard reader 0.05 times an hour
+
+**What.** Outside the customs halls, a reader event rate of 0.05 per head per hour present.
+**Why.** `docs/spec/SYSTEMS.md` SYS-03 puts readers on doors, counters and lifts across the
+register and gives throughput only for the halls (`traffic.hall_rate`).
+**Constrained by.** One reader touch every 20 hours present is roughly one a day per resident,
+which matches a card used to get into your own quarters and one licit counter — the tier
+ladder INV-340/342 already assumes. Higher makes the reader the commonest event on the
+station; lower makes INV-342's "a licit counter reads the card" decorative.
+**Overturned by.** Any depicted card-use frequency for a resident.
+**Authority 5.** `station/incident.py::READER_TOUCHES_PER_HEAD_H`.
+
+## INV-354 — One arrival in a hundred with an unnumbered atmosphere is a quarantine
+
+**What.** 1% of the `arrival.checks` station-7 atmosphere flags escalate to a medical hold.
+**Why.** TRAFFIC-AND-CUSTOMS §9 lists "a ship arriving with a medical case and triggering
+quarantine" among its authority-5 failure modes with no rate; the customs board's own
+"MAY BE CREATED BY PRIOR ARANGEMENT" (authority 1) is the flag, not the quarantine.
+**Constrained by.** Above by PLACES.md PLC-046's isolation path being a room that is normally
+empty (§353: "quiet 03:00–06:00 except INC-QUAR"). Below by the room existing at all. Lands at
+~0.03/day, i.e. one a month.
+**Overturned by.** Any depicted quarantine frequency.
+**Authority 5.** `station/incident.py::QUAR_SHARE`.
+
+## INV-355 — INC-NC is anchored at the Zocalo, and the geography does the rest
+
+**What.** PLACES §0.2's own 0.02/h for a Narn–Centauri contact event is taken as the rate AT
+THE ZOCALO, and every other place scales by its own `crowd × narn share × centauri share`
+through `audio.species_mix`.
+**Why.** The spec states one number for a class that can fire in 21 places, and applying one
+number to 21 places would make the rate independent of who is in the room — the opposite of
+what FACTIONS §12 describes.
+**Constrained by.** The anchor is the spec's, verbatim. The shape is `populace.species_for`'s,
+sampled. `security.CONTACT_SHARE` (5%) is already inside the spec's figure, so it is not
+applied twice.
+**Overturned by.** A per-place figure in the spec, or `encounter.py` measuring the pass rate
+in a room rather than a corridor.
+**Authority 5.** `station/incident.py::NC_ANCHOR_PER_H`, `NC_ANCHOR_PLACE`.
+
+## INV-356 — A hold stack forms above 70% berth occupancy
+
+**What.** An arriving hull queues at the standoff ring when `traffic.berths_in_use` exceeds
+70% of the bay count, at a probability rising linearly to 1.0 at full; with one elevator down,
+half of all arrivals queue regardless.
+**Why.** TRAFFIC §4.3 gives the elevator bottleneck (24 movements/h, 62% used at peak) and
+SYS-02's eight-phase machine, and no saturation threshold.
+**Constrained by.** Above by §4.3's own "62% used at peak" — a threshold above that never
+fires. Below by the berth map running at 0.71–0.78 through the working day, so a threshold
+much under 0.70 would put a stack there permanently. The elevator term is §4.3's arithmetic:
+one unit does 12 movements/h against a peak demand of ~15.
+**Overturned by.** Any depicted berth-queue frequency.
+**Authority 5.** `station/incident.py::HOLD_LOAD`, `ELEVATOR_DOWN_BLOCK`.
+
+## INV-357 — Debts are called on a week's terms, and the Collector visits one camp at a time
+
+**What.** One seventh of the station's debtor pool is called on per day at 10:00, divided
+across the six camp places.
+**Why.** `docs/spec/PEOPLE.md` FAC-25 puts "the Collector's rounds through the camp at 10:00"
+and SYS-14 triggers the class on "FAC-25 ledger ages past terms", without naming the terms.
+**Constrained by.** A week is the shortest term that is a term rather than a same-day loan, and
+the pool is the STATION's — one Collector, six camps, so a camp gets its share. The first draft
+called a quarter of the book in every camp and reached 44 calls an hour, which the module's own
+step-size control detected as a rate no one-minute clock can resolve.
+**Overturned by.** Any depicted debt-enforcement interval.
+**Authority 5.** `station/incident.py::DEBT_TERM_RATE`, `DEBT_ROUND_H`.
+
+## INV-358 — Camp heat, the sweep threshold, and what a day boundary decays
+
+**What.** A Downbelow contact adds 1.5 to a camp's heat, a theft 1.0; at 6.0 a sweep becomes
+possible; a strike ballot needs 3.0 on the grievance board; heat and the debtor pool halve
+across a day boundary.
+**Why.** LAW-CRIME §5.5 says a sweep happens "occasionally, and always for a reason" and
+FAC-06 puts the strike ballot behind a "grievance board T4 threshold" — both name a trigger
+and neither names a level.
+**Constrained by.** The sweep threshold is four contact events in one camp, which is under
+three hours of `security.DOWNBELOW_CONTACT_PER_HOUR` — so a camp that is busy gets swept and a
+quiet one does not. The strike threshold is one dock fatality (2.0) plus one elevator outage
+(0.5) plus one more of either, so a strike needs a bad fortnight rather than a bad day. The
+decay exists because a ledger that only grows is not a ledger: without it the debtor pool
+compounds every day and INC-DEBT eventually swamps the station.
+**Overturned by.** Any depicted sweep or ballot frequency.
+**Authority 5.** `station/incident.py::SWEEP_HEAT`, `STRIKE_THRESHOLD`, `HEAT_DECAY`.
+
+## INV-359 — A diner holds a seat for an hour
+
+**What.** Seat turnover of 1.0 per hour in a venue, used to turn `populace.occupancy` into a
+flow of diners for INC-PAKMA.
+**Why.** SYS-14 triggers the class on "species meal windows 04:00/16:00 + a wrong-seat diner"
+and `economy.SERVE_PER_HEAD` prices servings, not seats.
+**Constrained by.** `economy.daily_covers` and `SERVE_PER_HEAD = 0.5` together imply a sitting
+of the same order; `schedule`'s meal windows are 1 h wide either side of the hour, so a
+turnover much faster than this would put two sittings inside one meal.
+**Overturned by.** Any depicted service pace in the Zocalo or a bar.
+**Authority 5.** `station/incident.py::SEAT_TURNOVER_PER_H`.
+
+## INV-360 — A bay elevator lasts ten thousand cycles
+
+**What.** 10,000 cycles between outages per unit. At 12 movements/h × 62% duty that is ~8
+weeks a unit, so one outage across the pair roughly every 28 days.
+**Why.** TRAFFIC §4.3 D-8/T-04 gives the pair, the ~90 s each way, the ~5 min full cycle and
+the 62% peak use, and calls one elevator down "the cheapest high-value event in this whole
+document" — which is a statement about VALUE, not about frequency.
+**Constrained by.** The document's own two words. "High value" means it must be an EVENT rather
+than routine, so not weekly. "The cheapest" means it must happen often enough to be worth
+building, so not annually. A LIFT FAILS ON CYCLES, NOT ON CALENDAR TIME, which is why this is
+not INV-350's 365 days: the first draft applied the calendar MTBF to the place's whole
+interactable population and produced 18.6 outages a day on two machines.
+**Overturned by.** Any statement of bay-elevator reliability or an on-screen outage.
+**Authority 5.** `station/incident.py::ELEVATOR_MTBF_CYCLES`.
+
+## INV-361 — A hundred recordable dock accidents to each fatality
+
+**What.** The dual-clearance chain fires at 100× the fatal rate and `_res_accident` draws the
+severity, so a dock accident lands every ~6 days and a fatality every ~500.
+**Why.** TRAFFIC §9 gives the S1 chain in full (substandard chip → mistaken clearance → two
+hulls in one volume → a dock worker killed, authority 4) and treats it as memorable, i.e. rare.
+**Constrained by.** The fatal rate is not chosen — it is the product of three things already
+modelled: a fault on the clearance console (one declared machine at INV-350's MTBF), a second
+hull in the volume (`traffic.berths_in_use` over the bay count), and a gang on shift
+(`schedule`'s 06:00–15:00). 100:1 is the industrial recordable-to-fatal ratio and is what turns
+one memorable fatality into a stream a player can be present for. Against 9,650 dockworkers the
+implied fatality interval is the right order for a heavy trade.
+**Overturned by.** Any figure for B5 dock injuries.
+**Authority 5.** `station/incident.py::ACCIDENT_RECORDABLE_PER_FATAL`.
+
+## INV-362 — Dust is one fiftieth of petty theft, in the same rooms
+
+**What.** INC-DUST fires at 0.02 × INC-PICK's rate over the black-market route places.
+**Why.** LAW-CRIME §8.2's table files petty theft as "Constant — dozens/day" and Dust as
+"Rare, and an event when it happens", two rows apart in the same column, with no numbers.
+**Constrained by.** The two rows must differ by orders and not by factors, and Dust must still
+fire often enough that S3E06's Psi Cop follow-up is reachable in a play session. Lands at one
+every ~6.5 days.
+**Overturned by.** Any depicted Dust seizure frequency.
+**Authority 5.** `station/incident.py::DUST_SHARE`.
+
+## INV-363 — A Psi Cop visits every three weeks
+
+**What.** 21 days between Psi Corps calls aboard.
+**Why.** `docs/spec/SYSTEMS.md` SYS-14 gives the trigger as "SYS-01 era draw (every few weeks)".
+**Constrained by.** "A few weeks" is two to four; three is its middle. FACTIONS §4.1's
+"paperwork-and-badge presence, not a garrison" bounds it from below (a weekly visit is a
+posting) and FAC-05's liaison office bounds it from above (an office with no visitors is not a
+liaison).
+**Overturned by.** Any count of Psi Cop appearances per season.
+**Authority 5.** `station/incident.py::PSICOP_DAYS`.
+
+## INV-364 — The Drazi split is even
+
+**What.** When the factional cycle is on, half the Drazi are on each side.
+**Why.** FACTIONS §15 and `docs/spec/PEOPLE.md` FAC-13 leave the colours and the cycle
+"deliberately unstated".
+**Constrained by.** An even split is the only reading that adds nothing to a fact the sources
+declined to state. The switch itself ships OFF, which is FAC-13's own datum state.
+**Overturned by.** Any depiction of the split.
+**Authority 5.** `station/incident.py::DRAZI_SPLIT`.
+
+## INV-365 — The probe volume is the register's adjacency, not a radius
+
+**What.** The fixed probe volume an incident rate is measured in is the register place the
+player stands in plus every place `directory.PLACES` lists as `adjacent` to it, resolved once
+at construction. At `customs_north` that is 3 places, 392 m of station and 188,851 m² of floor.
+**Why.** `docs/spec/SYSTEMS.md` SYS-14 requires "fixed probe volumes — the district cell
+holding the player plus its adjacent cells, fixed at tick start (never a floating radius an
+implementation can shrink)" without saying what a district cell is in register terms.
+**Constrained by.** It must be TOPOLOGICAL rather than metric, or the spec's own anti-cheat
+clause is defeated: any metre figure can be chosen after the numbers are in. The metric span
+is therefore an OUTPUT of the volume and is printed beside every rate. The witness radius is a
+separate number and is not this module's — it is `populace.corridor_sight_m` (60.5 m), read at
+call time.
+**Overturned by.** A definition of "district cell" in the spec that disagrees with the
+register's adjacency.
+**Authority 5.** `station/incident.py::Probe`.

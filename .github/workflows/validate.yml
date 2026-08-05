@@ -633,6 +633,30 @@ jobs:
         continue-on-error: true
         run: python3 station/consequence.py --gate
 
+      # THE INCIDENT GENERATOR -- P1-G3 / SYS-14. Twenty-two classes whose
+      # rates come from station state that already exists (traffic.hall_rate,
+      # traffic.berths_in_use, security.hostility, audio.species_mix,
+      # schedule.ROLE_WEIGHTS, arrival.checks sampled through its own code
+      # path, costume.ERA_EVENTS) rather than being authored, drawn per
+      # one-minute step over all 128 register places.
+      #
+      # The class table is checked against `docs/spec/PLACES.md` §0.2 AND
+      # `docs/spec/SYSTEMS.md` SYS-14 by PARSING BOTH FILES, both directions --
+      # a class here with no spec row, or a spec row with no class, fails.
+      #
+      # ~97 s: a 60-minute headless window over the whole station, five
+      # headless station-days (day 1, day 2 carried, day 2 fresh, the 4x-step
+      # control, the S2E01 control), the three-stance replay of all 22 classes,
+      # and six negative controls. It does NOT build geometry -- it reads
+      # rooms.bays_in for the tiling count and nothing else -- so it does not
+      # contend with the deck gates.
+      - name: The incident generator
+        id: sincident
+        continue-on-error: true
+        run: |
+          python3 station/incident.py --selftest
+          python3 station/incident.py --gate
+
       - name: Confirm the schema still parses and is fully sourced
         id: sconfirm_the_schema_still_parses_and_is_f
         continue-on-error: true
@@ -780,6 +804,8 @@ jobs:
             echo "FAILED: swiring"; fail=1; fi
           if [ "${{ steps.sconsequence.outcome }}" != "success" ]; then
             echo "FAILED: sconsequence"; fail=1; fi
+          if [ "${{ steps.sincident.outcome }}" != "success" ]; then
+            echo "FAILED: sincident"; fail=1; fi
           if [ "${{ steps.sdegeneracy.outcome }}" != "success" ]; then
             echo "FAILED: sdegeneracy"; fail=1; fi
           if [ "${{ steps.svariety.outcome }}" != "success" ]; then
