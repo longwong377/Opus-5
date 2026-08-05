@@ -314,6 +314,83 @@ times** on the z=7440 cluster, so +18,518 triangles is **+55,554 on one cluster*
 `ROOM_EXPOSURE["customs"] = 0.17` was solved against a frame that was 54% crushed; it now reads
 ×1.75 against a ×1.05–1.75 window, i.e. **on the boundary**, and needs re-solving.
 
+### 24.9 FOUR GATES THAT DID NOT MEASURE WHAT THEY NAME — and the drum is over budget
+
+Each was found by a build agent working on something else, which is itself the finding: **nobody
+goes looking at a green gate.** All five verified on my own runs, not taken from the report.
+
+**1. `budget.py`'s drum gate summed a list `budget.py` kept itself.**
+`export_scene.drum_parts` is the exporter's single enumeration and builds **nine** parts. The gate
+saw four — and one of those four was **the wrong mesh**: `interior.drum_interior()` at 88,736,
+which the shot does not contain, where the shot has `drum_ground.visible_set()` at 94,592. Core,
+trams, townscape and dressing were absent entirely: **166,084 triangles invisible to the gate that
+names the drum's budget.**
+
+It now calls `drum_parts` and sweeps a stated 4×3 lattice of standing eyes, because ground and
+dressing are LOD-resolved *per eye* — an exploratory 10×3 sweep found them ranging 144,256 →
+201,162.
+
+| | |
+|---|---|
+| drum visible set | **315,604 / 300,000 = 105.2% FAIL** |
+| drum share of frame | **26.3% / 25.0% FAIL** |
+| `budget.py` | 23/28 → **21/28** |
+
+**The content is over and the limit was not moved.** `--drum-legacy` re-runs the old sum in the
+same process: 116,120 (38.7%) PASS beside 315,604 (105.2%) FAIL. **The drum grew twice during this
+session** — the agent measured 315,364, I measured 315,604 with the drum agent still writing. The
+old gate would have printed 116,120 for all three.
+
+**2. `budget.py` measures 1 of 96 z-clusters** — 6 of 129 places, **4.7%**. The full ledger prints
+every run now. On blue/0/0 the customs cluster is **484,440 triangles, 2.7× the 180,000 resident
+bound**, and was measured by nothing. Honest negative: on this deck the busiest cluster is also the
+heaviest, so the verdict does not move. **No coverage gate was added** — the 4d ruling forbids
+growing gates, so coverage is *stated* and the existing bounds do the failing.
+
+**3. `density.py` scored the drum at 42.3% of what it renders, and the gate written to catch that
+drift could not fail.** `_m_interior`'s docstring claims to be *"the drum as the EXPORTER emits
+it"*; session 3s hand-copied the list and the exporter has grown four parts since — 121,976
+measured against 288,060 rendered. The self-test held a **third** copy as a literal and tested it
+with `_scored <= _shot`. ***A subset test stays true when the shot grows***, and it never asked
+`_m_interior` anything at all. Now derived from `drum_parts` and checked by **equality in
+triangles** against the function itself, with the old list kept live as the control. `the_garden`
+gdi **0.852 FAIL → 1.857 PASS**.
+
+**4. `--ragdoll-solid` was inert, and §24.5 asserted the opposite.** Probed in the engine rather
+than reasoned: Godot 4.4's `move_and_collide` consults **the mover's mask only**, bones sit on
+`RAGDOLL_LAYER` (16), and `walk.gd::_spawn_player` never set the player's `collision_mask`, so it
+was the default 1. **The RID exception was removing a collision the mask had already removed.**
+
+Fixed by giving the player `1 | RAGDOLL_LAYER` under the flag — chosen over re-layering the bones,
+because bones mask `WORLD_LAYER` and moving them there would also switch on ragdoll self-collision
+(INV-449), and ***a control that changes two things measures neither***. Verified here:
+
+| | solid hits | walked |
+|---|---|---|
+| `--no-ragdoll-push` | 0/150 | 10.50 m |
+| `--no-ragdoll-push --ragdoll-solid` | **142/150** | **0.62 m** |
+
+Two honest negatives kept: the flag *alone* is still statistic-for-statistic identical to the
+subject (with `push_off` working the player never reaches a bone — the system behaving), and it
+does **not** reproduce a floor-loss hazard (`offfloor` 0/150 in all four runs, before and after).
+The old claim is **refuted, not repaired**.
+
+**5. The Zocalo's 60 rib lamps are correct; the assertion's 30 is wrong — and my own previous
+commit message misattributed it.** I blamed 4k's tiling work. The Zocalo has **never** gone through
+`rooms.tiling`; it is a bespoke `"grow"` module. `27d32d7` (2026-08-02) gave it its own footprint
+and took it from three bays to six, touching `bespoke`/`quarters`/`zocalo` **and not**
+`export_scene`. Verified independently: `bays_for(zocalo)` = 6, and 5 lamps × 2 ribs × 6 bays = 60.
+**Nothing doubled; the room got twice as long.**
+
+Derived, not re-pinned: `zocalo.RIBS_PER_BAY`/`RIB_LAMP_F` are named (a pure rename — the emitted
+mesh is byte-identical) and the assertion multiplies them by `bays_for`. Re-pinning to 60 would go
+stale the day that cap moves, which is the failure `drum_dressing`'s `GARDEN_OPEN_EDGES` comment is
+named after — and which a handover number walked into earlier today.
+
+**The transferable shape, across all five:** three of them were a **second copy of a list** that
+drifted from its source, and the fourth was a **default nobody chose**. In every case the gate
+guarding the copy compared it against *another copy* rather than against the function.
+
 ### 24.5 Open, and honestly
 
 * **The arrest chain behind a refusal is still Python.** A refused player is *told* they are
