@@ -41,10 +41,33 @@ is correct for them. That is a decision, so it is written down here with its
 reason and printed in the report; a silent `continue` would be a gate quietly
 choosing what it is allowed to fail on.
 
+G4 THE CARD IS READ ON THE WAY IN
+    Walk a body across every place boundary the shipped build actually has and
+    assert the reader said something, and that what it said agrees with the
+    arithmetic `consequence.certain_check` did at bake time.
+
+    Same failure again, the eleventh time. `consequence.py` has carried the
+    six-rung identicard ladder, the arrest chain and visa revocation since
+    P1-G2. All of it was reachable from Python and NONE of it from the game: a
+    player could walk into the command deck of a military station unchallenged,
+    and no gate could fail for it because every gate here scores a part against
+    a standard and a part with no caller still meets its standard.
+
+    A static scan can tell you a caller exists. Only running the thing tells you
+    the caller runs -- and the first version of this gate proved the point by
+    failing with "this build named no place boxes": the check had been wired
+    into `hud.gd`'s mesh-name place resolution, and the shipped build STREAMS,
+    so it uses the sidecar path instead. It would have been unreachable in the
+    only build a player launches.
+
+    What it does NOT claim: the arrest chain behind a refusal is still Python. A
+    refused player is TOLD they are refused and is not yet detained.
+
 Run:
-    python3 station/coldstart.py            # both gates
+    python3 station/coldstart.py            # all gates
     python3 station/coldstart.py --g3       # reachability only, no engine
     python3 station/coldstart.py --g1       # cold start only
+    python3 station/coldstart.py --g4       # the card check and its controls
     python3 station/coldstart.py --g3 --verbose
 """
 import argparse
@@ -481,16 +504,133 @@ def controls(verbose=False, budget=BOOT_BUDGET_S):
     return {"ok": ok}
 
 
+# WHO MAY STAND WHERE -- the subject and its four controls.
+#
+# `consequence.certain_check` has decided who may enter a place since P1-G2 and
+# had NO RUNTIME CALLER: the six-rung ladder, the whole arrest chain and visa
+# revocation were reachable from Python and a player could walk into the command
+# deck of a military station unchallenged. That is this project's ELEVENTH
+# built-but-unreachable defect, and every one of them shares a shape -- a static
+# scan finds the reference and the thing never runs.
+#
+# So this does not scan. `main.gd --check-gate` walks a body across every place
+# boundary the shipped build actually has and reports what the reader said. The
+# controls are what make the readings mean anything: each removes or changes one
+# input and the verdict has to move with it.
+CHECK_CONTROLS = (
+    (("--no-checks",), "the table is empty",
+     lambda d: d is not None and d.get("gate") == "FAIL"
+     and d.get("readings") == "0"),
+    (("--tier=0",), "the card reads no_status",
+     lambda d: d is not None and int(d.get("refuse", 0)) > 0
+     and int(d.get("admit", 0)) == 0),
+    (("--tier=5",), "the card reads accredited",
+     lambda d: d is not None and int(d.get("admit", 0)) > 0
+     and int(d.get("refuse", 0)) == 0),
+    (("--no-hud",), "there is no reader",
+     lambda d: d is None or d.get("gate") == "FAIL"),
+)
+
+
+def _parse_check(out):
+    """The `CHECK gate=` line, or None.
+
+    NOT `parse_verdict`. Its regex is `tag + " (.+)"`, which needs a space after
+    the tag -- so `CHECK gate=` never matched, and `CHECK` alone matches the
+    first `CHECK place=` line instead of the verdict. The gate reported "no
+    verdict printed" on a run whose verdict was three lines up. The tag here is
+    anchored to the start of a line and the pass word is read as the pass word.
+    """
+    m = re.search(r"^CHECK gate=(\S+)(.*)$", out, re.M)
+    if not m:
+        return None
+    d = {"gate": m.group(1)}
+    for tok in m.group(2).split():
+        if "=" in tok:
+            k, v = tok.split("=", 1)
+            d[k] = v
+    return d
+
+
+def _check_run(extra, verbose=False, timeout=300):
+    """Launch the shipped scene with `--check-gate` and parse its verdict."""
+    godot = godot_binary()
+    if godot is None:
+        return None, ""
+    cmd = [godot, "--headless", "--path", GODOT_DIR, "--",
+           "--check-gate"] + list(extra)
+    try:
+        res = subprocess.run(cmd, capture_output=True, text=True,
+                             timeout=timeout)
+    except subprocess.TimeoutExpired:
+        return None, "timeout"
+    out = res.stdout + res.stderr
+    if verbose:
+        print(out)
+    return _parse_check(out), out
+
+
+def g4(verbose=False):
+    """G4 -- the card is read on the way in, in the shipped scene.
+
+    WHAT IT DOES NOT CLAIM, stated rather than implied: the arrest chain behind
+    a refusal (`consequence.arrest` -> brig -> fine -> release) is still Python.
+    A refused player is TOLD they are refused and is not yet detained. P2 owns
+    closing that. Reporting the reading is still the difference between a rule
+    that exists and a rule a player meets.
+    """
+    godot = godot_binary()
+    if godot is None:
+        print("G4 FAIL -- no double-precision Godot binary found")
+        return {"ok": False}
+    print("G4 THE CARD IS READ ON THE WAY IN -- "
+          "`godot --headless --path godot -- --check-gate`")
+    # `parse_verdict` splits on the token after the tag, so `gate=` is consumed
+    # by the tag itself and comes back under a key of its own.
+    d, out = _check_run((), verbose=verbose)
+    if d is None:
+        print("  no CHECK verdict printed")
+        for line in out.splitlines()[-20:]:
+            print("    | " + line)
+        print("  G4 FAIL -- the shipped scene printed no verdict")
+        return {"ok": False}
+    ok = d.get("gate") == "PASS"
+    print("  %s crossed=%s of which checked=%s, readings=%s "
+          "(admit %s, refuse %s), silent=%s wrong=%s, card=tier %s, "
+          "table=%s places"
+          % (d["gate"], d.get("crossed"), d.get("checked"), d.get("readings"),
+             d.get("admit"), d.get("refuse"), d.get("silent"), d.get("wrong"),
+             d.get("tier"), d.get("table")))
+    for line in out.splitlines():
+        if line.startswith("CHECK place="):
+            print("    | " + line[6:])
+    print("  G4 CONTROLS -- each changes one input and must move the verdict")
+    for flags, why, want in CHECK_CONTROLS:
+        cd, _cout = _check_run(flags, verbose=verbose)
+        good = bool(want(cd))
+        said = ("no verdict" if cd is None else
+                "%s readings=%s admit=%s refuse=%s"
+                % (cd.get("gate"), cd.get("readings"), cd.get("admit"),
+                   cd.get("refuse")))
+        print("    %s %-12s %-28s -- %s"
+              % ("ok  " if good else "FAIL", " ".join(flags), why, said))
+        ok = ok and good
+    print("  G4 %s" % ("PASS" if ok else "FAIL"))
+    return {"ok": ok, "verdict": d}
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--g1", action="store_true", help="cold start only")
     ap.add_argument("--g3", action="store_true", help="reachability only")
+    ap.add_argument("--g4", action="store_true",
+                    help="the card check on a place boundary only")
     ap.add_argument("--controls", action="store_true",
                     help="only the negative controls on G1")
     ap.add_argument("--verbose", action="store_true")
     ap.add_argument("--budget-s", type=float, default=BOOT_BUDGET_S)
     a = ap.parse_args()
-    run_all = not (a.g1 or a.g3 or a.controls)
+    run_all = not (a.g1 or a.g3 or a.g4 or a.controls)
     bad = 0
     if a.g3 or run_all:
         if not g3(a.verbose).get("ok"):
@@ -507,6 +647,10 @@ def main():
     if a.controls or run_all:
         print()
         if not controls(verbose=a.verbose, budget=a.budget_s).get("ok"):
+            bad += 1
+    if a.g4 or run_all:
+        print()
+        if not g4(a.verbose).get("ok"):
             bad += 1
     return 1 if bad else 0
 

@@ -90,6 +90,11 @@ var _people: Node3D
 ## the same fix: cutting the deck into the 18 cells `stream.gd` already bakes
 ## takes frustum submission down 39% BEFORE any occluder.
 @export var occluder_path: String = ""
+## WHO MAY STAND WHERE -- `place -> {need, name, why}`, baked by
+## `station/boot.py::_checks` off `consequence.certain_check`. Passed straight
+## through to `hud.gd`, which fires it on the place transition it already
+## computes; this node does not read it and does not need to.
+@export var checks: Dictionary = {}
 var _interact: Node3D
 ## The group the headless test is to walk up to and use, and whether it has.
 var _use_group := ""
@@ -954,7 +959,14 @@ func _wire_hud() -> void:
 	_hud.layer = 8
 	_hud.set_script(load("res://scripts/hud.gd"))
 	add_child(_hud)
+	# BEFORE `bind`, not after. `bind` calls `_wallet`, which is the first read
+	# of the player's rung, and a checkpoint table that arrived a frame later
+	# would miss the place the player SPAWNS in -- which on this build is a
+	# checked one.
+	_hud.checks = checks
 	_hud.bind(_player, _interact, glb_path, interact_path, _visual)
+	if not checks.is_empty():
+		print("hud: %d checkpoints wired" % checks.size())
 
 
 func _load_glb(path: String) -> Node:

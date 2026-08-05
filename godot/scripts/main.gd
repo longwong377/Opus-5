@@ -157,6 +157,13 @@ func _ready() -> void:
 		else:
 			_start_ambience()
 
+	# NOT `_headless()`-ONLY. `--check-shot` needs a real viewport to read a
+	# frame out of, and a headless run has none -- so the gate runs in both and
+	# only the capture is conditional.
+	if _args().has("check-gate"):
+		_check_gate()
+		return
+
 	if _headless() and not _args().has("no-coldstart"):
 		_coldstart()
 
@@ -251,6 +258,22 @@ func _configure_walk(w: Node) -> void:
 	# loaded. That is the same defect the chain exists to catch, hiding
 	# underneath the chain.
 	w.set("occluder_path", String(_boot.get("occluder", "")))
+	# WHERE A CARD IS READ ON THE WAY IN -- `place -> {need, name, why}` for the
+	# 98 of 129 register places that check one. `consequence.certain_check` has
+	# carried the six-rung ladder since P1-G2 and had NO RUNTIME CALLER: the
+	# rule that decides who may stand in C&C existed only in Python, which is
+	# this project's eleventh built-but-unreachable defect and MASTER-PLAN A4b's
+	# complaint one level down. `station/boot.py::_checks` bakes the RESULT, so
+	# the engine never holds a copy of the rule.
+	# `--no-checks` IS THE CONTROL, and it is the one that makes the other two
+	# readings mean something: with the table empty the boundary must produce NO
+	# reading at all. A gate that only ever sees the working case is the defect
+	# this file's `--no-clock` and `--no-sound` already exist to avoid.
+	if _args().has("no-checks"):
+		print("checks: DISABLED (control) -- no card is read anywhere")
+		w.set("checks", {})
+	else:
+		w.set("checks", _boot.get("checks", {}))
 	w.set("actors_path", String(_boot.get("actors", "")))
 	w.set("dialogue_path", String(_boot.get("dialogue", "")))
 	w.set("crowd_path", String(_boot.get("crowd", "")))
@@ -771,6 +794,203 @@ func _root() -> String:
 
 func _headless() -> bool:
 	return DisplayServer.get_name() == "headless"
+
+
+## HOW MANY STEPS A CROSSING IS BROKEN INTO. Twelve, so the body is genuinely
+## outside the box on step 0 and genuinely inside by the last one -- a single
+## teleport onto the centre would prove the HUD can look a place up and would
+## say nothing about a TRANSITION, which is the thing being gated.
+const CHECK_GATE_STEPS := 12
+## How far outside a place's own box the approach starts.
+const CHECK_GATE_STANDOFF_M := 4.0
+## One frame per run, taken at the first refusal -- a refusal is the interesting
+## picture and taking one per boundary would be six copies of the same argument.
+var _check_shot_done := false
+
+
+## THE CARD IS READ ON THE WAY IN -- the gate, in the shipped scene.
+##
+## `consequence.certain_check` decides who may stand in C&C and had NO RUNTIME
+## CALLER: the whole six-rung ladder lived in Python and a player could walk
+## into the command deck of a military station unchallenged. That is this
+## project's eleventh built-but-unreachable defect, and the pattern every one of
+## them shares is that a static scan finds the reference. So this does not scan.
+## It walks a body across a real boundary in the streamed build and asserts a
+## reading came out, with three controls that must change the answer:
+##
+##   `--no-checks`   the table is empty      -> readings must be 0
+##   `--tier=N`      the player's own rung   -> admits must become refusals
+##   (and `--no-hud`, which `walk.gd` already owns, removes the reader entirely)
+##
+## What it does NOT claim: the arrest chain behind a refusal (`consequence.arrest`
+## -> brig -> fine -> release) is still Python. A refused player is TOLD they are
+## refused and is not yet detained. P2 owns closing that; reporting the reading is
+## still the difference between a rule that exists and a rule a player meets.
+func _check_gate() -> void:
+	for _i in settle_frames:
+		await get_tree().physics_frame
+	var body := _player()
+	var hud = _hud()
+	if body == null or hud == null:
+		print("CHECK gate=FAIL -- no %s in the shipped scene"
+			% ("body" if body == null else "hud"))
+		get_tree().quit(1)
+		return
+
+	# FORCE THE CARD, NOT THE HUD. `hud.gd::_purse` re-reads the rung from the
+	# player every frame, so a tier written onto the HUD would be overwritten
+	# before the first boundary. Writing it onto `player.gd` is also the more
+	# honest control: it is the identicard that changed, not the reader.
+	var args := _args()
+	if args.has("tier"):
+		var forced := int(args["tier"])
+		body.set("tier", forced)
+		body.set("tier_name", "forced_%d" % forced)
+		print("CHECK control: the card now reads tier %d" % forced)
+
+	# WHICHEVER SOURCE THIS BUILD ACTUALLY HAS. `hud.gd` resolves a place from
+	# the level's own mesh names when the deck is loaded whole and from the
+	# interact sidecar's boxes when it is STREAMED -- and the shipped build
+	# streams, so reading `_place_boxes` alone made this gate report FAIL on a
+	# working build for the wrong reason. A gate that only understands one of
+	# the two paths is the same defect as a fix that only patches one of them.
+	var boxes: Dictionary = _check_boxes(hud)
+	var tbl: Dictionary = hud.get("checks")
+	if boxes.is_empty():
+		print("CHECK gate=FAIL -- this build named no place boxes, so there is "
+			+ "no boundary to cross")
+		get_tree().quit(1)
+		return
+
+	# ONLY THE PLACES THIS DECK ACTUALLY HAS. The table covers 98 of the 129
+	# register places and one deck holds a handful of them; crossing into a room
+	# that is not in this build would be crossing into nothing.
+	var here: Array = []
+	for k in boxes:
+		here.append(String(k))
+	here.sort()
+
+	var admits := 0
+	var refusals := 0
+	var silent := 0
+	var wrong := 0
+	var crossed := 0
+	for k in here:
+		var aabb: AABB = boxes[k]
+		var c: Vector3 = aabb.get_center()
+		# Approach along the box's OWN shortest axis, because that is the wall a
+		# body meets soonest and the standoff is most likely to clear it.
+		var ax := 0
+		if aabb.size.y < aabb.size[ax]:
+			ax = 1
+		if aabb.size.z < aabb.size[ax]:
+			ax = 2
+		var dir := Vector3.ZERO
+		dir[ax] = 1.0
+		var out: Vector3 = c + dir * (aabb.size[ax] * 0.5 + CHECK_GATE_STANDOFF_M)
+
+		# DISARM FIRST. The reading fires on a CHANGE of place, so the body has
+		# to be demonstrably outside before the approach means anything.
+		body.global_position = out
+		body.velocity = Vector3.ZERO
+		await get_tree().physics_frame
+		await get_tree().process_frame
+		if String(hud.get("place_name")) != "CORRIDOR":
+			continue
+
+		hud.set("check_text", "")
+		var read := ""
+		for i in range(1, CHECK_GATE_STEPS + 1):
+			var t := float(i) / float(CHECK_GATE_STEPS)
+			body.global_position = out.lerp(c, t)
+			body.velocity = Vector3.ZERO
+			await get_tree().physics_frame
+			await get_tree().process_frame
+			var got := String(hud.get("check_text"))
+			if got != "":
+				read = got
+				break
+		crossed += 1
+
+		if not tbl.has(k):
+			if read != "":
+				print("CHECK WRONG %s -- no row in the table and it read anyway"
+					% k)
+				wrong += 1
+			continue
+		var need := int((tbl[k] as Dictionary).get("need", 0))
+		var tier := int(hud.get("tier"))
+		if read == "":
+			silent += 1
+			continue
+		var refused := read.begins_with("IDENTICARD REFUSED")
+		if refused == (tier >= need):
+			print("CHECK WRONG %s -- need %d, holding %d, and it said %s"
+				% [k, need, tier, ("refuse" if refused else "admit")])
+			wrong += 1
+		elif refused:
+			refusals += 1
+			# A FRAME WITH THE WORDS ON IT. `_check` draws into the HUD's
+			# `Face`, and a grep finding the call in `_draw` is exactly the
+			# evidence that failed this project ten times over -- the read panel
+			# shipped with its call site in place and drew nothing, because the
+			# sidecars it read from had no `text` field. `get_root()` is used
+			# rather than `get_viewport()` because a CanvasLayer is not in the
+			# 3D viewport's texture, and a shot that missed the interface would
+			# be a picture proving the opposite of what it was taken for.
+			if args.has("check-shot") and not _check_shot_done:
+				_check_shot_done = true
+				await RenderingServer.frame_post_draw
+				var img := get_tree().get_root().get_texture().get_image()
+				var png := String(args["check-shot"])
+				if img.save_png(png) == OK:
+					print("CHECK shot=%s %dx%d -- %s"
+						% [png, img.get_width(), img.get_height(),
+							read.replace("\n", " / ")])
+				else:
+					print("CHECK shot=FAILED to write %s" % png)
+		else:
+			admits += 1
+
+	# THE VERDICT, AND IT FAILS ON EVERY WAY THIS CAN GO WRONG: a boundary that
+	# read nothing, a reading that disagreed with the arithmetic, or -- the case
+	# `--no-checks` produces on purpose -- no reading anywhere.
+	var ok := (wrong == 0 and silent == 0 and (admits + refusals) > 0)
+	print(("CHECK gate=%s crossed=%d checked=%d readings=%d admit=%d refuse=%d "
+		+ "silent=%d wrong=%d tier=%d(%s) table=%d") % [
+		("PASS" if ok else "FAIL"), crossed,
+		_check_rows(here, tbl), admits + refusals, admits, refusals,
+		silent, wrong, int(hud.get("tier")), String(hud.get("tier_name")),
+		tbl.size()])
+	get_tree().quit(0 if ok else 1)
+
+
+## `place -> AABB` for whichever of the HUD's two box sources this build filled.
+## The sidecar's are stored as `[lo, hi]` and grown by the same 1.5 m of slack
+## `hud.gd::_resolve` uses, so an approach that starts outside the box this
+## returns starts outside the box the HUD will test against.
+func _check_boxes(hud) -> Dictionary:
+	var pb: Dictionary = hud.get("_place_boxes")
+	if not pb.is_empty():
+		return pb
+	var out := {}
+	var raw: Dictionary = hud.get("_boxes")
+	for k in raw:
+		var b: Array = raw[k]
+		var lo: Vector3 = (b[0] as Vector3) - Vector3.ONE * 1.5
+		var hi: Vector3 = (b[1] as Vector3) + Vector3.ONE * 1.5
+		out[String(k)] = AABB(lo, hi - lo)
+	return out
+
+
+## How many of the places on THIS deck have a row in the table -- the denominator
+## the verdict is read against, so `readings=` can be compared to something.
+func _check_rows(here: Array, tbl: Dictionary) -> int:
+	var n := 0
+	for k in here:
+		if tbl.has(k):
+			n += 1
+	return n
 
 
 func _args() -> Dictionary:

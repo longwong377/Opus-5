@@ -109,6 +109,26 @@ var _cam: Camera3D
 ## The last `read`'s text, held for a few seconds by `interact.gd`. Empty most
 ## of the time; drawn under the prompt line when it is not.
 var read_text := ""
+
+## WHERE A CARD IS READ ON THE WAY IN. `place -> {need, name, why}` for the 98
+## of 129 register places that check one, baked by `station/boot.py::_checks`
+## from `consequence.certain_check` and `required_tier` -- so the engine holds
+## P-05's RESULT and never a copy of its rule.
+##
+## THIS EXISTS BECAUSE `certain_check` HAD NO RUNTIME CALLER. `consequence.py`
+## has carried the six-rung ladder and the whole arrest chain since P1-G2, and
+## visa revocation was reachable in Python and NOT IN THE GAME -- MASTER-PLAN
+## A4b's complaint, one level down. A predicate nothing calls is the defect this
+## project has now produced eleven times.
+var checks: Dictionary = {}
+## The player's rung, off the same purse the credits come from -- the integer
+## beside the `tier_name` declared with the wallet above. -1 until a purse binds.
+var tier := -1
+## What the last boundary said, held like `read_text` and drawn the same way.
+var check_text := ""
+var _check_until := 0.0
+var _check_place := ""
+const _CHECK_HOLD_S := 5.0
 var _interact
 var _face
 ## place key -> [lo, hi] world box, unioned over that place's interactables.
@@ -211,6 +231,11 @@ func _purse() -> void:
 	credits = float(_player.credits)
 	purse_who = String(_player.npc_id)
 	tier_name = String(_player.tier_name)
+	# THE RUNG ITSELF, NOT ONLY ITS NAME. `player.gd` has carried `tier` beside
+	# `tier_name` since the purse landed and nothing read the integer -- so the
+	# HUD could print WHAT you are and had no way to compare it against what a
+	# door wants. `_boundary` needs the number.
+	tier = int(_player.tier)
 	carry_cap = int(_player.carry_cap)
 	carrying.clear()
 	for x in _player.carrying:
@@ -310,6 +335,14 @@ func talking() -> bool:
 func _process(delta: float) -> void:
 	if _player == null:
 		return
+	# THE BOUNDARY'S ANSWER FADES ON ITS OWN. `read_text` is held by
+	# `interact.gd` and re-read every frame; this one is produced by a place
+	# TRANSITION, which happens once, so the hold has to live where the string
+	# does or the reading would stay on screen for the rest of the session.
+	if _check_until > 0.0:
+		_check_until -= delta
+		if _check_until <= 0.0:
+			check_text = ""
 	var p: Vector3 = _player.global_position
 	radius_m = sqrt(p.x * p.x + p.y * p.y)
 	ring_deg = fposmod(rad_to_deg(atan2(p.y, p.x)), 360.0)
@@ -382,22 +415,85 @@ func _process(delta: float) -> void:
 
 
 ## Which named place the body is standing in, or the nearest one and how far.
+## THE CARD IS READ ON THE WAY IN. Fired once per ENTRY, not per frame, off the
+## place resolution this file already does -- there is no second look-up and no
+## second copy of which place the player is in.
+##
+## What it can and cannot do, stated rather than implied: it reports the reading.
+## The arrest chain behind a refusal (`consequence.arrest` -> brig -> fine ->
+## release) is Python and stays there for now, so a refused player is TOLD they
+## are refused and is not yet detained. That is a real limit and P2 owns closing
+## it; reporting it is still the difference between a rule that exists and a rule
+## a player meets.
+func _boundary(k: String) -> void:
+	if k == _check_place:
+		return
+	# STEPPING OUT ARMS IT AGAIN. `_where` calls this with "" the moment the
+	# player is back in the corridor, so walking out of C&C and back in reads
+	# the card a second time. Without it a checkpoint would be a once-per-session
+	# event, which is a cutscene rather than a rule.
+	if k == "":
+		_check_place = ""
+		return
+	# NOT UNTIL THERE IS A CARD TO READ. `_process` resolves the place BEFORE it
+	# refreshes the purse, so on frame one the rung is still -1 -- and consuming
+	# the place here would mean the one room a player SPAWNS in is the one room
+	# never checked. Returning without consuming retries next frame; on a build
+	# with no economy it retries forever, for the price of one integer compare,
+	# and says nothing, which is the honest answer when nobody issued a card.
+	if tier < 0:
+		return
+	_check_place = k
+	if checks.is_empty() or not checks.has(k):
+		return
+	var row: Dictionary = checks[k]
+	var need := int(row.get("need", 0))
+	var want := String(row.get("name", ""))
+	if tier >= need:
+		check_text = "IDENTICARD ACCEPTED -- %s" % want.to_upper()
+	else:
+		check_text = ("IDENTICARD REFUSED\n%s REQUIRED, YOU HOLD %s"
+			% [want.to_upper(), tier_name.to_upper()])
+	_check_until = _CHECK_HOLD_S
+	print("CHECK place=%s need=%d(%s) tier=%d(%s) result=%s why=%s"
+		% [k, need, want, tier, tier_name,
+			("admit" if tier >= need else "refuse"), String(row.get("why", ""))])
+
+
+## THIS FUNCTION HAS ONE EXIT ON PURPOSE, and the reason is a defect I put here
+## and the gate caught. `_resolve` has TWO place-resolution paths -- the level's
+## own mesh names when the deck is loaded whole, and the interact sidecar's
+## boxes when it is STREAMED -- and the card check first landed in the mesh-name
+## branch alone. The shipped build streams, so `_place_boxes` is empty in it and
+## the check would have been unreachable in the only build a player runs: the
+## eleventh built-but-unreachable defect, reproduced INSIDE the fix for it.
+##
+## `main.gd --check-gate` failed with "this build named no place boxes", which is
+## the whole argument for a gate that walks a body rather than scanning source.
+## The cure is not a second `_boundary` call. It is that the key is resolved by
+## whichever path this build has, and acted on in exactly one place.
 func _where(p: Vector3) -> void:
 	place_inside = false
 	place_name = ""
 	near_name = ""
 	near_m = 0.0
+	_boundary(_resolve(p))
+
+
+## Which register place contains `p`, or "" for the corridor. Sets the display
+## fields on the way out; returns the key so its caller has one thing to act on.
+func _resolve(p: Vector3) -> String:
 	if not _place_boxes.is_empty():
 		var k := _Places.at(_place_boxes, p)
 		if k != "":
 			place_inside = true
 			place_name = _pretty(k)
-			return
+			return k
 		var n: Array = _Places.nearest(_place_boxes, p)
 		near_name = _pretty(String(n[0]))
 		near_m = float(n[1])
 		place_name = "CORRIDOR"
-		return
+		return ""
 	var best := INF
 	for k2 in _boxes:
 		var b: Array = _boxes[k2]
@@ -410,7 +506,7 @@ func _where(p: Vector3) -> void:
 				and p.z >= lo.z - 1.5 and p.z <= hi.z + 1.5:
 			place_inside = true
 			place_name = _pretty(String(k2))
-			return
+			return String(k2)
 		var q := Vector3(clampf(p.x, lo.x, hi.x), clampf(p.y, lo.y, hi.y),
 			clampf(p.z, lo.z, hi.z))
 		var d := p.distance_to(q)
@@ -421,6 +517,7 @@ func _where(p: Vector3) -> void:
 	# Between rooms is not nowhere: on a ring deck it is the corridor, which is
 	# a place a player spends most of their time.
 	place_name = "CORRIDOR"
+	return ""
 
 
 ## One line, for the log. Printed on change rather than every frame, so a shot
@@ -473,6 +570,7 @@ class Face extends Control:
 		_reticle(sz, s)
 		_prompt(sz, s)
 		_read(sz, s)
+		_check(sz, s)
 		_systems(sz, s)
 
 	# -- primitives ---------------------------------------------------------
@@ -740,6 +838,52 @@ class Face extends Control:
 		for ln in lines:
 			_tracked(Vector2(x + pad, ty), String(ln).to_upper(), px, CYAN,
 				2.0 * s)
+			ty += lh
+
+
+	## WHAT THE DOOR SAID ABOUT YOUR CARD. Same plate as `_read` and
+	## deliberately NOT the same position or colour: a board you chose to read
+	## sits under the prompt, and a checkpoint reading you did not choose sits
+	## ABOVE the reticle, in amber when it refuses you, because it is the one
+	## message on this HUD that is about the player rather than about the world.
+	##
+	## It draws `h.check_text`, which `_boundary` sets once per place ENTRY and
+	## `_process` clears after `_CHECK_HOLD_S`. There is no second copy of the
+	## rule here: the need, the name and the reason all came out of
+	## `consequence.certain_check` at bake time.
+	func _check(sz: Vector2, s: float) -> void:
+		if h.check_text == "":
+			return
+		var lines: PackedStringArray = h.check_text.split("\n", false)
+		if lines.is_empty():
+			return
+		# REFUSAL IS AMBER, ADMISSION IS CYAN. The first word carries it, so
+		# there is no separate flag to keep in step with the sentence.
+		var col: Color = CYAN
+		if String(lines[0]).begins_with("IDENTICARD REFUSED"):
+			col = AMBER
+		var px := int(roundf(15.0 * s))
+		var lh: float = px * 1.5
+		var w := 0.0
+		for ln in lines:
+			w = maxf(w, _tracked_width(String(ln).to_upper(), px, 2.6 * s))
+		var pad := 16.0 * s
+		var bw: float = w + pad * 2.0
+		var bh: float = lh * lines.size() + pad * 2.0
+		var x: float = sz.x * 0.5 - bw * 0.5
+		var y: float = sz.y * 0.5 - 200.0 * s - bh
+		draw_rect(Rect2(Vector2(x, y), Vector2(bw, bh)), Color(0, 0, 0, 0.80))
+		# Boxed on all four sides rather than the read plate's two rules. A
+		# scanner's verdict is a stamp, not a page.
+		_hair(Vector2(x, y), Vector2(x + bw, y), col, s, 1.0)
+		_hair(Vector2(x, y + bh), Vector2(x + bw, y + bh), col, s, 1.0)
+		_hair(Vector2(x, y), Vector2(x, y + bh), col, s, 1.0)
+		_hair(Vector2(x + bw, y), Vector2(x + bw, y + bh), col, s, 1.0)
+		var ty: float = y + pad + px
+		for ln in lines:
+			var lw: float = _tracked_width(String(ln).to_upper(), px, 2.6 * s)
+			_tracked(Vector2(x + bw * 0.5 - lw * 0.5, ty),
+				String(ln).to_upper(), px, col, 2.6 * s)
 			ty += lh
 
 

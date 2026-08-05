@@ -245,6 +245,33 @@ def decks(deck_dir=None):
     return out
 
 
+def _checks():
+    """place -> {"need", "name", "why"} for every place that reads a card.
+
+    98 of the register's 129 places. The rung comes from
+    `consequence.required_tier` and the reason from `certain_check`, so the
+    engine holds no copy of P-05's rule -- only its result.
+    """
+    try:
+        import consequence as cq                                # noqa: PLC0415
+        import directory as dr                                  # noqa: PLC0415
+    except Exception:
+        return {}
+    out = {}
+    for q in dr.PLACES:
+        try:
+            ok, why = cq.certain_check(q["key"])
+            if not ok:
+                continue
+            need, _ = cq.required_tier(q["key"])
+            out[q["key"]] = {"need": int(need),
+                             "name": cq.tier_name(need),
+                             "why": str(why)}
+        except Exception:
+            continue
+    return out
+
+
 def sidecar(stem, suffix, deck_dir=None):
     p = os.path.join(deck_dir or DECK_DIR, stem + suffix)
     return p if os.path.exists(p) else ""
@@ -540,6 +567,14 @@ def build(stem=None, hour=None, deck_dir=None):
         # is absent, and walk.gd treats "" as "render without it" -- a deck that
         # has never been exported must still be walkable.
         "occluder": sidecar(stem, "_occ.tscn", dd),
+        # WHERE A CARD IS READ ON THE WAY IN, and what rung it wants.
+        # `consequence.certain_check` is P-05's boundary as a predicate and it
+        # had NO RUNTIME CALLER -- visa revocation was reachable in Python and
+        # not in the game, which is MASTER-PLAN A4b's whole complaint one level
+        # down. Baked rather than queried because the register lives in Python
+        # and the reader lives in GDScript; the engine gets a place -> rung map
+        # and compares it against the rung already on the purse.
+        "checks": _checks(),
         "actors": actors_p,
         "dialogue": sidecar(stem, "_dialogue.json", dd),
         "crowd": sidecar(stem, "_crowd.json", dd),

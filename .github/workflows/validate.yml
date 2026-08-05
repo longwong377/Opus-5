@@ -67,6 +67,17 @@ jobs:
         continue-on-error: true
         run: python3 station/coldstart.py
 
+      # WHO MAY STAND WHERE, in the shipped scene. `consequence.certain_check`
+      # has decided this since P1-G2 and had no runtime caller -- the eleventh
+      # time this project has finished a thing nothing calls. The gate walks a
+      # body across every place boundary the build actually has; its four
+      # controls (`--no-checks`, `--tier=0`, `--tier=5`, `--no-hud`) each move
+      # the verdict, so it can still fail.
+      - name: The card is read on the way in
+        id: scardcheck
+        continue-on-error: true
+        run: python3 station/coldstart.py --g4
+
       - name: The circulation network -- can you get from here to there
         id: scirculation
         continue-on-error: true
@@ -826,6 +837,8 @@ jobs:
             echo "FAILED: sreachable"; fail=1; fi
           if [ "${{ steps.scoldstart.outcome }}" != "success" ]; then
             echo "FAILED: scoldstart"; fail=1; fi
+          if [ "${{ steps.scardcheck.outcome }}" != "success" ]; then
+            echo "FAILED: scardcheck"; fail=1; fi
           if [ "${{ steps.scirculation.outcome }}" != "success" ]; then
             echo "FAILED: scirculation"; fail=1; fi
           if [ "${{ steps.sperformance_budgets.outcome }}" != "success" ]; then
