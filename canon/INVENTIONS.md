@@ -9577,3 +9577,70 @@ gate, measured and recorded, and the coarse lattice is left alone precisely beca
 **Overturned by** any change to `interior.LAND_USE`'s band positions or to `drum_dressing`'s
 placement, either of which moves where the expensive standing positions are and makes this
 sweep stale. Re-run it before quoting the margin.
+
+---
+
+## INV-570 — the library can say "this is glass", and the shim that stood in for it retires
+
+**What.** `materials.Material.transmittance`, a new field defaulting to `0.0`, set to
+**0.840** on `viewport_glazing`. `tres()` writes `albedo_color`'s fourth component as
+`1 - transmittance` and — only when it is non-zero — `transparency = 1`.
+
+**Why, and it is a MOVE rather than a derivation.** 0.840 is INV-531's number and its
+reasoning is unchanged: Fresnel at normal incidence for n = 1.52 gives R = 0.0426 per
+air-glass interface, a pressure window is two panes and therefore four interfaces, so
+T = (1 - 0.0426)^4 = 0.840. What changes is where it lives. It was
+`station/vista.PANE_TRANSMITTANCE`, applied by `godot/scripts/vista.gd::glaze()` to a
+per-surface **duplicate** of the bound material at load time — so the pane was transmissive
+on the render path and opaque everywhere else, including the streamed build a player
+launches, which never calls that script. A property of a surface belongs to the surface.
+**INV-531 is retired, not renumbered**: its derivation stands and its implementation is
+superseded by this entry.
+
+**What constrained the WRITER, and this is the part that was nearly got wrong.** Godot gates
+the whole transparent path behind an enum and discards `albedo_color`'s alpha at
+`TRANSPARENCY_DISABLED`, so alpha alone is a silent no-op. The patch this implements asked
+for `transparency = 1` **and `depth_draw_mode = 1`**. Printed out of `BaseMaterial3D` in this
+project's own double build rather than remembered:
+
+```
+TRANSPARENCY_DISABLED=0   TRANSPARENCY_ALPHA=1
+DEPTH_DRAW_OPAQUE_ONLY=0  DEPTH_DRAW_ALWAYS=1  DEPTH_DRAW_DISABLED=2
+```
+
+`depth_draw_mode = 1` is **DEPTH_DRAW_ALWAYS** — the opposite of the shim it replaces, which
+sets `DEPTH_DRAW_OPAQUE_ONLY`, i.e. **0**, i.e. the default. So the correct line is no line
+at all, and writing the patch's would have made a pane you look through stamp depth over the
+view behind it. `depth_draw_mode` is also absent from `materials.STANDARD_MATERIAL_KEYS`, so
+the existing key gate would have caught it as a name and never as a value.
+
+**Measured, three ways, one camera** (`--shot interior --room cnc --eye 0,1.7,4.2 --target
+0,3.65,8.42 --res 960x540`, Vulkan 1.4.318 Forward+ throughout, boxes from
+`vista.FRAMES`):
+
+| | pane / wall | engine's own readback |
+|---|---|---|
+| **A** shim only, library opaque | **×1.99** | `1 pane surface(s) made transmissive … 0 already transmissive in the library` |
+| **B** library `transmittance=0.840`, shim finds it done | **×1.99** | `0 pane surface(s) made transmissive … 1 already transmissive in the library` |
+| **C** neither — `glazing_groups` emptied AND library opaque | **×0.29** | `0 … 0` |
+
+**A and B are BYTE-IDENTICAL (md5 `fc97094b…`), and that is the result rather than a failed
+test.** The shim already produced this pixel on this path, so equivalence is what a correct
+move looks like. What stops that being vacuous is C: 87.6% of pixels differ from A, max
+channel delta 147, and the pane collapses to ×0.29 of its wall. And what proves the library
+value reached the engine is not a picture at all — it is `vista.gd` reading
+`sm.transparency != TRANSPARENCY_DISABLED` back off the loaded material and reporting **1
+already transmissive**, which it had never reported before.
+
+**What constrained the split it does NOT do.** `viewport_glazing` binds `prop_viewport` and
+`cc_glazing` together, and C-003 is open on whether a given rotunda faces in or out. A
+transmissive pane shows whatever is behind it, so the two now differ by their **vista** and
+not by their glass; the split becomes unnecessary rather than urgent, and is not made here.
+
+**Overturned by** a reference frame showing the same object through and beside one pane
+(which would give T directly), an anti-reflection coating (T ≈ 0.98) or a heavy tint
+(T < 0.5) — the same overturning conditions INV-531 recorded, inherited unchanged. Also by
+`station/vista.py` learning to read `materials.BY_NAME["viewport_glazing"].transmittance`
+instead of keeping `PANE_TRANSMITTANCE`, at which point `materials._selftest`'s
+"vista.py's copy of T agrees with the material's" check becomes trivially true and should
+go.

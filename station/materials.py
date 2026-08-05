@@ -530,13 +530,26 @@ class Material:
     """
 
     __slots__ = ("name", "title", "albedo", "roughness", "metallic", "specular",
+                 # THE LIBRARY HAD NO WAY TO SAY "THIS IS GLASS" (INV-570).
+                 # Every pane in the project -- the C&C viewport, the rotunda
+                 # glazing, a tram window -- was an OPAQUE material, so a
+                 # window rendered as a dark rectangle and the only fix
+                 # available was at load time: `godot/scripts/vista.gd::glaze`
+                 # duplicated the bound material per surface and set
+                 # `albedo_color.a` itself. That shim is the ninth-instance
+                 # shape this project keeps producing -- a property of the
+                 # surface, living in whichever script happened to need it,
+                 # reachable only on the paths that call that script. It is
+                 # retired by this field.
+                 "transmittance",
                  "emission", "emission_energy", "emission_texture",
                  "shader", "shader_params", "texture", "uv_scale",
                  "triplanar", "normal_scale", "binds", "scenes", "source",
                  "note", "extrapolated")
 
     def __init__(self, name, title, albedo, roughness, metallic=0.0,
-                 specular=0.5, emission=None, emission_energy=0.0,
+                 specular=0.5, transmittance=0.0,
+                 emission=None, emission_energy=0.0,
                  emission_texture=None, shader=None, shader_params=None,
                  texture=None, uv_scale=1.0, triplanar=True, normal_scale=1.0,
                  binds=(), scenes=(), source="", note="", extrapolated=""):
@@ -546,6 +559,7 @@ class Material:
         self.roughness = roughness
         self.metallic = metallic
         self.specular = specular
+        self.transmittance = transmittance
         self.emission = tuple(emission) if emission else None
         self.emission_energy = emission_energy
         self.emission_texture = emission_texture
@@ -2740,7 +2754,22 @@ def _build():
     a(Material(
         "viewport_glazing", "Viewport — dark glazing onto the drum",
         albedo=(0.040, 0.042, 0.046), roughness=0.07, metallic=0,
-        specular=0.92,
+        # T = 0.840 IS INV-531's NUMBER AND IT IS NOT RE-DERIVED HERE, only
+        # MOVED: Fresnel at normal incidence for n = 1.52 gives R = 0.0426 per
+        # air-glass interface, and a pressure window is two panes -- four
+        # interfaces -- so T = (1 - 0.0426)^4 = 0.840. What changes is WHERE it
+        # lives. It was `station/vista.PANE_TRANSMITTANCE`, applied by
+        # `godot/scripts/vista.gd::glaze()` to a per-surface DUPLICATE of this
+        # material at load, on the render path only; the shipped streamed build
+        # never calls it (PATCHES-4r-windows §4). A property of a surface
+        # belongs to the surface. INV-570.
+        #
+        # AND IT DOES NOT NEED THE `cc_glazing` SPLIT THE ENTRY BELOW IS
+        # BLOCKED ON. A transmissive pane shows whatever is behind it, so a
+        # drum-facing window and a space-facing window now differ by their
+        # VISTA and not by their glass -- which is what C-003 was being asked
+        # to decide and no longer is.
+        specular=0.92, transmittance=0.840,
         binds=("prop_viewport", "cc_glazing"), scenes=("interior",),
         # SESSION 4m LOOKED AT SPLITTING THIS AND STOPPED, AND THE REASON IS
         # WORTH MORE THAN THE SPLIT WOULD HAVE BEEN. The entry's one measured
@@ -6095,7 +6124,14 @@ def tres(m):
                        f'path="res://materials/textures/{m.texture}_{kind}.png" '
                        f'id="{ids[kind]}"]')
     body.append(f'resource_name = "{m.title}"')
-    body.append(f"albedo_color = {_c(emitted_albedo(m))}")
+    # ALPHA IS THE ONLY PART OF TRANSMISSION THAT LIVES IN THE COLOUR, and on
+    # its own it does NOTHING: Godot gates the whole transparent path behind
+    # the `transparency` enum, and a StandardMaterial3D at
+    # TRANSPARENCY_DISABLED discards alpha silently. Writing the alpha without
+    # the enum is a no-op that looks like a decision -- the same shape as the
+    # `.tres` keys this file already checks against the class property list.
+    body.append(f"albedo_color = "
+                f"{_c(emitted_albedo(m), _num(1.0 - m.transmittance))}")
     if m.texture:
         body.append(f'albedo_texture = ExtResource("{ids["albedo"]}")')
     body.append(f"metallic = {_num(m.metallic)}")
@@ -6104,6 +6140,19 @@ def tres(m):
         body.append(f'metallic_texture = ExtResource("{ids["orm"]}")')
         body.append("metallic_texture_channel = 2")
     body.append(f"roughness = {_num(m.roughness)}")
+    if m.transmittance > 0.0:
+        # 1 is TRANSPARENCY_ALPHA. THE VALUE WAS CHECKED AGAINST THE ENGINE
+        # RATHER THAN REMEMBERED, and the check earned its keep: the patch this
+        # implements also asked for `depth_draw_mode = 1`, which is
+        # DEPTH_DRAW_ALWAYS -- the OPPOSITE of the `vista.gd` shim it replaces,
+        # which sets DEPTH_DRAW_OPAQUE_ONLY. Printed from
+        # `BaseMaterial3D` in the double build:
+        #   TRANSPARENCY_DISABLED 0   TRANSPARENCY_ALPHA 1
+        #   DEPTH_DRAW_OPAQUE_ONLY 0  DEPTH_DRAW_ALWAYS 1  DEPTH_DRAW_DISABLED 2
+        # So OPAQUE_ONLY is the DEFAULT and writing it would be a line that
+        # changes nothing, while writing 1 would make a pane you look through
+        # stamp depth over the view behind it. Nothing is written.
+        body.append("transparency = 1")
     if m.texture:
         body.append(f'roughness_texture = ExtResource("{ids["orm"]}")')
         body.append("roughness_texture_channel = 1")
@@ -7116,6 +7165,65 @@ def _selftest():
           all(m.texture in TEX_SIZE for m in MATERIALS if m.texture),
           str([m.texture for m in MATERIALS
                if m.texture and m.texture not in TEX_SIZE]))
+
+    # -- SESSION 4r: A PANE THAT DOES NOT SAY "TRANSPARENCY" IS NOT A PANE ---
+    #
+    # THIS BLOCK IS WRITTEN TO FAIL ON THE CONTENT THAT PRECEDED IT, and it was
+    # watched doing so. Run against `transmittance=0.0` on `viewport_glazing`
+    # -- which is what the library held before this session -- the first two
+    # checks report:
+    #
+    #   FAIL  the pane a window is made of is transmissive in the LIBRARY  [0.0]
+    #   FAIL  a transmissive material writes the enum, not just the alpha  [...]
+    #
+    # That matters because the failure this guards against is SILENT. Godot
+    # discards `albedo_color`'s alpha at TRANSPARENCY_DISABLED, so a library
+    # that set the alpha and not the enum would export, parse, load and render
+    # a perfectly opaque window while every Python-side value said 0.16.
+    _panes = [m for m in MATERIALS if m.transmittance > 0.0]
+    _vg = BY_NAME["viewport_glazing"]
+    check("the pane a window is made of is transmissive in the LIBRARY",
+          _vg.transmittance > 0.0, str(_vg.transmittance))
+    _no_enum = [m.name for m in _panes if "transparency = 1" not in tres(m)]
+    check("a transmissive material writes the enum, not just the alpha",
+          not _no_enum, str(_no_enum))
+    _bad_alpha = [m.name for m in _panes
+                  if f", {_num(1.0 - m.transmittance)})" not in
+                  tres(m).split("albedo_color = ")[1].split("\n")[0]]
+    check("a transmissive material's albedo alpha is 1 - T",
+          not _bad_alpha, str(_bad_alpha))
+    # THE NEGATIVE CONTROL, because the three above would all pass on a writer
+    # that emitted `transparency = 1` for EVERY material. Withdraw the
+    # transmittance and the enum must go with it and the alpha must return to
+    # exactly 1 -- so an opaque surface is byte-identical to what it was before
+    # this field existed.
+    _t_was = _vg.transmittance
+    try:
+        _vg.transmittance = 0.0
+        _off = tres(_vg)
+    finally:
+        _vg.transmittance = _t_was
+    check("withdrawing T withdraws the enum (negative control)",
+          "transparency" not in _off, _off[:0])
+    check("withdrawing T returns the alpha to 1 (negative control)",
+          "albedo_color = Color(0.04, 0.042, 0.046, 1)" in _off,
+          _off.split("albedo_color = ")[1].split("\n")[0])
+    check("an opaque material writes no transparency enum at all",
+          not any("transparency" in tres(m) for m in MATERIALS
+                  if m.transmittance == 0.0 and not m.shader))
+    # AND THE NUMBER MUST NOT EXIST TWICE. `station/vista.py` carries its own
+    # `PANE_TRANSMITTANCE` and hands it to the engine in every manifest; a
+    # cache that can go stale silently is a second copy of a computed number,
+    # and so is a constant. Imported lazily so the library's import graph does
+    # not grow an edge for one assertion. When `vista.py` reads this value from
+    # here instead, this check becomes trivially true and should be deleted.
+    try:
+        import vista as _vista                                  # noqa: PLC0415
+        check("vista.py's copy of T agrees with the material's",
+              abs(_vista.PANE_TRANSMITTANCE - _vg.transmittance) < 1e-9,
+              f"{_vista.PANE_TRANSMITTANCE} != {_vg.transmittance}")
+    except ImportError as _e:                                   # pragma: no cover
+        check("vista.py's copy of T agrees with the material's", False, str(_e))
 
     # -- SESSION 4e: NO MATERIAL MAY BE FLAT BY ACCIDENT ---------------------
     # 186 of 234 materials carried no texture at all, which is what the renders
