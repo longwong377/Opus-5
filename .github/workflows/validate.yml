@@ -830,6 +830,26 @@ jobs:
         continue-on-error: true
         run: python3 station/consequence.py --gate
 
+      # WHAT HAPPENS AFTER A REFUSAL. `tools/wiring.py --selftest` lists
+      # `scene/enforcement.json` under "on disk but not rebuilt by CI" -- an
+      # engine data path with no CI producer, which survives only because
+      # somebody once ran the builder by hand. That is the Starfury defect
+      # verbatim, and it is the reason this step exists rather than the gate
+      # being interesting on its own.
+      #
+      # `--bake` must run AFTER `--selftest` and is what writes the JSON.
+      # ~90 s, of which ~40 s is `navigation.build_graph()`: the escort and
+      # court legs ARE paths on it, so it cannot be skipped. The ENGINE half
+      # (`enforcement.py --gate`) needs a built deck and a Godot binary,
+      # neither of which CI has -- the same reason `coldstart.py`'s G1/G4/G5
+      # skip here.
+      - name: A refusal is answered -- the arrest chain, baked
+        id: senforcement
+        continue-on-error: true
+        run: |
+          python3 station/enforcement.py --selftest
+          python3 station/enforcement.py --bake
+
       # THE INCIDENT GENERATOR -- P1-G3 / SYS-14. THIRTY classes whose rates
       # come from station state that already exists (traffic.hall_rate,
       # traffic.berths_in_use, security.hostility, audio.species_mix,
@@ -1102,6 +1122,8 @@ jobs:
             echo "FAILED: snavgraph"; fail=1; fi
           if [ "${{ steps.sconfirm_the_schema_still_parses_and_is_f.outcome }}" != "success" ]; then
             echo "FAILED: sconfirm_the_schema_still_parses_and_is_f"; fail=1; fi
+          if [ "${{ steps.senforcement.outcome }}" != "success" ]; then
+            echo "FAILED: senforcement"; fail=1; fi
           if [ "${{ steps.shullfit.outcome }}" != "success" ]; then
             echo "FAILED: shullfit"; fail=1; fi
           if [ "${{ steps.svista.outcome }}" != "success" ]; then
