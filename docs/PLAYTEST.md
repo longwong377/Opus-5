@@ -13,19 +13,33 @@ repository already knows is missing.
 
 Measured, not guessed. Wasting a session discovering these is the failure this section prevents.
 
-**Four rows of this table were stale when session 4n checked them, and the direction of the
-error is the one that costs a playtest most: they said *absent* about things that now work.**
-A human who read the old §0 would have skipped the dialogue, the calendar and the Starfury —
-the three most interesting things the build does. The rows below are re-verified, and each
-says how.
+**This table has now gone stale TWICE in the same direction — saying *absent* about things that
+work — and both times it was caught by grepping the claims rather than by re-running them.**
+Session 4n found four such rows; 4p found six more. **Re-grep §0 before every playtest**, and
+treat any "not there" older than a session as unverified. The rows below are re-checked as of
+session 4p.
 
 | you will reach for | state |
 |---|---|
-| **a menu, map or inventory** | none. The only UI is the HUD line and `[E] operate the …`. |
+| **a menu or a map** | none. The only UI is the HUD line, `[E] …`, and the read panel. |
 | **the jump gate** | not wired. |
-| **arriving as a person** | `--mode arrival` exists and is a sequence, not a character creation. No papers to be checked yet. |
-| **the drum from inside** | `--mode drum` walks it, but the Garden is craft 1 — boxes and cylinder trees. Known, logged, not yet reworked. |
-| **docking a Starfury** | launch works, docking does not — see below. |
+| **arriving as a person** | `--mode arrival` exists and is a sequence, not a character creation. |
+| **the drum from inside** | `--mode drum` walks it, and **the drum floor is 4.5 million m² with nothing standing on it** — no vegetation, no props, no people, no relief. The buildings and trees WERE rebuilt after the owner's "shitty little cubes"; the ground they stand on was not. MASTER-PLAN A4a-1. |
+| **most verbs** | `read` works. `open`, `operate`, `store`, `serve` still only depress the prop for a few frames — **there is no verb dispatch**. `sit` and `rest` are not even in `RESPONDS`: **you can press E on a chair and not sit down.** MASTER-PLAN A4b-1. |
+| **buying something** | the economy is a working simulation and is **read-only in the game** — the HUD draws a number Python wrote. **No counter will take your money.** A4b-3. |
+| **anything breaking** | power, air, water and waste are geometry plus a staffing roster. **C&C has a watch roster and controls nothing that can break.** A4a-3. |
+| **a craft-4 interior** | there is exactly one thing on the station at craft 4 (the exterior approach). **Six subsystems are at craft 1** — including C&C and the council chamber, which have bespoke builders, and the customs hall and docking bay, which are the player's first ten minutes. A4a-2. |
+
+### Corrected in session 4p — these were absent and are now IN
+
+| |
+|---|
+| **Room occupants are people.** They were geometry welded into the deck mesh — the entire runtime behaviour of a person in a room was turning their head to face you. Now **66 of 66 change state over a station-day**: at 03:00 forty are away, twelve eat, seven work, four sleep; at 13:00 twenty-one idle, eighteen work, nine eat. Verified in the engine on the streamed path. |
+| **They sleep.** `CLIP_SET` was walk/idle/talk/sit with no recline at all, while `schedule.RHYTHMS` has always known every Narn aboard is asleep at 03:00. |
+| **The corridor crowd exists at all.** This one is the caution: the shipped build had been instancing **ZERO** corridor walkers while this project quoted "963 walking 5,966 m" — that figure was true of a Python harness and had never reached the game. Now 8 a cell. |
+| **Boards, plaques and monitors say things.** All derived: the arrivals board reads the same `signage.arrivals_lines` the mesh letters are cut from; monitors read `broadcast.day`, which had been **audible-only**. |
+| **The station has a week.** 210 observances over 20 places — festivals, faith rotas, weddings, drills, invitation-gated receptions. |
+| **The Starfury docks.** 12 of 12 start phases over a full rotation, and the dock's contact velocity **is** the launch's release velocity to 0.002 m/s. |
 
 ### Corrected — these are IN, go and use them
 
@@ -45,14 +59,18 @@ did not exist. They do — at `station/generated/scene/`, not `station/generated
 |---|---|
 | flight model | `station/physics/starfury.py`, tested, **in CI** (`sstarfury_flight_model`) |
 | airframe | `starfury_geometry.py`, tested, **in CI** (`sstarfury_airframe…`) |
-| docking physics | `station/physics/docking.py` + `test_docking.py`, tested, **not in CI** |
+| docking physics | `station/physics/docking.py` + `test_docking.py`, 15/15, **in CI** (`sstarfury_dock`) |
 | docking envelope | `starfury_scene.py --docking-envelope` — derived and real, see below |
 | engine script | `starfury.gd`, 1,000+ lines: mission, chase cam, floating origin, selftest |
-| **the data it reads** | **present** at `station/generated/scene/starfury/` — but `starfury_scene.py --build` is **never run in CI**, so it survives only because somebody once ran it by hand. Delete it and nothing rebuilds it |
-| **a dock phase** | **absent.** The mission is `ride → coast → transit`: it rides the rotating cobra bay, is released at the correct phase, coasts, and runs out |
+| **the data it reads** | **present and rebuilt by CI** — `starfury_scene.py --build` runs in `sstarfury_dock`. It used to survive only because somebody once ran it by hand |
+| **a dock phase** | **BUILT (4p).** `--dock-gate` flies the dock at the measured cobra bay from every start phase over one rotation: **12 of 12 dock**, peak 72.7% of the airframe, tightest hull clearance 28.1 m |
 
-P4's bar is "launch → fly → dock, seamless". Launch is built, docking is *analysed* and never
-flown. The analysis is worth reading on its own — a cobra bay sits at **293.8 m** of radius and
+P4's bar is "launch → fly → dock, seamless", **and it is met as of session 4p.** The assertion
+that makes it one mechanism rather than two: **the dock's contact velocity IS the launch's
+release velocity**, agreeing to 0.00198 m/s on 55.1483 m/s — docking is launch run backwards and
+both halves read one bay model, so they cannot drift.
+
+The envelope is worth reading on its own — a cobra bay sits at **293.8 m** of radius and
 the spin that makes 1 g at the habitat floor means holding formation off that bay costs
 centripetal acceleration that rises with standoff:
 
@@ -65,7 +83,9 @@ centripetal acceleration that rises with standoff:
 **The ceiling is 227.8 m of standoff**, beyond which ω²R exceeds the airframe's maximum and no
 guidance law helps. On the spin axis the tangential speed to match is 0.0 m/s, which is why the
 forward docking sphere exists at all. None of that is authored; it falls out of the spin rate
-the station already had.
+the station already had. **And the gate refuses 227 m too** — inside the ceiling, but leaving
+0.1% of thrust for control against a 5% floor: a craft that can only just hold the circle
+cannot also steer.
 
 ---
 
@@ -176,7 +196,13 @@ Not bugs — the gates find those. Write down the things a gate structurally can
 
 ---
 
-*Verified headless as of session 4n: `deck.py --sweep` 90/90 clusters, 128/128 locations,
+*Verified headless as of session 4p: `populace.py --rooms` OK (66 occupants, 66 changing state) ·
+`animation.py` 685/685 · `populace.py` 78/78 · `civic_calendar.py --gate` 34/34 ·
+`starfury_scene.py --dock-gate` PASS · `test_docking.py` 15/15 · `budget.py` 24/28 with four
+honest reds · `interact.py --selftest` OK · the shipped scene boots STREAMED with `hud=1`,
+`on_floor=true`, the occluder loaded and 8 walkers a cell.*
+
+*Previously, session 4n: `deck.py --sweep` 90/90 clusters, 128/128 locations,
 0 floor holes · `boot.py --gate` 10/10 · `coldstart.py` G1+G3 pass with controls ·
 `agenda.py --commute` green at ×1/×10/×60 · `economy.py` 25/25 · `dockwork.py` 23/23 with 5/5
 controls · `faction.py --selftest` 27/27 · `friction.py --selftest` 30/30 ·
