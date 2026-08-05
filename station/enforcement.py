@@ -155,12 +155,21 @@ def _detain_draw(npc_id: str, place_key: str, day: int, nth: int,
 def player_from_ledger(path: str = None):
     """The played session's own person, rebuilt so the ENGINE agrees with it.
 
-    THIS IS NOT `player.from_state` AND IT CANNOT BE, WHICH IS A DEFECT I FOUND
-    RATHER THAN CHOSE. `from_state` regenerates the card from `(npc_id,
-    species)` alone -- deliberately, because a save must not be able to describe
-    a person the station would not produce -- but `player.player_from(choices)`
-    mints a card with a CHOSEN role, and that choice is not in the id. So for
-    the purse this repository actually ships:
+    THE DEFECT THIS WORKED AROUND IS FIXED. `player.from_state` now recovers a
+    chosen role from the saved `role` field and raises if the rebuilt rung and
+    the stored rung disagree, so it and this function agree on the shipped
+    purse: both give `lurker`, rung 0. **This is kept anyway, and not because
+    it is still needed** -- it is a second, independently-written derivation of
+    the same person from the same file, and this module's gate compares them.
+    A duplicate that CHECKS is not the same thing as a duplicate that DRIFTS.
+    Retire it only together with the assertion below.
+
+    The finding, kept because the reasoning is the valuable part. `from_state`
+    regenerates the card from `(npc_id, species)` alone -- deliberately, because
+    a save must not be able to describe a person the station would not produce
+    -- but `player.player_from(choices)` mints a card with a CHOSEN role, and
+    that choice is not in the id. So for the purse this repository ships, before
+    the fix:
 
         stored in economy.json   role=lurker   tier=0  no_status
         player.from_state(...)   role=service  tier=4  citizen

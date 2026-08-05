@@ -496,9 +496,36 @@ def from_state(st: dict) -> Player:
     The card is REGENERATED rather than loaded, which is the point: an id and a
     species resolve to one person deterministically, so a save file cannot
     describe a player the station's own machinery would not produce.
+
+    A CHOSEN ROLE IS NOT IN THE ID, AND THAT MADE THIS A DIFFERENT PERSON.
+    `player_from(choices, seed)` mints a card with a role the player picked,
+    through `_rederive`; nothing about that choice is recoverable from
+    `(npc_id, species)`. So on the purse this repository actually ships
+    (`station/generated/economy.json`, `player:downbelow`) the engine's
+    `interact.gd::set_purse` handed the body a **lurker at rung 0**, and this
+    function returned a **service worker at rung 4** for the same save.
+
+    Not cosmetic: rung is the field the entire law layer turns on.
+    `consequence._dispose` at rung 0 says *"already at the floor; the next
+    disposal is transfer off-station"*, and at rung 4 says *"EA citizenship is
+    not revocable by an Ombuds"*. Two different games, decided by which loader
+    you happened to come through.
+
+    THE RAISE MATTERS AS MUCH AS THE FIX. `state()` writes `tier` for the
+    engine, so the two halves CAN be compared -- and nothing compared them,
+    which is why a disagreement this loud survived. A save whose stored rung
+    and rebuilt rung differ is not a save this function will quietly reinterpret.
     """
-    card = RES.resident(st["npc_id"], st["species"])
-    return Player(card=card).restore(st)
+    nid, sp = st["npc_id"], st["species"]
+    card = RES.resident(nid, sp)
+    role = st.get("role")
+    if role and card.role != role:
+        card = _rederive(nid, sp, role)
+    pl = Player(card=card).restore(st)
+    if "tier" in st and int(st["tier"]) != int(pl.tier):
+        raise ValueError(f"{nid}: the purse says rung {st['tier']} and the "
+                         f"rebuilt card says {pl.tier}")
+    return pl
 
 
 # ---------------------------------------------------------------------------

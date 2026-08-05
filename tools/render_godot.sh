@@ -67,6 +67,13 @@ EXPORT=1
 QUALITY="high"
 WARMUP=""
 LIGHT_GAIN=""
+# Flags that belong to `render_shot.gd` rather than to the exporter. Anything
+# unrecognised below falls through to `export_scene.py`, whose argparse rejects
+# it -- so a renderer-side flag that is not named here cannot be reached at all.
+# The vista negative control had to be run by moving
+# `station/generated/scene/vista/cnc.json` aside instead, which works and is
+# clumsy, and a control that awkward is a control that stops being run.
+VISTA_ARGS=()
 TIMEOUT="${TIMEOUT:-3600}"
 PASS=()
 
@@ -78,6 +85,9 @@ while [ $# -gt 0 ]; do
     --quality)    QUALITY="$2"; shift 2 ;;
     --warmup)     WARMUP="$2"; shift 2 ;;
     --light-gain) LIGHT_GAIN="$2"; shift 2 ;;
+    --no-vista)   VISTA_ARGS+=("--no-vista"); shift ;;
+    --vista-gain) VISTA_ARGS+=("--vista-gain=$2"); shift 2 ;;
+    --vista-phase) VISTA_ARGS+=("--vista-phase=$2"); shift 2 ;;
     --no-export)  EXPORT=0; shift ;;
     -h|--help)    sed -n '2,32p' "$0"; exit 0 ;;
     # Anything else belongs to the exporter: --eye, --target, --stand, --look,
@@ -134,6 +144,7 @@ fi
 USER_ARGS=("--scene-json=$SCENE_JSON" "--out=$OUT")
 [ -n "$WARMUP" ] && USER_ARGS+=("--warmup=$WARMUP")
 [ -n "$LIGHT_GAIN" ] && USER_ARGS+=("--light-gain=$LIGHT_GAIN")
+USER_ARGS+=(${VISTA_ARGS[@]+"${VISTA_ARGS[@]}"})
 # The screen-space passes are the expensive part on a CPU rasteriser and they
 # are the first thing to drop when the question is "did the geometry arrive",
 # not "does it look right".

@@ -870,11 +870,20 @@ class Face extends Control:
 		var lines: PackedStringArray = h.check_text.split("\n", false)
 		if lines.is_empty():
 			return
-		# REFUSAL IS AMBER, ADMISSION IS CYAN. The first word carries it, so
-		# there is no separate flag to keep in step with the sentence.
-		var col: Color = CYAN
-		if String(lines[0]).begins_with("IDENTICARD REFUSED"):
-			col = AMBER
+		# CYAN IS THE EXCEPTION, NOT THE DEFAULT. Every plate above the
+		# reticle is about the player rather than about the world, and all
+		# of them but one are bad news: refused, seized, security notified,
+		# moved on, detained, in custody, released. `enforcement.gd` writes
+		# five more into this same field and every one of them was
+		# rendering in the colour this HUD uses for YOUR CARD IS GOOD.
+		#
+		# Keying on the single ADMISSION is a rule; keying on a list of the
+		# others is a list that goes stale the day `enforcement.gd` gains a
+		# sentence. Byte-identical for the two plates that existed before:
+		# `IDENTICARD ACCEPTED` (hud.gd:466) stays cyan and `IDENTICARD
+		# REFUSED` (hud.gd:468) stays amber.
+		var col: Color = (CYAN if String(lines[0]).begins_with(
+			"IDENTICARD ACCEPTED") else AMBER)
 		var px := int(roundf(15.0 * s))
 		var lh: float = px * 1.5
 		var w := 0.0
