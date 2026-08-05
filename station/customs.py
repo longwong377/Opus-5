@@ -878,6 +878,7 @@ _FACES = {
     "-Z": lambda u, w, p: (u - p[0], p[1], w - p[2]),
     "+X": lambda u, w, p: (u + p[2], p[1], w - p[0]),
     "-X": lambda u, w, p: (u - p[2], p[1], w + p[0]),
+    "+Z": lambda u, w, p: (u + p[0], p[1], w + p[2]),
 }
 
 
@@ -1068,9 +1069,20 @@ def gate_wall(v, t, g, hw, arrivals_legend):
                     _box(v, t, g, "customs_panel_pier",
                          (cx - sq / 2.0, y0r, ra), (cx + sq / 2.0, y1r, rb))
 
-    # --- the red-orange notice panel --------------------------------------
-    # On the arriving player's RIGHT, which is -X, because that is the side the
-    # frame puts it on relative to its own camera. Four bars, unlettered.
+    # --- the notice panel and the two legends, ON BOTH FACES ---------------
+    # A THRESHOLD IS READ FROM BOTH SIDES AND THE FIRST BUILD PUT EVERYTHING ON
+    # ONE, which cost a render to see. The frame is taken from the approach, so
+    # its legend and its red-orange panel are on the approach face -- and the
+    # approach here is only 2.6 m deep, because the corridor door is at z = 0.
+    # A 3.7 m legend readable from 2.5 m away, in a 34 m hall, is a legend
+    # nobody reads: the face a player actually spends time in front of is the
+    # INNER one, with a queue on it. `docs/craft-4q-customs-gate-oneside.png` is
+    # the frame that showed it -- 927 warm-lit pixels in the whole shot and
+    # every one of them a ceiling coffer, with the fascia peaking at sRGB 29.
+    #
+    # Both faces, then, which is also what a real gate does. NOT symmetric in
+    # everything: the piers are on both faces because the frame shows them on
+    # both, and the light course runs through the reveal in between.
     #
     # OUTBOARD OF BOTH PIERS, and that is a clearance decision rather than a
     # composition one: the piers stand 170 mm forward of the flank and a panel
@@ -1079,29 +1091,32 @@ def gate_wall(v, t, g, hw, arrivals_legend):
     # so the two cannot drift.
     pier_out = ow + 0.42 + (PIER_W_M + 0.46) + PIER_W_M
     nx = -(pier_out + 0.30 + NOTICE_W_M / 2.0)
-    zf = z0 - 0.02
-    _box(v, t, g, "customs_panel_notice",
-         (nx - NOTICE_W_M / 2.0, NOTICE_Y_M - NOTICE_H_M / 2.0, zf - 0.06),
-         (nx + NOTICE_W_M / 2.0, NOTICE_Y_M + NOTICE_H_M / 2.0, zf))
     bh = NOTICE_H_M / (NOTICE_BARS * 2 + 1)
-    for j in range(NOTICE_BARS):
-        yb = NOTICE_Y_M - NOTICE_H_M / 2.0 + bh * (1 + 2 * j)
-        _box(v, t, g, "light_indicator_red",
-             (nx - NOTICE_W_M * 0.40, yb, zf - 0.075),
-             (nx + NOTICE_W_M * 0.40, yb + bh, zf - 0.062))
-
-    # --- the two legends on the fascia ------------------------------------
-    # The one over the arch is DERIVED and declared so: its wording is not
-    # legible at this frame's resolution (see INV-471), so it is generated from
-    # the register rather than transcribed. The one on the right-hand wall IS
-    # the frame's -- `WELCOME TO BAB...` before the crop, which is the station's
-    # own welcome and is already authority-1 in `WELCOME_BOARD`.
-    _legend(v, t, g, arrivals_legend, "-Z", 0.0, z0 - GATE_BAND_M - 0.012,
-            (GATE_CROWN_M + GATE_HEAD_M) / 2.0, GATE_OPEN_W_M * 0.92, 0.46)
     lx0, lx1 = nx - NOTICE_W_M / 2.0 - 0.30, -(hw - 0.15)
-    _legend(v, t, g, ("WELCOME TO BABYLON 5",), "-Z",
-            (lx0 + lx1) / 2.0, z0 - 0.012, GATE_SPRING_M + 0.72,
-            abs(lx1 - lx0) * 0.88, 0.34)
+    for face, zf, out in (("-Z", z0 - 0.02, -1.0), ("+Z", z1 + 0.02, 1.0)):
+        _box(v, t, g, "customs_panel_notice",
+             (nx - NOTICE_W_M / 2.0, NOTICE_Y_M - NOTICE_H_M / 2.0,
+              min(zf, zf + out * 0.06)),
+             (nx + NOTICE_W_M / 2.0, NOTICE_Y_M + NOTICE_H_M / 2.0,
+              max(zf, zf + out * 0.06)))
+        for j in range(NOTICE_BARS):
+            yb = NOTICE_Y_M - NOTICE_H_M / 2.0 + bh * (1 + 2 * j)
+            _box(v, t, g, "light_indicator_red",
+                 (nx - NOTICE_W_M * 0.40, yb,
+                  min(zf + out * 0.062, zf + out * 0.075)),
+                 (nx + NOTICE_W_M * 0.40, yb + bh,
+                  max(zf + out * 0.062, zf + out * 0.075)))
+        # The legend over the arch is DERIVED and declared so: its wording is
+        # not legible at the frame's resolution (INV-471), so it is generated
+        # from the register. The one on the flank IS the frame's --
+        # `WELCOME TO BAB...` before the crop -- and is already authority-1
+        # verbatim in `WELCOME_BOARD`.
+        zb = (z0 - GATE_BAND_M - 0.012) if out < 0 else (z1 + 0.012)
+        _legend(v, t, g, arrivals_legend, face, 0.0, zb,
+                (GATE_CROWN_M + GATE_HEAD_M) / 2.0, GATE_OPEN_W_M * 0.92, 0.46)
+        _legend(v, t, g, ("WELCOME TO BABYLON 5",), face,
+                (lx0 + lx1) / 2.0, zf + out * 0.008, GATE_SPRING_M + 0.72,
+                abs(lx1 - lx0) * 0.88, 0.34)
 
     # --- the course carried through the reveal ----------------------------
     # The frame's strips run along the jamb and into the passage. Same cell
