@@ -136,8 +136,13 @@ jobs:
       # MEANING TWO THINGS EACH -- INV-450 was both the ragdoll's settle
       # threshold and a farm hedge's height -- because two agents in one session
       # were each given a reserved block and nothing checked the blocks against
-      # each other. EXPECTED RED on five pre-existing dangling citations
-      # (INV-074/078/140/141/232); the session-4q collisions are closed.
+      # each other. The session-4q collisions are closed, and so are the five
+      # dangling citations this step was RED on since the day it was written
+      # (INV-074/078/140/141/232) -- each was already argued carefully in the
+      # file that cited it and simply had no entry for a reader to land on.
+      # GREEN as of 4r: 306 entries, 194 numbers cited. "Pre-existing" is a
+      # description, not an exemption; hard rule 2 does not have a grandfather
+      # clause.
       - name: Every INV cited in code is defined
         id: sinv_register
         continue-on-error: true

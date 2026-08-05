@@ -9644,3 +9644,82 @@ not by their glass; the split becomes unnecessary rather than urgent, and is not
 instead of keeping `PANE_TRANSMITTANCE`, at which point `materials._selftest`'s
 "vista.py's copy of T agrees with the material's" check becomes trivially true and should
 go.
+
+---
+
+# BACKFILLED ENTRIES — five citations that predated the register check (session 4r)
+
+`tools/inv_check.py` has been RED since it was written, on five numbers cited in code with no
+entry here. The CI step's own comment calls them "pre-existing", which is true and is not a
+reason to leave them: **hard rule 2 says a number that looks sourced and is not is exactly what
+hard rule 1 forbids**, and a citation pointing at nothing is the purest form of that. Each of
+these was already argued, carefully, in the file that cites it — what was missing was the entry
+a reader following the number would land on. Written from the code's own reasoning, not
+re-derived, and each says where the real argument lives so the two cannot drift.
+
+## INV-074 — the session-3u dressing surfaces are INV-073's painted board, not a new material
+
+**What.** `dress_crate`, `dress_crate_lid`, `dress_door`, `dress_top`, `dress_clutter`,
+`dress_soft` and the `alien_*` trim bind to the same painted-board material INV-073 was measured
+for. **Why.** Case bodies, cabinet doors and work tops in the show's interiors are the same
+painted plane as the wall trim around them, worked into relief rather than finished differently;
+introducing a colour for them would be inventing a distinction the reference does not show.
+**Constrained by.** `materials.check_material_coverage()` — every emitted group must bind, so the
+alternative to reusing this entry is authoring a new one, not leaving them unbound.
+**Overturned by.** Any authority-1 frame in which a crate or a work top reads as a different
+material from the dado beside it. **Authority 5.** The argument is at `station/materials.py:2253`.
+
+## INV-078 — a radial shaft runs enough cars for a two-dwell headway
+
+**What.** `navigation.shaft_cars(schema, span_m)` = `round(headway / SHAFT_TARGET_HEADWAY_S)`,
+with `SHAFT_TARGET_HEADWAY_S = 2.0 × TRANSIT_DWELL_S = 40.0 s`. **Why.** The mean wait is about
+one dwell — a car turns up roughly as often as it takes to load one — which is the only
+self-consistent target available, because `TRANSIT_DWELL_S` is already this project's measure of
+how long a door stands open. Two dwells is the point past which boarding rather than waiting is
+the cost of using the thing. **Constrained by.** It falls out per sector rather than being
+tabulated: Grey's shaft spans 382 m and gets 10 cars, Green's spans 29 m and gets 2. One constant
+could not have been right for all five, which is the check that this is a derivation and not a
+number. **Overturned by.** Any frame showing a lift lobby — the number of doors in it IS the
+bank. Nothing in the show counts lift cars. **Authority 5.** Argument at
+`station/npc/navigation.py:1651`.
+
+## INV-140 — `rooms.PLAN_ELEMENTS`: what is in the middle of a room's floor, by activity
+
+**What.** 114 activity keys mapping a room's declared function to the plan elements on its floor
+— a counter you queue at, rows you sit in, cells you sleep in — each with a size and an
+arrangement. **Why.** A room built from its declared interactables alone is controls without
+machinery; this is the other half, and it is what makes a named activity read as that activity
+from the doorway. **Constrained by**, and all four are asserted rather than intended: the element
+must leave the room crossable by a 0.9 m walker; must not occupy the same cubic metre as anything
+else (by construction, see `place_elements`); must fit under the room's own ceiling; and must be
+the arrangement the named activity actually has. `_selftest` also asserts every name resolves to
+a real fixture. **Overturned by.** Any reference frame of one of these rooms showing a different
+arrangement — this is the table most likely to be wrong in detail and least likely to be wrong in
+kind. **Authority 5.** Argument at `station/rooms.py:493`.
+
+## INV-141 — clear height is keyed on FUNCTION, on a ladder of clearance arguments
+
+**What.** `rooms` ceiling heights run on a ladder from 2.40 m (a berth: 1.70 m standing plus
+hair, and a bunk you sit up in) upward, each rung a clearance argument rather than a taste.
+**Why.** `docs/variety-V0.md` §5 measured the SECTION channel as the worst number in the whole
+variety measurement — **47.6% of all 8,128 pairs above the ceiling there**, median 0.699 against
+0.269 for plan — and §7 gives the cause in one line: **48 of 128 places shared a 2.90 m ceiling**,
+with eleven distinct heights on the entire station, one per archetype.
+**Constrained by, and this bounds what the entry can achieve.** A cross-section IoU between two
+box rooms is exactly `min(h1,h2)/max(h1,h2)`, so two rooms are told apart on section alone only
+if one is **1.37× the height of the other**. This table therefore does NOT break clusters on its
+own and is not meant to; it moves the distribution, and moves `rib_pitch_m` and `light_pitch_m`
+with it, which are plan. **Overturned by.** A measured floor-to-ceiling in any authority-1
+interior frame. **Authority 5.** Argument at `station/rooms.py:99`.
+
+## INV-232 — a walk test's success bar is the engine's own reach, 2.4 m
+
+**What.** `walkable.USE_RANGE_M = 2.4`, the distance a body must end up within for "you walked up
+to it" to mean anything. **Why.** It is not a chosen tolerance: `godot/scripts/interact.gd`
+declares `@export var reach_m: float = 2.4`, and the bar on the WALK is set AT the engine's reach
+so a body that stops outside arm's length fails even if a generous prompt cone happened to light
+up. Setting it looser would let the walk gate pass on a body that cannot touch the thing.
+**Constrained by.** The two numbers must stay equal; they are in different languages and
+different files, which is the drift risk this entry exists to name. **Overturned by.** Any change
+to `interact.gd::reach_m` — which must move this constant in the same commit. **Authority 5.**
+Argument at `station/walkable.py:294`.
