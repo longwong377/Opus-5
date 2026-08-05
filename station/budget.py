@@ -251,9 +251,14 @@ DECK = {
 #     there so the gap between the two is visible, because the gap is the
 #     argument for spatial submission.
 #   * the CELL figure is the third: the same AABB test with the deck cut into
-#     the streaming cells `interior.ring_cells` already declares and
-#     `godot/scripts/stream.gd` already bakes. It is what the shipped path would
-#     get for free once cells carry their own instances.
+#     the streaming cells `interior.ring_cells` declares. `stream.gd::bake`
+#     already writes one MeshInstance3D per group PER CELL, and as of 4p
+#     `tools/export_scene.py` names the deck shot's OBJ groups the same way, so
+#     this is a decomposition that exists rather than one that would.
+#   * the SHIP figure is the fourth and it is the one gated: the cell figure
+#     restricted to the cells the streamer holds in memory. See
+#     `shipped_streaming()` -- the boot manifest names a cell set, so the
+#     monolithic row is the FALLBACK path and not the shipped one.
 #
 # Every one of the three is conservative in the same direction -- an instance or
 # a triangle survives unless it is provably behind the occluder -- so all three
@@ -380,6 +385,167 @@ def occlusion_chain(sector, ring, deck, z_m=None, root=ROOT):
             "scene tree and the engine has nothing to rasterise")
     out["applied"] = bool(out["setting"] and out["geometry"] and out["runtime"])
     return out
+
+
+# ---------------------------------------------------------------------------
+# WHAT THE SHIPPED BUILD ACTUALLY LOADS. Not what `walk.gd --glb` loads.
+# ---------------------------------------------------------------------------
+#
+# THIS FILE HAS BEEN MEASURING A PATH THE BUILD DOES NOT TAKE, and it said so in
+# its own labels: the row printed as `instance (as shipped) -- WHAT GODOT DOES`
+# is one primitive per OBJ group of the MONOLITHIC deck `.glb`, which is what
+# `walk.gd::_load_level` loads. The shipped scene is STREAMED. That is the same
+# trap as the occluder that was wired into `_load_level` in session 4o -- one
+# level up, and it has been here since the deck gate was written.
+#
+# The evidence, all of it on disk and all of it re-readable by this function:
+#
+#   station/generated/scene/boot.json         names a `cells_path` and
+#                                             `cells_count`; `station/boot.py`
+#                                             writes it
+#   godot/scripts/main.gd                     `w.set("cells_path", ...)` from
+#                                             that manifest -- `station/boot.py`
+#                                             gates that line's existence
+#   godot/scripts/walk.gd::_load_streamed     taken when `cells_path` is set;
+#                                             `_load_level` is the fallback
+#   station/generated/scene/.../cells.json    the manifest `stream.gd::bake()`
+#                                             wrote, one row per cell
+#   tools/bake_station.py                     955 baked `.scn` cells on disk
+#
+# WHAT STREAMING CHANGES FOR A BUDGET, and it is two separate things:
+#
+#   granularity  `stream.gd::_write_cell` emits one MeshInstance3D per group
+#                PER CELL, so the cull unit is (group x cell) and not (group).
+#                That is the `instance x cells` row this file already prints as
+#                a hypothetical.
+#   residency    only cells within `radius_m` of the body are loaded at all, and
+#                one outside `free_m` is freed. Fifteen of blue/0/0's eighteen
+#                cells are not in memory, so they are not submitted, not culled
+#                and not drawn.
+#
+# THE RESIDENCY NUMBERS ARE DERIVED TWICE AND CHECKED AGAINST EACH OTHER. Once
+# from `interior.ring_cells` here, and once read out of the baked manifest that
+# `stream.gd` wrote from the same source. A gate reading a committed artefact
+# must be able to rebuild it (this project's own rule, from the stale-frame
+# session); a gate that ONLY rebuilds it cannot tell whether the artefact on
+# disk still matches. Both, and `check` fails on disagreement.
+BOOT = os.path.join(ROOT, "station/generated/scene/boot.json")
+STREAM_GD = os.path.join(ROOT, "godot/scripts/stream.gd")
+
+
+def shipped_streaming(sector, ring, deck, root=ROOT):
+    """Does the shipped build stream this deck, and on what residency rule?
+
+    Returns a dict. `streamed` is False when the boot manifest names no cell
+    set, in which case the monolithic figures ARE the shipped ones and this
+    file's old labels were right.
+    """
+    out = {"streamed": False, "why": [], "cells_path": "", "n_cells": 0,
+           "radius_m": 0.0, "free_m": 0.0, "manifest": None,
+           "rule": {}, "boot": BOOT.replace(ROOT, "").lstrip("/")}
+    bp = os.path.join(root, "station/generated/scene/boot.json")
+    if not os.path.exists(bp):
+        out["why"].append("no station/generated/scene/boot.json -- run "
+                          "`python3 station/boot.py`; without it nothing here "
+                          "can say which path the build takes")
+        return out
+    with open(bp) as f:
+        boot = json.load(f)
+    out["deck"] = boot.get("deck", "")
+    cp = boot.get("cells_path", "")
+    if not cp:
+        out["why"].append(
+            f"boot.json names no cells_path ({boot.get('cells_why', '')!r}), so "
+            f"main.gd hands walk.gd an empty one and _load_streamed is skipped "
+            f"-- the monolithic .glb IS what ships")
+        return out
+    out["cells_path"] = cp
+    if not os.path.exists(cp):
+        out["why"].append(f"boot.json names {os.path.basename(cp)} and it is "
+                          f"not on disk")
+        return out
+    with open(cp) as f:
+        man = json.load(f)
+    res = man.get("residency", {}) or {}
+    out["manifest"] = {
+        "cells": len(man.get("cells", ())),
+        "cell_deg": float(man.get("cell_deg", 0.0)),
+        "radius_m": float(res.get("radius_m", 0.0)),
+        "free_m": float(res.get("free_radius_m", 0.0)),
+        "written_by": man.get("written_by", "?"),
+        "tris": sum(int(c.get("tris", 0)) for c in man.get("cells", ())),
+    }
+    # THE RULE, READ OFF `stream.gd` ITSELF, exactly as `shipped_camera()` reads
+    # `player.gd`. Two lines of that file decide how much of a deck is in memory
+    # and a budget that hard-codes them is a budget that drifts silently.
+    src = ""
+    if os.path.exists(os.path.join(root, "godot/scripts/stream.gd")):
+        with open(os.path.join(root, "godot/scripts/stream.gd")) as f:
+            src = f.read()
+    out["rule"]["radius_is_sight_line"] = bool(
+        re.search(r'"radius_m"\s*:\s*sight\b', src))
+    out["rule"]["free_is_max_sight_cell"] = bool(
+        re.search(r'"free_radius_m"\s*:\s*maxf\(\s*sight\s*,\s*'
+                  r'float\(row\["cell_length_m"\]\)\s*\)', src))
+    out["rule"]["resident_within_radius"] = bool(
+        re.search(r"if\s+d\[id\]\s*<=\s*radius_m", src))
+    out["rule"]["freed_past_free_m"] = bool(
+        re.search(r"if\s+want\.has\(id\)\s+or\s+d\[id\]\s*<=\s*free_m", src))
+    out["streamed"] = True
+    out["n_cells"] = int(boot.get("cells_count", 0)) or \
+        out["manifest"]["cells"]
+    out["radius_m"] = out["manifest"]["radius_m"]
+    out["free_m"] = out["manifest"]["free_m"]
+    return out
+
+
+def cell_arc_z(fr, cell, n_cells):
+    """z extent of each cell's own geometry. `stream.gd` records the same thing.
+
+    Derived from the mesh rather than read from the manifest, because
+    `distance_to` uses it and a residency radius taken from a stale artefact is
+    a residency radius nobody can check.
+    """
+    import numpy as np                                          # noqa: PLC0415
+    z = fr.cz
+    lo = np.full(n_cells, np.inf)
+    hi = np.full(n_cells, -np.inf)
+    for k in range(n_cells):
+        m = cell == k
+        if m.any():
+            lo[k] = z[m].min()
+            hi[k] = z[m].max()
+    return lo, hi
+
+
+def resident_cells(eye, n_cells, cell_deg, radius_m, z_lo, z_hi, free_m):
+    """Which cells are in memory with the body at `eye`. `stream.gd::update`.
+
+    THE TEST IS `distance_to` FROM THAT FILE, transcribed: angular distance to
+    the cell's own arc taken ALONG the ring at its radius, combined with the
+    axial gap to the cell's z extent. Not a centre-to-centre distance -- a cell
+    the body is standing in is at distance zero however long it is.
+
+    CONSERVATIVE ON PURPOSE. `update()` loads inside `radius_m` and frees only
+    past `free_m`, so a cell between the two may or may not be resident
+    depending on which way the body walked in. This counts it as RESIDENT, which
+    over-states what the engine holds and therefore over-states the frame. Every
+    other approximation in this file leans the same way.
+    """
+    import numpy as np                                          # noqa: PLC0415
+    r = math.hypot(eye[0], eye[1])
+    a = math.degrees(math.atan2(eye[1], eye[0])) % 360.0
+    k = np.arange(n_cells)
+    a0 = k * cell_deg
+    a1 = (k + 1) * cell_deg
+    inside = (a >= a0) & (a < a1)
+    d0 = np.minimum(np.abs(a - a0) % 360.0, 360.0 - np.abs(a - a0) % 360.0)
+    d1 = np.minimum(np.abs(a - a1) % 360.0, 360.0 - np.abs(a - a1) % 360.0)
+    da = np.where(inside, 0.0, np.minimum(d0, d1))
+    along = np.radians(da) * r
+    dz = np.maximum(0.0, np.maximum(z_lo - eye[2], eye[2] - z_hi))
+    dz = np.where(np.isfinite(dz), dz, 0.0)
+    return np.hypot(along, dz) <= free_m
 
 
 def _cam_axes(eye, fwd, up):
@@ -656,16 +822,32 @@ def deck_occlusion(schema, profile, sector, ring, deck, stats, meta, fr, KL,
     tri_of_g = np.bincount(key, minlength=n_g + 1)[live_g]
     kls_g = kls_all[live_g]
 
-    plan = it.ring_cells(schema, profile, sector, ring, deck)
+    # THE CELL GRID IS THE EXPORTER'S, NOT A SECOND ONE INVENTED HERE.
+    # `tools/export_scene.cell_of` is the rule `godot/scripts/stream.gd::_split`
+    # bakes on and the rule the deck shot now writes its group names with, so
+    # all three describe one cut. What this replaced bucketed from the
+    # CORRIDOR's `start_deg` -- the right number of cells on a grid rotated off
+    # the engine's, which gave a plausible saving for a decomposition nothing
+    # ships. It also went through `interior.ring_cells` with the gazetteer's
+    # deck NUMBER in the deck INDEX slot; `deck._ring_cells` translates.
+    sys.path.insert(0, os.path.join(ROOT, "tools"))
+    import export_scene as ES                                   # noqa: PLC0415
+    plan = ES.deck_cell_plan(sector, ring, deck, schema, profile)
     n_c = max(1, int(plan["cells"]))
-    cell = np.clip(((ang - meta["start_deg"]) % 360.0
-                    / (360.0 / n_c)).astype(np.int64), 0, n_c - 1)
+    cell = ES.cell_of(fr.V, fr.T, plan["cell_deg"], n_c)
     ckey = key * n_c + cell
     lo_c, hi_c = group_boxes(fr.V, fr.T, ckey, (n_g + 1) * n_c)
     live = np.isfinite(lo_c[:, 0])
     corn_c = _corners(lo_c[live], hi_c[live])
     tri_of_c = np.bincount(ckey, minlength=(n_g + 1) * n_c)[live]
     kls_c = kls_all[np.nonzero(live)[0] // n_c]
+    cell_of_bucket = np.nonzero(live)[0] % n_c
+    z_lo, z_hi = cell_arc_z(fr, cell, n_c)
+
+    # --- and what of it is in memory at all, which is the bigger half --------
+    ship = shipped_streaming(sector, ring, deck)
+    radius_m = ship["radius_m"] or plan["sight_line_m"]
+    free_m = ship["free_m"] or max(plan["sight_line_m"], plan["cell_length_m"])
 
     def at(a, hd, pitch=0.0):
         eye, fwd, up = cam_at(a, hd, pitch)
@@ -675,17 +857,38 @@ def deck_occlusion(schema, profile, sector, ring, deck, stats, meta, fr, KL,
     def one(a, hd, pitch=0.0, tri=False):
         cam = at(a, hd, pitch)
         Z, skipped = occluder_depth(ov, ot, cam, w, h, near)
-        planes = _frustum(*cam_at(a, hd, pitch), fov, asp, near, far)
-        out = {"skipped": skipped}
-        for tag, corn, ntri, kls in (("inst", corn_g, tri_of_g, kls_g),
-                                     ("cell", corn_c, tri_of_c, kls_c)):
-            vis = boxes_in_frustum(corn, planes)
-            occl = boxes_occluded(corn, Z, cam, w, h, near, bias) & vis
+        eye0, fwd0, up0 = cam_at(a, hd, pitch)
+        planes = _frustum(eye0, fwd0, up0, fov, asp, near, far)
+        res = resident_cells(eye0, n_c, plan["cell_deg"], radius_m,
+                             z_lo, z_hi, free_m)
+        in_mem = res[cell_of_bucket]
+        out = {"skipped": skipped, "resident_cells": int(res.sum()),
+               "resident_tris": int(tri_of_c[in_mem].sum()),
+               "resident_draws": int(in_mem.sum())}
+        for tag, corn, ntri, kls, keep in (
+                ("inst", corn_g, tri_of_g, kls_g, None),
+                ("cell", corn_c, tri_of_c, kls_c, None),
+                # THE SHIPPED ROW. Same cull unit as `cell`, restricted to the
+                # cells `stream.gd` has actually loaded. Computed off `cell`'s
+                # own occlusion result rather than re-running it, so the two
+                # rows cannot disagree about which box the occluder hid.
+                ("ship", corn_c, tri_of_c, kls_c, in_mem)):
+            if tag == "ship":
+                vis, occl = out["_cell_vis"] & keep, out["_cell_occ"] & keep
+            else:
+                vis = boxes_in_frustum(corn, planes)
+                occl = boxes_occluded(corn, Z, cam, w, h, near, bias) & vis
+                if tag == "cell":
+                    out["_cell_vis"], out["_cell_occ"] = vis, occl
             out[tag] = int(ntri[vis].sum())
             out[tag + "_after"] = int(ntri[vis & ~occl].sum())
             out[tag + "_s"] = int(ntri[vis & (kls == "structure")].sum())
             out[tag + "_s_after"] = int(
                 ntri[vis & ~occl & (kls == "structure")].sum())
+            out[tag + "_draws"] = int(vis.sum())
+            out[tag + "_draws_after"] = int((vis & ~occl).sum())
+        out.pop("_cell_vis", None)
+        out.pop("_cell_occ", None)
         if tri:
             eye, f, u, r, _tv, _th = cam
             px, py, z = _screen(fr.V, eye, f, u, r, tv, th, w, h)
@@ -707,24 +910,35 @@ def deck_occlusion(schema, profile, sector, ring, deck, stats, meta, fr, KL,
     lo_deg, arc = meta["start_deg"], meta["arc_deg"]
     st, hd = DECK["stations"], DECK["headings"]
     step = OCCLUSION["sweep_stride"]
-    sweep = None
+    sweep = sweep_ship = res_worst = None
     for i in range(0, st, step):
         a = lo_deg + arc * i / st
         for j in range(0, hd, step):
             m = one(a, 360.0 * j / hd)
             if sweep is None or m["inst_after"] > sweep[0]["inst_after"]:
                 sweep = (m, a, 360.0 * j / hd)
+            # THE WORST POSE IS NOT THE SAME POSE FOR THE TWO PATHS, and taking
+            # the shipped figure at the monolithic path's worst camera would
+            # flatter it. Swept separately.
+            if sweep_ship is None or m["ship_after"] > sweep_ship[0]["ship_after"]:
+                sweep_ship = (m, a, 360.0 * j / hd)
+            if res_worst is None or m["resident_tris"] > res_worst[0]:
+                res_worst = (m["resident_tris"], m["resident_draws"],
+                             m["resident_cells"], a)
     sweep_s = time.time() - t2
 
     return {"ov": ov, "ot": ot, "meta": om, "build_s": build_s,
             "contain": (rays, breach, worst_m, escaped), "contain_s": contain_s,
             "control": ctrl, "control_tris": len(ctr),
             "blocked": blocked, "here": here, "there": there,
-            "sweep": sweep, "sweep_s": sweep_s, "poses": len(range(0, st, step))
+            "sweep": sweep, "sweep_ship": sweep_ship,
+            "sweep_s": sweep_s, "poses": len(range(0, st, step))
             * len(range(0, hd, step)),
             "w_needed": w_needed, "subtense": subtense, "sight": sight,
             "cells": n_c, "instances": n_g, "cell_instances": int(live.sum()),
-            "half_win": half_win, "eyes": len(eyes), "door_w": door_w}
+            "half_win": half_win, "eyes": len(eyes), "door_w": door_w,
+            "ship": ship, "plan": plan, "radius_m": radius_m, "free_m": free_m,
+            "res_worst": res_worst}
 
 
 # ---------------------------------------------------------------------------
@@ -854,7 +1068,16 @@ def _glb_primitives(path):
     npc = sum(len(m.get("primitives", [])) for m in meshes
               if "npc_" in m.get("name", "")
               or m.get("name", "").startswith("corridor_"))
-    return prims, npc
+    # AND THE SAME COUNT WITH THE CELL SUFFIX STRIPPED, which is what the 600
+    # bound has always been about. That bound exists to catch a body emitting
+    # its parts unmerged -- twelve primitives an inhabitant instead of one --
+    # and spatial submission multiplies the primitive count for a completely
+    # different and deliberate reason. Counting distinct BASE names keeps the
+    # bound measuring exactly what it measured before the cut; the raw count is
+    # printed beside it, because that is the number a draw-call budget cares
+    # about and it is gated in the deck frame, per resident cell.
+    base = {re.sub(r"_c\d\d$", "", m.get("name", "")) for m in meshes}
+    return prims, npc, len(base)
 
 
 def check(name, value, limit, unit="", note="", when=""):
@@ -962,11 +1185,15 @@ class Frustum:
     The sweep runs `sphere` and the winner is re-counted `exact`. Measured on
     the assembled deck the two differ by 0.2%, which is printed.
 
-    NO OCCLUSION IS APPLIED, AND THAT IS NOT AN APPROXIMATION -- it is what
-    ships. `godot/` contains no `OccluderInstance3D` and no
-    `use_occlusion_culling`, and `walk.gd` loads one `.glb` whole. Everything
-    inside the frustum is submitted, vertex-shaded and rasterised whether a wall
-    is in front of it or not. On a ring corridor that matters: the far side of
+    NO OCCLUSION IS APPLIED IN THIS CLASS. That was true of the whole file
+    until 4o and both sentences that used to be here are now stale: `godot/`
+    does contain an `OccluderInstance3D` and `use_occlusion_culling` is on, and
+    `walk.gd` loads a CELL SET rather than one `.glb`, whenever the boot
+    manifest names one. What survives is the caveat: everything this class
+    counts is submitted whether a wall is in front of it or not, so its figures
+    are the pre-occlusion ones. `deck_occlusion` applies the occluder and
+    `shipped_streaming` applies residency; the difference between the three is
+    printed rather than assumed. On a ring corridor it is large: the far side of
     the ring is inside the frustum from most standing positions.
     """
 
@@ -1234,44 +1461,126 @@ def deck_section(args):
               f"is not computed")
         print(f"  swept     {occ['poses']} poses in {occ['sweep_s']:.0f} s; "
               f"worst survivor at {sw[1]:.1f} deg heading {sw[2]:.0f}\n")
-        print(f"  {'cull unit':22s} {'submitted':>12s} {'after occl':>12s} "
-              f"{'saved':>8s}   what it is")
+        sh = occ["ship"]
+        if sh["streamed"]:
+            print(f"  SHIPPED   {os.path.basename(sh['cells_path'])}: "
+                  f"{sh['n_cells']} cells, resident inside "
+                  f"{occ['radius_m']:.1f} m, freed past {occ['free_m']:.1f} m. "
+                  f"boot.json names it,\n            main.gd hands it to "
+                  f"walk.gd and `_load_streamed` is taken -- so `_load_level`, "
+                  f"which loads\n            the monolithic .glb this file used "
+                  f"to call 'as shipped', is the FALLBACK path.")
+            bad = [k for k, v in sh["rule"].items() if not v]
+            print(f"            residency rule read off stream.gd: "
+                  + ("all four clauses found"
+                     if not bad else f"MISSING {', '.join(bad)}"))
+            # THE ARTEFACT AND THE REBUILD, CHECKED AGAINST EACH OTHER. The
+            # manifest on disk was written by the engine; the plan beside it is
+            # `interior.ring_cells` run now. A gate that reads a committed
+            # artefact must be able to rebuild it, and one that only rebuilds it
+            # cannot notice the artefact has gone stale.
+            pl, mf = occ["plan"], sh["manifest"]
+            drift = (abs(mf["cell_deg"] - pl["cell_deg"]) > 1e-6
+                     or mf["cells"] != pl["cells"]
+                     or abs(mf["radius_m"] - pl["sight_line_m"]) > 0.05
+                     or abs(mf["free_m"] - max(pl["sight_line_m"],
+                                               pl["cell_length_m"])) > 0.05)
+            check("baked cells match the generator", 1 if drift else 0, 0, "",
+                  f"manifest {mf['cells']} x {mf['cell_deg']:.1f} deg, radius "
+                  f"{mf['radius_m']:.1f} m, free {mf['free_m']:.1f} m; "
+                  f"interior.ring_cells says {pl['cells']} x "
+                  f"{pl['cell_deg']:.1f} deg, sight {pl['sight_line_m']:.1f} m, "
+                  f"cell {pl['cell_length_m']:.1f} m",
+                  when="any change to ring_cells without a re-bake -- the "
+                       "residency radius the engine uses would then describe a "
+                       "grid the generator no longer emits")
+            check("stream.gd still says what this file measures",
+                  len(bad), 0, " clause(s)",
+                  "radius_m = sight_line_m; free_radius_m = max(sight, cell); "
+                  "resident within radius_m; freed past free_m",
+                  when="any edit to stream.gd's residency rule -- this file "
+                       "transcribes it into resident_cells() and a silent "
+                       "divergence is a budget measuring a policy nobody runs")
+            # AND THE FIRST RUNG SHOWN FAILING, on a copy of the real manifest
+            # with `cells_path` emptied -- the state `station/boot.py` writes
+            # when no cell set is on disk. Without this the streamed reading is
+            # a claim about a file nobody has watched go the other way.
+            import shutil                                        # noqa: PLC0415
+            import tempfile                                      # noqa: PLC0415
+            with tempfile.TemporaryDirectory() as td:
+                d = os.path.join(td, "station/generated/scene")
+                os.makedirs(d)
+                with open(os.path.join(ROOT,
+                                       "station/generated/scene/boot.json")) as f:
+                    b2 = json.load(f)
+                b2["cells_path"] = ""
+                b2["cells_why"] = "no cell set on disk"
+                with open(os.path.join(d, "boot.json"), "w") as f:
+                    json.dump(b2, f)
+                off2 = shipped_streaming(sec, ring, dk, root=td)
+            print(f"  control   with boot.json's cells_path emptied, "
+                  f"shipped_streaming reports streamed={off2['streamed']} and "
+                  f"the\n            gated unit falls back to the monolithic "
+                  f"row -- so the saving disappears with the build")
+        else:
+            print("  SHIPPED   the boot manifest names no cell set, so the "
+                  "monolithic .glb IS what ships:")
+            for whyy in sh["why"]:
+                print(f"            - {whyy}")
+        print(f"\n  {'cull unit':26s} {'submitted':>12s} {'after occl':>12s} "
+              f"{'draws':>7s}   what it is")
         for tag, name, why in (
                 ("tri", "triangle", "THE CEILING -- no renderer here culls per "
                                     "triangle"),
-                ("inst", "instance (as shipped)", "one primitive per OBJ group "
-                                                  "-- WHAT GODOT DOES"),
-                ("cell", f"instance x {occ['cells']} cells", "the streaming "
-                                                            "unit stream.gd "
-                                                            "already bakes")):
+                ("inst", "instance, whole ring", "one primitive per OBJ group "
+                                                 "-- walk.gd --glb"),
+                ("cell", f"instance x {occ['cells']} cells", "the cut, all "
+                                                             "cells in memory"),
+                ("ship", f"...x {hh['resident_cells']} resident",
+                 "WHAT THE SHIPPED BUILD SUBMITS")):
             a0, a1 = hh.get(tag), hh.get(tag + "_after")
             if a0 is None:
                 continue
-            print(f"  {name:22s} {a0:>12,} {a1:>12,} {1-a1/max(a0,1):>7.1%}   "
-                  f"{why}")
+            dr = hh.get(tag + "_draws_after")
+            print(f"  {name:26s} {a0:>12,} {a1:>12,} "
+                  f"{('' if dr is None else f'{dr:>7,}')}   {why}")
         print(f"\n  structure alone, at the worst-structure pose "
               f"({st_best[1]:.1f} deg / {st_best[2]:.0f}):")
-        for tag, name in (("tri", "triangle"), ("inst", "instance (as shipped)"),
-                          ("cell", f"instance x {occ['cells']} cells")):
+        for tag, name in (("tri", "triangle"), ("inst", "instance, whole ring"),
+                          ("cell", f"instance x {occ['cells']} cells"),
+                          ("ship", f"...x {hh['resident_cells']} resident")):
             a0, a1 = hh.get(tag + "_s"), hh.get(tag + "_s_after")
             if a0 is None:
                 continue
-            print(f"  {name:22s} {a0:>12,} {a1:>12,} "
+            print(f"  {name:26s} {a0:>12,} {a1:>12,} "
                   f"{a1/INTERIOR['visible_set_tris']:>7.2f}x   of the 60,000 "
                   f"allowance")
-        print("\n  THE INSTANCE ROW IS THE ONE THAT SHIPS AND IT SAVES ALMOST "
-              "NOTHING, because a\n  corridor group spans the whole "
-              f"{arc:.0f} deg ring and its AABB contains the camera.\n  The "
-              "occluder is not the problem; submitting a ring as one primitive "
-              "is.")
-        print(f"  And that costs before any occluder does: frustum culling at "
-              f"instance granularity\n  submits {hh['inst']:,} triangles where "
-              f"the per-triangle count is {hh['tri']:,} -- "
-              f"{hh['inst']/max(hh['tri'],1):.2f}x. Cut the same deck into the "
-              f"{occ['cells']} cells\n  `interior.ring_cells` already declares "
-              f"and it is {hh['cell']:,} ({1-hh['cell']/max(hh['inst'],1):.0%} "
-              f"less) BEFORE occlusion.\n  Spatial submission is worth more "
-              f"here than occlusion is, and it is the same fix.")
+        # WHAT THIS PARAGRAPH USED TO SAY, AND WHY IT WAS WRONG. It said "THE
+        # INSTANCE ROW IS THE ONE THAT SHIPS AND IT SAVES ALMOST NOTHING",
+        # naming the monolithic .glb as the shipped artefact. It is not: the
+        # boot manifest names a cell set, `main.gd` hands it to `walk.gd`, and
+        # 955 baked `.scn` cells are on disk. So the cut the paragraph asked for
+        # was already half built -- in the ENGINE, by `stream.gd::bake`, where
+        # no Python gate could see it -- and this file went on pricing the
+        # fallback path for four sessions.
+        print(f"\n  Instance granularity on the whole ring submits "
+              f"{hh['inst']:,} triangles where the\n  per-triangle count is "
+              f"{hh['tri']:,} -- {hh['inst']/max(hh['tri'],1):.2f}x, and no "
+              f"occluder can touch it, because a\n  corridor group spans "
+              f"{arc:.0f} deg and its AABB contains the camera. Cut on the "
+              f"{occ['cells']} cells\n  `interior.ring_cells` declares it is "
+              f"{hh['cell']:,} ({1-hh['cell']/max(hh['inst'],1):.0%} less); "
+              f"with only the {hh['resident_cells']} cells the streamer\n  "
+              f"holds in memory it is {hh['ship']:,} "
+              f"({1-hh['ship']/max(hh['inst'],1):.0%} less). The draws column "
+              f"is the price: {hh['inst_draws_after']:,} -> "
+              f"{hh['ship_draws_after']:,}.")
+        print(f"  Residency is what makes the cut free. All {occ['cells']} "
+              f"cells resident is {hh['cell_draws_after']:,} draws in\n  frame "
+              f"and {occ['here']['cell']:,} triangles; the {hh['resident_cells']}"
+              f" the streamer keeps is {hh['ship_draws_after']:,} draws. "
+              f"Spatial submission\n  without streaming trades triangles for "
+              f"draw calls; with it, it costs neither.")
         check("occlusion buffer resolves a doorway",
               OCCLUSION["min_door_px"], OCCLUSION["buffer_w"]
               * occ["subtense"] / (2 * math.degrees(math.atan(
@@ -1304,13 +1613,32 @@ def deck_section(args):
                 "each rung of occlusion_chain() is a separate fix; the pass "
                 "above says what the missing ones are worth"))
 
+    # THE GATED NUMBER IS THE ONE THE SHIPPED PATH SUBMITS, and until 4p it was
+    # not. `inst` is the monolithic `.glb` -- `walk.gd::_load_level`, which the
+    # shipped scene does not take. `ship` is the same cull unit the engine uses,
+    # cut on the cell grid `stream.gd` bakes, restricted to the cells it holds
+    # in memory. Both are printed above; the smaller one is not chosen because
+    # it is smaller, it is chosen because it is the one that runs.
+    #
+    # WHEN THE BOOT MANIFEST NAMES NO CELL SET this falls back to `inst`, and
+    # the bound goes back to being 4.34x red. The saving is a property of the
+    # build, so it has to disappear when the build loses it -- the same ladder
+    # `occlusion_chain` applies to the occluder.
+    unit, unit_why = "inst", "the monolithic .glb"
+    if occ and occ["ship"]["streamed"]:
+        unit, unit_why = "ship", (f"{occ['here']['resident_cells']} resident "
+                                  f"cells of {occ['cells']}")
     if occ and chain["applied"]:
-        n_struct = occ["here"]["inst_s_after"]
-        n_all = occ["sweep"][0]["inst_after"]
+        n_struct = occ["here"][unit + "_s_after"]
+        n_all = (occ["sweep_ship"] if unit == "ship" else
+                 occ["sweep"])[0][unit + "_after"]
+        draws_frustum = occ["here"][unit + "_draws_after"]
+        if unit == "ship":
+            draws_resident = occ["res_worst"][1]
 
     over = n_struct - INTERIOR["visible_set_tris"]
     check("frustum structure", n_struct, INTERIOR["visible_set_tris"], " tri",
-          "was 30,941 from the kit in isolation"
+          f"was 30,941 from the kit in isolation; {unit_why}"
           + (", occlusion applied" if occ and chain["applied"]
              else ", NO occlusion (see the ladder above)"),
           when=(f"{over:,} tri, {n_struct/INTERIOR['visible_set_tris']:.2f}x. "
@@ -1325,9 +1653,19 @@ def deck_section(args):
     hdr = DECK["visible_all_tris"] / max(n_all, 1)
     prop_x = ((DECK["visible_all_tris"] - n_all + seen["props"])
               / max(seen["props"], 1))
+    # THE COMPOSITION IS OF A DIFFERENT NUMBER FROM THE ONE GATED, and saying
+    # so is the point. `seen` is the per-class split of the UNOCCLUDED,
+    # WHOLE-RING, per-triangle frustum -- it is what is geometrically in front
+    # of the camera. The gated figure is what the engine submits, which is a
+    # different cull unit, a different pose and a different residency. Printing
+    # the split beside the total without that sentence invited the reading that
+    # the four numbers add to the gated one; at the shipped granularity they add
+    # to nearly twice it.
     check("frustum, everything", n_all, DECK["visible_all_tris"], " tri",
-          f"structure {seen['structure']:,} + props {seen['props']:,} + people "
-          f"{seen['people']:,} + fixtures {seen['fixtures']:,}",
+          f"{unit_why}; the unoccluded whole-ring frustum at the worst-total "
+          f"pose is structure {seen['structure']:,} + props {seen['props']:,} "
+          f"+ people {seen['people']:,} + fixtures {seen['fixtures']:,} = "
+          f"{sum(seen.values()):,}",
           when=f"{hdr:.2f}x today's content in view; props are "
                f"{seen['props']/max(n_all,1)*100:.0f}% of the frame, so at "
                f"today's structure it goes red at {prop_x:.1f}x the prop "
@@ -1344,17 +1682,32 @@ def deck_section(args):
     ext_draws = args.get("exterior_draws", 0)
     check("draw calls, whole frame", draws_resident + ext_draws,
           DRAW["max_per_frame"], "",
-          f"{draws_resident} interior resident + {ext_draws} exterior; "
-          f"culling takes the interior to {draws_frustum}",
+          f"{draws_resident} interior resident ({unit_why}) + {ext_draws} "
+          f"exterior; culling takes the interior to {draws_frustum}",
           when=f"{DRAW['max_per_frame']/(draws_resident+ext_draws):.1f}x, ie "
                f"{DRAW['max_per_frame']//max(draws_resident,1)} decks resident "
                f"at once"
                if draws_resident + ext_draws <= DRAW["max_per_frame"] else
                f"{draws_resident + ext_draws - DRAW['max_per_frame']} draws")
-    check("resident triangles", len(tris), CELLS["resident_tris"], " tri",
-          "walk.gd loads one .glb whole -- there is no streaming and no LOD",
-          when=f"{abs(len(tris) - CELLS['resident_tris']):,} tri, "
-               f"{len(tris)/CELLS['resident_tris']:.2f}x this file's own "
+    # THE RESIDENT SET IS WHAT IS IN MEMORY, NOT WHAT WAS BUILT. This gated
+    # `len(tris)` -- the whole assembled deck -- with the note "walk.gd loads
+    # one .glb whole, there is no streaming". Both halves of that sentence were
+    # out of date: `stream.gd` loads cells, `main.gd` hands it a cell set, and
+    # `tools/bake_station.py` has cut all 70 decks. The whole-deck figure is
+    # still printed, because it is exactly what the FALLBACK path loads and it
+    # is 8.57x this budget.
+    res_tris = len(tris)
+    res_note = "walk.gd::_load_level loads one .glb whole -- no streaming, no LOD"
+    if occ and occ["ship"]["streamed"] and occ["res_worst"]:
+        res_tris = occ["res_worst"][0]
+        res_note = (f"worst standing position: {occ['res_worst'][2]} of "
+                    f"{occ['cells']} cells in memory, {occ['res_worst'][1]:,} "
+                    f"instances; the whole deck is {len(tris):,} tri and that "
+                    f"is what _load_level would hold")
+    check("resident triangles", res_tris, CELLS["resident_tris"], " tri",
+          res_note,
+          when=f"{abs(res_tris - CELLS['resident_tris']):,} tri, "
+               f"{res_tris/CELLS['resident_tris']:.2f}x this file's own "
                f"three-cell resident budget")
 
     # PITCH IS NOT GATED AND THE REASON IS WORTH STATING. The sweep is at level
@@ -1386,10 +1739,12 @@ def deck_section(args):
     # it. The section below measures it. The short answer is that an occluder
     # closes it at TRIANGLE granularity and not at the granularity Godot
     # actually culls, so the sentence was half right and named the wrong half.
-    print("     what an occluder is actually worth is measured ABOVE, at three "
-          "cull granularities.\n     The short answer: it closes this at "
-          "triangle granularity and not at the granularity\n     Godot culls "
-          "at, so the old sentence was half right and named the wrong half.")
+    print("     These are per-TRIANGLE counts with no occlusion and the whole "
+          "deck resident, so they\n     are the ceiling rather than the frame: "
+          "the table above prices the same views at the\n     cull unit the "
+          "engine uses. What closes the pitched views is the same thing that "
+          "closed\n     the level one -- residency, then the cell cut, then the "
+          "occluder, in that order of size.")
     n_ship = int(fr.exact(planes_at(all_best[1], all_best[2], 0.0,
                                     cam["fov_deg"])).sum())
     check("shipped camera not wider", cam["fov_deg"], DECK["fov_v_deg"], " deg",
@@ -1664,16 +2019,18 @@ def main(argv=None):
                     if cur is None or plan["cell_length_m"] > cur[1]["cell_length_m"]:
                         worst[deck["use"]] = (sec, plan, di)
 
-        # HONEST LABEL, ADDED IN 3x. Everything below gates `interior.deck_cell`,
-        # which is the streaming unit this project INTENDS. Nothing loads it:
-        # `walk.gd` loads one whole `.glb` per deck and `deck.build_deck` does
-        # not cut cells. So this section measures a design, not a frame -- which
-        # is the same class of thing as the estimate removed above, and it stays
-        # only because the design is real and its numbers are the target the
-        # runtime has to reach. The RESIDENT SET A PLAYER ACTUALLY LOADS is
-        # gated in the standing-frame section, against `resident_tris` below,
-        # and it is 3.32x over.
-        print("\nStreaming cells -- the unit the runtime does not yet load\n")
+        # THE 3x LABEL HERE SAID "the unit the runtime does not yet load" AND IT
+        # STOPPED BEING TRUE IN 4g. `godot/scripts/stream.gd::bake()` cuts a
+        # built cluster on this exact grid, `tools/bake_station.py` has run it
+        # over all 70 decks -- 955 `.scn` cells on disk -- `station/boot.py`
+        # writes the resulting `cells_path` into the boot manifest and
+        # `main.gd` hands it to `walk.gd`, which then takes `_load_streamed`.
+        # The label survived four sessions because nothing in this file ever
+        # asked which path the build takes; `shipped_streaming()` now does, and
+        # the standing-frame section above prices what the runtime submits
+        # rather than what the fallback would.
+        print("\nStreaming cells -- the unit the runtime loads (stream.gd, "
+              "955 baked cells)\n")
         for use in ("habitat", "plant"):
             if worst[use] is None:
                 continue
@@ -1763,12 +2120,13 @@ def main(argv=None):
     _glb = os.path.join(ROOT, "station/generated/scene/deck/blue_0_0.glb")
     if os.path.exists(_glb):
         try:
-            _prims, _npc = _glb_primitives(_glb)
-            check("deck primitives shipped", _prims,
+            _prims, _npc, _base = _glb_primitives(_glb)
+            check("deck primitives shipped", _base,
                   BUDGETS["deck_primitives"], "",
-                  f"{_npc:,} of them people -- one mesh, one node and one "
-                  f"primitive per OBJ group is what `export_gltf` writes, and "
-                  f"it is the only draw-call number a renderer ever sees",
+                  f"{_prims:,} primitives over {_base:,} distinct group names "
+                  f"({_npc:,} of them people). The bound is on NAMES: a cell "
+                  f"cut multiplies primitives on purpose, an unmerged body "
+                  f"multiplies names by twelve",
                   when="about 250 more inhabitants on one deck, or a body "
                        "emitting its parts unmerged again (that alone was "
                        "1,262)")
@@ -1875,6 +2233,24 @@ def prove(m):
         cases.append(("occluder reaches the engine",
                       0 if occ["chain"]["applied"] else 1, 0,
                       "; ".join(occ["chain"]["why"])[:120] or "all three rungs"))
+        # THE TWO BOUNDS THAT MOVED IN 4p, FED THE LOSS OF THE THING THAT MOVED
+        # THEM. Both are the same regression -- the boot manifest losing its
+        # cells_path, which is one deleted bake away -- and both have to go red
+        # for the streamed reading to be worth anything.
+        cases.append(("resident triangles", m["resident"],
+                      CELLS["resident_tris"],
+                      "streaming off: the whole assembled deck, which is what "
+                      "walk.gd::_load_level holds"))
+        cases.append(("frustum structure", occ["here"]["inst_s_after"],
+                      INTERIOR["visible_set_tris"],
+                      "streaming off: the monolithic .glb at whole-ring "
+                      "instance granularity, occluder applied"))
+        mf, pl = occ["ship"].get("manifest"), occ["plan"]
+        if mf:
+            cases.append(("baked cells match the generator",
+                          abs(mf["cells"] - (pl["cells"] + 1)), 0,
+                          "one more cell from interior.ring_cells than the "
+                          "bake on disk was cut with"))
     bad = 0
     for name, value, limit, why in cases:
         red = value > limit

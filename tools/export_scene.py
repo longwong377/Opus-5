@@ -290,6 +290,126 @@ def write_obj(path, verts, tris, groups):
     return len(tris)
 
 
+# ---------------------------------------------------------------------------
+# SPATIAL SUBMISSION -- one instance per CELL, not one per ring
+# ---------------------------------------------------------------------------
+#
+# WHAT A CULL UNIT IS, AND WHY A RING IS THE WRONG ONE. Godot rasterises the
+# scene's occluders into a small depth buffer and then tests each INSTANCE's
+# axis-aligned bounding box against it, and it frustum-culls the same way. It
+# does not test triangles. `export_gltf` writes one primitive per OBJ group, so
+# an OBJ group IS an instance -- and `interior.ring_arc` names the corridor's
+# groups once for the whole sweep, so `wall_panel` is a single instance spanning
+# 345 degrees of a 211 m ring. Its AABB contains the camera from every standing
+# position on the deck, which means neither the frustum nor any occluder can
+# ever reject it. Measured in `station/budget.py`: 998,014 triangles submitted
+# at instance granularity against 547,731 actually inside the frustum -- 1.82x
+# over-submission that no occluder can touch.
+#
+# THE GRID IS NOT INVENTED HERE. `interior.ring_cells` already divides each
+# deck's circumference into whole-number cells and `godot/scripts/stream.gd`
+# already bakes on exactly that grid -- cell i is the arc
+# [i*cell_deg, (i+1)*cell_deg] measured from ZERO degrees, and a triangle goes
+# whole to the cell its CENTROID falls in. Both of those are copied from
+# `stream.gd::_split`, deliberately and to the letter, because two descriptions
+# of one cut is hard rule 4's failure mode. If they disagree, a name says one
+# cell and the baked geometry is in another.
+#
+# THE SUFFIX IS `_cNN` AND THE UNDERSCORE IS LOAD-BEARING. Three consumers match
+# a mesh name against a row's group name and every one of them would break on a
+# different separator:
+#
+#   godot/scripts/npc.gd::collect       `n == g or n.begins_with(g + "_")`
+#   godot/scripts/interact.gd::collect  the same test, for interactables
+#   station/budget.py::klass_of         `name.split("__", 1)[-1]` then a prefix
+#
+# `-c07` fails the first two (every NPC and every interactable silently stops
+# binding); `__c07` fails the third (`dress_crate__c07` classifies as structure
+# rather than props, because the split takes everything after the FIRST `__`).
+# `_c07` passes all three, and `_selftest` asserts each one rather than trusting
+# this paragraph.
+CELL_SUFFIX = "_c{:02d}"
+CELL_SUFFIX_RE = re.compile(r"_c\d\d$")
+
+
+def deck_cell_plan(sector, ring, deck, schema=None, profile=None):
+    """The streaming cell grid for one deck -- `interior.ring_cells`, translated.
+
+    Through `deck._ring_cells` rather than `interior.ring_cells` directly,
+    because the gazetteer's deck NUMBER is not the ring's deck INDEX and only
+    that function knows the translation. `station/budget.py` used to call
+    `interior.ring_cells(schema, profile, sector, ring, deck)` with the
+    gazetteer number in the index slot, which is right for deck 0 and wrong
+    everywhere else.
+    """
+    import deck as D                                             # noqa: PLC0415
+    if schema is None:
+        schema, profile = it.load()
+    try:
+        return D._ring_cells(schema, profile, sector, ring, deck)
+    except (ValueError, KeyError, IndexError):
+        # The drum and the spoke ways are not ring decks and have no angular
+        # cell grid. Returning None rather than raising, so a caller that just
+        # wants to name its groups falls back to the flat names instead of
+        # failing to export at all.
+        return None
+
+
+def cell_of(verts, tris, cell_deg, n_cells):
+    """Cell index per triangle. `godot/scripts/stream.gd::_split`'s rule, exactly.
+
+    The centroid's angle about the station axis, measured from zero degrees,
+    floored by `cell_deg`. Returns a numpy int array of `len(tris)`.
+
+    NOT MEASURED FROM THE CORRIDOR'S OWN `start_deg`. A deck's corridor starts
+    wherever its arc starts -- 264 degrees on blue/0/0 -- but the cell grid is
+    the ring's, shared by every cluster on it, and `interior.deck_cell` defines
+    cell i as `[i*cell_deg, (i+1)*cell_deg]` from zero. Bucketing from
+    `start_deg` gives the right NUMBER of cells on a grid rotated off the one
+    the engine bakes, so the names and the geometry would describe different
+    cuts.
+    """
+    import numpy as np                                           # noqa: PLC0415
+    V = np.asarray(verts, float)
+    T = np.asarray(tris, np.int64)
+    P = V[T]
+    cx = P[:, :, 0].mean(axis=1)
+    cy = P[:, :, 1].mean(axis=1)
+    ang = np.degrees(np.arctan2(cy, cx)) % 360.0
+    return np.clip((ang / cell_deg).astype(np.int64), 0, max(n_cells - 1, 0))
+
+
+def cell_names(verts, tris, names, cell_deg, n_cells):
+    """Per-triangle group names, each carrying the cell it lands in."""
+    cell = cell_of(verts, tris, cell_deg, n_cells)
+    suf = [CELL_SUFFIX.format(k) for k in range(max(n_cells, 1))]
+    return [names[i] + suf[int(cell[i])] for i in range(len(tris))]
+
+
+def cell_spans(verts, tris, spans, cell_deg, n_cells):
+    """`(name, lo, hi)` spans re-cut per cell, for writers that take spans.
+
+    Runs rather than one span per name, and the triangle order is UNCHANGED --
+    `station/deck.py::write_obj` emits a `g` line whenever the name changes as
+    it walks the mesh in order, and `station/export_gltf.py::load_obj_groups`
+    accumulates every block of one name into one primitive. So a name may appear
+    in many blocks and still be one instance, and nothing has to be reordered.
+    """
+    per = per_triangle(spans, len(tris))
+    per = cell_names(verts, tris, per, cell_deg, n_cells)
+    out, start = [], 0
+    for i in range(1, len(per) + 1):
+        if i == len(per) or per[i] != per[start]:
+            out.append((per[start], start, i))
+            start = i
+    return out
+
+
+def cell_base(name):
+    """The group name without its cell suffix. Inverse of `CELL_SUFFIX`."""
+    return CELL_SUFFIX_RE.sub("", name)
+
+
 def occluder_path(out_dir, sector, ring, deck, z_m=None):
     """Where a deck's occluder is written.
 
@@ -4501,9 +4621,25 @@ def build_deck_shot(args, out_dir):
 
     stem = f"shot_{sector}_{ring}_{deck}"
     obj = os.path.join(out_dir, f"{stem}.obj")
-    write_obj(obj, verts, tris, per_triangle(spans, len(tris)))
+    # ONE INSTANCE PER CELL, NOT ONE PER RING. See SPATIAL SUBMISSION above.
+    # `flat_groups` is the negative control and the old behaviour: it writes the
+    # ring-spanning names this file emitted until 4p, so the A/B is one flag on
+    # the same build rather than two builds of two revisions.
+    flat = per_triangle(spans, len(tris))
+    plan = deck_cell_plan(sector, ring, deck, schema, profile)
+    if getattr(args, "flat_groups", False) or plan is None:
+        cut = flat
+    else:
+        cut = cell_names(verts, tris, flat, plan["cell_deg"], plan["cells"])
+    write_obj(obj, verts, tris, cut)
     glb = to_glb(obj, os.path.join(out_dir, f"{stem}.glb"))
     n, names = glb_triangles(glb)
+    if plan is not None:
+        print(f"  submission: {len(set(flat)):,} ring-spanning groups -> "
+              f"{len(set(cut)):,} per-cell instances over {plan['cells']} cells "
+              f"of {plan['cell_deg']:.1f} deg ({plan['cell_length_m']:.0f} m), "
+              f"{'CUT' if cut is not flat else 'FLAT (--flat-groups)'}. "
+              f"`station/budget.py` prices it against the frustum")
     if n != len(tris):
         raise ValueError(f"{stem}: glb has {n} triangles, source has "
                          f"{len(tris)}")
@@ -6864,6 +7000,11 @@ def main():
                     help="deck shot: assemble only the first N rooms of the "
                          "cluster, which shortens the arc. A cost lever for "
                          "iteration, not a look decision")
+    ap.add_argument("--flat-groups", action="store_true",
+                    help="deck shot: emit the pre-4p ring-spanning group names "
+                         "instead of one instance per streaming cell. The "
+                         "negative control for spatial submission -- "
+                         "`station/budget.py` prices both")
     ap.add_argument("--at", default="", metavar="KEY",
                     help="deck shot: stand at this place's angle on the "
                          "corridor. Default is the deck's own spawn place")
