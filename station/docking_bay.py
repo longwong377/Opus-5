@@ -325,6 +325,216 @@ def floodlight(m, cx, y_top, z, r=LAMP_R_M):
           z - r * 0.84, z + r * 0.84, "bay_lamp")
 
 
+# THE PIER, THE STACKS AND THE LANE, and all three are in the defining frame.
+#
+# `docs/craft-4p-dockingbay-before.png`, taken at the mouth looking out, is a
+# 42 x 140 m room whose entire foreground is bare deck: 20 bollards on one edge
+# and nothing else in 21.6 m of lane. `dock.webp` has, in the same view, a tall
+# red-orange PIER on the left with a caged ladder running up it, a lane edged
+# in yellow-and-black, and the deck itself carrying paint. The module's own
+# docstring lists two of the three and neither was built.
+#
+# THE PIER is what the reference's left foreground is: a boxed column standing
+# off the lane edge with a stepped cap, a caged ladder, and a landing at the
+# ledge top. It also does something no amount of deck paint can -- it breaks a
+# 140 m tunnel into bays, which is AAA-STANDARD C4's "somewhere for the eye to
+# rest and somewhere for it to travel".
+PIER_PITCH_M = 34.0
+PIER_W_M = 1.5
+PIER_D_M = 1.15
+PIER_H_M = 13.6              # short of the girder soffit at H - GIRDER_D_M
+LADDER_R_M = 0.42            # the cage's radius off the pier face
+LADDER_HOOPS = 11
+LADDER_STILE_R_M = 0.045
+
+# THE STACKS. `container_skin` (0.340, 0.222, 0.205) is the one warm material
+# bound in this room, and a docking bay is where freight lands: the LEDGE_KIT
+# already stands single crates on the treads, and this is the ranked stack a
+# bay working 24 berths actually has. Measured against the dock workers rather
+# than chosen -- a container reads about 2.4 m tall against the 1.75 m file in
+# `dock.webp`, so the module's own REF_PX_PER_M gives 2.4 x 2.4 x 6.0 m, which
+# is also an ISO-proportioned box and is what a two-high stack of them is.
+STACK_W_M = 2.44
+STACK_H_M = 2.40
+STACK_L_M = 6.06
+STACK_PITCH_M = 21.0
+
+
+def mouth_piers(m, hw, L):
+    """The lane-edge piers and their caged ladders. See the block above."""
+    x_edge = clear_half_m() - 0.75
+    n = max(1, int((L - 16.0) / PIER_PITCH_M))
+    for side in (-1, 1):
+        for i in range(n + 1):
+            z = 9.0 + i * (L - 18.0) / max(1, n)
+            cx = side * x_edge
+            m.box(cx - PIER_W_M / 2.0, cx + PIER_W_M / 2.0, 0.0, PIER_H_M,
+                  z - PIER_D_M / 2.0, z + PIER_D_M / 2.0, "bay_girder")
+            # a stepped cap and a base, so the column is not an extrusion
+            for y0, y1, o in ((PIER_H_M - 0.55, PIER_H_M, 0.22),
+                              (0.0, 0.65, 0.16)):
+                m.box(cx - PIER_W_M / 2.0 - o, cx + PIER_W_M / 2.0 + o, y0, y1,
+                      z - PIER_D_M / 2.0 - o, z + PIER_D_M / 2.0 + o,
+                      "bay_girder")
+            # the caged ladder, on the face that looks down the lane
+            sv, st, ss = [], [], []
+            fx = cx - side * (PIER_W_M / 2.0 + LADDER_R_M * 0.35)
+            zf = z + PIER_D_M / 2.0
+            for s in (-1, 1):                                  # the stiles
+                _dress._tube(sv, st, ss, "bay_girder",
+                             (fx + s * 0.24, 0.9, zf + 0.10),
+                             (fx + s * 0.24, PIER_H_M - 0.7, zf + 0.10),
+                             LADDER_STILE_R_M, _dress.SEG_BOLT)
+            # THE HOOP'S THREE MEMBERS OVERLAP AT THE CORNERS RATHER THAN
+            # BUTTING, which is `girder()`'s own rule twenty lines up and which
+            # this got wrong first time: butted, each corner's two end caps are
+            # coplanar and every edge round them carries four faces -- 88
+            # non-manifold edges over sixteen ladders, caught by this module's
+            # own gate before any frame was taken.
+            zo = zf + LADDER_R_M + 0.16
+            for k in range(LADDER_HOOPS):
+                y = 2.4 + k * (PIER_H_M - 3.6) / max(1, LADDER_HOOPS - 1)
+                for s in (-1, 1):
+                    _dress._tube(sv, st, ss, "bay_girder",
+                                 (fx + s * 0.42, y, zf + 0.02),
+                                 (fx + s * 0.42, y, zo + 0.05),
+                                 0.035, _dress.SEG_BOLT)
+                _dress._tube(sv, st, ss, "bay_girder",
+                             (fx - 0.42, y, zo), (fx + 0.42, y, zo),
+                             0.035, _dress.SEG_BOLT)
+            m.merge_spans(sv, st, ss)
+
+
+def container_stacks(m, hw, L):
+    """Ranked freight on the ledge tread. See the block above STACK_W_M."""
+    tread_y = LEDGE_RISE_M * 2.0            # the second course up
+    x_in = hw - LEDGE_COURSES * LEDGE_RUN_M
+    n = max(1, int((L - 30.0) / STACK_PITCH_M))
+    for side in (-1, 1):
+        for i in range(n):
+            zc = 20.0 + (i + 0.5) * (L - 34.0) / n
+            rows = 2 if (i + (0 if side < 0 else 1)) % 2 else 3
+            for r in range(rows):
+                for h in range(2 if r < rows - 1 else 1):
+                    cx = side * (x_in + LEDGE_RUN_M * 0.55)
+                    zz = zc + (r - (rows - 1) / 2.0) * (STACK_L_M + 0.30)
+                    y0 = tread_y + h * (STACK_H_M + 0.04)
+                    m.box(cx - STACK_W_M / 2.0, cx + STACK_W_M / 2.0,
+                          y0, y0 + STACK_H_M,
+                          zz - STACK_L_M / 2.0, zz + STACK_L_M / 2.0,
+                          "prop_container")
+                    # a rib every 1.2 m, so a container is not a cuboid: this
+                    # is `docs/AAA-STANDARD.md` C1 verbatim, "a box primitive
+                    # standing in for a named object", and it is what the
+                    # LEDGE_KIT crates already are.
+                    for k in range(5):
+                        rz = zz - STACK_L_M / 2.0 + STACK_L_M * (k + 0.5) / 5.0
+                        m.box(cx - STACK_W_M / 2.0 - 0.035,
+                              cx + STACK_W_M / 2.0 + 0.035,
+                              y0 + 0.10, y0 + STACK_H_M - 0.10,
+                              rz - 0.06, rz + 0.06, "prop_container")
+
+
+def lane_edge(m, hw, L):
+    """The yellow-and-black hazard line either side of the clear lane.
+
+    The gazetteer says "yellow/black hazard chevrons on ramp edges" and this
+    module built them on the ledge NOSINGS only -- 6.6 m up the side walls,
+    where a standing eye never sees them. The lane's own edge is where the
+    reference puts a continuous band, and it is the one saturated colour in a
+    room whose every other surface is grey or oxide.
+    """
+    for side in (-1, 1):
+        x0 = side * clear_half_m()
+        x1 = x0 - side * CHEVRON_W_M
+        pv, pt = _kit.deck_pad(
+            [(min(x0, x1), 4.0), (max(x0, x1), 4.0),
+             (max(x0, x1), L - 6.0), (min(x0, x1), L - 6.0)],
+            0.001, 0.001 + DECK_PAINT_M)
+        i = len(m.v)
+        m.v.extend(pv)
+        m.t.extend([(a + i, b + i, c + i) for a, b, c in pt])
+        m.g.extend(["bay_chevron"] * len(pt))
+    # and a cross-band at the mouth, which is the edge a body actually stops at
+    pv, pt = _kit.deck_pad(
+        [(-clear_half_m(), 3.2), (clear_half_m(), 3.2),
+         (clear_half_m(), 3.2 + CHEVRON_W_M), (-clear_half_m(),
+                                               3.2 + CHEVRON_W_M)],
+        0.001, 0.001 + DECK_PAINT_M)
+    i = len(m.v)
+    m.v.extend(pv)
+    m.t.extend([(a + i, b + i, c + i) for a, b, c in pt])
+    m.g.extend(["bay_chevron"] * len(pt))
+
+
+# THE DECK IS 21.6 x 140 m AND IT WAS TWO TRIANGLES. `bay_deck` is one edge of
+# the swept cross-section, and `rooms.articulate` is called here with
+# `deck=False` for a good reason recorded below (a joint emitted 10 mm BELOW
+# the deck plane puts the bay outside Blue's hull once placed). The result is
+# that the surface which fills half of every frame taken in this room carries
+# no line at all: `docs/craft-4p-dockingbay-before.png` is 50% featureless pale
+# grey. `docs/AAA-STANDARD.md` C4 wants "somewhere for the eye to rest and
+# somewhere for it to travel" and a 3,000 m2 blank has neither.
+#
+# PROUD, not recessed -- the same 4 mm paint film the chevrons and the deck
+# disc already use, which is the one direction that is safe here.
+DECK_JOINT_PITCH_M = 7.0
+DECK_JOINT_W_M = 0.10
+# The bay's own number, painted large on the deck where a pilot on approach
+# reads it. `dock.webp` shows a craft carrying "29" and the Minbari Flyer frame
+# establishes bay 17, so bays are numbered; that they run 1..BAY_COUNT in the
+# order `bay_angle_deg` walks them is EXTRAPOLATION -- INV-460.
+DECK_NUMERAL_CAP_M = 3.4
+
+
+def deck_marks(m, hw, L, index=0):
+    """Panel joints and the painted bay number. See the block above."""
+    ch = clear_half_m()
+
+    def pad(loop, group):
+        pv, pt = _kit.deck_pad(loop, 0.0015, 0.0015 + DECK_PAINT_M)
+        i = len(m.v)
+        m.v.extend(pv)
+        m.t.extend([(a + i, b + i, c + i) for a, b, c in pt])
+        m.g.extend([group] * len(pt))
+
+    n = max(2, int(L / DECK_JOINT_PITCH_M))
+    for k in range(1, n):
+        z = L * k / n
+        pad([(-ch, z - DECK_JOINT_W_M / 2.0), (ch, z - DECK_JOINT_W_M / 2.0),
+             (ch, z + DECK_JOINT_W_M / 2.0), (-ch, z + DECK_JOINT_W_M / 2.0)],
+            "bay_deck_joint")
+    for x in (-ch / 2.0, 0.0, ch / 2.0):
+        pad([(x - DECK_JOINT_W_M / 2.0, 2.0), (x + DECK_JOINT_W_M / 2.0, 2.0),
+             (x + DECK_JOINT_W_M / 2.0, L - 2.0),
+             (x - DECK_JOINT_W_M / 2.0, L - 2.0)], "bay_deck_joint")
+
+    # THE NUMERAL, laid flat. `signage.text_quads` returns lit rectangles in a
+    # sign's plane and this is the same object one surface over -- deck paint
+    # rather than a backlit face -- so the glyph vocabulary is shared instead
+    # of a second one being invented for the floor. Reading up the bay, i.e.
+    # the way a craft comes in.
+    import signage as _sign                                     # noqa: PLC0415
+    s = f"{index % BAY_COUNT + 1:02d}"
+    w = _sign.text_width_m(s, DECK_NUMERAL_CAP_M)
+    # THE SPANS OVERLAP BY 0.6 mm rather than butting. `_spans` tiles a glyph
+    # out of rectangles that share exact edges, and two closed pads sharing an
+    # edge put four faces on it -- the same corner rule `girder()` and the
+    # ladder cage above both record. Overlapping paint is paint.
+    # AND THE GLYPH IS MIRRORED IN X, because Godot's camera is right-handed
+    # with -Z forward: an eye at the mouth looking up the bay (+Z) sees +X on
+    # its LEFT, so laying the sign's +x onto the deck's +x renders "01" as
+    # "10". Read off the frame, not reasoned about -- the first version is
+    # docs/craft-4p-dockingbay-numeral-mirrored.png.
+    e = 0.0006
+    for x0, y0, x1, y1 in _sign.text_quads(s, DECK_NUMERAL_CAP_M):
+        # the sign's +x becomes the deck's -x, its +y becomes the deck's +z
+        a, b = w / 2.0 - x1, w / 2.0 - x0
+        pad([(a - e, 18.0 + y0 - e), (b + e, 18.0 + y0 - e),
+             (b + e, 18.0 + y1 + e), (a - e, 18.0 + y1 + e)],
+            "bay_emblem")
+
+
 def ledge_kit(m, hw, L):
     """Service gantries and handling equipment, on the ledge the frame stands
     them on. Every item is `dressing.machine`'s, on the tread's own height."""
@@ -525,6 +735,10 @@ def docking_bay(index=0, schema=None, profile=None):
 
     # --- what stands on the ledges, and what edges the lane -----------------
     ledge_kit(m, hw, L)
+    mouth_piers(m, hw, L)
+    container_stacks(m, hw, L)
+    lane_edge(m, hw, L)
+    deck_marks(m, hw, L, index)
     bv, bt, bs = [], [], []
     for i in range(BOLLARD_N):
         bz = 8.0 + i * (L - 20.0) / max(1, BOLLARD_N - 1)

@@ -411,6 +411,34 @@ other seven entries kept the defect, and `plant` is now the only module in the g
 **A fix applied to an instance and not to the rule is a fix that will be needed again.** When a
 defect is found in one entry of a table, check every entry and gate the table.
 
+**NO GATE HERE ASKS A TRANSFORM WHETHER IT IS A ROTATION, AND THE WHOLE CROWD WAS MIRRORED FOR SIX
+SESSIONS.** Session 4q. `npc.gd::_walker_xform` built `Basis(fwd.cross(up), up, fwd)`.
+`Basis(x, y, z)` takes **columns** and is right-handed only when x × y = z; with `right = fwd × up`
+that product is **minus** fwd, so the determinant is exactly **−1**. Every walker in the corridor
+was drawn as their own reflection, in all three places that file builds one — while the **baked**
+half of the same crowd used `populace._place_body`'s plain yaw, which is always right-handed. **The
+two halves of one crowd disagreed about which way round a person is.**
+
+It survived because a roughly symmetric body reads the same either way at corridor distance, and
+every visual gate here scores a *picture*. What found it was `ragdoll.gd::promote` **refusing to
+promote into a transform with determinant −1.0000** — a one-line precondition written for a bug
+the *gate* had hit, which turned out to be sitting in the shipped crowd. A precondition is cheaper
+than a render and can fail for a reason a render cannot express.
+
+**And the fix was applied to the RULE:** `player.gd` and `dialogue.gd` use the identical
+`fwd.cross(up)` idiom and are **both correct**, because they pass `Basis(right, up, -fwd)` and the
+two negations cancel to +1. All five sites in the project were checked; only `npc.gd`'s three
+needed the other sign. *Check every site of an idiom before deciding which one is wrong.*
+
+**A DEFAULT THAT IS ONLY EVER SET BY THE GATE IT WAS WRITTEN IN IS AN UNSET DEFAULT.** Same
+session. `ragdoll.gd` defaulted gravity to **9.81 m/s²** and up to **+Y**, and the only caller
+that supplied the real values was `--ragdoll-gate`, where they were authored. The path a player's
+session actually goes through — `npc.gd::promote_walker` — set neither, so a real collapse would
+have fallen at Earth gravity straight down on a station whose deck delivers **7.454 m/s² along a
+radius**. The cure is to move the derivation into the thing that needs it (`ragdoll.gd` now works
+both out from the body's own world position) and to give it a control that withholds the stated
+values: `--derive-g` is **byte-identical** to the run that states them. INV-451.
+
 **READ THE SHAPE OF A FAILING NUMBER BEFORE READING ITS SIZE.** Session 4d, and it is the cheapest
 lesson in this file. `interact.py --audit` failed on 84 of 357 declared interactables and 4c wrote
 the work up as two lists of props to go and build. The number that mattered was the split:
