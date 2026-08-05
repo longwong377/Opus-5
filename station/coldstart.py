@@ -94,6 +94,7 @@ Run:
 """
 import argparse
 import glob
+import json
 import os
 import re
 import subprocess
@@ -592,7 +593,7 @@ def _check_run(extra, verbose=False, timeout=300):
     return _parse_check(out), out
 
 
-def built_deck():
+def built_deck(*required):
     """`(ok, why)` -- can an engine gate run here at all?
 
     WHY THIS EXISTS, AND IT COST A CONTAINER RESTART TO NOTICE. Every gate below
@@ -613,9 +614,27 @@ def built_deck():
     """
     gen = os.path.join(ROOT, "station", "generated", "scene")
     boot = os.path.join(gen, "boot.json")
+    rel = os.path.relpath(boot, ROOT)
     if not os.path.exists(boot):
-        return False, ("no %s -- run `python3 station/boot.py --bake`"
-                       % os.path.relpath(boot, ROOT))
+        return False, "no %s -- run `python3 station/boot.py --bake`" % rel
+    # AND THE FILE EXISTING IS NOT THE FILE BEING CURRENT. The first version of
+    # this check tested only for the path, and a container recycle proved that
+    # too weak within the hour: `boot.json` was present and PREDATED the keys
+    # these gates read, so G4 would have run, found `table=0`, and reported a
+    # content failure. That is the "a gate that reads a committed artefact must
+    # be able to rebuild it" defect wearing a precondition as a disguise.
+    #
+    # Named per key rather than by a version stamp, because a stamp is a second
+    # description of what the file contains and would go stale on its own.
+    try:
+        with open(boot) as f:
+            d = json.load(f)
+    except Exception as e:                                      # noqa: BLE001
+        return False, "%s does not parse (%s) -- re-bake" % (rel, e)
+    for key in required:
+        if not d.get(key):
+            return False, ("%s has no `%s` -- it predates the gate that reads "
+                           "it. Run `python3 station/boot.py --bake`" % (rel, key))
     return True, ""
 
 
@@ -643,7 +662,7 @@ def g4(verbose=False):
     if godot is None:
         print("G4 FAIL -- no double-precision Godot binary found")
         return {"ok": False}
-    ok_deck, why = built_deck()
+    ok_deck, why = built_deck("checks")
     if not ok_deck:
         print("G4 SKIP -- %s" % why)
         return {"ok": True, "skipped": why}
@@ -707,7 +726,7 @@ def g5(verbose=False):
         print("G5 FAIL -- no double-precision Godot binary found")
         return {"ok": False}
     # TWO INPUTS, TWO DIFFERENT MISSING-INPUT MESSAGES. See `built_deck`.
-    for probe in (built_deck, ragdoll_bodies):
+    for probe in (lambda: built_deck("collapses"), ragdoll_bodies):
         good, why = probe()
         if not good:
             print("G5 SKIP -- %s" % why)
