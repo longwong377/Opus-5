@@ -340,16 +340,55 @@ former is in the spirit of everything else here — **no rate in `incident.py` i
 and is the larger build. Recommend deriving from the existing occupancy and roster models the
 way `incident.py` already does.
 
-**A4a-4 — SPECIES SLEEP IS MODELLED AND CANNOT BE SEEN.** `npc/animation.py`'s `CLIP_SET` is
-`("walk_ladder", "idle", "talk", "sit")` — **no sleep or recline clip** — while
-`schedule.RHYTHMS` knows every Narn aboard is asleep at 03:00 and every Centauri awake, and the
-incident work's `clock_mismatch` is built on it. A player in a residential corridor at 03:00
-meets people who are, animation-wise, standing about. Second half of the same gap: **corridor
-crowds move** (5,966 m measured, 963 walkers) and **room occupants are posed, not animated** —
-they sit at the seat's own measured height and never get up.
-*Related and worth stating with it:* **262 bodies are baked into scene data across 4 decks**
-against 250,001 modelled, so the named-resident layer and the visible-body layer only meet
-where a deck has been baked.
+**A4a-4 — ROOM OCCUPANTS ARE THE WRONG KIND OF OBJECT, and this is the largest of the four.**
+The owner's reaction on being told is the correct one: *"they're just dioramas? how the fuck did
+this happen"*. **It was not an oversight. It was a deliberate trade, and it was made for the
+wrong case.** The diagnosis, from the source's own words:
+
+There are **TWO crowd systems** aboard, and `walk.gd`'s header states the split outright:
+*"an actor is **baked into the deck mesh**, a walker is an instance"*, and *"a baked walker had
+one LOD because **a static mesh has no other option**"*.
+
+| | ACTORS — room occupants | WALKERS — corridor crowd, commuters |
+|---|---|---|
+| what they are | geometry **welded into the deck `.glb`** | instances against `populace.station_crowd_library` |
+| body | **their own individual** body, face, build, costume | their species' **nominal** body |
+| can move | **no** — `life.gd`: *"a baked actor … can only be shown or hidden"* | yes, `add_commuter` / `drive_commuter` |
+| animation | a pose chosen at bake time | free — swap the clip index |
+| at runtime | `npc.gd::_physics_process` changes **their yaw only** — they turn to look at you within `notice_m` = 6 m, and that is the entire behaviour |
+| LOD | one, forced | a ladder, picked per person per frame |
+
+**`populace.py` records the trade and its own justification:** converting the corridor crowd to
+instanced took walker geometry from 64,856 tri to ~23,000 shared, primitives 134 → ~48, and
+animation from none to free — *"A net triangle saving, a primitive saving, **and it moves**.
+What it costs is that a WALKER is their species' nominal body rather than their own — which is
+what every real crowd system does, **and which room occupants do not pay**: they keep
+`body.individual` and their own identicard either way."*
+
+**So the axis was individuality versus motion, and rooms were given individuality.** The forcing
+constraint was draw calls: *"a deck of 134 corridor walkers and 13 room occupants shipped
+**1,262 primitives, 1,052 of them people**"* against `schedule.NPC_BUDGET["max_draw_calls"] = 32`.
+
+**THE TRADE IS BACKWARDS FOR THE CASE IT WAS APPLIED TO.** A person two metres away who has a
+unique face and never stands up reads worse than one with a shared face who gets up and leaves —
+because at two metres *behaviour* is the thing being judged, not bone structure. Individuality
+buys most at conversational range only if the person is otherwise alive. **Distance wants
+silhouette; proximity wants behaviour.** The station currently has it the other way round.
+
+**THE FIX EXISTS AND IS PARTLY BUILT.** The instanced path already works — 963 corridor walkers
+move 5,966 m in a walk test, commuters route across decks on the nav graph. Room occupants must
+migrate to it and gain a behaviour loop (arrive, sit, eat, work, stand, leave) driven by
+`schedule.RHYTHMS`, which already knows every Narn is asleep at 03:00. **The constraint that
+forced the baked path is draw calls and primitives — which is precisely what P4's spatial
+submission work addresses**, so these two are the same project and should be sequenced together.
+
+**And the missing clip.** `npc/animation.py`'s `CLIP_SET` is `("walk_ladder", "idle", "talk",
+"sit")` — **no sleep or recline clip at all** — so even once occupants can move, a residential
+corridor at 03:00 has nobody lying down.
+
+*Related, and it bounds how much of this is visible today:* **262 bodies are baked into scene
+data across 4 decks** against 250,001 modelled, so the named-resident layer and the visible-body
+layer meet only where a deck has been baked.
 
 ### P5 — SHIP
 Packaging, onboarding, controls, accessibility, credits, IP statement (fan work, non-
