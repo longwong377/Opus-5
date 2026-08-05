@@ -638,6 +638,36 @@ def built_deck(*required):
     return True, ""
 
 
+def purse_ledger():
+    """`(ok, why)` -- is there an economy ledger with a purse in it?
+
+    THE THIRD INPUT, AND I MISSED IT NAMING THE FIRST TWO. G4 compares the
+    player's RUNG against what a place wants, and the rung comes off a purse in
+    `station/generated/economy.json` -- which is gitignored like everything else
+    under `generated/`. With no ledger `player.gd::has_purse()` is false, `tier`
+    stays at its -99 sentinel, and every boundary correctly declines to read a
+    card that does not exist: `readings=0 silent=6 tier=-99`, which reads as a
+    dead check and is a missing file.
+
+    Enumerating inputs one bug at a time is how a precondition becomes the thing
+    it was written to prevent. This is the last of the three G4 touches; G5 adds
+    the ragdoll bodies.
+    """
+    p = os.path.join(ROOT, "station", "generated", "economy.json")
+    rel = os.path.relpath(p, ROOT)
+    if not os.path.exists(p):
+        return False, ("no %s -- run `python3 station/dockwork.py --loop "
+                       "--days 14 --role lurker --seed downbelow --save %s`"
+                       % (rel, rel))
+    try:
+        with open(p) as f:
+            if not json.load(f).get("purses"):
+                return False, "%s holds no purse -- re-run the ledger" % rel
+    except Exception as e:                                      # noqa: BLE001
+        return False, "%s does not parse (%s)" % (rel, e)
+    return True, ""
+
+
 def ragdoll_bodies():
     """`(ok, why)` -- are the per-species ragdoll bodies on disk? See above."""
     d = os.path.join(ROOT, "station", "generated", "scene", "npc")
@@ -662,10 +692,11 @@ def g4(verbose=False):
     if godot is None:
         print("G4 FAIL -- no double-precision Godot binary found")
         return {"ok": False}
-    ok_deck, why = built_deck("checks")
-    if not ok_deck:
-        print("G4 SKIP -- %s" % why)
-        return {"ok": True, "skipped": why}
+    for probe in (lambda: built_deck("checks"), purse_ledger):
+        good, why = probe()
+        if not good:
+            print("G4 SKIP -- %s" % why)
+            return {"ok": True, "skipped": why}
     print("G4 THE CARD IS READ ON THE WAY IN -- "
           "`godot --headless --path godot -- --check-gate`")
     # `parse_verdict` splits on the token after the tag, so `gate=` is consumed
@@ -687,6 +718,23 @@ def g4(verbose=False):
     for line in out.splitlines():
         if line.startswith("CHECK place="):
             print("    | " + line[6:])
+    # WHOSE CARD THE SUBJECT IS HOLDING, AND WHETHER THAT COSTS A CONTROL.
+    # The subject's rung comes from whatever purse `economy.json` happens to
+    # hold, and that file is a REGENERATED side artefact -- rebuild it with
+    # `--role lurker` and the player is a Downbelow no_status who is refused
+    # everywhere, which makes the subject run byte-for-byte the `--tier=0`
+    # control. The gate still discriminates, because `--tier=5` goes the other
+    # way, but it is running on three controls rather than four and nothing
+    # said so. A control that has silently become a duplicate of the subject is
+    # the same defect as an assertion that cannot fail, one level out.
+    subj_tier = str(d.get("tier", ""))
+    dup = [f for f, _w, _p in CHECK_CONTROLS
+           if any(a == "--tier=%s" % subj_tier.split("(")[0] for a in f)]
+    if dup:
+        print("  NOTE the subject holds tier %s, which is also control %s -- "
+              % (subj_tier, " ".join(dup[0]))
+              + "that control is a duplicate on this build and proves nothing "
+                "the subject did not. Re-seed `economy.json` for a fourth.")
     print("  G4 CONTROLS -- each changes one input and must move the verdict")
     for flags, why, want in CHECK_CONTROLS:
         cd, _cout = _check_run(flags, verbose=verbose)
