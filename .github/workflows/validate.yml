@@ -623,6 +623,16 @@ jobs:
         continue-on-error: true
         run: python3 tools/wiring.py --selftest
 
+      # P1-G2. The tier ladder, and arrest -> brig -> fine -> release closing
+      # with every leg routed on the graph a resident commutes on. ~44 s, of
+      # which ~36 s is `navigation.build_graph()` -- the escort and court legs
+      # ARE paths on it, so it cannot be skipped. `--selftest` is a graph-free
+      # 7/7 half and is NOT a substitute: it does not test the chain.
+      - name: Progression and consequence -- the tier ladder and the arrest chain
+        id: sconsequence
+        continue-on-error: true
+        run: python3 station/consequence.py --gate
+
       - name: Confirm the schema still parses and is fully sourced
         id: sconfirm_the_schema_still_parses_and_is_f
         continue-on-error: true
@@ -768,6 +778,8 @@ jobs:
             echo "FAILED: sdoc_chain"; fail=1; fi
           if [ "${{ steps.swiring.outcome }}" != "success" ]; then
             echo "FAILED: swiring"; fail=1; fi
+          if [ "${{ steps.sconsequence.outcome }}" != "success" ]; then
+            echo "FAILED: sconsequence"; fail=1; fi
           if [ "${{ steps.sdegeneracy.outcome }}" != "success" ]; then
             echo "FAILED: sdegeneracy"; fail=1; fi
           if [ "${{ steps.svariety.outcome }}" != "success" ]; then

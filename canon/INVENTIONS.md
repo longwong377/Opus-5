@@ -6937,3 +6937,161 @@ would have been the worse error.
 row's own text is the evidence either way. Closing it properly means re-baking the decks and
 re-running `deck.py --sweep`.
 **Authority 5** for the witness condition; **1 (S2E22)** for the antagonism itself.
+
+## INV-340 — The identicard tier ladder: six rungs, and what each one gates
+
+**What.** A person's standing aboard is one of six rungs — ACCREDITED / CITIZEN / RESIDENT /
+TRANSIT / SANCTUARY / NO STATUS — plus a DETAINED custody state. Each rung gates three things:
+which of the 128 register places admit you (128/126/116/66/35/33), which of the 13 counters
+serve you (13/13/13/10/9/4), and the rent tier of `economy.LADDER` you may take a tenancy at.
+**Why.** MASTER-PLAN P1-G2 asks for "the identicard tier ladder". Every rung is a READING of
+card state through `arrival.entry_class` — this project's one card reader — plus employment
+plus role; there is no second visa parser and no stored tier field.
+**Constrained by.** The rungs are not free: five of the six are the five classes
+`arrival.entry_class` already distinguishes (auth 1 for the card fields themselves), and the
+sixth (ACCREDITED) is LAW-CRIME 4.1's diplomatic immunity at auth 4. What is extrapolated is
+only the ORDERING and the gating sets.
+**Overturned by.** Any depiction of a station access class the card does not carry; any
+footage of a non-EA national in a place this ladder closes to them.
+**Authority 5.** `station/consequence.py::TIERS`, gated by `--gate` (34/34).
+
+## INV-341 — Sector access floors, from LOCATIONS.md P-05
+
+**What.** Blue admits TRANSIT and above, Green and Grey admit RESIDENT and above, Red and
+Yellow admit the floor rung. An explicitly-open function (`informal_residence`,
+`black_market`, `organised_crime`, `immigration`) overrides the sector floor.
+**Why.** P-05 states the rule — "Security checkpoints at every sector boundary and at every
+lift lobby serving a restricted ring. Blue is explicitly access-restricted, and the Alien
+Sector is airlocked" — and gives no per-sector class.
+**Constrained by.** Blue cannot be higher than TRANSIT because a lawful visitor arrives
+THROUGH Blue and cannot be barred from the hall they are processed in. Green is where
+`security.POSTS` already puts a checkpoint pair. Grey's restriction is stated at authority 4.
+The override exists because nobody checks a card to get into a squat — LAW-CRIME 2.4's last
+row is "Downbelow: NO PERMANENT POST", by design.
+**Overturned by.** Footage showing free movement across a sector boundary; any source
+placing a checkpoint in Red or Yellow.
+**Authority 5.** `station/consequence.py::SECTOR_MIN`.
+
+## INV-342 — A licit counter reads the card, so the floor rung cannot buy
+
+**What.** Every counter whose place does not declare `black_market` / `organised_crime` /
+`black_market_fringe` / `crime` refuses a NO STATUS card. Four of the station's 13 vendors
+serve the floor rung and all four are unchecked ones.
+**Why.** TRAFFIC-AND-CUSTOMS 6.4 (auth 4) makes the identicard simultaneously passport,
+licence, medical file AND CREDIT CARD — so paying and being identified are the same act and
+cannot be separated. That is what makes the floor rung economically real rather than merely
+poorer.
+**Constrained by.** `resident.leisure_places` already implements the destination half of this
+rule (it adds the crime venues back for `NO_STATUS_ROLES` because FACTIONS 11.4 says the black
+market's clientele IS the people a reader turns away). This is the same rule at the till.
+Exactly ONE rung is excluded: SANCTUARY holders hold a card that reads, and 7.1 prices them a
+1 cr/night dosshouse bunk, which is a business taking money.
+**Overturned by.** Any depiction of cash or an anonymous credit chit aboard.
+**Authority 5.** `station/consequence.py::COUNTER_MIN`, `sells_to`, `purchase`.
+
+## INV-343 — One discretionary identicard check per officer-hour
+
+**What.** An on-duty officer makes one discretionary card check an hour. Over the ~3,600
+officer-hours a station-day that is ~3,600 checks, against the ~12,600 transactions/day the
+two customs halls already run — so discretionary checking is 22% on top of the mandatory kind.
+**Why.** LAW-CRIME 2.7 calls the identicard check "the commonest security interaction on the
+station and the one a player will see most" and gives no rate.
+**Constrained by.** FROM ABOVE by the brig: 3.1's 24-40 cells times the median hold is the
+steady-state custody population, and checks × P(fail) × P(detained|fail) must fit inside it.
+`brig_check()` computes it (12.7 of 40, 32%) and the gate's fifth negative control raises the
+rate 100× and shows the brig overflowing to 991. FROM BELOW by 2.7's own sentence: the check
+count must exceed the detention count by orders (3,600 against 19).
+**Overturned by.** Any figure for stop-and-check volume aboard.
+**Authority 5.** `station/consequence.py::CHECKS_PER_OFFICER_HOUR`.
+
+## INV-344 — One hour to book a prisoner into the brig
+
+**What.** Between the escort arriving and the case joining the Ombuds docket, one station-hour.
+**Why.** LAW-CRIME 4.3 step 4 makes the jurisdiction check "the station's characteristic legal
+event" and places it at Security Central between detention and the hearing, without a duration.
+**Constrained by.** Below by 3.1's own fittings list — a reader outside every door, a camera,
+and an atmosphere assignment for a non-oxygen prisoner (3.1: "at least three atmospheres") —
+each of which is a step. Above by 3.1's "hours to days" bracket being about the HOLD and not
+about the booking.
+**Overturned by.** Any depiction of a booking-in sequence.
+**Authority 5.** `station/consequence.py::BOOKING_H`.
+
+## INV-345 — A conditional permission survives one ordinary conviction, not two
+
+**What.** A TRANSIT visa, a SANCTUARY grant or a job-backed RESIDENCY is withdrawn on the
+SECOND grade-2 conviction or on the FIRST grade-3 one. An EA CITIZEN and an ACCREDITED
+diplomat cannot be revoked at all.
+**Why.** MASTER-PLAN P1-G2 requires that "visa revocation exists and can actually happen to
+you" and no source states the grounds.
+**Constrained by.** LAW-CRIME 2.7 rung 3 — "Move on. No arrest, no record. The standard
+Downbelow-in-a-commercial-area outcome" — so a single ordinary offence cannot be terminal or
+the ladder has no middle; and 4.3 step 6 listing "transfer off-station" among the ORDINARY
+disposals, so it cannot take many either. The two NON-revocable rungs are the sourced half:
+4.1 makes the station EA sovereign territory (a citizen enters by right and has no visa on the
+card), and 4.3 step 4 says an ambassador's file dies.
+**Overturned by.** Any depicted visa cancellation and its stated grounds.
+**Authority 5.** `station/consequence.py::REVOKE_ON_ORDINARY`, `REVOKE_ON_SERIOUS`, `REVOCABLE`.
+
+## INV-346 — One failed identicard check in five ends in detention
+
+**What.** `DETAIN_ON_FAIL = 0.20`. The other four end at 2.7's rung 3, "move on".
+**Why.** 2.7's ladder has detention as a distinct rung above the check, and gives no split.
+**Constrained by.** 2.7 naming rung 3 "the standard Downbelow-in-a-commercial-area outcome",
+so move-on must be the large majority; and detention existing at all as a distinct rung, so it
+cannot be zero. `brig_check()` is what stops it drifting upward — raise it and the sourced
+24-40 cells overflow.
+**Overturned by.** Any figure for arrests per stop.
+**Authority 5.** `station/consequence.py::DETAIN_ON_FAIL`.
+
+## INV-347 — The fine ladder is denominated in days of casual labour
+
+**What.** Grade 1 = 1 day (8-10 cr), grade 2 = 7 days (56-70 cr), grade 3 = 21 days
+(168-210 cr). Grade 4 is off the ladder: the disposal is transfer off-station.
+**Why.** LAW-CRIME 4.3 step 6 lists "fine" as a disposal and no source gives an amount.
+Days of casual labour is the only unit 7.1's price table gives for what a person can pay, and
+7.1's own load-bearing row is built the same way ("passage home must be 30-100 days of casual
+labour with nothing spent").
+**Constrained by.** CEILING, hard: a fine at or above the cheapest passage home (300 cr) is
+deportation dressed as a fine, by TRAFFIC-AND-CUSTOMS 6.6's exact mechanism — someone who
+could pay it could have left, and someone who cannot is now a lurker. At the wage band the
+passage anchor itself pins (`economy.casual_constraint()` = 8-10 cr/day), 30 days is the most
+that stays a fine; 21 leaves 90 cr of headroom. FLOOR: the smallest fine must exceed the wages
+the hold already cost — 8 cr against 6.6 cr over the median 15.4 h hold. The week is FACTIONS
+2.3's mean transient stay, so a grade-2 fine costs a visitor the visit.
+**KNOWN AND REPORTED, NOT TUNED:** the floor clears the MEDIAN hold and not the MEAN (10.2 cr
+over 24.5 h, dragged by the deferral tail) — so for a case that defers, the detention is a
+heavier penalty than the sentence. That is 4.2's complaint about deferral arriving as
+arithmetic. The gate asserts the median and prints `floor_ok_on_the_mean=False`.
+**Overturned by.** Any stated Ombuds fine.
+**Authority 5.** `station/consequence.py::FINE_DAYS`, `fine_bounds_check`.
+
+## INV-348 — Deferral: 22% of cases, re-deferring at 0.7884
+
+**What.** 22% of hearings are deferred on jurisdiction; a deferred case defers again with
+probability 0.7884, each deferral costing one more 24 h sitting cycle.
+**Why.** LAW-CRIME 4.2: "Many of the cases had to be deferred as conflicts of jurisdiction
+came up between the humans and aliens." No rate given.
+**Constrained by.** The SHARE is derived rather than chosen: applicable law is Earth Alliance
+law (4.1), so the conflict is a non-EA defendant, and the arrested population is 6.2's
+Downbelow mix at "roughly 78% human" (8.1 puts 90% of crime there) — giving 22%. That this
+lands on "many" rather than "a few" is the check. The RE-DEFER probability is SOLVED, not
+chosen, against 3.1's two brackets for the same distribution: P(hold >= 14 days) = 0.01 given
+the 22% share, i.e. q = (0.01/0.22)^(1/13) = 0.7884. Realised: median 15.4 h ("hours to a few
+days") and p99 13.6 days ("weeks"). The gate's fourth control sets q=0 and the p99 falls to
+2.0 days, so 3.1's "weeks" becomes unreachable.
+**Overturned by.** Any figure for Ombuds docket throughput or deferral rate.
+**Authority 5.** `station/consequence.py::DEFER_SHARE`, `DEFER_AGAIN_P`.
+
+## INV-349 — A medlab reads a card, which is why Franklin's clinic existed
+
+**What.** `medical` and `surgery` functions require SANCTUARY or above; `triage` does not.
+**Why.** TRAFFIC-AND-CUSTOMS 6.4 (auth 4) makes the identicard the MEDICAL FILE — one of the
+nine fields on the authority-1 prop — so a ward draws against it and a card that does not read
+cannot be treated on one.
+**Constrained by.** LAW-CRIME 7.3 is explicit that Franklin ran a free clinic, "a charitable
+service, unofficial, at a doctor's own initiative". This gate is the gap that clinic existed
+in, and the derivation runs the right way round: the sourced institution explains the rule
+rather than the rule being invented to justify it. `triage` is deliberately excluded —
+emergency care is not a border.
+**Overturned by.** Any depiction of a stateless patient treated in a station medlab.
+**Authority 5.** `station/consequence.py::GATED_FUNCTIONS`.

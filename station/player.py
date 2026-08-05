@@ -230,6 +230,19 @@ class Player:
     status: str = UNPROCESSED
     quarters: str = ""                 # assigned at the gate; "" until then
     generated: bool = True             # False once a choice overrode a field
+    # WHAT THE STATION HAS DONE ABOUT YOU, as against what it holds. A
+    # `consequence.Record`: convictions, fines, custody, whether a conditional
+    # status has been withdrawn. It belongs on the MUTABLE half for exactly the
+    # reason the purse does -- a criminal record is a thing a session changes,
+    # and the card is frozen because an identicard is not editable by its
+    # bearer. `None` until something happens; `consequence.record_of` mints it.
+    #
+    # THE IMPORT IS LAZY AND THAT IS DELIBERATE. `station/consequence.py`
+    # imports THIS module at module level (it needs `Player` and the four
+    # statuses), so a module-level import here would be a cycle. The type is
+    # therefore not annotated and the two methods that touch it import inside
+    # the call -- which is the standard fix and is noted so nobody "tidies" it.
+    record: object = None
 
     # -- delegation, so a player is asked the same questions an NPC is -------
     @property
@@ -308,6 +321,23 @@ class Player:
         """§6.6's fork: the difference between a visitor and a lurker."""
         return self.credits >= PASSAGE_HOME_CR
 
+    # -- standing, and it is a READING rather than a field -------------------
+    # The rung is NOT stored. It is `consequence.tier_of(card, record)`, which
+    # reads the nine identicard fields through `arrival.entry_class` -- this
+    # project's one card reader -- plus employment plus the record. A stored
+    # tier would be a second description of what the card already says, and it
+    # would go stale the moment a conviction landed. This is the same rule that
+    # keeps `identicard` a delegation rather than a copy.
+    @property
+    def tier(self) -> int:
+        from consequence import tier_of                      # noqa: PLC0415
+        return tier_of(self.card, self.record)
+
+    @property
+    def tier_name(self) -> str:
+        import consequence as CQ                             # noqa: PLC0415
+        return CQ.tier_name(CQ.tier_of(self.card, self.record))
+
     # -- serialisation, and it is ONLY the mutable half ---------------------
     # `station/economy.py` persists purses so that a purchase survives the
     # process, and the thing it must NOT do is write its own copy of a person.
@@ -317,10 +347,17 @@ class Player:
     # record this project can already regenerate -- hard rule 4. What a save
     # has to carry is what a session CHANGED.
     def state(self) -> dict:
-        return {"npc_id": self.card.npc_id, "species": self.card.species,
-                "at": self.at, "credits": self.credits,
-                "carrying": list(self.carrying), "status": self.status,
-                "quarters": self.quarters, "generated": bool(self.generated)}
+        st = {"npc_id": self.card.npc_id, "species": self.card.species,
+              "at": self.at, "credits": self.credits,
+              "carrying": list(self.carrying), "status": self.status,
+              "quarters": self.quarters, "generated": bool(self.generated)}
+        # A CONSEQUENCE THAT DOES NOT SURVIVE THE PROCESS IS A MOOD. The key is
+        # written only when there IS a record, so every purse already sitting
+        # in `economy.json` stays byte-identical and `Ledger.load` does not
+        # need a version bump.
+        if self.record is not None:
+            st["record"] = self.record.state()
+        return st
 
     def restore(self, st: dict) -> "Player":
         """Put a saved mutable half back on this record. Returns self."""
@@ -333,6 +370,9 @@ class Player:
         self.status = st.get("status", UNPROCESSED)
         self.quarters = st.get("quarters", "")
         self.generated = bool(st.get("generated", True))
+        if "record" in st and st["record"] is not None:
+            from consequence import Record                    # noqa: PLC0415
+            self.record = Record.from_state(st["record"])
         return self
 
 
