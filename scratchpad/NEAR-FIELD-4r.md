@@ -145,3 +145,193 @@ wall follows whatever grid `drum_ground` cut.
 **Overturned by** a ground-level authority-1 frame of the drum's built half showing open
 plots rather than bounded ones. `2-22_33a` is a wide shot and cannot settle it at eye
 level.
+
+---
+
+# The measurement, and it fails on the content it was written against
+
+`python3 station/drum_dressing.py --near` / `--near --bare`. 209 standing
+positions — a uniform 16-angle sweep **plus three angles inside every land-use
+band**, because a uniform sweep of this drum lands no position in the 36°-wide
+water band and the first version of this gate reported PASS with the shore
+unmeasured.
+
+| | control (`--near --bare`, the drum as 4q left it) | after |
+|---|---|---|
+| nearest thing standing, median | **32.42 m** | **2.32 m** |
+| nearest thing standing, worst | **99.34 m** (parkland) | **3.28 m** (arable) |
+| features per hectare within 11.05 m, median | **0** | **1,278** |
+| below-horizon view that is bare, drum-wide | **95.2%** | **34.5%** |
+| worst band | arable **97.2%** | settlement **43.9%** |
+| verdict | **FAIL** | **PASS** |
+
+The control is not a stub: it is the drum exactly as session 4q left it, all
+1,945 far-field features present, with only the near rung withheld.
+
+Both floors are in INV-491 and neither was chosen. `drum_dressing._selftest`
+carries the gate, the control, and a check that the control fails *for the right
+reason* — `nb.nearest_worst_m > 10 × n.nearest_worst_m`, i.e. for having nothing
+NEAR rather than nothing at all.
+
+**Self-tests:** `station/drum_dressing.py` **276/277** (the one failure is the
+honest drum-budget red below); `station/drum_ground.py` **82/82**.
+
+# Frames — all Forward+ / Vulkan 1.4.318, checked in the render log
+
+| | path |
+|---|---|
+| before, down the axis (`--stand 20,4700 --look 20,6300`) | `docs/near-4q-before-axis.png` |
+| after, same camera | `docs/near-4r-after-axis.png` |
+| **before, HALF distance** (eye 262.197,95.432,4700 → target 263.802,96.016,4704, 23.1° down) | `docs/near-4q-before-half.png` |
+| **after, same camera** | `docs/near-4r-after-half.png` |
+
+The before frames were rendered from a `git worktree` holding `fdc27bf`'s
+`drum_dressing.py` against the *current* `garden.py`, so the only difference
+between the pair is this session's module.
+
+**My own craft score at the rubric's half distance: 1 → 2.**
+
+*Before* is `AAA-STANDARD`'s C1 verbatim — two flat colour fields meeting along a
+straight-edged polygon boundary, nothing standing on either, and the green
+parcel carries no texture at all.
+
+*After* has real relief, row structure that converges on the vanishing point,
+a scatter with silhouette, a bank between the two parcels, and four materials
+where there were two. It is **not a 3**, and the three reasons are:
+
+1. the near tufts are 6-sided 3-stack domes and read as faceted at 1–2 m;
+2. the crop takes its parcel's own `ground_arable_*` material, whose normal map
+   is **cracked earth** — so a standing crop reads as ploughed soil at 2 m;
+3. the green parcel still has no ground texture between the tufts at all.
+
+(2) and (3) are `materials.py`, not this module — see the patches below.
+
+# Findings — things that are WRONG in the repo or in the brief
+
+**1. `drum_dressing.worst_case_cost` is 104,842, not 119,868.** STATE.md §24.6,
+INV-452 and `docs/aaa-scorecard.json` all say it is "**unchanged** at
+119,868 / 120,000" after the 4q garden rebuild. Measured on the **committed**
+module (`git show fdc27bf:station/drum_dressing.py`) against the **current**
+`garden.py`, it is **104,842**. Level 0 of this module's tree and town block IS
+`garden.tree()` / `garden.block_building()`, so rebuilding them moved it. The
+brief inherits the stale figure ("currently 119,868 used"). The practical
+consequence is good news: the whole near rung fits inside the existing
+`DRESSING_TRIS` with 5,090 to spare, and `--derive` even offers a *longer*
+level-0 reach (118.4 m), which is declined for the reason below.
+
+**2. `drum_dressing._selftest` was asserting the drum's budget with a hard-coded
+`fixed = 75_968`, and the true figure is 104,374.** That constant is a copy of
+another module's cost: it contains `garden.townscape` at 22,620, which is
+**51,026** since 4q. The assertion was passing with 28,406 triangles it could not
+see. Now measured from the same parts `export_scene.drum_parts` emits, pinned as
+`DRUM_FIXED_TRIS`, and asserted.
+
+**3. The drum is over its own allowance, and it was before this session.**
+Priced the way a renderer prices it — one eye at a time, not three worst cases at
+three different places — the worst standing position is **315,604** against
+`budget.DRUM["visible_set_tris"]` = 300,000: fixed 104,374 + ground 96,320 +
+dressing 114,910. Without the near rung the same eye is ~305,700. **`budget.py`
+is not this module's file** and another agent is editing it (INV-500..503), so
+this is left as an honest RED in `drum_dressing._selftest` with the cause named
+in the failure message, rather than absorbed by quietly cutting `DRESSING_TRIS`.
+
+**4. The brief's third bullet is not correct, and being wrong about it is
+useful.** *"`drum_ground`'s own half of that boundary is a drawn line rather than
+a change in the ground."* Measured over 140 tagged boundaries against a paired
+control window in open field at the same z, the boundary carries **0.231 m more
+relief than open field (median), 0.536 m at p75**, and at the finding's own eye
+it is **1.05 m over 28 m**. The ground does change. What it does not do is change
+*visibly*: 0.49 m over a 32 m window is **0.88°**, while the MATERIAL changes
+instantaneously at the cell boundary. A hard tonal step on a surface with no
+visible geometric step is exactly what "a drawn line" describes — and the cure
+is an object on the line, not a sharper heightfield, because `drum_ground`'s step
+rule forbids anything under one 31.2 m stride-8 cell and its own history records
+what a 3.5 m step cost (a 3.28 m lod1 error, a 3,379 m switch distance, and the
+entire 573,440-triangle field at lod0). `drum_ground._selftest` now carries both
+halves of that as assertions, and both controls fire.
+
+**5. My own first version of that measurement could not fail.** Written as an
+absolute — "the 32 m window across a boundary changes by 0.581 m" — it survives
+`PARCEL_RELIEF_M = 0` almost intact (0.269 m), because a 32 m window anywhere on
+a six-octave fbm field changes by about that much. It is now a paired
+differential and the control drives it to **0.011 m**.
+
+**6. A keep-out radius has to be the footprint, not the circumscribed disc.**
+The first version kept near cover out of a disc around every standing thing and
+included `gantry`, whose boom is 87.4 m of pipe on two legs — clearing a 44 m
+disc of crop and taking the arable band's worst nearest-object distance from
+3.30 m to 24.01 m in one run. An irrigation boom is a frame you stand a crop
+under. Fixed to oriented rectangles from `prototype_dims` turned through each
+block's own placed yaw, and `_KEEPOUT_KINDS` cut to things with a solid footprint.
+
+**7. Three fovs exist in this project.** The player's **70** (`player.gd:279`),
+the render shot's **46** (`export_scene.SHOT_FOV_DEG`), and this module's LOD
+constant **50** (`drum_ground.FOV_DEG`). A near-field floor derived from the
+wrong one looks derived and is wrong. Every committed drum frame is composed at
+46, whose below-horizon median is 8.36 m — so the frames are a *conservative*
+view of this defect, not an exaggerated one.
+
+# Patches for files I do not own
+
+## `tools/export_scene.py` — DRUM_CALIBRATION's `dressing` rows must be re-measured
+
+**This is the one the brief asked me to flag.** The `dressing` part now contains
+the near rung, so its measured pixel contribution has changed. The affected
+entries are `DRUM_CALIBRATION["wide"|"garden"|"tram"]["contribution"]["dressing"]`
+(39.08 / 32.30 / 47.26) and the matching `["largest_region"]["dressing"]`
+(32.08 / 20.56 / …). No part was added or renamed, so `drum_parts`' own
+name-coverage assertion still passes — the numbers are simply stale. Method is
+that file's own: render each framing at `contribution_res` whole and with
+`--omit dressing`, count the pixels that move. Every framing will go UP; at the
+`wide` framing the near rung occupies most of the lower third of the frame.
+
+## `station/materials.py` — the arable ground groups
+
+Two things the half-distance frames show and no gate can:
+
+1. `ground_arable_*` carries a **cracked-earth normal map**. The near crop takes
+   the parcel's own group by construction (INV-492) and therefore inherits it, so
+   a standing crop reads as ploughed soil at 2 m. Either the arable groups want a
+   row/foliage normal, or `drum_dressing` wants a `ground_crop_*` family that
+   keeps each parcel's albedo and changes the normal. I would rather it were the
+   second, and it needs a material author to decide.
+2. At the `--stand 20,4700` eye the **green** parcel (`ground_arable_2`) shows no
+   surface texture at all at 2 m while its tan neighbour shows a full normal map.
+   `docs/near-4q-before-half.png` is the clearest evidence — the left half of that
+   frame is a single flat colour across 500 px.
+
+## `station/budget.py` — nothing to apply, one number to know
+
+See finding 3: the drum's worst one-eye total is **315,604 / 300,000**.
+`drum_dressing.drum_worst_eye()` computes it and `drum_fixed_cost()` breaks it
+down, if that file wants to call them rather than keep its own list.
+
+## `STATE.md` / `docs/aaa-scorecard.json` — one figure to correct
+
+"`drum_dressing.worst_case_cost` unchanged at 119,868 / 120,000" (§24.6, INV-452,
+scorecard `garden_townscape` performance note) should read **104,842**.
+
+**8. And one of my own, found by re-reading rather than by a gate.**
+`_lattice_sample`'s docstring said its memo was "invalidated by
+`reset_near_cache()`, which `field(rebuild=True)` calls". `field()` did not call
+it. A caller asserted in prose and absent from the code is the exact defect
+CLAUDE.md's START HERE section counts nine instances of, written down inside my
+own comment. Wired; verified output-neutral (near cost 11,972 and 630 stands
+before and after a rebuild, `FIELD_DIGEST` unchanged).
+
+# What the near rung is, in one paragraph
+
+`near_field(eye)` places one stand of cover per `drum_ground` lattice cell —
+3.90 × 4.04 m, the resolution the heightfield's own comment says it cannot carry
+— within 90 m of the eye, deterministic in WORLD space so walking toward a
+tussock does not regenerate it somewhere else. Three rungs at the module's own
+`LOD_RATIOS[1]` = 3.2: fine inside 8.8 m, full to 28.1 m, one stand per 2×2 cells
+beyond. Eight items: `crop` (ridges along the furrow direction, which
+`drum_ground` says runs along the axis, so they converge on the vanishing point
+when the drum is framed down its length), `tussock`, `scrub`, `margin` (rough
+grass on a hedge bank), `stone`, `reedtuft`, `boxhedge`, and `wall` (INV-494).
+Recipes are keyed on the ground's own kind and take the ground's own material
+group. It reaches the engine through `dressing_set()`, the one call
+`export_scene.drum_parts` makes, so there is no second path to forget. Worst
+standing position **19,236 triangles**; combined with the far field, **114,910 of
+the 120,000 allowance**.

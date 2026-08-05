@@ -1295,9 +1295,17 @@ def field(rebuild=False):
 
     Returns {"points": [Feature], "lines": [Line]}.
     """
-    global _FIELD
+    global _FIELD, _STATIC_ITEMS
     if _FIELD is not None and not rebuild:
         return _FIELD
+    # The near rung's caches key on the ground lattice, so a rebuild has to
+    # clear them too. THIS CALL WAS MISSING and `_lattice_sample`'s docstring
+    # claimed it existed -- a caller asserted in prose and absent from the code,
+    # which is this project's oldest defect written down in my own comment.
+    # Found by re-reading, not by a gate; a stale lattice memo across a
+    # `configure()` would put near cover on the previous drum's heights.
+    reset_near_cache()
+    _STATIC_ITEMS = None
     hedges = _hedgerows()
     park_lines, spires = _park()
     water_lines, water_points = _water()
