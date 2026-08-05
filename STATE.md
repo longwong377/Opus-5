@@ -391,6 +391,56 @@ named after — and which a handover number walked into earlier today.
 drifted from its source, and the fourth was a **default nobody chose**. In every case the gate
 guarding the copy compared it against *another copy* rather than against the function.
 
+### 25. THREE ROOMS STAND 90 m OUTSIDE THE PRESSURE HULL — and the fix for it was written once, in the wrong place
+
+**The largest structural defect found in 4q/4r, and it was found by building a window.**
+`command_control.py`'s own docstring predicted it — *"the two must agree or the station has a
+window that looks out at nothing"* — and **nothing could check it until a window existed.** The
+black glass had been hiding the question, not just the view.
+
+| | |
+|---|---|
+| register | `obs_dome_1` 0° / z 7960, `obs_dome_2` 90° / z 7960, radius **209.9 m** |
+| schema `observation_dome` (authority 3) | both domes at 90°, z **7060** and **7180** |
+| hull radius at z 7960 | **116.5 m** |
+| so the rooms stand | **~90 m outside the pressure hull**, 780 m from their own dome |
+
+**THE ROOT CAUSE, AND IT IS THIS PROJECT'S OWN MOST-REPEATED LESSON IN ITS PUREST FORM.**
+`interior.ring_cells` takes **no `z_m` parameter**. Its sibling `interior.ring_radii` does — and
+`ring_radii`'s **own docstring records this exact defect being found and fixed already**:
+
+> *"`z_m` IS WHAT MAKES AN ADDRESS MEAN SOMETHING. Without it this returns the rings of the
+> sector's widest cylinder … which at the fore taper is **95 m outside the ship**. … **14 of the
+> 118 located places were outside the hull on the first reading and none of them is now.**"*
+
+That fix went to `ring_radii` and to the register. **`ring_cells` — its sibling, on the same data,
+feeding deck assembly — never got it.** ***A fix applied to an instance and not to the rule is a
+fix that will be needed again***, which is CLAUDE.md's own sentence about the `BESPOKE_GEOMETRY`
+table, recurring here one layer down.
+
+**AUDITED EVERY CALL SITE RATHER THAN THE ONE THAT BIT — 20 z-BLIND against 2 z-AWARE:**
+
+| module | z-blind sites |
+|---|---|
+| `deck.py` | 5 (incl. `_ring_cells`, the deck assembler itself) |
+| `collision.py` | 4 |
+| `interior.py` | 2 — *the module that owns the distinction* |
+| `budget.py`, `core_tube.py`, `density.py`, `directory.py`, `incident.py` | 1 each |
+
+`directory.py:751` carries a **comment** about `ring_radii(z_m=)` and line **950 calls it without
+one**. `deck._ring_cells` cannot pass a z even if its caller knew one, because the function it
+calls has no parameter to receive it.
+
+**Consequence, stated at the width it actually has:** every place on blue/0/0 forward of roughly
+z 7700 is assembled against Blue ring 0's *widest* radius (211.55 m) rather than the radius that
+exists at its own z. Three rooms are confirmed outside; the rest of that range is **suspect and
+unmeasured**.
+
+**NOT FIXED IN 4r**, deliberately. It is a deck-assembly change touching nine modules, it wants the
+cores free and its own gate — the honest one is *"every located place is inside the hull at its own
+z"*, which is a whole-station question — and two agents were mid-flight when it was found. It is
+the top task.
+
 ### 24.5 Open, and honestly
 
 * **The arrest chain behind a refusal is still Python.** A refused player is *told* they are
