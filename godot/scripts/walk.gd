@@ -892,6 +892,9 @@ var _trace := 0
 ## Degrees of ring to walk tangentially in the traverse phase; the sign is the
 ## direction. 0 keeps the old behaviour. See the chord note in the traverse.
 var _arc_walk := 0.0
+## Doors/people/interactables wired as the traverse began, for the round trip
+## to be compared against. See the out-and-back note in the traverse.
+var _wired0: Array = []
 var _rest := Vector3.ZERO
 var _on_floor := false
 
@@ -992,6 +995,10 @@ func _physics_process(delta: float) -> void:
 			_player.set_yaw(_best_yaw)
 			_traverse_from = _rest
 			_traverse_prev = _rest
+			_wired0 = [
+				(_doors.count() if _doors != null else 0),
+				(_people.count() if _people != null else 0),
+				(_interact.count() if _interact != null else 0)]
 			return
 		if which != _heading:
 			_heading = which
@@ -1019,6 +1026,15 @@ func _physics_process(delta: float) -> void:
 	# is the actual W2 claim -- "two named locations joined by real walkable
 	# geometry" -- and it is a strictly harder question than "did it move",
 	# because it fails when the route is blocked rather than when the body is.
+	# OUT AND BACK. Walking one way ends in whatever the corridor holds there --
+	# on this deck, a stretch with no doors and nobody in it, so "still wired"
+	# reads 0 and means nothing. Turning round at the midpoint puts the body
+	# back where it started, so the counts at the end are comparable with the
+	# counts at the start: if `forget_freed` took live records with the dead
+	# ones, the cells reload and the objects DO NOT come back.
+	if _arc_walk != 0.0 and _t_traverse > 0 \
+			and _frame - _t_settle == int(_t_traverse / 2):
+		_arc_walk = -_arc_walk
 	if _arc_walk != 0.0:
 		# -- WALK ALONG THE RING, NOT ACROSS IT -------------------------------
 		# A corridor on a spun ring is an ARC, so a target 60 degrees away is a
@@ -1119,6 +1135,8 @@ func _physics_process(delta: float) -> void:
 		# first version measured how far the body swept round the ring and got
 		# 0.0 degrees for a body that had walked 250 m.
 		goto_s += " end=%.3f,%.3f,%.3f" % [p.x, p.y, p.z]
+		if _wired0.size() == 3:
+			goto_s += " wired0=%d/%d/%d" % [_wired0[0], _wired0[1], _wired0[2]]
 		print(("WALKTEST rest=%.3f,%.3f,%.3f on_floor=%s fell=%s moved_1s=%.3f "
 			+ "drop=%.3f legs=%.2f/%.2f/%.2f/%.2f traverse_m=%.2f net_m=%.2f "
 			+ "offfloor=%d/%d%s") % [

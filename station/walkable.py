@@ -756,16 +756,27 @@ def stream_verdict(d):
     # meshes the engine has freed; if it dropped too much, the body finishes in
     # a corridor with no doors and nobody in it, and every other number here
     # still looks fine.
+    # AGAINST WHAT WAS WIRED WHEN IT SET OFF, not against zero. The body walks
+    # out and turns round, so it finishes among the same cells it started in --
+    # and the corridor it walks THROUGH has stretches with no doors and nobody
+    # in them, where a bare "> 0" test asserts something false about the
+    # content instead of something true about the loader.
     wd, wp = int(d.get("wired_doors", 0)), int(d.get("wired_people", 0))
-    if wd < 1 or wp < 1:
-        return False, (f"after {frees} free(s) the deck has {wd} doors and "
-                       f"{wp} people wired -- forget_freed took live records "
-                       f"with the dead ones")
+    w0 = [int(x) for x in d.get("wired0", "0/0/0").split("/")]
+    if w0[0] > 0 and wd < w0[0]:
+        return False, (f"set off with {w0[0]} doors wired and came back to "
+                       f"{wd} after {frees} free(s) -- forget_freed took live "
+                       f"records with the dead ones")
+    if w0[1] > 0 and wp < w0[1]:
+        return False, (f"set off with {w0[1]} people wired and came back to "
+                       f"{wp} after {frees} free(s) -- forget_freed took live "
+                       f"records with the dead ones")
     return True, (f"a body walked {swept:.1f} deg round the ring; the loader "
                   f"took {loads} loads and {frees} frees, never held more than "
                   f"{peak:,} triangles (budget {bar:,}), and finished with "
                   f"{wd} doors, {wp} people and "
-                  f"{int(d.get('wired_interact', 0))} interactables wired")
+                  f"{int(d.get('wired_interact', 0))} interactables wired, "
+                  f"against {w0[0]}/{w0[1]}/{w0[2]} when it set off")
 
 
 def deck_verdict(d):

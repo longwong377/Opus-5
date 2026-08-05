@@ -1,6 +1,93 @@
 # Project State
 
-**Last updated:** 2026-08-02 · **Session 4q** — **the free path has a gate, and it found the corridor is blocked 27 m from the spawn** · **4p** — **the deck streams: 657,880 resident triangles become 127,204** · **4o** — **a cell boundary was cutting doors and people in half** · **4n** — **the deck cuts into loadable cells, and the loader's real obstacle is named** · **4m** — **the streaming cell budget met a real deck, and the design survives** · **4l** — **the resident-triangle gate was about the deck; the build also loads 321,664 triangles of people** · **4k** — **every walker on the station was bald, for 188 triangles** · **4j** — **the 21 exposure frames describe the code again, and the verdict did not move** · **4i** — **every curved surface in the project was flat-shaded, and the crease angle is measured off the station** · **4h** — **IT IS PLAYABLE: press Play and you are standing in Blue Sector** · **4g** — **the Babcom terminal is a built device, and it shipped a logged mistake once before the log caught it** · **4f** — a per-token verb override · **4e** — **the naming-mismatch class is CLOSED: built-but-misnamed 26 → 0, resolving 302/357** · **4d** — **the bespoke rooms' interactables were never unbuilt, they were unnamed: 259/357 → 284/357** · **4c** — **the station is INTERACTABLE, the port is on a wall, and the 24-minute suites were one bad cache key** · **4b** — a police force, friction in metres, the plated shell, the fitting-reach fix
+**Last updated:** 2026-08-02 · **Session 4r** — **the thing blocking the corridor was a person, and I put them there: 28 m → 238 m** · **4q** — **the free path has a gate, and it found the corridor is blocked 27 m from the spawn** · **4p** — **the deck streams: 657,880 resident triangles become 127,204** · **4o** — **a cell boundary was cutting doors and people in half** · **4n** — **the deck cuts into loadable cells, and the loader's real obstacle is named** · **4m** — **the streaming cell budget met a real deck, and the design survives** · **4l** — **the resident-triangle gate was about the deck; the build also loads 321,664 triangles of people** · **4k** — **every walker on the station was bald, for 188 triangles** · **4j** — **the 21 exposure frames describe the code again, and the verdict did not move** · **4i** — **every curved surface in the project was flat-shaded, and the crease angle is measured off the station** · **4h** — **IT IS PLAYABLE: press Play and you are standing in Blue Sector** · **4g** — **the Babcom terminal is a built device, and it shipped a logged mistake once before the log caught it** · **4f** — a per-token verb override · **4e** — **the naming-mismatch class is CLOSED: built-but-misnamed 26 → 0, resolving 302/357** · **4d** — **the bespoke rooms' interactables were never unbuilt, they were unnamed: 259/357 → 284/357** · **4c** — **the station is INTERACTABLE, the port is on a wall, and the 24-minute suites were one bad cache key** · **4b** — a police force, friction in metres, the plated shell, the fitting-reach fix
+
+## Session 4r — THE THING BLOCKING THE CORRIDOR WAS A PERSON, AND I PUT THEM THERE
+
+### 1. 28 m → 238 m
+
+4q found a body could reach 42 m of a 1,273 m ring. The trace says what stopped it:
+
+```
+TRACE traverse f=1750 p=209.772,27.134,7120.575 floor=true wall=true
+  hit[n=0.08,-0.65,-0.75 d=0.001 @StaticBody3D@557] hit[n=-0.00,0.00,1.00 collision_col]
+```
+
+`@StaticBody3D@557` — **unnamed**. Every runtime body in this project is named except one:
+`npc.gd::_give_walker_body` never sets `sb.name`. The obstruction was a member of the corridor
+crowd.
+
+And it is 4k's doing. That session made walkers **stop** when the player is in their way, to end a
+defect where 134 teleporting capsules shoved a standing player 66 km out of the station. The fix
+was right for a standing player and wrong for a walking one: the player approaches, the walker
+stops for them, the player walks into the stopped walker, and both stand there for ever.
+
+**They step aside now.** The corridor's clear width is `corridor_width_m` 2.6 less two
+`wall_thickness_m` reveals = **2.16 m**, derived the same way `npc/navigation.cell_nav_area_m2`
+derives it, and two bodies need 2×0.35 + 2×0.27 = 1.24 m of it. There is room to pass. A walker
+who would come within clearance offsets along **Z** — which is the corridor's width, because the
+corridor runs tangentially and "up" is radial — at 1.0 m/s, capped at half the clear width less
+their own radius so nobody dodges into the plating.
+
+With hysteresis, and for the same reason the cell loader needed it in 4p: engage inside `clear`,
+release beyond `2 × clear`. Without it a walker who has just stepped aside is no longer in the way,
+steps straight back, and oscillates in the player's face.
+
+| | before | after |
+|---|---|---|
+| traverse | 28.40 m | **238.45 m** |
+| net displacement | 27.20 m | **225.52 m** |
+| cell loads / frees | 3 / 0 | **8 / 5** |
+| peak resident | 127,204 | 153,252 (budget 180,000) |
+| off the floor | 0/3600 | 0/3600 |
+
+### 2. A GATE CLAUSE OF MINE WAS ASSERTING SOMETHING FALSE ABOUT THE CONTENT
+
+`--stream` required doors and people to still be wired at the end. Once the body could actually
+travel it ended 64° round the ring, in a stretch of corridor that **has** no doors and nobody in
+it, so the honest reading of `wired_doors=0` is "there are none here" and the clause was testing
+the corridor's furniture rather than the loader.
+
+It is a **round trip** now: the body turns round at the midpoint and comes back among the cells it
+started in, and the counts are compared against `wired0` — what was wired when it set off. If
+`forget_freed` took live records with the dead ones, the cells reload and the objects do not come
+back. That is the claim; "greater than zero" never was.
+
+### 3. AND THE ROUND TRIP IMMEDIATELY FAILED, ON SOMETHING ELSE
+
+```
+FAIL  stream  left the floor for 87 of 3600 frames
+```
+
+**The one-way walk over the same ground is clean** — 238 m, `offfloor=0/3600`. The floor loss
+appears only after the direction reverses. 87 frames is 1.4 s.
+
+This is left RED with the cause named, the same way 4m left `assembled cell triangles` red: it is a
+real defect that a gate is correctly reporting, and the gate got stronger this session rather than
+weaker. It is the first item below.
+
+### 4. Gates
+
+| gate | result |
+|---|---|
+| `walkable.py --deck blue/0/0` | **PASS**, control firing, 5,966 m of crowd travel |
+| `walkable.py --deck blue/0/0 --stream` | **FAIL** — `offfloor 87/3600` on the return leg, see §3 |
+
+`--use` and `play.sh --verify` were not re-run: the change is confined to how a walker offsets
+along Z when the player is close, and the deck gate above exercises the crowd (134 walkers, 5,966 m
+covered, 9 of the room turning to look).
+
+### 5. NEXT
+
+- **Why does the body leave the floor for 87 frames after turning round?** One-way is clean over
+  the same 238 m. Suspects, in order: the instant velocity reversal at the midpoint, a doorway sill
+  the body clears in one direction and catches in the other, and a walker dodging into the player's
+  own path from behind.
+- The walk gate still asserts **path length**, not net displacement: `traverse_m=125.93` with
+  `net_m=0.35` passes today.
+- `_give_walker_body` should name its bodies. It cost a session to identify a collider by
+  elimination because it was the only anonymous one.
+- The near figure's silhouette is 32-gon faceted at 1 m; the affordable fix is runtime skinning.
 
 ## Session 4q — THE FREE PATH HAS A GATE, AND IT FOUND THE CORRIDOR IS BLOCKED 27 m FROM THE SPAWN
 

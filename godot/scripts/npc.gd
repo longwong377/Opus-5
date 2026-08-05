@@ -39,6 +39,14 @@ const PLAYER_R_M := 0.35
 ## slack: enough that a person halts in front of you rather than in you, small
 ## enough that the corridor does not part like a crowd around royalty.
 const YIELD_MARGIN_M := 0.15
+## The corridor's clear walkable width, from `interior_kit.PROVISIONAL`:
+## `corridor_width_m` 2.6 less the two `wall_thickness_m` reveals the wall
+## assembly stands in, exactly as `npc/navigation.cell_nav_area_m2` derives it.
+## Two bodies need 2 x 0.35 + 2 x 0.27 = 1.24 m of it, so there is room to pass.
+const CORRIDOR_CLEAR_M := 2.16
+## How fast somebody steps aside, in m/s. Under a walking pace (1.4 m/s), so a
+## sidestep takes about one stride to clear a body's width.
+const DODGE_RATE_M_S := 1.0
 
 var _people: Array = []
 var _body: Node3D
@@ -326,6 +334,11 @@ class Walker:
 	var body: StaticBody3D = null
 	var r_m: float = 0.0
 	var h_m: float = 0.0
+	## Axial offset from this walker's own lane, in metres -- how far they have
+	## stepped aside for the player. The corridor's width is along Z, because
+	## the corridor runs tangentially and "up" is radial.
+	var dodge: float = 0.0
+	var dodging: bool = false
 
 
 var _walkers: Array[Walker] = []
@@ -471,6 +484,11 @@ func _give_walker_body(w: Walker) -> void:
 	if w.r_m <= 0.0 or w.h_m <= 0.0:
 		return
 	var sb := StaticBody3D.new()
+	# NAMED, and it cost a session not to be. This was the only runtime body in
+	# the project without a name, so when one of them blocked the corridor the
+	# trace said `@StaticBody3D@557` and the collider had to be identified by
+	# eliminating every other creator of a StaticBody3D.
+	sb.name = "walker_%s_%d" % [w.species, w.phase]
 	var cs := CollisionShape3D.new()
 	var cap := CapsuleShape3D.new()
 	cap.radius = w.r_m
@@ -492,7 +510,7 @@ func _walker_xform(w: Walker) -> Transform3D:
 	var fwd := Vector3(-sa, ca, 0.0) * signf(w.omega if w.omega != 0.0 else 1.0)
 	var right := fwd.cross(up).normalized()
 	return Transform3D(Basis(right, up, fwd),
-		Vector3(w.radius * ca, w.radius * sa, w.z))
+		Vector3(w.radius * ca, w.radius * sa, w.z + w.dodge))
 
 
 ## Refill every MultiMesh from the walkers' current phase. A walker moves
@@ -597,11 +615,34 @@ func advance_crowd(delta: float) -> void:
 		# person halted mid-step and not a person moonwalking on the spot.
 		if w.body != null and _body != null and d != 0.0:
 			var ahead := w.angle + d
-			var p := Vector3(w.radius * cos(ahead), w.radius * sin(ahead), w.z)
 			var clear := w.r_m + PLAYER_R_M + YIELD_MARGIN_M
-			if p.distance_squared_to(eye) < clear * clear:
+			var p := Vector3(w.radius * cos(ahead), w.radius * sin(ahead),
+				w.z + w.dodge)
+			var gap := p.distance_to(eye)
+			# HYSTERESIS, the same lesson the cell loader learned in 4p: engage
+			# close, release well clear. Without it a walker who has just
+			# stepped aside is no longer in the way, immediately steps back,
+			# and oscillates in the player's face.
+			if gap < clear:
+				w.dodging = true
+			elif gap > clear * 2.0:
+				w.dodging = false
+			if w.dodging:
 				_yielding += 1
-				continue
+				# WHICH SIDE: away from the player's own lane. Two people
+				# standing in the same one is a coin toss, and it has to be a
+				# DETERMINISTIC one -- `phase` is already per-walker and
+				# already deterministic, so the crowd does not shimmer between
+				# runs of the same test.
+				var side := signf(p.z - eye.z)
+				if absf(p.z - eye.z) < 0.01:
+					side = 1.0 if (w.phase % 2) == 0 else -1.0
+				w.dodge = move_toward(w.dodge,
+					clampf(w.dodge + side * clear, -_dodge_max(w),
+						_dodge_max(w)),
+					DODGE_RATE_M_S * delta)
+			else:
+				w.dodge = move_toward(w.dodge, 0.0, DODGE_RATE_M_S * delta)
 		w.angle += d
 		_crowd_travel_m += absf(d) * w.radius
 		w.t += delta
@@ -647,3 +688,12 @@ func forget_freed() -> int:
 ## crowd -- `crowd_count()` is that, and they are instances rather than actors.
 func count() -> int:
 	return _people.size()
+
+
+## How far a walker may step aside without leaving the corridor.
+##
+## HALF THE CLEAR WIDTH, LESS THEIR OWN RADIUS. A dodge that puts somebody
+## inside the wall trades a person you cannot get past for a person standing in
+## the plating, and the second one is worse because nothing collides with it.
+func _dodge_max(w: Walker) -> float:
+	return maxf(0.0, CORRIDOR_CLEAR_M * 0.5 - w.r_m)
