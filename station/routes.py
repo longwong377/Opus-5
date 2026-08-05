@@ -361,6 +361,41 @@ def edges(nodes, schema, full_ring=False, profile=None):
     resolves it, because the `lift` edge below cannot be decided without one
     and a graph that quietly has no lifts in it is not a smaller answer, it is
     a different station. See `station()` for the four that used to come back.
+
+    `length_m` IS 0.0 ON FIVE OF THE SIX KINDS, DELIBERATELY, AND HERE IS THE
+    MEASUREMENT THAT SETTLES IT (session 4n). Nothing reads the field --
+    `route_walk.path_between` is breadth-first over adjacency, fewest HOPS, and
+    `route_walk`'s own `length_m` is a different field on legs it computes from
+    geometry. So the standing question was whether real lengths would pick
+    different routes. Priced all 178 traversable edges off the station's own
+    radii and arcs:
+
+        lift    70 edges   min  21.6   median   46.8   max    79.2 m
+        ring    96 edges   min   0.0   median  292.7   max  1231.7 m
+        spoke    8 edges   min   0.0   median   46.7   max    68.4 m
+        trunk    4 edges                        0.0            0.0 m   (sectors abut)
+        axial   71 edges   NO LENGTH EXISTS -- a self-loop on a spine node
+                           cannot carry a per-pair z distance
+
+    A ring arc reaches **26x a lift**, so hop-count is emphatically NOT a proxy
+    for distance -- and yet, run over all 4,560 pairs, **Dijkstra on those real
+    weights picks the IDENTICAL route to BFS on every one. 0 different.**
+
+    The reason is structural rather than lucky, and it is the part worth
+    keeping: this graph is strictly hierarchical -- cluster -> spine -> column
+    -> column -> spine -> cluster -- so between any two nodes there is one route
+    SHAPE and nothing for a weighted search to prefer. Weighting cannot help
+    until there is a second way round.
+
+    **WHAT WOULD CHANGE IT:** any alternative path -- a second lift core in a
+    ring, a parallel corridor, a cross-connection between two spines. The day
+    one lands, this measurement is stale and the field has to be built rather
+    than deleted.
+
+    An earlier attempt at this A/B reported "0 different" while every weight was
+    silently 0.0, i.e. it compared BFS against BFS -- two identical algorithms.
+    That is why the numbers above are quoted with their edge counts: a
+    comparison over unpriced edges is not evidence of anything.
     """
     schema, profile = station(schema, profile)
     out = []
