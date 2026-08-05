@@ -763,6 +763,41 @@ jobs:
         continue-on-error: true
         run: python3 tools/wiring.py --selftest
 
+      # IS EVERY LOCATED PLACE INSIDE THE SHIP? No other gate here can ask it.
+      # Every gate above measures a place against a standard of its own kind --
+      # density, materials, exposure, whether a body can walk to it -- and a
+      # room ninety metres outside the pressure hull passes all of them,
+      # because each is a question about the room and none is a question about
+      # where the room is. The interior renders could not show it either: you
+      # cannot see the hull from inside a room with no window.
+      #
+      # IT IS RED TODAY AND THAT IS THE POINT. 35 of 129 places are built
+      # outside the hull, 22 at their own centre z (`cnc` by 100.7 m,
+      # `mainstage_node` by 135.9 m) and 13 only at one end of their own
+      # footprint. A further 15 are inside it and name a deck number their
+      # stack cannot index.
+      #
+      # ~13 s, measured rather than guessed -- and measured under load, with two
+      # agents and another gate on a four-core box, so it is an upper bound. No
+      # build, no render, no GPU. The cost is 401 hull samples per place (see
+      # `interior.narrowest_z`) plus two deck-stack resolutions each; it was
+      # written up as "seconds" before it was timed, which is the kind of
+      # unchecked number this file exists to stop.
+      - name: Is every place inside the pressure hull
+        id: shullfit
+        continue-on-error: true
+        run: python3 station/interior.py --hull-fit
+
+      # WHAT IS OUTSIDE A WINDOW. Needs no engine and no GPU; ~90 s cold and
+      # seconds once the aperture cache is warm. RED TODAY: 5 of 38, all of
+      # them the same register rows `shullfit` reports above, reached by a
+      # different route -- the dome C&C sits inside is built 780 m and 90
+      # degrees away from where the register puts C&C.
+      - name: What is outside a window
+        id: svista
+        continue-on-error: true
+        run: python3 station/vista.py --selftest
+
       # P1-G2. The tier ladder, and arrest -> brig -> fine -> release closing
       # with every leg routed on the graph a resident commutes on. ~44 s, of
       # which ~36 s is `navigation.build_graph()` -- the escort and court legs
@@ -1045,6 +1080,10 @@ jobs:
             echo "FAILED: snavgraph"; fail=1; fi
           if [ "${{ steps.sconfirm_the_schema_still_parses_and_is_f.outcome }}" != "success" ]; then
             echo "FAILED: sconfirm_the_schema_still_parses_and_is_f"; fail=1; fi
+          if [ "${{ steps.shullfit.outcome }}" != "success" ]; then
+            echo "FAILED: shullfit"; fail=1; fi
+          if [ "${{ steps.svista.outcome }}" != "success" ]; then
+            echo "FAILED: svista"; fail=1; fi
           if [ "$fail" != "0" ]; then
             echo; echo "One or more gates failed -- see above."; exit 1; fi
           # NOT A COUNT. It was hand-maintained and said 36 while the list

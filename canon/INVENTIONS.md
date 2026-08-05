@@ -8913,6 +8913,19 @@ silently move thirteen counters' worth of arithmetic.
 
 **INV-565 … INV-569** — reserved to session 4r and not used. Free.
 
+**INV-570 … INV-579** — allocated to the session-4r materials agent (garden bark and foliage,
+the arable normal map, customs screens, `cc_console_face`). **INV-580 … INV-589** — allocated
+to the session-4r exterior-components agent. Written down here rather than held in a brief
+because two agents on one day have already made INV-450 and INV-451 mean two things each, and
+the register is the only place an allocation survives a context reset.
+
+**Nothing is reserved for the z-awareness work of session 4r, deliberately.** `narrowest_z`,
+`place_floor_radius` and `interior.hull_fit` invent no dimension, no layout and no name: they
+measure places against the hull the schema already defines, using the limit
+`rings_fitting_at` already applied. A gate that asks an existing standard of more subjects is
+not an extrapolation, and giving it an INV number would put a method parameter in a register
+of claims about the station. The finding is in `STATE.md` where a finding belongs.
+
 # INV-550..559 — WHAT HAPPENS AFTER A REFUSAL (session 4r, agent P2)
 
 **NOT MERGED INTO `canon/INVENTIONS.md` BY THIS AGENT, DELIBERATELY.** Two agents wrote to that

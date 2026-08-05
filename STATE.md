@@ -441,6 +441,92 @@ cores free and its own gate — the honest one is *"every located place is insid
 z"*, which is a whole-station question — and two agents were mid-flight when it was found. It is
 the top task.
 
+### 25.1 THE GATE NOW EXISTS, AND IT IS NOT THREE ROOMS — IT IS THIRTY-FIVE
+
+`python3 station/interior.py --hull-fit`, CI step `shullfit`, **red and correctly red**. The
+honest one §25 asked for, written and shown failing on the current content. It asks exactly the
+question §25 named — *is every located place inside the pressure hull at its own z* — of all 129
+located places rather than the three a window happened to point at, and the limit it applies is
+not a new standard: it is `core_hull_radius_at(z) - HULL_SKIN_M`, the one `rings_fitting_at`
+**already applies** on the z-aware path. This gate is the existing standard asked of the places
+that never went through the function that applies it.
+
+```
+hull fit: 35 of 129 located places are built OUTSIDE the pressure hull
+(22 at their centre, 13 only at one end of their own footprint). A further 15
+are inside it but name a deck number their stack cannot index. 49 rows in all.
+```
+
+**§25's "three rooms … the rest of that range is suspect and unmeasured" was right to hedge and
+the hedge was too small.** It is not confined to blue/0/0 and it is not confined to the fore
+taper — Yellow, Red, Grey and Green all have places outside the hull:
+
+| place | built at | limit at its own z | outside by |
+|---|---|---|---|
+| `mainstage_node` | 148.2 m | 12.3 m | **135.9 m** |
+| `fusion_core` | 155.4 m | 48.9 m | **106.5 m** |
+| `cnc`, `obs_dome_1`, `obs_dome_2`, `comms_grid` | 211.6 m | 110.0 m | **101.6 m** |
+| `zocalo`, `central_corridor` | 268.1 m | 219.9 m | **48.2 m** |
+| `docking_bays` | 211.6 m | 160.2 m | **51.4 m** *(fits at its centre; fails 70 m forward of it)* |
+
+**AND THE 49 DECOMPOSE INTO FOUR DEFECTS THAT WANT FOUR DIFFERENT FIXES**, which is why they are
+reported apart rather than as one number. Session 4d's lesson — *read the shape of a failing
+number before reading its size* — applied before any of it was touched:
+
+| kind | n | what it is | what fixes it |
+|---|---|---|---|
+| `outside` | 22 | the floor radius is outside the hull at the place's own **centre** z | thread `z_m` into the builders |
+| `taper` | 13 | the centre fits and **one end of the room does not** | `narrowest_z` — see below |
+| `deck_gap` | 15 | names a deck **number** (Grey 40, 55, 80) the generated stack cannot index. **These are inside the hull.** | `deck.deck_index` already ranks them; `rooms.room_extent_m` clamps to the innermost instead, so the two build paths put the same place on different decks |
+| `homeless` | 1 | **no deck stack exists at that z at all.** `mainstage_node` sits where the core hull is 18.3 m — narrower than a corridor | threading z cannot fix it; the address must change |
+
+**A PLACE IS NOT A POINT ON THE AXIS, and that is a second defect hiding inside the first.** Every
+z-aware call in this project passes a place's **centre** z. Footprints run to 442 m. Thirteen
+places clear the hull at their centre and poke out of the ship at one end — `docking_bays` by
+51.4 m, `plant_zone` and `downbelow` by 40.9 m at the Grey/Green boundary. `interior.narrowest_z`
+returns the worst z a footprint occupies, at 401 samples, matching the density `directory.py`'s
+own hand-audit of ten rows used, so the two agree by construction rather than by coincidence.
+
+**WHAT LANDED, AND WHAT DELIBERATELY DID NOT.** The mechanism is in and **no content moved**:
+
+- `interior.ring_cells(..., z_m=)` and `interior.deck_cell(..., z_m=)` — the parameter §25 said
+  the function had no way to receive. `z_m` defaults to `None`, which is today's behaviour
+  exactly, so this commit assembles a byte-identical station.
+- `interior.ring_cells` **was a live crash for 15 of 129 places** — `decks[deck_index]` with no
+  clamp, where `rooms.room_extent_m` and `directory.gravity_of` both clamp. Nobody had found it
+  because the two callers that reach those places translate or clamp *before* calling. Now
+  clamped, with `hull_fit` reporting the gap rather than letting the clamp hide it.
+- `interior.place_floor_radius` — **the resolution existed twice**, four lines in
+  `rooms.room_extent_m` and four in `directory.gravity_of`. One definition now; both call it.
+
+**THE A/B CAUGHT THE REFACTOR MOVING THREE VALUES, AND IT WOULD NOT HAVE BEEN NOTICED BY A SPOT
+CHECK.** Comparing the old inline code against the new function over all 129 places:
+`room_extent_m` 0 diffs, `gravity_of` **3 diffs of 0.0001 g** — because `decks_in_ring` rounds
+`floor_r_m` to 2 dp and computes `floor_g` from the **unrounded** radius, so re-deriving gravity
+from the returned radius is not the same as taking the deck's own figure. `place_floor_radius`
+now returns the deck dict for exactly that reason. Re-run: **0 diffs and 0 diffs.** *An A/B over
+one place would have passed.*
+
+**AND THE GATE'S OWN FIRST SUMMARY LINE WAS WRONG IN THE DIRECTION THAT FLATTERS IT.** It printed
+*"49 of 129 located places are outside the pressure hull"*. Fifteen of those 49 are `deck_gap`
+rows and are **inside** the hull, and one place carries two kinds at once. The real figure is 35.
+Caught by reading the gate's own output against its own categories before quoting it — which is
+the only reason it is not now a number in this file that three future sessions repeat.
+
+**OPEN, AND IT IS THE NEXT INCREMENT:** flipping `place_floor_radius(z_aware=True)` and passing
+`narrowest_z` into `deck._ring_cells` is what actually moves the 35. It re-radiuses most of Blue
+and the Zocalo, so it needs a full `rooms.py --footprint` rebuild (23 min) plus `deck.py --sweep`,
+and those must not run while agents do. **`mainstage_node` needs a register decision, not a
+parameter** — nothing fits where it is.
+
+**ONE DISCREPANCY LEFT DELIBERATELY UNRESOLVED.** `station/vista.py --selftest` reports
+`obs_dome_1` as *"register r 209.9 m, hull r 116.5 m at z 7959 → +59.5 m outside"*. `hull_fit`
+says 211.6 m against a 110.0 m limit → +101.6 m. Three of those four numbers differ, so the two
+tools do not share a definition of a place's radius or of the hull's. Both agree on the sign and
+the finding; neither should be quoted as *the* figure until they are reconciled. Guessing which
+is right is exactly how this project acquired a "committed frame" it measured itself against for
+three sessions.
+
 ### 24.5 Open, and honestly
 
 * **The arrest chain behind a refusal is still Python.** A refused player is *told* they are

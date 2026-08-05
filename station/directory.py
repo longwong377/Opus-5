@@ -946,19 +946,15 @@ def gravity_of(schema, profile, place):
     Read live from `interior.py` per deck, never restated -- the same
     discipline `quarters.py` uses, and for the same reason: INV-026 moved
     every sector radius and any copied figure went stale that day.
+
+    THE RESOLUTION ITSELF IS NOW READ LIVE TOO. This used to be four lines --
+    find the deck stacks, clamp the ring, clamp the deck, take the radius --
+    and `rooms.room_extent_m` had the same four for the same reason. Two
+    copies, no shared definition, so `interior.place_floor_radius` now owns it
+    and both call it. Same values; the point is that the next fix lands once.
     """
-    rings = it.ring_radii(schema, profile, place["sector"])
-    stacks = [i for i, r in enumerate(rings) if r["kind"] == "deck_stack"]
-    if not stacks:
-        return it.gravity_at(schema, it.sector_radius(schema, profile,
-                                                      place["sector"]))
-    ri = stacks[min(place["ring"], len(stacks) - 1)]
-    decks = it.decks_in_ring(schema, profile, place["sector"], ri)
-    if not decks:
-        return it.gravity_at(schema, it.sector_radius(schema, profile,
-                                                      place["sector"]))
-    d = decks[min(place["deck"], len(decks) - 1)]
-    return d["floor_g"]
+    r, _ri, _di, deck = it.place_floor_radius(schema, profile, place)
+    return deck["floor_g"] if deck else it.gravity_at(schema, r)
 
 
 def _arc_overlap(a0, span0, a1, span1):

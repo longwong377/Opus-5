@@ -1650,7 +1650,223 @@ def drum_end_cap(schema, profile, sector, end="fore"):
 # Streaming cells
 # --------------------------------------------------------------------------
 
-def ring_cells(schema, profile, sector, ring_index, deck_index=0, margin=1.5):
+def narrowest_z(profile, z_m, z_span_m=0.0, samples=401):
+    """The z over a footprint where the core hull is narrowest.
+
+    A PLACE IS NOT A POINT ON THE AXIS. Every z-aware call in this project
+    passes the place's CENTRE z, and that is enough to be wrong: the station
+    tapers, footprints run to 442 m along the axis, and a room whose centre
+    clears the hull comfortably can still poke out of the ship at one end.
+    Measured over the register, twelve places are in exactly that state --
+    `docking_bays` fits at its centre z and is 51.4 m outside the hull 70 m
+    forward of it, `plant_zone` and `downbelow` by 40.9 m at the Grey/Green
+    boundary.
+
+    So the z that means something for a place is not its centre but the
+    WORST z it occupies, and that is what this returns. Feed it to
+    `ring_radii(z_m=)`, `decks_in_ring(z_m=)` or `ring_cells(z_m=)` and the
+    result is a deck stack that fits along the whole room rather than at one
+    sample of it.
+
+    401 samples, matching the density `directory.py`'s own hand-audit of ten
+    rows used, so the two agree by construction. The profile is piecewise
+    constant between control points, so this is exact wherever the span is
+    longer than the sample pitch and conservative where it is shorter.
+    """
+    if not z_span_m:
+        return z_m
+    lo = z_m - z_span_m / 2.0
+    step = z_span_m / (samples - 1)
+    worst_z, worst_r = z_m, float("inf")
+    for i in range(samples):
+        zz = lo + step * i
+        r = core_hull_radius_at(profile, zz)
+        if r < worst_r:
+            worst_r, worst_z = r, zz
+    return worst_z
+
+
+def place_floor_radius(schema, profile, place, z_aware=False):
+    """The floor radius a located place is built at, and the ring/deck it lands on.
+
+    ONE COMPUTATION, TWO CALLERS, AND THEY USED TO BE TWO COMPUTATIONS.
+    `rooms.room_extent_m` needed the floor radius to turn an angular footprint
+    into metres, and `directory.gravity_of` needed it to report a gravity, and
+    each wrote its own four lines: resolve the deck stacks, clamp the ring
+    index, clamp the deck index, take `floor_r_m`. Identical logic, no shared
+    definition, so a fix to either was a fix to one of them -- which is the
+    defect this file's own history calls "a fix applied to an instance and not
+    to the rule".
+
+    `z_aware=False` reproduces what the station is built from TODAY: the
+    sector's widest cylinder, regardless of where along the axis the place
+    actually is. `z_aware=True` asks the same question of the hull the place
+    really sits in. `hull_fit()` reports the difference and it is not small.
+
+    Returns (floor_r_m, ring_index, deck_index, deck_dict). The indices are the
+    CLAMPED ones -- what the builder used, not what the register asked for --
+    so a caller can see when a place did not get the deck it named.
+
+    THE DECK DICT IS RETURNED FOR A REASON AND IT IS NOT CONVENIENCE. The
+    first version of this returned the radius alone, and `directory.gravity_of`
+    then re-derived gravity from it -- which moved three places by 0.0001 g,
+    because `decks_in_ring` rounds `floor_r_m` to 2 dp and computes `floor_g`
+    from the UNROUNDED radius. A tiny drift, caught only because the
+    refactor's A/B compared all 129 places rather than spot-checking one. The
+    deck's own `floor_g` is the authority; hand it over rather than inviting
+    every caller to recompute it from a rounded number.
+    """
+    z = None
+    if z_aware:
+        z = narrowest_z(profile, place["z_m"],
+                        (place.get("footprint") or (0.0, 0.0))[1])
+    rings = ring_radii(schema, profile, place["sector"], z_m=z)
+    stacks = [i for i, r in enumerate(rings) if r["kind"] == "deck_stack"]
+    if not stacks:
+        return sector_radius(schema, profile, place["sector"]), None, None, None
+    ri = stacks[min(place["ring"], len(stacks) - 1)]
+    decks = decks_in_ring(schema, profile, place["sector"], ri, z_m=z)
+    if not decks:
+        return sector_radius(schema, profile, place["sector"]), ri, None, None
+    di = min(place["deck"], len(decks) - 1)
+    return decks[di]["floor_r_m"], ri, di, decks[di]
+
+
+def hull_fit(schema, profile, verbose=True):
+    """Is every located place INSIDE the pressure hull along its whole length?
+
+    THE GATE THAT DID NOT EXIST, AND THE ONE DEFECT NO OTHER GATE HERE CAN SEE.
+    Every gate in this project measures a place against a standard of its own
+    kind: `density.py` scores its line density, `materials.py` its PBR
+    coverage, `measure_frame.py` its exposure, `deck.py --sweep` whether a body
+    can reach it. **A room that is ninety metres outside the ship passes every
+    one of them**, because each is a question about the room and none is a
+    question about where the room is. The interior renders never showed it
+    either: you cannot see the hull from inside a room that has no window, and
+    until `station/vista.py` there were no windows.
+
+    The limit is the one `rings_fitting_at` already applies --
+    `core_hull_radius_at(z) - HULL_SKIN_M` -- so this gate is not a new
+    standard. It is the existing standard asked of the places that never went
+    through the function that applies it.
+
+    Three failure kinds, and they want three different fixes, so they are
+    reported apart:
+
+      `outside`   the place's floor radius is outside the hull at its own
+                  CENTRE z. The address resolves against the sector's widest
+                  cylinder and the place is not there. 22 of them, worst
+                  `mainstage_node` at 135.9 m and `cnc` at 100.7 m.
+      `taper`     the centre fits and the SPAN does not -- one end of the room
+                  is outside the ship. 12 of them. See `narrowest_z`.
+      `deck_gap`  the register names a deck NUMBER that the generated stack
+                  does not carry as an index. `deck.deck_index()` exists to
+                  rank these into indices; `rooms.room_extent_m` instead
+                  clamps to the innermost deck, so the two build paths put the
+                  same place on different decks.
+
+    Returns (rows, counts). Fails loudly rather than returning a summary,
+    because a summary is what let this run for twenty-odd sessions.
+    """
+    import directory as _dr                     # lazy: directory imports us
+    rows = []
+    for q in _dr.PLACES:
+        if q.get("z_m") is None or q.get("sector") is None:
+            continue
+        span = (q.get("footprint") or (0.0, 0.0))[1]
+        r_now, ri, di, _d = place_floor_radius(schema, profile, q,
+                                              z_aware=False)
+        z_worst = narrowest_z(profile, q["z_m"], span)
+        lim_c = core_hull_radius_at(profile, q["z_m"]) - HULL_SKIN_M
+        lim_w = core_hull_radius_at(profile, z_worst) - HULL_SKIN_M
+        kinds = []
+        if r_now > lim_c:
+            kinds.append("outside")
+        elif r_now > lim_w:
+            kinds.append("taper")
+        # A deck NUMBER the stack cannot index. Asked of the z-blind stack,
+        # which is the deeper one -- the z-aware stack is shorter still.
+        stack = decks_in_ring(schema, profile, q["sector"], ri) if ri is not None else []
+        if stack and q["deck"] >= len(stack):
+            kinds.append("deck_gap")
+        r_fit, _rfi, _rdi, _rd = place_floor_radius(schema, profile, q,
+                                                   z_aware=True)
+        # NO DECK STACK SURVIVES AT THIS PLACE'S OWN z. Threading z through the
+        # builders does NOT fix these: there is nothing at that radius to move
+        # them to, so the address itself has to change. Three of them, and
+        # `mainstage_node` is the clearest -- the core hull is 18.3 m where the
+        # register puts it, which is narrower than a corridor.
+        if _rdi is None:
+            kinds.append("homeless")
+        if not kinds:
+            continue
+        rows.append({
+            "key": q["key"], "sector": q["sector"],
+            "ring": q["ring"], "deck": q["deck"],
+            "z_m": q["z_m"], "span_m": span, "z_worst": round(z_worst, 1),
+            "built_r_m": round(r_now, 1),
+            "limit_centre_m": round(lim_c, 1),
+            "limit_worst_m": round(lim_w, 1),
+            "out_by_m": round(r_now - min(lim_c, lim_w), 1),
+            "z_aware_r_m": round(r_fit, 1),
+            "decks_in_stack": len(stack),
+            "kinds": kinds,
+        })
+    counts = {}
+    for r in rows:
+        for k in r["kinds"]:
+            counts[k] = counts.get(k, 0) + 1
+    counts["places"] = sum(1 for q in _dr.PLACES if q.get("z_m") is not None)
+    counts["failing"] = len(rows)
+    # THE COUNT THAT GOES IN A SENTENCE IS NOT `len(rows)`. Places can carry
+    # two kinds at once -- `core_shuttle` tapers out of the hull AND names a
+    # deck number the stack cannot index -- and `deck_gap` places are INSIDE
+    # the hull. Reporting "49 outside the pressure hull" would have been a
+    # third of it wrong, in the direction that makes the finding look bigger.
+    counts["outside_hull"] = len({r["key"] for r in rows
+                                  if "outside" in r["kinds"]
+                                  or "taper" in r["kinds"]})
+    if verbose:
+        head = {
+            "outside": "OUTSIDE THE HULL AT THEIR OWN CENTRE z",
+            "taper": "CENTRE FITS, ONE END OF THE ROOM DOES NOT",
+            "deck_gap": "DECK NUMBER THE STACK CANNOT INDEX (these are inside "
+                        "the hull)",
+            "homeless": "NO DECK STACK EXISTS AT THIS z AT ALL",
+        }
+        for kind in ("outside", "taper", "homeless", "deck_gap"):
+            sel = sorted([r for r in rows if kind in r["kinds"]],
+                         key=lambda r: -r["out_by_m"])
+            if not sel:
+                continue
+            print("\n%s: %d  -- %s" % (kind.upper(), len(sel), head[kind]))
+            for r in sel:
+                if kind == "deck_gap":
+                    print("   %-20s %-6s ring%d deck %-3s names deck %d of a "
+                          "stack %d deep -- built at %7.1f m"
+                          % (r["key"], r["sector"], r["ring"], r["deck"],
+                             r["deck"], r["decks_in_stack"], r["built_r_m"]))
+                else:
+                    print("   %-20s %-6s ring%d deck%-3s built %7.1f  limit "
+                          "%7.1f  out by %6.1f m   (z-aware: %7.1f)"
+                          % (r["key"], r["sector"], r["ring"], r["deck"],
+                             r["built_r_m"], min(r["limit_centre_m"],
+                                                 r["limit_worst_m"]),
+                             r["out_by_m"],
+                             r["z_aware_r_m"] if "homeless" not in r["kinds"]
+                             else float("nan")))
+        print("\nhull fit: %d of %d located places are built OUTSIDE the "
+              "pressure hull (%d at their centre, %d only at one end of their "
+              "own footprint). A further %d are inside it but name a deck "
+              "number their stack cannot index. %d rows in all."
+              % (counts["outside_hull"], counts["places"],
+                 counts.get("outside", 0), counts.get("taper", 0),
+                 counts.get("deck_gap", 0), counts["failing"]))
+    return rows, counts
+
+
+def ring_cells(schema, profile, sector, ring_index, deck_index=0, margin=1.5,
+               z_m=None):
     """How a deck's circumference divides into streaming cells.
 
     A full ring corridor is not emittable. At the drum's sub-floor radius one
@@ -1664,10 +1880,19 @@ def ring_cells(schema, profile, sector, ring_index, deck_index=0, margin=1.5):
     its neighbours. Rounding DOWN means the actual cell is at least the size
     `streaming_cell_deg()` asked for, never less.
     """
-    decks = decks_in_ring(schema, profile, sector, ring_index)
+    decks = decks_in_ring(schema, profile, sector, ring_index, z_m=z_m)
     if not decks:
         return None
-    deck = decks[deck_index]
+    # CLAMPED, AND IT USED TO RAISE. `decks[deck_index]` on a stack shorter
+    # than the index is an IndexError, and fifteen of the register's places
+    # carry a deck NUMBER (Grey 40, 55, 80; Yellow 30) that no generated stack
+    # can index -- see `deck.deck_index`, which ranks them. So this function
+    # was a live crash for 15 of 129 places and nobody had found it, because
+    # the two callers that DO reach those places translate or clamp first.
+    # Clamping matches `rooms.room_extent_m` and `directory.gravity_of`, which
+    # are the other two consumers; `hull_fit()` reports the gap rather than
+    # letting the clamp hide it.
+    deck = decks[min(deck_index, len(decks) - 1)]
     r = deck["floor_r_m"]
     cw = kit.PROVISIONAL["corridor_width_m"]
     want = streaming_cell_deg(r, cw, margin)
@@ -1708,11 +1933,14 @@ def ring_cells(schema, profile, sector, ring_index, deck_index=0, margin=1.5):
     up = [d for d in divisors if d >= n and circ / d >= sight]
     n = min(up) if up else max([d for d in divisors if d <= n] or [1])
     cell_deg = 360.0 / n
+    rr = ring_radii(schema, profile, sector, z_m=z_m)
     return {
         "sector": sector,
         "ring_index": ring_index,
-        "ring": ring_radii(schema, profile, sector)[ring_index]["id"],
-        "deck_index": deck_index,
+        "ring": rr[min(ring_index, len(rr) - 1)]["id"] if rr else "none",
+        "deck_index": min(deck_index, len(decks) - 1),
+        "deck_index_asked": deck_index,
+        "z_m": z_m,
         "radius_m": r,
         "gravity_g": round(gravity_at(schema, r), 4),
         "circumference_m": round(2 * math.pi * r, 1),
@@ -1724,9 +1952,16 @@ def ring_cells(schema, profile, sector, ring_index, deck_index=0, margin=1.5):
 
 
 def deck_cell(schema, profile, sector, ring_index, deck_index, cell_index,
-              z_offset=None):
-    """One streaming cell: the corridor run for one deck over one arc."""
-    plan = ring_cells(schema, profile, sector, ring_index, deck_index)
+              z_offset=None, z_m=None):
+    """One streaming cell: the corridor run for one deck over one arc.
+
+    `z_m` REACHES THE GEOMETRY, which is the only reason threading it through
+    `ring_cells` is worth anything: the cell's radius, cell count and arc all
+    come from the plan, so a z-aware plan is a z-aware cell. Pass
+    `narrowest_z(profile, centre, span)` rather than a centre -- see its
+    docstring for why a place is not a point on the axis.
+    """
+    plan = ring_cells(schema, profile, sector, ring_index, deck_index, z_m=z_m)
     if plan is None:
         raise ValueError(f"{sector} ring {ring_index} carries no decks")
     if not 0 <= cell_index < plan["cells"]:
@@ -2656,4 +2891,8 @@ def _selftest():
 
 if __name__ == "__main__":
     import sys
+    if "--hull-fit" in sys.argv:
+        _s, _p = load()
+        _rows, _c = hull_fit(_s, _p)
+        sys.exit(1 if _rows else 0)
     sys.exit(_selftest())

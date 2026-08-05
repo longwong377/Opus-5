@@ -1717,15 +1717,16 @@ def room_extent_m(schema, profile, place):
     actually has. Converting needs the deck radius, so it is done here rather
     than stored -- a stored metre value would go stale the moment a sector
     radius moved, and INV-026 moved all of them at once.
+
+    The resolution -- which ring stack, which deck, clamped how -- is
+    `interior.place_floor_radius`, not four lines here. It was four lines here
+    AND four in `directory.gravity_of`, which is two copies of one rule; see
+    that function's note. `z_aware=False` is deliberate and is what the
+    station is built from today: `interior.hull_fit()` reports the 34 places
+    where that answer is outside the pressure hull, and flipping this flag is
+    the change that moves them.
     """
-    rings = it.ring_radii(schema, profile, place["sector"])
-    stacks = [i for i, r in enumerate(rings) if r["kind"] == "deck_stack"]
-    r_floor = it.sector_radius(schema, profile, place["sector"])
-    if stacks:
-        ri = stacks[min(place["ring"], len(stacks) - 1)]
-        decks = it.decks_in_ring(schema, profile, place["sector"], ri)
-        if decks:
-            r_floor = decks[min(place["deck"], len(decks) - 1)]["floor_r_m"]
+    r_floor, _ri, _di, _d = it.place_floor_radius(schema, profile, place)
     arc = 2 * math.pi * r_floor * (place["footprint"][0] / 360.0)
     return arc, place["footprint"][1], r_floor
 
