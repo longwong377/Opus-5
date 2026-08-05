@@ -78,6 +78,25 @@ var hot := 0.0
 var credits := -1.0                    # < 0 means "no ledger" -> draw nothing
 var purse_who := ""
 var wages_cr := 0.0
+## WHAT THE PLAYER IS CARRYING, and until session 4q there was nothing to draw:
+## `godot/scripts/` held zero references to an inventory in 16,865 lines while
+## `station/player.py` had carried an identicard and a kit bag since it was
+## written. `interact.gd`'s `store` verb moves things in and out of it; this is
+## where a player finds out what they have. MASTER-PLAN A4b-2.
+var carrying: Array[String] = []
+var carry_cap := 0
+## The rung `consequence.tier_of` reads off the nine identicard fields. Drawn
+## beside the balance because it is the other half of whether a counter will
+## serve you -- INV-342: the identicard IS the credit card, so a card that does
+## not read is a purse that does not spend.
+var tier_name := ""
+## Sitting changes what the eye can see, so it is on the face: the seated eye
+## height beside the verb that put you there.
+var seated := ""
+var eye_m := 0.0
+## What the last verb DID -- `interact.gd::said()`. One sentence, held a few
+## seconds, drawn under the prompt beside a `read`'s text.
+var did_text := ""
 
 # UNTYPED ON PURPOSE, all three. `_player`'s `gravity_mode`, `_interact`'s
 # `refresh()` and `Face`'s `h` are SCRIPT members, not members of CharacterBody3D,
@@ -157,41 +176,49 @@ func bind(player: Node3D, interact: Node, glb: String,
 	set_process(true)
 
 
-## Read the economy ledger, if a session has written one.
+## Read the purse -- off the PLAYER, who is the one holding it.
 ##
-## The path is derived exactly the way `main.gd` derives `boot.json`'s --
-## `res://` globalised and walked up one -- so there is one description of
-## where the generated tree is and this file does not add a second. Absent
-## file, unreadable file or empty ledger all leave `credits` at -1, and
-## `_systems` draws nothing: no economy has run, so there is nothing true to
-## say about a purse.
+## THIS FILE USED TO PARSE `economy.json` ITSELF, and it was the only runtime
+## consumer of the whole economy: a number in the corner, drawn once at bind
+## time, that no verb could move. Session 4q gave `interact.gd` the ledger --
+## because the ledger also holds every counter's stock and till, and those
+## belong to the world rather than to the person standing in it -- and gave
+## `player.gd` the purse out of it. So there is ONE reader and ONE writer, and
+## this face reads what the body is actually carrying rather than what the file
+## said when the level loaded. That is the same correction the room extents
+## needed when this HUD and `ambience.gd` disagreed by 31.6 m.
+##
+## A build with no economy behind it leaves `credits` at -1 and `_systems`
+## draws nothing, exactly as before: no economy has run, so there is nothing
+## true to say about a purse, and `0.00 CR` would be a HUD asserting a fact
+## nobody computed.
 func _wallet() -> void:
-	var path := ProjectSettings.globalize_path("res://").path_join(
-		"../station/generated/economy.json").simplify_path()
-	var f := FileAccess.open(path, FileAccess.READ)
-	if f == null:
+	if _player == null or not _player.has_method("has_purse"):
 		return
-	var d = JSON.parse_string(f.get_as_text())
-	if typeof(d) != TYPE_DICTIONARY:
+	if not _player.has_purse():
 		return
-	var purses = d.get("purses", {})
-	if typeof(purses) != TYPE_DICTIONARY or purses.is_empty():
+	_purse()
+	print("hud: purse %s (%s, %s) %.2f cr, %.2f earned, carrying %s"
+		% [purse_who, String(_player.person), tier_name, credits, wages_cr,
+			("nothing" if carrying.is_empty() else ", ".join(carrying))])
+
+
+## The live half, re-read every frame. A purse that only updated at bind time
+## could not show a purchase, which is the whole point of there being one.
+func _purse() -> void:
+	if _player == null or not _player.has_method("has_purse"):
 		return
-	# TYPED, not inferred. `Dictionary.keys()` has no set return type in
-	# GDScript 4, so `var keys := purses.keys()` is a PARSE error -- and a
-	# parse error in this file takes the whole boot with it: `walk.gd` then
-	# calls `bind()` on a bare CanvasLayer and `coldstart --g1` comes back
-	# `hud=0`. Caught by that gate on the first run after this block landed.
-	var keys: Array = purses.keys()
-	keys.sort()
-	var me = purses[keys[0]]
-	credits = float(me.get("credits", 0.0))
-	purse_who = String(keys[0])
-	var wages = d.get("wages", {})
-	if typeof(wages) == TYPE_DICTIONARY:
-		wages_cr = float(wages.get(purse_who, 0.0))
-	print("hud: purse %s %.2f cr, %.2f earned" % [purse_who, credits,
-		wages_cr])
+	credits = float(_player.credits)
+	purse_who = String(_player.npc_id)
+	tier_name = String(_player.tier_name)
+	carry_cap = int(_player.carry_cap)
+	carrying.clear()
+	for x in _player.carrying:
+		carrying.append(String(x))
+	seated = String(_player.seated)
+	eye_m = float(_player.eye_now_m())
+	if _interact != null and _interact.has_method("wages"):
+		wages_cr = float(_interact.wages())
 
 
 ## The address, off the name of the mesh. `shot_blue_0_0.glb`, `blue_0_0.glb`
@@ -327,6 +354,12 @@ func _process(delta: float) -> void:
 		# into its letters said exactly as much as a locker. See MASTER-PLAN
 		# A4b-1: `read` is the first of the eight verbs with a consequence.
 		read_text = String(_interact.read_text())
+		# WHAT THE VERB DID. 4p gave `read` a consequence and this line is the
+		# other three: the sentence `interact.gd` produced when the player sat
+		# down, took something out of a locker or was served across a counter.
+		if _interact.has_method("said"):
+			did_text = String(_interact.said())
+	_purse()
 	if it != null:
 		prompt_verb = String(it.verb).to_upper()
 		prompt_label = String(it.label).to_upper()
@@ -405,6 +438,12 @@ func report() -> String:
 	# `credits=-` when no ledger exists, which is a different statement from
 	# `credits=0.00` and the two must not be confused by anything reading this.
 	s += " credits=%s" % ("-" if credits < 0.0 else "%.2f" % credits)
+	# THE THREE THINGS A VERB CAN CHANGE, on the line a gate already parses.
+	# `carrying=` and `seated=` are what say a `store` and a `sit` reached the
+	# player rather than the log.
+	s += " carrying=%s" % ("-" if carrying.is_empty()
+		else ",".join(carrying).replace(" ", "_"))
+	s += " seated=%s eye_m=%.2f" % [("-" if seated == "" else seated), eye_m]
 	return s
 
 
@@ -672,9 +711,16 @@ class Face extends Control:
 	## Deliberately plain: near-black plate, one cyan keyline, the station's own
 	## monospace-ish tracking. A board reads like a board.
 	func _read(sz: Vector2, s: float) -> void:
-		if h.read_text == "":
+		# ONE PLATE, TWO SOURCES. A `read` puts a board's text here; every other
+		# verb puts the sentence describing what it just did. They cannot both
+		# be live -- `interact.gd::use()` clears one and sets the other on the
+		# same press -- so a second plate would be a second empty rectangle.
+		var body: String = h.read_text
+		if body == "" and h.did_text != "":
+			body = h.did_text
+		if body == "":
 			return
-		var lines: PackedStringArray = h.read_text.split("\n", false)
+		var lines: PackedStringArray = body.split("\n", false)
 		if lines.is_empty():
 			return
 		var px := int(roundf(13.0 * s))
@@ -788,9 +834,34 @@ class Face extends Control:
 		# Amber, because amber on this face is the thing you can act on and
 		# credits are the only number here you can spend.
 		_tracked(Vector2(cx, y), cr, px, Color(AMBER, 0.78), 1.4 * s)
+		var row := y - 13.0 * s
 		if h.wages_cr > 0.0:
 			var sub := "EARNED %0.2f" % h.wages_cr
 			var spx2 := int(roundf(8.0 * s))
 			var sw2 := _tracked_width(sub, spx2, 1.2 * s)
-			_tracked(Vector2(sz.x - 34.0 * s - sw2, y - 13.0 * s), sub,
+			_tracked(Vector2(sz.x - 34.0 * s - sw2, row), sub,
 				spx2, Color(CYAN, 0.55), 1.2 * s)
+			row -= 12.0 * s
+		# -- THE BAG, and the rung the counters read ------------------------
+		# `carry_cap` is `station/player.py::CARRY_CAPACITY` (INV-410), and it
+		# is drawn beside the contents rather than left implicit: an inventory
+		# whose ceiling a player cannot see is one they meet by being refused.
+		# The rung sits under it because INV-342 makes the two one question --
+		# the identicard IS the credit card, so what you may buy depends on
+		# what your card reads as, not only on what is in the purse.
+		var bag: String = ("EMPTY HANDED" if h.carrying.is_empty()
+			else ", ".join(h.carrying).to_upper())
+		if h.carry_cap > 0:
+			bag = "%d/%d  %s" % [h.carrying.size(), h.carry_cap, bag]
+		var bpx := int(roundf(8.0 * s))
+		var bw := _tracked_width(bag, bpx, 1.2 * s)
+		_tracked(Vector2(sz.x - 34.0 * s - bw, row), bag, bpx,
+			Color(CYAN, 0.62), 1.2 * s)
+		row -= 12.0 * s
+		if h.tier_name != "":
+			var tn: String = h.tier_name.to_upper()
+			if h.seated != "":
+				tn = "%s   %s  EYE %.2f M" % [tn, h.seated.to_upper(), h.eye_m]
+			var tw := _tracked_width(tn, bpx, 1.2 * s)
+			_tracked(Vector2(sz.x - 34.0 * s - tw, row), tn, bpx,
+				Color(AMBER, 0.55), 1.2 * s)

@@ -41,6 +41,188 @@ var _cam: Camera3D
 var _jumped := false
 
 
+# ===========================================================================
+#  WHO THIS BODY IS -- the purse, the bag and the rung
+# ===========================================================================
+## THE FOUR THINGS THE ENGINE CANNOT DERIVE, and they arrive together because
+## they arrive through one channel. `station/player.py` is 800 lines about who
+## the player is -- a `Resident` with a card, a home, a job, a purse and a
+## standing -- and until session 4q **not one byte of it reached a runtime**:
+## `hud.gd` parsed `economy.json` for a NUMBER to draw in the corner and that
+## was the whole bridge. So this body had a stature and a walking speed and
+## nothing else, which is `MASTER-PLAN` A4b-2 stated as a field list.
+##
+## THEY ARE SET, NEVER COMPUTED. Every one of these is `Player.state()`'s own
+## output: the rung comes from `consequence.tier_of` through the nine
+## identicard fields, the hip and seat heights from `npc/animation.py`'s sit
+## rule scaled by this person's own stature and species leg factor, the bag
+## size from `player.CARRY_CAPACITY`. A default written here would be a human's
+## hip height applied to a 2.02 m Narn -- which is the same defect as the
+## corridor profile written down instead of measured, one body down.
+##
+## `credits < 0.0` MEANS "NO LEDGER", and it is a different statement from
+## zero. A build with no economy behind it must not draw `0.00 CR`, because
+## that is a HUD asserting a fact nobody computed.
+var npc_id := ""
+var person := ""
+var credits := -1.0
+var carrying: Array[String] = []
+var carry_cap := 0
+var tier := -99
+var tier_name := ""
+## Standing hip height and a fitted seat height, metres, for THIS person.
+var hip_m := 0.0
+var seat_m := 0.0
+## How far the eye sits above whatever you are lying on.
+var recline_m := 0.0
+## The hour this species wakes -- `npc/schedule.py::wake_hour`. A `rest` on a
+## bunk advances the station clock to it; a Narn's is not a human's.
+var wake_h := -1.0
+
+
+## Take the mutable half of a `station/player.py::Player` onto this body.
+##
+## HANDED IN RATHER THAN READ HERE. `interact.gd` owns the ledger document,
+## because the ledger also holds every counter's stock and till and those
+## belong to the world rather than to the person standing in it. One reader,
+## one writer -- the rule `hud.gd` learned when its room extents disagreed with
+## `ambience.gd`'s by 31.6 m.
+func set_purse(st: Dictionary) -> void:
+	npc_id = String(st.get("npc_id", ""))
+	person = String(st.get("name", npc_id))
+	credits = float(st.get("credits", -1.0))
+	carrying.clear()
+	for x in st.get("carrying", []):
+		carrying.append(String(x))
+	carry_cap = int(st.get("carry_cap", 0))
+	tier = int(st.get("tier", -99))
+	tier_name = String(st.get("tier_name", ""))
+	hip_m = float(st.get("hip_m", 0.0))
+	seat_m = float(st.get("seat_m", 0.0))
+	recline_m = float(st.get("recline_m", 0.0))
+	wake_h = float(st.get("wake_h", -1.0))
+
+
+func has_purse() -> bool:
+	return credits >= 0.0
+
+
+## Is there room for one more thing? `station/player.py::CARRY_CAPACITY` is the
+## number and INV-410 is its derivation; a build with no purse has no bag and
+## no ceiling, which is the pre-4q behaviour and is reported as such.
+func bag_full() -> bool:
+	return carry_cap > 0 and carrying.size() >= carry_cap
+
+
+func take(item: String) -> bool:
+	if item == "":
+		return false
+	if carrying.has(item):
+		return true
+	if bag_full():
+		return false
+	carrying.append(item)
+	carrying.sort()
+	return true
+
+
+func put(item: String) -> bool:
+	if not carrying.has(item):
+		return false
+	carrying.erase(item)
+	return true
+
+
+# ===========================================================================
+#  SITTING DOWN
+# ===========================================================================
+## THE VERB THAT WAS PRESSABLE AND INERT. `station/interact.py` has classified
+## nine tokens as `sit` and five as `rest` since the verb set was derived, and
+## both were deliberately left out of `RESPONDS` with an honest reason: *"what
+## responds to those is a BODY, not a prop"*. This is that body.
+##
+## WHAT SITTING IS, MECHANICALLY, and it is `npc/animation.py::sit_clip`'s own
+## rule rather than a second one: the hip goes to the seat and everything above
+## it comes with it, so the eye drops by exactly `hip_m - seat`. Nothing here
+## picks a number -- the seat height is measured off the prop by `interact.gd`
+## for something you sit ON, and is this person's own fitted knee height for
+## something you sit AT.
+##
+## AND YOU CANNOT WALK. That is not decoration: a "sit" that leaves the player
+## strafing around at chair height is a camera effect, and the difference
+## between a camera effect and a mechanic is whether it takes something away.
+## `step()` refuses every wish while `seated` is set; SPACE or a second press
+## stands you up.
+##
+## THE BODY DOES NOT MOVE. It stays on the floor exactly where it was, still
+## pinned by `step()`'s floor hold -- so `is_on_floor()` and the radial drop the
+## cold-start gate measures are unchanged by sitting, and a seated player is
+## still standing on the deck as far as the physics is concerned. Moving the
+## capsule onto the seat would put a 1.8 m body inside 0.45 m of furniture.
+var seated := ""                      # "" | "sit" | "rest"
+var seat_used_m := 0.0                # the surface height that was used
+var _eye_now := 0.0
+
+
+## Where the eye goes when this person sits on a surface `h` above the floor.
+func seated_eye(h: float) -> float:
+	return h + (eye_height_m - hip_m)
+
+
+## Sit or lie down. `h_m` is the surface height above this body's own feet;
+## pass <= 0 to use the fitted seat. Returns false if already seated.
+func sit_at(h_m: float, verb: String = "sit", recline: bool = false) -> bool:
+	if seated != "":
+		return false
+	# NO PERSON, NO POSTURE, AND THIS REFUSES RATHER THAN GUESSING. `hip_m` and
+	# `seat_m` come off the purse, which is `station/player.py::posture` for
+	# THIS person's species and stature; a body with no purse has neither.
+	#
+	# IT WAS A GUESS AND IT WENT THE WRONG WAY, which is why the refusal is
+	# here rather than a default. With `hip_m` left at 0 the drop
+	# `eye_height_m - hip_m` is the whole eye height, so sitting on a 0.76 m
+	# stool put the eye at 2.46 m -- it RAISED it by three quarters of a metre.
+	# Measured, on the first engine run of this function, against a `--ledger=`
+	# that pointed at nothing.
+	if hip_m <= 0.0 or seat_m <= 0.0:
+		return false
+	var h := h_m
+	# A SURFACE THAT IS NOT A SEAT IS NOT USED AS ONE. Above the hip you are
+	# not sitting on it, you are climbing it; at or below the floor it is not a
+	# surface. Either way the fitted seat is the honest answer, and `seat_m` is
+	# this person's own knee height rather than a constant.
+	if h <= 0.02 or h > hip_m:
+		h = seat_m
+	if h <= 0.0:
+		return false
+	seat_used_m = h
+	seated = verb
+	# LYING DOWN IS NOT SITTING ON A LOWER CHAIR. On a bunk the eye is a
+	# chest-depth above the surface, not a hip-to-eye above it.
+	_eye_now = (h + recline_m) if recline else seated_eye(h)
+	velocity = Vector3.ZERO
+	if _cam != null:
+		_cam.position = Vector3(0.0, maxf(_eye_now, 0.05), 0.0)
+	return true
+
+
+func stand_up() -> bool:
+	if seated == "":
+		return false
+	seated = ""
+	seat_used_m = 0.0
+	_eye_now = eye_height_m
+	if _cam != null:
+		_cam.position = Vector3(0.0, eye_height_m, 0.0)
+	return true
+
+
+## Where the eye is, in metres above the body's feet. Read by `hud.gd`, and it
+## is the one number that says a sit did something a player would see.
+func eye_now_m() -> float:
+	return _eye_now if seated != "" else eye_height_m
+
+
 func _ready() -> void:
 	_cam = get_node_or_null("Camera3D")
 	if _cam == null:
@@ -48,6 +230,7 @@ func _ready() -> void:
 		_cam.name = "Camera3D"
 		add_child(_cam)
 	_cam.position = Vector3(0.0, eye_height_m, 0.0)
+	_eye_now = eye_height_m
 	_cam.near = 0.15
 	_cam.far = 12000.0
 	# THE SHIPPED CAMERA MUST NOT BE WIDER THAN THE ONE THE BUDGET GATES. Godot's
@@ -139,6 +322,24 @@ func step(delta: float, wish: Vector2, jump: bool, sprint: bool,
 		world_dir: Vector3 = Vector3.ZERO) -> void:
 	var up := body_up()
 	var g := gravity_dir() * gravity_m_s2
+
+	# -- SEATED: THE WISH IS REFUSED, THE FLOOR HOLD IS NOT ------------------
+	# A sit that can be walked out of is a camera effect. The body keeps its
+	# basis, keeps its floor pin and keeps answering `is_on_floor()` -- the
+	# cold-start gate reads that at frame 120 and a seated player must not read
+	# as a fallen one -- and loses exactly one thing: the ability to go
+	# anywhere. Jump stands up, because a player who wants to leave presses the
+	# key that means "up".
+	if seated != "":
+		if jump:
+			stand_up()
+		else:
+			velocity = up * -0.1
+			up_direction = up
+			move_and_slide()
+			if _cam != null:
+				_cam.transform.basis = Basis(Vector3.RIGHT, -_pitch)
+			return
 
 	# Basis from the body's own up, so "forward" stays tangential to the drum
 	# floor rather than to the world.

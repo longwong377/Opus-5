@@ -109,12 +109,21 @@ PRESSABLE = tuple(v for v in VERBS if v != "tread")
 # drawer runs out, a screen changes -- all of them are the prop moving or
 # changing, and the prop is built.
 #
-# `sit` and `rest` are deliberately NOT here, and the reason is worth keeping:
-# what responds to those is a BODY, not a prop. Sitting needs the player's own
+# `sit` and `rest` WERE deliberately NOT here until session 4q, and the reason
+# they were excluded is worth keeping because it is the reason they are in now:
+# *"what responds to those is a BODY, not a prop. Sitting needs the player's own
 # animation -- `npc/animation.py` has `sit_clip` and the player has no rig.
 # Listing them as responding would make `use()` return true and nothing happen,
-# which is the failure that looks like success, so the runtime reads this and
-# reports `response=none` for them instead.
+# which is the failure that looks like success."*
+#
+# THAT WAS RIGHT AND IT IS NO LONGER TRUE. The body that responds is the
+# player's own: `godot/scripts/player.gd::sit_at` drops the eye by the distance
+# `npc/animation.py::sit_clip` translates a sitter's torso -- hip to seat -- and
+# LOCKS WALKING until they stand. So a press on a chair now changes what the
+# player can see and what they can do, which is the definition of a response,
+# and the exclusion is lifted for the same reason `serve`'s was: the thing it
+# was waiting for arrived. `player.posture` derives the drop from the player's
+# OWN stature, so a Narn does not sit at a human's hip height.
 #
 # `serve` WAS IN THAT LIST UNTIL SESSION 4e, excluded because "being served
 # needs whoever is behind the counter to turn round and talk, which needs
@@ -123,7 +132,10 @@ PRESSABLE = tuple(v for v in VERBS if v != "tread")
 # that room's own regulars, saying something derived from the hour, their
 # species rhythm, their trade and what the port is doing. So the exclusion is
 # lifted, and it is lifted because the thing it was waiting for arrived.
-RESPONDS = ("open", "operate", "read", "store", "serve")
+#
+# `tread` is the only verb left outside, and it is outside because it is
+# outside `PRESSABLE` too -- a kerb is not a control.
+RESPONDS = ("open", "operate", "read", "sit", "rest", "store", "serve")
 
 # The SHAPE rule. One row per distinct value of `rooms.PROP_KIND`, which is the
 # classification `dressing.machine()` already builds these objects from.
@@ -357,12 +369,116 @@ def read_text(place_key, token, hour=13.0, day=0):
                 out = "%s\nNON-STANDARD ATMOSPHERE -- BREATHER REQUIRED" % q["name"]
             else:
                 out = "%s\nATMOSPHERE 02 -- STANDARD OXYGEN/NITROGEN" % q["name"]
+        elif t in ("welcome_board", "welcome_sign"):
+            # AUTHORITY 1, and it is the prop's own text. `broadcast.BOARD_VOICE`
+            # is transcribed from `reference/01-station-exterior/welcome to
+            # babylon 5.webp` -- the board a player walks past on the way out of
+            # customs is the board in the frame.
+            import broadcast                                    # noqa: PLC0415
+            out = "WELCOME TO BABYLON 5\n" + "\n".join(broadcast.BOARD_VOICE)
         elif t in ("neon_sign", "sign", "shop_sign") and q is not None:
             out = q["name"]
     except Exception:
         out = ""
     _READ_CACHE[key] = out
     return out
+
+
+# ---------------------------------------------------------------------------
+# WHAT THE OTHER FOUR VERBS NEED, and none of it is decided here
+# ---------------------------------------------------------------------------
+# `read` was made real in 4p by DERIVING its text from the modules that already
+# held it. These three are the same move, applied to `sit`, `rest`, `store` and
+# `serve` -- and the reason they need a bake at all is that the bridge between
+# this simulation and the engine is one-way (MASTER-PLAN A4b's root cause):
+# Python bakes, GDScript reads. There is no way for `interact.gd` to CALL
+# `consequence.purchase`, so what crosses is that function's DECISIONS, not a
+# GDScript copy of its rules.
+#
+#   sit / rest   `rooms.PROP_KIND` -- the project's own classification of the
+#                same 99 tokens. `seat` and `bed` are objects you get ON, so
+#                the runtime measures the prop's own top; anything else with a
+#                sit/rest verb (a `table`, a `shrine`) is something you sit AT,
+#                and the seat is the fitted one `player.posture` derives from
+#                `npc/animation.py`'s rule. No new vocabulary, no third table.
+#   store        `economy.stock_list(place)` -- the lines that place's own
+#                register FUNCTIONS carry. A crate in the black market holds
+#                contraband and a tray dispenser in the mess hall holds
+#                nothing, because `mess_hall` is ("catering", "crew_social")
+#                and sells no line. An empty container is not a dead one: it
+#                is somewhere to PUT something, which is the other half of
+#                VRB-03.
+#   serve        `economy.price` for the money and `consequence.sells_to` for
+#                the reader, evaluated at EVERY RUNG -- six booleans and six
+#                reasons per counter. That is the whole six-rung ladder
+#                (INV-342) transferred as data: the runtime looks its player's
+#                rung up and applies the verdict `consequence.py` reached.
+#
+# WHY ALL SIX RUNGS AND NOT THE PLAYER'S. The sidecar is baked once per deck
+# and a player's standing changes during a session -- a conviction revokes a
+# conditional status (`consequence._dispose`). Baking one rung's answer would
+# be a counter that goes on serving somebody the ladder has just demoted.
+_OFFER_CACHE = {}
+
+
+def counter_offer(place_key, seed="b5"):
+    """What this counter sells, for how much, and to which rungs. Cached.
+
+    `sells` False is a real answer and not an absence: `docking_bays` declares
+    a `bay_control_booth`, whose verb is `serve` by head noun, and the booth
+    genuinely has nothing to sell -- `consequence.sells_to` says so in the
+    words a keeper would use. A runtime that showed a price list there would
+    be inventing a shop.
+    """
+    if place_key in _OFFER_CACHE:
+        return _OFFER_CACHE[place_key]
+    out = {"sells": False, "goods": [], "tier": {}}
+    try:
+        import economy as EC                                  # noqa: PLC0415
+        import consequence as CQ                              # noqa: PLC0415
+        out["goods"] = [{"good": g, "cr": round(EC.price(g, place_key, seed), 3)}
+                        for g in EC.stock_list(place_key, seed)]
+        out["sells"] = bool(out["goods"])
+        for t in (CQ.DETAINED,) + tuple(CQ.RUNGS):
+            ok, why = CQ.sells_to(place_key, t)
+            out["tier"][str(int(t))] = [bool(ok), str(why)]
+    except Exception as e:                                    # noqa: BLE001
+        out["why"] = f"{type(e).__name__}: {str(e)[:80]}"
+    _OFFER_CACHE[place_key] = out
+    return out
+
+
+_HOLDS_CACHE = {}
+
+
+def container_holds(place_key, seed="b5"):
+    """What a container in this place has in it. The place's own lines."""
+    if place_key not in _HOLDS_CACHE:
+        try:
+            import economy as EC                              # noqa: PLC0415
+            _HOLDS_CACHE[place_key] = list(EC.stock_list(place_key, seed))
+        except Exception:                                     # noqa: BLE001
+            _HOLDS_CACHE[place_key] = []
+    return list(_HOLDS_CACHE[place_key])
+
+
+def verb_payload(place_key, token, verb, seed="b5"):
+    """The extra fields one sidecar row needs to make its verb DO something.
+
+    Empty for `open`, `operate` and `tread`: a leaf and a lever already have a
+    mechanism (`door.gd`, and the press travel `interact.gd` applies), and a
+    floor marking deliberately has no prompt at all.
+    """
+    if verb in ("sit", "rest"):
+        # `PROP_KIND` is `rooms`', not this module's. A token with no kind is
+        # possible only for an alias resolved off another module's mesh, and
+        # the safe reading for one of those is "you sit AT it".
+        return {"kind": R.PROP_KIND.get(token, "")}
+    if verb == "store":
+        return {"holds": container_holds(place_key, seed)}
+    if verb == "serve":
+        return {"counter": counter_offer(place_key, seed)}
+    return {}
 
 
 def emitted_tokens(names):
@@ -625,7 +741,7 @@ def tally(rows):
 # ---------------------------------------------------------------------------
 # The sidecar the runtime reads
 # ---------------------------------------------------------------------------
-def sidecar(names, spans=None, hour=13.0, day=0):
+def sidecar(names, spans=None, hour=13.0, day=0, place=""):
     """`godot/scripts/interact.gd`'s half of the contract, as plain data.
 
     ONE SOURCE FOR THE VERB. The alternative is a copy of the two tables above
@@ -634,6 +750,17 @@ def sidecar(names, spans=None, hour=13.0, day=0):
     the corridor profile written down instead of measured. The engine gets a
     list of `{group, place, token, verb, pressable}` derived here and reads no
     tables of its own.
+
+    `place` IS THE FALLBACK FOR A ROOM'S OWN MESH, and it stopped being
+    cosmetic in session 4q. `deck.build_deck` prefixes every group with its
+    place key, so a deck sidecar always knows where each row is; a ROOM's own
+    glb -- `scene/interior/<key>.glb`, which `walkable.py::walk_room` and every
+    interior shot load -- carries `prop_bar_counter` with no prefix at all, and
+    `provides()` correctly returns an empty place for it. That was harmless
+    while the row was `{group, verb, label}`. It is not harmless now: the verb
+    PAYLOAD is keyed on the place, so an unprefixed bar came back with a
+    counter that sells nothing and a container that holds nothing -- the shop
+    silently absent rather than reported missing. Found by building one.
     """
     names = sorted(set(names))
     out = []
@@ -642,14 +769,17 @@ def sidecar(names, spans=None, hour=13.0, day=0):
         r = provides(n)
         if r is None:
             continue
-        place, tok, verb = r
+        rplace, tok, verb = r
+        place_of = rplace or place
         seen.add(n)
-        out.append({"group": n, "place": place, "token": tok, "verb": verb,
-                    "pressable": verb in PRESSABLE,
-                    "responds": verb in RESPONDS,
-                    "label": tok.replace("_", " "),
-                    "text": read_text(place, tok, hour, day),
-                    "live": tok in LIVE_READ})
+        row = {"group": n, "place": place_of, "token": tok, "verb": verb,
+               "pressable": verb in PRESSABLE,
+               "responds": verb in RESPONDS,
+               "label": tok.replace("_", " "),
+               "text": read_text(place_of, tok, hour, day),
+               "live": tok in LIVE_READ}
+        row.update(verb_payload(place_of, tok, verb))
+        out.append(row)
     # AND THE ONES THE MODULES NAMED THEMSELVES. `alias_for` needs to know what
     # a place DECLARED, which a group name alone does not carry -- so the names
     # are grouped by the place prefix `deck.build_deck` puts on them and the
@@ -660,6 +790,8 @@ def sidecar(names, spans=None, hour=13.0, day=0):
     for n in names:
         if PLACE_SEP in n:
             byplace.setdefault(n.partition(PLACE_SEP)[0], []).append(n)
+        elif place:
+            byplace.setdefault(place, []).append(n)
     decl = {p["key"]: tuple(p.get("interacts") or ()) for p in dr.PLACES}
     for key, group in sorted(byplace.items()):
         for tok, n in sorted(resolve(decl.get(key, ()), group,
@@ -668,13 +800,117 @@ def sidecar(names, spans=None, hour=13.0, day=0):
                 continue
             seen.add(n)
             verb = verb_of(tok)
-            out.append({"group": n, "place": key, "token": tok, "verb": verb,
-                        "pressable": verb in PRESSABLE,
-                        "responds": verb in RESPONDS,
-                        "label": tok.replace("_", " "),
-                        "text": read_text(key, tok, hour, day),
-                        "live": tok in LIVE_READ})
+            row = {"group": n, "place": key, "token": tok, "verb": verb,
+                   "pressable": verb in PRESSABLE,
+                   "responds": verb in RESPONDS,
+                   "label": tok.replace("_", " "),
+                   "text": read_text(key, tok, hour, day),
+                   "live": tok in LIVE_READ}
+            row.update(verb_payload(key, tok, verb))
+            out.append(row)
     return out
+
+
+# ---------------------------------------------------------------------------
+# DENOMINATORS -- how many of each verb there are, and how many can ACT
+# ---------------------------------------------------------------------------
+def verb_coverage(seed="b5"):
+    """verb -> {tokens, instances, places, acting, why}. No build, seconds.
+
+    THE DENOMINATOR IS DECLARED INSTANCES, NOT TOKENS. `sit` is 9 tokens and
+    those nine are declared 40-odd times across the register; a verb that
+    worked on one token would look 1/9 done and be 1/40 done. `interact.py
+    --audit` already proved every one of them RESOLVES to a mesh; this is the
+    other question -- does pressing it do anything.
+    """
+    out = {}
+    for p in dr.PLACES:
+        for tok in (p.get("interacts") or ()):
+            v = verb_of(tok)
+            r = out.setdefault(v, {"tokens": set(), "instances": 0,
+                                   "places": set(), "acting": 0,
+                                   "inert": []})
+            r["tokens"].add(tok)
+            r["instances"] += 1
+            r["places"].add(p["key"])
+            pay = verb_payload(p["key"], tok, v, seed)
+            act = True
+            why = ""
+            if v == "serve":
+                act = bool(pay["counter"]["sells"])
+                why = pay["counter"]["tier"].get("4", [False, "?"])[1]
+            elif v == "store":
+                # A container ACTS either way: full, it gives you something;
+                # empty, it takes something. What varies is the direction.
+                act = True
+                why = ("holds %d line(s)" % len(pay["holds"])
+                       if pay["holds"] else "empty -- somewhere to put things")
+            elif v in ("sit", "rest"):
+                act = True
+                why = ("on the prop's own measured top"
+                       if pay["kind"] in ("seat", "bed")
+                       else "at it, on the fitted seat")
+            elif v == "tread":
+                act = False
+                why = "no prompt by design"
+            if act:
+                r["acting"] += 1
+            elif why:
+                r["inert"].append(f"{p['key']}/{tok}: {why}")
+    for v, r in out.items():
+        r["tokens"] = len(r["tokens"])
+        r["places"] = len(r["places"])
+        r["inert"] = sorted(set(r["inert"]))
+    return out
+
+
+# ---------------------------------------------------------------------------
+# THE CROSS-LANGUAGE CHECK -- did the engine's transaction equal Python's?
+# ---------------------------------------------------------------------------
+# WHY THIS EXISTS AT ALL. `consequence.purchase` is the authority on a sale and
+# it is Python; the thing that runs when a player presses E is GDScript. There
+# is no call between them, so the engine necessarily performs the ARITHMETIC
+# itself -- debit the purse, decrement the shelf, credit the till, append the
+# sale -- against a price and a ladder verdict this module baked. That is one
+# decision in one place and two evaluations, which is exactly the shape this
+# repository has been burned by (the door decided in the render and again in
+# the shell).
+#
+# So the drift is gated rather than hoped away: replay the same purchase
+# through `consequence.purchase` from the BEFORE ledger and assert the result
+# is what the engine actually wrote. It can fail, and a rounding difference of
+# one millicredit fails it.
+def verify_buy(before_path, after_path, who, place_key, good, n=1):
+    """(ok, note). Replay one engine purchase through consequence.purchase."""
+    import economy as EC                                      # noqa: PLC0415
+    import consequence as CQ                                  # noqa: PLC0415
+    import player as PL                                       # noqa: PLC0415
+    led = EC.Ledger.load(before_path)
+    after = EC.Ledger.load(after_path)
+    if who not in led.purses:
+        return False, f"no purse {who!r} in {before_path}"
+    buyer = PL.from_state(led.purses[who])
+    try:
+        unit, total = CQ.purchase(led, buyer, place_key, good, n)
+    except EC.Refused as e:
+        return False, f"python refused what the engine did: {e}"
+    bad = []
+    gt = led.till.get(place_key, 0.0)
+    at = after.till.get(place_key, 0.0)
+    if abs(gt - at) > 1e-6:
+        bad.append(f"till {at} vs python {gt}")
+    gs = led.units(place_key, good)
+    as_ = after.units(place_key, good)
+    if gs != as_:
+        bad.append(f"stock {as_} vs python {gs}")
+    ap = after.purses.get(who, {})
+    if abs(float(ap.get("credits", -1)) - float(buyer.credits)) > 1e-6:
+        bad.append(f"purse {ap.get('credits')} vs python {buyer.credits}")
+    if len(after.sales) != len(led.sales):
+        bad.append(f"{len(after.sales)} sales vs python {len(led.sales)}")
+    note = (f"{n} x {good} at {place_key}: {total:.3f} cr, till "
+            f"{at:.2f}, stock {as_}, purse {ap.get('credits')}")
+    return (not bad), (note if not bad else note + " -- " + "; ".join(bad))
 
 
 # ---------------------------------------------------------------------------
@@ -866,6 +1102,66 @@ def _selftest():
             fails.append(f"RESPONDS names {v!r}, which is not a verb")
         if v not in PRESSABLE:
             fails.append(f"RESPONDS names {v!r}, which nobody can press")
+    # EVERY PRESSABLE VERB RESPONDS. Until 4q this could not be asserted: `sit`
+    # and `rest` were pressable and inert, so a player could press E on a chair
+    # and not sit down. It is the one-line form of MASTER-PLAN A4b-1.
+    for v in PRESSABLE:
+        if v not in RESPONDS:
+            fails.append(f"{v!r} can be pressed and does nothing -- a prompt "
+                         f"that lies about the controls")
+
+    # -- THE PAYLOAD EVERY VERB NEEDS IS ON EVERY ROW THAT NEEDS IT ----------
+    # A missing key here is a verb the runtime cannot perform, and the runtime
+    # cannot say so: it would read `{}` and fall back to a wiggle, which is
+    # precisely the failure that looks like success.
+    _need = {"sit": "kind", "rest": "kind", "store": "holds",
+             "serve": "counter"}
+    _probe = sidecar([f"{'dark_star' if verb_of(t) == 'serve' else 'quarters_civ'}"
+                      f"{PLACE_SEP}prop_{t}" for t in tokens()])
+    for row in _probe:
+        k = _need.get(row["verb"])
+        if k and k not in row:
+            fails.append(f"a {row['verb']} row ({row['token']}) has no "
+                         f"{k!r} -- the runtime cannot perform the verb")
+        if row["verb"] in ("open", "operate", "tread") and \
+                (set(row) & set(_need.values())):
+            fails.append(f"{row['token']} carries a payload for a verb it "
+                         f"does not have")
+
+    # A REAL COUNTER SELLS AND A NON-COUNTER SAYS WHY IT DOES NOT. Both halves,
+    # because one alone proves nothing: if `sells` were always False the first
+    # would pass silently, and if it were always True the second would.
+    _bar = counter_offer("dark_star")
+    _not = counter_offer("docking_bays")
+    if not _bar["sells"] or not _bar["goods"]:
+        fails.append("dark_star -- a hospitality place in economy.vendors() -- "
+                     "sells nothing; the serve verb has no counter anywhere")
+    if _not["sells"]:
+        fails.append("docking_bays sells things, and it is a cargo dock")
+    if "not a counter" not in _not["tier"].get("4", ["", ""])[1]:
+        fails.append(f"a non-counter gives no reason: {_not['tier'].get('4')}")
+    # THE LADDER CROSSES INTACT: exactly one licit rung is refused (NO_STATUS,
+    # INV-342) and the unchecked counter takes it. If both were open the bake
+    # would have flattened `consequence.sells_to` into a yes.
+    _blk = counter_offer("black_market")
+    if _bar["tier"].get("0", [True])[0]:
+        fails.append("a NO_STATUS card is served at a licit counter -- "
+                     "INV-342's reader has not crossed into the sidecar")
+    if not _blk["tier"].get("0", [False])[0]:
+        fails.append("a NO_STATUS card is refused at the BLACK MARKET, which "
+                     "is the one counter FACTIONS 11.4 says has no reader")
+    if not _bar["tier"].get("4", [False])[0]:
+        fails.append("a citizen is refused at a licit counter -- the ladder "
+                     "is inverted")
+
+    # -- CONTAINERS ---------------------------------------------------------
+    if not container_holds("black_market"):
+        fails.append("the black market's crates are empty -- container_holds "
+                     "is not reading economy.stock_list")
+    if container_holds("mess_hall"):
+        fails.append("the mess hall trades lines, and its register row is "
+                     "('catering', 'crew_social') -- container_holds is "
+                     "inventing stock")
 
     print(f"interact: {len(tokens())} declared interactables over "
           f"{sum(1 for p in dr.PLACES if p.get('interacts'))} places, "
@@ -900,7 +1196,42 @@ def _cli(argv):
                     help="with --gate: re-run the audit instead of reading the "
                          "committed one, so the gate cannot go stale")
     ap.add_argument("--selftest", action="store_true")
+    ap.add_argument("--coverage", action="store_true",
+                    help="per verb: tokens, declared instances, places, and "
+                         "how many of those instances can ACT")
+    ap.add_argument("--verify-buy", nargs=5,
+                    metavar=("BEFORE", "AFTER", "WHO", "PLACE", "GOOD"),
+                    help="replay one engine purchase through "
+                         "consequence.purchase and diff the two ledgers")
     a = ap.parse_args(argv)
+
+    if a.verify_buy:
+        b, af, who, place, good = a.verify_buy
+        ok, note = verify_buy(b, af, who, place, good)
+        print(("PASS  " if ok else "FAIL  ")
+              + "the engine's transaction equals consequence.purchase's: "
+              + note)
+        return 0 if ok else 1
+
+    if a.coverage:
+        cov = verb_coverage()
+        tot = sum(r["instances"] for r in cov.values())
+        act = sum(r["acting"] for r in cov.values())
+        print(f"{tot} declared interactable instances over "
+              f"{len(dr.PLACES)} register places -- {act} can act\n")
+        print(f"  {'verb':8s} {'tokens':>6s} {'inst':>5s} {'places':>6s} "
+              f"{'acting':>6s}   what happens")
+        for v in VERBS:
+            r = cov.get(v)
+            if r is None:
+                continue
+            print(f"  {v:8s} {r['tokens']:6d} {r['instances']:5d} "
+                  f"{r['places']:6d} {r['acting']:6d}   {VERBS[v][:44]}")
+            for line in r["inert"][:4]:
+                print(f"           inert: {line}")
+            if len(r["inert"]) > 4:
+                print(f"           ... and {len(r['inert']) - 4} more")
+        return 0
 
     if a.gate:
         if a.rebuild:

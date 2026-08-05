@@ -134,6 +134,31 @@ def _draw_species(seed: str, mix=None) -> str:
 IDENTICARD = "identicard"
 KIT_BAG = "kit_bag"
 
+# HOW MUCH A PLAYER CAN CARRY, and until session 4q the answer was "unbounded",
+# which is the same defect as a till nothing can refuse: an inventory with no
+# ceiling has no `store` verb, only a `take` one.
+#
+# EXTRAPOLATED (INV-410), and it is a SLOT count rather than a mass because the
+# mass anchor exists and the per-item mass does not. `canon/CONFLICTS.md`'s
+# throughput reconciliation carries **40 kg of baggage per passenger** and
+# `economy.GOODS` carries no kilograms at all, so an arithmetic answer is not
+# available; what is available is a bracket, and the bracket is narrow:
+#
+#   >= 3  the player LANDS holding two (`IDENTICARD`, `KIT_BAG`) and
+#         `dockwork.py`'s fourteen-day loop has them buy a drink on every one
+#         of those days. A capacity of 2 makes the loop this repository
+#         already ships impossible, so three is a hard floor.
+#   <= 14 `economy.MAX_LINES` -- the widest counter on the station carries
+#         fourteen lines. A bag that holds more than a whole counter's range
+#         is not a bag, it is a hold.
+#
+# 8 is the middle of that bracket rounded to a power of two so the carried list
+# draws as one HUD row at any frame height. OVERTURNED BY: any depiction of a
+# character carrying a countable number of things, or a per-item mass landing
+# in `economy.GOODS` -- which would let the 40 kg allowance settle it
+# arithmetically and retire this note.
+CARRY_CAPACITY = 8
+
 # Credits. The unit is not named on screen; the station's own board says
 # "MONETARY EXCHANGE RATES THROUGH BUSINESS CENTER" (authority 1, via
 # `signage.BOARDS["customs_procedures"]`), which establishes that there IS an
@@ -195,6 +220,51 @@ def credits_for(npc_id: str, role_key: str = "") -> int:
     if role_key and role_key in RES.NO_STATUS_ROLES:
         return int(CREDIT_MIN + (PASSAGE_HOME_CR - CREDIT_MIN) * u)
     return int(CREDIT_MIN + (CREDIT_MAX - CREDIT_MIN) * (u ** CREDIT_SKEW))
+
+
+# ---------------------------------------------------------------------------
+# Posture -- what the eye does when the player sits down
+# ---------------------------------------------------------------------------
+# WHY THIS IS IN THIS FILE AND NOT IN THE ENGINE. `godot/scripts/player.gd` can
+# measure the seat it is standing at -- and it does -- but it cannot know how
+# tall the person in the chair is, because the player's stature comes off the
+# `Resident` record this module owns. A number written into GDScript would be a
+# human's hip height applied to a 2.02 m Narn.
+#
+# THE RULE IS `npc/animation.py`'s AND IS NOT RESTATED. `sit_clip` translates
+# the whole torso by `dy = seat_h - hip_rest` -- the hip goes to the seat and
+# everything above it comes with it -- so a seated eye is a standing eye minus
+# exactly that drop. `seat_height`'s own docstring gives the fitted seat: *"a
+# chair whose seat is at the sitter's knee puts the thigh horizontal and the
+# shin vertical, which is the definition of a fitted seat"*.
+#
+# EVALUATED OFF `npc/body.py`'s FIGURE rather than off a built rig, which is
+# the same table `animation.rig` builds its skeleton from -- one source, not
+# two -- and costs a dict lookup instead of 0.3 s of skinning inside a
+# serialiser that `economy.buy` calls on every transaction. `_selftest`
+# asserts the two agree, so the cheap path cannot drift from the authority.
+#
+# AND `leg_k` IS WHY THE FIRST VERSION OF THIS FAILED ITS OWN GATE, which is
+# the useful half. `FIGURE` is the HUMAN figure; `body._hip_ring` reads it as
+# `FIGURE["hip"] * sp.leg_k`, so a Narn (leg_k 0.98) sits 36 mm off a
+# FIGURE-only reading and the tolerance below caught it on the first run. The
+# species factor is applied here exactly as `body.py` applies it -- and the
+# knee takes the same factor, because a shorter leg is a lower knee.
+FIT_TOL_M = 0.02
+
+
+def posture(species: str, stature_m: float) -> dict:
+    """Hip height, a fitted seat height and a recline datum, in metres."""
+    from npc import body as B                                # noqa: PLC0415
+    sp = B.SPECIES.get(species)
+    leg_k = 1.0 if sp is None else float(sp.leg_k)
+    return {"hip_m": round(B.FIGURE["hip"] * leg_k * stature_m, 4),
+            "seat_m": round(B.FIGURE["knee"] * leg_k * stature_m, 4),
+            # Lying down: the eye is a chest-depth above whatever you are lying
+            # on. `body.FIGURE["chest_d"]` is the figure's own chest depth as a
+            # fraction of stature, which is what a person on their side or
+            # their back puts between the bunk and their eye.
+            "recline_m": round(B.FIGURE["chest_d"] * stature_m, 4)}
 
 
 # ---------------------------------------------------------------------------
@@ -307,9 +377,24 @@ class Player:
         self.credits = int(bal) if float(bal).is_integer() else bal
         return self.credits
 
-    def take(self, item: str) -> None:
-        if item not in self.carrying:
-            self.carrying = tuple(sorted(self.carrying + (item,)))
+    def full(self) -> bool:
+        return len(self.carrying) >= CARRY_CAPACITY
+
+    def take(self, item: str) -> bool:
+        """Pick something up. False when there is no room for it.
+
+        RETURNS A BOOL SINCE 4q, and the reason is the same one `spend()` has
+        always had: a move that can be refused must SAY it was refused, or the
+        caller cannot tell a full bag from a successful pickup. Every existing
+        caller ignored the return and still behaves identically -- an item
+        already carried, or a bag with room, is still taken.
+        """
+        if item in self.carrying:
+            return True
+        if self.full():
+            return False
+        self.carrying = tuple(sorted(self.carrying + (item,)))
+        return True
 
     def drop(self, item: str) -> None:
         self.carrying = tuple(x for x in self.carrying if x != item)
@@ -351,6 +436,35 @@ class Player:
               "at": self.at, "credits": self.credits,
               "carrying": list(self.carrying), "status": self.status,
               "quarters": self.quarters, "generated": bool(self.generated)}
+        # -- THE READ-ONLY HALF, and every key here is DERIVED ---------------
+        # `economy.json` is the only channel between this simulation and the
+        # engine: `godot/scripts/player.gd` reads the purse and nothing else of
+        # this module reaches a runtime. So the four things the runtime cannot
+        # recompute -- the rung a counter checks, how far the eye drops when
+        # the player sits, how much the bag holds, and who this is -- travel
+        # with the purse.
+        #
+        # NOT LOADED BACK BY `restore`, deliberately. Every one of them is a
+        # function of the card, and the card is REGENERATED from the id --
+        # `from_state`'s own rule. Restoring them would be a second copy of a
+        # derivation, which is how a saved tier survives a conviction.
+        st["name"] = self.card.card_name
+        st["role"] = self.card.role
+        st["carry_cap"] = CARRY_CAPACITY
+        try:
+            st["tier"] = int(self.tier)
+            st["tier_name"] = self.tier_name
+        except Exception:                                    # noqa: BLE001
+            pass
+        st.update(posture(self.card.species, self.card.stature_m))
+        # WHEN THIS PERSON WAKES UP. `schedule.wake_hour` is the species
+        # rhythm's own answer and is what a `rest` on a bunk advances the
+        # station clock to -- see `godot/scripts/interact.gd`. A human sleeps
+        # 23:00 + 7.5 h; a Narn does not, and the runtime must not assume it.
+        try:
+            st["wake_h"] = round(float(sched.wake_hour(self.card.species)), 4)
+        except Exception:                                    # noqa: BLE001
+            pass
         # A CONSEQUENCE THAT DOES NOT SURVIVE THE PROCESS IS A MOOD. The key is
         # written only when there IS a record, so every purse already sitting
         # in `economy.json` stays byte-identical and `Ledger.load` does not
@@ -770,6 +884,76 @@ def _selftest(out=print):                                        # noqa: C901
     check("the identicard is an ITEM and can be lost", not q.has(IDENTICARD))
     check("...and the card RECORD survives it, because the station holds it",
           q.card.card_name == random_player("m").card.card_name)
+
+    # -- 7b. THE BAG HAS A BOTTOM -------------------------------------------
+    # An inventory with no ceiling has no `store` verb, only a `take` one.
+    bag = random_player("bag")
+    bag.carrying = ()
+    took = [bag.take(f"thing_{i}") for i in range(CARRY_CAPACITY + 3)]
+    check(f"the bag holds {CARRY_CAPACITY} things and refuses the "
+          f"{CARRY_CAPACITY + 1}th",
+          sum(took) == CARRY_CAPACITY and len(bag.carrying) == CARRY_CAPACITY
+          and took[CARRY_CAPACITY] is False,
+          f"{sum(took)} taken of {len(took)} offered, carrying "
+          f"{len(bag.carrying)}")
+    check("...and a full bag takes one more once something leaves it",
+          (bag.drop("thing_0") or True) and bag.take("thing_99") is True
+          and len(bag.carrying) == CARRY_CAPACITY,
+          f"carrying {len(bag.carrying)}")
+    check("...and re-taking what you already carry is not a refusal",
+          bag.take(sorted(bag.carrying)[0]) is True)
+    check("the ceiling sits inside the bracket its derivation states -- at "
+          "least the two an arrival lands with plus one, at most the widest "
+          "counter's line count",
+          3 <= CARRY_CAPACITY <= 14,
+          f"{CARRY_CAPACITY} in [3, economy.MAX_LINES=14]")
+
+    # -- 7c. POSTURE, and it is `npc/animation.py`'s rule ---------------------
+    # THE CHEAP PATH IS GATED AGAINST THE AUTHORITY. `posture` reads
+    # `body.FIGURE` because `state()` is called on every transaction and a rig
+    # build is 0.3 s; this is the assertion that stops that shortcut becoming a
+    # second description of where a knee is.
+    from npc import animation as AN                            # noqa: PLC0415
+    worst = ("", 0.0)
+    for sp in ("human", "narn", "centauri", "minbari"):
+        rg = AN.rig(sp, AN.NOMINAL, 0)
+        got = posture(sp, rg.skel.stature_m)
+        d = abs(got["seat_m"] - AN.seat_height(sp))
+        dh = abs(got["hip_m"] - (rg.skel.head("hip_r")[1] - rg.skel.ground_y))
+        if max(d, dh) > worst[1]:
+            worst = (sp, max(d, dh))
+    check("the cheap posture agrees with animation.seat_height and the rig's "
+          "own hip, so the shortcut cannot drift from the skeleton",
+          worst[1] <= FIT_TOL_M,
+          f"worst is {worst[0]} at {worst[1] * 1000:.1f} mm against a "
+          f"{FIT_TOL_M * 1000:.0f} mm tolerance")
+    # NEGATIVE CONTROL: the drop has to be a real distance, or "sitting" is a
+    # camera that does not move.
+    hp = random_player("a")
+    po = posture(hp.card.species, hp.card.stature_m)
+    drop = po["hip_m"] - po["seat_m"]
+    check("...and sitting drops the eye by a distance a player would see",
+          0.25 <= drop <= 0.75,
+          f"{hp.card.species} at {hp.card.stature_m:.2f} m drops "
+          f"{drop:.3f} m from hip {po['hip_m']:.3f} to seat {po['seat_m']:.3f}")
+
+    # -- 7d. THE PURSE CARRIES WHAT THE ENGINE CANNOT RECOMPUTE --------------
+    # `godot/scripts/player.gd` reads `economy.json` and nothing else of this
+    # module reaches a runtime, so a key missing here is a mechanic missing in
+    # the game -- which is exactly the shape of the ten built-but-unreachable
+    # defects this project has produced.
+    st = random_player("w").state()
+    want = ("tier", "tier_name", "hip_m", "seat_m", "recline_m", "carry_cap",
+            "wake_h", "name")
+    gone = [k for k in want if k not in st]
+    check("the purse carries the rung, the posture, the bag size and the "
+          "wake hour -- the four things the engine cannot derive",
+          not gone, f"missing {gone}" if gone else f"{len(st)} keys")
+    back = from_state(st)
+    check("...and none of them is RESTORED, because every one is a function "
+          "of a card `from_state` regenerates",
+          back.tier == st["tier"] and back.card.card_name == st["name"],
+          f"tier {back.tier} == {st['tier']}, name {back.card.card_name!r}")
 
     # -- 8. the record is frozen ---------------------------------------------
     try:

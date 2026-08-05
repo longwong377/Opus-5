@@ -25,6 +25,16 @@ extends Node3D
 ## inside `look_half_deg` of the view axis, nearest by ANGLE, then confirmed by a
 ## line-of-sight ray so you cannot use a console through a wall.
 ##
+## WHAT SESSION 4q ADDED, because the header above describes only half of it.
+## `use()` used to do ONE thing for every verb -- count the press, move the prop
+## four millimetres, print a line -- so 357 declared interactables reached a
+## player as 357 identical wiggles. It now dispatches: `sit` and `rest` put the
+## player's own body in the chair and take walking away until they stand,
+## `store` moves things between the world and a bag that has a bottom, `serve`
+## debits the purse, decrements the shelf and credits the till in
+## `station/generated/economy.json`, and a `rest` on a bunk advances the station
+## clock to when this person's species wakes. See `THE FOUR VERBS` below.
+##
 ## THE COLLIDERS ARE ON THEIR OWN LAYER AND THAT IS LOad-BEARING. `station/
 ## collision.py` sweeps a smooth shell at 1.5% of the render mesh's triangles
 ## because a capsule wedges on the corridor's 66 mm lighting channel; putting
@@ -49,11 +59,18 @@ extends Node3D
 const INTERACT_LAYER := 2
 
 # WHICH VERBS HAVE A RESPONSE IS NOT DECIDED HERE EITHER. `station/interact.py`
-# carries `RESPONDS` and stamps `responds` on every sidecar row, because `sit`,
-# `rest` and `serve` need a BODY to respond -- the player's own animation, or
-# whoever is behind the counter turning round -- and neither exists. A list here
-# would be a second copy of that judgement, free to drift the day one of them
-# gets a rig.
+# carries `RESPONDS` and stamps `responds` on every sidecar row; this file reads
+# the flag and never asks which verb it is in order to decide it.
+#
+# AS OF SESSION 4q THAT LIST IS EVERY PRESSABLE VERB, and getting there is what
+# this session was. It read `("open", "operate", "read", "store", "serve")` with
+# `sit` and `rest` excluded for an honest reason -- *"what responds to those is
+# a BODY, not a prop"* -- and what "responds" MEANT for the five that were in it
+# was: increment a counter, depress the prop four millimetres, print a line.
+# Identically. `open` on a locker and `read` on an arrivals board did the same
+# nothing. `store` had no inventory to move anything into, and `serve` ran no
+# transaction while `station/economy.py` sat at 25/25 with stock, prices and
+# tills nobody could reach. MASTER-PLAN A4b-1, A4b-2, A4b-3.
 
 
 class Item:
@@ -78,6 +95,25 @@ class Item:
 	## menu). The sidecar is baked, so those are a snapshot at the bake hour and
 	## a runtime that refreshes boards through the day refreshes only these.
 	var live: bool = false
+	## WHAT THE OTHER FOUR VERBS NEED, and not one of these is decided here.
+	## `station/interact.py::verb_payload` bakes them from the modules that
+	## already own the answer -- `rooms.PROP_KIND` for the shape, `economy` for
+	## the lines and the price, `consequence.sells_to` for the reader -- for
+	## exactly the reason the verb itself is baked: a second copy of any of
+	## those in GDScript is free to drift the day one of them changes.
+	##
+	## `kind`    `rooms.PROP_KIND`: `seat` and `bed` are things you get ON, so
+	##           the seat height is measured off this object; anything else is
+	##           something you sit AT and the seat is the player's fitted one.
+	## `holds`   the lines this place trades (`economy.stock_list`). Empty is a
+	##           real answer -- an empty container is somewhere to PUT things.
+	## `counter` `{sells, goods:[{good, cr}], tier:{rung: [ok, why]}}`. All
+	##           seven rungs, because a player's standing changes inside a
+	##           session and a counter baked at one rung would go on serving
+	##           somebody the ladder has demoted.
+	var kind: String = ""
+	var holds: Array[String] = []
+	var counter: Dictionary = {}
 	var parts: Array[MeshInstance3D] = []
 	var rest: Array[Vector3] = []       # each part's untouched origin
 	var centre := Vector3.ZERO
@@ -170,6 +206,12 @@ func collect(visual: Node, rows: Array, tag: String = "") -> int:
 		it.label = String(row2.get("label", it.token))
 		it.pressable = bool(row2.get("pressable", false))
 		it.responds = bool(row2.get("responds", false))
+		it.kind = String(row2.get("kind", ""))
+		for h in row2.get("holds", []):
+			it.holds.append(String(h))
+		var ctr = row2.get("counter")
+		if typeof(ctr) == TYPE_DICTIONARY:
+			it.counter = ctr
 		for p in parts:
 			var mi: MeshInstance3D = p
 			it.parts.append(mi)
@@ -323,9 +365,138 @@ func _give_box(it: Item) -> void:
 	it.body = sb
 
 
+# ===========================================================================
+#  THE LEDGER -- the world's mutable half, and the engine now WRITES it
+# ===========================================================================
+## WHAT THIS ENDS. `station/economy.py` is a 25/25 working economy -- stock,
+## derived prices, tills, wages, a fourteen-day trace in which a lurker crosses
+## the passage-home line on day 4 -- and until session 4q **the only runtime
+## consumer of any of it was `hud.gd` drawing a NUMBER out of the JSON file
+## Python wrote.** The bar, the market, the kiosks and the black market all
+## existed as geometry and not one of them would take your money.
+## `MASTER-PLAN` A4b-3.
+##
+## THE DECISIONS ARE PYTHON'S AND THE ARITHMETIC IS HERE, and that split is
+## deliberate rather than convenient. There is no call from GDScript into
+## `consequence.purchase`, so what crosses is that function's OUTPUT: the price
+## `economy.price` derived from one sourced anchor, and the six-rung verdict
+## `consequence.sells_to` reached for every rung (INV-342 -- a licit counter
+## checks the card because the identicard IS the credit card). This file looks
+## up the player's rung, applies the verdict, and moves the four numbers
+## `economy.buy` moves: purse down, shelf down, till up, one row appended.
+##
+## AND THE SPLIT IS GATED, because "one decision, two evaluations" is the shape
+## this repository has paid for three times. `python3 station/interact.py
+## --verify-buy BEFORE AFTER WHO PLACE GOOD` replays the same purchase through
+## `consequence.purchase` from the before-ledger and fails on a one-millicredit
+## disagreement with what this file wrote.
+##
+## IT IS NOT WRITTEN UNLESS SOMETHING HAPPENED. A launch that buys nothing
+## leaves the file untouched, so a shipped run is not a mutation.
+const LEDGER_REL := "../station/generated/economy.json"
+
+var _led: Dictionary = {}
+var _led_path := ""
+var _led_dirty := false
+## Transactions this session, for the gate to report. `sales` counts what the
+## till took; `refusals` counts what it would not.
+var sales := 0
+var refusals := 0
+
+
+func ledger_path() -> String:
+	if _led_path != "":
+		return _led_path
+	var a := _args()
+	if a.has("ledger"):
+		_led_path = String(a["ledger"])
+	else:
+		_led_path = ProjectSettings.globalize_path("res://").path_join(
+			LEDGER_REL).simplify_path()
+	return _led_path
+
+
+## Read the ledger and hand the player their own purse.
+##
+## WHICH PURSE IS THE PLAYER'S. `economy.json` keys purses by `npc_id` and a
+## played session has exactly one whose id begins `player:` -- `player.py::
+## player_id` mints that namespace and `resident.pool_id` deliberately does
+## not, so the two can never collide. Sorted first, so a ledger carrying more
+## than one is resolved the same way twice.
+func _load_ledger() -> bool:
+	var path := ledger_path()
+	var f := FileAccess.open(path, FileAccess.READ)
+	if f == null:
+		return false
+	var d = JSON.parse_string(f.get_as_text())
+	if typeof(d) != TYPE_DICTIONARY:
+		return false
+	_led = d
+	return true
+
+
+func _my_purse() -> Dictionary:
+	var purses = _led.get("purses", {})
+	if typeof(purses) != TYPE_DICTIONARY or purses.is_empty():
+		return {}
+	var keys: Array = purses.keys()
+	keys.sort()
+	for k in keys:
+		if String(k).begins_with("player:"):
+			return purses[k]
+	return purses[keys[0]]
+
+
+func _save_ledger() -> bool:
+	if not _led_dirty or _led.is_empty():
+		return false
+	var f := FileAccess.open(ledger_path(), FileAccess.WRITE)
+	if f == null:
+		push_error("interact: cannot write %s" % ledger_path())
+		return false
+	f.store_string(JSON.stringify(_led, " ", true))
+	f.close()
+	_led_dirty = false
+	return true
+
+
+## Put the player's live purse back into the ledger document. Called after
+## every move of money or goods, so the delta is one `_save_ledger` away from
+## disk at all times.
+func _sync_purse() -> void:
+	if _player == null or _led.is_empty() or String(_player.npc_id) == "":
+		return
+	var purses = _led.get("purses", {})
+	if typeof(purses) != TYPE_DICTIONARY:
+		return
+	var st = purses.get(_player.npc_id)
+	if typeof(st) != TYPE_DICTIONARY:
+		return
+	st["credits"] = _player.credits
+	st["carrying"] = _player.carrying.duplicate()
+	_led_dirty = true
+
+
 func watch(body: Node3D) -> void:
 	_player = body
 	_cam = body.get_node_or_null("Camera3D") as Camera3D
+	# THE PURSE ARRIVES BEFORE THE FIRST PROMPT DOES. Once per body: `watch()`
+	# is called again on every streamed cell that brings interactables, and
+	# re-reading the ledger there would throw away a purchase made in the cell
+	# before this one.
+	if _player != null and not _purse_done:
+		_purse_done = true
+		if _load_ledger():
+			var st := _my_purse()
+			if not st.is_empty() and _player.has_method("set_purse"):
+				_player.set_purse(st)
+				print("interact: purse %s (%s, %s) %.2f cr, carrying %d/%d"
+					% [_player.npc_id, _player.person, _player.tier_name,
+						_player.credits, _player.carrying.size(),
+						_player.carry_cap])
+		else:
+			print("interact: no ledger at %s -- nothing can be bought"
+				% ledger_path())
 	if _hud == null and not _args().has("no-hud"):
 		var layer := CanvasLayer.new()
 		layer.name = "UseHUD"
@@ -335,6 +506,9 @@ func watch(body: Node3D) -> void:
 		_hud.anchors_preset = Control.PRESET_CENTER_BOTTOM
 		_hud.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		layer.add_child(_hud)
+
+
+var _purse_done := false
 
 
 func doors(d: Node) -> void:
@@ -483,27 +657,335 @@ func use() -> bool:
 		if n.dot(away) < 0.0:
 			n = -n
 		it.push = n
-	# THE VERB DOES SOMETHING NOW, FOR ONE VERB. Everything above this line is
-	# what every verb has always done -- count the press, depress the prop,
-	# print a line -- and it is why `read` on an arrivals board showed a player
-	# exactly what `open` on a locker showed them: nothing. `read` is the first
-	# verb with a consequence, and the consequence is that the thing TELLS YOU
-	# WHAT IT SAYS.
+	# THE VERB DOES SOMETHING. Everything above this line is what every verb
+	# used to do -- count the press, depress the prop, print a line -- and it is
+	# why `read` on an arrivals board showed a player exactly what `open` on a
+	# locker showed them: nothing. 4p made `read` real. 4q makes the other
+	# three, and the count is the honest measure of it: `sit` is 37 declared
+	# instances across 29 places, `rest` 18 across 18, `store` 27 across 27,
+	# `serve` 30 across 28 of which 11 stand at a counter `economy.py` actually
+	# stocks. `python3 station/interact.py --coverage` prints it.
 	#
-	# The remaining six are still wiggles and the count says so rather than
-	# hiding it: `read` is 43 declared instances across 36 of the 129 places.
-	# `sit` and `rest` are not even in RESPONDS -- a player can press E on a
-	# chair and not sit down. See MASTER-PLAN A4b-1.
+	# `open` AND `operate` ARE NOT DISPATCHED HERE and that is not an omission.
+	# A door already has a mechanism and it is `door.gd`'s -- two ways to open
+	# one leaf is the failure mode this repository keeps rediscovering -- and a
+	# control's response IS the press travel applied above, which
+	# `used_travel_mm` measures off the mesh's own world AABB.
 	_read_text = ""
-	if it.verb == "read" and it.text != "":
-		_read_text = it.text
-		_read_until = _read_hold_s
-	print("USE %s place=%s token=%s verb=%s response=%s prompt=%s%s"
+	_said = ""
+	match it.verb:
+		"read":
+			if it.text != "":
+				_read_text = it.text
+				_read_until = _read_hold_s
+		"sit", "rest":
+			_said = _verb_sit(it)
+		"store":
+			_said = _verb_store(it)
+		"serve":
+			_said = _verb_serve(it)
+	_said_until = (_read_hold_s if _said != "" else 0.0)
+	print("USE %s place=%s token=%s verb=%s response=%s prompt=%s%s%s"
 		% [it.group, it.place, it.token, it.verb,
 			("press" if it.responds else "none"), _used_prompt,
 			("" if _read_text == "" else " READ=%s"
-				% _read_text.replace("\n", " / "))])
+				% _read_text.replace("\n", " / ")),
+			("" if _said == "" else " DID=%s" % _said)])
 	return true
+
+
+# ===========================================================================
+#  THE FOUR VERBS
+# ===========================================================================
+## SIT / REST -- and the thing that responds is the player's own body.
+##
+## WHICH HEIGHT, and it is `rooms.PROP_KIND`'s call rather than this file's. A
+## `seat` or a `bed` is something you get ON, so the surface is measured off
+## the object -- the support point of its own world box along the body's up,
+## which on a ring deck is radial and at every angle a different world
+## direction. Anything else carrying a sit or rest verb is something you sit
+## AT: a `table` (the register's own head-noun override), a `shrine`, a
+## `brazier`. For those the seat is the player's fitted knee height, which
+## `station/player.py::posture` derives per species and per stature.
+##
+## A SECOND PRESS STANDS YOU UP, on any seat. Otherwise the only way out of a
+## chair is a key the prompt never mentioned.
+func _verb_sit(it: Item) -> String:
+	if _player == null or not _player.has_method("sit_at"):
+		return ""
+	if String(_player.seated) != "":
+		var h0: float = float(_player.seat_used_m)
+		_player.stand_up()
+		return "stood up from %.2f m" % h0
+	var recline: bool = (it.kind == "bed")
+	var h := -1.0
+	if it.kind == "seat" or it.kind == "bed":
+		h = _surface_height(it)
+	if not _player.sit_at(h, it.verb, recline):
+		if float(_player.hip_m) <= 0.0:
+			return ("no posture -- this body has no purse, so nothing knows "
+				+ "how tall the person in the chair is")
+		return ""
+	var how := ("on its own measured top" if h > 0.0 else "on the fitted seat")
+	var line := "%s at %.2f m (%s), eye %.2f m -> %.2f m" % [
+		("lay down" if recline else "sat down"),
+		float(_player.seat_used_m), how, float(_player.eye_height_m),
+		float(_player.eye_now_m())]
+	if recline:
+		line += _sleep()
+	return line
+
+
+## LYING DOWN ON A BUNK ADVANCES THE STATION CLOCK TO WHEN THIS PERSON WAKES.
+##
+## IT FELL OUT CHEAPLY AND THAT IS THE ONLY REASON IT IS HERE. `life.gd`'s
+## `Clock` has carried `set_hour()` since it was written -- its own docstring
+## says *"a jump is indistinguishable from having waited, which is the whole
+## point of the design"* -- and the Director that owns it is already findable
+## by CAPABILITY, which is `npc.gd`'s rule and not a new one: a node that both
+## REPORTS an hour and APPLIES one is the Director, and a node that only
+## reports one (`dialogue.gd`) is a follower. So a sleep is: read the hour,
+## set it, and let the Director put every bound body where the new hour says
+## it is. Fifteen lines against a system that already existed.
+##
+## WHEN YOU WAKE IS NOT A CONSTANT. `wake_h` is `npc/schedule.py::wake_hour`
+## for THIS person's species, carried on the purse: a human wakes at 06:30 and
+## a Narn at 05:30, and a runtime that split the difference would be inventing
+## a rhythm the census already states.
+##
+## NO CLOCK, NO JUMP, AND IT SAYS SO. `walk.gd` builds no Clock -- every
+## headless walk gate in this repository runs without one -- so lying down
+## there is lying down, and the sentence a player gets says which it was
+## rather than silently doing nothing.
+func _sleep() -> String:
+	var ck := _find_clock()
+	if ck == null:
+		return " (no station clock in this build -- you lie down, time does not move)"
+	var wake: float = float(_player.wake_h)
+	if wake < 0.0:
+		return " (no wake hour on this card)"
+	var now: float = float(ck.call("hour"))
+	if now < 0.0:
+		return " (the clock has not started)"
+	var slept: float = fposmod(wake - now, 24.0)
+	var clock = ck.get("clock")
+	if clock == null or not clock.has_method("set_hour"):
+		return " (this clock cannot be set)"
+	clock.call("set_hour", wake)
+	ck.call("apply", wake)
+	return " -- slept %.2f h, %05.2f -> %05.2f EMT" % [slept, now, wake]
+
+
+## The station clock, found BY CAPABILITY rather than by node name -- and the
+## capability is two methods, not one, for the reason `npc.gd` records: a node
+## that only reports an hour is a follower, and a depth-first search finds one
+## of those before the Director on the shipped scene.
+var _clock_node: Node = null
+var _clock_looked := false
+
+
+func _find_clock() -> Node:
+	if _clock_node != null or _clock_looked:
+		return _clock_node
+	_clock_looked = true
+	var scene := get_tree().current_scene if get_tree() != null else null
+	for root in [scene, get_parent()]:
+		if root == null:
+			continue
+		var n := _search_clock(root, 0)
+		if n != null:
+			_clock_node = n
+			print("interact: station clock at %s" % n.get_path())
+			return n
+	return null
+
+
+func _search_clock(node: Node, depth: int) -> Node:
+	if depth > 4:
+		return null
+	if node.has_method("hour") and node.has_method("apply") and node != self:
+		return node
+	for c in node.get_children():
+		var got := _search_clock(c, depth + 1)
+		if got != null:
+			return got
+	return null
+
+
+## How high this object's top surface is above the player's own feet.
+##
+## THE SUPPORT POINT OF THE BOX ALONG THE BODY'S UP, which is exact for an
+## axis-aligned box and is not the same as `centre.y + half.y`: "up" here is
+## the radial direction out of the spin axis, so on the far side of the ring
+## the top of a bench is at a SMALLER world y than its centre. Taking it from
+## `half.y` alone would have seated a player 0.45 m into the floor for half of
+## every lap.
+func _surface_height(it: Item) -> float:
+	if _player == null:
+		return -1.0
+	var up: Vector3 = _player.body_up()
+	var top := it.centre + Vector3(
+		(it.half.x if up.x >= 0.0 else -it.half.x),
+		(it.half.y if up.y >= 0.0 else -it.half.y),
+		(it.half.z if up.z >= 0.0 else -it.half.z))
+	return (top - _player.global_position).dot(up)
+
+
+## STORE -- the inventory, and it moves BOTH ways.
+##
+## THERE WAS NO INVENTORY ANYWHERE. Zero references in 16,865 lines of
+## `godot/scripts/` as of the 4p audit, while `station/player.py` had carried
+## `IDENTICARD`, `KIT_BAG` and a `carrying` tuple since it was written --
+## MASTER-PLAN A4b-2. This is the verb that uses it.
+##
+## WHICH DIRECTION IS DECIDED BY THE CONTAINER, not by a second key: a
+## container with lines in it gives you one, an empty one takes one. The lines
+## are `economy.stock_list(place)` -- what that place's own register functions
+## trade -- so a crate in the black market holds contraband and a tray
+## dispenser in the mess hall holds nothing, because `mess_hall` is
+## ("catering", "crew_social") and sells no line.
+##
+## THE IDENTICARD IS NEVER THE THING YOU PUT DOWN, and that rule has a reason:
+## TRAFFIC-AND-CUSTOMS 6.4 makes it passport, licence, credit card and medical
+## file at once, `arrival.py` refuses entry without it, and losing it by
+## pressing E on a locker would be a character arc nobody chose.
+func _verb_store(it: Item) -> String:
+	if _player == null or not _player.has_method("take"):
+		return ""
+	if not it.holds.is_empty():
+		var want := String(it.holds[it.used % it.holds.size()])
+		if _player.bag_full():
+			return "no room for %s -- carrying %d/%d" % [want,
+				_player.carrying.size(), int(_player.carry_cap)]
+		if not _player.take(want):
+			return "no room for %s" % want
+		_sync_purse()
+		return "took %s -- carrying %d/%d" % [want,
+			_player.carrying.size(), int(_player.carry_cap)]
+	var give := ""
+	for x in _player.carrying:
+		if String(x) != "identicard":
+			give = String(x)
+	if give == "":
+		return "nothing to put in it"
+	_player.put(give)
+	_sync_purse()
+	return "put %s in it -- carrying %d/%d" % [give,
+		_player.carrying.size(), int(_player.carry_cap)]
+
+
+## SERVE -- the counter takes your money.
+##
+## EVERY DECISION HERE WAS MADE IN PYTHON. The price is `economy.price`'s, from
+## one sourced anchor through a class band; the verdict is
+## `consequence.sells_to`'s, evaluated at all seven rungs and baked into the
+## row. What this function does is the arithmetic `economy.buy` does, on the
+## same four numbers, and `station/interact.py --verify-buy` replays it through
+## `consequence.purchase` to prove the two agree.
+##
+## THE REFUSALS ARE THE POINT AS MUCH AS THE SALE. A till that cannot say no is
+## not a till: an empty shelf, a purse that is short, and a card the reader
+## will not take (INV-342 -- exactly one licit rung is excluded, and it is the
+## rung the black market exists to serve) each come back with the sentence a
+## keeper would actually give.
+func _verb_serve(it: Item) -> String:
+	if _player == null or not _player.has_method("set_purse"):
+		return ""
+	if it.counter.is_empty():
+		return ""
+	var tiers = it.counter.get("tier", {})
+	var rung := int(_player.tier)
+	var verdict = tiers.get(str(rung), null)
+	if typeof(verdict) == TYPE_ARRAY and verdict.size() == 2 \
+			and not bool(verdict[0]):
+		refusals += 1
+		return "REFUSED (%s): %s" % [String(_player.tier_name),
+			String(verdict[1])]
+	if not bool(it.counter.get("sells", false)):
+		refusals += 1
+		return "REFUSED: nothing is sold here"
+	if not _player.has_purse():
+		return "no ledger -- this counter cannot take money"
+	# WHAT IS ON THE SHELF IS LIVE, not baked. The row carries the LINES and
+	# their prices, which are deterministic; how many are left is the ledger's,
+	# and it moves every time anybody -- the player or `background_sales` --
+	# takes one.
+	var stock = _led.get("stock", {}).get(it.place, {})
+	var pick := {}
+	var goods = it.counter.get("goods", [])
+	for i in goods.size():
+		var g = goods[(it.used + i) % goods.size()]
+		if typeof(g) != TYPE_DICTIONARY:
+			continue
+		if int(stock.get(String(g.get("good", "")), 0)) > 0:
+			pick = g
+			break
+	if pick.is_empty():
+		refusals += 1
+		return "REFUSED: the shelf is empty"
+	var good := String(pick.get("good", ""))
+	var cr := float(pick.get("cr", 0.0))
+	if float(_player.credits) < cr:
+		refusals += 1
+		return "REFUSED: %s costs %.2f cr and you have %.2f" % [
+			good, cr, float(_player.credits)]
+	if _player.bag_full():
+		refusals += 1
+		return "REFUSED: nothing to carry it in -- %d/%d" % [
+			_player.carrying.size(), int(_player.carry_cap)]
+	# -- the four numbers `economy.buy` moves, and no fifth ------------------
+	# ROUNDED THE WAY PYTHON ROUNDS THEM, and that is load-bearing rather than
+	# tidy: `economy.buy` totals at 2 dp and `Player.spend` keeps a balance to
+	# MILLIcredits, because LAW-CRIME:730 puts millicredits below the credit
+	# and an `int()` truncation there once ate 0.20 cr of a 0.80 cr drink.
+	# `--verify-buy` fails on a one-millicredit disagreement, so these two
+	# snaps are what make it pass.
+	_player.credits = snappedf(float(_player.credits) - cr, 0.001)
+	_player.take(good)
+	stock[good] = int(stock[good]) - 1
+	var till = _led.get("till", {})
+	till[it.place] = snappedf(float(till.get(it.place, 0.0)) + cr, 0.01)
+	var rows = _led.get("sales", [])
+	rows.append({"day": int(_led.get("day", 0)), "at": it.place,
+		"good": good, "n": 1, "cr": snappedf(cr, 0.01),
+		"who": String(_player.npc_id)})
+	_led["sales"] = rows
+	_sync_purse()
+	_save_ledger()
+	sales += 1
+	return "bought %s for %.2f cr (%s) -- purse %.2f, till %.2f, %d left" % [
+		good, cr, String(_player.tier_name), float(_player.credits),
+		float(till[it.place]), int(stock[good])]
+
+
+## What the last verb DID, in one sentence, held for a few seconds. `hud.gd`
+## draws it under the prompt; the log line carries it as `DID=`.
+var _said := ""
+var _said_until := 0.0
+
+
+func said() -> String:
+	return _said
+
+
+## What this person has been PAID, out of the same ledger the purse came from.
+## `hud.gd` draws it under the balance; `economy.pay` is what puts it there and
+## `dockwork.py`'s shift loop is what calls that.
+func wages() -> float:
+	if _player == null or _led.is_empty():
+		return 0.0
+	var w = _led.get("wages", {})
+	if typeof(w) != TYPE_DICTIONARY:
+		return 0.0
+	return float(w.get(String(_player.npc_id), 0.0))
+
+
+## The till at one place, for a gate to read back without parsing the file.
+func till_at(place_key: String) -> float:
+	var t = _led.get("till", {})
+	if typeof(t) != TYPE_DICTIONARY:
+		return -1.0
+	return float(t.get(place_key, -1.0))
 
 
 ## What the last `read` said, and how long it stays up. Held rather than latched
@@ -524,6 +1006,10 @@ func _tick_read(delta: float) -> void:
 		_read_until -= delta
 		if _read_until <= 0.0:
 			_read_text = ""
+	if _said_until > 0.0:
+		_said_until -= delta
+		if _said_until <= 0.0:
+			_said = ""
 
 
 var _used_prompt := ""
@@ -565,9 +1051,90 @@ func refresh() -> Item:
 var _scanned_frame: int = -1
 
 
+# ===========================================================================
+#  THE VERB CHECK -- run in the SHIPPED scene, on the SHIPPED streamed cells
+# ===========================================================================
+## WHY THIS IS HERE AND NOT IN A HARNESS. This project has produced TEN
+## instances of finished machinery with no caller on the shipped path, and
+## number ten was `main.gd` never setting `crowd_glbs` while a Python harness
+## reported 963 walkers. The lesson `CLAUDE.md` draws from it is exact: *"a
+## static scan can tell you a caller exists; only running the thing tells you
+## the caller runs."*
+##
+## So the dispatch reports on itself, from inside the shipped scene, through
+## `use()` -- the same function the `E` key calls and the same one
+## `walk.gd::_try_use` calls after walking a body up to something. It picks its
+## subjects out of `_items`, which are the interactables the STREAMED CELLS
+## brought: nothing here loads a file, names a place, or builds an Item.
+##
+## `--verbcheck` GATES THE REPORT, NOT THE CODE. Without the flag this function
+## never runs and the build behaves exactly as it did; with it, the dispatch
+## that a keypress reaches is the dispatch that prints. The flag cannot make a
+## verb work that would not work for a player -- it can only make one say so.
+##
+## WHAT IT DOES NOT PROVE, stated because the distinction is the whole reason
+## the shipped launch is not sufficient on its own: it bypasses `scan()`, so it
+## says nothing about whether the player could get close enough or was looking
+## the right way. That is `walkable.py --deck ... --use`'s question and it is
+## answered separately, by walking a body at a seat and letting the prompt fire.
+func _verbcheck() -> void:
+	if _vc_done or _player == null:
+		return
+	_vc_done = true
+	# ONE OF EVERY (VERB, KIND), not one of every verb. `sit` reaches the
+	# player's body down two different routes -- a `seat` is measured off its
+	# own top and a `table` uses the fitted knee height -- and a check that
+	# stopped at the first `sit` row would exercise whichever the deck happened
+	# to list first and call the verb covered. Same argument as the one that
+	# split layer 2: a criterion that cannot fail on the case you have is not
+	# measuring the case you have.
+	var seen := {}
+	var n := 0
+	for pass_i in 2:
+		for it in _items:
+			var want := "%s/%s" % [it.verb, it.kind]
+			if seen.has(want) or not it.pressable:
+				continue
+			if it.verb == "open" or it.verb == "operate":
+				continue                  # door.gd's, and the press travel's
+			# THROUGH `use()`, NOT ROUND IT. `_prompt` is what `use()` acts on,
+			# so setting it and calling the real function is the shortest path
+			# that still runs every line a keypress runs -- the press travel,
+			# the snapshot, the dispatch and the log line.
+			_prompt = it
+			_used_prompt = "[E]  %s the %s" % [it.verb, it.label]
+			seen[want] = true
+			n += 1
+			use()
+			# Stand up again, so a check does not leave the shipped build with
+			# a seated player: `main.gd` reads `is_on_floor()` and the radial
+			# drop at frame 120 and neither should learn about this.
+			if String(_player.seated) != "":
+				_prompt = it
+				use()
+	print("VERBCHECK items=%d verbs=%s exercised=%d sales=%d refusals=%d "
+		% [_items.size(), verb_report(), n, sales, refusals]
+		+ "carrying=%s credits=%s seated=%s" % [
+			("-" if _player.carrying.is_empty()
+				else ",".join(_player.carrying)),
+			("-" if not _player.has_purse() else "%.3f" % _player.credits),
+			("-" if String(_player.seated) == "" else String(_player.seated))])
+
+
+var _vc_done := false
+var _vc_frames := 0
+
+
 func _physics_process(_delta: float) -> void:
 	refresh()
 	_tick_read(_delta)
+	# AFTER THE CELLS HAVE LANDED, not on the first frame. A streamed build
+	# wires its neighbours over the following seconds, so a check that fired at
+	# frame 0 would report on the start cell alone and call the rest missing.
+	if not _vc_done and _args().has("verbcheck"):
+		_vc_frames += 1
+		if _vc_frames >= 90:
+			_verbcheck()
 	# A PROMPT FOR SOMETHING THAT IS NO LONGER LOADED. `release()` clears it, so
 	# on a correct build this is zero; with `--no-unwire` the Item survives its
 	# cell and the eye happily offers to operate a console that has been
