@@ -1,6 +1,76 @@
 # Project State
 
-**Last updated:** 2026-08-02 · **Session 4r** — **the thing blocking the corridor was a person, and I put them there: 28 m → 238 m** · **4q** — **the free path has a gate, and it found the corridor is blocked 27 m from the spawn** · **4p** — **the deck streams: 657,880 resident triangles become 127,204** · **4o** — **a cell boundary was cutting doors and people in half** · **4n** — **the deck cuts into loadable cells, and the loader's real obstacle is named** · **4m** — **the streaming cell budget met a real deck, and the design survives** · **4l** — **the resident-triangle gate was about the deck; the build also loads 321,664 triangles of people** · **4k** — **every walker on the station was bald, for 188 triangles** · **4j** — **the 21 exposure frames describe the code again, and the verdict did not move** · **4i** — **every curved surface in the project was flat-shaded, and the crease angle is measured off the station** · **4h** — **IT IS PLAYABLE: press Play and you are standing in Blue Sector** · **4g** — **the Babcom terminal is a built device, and it shipped a logged mistake once before the log caught it** · **4f** — a per-token verb override · **4e** — **the naming-mismatch class is CLOSED: built-but-misnamed 26 → 0, resolving 302/357** · **4d** — **the bespoke rooms' interactables were never unbuilt, they were unnamed: 259/357 → 284/357** · **4c** — **the station is INTERACTABLE, the port is on a wall, and the 24-minute suites were one bad cache key** · **4b** — a police force, friction in metres, the plated shell, the fitting-reach fix
+**Last updated:** 2026-08-02 · **Session 4s** — **a sidestep that begins on contact is not a sidestep; and the bump gate was reporting an empty sample** · **4r** — **the thing blocking the corridor was a person, and I put them there: 28 m → 238 m** · **4q** — **the free path has a gate, and it found the corridor is blocked 27 m from the spawn** · **4p** — **the deck streams: 657,880 resident triangles become 127,204** · **4o** — **a cell boundary was cutting doors and people in half** · **4n** — **the deck cuts into loadable cells, and the loader's real obstacle is named** · **4m** — **the streaming cell budget met a real deck, and the design survives** · **4l** — **the resident-triangle gate was about the deck; the build also loads 321,664 triangles of people** · **4k** — **every walker on the station was bald, for 188 triangles** · **4j** — **the 21 exposure frames describe the code again, and the verdict did not move** · **4i** — **every curved surface in the project was flat-shaded, and the crease angle is measured off the station** · **4h** — **IT IS PLAYABLE: press Play and you are standing in Blue Sector** · **4g** — **the Babcom terminal is a built device, and it shipped a logged mistake once before the log caught it** · **4f** — a per-token verb override · **4e** — **the naming-mismatch class is CLOSED: built-but-misnamed 26 → 0, resolving 302/357** · **4d** — **the bespoke rooms' interactables were never unbuilt, they were unnamed: 259/357 → 284/357** · **4c** — **the station is INTERACTABLE, the port is on a wall, and the 24-minute suites were one bad cache key** · **4b** — a police force, friction in metres, the plated shell, the fitting-reach fix
+
+## Session 4s — A SIDESTEP THAT BEGINS ON CONTACT IS NOT A SIDESTEP
+
+### 1. The 87 off-floor frames were the crowd, and the control said so in one run
+
+4r left `--stream` red: `offfloor 87/3600` on the return leg, while the one-way walk over the same
+238 m was clean. The 87 turned out not to be one 1.4 s fall — 180 trace samples caught **none** of
+them, so they are scattered single frames.
+
+`--no-npc-collision` over the same round trip: **`offfloor=0/3600`.** One run, and it names the
+crowd.
+
+The mechanism is 4r's own sidestep, begun far too late. It engaged at the clearance itself —
+`r + 0.35 + 0.15` = 0.77 m — and clearing 0.77 m sideways at 1 m/s takes **0.77 s**, during which a
+player walking at 4.2 m/s into a walker doing 1.4 closes **4.3 m**. The capsule swept into the
+player regardless, and a capsule's rounded end depenetrates partly **upward**, lifting the body off
+the floor for a frame at a time.
+
+`_dodge_engage_m` derives the distance instead: clearance, plus the time the sidestep takes
+multiplied by the closing speed. **~5 m rather than 0.77 m.** Release at 1.5× it, for the
+hysteresis reason the cell loader needed in 4p.
+
+| | 4r | now |
+|---|---|---|
+| off the floor, round trip | 87/3600 | **0/3600** |
+| traverse | 238.45 m | 251.82 m |
+| cell loads / frees | 8 / 5 | 8 / 5 |
+| wired on return vs on departure | — | **1/9/5 against 1/9/5** |
+
+That last row is the round trip's whole point: `forget_freed` gave back exactly what it was holding
+when the body set off.
+
+### 2. AND THE BUMP GATE HAS BEEN REPORTING AN EMPTY SAMPLE AS A REFUTATION
+
+`--bump` said *"inhabitants are not solid -- the body got 0.04 m from somebody with their capsule on
+and 0.04 m with it off"*. It reads as a measured refutation. It is nothing of the kind:
+
+```
+_actors.json keys: group, place, pose, who, x, y, yaw, z
+actors with r_m > 0: 0 of 21
+```
+
+**No baked inhabitant has ever had a capsule.** `npc.gd::_give_body` returns early on
+`p.r_m <= 0.0`, so all 21 of them are holograms, and `walkable.py`'s candidate list is empty — so
+the test steered at the room target in both runs and compared 0.04 with 0.04. Two numbers that were
+never about a person.
+
+**Not caused by this session**, and checked rather than assumed: forcing `--no-stream` gives the
+identical `who=None r=None`. The crowd's *walkers* do carry `r_m`/`h_m` from `populace`; the CAST
+does not, because nothing writes it into the sidecar.
+
+The gate now says that, instead of pretending to measure. Fixing it is a `populace.body_capsule`
+call at sidecar-write time and it is the first item below.
+
+### 3. Gates
+
+| gate | result |
+|---|---|
+| `walkable.py --deck blue/0/0` | **PASS**, control firing |
+| `walkable.py --deck blue/0/0 --stream` | **PASS** — 8 loads, 5 frees, peak 153,252 of 180,000, wiring returned 1/9/5 against 1/9/5, control firing |
+| `walkable.py --deck blue/0/0 --bump` | **FAIL**, correctly and for a newly stated reason — see §2 |
+
+### 4. NEXT
+
+- **Give the cast their capsules.** `_actors.json` needs `r_m` and `h_m` per actor, from
+  `populace.body_capsule` — the same measurement the crowd's walkers already carry. 21 inhabitants
+  a deck are currently walk-through.
+- The walk gate still asserts **path length**, not net displacement: `traverse_m=125.93` with
+  `net_m=0.35` passes.
+- The near figure's silhouette is 32-gon faceted at 1 m; the affordable fix is runtime skinning.
 
 ## Session 4r — THE THING BLOCKING THE CORRIDOR WAS A PERSON, AND I PUT THEM THERE
 

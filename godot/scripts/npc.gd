@@ -47,6 +47,30 @@ const CORRIDOR_CLEAR_M := 2.16
 ## How fast somebody steps aside, in m/s. Under a walking pace (1.4 m/s), so a
 ## sidestep takes about one stride to clear a body's width.
 const DODGE_RATE_M_S := 1.0
+## The player's walking speed, from `player.gd::speed_m_s`. The second
+## cross-file copy in this file, for the same reason `PLAYER_R_M` is the first.
+const PLAYER_SPEED_M_S := 4.2
+## A walker's own pace, from `npc/animation.py`'s walk clip -- 1.4 m/s is the
+## human gait every `omega` in the crowd is derived from.
+const WALK_SPEED_M_S := 1.4
+
+
+## How far off a walker must START stepping aside, in metres.
+##
+## DERIVED, AND THE FIRST VERSION WAS OUT BY A FACTOR OF SIX. Engaging at the
+## clearance itself (0.77 m) meant the sidestep began when the pair were already
+## touching: clearing 0.77 m sideways at 1 m/s takes 0.77 s, and a player
+## walking at 4.2 m/s into a walker doing 1.4 closes **4.3 m** in that time. So
+## the capsule swept into the player anyway, and Godot pushed the player out of
+## it -- a capsule's rounded end pushes partly UPWARD, which took the body off
+## the floor for 87 frames of a 3,600-frame walk. `--no-npc-collision` gave
+## 0/3600 over the same ground, which is what identified the crowd.
+##
+## A sidestep has to BEGIN far enough away to FINISH before contact.
+func _dodge_engage_m(w: Walker) -> float:
+	var clear := w.r_m + PLAYER_R_M + YIELD_MARGIN_M
+	return clear + (clear / DODGE_RATE_M_S) * (PLAYER_SPEED_M_S
+		+ WALK_SPEED_M_S)
 
 var _people: Array = []
 var _body: Node3D
@@ -619,13 +643,14 @@ func advance_crowd(delta: float) -> void:
 			var p := Vector3(w.radius * cos(ahead), w.radius * sin(ahead),
 				w.z + w.dodge)
 			var gap := p.distance_to(eye)
+			var engage := _dodge_engage_m(w)
 			# HYSTERESIS, the same lesson the cell loader learned in 4p: engage
 			# close, release well clear. Without it a walker who has just
 			# stepped aside is no longer in the way, immediately steps back,
 			# and oscillates in the player's face.
-			if gap < clear:
+			if gap < engage:
 				w.dodging = true
-			elif gap > clear * 2.0:
+			elif gap > engage * 1.5:
 				w.dodging = false
 			if w.dodging:
 				_yielding += 1

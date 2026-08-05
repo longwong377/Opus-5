@@ -1104,7 +1104,21 @@ def main():
             walk_through = float(through.get("goto_best_m", -1.0))
             r = float(hit.get("bump_r_m", 0.0))
             who = hit.get("bump_who") or hit.get("bumped", "somebody")
-            if stop < 0 or walk_through < 0:
+            # NO CANDIDATE IS NOT A FAILED COMPARISON. `_actors.json` carries
+            # group, place, pose, who, x, y, z and yaw -- and no `r_m` or
+            # `h_m`, so `npc.gd::_give_body` returns early on every one of the
+            # 21 baked inhabitants and none of them has ever had a capsule.
+            # With no candidate this test steered at the room target instead
+            # and reported "0.04 m with the capsule on and 0.04 m with it off",
+            # which reads as a measured refutation and is an empty sample.
+            if hit.get("bumped") is None:
+                print(f"  FAIL  the bump test had nothing to walk into: no "
+                      f"actor in _actors.json carries `r_m`, so "
+                      f"`_give_body` returns early and the baked "
+                      f"inhabitants on this deck have no capsule at all. "
+                      f"The crowd's walkers do; the CAST does not.")
+                good = False
+            elif stop < 0 or walk_through < 0:
                 print(f"  FAIL  the bump test did not run  {hit.get('error')} "
                       f"/ {through.get('error')}")
                 good = False
