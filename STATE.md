@@ -613,6 +613,42 @@ and the Zocalo, so it needs a full `rooms.py --footprint` rebuild (23 min) plus 
 and those must not run while agents do. **`mainstage_node` needs a register decision, not a
 parameter** — nothing fits where it is.
 
+### 25.5 THE DOMES ARE AT z 7060 AND 7180, AND THE REGISTER SAYS 7960 — SETTLED, NOT GUESSED
+
+Earlier in this session I could not answer where `components.domes()` actually puts them, because
+`station/components.py` was a live agent's file and reading further would have been working in
+someone else's lane. **The agent's own new interface assertion answered it from inside**, naming
+the domes in its failure text: `observation_dome at 90.0 deg / z 7060` and `at 90.0 deg / z 7180`.
+Both at phase 90°, exactly as `PATCHES-4r-windows.md` §3 predicted from the schema
+(`z0: 7000, z1: 7240, rows: 2, phase_deg: 90`, Contract 5, authority 3).
+
+The register puts `cnc`/`obs_dome_1` at **0° / z 7960** and `obs_dome_2` at **90° / z 7960** —
+780 to 900 m and up to 90° away from the domes they name. **Hard rule 4 decides it**: inside and
+outside come from the same schema, the schema is authority 3 with a cited source, the register's z
+is authority 5, and the schema entry's own `src` line says *"Dome 1 is C&C — a place the player
+stands, so its position must survive into the interior layout."* It did not.
+
+Measured before deciding, which is what makes this a decision rather than a preference:
+
+| place | z | limit at its own z | outside by | z-aware radius | gravity |
+|---|---|---|---|---|---|
+| `obs_dome_2` | 7960 → **7180** | 110.0 → **223.3** | +101.6 → **−11.8** | **211.6 (unchanged)** | 0.760 g |
+| `cnc`, `obs_dome_1` | 7960 → **7060** | 110.0 → **160.2** | +101.6 → **+51.4** | 160.2 | 0.576 g |
+
+**`obs_dome_2` is fixed outright** — inside the hull with 11.8 m to spare, and its radius and
+gravity do not move at all. `cnc` and `obs_dome_1` improve by half and do not clear.
+
+**AND THE RESIDUAL IS PROBABLY MY GATE, NOT THE PLACEMENT.** `hull_fit` measures everything
+against `core_hull_radius_at`, which is the pressure hull with protrusions **stripped** by a 60 m
+morphological opening. A dome IS a protrusion — it reaches r 294.5 m — and C&C is *inside* one, so
+measuring it against the stripped hull asks the wrong question for exactly this class of place.
+Not fixed here, because the envelope profile is itself odd at 7060 (168.2 m, while the 7180 dome
+does show as 268.6 m), and I am not going to hand-wave a limit for the three places the whole
+finding rests on. **Stated as a known limitation of `hull_fit` rather than papered over.**
+
+**Queued with the rebuild, not applied**, because moving these three changes which z-cluster they
+belong to, and the cluster is what the deck assembler builds against.
+
 **ONE DISCREPANCY LEFT DELIBERATELY UNRESOLVED.** `station/vista.py --selftest` reports
 `obs_dome_1` as *"register r 209.9 m, hull r 116.5 m at z 7959 → +59.5 m outside"*. `hull_fit`
 says 211.6 m against a 110.0 m limit → +101.6 m. Three of those four numbers differ, so the two
