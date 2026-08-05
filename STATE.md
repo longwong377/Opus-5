@@ -680,6 +680,53 @@ That is `PATCHES-4r-windows.md` §6 — the room is authored facing forward past
 space, and half-turned it fills 0.740. Real, and queued with the rebuild because the turn moves the
 room's door.
 
+### 25.4 W5 IS RED — NOBODY NOTICES YOU WALK IN, AND NO CI STEP COULD HAVE SEEN IT
+
+Found by running `python3 station/walkable.py --deck blue/0/0` to refresh the stale interact
+sidecars, which is not what it was run for:
+
+```
+FAIL  deck blue/0/0  reached docking_bays and NOBODY noticed -- 0.0 deg turned
+```
+
+**W5 is *the loop*** — spawn → walk → use something → **an NPC reacts** — and CLAUDE.md's own row
+still quotes its passing form: *"7 of the room look up (123 deg turned, 4 deg off)"*. It regressed
+somewhere between 3z and now.
+
+**WHY NOTHING CAUGHT IT.** CI runs four walkable steps — `--rooms 6`, `--deck blue/0/0
+--deck-only --bump`, `--stream`, and `deck.py --sweep`. **Not one of them asserts that anybody
+looks up.** The full deck run that carries the assertion has never been a CI step. The single
+statement in this project that a player is *noticed* was in a gate nobody ran. *A gate that does
+not run is not a gate* — the sentence is in CLAUDE.md because 34 steps once sat behind a failing
+one for thirty pushes, and here it is again at the level of a step that was never added.
+
+Now CI step **`swalkloop`**, in the roll-up, going in RED on purpose.
+
+**IT IS NOT MINE, AND THAT IS MEASURED RATHER THAN ARGUED.** Reproduced on two consecutive runs,
+then reproduced **identically** with `station/{interior,rooms,directory}.py` checked out at
+`e5794e9`, the commit before this session's z-awareness work — same verdict, same `0.0 deg turned`.
+The files were restored and `git diff` against HEAD is empty.
+
+**AND ONE DIAGNOSIS OF MINE DIED ON THE WAY.** The built deck GLB has **323 meshes, 1,264,432
+triangles and zero `npc_` groups**, and I read that as *"there is nobody in the room"*. Wrong:
+`populace.populate("docking_bays", …)` returns `placed: 8`, `actors: 8` and **0 verts, 0 tris, 0
+groups** — the room's people are **instanced**, not baked into the merged mesh, so their absence
+from the GLB's group list is the design working. The walk gate's own guard confirms it from the
+other side: it fails with `actors_expected` set *and* `noticed` present in the verdict, which can
+only happen when `npc.gd` loaded and the cast exists at runtime. So the people are there and the
+turning is what is broken.
+
+*Twice this session an artefact's absence looked like content missing and turned out to be content
+stored somewhere I had not looked.*
+
+**Still open:** why `noticed` is 0. The `watch()` loop marks anybody within `notice_m` and steps
+their yaw toward the player; something between the instanced placement and that loop is not
+connecting. Next session's first job, and it now has a red gate pointing at it.
+
+**Also:** the run did refresh one sidecar — `bootstrap.py --check` goes from *4 of 4 carry no
+`counter`* to **3 of 4**. The remaining three are other z-clusters (`z7120`, `z7126`, `z7440`) and
+need their own invocations.
+
 ### 24.5 Open, and honestly
 
 * **The arrest chain behind a refusal is still Python.** A refused player is *told* they are

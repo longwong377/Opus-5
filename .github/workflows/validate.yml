@@ -380,6 +380,29 @@ jobs:
         continue-on-error: true
         run: python3 station/walkable.py --deck blue/0/0 --deck-only --bump
 
+      # W5 -- THE LOOP: spawn -> walk -> use something -> AN NPC REACTS. The
+      # three walkable steps around this one test rooms, solidity and a
+      # streamed cell; NONE of them asserts that anybody looks up, and the full
+      # deck run that does has never been a CI step. So the one assertion in
+      # this project that a player is NOTICED could regress silently, and did.
+      #
+      # RED TODAY, and established as PRE-EXISTING by direct A/B rather than
+      # assumed: `noticed=0, turned_deg=0.0` at `docking_bays`, reproduced on
+      # two consecutive runs, and reproduced IDENTICALLY with
+      # `station/{interior,rooms,directory}.py` checked out at the commit before
+      # session 4r's z-awareness work. CLAUDE.md's W5 row still quotes the
+      # passing form -- "7 of the room look up (123 deg turned, 4 deg off)" --
+      # so this regressed at some point between 3z and now with nothing running
+      # that could see it.
+      #
+      # It goes in RED on purpose. A gate that does not run is not a gate, and
+      # that sentence is in CLAUDE.md because 34 steps once sat behind a failing
+      # one for thirty pushes.
+      - name: The loop -- somebody notices you walk in
+        id: swalkloop
+        continue-on-error: true
+        run: python3 station/walkable.py --deck blue/0/0
+
       # ...AND THE SHIPPED SCENE ACTUALLY USES IT. The gate below proves a
       # streamed cell is a place; it proves nothing about whether a PLAYER ever
       # reaches one, and until session 4k none did: `boot.py` named one .glb and
@@ -1127,6 +1150,8 @@ jobs:
             echo "FAILED: snavgraph"; fail=1; fi
           if [ "${{ steps.sconfirm_the_schema_still_parses_and_is_f.outcome }}" != "success" ]; then
             echo "FAILED: sconfirm_the_schema_still_parses_and_is_f"; fail=1; fi
+          if [ "${{ steps.swalkloop.outcome }}" != "success" ]; then
+            echo "FAILED: swalkloop"; fail=1; fi
           if [ "${{ steps.senforcement.outcome }}" != "success" ]; then
             echo "FAILED: senforcement"; fail=1; fi
           if [ "${{ steps.shullfit.outcome }}" != "success" ]; then
