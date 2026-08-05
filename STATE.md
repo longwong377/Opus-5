@@ -1,6 +1,68 @@
 # Project State
 
-**Last updated:** 2026-08-02 · **Session 4t** — **the cast are solid, and one of them is standing in the doorway** · **4s** — **a sidestep that begins on contact is not a sidestep; and the bump gate was reporting an empty sample** · **4r** — **the thing blocking the corridor was a person, and I put them there: 28 m → 238 m** · **4q** — **the free path has a gate, and it found the corridor is blocked 27 m from the spawn** · **4p** — **the deck streams: 657,880 resident triangles become 127,204** · **4o** — **a cell boundary was cutting doors and people in half** · **4n** — **the deck cuts into loadable cells, and the loader's real obstacle is named** · **4m** — **the streaming cell budget met a real deck, and the design survives** · **4l** — **the resident-triangle gate was about the deck; the build also loads 321,664 triangles of people** · **4k** — **every walker on the station was bald, for 188 triangles** · **4j** — **the 21 exposure frames describe the code again, and the verdict did not move** · **4i** — **every curved surface in the project was flat-shaded, and the crease angle is measured off the station** · **4h** — **IT IS PLAYABLE: press Play and you are standing in Blue Sector** · **4g** — **the Babcom terminal is a built device, and it shipped a logged mistake once before the log caught it** · **4f** — a per-token verb override · **4e** — **the naming-mismatch class is CLOSED: built-but-misnamed 26 → 0, resolving 302/357** · **4d** — **the bespoke rooms' interactables were never unbuilt, they were unnamed: 259/357 → 284/357** · **4c** — **the station is INTERACTABLE, the port is on a wall, and the 24-minute suites were one bad cache key** · **4b** — a police force, friction in metres, the plated shell, the fitting-reach fix
+**Last updated:** 2026-08-02 · **Session 4u** — **nobody stands in the doorway any more** · **4t** — **the cast are solid, and one of them is standing in the doorway** · **4s** — **a sidestep that begins on contact is not a sidestep; and the bump gate was reporting an empty sample** · **4r** — **the thing blocking the corridor was a person, and I put them there: 28 m → 238 m** · **4q** — **the free path has a gate, and it found the corridor is blocked 27 m from the spawn** · **4p** — **the deck streams: 657,880 resident triangles become 127,204** · **4o** — **a cell boundary was cutting doors and people in half** · **4n** — **the deck cuts into loadable cells, and the loader's real obstacle is named** · **4m** — **the streaming cell budget met a real deck, and the design survives** · **4l** — **the resident-triangle gate was about the deck; the build also loads 321,664 triangles of people** · **4k** — **every walker on the station was bald, for 188 triangles** · **4j** — **the 21 exposure frames describe the code again, and the verdict did not move** · **4i** — **every curved surface in the project was flat-shaded, and the crease angle is measured off the station** · **4h** — **IT IS PLAYABLE: press Play and you are standing in Blue Sector** · **4g** — **the Babcom terminal is a built device, and it shipped a logged mistake once before the log caught it** · **4f** — a per-token verb override · **4e** — **the naming-mismatch class is CLOSED: built-but-misnamed 26 → 0, resolving 302/357** · **4d** — **the bespoke rooms' interactables were never unbuilt, they were unnamed: 259/357 → 284/357** · **4c** — **the station is INTERACTABLE, the port is on a wall, and the 24-minute suites were one bad cache key** · **4b** — a police force, friction in metres, the plated shell, the fitting-reach fix
+
+## Session 4u — NOBODY STANDS IN THE DOORWAY ANY MORE
+
+### 1. What 4t exposed
+
+Giving the cast capsules made their placement visible for the first time, and on `docking_bays`
+four of the nine stood on the door's own centre line:
+
+```
+room-local, door at across 0.00, depth +3.88
+  across +0.00  depth +3.23   Mateo Allan        <- 0.65 m inside the aperture
+  across +0.00  depth +1.69   David Nakamura
+  across -0.61  depth +2.62   Nadia Alexander
+  across +0.61  depth +0.46   Jeffrey Ramirez
+```
+
+`populace.populate` places bodies against furniture, floor area and species friction. **It has never
+been told where the door is**, and until they were solid that did not matter — a hologram in a
+doorway is invisible.
+
+### 2. The nudge, and where it lives
+
+`deck.build_deck` is the code that puts a room on the ring, so it is the code that knows which face
+the corridor is on. `_clear_the_door` runs in that re-pack rather than in `populace`, because
+threading a door position back into the placer would be a second description of the aperture.
+
+**The lane's half-width is derived from what walks down it**: a player capsule of 0.35 m, plus the
+body's own measured radius, plus a hand's breadth. It runs from the aperture to the middle of the
+room, because that is the distance `walkable.ARRIVED_M` measures against.
+
+**They are moved, not dropped**, and by the minimum that clears the lane — so somebody standing
+beside a door stays beside it:
+
+```
+  Mateo Allan      +0.00 -> -0.66      Nadia Alexander  -0.61 -> -0.68
+  David Nakamura   +0.00 -> -0.64      Jeffrey Ramirez  +0.61 -> +0.69
+```
+
+The two people at across 0.00 who are *past* the room's centre — Bo Rossi at depth −2.93 and Anna
+Franklin at −0.77 — are outside the lane and were correctly left alone. A room with fewer people in
+it to make a gate go green is the wrong answer.
+
+### 3. Gates
+
+| gate | result |
+|---|---|
+| `station/deck.py` | **56/56** (was 54/54 — two new) |
+| control: `door_nudged` | fires — 4 actors were moved, so the check is not passing because nobody was ever in the way |
+| `walkable.py --deck blue/0/0` | **PASS** — walks into `docking_bays`, 6.3 m → **0.04 m**, control firing |
+| `walkable.py --deck blue/0/0 --bump` | **PASS** — stopped 0.61 m from Mateo Allan; control reaches 0.04 m and walks through him |
+| `walkable.py --deck blue/0/0 --stream` | **PASS** — 8 loads, 5 frees, peak 153,252 of 180,000, wiring back to 1/9/5, control firing |
+| `walkable.py --deck blue/0/0 --use` | **PASS** — operates the docking clamp from 1.26 m, control firing |
+
+The doorway check runs on **every room on the deck**, in room-local terms, against the same rule
+that clears it — not on the one room that happened to fail.
+
+### 4. NEXT
+
+- The walk gate still asserts **path length**, not net displacement: `traverse_m=125.93` with
+  `net_m=0.35` passes today.
+- The near figure's silhouette is 32-gon faceted at 1 m; the affordable fix is runtime skinning.
+- `interact.gd`'s `_mp_` sibling rule still has two homes (GDScript and Python).
 
 ## Session 4t — THE CAST ARE SOLID, AND ONE OF THEM IS STANDING IN THE DOORWAY
 

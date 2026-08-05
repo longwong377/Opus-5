@@ -712,6 +712,50 @@ def room_shell_for(schema, profile, meta, place, door_angle_deg):
 CORRIDOR_INSTANCED = True
 
 
+# The player capsule's radius, from `walk.gd::_spawn_player`. Third copy in the
+# project, after `npc.gd`'s two; the aisle has to be wide enough for the thing
+# that walks down it and there is no other source for that number here.
+PLAYER_R_M = 0.35
+# Slack either side of the aisle, so clearing it is not marginal. A hand's
+# breadth: enough that a body brushing past does not register a collision,
+# small enough that a room does not part down the middle.
+AISLE_MARGIN_M = 0.05
+
+
+def _clear_the_door(act, half_d, half_w):
+    """Move one actor out of the door's approach lane. True if they moved.
+
+    ROOM-LOCAL COORDINATES: x across, z along the station axis, and the door is
+    at `z = +half_d` on the centre line -- see `_place_local`. The lane runs
+    from the aperture to the middle of the room, because that is the distance a
+    player has to cover to be IN the room rather than in its doorway, and
+    `walkable.ARRIVED_M` is measured against the room's centre.
+
+    THE LANE'S HALF-WIDTH IS DERIVED FROM WHAT WALKS DOWN IT: a player capsule
+    of 0.35 m plus the body's own measured radius plus a hand's breadth. Nobody
+    is moved further than that, so somebody standing beside a door stays beside
+    it, and nobody is moved at all whose radius is zero -- an actor with no
+    capsule cannot block anything.
+    """
+    r = float(act.get("r_m", 0.0))
+    if r <= 0.0:
+        return False
+    ax, az = float(act["x"]), float(act["z"])
+    if az < 0.0 or az > half_d:
+        return False
+    lane = PLAYER_R_M + r + AISLE_MARGIN_M
+    if abs(ax) >= lane:
+        return False
+    # Out to the side they are already nearest. Dead centre is a tie, and it is
+    # broken on the sign of their own depth so that a column of people standing
+    # on the centre line does not all move the same way and re-form a wall.
+    side = 1.0 if ax > 0.0 else (-1.0 if ax < 0.0 else
+                                 (1.0 if int(az * 100.0) % 2 == 0 else -1.0))
+    room = max(0.0, half_w - r)
+    act["x"] = side * min(lane, room)
+    return True
+
+
 def cell_partition(verts, tris, sector, ring, deck, schema=None, profile=None,
                    groups=None, whole=None):
     """Which streaming cell each triangle of an ASSEMBLED deck falls in.
@@ -1104,7 +1148,33 @@ def build_deck(schema, profile, sector, ring, deck, with_rooms=True,
         # carry that same name or the two cannot be matched. And the yaw needs
         # the room's own angular position added, because the room is rotated
         # onto the ring and the person is rotated with it.
+        # -- THE WAY IN IS KEPT CLEAR ---------------------------------------
+        # `populace.populate` places bodies against furniture, floor area and
+        # species friction. It has never been told where the DOOR is, and until
+        # session 4t that did not matter: the cast had no capsules, so a person
+        # standing in a doorway was a hologram and a player walked through them.
+        # Giving them capsules made the placement visible -- and on
+        # `docking_bays` four of the nine stood on the door's own centre line,
+        # one of them 0.65 m inside the aperture, so the body stopped 3.86 m
+        # short of a room it used to enter.
+        #
+        # THE DOOR IS KNOWN HERE AND NOT THERE, which is why the nudge lives in
+        # this loop rather than in `populace`: this is the code that puts a room
+        # on the ring, so it is the code that knows which face the corridor is
+        # on. Threading a door position back into the placer would be a second
+        # description of the aperture.
+        #
+        # They are MOVED, NOT DROPPED. A room with fewer people in it to make a
+        # gate go green is the wrong answer, and the nudge is the minimum that
+        # clears the lane -- so somebody standing beside the door stays beside
+        # the door.
+        half_d = room_interior_half_m(schema, profile, q)
+        half_w = room_half_w_m(schema, profile, q)
         for act in rep.get("actors", ()):
+            act = dict(act)
+            moved = _clear_the_door(act, half_d, half_w)
+            if moved:
+                stats["door_nudged"] = stats.get("door_nudged", 0) + 1
             wx, wy, wz = _place_local(
                 [(act["x"], act["y"], act["z"])], radius,
                 q["angle_deg"], q["z_m"])[0]
@@ -1346,6 +1416,37 @@ def _selftest():
         radii = {round(float(a["r_m"]), 3) for a in solid}
         check("...measured per individual rather than a constant",
               len(radii) > 1, f"{len(radii)} distinct radii across {len(solid)}")
+
+    # -- AND NOBODY IS STANDING IN THE DOORWAY -----------------------------
+    # The lane a player walks from the aperture to the middle of a room has to
+    # be empty of bodies, now that bodies are solid. Checked in ROOM-LOCAL
+    # terms against the same rule that clears it, and on every room on the
+    # deck rather than on the one that happened to fail.
+    blocked = []
+    for a in acts:
+        pl = dr.by_key(a["place"]) if a.get("place") else None
+        if pl is None:
+            continue
+        hd = room_interior_half_m(schema, profile, pl)
+        ang = math.degrees(math.atan2(a["y"], a["x"])) - pl["angle_deg"]
+        across = math.radians((ang + 180.0) % 360.0 - 180.0) * math.hypot(
+            a["x"], a["y"])
+        depth = a["z"] - pl["z_m"]
+        r = float(a.get("r_m", 0.0))
+        if r > 0.0 and 0.0 <= depth <= hd \
+                and abs(across) < PLAYER_R_M + r:
+            blocked.append((a["place"], round(across, 2), round(depth, 2)))
+    check("nobody is standing in a doorway", not blocked,
+          f"{len(blocked)} in a door lane: {blocked[:3]}")
+    # THE CONTROL, and it costs nothing because the nudge counts itself.
+    # `door_nudged` is how many actors `_clear_the_door` had to move on this
+    # deck -- which is to say, how many `populace` put in a door lane. If it is
+    # zero the check above is passing because nobody was ever in the way, and
+    # it would stop meaning anything the moment somebody was.
+    check("control: without the nudge somebody IS in a door lane",
+          int(s.get("door_nudged", 0)) > 0,
+          f"{s.get('door_nudged', 0)} actors were moved out of a lane -- if 0, "
+          f"the check above proves nothing")
 
     # -- CUTTING THE DECK INTO CELLS LOSES NOTHING -------------------------
     # THE FAILURE THIS GUARDS IS INVISIBLE IN A RENDER. A partition that drops
