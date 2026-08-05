@@ -6287,11 +6287,27 @@ DRUM_CALIBRATION = {
             "ground": 89.87, "guideways": 79.50, "endcap_fore": 5.52,
             "endcap_aft": 0.00, "spokes": 1.92, "core": 2.43, "trams": 0.01,
             "townscape": 0.00,
+                    # MEASURED IN 4q, not estimated. `drum_dressing` put 1,945
+            # features on the drum floor and this row did not exist, so
+            # the gate above went red on all three framings -- correctly:
+            # its own comment says a part added to the drum fails here
+            # until every framing has measured it, which is the only
+            # moment anyone would think to. Method is this file's own:
+            # render the framing at contribution_res whole and with
+            # `--omit dressing`, count the pixels that move.
+            "dressing": 39.08,
         },
         "largest_region": {
             "ground": 82.51, "guideways": 65.91, "endcap_fore": 5.52,
             "endcap_aft": 0.00, "spokes": 1.90, "core": 1.32, "trams": 0.01,
             "townscape": 0.00,
+                    # Measured with the contribution above, off the same pair of
+            # frames: the largest CONTIGUOUS run of moved pixels. The
+            # dressing is a scatter of 1,945 separate objects and still
+            # comes back as one body, because at these framings the town
+            # blocks tile the far wall of the barrel into a continuous
+            # mass rather than a sprinkle.
+            "dressing": 32.08,
         },
     },
     # THE GARDEN. Composition matched to `garden.png` -- the authority-1 frame
@@ -6326,11 +6342,27 @@ DRUM_CALIBRATION = {
             "ground": 59.40, "guideways": 54.61, "endcap_fore": 0.00,
             "endcap_aft": 11.85, "spokes": 1.05, "core": 1.81,
             "trams": 6.16, "townscape": 33.20,
+                    # MEASURED IN 4q, not estimated. `drum_dressing` put 1,945
+            # features on the drum floor and this row did not exist, so
+            # the gate above went red on all three framings -- correctly:
+            # its own comment says a part added to the drum fails here
+            # until every framing has measured it, which is the only
+            # moment anyone would think to. Method is this file's own:
+            # render the framing at contribution_res whole and with
+            # `--omit dressing`, count the pixels that move.
+            "dressing": 32.30,
         },
         "largest_region": {
             "ground": 40.74, "guideways": 51.82, "endcap_fore": 0.00,
             "endcap_aft": 5.32, "spokes": 0.68, "core": 1.79, "trams": 5.10,
             "townscape": 32.14,
+                    # Measured with the contribution above, off the same pair of
+            # frames: the largest CONTIGUOUS run of moved pixels. The
+            # dressing is a scatter of 1,945 separate objects and still
+            # comes back as one body, because at these framings the town
+            # blocks tile the far wall of the barrel into a continuous
+            # mass rather than a sprinkle.
+            "dressing": 20.56,
         },
     },
     # THE TRAM. `trams` is 0.01% of the wide frame -- thirteen pixels -- so the
@@ -6370,11 +6402,27 @@ DRUM_CALIBRATION = {
             "ground": 70.19, "guideways": 77.59, "endcap_fore": 0.00,
             "endcap_aft": 0.00, "spokes": 0.00, "core": 11.19,
             "trams": 6.49, "townscape": 27.19,
+                    # MEASURED IN 4q, not estimated. `drum_dressing` put 1,945
+            # features on the drum floor and this row did not exist, so
+            # the gate above went red on all three framings -- correctly:
+            # its own comment says a part added to the drum fails here
+            # until every framing has measured it, which is the only
+            # moment anyone would think to. Method is this file's own:
+            # render the framing at contribution_res whole and with
+            # `--omit dressing`, count the pixels that move.
+            "dressing": 47.26,
         },
         "largest_region": {
             "ground": 33.34, "guideways": 75.34, "endcap_fore": 0.00,
             "endcap_aft": 0.00, "spokes": 0.00, "core": 10.94,
             "trams": 5.78, "townscape": 27.03,
+                    # Measured with the contribution above, off the same pair of
+            # frames: the largest CONTIGUOUS run of moved pixels. The
+            # dressing is a scatter of 1,945 separate objects and still
+            # comes back as one body, because at these framings the town
+            # blocks tile the far wall of the barrel into a continuous
+            # mass rather than a sprinkle.
+            "dressing": 43.89,
         },
     },
 }
