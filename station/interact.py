@@ -319,7 +319,10 @@ def provides(group):
 # is merely not yet refreshed.
 LIVE_READ = ("info_board", "arrivals_board", "departure_board", "monitor_wall",
              "public_information_monitor", "comms_channel", "babcom_terminal",
-             "isn_screen", "menu_display", "price_board")
+             "isn_screen", "menu_display", "price_board",
+             # The bridge's own board. It is a function of the hour AND of the
+             # standing orders, which is the strongest `live` case in the set.
+             "tactical_display", "console")
 
 _READ_CACHE = {}
 
@@ -355,6 +358,17 @@ def read_text(place_key, token, hour=13.0, day=0):
                     if hasattr(economy, "lines_at") else []:
                 lines.append(str(ln))
             out = "\n".join(lines)
+        elif t in ("tactical_display", "console") and place_key == "cnc":
+            # WHAT THE WATCH FLOOR IS SHOWING. Derived in
+            # `station/cnc_ops.py::board_text` from `plant_systems`, `traffic`,
+            # `npc/security` and `npc/schedule`; not one line of it is written
+            # here, and with no standing order every plant desk reads NORMAL
+            # because that is what nominal means.
+            #
+            # ABOVE the `level_plaque` branch on purpose: `console` is a common
+            # token and this must claim it only in C&C.
+            import cnc_ops                                      # noqa: PLC0415
+            out = cnc_ops.board_text(hour=hour)
         elif t == "level_plaque" and q is not None:
             out = ("%s\n%s ring %d deck %d" % (q["name"], q["sector"].upper(),
                                                 q["ring"], q["deck"]))

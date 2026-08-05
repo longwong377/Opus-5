@@ -113,6 +113,22 @@ jobs:
         continue-on-error: true
         run: python3 station/coldstart.py --g7
 
+      # C&C READS AND ACTS ON REAL STATION STATE. `plant_systems` gained a
+      # failure model in 4q and `grep -c 'cnc' station/plant_systems.py` was
+      # ZERO -- the room whose whole purpose is watching the station watched
+      # nothing. Nine desks derived from SYSTEM_KEYS + the register's own
+      # functions, seated by time-to-consequence; four orders that CALL the
+      # function implementing them; three states that are wear_at's own.
+      - name: The C&C watch floor
+        id: scnc_ops
+        continue-on-error: true
+        run: python3 station/cnc_ops.py --gate
+
+      - name: Command and Control
+        id: scommand_control
+        continue-on-error: true
+        run: python3 station/command_control.py
+
       - name: The circulation network -- can you get from here to there
         id: scirculation
         continue-on-error: true
@@ -888,6 +904,10 @@ jobs:
             echo "FAILED: sgravity"; fail=1; fi
           if [ "${{ steps.scorpse.outcome }}" != "success" ]; then
             echo "FAILED: scorpse"; fail=1; fi
+          if [ "${{ steps.scnc_ops.outcome }}" != "success" ]; then
+            echo "FAILED: scnc_ops"; fail=1; fi
+          if [ "${{ steps.scommand_control.outcome }}" != "success" ]; then
+            echo "FAILED: scommand_control"; fail=1; fi
           if [ "${{ steps.scirculation.outcome }}" != "success" ]; then
             echo "FAILED: scirculation"; fail=1; fi
           if [ "${{ steps.sperformance_budgets.outcome }}" != "success" ]; then

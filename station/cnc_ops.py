@@ -675,8 +675,7 @@ PATCH = '''\
 +             # The bridge's own board. It is a function of the hour AND of the
 +             # standing orders, which is the strongest `live` case in the set.
 +             "tactical_display", "console")
-@@ read_text
-         elif t == "level_plaque" and q is not None:
+@@ read_text -- INSERTED ABOVE the `level_plaque` branch, not below it
 +        elif t in ("tactical_display", "console") and place_key == "cnc":
 +            # WHAT THE WATCH FLOOR IS SHOWING. Derived in
 +            # `station/cnc_ops.py::board_text` from `plant_systems`,
@@ -685,6 +684,15 @@ PATCH = '''\
 +            # reads NORMAL because that is what nominal means.
 +            import cnc_ops                                     # noqa: PLC0415
 +            out = cnc_ops.board_text(hour=hour)
+         elif t == "level_plaque" and q is not None:
+             out = ("%s\\n%s ring %d deck %d" % (q["name"], q["sector"].upper(),
+                                                 q["ring"], q["deck"]))
+
+AND ONE CAVEAT THIS PATCH CANNOT CARRY ITSELF: `interact.sidecar()` bakes the
+string at export time, so the board a player reads is the board at the bake
+hour and at the bake's standing orders. `LIVE_READ` is exactly the flag that
+says which strings a runtime should refresh, which is why the token is added to
+it -- but nothing refreshes any of the ten tokens already in that tuple either.
 '''
 
 

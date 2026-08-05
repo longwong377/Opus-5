@@ -8251,3 +8251,55 @@ posts along the streets", "palm trees lining streets". The previous placement wa
 **Overturned by.** A streaming budget for the drum — everything here is built for one eye at one
 instant, exactly as `drum_ground.visible_set` and `drum_dressing.dressing_set` are — or any change
 to `budget.DRUM`.
+
+## INV-460 — Where a watch officer sits is derived from how long they have got
+
+**What.** `station/cnc_ops.py` gives C&C nine desks — one per `plant_systems.SYSTEM_KEYS` (power, air, water, food, waste, rotation) plus one per function `directory.PLACES` declares for `cnc` (`station_ops`, `traffic_control`, `defence_command`) — and seats them by `TIME_TO_CONSEQUENCE`: the hours between the thing going wrong and somebody noticing. The five shortest take the dais, fastest at the arc's centre where the reference frame puts the standing officer, alternating outward; the four longest take the pit.
+**Why it is derived rather than chosen.** Every value is another module's published number and none of them was written for this: power `plant_systems.survives_h` **0.00 h** (no store — a gigawatt cannot be put in a tank), ops 24 / `incident.visible_faults_per_day` **0.05 h**, defence `npc/security.beat('blue')['period_s']` **0.28 h**, traffic 1 / `traffic.rate_per_hour` at the arrival peak **0.30 h**, air **5.77 h**, waste **24 h**, water and food **720 h** (L-04's 30-day reserve), rotation indefinite (INV-427 says it is not derivable). A seat map somebody liked the look of could not be refuted by anything in the repository; this one changes if any of six modules changes.
+**Checkable.** `python3 station/cnc_ops.py --gate` prints the ladder and asserts the dais holds the five fastest and that the officer's own console is the fastest desk on the station, with a control that gives power a day of buffer and watches it lose the centre seat. `6 + 3 == 5 + 4` is asserted against `command_control.CONSOLE_N` and `PIT_CONSOLE_N`, so a seventh system or a re-tagged register fails rather than silently leaving a desk with no console.
+**Overturned by.** any show frame that identifies what a named C&C station is for — one legible console legend would replace the whole derivation with a reading.
+
+## INV-461 — The C&C window is four tiers, not sixteen bars
+
+**What.** The window is built as: glazing in three concentric COURSES of trapezoidal panes (12, 24 and 24 divisions, at radius fractions 0.14–0.40, 0.40–0.62 and 0.80–1.00), a broad structural BAND at 0.62–0.80 with forty STUDS along each edge, sixteen primary MULLIONS hub to rim with finer secondaries inside each course, a rim COLLAR, and sixteen radial RIBS running 1.35 m out past the rim across the bulkhead. The bulkhead itself is one plate with a circular 48-gon aperture (`interior_kit._plate_with_hole`), panelled, with two circular BOSSES at ±4.55 m, y 5.15 m.
+**Measured, not remembered.** `tools/refzoom.py "reference/03-sector-blue/comand and contorl.webp" --box 0.24 0.05 0.78 0.50 --scale 2`. Radii read off that crop against the header's fitted outer radius of 153 px: hub 21 px, first course to 61, second to 95, band 95–122, outer course 122–153 → 0.14, 0.40, 0.62, 0.80, 1.00.
+**Why it had to be rebuilt.** The previous build was sixteen flat bars, one flat ring, one flat hub and a single black disc in a SQUARE hole — `docs/craft-4q-cnc-before-half.png` at the rubric's half distance is a wagon wheel painted on a black rectangle, which is `docs/AAA-STANDARD.md` C1 verbatim, in the one object the whole room is arranged around.
+**Checkable.** `command_control._selftest` asserts the glazing is in ≥3 concentric courses, that the band is studded, that a mullion vertex exists past the rim, and that **no bulkhead vertex lies inside the aperture radius** — which is what "the hole is round" means and what the square version fails.
+**Overturned by.** a wider or less compressed frame of the same set; the pane counts are the weakest of the five numbers because the outer course is cut by the frame edge on both sides.
+
+## INV-462 — C&C has a ceiling, at `rooms.articulate`'s own height
+
+**What.** A coffered soffit at `DOME_H_M * 0.22` = 7.48 m over the whole 14 × 12 m floor, seven beams 0.34 m deep, with a run of `light_service_tube` battens down the centreline.
+**Why that height and not a new one.** This module already passes `DOME_H_M * 0.22` to `rooms.articulate` as the height its dado, rail and cornice bands are laid to, so a ceiling anywhere else leaves the bands ending in air. One constant, two consumers.
+**Authority 5, and what is NOT invented.** The reference frame is cropped above the light courses and shows only a dark curved soffit, so what is built is the DARK and the STRUCTURE — no pattern the frame does not carry. Before this the room had nothing above the wall bands at all: every frame ever taken in C&C has a black void over it, which reads as an unroofed set and is why the dais keys appear to hang from nothing.
+**Overturned by.** any frame of C&C that tilts up.
+
+## INV-463 — The annunciator over the window
+
+**What.** A status board on the forward bulkhead at y = 6.94 m, 6.20 m wide, carrying one lamp per desk in `cnc_ops.seating()`'s own order, each lit green / amber / red by that desk's state. Group `prop_tactical_display`, which is `cnc`'s own declared interactable and an already-bound material name.
+**Why it is over the window.** Sightline: the dais faces the window, so that is the one surface every station on the floor is already looking at. That siting is this module's choice; what constrains its APPEARANCE is the reference's own wall instrument cluster (top left of frame — a dark panel carrying small lit rectangles).
+**Why it exists at all.** `directory.PLACES` has given `cnc` a `tactical_display` since layer 1 and `interact.resolve_place` was satisfying it by ALIAS, onto geometry that is not a display. The room declared a thing it did not have.
+**Checkable.** `command_control._selftest` asserts the group is present and that the status stacks carry a dark lamp as well as a lit one; `cnc_ops --engine-gate` renders a well station and a broken one and diffs the frames.
+**Overturned by.** a frame showing what is actually above C&C's window.
+
+## INV-464 — Four wall courses a side; two of them carry the lamps
+
+**What.** Each side wall carries four horizontal light courses (at y = 1.15, 2.35, 3.55, 4.75 m), each a recessed trough with a reflector cheek above and below, a lens, a divider every ~1.55 m and an end cap. The two middle courses are `cc_light_strip`; the outer two are `light_service_tube`.
+**Why the split, and it is a limitation rather than a design.** `materials.py`'s own source line for `light_wall_course` — measured from this room's authority-1 frame — says *"Four horizontal courses per side wall at a measured 1.2 m vertical pitch"*, and this module has built TWO since it was written. But `export_scene.FIXTURE_LIGHTING` hangs one lamp on every connected body of a `cc_light_strip` span and `export_scene._selftest` asserts there are exactly four bodies; emitting four courses a side would put eight lamps in a room whose exposure was solved against four. `light_service_tube` is bound, emissive, and not in `FIXTURE_LIGHTING`, so the other two courses are visible without changing a rig this session does not own.
+**Segmentation is measured.** `tools/refzoom.py ... --box 0.0 0.08 0.30 0.72 --scale 3`: the tubes read against the 1.05 m handrail in the same crop at ~1.55 m with ~0.19 m dark breaks.
+**Overturned by / closed by.** the patch reported with this session: make all four `cc_light_strip`, change `export_scene._selftest`'s `_courses == [4]` to `[8]`, and re-solve `ROOM_EXPOSURE["mod:command_control"]` against the reference.
+
+## INV-465 — The standing-order log is the station's plant state
+
+**What.** `station/generated/cnc/orders.json` records what C&C has ordered and not undone — today only `{"isolate": [unit, ...]}`. `cnc_ops.apply_orders()` pushes it into `plant_systems.set_offline`, which is the module that calls itself "THE ONLY WRITER" and which had no caller outside its own gate. `command_control.command_control()` reads it when it builds the room, so the consoles, the annunciator and the pit's registers show the state the orders produced.
+**Why a file and not an argument.** The bridge between this simulation and the engine is one-way (MASTER-PLAN A4b): Python bakes, GDScript reads, and `tools/export_scene.py` runs in its own process. A standing order that only existed inside one interpreter could not change a rendered frame, and a rendered frame is the only evidence available here that the board reaches a player.
+**Absence is nominal, and that is asserted.** With no file every plant desk is NORMAL because `spares == design_spares` is the definition of nominal, so `state_of_room()` short-circuits without importing `plant_systems` at all — which keeps `deck.py --sweep`, `rooms.py --footprint` and `variety.py` at exactly their present cost. `--gate` asserts the short-circuit equals the long way round at 03, 08, 13 and 20, with a control that isolates the station's only water plant and watches the shortcut NOT be taken.
+**Overturned by.** a runtime that can call Python, which would make the log a cache rather than the state.
+
+## INV-466 — Three console states, and no threshold was chosen
+
+**What.** Every desk reads NORMAL, CAUTION or ALARM. ALARM is `plant_systems.deficit > 0` — the plant cannot meet the load now. CAUTION is `spares < design_spares` — the redundancy the station was built with has been spent. NORMAL is neither.
+**Why there is no number in it.** Those are `plant_systems.wear_at`'s own three states, which already carry a derived multiplier each (1.0, 1/`CORRECTIVE_SHARE`, the roster ceiling). A threshold nobody chose cannot be tuned to make a board look calm, and the alternative — "amber at 80% of capacity" — would have been the first authored rate in a chain that deliberately has none.
+**The three non-plant desks take the same shape from their own modules' boundaries.** Traffic is ALARM when `traffic.berths_in_use` leaves no free bay, because a ship with nowhere to go is `INC-HOLD`; defence is ALARM when `security.roving_pairs` reaches zero; ops is ALARM when `plant_systems.fault_arrivals_per_hour` exceeds `corrective_capacity_per_hour`, which is INV-350's own bound.
+**Checkable.** `cnc_ops --gate` asserts all six plant desks NORMAL at 13:00 with nothing isolated, then isolates `fusion_core` and `reactor_hall` and measures the effect: INC-BROWNOUT ×2,190 at every power place, INC-FAULT ×16.9 at the plant, station fault arrivals 20.9/h → 113.7/h, and a shed plan naming **61 places with 78,271 people standing in them**.
+**Overturned by.** an on-screen brownout showing which lights step down first — S1 "Survivors" and S2's power-loss scenes are the frames to check, and they would test INV-424's ladder at the same time.
