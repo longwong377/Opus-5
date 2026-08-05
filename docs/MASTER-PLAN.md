@@ -289,6 +289,35 @@ feel it without a cutscene).
   **The owner's "in detail, fully" instruction settles A5's open question: depth is IN.**
 - Generation stays offline → `.scn` → streamed. No in-engine port (85,455 lines, hard rule 4).
 
+### STATUS OF THE AUDIT GAPS, AS OF SESSION 4q — read this before the entries below
+
+The seven entries in §P4a and §P4b were written in 4p and are kept VERBATIM below, because their
+diagnoses are the record of what was actually wrong. This table is what has moved since. Where a
+row says HALF, the honest remainder is stated rather than rounded up.
+
+| | gap | state after 4q |
+|---|---|---|
+| A4a-1 | the drum floor is empty at 4.5 M m² | **HALF.** `station/drum_dressing.py` (189/189) puts **1,945 features in 12 kinds** on it — 708 town blocks, 265 trees, 100 copses, 79 hedgerows, silos, sheds, jetties, reeds, spires, lamps, gantries — LOD-resolved, 92,848 tri at z=5400, inside the 183,880 of headroom judge-4e measured as unspent. Rendered end to end (`docs/engine-4q-drum-dressed.png`, Forward+, 53 s). **What is NOT closed: the scatter reads at 500 m and not at 20 m.** The near field is bare, the near tree is a lollipop, the parcel boundary underfoot is a hard straight edge. The ladder resolves DETAIL by distance; it does not place more things near the eye, and nothing measures features per m² at walking distance. See STATE.md §24.4b |
+| A4a-2 | six subsystems at craft 1 | **2 of 6 done.** `council_chamber.py` (42/42) and `docking_bay.py` (36/36) came off craft 1 with before/after frames at half distance. Remaining: **C&C, customs, the garden, exterior components** |
+| A4a-3 | the plant layer cannot fail | **DONE on the simulation side, OPEN on the surface.** `station/plant_systems.py` (19/19) gives it `shed_factor()`, `wear_at()` and `state_key()`; 61 places shed load and wear feeds `incident.py`. **C&C reading any of it is the open half** |
+| A4a-4 | room occupants are dioramas | **DONE** (4p) — 66 of 66 change state over a station-day, they sleep, verified on the streamed path |
+| A4b-1 | the interaction layer is a wiggle, not a verb | **DONE.** `interact.RESPONDS` has 7 entries **including `sit` and `rest`**, the verb set is open/operate/read/rest/serve/sit/store/tread, and `interact.gd::use()` dispatches on `match it.verb`. `read` was the first verb with a consequence; it is no longer the only one |
+| A4b-2 | there is no inventory, anywhere | **DONE** (4p) — the identicard and kit bag are drawn and `store` moves things in and out |
+| A4b-3 | the economy is read-only in the game | **HALF.** The bar's till debits and the purse survives the process; most counters are still read-only |
+
+**AND TWO GAPS THE AUDIT DID NOT NAME, both closed in 4q**, recorded here because they are the
+same class — a rule the simulation enforced and the game could not reach:
+
+* **Nobody checked your identicard.** `consequence.certain_check` had decided who may enter a
+  place since P1-G2 and had NO RUNTIME CALLER — a player could walk into the command deck of a
+  military station unchallenged. **98 of 129 places now read the card on the way in**, gated by
+  `coldstart.py --g4` with four controls. The arrest chain behind a refusal is still Python: you
+  are told, not detained.
+* **Nobody ever fell over.** `incident.py` decided who collapses, where and at what hour, into a
+  ledger nothing read; `ragdoll.gd` could drop a body only when its own gate flag asked.
+  **45 incidents are baked per station-day for the boot deck** and a walker is pulled out of the
+  crowd when the clock passes one. `coldstart.py --g5`, two controls.
+
 ### P4a — THE OWNER'S AUDIT, SESSION 4p — four gaps the phase list did not cover
 
 **Raised by the owner directly, checked against the repository rather than answered from
