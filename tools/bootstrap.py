@@ -169,15 +169,55 @@ def _sidecars_carry(field):
                             + (" ..." if len(stale) > 3 else "")))
 
 
+def _cell_coverage():
+    """How many decks have a baked cell set, out of how many exist.
+
+    THE THIRD TIME "PRESENT" HAS MEANT "ONE OF THEM" IN THIS FILE, and the
+    first two are `_boot_has` and `_sidecars_carry`, both of which exist
+    because a file being on disk says nothing about whether it describes the
+    world. The streaming-cells check was `len(glob("cells_*")) > 0`. After a
+    container recycle exactly ONE cell set had been rebuilt -- `cells_blue_0_0`
+    -- and this tool said `present`.
+
+    What that hides is not small. Those 18 cells span **12.9 m of z** out of an
+    8,047 m station, and 8 of the register's 129 located places overlap them;
+    121 are unreachable from the spawn. `cell_manifest.json`'s own deck table
+    lists 251 decks and STATE.md records the last full bake as 70 decks / 955
+    cells / 1.7 GB. A session reading `present` here would conclude the
+    streamed build was intact and spend a while wondering why the station was
+    small.
+
+    Reported rather than rebuilt, per this file's contract: the baker is
+    `stream.gd::bake` and it needs Godot. But the NUMBER is printed, because a
+    fraction is a thing a reader can act on and a word is not.
+
+    DELIBERATELY NOT IN THE EXIT CODE, and the reason is that I do not know the
+    denominator. `cell_manifest.json` lists 251 decks; STATE.md records the
+    last full bake as 70, which is presumably the decks that have content
+    worth streaming. Nothing in the repository states which of those two is the
+    target, so failing the check against either would be asserting a number I
+    cannot defend -- the exact move this project's own history warns about when
+    a gate's bar is picked for convenience. Print the fraction, name the
+    command, and let whoever settles the target put it in the exit code.
+    """
+    have = len(glob.glob(os.path.join(GEN, "scene", "deck", "cells_*")))
+    want = 0
+    p = os.path.join(GEN, "cell_manifest.json")
+    if os.path.exists(p):
+        try:
+            with open(p) as f:
+                want = len(json.load(f).get("deck_table", []))
+        except Exception:                                        # noqa: BLE001
+            want = 0
+    return have, want
+
+
 # Things this does NOT build, with the command that does. Reported by --check so
 # a session knows the difference between "missing and cheap" and "missing and
 # forty minutes".
 HEAVY = (
     ("deck geometry", lambda: _n_glob(os.path.join("scene", "deck", "*.glb")) > 0,
      "python3 station/rooms.py --footprint    # ~23 min"),
-    ("streaming cells",
-     lambda: len(glob.glob(os.path.join(GEN, "scene", "deck", "cells_*"))) > 0,
-     "python3 station/boot.py --bake          # needs Godot"),
 )
 
 
@@ -204,6 +244,22 @@ def main():
             print("  %-16s MISSING  not built here -- run: %s" % (name, cmd))
         else:
             print("  %-16s present  (not rebuilt by this tool)" % name)
+
+    # COMPLETENESS, SEPARATELY FROM PRESENCE. See `_cell_coverage`. A count
+    # rather than a word, because "present" was true on 1 deck of 251.
+    have, want = _cell_coverage()
+    if have == 0:
+        print("  %-16s MISSING  no cell set at all -- run: python3 "
+              "station/boot.py --bake   # needs Godot" % "streaming cells")
+    elif want and have < want:
+        print("  %-16s PARTIAL  %d of %d decks in cell_manifest.json have a "
+              "baked cell set" % ("streaming cells", have, want))
+        print("  %-16s          a recycled container loses these; the last "
+              "full bake was 70 decks / 955 cells" % "")
+        print("  %-16s          rebuild: python3 station/boot.py --bake  "
+              "# needs Godot" % "")
+    else:
+        print("  %-16s present  %d cell set(s)" % ("streaming cells", have))
 
     # FRESHNESS, SEPARATELY FROM PRESENCE. See `_sidecars_carry`.
     ok_side, why_side = _sidecars_carry("counter")
