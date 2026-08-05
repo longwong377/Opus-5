@@ -6317,6 +6317,16 @@ DRUM_CALIBRATION = {
                          "crushed": 0.02, "verdict": "FAIL"},
         "exposure": 3.807,
         "contribution_res": "480x270",
+        # RE-MEASURED IN 4r, and the numbers moved a long way: the wide
+        # framing's dressing went 39.08 -> 72.18% of moved pixels. TWO changes
+        # landed between the two measurements -- the drum's near field was
+        # built (crop rows, ground cover, hedgerows inside 35 m) and then
+        # `drum_ground`'s per-patch LOD took the ground 96,320 -> 70,880
+        # triangles at the worst eye. I have NOT isolated which of the two
+        # drove it and am not going to claim one: both raise the figure, and
+        # the honest statement is that these rows describe the content as it
+        # stands after both. All three framings moved the same way: garden
+        # 32.30 -> 43.20, tram 47.26 -> 49.65.
         "contribution": {
             "ground": 89.87, "guideways": 79.50, "endcap_fore": 5.52,
             "endcap_aft": 0.00, "spokes": 1.92, "core": 2.43, "trams": 0.01,
@@ -6329,7 +6339,7 @@ DRUM_CALIBRATION = {
             # moment anyone would think to. Method is this file's own:
             # render the framing at contribution_res whole and with
             # `--omit dressing`, count the pixels that move.
-            "dressing": 39.08,
+            "dressing": 72.18,
         },
         "largest_region": {
             "ground": 82.51, "guideways": 65.91, "endcap_fore": 5.52,
@@ -6341,7 +6351,7 @@ DRUM_CALIBRATION = {
             # comes back as one body, because at these framings the town
             # blocks tile the far wall of the barrel into a continuous
             # mass rather than a sprinkle.
-            "dressing": 32.08,
+            "dressing": 67.55,
         },
     },
     # THE GARDEN. Composition matched to `garden.png` -- the authority-1 frame
@@ -6384,7 +6394,7 @@ DRUM_CALIBRATION = {
             # moment anyone would think to. Method is this file's own:
             # render the framing at contribution_res whole and with
             # `--omit dressing`, count the pixels that move.
-            "dressing": 32.30,
+            "dressing": 43.20,
         },
         "largest_region": {
             "ground": 40.74, "guideways": 51.82, "endcap_fore": 0.00,
@@ -6396,7 +6406,7 @@ DRUM_CALIBRATION = {
             # comes back as one body, because at these framings the town
             # blocks tile the far wall of the barrel into a continuous
             # mass rather than a sprinkle.
-            "dressing": 20.56,
+            "dressing": 35.69,
         },
     },
     # THE TRAM. `trams` is 0.01% of the wide frame -- thirteen pixels -- so the
@@ -6444,7 +6454,7 @@ DRUM_CALIBRATION = {
             # moment anyone would think to. Method is this file's own:
             # render the framing at contribution_res whole and with
             # `--omit dressing`, count the pixels that move.
-            "dressing": 47.26,
+            "dressing": 49.65,
         },
         "largest_region": {
             "ground": 33.34, "guideways": 75.34, "endcap_fore": 0.00,
@@ -6456,7 +6466,7 @@ DRUM_CALIBRATION = {
             # comes back as one body, because at these framings the town
             # blocks tile the far wall of the barrel into a continuous
             # mass rather than a sprinkle.
-            "dressing": 43.89,
+            "dressing": 45.47,
         },
     },
 }
