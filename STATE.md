@@ -550,6 +550,12 @@ established from the diff rather than asserted: the only functional change in `d
 `3000.0 → 3250.0`, and neither those rows nor the assertion moved. Not fixed here — it is a
 register-modelling question about a place that is 4.6 km long, and it wants its own decision.
 
+Run to completion with a longer limit it is **837 / 839**, and those two are the only failures —
+so the `place_floor_radius` refactor and the `mainstage_node` move are clean across every other
+check the register makes. Both failures are one open question: the core shuttle tube is registered
+as a single Yellow place spanning **4.6 km** of a sector that is 3,397 m long. That is a
+register-modelling decision, not a bug to patch.
+
 *A gate whose output you read through `tail` is a gate you have not read.*
 
 ### 25.2 THE `deck_gap` FIFTEEN: TWO BUILD PATHS, 54 m APART, AND ONLY ONE CONSUMER FEELS IT
