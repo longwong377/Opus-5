@@ -1720,6 +1720,19 @@
      "half": "docs/craft-4r-council-after-half.png",
      "entry": "docs/craft-4r-council-after-entry.png"
     }
+   },
+   "_independent_verification": {
+    "who": "judge agent, session 4r -- NOT the builder. Re-rendered at HEAD b13554f and at the parent 7b449c9 from separate git worktrees, same three cameras, every run confirming 'Vulkan 1.4.318 - Forward+ - llvmpipe'.",
+    "date": "2026-08-06",
+    "why_this_is_not_a_round": "It produced no dimension scores, so it cannot be a scored round without the merging agent inventing four numbers on its behalf. It does not advance the clean-round counter. It is recorded here because it is the only look at this room by anyone who did not build it.",
+    "confirms_round_3": "craft 3 holds. 22,138 -> 29,674 triangles reproduce exactly. Its re-take of the half frame differs from the committed one on 1.075% of pixels by more than 4/255 -- renderer noise, not a stale frame. The width assertion FAILS on the pre-fix content two independent ways: the parent module measured with the gate's own method gives 22 of 30 blades under 90% of nominal, and grafting the parent's fin_wall into HEAD's module makes HEAD's _selftest print exactly that failure at 53/56. The improvement is structure, decomposed by function: mesh_grille 8,052 -> 12,240, bench 890 -> 4,162, medallion rebuilt as an open wheel, and the fan fixed at ZERO extra triangles (blade width 0.102..0.640 m -> 0.738..0.847 m).",
+    "found_and_nobody_had_scored": [
+     "FIXED 7e54b04 -- the budget assertion's diagnostic printed 'the perforated sheet is 80' for an object that is 41.2% of the room. council_mesh is the lit face BEHIND the sheet; mesh_grille tags its 12,240 triangles council_frame. Three figures for one object were in circulation (12,320 / 12,570 / 80) against a measured 12,240. It builds the sub-mesh now.",
+     "FIXED 7e54b04 -- the new blue speaking-fan slivers took signage_panel, the customs board's backlit face at emission 3.0, which round 3 lists as a C3 finding for the wall and nobody had applied to the bench. Bench-top band: strong blue 1.75% -> 5.60%. Retagged to the fan's own inlay; the colour loss is recorded in the module because no non-emissive blue is bound anywhere in the interior scene.",
+     "OPEN -- 34.9% of the entry frame carries no detail at 5-px scale, unchanged from 35.0% before the rework, because the 128.8 m2 wall the whole composition stands on is two triangles and was not touched.",
+     "CORRECTED 7e54b04 -- 'narrowest 32 mm, widest/narrowest 19.1x' in two comment blocks was the algebra, not a measurement, and the algebra was wrong twice over. The parent commit's real mesh gives 102 mm and 6.29x. 22 of 30 is right and the fix is right; the two quoted numbers were not."
+    ],
+    "patches": "scratchpad/PATCHES-4r-judge-council.md"
    }
   },
   "customs_arrival": {
