@@ -228,7 +228,21 @@ func _ready() -> void:
 	# a no-op wherever it still fires; `--walk-test`, `--no-talk` and an empty
 	# `dialogue_path` return exactly as they did before, which is every
 	# headless gate in this repository.
-	_wire_dialogue(_actors)
+	# BOTH LISTS, AND THE SPLIT IS WHY DIALOGUE WENT DARK. `_load_sidecars`
+	# separates the cast into `_actors` (baked into the deck mesh) and
+	# `_actors_occ` (instanced, carrying a `who.day` timetable). Passing only
+	# the baked half was correct while most occupants were baked; since
+	# `populace.ROOM_INSTANCED` it is empty. The build printed
+	# `cast of 111 -- 111 instanced occupant(s), 0 baked into the deck mesh`
+	# and then `dialogue: 0 people can speak, of 0 in the cast`, with 444
+	# exchanges naming a group with no body.
+	#
+	# THIS IS THE W5 DEFECT AGAIN, ONE SUBSYSTEM OVER: a representation changed
+	# and the consumer that reads the other representation was left behind.
+	# There it was the notice loop; here it is the whole conversation layer. An
+	# occupant with a timetable is not less of a person to talk to -- they are
+	# the ones with somewhere to be, which is what makes them worth talking to.
+	_wire_dialogue(_actors + _actors_occ)
 
 	_wire_hud()
 
