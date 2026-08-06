@@ -127,7 +127,15 @@ per-object part names is **+53 groups, not +29**. Still under budget with 27% he
 | `station/test_materials_layer3.py` | **34/34**, coverage **980/980 interior groups** |
 | `station/deck.py --selftest` | **56/56** |
 | `station/walkable.py --reach --control` | **PASS** — 12,288/12,288, control 872 |
+| `station/walkable.py --deck blue/0/0 --use` | **PASS**, control firing; 6/6 rooms walkable |
 | `station/budget.py` | **21/25**, `deck primitives 435/600` on a rebuilt deck |
+
+The `--use` control is worth reading now that `--reach` exists beside it: *"with **1,152 triangles**
+of `docking_bays__prop_docking_clamp` deleted from the render mesh the prompt reads `-` and
+use_count is 0"*. 1,152 is exactly the span `--reach` reports for that object. `strip_group` has
+always deleted the whole object — it was written knowing what `dressing.machine`'s outer span
+covers — and until today the runtime grabbed a fraction of what the control deleted. **The control
+and the runtime finally agree about what an object is.**
 
 `--reach --control` is now a CI step, next to `--bump`, for the reason 4w gave: `--use` is the
 gate that passed at 7.1% and again at 209%.
