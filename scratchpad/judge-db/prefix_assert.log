@@ -1,0 +1,15 @@
+=== HEAD's new assertions, run on the PRE-FIX geometry (a3d414e) ===
+  FAIL  the pendant's lens is a revolved solid, not a slab   [2 distinct y in the old lens]
+  FAIL  the crown aperture is above the lens it shares a fitting with   [0 crown vertices in the old fitting]
+  FAIL  every ceiling stringer stands on a girder panel point   [docking_bay_old has no ceiling_ribs: the object did not exist]
+  FAIL  ...and the stringers hang BELOW the shell they stiffen   [same]
+  FAIL  the deck device is an outline, not a second filled disc   [deck_device did not exist; the shipped device was _disc(r = 0.22 * DECK_DISC_D_M)]
+  FAIL  the pylon's plaques face the lane   [docking_bay_old has no signage_pylon: the object did not exist]
+  FAIL  the ledge railing stands on the first tread, at the lane edge   [docking_bay_old has no ledge_railing: the object did not exist]
+  PASS  one bay fits the interior structure frustum (22,571 tri)   [22,571 of 60,000]
+  FAIL  ...and the bound can fail   [twice the OLD bay (45,142) is still inside 60,000]
+
+  pre-fix bay: 22,571 tri over 14,286 verts, 36 groups
+  HEAD    bay: 32,811 tri over 20,310 verts, 38 groups
+
+  8 of 9 of HEAD's new assertions FAIL on the pre-fix geometry

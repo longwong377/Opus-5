@@ -1,0 +1,64 @@
+{
+  "_note": "Round 4 for docs/aaa-scorecard.json subsystem `docking_bay_interior`. Rounds 1-3 are already merged. This is an INDEPENDENT judge round on frames this agent rendered itself at HEAD dd705ec -- it did not score the build agent's PNGs and it did not edit station/docking_bay.py. Append this object to that subsystem's `rounds` array.",
+  "round": 4,
+  "reviewer": "judge-4r-dockingbay -- independent, own frames at HEAD dd705ec",
+  "date": "2026-08-06",
+  "scores": { "craft": 3, "fidelity": 3, "performance": 3, "robustness": 3 },
+  "broke_assertions": true,
+  "_frames": {
+    "renderer": "every frame below reported `Vulkan 1.4.318 - Forward+ - Using Device #0: Unknown - llvmpipe (LLVM 20.1.2, 256 bits)` in its own stdout. No run reported OpenGL 3 Compatibility. Logs: scratchpad/judge-db/render-half.log, render-half-level.log.",
+    "half_reproduced": "docs/judge-4r-dockingbay-half.png is round 3's own camera re-taken at HEAD: `tools/render_godot.sh --shot interior --room docking_bays --res 1280x720 --eye 0.0,1.70,21.085 --target 0.0,9.0,35.0`. Against docs/craft-4r-dockingbay-after-half.png: max channel difference 9/255, 0.068% of pixels differ by more than 2/255, mean sRGB 0.1196 against 0.1197. The claimed frame is genuine and current.",
+    "normal": "docs/judge-4r-dockingbay-normal.png, eye (0,1.70,7.17) -> (0,9.0,35.0), the derived 27.83 m.",
+    "half_level": "docs/judge-4r-dockingbay-half-level.png -- THE CAMERA ROUND 3 DID NOT CHOOSE. Same 13.92 m, same eye, LEVEL gaze (target 0.0,1.70,35.0). Round 3's half-distance aim is 27.7 deg above horizontal from a 1.70 m eye, so its frame is ~90% ceiling -- which is the half this session rebuilt -- and the deck is out of shot. The score does not change on the level camera; what changes is which surface is being asked about.",
+    "_measured": "scratchpad/judge-db/{structure.py,faces.py,prefix_assert.py} and their logs. Triangle deltas, connected-coplanar face merging and the frustum test are computed on the geometry; the warm fraction is computed in linear light by this agent's own code on this agent's own frames and on reference/03-sector-blue/dock.webp."
+  },
+  "what_is_good": [
+    "The +10,240 triangles are STRUCTURE and they are in the frame that was scored. Per group: bay_girder +8,404 (X-braced web, a post at every panel point, a stepped bottom flange, plus the pendant housings), bay_lamp +1,404 (spun shade, rolled rim, convex lens, replacing two axis-aligned boxes), bay_ceiling +216 (longitudinal stringers), prop_level_plaque +96, bay_panel +72, bay_emblem +24, dress_screen +24. Inside the half-distance frustum the room goes 10,033 -> 16,398 triangles, +5,191 of them bay_girder. No material rule changed and no lighting value changed; this is not a box being dressed.",
+    "The assertions can fail, and I proved it the hard way rather than taking the module's word: HEAD's new predicates run against `git show a3d414e:station/docking_bay.py` fail 8 of 9 (scratchpad/judge-db/prefix_assert.log). The lens test reports `2 distinct y in the old lens`; the crown test `0 crown vertices`; ceiling_ribs, signage_pylon and ledge_railing did not exist at all; the deck-device test fails against the `_disc(r = 0.22 * DECK_DISC_D_M)` that shipped.",
+    "Nothing is worse. `python3 station/interior.py --hull-fit` reports 0 of 129 located places outside the pressure hull, unchanged. `export_scene.check_material_coverage` on the exported interior scene: 0 unbound of 38 groups, including both new ones -- and the renders ran WITHOUT `--allow-unbound`, which raises on any unbound group, so that is proved twice. `python3 station/docking_bay.py` is 53/53. Determinism verified independently: blake2b of (verts, tris, groups) identical across PYTHONHASHSEED 0 and 12345, 32,811 triangles each time.",
+    "Round 3's own headline finding is honest and I reproduce it with my own code on my own frame: warm pixels 3.11% at the normal distance against dock.webp's 41.75%, and 0.67% at its own half-distance camera. A build agent that scores its own work and then files the largest remaining defect against itself, with a swept negative control and a recommendation NOT to land the fix, is the process working."
+  ],
+  "findings": [
+    {
+      "severity": "major",
+      "dimension": "craft",
+      "descriptor": "C3",
+      "where": "station/docking_bay.py:docking_bay, floodlight",
+      "text": "IT FALLS APART AT HALF DISTANCE, WHICH IS C3'S OWN SENTENCE, AND THE SURFACE IT FALLS APART ON IS THE ONE THIS SESSION DID NOT TOUCH. The biggest unbroken face in the room -- connected, coplanar triangles merged -- is 3,024 m2 over TWO triangles, 21.6 x 140.0 m, group `bay_deck`, and it is byte-identical before and after this session. Behind it: `bay_panel` 1,596 m2 over 2 triangles (11.4 x 140 m side wall), `bay_ledge` 476 m2 over 2 triangles (3.4 x 140 m tread), and each new 140 m ceiling stringer is a prismatic box (`bay_ceiling` biggest face 392 m2 over 2 triangles, 248 triangles for 13 members). On docs/judge-4r-dockingbay-half-level.png the deck is the bottom 45% of the picture and carries no geometry at all -- the plate grid is texture. Round 3's own aim point, 27.7 deg above horizontal, puts that surface out of shot. Second clause: all 39 pendants are one fitting repeated, which is C3's 'the same panel, the same hatch, the same light, repeated without regard to what the part does', verbatim. Third: measured in linear light by this agent's code, warm pixels 3.11% on the 27.8 m frame against dock.webp's 41.75% -- the room's defining colour is still absent, and round 3 says so itself and names the cause (INV-646)."
+    },
+    {
+      "severity": "major",
+      "dimension": "robustness",
+      "descriptor": "R3",
+      "where": "station/docking_bay.py:_selftest, the WHAT ONE BAY COSTS block",
+      "text": "THE NEW BUDGET ASSERTION'S NEGATIVE CONTROL IS AN ASSERTION THAT THE ROOM IS AT LEAST 30,001 TRIANGLES, AND IT IS THE ONE THING THIS CHANGE MADE WORSE. `check('...and the bound can fail', not (2 * len(t) <= _allow))` with `_allow = 60,000` is arithmetically `len(t) > 30,000`. Enumerated across the threshold: 32,811 PASS, 30,001 PASS, 30,000 FAIL, 29,999 FAIL, and 22,571 -- the room three commits ago at a3d414e, which was not a defect and was comfortably inside the bound -- FAIL. So the selftest now goes red for a REDUCTION, including the LOD chain this same round's own P3 finding says is required to reach P4. It is the exact shape of the defect the same function records having just learned sixty lines below it ('THE PROPERTY, NOT THE COUNT ... a second copy of a computed number goes stale in the direction of an improvement just as readily as in the direction of a regression'): the lesson was applied to the non-manifold count and not to the rule. The fix -- hand the bound a count instead of this room's size -- is scratchpad/PATCHES-4r-judge-dockingbay.md #1."
+    },
+    {
+      "severity": "major",
+      "dimension": "performance",
+      "descriptor": "P3",
+      "where": "station/docking_bay.py, station/lod.py",
+      "text": "Confirmed as round 3 states it: 32,811 triangles = 54.7% of budget.INTERIOR['visible_set_tris'] = 60,000, worst case argued rather than swept (correctly -- a bay has no wall across it, so the frustum IS the total), and no LOD chain at all, where P4 wants switch distances derived from a measurable error. Adding to it from this round: the module's own control now blocks that chain (see the R3 finding), so P3 -> P4 costs the control as well as the LOD."
+    },
+    {
+      "severity": "major",
+      "dimension": "fidelity",
+      "descriptor": "F3",
+      "where": "station/docking_bay.py",
+      "text": "Confirmed as round 3 states it, and one clause checked rather than accepted: F3 asks by name for provisional numbers in a `PROVISIONAL` dict, and `grep -c PROVISIONAL station/docking_bay.py` is 0 -- GIRDER_PITCH_M, GIRDER_D_M, GIRDER_W_M, LAMP_DROP_M and LAMP_R_M are inline under INV-022's blanket phrase. The six new INV entries (INV-640..645) plus the negative result INV-646 are present in canon/INVENTIONS.md and are the right shape. The bay's absolute size remains unsourced, which is INV-022's own stated ceiling."
+    },
+    {
+      "severity": "resolved",
+      "dimension": "craft",
+      "descriptor": "C2",
+      "where": "station/docking_bay.py:floodlight, girder, ceiling_ribs, deck_device, signage_pylon, ledge_railing",
+      "text": "Round 2's C2 is closed on the geometry. C2's governing clause is 'right mass, no articulation ... the surface is undifferentiated', and that is now false by measurement: the girder is an X-braced lattice with a post at every panel point, the ceiling carries stringers on the girder's own panel grid, the pendant is a revolved solid. I tried to hold the room at 2 on round 2's own wording -- 'the red-oxide overhead steel and the grey pressure wall render as the same cold object' -- which my own measurement says is STILL true (warm 3.11%, unchanged). It does not carry the score: C2's cited example is solar arrays and cooling fins, two objects with the same SHAPE, and two objects being the same COLOUR is a different defect. It is filed above as the C3 major, where it belongs."
+    },
+    {
+      "severity": "note",
+      "dimension": "robustness",
+      "where": "station/docking_bay.py:_selftest",
+      "text": "The comment says 'an eye at the mouth holds all 140 m and all 24 girders in one frustum'. There are 13 girders (BAY_LEN_M 140.0 / GIRDER_PITCH_M 11.0). 24 is BAY_COUNT, the number of docking bays on the station -- a quantity conflated with a different quantity of the same name, which is AAA-STANDARD F2's own example. GIRDER_BAYS = 10 is a third similarly-named quantity (panels across the span). Comment only; the assertion's arithmetic is right. PATCHES #2."
+    }
+  ]
+}

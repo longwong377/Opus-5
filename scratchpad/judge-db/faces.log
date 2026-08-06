@@ -1,0 +1,50 @@
+=== per-group triangles, pre-fix (a3d414e) -> HEAD (dd705ec) ===
+   +8,404  bay_girder                 10,952 -> 19,356 tri      7330.9 ->   10119.3 m2
+   +1,404  bay_lamp                      468 ->  1,872 tri       156.3 ->      83.4 m2
+     +216  bay_ceiling                    32 ->    248 tri      6032.7 ->   11155.3 m2
+      +96  prop_level_plaque               0 ->     96 tri         0.0 ->       3.4 m2
+      +72  bay_panel                     844 ->    916 tri     10388.4 ->   10426.1 m2
+      +24  dress_screen                    0 ->     24 tri         0.0 ->       2.6 m2
+      +24  bay_emblem                    264 ->    288 tri        47.8 ->      36.2 m2
+  +10,240  TOTAL                      22,571 -> 32,811
+
+=== the biggest UNBROKEN face (connected coplanar region) ===
+  pre-fix     3024.0 m2 over    2 triangles, extent 21.6 x 0.0 x 140.0 m, group 'bay_deck'
+  HEAD        3024.0 m2 over    2 triangles, extent 21.6 x 0.0 x 140.0 m, group 'bay_deck'
+
+=== the half-distance frustum: eye (0,1.70,21.085) -> (0,9.0,35.0) fov 46 deg, 16:9 ===
+  pre-fix  10,033 of 22,571 triangles touch the frustum (44.5%), 15 groups
+  HEAD     16,398 of 32,811 triangles touch the frustum (50.0%), 15 groups
+  delta by group inside the frustum:
+    +5,191  bay_girder                 6,001 -> 11,192
+      +994  bay_lamp                     350 -> 1,344
+      +180  bay_ceiling                   32 ->   212
+=== biggest unbroken (connected, coplanar) face per group, HEAD ===
+     3024.0 m2  bay_deck                      2 tri of      2   extent    21.6 x    0.0 x   140.0 m
+     1596.0 m2  bay_panel                     2 tri of    916   extent     0.0 x   11.4 x   140.0 m
+      783.4 m2  bay_backwall                 29 tri of     29   extent    42.0 x   22.2 x     0.0 m
+      476.0 m2  bay_ledge                     2 tri of     24   extent     3.4 x    0.0 x   140.0 m
+      392.5 m2  bay_ceiling                   2 tri of    248   extent     2.6 x    1.0 x   140.0 m
+      126.0 m2  bay_chevron                   2 tri of    108   extent     0.9 x    0.0 x   140.0 m
+       87.5 m2  bay_disc                     26 tri of    108   extent    10.6 x    0.0 x    10.6 m
+       58.2 m2  bay_girder                    2 tri of 19,356   extent    42.0 x    0.0 x     1.4 m
+       22.4 m2  bay_cornice                   4 tri of     48   extent     0.0 x    0.2 x   140.0 m
+       19.6 m2  bay_skirt                     4 tri of     48   extent     0.0 x    0.1 x   140.0 m
+       14.8 m2  prop_container                2 tri of  2,904   extent     2.4 x    0.0 x     6.1 m
+       13.6 m2  bay_deck_joint                2 tri of    264   extent     0.1 x    0.0 x   136.0 m
+       12.6 m2  bay_dado                      4 tri of     96   extent     0.0 x    0.1 x   140.0 m
+       12.6 m2  bay_rail                      4 tri of     96   extent     0.0 x    0.1 x   140.0 m
+
+=== screen coverage at the half distance (1280x720, z-buffered) ===
+   44.38%  bay_girder
+   31.66%  None
+   12.43%  prop_container
+    6.97%  bay_panel
+    2.04%  bay_soffit_tee
+    0.93%  bay_backwall
+    0.61%  prop_bay_control_booth
+    0.35%  prop_mp_plant_frame
+    0.25%  bay_mullion
+    0.21%  bay_lamp
+    0.16%  prop_mp_plant_conduit
+    0.00%  bay_ceiling

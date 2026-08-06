@@ -1,0 +1,33 @@
+--- assemble ---
+interior docking_bays: 39 fitting light(s), 0 soft fill at energy 12.0, reach x1.45, 100.0% of the working plane inside a source (d/r p95 0.33)
+{
+ "shot": "interior",
+ "scene": "res://scenes/interior.tscn",
+ "glb": [
+  "station/generated/scene/interior/docking_bays.glb"
+ ],
+ "triangles": 32811,
+ "lights": 39,
+ "scene_json": "station/generated/scene/interior/scene.json"
+}
+--- warming the texture import cache (first render in this checkout) ---
+--- render interior 1280x720 -> /home/user/wt-judge-db/scratchpad/judge/judge-half.png ---
+Godot Engine v4.4.stable.custom_build.4c311cbee (2025-03-02 23:31:23 UTC) - https://godotengine.org
+Vulkan 1.4.318 - Forward+ - Using Device #0: Unknown - llvmpipe (LLVM 20.1.2, 256 bits)
+ERROR: Condition "status < 0" is true. Returning: ERR_CANT_OPEN
+   at: init_output_device (drivers/alsa/audio_driver_alsa.cpp:90)
+WARNING: All audio drivers failed, falling back to the dummy driver.
+     at: initialize (servers/audio_server.cpp:246)
+
+render_shot: lighting day
+render_shot: ambient 0.329
+render_shot: 38 mesh instances over 1 files
+render_shot: geometry 69 ms
+render_shot: camera at (0.0, 1.7, 21.085) looking at (0.0, 9.0, 35.0)
+render_shot: 39 light-run sources (39 spot), 2 casting shadows
+vista: no view for 'docking_bays' (/home/user/wt-judge-db/station/generated/scene/vista/docking_bays.json absent) -- the room renders with whatever is behind its glass, which for a window is the background colour
+captured /home/user/wt-judge-db/scratchpad/judge/judge-half.png  1280x720
+--- interior finished in 18s (exit 0) ---
+renderer: Vulkan 1.4.318 - Forward+ - Using Device #0: Unknown - llvmpipe (LLVM 20.1.2, 256 bits)
+-rw-r--r-- 1 root root 546622 Aug  6 08:37 /home/user/wt-judge-db/scratchpad/judge/judge-half.png
+EXIT=0
