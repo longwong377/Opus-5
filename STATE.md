@@ -1,6 +1,86 @@
 # Project State
 
-**Last updated:** 2026-08-06 · **Session 4w** — **when you press a bay door, 12 of its 536 triangles move** · **4v** — **the distance bar had never run, and path length was never progress** · **4u** — **nobody stands in the doorway any more** · **4t** — **the cast are solid, and one of them is standing in the doorway** · **4s** — **a sidestep that begins on contact is not a sidestep; and the bump gate was reporting an empty sample** · **4r** — **the thing blocking the corridor was a person, and I put them there: 28 m → 238 m** · **4q** — **the free path has a gate, and it found the corridor is blocked 27 m from the spawn** · **4p** — **the deck streams: 657,880 resident triangles become 127,204** · **4o** — **a cell boundary was cutting doors and people in half** · **4n** — **the deck cuts into loadable cells, and the loader's real obstacle is named** · **4m** — **the streaming cell budget met a real deck, and the design survives** · **4l** — **the resident-triangle gate was about the deck; the build also loads 321,664 triangles of people** · **4k** — **every walker on the station was bald, for 188 triangles** · **4j** — **the 21 exposure frames describe the code again, and the verdict did not move** · **4i** — **every curved surface in the project was flat-shaded, and the crease angle is measured off the station** · **4h** — **IT IS PLAYABLE: press Play and you are standing in Blue Sector** · **4g** — **the Babcom terminal is a built device, and it shipped a logged mistake once before the log caught it** · **4f** — a per-token verb override · **4e** — **the naming-mismatch class is CLOSED: built-but-misnamed 26 → 0, resolving 302/357** · **4d** — **the bespoke rooms' interactables were never unbuilt, they were unnamed: 259/357 → 284/357** · **4c** — **the station is INTERACTABLE, the port is on a wall, and the 24-minute suites were one bad cache key** · **4b** — a police force, friction in metres, the plated shell, the fitting-reach fix
+**Last updated:** 2026-08-06 · **Session 4x** — **the draw-call objection was stale; material resolution is the real blocker** · **4w** — **when you press a bay door, 12 of its 536 triangles move** · **4v** — **the distance bar had never run, and path length was never progress** · **4u** — **nobody stands in the doorway any more** · **4t** — **the cast are solid, and one of them is standing in the doorway** · **4s** — **a sidestep that begins on contact is not a sidestep; and the bump gate was reporting an empty sample** · **4r** — **the thing blocking the corridor was a person, and I put them there: 28 m → 238 m** · **4q** — **the free path has a gate, and it found the corridor is blocked 27 m from the spawn** · **4p** — **the deck streams: 657,880 resident triangles become 127,204** · **4o** — **a cell boundary was cutting doors and people in half** · **4n** — **the deck cuts into loadable cells, and the loader's real obstacle is named** · **4m** — **the streaming cell budget met a real deck, and the design survives** · **4l** — **the resident-triangle gate was about the deck; the build also loads 321,664 triangles of people** · **4k** — **every walker on the station was bald, for 188 triangles** · **4j** — **the 21 exposure frames describe the code again, and the verdict did not move** · **4i** — **every curved surface in the project was flat-shaded, and the crease angle is measured off the station** · **4h** — **IT IS PLAYABLE: press Play and you are standing in Blue Sector** · **4g** — **the Babcom terminal is a built device, and it shipped a logged mistake once before the log caught it** · **4f** — a per-token verb override · **4e** — **the naming-mismatch class is CLOSED: built-but-misnamed 26 → 0, resolving 302/357** · **4d** — **the bespoke rooms' interactables were never unbuilt, they were unnamed: 259/357 → 284/357** · **4c** — **the station is INTERACTABLE, the port is on a wall, and the 24-minute suites were one bad cache key** · **4b** — a police force, friction in metres, the plated shell, the fitting-reach fix
+
+## Session 4x — THE DRAW-CALL OBJECTION WAS STALE; MATERIAL RESOLUTION IS THE REAL BLOCKER
+
+4w left one instruction: **measure the cost of per-object part names against `budget.py`'s gate
+before committing to it.** Measured, and the answer is not the one the code's own comment gave.
+
+### 1. The cost is affordable, and the reason it was refused no longer holds
+
+`_Parts`' docstring justified a fixed nine-name vocabulary per prefix:
+
+> *"every extra distinct group name is another draw call in `budget.py`'s `draw calls, whole
+> frame`, which is **ALREADY over at 1,303 of 1,041**"*
+
+Measured this session:
+
+| | |
+|---|---|
+| `draw calls, whole frame` | **423 / 1,041 — 40.6%, PASSING** (382 interior resident + 41 exterior; culling takes the interior to 191 in frustum) |
+| `deck primitives shipped` | 382 / 600 |
+| per-object naming would add | **+29 groups** → 411 / 600, and 452 / 1,041 |
+
+**The constraint the vocabulary was adopted under is gone.** A comment that carries a number is a
+cache of a measurement, and this one had gone stale exactly the way `budget.py`'s own collision
+total once did.
+
+### 2. AND THE CHANGE STILL CANNOT LAND, FOR A DIFFERENT REASON THE GATE FOUND
+
+I made the change — `_Parts(name + "_")`, so a part is `prop_bay_door_mp_plant_frame`. It needs
+**no runtime change at all**: `interact.gd` already tests `begins_with(group + "_")`, so naming the
+part after its object fixes the 7.1% at the source.
+
+The dressing suite failed on the third run:
+
+```
+FAIL  every machine part resolves on its OWN fragment
+  dress_customs_desk_mp_plant_frame  resolves on 'customs_desk'  not 'plant_frame'
+```
+
+`materials.resolve` takes the **longest matching substring**, and `customs_desk` is 12 characters
+against `plant_frame`'s 11. **A customs desk's frame would render as the desk.** And it cannot be
+renamed away: `interact.gd` needs the part's name to literally begin with the object's, so the
+part's name necessarily *contains* it.
+
+**The fix is to make `_mp_` load-bearing in resolution** — a machine part resolves on the fragment
+after the marker, which is what `dressing`'s own header has always said the marker means. That is
+its own increment, and `resolve`'s docstring says why: the rule is duplicated in
+`render_shot.gd::_material_for` *"on purpose: if this function and the engine disagreed about which
+material a group got, every render would be judging something other than what ships"*. Three
+implementations, one rule, and they have to move together.
+
+### 3. What survives
+
+- **The naming change is reverted.** Landing it would have traded a 7.1% press for wrongly
+  materialled machinery, which is a worse frame.
+- **The tightened assertion stays, and it is the thing that caught this.** The check used to be
+  *"no machine part name is claimed by two unrelated fragments"* — the right question while a part
+  was called `prop_mp_plant_frame` and the wrong one the moment a part carries its object's name,
+  because an incidental substring is then unavoidable and harmless. It now asserts the invariant
+  that matters: **the longest match is the part's own fragment.** Under the reverted naming it
+  passes; under per-object naming it fails on `customs_desk`, which is exactly what a gate is for.
+- Both measurements are written into `_Parts`' docstring, where the next attempt will read them.
+
+### 4. Gates
+
+| gate | result |
+|---|---|
+| `station/dressing.py` | **268/268**, with the sharpened part-resolution check |
+| `station/budget.py` | 21/25, unchanged — the four over are the ones 4m and 4l named |
+
+No build file's output changed: `dressing.py` emits the same names it did this morning, so no
+frame moved and none was re-rendered.
+
+### 5. NEXT
+
+- **Make `_mp_` load-bearing in material resolution**, in `materials.resolve` AND
+  `render_shot.gd::_material_for` AND the `material_rules` table `dress_scene.gd` binds from —
+  together, because they are one rule in three places. Then per-object part names land for free and
+  a pressed object becomes the whole object.
+- The near figure's silhouette is 32-gon faceted at 1 m; the affordable fix is runtime skinning.
+- `--deck`'s `traverse_m` bar is live but weak under a goto.
 
 ## Session 4w — WHEN YOU PRESS A BAY DOOR, 12 OF ITS 536 TRIANGLES MOVE
 

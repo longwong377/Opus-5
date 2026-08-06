@@ -1013,10 +1013,34 @@ def _dome(v, t, g, name, cx, cz, y_base, r, rise, seg=SEG_BODY, rings=3,
 class _Parts:
     """The nine surfaces a machine is built out of, for one parent prefix.
 
-    Nine and not ninety: every extra distinct group name is another draw call
-    in `budget.py`'s `draw calls, whole frame`, which is ALREADY over at
-    1,303 of 1,041. A fixed vocabulary keeps the cost per room bounded by the
-    vocabulary rather than by the instance count.
+    ONE GROUP PER PREFIX HOLDS EVERY MACHINE'S FRAME IN A ROOM, and that is
+    what stops a pressed object being the whole object: `interact.gd` finds an
+    object's meshes by name, and `prop_mp_plant_frame` does not begin with
+    `prop_bay_door_`. Measured in 4w, a press moves **872 of 12,288 triangles
+    across blue/0/0's sixteen interactables -- 7.1%**; a bay door is 12 of 536.
+
+    THE STATED REASON FOR IT IS STALE, and session 4x measured that. This
+    docstring used to say the vocabulary was fixed because "every extra
+    distinct group name is another draw call in `budget.py`'s `draw calls,
+    whole frame`, which is ALREADY over at 1,303 of 1,041". That gate now reads
+    **423 of 1,041, 40.6%, passing** -- culling takes the interior to 191 in
+    frustum -- and naming parts per object costs **+29 groups** on blue/0/0,
+    taking primitives to 411 of 600. Affordable.
+
+    WHAT BLOCKS IT IS MATERIAL RESOLUTION, NOT DRAW CALLS. `interact.gd`'s test
+    requires the part to literally begin with its object's group name, so the
+    part's name necessarily CONTAINS the object's -- and `materials.resolve`
+    takes the longest matching substring. `dress_customs_desk_mp_plant_frame`
+    resolves on `customs_desk` (12) over `plant_frame` (11): a desk's frame
+    would take the desk's material. Renaming cannot fix it, because the
+    containment is what `interact.gd` needs.
+
+    The fix is to make `_mp_` load-bearing in resolution -- a machine part
+    resolves on the fragment AFTER the marker -- and `resolve`'s own docstring
+    says why that is its own increment: the rule is duplicated in
+    `render_shot.gd::_material_for` "on purpose: if this function and the
+    engine disagreed about which material a group got, every render would be
+    judging something other than what ships". Three implementations, one rule.
     """
 
     def __init__(self, prefix):
@@ -2735,12 +2759,26 @@ def _selftest():
     # spelling rather than by anyone's intent. `test_materials_layer3.py`
     # checks this for the groups `rooms.py` emits; it is here as well because
     # this is the module that invents the names.
-    for pre in ("fix_", "prop_"):
+    # AGAINST REAL OBJECT NAMES, not the two prefixes. Parts are named after
+    # the object they belong to now, so the string a material is resolved from
+    # contains that object's name -- and `materials.resolve` takes the LONGEST
+    # matching fragment. A long object name is exactly how the part's own
+    # fragment would lose, so the check has to see the names the station
+    # actually emits rather than `fix_`/`prop_`.
+    for pre in ("fix_", "prop_", "dress_"):
         part_names.update(_Parts(pre).all())
     unres = sorted(g_ for g_ in part_names
                    if _M.resolve_any(g_, "interior") is None)
     check("every machine part name resolves to an interior material",
           not unres, str(unres))
+    # THE INVARIANT IS THAT THE PART'S OWN FRAGMENT WINS, not that nothing
+    # else matches. This asked for the second, which was the same question
+    # while a part was called `prop_mp_plant_frame` and stopped being one when
+    # parts took their object's name: `dress_cargo_crane_mp_dress_screen`
+    # legitimately contains `crane` as well as `dress_screen`, and
+    # `materials.resolve` takes the LONGEST match, so the screen still resolves
+    # to a screen. An incidental substring is now unavoidable and harmless; a
+    # part resolving to its OBJECT'S material is neither.
     ambiguous = []
     for g_ in sorted(part_names):
         hits = set()
@@ -2750,11 +2788,13 @@ def _selftest():
             for f in m.binds:
                 if f in g_:
                     hits.add(f)
-        for a in hits:
-            for b in hits:
-                if a != b and a not in b and b not in a:
-                    ambiguous.append((g_, a, b))
-    check("no machine part name is claimed by two unrelated fragments",
+        if not hits:
+            continue
+        mine = g_.split(MACHINE_MARK, 1)[1] if MACHINE_MARK in g_ else g_
+        won = max(hits, key=len)
+        if won not in mine and mine not in won:
+            ambiguous.append((g_, f"resolves on {won!r}", f"not {mine!r}"))
+    check("every machine part resolves on its OWN fragment",
           not ambiguous, str(ambiguous[:3]))
 
     # Surfaces are read back off geometry, so a builder with no top gets none.
