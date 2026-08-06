@@ -48,13 +48,6 @@ def rows():
 # these — and ONLY adding one of these — is how a spec row becomes greenable.
 # ---------------------------------------------------------------------------
 
-def check_registry_selfcheck(_row):
-    """REGISTRY-0 in spirit: the generator runs clean over the live docs."""
-    r = subprocess.run([sys.executable, os.path.join(ROOT, "tools/spec_registry.py"),
-                       "--check"], capture_output=True, text=True)
-    return r.returncode == 0, (r.stdout.strip().splitlines() or ["?"])[0]
-
-
 _SPEC_KEY = re.compile(r"^#+\s*PLC-\d+\s*`([a-z0-9_]+)`")
 
 
@@ -122,9 +115,18 @@ def check_by_family(row):
 PREFIX_HARNESSES = {}
 
 # Keyed harnesses, for rows whose `harness:` field names a command verbatim.
-HARNESSES = {
-    "tools/spec_registry.py --check": check_registry_selfcheck,
-}
+# EMPTY, AND DELIBERATELY SO. This held one entry keyed on the literal string
+# `"tools/spec_registry.py --check"`, and `--dispatch` reported it UNREACHABLE:
+# no registry row carries that harness name. It was also redundant -- CI's
+# `sspec_gate` step runs `tools/spec_registry.py --check` on its own line,
+# before this file is invoked at all, so the check was already happening and
+# this was a second way to ask for it that nothing asked.
+#
+# Kept as an empty dict rather than deleted because the mechanism is right: a
+# row whose `harness:` field names a command verbatim should be able to run it.
+# When such a row exists, this is where it goes. `--dispatch` will say so if an
+# entry here ever reaches nothing again.
+HARNESSES = {}
 
 
 def harness_for(row):
@@ -221,8 +223,9 @@ def main():
               f"address and are red only for want of a content harness -- "
               f"which is a different kind of red from the "
               f"{red - partial} that nothing checked at all.")
-    print("GREEN moves only by implementing harnesses in station/spec_check.py "
-          "and building the things they check.")
+    print("GREEN moves only by implementing a harness in station/spec_harness/ "
+          "and building the thing it checks. `--dispatch` shows which rows "
+          "reach which harness, and names any that reaches nothing.")
     # The gate never fails CI for REDness — RED is the honest ledger — but it
     # DOES fail if the registry itself cannot be produced (drift/ambiguity).
     return 0
