@@ -1733,7 +1733,18 @@ walk-only past z 3,397 (transit.py) — and that remoteness is content: response
   never identical.
 
 ### PLC-098 `mainstage_node` — Mainstage Distribution Node
-`yellow/0/2 140° z3000 · 20°×100 m · -/generic · auth 3` · TILING 1 → **56**
+`yellow/0/2 140° z3250 · 20°×100 m · -/generic · auth 3` · TILING 1 → **56**
+
+> **z moved 3000 → 3250 in session 4r, and the register is the authority here.** At z 3000
+> Yellow waists to a core hull of 18.3 m and carries **zero deck stacks** — narrower than a
+> corridor — so "ring 0 deck 2" resolved against the sector's widest cylinder and put the node
+> **135.9 m outside the pressure hull**, the largest single miss `interior.hull_fit()` found.
+> The gazetteer's constraint is a band, not a number (*"Yellow/Grey … on the schematic between
+> the reactor and the carousel"*, LOCATIONS.md:302), and z 3200–3300 is the only stretch in it
+> that is forward of the explosive disconnect at z 2,680, inside Yellow, near the Grey boundary,
+> and carries a full 7-deck stack across the **whole** 100 m footprint. The deck-2 floor there is
+> a constant **148.2 m — exactly the radius the node was already built at**, so nothing about the
+> room's shape, arc or gravity changed. See `station/directory.py`'s note on the row.
 - interacts: console (T3), breaker_lever ×4 (T3); added: district map board (T1),
   hum-signature plate (T1 — "a real acoustic signature", audio brief). T4 = the
   distribution tree's trunk node.

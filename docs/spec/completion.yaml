@@ -676,21 +676,21 @@ items:
   - id: PLC-098
     at: docs/spec/PLACES.md:1735
     harness: tool-to-build
-    text_sha: 543efd6018d2d03f
+    text_sha: 9d8ebb97225fdb34
   - id: PLC-099
-    at: docs/spec/PLACES.md:1743
+    at: docs/spec/PLACES.md:1754
     harness: tool-to-build
     text_sha: 9068bf1121b49652
   - id: PLC-100
-    at: docs/spec/PLACES.md:1754
+    at: docs/spec/PLACES.md:1765
     harness: tool-to-build
     text_sha: e67302531d91949a
   - id: PLC-101
-    at: docs/spec/PLACES.md:1762
+    at: docs/spec/PLACES.md:1773
     harness: tool-to-build
     text_sha: 42308f064bd03265
   - id: PLC-102
-    at: docs/spec/PLACES.md:1770
+    at: docs/spec/PLACES.md:1781
     harness: tool-to-build
     text_sha: 368ad261c5ce4da3
   - id: PLC-103
@@ -734,7 +734,7 @@ items:
     harness: tool-to-build
     text_sha: 35fc6f997b4fc707
   - id: PLC-113
-    at: docs/spec/PLACES.md:1791
+    at: docs/spec/PLACES.md:1802
     harness: tool-to-build
     text_sha: 5ca2d71f7eb83cb1
   - id: PLC-114
@@ -758,27 +758,27 @@ items:
     harness: tool-to-build
     text_sha: fa66b03e9de3c1c3
   - id: PLC-119
-    at: docs/spec/PLACES.md:1801
+    at: docs/spec/PLACES.md:1812
     harness: tool-to-build
     text_sha: 43e7c732128ee1c7
   - id: PLC-120
-    at: docs/spec/PLACES.md:1811
+    at: docs/spec/PLACES.md:1822
     harness: tool-to-build
     text_sha: cfa6dcdf39440f58
   - id: PLC-121
-    at: docs/spec/PLACES.md:1819
+    at: docs/spec/PLACES.md:1830
     harness: tool-to-build
     text_sha: dff9e3b2364fc2e6
   - id: PLC-122
-    at: docs/spec/PLACES.md:1827
+    at: docs/spec/PLACES.md:1838
     harness: tool-to-build
     text_sha: 9f215c37cac1d70d
   - id: PLC-123
-    at: docs/spec/PLACES.md:1835
+    at: docs/spec/PLACES.md:1846
     harness: tool-to-build
     text_sha: 51336727dfe9a957
   - id: PLC-124
-    at: docs/spec/PLACES.md:1843
+    at: docs/spec/PLACES.md:1854
     harness: tool-to-build
     text_sha: bfe0f9bd258acd2c
   - id: PLC-125
@@ -882,171 +882,171 @@ items:
     harness: tool-to-build
     text_sha: 923295d650466cc3
   - id: SHB-001
-    at: docs/spec/PLACES.md:1895
+    at: docs/spec/PLACES.md:1906
     harness: tool-to-build
     text_sha: c840caebf08d5c7c
   - id: SHB-002
-    at: docs/spec/PLACES.md:1907
+    at: docs/spec/PLACES.md:1918
     harness: tool-to-build
     text_sha: 307b7d7fa94cb530
   - id: SHB-002.a
-    at: docs/spec/PLACES.md:1907
+    at: docs/spec/PLACES.md:1918
     harness: tool-to-build
     text_sha: 48b5446b1dac335e
   - id: SHB-002.b
-    at: docs/spec/PLACES.md:1907
+    at: docs/spec/PLACES.md:1918
     harness: tool-to-build
     text_sha: e5e52da390951384
   - id: SHB-002.c
-    at: docs/spec/PLACES.md:1907
+    at: docs/spec/PLACES.md:1918
     harness: tool-to-build
     text_sha: 811a5bb84f86cbcf
   - id: SHB-002.d
-    at: docs/spec/PLACES.md:1907
+    at: docs/spec/PLACES.md:1918
     harness: tool-to-build
     text_sha: 3e6abc92a79bc6ab
   - id: SHB-002.e
-    at: docs/spec/PLACES.md:1907
+    at: docs/spec/PLACES.md:1918
     harness: tool-to-build
     text_sha: a9b473e11b41aa13
   - id: SHB-003
-    at: docs/spec/PLACES.md:1928
+    at: docs/spec/PLACES.md:1939
     harness: tool-to-build
     text_sha: 518d0498102ecd04
   - id: SHB-004
-    at: docs/spec/PLACES.md:1935
+    at: docs/spec/PLACES.md:1946
     harness: tool-to-build
     text_sha: ecab449de8f76b0c
   - id: SHB-004.a
-    at: docs/spec/PLACES.md:1935
+    at: docs/spec/PLACES.md:1946
     harness: tool-to-build
     text_sha: 2b8dc426b728929a
   - id: SHB-004.b
-    at: docs/spec/PLACES.md:1935
+    at: docs/spec/PLACES.md:1946
     harness: tool-to-build
     text_sha: ac12824bfbd76b23
   - id: SHB-004.c
-    at: docs/spec/PLACES.md:1935
+    at: docs/spec/PLACES.md:1946
     harness: tool-to-build
     text_sha: c59b734ed830d761
   - id: SHB-004.d
-    at: docs/spec/PLACES.md:1935
+    at: docs/spec/PLACES.md:1946
     harness: tool-to-build
     text_sha: 9c5b510850646126
   - id: SHB-005
-    at: docs/spec/PLACES.md:1957
+    at: docs/spec/PLACES.md:1968
     harness: tool-to-build
     text_sha: 4fab5c2010d96b9b
   - id: SHB-006
-    at: docs/spec/PLACES.md:1964
+    at: docs/spec/PLACES.md:1975
     harness: tool-to-build
     text_sha: ec70a8aa9d221387
   - id: SHB-006.a
-    at: docs/spec/PLACES.md:1964
+    at: docs/spec/PLACES.md:1975
     harness: tool-to-build
     text_sha: be602857102bd7f5
   - id: SHB-006.b
-    at: docs/spec/PLACES.md:1964
+    at: docs/spec/PLACES.md:1975
     harness: tool-to-build
     text_sha: 5cbc811d159abcb0
   - id: SHB-006.c
-    at: docs/spec/PLACES.md:1964
+    at: docs/spec/PLACES.md:1975
     harness: tool-to-build
     text_sha: 0a726a720c4d80d3
   - id: SHB-006.d
-    at: docs/spec/PLACES.md:1964
+    at: docs/spec/PLACES.md:1975
     harness: tool-to-build
     text_sha: 37f3a80f01e4ae8b
   - id: SHB-007
-    at: docs/spec/PLACES.md:1985
+    at: docs/spec/PLACES.md:1996
     harness: tool-to-build
     text_sha: 9a4daabb7b8e3c1c
   - id: SHB-008
-    at: docs/spec/PLACES.md:1992
+    at: docs/spec/PLACES.md:2003
     harness: tool-to-build
     text_sha: 24811a0bb540db81
   - id: SHB-008.a
-    at: docs/spec/PLACES.md:1992
+    at: docs/spec/PLACES.md:2003
     harness: tool-to-build
     text_sha: d555c72660284806
   - id: SHB-008.b
-    at: docs/spec/PLACES.md:1992
+    at: docs/spec/PLACES.md:2003
     harness: tool-to-build
     text_sha: 548f6be5f597f4ad
   - id: SHB-008.c
-    at: docs/spec/PLACES.md:1992
+    at: docs/spec/PLACES.md:2003
     harness: tool-to-build
     text_sha: d1ba170b523b0551
   - id: SHB-008.d
-    at: docs/spec/PLACES.md:1992
+    at: docs/spec/PLACES.md:2003
     harness: tool-to-build
     text_sha: 238eed6b2a6711da
   - id: SHB-008.e
-    at: docs/spec/PLACES.md:1992
+    at: docs/spec/PLACES.md:2003
     harness: tool-to-build
     text_sha: e2d8b8fc914c4fab
   - id: SHB-008.f
-    at: docs/spec/PLACES.md:1992
+    at: docs/spec/PLACES.md:2003
     harness: tool-to-build
     text_sha: e0d2bbc3b32a72ab
   - id: SHB-008.g
-    at: docs/spec/PLACES.md:1992
+    at: docs/spec/PLACES.md:2003
     harness: tool-to-build
     text_sha: fead1abf730de651
   - id: SHB-009
-    at: docs/spec/PLACES.md:2018
+    at: docs/spec/PLACES.md:2029
     harness: tool-to-build
     text_sha: 886628cd0ded7cf9
   - id: SHC-001
-    at: docs/spec/PLACES.md:2043
+    at: docs/spec/PLACES.md:2054
     harness: tool-to-build
     text_sha: d56f7cccf52a1d9f
   - id: SHC-002
-    at: docs/spec/PLACES.md:2044
+    at: docs/spec/PLACES.md:2055
     harness: tool-to-build
     text_sha: 402d9e54ac4ec296
   - id: SHC-003
-    at: docs/spec/PLACES.md:2045
+    at: docs/spec/PLACES.md:2056
     harness: tool-to-build
     text_sha: 411c5d0b0dd666f0
   - id: SHC-004
-    at: docs/spec/PLACES.md:2046
+    at: docs/spec/PLACES.md:2057
     harness: tool-to-build
     text_sha: 2ee4851715ebf78a
   - id: SHC-005
-    at: docs/spec/PLACES.md:2047
+    at: docs/spec/PLACES.md:2058
     harness: tool-to-build
     text_sha: f441def7d26a7bf0
   - id: SHC-006
-    at: docs/spec/PLACES.md:2048
+    at: docs/spec/PLACES.md:2059
     harness: tool-to-build
     text_sha: b5f633b67fa4c328
   - id: SHC-007
-    at: docs/spec/PLACES.md:2049
+    at: docs/spec/PLACES.md:2060
     harness: tool-to-build
     text_sha: e2a29be69e0af6e1
   - id: SHC-008
-    at: docs/spec/PLACES.md:2050
+    at: docs/spec/PLACES.md:2061
     harness: tool-to-build
     text_sha: 0a1f3c56fae71e09
   - id: SHC-009
-    at: docs/spec/PLACES.md:2051
+    at: docs/spec/PLACES.md:2062
     harness: tool-to-build
     text_sha: b90b1e6fe147870c
   - id: SHC-010
-    at: docs/spec/PLACES.md:2052
+    at: docs/spec/PLACES.md:2063
     harness: tool-to-build
     text_sha: 3840967addb6befc
   - id: SHC-011
-    at: docs/spec/PLACES.md:2053
+    at: docs/spec/PLACES.md:2064
     harness: tool-to-build
     text_sha: 77e865bb3226a044
   - id: SHC-012
-    at: docs/spec/PLACES.md:2054
+    at: docs/spec/PLACES.md:2065
     harness: tool-to-build
     text_sha: 71b28c00dc50c393
   - id: SHC-013
-    at: docs/spec/PLACES.md:2055
+    at: docs/spec/PLACES.md:2066
     harness: tool-to-build
     text_sha: 359fc2384cbe116e
   - id: SUR-001

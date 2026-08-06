@@ -55,58 +55,6 @@ def check_registry_selfcheck(_row):
     return r.returncode == 0, (r.stdout.strip().splitlines() or ["?"])[0]
 
 
-def check_place_register_agreement(row):
-    """A PLC row's place exists in directory.py under the key the spec names.
-
-    This is the cheapest real check a PLC row has: identity, not content. It is
-    deliberately NOT sufficient for GREEN on its own -- content harnesses land
-    per-place as they are built -- but it can FAIL now, which makes drift loud.
-
-    IT USED TO COMPARE NOTHING. The first version resolved `PLC-nnn` to
-    `directory.PLACES[nnn-1]` and returned that place's key as the note --
-    without ever reading the key the SPEC names. Its only failure mode was an
-    index past the end of the register, which cannot happen while the two
-    counts agree, so it passed 129 of 129 by arithmetic. A check that cannot
-    fail for the thing it is named after is this project's most-repeated
-    defect, and it was sitting inside the file whose header calls the project
-    "a museum of gates that were prose".
-
-    Reading the spec's own key found real drift on the first run: PLC-127
-    names `eva_lock_blue` and `PLACES[126]` is `mooring_gallery` -- the two
-    orderings diverge partway down and every row after it is comparing one
-    place against another. The positional assumption is the bug; the key is
-    the identity, so the key is what is matched, and the index is used only as
-    a hint for the error message.
-    """
-    import directory as DIR                                       # noqa: PLC0415
-    if not row["id"].startswith("PLC-"):
-        return False, "not a PLC row"
-    want = _spec_key(row.get("at", ""))
-    if want is None:
-        return False, f"cannot read a place key from {row.get('at', '?')}"
-    keys = {q["key"] for q in DIR.PLACES}
-    if want not in keys:
-        return False, f"spec names `{want}`, which directory.PLACES has no row for"
-    # POSITION IS NOT IDENTITY, AND REQUIRING BOTH WAS MY OWN SECOND MISTAKE
-    # IN THIS FUNCTION. Having fixed it to read the spec's key, I then also
-    # required `PLACES[nnn-1]` to BE that key -- and 106 of 129 rows failed.
-    # Measured, every one of those 106 keys is present in the register: the
-    # orderings diverge from PLC-024 because `markab_quarter` was inserted at
-    # register position 23 and shifted everything after it. Nothing requires a
-    # stable spec identifier and an ordered tuple to agree, so failing on that
-    # would have been a gate red on a fact about list order.
-    #
-    # What IS worth asserting is the identity, and it can fail: drop a place
-    # from `directory.PLACES` and its spec row goes red immediately.
-    #
-    # The positional reading is recorded here because `spec_check.py:91` was
-    # the ONLY site in the project making it -- checked across station/ and
-    # tools/ -- so it dies with this comment rather than lurking. A PLC id is
-    # a name, not an index; the same sentence `deck.deck_index` carries about
-    # show-facing deck numbers, one register over.
-    return True, want
-
-
 _SPEC_KEY = re.compile(r"^#+\s*PLC-\d+\s*`([a-z0-9_]+)`")
 
 
@@ -153,14 +101,29 @@ def _spec_key(at):
 # types. `--dispatch` prints the mapping and the row counts, so an entry that
 # reaches nothing is visible on demand instead of after a session of wondering
 # why the ledger will not move.
-PREFIX_HARNESSES = {
-    "PLC": check_place_register_agreement,
-}
+def check_by_family(row):
+    """Dispatch to `station/spec_harness/<family>.py`, if one has been written.
+
+    ONE MODULE PER FAMILY, and the reason is collision rather than tidiness:
+    300 rows in 13 families each ask a different question, and the alternative
+    is several people editing this file at once -- which in this repository has
+    produced stomped artefacts, half-written imports and a swept commit. Each
+    module owns `check(row) -> (ok, note)` and a `SUFFICIENT` flag; see
+    `station/spec_harness/__init__.py` for the contract and `plc.py` for a
+    worked example that fails on real drift.
+    """
+    import spec_harness                                          # noqa: PLC0415
+    m = spec_harness.module_for(row["id"].split("-")[0])
+    if m is None:
+        return None
+    return m.check(row), bool(getattr(m, "SUFFICIENT", False))
+
+
+PREFIX_HARNESSES = {}
 
 # Keyed harnesses, for rows whose `harness:` field names a command verbatim.
 HARNESSES = {
     "tools/spec_registry.py --check": check_registry_selfcheck,
-    "register-agreement": check_place_register_agreement,
 }
 
 
@@ -182,9 +145,10 @@ def harness_for(row):
     h = row.get("harness", "tool-to-build")
     if h in HARNESSES:
         return HARNESSES[h], True
-    pre = row["id"].split("-")[0]
-    if pre in PREFIX_HARNESSES:
-        return PREFIX_HARNESSES[pre], False
+    import spec_harness                                          # noqa: PLC0415
+    m = spec_harness.module_for(row["id"].split("-")[0])
+    if m is not None:
+        return m.check, bool(getattr(m, "SUFFICIENT", False))
     return None, False
 
 
@@ -215,7 +179,7 @@ def main():
             print("  %5d rows -> %-32s %s" % (
                 n, name, "sufficient for GREEN" if suf
                 else ("" if name == "none" else "runs, not sufficient alone")))
-        for k, fn in list(HARNESSES.items()) + [(p, f) for p, f in PREFIX_HARNESSES.items()]:
+        for k, fn in HARNESSES.items():
             hit = sum(1 for r in rs if harness_for(r)[0] is fn)
             if hit == 0:
                 print("  UNREACHABLE: %r maps to %s and no row dispatches to it"
