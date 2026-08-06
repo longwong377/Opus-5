@@ -922,13 +922,50 @@ func _sleep() -> String:
 	var now: float = float(ck.call("hour"))
 	if now < 0.0:
 		return " (the clock has not started)"
+	# A SLEEP OF NO LENGTH IS A SLEEP OF A DAY. Lying down at exactly your own
+	# wake hour asks for the NEXT one, not for zero hours. `station/compress.py
+	# ::hours_between` has the same rule and the same reason.
 	var slept: float = fposmod(wake - now, 24.0)
+	if slept < 1e-6:
+		slept = 24.0
 	var clock = ck.get("clock")
 	if clock == null or not clock.has_method("set_hour"):
 		return " (this clock cannot be set)"
-	clock.call("set_hour", wake)
-	ck.call("apply", wake)
-	return " -- slept %.2f h, %05.2f -> %05.2f EMT" % [slept, now, wake]
+
+	# THE WORLD IS CARRIED THROUGH THE NIGHT, NOT TELEPORTED PAST IT.
+	#
+	# This used to be one `set_hour(wake)` and one `apply(wake)`. Fifteen honest
+	# lines against a system that already existed -- and the seven hours between
+	# lying down and waking never happened. Nobody moved through them. Nothing
+	# could wake you, because there was no interval to be woken during.
+	# `docs/THE-STATION.md` PLY-05 is explicit that both SLEEP and WAIT advance
+	# the clock "through the running simulation -- events still fire, stocks
+	# still move, the world does not pause", and a jump is the opposite of that.
+	#
+	# ONE STATION-HOUR A STEP, which is `compress.STEP_H` and is derived there:
+	# it is the finest grain at which either of this station's world-tick
+	# systems has anything to say. Seven steps for a night, each one a
+	# `Director.apply` that puts all 21 bound residents where that hour says
+	# they are -- so a player who sleeps 22:00 -> 05:15 is stepped past the
+	# 02:00 quiet hour and wakes into a corridor that filled up while they slept
+	# rather than one that changed between two frames.
+	#
+	# WHAT IT DOES NOT DO YET, so silence is not read as completeness: nothing
+	# here can INTERRUPT the sleep. `compress.advance` stops at the first
+	# incident loud enough and near enough, and the runtime has no incident tick
+	# to ask -- `main.gd` fires collapses from a baked list rather than
+	# simulating. The step loop is the half that makes the other half possible.
+	var step_h: float = 1.0
+	var done: float = 0.0
+	var steps: int = 0
+	while done < slept - 1e-6:
+		done = minf(slept, done + step_h)
+		var at: float = fposmod(now + done, 24.0)
+		clock.call("set_hour", at)
+		ck.call("apply", at)
+		steps += 1
+	return " -- slept %.2f h through %d station-hours, %05.2f -> %05.2f EMT" \
+		% [slept, steps, now, wake]
 
 
 ## The station clock, found BY CAPABILITY rather than by node name -- and the

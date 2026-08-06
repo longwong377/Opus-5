@@ -11103,3 +11103,56 @@ not just the total.
 **Overturned by.** A canon pay stub. Nothing in the reference set shows one.
 
 **Authority 5.**
+
+## INV-662 — the compression step is one station-hour
+
+**What.** `compress.STEP_H = 1.0`, and `interact.gd::_sleep` uses the same number.
+
+**Why.** PLY-05 says a sleep advances the clock *"through the running simulation — events
+still fire, stocks still move"*, which makes the step size a question about the world's own
+tick rate rather than about smoothness. `incident.simulate` takes a window in minutes and
+`economy.background_sales` moves a whole day at a time, so **one station-hour is the finest
+grain at which either of this station's two world-tick systems has anything to say.**
+
+**Constrained by.** Finer is waste: sixty `incident.simulate` calls to produce the same hour of
+events, at sixty times the cost, for a resolution nobody can perceive across a sleep. Coarser
+loses the thing the step exists for — PLY-05's own CHECK names *"a scripted 03:00 sweep event
+wakes the player camping below"*, and a two-hour step lands on 02:00 and 04:00.
+
+**And it is a resolution, not an event rate — a measured negative result.** The first control
+written for `compress.py` asserted that a single-step advance would fire FEWER events than
+eight hourly ones. It fired **110 against 95**, because `incident.simulate` honours whatever
+window it is handed. Event count is therefore not a proxy for "the world ran". What the step
+buys is *how finely the sleep can be stopped*: a one-step advance checks for a waker once, at
+the end, so a 03:00 sweep can only wake you at 05:15, which is not being woken.
+
+**Overturned by.** A world-tick system with something to say at a finer grain than an hour —
+a per-minute PA schedule or a per-minute stock model would move this straight to 0.25 h.
+
+**Authority 5.**
+
+## INV-663 — which incident classes are loud enough to wake a sleeper
+
+**What.** `compress.WAKING_CLASSES` = INC-SWEEP, INC-BREACH, INC-FIRE, INC-BRAWL, INC-ARREST,
+INC-CONTRA. An incident wakes a sleeper when it is one of those **and** it happens in the place
+they are sleeping.
+
+**Why.** PLY-05 requires interruptions to be real and names a sweep reaching the player's camp
+as its example. Every incident the station produces cannot be an interruption or a night in
+Downbelow would be one long wake-up: `--sleep 22.0 --wake 5.25` fires 90 events in seven hours
+in that one place alone.
+
+**Constrained by.** Two filters, and the first is the load-bearing one. **PLACE** — a
+fabrication fault four sectors away is the world running, not an interruption, and it is
+checked before the class. **CLASS** — the six above are the ones that involve people arriving,
+shouting, or opening a door, as against a queue forming or a stock delivery.
+
+**What would be better, and why it is not done.** Derived from a severity field on
+`incident.CLASSES` rather than listed here. That field does not exist, so a hand-list marked as
+an extrapolation is the honest form; the alternative is inventing a severity ordering for all
+30 classes as a side effect of building sleep.
+
+**Overturned by.** A severity or loudness field on the incident classes, which should replace
+this list entirely rather than validate it.
+
+**Authority 5.**

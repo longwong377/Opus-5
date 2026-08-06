@@ -142,7 +142,8 @@ in a second module: coincident faces are geometry nobody can see.
 
 And the honest limit, which no switch distance can fix: **the deviation budget
 bounds the error per figure and says nothing about the number of figures.**
-Beyond `SUBPIXEL_FIGURE_M` (695 m, where a 0.45 m shoulder span falls under one
+Beyond `SUBPIXEL_FIGURE_M` (423 m at the shipped 70 deg lens -- it was 695 m
+when this module carried its own 50 deg literal -- where a 0.45 m shoulder falls under one
 shading sample) an individual is not resolvable at all and must become crowd
 density rather than a draw. Inside it, cost is count x rate, and `crowd_cost()`
 solves for the count the frame budget affords rather than asserting one.
@@ -196,8 +197,26 @@ def _gauss(seed: str, salt: str, sigma: float, clamp: float = 2.5) -> float:
 # The screen model. Mirrors station/lod.py deliberately; _selftest asserts the
 # two agree, because two chains that quietly use different budgets produce two
 # different-looking pops in the same frame.
+#
+# AND THE MIRROR IS NOW READ RATHER THAN RESTATED, because a restated mirror
+# with an assertion beside it is a tripwire, not a source. `FOV_DEG = 50.0` sat
+# here as a fourth literal copy of a number nobody had sourced; when session 4r
+# derived the real lens off `player.gd` (50 -> 70 deg) the three copies that
+# READ moved and this one did not, and the assertion below fired -- correctly,
+# and on the only file in the project that could have caught it. The right fix
+# is not to edit the literal, it is to stop having one. The fallback keeps this
+# module importable on its own, which is what the LOD agent's own control
+# showed matters: withholding `lod.py` must degrade to a stated value rather
+# than crash a body builder.
 # ---------------------------------------------------------------------------
-FOV_DEG = 50.0
+try:                                                     # noqa: SIM105
+    sys.path.insert(0, _STATION)
+    import lod as _hull_lod                              # noqa: E402
+    FOV_DEG = _hull_lod.FOV_DEG
+    FOV_SRC = "station/lod.py"
+except Exception as _exc:                                # noqa: BLE001
+    FOV_DEG = 50.0
+    FOV_SRC = "FALLBACK (%s)" % _exc
 SCREEN_H = 1440
 SCREEN_W = 2560           # 1440p is 16:9; used only for the horizontal FOV
 PIXEL_BUDGET = 1.5          # deviation budget: how far the picture may move
@@ -5540,9 +5559,25 @@ def _selftest():
     check(crowd_cost(100, distance_m=60.0)["triangles"]
           < crowd_cost(100, distance_m=5.0)["triangles"],
           "the same crowd is cheaper further away -- the chain is doing work")
-    check(SUBPIXEL_FIGURE_M > 500.0 and SUBPIXEL_FIGURE_M < 900.0,
-          f"the sub-pixel figure distance is derived from the measured shoulder "
-          f"width ({SUBPIXEL_FIGURE_M:,.0f} m)")
+    # A BOUND WRITTEN AGAINST ONE LENS IS THE SAME DEFECT AS A LITERAL FOV.
+    # This read `> 500 and < 900` -- a window around the 695 m that a 50 deg
+    # lens gives -- and when session 4r derived the real lens off `player.gd`
+    # (50 -> 70 deg) the value correctly fell to 423 m and the check failed on
+    # its own staleness rather than on anything about the figure. A wider lens
+    # puts fewer pixels on a metre, so a shoulder goes sub-pixel NEARER; that
+    # is the model working.
+    #
+    # So the assertion is against the SCREEN MODEL rather than against a
+    # remembered number: the distance must be exactly what a 0.45 m span
+    # subtending one shading sample implies at whatever lens is in force, and
+    # it must land inside the station and beyond the corridor a player walks.
+    want = FIGURE_WIDTH_M * SCREEN_H / (
+        SHADING_SAMPLE_PX * 2.0 * math.tan(math.radians(FOV_DEG) / 2.0))
+    check(abs(SUBPIXEL_FIGURE_M - want) < 1e-6
+          and 100.0 < SUBPIXEL_FIGURE_M < 8047.0,
+          f"the sub-pixel figure distance is the screen model's own answer for "
+          f"a {FIGURE_WIDTH_M:.2f} m shoulder at {FOV_DEG:.0f} deg "
+          f"({SUBPIXEL_FIGURE_M:,.0f} m, wanted {want:,.0f} m)")
 
     # -- the assertions above must be able to fail -------------------------
     # Every one of these constructs the defect and confirms the checker rejects

@@ -113,6 +113,16 @@ jobs:
         continue-on-error: true
         run: python3 station/coldstart.py --g7
 
+      # SLEEP AND WAIT RUN THE WORLD RATHER THAN SKIPPING IT. PLY-05: "advance
+      # the station clock at compressed rate THROUGH THE RUNNING SIMULATION --
+      # events still fire, stocks still move, the world does not pause." What
+      # shipped was one `Clock.set_hour` and the seven hours between lying down
+      # and waking never happened.
+      - name: A sleep runs the world it sleeps through
+        id: scompress
+        continue-on-error: true
+        run: python3 station/compress.py --selftest
+
       # HUNGER AND FATIGUE, AS A RHYTHM RATHER THAN A RESOURCE BAR. PLY-06's
       # own harness is a WHOLE-STATE DIFF against a fed-and-rested control,
       # because a checklist can only fail for a missing effect and the failure
@@ -1244,6 +1254,8 @@ jobs:
             echo "FAILED: svista"; fail=1; fi
           if [ "${{ steps.svistamount.outcome }}" != "success" ]; then
             echo "FAILED: svistamount"; fail=1; fi
+          if [ "${{ steps.scompress.outcome }}" != "success" ]; then
+            echo "FAILED: scompress"; fail=1; fi
           if [ "${{ steps.scondition.outcome }}" != "success" ]; then
             echo "FAILED: scondition"; fail=1; fi
           if [ "${{ steps.ssave.outcome }}" != "success" ]; then
