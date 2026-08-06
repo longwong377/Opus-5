@@ -113,6 +113,21 @@ jobs:
         continue-on-error: true
         run: python3 station/coldstart.py --g7
 
+      # SAVE, WALK AWAY, LOAD, AND CHECK YOU CAME BACK. The first save system
+      # this project has had -- before it, closing the game restarted the clock
+      # at 13:00, refilled every shop and reset every purse.
+      #
+      # THE AUDIT LINE IS AS LOAD-BEARING AS THE VERDICT. A save system that
+      # quietly saves four of nine subsystems is indistinguishable, in every
+      # test, from one that saves all nine, so `save.gd::audit` names every live
+      # subsystem that cannot save on every capture -- and a subsystem with
+      # nothing to save has to DECLARE that, with a reason, or it counts as
+      # outstanding. Currently 4 savable + 5 exempt with reasons + 0 silent.
+      - name: Save, walk away, load, and check you came back
+        id: ssave
+        continue-on-error: true
+        run: python3 station/coldstart.py --g8
+
       # C&C READS AND ACTS ON REAL STATION STATE. `plant_systems` gained a
       # failure model in 4q and `grep -c 'cnc' station/plant_systems.py` was
       # ZERO -- the room whose whole purpose is watching the station watched
@@ -1219,6 +1234,8 @@ jobs:
             echo "FAILED: svista"; fail=1; fi
           if [ "${{ steps.svistamount.outcome }}" != "success" ]; then
             echo "FAILED: svistamount"; fail=1; fi
+          if [ "${{ steps.ssave.outcome }}" != "success" ]; then
+            echo "FAILED: ssave"; fail=1; fi
           if [ "${{ steps.sshellfit.outcome }}" != "success" ]; then
             echo "FAILED: sshellfit"; fail=1; fi
           if [ "${{ steps.saaa_selftest.outcome }}" != "success" ]; then

@@ -443,3 +443,11 @@ func describe() -> String:
 		_here, hour, live.size(), em,
 		("\"%s\"" % _last_call.substr(0, 40)) if _last_call != "" else "-",
 		", ".join(live)]
+
+
+## NOTHING HERE SURVIVES A RELOAD, AND NOTHING SHOULD.
+## Every layer's level is a pure function of (place, hour, occupancy, berths in
+## use) -- `station/audio.py` derives all seven and none of them accumulates.
+## Restore the clock and the position and the room sounds identical.
+func save_exempt() -> String:
+	return "levels are a pure function of place and hour"

@@ -1513,3 +1513,53 @@ func verb_report() -> String:
 		parts.append("%s:%d" % [String(k), int(by[k])])
 	parts.sort()
 	return "/".join(parts)
+
+
+# ===========================================================================
+# WHAT A RELOAD HAS TO PUT BACK
+#
+# The LEDGER, and the counters that describe what the player did to it. The
+# ledger is the station's money and stock -- every till's take, every counter's
+# shelf -- and it is the one document here that a session genuinely mutates.
+#
+# THE LEDGER IS SAVED WHOLE, and that is a deliberate exception to this file's
+# own rule against copying computed data into a snapshot. `station/economy.py`
+# derives the OPENING ledger from the station's shops, wages and prices, so it
+# is rebuildable -- but only its opening state. Once a player has bought
+# something the document is no longer derivable from anything, because the
+# purchase is not written down anywhere else. A save that carried only the
+# purse would restore a player's money and refill every shop they emptied.
+#
+# `_led_dirty` is NOT saved. It is a question about this process's relationship
+# to a file on disk, and a freshly loaded ledger's relationship to disk is
+# "identical", whatever it was when the snapshot was taken.
+# ===========================================================================
+
+func save_state() -> Dictionary:
+	return {
+		"ledger": _led.duplicate(true),
+		"sales": sales,
+		"refusals": refusals,
+		"use_count": _use_count,
+	}
+
+
+func load_state(d: Dictionary) -> void:
+	var led = d.get("ledger", null)
+	if typeof(led) == TYPE_DICTIONARY and not led.is_empty():
+		_led = led.duplicate(true)
+		# THE PLAYER'S PURSE IS PUSHED BACK ONTO THE BODY, because `player.gd`
+		# holds its own copy and `set_purse` is the only writer. Without this
+		# the ledger says one thing and the HUD says another, which is the
+		# disagreement `hud.gd` and `ambience.gd` already had over room extents.
+		# `player.gd::load_state` runs first in `save.gd`'s ordering, so the
+		# body has its saved credits by now and this only re-asserts them from
+		# the authority.
+		if _player != null and String(_player.npc_id) != "":
+			var purse := _my_purse()
+			if not purse.is_empty():
+				_player.set_purse(purse)
+		_led_dirty = false
+	sales = int(d.get("sales", sales))
+	refusals = int(d.get("refusals", refusals))
+	_use_count = int(d.get("use_count", _use_count))

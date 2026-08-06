@@ -1327,3 +1327,53 @@ func _read_array(path: String) -> Array:
 	var f := FileAccess.open(path, FileAccess.READ)
 	var v = JSON.parse_string(f.get_as_text())
 	return (v if typeof(v) == TYPE_ARRAY else [])
+
+
+# ===========================================================================
+# WHAT A RELOAD HAS TO PUT BACK
+#
+# WHAT THE PLAYER HAS ALREADY BEEN TOLD, and that is the whole point of saving
+# this subsystem rather than letting it reset. A station where every resident
+# greets you as a stranger every session is a station with no memory of you,
+# which is exactly the failure `docs/MASTER-PLAN.md` R7 names for the journal.
+#
+# THE OPEN CONVERSATION IS DELIBERATELY NOT SAVED. `_open`, `_near`, `_at`,
+# `_run` and `_menu` are a live exchange with a person who is standing in front
+# of you, and the body they belong to is respawned from the crowd library at
+# load with no guarantee of being the same instance -- so restoring a pointer
+# into a conversation would resume a dialogue with whoever now occupies that
+# slot. A reload closes the conversation. That is a design decision and it is
+# the honest one; resuming it needs the speaker to be addressable across a
+# reload, which nothing here is yet.
+#
+# WHAT IS STILL MISSING, said out loud so silence is not read as completeness:
+# these are COUNTERS. They restore how much has been said, not WHICH LINES to
+# whom -- so a resident whose one-off line a player already heard can offer it
+# again. Per-person line state needs a stable id for a crowd body, the same
+# thing the open conversation needs, and it is the same piece of work.
+# ===========================================================================
+
+func save_state() -> Dictionary:
+	return {
+		"spoken": _spoken,
+		"opened": _opened,
+		"said": _said,
+		"pressed_new": _pressed_new,
+		"run_max": _run_max,
+	}
+
+
+func load_state(d: Dictionary) -> void:
+	_spoken = int(d.get("spoken", _spoken))
+	_opened = int(d.get("opened", _opened))
+	_said = int(d.get("said", _said))
+	_pressed_new = int(d.get("pressed_new", _pressed_new))
+	_run_max = int(d.get("run_max", _run_max))
+	# The live exchange is closed rather than restored -- see the note
+	# above. `close()` already exists and prints who was dropped.
+	close()
+	_near = null
+	_picked = ""
+	if _panel != null:
+		_panel.visible = false
+

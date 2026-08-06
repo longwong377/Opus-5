@@ -205,7 +205,9 @@ func _ready() -> void:
 		_vista_gate()
 		return
 
-	if _headless() and _args().has("ragdoll-gate"):
+	if _headless() and _args().has("save-gate"):
+		_save_gate()
+	elif _headless() and _args().has("ragdoll-gate"):
 		_ragdoll_gate()
 	elif _headless() and _args().has("collapse-gate"):
 		_collapse_gate()
@@ -955,6 +957,220 @@ func _collapse_gate() -> void:
 		(_fell_last if _fell_last != "" else "-"), _clock.hour(),
 		_collapses.size(), _collapse_i])
 	print(String(_ragdoll.call("report")))
+	get_tree().quit(0 if ok else 1)
+
+
+# ===========================================================================
+# SAVING, AND THE ONE THING A SAVE SYSTEM MUST NOT BE
+# ===========================================================================
+#
+# `scripts/save.gd` writes and reads; this decides WHO is asked. That list is
+# here rather than in `save.gd` because this file is the only node that owns
+# the whole world -- the same reason `_start_clock`, `_start_ambience` and
+# `_start_ragdolls` live here.
+#
+# EVERY SUBSYSTEM IS OFFERED, INCLUDING THE ONES THAT CANNOT SAVE. `_subjects`
+# returns every live node a player's session mutates, and `save.gd::audit`
+# splits them into those with the contract and those without. That split is
+# printed on every capture, because a save system that quietly saves four of
+# nine is indistinguishable in every test from one that saves all nine -- the
+# four round-trip, the gate goes green, and the five nobody asked are invisible.
+# This project has produced that shape eleven times under a different name.
+const SAVE_SCRIPT := "res://scripts/save.gd"
+
+var _save = null
+
+
+func _save_lib():
+	if _save == null:
+		_save = load(SAVE_SCRIPT)
+	return _save
+
+
+## Everything a session mutates, by the name it takes in a save file.
+##
+## FOUND BY METHOD OR BY CLASS, NEVER BY REACHING INTO `walk.gd`'s private
+## fields -- the rule `_player()`, `_crowd()` and `_streamer` already follow. A
+## save that binds to `walk.gd::_interact` breaks the moment that field is
+## renamed, and breaks SILENTLY, into "this subsystem has no save_state".
+func _subjects() -> Dictionary:
+	var out := {}
+	var body := _player()
+	if body != null:
+		out["player"] = body
+	if _clock != null:
+		out["clock"] = _clock
+	if _world != null:
+		for n in _world.find_children("*", "Node3D", true, false):
+			# TWO METHODS EACH, because one is not distinctive enough in this
+			# tree: `dialogue.gd` and `stream.gd` both define `report()`, and
+			# `count()` is on `interact.gd` and `dialogue.gd` alike. The pairs
+			# below are unique -- checked by name against both files rather
+			# than assumed.
+			if n.has_method("verb_report") and n.has_method("pressable_count"):
+				out["interact"] = n
+			elif n.has_method("offers") and n.has_method("lines_shown"):
+				out["dialogue"] = n
+	if _streamer != null:
+		out["stream"] = _streamer
+	if _life != null:
+		out["life"] = _life
+	var crowd = _crowd()
+	if crowd != null:
+		out["crowd"] = crowd
+	if _audio != null:
+		out["ambience"] = _audio
+	if _ragdoll != null:
+		out["ragdoll"] = _ragdoll
+	return out
+
+
+func save_to(slot: String) -> Dictionary:
+	var lib = _save_lib()
+	var subs := _subjects()
+	var snap: Dictionary = lib.capture(subs, {"mode": _mode, "hour": _hour_now()})
+	var why: String = lib.write(slot, snap)
+	if why != "":
+		push_error("save: " + why)
+	print("SAVE %s -- %s" % [slot, lib.describe(snap)])
+	return snap
+
+
+func load_from(slot: String) -> Dictionary:
+	var lib = _save_lib()
+	var snap: Dictionary = lib.read(slot)
+	if snap.is_empty():
+		print("SAVE load %s -- nothing there" % slot)
+		return {}
+	var r: Dictionary = lib.restore(_subjects(), snap)
+	print("SAVE load %s -- applied %s%s%s" % [slot,
+		", ".join(PackedStringArray(r["applied"])),
+		("; file had no section for " + ", ".join(PackedStringArray(r["absent"]))
+			if (r["absent"] as Array).size() > 0 else ""),
+		("; file had unknown sections " + ", ".join(PackedStringArray(r["unknown"]))
+			if (r["unknown"] as Array).size() > 0 else "")])
+	return snap
+
+
+func _hour_now() -> float:
+	return (_clock.hour() if _clock != null else -1.0)
+
+
+## G8 -- SAVE, WALK AWAY, LOAD, AND CHECK YOU CAME BACK.
+##
+## THE PERTURBATION IS THE GATE. Capturing a snapshot and restoring it into a
+## world nobody touched proves nothing at all: every field already holds the
+## value the snapshot carries, so a `load_state` that does nothing passes. So
+## this MOVES the player, MOVES the clock, SPENDS money and COUNTS a
+## conversation between the save and the load, and asserts the restore undid
+## every one of them.
+##
+## `--no-restore` is the control and it skips only the load. It must FAIL, and
+## on exactly the fields the perturbation moved -- if it passes, the
+## perturbation is not reaching anything the check reads, which is the vacuous
+## A/B this project has recorded twice.
+func _save_gate() -> void:
+	for _i in settle_frames:
+		await get_tree().physics_frame
+	var lib = _save_lib()
+	var subs := _subjects()
+	var au: Dictionary = lib.audit(subs)
+	print("SAVE subjects: %d live, %d can save (%s)%s%s" % [
+		subs.size(), (au["can"] as Array).size(),
+		", ".join(PackedStringArray(au["can"])),
+		("; NO save_state: " + ", ".join(PackedStringArray(au["missing"]))
+			if (au["missing"] as Array).size() > 0 else ""),
+		("; HALF the contract: " + ", ".join(PackedStringArray(au["partial"]))
+			if (au["partial"] as Array).size() > 0 else "")])
+
+	var body := _player()
+	if body == null:
+		print("SAVE gate=FAIL no player")
+		get_tree().quit(2)
+		return
+
+	var before := {
+		"pos": body.global_position,
+		"hour": _hour_now(),
+		"credits": float(body.credits),
+		"bag": (body.carrying as Array).size(),
+	}
+	save_to("gate")
+
+	# --- walk away ---------------------------------------------------------
+	# Along the corridor rather than across it: +Z is the station's AXIS and a
+	# ring corridor is 2.60 m wide in that direction, so an offset along +Z
+	# walks the body off its own floor. Same derivation as `_ragdoll_gate`.
+	var p: Vector3 = body.global_position
+	var radial := Vector3(p.x, p.y, 0.0)
+	var up: Vector3 = (-radial.normalized() if radial.length() > 0.001
+		else Vector3.UP)
+	var along: Vector3 = up.cross(Vector3(0, 0, 1)).normalized()
+	body.global_position = p + along * 12.0
+	# FIVE HOURS, AND THE FIVE IS NOT ARBITRARY. `hour()` wraps at 24, and the
+	# first version of this line advanced the clock by 3,600 station hours --
+	# exactly 150 days, exactly zero hours -- so the perturbation moved the
+	# clock by 0.0029 h, which was the real time the frames themselves took.
+	# The gate reported the clock as failing and it was the CONTROL that was
+	# broken. Any advance that is not a multiple of 24 works; 5 is one.
+	if _clock != null:
+		_clock.tick(5.0 / max(_clock.rate, 1e-9))
+	var moved_credits := false
+	if body.credits >= 0.0:
+		body.credits = body.credits + 137.0
+		moved_credits = true
+	body.carrying.append("save-gate-token")
+	for _i in 10:
+		await get_tree().physics_frame
+	var perturbed := {
+		"pos": body.global_position,
+		"hour": _hour_now(),
+		"credits": float(body.credits),
+		"bag": (body.carrying as Array).size(),
+	}
+
+	# --- and come back -----------------------------------------------------
+	if _args().has("no-restore"):
+		print("SAVE: RESTORE SKIPPED (control)")
+	else:
+		load_from("gate")
+	# THE CLOCK IS READ IN THE RESTORE'S OWN FRAME, and the settle frames come
+	# after. `main._process` ticks the clock every frame, so ten frames of
+	# settling move it by the real time they take -- 0.0028 h at the default
+	# rate, which is small and is not zero. Reading it here needs no tolerance;
+	# reading it after the settle would need one that grew with
+	# `settle_frames`, and a tolerance that tracks the harness is one that will
+	# eventually swallow the thing it was written to catch.
+	var hour_back: float = _hour_now()
+	for _i in 10:
+		await get_tree().physics_frame
+
+	var after := {
+		"pos": body.global_position,
+		"hour": hour_back,
+		"credits": float(body.credits),
+		"bag": (body.carrying as Array).size(),
+	}
+	var d_pos: float = (after["pos"] as Vector3).distance_to(before["pos"])
+	var d_hour: float = absf(float(after["hour"]) - float(before["hour"]))
+	var d_cred: float = absf(float(after["credits"]) - float(before["credits"]))
+	var d_bag: int = int(after["bag"]) - int(before["bag"])
+	# The body is a physics object and ten frames of gravity move it, so the
+	# position tolerance is a stride rather than zero. Everything else is exact.
+	var ok_pos: bool = d_pos < 0.75
+	var ok_hour: bool = d_hour < 1e-4
+	var ok_cred: bool = d_cred < 1e-4
+	var ok_bag: bool = d_bag == 0
+	var moved: float = (perturbed["pos"] as Vector3).distance_to(before["pos"])
+	print("SAVE perturbation: moved %.2f m, clock +%.4f h, credits %s, bag +1"
+		% [moved, absf(float(perturbed["hour"]) - float(before["hour"])),
+			("+137.00" if moved_credits else "no purse in this build")])
+	print("SAVE restored: pos %.3f m off, clock %.5f h off, credits %.2f off, bag %+d"
+		% [d_pos, d_hour, d_cred, d_bag])
+	var ok: bool = ok_pos and ok_hour and ok_cred and ok_bag
+	print("SAVE gate=%s pos=%s clock=%s credits=%s bag=%s"
+		% ["PASS" if ok else "FAIL", str(ok_pos), str(ok_hour), str(ok_cred),
+			str(ok_bag)])
 	get_tree().quit(0 if ok else 1)
 
 

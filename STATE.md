@@ -972,6 +972,70 @@ outside its own declared arc. Checked against every place sharing its ring, deck
 **it has no neighbour there, so nothing is interpenetrating today.** A latent hazard and a
 separate item, not a blocker for the other 31.
 
+### 25.10 THE GAME CAN BE SAVED — `coldstart.py --g8`, and the control fails on all four fields
+
+**There has never been a save system.** Closing the game lost everything: the station clock
+restarted at 13:00, every shop refilled, every purse reset and every resident greeted the player
+as a stranger. `docs/MASTER-PLAN.md` §4r R7 states the consequence for the condition model —
+*"a hunger bar that resets"* — and it applies to all of it. `godot/scripts/save.gd` is 240 lines
+and the whole player-facing P2 block depends on it.
+
+| | measured |
+|---|---|
+| subject | `SAVE gate=PASS pos=true clock=true credits=true bag=true` |
+| position back | **0.000 m off** after a 12.01 m walk away |
+| clock back | **0.00000 h off** after a +5.0028 h advance |
+| purse back | **0.00 CR off** after spending 137.00 |
+| bag back | **+0** after adding an item |
+| control `--no-restore` | **FAIL on all four** — 12.032 m, 5.00286 h, 137.00 CR, +1 item |
+
+**THE AUDIT LINE IS AS LOAD-BEARING AS THE VERDICT, and it is the whole reason this is not
+instance twelve.** A save system that quietly saves four of nine subsystems is
+**indistinguishable, in every test, from one that saves all nine** — the four round-trip, the
+gate goes green, and the five nobody asked are invisible. So `save.gd::audit` names every live
+subsystem on every capture, in four buckets:
+
+    SAVE subjects: 9 live, 4 can save (clock, dialogue, interact, player)
+    4 of 4 savable; 5 exempt: ambience (levels are a pure function of place and hour),
+      crowd (walker phase is derived from the clock; per-body player effects are NOT kept),
+      life (every position is a pure function of (person, hour); the Clock is saved),
+      ragdoll (incidents regenerate from the clock; a body already down is LOST),
+      stream (resident cells are derived from the player's position every frame)
+
+**The third bucket is what makes the number readable.** Most of this station is deterministic
+from committed data, so most subsystems have nothing to save and never will. A two-bucket audit
+calls all of those "missing" for ever, the headline reads "4 of 9" in perpetuity, and nobody can
+tell which are decisions and which are bugs — *a permanent red nobody can act on is a red nobody
+reads.* So a subsystem with nothing to save declares `save_exempt() -> String` **with a
+non-empty reason**, and an empty string falls through to `missing`, so the exemption cannot be
+used to disappear from the count. Same move `INVENTIONS.md` makes for an unsourced number: the
+rule is not that everything must be sourced, it is that an unsourced thing must **say so**.
+
+**THE PERTURBATION IS THE GATE, AND MINE WAS BROKEN FIRST.** Capturing a snapshot and restoring
+it into a world nobody touched proves nothing — every field already holds the snapshot's value,
+so a `load_state` that does nothing passes. The gate therefore walks the body 12 m, advances the
+clock, spends 137 credits and puts a token in the bag between save and load. **The first clock
+advance was 3,600 station hours — exactly 150 days, exactly zero hours on a wrapping clock** —
+so the perturbation moved the hour by 0.0029, which was the real time the frames themselves
+took, and **the gate reported the CLOCK as broken when the control was.** Five hours works
+because five is not a multiple of 24. The residual 0.00277 h was the ten settle frames ticking
+the clock after the restore; the clock is now read in the restore's own frame, which needs no
+tolerance at all rather than one that grows with `settle_frames`.
+
+**What is deliberately NOT saved, written into the file so nobody looks for it later:** the
+station's geometry, the residents' names/homes/jobs/schedules, the incident tables, the material
+and lighting rigs — all rebuilt identically from `station/generated/`, and a save carrying a copy
+would be a second, staler copy of a computed number. The player's `gravity_mode`, `omega2` and
+`eye_height_m` are also excluded: those are the *world's* statement about the deck, and a stale
+snapshot overriding a corrected field is the exact shape of the 4q defect where a 9.81 export
+default stood on a 7.454 m/s² deck.
+
+**Three things it does not do, stated so silence is not read as completeness:** dialogue restores
+*counters*, not which line was said to whom, so a resident can re-offer a one-off line; a live
+conversation is closed rather than resumed; and a body already lying on the deck is lost. All
+three need the same missing piece — **a stable id for a crowd body across a reload** — and it is
+one job, not three.
+
 ### 25.9 THE QUALITY BAR HAD NEVER RUN IN CI
 
 `tools/aaa_gate.py` decides whether **any** subsystem may stop being reworked, and it appeared

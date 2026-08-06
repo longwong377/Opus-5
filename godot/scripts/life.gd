@@ -146,6 +146,27 @@ class Clock:
 	func day() -> int:
 		return day_offset + int(floor(hours_abs() / DAY_H))
 
+	## THE CLOCK IS THE ONE THING A SAVE CANNOT REBUILD. Every other fact about
+	## this station -- who lives where, who works when, what a room looks like --
+	## is deterministic from committed data and comes back identically at load.
+	## The time of day is not: it is the only accumulated state in the whole
+	## simulation, and without it every session restarts at 13:00 and no
+	## consequence can persist to day N+1, which is `docs/MASTER-PLAN.md` P1-G3's
+	## own gate.
+	##
+	## `rate` is saved with it because `hour()` is `start_hour + elapsed_s * rate`
+	## -- restoring elapsed seconds under a different rate lands on a different
+	## hour, and a save that moves the clock is worse than one that loses it.
+	func save_state() -> Dictionary:
+		return {"rate": rate, "start_hour": start_hour,
+				"elapsed_s": elapsed_s, "day_offset": day_offset}
+
+	func load_state(d: Dictionary) -> void:
+		rate = float(d.get("rate", rate))
+		start_hour = float(d.get("start_hour", start_hour))
+		elapsed_s = float(d.get("elapsed_s", elapsed_s))
+		day_offset = int(d.get("day_offset", day_offset))
+
 	## The hour of THAT day, for anything that wants to print a date and a time
 	## together. Identical to `hour()`; named so a caller reads as it means.
 	func day_hour() -> float:
@@ -588,6 +609,22 @@ class Director extends Node3D:
 		for c in n.get_children():
 			out.append_array(_meshes(c))
 		return out
+
+
+	## THE DIRECTOR IS NOT SAVED, AND THAT IS THE STRONGEST STATEMENT IN THIS
+	## FILE. Every position it reports is a PURE FUNCTION of (person, hour) --
+	## `Route.at()` evaluates a commute from the clock rather than integrating
+	## it, and `Integrator` exists in this same file purely as the control that
+	## proves the difference. A pure function has no state to save: restore the
+	## clock and every one of the 21 residents is exactly where they would have
+	## been. Saving their positions would be storing a computed number, and a
+	## stale one within a frame.
+	##
+	## The Clock itself IS saved -- see `Clock.save_state`. It is the one piece
+	## of accumulated state in the whole simulation, which is precisely why the
+	## rest of this can be pure.
+	func save_exempt() -> String:
+		return "every position is a pure function of (person, hour); the Clock is saved"
 
 
 ## An integrator, kept ONLY as the control for the purity gate.

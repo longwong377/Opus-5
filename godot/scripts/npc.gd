@@ -2078,3 +2078,14 @@ func advance_crowd(delta: float) -> void:
 		if w.body != null:
 			w.body.global_transform = _walker_body_xform(w)
 	_place_crowd()
+
+
+## THE CROWD IS NOT SAVED, AND THAT IS A DECISION WITH A COST.
+## A walker's position along its corridor is a phase derived from the resident's
+## id and the clock, so restoring the clock puts the crowd back where it was --
+## the corridor looks right. What does NOT come back is anything a player did to
+## an individual: a body they knocked over, a walker they were following. Those
+## need a stable id for a crowd body across a reload, which is the same missing
+## piece `dialogue.gd::load_state` names for resuming a conversation.
+func save_exempt() -> String:
+	return "walker phase is derived from the clock; per-body player effects are NOT kept"

@@ -535,3 +535,86 @@ func _physics_process(delta: float) -> void:
 	step(delta, wish,
 		Input.is_key_pressed(KEY_SPACE),
 		Input.is_key_pressed(KEY_SHIFT))
+
+
+# ===========================================================================
+# WHAT A RELOAD HAS TO PUT BACK
+#
+# The body's own state and nothing else. Every number here is one a player
+# would notice missing: where they are standing, which way they are looking,
+# what is in their purse and their bag, and whether they are sitting down.
+#
+# THE POSTURE FIELDS ARE SAVED EVEN THOUGH THEY ARE DERIVED, and that is
+# deliberate rather than sloppy. `hip_m`, `seat_m`, `recline_m` and `wake_h`
+# come from `station/player.py::posture` for this person's species and stature,
+# so they ARE rebuildable -- but only by `set_purse`, and only if the ledger the
+# reload finds still holds this npc_id. Saving them means a body whose ledger
+# entry has gone can still sit down at its own hip height instead of refusing.
+# They are re-derived and overwritten the moment a real purse arrives.
+#
+# NOT SAVED: `gravity_mode`, `omega2`, `gravity_m_s2`, `eye_height_m` and the
+# speeds. Those are the WORLD's statement about the deck this body is standing
+# on -- `main.gd` computes `omega2` from the station's own spin period at boot
+# -- and a save file that carried them would let a stale snapshot quietly
+# override a corrected field. That is the exact shape of the 4q defect where
+# nothing set `gravity_m_s2` and a 9.81 export default stood on a 7.454 m/s^2
+# deck; the cure there was to derive it at the point of use, and a save file is
+# not a point of use.
+# ===========================================================================
+
+func save_state() -> Dictionary:
+	return {
+		"pos": [global_position.x, global_position.y, global_position.z],
+		"yaw": _yaw,
+		"pitch": _pitch,
+		"npc_id": npc_id,
+		"person": person,
+		"credits": credits,
+		"carrying": carrying.duplicate(),
+		"carry_cap": carry_cap,
+		"tier": tier,
+		"tier_name": tier_name,
+		"hip_m": hip_m,
+		"seat_m": seat_m,
+		"recline_m": recline_m,
+		"wake_h": wake_h,
+		"seated": seated,
+		"seat_used_m": seat_used_m,
+	}
+
+
+func load_state(d: Dictionary) -> void:
+	var p = d.get("pos", null)
+	if typeof(p) == TYPE_ARRAY and p.size() == 3:
+		global_position = Vector3(float(p[0]), float(p[1]), float(p[2]))
+		# A LOADED BODY IS NOT FALLING. Without this it inherits whatever
+		# velocity the boot spawn had built up over the frames before the
+		# restore, and lands somewhere other than where it was saved.
+		velocity = Vector3.ZERO
+	_yaw = float(d.get("yaw", _yaw))
+	_pitch = float(d.get("pitch", _pitch))
+	# The look is applied to the body and camera immediately rather than waiting
+	# for the next `step`, so a restore with no input still faces the right way.
+	transform.basis = Basis(Vector3.UP, _yaw) if gravity_mode == "deck" \
+		else transform.basis
+	if _cam != null:
+		_cam.transform.basis = Basis(Vector3.RIGHT, -_pitch)
+
+	npc_id = String(d.get("npc_id", npc_id))
+	person = String(d.get("person", person))
+	credits = float(d.get("credits", credits))
+	var bag = d.get("carrying", null)
+	if typeof(bag) == TYPE_ARRAY:
+		carrying.clear()
+		for x in bag:
+			carrying.append(String(x))
+	carry_cap = int(d.get("carry_cap", carry_cap))
+	tier = int(d.get("tier", tier))
+	tier_name = String(d.get("tier_name", tier_name))
+	hip_m = float(d.get("hip_m", hip_m))
+	seat_m = float(d.get("seat_m", seat_m))
+	recline_m = float(d.get("recline_m", recline_m))
+	wake_h = float(d.get("wake_h", wake_h))
+	seated = String(d.get("seated", seated))
+	seat_used_m = float(d.get("seat_used_m", seat_used_m))
+	_eye_now = seated_eye(seat_used_m) if seated != "" else eye_height_m

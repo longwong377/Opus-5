@@ -1895,3 +1895,13 @@ func _ax_finish() -> void:
 	else:
 		print("axial-gate: FAIL -- " + "; ".join(bad))
 	get_tree().quit(0 if bad.is_empty() else 1)
+
+
+## NOTHING HERE SURVIVES A RELOAD, AND NOTHING SHOULD.
+## Which cells are resident is derived, every frame, from where the body is
+## standing -- so restoring the player's position restores the cell set exactly,
+## one frame later, by the same rule that chose it the first time. A save that
+## carried a cell list would be a second copy of a computed answer, and a stale
+## one the moment the bake changed.
+func save_exempt() -> String:
+	return "resident cells are derived from the player's position every frame"

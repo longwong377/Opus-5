@@ -114,6 +114,7 @@ Run:
     python3 station/coldstart.py --g5       # an incident puts a body down
     python3 station/coldstart.py --g6       # the field, at 18 ring angles
     python3 station/coldstart.py --g7       # walking around a body
+    python3 station/coldstart.py --g8       # save, walk away, load
     python3 station/coldstart.py --g3 --verbose
 """
 import argparse
@@ -886,6 +887,38 @@ def g7(verbose=False):
     ), extra_probes=(built_deck, ragdoll_bodies), echo=("CORPSE gate:",))
 
 
+def g8(verbose=False):
+    """G8 -- save, walk away, load, and check you came back.
+
+    THE FIRST SAVE SYSTEM THIS PROJECT HAS EVER HAD. Before it, closing the
+    game lost everything: the station clock restarted at 13:00, every shop
+    refilled, every purse reset and every resident greeted the player as a
+    stranger. `docs/MASTER-PLAN.md` R7 states the consequence for the condition
+    model -- "a hunger bar that resets" -- and it applies to all of it.
+
+    THE PERTURBATION IS THE GATE, and the first draft's was broken in a way
+    worth keeping written down. Capturing a snapshot and restoring it into a
+    world nobody touched proves nothing: every field already holds the value the
+    snapshot carries, so a `load_state` that does nothing passes. So the gate
+    walks the body 12 m, advances the clock, spends 137 credits and puts a token
+    in the bag between the save and the load.
+
+    The clock advance was FIVE hours because the first version used 3,600 --
+    exactly 150 days, exactly zero hours on a wrapping clock -- so the
+    perturbation moved the hour by 0.0029, which was the real time the frames
+    took, and the gate reported the CLOCK as broken when the control was.
+
+    `--no-restore` skips only the load and must FAIL on all four fields. It
+    does: 12.032 m, 5.00286 h, 137.00 credits, +1 item.
+    """
+    return _walk_gate(verbose, "SAVE", "--save-gate", (
+        ((), True, "the shipped build"),
+        (("--no-restore",), False,
+         "skip the load -> 12.03 m, 5.003 h, 137 CR and a bag item adrift"),
+    ), extra_probes=(built_deck,),
+        echo=("SAVE subjects:", "SAVE perturbation:", "SAVE restored:"))
+
+
 def g5(verbose=False):
     """G5 -- the station knocks somebody down and a player is there to see it.
 
@@ -963,12 +996,14 @@ def main():
                     help="the field is right all the way round the ring")
     ap.add_argument("--g7", action="store_true",
                     help="a player walks around a body, not through it")
+    ap.add_argument("--g8", action="store_true",
+                    help="save, walk away, load, and check you came back")
     ap.add_argument("--controls", action="store_true",
                     help="only the negative controls on G1")
     ap.add_argument("--verbose", action="store_true")
     ap.add_argument("--budget-s", type=float, default=BOOT_BUDGET_S)
     a = ap.parse_args()
-    run_all = not (a.g1 or a.g3 or a.g4 or a.g5 or a.g6 or a.g7
+    run_all = not (a.g1 or a.g3 or a.g4 or a.g5 or a.g6 or a.g7 or a.g8
                    or a.controls)
     bad = 0
     if a.g3 or run_all:
@@ -1002,6 +1037,10 @@ def main():
     if a.g7 or run_all:
         print()
         if not g7(a.verbose).get("ok"):
+            bad += 1
+    if a.g8 or run_all:
+        print()
+        if not g8(a.verbose).get("ok"):
             bad += 1
     return 1 if bad else 0
 

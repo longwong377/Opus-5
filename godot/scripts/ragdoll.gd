@@ -1033,3 +1033,14 @@ func _args() -> Dictionary:
 			else:
 				out[b] = "1"
 	return out
+
+
+## BODIES ON THE FLOOR ARE NOT SAVED.
+## An incident is regenerated from `station/incident.py`'s tables and the clock,
+## so the station keeps producing them at the same rate after a reload. A body
+## that was already lying there when the game was saved is gone. That is a
+## visible discontinuity and it is recorded rather than hidden: keeping one
+## needs the collapse to be an entity with an id, which is the same piece of
+## work the crowd and the dialogue both name.
+func save_exempt() -> String:
+	return "incidents regenerate from the clock; a body already down is LOST"
