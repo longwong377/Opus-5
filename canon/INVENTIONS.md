@@ -10681,3 +10681,156 @@ pattern across the desks.
 consoles carry the same register pattern" with the modular rule as its control.
 
 **INV-624 … INV-629** — allocated to this work and not used. Free.
+
+## INV-630 — The council bench's perforation is unbuildable, so its pitch is set by the frame budget
+
+**What.** `station/council_chamber.MESH_CELL_M = 0.030` — a square-hole web at 30 mm both ways over
+the bench's lit panel, 398 vertical webs and 23 horizontal ones, 12,320 triangles.
+
+**Why.** The reference's own pitch cannot be measured from the only frame that shows it. An FFT of
+`reference/05-sector-green/council chambers.webp` rows 560–600 over the panel gives a clean peak at
+**4.96–5.07 px** horizontally and **4.75–5.0 px** vertically — but folding the signal on that period
+shows the profile repeating **five times inside it**, the signature of a pattern near 1 px beating
+against the frame's 1 px sampling grid. The beat bounds the true period at **1.0–1.25 source px**,
+and the panel is 176–184 px tall at source x 420–520 for 0.7214 m of built panel, i.e. **250 px/m**
+— so the perforation is **4–5 mm**. At 12.0 m of bench that is 2,400 columns × 144 rows, roughly
+145,000 triangles, for a feature subtending **0.84 px** at the 5.89 m a player stands at.
+
+**Constrained by.** The room's share of the interior frame budget, which is
+`budget.INTERIOR["visible_set_tris"]` 60,000 less the corridor behind a standing player
+(`corridor_tris_per_m` 400 × the 66 m sight line `budget.py` cites from `populace.corridor_sight_m`)
+= **33,600**. The grille costs 12 triangles a vertical web and 324 an arc-swept horizontal one, so
+T(p) = 377/p; 30 mm spends 12,570 and leaves the whole chamber at 88% of its share. The web is
+6.5 mm in a 30 mm cell — **39% covered**, against the 24 mm bar in a 42 mm pitch it replaces at 57%,
+which is the difference between thin dark lines on a bright field and lit slots between dark bars.
+
+**NEGATIVE RESULT, kept.** Tagging the web `council_mesh` so it emits like the sheet it is part of
+is the physically right argument and it renders **worse**: at emission 2.0 on web and hole alike the
+panel becomes one blown white band with no perforation at all. The contrast has to come from the web
+being the bench's own casework.
+
+**Overturned by.** A perforated-sheet colour sheet in `materials.COLOUR_SHEETS` bound to
+`council_mesh` at ~0.005 m, which is the only route to `docs/AAA-STANDARD.md`'s tiling clause —
+requested in `scratchpad/PATCHES-4r-council.md`. Or by a square-on production still of the bench.
+
+**Authority 5.** `station/council_chamber.py::mesh_grille`, gated in the same file by "the sheet's
+cell is square" (398 webs at 30.0 mm across against 23 at 30.1 mm up) and by the budget check.
+
+## INV-631 — The bench's capping rail is riveted at 140 mm, and the reference gives only a bound
+
+**What.** `BENCH_CAP_H_M 0.075`, `BENCH_CAP_D_M 0.055`, `BENCH_STUD_PITCH_M 0.14`,
+`BENCH_STUD_R_M 0.011` — a chamfered bullnose along the bench's whole 12.0 m front edge carrying 86
+studs.
+
+**Why.** `canon`'s own reading of this frame (`00-INDEX.md`, quoted in `materials.py`) records "a
+grey slab top with a chamfered edge", "a riveted bullnose capping rail" and "a recessed plinth", and
+the 3× crop shows all three plainly. The bench had none of them: its top met its frame at a bare
+arris, which is `docs/AAA-STANDARD.md` C3's "the tertiary tier is generic" with nothing in the tier.
+
+**Constrained by.** The stud pitch is a **lower bound, not a measurement**. On the crop the studs
+read at about 0.15 of the lit panel's height along the rail — 0.11 m — but the rail runs in the
+strongly foreshortened direction and the panel height does not, so the true spacing is larger by
+however much the foreshortening is, and one frame cannot say by how much. 0.14 m is taken.
+
+**Overturned by.** Any square-on frame of the bench front, which would fix both the stud pitch and
+the rail's depth in one reading.
+
+**Authority 5.** `station/council_chamber.py::bench`, gated by "the bench has a capping rail proud
+of its own face" — scoped to the bench's own triangles, because asked of the whole `council_frame`
+group the same check read "reaches r 11.160" and was answering a question about the ceiling.
+
+## INV-632 — The fan's blades are laid in two depth layers so they can overlap
+
+**What.** `FIN_W_M 0.83` (1.25 × the 0.665 m rim pitch), `FIN_LAYER_GAP_M 0.30`, alternating
+layers, plus deterministic per-blade jitter: `FIN_R1_JITTER 0.14`, `FIN_R0_JITTER 0.35`,
+`FIN_TILT_JITTER 0.55`.
+
+**Why.** `council chambers.webp` at 3× shows the fan as a **stack of plates fanned out over each
+other**, each one's end face catching the light, at visibly different rakes and stopping at visibly
+different radii. Blades that merely abut cannot do that, and blades that overlap in one plane are
+two solids in one place — the defect this module opened session 4p by finding between the bench and
+this same fan. Two layers 0.30 m apart give the overlap without the interpenetration.
+
+**Constrained by.** In-layer neighbours are two angular pitches apart, so a blade 1.25 pitches wide
+never touches its own layer: width/spacing is 0.55 at the hub and 0.62 at the rim. The layers' world
+x ranges are −1.118…−0.882 and −0.818…−0.582, disjoint by 64 mm, and the medallion had to move to
+−0.70 authoring depth to stay clear of the front layer.
+
+**Overturned by.** A frame of this wall from off-axis, which would show whether the plates are
+stacked in two planes or in a continuous spiral.
+
+**Authority 5.** `station/council_chamber.py::fin_wall`, gated by "the fan's two depth layers are
+disjoint" and by "the blades overlap in projection, which is why they need it".
+
+## INV-633 — The medallion is an open wheel, and its outline is built at the ceiling's limit
+
+**What.** `MEDALLION_SPOKES 36`, `MEDALLION_HUB_F 0.22`, `MEDALLION_RIM_W_M 0.075`,
+`MEDALLION_OUTLINE_R 1.59`, and **no backing disc**.
+
+**Why.** Built as a solid disc with spokes in relief, the medallion renders as an opaque plate 2.7 m
+across, the brightest object in the frame at V 0.611 against the reference's V 0.455, hiding the fan
+it stands in front of. The 4× crop shows the opposite: a small plain hub, a dense sunburst of thin
+spokes out to a bright rim, and outside that a large thin outline circle you see the blades straight
+through.
+
+**Constrained by, and it does not fit.** The outline's radius is measured as a ratio: the bright rim
+reads 66 px across (radius 33 px in the 1000×750 source) and a circle fitted through three points on
+the faint outline arc — crop (700,25), (1085,300), (640,790) at 4× over box (0.15,0.0)–(0.50,0.28) —
+has radius 386 crop px = 96.6 source px. That is **2.9 rim radii, ±10% on eyeballed points**, which
+at `MEDALLION_R_M` 1.35 on a centre 4.60 m up is 1.8 m through a 7.00 m ceiling. It is built at the
+ceiling's own limit, **1.59**, and the shortfall is recorded rather than rounded away.
+
+**The same frame contradicts this module twice and the two are one contradiction:** the blades
+converge on the medallion rather than on a hub at floor level, and a fan radiating *from* the
+medallion is exactly the composition in which a 2.9× outline fits. Against it, `00-INDEX.md`'s
+reading of this frame puts the medallion "above the fins".
+
+**Overturned by.** A second frame of this wall, which the reference set does not hold.
+
+**Authority 5.** `station/council_chamber.py::medallion`, gated by projected coverage of its own
+disc — 32% for the wheel, with the backing plate it replaced measured at 100% as the control.
+
+## INV-634 — A delegation chair's lattice rows are derived so its cells come out square
+
+**What.** `CHAIR_LATTICE = 3` columns, counted off the 3× crop, and
+`chair_lattice_down()` = round((back height)/(cell width)) = **7** rows, giving cells of
+207 × 211 mm.
+
+**Why.** One count was used for both axes of a back 0.62 m wide and 1.48 m tall, so "4 × 4" is cells
+2.4 times taller than wide and at the rubric's half distance the reference's "open black lattice
+back" reads as a set of shelves — `docs/craft-4r-council-before-half.png` is the frame. The
+reference's cells are square.
+
+**Constrained by.** The chair's own proportions, so moving the seat height or the back height cannot
+silently un-square the cell.
+
+**Overturned by.** A frame at magnification showing a different column count; the row count follows.
+
+**Authority 5.** `station/council_chamber.py::chair_lattice_down`, gated by "the chair's lattice
+cells are square, not shelves" with one-count-for-both-axes (207 × 493 mm, 2.4:1) as the control.
+
+## INV-635 — The speaking-position fan covers the bench top, with blue only at the blade tips
+
+**What.** `SPEAK_BLADES 21`, `SPEAK_SPREAD_DEG 82.0`, `SPEAK_REACH_M 3.6`, `SPEAK_RISE_M 0.004`,
+`SPEAK_BLUE_FROM 0.55`, laid out in the unrolled (arc length, radial depth) plane of the top so an
+inlay follows the bench's curve.
+
+**Why.** `council chambers.webp` shows the fan covering most of the visible bench top — an apex at
+the speaking position with white blades splaying over 160-odd degrees and bright blue slivers
+between their **outer** halves, feathering into jagged blue tips. What was built was 13 lines 22 mm
+wide over ±26°, invisible at the normal viewing distance. `materials.py` had already recorded the
+gap in its own words: "council_chamber.py tags all thirteen quads council_speak_fan, so a material
+cannot express both and the blue …".
+
+**Constrained by.** The top is 0.95 m deep, so a blade near the inward normal runs off the back at
+0.81 m while one at 82° runs 3.6 m along the arc — the reach is `depth / cos θ` capped at
+`SPEAK_REACH_M`, which is what makes the fan long and flat the way the frame shows. Tips are ragged
+by `_u`, never `random`.
+
+**Overturned by.** A frame showing the fan from above, which would fix the spread and the blade
+count directly instead of by proportion.
+
+**Authority 5.** `station/council_chamber.py::bench`. The blue is on `signage_panel` until the
+material requested in `scratchpad/PATCHES-4r-council.md` exists.
+
+**INV-636 … INV-639** — allocated to this work and not used. Free.
