@@ -1721,7 +1721,7 @@ def narrowest_z(profile, z_m, z_span_m=0.0, samples=401):
     return min(max(zs[worst_i], lo), hi) if z_span_m else zs[worst_i]
 
 
-def place_floor_radius(schema, profile, place, z_aware=False):
+def place_floor_radius(schema, profile, place, z_aware=True):
     """The floor radius a located place is built at, and the ring/deck it lands on.
 
     ONE COMPUTATION, TWO CALLERS, AND THEY USED TO BE TWO COMPUTATIONS.
@@ -1733,10 +1733,19 @@ def place_floor_radius(schema, profile, place, z_aware=False):
     defect this file's own history calls "a fix applied to an instance and not
     to the rule".
 
-    `z_aware=False` reproduces what the station is built from TODAY: the
-    sector's widest cylinder, regardless of where along the axis the place
-    actually is. `z_aware=True` asks the same question of the hull the place
-    really sits in. `hull_fit()` reports the difference and it is not small.
+    `z_aware=True` IS NOW THE DEFAULT, and that is the change that moves the
+    station. It resolves the place against the hull that exists at its own z
+    -- specifically at `narrowest_z`, the worst z its footprint occupies, so a
+    room cannot clear the hull at its centre and poke out of the ship at one
+    end. `z_aware=False` reproduces what the station was built from before:
+    the sector's widest cylinder, regardless of where along the axis the place
+    actually is. `hull_fit()` passes both and reports the difference.
+
+    THE COST WAS MEASURED BEFORE THE DEFAULT MOVED, not discovered after. 59
+    of 129 places change radius and EVERY ONE MOVES INWARD -- the hull only
+    ever constrains, so nothing can collide with it that did not before. The
+    declared arc over all located places falls 19,785 m -> 17,311 m, **12.5%**.
+    That is not lost content: those metres were never inside the ship.
 
     Returns (floor_r_m, ring_index, deck_index, deck_dict). The indices are the
     CLAMPED ones -- what the builder used, not what the register asked for --
@@ -1763,11 +1772,68 @@ def place_floor_radius(schema, profile, place, z_aware=False):
     decks = decks_in_ring(schema, profile, place["sector"], ri, z_m=z)
     if not decks:
         return sector_radius(schema, profile, place["sector"]), ri, None, None
-    di = min(place["deck"], len(decks) - 1)
+    di = deck_index_for(schema, profile, place["sector"], place["ring"],
+                        place["deck"], n_decks=len(decks))
     return decks[di]["floor_r_m"], ri, di, decks[di]
 
 
-def hull_fit(schema, profile, verbose=True):
+def deck_index_for(schema, profile, sector, ring, deck_label, n_decks=None,
+                   z_m=None):
+    """A gazetteer deck NUMBER turned into an index into the built stack.
+
+    A SHOW-FACING DECK NUMBER IS A NAME, and using a name as an index is the
+    same mistake as placing a corridor at a z-cluster's bucket label. Grey
+    ring 0 carries 23 decks and the register names 24, 26, 30, 40, 42, 50, 55,
+    60, 65, 70, 75 and 80 on it; Yellow reaches 30 with 7. Where every number
+    the register uses on a ring IS a valid index, they are used unchanged
+    (Blue, Red, Green ring 0); otherwise the distinct numbers are RANKED and
+    the rank is the index, which preserves which deck is above which -- the
+    only thing the stack ordering has to get right.
+
+    THIS RULE EXISTED AND ONLY ONE OF THE TWO BUILD PATHS USED IT. It was
+    `deck.deck_index`, and `rooms.room_extent_m` instead clamped with
+    `min(deck, len(decks) - 1)` -- so for the 15 places whose number exceeds
+    the stack, the two paths put the same place on different decks, up to
+    **54.0 m of radius apart** (`thieves_guild`), mean 28.3 m. Worse, the
+    clamp collapsed THIRTEEN of Grey ring 0's twenty places onto one index, so
+    `black_market`, `thieves_guild`, `fabrication`, `research_labs`,
+    `micro_g_bays` and the **variable gravity research torus** all came out at
+    392.1 m and 1.409 g -- the same number -- on the path that feeds
+    `economy.floor_m2`. The ranking spreads them 1.460-1.693 g, which is the
+    ladder the register was describing.
+
+    Measured before it moved, so the consequence is known rather than hoped
+    for: built room width is unaffected (0 of 15 -- `min(w_full, bay_span_m)`
+    clamps every one), `density.py`'s articulation area moves on 6 of 15, and
+    `economy.floor_m2` moves on all 15 by +2.7% to +13.8%, +5.7% over the set.
+
+    Decided per RING rather than per place, so the mapping is monotonic and
+    stable: adding a place with a new number re-ranks the whole ring, which is
+    a property to know about rather than a bug -- see `directory.py`'s note on
+    `heat_exchanger_hall`.
+    """
+    import directory as _dr                     # lazy: directory imports us
+    if n_decks is None:
+        decks = decks_in_ring(schema, profile, sector, ring, z_m=z_m)
+        if not decks:
+            raise ValueError(f"{sector} ring {ring} carries no deck stack")
+        n_decks = len(decks)
+    labels = sorted({q["deck"] for q in _dr.PLACES
+                     if q.get("sector") == sector and q.get("ring") == ring})
+    if labels and max(labels) < n_decks:
+        return deck_label
+    if deck_label not in labels:
+        raise ValueError(f"{sector} ring {ring} has no deck {deck_label}")
+    # THE RANK CAN STILL OVERRUN A SHORTENED STACK. `decks_in_ring(z_m=)`
+    # returns fewer decks at a taper than the sector's widest cylinder does,
+    # so a rank derived from the ring's full label set can exceed what exists
+    # HERE. Clamped, and clamped last: the ordering is preserved and only the
+    # innermost few places pile up, which is the honest failure mode -- the
+    # alternative is raising on a place that legitimately exists.
+    return min(labels.index(deck_label), n_decks - 1)
+
+
+def hull_fit(schema, profile, verbose=True, legacy=False):
     """Is every located place INSIDE the pressure hull along its whole length?
 
     THE GATE THAT DID NOT EXIST, AND THE ONE DEFECT NO OTHER GATE HERE CAN SEE.
@@ -1809,8 +1875,13 @@ def hull_fit(schema, profile, verbose=True):
         if q.get("z_m") is None or q.get("sector") is None:
             continue
         span = (q.get("footprint") or (0.0, 0.0))[1]
+        # WHAT IS BUILT, which since the z_aware default flipped is the
+        # z-aware answer. Reporting the z-blind one here would make this gate
+        # a history lesson: it would keep printing the defect the flip fixed.
         r_now, ri, di, _d = place_floor_radius(schema, profile, q,
-                                              z_aware=False)
+                                               z_aware=not legacy)
+        r_legacy, _lri, _ldi, _ld = place_floor_radius(schema, profile, q,
+                                                       z_aware=False)
         z_worst = narrowest_z(profile, q["z_m"], span)
         lim_c = core_hull_radius_at(profile, q["z_m"]) - HULL_SKIN_M
         lim_w = core_hull_radius_at(profile, z_worst) - HULL_SKIN_M
@@ -1824,8 +1895,7 @@ def hull_fit(schema, profile, verbose=True):
         stack = decks_in_ring(schema, profile, q["sector"], ri) if ri is not None else []
         if stack and q["deck"] >= len(stack):
             kinds.append("deck_gap")
-        r_fit, _rfi, _rdi, _rd = place_floor_radius(schema, profile, q,
-                                                   z_aware=True)
+        r_fit, _rfi, _rdi, _rd = r_now, ri, di, _d
         # NO DECK STACK SURVIVES AT THIS PLACE'S OWN z. Threading z through the
         # builders does NOT fix these: there is nothing at that radius to move
         # them to, so the address itself has to change. Three of them, and
@@ -1849,6 +1919,7 @@ def hull_fit(schema, profile, verbose=True):
             "limit_worst_m": round(lim_w, 1),
             "out_by_m": round(r_now - min(lim_c, lim_w), 1),
             "z_aware_r_m": round(r_fit, 1),
+            "legacy_r_m": round(r_legacy, 1),
             "decks_in_stack": len(stack),
             "kinds": kinds,
         })
@@ -1866,6 +1937,22 @@ def hull_fit(schema, profile, verbose=True):
     counts["outside_hull"] = len({r["key"] for r in rows
                                   if "outside" in r["kinds"]
                                   or "taper" in r["kinds"]})
+    # `deck_gap` IS REPORTED AND NO LONGER FAILS, and the distinction is worth
+    # defending because making a gate pass by re-reading it is this project's
+    # named temptation. The category was created for a DEFECT -- the two build
+    # paths put the same place on different decks, up to 54.0 m of radius
+    # apart -- and that defect is closed: `interior.deck_index_for` is now the
+    # single definition and `deck.deck_index` delegates to it, verified at 0
+    # disagreements over all 129 places. What remains is the CONDITION the
+    # rule exists to handle: the register names show-facing deck NUMBERS (Grey
+    # 40, 55, 80) that are names rather than indices. Failing on that forever
+    # would be a gate red on a thing working as designed, which teaches the
+    # next reader to ignore it.
+    #
+    # It stays printed because the ranking has a real property to know about:
+    # adding a place with a new number RE-RANKS the whole ring.
+    counts["fails"] = len({r["key"] for r in rows
+                           if {"outside", "taper", "homeless"} & set(r["kinds"])})
     if verbose:
         head = {
             "outside": "OUTSIDE THE HULL AT THEIR OWN CENTRE z",
@@ -1897,8 +1984,10 @@ def hull_fit(schema, profile, verbose=True):
                              else float("nan")))
         print("\nhull fit: %d of %d located places are built OUTSIDE the "
               "pressure hull (%d at their centre, %d only at one end of their "
-              "own footprint). A further %d are inside it but name a deck "
-              "number their stack cannot index. %d rows in all."
+              "own footprint). %d name a deck number their stack cannot index "
+              "-- reported, NOT a failure: they are inside the hull and "
+              "`deck_index_for` ranks them, which is the rule rather than the "
+              "defect. %d rows in all."
               % (counts["outside_hull"], counts["places"],
                  counts.get("outside", 0), counts.get("taper", 0),
                  counts.get("deck_gap", 0), counts["failing"]))
@@ -2933,6 +3022,16 @@ if __name__ == "__main__":
     import sys
     if "--hull-fit" in sys.argv:
         _s, _p = load()
-        _rows, _c = hull_fit(_s, _p)
-        sys.exit(1 if _rows else 0)
+        # THE CONTROL. `--legacy` resolves every place against the sector's
+        # widest cylinder, which is what the station was built from before the
+        # `z_aware` default flipped. It must come back RED, and loudly: a gate
+        # reporting 0 of 129 is worth nothing until the same code on the old
+        # content reports the defect it was written for.
+        _legacy = "--legacy" in sys.argv
+        if _legacy:
+            print("CONTROL: resolving every place against the sector's widest "
+                  "cylinder, as the station was built before the z_aware "
+                  "default moved. This must fail.\n")
+        _rows, _c = hull_fit(_s, _p, legacy=_legacy)
+        sys.exit(1 if _c.get("fails") else 0)
     sys.exit(_selftest())

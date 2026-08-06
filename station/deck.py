@@ -79,16 +79,13 @@ def deck_index(schema, profile, sector, ring, deck_label):
     which preserves which deck is above which and is the only thing the stack
     ordering has to get right.
     """
-    decks = it.decks_in_ring(schema, profile, sector, ring)
-    if not decks:
-        raise ValueError(f"{sector} ring {ring} carries no deck stack")
-    labels = sorted({q["deck"] for q in dr.PLACES
-                     if q.get("sector") == sector and q.get("ring") == ring})
-    if labels and max(labels) < len(decks):
-        return deck_label
-    if deck_label not in labels:
-        raise ValueError(f"{sector} ring {ring} has no deck {deck_label}")
-    return labels.index(deck_label)
+    # ONE DEFINITION, AND IT USED TO BE TWO. This rule lived here and
+    # `rooms.room_extent_m` clamped with `min(deck, len(decks) - 1)` instead,
+    # so the two build paths put the same place on different decks -- up to
+    # 54.0 m of radius apart. It now lives in `interior.deck_index_for`,
+    # which `place_floor_radius` also calls, and this delegates. See that
+    # function for the measurement.
+    return it.deck_index_for(schema, profile, sector, ring, deck_label)
 
 
 def _ring_cells(schema, profile, sector, ring, deck):
