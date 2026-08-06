@@ -52,11 +52,15 @@ STATUSES = ("active", "capped", "shipped")
 
 TOP_KEYS = {"version", "bar", "subsystems", "notes"}
 SUB_KEYS = {"status", "cap_reason", "rounds", "owner", "notes"}
+# `what_is_good` is a list, and it is in the schema rather than tolerated,
+# because a review that enumerates only defects gives a builder no way to tell
+# what it must not break while fixing them. Two 4e rounds carried it already.
 ROUND_KEYS = {"round", "reviewer", "date", "scores", "evidence", "findings",
-              "broke_assertions", "regression_waiver", "notes"}
+              "broke_assertions", "regression_waiver", "notes", "what_is_good"}
 FINDING_KEYS = {"severity", "dimension", "descriptor", "text", "where"}
 
 DESCRIPTOR_RE = re.compile(r"^[CFPR][0-5]$")
+
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DEFAULT_CARD = os.path.join(ROOT, "docs", "aaa-scorecard.json")
@@ -78,6 +82,25 @@ def _is_int(v):
 
 def _nonempty_str(v):
     return isinstance(v, str) and v.strip() != ""
+
+
+def _unknown_keys(obj, known):
+    """The keys of `obj` this schema does not recognise.
+
+    An underscore prefix marks documentation -- `_merge_note`, `_frames`, the
+    provenance a merging agent has to keep somewhere.  Those are allowed, and
+    the reason the allowance is safe is that nobody misspells a key by adding a
+    leading underscore.  Except in one case, which is the whole point of the
+    exception being narrow: `_findings` next to a missing `findings` would make
+    a round's findings silently vanish, and the round would then read as clean.
+    So `_x` is documentation only when `x` is NOT itself a key of this schema.
+    """
+    bad = []
+    for k in sorted(set(obj) - set(known)):
+        if k.startswith("_") and k.lstrip("_") not in known:
+            continue
+        bad.append(k)
+    return bad
 
 
 def validate(card):
@@ -125,7 +148,7 @@ def _validate_subsystem(name, sub, bar):
     tag = f"{name}"
     if not isinstance(sub, dict):
         return [f"{tag}: not an object"]
-    for k in sorted(set(sub) - SUB_KEYS):
+    for k in _unknown_keys(sub, SUB_KEYS):
         err.append(f"{tag}: unknown key {k!r}")
 
     status = sub.get("status", "active")
@@ -176,7 +199,7 @@ def _validate_round(tag, index, rnd, bar):
     if not isinstance(rnd, dict):
         return [f"{tag}: round #{index} is not an object"]
     rtag = f"{tag}: round {rnd.get('round', '?')}"
-    for k in sorted(set(rnd) - ROUND_KEYS):
+    for k in _unknown_keys(rnd, ROUND_KEYS):
         err.append(f"{rtag}: unknown key {k!r}")
     if not _is_int(rnd.get("round")):
         err.append(f"{rtag}: round number is not an integer")
@@ -242,7 +265,7 @@ def _validate_finding(rtag, index, f, scores, bar):
     if not isinstance(f, dict):
         return [f"{rtag}: finding #{index} is not an object"]
     ftag = f"{rtag}: finding #{index}"
-    for k in sorted(set(f) - FINDING_KEYS):
+    for k in _unknown_keys(f, FINDING_KEYS):
         err.append(f"{ftag}: unknown key {k!r}")
 
     sev = f.get("severity")
@@ -588,6 +611,10 @@ TEMPLATE = {
                         "performance": "budget.py worst case N/M tri (P%)",
                     },
                     "broke_assertions": False,
+                    "what_is_good": [
+                        "what already works and must not be broken fixing the "
+                        "findings below",
+                    ],
                     "findings": [
                         {"severity": "major", "dimension": "craft",
                          "descriptor": "C3",
@@ -780,6 +807,26 @@ def _selftest():
     c["subsystems"]["sub"]["rounds"][0]["finding"] = []
     check("a misspelled round key is rejected", has(c, "unknown key"),
           str(errs(c)))
+
+    # An underscore prefix marks provenance a merging agent has to keep -- and
+    # the allowance is narrow on purpose, because the one thing it must never
+    # let through is a key that shadows a real one. `_findings` beside no
+    # `findings` is a round whose findings have silently vanished, which reads
+    # as a clean round.
+    c = _card([_mk_round(1, AT_BAR)])
+    c["subsystems"]["sub"]["_merge_note"] = "merged from an agent's file"
+    c["subsystems"]["sub"]["rounds"][0]["_frames"] = {"normal": "a.png"}
+    check("an underscored documentation key is allowed",
+          not has(c, "unknown key"), str(errs(c)))
+    c = _card([_mk_round(1, AT_BAR)])
+    del c["subsystems"]["sub"]["rounds"][0]["findings"]
+    c["subsystems"]["sub"]["rounds"][0]["_findings"] = []
+    check("an underscored key that shadows a real one is rejected",
+          has(c, "unknown key '_findings'"), str(errs(c)))
+    c = _card([_mk_round(1, AT_BAR)])
+    c["subsystems"]["sub"]["rounds"][0]["__scores"] = {}
+    check("underscores do not stack their way past the shadow rule",
+          has(c, "unknown key '__scores'"), str(errs(c)))
 
     # --- structure: caps and waivers ----------------------------------------
     c = _card([_mk_round(1, dict(AT_BAR, craft=2))], status="capped")

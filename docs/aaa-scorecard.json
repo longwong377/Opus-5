@@ -1584,8 +1584,143 @@
      "reviewer": "judging agent, session 4e -- LAYER 8 ROUND 1. The first frames of this station scored against docs/AAA-STANDARD.md. 21 engine frames, every one confirmed 'Vulkan 1.4.318 - Forward+' in its own log and recorded with its command in docs/judge-4e-frames.json. Builder of none of it. Full report: docs/judge-4e.md",
      "date": "2026-08-01",
      "broke_assertions": false
+    },
+    {
+     "round": 2,
+     "reviewer": "craft agent, session 4r -- RE-MEASURE BEFORE REWORK. judge-4e scored this room on 2026-08-01 from docs/judge-4e-council-normal.png: 5,950 triangles, 16 mesh instances, a floor disc in an unenclosed void. Session 4p then rebuilt it -- enclosure, ceiling, mosaic bed, grille, delegate stations, pilasters -- and NOBODY RE-SCORED IT, so the scorecard has read craft 1 for a room that has not been that room since. These scores are the state 4p left, measured in three fresh engine frames before this session changed a line.",
+     "date": "2026-08-06",
+     "scores": {
+      "craft": 2,
+      "fidelity": 2,
+      "performance": 2,
+      "robustness": 3
+     },
+     "evidence": {
+      "craft": "docs/craft-4r-council-before-{normal,half,entry}.png, 22,138 triangles (up from judge-4e's 5,950). The chamber is enclosed, ceilinged, floored with a mosaic on a bed, walled with pilasters and a cornice; the fan, medallion, bench, grille, chairs and delegate stations all read at the normal distance.",
+      "fidelity": "materials.py carries measured, calibrated values for this room's mesh, inlay, floor, chairs and casework, taken off reference/05-sector-green/council chambers.webp with regions and grey-world gains stated. The GEOMETRY constants do not: see the F2 finding.",
+      "robustness": "42/42 assertions, four with negative controls that fire (one triangle dropped reopens 3 edges; a fan triangulation of the bench profile spills 1.004 m2 against 0.954; the old medallion placement lands inside the fan; a convexity check that would make the ear-clip gate inert). Deterministic byte-for-byte across PYTHONHASHSEED 0, 1 and 12345. Runs in CI (.github/workflows/validate.yml:270)."
+     },
+     "broke_assertions": false,
+     "findings": [
+      {
+       "severity": "blocking",
+       "dimension": "robustness",
+       "descriptor": "R3",
+       "where": "station/deck.py:room_shell_for",
+       "text": "The collision shell is HALF the room. Measured: across the ring the shell is 11.808 m against a built mesh of 22.745 m (51.9%); along the axis it is 22.751 m against 22.751 m (100.0%); floor-to-ceiling 3.60 m against 7.42 m. 35.1% of the chamber's own 380 m2 mosaic floor -- two 66.7 m2 segments of an 11.0 m disc beyond +/-5.904 m -- is behind an invisible wall a player walks into 5.5 m short of a wall they can see. The SHAPE of the failure is the finding: the axis is exactly right because room_interior_half_m was fixed in 4k, and the width three lines above it still reads the old `min(w_full, bw)/2.0`. A fix applied to one axis and not to the rule. Diff and cautions in scratchpad/PATCHES-4r-council.md #1."
+      },
+      {
+       "severity": "major",
+       "dimension": "craft",
+       "descriptor": "C2",
+       "where": "station/council_chamber.py:screen_wall, fin_wall",
+       "text": "Every surface in the room carries one flat value and the frame is dominated by a flat emissive rectangle. Measured: 25.9% of the normal frame and 35.7% of the half frame is strongly blue (B > 1.5R+0.05 and B > 0.25) against 1.6% of the authority-1 frame; whole-frame mean linear rgb 0.138/0.143/0.236, a blue/red ratio of 1.71 against the reference's 1.21. At half distance the fan reads as thirty flat grey strips on a chroma-key backdrop and the medallion as an opaque grey disc at V 0.611 against the reference wheel's V 0.455. The chair backs read as shelving. No wear, no grime, no value variation anywhere."
+      },
+      {
+       "severity": "major",
+       "dimension": "fidelity",
+       "descriptor": "F2",
+       "where": "station/council_chamber.py:mesh_grille, chair",
+       "text": "Built from the reference's LABEL rather than from the frame. The panel is 287 vertical bars at 42 mm crossed by six heavy rails -- a louvre -- where 00-INDEX.md's own reading of this frame says 'a very fine square-hole perforated sheet, evenly backlit with no visible lamp hotspots'. The recorded calibration is wrong in the way that produced it: '88 px/m ... roughly 3 px, 34 mm' is a HORIZONTAL scale read on a nearly edge-on surface, and the perforation is square, so its period has to be read against the vertical scale, which is 250 px/m (panel 176-184 px tall at source x 420-520 for 0.7214 m). Same defect in the chair: one lattice count used for both axes of a 0.62 x 1.48 m back gives cells 2.4:1."
+      },
+      {
+       "severity": "major",
+       "dimension": "performance",
+       "descriptor": "P2",
+       "where": "station/council_chamber.py",
+       "text": "22,138 triangles and NOTHING IN THE MODULE MEASURES THEM. The room's cost is visible only inside station/budget.py's whole-station figure, which is itself 4.34x over. No per-room budget, no marginal rate, no LOD, and no statement of what share of the interior frame allowance a 22.7 m destination room is entitled to."
+      },
+      {
+       "severity": "major",
+       "dimension": "robustness",
+       "descriptor": "R3",
+       "where": "station/council_chamber.py:_selftest",
+       "text": "One assertion cannot fail. 'the mesh is recessed behind its frame' takes max() of the radius over the WHOLE council_frame group, which also contains the ceiling ribs and the pilaster joints at r 11.160, and compares it to a panel at r 4.545 -- so it reported a fact about the ceiling as a fact about the bench and would pass whatever the bench did. A group name is not a location."
+      }
+     ]
+    },
+    {
+     "round": 3,
+     "reviewer": "craft agent, session 4r -- SAME AGENT, AFTER ITS OWN REWORK. Not an independent round: docs/AAA-STANDARD.md says a build agent reviewing its own work is round zero. Recorded so the numbers and the frames exist for whoever reviews next.",
+     "date": "2026-08-06",
+     "scores": {
+      "craft": 3,
+      "fidelity": 3,
+      "performance": 3,
+      "robustness": 3
+     },
+     "evidence": {
+      "craft": "docs/craft-4r-council-{after-normal,after-half,after-entry}.png against the same three cameras as round 2. Strong-blue fraction 25.9% -> 5.1% (normal) and 35.7% -> 7.3% (half), against the reference's 1.6%. Whole-frame mean linear rgb 0.138/0.143/0.236 -> 0.177/0.170/0.183, i.e. blue/red 1.71 -> 1.03 against the reference's 1.21. At half distance the bench panel now reads as a fine square-hole perforated sheet, the chair backs as square-celled lattice, the fan as a mass of overlapping plates at varying rakes and lengths, and the medallion as an open spoked wheel.",
+      "fidelity": "INV-630..INV-635, each with all four fields. The perforation's true pitch is BOUNDED rather than guessed: an FFT of the panel gives 4.96-5.07 px horizontally and 4.75-5.0 px vertically, and folding on that period shows the profile repeating five times inside it -- a pattern near 1 px beating against the frame's own sampling -- so the true pitch is 1.0-1.25 source px = 4-5 mm against a vertical scale of 250 px/m. The medallion outline is stored as a RATIO (2.9 rim radii, from a circle fitted through three points on the arc) with the reason it is built at 1.59 written down. The field's colour is recorded as a relationship: reference wall V 0.241 = 0.67x the lit fin blade at V 0.361.",
+      "performance": "29,674 triangles asserted in the module against a DERIVED share of 33,600 (88%): budget.INTERIOR['visible_set_tris'] 60,000 less the corridor behind a standing player, corridor_tris_per_m 400 x the 66 m sight line budget.py cites from populace.corridor_sight_m. The whole 22.7 m chamber is in frame from anywhere inside it, so the total IS the worst case and there is no position to sweep -- stated in the gate rather than assumed. The grille's pitch is set BY that budget: T(p) = 377/p, so 30 mm spends 12,570.",
+      "robustness": "56/56 assertions, nine with negative controls that fire and are quoted in the run: the x-only fin offset leaves 22 of 30 blades under 90% of nominal (narrowest 0.101 m against 0.730 m); the rectangle the blue field replaced has corners 41% outside the fan it backs; the medallion's backing plate covers 100% of its own disc against the wheel's 32%; one lattice count for both chair axes gives 207 x 493 mm, 2.4:1; plus the four controls that were already there. Deterministic across PYTHONHASHSEED 0, 1, 12345. bespoke.near_face_opening returns (0.0, 17.336) both before and after, byte-identical, so the assembler sees the same doorway."
+     },
+     "broke_assertions": true,
+     "findings": [
+      {
+       "severity": "blocking",
+       "dimension": "robustness",
+       "descriptor": "R3",
+       "where": "station/deck.py:room_shell_for",
+       "text": "UNCHANGED FROM ROUND 2 AND NOT MINE TO FIX. The collision shell is 11.808 m across the ring against a 22.745 m room (51.9%) and 3.60 m tall against 7.42 m; 35.1% of the chamber's floor is behind an invisible wall. Diff, measurement command and the two cautions (26 bespoke rooms widen at once; deck_plan's arc allocation has to be re-run) in scratchpad/PATCHES-4r-council.md #1. Also un-asserted: nothing anywhere compares a room's shell to the mesh it stands for, which is the R4 clause 'interfaces between subsystems are asserted rather than assumed'."
+      },
+      {
+       "severity": "major",
+       "dimension": "craft",
+       "descriptor": "C3",
+       "where": "station/council_chamber.py, station/materials.py",
+       "text": "It falls apart at half distance, which is exactly C3. The blue field is 5.1%/7.3% of frame at V 0.608 where the reference's wall is 1.6% at V 0.241 -- the right shape and 2.5x the value, because the only bound blue in the interior scene is signage_panel, a backlit sign at emission 3.0 standing in for a painted wall (PATCHES #2). The fin blades carry one flat grey with no wear, panel line or fastener. The bench slab is bare where the reference is mottled stone. And the room is FLAT: measured p5/p95 0.124 with 0.69% crushed against the reference's 0.035 with 19.65% crushed -- the chamber has no dark anywhere, which is a lighting rig in export_scene, not geometry."
+      },
+      {
+       "severity": "major",
+       "dimension": "fidelity",
+       "descriptor": "F3",
+       "where": "station/council_chamber.py",
+       "text": "Three clauses of F3 are short. (1) There is no PROVISIONAL dict: the two numbers that are bounds rather than measurements -- the 0.14 m stud pitch (lower bound 0.11 m, read along the foreshortened direction) and the 1.59 medallion outline ratio (measured 2.9, built at what the ceiling allows) -- live inline with comments. (2) The measured field colour is not applied, because the material is another file's. (3) The same authority-1 frame says the fin blades CONVERGE ON THE MEDALLION rather than on a hub at floor level, and a fan radiating from the medallion is exactly the composition in which the measured 2.9x outline fits; 00-INDEX.md's reading of the same frame says the medallion is 'above the fins'. One frame cannot settle it and the reference set holds no second view of this wall. Logged in INV-633 and PATCHES #4, unresolved."
+      },
+      {
+       "severity": "major",
+       "dimension": "performance",
+       "descriptor": "P3",
+       "where": "station/council_chamber.py:mesh_grille",
+       "text": "88% of its derived share with no headroom target, where P4 wants 70%, and no LOD chain at all. The perforated sheet alone is 12,320 triangles -- 42% of the room -- and there is no distance at which it is dropped, even though its 30 mm cell is 5.1 px at the normal viewing distance and would be legitimately sub-pixel from the doorway. The honest fix is not a coarser grille but a texture: the reference's own 4-5 mm perforation is unbuildable at any triangle count (PATCHES #3), and no buildable pitch clears AAA-STANDARD's tiling clause, which is the ceiling on this object's craft score."
+      },
+      {
+       "severity": "major",
+       "dimension": "robustness",
+       "descriptor": "R3",
+       "where": "station/council_chamber.py:_selftest",
+       "text": "47 of 56 assertions still have no negative control, which is the R4 clause. The nine that do are the ones this session added or inherited. Two vacuous assertions were found and scoped this round -- both took max() of a radius over the whole council_frame group, which spans the bench AND the ceiling ribs at r 11.160, so both were answering a question about the ceiling; they now read 4.655 against a bench face at 4.600. Expect more of the same shape: a group name is not a location."
+      },
+      {
+       "severity": "note",
+       "where": "station/council_chamber.py:screen_wall",
+       "text": "NEGATIVE RESULT worth keeping. Bounding the blue field halfway up the fan's length jitter gives 1.7% strong blue -- almost exactly the reference's 1.6% -- and looks WORSE than either extreme, because the blue survives only in the notches between blades that stop short and blades that carry on: twenty disconnected bright rectangles. A coverage figure that matches the reference is not a composition that matches the reference. Bounding it at the shortest blade instead gives 0.1%/0.6% and deletes the 'deep blue' judge-4e logged the absence of. The full lunette is shipped."
+      },
+      {
+       "severity": "note",
+       "dimension": "craft",
+       "where": "station/council_chamber.py:mesh_grille",
+       "text": "NEGATIVE RESULT. Tagging the sheet's web council_mesh so it emits like the sheet it is part of is the physically right argument -- a backlit perforated sheet's web is the front face of the emitter, edge-lit, not grey -- and it renders worse: at emission 2.0 on web and hole alike the panel becomes one blown white band with no perforation at all. The contrast has to come from the web being the bench's own casework, and what fixes the 'radiator grille' read is the RATIO: 6.5 mm of web in a 30 mm cell is 39% covered against the old 24 mm bar in a 42 mm pitch's 57%."
+      }
+     ]
     }
-   ]
+   ],
+   "_merge_note": "Rounds 2 and 3 for docs/aaa-scorecard.json subsystem `council_chamber`. Round 1 (judge-4e, 2026-08-01) is already in the scorecard and is NOT reproduced here. Merge these two objects onto the end of that subsystem's `rounds` array. Round 2 scores the state session 4p left, measured before this session changed a line; round 3 scores the same room after this session's rework and is a BUILD AGENT'S OWN re-measure, not an independent review -- docs/AAA-STANDARD.md says round zero is the build, so the merging agent may prefer to record round 3 as a build note rather than as a review round.",
+   "_frames": {
+    "lens": "every frame below: tools/render_godot.sh --shot interior --room council_chamber --res 1280x720, camera fov 46.0 deg vertical (export_scene.SHOT_FOV_DEG, the default), 16:9 -> 74.09 deg horizontal, eye height 1.70 m. Every run confirmed 'Vulkan 1.4.318 - Forward+ - llvmpipe' in its own stdout; no run reported OpenGL 3 Compatibility.",
+    "distances_derived": "Subject = the curved bench, the room's defining object: chord 2 * BENCH_R_M * sin(BENCH_ARC_DEG/2) = 2 * 4.6 * sin(75) = 8.885 m. NORMAL = the distance at which that chord fills the frame width = (8.885/2)/tan(37.045) = 5.887 m from the bench face at r 4.6, i.e. eye (10.487, 1.70, 0.0). That is also 0.53 m from the arc wall's inner face at r 11.02, so in this room the derived normal distance IS the furthest a player can stand back. HALF = 2.943 m, eye (7.543, 1.70, 0.0). ONE PIXEL CANNOT BE RUN: 1 px of a 1280-wide 74.09 deg frame is 1.011e-3 rad, so the bench is one pixel at 8,788 m, and the chamber's longest interior sightline is its own 22.0 m floor diameter -- the subject can never be smaller than 399 px, 400x short of the test. Substituted: the doorway view, eye (0.0, 1.70, 10.40) at 10.4 m, the longest sightline a player actually has of this composition.",
+    "before": {
+     "normal": "docs/craft-4r-council-before-normal.png  --eye 10.487,1.70,0.0 --target=-1.05,2.40,0.0",
+     "half": "docs/craft-4r-council-before-half.png  --eye 7.543,1.70,0.0 --target=-1.05,2.40,0.0",
+     "entry": "docs/craft-4r-council-before-entry.png  --eye 0.0,1.70,10.40 --target=0.0,2.40,-0.60"
+    },
+    "after": {
+     "normal": "docs/craft-4r-council-after-normal.png",
+     "half": "docs/craft-4r-council-after-half.png",
+     "entry": "docs/craft-4r-council-after-entry.png"
+    }
+   }
   },
   "customs_arrival": {
    "status": "active",

@@ -153,6 +153,28 @@ jobs:
         continue-on-error: true
         run: python3 station/routes.py --selftest
 
+      # THE QUALITY BAR ITSELF HAD NEVER RUN IN CI. `docs/aaa-scorecard.json` is
+      # the layer-8 authority -- the file that decides whether a subsystem may
+      # stop being reworked -- and nothing checked its shape, so a round could
+      # cite a descriptor that does not exist, score a dimension with no
+      # evidence, or lose its findings to a typo, and the dashboard would still
+      # print. The gate's own self-test runs first because a broken gate scoring
+      # a scorecard is worse than no gate: it prints a table.
+      #
+      # IT IS RED, AT 91 STRUCTURAL ERRORS, AND THAT IS THE POINT OF LANDING IT.
+      # Most are seed rounds written before the coupling rules existed -- a score
+      # below the bar with no finding explaining WHY it is below the bar. Every
+      # one is a review that cannot be acted on. The number is the work-list.
+      - name: The AAA gate can score itself
+        id: saaa_selftest
+        continue-on-error: true
+        run: python3 tools/aaa_gate.py
+
+      - name: The quality bar -- may any subsystem stop
+        id: saaa_scorecard
+        continue-on-error: true
+        run: python3 tools/aaa_gate.py docs/aaa-scorecard.json
+
       - name: Performance budgets
         id: sperformance_budgets
         continue-on-error: true
@@ -1180,6 +1202,10 @@ jobs:
             echo "FAILED: svista"; fail=1; fi
           if [ "${{ steps.svistamount.outcome }}" != "success" ]; then
             echo "FAILED: svistamount"; fail=1; fi
+          if [ "${{ steps.saaa_selftest.outcome }}" != "success" ]; then
+            echo "FAILED: saaa_selftest"; fail=1; fi
+          if [ "${{ steps.saaa_scorecard.outcome }}" != "success" ]; then
+            echo "FAILED: saaa_scorecard"; fail=1; fi
           if [ "$fail" != "0" ]; then
             echo; echo "One or more gates failed -- see above."; exit 1; fi
           # NOT A COUNT. It was hand-maintained and said 36 while the list
