@@ -1874,8 +1874,140 @@
      "reviewer": "judging agent, session 4e -- LAYER 8 ROUND 1. The first frames of this station scored against docs/AAA-STANDARD.md. 21 engine frames, every one confirmed 'Vulkan 1.4.318 - Forward+' in its own log and recorded with its command in docs/judge-4e-frames.json. Builder of none of it. Full report: docs/judge-4e.md",
      "date": "2026-08-01",
      "broke_assertions": false
+    },
+    {
+     "round": 2,
+     "reviewer": "craft agent, session 4r -- RE-MEASURE BEFORE REWORK. judge-4e scored this room on 2026-08-01 from a 3,943-triangle build; sessions 4a, 4f, 4m and 4p then gave it a swept shell, a Warren truss, piers, container stacks, a lane edge, a painted bay number and 39 measured floods, and NOBODY RE-SCORED IT. These scores are the state 4m left, measured in three fresh engine frames at derived distances before this session changed a line. 22,571 triangles.",
+     "date": "2026-08-06",
+     "scores": {
+      "craft": 2,
+      "fidelity": 2,
+      "performance": 2,
+      "robustness": 3
+     },
+     "evidence": {
+      "craft": "docs/craft-4r-dockingbay-before-{normal,half,long}.png, 22,571 triangles against judge-4e's 3,943. The bay is a long low slot with a lattice ceiling, transverse trusses, lane-edge piers, stepped ledges with hazard nosings, ranked container stacks, twenty bollards, a painted deck number and a marked lane, and it reads as an industrial bay at 27.8 m. It is not a placeholder from any distance, so it is not C1.",
+      "robustness": "36/36 assertions, three with negative controls that fire: a duplicated back wall leaves a non-manifold edge with no articulate band on it; one triangle out of the crew bulkhead leaves exactly 3 stray open edges; the mouth's open loop is checked as a single degree-2 cycle rather than as a count. Every open edge in the mesh lies in the plane z = 0 and forms one loop, which bespoke.SHELL_OPEN_EDGES independently pins at 31."
+     },
+     "broke_assertions": false,
+     "findings": [
+      {
+       "severity": "major",
+       "dimension": "craft",
+       "descriptor": "C2",
+       "where": "station/docking_bay.py:floodlight, girder, docking_bay",
+       "text": "THE ONE SATURATED COLOUR THE REFERENCE HAS IS NOT IN OUR FRAME. Measured on the normal-distance frame against dock.webp by the same code: warm pixels 3.1% against 39.5%, warm/cool ratio 0.033 against 1.451 -- a 44x deficit. The truss band reads R/B 0.680 where dock.webp's own girder reads 3.191, so the red-oxide overhead steel and the grey pressure wall render as the same cold object, which is C2's clause verbatim. The tonal hierarchy is inverted with it: truss/deck luminance is 0.552 against the reference's 0.120-0.262, i.e. our roof is washed to two thirds of the deck's brightness where the show's is a fifth. And at HALF distance the fitting that is 39 of the brightest objects in the room is two axis-aligned boxes: docs/craft-4r-dockingbay-before-half.png shows them as flat white rectangles clipped to 1.0 with a glow halo, which is C1 for that object taken alone. The ceiling above them -- the largest single surface in any upward frame -- is rooms.articulate's wall grid on an arc and reads as a field of tiles."
+      },
+      {
+       "severity": "major",
+       "dimension": "fidelity",
+       "descriptor": "F2",
+       "where": "station/docking_bay.py:girder, docking_bay",
+       "text": "Built from the reference's LABEL rather than from the drawing, in four places at once, and three of the four are corrections the reference set had ALREADY RECORDED and the geometry never received. reference/00-INDEX.md's second pass over dock.webp says (a) 'the disc's device is a white rounded-rectangle outline containing three white bars, NOT an oval emblem' -- the module built a filled circle inside a filled circle; (b) 'a signage pylon stands at the deck edge carrying four rectangular plaques in a horizontal row at head height, with a green-lit display panel on its lower flank' -- not built at all; (c) 'the ceiling is the ribbed inner wall of the rotating drum' (Minbari frame) -- not built; (d) 'service gantries with railings' -- not built. The girder itself is a single Warren run chosen 'because it is the one that suits a deep span', where the frame at 2.2x shows two crossing diagonals per panel with a post at every panel point. Everything traces to a sentence; almost nothing traces to the picture."
+      },
+      {
+       "severity": "major",
+       "dimension": "performance",
+       "descriptor": "P2",
+       "where": "station/docking_bay.py:budget_report",
+       "text": "22,571 triangles for one bay and NOTHING IN THE MODULE MEASURES THEM AGAINST ANYTHING. budget_report() prints a table and returns a count to no caller; there is no assertion, no stated share of budget.INTERIOR['visible_set_tris'], no worst-case argument and no LOD. The room's cost is visible only inside station/budget.py's whole-station figure, which is itself 4.34x over."
+      },
+      {
+       "severity": "major",
+       "dimension": "robustness",
+       "descriptor": "R3",
+       "where": "station/docking_bay.py:_selftest",
+       "text": "33 of 36 assertions have no negative control, which is the R4 clause. Determinism is intended and not verified -- nothing in the module or in CI compares two PYTHONHASHSEED runs byte for byte, which R3 asks for by name."
+      },
+      {
+       "severity": "note",
+       "where": "station/docking_bay.py:LAMPS_PER_BAY_GIRDER",
+       "text": "OPEN FIDELITY QUESTION, deliberately not acted on. reference/00-INDEX.md reads dock.webp's overhead as 'a lattice gantry carrying FIVE TO SIX pendant floodlights at even pitch'; the module builds three per girder. Three per girder over two visible girders is five or six in one frame, so the readings are compatible and I left it -- but changing it would invalidate BESPOKE_EXPOSURE['docking_bay'] = 7.11, which was solved by four renders against this room's lamp count and lives in a file this session does not own. Recorded so the next reader does not act on the index without re-solving the exposure."
+      }
+     ]
+    },
+    {
+     "round": 3,
+     "reviewer": "craft agent, session 4r -- SAME AGENT, AFTER ITS OWN REWORK. Not an independent round: docs/AAA-STANDARD.md says a build agent reviewing its own work is round zero. Recorded so the numbers and the frames exist for whoever reviews next. 32,811 triangles.",
+     "date": "2026-08-06",
+     "scores": {
+      "craft": 3,
+      "fidelity": 3,
+      "performance": 3,
+      "robustness": 3
+     },
+     "evidence": {
+      "craft": "docs/craft-4r-dockingbay-{after-normal,after-half,after-long}.png against the same three cameras as round 2. Six objects rebuilt or added, all from the two authority-1 frames: the pendant is a spun dome with a rolled rim and a convex lens (INV-640) instead of two boxes; the girder is X-braced with a post at every panel point and a stepped bottom flange (INV-641); the ceiling carries the hull's longitudinal stringers at the girder's own panel pitch (INV-642); the deck disc's device is the outline round three bars the index describes (INV-643); a signage pylon carries four plaques and a lit panel (INV-644); the ledges carry a railing at the lane edge (INV-645). Measured on the same camera: truss/deck luminance 0.552 -> 0.266, which is the edge of dock.webp's own 0.120-0.262 band and was 2.1x above it; on the 138 m frame 0.245 -> 0.125, inside it. measure_frame against dock.webp: crushed 22.92% -> 34.55% against the show's 38.82%, clipped 0.25% -> 0.00%, distribution 7/7 both before and after.",
+      "fidelity": "INV-640..INV-646, each with all four fields, plus the negative result INV-646. Four of the six builds are corrections the reference set had already recorded in reference/00-INDEX.md and the geometry had never received. The one measured length in the module (DECK_DISC_D_M = 10.6 m at 16.0 px/m off the dock workers) now sizes the device inside it rather than a second circle. tools/inv_check.py: 344 entries, 221 numbers cited, REGISTER OK.",
+      "performance": "32,811 triangles asserted in the module against budget.INTERIOR['visible_set_tris'] = 60,000 -- 54.7%, printed by the gate on every run. THE WHOLE BAY IS THE WORST CASE AND THERE IS NO POSITION TO SWEEP, stated in the gate rather than assumed: budget.py's corridor figure is a per-metre rate times a sight line because a corridor wall stops you seeing further, and a docking bay has no wall across it, so an eye at the mouth holds all 140 m and all 13 girders in one frustum. The bound has a control that fires (twice this bay is outside it).",
+      "robustness": "53/53 assertions, six with negative controls that fire and are quoted in the run: the box the lens replaced has exactly two distinct y where a revolved solid has more; a half-pitch stringer is off the girder's panel grid; the filled disc the device replaced covers its own middle where an outline does not, and the middle bar is separately asserted present so that test cannot pass vacuously; a pylon built facing the other way puts its plaques outboard; twice the bay's triangles breaks the budget bound. Deterministic across PYTHONHASHSEED 0, 1 and 12345 -- blake2b of (verts, tris, groups) identical, 7c963aee7c802631, 32,811 triangles each time. bespoke.SHELL_OPEN_EDGES['docking_bay'] returns 31 before and after, so the assembler sees the same mouth."
+     },
+     "broke_assertions": true,
+     "findings": [
+      {
+       "severity": "major",
+       "dimension": "craft",
+       "descriptor": "C3",
+       "where": "godot/scenes/interior.tscn:volumetric_fog_density",
+       "text": "IT STILL DOES NOT READ AS A BABYLON 5 DOCKING BAY, AND THE CAUSE IS MEASURED AND IS NOT GEOMETRY. Warm pixels 3.1% against dock.webp's 39.5% -- unchanged by everything above, because the room's red-oxide steel is already there and already lit enough and is being erased by a cool medium. interior.tscn carries ONE GLOBAL volumetric_fog_density = 0.014 with albedo (0.78, 0.81, 0.88) for every interior in the project; that is sane for the 21.6 m corridor it was set on and it is 6.5x the path in a 140 m bay, so a third of every truss pixel is blue fog. Swept in a worktree, one variable, five frames: 0.014 -> 0.005 -> 0.0025 -> off takes warm pixels 3.1% -> 18.8% -> 28.7% -> 32.0% and the truss band's R/B 0.574 -> 0.787 -> 0.834 -> 0.849, against the reference's 1.157-3.191. Monotone, and the deck gets brighter with it (0.0886 -> 0.1045), so it is not a trade against level. Not applied: one global number re-judges the corridor anchor and layer 4b's thirteen passing rows at once. The shape of the fix -- a per-shot density derived from the room's own sight line -- is scratchpad/PATCHES-4r-dockingbay.md #1."
+      },
+      {
+       "severity": "major",
+       "dimension": "fidelity",
+       "descriptor": "F3",
+       "where": "station/docking_bay.py",
+       "text": "Two clauses of F3 are short. (1) There is no PROVISIONAL dict and F3 asks for one by name: GIRDER_PITCH_M 11.0, GIRDER_D_M 2.4, GIRDER_W_M 1.1, LAMP_DROP_M 2.6 and LAMP_R_M 0.75 live inline under INV-022's blanket phrase 'plus the ledge, girder and floodlight pitches', which is an entry for five numbers at once rather than a stated calibration for each. (2) The bay's absolute size is still unsourced and always was -- BAY_H_M and BAY_LEN_M are proportioned, not measured, and INV-022 says so. What would close both is one frame with a person against a bay WALL rather than on the deck; the reference set holds none, and this is the same ceiling INV-022 has had since session 3y."
+      },
+      {
+       "severity": "major",
+       "dimension": "performance",
+       "descriptor": "P3",
+       "where": "station/docking_bay.py, station/lod.py",
+       "text": "54.7% of its derived share with no LOD chain at all, where P4 wants a chain whose switch distances come from a measurable error. Every one of the 13 girders is drawn in full at 138 m, where its 0.24 m web plates are 0.2 px; station/lod.py exists and this module does not reach it. Two further honest limits on the number: it is measured on the INTERIOR shot's single bay, and the DECK shot composes the room through bespoke/rooms.tiling, so a player standing on the assembled deck may see a different total that this gate does not bound; and the 60,000 is structure alone, so the pylons, containers, ledge machines and bollards inside my 32,811 are spending an allowance they should arguably be sharing with props."
+      },
+      {
+       "severity": "major",
+       "dimension": "robustness",
+       "descriptor": "R3",
+       "where": "station/docking_bay.py:_selftest",
+       "text": "47 of 53 assertions still have no negative control, which is the R4 clause. The six that do are this session's. And the module has no assertion of the R5 kind -- cross-subsystem clearance: the signage pylons this session put on the deck stand 1.1 m inboard of the lane edge and nothing anywhere compares them to station/collision.py's shell for this room or to the path station/walkable.py walks into it. collision.prop_boxes derives solids from the emitted mesh, so they ARE solid; whether they are solid somewhere a body needs to be is untested."
+      },
+      {
+       "severity": "note",
+       "dimension": "craft",
+       "where": "tools/export_scene.py:FIXTURE_LIGHTING['bay_uplight']",
+       "text": "NEGATIVE RESULT, and it is the most useful thing this round produced. Session 4m's note on this room prescribes 'an uplight component on the fitting, which is a new emitted group in docking_bay.py and a new FIXTURE_LIGHTING row, not a gain'. Both halves were built and measured in a worktree at three energies. The uplight moves warm pixels 3.1% -> 3.8% -- 0.7 points, against the 28.9 that dropping the fog buys -- and it PUSHES truss/deck luminance from 0.266, inside dock.webp's own band, out to 0.816 at energy_rel 0.30 and 1.263 at 0.55: it lights the ceiling to the level of the deck, where the reference is a bright deck under a dark warm roof. Cross-checked with the fog off, where the same uplight still only moves warm 32.0% -> 34.5%. The geometry ships (the crown aperture is real, tagged through one constant) and the diff is filed; the recommendation is NOT to land it until the fog is per-room. INV-646."
+      },
+      {
+       "severity": "note",
+       "dimension": "craft",
+       "where": "station/docking_bay.py:deck",
+       "text": "STILL OPEN AND NOT MINE: the deck is an even sheet where dock.webp has discrete cones with dark between them. Measured without a render by summing Godot's own attenuation over the shipped rig on the clear deck (scratchpad/db/pools.py): at the shipped 35 deg cone the longitudinal modulation is 44.6% and p95/p5 is 6.14; at 28 deg -- the bottom of the entry's own measured 28-35 deg bracket -- it is 84.5% with 5% of the deck at exactly zero fitting light, which is what scalloping is. I did not change it because a narrower cone costs 42% of the mean and therefore needs a re-solve of BESPOKE_EXPOSURE['docking_bay'] by the four-render procedure, and a half-solved exposure is worse than none. PATCHES #4."
+      },
+      {
+       "severity": "note",
+       "where": "station/docking_bay.py:ceiling_ribs",
+       "text": "A DEFECT FOUND BY AN ASSERTION AND NOT BY A FRAME, worth recording because the frame could not have shown it. The first build seated each ceiling stringer at ceil_y evaluated on its own centreline. ceil_y falls 0.32 m per metre near the springing, so a rib 0.86 m wide stood up to 0.14 m THROUGH the ceiling shell at its outboard edge -- structure embedded in the plating, which z-fights and which no render of a dark soffit at 18 m could distinguish from a dark soffit. The assertion 'the stringers hang BELOW the shell they stiffen' failed on the first run and is quoted failing in the commit."
+      }
+     ]
     }
-   ]
+   ],
+   "_merge_note": "Rounds 2 and 3 for docs/aaa-scorecard.json subsystem `docking_bay_interior`. Round 1 (judge-4e, 2026-08-01) is already in the scorecard and is NOT reproduced here. Merge these two objects onto the end of that subsystem's `rounds` array. Round 2 scores the SHIPPED room measured before this session changed a line; round 3 scores the same room after this session's rework and is a BUILD AGENT'S OWN re-measure, not an independent review -- docs/AAA-STANDARD.md says round zero is the build, so the merging agent may prefer to record round 3 as a build note rather than as a review round.",
+   "_frames": {
+    "lens": "every frame below: tools/render_godot.sh --shot interior --room docking_bays --res 1280x720, camera fov 46.0 deg vertical (export_scene.SHOT_FOV_DEG, the default), 16:9 -> 74.09 deg horizontal (2*atan(tan(23)*16/9)), eye height 1.70 m on the clear deck centreline. Every run confirmed 'Vulkan 1.4.318 - Forward+ - llvmpipe' in its own stdout; no run reported OpenGL 3 Compatibility.",
+    "distances_derived": "Subject = ONE GIRDER BAY, the room's repeating structural unit and the object its own docstring calls 'the first thing that reads'. Its largest extent is the BAY_W_M = 42.0 m span, which is also the dimension 'a long low slot, not a hangar box' is about. NORMAL = the distance at which that span fills the frame width = 21.0/tan(37.045) = 27.83 m; the subject is the real girder at z = 35.0 (girder pitch BAY_LEN_M/12 = 11.667 m), so the eye is at (0.0, 1.70, 7.17) aimed at (0.0, 9.0, 35.0) -- the bay's mid-height, which puts the whole 22.2 m section in frame from a standing eye. HALF = 13.92 m, eye (0.0, 1.70, 21.085), SAME aim point. ONE PIXEL CANNOT BE RUN: one pixel of a 1280-wide 74.09 deg frame is 1.179e-3 rad, so a 42 m span is one pixel at 35,621 m, and the longest sightline the room contains is its own BAY_LEN_M = 140 m -- 254x short. Substituted: the full 138 m view from just inside the mouth to the crew bulkhead, eye (0.0, 1.70, 2.0) aimed at (0.0, 9.0, 140.0). At 138 m the girder chord (0.42 m) is 2.6 px and every tertiary member -- ladder hoop 0.035 m, handrail 0.05 m, web plate 0.24 m -- is sub-pixel, so that frame answers the silhouette question the one-pixel test asks.",
+    "before": {
+     "normal": "docs/craft-4r-dockingbay-before-normal.png  --eye 0.0,1.70,7.17 --target 0.0,9.0,35.0",
+     "half": "docs/craft-4r-dockingbay-before-half.png  --eye 0.0,1.70,21.085 --target 0.0,9.0,35.0",
+     "long": "docs/craft-4r-dockingbay-before-long.png  --eye 0.0,1.70,2.0 --target 0.0,9.0,140.0"
+    },
+    "after": {
+     "normal": "docs/craft-4r-dockingbay-after-normal.png",
+     "half": "docs/craft-4r-dockingbay-after-half.png",
+     "long": "docs/craft-4r-dockingbay-after-long.png"
+    },
+    "statistics": "scratchpad/db/measure.py computes every colour figure quoted, in LINEAR light, and is run on our frames and on reference/03-sector-blue/dock.webp by the same code. 'warm' is the fraction of pixels above the quantisation floor with R > 1.15*B; 'truss/deck' is the mean linear luminance of the band y 0.00-0.28 over the band y 0.86-1.00 -- the overhead structure against the deck. dock.webp's own truss R/B is read over two regions the materials.py source line already names: the upper-left girder (0.02,0.02)-(0.30,0.16) gives 3.191 and the mid lattice (0.24,0.12)-(0.50,0.22) gives 1.157."
+   }
   },
   "concourse_central_corridor": {
    "status": "active",
