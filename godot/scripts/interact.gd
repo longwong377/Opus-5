@@ -103,11 +103,30 @@ func collect(visual: Node, rows: Array) -> int:
 		if g == "":
 			continue
 		want[g] = row
-	# A PROP IS SEVERAL MESHES. `dressing.machine` emits an articulated object
-	# as a parent group plus `_mp_`-infixed parts, and the OBJ writer gives each
-	# triangle to the LAST group covering it -- the same finding `npc.gd`
-	# records for a person's skin and cloth. So an exact name match can find the
-	# parent group empty; the parts are matched too, and merged into one object.
+	# A PROP IS SEVERAL MESHES, AND THE MESH CANNOT SAY WHICH.
+	#
+	# `dressing.machine` emits an articulated object as an outer span covering
+	# everything and its parts as spans inside it; `write_obj` gives each
+	# triangle to the LAST span covering it, so the group still carrying the
+	# object's own name owns only the leftovers no part claimed. Measured across
+	# blue/0/0's sixteen declared interactables in session 4w, the name test
+	# below grabs **872 of 12,288 triangles -- 7.1%**. A bay door is 12 of its
+	# 536. Press one and 98% of it stands still.
+	#
+	# AND IT CANNOT BE FIXED BY NAME, which is why this still is one. The parts
+	# are called `..._prop_mp_plant_frame` and friends, and those names are
+	# **shared across every machine in the room** -- `dressing` merges parts by
+	# material, so one group holds one room's frames, not one object's. Mapping
+	# them to their enclosing interactable was tried and made it worse: each
+	# object then swallowed the room's machinery, taking the same sixteen
+	# objects to **209% of their own spans**, with a bay door grabbing 2,888
+	# triangles of a 536-triangle object. `--use` passed throughout, both times.
+	#
+	# What would fix it is per-object part groups at emission -- `<object>_mp_
+	# plant_frame` rather than `prop_mp_plant_frame` -- which is a change in
+	# `dressing`/`rooms` with a draw-call cost `budget.py` gates at 382/600
+	# primitives. The sidecar carries `span_groups` so that work has the
+	# membership already derived; nothing reads it yet, on purpose.
 	var found := {}
 	for m in _meshes(visual):
 		var n := String(m.name)

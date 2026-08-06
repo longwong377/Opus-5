@@ -215,6 +215,29 @@ def interact_rows(verts, tris, groups):
     mesh that is about to be written.
     """
     rows = IX.sidecar({nm for nm, _a, _b in groups})
+    # WHAT LIES INSIDE EACH OBJECT'S SPAN, DERIVED FROM THE MESH.
+    #
+    # `dressing.machine` emits an articulated object as an outer span covering
+    # everything, then its parts as spans inside it, and `write_obj` gives each
+    # triangle to the LAST span covering it -- so the group still carrying the
+    # object's own name owns only the leftovers no part claimed. Measured on
+    # blue/0/0: `interact.gd`'s name test grabs **872 of 12,288 declared
+    # triangles, 7.1%**; a bay door is 12 of its 536.
+    #
+    # `span_groups` IS NOT A MEMBERSHIP LIST, and the name says so because the
+    # first version of it was called `parts` and was used as one. Those group
+    # names are shared across every machine in the room -- `dressing` merges
+    # parts by material -- so mapping them back to their enclosing interactable
+    # made each object swallow the room's machinery: 209% of their own spans, a
+    # bay door grabbing 2,888 triangles of a 536-triangle object. `--use`
+    # passed both before and after, which is its own finding.
+    #
+    # It is recorded rather than used, so the session that gives `dressing`
+    # per-object part names has the derivation already made.
+    owner = [None] * len(tris)
+    for nm, a2, b2 in groups:
+        for i in range(a2, min(b2, len(tris))):
+            owner[i] = nm
     out = []
     for r in rows:
         box = group_aabb(verts, tris, groups, r["group"])
@@ -224,6 +247,14 @@ def interact_rows(verts, tris, groups):
         r["centre"] = [(lo[k] + hi[k]) / 2.0 for k in range(3)]
         r["half"] = [max((hi[k] - lo[k]) / 2.0, 0.0) for k in range(3)]
         r["tris"] = n
+        inside = set()
+        for nm, a2, b2 in groups:
+            if nm != r["group"]:
+                continue
+            for i in range(a2, min(b2, len(tris))):
+                if owner[i]:
+                    inside.add(owner[i])
+        r["span_groups"] = sorted(inside)
         out.append(r)
     return out
 
@@ -537,6 +568,11 @@ def walk_deck(sector, ring, deck, godot, timeout=1800, traverse=None,
     # `door.gd` uses to parse the name.
     doors = {n.rsplit("_", 1)[0] for n, _l, _h in g
              if n.startswith("doorleaf_") and "_" in n[9:]}
+    # 4o's open gap -- a machine's frame landing in the neighbouring cell --
+    # is NOT closed by adding `span_groups` here, and it was tried. Those names
+    # are shared across every machine in the room, so keeping one whole drags
+    # the room's entire machinery into one cell: the same mistake as keeping
+    # every span whole, which took the worst cell to 418,728 triangles.
     whole = (sorted(doors)
              + [a["group"] for a in s.get("actors", ()) if a.get("group")]
              + [r["group"] for r in rows if r.get("group")])
@@ -1239,13 +1275,21 @@ def main():
                           f"prompted and still used it")
                     good = False
                 else:
+                    # NOT A COMPARISON OF TOTALS. It used to read "wires 4
+                    # instead of 5", which was true while an object was
+                    # whatever meshes happened to match its name. Now that a
+                    # row carries its PARTS, deleting one object's outer span
+                    # re-partitions the rest -- groups it used to own become
+                    # unclaimed or fall to a neighbour -- so the total can go
+                    # UP, and it did: 8 against 7. The claim was never about
+                    # the count. It is that the thing is gone and cannot be
+                    # used.
                     print(f"        control: with {n.get('stripped_tris')} "
                           f"triangles of {u['use_want']} deleted from the "
-                          f"render mesh the engine wires "
-                          f"{n.get('interactables', '?')} interactables "
-                          f"instead of {u['interactables']}, the prompt reads "
+                          f"render mesh the prompt reads "
                           f"`{n.get('prompt', '?')}` and use_count is "
-                          f"{n.get('use_count', '?')}. What you look at is "
+                          f"{n.get('use_count', '?')} -- the object a player "
+                          f"was pressing is not there. What you look at is "
                           f"what is there.")
         if a.deck_only:
             return 0 if good else 1

@@ -1,6 +1,98 @@
 # Project State
 
-**Last updated:** 2026-08-06 · **Session 4v** — **the distance bar had never run, and path length was never progress** · **4u** — **nobody stands in the doorway any more** · **4t** — **the cast are solid, and one of them is standing in the doorway** · **4s** — **a sidestep that begins on contact is not a sidestep; and the bump gate was reporting an empty sample** · **4r** — **the thing blocking the corridor was a person, and I put them there: 28 m → 238 m** · **4q** — **the free path has a gate, and it found the corridor is blocked 27 m from the spawn** · **4p** — **the deck streams: 657,880 resident triangles become 127,204** · **4o** — **a cell boundary was cutting doors and people in half** · **4n** — **the deck cuts into loadable cells, and the loader's real obstacle is named** · **4m** — **the streaming cell budget met a real deck, and the design survives** · **4l** — **the resident-triangle gate was about the deck; the build also loads 321,664 triangles of people** · **4k** — **every walker on the station was bald, for 188 triangles** · **4j** — **the 21 exposure frames describe the code again, and the verdict did not move** · **4i** — **every curved surface in the project was flat-shaded, and the crease angle is measured off the station** · **4h** — **IT IS PLAYABLE: press Play and you are standing in Blue Sector** · **4g** — **the Babcom terminal is a built device, and it shipped a logged mistake once before the log caught it** · **4f** — a per-token verb override · **4e** — **the naming-mismatch class is CLOSED: built-but-misnamed 26 → 0, resolving 302/357** · **4d** — **the bespoke rooms' interactables were never unbuilt, they were unnamed: 259/357 → 284/357** · **4c** — **the station is INTERACTABLE, the port is on a wall, and the 24-minute suites were one bad cache key** · **4b** — a police force, friction in metres, the plated shell, the fitting-reach fix
+**Last updated:** 2026-08-06 · **Session 4w** — **when you press a bay door, 12 of its 536 triangles move** · **4v** — **the distance bar had never run, and path length was never progress** · **4u** — **nobody stands in the doorway any more** · **4t** — **the cast are solid, and one of them is standing in the doorway** · **4s** — **a sidestep that begins on contact is not a sidestep; and the bump gate was reporting an empty sample** · **4r** — **the thing blocking the corridor was a person, and I put them there: 28 m → 238 m** · **4q** — **the free path has a gate, and it found the corridor is blocked 27 m from the spawn** · **4p** — **the deck streams: 657,880 resident triangles become 127,204** · **4o** — **a cell boundary was cutting doors and people in half** · **4n** — **the deck cuts into loadable cells, and the loader's real obstacle is named** · **4m** — **the streaming cell budget met a real deck, and the design survives** · **4l** — **the resident-triangle gate was about the deck; the build also loads 321,664 triangles of people** · **4k** — **every walker on the station was bald, for 188 triangles** · **4j** — **the 21 exposure frames describe the code again, and the verdict did not move** · **4i** — **every curved surface in the project was flat-shaded, and the crease angle is measured off the station** · **4h** — **IT IS PLAYABLE: press Play and you are standing in Blue Sector** · **4g** — **the Babcom terminal is a built device, and it shipped a logged mistake once before the log caught it** · **4f** — a per-token verb override · **4e** — **the naming-mismatch class is CLOSED: built-but-misnamed 26 → 0, resolving 302/357** · **4d** — **the bespoke rooms' interactables were never unbuilt, they were unnamed: 259/357 → 284/357** · **4c** — **the station is INTERACTABLE, the port is on a wall, and the 24-minute suites were one bad cache key** · **4b** — a police force, friction in metres, the plated shell, the fitting-reach fix
+
+## Session 4w — WHEN YOU PRESS A BAY DOOR, 12 OF ITS 536 TRIANGLES MOVE
+
+### 1. The measurement
+
+`interact.gd` matches an object's meshes by name: exact, or beginning with the group's name and an
+underscore. `dressing.machine` emits an articulated object as an outer span covering everything and
+its parts as spans inside it, and `write_obj` gives each triangle to the **last** span covering it —
+so the group still carrying the object's own name owns only the leftovers no part claimed.
+
+Across blue/0/0's sixteen declared interactables:
+
+| object | span | the runtime grabs |
+|---|---|---|
+| `docking_bays__prop_bay_door` | 536 | **12 — 2.2%** |
+| `docking_bays__prop_bay_control_booth` | 1,696 | 24 — 1.4% |
+| `bay_elevators__prop_lift_door` | 296 | 12 — 4.1% |
+| `lowg_bays__prop_handhold` | 56 | **0** |
+| **all sixteen** | **12,288** | **872 — 7.1%** |
+
+**Press a bay door and 98% of it stands still.** `deck_marking` matched 200% of its own span, over-
+reaching into a neighbour whose name starts the same way.
+
+The comment that stood above that matcher said the parts *"are matched too, and merged into one
+object"*. They were not — and `strip_group`, the negative control, has had the rule right since it
+was written: *"the object AND its articulated parts, because `dressing.machine`'s outer span covers
+all of them"*. **The control knew what an object was and the runtime did not.**
+
+### 2. AND IT CANNOT BE FIXED BY NAME. I TRIED, AND MADE IT WORSE
+
+I derived each object's membership off the emitted mesh — every group owning a triangle inside the
+object's outer span — wrote it to the sidecar, and had the runtime match on it. The `--use` gate
+passed, wired interactables went 5 → 7, and the numbers looked like a fix.
+
+They were not. Those part names are **shared across every machine in the room** — `dressing` merges
+parts by material, so one group holds one *room's* frames, not one *object's*. 4o recorded exactly
+that and I did not heed it. Mapping them back to their enclosing interactable made each object
+swallow the room's machinery:
+
+```
+the runtime grabbed 7.1% of the declared objects; now 209.4%
+docking_bays__prop_bay_door   span 536   was 12   now 2,888
+```
+
+**`--use` passed at 7.1% and passed again at 209%.** A gate that presses one object and checks it
+moved 4 mm cannot see how much of the room moved with it.
+
+Reverted. What survives is the derivation, recorded in the sidecar as **`span_groups` — named so
+because it is not a membership list**, and read by nothing on purpose.
+
+### 3. What would actually fix it
+
+Per-object part groups at emission: `<object>_mp_plant_frame` rather than `prop_mp_plant_frame`, so
+each machine's parts are its own mesh. That is a change in `dressing`/`rooms` with a **draw-call
+cost `budget.py` already gates at 382/600 primitives**, so it needs its own session and its own
+measurement. `span_groups` means that session starts with the membership already derived.
+
+### 4. Gates
+
+| gate | result |
+|---|---|
+| `station/deck.py` | **56/56** |
+| `walkable.py --deck blue/0/0` | **PASS**, control firing |
+| `walkable.py --deck blue/0/0 --stream` | **PASS** — 29.5° at its furthest, 1.5 cells |
+| `walkable.py --deck blue/0/0 --use` | **PASS**, control firing |
+
+The `--use` control was also corrected: it compared *totals* of wired interactables ("4 instead of
+5"), which stops being meaningful once an object is more than the meshes matching its name —
+deleting one object's outer span re-partitions the rest and the total can go **up**. It now states
+what was always the actual claim: the prompt reads `-` and `use_count` is 0, so the thing is gone.
+
+### 4b. A GDSCRIPT THAT WILL NOT LOAD MAKES THE WALK TEST HANG, NOT FAIL
+
+While reverting, I left `if member.has(n):` in the matcher after deleting the `member` declaration.
+GDScript then fails to load `interact.gd`, `_interact` stays null, and `--use` waits for a use that
+can never happen: **the run sat for 50 minutes at 6% CPU with a load average of 0.37.** It was not
+slow, it was hung, and nothing said so — `subprocess.run(timeout=1800)` would have "failed" half an
+hour later with `timed out after 1800s`, which names neither the script nor the reason.
+
+CLAUDE.md's rule caught it: *a slow suite is a bug until profiled*. Load average and %CPU
+distinguished hung from busy in one command. **A gate waiting on a subprocess should notice that
+the thing it is driving never printed its first line.** Worth a timeout that reports what was last
+seen rather than only how long it waited.
+
+### 5. NEXT
+
+- **Give `dressing` per-object part names**, and measure the draw-call cost against
+  `budget.py`'s 600-primitive gate before committing to it. Until then every articulated
+  interactable on the station moves 7% of itself when pressed.
+- The near figure's silhouette is 32-gon faceted at 1 m; the affordable fix is runtime skinning.
+- `--deck`'s `traverse_m` bar is live but weak under a goto — a no-goto deck run would exercise the
+  strong form.
 
 ## Session 4v — THE DISTANCE BAR HAD NEVER RUN, AND PATH LENGTH WAS NEVER PROGRESS
 
