@@ -164,6 +164,11 @@ def main():
                          "SAYS SO rather than implying a tier that is not "
                          "there.")
     ap.add_argument("--id", default=None, help="check one row")
+    ap.add_argument("--red", action="store_true",
+                    help="print the rows that RAN a harness and FAILED it. "
+                         "These carry both numbers and are the whole product "
+                         "of this file; without the flag the summary counts "
+                         "findings nobody can read.")
     ap.add_argument("--dispatch", action="store_true",
                     help="print which harness each row resolves to, and how "
                          "many rows reach each one. An entry that reaches "
@@ -257,7 +262,22 @@ def main():
                     red += 1
                     passed += 1
                     state = (f"RED (checks pass, not sufficient alone: {note})")
-        if a.id or state.startswith("RED") is False:
+        # THE GATE COMPUTED 64 FINDINGS AND PRINTED NONE OF THEM. This read
+        # `if a.id or not state.startswith("RED")`, which made sense when RED
+        # meant "nobody has written a harness" -- there was nothing to say. It
+        # became actively harmful the moment harnesses existed: a row that RAN
+        # a check and FAILED it carries a specific message naming both numbers,
+        # and that message is the entire product of this file. Suppressing it
+        # left the summary counting findings nobody could read.
+        #
+        # `--red` prints them. Not on by default, because the passing 236 would
+        # bury them; and the summary now says the flag exists, so the findings
+        # cannot be invisible to somebody who only runs the gate.
+        show = a.id or not state.startswith("RED")
+        if a.red and "RED (" in state and "harness not implemented" not in state \
+                and "not sufficient alone" not in state:
+            show = True
+        if show:
             print(f"{r['id']:10} {state}")
     total = len(rs)
     print(f"\n{green} GREEN / {red} RED / {capped} CAPPED of {total}")
@@ -270,7 +290,8 @@ def main():
     print("  %4d passed their harness but it is not sufficient for GREEN on "
           "its own" % passed)
     print("  %4d RAN a harness and FAILED it -- these are findings about the "
-          "station or the spec, not gaps" % failed)
+          "station or the spec, not gaps%s"
+          % (failed, "" if a.red else "; run with --red to read them"))
     print("  %4d have no harness at all" % unchecked)
     if broke:
         print("  %4d HARNESS CRASHED -- a bug in the harness, not a verdict "
