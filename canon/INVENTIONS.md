@@ -10018,6 +10018,177 @@ every distance quoted in `docs/aaa-scorecard.json`'s `exterior_components` rows.
 
 ---
 
+## INV-600 — the LOD chain's lens is READ off the shipped camera: 50° → 70°
+
+**What.** `station/lod.py::FOV_DEG` stops being the authored constant **50.0** and becomes
+`budget.shipped_camera()["fov_deg"]` = **70.0**, read out of `godot/scripts/player.gd:279`
+(`_cam.fov = 70.0`). `station/drum_ground.py` and, through it, `station/drum_dressing.py` take
+the same value by reference instead of restating it. Every switch distance in the hull chain,
+the drum ground chain and the drum dressing chain therefore shortens by
+`tan(25°)/tan(35°) = 0.6660`.
+
+**This is not an extrapolation.** The *number* is read off the shipped camera and traces to a
+file in this repository; what is extrapolated is the **screen model around it** — 1440 rows,
+a 1.5 px deviation budget, a 1.0 px shading sample — and those were already authority 5 and
+are unchanged. Authority 1 for the lens (it is the artefact), 5 for the model.
+
+**Why 70 and not 50.** Godot's `Camera3D.fov` is **vertical** at the default
+`keep_aspect = KEEP_HEIGHT`; that was verified in the engine (Godot 4.4 double, headless,
+`Camera3D.new()` prints `fov=75.0 keep_aspect=1`) and is recorded in `station/budget.py`'s own
+docstring. `budget.DECK["fov_v_deg"]` has been 70.0 since INV-083 for exactly this reason, and
+`budget.shipped_camera()` re-reads `player.gd` on every run so it cannot drift. `lod.py`'s 50.0
+had **no provenance at all** — it appears under the heading "The screen model" with no citation
+and no derivation, and INV-588 had already flagged it as making "every switch distance in the
+project ~33% too large".
+
+**What it was costing, measured rather than argued.**
+`switch_distance(e) = e · SCREEN_H / (2·tan(fov/2)·PIXEL_BUDGET)`. A *narrower* calibration lens
+means more pixels per degree, a larger switch distance, and more triangles held for longer. So
+calibrating at 50° while shipping 70° delivered
+
+    PIXEL_BUDGET × tan(25°)/tan(35°) = 1.5 × 0.6660 = 1.00 px
+
+of on-screen deviation against a budget that states **1.5 px**. **The chain was spending
+triangles on precision nobody asked for and nobody can see.** Correcting it restores the stated
+invariant exactly, by definition — it is a correctness fix, not a quality cut.
+
+That 1.00 px is not a rearrangement of the formula. `lod.py::_selftest` measures it end to end:
+it takes the silhouette schedule's own 5.831 m sagitta at 32 segments, puts it at 1/100 of the
+distance the chain declares it acceptable, and renders it through `tools/preview_render.py` — an
+independent rasteriser with its own camera basis and perspective divide — **at the lens read out
+of `player.gd`**. At `FOV_DEG = 70` it covers **150.0 px** against the 150 asked for; at the
+pre-fix `FOV_DEG = 50` it covers **100.0 px**, i.e. 1.00 px of deviation against a 1.5 px
+budget. The control run is quoted in `scratchpad/PATCHES-4r-lodfov.md`.
+
+**What actually moved. The chain's SHAPE does not change** — 8 levels, the same
+segments/stride/greeble triple on each, the same triangle count per level — because a uniform
+scale on every honest-from distance preserves their order. Only the distances move:
+
+| | 50° (before) | 70° (after) |
+|---|---|---|
+| lod1 · 32 segments | 6,002 m | **3,997 m** |
+| lod2 · 16 segments | 23,950 m | **15,950 m** |
+| lod3 · z-stride 2 | 49,204 m | **32,767 m** |
+| lod5 · greebles off | 73,249 m | **48,781 m** |
+| lod7 · stride 8 | 181,027 m | **120,556 m** |
+
+**The consequences, per consumer, and two of the three are negative results.**
+
+* `tools/export_scene.py::pick_hull_lod` — the exterior shot in `tools/build_and_render.sh`
+  (`--orbit 6400,15,208`, nearest hull point **4,271 m**) moves lod0 → lod1: **387,630 →
+  261,166 triangles, −32.6%**, and that is *correct*, because 4,271 m is beyond lod1's honest
+  distance at the camera a player is given. **`export_scene`'s own default `--orbit 9200,18,214`
+  (nearest point 6,320 m) does not move — it was already lod1.** Nor does either camera's
+  HALF distance: orbit 3200 puts the near point at 1,518 m and orbit 4600 at 2,425 m, both
+  inside lod0 before and after. **The correction does not touch the frame at the rubric's half
+  distance, which is where craft is judged.** INV-588 records that every craft frame in 4r
+  forces `--lod lod0` in any case, so `docs/aaa-scorecard.json` survives this entry untouched.
+* `station/vista.py::lod_bands` — the through-window vista is built band by band out of this
+  chain over `VIEW_RANGE_M = 12,000 m`. The lod0/lod1 boundary moves **6,002 m → 3,997 m**, so
+  2,005 m more of every window view is drawn at 32 segments instead of 64.
+* **Greebles do not move at any distance a shot is taken from.** The greeble schedule's first
+  non-trivial rung goes 73,249 → 48,781 m; every camera in this project is under 13 km, so
+  `greeble_detail` is 1.0 before and after and no fitting changes. The greeble half of the
+  brief this entry answers is a null result.
+
+**AND IT ONLY REACHED THOSE CONSUMERS AFTER `station/generated/lod_manifest.json` WAS
+REBUILT.** That file is tracked in git and is what `pick_hull_lod` and `lod_bands` actually
+read; neither imports `station/lod.py`. With the code at 70° and the manifest still at 50°,
+`--orbit 6400 --lod auto` selected **lod0** and printed *"from 0 m (binding schedule:
+silhouette at 1,502 m)"* — the pre-fix number — while the derivation, the report and all 98
+self-test checks were green. `python3 station/lod.py --build` regenerates it in **12.8 s** and
+is committed alongside the code. CI runs `--build` (`validate.yml:491`) so CI was never wrong;
+the checkout was. *A static scan can tell you a caller exists and a self-test can tell you the
+derivation is right; only running the shipped path tells you which DATA the caller read.*
+
+**WHAT THE FRAMES SHOW, AND ONE LIMIT OF THE DEVIATION BUDGET THAT THEY FOUND.** Four engine
+frames, all confirmed `Vulkan 1.4.318 - Forward+`, at `--orbit …,15,208 --fov 42 --sun-az 238
+--sun-elev 24`, 1280×720:
+
+| pair | result |
+|---|---|
+| orbit 3200, **half distance** (near point 1,518 m) | **byte-identical, md5 `52b3957…`, 0 of 921,600 pixels differ.** Both select lod0 |
+| orbit 6400, **normal distance** (near point 4,271 m) | lod0 → lod1. 7.76% of pixels differ at all, **0.43% by more than 16/255**, max channel 129, mean 3.76/255 over the station's own pixels |
+
+Only **15 of the 41 OBJ groups** change between lod0 and lod1 and every one is a lathe group;
+`cargo_module`, `cobra_bay`, `comms_grid_pylon`, `docking_port` and every `greeble_*` group are
+byte-identical, which is the direct check that `greeble_detail` is 1.0 on both and the
+**greeble half of this change is a null result**.
+
+The interesting part is *where* those 0.43% sit. At the normal distance the coarser level makes
+the cargo-rail truss under the drum flip from reading as a solid dark plate to reading as open
+X-bracing. That is not the truss changing — a close-range control at orbit 2400 shows the
+identical lattice in **both** levels — it is the 32-gon's inscribed silhouette pulling the
+drum's edge inward by up to its 5.831 m sagitta and uncovering members the 64-gon was
+covering. **1.28 px of silhouette movement, inside the 1.5 px budget, changed 2,002 pixels of
+occupancy (0.22% of frame), because the budget bounds where the silhouette IS and says nothing
+about what it OCCLUDES.** Where a structure lies tangent behind the hull, a sub-pixel edge move
+uncovers a feature many pixels long. That limit is a property of the deviation budget itself
+and applies equally at 50°; it is recorded here because these frames are where it was first
+seen. The close-range control also shows what lod1 costs when it is used too near — visible
+flat-facet tonal banding across the cylinder — which is precisely why lod1 starts at 3,997 m.
+
+Frames: `docs/lod-4r-ext-6400-lod0-before.png`, `docs/lod-4r-ext-6400-lod1-after.png`,
+`docs/lod-4r-truss-2x.png`.
+
+**THE SCREENSHOT LENSES ARE A SEPARATE JUDGEMENT, AND THAT IS SAID HERE RATHER THAN LEFT FOR A
+JUDGE'S FRAME.** This project renders through three lenses: the player's **70°**, the committed
+shot's `export_scene.SHOT_FOV_DEG` = **46°**, and **24°** for AAA-STANDARD's half-distance craft
+frame (INV-588). A chain calibrated for 70° shows `1.5 × 70/24 = 4.4 px` of deviation through a
+24° lens and `1.5 × 70/46 = 2.3 px` through 46°. That is inherent to a **static offline chain
+plus a zoom lens** and is not a defect in the calibration. The resolution is a decision, taken
+here: **the GAME camera is the authority**, because it is the only lens a player ever looks
+through, and a judge's telephoto frame is scored as composition rather than as an LOD acceptance
+test — which is why the craft frames force `--lod lod0` and bypass the chain entirely. The
+alternative — calibrating for the narrowest lens any tool can ask for — is what was happening
+by accident at 50°, and it costs triangles in the shipped build to make a screenshot tool happy.
+
+**What would overturn it.** A change to `_cam.fov` in `player.gd` (the chain follows it
+automatically and `_selftest` fails if the read stops landing on that file); a runtime that
+gives the player a settable FOV, in which case the chain must be calibrated at the *widest*
+value the slider allows, not the default; or per-section hull LOD, which would make the whole
+"one level over 8 km of depth" model obsolete — see `lod.py`'s own far-end note.
+
+---
+
+## INV-601 — one read of `player.gd` reaches three chains, and the fourth is still a copy
+
+**What.** `station/drum_ground.py`'s screen model becomes a **reference** rather than a
+restatement:
+
+```python
+import lod as _hull_lod
+FOV_DEG    = _hull_lod.FOV_DEG
+SCREEN_H   = _hull_lod.SCREEN_H
+PIXEL_BUDGET = _hull_lod.PIXEL_BUDGET
+```
+
+`station/drum_dressing.py` already did `FOV_DEG = dg.FOV_DEG`, so one read of `player.gd` now
+reaches the hull chain, the drum-ground chain and the drum-dressing chain.
+
+**Why, and it is hard rule 4 applied to a constant.** `lod.py`'s own comment on `PIXEL_BUDGET`
+says, in as many words, *"drum_ground.py mirrors the value and says so, so changing it here
+silently would desynchronise two chains"* — and INV-600 is precisely that change. Doing it from
+the drum end instead would be the same defect from the other side. A comment is not a
+constraint; an import is.
+
+**THE FOURTH MIRROR IS `station/npc/body.py` AND IT IS NOT FIXED HERE.** `body.py:200` restates
+`FOV_DEG = 50.0` for the NPC LOD chain and `body.py:5240` **asserts** that it equals
+`lod.FOV_DEG`. That assertion is correct, its stated reason is correct — *"two chains with two
+budgets pop differently in one frame"* — and **it now fails**, together with the
+`honest_from_m(0.37)` agreement check one line below it (`380.86 m` against `253.64 m`). This
+was not in the brief's list of three things that would break, which enumerated `drum_ground`,
+`drum_dressing` and `drum_walk`: **a fourth mirror existed and it is the only one that asserts.**
+The one-line fix (`FOV_DEG = _hull_lod.FOV_DEG`) and the reason the NPC chain wants 70° for the
+same reason the hull chain does are in `scratchpad/PATCHES-4r-lodfov.md`; that file is owned by
+another agent this session and is not touched here.
+
+**Overturned by** a decision that the NPC chain should be calibrated separately from the hull
+chain — in which case `body.py:5240`'s assertion is the thing to delete, deliberately and with
+a reason, rather than the value to bend.
+
+---
+
 ## INV-571 — `garden_bark` stays at 0.135, and the tree is a silhouette because of shadow
 
 **What.** A negative result: `materials.garden_bark`'s albedo (0.148, 0.135, 0.121),

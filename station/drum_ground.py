@@ -201,9 +201,23 @@ STRIDES = (1, 2, 4, 8, 16)
 # Switch criterion, matching station/lod.py exactly so the two chains are
 # comparable. A level may be used once its geometric error subtends less than
 # PIXEL_BUDGET pixels.
-FOV_DEG = 50.0
-SCREEN_H = 1440
-PIXEL_BUDGET = 1.5
+#
+# TAKEN FROM `lod.py`, NOT RESTATED. These three lines used to read
+# `FOV_DEG = 50.0 / SCREEN_H = 1440 / PIXEL_BUDGET = 1.5`, a second copy of
+# `lod.py`'s screen model held in agreement by nothing but the comment above,
+# and `lod.py`'s own comment on PIXEL_BUDGET says in as many words that
+# "drum_ground.py mirrors the value and says so, so changing it here silently
+# would desynchronise two chains". In 4r `lod.py` stopped choosing its lens and
+# started reading it off `godot/scripts/player.gd` (50 -> 70; INV-600), which is
+# exactly the change that would have desynchronised them -- so the mirror is now
+# a reference. `drum_dressing.py` already takes its own `FOV_DEG` from this
+# module, so one read of `player.gd` now reaches all three chains and there is
+# no second place to update.
+import lod as _hull_lod                                        # noqa: E402
+
+FOV_DEG = _hull_lod.FOV_DEG
+SCREEN_H = _hull_lod.SCREEN_H
+PIXEL_BUDGET = _hull_lod.PIXEL_BUDGET
 
 
 def _switch_distance(error_m):

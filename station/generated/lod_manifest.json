@@ -1,12 +1,13 @@
 {
  "screen": {
-  "fov_deg": 50.0,
+  "fov_deg": 70.0,
+  "fov_src": "player.gd",
   "screen_h": 1440,
   "deviation_budget_px": 1.5,
   "shading_sample_px": 1.0,
   "far_plane_m": 200000.0,
-  "m_per_m_deviation": 1029.363,
-  "m_per_m_shading": 1544.045
+  "m_per_m_deviation": 685.511,
+  "m_per_m_shading": 1028.267
  },
  "schedules": {
   "silhouette": [
@@ -15,40 +16,40 @@
     "error_m": 1.459,
     "error_baseline": "true surface of revolution",
     "error_source": "sagitta r(1-cos(pi/n)) at r=1210.88 m",
-    "honest_from_m": 1502,
+    "honest_from_m": 1000,
     "feature_m": 24.6,
     "feature_source": "facet width 2r sin(pi/n) at mean r=250.6 m",
-    "aliases_beyond_m": 37984
+    "aliases_beyond_m": 25295
    },
    {
     "radial_segments": 32,
     "error_m": 5.831,
     "error_baseline": "true surface of revolution",
     "error_source": "sagitta r(1-cos(pi/n)) at r=1210.88 m",
-    "honest_from_m": 6002,
+    "honest_from_m": 3997,
     "feature_m": 49.13,
     "feature_source": "facet width 2r sin(pi/n) at mean r=250.6 m",
-    "aliases_beyond_m": 75859
+    "aliases_beyond_m": 50519
    },
    {
     "radial_segments": 16,
     "error_m": 23.267,
     "error_baseline": "true surface of revolution",
     "error_source": "sagitta r(1-cos(pi/n)) at r=1210.88 m",
-    "honest_from_m": 23950,
+    "honest_from_m": 15950,
     "feature_m": 97.79,
     "feature_source": "facet width 2r sin(pi/n) at mean r=250.6 m",
-    "aliases_beyond_m": 150992
+    "aliases_beyond_m": 100554
    },
    {
     "radial_segments": 8,
     "error_m": 92.173,
     "error_baseline": "true surface of revolution",
     "error_source": "sagitta r(1-cos(pi/n)) at r=1210.88 m",
-    "honest_from_m": 94880,
+    "honest_from_m": 63186,
     "feature_m": 191.82,
     "feature_source": "facet width 2r sin(pi/n) at mean r=250.6 m",
-    "aliases_beyond_m": 296179
+    "aliases_beyond_m": 197242
    }
   ],
   "longitudinal": [
@@ -62,7 +63,7 @@
     "length_lost_m": 0.0,
     "feature_m": 4.07,
     "feature_source": "ring spacing 4.0703 m x stride",
-    "aliases_beyond_m": 6284
+    "aliases_beyond_m": 4185
    },
    {
     "z_stride": 2,
@@ -70,11 +71,11 @@
     "error_m": 47.8,
     "error_baseline": "the traced profile, i.e. stride 1",
     "error_source": "max distance from a dropped profile sample to the chord of its kept neighbours, at z=3138.2 m",
-    "honest_from_m": 49204,
+    "honest_from_m": 32767,
     "length_lost_m": 4.0,
     "feature_m": 8.141,
     "feature_source": "ring spacing 4.0703 m x stride",
-    "aliases_beyond_m": 12570
+    "aliases_beyond_m": 8371
    },
    {
     "z_stride": 4,
@@ -82,11 +83,11 @@
     "error_m": 70.45,
     "error_baseline": "the traced profile, i.e. stride 1",
     "error_source": "max distance from a dropped profile sample to the chord of its kept neighbours, at z=3138.2 m",
-    "honest_from_m": 72519,
+    "honest_from_m": 48294,
     "length_lost_m": 4.0,
     "feature_m": 16.281,
     "feature_source": "ring spacing 4.0703 m x stride",
-    "aliases_beyond_m": 25139
+    "aliases_beyond_m": 16741
    },
    {
     "z_stride": 8,
@@ -94,11 +95,11 @@
     "error_m": 175.863,
     "error_baseline": "the traced profile, i.e. stride 1",
     "error_source": "max distance from a dropped profile sample to the chord of its kept neighbours, at z=3138.2 m",
-    "honest_from_m": 181027,
+    "honest_from_m": 120556,
     "length_lost_m": 4.0,
     "feature_m": 32.562,
     "feature_source": "ring spacing 4.0703 m x stride",
-    "aliases_beyond_m": 50277
+    "aliases_beyond_m": 33482
    }
   ],
   "greeble": [
@@ -112,7 +113,7 @@
     "honest_from_m": 0,
     "feature_m": 3.985,
     "feature_source": "median relief of the pieces this level keeps",
-    "aliases_beyond_m": 6153,
+    "aliases_beyond_m": 4098,
     "strict_subset_of_full": true
    },
    {
@@ -122,10 +123,10 @@
     "error_m": 71.16,
     "error_baseline": "the full greeble set, i.e. detail 1.0",
     "error_source": "relief of the tallest piece this cull removes, measured as point-to-surface distance",
-    "honest_from_m": 73249,
+    "honest_from_m": 48781,
     "feature_m": 8.799,
     "feature_source": "median relief of the pieces this level keeps",
-    "aliases_beyond_m": 13586,
+    "aliases_beyond_m": 9048,
     "strict_subset_of_full": true
    },
    {
@@ -135,10 +136,10 @@
     "error_m": 71.16,
     "error_baseline": "the full greeble set, i.e. detail 1.0",
     "error_source": "relief of the tallest piece this cull removes, measured as point-to-surface distance",
-    "honest_from_m": 73249,
+    "honest_from_m": 48781,
     "feature_m": 9.401,
     "feature_source": "median relief of the pieces this level keeps",
-    "aliases_beyond_m": 14516,
+    "aliases_beyond_m": 9667,
     "strict_subset_of_full": true
    },
    {
@@ -148,10 +149,10 @@
     "error_m": 71.16,
     "error_baseline": "the full greeble set, i.e. detail 1.0",
     "error_source": "relief of the tallest piece this cull removes, measured as point-to-surface distance",
-    "honest_from_m": 73249,
+    "honest_from_m": 48781,
     "feature_m": 9.756,
     "feature_source": "median relief of the pieces this level keeps",
-    "aliases_beyond_m": 15064,
+    "aliases_beyond_m": 10032,
     "strict_subset_of_full": true
    },
    {
@@ -161,7 +162,7 @@
     "error_m": 71.16,
     "error_baseline": "the full greeble set, i.e. detail 1.0",
     "error_source": "relief of the tallest piece this cull removes, measured as point-to-surface distance",
-    "honest_from_m": 73249,
+    "honest_from_m": 48781,
     "feature_m": 0.0,
     "feature_source": "median relief of the pieces this level keeps",
     "aliases_beyond_m": 0,
@@ -169,7 +170,7 @@
    }
   ]
  },
- "quality_floor_m": 1502,
+ "quality_floor_m": 1000,
  "greeble_off_hull_pieces": [
   {
    "group": "greeble_panel",
@@ -183,63 +184,63 @@
  "relief_cull_proposal": [
   {
    "distance_m": 2000,
-   "relief_threshold_m": 1.295,
-   "pieces_dropped": 154,
-   "pieces_kept": 4790,
-   "triangles_dropped": 2116,
-   "triangles_kept": 68662,
-   "largest_piece_dropped_m": 1.291,
-   "honest_from_m": 1329
+   "relief_threshold_m": 1.945,
+   "pieces_dropped": 727,
+   "pieces_kept": 4217,
+   "triangles_dropped": 8434,
+   "triangles_kept": 62344,
+   "largest_piece_dropped_m": 1.944,
+   "honest_from_m": 1333
   },
   {
    "distance_m": 4271,
-   "relief_threshold_m": 2.766,
-   "pieces_dropped": 1594,
-   "pieces_kept": 3350,
-   "triangles_dropped": 19178,
-   "triangles_kept": 51600,
-   "largest_piece_dropped_m": 2.766,
-   "honest_from_m": 2847
+   "relief_threshold_m": 4.154,
+   "pieces_dropped": 2531,
+   "pieces_kept": 2413,
+   "triangles_dropped": 30616,
+   "triangles_kept": 40162,
+   "largest_piece_dropped_m": 4.145,
+   "honest_from_m": 2841
   },
   {
    "distance_m": 6320,
-   "relief_threshold_m": 4.093,
-   "pieces_dropped": 2511,
-   "pieces_kept": 2433,
-   "triangles_dropped": 30404,
-   "triangles_kept": 40374,
-   "largest_piece_dropped_m": 4.093,
-   "honest_from_m": 4213
+   "relief_threshold_m": 6.146,
+   "pieces_dropped": 3220,
+   "pieces_kept": 1724,
+   "triangles_dropped": 39092,
+   "triangles_kept": 31686,
+   "largest_piece_dropped_m": 6.144,
+   "honest_from_m": 4212
   },
   {
    "distance_m": 12000,
-   "relief_threshold_m": 7.772,
-   "pieces_dropped": 3586,
-   "pieces_kept": 1358,
-   "triangles_dropped": 43552,
-   "triangles_kept": 27226,
-   "largest_piece_dropped_m": 7.772,
-   "honest_from_m": 8000
+   "relief_threshold_m": 11.67,
+   "pieces_dropped": 4550,
+   "pieces_kept": 394,
+   "triangles_dropped": 65092,
+   "triangles_kept": 5686,
+   "largest_piece_dropped_m": 11.657,
+   "honest_from_m": 7991
   },
   {
    "distance_m": 23950,
-   "relief_threshold_m": 15.511,
-   "pieces_dropped": 4763,
-   "pieces_kept": 181,
-   "triangles_dropped": 68220,
-   "triangles_kept": 2558,
-   "largest_piece_dropped_m": 15.364,
-   "honest_from_m": 15815
+   "relief_threshold_m": 23.292,
+   "pieces_dropped": 4838,
+   "pieces_kept": 106,
+   "triangles_dropped": 69684,
+   "triangles_kept": 1094,
+   "largest_piece_dropped_m": 23.021,
+   "honest_from_m": 15781
   },
   {
    "distance_m": 49204,
-   "relief_threshold_m": 31.867,
-   "pieces_dropped": 4852,
-   "pieces_kept": 92,
-   "triangles_dropped": 69858,
-   "triangles_kept": 920,
-   "largest_piece_dropped_m": 29.923,
-   "honest_from_m": 30802
+   "relief_threshold_m": 47.851,
+   "pieces_dropped": 4893,
+   "pieces_kept": 51,
+   "triangles_dropped": 70268,
+   "triangles_kept": 510,
+   "largest_piece_dropped_m": 47.821,
+   "honest_from_m": 32782
   }
  ],
  "levels": [
@@ -250,23 +251,23 @@
    "greeble_detail": 1.0,
    "switch_distance_m": 0,
    "honest_from_m": {
-    "silhouette": 1502,
+    "silhouette": 1000,
     "longitudinal": 0,
     "greeble": 0
    },
-   "binding_schedule_honest_from_m": 1502,
+   "binding_schedule_honest_from_m": 1000,
    "aliases_beyond_m": {
-    "silhouette": 37984,
-    "longitudinal": 6284,
-    "greeble": 6153
+    "silhouette": 25295,
+    "longitudinal": 4185,
+    "greeble": 4098
    },
-   "switch_reason": "coarsest honest option in each schedule: silhouette 1,502 m, longitudinal 0 m, greeble 0 m",
-   "used_to_m": 6002,
+   "switch_reason": "coarsest honest option in each schedule: silhouette 1,000 m, longitudinal 0 m, greeble 0 m",
+   "used_to_m": 3997,
    "aliasing_gap": {},
    "far_end_m": 8047,
    "aliasing_gap_at_far_end": {
-    "longitudinal": 6284,
-    "greeble": 6153
+    "longitudinal": 4185,
+    "greeble": 4098
    },
    "triangles": 387630,
    "hull_triangles": 256864,
@@ -283,28 +284,28 @@
    "radial_segments": 32,
    "z_stride": 1,
    "greeble_detail": 1.0,
-   "switch_distance_m": 6002,
+   "switch_distance_m": 3997,
    "honest_from_m": {
-    "silhouette": 6002,
+    "silhouette": 3997,
     "longitudinal": 0,
     "greeble": 0
    },
-   "binding_schedule_honest_from_m": 6002,
+   "binding_schedule_honest_from_m": 3997,
    "aliases_beyond_m": {
-    "silhouette": 75859,
-    "longitudinal": 6284,
-    "greeble": 6153
+    "silhouette": 50519,
+    "longitudinal": 4185,
+    "greeble": 4098
    },
-   "switch_reason": "coarsest honest option in each schedule: silhouette 6,002 m, longitudinal 0 m, greeble 0 m",
-   "used_to_m": 23950,
+   "switch_reason": "coarsest honest option in each schedule: silhouette 3,997 m, longitudinal 0 m, greeble 0 m",
+   "used_to_m": 15950,
    "aliasing_gap": {
-    "longitudinal": 6284,
-    "greeble": 6153
+    "longitudinal": 4185,
+    "greeble": 4098
    },
-   "far_end_m": 14049,
+   "far_end_m": 12044,
    "aliasing_gap_at_far_end": {
-    "longitudinal": 6284,
-    "greeble": 6153
+    "longitudinal": 4185,
+    "greeble": 4098
    },
    "triangles": 261166,
    "hull_triangles": 130400,
@@ -321,28 +322,28 @@
    "radial_segments": 16,
    "z_stride": 1,
    "greeble_detail": 1.0,
-   "switch_distance_m": 23950,
+   "switch_distance_m": 15950,
    "honest_from_m": {
-    "silhouette": 23950,
+    "silhouette": 15950,
     "longitudinal": 0,
     "greeble": 0
    },
-   "binding_schedule_honest_from_m": 23950,
+   "binding_schedule_honest_from_m": 15950,
    "aliases_beyond_m": {
-    "silhouette": 150992,
-    "longitudinal": 6284,
-    "greeble": 6153
+    "silhouette": 100554,
+    "longitudinal": 4185,
+    "greeble": 4098
    },
-   "switch_reason": "coarsest honest option in each schedule: silhouette 23,950 m, longitudinal 0 m, greeble 0 m",
-   "used_to_m": 49204,
+   "switch_reason": "coarsest honest option in each schedule: silhouette 15,950 m, longitudinal 0 m, greeble 0 m",
+   "used_to_m": 32767,
    "aliasing_gap": {
-    "longitudinal": 6284,
-    "greeble": 6153
+    "longitudinal": 4185,
+    "greeble": 4098
    },
-   "far_end_m": 31997,
+   "far_end_m": 23997,
    "aliasing_gap_at_far_end": {
-    "longitudinal": 6284,
-    "greeble": 6153
+    "longitudinal": 4185,
+    "greeble": 4098
    },
    "triangles": 198030,
    "hull_triangles": 67264,
@@ -359,28 +360,28 @@
    "radial_segments": 16,
    "z_stride": 2,
    "greeble_detail": 1.0,
-   "switch_distance_m": 49204,
+   "switch_distance_m": 32767,
    "honest_from_m": {
-    "silhouette": 23950,
-    "longitudinal": 49204,
+    "silhouette": 15950,
+    "longitudinal": 32767,
     "greeble": 0
    },
-   "binding_schedule_honest_from_m": 49204,
+   "binding_schedule_honest_from_m": 32767,
    "aliases_beyond_m": {
-    "silhouette": 150992,
-    "longitudinal": 12570,
-    "greeble": 6153
+    "silhouette": 100554,
+    "longitudinal": 8371,
+    "greeble": 4098
    },
-   "switch_reason": "coarsest honest option in each schedule: silhouette 23,950 m, longitudinal 49,204 m, greeble 0 m",
-   "used_to_m": 72519,
+   "switch_reason": "coarsest honest option in each schedule: silhouette 15,950 m, longitudinal 32,767 m, greeble 0 m",
+   "used_to_m": 48294,
    "aliasing_gap": {
-    "longitudinal": 12570,
-    "greeble": 6153
+    "longitudinal": 8371,
+    "greeble": 4098
    },
-   "far_end_m": 57251,
+   "far_end_m": 40814,
    "aliasing_gap_at_far_end": {
-    "longitudinal": 12570,
-    "greeble": 6153
+    "longitudinal": 8371,
+    "greeble": 4098
    },
    "triangles": 164590,
    "hull_triangles": 33824,
@@ -397,28 +398,28 @@
    "radial_segments": 16,
    "z_stride": 4,
    "greeble_detail": 1.0,
-   "switch_distance_m": 72519,
+   "switch_distance_m": 48294,
    "honest_from_m": {
-    "silhouette": 23950,
-    "longitudinal": 72519,
+    "silhouette": 15950,
+    "longitudinal": 48294,
     "greeble": 0
    },
-   "binding_schedule_honest_from_m": 72519,
+   "binding_schedule_honest_from_m": 48294,
    "aliases_beyond_m": {
-    "silhouette": 150992,
-    "longitudinal": 25139,
-    "greeble": 6153
+    "silhouette": 100554,
+    "longitudinal": 16741,
+    "greeble": 4098
    },
-   "switch_reason": "coarsest honest option in each schedule: silhouette 23,950 m, longitudinal 72,519 m, greeble 0 m",
-   "used_to_m": 73249,
+   "switch_reason": "coarsest honest option in each schedule: silhouette 15,950 m, longitudinal 48,294 m, greeble 0 m",
+   "used_to_m": 48781,
    "aliasing_gap": {
-    "longitudinal": 25139,
-    "greeble": 6153
+    "longitudinal": 16741,
+    "greeble": 4098
    },
-   "far_end_m": 80566,
+   "far_end_m": 56341,
    "aliasing_gap_at_far_end": {
-    "longitudinal": 25139,
-    "greeble": 6153
+    "longitudinal": 16741,
+    "greeble": 4098
    },
    "triangles": 147950,
    "hull_triangles": 17184,
@@ -435,26 +436,26 @@
    "radial_segments": 16,
    "z_stride": 4,
    "greeble_detail": 0.0,
-   "switch_distance_m": 73249,
+   "switch_distance_m": 48781,
    "honest_from_m": {
-    "silhouette": 23950,
-    "longitudinal": 72519,
-    "greeble": 73249
+    "silhouette": 15950,
+    "longitudinal": 48294,
+    "greeble": 48781
    },
-   "binding_schedule_honest_from_m": 73249,
+   "binding_schedule_honest_from_m": 48781,
    "aliases_beyond_m": {
-    "silhouette": 150992,
-    "longitudinal": 25139,
+    "silhouette": 100554,
+    "longitudinal": 16741,
     "greeble": 0
    },
-   "switch_reason": "coarsest honest option in each schedule: silhouette 23,950 m, longitudinal 72,519 m, greeble 73,249 m",
-   "used_to_m": 94880,
+   "switch_reason": "coarsest honest option in each schedule: silhouette 15,950 m, longitudinal 48,294 m, greeble 48,781 m",
+   "used_to_m": 63186,
    "aliasing_gap": {
-    "longitudinal": 25139
+    "longitudinal": 16741
    },
-   "far_end_m": 81296,
+   "far_end_m": 56828,
    "aliasing_gap_at_far_end": {
-    "longitudinal": 25139
+    "longitudinal": 16741
    },
    "triangles": 40380,
    "hull_triangles": 17184,
@@ -471,26 +472,26 @@
    "radial_segments": 8,
    "z_stride": 4,
    "greeble_detail": 0.0,
-   "switch_distance_m": 94880,
+   "switch_distance_m": 63186,
    "honest_from_m": {
-    "silhouette": 94880,
-    "longitudinal": 72519,
-    "greeble": 73249
+    "silhouette": 63186,
+    "longitudinal": 48294,
+    "greeble": 48781
    },
-   "binding_schedule_honest_from_m": 94880,
+   "binding_schedule_honest_from_m": 63186,
    "aliases_beyond_m": {
-    "silhouette": 296179,
-    "longitudinal": 25139,
+    "silhouette": 197242,
+    "longitudinal": 16741,
     "greeble": 0
    },
-   "switch_reason": "coarsest honest option in each schedule: silhouette 94,880 m, longitudinal 72,519 m, greeble 73,249 m",
-   "used_to_m": 181027,
+   "switch_reason": "coarsest honest option in each schedule: silhouette 63,186 m, longitudinal 48,294 m, greeble 48,781 m",
+   "used_to_m": 120556,
    "aliasing_gap": {
-    "longitudinal": 25139
+    "longitudinal": 16741
    },
-   "far_end_m": 102927,
+   "far_end_m": 71233,
    "aliasing_gap_at_far_end": {
-    "longitudinal": 25139
+    "longitudinal": 16741
    },
    "triangles": 32444,
    "hull_triangles": 9248,
@@ -507,26 +508,27 @@
    "radial_segments": 8,
    "z_stride": 8,
    "greeble_detail": 0.0,
-   "switch_distance_m": 181027,
+   "switch_distance_m": 120556,
    "honest_from_m": {
-    "silhouette": 94880,
-    "longitudinal": 181027,
-    "greeble": 73249
+    "silhouette": 63186,
+    "longitudinal": 120556,
+    "greeble": 48781
    },
-   "binding_schedule_honest_from_m": 181027,
+   "binding_schedule_honest_from_m": 120556,
    "aliases_beyond_m": {
-    "silhouette": 296179,
-    "longitudinal": 50277,
+    "silhouette": 197242,
+    "longitudinal": 33482,
     "greeble": 0
    },
-   "switch_reason": "coarsest honest option in each schedule: silhouette 94,880 m, longitudinal 181,027 m, greeble 73,249 m",
+   "switch_reason": "coarsest honest option in each schedule: silhouette 63,186 m, longitudinal 120,556 m, greeble 48,781 m",
    "used_to_m": 200000,
    "aliasing_gap": {
-    "longitudinal": 50277
+    "silhouette": 197242,
+    "longitudinal": 33482
    },
-   "far_end_m": 189074,
+   "far_end_m": 128603,
    "aliasing_gap_at_far_end": {
-    "longitudinal": 50277
+    "longitudinal": 33482
    },
    "triangles": 28188,
    "hull_triangles": 4992,

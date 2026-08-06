@@ -155,7 +155,63 @@ if STATION not in sys.path:
 # ---------------------------------------------------------------------------
 # The screen model. Everything downstream is a ratio against these four.
 # ---------------------------------------------------------------------------
-FOV_DEG = 50.0
+# FOV IS READ OFF THE SHIPPED CAMERA, NOT CHOSEN. It was `FOV_DEG = 50.0` with
+# no provenance from the day this file was written, and every switch distance in
+# the project is a ratio against it, so a lens nobody ships was resolving detail
+# for the whole station. `godot/scripts/player.gd` line 279 sets
+# `_cam.fov = 70.0`, and Godot's `Camera3D.fov` is VERTICAL at the default
+# `keep_aspect = KEEP_HEIGHT` -- verified in the engine and recorded in
+# `station/budget.py`'s own docstring, which is where the reader below comes
+# from. `budget.DECK["fov_v_deg"]` is 70.0 for the same reason (INV-083).
+#
+# WHY THE DIRECTION MATTERS, and why this is a CORRECTNESS fix and not a quality
+# cut. `switch_distance(e) = e * SCREEN_H / (2 tan(fov/2) PIXEL_BUDGET)`. A
+# NARROWER calibration lens means more pixels per degree, means a larger switch
+# distance, means more triangles held for longer. Calibrating at 50 while
+# shipping 70 delivered `PIXEL_BUDGET * tan(25)/tan(35) = 1.5 x 0.666 = 1.00 px`
+# of on-screen deviation against a budget that says 1.5 px. The chain was
+# spending triangles on precision nobody asked for and nobody can see; moving to
+# 70 restores the stated invariant exactly, by definition, and every distance
+# below shortens by that same 0.666.
+#
+# READ RATHER THAN RESTATED, so it cannot drift the way the 50 did: this calls
+# `budget.shipped_camera()`, the project's single reader of `player.gd`, instead
+# of putting a second 70.0 in a second file. If that read fails, `FOV_SRC` says
+# so, `manifest()` publishes it, `report()` prints it and `_selftest` FAILS --
+# a chain that quietly fell back to a default would be a chain manufacturing
+# evidence about a camera it never looked at.
+#
+# THE SCREENSHOT LENSES ARE A SEPARATE JUDGEMENT AND ARE NOT THIS NUMBER. This
+# project renders through three: the player's 70, `export_scene.SHOT_FOV_DEG`'s
+# 46 for the committed drum and exterior frames, and 24 for AAA-STANDARD's
+# half-distance craft frame. A static offline chain calibrated for 70 shows
+# `1.5 x 70/24 = 4.4 px` of deviation through a 24 deg lens. That is inherent to
+# a fixed chain plus a zoom lens and is not a defect in the calibration: the
+# GAME camera is the authority, because it is the only one a player ever looks
+# through, and a judge's telephoto frame is judged as composition rather than as
+# an LOD acceptance test. INV-600.
+FOV_DEG_FALLBACK = 70.0
+
+
+def _shipped_fov():
+    """(vertical FOV in degrees, where it came from) -- read, not chosen.
+
+    `budget.shipped_camera()` regex-reads `_cam.fov` out of `player.gd` and is
+    already the project's one reader of that value; calling it here means there
+    is one derivation of the shipped lens rather than two copies that can
+    disagree. The fallback exists only so a checkout without `budget.py` still
+    imports, and it is reported rather than swallowed.
+    """
+    try:
+        import budget                                          # noqa: PLC0415
+        cam = budget.shipped_camera()
+        fov = float(cam["fov_deg"])
+        return fov, str(cam.get("fov_src", "unknown"))
+    except Exception as exc:                                   # noqa: BLE001
+        return FOV_DEG_FALLBACK, f"FALLBACK ({type(exc).__name__}: {exc})"
+
+
+FOV_DEG, FOV_SRC = _shipped_fov()
 SCREEN_H = 1440
 
 # Deviation budget: how far the picture may move when a level is swapped in.
@@ -706,6 +762,10 @@ def manifest(schema, profile, levels=None, sil=None, lon=None, gre=None,
     return {
         "screen": {
             "fov_deg": FOV_DEG,
+            # WHERE THE LENS CAME FROM, in the artefact. A manifest that records
+            # `50.0` and not `where from` is how this file spent every session
+            # before 4r resolving detail for a camera nobody ships.
+            "fov_src": FOV_SRC,
             "screen_h": SCREEN_H,
             "deviation_budget_px": PIXEL_BUDGET,
             "shading_sample_px": SHADING_SAMPLE_PX,
@@ -735,7 +795,8 @@ def manifest(schema, profile, levels=None, sil=None, lon=None, gre=None,
 
 def report(man):
     s = man["screen"]
-    print(f"screen model: {s['screen_h']}p, {s['fov_deg']:.0f} deg vertical FOV")
+    print(f"screen model: {s['screen_h']}p, {s['fov_deg']:.0f} deg vertical FOV "
+          f"(read from {s.get('fov_src', 'UNRECORDED')})")
     print(f"  deviation budget {s['deviation_budget_px']} px "
           f"-> {s['m_per_m_deviation']:,.1f} m of distance per metre of error")
     print(f"  shading sample   {s['shading_sample_px']} px "
@@ -806,8 +867,14 @@ def report(man):
 # Self-test
 # ---------------------------------------------------------------------------
 
-def _rasteriser_px(size_m, distance_m):
+def _rasteriser_px(size_m, distance_m, fov_deg=None):
     """Pixel height of a `size_m` quad at `distance_m`, from an outside renderer.
+
+    `fov_deg` defaults to this file's own calibration lens, which is what the
+    `_px_scale` cross-check wants -- both sides of that comparison must use the
+    same lens or it is measuring the lens rather than the arithmetic. The
+    shipped-camera check passes `player.gd`'s value instead, deliberately, so
+    that it can disagree.
 
     The pixel arithmetic every switch distance rests on must be checked against
     something that is not this file. `tools/preview_render.py` builds its own
@@ -831,7 +898,8 @@ def _rasteriser_px(size_m, distance_m):
             [sys.executable, os.path.join(ROOT, "tools/preview_render.py"), obj,
              "--out", png, "--width", "512", "--height", str(SCREEN_H),
              "--eye", "0", "0", str(distance_m), "--target", "0", "0", "0",
-             "--up", "0", "1", "0", "--fov", str(FOV_DEG),
+             "--up", "0", "1", "0",
+             "--fov", str(FOV_DEG if fov_deg is None else fov_deg),
              "--bg", "255", "0", "255"],
             check=True, capture_output=True)
         import numpy as np
@@ -857,6 +925,62 @@ def _selftest():
     lon = longitudinal_schedule(profile)
     gre, off_hull = greeble_schedule(schema, profile)
     levels = combine(sil, lon, gre)
+
+    # -- the lens is the SHIPPED one, and it was read rather than typed ----
+    # This is the assertion the old `FOV_DEG = 50.0` could never have had: the
+    # value has no provenance to check. Three separate things are asserted
+    # because each can fail on its own -- the read SUCCEEDED (not a fallback),
+    # it landed on `player.gd` specifically, and the number agrees with the file
+    # rather than with a constant somewhere that happens to say 70.
+    check(not FOV_SRC.startswith("FALLBACK"),
+          f"the shipped lens was READ, not defaulted (source: {FOV_SRC})")
+    check(FOV_SRC == "player.gd",
+          f"the lens came from godot/scripts/player.gd, the camera a player is "
+          f"actually given (source: {FOV_SRC})")
+    shipped_fov = None
+    try:
+        gd = open(os.path.join(ROOT, "godot/scripts/player.gd")).read()
+        import re as _re                                       # noqa: PLC0415
+        m = _re.search(r"_cam\.fov\s*=\s*([0-9.]+)", gd)
+        shipped_fov = float(m.group(1)) if m else None
+        check(shipped_fov is not None and abs(shipped_fov - FOV_DEG) < 1e-9,
+              f"FOV_DEG ({FOV_DEG}) is the number in player.gd "
+              f"({m.group(1) if m else 'no _cam.fov line'})")
+    except OSError as exc:                                     # noqa: BLE001
+        check(False, f"player.gd readable for the lens cross-check: {exc}")
+
+    # AND THE END-TO-END FORM, which is the one that fails on the pre-fix
+    # content and is not an algebraic identity. Everything above compares a
+    # constant against a constant. This takes a real schedule row's measured
+    # geometric error, places it at 1/100 of the distance THIS FILE says it
+    # becomes acceptable at, renders it through `tools/preview_render.py` -- an
+    # independent rasteriser with its own camera basis and its own perspective
+    # divide -- AT THE LENS `player.gd` SHIPS, and asks how many pixels it
+    # covers. If the chain is calibrated for the shipped camera the answer is
+    # 100 x PIXEL_BUDGET. Nothing in the loop is allowed to be FOV_DEG: the
+    # distance comes from the chain, the lens comes from the .gd file, and the
+    # ruler is a different program.
+    #
+    # At the FOV_DEG = 50.0 this file carried until 4r the same run measures
+    # 100 px against the 150 it asks for -- 1.00 px of deviation against a
+    # stated 1.5 px budget, which is the entire finding, expressed as a
+    # measurement instead of as a ratio.
+    if shipped_fov is not None:
+        K = 100.0
+        row = silhouette_schedule(schema, profile)[1]      # 32 segments
+        e, d = row["error_m"], row["honest_from_m"] / K
+        try:
+            got = _rasteriser_px(e, d, fov_deg=shipped_fov)
+            want = PIXEL_BUDGET * K
+            check(abs(got - want) <= max(2.0, 0.03 * want),
+                  f"a level's own error, at 1/{K:.0f} of the distance the chain "
+                  f"declares it acceptable, covers {PIXEL_BUDGET} px x {K:.0f} "
+                  f"through player.gd's {shipped_fov:.0f} deg lens: measured "
+                  f"{got:.1f} px against {want:.1f} px "
+                  f"({got / K:.2f} px of deviation against a {PIXEL_BUDGET} px "
+                  f"budget)")
+        except Exception as exc:                               # noqa: BLE001
+            check(False, f"end-to-end deviation check at the shipped lens: {exc}")
 
     # -- the pixel arithmetic itself --------------------------------------
     # Everything below is a ratio against _px_scale. If it is wrong by a factor
