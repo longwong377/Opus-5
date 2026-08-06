@@ -699,6 +699,12 @@ def _cell_budget():
     return B.CELLS["resident_tris"]
 
 
+# How many streaming cells the body must sweep for "it went somewhere" to be a
+# claim. ONE: a body that has crossed a whole cell has left the one it started
+# in, which is the smallest statement that is not about jiggling on a boundary.
+MIN_SWEEP_CELLS = 1.0
+
+
 def stream_verdict(d):
     """Did the loader actually LOAD AND FREE while a body walked the ring?
 
@@ -741,6 +747,26 @@ def stream_verdict(d):
     loads, frees = int(d.get("loads", 0)), int(d.get("frees", 0))
     if swept <= 0.0:
         return False, "the body did not move at all"
+    # -- AND IT WENT SOMEWHERE, WHICH IS NOT THE SAME AS WALKING ------------
+    # `traverse_m=125.93` and `net_m=0.35` are printed by the same run: 126 m
+    # of walking that ends where it started. Path length is satisfied by a body
+    # pacing on the spot. `sweep_deg` is the FURTHEST the body got round the
+    # ring from where the traverse began -- the maximum, not the end, because
+    # this gate turns round at the midpoint on purpose and its net displacement
+    # is small by design.
+    #
+    # THE BAR IS ONE CELL. `interior.ring_cells` makes them 20 degrees on a Blue
+    # deck, so a body that has swept a whole cell has provably left the one it
+    # started in rather than jiggling across a boundary -- which is exactly the
+    # claim the loads and frees below are about.
+    import interior as _it2                                       # noqa: PLC0415
+    _sc, _sp = _it2.load()
+    cell_deg = float(_it2.ring_cells(_sc, _sp, "blue", 0, 0)["cell_deg"])
+    sweep = float(d.get("sweep_deg", 0.0))
+    if sweep < MIN_SWEEP_CELLS * cell_deg:
+        return False, (f"got {sweep:.1f} deg round the ring at its furthest, "
+                       f"under {MIN_SWEEP_CELLS * cell_deg:.0f} -- less than a "
+                       f"cell, so it never left the one it started in")
     if loads < 4:
         return False, (f"only {loads} cell load(s) after {swept:.1f} deg of "
                        f"travel -- the window never moved, so nothing here "
@@ -771,7 +797,9 @@ def stream_verdict(d):
         return False, (f"set off with {w0[1]} people wired and came back to "
                        f"{wp} after {frees} free(s) -- forget_freed took live "
                        f"records with the dead ones")
-    return True, (f"a body walked {swept:.1f} deg round the ring; the loader "
+    return True, (f"a body got {sweep:.1f} deg round the ring at its furthest "
+                  f"({sweep / cell_deg:.1f} cells) and ended {swept:.1f} deg "
+                  f"from where it set off; the loader "
                   f"took {loads} loads and {frees} frees, never held more than "
                   f"{peak:,} triangles (budget {bar:,}), and finished with "
                   f"{wd} doors, {wp} people and "
@@ -859,6 +887,19 @@ def deck_verdict(d):
             note = (f", {d['noticed']} of the room look up "
                     f"({float(d['turned_deg']):.0f} deg turned, {err:.0f} deg "
                     f"off)")
+        # THE DISTANCE BAR, WHICH HAS NEVER RUN ON A DECK TEST. It sits after
+        # this branch's `return True`, and `--deck` always sets a `--goto`, so
+        # every deck run since the bar was written has taken the early exit
+        # past it. This file's own docstring advertises `traverse_m` and
+        # `offfloor` as the pair milestone W2 is asserted with; only one of
+        # them was ever checked. Moved above the return rather than deleted:
+        # under a goto it is a "something is snagging" test, which is weaker
+        # than what its comment claims but is not nothing.
+        got0 = float(d.get("traverse_m", 0))
+        if got0 < MIN_TRAVERSE_M:
+            return False, (f"covered {got0:.1f} m of corridor on the way to "
+                           f"{d['goto']}, under the {MIN_TRAVERSE_M:.0f} m "
+                           f"bar -- something is snagging")
         return True, (f"{d['rooms']} rooms over {float(d['arc_deg']):.0f} deg, "
                       f"{d['doors']} doors; a body spawns in the corridor and "
                       f"WALKS INTO {d['goto']} "

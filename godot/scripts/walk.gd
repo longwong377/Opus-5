@@ -1062,6 +1062,19 @@ func _physics_process(delta: float) -> void:
 		_goto_best = gd
 	_path_m += p.distance_to(_traverse_prev)
 	_traverse_prev = p
+	# -- HOW FAR ROUND THE RING IT HAS ACTUALLY GOT ------------------------
+	# PATH LENGTH IS NOT PROGRESS. The deck run reports `traverse_m=125.93`
+	# and `net_m=0.35` in the same breath: 126 m of walking that ends where it
+	# started, because the goto phase steers the body at a room 6.3 m away and
+	# it mills about once it arrives. A body pacing on the spot satisfies a
+	# distance-covered bar exactly as well as one crossing the deck.
+	#
+	# The FURTHEST it got, not where it ended, because the streaming gate walks
+	# out and turns round on purpose -- so its net displacement is small by
+	# design and its maximum sweep is the thing that says it went somewhere.
+	var a1 := atan2(p.y, p.x) - atan2(_traverse_from.y, _traverse_from.x)
+	_sweep_deg = maxf(_sweep_deg, absf(rad_to_deg(
+		atan2(sin(a1), cos(a1)))))
 	if not _player.is_on_floor():
 		_off_floor += 1
 	if _trace > 0 and n % _trace == 0:
@@ -1135,6 +1148,7 @@ func _physics_process(delta: float) -> void:
 		# first version measured how far the body swept round the ring and got
 		# 0.0 degrees for a body that had walked 250 m.
 		goto_s += " end=%.3f,%.3f,%.3f" % [p.x, p.y, p.z]
+		goto_s += " sweep_deg=%.2f" % _sweep_deg
 		if _wired0.size() == 3:
 			goto_s += " wired0=%d/%d/%d" % [_wired0[0], _wired0[1], _wired0[2]]
 		print(("WALKTEST rest=%.3f,%.3f,%.3f on_floor=%s fell=%s moved_1s=%.3f "
@@ -1176,6 +1190,9 @@ var _yaw_of_leg := 0.0
 var _best_yaw := 0.0
 var _t_traverse := 0
 var _traverse_from := Vector3.ZERO
+## The furthest the body has got round the ring from where the traverse began,
+## in degrees. See the note in the traverse: path length is not progress.
+var _sweep_deg := 0.0
 var _traverse_prev := Vector3.ZERO
 var _path_m := 0.0
 var _off_floor := 0

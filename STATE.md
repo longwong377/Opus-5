@@ -1,6 +1,75 @@
 # Project State
 
-**Last updated:** 2026-08-02 · **Session 4u** — **nobody stands in the doorway any more** · **4t** — **the cast are solid, and one of them is standing in the doorway** · **4s** — **a sidestep that begins on contact is not a sidestep; and the bump gate was reporting an empty sample** · **4r** — **the thing blocking the corridor was a person, and I put them there: 28 m → 238 m** · **4q** — **the free path has a gate, and it found the corridor is blocked 27 m from the spawn** · **4p** — **the deck streams: 657,880 resident triangles become 127,204** · **4o** — **a cell boundary was cutting doors and people in half** · **4n** — **the deck cuts into loadable cells, and the loader's real obstacle is named** · **4m** — **the streaming cell budget met a real deck, and the design survives** · **4l** — **the resident-triangle gate was about the deck; the build also loads 321,664 triangles of people** · **4k** — **every walker on the station was bald, for 188 triangles** · **4j** — **the 21 exposure frames describe the code again, and the verdict did not move** · **4i** — **every curved surface in the project was flat-shaded, and the crease angle is measured off the station** · **4h** — **IT IS PLAYABLE: press Play and you are standing in Blue Sector** · **4g** — **the Babcom terminal is a built device, and it shipped a logged mistake once before the log caught it** · **4f** — a per-token verb override · **4e** — **the naming-mismatch class is CLOSED: built-but-misnamed 26 → 0, resolving 302/357** · **4d** — **the bespoke rooms' interactables were never unbuilt, they were unnamed: 259/357 → 284/357** · **4c** — **the station is INTERACTABLE, the port is on a wall, and the 24-minute suites were one bad cache key** · **4b** — a police force, friction in metres, the plated shell, the fitting-reach fix
+**Last updated:** 2026-08-06 · **Session 4v** — **the distance bar had never run, and path length was never progress** · **4u** — **nobody stands in the doorway any more** · **4t** — **the cast are solid, and one of them is standing in the doorway** · **4s** — **a sidestep that begins on contact is not a sidestep; and the bump gate was reporting an empty sample** · **4r** — **the thing blocking the corridor was a person, and I put them there: 28 m → 238 m** · **4q** — **the free path has a gate, and it found the corridor is blocked 27 m from the spawn** · **4p** — **the deck streams: 657,880 resident triangles become 127,204** · **4o** — **a cell boundary was cutting doors and people in half** · **4n** — **the deck cuts into loadable cells, and the loader's real obstacle is named** · **4m** — **the streaming cell budget met a real deck, and the design survives** · **4l** — **the resident-triangle gate was about the deck; the build also loads 321,664 triangles of people** · **4k** — **every walker on the station was bald, for 188 triangles** · **4j** — **the 21 exposure frames describe the code again, and the verdict did not move** · **4i** — **every curved surface in the project was flat-shaded, and the crease angle is measured off the station** · **4h** — **IT IS PLAYABLE: press Play and you are standing in Blue Sector** · **4g** — **the Babcom terminal is a built device, and it shipped a logged mistake once before the log caught it** · **4f** — a per-token verb override · **4e** — **the naming-mismatch class is CLOSED: built-but-misnamed 26 → 0, resolving 302/357** · **4d** — **the bespoke rooms' interactables were never unbuilt, they were unnamed: 259/357 → 284/357** · **4c** — **the station is INTERACTABLE, the port is on a wall, and the 24-minute suites were one bad cache key** · **4b** — a police force, friction in metres, the plated shell, the fitting-reach fix
+
+## Session 4v — THE DISTANCE BAR HAD NEVER RUN, AND PATH LENGTH WAS NEVER PROGRESS
+
+### 1. `MIN_TRAVERSE_M` was dead on every deck test
+
+`walkable.py`'s own docstring says what the deck run asserts:
+
+> `traverse_m` distance covered walking one heading for thirty seconds
+> `offfloor` physics frames spent not standing on anything
+> **That pair is what milestone W2 means by "go somewhere".**
+
+`deck_verdict` checks `traverse_m` **after** the `goto` branch's `return True` — and `--deck`
+always sets a `--goto`. So every deck run since the bar was written has taken the early exit past
+it, and only one of the pair was ever checked. The bar is moved above the return rather than
+deleted: under a goto it is a *"something is snagging"* test, which is weaker than its comment
+claims and is not nothing.
+
+### 2. And path length is not progress
+
+The same run prints `traverse_m=125.93` and `net_m=0.35`: **126 m of walking that ends where it
+started.** A body pacing on the spot satisfies a distance-covered bar exactly as well as one
+crossing the deck. That is 3v's lesson — "a walk gate must report DISTANCE COVERED, not 'did it
+move'" — one level up: distance covered is not displacement either.
+
+`walk.gd` now tracks **`sweep_deg`, the furthest the body gets round the ring from where the
+traverse began.** The maximum, not the end, because the streaming gate turns round at its midpoint
+on purpose and its net displacement is small by design.
+
+**The bar is one cell.** `interior.ring_cells` makes them 20° on a Blue deck, so a body that has
+swept a whole cell has provably left the one it started in — which is exactly the claim the loads
+and frees are about.
+
+```
+PASS  stream  a body got 29.5 deg round the ring at its furthest (1.5 cells) and ended
+              9.1 deg from where it set off; the loader took 8 loads and 5 frees, never
+              held more than 153,252 triangles (budget 180,000), and finished with
+              1 doors, 9 people and 5 interactables wired, against 1/9/5 when it set off
+```
+
+### 3. THE CONTROL SHOWS THE NEW BAR IS NOT REDUNDANT
+
+Run the same gate with 240 frames instead of 3,600:
+
+```
+FAIL  got 4.5 deg round the ring at its furthest, under 20 -- less than a cell,
+      so it never left the one it started in
+      sweep_deg=4.53  loads=5  frees=2
+```
+
+**`loads=5 frees=2` would have passed the loader bars on their own.** The body was jiggling across
+a cell boundary — loading and freeing without going anywhere — and only the sweep test can tell
+that from a walk.
+
+### 4. Gates
+
+| gate | result |
+|---|---|
+| `walkable.py --deck blue/0/0` | **PASS**, control firing; the traverse bar now runs on this path |
+| `walkable.py --deck blue/0/0 --stream` | **PASS** — 29.5° at its furthest, 1.5 cells, control firing |
+| control: 240-frame traverse | **fires** — 4.5°, under a cell, despite 5 loads and 2 frees |
+
+### 5. NEXT
+
+- The near figure's silhouette is 32-gon faceted at 1 m; the affordable fix is runtime skinning,
+  and `budget.py` has already priced the alternatives (level 0 to the shared library is 6.9× the
+  three-cell budget; trimming to the species present saves 21%).
+- `interact.gd`'s `_mp_` sibling rule still has two homes, GDScript and Python.
+- `--deck`'s `traverse_m` bar is live but weak under a goto: it measures walking near a target
+  rather than crossing the deck. A deck run with no goto would exercise the strong form.
 
 ## Session 4u — NOBODY STANDS IN THE DOORWAY ANY MORE
 
