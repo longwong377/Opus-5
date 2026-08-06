@@ -42,7 +42,7 @@ have a verified address; **171 have nothing checking them at all.**
 | **acceptance** | a content harness for each of the four largest row families (PLC, SYS, INC, PLY), so a GREEN count means "these named things exist and were checked", not "somebody ran something" |
 | **honesty rule** | GREEN moves ONLY by implementing a harness and building what it checks. Never by re-reading a row |
 
-## R2. W5 IS RED — nobody notices you walk in
+## R2. ~~W5 IS RED~~ — **CLOSED IN 4r: 20 of the room look up, 0 deg off**
 
 `walkable.py --deck blue/0/0` → *"reached docking_bays and NOBODY noticed — 0.0 deg turned"*.
 W5 is **the loop** — spawn → walk → use something → an NPC reacts — and `CLAUDE.md`'s own row
@@ -60,7 +60,11 @@ assertion and fails later on a different defect.
 | **fix** | `MultiMesh.set_instance_transform`; `add_crowd` already knows which instance index belongs to which placement. The notice loop writes into the bucket instead of a node's `global_transform` |
 | **bonus** | it makes the **corridor walkers** able to notice you, which they never have been |
 | **gate** | CI `swalkloop`, added 4r, red today |
-| **acceptance** | `noticed >= 1` with `facing_err_deg` inside tolerance, on the instanced path, with `ROOM_INSTANCED=False` still passing as the control |
+| **acceptance** | `noticed >= 1` with `facing_err_deg` inside tolerance, on the instanced path |
+| **RESULT** | `PASS deck blue/0/0 -- a body spawns in the corridor and WALKS INTO docking_bays (48.8 m -> 0.36 m), never leaving the floor, through a door that opened to 1.00, **20 of the room look up (29 deg turned, 0 deg off)**` |
+| **what it took** | `Walker.notice_yaw` applied in `_walker_xform` **before** `right` is derived from `fwd`, so the basis cannot lose its handedness; `_notice_walkers()` mirroring the `_people` loop's `notice_m`, `turn_rate` and shortest-way-round rule; and **`noticed_count`, `turned_deg` and `facing_error_deg` all reading BOTH crowds** |
+| **the second half was the interesting one** | after the turn worked, the gate went from `NOBODY noticed` to `20 noticed but the nearest is -1 deg off -- the yaw convention is wrong`, because `facing_error_deg` still read `_people` alone and -1 is its "nobody in range" sentinel. **The same defect, one function over.** A fix applied to the turn and not to the three functions that report on it would have looked like a regression |
+| **still open, pre-existing** | `vorlon_berth: the body never reached a floor` -- the 0.00 m doorway clearance 4k identified, unrelated to noticing |
 
 ## R3. ~~21 OF 84 CAN SPEAK~~ — **CLOSED IN 4r, AND THE DIAGNOSIS WAS WRONG**
 

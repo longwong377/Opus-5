@@ -745,11 +745,22 @@ func _physics_process(delta: float) -> void:
 
 ## For the headless test: how far the nearest person has turned from the pose
 ## they were generated in, in degrees, and how many noticed at all.
+## BOTH CROWDS, and that is the fix rather than a tidy-up. These two numbers are
+## what `walkable.py --deck` asserts W5 on -- "somebody notices you walk in" --
+## and they counted `_people` only. When `populace.ROOM_INSTANCED` moved room
+## occupants into the MultiMesh buckets, `_people` went empty for those rooms
+## and the gate correctly reported 0 noticed and 0 degrees turned. Reading one
+## crowd and asserting about "the room" is the same defect as the turn itself,
+## one level up: the question is about people, not about which container they
+## happen to be drawn from.
 func turned_deg() -> float:
 	var most := 0.0
 	for p in _people:
 		most = maxf(most, absf(rad_to_deg(wrapf(p.yaw - p.rest_yaw,
 			-PI, PI))))
+	for w in _walkers:
+		if not w.hidden:
+			most = maxf(most, absf(rad_to_deg(w.notice_yaw)))
 	return most
 
 
@@ -757,6 +768,9 @@ func noticed_count() -> int:
 	var n := 0
 	for p in _people:
 		if p.noticed:
+			n += 1
+	for w in _walkers:
+		if w.noticed and not w.hidden:
 			n += 1
 	return n
 
@@ -768,6 +782,19 @@ func noticed_count() -> int:
 ## number -- which is how the deck assembler nearly shipped every inhabitant
 ## facing however far round the ring their room happened to sit. This asks
 ## whether they ended up LOOKING AT YOU.
+## BOTH CROWDS, for the same reason `noticed_count` reads both. Reading
+## `_people` alone returned the -1 "nobody in range" sentinel on a deck where
+## twenty instanced occupants had just turned to look at the player, and the
+## walk gate treats -1 as a failure -- correctly, since it cannot tell "nobody
+## was near" from "nothing measured them". So the fix that made them turn had
+## to reach this function too, or W5 would have gone from NOBODY NOTICED to
+## THE YAW CONVENTION IS WRONG and looked like a regression.
+##
+## A WALKER'S ERROR IS MEASURED OFF THE TRANSFORM THEY ARE ACTUALLY DRAWN WITH,
+## not off `notice_yaw` alone. That is the whole point of the check: a turn
+## applied with the wrong sign, or about the wrong axis, produces exactly the
+## same `notice_yaw` and a body facing the other way. Asking the finished basis
+## where its +Z points is the only form that can catch it.
 func facing_error_deg(target: Vector3) -> float:
 	var best := 1e30
 	var err := -1.0
@@ -777,6 +804,21 @@ func facing_error_deg(target: Vector3) -> float:
 			best = d
 			err = absf(rad_to_deg(wrapf(_yaw_towards(p, target) - p.yaw,
 				-PI, PI)))
+	for w in _walkers:
+		if w.hidden:
+			continue
+		var xf := _walker_xform(w)
+		var d2 := target.distance_to(xf.origin)
+		if d2 < best and d2 <= notice_m:
+			best = d2
+			var up := xf.basis.y.normalized()
+			var to := target - xf.origin
+			to = to - up * to.dot(up)
+			if to.length() < 0.01:
+				continue
+			var f := xf.basis.z.normalized()
+			f = (f - up * f.dot(up)).normalized()
+			err = absf(rad_to_deg(f.signed_angle_to(to.normalized(), up)))
 	return err
 
 
@@ -815,6 +857,23 @@ class Walker:
 	var r_m: float = 0.0
 	var h_m: float = 0.0
 	var tag: String = ""      # which streamed cell they belong to
+	# -- AN INSTANCED PERSON CAN TURN TO LOOK AT YOU ------------------------
+	# `notice_yaw` is a rotation about this walker's OWN up, applied in
+	# `_walker_xform` on top of whichever heading they already have. It is a
+	# separate field rather than a mutation of `angle`/`fwd_free` because those
+	# are where they are GOING and this is where they are LOOKING: a commuter
+	# who glances at you must still arrive at their post.
+	#
+	# Until 4r there was no such field and no such turn. `populace.ROOM_INSTANCED`
+	# (4p) moved room occupants out of baked meshes into these buckets, and the
+	# code that turns somebody -- `_people` / `Person` -- finds its subjects by
+	# matching actor group names against MeshInstance3D NAMES. An instanced
+	# occupant has no per-person mesh, so it had no Person, so nobody looked up:
+	# `walkable.py --deck blue/0/0` reported "reached docking_bays and NOBODY
+	# noticed -- 0.0 deg turned". Two crowd systems, and only one of them could
+	# see you.
+	var notice_yaw: float = 0.0
+	var noticed: bool = false
 	# -- A COMMUTER IS A WALKER WHO IS NOT ON A LOOP -----------------------
 	# Everything above describes somebody going round the ring for ever:
 	# `angle` advances at `omega` and never arrives. That is the right model
@@ -1272,7 +1331,7 @@ func _walker_xform(w: Walker) -> Transform3D:
 		var f2 := w.fwd_free - up2 * w.fwd_free.dot(up2)
 		if f2.length() < 1e-4:
 			f2 = Vector3(0, 0, 1) - up2 * up2.z
-		f2 = f2.normalized()
+		f2 = _turned(f2.normalized(), up2, w.notice_yaw)
 		var r2 := up2.cross(f2).normalized()
 		return Transform3D(Basis(r2, up2, f2), w.pos)
 	var ca := cos(w.angle)
@@ -1299,9 +1358,25 @@ func _walker_xform(w: Walker) -> Transform3D:
 	# `Basis(right, up, -fwd)`, and the two negations cancel to +1. Only this
 	# file's figures face +Z -- `body.py`'s do, `ragdoll.gd` agrees -- so only
 	# this file needed the other sign.
+	fwd = _turned(fwd, up, w.notice_yaw)
 	var right := up.cross(fwd).normalized()
 	return Transform3D(Basis(right, up, fwd),
 		Vector3(w.radius * ca, w.radius * sa, w.z))
+
+
+## `fwd` rotated about `up` by `yaw`, staying in the plane perpendicular to up.
+##
+## A ROTATION ABOUT THE BODY'S OWN UP CANNOT CHANGE THE HANDEDNESS, which is
+## the property that matters here: `_walker_xform` builds `Basis(up.cross(fwd),
+## up, fwd)` and that is right-handed only while the three stay orthonormal. So
+## the turn is applied to `fwd` BEFORE `right` is derived from it, never to the
+## finished basis -- rotating a basis that has already been assembled is how a
+## determinant drifts. Session 4q's mirrored crowd is the reason that sentence
+## is here rather than assumed.
+static func _turned(fwd: Vector3, up: Vector3, yaw: float) -> Vector3:
+	if absf(yaw) < 1e-6:
+		return fwd
+	return fwd.rotated(up.normalized(), yaw).normalized()
 
 
 # ---------------------------------------------------------------------------
@@ -1892,6 +1967,56 @@ func occupant_changes() -> int:
 	return _occ_moved
 
 
+## Turn the instanced crowd toward the player, and let them turn back.
+##
+## THIS IS THE OTHER HALF OF `_physics_process`'s `_people` LOOP, for the people
+## that loop cannot see. Same `notice_m`, same `turn_rate`, same shortest-way-round
+## rule -- deliberately, because two crowds turning at two speeds is exactly the
+## "two descriptions of one thing" this project keeps paying for.
+##
+## `w.pos` is only maintained for commuters, so a loop walker's position comes
+## from `_walker_xform(w).origin` -- which is the same call `advance_crowd`
+## already makes to choose their LOD, so this adds no new notion of where
+## anybody is.
+##
+## AN OCCUPANT WHO IS `away` IS NOT THERE. They are in no bucket, draw nothing
+## and collide with nothing, so turning them would be turning a person who is
+## somewhere else -- and would count toward `noticed`, which is the number the
+## walk gate asserts on.
+func _notice_walkers(eye: Vector3, delta: float) -> void:
+	var step: float = turn_rate * delta
+	for w in _walkers:
+		if w.hidden:
+			continue
+		var at := (w.pos if w.free or w.occupant else _walker_xform(w).origin)
+		var d := eye.distance_to(at)
+		# Same two-condition early-out the `_people` loop uses: far away AND
+		# already back at rest. Distance alone would freeze somebody mid-turn
+		# staring at where the player used to be.
+		if d > notice_m and absf(w.notice_yaw) < 1e-4:
+			continue
+		var want := 0.0
+		if d <= notice_m:
+			w.noticed = true
+			# The angle from where they FACE to where the player IS, measured
+			# in the plane they stand in. `_walker_xform` with the turn zeroed
+			# gives their rest facing; comparing against the live one would
+			# make this frame's answer depend on last frame's turn.
+			var was := w.notice_yaw
+			w.notice_yaw = 0.0
+			var rest := _walker_xform(w)
+			w.notice_yaw = was
+			var up := rest.basis.y.normalized()
+			var to := eye - rest.origin
+			to = to - up * to.dot(up)
+			if to.length() > 0.01:
+				var f := rest.basis.z.normalized()
+				var r := up.cross(f).normalized()
+				want = atan2(to.dot(r), to.dot(f))
+		var diff: float = wrapf(want - w.notice_yaw, -PI, PI)
+		w.notice_yaw = wrapf(w.notice_yaw + clampf(diff, -step, step), -PI, PI)
+
+
 func advance_crowd(delta: float) -> void:
 	# THE OCCUPANTS FIRST, AND THEY ARE NOT ADVANCED -- they are EVALUATED. A
 	# clock that runs at 60x is exactly why: nothing here steps, so a station
@@ -1920,6 +2045,8 @@ func advance_crowd(delta: float) -> void:
 		delta = _crowd_dt
 		_crowd_dt = 0.0
 	var eye := (_body.global_position if _body != null else Vector3.ZERO)
+	if _body != null:
+		_notice_walkers(eye, delta)
 	for w in _walkers:
 		if w.occupant:
 			# AN OCCUPANT'S PHASE IS A POSE, NOT A FRAME OF A WALK CYCLE, and
