@@ -74,12 +74,21 @@ and a session that acts on a historic figure acts on a stale one. Measured as of
 | bay tiling total | **51,475** (blue 7,692 / red 1,644 / green 7,062 / grey 16,487 / yellow 18,590) | "49,265", "73,635" |
 | spec registry | **300 rows**, PLC 129 · INC 30 | "291 rows", "193 registry rows", "22 classes" |
 | `canon/INVENTIONS.md` | reaches **INV-384** | — |
-| frame structure vs budget | **4.34×** (260,243 tri against a 60,000 allowance) | **"2.05×" — stale by two sessions**; it predates 4k's footprint tiling, which multiplied deck triangles 3.34× |
+| frame structure vs budget | **4.34×** (260,243 tri against a 60,000 allowance) — **NEEDS RE-MEASURING as of 4r, see below** | **"2.05×" — stale by two sessions**; it predates 4k's footprint tiling, which multiplied deck triangles 3.34× |
 | incident classes | **30**, 2,011 incidents a station-day | "22 classes" |
 | places outside the pressure hull | **0** of 129 (was 34; control `--hull-fit --legacy` fails at 41) | — |
 | spec ledger | **0 GREEN / 300 RED**, of which 129 have a verified address and 171 nothing at all | — |
 | craft, 22 scored subsystems | one at **4**, thirteen at **3**, five at **2**, three at **1** | — |
 | Python : GDScript | **166,034 : 23,823 ≈ 7:1** (was 26:1 at the 4d ruling) | "26:1" |
+
+**A CONSEQUENCE OWED FROM 4r, NAMED RATHER THAN GUESSED.** The z-aware rebuild took the station's
+deck geometry from **29.4 M triangles to 13.1 M** (2,616 → **1,150 per built metre**) because 59
+places resolved to the radius the hull actually leaves them. Every triangle-budget figure measured
+before that is therefore suspect, including the **4.34×** in the row above. I have NOT substituted
+a new number: the honest one comes from `python3 station/budget.py`, which is minutes of full CPU
+and must not run while agents do. **Re-measure it before quoting it** — and note that the direction
+is favourable, which is exactly when a stale figure survives longest, because nobody re-checks a
+number that is only going to improve.
 
 **And one live claim that is easy to misread as a win:** the corridor occluder is built, provably
 contained (0 breaches of 2,880 rays) and reaches the engine — and it is worth **7.8% of the frame
