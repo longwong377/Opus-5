@@ -787,6 +787,26 @@ have never been. Next session's first job, and it now has a red gate pointing at
 reads the other representation was left behind. What is new is that no gate could see it, because
 the only assertion about being noticed lived in a run CI does not make.*
 
+**CLOSED THE SAME SESSION.** `Walker.notice_yaw`, applied in `_walker_xform` **before** `right` is
+derived from `fwd` so the basis cannot lose its handedness, plus `_notice_walkers()` mirroring the
+`_people` loop's own `notice_m`, `turn_rate` and shortest-way-round rule:
+
+```
+PASS  deck blue/0/0  a body spawns in the corridor and WALKS INTO docking_bays
+(48.8 m -> 0.36 m), never leaving the floor, through a door that opened to 1.00,
+20 of the room look up (29 deg turned, 0 deg off)
+```
+
+**And the second half was the interesting one.** With the turn working the gate went from *NOBODY
+noticed* to *"20 noticed but the nearest is −1 deg off — the yaw convention is wrong"*. Nothing was
+wrong with the yaw: **−1 is `facing_error_deg`'s "nobody in range" sentinel**, and that function
+still read `_people` alone. The same defect, one function over. `noticed_count`, `turned_deg` and
+`facing_error_deg` now all read both crowds — *a fix applied to the turn and not to the three
+functions that report on it would have read as a regression and sent the next session hunting a
+sign error that does not exist.*
+
+It also makes the **corridor walkers** able to notice you, which they never have been.
+
 **Also:** the run did refresh one sidecar — `bootstrap.py --check` goes from *4 of 4 carry no
 `counter`* to **3 of 4**. The remaining three are other z-clusters (`z7120`, `z7126`, `z7440`) and
 need their own invocations.
