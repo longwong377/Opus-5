@@ -454,21 +454,31 @@ def _n_drum_800():
 def _n_aft_flanks():
     """SHC-07's own two components against its own total, then the envelope.
 
-    THE COMPONENTS DO NOT SUM AND THAT IS THE FINDING. 0.1273 + 0.1442 =
-    0.2715, not 0.2785. `docs/volume-audit.md` §3.3 explains the 0.0070 km³
-    difference -- it is Grey's band, which DOES deck the block out properly and
-    is therefore not a flank -- so the total is the whole undescribed block and
-    the parenthetical is the flanks only. Two different quantities under one
-    number.
+    THE ROW WAS NOT WRONG, IT WAS UNDER-LABELLED, AND THIS CHECK ACCUSED IT.
+    The first version asserted `0.1273 + 0.1442 == 0.2785`, reported the 0.0070
+    shortfall as "the row's own arithmetic" failing, and its own docstring
+    already explained why it was not: `docs/volume-audit.md` §3.3 attributes
+    that 0.0070 km3 to Grey's band, which DOES deck the block out and is
+    therefore not a flank. Three components, of which the row parenthesised
+    two -- so the total was right, the breakdown was partial, and the harness
+    turned an ambiguity in a document into an accusation of an error.
+
+    That distinction matters more than the number. A spec/code harness has
+    exactly two honest verdicts -- the spec is wrong, or the station is -- and
+    "the wording does not say which of two quantities this is" is neither. It
+    is fixed in the DOCUMENT (the row now writes the sum out in full, all three
+    terms) and the check now verifies the three-term sum, so it still fails if
+    any of them moves.
+
+    0.0070 + 0.1273 + 0.1442 = 0.2785 exactly.
     """
     bad = []
-    yellow, green, total = 0.1273, 0.1442, 0.2785
-    if abs((yellow + green) - total) > 0.0005:
-        bad.append("row's own arithmetic: Yellow %.4f + Green %.4f = %.4f, "
-                   "row states %.4f (docs/volume-audit.md §3.3 attributes the "
-                   "%.4f gap to Grey's decked band, which is not a flank)"
-                   % (yellow, green, yellow + green, total,
-                      total - yellow - green))
+    yellow, green, grey_res, total = 0.1273, 0.1442, 0.0070, 0.2785
+    if abs((yellow + green + grey_res) - total) > 0.0005:
+        bad.append("row's own arithmetic: Yellow %.4f + Green %.4f + Grey "
+                   "residual %.4f = %.4f, row states %.4f"
+                   % (yellow, green, grey_res, yellow + green + grey_res,
+                      total))
     z = _features().get("aft_hull_block")
     if not z:
         return False, "the schema has no aft_hull_block feature"
@@ -610,7 +620,7 @@ _NUMBERS = {
     "SHC-04": (None, None),
     "SHC-05": ("~139 M m3", _n_plant_void),
     "SHC-06": ("800 m drum", _n_drum_800),
-    "SHC-07": ("0.2785 = 0.1273 + 0.1442", _n_aft_flanks),
+    "SHC-07": ("0.2785 = 0.1273 + 0.1442 + 0.0070", _n_aft_flanks),
     "SHC-08": ("0.1084 km3 / 310.7 m", _n_bearing),
     "SHC-09": ("0.0742 km3", _n_skin),
     "SHC-10": ("z 8,010 cap / 22 Blue", _n_spike),

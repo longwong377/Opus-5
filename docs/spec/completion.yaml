@@ -1024,7 +1024,7 @@ items:
   - id: SHC-007
     at: docs/spec/PLACES.md:2060
     harness: tool-to-build
-    text_sha: e2a29be69e0af6e1
+    text_sha: aeb704e856d73df4
   - id: SHC-008
     at: docs/spec/PLACES.md:2061
     harness: tool-to-build
