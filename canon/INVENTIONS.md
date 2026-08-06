@@ -10834,3 +10834,220 @@ count directly instead of by proportion.
 material requested in `scratchpad/PATCHES-4r-council.md` exists.
 
 **INV-636 … INV-639** — allocated to this work and not used. Free.
+
+---
+
+## INV-640 — The bay's pendant flood is a spun dome, and its shade has an open crown
+
+**Invented.** `LAMP_SEG = 8`, `LAMP_RISE_F = 0.72`, `LAMP_LENS_F = 0.78`,
+`LAMP_LENS_RISE_F = 0.34`, `UPLIGHT_R_F = 0.42` in `station/docking_bay.py::floodlight` — the
+proportions of the shade, its rolled rim, the convex lens under it and the aperture on its crown.
+`LAMP_R_M = 0.75` and `LAMP_DROP_M = 2.6` are unchanged and remain INV-022's.
+
+**Why.** What the module built was two axis-aligned boxes. At the rubric's HALF distance
+(`docs/craft-4r-dockingbay-before-half.png`, 13.9 m — see the round-2 entry in
+`scratchpad/craft-4r-docking_bay_interior.json` for the derivation) nine of them fill the top of
+the frame as flat white rectangles clipped to 1.0 with a glow halo: the brightest objects in the
+shot and `docs/AAA-STANDARD.md` C1 verbatim, "a box primitive standing in for a named object".
+
+**Constrained by.** `reference/03-sector-blue/dock.webp` (authority 1) magnified 2.2× over its
+overhead band. Every pendant in that frame is a bowl hanging mouth-down off a short stem, with a
+bright arc on its rim and a compact bright source inside the mouth; four of the five visible read
+that way and the fifth is the one throwing a shaft. Nothing there is a rectangle. The proportions
+are read off that magnification and not measured — the domes are at unknown depth and the frame
+contains nothing of known size at that height, which is INV-022's own limitation one object down.
+The **crown aperture** is not in the frame and is argued rather than seen: the same frame shows
+the truss overhead LIT, the only sources in it are these pendants, and an industrial high bay's
+open crown is the standard device that does that. See INV-646 for the measurement that says the
+crown is not, by itself, enough.
+
+**Overturned by.** Any frame showing a bay pendant against something of known size, or against a
+dock worker on a gantry beside it.
+
+**Authority 5.** `station/docking_bay.py::floodlight`. Asserted: the lens is a revolved solid
+(more than two distinct y, where a box has exactly two, with the box as a negative control that
+fires), the crown sits above the lens, and the whole fitting hangs clear below the girder soffit.
+
+---
+
+## INV-641 — The bay's transverse girders are X-braced, not a single Warren run
+
+**Invented.** The web pattern in `station/docking_bay.py::girder`: two crossing diagonals per
+panel on opposite faces of the truss, a post at every panel point, and `GIRDER_SOFFIT_M = 0.26`, a
+bottom flange standing proud of the web.
+
+**Why.** The module's own docstring says "deep box girders spanning the width, carrying a lattice
+gantry" and what was built under it was one alternating diagonal — a zig-zag, which is a truss
+diagram rather than a truss.
+
+**Constrained by.** `reference/03-sector-blue/dock.webp` (authority 1) at 2.2× over the overhead
+band, saved as `scratchpad/db/ref-truss.png`. The deep girder crossing the top of that frame
+carries two diagonals per panel that cross, with a post at each panel point, and the light behind
+it comes through the triangles either side of each crossing. The same magnification shows the
+girder's underside as two steps rather than one slab, which is the flange. `GIRDER_BAYS = 10` is
+unchanged (INV-022). The two members of one X are on opposite faces because that is how an
+X-braced panel is built, and because butting them into one plane would put four faces on every
+edge round the crossing — this module's own non-manifold gate.
+
+**Overturned by.** A frame of a bay girder square-on, which would give the panel count directly
+instead of by reading a foreshortened span.
+
+**Authority 5.** `station/docking_bay.py::girder`.
+
+---
+
+## INV-642 — The bay ceiling's stringers stand on the girder's own panel points
+
+**Invented.** `CEIL_RIB_D_M = 0.55`, `CEIL_RIB_W_M = 0.46`, `CEIL_RIB_FLANGE_M = 0.86`, and that
+the ribs run ALONG the bay at the girder's panel pitch (4.2 m).
+
+**Why.** Both authority-1 frames say the ceiling is ribbed and the module's own docstring copies
+one of them — "the ceiling is the ribbed inner wall of the rotating drum, curving"
+(`reference/00-INDEX.md` on `Minbari Flyer 969 in docking bay 17.webp`, whose entire upper-left
+quarter is that surface). What was built was the arc plus `rooms.articulate`'s wall grid, which
+renders as a flat field of tiles and is the largest single surface in any frame taken looking up
+in this room.
+
+**Constrained by.** The DIRECTION is structure, not choice: the bay is cut into a hull spun about
+the station's axis, the axis is the bay's local +Z, and the framing visible on the inside of a spun
+shell between its ring frames is the longitudinal stringer run. The PITCH is not a new number —
+`GIRDER_BAYS` cuts the 42 m span into ten web panels, and a transverse truss lands on the
+longitudinal framing at its panel points, so a stringer at every panel point is where the two
+systems actually meet and cannot drift when the truss is retuned. The section (0.55 m deep, 0.46 m
+web, 0.86 m flange) is proportioned to read at the 27.8 m normal distance and is invented.
+
+**Overturned by.** Any frame of a bay ceiling square-on, which would give the pitch against the
+girders directly.
+
+**Authority 5.** `station/docking_bay.py::ceiling_ribs`. Asserted: every stringer vertex lies
+within a flange half-width of a girder panel point (a half-pitch is the negative control and
+fires), and no stringer stands proud of the shell — which failed on the first build, because
+`ceil_y` falls 0.32 m per metre near the springing and a rib seated on its centreline value stood
+0.14 m THROUGH the ceiling at its outboard edge.
+
+---
+
+## INV-643 — The deck disc's device is an outline round three bars
+
+**Invented.** `EMBLEM_W_F = 0.52`, `EMBLEM_H_F = 0.62`, `EMBLEM_STROKE_M = 0.42`, and that the
+corners are cut at 45° rather than radiused.
+
+**Why.** Not an invention at all in its main claim, and that is the point of the entry.
+`reference/00-INDEX.md`'s second pass over `dock.webp` corrects its own first pass in one sentence
+— "The disc's device is a **white rounded-rectangle outline containing three white bars**, not an
+oval emblem" — and the geometry was still building the first reading, a filled circle 4.66 m
+across inside a filled circle 10.6 m across. judge-4e's finding on this room says `bay_emblem`
+"is not legible in frame"; a filled disc inside a filled disc has nothing to be legible with.
+
+**Constrained by.** The device is read as occupying roughly the middle half of the 156 px disc,
+so its width is 0.52 of `DECK_DISC_D_M` — which is itself the one measured length in this module
+(170 px at 16.0 px/m off the dock workers, INV-022). The 0.62 aspect and the 0.42 m stroke are
+proportioned off that and are the invention. The corners are cut rather than arced because at 0.42 m
+of stroke an arc costs hundreds of triangles to say what four 45° pads say for 48.
+
+**Overturned by.** One frame that resolves the device at more than about 20 px, which would give
+the bar count and the aspect directly. `materials.py`'s own entry for `bay_deck_emblem` records
+that at 4× the bars are "about 4 px tall" and not clear of the red around them.
+
+**Authority 5.** `station/docking_bay.py::deck_device`. Asserted: the point midway between two of
+the three bars carries no paint (the filled disc it replaced is the negative control and fires),
+and the middle bar is present, so the first test cannot pass vacuously.
+
+---
+
+## INV-644 — The bay's signage pylon, and that signage on this deck comes in fours
+
+**Invented.** `PYLON_H_M = 2.35`, `PYLON_W_M = 1.95`, `PYLON_D_M = 0.42`, `PYLON_PLAQUE_Y_M = 1.66`,
+`PYLON_PITCH_M = 46.0`.
+
+**Why.** `reference/00-INDEX.md`'s second pass over `dock.webp` (authority 1): "A **signage pylon**
+stands at the deck edge carrying **four rectangular plaques in a horizontal row** at head height,
+with a **green-lit display panel** on its lower flank. A dock worker beside it gives the height.
+Signage on this deck comes in **fours**." None of it was built. The bay's whole deck carried twenty
+bollards and nothing a person would read.
+
+**Constrained by.** The height is the one number the frame gives and it gives it by comparison: a
+dock worker stands beside the pylon, so its head is a little above `DOCK_WORKER_H_M = 1.75` — 2.35 m,
+and the module asserts the pylon stays inside `1.0×` to `1.6×` a dock worker. The plaque row is at
+1.66 m because "head height" is what the index says and that is standing eye height plus a little.
+The plaque COUNT is sourced (four) and the along-bay pitch is invented. The pylon presents its
+plaques ACROSS the lane, which is asserted with the wrong-way build as a control, because four
+plaques facing a wall is four plaques nobody reads and no still can tell which way they point.
+
+**Overturned by.** Any wider frame of the bay deck showing pylon spacing, or one that resolves the
+plaques.
+
+**Authority 5.** `station/docking_bay.py::signage_pylon`. The groups are `bay_panel`,
+`prop_level_plaque` and `dress_screen` — all existing binds, because `export_scene.build()` raises
+on an unbound group and a new material name would have taken every other agent's renders down.
+
+---
+
+## INV-645 — The ledge railing, at the lane edge the deck's own hazard band is painted on
+
+**Invented.** `RAIL_H_M = 1.06`, `RAIL_POST_PITCH_M = 4.2`, `RAIL_R_M = 0.05`, and the kick plate.
+
+**Why.** `reference/00-INDEX.md` on `Minbari Flyer 969 in docking bay 17.webp` (authority 1):
+"service gantries with **railings**". The bay had none, and the fall it protects against is real
+geometry in this module: the first ledge tread stands `LEDGE_RISE_M` = 2.2 m over the lane at
+exactly the line `lane_edge` paints its hazard band on.
+
+**Constrained by.** The height is a standing hand and the module asserts it lands between 0.95 and
+1.20 m above the tread. The post pitch is the girder's panel pitch halved, for INV-642's reason —
+a number the module already has rather than a new one. The rail is `bay_girder`, the bay's own
+steel, because a new group name is a new material bind in a file this session does not own.
+
+**Overturned by.** A frame showing a bay railing against a person, which would fix the height, or
+one showing the ledges unrailed, which would delete it.
+
+**Authority 5.** `station/docking_bay.py::ledge_railing`. Asserted: the railing's feet are on the
+tread (y exactly `LEDGE_RISE_M`) and inboard of `clear_half_m()`, so it cannot drift off the ledge
+it stands on.
+
+---
+
+## INV-646 — The bay's steel is erased by a cool fog, not by a lack of light — a NEGATIVE RESULT
+
+**Invented.** Nothing. This entry exists because a measurement REFUTED the fix this session was
+briefed to build, and the refutation is worth more than the fix would have been.
+
+**Why.** `tools/export_scene.py`'s session-4m note says the bay reads wrong because
+"`docking_bay.floodlight` hangs the lamps 2.6 m BELOW the girder soffit and aims them straight down
+through a hood that is closed on top, so the red-oxide truss … is lit by nothing but the flat
+ambient", and prescribes "an uplight component on the fitting, which is a new emitted group in
+`docking_bay.py` and a new FIXTURE_LIGHTING row". Both halves were built and measured in a
+`git worktree` — see `scratchpad/PATCHES-4r-dockingbay.md`.
+
+**What was measured**, five frames, one camera, `--shot interior --room docking_bays` at 1280×720,
+every run confirmed `Vulkan 1.4.318 - Forward+`; the statistic is the fraction of visible pixels
+with R > 1.15 B, against `dock.webp` measured by the same code:
+
+| | truss band R/B | truss/deck luminance | warm px |
+|---|---|---|---|
+| shipped (fog 0.014, no uplight) | 0.574 | 0.266 | **3.1%** |
+| + uplight at 0.30 of the flood | 0.648 | 0.816 | **3.8%** |
+| fog 0.005, no uplight | 0.787 | 0.177 | **18.8%** |
+| fog 0.0025, no uplight | 0.834 | 0.168 | **28.7%** |
+| fog off, no uplight | 0.849 | 0.167 | **32.0%** |
+| fog off + uplight 0.30 | 0.886 | 0.601 | 34.5% |
+| **`dock.webp`** | **1.157–3.191** | **0.120–0.262** | **39.5%** |
+
+**The uplight buys 0.7 points of warm. Removing the fog buys 28.9.** And the uplight actively
+costs: it takes truss/deck from 0.266, at the edge of the reference's own band, to 0.816 — three
+times the reference's upper bound — because it lights the ceiling to the level of the deck, and
+`dock.webp` is a bright deck under a dark warm roof.
+
+**The mechanism.** `godot/scenes/interior.tscn` carries `volumetric_fog_density = 0.014` with
+`volumetric_fog_albedo = Color(0.78, 0.81, 0.88)`, one global value for every interior. That is a
+sane number for the 21.6 m corridor it was set on and it is 6.5× the path length in a 140 m bay:
+over the 30 m slant to the truss the frame is a third fog, and the fog is blue. Adding light to a
+blue medium adds blue in-scatter as fast as it adds warm surface, which is exactly what the second
+row of that table is.
+
+**Overturned by.** A per-room fog density — the fog is a property of the volume and the engine is
+being told one number for a corridor, a chapel and a hangar. Until that exists this is not a
+docking-bay defect, it is a scene defect measured in a docking bay.
+
+**Authority 5** for the reading. The numbers are measurements.
+
+**INV-647 … INV-649** — allocated to this work and not used. Free.
