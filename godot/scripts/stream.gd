@@ -1743,6 +1743,7 @@ func _ax_setup(args: Dictionary) -> int:
 		# toward the goal and stalling is named with the position and the cell.
 		"stall": int(args.get("stall", "900")),
 		"best": absf(z_b - z_a), "since": 0, "blocked": "",
+		"landed": false, "settle_frames": 0,
 	}
 	print("axial-gate: spine %.2f deg (%.1f m of floor in %d run(s), z %.1f-%.1f)"
 		% [deg, float(spine["span_m"]), int(spine["runs"]), float(spine["z0"]),
@@ -1778,6 +1779,24 @@ func _physics_process(delta: float) -> void:
 
 	var q := body.global_position
 	var d := q.distance_to(_ax["prev"])
+	# THE WALK BEGINS WHEN THE BODY IS STANDING. It is placed 0.2 m off its own
+	# floor triangle -- `boot.STAND_IN_M`'s convention, so the settle either
+	# confirms the spawn or does not -- and at this deck's 7.455 m/s^2 that drop
+	# takes sqrt(2*0.2/7.455) = 0.23 s, which is the 12 off-floor frames the
+	# first passing run reported and failed itself on. Not a derived frame count
+	# (`walk.gd::--settle` uses 120 and would also have hidden a real fall):
+	# nothing is measured until `is_on_floor()` is true once, so the rule needs
+	# no number and a body that NEVER lands still fails, on `legs`.
+	if not bool(_ax["landed"]):
+		if not body.is_on_floor():
+			_ax["prev"] = q
+			_ax["frame"] = int(_ax["frame"]) + 1
+			if int(_ax["frame"]) >= int(_ax["max_frames"]):
+				_ax_finish()
+			return
+		_ax["landed"] = true
+		_ax["settle_frames"] = int(_ax["frame"])
+		_ax["prev"] = q
 	if body.is_on_floor():
 		_ax["floor_m"] = float(_ax["floor_m"]) + d
 		if _ax["dir"] > 0.0:
@@ -1818,6 +1837,17 @@ func _physics_process(delta: float) -> void:
 		if _ax["dir"] > 0.0:
 			_ax["dir"] = -1.0
 			_ax["legs"] = 1
+			# RESET THE PROGRESS BASELINE AT THE TURN, and the first version did
+			# not. `best` is distance remaining to the CURRENT goal; at the turn
+			# the goal changes from z_b to z_a, so the remaining distance jumps
+			# from ~0 to the full 340 m and never beats a baseline set on the
+			# outbound leg. The detector fired 900 frames later with the body
+			# 62.7 m further back than the turn -- 62.7 m in 900 frames is
+			# 4.18 m/s, which is `player.gd`'s own 4.2 m/s walk. A gate that
+			# fails for its own bookkeeping is worse than one that cannot fail,
+			# because it reads as a finding.
+			_ax["best"] = absf(q.z - float(_ax["z_a"]))
+			_ax["since"] = 0
 			print("axial-gate: reached z=%.2f at frame %d -- turning back"
 				% [q.z, int(_ax["frame"])])
 			return
@@ -1835,10 +1865,11 @@ func _ax_finish() -> void:
 	var want: float = float(_ax["z_b"])
 	var travelled: float = absf(reached - float(_ax["z_a"]))
 	var line := ("AXIALWALK legs=%d floor_m=%.1f axial_m=%.1f reached_z=%.1f "
-		+ "target_z=%.1f offfloor=%d/%d cells_entered=%d crossings=%d %s") % [
+		+ "target_z=%.1f offfloor=%d/%d settle=%d cells_entered=%d "
+		+ "crossings=%d %s") % [
 		int(_ax["legs"]), float(_ax["floor_m"]), travelled, reached, want,
-		int(_ax["off"]), int(_ax["frame"]), (_ax["seen"] as Dictionary).size(),
-		int(_ax["crossings"]), report()]
+		int(_ax["off"]), int(_ax["frame"]), int(_ax["settle_frames"]),
+		(_ax["seen"] as Dictionary).size(), int(_ax["crossings"]), report()]
 	print(line)
 	var bad: PackedStringArray = PackedStringArray()
 	if String(_ax["blocked"]) != "":
