@@ -222,6 +222,30 @@ worked in P0.5 (streaming hand-off), P1 and P4 (craft) simultaneously. That is t
 written to stop, and it is worth naming here rather than only in a retrospective: the phase that
 makes the player persist is two phases out, and nothing will make it closer except doing it.
 
+### R7 UPDATE, same session — P2 HAS STARTED, at its keystone
+
+**The save system exists**: `godot/scripts/save.gd`, gate `python3 station/coldstart.py --g8`,
+CI step `ssave`. Written the same session this section was, because the section's own argument
+made it the next thing to build: *"a condition model with no save is a hunger bar that resets,
+and a journal with no save is a notebook that forgets."* Both of those, and SELL's till, and
+time compression, are worth strictly less than they look until this exists — so it went first.
+
+Measured, subject and control: position back **0.000 m** after a 12.01 m walk away, clock back
+**0.00000 h** after +5.0028 h, purse back **0.00 CR** after spending 137.00, bag **+0** after an
+item. The `--no-restore` control fails on all four.
+
+**The number to carry forward is not "4 of 9 subsystems save", it is "4 of 4 savable, 5 exempt
+with written reasons, 0 silent."** `save.gd::audit` has four buckets rather than two, and the
+third is the one that makes P2's remaining work legible: a subsystem with nothing to save
+declares `save_exempt()` with a **non-empty reason**, so a permanent "missing" list cannot
+accumulate around the genuine gaps. What is genuinely outstanding is now one item rather than
+five — **a stable id for a crowd body across a reload** — and it is what blocks resuming a
+conversation, keeping a body on the deck, and remembering which line was said to whom.
+
+**P2's remaining items are unchanged and now have somewhere to persist to**: the condition model
+(PLY-06), the journal (PLY-07, SYS-16) and time compression (PLY-05). Each is a `save_state` on
+a subsystem that does not exist yet, which is a much smaller statement than it was this morning.
+
 ## R6. THE RULE THAT PRODUCED FOUR OF THESE FIVE
 
 R1, R2 and R5 are all one shape: **a thing was built, a consumer read a different
