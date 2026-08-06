@@ -844,6 +844,38 @@ through its **previous import**, silently, exit 0 — the agent's first "after" 
 tile with the old 1024 texture. Same shape as 3z's stale frame and 4e's OpenGL fallback, one level
 down. `scratchpad/PATCHES-4r-materials.md` §1.
 
+### 25.7 THE REBUILD: 34 PLACES OUTSIDE THE HULL → 0, AND THE STATION IS STILL WALKABLE
+
+The flip §25.1 queued, executed and verified rather than promised.
+
+| gate | result |
+|---|---|
+| `interior.py --hull-fit` | **0 of 129 outside the pressure hull** (was 34) |
+| `--hull-fit --legacy` (control) | **41 outside, exit 1** — the same code on the old resolution |
+| `rooms.py --footprint` | **PASS**, 0 failures |
+| `deck.py --sweep` | **129 of 129 locations on an assembled cluster, 90 z-clusters, 0 decks with a hole in the floor** |
+| `interior.py` | 449/449 |
+
+**Built metres went UP, not down**, which is not what a 12.5% arc reduction predicts:
+**11,248 → 11,420 m**, because collapsing `room_extent_m`'s innermost-deck clamp into
+`deck_index_for`'s ranking moved 15 places from the innermost deck to the ones the register
+actually names, and those are wider. Triangles fell from 2,616 per built metre to **1,150** —
+13.1 M over the 129, against 29.4 M before. *The rooms are the size they should always have
+been.*
+
+**And the station got busier:** rooms went **3,194 → 4,563 people**, corridors 931, at 2.05 per
+100 m² of assembled corridor against the station-wide 1.07 the 250,000-resident derivation
+gives — which is right, because assembled clusters are the ones with rooms on them.
+
+**The control is the only reason the 0 means anything.** A gate reporting 0 of 129 on its first
+run is indistinguishable from a gate that cannot fail; `--legacy` runs the identical code
+against the sector's-widest-cylinder resolution and comes back at 41, exit 1.
+
+**41, not the 34 reported earlier, and the difference is the gate working.** Fixing the deck
+ranking moved 15 places off the innermost deck onto the ones the register names, and seven of
+those turned out to be outside the hull at their own z. A gate that finds *more* after a fix
+is a gate measuring something real.
+
 ### 24.5 Open, and honestly
 
 * **The arrest chain behind a refusal is still Python.** A refused player is *told* they are
