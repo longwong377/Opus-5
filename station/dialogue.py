@@ -455,7 +455,8 @@ REFUSAL_SEVERITY = fr.SEVERITY["highest"][0]
 COLD_SEVERITY = fr.SEVERITY["medium-high"][0]
 
 
-def register(speaker, listener: Listener, world: World) -> Register:
+def register(speaker, listener: Listener, world: World,
+             condition: int = 0) -> Register:
     """How this person speaks to this listener, right now."""
     rr = _ROLE_REGISTER.get(speaker.role, _DEFAULT_ROLE)
     f0, t0 = rr[0], rr[1]
@@ -479,6 +480,20 @@ def register(speaker, listener: Listener, world: World) -> Register:
     score = formality - 0.5 * terseness
     band = (BAND_FORMAL if score >= 0.45
             else BAND_PLAIN if score >= 0.10 else BAND_BLUNT)
+
+    # PLY-06's ENTIRE DIALOGUE EFFECT, AND IT IS ONE LINE ON PURPOSE.
+    # `condition.Condition.effects()["warmth_band"]` is -1, 0 or +1: a fed
+    # player is met one band warmer and a hungry one a band colder, which the
+    # spec phrases as "NPCs open one topic sooner". It moves the BAND and
+    # nothing else -- not `warmth`, which is the friction separation and
+    # belongs to the pair rather than to the player's stomach, and not the
+    # address form, which is a fact about rank.
+    #
+    # NEGATIVE ON THE SCALE: BAND_FORMAL is 0 and BAND_BLUNT is 2, so warmer
+    # is DOWN. A +1 warmth band subtracts. Written out because the sign is the
+    # kind of thing that reads correct either way and is only correct one way.
+    if condition:
+        band = max(BAND_FORMAL, min(BAND_BLUNT, band - int(condition)))
 
     armband = False
     if speaker.species == "human" and speaker.role == "security":

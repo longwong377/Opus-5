@@ -511,12 +511,61 @@ def _ply06(text):
         out.append((True, "schedule.RHYTHMS carries %d species' meal and sleep "
                           "windows (%s)" % (n, meals)))
 
-    # NEEDLES CHOSEN SO A NEAR-MISS CANNOT SATISFY THEM. An earlier draft
-    # searched for "CONDITION" and matched `CONDITIONAL = cq.TRANSIT` in
-    # incident.py, which turned "there is no condition model" into a PASS.
-    out.append(_absent("the condition model the row's CHECK diffs against a "
-                       "fed-and-rested control",
-                       "hunger", "fatigue", "condition_model", "fed_rested"))
+    # THE CONDITION MODEL IS RUN, NOT SEARCHED FOR, and that is the upgrade
+    # this row needed most. The previous version was `_absent("...", "hunger",
+    # "fatigue", ...)` with a note explaining that the needles were picked so a
+    # near-miss could not satisfy them -- an earlier draft had matched
+    # `CONDITIONAL = cq.TRANSIT` in incident.py and reported a condition model
+    # that did not exist. Better needles fix the false POSITIVE and leave the
+    # deeper problem: the moment a file called `condition.py` appears with the
+    # word "fatigue" in it, the search passes whatever that file does.
+    #
+    # PLY-06's CHECK is a whole-state diff -- "two station-days with no food and
+    # no sleep produce EXACTLY the two declared penalties and nothing else,
+    # asserted as a whole-state diff against a fed-and-rested control run, so an
+    # undeclared effect fails" -- so this runs that diff and reads its shape.
+    # A static scan can tell you a caller exists; only running the thing tells
+    # you the caller runs.
+    try:
+        import condition as CD                                   # noqa: PLC0415
+        kept = CD.run("human", 8.0, 2.0, feed=True, rest=True)
+        starved = CD.run("human", 8.0, 2.0, feed=False, rest=False)
+        diff = CD.whole_state_diff(kept, starved)
+        fields = sorted({d[0].split(" ", 1)[1] for d in diff if " " in d[0]})
+        declared = {"states", "warmth_band", "pay_bonus"}
+        extra = sorted(set(fields) - declared)
+        reached = {d[0].rsplit(" ", 1)[-1] for d in diff}
+        out.append((bool(diff) and not extra,
+                    "the two-day starved/fed whole-state diff is %d differences "
+                    "over %s%s" % (len(diff), fields,
+                                   "" if not extra else
+                                   " -- UNDECLARED EFFECT %s" % extra)))
+        out.append(("warmth_band" in reached and "pay_bonus" in reached,
+                    "both declared penalties are reached by the starved run "
+                    "(%s)" % sorted(reached & {"warmth_band", "pay_bonus"})))
+        worst = CD.Condition("human", last_meal_h=0.0, last_sleep_h=0.0,
+                             last_sleep_len_h=0.0)
+        eff = worst.effects(1000.0)
+        out.append((sorted(eff) == sorted(CD.DECLARED_EFFECT_KEYS)
+                    and eff["warmth_band"] == -1 and eff["pay_bonus"] is False,
+                    "41 days with no food and no sleep is still exactly %s -- "
+                    "no damage, no spiral" % (eff,)))
+        # THE WINDOWS COME FROM schedule.py, WHICH THE ROW REQUIRES BY NAME.
+        # Checked by DISCRIMINATION rather than by import: two species whose
+        # RHYTHMS differ must get different intervals, which a constant in the
+        # condition model cannot produce.
+        two = [sp for sp, r in SC.RHYTHMS.items() if len(r.meals) == 2]
+        three = [sp for sp, r in SC.RHYTHMS.items() if len(r.meals) == 3]
+        out.append((bool(two) and bool(three) and
+                    CD.meal_interval_h(two[0]) > CD.meal_interval_h(three[0]),
+                    "the meal interval tracks RHYTHMS: %s %.2f h against %s "
+                    "%.2f h" % (two[0] if two else "-",
+                                CD.meal_interval_h(two[0]) if two else 0.0,
+                                three[0] if three else "-",
+                                CD.meal_interval_h(three[0]) if three else 0.0)))
+    except Exception as exc:                       # pragma: no cover - reported
+        out.append((False, "the condition model does not run: %s: %s"
+                    % (type(exc).__name__, exc)))
     return out
 
 

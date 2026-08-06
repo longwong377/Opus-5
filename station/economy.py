@@ -1248,9 +1248,37 @@ def buy(led, buyer, place_key, good, n=1):
     return unit, total
 
 
-def pay(led, worker, credits, why=""):
-    """Wages. The other direction, and the only one that creates credits."""
+# PLY-06's ENTIRE PAY EFFECT. The spec says the bonus is "stated in credits on
+# the stub", so it is a separate line in the sales log rather than a silently
+# larger wage -- a player who cannot see the bonus cannot notice forfeiting it,
+# and a forfeited bonus nobody notices is a rule that is not in the game.
+#
+# 4% is chosen HERE rather than in `condition.py`, because the size of a bonus
+# is an economic fact and belongs beside the wage table. It is small on purpose:
+# PLY-06 is ruled LIGHT, and a rested shift that paid 25% more would make sleep
+# a resource to optimise, which is the thing the row's effect list forbids.
+# INV-661.
+RESTED_BONUS = 0.04
+
+
+def pay(led, worker, credits, why="", rested=False):
+    """Wages. The other direction, and the only one that creates credits.
+
+    `rested` is `condition.Condition.effects()["pay_bonus"]`. It adds a SECOND,
+    NAMED line to the stub rather than inflating the first, so the bonus and its
+    absence are both visible.
+    """
     credits = round(float(credits), 2)
+    if rested and credits > 0.0:
+        bonus = round(credits * RESTED_BONUS, 2)
+        if bonus > 0.0:
+            worker.credits = int(round(worker.credits + bonus))
+            led.wages[worker.npc_id] = round(
+                led.wages.get(worker.npc_id, 0.0) + bonus, 2)
+            led.purses[worker.npc_id] = worker.state()
+            led.sales.append({"day": led.day, "at": why,
+                              "good": "(rested bonus)", "n": 1,
+                              "cr": -bonus, "who": worker.npc_id})
     worker.credits = int(round(worker.credits + credits))
     led.wages[worker.npc_id] = round(
         led.wages.get(worker.npc_id, 0.0) + credits, 2)

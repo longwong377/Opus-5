@@ -113,6 +113,16 @@ jobs:
         continue-on-error: true
         run: python3 station/coldstart.py --g7
 
+      # HUNGER AND FATIGUE, AS A RHYTHM RATHER THAN A RESOURCE BAR. PLY-06's
+      # own harness is a WHOLE-STATE DIFF against a fed-and-rested control,
+      # because a checklist can only fail for a missing effect and the failure
+      # mode a mild system actually has is growing an extra one. The self-test
+      # therefore plants an undeclared effect key and asserts the diff sees it.
+      - name: Hunger and fatigue are exactly two effects and no more
+        id: scondition
+        continue-on-error: true
+        run: python3 station/condition.py --selftest
+
       # SAVE, WALK AWAY, LOAD, AND CHECK YOU CAME BACK. The first save system
       # this project has had -- before it, closing the game restarted the clock
       # at 13:00, refilled every shop and reset every purse.
@@ -1234,6 +1244,8 @@ jobs:
             echo "FAILED: svista"; fail=1; fi
           if [ "${{ steps.svistamount.outcome }}" != "success" ]; then
             echo "FAILED: svistamount"; fail=1; fi
+          if [ "${{ steps.scondition.outcome }}" != "success" ]; then
+            echo "FAILED: scondition"; fail=1; fi
           if [ "${{ steps.ssave.outcome }}" != "success" ]; then
             echo "FAILED: ssave"; fail=1; fi
           if [ "${{ steps.sshellfit.outcome }}" != "success" ]; then

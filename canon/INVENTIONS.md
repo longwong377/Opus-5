@@ -11051,3 +11051,55 @@ docking-bay defect, it is a scene defect measured in a docking bay.
 **Authority 5** for the reading. The numbers are measurements.
 
 **INV-647 … INV-649** — allocated to this work and not used. Free.
+
+## INV-660 — "~1.5 species-normal intervals" is a multiplier, not an hour count
+
+**What.** `condition.LATE_FACTOR = 1.5`. A person is HUNGRY once `hours_abs - last_meal`
+exceeds 1.5 × that species' own mean meal interval, and TIRED once it exceeds 1.5 × a day.
+
+**Why.** `docs/THE-STATION.md` PLY-06 states the threshold as *"no meal for ~1.5
+species-normal intervals"* and *"no sleep for ~1.5 species-normal intervals"*. The tilde is
+the spec's, so 1.5 is the value the sentence names and this file chooses nothing else.
+
+**Constrained by.** It multiplies an interval `npc/schedule.py` derives, and never an hour
+count. 1.5 human meal intervals is 12.0 h (three meals at 07:00/12:30/19:00, mean gap 8.00 h);
+1.5 pak'ma'ra intervals is 18.0 h (two meals at 04:00 and 16:00, mean gap 12.0 h). A single
+"twelve hours" written here would be right for a human and would starve a pak'ma'ra six hours
+early — which is the specific thing PLY-06's own harness clause forbids: *"the species windows
+come from `npc/schedule.py`, not from a constant in the condition model."*
+
+A species with `meals: ()` — the Vorlon, whose row records *"nothing has ever shown a Vorlon
+eat"* — has an interval of 0.0 and is never rated hungry at all, rather than being rated
+hungry immediately. Asserted in `condition._selftest`.
+
+**Overturned by.** Any reading in which the show puts a hunger consequence on a different
+clock, or a SPEC-CHANGE to PLY-06's threshold sentence. Changing it moves both thresholds
+together, which is correct: they are the same claim about the same tilde.
+
+**Authority 5.**
+
+## INV-661 — the rested pay bonus is 4%, and it is a separate line on the stub
+
+**What.** `economy.RESTED_BONUS = 0.04`. A rested worker's shift adds a second, named
+`(rested bonus)` row to the sales log rather than inflating the wage row.
+
+**Why.** PLY-06 gives `rested` exactly one effect — *"work pay-stub bonus on the next shift
+(stated in credits on the stub)"* — and gives `tired` exactly its forfeit. The spec states the
+effect and not the size, so the size is chosen here, beside the wage table, because how much a
+shift is worth is an economic fact rather than a physiological one.
+
+**Constrained by.** Smallness is the constraint, and it comes from the row's own ruling.
+PLY-06 is signed **LIGHT** and its effect table ends *"anything worse — nothing. No damage, no
+death spiral, no HUD nag, no screen effect."* A bonus large enough to optimise around would
+make sleep a resource, which is the failure the enumerated effect list exists to prevent: at
+4%, a 50 CR shift pays 52 CR, which a player notices on the stub and does not plan a day
+around. It is stated as a rate rather than a flat credit amount so it scales with the wage
+bands in `PEOPLE.md` §3 instead of being worth more to a dockworker than to a captain.
+
+**Why a separate line rather than a bigger number.** A forfeited bonus a player cannot see is a
+rule that is not in the game. Both arms of `condition._selftest`'s pay check assert the line,
+not just the total.
+
+**Overturned by.** A canon pay stub. Nothing in the reference set shows one.
+
+**Authority 5.**
