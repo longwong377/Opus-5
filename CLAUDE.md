@@ -474,6 +474,24 @@ commit being cited as evidence later. And **an agent that needs a baseline must 
 `git worktree` at a NAMED commit it chose, not from live `HEAD`**, because HEAD is a moving
 target while anyone is snapshotting.
 
+**A COMMIT IN A CONTAINER THAT ROLLS BACK IS A COMMIT THAT NEVER HAPPENED — PUSH, DO NOT
+COMMIT.** Session 4s, and it is the 4r rescue-snapshot lesson with the cost finally paid. This
+container recycled **twice inside one turn**; each recycle rolled the checkout back to an hours-old
+commit and took every worktree with it. The main agent lost nothing, because every increment had
+been pushed within a minute of landing and `git fetch && git reset --hard origin/<branch>` restored
+all of it. **An agent lost its entire run** — the collision-shell fix, brief written, gate landed
+and shown failing at 20 rooms — because it had been told to *commit on the branch* and had committed
+inside a `git worktree` that ceased to exist.
+
+The rule is one word longer than the old one and that word is the whole thing: **a build agent's
+brief must say PUSH, not commit.** A worktree is the right answer to artefact contention and the
+wrong place to keep anything.
+
+And the cheap standing defence is worth more than the discipline: a `nohup` loop that runs
+`git push` whenever `HEAD` moves and **never creates a commit**, so the worst it can do is publish
+a checkpoint somebody else made. `scratchpad/push_mirror.sh`. It costs nothing and it is the
+difference between losing an hour and losing a session.
+
 **READ THE SHAPE OF A FAILING NUMBER BEFORE READING ITS SIZE.** Session 4d, and it is the cheapest
 lesson in this file. `interact.py --audit` failed on 84 of 357 declared interactables and 4c wrote
 the work up as two lists of props to go and build. The number that mattered was the split:
