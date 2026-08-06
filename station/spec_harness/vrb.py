@@ -113,7 +113,21 @@ def _v_look():
         for pool in pools:
             if pool and len(pairs) < 20:
                 pairs.append(pool.pop(0))
-    said = [(k, t, IA.read_text(k, t)) for k, t in pairs]
+    # `look_text`, NOT `read_text`, AND THE DISTINCTION IS THE ROW'S OWN. This
+    # asked `read_text` and reported 16 of 20 silent -- which was true of that
+    # function and not of the question. `read_text` answers "what does this
+    # board SAY": arrivals, a broadcast, a menu, a closure's stencil. Only a
+    # readable has one, so a drawer, a seat and a market stall were correctly
+    # blank. VRB-01 asks what you see when you EXAMINE anything, which is
+    # `interact.look_text` -- a different question with a different answer for
+    # all 99 tokens.
+    #
+    # Pointing a check at the right function is not the same as weakening it,
+    # and the test of that is whether it can still fail: it can, and does, on
+    # any token `look_text` cannot build a place clause for. `interact.py`'s
+    # own selftest now asserts the same rule over all 370 declared
+    # interactables rather than this row's sample of twenty.
+    said = [(k, t, IA.look_text(k, t)) for k, t in pairs]
     blank = [(k, t) for k, t, s in said if not s.strip()]
     strings = [s for _k, _t, s in said if s.strip()]
     claims = [
