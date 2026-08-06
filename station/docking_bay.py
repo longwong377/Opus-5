@@ -158,6 +158,7 @@ LAMPS_PER_BAY_GIRDER = 3
 GIRDER_CHORD_M = 0.42        # chord section, square
 GIRDER_BAYS = 10             # web panels across the 42 m span
 GIRDER_WEB_M = 0.24          # diagonal section
+GIRDER_SOFFIT_M = 0.26       # the bottom flange's step below the web
 RUNNER_PITCH_M = 8.0         # the longitudinal lattice, x pitch
 
 # Handling equipment on the stepped ledges. The second authority-1 frame is
@@ -248,81 +249,170 @@ class _M:
         return self.v, self.t, self.g
 
 
+def _web_member(m, a, b, z_face, thick, w=GIRDER_WEB_M / 2.0):
+    """One flat web member between two points in the plane of a truss.
+
+    A thin prism, not a tube: a rolled angle is what this is, and a prism is 12
+    triangles against a tube's 20 with the count multiplied by 13 girders x 24
+    bays.
+    """
+    dx, dy = b[0] - a[0], b[1] - a[1]
+    ln = math.hypot(dx, dy) or 1.0
+    nx, ny = -dy / ln * w, dx / ln * w
+    loop = [(a[0] + nx, a[1] + ny, z_face), (b[0] + nx, b[1] + ny, z_face),
+            (b[0] - nx, b[1] - ny, z_face), (a[0] - nx, a[1] - ny, z_face)]
+    if _kit.shoelace([(p[0], p[1]) for p in loop]) > 0.0:
+        loop = loop[::-1]
+    pv, pt = _kit.plate_solid(loop, thick)
+    i0 = len(m.v)
+    m.v.extend(pv)
+    m.t.extend([(x + i0, y + i0, zz + i0) for x, y, zz in pt])
+    m.g.extend(["bay_girder"] * len(pt))
+
+
 def girder(m, z, hw, H):
-    """One transverse truss: two chords and a Warren web between them.
+    """One transverse truss: two chords, an X-braced web, and a stepped soffit.
 
-    See the block above GIRDER_CHORD_M. The web members are boxes rather than
-    tubes because a rolled angle is what this is and because a box is 12
-    triangles against a tube's 20, and the count here is multiplied by 13
-    girders x 24 bays.
+    See the block above GIRDER_CHORD_M for why the girder is a lattice at all.
 
+    THE WEB IS X-BRACED AND WAS A SINGLE WARREN RUN -- session 4r, and it is a
+    correction from the drawing rather than a preference. `scratchpad/db/
+    ref-truss.png` is `reference/03-sector-blue/dock.webp`'s overhead band at
+    2.2x: the deep girder crossing the top of that frame carries TWO diagonals
+    per panel, crossing, with a post at every panel point, and the light behind
+    it shows through the triangles either side of each crossing. A single
+    alternating diagonal reads as a zig-zag; an X reads as a truss, and it is
+    the difference between the module's own docstring ("a lattice gantry") and
+    what the drawing shows. INV-641.
+    #
     THE DIAGONALS OVERLAP THE CHORDS rather than butting them -- 0.06 m of
     interference at each end -- for the reason `dressing._perim_band` records:
     butted, the diagonal's cut face is coplanar with the chord's flange and
     every one of those edges carries four faces. This module's own gate
     reports an unexplained non-manifold edge as "two pieces of this module
-    interpenetrating", and it would be right.
+    interpenetrating", and it would be right. The two members of one X are set
+    on OPPOSITE FACES of the truss for the same reason and for a second one:
+    that is how an X-braced panel is actually built, one member lapping past
+    the other rather than both cut round a splice plate.
     """
     c = GIRDER_CHORD_M
     y0, y1 = H - GIRDER_D_M, H
+    zf, zb = z - GIRDER_W_M / 2.0, z + GIRDER_W_M / 2.0
     for ylo, yhi in ((y0, y0 + c), (y1 - c, y1)):
-        m.box(-hw, hw, ylo, yhi, z - GIRDER_W_M / 2.0, z + GIRDER_W_M / 2.0,
-              "bay_girder")
+        m.box(-hw, hw, ylo, yhi, zf, zb, "bay_girder")
+    # THE STEPPED SOFFIT. dock.webp's girder does not present a flat underside:
+    # the bottom flange is wider than the web and stands proud of it, so from
+    # the deck the girder reads as two steps rather than one slab. 12 triangles
+    # for the whole span, and it is the profile a player sees most of.
+    m.box(-hw, hw, y0 - GIRDER_SOFFIT_M, y0 + 0.02,
+          zf - GIRDER_SOFFIT_M * 0.55, zb + GIRDER_SOFFIT_M * 0.55,
+          "bay_girder")
     for sx in (-1, 1):                              # end posts
         m.box(sx * hw - (0.0 if sx > 0 else -c), sx * hw + (0.0 if sx < 0 else c),
-              y0, y1, z - GIRDER_W_M / 2.0 + 0.02,
-              z + GIRDER_W_M / 2.0 - 0.02, "bay_girder")
+              y0, y1, zf + 0.02, zb - 0.02, "bay_girder")
     span = 2.0 * hw / GIRDER_BAYS
-    w = GIRDER_WEB_M / 2.0
+    lo, hi = y0 + c - 0.06, y1 - c + 0.06
     for i in range(GIRDER_BAYS):
         x0 = -hw + i * span
         x1 = x0 + span
-        up = (i % 2 == 0)
-        a = (x0, y0 + c - 0.06) if up else (x0, y1 - c + 0.06)
-        b = (x1, y1 - c + 0.06) if up else (x1, y0 + c - 0.06)
-        # a diagonal, drawn as a thin prism between two points in the plane of
-        # the truss and extruded across its width
-        dx, dy = b[0] - a[0], b[1] - a[1]
-        ln = math.hypot(dx, dy) or 1.0
-        nx, ny = -dy / ln * w, dx / ln * w
-        loop = [(a[0] + nx, a[1] + ny, z - GIRDER_W_M / 2.0 + 0.06),
-                (b[0] + nx, b[1] + ny, z - GIRDER_W_M / 2.0 + 0.06),
-                (b[0] - nx, b[1] - ny, z - GIRDER_W_M / 2.0 + 0.06),
-                (a[0] - nx, a[1] - ny, z - GIRDER_W_M / 2.0 + 0.06)]
-        if _kit.shoelace([(p[0], p[1]) for p in loop]) > 0.0:
-            loop = loop[::-1]
-        pv, pt = _kit.plate_solid(loop, GIRDER_W_M - 0.12)
-        i0 = len(m.v)
-        m.v.extend(pv)
-        m.t.extend([(x + i0, y + i0, zz + i0) for x, y, zz in pt])
-        m.g.extend(["bay_girder"] * len(pt))
+        _web_member(m, (x0, lo), (x1, hi), zf + 0.06, GIRDER_W_M * 0.36)
+        _web_member(m, (x0, hi), (x1, lo), zb - 0.06 - GIRDER_W_M * 0.36,
+                    GIRDER_W_M * 0.36)
+    for i in range(1, GIRDER_BAYS):                 # a post at every panel point
+        x = -hw + i * span
+        m.box(x - GIRDER_WEB_M * 0.6, x + GIRDER_WEB_M * 0.6, lo, hi,
+              zf + 0.10, zb - 0.10, "bay_girder")
+
+
+# THE FITTING IS A SPUN DOME AND IT WAS TWO BOXES -- session 4r.
+#
+# `docs/craft-4r-dockingbay-before-half.png` at the rubric's HALF distance
+# (13.9 m) shows nine of these as flat white rectangles clipped to 1.0 with a
+# glow halo round them: the brightest objects in the frame and the ones that
+# fall apart first, which is `docs/AAA-STANDARD.md` C1 verbatim -- "a box
+# primitive standing in for a named object".
+#
+# Read off `reference/03-sector-blue/dock.webp`, magnified 2.2x over the
+# overhead band (scratchpad/db/ref-truss.png): every pendant in that frame is a
+# SPUN DOME -- a bowl hanging mouth-down from a short stem, its rim catching the
+# light as a bright arc and a compact bright lens inside the mouth. Four of the
+# five visible read that way and the fifth is the one throwing a visible shaft.
+# Nothing in the frame is a rectangle.
+#
+# So the fitting is now a revolved solid: stem, yoke, spun shade, a rolled rim
+# band at its mouth, and a CONVEX lens dome set inside it. The lens is convex
+# and not flat for the reason the rim is a band and not an edge -- both are
+# what turns a light source into an object with a highlight on it at 13.9 m.
+LAMP_SEG = 8                 # facets round the shade: 45 deg, 0.57 m chord
+LAMP_RISE_F = 0.72           # shade depth as a fraction of its radius
+LAMP_LENS_F = 0.78           # lens radius as a fraction of the shade's
+LAMP_LENS_RISE_F = 0.34      # lens bulge, as a fraction of the LENS radius
+
+# THE UPLIGHT APERTURE, and the honest state of it in one place.
+#
+# `tools/export_scene.py`'s session-4m note is the brief this rework was given:
+# "docking_bay.floodlight hangs the lamps LAMP_DROP_M = 2.6 m BELOW the girder
+# soffit and aims them straight down through a hood that is closed on top, so
+# the red-oxide truss -- 84% of the module's triangles, and the thing its own
+# docstring calls 'the first thing that reads' -- is lit by nothing but the flat
+# ambient." Measured in the before frames: the truss band reads R/B **0.680**
+# against dock.webp's own girder at **3.191**, i.e. the one saturated colour
+# the reference has is not in our frame at all.
+#
+# The physical fix is what an industrial high bay actually has -- an OPEN CROWN,
+# so a share of the lamp's flux washes the structure the fitting hangs from. The
+# crown ring is built here and is real geometry either way.
+#
+# WHAT IS NOT HERE, and why, stated rather than left to be discovered: making
+# that ring CAST needs one `FIXTURE_LIGHTING` row and one `materials.py` bind,
+# and both files belong to other agents this session. Worse, `export_scene`'s
+# own self-test pins `len(_lamps("docking_bays")) == 39`, so ANY new lit group
+# in this module turns that assertion red -- a module cannot add a light to its
+# own room without a change in a file it does not own. The diff, and the A/B
+# measured with it applied in a worktree, are in
+# `scratchpad/PATCHES-4r-dockingbay.md`. Flipping this one constant is this
+# module's whole share of that change.
+UPLIGHT_GROUP = "bay_girder"     # -> "bay_uplight" when the patch lands
+UPLIGHT_R_F = 0.42               # crown aperture radius / shade radius
 
 
 def floodlight(m, cx, y_top, z, r=LAMP_R_M):
-    """A pendant flood: a yoke, a hood, and the lens the light hangs on.
+    """A pendant flood: a stem, a yoke, a spun dome shade, a rolled rim, a
+    convex lens, and the open crown that washes the steel above it.
 
-    THE LENS KEEPS THE `bay_lamp` NAME AND THE HOUSING MUST NOT. `bay_lamp` is
-    a `tools/export_scene.FIXTURE_LIGHTING` key and `fixture_lights` hangs one
-    lamp per connected tagged BODY, so tagging the hood as well would double
-    the bay's 39 measured floods without anyone asking for it. The housing is
-    `bay_girder` -- the same red-orange steel it hangs from, which is what the
-    frame shows.
+    THE LENS KEEPS THE `bay_lamp` NAME AND NOTHING ELSE MAY HAVE IT. `bay_lamp`
+    is a `tools/export_scene.FIXTURE_LIGHTING` key and `fixture_lights` hangs
+    one lamp per connected tagged BODY, so tagging the shade as well would
+    double the bay's 39 measured floods without anyone asking for it. The
+    housing is `bay_girder` -- the same red-orange steel it hangs from, which is
+    what the frame shows.
     """
     hy = y_top - LAMP_DROP_M
     sv, st, ss = [], [], []
     _dress._tube(sv, st, ss, "bay_girder", (cx, y_top, z),
-                 (cx, hy + r * 0.9, z), 0.07, _dress.SEG_BOLT)
+                 (cx, hy + r * LAMP_RISE_F, z), 0.07, _dress.SEG_BOLT)
     for s in (-1, 1):                                     # the yoke
         _dress._tube(sv, st, ss, "bay_girder",
-                     (cx + s * r * 0.62, hy + r * 0.95, z),
-                     (cx + s * r * 0.62, hy + r * 0.25, z), 0.05,
+                     (cx + s * r * 0.62, hy + r * LAMP_RISE_F * 0.92, z),
+                     (cx + s * r * 0.62, hy + r * 0.16, z), 0.05,
                      _dress.SEG_BOLT)
+    # the shade: a spun bowl, mouth down. `_dome(up=True)` closes itself with a
+    # flat base cap, so the solid is watertight and the cap is the reflector
+    # face the lens hangs under.
+    _dress._dome(sv, st, ss, "bay_girder", cx, z, hy + 0.10, r,
+                 r * LAMP_RISE_F, seg=LAMP_SEG, rings=3)
+    # the rolled rim at the mouth -- the bright arc the reference reads by
+    _dress._cyl(sv, st, ss, "bay_girder", cx, z, hy + 0.02, hy + 0.17,
+                r * 1.04, seg=LAMP_SEG)
+    # the crown aperture: an open collar on top of the shade. See UPLIGHT_GROUP.
+    _dress._cyl(sv, st, ss, UPLIGHT_GROUP, cx, z,
+                hy + r * LAMP_RISE_F * 0.86, hy + r * LAMP_RISE_F + 0.12,
+                r * UPLIGHT_R_F, seg=LAMP_SEG)
+    # the lens: convex, hanging in the shade's mouth
+    _dress._dome(sv, st, ss, "bay_lamp", cx, z, hy + 0.14, r * LAMP_LENS_F,
+                 r * LAMP_LENS_F * LAMP_LENS_RISE_F, seg=LAMP_SEG, rings=3,
+                 up=False)
     m.merge_spans(sv, st, ss)
-    # the hood: a shallow shell round the lens, open downward
-    m.box(cx - r, cx + r, hy + r * 0.18, hy + r * 0.95, z - r, z + r,
-          "bay_girder")
-    m.box(cx - r * 0.84, cx + r * 0.84, hy, hy + r * 0.22,
-          z - r * 0.84, z + r * 0.84, "bay_lamp")
 
 
 # THE PIER, THE STACKS AND THE LANE, and all three are in the defining frame.
@@ -580,6 +670,72 @@ def _disc(m, cx, cz, r, y, group, seg=28):
     m.g.extend([group] * len(pt))
 
 
+# THE CEILING IS THE RIBBED INNER WALL OF A ROTATING HULL AND IT WAS A TILED
+# PANEL GRID -- session 4r.
+#
+# Both authority-1 frames say so and the module's own docstring copies one of
+# them: "the ceiling is the ribbed inner wall of the rotating drum, curving"
+# (`reference/00-INDEX.md` on `Minbari Flyer 969 in docking bay 17.webp`, whose
+# whole upper-left quarter IS that surface -- deep parallel ribs following the
+# curve). What was built was the arc plus `rooms.articulate`'s wall grid at
+# scale 5.5, which renders as a flat field of tiles: `docs/craft-4r-dockingbay-
+# before-half.png`'s top third, and the largest single surface in any frame
+# taken looking up in this room.
+#
+# THE RIBS RUN ALONG THE BAY, and that is structure rather than taste. The bay
+# is cut into a hull spun about the station's axis; the axis is the bay's local
+# +Z; the framing you see on the inside of a spun shell between its ring frames
+# is the LONGITUDINAL stringer run. So they run in Z, which also gives the 140 m
+# tunnel the one thing `docs/AAA-STANDARD.md` C4 asks for by name -- "somewhere
+# for the eye to travel".
+#
+# THE PITCH IS THE GIRDER'S OWN PANEL POINT, not a number. `GIRDER_BAYS` cuts
+# the 42 m span into ten web panels, and a transverse truss lands on the
+# longitudinal framing at its panel points -- so a stringer at every panel point
+# is where the two systems actually meet, it registers with the truss above it
+# by construction, and it cannot drift when the truss is retuned. 4.2 m. INV-642.
+CEIL_RIB_D_M = 0.55          # how far a stringer stands below the shell
+CEIL_RIB_W_M = 0.46          # its web
+CEIL_RIB_FLANGE_M = 0.86     # the flange on its foot, which is what catches light
+
+# THE DEVICE INSIDE THE RED DISC, AND IT WAS A SECOND CIRCLE.
+#
+# `reference/00-INDEX.md`'s second pass over `dock.webp` corrects its own first
+# pass in one sentence: "The disc's device is a **white rounded-rectangle
+# outline containing three white bars**, not an oval emblem." This module built
+# `_disc(..., DECK_DISC_D_M * 0.22, ..., "bay_emblem")` -- a plain white circle
+# 4.66 m across -- because the FIRST reading said "oval emblem", and the
+# correction landed in the index and never reached the geometry. judge-4e's own
+# finding on this room says "bay_emblem exists at 108 triangles and ... is not
+# legible in frame"; a filled disc inside a filled disc has nothing to be
+# legible WITH.
+#
+# Sized against the disc it sits in rather than chosen: the index reads the
+# device as occupying roughly the middle half of the 156 px disc, so the outline
+# is 0.52 of DECK_DISC_D_M across and 0.62 as tall as it is wide -- a landscape
+# rounded rectangle, which is what the frame shows. INV-643.
+EMBLEM_W_F = 0.52            # device width / disc diameter
+EMBLEM_H_F = 0.62            # device height / device width
+EMBLEM_STROKE_M = 0.42       # the outline's pen
+EMBLEM_BARS = 3              # "containing three white bars"
+
+# THE SIGNAGE PYLON. `reference/00-INDEX.md`, same pass, same frame: "A signage
+# pylon stands at the deck edge carrying four rectangular plaques in a
+# horizontal row at head height, with a green-lit display panel on its lower
+# flank. A dock worker beside it gives the height. Signage on this deck comes in
+# FOURS." Authority 1, and none of it was built -- the bay's whole deck carried
+# twenty bollards and nothing a person would read.
+#
+# The height is the one number the frame gives: a dock worker beside it, so the
+# pylon's head is a little above DOCK_WORKER_H_M. Everything else is
+# proportioned off that. INV-644.
+PYLON_H_M = 2.35
+PYLON_W_M = 1.95
+PYLON_D_M = 0.42
+PYLON_PLAQUES = 4            # "signage on this deck comes in fours"
+PYLON_PLAQUE_Y_M = 1.66      # head height, which is where the frame puts them
+PYLON_PITCH_M = 46.0         # along the bay
+
 CEIL_SEGS = 16
 CEIL_SAG_M = BAY_W_M * 0.10
 
@@ -591,6 +747,124 @@ def ceil_y(t):
     hull, so its roof is a section of that hull and curves across the width.
     """
     return BAY_H_M + CEIL_SAG_M * (1.0 - (2.0 * t - 1.0) ** 2)
+
+
+def _pad(m, loop, group, y0, y1):
+    """A closed painted pad on a horizontal surface. See `_disc`."""
+    pv, pt = _kit.deck_pad(loop, y0, y1)
+    i = len(m.v)
+    m.v.extend(pv)
+    m.t.extend([(a + i, b + i, c + i) for a, b, c in pt])
+    m.g.extend([group] * len(pt))
+
+
+def deck_device(m, cx, cz, d_disc, y, group="bay_emblem"):
+    """The white rounded-rectangle outline and its three bars.
+
+    See the block above EMBLEM_W_F. Drawn as painted PADS rather than as one
+    filled shape, because an outline is what the frame shows and because a
+    filled shape inside a filled disc is two circles.
+
+    THE CORNERS ARE CUT rather than radiused: four 45-degree pads close the gaps
+    the four straight bars leave, which is what makes it read as ROUNDED at the
+    grazing angles a 140 m bay is mostly seen at, for 48 triangles against the
+    hundreds an arc would cost at this size.
+    """
+    w = d_disc * EMBLEM_W_F
+    h = w * EMBLEM_H_F
+    s = EMBLEM_STROKE_M
+    c = s * 1.35                                  # the corner cut's leg
+    x0, x1 = cx - w / 2.0, cx + w / 2.0
+    z0, z1 = cz - h / 2.0, cz + h / 2.0
+    for a, b, p, q in ((x0 + c, x1 - c, z0, z0 + s),          # the outline
+                       (x0 + c, x1 - c, z1 - s, z1),
+                       (x0, x0 + s, z0 + c, z1 - c),
+                       (x1 - s, x1, z0 + c, z1 - c)):
+        _pad(m, [(a, p), (b, p), (b, q), (a, q)], group, y - DECK_PAINT_M, y)
+    for sx, sz in ((1, 1), (1, -1), (-1, 1), (-1, -1)):       # the cut corners
+        ax = cx + sx * (w / 2.0 - c)
+        az = cz + sz * (h / 2.0 - c)
+        loop = [(ax + sx * c, az + sz * (c - s)), (ax + sx * c, az + sz * c),
+                (ax + sx * (c - s), az + sz * c), (ax, az)]
+        if (_kit.shoelace(loop) > 0.0) != (sx * sz > 0):
+            loop = loop[::-1]
+        _pad(m, loop, group, y - DECK_PAINT_M, y)
+    # the three bars, inside the outline
+    bw = w - 2.0 * (s + c * 0.4)
+    for k in range(EMBLEM_BARS):
+        zc = z0 + h * (k + 1) / (EMBLEM_BARS + 1)
+        _pad(m, [(cx - bw / 2.0, zc - s * 0.42), (cx + bw / 2.0, zc - s * 0.42),
+                 (cx + bw / 2.0, zc + s * 0.42), (cx - bw / 2.0, zc + s * 0.42)],
+             group, y - DECK_PAINT_M, y)
+
+
+def signage_pylon(m, cx, cz, facing=-1.0):
+    """One deck-edge signage pylon: a plated stand, four plaques in a row at
+    head height, and a lit display panel on its lower flank.
+
+    See the block above PYLON_H_M. `facing` is +/-1 and is which way along x the
+    read face looks, so a pylon on either lane edge presents its plaques to the
+    lane rather than to the wall behind it.
+
+    THE GROUPS ARE ALL EXISTING BINDS AND THAT IS DELIBERATE. `bay_panel` is the
+    bay's own plating, which `materials.py`'s note on `prop_bay_control_booth`
+    already argues is what a small structure standing on this deck is clad in;
+    `prop_level_plaque` is the project's matte sign plaque; `dress_screen` is
+    its lit display panel. A new group name here would be a new material bind in
+    a file this session does not own, and `export_scene.build()` RAISES on an
+    unbound group -- so it would have taken every other agent's renders down.
+    """
+    # THE PYLON'S WIDTH RUNS ALONG THE BAY and its depth across it: the lane it
+    # serves runs in z, so the face a walking crew reads is the one whose normal
+    # is +/-x. Getting that round the wrong way puts four plaques edge-on to
+    # everyone who could read them.
+    hd, hw = PYLON_D_M / 2.0, PYLON_W_M / 2.0
+    m.box(cx - hd, cx + hd, 0.14, PYLON_H_M, cz - hw, cz + hw, "bay_panel")
+    m.box(cx - hd - 0.10, cx + hd + 0.10, 0.0, 0.16,
+          cz - hw - 0.10, cz + hw + 0.10, "bay_panel")          # the base pad
+    m.box(cx - hd - 0.06, cx + hd + 0.06, PYLON_H_M - 0.13, PYLON_H_M + 0.05,
+          cz - hw - 0.06, cz + hw + 0.06, "bay_panel")          # the capping
+    x0 = cx + facing * hd
+    x1 = x0 + facing * 0.05
+    pw = PYLON_W_M / PYLON_PLAQUES
+    for k in range(PYLON_PLAQUES):
+        zc = cz - hw + (k + 0.5) * pw
+        m.box(min(x0, x1), max(x0, x1),
+              PYLON_PLAQUE_Y_M - 0.21, PYLON_PLAQUE_Y_M + 0.21,
+              zc - pw * 0.42, zc + pw * 0.42, "prop_level_plaque")
+    m.box(min(x0, x1), max(x0, x1), 0.74, 1.20,
+          cz - hw * 0.62, cz + hw * 0.62, "dress_screen")
+
+
+def ceiling_ribs(m, hw, L):
+    """The hull's longitudinal stringers on the bay's ceiling arc.
+
+    See the block above CEIL_RIB_D_M. One box per web and one per flange, so a
+    stringer is 24 triangles for a 140 m run -- `ceil_y` depends on x only, so a
+    rib at constant x is straight and the arc costs nothing.
+
+    THE OUTERMOST PANEL POINTS ARE SKIPPED. At i = 0 and i = GIRDER_BAYS the
+    stringer would land on the bay's own side wall, where the ceiling arc has
+    already met the wall head and there is no soffit for it to stand on.
+
+    TAGGED `bay_ceiling` AND NOT `bay_girder`, which is a fidelity call and not
+    a convenience. `shell_rib_oxide` is the red-oxide structural steel measured
+    off dock.webp's gantry, and it would have made the whole top of the frame
+    warm at a stroke -- but the ribbed ceiling in `Minbari Flyer 969 in docking
+    bay 17.webp` is grey-brown, the same register as the shell it is part of,
+    not the gantry's orange. A stringer IS the shell. It reads by its own form
+    and its own shading, which is the point of building it; if a later pass
+    finds a frame showing the ceiling framing painted, it is one word.
+    """
+    span = 2.0 * hw / GIRDER_BAYS
+    for i in range(1, GIRDER_BAYS):
+        x = -hw + i * span
+        y = ceil_y((x + hw) / BAY_W_M)
+        m.box(x - CEIL_RIB_W_M / 2.0, x + CEIL_RIB_W_M / 2.0,
+              y - CEIL_RIB_D_M, y, 0.0, L, "bay_ceiling")
+        m.box(x - CEIL_RIB_FLANGE_M / 2.0, x + CEIL_RIB_FLANGE_M / 2.0,
+              y - CEIL_RIB_D_M, y - CEIL_RIB_D_M + 0.16, 0.0, L,
+              "bay_ceiling")
 
 
 def clear_half_m():
@@ -693,7 +967,7 @@ def docking_bay(index=0, schema=None, profile=None):
     # 0.30 x 21 m ran 0.8 m up the first tread.
     disc_x = -clear_half_m() * 0.30
     _disc(m, disc_x, L * 0.42, DECK_DISC_D_M / 2.0, 0.02, "bay_disc")
-    _disc(m, disc_x, L * 0.42, DECK_DISC_D_M * 0.22, 0.03, "bay_emblem")
+    deck_device(m, disc_x, L * 0.42, DECK_DISC_D_M, 0.03)
 
     # --- chevron nosing on every tread --------------------------------------
     # A band of paint on the nosing, laid as a closed pad for the same reason
@@ -734,6 +1008,14 @@ def docking_bay(index=0, schema=None, profile=None):
               H - GIRDER_CHORD_M - 0.02, 0.0, L, "bay_girder")
 
     # --- what stands on the ledges, and what edges the lane -----------------
+    ceiling_ribs(m, hw, L)
+    # THE PYLONS ARE ON THE WALKING SIDE, which is the side the deck disc is on
+    # and the side dock.webp puts its own file of workers and its own pylon.
+    # Set back 1.1 m from the lane edge so a body walking the lane clears them.
+    for i in range(max(1, int((L - 24.0) / PYLON_PITCH_M))):
+        signage_pylon(m, -clear_half_m() + 1.1,
+                      18.0 + (i + 0.5) * (L - 30.0)
+                      / max(1, int((L - 24.0) / PYLON_PITCH_M)), facing=1.0)
     ledge_kit(m, hw, L)
     mouth_piers(m, hw, L)
     container_stacks(m, hw, L)
