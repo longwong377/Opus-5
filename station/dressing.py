@@ -1010,37 +1010,54 @@ def _dome(v, t, g, name, cx, cz, y_base, r, rise, seg=SEG_BODY, rings=3,
     _tag(g, name, t0, len(t))
 
 
+# The pre-4y naming, kept ONLY as the seam `walkable.py --reach --control`
+# perturbs. See `machine()`.
+PER_OBJECT_PARTS = True
+
+
+def _prefix_of(name):
+    """The pre-4y part prefix: one vocabulary per class, shared by the room."""
+    return ("prop_" if name.startswith("prop_")
+            else "dress_" if name.startswith("dress_") else "fix_")
+
+
 class _Parts:
-    """The nine surfaces a machine is built out of, for one parent prefix.
+    """The nine surfaces a machine is built out of, for ONE OBJECT.
 
-    ONE GROUP PER PREFIX HOLDS EVERY MACHINE'S FRAME IN A ROOM, and that is
-    what stops a pressed object being the whole object: `interact.gd` finds an
-    object's meshes by name, and `prop_mp_plant_frame` does not begin with
-    `prop_bay_door_`. Measured in 4w, a press moves **872 of 12,288 triangles
-    across blue/0/0's sixteen interactables -- 7.1%**; a bay door is 12 of 536.
+    Per object, since session 4y -- `prop_bay_door_mp_plant_frame`, not
+    `prop_mp_plant_frame`. It took three sessions and the reason each one gave
+    for not doing it turned out to be wrong in a different way, which is worth
+    keeping:
 
-    THE STATED REASON FOR IT IS STALE, and session 4x measured that. This
-    docstring used to say the vocabulary was fixed because "every extra
-    distinct group name is another draw call in `budget.py`'s `draw calls,
-    whole frame`, which is ALREADY over at 1,303 of 1,041". That gate now reads
-    **423 of 1,041, 40.6%, passing** -- culling takes the interior to 191 in
-    frustum -- and naming parts per object costs **+29 groups** on blue/0/0,
+    4w measured the cost of NOT doing it. `interact.gd` finds an object's
+    meshes by name -- exact, or beginning with the group's name and an
+    underscore -- and one group per PREFIX holds every machine's frame in the
+    room, so `prop_mp_plant_frame` does not begin with `prop_bay_door_`. A
+    press moved **872 of blue/0/0's 12,288 interactable triangles -- 7.1%**; a
+    bay door was 12 of 536. Press it and 98% of it stood still.
+
+    4x refused it on DRAW CALLS, quoting this docstring's own claim that "every
+    extra distinct group name is another draw call in `budget.py`'s `draw
+    calls, whole frame`, which is ALREADY over at 1,303 of 1,041" -- then
+    measured the gate at **423 of 1,041, 40.6%, passing**, with culling taking
+    the interior to 191 in frustum. The comment was a cache of a measurement
+    and it had gone stale. Per-object naming costs **+29 groups** on blue/0/0,
     taking primitives to 411 of 600. Affordable.
 
-    WHAT BLOCKS IT IS MATERIAL RESOLUTION, NOT DRAW CALLS. `interact.gd`'s test
-    requires the part to literally begin with its object's group name, so the
-    part's name necessarily CONTAINS the object's -- and `materials.resolve`
-    takes the longest matching substring. `dress_customs_desk_mp_plant_frame`
-    resolves on `customs_desk` (12) over `plant_frame` (11): a desk's frame
-    would take the desk's material. Renaming cannot fix it, because the
-    containment is what `interact.gd` needs.
+    4x then refused it on MATERIAL RESOLUTION, and that objection was live:
+    `interact.gd` needs the part's name to contain its object's, and
+    `materials.resolve` took the longest matching substring, so
+    `dress_customs_desk_mp_plant_frame` resolved on `customs_desk` (12) over
+    `plant_frame` (11) -- a desk's frame rendering as the desk. The fix was to
+    make `_mp_` load-bearing: a machine part resolves on the fragment AFTER the
+    marker, which is what this module's header has always said the marker
+    means. Done in 4y, in `materials.resolve` and
+    `render_shot.gd::_material_for` together, with `materials.py --agree`
+    holding them to one rule.
 
-    The fix is to make `_mp_` load-bearing in resolution -- a machine part
-    resolves on the fragment AFTER the marker -- and `resolve`'s own docstring
-    says why that is its own increment: the rule is duplicated in
-    `render_shot.gd::_material_for` "on purpose: if this function and the
-    engine disagreed about which material a group got, every render would be
-    judging something other than what ships". Three implementations, one rule.
+    So the naming needs NO runtime change at all. `interact.gd`'s existing
+    `begins_with(group + "_")` matches a part named after its object, and the
+    thing that had to move was the resolver.
     """
 
     def __init__(self, prefix):
@@ -2414,9 +2431,19 @@ def machine(v, t, g, kind, name, lo, hi, seed):
     if build is None:
         raise ValueError(f"{name}: no machine kind {kind!r}; have "
                          f"{sorted(MACHINES)}")
-    prefix = ("prop_" if name.startswith("prop_")
-              else "dress_" if name.startswith("dress_") else "fix_")
-    P = _Parts(prefix)
+    # THE PART CARRIES ITS OWN OBJECT'S NAME, which is what lets `interact.gd`
+    # find it: that file tests `begins_with(group + "_")`, and
+    # `prop_bay_door_mp_plant_frame` passes where `prop_mp_plant_frame` never
+    # could. `budget.klass_of` splits its report on the leading
+    # `prop_`/`fix_`/`dress_` token and `name` starts with one, so a machine
+    # part of a fixture is still counted as a fixture.
+    #
+    # `PER_OBJECT_PARTS` is the seam the negative control runs through, not an
+    # option: turning it off restores the pre-4y naming, in which one group per
+    # PREFIX held every machine's frame in the room, and
+    # `walkable.py --reach --control` asserts the reach collapses when it does.
+    # A gate whose control cannot be run is a gate nobody has checked.
+    P = _Parts(name + "_" if PER_OBJECT_PARTS else _prefix_of(name))
     t0 = len(t)
     parts = []
     # THE BUILDERS WORK IN A BOX INSET IN PLAN, so that the things which are
@@ -2765,7 +2792,17 @@ def _selftest():
     # matching fragment. A long object name is exactly how the part's own
     # fragment would lose, so the check has to see the names the station
     # actually emits rather than `fix_`/`prop_`.
-    for pre in ("fix_", "prop_", "dress_"):
+    # AGAINST REAL OBJECT NAMES, not the three prefixes. A part is named after
+    # the object it belongs to now, so the string a material resolves from
+    # contains that object's name -- and an object called `customs_desk` is a
+    # longer fragment than `plant_frame`. That is precisely what the check
+    # below exists to catch, so it has to see the names the station emits.
+    import rooms as _R2                                          # noqa: PLC0415
+    seen_names = {pre for pre in ("fix_", "prop_", "dress_")}
+    for _tok in sorted(_R2.PROP_KIND):
+        for pre in ("fix_", "prop_", "dress_"):
+            seen_names.add(pre + _tok + "_")
+    for pre in sorted(seen_names):
         part_names.update(_Parts(pre).all())
     unres = sorted(g_ for g_ in part_names
                    if _M.resolve_any(g_, "interior") is None)
@@ -2779,20 +2816,26 @@ def _selftest():
     # `materials.resolve` takes the LONGEST match, so the screen still resolves
     # to a screen. An incidental substring is now unavoidable and harmless; a
     # part resolving to its OBJECT'S material is neither.
+    # ASKED OF THE REAL RESOLVER, not of a copy of its rule. This used to walk
+    # `_M.MATERIALS` itself and take the longest fragment appearing anywhere in
+    # the name -- which was the resolver's rule until session 4y taught it that
+    # `_mp_` marks a machine part, and a check carrying its own copy of a rule
+    # is a check that tests the copy.
     ambiguous = []
     for g_ in sorted(part_names):
-        hits = set()
-        for m in _M.MATERIALS:
-            if "interior" not in m.scenes:
-                continue
-            for f in m.binds:
-                if f in g_:
-                    hits.add(f)
-        if not hits:
+        m_ = _M.resolve_any(g_, "interior")
+        if m_ is None:
             continue
         mine = g_.split(MACHINE_MARK, 1)[1] if MACHINE_MARK in g_ else g_
-        won = max(hits, key=len)
-        if won not in mine and mine not in won:
+        # SCORED AGAINST THE PROBE THE RESOLVER USED, which is the part of the
+        # name after the marker. Scanning the whole name reported a false
+        # failure: `dress_customs_desk_mp_prop_locker` resolves correctly on
+        # `prop_locker`, and the material that wins ALSO binds `customs_desk`,
+        # so the longest of its fragments appearing anywhere in the name is the
+        # desk's. The question is which fragment the resolver matched, not
+        # which of the winner's fragments is longest.
+        won = max((f for f in m_.binds if f in mine), key=len, default="")
+        if not won:
             ambiguous.append((g_, f"resolves on {won!r}", f"not {mine!r}"))
     check("every machine part resolves on its OWN fragment",
           not ambiguous, str(ambiguous[:3]))

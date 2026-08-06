@@ -304,12 +304,28 @@ func _load_geometry() -> void:
 		% [total, _shot.get("glb", []).size()])
 
 
+## THE SAME RULE AS `station/materials.py::resolve`, AND IT HAS TO BE. If this
+## and that function disagreed about which material a group got, every render
+## would be judging something other than what ships. `materials.py --agree`
+## compares them on the real group names and fails if they diverge.
+##
+## A MACHINE PART RESOLVES ON WHAT COMES AFTER `_mp_`. Everything before the
+## marker names the OBJECT a part belongs to, and an object's own name must not
+## decide a part's colour -- `dress_customs_desk_mp_plant_frame` resolved on
+## `customs_desk` (12) over `plant_frame` (11), so a desk's frame rendered as
+## the desk. See the note in `materials.resolve`.
+func _probe(mesh_name: String) -> String:
+	var cut := mesh_name.find("_mp_")
+	return mesh_name.substr(cut + 4) if cut >= 0 else mesh_name
+
+
 func _material_for(mesh_name: String) -> Material:
+	var probe := _probe(mesh_name)
 	var best_len := -1
 	var best: Material = fallback_material
 	for key in material_rules:
 		var frag := String(key)
-		if mesh_name.contains(frag) and frag.length() > best_len:
+		if probe.contains(frag) and frag.length() > best_len:
 			best_len = frag.length()
 			best = material_rules[key]
 	return best
@@ -343,9 +359,16 @@ func _apply_materials(root: Node) -> int:
 	return n
 
 
+## THROUGH THE SAME PROBE AS `_material_for`, or this lies in the one direction
+## that matters. `_apply_materials` uses it to decide whether a group landed on
+## the fallback, and a machine part whose OBJECT half happens to contain a rule
+## while its material half contains none would be reported bound while the
+## renderer put it on the fallback -- the silent failure this warning exists to
+## catch, restored by the very check meant to catch it.
 func _has_rule(mesh_name: String) -> bool:
+	var probe := _probe(mesh_name)
 	for key in material_rules:
-		if mesh_name.contains(String(key)):
+		if probe.contains(String(key)):
 			return true
 	return false
 

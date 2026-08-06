@@ -221,19 +221,25 @@ def interact_rows(verts, tris, groups):
     # everything, then its parts as spans inside it, and `write_obj` gives each
     # triangle to the LAST span covering it -- so the group still carrying the
     # object's own name owns only the leftovers no part claimed. Measured on
-    # blue/0/0: `interact.gd`'s name test grabs **872 of 12,288 declared
-    # triangles, 7.1%**; a bay door is 12 of its 536.
+    # blue/0/0 in 4w: `interact.gd`'s name test grabbed **872 of 12,288 declared
+    # triangles, 7.1%**; a bay door was 12 of its 536.
+    #
+    # **It is 12,288 of 12,288 since 4y** -- `dressing` names a part after its
+    # own object and `materials.resolve` reads the material off the fragment
+    # after `_mp_`. `--reach` measures it, with a control that rebuilds under
+    # the old naming and gets 7.1% back.
     #
     # `span_groups` IS NOT A MEMBERSHIP LIST, and the name says so because the
-    # first version of it was called `parts` and was used as one. Those group
-    # names are shared across every machine in the room -- `dressing` merges
-    # parts by material -- so mapping them back to their enclosing interactable
-    # made each object swallow the room's machinery: 209% of their own spans, a
-    # bay door grabbing 2,888 triangles of a 536-triangle object. `--use`
-    # passed both before and after, which is its own finding.
+    # first version of it was called `parts` and was used as one. Under the old
+    # naming those group names were shared across every machine in the room --
+    # `dressing` merges parts by material -- so mapping them back to their
+    # enclosing interactable made each object swallow the room's machinery:
+    # 209% of their own spans, a bay door grabbing 2,888 triangles of a
+    # 536-triangle object. `--use` passed both before and after, which is its
+    # own finding and is why `--reach` does not press anything.
     #
-    # It is recorded rather than used, so the session that gives `dressing`
-    # per-object part names has the derivation already made.
+    # It stays because it is the cheapest description of what an object is made
+    # of, it is now one-to-one with the object, and it is still read by nothing.
     owner = [None] * len(tris)
     for nm, a2, b2 in groups:
         for i in range(a2, min(b2, len(tris))):
@@ -257,6 +263,112 @@ def interact_rows(verts, tris, groups):
         r["span_groups"] = sorted(inside)
         out.append(r)
     return out
+
+
+def reach_report(tris, groups, rows):
+    """HOW MUCH OF EACH DECLARED OBJECT THE RUNTIME'S NAME TEST ACTUALLY GRABS.
+
+    The measurement session 4w had to make by hand and session 4w's own gate
+    could not make at all. `--use` presses one object and checks the prompt
+    appeared and something moved 4 mm; that passed at **7.1%** of the objects'
+    triangles and passed again at **209%**, so it cannot see either failure.
+    This asks the question directly, offline, over the emitted mesh.
+
+    It models `interact.gd` exactly, including the part that bites: the runtime
+    walks the declared groups in SIDECAR ORDER and takes the FIRST whose name
+    the mesh's begins with, plus an underscore, then `break`s. Two declared
+    objects sharing a prefix therefore collide -- 4w measured `deck_marking` at
+    200% of its own span, reaching into a neighbour whose name starts the same
+    way -- and modelling the loop as "any match" would hide it.
+
+    Returns `(rows, total_span, total_grabbed, stray)`, one row per object:
+    `(group, span_tris, grabbed_tris, stray_tris)`. `stray` is triangles the
+    name test grabs that are NOT inside the object's own span, which is the
+    209% failure; `span - grabbed` is the 7.1% one. Both directions matter and
+    a single percentage would let them cancel.
+    """
+    # The emitted mesh for a group is the triangles it still OWNS after
+    # last-span-wins, which is what the engine sees; the object's span is every
+    # triangle its outer span covers, which is what the object IS.
+    owner = [None] * len(tris)
+    for nm, a, b in groups:
+        for i in range(a, min(b, len(tris))):
+            owner[i] = nm
+    declared = [r["group"] for r in rows]
+    span = {d: set() for d in declared}
+    for nm, a, b in groups:
+        if nm in span:
+            span[nm].update(range(a, min(b, len(tris))))
+
+    def key_for(mesh_name):
+        if mesh_name in span:
+            return mesh_name
+        for d in declared:                      # sidecar order, first wins
+            if mesh_name.startswith(d + "_"):
+                return d
+        return None
+
+    keyed = {}
+    for nm in {o for o in owner if o}:
+        keyed[nm] = key_for(nm)
+    grab = {d: set() for d in declared}
+    for i, o in enumerate(owner):
+        k = keyed.get(o) if o else None
+        if k is not None:
+            grab[k].add(i)
+    out = []
+    for d in declared:
+        out.append((d, len(span[d]), len(grab[d]), len(grab[d] - span[d])))
+    return (out, sum(len(span[d]) for d in declared),
+            sum(len(grab[d]) for d in declared),
+            sum(len(grab[d] - span[d]) for d in declared))
+
+
+def _reach_main(a):
+    """`--reach`: the fraction of each declared object the runtime can grab.
+
+    Builds the deck in memory -- no engine, no Godot binary, seconds rather
+    than minutes -- because the question is about names and spans, both of
+    which the generator knows and the engine only inherits.
+    """
+    import dressing as DR                                       # noqa: PLC0415
+    sector, ring, deck = (a.deck or DEFAULT_PLAY_DECK).split("/")
+    schema, profile = it.load()
+
+    def measure():
+        v, t, g, _s = D.build_deck(schema, profile, sector, int(ring),
+                                   int(deck), z_m=a.z)
+        return reach_report(t, g, interact_rows(v, t, g))
+
+    rows, span, grab, stray = measure()
+    pct = 100.0 * grab / span if span else 0.0
+    print(f"{sector}/{ring}/{deck}: {len(rows)} declared interactables, "
+          f"{span:,} triangles between them")
+    print(f"  the runtime's name test grabs {grab:,} -- {pct:.1f}% -- "
+          f"of which {stray:,} lie outside the object they were grabbed for")
+    for grp, sp, gr, st in sorted(rows, key=lambda r: r[1], reverse=True)[:8]:
+        print(f"      {grp:44s} {gr:6,} of {sp:6,}  "
+              f"{100.0 * gr / sp if sp else 0:5.1f}%"
+              + (f"  +{st:,} stray" if st else ""))
+    ok = span > 0 and grab == span and stray == 0
+    print(f"  {'PASS' if ok else 'FAIL'}  a pressed object is the whole object")
+    if a.control:
+        # THE PRE-4y NAMING, REBUILT. One part group per class, shared by every
+        # machine in the room, so `prop_bay_door_` matches none of them and an
+        # object is its leftovers. If this does NOT collapse, the measurement
+        # above is not measuring what it says.
+        DR.PER_OBJECT_PARTS = False
+        try:
+            _r2, span2, grab2, stray2 = measure()
+        finally:
+            DR.PER_OBJECT_PARTS = True
+        p2 = 100.0 * grab2 / span2 if span2 else 0.0
+        print(f"  control: with the pre-4y shared part names the same test "
+              f"grabs {grab2:,} of {span2:,} -- {p2:.1f}%")
+        if not (p2 < 50.0 < pct):
+            print("  FAIL  the control did not collapse; this gate is inert")
+            ok = False
+    return 0 if ok else 1
 
 
 def strip_group(verts, tris, groups, name):
@@ -1091,7 +1203,20 @@ def main():
                     help="assemble the deck and write godot/play.json, then "
                          "stop. This is what tools/play.sh runs before handing "
                          "the station to a person instead of to a test")
+    ap.add_argument("--reach", action="store_true",
+                    help="how much of each declared interactable the runtime's "
+                         "name test actually grabs. No engine needed")
+    ap.add_argument("--control", action="store_true",
+                    help="with --reach, ALSO build with the pre-4y part naming "
+                         "and show the reach collapse")
     a = ap.parse_args()
+
+    # -- HOW MUCH OF AN OBJECT IS THE OBJECT ---------------------------------
+    # Offline, over the emitted mesh, because this is a question about names
+    # and spans and the engine cannot answer it any better than the generator
+    # can. `--use` proved a press works; this proves it presses the whole thing.
+    if a.reach:
+        return _reach_main(a)
 
     # -- BUILD IT FOR SOMEBODY TO PLAY, and do not run a test -----------------
     # No Godot binary is needed to assemble a deck, and requiring one here would

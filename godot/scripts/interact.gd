@@ -110,23 +110,31 @@ func collect(visual: Node, rows: Array) -> int:
 	# triangle to the LAST span covering it, so the group still carrying the
 	# object's own name owns only the leftovers no part claimed. Measured across
 	# blue/0/0's sixteen declared interactables in session 4w, the name test
-	# below grabs **872 of 12,288 triangles -- 7.1%**. A bay door is 12 of its
-	# 536. Press one and 98% of it stands still.
+	# below grabbed **872 of 12,288 triangles -- 7.1%**. A bay door was 12 of
+	# its 536. You pressed one and 98% of it stood still.
 	#
-	# AND IT CANNOT BE FIXED BY NAME, which is why this still is one. The parts
-	# are called `..._prop_mp_plant_frame` and friends, and those names are
-	# **shared across every machine in the room** -- `dressing` merges parts by
-	# material, so one group holds one room's frames, not one object's. Mapping
-	# them to their enclosing interactable was tried and made it worse: each
-	# object then swallowed the room's machinery, taking the same sixteen
-	# objects to **209% of their own spans**, with a bay door grabbing 2,888
-	# triangles of a 536-triangle object. `--use` passed throughout, both times.
+	# **IT IS 12,288 OF 12,288 SINCE SESSION 4y, with 0 stray, and THIS LOOP DID
+	# NOT CHANGE.** The fix was upstream and in two steps. `dressing` now names a
+	# part after its own object -- `prop_bay_door_mp_plant_frame`, not the
+	# room-shared `prop_mp_plant_frame` -- which the `begins_with(g + "_")` test
+	# below already matched; and `materials.resolve` was taught that a machine
+	# part takes its material from the fragment AFTER `_mp_`, without which
+	# `dress_customs_desk_mp_plant_frame` resolved on `customs_desk` (12
+	# characters) over `plant_frame` (11) and a desk's frame rendered as the
+	# desk. `station/walkable.py --reach` measures it and its control rebuilds
+	# with the old naming to show the 7.1% come back.
 	#
-	# What would fix it is per-object part groups at emission -- `<object>_mp_
-	# plant_frame` rather than `prop_mp_plant_frame` -- which is a change in
-	# `dressing`/`rooms` with a draw-call cost `budget.py` gates at 382/600
-	# primitives. The sidecar carries `span_groups` so that work has the
-	# membership already derived; nothing reads it yet, on purpose.
+	# The route NOT taken, because it was tried and made it worse: mapping the
+	# shared part groups back to their enclosing interactable took the same
+	# sixteen objects to **209% of their own spans**, a bay door grabbing 2,888
+	# triangles of a 536-triangle object. `--use` passed at 7.1% and again at
+	# 209%, which is why `--reach` exists and does not press anything.
+	#
+	# THE ORDER OF `want` IS LOAD-BEARING. The first declared group whose name
+	# this mesh's begins with wins and the loop breaks, so two interactables
+	# sharing a prefix collide -- 4w measured `deck_marking` at 200% of its own
+	# span, reaching into a neighbour. `reach_report` models the break and
+	# reports those as `stray`.
 	var found := {}
 	for m in _meshes(visual):
 		var n := String(m.name)

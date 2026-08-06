@@ -201,6 +201,16 @@ jobs:
       - name: The inhabitants are solid
         run: python3 station/walkable.py --deck blue/0/0 --deck-only --bump
 
+      # AND A PRESSED OBJECT IS THE WHOLE OBJECT. `--use` presses one thing and
+      # checks the prompt appeared and something moved 4 mm; session 4w
+      # recorded that it passed while the runtime's name test grabbed **7.1%**
+      # of the declared objects' triangles, and passed again at **209%**. It
+      # cannot see either failure, so the claim gets its own measurement:
+      # offline, over the emitted mesh, no engine, with a control that rebuilds
+      # under the pre-4y part naming and must collapse.
+      - name: A pressed object is the whole object
+        run: python3 station/walkable.py --reach --deck blue/0/0 --control
+
       # AND THE WHOLE STATION, not six rooms of it. `--sweep` is the only gate
       # here that asks a whole-station question: every deck assembles, every
       # room has a door, and no doorway has a hole in the floor.

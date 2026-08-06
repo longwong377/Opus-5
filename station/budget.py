@@ -1169,8 +1169,25 @@ def main(argv=None):
     #
     # This reads the .glb rather than any Python-side count, because the whole
     # point is that the two disagreed.
+    #
+    # AND IT MUST BE ABLE TO REBUILD WHAT IT READS. Session 4y: this printed
+    # **382 / 600, passing**, immediately after a change that renamed every
+    # machine part on the station -- because the .glb on disk predated the
+    # change and nothing here asked. The number was true about a build that no
+    # longer existed. Same defect as `--gate-frames` measuring a committed PNG,
+    # and CLAUDE.md's general form: a gate that reads a committed artefact must
+    # be able to rebuild it. `walkable._stale` already knew how to ask, keyed on
+    # every station module's mtime; this one now asks before believing the file.
     _glb = os.path.join(ROOT, "station/generated/scene/deck/blue_0_0.glb")
     if os.path.exists(_glb):
+        import walkable as _WK                                # noqa: PLC0415
+        if _WK._stale(_glb):
+            check("deck primitives measured from a current build", 1, 0, "",
+                  f"{os.path.basename(_glb)} is older than the code that "
+                  f"writes it -- rebuild with "
+                  f"`python3 station/walkable.py --build-only` before "
+                  f"believing any primitive count",
+                  when="any station module changing after the last deck build")
         try:
             _prims, _npc = _glb_primitives(_glb)
             check("deck primitives shipped", _prims,

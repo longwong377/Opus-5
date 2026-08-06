@@ -1,6 +1,155 @@
 # Project State
 
-**Last updated:** 2026-08-06 · **Session 4x** — **the draw-call objection was stale; material resolution is the real blocker** · **4w** — **when you press a bay door, 12 of its 536 triangles move** · **4v** — **the distance bar had never run, and path length was never progress** · **4u** — **nobody stands in the doorway any more** · **4t** — **the cast are solid, and one of them is standing in the doorway** · **4s** — **a sidestep that begins on contact is not a sidestep; and the bump gate was reporting an empty sample** · **4r** — **the thing blocking the corridor was a person, and I put them there: 28 m → 238 m** · **4q** — **the free path has a gate, and it found the corridor is blocked 27 m from the spawn** · **4p** — **the deck streams: 657,880 resident triangles become 127,204** · **4o** — **a cell boundary was cutting doors and people in half** · **4n** — **the deck cuts into loadable cells, and the loader's real obstacle is named** · **4m** — **the streaming cell budget met a real deck, and the design survives** · **4l** — **the resident-triangle gate was about the deck; the build also loads 321,664 triangles of people** · **4k** — **every walker on the station was bald, for 188 triangles** · **4j** — **the 21 exposure frames describe the code again, and the verdict did not move** · **4i** — **every curved surface in the project was flat-shaded, and the crease angle is measured off the station** · **4h** — **IT IS PLAYABLE: press Play and you are standing in Blue Sector** · **4g** — **the Babcom terminal is a built device, and it shipped a logged mistake once before the log caught it** · **4f** — a per-token verb override · **4e** — **the naming-mismatch class is CLOSED: built-but-misnamed 26 → 0, resolving 302/357** · **4d** — **the bespoke rooms' interactables were never unbuilt, they were unnamed: 259/357 → 284/357** · **4c** — **the station is INTERACTABLE, the port is on a wall, and the 24-minute suites were one bad cache key** · **4b** — a police force, friction in metres, the plated shell, the fitting-reach fix
+**Last updated:** 2026-08-06 · **Session 4y** — **press a bay door and all 536 triangles move: 7.1% → 100.0%** · **4x** — **the draw-call objection was stale; material resolution is the real blocker** · **4w** — **when you press a bay door, 12 of its 536 triangles move** · **4v** — **the distance bar had never run, and path length was never progress** · **4u** — **nobody stands in the doorway any more** · **4t** — **the cast are solid, and one of them is standing in the doorway** · **4s** — **a sidestep that begins on contact is not a sidestep; and the bump gate was reporting an empty sample** · **4r** — **the thing blocking the corridor was a person, and I put them there: 28 m → 238 m** · **4q** — **the free path has a gate, and it found the corridor is blocked 27 m from the spawn** · **4p** — **the deck streams: 657,880 resident triangles become 127,204** · **4o** — **a cell boundary was cutting doors and people in half** · **4n** — **the deck cuts into loadable cells, and the loader's real obstacle is named** · **4m** — **the streaming cell budget met a real deck, and the design survives** · **4l** — **the resident-triangle gate was about the deck; the build also loads 321,664 triangles of people** · **4k** — **every walker on the station was bald, for 188 triangles** · **4j** — **the 21 exposure frames describe the code again, and the verdict did not move** · **4i** — **every curved surface in the project was flat-shaded, and the crease angle is measured off the station** · **4h** — **IT IS PLAYABLE: press Play and you are standing in Blue Sector** · **4g** — **the Babcom terminal is a built device, and it shipped a logged mistake once before the log caught it** · **4f** — a per-token verb override · **4e** — **the naming-mismatch class is CLOSED: built-but-misnamed 26 → 0, resolving 302/357** · **4d** — **the bespoke rooms' interactables were never unbuilt, they were unnamed: 259/357 → 284/357** · **4c** — **the station is INTERACTABLE, the port is on a wall, and the 24-minute suites were one bad cache key** · **4b** — a police force, friction in metres, the plated shell, the fitting-reach fix
+
+## Session 4y — PRESS A BAY DOOR AND ALL 536 TRIANGLES MOVE: 7.1% → 100.0%
+
+4w measured it, 4x priced it and found what blocked it, 4y landed it. The finding that took
+three sessions to close is one sentence: **`interact.gd` needs a part's name to begin with its
+object's, and `materials.resolve` took the longest matching substring, so the object's own name
+won the part's material.**
+
+### 1. What was wrong
+
+`dressing.machine` emits an articulated object as an outer span covering everything and its parts
+as spans inside it; `write_obj` gives each triangle to the LAST span covering it. The parts were
+named per CLASS — `prop_mp_plant_frame`, one group holding every machine's frame in the room — so
+the group still carrying the object's name owned only the leftovers. Across blue/0/0's sixteen
+declared interactables the runtime's name test grabbed **872 of 12,288 triangles, 7.1%**. A bay
+door was 12 of its 536.
+
+Naming a part after its own object fixes it with **no runtime change at all** — `interact.gd`
+already tests `begins_with(group + "_")`. 4x tried exactly that and its own tightened assertion
+stopped it:
+
+```
+FAIL  every machine part resolves on its OWN fragment
+  dress_customs_desk_mp_plant_frame  resolves on 'customs_desk'  not 'plant_frame'
+```
+
+`customs_desk` is 12 characters against `plant_frame`'s 11. A desk's frame would render as the
+desk, and renaming cannot help, because the containment is what `interact.gd` needs.
+
+### 2. The fix: `_mp_` is load-bearing in material resolution
+
+A machine part resolves on the fragment AFTER the marker and on nothing before it — which is what
+`dressing`'s header has always said the marker means. Changed in both implementations together:
+
+- `materials.resolve` probes `group.split("_mp_", 1)[1]`
+- `render_shot.gd` grew `_probe()`, called by `_material_for` **and** by `_has_rule`
+
+`dress_scene.gd` is not a third copy; it calls `render_shot.gd`'s matcher.
+
+`_has_rule` matters more than it looks. It is what decides whether to print *"fallback material
+used by N group(s)"*, and probing in the picker but not in the reporter would have meant a part
+whose OBJECT half contains a rule and whose material half contains none gets reported bound while
+the renderer puts it on the fallback — **the silent failure the warning exists to catch, restored
+by the check meant to catch it.**
+
+### 3. The gate: `materials.py --agree`
+
+Two implementations of one rule need a gate that they still agree, and there was none.
+
+```
+render_shot.gd cuts on ('_mp_', 4); this module cuts on ('_mp_', 4)  AGREE
+2840 group names probed, 2700 of them machine parts
+  exterior   0 disagreement(s)
+  drum       0 disagreement(s)
+  interior   0 disagreement(s)
+
+negative control -- the engine with the _mp_ rule taken back out:
+  interior   480 disagreement(s)  -- the gate fires
+      dress_customs_desk_mp_plant_frame  ours steel_gantry_oxide  engine furn_casework
+```
+
+It does two things. It reads the marker and offset **out of the GDScript** rather than restating
+them, so changing `MACHINE_MARK` in Python fails rather than drifting; and it runs the engine's
+algorithm over the engine's own input — `godot_rules(scene)`, the flat table patched into the
+`.tscn` — and compares every group name with `resolve_any`'s answer. Three source controls fire:
+removing `_probe`, stopping `_has_rule` probing, and changing the marker.
+
+**AND IT FOUND A SECOND BUG ON ITS FIRST RUN — 20 rows across the three scenes.** `resolve_any`
+returned an alias's material without checking the alias belonged to that scene, which
+`godot_rules` has always checked: `drum_arable` resolved to `ground_arable` in the EXTERIOR scene,
+a material that scene's `.tscn` does not declare and the engine therefore cannot pick. The
+exporter believed the group bound; the engine would have dropped it on the fallback. One
+condition, copied from `godot_rules` because the two answer the same question.
+
+### 4. The gate that measures the actual claim: `walkable.py --reach`
+
+`--use` presses one object and checks the prompt appeared and something moved 4 mm. 4w recorded
+that it **passed at 7.1% and passed again at 209%** — it cannot see either failure. So the claim
+"a pressed object is the whole object" needed its own measurement, and it is offline, over the
+emitted mesh, with no engine at all:
+
+```
+blue/0/0: 16 declared interactables, 12,288 triangles between them
+  the runtime's name test grabs 12,288 -- 100.0% -- of which 0 lie outside the object
+      lowg_bays__prop_docking_clamp        1,728 of  1,728  100.0%
+      docking_bays__prop_bay_control_booth 1,696 of  1,696  100.0%
+      docking_bays__prop_bay_door            536 of    536  100.0%
+  PASS  a pressed object is the whole object
+  control: with the pre-4y shared part names the same test grabs 872 of 12,288 -- 7.1%
+```
+
+It models `interact.gd` exactly, **including the `break`**: the runtime takes the FIRST declared
+group whose name the mesh's begins with, so two interactables sharing a prefix collide — 4w
+measured `deck_marking` at 200% of its own span. Those are reported as `stray`, separately from
+the shortfall, because a single percentage would let the two directions cancel.
+
+The control is a seam in `dressing`, `PER_OBJECT_PARTS`, that rebuilds under the pre-4y naming.
+It reproduces 4w's 872 exactly, which is what makes the 12,288 mean something.
+
+### 5. AND `budget.py` GAVE ME A STALE NUMBER THAT LOOKED LIKE A PASS
+
+`deck primitives shipped  382 / 600  PASS` — printed **after** a change that renamed every machine
+part on the station. It reads `blue_0_0.glb` from disk and never asked how old it was: the file was
+from 08:10 and the change was at 19:00. The number was true about a build that no longer existed.
+
+Same defect as `--gate-frames` measuring a committed PNG, and CLAUDE.md's general form is already
+written down: **a gate that reads a committed artefact must be able to rebuild it.**
+`walkable._stale` already knew how to ask — keyed on every station module's mtime — and the
+primitive gate now asks before believing the file. Its control fires: `False` on the fresh build,
+`True` the moment `station/rooms.py` is touched.
+
+**Rebuilt, the honest number is 435 / 600 — 72.5%, passing.** 4x predicted 411 and was counting
+distinct names in `dressing` rather than primitives in the shipped `.glb`; the real cost of
+per-object part names is **+53 groups, not +29**. Still under budget with 27% headroom, and
+`21/25` is unchanged — the same four gates are over, none of them this one.
+
+### 6. Gates
+
+| gate | result |
+|---|---|
+| `station/materials.py` | **1798/1798**, with the three-scene agreement check and its control |
+| `station/materials.py --agree` | 0 disagreements, control fires at 480 |
+| `station/dressing.py` | **268/268** |
+| `station/test_materials_layer3.py` | **34/34**, coverage **980/980 interior groups** |
+| `station/deck.py --selftest` | **56/56** |
+| `station/walkable.py --reach --control` | **PASS** — 12,288/12,288, control 872 |
+| `station/budget.py` | **21/25**, `deck primitives 435/600` on a rebuilt deck |
+
+`--reach --control` is now a CI step, next to `--bump`, for the reason 4w gave: `--use` is the
+gate that passed at 7.1% and again at 209%.
+
+`test_materials_layer3`'s ambiguity check had to learn the probe too: it reported 426 "competing
+claims" that were an object's name against its part's material. **That is the third ambiguity
+check in this project to restate the matching rule instead of asking the resolver, and all three
+drifted.**
+
+### 6b. The frames
+
+`docs/engine-4y-machinery.png` — `--shot interior --room plantroom_bay`, the rubric's close
+distance. Oxide-brown gantry frames, clad service panels, orange hazard bands and black plinths,
+each on its own material and each an `_mp_` part of the machine it belongs to. Nothing magenta,
+nothing flat. `docs/engine-4y-machine-parts.png` is the deck at eye height for the wide check:
+**971 mesh instances, no `fallback material used by N group(s)` line at all.**
+
+### 7. NEXT
+
+- The near figure's silhouette is 32-gon faceted at 1 m; the affordable fix is runtime skinning.
+- `--deck`'s `traverse_m` bar is live but weak under a goto — a no-goto deck run would exercise
+  the strong form.
 
 ## Session 4x — THE DRAW-CALL OBJECTION WAS STALE; MATERIAL RESOLUTION IS THE REAL BLOCKER
 

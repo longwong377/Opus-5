@@ -4032,19 +4032,38 @@ def scene_materials(scene):
 # Binding
 # ---------------------------------------------------------------------------
 
+# The infix `dressing.py` marks a machine part with. A part nests inside its
+# fixture's span and takes its own material; everything before the marker names
+# the OBJECT the part belongs to, and nothing before it should decide a colour.
+MACHINE_MARK = "_mp_"
+
+
 def resolve(group, scene=None):
     """Material for an OBJ/glTF group name. Longest matching fragment wins.
 
     Identical rule to `godot/scripts/render_shot.gd::_material_for`, on purpose:
     if this function and the engine disagreed about which material a group got,
-    every render would be judging something other than what ships.
+    every render would be judging something other than what ships. Both were
+    changed together in session 4y and there is a gate that they still agree --
+    `--agree`, below.
+
+    A MACHINE PART RESOLVES ON WHAT COMES AFTER `_mp_`, AND ONLY THAT.
+    `dressing.py`'s header has always said the marker means "this is a machine
+    part, and the fragment names its material"; the resolver did not know, so
+    the object's own name competed with the part's. It did not matter while
+    every part was called `prop_mp_plant_frame` -- there is nothing before the
+    marker but a prefix -- and it is what stopped parts being named after the
+    object they belong to, which is the only thing that lets `interact.gd` find
+    them. `dress_customs_desk_mp_plant_frame` resolved on `customs_desk` (12)
+    over `plant_frame` (11): a desk's frame rendered as the desk.
     """
+    probe = group.split(MACHINE_MARK, 1)[1] if MACHINE_MARK in group else group
     best, best_len = None, -1
     for m in MATERIALS:
         if scene is not None and scene not in m.scenes:
             continue
         for frag in m.binds:
-            if frag in group and len(frag) > best_len:
+            if frag in probe and len(frag) > best_len:
                 best, best_len = m, len(frag)
     return best
 
@@ -4145,17 +4164,153 @@ GROUP_ALIASES = {
 
 
 def resolve_any(group, scene=None):
-    """`resolve`, then the alias table. What the exporter should call."""
+    """`resolve`, then the alias table. What the exporter should call.
+
+    THE ALIAS IS SCENE-FILTERED, exactly as `godot_rules` filters it, and that
+    was not true until session 4y's agreement gate found it. This returned
+    `ground_arable` for `drum_arable` in the EXTERIOR scene -- a material that
+    scene's .tscn does not declare and the engine therefore cannot pick. 20
+    such rows across the three scenes, every one of them the alias path
+    ignoring the scene: the exporter believed a group was bound and the engine
+    would have dropped it on the fallback. The condition here is copied from
+    `godot_rules` on purpose, because the two are answering the same question.
+    """
     m = resolve(group, scene)
     if m is not None:
         return m
     alias = GROUP_ALIASES.get(group)
-    if alias:
+    if alias and (scene is None or scene in BY_NAME[alias].scenes):
         return BY_NAME[alias]
     # endcap_plate_cN and endcap_plate_cN_checker fall out of `resolve` because
     # "endcap_plate" is a substring of both; this branch only catches a group
     # that matched nothing at all.
     return None
+
+
+# ---------------------------------------------------------------------------
+# THE ENGINE MATCHES BY THE SAME RULE, AND THIS IS WHERE THAT IS ASSERTED
+# ---------------------------------------------------------------------------
+#
+# `resolve` and `godot/scripts/render_shot.gd::_material_for` are one rule in
+# two implementations. The duplication is deliberate -- the exporter has to know
+# a group's material offline, the engine has to pick it at load -- and the
+# DRIFT is what costs: if the two disagree, every render judges a material other
+# than the one that ships, and nothing looks wrong, because both materials are
+# real. That is the worst shape a defect can have here.
+#
+# `dress_scene.gd` is not a third implementation; it calls `render_shot.gd`'s
+# matcher. So there are exactly two, and they are checked against each other.
+
+RENDER_SHOT_GD = os.path.join(ROOT, "godot", "scripts", "render_shot.gd")
+
+
+def _gd_func(src, name):
+    """One function's body out of a GDScript source, by name."""
+    head = f"func {name}("
+    if head not in src:
+        return None
+    body = src[src.index(head):]
+    nxt = body.find("\nfunc ", 1)
+    return body[:nxt] if nxt > 0 else body
+
+
+def gd_probe_rule(path=RENDER_SHOT_GD):
+    """The marker and byte offset the engine cuts a machine part on.
+
+    READ OUT OF THE GDSCRIPT, not restated here. A constant written down in two
+    files is exactly the drift this section exists to catch: change
+    `MACHINE_MARK` in Python and the engine's hard-coded `"_mp_"` and `+ 4` go
+    stale silently. Returns `(marker, offset)`, or `None` if the engine does not
+    cut at all -- which is itself a disagreement and must fail.
+
+    IT ALSO REQUIRES BOTH CONSUMERS TO GO THROUGH `_probe`, and returns None if
+    either does not. `_material_for` picks the material and `_has_rule` decides
+    whether to warn that a group landed on the fallback; probing in one and not
+    the other means the warning that exists to catch a silent fallback becomes
+    the thing that hides it.
+    """
+    try:
+        with open(path) as f:
+            src = f.read()
+    except OSError:
+        return None
+    probe = _gd_func(src, "_probe")
+    if probe is None:
+        return None
+    for user in ("_material_for", "_has_rule"):
+        body = _gd_func(src, user)
+        if body is None or "_probe(" not in body:
+            return None
+    m = re.search(r'\.find\("([^"]*)"\)', probe)
+    if not m:
+        return None
+    off = re.search(r"\.substr\(\s*\w+\s*\+\s*(\d+)\s*\)", probe)
+    return m.group(1), (int(off.group(1)) if off else None)
+
+
+def engine_resolve(group, scene, rules=None, mark=None):
+    """What the ENGINE will pick for `group`, run over the engine's own table.
+
+    Not a third copy of the rule for its own sake: the point is to run the
+    engine's algorithm against the engine's INPUT -- `godot_rules(scene)`, the
+    flat dict `patch_scene_rules` writes into the .tscn -- and compare the
+    answer with `resolve_any`'s. The two sides differ in more than style.
+    `resolve` walks `MATERIALS` and consults `GROUP_ALIASES` only as an
+    exact-key fallback; the engine has one dict in which an alias is a FRAGMENT
+    like any other and can win a longest-match anywhere inside a name.
+
+    `mark` is a seam for the negative control. Passing "" is the engine with
+    the `_mp_` rule taken back out, which is what a half-applied change to this
+    pair looks like, and `agree_report` must then be non-empty.
+    """
+    if rules is None:
+        rules = godot_rules(scene)
+    mark = MACHINE_MARK if mark is None else mark
+    probe = group.split(mark, 1)[1] if mark and mark in group else group
+    best, best_len = None, -1
+    for frag, name in rules.items():
+        if frag in probe and len(frag) > best_len:
+            best, best_len = name, len(frag)
+    return best
+
+
+def _agree_probe_groups():
+    """Every group name that reaches a material, machine parts included.
+
+    The parts are the reason this gate exists, so a corpus without them would
+    be the same defect the layer-2 and doorway findings both were: a gate that
+    measures the case with the defect taken out of it. They are enumerated the
+    way `dressing` emits them -- one `_Parts` vocabulary per object prefix --
+    so the corpus grows when the props do.
+    """
+    names = set(KNOWN_GROUPS) | set(GROUP_ALIASES) | set(_scan_generator_groups())
+    try:
+        import dressing as _D
+        import rooms as _R
+    except Exception:
+        return sorted(names)
+    prefixes = {"fix_", "prop_", "dress_"}
+    for tok in sorted(_R.PROP_KIND):
+        for pre in ("fix_", "prop_", "dress_"):
+            prefixes.add(pre + tok + "_")
+    for pre in sorted(prefixes):
+        names.update(_D._Parts(pre).all())
+    return sorted(names)
+
+
+def agree_report(scene="interior", engine_mark=None, groups=None):
+    """Rows where `resolve_any` and the engine's matcher would disagree.
+
+    `(group, ours, theirs)`. Empty is the passing state.
+    """
+    rules = godot_rules(scene)
+    rows = []
+    for g in (groups if groups is not None else _agree_probe_groups()):
+        mine = resolve_any(g, scene)
+        theirs = engine_resolve(g, scene, rules, mark=engine_mark)
+        if (mine.name if mine else None) != theirs:
+            rows.append((g, mine.name if mine else "-", theirs or "-"))
+    return rows
 
 
 # ---------------------------------------------------------------------------
@@ -5488,6 +5643,33 @@ _PASS = 0
 _FAIL = 0
 
 
+def agree_summary():
+    """The `--agree` report: the two matchers, side by side, with its control."""
+    L = []
+    gd = gd_probe_rule()
+    want = (MACHINE_MARK, len(MACHINE_MARK))
+    L.append(f"render_shot.gd cuts on {gd!r}; this module cuts on {want!r}"
+             f"  {'AGREE' if gd == want else 'DIFFER'}")
+    groups = _agree_probe_groups()
+    parts = [g for g in groups if MACHINE_MARK in g]
+    L.append(f"{len(groups)} group names probed, {len(parts)} of them machine "
+             f"parts")
+    for scene in SCENES:
+        rows = agree_report(scene, groups=groups)
+        L.append(f"  {scene:9s}  {len(rows)} disagreement(s)")
+        for g, a, b in rows[:6]:
+            L.append(f"      {g}  ours {a}  engine {b}")
+    L.append("")
+    L.append("negative control -- the engine with the _mp_ rule taken back out,")
+    L.append("which is what half-applying a change to this pair looks like:")
+    ctl = agree_report("interior", engine_mark="", groups=groups)
+    L.append(f"  interior   {len(ctl)} disagreement(s)"
+             f"  {'-- the gate fires' if ctl else '-- THE GATE IS INERT'}")
+    for g, a, b in ctl[:4]:
+        L.append(f"      {g}  ours {a}  engine {b}")
+    return "\n".join(L)
+
+
 def check(label, cond, detail=""):
     global _PASS, _FAIL
     if cond:
@@ -6349,6 +6531,36 @@ def _selftest():
               m and int(m.group(1)) == n,
               f"{m.group(1) if m else None} declared, {n} present")
 
+    # -- THE ENGINE'S MATCHER AND THIS ONE ARE ONE RULE --------------------
+    # Session 4y. The rule gained a clause -- a machine part resolves on what
+    # follows `_mp_` -- and a clause added to one of two implementations is a
+    # render that judges a material other than the one that ships. Nothing in
+    # this file could have noticed: every check above asks whether a group has
+    # A material, and under drift both sides give it one.
+    _gd = gd_probe_rule()
+    _want = (MACHINE_MARK, len(MACHINE_MARK))
+    check("render_shot.gd cuts machine parts on this module's marker",
+          _gd == _want, f"engine {_gd}, here {_want}")
+    _groups = _agree_probe_groups()
+    check("the agreement corpus contains machine parts",
+          sum(1 for g in _groups if MACHINE_MARK in g) >= 100,
+          f"{sum(1 for g in _groups if MACHINE_MARK in g)} of {len(_groups)}")
+    for _scene in SCENES:
+        _rows = agree_report(_scene, groups=_groups)
+        check(f"{_scene}: the engine's matcher agrees with this one",
+              not _rows,
+              "; ".join(f"{g} ours {a} engine {b}" for g, a, b in _rows[:4]))
+    # NEGATIVE CONTROL. Take the marker rule back out of the engine side only
+    # -- a half-applied change to the pair -- and the report must fill up, with
+    # the case that blocked per-object part names in it: a customs desk's frame
+    # taking the desk's own material.
+    _ctl = agree_report("interior", engine_mark="", groups=_groups)
+    check("the agreement gate fires when one side loses the marker rule",
+          len(_ctl) > 20, f"{len(_ctl)} disagreement(s)")
+    check("and it names the desk frame that blocked per-object part names",
+          any(g == "dress_customs_desk_mp_plant_frame" for g, _a, _b in _ctl),
+          str(sorted(g for g, _a, _b in _ctl)[:3]))
+
     print(f"{_PASS}/{_PASS + _FAIL} passed")
     return _FAIL
 
@@ -6364,8 +6576,13 @@ def main():
                     help="one material's trim sheet under a grazing key")
     ap.add_argument("--budget", action="store_true")
     ap.add_argument("--rules", metavar="SCENE")
+    ap.add_argument("--agree", action="store_true",
+                    help="this module's matcher against the engine's")
     args = ap.parse_args()
 
+    if args.agree:
+        print(agree_summary())
+        return 0
     if args.budget:
         print(budget_report())
         return 0

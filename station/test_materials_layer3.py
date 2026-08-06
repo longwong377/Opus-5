@@ -394,15 +394,26 @@ def ambiguous(groups, scene="interior"):
     because an override list is worth reading, and not a build failure. Every
     group still has to have an owner, which is what stops a general fragment
     quietly becoming the only claim on something it was never meant to cover.
+
+    IT MATCHES AGAINST `resolve`'S PROBE, NOT THE WHOLE NAME. Session 4y made
+    `_mp_` load-bearing -- a machine part's material is decided by what follows
+    the marker and by nothing before it -- so a fragment matching the OBJECT
+    half of `dress_crate_mp_hazard_frame` is not a competing claim on it, it is
+    not a claim at all. Asking the wrong question here reported 426 of them.
+    That is the third time in this project an ambiguity check has restated the
+    matching rule instead of asking the resolver, and it has drifted every
+    time; the two in `dressing.py` were the other two.
     """
     competing, overrides = [], []
     for g in sorted(groups):
+        probe = (g.split(M.MACHINE_MARK, 1)[1]
+                 if M.MACHINE_MARK in g else g)
         hits = {}
         for m in M.MATERIALS:
             if scene not in m.scenes:
                 continue
             for frag in m.binds:
-                if frag in g:
+                if frag in probe:
                     hits.setdefault(m.name, set()).add(frag)
         if len(hits) < 2:
             continue
