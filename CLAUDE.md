@@ -51,6 +51,7 @@ first:
 |---|---|---|---|
 | 1 | **`docs/THE-STATION.md`** + its annexes `docs/spec/{PLACES,PEOPLE,SYSTEMS}.md` | **WHAT gets built** — 291 enumerated, checkable items with acceptance checks that name content | **CURRENT — the content authority** |
 | 2 | **`docs/MASTER-PLAN.md`** § "SESSION 4i — FINAL" | **WHAT ORDER** it gets built in — phases, gates, the enforcement rules | **CURRENT — the ordering authority** |
+| 2b | **`docs/MASTER-PLAN.md`** § "SESSION 4r — THE OPEN DEFECT LIST" (**R1–R6**, immediately above the 4i section) | **WHAT IS BROKEN RIGHT NOW** — five defects, each with an owner, a gate that can fail, and an acceptance test that names content | **CURRENT — read before choosing a session's work** |
 | 3 | `docs/AAA-STANDARD.md` | the quality bar and **the hard stop** (3 rounds, then CAPPED in writing) | **CURRENT — the quality authority** |
 | 4 | `STATE.md` | where the last session stopped and what is half-finished | **CURRENT — the handoff** |
 | 5 | `canon/00-MASTER.md`, `INVENTIONS.md`, `CONFLICTS.md` | what is true, what is extrapolated, what is blocked | **CURRENT — the fact authority** |
@@ -75,6 +76,10 @@ and a session that acts on a historic figure acts on a stale one. Measured as of
 | `canon/INVENTIONS.md` | reaches **INV-384** | — |
 | frame structure vs budget | **4.34×** (260,243 tri against a 60,000 allowance) | **"2.05×" — stale by two sessions**; it predates 4k's footprint tiling, which multiplied deck triangles 3.34× |
 | incident classes | **30**, 2,011 incidents a station-day | "22 classes" |
+| places outside the pressure hull | **0** of 129 (was 34; control `--hull-fit --legacy` fails at 41) | — |
+| spec ledger | **0 GREEN / 300 RED**, of which 129 have a verified address and 171 nothing at all | — |
+| craft, 22 scored subsystems | one at **4**, thirteen at **3**, five at **2**, three at **1** | — |
+| Python : GDScript | **166,034 : 23,823 ≈ 7:1** (was 26:1 at the 4d ruling) | "26:1" |
 
 **And one live claim that is easy to misread as a win:** the corridor occluder is built, provably
 contained (0 breaches of 2,880 rays) and reaches the engine — and it is worth **7.8% of the frame

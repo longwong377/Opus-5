@@ -9,6 +9,113 @@ reassessment, with two rulings recorded in §1.
 
 ---
 
+# SESSION 4r — THE OPEN DEFECT LIST, WITH A GATE AND AN ACCEPTANCE TEST EACH
+
+**This section adds to §4i-FINAL; it supersedes nothing.** It exists because five
+defects were found in one session and a session's task list dies with the session.
+`STATE.md` narrates them; this is where the *work* is committed to, in the form
+§4i's enforcement demands: **an owner, a gate that can fail, and an acceptance test
+that names content.** Ordered by how much they cost if left.
+
+## R1. THE SPEC HARNESS — 300 rows, 0 reachable checks. **The denominator problem.**
+
+`docs/spec/completion.yaml` is 300 enumerated, checkable items and `CLAUDE.md` §1 calls
+it *the content authority*. `station/spec_check.py --smoke` reports **0 GREEN / 300 RED**
+— and the reason is not that 298 things are unbuilt. It is that until 4r **no row could
+reach a harness at all**: `HARNESSES` was keyed on the row's free-text `harness:` field
+with two entries, and **zero of the 300 rows carried either key**. Instance eleven of this
+project's signature defect, inside the file whose header calls the project *"a museum of
+gates that were prose"*.
+
+Fixed in 4r to dispatch on the row's ID prefix, and `--dispatch` now names any harness
+that reaches nothing. The reachable check was also vacuous — it resolved `PLC-nnn` to
+`PLACES[nnn-1]` and never read the key the spec names — and now matches on identity with
+three failure branches shown firing.
+
+**Still 0 GREEN, correctly**: address-agreement is explicitly not sufficient. 129 rows now
+have a verified address; **171 have nothing checking them at all.**
+
+| | |
+|---|---|
+| **why it is first** | every other progress number in this project is a proxy. Without this, "how far are we" is answered by whichever gate someone happens to run — which is how a station 12.5% too large and a dead notice-loop coexisted |
+| **gate** | `station/spec_check.py --smoke`, CI `sspec_gate` |
+| **acceptance** | a content harness for each of the four largest row families (PLC, SYS, INC, PLY), so a GREEN count means "these named things exist and were checked", not "somebody ran something" |
+| **honesty rule** | GREEN moves ONLY by implementing a harness and building what it checks. Never by re-reading a row |
+
+## R2. W5 IS RED — nobody notices you walk in
+
+`walkable.py --deck blue/0/0` → *"reached docking_bays and NOBODY noticed — 0.0 deg turned"*.
+W5 is **the loop** — spawn → walk → use something → an NPC reacts — and `CLAUDE.md`'s own row
+still quotes its passing form (*"7 of the room look up"*).
+
+**Diagnosed and confirmed in 4r.** `populace.ROOM_INSTANCED = True` (4p) moved room occupants
+into `MultiMesh` buckets; `npc.gd::collect()` builds its `Person` records **by matching actor
+group names against `MeshInstance3D` names**, so an instanced occupant has no parts, no
+`Person`, and nothing to turn. A/B: `ROOM_INSTANCED = False` gets **past** the notice
+assertion and fails later on a different defect.
+
+| | |
+|---|---|
+| **do NOT** | revert `ROOM_INSTANCED`. The instancing is the right trade and the corridor already made it |
+| **fix** | `MultiMesh.set_instance_transform`; `add_crowd` already knows which instance index belongs to which placement. The notice loop writes into the bucket instead of a node's `global_transform` |
+| **bonus** | it makes the **corridor walkers** able to notice you, which they never have been |
+| **gate** | CI `swalkloop`, added 4r, red today |
+| **acceptance** | `noticed >= 1` with `facing_err_deg` inside tolerance, on the instanced path, with `ROOM_INSTANCED=False` still passing as the control |
+
+## R3. 21 OF 84 CAN SPEAK — the cast grew and the dialogue did not
+
+The shipped build prints `dialogue: 21 people can speak, of 84 in the cast`. Last session it
+was **21 of 21**. Nobody broke anything: the cast grew and dialogue coverage is a fraction
+nothing gates, so it fell silently.
+
+| | |
+|---|---|
+| **gate** | none exists — **this is the deliverable**. A coverage assertion in `dialogue.py` that fails below a stated fraction, and a CI step |
+| **acceptance** | every resident the player can meet in a place they can reach has at least one exchange; the fraction is printed on every run so it cannot fall silently again |
+| **rule it obeys** | a ratio that is not gated is a ratio that goes stale in the direction nobody re-checks — the same shape as `docs/PLAYTEST.md`'s four stale rows |
+
+## R4. THREE SUBSYSTEMS AT CRAFT 1 — including Command & Control
+
+`docs/aaa-scorecard.json`, 22 subsystems scored in engine frames: one at craft 4, thirteen at
+3, five at 2, and **three at 1 — `command_control`, `council_chamber`, `docking_bay_interior`**.
+C&C is *"the most-seen room in the show"* by the register's own note.
+
+| | |
+|---|---|
+| **gate** | the AAA rubric at the **half distance**, per `docs/AAA-STANDARD.md` — a wide shot is not evidence about craft |
+| **acceptance** | craft 3 or better at half distance, scored by a round in the scorecard with the frame committed beside it |
+| **stopping rule** | `AAA-STANDARD.md`'s three rounds, then CAPPED in writing. This is not open-ended |
+| **note** | `command_control` shows one scored round while work has landed on it since; re-score before reworking, or the rework is aimed at a stale number |
+
+## R5. THE STREAMED BUILD REACHES ONE z-CLUSTER
+
+`cells_blue_0_0` is 18 cells spanning **12.9 m of z** of an 8,047 m station; 8 of 129 places
+overlap it and **121 are unreachable from the spawn**. `--vista-gate` reports the concrete
+consequence: the nearest window is **838 m along the axis**, so the vista mount landed in 4r
+is correct and cannot fire.
+
+**Two causes, and they must not be conflated.** *(a)* `cell_manifest.json`'s deck table lists
+**251 decks** and this container has **one** baked — a recycled-container artefact, now
+reported as `PARTIAL 1 of 251` by `tools/bootstrap.py` instead of `present`. *(b)*
+cluster-to-cluster hand-off is genuinely untested, which `MASTER-PLAN` P0.5 already records.
+
+| | |
+|---|---|
+| **gate** | `tools/bootstrap.py --check` for (a); a new walk gate for (b) |
+| **acceptance** | a body walks from the spawn cluster into an adjacent one and back, with cells loading and freeing, and arrives at a place in the far cluster |
+| **open question** | the intended denominator — 251 decks in the manifest against 70 recorded as baked. **Nothing in the repository states which**, which is why `bootstrap.py` prints the fraction and deliberately does NOT fail on it |
+
+## R6. THE RULE THAT PRODUCED FOUR OF THESE FIVE
+
+R1, R2 and R5 are all one shape: **a thing was built, a consumer read a different
+representation, and no gate compared them.** R3 is its sibling — a ratio nobody gated.
+`tools/wiring.py` catches the static form; none of these were static. The transferable rule
+is in `CLAUDE.md` and is repeated here because this section is where the work is chosen:
+
+> A static scan can tell you a caller exists; only running the thing tells you the caller runs.
+
+**Every acceptance test above runs the thing.**
+
 # SESSION 4i — FINAL. THE ORDERING RULE, SUPERSEDING §2–§5 BELOW
 
 **Adopted direction: the owner directed "all the stated goals of this project and more,
