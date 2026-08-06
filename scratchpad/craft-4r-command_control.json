@@ -1,0 +1,95 @@
+{
+  "_note": "Rounds 2 and 3 for docs/aaa-scorecard.json's `command_control` entry. Written here rather than into the scorecard because three craft agents were running against that one file. Round 1 in the scorecard is dated 2026-08-01 and was scored against `station/bespoke.py command_control` at 2,064 triangles; the room has been `station/command_control.py` since, and round 2 below is an honest re-score of the CURRENT content taken BEFORE this session changed anything. Round 3 is after. Both by the same agent, which is why neither should advance the clean-round counter: AAA-STANDARD, 'Round zero is the build. A build agent reviewing its own work is not a round.'",
+  "rounds": [
+    {
+      "round": 2,
+      "reviewer": "build agent, session 4r -- RE-SCORE ONLY, nothing changed before these frames were taken. Round 1's artefact no longer exists: it scored bespoke.py's 2,064-triangle version and the room is now station/command_control.py at 17,754. Frames at the rubric's three distances, all confirmed 'Vulkan 1.4.318 - Forward+ - llvmpipe' in their own logs. NOT an independent review.",
+      "date": "2026-08-06",
+      "scores": { "craft": 2, "fidelity": 3, "performance": 2, "robustness": 1 },
+      "evidence": {
+        "craft": "DISTANCES DERIVED FROM THE SUBJECT, NOT PICKED. The subject is an enclosure, so the normal distance is bounded by it: 12.16 m is the room's own longest forward sightline, a standing eye 0.6 m in front of the aft floor edge aimed at the window's centre. Half is 6.08 m on the same ray. Lens SHOT_FOV_DEG = 46.0 vertical over 720 rows on every frame. docs/craft-4r-cnc-r1-normal.png (normal), docs/craft-4r-cnc-r1-half.png (half), docs/craft-4r-cnc-r1-console-half.png and docs/craft-4r-cnc-r1-console-arm.png (the room's other principal object, at half of its own 5.58 m and at 1.3 m). THE THIRD DISTANCE IS UNREACHABLE AND THAT IS A FACT ABOUT THE SUBJECT: one row of a 720-row frame at 46 deg subtends 1.179e-3 rad, so the room's 9.90 m height is one pixel at 8,396 m, which is 386x the 21.76 m 3-D diagonal that is the longest sightline the room contains. The camera stands inside the subject.",
+        "fidelity": "Every dimension in the module traces to reference/03-sector-blue/comand and contorl.webp with a stated calibration (100 px/m at the officer's depth, depth-corrected to 56 px/m at the bulkhead, giving the 5.5 m window) or to the schema's observation_dome component (Contract 5, authority 3), or carries an INVENTIONS.md entry -- INV-024, INV-171, INV-461. The window's four tiers, the band's stud line and the course radii are read off a 2x crop with the fractions recorded. No second source that could not have copied the first, which is what holds it at 3."
+      },
+      "broke_assertions": false,
+      "regression_waiver": "ROBUSTNESS 2 -> 1. The module did not get worse: it went from 0 assertions to 65, and round 1's R2 finding ('three green gates over a flat plate') is answered. The score falls because this round LOOKED FOR something round 1 did not and found the room is not enclosed -- R1's descriptor is 'the self-test asserts real properties and the geometry is not closed', and its worked example is drum_end_cap, 'from inside the habitat you could see straight through the bulkhead in dozens of places, for four sessions. Nothing measured closure, so nothing failed.' That is this room, in the same words. A round carrying a waiver can never be a clean round and this one is not.",
+      "findings": [
+        {
+          "severity": "blocking",
+          "dimension": "robustness",
+          "descriptor": "R1",
+          "where": "station/command_control.py::command_control",
+          "text": "THE ROOM HAS NO SIDE WALLS AND EVERY CLOSURE GATE IN THE PROJECT IS GREEN ON IT. Projecting the mesh along its own x axis and counting cells of its cross-section covered by no triangle: 3,261 of 10,020 at 0.10 m, i.e. 32.6 m2 of 100.2 m2 (32.5%) open, per side. In the engine at the normal distance, 18.4% of the frame hits no room geometry -- the left and right thirds of docs/craft-4r-cnc-r1-normal.png are the vista's starfield, and are pure black in the --no-vista control, which is AAA-STANDARD's own two-background opening test run by accident. What stands at x = +-7.00 is four light-course housings, a dado, a skirting and a cornice: trim for a wall that was never built. interior_kit.boundary_edges reports ZERO open edges, bespoke.SHELL_OPEN_EDGES['command_control'] reads 0, the box ledger is clean and the facing tests pass -- all of them right, because every piece is a closed solid. Enclosure is a property of the VOLUME and nothing here measures it."
+        },
+        {
+          "severity": "major",
+          "dimension": "craft",
+          "descriptor": "C2",
+          "where": "station/command_control.py, docs/craft-4r-cnc-r1-normal.png",
+          "text": "C2 verbatim: 'a correct skeleton with a missing layer: the corridor after session 2l had ribs and a deck and no walls, so it read as scaffolding of exactly the right size.' The room has a dado rail, a skirting board and a cornice at the wall line and no wall between them. C3 requires 'reads as the intended object at its normal distance' and 18.4% of that frame is background. Second: at half distance docs/craft-4r-cnc-r1-half.png shows the window -- the object this room is arranged around -- as a BLACK WHEEL over bright glass. Measured inside the aperture, the dark 55% of pixels average linear Y 0.01355 against the bright 45% at 0.12988, x0.104; PATCHES-4r-windows.md section 7 measures the show at pane/mullion x0.48, i.e. the reference's mullions are BRIGHTER than its glass. Third: docs/craft-4r-cnc-r1-console-half.png -- all nine consoles carry the identical sixteen-cell board because the register index is (bank + cell) % 3, which does not depend on the desk, so the desk reads as a red-and-white checkerboard."
+        },
+        {
+          "severity": "major",
+          "dimension": "performance",
+          "descriptor": "P2",
+          "where": "station/budget.py",
+          "text": "Unchanged from round 1 in kind though not in size: 17,754 triangles for a 941 m2 room, measured in one configuration (the well station), with no gate that addresses this room individually and no worst case swept. P3 wants the worst case measured; the ALARM board and the NORMAL board are asserted to have the same triangle count in this module's own self-test, but nothing sweeps camera position or LOD, and there is no LOD chain here at all."
+        },
+        {
+          "severity": "major",
+          "dimension": "fidelity",
+          "descriptor": "F3",
+          "where": "station/command_control.py",
+          "text": "Below the bar, and the reason is F4's clause rather than a defect: 'one dimension confirmed by a second source that could not have copied the first.' Every measurement in this module comes from ONE authority-1 frame. The one cross-check available -- the observation_dome component the window is cut into -- is asserted for containment only (5.5 m window inside a 92 m dome), which is a bound and not a confirmation. It is also the room station/vista.py --selftest reports 101.6 m outside its own pressure hull, which is a register defect rather than a module one but touches this subsystem's fidelity."
+        }
+      ]
+    },
+    {
+      "round": 3,
+      "reviewer": "build agent, session 4r, AFTER the round-2 findings were answered. Same author, same cameras, same lens, every frame confirmed 'Vulkan 1.4.318 - Forward+ - llvmpipe'. NOT an independent review and the clean-round counter should not advance on it.",
+      "date": "2026-08-06",
+      "scores": { "craft": 3, "fidelity": 3, "performance": 2, "robustness": 3 },
+      "evidence": {
+        "craft": "SAME CAMERAS, BEFORE AND AFTER, at the distances derived in round 2. Normal 12.16 m: docs/craft-4r-cnc-r1-normal.png against docs/craft-4r-cnc-r3-normal.png -- a bulkhead floating in black with 18.4% of the frame showing the background becomes an enclosed compartment with plated walls, a panel grid on the deck's own joint pitch and a pilaster under each ceiling beam. Half 6.08 m: docs/craft-4r-cnc-r1-half.png against docs/craft-4r-cnc-r3-half.png -- the window stops being a black wheel over bright glass and reads as a bolted assembly, its stud line legible for the first time. MEASURED inside the aperture: frame/glass x0.104 -> x0.341, the frame 3.4x brighter, against a show ratio of x2.08 (PATCHES-4r-windows.md section 7's pane/mullion x0.48 inverted). Console at half of its own distance: docs/craft-4r-cnc-r1-console-half.png against docs/craft-4r-cnc-r3-console-half.png -- 1 distinct register board over nine desks becomes 9, and the checkerboard is gone. Minimum scale, same camera at 96x54 where one pixel is 0.15 m of room height: docs/craft-4r-cnc-r3-minscale.png, the window's disc, the ceiling lamps and the console bank's curve all still read.",
+        "robustness": "72/72, was 65/65, and the three new gates are the interesting ones because they ask questions no gate in this project asked. room_enclosure / enclosure_gaps projects the mesh down each axis and counts cross-section cells covered by NO triangle -- the volume's question, where every other closure test here measures a surface. Shown failing on the pre-fix content, quoted: 'FAIL the room is closed lateral -- 3261 of 10020 cross-section cells show the background = 32.6 m2 of 100.2 m2' and 'FAIL the room is closed forward -- 45 of 13160 ... = 0.5 m2 of 131.6 m2'. Both controls are in the file and fire. Third gate: no two consoles carry the same register pattern, with the modular rule it replaced as its control (1 distinct board over 9 desks). Deterministic byte-for-byte across PYTHONHASHSEED 0, 1 and 12345."
+      },
+      "broke_assertions": true,
+      "findings": [
+        {
+          "severity": "major",
+          "dimension": "craft",
+          "descriptor": "C3",
+          "where": "station/command_control.py::console_unit, docs/craft-4r-cnc-r3-console-arm.png",
+          "text": "C3's own clause, and it is the one that stops this being a 4: 'The tertiary tier is generic: the same panel, the same hatch, the same light, repeated without regard to what the part does. Materials exist as groups but carry one flat value each.' At arm's length the console bed's cells are flat coloured plates with no bezel relief and no legend; the apron is a row of eleven identical blank pale rectangles; the leg frame reads as a brown trestle rather than a bridge pedestal, because every part of the console binds one of dressing._Parts' nine plant-kit surfaces and those render tan and brown. The room's palette is cool blue-white and its principal object is wood-coloured. Fixing it needs a console material family in station/materials.py, which this module may not edit -- see scratchpad/PATCHES-4r-cnc.md."
+        },
+        {
+          "severity": "major",
+          "dimension": "performance",
+          "descriptor": "P2",
+          "where": "station/budget.py",
+          "text": "Unchanged and not addressed this session: 18,510 triangles measured in one configuration, no per-room gate, no worst case swept, no LOD chain. P3 needs the worst case; P4 needs a LOD chain with switch distances from a measured error."
+        },
+        {
+          "severity": "major",
+          "dimension": "fidelity",
+          "descriptor": "F3",
+          "where": "station/command_control.py",
+          "text": "Unchanged from round 2: every dimension traces to one authority-1 frame with a stated calibration and INVENTIONS entries, and F4 wants one dimension confirmed by a source that could not have copied it. There is no second view of C&C in reference/ that shows the window."
+        },
+        {
+          "severity": "major",
+          "dimension": "robustness",
+          "descriptor": "R3",
+          "where": "station/command_control.py::_selftest",
+          "text": "R4's clause is what holds it here: 'every assertion has been deliberately broken and observed to fail, and the report says what the failure looked like.' Seven of the 72 carry a control in the file that fires -- the box ledger's two, the obox winding, the modular register rule, and the enclosure gate's lateral and forward controls -- and the enclosure gate was additionally shown failing on the pre-fix content with its output quoted. The other sixty-five have not been broken and watched. R4 also wants interfaces asserted rather than assumed: this module reads export_scene's cc_light_strip body-count contract in a COMMENT and light_wall_course's FIXTURE_LIGHTING entry by name, and nothing fails if either changes."
+        },
+        {
+          "severity": "minor",
+          "dimension": "craft",
+          "descriptor": "C3",
+          "where": "station/vista.py",
+          "text": "What the window looks out at renders as a flat pale-grey card with no legible hull structure, and station_frac is 0.740 against the show's 0.852 so the lower quarter of the aperture is empty starfield. Not this module's file; recorded because it is the largest remaining thing in the half-distance frame."
+        }
+      ]
+    }
+  ]
+}

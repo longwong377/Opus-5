@@ -242,6 +242,53 @@ CONSOLE_TILT_DEG = 22.0
 
 FLOOR_W_M = 14.0                # the upper floor the dais sits on
 FLOOR_L_M = 12.0
+
+# --- THE SIDE WALLS, WHICH THIS ROOM DID NOT HAVE (INV-620) ----------------
+# Thickness is `cc_pit_face`'s own 0.16 m, because the pit's side walls were
+# the only lateral plate in the room and the new wall subsumes them -- one
+# plate at one thickness rather than a second number that has to be kept equal.
+# The 4 mm standoff is this file's own idiom, written three times already in
+# `wall_course`'s end caps and `annunciator`'s cheeks: a plate built flush with
+# the trim it meets shares a whole face with it, which the non-manifold gate
+# reports as two pieces of this module in the same place and is right to.
+WALL_D_M = 0.16
+WALL_STANDOFF_M = 0.004
+# The panel grid's pitch is the DECK's joint pitch, not a new number: the deck
+# lays a joint every `DECK_BAY_M` down the room and the wall's panel joints
+# land over them, which is what a plated compartment does and is why the two
+# grids cannot drift apart. The vertical pitch is the forward bulkhead's own
+# 1.62 m, so the two walls are one grid meeting at a corner.
+WALL_PANEL_Y_M = 1.62
+WALL_PANEL_PROUD_M = 0.045      # the bulkhead's, for the same reason
+
+# --- the light over the pit (INV-621) --------------------------------------
+# z is the LAST ceiling beam's own centre -- `ceiling` puts CEIL_BEAMS beams
+# between -L*0.35 and L*0.70, so the tray hangs from the beam nearest the
+# window instead of at a z somebody liked. That lands it 1.80 m aft of the
+# bulkhead, i.e. 3.55 m from the window's centre, which at `light_wall_course`'s
+# measured 3.5 m range and the room's own reach factor is d/r = 0.34.
+PIT_SOFFIT_Z_M = -FLOOR_L_M * 0.35 + (FLOOR_L_M * 1.05) * 6.5 / 7.0
+PIT_SOFFIT_DROP_M = 0.34        # below the beam soffit, clear of the annunciator
+PIT_SOFFIT_HALF_W_M = 5.40      # inside the balustrade line, outside the board
+# ONE BLADE PER PIT CONSOLE PAIR -- `PIT_CONSOLE_N // 2` is how many consoles
+# stand against each side of the pit, so each blade is over the pair it lights,
+# and the count is derived rather than liked. It is also the number the layer-4
+# level gate can carry: `fixture_lights` hangs one lamp per connected body, and
+# at THREE blades `tools/measure_frame.py --against` puts this room's median at
+# **x1.87** of the show's against a x1.40 +/-25% target -- OUT OF RANGE, 0.4
+# stops hot. Two lands it at **x1.72**, inside the band (1.05..1.75) and near
+# its top. Measured both ways, not reasoned.
+#
+# AND READ `measurable %` BESIDE IT, which is this project's own warning about
+# this tool: the frame went from 67.9% measurable to 88.9%, so the median moved
+# partly because its POPULATION did -- 21% of the frame was under
+# `measure_frame`'s 0.010 floor and is now above it. Every distribution
+# statistic improved at the same time (p99 x0.69 -> x1.03, p5/p95 x1.14 ->
+# x0.94, crushed 32.1% -> 11.0%), which a purely hotter frame would not do.
+# What would move the level itself is `export_scene.BESPOKE_EXPOSURE`'s 4.08
+# for this module, which is not this file's to edit -- see
+# `scratchpad/PATCHES-4r-cnc.md`.
+PIT_SOFFIT_BLADES = PIT_CONSOLE_N // 2
 PIT_DROP_M = 1.9                # the lower forward pit
 STRIP_COURSES = 2               # high and mid light strips
 STRIP_Y_M = (2.35, 3.55)
@@ -754,7 +801,23 @@ def console_unit(m, o, y_base, w_m, d_m, h_m, seed, cells=CELL_CYCLE,
         for c in range(CONSOLE_CELLS):
             s0 = 0.10 + c * cs + 0.020
             s1 = s0 + cs - 0.040
-            grp = live[(b + c) % len(live)]
+            # `(b + c) % 3` IS A DIAGONAL STRIPE AND THE EYE INDEXES IT
+            # INSTANTLY. Nine consoles x four banks x four cells on one modular
+            # rule renders as a red-and-white checkerboard laid over the whole
+            # desk -- `docs/craft-4r-cnc-r1-console-half.png` reads as a picnic
+            # blanket, and `docs/AAA-STANDARD.md` C5's "nothing in frame repeats
+            # in a way the eye can index" is the clause, with C3's "the same
+            # light, repeated without regard to what the part does" one rung
+            # below it. `dressing._pick` is this project's own deterministic
+            # chooser -- `blake2b`, never `random` and never `str.__hash__`,
+            # which is salted per process -- and keying it on the DESK's seed
+            # makes two consoles differ while one console is the same object
+            # every run. MEASURED, and worse than it looked: `(b + c) % 3` does
+            # not depend on the desk at all, so all nine consoles carried the
+            # SAME sixteen-cell pattern -- 1 distinct pattern over nine desks
+            # against 9 for the keyed rule. Gated below with that control.
+            grp = (live[0] if len(live) == 1
+                   else _dress._pick(live, seed, "cell", b, c))
             m.plate(on_bed(u0 + 0.014, s0, 0.017),
                     on_bed(u0 + 0.014, s1, 0.017),
                     on_bed(u1 - 0.014, s1, 0.017),
@@ -902,6 +965,20 @@ def window(m, z, cy):
     # Each course is a ring of trapezoidal panes set `WINDOW_PANE_INSET_M`
     # behind the frame plane, so the frame reads as a frame at any angle: a
     # coplanar pane is a decal and a decal has no shadow line.
+    # HOW FAR A CONCENTRIC MEMBER HAS TO LAP OVER THE COURSE INSIDE IT, and it
+    # is not a constant. A pane is a flat trapezoid inscribed in its own arc,
+    # so its outer edge is a CHORD and dips `rad * (1 - cos(pi/n))` inside the
+    # radius it was cut at -- 37 mm on the twelve-pane inner course, 15 mm on
+    # the twenty-four-pane one. A member built to the nominal radius misses the
+    # glass it is supposed to hold, and the miss is a slot you can see space
+    # through. The inner edges need no lap: a chord at the inner radius dips
+    # TOWARD the centre and so covers more, not less.
+    lap = {}
+    for _f0, f1, n in WINDOW_COURSES:
+        edge = r * f1 - 0.02
+        lap[f1] = max(lap.get(f1, 0.0),
+                      r * f1 - edge * math.cos(math.pi / n) + 0.004)
+
     frames = []
     for f0, f1, n in WINDOW_COURSES:
         for k in range(n):
@@ -922,7 +999,8 @@ def window(m, z, cy):
                 continue
             frames.append(f)
             m.band(0.0, cy, z - 0.02, z + 0.02,
-                   r * f - 0.028, r * f + 0.028, "cc_mullion", seg=48)
+                   r * f - max(0.028, lap.get(f, 0.0)), r * f + 0.028,
+                   "cc_mullion", seg=48)
 
     # --- 2. THE HUB ---------------------------------------------------------
     # Spokes run from a central hub to the rim, NOT across the full diameter.
@@ -965,7 +1043,24 @@ def window(m, z, cy):
                         hw * 0.42, WINDOW_MULLION_D_M * 0.55, "cc_mullion")
 
     # --- 4. THE BAND, AND THE STUDS THAT SAY IT IS BOLTED ON ----------------
-    m.band(0.0, cy, z - WINDOW_MULLION_D_M, z, r * b0, r * b1, "cc_ring")
+    # LAPPED ONTO THE PANES IT MEETS BY THEIR OWN INSET, which is the 0.02 m
+    # the course loop above sets back every pane edge. Built to `r * b0`
+    # exactly, the band stopped 20 mm short of the glass on both sides: a
+    # hairline annular SLOT at r/R = 0.62 and again at 0.80, straight through
+    # the only window in the room, and the concentric frame member that closes
+    # every OTHER course boundary is skipped at these two ("the band itself,
+    # built below") on the assumption the band covered them.
+    #
+    # Found by projecting the room along +Z and counting cross-section cells
+    # covered by no triangle -- 45 of 13,160 -- and by nothing else, because
+    # every closure test in this file measures ONE SURFACE and both surfaces
+    # are closed. NEGATIVE RESULT worth keeping: the first hypothesis was a
+    # polygon-phase mismatch (a 40-gon band against 24 chords) and re-cutting
+    # the band at `seg=24` made it WORSE, 45 -> 55, because a coarser polygon
+    # dips further inside its own radius. The gap was construction, not
+    # tessellation.
+    m.band(0.0, cy, z - WINDOW_MULLION_D_M, z,
+           r * b0 - max(0.02, lap.get(b0, 0.0)), r * b1 + 0.02, "cc_ring")
     for edge in (b0 + 0.012, b1 - 0.012):
         rr = r * edge
         for k in range(WINDOW_STUDS):
@@ -1043,6 +1138,95 @@ def bulkhead(m, zw, cy, hw, bot):
                BULK_BOSS_R_M - 0.02, BULK_BOSS_R_M + 0.09, "cc_ring", seg=28)
 
 
+def _course_bands():
+    """The y bands the wall's own fittings and trim already occupy.
+
+    Derived from the constants the fittings are built from rather than written
+    down, so a course that moves takes its exclusion with it.
+    """
+    h = STRIP_H_M
+    bands = [(0.0, 0.14),                       # the skirting
+             (0.95, 1.15),                      # the dado
+             (CEIL_Y_M, CEIL_Y_M + 0.22)]       # the cornice
+    for y in STRIP_Y_M:
+        c = y + h / 2.0
+        bands.append((c - h * 1.9, c + h * 1.9))
+    for y in STRIP_Y_EXTRA_M:
+        bands.append((y - h * 1.9, y + h * 1.9))
+    return bands
+
+
+def side_wall(m, sx, hw, L):
+    """One side wall of the room -- the layer C&C has never had.
+
+    MEASURED, NOT NOTICED. Project the room along its own x axis and ask which
+    cells of its cross-section are covered by any triangle: the version that
+    shipped through session 4r leaves **32.6 m2 of 100.2 m2 (32.5%) open**, and
+    18.4% of the frame at the rubric's normal distance hits no room geometry at
+    all -- the left and right thirds of `docs/craft-4r-cnc-r1-normal.png` are
+    the vista's starfield, and of the pre-4r background colour, which is black.
+    What stood at x = +-hw was four light-course housings, a dado, a skirting
+    and a cornice: **trim for a wall that was never built.**
+    `docs/AAA-STANDARD.md` C2 names the case verbatim -- *"a correct skeleton
+    with a missing layer: the corridor after session 2l had ribs and a deck and
+    no walls, so it read as scaffolding of exactly the right size."*
+
+    AND THE REASON NO GATE COULD SEE IT IS ONE SENTENCE: **every closure test
+    in this project measures a SURFACE, and enclosure is a property of a
+    VOLUME.** `interior_kit.boundary_edges` reports ZERO open edges on this room and
+    `bespoke.SHELL_OPEN_EDGES["command_control"]` reads 0, and both are right --
+    every piece is a closed solid. A room built entirely of closed solids with
+    nothing between them is watertight and open to space. `_lateral_gaps()`
+    below asks the volume's question instead, and it fails on this room's own
+    previous content by 32.5%.
+
+    Three tiers, because a 12.6 x 9.7 m plate is the defect one level up:
+
+      1. the PLATE, from the pit slab's underside to the top of the cornice, so
+         no ray leaves between the wall and either;
+      2. a proud PANEL GRID on the deck's own joint pitch, skipping every band
+         the courses and trim already occupy (`_course_bands`);
+      3. a PILASTER under each of `ceiling`'s beams. The beams used to land on
+         nothing -- a beam that dies in mid-air is the tell that a room was
+         drawn rather than built -- and this is `docs/AAA-STANDARD.md` C4's
+         "a fitting is where a fitting would be needed", the cheapest instance
+         of it available in this room.
+    """
+    P = _dress._Parts("fix_")
+    xi = sx * (hw + WALL_STANDOFF_M)            # the face a player sees
+    xo = sx * (hw + WALL_STANDOFF_M + WALL_D_M)
+    y0, y1 = -PIT_DROP_M - 0.16, CEIL_Y_M + 0.22
+    z0, z1 = -L * 0.35, L * 0.70
+    m.box(min(xi, xo), max(xi, xo), y0, y1, z0, z1, "cc_bulkhead")
+
+    excl = _course_bands()
+    nz = max(1, int(round((z1 - z0) / DECK_BAY_M)))
+    ny = max(1, int((CEIL_Y_M - 0.0) / WALL_PANEL_Y_M))
+    xp = xi - sx * WALL_PANEL_PROUD_M
+    for i in range(nz):
+        zc = z0 + (i + 0.5) * (z1 - z0) / nz
+        for j in range(ny):
+            yc = (j + 0.5) * CEIL_Y_M / ny
+            hy = (CEIL_Y_M / ny) * 0.40
+            if any(yc - hy < b1 and yc + hy > b0 for b0, b1 in excl):
+                continue
+            hz = ((z1 - z0) / nz) * 0.43
+            m.box(min(xi, xp), max(xi, xp), yc - hy, yc + hy,
+                  zc - hz, zc + hz, "cc_panel")
+
+    # The pilasters, one under each ceiling beam, at the beam's own z.
+    zb0, zb1 = -L * 0.35, L * 0.70
+    xb = xi - sx * (WALL_PANEL_PROUD_M + 0.065)
+    for k in range(CEIL_BEAMS):
+        zc = zb0 + (k + 0.5) * (zb1 - zb0) / CEIL_BEAMS
+        m.box(min(xi, xb), max(xi, xb), 0.14, CEIL_Y_M - CEIL_BEAM_D_M,
+              zc - 0.13, zc + 0.13, P.frame)
+        # the head casting where it takes the beam, and a foot where it lands
+        for yy, hh in ((CEIL_Y_M - CEIL_BEAM_D_M - 0.14, 0.14), (0.14, 0.11)):
+            m.box(min(xi, xb - sx * 0.035), max(xi, xb - sx * 0.035),
+                  yy, yy + hh, zc - 0.185, zc + 0.185, P.panel)
+
+
 def course_lens(m, sx, y, z0, z1, lit):
     """The emitting face of one wall course, and nothing else.
 
@@ -1103,6 +1287,69 @@ def wall_course(m, sx, y, z0, z1):
               y - h * 1.86, y + h * 1.86,
               min(zz + sz * 0.014, zz + sz * 0.074),
               max(zz + sz * 0.014, zz + sz * 0.074), P.frame)
+
+
+def pit_soffit(m, hw, L):
+    """The light over the forward pit -- and the reason the window is a
+    silhouette.
+
+    MEASURED FIRST. In `docs/craft-4r-cnc-r2-half.png`, inside the window's own
+    aperture, the dark 55% of pixels (the frame: mullions, band, hub) average
+    linear Y **0.01256** against the bright 45% (the glass, showing the station
+    through it) at **0.11972** -- **x0.105**. The show's frame has the ratio the
+    other way up: `scratchpad/PATCHES-4r-windows.md` §7 measures pane/mullion
+    at **x0.48** there against **x6.96** here, i.e. the reference's mullions are
+    BRIGHTER than its glass, because they are lit structure in front of a
+    mid-dark view. Ours is a bright hole with a black wheel over it, and the
+    window is the object this whole room is arranged around.
+
+    THE CAUSE IS NOT THE WINDOW, IT IS THAT THE PIT HAS NO LIGHT. Every one of
+    the room's seven fittings is aft of z = 5.04: four wall courses that stop
+    `L * 0.42` forward, and ceiling battens on `light_service_tube`, which
+    `export_scene.py`'s `emissive_only` set explicitly excludes from carrying a
+    lamp. The forward pit -- one of the room's two occupied levels, the thing
+    that makes it read as a bridge, and the level the reference leads with --
+    is lit by nothing at all, and the window's frame is the surface between it
+    and the eye. A mullion face is a vertical plane facing -Z; the nearest lamp
+    to it was 7.7 m away at cos 0.44 and 1/d^2 of 0.017.
+
+    So this is a fitting where a fitting is needed rather than a light where a
+    light is wanted (`docs/AAA-STANDARD.md` C4). A blade over the pit at 3.5 m
+    from the window's centre raking forward puts the frame in front of its own
+    light, and gives the pit's four consoles an overhead of their own.
+
+    `light_wall_course` and NOT `cc_light_strip`: they are the same measured
+    fitting -- `export_scene.FIXTURE_LIGHTING`'s entry says so -- but
+    `export_scene._selftest` asserts `cc_light_strip` comes in exactly four
+    connected bodies, and that assertion is in a file this module does not own.
+    A fifth body of it would break a gate elsewhere to fix a defect here.
+    INV-621.
+    """
+    P = _dress._Parts("fix_")
+    y = CEIL_Y_M - CEIL_BEAM_D_M - PIT_SOFFIT_DROP_M
+    z0, z1 = PIT_SOFFIT_Z_M - 0.26, PIT_SOFFIT_Z_M + 0.26
+    x = PIT_SOFFIT_HALF_W_M
+    # the housing: a hung tray on two drop rods per end
+    m.box(-x, x, y + 0.10, y + 0.24, z0, z1, P.panel)
+    for sx in (-1, 1):
+        for zz in (z0 + 0.12, z1 - 0.12):
+            # 4 mm short of the beam it hangs from, for the reason
+            # `wall_course`'s end caps and `annunciator`'s cheeks are: a rod
+            # built to the soffit's own y shares a whole face with it.
+            m.box(sx * (x - 0.22), sx * (x - 0.22) + 0.05,
+                  y + 0.24, CEIL_Y_M - CEIL_BEAM_D_M - 0.004,
+                  zz - 0.025, zz + 0.025, P.frame)
+    # ...and the blades in it, one connected body each: `fixture_lights` hangs
+    # one lamp per body, so the count here IS the lamp count.
+    for k in range(PIT_SOFFIT_BLADES):
+        cx = -x + (k + 0.5) * (2 * x) / PIT_SOFFIT_BLADES
+        w = (2 * x) / PIT_SOFFIT_BLADES * 0.40
+        m.box(cx - w, cx + w, y, y + 0.10, z0 + 0.05, z1 - 0.05,
+              "light_wall_course")
+        # the reflector cheeks that make it a blade rather than a bare tube
+        for sz in (z0 + 0.03, z1 - 0.08):
+            m.box(cx - w - 0.04, cx + w + 0.04, y - 0.02, y + 0.13,
+                  sz, sz + 0.05, P.frame)
 
 
 def ceiling(m, hw, L):
@@ -1285,21 +1532,23 @@ def command_control(state=None):
     m.box(-hw, hw, -PIT_DROP_M - 0.16, -PIT_DROP_M, L * 0.45, L * 0.70,
           "cc_pit")
     m.box(-hw, hw, -PIT_DROP_M, 0.0, L * 0.45, L * 0.45 + 0.16, "cc_pit_face")
-    # ...and the pit's own SIDE walls. It had a back face and a floor and
-    # nothing at x = +-hw, so a player standing in the pit -- which is one of
-    # the room's two occupied levels -- was looking sideways at the background
-    # through a 1.9 m x 4.6 m gap either side, and the floor's two long edges
-    # were the last open edges in the room.
-    # AND THE SECOND INSIDE-OUT SOLID THE BOX LEDGER FOUND, in the same run as
-    # the bulkhead's: `m.box(sx * hw, sx * (hw + 0.16), ...)` is
-    # `m.box(-7.0, -7.16, ...)` on the port side -- x0 to the RIGHT of x1 -- so
-    # one of the pit's two side walls has been wound inward since it was
-    # written. A player standing in the pit sees the background through the
-    # port wall and the deck through the starboard one, and no test in this
-    # file could tell them apart. Two for two on a gate that is nine lines.
+    # ...and the room's SIDE WALLS, which is where the pit's own two side
+    # plates used to be and is 30 times as much wall.
+    #
+    # The old comment here recorded a real fix -- the pit had a back face and a
+    # floor and nothing at x = +-hw, so a player standing in the pit was looking
+    # sideways at the background -- and it was a fix applied to an INSTANCE and
+    # not to the rule, which is the defect `CLAUDE.md` names and which this file
+    # has now produced twice. The pit's 1.9 m band was walled; the 7.5 m of room
+    # above it, over the whole 12.6 m length, was not. `side_wall` builds the
+    # plate from the pit slab's underside to the top of the cornice and
+    # subsumes those two boxes, so there is one lateral plate rather than two
+    # that have to agree.
+    #
+    # (The inside-out solid the ledger caught here -- `m.box(-7.0, -7.16, ...)`,
+    # x0 to the RIGHT of x1 -- is why `side_wall` sorts its own bounds too.)
     for sx in (-1, 1):
-        m.box(min(sx * hw, sx * (hw + 0.16)), max(sx * hw, sx * (hw + 0.16)),
-              -PIT_DROP_M, 0.0, L * 0.45, L * 0.70, "cc_pit_face")
+        side_wall(m, sx, hw, L)
 
     # The stepped dais, as a CLOSED stepped solid.
     #
@@ -1361,6 +1610,7 @@ def command_control(state=None):
     window(m, zw - 0.01, cy)
     annunciator(m, state, cy)
     ceiling(m, hw, L)
+    pit_soffit(m, hw, L)
     deck_field(m, hw, L)
 
     # FOUR courses of light strips a side, and only two of them carry a lamp.
@@ -1449,6 +1699,105 @@ def _signed_volume(verts, tris):
               - p[1] * (q[0] * r[2] - q[2] * r[0])
               + p[2] * (q[0] * r[1] - q[1] * r[0]))
     return s / 6.0
+
+
+def enclosure_gaps(verts, tris, axis, bounds, cell=0.10, inside=None):
+    """Cells of the room's own cross-section that NO triangle covers.
+
+    THE QUESTION NO GATE IN THIS PROJECT ASKS, and the one that let C&C ship
+    for six sessions with 32.5% of its side walls missing.
+
+    Every closure test here measures a SURFACE: `boundary_edges` counts edges
+    used once, `_inward_fraction` counts which way a triangle faces, the box
+    ledger counts signed volumes, `bespoke.SHELL_OPEN_EDGES` sums the first of
+    those over a composed shell. On the version that shipped through 4r all
+    four are clean -- `boundary_edges` reports 0 open edges, `SHELL_OPEN_EDGES`
+    reads 0 --
+    and they are RIGHT, because every piece of the room is a closed solid.
+    **Enclosure is a property of the VOLUME, and a room built entirely of
+    closed solids with nothing between them is watertight and open to space.**
+
+    So this projects the whole mesh down `axis` onto the perpendicular plane,
+    marks every cell whose CENTRE lies inside some triangle, and returns the
+    cells of the room's own declared cross-section that stayed unmarked. A cell
+    centre test is an exact ray cast at that point, so the answer is a lower
+    bound on the leak rather than a raster approximation of it: anything it
+    reports is a real line of sight out of the room.
+
+    `bounds` is ((a0, a1), (b0, b1)) over the two axes that remain, and
+    `inside(a, b) -> bool` says which of those cells the room actually occupies
+    -- passed in rather than derived from the mesh, because a hole must not be
+    able to shrink the region it is measured against.
+
+    Returns (open_cells, tested_cells, cell_area_m2).
+    """
+    a, b = [i for i in range(3) if i != axis]
+    (a0, a1), (b0, b1) = bounds
+    na = int(math.ceil((a1 - a0) / cell))
+    nb = int(math.ceil((b1 - b0) / cell))
+    cov = bytearray(na * nb)
+    for tri in tris:
+        p = [verts[i] for i in tri]
+        pa = [q[a] for q in p]
+        pb = [q[b] for q in p]
+        ia0 = max(0, int((min(pa) - a0) / cell))
+        ia1 = min(na - 1, int((max(pa) - a0) / cell))
+        ib0 = max(0, int((min(pb) - b0) / cell))
+        ib1 = min(nb - 1, int((max(pb) - b0) / cell))
+        if ia1 < ia0 or ib1 < ib0:
+            continue
+        x1, y1 = pa[0], pb[0]
+        x2, y2 = pa[1], pb[1]
+        x3, y3 = pa[2], pb[2]
+        det = (y2 - y3) * (x1 - x3) + (x3 - x2) * (y1 - y3)
+        if abs(det) < 1e-12:
+            continue
+        for ia in range(ia0, ia1 + 1):
+            px = a0 + (ia + 0.5) * cell
+            for ib in range(ib0, ib1 + 1):
+                py = b0 + (ib + 0.5) * cell
+                l1 = ((y2 - y3) * (px - x3) + (x3 - x2) * (py - y3)) / det
+                if l1 < 0.0 or l1 > 1.0:
+                    continue
+                l2 = ((y3 - y1) * (px - x3) + (x1 - x3) * (py - y3)) / det
+                if l2 < 0.0 or l2 > 1.0:
+                    continue
+                if l1 + l2 <= 1.0:
+                    cov[ia * nb + ib] = 1
+    op = n = 0
+    for ia in range(na):
+        pa2 = a0 + (ia + 0.5) * cell
+        for ib in range(nb):
+            pb2 = b0 + (ib + 0.5) * cell
+            if inside is not None and not inside(pa2, pb2):
+                continue
+            n += 1
+            if not cov[ia * nb + ib]:
+                op += 1
+    return op, n, cell * cell
+
+
+def room_enclosure(verts, tris, cell=0.10):
+    """`enclosure_gaps` for the three axes, with this room's own section.
+
+    The AFT face is the one declared opening: `bespoke.py` records C&C's door
+    at `min_z` and no bespoke module authors its own doorway, so nothing is
+    asserted about -Z here. Everything else is hull.
+    """
+    hw, L = FLOOR_W_M / 2.0, FLOOR_L_M
+    by = (-PIT_DROP_M, CEIL_Y_M)
+    bz = (-L * 0.35, L * 0.70)
+    bx = (-hw, hw)
+
+    def lateral(y, z):
+        # the upper floor's full height everywhere, plus the pit below it
+        return (0.0 <= y <= CEIL_Y_M) or (y < 0.0 and z >= L * 0.45)
+
+    return {
+        "lateral": enclosure_gaps(verts, tris, 0, (by, bz), cell, lateral),
+        "forward": enclosure_gaps(verts, tris, 2, (bx, by), cell),
+        "vertical": enclosure_gaps(verts, tris, 1, (bx, bz), cell),
+    }
 
 
 def write_obj(path):
@@ -1894,6 +2243,78 @@ def _selftest():
           mull_r > WINDOW_D_M / 2.0 + WINDOW_RIB_OUT_M * 0.8,
           f"furthest mullion vertex at r={mull_r:.2f} against a "
           f"{WINDOW_D_M / 2.0:.2f} m rim")
+
+    # === NO TWO DESKS CARRY THE SAME BOARD ==================================
+    # `deck.py --degeneracy`'s question at the scale of one room: a gate that
+    # scores N things must also ask whether the N things are the same thing.
+    # Every other assertion in this file measures ONE console against a
+    # standard, and nine identical consoles pass all of them.
+    _pat = [tuple(_dress._pick(CELL_CYCLE, f"cnc-console-{k}", "cell", b, c)
+                  for b in range(CONSOLE_BANKS) for c in range(CONSOLE_CELLS))
+            for k in range(CONSOLE_N + PIT_CONSOLE_N)]
+    check("no two consoles carry the same register pattern",
+          len(set(_pat)) == len(_pat),
+          f"{len(set(_pat))} distinct boards over {len(_pat)} desks")
+    _old_pat = [tuple((b + c) % len(CELL_CYCLE)
+                      for b in range(CONSOLE_BANKS)
+                      for c in range(CONSOLE_CELLS))
+                for k in range(CONSOLE_N + PIT_CONSOLE_N)]
+    check("...and CONTROL: the modular rule this replaced gives one board",
+          len(set(_old_pat)) == 1,
+          f"{len(set(_old_pat))} distinct over {len(_old_pat)}")
+
+    # === THE ROOM IS A ROOM, NOT A SET OF CLOSED SOLIDS =====================
+    # See `enclosure_gaps`. This is the only gate in the file that asks about
+    # the VOLUME rather than about a surface, and it is the one that found the
+    # room had no side walls.
+    encl = room_enclosure(v, t)
+    for face, (op, n, area) in encl.items():
+        check(f"the room is closed {face}",
+              op == 0,
+              f"{op} of {n} cross-section cells show the background "
+              f"= {op * area:.1f} m2 of {n * area:.1f} m2")
+
+    # CONTROL 1 -- the gate must fail on this room's own previous content, and
+    # this is that content verbatim: the pit's two side plates and nothing
+    # above them. It reports 32.6 m2 open of 100.2 m2, which is the number in
+    # `side_wall`'s docstring and the reason it exists.
+    _sw = side_wall
+    try:
+        def _pit_only(m, sx, hw, L):                     # 4r's own two boxes
+            m.box(min(sx * hw, sx * (hw + 0.16)),
+                  max(sx * hw, sx * (hw + 0.16)),
+                  -PIT_DROP_M, 0.0, L * 0.45, L * 0.70, "cc_pit_face")
+        globals()["side_wall"] = _pit_only
+        _ov, _ot, _og = command_control()
+        _op, _on, _oa = room_enclosure(_ov, _ot)["lateral"]
+    finally:
+        globals()["side_wall"] = _sw
+        command_control()
+    check("...and CONTROL: the walls the room shipped without fail it",
+          _op > 3000 and _op * _oa > 30.0,
+          f"{_op} of {_on} cells = {_op * _oa:.1f} m2 open")
+
+    # CONTROL 2 -- the FORWARD face, and it is a different defect: 45 cells of
+    # 13,160 in the window itself, where every concentric member was built to
+    # its nominal radius and the panes it holds are chords that dip inside it.
+    # Rebuilt without the lap, the gate reports them.
+    _r = WINDOW_D_M / 2.0
+    _cy = WINDOW_D_M / 2.0 + 0.9
+    _pm = _M()
+    for _f0, _f1, _n in WINDOW_COURSES:
+        for _k in range(_n):
+            _pane(_pm, _cy, 0.0, _r * _f0 + 0.02, _r * _f1 - 0.02,
+                  2.0 * math.pi * _k / _n + 0.008,
+                  2.0 * math.pi * (_k + 1) / _n - 0.008,
+                  "cc_glazing", WINDOW_PANE_INSET_M)
+        for _f in (_f0, _f1):
+            _pm.band(0.0, _cy, -0.02, 0.02, _r * _f - 0.028, _r * _f + 0.028,
+                     "cc_mullion", seg=48)
+    _pg, _pn, _pa = enclosure_gaps(
+        _pm.v, _pm.t, 2, ((-_r, _r), (_cy - _r, _cy + _r)), 0.10,
+        lambda x, y: math.hypot(x, y - _cy) < _r * 0.99)
+    check("...and CONTROL: nominal-radius window members leak at every chord",
+          _pg > 0, f"{_pg} of {_pn} cells inside the aperture show through")
 
     # === THE APERTURE IS ROUND ==============================================
     # It was a SQUARE hole in four boxes with a round window in the middle of

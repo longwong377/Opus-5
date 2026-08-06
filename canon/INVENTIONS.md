@@ -10547,3 +10547,137 @@ rather than falling back to the monolith, which is a decision this entry does no
 stale one").
 
 **INV-616 … INV-619** — allocated to this work and not used. Free.
+
+## INV-620 — C&C has side walls, and enclosure is a property no closure test in this project measures
+
+**What.** `station/command_control.py::side_wall` builds a plated wall at each side of C&C, from
+the pit slab's underside to the top of the cornice over the room's whole 12.6 m length, carrying a
+panel grid on the deck's own joint pitch and a pilaster under each of `ceiling`'s beams. It
+subsumes the two 1.9 m plates that used to wall the pit alone.
+
+**Why.** The room did not have side walls. What stood at x = ±7.00 m was four light-course
+housings, a dado, a skirting and a cornice — **trim for a wall that was never built**. Measured by
+projecting the room along its own x axis and counting the cells of its cross-section that no
+triangle covers: **3,261 of 10,020, i.e. 32.6 m² of 100.2 m² (32.5%) open, each side**. In the
+engine at the room's own normal viewing distance, **18.4% of the frame hit no room geometry at
+all** — with `station/vista.py` mounted those pixels are the starfield, and without it they are the
+background colour, which is black. `docs/AAA-STANDARD.md` C2 names the case verbatim: *"a correct
+skeleton with a missing layer: the corridor after session 2l had ribs and a deck and no walls, so
+it read as scaffolding of exactly the right size."*
+
+**Constrained by.** Thickness is `cc_pit_face`'s own 0.16 m, because that was the room's only
+lateral plate and one number is better than two that must agree. The 4 mm standoff from x = ±hw is
+this file's existing idiom (`wall_course`'s end caps, `annunciator`'s cheeks): a plate flush with
+the trim it meets shares a whole face with it, which the non-manifold gate reports and is right to.
+The panel grid's z pitch is `DECK_BAY_M`, so the wall's joints land over the deck's; its y pitch is
+the forward bulkhead's 1.62 m, so the two walls are one grid meeting at a corner. The pilasters
+stand at `ceiling`'s own beam z values, so the beams land on something.
+
+**AND THE REASON NO GATE COULD SEE IT.** Every closure test in this project measures a **surface**:
+`interior_kit.boundary_edges` counts edges used once (**zero** on this room), `_inward_fraction` counts
+facing, the box ledger counts signed volumes, `bespoke.SHELL_OPEN_EDGES["command_control"]` reads 0.
+All four were clean and all four were right — every piece of the room is a closed solid.
+**Enclosure is a property of the VOLUME, and a room built entirely of closed solids with nothing
+between them is watertight and open to space.**
+
+**Overturned by.** A reference frame showing C&C's side walls as something other than plated —
+glazed, open to a gallery, or fenestrated. The reference crop shows panelling behind the light
+courses and nothing beyond them, so the wall's *surface* is authority 5 while its *existence* is
+not a judgement call.
+
+**Authority 5.** `station/command_control.py::side_wall`, gated by `room_enclosure` /
+`enclosure_gaps` in the same file, whose control rebuilds the pit-only version and reports
+`3261 of 10020 cross-section cells show the background = 32.6 m2 of 100.2 m2`.
+
+## INV-621 — The forward pit had no light, which is why the window read as a silhouette
+
+**What.** `station/command_control.py::pit_soffit` hangs a tray of `light_wall_course` blades from
+the last ceiling beam, over the forward pit. `PIT_SOFFIT_BLADES = PIT_CONSOLE_N // 2` — one blade
+per pit console pair.
+
+**Why.** Two measurements, and the second explains the first. Inside the window's own aperture the
+dark 55% of pixels (mullions, band, hub) averaged linear Y **0.01256** against the bright 45% (the
+glass, showing the station through it) at **0.11972** — **×0.105**. The show's frame has it the
+other way up: `scratchpad/PATCHES-4r-windows.md` §7 measures pane/mullion at ×0.48 there against
+×6.96 here. Ours was a bright hole with a black wheel over it, in the object the room is arranged
+around. The cause is not the window: **every one of the room's seven fittings was aft of z = 5.04
+m.** Four wall courses stop at `L * 0.42`, and the ceiling battens are `light_service_tube`, which
+`export_scene.py`'s `emissive_only` set explicitly excludes from carrying a lamp. The forward pit —
+one of the room's two occupied levels, the thing that makes it read as a bridge, and what the
+reference frame leads with — was lit by **nothing**, and the window's frame is the surface between
+it and the eye. After: **×0.341**, the frame 3.4× brighter and the ratio 3.3× nearer the show's.
+
+**Constrained by.** The z is the last ceiling beam's own centre, so the tray hangs from structure
+rather than at a liked height; that puts it 3.28 m from the window's centre, d/r = 0.31 at
+`light_wall_course`'s measured 3.5 m range times this room's reach factor. The count is the layer-4
+level gate: `fixture_lights` hangs one lamp per connected body, and at THREE blades
+`tools/measure_frame.py --against` puts the room's median at ×1.87 of the show's against a ×1.40
+±25% target — out of range. Two lands it at **×1.72**, inside, and nearer the target than the
+×1.06 it sat at with the pit unlit. `light_wall_course` and not `cc_light_strip` because
+`export_scene._selftest` asserts the latter comes in exactly four connected bodies and that
+assertion is in a file this module does not own.
+
+**Read `measurable %` beside that median**, which is this project's own warning about this tool:
+the frame went 67.9% → 88.9% measurable, so the median moved partly because its population did.
+Every distribution statistic improved at the same time — p99 ×0.69 → ×1.03, p5/p95 ×1.14 → ×0.94,
+crushed 32.1% → 11.0% — which a merely hotter frame would not do.
+
+**Overturned by.** A reference frame showing the pit lit from its own consoles alone, or showing a
+fitting in a different place. ×0.341 is still short of the show's ×2.08 and closing that needs the
+frame lit from further into the room than the ceiling allows.
+
+**Authority 5.** `station/command_control.py::pit_soffit`, measured with
+`tools/measure_frame.py --against` on `docs/engine-cnc.png` and with a percentile split inside the
+aperture on `docs/craft-4r-cnc-r1-half.png` against `docs/craft-4r-cnc-r3-half.png`.
+
+## INV-622 — A concentric window member laps its panes by their own chord sagitta
+
+**What.** In `station/command_control.py::window`, every concentric frame member and the structural
+band are built to `r * f − max(0.028, lap[f])`, where `lap` is the amount the course inside dips
+below its own cut radius.
+
+**Why.** A pane is a flat trapezoid inscribed in its arc, so its outer edge is a **chord** and dips
+`rad × (1 − cos(π/n))` inside the radius it was cut at — 37 mm on the twelve-pane inner course,
+15 mm on the twenty-four-pane one. A member built to the nominal radius misses the glass it holds,
+and the miss is a hairline annular **slot straight through the only window in the room**, at
+r/R = 0.40 and again at 0.62 and 0.80. Measured by projecting the room along +Z: **45 open cell
+centres of 13,160**. Nothing else could see it, because every closure test in the file measures one
+surface at a time and both surfaces are closed.
+
+**Constrained by.** Only the OUTER boundary of a course needs the lap: a chord at the inner radius
+dips *toward* the centre and so covers more, not less. The 0.028 m floor is the frame member's own
+existing half-width, so a course fine enough to need less keeps what it had.
+
+**NEGATIVE RESULT, kept.** The first hypothesis was a polygon-phase mismatch — a 40-gon band
+against 24 chords — and re-cutting the band at `seg = 24` made it **worse, 45 → 55**, because a
+coarser polygon dips further inside its own radius. The gap was construction, not tessellation.
+
+**Overturned by.** Curved panes. If the glazing is ever lathed rather than plated, the lap is zero
+and this becomes an overlap.
+
+**Authority 5.** `station/command_control.py::window`, gated by `room_enclosure`'s forward face
+with a control that rebuilds the nominal-radius members and reports the leak.
+
+## INV-623 — Which registers a console carries is keyed to the desk, not to a modulus
+
+**What.** `console_unit` picks each cell's lit register with `dressing._pick(live, seed, "cell", b,
+c)` — `blake2b`, deterministic, keyed on the desk's own seed — instead of `live[(b + c) % 3]`.
+
+**Why.** The modulus does not depend on the desk at all, so **all nine consoles carried the same
+sixteen-cell board**, and nine identical boards on a 150° arc render as a red-and-white
+checkerboard laid over the whole desk: `docs/craft-4r-cnc-r1-console-half.png` reads as a picnic
+blanket at the rubric's half distance. `docs/AAA-STANDARD.md` C5's *"nothing in frame repeats in a
+way the eye can index"* is the clause, with C3's *"the same light, repeated without regard to what
+the part does"* one rung below it. Measured: **1 distinct board over nine desks → 9.**
+
+**Constrained by.** `blake2b` and never `random` or `str.__hash__`, which is salted per process —
+the project's own determinism rule, verified byte-identical across `PYTHONHASHSEED` 0, 1 and 12345.
+The pit's single-register desks are left alone: the reference shows them red-lit.
+
+**Overturned by.** A reading of the reference at magnification that shows a regular register
+pattern across the desks.
+
+**Authority 5.** `station/command_control.py::console_unit`, gated in the same file by "no two
+consoles carry the same register pattern" with the modular rule as its control.
+
+**INV-624 … INV-629** — allocated to this work and not used. Free.
