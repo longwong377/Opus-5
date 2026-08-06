@@ -2344,6 +2344,118 @@ def _degeneracy(out=print, keys=None):
     return rc
 
 
+# How far a collision shell may sit from the mesh it stands for, as a fraction
+# of the mesh's own extent. 5% of a 22 m room is 1.1 m -- a stride -- and there
+# is no honest reason for a wall a player can see and a wall a player can touch
+# to be further apart than that. It is a tolerance rather than an equality
+# because the shell is a SMOOTH shell: `collision.py` sweeps a profile measured
+# off the kit by ray casting, so it lands on the wall's inner face while the
+# mesh extent is its outer one, and one wall thickness (0.18 m) of disagreement
+# is correct rather than a defect.
+SHELL_FIT_TOL = 0.05
+
+
+def shell_fit(schema, profile, verbose=True, legacy=False):
+    """Does every room's collision shell agree with the mesh a player sees?
+
+    THE QUESTION NO GATE HERE HAS EVER ASKED. `walkable.py` asks whether a body
+    can walk, `--sweep` asks whether every location is reachable, `--footprint`
+    asks whether a room's MESH covers its plan -- and not one of them compares
+    the two meshes a room emits. They can disagree by any amount and every gate
+    stays green, because each measures its own artefact against its own
+    standard.
+
+    Session 4k fixed the axial half of exactly this and left the width. Its own
+    docstring on `room_interior_half_m` says why the axis mattered -- "a shell
+    sized on the old expression would put an INVISIBLE wall 10.8 m into a 140 m
+    room a player can see the whole length of" -- and the width argument three
+    lines above it in `room_shell_for`, plus the whole of `room_half_w_m`, were
+    left reading `min(room_extent_m, bay_span_m) / 2`. A fix applied to one
+    axis and not to the rule.
+
+    IT ASKS CONTAINMENT, NOT WIDTH, and the difference is the whole reason this
+    is worth a gate rather than an assertion. `bespoke.room_shell` recentres a
+    module's x on the DOORWAY rather than on the bounding box -- its own note
+    says local x = 0 "is not a centre, it is a DOORWAY", and lists two modules
+    whose bbox centre is metres away from it. `collision.room_shell` takes ONE
+    half-width, symmetric about the place's bearing. So a room can have exactly
+    the right width and still hang out one side: matching `w` proves nothing on
+    its own, and `min(x) >= -hw and max(x) <= +hw` is the thing a player feels.
+
+    Three checks, and the third is what makes the first two safe:
+
+      1. CONTAIN -- no vertex of the room's render mesh lies outside the arc
+         its collision shell spans. This is the one a player walks into;
+      2. SPAN -- the shell's width is what `rooms.built_span_m` reports. That
+         function is declared "THE ONE FUNCTION EVERYTHING THAT PLACES A ROOM
+         MUST ASK" and a second copy of its answer is how this drifted;
+      3. FOOT -- no room claims more arc than its declared footprint.
+         `directory.collisions()` already asserts footprints do not overlap, so
+         a shell inside its footprint inherits non-overlap by construction
+         rather than needing a pairwise shell test.
+
+    `legacy=True` restores the pre-4k expression and is the negative control.
+    """
+    rows, contain_fail, span_fail, foot_fail = [], [], [], []
+    for place in dr.PLACES:
+        if place.get("deferred"):
+            continue
+        try:
+            w_span, _l_span = R.built_span_m(schema, profile, place)
+        except Exception:      # a place no builder owns -- `--sweep` reports it
+            continue
+        w_full, _l, _r = R.room_extent_m(schema, profile, place)
+        if legacy:
+            bw, _bl = R.bay_span_m(place)
+            half_w = min(w_full, bw) / 2.0
+        else:
+            half_w = room_half_w_m(schema, profile, place)
+
+        if abs(2.0 * half_w - w_span) > SHELL_FIT_TOL * max(w_span, 1e-9):
+            span_fail.append((place["key"], 2.0 * half_w, w_span))
+        if w_span > w_full * (1.0 + SHELL_FIT_TOL):
+            foot_fail.append((place["key"], w_span, w_full))
+
+        x0 = x1 = None
+        if place.get("module") in BSP.BESPOKE_GEOMETRY:
+            try:
+                v = BSP.room_shell(schema, profile, place,
+                                   room_axial_half_m(schema, profile, place))[0]
+            except Exception:
+                v = None
+            if v:
+                xs = [q[0] for q in v]
+                x0, x1 = min(xs), max(xs)
+                slack = SHELL_FIT_TOL * max(x1 - x0, 1e-9)
+                out_l = max(0.0, -half_w - x0)
+                out_r = max(0.0, x1 - half_w)
+                if max(out_l, out_r) > slack:
+                    contain_fail.append((place["key"], half_w, x0, x1,
+                                         out_l, out_r))
+        rows.append((place["key"], half_w, w_span, x0, x1, w_full))
+
+    out = print if verbose else (lambda *a, **k: None)
+    tag = "LEGACY control" if legacy else "shell fit"
+    out(f"{tag}: {len(rows)} places measured, tolerance "
+        f"{SHELL_FIT_TOL * 100:.0f}% of the room's own extent")
+    for key, hw, x0, x1, ol, orr in sorted(contain_fail,
+                                           key=lambda r: -(r[4] + r[5])):
+        out(f"  CONTAIN {key:<24} shell +/-{hw:7.2f} m, mesh {x0:8.2f} .. "
+            f"{x1:8.2f} m -- {ol:7.2f} m outside left, {orr:7.2f} m right")
+    for key, shell_w, w_span in sorted(span_fail,
+                                       key=lambda r: r[1] / max(r[2], 1e-9)):
+        out(f"  SPAN    {key:<24} shell {shell_w:8.2f} m against "
+            f"built_span_m {w_span:8.2f} m  ({100 * shell_w / w_span:5.1f}%)")
+    for key, w_span, w_full in foot_fail:
+        out(f"  FOOT    {key:<24} claims {w_span:8.2f} m of a "
+            f"{w_full:8.2f} m footprint")
+    bad = len(contain_fail) + len(span_fail) + len(foot_fail)
+    out(f"  {len(contain_fail)} rooms have geometry outside their own collision "
+        f"shell, {len(span_fail)} shells disagree with built_span_m, "
+        f"{len(foot_fail)} rooms wider than their footprint")
+    return rows, bad
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--sector", default="blue")
@@ -2360,6 +2472,12 @@ def main():
     ap.add_argument("--degeneracy", action="store_true",
                     help="are any two named places the SAME place? Identity, "
                          "not similarity -- no threshold to tune")
+    ap.add_argument("--shell-fit", action="store_true",
+                    help="does the wall a player can touch stand where the "
+                         "wall a player can see stands?")
+    ap.add_argument("--legacy", action="store_true",
+                    help="--shell-fit's negative control: the pre-4k "
+                         "min(room_extent_m, bay_span_m) expression")
     a = ap.parse_args()
     if a.selftest:
         return _selftest()
@@ -2367,6 +2485,12 @@ def main():
         return _sweep()
     if a.degeneracy:
         return _degeneracy()
+    if a.shell_fit:
+        schema, profile = it.load()
+        _rows, bad = shell_fit(schema, profile, legacy=a.legacy)
+        if a.legacy:
+            print("  (negative control -- this is the expression that shipped)")
+        return 1 if bad else 0
 
     schema, profile = it.load()
     v, t, g, s = build_deck(schema, profile, a.sector, a.ring, a.deck,

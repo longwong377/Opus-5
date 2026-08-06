@@ -1,0 +1,22 @@
+shell fit: 129 places measured, tolerance 5% of the room's own extent
+  CONTAIN alien_resident_qtr       shell +/-   5.54 m, mesh   -54.16 ..    49.37 m --   48.62 m outside left,   43.83 m right
+  CONTAIN ambassadorial_suites     shell +/-   5.25 m, mesh   -92.28 ..     8.53 m --   87.04 m outside left,    3.28 m right
+  CONTAIN qtr_personnel            shell +/-   5.27 m, mesh   -50.22 ..    45.01 m --   44.94 m outside left,   39.74 m right
+  CONTAIN qtr_civilian             shell +/-   5.52 m, mesh   -47.39 ..    42.68 m --   41.87 m outside left,   37.16 m right
+  CONTAIN qtr_command              shell +/-   5.82 m, mesh   -55.58 ..    17.25 m --   49.76 m outside left,   11.44 m right
+  CONTAIN qtr_transient            shell +/-   5.83 m, mesh   -36.71 ..    32.97 m --   30.88 m outside left,   27.15 m right
+  CONTAIN league_delegations       shell +/-   5.69 m, mesh   -27.41 ..    22.73 m --   21.72 m outside left,   17.03 m right
+  CONTAIN arrival_concourse        shell +/-   5.54 m, mesh   -17.37 ..     3.53 m --   11.83 m outside left,    0.00 m right
+  CONTAIN council_chamber          shell +/-   5.90 m, mesh   -13.84 ..     8.90 m --    7.94 m outside left,    3.00 m right
+  CONTAIN zocalo                   shell +/-   6.40 m, mesh   -11.02 ..    11.02 m --    4.62 m outside left,    4.62 m right
+  CONTAIN shops_kiosks             shell +/-   7.02 m, mesh   -11.02 ..    11.02 m --    4.00 m outside left,    4.00 m right
+  CONTAIN alien_sector             shell +/-   4.84 m, mesh    -2.32 ..    11.79 m --    0.00 m outside left,    6.95 m right
+  CONTAIN obs_rotundas             shell +/-   4.22 m, mesh    -7.18 ..     7.18 m --    2.96 m outside left,    2.96 m right
+  CONTAIN customs_north            shell +/-   6.15 m, mesh    -8.75 ..     8.75 m --    2.60 m outside left,    2.60 m right
+  CONTAIN customs_south            shell +/-   6.15 m, mesh    -8.75 ..     8.75 m --    2.60 m outside left,    2.60 m right
+  CONTAIN obs_dome_1               shell +/-   4.16 m, mesh    -6.48 ..     6.48 m --    2.32 m outside left,    2.32 m right
+  CONTAIN core_shuttle             shell +/-   2.89 m, mesh    -2.52 ..     7.10 m --    0.00 m outside left,    4.21 m right
+  CONTAIN kosh_quarters            shell +/-   5.11 m, mesh    -2.25 ..     8.41 m --    0.00 m outside left,    3.30 m right
+  CONTAIN cnc                      shell +/-   5.76 m, mesh    -7.16 ..     7.16 m --    1.40 m outside left,    1.40 m right
+  CONTAIN central_corridor         shell +/-   3.49 m, mesh    -4.68 ..     4.68 m --    1.19 m outside left,    1.19 m right
+  20 rooms have geometry outside their own collision shell, 0 shells disagree with built_span_m, 0 rooms wider than their footprint

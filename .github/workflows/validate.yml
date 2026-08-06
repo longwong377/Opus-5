@@ -153,6 +153,23 @@ jobs:
         continue-on-error: true
         run: python3 station/routes.py --selftest
 
+      # THE WALL A PLAYER CAN TOUCH AGAINST THE WALL A PLAYER CAN SEE. Every
+      # gate here measures one artefact against a standard of its own kind, so
+      # a room's render mesh and its collision shell could disagree by any
+      # amount and stay green -- and in 20 of the 32 composed rooms they do.
+      # ~7 minutes: it builds every composed module, because the only honest
+      # source for "how wide is this room" is the geometry.
+      #
+      # IT ASKS CONTAINMENT, NOT WIDTH, and `kosh_quarters` is the proof that
+      # those are different questions: 10.22 m of shell for a 10.66 m mesh is
+      # 95.9% and passes any width test, while the mesh runs -2.25 .. +8.41 m
+      # because `bespoke.room_shell` centres x on the DOORWAY -- so 3.30 m of
+      # that room is outside a shell of the right size.
+      - name: The collision shell is the room
+        id: sshellfit
+        continue-on-error: true
+        run: python3 station/deck.py --shell-fit
+
       # THE QUALITY BAR ITSELF HAD NEVER RUN IN CI. `docs/aaa-scorecard.json` is
       # the layer-8 authority -- the file that decides whether a subsystem may
       # stop being reworked -- and nothing checked its shape, so a round could
@@ -1202,6 +1219,8 @@ jobs:
             echo "FAILED: svista"; fail=1; fi
           if [ "${{ steps.svistamount.outcome }}" != "success" ]; then
             echo "FAILED: svistamount"; fail=1; fi
+          if [ "${{ steps.sshellfit.outcome }}" != "success" ]; then
+            echo "FAILED: sshellfit"; fail=1; fi
           if [ "${{ steps.saaa_selftest.outcome }}" != "success" ]; then
             echo "FAILED: saaa_selftest"; fail=1; fi
           if [ "${{ steps.saaa_scorecard.outcome }}" != "success" ]; then

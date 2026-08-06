@@ -1,0 +1,68 @@
+done cnc
+done obs_dome_1
+done customs_north
+done customs_south
+done arrival_concourse
+done qtr_command
+done qtr_personnel
+done zocalo
+done bar_unnamed
+done qtr_civilian
+done qtr_transient
+done council_chamber
+done ambassadorial_suites
+done alien_sector
+done kosh_quarters
+done plant_zone
+done downbelow
+done obs_dome_2
+done eclipse_cafe
+done shops_kiosks
+done central_corridor
+done league_delegations
+done obs_rotundas
+done downbelow_arch
+done water_reclamation
+done air_compressors
+done core_shuttle
+done alien_resident_qtr
+done earharts
+done fresh_air
+done happy_daze
+done shuttle_car
+
+place                      w_full   bay_w   mesh_w  binding  mesh/foot   radius mesh_deg foot_deg
+qtr_transient               58.28   11.66    69.68  one-bay       1.20    128.4    31.09    26.00  MESH > FOOTPRINT
+bar_unnamed                 18.40   18.40    18.72  footprint      1.02    263.5     4.07     4.00
+eclipse_cafe                18.40   18.40    18.72  footprint      1.02    263.5     4.07     4.00
+qtr_command                 93.04   11.63    72.83  one-bay       0.78    177.7    23.48    30.00
+qtr_civilian               121.50   11.05    90.07  one-bay       0.74    139.2    37.07    50.00
+qtr_personnel              137.08   10.54    95.22  one-bay       0.69    178.5    30.57    44.00
+alien_resident_qtr         155.14   11.08   103.53  one-bay       0.67    296.3    20.02    30.00
+league_delegations          79.73   11.39    50.14  one-bay       0.63    285.5    10.06    16.00
+kosh_quarters               20.43   10.22    10.66  one-bay       0.52    292.7     2.09     4.00
+earharts                    24.60   12.30    12.62  one-bay       0.51    281.9     2.57     5.00
+fresh_air                   24.60   12.30    12.62  one-bay       0.51    281.9     2.57     5.00
+ambassadorial_suites       199.32   10.49   100.81  one-bay       0.51    285.5    20.23    40.00
+customs_north               36.92   12.31    17.50  one-bay       0.47    211.6     4.74    10.00
+customs_south               36.92   12.31    17.50  one-bay       0.47    211.6     4.74    10.00
+arrival_concourse           44.31   11.08    20.90  one-bay       0.47    211.6     5.66    12.00
+council_chamber             59.04   11.81    22.74  one-bay       0.39    281.9     4.62    12.00
+happy_daze                  39.87   13.29    13.61  one-bay       0.34    456.9     1.71     5.00
+cnc                         46.08   11.52    14.33  one-bay       0.31    110.0     7.46    24.00
+core_shuttle                34.63    5.77     9.61  one-bay       0.28     99.2     5.55    20.00
+obs_dome_1                  49.92    8.32    12.97  one-bay       0.26    110.0     6.75    26.00
+shuttle_car                 19.19    6.40     4.78  one-bay       0.25    137.4     1.99     8.00
+obs_rotundas                59.04    8.43    14.36  one-bay       0.24    281.9     2.92    12.00
+obs_dome_2                  38.40    9.60     8.76  one-bay       0.23    110.0     4.56    20.00
+shops_kiosks               154.50   14.05    22.04  one-bay       0.14    221.3     5.71    40.00
+zocalo                     268.66   12.79    22.04  one-bay       0.08    219.9     5.74    70.00
+alien_sector               183.91    9.68    14.11  one-bay       0.08    292.7     2.76    36.00
+central_corridor           153.52    6.98     9.36  one-bay       0.06    219.9     2.44    40.00
+air_compressors            180.24   10.01    10.02  one-bay       0.06    430.3     1.33    24.00
+water_reclamation          305.08   13.87    13.92  one-bay       0.05    437.0     1.82    40.00
+downbelow_arch             432.07   10.80    10.84  one-bay       0.03    412.6     1.51    60.00
+downbelow                 1352.14   13.13    13.17  one-bay       0.01    430.4     1.75   180.00
+plant_zone                2704.28   13.73    13.77  one-bay       0.01    430.4     1.83   360.00
+
+1 of 32 bespoke meshes are WIDER than their own declared footprint

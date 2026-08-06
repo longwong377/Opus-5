@@ -153,14 +153,26 @@ FIN_R1_M = 6.35
 # own radius needs (-hw*sa, +hw*ca) and (+hw*sa, -hw*ca). The y term was simply
 # absent, so a blade's width collapsed as sin(its angle): measured on the built
 # mesh before the fix, **22 of 30 blades were under 90% of nominal, the
-# narrowest 32 mm against a nominal 620 mm (5%), and the widest was 19.1x the
-# narrowest**. That is why the fan reads as a sunburst of tapering slivers on a
+# narrowest 102 mm against a nominal 620 mm (16%), and the widest was 6.29x the
+# narrowest**.
+#
+# THOSE LAST TWO FIGURES WERE WRONG WHEN FIRST WRITTEN HERE and are corrected
+# from the parent commit's own mesh by the judge agent. "32 mm" was the
+# algebraic model `2*hw*sin(a)` rather than anything measured, and the model is
+# wrong twice over: the true perpendicular width of the old quad is
+# `2*hw*sin^2(a)`, which is 1.7 mm at the narrowest blade, and the 102 mm that
+# a measurement actually returns is mostly the blade's own 100 mm thickness
+# seen edge-on. The file's own negative control has printed 0.101 m throughout,
+# so the comment contradicted the assertion beside it. **22 of 30 is right and
+# the fix is right**; only the two quoted numbers were not.
+#
+# That is why the fan reads as a sunburst of tapering slivers on a
 # field of blue rather than as the reference's mass of overlapping plates, and
 # it is most of the reason 25.9% of the normal frame and 35.7% of the half
 # frame measured as strong blue against the reference's 1.6%.
 #
 # No gate here could see it. Every assertion in this file measures closure,
-# winding, signed volume or separation -- and a blade 32 mm wide is closed,
+# winding, signed volume or separation -- and a blade 102 mm wide is closed,
 # wound correctly, positive in volume and clear of its neighbours. `_selftest`
 # now measures the width itself.
 #
@@ -757,8 +769,27 @@ def bench(m):
         # feathering into jagged tips rather than washing the whole inlay.
         thb = th + dth * 0.5
         rb2 = reach * (0.72 + 0.24 * _u("council-speak-blue", k))
+        # AND IT IS NOT BLUE YET, DELIBERATELY. These slivers were built this
+        # session tagged `signage_panel__council_speak_blue`, which resolves
+        # through the longest-fragment rule to `signage_panel` -- the customs
+        # board's backlit face at emission 3.0 -- the exact substitution
+        # `screen_wall`'s docstring spends fourteen lines explaining is wrong
+        # for the wall field. The judge agent measured what it did to the bench
+        # top: strong blue 1.75% -> 5.60% of that band, reading at the rubric's
+        # half distance as saturated emissive confetti on a grey slab. A wall
+        # is not a light and neither is an inlay 4 mm proud of a bench.
+        #
+        # There is no non-emissive blue bound anywhere in the interior scene --
+        # the four nearest are Earthforce uniform cloths -- so this carries the
+        # fan's own white inlay until `materials.py` has a `council_field`
+        # family. THE COLOUR LOSS IS REAL AND IS THE POINT OF SAYING SO HERE:
+        # `council chambers.webp` puts saturated blue at these blades' outer
+        # ends (measured balanced rgb 0.333/0.395/0.486, H 216, S 0.316 -- the
+        # only saturated element on the bench), and until the material exists
+        # the geometry is right and the colour is absent. Requested in
+        # scratchpad/PATCHES-4r-judge-council.md #2.
         wedge(thb, rb2 * SPEAK_BLUE_FROM, rb2, 0.010, 0.17 * rb2 * dth,
-              "signage_panel__council_speak_blue", SPEAK_RISE_M * 1.7)
+              "council_speak_fan", SPEAK_RISE_M * 1.7)
 
 
 def mesh_panel_yspan():
@@ -1670,10 +1701,13 @@ def _selftest():
     # its own sine for as long as it has existed: `fin_wall` offset the two
     # long edges by (-hw*sa, 0) instead of (-hw*sa, +hw*ca), so a blade's width
     # came out as `2*hw*sin(its angle)`. Measured on the built mesh before the
-    # fix: **22 of 30 blades under 90% of nominal, the narrowest 32 mm against
-    # 620 mm (5%), widest / narrowest = 19.1**. Every existing assertion passed
-    # -- a 32 mm blade is closed, correctly wound, positive in volume and clear
-    # of everything. This is the measurement that could have failed.
+    # fix: **22 of 30 blades under 90% of nominal, the narrowest 102 mm against
+    # 620 mm (16%), widest / narrowest = 6.29** -- corrected by the judge agent
+    # from the parent commit's own mesh; the "32 mm / 19.1x" this comment used
+    # to carry was the algebra, not a measurement, and see the note at the top
+    # of the file. Every existing assertion passed -- a 102 mm blade is closed,
+    # correctly wound, positive in volume and clear of everything. This is the
+    # measurement that could have failed.
     def blade_widths(x_only=False):
         """(measured, nominal) width per blade, perpendicular to its radius."""
         probe = _M()
@@ -1835,11 +1869,24 @@ def _selftest():
     import budget as _bud                                       # noqa: PLC0415
     share = (_bud.INTERIOR["visible_set_tris"]
              - _bud.INTERIOR["corridor_tris_per_m"] * 66.0)
+    # THE SHEET IS COUNTED BY BUILDING IT, NOT BY COUNTING A GROUP NAME. This
+    # line used to read `sum(1 for x in g if x == 'council_mesh')` and printed
+    # **80** for an object that is 41.2% of the room: `council_mesh` is the lit
+    # face BEHIND the sheet, and `mesh_grille` tags its 12,240 triangles
+    # `council_frame` along with the cornice, the ceiling ribs and the pilaster
+    # joints. Three different figures for this one object were in circulation --
+    # 12,320, 12,570 and 80 -- against a measured 12,240. Found by the judge
+    # agent; it is the third instance this session of the defect two assertions
+    # below, *a group name is not a location*, and it was in an assertion
+    # written this session. Building the sub-mesh cannot drift from what the
+    # room emits.
+    probe = _M()
+    mesh_grille(probe)
     check("the chamber fits its share of the interior frame budget",
           len(t) <= share,
           f"{len(t):,} triangles against {share:,.0f} "
           f"({100 * len(t) / share:.0f}%), of which the perforated sheet is "
-          f"{sum(1 for x in g if x == 'council_mesh'):,}")
+          f"{len(probe.t):,}")
 
     # --- flat things face up, MEASURED ON THE FACE YOU CAN SEE --------------
     # These groups are solids now, so their undersides face down and must.
