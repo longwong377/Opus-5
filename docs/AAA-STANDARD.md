@@ -250,9 +250,19 @@ A finding must carry a severity and, unless it is a `note`, the descriptor it po
 | **major** | A dimension is below 4 and the descriptor says why | Resets the clean-round counter to 0 |
 | **minor** | True and specific, and moves no dimension below 4 | Logged and batched. Does **not** reset the counter and does **not** reopen the subsystem |
 | **note** | Preference or suggestion with no descriptor behind it | Recorded. Never actionable, never blocks |
+| **resolved** | Not a finding. A record that a **previous** round's finding has been answered, naming the descriptor it closes and how the closure was measured | Recorded. Never resets the counter, never explains a below-bar score |
 
 The gate refuses a `major` or `blocking` finding on a dimension the same round scored ≥ 4. A
 critic who wants to call something major must first say which descriptor it fails.
+
+`resolved` is in the ladder because of what happens without it. Three
+`exterior_approach` rounds had closures to record and no severity to record them under, so
+they filed them as `note` — where a closure is indistinguishable from an open preference, and
+a reader counting what is still outstanding counts them as outstanding. A closure is exempt
+from the score coupling on purpose: a `resolved C4` on a round that now scores craft 4 is the
+correct shape, not a contradiction. It is exempt from **nothing else** — it still names a
+descriptor of its own dimension, still carries text, and still cannot stand in for the `major`
+that a below-bar score requires.
 
 ### Why one clean round is not enough
 
@@ -477,6 +487,16 @@ What the gate enforces beyond arithmetic:
   dimension scored at or above the bar must not.
 - Round numbers strictly increase, so re-submitting last round's scorecard is an error rather than
   progress.
+- `evidence` is keyed by the dimension it supports, so "scored 4 with no evidence" can be asked
+  per dimension. A review also produces things that back several dimensions at once — the render
+  path, the frame list, the measured distribution — and those take a leading underscore
+  (`"_frames"`, `"_measured"`). The prefix is documentation at every level of the file, including
+  a subsystem's `_merge_note`. It is deliberately narrow: `_x` is documentation only when `x` is
+  not itself a schema key, because `_findings` beside a missing `findings` is a round whose
+  findings have silently vanished and which then reads as clean.
+- `what_is_good` is a round-level list and is in the schema rather than merely tolerated. A review
+  that enumerates only defects gives a builder no way to know what it must not break while fixing
+  them.
 - **Regression fails the build.** Any dimension lower than the same dimension in the previous round
   exits non-zero, whether or not the subsystem is still above the bar. This is the thing a rubric
   catches and a critic cannot: a critic sees one snapshot. A drop from 5 to 4 with a good reason is

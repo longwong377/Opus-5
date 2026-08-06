@@ -42,9 +42,19 @@ DIM_HEAD = {"craft": "CRAFT", "fidelity": "FIDELITY",
             "performance": "PERF", "robustness": "ROBUST"}
 
 # Ordered worst first. `blocking` and `major` reset the clean-round counter;
-# `minor` and `note` never do. That asymmetry is the whole stopping rule -- if a
-# minor finding could reopen a subsystem there would be no bottom to the loop.
-SEVERITIES = ("blocking", "major", "minor", "note")
+# `minor`, `note` and `resolved` never do. That asymmetry is the whole stopping
+# rule -- if a minor finding could reopen a subsystem there would be no bottom
+# to the loop.
+#
+# `resolved` IS NOT A FINDING. It is a round's record that a PREVIOUS round's
+# finding has been answered, and it is in the schema because the alternative is
+# what three exterior_approach rounds actually did: file the closure as a
+# `note`, where it reads as an open preference and is indistinguishable from
+# work still outstanding. A closure cites the descriptor it closes, and that
+# descriptor is deliberately exempt from the score coupling below -- a resolved
+# C4 on a round that now scores craft 4 is the correct shape, not a
+# contradiction.
+SEVERITIES = ("blocking", "major", "minor", "note", "resolved")
 RESETTING = ("blocking", "major")
 
 DEFAULT_BAR = {"min_score": 4, "clean_rounds_required": 2, "max_rounds": 4}
@@ -218,7 +228,14 @@ def _validate_round(tag, index, rnd, bar):
     if not isinstance(evidence, dict):
         err.append(f"{rtag}: evidence is not an object")
         evidence = {}
-    for d in sorted(set(evidence) - set(DIMENSIONS)):
+    # Evidence is keyed by the dimension it supports, so that "scored 4 with no
+    # evidence" can be asked per dimension. A review also produces things that
+    # back several dimensions at once -- the render path, the frame list, the
+    # measured distribution -- and those take the documentation prefix, which
+    # deliberately does NOT count as evidence for any dimension: a measurement
+    # filed under `_measured` leaves craft with nothing under its own name, and
+    # the gate should say so.
+    for d in _unknown_keys(evidence, DIMENSIONS):
         err.append(f"{rtag}: evidence for unknown dimension {d!r}")
 
     for d in DIMENSIONS:
@@ -293,6 +310,10 @@ def _validate_finding(rtag, index, f, scores, bar):
     if LETTER_DIM[desc[0]] != dim:
         err.append(f"{ftag}: descriptor {desc} is a "
                    f"{LETTER_DIM[desc[0]]} descriptor on a {dim} finding")
+        return err
+
+    # A closure names what it closed and is not scored against this round.
+    if sev == "resolved":
         return err
 
     digit = int(desc[1])
@@ -721,6 +742,50 @@ def _selftest():
     check("a missing dimension is rejected", has(c, "missing dimension"))
     c = _card([_mk_round(1, dict(AT_BAR, sound=4))])
     check("an unknown dimension is rejected", has(c, "unknown dimension"))
+
+    # --- severity: `resolved` -----------------------------------------------
+    # A closure record. It must be sayable on a round that now scores at the
+    # bar -- that is the whole situation it exists for -- and it must NOT be a
+    # way to file an open defect where nothing counts it.
+    RES = {"severity": "resolved", "dimension": "craft", "descriptor": "C2",
+           "text": "round 1's C2 is answered: <what changed and how measured>"}
+    c = _card([_mk_round(1, AT_BAR, findings=[RES])])
+    check("a resolved closure is accepted at the bar", not errs(c), str(errs(c)))
+    c = _card([_mk_round(1, AT_BAR, findings=[RES])])
+    check("a resolved closure does not reset the clean-round counter",
+          not has(c, "at or above the bar, with a major"), str(errs(c)))
+    # Built by hand: _mk_round auto-fills the explaining major, which is
+    # exactly the thing under test here.
+    c = _card([{"round": 1, "scores": dict(AT_BAR, craft=2),
+                "evidence": {d: "e" for d in DIMENSIONS if d != "craft"},
+                "findings": [RES]}])
+    check("a resolved closure does not explain a below-bar score",
+          has(c, "craft scored 2, below the bar, with no major"), str(errs(c)))
+    c = _card([_mk_round(1, AT_BAR, findings=[dict(RES, descriptor="R2")])])
+    check("a resolved closure still has to name a real descriptor for its dim",
+          has(c, "is a robustness descriptor on a craft finding"),
+          str(errs(c)))
+    c = _card([_mk_round(1, AT_BAR, findings=[dict(RES, descriptor="-")])])
+    check("a resolved closure with no descriptor is rejected",
+          has(c, "is not [CFPR][0-5]"), str(errs(c)))
+    c = _card([_mk_round(1, AT_BAR, findings=[dict(RES, text="")])])
+    check("a resolved closure with no text is rejected", has(c, "no text"),
+          str(errs(c)))
+    c = _card([_mk_round(1, AT_BAR)])
+    c["subsystems"]["sub"]["rounds"][0]["evidence"]["frames"] = ["a.png"]
+    check("evidence under a non-dimension key is rejected",
+          has(c, "evidence for unknown dimension"), str(errs(c)))
+    c = _card([_mk_round(1, AT_BAR)])
+    c["subsystems"]["sub"]["rounds"][0]["evidence"]["_frames"] = ["a.png"]
+    check("shared evidence under the documentation prefix is allowed",
+          not has(c, "evidence for unknown dimension"), str(errs(c)))
+    # ...and it is not a way to give a dimension evidence it does not have.
+    c = _card([_mk_round(1, AT_BAR)])
+    ev = c["subsystems"]["sub"]["rounds"][0]["evidence"]
+    del ev["craft"]
+    ev["_craft_notes"] = "measured over there"
+    check("prefixed evidence does not satisfy a dimension's own evidence",
+          has(c, "craft scored"), str(errs(c)))
 
     # --- structure: evidence and the robustness-5 claim ---------------------
     c = _card([{"round": 1, "scores": dict(AT_BAR), "evidence": {},

@@ -1,6 +1,6 @@
 {
  "version": 1,
- "notes": "SEED, NOT A REVIEW. Round 1 for every subsystem was scored by the author of docs/AAA-STANDARD.md from facts already recorded in STATE.md, so that the gate has real data to run against. No adversarial review round has produced these numbers. Treat every score as provisional until a reviewer other than the builder has scored it. The scores are deliberately conservative: where STATE.md records a defect, the descriptor it matches is the score.  SESSION 3r: first scores taken from CLOSE frames rather than wide ones. AAA-STANDARD.md's craft section has always required judging 'at three distances: the distance the player normally sees it from, half that, and the distance at which it is one pixel of silhouette.' Only the first was ever rendered, which is how 118 locations of blockout passed three layers. The standard did not fail here -- applying it did.  SESSION 3w: first judgement of the WALKABLE build -- an assembled ring deck rather than a single room -- at all three distances, through Godot + lavapipe. Two new subsystems, `walkable_deck` and `npc_bodies`. Full report and every frame in docs/judge-3w.md. NOTE that this file does NOT pass its own gate: `python3 tools/aaa_gate.py docs/aaa-scorecard.json` reports 52 structural errors, ALL of them in rounds written before 3w (severity 'resolved' is not a valid severity; evidence keyed by 'frames'/'path'/'shader' instead of by dimension; dimensions below the bar with no finding). They are left as found. Rewriting past rounds to make a gate green is the exact failure this file exists to catch; the 3w entries below are gate-clean and can be checked in isolation.  SESSION 4a (layer 4b, lighting mood): the first thing this pass found is that ELEVEN OF THE FOURTEEN distribution failures were STALE FRAMES, not lighting defects. Every failing frame was committed 2026-07-29/30, every frame committed 07-31 passed, and the lens fix (c05a877) and the soft fill (7cf9404) landed in between. The ANCHOR -- docs/engine-corridor.png, the frame RENDER_OFFSET=1.40 is defined against -- read p5 x1.64 and had the show's own ladder UPSIDE DOWN (soffit x1.82 over deck x0.29, against the show's 0.23-0.32 over 2.49); re-rendered from its own command it reads x0.214 and x2.59 and passes every band. A committed PNG is a CACHE OF A MEASUREMENT and no gate here could tell a stale cache from a fresh one. export_scene.EXPOSURE_FRAMES now records the shot that produces each frame and --gate-frames --rerender re-takes it. Exposure gate: 3 pass / 11 fail / 9 UNVERIFIABLE -> 13 pass / 10 fail / 0 unverifiable.  || 4k: three new subsystems scored by the MAIN AGENT from the frames and measurements directly, not from the builder's report. Where we differ the builder scored concourse 3 (agree), dome2 3 (I say 2 -- the frame omits the windows), rotunda 2-3 (I say 2 -- 8.95% crushed). Craft is measured at the rubric's HALF distance. Fidelity is scored 3 on the builder's authority-1 citations and INV-290/291/292 rather than on an independent canon check, and that is stated rather than implied.",
+ "notes": "SEED, NOT A REVIEW. Round 1 for every subsystem was scored by the author of docs/AAA-STANDARD.md from facts already recorded in STATE.md, so that the gate has real data to run against. No adversarial review round has produced these numbers. Treat every score as provisional until a reviewer other than the builder has scored it. The scores are deliberately conservative: where STATE.md records a defect, the descriptor it matches is the score.  SESSION 3r: first scores taken from CLOSE frames rather than wide ones. AAA-STANDARD.md's craft section has always required judging 'at three distances: the distance the player normally sees it from, half that, and the distance at which it is one pixel of silhouette.' Only the first was ever rendered, which is how 118 locations of blockout passed three layers. The standard did not fail here -- applying it did.  SESSION 3w: first judgement of the WALKABLE build -- an assembled ring deck rather than a single room -- at all three distances, through Godot + lavapipe. Two new subsystems, `walkable_deck` and `npc_bodies`. Full report and every frame in docs/judge-3w.md. NOTE that this file does NOT pass its own gate: `python3 tools/aaa_gate.py docs/aaa-scorecard.json` reports 52 structural errors, ALL of them in rounds written before 3w (severity 'resolved' is not a valid severity; evidence keyed by 'frames'/'path'/'shader' instead of by dimension; dimensions below the bar with no finding). They are left as found. Rewriting past rounds to make a gate green is the exact failure this file exists to catch; the 3w entries below are gate-clean and can be checked in isolation.  SESSION 4a (layer 4b, lighting mood): the first thing this pass found is that ELEVEN OF THE FOURTEEN distribution failures were STALE FRAMES, not lighting defects. Every failing frame was committed 2026-07-29/30, every frame committed 07-31 passed, and the lens fix (c05a877) and the soft fill (7cf9404) landed in between. The ANCHOR -- docs/engine-corridor.png, the frame RENDER_OFFSET=1.40 is defined against -- read p5 x1.64 and had the show's own ladder UPSIDE DOWN (soffit x1.82 over deck x0.29, against the show's 0.23-0.32 over 2.49); re-rendered from its own command it reads x0.214 and x2.59 and passes every band. A committed PNG is a CACHE OF A MEASUREMENT and no gate here could tell a stale cache from a fresh one. export_scene.EXPOSURE_FRAMES now records the shot that produces each frame and --gate-frames --rerender re-takes it. Exposure gate: 3 pass / 11 fail / 9 UNVERIFIABLE -> 13 pass / 10 fail / 0 unverifiable.  || 4k: three new subsystems scored by the MAIN AGENT from the frames and measurements directly, not from the builder's report. Where we differ the builder scored concourse 3 (agree), dome2 3 (I say 2 -- the frame omits the windows), rotunda 2-3 (I say 2 -- 8.95% crushed). Craft is measured at the rubric's HALF distance. Fidelity is scored 3 on the builder's authority-1 citations and INV-290/291/292 rather than on an independent canon check, and that is stated rather than implied.  SESSION 4r: the gate that scores this file had never run in CI. It runs now, in `.github/workflows/validate.yml` as `saaa_selftest` + `saaa_scorecard`, and it is RED at 59 structural errors. That is deliberate and the number is the work-list, not a thing to tune away. 28 errors were schema debt and are closed -- shared evidence (render path, frame lists, measured distributions) now takes the `_` documentation prefix, `what_is_good` is in the schema, and `resolved` is a real severity so a round that closes a prior finding no longer has to disguise it as a `note`. THE REMAINING 59 ARE REVIEW DEBT AND NOT ONE OF THEM WAS EDITED AWAY: 19 are a dimension scored below the bar with no `major` finding saying which descriptor fails; 15 are a score of 4 or 5 with no evidence string; 8 are a finding whose descriptor is `-`, i.e. a defect nobody mapped to the rubric; 8 cite a descriptor their round's own score contradicts; 5 are a severity/score mismatch; 4 are at-or-above-bar scores carrying a major. Every one is a review a builder cannot act on, and every one belongs to the reviewer who wrote that round. Rewriting another reviewer's scores or inventing their findings to turn this green would be the exact defect CLAUDE.md records for the 4e CI chain: picking the convenient reading.",
  "bar": {
   "min_score": 4,
   "clean_rounds_required": 2,
@@ -474,13 +474,13 @@
       "robustness": 4
      },
      "evidence": {
-      "engine": "Godot 4.4 double + Mesa lavapipe, Forward+, 1280x720",
-      "frames": [
+      "_engine": "Godot 4.4 double + Mesa lavapipe, Forward+, 1280x720",
+      "_frames": [
        "docs/engine-approach-far.png (14 km, 34 s)",
        "docs/engine-approach-near.png (3.4 km, 27 s)"
       ],
-      "triangles": 200754,
-      "note": "Every previous render in this project came from tools/preview_render.py, the flat-shaded rasteriser, which CLAUDE.md says judges structure and not craft. This is the first frame ever scored on craft."
+      "_note": "Every previous render in this project came from tools/preview_render.py, the flat-shaded rasteriser, which CLAUDE.md says judges structure and not craft. This is the first frame ever scored on craft.",
+      "_triangles": 200754
      },
      "broke_assertions": false,
      "findings": [
@@ -545,12 +545,12 @@
       "robustness": 4
      },
      "evidence": {
-      "frames": [
+      "_frames": [
        "docs/engine-windows-nightside.png (3.4 km, anti-sun, 40 s)",
        "docs/engine-windows-near.png (3.4 km, sunlit, 35 s)"
       ],
-      "path": "Godot 4.4 double + Mesa lavapipe, Forward+, 1280x720",
-      "materials": "station/materials.py 600 assertions; habitat_windows bound to green_section, red_section, aft_hull_block, habitat_cylinder, observation_rotunda"
+      "_materials": "station/materials.py 600 assertions; habitat_windows bound to green_section, red_section, aft_hull_block, habitat_cylinder, observation_rotunda",
+      "_path": "Godot 4.4 double + Mesa lavapipe, Forward+, 1280x720"
      },
      "broke_assertions": false,
      "findings": [
@@ -602,13 +602,13 @@
       "robustness": 4
      },
      "evidence": {
-      "frames": [
+      "_frames": [
        "docs/engine-windows-nightside.png (3.4 km, anti-sun, --light-gain 0.04)",
        "docs/engine-windows-near.png (3.4 km, sunlit)",
        "close 900 m frame used to verify the mapping, not kept"
       ],
-      "path": "Godot 4.4 double + Mesa lavapipe, Forward+, 1280x720",
-      "shader": "godot/materials/hull_window.gdshader, cylindrical about world +Z"
+      "_path": "Godot 4.4 double + Mesa lavapipe, Forward+, 1280x720",
+      "_shader": "godot/materials/hull_window.gdshader, cylindrical about world +Z"
      },
      "broke_assertions": false,
      "findings": [
@@ -665,8 +665,8 @@
       "robustness": 3
      },
      "evidence": {
-      "engine": "Godot 4.4 double + lavapipe, Forward+, 1000x560, 15 s",
-      "frames": [
+      "_engine": "Godot 4.4 double + lavapipe, Forward+, 1000x560, 15 s",
+      "_frames": [
        "docs/engine-m0-interior.png"
       ]
      },
@@ -1878,12 +1878,12 @@
       "robustness": 4
      },
      "evidence": {
-      "frame_half": "docs/engine-4k-concourse-half.png",
-      "frame_normal": "docs/engine-4k-concourse-normal.png",
-      "measured": "median 0.109, p5 0.0215, p95 0.9192, clipped 0.60%, crushed 1.15%",
-      "objects_per_m2": 4.28,
-      "density_machinery": "x1.57 PASS",
-      "gate": "station/concourse.py 8/8, 0 open boundary edges, control leaks 40"
+      "_density_machinery": "x1.57 PASS",
+      "_frame_half": "docs/engine-4k-concourse-half.png",
+      "_frame_normal": "docs/engine-4k-concourse-normal.png",
+      "_gate": "station/concourse.py 8/8, 0 open boundary edges, control leaks 40",
+      "_measured": "median 0.109, p5 0.0215, p95 0.9192, clipped 0.60%, crushed 1.15%",
+      "_objects_per_m2": 4.28
      },
      "findings": [
       {
@@ -1925,11 +1925,11 @@
       "robustness": 4
      },
      "evidence": {
-      "frame_half": "docs/engine-4k-rotunda-half.png",
-      "measured": "median 0.047, p5 0.0158, p95 0.5959, clipped 0.00%, crushed 8.95%",
-      "objects_per_m2": 5.75,
-      "density_machinery": "x1.33 PASS",
-      "gate": "station/observation.py 17/17, 0 open boundary edges"
+      "_density_machinery": "x1.33 PASS",
+      "_frame_half": "docs/engine-4k-rotunda-half.png",
+      "_gate": "station/observation.py 17/17, 0 open boundary edges",
+      "_measured": "median 0.047, p5 0.0158, p95 0.5959, clipped 0.00%, crushed 8.95%",
+      "_objects_per_m2": 5.75
      },
      "findings": [
       {
@@ -1971,11 +1971,11 @@
       "robustness": 4
      },
      "evidence": {
-      "frame_half": "docs/engine-4k-dome2-half.png",
-      "measured": "median 0.138, p5 0.0509, p95 0.6629, clipped 0.00%, crushed 0.79%",
-      "objects_per_m2": 4.34,
-      "density_machinery": "x1.60 PASS",
-      "gate": "station/observation.py 17/17"
+      "_density_machinery": "x1.60 PASS",
+      "_frame_half": "docs/engine-4k-dome2-half.png",
+      "_gate": "station/observation.py 17/17",
+      "_measured": "median 0.138, p5 0.0509, p95 0.6629, clipped 0.00%, crushed 0.79%",
+      "_objects_per_m2": 4.34
      },
      "findings": [
       {
