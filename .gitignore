@@ -52,3 +52,9 @@ station/generated/economy.json
 station/generated/cnc/
 scratchpad/till-run/head/
 scratchpad/till-lurker/head/
+
+# The commit mirror's own live log. `scratchpad/push_mirror.sh` appends a line
+# every time it pushes, so committing it would be a file that changes every two
+# minutes for as long as the guard is running. The SCRIPT is tracked; its
+# runtime output is not.
+scratchpad/push_mirror.log
