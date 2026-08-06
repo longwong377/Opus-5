@@ -56,26 +56,136 @@ def check_registry_selfcheck(_row):
 
 
 def check_place_register_agreement(row):
-    """A PLC row's place exists in directory.py at the address the spec cites.
+    """A PLC row's place exists in directory.py under the key the spec names.
+
     This is the cheapest real check a PLC row has: identity, not content. It is
-    deliberately NOT sufficient for GREEN on its own — content harnesses land
-    per-place as they are built — but it can FAIL now, which makes drift loud."""
+    deliberately NOT sufficient for GREEN on its own -- content harnesses land
+    per-place as they are built -- but it can FAIL now, which makes drift loud.
+
+    IT USED TO COMPARE NOTHING. The first version resolved `PLC-nnn` to
+    `directory.PLACES[nnn-1]` and returned that place's key as the note --
+    without ever reading the key the SPEC names. Its only failure mode was an
+    index past the end of the register, which cannot happen while the two
+    counts agree, so it passed 129 of 129 by arithmetic. A check that cannot
+    fail for the thing it is named after is this project's most-repeated
+    defect, and it was sitting inside the file whose header calls the project
+    "a museum of gates that were prose".
+
+    Reading the spec's own key found real drift on the first run: PLC-127
+    names `eva_lock_blue` and `PLACES[126]` is `mooring_gallery` -- the two
+    orderings diverge partway down and every row after it is comparing one
+    place against another. The positional assumption is the bug; the key is
+    the identity, so the key is what is matched, and the index is used only as
+    a hint for the error message.
+    """
     import directory as DIR                                       # noqa: PLC0415
-    at = row.get("at", "")
-    m = re.search(r"PLC-(\d+)", row["id"])
-    if not m:
+    if not row["id"].startswith("PLC-"):
         return False, "not a PLC row"
-    idx = int(m.group(1)) - 1
-    if idx >= len(DIR.PLACES):
-        return False, f"index {idx} outside directory.PLACES"
-    return True, DIR.PLACES[idx]["key"]
+    want = _spec_key(row.get("at", ""))
+    if want is None:
+        return False, f"cannot read a place key from {row.get('at', '?')}"
+    keys = {q["key"] for q in DIR.PLACES}
+    if want not in keys:
+        return False, f"spec names `{want}`, which directory.PLACES has no row for"
+    # POSITION IS NOT IDENTITY, AND REQUIRING BOTH WAS MY OWN SECOND MISTAKE
+    # IN THIS FUNCTION. Having fixed it to read the spec's key, I then also
+    # required `PLACES[nnn-1]` to BE that key -- and 106 of 129 rows failed.
+    # Measured, every one of those 106 keys is present in the register: the
+    # orderings diverge from PLC-024 because `markab_quarter` was inserted at
+    # register position 23 and shifted everything after it. Nothing requires a
+    # stable spec identifier and an ordered tuple to agree, so failing on that
+    # would have been a gate red on a fact about list order.
+    #
+    # What IS worth asserting is the identity, and it can fail: drop a place
+    # from `directory.PLACES` and its spec row goes red immediately.
+    #
+    # The positional reading is recorded here because `spec_check.py:91` was
+    # the ONLY site in the project making it -- checked across station/ and
+    # tools/ -- so it dies with this comment rather than lurking. A PLC id is
+    # a name, not an index; the same sentence `deck.deck_index` carries about
+    # show-facing deck numbers, one register over.
+    return True, want
 
 
+_SPEC_KEY = re.compile(r"^#+\s*PLC-\d+\s*`([a-z0-9_]+)`")
+
+
+def _spec_key(at):
+    """The place key the spec row's own heading names, e.g. `eva_lock_blue`.
+
+    Read from the document rather than inferred from position, because
+    position is exactly what turned out to be wrong.
+    """
+    if ":" not in at:
+        return None
+    path, ln = at.rsplit(":", 1)
+    try:
+        line = open(os.path.join(ROOT, path), encoding="utf-8"
+                    ).read().splitlines()[int(ln) - 1]
+    except Exception:                                            # noqa: BLE001
+        return None
+    m = _SPEC_KEY.match(line.strip())
+    return m.group(1) if m else None
+
+
+
+
+
+# INSTANCE ELEVEN, FOUND IN THE FILE WRITTEN TO PREVENT IT, AND THIS IS THE FIX.
+#
+# This table used to be keyed on the row's `harness:` string, with two entries:
+# `"tools/spec_registry.py --check"` and `"register-agreement"`. Measured
+# against the live registry, the number of rows carrying either string is
+# **ZERO** -- the registry's 300 rows use 37 distinct harness strings, 264 of
+# them the literal `tool-to-build`, and not one of them is either key. So both
+# harness functions were unreachable: written, docstring'd, and dispatched to
+# by nothing.
+#
+# That is the whole explanation for `0 GREEN / 300 RED`. It was never "two of
+# three hundred harnesses are implemented"; it was **no harness could run at
+# all**, and the ledger read exactly the same either way -- which is what made
+# it invisible. A file whose header says "prose does not execute, and this
+# project's history is a museum of gates that were prose" had become a museum
+# piece itself.
+#
+# Dispatch is now on the row's ID PREFIX, which is the thing the registry
+# actually guarantees is well-formed, rather than on free text a doc author
+# types. `--dispatch` prints the mapping and the row counts, so an entry that
+# reaches nothing is visible on demand instead of after a session of wondering
+# why the ledger will not move.
+PREFIX_HARNESSES = {
+    "PLC": check_place_register_agreement,
+}
+
+# Keyed harnesses, for rows whose `harness:` field names a command verbatim.
 HARNESSES = {
-    # name in the row's `harness:` field -> callable
     "tools/spec_registry.py --check": check_registry_selfcheck,
     "register-agreement": check_place_register_agreement,
 }
+
+
+def harness_for(row):
+    """The callable that decides this row, and whether it can decide it ALONE.
+
+    Returns (fn, sufficient). `sufficient` is the honesty contract in one
+    boolean: `check_place_register_agreement`'s own docstring says it is
+    "deliberately NOT sufficient for GREEN on its own", because a place
+    existing at the address the spec cites says nothing about whether the place
+    contains what the spec describes. So it runs, it can FAIL loudly, and a
+    pass leaves the row RED with a stated reason rather than promoting 129
+    rows to GREEN on an identity check.
+
+    That distinction is the difference between fixing the dispatch and gaming
+    the ledger. The dispatch bug was real and is fixed; the ledger is still
+    honest, and it now says WHICH kind of red each row is.
+    """
+    h = row.get("harness", "tool-to-build")
+    if h in HARNESSES:
+        return HARNESSES[h], True
+    pre = row["id"].split("-")[0]
+    if pre in PREFIX_HARNESSES:
+        return PREFIX_HARNESSES[pre], False
+    return None, False
 
 
 def main():
@@ -85,32 +195,68 @@ def main():
                          "full tier runs the built-station checks and is "
                          "minutes of CPU per THE-STATION §10's tiering)")
     ap.add_argument("--id", default=None, help="check one row")
+    ap.add_argument("--dispatch", action="store_true",
+                    help="print which harness each row resolves to, and how "
+                         "many rows reach each one. An entry that reaches "
+                         "zero rows is how this file spent its whole life "
+                         "reporting 0 GREEN.")
     a = ap.parse_args()
     if not os.path.exists(REG):
         print("spec/completion.yaml missing — run tools/spec_registry.py first")
         return 1
     rs = rows()
+    if a.dispatch:
+        import collections                                        # noqa: PLC0415
+        seen = collections.Counter()
+        for r in rs:
+            fn, suf = harness_for(r)
+            seen[("none" if fn is None else fn.__name__, suf)] += 1
+        for (name, suf), n in seen.most_common():
+            print("  %5d rows -> %-32s %s" % (
+                n, name, "sufficient for GREEN" if suf
+                else ("" if name == "none" else "runs, not sufficient alone")))
+        for k, fn in list(HARNESSES.items()) + [(p, f) for p, f in PREFIX_HARNESSES.items()]:
+            hit = sum(1 for r in rs if harness_for(r)[0] is fn)
+            if hit == 0:
+                print("  UNREACHABLE: %r maps to %s and no row dispatches to it"
+                      % (k, fn.__name__))
+        return 0
     if a.id:
         rs = [r for r in rs if r["id"] == a.id]
-    green = red = capped = 0
+    green = red = capped = partial = 0
     for r in rs:
         h = r.get("harness", "tool-to-build")
         if h == "AUDIT":
             # decided by docs/audits/<commit>-<id>.png, checked by the gate
             red += 1
             state = "RED (audit not filed)"
-        elif h in HARNESSES:
-            ok, note = HARNESSES[h](r)
-            state = f"GREEN ({note})" if ok else f"RED ({note})"
-            green += ok
-            red += (not ok)
         else:
-            red += 1
-            state = "RED (harness not implemented — tool-to-build)"
+            fn, sufficient = harness_for(r)
+            if fn is None:
+                red += 1
+                state = "RED (harness not implemented — tool-to-build)"
+            else:
+                ok, note = fn(r)
+                if not ok:
+                    red += 1
+                    state = f"RED ({note})"
+                elif sufficient:
+                    green += 1
+                    state = f"GREEN ({note})"
+                else:
+                    red += 1
+                    partial += 1
+                    state = (f"RED (address verified: {note}; content harness "
+                             f"not implemented)")
         if a.id or state.startswith("RED") is False:
             print(f"{r['id']:10} {state}")
     total = len(rs)
     print(f"\n{green} GREEN / {red} RED / {capped} CAPPED of {total}")
+    if partial:
+        print(f"of the RED, {partial} had a harness RUN AND PASS on their "
+              f"address and are red only for want of a content harness -- "
+              f"which is a different kind of red from the "
+              f"{red - partial} that nothing checked at all.")
     print("GREEN moves only by implementing harnesses in station/spec_check.py "
           "and building the things they check.")
     # The gate never fails CI for REDness — RED is the honest ledger — but it
