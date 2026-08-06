@@ -157,9 +157,12 @@ def harness_for(row):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--smoke", action="store_true",
-                    help="run only sub-second harnesses (the CI default; the "
-                         "full tier runs the built-station checks and is "
-                         "minutes of CPU per THE-STATION §10's tiering)")
+                    help="skip harnesses a family declares SLOW (the CI "
+                         "default). A module opts in with `SLOW = True`; "
+                         "nothing does today, so --smoke and the full tier "
+                         "are currently the same 14 s run -- and the flag "
+                         "SAYS SO rather than implying a tier that is not "
+                         "there.")
     ap.add_argument("--id", default=None, help="check one row")
     ap.add_argument("--dispatch", action="store_true",
                     help="print which harness each row resolves to, and how "
@@ -171,6 +174,22 @@ def main():
         print("spec/completion.yaml missing — run tools/spec_registry.py first")
         return 1
     rs = rows()
+    # `--smoke` WAS DECLARED AND NEVER READ, found by an adversary reviewing a
+    # different file: `grep -n 'a\.smoke' station/spec_check.py` returned only
+    # the `add_argument` line, so CI's `--smoke` invocation had always run the
+    # full tier. A flag that does nothing is a promise the caller believes --
+    # and the CI step's own comment cited the tiering as the reason it was
+    # safe to run on every push.
+    #
+    # It now honours a family's `SLOW` opt-in. No module sets it today, so the
+    # two tiers ARE the same run and the `--help` text says exactly that
+    # instead of describing a tiering that does not exist. When a harness needs
+    # a built station, it sets `SLOW = True` and this starts meaning something.
+    if a.smoke:
+        import spec_harness                                       # noqa: PLC0415
+        rs = [r for r in rs
+              if not getattr(spec_harness.module_for(r["id"].split("-")[0]),
+                             "SLOW", False)]
     if a.dispatch:
         import collections                                        # noqa: PLC0415
         seen = collections.Counter()
@@ -189,40 +208,73 @@ def main():
         return 0
     if a.id:
         rs = [r for r in rs if r["id"] == a.id]
-    green = red = capped = partial = 0
+    green = red = capped = 0
+    passed = failed = unchecked = broke = 0
     for r in rs:
         h = r.get("harness", "tool-to-build")
         if h == "AUDIT":
             # decided by docs/audits/<commit>-<id>.png, checked by the gate
             red += 1
+            unchecked += 1
             state = "RED (audit not filed)"
         else:
             fn, sufficient = harness_for(r)
             if fn is None:
                 red += 1
+                unchecked += 1
                 state = "RED (harness not implemented — tool-to-build)"
             else:
-                ok, note = fn(r)
+                # A HARNESS THAT RAISES MUST NOT TAKE THE LEDGER WITH IT.
+                # There was no guard here, and `inc.py` is the first harness
+                # that runs station code rather than reading documents: its
+                # adversary made one `resolve` raise and `spec_check.py --id
+                # INC-ACCIDENT` died with a traceback and printed NO LEDGER AT
+                # ALL. One family's bug would have blanked the answer for all
+                # 300 rows, which is the shape of the failure this whole file
+                # exists to prevent -- a gate that stops reporting is worse
+                # than a gate that reports red.
+                #
+                # The exception is caught, counted separately and printed with
+                # its type, so a broken harness is loud and LOCAL. It is NOT
+                # folded into "failed": a harness that crashed did not decide
+                # anything about the station.
+                try:
+                    ok, note = fn(r)
+                except Exception as e:                           # noqa: BLE001
+                    red += 1
+                    broke += 1
+                    print("%-10s HARNESS RAISED %s: %s"
+                          % (r["id"], type(e).__name__, str(e)[:120]))
+                    continue
                 if not ok:
                     red += 1
+                    failed += 1
                     state = f"RED ({note})"
                 elif sufficient:
                     green += 1
                     state = f"GREEN ({note})"
                 else:
                     red += 1
-                    partial += 1
-                    state = (f"RED (address verified: {note}; content harness "
-                             f"not implemented)")
+                    passed += 1
+                    state = (f"RED (checks pass, not sufficient alone: {note})")
         if a.id or state.startswith("RED") is False:
             print(f"{r['id']:10} {state}")
     total = len(rs)
     print(f"\n{green} GREEN / {red} RED / {capped} CAPPED of {total}")
-    if partial:
-        print(f"of the RED, {partial} had a harness RUN AND PASS on their "
-              f"address and are red only for want of a content harness -- "
-              f"which is a different kind of red from the "
-              f"{red - partial} that nothing checked at all.")
+    # THREE KINDS OF RED, AND CONFLATING THEM IS HOW A LEDGER LIES. This used
+    # to print "N had a harness pass ... the rest nothing checked at all",
+    # which was true when only one family had a harness and became FALSE the
+    # moment all thirteen did: the remainder are rows that RAN a harness and
+    # FAILED it, which is the opposite of unchecked. A summary line that ages
+    # into a false statement is exactly the defect this project keeps finding.
+    print("  %4d passed their harness but it is not sufficient for GREEN on "
+          "its own" % passed)
+    print("  %4d RAN a harness and FAILED it -- these are findings about the "
+          "station or the spec, not gaps" % failed)
+    print("  %4d have no harness at all" % unchecked)
+    if broke:
+        print("  %4d HARNESS CRASHED -- a bug in the harness, not a verdict "
+              "about the row" % broke)
     print("GREEN moves only by implementing a harness in station/spec_harness/ "
           "and building the thing it checks. `--dispatch` shows which rows "
           "reach which harness, and names any that reaches nothing.")
