@@ -62,17 +62,29 @@ assertion and fails later on a different defect.
 | **gate** | CI `swalkloop`, added 4r, red today |
 | **acceptance** | `noticed >= 1` with `facing_err_deg` inside tolerance, on the instanced path, with `ROOM_INSTANCED=False` still passing as the control |
 
-## R3. 21 OF 84 CAN SPEAK — the cast grew and the dialogue did not
+## R3. ~~21 OF 84 CAN SPEAK~~ — **CLOSED IN 4r, AND THE DIAGNOSIS WAS WRONG**
 
-The shipped build prints `dialogue: 21 people can speak, of 84 in the cast`. Last session it
-was **21 of 21**. Nobody broke anything: the cast grew and dialogue coverage is a fraction
-nothing gates, so it fell silently.
+The shipped build printed `dialogue: 21 people can speak, of 84 in the cast`, and this entry
+originally read *"the cast grew and the dialogue did not"*. **That was wrong, and the way it
+was wrong is the lesson.** `dialogue.sidecar()` emits a row for every actor carrying a
+`who.id`, and all 84 carry one — including the "silent" ones, who turn out to be fully formed
+residents with names, roles and jobs (*Anna Rossi, dockworker, lowg_bays*). The baked
+`blue_0_0_dialogue.json` was written **2026-08-04** against an actors file dated **2026-08-05**.
+
+Re-baked: **336 rows, 84 of 84**. Nobody was ever mute. The artefact was old.
+
+**Third staleness defect in one family**, after `bootstrap._boot_has` (a `boot.json` that parses
+and lacks the keys the gates read) and `bootstrap._sidecars_carry` (interact sidecars predating
+four verb fields). *An absence in an artefact is not an absence in the content, and this project
+has now mistaken one for the other three times in three files.*
 
 | | |
 |---|---|
-| **gate** | none exists — **this is the deliverable**. A coverage assertion in `dialogue.py` that fails below a stated fraction, and a CI step |
-| **acceptance** | every resident the player can meet in a place they can reach has at least one exchange; the fraction is printed on every run so it cannot fall silently again |
-| **rule it obeys** | a ratio that is not gated is a ratio that goes stale in the direction nobody re-checks — the same shape as `docs/PLAYTEST.md`'s four stale rows |
+| **fixed** | all four decks re-baked: 84/84, 84/84, 84/84, 73/73 |
+| **gate** | `python3 station/dialogue.py --coverage`, CI `sdialoguecoverage`, in the roll-up |
+| **why two checks** | coverage alone passes on a stale pair that happen to agree; freshness alone passes on a current file covering half the deck. **Neither can see the other's failure**, so it asserts both |
+| **controls** | both shown firing — a sidecar older than its actors file, and a cast member with every row removed |
+| **the bar** | **100%, and reachable rather than aspirational** — every deck on disk meets it today. A resident you can walk up to with nothing to say is one the scope document forbids |
 
 ## R4. THREE SUBSYSTEMS AT CRAFT 1 — including Command & Control
 

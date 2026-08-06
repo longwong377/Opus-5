@@ -1789,6 +1789,82 @@ def sidecar(actors, world: World = None, listener: Listener = None) -> list:
 SIDECAR_HOURS = (3.0, 9.0, 13.0, 19.0)
 
 
+def coverage(actors_path: str, sidecar_path: str):
+    """How many of the deck's cast can actually speak. (spoke, cast, silent).
+
+    THE GATE THAT DID NOT EXIST, AND THE FIRST THING IT FOUND WAS A STALE FILE
+    RATHER THAN A CONTENT GAP -- which is why it reports the two apart.
+    The shipped build printed `dialogue: 21 people can speak, of 84 in the
+    cast`, and the obvious reading is that the cast grew and the writing did
+    not. It is wrong. `sidecar()` emits a row for EVERY actor carrying a
+    `who.id`, and all 84 carry one; the baked file was written on 2026-08-04
+    against an actors file dated 2026-08-05. Re-baked, it is 336 rows and
+    **84 of 84**. Nobody was mute; the artefact was old.
+
+    That makes this the third artefact-staleness defect in the same family --
+    `bootstrap._boot_has` (a boot.json missing the keys the gates read),
+    `bootstrap._sidecars_carry` (interact sidecars predating four verb fields),
+    and now this. A coverage ratio that nothing gates is a ratio that falls in
+    the direction nobody re-checks.
+
+    100% IS THE BAR AND IT IS REACHABLE, which is what makes it a fair one: it
+    is not an aspiration, it is the state of every deck on disk right now.
+    A resident the player can walk up to and who has nothing to say is a
+    resident the scope document ("NPCs with names, species, roles and
+    schedules -- not crowds, *residents*") says should not exist.
+    """
+    with open(actors_path) as f:
+        cast = {a.get("group", "") for a in json.load(f) if a.get("who")}
+    with open(sidecar_path) as f:
+        spoke = {r.get("group", "") for r in json.load(f)}
+    return len(cast & spoke), len(cast), sorted(cast - spoke)
+
+
+def coverage_gate(out=print) -> bool:
+    """Every baked deck's cast can speak, and the sidecar is not older than it.
+
+    TWO CHECKS, BECAUSE ONE OF THEM CANNOT SEE THE OTHER'S FAILURE. Coverage
+    alone passes on a stale pair that happen to agree; freshness alone passes
+    on a current file that covers half the deck. The defect this was written
+    for needed both to be visible at once.
+    """
+    import glob                                                   # noqa: PLC0415
+    root = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                        "generated", "scene", "deck")
+    pairs = [(a, a.replace("_actors.json", "_dialogue.json"))
+             for a in sorted(glob.glob(os.path.join(root, "*_actors.json")))]
+    if not pairs:
+        out("dialogue coverage: no baked deck on disk -- nothing to check. "
+            "Run `python3 station/walkable.py --deck blue/0/0` first.")
+        return True
+    ok = True
+    for a, d in pairs:
+        name = os.path.basename(d)
+        if not os.path.exists(d):
+            out("  FAIL %-34s no sidecar beside its actors file" % name)
+            ok = False
+            continue
+        spoke, cast, silent = coverage(a, d)
+        stale = os.path.getmtime(d) < os.path.getmtime(a)
+        note = ""
+        if stale:
+            note = ("  STALE: baked before its own actors file, so this number "
+                    "describes an older cast")
+            ok = False
+        if spoke < cast:
+            note += ("  %d silent, first: %s"
+                     % (len(silent), ", ".join(silent[:3])))
+            ok = False
+        out("  %-4s %-34s %3d of %3d can speak%s"
+            % ("ok" if spoke == cast and not stale else "FAIL", name,
+               spoke, cast, note))
+    out("dialogue coverage: %s -- the bar is 100%%, and it is reachable rather "
+        "than aspirational: every deck on disk meets it today. A resident you "
+        "can walk up to with nothing to say is one the scope forbids."
+        % ("PASS" if ok else "FAIL"))
+    return ok
+
+
 def write_sidecar(actors_path: str, out_path: str, world: World = None,
                   hours=SIDECAR_HOURS) -> int:
     """Bake the exchanges beside the deck. Returns the row count.
@@ -2953,6 +3029,9 @@ def _cli(argv=None):                                         # pragma: no cover
                     help="the conversation gate: can a player talk back, and "
                          "to how many of the deck's people")
     ap.add_argument("--report", action="store_true")
+    ap.add_argument("--coverage", action="store_true",
+                    help="every baked deck's cast can speak, and the "
+                         "sidecar is not older than its actors file")
     ap.add_argument("--sidecar", help="an actors.json written by walkable.py")
     ap.add_argument("--out", help="where to write the dialogue sidecar")
     ap.add_argument("--hour", type=float, default=13.0)
@@ -2961,6 +3040,8 @@ def _cli(argv=None):                                         # pragma: no cover
                     help="drive godot/scripts/dialogue.gd headlessly")
     ap.add_argument("--actors", default=DEFAULT_ACTORS)
     a = ap.parse_args(argv)
+    if a.coverage:
+        return 0 if coverage_gate() else 1
     if a.converse:
         return 0 if converse() else 1
     if a.runtime_test:

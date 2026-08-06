@@ -403,6 +403,24 @@ jobs:
         continue-on-error: true
         run: python3 station/walkable.py --deck blue/0/0
 
+      # CAN EVERYONE YOU CAN WALK UP TO SPEAK? The shipped build printed
+      # "21 people can speak, of 84 in the cast" and the obvious reading was
+      # that the cast grew and the writing did not. WRONG: `sidecar()` emits a
+      # row for every actor with a `who.id` and all 84 carry one -- the baked
+      # file was written a day before the actors file it describes. Re-baked it
+      # is 84 of 84. The defect was a stale artefact, not a content gap, and
+      # nothing could see it because no gate compared the two.
+      #
+      # Two checks, because neither can see the other's failure: coverage alone
+      # passes on a stale pair that happen to agree, freshness alone passes on
+      # a current file covering half the deck. Both controls shown firing.
+      # The bar is 100% and it is reachable rather than aspirational -- every
+      # deck on disk meets it today.
+      - name: Everybody you can walk up to can speak
+        id: sdialoguecoverage
+        continue-on-error: true
+        run: python3 station/dialogue.py --coverage
+
       # ...AND THE SHIPPED SCENE ACTUALLY USES IT. The gate below proves a
       # streamed cell is a place; it proves nothing about whether a PLAYER ever
       # reaches one, and until session 4k none did: `boot.py` named one .glb and
@@ -1150,6 +1168,8 @@ jobs:
             echo "FAILED: snavgraph"; fail=1; fi
           if [ "${{ steps.sconfirm_the_schema_still_parses_and_is_f.outcome }}" != "success" ]; then
             echo "FAILED: sconfirm_the_schema_still_parses_and_is_f"; fail=1; fi
+          if [ "${{ steps.sdialoguecoverage.outcome }}" != "success" ]; then
+            echo "FAILED: sdialoguecoverage"; fail=1; fi
           if [ "${{ steps.swalkloop.outcome }}" != "success" ]; then
             echo "FAILED: swalkloop"; fail=1; fi
           if [ "${{ steps.senforcement.outcome }}" != "success" ]; then
