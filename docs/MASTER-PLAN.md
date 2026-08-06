@@ -62,9 +62,48 @@ disagrees" are opposite findings and only one is about the station*, so count th
 than loosen the pattern. And `--dispatch` exists precisely so an entry that reaches nothing is
 visible on demand; it now prints none.
 
-**Remaining: 171 rows in 12 families with nothing checking them.** In progress as a fan-out, one
-agent per family group with an adversary per group whose only job is to prove the harness is
-vacuous.
+**ALL 300 ROWS NOW REACH A HARNESS.** Six family groups written in parallel, each with an
+adversary whose only job was to prove the harness vacuous. **None was.**
+
+```
+0 GREEN / 300 RED / 0 CAPPED of 300
+  236 passed their harness but it is not sufficient for GREEN on its own
+   64 RAN a harness and FAILED it -- findings about the station or the spec, not gaps
+    0 have no harness at all
+```
+
+**Still 0 GREEN, and that is correct**: every family set `SUFFICIENT = False`, the honest answer
+while the checks verify addresses, citations and arithmetic rather than built content. **What
+changed is that the number is now earned.** Before, 0 GREEN and "every harness is perfect" were
+indistinguishable outputs.
+
+**The 64 failures are the deliverable.** A sample, each with both numbers:
+
+- **INC-CONTRA** — a declared write that *cannot happen*: `response_s` is 0.0 at both customs
+  halls at all 48 half-hours against a 300 s window, so the `_stock(w, "black_market", …)` write
+  at `incident.py:2308` is **unreachable**.
+- **FAC-04** — spec states 1,675–3,175 armbanded officers plus informers; `faction.head_count`
+  gives **872**.
+- **SHC** — **0 of 12 quoted stencil strings exist as a literal anywhere** in `station/`,
+  `godot/` or `tools/`, against §3's whole-shell CHECK that every stencil is rendered.
+- **PLACES.md §4 TOTALS** — disagrees with **its own belts** twice (Blue shell B: 265,800 m²
+  stated, 266,100 m² summed), and counts 128 places where the register has 129 (`markab_quarter`).
+- **GDS-01** — `economy.GOODS` holds **34** named goods against a floor of ≥60. 26 short.
+- **SYS-04, ROLE-04** — code citations that have gone stale: `CREDIT_MIN/MAX` cited at
+  `player.py:140-174`, actually at 192–193; `serve_response` cited at `dialogue.py:1314`,
+  actually 1704.
+- **SYS-14** — the annex contradicts **itself eight lines apart**: "the 22-class union" and "the
+  30-row union above".
+
+**And the adversaries found three bugs in `spec_check.py` itself**, two while reviewing other
+files: `--smoke` was declared and never read (CI had always run the full tier); a raising harness
+took the whole ledger down with no output at all; and the summary line had aged into a false
+statement the moment thirteen families had harnesses. All three fixed, the crash guard shown
+firing and restored.
+
+**NEXT for R1:** the 64 are a work-list, and each needs deciding — *is the spec wrong or the
+station?* Neither may be edited to make the other pass. Then raise `SUFFICIENT` per family as
+content harnesses land, which is the only path to a GREEN that means anything.
 
 ## R2. ~~W5 IS RED~~ — **CLOSED IN 4r: 20 of the room look up, 0 deg off**
 
