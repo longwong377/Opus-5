@@ -42,6 +42,30 @@ have a verified address; **171 have nothing checking them at all.**
 | **acceptance** | a content harness for each of the four largest row families (PLC, SYS, INC, PLY), so a GREEN count means "these named things exist and were checked", not "somebody ran something" |
 | **honesty rule** | GREEN moves ONLY by implementing a harness and building what it checks. Never by re-reading a row |
 
+**PROGRESS, 4r.** The dispatch bug is fixed and the architecture is in:
+`station/spec_harness/`, **one module per family**, dispatched by ID prefix, contract
+`check(row) -> (ok, note)` plus `SUFFICIENT: bool`. One module per family is not tidiness — 300
+rows in 13 families ask 13 different questions, and one shared file guarantees several agents
+editing it at once, which in this repository has produced stomped artefacts, half-written imports
+and a swept commit.
+
+`plc.py` is the worked example and it is a real check: every PLC row opens with an address line
+the spec authored independently of the register (`blue/0/0 0° z7115 · 360°×140 m ·
+docking_bay/generic* · auth 3`), which is **nine checkable facts**. The harness it replaced
+compared none of them. **128 pass, 1 FAIL — `PLC-098 mainstage_node: z spec=3000 register=3250`**,
+which is the move made hours earlier the same session. The register is the authority; the spec now
+follows, with the reasoning quoted in `PLACES.md`.
+
+Two mistakes worth carrying: the first regex reported **79 of 129 rows as MALFORMED** because `-`
+is a real value in the module slot and the commonest one — *"I cannot parse this" and "this
+disagrees" are opposite findings and only one is about the station*, so count the shapes rather
+than loosen the pattern. And `--dispatch` exists precisely so an entry that reaches nothing is
+visible on demand; it now prints none.
+
+**Remaining: 171 rows in 12 families with nothing checking them.** In progress as a fan-out, one
+agent per family group with an adversary per group whose only job is to prove the harness is
+vacuous.
+
 ## R2. ~~W5 IS RED~~ — **CLOSED IN 4r: 20 of the room look up, 0 deg off**
 
 `walkable.py --deck blue/0/0` → *"reached docking_bays and NOBODY noticed — 0.0 deg turned"*.
