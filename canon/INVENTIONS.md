@@ -10383,3 +10383,167 @@ annex's "T2-refused" makes that unlikely.
 **Authority 5.** Argument at `station/interact.py::_REFUSES_TO_OPEN`.
 
 **INV-652 … INV-659** — reserved to session 4r's closure work and not used. Free.
+
+## INV-610 — The streaming cell grid gains an axial dimension, one arc-cell long
+
+**What.** `godot/scripts/stream.gd::bake()` cuts a deck into cells of `cell_deg` of arc **by
+`cell_length_m` of axis** instead of arc alone. On Blue ring 1 deck 0 that is 20.0° × 73.8 m.
+`--z-band=0` reproduces the old one-dimensional grid exactly and is the control.
+
+**Why.** `interior.ring_cells` describes a deck as N angular wedges and records its axial extent as
+a single `z0`/`z1` pair — for `blue.ring_1.d0`, 18 cells and z 6794→8047. `_split` binned every
+triangle by `atan2(y, x)` and nothing else, so **a cell was a wedge running the deck's whole
+1,253 m**. Baked from the whole-deck build, `blue_0_0` came back as 18 cells each spanning
+z 6896.85–8005.41, the largest carrying **582,792 triangles — 3.24× the entire 180,000 resident
+allowance, in one cell**. And the only route between the deck's six z-clusters, the axial spine at
+89°, lies inside one of those wedges: a body walking the 340 m from the docking bays at z 7121 to
+customs at z 7460 never crossed a cell boundary, so `loads=0 frees=0` over the whole traverse. The
+cluster-to-cluster hand-off `docs/MASTER-PLAN.md` P0.5 called *"untested"* was not untested, it was
+**unreachable** — there was no boundary in the direction the station is long.
+
+**Constrained by.** The band length is `cell_length_m` and not a chosen number.
+`stream.gd`'s free-radius derivation reads *"the largest deadband that cannot admit a fourth cell,
+since a cell two away is never nearer than one cell length"* — a statement about the spacing of
+neighbours, true around the arc because arc neighbours are `cell_length_m` apart. Setting the axial
+band to exactly `cell_length_m` keeps ONE free radius valid along both axes with the same 7.7 m of
+hysteresis (73.8 − 66.1), and makes a cell square on the floor a player walks. Any other band
+length needs a second free radius and a second derivation. Bands are anchored at the deck table's
+own `z0`, so a band index is a property of the deck rather than of what a particular build happened
+to cover — the same rule as the arc grid being measured from 0°.
+
+Measured, whole-deck `blue_0_0`, before → after: 18 → **87 cells** (18 arc × 16 band); longest cell
+1,108.6 m → **73.8 m** of z; biggest cell 582,792 → **227,247 tri** (3.24× → 1.26× the resident
+budget); triangles conserved exactly both ways (3,702,966 = 3,702,966).
+
+**Overturned by.** A deck where `cell_length_m ≤ sight_line_m` — the deadband would then admit a
+further cell along both axes and the free radius would need splitting. Also by any decision to make
+axial residency an occlusion question rather than a budget one; see INV-611.
+
+**Authority 5.** Argument and measurement at `godot/scripts/stream.gd`, header §"THE CELL GRID HAD
+NO AXIAL DIMENSION". Gated by `station/boot.py --gate` ("no cell runs the deck's whole axial
+extent", control at `--z-band=0`) and by `res://scenes/stream_gate.tscn --axial-gate`.
+
+## INV-611 — Along the axis, the residency radius is a BUDGET bound and not an occlusion one
+
+**What.** The residency radius stays `sight_line_m` (66.1 m on this deck) in both directions, and
+the manifest now says in as many words that the axial half of it is not justified by the derivation
+the arc half is.
+
+**Why.** `interior.sight_line(r_floor, w) = 2·√(r_o² − r_i²)` is the chord past which **the ring's
+own curvature** occludes: inside it the player can see the geometry, outside it the corridor wall is
+in the way and nothing can pop. An axial corridor is **straight**. It has no curvature and therefore
+no such horizon, so a cell arriving 66.1 m ahead down the spine is in principle visible arriving.
+Using one radius for both is a budget decision wearing the arc derivation's clothes, and saying so
+is cheaper than a future session re-deriving it and finding nothing underneath.
+
+**Constrained by.** 180,000 resident triangles against a 60,000-triangle cell is three cells; three
+cells of 73.8 m is 221 m of corridor, which is what the budget will buy along a straight run. The
+three ways out are a bigger budget, an axial LOD chain, or a door — none is decided here.
+
+**Overturned by.** A measurement of what a player can actually see down the spine (its 2.16 m width
+and any bulkheads in it may occlude far more than assumed), or a triangle budget that makes the
+question moot.
+
+**Authority 5.** Argument at `godot/scripts/stream.gd`, header, and in the manifest's
+`residency`/`z_band_from` strings.
+
+## INV-612 — A cell's spawn is measured off that cell's own floor
+
+**What.** `stream.gd::_cell_spawn` picks the collision triangle of *this cell* nearest the cell's
+own centre at the deck's floor radius, and puts the spawn 0.2 m inward of it. A cell with no floor
+carries no spawn and says so, instead of being given a point.
+
+**Why.** The spawn was `_floor_point(corr, arc_centre, 0.2)` — the deck-wide corridor scan's
+`z_mid` for every cell. On a single-cluster build that is right. On the whole-deck build of
+`blue_0_0` the scan returned min-to-max across five separate ring corridors, `z_mid = 7562.75`, and
+**all eighteen spawns were written at that one z** — where the only floor is the 2.16 m-wide spine,
+so seventeen of eighteen were in mid-air 440 m from a corridor. This is `boot.py::spawn_from_shell`'s
+own rule one level down: *"a point ON a triangle of the floor cannot be in the air"*, learned there
+when averaging an arc's vertices put a spawn 214 m from any floor.
+
+**Constrained by.** The deck's floor radius, not the cell's own maximum, so a mezzanine or a duct
+run is not mistaken for ground; where a cell reaches no floor at that radius it falls back to its
+own outermost collision triangle and records which of the two it used. 0.2 m of clearance matches
+the existing spawn convention.
+
+**Measured.** Whole-deck `blue_0_0`: distinct spawn z, 1 → **27** across 87 cells.
+
+**Overturned by.** A deck whose walkable surface is not its outermost radius — the habitat drum,
+which `drum_walk.py` handles with its own heightfield and which this bake does not cut.
+
+**Authority 5.** `godot/scripts/stream.gd::_cell_spawn`.
+
+## INV-613 — A ring corridor is a contiguous run of floor, and a deck has several
+
+**What.** `stream.gd::_corridor_z` groups its qualifying z buckets into contiguous runs by merging
+the floor triangles' **own z intervals**, reports every run, and returns the busiest by arc coverage
+(ties broken on triangle count).
+
+**Why.** It returned the min and max of every qualifying bucket, which assumes a build holds one
+corridor. `tools/bake_station.py` bakes whole decks; `blue_0_0` holds ring corridors at z 6900
+(164° of arc), 7120 (345°), 7460 (206°), 7960 (225°) and 8000 (360°). Min-to-max across those is
+z [7121, 8004.5] and a mid of 7562.75 — 440 m of vacuum, and the value every cell spawn was placed
+at (INV-612).
+
+**Constrained by.** Contiguity is the triangles' own extents merged at 0.05 m, not adjacency of
+0.5 m centroid buckets — the first version of the fix used buckets and split *this* deck's single
+corridor in two, because its floor is a few large triangles spanning z 7185.7–7188.3 whose centroids
+land in the 7186.0 and 7187.0 buckets with nothing in 7186.5. Merging intervals needs no tolerance
+to argue about.
+
+**Overturned by.** A deck whose corridor floor is not at the outermost radius.
+
+**Authority 5.** `godot/scripts/stream.gd::_corridor_z`.
+
+## INV-614 — The axial spine is `_corridor_z` transposed, and it is what joins one z-cluster to the next
+
+**What.** `stream.gd::_axial_runs` asks which **angle** carries the most z, where `_corridor_z` asks
+which z carries the most arc. On the whole-deck `blue_0_0` collision shell exactly one one-degree
+bin of 360 carries floor spanning more than 300 m, and it carries **1,101.9 m of it in a single
+unbroken run** — an axial corridor at ≈89.2°, 2.16 m wide, from z 6903.6 to z 8005.4, threading
+every ring corridor on the deck.
+
+**Why.** Nothing in the project could name the thing a player has to walk along to leave their own
+z-cluster, so nothing could test it. The spine is what `--axial-gate` walks and it is read out of
+the manifest rather than written down anywhere.
+
+**Constrained by.** The span and run count come from **all** the floor in the winning bin, because
+cutting the ring corridors out first splits the spine at each one it threads and reports something
+continuous as three runs. The **angle** comes from the same bin with the corridors' z cut out, taken
+as the MEDIAN — decided by mass, and a thousand metres of spine outvotes a room's few triangles —
+then the extent of everything within one corridor width of it. The window is
+`floor_r − √(floor_r² − sight²/4)` = 2.598 m, a number the manifest already derives. Taking the
+BIN centre instead gave 89.5° for a spine whose own edge is at 89.46°, and the gate then walked
+0.15 m outside its floor and stalled against the wall after 0.7 m.
+
+**Overturned by.** A deck with several axial routes — this reports the longest and would need to
+return a list.
+
+**Authority 5.** `godot/scripts/stream.gd::_axial_runs`, cross-checked against an independent
+Python glTF reader over the same shell (1,101.9 m, one run, both).
+
+## INV-615 — A fresh cell set beats a nearer stale one
+
+**What.** `station/boot.py::cells_for` evaluates every candidate cell set, prefers one that still
+sums to the deck on disk, and records what it looked at in `cells_considered`. Location still breaks
+ties among equals.
+
+**Why.** It returned the first candidate that matched the deck by NAME, so a set sitting beside the
+deck won however old it was. Measured on this tree: `scene/deck/cells_blue_0_0/` held 18 cells
+summing to 735,732 render and 5,270 collision triangles while the deck beside it had 1,263,904 and
+15,166 — a set cut from a build two thirds smaller, **covering 12.2 m of a 143 m deck** — and
+`build()` named it as `cells_path` regardless, printing STALE as it did so. The shipped scene
+streamed a third of its own floor.
+
+**Constrained by.** Freshness has no tolerance to pick: `bake()` assigns whole triangles and asserts
+the cells sum to the source exactly, so any difference at all means a different build. The location
+ordering is kept for ties for the reason `_cell_candidates` gives — a sibling bake of the same NAME
+is a different build of the deck.
+
+**Overturned by.** Nothing yet; a deck with no fresh set anywhere still boots the least-stale one
+rather than falling back to the monolith, which is a decision this entry does not settle.
+
+**Authority 5.** `station/boot.py::cells_for`, gated by `--gate` ("a FRESH cell set beats a nearer
+stale one").
+
+**INV-616 … INV-619** — allocated to this work and not used. Free.

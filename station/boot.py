@@ -371,19 +371,53 @@ def _cell_candidates(stem, dd):
     return out
 
 
-def cells_for(stem, deck_dir=None):
-    """(path, manifest) of this deck's cell set, or ("", None)."""
-    for p in _cell_candidates(stem, deck_dir or DECK_DIR):
+def cells_for(stem, deck_dir=None, why=None):
+    """(path, manifest) of this deck's cell set, or ("", None).
+
+    FRESH BEATS NEAR, AND IT USED TO BE THE OTHER WAY ROUND. This returned the
+    first candidate that described the deck by NAME, so a cell set sitting
+    beside the deck won however old it was. Measured on this tree in session 4r:
+    `scene/deck/cells_blue_0_0/` held 18 cells summing to 735,732 render and
+    5,270 collision triangles while the deck beside it had 1,263,904 and 15,166
+    -- a set cut from a build two thirds smaller, covering **12.2 m of a 143 m
+    deck** -- and `build()` named it as `cells_path` anyway, printing STALE as
+    it went. The shipped scene therefore streamed a third of its own floor.
+
+    Location still breaks ties, for the reason `_cell_candidates` gives: a
+    sibling bake of the same NAME is a different build of the deck. But a set
+    that provably no longer sums to the deck cannot beat one that does.
+
+    `why` collects one line per candidate considered, so a boot that picks
+    nothing can say what it looked at rather than only that it failed.
+    """
+    dd = deck_dir or DECK_DIR
+    best = ("", None)
+    for p in _cell_candidates(stem, dd):
         if not os.path.exists(p):
             continue
         try:
             with open(p) as f:
                 man = json.load(f)
-        except (OSError, ValueError):
+        except (OSError, ValueError) as e:
+            if why is not None:
+                why.append("%s: unreadable (%s)" % (os.path.relpath(p, ROOT), e))
             continue
-        if _describes(stem, man):
+        if not _describes(stem, man):
+            if why is not None:
+                why.append("%s: describes a different deck"
+                           % os.path.relpath(p, ROOT))
+            continue
+        got = cells_describe(stem, man, dd)
+        if why is not None:
+            why.append("%s: %d cells, %s" % (os.path.relpath(p, ROOT),
+                                             got["count"],
+                                             "fresh" if got["fresh"]
+                                             else got["why"]))
+        if got["fresh"]:
             return p, man
-    return "", None
+        if best[0] == "":
+            best = (p, man)
+    return best
 
 
 def cells_describe(stem, man, deck_dir=None):
@@ -406,7 +440,21 @@ def cells_describe(stem, man, deck_dir=None):
     rows = man.get("cells") or []
     got = {"count": len(rows),
            "tris": sum(int(c.get("tris", 0)) for c in rows),
-           "col_tris": sum(int(c.get("col_tris", 0)) for c in rows)}
+           "col_tris": sum(int(c.get("col_tris", 0)) for c in rows),
+           # DOES THE GRID HAVE AN AXIS IN THE DIRECTION THE STATION IS LONG?
+           # Until INV-610 it did not, and nothing anywhere could say so: a set
+           # of 18 cells each running the deck's whole 1,253 m read exactly like
+           # a set of 18 cells that tile it. `z_band_m` is written by
+           # `stream.gd::bake()`; a set baked before it is absent, which is a
+           # DIFFERENT answer from zero and is reported as one.
+           "z_band_m": float(man.get("z_band_m", -1.0)),
+           "z_bands": int(man.get("z_bands", 0)),
+           # The z a cell actually spans, biggest first -- the number that made
+           # the defect visible once it was printed.
+           "z_span_max_m": max([float(c.get("arc", {}).get("z1", 0.0))
+                                - float(c.get("arc", {}).get("z0", 0.0))
+                                for c in rows] or [0.0]),
+           "tris_max": max([int(c.get("tris", 0)) for c in rows] or [0])}
     got["deck_tris"] = _obj_tris(os.path.join(dd, stem + ".obj"))
     got["deck_col_tris"] = _obj_tris(os.path.join(dd, stem + "_col.obj"))
     why = []
@@ -568,8 +616,11 @@ def build(stem=None, hour=None, deck_dir=None):
     # replaced: they are what `walk.gd` loads when there is no cell set, and
     # what `arrival.gd` adopts for its own cluster. `cells_path` is the one that
     # decides -- `walk.gd::_ready` loads the monolith only when it is empty.
-    cells_p, cman = cells_for(stem, dd)
+    looked = []
+    cells_p, cman = cells_for(stem, dd, why=looked)
     cells = {"path": cells_p, "count": 0, "start": -1, "fresh": False,
+             "z_band_m": -1.0, "z_bands": 0, "z_span_max_m": 0.0,
+             "tris_max": 0,
              "why": "no cell set for %s -- run `python3 station/boot.py "
                     "--bake`" % stem}
     if cman is not None:
@@ -619,6 +670,15 @@ def build(stem=None, hour=None, deck_dir=None):
         "cells_start": cells["start"],
         "cells_fresh": cells["fresh"],
         "cells_why": cells["why"],
+        # THE SECOND AXIS, ON THE SHIPPED MANIFEST. A build whose cells each run
+        # the deck's whole axial extent streams nothing when a player walks
+        # along the station, and before this key nothing on the boot path could
+        # distinguish that from a build that tiles both ways. INV-610.
+        "cells_z_band_m": cells["z_band_m"],
+        "cells_z_bands": cells["z_bands"],
+        "cells_z_span_max_m": round(cells["z_span_max_m"], 3),
+        "cells_tris_max": cells["tris_max"],
+        "cells_considered": looked,
         "spawn": [round(v, 4) for v in spawn],
         "spawn_at": at,
         "rooms": rooms,
@@ -710,7 +770,8 @@ def main_gd_sets_cells(text):
     return True, m.group(0).strip()
 
 
-def _fixture(dirpath, stem="gate_0_0", cells=2, offset_deg=0.0):
+def _fixture(dirpath, stem="gate_0_0", cells=2, offset_deg=0.0, bands=1,
+             z_len=1.0):
     """A deck and a cell set on disk, small enough to reason about.
 
     The shell is an arc of floor at a fixed radius: every vertex is at r=R, so
@@ -719,8 +780,14 @@ def _fixture(dirpath, stem="gate_0_0", cells=2, offset_deg=0.0):
     the first of two 30-degree cells. `offset_deg` slides the CELLS away from
     the shell without moving the shell, which is how the "the spawn is in no
     cell" control is made without authoring an unreachable spawn.
+
+    `bands` cuts the cell set along Z as well, and `z_len` makes the deck long
+    enough for that to mean something. With `bands=1` every cell spans the whole
+    `z_len` however long it is, which is exactly the shape of the defect
+    INV-610 records and is the control the axial checks below run against.
     """
-    r, z0, z1, span = 200.0, 100.0, 101.0, 30.0
+    r, z0, span = 200.0, 100.0, 30.0
+    z1 = z0 + z_len
     lines, n = [], 0
     faces = []
     for i in range(31):
@@ -742,27 +809,39 @@ def _fixture(dirpath, stem="gate_0_0", cells=2, offset_deg=0.0):
     with open(os.path.join(dirpath, stem + ".obj"), "w") as f:
         f.write(body)
     open(os.path.join(dirpath, stem + ".glb"), "w").close()
-    rows, per = [], len(faces) // max(cells, 1)
+    rows = []
+    n_cell = max(cells, 1) * max(bands, 1)
+    per = len(faces) // n_cell
+    band_m = z_len / max(bands, 1)
+    k = 0
     for i in range(cells):
         a0 = offset_deg + span * i / cells
-        share = per if i < cells - 1 else len(faces) - per * (cells - 1)
-        rows.append({
-            "id": "%s_c%02d" % (stem, i), "index": i,
-            "mesh": "%s_c%02d.scn" % (stem, i),
-            "collision": "%s_c%02d_col.scn" % (stem, i),
-            "arc": {"r_m": r, "a0_deg": a0, "a1_deg": a0 + span / cells,
-                    "z0": z0 - 0.5, "z1": z1 + 0.5},
-            "aabb": {"pos": [-r, -r, z0], "size": [2 * r, 2 * r, z1 - z0]},
-            "tris": share,
-            "col_tris": share,
-            "groups": 1,
-            "spawn": [r * math.cos(math.radians(a0 + 1.0)),
-                      r * math.sin(math.radians(a0 + 1.0)), (z0 + z1) / 2.0],
-        })
+        for j in range(max(bands, 1)):
+            share = per if k < n_cell - 1 else len(faces) - per * (n_cell - 1)
+            cid = ("%s_c%02d" % (stem, i) if bands <= 1
+                   else "%s_c%02dz%02d" % (stem, i, j))
+            rows.append({
+                "id": cid, "index": k,
+                "mesh": cid + ".scn",
+                "collision": cid + "_col.scn",
+                "arc": {"r_m": r, "a0_deg": a0, "a1_deg": a0 + span / cells,
+                        "z0": z0 + j * band_m - 0.5,
+                        "z1": z0 + (j + 1) * band_m + 0.5},
+                "aabb": {"pos": [-r, -r, z0], "size": [2 * r, 2 * r, z1 - z0]},
+                "tris": share,
+                "col_tris": share,
+                "groups": 1,
+                "spawn": [r * math.cos(math.radians(a0 + 1.0)),
+                          r * math.sin(math.radians(a0 + 1.0)),
+                          z0 + (j + 0.5) * band_m],
+            })
+            k += 1
     out = os.path.join(dirpath, "cells_" + stem)
     os.makedirs(out, exist_ok=True)
     with open(os.path.join(out, stem + "_cells.json"), "w") as f:
         json.dump({"version": 1, "kind": "ring", "cell_deg": span / cells,
+                   "z_band_m": (0.0 if bands <= 1 else band_m),
+                   "z_bands": max(bands, 1),
                    "written_by": "station/boot.py::_fixture (gate)",
                    "source": {"glb": os.path.join(dirpath, stem + ".glb")},
                    "cells": rows}, f)
@@ -814,6 +893,76 @@ def gate():
         say(bool(man.get("cells_fresh")),
             "the cells still sum to the deck they were cut from",
             man.get("cells_why") or "exactly")
+
+    # -- 2b. THE SECOND AXIS. INV-610 ---------------------------------------
+    #
+    # A CELL THAT RUNS THE DECK'S WHOLE LENGTH STREAMS NOTHING ALONG IT, and no
+    # check anywhere could tell that apart from a grid that tiles both ways --
+    # both give the same cell COUNT, the same triangle total and the same
+    # "boot.build() names a cells_path". Measured on this tree before the fix:
+    # `blue_0_0` baked whole came back as 18 cells each spanning z
+    # 6896.85..8005.41, the biggest carrying 582,792 triangles, which is 3.24x
+    # the entire resident allowance in ONE cell -- and the only route between
+    # its z-clusters, the 89 deg axial spine, lies inside one of them, so a
+    # 340 m walk from the docking bays to customs performed zero loads and zero
+    # frees. The check is on the SPAN, because that is the thing that was wrong.
+    with tempfile.TemporaryDirectory() as d:
+        stem = _fixture(d, cells=2, bands=3, z_len=300.0)
+        man = build(stem, deck_dir=d)
+        say(int(man.get("cells_z_bands", 0)) > 1,
+            "the cell grid has an axis along the station, not only round it",
+            "%d bands of %.1f m" % (man.get("cells_z_bands", 0),
+                                    man.get("cells_z_band_m", -1.0)))
+        say(0.0 < man.get("cells_z_span_max_m", 0.0) < 300.0,
+            "no cell runs the deck's whole axial extent",
+            "longest cell spans %.1f m of a %.1f m deck"
+            % (man.get("cells_z_span_max_m", 0.0), 300.0))
+        say(int(man.get("cells_start", -1)) >= 0,
+            "the spawn is inside one of the banded cells",
+            "cell %d" % man.get("cells_start", -1))
+    with tempfile.TemporaryDirectory() as d:
+        # THE SAME DECK WITH ONE BAND -- the grid as it was.
+        stem = _fixture(d, cells=2, bands=1, z_len=300.0)
+        m = build(stem, deck_dir=d)
+        say(not (0.0 < m.get("cells_z_span_max_m", 0.0) < 300.0),
+            "CONTROL: with one band the span check fails on the same deck",
+            "longest cell spans %.1f m of a %.1f m deck -- the whole thing"
+            % (m.get("cells_z_span_max_m", 0.0), 300.0))
+        say(int(m.get("cells_z_bands", 0)) <= 1,
+            "CONTROL: and it is reported as a one-dimensional grid",
+            "%d band(s)" % m.get("cells_z_bands", 0))
+
+    # -- 2c. FRESH BEATS NEAR -----------------------------------------------
+    #
+    # Two candidate sets for one deck, the near one stale and the far one not.
+    # Before this rule the near one won and `build()` shipped it while printing
+    # STALE, which is what `scene/deck/cells_blue_0_0` was doing on this tree:
+    # 12.2 m of a 143 m deck.
+    with tempfile.TemporaryDirectory() as d:
+        stem = _fixture(d, cells=2, bands=3, z_len=300.0)
+        good = os.path.join(d, "cells_" + stem, stem + "_cells.json")
+        with open(good) as f:
+            fresh_man = json.load(f)
+        stale = json.loads(json.dumps(fresh_man))
+        for c in stale["cells"]:
+            c["tris"] = int(c["tris"]) // 3            # a smaller, older build
+        near = os.path.join(d, "cells", stem + "_cells.json")
+        os.makedirs(os.path.dirname(near), exist_ok=True)
+        # `_cell_candidates` looks in `cells_<stem>/` BEFORE `cells/`, so to test
+        # the tie-break the stale one has to be the one that is looked at first.
+        with open(good) as f:
+            keep = f.read()
+        with open(good, "w") as f:
+            json.dump(stale, f)
+        with open(near, "w") as f:
+            f.write(keep)
+        m = build(stem, deck_dir=d)
+        say(bool(m.get("cells_fresh")),
+            "a FRESH cell set beats a nearer stale one",
+            os.path.basename(os.path.dirname(m.get("cells_path", ""))) or "none")
+        say(len(m.get("cells_considered", [])) >= 2,
+            "and every candidate it looked at is named",
+            "; ".join(m.get("cells_considered", []))[:120])
 
     # -- 3. the controls, each removing one thing ---------------------------
     with tempfile.TemporaryDirectory() as d:
@@ -903,6 +1052,20 @@ def main():
               % (man["cells_count"],
                  os.path.relpath(man["cells_path"], ROOT), man["cells_start"],
                  "" if man["cells_fresh"] else "  -- STALE: " + man["cells_why"]))
+        # AND ALONG WHICH AXES. A count of cells says nothing about the shape of
+        # the grid, and a grid with no axis along the station streams nothing
+        # when a player walks the length of it. INV-610.
+        if man["cells_z_bands"] > 1:
+            print("boot: the grid is %d band(s) of %.1f m along the axis; the "
+                  "longest cell spans %.1f m of z and the biggest carries "
+                  "%d triangles"
+                  % (man["cells_z_bands"], man["cells_z_band_m"],
+                     man["cells_z_span_max_m"], man["cells_tris_max"]))
+        else:
+            print("boot: ONE-DIMENSIONAL GRID -- every cell runs %.1f m of z, "
+                  "so walking along the station loads and frees nothing and "
+                  "the biggest cell is %d triangles. Re-bake: INV-610."
+                  % (man["cells_z_span_max_m"], man["cells_tris_max"]))
     else:
         print("boot: MONOLITHIC -- %s. The shipped scene will load one deck "
               "whole and nothing will be on the other side of it."

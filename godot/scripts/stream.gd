@@ -78,6 +78,70 @@ extends Node3D
 ## monolithic glb; and the collision cell gets `create_trimesh_collision()` on
 ## every mesh exactly as `_load_level` does, for the reason stated there --
 ## trimesh and not convex, because a room is a hole in solid.
+##
+## ===========================================================================
+## THE CELL GRID HAD NO AXIAL DIMENSION, AND THAT IS WHY THE STATION WAS ONE
+## Z-CLUSTER (session 4r, INV-610..613)
+## ===========================================================================
+##
+## THE MEASUREMENT FIRST, because the conclusion is only interesting with it.
+## `interior.ring_cells` cuts a deck into N ANGULAR wedges -- `cell_manifest`'s
+## row for Blue 1 deck 0 says `cells: 18, cell_deg: 20.0, z0: 6794, z1: 8047` --
+## and `_split` below binned every triangle by `atan2(y, x)` and nothing else.
+## So a cell was a wedge running the deck's WHOLE 1,253 m of axis. Baked from
+## the whole-deck build, `blue_0_0`'s eighteen cells each spanned
+## z 6896.85..8005.41 and cell 4 alone carried **582,792 triangles -- 3.24x the
+## entire 180,000 resident budget, in one cell.**
+##
+## AND THE ONLY ROUTE BETWEEN Z-CLUSTERS LIVES INSIDE ONE OF THOSE WEDGES.
+## Measured off `blue_0_0_collision.glb` by merging the z intervals of every
+## floor triangle per one-degree bin: exactly ONE bin of 360 carries floor
+## spanning more than 300 m, and it carries 1,101.9 m of it IN A SINGLE
+## UNBROKEN RUN -- an axial spine at 88.87..89.46 deg, 2.16 m wide, from
+## z 6904 to z 8005, threading every ring corridor on the deck (z 6900 covering
+## 164 deg of arc, 7120 covering 345, 7460 covering 206, 7960 covering 225,
+## 8000 covering 360). 89 deg is inside cell 4, which is 80..100 deg.
+##
+## SO THE CLUSTER-TO-CLUSTER HAND-OFF WAS NOT UNTESTED. IT WAS UNREACHABLE.
+## A body walking the spine from the docking bays at z 7121 to customs at
+## z 7460 -- 340 m, across four z-clusters -- never leaves cell 4, so the
+## streamer performs ZERO loads and ZERO frees over the whole traverse while
+## holding 3.24x its budget resident the entire time. There was no boundary to
+## hand off across, because the grid has no boundaries in the direction the
+## station is long.
+##
+## THE FIX IS A SECOND AXIS ON THE GRID, AND THE RUNTIME WAS ALREADY READY FOR
+## IT. `distance_to` has always computed `sqrt(along^2 + dz^2)` -- arc distance
+## and the z-distance outside `[z0, z1]` -- so a cell that is bounded in z has
+## always been handled correctly by residency, freeing, `cell_at` and
+## `_entering`. Only `bake()` was one-dimensional. Nothing below `bake()`
+## changed to make an axial hand-off work; it worked as soon as the bake stopped
+## emitting 1.1 km cells.
+##
+## THE BAND LENGTH IS THE DECK'S OWN `cell_length_m` (73.8 m here), and that is
+## a derivation rather than a pick -- see INV-610. The free-radius argument
+## above says the deadband may be as large as one cell length "since a cell two
+## away is never nearer than one cell length". That is a statement about the
+## SPACING OF NEIGHBOURS, and it was true in the arc direction because arc
+## neighbours are `cell_length_m` apart. Making the axial band exactly
+## `cell_length_m` keeps one free radius valid in both directions with the same
+## 7.7 m of hysteresis, and makes a cell SQUARE on the floor a player walks. A
+## different band length would need a second free radius and a second
+## derivation.
+##
+## AND ONE THING IT IS HONEST ABOUT RATHER THAN QUIET ABOUT (INV-611). The
+## residency RADIUS is `sight_line_m`, derived as the chord past which the
+## RING'S OWN CURVATURE occludes. An axial corridor is STRAIGHT: it has no
+## curvature and therefore no such horizon, so along the axis 66.1 m is a
+## BUDGET bound and not an occlusion bound, and a cell arriving 66 m ahead down
+## the spine is in principle visible arriving. That is a real, stated shortfall
+## with three possible answers -- a bigger budget, an axial LOD, or a door -- and
+## none of them is decided here. What is NOT acceptable is the previous state,
+## where the question could not arise because nothing ever popped.
+##
+## `--z-band=0` rebuilds the old one-dimensional grid and is the control: the
+## same deck comes back as 18 cells of 1.1 km, and the axial gate below fails on
+## it with `loads=0 frees=0` after walking the same 340 m.
 
 # ---------------------------------------------------------------------------
 # Where the derived numbers live. Neither is restated here.
@@ -244,6 +308,17 @@ func bake(args: Dictionary) -> int:
 	var cell_deg := float(row["cell_deg"])
 	var floor_r := float(row["floor_r_m"])
 	var sight := float(row["sight_line_m"])
+	# THE AXIAL BAND. Default is the deck's own arc-cell length, so one free
+	# radius stays valid in both directions -- see the header. `--z-band=0` is
+	# the one-dimensional control and reproduces the old grid exactly.
+	var z_band := float(row["cell_length_m"])
+	if args.has("z-band"):
+		z_band = float(args["z-band"])
+	# The band grid is anchored at the DECK's own z0, not at whatever this build
+	# happens to start at -- the same rule as the arc grid being measured from
+	# 0 degrees, and for the same reason: a cell baked out of one cluster must
+	# carry the same id and the same bounds as the cell a generator emits later.
+	var z_origin := float(row.get("z0", 0.0))
 	print("bake: %s -- cell_deg=%.3f (%d cells round the ring), floor_r=%.2f m, "
 		% [row["label"], cell_deg, int(row["cells"]), floor_r]
 		+ "sight_line=%.1f m, kit cell=%d tri  [%s]"
@@ -251,6 +326,14 @@ func bake(args: Dictionary) -> int:
 	print("bake: budget cell_tris=%d resident_tris=%d -> %d cells resident  [%s]"
 		% [bud["cell_tris"], bud["resident_tris"],
 			int(bud["resident_tris"] / bud["cell_tris"]), BUDGET_PY])
+	if z_band > 0.0:
+		print("bake: z_band=%.1f m from deck_table.cell_length_m, grid anchored "
+			% z_band + "at deck z0=%.0f -- a cell is %.1f m of arc by %.1f m of "
+			% [z_origin, float(row["cell_length_m"]), z_band]
+			+ "axis, square on the floor, and one free radius covers both")
+	else:
+		print("bake: z_band=0 -- ONE-DIMENSIONAL CONTROL. Every cell runs the "
+			+ "deck's whole axial extent, which is the defect INV-610 records.")
 
 	var vis := _load_glb(String(args.get("glb", "")))
 	if vis == null:
@@ -266,13 +349,35 @@ func bake(args: Dictionary) -> int:
 		% [Time.get_ticks_msec() - t0, _meshes(vis).size(), _meshes(col).size()])
 
 	DirAccess.make_dir_recursive_absolute(out_dir)
-	var corr := _corridor_z(col)
+	# The corridor width the manifest records, derived here rather than after
+	# the fact, because `_axial_runs` uses it as its angular window.
+	var corr_w := floor_r - sqrt(maxf(floor_r * floor_r
+		- sight * sight / 4.0, 0.0))
+	var corr := _corridor_z(col, corr_w)
 	print("bake: corridor MEASURED at r=%.2f m, z=[%.2f,%.2f] (mid %.2f), "
 		% [corr["r_floor_m"], corr["z0"], corr["z1"], corr["z_mid"]]
-		+ "covering %.1f deg of arc -- the only floor that runs the whole run"
-		% corr["arc_deg"])
-	var vis_bins := _split(vis, cell_deg)
-	var col_bins := _split(col, cell_deg)
+		+ "covering %.1f deg of arc -- the busiest of %d ring corridor(s) on "
+		% [corr["arc_deg"], int(corr["runs"].size())]
+		+ "this build")
+	if corr["runs"].size() > 1:
+		# NAMED, NOT AVERAGED. The first version of `_corridor_z` returned the
+		# MIN-TO-MAX of every qualifying z bucket, which on a whole-deck build is
+		# a point in the void between two clusters: on `blue_0_0` it reported
+		# z_mid 7562.75, where only the 0.7 m-wide axial spine has floor, and
+		# every one of the eighteen cell spawns was placed there -- seventeen of
+		# them in mid-air, 440 m from the nearest corridor.
+		print("bake: this deck has %d separate ring corridors, not one: %s"
+			% [corr["runs"].size(), ", ".join(corr["runs_desc"])])
+	var spine: Dictionary = corr["spine"]
+	if not spine.is_empty():
+		print("bake: axial spine MEASURED at %.3f deg (%.3f-%.3f, %.2f m wide), "
+			% [spine["deg"], spine["deg0"], spine["deg1"], spine["width_m"]]
+			+ "z=[%.1f,%.1f] -- %.1f m of floor in %d unbroken run(s). This is "
+			% [spine["z0"], spine["z1"], spine["span_m"], int(spine["runs"])]
+			+ "the only thing that joins one z-cluster to the next, and it is "
+			+ "what --axial-gate walks.")
+	var vis_bins := _split(vis, cell_deg, z_band, z_origin)
+	var col_bins := _split(col, cell_deg, z_band, z_origin)
 	print("bake: split in %d ms -- %d visual cell(s), %d collision cell(s)"
 		% [Time.get_ticks_msec() - t0, vis_bins.size(), col_bins.size()])
 
@@ -295,63 +400,115 @@ func bake(args: Dictionary) -> int:
 	for i in col_bins:
 		if not vis_bins.has(i):
 			idx.append(i)
-	idx.sort()
+	# (arc, band) order, so the listing reads round the ring band by band and the
+	# compact index below is arc-major -- which for a 1-D bake is the arc index
+	# unchanged, byte for byte.
+	idx.sort_custom(func(a: Vector2i, b: Vector2i) -> bool:
+		return a.x < b.x if a.x != b.x else a.y < b.y)
+	var band_lo := 0
+	var band_hi := 0
+	var first_key := true
+	for k: Vector2i in idx:
+		band_lo = k.y if first_key else mini(band_lo, k.y)
+		band_hi = k.y if first_key else maxi(band_hi, k.y)
+		first_key = false
+	var n_band := band_hi - band_lo + 1
+	var banded := z_band > 0.0
 	var rows: Array = []
 	var half_only: Array = []
-	for i in idx:
-		var have_v: bool = vis_bins.has(i)
-		var have_c: bool = col_bins.has(i)
-		var vpath := out_dir.path_join("%s_c%02d.scn" % [stem, i])
-		var cpath := out_dir.path_join("%s_c%02d_col.scn" % [stem, i])
+	var no_floor := 0
+	for k: Vector2i in idx:
+		var i: int = k.x
+		var bnd: int = k.y
+		# ID FROM THE ABSOLUTE BAND, INDEX FROM THE COMPACT ONE. The id is the
+		# durable name and has to be a property of the DECK grid, so it carries
+		# the band counted from the deck's own z0 -- a partial build and a whole
+		# one then name the same arc-and-band the same thing. `index` is only an
+		# engine-local handle (`prime`, `cell_by_index`) and has to be unique and
+		# small, so it is compacted. For a 1-D bake it is the arc index and the
+		# id is the old one, unchanged.
+		var cid := ("%s_c%02dz%02d" % [stem, i, bnd] if banded
+			else "%s_c%02d" % [stem, i])
+		var cix := (i * n_band + (bnd - band_lo) if banded else i)
+		var have_v: bool = vis_bins.has(k)
+		var have_c: bool = col_bins.has(k)
+		var vpath := out_dir.path_join(cid + ".scn")
+		var cpath := out_dir.path_join(cid + "_col.scn")
 		var vinfo: Dictionary = ({} if not have_v
-			else _write_cell(vis_bins[i], "cell_%02d" % i, vpath))
+			else _write_cell(vis_bins[k], "cell_%02d_%02d" % [i, bnd], vpath))
 		var cinfo: Dictionary = ({} if not have_c
-			else _write_cell(col_bins[i], "cell_%02d_col" % i, cpath))
+			else _write_cell(col_bins[k], "cell_%02d_%02d_col" % [i, bnd], cpath))
 		if (have_v and vinfo.is_empty()) or (have_c and cinfo.is_empty()):
-			push_error("bake: could not write cell %d" % i)
+			push_error("bake: could not write cell %s" % cid)
 			return 2
 		if not (have_v and have_c):
-			half_only.append("cell %02d %6.2f-%6.2f deg: %s (%d tri)"
-				% [i, i * cell_deg, (i + 1) * cell_deg,
+			half_only.append("%s %6.2f-%6.2f deg: %s (%d tri)"
+				% [cid, i * cell_deg, (i + 1) * cell_deg,
 					("NO COLLISION -- nothing to stand on there"
 						if have_v else "NO RENDER MESH -- floor with no room"),
 					int((vinfo if have_v else cinfo).get("tris", 0))])
 		var aabb: AABB = (vinfo["aabb"] if have_v else cinfo["aabb"])
 		if have_v and have_c:
 			aabb = vinfo["aabb"].merge(cinfo["aabb"])
+		# THE BAND BOUNDS ARE THE GRID, exactly as `a0_deg`/`a1_deg` are. The old
+		# row took its z from the CONTENT and its angle from the GRID, which is
+		# fine while every cell spans the deck and leaves a gap the moment they
+		# do not: two axially adjacent cells whose content stops short of the
+		# band edge would both be at a positive distance from a point between
+		# them, so `cell_at` would report -1 for a place a body is standing.
+		var bz0 := z_origin + float(bnd) * z_band
+		var bz1 := bz0 + z_band
+		var cz0 := snappedf(float((cinfo if have_c else vinfo)["zmin"]), 0.001)
+		var cz1 := snappedf(float((cinfo if have_c else vinfo)["zmax"]), 0.001)
+		# A spawn is a CLAIM -- see walk.gd. Measured off THIS CELL'S OWN floor,
+		# never off a deck-wide corridor scan: see `_cell_spawn`.
+		var sp := (_cell_spawn(col_bins[k], floor_r, 0.2) if have_c
+			else PackedFloat64Array())
+		if sp.is_empty():
+			no_floor += 1
 		rows.append({
-			"id": "%s_c%02d" % [stem, i],
-			"index": i,
+			"id": cid,
+			"index": cix,
+			"arc_index": i,
+			"z_band": bnd,
 			"mesh": (vpath.get_file() if have_v else ""),
 			"collision": (cpath.get_file() if have_c else ""),
 			# THE ARC IS THE DISTANCE METRIC. A 20 deg cell's world AABB is a
 			# 145 x 145 m box and a distance to it is nearly meaningless; the
 			# distance a player actually has to walk is along the arc, and the
-			# cell knows its own arc exactly.
+			# cell knows its own arc exactly. `distance_to` combines it with the
+			# z overhang, which is what makes the axial half of the grid work
+			# without a line of runtime change.
 			"arc": {"r_m": floor_r, "a0_deg": i * cell_deg,
 				"a1_deg": (i + 1) * cell_deg,
-				# The z span comes from the COLLISION half where there is one --
-				# a cell is a place you walk, and its render mesh reaches up into
-				# ducting a body never gets to. With no collision half there is
-				# nothing to walk and the render span is all there is.
-				"z0": snappedf(float((cinfo if have_c else vinfo)["zmin"]), 0.001),
-				"z1": snappedf(float((cinfo if have_c else vinfo)["zmax"]), 0.001)},
+				"z0": (snappedf(bz0, 0.001) if banded else cz0),
+				"z1": (snappedf(bz1, 0.001) if banded else cz1)},
+			# What is actually IN the cell, kept beside the grid bounds so a
+			# reader can see how much of its band a cell fills without reopening
+			# the .scn.
+			"content_z": [cz0, cz1],
 			"aabb": {"pos": [aabb.position.x, aabb.position.y, aabb.position.z],
 				"size": [aabb.size.x, aabb.size.y, aabb.size.z]},
 			"tris": int(vinfo.get("tris", 0)),
 			"col_tris": int(cinfo.get("tris", 0)),
 			"groups": int(vinfo.get("groups", 0)),
-			# A spawn is a CLAIM -- see walk.gd. It is placed 0.2 m off the
-			# MEASURED corridor floor at the cell's arc centre, so the settle
-			# either confirms it or does not.
-			"spawn": _floor_point(corr, (i + 0.5) * cell_deg, 0.2),
+			"spawn": ([] if sp.is_empty() else [sp[0], sp[1], sp[2]]),
+			"spawn_from": ("" if sp.is_empty() else
+				("deck floor r=%.2f" % floor_r if sp[3] > 0.5
+					else "this cell's outermost collision, r=%.2f" % sp[4])),
 		})
-		print("  cell %02d  %6.2f-%6.2f deg  %7d tri  %5d col tri  %3d groups  "
-			% [i, i * cell_deg, (i + 1) * cell_deg, int(vinfo.get("tris", 0)),
-				int(cinfo.get("tris", 0)), int(vinfo.get("groups", 0))]
-			+ "%5.1f MB%s" % [_file_mb(vpath) + _file_mb(cpath),
-				("" if have_v and have_c
-					else ("   NO COLLISION" if have_v else "   NO RENDER MESH"))])
+		if rows.size() <= 64 or not banded:
+			print("  %-24s %6.2f-%6.2f deg  z %8.1f-%8.1f  %7d tri  %5d col  "
+				% [cid, i * cell_deg, (i + 1) * cell_deg, bz0, bz1,
+					int(vinfo.get("tris", 0)), int(cinfo.get("tris", 0))]
+				+ "%3d grp %5.1f MB%s"
+				% [int(vinfo.get("groups", 0)),
+					_file_mb(vpath) + _file_mb(cpath),
+					("" if have_v and have_c
+						else ("   NO COLLISION" if have_v
+							else "   NO RENDER MESH"))])
+		elif rows.size() == 65:
+			print("  ... %d more cells, listed in the manifest" % (idx.size() - 64))
 
 	var nominal := int(bud["resident_tris"] / bud["cell_tris"])
 	var man := {
@@ -364,11 +521,30 @@ func bake(args: Dictionary) -> int:
 			"deck_index": deck_index, "label": row["label"]},
 		"cell_deg": cell_deg,
 		"floor_r_m": floor_r,
+		# THE SECOND AXIS OF THE GRID. Zero means the one-dimensional control --
+		# see the header. `z_origin_m` is the deck's own z0, so a band index is a
+		# property of the deck and not of this build's extent.
+		"z_band_m": z_band,
+		"z_origin_m": z_origin,
+		"z_bands": n_band,
+		"z_band_from": ("deck_table.cell_length_m (%.1f m) -- the arc cell "
+			% float(row["cell_length_m"])
+			+ "length, so one free radius is valid along both axes and a cell "
+			+ "is square on the floor. INV-610. Along the axis the residency "
+			+ "radius is a BUDGET bound, not the ring-curvature occlusion bound "
+			+ "it is around the arc: INV-611."
+			if z_band > 0.0 else "0 -- the one-dimensional control, INV-610"),
 		# The corridor's own measured position, so a caller that wants to walk
 		# ALONG the run -- rather than into a room -- does not have to guess.
 		"corridor": {"r_floor_m": snappedf(float(corr["r_floor_m"]), 0.001),
 			"z0": corr["z0"], "z1": corr["z1"],
 			"z_mid": corr["z_mid"], "arc_deg": snappedf(float(corr["arc_deg"]), 0.1),
+			# EVERY ring corridor on this build, not just the busiest, and the
+			# axial spine that threads them. A whole-deck build has several and
+			# the old record could only describe one -- by taking min-to-max
+			# across all of them, which lands in the void between.
+			"runs": corr["runs"],
+			"spine": corr["spine"],
 			# Recovered from the deck row's own two numbers rather than restated:
 			# sight = 2*sqrt(r^2 - (r-w)^2) inverts to w exactly.
 			"width_m": snappedf(floor_r - sqrt(maxf(floor_r * floor_r
@@ -427,16 +603,44 @@ func bake(args: Dictionary) -> int:
 	for r in rows:
 		tot += int(r["tris"])
 		ctot += int(r["col_tris"])
-	print("bake: %d cells, %d triangles total (source had %d), %.1f MB, "
-		% [rows.size(), tot, _mesh_tris(vis), _dir_mb(out_dir)]
-		+ "%d ms -> %s" % [Time.get_ticks_msec() - t0, mpath])
+	print("bake: %d cells (%d arc x %d band), %d triangles total (source had "
+		% [rows.size(), int(row["cells"]), n_band, tot]
+		+ "%d), %.1f MB, %d ms -> %s"
+		% [_mesh_tris(vis), _dir_mb(out_dir), Time.get_ticks_msec() - t0, mpath])
+	# THE NUMBER THE BUDGET IS ABOUT. A grid that has no axis in the direction
+	# the station is long produces cells nothing can afford, and until this line
+	# existed the bake reported a total and never a maximum -- so an 18-cell bake
+	# whose biggest cell was 3.24x the WHOLE resident allowance printed as a
+	# success. Reported here, where it is measured, rather than left to the
+	# runtime's `over_budget_frames` to discover on a player's machine.
+	var big := 0
+	var big_id := ""
+	var over := 0
+	for r in rows:
+		if int(r["tris"]) > big:
+			big = int(r["tris"])
+			big_id = String(r["id"])
+		if int(r["tris"]) > int(bud["cell_tris"]):
+			over += 1
+	print("bake: biggest cell %s at %d tri = %.2fx cell_tris and %.2fx the "
+		% [big_id, big, float(big) / maxf(float(bud["cell_tris"]), 1.0),
+			float(big) / maxf(float(bud["resident_tris"]), 1.0)]
+		+ "WHOLE resident budget; %d of %d cells over cell_tris"
+		% [over, rows.size()])
+	if no_floor > 0:
+		print("bake: %d of %d cells have no floor and therefore no spawn -- "
+			% [no_floor, rows.size()]
+			+ "stated rather than given a made-up point, which is what placing "
+			+ "every spawn at a deck-wide z_mid did")
 	if not half_only.is_empty():
 		# NAMED, NOT COUNTED. A conservation failure with a total and no location
 		# is a diagnosis pass nobody can start; these are the arcs where the two
 		# halves of the deck disagree about what exists.
 		print("bake: %d cell(s) have only one half:" % half_only.size())
-		for s in half_only:
+		for s in half_only.slice(0, 24):
 			print("        " + s)
+		if half_only.size() > 24:
+			print("        ... %d more" % (half_only.size() - 24))
 	# THE BAKE IS LOSSLESS OR IT IS A BUG. Triangles are assigned whole, so the
 	# cells must sum to the source exactly; a mismatch means a triangle was
 	# dropped and a dropped triangle is a hole in a floor.
@@ -469,8 +673,13 @@ func _dir_mb(d: String) -> float:
 
 
 ## Assign every triangle of every mesh under `root` to a cell of the ring grid.
-## Returns {cell_index: {group_name: [PackedVector3Array pos, nrm, PackedVector2Array uv]}}.
-func _split(root: Node, cell_deg: float) -> Dictionary:
+## Returns {Vector2i(arc, band): {group_name: [pos, nrm, uv]}}.
+##
+## TWO AXES SINCE 4r, AND THE SECOND ONE IS WHY THE STATION WAS ONE Z-CLUSTER.
+## `z_band <= 0` bins everything into band 0, which is the old behaviour exactly
+## and is the control. See the header.
+func _split(root: Node, cell_deg: float, z_band: float = 0.0,
+		z_origin: float = 0.0) -> Dictionary:
 	var bins := {}
 	for mi: MeshInstance3D in _meshes(root):
 		var name := String(mi.name)
@@ -499,7 +708,10 @@ func _split(root: Node, cell_deg: float) -> Dictionary:
 				var a: float = rad_to_deg(atan2(cy, cx))
 				if a < 0.0:
 					a += 360.0
-				var cell := int(floor(a / cell_deg))
+				var cz: float = (p0.z + p1.z + p2.z) / 3.0
+				var cell := Vector2i(int(floor(a / cell_deg)),
+					(0 if z_band <= 0.0
+						else int(floor((cz - z_origin) / z_band))))
 				var g = bins.get(cell)
 				if g == null:
 					g = {}
@@ -601,7 +813,17 @@ func _write_cell(groups: Dictionary, root_name: String, path: String) -> Diction
 ## measured z came out 3.8 m off, and `_floor_point` then placed all eighteen
 ## cell spawns where this deck has no floor at all. Counting occupied one-degree
 ## bins tells a ring from six rooms; a spread cannot.
-func _corridor_z(col_root: Node) -> Dictionary:
+## AND A WHOLE-DECK BUILD HAS SEVERAL CORRIDORS, WHICH MIN-TO-MAX CANNOT SAY.
+## The first version returned the min and max of every QUALIFYING z bucket, on
+## the assumption that a build holds one ring corridor. `tools/bake_station.py`
+## bakes the whole deck, and `blue_0_0` holds five -- z 6900 covering 164 deg of
+## arc, 7120 covering 345, 7460 covering 206, 7960 covering 225 and 8000
+## covering 360. Min-to-max over those is z [7121, 8004.5], mid **7562.75**,
+## which is 440 m of vacuum: the only floor at that z is the 0.7 m-wide axial
+## spine. Every one of that bake's eighteen cell spawns was placed there.
+## Qualifying buckets are therefore grouped into CONTIGUOUS RUNS, the busiest
+## run is the answer, and all of them are reported.
+func _corridor_z(col_root: Node, win_m: float = 2.6) -> Dictionary:
 	var rmax := 0.0
 	var tri: Array = []
 	for mi: MeshInstance3D in _meshes(col_root):
@@ -616,41 +838,270 @@ func _corridor_z(col_root: Node) -> Dictionary:
 			var n_tri := (ix.size() if ix.size() > 0 else pos.size()) / 3
 			for t in n_tri:
 				var q: Vector3 = Vector3.ZERO
+				var zlo_t := INF
+				var zhi_t := -INF
 				for k in 3:
 					var i := (ix[t * 3 + k] if ix.size() > 0 else t * 3 + k)
-					q += xf * pos[i]
+					var w: Vector3 = xf * pos[i]
+					q += w
+					zlo_t = minf(zlo_t, w.z)
+					zhi_t = maxf(zhi_t, w.z)
 				q /= 3.0
 				var r := sqrt(q.x * q.x + q.y * q.y)
 				rmax = maxf(rmax, r)
 				var a := rad_to_deg(atan2(q.y, q.x))
-				tri.append([r, (a + 360.0 if a < 0.0 else a), q.z])
-	var span := {}
+				tri.append([r, (a + 360.0 if a < 0.0 else a), q.z, zlo_t, zhi_t])
+	var floor_tri: Array = []
 	for e in tri:
-		if e[0] < rmax - 0.1:
-			continue                              # not floor
+		if e[0] >= rmax - 0.1:
+			floor_tri.append(e)
+	var span := {}
+	var mass := {}
+	for e in floor_tri:
 		var b := int(round(e[2] * 2.0))           # 0.5 m buckets
 		if not span.has(b):
 			span[b] = {}
+			mass[b] = 0
 		span[b][int(floor(e[1]))] = true          # one-degree bins
+		mass[b] += 1
 	var best := 0
 	for b in span:
 		best = maxi(best, span[b].size())
-	var zlo := INF
-	var zhi := -INF
+	var keep := {}
 	for b in span:
 		if span[b].size() >= int(ceil(float(best) * 0.95)):
-			zlo = minf(zlo, b / 2.0)
-			zhi = maxf(zhi, b / 2.0)
-	return {"r_floor_m": rmax, "z0": zlo, "z1": zhi,
-		"z_mid": (zlo + zhi) * 0.5, "arc_deg": float(best)}
+			keep[b] = true
+	# ONE CORRIDOR IS ONE RUN, AND CONTIGUITY IS THE TRIANGLES' OWN Z EXTENTS
+	# rather than adjacency of centroid buckets. The first version of this used
+	# adjacent 0.5 m buckets and split THIS DECK'S single corridor in two: its
+	# floor is a handful of large triangles spanning z 7185.7-7188.3, whose
+	# centroids land in the 7186.0 and 7187.0 buckets with nothing in 7186.5, so
+	# a bucket-adjacency test reported "2 separate ring corridors" 1.0 m apart.
+	# Merging the intervals themselves needs no tolerance to argue about --
+	# `_axial_runs` uses the identical rule -- and gives one run.
+	var iv: Array = []
+	for e in floor_tri:
+		if keep.has(int(round(float(e[2]) * 2.0))):
+			iv.append(e)
+	iv.sort_custom(func(a: Array, b: Array) -> bool: return a[3] < b[3])
+	var runs: Array = []
+	var desc: PackedStringArray = PackedStringArray()
+	var cur: Array = []
+	var hi := -INF
+	for e in iv:
+		if not cur.is_empty() and float(e[3]) > hi + 0.05:
+			runs.append(_run_of(cur))
+			cur = []
+			hi = -INF
+		cur.append(e)
+		hi = maxf(hi, float(e[4]))
+	if not cur.is_empty():
+		runs.append(_run_of(cur))
+	var pick := 0
+	for i in runs.size():
+		var r: Dictionary = runs[i]
+		var p: Dictionary = runs[pick]
+		if (float(r["arc_deg"]) > float(p["arc_deg"])
+				or (float(r["arc_deg"]) == float(p["arc_deg"])
+					and int(r["tris"]) > int(p["tris"]))):
+			pick = i
+	for r in runs:
+		desc.append("z %.1f-%.1f (%d deg)" % [r["z0"], r["z1"], int(r["arc_deg"])])
+	if runs.is_empty():
+		return {"r_floor_m": rmax, "z0": INF, "z1": -INF, "z_mid": 0.0,
+			"arc_deg": 0.0, "runs": [], "runs_desc": desc,
+			"spine": _axial_runs(floor_tri, [], rmax, win_m)}
+	var win: Dictionary = runs[pick]
+	return {"r_floor_m": rmax, "z0": win["z0"], "z1": win["z1"],
+		"z_mid": (float(win["z0"]) + float(win["z1"])) * 0.5,
+		"arc_deg": float(win["arc_deg"]), "runs": runs, "runs_desc": desc,
+		"spine": _axial_runs(floor_tri, runs, rmax, win_m)}
 
 
-## A point on the measured corridor floor. On a spun ring UP IS INWARD, so the
-## floor is the LARGEST radius the collision shell reaches and "up" is `-radial`.
-func _floor_point(corr: Dictionary, angle_deg: float, up_m: float) -> Array:
-	var r: float = float(corr["r_floor_m"]) - up_m
-	var a := deg_to_rad(angle_deg)
-	return [r * cos(a), r * sin(a), float(corr["z_mid"])]
+## One ring corridor, described from the floor triangles that make it up.
+## `arc_deg` is the number of distinct one-degree bins it occupies -- COVERAGE,
+## not spread, which is the distinction `_corridor_z`'s header records.
+func _run_of(tri: Array) -> Dictionary:
+	var bins := {}
+	var lo := INF
+	var hi := -INF
+	for e in tri:
+		bins[int(floor(float(e[1])))] = true
+		lo = minf(lo, float(e[3]))
+		hi = maxf(hi, float(e[4]))
+	return {"z0": snappedf(lo, 0.001), "z1": snappedf(hi, 0.001),
+		"arc_deg": float(bins.size()), "tris": tri.size()}
+
+
+## THE TRANSPOSE OF `_corridor_z`, AND IT IS WHAT THE AXIAL GRID NEEDED.
+##
+## `_corridor_z` asks "which z carries the most arc" and finds a ring corridor.
+## Ask the same question the other way round -- which ANGLE carries the most z --
+## and you find the axial spine, the thing that joins one ring corridor to the
+## next and the only reason a body can leave its own z-cluster on foot. Measured
+## with the triangles' OWN z ranges merged, not their centroids, so contiguity
+## needs no tolerance to argue about: triangles that touch are one run.
+##
+## On `blue_0_0`'s whole-deck build exactly ONE bin of 360 carries more than
+## 300 m of floor, and it carries 1,101.9 m of it in a SINGLE unbroken run.
+func _axial_runs(floor_tri: Array, corridors: Array, rmax: float,
+		win_m: float = 2.6) -> Dictionary:
+	# THE SPAN COMES FROM ALL THE FLOOR AND THE ANGLE COMES FROM THE SPINE ONLY,
+	# and both halves of that were got wrong once. Measuring the span over the
+	# corridor-excluded set splits the spine at every ring corridor it threads
+	# and reports "1,085.9 m in 3 runs" for something continuous. Measuring the
+	# ANGLE over everything, or over the winning bin and its neighbours, drags
+	# in the ring corridors -- which cross every bin -- and the room floors
+	# either side: the first version returned the BIN centre, 89.5 deg, for a
+	# spine whose own edge is at 89.46, so the gate aimed 0.15 m outside the
+	# floor it was walking on and stalled against the wall after 0.7 m.
+	var by_deg := {}
+	for e in floor_tri:
+		var d := int(floor(float(e[1])))
+		if not by_deg.has(d):
+			by_deg[d] = []
+		by_deg[d].append([float(e[3]), float(e[4]), float(e[1])])
+	var best_deg := -1
+	var best_span := 0.0
+	var best_runs := 0
+	var best_z0 := 0.0
+	var best_z1 := 0.0
+	for d in by_deg:
+		var iv: Array = by_deg[d]
+		iv.sort_custom(func(a: Array, b: Array) -> bool: return a[0] < b[0])
+		var total := 0.0
+		var n := 0
+		var lo: float = iv[0][0]
+		var hi: float = iv[0][1]
+		var z0: float = iv[0][0]
+		var z1: float = iv[iv.size() - 1][1]
+		for k in range(1, iv.size()):
+			if iv[k][0] <= hi + 0.05:
+				hi = maxf(hi, iv[k][1])
+			else:
+				total += hi - lo
+				n += 1
+				lo = iv[k][0]
+				hi = iv[k][1]
+		total += hi - lo
+		n += 1
+		if total > best_span:
+			best_span = total
+			best_deg = d
+			best_runs = n
+			best_z0 = z0
+			best_z1 = z1
+	if best_deg < 0:
+		return {}
+	# THE ANGLE, from the winning bin's own triangles with the ring corridors cut
+	# out. The MEDIAN first, because it is decided by mass and the spine is a
+	# thousand metres of floor against a room's few: any stray floor at this
+	# angle is outvoted rather than averaged in. Then the extent of everything
+	# within ONE CORRIDOR WIDTH of it -- `win_m` is
+	# `floor_r - sqrt(floor_r^2 - sight^2/4)`, the width the manifest already
+	# records, so the window is a number this deck derived and not one chosen
+	# here.
+	var ang: Array = []
+	for e in by_deg[best_deg]:
+		var inside := false
+		for c in corridors:
+			if float(e[1]) >= float(c["z0"]) - 0.05 \
+					and float(e[0]) <= float(c["z1"]) + 0.05:
+				inside = true
+				break
+		if not inside:
+			ang.append(float(e[2]))
+	if ang.is_empty():
+		for e in by_deg[best_deg]:      # a single-corridor build: nothing to cut
+			ang.append(float(e[2]))
+	ang.sort()
+	var med: float = ang[ang.size() / 2]
+	var win_deg := rad_to_deg(win_m / maxf(rmax, 1.0))
+	# MEDIAN TO FIND IT, MEAN TO CENTRE ON IT. Measured on this deck, bin 89
+	# holds 575 floor triangles: **550 of them are the spine**, in two strips of
+	# 275 at 89.07 and 89.26 deg each running z 6905.7-8003.2, and the other 25
+	# are singletons of room floor scattered from 89.04 to 89.93. The median is
+	# decided by that mass and lands on the spine; the EXTENT of what survives
+	# the window is not, because one stray triangle at 89.93 drags its midpoint
+	# to 89.49 -- which is 0.03 deg past the spine's own far edge, so the gate
+	# walked half off it. The mean is mass-weighted like the median and lands at
+	# 89.19 against a true centre of 89.17.
+	var lo_a := INF
+	var hi_a := -INF
+	var acc := 0.0
+	var n_in := 0
+	for a in ang:
+		if absf(float(a) - med) <= win_deg:
+			lo_a = minf(lo_a, float(a))
+			hi_a = maxf(hi_a, float(a))
+			acc += float(a)
+			n_in += 1
+	# `deg0`/`deg1`/`width_m` are the ENVELOPE of everything inside the window,
+	# strays included, and are measured off triangle CENTROIDS -- so the envelope
+	# is wider than the spine and the centroid extent of the spine itself is
+	# narrower than its true width by about one triangle. They are here to say
+	# roughly what is around, not as a dimension anything is built to. `deg` is
+	# the number to walk at.
+	return {"deg": snappedf(acc / maxf(float(n_in), 1.0), 0.001),
+		"deg0": snappedf(lo_a, 0.001), "deg1": snappedf(hi_a, 0.001),
+		"width_m": snappedf(deg_to_rad(hi_a - lo_a) * rmax, 0.01),
+		"floor_tris": ang.size(),
+		"z0": snappedf(best_z0, 0.01),
+		"z1": snappedf(best_z1, 0.01), "span_m": snappedf(best_span, 0.01),
+		"runs": best_runs}
+
+
+## A SPAWN MEASURED OFF THE CELL'S OWN FLOOR. Returns
+## [x, y, z, on_deck_floor, r] or empty.
+##
+## `boot.py::spawn_from_shell`'s rule, one level down and per cell: a point ON a
+## floor triangle cannot be in the air, and the centroid of an arc is not on the
+## arc. It takes this cell's collision triangles at the DECK's floor radius --
+## a spun deck's floor is its outermost surface -- and returns the one nearest
+## the cell's own centre, moved `up_m` inward, because on a spun ring up is
+## inward. Where a cell has no floor at the deck radius (a mezzanine, a duct
+## run) it falls back to that cell's own outermost triangle and SAYS SO in the
+## row; where it has no collision at all it returns empty and the row carries no
+## spawn, which is the honest answer and the one the old code could not give.
+func _cell_spawn(groups: Dictionary, floor_r: float,
+		up_m: float) -> PackedFloat64Array:
+	var band := 0.15                     # `boot.FLOOR_BAND_M`, same rule
+	var best := Vector3.ZERO
+	var best_r := 0.0
+	var on_deck := false
+	var sum := Vector3.ZERO
+	var n := 0
+	var cands: Array = []
+	for name in groups:
+		var pos: PackedVector3Array = groups[name][0]
+		for t in pos.size() / 3:
+			var c: Vector3 = (pos[t * 3] + pos[t * 3 + 1] + pos[t * 3 + 2]) / 3.0
+			var r := sqrt(c.x * c.x + c.y * c.y)
+			cands.append([r, c])
+			sum += c
+			n += 1
+			best_r = maxf(best_r, r)
+	if n == 0:
+		return PackedFloat64Array()
+	var mid := sum / float(n)
+	var want := (floor_r if best_r >= floor_r - band else best_r)
+	on_deck = best_r >= floor_r - band
+	var have := false
+	var bd := INF
+	for e in cands:
+		if want - float(e[0]) > band:
+			continue
+		var d: float = (e[1] as Vector3).distance_squared_to(mid)
+		if d < bd:
+			bd = d
+			best = e[1]
+			have = true
+	if not have:
+		return PackedFloat64Array()
+	var rr := sqrt(best.x * best.x + best.y * best.y)
+	var k := (rr - up_m) / maxf(rr, 1e-9)
+	return PackedFloat64Array([best.x * k, best.y * k, best.z,
+		(1.0 if on_deck else 0.0), rr])
 
 
 func _mesh_tris(root: Node) -> int:
@@ -1117,3 +1568,299 @@ func report() -> String:
 		cells.size(), peak_resident, peak_tris, resident_tris_budget,
 		radius_m, free_m, loads, frees, double_loads, abandoned,
 		over_budget_frames, max_activate_ms, lag_frames, wired, unwired]
+
+
+# ===========================================================================
+# THE AXIAL GATE -- a body walks OUT OF ITS OWN Z-CLUSTER AND BACK
+# ===========================================================================
+#
+# WHY THIS EXISTS AND WHY IT IS HERE. `walk.gd::--stream-test` walks a body
+# round the ARC and is the gate for arc hand-off; there has never been one for
+# the other axis, and `docs/MASTER-PLAN.md` P0.5 recorded the gap as
+# "cluster-to-cluster hand-off untested". It was worse than untested: with a
+# one-dimensional grid a cell ran the deck's whole 1,253 m of axis, so the
+# traverse that was supposed to exercise the hand-off never crossed a boundary
+# and could not fail. A gate that cannot fail is this project's most expensive
+# recurring defect and the header records the measurement.
+#
+# IT WALKS THE SPINE THE BAKE MEASURED, not a route written down here. On
+# `blue_0_0` that is 89.5 deg, the one bin of 360 whose floor spans more than
+# 300 m -- and it is what physically joins the docking bays at z 7121 to customs
+# at z 7460. Nothing in this function knows those numbers; they come out of
+# `plan.corridor.spine`.
+#
+# AND IT REPORTS METRES ON THE FLOOR. `station/collision.py`'s rule: four nudges
+# prove a body is not wedged and prove nothing about whether you can go
+# anywhere. `floor_m` counts only steps taken with `is_on_floor()` true, so a
+# body that walks off the end of a cell and falls 300 m scores nothing for it.
+#
+# THE CONTROLS, and both must fail:
+#   --z-band=0 at bake time  -> one 1.1 km cell, `loads=0 frees=0` over the same
+#                               traverse, and this gate fails on `crossings`.
+#   --no-stream              -> the start cell is primed and nothing else is ever
+#                               requested; the body walks off the end of it.
+
+const G0_M_S2 := 9.80665           ## walk.gd's own constant, same conversion
+
+var _ax := {}                      ## the gate's state, empty when not gating
+
+
+func _ready() -> void:
+	# ONLY WHEN THIS NODE IS THE SCENE. `walk.gd::_ready` adds a bare instance of
+	# this script as a CHILD for `--bake-cells` and for one deck-table read, and
+	# both must be untouched by anything here -- so the guard is parentage, which
+	# cannot be true by accident, rather than a flag somebody has to remember not
+	# to pass. `res://scenes/stream_gate.tscn` is the one scene whose root this is.
+	set_physics_process(false)
+	if get_parent() != get_tree().root:
+		return
+	var args := _cmdline()
+	if not args.has("axial-gate"):
+		return
+	var rc := _ax_setup(args)
+	if rc != 0:
+		get_tree().quit(rc)
+		return
+	set_physics_process(true)
+
+
+func _cmdline() -> Dictionary:
+	var out := {}
+	for a in OS.get_cmdline_user_args():
+		var s := String(a)
+		if not s.begins_with("--"):
+			continue
+		s = s.substr(2)
+		var eq := s.find("=")
+		if eq < 0:
+			out[s] = ""
+		else:
+			out[s.substr(0, eq)] = s.substr(eq + 1)
+	return out
+
+
+func _ax_setup(args: Dictionary) -> int:
+	var man_p := String(args.get("cells", ""))
+	if man_p == "":
+		push_error("axial-gate: --cells=<...cells.json> is required")
+		return 2
+	if not configure(man_p, null, 3.0, args.has("no-stream")):
+		push_error("axial-gate: " + ", ".join(problems))
+		return 2
+	var spine: Dictionary = (plan.get("corridor", {}) as Dictionary).get(
+		"spine", {})
+	if spine.is_empty():
+		push_error("axial-gate: this manifest carries no measured spine -- it "
+			+ "was baked before INV-612. Re-bake it.")
+		return 2
+	var floor_r := float(plan.get("floor_r_m", 0.0))
+	# GRAVITY FROM THE DECK THE BODY IS ON, never Earth's. INV-451's rule: the
+	# only caller that supplied the real values used to be the gate they were
+	# authored in, so they are derived here from `cell_manifest.json`'s own
+	# floor_g/floor_r pair -- the same two numbers `walk.gd::_derive_omega2`
+	# uses, read through the same `deck_row`.
+	var src: Dictionary = plan.get("source", {})
+	var row := deck_row(String(src.get("sector", "")),
+		int(src.get("ring_index", 0)), int(src.get("deck_index", 0)))
+	var om2 := 0.0
+	if not row.is_empty() and float(row.get("floor_r_m", 0.0)) > 0.0:
+		om2 = G0_M_S2 * float(row["floor_g"]) / float(row["floor_r_m"])
+
+	var deg := float(args.get("deg", str(spine["deg"])))
+	# START AND END ON THE SPINE. Default: from the busiest ring corridor's z --
+	# the cluster a boot spawn lands in -- to the far end of the spine, which is
+	# the last z-cluster on the deck. Both overridable so a caller can name two
+	# clusters by their z.
+	var corr: Dictionary = plan.get("corridor", {})
+	var z_a := float(args.get("from-z", str(corr.get("z_mid", spine["z0"]))))
+	# THE FAR END IS THE FURTHEST RING CORRIDOR, not `spine.z1`. A default of
+	# "the high end of the spine" walked 1.1 m on this deck, because the busiest
+	# corridor happens to sit AT the spine's high end -- a default that silently
+	# does nothing is the same defect as a gate that cannot fail. So: the other
+	# cluster's own corridor if this build has more than one, and otherwise
+	# whichever end of the spine is further from where the body starts.
+	var z_b: float = (float(spine["z0"]) if absf(float(spine["z0"]) - z_a)
+		> absf(float(spine["z1"]) - z_a) else float(spine["z1"]))
+	for r in (corr.get("runs", []) as Array):
+		var mid: float = (float(r["z0"]) + float(r["z1"])) * 0.5
+		if absf(mid - z_a) > absf(z_b - z_a):
+			z_b = mid
+	z_b = float(args.get("to-z", str(z_b)))
+	var a := deg_to_rad(deg)
+	var r := floor_r - 0.2
+	var start := Vector3(r * cos(a), r * sin(a), z_a)
+	var start_cell := cell_at(start)
+	if start_cell < 0:
+		push_error("axial-gate: the start point %.1f,%.1f,%.1f is in no cell"
+			% [start.x, start.y, start.z])
+		return 2
+	var ms := prime(start_cell)
+
+	var body := CharacterBody3D.new()
+	body.name = "AxialBody"
+	body.set_script(load("res://scripts/player.gd"))
+	body.set("gravity_mode", "drum")
+	body.set("omega2", om2)
+	const Ragdoll := preload("res://scripts/ragdoll.gd")
+	body.collision_layer = Ragdoll.WORLD_LAYER
+	body.collision_mask = Ragdoll.WORLD_LAYER
+	var shape := CollisionShape3D.new()
+	var caps := CapsuleShape3D.new()
+	# 1.8 x 0.35 -- `walk.gd::_cap_h/_cap_r`, the same person.
+	caps.height = 1.8
+	caps.radius = 0.35
+	shape.shape = caps
+	shape.position = Vector3(0, 0.9, 0)
+	body.add_child(shape)
+	add_child(body)
+	body.drive_externally()
+	body.global_position = start
+	# UPRIGHT BEFORE THE FIRST STEP, THROUGH `player.gd`'s OWN CONSTRUCTOR.
+	# `step` sets `global_transform.basis = stand_basis(fwd)` every frame, so the
+	# body is upright from frame 1 -- but it is placed on frame 0 with an
+	# IDENTITY basis, which on a ring at 89 deg points the capsule's local +Y
+	# very nearly along the outward radius: 1.8 m of body buried in the deck,
+	# resolved by whatever `move_and_slide` does about it on the next frame.
+	# `stand_basis` is the one construction site for this expression -- see its
+	# own header -- so this calls it rather than rebuilding the basis here,
+	# which is CLAUDE.md's mirrored-crowd lesson applied before it can happen.
+	body.global_transform.basis = body.stand_basis(Vector3(0, 0, 1))
+	set_player(body)
+	_ax = {
+		"body": body, "deg": deg, "r": r, "z_a": z_a, "z_b": z_b,
+		"dir": 1.0, "frame": 0, "floor_m": 0.0, "off": 0, "legs": 0,
+		"prev": start, "start_cell": start_cell, "prime_ms": ms,
+		"max_frames": int(args.get("frames", "24000")),
+		"reach_m": float(args.get("reach", "3.0")),
+		"seen": {}, "crossings": 0, "here": start_cell, "far_z": z_a,
+		"trace": int(args.get("trace", "0")),
+		# A BLOCKED BODY MUST REPORT, NOT HANG. The first run of this gate sat at
+		# z 7185.75 for 6,000 frames with `on_floor=true`, which is a real and
+		# interesting answer -- the route out of the ring corridor into the room
+		# runs through a pressure door, and `_wiring` is null in this gate so the
+		# leaf is a solid trimesh. A frame cap alone reports that as "did not get
+		# there", which is true and says nothing about why. Progress is measured
+		# toward the goal and stalling is named with the position and the cell.
+		"stall": int(args.get("stall", "900")),
+		"best": absf(z_b - z_a), "since": 0, "blocked": "",
+	}
+	print("axial-gate: spine %.2f deg (%.1f m of floor in %d run(s), z %.1f-%.1f)"
+		% [deg, float(spine["span_m"]), int(spine["runs"]), float(spine["z0"]),
+			float(spine["z1"])]
+		+ ", walking z %.1f -> %.1f -> %.1f at r=%.2f" % [z_a, z_b, z_a, r])
+	print("axial-gate: gravity omega^2=%.9f -> %.4f m/s^2 at r=%.2f (deck row "
+		% [om2, om2 * floor_r, floor_r] + "%s), start cell %d primed in %d ms"
+		% [String(row.get("id", "?")), start_cell, ms])
+	return 0
+
+
+func _physics_process(delta: float) -> void:
+	if _ax.is_empty():
+		return
+	var body: CharacterBody3D = _ax["body"]
+	var p := body.global_position
+	# STEER ALONG THE SPINE AND NOWHERE ELSE. The spine is 2.16 m wide on this
+	# deck, so the target is the point on it a few metres ahead: any component
+	# round the ring walks the body straight off it. `player.gd::step` flattens
+	# the direction onto the floor plane, which on a spun ring is the tangent
+	# plane at the body's own angle, so a pure +z steer stays a pure +z walk.
+	var a := deg_to_rad(float(_ax["deg"]))
+	var rr: float = _ax["r"]
+	var goal: float = (_ax["z_b"] if _ax["dir"] > 0.0 else _ax["z_a"])
+	var ahead: float = p.z + _ax["dir"] * 5.0
+	if _ax["dir"] > 0.0:
+		ahead = minf(ahead, goal)
+	else:
+		ahead = maxf(ahead, goal)
+	var target := Vector3(rr * cos(a), rr * sin(a), ahead)
+	body.step(delta, Vector2.ZERO, false, false, target - p)
+	update(body.global_position)
+
+	var q := body.global_position
+	var d := q.distance_to(_ax["prev"])
+	if body.is_on_floor():
+		_ax["floor_m"] = float(_ax["floor_m"]) + d
+		if _ax["dir"] > 0.0:
+			_ax["far_z"] = maxf(float(_ax["far_z"]), q.z)
+	else:
+		_ax["off"] = int(_ax["off"]) + 1
+	_ax["prev"] = q
+	_ax["frame"] = int(_ax["frame"]) + 1
+	# HOW MANY CELL BOUNDARIES THE BODY ACTUALLY CROSSED, watched from OUTSIDE
+	# the streamer's own counters -- `walk.gd::_note_residency`'s rule. A
+	# streamer that lied about `loads` could not make this number move.
+	var now := cell_at(q)
+	if now >= 0:
+		_ax["seen"][now] = true
+		if now != int(_ax["here"]):
+			_ax["crossings"] = int(_ax["crossings"]) + 1
+			_ax["here"] = now
+	if int(_ax["trace"]) > 0 and int(_ax["frame"]) % int(_ax["trace"]) == 0:
+		print("  f%-6d z=%9.2f  cell %3d  resident %d (%d tri)  on_floor=%s"
+			% [int(_ax["frame"]), q.z, now, _resident.size(), resident_tris(),
+				str(body.is_on_floor())])
+
+	var left := absf(q.z - goal)
+	if left < float(_ax["best"]) - 0.5:
+		_ax["best"] = left
+		_ax["since"] = 0
+	else:
+		_ax["since"] = int(_ax["since"]) + 1
+		if int(_ax["since"]) >= int(_ax["stall"]):
+			_ax["blocked"] = ("stalled %d frames at z=%.2f (%.1f m short of "
+				% [int(_ax["since"]), q.z, left]
+				+ "z=%.1f) in cell %d, on_floor=%s -- something solid is in the "
+				% [goal, now, str(body.is_on_floor())]
+				+ "way, not a missing cell")
+			_ax_finish()
+			return
+	if left <= float(_ax["reach_m"]):
+		if _ax["dir"] > 0.0:
+			_ax["dir"] = -1.0
+			_ax["legs"] = 1
+			print("axial-gate: reached z=%.2f at frame %d -- turning back"
+				% [q.z, int(_ax["frame"])])
+			return
+		_ax["legs"] = 2
+		_ax_finish()
+		return
+	if int(_ax["frame"]) >= int(_ax["max_frames"]):
+		_ax_finish()
+
+
+func _ax_finish() -> void:
+	var body: CharacterBody3D = _ax["body"]
+	var q := body.global_position
+	var reached: float = float(_ax["far_z"])
+	var want: float = float(_ax["z_b"])
+	var travelled: float = absf(reached - float(_ax["z_a"]))
+	var line := ("AXIALWALK legs=%d floor_m=%.1f axial_m=%.1f reached_z=%.1f "
+		+ "target_z=%.1f offfloor=%d/%d cells_entered=%d crossings=%d %s") % [
+		int(_ax["legs"]), float(_ax["floor_m"]), travelled, reached, want,
+		int(_ax["off"]), int(_ax["frame"]), (_ax["seen"] as Dictionary).size(),
+		int(_ax["crossings"]), report()]
+	print(line)
+	var bad: PackedStringArray = PackedStringArray()
+	if String(_ax["blocked"]) != "":
+		bad.append(String(_ax["blocked"]))
+	if int(_ax["legs"]) < 2:
+		bad.append("the body did not get there and back (legs=%d, stopped at "
+			% int(_ax["legs"]) + "z=%.1f of %.1f)" % [q.z, want])
+	if int(_ax["crossings"]) < 2:
+		bad.append("it crossed %d cell boundaries -- a traverse inside one "
+			% int(_ax["crossings"]) + "cell tests no hand-off at all")
+	if loads < 1 or frees < 1:
+		bad.append("loads=%d frees=%d -- nothing arrived or nothing left"
+			% [loads, frees])
+	if int(_ax["off"]) > 0:
+		bad.append("%d frame(s) off the floor" % int(_ax["off"]))
+	if peak_tris > resident_tris_budget:
+		bad.append("peak resident %d tri against a %d budget (%.2fx)"
+			% [peak_tris, resident_tris_budget,
+				float(peak_tris) / maxf(float(resident_tris_budget), 1.0)])
+	if bad.is_empty():
+		print("axial-gate: PASS -- a body left its own z-cluster on foot and "
+			+ "came back, with cells arriving and being released as it went")
+	else:
+		print("axial-gate: FAIL -- " + "; ".join(bad))
+	get_tree().quit(0 if bad.is_empty() else 1)
