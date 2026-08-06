@@ -184,6 +184,44 @@ cluster-to-cluster hand-off is genuinely untested, which `MASTER-PLAN` P0.5 alre
 | **acceptance** | a body walks from the spawn cluster into an adjacent one and back, with cells loading and freeing, and arrives at a place in the far cluster |
 | **open question** | the intended denominator — 251 decks in the manifest against 70 recorded as baked. **Nothing in the repository states which**, which is why `bootstrap.py` prints the fraction and deliberately does NOT fail on it |
 
+## R7. FOUR THINGS THE SPEC ENUMERATES AND NO PHASE SCHEDULES
+
+**Found by testing this plan against a list rather than reading it.** The owner asked whether
+the plan accounts for what stops the build being a game. Most of it does, and better than I had
+implied: **P2 — THE PLAYER PERSISTS** owns save/load and its gate is well shaped (*"buy
+something, quit, reload, stock still down — fails today, keeps failing until G1's economy seed
+lands, which is the point"*), and **P3** owns eat/sleep (L2), transit (L3), dialogue (L4) and the
+economy and till (L7).
+
+**Four are in the spec and in NO phase.** Counted, not felt — occurrences in the annexes against
+occurrences in this document:
+
+| item | spec | this plan | row |
+|---|---|---|---|
+| journal / knowledge items | 10 | **0** | PLY-07, SYS-16 |
+| condition model (hunger, rest as *state*) | 4 | **0** | PLY-06 |
+| time compression through the running sim | — | **0** | PLY-05 |
+| SELL as a verb distinct from BUY | 21 | **0** | VRB-05 |
+
+**THIS IS THE GAP BETWEEN THE TWO AUTHORITIES, AND IT IS STRUCTURAL.** `CLAUDE.md` §1–2 make the
+spec decide **what** and this plan decide **what order**. An item in one and not the other has no
+phase, so no session picks it up — it is enumerated, checkable, red in the ledger for ever, and
+scheduled by nobody. That is a quieter failure than an unbuilt thing, because the ledger keeps
+reporting it and the plan keeps not containing it.
+
+| | |
+|---|---|
+| **gate** | `station/spec_check.py --red` already reports all four. What was missing is a phase that owns them |
+| **acceptance** | each lands inside P2 or P3 with the phase's own denominator: SELL in P3-L7 beside the till, condition + journal + time compression in P2 beside save, since all three are player STATE and share its persistence question |
+| **why P2 and not later** | a condition model with no save is a hunger bar that resets, and a journal with no save is a notebook that forgets. They are the same problem as persistence and should be built where it is |
+| **the rule** | when this plan is amended, check it against the spec's row IDs rather than against itself. Four items hid for however long because nobody asked the plan a question it could fail |
+
+**AND THE POSITIONAL ANSWER MATTERS MORE THAN THE COVERAGE ONE.** P2 and P3 **have not started**.
+The phase order is P0a → P0.5 → P0.6 → P0.7 → P1 → **P2** → **P3** → P4 → P5, and session 4r
+worked in P0.5 (streaming hand-off), P1 and P4 (craft) simultaneously. That is the drift §4i was
+written to stop, and it is worth naming here rather than only in a retrospective: the phase that
+makes the player persist is two phases out, and nothing will make it closer except doing it.
+
 ## R6. THE RULE THAT PRODUCED FOUR OF THESE FIVE
 
 R1, R2 and R5 are all one shape: **a thing was built, a consumer read a different
