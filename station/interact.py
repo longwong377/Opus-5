@@ -346,6 +346,134 @@ LIVE_READ = ("info_board", "arrivals_board", "departure_board", "monitor_wall",
 _READ_CACHE = {}
 
 
+# WHAT A THING IS WHEN YOU LOOK AT IT, and it was nothing for most of the
+# station. VRB-01 says "every interactable answers with true, specific text (T1
+# rule: no two identical strings in a room class)"; the harness sampled twenty
+# and found SIXTEEN answered with nothing at all. `read_text` only ever spoke
+# for the readables -- boards, screens, terminals -- so a cold drawer, a shuttle
+# door, a seat and a market stall were all silent, which is most of what a
+# player walks up to.
+#
+# DERIVED, NOT AUTHORED, AND THAT IS THE ONLY WAY IT STAYS TRUE. Ninety-nine
+# hand-written strings would be ninety-nine things to keep in step with a
+# station that moves under them -- exactly what `docs/PLAYTEST.md`'s four stale
+# rows were. Every clause below comes from something the station already knows:
+# the shape from `rooms.PROP_KIND`, the affordance from the verb the thing
+# already has, and the SPECIFIC clause from the place itself -- its declared
+# functions, its sector, its gravity. That last one is what satisfies the T1
+# rule: the same token in two rooms describes two rooms.
+_KIND_NOUN = {
+    "leaf": "a door", "console": "a console", "screen": "a screen",
+    "counter": "a counter", "seat": "a seat", "bed": "a berth",
+    "cabinet": "a cabinet", "rack": "a rack", "crate": "a crate",
+    "vessel": "a vessel", "post": "a post", "wallpanel": "a wall panel",
+    "gantry": "a gantry", "crane": "a crane", "kerb": "a kerb",
+    "skid": "a skid",
+}
+
+# WHAT THE AFFORDANCE LOOKS LIKE FROM OUTSIDE. Keyed on the verb the token
+# already resolves to, so a thing that gains a verb gains the right sentence
+# with it and cannot drift out of step -- the same discipline `verb_set()`
+# uses to refuse a verb nobody can perform.
+_VERB_LOOK = {
+    "open": "it parts down the middle when it is worked",
+    "operate": "there is a control on it, worn where hands go",
+    "read": "there is something written on it",
+    "sit": "you could sit at it",
+    "rest": "you could stop here a while",
+    "store": "it opens, and there is space inside",
+    "serve": "somebody stands behind it",
+    "tread": "it is underfoot",
+}
+
+
+def look_text(place_key, token, hour=13.0, day=0):
+    """A true, specific sentence about one interactable. VRB-01.
+
+    Three clauses, each from a different source, because one source cannot
+    make a line both true and specific:
+
+      WHAT IT IS      the token's own name and its `rooms.PROP_KIND` shape
+      WHAT IT DOES    the verb it already resolves to, so the sentence and the
+                      prompt can never disagree about what you can do with it
+      WHERE YOU ARE   the place's own declared function and gravity
+
+    The third clause is what makes the T1 rule hold. "A counter; somebody
+    stands behind it" is one string on a station with fourteen counters; the
+    same counter in `zocalo` and in `customs_north` differs because the ROOMS
+    differ, and they differ in a way a player can check by walking between
+    them. A distinctness rule satisfied by decoration would be a rule satisfied
+    by lying.
+    """
+    key = ("look", place_key, token, round(float(hour), 2), int(day))
+    if key in _READ_CACHE:
+        return _READ_CACHE[key]
+    t = token or ""
+    words = " ".join(w for w in t.split("_") if w)
+    # THE THING'S OWN HEAD NOUN BEATS ITS PLACEMENT SHAPE. `rooms.PROP_KIND`
+    # classifies by SHAPE, for placement -- and `market_stall` is a "screen"
+    # there, which is right for deciding where it can stand and produced
+    # "Market stall -- a screen" when read aloud. The kind is the fallback for
+    # a token whose own head noun is not an object word.
+    kind = R.PROP_KIND.get(t, "")
+    head = head_noun(t)
+    if head and head not in ("panel", "unit", "point", "station", "assembly"):
+        noun = "%s %s" % ("an" if head[0] in "aeiou" else "a", head)
+    else:
+        noun = _KIND_NOUN.get(kind, "a fitting")
+    try:
+        verb = verb_of(t)
+    except KeyError:
+        verb = ""
+    bits = ["%s -- %s" % (words.capitalize(), noun)]
+    if verb in _VERB_LOOK:
+        bits.append(_VERB_LOOK[verb])
+    # WHERE YOU ARE, and it is read live rather than restated. A place's
+    # functions are the register's own tuple and its gravity comes from
+    # `directory.gravity_of`, which reads the deck it stands on -- so a fitting
+    # in Grey at 1.6 g and the same fitting in Blue at 0.76 g say so, and both
+    # sentences go stale together or not at all.
+    try:
+        q = dr.by_key(place_key)
+    except Exception:                                            # noqa: BLE001
+        q = None
+    if q is not None:
+        fn = (q.get("functions") or ("",))[0].replace("_", " ")
+        if fn:
+            # NO POSSESSIVE, and the reason is a name like "the brig / holding
+            # cells", which becomes "the brig / holding cells's". The register's
+            # names are descriptive phrases rather than nouns, so a construction
+            # that assumes a noun reads as broken English in exactly the places
+            # with the most interesting names.
+            bits.append("this one stands in %s, and it is here for %s"
+                        % (q["name"].lower(), fn))
+        g = _place_g(place_key)
+        if g and abs(g - 1.0) > 0.08:
+            bits.append("at %.2f g it %s" % (
+                g, "sits heavy" if g > 1.0 else "barely holds itself down"))
+    out = "; ".join(bits) + "."
+    _READ_CACHE[key] = out
+    return out
+
+
+_G_CACHE = {}
+
+
+def _place_g(place_key):
+    """The gravity where this thing stands, from the deck it is on."""
+    if place_key in _G_CACHE:
+        return _G_CACHE[place_key]
+    g = 0.0
+    try:
+        import interior as _it                                   # noqa: PLC0415
+        schema, profile = _it.load()
+        g = float(dr.gravity_of(schema, profile, dr.by_key(place_key)))
+    except Exception:                                            # noqa: BLE001
+        g = 0.0
+    _G_CACHE[place_key] = g
+    return g
+
+
 def read_text(place_key, token, hour=13.0, day=0):
     """What this readable prop says right now, derived. "" if nothing is."""
     key = (place_key, token, round(float(hour), 2), int(day))
@@ -1228,6 +1356,25 @@ def _selftest():
         for f in fails:
             print("  FAIL " + f)
         return 1
+    # VRB-01's T1 RULE, ASSERTED RATHER THAN HOPED FOR: every declared
+    # interactable answers LOOK, and no two answers are identical anywhere in
+    # the register. The harness that found this sampled twenty and got sixteen
+    # silent; asking all 370 is cheap and is the only form that cannot be
+    # passed by sampling the four that work.
+    _looks = {}
+    _silent = []
+    for _q in dr.PLACES:
+        for _t in _q.get("interacts", ()):
+            _txt = look_text(_q["key"], _t)
+            if not _txt or len(_txt) < 24:
+                _silent.append((_q["key"], _t))
+            _looks.setdefault(_txt, []).append((_q["key"], _t))
+    _dups = {k: v for k, v in _looks.items() if len(v) > 1}
+    assert not _silent, "answer LOOK with nothing: %s" % _silent[:4]
+    assert not _dups, ("two interactables give the same LOOK string, which is "
+                       "the T1 rule: %s" % list(_dups.values())[:2])
+    print("          LOOK: %d interactables, %d distinct strings, 0 silent"
+          % (sum(len(v) for v in _looks.values()), len(_looks)))
     print("          totality, minimality and the negative controls all hold")
     return 0
 
