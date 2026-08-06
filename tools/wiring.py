@@ -506,6 +506,109 @@ def _selftest(out=print):
     return True
 
 
+# WHAT A PLAYER CAN NEVER MEET, and it is the question "166,000 lines of Python
+# against 24,000 of GDScript" is really asking.
+#
+# THAT RATIO IS NOT THE DEFECT AND READING IT AS ONE IS A TRAP I FELL INTO. The
+# first cut of this measured "modules that produce a JSON path the engine reads"
+# and got **11.6%** -- a number that would have been badly wrong in public,
+# because `rooms.py`, `materials.py`, `interior.py` and `garden.py` produce the
+# GEOMETRY and MATERIALS a player walks through and looks at. They emit no JSON
+# and they are most of what the game IS.
+#
+# Traced properly -- transitively, from the roots whose output a player actually
+# meets -- **87.3% of station/ is reachable**. The gap is not most of the code.
+# It is specific, it is about a tenth the size, and half of THAT is gates:
+#
+#   9,645 lines   gates, harnesses and tools -- correctly never in the game
+#   ~7,000 lines  SIMULATION with no runtime consumer at all
+#
+# The second number is the real one and it is a short list of named subsystems.
+# Printed by name rather than as a percentage, because a percentage is what let
+# this sit unexamined: "a lot is modelled and not yet playable" is unactionable
+# and "the resident daily agenda has no engine consumer" is a job.
+ROOTS = (
+    # geometry and materials -- a player stands in the output
+    "rooms", "deck", "interior", "interior_kit", "materials", "export_scene",
+    # runtime data -- an engine script opens the file
+    "boot", "dialogue", "enforcement", "navgraph_export", "transit_runtime",
+    "audio", "starfury_scene", "dockwork", "npc.ragdoll", "populace",
+)
+
+# Modules whose whole purpose is to CHECK the station. A gate with no runtime
+# caller is correct, so counting it as a gap would make the number meaningless.
+GATE_PREFIXES = ("spec_harness", "spec_check", "validate", "coldstart",
+                 "variety", "walkable", "wiring", "inv_check", "doc_chain")
+
+
+def _is_gate(key):
+    """A module whose whole purpose is to check the station, not to be it.
+
+    `test_*` ANYWHERE IN THE PATH, not just at the head: `physics.test_docking`
+    and `npc.test_names` are tests of a subsystem and a first cut of this
+    counted both as unreached simulation, which inflated the number by nine
+    modules. A tool that measures "what is not in the game" has to know what was
+    never meant to be.
+    """
+    return (key.split(".")[0] in GATE_PREFIXES
+            or any(p.startswith("test_") for p in key.split("."))
+            or key.split(".")[-1].startswith("apply_")
+            or key.split(".")[-1].startswith("extract_"))
+
+
+def reach_report(out=print):
+    """Which station modules a player can never meet, by name and by size."""
+    import collections                                            # noqa: PLC0415
+    root = os.path.join(ROOT, "station")
+    mods, imports_of = {}, collections.defaultdict(set)
+    for base, _d, fs in os.walk(root):
+        for f in fs:
+            if not f.endswith(".py"):
+                continue
+            p = os.path.join(base, f)
+            key = os.path.relpath(p, root)[:-3].replace(os.sep, ".")
+            mods[key] = (p, sum(1 for _ in open(p, errors="ignore")))
+    for k, (p, _n) in mods.items():
+        src = open(p, errors="ignore").read()
+        names = set(re.findall(r"^\s*(?:import|from)\s+([a-z_][a-z_0-9.]*)",
+                               src, re.M))
+        # `__import__("shuttle")` -- a module name inside a string, which a
+        # plain import regex cannot see. This tool already carries that scar.
+        names |= set(re.findall(r'__import__\("([a-z_0-9]+)"\)', src))
+        for nm in names:
+            head = nm.split(".")[0]
+            for cand in mods:
+                if cand == head or cand.endswith("." + head):
+                    imports_of[k].add(cand)
+    reach, stack = set(), [r for r in ROOTS if r in mods]
+    while stack:
+        cur = stack.pop()
+        if cur in reach:
+            continue
+        reach.add(cur)
+        stack.extend(d for d in imports_of.get(cur, ()) if d not in reach)
+    tot = sum(n for _p, n in mods.values())
+    rn = sum(mods[k][1] for k in reach)
+    gates, sim = [], []
+    for k, (_p, n) in mods.items():
+        if k in reach:
+            continue
+        (gates if _is_gate(k) else sim).append((n, k))
+    gates.sort(reverse=True)
+    sim.sort(reverse=True)
+    out("station/: %d modules, %d lines" % (len(mods), tot))
+    out("  reachable from a player-facing root: %d modules, %d lines (%.1f%%)"
+        % (len(reach), rn, 100.0 * rn / tot))
+    out("  gates, harnesses and tools -- correctly never in the game: "
+        "%d lines" % sum(n for n, _ in gates))
+    out("")
+    out("SIMULATION A PLAYER CAN NEVER MEET -- %d lines in %d modules:"
+        % (sum(n for n, _ in sim), len(sim)))
+    for n, k in sim:
+        out("   %5d  %s" % (n, k))
+    return sim
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -514,9 +617,15 @@ def main(argv=None):
                          "CI rebuilds it")
     ap.add_argument("--callers", action="store_true",
                     help="tested modules nothing outside their directory imports")
+    ap.add_argument("--reach", action="store_true",
+                    help="which station modules a player can never meet -- "
+                         "by name, not as a percentage")
     ap.add_argument("--selftest", action="store_true",
                     help="both, with the negative controls")
     a = ap.parse_args(argv)
+    if a.reach:
+        reach_report()
+        return 0
     if a.selftest or not (a.data or a.callers):
         return 0 if _selftest() else 1
     if a.data:
