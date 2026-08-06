@@ -87,8 +87,9 @@ CLOSURES = {
         # inventing twelve here would be authoring content the spec assigns
         # elsewhere.
         "text": None,
-        "why": "cross-referenced to PLC-092's own twelve door texts; not this "
-               "table's to author",
+        "why": "cross-referenced to PLC-092's own twelve door texts, which "
+               "are `WELDED_DOORS` below -- the place's content, in the "
+               "closure vocabulary's module",
     },
     "SHC-03": {
         "at": "water_reclamation",
@@ -168,6 +169,82 @@ CLOSURES = {
                "the one that gives it away",
     },
 }
+
+# PLC-092's TWELVE, AND WHY THEY LIVE HERE AFTER ALL.
+#
+# SHC-02's own row quotes no stencil: it says "12 stencils cross-reffed to
+# PLC-092", and PLC-092 says `welded_door x12 (T2-refused: LOOK/USE answer with
+# the closure's stencil text -- 12 distinct texts, T1 rule)`. So the spec assigns
+# these to the PLACE, and this table's note said they were "not this table's to
+# author". They are still not SHC-02's -- but they are closure stencils in the
+# same vocabulary, read off the same kind of plate, and giving them a second
+# home would be the duplication this module was created to avoid. One module for
+# closure text; two tables in it, each labelled with whose content it is.
+#
+# TWELVE DISTINCT *KINDS* OF REASON, NOT TWELVE REWORDINGS, because PLC-092's
+# program is explicit: "every closure REASONED and visible" and its CHECK is
+# "all 12 stencils read distinct real reasons". A player who walks that corridor
+# should learn twelve different things about why a station has volume it never
+# finished -- money, fault, contamination, accident, re-route, salvage -- which
+# is the difference between a corridor of doors and a corridor of one door
+# twelve times.
+#
+# AUTHORITY 5 THROUGHOUT: no source gives the text of a welded door on Babylon 5.
+# What constrains them is the era and the fiction the annex already fixes --
+# Contract 5 is the construction contract, the station opened incomplete and
+# under-funded, EarthGov Facilities and the Station Engineer are the naming
+# authorities the rest of the register already uses, and the dates sit in
+# 2256-2258, before the S2-S3 era lock. Logged as INV-650 -- NOT 640, which is inside the block allocated to a
+# craft agent running right now. Two agents in one session have already made
+# INV-450 and INV-451 mean two things each; checking the allocation before
+# writing the number is the cheap half of not doing it again.
+#
+# Each carries `why` in ENGINEERING terms rather than dramatic ones. A stencil
+# that told a story would be a stencil somebody wrote; these are the ones a
+# contractor leaves.
+WELDED_DOORS = (
+    ("G-04", "CONTRACT 5 SCHEDULE C — NOT FUNDED — NO FIT-OUT AUTHORISED",
+     "the commonest reason and therefore the first one you meet: the money ran "
+     "out and the volume was never fitted"),
+    ("G-07", "FRAME 3390 — SETTLEMENT CRACK — SEALED PENDING SURVEY 2257",
+     "a structural fault found in commissioning and never resurveyed"),
+    ("G-09", "SOLVENT RELEASE 11/2256 — VAPOUR PERSISTS — NO ENTRY",
+     "contamination: the volume is intact and the air in it is not"),
+    ("G-12", "PRESSURE BOUNDARY UNPROVEN — NEVER GAS TESTED",
+     "never certified rather than failed -- the honest form of unfinished"),
+    ("G-15", "DECK PLATE NOT LAID BEYOND THIS FRAME — OPEN FALL",
+     "there is no floor: a closure that stops you falling, not one that "
+     "hides anything"),
+    ("G-18", "NO SERVICES RUN — NO AIR NO WATER NO POWER",
+     "the shell exists and nothing was ever connected to it"),
+    ("G-21", "FIRE 03/2257 — STRUCTURE UNCERTIFIED — ENGINEER'S ORDER",
+     "damaged after commissioning, which is a different history from never "
+     "finished"),
+    ("G-24", "FATAL ACCIDENT 08/2257 — SEALED BY ORDER — INQUIRY CLOSED",
+     "the one with a person in it; the inquiry is closed and the door is not"),
+    ("G-27", "VOLUME REASSIGNED TO TANKAGE — SEE R-nn SCHEDULE",
+     "re-purposed on paper and never converted -- cross-refs SHC-12's "
+     "tankage stencils"),
+    ("G-30", "ROUTE SUPERSEDED — SPINE RE-CUT 2258 — NO THROUGH ACCESS",
+     "the corridor beyond leads nowhere since the circulation was re-cut"),
+    ("G-33", "STRIPPED FOR SALVAGE — FITTINGS RECOVERED 2258",
+     "somebody took the fittings back out: the station cannibalising itself"),
+    ("G-36", "SURVEY OVERDUE — LAST INSPECTION 2256 — DO NOT BREAK SEAL",
+     "nobody has looked in eighteen months, which is its own kind of answer"),
+)
+
+
+def welded_door_text(n):
+    """The stencil on the n-th welded door in PLC-092's corridor.
+
+    Indexed rather than drawn: the twelve are a SEQUENCE a player walks past,
+    and a random draw would put the same reason on two doors in one corridor
+    while leaving others unseen -- which is exactly what PLC-092's CHECK
+    ("all 12 stencils read distinct real reasons") forbids.
+    """
+    tag, text, _why = WELDED_DOORS[int(n) % len(WELDED_DOORS)]
+    return "%s\n%s" % (tag, text)
+
 
 # How big the paint is. Derived rather than chosen: `signage.legible_at_m()`
 # answers what cap height a given reading distance needs, and a closure plate is
@@ -267,6 +344,22 @@ def _selftest():
     # nothing asserts is a count that drifts.
     check("eleven of them carry a stencil", len(stencils()) == 11,
           str(len(stencils())))
+    # PLC-092's CHECK IS "all 12 stencils read distinct real reasons", so
+    # distinctness is asserted on the TEXT and on the REASON separately -- twelve
+    # rewordings of "no money" would pass the first and fail what the row means.
+    check("PLC-092 has twelve welded doors", len(WELDED_DOORS) == 12,
+          str(len(WELDED_DOORS)))
+    check("all twelve texts are distinct",
+          len({t for _g, t, _w in WELDED_DOORS}) == 12)
+    check("all twelve tags are distinct",
+          len({g for g, _t, _w in WELDED_DOORS}) == 12)
+    check("all twelve reasons are distinct",
+          len({w for _g, _t, w in WELDED_DOORS}) == 12)
+    # A stencil is paint, not prose: the longest is capped at what a plate holds.
+    for g, t, _w in WELDED_DOORS:
+        check("%s is stencil-length" % g, len(t) <= 62, "%d chars" % len(t))
+    check("welded_door_text wraps rather than raising",
+          welded_door_text(0) == welded_door_text(12))
 
     # EVERY TEXT IS THE ANNEX'S OWN, CHARACTER FOR CHARACTER. Not "close
     # enough": these are stencils quoted in a normative document, and a

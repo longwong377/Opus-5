@@ -216,8 +216,27 @@ def head_noun(token):
     return token.rsplit("_", 1)[-1]
 
 
+# A DOOR THAT IS WELDED SHUT DOES NOT OPEN, AND THAT IS THE WHOLE POINT OF THE
+# PLACE IT IS IN. `welded_door` is `rooms.PROP_KIND` "leaf", and every leaf gets
+# the verb `open` -- so the station's twelve sealed doors offered to part and
+# let you through. PLC-092's own row says the opposite in as many words:
+# `welded_door x12 (T2-refused: LOOK/USE answer with the closure's stencil text
+# -- 12 distinct texts, T1 rule)`. Its program is "the honest face of Shell C:
+# a corridor of sealed openings -- every closure REASONED and visible".
+#
+# Shape beats name here in the ordinary case and must not: a weld bead is not a
+# hinge. Named as an exception rather than by giving it a new PROP_KIND, because
+# its SHAPE genuinely is a leaf -- it is a door-sized plate in a doorway -- and
+# lying about that would move the error into the geometry.
+_REFUSES_TO_OPEN = {
+    "welded_door": "read",
+}
+
+
 def verb_of(token):
     """The verb for one declared interactable. Name beats shape."""
+    if token in _REFUSES_TO_OPEN:
+        return _REFUSES_TO_OPEN[token]
     h = head_noun(token)
     if h in _HEAD_VERB:
         return _HEAD_VERB[h]
@@ -339,7 +358,17 @@ def read_text(place_key, token, hour=13.0, day=0):
         q = None
     t = token or ""
     try:
-        if t in ("info_board", "arrivals_board", "departure_board"):
+        if t == "welded_door":
+            # WHY THIS ONE IS SEALED. Twelve doors, twelve different reasons --
+            # money, a settlement crack, a solvent release, a fatality, a
+            # re-route, salvage -- indexed off the place's own seed so the
+            # corridor reads as twelve findings rather than one door repeated.
+            # PLC-092's CHECK is "all 12 stencils read distinct real reasons".
+            import closures                                     # noqa: PLC0415
+            n = abs(hash((place_key, "welded", int(day)))) % len(
+                closures.WELDED_DOORS)
+            out = closures.welded_door_text(n)
+        elif t in ("info_board", "arrivals_board", "departure_board"):
             import signage                                      # noqa: PLC0415
             rows = signage.arrivals_lines(hour=hour, day=day)
             out = "\n".join(str(r) for r in rows[:6])

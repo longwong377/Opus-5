@@ -10333,3 +10333,53 @@ OpenGL-fallback defect of 4e, one level further down: **the frame was fresh, the
 right, and the texture was last session's.** The accidental render is kept above as B0
 because it is a real third rung of the ladder. A patch for `render_godot.sh` is in
 `scratchpad/PATCHES-4r-materials.md`.
+
+---
+
+# INV-650..659 — THE CLOSURE VOCABULARY (session 4r, main agent)
+
+## INV-650 — Twelve distinct reasons a section of Grey is welded shut
+
+**What.** `station/closures.WELDED_DOORS`: twelve stencils for PLC-092's twelve welded doors,
+tagged `G-04` … `G-36`, each naming a different KIND of reason — not funded, settlement crack,
+solvent release, pressure boundary unproven, no deck plate, no services run, fire, fatal accident,
+reassigned to tankage, route superseded, stripped for salvage, survey overdue.
+
+**Why.** PLC-092's program is *"the honest face of Shell C … every closure REASONED and visible"*
+and its CHECK is *"all 12 stencils read distinct real reasons"*. Twelve rewordings of "no money"
+would satisfy a distinctness test on the strings and fail what the row means, so `_selftest`
+asserts the TEXTS, the TAGS and the REASONS are each twelve-distinct, separately.
+
+**Constrained by.** The era and the fiction the annex already fixes: Contract 5 is the
+construction contract, the station opened incomplete and under-funded, EarthGov Facilities and the
+Station Engineer are the naming authorities the register already uses, and the dates sit in
+2256–2258, before the Season 2–3 era lock. Each is written in ENGINEERING terms rather than
+dramatic ones — a stencil that told a story would be one somebody wrote; these are the ones a
+contractor leaves. Length is capped at 62 characters, which is what the plate holds.
+
+**Overturned by.** Any frame or script showing the text of a sealed door aboard Babylon 5. None is
+known — `docs/spec/PLACES.md` §SHC quotes the eleven *closure* stencils and assigns these twelve to
+the place rather than quoting them.
+
+**Authority 5.** Argument at `station/closures.py`.
+
+## INV-651 — A welded door answers instead of opening
+
+**What.** `interact._REFUSES_TO_OPEN` maps `welded_door` to the verb `read`, and
+`interact.read_text` serves the closure's reason.
+
+**Why.** `welded_door` is `rooms.PROP_KIND` "leaf", and every leaf gets `open` — so the station's
+twelve sealed doors offered to part and let you through. PLC-092 says the opposite in as many
+words: *"T2-refused: LOOK/USE answer with the closure's stencil text"*.
+
+**Constrained by.** Named as an exception rather than given a new `PROP_KIND`, because its SHAPE
+genuinely is a leaf — a door-sized plate in a doorway — and lying about that would move the error
+into the geometry. `interact.verb_set()` still reaches all eight verbs, and the selftest's
+totality, minimality and negative controls all hold.
+
+**Overturned by.** Any reading in which a welded section is meant to be openable at all; the
+annex's "T2-refused" makes that unlikely.
+
+**Authority 5.** Argument at `station/interact.py::_REFUSES_TO_OPEN`.
+
+**INV-652 … INV-659** — reserved to session 4r's closure work and not used. Free.
