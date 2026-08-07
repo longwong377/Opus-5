@@ -1762,7 +1762,65 @@ def background_sales(led, day=None):
                 led.till[v] = round(led.till.get(v, 0.0)
                                     + take * price(g, v, led.seed), 2)
                 moved += take
+    # THE OTHER DIRECTION, ON THE SAME TICK. Called from here rather than left
+    # for a caller to remember, because "a caller has to remember" is how this
+    # project produced nine pieces of machinery nobody ran. `moved` still
+    # counts units SOLD BY counters, so every existing assertion against this
+    # return value means what it did.
+    background_fencing(led, day)
     return moved
+
+
+# How much of a fence's daily turnover walks in off the deck instead of coming
+# off a hull. NOT A NEW NUMBER: `BLACK_MARKET_SHARE = 0.05` above is already
+# the share of the station's trade the route carries, and this is that same
+# fraction read the other way -- five percent of a fence's stock is what
+# somebody sold it. LAW-CRIME 6.2 puts 22% of the underclass on salvage and
+# gives them nowhere to take it; this is where they take it.
+FENCE_INTAKE_SHARE = BLACK_MARKET_SHARE
+
+
+def background_fencing(led, day=None):
+    """What the fences BUY on a day nobody plays. The route's supply side.
+
+    THIS IS THE CALLER `sell()` NEEDED AND IT IS ON THE SHIPPED PATH. This
+    project has shipped finished machinery with no caller nine times, and the
+    ninth got past the static scan built to catch the eighth. So the sell side
+    is not left for a GDScript verb to discover: every tick of the world that
+    produces `station/generated/economy.json` -- the file
+    `godot/scripts/interact.gd` loads -- runs through here, and the rows it
+    appends are `cr < 0` rows a reader can see.
+
+    The sellers are deterministic in (day, place, line): the same lurkers bring
+    the same cable to the same stall in any process, which is what lets
+    `--trade` assert it twice and get the same answer.
+    """
+    day = led.day if day is None else day
+    import player as _pl                                     # noqa: PLC0415
+    n = 0
+    for v in fence_places():
+        if v not in led.stock:
+            continue
+        for g in sorted(led.stock[v]):
+            good = GOODS_BY_NAME.get(g)
+            if good is None or good.klass not in ("salvage", "contraband"):
+                continue                 # what a lurker actually carries up
+            want = int(demand_of(v, led.seed, day).get(g, 0.0)
+                       * FENCE_INTAKE_SHARE
+                       * (0.5 + _u("fenceint", v, g, day)))
+            if want < 1:
+                continue
+            s = _pl.random_player(f"fence/{day}/{v}/{g}")
+            s.move_to(v)
+            s.credits = 0
+            if not s.take(g):
+                continue
+            try:
+                sell(led, s, v, g, want)
+            except Refused:
+                continue                 # a full shelf is a real answer
+            n += want
+    return n
 
 
 def deliver(led, day=None, only=None):
@@ -2189,12 +2247,299 @@ def _selftest(out=print):                                        # noqa: C901
     return not failed
 
 
+# ===========================================================================
+# 9.  --trade -- THE VRB-05 ACCEPTANCE RUN, BOTH DIRECTIONS, ONE PROCESS
+# ===========================================================================
+def trade_gate(out=print, break_margin=False):
+    """A player BUYS and SELLS in one run, and every number is shown moving.
+
+    THE ROW'S OWN WORDS ARE THE BAR: VRB-05's CHECK is *"credits and stock move
+    BOTH ways"* at a named place with a named counter. So this prints the four
+    ledger rows on each side of each transaction, at named places, and asserts
+    the invariants a sale in two directions has to satisfy but a sale in one
+    direction cannot even express.
+
+    `break_margin=True` is the NEGATIVE CONTROL and it is the whole reason this
+    function takes an argument: it sets the buy-back rate above 1.0, which is a
+    counter paying more than it charges, and the money-pump assertion must go
+    red. A gate nobody has watched fail is a gate nobody has tested.
+    """
+    import consequence as CQ                                  # noqa: PLC0415
+    import player as pl                                       # noqa: PLC0415
+    global BUY_BACK
+    n = [0]
+    failed = []
+
+    def check(name, ok, note=""):
+        n[0] += 1
+        if not ok:
+            failed.append(name)
+        out(f"  [{'PASS' if ok else 'FAIL'}] {name}")
+        if note:
+            out(f"         {note}")
+
+    saved = BUY_BACK
+    if break_margin:
+        BUY_BACK = 1.2
+        out("!! NEGATIVE CONTROL: BUY_BACK forced to 1.2 -- a counter paying "
+            "more than it charges")
+    try:
+        out("")
+        out("THE COUNTER, AND WHO IS BEHIND IT")
+        keeper, shop, cat = household_vendor()
+        out(f"  PLC-052 `{shop}` -- {keeper}, household goods: "
+            f"{', '.join(cat) or '(none on her list today)'}")
+        gap_ok, gap_note = fence_register_gap()
+        out(f"  the fence: {FENCE_NAME}, CAST-41, buys "
+            f"{FENCE_HOURS[0]:04.1f}-{FENCE_HOURS[1]:04.1f}")
+        out(f"  {'ok' if gap_ok else 'REGISTER GAP'}: {gap_note}")
+        check("PLY-03's household-goods vendor has something to sell",
+              bool(cat), f"{len(household_goods())} `household` lines in "
+                         f"GOODS, {len(cat)} of them on her stall")
+
+        led = Ledger.fresh()
+        p = pl.random_player("vrb05/trade")
+        p.credits = 400
+        p.move_to(shop)
+        t = CQ.tier_of(p.card, getattr(p, "record", None))
+        good = cat[0] if cat else goods_list(shop)[0]
+        out("")
+        out(f"THE PLAYER: {p.name} ({p.npc_id}), rung {t} "
+            f"{CQ.tier_name(t)}, {p.credits:.2f} cr")
+
+        # -- BUY ------------------------------------------------------------
+        b = (p.credits, led.units(shop, good), led.till.get(shop, 0.0),
+             len(led.sales))
+        unit_b, tot_b = CQ.purchase(led, p, shop, good, 1, bag=True)
+        a = (p.credits, led.units(shop, good), led.till.get(shop, 0.0),
+             len(led.sales))
+        out("")
+        out(f"BUY  1 x {good} at `{shop}` for {tot_b:.2f} cr")
+        out(f"  purse {b[0]:8.2f} -> {a[0]:8.2f}   shelf {b[1]:5d} -> "
+            f"{a[1]:5d}   till {b[2]:8.2f} -> {a[2]:8.2f}   rows "
+            f"{b[3]} -> {a[3]}")
+        check("BUY: purse DOWN, shelf DOWN, till UP, one row",
+              a[0] < b[0] and a[1] == b[1] - 1 and a[2] > b[2]
+              and a[3] == b[3] + 1)
+        check("...and it is in the player's hands, which is what makes a sale "
+              "possible at all", p.has(good),
+              f"carrying {', '.join(p.carrying)}")
+
+        # -- SELL -------------------------------------------------------------
+        b2 = (p.credits, led.units(shop, good), led.till.get(shop, 0.0),
+              len(led.sales))
+        unit_s, tot_s = CQ.fence(led, p, shop, good, 1)
+        a2 = (p.credits, led.units(shop, good), led.till.get(shop, 0.0),
+              len(led.sales))
+        out("")
+        out(f"SELL 1 x {good} back to {keeper} for {tot_s:.2f} cr")
+        out(f"  purse {b2[0]:8.2f} -> {a2[0]:8.2f}   shelf {b2[1]:5d} -> "
+            f"{a2[1]:5d}   till {b2[2]:8.2f} -> {a2[2]:8.2f}   rows "
+            f"{b2[3]} -> {a2[3]}")
+        check("SELL: purse UP, shelf UP, till DOWN, one row",
+              a2[0] > b2[0] and a2[1] == b2[1] + 1 and a2[2] < b2[2]
+              and a2[3] == b2[3] + 1)
+        check("...and it is out of the player's hands", not p.has(good),
+              f"carrying {', '.join(p.carrying)}")
+        check("the two directions are SYMMETRIC -- the same line, the same "
+              "counter, the same shelf, opposite signs",
+              a2[1] == b[1] and led.sales[-2]["n"] == 1
+              and led.sales[-1]["n"] == -1,
+              f"shelf back to {a2[1]}; rows n=+1 cr={led.sales[-2]['cr']:.2f} "
+              f"then n=-1 cr={led.sales[-1]['cr']:.2f}")
+
+        # -- THE INVARIANTS ONLY A TWO-WAY MARKET CAN BREAK -------------------
+        out("")
+        out("INVARIANTS")
+        rows = [r for r in led.sales if r["at"] == shop]
+        s = round(sum(r["cr"] for r in rows), 2)
+        check("the till equals the sum of its own rows, signs and all",
+              abs(s - led.till[shop]) < 0.011,
+              f"sum(cr) {s:.2f} against till {led.till[shop]:.2f} over "
+              f"{len(rows)} row(s)")
+        check("a round trip LOSES money -- buy then sell is never free",
+              tot_s < tot_b,
+              f"paid {tot_b:.2f}, got back {tot_s:.2f}, "
+              f"spread {tot_b - tot_s:.2f} cr "
+              f"({100.0 * (1 - tot_s / tot_b):.1f}%)")
+        pump = []
+        for k in counters():
+            for g in buys_list(k):
+                if g in SERVICE_BY_NAME:
+                    continue
+                if bid(g, k) >= price(g, k) and price(g, k) > 0:
+                    pump.append((k, g, bid(g, k), price(g, k)))
+        check("NO COUNTER ANYWHERE PAYS MORE THAN IT CHARGES -- the money "
+              "pump a player finds in ten minutes",
+              not pump,
+              f"{len(pump)} pair(s) over {len(counters())} counters"
+              + (f"; e.g. {pump[0]}" if pump else ""))
+
+        # -- THE FENCE, AND WHY IT EXISTS -------------------------------------
+        out("")
+        out("THE FENCE")
+        p.credits = 400
+        p.take("Dust")
+        try:
+            CQ.fence(led, p, shop, "Dust", 1)
+            licit, why_l = True, ""
+        except Refused as ex:
+            licit, why_l = False, str(ex)
+        check("a licensed counter will NOT take a customs-sealed line",
+              not licit, why_l)
+        check("...and names the docket it would be instead",
+              CQ.would_book(shop, "Dust") == "contraband",
+              f"consequence.would_book -> {CQ.would_book(shop, 'Dust')!r}, "
+              f"fine band {CQ.fine_for('contraband')}")
+        # THE STALL, not merely a room with no reader in it. `fence_places()`
+        # is every unchecked counter and includes the casino and Happy Daze,
+        # which are `black_market_fringe`; CAST-41 puts Solly Vane behind a
+        # `black_market` stall, so the trade goes to a place that declares that
+        # function outright and falls back to the fringe only if none does.
+        _f = [k for k in fence_places() if k in led.stock
+              and "Dust" in buys_list(k)]
+        fkey = ([k for k in _f if "black_market" in dr.by_key(k)["functions"]]
+                or _f)[0]
+        p.move_to(fkey)
+        b3 = (p.credits, led.units(fkey, "Dust"), led.till.get(fkey, 0.0))
+        unit_f, tot_f = CQ.fence(led, p, fkey, "Dust", 1)
+        a3 = (p.credits, led.units(fkey, "Dust"), led.till.get(fkey, 0.0))
+        out(f"  SELL 1 x Dust to {FENCE_NAME}'s trade at `{fkey}` for "
+            f"{tot_f:.2f} cr")
+        out(f"  purse {b3[0]:8.2f} -> {a3[0]:8.2f}   shelf {b3[1]:5d} -> "
+            f"{a3[1]:5d}   till {b3[2]:8.2f} -> {a3[2]:8.2f}")
+        check("the fence takes what the shop refused", a3[0] > b3[0]
+              and a3[1] == b3[1] + 1 and a3[2] < b3[2])
+        check("...and pays WORSE for it -- FENCE_TAKE is the route's own "
+              "undercut, read backwards",
+              abs(bid("salvage lots", fkey)
+                  - price("salvage lots", fkey) * BUY_BACK * FENCE_TAKE) < 0.02,
+              f"BUY_BACK {BUY_BACK} x FENCE_TAKE {FENCE_TAKE} = "
+              f"{BUY_BACK * FENCE_TAKE:.3f} of shelf, against "
+              f"{BUY_BACK:.3f} at a shopfront")
+
+        # -- THE REFUSALS -----------------------------------------------------
+        out("")
+        out("REFUSALS -- a till that cannot say no is not a till")
+        def _carrying(seed_, place, line, n_=1):
+            q = pl.random_player(seed_)
+            q.credits = 50
+            q.move_to(place)
+            q.take(line)
+            return lambda: sell(led, q, place, line, n_)
+
+        for label, fn, want in (
+            ("not carrying it",
+             lambda: sell(led, p, shop, good, 1), "not carrying"),
+            ("carrying it, at a counter that does not deal in it",
+             _carrying("r2", "bar_unnamed", "bearing sets"),
+             "does not deal in"),
+            ("a shelf already at its standing depth",
+             _carrying("r3", shop, good, 999), "no room on the shelf"),
+        ):
+            try:
+                fn()
+                got = "(allowed)"
+            except Refused as ex:
+                got = str(ex)
+            check(f"refused: {label}", want in got, got)
+        ok_l, why_c = CQ.buys_from(shop, CQ.DETAINED)
+        ok_f, why_f = CQ.buys_from(fkey, CQ.DETAINED)
+        check("a card in custody is refused by BOTH a shop and a fence",
+              not ok_l and not ok_f, f"{shop}: {why_c} / {fkey}: {why_f}")
+        ok_n, why_n = CQ.buys_from(shop, CQ.NO_STATUS)
+        ok_nf, why_nf = CQ.buys_from(fkey, CQ.NO_STATUS)
+        check("a card that will not read is refused by the SHOP and taken by "
+              "the FENCE -- which is the whole reason FACTIONS 11.4's market "
+              "exists", not ok_n and ok_nf,
+              f"{shop}: {why_n} / {fkey}: {why_nf}")
+
+        # -- PERSISTENCE, AND A SECOND PROCESS --------------------------------
+        out("")
+        out("PERSISTENCE -- the artefact the engine reads")
+        import subprocess                                     # noqa: PLC0415
+        import tempfile                                       # noqa: PLC0415
+        p.take("storage locker")
+        rec = led.place(p, "qtr_civilian", "storage locker", "shelf")
+        tmp = os.path.join(tempfile.mkdtemp(), "economy.json")
+        led.save(tmp)
+        code = (f"import sys; sys.path.insert(0, {HERE!r}); import economy as e;"
+                f"L = e.Ledger.load({tmp!r});"
+                f"neg = [r for r in L.sales if r['cr'] < 0];"
+                f"print(len(neg), round(neg[-1]['cr'], 2), neg[-1]['at'],"
+                f" L.placed_at('qtr_civilian'), L.total_placed())")
+        r = subprocess.run([sys.executable, "-c", code], capture_output=True,
+                           text=True)
+        out(f"  child process said: {r.stdout.strip()!r}")
+        mine = [x for x in led.sales if x["cr"] < 0]
+        check("a SECOND PROCESS reads the sell rows back off the file",
+              r.returncode == 0
+              and r.stdout.strip().startswith("%d " % len(mine)),
+              f"{len(led.sales)} rows written, {len(mine)} of them SELLS; "
+              f"child rc={r.returncode} {r.stderr.strip()[:100]}")
+        check(f"...and SYS-13's `{PLAYER_PLACEMENTS}` survives it too",
+              "storage locker" in r.stdout,
+              f"placed {rec['good']} on the {rec['spot']} at {rec['at']}; "
+              f"the JSON key is {PLAYER_PLACEMENTS!r}")
+        fresh = Ledger.fresh()
+        check("...and a ledger that was never written carries neither",
+              not [x for x in fresh.sales if x["cr"] < 0]
+              and fresh.total_placed() == 0,
+              f"{len(fresh.sales)} rows, {fresh.total_placed()} placements")
+
+        # -- THE WORLD SELLS TOO, ON THE TICK THAT WRITES THE SHIPPED FILE ----
+        out("")
+        out("THE CALLER ON THE SHIPPED PATH")
+        w = Ledger.fresh()
+        before = len([x for x in w.sales if x["cr"] < 0])
+        background_sales(w, 0)
+        wrows = [x for x in w.sales if x["cr"] < 0]
+        check("`background_sales` -- the tick every writer of "
+              "station/generated/economy.json goes through -- moves goods INTO "
+              "fences, so sell() has a caller that is not a selftest",
+              before == 0 and len(wrows) > 0,
+              f"{len(wrows)} sell row(s) on day 0, e.g. "
+              f"{wrows[0]['n']} x {wrows[0]['good']} at {wrows[0]['at']} for "
+              f"{-wrows[0]['cr']:.2f} cr" if wrows else "none")
+        w2 = Ledger.fresh()
+        background_sales(w2, 0)
+        check("...and it is DETERMINISTIC -- two ledgers, same day, same rows",
+              [x for x in w2.sales if x["cr"] < 0] == wrows,
+              f"{len(wrows)} rows compared field for field")
+    finally:
+        BUY_BACK = saved
+
+    out("")
+    out(f"{n[0] - len(failed)}/{n[0]} passed"
+        + (f"  FAILED: {'; '.join(failed)}" if failed else ""))
+    return not failed
+
+
 if __name__ == "__main__":                                   # pragma: no cover
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("--selftest", action="store_true")
     ap.add_argument("--report", action="store_true")
+    ap.add_argument("--trade", action="store_true",
+                    help="VRB-05: a player buys and sells in one run")
+    ap.add_argument("--break-margin", action="store_true",
+                    help="the --trade negative control: pay more than you "
+                         "charge and watch the money-pump assertion fail")
     ap.add_argument("--day", type=int, default=None)
     a = ap.parse_args()
+    if a.trade or a.break_margin:
+        # RUN IT OUT OF THE *IMPORTED* COPY, NOT OUT OF `__main__`, and this
+        # is not tidiness -- it is a live defect this gate hit on its first
+        # run. `python3 station/economy.py` makes this file `__main__`, and
+        # `consequence.py` does `import economy as EC`, which loads the file a
+        # SECOND time under the name `economy`. The two copies then have
+        # different `Refused` classes (so `except Refused` does not catch what
+        # `consequence` raises) and different `BUY_BACK` globals (so
+        # `--break-margin` would mutate a constant nothing reads). Dispatching
+        # into the imported module makes one copy authoritative.
+        sys.path.insert(0, HERE)
+        import economy as _EC                                # noqa: PLC0415
+        raise SystemExit(0 if _EC.trade_gate(
+            break_margin=a.break_margin) else 1)
     if a.day is not None:
         day_report(a.day)
         raise SystemExit(0)
